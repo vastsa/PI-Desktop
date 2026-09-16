@@ -681,6 +681,17 @@ export function registerAgentIpc({
     return { ok: true };
   });
 
+  handle(
+    IPC.invoke.agentQueueReorder,
+    async (req: { turnId: string; direction: "up" | "down" }) => {
+      if (!agentHostBridge) throw new Error("agent host unavailable");
+      if (req.direction !== "up" && req.direction !== "down") {
+        throw new Error(`unknown queue reorder direction: ${String(req.direction)}`);
+      }
+      return agentHostBridge.queue.reorder(req.turnId, req.direction);
+    },
+  );
+
   handle(IPC.invoke.toolResolvePermission, async (resolution: {
     requestId: string;
     decision: string;

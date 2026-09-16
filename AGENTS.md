@@ -1,6 +1,14 @@
 # AGENTS.md
 
+Policy-Sync: 2026-02-16.1
+
 Mandatory rules for AI coding agents working in PI-Desktop.
+
+`CLAUDE.md` is the Claude Code / Claude Cowork entry point and a condensed
+mirror of the non-negotiables in this file. This file is authoritative.
+When you change either file, update the other so the non-negotiables stay
+aligned, and set the same `Policy-Sync:` token in both. The gate is
+`pnpm check:agent-policy` (`scripts/check-agent-policy-sync.mjs`).
 
 PI-Desktop is released software with real users. Treat every change as production maintenance, not prototype work.
 
@@ -36,6 +44,21 @@ For development and validation rules, follow:
 Use English for code, identifiers, comments, commits, specifications, ADRs, and repository documentation.
 
 GitHub issue / PR discussion should normally use the language of the original author.
+
+### Workflow policy precedence
+
+`AGENTS.md` is the top-level repository policy for AI-agent development workflow.
+
+Domain specifications remain authoritative for product behavior, architecture, protocol contracts, persistence semantics, security boundaries, and acceptance criteria.
+
+If a delivery document conflicts with the branch/worktree/integration/E2E workflow defined in this file:
+
+1. do not silently choose one
+2. treat the conflict as documentation drift
+3. follow the workflow in this file
+4. update the conflicting delivery documentation as part of the same policy change when authorized
+
+In particular, do not merge task code into local `main` merely because an older document describes local-main E2E integration.
 
 ---
 
@@ -121,17 +144,22 @@ Every development request must use:
 1 dedicated worktree
 ```
 
-Never:
+The primary checkout and local `main` are coordination surfaces, not development workspaces.
+
+### Never
 
 * develop directly on `main`
 * develop in the primary checkout
+* merge unvalidated task code into local `main`
+* use local `main` as a temporary integration branch
 * reuse another task's worktree
 * modify another agent's branch
 * delete another agent's branch or worktree
 * reset or discard unrelated work
 * include unrelated changes in your task
+* depend on uncommitted work from another worktree
 
-Start from current `main`:
+### Start from current `main`
 
 ```bash
 git fetch origin main
@@ -144,22 +172,59 @@ git worktree add \
 cd <worktree-path>
 ```
 
-Before integration, refresh against the latest `main` and resolve conflicts inside your own worktree.
+All implementation, targeted validation, conflict resolution, and task-candidate E2E must happen inside the task's dedicated worktree.
 
-The delivery order for every request is fixed:
+### Before candidate validation
 
-```text
-1. implement and commit on the request branch in its worktree
-2. merge the request branch into local `main`
-3. run the required E2E suites on the integrated local `main` (§15)
-4. push the request branch and open the PR/MR
-5. merge into remote `main` through the PR/MR gates
-6. synchronize local `main`, remove the worktree, delete the merged branch
+Refresh the task against the latest remote `main`.
+
+For a private branch that has not been pushed or shared:
+
+```bash
+git fetch origin main
+git rebase origin/main
 ```
 
-A code-bearing change must not be pushed for review, opened as a PR/MR, or
-declared delivered before step 3 has run against the integrated local `main`
-commit, or before its environment limitation is recorded per §15.
+If the branch has already been shared and rewriting history would be unsafe, do not force-push merely to rebase it. Use a non-destructive integration strategy or rely on the PR integration candidate according to §15.
+
+Resolve conflicts inside your own worktree.
+
+Never resolve task conflicts by modifying the primary checkout.
+
+### Fixed delivery order
+
+The normal delivery order for a code-bearing request is:
+
+```text
+1. create dedicated branch + worktree from current origin/main
+2. implement in the request worktree
+3. run targeted static/unit/integration checks
+4. review the task diff
+5. commit the task
+6. refresh the task branch against latest origin/main
+7. resolve conflicts inside the task worktree
+8. run required task-candidate E2E in the task worktree
+9. push the request branch
+10. open/update the PR/MR
+11. validate the PR integration candidate
+12. merge into remote main through repository gates
+13. synchronize local main
+14. remove the worktree and merged local branch
+```
+
+Do not insert:
+
+```text
+merge task → local main
+```
+
+between steps 6 and 8.
+
+The task branch itself becomes the local integration candidate by incorporating the latest `origin/main`.
+
+A task-candidate E2E run is valid only when its tested commit and base revision are known.
+
+The PR integration gate then protects against `main` changing between local candidate validation and final merge.
 
 ---
 
@@ -244,10 +309,10 @@ Generated files, locales, changelogs, fixtures, and declarative data are exempt.
 Prefer:
 
 ```text
-State               → Store
-Workflow            → Service
-Pure transformation → Reducer / helper
-External side effect→ Service / runtime
+State                → Store
+Workflow             → Service
+Pure transformation  → Reducer / helper
+External side effect → Service / runtime
 ```
 
 Do not keep pushing complex workflows into a central Zustand store.
@@ -299,7 +364,16 @@ Examples:
 * sidecars
 * plugin services
 
-Check cleanup during relevant reload, disable, uninstall, close, restart, and shutdown paths.
+Check cleanup during relevant:
+
+* reload
+* disable
+* uninstall
+* project switch
+* session switch
+* window close
+* restart
+* shutdown
 
 ---
 
@@ -321,6 +395,17 @@ Plugin SDK / DevKit and other extension contracts are backward-compatible by def
 
 Do not casually change public plugin behavior.
 
+Changes to persisted formats must consider:
+
+```text
+old application → existing data
+new application → existing data
+new application → newly created data
+restart/recovery → partially completed operations
+```
+
+Data migration must not depend on users manually deleting application state.
+
 ---
 
 ## 10. Security and Error Handling
@@ -338,7 +423,15 @@ Use least privilege for:
 * credentials
 * secrets
 
-Never fix functionality by weakening permission checks, sandbox boundaries, URL validation, filesystem restrictions, or credential isolation.
+Never fix functionality by weakening:
+
+* permission checks
+* sandbox boundaries
+* URL validation
+* filesystem restrictions
+* origin checks
+* credential isolation
+* plugin authorization
 
 Do not silently swallow unexpected errors.
 
@@ -353,7 +446,16 @@ as any
 @ts-nocheck
 ```
 
-and avoid using Rust `unwrap()` / `expect()` for normal external failure paths.
+Avoid using Rust:
+
+```text
+unwrap()
+expect()
+```
+
+for normal external failure paths.
+
+Unexpected failures should remain observable and diagnosable without leaking sensitive information.
 
 ---
 
@@ -361,11 +463,27 @@ and avoid using Rust `unwrap()` / `expect()` for normal external failure paths.
 
 Observable behavior changes must update the relevant spec.
 
-Changes affecting architecture, public interfaces, data ownership, security boundaries, or frozen decisions require an ADR.
+Changes affecting:
+
+* architecture
+* public interfaces
+* data ownership
+* security boundaries
+* frozen decisions
+
+require an ADR when appropriate.
 
 User-visible or protocol-visible behavior changes must update the corresponding E2E scenario documentation.
 
 Pure behavior-preserving refactors normally do not require product-spec changes.
+
+Changes to development workflow or validation policy must synchronize relevant files under:
+
+```text
+docs/spec/06-delivery/
+```
+
+Do not intentionally leave contradictory workflow instructions in the repository.
 
 ---
 
@@ -381,7 +499,18 @@ Before implementation:
 4. For bugs, reproduce it or provide concrete evidence.
 5. For features, verify the requested behavior is actually missing.
 
-If the issue is invalid or already fixed, report the evidence and close it only when the conclusion is clear.
+For bug reports, distinguish:
+
+```text
+confirmed regression
+confirmed existing defect
+already fixed
+expected behavior
+environment-specific failure
+insufficient evidence
+```
+
+If the issue is invalid or already fixed, report the evidence and close it only when the conclusion is clear and the task authorizes issue management.
 
 If verification is inconclusive, report what was checked and leave it open.
 
@@ -409,6 +538,7 @@ The following are landing blockers:
 * build failure
 * typecheck failure
 * relevant test failure
+* required E2E failure
 * merge conflict
 * data corruption risk
 * security violation
@@ -418,12 +548,30 @@ The following are landing blockers:
 
 A sound idea does not override a failing landing gate.
 
-Relevant E2E is a post-integration validation step defined in §15. A failed
-or unavailable post-integration E2E blocks declaring the delivered change
-complete and must be recorded with its remaining risk.
+### Two validation stages
 
-That gate runs on the integrated local `main` before the pull request is
-opened, per the fixed order in §4.
+Code-bearing changes use two distinct validation stages:
+
+```text
+Task Candidate Validation
+        ↓
+PR Integration Validation
+```
+
+Task Candidate Validation runs in the request worktree after the request branch has incorporated the latest available `origin/main`.
+
+PR Integration Validation verifies the actual code that is about to land, ideally using:
+
+* GitHub PR merge ref
+* merge queue candidate
+* equivalent synthetic merge commit
+* another trusted integration candidate produced from current target `main`
+
+Do not require the task to be merged into local `main` merely to perform E2E.
+
+A PR head commit and an integration candidate are equivalent only when they produce the same executable tree against the relevant target `main`.
+
+If `main` changed after task-candidate validation, the old local result remains useful evidence but does not by itself prove the new integration candidate.
 
 ---
 
@@ -440,12 +588,13 @@ implement
 → unit/integration validation
 → diff review
 → commit
-→ merge into local `main`
-→ relevant E2E on the integrated local `main`
+→ refresh against latest origin/main
+→ resolve conflicts in task worktree
+→ task-candidate E2E
 → push branch + open PR
-→ PR checks
-→ merge into remote `main`
-→ synchronize local `main`
+→ PR integration checks / E2E
+→ merge into remote main
+→ synchronize local main
 ```
 
 Run validation appropriate to the affected source tree.
@@ -463,373 +612,69 @@ cargo test -p host-core --locked
 cargo clippy -p host-core --all-targets
 ```
 
+The exact validation set depends on the changed surface.
+
+Do not run unrelated expensive validation merely for ceremony when the repository defines a narrower authoritative gate.
+
+Conversely, do not skip an applicable gate merely because narrower tests passed.
+
 Never report a skipped command as passing.
 
 ---
 
-## 15. E2E Runs on Integrated `main` Before the PR
+## 15. E2E Validates Integration Candidates, Not Branch Names
 
-Every **code-bearing change** must pass relevant E2E on the integrated `main`
-that contains its commits. That run happens before the request branch is
-pushed for review, and before a delivery that stops at local `main` is
-declared delivered.
+E2E exists to validate executable integration state.
 
-The order is fixed (§4): merge the request branch into local `main`, run the
-selected suites from that integrated checkout, and only then push the branch
-and open the PR/MR. An E2E run on the request branch itself is exploratory and
-does not satisfy this requirement.
+It does **not** exist to validate whether Git reports the current branch name as `main`.
 
-Required validation is part of an authorized integration request and needs no
-separate E2E permission.
+The relevant invariant is:
 
-Build, typecheck, unit tests, or manual inspection do not replace E2E.
+```text
+latest applicable main
++
+task changes
+=
+candidate executable state
+```
 
-Select suites according to the affected regression surface as defined in:
+not:
 
-`docs/spec/06-delivery/04-e2e-test-plan.md`
+```text
+current branch name == main
+```
 
-The root `package.json` is the source of truth for available E2E commands.
+### 15.1 Task-candidate E2E
 
-A failed required suite blocks the push, the PR/MR, and declaring the change
-delivered until the failure is classified and fixed (§16).
+Every code-bearing change must run the relevant E2E suites against a task candidate that contains:
 
-If a required suite cannot run in the current environment:
+1. the request's commits
+2. the latest `origin/main` incorporated at candidate preparation time
+3. all conflict resolutions required to combine them
 
-* record the suite, reason, alternative validation, and remaining risk as
-  **NOT RUN**
-* pushing the request branch and opening the PR/MR stay permitted so the change
-  can be validated in a capable environment, but the gate is not satisfied
-* keep delivery/release status incomplete until the suite passes against the
-  integrated `main` that carries the change
+Normally:
+
+```bash
+git fetch origin main
+git rebase origin/main
+```
+
+followed by E2E from the same task worktree.
 
 Record:
 
 ```text
-E2E: NOT RUN
-Suite:
-Reason:
-Alternative validation:
-Remaining risk:
+Task candidate:
+Base main:
+E2E suites:
+Result:
+Environment:
 ```
 
-Required E2E must pass against the integrated `main` commit that carries the
-change, in this checkout or in another capable trusted environment.
+An E2E result applies only to the commit that actually ran.
 
-After the PR/MR merges into remote `main`, rerun the affected suites when the
-landed executable content differs from the commit the gate ran on — landing
-fixes, conflict resolution, or commits added during review. Otherwise the
-recorded result stands.
+Do not modify local `main` to create this candidate.
 
-Always state the commit the recorded evidence applies to.
+### 15.2 PR integration E2E
 
-Never claim an E2E suite passed unless it actually ran successfully.
-
----
-
-## 16. Never Hide Test Failures
-
-Do not make validation green by:
-
-* deleting tests
-* skipping tests
-* commenting out assertions
-* weakening expectations without product justification
-* hiding errors
-* adding retries only to mask deterministic failures
-
-Classify failures first:
-
-```text
-product regression
-test regression
-environment failure
-infrastructure failure
-known flake
-```
-
-Fix the underlying cause.
-
-Bug fixes should normally add regression coverage.
-
----
-
-## 17. Multi-Agent-Safe E2E IDs
-
-Do not create new globally sequential E2E identifiers.
-
-Existing numeric IDs such as:
-
-```text
-E2E-001
-E2E-097
-E2E-146a
-E2E-220
-```
-
-are frozen legacy identifiers.
-
-Do not renumber or recycle them.
-
-New scenarios must use:
-
-```text
-E2E-<DOMAIN>-<semantic-slug>
-```
-
-Examples:
-
-```text
-E2E-SESSION-switch-does-not-show-stale-transcript
-E2E-PLAN-approval-survives-renderer-reload
-E2E-PLUGIN-disable-cleans-runtime
-E2E-MCP-reconnect-after-runtime-restart
-E2E-SUBAGENT-parent-cancel-stops-child
-```
-
-Rules:
-
-* use the narrowest stable domain
-* describe product behavior, not implementation details
-* search for equivalent scenarios before creating one
-* reuse/update an existing scenario when it covers the same contract
-* once merged into `main`, treat the identifier as stable
-
-Do not introduce other manually allocated global counters for multi-agent work unless an authoritative centralized allocator exists.
-
----
-
-## 18. Commits and Diff Hygiene
-
-Use Conventional Commits:
-
-```text
-type(scope): description
-```
-
-Allowed types:
-
-```text
-feat
-fix
-docs
-test
-chore
-refactor
-perf
-build
-ci
-```
-
-Use English.
-
-Keep one logical concern per commit.
-
-Before delivery, review the complete diff for:
-
-* debug logging
-* temporary code
-* commented-out implementation
-* unrelated cleanup
-* accidental formatting
-* generated junk
-* secrets
-* credentials
-* local paths
-* local databases
-* disabled tests
-* test bypasses
-
----
-
-## 19. Remote Publishing
-
-Do not push merely because local development is complete unless remote delivery is part of the task or the user has authorized it.
-
-When the user requests a commit, a push, or both, complete this task's
-integration into local `main` after the applicable gates pass. Do not stop at
-a task-branch commit or push, or ask again for merge permission. Explicit
-branch-only or draft-only instructions override that completion target.
-
-A commit-only or local-merge request does not authorize remote publishing.
-A push request requires the existing PR workflow: push the task branch, pass
-the required checks and reviews, merge into remote `main`, and synchronize
-local `main`. It does not authorize a direct push to `main` or a force-push.
-Report genuine validation, conflict, or access blockers; never bypass a merge
-gate to satisfy the delivery request.
-
-The remote route is the last step of the fixed order in §4: the request branch
-is merged into local `main` and the §15 E2E gate runs against that integrated
-commit before the branch is pushed and its PR/MR is opened.
-
-Before pushing, verify:
-
-* remote
-* branch
-* commit set
-* Git identity
-
-Never force-push unless explicitly authorized for that exact operation.
-
-A linked issue does not authorize unrelated publishing.
-
-A linked PR authorizes actions necessary to review or land that PR within repository policy.
-
----
-
-## 20. Integration and Cleanup
-
-Before integration:
-
-1. refresh against current `main`
-2. resolve conflicts carefully
-3. run the targeted pre-integration checks for the change on the request branch
-4. review the final diff
-5. merge the request branch into local `main`
-6. run the §15 E2E gate from the integrated local `main`
-
-When remote publishing is authorized, continue in the fixed §4 order:
-
-7. push the request branch and open the PR/MR
-8. verify required PR/MR checks and reviews, then merge into remote `main`
-9. synchronize local `main` with the landed change
-
-After merge:
-
-1. verify expected commits are present in local `main`, and remote `main` for
-   remote delivery
-2. rerun the affected E2E suites when the landed executable content differs
-   from the commit the §15 gate ran on
-3. remove your request worktree
-4. delete your merged local branch
-5. prune stale worktree metadata
-
-Example:
-
-```bash
-git worktree remove <worktree-path>
-git branch -d <type>/<short-description>
-git worktree prune
-```
-
-Delete only your own worktree and branch.
-
-When the user also requests a launch, build and start from the integrated
-`main` checkout and its development environment.
-
----
-
-## 21. Specialized Workflows
-
-Do not duplicate detailed procedures in this file.
-
-Follow the existing repository specifications for:
-
-* Marketplace/update diagnosis
-* Stable release/version surfaces
-* Packaging/signing
-* E2E suite selection
-* Release qualification
-* Domain-specific acceptance criteria
-
-When one of those workflows applies, read the relevant spec before implementation.
-
----
-
-## 22. Definition of Done
-
-A code task is Done only when all applicable conditions are true:
-
-* [ ] Dedicated branch and worktree were used
-* [ ] Work started from current `main`
-* [ ] Relevant specs / ADRs were reviewed
-* [ ] Implementation is complete
-* [ ] Existing behavior and compatibility were reviewed
-* [ ] Architecture boundaries remain valid
-* [ ] No new God Module was introduced
-* [ ] Known hotspots did not grow unnecessarily
-* [ ] Relevant specs were synchronized
-* [ ] ADR was added when required
-* [ ] E2E documentation was updated when required
-* [ ] New E2E IDs use the multi-agent-safe semantic format
-* [ ] Relevant static / unit / integration checks pass
-* [ ] The fixed order in §4 was followed: branch → local `main` → §15 E2E →
-  push/PR → remote `main`
-* [ ] Relevant E2E ran against the integrated local `main` commit before the
-  branch was pushed, the PR/MR was opened, or a commit-only delivery was
-  declared delivered, or its NOT RUN limitation is recorded
-* [ ] E2E evidence applies to the executable commit currently on `main`, and
-  the affected suites were rerun when landed content changed after the gate
-* [ ] Complete diff was reviewed
-* [ ] No secrets, local data, or unrelated changes are included
-* [ ] Logical changes are committed
-* [ ] Required merge gates pass
-* [ ] Requested commit/push delivery reaches local `main`; authorized remote
-  delivery also reaches remote `main` through a PR, unless explicitly limited
-  to a branch or draft
-* [ ] Worktree and branch cleanup are complete after integration
-* [ ] Any requested launch uses the integrated `main` build/development environment
-
-The following are **not** equivalent to Done:
-
-```text
-code written
-build passes
-typecheck passes
-unit tests pass
-looks correct
-```
-
-when required validation or merge gates remain unresolved.
-
----
-
-## 23. Final Handoff
-
-Report only factual results.
-
-Include, when applicable:
-
-```text
-What changed:
-Architecture / compatibility impact:
-Specs / ADRs:
-Validation:
-E2E:
-Commits:
-PR / merge status:
-Remaining risk:
-```
-
-If something was not run, say so.
-
-Never claim:
-
-```text
-passed
-verified
-tested
-```
-
-unless it actually was.
-
----
-
-## Final Principles
-
-> Preserve behavior unless change is intentional.
-
-> Respect process and ownership boundaries.
-
-> New features must not increase architectural entropy by default.
-
-> Multiple agents must never depend on shared manual counters.
-
-> E2E IDs are stable semantic contract references, not sequence numbers.
-
-> A test that did not run did not pass.
-
-> Local `main` integration and E2E come before the pull request.
-
-> A refactor should reduce coupling, not move it into a differently named file.
-
-> A feature that works today but makes tomorrow's change substantially harder is not fully finished.
+The final landing

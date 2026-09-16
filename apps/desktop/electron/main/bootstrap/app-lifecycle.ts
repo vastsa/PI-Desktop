@@ -18,6 +18,8 @@ import type { BrowserPane } from "../browser-view";
 import type { Logger } from "../logger";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { PluginViewHost } from "../plugin-view-host";
+import type { HostProcess } from "../host-process";
+import { syncPluginDisplayLocale } from "../plugin-display-locale";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
 
 export type ApplicationLifecycleState = {
@@ -64,6 +66,7 @@ export type ApplicationLifecycleDependencies = {
   applyPluginLauncherShortcut: (keybindings?: KeybindingOverrides) => void;
   applySummonWindowShortcut: (keybindings?: KeybindingOverrides) => void;
   broadcastPluginPanelEvent: (event: string, payload: unknown) => void;
+  getHost: () => HostProcess | null;
 };
 
 export function createApplicationLifecycle({
@@ -96,6 +99,7 @@ export function createApplicationLifecycle({
   applyPluginLauncherShortcut,
   applySummonWindowShortcut,
   broadcastPluginPanelEvent,
+  getHost,
 }: ApplicationLifecycleDependencies) {
 
   function applyDevelopmentBranding() {
@@ -457,6 +461,15 @@ export function createApplicationLifecycle({
     if (locale !== appearanceState.updaterLocale) {
       appearanceState.updaterLocale = locale;
       refreshReleaseNotes();
+      // Plugin labels are resolved in the host (a plugin ships them per
+      // locale), so the change is pushed there before the surfaces re-read.
+      // `pluginChanged` is also what makes the Extensions page re-list, so a
+      // language switch localizes the rows without a restart (ADR 0160).
+      void syncPluginDisplayLocale(getHost(), locale)
+        .then(() => sendToRenderer(IPC.event.pluginChanged, { reason: "locale" }))
+        // Notifying is best-effort: a window that is already gone must not turn
+        // a language change into an unhandled rejection.
+        .catch(() => {});
     }
     applyAppThemePreference(settings?.theme);
     const keybindings =

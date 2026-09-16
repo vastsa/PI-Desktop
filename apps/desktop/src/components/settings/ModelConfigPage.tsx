@@ -518,7 +518,7 @@ export function ModelConfigPage() {
                       {!ownedByPlugin ? (
                         <TooltipButton
                           type="button"
-                          className="icon-btn model-provider-icon-btn"
+                          className="icon-btn icon-btn-square model-provider-icon-btn"
                           tooltip={t("settings.copyProvider")}
                           ariaLabel={t("settings.copyProvider")}
                           disabled={rowBusy}
@@ -533,7 +533,7 @@ export function ModelConfigPage() {
                       {ownedByPlugin && provider.authKind === "api_key" ? (
                         <TooltipButton
                           type="button"
-                          className="icon-btn model-provider-icon-btn"
+                          className="icon-btn icon-btn-square model-provider-icon-btn"
                           tooltip={t("settings.pluginProviderKey")}
                           ariaLabel={t("settings.pluginProviderKey")}
                           disabled={rowBusy}
@@ -547,7 +547,7 @@ export function ModelConfigPage() {
                       ) : null}
                       <TooltipButton
                         type="button"
-                        className="icon-btn model-provider-icon-btn"
+                        className="icon-btn icon-btn-square model-provider-icon-btn"
                         tooltip={
                           ownedByPlugin
                             ? t("settings.pluginProviderManaged", { plugin: ownedByPlugin })
@@ -562,7 +562,7 @@ export function ModelConfigPage() {
                       <TooltipButton
                         type="button"
                         className={cx(
-                          "icon-btn model-provider-icon-btn",
+                          "icon-btn icon-btn-square model-provider-icon-btn",
                           testingId === provider.id && "is-testing",
                         )}
                         tooltip={t("settings.testConnection")}
@@ -585,7 +585,7 @@ export function ModelConfigPage() {
                       ) : (
                         <TooltipButton
                           type="button"
-                          className="icon-btn model-provider-icon-btn is-danger"
+                          className="icon-btn icon-btn-square model-provider-icon-btn is-danger"
                           tooltip={
                             ownedByPlugin
                               ? t("settings.pluginProviderManaged", { plugin: ownedByPlugin })

@@ -112,6 +112,7 @@ export function createSessionSlice({
   | "forkSession"
   | "forkAssistantMessage"
   | "configureActiveSession"
+  | "abortSession"
 > {
   const refreshSessionList = createRefreshCoordinator(async () => {
     const result = await api.listSessions();
@@ -586,6 +587,20 @@ export function createSessionSlice({
           [sessionId]: result.session.mode === "plan" ? "planning" : "inactive",
         },
       }));
+    },
+
+    /** Abort one session's running turn, whether or not it is the visible one. */
+    abortSession: async (sessionId) => {
+      if (!sessionId) return;
+      try {
+        await api.abort(sessionId);
+      } finally {
+        set((state) => ({
+          isRunning:
+            state.activeSessionId === sessionId ? false : state.isRunning,
+          runningSessions: { ...state.runningSessions, [sessionId]: false },
+        }));
+      }
     },
   };
 }

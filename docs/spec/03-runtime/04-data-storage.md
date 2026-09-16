@@ -595,6 +595,7 @@ CREATE TABLE turn_queue (
   attachments_json TEXT,
   permission_mode  TEXT NOT NULL,
   position         INTEGER NOT NULL,
+  priority         INTEGER,
   created_at       INTEGER NOT NULL
 );
 CREATE INDEX idx_turn_queue_session ON turn_queue(session_id, position);
@@ -605,11 +606,17 @@ CREATE UNIQUE INDEX idx_turn_queue_idempotency
 
 - One row per prompt admitted behind an active turn (D375 / ADR 0213). The
   headless Agent Host module is the only writer through `session.queuePush`,
-  `session.queueList`, and `session.queueRemove`; the store never starts a
-  turn.
+  `session.queueList`, `session.queueRemove`, `session.queuePrioritize`, and
+  `session.queueReorder`; the store never starts a turn.
 - `position` is per session and only grows, so a removed entry never
   reorders the rest. `principal` plus `idempotency_key` make a retried push
   return the same row; a reused key with a different `input_hash` fails with
+  `IDEMPOTENCY_CONFLICT`. A session holds at most eight entries.
+- `priority` (schema v18, ADR 0265) is `NULL` until the entry is promoted with
+  "send now"; a promotion writes `MAX(priority) + 1` inside the session, so
+  promoted entries are delivered first in click order and the remaining entries
+  keep their `position` order. `queueReorder` swaps two adjacent non-promoted
+  `position` values and refuses a promoted entry.
   `IDEMPOTENCY_CONFLICT`. A session holds at most eight entries.
 - `attachments_json` keeps the prompt's attachment references; bytes stay in
   the session scratch or project root like any other prompt attachment.
@@ -1429,8 +1436,8 @@ trust, saved-provider/auth, canonical-path, identity, and lease checks pass.
 `AgentSession` and `SessionManager` append the native entries. Desktop host turn
 and transcript append APIs are not invoked. Rename, delete, project move,
 revision, Plan/Goal, collaboration, and queue operations remain unsupported
-for native sessions in this slice. Forking and ordinary text-only side-chat
-send/stop are supported as described here and in the runtime spec.
+for native sessions in this slice. Forking is supported as described here and in
+the runtime spec.
 
 A native fork writes exactly one new v3 JSONL child in the parent's session
 directory. Branch extraction runs against an in-memory manager over the parent

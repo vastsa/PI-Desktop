@@ -22,6 +22,17 @@ type PluginManifestV1 = {
  name: string;
  version: string; // semver
  description?: string;
+ /**
+  * 展示文案的多语言表：当应用语言命中其中某个 locale 时用它替换
+  * `name` / `description`（见 §3.1）。扁平字段仍是作者自己的语言，也是最终回退。
+  */
+ i18n?: {
+   [locale: string]: {
+     name?: string;
+     description?: string;
+     safetyNotes?: string;
+   };
+ };
  author?: string | { name: string; url?: string; email?: string };
  homepage?: string;
  repository?: string;
@@ -63,6 +74,36 @@ type PluginUiConfig = {
  title?: string;
 };
 ```
+
+### 3.1 多语言标签（`i18n`）
+
+`name`、`description` 和 `safetyNotes` 都是展示文案，插件可以用顶层 `i18n` 块按
+locale 声明。扩展页、插件启动器和市场（从 catalog 条目读取同一个块）显示的是**应用
+语言**对应的条目，而不是作者自己写的那一种：
+
+```json
+{
+  "name": "小清新待办",
+  "description": "作者原话",
+  "i18n": {
+    "en": { "name": "Todo List", "description": "A calm todo list" },
+    "zh-CN": { "name": "小清新待办", "description": "轻盈的待办清单", "safetyNotes": "只写自己的数据" }
+  }
+}
+```
+
+规则：
+
+1. `en` 与 `zh-CN` 是契约 locale。所有中文壳 locale（`zh`、`zh-CN`、`zh-Hans`、
+   `zh-SG`）读 `zh-CN`，其余读 `en`。插件不必为其他已发布壳 locale 提供翻译，
+   因此 `zh-TW` 读英文，而不是拿半份 `zh-CN` 猜测（ADR 0182）。
+2. 插件仓库的校验器要求两个 locale 与三个字段齐全，但宿主是宽容的：缺 locale、
+   缺字段或空字符串会按字段依次回退到另一个契约 locale，再回退到作者扁平的
+   `name` / `description`。
+3. 解析发生在宿主里，依据桌面壳下发的语言（`settings.language`，为 `auto` 时是
+   系统语言）。存储行保留作者原文，因此切换语言只改变读取结果，绝不改写注册表。
+4. 该块是展示元数据。格式错误（不是 locale → 对象的对象）会让 manifest 校验失败；
+   条目里未知的 locale 与未知字段一律忽略。
 
 ## 4. 贡献
 

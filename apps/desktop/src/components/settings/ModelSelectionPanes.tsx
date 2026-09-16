@@ -29,6 +29,7 @@ import {
 } from "../../lib/model-limit-presets";
 import { Button, Field, Input, Tooltip, TooltipButton, cx } from "../ui";
 import { IconClose, IconHelp, IconPlus, IconRefresh, IconSearch } from "../icons";
+import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { filterChosenModels, hidesAddedBinding } from "./model-chosen-filter";
 import { describeModelsFetchError } from "./model-fetch-error";
 import type { ProviderModelsState } from "./useProviderModels";
@@ -681,32 +682,30 @@ export function ModelSelectionPanes({
                           </span>
                         ) : null}
                         {enabledLevels.length > 1 ? (
-                          <label className="provider-chosen-thinking-default">
+                          <div className="provider-chosen-thinking-default">
                             <span className="provider-chosen-thinking-label">
                               {t("settings.defaultThinkingLevel")}
                             </span>
-                            <select
+                            <SettingsMenuSelect
                               className="provider-chosen-thinking-select"
+                              label={t("settings.defaultThinkingLevel")}
                               value={
                                 binding.defaultThinkingLevel &&
                                 enabledLevels.includes(binding.defaultThinkingLevel)
                                   ? binding.defaultThinkingLevel
                                   : (enabledLevels[0] ?? "")
                               }
-                              onChange={(event) =>
+                              onChange={(id) =>
                                 updateBinding(binding.id, {
-                                  defaultThinkingLevel: event.target
-                                    .value as ThinkingLevel,
+                                  defaultThinkingLevel: id as ThinkingLevel,
                                 })
                               }
-                            >
-                              {enabledLevels.map((level) => (
-                                <option key={level} value={level}>
-                                  {level}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
+                              options={enabledLevels.map((level) => ({
+                                id: level,
+                                label: level,
+                              }))}
+                            />
+                          </div>
                         ) : null}
                       </div>
                       <div

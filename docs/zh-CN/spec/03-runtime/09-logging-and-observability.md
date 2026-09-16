@@ -52,7 +52,7 @@ host 和 agent stderr 使用标记进行分类；无法分类的子进程输出�
 - `provider` — provider/model 发现、重试和缓存失败
 - `persistence` — 成绩单和发件箱持久化失败
 - `updater` — 更新器诊断和错误
-- `diagnostics` — 阻止导航、菜单和模板诊断
+- `diagnostics` — 阻止导航、菜单、模板以及对外请求的诊断。技能市场的两个通道会为每个没有产出结果的源或文档各记录一条 `skillMarket.sourceFailed` / `skillMarket.documentFailed`：`data` 里带 `source`、`host`、`kind`,以及被守卫拒绝时的 `reason`、`addressKind` 与 `route`。`kind` 在守卫判定了目标时为 `policy`,本地解析没有返回答案时为 `unresolved`,其余为 `network`；`code` 前者为 `NETWORK_POLICY_BLOCKED`,后者为 `NETWORK_RESOLVE_FAILED`,因此一行日志即可区分「地址不是公网」与「解析器没有应答」。`reason` 记录守卫自己的分支（`url-syntax`、`resolve-failed`、`non-public-address`、`redirect-limit`）,`addressKind` 记录被拒地址的类别（TUN fake-IP 为 `benchmark`,RFC1918 为 `private`）,`route` 记录该地址是在哪条线路上被判定的（`proxied`、`direct`,或传输层读不出线路时的 `unknown`）,因此「直连线路上的 fake-IP 拒绝」与「读不出线路的拒绝」可以区分（ADR 0272）。记录中只保留主机名、该类别与该线路 —— 绝不包含地址、URL、其路径、查询串或凭据 —— 因为目录源 URL 由用户提供,被拒绝的主机正是全部诊断价值所在,而该类别正是区分解析器产物与真实私网目标的依据（issue #419）。
 - `runtime` — host/sidecar 生命周期、未分类的子进程输出，以及主进程
   `uncaughtException` / `unhandledRejection` 记录
 

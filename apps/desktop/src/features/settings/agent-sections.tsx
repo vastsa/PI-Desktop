@@ -11,9 +11,10 @@ import {
   groupImportCandidates,
   type ImportGroupBy,
 } from "../../lib/import-groups";
-import { Badge, Button, Select, cx } from "../../components/ui";
+import { Badge, Button, cx } from "../../components/ui";
 import { IconChevronLeft, IconFileText } from "../../components/icons";
 import { ReleaseNotesDialog } from "../../components/ReleaseNotesDialog";
+import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 import { SettingsCard, SettingsRow } from "./primitives";
 
 export function AgentInstructionsSection() {
@@ -285,10 +286,7 @@ export function SessionImportPanel() {
   return (
     <>
       <SettingsCard title={t("settings.importTitle")}>
-        <SettingsRow
-          title={t("settings.importScan")}
-          description={t("settings.importScanDesc")}
-        >
+        <SettingsRow title={t("settings.importScan")}>
           <Button variant="secondary" disabled={scanning} onClick={() => void scan()}>
             {scanning ? t("settings.importScanning") : t("settings.importScan")}
           </Button>
@@ -319,17 +317,19 @@ export function SessionImportPanel() {
                 <div className="import-toolbar-actions">
                   <label className="import-group-by">
                     <span>{t("settings.importGroupBy")}</span>
-                    <Select
+                    <SettingsMenuSelect
+                      className="import-group-select"
+                      label={t("settings.importGroupBy")}
                       value={groupBy}
-                      className="settings-pill-select import-group-select"
-                      onChange={(event) => {
-                        setGroupBy(event.target.value as ImportGroupBy);
+                      onChange={(id) => {
+                        setGroupBy(id as ImportGroupBy);
                         setExpandedGroups(new Set());
                       }}
-                    >
-                      <option value="source">{t("settings.importGroupBySource")}</option>
-                      <option value="path">{t("settings.importGroupByPath")}</option>
-                    </Select>
+                      options={[
+                        { id: "source", label: t("settings.importGroupBySource") },
+                        { id: "path", label: t("settings.importGroupByPath") },
+                      ]}
+                    />
                   </label>
                   <Button
                     variant="primary"

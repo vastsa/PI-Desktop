@@ -274,9 +274,6 @@ export function PluginDetailSheet({
                   <section className="plugins-sheet-section">
                     <h3 className="plugins-sheet-section-title">
                       {t("plugins.versions")}
-                      <span className="plugins-sheet-section-hint">
-                        {t("plugins.selectVersion")}
-                      </span>
                     </h3>
                     <div className="plugins-version-list">
                       {(detail.versions ?? []).map((version) => {

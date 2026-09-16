@@ -464,13 +464,21 @@ WebKit 与 Chromium 会忽略伪元素，该表面退回为常显的原生滚动
 
 工具栏行为 46 像素。 macOS 将交通信号灯放置在 `{x:16,y:16}` 处并保持
 展开侧边栏的折叠侧边栏图标按钮右对齐
-在同一行。 macOS 行省略侧边栏 logo/title，保留 `76px`
+在同一行。 macOS 行省略侧边栏 logo/title，保留 `88px`
 在窗口模式下的本机 chrome 左侧，并回收该填充
-全屏。 Windows/Linux 将身份和侧边栏操作保留在第一位置
+全屏。 该预留量是共享 token `--ds-window-lead-inset` —— 灯簇 `76px` 右缘
+（与主进程放置按钮所用的是同一份 `@pi-desktop/shared` 几何）加 `12px` 留白。
+Windows/Linux 将身份和侧边栏操作保留在第一位置
 行并为三个无框窗口控件保留最右边的 112px。每个
 control 拥有 46px 高保留带的全部份额。展开的工作面板标题使用可横向滚动的
 标签条和固定 `+` 入口，每个标签拥有自己的关闭操作，避免在 Windows 原生
-关闭控件旁重复第二个 `×`。主要、设置和
+关闭控件旁重复第二个 `×`。头部的 `+`、最大化与视口固定的折叠开关共用同一
+个控制间距（`--ds-work-panel-control-gap`，4px）：标签条到动作组、`+` 到
+最大化，以及动作组到开关的车道预留（`calc(size + inset + gap)`，44px）。
+动作组不再有自己的分隔线、内缩或外边距，因此这三个按钮读作一组。三者都是共享的
+chrome 图标控件：28px 方形、透明底座、指针悬停时显示语义化淡色、禁用时变暗，
+因此 `+`、最大化与折叠开关保持安静的图标形态，而不是填充或抬升的方块；开关的
+`aria-pressed` 状态只改变图形与墨色。主要、设置和
 工作面板拖动区域必须在此保留之前终止，而不是
 重叠它并仅依赖于后代 `no-drag`，因此每个可见控件
 像素仍然可点击。终止是几何意义上的：区域在元素的
@@ -511,6 +519,13 @@ shadow-lg:  0 8px 24px rgba(0,0,0,0.12)
 | 设置搜索 | `--ds-settings-field-bg`（浅色 `#ffffff`、深色 `#212121`） | 导航轨搜索框 |
 | 设置选中项 | `--ds-settings-nav-active`（浅色为 12% `#1a1c1f` 混合白底；深色为 10% `--gray-0` 混合透明底） | 选中导航胶囊 |
 | 内嵌搜索 | `--ds-field-inset-bg`、`--ds-field-inset-focus-bg`（浅色 `#f3f3f3` / 白色；深色为 5% / 7% 主文本色混合透明底） | 插件搜索和 Agent 能力搜索，包含焦点状态 |
+| 正文键帽 / 思考代码 | `--ds-prose-kbd-fg`（浅色 `#303030`、深色 `--ds-text-secondary`）、`--ds-thinking-code-bg`（浅色 `#f0f0f0`、深色 4.5% 文字色混合） | 键帽墨色与思考区代码芯片 |
+| 代码卡外壳 | `--ds-code-head-bg`、`--ds-code-hover-bg`（浅色在代码底板上混合 3.5% / 6% `#1a1c1f`；深色 4% / 8% 白色） | `.code-block` 的标题带与悬停填充。Shiki 语法底板与其墨色刻意不设为标记 —— 见下 |
+| Mermaid 画布 | `--ds-mermaid-canvas`（浅色 `#ffffff`、深色 94% `--ds-bg-primary` + 6% 文字色混合） | `.mermaid-block` 内的图表主体 |
+| 遮罩 / 面纱 | `--ds-scrim`（深色约 45% 黑、浅色约 28% `#1a1c1f`，D148）、`--ds-modal-veil`（深色 78% `--ds-bg-primary`、浅色约 32% `#1a1c1f`） | 对话框遮罩与插件权限蒙层 |
+| 工具输出 | `--ds-tool-row-bg`（浅色 2% `#1a1c1f`、深色 `--ds-tile`） | 会话记录中的工具结果与错误输出块 |
+| 禁用发送芯片 | `--ds-send-disabled-bg`、`--ds-send-disabled-fg`（浅色 `#8e8e90` / `#ffffff`；深色 18% 文字色混合 / 70% `--gray-900`） | 输入框的禁用发送按钮 |
+| 输入占位符 | `--ds-placeholder-ink`（浅色 `#4a4c4f`、深色 42% 白） | 两种输入框状态的输入与占位墨色 |
 
 深色输入框壳直接使用 `--ds-bg-elevated-primary`，浅色继续使用
 `--ds-bg-composer`。开启状态的开关旋钮在两套调色板中均使用
@@ -518,13 +533,44 @@ shadow-lg:  0 8px 24px rgba(0,0,0,0.12)
 覆盖填充色。组件的主题专属规则可以保留既有阴影或布局差异，但不得用字面量
 覆盖原本读取变量的填充色。
 
-`pnpm lint` 会检查本批设置导航轨、搜索、导航项、开关旋钮、能力搜索、插件搜索
-与输入框壳的 `background` / `background-color`，拒绝裸 hex、CSS 颜色函数、
-`white` 和 `black`。此检查范围有限，不代表正文、遮罩、其他外壳或插件 CSS 已全部
-完成颜色标记迁移；级联和焦点行为仍需真实渲染验证。
+正文与会话记录的墨色统一走 `--ds-text-primary`：原先硬编码 `#1a1c1f` 的浅色覆写
+改为混合该标记，整套浅色墨阶随主题移动（5/6 级标题 62%、列表标记 40%、引用墨色
+72%、链接下划线 30% 与悬停 80%、内联代码芯片 6% 与满强度墨色、思考正文 58% 及其
+代码 68%）。
 
-外壳绘制的任何表面色都必须来自标记。`:root[data-theme="light"]` 覆写里写字面量
-会抬高特异度、压过读标记的基础规则，等于把该表面钉死在所有主题之外 —— 见 D419。
+**约定**：`:root[data-theme="…"]` 规则不得写字面量颜色。这类规则既抬高特异度
+压过读标记的基础规则，又完全不读变量，等于把该表面钉死在所有主题之外 —— 见
+D419。主题专属取值应写在 `styles/tokens.css` 的标记块里，两套调色板各定义同名
+`--ds-*`，由基础规则读取一次。
+
+`pnpm lint` 运行 `scripts/style-surface-tokens.mjs`，机械地守住这条约定。规则一：
+`:root[data-theme]` 规则内的每个颜色声明 —— `color`、`background`/`-color`/`-image`、
+`text-decoration-color`、`-webkit-text-fill-color`、`border` 及其颜色长写、`outline`、
+`fill`、`stroke`、`accent-color`、`caret-color` 以及 `box-shadow` —— 都必须经由自
+定义属性解析；标记块正是存放字面量的地方，而组件局部自定义属性若持有字面量颜色同样
+违规，因为它会遮蔽根标记。规则二：已迁移外壳族的基础规则（设置导航轨、搜索、导航项、
+开关旋钮、能力搜索、插件搜索、输入框壳、输入工具栏/芯片/占位符/输入，以及正文、代码
+卡（`code-block`、标题带、语言条）、Mermaid（块、主体、标题带、标题、错误、源码）、
+遮罩、工具输出、发送按钮与空状态标题）同样不得绘制字面量。
+
+豁免项逐条写明理由，不留隐形缺口：
+
+- `one-dark-pro` / `one-light` 的 Shiki 调色板（底板与其墨色由 Shiki 主题产出并以行内
+  颜色渲染，二者必须一起移动 —— 走 Shiki 主题而非 CSS 标记）；
+- 半透明的黑/白 alpha 阴影值（`box-shadow`、`text-shadow`、`filter`），它们只叠加
+  暗度；不透明的阴影颜色仍会被检查；
+- ⌘K 的 `.search-overlay` 遮罩：它在两套调色板中都保持深色 45% 黑色混合，因而仍与
+  D148 的浅色更轻面纱不一致。这属于维护者决策，已登记为已知缺口；它确实会被检查，也
+  确实在该处被放行，删掉这条豁免 `pnpm lint` 就会失败。
+
+有两处边界是刻意留开的。族规则是固定清单而非全量选择器：它拦住已迁移表面的回归，但
+拦不住没人审过的选择器上新出现的字面量。而该守卫是静态文本分析，看不到两条读标记的
+规则之间的级联冲突（#339 的成因）。正因如此，`pnpm test:e2e:theme-surfaces` 的真实
+渲染检查依然必要：它把每个已迁移表面的构建后配色与改动前采样的值逐项比对，因此任何
+默认值不等于原字面量的标记都会在此失败。该探针钉住的浅色限定 `.tool-row-content` 规则
+必须保留：它以 (0,3,0) 压过 `.tool-row-content.is-error`、并与
+`.tool-block.is-plain .tool-row-content` 同分靠顺序取胜，删掉它会让错误输出被染色、并
+只在浅色下给纯文本工具块加底纹。
 
 | 场景 | 处理 |
 |---|---|
@@ -901,8 +947,17 @@ Linux 保留淡入淡出和滑动退出。
 - 面板 open/collapse/final 关闭和分隔符提交更新已提交
   首选宽度。本机边缘调整窗口大小并重排 MainChat。
 - 预览模式是临时的 shell 状态：卸载 MainChat，工作面板填充侧边栏之外的客户区。
-  窗口级 46px chrome 行保留拖动区域、新建任务、侧边栏和本机窗口控件。
-  侧边栏折叠时，macOS 窗口模式左侧预留 76px，全屏预留 8px 给交通灯。
+  The 46px chrome row retains shell and native controls but declares neither
+  drag nor no-drag across the panel and passes pointer events through outside
+  controls. The panel header alone owns dragging in the preview pane. Its
+  border box excludes shell actions plus an 8px gap in both sidebar states on
+  every platform. The left inset is 8px except collapsed-sidebar windowed macOS
+  (88px through `--ds-window-lead-inset`: the shared 76px native cluster edge
+  plus 12px, from the same `@pi-desktop/shared` geometry used by main).
+  The expanded action lane uses the shared 28px control size plus 8px; the
+  collapsed lane uses two controls, 4px spacing and an 8px gap.
+  Right native-control exclusion is unchanged. Header-height background
+  paint fills the excluded lane without covering panel controls.
 - 外层外壳在每个平台上都保留原生边缘/角落调整大小。无边框标题栏的
   拖动区域不会替代操作系统的调整大小所有权。300ms 的稳定边界等待窗口
   可避免恢复逻辑与慢速指针手势竞争，原生调整大小/移动事件停止 600ms 后
@@ -920,7 +975,13 @@ Linux 保留淡入淡出和滑动退出。
 | 小学 | px-3 py-1.5 | 32像素 | 短信-sm 500 | 半径-sm | 无 | 口音 |
 | 中学 | px-3 py-1.5 | 32像素 | 短信-sm 400 | 半径-sm | 无（D297） | `--ds-tile`，悬停 `--ds-tile-hover` |
 | 幽灵 | px-2 py-1 | 28像素 | 短信-sm 400 | 半径-sm | 无 | 透明 |
+| 仅图标 | 无 | 28px | — | radius-full | 无 | 透明；`.icon-btn-square` 把宽度固定到 `--ds-control-size` |
 | 危险 | px-3 py-1.5 | 32像素 | 短信-sm 500 | 半径-sm | 无 | 错误 |
+
+仅图标的控件声明 `.icon-btn-square`。单独的 `.icon-btn` 宽度来自内容 —— 图形加左右各 8px
+内边距 —— 这是带文字的胶囊按钮想要的，而不是没有文字的控件该继承的。该变体把两个轴都固定
+到 `--ds-control-size`（28px），保留 `flex: 0 0` 以免拥挤的工具条把它压扁，并去掉侧向内边距
+（在全局 `border-box` 下，那会给 15px 的图形只留 12px 内容区）。
 
 ### 11. 2 输入/文本区域
 

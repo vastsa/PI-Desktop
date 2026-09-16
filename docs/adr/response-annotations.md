@@ -1,6 +1,7 @@
 # ADR response-annotations: Response Annotations as Prompt Attachments
+> Superseded by ADR 0268.
 
-- Status: Accepted; presentation and duplicate identity amended by ADR floating-annotation-index
+- Status: Superseded by ADR 0268
 - Date: 2026-09-11
 - Deciders: PI-Desktop runtime and desktop UI maintainers
 - Amends: D-LOCAL-message-quotes decision 3 (for assistant turns)

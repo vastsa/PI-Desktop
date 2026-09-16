@@ -118,6 +118,7 @@ CREATE TABLE turn_queue (
   session_message_id TEXT,
   permission_mode  TEXT NOT NULL,
   position         INTEGER NOT NULL,
+  priority         INTEGER,
   created_at       INTEGER NOT NULL
 );
 CREATE INDEX idx_turn_queue_session ON turn_queue(session_id, position);

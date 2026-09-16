@@ -80,16 +80,24 @@ destination, chat as the home surface, tools and permissions inline.
   notification action; the durable local inbox opens from the sidebar footer
   bell instead (D130/D117). In work-panel preview mode, MainChat is unmounted
   and a window-level 46px chrome row keeps New Task, sidebar, and native window
-  controls available. In macOS collapsed-sidebar preview, the panel header
-  reserves the 76px windowed (8px fullscreen) traffic-light inset plus the
-  preview action lane and an 8px gap, so its first tab never overlaps either
-  the traffic lights or the preview controls.
+  controls available without owning a drag or no-drag rectangle across the
+  panel. The panel header alone owns dragging in the preview pane; its actual
+  border box starts after the shell action lane plus an 8px gap, including the
+  expanded-sidebar New Task button, on every platform. The left inset is 8px,
+  or 88px for collapsed-sidebar windowed macOS. Its right native-control
+  exclusion is unchanged. Header paint fills the excluded lane without an
+  opaque overlay hiding tabs or panel actions. The macOS inset uses the shared
+  `--ds-window-lead-inset` token — the cluster's 76px right edge (from
+  `@pi-desktop/shared`) plus a 12px gap — and the main process positions the
+  buttons from that same shared geometry.
 - **Work panel**: docked right column (not an overlay) opened by an artifact,
   the viewport-fixed toggle, or `Cmd/Ctrl + J`. File, URL, browser-preview, and
   successful workspace-edit artifacts create their resources atomically. The
   46px content header exposes a tablist and a fixed `+` trigger. Its tokenized
-  60px right-side safe lane plus separated action rail keep the trigger distinct
-  from the viewport-fixed work-panel toggle. Clicking `+` creates and activates
+  44px right-side safe lane (the 28px control, its 12px viewport inset, and the
+  header's 4px control gap) keeps the `+`, maximize, and viewport-fixed
+  work-panel toggle one button group, spaced by that same gap, while the trigger
+  keeps a distinct hit target. Clicking `+` creates and activates
   a unique New launcher tab; its body presents the same data-driven Review and
   plugin-view rows as buttons, so the user chooses a destination in the page
   instead of opening a dropdown. Selecting a row replaces that launcher tab with

@@ -186,9 +186,18 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 当 429 预算耗尽时，最终的助手错误和生命周期 `error` 只发出一次。
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：
 `phase`（`request` 或 `stream`）、`providerStatus`、`providerCode`、
-`providerWaitMs`、`streamMs` 和 `retryAttempt`。对于持续的 429，
+`providerWaitMs`、`streamMs`、`retryAttempt`、网络诊断
+（`networkCategory`、`networkCode`、`networkSyscall`、`networkHost`、
+`networkRoute`）以及请求关联字段（`requestMessages`、`requestBytes`、
+`compactionGeneration`）。
+对于持续的 429，
 `retryAttempt` 为 `5`；对于持续的非 429 瞬时故障，它为 `4`。凭据与不受限制的
-响应正文永远不会进入事件或日志。
+响应正文永远不会进入事件或日志。每次重试都会新建请求、流和 `AbortController`；
+重试唯一共享的状态是进程级 undici dispatcher。当同一来源在一轮内连续两次没有
+任何响应、且新尝试仍无法到达它时，下一次尝试前会重建一次传输（每 30 秒最多一次，
+`dns` 除外），避免重试继续复用连接已死的连接池。重建先安装替换、再优雅关闭旧
+的 dispatcher，并复现已配置的链路，因此其他会话正在进行的请求仍会在原连接池上
+完成，代理也不会被悄悄丢弃。
 
 ### 5e。静默回合恢复
 
@@ -502,7 +511,8 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
 **目录。** 定义是来自两个来源的 Markdown 文档：`agent-runtime` 中内嵌的五个
 内置函数（`explorer`、`code-reviewer`、`test-runner`、`fixer`、`ui-designer`），以及
 `~/.agents/subagents/*.md` 下的全局用户文档。没有项目级子代理目录，`.pi/agents`
-不会作为能力来源被扫描。用户文档在进入加载器前会根据应用本地启用状态过滤。
+不会作为能力来源被扫描。用户文档在进入加载器前会根据应用本地启用状态过滤，
+内置定义则由加载器按同一份应用本地状态过滤（ADR 0270）。
 Electron main 每次启动加载全局目录，并在 sidecar 参数中传递
 `subagents` / `subagentProviders`，因此编辑定义会在下一次提示时生效。目录上限
 为 `MAX_SUBAGENT_DEFINITIONS`（16）；格式错误或不可读文档只产生启动诊断，
@@ -687,9 +697,10 @@ Composer 增强使用与 agent 请求相同的已解析提供商绑定和重试�
 
 ### 6.2 OpenCode 会话路由标头
 
-对话、子代理、提示增强以及插件的一次性补全，只要其提供商满足下列任一条件——
-`apiStyle` 为 `opencode_go`、`vendorKey` 为 `opencode` 或 `opencode-go`、
-pi-ai 提供商 id 为上述值之一，或 base URL 的主机为 `opencode.ai`——都会发送：
+对话、子代理、上下文压缩摘要、提示增强以及插件的一次性补全，只要其提供商满足
+下列任一条件——`apiStyle` 为 `opencode_go`、`vendorKey` 为 `opencode` 或
+`opencode-go`、pi-ai 提供商 id 为上述值之一，或 base URL 的主机为
+`opencode.ai`——都会发送：
 
 - `x-opencode-session`：持久的对话 id；调用方没有会话时则为一个按次生成的 UUID
 - `x-opencode-client: pi-desktop`
@@ -701,6 +712,11 @@ pi-ai 提供商 id 为上述值之一，或 base URL 的主机为 `opencode.ai`�
 默认值，也优先于适配器的最后写入。保留键无法冲掉 `x-opencode-session`。这属于
 agent 运行时的职责，与官方 Pi 编码 agent 的归属层保持一致；pi-ai 的 `sessionId`
 流选项并不会发出 `x-opencode-session`。
+
+上下文压缩摘要同样是这一类提供商请求，但 harness 会自行组装其流选项，不会经过
+会话的 stream 函数，因此 agent 运行时把这次标头合并应用到交给压缩的模型集合
+上。该请求携带会话自己的对话 id，而不是 harness 否则会生成的按次 id，这样摘要
+就与它所压缩的对话落在同一个网关后端。
 
 
 ## 7. 系统提示组成

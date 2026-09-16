@@ -75,3 +75,85 @@ test("preview race gate tokens guard in-flight responses and close invalidates t
   assert.match(panel, /setDocumentBody\(null\)/);
   assert.match(panel, /setDocumentTooLarge\(false\)/);
 });
+
+test("a failed preview is reported instead of silently disabling install", () => {
+  // Issue #419: the catch used to reset the body and say nothing, so the
+  // install button sat disabled behind the word "Loading…" with no reason and
+  // no way to try again. The preview-before-save gate itself is intentional and
+  // stays — what changes is that a failure is now legible and recoverable.
+  assert.match(panel, /setPreviewFailure\(\{/);
+  assert.match(panel, /kind: classifySkillMarketFailure\(error\)/);
+  assert.match(panel, /detail: skillMarketFailureDetail\(error\)/);
+  assert.match(panel, /settings\.sklm\.previewError/);
+  assert.match(panel, /settings\.sklm\.previewPolicyError/);
+  assert.match(panel, /settings\.sklm\.proxyHint/);
+  assert.match(panel, /settings\.sklm\.failureDetail/);
+  assert.match(panel, /settings\.sklm\.retryPreview/);
+  assert.match(panel, /role="alert"/);
+  assert.match(panel, /disabled=\{installing \|\| documentBody === null \|\| documentTooLarge\}/);
+  assert.match(panel, /const retryPreview = \(\) => \{/);
+  assert.match(panel, /if \(installFor\) loadDocument\(installFor\)/);
+});
+
+test("the market list explains a policy refusal instead of a bare unreachable", () => {
+  assert.match(panel, /hasPolicyFailure\(remote\.failureKinds\)/);
+  assert.match(panel, /settings\.sklm\.remoteErrorPolicy/);
+  assert.match(panel, /settings\.sklm\.remoteErrorQuery/);
+  // A partial outage (some sources up, some refused) used to say nothing at all.
+  assert.match(panel, /remote\.status === "ready" && remote\.failed\.length/);
+  assert.match(panel, /settings\.sklm\.remotePartial/);
+  assert.match(panel, /failureKinds: result\.failureKinds \?\? \{\}/);
+  // The whole-query rejection used to be discarded with no trace at all.
+  assert.match(panel, /queryError: skillMarketFailureDetail\(error\)/);
+});
+
+test("a resolver with no answer is explained as that, not as an address check", () => {
+  // Issue #419, second round: one `policy` bucket meant a local resolver that
+  // answered nothing produced the same sentence as an address the guard had
+  // judged — "blocked by the app's address check" — for a check that had never
+  // reached a verdict. The two now carry different copy and different hints.
+  assert.match(
+    panel,
+    /if \(hasUnresolvedFailure\(remote\.failureKinds\)\) return t\("settings\.sklm\.remoteErrorUnresolved"\)/,
+  );
+  assert.match(panel, /settings\.sklm\.dnsHint/);
+  assert.match(panel, /previewFailure\.kind === "unresolved"/);
+  assert.match(panel, /settings\.sklm\.previewResolveError/);
+  // The refusal names the host it is about, not just the source label: a policy
+  // refusal is a statement about one address.
+  assert.match(panel, /settings\.sklm\.failureSourceHost/);
+  assert.match(panel, /remote\.failureDetails\[name\]\?\.host/);
+  // And the host reaches the state from the IPC result.
+  assert.match(panel, /failureDetails: result\.failureDetails \?\? \{\}/);
+  assert.match(panel, /failureDetails: current\.failureDetails/);
+});
+
+test("every shipped locale carries the new skill market strings", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const ids = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr"];
+  const keys = [
+    "previewError",
+    "previewPolicyError",
+    "previewResolveError",
+    "proxyHint",
+    "dnsHint",
+    "failureDetail",
+    "retryPreview",
+    "remoteErrorPolicy",
+    "remoteErrorUnresolved",
+    "remoteErrorQuery",
+    "remotePartial",
+    "failureSourceHost",
+  ];
+  for (const id of ids) {
+    const locale = await readFile(
+      new URL(`../../../packages/i18n/src/locales/${id}/index.ts`, import.meta.url),
+      "utf8",
+    );
+    for (const key of keys) {
+      // Both layouts ship in these files: `key: "text"` on one line, and the
+      // long strings broken after the colon. Either one carries the key.
+      assert.match(locale, new RegExp(`${key}:\\s*"`), `${id} ${key}`);
+    }
+  }
+});

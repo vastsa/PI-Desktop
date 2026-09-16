@@ -173,14 +173,16 @@ Every Host API entry point must assert first. A file entry point then passes
 three more gates, in this order — a later gate can only refuse, never widen:
 
 ```ts
-assertFsAccess(pluginId, mode, requestedPath) {
+assertFsAccess(pluginId, mode, requestedPath, sessionId) {
  assertPermission(pluginId, `fs.${mode}`)              // declared AND granted
- full = realpathWithinRoot(root(pluginId, mode), requestedPath)
+ full = realpathWithinRoot(root(pluginId, mode, sessionId), requestedPath)
  if (!full) throw NOT_FOUND | INVALID_ARGUMENT         // symlinks resolved first
  if (isDenied(full) || isHostReserved(full)) throw ERROR_PERMISSION_DENIED
  if (!inScope(full, declaredScope(pluginId, mode))) await confirmWithUser(...)
 }
 ```
+The `workspace` root is the invoking tool session's project, falling back to the
+visible workspace for a panel call (ADR 0266).
 
 ## 7. Acceptance
 

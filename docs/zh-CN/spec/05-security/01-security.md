@@ -96,7 +96,7 @@ CDP 插件工具在 Plan 中仍被拒绝）。 Bash 在 Plan 中仍然可用：�
 
 ## 4.1 技能市场出网
 
-渲染层不拉取技能目录或 SKILL.md。Electron 主进程按公网策略发起 HTTPS 请求（ADR 0243 / D413）：仅 `https`、共享的公网主机语法检查、对每个解析地址做 DNS 分类，以及 `redirect: "manual"` 的逐跳再校验。回环、RFC1918、ULA、link-local 与 mapped IPv6 一律拒绝。安装只通过 `skills.create` 写入 markdown。内联相邻 markdown 后仍受 128 KiB 宿主上限约束。
+渲染层不拉取技能目录或 SKILL.md。Electron 主进程按公网策略发起 HTTPS 请求（ADR 0243 / D413，由 ADR 0272 / D436 修订）：仅 `https`、共享的公网主机语法检查、`redirect: "manual"`，以及按请求实际会走的线路逐跳判定。每一跳之前，客户端都会向承载 `net.fetch` 的会话询问它自己的代理判定（`Session.resolveProxy`）：`proxied` 线路上按线路判定，而不是按应用永远不会拨打的本地地址判定，因此只容忍解析器自身产物的那一类（`benchmark`，TUN fake-IP）；`direct` 或读不出线路时保留完整的本地分类，回环、RFC1918、ULA、link-local、mapped IPv6 以及其他所有非公网类别一律拒绝。安装只通过 `skills.create` 写入 markdown。内联相邻 markdown 后仍受 128 KiB 宿主上限约束。
 
 ## 4.2 MCP 市场出网
 

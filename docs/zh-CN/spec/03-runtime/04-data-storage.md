@@ -554,6 +554,7 @@ CREATE TABLE turn_queue (
   attachments_json TEXT,
   permission_mode  TEXT NOT NULL,
   position         INTEGER NOT NULL,
+  priority         INTEGER,
   created_at       INTEGER NOT NULL
 );
 CREATE INDEX idx_turn_queue_session ON turn_queue(session_id, position);
@@ -563,11 +564,14 @@ CREATE UNIQUE INDEX idx_turn_queue_idempotency
 ```
 
 - 每条在活动回合之后准入的 prompt 一行（D375 / ADR 0213）。无头 Agent Host 模块是唯一
-  写入方，经 `session.queuePush`、`session.queueList`、`session.queueRemove` 操作；存储
-  本身绝不启动回合。
+  写入方，经 `session.queuePush`、`session.queueList`、`session.queueRemove`、
+  `session.queuePrioritize`、`session.queueReorder` 操作；存储本身绝不启动回合。
 - `position` 按会话只增不减，删除一条不会重排其余条目。`principal` 加 `idempotency_key`
   使重试的 push 返回同一行；同一 key 配不同 `input_hash` 则以 `IDEMPOTENCY_CONFLICT`
   失败。每个会话最多八条。
+- `priority`（架构 v18，ADR 0265）在被“立即发送”提升之前为 `NULL`；提升写入会话内的
+  `MAX(priority) + 1`，因此已优先条目按点击顺序最先投递，其余条目保持 `position` 顺序。
+  `queueReorder` 交换两个相邻的未优先条目的 `position`，并拒绝已优先条目。
 - `attachments_json` 保存 prompt 的附件引用；字节和其他 prompt 附件一样留在会话 scratch
   或项目根下。
 - 重启后模块列出全部条目，把每个会话的队列挂起到 controller 接入，并在活动回合终止事件

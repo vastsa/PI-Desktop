@@ -6,19 +6,24 @@ import { isHtmlFilePath, toWorkspaceRel, type ChatPreviewTarget } from "../lib/c
 import { FILE_MANAGER_PLUGIN_TAB, fileManagerPluginTab } from "../lib/work-panel-tabs";
 
 /**
- * Open a resolved chat reference in the work panel: files in the viewer, URLs
- * in the embedded browser. Shared by the transcript's tool row summaries and
- * tool result file/match lists.
+ * Open one target the transcript named, in the work panel.
+ *
+ * A file never opens its own path directly. It goes through the same
+ * completion the message body uses (`useOpenChatFileRef`, ADR 0262), so the
+ * surface that named the file stops deciding where it shows: a tool row's
+ * summary and a tool result's file/match list land in the bundled file view on
+ * a project file exactly like a chat chip, and fall back the same way when the
+ * view, the file, or the reference is not there. One opener for the whole
+ * transcript is also what keeps a shorthand honest — a click opens the file
+ * that matched, or reports that nothing did. URLs keep the embedded browser.
  */
 export function useOpenPreviewTarget() {
-  const openFile = useAppStore((s) => s.openFileInWorkPanel);
+  const openFileRef = useOpenChatFileRef();
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   return useCallback(
-    (target: ChatPreviewTarget) => {
-      if (target.kind === "file") openFile(target.path);
-      else openUrl(target.url);
-    },
-    [openFile, openUrl],
+    (target: ChatPreviewTarget) =>
+      target.kind === "file" ? openFileRef(target.path) : openUrl(target.url),
+    [openFileRef, openUrl],
   );
 }
 

@@ -37,7 +37,6 @@ test("copy link feedback follows the clipboard result", () => {
 test("Korean ships every chat link setting and menu label", () => {
   for (const key of [
     "linkOpenTarget",
-    "linkOpenTargetDesc",
     "linkOpenTargetWorkpanel",
     "linkOpenTargetExternal",
     "linkContextMenuOpenExternal",

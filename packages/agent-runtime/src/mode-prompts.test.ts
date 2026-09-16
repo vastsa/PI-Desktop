@@ -24,6 +24,9 @@ describe("mode-specific system prompts", () => {
     expect(prompt).toContain("follow the same one-SubmitPlan rule");
     expect(prompt).toContain("Do not wait for chat confirmation");
     expect(prompt).toContain("Do not use Write, Edit");
+    expect(prompt).toContain("Do not create, overwrite, delete, or otherwise mutate workspace files in Plan mode");
+    expect(prompt).toContain("including through Bash");
+    expect(prompt).toContain("ask them to switch to Agent mode");
     expect(prompt).toContain("Plugin tools that declare plan-safe actions are available for inspection");
     expect(prompt).toContain("Bash is available under the active permission policy");
   });
@@ -41,6 +44,7 @@ describe("mode-specific system prompts", () => {
     expect(prompt).toContain("follow the same one-SubmitGoal rule");
     expect(prompt).toContain("pursue it autonomously");
     expect(prompt).toContain("Do not use Write, Edit");
+    expect(prompt).toContain("Do not create, overwrite, delete, or otherwise mutate workspace files in Goal mode");
     // Goal mode negotiates outcomes; the Plan contract must not leak into it.
     expect(prompt).not.toContain("SubmitPlan");
     expect(prompt).not.toContain(PLAN_MODE_SYSTEM_PROMPT);

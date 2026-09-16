@@ -6,7 +6,6 @@ import { HomeProjectSwitcher } from "./HomeProjectSwitcher";
 import { IconX } from "./icons";
 import { TooltipButton } from "./ui";
 import { OnboardingChecklist } from "./OnboardingChecklist";
-import { ResponseAnnotationDialog } from "./ResponseAnnotationDialog";
 import { SessionPane } from "./SessionPane";
 import { useAppStore } from "../stores/app-store";
 import { headPermission } from "../lib/pending-permissions";
@@ -230,8 +229,6 @@ export const ChatSurface = memo(function ChatSurface() {
           </div>
         </div>
       ) : null}
-
-      <ResponseAnnotationDialog />
     </div>
   );
 });

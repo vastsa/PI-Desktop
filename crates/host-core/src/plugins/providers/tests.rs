@@ -89,14 +89,16 @@ fn declaration_manifest(providers: Value, permissions: Value) -> Value {
 }
 
 #[test]
-fn schema_is_v17_with_the_owner_column() {
+fn a_new_database_carries_the_owner_column_at_the_current_schema_version() {
     let (_dir, db, _secrets) = test_context();
-    assert_eq!(SCHEMA_VERSION, 17);
+    // v17 added the owner column and v18 the turn-queue priority column; a fresh
+    // database is stamped with the newest, so the column set is the current one.
+    assert_eq!(SCHEMA_VERSION, 18);
     let version: i64 = db
         .conn()
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 17);
+    assert_eq!(version, SCHEMA_VERSION);
     let has_owner: bool = db
         .conn()
         .query_row(

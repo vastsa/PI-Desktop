@@ -19,7 +19,7 @@ import {
   type UserSubagentRecord,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
-import { Button, Field, Input, Select, Textarea, TooltipButton, cx } from "../ui";
+import { Button, Field, Input, Textarea, TooltipButton, cx } from "../ui";
 import { IconChevronRight, IconFolderOpen, IconX } from "../icons";
 import {
   groupSubagentModelChoices,
@@ -30,6 +30,7 @@ import {
 } from "./subagent-models";
 import { SubagentModelPicker } from "./SubagentModelPicker";
 import { SubagentFallbackModels } from "./SubagentFallbackModels";
+import { SettingsMenuSelect } from "./SettingsMenuSelect";
 
 /** Hard cap host-core enforces on a definition document. */
 export const MAX_SUBAGENT_BYTES = 32 * 1024;
@@ -445,25 +446,24 @@ function ModelField({
           label={t("extensions.subagents.thinking")}
           hint={t("extensions.subagents.thinkingHint")}
         >
-          <Select
+          <SettingsMenuSelect
+            fullWidth
+            label={t("extensions.subagents.thinking")}
             value={draft.thinkingLevel}
-            onChange={(event) =>
+            onChange={(id) =>
               setDraft({
                 ...draft,
-                thinkingLevel: event.target.value as SubagentThinkingLevel | "",
+                thinkingLevel: id as SubagentThinkingLevel | "",
               })
             }
-          >
-            <option value="">{t("extensions.subagents.thinkingInherit")}</option>
-            <option value="omit">{t("extensions.subagents.thinkingOmit")}</option>
-            {SUBAGENT_THINKING_LEVELS.filter((level) => level !== "omit").map(
-              (level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
+            options={[
+              { id: "", label: t("extensions.subagents.thinkingInherit") },
+              { id: "omit", label: t("extensions.subagents.thinkingOmit") },
+              ...SUBAGENT_THINKING_LEVELS.filter((level) => level !== "omit").map(
+                (level) => ({ id: level, label: level }),
               ),
-            )}
-          </Select>
+            ]}
+          />
         </Field>
       </div>
       <SubagentFallbackModels

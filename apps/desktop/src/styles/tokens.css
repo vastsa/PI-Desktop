@@ -120,6 +120,25 @@
   --ds-switch-ring-off: color-mix(in oklab, var(--gray-0) 22%, transparent);
   --ds-switch-knob-off: var(--gray-300);
   --ds-switch-knob-on: var(--gray-900);
+  /*
+    Prose ink, code-card chrome, scrims, and transcript fills tokenized in
+    issue #341. Every default is the literal (or literal mix) the sheet painted
+    before, so the built-in appearance is unchanged; what changes is that a
+    contributed theme can now reach them. The Shiki syntax plate and its ink
+    stay with the Shiki theme (see scripts/style-surface-tokens.mjs).
+  */
+  --ds-prose-kbd-fg: var(--ds-text-secondary);
+  --ds-thinking-code-bg: color-mix(in oklab, var(--ds-text-primary) 4.5%, transparent);
+  --ds-mermaid-canvas: color-mix(in oklab, var(--ds-bg-primary) 94%, var(--ds-text-primary));
+  --ds-code-head-bg: color-mix(in oklab, #fff 4%, transparent);
+  --ds-code-hover-bg: color-mix(in oklab, #fff 8%, transparent);
+  /* D148: dark keeps the ~45% black veil. */
+  --ds-scrim: color-mix(in oklab, #000 45%, transparent);
+  --ds-modal-veil: color-mix(in oklab, var(--ds-bg-primary) 78%, transparent);
+  --ds-tool-row-bg: var(--ds-tile);
+  --ds-send-disabled-bg: color-mix(in oklab, var(--ds-text-primary) 18%, transparent);
+  --ds-send-disabled-fg: color-mix(in oklab, var(--gray-900) 70%, transparent);
+  --ds-placeholder-ink: color-mix(in oklab, var(--gray-0) 42%, transparent);
   --ds-success: #40c977;
   --ds-warning: #ff8549;
   --ds-error: #ff6764;
@@ -137,16 +156,40 @@
    * surface tone from the window top edge down. */
   --ds-settings-nav-width: 275px;
   --ds-toolbar-height: 46px;
+  /* Square icon-only control. `.icon-btn` takes its width from its label, so an
+     icon-only use pins both axes to this token instead. */
+  --ds-control-size: 28px;
   /* Work-panel controls share these geometry tokens so the header's safe lane
      cannot drift away from the viewport-fixed toggle. */
   --ds-work-panel-toggle-size: 28px;
   --ds-work-panel-toggle-inset: 12px;
-  --ds-work-panel-toggle-gap: 20px;
-  /* Preview-mode shell actions are two 22px buttons with a 4px gap and an
-     additional 8px buffer before the panel's first tab. */
-  --ds-preview-action-lane-width: 56px;
+  /* The one gap between adjacent controls in the panel header row: the tab
+     strip to the action group, between `+` and maximize, and — through the
+     lane reserve that spends this token — between that group and the
+     viewport-fixed collapse toggle. One value keeps the three buttons reading
+     as one group instead of a rail behind its own divider. */
+  --ds-work-panel-control-gap: 4px;
+  /* Preview-mode shell actions are two chrome controls (the same 28px square as
+     the toggle beside them) with a 4px gap and an additional 8px buffer before
+     the panel's first tab. Derived from the control it reserves room for, so the
+     lane and the buttons cannot drift apart. */
+  --ds-preview-action-lane-width: calc(
+    2 * var(--ds-work-panel-toggle-size) + 4px + 8px
+  );
   /* Keep an 8px visual buffer between work-panel actions and window chrome. */
   --ds-window-controls-width: 120px;
+  /* macOS traffic lights sit at the window's top-left. Their footprint is
+     native geometry, injected at boot from @pi-desktop/shared (window-chrome.ts)
+     so it cannot drift from the position electron/main/bootstrap/window.ts
+     gives the buttons; frames without native traffic lights keep the 0px
+     default. The gap is the breathing room the cluster's right edge keeps
+     before the first shell control. */
+  --ds-traffic-light-edge: 0px;
+  --ds-traffic-light-gap: 12px;
+  /* Left inset a window-level chrome row must leave clear for the traffic
+     lights. The platform policy that turns the two values above into this
+     reserve lives with the consumers in chrome.css. */
+  --ds-window-lead-inset: 0px;
   --ds-composer-radius: var(--radius-xl);
   --ds-composer-radius-lg: var(--radius-xl);
 
@@ -203,6 +246,19 @@
   --ds-settings-field-bg: #ffffff;
   --ds-settings-nav-active: color-mix(in oklab, #1a1c1f 12%, #ffffff);
   --ds-field-inset-bg: #f3f3f3;
+  /* Issue #341: the light values these fills used to hardcode in overrides. */
+  --ds-prose-kbd-fg: #303030;
+  --ds-thinking-code-bg: #f0f0f0;
+  --ds-mermaid-canvas: #ffffff;
+  --ds-code-head-bg: color-mix(in oklab, #1a1c1f 3.5%, transparent);
+  --ds-code-hover-bg: color-mix(in oklab, #1a1c1f 6%, transparent);
+  /* D148: light drops the scrim to ~28% ink so white dialogs stay readable. */
+  --ds-scrim: color-mix(in oklab, #1a1c1f 28%, transparent);
+  --ds-modal-veil: color-mix(in oklab, #1a1c1f 32%, transparent);
+  --ds-tool-row-bg: color-mix(in oklab, #1a1c1f 2%, transparent);
+  --ds-send-disabled-bg: #8e8e90; /* gold disabled send chip */
+  --ds-send-disabled-fg: #ffffff;
+  --ds-placeholder-ink: #4a4c4f;
   --ds-field-inset-focus-bg: #ffffff;
   /* Off knob stays white on the pale track; on knob keeps white on near-black. */
   --ds-switch-track-off: color-mix(in oklab, #1a1c1f 10%, transparent);

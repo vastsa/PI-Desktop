@@ -97,6 +97,9 @@ Reference the [spec update matrix](03-ai-development-workflow.md#3-spec-update-m
 After implementation (or alongside it):
 
 - [ ] Every affected spec file is updated with the new behavior.
+- [ ] If `AGENTS.md` changed: `CLAUDE.md` still mirrors the non-negotiables,
+  both files share the same `Policy-Sync:` token, and `pnpm check:agent-policy`
+  passes. The reverse applies when only `CLAUDE.md` changed.
 - [ ] If architectural boundary changed: ADR is written or updated in `docs/adr/`.
 - [ ] If an implementation default changed: `decisions-log.md` entry updated.
 - [ ] If baseline frozen decisions are affected: baseline bump + explicit ADR (not MVP-normal).

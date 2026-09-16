@@ -29,6 +29,7 @@ import {
   IconStop,
   IconTarget,
 } from "../../../components/icons";
+import { useDisclosureAnchorNotifier } from "../../../lib/disclosure-anchor-context";
 import { CopyButton } from "./shared";
 import {
   delegateAgentName,
@@ -198,6 +199,8 @@ export function SubagentDetail({
   const taskLabelId = useId();
   const taskBodyRef = useRef<HTMLDivElement>(null);
   const [taskExpanded, setTaskExpanded] = useState(false);
+  const taskToggleRef = useRef<HTMLButtonElement | null>(null);
+  const notifyDisclosureAnchor = useDisclosureAnchorNotifier();
   const [taskOverflow, setTaskOverflow] = useState(false);
 
   useLayoutEffect(() => {
@@ -282,10 +285,17 @@ export function SubagentDetail({
           {taskOverflow ? (
             <button
               type="button"
+              ref={taskToggleRef}
               className="subagent-task-toggle"
               aria-expanded={taskExpanded}
               aria-controls={taskBodyId}
-              onClick={() => setTaskExpanded((expanded) => !expanded)}
+              onClick={() => {
+                // Expanding the brief changes the height of whichever scroller
+                // this card sits in (#324), so it holds the same reading
+                // position the tool and activity titles do.
+                notifyDisclosureAnchor?.(taskToggleRef.current);
+                setTaskExpanded((expanded) => !expanded);
+              }}
             >
               <span>
                 {taskExpanded

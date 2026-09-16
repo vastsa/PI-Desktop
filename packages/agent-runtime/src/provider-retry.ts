@@ -13,7 +13,11 @@ import {
   classifyAgentError,
   type ClassifiedAgentError,
 } from "./agent-errors.js";
-
+import {
+  describeProviderFetchFailure,
+  type ProviderFetchFailure,
+  withProviderFetchFailure,
+} from "./provider-transport-recovery.js";
 /** Maximum number of retries after the first rate-limited request. */
 export const PROVIDER_RATE_LIMIT_MAX_RETRIES = PROVIDER_RETRY_MAX_RETRIES;
 export const PROVIDER_RATE_LIMIT_INITIAL_DELAY_MS = 2_000;
@@ -132,6 +136,8 @@ export type ProviderRetryController = {
   headers: () => Readonly<Record<string, string>> | undefined;
   /** Status captured even when the provider body omits the HTTP code. */
   status?: () => number | undefined;
+  /** Cause captured for the attempt that just failed, when the fetch rejected. */
+  failure?: () => ProviderFetchFailure | undefined;
   onRetry?: (input: {
     error: ClassifiedAgentError;
     phase: ProviderRetryPhase;
@@ -304,24 +310,58 @@ export function delayWithAbort(
   });
 }
 
+/**
+ * Serialized request body size, without ever inspecting the body: only the byte
+ * length is retained, never the content. Request size is the one correlation
+ * signal from the reporter of issue #234 that is safe to keep on every attempt.
+ */
+function requestBodyBytes(body: unknown): number | undefined {
+  if (typeof body === "string") return Buffer.byteLength(body, "utf8");
+  if (body instanceof ArrayBuffer) return body.byteLength;
+  if (ArrayBuffer.isView(body)) return body.byteLength;
+  if (typeof Blob !== "undefined" && body instanceof Blob) return body.size;
+  return undefined;
+}
+
 /** Capture HTTP status/headers, including failed 429 responses that pi-ai's
- * onResponse callback intentionally does not expose. */
+ * onResponse callback intentionally does not expose. The second argument is the
+ * outgoing request size, reported even when the request dies before headers, and
+ * the third is the transport cause of a rejection — the same two signals the
+ * reporter of issue #234 had no way to read. */
 export function captureProviderResponse(
   fetchFn: FetchFunction | undefined,
-  onResponse: (response?: ProviderResponseSnapshot) => void,
+  onResponse: (
+    response?: ProviderResponseSnapshot,
+    requestBytes?: number,
+    failure?: ProviderFetchFailure,
+  ) => void,
 ): FetchFunction {
   const baseFetch = fetchFn ?? globalThis.fetch;
   return async (input, init) => {
     // Clear the previous response before a new fetch. If this request fails
     // before receiving headers, a prior 429 must not classify the new failure.
     onResponse();
-    const response = await baseFetch(input, init);
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      headers[key.toLowerCase()] = value;
-    });
-    onResponse({ status: response.status, headers });
-    return response;
+    const requestBytes = requestBodyBytes(init?.body);
+    try {
+      const response = await baseFetch(input, init);
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key.toLowerCase()] = value;
+      });
+      onResponse({ status: response.status, headers }, requestBytes);
+      return response;
+    } catch (error) {
+      // Last point that still sees the original Error: pi-ai hands the runtime a
+      // flattened `errorMessage`, in which the errno undici keeps in
+      // `error.cause` is already gone (issue #234). Describing it here does not
+      // change the rejection the provider sees.
+      onResponse(
+        undefined,
+        requestBytes,
+        describeProviderFetchFailure(error, input),
+      );
+      throw error;
+    }
   };
 }
 
@@ -410,9 +450,13 @@ export function createProviderRetryStream(
             typeof event.error.errorMessage === "string"
               ? event.error.errorMessage
               : event.error;
-          const error = classifyProviderError(
-            errorMessage,
-            controller.status?.(),
+          // Fold in the cause the fetch wrapper captured for this attempt: the
+          // message pi-ai hands over is already flattened, so without it the
+          // retry indicator and the terminal error read `fetch failed` with no
+          // errno (issue #234).
+          const error = withProviderFetchFailure(
+            classifyProviderError(errorMessage, controller.status?.()),
+            controller.failure?.(),
           );
           if (!limitRepairTried && isOpaqueBadRequest(error)) {
             opaqueLimitRejection = error;

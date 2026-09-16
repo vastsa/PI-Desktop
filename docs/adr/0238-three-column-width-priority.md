@@ -65,8 +65,18 @@ MainChat to its floor while the expanded sidebar kept its full width.
    (never persisted, ends with the panel) and never changes native bounds.
    Because MainChat is absent in this mode, AppShell supplies a window-level
    46px chrome row with New Task, sidebar, and native window controls.
-   Collapsed-sidebar preview reserves 76px on the left for macOS traffic lights
-   in windowed mode and 8px in fullscreen.
+   Collapsed-sidebar preview reserves the shared `--ds-window-lead-inset` on
+   the left: 88px in windowed macOS and 8px in fullscreen (D433).
+   Hit-region amendment (2026-09-16): the chrome row and its spacer declare
+   neither drag nor no-drag, and pass pointer events through outside controls.
+   The panel header is the sole drag owner within the preview pane. Its actual
+   border box excludes the left shell-action lane plus an 8px gap in both
+   sidebar states, including expanded-sidebar New Task. All platforms use an
+   8px left inset except collapsed-sidebar windowed macOS (88px). The existing
+   right native-control border exclusion remains unchanged. Header-height
+   background paint fills the excluded lane without an opaque control overlay.
+   Native pointer clicks and window dragging require native validation;
+   renderer geometry and DOM/CDP event dispatch are not native hit-test proof.
 
 ## Consequences
 

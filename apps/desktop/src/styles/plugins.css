@@ -851,6 +851,11 @@
   flex: 1 1 auto;
 }
 
+.plugins-setting-control > .settings-menu-select-anchor {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .plugins-setting-json {
   min-height: 72px;
   width: 100%;
@@ -1173,8 +1178,9 @@
 
 .plugins-market-settings-control {
   display: flex;
-  flex: 0 0 240px;
+  flex: 0 0 auto;
   min-width: 0;
+  max-width: min(240px, 100%);
   justify-content: flex-end;
 }
 
@@ -1391,14 +1397,6 @@
   font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
-}
-
-.plugins-sheet-section-hint {
-  color: var(--ds-text-faint);
-  font-size: var(--text-3xs);
-  font-weight: var(--font-weight-normal);
-  letter-spacing: normal;
-  text-transform: none;
 }
 
 .plugins-sheet-desc {
@@ -1742,12 +1740,8 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: color-mix(in oklab, var(--ds-bg-primary) 78%, transparent);
+  background: var(--ds-modal-veil);
   animation: plugins-fade-in var(--motion-duration-fast) var(--motion-ease-out) both;
-}
-
-:root[data-theme="light"] .plugins-modal-backdrop {
-  background: color-mix(in oklab, #1a1c1f 32%, transparent);
 }
 
 .plugins-modal {

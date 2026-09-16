@@ -38,7 +38,7 @@ test("advanced settings choose the default thinking level among the enabled ones
   assert.match(pickerSource, /settings\.defaultThinkingLevel/);
   assert.match(pickerSource, /const enabledLevels = sortThinkingLevels\(/);
   assert.match(pickerSource, /enabledLevels\.map\(\(level\) => \(/);
-  assert.match(pickerSource, /defaultThinkingLevel: event\.target/);
+  assert.match(pickerSource, /defaultThinkingLevel: id as ThinkingLevel/);
   // Nothing to choose when a binding enables one level or none.
   assert.match(pickerSource, /enabledLevels\.length > 1 \?/);
 });
@@ -93,8 +93,8 @@ test("capability overrides reach the transport modality arrays", () => {
 test("the capability controls and default selector are styled", () => {
   assert.match(styles, /\.provider-chosen-capability-rows \{/);
   assert.match(styles, /\.provider-chosen-capability \{/);
-  assert.match(styles, /\.provider-chosen-thinking-select \{/);
-  assert.match(styles, /\.provider-chosen-thinking-select:focus-visible \{/);
+  assert.match(styles, /\.provider-chosen-thinking-select \.settings-menu-select-trigger \{/);
+  assert.match(styles, /\.provider-chosen-thinking-select \.settings-menu-select-trigger:focus-visible \{/);
 });
 
 test("selected thinking chips keep high contrast in both themes", () => {

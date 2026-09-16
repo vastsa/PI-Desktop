@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { AppSettings, CloseBehavior } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
-import { Button, TooltipButton, cx } from "../../components/ui";
+import { Button, cx } from "../../components/ui";
 import { SettingsCard, SettingsRow } from "./primitives";
 
 export function DeveloperSection({
@@ -44,9 +44,7 @@ export function DeveloperSection({
       </SettingsRow>
       <SettingsRow
         title={t("settings.devTools")}
-        description={
-          enabled ? t("settings.devToolsDesc") : t("settings.devToolsDisabledHint")
-        }
+        description={enabled ? undefined : t("settings.devToolsDisabledHint")}
       >
         <Button variant="secondary" disabled={!enabled} onClick={() => void openConsole()}>
           {t("settings.openDevTools")}
@@ -81,9 +79,9 @@ export function CloseBehaviorSection() {
   // The "ask" state (unset) is transient and cannot be re-selected: once a
   // choice is made it is remembered permanently. An unset preference shows
   // no active option.
-  const options: [CloseBehavior, string, string][] = [
-    ["tray", "settings.closeBehaviorTray", "settings.closeBehaviorTrayDesc"],
-    ["quit", "settings.closeBehaviorQuit", "settings.closeBehaviorQuitDesc"],
+  const options: [CloseBehavior, string][] = [
+    ["tray", "settings.closeBehaviorTray"],
+    ["quit", "settings.closeBehaviorQuit"],
   ];
 
   const choose = async (next: CloseBehavior) => {
@@ -107,14 +105,13 @@ export function CloseBehaviorSection() {
           role="radiogroup"
           aria-label={t("settings.closeBehaviorTitle")}
         >
-          {options.map(([value, labelKey, descKey]) => (
-            <TooltipButton
+          {options.map(([value, labelKey]) => (
+            <button
               key={value}
               type="button"
               role="radio"
               aria-checked={behavior === value}
-              tooltip={t(descKey)}
-              ariaLabel={t(labelKey)}
+              aria-label={t(labelKey)}
               className={cx(
                 "settings-segment-item",
                 behavior === value && "active",
@@ -122,7 +119,7 @@ export function CloseBehaviorSection() {
               onClick={() => void choose(value)}
             >
               {t(labelKey)}
-            </TooltipButton>
+            </button>
           ))}
         </div>
       </SettingsRow>

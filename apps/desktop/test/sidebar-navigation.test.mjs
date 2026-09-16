@@ -86,15 +86,11 @@ test("macOS hides sidebar branding and keeps header actions beside traffic light
   assert.doesNotMatch(sidebarSource, /sidebar-macos-drag-row/);
   assert.match(
     globalStyles,
-    /:root\[data-platform="darwin"\] \.sidebar-header\s*\{[^}]*padding-left:\s*76px;/s,
+    /:root\[data-platform="darwin"\] \.sidebar-header\s*\{[^}]*padding-left:\s*var\(--ds-window-lead-inset\);/s,
   );
   assert.match(
     globalStyles,
     /:root\[data-platform="darwin"\] \.sidebar-header > \.brand\s*\{[^}]*display:\s*none;/s,
-  );
-  assert.match(
-    globalStyles,
-    /:root\[data-platform="darwin"\]\[data-fullscreen="true"\] \.sidebar-header\s*\{[^}]*padding-left:\s*8px;/s,
   );
   assert.match(
     globalStyles,
@@ -289,9 +285,12 @@ test("session rows use the hover card instead of a native title tooltip", () => 
 
 test("session hover cards expose readable models and keyboard-navigable session links", () => {
   assert.match(hoverSource, /role="dialog"/);
-  assert.match(hoverSource, /summary\?\.providerName/);
-  assert.match(hoverSource, /summary\?\.modelName/);
+  assert.match(hoverSource, /summary\?\.modelName \|\| summary\?\.providerName/);
   assert.doesNotMatch(hoverSource, /modelKey\?\.includes\("\/"\)/);
+  assert.doesNotMatch(hoverSource, /sidebar-session-hover-card-id/);
+  assert.doesNotMatch(hoverSource, /sessionCollaboration\.checkedAt/);
+  assert.doesNotMatch(hoverSource, /sessionCollaboration\.provider/);
+  assert.doesNotMatch(hoverSource, /nav\.hoverCardLocalTask/);
   assert.match(hoverSource, /data-session-link=\{summary\.createdBySession\.sessionId\}/);
   assert.match(hoverSource, /summary\.createdSessions\.slice\(0, 8\)/);
   assert.match(hoverSource, /type="button"/);
@@ -300,4 +299,45 @@ test("session hover cards expose readable models and keyboard-navigable session 
   assert.match(hoverHookSource, /setTimeout\(\(\) => \{[\s\S]*?hide\(\);[\s\S]*?\}, 160\)/);
   assert.match(globalStyles, /\.sidebar-session-hover-card\s*\{[\s\S]*?pointer-events:\s*auto;/);
   assert.match(globalStyles, /\.sidebar-session-hover-card-session-link:focus-visible\s*\{[\s\S]*?outline:/);
+});
+
+test("hidden row actions stay out of the row's click path", () => {
+  // Resting state: the invisible control is not a pointer target at all.
+  assert.match(
+    globalStyles,
+    /\.thread-item-more\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*\}/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.thread-item:focus-within \.thread-item-more,\s*\n\.thread-item-more:focus-visible\s*\{[^}]*pointer-events:\s*auto;/s,
+  );
+  // Without hover there is no reveal, so a no-hover pointer gets the controls
+  // visible and tappable instead of an invisible gutter.
+  assert.match(
+    globalStyles,
+    /@media \(hover: none\)\s*\{[\s\S]*?\.sidebar-row-actions \.thread-item-more,[\s\S]*?opacity:\s*1;\s*\n\s*pointer-events:\s*auto;/,
+  );
+  // The row itself stays clickable where the hidden control used to swallow
+  // the click, and spelled-out controls never double-fire the row.
+  assert.match(sidebarSource, /if \(target\?\.closest\("button, \[data-action\]"\)\) return;/);
+  assert.match(sidebarSource, /className=\{`thread-item[\s\S]*?onClick=\{\(event\) => \{/);
+});
+
+test("a blurred window releases latched row hover and actions", () => {
+  assert.match(sidebarSource, /const \[windowFocused, setWindowFocused\] = useState\(true\)/);
+  assert.match(sidebarSource, /window\.addEventListener\("focus", onWindowFocus\)/);
+  assert.match(sidebarSource, /window\.addEventListener\("blur", onWindowBlur\)/);
+  assert.match(sidebarSource, /data-window-blur=\{windowFocused \? undefined : "true"\}/);
+  assert.match(
+    globalStyles,
+    /\.sidebar\[data-window-blur="true"\] \.thread-item:hover:not\(\.active\)\s*\{[^}]*background:\s*transparent;/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.sidebar\[data-window-blur="true"\] \.thread-item:hover \.thread-item-more:not\(\[aria-expanded="true"\]\),[\s\S]*?opacity:\s*0;\s*\n\s*pointer-events:\s*none;/,
+  );
+  assert.match(
+    globalStyles,
+    /\.sidebar\[data-window-blur="true"\] \.sidebar-session-group-title:not\(\.static\):hover\s*\{[^}]*background:\s*transparent;/s,
+  );
 });

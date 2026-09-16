@@ -242,9 +242,9 @@ Each ADR includes:
 | 0220 | Keep Windows work-panel chrome single-purpose | Accepted (amends D154 / D357 / ADR 0195) |
 | 0221 | Render canonical thinking-level values without translation | Accepted (amends D369 / ADR 0202) |
 | 0222 | Native file and folder drops in the Composer | Accepted (amends ADR 0101 / D397) |
-| message-quotes-and-side-chats | Message quotes and renderer-owned side chats | Accepted (preserves D097 / D128 / D134 / D154; amended by D-LOCAL-selection-overlay) |
-| response-annotations | Response annotations as prompt attachments | Accepted (amends D-LOCAL-message-quotes decision 3 for assistant turns; presentation amended by floating-annotation-index) |
-| floating-annotation-index | Floating annotation index and source locations | Accepted (amends D-LOCAL-response-annotations / response-annotations) |
+| message-quotes-and-side-chats | Message quotes and renderer-owned side chats | Superseded by 0268 |
+| response-annotations | Response annotations as prompt attachments | Superseded by 0268 |
+| floating-annotation-index | Floating annotation index and source locations | Superseded by 0268 |
 | 0223 | Context Usage Display Preference | Accepted (amends 0184) |
 | 0224 | Right panel tab strip and data-driven add menu | Accepted (issue #229) |
 | 0225 | Restore deferred tools from effective session context | Accepted (issue #225) |
@@ -289,5 +289,13 @@ Each ADR includes:
 | 0255 | [Theme assets are absolute paths](0255-theme-assets-by-absolute-path.md) | Accepted |
 | 0256 | [Preserve DeepSeek reasoning across context compaction](0256-deepseek-reasoning-across-compaction.md) | Accepted |
 | 0260 | [Plugin runtime theme APIs and sidebar image token](0260-plugin-runtime-theme-apis.md) | Accepted for implementation |
+| 0265 | [Priority block and row actions for the Host-owned turn queue](0265-turn-queue-priority-block-and-row-actions.md) | Accepted for implementation (D429; amends ADR 0213 / 0118) |
 | session-content-search | [Discover sessions by indexed message text](session-content-search.md) | Accepted |
 | transcript-reading-ownership | [Share renderer history and search views](transcript-reading-ownership.md) | Accepted |
+| 0266 | [Plugin fs roots follow the calling session](0266-plugin-fs-root-follows-the-calling-session.md) | Accepted (D093) |
+| 0267 | [Plugin labels follow the app language](0267-plugin-labels-follow-the-app-language.md) | Accepted (amends 0160; ADR 0182) |
+| 0270 | [Builtin subagents can be switched off](0270-builtin-subagents-can-be-disabled.md) | Accepted for implementation (amends ADR 0063; ADR 0112) |
+| 0271 | [Rebuild the shared provider transport after repeated unanswered failures](0271-provider-transport-rebuild.md) | Accepted for implementation (issue #234) |
+| 0269 | [Move capability documents between the global and project levels](0269-capability-level-transfer.md) | Accepted for implementation (amends ADR 0112) |
+| 0268 | Remove quotes, annotations, and side chats | Accepted (supersedes message-quotes-and-side-chats / response-annotations / floating-annotation-index) |
+| 0272 | [Judge a public-network address on the route the request will dial](0272-connection-time-public-network-route.md) | Accepted for implementation (amends ADR 0243; issue #419 / PR #473) |

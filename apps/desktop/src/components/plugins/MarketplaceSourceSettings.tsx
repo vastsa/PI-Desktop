@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import type { AppSettings, PluginMarketSource } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { Input, Select } from "../ui";
+import { Input } from "../ui";
+import { SettingsMenuSelect } from "../settings/SettingsMenuSelect";
 
 type MarketplaceSourceSettingsProps = {
   settings: AppSettings;
@@ -65,19 +66,20 @@ export function MarketplaceSourceSettings({
           </h2>
         </div>
         <div className="plugins-market-settings-control">
-          <Select
+          <SettingsMenuSelect
+            label={t("settings.marketProvider")}
             value={source}
-            aria-label={t("settings.marketProvider")}
-            onChange={(event) =>
+            onChange={(id) =>
               void applySource({
-                pluginMarketSource: event.target.value as PluginMarketSource,
+                pluginMarketSource: id as PluginMarketSource,
               })
             }
-          >
-            <option value="official">{t("settings.marketProviderOfficial")}</option>
-            <option value="mirror">{t("settings.marketProviderMirror")}</option>
-            <option value="custom">{t("settings.marketProviderCustom")}</option>
-          </Select>
+            options={[
+              { id: "official", label: t("settings.marketProviderOfficial") },
+              { id: "mirror", label: t("settings.marketProviderMirror") },
+              { id: "custom", label: t("settings.marketProviderCustom") },
+            ]}
+          />
         </div>
       </div>
 

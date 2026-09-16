@@ -65,6 +65,12 @@ function fixture() {
         writes.push({ ...write, turnId: params.turnId });
         return write.promise;
       }
+      if (method === "session.queuePrioritize") {
+        return {};
+      }
+      if (method === "session.queueList") {
+        return { entries: [...persistedQueue.values()] };
+      }
       throw new Error(`Unexpected host call: ${method}`);
     },
   };
@@ -138,28 +144,32 @@ function fixture() {
    * Reproduce one terminal event: the runtime ingests it, then the persistence
    * pass finalizes the turn with the identity the event carried.
    */
-  function finish(status = "completed") {
+  function finish(status = "completed", { deliverTerminal = true } = {}) {
     const turnId = activeTurns.get(SESSION);
     if (status === "aborted") {
       bridge.markAborting(SESSION);
       coordination.lockAbortReason(SESSION, turnId);
     }
-    bridge.ingest({
-      sessionId: SESSION,
-      turnId,
-      ts: Date.now(),
-      event:
-        status === "error"
-          ? {
-              type: "error",
-              error: {
-                code: "PROVIDER_ERROR",
-                message: "Fixture failure",
-                retriable: false,
-              },
-            }
-          : { type: "agent_end", messageIds: [] },
-    });
+    // A real abort can lose this event: `isStaleTerminalEvent` drops a terminal
+    // event for a turn main no longer owns, and the runtime may never emit one.
+    if (deliverTerminal) {
+      bridge.ingest({
+        sessionId: SESSION,
+        turnId,
+        ts: Date.now(),
+        event:
+          status === "error"
+            ? {
+                type: "error",
+                error: {
+                  code: "PROVIDER_ERROR",
+                  message: "Fixture failure",
+                  retriable: false,
+                },
+              }
+            : { type: "agent_end", messageIds: [] },
+      });
+    }
     return planRuntime.finishTurn(SESSION, status, undefined, { turnId });
   }
 
@@ -348,4 +358,44 @@ test("a turn whose session moved on releases its waiters and its cancellation lo
     true,
     "the newer turn keeps the session",
   );
+});
+
+test("a promoted queue resumes even when no terminal event reaches Agent Host", async () => {
+  const f = fixture();
+  await f.bridge.queue.push({ sessionId: SESSION, content: "promoted follow-up" });
+  const [entry] = f.bridge.queue.list(SESSION);
+  assert.ok(entry, "the queued row must be listed before it is promoted");
+  // Send now, exactly as the renderer asks for it.
+  await f.bridge.queue.prioritize(entry.id);
+
+  // Abort: `isStaleTerminalEvent` drops the `agent_end` once main no longer owns
+  // the turn, and the runtime does not have to emit one at all. The settlement
+  // alone must release the queue.
+  const pending = f.finish("aborted", { deliverTerminal: false });
+  await setImmediate();
+  f.writes[0].resolve({ ok: true });
+  await pending;
+  await setImmediate();
+
+  assert.deepEqual(
+    f.prompts.map((prompt) => prompt.content),
+    ["promoted follow-up"],
+    "a settled turn must start the promoted row without its terminal event",
+  );
+  assert.equal(f.bridge.queue.list(SESSION).length, 0);
+  assert.equal(f.persistedQueue.size, 0, "the started row leaves the durable queue");
+});
+
+test("a stalled turn that main finalized never blocks the queue after a restart of the session's work", async () => {
+  const f = fixture();
+  await f.bridge.queue.push({ sessionId: SESSION, content: "waiting follow-up" });
+  const pending = f.finish("aborted", { deliverTerminal: false });
+  await setImmediate();
+  f.writes[0].resolve({ ok: true });
+  await pending;
+  await setImmediate();
+  // The session must be reported idle again: `isSessionBusy` reads the runtime's
+  // own turn map, and Agent Host must not keep a settled turn active.
+  assert.equal(f.coordination.isActiveTurn(SESSION, FIRST_TURN), false);
+  assert.deepEqual(f.prompts.map((prompt) => prompt.content), ["waiting follow-up"]);
 });

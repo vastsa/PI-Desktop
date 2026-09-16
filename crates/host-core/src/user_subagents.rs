@@ -33,6 +33,18 @@ const THINKING_LEVELS: [&str; 8] = [
     "off", "minimal", "low", "medium", "high", "xhigh", "max", "omit",
 ];
 const SUBAGENT_KIND: &str = "subagents";
+/// Activation state for the subagent builtins, kept in its own file
+/// (`<data-dir>/agent-capabilities/subagent-builtins.json`).
+///
+/// The builtins are constant documents inside agent-runtime, not files in
+/// `~/.agents/subagents`, so the directory scan that `list()` performs can
+/// never see their handles. That scan also `prune`s state for records it no
+/// longer finds, which would delete every builtin entry as an orphan on the
+/// first listing. A separate kind keeps the two catalogs apart, and because a
+/// `Global` value is only ever stored for an explicit `false`, the state is
+/// lazy and sticky: a handle that is off stays off even while it is absent, so
+/// a builtin restored in a later release comes back still disabled.
+const SUBAGENT_BUILTIN_KIND: &str = "subagent-builtins";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -82,6 +94,7 @@ pub struct UserSubagentInput {
 
 pub struct UserSubagentRegistry {
     state: CapabilityState,
+    builtins: CapabilityState,
 }
 
 fn normalize_name(value: &str) -> String {
@@ -256,6 +269,7 @@ impl UserSubagentRegistry {
     pub fn new(data_dir: &Path) -> Self {
         Self {
             state: CapabilityState::new(data_dir, SUBAGENT_KIND),
+            builtins: CapabilityState::new(data_dir, SUBAGENT_BUILTIN_KIND),
         }
     }
 
@@ -498,6 +512,37 @@ impl UserSubagentRegistry {
         let _ = scope;
         self.find(id)
     }
+
+    /// Handles the user turned off among the shipped subagent builtins.
+    ///
+    /// Read straight from the state file: the builtins have no document to
+    /// scan, and the answer must not depend on which of them the running
+    /// build happens to define.
+    pub fn disabled_builtins(&self) -> Vec<String> {
+        self.builtins
+            .disabled_ids(SUBAGENT_BUILTIN_KIND, CapabilityLevel::Global)
+    }
+
+    /// Turn one builtin handle on or off, returning the normalized handle.
+    ///
+    /// The handle is normalized exactly like a document id, so the same
+    /// spelling reaches the runtime catalog. Nothing is validated against a
+    /// current builtin list on purpose: the state is sticky for handles a
+    /// later build may reintroduce.
+    pub fn set_builtin_enabled(&mut self, handle: &str, enabled: bool) -> Result<String> {
+        let name = normalize_name(handle);
+        if name.is_empty() {
+            bail!("SUBAGENT_INVALID: a builtin handle is required");
+        }
+        self.builtins.set_enabled(
+            SUBAGENT_BUILTIN_KIND,
+            CapabilityLevel::Global,
+            &name,
+            None,
+            enabled,
+        )?;
+        Ok(name)
+    }
 }
 
 #[cfg(test)]
@@ -691,5 +736,77 @@ mod tests {
         assert!(normalize_model(Some("claude-haiku-4-5")).is_err());
         assert!(normalize_model(Some("/claude-haiku-4-5")).is_err());
         assert!(normalize_model(Some("anthropic/")).is_err());
+    }
+
+    #[test]
+    fn builtins_are_enabled_until_one_is_turned_off() {
+        let dir = tempdir().unwrap();
+        let mut registry = UserSubagentRegistry::new(dir.path());
+        assert!(registry.disabled_builtins().is_empty());
+
+        let handle = registry.set_builtin_enabled("Fixer", false).unwrap();
+        assert_eq!(handle, "fixer");
+        assert_eq!(registry.disabled_builtins(), vec!["fixer".to_string()]);
+
+        registry.set_builtin_enabled("fixer", true).unwrap();
+        assert!(registry.disabled_builtins().is_empty());
+    }
+
+    #[test]
+    fn builtin_state_survives_a_registry_rebuild() {
+        let dir = tempdir().unwrap();
+        let mut registry = UserSubagentRegistry::new(dir.path());
+        registry.set_builtin_enabled("fixer", false).unwrap();
+        registry
+            .set_builtin_enabled("code-reviewer", false)
+            .unwrap();
+
+        let reopened = UserSubagentRegistry::new(dir.path());
+        // Sorted, so the answer never depends on insertion order.
+        assert_eq!(
+            reopened.disabled_builtins(),
+            vec!["code-reviewer".to_string(), "fixer".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_blank_builtin_handle_is_rejected() {
+        let dir = tempdir().unwrap();
+        let mut registry = UserSubagentRegistry::new(dir.path());
+        let error = registry.set_builtin_enabled("   ", false).unwrap_err();
+        assert!(error.to_string().contains("SUBAGENT_INVALID"));
+        assert!(registry.disabled_builtins().is_empty());
+    }
+
+    #[test]
+    fn listing_documents_does_not_prune_builtin_state() {
+        // The scan prunes state for ids it did not find. A builtin has no
+        // document at all, so the two kinds must never share one state file or
+        // the first `list()` would delete every builtin the user turned off.
+        use crate::agent_capabilities::test_support;
+
+        let dir = tempdir().unwrap();
+        let agents = tempdir().unwrap();
+        let mut registry = UserSubagentRegistry::new(dir.path());
+        registry.set_builtin_enabled("fixer", false).unwrap();
+
+        test_support::with_global_agents(agents.path(), || {
+            registry.list().unwrap();
+        });
+        assert_eq!(registry.disabled_builtins(), vec!["fixer".to_string()]);
+
+        // And a rebuilt registry still agrees after the listing.
+        let mut reopened = UserSubagentRegistry::new(dir.path());
+        test_support::with_global_agents(agents.path(), || {
+            reopened.list().unwrap();
+        });
+        assert_eq!(reopened.disabled_builtins(), vec!["fixer".to_string()]);
+
+        // The document kind keeps its own file, so the builtin entry is not
+        // mistaken for a user subagent either.
+        assert!(dir
+            .path()
+            .join("agent-capabilities/subagent-builtins.json")
+            .exists());
     }
 }

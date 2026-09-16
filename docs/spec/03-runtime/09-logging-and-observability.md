@@ -51,7 +51,26 @@ The application categories are:
 - `provider` — provider/model discovery, retries, and cache failures
 - `persistence` — transcript and outbox persistence failures
 - `updater` — updater diagnostics and errors
-- `diagnostics` — blocked navigation, menu, and template diagnostics
+- `diagnostics` — blocked navigation, menu, template, and outbound-fetch
+  diagnostics. The skill market's two channels record one
+  `skillMarket.sourceFailed` / `skillMarket.documentFailed` record per source
+  or document that produced nothing, with `source`, `host`, `kind` and — for a
+  guard refusal — `reason`, `addressKind` and `route` in `data`. `kind` is
+  `policy` when the guard judged the target, `unresolved` when the local
+  resolver returned no answer, and `network` otherwise; `code` is
+  `NETWORK_POLICY_BLOCKED` for the first and `NETWORK_RESOLVE_FAILED` for the
+  second, so one log line separates "the address is not public" from "the
+  resolver answered nothing". `reason` names the guard's own branch
+  (`url-syntax`, `resolve-failed`, `non-public-address`, `redirect-limit`),
+  `addressKind` the class of the refused address (`benchmark` for a TUN fake-IP,
+  `private` for RFC1918), and `route` the route that address was judged on
+  (`proxied`, `direct`, or `unknown` when the transport reported no readable
+  route), so a fake-IP refusal on a direct route reads apart from one on a route
+  nobody could read (ADR 0272). The record carries the host name, that class and
+  that route only — never the address, the URL, its path, query or credentials —
+  because a catalog source URL is user-supplied, the refused host is the whole
+  diagnostic value, and the class is what tells a resolver artifact from a real
+  private target (issue #419).
 - `runtime` — host/sidecar lifecycle, uncategorized child output, and
   main-process `uncaughtException` / `unhandledRejection` records
 

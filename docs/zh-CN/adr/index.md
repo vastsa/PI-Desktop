@@ -283,6 +283,9 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | active-turn-steering | [用 Alt+Enter 向当前回合补充指令](/adr/active-turn-steering) | 已接受 |
 | 0251 | [删除项目会一并删除其拥有的会话](/adr/0251-project-delete-with-owned-sessions) | 已接受 |
 | 0253 | [移除子智能体轮次上限](/adr/0253-remove-subagent-turn-limit) | 已接受（取代 0062 / 0063 / 0119 / 0126 / 0166 / 0210 中关于 `maxTurns` 的条款） |
+ | 0265 | [排队队列的优先区块与行内操作](/adr/0265-turn-queue-priority-block-and-row-actions) | 已接受待实现（修订 ADR 0213 / 0118） |
+ | 0267 | [插件标签跟随应用语言](/adr/0267-plugin-labels-follow-the-app-language) | 已接受（修订 ADR 0160；ADR 0182） |
+ | 0272 | [按请求实际会走的线路判定公网地址](/adr/0272-connection-time-public-network-route) | 已接受待实现（修订 ADR 0243；issue #419 / PR #473） |
 
 ## 什么时候看 ADR
 

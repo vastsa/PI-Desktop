@@ -109,7 +109,7 @@
 
 :root[data-theme="light"] .prose-chat h5,
 :root[data-theme="light"] .prose-chat h6 {
-  color: color-mix(in oklab, #1a1c1f 62%, transparent);
+  color: color-mix(in oklab, var(--ds-text-primary) 62%, transparent);
 }
 
 .prose-chat h3 {
@@ -174,7 +174,7 @@
 }
 
 :root[data-theme="light"] .prose-chat li::marker {
-  color: color-mix(in oklab, #1a1c1f 40%, transparent);
+  color: color-mix(in oklab, var(--ds-text-primary) 40%, transparent);
 }
 
 .prose-chat li > p {
@@ -227,7 +227,7 @@
 }
 
 :root[data-theme="light"] .prose-chat blockquote {
-  color: color-mix(in oklab, #1a1c1f 72%, transparent);
+  color: color-mix(in oklab, var(--ds-text-primary) 72%, transparent);
 }
 
 .prose-chat blockquote > :first-child {
@@ -271,13 +271,14 @@
   border-radius: var(--radius-3xs);
 }
 
+/* Light only softens the permanent underline; the base rule already paints the
+   `--ds-text-primary` ink, so the colour line is not duplicated here. */
 :root[data-theme="light"] .prose-chat a {
-  color: var(--ds-text-primary);
-  text-decoration-color: color-mix(in oklab, #1a1c1f 30%, transparent);
+  text-decoration-color: color-mix(in oklab, var(--ds-text-primary) 30%, transparent);
 }
 
 :root[data-theme="light"] .prose-chat a:hover {
-  text-decoration-color: color-mix(in oklab, #1a1c1f 80%, transparent);
+  text-decoration-color: color-mix(in oklab, var(--ds-text-primary) 80%, transparent);
 }
 
 .prose-chat img,
@@ -297,12 +298,8 @@
   line-height: var(--leading-normal);
   border-radius: var(--radius-3xs);
   background: var(--ds-tile-deep);
-  color: var(--ds-text-secondary);
+  color: var(--ds-prose-kbd-fg);
   white-space: nowrap;
-}
-
-:root[data-theme="light"] .prose-chat kbd {
-  color: #303030;
 }
 
 /* Inline code: borderless soft chip — the hairline frame used to add noise
@@ -318,8 +315,8 @@
 }
 
 :root[data-theme="light"] .prose-chat code {
-  background: color-mix(in oklab, #1a1c1f 6%, transparent);
-  color: #1a1c1f;
+  background: color-mix(in oklab, var(--ds-text-primary) 6%, transparent);
+  color: var(--ds-text-primary);
 }
 
 /* Fallback for a bare <pre> that bypassed the code-block chrome */
@@ -336,6 +333,8 @@
   color: #abb2bf;
 }
 
+/* Shiki one-light plate + ink. The Shiki theme owns this pair
+   (apps/desktop/src/lib/shiki.ts); see the guard header. */
 :root[data-theme="light"] .prose-chat pre {
   background: #fafafa;
   box-shadow: none;
@@ -359,10 +358,6 @@
   width: 100%;
   overflow-x: auto;
   border-radius: var(--radius-md-plus);
-}
-
-:root[data-theme="light"] .prose-chat th {
-  color: #1a1c1f;
 }
 
 .prose-chat .table-wrap table {
@@ -435,6 +430,7 @@
   color: #abb2bf;
 }
 
+/* Shiki one-light plate + ink, the same pair as the bare `pre` fallback. */
 :root[data-theme="light"] .code-block {
   --code-block-bg: #fafafa; /* one-light editor background */
   color: #383a42;
@@ -448,13 +444,10 @@
   min-height: 32px;
   padding: 3px 6px 3px 14px;
   /* The head is a slightly lighter band on the editor surface; no rule. */
-  background: color-mix(in oklab, #fff 4%, transparent);
+  background: var(--ds-code-head-bg);
 }
 
-:root[data-theme="light"] .code-block-head {
-  background: color-mix(in oklab, #1a1c1f 3.5%, transparent);
-}
-
+/* Shiki one-light token ink for the language rail and the copy button. */
 :root[data-theme="light"] .code-block-lang {
   color: color-mix(in oklab, #383a42 62%, transparent);
 }
@@ -464,9 +457,9 @@
   opacity: 0.9;
 }
 
+/* The hover fill is ours (--ds-code-hover-bg); the ink is the Shiki token. */
 :root[data-theme="light"] .code-block .code-copy-btn:hover {
   color: #383a42;
-  background: color-mix(in oklab, #1a1c1f 6%, transparent);
 }
 
 .code-block-lang {
@@ -500,7 +493,7 @@
 
 .code-block .code-copy-btn:hover {
   color: #d7dae0;
-  background: color-mix(in oklab, #fff 8%, transparent);
+  background: var(--ds-code-hover-bg);
 }
 
 .code-block .code-copy-btn.copied {
@@ -609,11 +602,7 @@
 
 .mermaid-block-body {
   min-width: 0;
-  background: color-mix(in oklab, var(--ds-bg-primary) 94%, var(--ds-text-primary));
-}
-
-:root[data-theme="light"] .mermaid-block-body {
-  background: #ffffff;
+  background: var(--ds-mermaid-canvas);
 }
 
 .mermaid-svg {
@@ -706,6 +695,7 @@
   box-shadow: none;
 }
 
+/* Shiki one-light plate + ink, the same pair as the code card above. */
 :root[data-theme="light"] .prose-chat .mermaid-source {
   background: #fafafa;
   color: #383a42;
@@ -732,12 +722,11 @@
 }
 
 :root[data-theme="light"] .thinking-prose {
-  color: color-mix(in oklab, #1a1c1f 58%, transparent);
+  color: color-mix(in oklab, var(--ds-text-primary) 58%, transparent);
 }
 
 :root[data-theme="light"] .thinking-prose code {
-  background: #f0f0f0;
-  color: color-mix(in oklab, #1a1c1f 68%, transparent);
+  color: color-mix(in oklab, var(--ds-text-primary) 68%, transparent);
 }
 
 .thinking-prose h1,
@@ -760,7 +749,7 @@
 }
 
 .thinking-prose code {
-  background: color-mix(in oklab, var(--ds-text-primary) 4.5%, transparent);
+  background: var(--ds-thinking-code-bg);
   color: var(--ds-text-secondary);
 }
 

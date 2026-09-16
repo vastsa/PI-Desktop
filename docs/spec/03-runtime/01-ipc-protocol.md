@@ -252,7 +252,7 @@ persisted marker protects accepted input from Smart Stop after renderer reload.
 A native Pi `message_end` may additionally carry the optional additive
 `replacesMessageId`: the provisional streaming row id whose durable SDK entry
 this event publishes. The renderer re-keys exactly that row (active, cache,
-retained, side chat) and a generic event without the field leaves every other
+retained) and a generic event without the field leaves every other
 row untouched. The field adds no event kind, RACP kind, or storage change.
 A user `message_end` can additionally
 carry `precedingAssistant`, a streaming snapshot that reserves the reply's
@@ -509,7 +509,7 @@ type AgentStatus = {
 The Host owns the per-session prompt queue; the renderer mirrors it. A
 Send-while-running pushes through `pi-desktop/agent/queue/push` and the
 headless Agent Host module admits, orders, and drains the durable entries
-(`turn_queue`, schema v15). Every change is fanned out as
+(`turn_queue`, schema v18). Every change is fanned out as
 `pi-desktop/agent/event/queueChanged`.
 
 ```ts
@@ -526,6 +526,7 @@ type QueuedTurnSummary = {
   content: string;
   attachments?: AgentPromptAttachment[];
   position: number;   // 1-based queue position
+  priority?: number;  // set only for a promoted entry; the click order
   createdAt: string;
 };
 
@@ -533,16 +534,39 @@ type QueuedTurnSummary = {
 // pi-desktop/agent/queue/list       -> { entries: QueuedTurnSummary[] }
 // pi-desktop/agent/queue/remove     -> { ok: true }   (turnId)
 // pi-desktop/agent/queue/prioritize -> { ok: true }   (turnId; "send now")
+// pi-desktop/agent/queue/reorder    -> { moved: boolean } (turnId, direction)
 // pi-desktop/agent/event/queueChanged -> { sessionId, entries }
 ```
 
 `push` returns `AGENT_BUSY` with `queueFull` once a session holds eight
 entries and `IDEMPOTENCY_CONFLICT` when a key is reused with other input.
-`prioritize` moves an entry to the head without touching the running turn;
-the renderer's "send now" then requests a graceful stop so the entry starts
-at the next boundary. `remove` cancels an entry that has not started. A
-restored queue stays held until the desktop attaches as the owner, so a
-reboot never starts work unattended.
+`entries` arrive in delivery order: promoted entries first in ascending
+`priority` (the order they were promoted), then every remaining entry by
+`position`. `prioritize` appends an entry to the end of that priority block
+without touching the running turn, refuses an entry that already carries a
+priority with `CONFLICT`, and refuses a turn that is no longer queued. The
+renderer's "send now" then requests a graceful stop so the entry starts at
+the next boundary. `reorder` swaps one non-promoted entry with its adjacent
+non-promoted neighbour and reports `moved: false` for a promoted entry, a
+missing entry, or a block/queue edge; a promoted entry is never a neighbour.
+`remove` cancels an entry that has not started. A restored queue stays held
+until the desktop attaches as the owner, so a reboot never starts work
+unattended.
+
+The promoted block is delivered as adjacent messages rather than as separate
+turns: the first promoted entry starts the turn at the boundary and every later
+promoted entry is injected into that same turn through the steering channel
+(`pi-desktop/agent/steer` with the running turn's id), so the transcript shows
+the user rows one after another and the model answers once. An injected entry
+leaves the queue and its own turn is canceled because it never runs on its own.
+An entry the runtime refuses to accept stays queued and leaves at the next
+boundary as its own turn.
+
+The queue's delivery contract is frozen by ADR 0265. A turn's own settlement is
+authoritative for the queue: the terminal event can be dropped (a terminal event
+naming a turn Main no longer owns never reaches the module) or never emitted, so
+the settlement closes the turn inside the module and releases the queue the turn
+was holding.
 
 ### 5.7 Session collaboration projection
 
@@ -710,9 +734,14 @@ context. Manual compaction never silently falls back.
 
 Provider `error` events may include bounded diagnostic fields in
 `AppError.details`: `phase` (`request` or `stream`), `providerStatus`,
-`providerCode`, `providerWaitMs`, `streamMs`, and `retryAttempt`. These fields
-are additive and redacted; they never carry credentials or an unrestricted
-provider response. A transient stream failure may be replayed once inside the
+`providerCode`, `providerWaitMs`, `streamMs`, `retryAttempt`, and, for a
+network failure, `networkCategory`, `networkCode`, `networkSyscall`,
+`networkHost` and `networkRoute` plus the request correlation fields
+`requestMessages`,
+`requestBytes` and `compactionGeneration`. These fields are additive and
+redacted; they never carry credentials or an unrestricted provider response,
+and the request fields are counts and byte sizes only. A transient stream
+failure may be replayed once inside the
 same turn without a terminal `error` event or a duplicate assistant message.
 The second failure emits the terminal normalized `STREAM_FAILED` error.
 
@@ -1432,10 +1461,23 @@ state is pruned during the next scan.
 
 Desktop-only skill market channels (not host RPC) live on Electron IPC:
 
-- `pi-desktop/skill/market/search` — `{ query, sources[] }` → `{ entries, failedSources }`.
-  Main aggregates builtin-safe catalog JSON and GitHub repo SKILL.md scans.
-  Source URLs must pass the public-HTTPS policy (ADR 0243). One failing source
-  is dropped; the rest still return.
+- `pi-desktop/skill/market/search` — `{ query, sources[] }` →
+  `{ entries, failedSources, failureKinds, failureDetails }`. Main aggregates
+  builtin-safe catalog JSON and GitHub repo SKILL.md scans. Source URLs must pass
+  the public-HTTPS policy (ADR 0243). One failing source is dropped; the rest
+  still return. `failureKinds` maps each name in `failedSources` to `policy`
+  (the public-network guard judged the target and refused it, so the request
+  never left the process), `unresolved` (the local DNS lookup returned no answer,
+  so no address was judged — a resolver or proxy condition, not a verdict on the
+  source), or `network`. `failureDetails` carries the same keys with the host
+  that actually failed, the guard's own `reason`, the class of the refused
+  address, and the route that address was judged on (`proxied`, `direct`, or
+  `unknown` when the transport reported no readable route, ADR 0272), which is
+  what lets the panel name *what* was refused instead of only which source went
+  quiet.
+  `NETWORK_POLICY_BLOCKED` and an unanswered resolver as `NETWORK_RESOLVE_FAILED`
+  (spec 08 §3.1); the install sheet classifies a failed preview on those two
+  codes.
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`.
   Main fetches the document over the same policy, splits frontmatter, and may
   attach sibling `.md` files from a jsDelivr listing. The renderer installs
@@ -1467,6 +1509,8 @@ written into the Markdown file.
 - `agents.read(id)` → `{ subagent, body }`
 - `agents.remove(id)`
 - `agents.setEnabled(id, enabled)`
+- `agents.disabledBuiltins` → `{ disabled: string[] }`
+- `agents.setBuiltinEnabled(id, enabled)` → `{ id, enabled }`
 
 The `thinkingLevel` field accepted by `agents.create` and `agents.update` may
 be a canonical thinking level, `omit`, or the empty string. The empty string
@@ -1484,12 +1528,24 @@ The `tools` array may include the token `inherit` (ADR 0246). `inherit` alone
 is a valid grant; host-core must not drop the document. Settings round-trips
 the token as `tools: inherit` or `tools: [inherit, Bash]`.
 
+`agents.disabledBuiltins` and `agents.setBuiltinEnabled` carry activation for the
+shipped builtins, which have no document to switch (ADR 0270). Handles are stored
+at the global level in `<data>/agent-capabilities/subagent-builtins.json`, a file
+of its own: the user-document scan prunes state for ids it cannot see, and a
+builtin is never scanned, so a shared file would drop every builtin exclusion on
+the next scan. `agents.setBuiltinEnabled` normalizes the id the way a document
+name is normalized and rejects an empty one with `SUBAGENT_INVALID`; a handle no
+current builtin uses is stored inertly rather than refused, because host-core
+does not ship the builtin list.
+
 Electron's `subagent/list` IPC channel exposes the same global-only list to
 Settings > Agent > Subagents. `subagent/catalog` returns the effective Task
-catalog (enabled user documents merged with the five shipped builtins) so the
-page can render those defaults as read-only rows. The runtime catalog
-combines the same sources; it does not scan `.pi/agents` or any project
-capability directory.
+catalog — enabled user documents merged with the five shipped builtins, minus the
+builtins the user switched off — together with `builtins`: every shipped
+definition that still wins its handle, each carrying `enabled`, so the page can
+render a switched-off default as a row with its own switch. The runtime catalog
+combines the same sources and applies the same exclusions; it does not scan
+`.pi/agents` or any project capability directory.
 
 ## 12d. Capability level and local activation
 

@@ -223,7 +223,7 @@ opacity-only changes, so actions remain legible in dark and light themes.
 Light-surface polish (D148):
 
 - Docked work panel uses quiet inset paper (`#fafafa`) with a white header band and a combined create trigger in the header so the tool column stays on content without any divider (D297 removed the remaining edge rules).
-- The work-panel header keeps its add-tab action in a separated rail: a tokenized 60px safe lane reserves the viewport-fixed panel toggle, with at least 24px of visual separation between the two hit targets on supported window sizes.
+- The work-panel header spends one control gap (`--ds-work-panel-control-gap`, 4px) on the whole row: the tab strip to the action group, `+` to maximize, and — through the tokenized 44px safe lane the panel header reserves for the viewport-fixed panel toggle — the action group to that toggle. The three buttons read as one group with no divider between the maximize control and the collapse toggle. Because maximize sits between them, the `+` trigger still keeps more than 24px of visual separation from the toggle hit target on supported window sizes. All three are the shared chrome icon control — 28px square on a transparent seat, hover wash on pointer, dimmed when disabled — so `+`, maximize, and the collapse toggle stay quiet icons instead of filled or raised squares. The toggle's `aria-pressed` state changes glyph and ink only.
 - Shared form fields, browser URL, settings segment tracks, and shortcut keycaps use `--ds-tile` fills with no stroke (D297); focus lifts to white with an accent-tinted ring. An Unbound shortcut uses a localized text state instead of an empty keycap and keeps its recorder and restore controls keyboard-focusable.
 - Settings toggles keep a near-black on-track and force a white knob in light mode.
   Off/on track and knob colours come from the `--ds-switch-*` theme tokens; a
@@ -507,10 +507,13 @@ followed by a divider and compact Settings / Logs / Theme rows.
 
 Toolbar rows are 46px. macOS places traffic lights at `{x:16,y:16}` and keeps
 the expanded sidebar's Collapse sidebar icon button right-aligned
-in that same row. The macOS row omits the sidebar logo/title, reserves `76px`
+in that same row. The macOS row omits the sidebar logo/title, reserves `88px`
 on the left for native chrome in windowed mode, and reclaims that padding in
-fullscreen. Windows/Linux keep the identity and sidebar actions in their first
-row and reserve the rightmost 120px for three frameless-window controls. The
+fullscreen. That reserve is the shared `--ds-window-lead-inset` token — the
+cluster's `76px` right edge (the same `@pi-desktop/shared` geometry the main
+process positions the buttons with) plus `12px` of breathing room. Windows/Linux
+keep the identity and sidebar actions in their first row and reserve the
+rightmost 120px for three frameless-window controls. The
 controls retain 112px of full-height hit targets, while the outer band adds an
 8px visual buffer before adjacent work-panel actions. The band paints an opaque
 `bg-primary` surface so page content never shows through the controls, and its
@@ -572,6 +575,13 @@ floating layers where an edge is an elevation cue rather than a partition.
 | Settings search | `--ds-settings-field-bg` (light `#ffffff`, dark `#212121`) | Search pill on the settings rail |
 | Active settings item | `--ds-settings-nav-active` (light 12% `#1a1c1f` mixed over white; dark 10% `--gray-0` over transparent) | Selected navigation pill |
 | Inset search | `--ds-field-inset-bg`, `--ds-field-inset-focus-bg` (light `#f3f3f3` / white; dark 5% / 7% primary-text mix over transparent) | Plugin search and Agent capability search, including focus |
+| Prose keycap / thinking code | `--ds-prose-kbd-fg` (light `#303030`, dark `--ds-text-secondary`), `--ds-thinking-code-bg` (light `#f0f0f0`, dark 4.5% text mix) | Keycap ink and the thinking-prose code chip |
+| Code-card chrome | `--ds-code-head-bg`, `--ds-code-hover-bg` (light 3.5% / 6% `#1a1c1f` over the plate; dark 4% / 8% white) | The `.code-block` head band and its hover fills. The Shiki syntax plate and its ink are deliberately not tokens — see below |
+| Mermaid canvas | `--ds-mermaid-canvas` (light `#ffffff`, dark 94% `--ds-bg-primary` + 6% text mix) | The diagram body inside `.mermaid-block` |
+| Scrim / veil | `--ds-scrim` (dark ~45% black, light ~28% `#1a1c1f`, D148), `--ds-modal-veil` (dark 78% `--ds-bg-primary`, light ~32% `#1a1c1f`) | The dialog scrim and the plugin permission backdrop |
+| Tool output | `--ds-tool-row-bg` (light 2% `#1a1c1f`, dark `--ds-tile`) | Tool result and error output blocks in the transcript |
+| Disabled send chip | `--ds-send-disabled-bg`, `--ds-send-disabled-fg` (light `#8e8e90` / `#ffffff`; dark 18% text mix / 70% `--gray-900`) | The composer's disabled send button |
+| Composer placeholder | `--ds-placeholder-ink` (light `#4a4c4f`, dark 42% white) | Input and placeholder ink in both composer states |
 
 The dark composer shell consumes `--ds-bg-elevated-primary` directly; light
 continues to use `--ds-bg-composer`. Switch on-state knobs consume
@@ -580,17 +590,58 @@ focus rings, and shadows while allowing a contributed stylesheet to override
 the variables. Theme-specific component rules may retain their existing shadow
 or layout differences, but must not replace a token-driven fill with a literal.
 
-Every surface colour the shell paints must come from a token. A
-`:root[data-theme="light"]` override that writes a literal raises specificity
-above the base token rule and does not read a variable, so it silently pins that
-surface out of every theme's reach — see D419.
+Prose and transcript inks ride `--ds-text-primary`: the light overrides that
+used to hardcode `#1a1c1f` now mix the token, so the whole light ink tier moves
+with the theme (headings 5/6 at 62%, list markers 40%, quote ink 72%, link
+underlines 30% and 80% on hover, the inline-code chip at 6% with full-strength
+ink, thinking prose 58% and its code 68%).
 
-`pnpm lint` also guards `background` / `background-color` on the migrated
-settings rail, search, navigation item, switch thumb, capability search, plugin
-search, and composer-shell families against bare hex, CSS color functions,
-`white`, and `black`. The guard is intentionally scoped; it does not establish
-full color-token coverage of prose, scrims, other chrome, or plugin CSS. Real
-rendered theme checks remain necessary to verify cascade and focus behavior.
+**Convention:** a `:root[data-theme="…"]` rule must not write a literal colour.
+Such a rule out-specifies the base token rule *and* never reads a variable, so it
+silently pins that surface out of every theme's reach — see D419. A
+theme-specific value belongs in the token blocks of `styles/tokens.css`, where
+both palettes define the same `--ds-*` name and the base rule reads it once.
+
+`pnpm lint` runs `scripts/style-surface-tokens.mjs`, which enforces that
+convention mechanically. Rule 1: inside a `:root[data-theme]` rule every colour
+declaration — `color`, `background`/`-color`/`-image`, `text-decoration-color`,
+`-webkit-text-fill-color`, `border` and its colour longhands, `outline`,
+`fill`, `stroke`, `accent-color`, `caret-color`, and `box-shadow` — must resolve
+through a custom property; the token blocks themselves are the place for
+literals, and a component-local custom property holding a literal colour is a
+violation too, because it shadows the root token. Rule 2: the base rules of the
+migrated chrome families — settings rail, search, navigation item, switch thumb,
+capability search, plugin search, composer shell, composer toolbar/chip/
+placeholder/input, plus prose, code-card (`code-block`, head band, language
+rail), Mermaid (block, body, head, title, error, source), scrims, tool rows,
+send button and empty hero — must not paint a literal either.
+
+Its exemptions are enumerated with reasons rather than left silent:
+
+- the `one-dark-pro` / `one-light` Shiki palette (the plate and its ink are
+  authored by the Shiki theme and emitted as inline colours on the highlighted
+  markup, so the pair has to move together — through the Shiki theme, not a CSS
+  token);
+- translucent black- or white-alpha shadow values (`box-shadow`, `text-shadow`,
+  `filter`), which only offset darkness; an opaque shadow colour is still
+  checked;
+- the ⌘K `.search-overlay` veil, which keeps the dark 45% black mix in both
+  palettes and so still departs from D148's lighter light veil. That one is a
+  maintainer decision recorded as a known gap: it is checked by the guard *and*
+  allowed there, so removing the allowance fails `pnpm lint`.
+
+Two boundaries stay open by design. The family rule is a fixed list, not every
+selector in the renderer, so it catches a regression in a migrated surface but
+not a brand-new literal on a selector nobody has reviewed. And the guard is
+static text: it cannot see a cascade conflict between two token-reading rules
+(#339's root cause). Both are why the rendered checks in
+`pnpm test:e2e:theme-surfaces` remain necessary — that probe compares the built
+paint of every migrated surface against values sampled from the pre-change app,
+so a token whose default is not exactly the old literal fails there. Keep the
+light-qualified `.tool-row-content` rule that probe pins: at (0,3,0) it
+out-specifies `.tool-row-content.is-error` and ties with
+`.tool-block.is-plain .tool-row-content`, so dropping it would tint error output
+and give plain tool blocks a fill in light only.
 
 | Context | Treatment |
 |---|---|
@@ -599,7 +650,7 @@ rendered theme checks remain necessary to verify cascade and focus behavior.
 | Selection (theme, language, level) | Deeper tint or raised pill plus the existing check mark; no selected border |
 | Floating layers (menus, popovers, dialogs, tooltips, toasts, hover cards) | `0 0 0 0.5px border-default` + shadow on the container; no rules inside |
 | Focus rings | accent tint, 2px box-shadow |
-| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition |
+| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition. The work-panel divider paints a 50% accent tint on hover and while dragging (roughly 5.3:1 dark, 3.3:1 light); the solid accent is reserved for keyboard focus |
 
 ## 7. Iconography
 
@@ -995,11 +1046,18 @@ retain the fade-and-slide exit.
 
 Preview mode is a transient shell state: MainChat is unmounted and the work
 panel occupies the client width beside the sidebar. A window-level 46px chrome
-row owns the drag area, New Task/sidebar actions, and native window controls.
-Collapsed-sidebar preview reserves 76px on the left for macOS traffic lights in
-windowed mode and 8px in fullscreen. The maximized panel header retains that
-native reserve, then adds the preview action lane and an 8px gap before its
-first tab.
+row is pointer-transparent outside New Task/sidebar and native window controls;
+it declares neither drag nor no-drag across the panel. The panel header alone
+owns the preview pane's drag area. Its border box, not just its padding, excludes
+the left action lane plus an 8px gap in both sidebar states on all platforms.
+The left inset is 8px except for collapsed-sidebar windowed macOS (88px).
+That macOS reserve is the shared `--ds-window-lead-inset` token — the traffic-light
+cluster's 76px right edge (native geometry from `@pi-desktop/shared`, the same
+constants the main process positions the buttons with) plus a 12px gap.
+The action lane uses the shared 28px control size plus an 8px gap when expanded,
+and the shared preview action lane (two controls, 4px spacing, 8px gap) when collapsed.
+The right native-control exclusion remains unchanged. The panel paints the
+header-height background behind the excluded lane without covering its controls.
 
 ### 10.1 Responsive collapse
 
@@ -1031,7 +1089,16 @@ These are **token-level foundations** for common primitives. Detailed component 
 | Primary | px-3 py-1.5 | 32px | text-sm 500 | radius-sm | none | accent |
 | Secondary | px-3 py-1.5 | 32px | text-sm 400 | radius-sm | none (D297) | `--ds-tile`, hover `--ds-tile-hover` |
 | Ghost | px-2 py-1 | 28px | text-sm 400 | radius-sm | none | transparent |
+| Icon-only | none | 28px | — | radius-full | none | transparent; `.icon-btn-square` pins the width to `--ds-control-size` |
 | Danger | px-3 py-1.5 | 32px | text-sm 500 | radius-sm | none | error |
+
+An icon-only control states `.icon-btn-square`. `.icon-btn` alone takes its
+width from its content — glyph plus 8px of side padding — which is what a
+label-driven pill wants and what a control with no label must not inherit. The
+variant pins both axes to `--ds-control-size` (28px), keeps `flex: 0 0` so a
+crowded toolbar row cannot shrink it back out of square, and drops the side
+padding that under the global `border-box` would leave a 12px content box for a
+15px glyph.
 
 ### 11.2 Input / textarea
 

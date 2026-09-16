@@ -38,7 +38,7 @@ test("Composer enables enhancement with inline file references and guards stale 
   assert.match(composer, /!modelReady/);
   assert.match(
     composer,
-    /className=\{`icon-btn composer-enhance-btn/,
+    /className=\{`icon-btn icon-btn-square composer-enhance-btn/,
   );
   assert.match(composer, /aria-busy=\{enhancingPrompt\}/);
   assert.match(composer, /className="tool-spinner"/);

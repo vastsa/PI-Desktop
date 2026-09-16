@@ -490,6 +490,11 @@ allowed host cannot bounce a request to one you did not declare. Bundle assets
 into the plugin rather than loading them from a CDN you would otherwise have to
 declare.
 
+`fetch` returns what the server answered, `429` and `Retry-After` included: the
+host never retries a request your plugin makes, so backoff after a rate limit is
+your own policy rather than a hidden host behaviour. A call that comes back
+`>= 400` is still audited, as `ok: false` with the delay the response advertised.
+
 ### 6.7 Theme
 
 Declare a CSS file and `ui.theme`:

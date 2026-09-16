@@ -186,13 +186,12 @@ test("the top bar's collapsed lead-in tracks the dock instead of snapping", () =
   const topbarBaseBlock =
     globalStyles.match(/\.conversation-topbar\s*\{[\s\S]*?\}/)?.[0] ?? "";
   assert.match(topbarBaseBlock, /--ct-lead-inset:\s*12px/);
+  // The collapsed inset is the shared traffic-light reserve; its darwin value
+  // (native footprint + gap, 8px in fullscreen) lives in one place, asserted by
+  // test/traffic-light-reserve.test.mjs.
   assert.match(
     globalStyles,
-    /:root\[data-platform="darwin"\] \.conversation-topbar\.ct-collapsed\s*\{[^}]*--ct-lead-inset:\s*76px/,
-  );
-  assert.match(
-    globalStyles,
-    /:root\[data-platform="darwin"\]\[data-fullscreen="true"\] \.conversation-topbar\.ct-collapsed\s*\{[^}]*--ct-lead-inset:\s*8px/,
+    /:root\[data-platform="darwin"\] \.conversation-topbar\.ct-collapsed\s*\{[^}]*--ct-lead-inset:\s*var\(--ds-window-lead-inset\)/,
   );
 
   // The button stays mounted so it can cross-fade with the dock's own toggle;

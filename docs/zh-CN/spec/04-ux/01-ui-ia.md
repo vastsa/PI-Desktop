@@ -64,9 +64,19 @@
   那里，包括全屏。当工作面板打开时，会话
   窗格标题栏在右上角托管其折叠控件。面板标题栏改为可横向滚动的标签条，
   后接固定的 `+` 新建入口；关闭操作归属于各标签，因此 Windows 原生关闭
-  控件旁不再重复呈现第二个 `×`。工作面板预览模式会卸载 MainChat，
+  控件旁不再重复呈现第二个 `×`。头部为视口固定的折叠开关预留 44px 的右侧
+  安全车道（28px 控件、12px 视口内缩与头部自身的 4px 控制间距），同一个间距
+  把 `+`、最大化与折叠开关连成一组并保持 `+` 的独立命中区域。工作面板预览模式会卸载 MainChat，
   并在窗口级 46px chrome 行中保留新建任务、侧边栏和本机窗口控件。
-  macOS 非全屏且侧边栏折叠时，左侧预留 76px（全屏为 8px），避免与交通灯重叠。
+  The row and spacer declare neither drag nor no-drag and pass pointer events
+  through outside controls. The panel header alone owns dragging in the preview
+  pane. Its border box excludes the shell action lane plus an 8px gap in both
+  sidebar states, including expanded-sidebar New Task, on every platform.
+  The left inset is 8px except collapsed-sidebar windowed macOS (88px), using
+  `--ds-window-lead-inset`: the shared native cluster's 76px edge plus 12px.
+  The main process uses the same geometry from `@pi-desktop/shared`.
+  Right native-control exclusion is unchanged; header-height background paint
+  fills the left lane without an opaque overlay covering panel controls.
   Windows/Linux 使用无菜单的无框架 46px 行，并在
   左侧和可访问的最小化/最大化或恢复/关闭控件
   右（D129）。目的地历史以快捷键为主（`Cmd/Ctrl+[` 和

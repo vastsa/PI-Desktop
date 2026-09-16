@@ -35,6 +35,18 @@ type PluginManifestV1 = {
  description?: string;
  author?: string | { name: string; url?: string; email?: string };
  homepage?: string;
+ /**
+  * Display strings per locale, shown in place of `name`/`description` when the
+  * shell's language matches one of the declared locales (see §3.1). The flat
+  * fields stay the author's own language and remain the fallback.
+  */
+ i18n?: {
+   [locale: string]: {
+     name?: string;
+     description?: string;
+     safetyNotes?: string;
+   };
+ };
  repository?: string;
  icon?: string; // relative path
  main?: string; // plugin runtime entry
@@ -78,6 +90,44 @@ type PluginUiConfig = {
  }; // localized native panel identity; both locales are required for an object
 };
 ```
+
+### 3.1 Localized labels (`i18n`)
+
+`name`, `description`, and `safetyNotes` are display text, so a plugin may
+declare them per locale in a top-level `i18n` block. The Extensions page, the
+plugin launcher, and the marketplace (which reads the same block from a catalog
+entry) show the entry matching the **app language** rather than the author's own
+language:
+
+```json
+{
+  "name": "小清新待办",
+  "description": "作者原话",
+  "i18n": {
+    "en": { "name": "Todo List", "description": "A calm todo list" },
+    "zh-CN": { "name": "小清新待办", "description": "轻盈的待办清单", "safetyNotes": "只写自己的数据" }
+  }
+}
+```
+
+Rules:
+
+1. `en` and `zh-CN` are the contract locales. Every Chinese shell locale
+   (`zh`, `zh-CN`, `zh-Hans`, `zh-SG`) reads `zh-CN`; every other locale reads
+   `en`. A plugin is not required to translate itself into the other shipped
+   shell locales, so `zh-TW` reads English rather than half a `zh-CN` guess
+   (ADR 0182).
+2. Both locales and all three fields are required by the plugin repository's
+   validator, but the host is permissive: a missing locale, a missing field, or
+   an empty string falls back per field to the other contract locale, and from
+   there to the author's flat `name` / `description`.
+3. Resolution happens in the host, against the language the desktop shell
+   pushes down (`settings.language`, or the OS locale while it is `auto`). The
+   stored row keeps the author's strings, so a language change only changes what
+   is read and never rewrites the registry.
+4. The block is display metadata. A malformed one (not an object of locale →
+   object) fails manifest validation; unknown locales and unknown fields inside
+   an entry are ignored.
 
 ## 4. contributes
 

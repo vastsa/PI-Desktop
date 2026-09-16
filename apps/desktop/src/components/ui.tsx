@@ -19,6 +19,73 @@ function setRef<T>(ref: Ref<T> | undefined, value: T | null) {
   if (typeof ref === "function") ref(value);
   else if (ref) (ref as { current: T | null }).current = value;
 }
+// A detached anchor (a row that just left the list, a popover that closed)
+// can never fire pointerleave, so the visible tooltip checks whether its
+// anchor is still in the document and closes itself when it is not.
+const ANCHOR_RECONNECT_GRACE_MS = 250;
+
+// Only one themed tooltip may be on screen at once: a pointer moving between
+// two adjacent buttons can otherwise paint both during the swap.
+type TooltipSlot = {
+  slotId: symbol;
+  hide: () => void;
+  anchor: HTMLElement | null;
+  /* True only while the trigger is hovered, so a keyboard-revealed tooltip is
+     never closed by an unrelated mouse movement. */
+  hovered: boolean;
+};
+
+let visibleTooltip: TooltipSlot | null = null;
+
+function claimTooltipSlot(slot: TooltipSlot) {
+  if (visibleTooltip && visibleTooltip.slotId !== slot.slotId) {
+    visibleTooltip.hide();
+  }
+  visibleTooltip = slot;
+}
+
+function releaseTooltipSlot(slotId: symbol) {
+  if (visibleTooltip?.slotId === slotId) visibleTooltip = null;
+}
+
+// Guards shared by every mounted tooltip: one listener set for the whole
+// window instead of one per trigger. A hidden document only closes the
+// tooltip, so the same watch turning visible again never keeps it up.
+let installedTooltipGuards = false;
+
+function ensureTooltipGuards() {
+  if (installedTooltipGuards) return;
+  installedTooltipGuards = true;
+  window.addEventListener("blur", () => visibleTooltip?.hide());
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) visibleTooltip?.hide();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") visibleTooltip?.hide();
+  });
+  document.addEventListener(
+    "pointermove",
+    (event) => {
+      const tooltip = visibleTooltip;
+      // A tooltip revealed by keyboard focus has no pointer to follow.
+      if (!tooltip?.hovered || !tooltip.anchor) return;
+      const anchor = tooltip.anchor;
+      if (anchor.contains(event.target as Node)) return;
+      // Chromium keeps :hover on the element under an idle pointer, so a
+      // pointer that never left the window is not a leave event.
+      if (anchor.matches(":hover")) return;
+      const rect = anchor.getBoundingClientRect();
+      const margin = 4;
+      const inside =
+        event.clientX >= rect.left - margin &&
+        event.clientX <= rect.right + margin &&
+        event.clientY >= rect.top - margin &&
+        event.clientY <= rect.bottom + margin;
+      if (!inside) tooltip.hide();
+    },
+    true,
+  );
+}
 
 type TooltipPosition = { left: number; top: number; bottom: number };
 
@@ -30,10 +97,22 @@ function useTooltip<T extends HTMLElement>(
   hideDelayMs: number,
 ) {
   const anchorRef = useRef<T>(null);
+  // Stable identity for the single-visible-tooltip registry, so a render that
+  // re-creates the hide callback still owns the same slot.
+  const slotIdRef = useRef<symbol | null>(null);
+  if (slotIdRef.current === null) slotIdRef.current = Symbol("ui-tooltip");
+  const slotId = slotIdRef.current;
   const showTimerRef = useRef<number | null>(null);
+
   const hideTimerRef = useRef<number | null>(null);
   const visibleRef = useRef(false);
   const [hovered, setHovered] = useState(false);
+  // Mirrors `hovered` for the shared pointer guard, which runs outside React.
+  const hoveredRef = useRef(false);
+  const setHoveredState = (next: boolean) => {
+    hoveredRef.current = next;
+    setHovered(next);
+  };
   const [focused, setFocused] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -44,15 +123,42 @@ function useTooltip<T extends HTMLElement>(
     !dismissed &&
     (showWhenDisabled || !disabled);
 
+  const hide = () => {
+    // A hide from any source - leaving the trigger, Escape, a window blur -
+    // also cancels a show that has not painted yet, so nothing appears after.
+    if (showTimerRef.current !== null) {
+      window.clearTimeout(showTimerRef.current);
+      showTimerRef.current = null;
+    }
+    releaseTooltipSlot(slotId);
+    setTooltipVisible(false);
+  };
+
   const setTooltipVisible = (next: boolean) => {
+    if (next === visibleRef.current) return;
     visibleRef.current = next;
+    if (next) {
+      claimTooltipSlot({
+        slotId,
+        hide,
+        anchor: anchorRef.current,
+        hovered: hoveredRef.current,
+      });
+    } else {
+      releaseTooltipSlot(slotId);
+    }
     setVisible(next);
   };
+
   const dismiss = () => {
     setDismissed(true);
     if (visibleRef.current) setTooltipVisible(false);
   };
 
+
+  // Hover/focus arms the show timer; leaving disarms it and hides a painted
+  // tooltip after the short grace window so a pass-between-children does not
+  // blink it.
   useEffect(() => {
     if (showTimerRef.current !== null) {
       window.clearTimeout(showTimerRef.current);
@@ -89,12 +195,66 @@ function useTooltip<T extends HTMLElement>(
     };
   }, [active, delayMs, hideDelayMs]);
 
+  // Tooltips must not outlive their trigger: drop any pending show/hide timer,
+  // release the shared slot, and never leave a painted tooltip behind. The
+  // shared guards (window blur, a hidden document, Escape, a pointer that left
+  // its trigger) are installed once and close whatever is on screen.
+  useEffect(() => {
+    ensureTooltipGuards();
+    return () => {
+      if (showTimerRef.current !== null) {
+        window.clearTimeout(showTimerRef.current);
+        showTimerRef.current = null;
+      }
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+      visibleRef.current = false;
+      releaseTooltipSlot(slotId);
+    };
+  }, []);
+
+  // A disabled trigger drops its hover/focus state instead of keeping a
+  // tooltip latched on a control the pointer can no longer enter.
   useEffect(() => {
     if (!disabled) return;
-    setHovered(false);
+    setHoveredState(false);
     setFocused(false);
     if (visibleRef.current) setTooltipVisible(false);
   }, [disabled]);
+
+
+  // Keep the painted tooltip attached to a live anchor. A detached anchor
+  // closes it unless the same node is re-inserted within the grace window
+  // (list re-orders remount rows without the pointer ever moving).
+  useEffect(() => {
+    if (!visible) return;
+    const anchor = anchorRef.current;
+    if (!anchor) {
+      setTooltipVisible(false);
+      return;
+    }
+    let wasConnected = anchor.isConnected;
+    let disconnectedAt = wasConnected ? 0 : performance.now();
+    if (!wasConnected) setTooltipVisible(false);
+    const interval = window.setInterval(() => {
+      const connected = anchor.isConnected;
+      if (connected === wasConnected) return;
+      wasConnected = connected;
+      if (connected) {
+        if (performance.now() - disconnectedAt <= ANCHOR_RECONNECT_GRACE_MS) {
+          setTooltipVisible(true);
+        }
+        return;
+      }
+      disconnectedAt = performance.now();
+      setTooltipVisible(false);
+    }, 200);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [visible]);
 
 
   useLayoutEffect(() => {
@@ -126,9 +286,9 @@ function useTooltip<T extends HTMLElement>(
     position,
     onPointerEnter: () => {
       setDismissed(false);
-      setHovered(true);
+      setHoveredState(true);
     },
-    onPointerLeave: () => setHovered(false),
+    onPointerLeave: () => setHoveredState(false),
     onFocus: () => setFocused(true),
     onBlur: () => setFocused(false),
     dismiss,

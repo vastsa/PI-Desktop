@@ -300,8 +300,12 @@ impl PluginManager {
             }
             if !q.is_empty() {
                 let hay = format!(
-                    "{} {} {} {}",
-                    entry.id, entry.name, entry.description, entry.author
+                    "{} {} {} {} {}",
+                    entry.id,
+                    entry.name,
+                    entry.description,
+                    entry.author,
+                    localized_search_haystack(entry.i18n.as_ref()),
                 )
                 .to_lowercase();
                 if !hay.contains(&q) {
@@ -328,6 +332,14 @@ impl PluginManager {
         let permissions = latest_market_version(&entry.versions)
             .map(|v| v.permissions.clone())
             .unwrap_or_default();
+        // Resolved before the fields move out of `entry`; the flat field stays
+        // the fallback for a catalog without an `i18n` block, and a partial
+        // translation falls back per field.
+        let safety_notes = localized_field(entry.i18n.as_ref(), &self.locale, |text| {
+            text.safety_notes.as_ref()
+        })
+        .cloned()
+        .or(entry.safety_notes.clone());
         Ok(MarketPluginDetail {
             summary,
             readme_markdown: entry.readme_markdown,
@@ -336,7 +348,7 @@ impl PluginManager {
             homepage: entry.homepage,
             repository: entry.repository,
             permissions,
-            safety_notes: entry.safety_notes,
+            safety_notes,
         })
     }
 
@@ -488,8 +500,14 @@ impl PluginManager {
         let catalog_url = self.market_source_url();
         MarketPluginSummary {
             id: entry.id.clone(),
-            name: entry.name.clone(),
-            description: entry.description.clone(),
+            name: localized_field(entry.i18n.as_ref(), &self.locale, |text| text.name.as_ref())
+                .cloned()
+                .unwrap_or_else(|| entry.name.clone()),
+            description: localized_field(entry.i18n.as_ref(), &self.locale, |text| {
+                text.description.as_ref()
+            })
+            .cloned()
+            .unwrap_or_else(|| entry.description.clone()),
             author: entry.author.clone(),
             icon_url: entry.icon_url.clone(),
             latest_version: latest.clone(),
@@ -692,4 +710,17 @@ impl PartialOrd for ParsedPluginVersion<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
+}
+
+/// Every locale's name and description, so a search matches whatever language
+/// the user typed rather than only the one currently displayed.
+fn localized_search_haystack(map: Option<&PluginI18nMap>) -> String {
+    let Some(map) = map else {
+        return String::new();
+    };
+    map.values()
+        .flat_map(|entry| [entry.name.as_deref(), entry.description.as_deref()])
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
 }

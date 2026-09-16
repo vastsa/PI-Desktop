@@ -270,13 +270,6 @@
   margin-bottom: 3px;
 }
 
-.settings-card-description {
-  margin: 0;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-body);
-}
-
 .settings-text-action {
   display: inline-flex;
   min-height: 28px;
@@ -396,10 +389,16 @@
   justify-content: flex-end;
 }
 
-.settings-row-control .field-select,
 .settings-row-control .field-input {
   width: 100%;
   min-width: 140px;
+}
+
+.settings-row-control .field-select,
+.settings-row-control .settings-menu-select-anchor {
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .settings-number-control {
@@ -731,7 +730,9 @@
 
 .settings-pill-select,
 .settings-row-control .field-select {
-  min-width: 132px;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
   height: 30px;
   border-radius: var(--radius-full);
   border: 0;
@@ -909,24 +910,36 @@
   text-align: center;
 }
 
-/* Language and theme pickers (Appearance). Pill trigger matches the font
-   picker; the menu is an AnchoredMenu so the settings card cannot clip it. */
+/* Language and theme pickers (Appearance) plus the short-list menu selects on
+   the remaining tabs. Pill trigger matches the font picker; the closed control
+   hugs the current label (capped by the row) so a short value does not stretch
+   the column. The menu is an AnchoredMenu so the settings card cannot clip it,
+   and one definition here means a design change reaches every Settings picker
+   together. */
 .settings-language-anchor,
-.settings-theme-anchor {
+.settings-theme-anchor,
+.settings-menu-select-anchor {
   position: relative;
-  width: 100%;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
 }
 
+.settings-menu-select-anchor.is-full {
+  width: 100%;
+}
+
 .settings-language-trigger,
-.settings-theme-trigger {
-  display: flex;
+.settings-theme-trigger,
+.settings-menu-select-trigger {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
   height: 30px;
-  padding: 0 12px;
+  padding: 0 10px 0 12px;
   border-radius: var(--radius-full);
   background: var(--ds-raised);
   box-shadow: var(--ds-raised-shadow);
@@ -934,29 +947,48 @@
   font-size: var(--text-sm-plus);
 }
 
+.settings-menu-select-anchor.is-full .settings-menu-select-trigger {
+  display: flex;
+  width: 100%;
+}
+
 .settings-language-trigger:hover,
-.settings-theme-trigger:hover {
+.settings-theme-trigger:hover,
+.settings-menu-select-trigger:hover {
   background: var(--ds-bg-hover);
 }
 
+/* A write in flight keeps the trigger readable but not re-openable. */
+.settings-menu-select-trigger:disabled {
+  color: var(--ds-text-secondary);
+  cursor: default;
+}
+
 .settings-language-trigger-label,
-.settings-theme-trigger-label {
+.settings-theme-trigger-label,
+.settings-menu-select-trigger-label {
   min-width: 0;
-  flex: 1;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
 }
 
+.settings-menu-select-anchor.is-full .settings-menu-select-trigger-label {
+  flex: 1;
+}
+
 .settings-language-trigger > svg,
-.settings-theme-trigger > svg {
+.settings-theme-trigger > svg,
+.settings-menu-select-trigger > svg {
   flex: 0 0 auto;
   color: var(--ds-text-muted);
 }
 
 .settings-language-menu,
-.settings-theme-menu {
+.settings-theme-menu,
+.settings-menu-select-menu {
   position: fixed;
   z-index: 60;
   width: min(240px, calc(100vw - 48px));
@@ -971,8 +1003,15 @@
   visibility: hidden;
 }
 
+.settings-menu-select-menu {
+  width: max-content;
+  min-width: 8rem;
+  max-width: min(280px, calc(100vw - 48px));
+}
+
 .settings-language-menu.is-open,
-.settings-theme-menu.is-open {
+.settings-theme-menu.is-open,
+.settings-menu-select-menu.is-open {
   opacity: 1;
   pointer-events: auto;
   visibility: visible;
@@ -1017,7 +1056,8 @@
 }
 
 .settings-language-results,
-.settings-theme-results {
+.settings-theme-results,
+.settings-menu-select-results {
   min-height: 0;
   max-height: min(360px, calc(100vh - 220px));
   overflow-y: auto;
@@ -1026,14 +1066,16 @@
 }
 
 .settings-language-list,
-.settings-theme-list {
+.settings-theme-list,
+.settings-menu-select-list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .settings-language-option,
-.settings-theme-option {
+.settings-theme-option,
+.settings-menu-select-option {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1048,12 +1090,25 @@
 .settings-language-option:hover,
 .settings-language-option.is-active,
 .settings-theme-option:hover,
-.settings-theme-option.is-active {
+.settings-theme-option.is-active,
+.settings-menu-select-option:hover,
+.settings-menu-select-option.is-active {
   background: var(--ds-bg-hover);
 }
 
+/* A host-reported unavailable shell stays listed but cannot be chosen. */
+.settings-menu-select-option:disabled {
+  color: var(--ds-text-muted);
+  cursor: default;
+}
+
+.settings-menu-select-option:disabled:hover {
+  background: transparent;
+}
+
 .settings-language-option.is-current .settings-language-option-native,
-.settings-theme-option.is-current .settings-theme-option-title {
+.settings-theme-option.is-current .settings-theme-option-title,
+.settings-menu-select-option.is-current .settings-menu-select-option-label {
   color: var(--ds-text-primary);
 }
 
@@ -1067,12 +1122,22 @@
 }
 
 .settings-language-option-native,
-.settings-theme-option-title {
+.settings-theme-option-title,
+.settings-menu-select-option-label {
   overflow: hidden;
   color: var(--ds-text-primary);
   font-size: var(--text-sm-plus);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-menu-select-option:disabled .settings-menu-select-option-label {
+  color: var(--ds-text-muted);
+}
+
+.settings-menu-select-option-label {
+  min-width: 0;
+  flex: 1;
 }
 
 .settings-language-option-english,
@@ -1086,7 +1151,8 @@
 }
 
 .settings-language-check,
-.settings-theme-check {
+.settings-theme-check,
+.settings-menu-select-check {
   flex: 0 0 auto;
   color: var(--ds-accent);
 }
@@ -1775,54 +1841,25 @@
 .agent-capability-project-picker {
   position: relative;
   display: inline-flex;
-  min-width: 148px;
   max-width: 200px;
   align-items: center;
   color: var(--ds-text-muted);
 }
 
-.agent-capability-project-picker select {
+.agent-capability-project-picker .settings-menu-select-trigger {
   min-width: 0;
-  width: 100%;
+  max-width: 200px;
   height: var(--agent-capability-control-height, 32px);
-  appearance: none;
-  border: 0;
+  padding-left: 26px;
   border-radius: var(--radius-sm);
-  background: var(--ds-raised);
-  box-shadow: var(--ds-raised-shadow);
-  padding: 0 25px;
-  color: var(--ds-text-primary);
-  cursor: pointer;
   font-size: var(--text-xs-plus);
-  outline: none;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.agent-capability-project-picker > svg:first-of-type {
+.agent-capability-project-picker > svg {
   position: absolute;
   left: 8px;
+  z-index: 1;
   pointer-events: none;
-}
-
-.agent-capability-project-picker > svg:last-of-type {
-  position: absolute;
-  right: 7px;
-  pointer-events: none;
-}
-
-.agent-capability-project-picker select:hover:not(:disabled) {
-  background: var(--ds-bg-hover);
-}
-
-.agent-capability-project-picker select:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
-}
-
-.agent-capability-project-picker select:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 /* Skeleton loading mirrors the row anatomy instead of a labeled block. */
@@ -2002,7 +2039,7 @@
   .agent-capability-panel.is-refreshing .agent-capability-list,
   .agent-capability-row-actions > .settings-icon-button,
   .agent-capability-row-actions .agent-capability-menu-wrap,
-  .agent-capability-project-picker select,
+  .agent-capability-project-picker .settings-menu-select-trigger,
   .agent-capability-skeleton-glyph,
   .agent-capability-skeleton-line,
   .agent-capability-badge.is-connecting .agent-capability-status-dot {
@@ -3000,6 +3037,11 @@
   margin: 0;
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
+}
+
+/* A failed preview must read as an error, not as a muted side note. */
+.sklm-note.is-error {
+  color: var(--ds-error);
 }
 
 .sklm-note-label {

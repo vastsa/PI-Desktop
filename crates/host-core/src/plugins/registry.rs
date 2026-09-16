@@ -25,6 +25,12 @@ pub struct PluginManager {
     pub(crate) bundled_ids: BTreeSet<String>,
     /// Catalog URL pinned by app settings; `None` keeps the official default.
     pub(crate) market_source: Option<String>,
+    /// Locale a row's display fields are resolved against.
+    ///
+    /// The desktop shell owns the app language — `settings.language`, or the
+    /// OS locale while it is `auto` — and pushes it here. Until it does, rows
+    /// read English, which is the source language of the plugin contract.
+    pub(crate) locale: String,
 }
 
 impl PluginManager {
@@ -39,6 +45,7 @@ impl PluginManager {
             runtime: Vec::new(),
             bundled_ids: BTreeSet::new(),
             market_source,
+            locale: "en".into(),
         };
         let _ = mgr.ensure_dirs();
         let _ = mgr.ensure_default_catalog();
@@ -125,6 +132,7 @@ impl PluginManager {
                     ui: manifest.ui.clone(),
                     fs: manifest.fs.clone(),
                     settings: derive_settings(&manifest),
+                    i18n: manifest.i18n.clone(),
                 });
             }
         }
@@ -201,11 +209,38 @@ impl PluginManager {
     }
 
     pub fn list(&self) -> Vec<PluginSummary> {
-        self.runtime.clone()
+        self.runtime
+            .iter()
+            .map(|plugin| plugin.localized(&self.locale))
+            .collect()
     }
 
     pub fn get(&self, id: &str) -> Option<PluginSummary> {
-        self.runtime.iter().find(|p| p.id == id).cloned()
+        self.runtime
+            .iter()
+            .find(|p| p.id == id)
+            .map(|plugin| plugin.localized(&self.locale))
+    }
+
+    /// Follow the app language pushed down by the desktop shell.
+    ///
+    /// Stored rows keep the author's own strings; only reads are resolved, so
+    /// switching language never rewrites the registry.
+    pub fn set_locale(&mut self, locale: &str) {
+        let next = locale.trim();
+        // `auto` is a setting, not a locale: the desktop shell resolves it
+        // before pushing. Storing it would only make every lookup read English.
+        if next.is_empty() || next.eq_ignore_ascii_case("auto") {
+            return;
+        }
+        if next != self.locale {
+            self.locale = next.to_string();
+        }
+    }
+
+    /// Locale a row's display text is resolved against.
+    pub fn locale(&self) -> &str {
+        &self.locale
     }
 
     pub fn reload_from_disk(&mut self) -> Result<()> {
@@ -228,6 +263,7 @@ impl PluginManager {
                 continue;
             };
             plugin.settings = derive_settings(&manifest);
+            plugin.i18n = manifest.i18n.clone();
         }
         Ok(())
     }
@@ -243,9 +279,13 @@ impl PluginManager {
 
     pub(crate) fn upsert_summary(&mut self, summary: PluginSummary) -> Result<PluginSummary> {
         self.runtime.retain(|p| p.id != summary.id);
-        self.runtime.push(summary.clone());
+        // The row is stored as the author wrote it and localized on the way
+        // out, so every reader of this summary gets the same treatment as
+        // `list()` and `get()`.
+        let response = summary.localized(&self.locale);
+        self.runtime.push(summary);
         self.save()?;
-        Ok(summary)
+        Ok(response)
     }
 
     pub fn load_dev(&mut self, plugin_path: &str) -> Result<PluginSummary> {
@@ -276,6 +316,7 @@ impl PluginManager {
             ui: manifest.ui.clone(),
             fs: manifest.fs.clone(),
             settings: derive_settings(&manifest),
+            i18n: manifest.i18n.clone(),
         };
         self.upsert_summary(summary)
     }
@@ -289,7 +330,7 @@ impl PluginManager {
                 "disabled".into()
             };
             plugin.updated_at = Some(Utc::now().to_rfc3339());
-            let out = plugin.clone();
+            let out = plugin.localized(&self.locale);
             self.save()?;
             return Ok(Some(out));
         }
@@ -302,7 +343,7 @@ impl PluginManager {
         if let Some(plugin) = self.runtime.iter_mut().find(|p| p.id == id) {
             plugin.scope = scope.normalized();
             plugin.updated_at = Some(Utc::now().to_rfc3339());
-            let out = plugin.clone();
+            let out = plugin.localized(&self.locale);
             self.save()?;
             return Ok(Some(out));
         }
@@ -313,7 +354,7 @@ impl PluginManager {
         if let Some(plugin) = self.runtime.iter_mut().find(|p| p.id == id) {
             plugin.auto_update = Some(enabled);
             plugin.updated_at = Some(Utc::now().to_rfc3339());
-            let out = plugin.clone();
+            let out = plugin.localized(&self.locale);
             self.save()?;
             return Ok(Some(out));
         }
@@ -368,7 +409,7 @@ impl PluginManager {
                 }
             }
             plugin.updated_at = Some(Utc::now().to_rfc3339());
-            let out = plugin.clone();
+            let out = plugin.localized(&self.locale);
             self.save()?;
             return Ok(Some(out));
         }
@@ -385,7 +426,7 @@ impl PluginManager {
                 .permissions
                 .retain(|p| !permissions.iter().any(|x| x == p));
             plugin.updated_at = Some(Utc::now().to_rfc3339());
-            let out = plugin.clone();
+            let out = plugin.localized(&self.locale);
             self.save()?;
             return Ok(Some(out));
         }

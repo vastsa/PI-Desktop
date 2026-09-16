@@ -322,7 +322,11 @@ generous `fs.read` scope affordable (§6).
 Still open, tracked separately: `agent.prompt.inject` (skill text can ask a
 shell-capable agent to do the carrying), `shell.openExternal`, a `bus.publish`
 relayed to a net-capable plugin, and raw `fetch` inside the plugin process — the
-last one needs the sandboxed plugin runtime from ADR 0008 D009.
+last one needs the sandboxed plugin runtime from ADR 0008 D009. `pi.net.fetch`
+narrows none of that: the host applies the allowlist, follows redirects by hand,
+and audits the call, but it never retries, throttles, or re-issues a request. An
+upstream `429` reaches the plugin as `429` plus whatever `Retry-After` the server
+sent, and what the plugin does about it is the plugin's own policy.
 
 ## 8.1 MCP server egress and credentials
 

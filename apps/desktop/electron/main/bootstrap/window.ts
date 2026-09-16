@@ -2,7 +2,13 @@ import { app, BrowserWindow, nativeTheme, screen, type Tray } from "electron";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { APP_NAME, builtinWindowBackground, IPC, type CloseBehavior } from "@pi-desktop/shared";
+import {
+  APP_NAME,
+  builtinWindowBackground,
+  IPC,
+  MAC_TRAFFIC_LIGHT_POSITION,
+  type CloseBehavior,
+} from "@pi-desktop/shared";
 import type { BrowserPane } from "../browser-view";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
@@ -157,10 +163,13 @@ export async function createWindow({
     // One frameless look everywhere: macOS keeps inset traffic lights;
     // Windows/Linux hide native chrome entirely — the renderer draws its
     // own Codex-style window controls (see WindowControls.tsx).
+    // The traffic-light position comes from @pi-desktop/shared so the space
+    // the renderer reserves for the buttons (styles/tokens.css) is derived
+    // from the same numbers that place them.
     ...(process.platform === "darwin"
       ? {
           titleBarStyle: "hiddenInset" as const,
-          trafficLightPosition: { x: 16, y: 16 },
+          trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
           vibrancy: "sidebar" as const,
           visualEffectState: "followWindow" as const,
           transparent: true,

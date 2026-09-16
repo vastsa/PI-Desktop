@@ -50,18 +50,11 @@ export function ThemeRow({
             ? "settings.themeDark"
             : "settings.themeSystem",
       );
-      const hint = t(
-        id === "light"
-          ? "settings.themeLightDesc"
-          : id === "dark"
-            ? "settings.themeDarkDesc"
-            : "settings.themeSystemDesc",
-      );
       return {
         id,
         title,
-        hint,
-        haystack: `${title} ${hint} ${id}`.toLowerCase(),
+        hint: null,
+        haystack: `${title} ${id}`.toLowerCase(),
         kind: "builtin",
       };
     });

@@ -895,6 +895,12 @@ export function installCaptureRig(): CaptureRig {
           source: "builtin",
         },
       ];
+
+      // The shipped defaults the page lists separately, one of them switched
+      // off, so a capture exercises the switch on a built-in row.
+      const builtinRows = catalog
+        .filter((item) => item.source === "builtin")
+        .map((item, index) => ({ ...item, enabled: index !== 0 }));
       const rowsForQuery = <T extends { level?: string; projectPath?: string }>(
         rows: readonly T[],
         query: { level?: string; projectPath?: string } = {},
@@ -918,6 +924,7 @@ export function installCaptureRig(): CaptureRig {
       (api as any).listUserSubagents = async () => ({ subagents });
       (api as any).subagentCatalog = async () => ({
         subagents: catalog,
+        builtins: builtinRows,
         diagnostics: [],
         projectPath: "/Users/pi/work/api",
       });

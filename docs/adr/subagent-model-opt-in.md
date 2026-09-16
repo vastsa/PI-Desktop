@@ -2,7 +2,7 @@
 
 - Status: Accepted for implementation
 - Date: 2026-09-13
-- Related: D278, ADR 0062, ADR 0089, E2E-166, issue #286
+- Related: D278, ADR 0062, ADR 0089, ADR 0237, E2E-166, issues #286, #386
 
 ## Context
 
@@ -33,6 +33,18 @@ provider id. On-demand provider matching uses the same unique id / vendor /
 name rule as pin resolution; ambiguous vendor aliases fail closed unless the
 caller uses the exact provider id. A changed launch list retires an idle
 runtime on the next prompt, including after opt-in is revoked.
+
+The opt-in belongs to the decision, not to the Task tool: it governs every
+entry point through which the AI picks a model for work it delegates.
+`session/collaboration/spawn` is the second such entry point (ADR 0237), and
+its `modelKey` is that same selection written by a plugin on the agent's
+behalf, so an unopted model is refused with `PERMISSION_DENIED` before a worker
+exists. The inheritance half is unchanged: omitting `modelKey` still takes the
+first opted-in model and otherwise the default, and naming the default model's
+own key is that inheritance spelled out, exactly as repeating a definition's
+own pin is on the Task path. `models.list` keeps reporting every ready model
+with its `availableForSubagents` flag — the flag is advice to the caller and
+authority only in main, which is the side a plugin cannot rewrite (#386).
 
 D278's priority remains Task.model → definition pin → session model. The
 existing exact-session-model exception remains unchanged. Repeating the

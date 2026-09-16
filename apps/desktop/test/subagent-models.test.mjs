@@ -331,7 +331,7 @@ test("the editor exposes the no-pass thinking option", async () => {
   const thinkingField = source.slice(
     source.indexOf('label={t("extensions.subagents.thinking")}'),
   );
-  assert.match(thinkingField, /value="omit"/);
+  assert.match(thinkingField, /id: "omit"/);
   assert.match(thinkingField, /extensions\.subagents\.thinkingOmit/);
   assert.match(thinkingField, /SUBAGENT_THINKING_LEVELS/);
 });

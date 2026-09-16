@@ -777,6 +777,25 @@
   margin-top: 2px;
 }
 
+/*
+  The running-session line is a "these will be stopped" notice, not the
+  destructive warning above it, so it carries the warning tone.
+*/
+.project-delete-dialog-running {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: var(--ds-warning);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.project-delete-dialog-running svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
 .project-delete-dialog-confirm {
   background: var(--ds-error);
   border-color: var(--ds-error);

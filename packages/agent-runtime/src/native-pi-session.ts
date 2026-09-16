@@ -395,7 +395,7 @@ class NativePiRuntime {
     } else if (event.type === "message_start") {
       // The durable entry id is minted when the SDK appends the finished
       // message, so the live row carries a provisional id that the renderer
-      // replaces on `message_end` (D-native-sidechat-stream).
+      // replaces on `message_end`.
       if (event.message.role === "assistant") {
         const content = textContent((event.message as { content?: unknown }).content);
         this.currentAssistant = {

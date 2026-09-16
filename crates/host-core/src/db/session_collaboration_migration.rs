@@ -12,6 +12,9 @@ pub(super) fn migrate(conn: &Connection, path: &Path) -> Result<()> {
     if !has_column {
         tx.execute_batch("ALTER TABLE turn_queue ADD COLUMN session_message_id TEXT;")?;
     }
+    // A v15 file walks the later steps in the same launch (plugin providers
+    // then the turn-queue priority block), so this step only stamps its own
+    // version.
     tx.pragma_update(None, "user_version", 16)?;
     tx.commit()
         .context("commit session collaboration migration")?;

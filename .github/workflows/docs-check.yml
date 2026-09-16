@@ -2,9 +2,10 @@ name: Docs check
 
 # ci.yml ignores docs/** and **/*.md, so documentation drift was never caught.
 # This workflow runs the documentation checks: the English/Chinese pair check,
-# the whole-tree page/ADR check, and a VitePress build, which fails on a dead
-# link anywhere in the tree. `check:release-docs` stays out of CI on purpose
-# because it intentionally fails on rc versions.
+# the whole-tree page/ADR check, the AGENTS.md/CLAUDE.md policy-sync gate, and
+# a VitePress build, which fails on a dead link anywhere in the tree.
+# `check:release-docs` stays out of CI on purpose because it intentionally
+# fails on rc versions.
 
 on:
   push:
@@ -12,6 +13,8 @@ on:
     paths:
       - 'docs/**'
       - 'README*.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
       - 'packages/shared/src/changelog*.ts'
       - 'scripts/check-*.mjs'
       - 'docs/scripts/**'
@@ -20,6 +23,8 @@ on:
     paths:
       - 'docs/**'
       - 'README*.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
       - 'packages/shared/src/changelog*.ts'
       - 'scripts/check-*.mjs'
       - 'docs/scripts/**'
@@ -51,6 +56,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check AGENTS.md / CLAUDE.md policy sync
+        run: pnpm check:agent-policy
 
       - name: Check locale pairs and every documentation page
         run: pnpm docs:check

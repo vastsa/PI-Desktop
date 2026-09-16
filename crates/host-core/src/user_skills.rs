@@ -1,7 +1,9 @@
 use crate::activation::ActivationScope;
 use crate::agent_capabilities::{
-    capability_dir, capability_id, file_timestamp, normalize_project_path, parse_front_matter,
-    path_stem_for_id, slugify, sorted_files, valid_capability_id, CapabilityLevel, CapabilityState,
+    capability_dir, capability_id, copy_directory_tree, display_name_candidate, file_timestamp,
+    move_capability_file, normalize_project_path, parse_front_matter, path_stem_for_id,
+    set_moved_capability_state, slugify, sorted_files, suffixed_capability_id, valid_capability_id,
+    CapabilityLevel, CapabilityState, CapabilityTarget, MAX_ID_SUFFIX,
 };
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -122,6 +124,335 @@ fn merge_active_records(
     result.retain(|record| record.enabled);
     result.sort_by_key(|record| record.name.to_lowercase());
     result
+}
+
+/// The text after the opening `---` line, when `text` really starts frontmatter.
+///
+/// `parse_front_matter` accepts any first line that trims to `---`, so `--- `,
+/// `---\r` and `--- \r\n` all open a block. A stricter check here would send
+/// those documents down the "no frontmatter" path and copy the old block into
+/// the body of a fresh one, leaving two frontmatter blocks in the file.
+fn front_matter_body(text: &str) -> Option<&str> {
+    let newline = text.find('\n')?;
+    let first = text[..newline].trim_end_matches('\r');
+    if first.trim() != "---" {
+        return None;
+    }
+    Some(&text[newline + 1..])
+}
+
+/// Give a skill document the display name a destination needs, rewriting the
+/// frontmatter `name` line and nothing else.
+///
+/// A move that has to rename must not reformat the document: `render_document`
+/// normalizes prose, drops unknown frontmatter keys, and re-indents the body,
+/// which would silently edit a file the user only asked to relocate. Everything
+/// outside the rewritten lines — extra fields, whitespace, line endings — is
+/// copied through byte for byte.
+fn rewrite_document_name(raw: &str, name: &str) -> String {
+    let value = name.replace(['\n', '\r'], " ");
+    let (bom, text) = match raw.strip_prefix('\u{feff}') {
+        Some(rest) => ("\u{feff}", rest),
+        None => ("", raw),
+    };
+    let Some(front) = front_matter_body(text) else {
+        return with_fresh_frontmatter(bom, text, &value);
+    };
+    let mut out = String::with_capacity(raw.len() + value.len() + 16);
+    out.push_str(bom);
+    out.push_str("---\n");
+    let mut cursor = 0usize;
+    let mut replaced = false;
+    while cursor < front.len() {
+        let end = match front[cursor..].find('\n') {
+            Some(at) => cursor + at + 1,
+            None => front.len(),
+        };
+        let line = &front[cursor..end];
+        if line.trim_end_matches(['\n', '\r']).trim() == "---" {
+            if !replaced {
+                out.push_str(&format!("name: {value}\n"));
+            }
+            // The terminator and everything after it, body included, is copied
+            // through untouched.
+            out.push_str(&front[cursor..]);
+            return out;
+        }
+        let top_level = !line.starts_with(' ') && !line.starts_with('\t');
+        let is_name = top_level
+            && line
+                .trim_end_matches(['\n', '\r'])
+                .split_once(':')
+                .is_some_and(|(key, _)| key.trim().eq_ignore_ascii_case("name"));
+        if is_name {
+            if !replaced {
+                out.push_str(&format!("name: {value}\n"));
+                replaced = true;
+            }
+            // A later `name:` line is dropped rather than kept: the parser
+            // inserts into a map, so the *last* line wins. Keeping a stale one
+            // would silently defeat the rename — the document would keep its
+            // old display name while the move claims it was changed.
+        } else {
+            out.push_str(line);
+        }
+        cursor = end;
+    }
+    // An unterminated opening delimiter is not frontmatter (`parse_front_matter`
+    // rejects it), so the text becomes the body of a fresh, complete block.
+    with_fresh_frontmatter(bom, text, &value)
+}
+
+fn with_fresh_frontmatter(bom: &str, text: &str, value: &str) -> String {
+    format!(
+        "{bom}---\nname: {value}\n---\n\n{}",
+        text.trim_start_matches(['\n', '\r'])
+    )
+}
+
+/// The directory a `<skill>/SKILL.md` document owns, when the document really is
+/// the directory shape.
+///
+/// A skill may ship sibling resources next to its `SKILL.md`, so moving one
+/// document is not enough — the directory is the unit. The guard matters: a
+/// loose `SKILL.md` sitting directly in the skills directory has the skills
+/// directory itself as its parent, and treating that as the unit would move
+/// every skill at once.
+fn directory_skill_root(path: &Path, skills_dir: &Path) -> Option<PathBuf> {
+    if !path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("SKILL.md"))
+    {
+        return None;
+    }
+    let dir = path.parent()?;
+    if dir == skills_dir {
+        return None;
+    }
+    Some(dir.to_path_buf())
+}
+
+/// Where an arriving skill document should land, and under which display name.
+struct SkillPlacement {
+    name: String,
+    stem: String,
+}
+
+/// The document a skill with `stem` occupies inside the skills directory.
+///
+/// Directory-shape skills live at `<stem>/SKILL.md` because the scan gives that
+/// document the *directory* name as its path-derived id; flat skills are one
+/// `<stem>.md` file. The two shapes are why the landing path cannot be derived
+/// from the stem alone.
+fn skill_document_path(directory: &Path, stem: &str, shared_directory: bool) -> PathBuf {
+    if shared_directory {
+        directory.join(stem).join("SKILL.md")
+    } else {
+        directory.join(format!("{stem}.md"))
+    }
+}
+
+/// Choose the name and file stem an arriving skill must use at a destination.
+///
+/// The scan, not the move, decides the arriving document's id: it derives the
+/// id from the frontmatter name first and only then from the path. Planning
+/// against the file stem alone therefore mismatches every document whose name
+/// slugs to something else — a Chinese name, or a name whose slug happens to be
+/// another document's id — and a mismatch hides documents: the source is
+/// already gone while the arrival is either not found or loses the scan's
+/// `seen` de-duplication. So every candidate is put through the real
+/// `capability_id` for the exact path it would land on, and only a placement
+/// the scan lists as its own record is accepted. `shared_directory` selects the
+/// destination's shape, because that shape decides what `path_stem_for_id`
+/// reads.
+fn plan_skill_placement(
+    source: &UserSkillRecord,
+    directory: &Path,
+    shared_directory: bool,
+    existing: &[UserSkillRecord],
+) -> Option<SkillPlacement> {
+    let taken_names = existing
+        .iter()
+        .map(|record| record.name.to_lowercase())
+        .collect::<HashSet<_>>();
+    // Ids are compared lowercased, like the filesystem that will hold them.
+    let taken_ids = existing
+        .iter()
+        .map(|record| record.id.to_lowercase())
+        .collect::<HashSet<_>>();
+    for ordinal in 1..=MAX_ID_SUFFIX {
+        let name = display_name_candidate(&source.name, ordinal, MAX_NAME_CHARS);
+        // A duplicate display name makes shadowing merge two records on the
+        // next scan, so the destination may not already have it.
+        if name.is_empty() || taken_names.contains(&name.to_lowercase()) {
+            continue;
+        }
+        // The scan prefers the name's slug, so a valid slug *is* the id the
+        // document will carry and the file stem has to match it.
+        let from_name = slugify(&name, 64);
+        let stem = if valid_capability_id(&from_name, 64) {
+            from_name
+        } else {
+            suffixed_capability_id(&source.id, &taken_ids, 64)?.0
+        };
+        let document_path = skill_document_path(directory, &stem, shared_directory);
+        // Something already on disk at this path is either a listed document
+        // (caught again below) or one the scan refuses to list; never write
+        // over it.
+        if document_path.exists() {
+            continue;
+        }
+        // Simulate the real scan: `capability_id` can still land on an id the
+        // name slug did not predict (the path fallback), and an id collision
+        // makes one of the two documents disappear from the catalog.
+        let id = capability_id(&name, &document_path, 64);
+        if !valid_capability_id(&id, 64) || taken_ids.contains(&id.to_lowercase()) {
+            continue;
+        }
+        return Some(SkillPlacement { name, stem });
+    }
+    None
+}
+
+/// True when a scanned record path names the document a move just wrote.
+///
+/// The record path comes back from a directory scan and the planned path from a
+/// join, so the comparison is normalized and case-insensitive — the same rules
+/// project paths use, and the only rules that hold on a volume that ignores
+/// case.
+fn same_document(record_path: &str, planned: &Path) -> bool {
+    normalize_project_path(record_path)
+        .eq_ignore_ascii_case(&normalize_project_path(&planned.to_string_lossy()))
+}
+
+impl UserSkillRegistry {
+    /// Move one skill between the global directory and a project's.
+    ///
+    /// The document moves instead of being copied: a copy would leave the old
+    /// level holding a skill the user just said belongs somewhere else. When the
+    /// destination already owns the same id or display name the arriving skill
+    /// is renamed, so both survive under names that tell them apart. The
+    /// arriving document's id is read back from a scan by path, because a
+    /// skill's id can come from its name rather than its file stem, and the
+    /// state is written only once that record exists. A landing the scan would
+    /// hide is rolled back to the source instead of stranding the skill.
+    pub fn transfer(
+        &mut self,
+        id: &str,
+        from: &CapabilityTarget,
+        to: &CapabilityTarget,
+    ) -> Result<UserSkillRecord> {
+        let Some(source) = self.find(id, Some(from.level), from.project_path.as_deref())? else {
+            bail!("SKILL_INVALID: unknown skill \"{id}\"");
+        };
+        if from.same_directory(to) {
+            return Ok(source);
+        }
+        let source_path = PathBuf::from(&source.path);
+        let raw = fs::read_to_string(&source_path)
+            .with_context(|| format!("read {}", source_path.display()))?;
+        if raw.len() > MAX_SKILL_BYTES {
+            bail!("SKILL_INVALID: document exceeds {MAX_SKILL_BYTES} bytes");
+        }
+        let existing = self.list(to.level, to.project_path.as_deref())?;
+        if existing.len() >= MAX_SKILLS {
+            bail!("SKILL_INVALID: at most {MAX_SKILLS} skills");
+        }
+
+        let source_dir = capability_dir(from.level, from.project_path.as_deref(), "skills")?;
+        let directory = capability_dir(to.level, to.project_path.as_deref(), "skills")?;
+        let owned_dir = directory_skill_root(&source_path, &source_dir);
+        let shared_directory = owned_dir.is_some();
+        let placement = plan_skill_placement(&source, &directory, shared_directory, &existing)
+            .ok_or_else(|| anyhow::anyhow!("SKILL_INVALID: no free name at the destination"))?;
+        let document_path = skill_document_path(&directory, &placement.stem, shared_directory);
+        let source_unit = owned_dir.clone().unwrap_or_else(|| source_path.clone());
+        let target_unit = if shared_directory {
+            match document_path.parent() {
+                Some(parent) => parent.to_path_buf(),
+                None => directory.join(&placement.stem),
+            }
+        } else {
+            document_path.clone()
+        };
+        let rewritten = placement.name != source.name;
+
+        if !rewritten {
+            move_capability_file(&source_unit, &target_unit)?;
+        } else {
+            let document = rewrite_document_name(&raw, &placement.name);
+            if document.len() > MAX_SKILL_BYTES {
+                bail!("SKILL_INVALID: document exceeds {MAX_SKILL_BYTES} bytes");
+            }
+            if shared_directory && target_unit.exists() {
+                // The destination id is unique at this level, so `<stem>/` is a
+                // directory this move creates. Anything already sitting there
+                // is not this skill's to overwrite or merge into.
+                bail!(
+                    "SKILL_INVALID: destination already exists: {}",
+                    target_unit.display()
+                );
+            }
+            if let Some(parent) = document_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            // Written before the source is removed, so a failure in between
+            // leaves a shadowed duplicate rather than no skill at all.
+            fs::write(&document_path, document)
+                .with_context(|| format!("write {}", document_path.display()))?;
+            if let Some(dir) = &owned_dir {
+                // Only the document travelled; resources beside it are part of
+                // the skill, so the rest of the directory follows. The landing
+                // directory is new, so overwriting a same-named leftover from
+                // an interrupted move is safe.
+                copy_directory_tree(dir, &target_unit, true)?;
+                fs::remove_dir_all(dir)
+                    .map_err(|error| anyhow::anyhow!("remove {}: {error}", dir.display()))?;
+            } else {
+                fs::remove_file(&source_path).map_err(|error| {
+                    anyhow::anyhow!("remove {}: {error}", source_path.display())
+                })?;
+            }
+        }
+
+        // The record is resolved by path, never by the planned stem: the scan
+        // derives the arriving document's id from its name, and the name's slug
+        // is not necessarily the file stem this move chose.
+        let landed = self
+            .list(to.level, to.project_path.as_deref())?
+            .into_iter()
+            .find(|record| same_document(&record.path, &document_path));
+        let Some(moved) = landed else {
+            // The document is on disk but the scan will not list it (empty
+            // body, over the byte limit, or shadowed by a same-id document).
+            // The source is already gone, so the move has to be undone: put the
+            // unit back where it came from and restore the original bytes,
+            // because the rewritten name would give the restored document a
+            // different id. State was never written, so nothing else changes.
+            move_capability_file(&target_unit, &source_unit).map_err(|error| {
+                anyhow::anyhow!(
+                    "SKILL_INVALID: the moved skill was not found and could not be restored to {}: {error}",
+                    source_unit.display()
+                )
+            })?;
+            fs::write(&source_path, &raw)
+                .with_context(|| format!("restore {}", source_path.display()))?;
+            bail!("SKILL_INVALID: moved skill was not found");
+        };
+        set_moved_capability_state(
+            &mut self.state,
+            SKILL_KIND,
+            from.level,
+            &source.id,
+            source.project_path.as_deref(),
+            to,
+            &moved.id,
+            source.enabled,
+        )?;
+        self.find(&moved.id, Some(to.level), to.project_path.as_deref())?
+            .ok_or_else(|| anyhow::anyhow!("SKILL_INVALID: moved skill was not found"))
+    }
 }
 
 impl UserSkillRegistry {
@@ -510,179 +841,4 @@ fn scope_for(level: CapabilityLevel, project_path: Option<&str>) -> ActivationSc
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    fn input(name: &str, level: &str, project_path: Option<&str>) -> UserSkillInput {
-        UserSkillInput {
-            name: Some(name.into()),
-            level: Some(level.into()),
-            project_path: project_path.map(str::to_string),
-            description: Some("Check the relevant files".into()),
-            body: Some("Do the thing.".into()),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn imports_one_file_into_the_selected_agents_directory() {
-        let app = tempdir().unwrap();
-        let source = app.path().join("incoming.md");
-        let raw = "---\nname: Review\ndescription: Check code\n---\n\nDo it.\n";
-        fs::write(&source, raw).unwrap();
-        let mut registry = UserSkillRegistry::new(app.path());
-        let record = registry
-            .import(
-                source.to_str().unwrap(),
-                input("Ignored", "project", Some(app.path().to_str().unwrap())),
-            )
-            .unwrap();
-        let target = app.path().join(".agents/skills/review.md");
-        assert_eq!(record.level.as_deref(), Some("project"));
-        let normalized_project =
-            crate::agent_capabilities::normalize_project_path(app.path().to_str().unwrap());
-        let expected = crate::agent_capabilities::capability_dir(
-            CapabilityLevel::Project,
-            Some(&normalized_project),
-            "skills",
-        )
-        .unwrap()
-        .join("review.md");
-        assert_eq!(record.path, expected.to_string_lossy());
-        assert_eq!(fs::read_to_string(target).unwrap(), raw);
-        assert!(source.is_file());
-    }
-
-    #[test]
-    fn project_skills_shadow_global_skills_by_name() {
-        let app = tempdir().unwrap();
-        let global = app.path().join("global");
-        let project = app.path().join("project");
-        fs::create_dir_all(global.join("skills")).unwrap();
-        fs::create_dir_all(project.join(".agents/skills")).unwrap();
-        fs::write(
-            global.join("skills/review.md"),
-            "---\nname: Review\n---\n\nGlobal\n",
-        )
-        .unwrap();
-        fs::write(
-            project.join(".agents/skills/review.md"),
-            "---\nname: Review\n---\n\nProject\n",
-        )
-        .unwrap();
-        let (fields, body) = parse_front_matter(
-            &fs::read_to_string(project.join(".agents/skills/review.md")).unwrap(),
-        );
-        assert_eq!(fields.get("name").map(String::as_str), Some("Review"));
-        assert_eq!(body, "Project");
-    }
-
-    #[test]
-    fn disabled_project_skill_shadows_global_skill() {
-        let global = UserSkillRecord {
-            id: "review".into(),
-            name: "Review".into(),
-            level: Some("global".into()),
-            project_path: None,
-            description: Some("Global".into()),
-            enabled: true,
-            scope: ActivationScope::default(),
-            source: "imported".into(),
-            path: "/global/review.md".into(),
-            size_bytes: 1,
-            created_at: String::new(),
-            updated_at: String::new(),
-        };
-        let mut project = global.clone();
-        project.level = Some("project".into());
-        project.project_path = Some("/repo".into());
-        project.enabled = false;
-
-        let active = merge_active_records(vec![global.clone()], vec![project]);
-        assert!(active.is_empty());
-
-        let mut project = global.clone();
-        project.level = Some("project".into());
-        project.project_path = Some("/repo".into());
-        project.path = "/repo/.agents/skills/review.md".into();
-        let active = merge_active_records(vec![global], vec![project.clone()]);
-        assert_eq!(active, vec![project]);
-    }
-
-    #[test]
-    fn capability_state_is_not_written_into_skill_documents() {
-        let app = tempdir().unwrap();
-        let mut state = CapabilityState::new(app.path(), SKILL_KIND);
-        state
-            .set_enabled(
-                SKILL_KIND,
-                CapabilityLevel::Project,
-                "review",
-                Some("/repo"),
-                false,
-            )
-            .unwrap();
-        assert!(!app
-            .path()
-            .join("agent-capabilities/skills.json")
-            .to_string_lossy()
-            .contains(".agents"));
-    }
-
-    #[test]
-    fn import_uses_parent_directory_when_name_is_not_ascii() {
-        let app = tempdir().unwrap();
-        let source_dir = app.path().join("incoming/code-review");
-        fs::create_dir_all(&source_dir).unwrap();
-        let source = source_dir.join("SKILL.md");
-        fs::write(
-            &source,
-            "---\nname: 代码审查\ndescription: >\n  Review diffs before merge.\n---\n\nCheck the patch.\n",
-        )
-        .unwrap();
-        let mut registry = UserSkillRegistry::new(app.path());
-        let record = registry
-            .import(
-                source.to_str().unwrap(),
-                input("Ignored", "project", Some(app.path().to_str().unwrap())),
-            )
-            .unwrap();
-        assert_eq!(record.id, "code-review");
-        assert_eq!(record.name, "代码审查");
-        assert_eq!(
-            record.description.as_deref(),
-            Some("Review diffs before merge.")
-        );
-        let listed = registry
-            .list(CapabilityLevel::Project, Some(app.path().to_str().unwrap()))
-            .unwrap();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].id, "code-review");
-        assert_eq!(listed[0].name, "代码审查");
-    }
-
-    #[test]
-    fn directory_skills_do_not_collide_on_the_skill_file_stem() {
-        let app = tempdir().unwrap();
-        let project = app.path().to_str().unwrap();
-        fs::create_dir_all(app.path().join(".agents/skills/pdf")).unwrap();
-        fs::create_dir_all(app.path().join(".agents/skills/docx")).unwrap();
-        fs::write(
-            app.path().join(".agents/skills/pdf/SKILL.md"),
-            "# PDF\n\nExtract text.\n",
-        )
-        .unwrap();
-        fs::write(
-            app.path().join(".agents/skills/docx/SKILL.md"),
-            "# DOCX\n\nEdit documents.\n",
-        )
-        .unwrap();
-        let mut registry = UserSkillRegistry::new(app.path());
-        let listed = registry
-            .list(CapabilityLevel::Project, Some(project))
-            .unwrap();
-        let ids: Vec<_> = listed.iter().map(|record| record.id.as_str()).collect();
-        assert_eq!(ids, vec!["docx", "pdf"]);
-    }
-}
+mod tests;

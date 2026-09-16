@@ -1769,3 +1769,201 @@ fn global_shortcut_entries_are_validated() {
     assert!(read_manifest_err(&not_an_object)
         .contains("contributes.globalShortcuts entry must be an object"));
 }
+
+#[test]
+fn plugin_rows_read_the_i18n_block_for_the_active_locale() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.todo",
+            "name": "小清新待办",
+            "version": "0.1.0",
+            "description": "作者原话",
+            "main": "main.js",
+            "i18n": {
+                "en": { "name": "Todo List", "description": "A calm todo list" },
+                "zh-CN": { "name": "小清新待办", "description": "轻盈的待办清单" }
+            }
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("en");
+    let row = mgr.load_dev(root.to_str().unwrap()).unwrap();
+    assert_eq!(row.name, "Todo List");
+    assert_eq!(row.description.as_deref(), Some("A calm todo list"));
+
+    // Every reader resolves the same way: `list()` and `get()` are what the
+    // Extensions page and the plugin launcher actually draw.
+    mgr.set_locale("zh-CN");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "小清新待办");
+    let listed = mgr
+        .list()
+        .into_iter()
+        .find(|candidate| candidate.id == "acme.todo")
+        .expect("row missing from the list");
+    assert_eq!(listed.description.as_deref(), Some("轻盈的待办清单"));
+
+    // `zh-Hans` is Simplified Chinese. `zh-TW` is not part of the plugin
+    // contract, so it reads English rather than half a translation (ADR 0182).
+    mgr.set_locale("zh-Hans");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "小清新待办");
+    mgr.set_locale("zh-TW");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "Todo List");
+    mgr.set_locale("de");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "Todo List");
+}
+
+#[test]
+fn a_partial_translation_falls_back_per_field() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.partial",
+            "name": "Author name",
+            "version": "0.1.0",
+            "description": "Author description",
+            "main": "main.js",
+            "i18n": { "en": { "name": "English name", "description": "   " } }
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("en");
+    let row = mgr.load_dev(root.to_str().unwrap()).unwrap();
+    assert_eq!(row.name, "English name");
+    // A blank translation must not blank out a usable author description.
+    assert_eq!(row.description.as_deref(), Some("Author description"));
+
+    // A locale with no entry at all falls back to English, not to nothing.
+    mgr.set_locale("fr");
+    assert_eq!(mgr.get("acme.partial").unwrap().name, "English name");
+}
+
+#[test]
+fn a_plugin_without_an_i18n_block_keeps_the_authors_strings() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.plain",
+            "name": "Plain",
+            "version": "0.1.0",
+            "description": "Plain description",
+            "main": "main.js"
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("zh-CN");
+    let row = mgr.load_dev(root.to_str().unwrap()).unwrap();
+    assert_eq!(row.name, "Plain");
+    assert_eq!(row.description.as_deref(), Some("Plain description"));
+}
+
+#[test]
+fn the_registry_never_persists_the_i18n_block() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.stored",
+            "name": "Stored",
+            "version": "0.1.0",
+            "main": "main.js",
+            "i18n": { "en": { "name": "Stored" }, "zh-CN": { "name": "已存" } }
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("zh-CN");
+    mgr.load_dev(root.to_str().unwrap()).unwrap();
+
+    // The registry keeps the author's own language; only reads are localized,
+    // so switching language never rewrites persisted rows.
+    let raw = fs::read_to_string(mgr.registry_path()).unwrap();
+    assert!(!raw.contains("\"i18n\""), "registry persisted i18n: {raw}");
+    assert!(raw.contains("Stored"));
+
+    // A restart re-reads each manifest, so rows are localized again without
+    // the registry having carried anything.
+    let mut reloaded = PluginManager::new(dir.path(), None);
+    reloaded.set_locale("zh-CN");
+    assert_eq!(reloaded.get("acme.stored").unwrap().name, "已存");
+}
+
+#[test]
+fn market_cards_and_details_read_the_catalog_i18n_block() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let mut mgr = offline_manager(dir.path());
+    let mut entry = v2_entry();
+    entry.safety_notes = Some("Reads nothing else".into());
+    entry.i18n = Some(
+        [
+            (
+                "en".to_string(),
+                PluginDisplayI18n {
+                    name: Some("Todo".into()),
+                    description: Some("Publisher-owned plugin".into()),
+                    safety_notes: Some("Reads nothing else".into()),
+                },
+            ),
+            (
+                "zh-CN".to_string(),
+                PluginDisplayI18n {
+                    name: Some("待办".into()),
+                    description: Some("发布者自有的插件".into()),
+                    safety_notes: Some("不读取其他内容".into()),
+                },
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    fs::write(
+        mgr.catalog_path(),
+        serde_json::to_string(&v2_catalog(entry)).unwrap(),
+    )
+    .unwrap();
+
+    mgr.set_locale("zh-CN");
+    let card = mgr.market_search(None, None).unwrap().remove(0);
+    assert_eq!(card.name, "待办");
+    assert_eq!(card.description, "发布者自有的插件");
+    assert_eq!(
+        mgr.market_get("acme.todo").unwrap().safety_notes.as_deref(),
+        Some("不读取其他内容")
+    );
+    // Search matches either language: the card is drawn in one of them, and a
+    // user typing the other must still find it.
+    assert_eq!(
+        mgr.market_search(Some("Publisher-owned"), None)
+            .unwrap()
+            .len(),
+        1
+    );
+
+    mgr.set_locale("en");
+    let card = mgr.market_search(None, None).unwrap().remove(0);
+    assert_eq!(card.name, "Todo");
+    assert_eq!(card.description, "Publisher-owned plugin");
+    assert_eq!(
+        mgr.market_get("acme.todo").unwrap().safety_notes.as_deref(),
+        Some("Reads nothing else")
+    );
+}

@@ -33,6 +33,7 @@ import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShor
 import { FontFamilyRow } from "../../components/settings/FontFamilyRow";
 import { FontSizeRow } from "../../components/settings/FontSizeRow";
 import { LanguageRow } from "../../components/settings/LanguageRow";
+import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 import { ThemeRow } from "../../components/settings/ThemeRow";
 import { NetworkProxySection } from "../../components/settings/NetworkProxySection";
 import { ProjectsPage } from "../../pages/ProjectsPage";
@@ -344,22 +345,24 @@ export function SettingsPage() {
                   title={t("settings.permissionMode")}
                   description={t("settings.permissionModeDesc")}
                 >
-                  <select
-                    className="field-select"
-                    aria-label={t("settings.permissionMode")}
+                  <SettingsMenuSelect
+                    className="settings-permission-select"
+                    label={t("settings.permissionMode")}
                     value={settings.defaultPermissionMode ?? "ask"}
-                    onChange={(e) =>
+                    onChange={(mode) =>
                       void saveSettings({
-                        defaultPermissionMode: e.target.value as GlobalPermissionMode,
+                        defaultPermissionMode: mode as GlobalPermissionMode,
                       })
                     }
-                  >
-                    <option value="ask">{t("settings.permissionModeAsk")}</option>
-                    <option value="accept-edits">
-                      {t("settings.permissionModeAcceptEdits")}
-                    </option>
-                    <option value="auto">{t("settings.permissionModeAuto")}</option>
-                  </select>
+                    options={[
+                      { id: "ask", label: t("settings.permissionModeAsk") },
+                      {
+                        id: "accept-edits",
+                        label: t("settings.permissionModeAcceptEdits"),
+                      },
+                      { id: "auto", label: t("settings.permissionModeAuto") },
+                    ]}
+                  />
                 </SettingsRow>
               </SettingsCard>
 
@@ -448,7 +451,7 @@ export function SettingsPage() {
           {tab === "about" && (
             <div className="settings-stack">
               <SettingsCard>
-                <SettingsRow title={t("settings.application")} description={t("settings.applicationDesc")}>
+                <SettingsRow title={t("settings.application")}>
                   <div className="settings-about-meta">
                     <div className="font-medium">
                       {version?.name || "PI-Desktop"} {version?.version}
@@ -458,7 +461,7 @@ export function SettingsPage() {
                     </div>
                   </div>
                 </SettingsRow>
-                <SettingsRow title={t("settings.logs")} description={t("settings.logsDesc")}>
+                <SettingsRow title={t("settings.logs")}>
                   <Button variant="secondary" onClick={() => void api.openLogs()}>
                     {t("settings.openLogs")}
                   </Button>

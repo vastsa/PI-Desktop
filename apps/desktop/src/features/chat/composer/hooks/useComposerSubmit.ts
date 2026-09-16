@@ -192,12 +192,7 @@ export function useComposerSubmit({
       activeFileReferences,
     );
     const serializedContent = serializeComposerFileReferences(text, activeFileReferences);
-    // Steering is text-only; saved annotations belong to the next send/queue.
-    const state = useAppStore.getState();
-    const annotationsPending = !steering && Boolean(
-      state.activeSessionId && state.responseAnnotations[state.activeSessionId]?.length,
-    );
-    if (!serializedContent && !annotationsPending) return;
+    if (!serializedContent) return;
     if (sendBlocked) {
       if (pasting) showToast(t("chat.pasteInProgress"), { variant: "info" });
       return;

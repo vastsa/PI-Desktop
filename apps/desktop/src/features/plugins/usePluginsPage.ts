@@ -163,6 +163,15 @@ export function usePluginsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, query]);
 
+  // Plugin and catalog labels are resolved in the host, so a language switch
+  // has to re-read the marketplace list; otherwise the previous language stays
+  // on the cards until the user happens to type (ADR 0160).
+  useEffect(() => {
+    if (tab !== "market") return;
+    void refreshMarket(query);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale]);
+
   // Escape closes the detail sheet, but only while it owns the top layer: the
   // permission dialog in front of it handles its own dismissal.
   useEffect(() => {

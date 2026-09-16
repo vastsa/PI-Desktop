@@ -174,6 +174,9 @@ impl Database {
             }
             15 => {}
             16 => {}
+            17 => {
+                migrate_v17_to_v18(&conn, path)?;
+            }
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
                 drop(conn);
@@ -196,6 +199,10 @@ impl Database {
         }
         if migrated_version == 16 {
             super::plugin_providers_migration::migrate(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        }
+        if migrated_version == 17 {
+            migrate_v17_to_v18(&conn, path)?;
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;

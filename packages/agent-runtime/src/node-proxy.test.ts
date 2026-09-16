@@ -1,7 +1,14 @@
 import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
 import { connect, createServer, type Server } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
-import { applyNodeNetworkProxy, proxyBypassMatcher } from "./node-proxy.js";
+import { getGlobalDispatcher } from "undici";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  activeNodeTransportRoute,
+  applyNodeNetworkProxy,
+  PROVIDER_TRANSPORT_REBUILD_MIN_INTERVAL_MS,
+  proxyBypassMatcher,
+  rebuildNodeNetworkTransport,
+} from "./node-proxy.js";
 
 type TestServer = Server | HttpServer;
 
@@ -189,5 +196,108 @@ describe("proxyBypassMatcher", () => {
     expect(matches("localhost", 80)).toBe(true);
     expect(matches("", 80)).toBe(false);
     expect(proxyBypassMatcher("")("localhost", 80)).toBe(false);
+  });
+});
+
+/**
+ * A rebuild is a process-wide action, so its proof is that the swap is not a
+ * teardown: a request already dispatched keeps running on the pool it started
+ * on, and the replaced pool is closed gracefully instead of being destroyed
+ * under another session's request (issue #234).
+ */
+describe("provider transport rebuild", () => {
+  /**
+   * Monotonic synthetic clock. Each test takes a fresh window and may spend one
+   * inside itself (the throttle is process-wide module state), so a window is
+   * two intervals wide: no test can be throttled by the one before it.
+   */
+  let clock = 0;
+  const nextWindow = (): number => {
+    clock += 2 * PROVIDER_TRANSPORT_REBUILD_MIN_INTERVAL_MS;
+    return clock;
+  };
+
+  afterEach(() => {
+    applyNodeNetworkProxy({ mode: "direct" });
+  });
+
+  it("keeps a request that is already in flight and closes the old pool gracefully", async () => {
+    const target = createHttpServer((_request, response) => {
+      setTimeout(() => {
+        response.writeHead(200, { "content-type": "text/plain" });
+        response.end("slow but complete");
+      }, 250);
+    });
+    const port = await listen(target);
+    applyNodeNetworkProxy({ mode: "direct" });
+    const before = getGlobalDispatcher();
+    const closeSpy = vi.spyOn(before, "close");
+    const destroySpy = vi.spyOn(before, "destroy");
+
+    const inFlight = fetch(`http://127.0.0.1:${port}/slow`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const result = rebuildNodeNetworkTransport(nextWindow());
+
+    expect(result.rebuilt).toBe(true);
+    expect(result.route).toBe("direct");
+    expect(getGlobalDispatcher()).not.toBe(before);
+    // `close()` waits for the requests already dispatched; `destroy()` would
+    // have aborted them. (undici's own `close` re-enters the method, so the
+    // count is not asserted — the mode is.)
+    expect(closeSpy).toHaveBeenCalled();
+    expect(destroySpy).not.toHaveBeenCalled();
+    const response = await inFlight;
+    expect(response.status).toBe(200);
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("slow but complete");
+
+    await close(target);
+  });
+
+  it("throttles rebuilds so a long outage cannot churn every session's pool", () => {
+    applyNodeNetworkProxy({ mode: "direct" });
+    const window = nextWindow();
+
+    expect(rebuildNodeNetworkTransport(window).rebuilt).toBe(true);
+    const swapped = getGlobalDispatcher();
+
+    expect(rebuildNodeNetworkTransport(window + 1)).toEqual({
+      rebuilt: false,
+      route: "direct",
+    });
+    expect(getGlobalDispatcher()).toBe(swapped);
+    expect(
+      rebuildNodeNetworkTransport(
+        window + PROVIDER_TRANSPORT_REBUILD_MIN_INTERVAL_MS,
+      ),
+    ).toEqual({ rebuilt: true, route: "direct" });
+    expect(getGlobalDispatcher()).not.toBe(swapped);
+  });
+
+  it("reproduces a custom proxy route instead of falling back to direct", () => {
+    applyNodeNetworkProxy({
+      mode: "custom",
+      url: "http://127.0.0.1:3128",
+    });
+    expect(activeNodeTransportRoute()).toBe("http-proxy");
+    const before = getGlobalDispatcher();
+    const closeSpy = vi.spyOn(before, "close");
+    const destroySpy = vi.spyOn(before, "destroy");
+
+    expect(rebuildNodeNetworkTransport(nextWindow())).toEqual({
+      rebuilt: true,
+      route: "http-proxy",
+    });
+    expect(getGlobalDispatcher()).not.toBe(before);
+    expect(activeNodeTransportRoute()).toBe("http-proxy");
+    expect(closeSpy).toHaveBeenCalled();
+    expect(destroySpy).not.toHaveBeenCalled();
+  });
+
+  it("names the route a proxy scheme and a SOCKS tunnel take", () => {
+    applyNodeNetworkProxy({ mode: "custom", url: "socks5://127.0.0.1:1080" });
+    expect(activeNodeTransportRoute()).toBe("socks5-proxy");
+    applyNodeNetworkProxy({ mode: "direct" });
+    expect(["direct", "environment-proxy"]).toContain(activeNodeTransportRoute());
   });
 });

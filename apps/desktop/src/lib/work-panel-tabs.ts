@@ -2,13 +2,7 @@ export type WorkPanelTabKind =
   | "new"
   | "review"
   | "file"
-  | "plugin"
-  /**
-   * A follow-up conversation opened from a message. The tab id is
-   * `sidechat:<childSessionId>` and the resource is that child session, so the
-   * panel shows a real session without making it the visible one (D-LOCAL-message-quotes).
-   */
-  | "sidechat";
+  | "plugin";
 
 export type WorkPanelTab = {
   id: string;
@@ -164,7 +158,7 @@ export function isKnownWorkPanelTab(tab: WorkPanelTab): boolean {
   return (
     Boolean(tab) &&
     (tab.kind === "new" || tab.kind === "review" ||
-      tab.kind === "file" || tab.kind === "plugin" || tab.kind === "sidechat")
+      tab.kind === "file" || tab.kind === "plugin")
   );
 }
 

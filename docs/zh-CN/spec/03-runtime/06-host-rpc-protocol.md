@@ -290,8 +290,13 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
   存在于持久转录本中时，恢复分支之前的前缀取自转录本而非调用方。幸存
   消息保留所属的 `turn_id`
 - `session.beginTurn`
-- `session.queuePush` / `session.queueList` / `session.queueRemove` —— Host 拥有的
-  回合队列（D386 / ADR 0213，架构 v15）；push 按主体与 key 幂等，每会话最多八条
+- `session.queuePush` / `session.queueList` / `session.queueRemove` /
+  `session.queuePrioritize` / `session.queueReorder` —— Host 拥有的回合队列
+  （D386 / ADR 0213 / ADR 0265，架构 v18）；push 按主体与 key 幂等，每会话最多八条。
+  `queuePrioritize` 把条目的 `priority` 写为其会话优先区块的 `MAX + 1`（追加到区块末尾），
+  对已经带优先级的条目返回 `CONFLICT`；`queueReorder` 让一个未优先条目与其相邻的未优先
+  条目互换并返回 `{ moved }`。列出与投递顺序为：已优先条目按 `priority` 升序，其余按
+  `position` 升序
 - `session.endTurn` — 以原子方式将正在运行的回合移动到其终止状态，并且
 有条件地返回新创建的 `completed`/`error` 通知；它还会落定该会话的进行中回复
   检查点（D299）：`completed`/`error` 移除它；`recoverInflight: true`（sidecar

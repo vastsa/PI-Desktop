@@ -20,10 +20,18 @@ function load(relative, imports) {
   return module.exports;
 }
 
+// The real model helpers, not a stub: the opt-in flag has to survive the whole
+// way from `providers.list` through the plugin model list into the spawn
+// decision, and a hand-written stub would prove only the last step.
+const pluginAgentComplete = load("../electron/main/plugin-agent-complete.ts", {
+  "@pi-desktop/agent-runtime": await import("@pi-desktop/agent-runtime"),
+  "@pi-desktop/shared": await import("@pi-desktop/shared"),
+});
+
 const { createSessionCollaborationService } = load("../electron/main/services/session-collaboration.ts", {
   "node:crypto": crypto,
   "../agent-host-bridge": { DESKTOP_PRINCIPAL: { kind: "desktop" } },
-  "../plugin-agent-complete": {},
+  "../plugin-agent-complete": pluginAgentComplete,
 });
 
 function createHost(name, respond = () => ({})) {
@@ -233,4 +241,93 @@ test("an omitted session message kind defaults to message", async () => {
     assert.equal(send.length, 1);
     assert.equal(send[0].params.kind, kind ?? "message");
   }
+});
+
+// Spawning a worker is the agent choosing a model for work it delegates, so
+// the per-model "Available for AI delegation" opt-in governs it the same way
+// it governs `Task.model` (#386).
+const SPAWN_PROVIDERS = [
+  {
+    id: "provider-a",
+    name: "Provider A",
+    enabled: true,
+    authKind: "none",
+    models: [
+      { id: "default-model" },
+      { id: "private-model" },
+      { id: "delegable-model", availableForSubagents: true },
+    ],
+  },
+];
+
+function spawnHost() {
+  const stored = sessionMessage({ id: "spawn-message", status: "completed", kind: "task" });
+  return createHost("host-1", (method) => {
+    if (method === "providers.list") return { providers: SPAWN_PROVIDERS };
+    if (method === "settings.get") {
+      return { defaultProviderId: "provider-a", defaultModelId: "default-model" };
+    }
+    if (method === "session.collaboration.spawn") return { message: stored };
+    if (method === "session.collaboration.message") return { message: stored };
+    return { messages: [] };
+  });
+}
+
+function invokeSpawn(service, args) {
+  return service.invoke({
+    operation: "session/collaboration/spawn",
+    source: "plugin",
+    args: [args],
+    pluginContext: {
+      pluginId: "demo-plugin",
+      sessionId: "source-session",
+      turnId: "turn-1",
+      invocationId: "invocation-1",
+    },
+  });
+}
+
+function spawnService(host) {
+  return createService({ getHost: () => host, activeTurns: { "source-session": "turn-1" } }).service;
+}
+
+test("spawn refuses a model the user did not enable for AI delegation (#386)", async () => {
+  const host = spawnHost();
+
+  await assert.rejects(
+    invokeSpawn(spawnService(host), { task: "Review the diff", modelKey: "provider-a/private-model" }),
+    { code: "PERMISSION_DENIED", message: /not enabled for AI delegation/ },
+  );
+  assert.deepEqual(methodCalls(host, "session.collaboration.spawn"), []);
+});
+
+test("spawn accepts a model enabled for AI delegation (#386)", async () => {
+  const host = spawnHost();
+
+  await invokeSpawn(spawnService(host), { task: "Review the diff", modelKey: "provider-a/delegable-model" });
+
+  const spawns = methodCalls(host, "session.collaboration.spawn");
+  assert.equal(spawns.length, 1);
+  assert.equal(spawns[0].params.providerId, "provider-a");
+  assert.equal(spawns[0].params.modelId, "delegable-model");
+});
+
+test("spawn treats the default model's own key as inheritance, not a selection (#386)", async () => {
+  const host = spawnHost();
+
+  await invokeSpawn(spawnService(host), { task: "Review the diff", modelKey: "provider-a/default-model" });
+
+  const spawns = methodCalls(host, "session.collaboration.spawn");
+  assert.equal(spawns.length, 1);
+  assert.equal(spawns[0].params.modelId, "default-model");
+});
+
+test("spawn without a model key still prefers an enabled model over the default (#386)", async () => {
+  const host = spawnHost();
+
+  await invokeSpawn(spawnService(host), { task: "Review the diff" });
+
+  const spawns = methodCalls(host, "session.collaboration.spawn");
+  assert.equal(spawns.length, 1);
+  assert.equal(spawns[0].params.modelId, "delegable-model");
 });

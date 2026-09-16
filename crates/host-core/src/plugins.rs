@@ -32,10 +32,15 @@ pub use marketplace::{
 };
 pub use model::{
     InstallOptions, InstallResult, MarketDownloadInfo, MarketPluginDetail, MarketPluginSummary,
-    MarketProvenance, MarketReview, MarketVersion, PluginMarketplaceMeta, PluginSettingDefinition,
-    PluginSettingOption, PluginSummary, PluginUiMeta, PluginUpdateInfo, PluginYankNotice,
+    MarketProvenance, MarketReview, MarketVersion, PluginDisplayI18n, PluginI18nMap,
+    PluginMarketplaceMeta, PluginSettingDefinition, PluginSettingOption, PluginSummary,
+    PluginUiMeta, PluginUpdateInfo, PluginYankNotice,
 };
 pub(crate) use model::{MarketCatalogEntry, MarketCatalogFile};
+
+/// Locale resolution for plugin/catalog display strings, shared by the
+/// registry and the marketplace readers.
+pub(crate) use model::localized_field;
 pub use registry::PluginManager;
 
 // Domain modules share a small set of crate-private helpers. Re-exporting them

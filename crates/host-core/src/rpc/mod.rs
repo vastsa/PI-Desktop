@@ -1173,6 +1173,40 @@ fn parse_capability_query(
     Ok((level, project_path))
 }
 
+/// Read one end of a move from a nested `{ level, projectPath }` object.
+///
+/// A move names two directories at once, so unlike the single-level queries it
+/// reads a named key instead of the flat params, and the two ends can never be
+/// confused for each other. `level` must be present and a string: defaulting a
+/// missing or non-string level to `global` would silently write a capability
+/// into the wrong directory, so it is rejected as invalid params instead.
+fn parse_capability_target(
+    params: &Value,
+    key: &str,
+) -> Result<crate::agent_capabilities::CapabilityTarget, JsonRpcError> {
+    let source = params
+        .get(key)
+        .ok_or_else(|| rpc_err(1002, format!("{key} required"), "INVALID_PARAMS"))?;
+    let level = match source.get("level") {
+        Some(Value::String(level)) => CapabilityLevel::parse(Some(level))
+            .map_err(|error| capability_err(error.to_string()))?,
+        _ => {
+            return Err(rpc_err(
+                1002,
+                format!("{key}.level must be 'global' or 'project'"),
+                "INVALID_PARAMS",
+            ))
+        }
+    };
+    let project_path = source
+        .get("projectPath")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|value| !value.trim().is_empty());
+    crate::agent_capabilities::CapabilityTarget::new(level, project_path.as_deref())
+        .map_err(|error| capability_err(error.to_string()))
+}
+
 async fn handle_request(
     state: Arc<Mutex<AppState>>,
     method: &str,
@@ -1625,6 +1659,15 @@ async fn handle_request(
             // `market.refresh` after switching sources.
             let market_source = crate::plugins::market_source_from_settings(Some(&settings));
             st.plugins.set_market_source(market_source);
+            // A concrete app language pins the plugin display locale here, so a
+            // shell that only writes settings still gets localized plugin rows.
+            // `auto` is resolved by the shell and pushed through
+            // `plugins.setLocale`.
+            if let Some(language) = settings.get("language").and_then(Value::as_str) {
+                if language != "auto" {
+                    st.plugins.set_locale(language);
+                }
+            }
             crate::network_proxy::apply_from_settings(Some(&settings));
             Ok(json!({ "ok": true }))
         }
@@ -2406,9 +2449,41 @@ async fn handle_request(
                 .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
             let st = state.lock().await;
             let entry = turn_queue::prioritize(&st.db, id)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                .map_err(|e| {
+                    let message = e.to_string();
+                    if message == "ALREADY_PRIORITIZED" {
+                        rpc_err(1008, message, "CONFLICT")
+                    } else {
+                        rpc_err(1000, message, "INTERNAL")
+                    }
+                })?
                 .ok_or_else(|| rpc_err(1007, "queue entry not found", "NOT_FOUND"))?;
             Ok(json!({ "entry": entry }))
+        }
+        "session.queueReorder" => {
+            let id = params
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
+            let direction = params
+                .get("direction")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "direction required", "INVALID_PARAMS"))?;
+            let direction = match direction {
+                "up" => turn_queue::ReorderDirection::Up,
+                "down" => turn_queue::ReorderDirection::Down,
+                other => {
+                    return Err(rpc_err(
+                        1002,
+                        format!("unknown direction: {other}"),
+                        "INVALID_PARAMS",
+                    ))
+                }
+            };
+            let st = state.lock().await;
+            let moved = turn_queue::reorder(&st.db, id, direction)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "moved": moved }))
         }
 
         "notification.list" => {
@@ -3715,6 +3790,18 @@ async fn handle_request(
             Ok(json!({ "requests": st.permissions.pending_requests(session_id) }))
         }
 
+        "plugins.setLocale" => {
+            // The desktop shell owns the app language — `settings.language`, or
+            // the OS locale while that is `auto` — so it pushes the resolved
+            // locale here whenever it changes. Rows then read their display
+            // strings from the matching `i18n` entry, and a locale change needs
+            // no registry rewrite.
+            let locale = params.get("locale").and_then(Value::as_str).unwrap_or("");
+            let mut st = state.lock().await;
+            st.plugins.set_locale(locale);
+            Ok(json!({ "ok": true, "locale": st.plugins.locale() }))
+        }
+
         "plugins.list" => {
             let st = state.lock().await;
             Ok(json!({ "plugins": st.plugins.list() }))
@@ -4013,6 +4100,17 @@ async fn handle_request(
             let server = st.mcp_servers.set_scope(&id, scope).map_err(scope_err)?;
             Ok(json!({ "server": server }))
         }
+        "mcp.transfer" => {
+            let id = require_id(&params)?;
+            let from = parse_capability_target(&params, "from")?;
+            let to = parse_capability_target(&params, "to")?;
+            let mut st = state.lock().await;
+            let server = st
+                .mcp_servers
+                .transfer(&id, &from, &to)
+                .map_err(scope_err)?;
+            Ok(json!({ "server": server }))
+        }
 
         "skills.list" => {
             let (level, project_path) = parse_capability_query(&params)?;
@@ -4109,6 +4207,17 @@ async fn handle_request(
             let skill = st.user_skills.set_scope(&id, scope).map_err(skill_err)?;
             Ok(json!({ "skill": skill }))
         }
+        "skills.transfer" => {
+            let id = require_id(&params)?;
+            let from = parse_capability_target(&params, "from")?;
+            let to = parse_capability_target(&params, "to")?;
+            let mut st = state.lock().await;
+            let skill = st
+                .user_skills
+                .transfer(&id, &from, &to)
+                .map_err(skill_err)?;
+            Ok(json!({ "skill": skill }))
+        }
 
         "agents.list" => {
             let mut st = state.lock().await;
@@ -4170,6 +4279,23 @@ async fn handle_request(
                 .set_scope(&id, scope)
                 .map_err(subagent_err)?;
             Ok(json!({ "subagent": subagent }))
+        }
+        "agents.disabledBuiltins" => {
+            let st = state.lock().await;
+            Ok(json!({ "disabled": st.user_subagents.disabled_builtins() }))
+        }
+        "agents.setBuiltinEnabled" => {
+            let id = require_id(&params)?;
+            let enabled = params
+                .get("enabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let mut st = state.lock().await;
+            let id = st
+                .user_subagents
+                .set_builtin_enabled(&id, enabled)
+                .map_err(subagent_err)?;
+            Ok(json!({ "id": id, "enabled": enabled }))
         }
 
         "market.refresh" => {
@@ -4316,10 +4442,11 @@ mod tests {
     use tokio::sync::{mpsc, Mutex};
 
     use super::{
-        capability_err, handle_request, parse_capability_query, peek_jsonrpc_id, provider_rpc_err,
-        resolve_plan_workspace, resolve_tool_workspace, resolve_tool_workspace_for_call, scope_err,
-        skill_err,
+        capability_err, handle_request, parse_capability_query, parse_capability_target,
+        peek_jsonrpc_id, provider_rpc_err, resolve_plan_workspace, resolve_tool_workspace,
+        resolve_tool_workspace_for_call, scope_err, skill_err,
     };
+    use crate::agent_capabilities::CapabilityLevel;
     use crate::plans::{PlanResolveParams, PlanSubmitParams};
     use crate::scheduled;
     use crate::sessions;
@@ -4356,6 +4483,42 @@ mod tests {
             capability_err("missing project").data.unwrap()["errorCode"],
             "CAPABILITY_INVALID"
         );
+    }
+
+    #[test]
+    fn capability_target_requires_an_explicit_string_level() {
+        // A missing or non-string level must not fall back to `global`: that
+        // would write the capability into the wrong directory without telling
+        // the caller.
+        let missing = parse_capability_target(&json!({ "to": { "projectPath": "/p" } }), "to")
+            .expect_err("a target without a level is invalid");
+        assert_eq!(missing.code, 1002);
+        assert_eq!(
+            missing.data.as_ref().unwrap()["errorCode"],
+            json!("INVALID_PARAMS")
+        );
+
+        let wrong_type = parse_capability_target(&json!({ "to": { "level": 5 } }), "to")
+            .expect_err("a non-string level is invalid");
+        assert_eq!(wrong_type.code, 1002);
+        assert_eq!(
+            wrong_type.data.as_ref().unwrap()["errorCode"],
+            json!("INVALID_PARAMS")
+        );
+
+        let absent = parse_capability_target(&json!({}), "from")
+            .expect_err("the named end of a move is required");
+        assert_eq!(absent.code, 1002);
+
+        let project = parse_capability_target(
+            &json!({ "to": { "level": "project", "projectPath": "/p" } }),
+            "to",
+        )
+        .unwrap();
+        assert_eq!(project.level, CapabilityLevel::Project);
+        let global =
+            parse_capability_target(&json!({ "to": { "level": "global" } }), "to").unwrap();
+        assert_eq!(global.level, CapabilityLevel::Global);
     }
 
     #[test]
@@ -7847,5 +8010,71 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM notifications", [], |row| row.get(0))
             .unwrap();
         assert_eq!(remaining, 0);
+    }
+
+    #[tokio::test]
+    async fn plugin_labels_follow_the_pushed_app_language() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let tx = mpsc::unbounded_channel().0;
+
+        // A concrete app language in settings pins the locale even before the
+        // shell pushes one.
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "language": "zh-CN" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        {
+            let st = state.lock().await;
+            assert_eq!(st.plugins.locale(), "zh-CN");
+        }
+
+        // `auto` is a setting, not a locale: the shell resolves it, and the
+        // host must not start reading `zh-CN` off the raw value.
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "language": "auto" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        {
+            let st = state.lock().await;
+            assert_eq!(st.plugins.locale(), "zh-CN");
+        }
+
+        let pushed = handle_request(
+            state.clone(),
+            "plugins.setLocale",
+            json!({ "locale": "en-US" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(pushed["locale"], "en-US");
+        {
+            let st = state.lock().await;
+            assert_eq!(st.plugins.locale(), "en-US");
+        }
+
+        // Neither an empty value nor `auto` overwrites the resolved locale.
+        for value in [
+            json!({ "locale": "" }),
+            json!({ "locale": "auto" }),
+            json!({}),
+        ] {
+            handle_request(state.clone(), "plugins.setLocale", value, tx.clone())
+                .await
+                .unwrap();
+        }
+        let st = state.lock().await;
+        assert_eq!(st.plugins.locale(), "en-US");
     }
 }

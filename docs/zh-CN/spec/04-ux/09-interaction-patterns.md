@@ -851,9 +851,16 @@ Mode/provider/model/permission/shell 配置和新提示仍然存在
   （预订始终为 0）。
 - 后台会话工件永远不会更新可见面板。
 
-- 预览模式会卸载 MainChat，让工作面板填充侧边栏之外的客户区。窗口级 46px
-  chrome 行保留新建任务、侧边栏和本机窗口控件；侧边栏折叠时，macOS 窗口模式
-  左侧预留 76px，全屏预留 8px 给交通灯。
+- Preview mode unmounts MainChat and fills the client area beside the sidebar.
+  The 46px chrome row keeps shell/native controls but declares neither drag nor
+  no-drag across the panel and passes pointer events through outside controls.
+  The panel header alone owns dragging in the preview pane; its border box
+  excludes shell actions plus an 8px gap in both sidebar states on all platforms.
+  The left inset is 8px except collapsed-sidebar windowed macOS (88px through
+  `--ds-window-lead-inset`: the 76px native cluster edge from
+  `@pi-desktop/shared` plus a 12px gap).
+  Native clicks must operate controls and empty-header drags must move the
+  window; DOM/CDP clicks alone are not native hit-test proof.
 
 展开侧边栏固定为 275px。折叠/展开只改变列是否存在；历史上的调整大小手柄
 会隐藏，旧的宽度偏好不会继续持久化。

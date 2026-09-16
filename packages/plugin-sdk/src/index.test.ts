@@ -724,3 +724,45 @@ describe("contributes.providers", () => {
     );
   });
 });
+
+describe("manifest i18n", () => {
+  it("keeps a per-locale display block on the manifest", () => {
+    const result = validateManifest({
+      ...base,
+      description: "小清新待办",
+      i18n: {
+        en: { name: "Todo List", description: "A calm todo list" },
+        "zh-CN": {
+          name: "小清新待办",
+          description: "轻盈的待办清单",
+          safetyNotes: "只读写自己的数据",
+        },
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.i18n?.en.name).toBe("Todo List");
+    expect(result.manifest?.i18n?.["zh-CN"].name).toBe("小清新待办");
+  });
+
+  it("accepts a partial block, which falls back per field", () => {
+    expect(validateManifest({ ...base, i18n: { en: { name: "Hello" } } }).ok).toBe(true);
+    // A locale the shell does not read, and an unknown display field, are the
+    // author's business rather than a load failure.
+    expect(validateManifest({ ...base, i18n: { ja: { name: "ハロー" } } }).ok).toBe(true);
+    expect(
+      validateManifest({ ...base, i18n: { en: { name: "Hello", tagline: "x" } } as never }).ok,
+    ).toBe(true);
+  });
+
+  it("refuses a malformed block", () => {
+    expect(validateManifest({ ...base, i18n: [] as never }).error).toMatch(
+      /manifest\.i18n must be an object/,
+    );
+    expect(validateManifest({ ...base, i18n: { "zh-CN": "小清新待办" } as never }).error).toMatch(
+      /manifest\.i18n\.zh-CN must be an object/,
+    );
+    expect(validateManifest({ ...base, i18n: { en: { name: 7 } } as never }).error).toMatch(
+      /manifest\.i18n\.en\.name must be a string/,
+    );
+  });
+});

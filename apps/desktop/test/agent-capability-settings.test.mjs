@@ -314,7 +314,13 @@ test("capability state stays outside capability files and active merge shadows d
   const skillRegistry = read("../../../crates/host-core/src/user_skills.rs");
   assert.match(capabilities, /agent-capabilities/);
   assert.match(mcpRegistry, /\.agents\/servers/);
-  assert.match(skillRegistry, /\.agents\/skills/);
+  // `.agents/skills` was only ever spelled in this file's own Rust test
+  // fixtures, which now live beside the module they cover
+  // (crates/host-core/src/user_skills/tests.rs). Pin the production pair
+  // instead: the skills leaf the registry resolves, and the `.agents` root
+  // capability_dir resolves it under.
+  assert.match(capabilities, /pub const AGENTS_DIR: &str = "\.agents";/);
+  assert.match(skillRegistry, /capability_dir\([^;]*"skills"/);
   assert.match(mcpRegistry, /existing\.id != record\.id/);
   assert.match(mcpRegistry, /if record\.enabled \{/);
   assert.match(skillRegistry, /existing\.id != record\.id/);
@@ -327,23 +333,113 @@ test("all capability paths are agents roots, not legacy capability directories",
   }
 });
 
-test("Settings lists shipped builtin subagents as read-only rows", () => {
+test("Settings lists shipped builtin subagents with a switch of their own", () => {
+  const api = read("../src/lib/api.ts");
   assert.match(subagentSettings, /api\.subagentCatalog/);
   assert.match(subagentSettings, /item\.source === "builtin"/);
   assert.match(subagentSettings, /fallbackBuiltinDefinitions/);
   assert.match(subagentSettings, /owned\.filter\(\(row\) => row\.enabled\)/);
+  assert.match(subagentSettings, /catalog\.builtins/);
   assert.match(subagents, /extensions\.subagents\.sourceBuiltin/);
   assert.match(subagents, /extensions\.subagents\.copy/);
   assert.match(subagents, /draftFromDefinition/);
   assert.match(subagents, /copyBuiltin/);
   assert.match(subagents, /presetId: definition\.name/);
   assert.match(subagents, /initialPresetId=\{editor\.presetId\}/);
-  // Builtins are not files: no enablement switch, reveal, or delete on those rows.
+  // A builtin row keeps its badge and Copy as mine, gains the switch, and still
+  // has no Reveal or Delete: there is no file behind it.
   const builtinRow = subagents.slice(
     subagents.indexOf("const renderBuiltin"),
     subagents.indexOf("const renderRow"),
   );
   assert.notEqual(builtinRow, "", "builtin row renderer should be present");
-  assert.doesNotMatch(builtinRow, /CapabilityToggle|setUserSubagentEnabled|revealSubagent|removeUserSubagent/);
   assert.match(builtinRow, /IconCopy/);
+  assert.match(builtinRow, /<CapabilityToggle/);
+  assert.match(builtinRow, /checked=\{definition\.enabled\}/);
+  assert.doesNotMatch(
+    builtinRow,
+    /setUserSubagentEnabled|revealSubagent|removeUserSubagent/,
+  );
+  // The switch writes builtin activation, flipping locally first like the rows
+  // that own a document do.
+  const toggle = subagents.slice(
+    subagents.indexOf("const toggleBuiltin = async"),
+    subagents.indexOf("const openEdit = async"),
+  );
+  assert.notEqual(toggle, "", "builtin toggle should be present");
+  assert.match(toggle, /api\.setBuiltinSubagentEnabled\(handle, next\)/);
+  assert.match(toggle, /enabled: next/);
+  assert.doesNotMatch(toggle.slice(0, toggle.indexOf("catch")), /await load\(\)/);
+  assert.match(toggle, /catch[\s\S]*?enabled: builtin\.enabled/);
+  assert.match(api, /setBuiltinSubagentEnabled: \(id: string, enabled: boolean\) =>/);
+});
+
+test("a capability can be moved between the global and a project level", () => {
+  const api = read("../src/lib/api.ts");
+  const protocol = read("../../../packages/shared/src/protocol.ts");
+  const sharedTypes = read("../../../packages/shared/src/types/capabilities.ts");
+  const mcpIpc = readMainModuleSync("ipc/mcp-ipc.ts");
+  const rpc = read("../../../crates/host-core/src/rpc/mod.rs");
+  const capabilities = read("../../../crates/host-core/src/agent_capabilities.rs");
+  const mcpRegistry = read("../../../crates/host-core/src/mcp_servers.rs");
+  const skillRegistry = read("../../../crates/host-core/src/user_skills.rs");
+
+  // Both ends travel with the request, so a global source that names a project
+  // as its enablement context is never mistaken for the destination.
+  assert.match(
+    sharedTypes,
+    /export type AgentCapabilityMove = \{[\s\S]*?from: AgentCapabilityTarget;[\s\S]*?to: AgentCapabilityTarget;/,
+  );
+  assert.match(protocol, /mcpTransfer: "pi-desktop\/mcp\/transfer"/);
+  assert.match(protocol, /skillTransfer: "pi-desktop\/skill\/transfer"/);
+  assert.match(api, /transferMcpServer: \(move: AgentCapabilityMove\) =>/);
+  assert.match(api, /transferUserSkill: \(move: AgentCapabilityMove\) =>/);
+  assert.match(mcpIpc, /host\.call<\{ server: McpServerRecord \}>\("mcp\.transfer", payload\)/);
+  assert.match(
+    skillImport,
+    /host\.call<\{ skill: UserSkillRecord \}>\("skills\.transfer", payload\)/,
+  );
+  assert.match(rpc, /"mcp\.transfer" =>/);
+  assert.match(rpc, /"skills\.transfer" =>/);
+
+  // The host moves the document instead of copying it, so the source level
+  // stops listing it, and the enabled value follows it to the new level. The
+  // state entry dropped is the source owner's, never another project's.
+  assert.match(capabilities, /pub fn set_moved_capability_state\(/);
+  assert.match(
+    capabilities,
+    /state\.forget\(kind, source_level, source_id, source_project_path\)\?;/,
+  );
+  assert.match(capabilities, /pub fn move_capability_file\(/);
+  assert.match(mcpRegistry, /pub fn transfer\(/);
+  assert.match(skillRegistry, /pub fn transfer\(/);
+  // A destination that already owns the id or name keeps both by renaming.
+  assert.match(capabilities, /pub fn suffixed_capability_id\(/);
+  assert.match(capabilities, /pub fn suffixed_display_name\(/);
+  // A directory-shaped skill carries its sibling resources, so the directory is
+  // the unit, not the one markdown file.
+  assert.match(skillRegistry, /fn directory_skill_root\(/);
+  assert.match(skillRegistry, /copy_directory_tree\(dir, &target_unit, true\)/);
+  // Renaming must not reformat the document it edits.
+  assert.match(skillRegistry, /fn rewrite_document_name\(/);
+  assert.doesNotMatch(
+    skillRegistry.slice(
+      skillRegistry.indexOf("pub fn transfer("),
+      skillRegistry.indexOf("pub fn new(data_dir"),
+    ),
+    /render_document/,
+  );
+});
+
+test("the move action offers a level only when there is a destination", () => {
+  for (const source of [skills, mcp]) {
+    assert.match(source, /settings\.capabilityMoveToGlobal/);
+    assert.match(source, /settings\.capabilityMoveToProject/);
+    assert.match(source, /settings\.capabilityMovedRenamed/);
+    assert.match(source, /IconArrowUpDown/);
+    // The project picker owns the destination, so a global row has nowhere to
+    // go until a project is selected; a project row always has Global.
+    assert.match(source, /moveTarget\[level === "global" \? "project" : "global"\]/);
+    assert.match(source, /showToast\(t\("settings\.selectProjectFirst"\)/);
+  }
 });

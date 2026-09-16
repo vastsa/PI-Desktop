@@ -105,6 +105,19 @@
   color: var(--ds-text-primary);
 }
 
+/* Icon-only control geometry. `.icon-btn` (styles/composer.css) is shared with
+   label-driven pills and takes its width from its content — glyph plus padding
+   — so an icon-only use states the square instead: both axes pinned to the same
+   token, `flex: 0 0` so a crowded toolbar row cannot shrink it back out of
+   square, and no side padding, which under the global `border-box` would
+   otherwise leave a 12px content box for a 15px glyph. */
+.icon-btn.icon-btn-square {
+  width: var(--ds-control-size);
+  height: var(--ds-control-size);
+  flex: 0 0 var(--ds-control-size);
+  padding: 0;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -137,14 +150,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in oklab, #000 45%, transparent);
+  background: var(--ds-scrim);
   padding: 24px;
   animation: overlay-in var(--motion-duration-normal) var(--motion-ease-out) both;
-}
-
-:root[data-theme="light"] .overlay {
-  /* Lighter scrim keeps elevated white dialogs readable without a heavy veil. */
-  background: color-mix(in oklab, #1a1c1f 28%, transparent);
 }
 
 .dialog {

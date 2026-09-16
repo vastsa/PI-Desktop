@@ -552,6 +552,27 @@ pub(crate) fn migrate_v14_to_v15_tx(tx: &rusqlite::Transaction<'_>) -> Result<()
     Ok(())
 }
 
+/// v18 adds the nullable `priority` column to the turn queue. A promoted entry
+/// ("send now") leaves before the plain queue, in the order it was promoted;
+/// existing rows stay NULL and keep their `position` order.
+pub(crate) fn migrate_v17_to_v18_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    let has_queue: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'turn_queue')",
+        [],
+        |row| row.get(0),
+    )?;
+    let has_priority: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('turn_queue') WHERE name = 'priority')",
+        [],
+        |row| row.get(0),
+    )?;
+    if has_queue && !has_priority {
+        tx.execute_batch("ALTER TABLE turn_queue ADD COLUMN priority INTEGER;")?;
+    }
+    tx.pragma_update(None, "user_version", 18i64)?;
+    Ok(())
+}
+
 pub(crate) fn migration_backup_path(path: &Path, version: i64) -> PathBuf {
     path.with_extension(format!("sqlite.v{version}.bak"))
 }
@@ -743,6 +764,18 @@ pub(crate) fn migrate_v14_to_v15(conn: &Connection, path: &Path) -> Result<()> {
     tx.commit().with_context(|| {
         format!(
             "commit schema v14 to v15 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}
+pub(crate) fn migrate_v17_to_v18(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 17)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v17_to_v18_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v17 to v18 migration; backup {} remains",
             backup.display()
         )
     })?;

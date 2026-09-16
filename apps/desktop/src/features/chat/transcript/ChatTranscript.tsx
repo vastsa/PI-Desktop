@@ -1,4 +1,4 @@
-import { memo, useContext } from "react";
+import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanningState, UiMessage } from "@pi-desktop/shared";
 import { proposalKindForMode } from "@pi-desktop/shared";
@@ -16,12 +16,10 @@ import {
   WorkingIndicator,
 } from "./ActivityGroup";
 import { TranscriptHistory, TranscriptTail } from "./AssistantTurn";
-import { TranscriptReadOnlyContext, useActiveSessionTitle } from "./context";
-import { SelectionQuoteButton } from "../../../components/SelectionQuoteButton";
-import { ResponseAnnotationOverlay } from "../../../components/ResponseAnnotationOverlay";
 import { useTranscriptScroll } from "./hooks/useTranscriptScroll";
 import type { TranscriptSearchTarget } from "../../../lib/transcript-reading";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
+import { DisclosureAnchorContext } from "../../../lib/disclosure-anchor-context";
 
 export const ChatTranscript = memo(function ChatTranscript({
   sessionId,
@@ -66,8 +64,6 @@ export const ChatTranscript = memo(function ChatTranscript({
 }) {
   const { t } = useTranslation();
   const transcriptRunning = isRunning && !readingWindow;
-  const transcriptReadOnly = useContext(TranscriptReadOnlyContext);
-  const sessionTitle = useActiveSessionTitle();
   const latestTurnResult = useAppStore((state) =>
     sessionId ? state.latestTurnResults[sessionId] : undefined,
   );
@@ -108,7 +104,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     handleScroll,
     revealEarlierHistory,
     jumpToLatest,
-    navigateAnnotation,
+    disclosureAnchorNotifier,
   } = useTranscriptScroll({
     sessionId,
     messages,
@@ -166,8 +162,16 @@ export const ChatTranscript = memo(function ChatTranscript({
     !assistantIsAnswering &&
     !hasSpecializedActivity;
 
+  // The tail status lane is part of the layout for the whole running turn: the
+  // indicators below mount and clear with the turn's phase, and a lane that
+  // came and went with them would resize `.thread-content` and push the rows
+  // the user is already reading (issue #323). An idle transcript renders no
+  // lane at all, so a finished transcript keeps its exact layout.
+  const runtimeStatusLane = transcriptRunning;
+
   return (
     <TranscriptSearchContext.Provider value={searchTarget}>
+    <DisclosureAnchorContext.Provider value={disclosureAnchorNotifier}>
     <div
       className="thread-wrap"
       ref={wrapRef}
@@ -188,17 +192,10 @@ export const ChatTranscript = memo(function ChatTranscript({
           onRevealEarlier={revealEarlierHistory}
         />
       ) : null}
-      {/* Quoting follows the selection: the row action at the end of a long
-        * answer is the wrong end of the message to reach for (ADR message-quotes-and-side-chats / D-LOCAL-selection-overlay). */}
-      {transcriptReadOnly || !paneVisible ? null : (
-        <SelectionQuoteButton scrollRef={scrollRef} title={sessionTitle} />
-      )}
-      {!transcriptReadOnly && paneVisible && !veilCovering && sessionId ? (
-        <ResponseAnnotationOverlay sessionId={sessionId} scrollRef={scrollRef} onNavigate={navigateAnnotation} />
-      ) : null}
       <div
         className="thread-scroll"
         ref={scrollRef}
+        data-scroll-owner="transcript"
         onScroll={handleScroll}
         role="log"
         aria-live="polite"
@@ -245,18 +242,22 @@ export const ChatTranscript = memo(function ChatTranscript({
               result={latestTurnResult}
             />
           ) : null}
-          {pendingPermission && !transcriptReadOnly ? (
+          {pendingPermission ? (
             <PermissionCard
               key={pendingPermission.requestId}
               permission={pendingPermission}
               queued={queuedPermissions}
             />
           ) : null}
-          {showRunActivity && specializedActivity ? (
-            <RunActivityIndicator activity={specializedActivity} />
+          {runtimeStatusLane ? (
+            <div className="transcript-runtime-status">
+              {showRunActivity && specializedActivity ? (
+                <RunActivityIndicator activity={specializedActivity} />
+              ) : null}
+              {showPlanning ? <PlanningIndicator kind={planningKind} /> : null}
+              {showWorking ? <WorkingIndicator /> : null}
+            </div>
           ) : null}
-          {showPlanning ? <PlanningIndicator kind={planningKind} /> : null}
-          {showWorking ? <WorkingIndicator /> : null}
         </div>
       </div>
       {veilPhase !== "off" ? (
@@ -306,6 +307,7 @@ export const ChatTranscript = memo(function ChatTranscript({
         </TooltipButton>
       ) : null}
     </div>
+    </DisclosureAnchorContext.Provider>
     </TranscriptSearchContext.Provider>
   );
 });

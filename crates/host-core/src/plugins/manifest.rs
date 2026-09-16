@@ -10,6 +10,12 @@ pub struct PluginManifest {
     pub main: String,
     #[serde(default)]
     pub description: Option<String>,
+    /// Display strings per locale — `{ "en": { name, description, safetyNotes },
+    /// "zh-CN": { … } }` — resolved against the application locale whenever a
+    /// row is read. The flat `name`/`description` above stay the author's own
+    /// language and are the last-resort fallback.
+    #[serde(default)]
+    pub i18n: Option<PluginI18nMap>,
     #[serde(default)]
     pub author: Option<String>,
     #[serde(default)]

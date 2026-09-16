@@ -127,6 +127,8 @@ export type QueuedTurnSummary = {
   sessionMessageId?: string;
   attachments?: AgentPromptAttachment[];
   position: number;
+  /** Set only for promoted entries; entries arrive in delivery order. */
+  priority?: number;
   createdAt: string;
 };
 

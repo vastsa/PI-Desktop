@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ErrorCodes } from "@pi-desktop/shared";
 import {
   createPublicHttpsClient,
   PublicNetworkPolicyError,
@@ -15,14 +16,18 @@ function jsonResponse(status, body, location) {
   };
 }
 
-test("rejects a hostname that resolves to a private address", async () => {
+test("rejects a hostname that resolves to a non-public address", async () => {
   const client = createPublicHttpsClient({
     fetchImpl: async () => jsonResponse(200, { ok: true }),
     lookupImpl: async () => [{ address: "10.0.0.8" }],
   });
   await assert.rejects(
     () => client.request("https://evil.example/catalog.json", "json"),
-    (error) => error instanceof PublicNetworkPolicyError && /private address/.test(error.message),
+    (error) =>
+      error instanceof PublicNetworkPolicyError &&
+      /non-public address/.test(error.message) &&
+      error.reason === "non-public-address" &&
+      error.addressKind === "private",
   );
 });
 
@@ -82,4 +87,35 @@ test("does not retry policy failures", async () => {
     PublicNetworkPolicyError,
   );
   assert.equal(calls, 1);
+});
+
+test("a policy refusal carries the stable error code the renderer classifies on", async () => {
+  // Issue #419: the renderer can only tell a guard refusal from an ordinary
+  // failure by this code, because `wrap()` forwards nothing but code and
+  // message across the IPC boundary. A fake-IP answer is an address the guard
+  // judged, so it keeps the policy code — and now also says which class of
+  // address it judged.
+  const client = createPublicHttpsClient({
+    fetchImpl: async () => jsonResponse(200, { ok: true }),
+    lookupImpl: async () => [{ address: "198.18.0.4" }],
+  });
+  await assert.rejects(
+    () => client.request("https://cdn.jsdelivr.net/gh/x/SKILL.md", "text"),
+    (error) =>
+      error instanceof PublicNetworkPolicyError &&
+      error.errorCode === ErrorCodes.NETWORK_POLICY_BLOCKED &&
+      error.reason === "non-public-address" &&
+      error.addressKind === "benchmark" &&
+      error.host === "cdn.jsdelivr.net" &&
+      /non-public address/.test(error.message) &&
+      /benchmark/.test(error.message),
+  );
+});
+
+test("a syntactic URL refusal carries the same code", async () => {
+  const client = createPublicHttpsClient({ fetchImpl: async () => jsonResponse(200, "x") });
+  await assert.rejects(
+    () => client.assertPublicUrl("http://127.0.0.1/catalog.json"),
+    (error) => error.errorCode === ErrorCodes.NETWORK_POLICY_BLOCKED,
+  );
 });

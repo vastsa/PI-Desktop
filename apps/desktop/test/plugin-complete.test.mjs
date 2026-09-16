@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { fork } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -291,4 +292,60 @@ test("agent.complete is rate-limited per plugin", async (t) => {
   const output = await tool.execute({}, { sessionId: "s" });
   assert.equal(calls, 8);
   assert.ok(output.errors.some((entry) => String(entry).includes("RATE_LIMITED") || String(entry).includes("rate")));
+});
+
+test("agent.complete keeps the classified provider code for the plugin", async (t) => {
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    complete: async () => {
+      // Exactly the shape `completeOneShot` throws: `errorCode` (+ `data.errorCode`),
+      // never `code`. A plugin must be able to tell a rate limit from a network fault.
+      throw Object.assign(new Error("429: provider rate limited"), {
+        errorCode: "PROVIDER_RATE_LIMITED",
+        data: { retriable: true, errorCode: "PROVIDER_RATE_LIMITED" },
+      });
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    permissions: ["agent.tool.register", "agent.complete"],
+    main: `
+      module.exports = {
+        async onLoad() {
+          await pi.agent.registerTool({
+            name: "ask",
+            description: "ask",
+            schema: { type: "object", properties: {} },
+            execute: async () => {
+              try {
+                await pi.agent.complete({
+                  modelKey: "prov/model",
+                  messages: [{ role: "user", content: "x" }],
+                });
+                return { code: null, message: null };
+              } catch (error) {
+                return { code: error.code || null, message: error.message || null };
+              }
+            },
+          });
+        },
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, ["agent.tool.register", "agent.complete"]);
+  const tool = runtime.getTools().find((entry) => entry.name === "ask");
+  const output = await tool.execute({}, { sessionId: "s" });
+  assert.equal(output.code, "PROVIDER_RATE_LIMITED");
+  assert.match(output.message, /429/);
+});
+
+test("the plugin completion declares INVALID_ARGUMENT for empty model output", async () => {
+  const source = await readFile(
+    new URL("../electron/main/services/plugin-services.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /emptyErrorCode: "INVALID_ARGUMENT"/);
 });

@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { catalogs, flattenCatalog, resolveLocale } from "@pi-desktop/i18n";
+import { MAC_TRAFFIC_LIGHT_EDGE_DIP } from "@pi-desktop/shared";
 import App from "./App";
 import { PluginLauncher } from "./components/PluginLauncher";
 import { initLanguageSync, resolveOsLocale } from "./lib/app-language";
@@ -16,6 +17,16 @@ document.documentElement.dataset.theme = "dark";
 // controls overlay right on Windows/Linux); set before first paint.
 document.documentElement.dataset.platform =
   window.piDesktop?.platform ?? "darwin";
+// The macOS traffic lights are native views with a fixed footprint; the space
+// the shell leaves clear for them derives from the same shared constant the
+// main process positions them with (styles/tokens.css). Only macOS has them —
+// the 0px default keeps Windows/Linux on the renderer-drawn controls.
+if (document.documentElement.dataset.platform === "darwin") {
+  document.documentElement.style.setProperty(
+    "--ds-traffic-light-edge",
+    `${MAC_TRAFFIC_LIGHT_EDGE_DIP}px`,
+  );
+}
 // Scrollbars are transparent at rest (base.css); this marks the scrolling
 // element so the thumb shows while it moves, not only under the pointer.
 installScrollbarReveal(document);

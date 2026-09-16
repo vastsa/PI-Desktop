@@ -103,8 +103,6 @@ test("the template action is reachable from the menu and the empty state", () =>
   for (const key of [
     "newFromTemplate",
     "newFromTemplateTitle",
-    "newFromTemplateBody",
-    "newFromTemplateHint",
     "newFromTemplateCreate",
     "newFromTemplateCreating",
     "newFromTemplateDone",

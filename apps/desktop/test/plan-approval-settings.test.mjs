@@ -109,7 +109,7 @@ test("command-shell settings are catalog-driven and use the existing save flow",
   assert.match(settingsPage, /api\s*\.\s*listCommandShells\(\)/s);
   assert.match(settingsPage, /settings\.defaultCommandShell/);
   assert.match(settingsPage, /catalog\.choices\.map/);
-  assert.match(settingsPage, /disabled=\{!choice\.available\}/);
+  assert.match(settingsPage, /disabled: !choice\.available/);
   assert.match(settingsPage, /saveSettings\(\{ defaultCommandShell: choice\.id \}\)/);
   assert.match(settingsPage, /catalog\.configuredId/);
   assert.match(settingsPage, /catalog\??\.effective/);

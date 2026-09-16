@@ -5,6 +5,8 @@ import {
   bindingSupportsDocuments,
   effectiveContextWindow,
   bindingSupportsImages,
+  formatCompactTokenCount,
+  formatTokenCount,
   modelMatchesFilter,
   normalizeApiStyle,
 } from "./model-catalog.js";
@@ -90,5 +92,52 @@ describe("effective binding attachment capabilities", () => {
     expect(custom.supportsImages).toBeNull();
     expect(bindingSupportsImages(custom, null)).toBe(false);
     expect(bindingSupportsImages({ supportsImages: true }, null)).toBe(true);
+  });
+});
+
+describe("compact token counts", () => {
+  it("keeps neighbouring published windows distinguishable", () => {
+    // models.dev publishes all three of these along the 1M line. One rounded
+    // decimal collapsed them into `1M` / `1.1M` / `1.1M`.
+    const rendered = [
+      formatTokenCount(1_000_000),
+      formatTokenCount(1_050_000),
+      formatTokenCount(1_100_000),
+    ];
+    expect(rendered).toEqual(["1M", "1.05M", "1.1M"]);
+    expect(new Set(rendered).size).toBe(3);
+  });
+
+  it("never reports a window above the published value's own precision", () => {
+    // `1.1M` overstated 1,050,000 by 50k tokens, which is what made unrelated
+    // models look like they shared one limit.
+    expect(formatTokenCount(1_050_000)).not.toBe("1.1M");
+    expect(formatTokenCount(1_048_576)).toBe("1.05M");
+    expect(formatTokenCount(1_064_000)).toBe("1.06M");
+    expect(formatTokenCount(1_131_072)).toBe("1.13M");
+  });
+
+  it("keeps the K and M scales exact at their boundaries", () => {
+    expect(formatTokenCount(999)).toBe("999");
+    expect(formatTokenCount(1_000)).toBe("1K");
+    expect(formatTokenCount(1_500)).toBe("1.5K");
+    expect(formatTokenCount(200_000)).toBe("200K");
+    expect(formatTokenCount(262_144)).toBe("262.1K");
+    expect(formatTokenCount(10_000_000)).toBe("10M");
+  });
+
+  it("promotes a K mantissa instead of rendering `1000K`", () => {
+    expect(formatTokenCount(999_949)).toBe("999.9K");
+    expect(formatTokenCount(999_999)).toBe("1M");
+    expect(formatTokenCount(1_000_000)).toBe("1M");
+  });
+
+  it("reads an unpublished limit as absent, but a real count as a number", () => {
+    expect(formatTokenCount(undefined)).toBe("—");
+    expect(formatTokenCount(0)).toBe("—");
+    // Usage counters report a real zero, so they must not borrow the dash.
+    expect(formatCompactTokenCount(0)).toBe("0");
+    expect(formatCompactTokenCount(12)).toBe("12");
+    expect(formatCompactTokenCount(1_500)).toBe("1.5K");
   });
 });

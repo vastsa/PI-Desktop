@@ -134,6 +134,8 @@ export type AgentActivityError = {
   code: string;
   message: string;
   providerStatus?: number;
+  /** Transport errno behind a NETWORK_ERROR, e.g. ENOTFOUND or ECONNRESET. */
+  networkCode?: string;
 };
 
 /** Coarse child-agent action shown while the parent waits on delegates. */

@@ -65,9 +65,14 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   native window bounds stay unchanged.
 - Work panel preview: the header maximize action temporarily unmounts MainChat
   and expands the panel across the client area beside the sidebar. A window-level
-  46px chrome row owns the drag area, New Task/sidebar actions, and native
-  window controls. On macOS, collapsed-sidebar preview reserves 76px on the
-  left in windowed mode and 8px in fullscreen for the traffic lights.
+  46px chrome row keeps New Task/sidebar and native window controls, with
+  pointer passthrough and no drag/no-drag rectangle outside its controls.
+  The panel header alone owns dragging in the preview pane; its border box
+  excludes the shell action lane in both sidebar states on every platform.
+  On macOS, collapsed-sidebar preview reserves 88px in windowed mode and 8px
+  in fullscreen through the shared `--ds-window-lead-inset` token — the
+  traffic-light cluster's right edge (76px, from `@pi-desktop/shared`) plus a
+  12px gap. The main process uses that same shared geometry.
 - Work panel resize: its inner left-edge handle changes the committed panel
   width in the renderer, so dragging left gives the panel more internal space
   and dragging right returns space to MainChat (§5.4)
@@ -232,17 +237,19 @@ combined model × reasoning selection (§11).
   frameless drag band
 - Border: border-subtle bottom on every route-owned titlebar surface
 - Position: absolute 46px frameless band; `-webkit-app-region: drag` with
-  `no-drag` on interactive controls; macOS reserves the left ~76px for traffic
+  `no-drag` on interactive controls; macOS reserves the left 88px for traffic
   lights (only when the sidebar is collapsed), Windows/Linux reserve the right
   120px for native window controls (112px hit targets plus an 8px visual
   buffer). The conversation titlebar also reserves the 28px work-panel toggle
   while the panel is closed. While the panel is open, that 120px band plus the
   toggle overlay the panel header instead, and the header ends its box before
   the band so the panel tab strip and `+` stay clear of the native control band.
-  In macOS windowed preview mode, a collapsed sidebar also adds the 76px
-  traffic-light reserve and the preview action lane plus an 8px gap to the
-  panel header itself, keeping its first tab clear; fullscreen uses the 8px
-  native reserve but retains the preview action lane.
+  In preview mode the header's left border box starts after the shell actions
+  plus an 8px gap, including expanded-sidebar New Task, on every platform.
+  The left inset is 8px except collapsed-sidebar windowed macOS (88px through
+  the shared lead-inset token). Fullscreen retains the action lane.
+  Header-height background paint fills the excluded lane without an opaque
+  overlay hiding tabs or panel actions.
   Resource close actions stay in their tabs so a second header `×` does not echo
   the native Windows close control (D357).
 - Title cluster (task title) flexes and shows at most the first 10 Unicode
@@ -265,6 +272,19 @@ combined model × reasoning selection (§11).
   native drag rectangle is the border box. The control band continues the
   titlebar's `border-subtle` bottom rule and uses the same token for its
   leading divider.
+- Every chrome icon control is one 28px square (`--ds-work-panel-toggle-size`)
+  with one transparent seat: the topbar's dock toggle, the viewport-fixed
+  work-panel toggle, the preview/route-band lane actions, and the work-panel
+  header's `+` and maximize/restore controls. A control matches its siblings
+  instead of rendering at a size or on a surface of its own, so the icon alone
+  carries it until the semantic hover wash paints a surface. The panel header's
+  lane reserve is derived from that same control size rather than from a
+  literal, and the toggle's open state is its glyph swap plus the engaged ink —
+  no control in this family paints a filled or raised "on" pill.
+  With the sidebar collapsed, Plugins, Pull requests, and Scheduled render their
+  sidebar/New Task actions inside `.main-titlebar`, not the preview-only
+  `.window-chrome-row`. Both containers must share the same geometry, rest,
+  hover, and disabled rules; route actions must not duplicate those declarations.
 - Band reservation is platform-independent (D269). The band is opaque and
   absolutely positioned, so scrolling route content passes underneath it on
   every platform, macOS included. Every route surface that starts its own
@@ -584,6 +604,13 @@ visually distinct from list content.
 
 - The visible shell name is `PI-Desktop`; Codex is not used as the renderer
   identity.
+- A control with no label states `.icon-btn-square`, which pins both axes to
+  `--ds-control-size` (28px). `.icon-btn` on its own takes its width from its
+  glyph plus 8px of side padding — right for a label-driven pill, wrong for a
+  control that carries no label — which is why the sidebar collapse control, the
+  conversation topbar toggle, and the composer's add/enhance/undo controls all
+  render the same 28px square target as the topbar and work-panel actions
+  instead of a wider-than-tall pill.
 - `BrandLogo` imports the renderer-sized marks derived from the canonical
   masters through Vite: `src/assets/brand/logo-light.png` for light mode and
   `src/assets/brand/logo-dark.png` for dark mode (192x192, covering the 64 px
@@ -714,6 +741,14 @@ reading surface of the workstation.
   collapses when the draft clears, indicator rows mount or unmount — are
   re-baselined and never cancel follow, so a pinned send stays at the latest
   turn even when the bottom reserve changes mid-turn
+- The tail runtime status owns one reserved lane. The transcript reserves the
+  height of a single `Working…` / planning / run-activity row for the whole
+  running turn, so the status appearing between two tool rows, or clearing when
+  the model answers, cannot change the content height and move the rows the user
+  is already reading. The lane stays reserved, empty, and invisible while a
+  concrete row, a permission card, or the answer owns the tail; after the
+  status clears the slot is still reserved, and an idle transcript renders no
+  lane at all so its layout is unchanged
 - Destination entry uses one short opacity/translate transition. Streaming
   updates occur inside the mounted surface and never replay this transition.
 - A pane bounds its own first commit to the newest entries and mounts the
@@ -741,7 +776,7 @@ reading surface of the workstation.
 |---|---|
 | Empty | Restrained hero + optional onboarding checklist in a scrollable content region, with a bottom-reserved home composer and no starter-card or contextual quick-action layer (D111/D204/D206). A project-bound empty session underlines the project name; the control opens a searchable switcher of the sidebar's open projects, with clone-git-project and open-project actions. |
 | Streaming | Auto-scroll follows while pinned; new tokens append |
-| Active progress | Immediately after send, before the first assistant or tool event, a compact localized `Working…` status with elapsed time appears inline. Its model and subagent elapsed labels use the carried-unit format in §9.1. When the runtime names a quiet interval, that same row identifies starting, waiting for the model, preparing the next request, compacting context, recovering an empty response, retrying, or waiting for delegated work (with each running subagent's latest coarse action). It yields to concrete thinking, tool, and answer rows, while a permission card owns the approval state; no large generic progress card is rendered. A retrying row remains compact at rest; hovering or focusing it reveals an error-styled tooltip with the localized error summary, stable code/HTTP status, and bounded provider message. |
+| Active progress | Immediately after send, before the first assistant or tool event, a compact localized `Working…` status with elapsed time appears inline. Its model and subagent elapsed labels use the carried-unit format in §9.1. When the runtime names a quiet interval, that same row identifies starting, waiting for the model, preparing the next request, compacting context, recovering an empty response, retrying, or waiting for delegated work (with each running subagent's latest coarse action). It yields to concrete thinking, tool, and answer rows, while a permission card owns the approval state; no large generic progress card is rendered. The row lives in the reserved tail lane, so it appears and clears mid-turn without changing the transcript's content height. A retrying row remains compact at rest; hovering or focusing it reveals an error-styled tooltip with the localized error summary, stable code/HTTP status, and bounded provider message. The tooltip mixes the error tint over `--ds-bg-elevated-opaque` so transcript text does not show through. |
 | Turn outcome | After a failed turn, a session-scoped recovery card summarizes the interruption and tool evidence. Completed turns use the existing transcript and message-scoped InlineReviewCard without an extra success card; failed turns can continue through one localized prompt without losing the transcript. |
 | Session switch | A first-opened session paints at its latest record; a revisited pane paints at its own retained position. Bounded first commit and full-history expansion show the same position: no post-paint height correction may shift the visible rows, in either direction |
 | Turn start (send / retry / regenerate) | Re-pins and positions the latest content before paint, even if the user had scrolled up; the later persisted user-message event does not flash the transcript at its top, and the composer collapse / indicator layout clamps during the send never release follow mode |
@@ -817,10 +852,20 @@ tab. The `+` button sits outside the scroller and remains visible when tabs
 overflow. Clicking it creates and activates a unique New launcher tab. The
 launcher body contains host-owned Review followed by every in-scope
 `contributes.views` entry as buttons; Files and Browser are not hardcoded in
-the renderer (ADR 0104). The header reserves a tokenized 60px right-side safe
-lane for the viewport-fixed work-panel toggle. The `+` trigger also sits in a
-separated action rail, so it keeps a distinct hit target with at least 24px of
-visual gap on every supported platform.
+the renderer (ADR 0104). The header reserves a tokenized 44px right-side safe
+lane for the viewport-fixed work-panel toggle: the 28px control, its 12px
+viewport inset, and the header's own 4px control gap
+(`--ds-work-panel-control-gap`). That one gap spaces the whole row — the tab
+strip to the action group, `+` to maximize, and maximize to the viewport-fixed
+toggle — so the three panel buttons read as one group instead of a rail behind
+a divider. Because maximize sits between them, the `+` trigger still keeps a
+distinct hit target with more than 24px of visual gap on every supported
+platform. All three are the same control as every other chrome icon: 28px
+square with a transparent seat, so the header reads as quiet icons rather than
+filled squares. `+` and maximize take their geometry and hover wash from the
+shared chrome-control group in `chrome.css`, not from a rule of their own, and
+the viewport-fixed toggle's `aria-pressed` state changes ink and glyph only —
+never a background or a raised shadow.
 
 With no resource the body remains open and becomes a concise **New** launcher.
 An explicit New tab uses the same data-driven tool list, so selecting a row
@@ -850,7 +895,9 @@ singleton without duplicating it:
   strip rather than by a second resource list. Launcher rows use the same
   fast hover/focus feedback as other panel rows.
 - Active tabs, file-tree rows, diff headers, and the resize handle ease hover
-  fills with `--motion-duration-fast` / `--motion-ease-out`
+  fills with `--motion-duration-fast` / `--motion-ease-out`. The handle's 2px
+  line is a 50% accent tint while hovered or dragged — the solid accent is pure
+  white on the dark plate, so only keyboard focus paints it
 - Browser URL and empty-tool chrome share the light inset field treatment used
   by Settings controls (D148)
 - Every empty state in the panel — the no-resource body and each tab's own —
@@ -1089,65 +1136,6 @@ It does not render separate Details or Output tabs.
   deleted delegation shows a localized unavailable state and never displays
   another session's rows.
 
-### 5.8 Side chat (D-LOCAL-message-quotes)
-
-A side chat is one more work-panel resource: a live view of another session's
-transcript beside the main conversation, not a second panel and not a new kind
-of session.
-
-- Entry: **Open side chat** on an assistant turn (fork anchored at that assistant
-  message) and on a user message (fork anchored at that user message), with the
-  tooltip and accessible name `chat.startSideChat`. Opening calls the existing
-  `session.fork` with the anchor and does not activate the child, so the main
-  conversation keeps its visible session. The child is durable on the host
-  exactly as an ordinary branch. For a native Pi parent the same channel is
-  source-discriminated: the sidecar returns the child's whole anchored
-  transcript, the panel streams its reply under a provisional row that is
-  re-keyed to the durable SDK entry, and a native child that is read-only
-  (provider/trust/external change) disables Send with the `sideChat.readOnly`
-  hint, while a send during a running native turn is rejected before the
-  Desktop queue with a visible toast and the draft kept. Stop always stays
-  available for a running child.
-- Registration: the child is registered as a side chat of the parent session in
-  renderer-owned state, and the panel opens one `sidechat` tab whose identity is
-  `sidechat:<childSessionId>`. The tab reuses the upstream docked panel, its
-  three-column width budget, resize lifecycle, tab strip/launcher, and the
-  existing per-session panel-context rule (D128): changing the visible session
-  swaps that session's retained context atomically.
-- Live content: while a side chat is registered, the child's message and tool
-  start / update / end events are projected into a renderer-owned per-session
-  transcript map from the same event stream the active transcript consumes,
-  reusing the existing background-transcript reducer. The panel streams live
-  although the child is never the active session.
-- Body: a compact header with the side-chat title (the tab label reuses
-  `sideChat.title`), **Add to main chat** (`sideChat.addToMain`), **Open as a
-  conversation** (`sideChat.openAsSession`), and the shared tab-close control;
-  the child's transcript rendered with the existing transcript component; the
-  existing permission card and ask card, each resolving by the request's own
-  session id, so a child that needs approval or an answer never stalls behind an
-  invisible prompt; and a compact input (placeholder
-  `sideChat.placeholder`, empty-state line `sideChat.empty`) with Send reusing
-  `chat.send` and Stop reusing `chat.stopGenerating`. Send targets the child
-  through the existing prompt path; Stop aborts that child session.
-- Add to main chat copies the side chat's newest assistant answer into the main
-  conversation's composer as a quote of that answer, under the Composer's quoted
-  draft contract (§11.9) and its 2000-character cap, attributed to the side
-  chat's title. It never sends.
-- Open as a conversation activates the child through the normal
-  session-selection path, so the full composer, prompt queue, and stop controls
-  apply, and releases the side-chat registration and its tab.
-- Close: closing the tab removes the registration and its transcript projection.
-  The child session is not deleted and keeps appearing in the sidebar, session
-  lists, and search. Entries are removed when the tab closes, when the child is
-  opened as a conversation, and when the parent or child session is deleted.
-- Boundaries: side-chat state is renderer-owned and is not persisted across
-  restart (the durable child is). Native fork adds sidecar file creation but no
-  host protocol, storage schema, permission change, or native queue: the child
-  remains an ordinary Pi session in the sidebar, session lists, and title/
-  project search, and it reopens as a normal conversation.
-
----
-
 ## 6. SessionList
 
 ### 6.1 Purpose
@@ -1302,9 +1290,8 @@ storage but compose into one assistant turn until the next user message.
   cancels pending follow work, and shows the "scroll to bottom" floating button;
   stream or resize updates cannot pull the viewport back down; send / retry /
   regenerate re-pins and jumps to bottom
-- Hover message: its action row appears — Copy, Quote, and the row's other
-  per-turn actions. Quote prefills the composer per §11.9 and Open side chat
-  opens §5.8; neither sends or leaves the visible session.
+- Hover message: its action row appears — Copy and the row's other per-turn
+  actions.
 - Assistant fragments emitted before and after tool calls compose into one
   `role="article"` turn. The turn exposes one trailing meta row and one action
   toolbar; Copy joins all contentful fragments in order, while Fork and
@@ -1555,14 +1542,16 @@ Single message render — either user (plaintext) or assistant (markdown streami
   selected assistant response, requires an idle source, and leaves that
   source's transcript, live runtime, and provider cache state untouched (D134).
   Edit belongs to the user turn: it swaps the prompt bubble for a focused
-  inline textarea (Escape cancels, Cmd/Ctrl+Enter retries; slash turns seed the
-  typed `command` form so retrying re-expands the template), widens the user
-  column to the assistant reading width while open, and hides the action
-  toolbar. The inline controls are localized Retry and Cancel actions. Retry
-  runs the Regenerate path with the current text in the same session, even when
-  the text is unchanged, so the replaced prompt and its whole answer tail are
-  archived as a D109 revision and the pager walks back to the original
-  exchange (D274).
+  composer-plate editor (same `--ds-bg-composer` fill and `--ds-composer-radius`
+  as the bottom composer; no stroke per D297, no shadow). The textarea is
+  unboxed inside that plate; localized Retry and Cancel sit in a 28px footer
+  (Escape cancels, Cmd/Ctrl+Enter retries; slash turns seed the typed
+  `command` form so retrying re-expands the template). Opening it widens the
+  user column to the assistant reading width and hides the action toolbar.
+  Retry runs the Regenerate path with the current text in the same session,
+  even when the text is unchanged, so the replaced prompt and its whole
+  answer tail are archived as a D109 revision and the pager walks back to
+  the original exchange (D274).
 - Tool-mediated assistant output uses one visual turn from the preceding user
   message to the next user message. Intermediate provider message boundaries
   remain visible as ordered markdown fragments around activity disclosures but
@@ -1672,7 +1661,7 @@ message its checkpoint covers.
 
 ### 8.6 MVP constraints
 
-- No message reactions/annotations
+- No message reactions
 - No edit user message (deferred)
 - Copy assistant answer excludes thinking text
 
@@ -1690,11 +1679,13 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   until its matching closing fence arrives; partial streamed diagrams never
   enter the diagram parser.
 - **Plugins**: `remark-gfm` (tables, task lists, strikethrough, autolinks),
-  `remark-math` + `rehype-katex` (inline `$…$`, display `$$…$$`). Raw HTML is
+  `remark-math` + `rehype-katex` (inline `$…$` or `\(…\)`, display `$$…$$`
+  or `\[…\]`). Raw HTML is
   parsed by `rehype-raw` and immediately constrained by the extended
   `rehype-sanitize` default schema; only the renderer-owned audio/video/source
-  additions are admitted. KaTeX's Vite-inlined WOFF2 fonts are allowed by the
-  renderer's `font-src 'self' data:` CSP directive.
+  additions and the `math-inline`/`math-display` classes on `code` (which keep
+  TeX `\[…\]` in display layout) are admitted. KaTeX's Vite-inlined WOFF2 fonts
+  are allowed by the renderer's `font-src 'self' data:` CSP directive.
 - **Mermaid diagrams (D165)**: a completed `mermaid` fenced block in assistant
   answer prose renders through the official Mermaid package. The dependency is
   dynamically imported only when a diagram approaches the viewport; Mermaid's
@@ -1794,54 +1785,6 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   when the marker set changes and whenever the rail's own box resizes: the rail's
   height derives from `--composer-dock-height`, which the composer republishes as
   its draft grows, so dashes move without a marker change or a window resize.
-
-### 8.8 Quote and side-chat actions (D-LOCAL-message-quotes, D-LOCAL-selection-overlay)
-
-- Every user message exposes **Quote** in its hover action row beside Copy,
-  Edit, and Delete; an assistant turn's row exposes the annotate action instead
-  (§11.10, D-LOCAL-response-annotations). Activating Quote inserts a
-  blockquote of the message into the active session's composer draft through the
-  existing prefill contract and focuses the composer; it never sends, never
-  creates a session, and writes nothing to the transcript.
-- **Open side chat** uses the same row with the `chat.startSideChat` label. It
-  forks at that message and opens §5.8 without activating the child.
-- The excerpt is the live text selection when that selection is inside the
-  clicked message row; otherwise it is the message's own text (for an assistant
-  turn, its answer text). The inserted text follows the Composer contract in
-  §11.9.
-- A non-empty selection inside a transcript row also floats **one** overlay
-  above it, so the common case — quoting the sentence, formula, or table just
-  read — needs no scroll to the end of the message. It is an action row of text
-  buttons with hairline separators and the icon action last: **Add to chat**
-  (`chat.addToChat`), **Ask in side chat** (`chat.askInSideChat`, disabled while
-  the visible session runs), and **Copy** (`chat.copy`). It is centered on the
-  selection, sits 8 px above it, is clamped into its bounds, and is portaled
-  above the transcript in the body-portaled popover layer.
-- The overlay's bounds are the clipping ancestors' rects (the transcript
-  scroller is one) intersected with the viewport, capped by the docked
-  composer's top edge, which floats over the transcript. Scrolling the thread
-  recomputes and follows the selection; scrolling something unrelated leaves the
-  overlay alone. It also recomputes on selection change, double click, key up,
-  pointer up, pointer cancel, and resize (at most once per frame), and it hides
-  on a press outside it, on selection collapse, and after any action clears the
-  native selection.
-- The selection must live in one message row: a drag that crosses rows raises no
-  overlay, and a range that leaves the row is clamped back to it. The overlay is
-  a transcript affordance, not a message one: a read-only projection (§5.8)
-  never renders it, and never renders the row toolbars either.
-- The excerpt is recovered from the rendered DOM (D-LOCAL-selection-overlay), not from
-  `Selection.toString()`: a formula quotes as `$…$` / `$$…$$` TeX from KaTeX's
-  `application/x-tex` annotation (a partial formula selection is expanded to the
-  whole formula), a code block quotes as a fence whose delimiter outgrows any
-  backtick run inside it, a table quotes as one `a | b` line per row, and both
-  Quote paths — row action and floating affordance — share that one recovery.
-- **Add to chat** opens the annotation comment editor instead of quoting when
-  the row is an assistant turn (§11.10, D-LOCAL-response-annotations): the excerpt is snapshotted into
-  the editor before the selection collapses, and the attachment is created when
-  the editor saves — the editor itself sends nothing. The assistant turn's
-  action row does the same for its selection (or the whole answer when there is
-  no selection). Quoting into the draft remains the path for a user message and
-  for the side chat's **Add to main chat**.
 
 ---
 
@@ -1948,7 +1891,10 @@ twice.
 
 - Outer row: transparent, borderless, shadowless, approximately 24px high
 - Icon: 15–16px; disclosure chevron: 12px
-- Header gap: 4px; expanded body inset: 24px
+- Header gap: 4px; expanded tool-call details align with the row's own content
+  start and do not add a second horizontal inset. The collapse rail remains
+  available beside the expanded body. Thinking disclosures and subagent
+  topology nodes retain their dedicated hierarchy insets.
 - Chips: monospace `--text-2xs`, `--ds-tile-deep` fill (no border, D297), error hue for exit codes
 - Code, file list, match list and field blocks: `font-mono text-sm`,
   independently copyable, capped at 260px with internal scrolling
@@ -1972,6 +1918,16 @@ twice.
 - Click the row: expand/collapse the result blocks. Tool-call details are
   collapsed by default while a live group is open; historical and failed rows
   remain collapsed until the user opens them.
+- A file path that a row or its result names is a link, not decoration: clicking
+  the summary path of a `Read`, `Write`, `Edit`, or `fetch` row, or a path in a
+  result's file list or match groups, completes the reference through the same
+  opener a chat chip uses (`pi-desktop/fs/resolveRef`) and opens where it
+  resolved — a project file in the bundled `pi.file-manager` view, a
+  session-scratch or attachment file in the host `file:` tab, and a `.html` /
+  `.htm` page of the project's primary folder in the side browser (ADR 0262,
+  ADR 0263). Such a click opens the file instead of toggling the row's
+  disclosure, and a reference that matches nothing reports itself without
+  opening a panel. A tool surface picks no destination of its own.
 - Click the processing header: expand/collapse the ordered activity list.
   Historical groups default collapsed; the latest active group opens while the
   turn is running and closes when it settles if the user has not touched it.
@@ -2482,11 +2438,11 @@ reasoning-level control.
 | State | Appearance | Actions |
 |---|---|---|
 | Idle (no model) | textarea active, send button disabled + tooltip "Configure a model first" | Agent link remains available in model menu |
-| Idle (ready) | textarea active; Send requires draft content or saved annotations | Send active when content exists |
+| Idle (ready) | textarea active; Send requires draft content | Send active when content exists |
 | Home/new-session initialization | textarea and mode/model × reasoning/permission triggers remain available while the durable empty session is loading; the session row is already present and the first configuration selection applies to that session | Configure the session, then send |
 | New session (reasoning model) | Combined model × reasoning chip shows the model and its binding default thinking level | User may select any level enabled in the model binding, including Off when enabled |
 | New session / switch while another session is running | textarea active, send button enabled for the destination session's own run state | Send active, Stop hidden unless the destination session itself is running with an empty draft |
-| Running | textarea and mode/model × reasoning/permission controls remain editable for the next turn; the single submit slot shows Stop only with an empty draft and no saved annotations | Send queues text, attachments, or saved annotations alone; Stop when all are empty |
+| Running | textarea and mode/model × reasoning/permission controls remain editable for the next turn; the single submit slot shows Stop only with an empty draft | Send queues text or attachments; Stop when both are empty |
 | Context checkpoint | Same as Running until durable checkpoint completion; intermediate `turn_end` does not reactivate controls. A retained-tail fallback remains Running and shows a warning toast | Same single-slot Stop/Send behavior as Running |
 | Permission pending | textarea disabled (per [03-permission-ux.md](03-permission-ux.md) §7) | Send disabled; Stop remains active whenever the running empty-draft condition is met |
 | Plan / Goal / planning | textarea active while idle; contract badge and permission chip visible; mode chip pulses while the live turn projects `planning` | inspect, send, or submit a contract |
@@ -2531,25 +2487,39 @@ reasoning-level control.
   timer, and clearing or sending a draft never changes the guidance.
 - Escape: when textarea focused, clears input or blurs (not abort)
 - Send while running: clears the current draft and appends one FIFO row to the
-  active session's in-memory queue when the draft has content or saved annotations. The row is sent
+  active session's Host-owned queue when the draft has content. The row is sent
   as a new normal prompt only after the current run reaches `agent_end`; a
-  different session's queue is not affected by switching sessions. Running
-  with an empty draft and no saved annotations changes this same submit slot to
-  Stop. Clear both draft and annotations to expose the immediate-stop action.
-- Send now: moves the selected row to the head, requests `agent/stop`, and
-  releases it after the current reply/tool batch completes normally. It then
-  starts before the remaining FIFO rows. When idle, Send now sends immediately.
+  different session's queue is not affected by switching sessions. Running with
+  an empty draft changes this same submit slot to Stop. Clear the draft to
+  expose the immediate-stop action.
+- Queued row: the text, then move up, move down, Send now, edit, and remove.
+  Move up/down swaps the row with its adjacent waiting neighbour and mirrors the
+  Host's durable `position`; at the waiting-block boundary it is a no-op and
+  never crosses into the promoted block. Edit removes the row and returns its
+  captured draft — text plus inline file-reference chips — to the composer;
+  while the input is non-empty (or holds attachments) the action is refused with
+  a toast and nothing changes. Remove drops the row immediately.
+- Send now: promotes the row to the end of the session's priority block, so a
+  second Send now leaves behind the first instead of replacing it at the head.
+  It then requests `agent/stop`, and the promoted block is released after the
+  current reply/tool batch completes normally, before every waiting row. The
+  first promoted row starts the turn and the rest join it as adjacent user
+  messages, so the block is answered once. When idle it starts immediately.
+- A promoted row is locked: move up/down, edit, and remove are disabled with
+  their tooltip and `aria-disabled` state intact, and the Send now button reads
+  as already decided (`chat.sendNowPending`). The row carries a distinct
+  promoted surface so it is not mistaken for another waiting row.
 - Stop: the single submit slot is shown only while a turn is running and the
-  draft is empty and there are no saved annotations. It stops the running turn
-  and cancels pending permission.
+  draft is empty. It stops the running turn and cancels pending permission.
   Before any
   assistant text, thinking, or tool row begins, it also removes the just-sent
   user row and restores the pre-serialization composer draft. Ordinary text
   returns to the textarea and file references return as leaf-name chips; their
   canonical paths never become textarea text. After a reply begins, Abort keeps
   the partial transcript and restores no draft.
-- Stop never clears queued prompts. Removing a row is explicit, and queue state
-  is renderer-local and intentionally not persisted across restart.
+- Stop never clears queued prompts. Removing a row is explicit; the queue itself
+  is Host-owned and durable (D386 / ADR 0213, ADR 0265), so a restart restores it
+  in delivery order, held until the desktop attaches as the owner.
 - `turn_end` is not an idle signal. Send and host persistence remain blocked
   through subsequent tool turns and blocking automatic checkpoint generation
   until `agent_end` or `error`; the draft and runtime selectors stay editable
@@ -2656,7 +2626,9 @@ reasoning-level control.
 - Goal shares the Plan approval surface (D198). The bar reads its copy from the
   proposal's `kind`, so a goal contract shows the matching approval label and
   artifact opener while the layout and remembered permission split-button stay
-  identical.
+  identical. The bar sits in the transparent composer dock, so it paints
+  `--ds-bg-composer` with `--ds-shadow-composer` like queued prompt rows rather
+  than the in-flow `--ds-tile` wash.
 
 ### 11.6 Accessibility
 
@@ -2711,7 +2683,7 @@ reasoning-level control.
   There are no visual previews in MVP.
 - No voice input
 
-### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D-LOCAL-message-quotes, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
+### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
 
 The composer owns an inline autocomplete menu — one component serving two
 modes. Focus never leaves the textarea (D125).
@@ -2839,111 +2811,6 @@ Anatomy:
   query lists everything (slash) / recently indexed order (file); zero
   matches renders the localized empty row and the menu counts as closed for
   key handling.
-
-### 11.9 Quoted message drafts (D-LOCAL-message-quotes, D-LOCAL-selection-overlay)
-
-- Quote in the transcript action row (§8.8), Add to chat in the floating
-  selection overlay (§8.8), and Add to main chat in the side chat (§5.8) prefill
-  the composer draft with ordinary Markdown text: each
-  excerpt line prefixed with `> `, then one blank line, then the attribution
-  line rendered from `chat.quoteSource` ("Quoted from {{title}}"; Chinese
-  "引用自 {{title}}"), where the title is the source session's title.
-- A selection is serialized back to Markdown before it becomes an excerpt
-  (D-LOCAL-selection-overlay): `$…$` / `$$…$$` TeX from the KaTeX annotation, fenced code with a
-  language and a delimiter that outgrows its content, backticked inline code,
-  one `a | b` line per table row, `[x] `/`[ ] ` for task checkboxes, and no
-  transcript chrome. Excerpt whitespace is collapsed to source-like text, so a
-  rendered block boundary never becomes a stray blank line.
-
----
-
-## 11.10 Response annotations (D-LOCAL-response-annotations)
-
-- Selecting text inside an assistant turn and activating **Add to chat** — or the
-  turn's annotate action — opens a compact comment editor over the conversation
-  instead of attaching the excerpt immediately. The editor shows the excerpt
-  snapshot (the Markdown serialized when the selection was taken, before focus
-  moves into the editor and collapses the selection) above a multiline, optional
-  comment. **Save** attaches the annotation with the comment in its `annotation`
-  field. In the comment textarea, **Enter** saves the live value and **Shift+Enter**
-  inserts a newline, independent of the main composer's Enter-to-send preference.
-  IME confirmation Enter never saves; key-repeat is ignored by the editor. Saving
-  by keyboard only attaches/updates the annotation, never sends a prompt.
-  **Cancel**, **Escape** outside IME composition, and a press starting on
-  the backdrop discard it. Dragging a selection out of the editor never dismisses
-  it. The dialog owns Escape before application shortcuts and restores focus to
-  its trigger, or the rich composer when the floating trigger is gone. Opening
-  or saving the editor never sends. The answer body is not decorated: an
-  annotation appears in the answer only where the model cites it, as a small
-  accent-colored numbered reference (`:codex-annotation{index="N"}` in the
-  answer's source) whose tooltip is the excerpt and any comment. A marker takes
-  no part in a selection, quote, or copy.
-- Re-annotating an excerpt that is already attached reopens that annotation's
-  editor with its stored comment instead of adding a second attachment, so
-  editing keeps the annotation's id, position, and excerpt and changes only
-  `annotation`. The editor belongs to the session it was opened in: a session
-  switch closes it, a save for an annotation that was already sent or removed
-  changes nothing, and a save for a duplicate excerpt is a no-op.
-- ADR floating-annotation-index replaces the composer popover with a floating index above the composer
-  in the visible writable transcript. Its count header expands/collapses the list
-  without deleting annotations. Each numbered excerpt/comment has locate, edit,
-  and remove controls; clear-all remains available. Controls include the ordinal
-  in accessible names. No attachment text enters the editable draft.
-- All saved, resolvable selections remain highlighted whenever visible, including
-  before any locate click and while the floating index is collapsed. Selecting one
-  item never hides the other highlights. Removal/clear/send clears the corresponding
-  highlights; unresolved row fallbacks do not highlight an entire answer.
-- Matching numbered source badges sit outside the answer DOM and follow scroll,
-  resize, and content layout. Clicking a badge or list entry releases follow mode,
-  reveals the source (expanding/loading history if necessary), and highlights the
-  selected range without changing Markdown or selection. Unresolvable ranges
-  explicitly fall back to the source row, not a guessed repeated phrase. Crowded
-  badges stack within the visible band; all items remain available in the index.
-- Renderer-only text offsets distinguish repeated occurrences. Deduplication uses
-  source row, excerpt, and offsets; the same phrase elsewhere gets its own number.
-  If either entry lacks offsets, the same row/excerpt reopens the existing item
-  rather than assuming another occurrence. History reveal grows by at most 40 rows
-  per frame. Anchors never enter the prompt payload. Hidden/read-only panes show no overlay.
-  Array order remains the numbering for list, badges, and next-send payload.
-- Saved annotations alone enable Send (or queue while running), even when the
-  composer is empty/whitespace-only. Click and Enter share the same live-state
-  check. Unsaved comments and annotations in another session do not count; an
-  entirely empty submission stays disabled. Model/paste/approval gates remain.
-  No filler request is inserted: `## My request:` may have an empty body, and the
-  existing annotation instruction tells the model to address each comment.
-  Host trimming of that empty body must not expose the internal block on display.
-- A send while annotations exist composes the prompt the model receives as the
-  block `# Response annotations:` + the instruction sentence +
-  `<response-annotations>` with `[{"text", "annotation", "source": {"messageId"}}]`
-  in numbering order + `## My request:` + the user's text, and consumes the
-  annotations. Numbering is the attachment order, so "annotation 2" always names
-  the second chip in the list.
-- Send and queue snapshot annotations for their originating session. Only a host
-  acknowledgement consumes the submitted, unchanged annotations; new items and
-  comments edited while awaiting acknowledgement remain pending. A rejected send
-  retains annotations and restores the submitted draft only if no newer draft
-  occupies its session slot. Queue acknowledgement is exposed as the internal
-  renderer action `enqueuePrompt: Promise<boolean>`; the host protocol is unchanged.
-  A per-session submission guard rejects repeat submissions while acknowledgement
-  is pending, without consuming attachments. Other sessions and steering remain
-  independent; the guard is released on success/failure, not at turn completion.
-- Active-turn steering (the upstream **Alt+Enter** shortcut or steer button) sends
-  text only and leaves annotations pending for the next ordinary send/queue.
-  Annotation-only steering is a no-op. **Shift+Enter** remains a newline in the
-  main composer and in the comment editor; the editor's **Enter** only saves,
-  and IME confirmation never saves or submits.
-- Queue previews and a stored user message's edit seed show only the request,
-  including ordinary Markdown headings. Editing regenerates from those edited
-  words; it does not reconstruct already-consumed annotation attachments. Retry
-  without editing still uses the stored prompt, including its original block.
-- Nothing the user sees carries the block: the draft, the optimistic row, the
-  sidebar title, and the composer's edit seed keep the user's own text, and a
-  stored prompt that carries the block is displayed through its request text
-  only.
-- The excerpt is capped at 2000 characters with a trailing ellipsis, and the
-  editor's excerpt snapshot is the same excerpt the annotation carries. Quoting
-  inserts the draft and focuses the composer; it never sends, never creates a
-  session, and adds no chip kind and no file reference.
 
 ---
 

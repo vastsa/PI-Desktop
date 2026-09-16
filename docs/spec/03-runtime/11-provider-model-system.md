@@ -68,11 +68,11 @@ inside the `openai_compatible` provider path: the preset fixes the endpoint to
 models from `/models`, and sends chat turns through pi-ai's OpenAI Chat
 Completions adapter. It does not create a second transport or a closed model
 allowlist. Agent-runtime injects OpenCode routing headers on every LLM
-request (session turns, subagents, prompt enhancement, and plugin
-one-shots): `x-opencode-session` is the durable conversation id (or a
-per-call UUID when the caller has no session), `x-opencode-client` is
-`pi-desktop`, and `User-Agent` is `pi-desktop/<APP_VERSION>` unless the row
-sets `headers["User-Agent"]`. A custom OpenAI-compatible row whose base URL
+request (session turns, subagents, context-compaction summaries, prompt
+enhancement, and plugin one-shots): `x-opencode-session` is the durable
+conversation id (or a per-call UUID when the caller has no session),
+`x-opencode-client` is `pi-desktop`, and `User-Agent` is
+`pi-desktop/<APP_VERSION>` unless the row sets `headers["User-Agent"]`. A custom OpenAI-compatible row whose base URL
 host is `opencode.ai` receives the same headers. pi-ai is not relied on to
 emit `x-opencode-session`. Each provider row (AI service or OAuth account)
 may set optional `headers`; empty keeps adapter defaults. A fetch wrapper is
@@ -351,7 +351,9 @@ normal pin resolution, including when `Task.model` repeats that definition's
 own pin key. On-demand matching uses unique provider id/vendor/name lookup and
 must not overwrite a pin with another account's credentials. If vendor/model aliases collide across accounts, the
 opted-in account uses its exact provider ID as the override key. Selection priority remains Task.model → definition pin
-→ session model (D278; ADR subagent-model-opt-in).
+→ session model (D278; ADR subagent-model-opt-in). The opt-in governs every entry point that lets the AI pick a model
+for delegated work, not only `Task.model`: a `session/collaboration/spawn` `modelKey` naming a model without it is
+refused with `PERMISSION_DENIED`, while omitting the key, or naming the default model's own key, still inherits.
 
 ## 8. Secrets
 

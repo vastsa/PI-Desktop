@@ -89,6 +89,103 @@ pub struct PluginSummary {
     pub fs: Option<Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub settings: Vec<PluginSettingDefinition>,
+    /// `manifest.i18n`, held in memory only.
+    ///
+    /// Display metadata that the host resolves before a row leaves the
+    /// process, so it is neither persisted in the registry nor sent over RPC:
+    /// the renderer keeps reading finished strings (ADR 0160 §4). Every path
+    /// that rebuilds a row from a manifest refills it.
+    #[serde(default, skip_serializing)]
+    pub i18n: Option<PluginI18nMap>,
+}
+
+/// One locale's display strings for a plugin (`manifest.i18n`, catalog `i18n`).
+///
+/// Every field is optional so a partially translated block still falls back
+/// per field instead of losing the author's own language.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginDisplayI18n {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub safety_notes: Option<String>,
+}
+
+/// Locale id → display strings. Plugins ship `en` plus `zh-CN`; other keys are
+/// kept but never selected, so a manifest may carry more than the contract
+/// requires without the host having to understand them.
+pub type PluginI18nMap = std::collections::BTreeMap<String, PluginDisplayI18n>;
+
+/// Which entry of a [`PluginI18nMap`] a shell locale reads.
+///
+/// Mirrors `resolvePluginLocalizedString` in `@pi-desktop/plugin-sdk`: every
+/// Chinese shell locale reads `zh-CN`, everything else reads `en`. Plugins are
+/// not required to translate themselves into every shipped shell locale, so
+/// `zh-TW` deliberately reads English rather than half a `zh-CN` guess
+/// (ADR 0182).
+pub(crate) fn plugin_display_locale(locale: &str) -> &'static str {
+    let lower = locale.trim().replace('_', "-").to_lowercase();
+    let simplified_chinese = lower == "zh"
+        || lower == "zh-cn"
+        || lower.starts_with("zh-cn-")
+        || lower == "zh-hans"
+        || lower.starts_with("zh-hans-")
+        || lower == "zh-sg"
+        || lower.starts_with("zh-sg-");
+    if simplified_chinese {
+        "zh-CN"
+    } else {
+        "en"
+    }
+}
+
+/// One localized field: the locale's entry, else English, else whichever block
+/// is there. An empty string counts as missing — a half-filled translation
+/// must not blank out a row that has a usable author-written name.
+pub(crate) fn localized_field<'a>(
+    map: Option<&'a PluginI18nMap>,
+    locale: &str,
+    pick: impl Fn(&'a PluginDisplayI18n) -> Option<&'a String>,
+) -> Option<&'a String> {
+    let map = map?;
+    let mut order = vec![plugin_display_locale(locale)];
+    for key in ["en", "zh-CN"] {
+        if !order.contains(&key) {
+            order.push(key);
+        }
+    }
+    for key in order {
+        if let Some(value) = map.get(key).and_then(&pick) {
+            if !value.trim().is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
+impl PluginSummary {
+    /// The row as the active locale should read it.
+    ///
+    /// Only display text moves: ids, versions, permissions and state are
+    /// language-independent, and a plugin without an `i18n` block keeps the
+    /// strings its author wrote.
+    pub(crate) fn localized(&self, locale: &str) -> PluginSummary {
+        let mut out = self.clone();
+        if let Some(name) = localized_field(self.i18n.as_ref(), locale, |entry| entry.name.as_ref())
+        {
+            out.name = name.clone();
+        }
+        if let Some(description) = localized_field(self.i18n.as_ref(), locale, |entry| {
+            entry.description.as_ref()
+        }) {
+            out.description = Some(description.clone());
+        }
+        out
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -328,6 +425,10 @@ pub(crate) struct MarketCatalogEntry {
     pub(crate) repository: Option<String>,
     #[serde(default)]
     pub(crate) readme_markdown: Option<String>,
+    /// Display strings per locale, resolved against the app language before a
+    /// card or detail view is built.
+    #[serde(default)]
+    pub(crate) i18n: Option<PluginI18nMap>,
     #[serde(default)]
     pub(crate) safety_notes: Option<String>,
     pub(crate) versions: Vec<MarketVersion>,

@@ -164,14 +164,10 @@ export function PluginDialogs({
                 <h2 className="plugins-modal-title">
                   {t("plugins.newFromTemplateTitle")}
                 </h2>
-                <p className="plugins-modal-subtitle">
-                  {t("plugins.newFromTemplateHint")}
-                </p>
               </div>
             </header>
 
             <div className="plugins-modal-body">
-              <p className="plugins-modal-lede">{t("plugins.newFromTemplateBody")}</p>
               <div
                 className="plugins-template-list"
                 role="radiogroup"

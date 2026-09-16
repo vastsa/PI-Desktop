@@ -1,6 +1,7 @@
 # ADR message-quotes-and-side-chats: Message Quotes and Renderer-Owned Side Chats
+> Superseded by ADR 0268.
 
-- Status: Accepted
+- Status: Superseded by ADR 0268
 - Date: 2026-09-11
 - Deciders: PI-Desktop runtime and desktop UI maintainers
 - Amends: D209, D301
@@ -44,17 +45,18 @@ main transcript leaves the screen, and coming back costs a session switch.
    chip kind and no file reference.
 4. **Open side chat** is offered on an assistant turn (fork anchored at that
    assistant message) and on a user message (fork anchored at that user
-   message), with the tooltip and accessible name `chat.startSideChat`. It calls
-   the existing `session.fork` with the anchor and does **not** activate the
-   child: the main conversation keeps its visible session. The child is durable
-   on the host exactly as an ordinary branch and keeps appearing in session
-   lists and search.
-5. The child is registered as a side chat of the parent session in
-   renderer-owned state, and the work panel opens a new `sidechat` resource tab
-   bound to the child session id (`id: sidechat:<childSessionId>`). The tab
-   reuses the existing docked panel, its width clamp, resize, and
-   native-reservation lifecycle, its header switcher, and D128's per-session
-   panel-context switch rule.
+   message), with the tooltip and accessible name `chat.startSideChat`. It opens
+   a renderer-only draft anchored at the selected message. Opening and
+   typing do not call `session.fork`. First explicit Send with nonempty text
+   forks the child without activating it, then sends through the existing prompt
+   path. Concurrent sends share one creation. The resulting child is durable.
+5. Before first Send the work panel uses a renderer-only draft id. Creation
+   replaces that tab with `sidechat:<childSessionId>` in place, including the
+   parent's retained panel context. Switching sessions or closing during
+   creation must not reopen a panel. Draft text lives in the side-chat entry,
+   survives panel switches and failed creation/sends, and is cleared after
+   acceptance only if the user has not edited it in the meantime.
+
 6. While a side chat is registered, the child's agent events are projected into
    a renderer-owned per-session transcript map from the same event stream the
    active transcript consumes (message and tool start / update / end), reusing
@@ -79,7 +81,8 @@ main transcript leaves the screen, and coming back costs a session switch.
    session-selection path, so the full composer, prompt queue, and stop controls
    apply, and releases the side-chat registration and its tab.
 10. Closing the tab removes the registration and its transcript projection. The
-    child session is not deleted and remains an ordinary session in the sidebar,
+    unsent draft leaves no host record. An already created child session is
+    not deleted and remains an ordinary session in the sidebar,
     session lists, and search.
 11. Side-chat entries are removed when the tab closes, when the child is opened
     as a conversation, and when the parent or child session is deleted.
@@ -178,10 +181,9 @@ excerpt and the side-chat target stay PI-Desktop's own contracts (D-LOCAL-messag
 - Actions, in the reference overlay's order: **Add to chat**
   (`chat.addToChat`) writes the excerpt into the active session's composer draft
   through D-LOCAL-message-quotes decision 3's contract and focuses the composer via the existing
-  prefill path; **Ask in side chat** (`chat.askInSideChat`) opens the side chat
-  anchored at that row (`session.fork` through D-LOCAL-message-quotes decision 4) and sends the
-  excerpt as that child's prompt, so the question is answered beside the
-  conversation instead of inside it; **Copy** reuses `chat.copy` and writes the
+  prefill path; **Ask in side chat** (`chat.askInSideChat`) opens a renderer-only
+  side-chat draft and prefills the excerpt as a Markdown blockquote without
+  sending; **Copy** reuses `chat.copy` and writes the
   Markdown to the clipboard. The side-chat action is disabled while the visible
   session is running, because the host refuses a fork mid-turn. Every action
   clears the native selection first, so the overlay does not outlive its own
@@ -218,6 +220,25 @@ Side-chat registrations use the upstream work-panel tab strip and launcher.
 Closing the final tab leaves the launcher open; closing a side chat removes only
 its registration/projection, never its durable child or unrelated tabs. The
 shared upstream delta-aware transcript reducer also feeds docked children.
-Registered transcripts persist across tab switches; compact draft and scroll
-state are component-local and may reset on remount. No restart persistence or
-native-session unification is introduced.
+Registered transcripts and drafts persist across tab switches in renderer-owned
+state. Scroll position is component-local and may reset on remount. Side-chat
+registrations and drafts do not persist across application restarts.
+
+## First-send creation amendment (Issue #421)
+
+Opening a side chat is a reversible draft interaction. Selection-overlay
+Ask in side chat prefills a Markdown blockquote and never sends automatically.
+Open as a conversation and Add to main chat are unavailable until a child
+exists. A successful fork followed by a failed send keeps that child for retry
+rather than creating another one. Closing after an explicit Send may retain the
+created child even if the provider rejects the prompt. Existing sessions are
+never deleted as cleanup. No IPC, host ownership, or database schema changes.
+
+### Side-chat Send availability
+
+Drafts use the parent session's live availability. A running/busy parent disables
+first Send with a visible explanation; a read-only parent also disables it.
+The submission action shares the same gate and reports blocked programmatic
+submissions without creating a child or clearing text. After creation, the
+submission action checks the child's current availability again before sending.
+Existing children keep their normal queue and Stop behavior. Recovery re-enables Send automatically.

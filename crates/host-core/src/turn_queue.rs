@@ -1,4 +1,4 @@
-//! The Host-owned turn queue (D375 / ADR 0213, schema v15).
+//! The Host-owned turn queue (D375 / ADR 0213 / ADR 0260, schema v18).
 //!
 //! Queued prompts used to live in renderer memory, so only the window that
 //! typed them knew they existed and a reload dropped them. The table lets the
@@ -48,6 +48,11 @@ pub struct QueuedTurn {
     pub attachments: Option<Value>,
     pub permission_mode: String,
     pub position: i64,
+    /// Set once the entry is promoted ("send now"). The value is the entry's
+    /// place inside the session's priority block, so promotions leave in the
+    /// order they were clicked. `None` means the entry was never promoted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i64>,
     pub created_at: String,
 }
 
@@ -64,13 +69,18 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedTurn> {
         attachments: attachments.and_then(|text| serde_json::from_str(&text).ok()),
         permission_mode: row.get(7)?,
         position: row.get(8)?,
+        priority: row.get(11)?,
         created_at: ms_to_ts(row.get::<_, i64>(9)?),
     })
 }
 
 const SELECT: &str = "SELECT id, session_id, principal, idempotency_key, input_hash, content,
-        attachments_json, permission_mode, position, created_at, session_message_id
+        attachments_json, permission_mode, position, created_at, session_message_id, priority
  FROM turn_queue";
+
+/// Delivery order: promoted entries first in click order (ascending
+/// `priority`), then every remaining entry in queue (`position`) order.
+const ORDER_BY: &str = "ORDER BY (priority IS NULL) ASC, priority ASC, position ASC";
 
 /// Append an entry. A reused `(session, principal, idempotencyKey)` returns
 /// the existing entry when the input hash matches and fails with
@@ -152,22 +162,22 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
         attachments: input.attachments,
         permission_mode: input.permission_mode,
         position: max_position + 1,
+        priority: None,
         created_at: ms_to_ts(created_at),
     })
 }
 
-/// Entries in queue order, for one session or for every session.
+/// Entries in delivery order, for one session or for every session: promoted
+/// entries first in click order, then the rest by `position`.
 pub fn list(db: &Database, session_id: Option<&str>) -> Result<Vec<QueuedTurn>> {
     let conn = db.conn();
     let entries = match session_id {
         Some(session_id) => conn
-            .prepare_cached(&format!(
-                "{SELECT} WHERE session_id = ?1 ORDER BY position ASC"
-            ))?
+            .prepare_cached(&format!("{SELECT} WHERE session_id = ?1 {ORDER_BY}"))?
             .query_map(params![session_id], row_to_entry)?
             .collect::<rusqlite::Result<Vec<_>>>()?,
         None => conn
-            .prepare_cached(&format!("{SELECT} ORDER BY session_id ASC, position ASC"))?
+            .prepare_cached(&format!("{SELECT} ORDER BY session_id ASC, (priority IS NULL) ASC, priority ASC, position ASC"))?
             .query_map([], row_to_entry)?
             .collect::<rusqlite::Result<Vec<_>>>()?,
     };
@@ -184,32 +194,111 @@ pub fn remove(db: &Database, id: &str) -> Result<bool> {
     Ok(removed > 0)
 }
 
-/// Move one entry to the head of its session's queue ("send now"). The entry
-/// takes a position below the current minimum, so nothing else is rewritten.
+/// Direction of one `reorder` step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReorderDirection {
+    Up,
+    Down,
+}
+
+/// Promote one entry to the end of its session's priority block ("send now").
+///
+/// The entry gets `COALESCE(MAX(priority), 0) + 1`, so successive promotions
+/// are delivered in the order they were requested. Promotion is one-way: an
+/// entry that already has a priority is a conflict (`ALREADY_PRIORITIZED`)
+/// instead of being moved again. `Ok(None)` means the entry is not queued.
 pub fn prioritize(db: &Database, id: &str) -> Result<Option<QueuedTurn>> {
     let conn = db.conn();
     let tx = conn.unchecked_transaction()?;
-    let Some(session_id) = tx
-        .prepare_cached("SELECT session_id FROM turn_queue WHERE id = ?1")?
-        .query_row(params![id], |row| row.get::<_, String>(0))
+    let Some((session_id, priority)) = tx
+        .prepare_cached("SELECT session_id, priority FROM turn_queue WHERE id = ?1")?
+        .query_row(params![id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
+        })
         .optional()?
     else {
         return Ok(None);
     };
-    let min_position: i64 = tx.query_row(
-        "SELECT COALESCE(MIN(position), 0) FROM turn_queue WHERE session_id = ?1",
+    if priority.is_some() {
+        return Err(anyhow!("ALREADY_PRIORITIZED"));
+    }
+    let next_priority: i64 = tx.query_row(
+        "SELECT COALESCE(MAX(priority), 0) + 1 FROM turn_queue WHERE session_id = ?1",
         params![session_id],
         |row| row.get(0),
     )?;
     tx.execute(
-        "UPDATE turn_queue SET position = ?1 WHERE id = ?2",
-        params![min_position - 1, id],
+        "UPDATE turn_queue SET priority = ?1 WHERE id = ?2",
+        params![next_priority, id],
     )?;
     let entry = tx
         .prepare_cached(&format!("{SELECT} WHERE id = ?1"))?
         .query_row(params![id], row_to_entry)?;
     tx.commit()?;
     Ok(Some(entry))
+}
+
+/// Swap one entry with its adjacent non-prioritized neighbour in the session.
+///
+/// Only the plain queue (`position`) moves: a promoted entry keeps its place
+/// in the priority block and is never reordered by this path. `Ok(false)` is
+/// the no-op result for a missing entry, a promoted entry, or a missing
+/// neighbour in that direction.
+pub fn reorder(db: &Database, id: &str, direction: ReorderDirection) -> Result<bool> {
+    let conn = db.conn();
+    let tx = conn.unchecked_transaction()?;
+    let Some((session_id, position, priority)) = tx
+        .prepare_cached("SELECT session_id, position, priority FROM turn_queue WHERE id = ?1")?
+        .query_row(params![id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+            ))
+        })
+        .optional()?
+    else {
+        return Ok(false);
+    };
+    if priority.is_some() {
+        return Ok(false);
+    }
+    let neighbour = match direction {
+        ReorderDirection::Up => tx
+            .prepare_cached(
+                "SELECT id, position FROM turn_queue
+                 WHERE session_id = ?1 AND priority IS NULL AND position < ?2
+                 ORDER BY position DESC LIMIT 1",
+            )?
+            .query_row(params![session_id, position], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .optional()?,
+        ReorderDirection::Down => tx
+            .prepare_cached(
+                "SELECT id, position FROM turn_queue
+                 WHERE session_id = ?1 AND priority IS NULL AND position > ?2
+                 ORDER BY position ASC LIMIT 1",
+            )?
+            .query_row(params![session_id, position], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .optional()?,
+    };
+    let Some((neighbour_id, neighbour_position)) = neighbour else {
+        return Ok(false);
+    };
+    tx.execute(
+        "UPDATE turn_queue SET position = ?1 WHERE id = ?2",
+        params![neighbour_position, id],
+    )?;
+    tx.execute(
+        "UPDATE turn_queue SET position = ?1 WHERE id = ?2",
+        params![position, neighbour_id],
+    )?;
+    tx.commit()?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -299,21 +388,124 @@ mod tests {
         );
     }
 
-    #[test]
-    fn prioritize_moves_an_entry_to_the_head() {
-        let (_dir, db, session_id) = open_with_session();
-        push(&db, input(&session_id, "one", None)).unwrap();
-        let second = push(&db, input(&session_id, "two", None)).unwrap();
-        push(&db, input(&session_id, "three", None)).unwrap();
-        let moved = prioritize(&db, &second.id).unwrap().unwrap();
-        assert!(moved.position < 1);
-        let order: Vec<String> = list(&db, Some(&session_id))
+    fn content_order(db: &Database, session_id: &str) -> Vec<String> {
+        list(db, Some(session_id))
             .unwrap()
             .into_iter()
             .map(|entry| entry.content)
-            .collect();
-        assert_eq!(order, ["two", "one", "three"]);
+            .collect()
+    }
+
+    #[test]
+    fn prioritize_appends_to_the_priority_block_in_click_order() {
+        let (_dir, db, session_id) = open_with_session();
+        push(&db, input(&session_id, "one", None)).unwrap();
+        let second = push(&db, input(&session_id, "two", None)).unwrap();
+        let third = push(&db, input(&session_id, "three", None)).unwrap();
+        let promoted = prioritize(&db, &second.id).unwrap().unwrap();
+        assert_eq!(promoted.priority, Some(1));
+        assert_eq!(promoted.position, 2, "promotion leaves the position alone");
+        assert_eq!(content_order(&db, &session_id), ["two", "one", "three"]);
+        // A second promotion appends to the block: the first click leaves first.
+        let later = prioritize(&db, &third.id).unwrap().unwrap();
+        assert_eq!(later.priority, Some(2));
+        assert_eq!(content_order(&db, &session_id), ["two", "three", "one"]);
+        // Promotion is one-way; promoting twice is a conflict, not a reorder.
+        let again = prioritize(&db, &second.id).unwrap_err();
+        assert_eq!(again.to_string(), "ALREADY_PRIORITIZED");
+        assert_eq!(content_order(&db, &session_id), ["two", "three", "one"]);
         assert!(prioritize(&db, "missing").unwrap().is_none());
+    }
+
+    #[test]
+    fn reorder_swaps_adjacent_non_prioritized_entries() {
+        let (_dir, db, session_id) = open_with_session();
+        let first = push(&db, input(&session_id, "one", None)).unwrap();
+        let second = push(&db, input(&session_id, "two", None)).unwrap();
+        let third = push(&db, input(&session_id, "three", None)).unwrap();
+        assert!(!reorder(&db, &first.id, ReorderDirection::Up).unwrap());
+        assert!(reorder(&db, &third.id, ReorderDirection::Up).unwrap());
+        assert_eq!(content_order(&db, &session_id), ["one", "three", "two"]);
+        assert!(reorder(&db, &first.id, ReorderDirection::Down).unwrap());
+        assert_eq!(content_order(&db, &session_id), ["three", "one", "two"]);
+        assert!(!reorder(&db, &second.id, ReorderDirection::Down).unwrap());
+        assert!(!reorder(&db, "missing", ReorderDirection::Up).unwrap());
+        assert_eq!(content_order(&db, &session_id), ["three", "one", "two"]);
+    }
+
+    #[test]
+    fn reorder_never_moves_a_prioritized_entry() {
+        let (_dir, db, session_id) = open_with_session();
+        let first = push(&db, input(&session_id, "one", None)).unwrap();
+        push(&db, input(&session_id, "two", None)).unwrap();
+        let third = push(&db, input(&session_id, "three", None)).unwrap();
+        prioritize(&db, &third.id).unwrap().unwrap();
+        assert_eq!(content_order(&db, &session_id), ["three", "one", "two"]);
+        assert!(!reorder(&db, &third.id, ReorderDirection::Down).unwrap());
+        assert_eq!(content_order(&db, &session_id), ["three", "one", "two"]);
+        // A promoted entry is not a neighbour: `one` is already first in the
+        // plain queue, so it cannot move up.
+        assert!(!reorder(&db, &first.id, ReorderDirection::Up).unwrap());
+        assert!(reorder(&db, &first.id, ReorderDirection::Down).unwrap());
+        assert_eq!(content_order(&db, &session_id), ["three", "two", "one"]);
+        assert_eq!(
+            list(&db, Some(&session_id)).unwrap()[0].priority,
+            Some(1),
+            "the promoted entry stays at the head of the priority block"
+        );
+    }
+
+    #[test]
+    fn a_v16_queue_upgrades_with_its_rows_and_keeps_working() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.sqlite");
+        let session_id: String;
+        let first: QueuedTurn;
+        let second: QueuedTurn;
+        {
+            let db = Database::open(&path).unwrap();
+            let session = sessions::create_session(
+                &db,
+                Some("Queue".into()),
+                Some("agent".into()),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+            session_id = session.id;
+            first = push(&db, input(&session_id, "one", None)).unwrap();
+            second = push(&db, input(&session_id, "two", None)).unwrap();
+            // A v16 database has no priority column yet.
+            db.conn()
+                .execute_batch("ALTER TABLE turn_queue DROP COLUMN priority;")
+                .unwrap();
+            db.conn().pragma_update(None, "user_version", 16).unwrap();
+        }
+        let db = Database::open(&path).unwrap();
+        let version: i64 = db
+            .conn()
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, crate::db::SCHEMA_VERSION);
+        let restored = list(&db, Some(&session_id)).unwrap();
+        assert_eq!(
+            restored
+                .iter()
+                .map(|entry| entry.content.as_str())
+                .collect::<Vec<_>>(),
+            ["one", "two"]
+        );
+        assert_eq!(
+            (restored[0].id.as_str(), restored[1].id.as_str()),
+            (first.id.as_str(), second.id.as_str())
+        );
+        assert!(restored.iter().all(|entry| entry.priority.is_none()));
+        // Migrated rows stay usable: promote, append, and reorder after the upgrade.
+        prioritize(&db, &second.id).unwrap().unwrap();
+        let third = push(&db, input(&session_id, "three", None)).unwrap();
+        assert!(reorder(&db, &third.id, ReorderDirection::Up).unwrap());
+        assert_eq!(content_order(&db, &session_id), ["two", "three", "one"]);
     }
 
     #[test]

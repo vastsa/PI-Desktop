@@ -157,7 +157,6 @@ export function KeyboardShortcutsSection({ settings, platform, saveSettings }: P
       <div className="settings-card-heading-row">
         <div>
           <h3 className="settings-card-heading">{t("settings.keyboard")}</h3>
-          <p className="settings-card-description">{t("settings.shortcutDescription")}</p>
         </div>
         <button
           type="button"

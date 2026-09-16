@@ -426,21 +426,21 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 #### E2E-009：UI 中可见的流式令牌
 
 - **先决条件**：会话处于活动状态；消息已发送。
-- **步骤**：1) 请求包含 Markdown 和 inline/display 的长答案
-  数学。 2) 观察助理的响应。 3）让答案
-  完成并检查渲染器控制台。
-- **预期**：运行时块通过增量逐渐出现
-  Markdown 渲染器和最终响应完成。渲染器不
-启动第二个动画帧打字机循环，引发 React 错误 185，或者
-  拒绝 CSP 下的 Vite 内联 KaTeX 字体。
+- **步骤**：1) 请求包含 Markdown 和行内/块级数学公式的长答案，公式同时使用
+  美元符号（`$…$` / `$$…$$`）和 TeX 括号（`\(…\)` / `\[…\]`）分隔符。
+  2) 观察助理的流式响应。3) 让答案完成并检查渲染器控制台。
+- **预期**：运行时块通过增量 Markdown 渲染器逐渐出现，最终响应完整。
+  四种数学分隔符均由 KaTeX 渲染，其中 `\[…\]` 使用块级布局。渲染器不会
+  启动第二个动画帧打字机循环、触发 React 错误 185，或因 CSP 拒绝 Vite
+  内联的 KaTeX 字体。
 - **链接规格**：`03-runtime/02-agent-runtime.md`，
   `04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md`、
   `05-security/01-security.md`
 - **验收**：C（流式输出），质量
 - **里程碑**：M2
-- **状态**：部分自动化（协议实时模型流加上渲染器
-  `renderer-stream-safety.test.mjs` 中的源回归；完整的UI观察
-  仍为草案）
+- **状态**：部分自动化（协议实时模型流、`renderer-stream-safety.test.mjs`
+  中的渲染器源回归，以及 `latex-math.test.mjs` 中的数学分隔符渲染；
+  完整 UI 观察仍为草案）
 
 #### E2E-010：中止生成
 
@@ -600,8 +600,8 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
   侧边栏控件的重复）。在所有其他路线上均采用无框拖曳
   band 会改为渲染（没有顶栏控件）。该栏可拖动以移动
   窗户；交互式控件不会启动窗口拖动。
-  macOS 仅在侧边栏打开时为交通灯保留左侧约 76px 的空间
-  折叠（全屏 8 像素）； Windows/Linux 将右侧 112px 留空
+  macOS 仅在侧边栏折叠时为交通灯保留左侧 88px 的空间
+  （全屏 8 像素）； Windows/Linux 将右侧 112px 留空
   本机窗口控件。
 - **链接规格**：`04-ux/08-component-spec.md`（§2 顶栏）
 - **验收**：C (send/UI)，质量
@@ -996,9 +996,25 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
   4) 打开语言行的可搜索选择器。确认「跟随系统」钉在顶部并显示检测到的本地名称，且列表按本地名称列出 English、简体中文、繁體中文、Türkçe、Deutsch、Español、Français。操作系统为简体中文时选择「跟随系统」会应用简体中文；切换为繁体中文系统时会应用繁体中文。
   5) 依次选择 English、简体中文、繁體中文、Türkçe、Deutsch、Español 和 Français，确认外壳文案无需重新加载即可切换。确认 `zh-Hant` 和 `zh-HK` 解析为繁体中文，`de-DE` 解析为 Deutsch，`es-MX` 解析为 Español，`fr-CA` 解析为 Français。
   6) 在语言搜索中输入本地名称或英文名称，确认不匹配的语言消失。在主题搜索中输入主题名称，确认不匹配的选项消失。
-- **预期**：主题和语言都是可搜索的选择行（不是卡片网格，也不是原生 select）；关闭时的触发器填满设置控件列且不溢出该行。主题列出系统、浅色、深色，插件主题在分隔线之后。「跟随系统」通过主进程 (`app.getLocale()`) 解析操作系统区域设置，安全地通过沙盒 preload 桥传递，并在菜单内嵌显示检测到的本地名称；zh-TW、土耳其语、德语、西班牙语和法语都是包含发版日志文案在内的完整外壳目录；切换选项会立即更新 UI，无需重新加载。
+- **预期**：主题和语言都是可搜索的选择行（不是卡片网格，也不是原生 select）；关闭时的触发器按当前文案收缩、不超过设置控件列且不溢出该行。主题列出系统、浅色、深色，插件主题在分隔线之后。「跟随系统」通过主进程 (`app.getLocale()`) 解析操作系统区域设置，安全地通过沙盒 preload 桥传递，并在菜单内嵌显示检测到的本地名称；zh-TW、土耳其语、德语、西班牙语和法语都是包含发版日志文案在内的完整外壳目录；切换选项会立即更新 UI，无需重新加载。
 - **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/02-i18n-english-first.md`
 - **验收**：A（核心壳）、H（本地化）
+- **里程碑**：M4
+- **状态**：已记录
+
+#### E2E-SETTINGS-ai-tab-pickers-use-in-app-menus：全局 AI 下拉使用应用内菜单
+
+- **先决条件**：应用正在运行，主机至少报告一个已配置的命令 Shell，以及至少一个在当前平台不可用的目录内 Shell。
+- **步骤**：
+  1) 打开设置 → 常规，展开主题和语言选择器，记下药丸触发器与展开后的表面。
+  2) 打开全局 AI。
+  3) 展开权限卡的权限模式控件，依次选择询问、接受编辑、自动。
+  4) 展开默认项卡的命令 Shell 控件；查看不可用条目并选择一个可用的 Shell。
+  5) 先用 Escape、再用外部点击分别关闭打开的菜单。
+  6) 关闭设置后重新打开，读取这两行。
+- **预期**：两行都展开与外观选择器相同的锚定菜单表面 —— 应用绘制的边框，使用共享的圆角、阴影、描边和主题 token，当前选项带勾选标记，并有悬浮/键盘高亮 —— 而不是平台绘制的 `<select>` 弹层。关闭时的触发器按当前文案收缩，不超过设置控件列。不可用的 Shell 仍会列出并带后缀，不可选择，也不会成为当前值。Escape 和外部点击都会关闭菜单并把焦点还给触发器；方向键在可选选项之间循环移动。所选权限模式和命令 Shell 在关闭并重新打开设置后保持，且选定的 Shell 仍是唯一的配置状态提示。
+- **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/09-interaction-patterns.md`
+- **验收**：A（核心壳）
 - **里程碑**：M4
 - **状态**：已记录
 
@@ -1551,20 +1567,28 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 
 #### E2E-SUBAGENT-settings-lists-builtin-defaults
 
-- **前提条件**：应用已运行。`~/.agents/subagents` 为空。五个内置定义存在，且没有用户文档覆盖它们。
+- **前提条件**：应用已运行。`~/.agents/subagents` 为空。五个内置定义存在，没有一个被关闭，且没有用户文档覆盖它们。
 - **步骤**：
   1. 打开设置 → 智能体 → 子智能体。确认内置分组列出 `explorer`、`code-reviewer`、
-     `test-runner`、`fixer`、`ui-designer`，带本地化名称、`Task(<handle>)`、工具授权和「内置」徽标；
-     这些行没有启用开关、在文件夹中显示或删除。
+     `test-runner`、`fixer`、`ui-designer`，带本地化名称、`Task(<handle>)`、工具授权、「内置」徽标、
+     「复制为我的定义」，以及处于打开位置的启用开关。确认这些行没有在文件夹中显示或删除。
   2. 确认全局分组仍显示本地化的 `settings.subagentsEmpty` 文案和「新建子智能体」。
-  3. 在 explorer 上选择「复制为我的定义」。确认新建表单按该定义预填，且选中的是探索者模板芯片而不是空白开始。保存后确认 explorer 只出现在全局用户行，并从内置分组消失。
-  4. 禁用该用户 explorer 并重新加载。确认用户行关闭，explorer 重新出现在内置分组（未启用的用户文档不会进入加载器，因此内置定义重新生效）。
-- **预期**：设置页展示主智能体实际可委派的默认子智能体。复制内置项是用户改写它的方式；启用、显示和删除只作用于用户自建文件。
+  3. 在内置行上关掉 `fixer`。确认该行随开关关闭而变暗，toast 指出它的名字，
+     `~/.agents/subagents` 中没有出现任何东西，且该行仍留在列表里，因为那个开关就是重新打开的入口。
+  4. 在 `fixer` 关闭的情况下发送一次提示。确认 `Task` 目录不再提供它，而其余四个仍在；然后把它重新打开，
+     确认下一次提示又提供它。
+  5. 在 explorer 上选择「复制为我的定义」。确认新建表单按该定义预填（名称、描述、工具、正文），
+     且选中的是探索者模板芯片而不是空白开始。保存后确认 explorer 只出现在全局用户行，并从内置分组
+     消失，且下一次提示的 `Task` 目录使用该用户文档。
+  6. 禁用该用户 explorer 并重新加载。确认用户行关闭，explorer 重新出现在内置分组（未启用的用户文档不会进入加载器，因此内置定义重新生效）。
+- **预期**：设置页展示主智能体实际可委派的默认子智能体，且每一个都能从自己的行上关闭。内置项的启用状态是应用本地状态而不是文档，因此被关闭的默认项保留自己的行；复制内置项仍是改写它的方式；在文件夹中显示与删除仍然只作用于用户自建的行，因为它们以文件为后端。
 - **链接规格**：`04-ux/06-settings-ia.md` §2、`03-runtime/01-ipc-protocol.md` §12c、
-  `03-runtime/02-agent-runtime.md` §5f、ADR 0062、ADR 0063
+  `03-runtime/02-agent-runtime.md` §5f、ADR 0062、ADR 0063、ADR 0270
 - **验收**：E（工具与权限）、品质
 - **里程碑**：M6+
-- **状态**：源代码/单元已覆盖；完整 UI 旅程为草稿
+- **状态**：源代码/单元已覆盖（`apps/desktop/test/agent-capability-settings.test.mjs`、
+  `apps/desktop/test/subagent-wiring.test.mjs`、`packages/agent-runtime/src/subagent-definitions.test.ts`、
+  `packages/shared/src/subagent-presets.test.ts`）；完整 UI 旅程为草稿
 
 #### E2E-200：Linux RPM 保留 Wayland 桌面身份
 
@@ -2007,8 +2031,10 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   被取代的成功不能带来陈旧的表现。没有过渡产生
   第二次调整大小或位置漂移。
   预览模式隐藏 MainChat，并将客户区宽度交给面板；本机窗口尺寸不变，分隔线不可操作。
-  预览外壳仍保留新建任务、侧边栏和系统窗口操作。macOS 非全屏且侧边栏折叠时，左侧第一个预览操作从
-  76px 交通灯安全内缩之后开始；全屏时恢复原始内边距。
+  预览外壳仍保留新建任务、侧边栏和系统窗口操作。macOS 非全屏且侧边栏折叠时，预览行把交通灯引导内缩
+  （`--ds-window-lead-inset`，即灯簇右缘 76px 加 12px 间隙，共 88px）作为自身的左内边距渲染出来，
+  左侧第一个预览操作从该渲染值起或之后开始；检查读取的是解析后的内边距，而不是重述这个数字。
+  打开真实工作面板标签后，其第一个标签从预览操作组右侧至少 8px 处开始；全屏时使用 8px 原生内缩但保留该操作带。
   以前的上下文面板覆盖不再存在。
 - **链接规格**：`03-runtime/01-ipc-protocol.md`、`04-ux/01-ui-ia.md`、
   `04-ux/07-ui-design-system.md`、`04-ux/08-component-spec.md`、
@@ -2870,15 +2896,8 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
 
 - **先决条件**：PI-Desktop 在 Windows 上运行，有光和暗
   可用的主题。
-- **步骤**：1）在浅色主题中，在“设置”→“基础”中打开本机选择，
-  设置 → 模型配置、设置 → 导入和一项计划任务
-  形式。 2）以深色主题重复每个表面。 3）之后打开每个列表
-  无需重新启动应用程序即可切换主题。
-- **预期**：每个关闭的触发器和打开的本机选项列表都使用
-  活动主题的可读 foreground/background 配对。没有黑暗主题列表
-  退回到带有浅色文本的浅色 Windows 表面，没有浅色主题列表
-  使用深色主题墨水，更改主题会更新后续空缺。的
-  同样的结果适用于本机选择外部设置。
+- **步骤**：1）在浅色主题中，打开仍存在的本机选择（计划任务表单），并确认设置里的常规、全局 AI、模型配置和导入选择器都是应用内菜单而不是平台 `<select>`。2）以深色主题重复剩余本机列表。3）切换主题后无需重启即可再次打开每个列表。
+- **预期**：设置里的紧凑选择器使用共享锚定菜单。每个仍存在的关闭本机触发器和打开的本机选项列表都使用活动主题的可读 foreground/background 配对。没有黑暗主题列表退回到带有浅色文本的浅色 Windows 表面，没有浅色主题列表使用深色主题墨水，更改主题会更新后续打开。同样的结果适用于设置之外的本机选择。
 - **链接规格**：`04-ux/06-settings-ia.md`，
 `04-ux/07-ui-design-system.md`
 - **接受**：质量（跨平台主题可读性）
@@ -3075,16 +3094,25 @@ IPC 请求无法关闭。
   3. 打开聊天会话旁边的工作面板（审阅/文件/浏览器）。
   4. 将鼠标悬停在文件树行或 diff 标头上；聚焦浏览器 URL 字段。
   5. 打开 confirmation/provider 对话框并检查稀松布。
-  6. 在明暗主题中分别检查设置导航轨、搜索、选中项、开启状态旋钮、输入框壳及
-     插件/能力搜索。应用自定义表面变量，使用键盘聚焦两类搜索，再移除自定义主题。
+  6. 在明暗主题中分别检查设置导航轨、搜索、选中项、开启状态旋钮、输入框壳、插件/
+     能力搜索、代码卡标题带、Mermaid 画布、工具输出、输入占位符与禁用发送芯片、
+     对话框遮罩与权限蒙层，以及 dock 内的问题卡及其选项行。应用自定义表面变量，
+     使用键盘聚焦两类搜索，再移除自定义主题。
 - **预期**：
   - 工作面板主体读取为安静的 `#fafafa` 插页纸，带有白色标题带。
   - 设置字段、浏览器 URL、分段轨道和快捷键键帽使用浅色嵌入填充；聚焦场通过中性环提升。
   - 切换开启状态使白色旋钮保持在近乎黑色的轨道上。
   - 悬停可通过共享运动令牌轻松填充 file-tree/diff/resize。
   - 浅色对话稀松布比深色 45% 面纱（约 28% 墨水）更柔软。
-  - 自定义变量改变对应表面及搜索焦点填充；移除后恢复内置 8-bit RGBA 配色与
-    原有阴影/焦点环。本批不迁移正文或遮罩，不改插件主题 API。
+  - dock 内的问题卡在两种主题里都绘制 composer 板 —— 浅色 `#ffffff` 配 composer
+    阴影，深色 96% `#212121` —— 它的选项行是无抬升阴影的内嵌 `--ds-tile-deep` 填充。
+    自定义 `--ds-bg-composer` / `--ds-tile-deep` 会同时改变两者，移除后恢复内置配色。
+  - 工具输出保持既有级联：浅色在错误输出与纯文本工具块上都绘制同一层较浅底纹，深色
+    显示错误色调并让纯文本块保持透明。
+  - 自定义变量改变对应表面、键帽墨色及搜索焦点填充；移除后恢复内置 8-bit RGBA
+    配色与原有阴影/焦点环。正文墨色混合跟随 `--ds-text-primary`，
+    `one-dark-pro` / `one-light` 的 Shiki 底板与其墨色按设计归 Shiki 主题所有。
+    本批不改插件主题 API。
 - **链接规格**：`04-ux/07-ui-design-system.md`、`04-ux/08-component-spec.md`
 - **接受**：D148
 - **里程碑**：M5
@@ -3735,6 +3763,24 @@ IPC 请求无法关闭。
   并在批准后。 Main/Host/sidecar PID 保持稳定；凭据从不
   输入 CDP 或输出。默认无钥匙运行仍为 5/5 与现场案例
   明确跳过。
+
+#### E2E-CHAT-opaque-floating-decision-and-retry-surfaces：Plan 审批条与重试 hover 保持不透明
+
+- **状态**：已自动化（`apps/desktop/test/plan-mode-source-contract.test.mjs`、`apps/desktop/test/active-turn-surface.test.mjs`）
+- **优先级**：P2
+- **覆盖**：C、品质 / 浮动 Composer 与重试表面
+- **先决条件**：渲染器 CSS 为 `apps/desktop/src/styles` 下的生产源。
+- **步骤**：
+  1. 检查 Composer 停靠栏样式中的 `.plan-approval-bar`。
+  2. 检查记录样式中的 `.run-activity-error-popover.message-error`。
+  3. 在实时会话中悬停或聚焦正在重试的活动行。
+- **预期**：
+  - Plan/Goal 审批条使用 `--ds-bg-composer` 加 `--ds-shadow-composer`，而不是正文流里的 `--ds-tile` 薄洗，因此在透明停靠栏上仍可读。
+  - 重试 hover tooltip 把错误色混在 `--ds-bg-elevated-opaque` 上，记录正文不会透出。
+- **链接规格**：`04-ux/03-permission-ux.md`、`04-ux/08-component-spec.md`
+- **接受**：C、品质
+- **里程碑**：M6
+- **状态细节**：源码契约断言 CSS 标记。实时悬停仍为目视检查。
 
 #### E2E-107：Plan 批准使用一个绝对 30 分钟到期时间
 
@@ -4503,7 +4549,7 @@ IPC 请求无法关闭。
   11. 打开子代理，确认它是以 `~/.agents/subagents` 为根的单块全局面板，没有级别筛选、
       没有项目选择器、也没有项目级控制。确认即使用户目录为空，内置分组仍列出五个默认
       子智能体（`explorer`、`code-reviewer`、`test-runner`、`fixer`、`ui-designer`），
-      带「内置」徽标和工具授权，且没有启用开关、在文件夹中显示或删除。确认全局分组标题
+      带「内置」徽标、工具授权和启用开关，但没有在文件夹中显示或删除。确认全局分组标题
       带有全局级别标签和数量，新建 / 编辑 / 删除 / 在文件管理器中显示都能对用户自建行
       在页面内完成，且空的用户目录仍通过
       `settings.subagentsEmpty` 在全局分组下解析为本地化空态文案，不显示原始翻译键。
@@ -4919,6 +4965,11 @@ IPC 请求无法关闭。
 | 品质 / C / F（操作确认） | E2E-SESSION-permanent-delete-requires-confirmation, E2E-APP-idle-quit-skips-confirmation |
 | 品质（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
+| C — 对话与流式（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| E — 工具与权限（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| E — 工具与权限（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
+| F — 持久化（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
+| 品质（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
 
 | 里程碑 | 应用场景 |
 |---|---|
@@ -4947,6 +4998,13 @@ IPC 请求无法关闭。
 | 品质（模型回退隔离） | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
 | C — 对话和直播（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | 品质（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
+| M6+（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| M6+（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
+| E — 工具与权限（内置子智能体默认项） | E2E-SUBAGENT-settings-lists-builtin-defaults |
+| 品质（内置子智能体默认项） | E2E-SUBAGENT-settings-lists-builtin-defaults |
+| C — 对话与流式（不透明浮动表面） | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |
+| 品质（不透明浮动表面） | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |
+| M6（不透明浮动表面） | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -5468,9 +5526,10 @@ IPC 请求无法关闭。
   的会话与转录本不受影响。当被删除的项目曾是活动工作区时，工作区回退到另一个已打开的项目
   或 Temporary，且下次启动不会重新打开已删除的路径。磁盘上文件夹已被移动或删除的项目仍可
   移除。删除 C 会被拒绝并给出提示消息，该组保持不变；宿主已无持久行的路径仍会从项目存档与
-  侧边栏中移除，不会报出缺少项目的错误。当 D 的任务仍在运行时删除 D 会被拒绝并给出提示消息，
-  且不会移除任何内容——项目行、其会话以及正在运行的轮次都会保留——待该任务停止后同一次删除
-  即可成功。
+  侧边栏中移除，不会报出缺少项目的错误。当 D 的任务仍在运行时删除 D 会打开确认对话框，而不是给出
+  一条随 toast 消失的警告；对话框会指明正在运行的会话，其确认按钮表述为停止这些任务，取消不会移除
+  任何内容，确认则先停止这些轮次，然后再删除 D（见
+  E2E-PROJECT-delete-running-sessions-are-named-and-stopped）。
 - **链接规格**：`03-runtime/06-host-rpc-protocol.md` §项目、
   `03-runtime/04-data-storage.md`、`04-ux/08-component-spec.md` §3.9、ADR 0251
 - **验收**：D（工作区）、F（持久化）、品质
@@ -5479,6 +5538,28 @@ IPC 请求无法关闭。
   与 scratch、项目记忆、对其他项目的隔离、运行中任务的拒绝、项目组根的拒绝，以及未知路径的
   幂等），`pnpm test:e2e:boot` 通过沙箱 preload 往返 `pi-desktop/project/remove`；设置 →
   项目存档 → 对话框 → 侧边栏这条完整旅程仍为草稿
+
+### E2E-PROJECT-delete-running-sessions-are-named-and-stopped
+
+- **前提条件**：一个持久项目 D，其中一个会话的轮次仍在流式输出，并且该项目同时可从侧边栏项目
+  菜单与设置 → 项目存档中访问。
+- **步骤**：从这两个界面分别打开 D 的行菜单，在不停止该轮次的情况下选择删除项目。预期出现带
+  运行中会话行与“停止任务并删除”确认按钮的确认对话框；按取消，预期不发生任何变化。再次打开
+  对话框并确认。
+- **预期**：菜单不会用一条纯警告替代对话框，因此在任务运行时该操作始终可达。对话框仍会指明项目
+  名称、会话数量与不会被删除的文件夹；当有轮次在运行时，它还会指明还有多少个会话正在运行，其确认
+  按钮表述为停止这些任务，且该行仅在渲染时才加入对话框的 `aria-describedby`。取消不会删除任何
+  内容，轮次继续流式输出。确认会且仅会停止列出的这些会话，之后才移除项目、其会话、其转录本及其
+  持久记忆，磁盘上的文件夹保持原样。若在对话框打开与确认之间启动了新的轮次，宿主仍会拒绝，对话框
+  会用 `project.deleteRunningBlocked` 报告该拒绝且不移除任何内容。
+- **链接规格**：`03-runtime/06-host-rpc-protocol.md` §项目、
+  `04-ux/08-component-spec.md` §3.9、ADR 0251、D421、D431
+- **验收**：D（工作区）、品质
+- **里程碑**：M6+
+- **状态**：部分自动化 —— `apps/desktop/test/project-delete.test.mjs` 固定了两个菜单在传入项目
+  当前运行会话 id 的情况下都能到达对话框、对话框的运行中会话行与“停止任务并删除”标签、abort 循环
+  先于 `deleteProject` 执行、`CONFLICT` 兜底路径，以及所有已发布语言包中的新文案；端到端旅程仍为
+  草稿
 
 ### US-UI-59 基于会话的后台工具
 - 在项目 A 中启动可见轮次，在项目 B 运行时切换到项目 B，并且
@@ -6498,7 +6579,8 @@ IPC 请求无法关闭。
   2. 在工具执行之外调用 `pi.session.getLlmContext()`。确认 `INVALID_ARGUMENT`。
   3. 让 Agent 调用插件工具。在 `execute` 内调用 `getLlmContext()`，再调用 `agent.complete({ modelKey, includeSessionContext: true })`。确认工具结果含评审文本和 usage，不含密钥。
   4. 在 60 秒内重复 `agent.complete`，直到第 8 次成功、第 9 次返回 `RATE_LIMITED`。
-  5. 停止 host-core 后再调用 `pi.models.list()`。确认返回 `[]` 且没有 warn 日志。
+  5. 让该补全在供应商侧失败（例如使用一个用户已撤销凭据的模型）。确认插件读到的是分类后的错误码 `PROVIDER_UNAUTHORIZED`，而不是一个通用失败。
+  6. 停止 host-core 后再调用 `pi.models.list()`。确认返回 `[]` 且没有 warn 日志。
 - **预期**：凭据不离开 Electron main。审计行记录插件 id、模型 key、体积和 usage，不含转录或补全文本。Plan 仍对插件工具返回 `PLUGIN_DISABLED_IN_PLAN`。宿主传输不可用时模型列表为空且不记警告（D080）。
 - **链接规格**：`07-plugins/03-plugin-api.md`、`07-plugins/13-plugin-permissions-matrix.md`、ADR 0174、D336
 - **验收**：G（插件智能体工具）、安全
@@ -6957,12 +7039,15 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   上下文，不创建替代会话。状态和面板刷新使用有界的轻量轮询；`wait` 在其等待上限内返回
   `timedOut`，不占满宿主工具超时时间。`cancel` 中止但不删除，无关会话和现有 Task 系列
   保持不变，且不发生 localhost MCP 调用或 token 访问。Worker 不能再创建 Worker，
-  不属于调用方的 Session ID 必须被拒绝，并发上限超出时必须安全失败。Worker 创建和
+  不属于调用方的 Session ID 必须被拒绝，并发上限超出时必须安全失败。`spawn` 指定用户
+  未勾选「可供 AI 自动调度」的模型时，在创建 Worker 之前以 `PERMISSION_DENIED` 拒绝；
+  省略 `modelKey`，或写出默认模型自己的键，仍按继承处理。Worker 创建和
   prompt 通知突发时，会话列表刷新串行执行并合并，同时保留最终 Worker 列表和前台会话。
   后到达的通知等待后续读取，不会因复用 Worker 创建之前已开始的读取而丢失。
 - **链接规格**：`07-plugins/03-plugin-api.md`、`07-plugins/04-plugin-security.md`、
   `07-plugins/11-plugin-storage-isolation.md`、`03-runtime/01-ipc-protocol.md`、
-  `03-runtime/06-host-rpc-protocol.md`、ADR 0237
+  `03-runtime/06-host-rpc-protocol.md`、`03-runtime/11-provider-model-system.md`、
+  ADR 0237、ADR subagent-model-opt-in
 - **接受**：C（并行持久化会话）、D（插件安全性）、品质
 - **里程碑**：M6+
 - **状态**：host ledger 覆盖由 `pnpm test:e2e:collaboration` 自动化；marketplace 插件测试覆盖插件运行时，host-core 和 desktop 单元测试覆盖新增的宿主原子能力。完整真实 provider/Electron 旅程仍需在具备条件的 runner 中验证，遵循无本地 E2E 策略
@@ -6991,15 +7076,20 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 - **前提条件**：一个声明 `net.domains: ["allowed.test"]` 和 `net.fetch` 的开发插件。
   `allowed.test` 上的本地服务器对 `/hop` 返回 302 到 `http://undeclared.test/leak`，
-  对 `/ok` 返回 200。
+  对 `/ok` 返回 200，对 `/limited` 返回 429 且带 `Retry-After: 2`。
 - **步骤**：1）调用 `pi.net.fetch({ url: "https://allowed.test/ok" })`。2）调用
-  `pi.net.fetch({ url: "https://allowed.test/hop" })`。
+  `pi.net.fetch({ url: "https://allowed.test/hop" })`。3）调用
+  `pi.net.fetch({ url: "https://allowed.test/limited" })`。
 - **预期**：步骤 1 返回 200。步骤 2 以点名 `undeclared.test` 的 `PERMISSION_DENIED`
-  失败，未声明的服务器没有记录到任何请求。审计日志显示被拒绝的那一跳。
-- **链接规格**：`07-plugins/04-plugin-security.md` §8.0
+  失败，未声明的服务器没有记录到任何请求。审计日志显示被拒绝的那一跳。步骤 3
+  原样返回 429 及其 `Retry-After` 头，服务器只记录到一次请求，审计日志记为
+  `ok: false` 并带有它通告的 `retryAfter` —— 宿主不重试任何东西。
+- **链接规格**：`07-plugins/04-plugin-security.md` §8.0、
+  `07-plugins/03-plugin-api.md` §7
 - **验收**：D、安全
 - **里程碑**：M4+
 - **状态**：由 `apps/desktop/test/plugin-egress.test.mjs` 运行时覆盖
+  （逐跳出网与失败调用的审计）
 
 #### E2E-238：未知会话的工具请求不会回退
 
@@ -7170,11 +7260,54 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   3. 在布局收起左栏后手动重开左栏。
   4. 关闭工作面板并确认左栏恢复；再在手动收起左栏后重复一次。
   5. 用 `ArrowLeft`、`ArrowRight`、`Home`、`End` 重复调整分隔线。
+  6. Navigate to the real Plugins, Pull requests, and Scheduled routes with the
+     work panel closed, then collapse the sidebar. In light and dark themes,
+     measure both titlebar actions and compare their rest/hover styling with the
+     shared work-panel toggle. Reopen the sidebar, collapse it again, and use
+     New Task to return to an editable chat composer on each route.
+- **Route chrome expected**: The ordinary `.main-titlebar` actions (without a
+  preview chrome ancestor) render as centered 28px square targets with the shared
+  transparent rest surface, secondary ink, radius, and semantic hover wash/primary
+  ink. Hover does not change geometry; sidebar and New Task remain usable.
+  Automated by `pnpm test:e2e:layout` using real route components and DOM/CDP
+  interaction. This is renderer evidence, not native Windows/Linux hit-test proof.
 - **预期**：原生窗口宽度全程不变。MainChat 永不低于 360px —— 包含拖动过程中以及 `sidebar-out` 仍占位弹性空间期间。工作面板有效上限为客户端宽度减去 360px 下限与展开的左栏宽度，且无固定像素上限。预算耗尽时展开的左栏立即收起，面板之后仍可继续增长。手动重开优先占用右栏宽度；能保住当前 MainChat 则保持，否则落在 370px 的重开目标。关闭面板只恢复由布局机制收起的左栏。分隔线的 ARIA 最小/最大值遵循同一动态预算。
 - **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/07-ui-design-system.md` §10、`04-ux/08-component-spec.md` §1 与 §5、`04-ux/09-interaction-patterns.md` §8、ADR 0238
 - **验收**：F（持久化）、品质
 - **里程碑**：M6 之后的桌面外壳维护
 - **状态**：已自动化（`scripts/e2e-three-column-layout.mjs`，经 `pnpm test:e2e:layout` —— 固定窗口宽度不变、指针拖动全程 360px 下限、左栏让位/恢复、370px 重开目标）；单元覆盖见 `work-panel-resize.test.mjs`
+
+#### E2E-LAYOUT-work-panel-maximize
+
+- **Preconditions**: A desktop session has an open work panel with a real tab.
+- **Steps**:
+  1. Record the panel width and enter preview mode.
+  2. Inspect the header border box with the sidebar collapsed and expanded on
+     macOS windowed/fullscreen and Windows/Linux. Check row/spacer drag ownership.
+  3. With native pointer input, click centers and edges of sidebar and New Task
+     controls. Reenter preview and operate tabs, close, add, restore, panel toggle
+     and native controls. Drag empty header space. Repeat in light/dark themes.
+- **Expected**: MainChat is absent while preview fills the client area beside
+  the sidebar; native bounds and persisted preferred width are unchanged, the
+  divider is inert, and restore retains the last chosen sidebar state. The row
+  and spacer declare neither drag nor no-drag and pass pointer events through
+  outside controls. The panel header is the sole drag owner in the preview pane;
+  its border box and first tab start at least 8px after shell actions, including
+  expanded-sidebar New Task. Left inset is 8px except collapsed-sidebar windowed
+  macOS (88px through the shared lead-inset token); checks read resolved row
+  padding rather than duplicating native geometry. Right exclusion is unchanged. Controls receive
+  native clicks without window movement; empty-header drags move the window.
+  New Task exits preview to an editable composer. Header-height paint fills the
+  excluded lane without hiding panel controls.
+- **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md` §10,
+  `04-ux/08-component-spec.md` §5, `04-ux/09-interaction-patterns.md` §8, ADR 0238
+- **Acceptance**: F (persistence), Quality
+- **Milestone**: Post-M6 desktop shell maintenance
+- **Status**: Partially automated by `scripts/e2e-three-column-layout.mjs`
+  (preview entry/exit, DOM action behavior, header border-box exclusion,
+  row/spacer ownership, all-platform/fullscreen CSS fixtures in both sidebar
+  states). DOM/CDP clicks are not native hit-test proof. Native pointer, drag
+  and visual checks remain required; branch runs are exploratory only.
 
 #### E2E-AGENT-alt-enter-steers-active-turn：Enter 排队跟进，Alt+Enter 向当前回合补充指令
 
@@ -7202,6 +7335,56 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **状态**：草稿。现有回归套件覆盖周边行为，尚未运行渲染界面的 steering 完整流程
   （除非明确要求，不本地运行 E2E）。
 
+#### E2E-QUEUE-promote-orders-delivery-by-click：两次“立即发送”按点击顺序投递
+
+- **前提条件**：会话正在运行且至少完成一个工具批次，队列中已排队三条提示。
+- **步骤**：
+  1. 对第三条排队行点击“立即发送”。
+  2. 再对第一条排队行点击“立即发送”。
+  3. 确认优先区块顺序为“第三条 → 第一条”，两行的上移/下移/编辑/删除都被锁定，
+     而剩余那条仍可编辑。
+  4. 让当前边界通过，观察转录中的用户行。
+- **预期**：先点击的先投递、后点击的后投递——点击顺序即投递顺序，既不是“最后一次
+  点击顶掉前一次”，也不是原始队列顺序。两行作为同一回合里相邻的用户消息出现，模型只
+  回复一次；队列中不再列出这两条优先行。两条优先行显示为已决定，不能被编辑、删除或
+  重新排序；等待中的那一行保持可用，且不会先于任何优先行被投递。
+- **链接规格**：`03-runtime/01-ipc-protocol.md`（§5.6）、`04-ux/08-component-spec.md`（§11）、ADR 0265
+- **验收**：C（对话与流）
+- **里程碑**：M6+
+- **状态**：草稿；顺序与相邻投递已由 `turn_queue`、`turn-queue`、`agent-host` 单元测试覆盖
+
+#### E2E-QUEUE-reorder-moves-plain-neighbours：上移/下移重排等待队列
+
+- **前提条件**：会话正在运行，队列中至少三条等待行且没有优先行。
+- **步骤**：
+  1. 把第三条上移两次，确认它变成第一条。
+  2. 对第一条再上移一次，确认没有任何移动。
+  3. 先提升某一行，再尝试把相邻的等待行跨过它移动。
+  4. 重新加载渲染器并检查队列顺序。
+- **预期**：每次移动只与其相邻的等待行互换，Host 持久化新的顺序，因此重新加载后顺序
+  一致。等待区块边界与优先区块都不可跨越：边界处的移动是空操作，绝不会到达 Host；任何
+  移动都不会改变优先行的位置。
+- **链接规格**：`03-runtime/01-ipc-protocol.md`（§5.6）、ADR 0265
+- **验收**：C（对话）、F（持久化）
+- **里程碑**：M6+
+- **状态**：草稿；Host 侧重排已由 `turn_queue` 单元测试覆盖
+
+#### E2E-QUEUE-edit-restores-draft-only-when-input-empty：编辑仅在输入框为空时回填草稿
+
+- **前提条件**：会话正在运行，队列中有一条带文本与文件引用芯片的提示，输入框为空。
+- **步骤**：
+  1. 先在输入框输入草稿，再点击该排队行的编辑。
+  2. 清空输入框，再次点击编辑。
+  3. 确认队列中不再有该行，且输入框持有该行的文本与其文件引用芯片。
+  4. 发送它，并与原本排队时的提示对比转录。
+- **预期**：输入框非空（或带有附件芯片）时编辑被拒绝并给出可见提示，该行仍留在队列中。
+  输入框为空时该行离开队列、Host 也不再列出它，输入框得到完全相同的文本与原始文件引用
+  芯片——而不是被剥离标注的内联内容。重新发送产生的提示与排队时一致。
+- **链接规格**：`04-ux/08-component-spec.md`（§11）、ADR 0265
+- **验收**：C（对话与流）
+- **里程碑**：M6+
+- **状态**：草稿；渲染器侧契约已由 `composer-send-state.test.mjs` 覆盖
+
 ### MCP 市场场景(`pnpm test:e2e:mcp-market`,协议级无头)
 
 | ID | 场景 | 验证 |
@@ -7213,13 +7396,13 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 #### E2E-SKILL-MARKET-NET-BOUNDARY：技能源公网 HTTPS 策略拒绝私网与回环
 
-- **前提条件**：共享 public-network helper，以及可注入 fetch/DNS 的主进程公网 HTTPS 客户端。
-- **步骤**：1）分类 trailing-dot localhost、IPv4 回环、IPv4-mapped IPv6、ULA、link-local、RFC1918 与 `http://`。2）将公网主机名解析到私网 A 记录。3）跟随 Location 为 `https://127.0.0.1/` 的 302。
-- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。策略失败不重试。
-- **链接规格**：`05-security/01-security.md`、ADR 0243、`03-runtime/01-ipc-protocol.md` §12b
+- **前提条件**：共享 public-network helper，以及可注入 fetch/DNS/线路 的主进程公网 HTTPS 客户端。
+- **步骤**：1）分类 trailing-dot localhost、IPv4 回环、IPv4-mapped IPv6、ULA、link-local、RFC1918 与 `http://`。2）将公网主机名解析到私网 A 记录。3）跟随 Location 为 `https://127.0.0.1/` 的 302。4）报告 `proxied` 线路与 TUN fake-IP 答案（`198.18.0.1`），同一答案在 `DIRECT` 线路、读不出线路、以及列表中含 `DIRECT` 的线路上的表现。5）让第一跳为 `proxied`，其重定向目标为 `direct`。
+- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。判定型拒绝不重试；本地解析没有返回答案时会重试,并且报为 `NETWORK_RESOLVE_FAILED`（`kind` 为 `unresolved`）,而不是报成地址校验拒绝——守卫并未得出判定,任何文案都不得声称它得出了。其余每次拒绝都带上 `NETWORK_POLICY_BLOCKED`（spec 08 §3.1）及其 `reason`、被拒地址的类别与判定该地址的线路,使安装面板能给出原因并提供重试,而不是让安装按钮无解释地保持禁用；市场列表也能把被拒绝的源与单纯不可达的源区分开。若 `proxied` 线路上的答案是 RFC 2544 的 fake-IP 类别，则在 `direct` 或读不出线路时拒绝、在 `proxied` 线路上放行；其他所有非公网类别在任何线路上都拒绝；每一个重定向跳都按自己的线路判定（ADR 0272）。
+- **链接规格**：`05-security/01-security.md`、ADR 0243、ADR 0272、`03-runtime/01-ipc-protocol.md` §12b
 - **验收**：Security、Quality
 - **里程碑**：M6+
-- **状态**：已自动化（`pnpm test:e2e:skill-market`、`apps/desktop/test/public-https-fetch.test.mjs`、`packages/shared/src/public-network.test.ts`）
+- **状态**：已自动化（`pnpm test:e2e:skill-market`、`apps/desktop/test/public-https-fetch.test.mjs`、`apps/desktop/test/public-https-fetch-route.test.mjs`、`apps/desktop/test/skill-market-scan.test.mjs`、`apps/desktop/test/skill-market-failure.test.mjs`、`apps/desktop/test/skill-market-policy-refusal.test.mjs`、`packages/shared/src/public-network.test.ts`）
 
 #### E2E-SKILL-MARKET-EXPANSION：相邻 markdown 资源在安装前内联
 
@@ -7265,6 +7448,49 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **里程碑**：M6+
 - **状态**：由模块测试覆盖（`apps/desktop/test/session-turn-ended.test.mjs`、`apps/desktop/test/queued-turn-finalization.test.mjs`）；桌面旅程为草稿（该表面变更时需在具备条件的环境中运行）
 
+#### E2E-CHAT-disclosure-toggle-keeps-reading-position
+
+- **范围**：滚动器已固定在底部时，手动展开转录或委派运行停靠区里的工具、思考或活动组标题（issue #324）。
+- **先决条件**：一个超过一屏的会话，停在底部并开启跟随模式；其中包含一行工具、一行思考和一个活动组，它们的展开详情都高于自身的标题栏；另有一个已展开、拥有嵌套滚动器的委派运行。分别在一轮已结束（`isRunning` 为 false）和一轮正在流式输出时各做一遍。
+- **步骤**：在固定于底部时，依次点击工具行、思考行和活动组的标题，并在该轮结束后再点一次。把视口停在转录中部再重复一次；用键盘激活一次（先 Enter，再在获得焦点的标题上按 Space），以及从收起栏操作一次。在已展开的委派停靠区内展开一行工具。然后用滚轮滚动、在标题获得焦点时按 ArrowUp、点击“跳到最新”控件，并发送一条新提示。
+- **预期**：详情动画展开与收起期间，被点击的标题保持它在屏幕上的位置，转录不会在它下方重新触底；跟随模式被退出，并出现“回到最新消息”控件。保持的位置在活动组动画的每一帧都成立，也覆盖标题上方同时发生的高度变化。嵌套停靠区保持自己的位置，其背后的转录同样不会重新触底。真实的滚动输入、跳转控件、新一轮以及任何导航都会释放保持并重新跟随实时尾部，而已经向上滚动的阅读者保持原来的位置。Space 仍能激活获得焦点的标题，方向键仍能滚动。
+- **链接规格**：`04-ux/09-interaction-patterns.md` §9.1；ADR transcript-reading-ownership；D287、D302、D430
+- **验收**：C（对话与流式）、E（工具与权限）、品质
+- **里程碑**：M6+
+- **状态**：部分自动化。`pnpm test:e2e:transcript-disclosure` 在真实的 600 CSS px Electron 视口中挂载真实的转录滚动 hook 与真实的工具行，用真实 DOM 点击标题，并对转录以及嵌套跟随滚动器断言标题相对滚动器顶边的偏移与滚动偏移；没有该修复时，同一个夹具会报告标题移动了整个展开详情的高度。夹具未链接应用样式表，因此高度来自内联填充与组件自身的固有尺寸。`disclosure-anchor.test.mjs` 覆盖纯锚点与输入归属数学，`transcript-disclosure-reading.test.mjs` 覆盖接线。键盘、滚轮与活动组动画路径仍属补充验证。
+#### E2E-CHAT-runtime-status-keeps-row-position
+
+- **先决条件**：一个活动会话，其转录高于对话视口，且尾部由一行已完成的工具占用；窗格已构建（`pnpm build:js`）并已安装 Electron。
+- **步骤**：
+  1. 用固定消息挂载生产环境的 `ChatTranscript`，尾部由已完成的活动组占用，并让会话处于运行中。
+  2. 在没有任何运行时活动上报的情况下，记录内容高度、滚动器的滚动高度/偏移，以及首行与末行的渲染位置。
+  3. 只把该会话的运行时活动切换到等待模型阶段，让布局稳定下来。
+  4. 再次清空运行时活动，让布局稳定下来。
+  5. 结束该轮（`isRunning` 为 false），检查尾部。
+- **预期**：
+  - 等待行占用预留的状态通道：在状态出现期间以及清空之后，内容高度、滚动高度、滚动偏移，以及每一个已渲染行的位置都保持不变（误差在 0.01px 以内）。
+  - 空通道在深色与浅色两种主题下都保持已预留且不可见 —— 没有背景、边框或阴影。
+  - 状态行保持其活动区域语义（`role="status"`、`aria-live="polite"`），而空通道不携带任何可供播报的文本。
+  - 已结束的空闲转录完全不渲染状态通道，因此其布局不变。
+- **链接规格**：`04-ux/08-component-spec.md`
+- **验收**：C（对话与流式）、品质
+- **里程碑**：M5
+- **状态**：由单测覆盖（`active-turn-surface.test.mjs`），并有通过 `pnpm test:e2e:transcript`（`scripts/e2e/transcript-render.tsx`，无需供应商凭据，需要已安装的 Electron 与图形会话，Linux 上可用 Xvfb）自动化的 React/Chromium 几何回归。当预留通道被移除时，该场景会以 40.125px 的内容高度误差与 40px 的行位移失败（issue #323）。
+
+#### E2E-PLUGIN-fs-root-follows-the-calling-session：插件工具的 fs 根跟随自己的会话，而不是可见工作区
+
+- **先决条件**：两个项目 A 与 B，各自持有一个对方没有的文本文件，以及一个已启用的插件；该插件注册的智能体工具会在 execute 里对根相对路径调用 `pi.fs.readText` 与 `pi.fs.glob`，并声明带 `workspace` 根的 `fs.read`。两个项目都有该插件工具可用的活会话，且窗口显示项目 A。
+- **步骤**：
+  1. 从会话 A 调用该工具读取只属于项目 A 的文件，再从会话 B（项目 B）调用它读取只属于项目 B 的文件，期间不切换窗口的可见工作区。
+  2. 把可见工作区切到项目 B，重复上面两次调用。
+  3. 在可见工作区为项目 B 时，让会话 A 的工具请求只存在于项目 A 下的路径，再让会话 B 的工具请求同一路径。
+  4. 打开该插件的面板，在项目 A 可见时通过面板桥做同样的读取，然后在项目 B 可见时再做一次。
+  5. 把其中一个会话移到临时对话，使没有可见工作区，从该会话调用该工具，再在同一状态下调用面板桥。
+- **预期**：步骤 1 与 2 每次都以调用会话自己的项目作答：会话 A 读取并 glob 项目 A 的文件，会话 B 对应项目 B 的文件，可见工作区在这两个项目之间移动时答案都不变。步骤 3 对会话 A 返回项目 A 的文件，对会话 B 返回 `NOT_FOUND`，因此会话永远无法触达另一个项目的根。步骤 4 与之前完全一致：每次面板调用解析可见工作区，所以它的答案跟随屏幕上的项目，而不是任一会话。步骤 5 按会话继续工作 —— 会话的插件工具解析自己的项目 —— 而面板调用仍以 `NOT_FOUND`（「没有打开任何工作区」）失败。任何闸门都没有放宽：被拒的名称、`..` 或绝对路径、指向根外的符号链接，以及超出声明范围的路径，其行为与只有一个可见工作区时相同。
+- **链接规格**：`07-plugins/03-plugin-api.md` §3、`07-plugins/13-plugin-permissions-matrix.md` §6、ADR 0016、ADR 0249、ADR 0266、D093
+- **验收**：G（插件）、安全性、品质
+- **里程碑**：M6+
+- **状态**：部分自动化（`apps/desktop/test/plugin-fs-session-root.test.mjs`）：工具调用在发起会话的项目下写入与读取，面板调用与宿主未跟踪的会话回退到可见工作区，`userSelected` 模式保留选定的目录，窗口不显示任何项目时会话根依然生效。双活会话的桌面旅程与面板步骤为草稿（仅在此表面变化时于具备条件的环境中运行）
 ### E2E-SESSION-permanent-delete-requires-confirmation
 
 - **前置条件**：侧边栏存在一个已保存且包含对话记录的会话。

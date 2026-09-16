@@ -237,6 +237,7 @@ export const ActivityGroup = memo(function ActivityGroup({
     toggle: toggleDisclosure,
     collapse: collapseDisclosure,
     claim: claimDisclosure,
+    titleRef,
   } = useAutomaticDisclosure(live, revealRequest);
   const [now, setNow] = useState(Date.now);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
@@ -359,6 +360,7 @@ export const ActivityGroup = memo(function ActivityGroup({
       }`}
     >
       <button
+        ref={titleRef}
         className="tool-activity-header"
         aria-expanded={open}
         aria-controls={detailsId}
@@ -503,6 +505,11 @@ export function RunActivityIndicator({ activity }: { activity: AgentActivity }) 
             <strong>{retryErrorSummary}</strong>
             <code>
               {retryError.code}
+              {/* The transport errno names the failing layer (ENOTFOUND, a
+                  TLS code, a dropped socket) while the localized summary
+                  cannot; it is a technical token in the same style as the
+                  code beside it, so it needs no translation (issue #234). */}
+              {retryError.networkCode ? ` · ${retryError.networkCode}` : ""}
               {retryError.providerStatus !== undefined
                 ? ` · HTTP ${retryError.providerStatus}`
                 : ""}

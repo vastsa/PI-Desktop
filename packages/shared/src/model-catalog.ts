@@ -204,18 +204,46 @@ export function bindingForCustomModel(id: string): ModelBinding {
   };
 }
 
-/** Compact token count for dense UI, e.g. `200K`, `1M`. */
+/**
+ * Drop a fraction's trailing zeros: `200.0` reads `200` and `1.10` reads `1.1`.
+ */
+function trimFraction(value: string): string {
+  if (!value.includes(".")) return value;
+  return value.replace(/0+$/, "").replace(/\.$/, "");
+}
+
+/**
+ * Compact token count for dense UI.
+ *
+ * Published context windows sit on values a single rounded decimal cannot tell
+ * apart — 1,000,000, 1,048,576 and 1,050,000 all rendered as `1M`/`1.1M`, and
+ * reading 1,050,000 as `1.1M` overstated the window by 50k tokens. Two decimals
+ * at the `M` scale and one at the `K` scale keep neighbouring rows distinct
+ * while staying short: `1M`, `1.05M`, `1.1M`, `262.1K`.
+ *
+ * A count of `0` is a real value here, so callers that render an unpublished
+ * limit go through `formatTokenCount` instead.
+ */
+export function formatCompactTokenCount(tokens: number): string {
+  if (tokens < 1_000) return String(tokens);
+  const thousands = tokens / 1_000;
+  // Rounding can push a `K` mantissa up to 1000 (999,999 -> `1000K`), which
+  // reads as a scale error. Promote those to the `M` scale instead.
+  if (Number(thousands.toFixed(1)) < 1_000) {
+    return `${trimFraction(thousands.toFixed(1))}K`;
+  }
+  return `${trimFraction((tokens / 1_000_000).toFixed(2))}M`;
+}
+
+/**
+ * Compact token count for a model limit, e.g. `200K`, `1.05M`.
+ *
+ * An absent or non-positive limit means the service never published one, so it
+ * renders as an em dash rather than a number the user might trust.
+ */
 export function formatTokenCount(tokens?: number): string {
   if (!tokens || tokens <= 0) return "—";
-  if (tokens >= 1_000_000) {
-    const millions = tokens / 1_000_000;
-    return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`;
-  }
-  if (tokens >= 1_000) {
-    const thousands = tokens / 1_000;
-    return `${Number.isInteger(thousands) ? thousands : Math.round(thousands)}K`;
-  }
-  return String(tokens);
+  return formatCompactTokenCount(tokens);
 }
 
 /**

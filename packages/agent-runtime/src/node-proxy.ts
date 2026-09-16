@@ -19,6 +19,7 @@ import {
 } from "@pi-desktop/shared";
 import {
   Agent,
+  EnvHttpProxyAgent,
   ProxyAgent,
   fetch as undiciFetch,
   getGlobalDispatcher,
@@ -27,12 +28,61 @@ import {
   type buildConnector,
 } from "undici";
 
+/**
+ * Whether Node built its own fetch transport on the environment proxy. Node
+ * reads `NODE_USE_ENV_PROXY` once, at startup, and installs an
+ * `EnvHttpProxyAgent`; replacing the global dispatcher (which this module does
+ * for a custom proxy) therefore has to remember that choice, or a later
+ * transport rebuild would silently drop proxy routing.
+ */
+const envProxyAtStartup = process.env.NODE_USE_ENV_PROXY === "1";
+
+/**
+ * A transport rebuild swaps a dispatcher every session's provider traffic
+ * shares. Closing idle sockets is cheap, but churning the pool while a network
+ * is down for minutes would make every other session pay a fresh TCP/TLS
+ * handshake on its next request, so rebuilds are rate limited.
+ */
+export const PROVIDER_TRANSPORT_REBUILD_MIN_INTERVAL_MS = 30_000;
+
 let originalFetch: typeof fetch | null = null;
 let originalDispatcher: Dispatcher | null = null;
 let installed = false;
 let activeDispatcher: Dispatcher | null = null;
 /** Plain agent the bypass list routes to; closed together with the proxy. */
 let activeDirectDispatcher: Dispatcher | null = null;
+
+/** Route the sidecar's provider traffic takes, for failure diagnostics. */
+export type NodeTransportRoute =
+  | "direct"
+  | "environment-proxy"
+  | "http-proxy"
+  | "socks5-proxy";
+
+/** Settings behind the installed pair, so a rebuild reproduces exactly them. */
+let activeCustomSettings: NetworkProxySettings | null = null;
+/** Negative infinity: a process that has never rebuilt is never throttled. */
+let lastTransportRebuildAt = Number.NEGATIVE_INFINITY;
+
+function defaultRoute(): NodeTransportRoute {
+  return envProxyAtStartup ? "environment-proxy" : "direct";
+}
+
+function routeForSettings(settings: NetworkProxySettings): NodeTransportRoute {
+  if (settings.mode !== "custom") return defaultRoute();
+  return /^socks/i.test(settings.url ?? "") ? "socks5-proxy" : "http-proxy";
+}
+
+/**
+ * Route the next provider request takes. Reported as `networkRoute` on a
+ * transport failure, because "the provider is down" and "the tunnel died" look
+ * identical in an errno (issue #234).
+ */
+export function activeNodeTransportRoute(): NodeTransportRoute {
+  return activeCustomSettings
+    ? routeForSettings(activeCustomSettings)
+    : defaultRoute();
+}
 
 function ensurePatched(): void {
   if (installed) return;
@@ -41,21 +91,26 @@ function ensurePatched(): void {
   originalDispatcher = getGlobalDispatcher();
 }
 
+/**
+ * The dispatcher Node would install by itself. A rebuild must reproduce it, not
+ * fall back to a direct connection while the process runs on an env proxy.
+ */
+function defaultDispatcher(): Dispatcher {
+  return envProxyAtStartup ? new EnvHttpProxyAgent() : new Agent();
+}
+
 function closeActiveDispatchers(): void {
-  if (activeDispatcher && typeof activeDispatcher.close === "function") {
-    void activeDispatcher.close();
-  }
-  if (activeDirectDispatcher && typeof activeDirectDispatcher.close === "function") {
-    void activeDirectDispatcher.close();
-  }
+  const dispatchers = [activeDispatcher, activeDirectDispatcher];
   activeDispatcher = null;
   activeDirectDispatcher = null;
+  for (const dispatcher of dispatchers) closeDispatcher(dispatcher);
 }
 
 function restoreDefault(): void {
   closeActiveDispatchers();
+  activeCustomSettings = null;
   if (originalDispatcher) setGlobalDispatcher(originalDispatcher);
-  else setGlobalDispatcher(new Agent());
+  else setGlobalDispatcher(defaultDispatcher());
   if (originalFetch) globalThis.fetch = originalFetch;
 }
 
@@ -69,11 +124,27 @@ export function applyNodeNetworkProxy(
     restoreDefault();
     return;
   }
-  const parsed = parseProxyUrl(settings.url ?? "");
-  if (!parsed.ok) {
+  const built = createCustomProxyDispatchers(settings);
+  if (!built) {
     restoreDefault();
     return;
   }
+  installCustomProxyDispatchers(built);
+  activeCustomSettings = settings;
+}
+
+type CustomProxyDispatchers = {
+  dispatcher: Dispatcher;
+  direct: Dispatcher;
+  route: NodeTransportRoute;
+};
+
+/** Build the proxied dispatcher pair for one custom-proxy configuration. */
+function createCustomProxyDispatchers(
+  settings: NetworkProxySettings,
+): CustomProxyDispatchers | null {
+  const parsed = parseProxyUrl(settings.url ?? "");
+  if (!parsed.ok) return null;
   const proxied: Dispatcher = parsed.value.isSocks
     ? new Agent({ connect: socksConnector(parsed.value) })
     : new ProxyAgent(parsed.value.href);
@@ -87,11 +158,91 @@ export function applyNodeNetworkProxy(
         ? direct.dispatch(options, handler)
         : next(options, handler),
   );
-  closeActiveDispatchers();
-  activeDispatcher = dispatcher;
-  activeDirectDispatcher = direct;
-  setGlobalDispatcher(dispatcher);
+  return {
+    dispatcher,
+    direct,
+    route: parsed.value.isSocks ? "socks5-proxy" : "http-proxy",
+  };
+}
+
+/**
+ * Install a freshly built pair and retire the previous one.
+ *
+ * Order matters: the new dispatcher becomes global before the old one is
+ * closed, so no request can be dispatched into a dispatcher that is already
+ * closing. `close()` is graceful — undici lets the requests already in flight
+ * finish on their own sockets and only then tears the pool down — so a rebuild
+ * triggered by one failing session can never abort another session's request.
+ * The old pair is released by its owner here, which is why this module keeps the
+ * reference: nothing else is left holding those sockets.
+ */
+function installCustomProxyDispatchers(built: CustomProxyDispatchers): void {
+  const previous = [activeDispatcher, activeDirectDispatcher];
+  activeDispatcher = built.dispatcher;
+  activeDirectDispatcher = built.direct;
+  setGlobalDispatcher(built.dispatcher);
   globalThis.fetch = undiciFetch as unknown as typeof fetch;
+  for (const dispatcher of previous) closeDispatcher(dispatcher);
+}
+
+/**
+ * Close one replaced dispatcher. A rejection means a socket failed to close: it
+ * must stay visible without rejecting an unawaited promise.
+ */
+function closeDispatcher(dispatcher: Dispatcher | null): void {
+  if (!dispatcher || typeof dispatcher.close !== "function") return;
+  void dispatcher.close().catch((error: unknown) => {
+    process.stderr.write(
+      `[agent-runtime] provider transport close failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+  });
+}
+
+export type TransportRebuildResult = {
+  /** False when the process-wide throttle skipped this rebuild. */
+  rebuilt: boolean;
+  route: NodeTransportRoute;
+};
+
+/**
+ * Rebuild the shared transport after the same origin failed repeatedly without
+ * ever answering (issue #234).
+ *
+ * undici keeps its sockets in one pool per dispatcher, and a socket that died
+ * without the pool noticing is not retired by the failure itself, so a replay
+ * can fail the same way ten times. Closing the pool is the public way to
+ * invalidate it; `createProviderTransportHealth` in
+ * `provider-transport-recovery.ts` owns the question of when that is justified.
+ * Returns whether a rebuild happened, so the caller can record it.
+ */
+export function rebuildNodeNetworkTransport(
+  now = Date.now(),
+): TransportRebuildResult {
+  ensurePatched();
+  const route = activeNodeTransportRoute();
+  if (now - lastTransportRebuildAt < PROVIDER_TRANSPORT_REBUILD_MIN_INTERVAL_MS) {
+    return { rebuilt: false, route };
+  }
+  lastTransportRebuildAt = now;
+  const customSettings = activeCustomSettings;
+  const rebuilt = customSettings
+    ? createCustomProxyDispatchers(customSettings)
+    : null;
+  if (rebuilt) {
+    installCustomProxyDispatchers(rebuilt);
+    return { rebuilt: true, route: rebuilt.route };
+  }
+
+  const previous = getGlobalDispatcher();
+  const fresh = defaultDispatcher();
+  setGlobalDispatcher(fresh);
+  // `restoreDefault` reinstalls the captured dispatcher, so never leave that
+  // reference pointing at the pool this rebuild just closed.
+  if (previous === originalDispatcher) originalDispatcher = fresh;
+  closeDispatcher(previous);
+  return { rebuilt: true, route };
 }
 
 export type ProxyBypassMatcher = (hostname: string, port: number) => boolean;

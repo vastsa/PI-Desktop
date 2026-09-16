@@ -18,9 +18,9 @@ import {
 import type { Logger } from "../logger";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { RuntimeState } from "./context";
+import { syncPluginDisplayLocale } from "../plugin-display-locale";
 
 type RestartKind = "host" | "sidecar";
-
 export type RuntimeLifecycleDependencies = {
   runtimeState: RuntimeState;
   dataDir: string;
@@ -37,6 +37,12 @@ export type RuntimeLifecycleDependencies = {
   ) => void;
   refreshUserMcp: () => Promise<unknown>;
   isQuitting: () => boolean;
+  /**
+   * App language the plugin rows resolve their labels in. The host holds it,
+   * and a fresh host process starts in English, so it is pushed again whenever
+   * a host is (re)started.
+   */
+  getDisplayLocale: () => string;
 };
 
 export function createRuntimeLifecycle({
@@ -53,6 +59,7 @@ export function createRuntimeLifecycle({
   rememberPluginScopes,
   refreshUserMcp,
   isQuitting,
+  getDisplayLocale,
 }: RuntimeLifecycleDependencies): {
   superviseRestart: (kind: RestartKind) => Promise<void>;
   bootHostStatus: (bootError: unknown) => HostStatusEvent;
@@ -111,6 +118,10 @@ export function createRuntimeLifecycle({
           const sidecar = runtimeState.sidecar;
           const host = runtimeState.host;
           if (sidecar && host) sidecar.setHost(host);
+          // A fresh host process starts in English, so the app language and
+          // the language-dependent rows it draws have to be restored here:
+          // nothing else re-applies settings after a crash.
+          await syncPluginDisplayLocale(host, getDisplayLocale());
         } else {
           await startSidecar();
         }
@@ -121,6 +132,9 @@ export function createRuntimeLifecycle({
           component: kind,
           restarted: true,
         });
+        // The plugin rows were drawn from the dead process: re-read them so a
+        // restart is invisible in the Extensions page and the launcher.
+        sendToRenderer(IPC.event.pluginChanged, { reason: "hostRestart" });
         return;
       } catch (error) {
         const schema = schemaTooNewOf(error);
@@ -208,6 +222,10 @@ export function createRuntimeLifecycle({
       data: { protocolVersion: PROTOCOL_VERSION },
     });
     await startHost();
+    // Plugin rows are resolved in the host, so the app language is pushed once
+    // the process answers. The startup sequence re-applies it with the stored
+    // settings; this keeps a host that boots without that write honest.
+    await syncPluginDisplayLocale(runtimeState.host, getDisplayLocale());
     try {
       const stored = await runtimeState.host!.call("settings.get");
       await applyNetworkProxyFromAppSettings(stored);

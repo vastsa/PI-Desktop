@@ -725,6 +725,7 @@ const {
   refreshUserMcp,
   activeUserSkills,
   activeUserSubagentDocuments,
+  disabledBuiltinSubagents,
   loadUserSkillBody,
   resolveEffectiveCommandShell,
   resolveAgentRuntimeLaunch,
@@ -929,6 +930,7 @@ applicationLifecycle = createApplicationLifecycle({
   applyPluginLauncherShortcut: applyPluginLauncherShortcutForLifecycle,
   applySummonWindowShortcut: applySummonWindowShortcutForLifecycle,
   broadcastPluginPanelEvent,
+  getHost: () => host,
 });
 const {
   applyDevelopmentBranding,
@@ -1240,6 +1242,7 @@ runtimeLifecycle = createRuntimeLifecycle({
   rememberPluginScopes,
   refreshUserMcp,
   isQuitting: () => quitting,
+  getDisplayLocale: () => applicationAppearanceState.updaterLocale,
 });
 const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
@@ -1320,6 +1323,7 @@ function registerIpc() {
     refreshUserMcp,
     describeError,
     activeUserSubagentDocuments,
+    disabledBuiltinSubagents,
     pluginViews,
     pluginSettingsViews,
     pluginScopes,

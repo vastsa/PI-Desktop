@@ -1,5 +1,6 @@
 import type {
   ActivationScope,
+  AgentCapabilityMove,
   AgentCapabilityQuery,
   AgentEventEnvelope,
   AgentCompactRequest,
@@ -618,6 +619,8 @@ export const api = {
     invoke(IPC.invoke.agentQueueRemove, { turnId }),
   prioritizeQueuedPrompt: (turnId: string) =>
     invoke(IPC.invoke.agentQueuePrioritize, { turnId }),
+  reorderQueuedPrompt: (turnId: string, direction: "up" | "down") =>
+    invoke<{ moved: boolean }>(IPC.invoke.agentQueueReorder, { turnId, direction }),
   getStatus: (sessionId: string) =>
     invoke<{ status: AgentStatus }>(IPC.invoke.agentGetStatus, sessionId),
   getAgentInstructions: (projectPath?: string) =>
@@ -699,6 +702,13 @@ export const api = {
   ) => invoke(IPC.invoke.mcpSetEnabled, { id, enabled, ...query }),
   setMcpServerScope: (id: string, scope: ActivationScope) =>
     invoke(IPC.invoke.mcpSetScope, { id, scope }),
+  /**
+   * Move one server to the other level. The document is moved, not copied, and
+   * the response carries the id it ended up under: a destination that already
+   * holds the same id or name renames the arriving server.
+   */
+  transferMcpServer: (move: AgentCapabilityMove) =>
+    invoke<{ server: McpServerRecord }>(IPC.invoke.mcpTransfer, move),
   /** Force one handshake and report what happened, for the editor's test button. */
   testMcpServer: (id: string, query?: Partial<AgentCapabilityQuery>) =>
     invoke<{ status: McpServerStatus }>(IPC.invoke.mcpTest, { id, ...query }),
@@ -717,10 +727,28 @@ export const api = {
 
   // --- Skill market ----------------------------------------------------------
   searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) =>
-    invoke<{ entries: SkillCatalogEntry[]; failedSources?: string[] }>(
-      IPC.invoke.skillMarketSearch,
-      { query, sources },
-    ),
+    invoke<{
+      entries: SkillCatalogEntry[];
+      failedSources?: string[];
+      /**
+       * Why each named source failed, so the market can explain a policy/DNS
+       * refusal instead of reporting every source as merely unreachable.
+       */
+      failureKinds?: Record<string, "policy" | "unresolved" | "network">;
+      /**
+      /**
+       * The host and the guard's own reason behind each failed source. Without
+       * it the panel can say a source was refused but not *what* was refused,
+       * and a policy refusal is a statement about one address. `route` adds
+       * which route the guard judged that address on, so a fake-IP refusal on a
+       * direct route reads apart from one on a proxied route (issue #419,
+       * ADR 0272).
+       */
+      failureDetails?: Record<
+        string,
+        { host?: string; reason?: string; addressKind?: string; route?: string }
+      >;
+    }>(IPC.invoke.skillMarketSearch, { query, sources }),
   /** Fetch one catalog document (frontmatter split off) for preview/install. */
   fetchSkillMarketDocument: (entry: SkillCatalogEntry) =>
     invoke<{ name?: string; description?: string; body: string; resources?: Array<{ path: string; body: string }> }>(
@@ -754,6 +782,13 @@ export const api = {
   setUserSkillScope: (id: string, scope: ActivationScope) =>
     invoke(IPC.invoke.skillSetScope, { id, scope }),
   /**
+   * Move one skill to the other level. The document is moved, not copied, and
+   * the response carries the id it ended up under: a destination that already
+   * holds the same id or display name renames the arriving skill.
+   */
+  transferUserSkill: (move: AgentCapabilityMove) =>
+    invoke<{ skill: UserSkillRecord }>(IPC.invoke.skillTransfer, move),
+  /**
    * Level and project must travel with the id: a project skill has no global
    * counterpart to fall back to, so resolving by id alone would miss it.
    */
@@ -763,10 +798,15 @@ export const api = {
   // --- Subagents the user owns ----------------------------------------------
   listUserSubagents: (query?: Pick<AgentCapabilityQuery, "level">) =>
     invoke<{ subagents: UserSubagentRecord[] }>(IPC.invoke.subagentList, query),
-  /** What `Task` would offer right now, merged across all three sources. */
+  /**
+   * What `Task` would offer right now, merged across the shipped builtins and
+   * the registry. `builtins` keeps a switched-off default in the list, flagged
+   * `enabled: false`, so Settings can still show that row and its switch.
+   */
   subagentCatalog: () =>
     invoke<{
       subagents: SubagentDefinition[];
+      builtins: Array<SubagentDefinition & { enabled: boolean }>;
       diagnostics: string[];
       projectPath: string | null;
     }>(IPC.invoke.subagentCatalog),
@@ -786,6 +826,15 @@ export const api = {
   removeUserSubagent: (id: string) => invoke(IPC.invoke.subagentRemove, id),
   setUserSubagentEnabled: (id: string, enabled: boolean) =>
     invoke(IPC.invoke.subagentSetEnabled, { id, enabled }),
+  /**
+   * Turn one shipped default off, or back on. The id is the `Task` handle
+   * (`explorer`), never a document id: a builtin has no file to switch.
+   */
+  setBuiltinSubagentEnabled: (id: string, enabled: boolean) =>
+    invoke<{ id: string; enabled: boolean }>(IPC.invoke.subagentSetBuiltinEnabled, {
+      id,
+      enabled,
+    }),
   setUserSubagentScope: (id: string, scope: ActivationScope) =>
     invoke(IPC.invoke.subagentSetScope, { id, scope }),
   /** Registry entries reveal by id; project documents pass their own path. */

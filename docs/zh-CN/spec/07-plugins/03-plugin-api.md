@@ -197,6 +197,8 @@ pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 而凭证 deny-list 压过两者（参见
 [04-plugin-security.md](/zh-CN/spec/07-plugins/04-plugin-security) §6）。
 `remove` 不递归，并且把路径移进系统回收站。
+在 `workspace` 根下，路径相对于调用该调用的工具会话所属的项目，面板调用没有工具会话时
+回退到可见工作区（ADR 0266）。
 
 `list` 返回单个目录的条目（按名称排序），使插件可以惰性遍历目录树，
 而不必拉取整个仓库的 `glob` 再自行重组。它施加与 `glob` 完全相同的守卫，
@@ -381,6 +383,12 @@ Session ID，并复用该会话的项目、模型、上下文和权限配置；`
 不是 worker 身份。`status` 和 `result` 是有界投影，不会加载完整转录本。`cancel` 只中断
 精确的排队投递或绑定回合，并保留目标会话及其历史。
 
+`spawn` 中显式指定的 `modelKey` 属于 AI 自动调度的模型选择，需要该模型自身的
+`ModelBinding.availableForSubagents` 许可；对用户未勾选的模型，宿主在创建 worker 之前
+返回 `PERMISSION_DENIED`。省略 `modelKey` 仍然是继承——先取已勾选的模型，否则取默认
+模型——显式写出默认模型自己的键同样按继承处理，而不是一次选择
+（ADR subagent-model-opt-in）。
+
 `spawn` 和 `send` 仅在插件当前 Agent 工具调用期间有效。broker 注入 `pluginId`、来源
 `sessionId`、来源 `turnId` 和调用身份；插件参数不能提供或覆盖这些字段。面向用户的插件
 面板可使用自有插件身份调用 `cancel`，但不能用该路径发送或创建工作。宿主执行来源权限
@@ -510,6 +518,12 @@ pi.net.fetch(input: {
  timeoutMs?: number
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
+
+`fetch` 原样返回上游响应 —— `status`、`headers`、`bodyText` —— 所以 `429`
+是插件能读到的数据（`Retry-After` 也在里面），而不是被主机藏起来的错误。宿主
+不重试、不限流、也不重新发起请求：遇到 `429` 之后的重试与退避是插件自己的
+策略，响应头就是插件唯一能拿到的退避信号。失败的调用（`status >= 400`）在
+审计里记为 `ok: false`，并在响应声明了延迟时附带它通告的 `retryAfter`（§7）。
 
 ```ts
 pi.net.websocket.connect(input: {
@@ -812,6 +826,8 @@ window.pluginBridge.on(event, handler)
 - TS
 - 会话 ID？
 - 好的/错误代码
+- status / retryAfter（仅 `net.fetch`：已完成调用的上游状态码，以及失败调用所
+  声明的 `Retry-After` —— 绝不记录整个头部集合或响应体）
 
 ## 8. 版本控制策略
 

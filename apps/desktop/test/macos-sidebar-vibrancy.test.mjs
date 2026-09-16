@@ -30,7 +30,9 @@ function functionSource(source, name) {
 
 test("macOS main window enables native sidebar vibrancy only in its platform branch", () => {
   assert.match(macOptions, /titleBarStyle:\s*"hiddenInset"/);
-  assert.match(macOptions, /trafficLightPosition:\s*\{ x: 16, y: 16 \}/);
+  // The position itself lives in @pi-desktop/shared so the renderer's reserve
+  // for it (styles/tokens.css) is derived from the same numbers.
+  assert.match(macOptions, /trafficLightPosition:\s*MAC_TRAFFIC_LIGHT_POSITION/);
   assert.match(macOptions, /vibrancy:\s*"sidebar"/);
   assert.match(macOptions, /visualEffectState:\s*"followWindow"/);
   assert.match(macOptions, /transparent:\s*true/);

@@ -70,8 +70,16 @@
   工作面板标题带通过让自身盒子在该保留带之前结束来承载它——
   用外边距而非内边距——因为原生拖拽矩形就是边框盒。
 - 工作面板预览：标题栏最大化操作会临时卸载 MainChat，并让面板填充侧边栏
-  之外的客户区。窗口级 46px chrome 行负责拖动区域、新建任务、侧边栏和本机
-  窗口控件。macOS 侧边栏折叠时，窗口模式左侧预留 76px，全屏预留 8px 给交通灯。
+  之外的客户区。
+  The 46px chrome row keeps shell/native controls but has no drag/no-drag
+  rectangle and passes pointer events through outside controls. The panel
+  header alone owns dragging in the preview pane; its border box excludes
+  shell actions plus an 8px gap in both sidebar states on every platform.
+  The left inset is 8px except collapsed-sidebar windowed macOS (88px through
+  `--ds-window-lead-inset`: the shared 76px native cluster edge plus 12px).
+  Main uses the same native geometry from `@pi-desktop/shared`.
+  Right native-control exclusion is unchanged. Header-height paint fills the
+  left lane without an opaque overlay hiding tabs or panel actions.
 - 工作面板调整大小：左边缘拖动手柄（§5.4）
 - 窗口大小调整：本机边缘仅在打开作品时更改 MainChat 宽度
   面板保持其承诺的宽度；响应式布局如下
@@ -197,8 +205,8 @@ Composer 拥有 Agent/Plan/Goal 控件以及组合的模型 × 推理选择（§
 - 背景：bg-primary
 - 边框：边框-微妙底部
 - 位置：绝对46px无框带； `-webkit-app-region: drag` 与
-  交互式控件上的 `no-drag`； macOS 保留左侧约 76 像素的流量
-  灯亮（仅当侧边栏折叠时），Windows/Linux保留权利
+  交互式控件上的 `no-drag`； macOS 仅在侧边栏折叠时保留左侧 88px 的交通
+  灯空间，Windows/Linux保留权利
   本机窗口控件为 112px
 - 标题簇（任务标题）最多可显示前 10 个 Unicode
   字符加省略号；完整标题保留在本机工具提示中。
@@ -218,6 +226,17 @@ Composer 拥有 Agent/Plan/Goal 控件以及组合的模型 × 推理选择（§
   `--ds-toolbar-height` 填充。缺少这一保留时，页面标头会渲染到带的后面，
   标题行被遮挡。只有叠在带之上的表面（`z-index: 60` 的插件详情侧面板）
   可以跳过它。
+- 每个 chrome 图标控件都是同一个 28px 方形（`--ds-work-panel-toggle-size`），
+  并共用同一个透明底座：顶栏的侧边栏开关、视口固定的工作面板开关、
+  预览态/路由带上的动作组，以及工作面板头部的 `+` 与最大化/还原按钮。
+  控件与其同级保持一致，不再使用自己更小的尺寸，也不再自带表面，因此默认
+  由图标本身承载，只有语义化的悬停淡色才会在其下着色。面板头部为动作组
+  预留的车道宽度也由同一个控件尺寸推导，而不是写死的字面量；开关的打开
+  状态只改变图形与墨色，这一族控件都不绘制填充或抬升的“开启”胶囊。
+  With the sidebar collapsed, Plugins, Pull requests, and Scheduled render their
+  sidebar/New Task actions inside `.main-titlebar`, not the preview-only
+  `.window-chrome-row`. Both containers must share the same geometry, rest,
+  hover, and disabled rules; route actions must not duplicate those declarations.
 
 ### 2.4 状态
 
@@ -450,6 +469,11 @@ Collapsed (48px):
 
 - 可见shell名称为`PI-Desktop`； Codex 不用作渲染器
   身份。
+- 没有文字标签的控件声明 `.icon-btn-square`，它把两个轴都固定到
+  `--ds-control-size`（28px）。单独的 `.icon-btn` 宽度来自图形加左右各 8px 内边距 ——
+  这对带文字的胶囊按钮是正确的，对没有文字的控件则是错误的 —— 因此侧边栏收起控件、
+  会话顶栏开关，以及输入框的添加/增强/撤销控件，都呈现与顶栏和工作面板操作一致的
+  28px 正方形点击区，而不是"宽大于高"的胶囊。
 - `BrandLogo` 通过 Vite 导入从规范母版派生的渲染器尺寸标记：
   `src/assets/brand/logo-light.png` 用于浅色模式，
   `src/assets/brand/logo-dark.png` 用于深色模式（192x192，可覆盖 3x 下的
@@ -583,7 +607,7 @@ expanded/collapsed 侧边栏仍为 20px/18px 且启动画面为 64 像素。
 |---|---|
 | 空 | 可滚动内容区域中的受约束的英雄+可选的入门清单，带有底部保留的主页输入框，没有入门卡或上下文快速操作层（D111/D204/D206） |
 | 流媒体 | 固定时自动滚动；追加新标记 |
-| 积极进展 | 发送后，在第一个助手或工具事件之前，会内联显示一个紧凑的本地化 `Working…` 状态以及经过的时间。它屈服于具体的思维、工具和答案行，而权限卡拥有批准状态；不会渲染大型通用进度卡。 |
+| 积极进展 | 发送后，在第一个助手或工具事件之前，会内联显示一个紧凑的本地化 `Working…` 状态以及经过的时间。它屈服于具体的思维、工具和答案行，而权限卡拥有批准状态；不会渲染大型通用进度卡。重试行在静止时保持紧凑；悬停或聚焦会弹出错误色 tooltip，底板为 `--ds-bg-elevated-opaque`，避免透出记录正文。 |
 | 回合结果 | 回合失败后，会话范围的恢复卡会总结中断和工具证据。已完成的轮次使用现有的记录和消息范围的 InlineReviewCard，无需额外的成功卡；失败的回合可以重试而不会丢失转录本。 |
 | 会话切换 | 首次打开的会话在它最新的记录处绘制；重新访问的面板在它自己保留的位置处绘制。有界的首次提交与全量历史展开显示同一个位置：绘制之后的高度校正不得在任何方向上移动可见行 |
 | 启动（发送/重试/重新生成） | 即使用户向上滚动，在绘制之前重新固定和定位最新内容；后来保留的用户消息事件不会在其顶部闪烁记录，并且发送期间的输入框折叠／指示器布局夹紧永远不会释放跟随模式 |
@@ -670,6 +694,14 @@ expanded/collapsed 侧边栏仍为 20px/18px 且启动画面为 64 像素。
 - 面板主体采用静音插页纸（`#fafafa`）； 46px 标题带和工具
   chrome（审阅工具栏、浏览器chrome、文件查看器标题）保持白色
 - 46px 标题是裁剪的标签条和紧贴的 `+` 入口。只有标签条滚动，入口始终固定。
+  头部为视口固定的折叠开关预留 44px 的右侧安全车道（28px 控件 + 12px 视口内缩
+  + 头部自身的 4px 控制间距 `--ds-work-panel-control-gap`），这一个间距同时
+  分隔整行：标签条到动作组、`+` 到最大化，以及最大化到开关。动作组不再有自己的
+  分隔线、内缩或外边距，因此三个按钮读作一组；`+` 与开关之间仍隔着最大化控件，
+  命中区域彼此独立且视觉间隔大于 24px。三者都是与其他 chrome 图标相同的控件：
+  28px 方形、透明底座，因此头部呈现的是安静的图标而不是填充方块。`+` 与最大化
+  从 `chrome.css` 的共享 chrome 控件组取得几何与悬停淡色，而不是自带的规则；
+  视口固定开关的 `aria-pressed` 状态只改变墨色与图形，绝不改变背景或阴影。
   菜单只有 Tools & panels 分组，Review 在前，插件视图按声明顺序排列；只有真实
   存在的快捷键才显示快捷键标签。
 - 标签在悬停、聚焦和活动时显示 `×`，中键也可关闭。面板溢出由标签条处理，
@@ -1103,11 +1135,12 @@ tail 不得将该寻呼机从用户气泡中移动或分离。寻呼机是
   Fork 创建并激活一个独立的会话，其快照结束于
   选择辅助响应，需要一个空闲源，然后留下
   源的转录本、实时运行时和提供程序缓存状态保持不变 (D134)。
-  编辑属于用户回合：它将提示气泡替换为焦点
-  内联文本区域（Escape 取消，Cmd/Ctrl+Enter 重试；斜杠转为种子
-  输入 `command` 表单，重试后会重新扩展模板），扩大用户范围
-  打开时将列调整为助理阅读宽度，并隐藏操作
-  工具栏。内联控件显示本地化的“重试”和“取消”。重试运行同一会话的
+  编辑属于用户回合：它将提示气泡替换为与底部输入框同族的
+  composer 面板（`--ds-bg-composer` 填充、`--ds-composer-radius`，
+  无描边，无阴影，D297）。文本区域嵌在面板内不加第二层底；底部 28px 工具条放本地化的
+  “重试”和“取消”（Escape 取消，Cmd/Ctrl+Enter 重试；斜杠转为种子
+  输入 `command` 表单，重试后会重新扩展模板）。打开时把用户列加宽到
+  助理阅读宽度，并隐藏操作工具栏。重试运行同一会话的
   重新生成路径，即使文本没有变化也会执行，因此替换的提示及其整个答案
   尾部被存档为 D109 修订版，寻呼机可以返回原来的交换（D274）。
 - 工具介导的辅助输出使用前一用户的视觉转向
@@ -1197,7 +1230,7 @@ tail 不得将该寻呼机从用户气泡中移动或分离。寻呼机是
 
 ### 8.6 MVP 约束
 
-- 无消息 reactions/annotations
+- 无消息 reactions
 - 无法编辑用户消息（推迟）
 - 复制助手答案不包括思考文本
 
@@ -1215,9 +1248,11 @@ Renderer： `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/s
   直到其匹配的关闭栅栏到达；部分流图永远不会
   输入图表解析器。
 - **插件**：`remark-gfm`（表格、任务列表、删除线、自动链接），
-  `remark-math` + `rehype-katex`（内联 `$…$`，显示 `$$…$$`）。原始 HTML 是
+  `remark-math` + `rehype-katex`（内联 `$…$` 或 `\(…\)`，显示 `$$…$$`
+  或 `\[…\]`）。原始 HTML 是
   由 `rehype-raw` 解析并立即受扩展约束
-  `rehype-sanitize` 默认架构；仅渲染器拥有的 audio/video/source
+  `rehype-sanitize` 默认架构；仅渲染器拥有的 audio/video/source，以及
+  `code` 上的 `math-inline`/`math-display` 类（保证 TeX `\[…\]` 使用块级布局）
   允许添加。 KaTeX 的 Vite 内联 WOFF2 字体被允许
 渲染器的 `font-src 'self' data:` CSP 指令。
 - **美人鱼图（D165）**：助手中完成的 `mermaid` 围栏块
@@ -1801,10 +1836,21 @@ MainChat 底部的输入区域，用于撰写和发送提示。支持多行输�
   时才推进到下一条本地化命令/文件或快捷键提示，并使用透明度渐变；没有计时器，
   发送或清空草稿不会改变提示。
 - 转义：当文本区域聚焦时，清除输入或模糊（不中止）
-- 运行中的发送：草稿有内容时清空当前草稿，并将一条 FIFO 项目追加到
-  当前会话的内存队列；当前运行结束后才会作为普通提示发送。草稿为空时，
-  同一个提交槽位显示停止，因此清空草稿即可显示立即停止操作。不同会话的队列
-  不会因切换会话而受影响。
+- 运行中的发送：草稿有内容时清空当前草稿，并向当前会话的、由 Host 拥有的队列追加
+  一条 FIFO 条目；当前运行到达 `agent_end` 之后才会作为普通提示发送。草稿为空时，
+  同一个提交槽位显示停止，因此清空草稿即可显示立即停止操作。切换会话不会影响其他
+  会话的队列。
+- 排队行：内容，然后依次是上移、下移、立即发送、编辑、删除。上移/下移与该行相邻的
+  等待条目互换，并镜像 Host 持久的 `position`；在等待区块边界处是空操作，绝不会跨入
+  优先区块。编辑会移除该行，并把捕获的草稿——文本加内联文件引用芯片——回填到输入框；
+  输入框非空（或带有附件）时该操作被拒绝并提示，且不改变任何内容。删除立即移除该行。
+- 立即发送：把该行提升到会话优先区块的末尾，因此第二次点击排在上一次之后，而不是
+  顶掉它。随后请求 `agent/stop`，当前回复/工具批次正常结束后释放优先区块，并先于
+  所有等待条目启动。第一条优先行启动回合，其余作为相邻的用户消息加入同一回合，因此整块
+  只被回复一次。会话空闲时立即启动。
+- 被提升的行会被锁定：上移/下移、编辑和删除均被禁用，但仍保留 tooltip 与
+  `aria-disabled` 状态，立即发送按钮显示为已决定（`chat.sendNowPending`）。该行使用
+  不同的提升外观，避免被误认为普通等待行。
 - 停止：停止正在运行的轮次并取消挂起的权限。在任何之前
   辅助文本、思维或工具行开始时，它也会删除刚刚发送的
 用户行并恢复预序列化输入框草稿。普通文本
@@ -1888,7 +1934,9 @@ MainChat 底部的输入区域，用于撰写和发送提示。支持多行输�
 - Goal 共享 Plan 批准表面 (D198)。操作栏从以下位置读取其文案
   提案的 `kind`，因此目标合约显示匹配的批准标签和
   神器开启器，而布局和记住权限拆分按钮保持不变
-  相同。
+  相同。该栏位于透明 Composer 停靠栏上，因此使用
+  `--ds-bg-composer` 加 `--ds-shadow-composer`，而不是正文流里的
+  `--ds-tile` 薄洗。
 
 ### 11.6 辅助功能
 

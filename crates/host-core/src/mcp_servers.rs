@@ -1,7 +1,8 @@
 use crate::activation::{ActivationMode, ActivationScope};
 use crate::agent_capabilities::{
-    capability_dir, file_timestamp, normalize_project_path, sorted_files, CapabilityLevel,
-    CapabilityState,
+    capability_dir, file_timestamp, move_capability_file, normalize_project_path,
+    set_moved_capability_state, sorted_files, suffixed_capability_id, suffixed_display_name,
+    CapabilityLevel, CapabilityState, CapabilityTarget,
 };
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -526,6 +527,95 @@ impl McpServerRegistry {
         self.find(id, None, None)
     }
 
+    /// Move one server between the global directory and a project's.
+    ///
+    /// The document moves instead of being copied: a copy would leave the old
+    /// level holding a definition the user just said belongs somewhere else.
+    /// When the destination already owns the same id or label the arriving
+    /// server is renamed, so both definitions survive with names that tell them
+    /// apart. Activation state follows the document.
+    pub fn transfer(
+        &mut self,
+        id: &str,
+        from: &CapabilityTarget,
+        to: &CapabilityTarget,
+    ) -> Result<McpServerRecord> {
+        let Some(source) = self.find(id, Some(from.level), from.project_path.as_deref())? else {
+            bail!("MCP_INVALID: unknown MCP server \"{id}\"");
+        };
+        if from.same_directory(to) {
+            return Ok(source);
+        }
+        let source_path = source
+            .path
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("MCP_INVALID: server has no configuration file"))?;
+        let existing = self.list(to.level, to.project_path.as_deref())?;
+        if existing.len() >= MAX_SERVERS {
+            bail!("MCP_INVALID: at most {MAX_SERVERS} MCP servers");
+        }
+        // Lowercased: `suffixed_capability_id` compares this way, and on a
+        // case-insensitive volume `MyServer.json` and `myserver.json` are one
+        // file, so a case-sensitive check would let the move overwrite it.
+        let taken_ids = existing
+            .iter()
+            .map(|record| record.id.to_lowercase())
+            .collect::<HashSet<_>>();
+        let taken_labels = existing
+            .iter()
+            .map(|record| record.label.to_lowercase())
+            .collect::<HashSet<_>>();
+        let (target_id, _) = suffixed_capability_id(&source.id, &taken_ids, 64)
+            .ok_or_else(|| anyhow::anyhow!("MCP_INVALID: no free id at the destination"))?;
+        let target_label = suffixed_display_name(&source.label, &taken_labels, MAX_VALUE_BYTES);
+
+        let mut config: McpConfig = serde_json::from_str(
+            &fs::read_to_string(&source_path).with_context(|| format!("read {source_path}"))?,
+        )
+        .with_context(|| format!("parse {source_path}"))?;
+        let rename = config.id != target_id || config.label != target_label;
+        if rename {
+            config.id = target_id.clone();
+            config.label = target_label;
+            check_len("label", &config.label)?;
+        }
+        let directory = capability_dir(to.level, to.project_path.as_deref(), "servers")?;
+        let target_path = directory.join(format!("{target_id}.json"));
+        if rename {
+            // Never replace what is already at the destination. On a
+            // case-insensitive volume `fs::write` would silently hit an
+            // existing `MyServer.json` from `myserver.json`; refusing is the
+            // only non-destructive answer there.
+            if target_path.exists() {
+                bail!(
+                    "MCP_INVALID: destination already exists: {}",
+                    target_path.display()
+                );
+            }
+            // The document has to change, so it is written first and the source
+            // removed only after the destination exists: a failure in between
+            // leaves a shadowed duplicate rather than no server at all.
+            fs::create_dir_all(&directory)?;
+            fs::write(&target_path, serde_json::to_string_pretty(&config)?)
+                .with_context(|| format!("write {}", target_path.display()))?;
+            fs::remove_file(&source_path).ok();
+        } else {
+            move_capability_file(Path::new(&source_path), &target_path)?;
+        }
+        set_moved_capability_state(
+            &mut self.state,
+            MCP_KIND,
+            from.level,
+            &source.id,
+            source.project_path.as_deref(),
+            to,
+            &target_id,
+            source.enabled,
+        )?;
+        self.find(&target_id, Some(to.level), to.project_path.as_deref())?
+            .ok_or_else(|| anyhow::anyhow!("MCP_INVALID: moved server was not found"))
+    }
+
     /// Compatibility lookup for older host callers; management uses level-aware list/find paths.
     #[allow(dead_code)]
     pub fn get(&mut self, id: &str) -> Option<McpServerRecord> {
@@ -534,135 +624,4 @@ impl McpServerRegistry {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    fn stdio(id: &str) -> McpServerInput {
-        McpServerInput {
-            id: id.into(),
-            transport: Some("stdio".into()),
-            command: Some("npx".into()),
-            args: Some(vec!["-y".into(), "server".into()]),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn validation_accepts_http_endpoints_and_rejects_bad_ids() {
-        assert!(!valid_id("1files"));
-        assert!(check_url("http://localhost:3000/mcp").is_ok());
-        assert!(check_url("http://192.168.1.20:8080/mcp").is_ok());
-        assert!(check_url("https://example.com/mcp").is_ok());
-        assert!(check_url("ftp://example.com/mcp").is_err());
-        let mut config = McpConfig {
-            id: "files".into(),
-            label: "Files".into(),
-            transport: "stdio".into(),
-            command: Some("node..bin".into()),
-            ..Default::default()
-        };
-        assert!(McpServerRegistry::validate_config(&config).is_err());
-        config.command = Some("node".into());
-        assert!(McpServerRegistry::validate_config(&config).is_ok());
-    }
-
-    #[test]
-    fn config_round_trips_without_activation_fields() {
-        let config = McpConfig {
-            id: "files".into(),
-            label: "Files".into(),
-            transport: "stdio".into(),
-            command: Some("npx".into()),
-            ..Default::default()
-        };
-        let raw = serde_json::to_string(&config).unwrap();
-        assert!(!raw.contains("enabled"));
-        assert_eq!(serde_json::from_str::<McpConfig>(&raw).unwrap().id, "files");
-    }
-
-    #[test]
-    fn disabled_project_server_shadows_global_server() {
-        let global = McpServerRecord {
-            id: "files".into(),
-            label: "Files".into(),
-            level: Some("global".into()),
-            project_path: None,
-            path: None,
-            description: None,
-            transport: "stdio".into(),
-            command: Some("npx".into()),
-            args: Vec::new(),
-            env: BTreeMap::new(),
-            url: None,
-            headers: BTreeMap::new(),
-            enabled: true,
-            scope: ActivationScope::default(),
-            created_at: String::new(),
-            updated_at: String::new(),
-        };
-        let mut project = global.clone();
-        project.level = Some("project".into());
-        project.project_path = Some("/repo".into());
-        project.enabled = false;
-
-        let active = merge_active_records(vec![global], vec![project]);
-        assert!(active.is_empty());
-    }
-
-    #[test]
-    fn project_server_is_copied_and_state_is_pruned_after_removal() {
-        let dir = tempdir().unwrap();
-        let project_path = dir.path().to_str().unwrap().to_string();
-        let mut registry = McpServerRegistry::new(dir.path());
-        let mut first = stdio("files");
-        first.label = Some("Files".into());
-        first.level = Some("project".into());
-        first.project_path = Some(project_path.clone());
-        let record = registry.upsert(first).unwrap();
-        let normalized_project = crate::agent_capabilities::normalize_project_path(&project_path);
-        let target = crate::agent_capabilities::capability_dir(
-            CapabilityLevel::Project,
-            Some(&normalized_project),
-            "servers",
-        )
-        .unwrap()
-        .join("files.json");
-        assert_eq!(record.path.as_deref(), target.to_str());
-        assert!(!fs::read_to_string(&target).unwrap().contains("enabled"));
-
-        let mut duplicate = stdio("other");
-        duplicate.label = Some("files".into());
-        duplicate.level = Some("project".into());
-        duplicate.project_path = Some(project_path.clone());
-        assert!(registry.upsert(duplicate).is_err());
-
-        let disabled = registry
-            .set_enabled(
-                "files",
-                false,
-                Some(CapabilityLevel::Project),
-                Some(&project_path),
-            )
-            .unwrap()
-            .unwrap();
-        assert!(!disabled.enabled);
-        assert!(!registry.state.enabled(
-            MCP_KIND,
-            CapabilityLevel::Project,
-            "files",
-            Some(&project_path)
-        ));
-
-        assert!(registry
-            .remove("files", Some(CapabilityLevel::Project), Some(&project_path))
-            .unwrap());
-        assert!(!target.exists());
-        assert!(registry.state.enabled(
-            MCP_KIND,
-            CapabilityLevel::Project,
-            "files",
-            Some(&project_path)
-        ));
-    }
-}
+mod tests;

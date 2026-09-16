@@ -46,9 +46,9 @@ test("the Auto row shows the OS-detected native name", () => {
   assert.doesNotMatch(rowSource, /autoLabel} · \$\{detectedInfo/);
 });
 
-test("the language trigger fills the settings control column without a native field chrome", () => {
-  assert.match(styles, pickerRule("\\.settings-language-anchor", "width:\\s*100%;"));
-  assert.match(styles, pickerRule("\\.settings-language-trigger", "width:\\s*100%;"));
+test("the language trigger hugs the current label without a native field chrome", () => {
+  assert.match(styles, pickerRule("\\.settings-language-anchor", "width:\\s*max-content;"));
+  assert.match(styles, pickerRule("\\.settings-language-trigger", "width:\\s*max-content;"));
   assert.match(styles, pickerRule("\\.settings-language-search input", "outline:\\s*none;"));
   assert.match(styles, pickerRule("\\.settings-language-search input", "padding:\\s*0;"));
 });

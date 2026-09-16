@@ -100,11 +100,17 @@ replace an artifact.
 
 The renderer does not fetch skill catalogs or SKILL.md documents. Electron
 main performs those HTTPS requests under the public-network policy (ADR 0243 /
-D413): `https` only, a shared syntactic public-host check, DNS classification
-of every resolved address, and `redirect: "manual"` with per-hop
-re-validation. Loopback, RFC1918, ULA, link-local, and mapped IPv6 targets
-are rejected. Install writes markdown only through `skills.create`. The host
-document cap remains 128 KiB after sibling markdown is inlined.
+D413, amended by ADR 0272 / D436): `https` only, a shared syntactic public-host
+check, `redirect: "manual"`, and a per-hop verdict that follows the route the
+request will actually take. Before each hop the client asks the session that
+carries `net.fetch` for its own proxy decision (`Session.resolveProxy`): on a
+proxied route the hop is judged on its route rather than on a local address the
+app would never dial, so only the resolver-artifact class (`benchmark`, a TUN
+fake-IP) is tolerated there, while a direct or unreadable route keeps the full
+local classification and rejects loopback, RFC1918, ULA, link-local, mapped
+IPv6, and every other non-public class. Install writes markdown only through
+`skills.create`. The host document cap remains 128 KiB after sibling markdown
+is inlined.
 
 ## 4.2 MCP market egress
 

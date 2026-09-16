@@ -218,6 +218,15 @@ type MarketPluginSummary = {
  verified?: boolean
  installable?: boolean
 }
+`i18n` is display metadata, not a summary field: the host resolves a card's
+`name` / `description` and a detail view's `safetyNotes` against the app
+language and falls back per field to the entry's own values, so a translated
+plugin reads in the user's language (ADR 0267). A catalog entry declares the
+same block as a manifest — `{ en: { name, description, safetyNotes }, "zh-CN":
+{ … } }`. Search matches every locale, not only the one currently displayed; a
+malformed block fails the catalog parse, while unknown locales and unknown
+fields inside an entry are ignored.
+
 ```
 
 ### MarketPluginDetail

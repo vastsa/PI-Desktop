@@ -61,6 +61,14 @@ function skip(id, detail) {
   console.log(`SKIP ${id} — ${detail}`);
 }
 
+// The Host stores a project path in its canonical spelling
+// (`db::canonical_project_path`): the directory is resolved and the separators are
+// normalized, so `projects.list` reports forward slashes on every platform.
+// Compare list output against that spelling — a native `realpathSync` path never
+// equals it on Windows, which is how the project "removed / still there" clauses
+// passed for the wrong reason.
+const storedProjectPath = (path) => realpathSync(path).replace(/\\/g, "/");
+
 class Host {
   constructor(bin, dataDir) {
     if (process.env.DEBUG_HOST) {
@@ -336,6 +344,62 @@ async function main() {
       plugin.id === "demo.hello" && plugin.enabled === true,
     );
 
+    // E2E-0PLUGIN-I18N: plugin labels follow the pushed app language. The
+    // manifest carries both contract locales, and the host — not the renderer —
+    // picks the entry, so the row the desktop draws changes with the language
+    // while the stored manifest does not.
+    {
+      const localizedDir = join(dataDir, "labels-i18n");
+      mkdirSync(localizedDir, { recursive: true });
+      writeFileSync(join(localizedDir, "main.js"), "function onLoad() {}\nfunction onUnload() {}\n");
+      writeFileSync(
+        join(localizedDir, "manifest.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          id: "e2e.labels",
+          name: "小清新待办",
+          version: "0.1.0",
+          description: "作者原话",
+          main: "main.js",
+          permissions: [],
+          i18n: {
+            en: { name: "Todo List", description: "A calm todo list" },
+            "zh-CN": { name: "小清新待办", description: "轻盈的待办清单" },
+          },
+        }),
+      );
+      const loadedRow = await loadDevelopmentPlugin(host, localizedDir);
+      const enRow = (await host.call("plugins.list")).plugins.find(
+        (candidate) => candidate.id === "e2e.labels",
+      );
+      await host.call("plugins.setLocale", { locale: "zh-CN" });
+      const zhRow = (await host.call("plugins.list")).plugins.find(
+        (candidate) => candidate.id === "e2e.labels",
+      );
+      // A plugin is not required to translate itself into every shell locale:
+      // zh-TW reads the English entry rather than half a zh-CN guess (ADR 0182).
+      await host.call("plugins.setLocale", { locale: "zh-TW" });
+      const twRow = (await host.call("plugins.list")).plugins.find(
+        (candidate) => candidate.id === "e2e.labels",
+      );
+      // `auto` is a setting, not a locale: the desktop shell resolves it, and
+      // the host must keep reading the locale it was last given.
+      const afterAuto = await host.call("plugins.setLocale", { locale: "auto" });
+      await host.call("plugins.setLocale", { locale: "en" });
+      record(
+        "E2E-0PLUGIN-I18N",
+        loadedRow.name === "Todo List" &&
+          enRow?.description === "A calm todo list" &&
+          zhRow?.name === "小清新待办" &&
+          zhRow?.description === "轻盈的待办清单" &&
+          twRow?.name === "Todo List" &&
+          afterAuto?.locale === "zh-TW" &&
+          enRow !== undefined &&
+          !("i18n" in enRow),
+        `en=${enRow?.name} zh=${zhRow?.name} zh-TW=${twRow?.name}`,
+      );
+    }
+
     // E2E-024: plugin agent tool dispatch roundtrip. The smoke harness acts
     // as the desktop runner: host emits plugins.execute, we answer via
     // plugins.resolveExecution, and tools.execute returns the plugin result.
@@ -416,6 +480,10 @@ async function main() {
       await host.call("projects.create", { path: removedProjectDir });
       await host.call("projects.create", { path: keptProjectDir });
       // projects.list stores the canonical spelling (db.rs canonical_project_path).
+      // Keep the request paths platform-native, the way a real client sends them,
+      // and compare list output against the stored spelling (`storedProjectPath`).
+      const removedProjectStored = storedProjectPath(removedProjectDir);
+      const keptProjectStored = storedProjectPath(keptProjectDir);
       const removedProjectPath = realpathSync(removedProjectDir);
       const keptProjectPath = realpathSync(keptProjectDir);
 
@@ -482,10 +550,10 @@ async function main() {
           removal.removed === true &&
           removal.sessionsRemoved === 2 &&
           projectsAfter.projects.every(
-            (project) => project.path !== removedProjectPath,
+            (project) => project.path !== removedProjectStored,
           ) &&
           projectsAfter.projects.some(
-            (project) => project.path === keptProjectPath,
+            (project) => project.path === keptProjectStored,
           ) &&
           sessionsAfter.sessions.every(
             (session) => !deletedSessionIds.includes(session.id),
@@ -510,6 +578,7 @@ async function main() {
       mkdirSync(busyProjectDir, { recursive: true });
       await host.call("projects.create", { path: busyProjectDir });
       const busyProjectPath = realpathSync(busyProjectDir);
+      const busyProjectStored = storedProjectPath(busyProjectDir);
       const busySession = await host.call("session.create", {
         title: "E2E busy session",
         mode: "agent",
@@ -531,7 +600,7 @@ async function main() {
         refusal?.code === 1008 && refusal?.data?.errorCode === "CONFLICT";
       const nothingDeleted =
         projectsWhileBusy.projects.some(
-          (project) => project.path === busyProjectPath,
+          (project) => project.path === busyProjectStored,
         ) &&
         sessionsWhileBusy.sessions.some(
           (session) => session.id === busySession.session.id,

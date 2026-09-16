@@ -18,12 +18,14 @@ import {
   stripOutputLimitFields,
   withoutDerivedOutputLimit,
 } from "./provider-retry.js";
+import { activeNodeTransportRoute } from "./node-proxy.js";
+import { describeProviderFetchFailure } from "./provider-transport-recovery.js";
+import type { ClassifiedAgentError } from "./agent-errors.js";
 
 const model = {
   id: "model",
   api: "openai-completions",
   provider: "provider",
-  name: "Model",
   reasoning: false,
   input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -249,6 +251,132 @@ describe("provider rate-limit retry", () => {
     expect(snapshot?.status).toBe(429);
     await expect(wrapped("https://provider.invalid", {})).rejects.toThrow("fetch failed");
     expect(snapshot).toBeUndefined();
+  });
+
+  it("describes the transport cause of a rejected fetch and keeps the error", async () => {
+    const failures: Array<ReturnType<typeof describeProviderFetchFailure>> = [];
+    const original = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("read ECONNRESET"), {
+        code: "ECONNRESET",
+        syscall: "read",
+      }),
+    });
+    const wrapped = captureProviderResponse(
+      async () => {
+        throw original;
+      },
+      (_response, _requestBytes, failure) => {
+        failures.push(failure);
+      },
+    );
+
+    await expect(
+      wrapped("https://chatgpt.com/backend-api/codex/responses", {}),
+    ).rejects.toBe(original);
+    // The first entry is the clear before the attempt, the last is the cause.
+    expect(failures).toEqual([
+      undefined,
+      {
+        origin: "https://chatgpt.com",
+        category: "reset",
+        fields: {
+          networkCategory: "reset",
+          networkCode: "ECONNRESET",
+          networkSyscall: "read",
+          networkRoute: activeNodeTransportRoute(),
+        },
+      },
+    ]);
+  });
+  it("names the failing layer on the retried error, not just fetch failed", async () => {
+    let attempts = 0;
+    const retried: ClassifiedAgentError[] = [];
+    const failure = describeProviderFetchFailure(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("read ECONNRESET"), {
+          code: "ECONNRESET",
+        }),
+      }),
+      "https://chatgpt.com/backend-api/codex/responses",
+    );
+    const stream = createProviderRetryStream(
+      model,
+      context,
+      {},
+      () => {
+        attempts += 1;
+        return failedStream({ errorMessage: "fetch failed" });
+      },
+      {
+        claim: () => (attempts <= 1 ? attempts : undefined),
+        headers: () => undefined,
+        status: () => undefined,
+        failure: () => failure,
+        onRetry: ({ error }) => {
+          retried.push(error);
+        },
+      },
+    );
+
+    const final = await stream.result();
+
+    // The retry indicator renders this object, so the errno has to be on it;
+    // the provider message itself stays untouched.
+    expect(retried).toHaveLength(1);
+    expect(retried[0]).toMatchObject({
+      code: "NETWORK_ERROR",
+      message: "fetch failed",
+      details: { networkCategory: "reset", networkCode: "ECONNRESET" },
+    });
+    expect(final.errorMessage).toBe("fetch failed");
+  });
+
+  it("reports the request body size even when the request dies first", async () => {
+    const seen: Array<[number | undefined, number | undefined]> = [];
+    const body = JSON.stringify({ model: "gpt-5.6-sol", input: "hello" });
+    const wrapped = captureProviderResponse(
+      async () => {
+        throw new Error("fetch failed");
+      },
+      (response, requestBytes) => {
+        seen.push([response?.status, requestBytes]);
+      },
+    );
+
+    await expect(
+      wrapped("https://provider.invalid", { method: "POST", body }),
+    ).rejects.toThrow("fetch failed");
+
+    // The clearing call, then the failure: only the size survives, never the
+    // body content, and a request that never got headers still reports it.
+    expect(seen).toEqual([
+      [undefined, undefined],
+      [undefined, Buffer.byteLength(body, "utf8")],
+    ]);
+  });
+
+  it("reports no request size when the body cannot be measured unread", async () => {
+    const sizes: Array<number | undefined> = [];
+    const wrapped = captureProviderResponse(
+      async () => new Response("ok", { status: 200 }),
+      (_response, requestBytes) => {
+        sizes.push(requestBytes);
+      },
+    );
+
+    // A body the transport does not expose as a string/buffer/blob reports no
+    // size instead of throwing or being read.
+    await wrapped("https://provider.invalid", {
+      method: "POST",
+      body: new FormData(),
+    });
+    expect(sizes.at(-1)).toBeUndefined();
+
+    await wrapped("https://provider.invalid", {
+      method: "POST",
+      body: new Uint8Array([1, 2, 3, 4]),
+    });
+    expect(sizes.at(-1)).toBe(4);
   });
 
   it("rejects an abortable retry delay without waiting for the timer", async () => {

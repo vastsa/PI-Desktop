@@ -185,23 +185,12 @@ export function createEventsSlice({
         ));
         set((state) => ({
           ...(state.activeSessionId === sessionId ? { messages: reconcile(state.messages) } : {}),
-          // Native side-chat children reconcile their optimistic row in the
-          // panel projection too; the durable entry is the only canonical row.
-          ...(state.sideChatTranscripts?.[sessionId]
-            ? {
-                sideChatTranscripts: {
-                  ...state.sideChatTranscripts,
-                  [sessionId]: reconcile(state.sideChatTranscripts[sessionId]),
-                },
-              }
-            : {}),
           retainedTranscripts: state.retainedTranscripts[sessionId]
             ? { ...state.retainedTranscripts, [sessionId]: reconcile(state.retainedTranscripts[sessionId]) }
             : state.retainedTranscripts,
         }));
         return;
       }
-      runtime.projectSideChatEvent(envelope);
       if (event.type === "message_end" && event.replacesMessageId) {
         // Exact native stream re-key: the durable SDK entry replaces its own
         // provisional row in the caches a reselect can paint from, while a
@@ -433,28 +422,6 @@ export function createEventsSlice({
         } else if (event.type === "agent_end") {
           void get().refreshSessions();
           void triggerAutoTitleSummarization(envelope.sessionId);
-        } else if (event.type === "error") {
-          // A running child turn can fail before its first assistant row. The
-          // panel is not the visible conversation, so surface it in the child
-          // projection and as a toast instead of a silent draft restore.
-          const childRows = get().sideChatTranscripts[envelope.sessionId];
-          if (get().sideChats[envelope.sessionId] && childRows) {
-            const errorRow = assistantErrorMessage(event.error);
-            set((state) => ({
-              sideChatTranscripts: {
-                ...state.sideChatTranscripts,
-                [envelope.sessionId]: [
-                  ...state.sideChatTranscripts[envelope.sessionId],
-                  errorRow,
-                ],
-              },
-            }));
-            const cached = runtime.sessionTranscriptCache.get(envelope.sessionId);
-            if (cached) {
-              runtime.cacheSessionTranscript(envelope.sessionId, [...cached, errorRow]);
-            }
-            get().showToast(event.error.message, { variant: "error" });
-          }
         } else if (event.type === "planning_state") {
           void get().refreshSessions();
         }

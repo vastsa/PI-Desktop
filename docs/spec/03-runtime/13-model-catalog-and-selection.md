@@ -56,6 +56,15 @@ entitled to it.
   and the runtime uses the binding's explicit set. A model that publishes no
   level list and no level map but does claim reasoning still seeds
   `low`/`medium`/`high`.
+- Limit values render through one shared compact formatter
+  (`formatCompactTokenCount`): up to two decimals at the `M` scale and one at
+  the `K` scale, trailing zeros dropped, and a `K` mantissa that would round up
+  to 1000 promoted to the `M` scale. Published windows on the 1M line therefore
+  stay distinguishable — 1000000 reads `1M`, 1048576 and 1050000 read `1.05M`,
+  1100000 reads `1.1M` — instead of collapsing into one rounded `1M`/`1.1M`, and
+  a limit the service never published reads as an em dash. The settings rows,
+  the Composer picker, the context inspector and the transcript all call this
+  one implementation, while usage counters keep a real `0` instead of the dash.
 - When an explicit binding enables `xhigh` or `max` without a catalog wire
   mapping, the runtime sends that canonical value through to the adapter rather
   than letting the adapter clamp it to `high`. Existing non-null catalog
@@ -458,3 +467,6 @@ same model to the check mark, the toggle and the duplicate guard.
 - [ ] unknown free-form models remain runnable without invented capabilities
 - [ ] a models.dev record and an unknown generic record resolve through the same
       selected transport without sending provider credentials to the remote catalog
+- [ ] compact limit text never reads above the published value, keeps the
+      neighbouring 1M-line windows apart (`1M` / `1.05M` / `1.1M`), and never
+      renders a `K` mantissa at or above 1000

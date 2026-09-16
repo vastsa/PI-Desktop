@@ -35,6 +35,7 @@ export type RegisterIpcDependencies = {
   getNotificationViewingSessionId: () => string | null;
   setNotificationViewingSessionId: (sessionId: string | null) => void;
   activeUserSubagentDocuments: (...args: any[]) => Promise<any>;
+  disabledBuiltinSubagents: () => Promise<string[]>;
   [name: string]: any;
 };
 
@@ -91,6 +92,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     agentExtensions,
     activeUserSkills,
     activeUserSubagentDocuments,
+    disabledBuiltinSubagents,
     pluginActiveInProject,
     getWorkPanelReservationWidth,
     setWorkPanelReservationWidth,
@@ -359,8 +361,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     fetchSkillMarketDocument,
     optionalWorkspaceRoot,
     activeUserSubagentDocuments,
+    disabledBuiltinSubagents,
     stripWinLongPrefix,
     sendToRenderer,
+    logger,
   });
 
 

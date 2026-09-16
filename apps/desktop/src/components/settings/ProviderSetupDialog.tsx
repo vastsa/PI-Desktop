@@ -16,8 +16,9 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
-import { Button, Field, Input, Select } from "../ui";
+import { Button, Field, Input } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
+import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
 import { CUSTOM_SERVICE, ServicePicker } from "./ServicePicker";
@@ -487,26 +488,26 @@ export function ProviderSetupDialog({
                         ? "settings.apiStyleChooseCustom"
                         : "settings.apiStyleLegacyAccount") : undefined}
                     >
-                      <Select
+                      <SettingsMenuSelect
+                        fullWidth
+                        label={t("settings.apiStyle")}
                         value={apiStyle}
                         disabled={saving}
-                        onChange={(event) =>
-                          setApiStyle(event.target.value as CatalogApiStyle)
-                        }
-                      >
-                        {accountOnlyApiStyle ? (
-                          <option value={apiStyle} disabled>
-                            {t(API_STYLE_LABEL_KEYS[apiStyle])}
-                          </option>
-                        ) : null}
-                        {CUSTOM_PROVIDER_API_STYLES.map(
-                          (style) => (
-                            <option key={style} value={style}>
-                              {t(API_STYLE_LABEL_KEYS[style])}
-                            </option>
-                          ),
-                        )}
-                      </Select>
+                        onChange={(id) => setApiStyle(id as CatalogApiStyle)}
+                        options={[
+                          ...(accountOnlyApiStyle
+                            ? [{
+                                id: apiStyle,
+                                label: t(API_STYLE_LABEL_KEYS[apiStyle]),
+                                disabled: true,
+                              }]
+                            : []),
+                          ...CUSTOM_PROVIDER_API_STYLES.map((style) => ({
+                            id: style,
+                            label: t(API_STYLE_LABEL_KEYS[style]),
+                          })),
+                        ]}
+                      />
                     </Field>
                   </div>
                 </>

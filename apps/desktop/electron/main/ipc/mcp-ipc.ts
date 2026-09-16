@@ -1,4 +1,4 @@
-import { IPC, parseMcpImport, type ActivationScope, type AgentCapabilityQuery, type MarketSource, type McpServerInput, type McpServerRecord, type McpServerStatus } from "@pi-desktop/shared";
+import { IPC, parseMcpImport, type ActivationScope, type AgentCapabilityMove, type AgentCapabilityQuery, type MarketSource, type McpServerInput, type McpServerRecord, type McpServerStatus } from "@pi-desktop/shared";
 import type { HostProcess } from "../host-process";
 import type { McpRegistrySearchResult } from "../mcp-registry-catalog";
 import type { UserMcpRuntime } from "../user-mcp";
@@ -102,6 +102,21 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
       return res;
     },
   );
+
+  /**
+   * Move a server between the global and a project's `.agents/servers`.
+   *
+   * Ownership changes, so both levels change: the project runtime is rebuilt and
+   * the renderer is told which id the server ended up under, because a move into
+   * an occupied destination renames it.
+   */
+  handle(IPC.invoke.mcpTransfer, async (payload: AgentCapabilityMove) => {
+    if (!host) throw new Error("host unavailable");
+    const res = await host.call<{ server: McpServerRecord }>("mcp.transfer", payload);
+    await refreshUserMcp(currentWorkspacePath());
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: res.server?.id });
+    return res;
+  });
 
   handle(
     IPC.invoke.mcpTest,

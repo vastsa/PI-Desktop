@@ -287,6 +287,14 @@ export function createSessionCollaborationService(deps: SessionCollaborationDepe
             const chosen = requested ? models.find((item) => item.key === requested)
               : models.find((item) => item.availableForSubagents) ?? models.find((item) => item.isDefault);
             if (!chosen) fail("MODEL_NOT_CONFIGURED", "No matching configured model is available");
+            // A worker the agent starts is AI-driven delegation, so naming a model here
+            // needs that model's own `availableForSubagents` opt-in — the gate `Task.model`
+            // already applies (ADR subagent-model-opt-in; #386). Inheriting stays open, and
+            // naming the default is that inheritance spelled out, the way repeating a
+            // definition's own pin is on the Task path.
+            if (requested && !chosen.availableForSubagents && !chosen.isDefault) {
+              fail("PERMISSION_DENIED", `Model "${requested}" is not enabled for AI delegation. Turn on "Available for AI delegation" for it in model settings, or omit modelKey to inherit.`);
+            }
             model = parsePluginModelKey(chosen.key);
           }
           checkCurrent(host, input.signal);

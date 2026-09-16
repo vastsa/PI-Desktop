@@ -57,7 +57,7 @@ export function CollapsedTitlebarActions({
         data-nav="toggle-sidebar"
         onClick={onToggleSidebar}
       >
-        <IconSidebar size={13} />
+        <IconSidebar size={15} />
       </TooltipButton>
       <TooltipButton
         className="title-nav-btn"
@@ -66,7 +66,7 @@ export function CollapsedTitlebarActions({
         data-nav="new-task"
         onClick={onNewTask}
       >
-        <IconNewSession size={13} />
+        <IconNewSession size={15} />
       </TooltipButton>
     </div>
   );

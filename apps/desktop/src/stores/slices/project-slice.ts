@@ -1,5 +1,3 @@
-import { removeSideChatsForSessions, sideChatSessionIds, sideChatWorkPanelTab } from "../../lib/side-chat";
-import type { WorkPanelTab } from "../../lib/work-panel-tabs";
 import i18n from "i18next";
 import type {
   ProjectWorkspace,
@@ -532,63 +530,6 @@ export function createProjectSlice({
         { get, set, runtime, manualSessionTitles, withoutRecordKey },
         id,
       );
-      // A side chat is renderer-owned state spanning two sessions: deleting either
-      // the child or the parent releases it, together with every side chat opened
-      // from it. The child session itself is deleted through its own sidebar row,
-      // so this only drops the panel projection (D-LOCAL-message-quotes).
-      set((state) => {
-        const sideChats = removeSideChatsForSessions(state.sideChats, [id]);
-        if (sideChats === state.sideChats) return {};
-        const released = sideChatSessionIds(state.sideChats).filter(
-          (sessionId) => !sideChats[sessionId],
-        );
-        const sideChatTranscripts = { ...state.sideChatTranscripts };
-        for (const sessionId of released) delete sideChatTranscripts[sessionId];
-        // A released side chat's tab outlives its session in every panel context
-        // that still lists it, and a dead tab would offer a live composer for a
-        // deleted session, so the tabs are stripped with the registration.
-        const releasedTabIds = new Set(
-          released.map((sessionId) => sideChatWorkPanelTab(sessionId).id),
-        );
-        const stripTabs = (tabs: WorkPanelTab[]) =>
-          tabs.filter((tab) => !releasedTabIds.has(tab.id));
-        const workPanelTabs = stripTabs(state.workPanelTabs);
-        const activeTabReleased = Boolean(
-          state.activeWorkPanelTabId &&
-            releasedTabIds.has(state.activeWorkPanelTabId),
-        );
-        const workPanelContexts = Object.fromEntries(
-          Object.entries(state.workPanelContexts).map(
-            ([contextSessionId, context]) => {
-              const tabs = stripTabs(context.tabs);
-              if (tabs.length === context.tabs.length) {
-                return [contextSessionId, context];
-              }
-              const activeTabId =
-                context.activeTabId && releasedTabIds.has(context.activeTabId)
-                  ? tabs.at(-1)?.id ?? null
-                  : context.activeTabId;
-              return [
-                contextSessionId,
-                { ...context, tabs, activeTabId, open: activeTabId ? context.open : false },
-              ];
-            },
-          ),
-        );
-        return {
-          sideChats,
-          sideChatTranscripts,
-          workPanelTabs,
-          workPanelContexts,
-          activeWorkPanelTabId: activeTabReleased
-            ? workPanelTabs.at(-1)?.id ?? null
-            : state.activeWorkPanelTabId,
-          workPanelOpen:
-            activeTabReleased && workPanelTabs.length === 0
-              ? false
-              : state.workPanelOpen,
-        };
-      });
       persistCurrentSidebar(get);
       await get().refreshSessions();
     },

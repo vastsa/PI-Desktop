@@ -315,6 +315,43 @@ async function main() {
       JSON.stringify(baseline),
     );
 
+    // Icon-only controls must render as squares in the live chrome, not only in
+    // the stylesheet: `.icon-btn` takes its width from its label, so an
+    // icon-only use states `.icon-btn-square`, and this is what proves the
+    // geometry actually stuck once flex layout and the cascade have run.
+    const iconControls = await cdp.evaluate(`(() => {
+      const expected = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--ds-control-size"),
+      );
+      const offenders = [];
+      let measured = 0;
+      for (const control of document.querySelectorAll(".icon-btn")) {
+        if (control.textContent.trim() !== "") continue;
+        const box = control.getBoundingClientRect();
+        if (box.width === 0 && box.height === 0) continue;
+        measured += 1;
+        if (
+          Math.round(box.width) !== Math.round(box.height) ||
+          Math.abs(box.width - expected) > 1
+        ) {
+          offenders.push({
+            classes: control.className,
+            width: Math.round(box.width),
+            height: Math.round(box.height),
+          });
+        }
+      }
+      return { expected, measured, offenders };
+    })()`);
+    check(
+      Number.isFinite(iconControls.expected) &&
+        iconControls.expected > 0 &&
+        iconControls.measured > 0 &&
+        iconControls.offenders.length === 0,
+      "every rendered icon-only control is a square hit target",
+      JSON.stringify(iconControls),
+    );
+
     // 1. Opening the panel may not touch the native window.
     await rig(`window.__PI_DESKTOP__.openWorkPanel()`);
     await rig(`window.__PI_DESKTOP__.setWorkPanelWidth(720)`);
@@ -457,6 +494,42 @@ async function main() {
       () => cdp.evaluate(`!!document.querySelector(".work-panel-tab")`),
       "work panel tab mounted before preview mode",
     );
+    // The panel's `+`, maximize, and the viewport-fixed collapse toggle are one
+    // button group. Only the rendered box proves it: a stylesheet contract
+    // cannot catch a rule that re-states its own inset or divider.
+    const panelActionGroup = await cdp.evaluate(`(() => {
+      const actions = document.querySelector(".work-panel-actions");
+      const maximize = document.querySelector(".work-panel-maximize");
+      const toggle = document.querySelector(".app-work-panel-toggle");
+      if (!actions || !maximize || !toggle) return null;
+      const actionsStyle = getComputedStyle(actions);
+      return {
+        tokenGap: parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--ds-work-panel-control-gap",
+          ),
+        ),
+        groupGap: parseFloat(actionsStyle.rowGap),
+        gapToToggle: Math.round(
+          toggle.getBoundingClientRect().left - maximize.getBoundingClientRect().right,
+        ),
+        borderRight: parseFloat(actionsStyle.borderRightWidth),
+        paddingRight: parseFloat(actionsStyle.paddingRight),
+        marginRight: parseFloat(actionsStyle.marginRight),
+      };
+    })()`);
+    check(
+      panelActionGroup !== null &&
+        Number.isFinite(panelActionGroup.tokenGap) &&
+        panelActionGroup.tokenGap > 0 &&
+        panelActionGroup.groupGap === panelActionGroup.tokenGap &&
+        Math.abs(panelActionGroup.gapToToggle - panelActionGroup.tokenGap) <= 1 &&
+        panelActionGroup.borderRight === 0 &&
+        panelActionGroup.paddingRight === 0 &&
+        panelActionGroup.marginRight === 0,
+      "the panel actions and the fixed collapse toggle share one control gap",
+      JSON.stringify(panelActionGroup),
+    );
     const beforeMaximize = await measure();
     await cdp.evaluate(
       `document.querySelector(".work-panel-maximize")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))`,
@@ -477,36 +550,59 @@ async function main() {
       `window ${beforeMaximize.windowWidth} -> ${maximizing.windowWidth}`,
     );
 
-    const openedTabPreview = await cdp.evaluate(`(() => {
-      const actionGroup = document.querySelector(
-        ".window-chrome-row .titlebar-nav",
+    // CSS geometry and DOM behavior are not proof of native titlebar hit testing.
+    const checkPreviewHitRegions = async (label) => {
+      const geometry = await cdp.evaluate(`(() => {
+        const row = document.querySelector(".window-chrome-row");
+        const spacer = document.querySelector(".window-chrome-drag");
+        const header = document.querySelector(".work-panel-header");
+        const actions = [...row.querySelectorAll("[data-nav]")];
+        const headerBox = header.getBoundingClientRect();
+        const firstTab = document.querySelector(".work-panel-tab");
+        const controls = row.querySelector(".window-controls");
+        const sidebar = document.querySelector(".sidebar");
+        const platform = document.documentElement.dataset.platform;
+        const inset = parseFloat(getComputedStyle(row).paddingLeft);
+        const actionRight = Math.max(...actions.map(el => el.getBoundingClientRect().right));
+        return {
+          headerLeft: headerBox.left,
+          headerRight: headerBox.right,
+          actionRight,
+          leftClear: actions.length > 0 && headerBox.left >= actionRight + 8,
+          insetClear: actions[0].getBoundingClientRect().left >= (sidebar?.getBoundingClientRect().right ?? 0) + inset,
+          rightClear: headerBox.right <= window.innerWidth -
+            (platform === "win32" || platform === "linux" ? 120 : 0) &&
+            (!controls || headerBox.right <= controls.getBoundingClientRect().left),
+          tabClear: !firstTab || firstTab.getBoundingClientRect().left >= actionRight + 8,
+          rowRegion: getComputedStyle(row).webkitAppRegion,
+          spacerRegion: getComputedStyle(spacer).webkitAppRegion,
+          headerRegion: getComputedStyle(header).webkitAppRegion,
+          passThrough: getComputedStyle(row).pointerEvents === "none",
+          actionsInteractive: actions.every(el => getComputedStyle(el).pointerEvents === "auto" && getComputedStyle(el).webkitAppRegion === "no-drag"),
+        };
+      })()`);
+      check(
+        geometry.leftClear && geometry.insetClear && geometry.rightClear && geometry.tabClear &&
+          geometry.rowRegion === "none" && geometry.spacerRegion === "none" &&
+          geometry.headerRegion === "drag" && geometry.passThrough && geometry.actionsInteractive,
+        `preview header border box excludes shell controls (${label}; geometry only)`,
+        JSON.stringify(geometry),
       );
-      const firstTab = document.querySelector(".work-panel-tab");
-      const header = document.querySelector(".work-panel-header");
-      const actionGroupBox = actionGroup?.getBoundingClientRect();
-      const firstTabBox = firstTab?.getBoundingClientRect();
-      return {
-        platform: window.piDesktop?.platform ?? "unknown",
-        fullscreen: document.documentElement.dataset.fullscreen === "true",
-        actionGroupRight: actionGroupBox
-          ? Math.round(actionGroupBox.right)
-          : null,
-        firstTabLeft: firstTabBox ? Math.round(firstTabBox.left) : null,
-        headerPaddingLeft: header
-          ? Math.round(parseFloat(getComputedStyle(header).paddingLeft))
-          : null,
-      };
-    })()`);
-    check(
-      openedTabPreview.firstTabLeft !== null &&
-        (openedTabPreview.platform !== "darwin" ||
-          openedTabPreview.actionGroupRight === null ||
-          openedTabPreview.firstTabLeft >=
-            openedTabPreview.actionGroupRight + 8),
-      "opened work-panel tabs clear the preview action group",
-      JSON.stringify(openedTabPreview),
-    );
+    };
+    const originalPlatform = await cdp.evaluate(`document.documentElement.dataset.platform`);
+    const originalFullscreen = await cdp.evaluate(`document.documentElement.dataset.fullscreen`);
+    for (const platform of ["darwin", "win32", "linux"]) {
+      for (const fullscreen of [false, true]) {
+        await cdp.evaluate(`document.documentElement.dataset.platform = ${JSON.stringify(platform)}; document.documentElement.dataset.fullscreen = "${fullscreen}"`);
+        for (let state = 0; state < 2; state += 1) {
+          await checkPreviewHitRegions(`${platform}, fullscreen=${fullscreen}, sidebar=${(await measure()).sidebarKind}`);
+          await clickSidebarToggle();
+        }
+      }
+    }
+    await cdp.evaluate(`document.documentElement.dataset.platform = ${JSON.stringify(originalPlatform)}; ${originalFullscreen === undefined ? "delete document.documentElement.dataset.fullscreen" : `document.documentElement.dataset.fullscreen = ${JSON.stringify(originalFullscreen)}`}`);
     const previewActions = await cdp.evaluate(`(() => {
+      const row = document.querySelector(".window-chrome-row");
       const firstAction =
         document.querySelector('.window-chrome-row [data-nav="toggle-sidebar"]') ??
         document.querySelector('.window-chrome-row [data-nav="new-task"]');
@@ -515,6 +611,13 @@ async function main() {
         platform: window.piDesktop?.platform ?? "unknown",
         fullscreen: document.documentElement.dataset.fullscreen === "true",
         firstActionLeft: firstActionBox ? Math.round(firstActionBox.left) : null,
+        // Read the reserve as the layout resolved it instead of restating the
+        // number: preview mode runs with the sidebar collapsed, so this row owns
+        // the macOS traffic-light reserve.
+        leadInset:
+          row && !row.classList.contains("sidebar-expanded")
+            ? Math.round(parseFloat(getComputedStyle(row).paddingLeft))
+            : null,
         newTask: !!document.querySelector('.window-chrome-row [data-nav="new-task"]'),
         sidebarToggle:
           !!document.querySelector('.window-chrome-row [data-nav="toggle-sidebar"]') ||
@@ -528,8 +631,11 @@ async function main() {
         (previewActions.controls || previewActions.platform === "darwin") &&
         (previewActions.platform !== "darwin" ||
           previewActions.fullscreen ||
+          // 88 = the native cluster's right edge (76) plus the shell's 12px gap.
           (previewActions.firstActionLeft !== null &&
-            previewActions.firstActionLeft >= 76)),
+            previewActions.leadInset !== null &&
+            previewActions.leadInset >= 88 &&
+            previewActions.firstActionLeft >= previewActions.leadInset)),
       "preview mode keeps new-task, sidebar, and window controls available",
       JSON.stringify(previewActions),
     );
@@ -722,6 +828,13 @@ async function main() {
         document.querySelector('.window-chrome-row [data-nav="toggle-sidebar"]') ??
         document.querySelector('.window-chrome-row [data-nav="new-task"]');
       const firstActionBox = firstAction?.getBoundingClientRect();
+      // Read the reserve as the layout resolved it instead of restating the
+      // number: preview mode runs with the sidebar collapsed, so this row owns
+      // the macOS traffic-light reserve.
+      const bandInset =
+        band && !band.classList.contains("sidebar-expanded")
+          ? Math.round(parseFloat(getComputedStyle(band).paddingLeft))
+          : null;
       const previewActionGroup = document.querySelector(
         ".window-chrome-row .titlebar-nav",
       );
@@ -733,6 +846,7 @@ async function main() {
         platform: window.piDesktop?.platform ?? "unknown",
         fullscreen: document.documentElement.dataset.fullscreen === "true",
         firstActionLeft: firstActionBox ? Math.round(firstActionBox.left) : null,
+        bandInset,
         controlsPosition: controls ? getComputedStyle(controls).position : null,
         controlsOnScreen: controlsBox
           ? controlsBox.width > 0 && controlsBox.right <= window.innerWidth + 1
@@ -802,24 +916,15 @@ async function main() {
     check(
       e2eChromePreview.platform !== "darwin" ||
         e2eChromePreview.fullscreen ||
+        // 88 = the native cluster's right edge (76) plus the shell's 12px gap.
         (e2eChromePreview.firstActionLeft !== null &&
-          e2eChromePreview.firstActionLeft >= 76),
+          e2eChromePreview.bandInset !== null &&
+          e2eChromePreview.bandInset >= 88 &&
+          e2eChromePreview.firstActionLeft >= e2eChromePreview.bandInset),
       "preview actions clear the macOS traffic-light hit area",
       JSON.stringify(e2eChromePreview),
     );
-    check(
-      e2eChromePreview.platform !== "darwin" ||
-        e2eChromePreview.sidebarWidth !== null ||
-        (e2eChromePreview.panelHeaderPaddingLeft !== null &&
-          e2eChromePreview.previewActionGroupRight !== null &&
-          e2eChromePreview.panelHeaderPaddingLeft >=
-            e2eChromePreview.previewActionGroupRight + 8 &&
-          e2eChromePreview.panelTabStripLeft !== null &&
-          e2eChromePreview.panelTabStripLeft >=
-            e2eChromePreview.previewActionGroupRight + 8),
-      "maximized panel header clears the macOS preview action lane",
-      JSON.stringify(e2eChromePreview),
-    );
+    await checkPreviewHitRegions("reopened preview");
     check(
       e2eChromePreview.platform === "darwin" ||
         (e2eChromePreview.controlsPosition === "fixed" &&
@@ -839,6 +944,99 @@ async function main() {
     );
     await cdp.evaluate(`document.querySelector(".work-panel-maximize")?.click?.()`);
     await e2eChromeSettle(900);
+
+    await rig(`window.__PI_DESKTOP__.collapseWorkPanel()`);
+    const originalTheme = await cdp.evaluate(`document.documentElement.dataset.theme`);
+    const routeActionSelector = ".main-titlebar .title-nav-btn";
+    const readChromeAction = (selector) => cdp.evaluate(`(() => {
+      const control = document.querySelector(${JSON.stringify(selector)});
+      if (!control) throw new Error("Chrome action missing");
+      const box = control.getBoundingClientRect();
+      const style = getComputedStyle(control);
+      return {
+        width: box.width, height: box.height,
+        x: box.left + box.width / 2, y: box.top + box.height / 2,
+        background: style.backgroundColor, color: style.color,
+        radius: style.borderRadius, border: style.borderWidth,
+        display: style.display, align: style.alignItems, justify: style.justifyContent,
+        flex: style.flex, cursor: style.cursor,
+        hovered: control.matches(":hover"),
+      };
+    })()`);
+    const movePointer = async (x, y) => {
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+      await delay(220);
+    };
+    for (const route of ["plugins", "pulls", "scheduled"]) {
+      if ((await measure()).sidebarKind !== "sidebar") await clickSidebarToggle();
+      await rig(`window.__PI_DESKTOP__.setPage(${JSON.stringify(route)})`);
+      await waitFor(
+        () => cdp.evaluate(`!!document.querySelector(".route-page .page-frame") && !!document.querySelector(".main-titlebar")`),
+        `${route} route mounted`,
+      );
+      await clickSidebarToggle();
+      await waitFor(
+        () => cdp.evaluate(`!document.querySelector(".sidebar") && document.querySelectorAll(${JSON.stringify(routeActionSelector)}).length === 2`),
+        `${route} collapsed-sidebar actions`,
+      );
+      check(
+        await cdp.evaluate(`!document.querySelector(".window-chrome-row")`),
+        `${route} exercises the ordinary titlebar, not preview chrome`,
+      );
+      for (const theme of ["light", "dark"]) {
+        await cdp.evaluate(`window.__PI_DESKTOP__.setThemeAttr(${JSON.stringify(theme)})`);
+        await movePointer(500, 300);
+        const reference = await readChromeAction(".app-work-panel-toggle");
+        await movePointer(reference.x, reference.y);
+        const referenceHover = await readChromeAction(".app-work-panel-toggle");
+        check(
+          reference.background === "rgba(0, 0, 0, 0)" &&
+            referenceHover.hovered && referenceHover.background !== reference.background,
+          `${route}/${theme} shared chrome reference has transparent rest and hover wash`,
+          JSON.stringify({ reference, referenceHover }),
+        );
+        for (const action of ["toggle-sidebar", "new-task"]) {
+          const selector = `${routeActionSelector}[data-nav="${action}"]`;
+          await movePointer(500, 300);
+          const rest = await readChromeAction(selector);
+          check(
+            Math.abs(rest.width - 28) < 0.1 && Math.abs(rest.height - 28) < 0.1 &&
+              ["background", "color", "radius", "border", "display", "align", "justify", "flex", "cursor"].every(
+                (property) => rest[property] === reference[property],
+              ),
+            `${route}/${theme} ${action} shares the rendered 28px chrome target and rest style`,
+            JSON.stringify(rest),
+          );
+          await movePointer(rest.x, rest.y);
+          const hover = await readChromeAction(selector);
+          check(
+            hover.hovered && hover.background === referenceHover.background &&
+              hover.color === referenceHover.color &&
+              hover.width === rest.width && hover.height === rest.height,
+            `${route}/${theme} ${action} shares the hover wash without changing geometry (CDP)`,
+            JSON.stringify(hover),
+          );
+        }
+      }
+      await cdp.evaluate(`document.querySelector('${routeActionSelector}[data-nav="toggle-sidebar"]').click()`);
+      await waitFor(
+        () => cdp.evaluate(`!!document.querySelector(".sidebar:not(.is-exiting)") && !document.querySelector(${JSON.stringify(routeActionSelector)})`),
+        `${route} sidebar reopens through its titlebar action`,
+      );
+      check(true, `${route} titlebar sidebar action reopens navigation (DOM)`);
+      await clickSidebarToggle();
+      await waitFor(
+        () => cdp.evaluate(`!document.querySelector(".sidebar") && !!document.querySelector('${routeActionSelector}[data-nav="new-task"]')`),
+        `${route} new-task action after recollapse`,
+      );
+      await cdp.evaluate(`document.querySelector('${routeActionSelector}[data-nav="new-task"]').click()`);
+      await waitFor(
+        () => cdp.evaluate(`!!document.querySelector(".conversation-topbar") && !!document.querySelector(".composer-input:not(:disabled)") && !document.querySelector(".route-page")`),
+        `${route} new task returns to an editable chat composer`,
+      );
+      check(true, `${route} titlebar new-task action returns to chat (DOM)`);
+    }
+    await cdp.evaluate(`document.documentElement.dataset.theme = ${JSON.stringify(originalTheme)}`);
 
     const failed = results.filter((entry) => !entry.ok);
     console.log(

@@ -104,6 +104,18 @@ test("tool block bodies stay bounded and role-coded", () => {
   assert.doesNotMatch(permissionArgs, /white-space|font-family/);
 });
 
+test("tool details do not add a second visual indent", () => {
+  const toolDetailStyles = stylesSource.match(
+    /\.tool-row:not\(\.thinking\):not\(\.subagent-topology-node\) > \.tool-row-body \{([^}]*)\}/
+  )?.[1];
+  assert.ok(toolDetailStyles);
+  assert.match(toolDetailStyles, /margin-left:\s*0;/);
+  assert.match(toolDetailStyles, /padding-left:\s*0;/);
+  // Thinking and topology have separate visual hierarchies and keep their
+  // dedicated layout rules rather than inheriting the flat tool detail rule.
+  assert.match(stylesSource, /\.subagent-topology-node > \.tool-row-body,[\s\S]*?margin-left:\s*38px;/);
+});
+
 test("assistant turns stay transparent full-width prose", () => {
   assert.match(
     stylesSource,
@@ -236,7 +248,7 @@ test("editing a user prompt regenerates it and keeps the old branch reachable", 
   assert.doesNotMatch(transcriptSource, /editAssistantMessage/);
   assert.doesNotMatch(storeSource, /editAssistantMessage/);
   // Slash prompts edit their typed form so the resend re-expands the template.
-  assert.match(transcriptSource, /const editSeed = \(editableUserMessage && message\.command\) \|\| requestTextWithoutAnnotations\(message\.content/);
+  assert.match(transcriptSource, /const editSeed =\s*\(editableUserMessage && message\.command\) \|\| \(message\.content \|\| ""\);/);
   // Same branch mechanics as regenerate, so main archives the replaced turn
   // as a revision the pager can walk back to.
   assert.match(storeSource, /editUserMessage:\s*async \(messageId, content, attachments\)/);
@@ -257,6 +269,13 @@ test("editing a user prompt regenerates it and keeps the old branch reachable", 
     stylesSource,
     /\.message-row\.user \.message-col:has\(\.message-edit\)/,
   );
+  assert.match(
+    stylesSource,
+    /\.message-edit \{[\s\S]*?background:\s*var\(--ds-bg-composer\);[\s\S]*?box-shadow:\s*none;/,
+  );
+  assert.doesNotMatch(stylesSource, /\.message-edit:focus-within/);
+  assert.match(transcriptSource, /className="icon-btn message-edit-cancel"/);
+  assert.match(transcriptSource, /className="send-btn message-edit-submit"/);
 });
 
 test("message toolbars are icon-only with hover tooltips", () => {

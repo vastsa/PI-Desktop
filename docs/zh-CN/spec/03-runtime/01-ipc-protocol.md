@@ -456,19 +456,33 @@ type AgentStatus = {
 
 Host 拥有每会话的 prompt 队列，renderer 只做镜像。运行中发送经
 `pi-desktop/agent/queue/push` 推入，无头 Agent Host 模块负责准入、排序并释放持久
-条目（`turn_queue`，架构 v15）。每次变化都以 `pi-desktop/agent/event/queueChanged`
+条目（`turn_queue`，架构 v18）。每次变化都以 `pi-desktop/agent/event/queueChanged`
 扇出。
 
 ```ts
 type AgentQueuePushRequest = { sessionId: string; content: string; attachments?: AgentPromptAttachment[]; idempotencyKey?: string };
-type QueuedTurnSummary = { id: string; sessionId: string; content: string; attachments?: AgentPromptAttachment[]; position: number; createdAt: string };
-// push -> QueuedTurnSummary；list -> { entries }；remove / prioritize -> { ok: true }；queueChanged -> { sessionId, entries }
+type QueuedTurnSummary = { id: string; sessionId: string; content: string; attachments?: AgentPromptAttachment[]; position: number; priority?: number; createdAt: string };
+// push -> QueuedTurnSummary；list -> { entries }；remove / prioritize -> { ok: true }；reorder -> { moved: boolean }；queueChanged -> { sessionId, entries }
 ```
 
 `push` 在会话已有八条时返回带 `queueFull` 的 `AGENT_BUSY`，同一 key 配不同输入时返回
-`IDEMPOTENCY_CONFLICT`。`prioritize` 把条目移到队列头部而不触碰运行中的回合，renderer 的
-“立即发送”随后请求优雅停止，使该条目在下一个边界启动。`remove` 取消尚未开始的条目。恢复
+`IDEMPOTENCY_CONFLICT`。`entries` 按投递顺序返回：已优先的条目在前并按 `priority` 升序
+（即点击顺序），其余条目按 `position` 排列。`prioritize` 把条目追加到优先区块末尾而不
+触碰运行中的回合，对已经带优先级的条目返回 `CONFLICT`，对已不再排队的回合同样拒绝；
+renderer 的“立即发送”随后请求优雅停止，使该条目在下一个边界启动。`reorder` 让一个未优先
+的条目与其相邻的未优先条目互换，对已优先条目、缺失条目或区块/队列边界返回
+`moved: false`；已优先的条目永远不会被当作相邻项。`remove` 取消尚未开始的条目。恢复
 的队列在桌面以 owner 身份接入之前保持挂起，因此重启绝不无人值守地启动工作。
+
+优先区块以**相邻消息**的形式投递，而不是拆成多个回合：第一个已优先条目在边界处启动回合，
+其后每个已优先条目都通过引导通道（`pi-desktop/agent/steer`，携带运行中回合的 id）注入同一
+回合，因此转录里用户行紧挨着出现、模型只回复一次。被注入的条目离开队列，它自己的回合被标记
+为已取消，因为它从不单独运行。运行时拒绝接收的条目仍留在队列中，在下一个边界作为自己的回合
+启动。
+
+队列的投递契约由 ADR 0265 冻结。回合自身的结算对队列具有权威性：终态事件可能被丢弃
+（点名 Main 已不再拥有的回合的终态事件永远不会到达模块），也可能根本没发出，因此结算会在
+模块内关闭该回合并释放它持有的队列。
 
 ### 5.7 会话协作投影
 
@@ -602,9 +616,11 @@ type AgentEvent =
 
 提供程序 `error` 事件可能包括以下中的有限诊断字段：
 `AppError.details`：`phase`（`request` 或 `stream`）、`providerStatus`、
-`providerCode`、`providerWaitMs`、`streamMs` 和 `retryAttempt`。这些领域
-是添加和编辑的；他们从不携带凭证或不受限制的
-提供商响应。瞬时流故障可能会在内部重播
+`providerCode`、`providerWaitMs`、`streamMs`、`retryAttempt`，以及网络故障
+时的 `networkCategory`、`networkCode`、`networkSyscall`、`networkHost`、
+`networkRoute` 和请求关联字段 `requestMessages`、`requestBytes`、`compactionGeneration`。这些字段
+都是新增且经过编辑的；它们从不携带凭据或不受限制的提供商响应，请求字段
+只有计数与字节大小。瞬时流故障可能会在内部重播
 同一回合，没有终端 `error` 事件或重复的辅助消息。
 第二次失败会发出终端标准化 `STREAM_FAILED` 错误。
 
@@ -1195,10 +1211,13 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 
 桌面专用技能市场通道（不是 host RPC）走 Electron IPC：
 
-- `pi-desktop/skill/market/search` — `{ query, sources[] }` → `{ entries, failedSources }`。
+- `pi-desktop/skill/market/search` — `{ query, sources[] }` →
+  `{ entries, failedSources, failureKinds, failureDetails }`。
   主进程聚合目录 JSON 与 GitHub 仓库 SKILL.md 扫描。源 URL 必须通过公网 HTTPS 策略（ADR 0243）。单源失败只丢掉该源。
+  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（公网策略守卫判定了目标并拒绝,请求从未离开进程）、`unresolved`（本地 DNS 解析没有返回答案,因此没有判定任何地址——这是解析器或代理的环境状况,不是对源的判定）或 `network`。`failureDetails` 以同样的键携带真正失败的主机、守卫自己的 `reason`、被拒地址的类别以及判定该地址的线路（`proxied`、`direct`,或传输层读不出线路时的 `unknown`,ADR 0272）；面板据此说明**被拒的是什么**,而不只是哪个源没出结果。
+  判定型拒绝以 `NETWORK_POLICY_BLOCKED` 暴露,解析器无应答以 `NETWORK_RESOLVE_FAILED` 暴露（spec 08 §3.1）；安装面板正是按这两个错误码分类。
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`。
-  主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。该策略即主进程公网网络客户端：语法 URL 防护、DNS 分类、逐跳重定向复核与响应上限——渲染层绝不直接触网。目录 id 会净化为 host `valid_capability_id`。
+  主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。该策略即主进程公网网络客户端：语法 URL 防护、按承载 `net.fetch` 的会话线路判定的逐跳 DNS 分类（ADR 0272）、逐跳重定向复核与响应上限——渲染层绝不直接触网。目录 id 会净化为 host `valid_capability_id`。
 
 
 桌面专用 MCP 市场通道（不是 host RPC）走 Electron IPC：
@@ -1218,6 +1237,8 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 - `agents.read(id)` → `{ subagent, body }`
 - `agents.remove(id)`
 - `agents.setEnabled(id, enabled)`
+- `agents.disabledBuiltins` → `{ disabled: string[] }`
+- `agents.setBuiltinEnabled(id, enabled)` → `{ id, enabled }`
 
 `agents.create` 和 `agents.update` 接受的 `thinkingLevel` 可以是规范思考档位、
 `omit` 或空字符串。空字符串清除覆盖；`omit` 持久化为
@@ -1228,10 +1249,19 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 而不会被存储，因为没有任何解析器能查到它。提供商部分在应用两端都按归一化别名
 匹配，因此包含空格的显示名是合法的。
 
+`agents.disabledBuiltins` 和 `agents.setBuiltinEnabled` 承载随应用发布的内置子代理的
+启用状态，这些内置项没有可切换的文档 (ADR 0270)。句柄存放在全局级别的
+`<data>/agent-capabilities/subagent-builtins.json` —— 一个独立文件：用户文档扫描会清理
+它永远看不到的 id 的状态，而内置项从不被扫描，因此共用一个文件会让所有内置项的关闭状态
+在下一次扫描时丢失。`agents.setBuiltinEnabled` 按文档名同样的规则归一化 id，空值以
+`SUBAGENT_INVALID` 拒绝；当前没有任何内置项使用的句柄也会惰性保存而不是拒绝，因为
+host-core 不携带内置清单。
+
 Electron 的 `subagent/list` IPC 通道向设置 > 智能体 > 子代理暴露同一份全局
 列表。`subagent/catalog` 返回当前 `Task` 目录（已启用的用户文档与五个内置定义
-合并后的结果），供设置页把默认子智能体渲染为只读行。运行时目录使用同一套来源；
-不会扫描 `.pi/agents` 或任何项目能力目录。
+合并后，再减去被用户关闭的内置项），并额外返回 `builtins`：每个仍然赢得自己句柄的
+内置定义，各自带 `enabled`，供设置页把关闭的默认项渲染成带自己开关的行。运行时
+目录使用同一套来源并应用同样的排除；不会扫描 `.pi/agents` 或任何项目能力目录。
 
 ## 12d. 能力级别与本地启用状态
 

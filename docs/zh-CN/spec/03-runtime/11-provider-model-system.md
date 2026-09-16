@@ -70,9 +70,9 @@ OpenCode Go 以一个名为 `opencode_go` 的 API 风格预设暴露。它仍然
 `https://opencode.ai/zen/go/v1`，使用 Bearer API key 认证，从 `/models` 发现
 模型，并通过 pi-ai 的 OpenAI Chat Completions 适配器发送对话回合。它不会另建
 第二条传输链路，也不会形成封闭的模型许可名单。Agent 运行时会在每一次 LLM
-请求上注入 OpenCode 路由标头（会话回合、子代理、提示增强以及插件的一次性
-调用）：`x-opencode-session` 是持久的对话 id（调用方没有会话时则是按次生成的
-UUID），`x-opencode-client` 为 `pi-desktop`，`User-Agent` 为
+请求上注入 OpenCode 路由标头（会话回合、子代理、上下文压缩摘要、提示增强以及
+插件的一次性调用）：`x-opencode-session` 是持久的对话 id（调用方没有会话时则是
+按次生成的 UUID），`x-opencode-client` 为 `pi-desktop`，`User-Agent` 为
 `pi-desktop/<APP_VERSION>`，除非该行设置了 `headers["User-Agent"]`。base URL
 主机为 `opencode.ai` 的自定义 OpenAI 兼容行也会收到同样的标头。系统不依赖
 pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth 账户）都可以
@@ -318,7 +318,9 @@ agent 系统提示的委托目录中。父 agent 随后就能通过 Task 工具�
 正常的固定模型解析生效，包括 `Task.model` 重复该定义自己的固定键。按需匹配使用唯一
 provider id/vendor/name 查找，不得用另一账号凭据覆盖固定模型。多个账号的 vendor/model 别名冲突时，已勾选账号改用
 确切的提供商 ID 作为覆盖键。优先级保持 Task.model → 定义固定模型 → 会话模型
-（D278；ADR subagent-model-opt-in）。
+（D278；ADR subagent-model-opt-in）。该许可约束所有让 AI 为委派工作挑选模型的入口，
+而不只是 `Task.model`：`session/collaboration/spawn` 的 `modelKey` 指向未勾选的模型时
+以 `PERMISSION_DENIED` 拒绝，省略该键或写出默认模型自己的键仍按继承处理。
 
 ## 8. 秘密
 

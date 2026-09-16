@@ -11,6 +11,27 @@ export type AgentCapabilityQuery = {
   projectPath?: string;
 };
 
+/** One end of a level move: the level plus, for `project`, the owning root. */
+export type AgentCapabilityTarget = {
+  level: AgentCapabilityLevel;
+  projectPath?: string;
+};
+
+/**
+ * A move of one capability document between the global `.agents` directory and
+ * a project's.
+ *
+ * Both ends travel together because the host resolves each one against its own
+ * directory: a global source may still name a project, which is the context its
+ * enabled state is read in, and that must never be mistaken for the destination.
+ * The document is moved rather than copied, so the source level stops listing it.
+ */
+export type AgentCapabilityMove = {
+  id: string;
+  from: AgentCapabilityTarget;
+  to: AgentCapabilityTarget;
+};
+
 /** Transport of an MCP server the user configured themselves. */
 export type McpTransport = "stdio" | "http";
 

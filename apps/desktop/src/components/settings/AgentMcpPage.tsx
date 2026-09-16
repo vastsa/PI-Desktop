@@ -35,7 +35,15 @@ import {
   type McpDraft,
 } from "../extensions/McpEditorSheet";
 import { McpMarketPanel } from "./McpMarketPanel";
-import { IconPencil, IconPlay, IconPlus, IconServer, IconTerminal, IconTrash } from "../icons";
+import {
+  IconArrowUpDown,
+  IconPencil,
+  IconPlay,
+  IconPlus,
+  IconServer,
+  IconTerminal,
+  IconTrash,
+} from "../icons";
 import { TooltipButton, cx } from "../ui";
 
 const GLOBAL_MCP_PATH = "~/.agents/servers";
@@ -282,6 +290,58 @@ export function AgentMcpPage() {
     [options, selectedProjectPath],
   );
 
+  /** Where a move sends a row, named the way the toast should say it. */
+  const moveTarget: Partial<Record<AgentCapabilityLevel, string>> = {
+    global: t("settings.globalLevel"),
+    project: selectedProjectPath
+      ? `${t("settings.projectLevel")} · ${projectName ?? projectDisplayName(selectedProjectPath)}`
+      : undefined,
+  };
+
+  /**
+   * Move one row to the other level. The project picker owns the destination,
+   * so the same action reads "Move into <project>" on a global row and "Move to
+   * Global" on a project one.
+   *
+   * The host moves the document rather than copying it, and a destination that
+   * already holds the id or name renames the arriving server, so the toast
+   * reports the new name instead of pretending the id survived.
+   */
+  const move = async (server: McpServerRecord, level: AgentCapabilityLevel) => {
+    const to: AgentCapabilityLevel = level === "global" ? "project" : "global";
+    const target = moveTarget[to];
+    if (!target) {
+      showToast(t("settings.selectProjectFirst"), { variant: "error" });
+      return;
+    }
+    const key = rowKey(level, server.id);
+    setBusyId(key);
+    try {
+      const result = await api.transferMcpServer({
+        id: server.id,
+        from: levelQuery(level),
+        to: levelQuery(to),
+      });
+      await load();
+      const name = server.label || server.id;
+      const arrived = result.server;
+      showToast(
+        arrived && arrived.id !== server.id
+          ? t("settings.capabilityMovedRenamed", {
+              name,
+              target,
+              newName: arrived.label || arrived.id,
+            })
+          : t("settings.capabilityMoved", { name, target }),
+        { variant: "success" },
+      );
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const renderRow = (server: McpServerRecord, level: AgentCapabilityLevel) => {
     const key = rowKey(level, server.id);
     const name = server.label || server.id;
@@ -300,6 +360,29 @@ export function AgentMcpPage() {
           void testConnection(server, level);
         },
       },
+      /**
+       * A move needs a destination, so a global row offers it only while the
+       * picker names a project; a project row always has Global to go back to.
+       */
+      ...(moveTarget[level === "global" ? "project" : "global"]
+        ? [
+            {
+              key: "move",
+              label:
+                level === "global"
+                  ? t("settings.capabilityMoveToProject", {
+                      project:
+                        projectName ?? projectDisplayName(selectedProjectPath ?? ""),
+                    })
+                  : t("settings.capabilityMoveToGlobal"),
+              icon: <IconArrowUpDown size={14} />,
+              onSelect: () => {
+                setMenuFor(null);
+                void move(server, level);
+              },
+            } satisfies CapabilityMenuItem,
+          ]
+        : []),
       {
         key: "remove",
         label: isArmed ? t("settings.capabilityRemoveConfirm") : t("extensions.mcp.remove"),
@@ -400,7 +483,6 @@ export function AgentMcpPage() {
 
   const marketButton = (
     <CapabilityButton
-      title={t("settings.mcpMarket.subtitle")}
       onClick={() => setView("market")}
     >
       <IconServer size={14} />
@@ -426,8 +508,6 @@ export function AgentMcpPage() {
 
   return (
     <AgentCapabilityPage
-      description={t("settings.mcpDescription")}
-      note={t("settings.capabilityPriority")}
       toolbar={
         <CapabilityToolbar
           filter={filter}
@@ -461,7 +541,6 @@ export function AgentMcpPage() {
         {counts.all === 0 && search.trim() ? (
           <CapabilityEmpty
             message={t("settings.capabilityNoMatches")}
-            hint={t("settings.capabilityNoMatchesHint")}
             icon={<IconServer size={18} />}
           />
         ) : (
