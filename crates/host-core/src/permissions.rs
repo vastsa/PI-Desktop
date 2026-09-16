@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -93,6 +94,10 @@ pub struct PermissionEvaluationParams<'a> {
     /// Tool arguments used by path/command deny matching. Tool-name rules
     /// still apply when this is `None`.
     pub tool_args: Option<&'a serde_json::Value>,
+    /// Session tool workspace (project, or scratch when the session has no
+    /// project). Path deny globs resolve `..` against this root; `~` still
+    /// expands to the user home.
+    pub path_root: Option<&'a Path>,
 }
 
 #[derive(Debug)]
@@ -208,6 +213,7 @@ impl PermissionManager {
             plan_safe_actions: None,
             deny_rules: None,
             tool_args: None,
+            path_root: None,
         })
     }
 
@@ -238,6 +244,7 @@ impl PermissionManager {
             plan_safe_actions,
             deny_rules,
             tool_args,
+            path_root,
         } = params;
         // The contract modes' tool allowlist is authoritative. This check
         // intentionally precedes low-risk classification, auto, grants,
@@ -253,7 +260,7 @@ impl PermissionManager {
 
         if let Some(rules) = deny_rules {
             let args = tool_args.unwrap_or(&serde_json::Value::Null);
-            if crate::permission_deny::matches_deny(rules, tool_name, args).is_some() {
+            if crate::permission_deny::matches_deny_in(rules, tool_name, args, path_root).is_some() {
                 return Some(PermissionDecision::Deny);
             }
         }
@@ -650,6 +657,7 @@ mod tests {
                     plan_safe_actions: None,
                     deny_rules: None,
                     tool_args: None,
+                    path_root: None,
                 },
             );
             assert_eq!(
@@ -669,6 +677,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: None,
                 tool_args: None,
+                path_root: None,
             });
         assert_eq!(auto, Some(PermissionDecision::AllowOnce));
     }
@@ -690,6 +699,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: None,
                 tool_args: None,
+                path_root: None,
             });
         assert_eq!(decision, Some(PermissionDecision::AllowSession));
     }
@@ -718,6 +728,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: None,
                 tool_args: None,
+                path_root: None,
             });
         assert_eq!(denied, Some(PermissionDecision::Deny));
 
@@ -734,6 +745,7 @@ mod tests {
                 plan_safe_actions: Some(&empty),
                 deny_rules: None,
                 tool_args: None,
+                path_root: None,
             });
         assert_eq!(empty_denied, Some(PermissionDecision::Deny));
 
@@ -750,6 +762,7 @@ mod tests {
                 plan_safe_actions: Some(&actions),
                 deny_rules: None,
                 tool_args: None,
+                path_root: None,
             });
         assert_eq!(admitted, Some(PermissionDecision::AllowOnce));
     }
@@ -803,6 +816,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: Some(&tool_deny),
                 tool_args: Some(&serde_json::json!({ "command": "git status" })),
+                path_root: None,
             }),
             Some(PermissionDecision::Deny)
         );
@@ -821,6 +835,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: Some(&path_deny),
                 tool_args: Some(&env_args),
+                path_root: None,
             }),
             Some(PermissionDecision::Deny)
         );
@@ -838,6 +853,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: Some(&command_deny),
                 tool_args: Some(&serde_json::json!({ "command": "rm -rf /tmp/foo" })),
+                path_root: None,
             }),
             Some(PermissionDecision::Deny)
         );
@@ -855,6 +871,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: Some(&write_deny),
                 tool_args: Some(&serde_json::json!({ "path": "notes.md" })),
+                path_root: None,
             }),
             Some(PermissionDecision::Deny)
         );
@@ -877,6 +894,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: Some(&deny),
                 tool_args: Some(&args),
+                path_root: None,
             }),
             Some(PermissionDecision::Deny)
         );
@@ -898,6 +916,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: Some(&deny),
                 tool_args: None,
+                path_root: None,
             }),
             Some(PermissionDecision::Deny)
         );
@@ -913,6 +932,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: Some(&deny),
                 tool_args: None,
+                path_root: None,
             }),
             Some(PermissionDecision::Deny)
         );
@@ -935,6 +955,7 @@ mod tests {
                 plan_safe_actions: Some(&actions),
                 deny_rules: Some(&deny),
                 tool_args: None,
+                path_root: None,
             }),
             Some(PermissionDecision::Deny)
         );
@@ -966,6 +987,7 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: Some(&empty),
                 tool_args: None,
+                path_root: None,
             }),
             Some(PermissionDecision::AllowOnce)
         );
@@ -981,8 +1003,35 @@ mod tests {
                 plan_safe_actions: None,
                 deny_rules: Some(&empty),
                 tool_args: Some(&serde_json::json!({ "command": "git status" })),
+                path_root: None,
             }),
             Some(PermissionDecision::AllowOnce)
+        );
+    }
+
+    #[test]
+    fn deny_path_rules_match_parent_relative_against_path_root() {
+        let pm = PermissionManager::default();
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = dir.path().join("project");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let deny = deny_rules(&[], &["**/deny-hidden-dir/**"], &[]);
+        let args = serde_json::json!({ "path": "../deny-hidden-dir/secret.txt" });
+        assert_eq!(
+            pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
+                session_id: "s",
+                tool_name: "Read",
+                mode: "agent",
+                permission_mode: "auto",
+                session_grants: &no_grants(),
+                declared_risk: None,
+                requires_external_path_permission: true,
+                plan_safe_actions: None,
+                deny_rules: Some(&deny),
+                tool_args: Some(&args),
+                path_root: Some(workspace.as_path()),
+            }),
+            Some(PermissionDecision::Deny)
         );
     }
 }

@@ -924,7 +924,7 @@ sklm: {
     permissionModeAcceptEdits: "Düzenlemeleri otomatik kabul et",
     permissionModeAuto: "Tam otomatik",
     permissionDeny: "Reddetme kuralları",
-    permissionDenyDesc: "Tam otomatikte bile her zaman reddeden JSON glob'ları. Eklentiler yalnızca kural ekleyebilir, sizinkileri kaldıramaz.",
+    permissionDenyDesc: "Tam otomatikte bile her zaman reddeden JSON glob'ları. paths, .., ~ ve sembolik bağlantılar çözüldükten sonra Read/Write/Edit/Glob/Grep path/file_path değerlerine uyar; Bash veya Grep içeriğine uygulanmaz. commands, kırpılmış Bash dizesi öneki veya glob'dur, argv değildir. Eklentiler yalnızca kural ekleyebilir, sizinkileri kaldıramaz.",
     permissionDenyPlaceholder: "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
     permissionDenySaveError: "Reddetme kuralları kaydedilemedi. JSON'u kontrol edin.",
     autoReview: "Otomatik inceleme",

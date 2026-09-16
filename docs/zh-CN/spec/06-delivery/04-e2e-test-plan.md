@@ -893,6 +893,16 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **里程碑**：M5
 - **状态**：部分自动化（host-core 单元测试：评估矩阵、Plan 策略优先级、询问下的会话授权；渲染器源测试：仅有效的输入框选项和选择）
 
+#### E2E-PERM-deny-first-outranks-auto（D420）
+
+- **先决条件**：Agent 模式；已打开项目；会话权限模式为 `auto`。
+- **步骤**：1) 设置 → AI → 权限：将 `permissionDeny` 设为 `{ "tools": ["Write"], "paths": ["**/.env"], "commands": ["echo DENY_GLOB_TRIM"] }`。2) 让 Agent Write 工作区文件。3) 让 Agent 用会词法解析到该 glob 的 `../` 相对路径 Read 被拒绝的文件。4) 让 Agent 运行 `  echo DENY_GLOB_TRIM pwned`（前导空格）。5) 将 `permissionDeny` 清空为 `{}` 后重试 Write。
+- **预期**：步骤 2–4 返回 `TOOL_DENIED`，不写文件、不启动 Bash。相对 `../` 路径与解析后的绝对路径命中同一条 path glob。Bash `command` 首尾空白不能绕过 command glob。步骤 5 在 Auto 下 Write 成功。
+- **链接规格**：`03-runtime/03-tools-and-permissions.md §6`、`03-runtime/06-host-rpc-protocol.md` `tools.execute`、`08-meta/decisions-log.md`（D420）、ADR 0249
+- **接受**：E（deny-first 叠加压过 auto / grants / scratch 自动放行）
+- **里程碑**：M5
+- **状态**：部分自动化（host-core 单元测试与 `tools.execute` RPC 测试）
+
 #### E2E-019d：Bash 工具查看用户的登录 shell 工具链 (D181)
 
 - **先决条件**：Agent 模式；项目开放；操作系统用户有一个登录 shell

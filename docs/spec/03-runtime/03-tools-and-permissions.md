@@ -497,13 +497,21 @@ Matching (host-core `globset` 0.4; SDK and Settings UI check shape only):
 
 - **tools** — glob against the tool name (`literal_separator`). `Bash` denies
   every Bash call; `plugin_*` denies every plugin tool.
-- **paths** — glob against `path` / `file_path`. `~` expands to the user home;
-  `\\` is treated as `/`; a pattern that matches only the file name still hits
-  (`**/.env` and `.env` both deny `.env`). Case-insensitive on Windows.
-- **commands** — Bash `command` only. A pattern with glob metacharacters
-  (`*`, `?`, `[`) is a glob; otherwise it is a prefix match that must be the
-  whole command or be followed by whitespace. Prefix matching is
-  case-insensitive on Windows.
+- **paths** — glob against `path` / `file_path` / Edit `MV` dest on any tool
+  that sends those keys. Matching uses the trimmed string, `~` expansion
+  (user home), Windows `/c/...` and `\\?\` spellings, the file name, the
+  lexically resolved absolute form against the session tool root (project, or
+  scratch when the session has no project), and the same dangling-symlink
+  ancestor resolver execution uses. Relative `../`, `~`, and a Write through a
+  dangling workspace symlink therefore hit the same rule as the path
+  execution would write. Path globs do not inspect Bash command text or Grep
+  contents. `\\` is treated as `/`; a pattern that matches only the file name
+  still hits (`**/.env` and `.env` both deny `.env`). Case-insensitive on
+  Windows.
+- **commands** — Bash `command` only, after trim. A pattern with glob
+  metacharacters (`*`, `?`, `[`) is a glob; otherwise it is a prefix match
+  that must be the whole command or be followed by whitespace. This is a
+  string match, not argv. Prefix matching is case-insensitive on Windows.
 
 ## 7. Permission Flow
 

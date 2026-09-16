@@ -918,7 +918,7 @@ sklm: {
     permissionModeAcceptEdits: "自动接受编辑",
     permissionModeAuto: "全自动",
     permissionDeny: "拒绝规则",
-    permissionDenyDesc: "始终拒绝的 JSON glob，即使处于全自动模式也会生效。插件只能追加规则，不能放宽你的设置。",
+    permissionDenyDesc: "始终拒绝的 JSON glob，全自动模式也会生效。paths 匹配 Read/Write/Edit/Glob/Grep 的 path/file_path，会解析 ..、~ 和符号链接，但不覆盖 Bash 命令文本或 Grep 搜到的内容。commands 是去掉首尾空白后的 Bash 字符串前缀或 glob，不是 argv。插件只能追加规则，不能放宽你的设置。",
     permissionDenyPlaceholder: "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
     permissionDenySaveError: "无法保存拒绝规则，请检查 JSON。",
     autoReview: "自动审批",

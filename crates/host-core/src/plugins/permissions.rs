@@ -150,11 +150,29 @@ impl PluginManager {
             let Some(path) = plugin.path.as_deref() else {
                 continue;
             };
-            let Ok(raw) = fs::read_to_string(Path::new(path).join("manifest.json")) else {
-                continue;
+            let manifest_path = Path::new(path).join("manifest.json");
+            let raw = match fs::read_to_string(&manifest_path) {
+                Ok(raw) => raw,
+                Err(error) => {
+                    tracing::warn!(
+                        plugin_id = %plugin.id,
+                        path = %manifest_path.display(),
+                        %error,
+                        "skipping permissionDeny: unreadable plugin manifest"
+                    );
+                    continue;
+                }
             };
-            let Ok(value) = serde_json::from_str::<Value>(&raw) else {
-                continue;
+            let value = match serde_json::from_str::<Value>(&raw) {
+                Ok(value) => value,
+                Err(error) => {
+                    tracing::warn!(
+                        plugin_id = %plugin.id,
+                        %error,
+                        "skipping permissionDeny: invalid plugin manifest JSON"
+                    );
+                    continue;
+                }
             };
             let Some(deny) = value
                 .get("contributes")
@@ -162,9 +180,18 @@ impl PluginManager {
             else {
                 continue;
             };
-            if let Ok(rules) = crate::permission_deny::parse_rules(deny) {
-                if !rules.is_empty() {
-                    out.push(rules);
+            match crate::permission_deny::parse_rules(deny) {
+                Ok(rules) => {
+                    if !rules.is_empty() {
+                        out.push(rules);
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        plugin_id = %plugin.id,
+                        %error,
+                        "skipping invalid plugin permissionDeny"
+                    );
                 }
             }
         }

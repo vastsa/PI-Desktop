@@ -8,11 +8,12 @@
 use globset::{GlobBuilder, GlobMatcher};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::path::{Path, PathBuf};
 
 pub const MAX_RULES_PER_LIST: usize = 256;
 pub const MAX_PATTERN_CHARS: usize = 512;
 
-const PATH_ARG_KEYS: &[&str] = &["path", "file_path"];
+const PATH_ARG_KEYS: &[&str] = &["path", "file_path", "moved_to"];
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
@@ -77,8 +78,11 @@ pub fn merge_from_settings_and_plugins(
 ) -> PermissionDenyRules {
     let mut merged = PermissionDenyRules::default();
     if let Some(value) = settings.and_then(|settings| settings.get("permissionDeny")) {
-        if let Ok(user) = parse_rules(value) {
-            merged.merge(&user);
+        match parse_rules(value) {
+            Ok(user) => merged.merge(&user),
+            Err(error) => {
+                tracing::warn!(%error, "skipping invalid AppSettings.permissionDeny");
+            }
         }
     }
     for rules in plugin_rules {
@@ -91,6 +95,20 @@ pub fn matches_deny(
     rules: &PermissionDenyRules,
     tool_name: &str,
     args: &Value,
+) -> Option<DenyHit> {
+    matches_deny_in(rules, tool_name, args, None)
+}
+
+/// Same as [`matches_deny`], but path globs also see the trimmed, lexically
+/// resolved, and execution-equivalent form of `path` / `file_path` against
+/// `path_root`. Relative `../`, `~`, and dangling symlinks therefore hit the
+/// same rules as the path `resolve_external_path` would write. `~` expands
+/// via the user home, not `path_root`.
+pub fn matches_deny_in(
+    rules: &PermissionDenyRules,
+    tool_name: &str,
+    args: &Value,
+    path_root: Option<&Path>,
 ) -> Option<DenyHit> {
     if rules.is_empty() {
         return None;
@@ -106,7 +124,7 @@ pub fn matches_deny(
     if !rules.paths.is_empty() {
         for path in path_args(args) {
             for pattern in &rules.paths {
-                if path_matches(pattern, path) {
+                if path_matches(pattern, &path, path_root) {
                     return Some(DenyHit {
                         kind: "path",
                         pattern: pattern.clone(),
@@ -189,12 +207,25 @@ fn merge_unique(target: &mut Vec<String>, extra: &[String]) {
     }
 }
 
-fn path_args(args: &Value) -> Vec<&str> {
-    PATH_ARG_KEYS
-        .iter()
-        .filter_map(|key| args.get(*key).and_then(Value::as_str))
-        .filter(|path| !path.is_empty())
-        .collect()
+fn path_args(args: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut push = |value: &str| {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() && !out.iter().any(|existing| existing == trimmed) {
+            out.push(trimmed.to_string());
+        }
+    };
+    for key in PATH_ARG_KEYS {
+        if let Some(value) = args.get(*key).and_then(Value::as_str) {
+            push(value);
+        }
+    }
+    if let Some(ops) = args.get("ops").and_then(Value::as_str) {
+        if let Some(dest) = crate::tools::hashline::mv_dest_from_ops(ops) {
+            push(&dest);
+        }
+    }
+    out
 }
 
 fn tool_matches(pattern: &str, tool_name: &str) -> bool {
@@ -203,24 +234,145 @@ fn tool_matches(pattern: &str, tool_name: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn path_matches(pattern: &str, path: &str) -> bool {
+fn path_matches(pattern: &str, path: &str, path_root: Option<&Path>) -> bool {
     let Ok(matcher) = compile_path_glob(pattern) else {
         return false;
     };
-    let normalized = normalize_path(path);
-    let expanded = expand_tilde(&normalized);
-    if matcher.is_match(&normalized) || matcher.is_match(&expanded) {
+    let candidates = path_match_candidates(path, path_root);
+    if candidates
+        .iter()
+        .any(|candidate| matcher.is_match(candidate))
+    {
         return true;
     }
+    // `**/.env` and `**/.env.*` must still deny a bare `.env` / `.env.local`
+    // argument. globset can treat `**` as requiring a directory, so also
+    // match the file name against the last glob component.
+    matches_double_star_basename(pattern, &candidates)
+}
+
+fn matches_double_star_basename(pattern: &str, candidates: &[String]) -> bool {
+    let normalized = normalize_path(pattern);
+    let Some(rest) = normalized.strip_prefix("**/") else {
+        return false;
+    };
+    if rest.is_empty() || rest.contains('/') {
+        return false;
+    }
+    let Ok(matcher) = compile_path_glob(rest) else {
+        return false;
+    };
+    candidates
+        .iter()
+        .filter_map(|candidate| file_name(candidate))
+        .any(|name| matcher.is_match(name))
+}
+
+fn path_match_candidates(raw: &str, path_root: Option<&Path>) -> Vec<String> {
+    let raw = raw.trim();
+    let mut out = Vec::new();
+    let mut push = |value: String| {
+        if value.is_empty() {
+            return;
+        }
+        if !out.iter().any(|existing| existing == &value) {
+            out.push(value);
+        }
+    };
+
+    let normalized = normalize_path(raw);
+    push(normalized.clone());
+    let expanded = expand_tilde(&normalized);
+    push(expanded.clone());
+    #[cfg(windows)]
+    {
+        push(msys_to_windows(&normalized));
+        push(msys_to_windows(&expanded));
+    }
     if let Some(name) = file_name(&normalized) {
-        if matcher.is_match(name) {
-            return true;
+        push(name.to_string());
+    }
+
+    if let Some(lexical) = lexical_absolute(&expanded, path_root) {
+        let lexical_norm = normalize_path(&lexical.to_string_lossy());
+        push(lexical_norm.clone());
+        #[cfg(windows)]
+        {
+            push(msys_to_windows(&lexical_norm));
+        }
+        if let Some(name) = file_name(&lexical_norm) {
+            push(name.to_string());
         }
     }
-    false
+
+    if let Some(root) = path_root {
+        let mut inputs = vec![raw.to_string()];
+        if expanded != inputs[0] {
+            inputs.push(expanded);
+        }
+        #[cfg(windows)]
+        {
+            let coerced = msys_to_windows(&inputs[0]);
+            if !inputs.iter().any(|existing| existing == &coerced) {
+                inputs.push(coerced);
+            }
+        }
+        for input in inputs {
+            if let Ok(resolved) = crate::workspace::resolve_external_path(root, &input) {
+                let resolved_norm = normalize_path(&resolved.to_string_lossy());
+                push(resolved_norm.clone());
+                #[cfg(windows)]
+                {
+                    push(msys_to_windows(&resolved_norm));
+                }
+                if let Some(name) = file_name(&resolved_norm) {
+                    push(name.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+fn lexical_absolute(input: &str, path_root: Option<&Path>) -> Option<PathBuf> {
+    let mut expanded = expand_tilde(&normalize_path(input));
+    #[cfg(windows)]
+    {
+        let coerced = msys_to_windows(&expanded);
+        if Path::new(&coerced).is_absolute() {
+            expanded = coerced;
+        }
+    }
+    let path = Path::new(&expanded);
+    if path.is_absolute() {
+        return Some(crate::workspace::normalize_lexical(path));
+    }
+    let root = path_root?;
+    Some(crate::workspace::normalize_lexical(&root.join(path)))
+}
+
+#[cfg(windows)]
+fn msys_to_windows(path: &str) -> String {
+    let rest = match path.strip_prefix('/') {
+        Some(rest) if !rest.starts_with('/') => rest,
+        _ => return path.to_string(),
+    };
+    let mut chars = rest.chars();
+    let Some(drive) = chars.next() else {
+        return path.to_string();
+    };
+    if !drive.is_ascii_alphabetic() {
+        return path.to_string();
+    }
+    match chars.next() {
+        None => format!("{}:", drive.to_ascii_uppercase()),
+        Some('/') => format!("{}:/{}", drive.to_ascii_uppercase(), chars.as_str()),
+        _ => path.to_string(),
+    }
 }
 
 fn command_matches(pattern: &str, command: &str) -> bool {
+    let command = command.trim();
     if compile_command_glob(pattern)
         .map(|matcher| matcher.is_match(command))
         .unwrap_or(false)
@@ -255,7 +407,12 @@ fn compile_tool_glob(pattern: &str) -> Result<GlobMatcher, String> {
 }
 
 fn compile_path_glob(pattern: &str) -> Result<GlobMatcher, String> {
-    build_glob(&expand_tilde(&normalize_path(pattern)), true, cfg!(windows))
+    let mut prepared = expand_tilde(&normalize_path(pattern));
+    #[cfg(windows)]
+    {
+        prepared = msys_to_windows(&prepared);
+    }
+    build_glob(&prepared, true, cfg!(windows))
 }
 
 fn compile_command_glob(pattern: &str) -> Result<GlobMatcher, String> {
@@ -277,7 +434,20 @@ fn build_glob(
 }
 
 fn normalize_path(path: &str) -> String {
-    path.replace('\\', "/")
+    strip_windows_extended_prefix(&path.replace('\\', "/"))
+}
+
+fn strip_windows_extended_prefix(path: &str) -> String {
+    let Some(rest) = path.strip_prefix("//?/") else {
+        return path.to_string();
+    };
+    if rest.len() >= 2 && rest.as_bytes().get(1) == Some(&b':') {
+        return rest.to_string();
+    }
+    if let Some(unc) = rest.strip_prefix("UNC/") {
+        return format!("//{unc}");
+    }
+    path.to_string()
 }
 
 fn expand_tilde(path: &str) -> String {
@@ -348,7 +518,15 @@ mod tests {
 
     #[test]
     fn path_glob_matches_env_and_ssh() {
-        let deny = rules(&[], &["**/.env", "~/.ssh/**", ".env"], &[]);
+        let deny = rules(
+            &[],
+            &[
+                "**/.env",
+                "~/pi-deny-rules-nonexistent-ssh-dir/**",
+                ".env",
+            ],
+            &[],
+        );
         assert!(matches_deny(
             &deny,
             "Read",
@@ -359,7 +537,7 @@ mod tests {
         assert!(matches_deny(&deny, "Read", &json!({ "path": "README.md" })).is_none());
 
         let home = dirs::home_dir().unwrap();
-        let ssh = home.join(".ssh").join("id_rsa");
+        let ssh = home.join("pi-deny-rules-nonexistent-ssh-dir").join("id_rsa");
         assert!(matches_deny(
             &deny,
             "Read",
@@ -447,5 +625,97 @@ mod tests {
     fn empty_object_is_valid() {
         assert_eq!(parse_rules(&json!({})).unwrap(), PermissionDenyRules::default());
         assert_eq!(parse_rules(&json!(null)).unwrap(), PermissionDenyRules::default());
+    }
+
+    #[test]
+    fn path_glob_star_env_matches_bare_env() {
+        let deny = rules(&[], &["**/.env"], &[]);
+        assert!(matches_deny(&deny, "Read", &json!({ "path": ".env" })).is_some());
+        assert!(matches_deny(&deny, "Read", &json!({ "path": "C:/repo/.env" })).is_some());
+        let env_star = rules(&[], &["**/.env.*"], &[]);
+        assert!(matches_deny(&env_star, "Read", &json!({ "path": ".env.local" })).is_some());
+    }
+
+    #[test]
+    fn path_glob_matches_parent_relative_against_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = dir.path().join("project");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let hidden = dir.path().join("deny-hidden-dir");
+        std::fs::create_dir_all(&hidden).unwrap();
+        std::fs::write(hidden.join("secret.txt"), "secret").unwrap();
+        let deny = rules(&[], &["**/deny-hidden-dir/**"], &[]);
+        let args = json!({ "path": "../deny-hidden-dir/secret.txt" });
+        assert!(matches_deny(&deny, "Read", &args).is_none());
+        assert!(matches_deny_in(&deny, "Read", &args, Some(workspace.as_path())).is_some());
+        let padded = json!({ "path": "  ../deny-hidden-dir/secret.txt" });
+        assert!(matches_deny_in(&deny, "Grep", &padded, Some(workspace.as_path())).is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_glob_follows_dangling_symlink_against_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = dir.path().join("project");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let hidden = dir.path().join("deny-hidden-dir");
+        std::fs::create_dir_all(&hidden).unwrap();
+        let target = hidden.join("secret.txt");
+        std::os::unix::fs::symlink(&target, workspace.join("link")).unwrap();
+        let deny = rules(&[], &["**/deny-hidden-dir/**"], &[]);
+        let args = json!({ "path": "link" });
+        assert!(
+            matches_deny_in(&deny, "Write", &args, Some(workspace.as_path())).is_some(),
+            "dangling symlink Write must hit the resolved target glob"
+        );
+    }
+
+    #[test]
+    fn path_glob_matches_edit_mv_dest() {
+        let deny = rules(&[], &["**/.env"], &[]);
+        let args = json!({
+            "path": "readme.md",
+            "ops": "[readme.md#AB12]\nMV .env\n"
+        });
+        assert!(matches_deny(&deny, "Edit", &args).is_some());
+        let tabbed = json!({
+            "path": "readme.md",
+            "ops": "[readme.md#AB12]\nMV\t.env\n"
+        });
+        assert!(matches_deny(&deny, "Edit", &tabbed).is_some());
+        let quoted = json!({
+            "path": "readme.md",
+            "ops": "[readme.md#AB12]\nMV '.env'\n"
+        });
+        assert!(matches_deny(&deny, "Edit", &quoted).is_some());
+    }
+
+    #[test]
+    fn command_glob_trims_leading_whitespace() {
+        let deny = rules(&[], &[], &["echo DENY_GLOB_TRIM *"]);
+        assert!(matches_deny(
+            &deny,
+            "Bash",
+            &json!({ "command": "  echo DENY_GLOB_TRIM pwned" }),
+        )
+        .is_some());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn path_glob_matches_msys_drive_spelling() {
+        let deny = rules(&[], &["C:/Users/foo/.ssh/**"], &[]);
+        assert!(matches_deny(
+            &deny,
+            "Read",
+            &json!({ "path": "/c/Users/foo/.ssh/config" }),
+        )
+        .is_some());
+        assert!(matches_deny(
+            &deny,
+            "Write",
+            &json!({ "path": r"\\?\C:\Users\foo\.ssh\new_key" }),
+        )
+        .is_some());
     }
 }

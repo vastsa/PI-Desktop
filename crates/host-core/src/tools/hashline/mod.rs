@@ -9,13 +9,17 @@ mod store;
 mod tag;
 
 pub use apply::{apply_edit, canonical_key, encode_success, record_post_write, ToolError};
-#[allow(unused_imports)]
-pub use parse::mv_dest;
 pub use store::HashlineStore;
 pub use tag::{
     looks_binary_bytes, normalize_file, section_header, split_lines, strip_write_markup,
     tag_of_lf_text, NormalizedFile,
 };
+
+/// Dest path of an Edit `MV` op, using the real hashline parser so deny
+/// matching cannot drift from execution.
+pub fn mv_dest_from_ops(ops: &str) -> Option<String> {
+    parse::mv_dest(&parse::parse_ops(ops).ok()?).map(str::to_string)
+}
 
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;

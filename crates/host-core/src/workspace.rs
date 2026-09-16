@@ -81,7 +81,7 @@ pub enum ToolRoot {
 /// Lexically resolve `.` / `..` components without touching the filesystem.
 /// `..` at the filesystem root clamps (stays at root); the caller's
 /// starts_with check then rejects anything that climbed out of the workspace.
-fn normalize_lexical(path: &Path) -> PathBuf {
+pub(crate) fn normalize_lexical(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
         match component {

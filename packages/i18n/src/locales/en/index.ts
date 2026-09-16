@@ -922,7 +922,7 @@ sklm: {
     permissionModeAcceptEdits: "Auto-accept edits",
     permissionModeAuto: "Full auto",
     permissionDeny: "Deny rules",
-    permissionDenyDesc: "JSON globs that always deny even in full auto. Plugins can only add more rules, never remove yours.",
+    permissionDenyDesc: "JSON globs that always deny, including in full auto. paths match path/file_path on Read/Write/Edit/Glob/Grep after resolving .., ~, and symlinks; they do not apply to Bash or Grep contents. commands are trimmed Bash string prefixes or globs, not argv. Plugins can only add rules, never remove yours.",
     permissionDenyPlaceholder: "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
     permissionDenySaveError: "Couldn't save deny rules. Check the JSON.",
     autoReview: "Auto-review",

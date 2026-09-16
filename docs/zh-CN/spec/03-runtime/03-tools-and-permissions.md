@@ -459,10 +459,8 @@ scratch 不视为项目。插件只能 deny：没有 `allow` 键，也不能删�
 匹配（host-core `globset` 0.4；SDK 与设置 UI 只检查形状）：
 
 - **tools** — 对工具名做 glob（`literal_separator`）。`Bash` 拒绝每一次 Bash；`plugin_*` 拒绝每一个插件工具。
-- **paths** — 对 `path` / `file_path` 做 glob。`~` 展开为用户主目录；`\\` 视为 `/`；只匹配文件名的模式仍然命中
-  （`**/.env` 与 `.env` 都会拒绝 `.env`）。Windows 上大小写不敏感。
-- **commands** — 仅 Bash 的 `command`。带 glob 元字符（`*`、`?`、`[`）走 glob；否则做前缀匹配，且必须是整条命令或后接空白。
-  Windows 上前缀匹配大小写不敏感。
+- **paths** — 对任何带 `path` / `file_path` / Edit `MV` 目标的工具参数做 glob。匹配去掉首尾空白后的字符串、`~` 展开（用户主目录）、Windows `/c/...` 与 `\\?\` 写法、文件名，相对会话工具根（有项目用项目，否则用 scratch）的词法绝对路径，以及执行所用的 dangling symlink 祖先解析。因此 `../`、`~`、以及经工作区 dangling symlink 的 Write 会命中执行时实际写入的同一路径。path glob **不**检查 Bash 命令文本或 Grep 搜到的内容。`\\` 视为 `/`；只匹配文件名的模式仍然命中（`**/.env` 与 `.env` 都会拒绝 `.env`）。Windows 上大小写不敏感。
+- **commands** — 仅 Bash 的 `command`（先 trim）。带 glob 元字符（`*`、`?`、`[`）走 glob；否则做前缀匹配，且必须是整条命令或后接空白。这是字符串匹配，不是 argv。Windows 上前缀匹配大小写不敏感。
 
 ## 7. 权限流程
 

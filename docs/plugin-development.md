@@ -764,7 +764,10 @@ What to know:
   rules can only shrink what the agent may do.
 - **Host compiles globs.** The SDK checks shape (unknown keys rejected; each
   list ≤ 256 entries; each string ≤ 512 characters). Matching lives in
-  host-core (`globset`).
+  host-core (`globset`). `paths` match `path` / `file_path` after resolving
+  `..`, `~`, and dangling workspace symlinks against the session tool root;
+  they do not scan Bash or Grep contents. `commands` are trimmed Bash strings
+  (prefix or glob), not argv.
 - **Scope.** `global` always applies; project-scoped plugins apply only when
   the session has a workspace that matches. Scratch is not a project.
 - **Live.** Disable the plugin or revoke the permission and the contribution

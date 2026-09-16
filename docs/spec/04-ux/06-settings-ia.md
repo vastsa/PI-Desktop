@@ -109,8 +109,12 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 - **Permissions** card: the global permission-mode control
   (ask / accept-edits / auto) that governs how autonomously the agent acts,
   plus a JSON textarea for `AppSettings.permissionDeny` (tool / path / command
-  globs that always deny, even in `auto`). Empty / `{}` clears the overlay;
-  invalid JSON is not written. Plugins may only add rules (D420 / ADR 0249).
+  globs that always deny, even in `auto`). `paths` match `path` / `file_path`
+  after resolving `..`, `~`, and dangling workspace symlinks; they do not
+  apply to Bash or Grep contents.
+  `commands` are trimmed Bash string prefixes or globs, not argv. Empty / `{}`
+  clears the overlay; invalid JSON is not written. Plugins may only add rules
+  (D420 / ADR 0249).
 - **Defaults** card: the host-backed default operating mode (Agent / Plan / Goal),
   command shell selection, Link open destination, context usage display
   (remaining or used), Enter-to-send control, and the large text paste

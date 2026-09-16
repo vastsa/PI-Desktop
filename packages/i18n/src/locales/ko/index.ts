@@ -924,7 +924,7 @@ sklm: {
     permissionModeAcceptEdits: "편집 자동 승인",
     permissionModeAuto: "완전 자동",
     permissionDeny: "거부 규칙",
-    permissionDenyDesc: "전체 자동 모드에서도 항상 거부하는 JSON glob입니다. 플러그인은 규칙을 추가만 할 수 있고 사용자의 규칙은 제거할 수 없습니다.",
+    permissionDenyDesc: "전체 자동 모드에서도 항상 거부하는 JSON glob입니다. paths는 .., ~, 심볼릭 링크를 해석한 뒤 Read/Write/Edit/Glob/Grep의 path/file_path에 맞으며 Bash/Grep 내용에는 적용되지 않습니다. commands는 앞뒤 공백을 제거한 Bash 문자열 접두사 또는 glob이며 argv가 아닙니다. 플러그인은 규칙을 추가만 할 수 있고 사용자의 규칙은 제거할 수 없습니다.",
     permissionDenyPlaceholder: "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
     permissionDenySaveError: "거부 규칙을 저장하지 못했습니다. JSON을 확인하세요.",
     autoReview: "자동 검토",

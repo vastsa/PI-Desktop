@@ -58,14 +58,24 @@ only check shape.
 
 - **tools** — glob against the tool name (`literal_separator`). `Bash`
   denies every Bash call; `plugin_*` denies every plugin tool.
-- **paths** — glob against `path` / `file_path` arguments. `~` expands to
-  the user home; `\` is treated as `/`; a pattern that matches only the
-  file name still hits (so `**/.env` and `.env` both deny `.env`). Path
-  globs are case-insensitive on Windows.
-- **commands** — Bash `command` only. A pattern with glob metacharacters
-  (`*`, `?`, `[`) is a glob; otherwise it is a prefix match that must be
-  the whole command or be followed by whitespace. Prefix matching is
-  case-insensitive on Windows.
+- **paths** — glob against `path` / `file_path` / Edit `MV` dest (any tool
+  that sends those keys, including Read/Write/Edit/Glob/Grep). Matching
+  uses the trimmed string, `~` expansion (user home, not the workspace),
+  Windows `/c/...` and `\\?\` spellings, the file name, the lexically
+  resolved absolute form against the session tool root (project, or
+  scratch when the session has no project), and the same
+  dangling-symlink ancestor resolver execution uses
+  (`resolve_external_path`). A `../.env`, `~/.ssh/config`, or Write
+  through a dangling workspace symlink therefore hits the same rule as
+  the path execution would write. Path globs do **not** inspect Bash
+  command text or Grep file contents. `\` is treated as `/`; a pattern
+  that matches only the file name still hits (so `**/.env` and `.env`
+  both deny `.env`). Path globs are case-insensitive on Windows.
+- **commands** — Bash `command` only, after trim. A pattern with glob
+  metacharacters (`*`, `?`, `[`) is a glob; otherwise it is a prefix
+  match that must be the whole command or be followed by whitespace.
+  This is a string match, not argv. Prefix matching is case-insensitive
+  on Windows.
 
 A hit is `PermissionDecision::Deny`. Execution returns the existing
 `TOOL_DENIED` code; there is no new error.
@@ -99,8 +109,7 @@ The overlay is the union of:
 Plugins are deny-only. There is no `allow` key. A plugin cannot remove a
 user rule. Host-core reads `manifest.json` at evaluation time rather than
 caching the lists on `PluginSummary`, so a disable, a revoke, or a scope
-miss drops the contribution on the next call. Invalid plugin JSON is
-skipped.
+miss drops the contribution on the next call. Unreadable, invalid, or schema-invalid plugin JSON is skipped with a warning.
 
 `contributes.permissionDeny` requires `agent.permission.deny` even when the
 object is empty, matching `windowAppearance`. Risk is **medium**. The name

@@ -124,7 +124,8 @@ granted the permission and whose `ActivationScope` matches the session workspace
 (`global` always; project-scoped only when the session has a project and the
 scope hits). Scratch is not treated as a project. The host reads
 `manifest.json` at evaluation time, so a disable, a revoke, or a scope miss
-drops the contribution on the next call. Invalid JSON is skipped.
+drops the contribution on the next call. Unreadable, invalid, or
+schema-invalid JSON is skipped with a warning.
 
 Shape checks (unknown keys, 256 × 512) run at install in both the SDK and
 host-core. Matching is host-only (`globset`). A hit is the existing

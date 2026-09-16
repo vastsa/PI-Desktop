@@ -713,12 +713,16 @@ Before generic permission evaluation, host-core applies the mode policy:
   (D420 / ADR 0249): `AppSettings.permissionDeny` unioned with
   `contributes.permissionDeny` from enabled plugins granted
   `agent.permission.deny` whose activation scope matches the session
-  workspace. A match is `PermissionDecision::Deny`; `tools.execute` and
-  `permissions.evaluate` return the existing `TOOL_DENIED` / `"deny"`. The
-  overlay outranks `auto`, session grants, low-risk auto-allow,
-  `accept-edits`, and the outside-workspace auto exception. Scratch
-  auto-allow is still after this check. Contract-mode hard deny still
-  precedes it, so a Plan `Write` stays `*_IN_PLAN`.
+  workspace. Path globs resolve `path` / `file_path` against that same
+  session tool root (so `../`, `~`, and dangling workspace symlinks hit
+  the absolute path execution would write). Command globs trim the Bash
+  `command` string. A match is
+  `PermissionDecision::Deny`; `tools.execute` and `permissions.evaluate`
+  return the existing `TOOL_DENIED` / `"deny"`. The overlay outranks
+  `auto`, session grants, low-risk auto-allow, `accept-edits`, and the
+  outside-workspace auto exception. Scratch auto-allow is still after
+  this check. Contract-mode hard deny still precedes it, so a Plan
+  `Write` stays `*_IN_PLAN`.
 
 The visible tool list is not the security boundary; a forged RPC call is
 authorized by this host-side matrix.

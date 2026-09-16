@@ -69,7 +69,9 @@
 - **权限**卡：全局权限模式控制
   （询问/接受编辑/自动）控制代理如何自主行动，以及一份
   `AppSettings.permissionDeny` JSON 文本框（工具 / 路径 / 命令 glob，即使处于 `auto`
-  也始终拒绝）。空 / `{}` 清空叠加；非法 JSON 不写入。插件只能追加规则（D420 / ADR 0249）。
+  也始终拒绝）。`paths` 会解析 `..`、`~` 以及工作区 dangling symlink 后再匹配 `path` / `file_path`，不覆盖
+  Bash 或 Grep 内容；`commands` 是 trim 后的 Bash 字符串前缀或 glob，不是 argv。
+  空 / `{}` 清空叠加；非法 JSON 不写入。插件只能追加规则（D420 / ADR 0249）。
 - **默认项**卡：主机支持的默认运行模式（Agent / Plan / Goal）、
   命令 Shell 选择、链接打开目标、上下文用量显示（剩余或已用）、
   回车发送控制和大段文本粘贴阈值。链接打开目标默认使用工作面板浏览器，

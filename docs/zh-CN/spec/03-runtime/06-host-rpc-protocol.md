@@ -584,7 +584,10 @@ type ToolsExecuteParams = {
   用户设置 `AppSettings.permissionDeny` 与已启用、已授予 `agent.permission.deny`、
   且激活范围命中会话工作区的插件 `contributes.permissionDeny` 的并集。命中为
   `PermissionDecision::Deny`；`tools.execute` 与 `permissions.evaluate` 返回既有
-  `TOOL_DENIED` / `"deny"`。该叠加压过 `auto`、会话授权、低风险自动放行、
+  `TOOL_DENIED` / `"deny"`。path glob 相对同一会话工具根解析 `path` / `file_path`
+  （因此 `../`、`~` 以及经工作区 dangling symlink 的写入会命中执行时的绝对路径）；
+  command glob 会先 trim Bash `command`。
+  该叠加压过 `auto`、会话授权、低风险自动放行、
   `accept-edits` 以及工作区外路径的自动例外。scratch 自动放行仍在此检查之后。
   合同模式硬拒绝仍排在它前面，因此 Plan 下的 `Write` 仍是 `*_IN_PLAN`。
 

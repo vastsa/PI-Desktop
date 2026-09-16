@@ -665,7 +665,7 @@ export default function (pi) {
 使用前需要知道：
 
 - **只能 deny。** 宿主把它与 `AppSettings.permissionDeny` 取并集。你的规则只能缩小 agent 可做的事。
-- **宿主编译 glob。** SDK 只检查形状（未知键拒绝；每个列表最多 256 条；每条最多 512 字符）。匹配在 host-core（`globset`）。
+- **宿主编译 glob。** SDK 只检查形状（未知键拒绝；每个列表最多 256 条；每条最多 512 字符）。匹配在 host-core（`globset`）。`paths` 会相对会话工具根解析 `..`、`~` 以及工作区 dangling symlink 后再匹配 `path` / `file_path`，不扫描 Bash 或 Grep 内容。`commands` 是 trim 后的 Bash 字符串（前缀或 glob），不是 argv。
 - **范围。** `global` 始终生效；project-scoped 插件只在会话有匹配的工作区时生效。scratch 不是项目。
 - **即时生效。** 禁用插件或撤销权限后，下一次工具调用就不再带上该贡献。宿主会重新读取 `manifest.json`，不把列表缓存在插件摘要上。
 - **命中是 `TOOL_DENIED`。** 不会告诉模型是哪条 glob 命中。

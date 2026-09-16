@@ -911,7 +911,7 @@ sklm: {
     "permissionModeAcceptEdits": "Accepter automatiquement les modifications",
     "permissionModeAuto": "Entièrement automatique",
     "permissionDeny": "Règles de refus",
-    "permissionDenyDesc": "Globs JSON qui refusent toujours, même en mode automatique. Les plugins ne peuvent qu'ajouter des règles, jamais retirer les vôtres.",
+    "permissionDenyDesc": "Globs JSON qui refusent toujours, même en mode automatique. paths correspond aux arguments path/file_path de Read/Write/Edit/Glob/Grep après résolution de .., ~ et des liens symboliques ; pas au contenu de Bash ou Grep. commands sont des préfixes ou globs de la chaîne Bash, après trim, pas argv. Les plugins ne peuvent qu'ajouter des règles, jamais retirer les vôtres.",
     "permissionDenyPlaceholder": "{ \"tools\": [\"Bash\"], \"paths\": [\"**/.env\", \"~/.ssh/**\"], \"commands\": [\"rm -rf\"] }",
     "permissionDenySaveError": "Impossible d'enregistrer les règles de refus. Vérifiez le JSON.",
     "autoReview": "Révision automatique",
