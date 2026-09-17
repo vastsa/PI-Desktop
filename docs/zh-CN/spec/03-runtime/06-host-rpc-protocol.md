@@ -19,7 +19,14 @@ MVP 传输决策 (**D001**)：
 
 - 流程：Electron 主要生成 Rust host-core sidecar
 - 通道：子进程 stdin/stdout
-- 成帧：每行一个 JSON 对象 (NDJSON)
+- Framing: one JSON object per LF-delimited line (NDJSON); CRLF is accepted.
+  U+2028 and U+2029 inside JSON strings are payload, never frame delimiters.
+  All Node stdio readers preserve UTF-8 characters across input chunks and
+  release buffered fragments/listeners on transport close. A final unterminated
+  frame is accepted at EOF for compatibility.
+- Invalid JSON frames produce a diagnostic containing only the byte length,
+  never payload text, before being discarded. Later complete frames remain
+  readable. Existing session text is not rewritten or migrated.
 - 编码：UTF-8
 - Request/response：JSON-RPC 2.0 风格
 

@@ -5008,6 +5008,7 @@ IPC 请求无法关闭。
 
 | 验收 | 应用场景 |
 |---|---|
+| A / C — Unicode stdio framing | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — 侧边栏行状态 | E2E-LAYOUT-sidebar-row-states |
 | A / C / Quality — 侧栏材质与设置返回 | E2E-LAYOUT-sidebar-settings |
@@ -7798,3 +7799,22 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：G（远程市场来源）
 - **里程碑**：M6+
 - **状态**：草稿
+
+### E2E-RPC-unicode-separators
+
+- **Preconditions:** Built host-core, shared package and agent runtime; isolated
+  temporary data directory; loopback-only fixture provider. No live credentials.
+- **Steps:** Append a user message containing U+2028/U+2029, CJK text, emoji and
+  escaped CR/LF; read it, restart the host, and read it again. Send a Unicode
+  prompt through AgentSidecar; restore history through the parent host proxy;
+  stream and persist a Unicode answer. Send an unknown method containing the
+  same characters, then a health request.
+- **Expected:** Text survives unchanged across persistence and all stdio
+  directions. Requests settle without RPC timeouts; error replies and subsequent
+  requests remain usable. No migration of existing sessions is needed.
+- **Automation:** `pnpm test:e2e:rpc-unicode`; `ndjson.test.mjs` additionally
+  checks every UTF-8 split boundary, consecutive frames, CRLF, EOF and disposal.
+- **Specs:** 03-runtime/06-host-rpc-protocol §2.
+- **Acceptance:** A (runtime), C (sessions).
+- **Milestone:** M6+.
+- **Status:** Automated; run against the task/PR integration candidate.
