@@ -269,6 +269,20 @@ pi.session.getLlmContext(): Promise<PluginLlmContext>
 正在飞行的工具调用会从尾部剥掉。compaction 摘要替换检查点之前的历史。
 合计内容上限 200k 字符。
 
+### 会话用量历史（需要 `session.usage.read`）
+```ts
+pi.session.getUsageHistory(input?: {
+  startDate?: number
+  endDate?: number
+  bucket?: "day" | "week" | "month"
+}): Promise<PluginUsageHistoryResult>
+```
+
+与设置页用量视图读取的同一份宿主级 token 用量历史，按日 / 周 / 月分桶，
+含分桶小计与总计。数据只有聚合计数——不含消息内容，也不含会话身份——
+因此挂在独立的低风险权限下，而不是 `session.read`。预算或看板插件把它与
+`session:turnEnded`（§5）携带的 `usage` 结合起来完成自己的结算。
+
 ### 插件拥有的会话（P0/P1；需要对应权限）
 
 插件只能导入和管理归属于自身的会话。来源必须在
@@ -709,12 +723,14 @@ pi.events.off(event, handler)
 - `session:modelChanged` — `{ sessionId, modelKey, thinkingLevel }`，在成功的
   `session.configure` 改变 provider、模型或 thinking level 之后发送
 - `session:turnEnded` —— 载荷为
-  `{ sessionId: string; turnId: string; reason: "completed" | "aborted" | "error" }`，
+  `{ sessionId: string; turnId: string; reason: "completed" | "aborted" | "error"; usage?: MessageUsage }`，
   在每个宿主回合的拆除结束时发送一次，位于持久化的 `session.endTurn` 尝试之后。
   “回合”指 `session.beginTurn` 创建的那个回合：一次用户提交、一次已批准的计划执行、
   或一次定时运行；排队但从未开始的项目不会产生事件。`completed`、`aborted`、`error`
   是三种终止原因。事件携带终止运行时事件本身标识的 `turnId`，而不是恰好处于活动
-  状态的那个回合，因此来自更早回合的迟到事件不会结算更新的回合。投递是
+  状态的那个回合，因此来自更早回合的迟到事件不会结算更新的回合。当回合产生了 token 用量时，`usage`
+携带与持久化 `session.endTurn` 写入的同一份聚合 `MessageUsage`，插件无需追加查询
+即可完成费用结算；没有记录用量时该字段缺省。投递是
   即发即忘：没有 ack，也没有重放，因此存活的已订阅插件只收到一次；与插件崩溃、
   重载或宿主退出竞态的投递不作保证。收到该事件**并不**意味着该回合的所有在途
   工具都已退出——迟到结果仍可能到达——因此插件必须按 `turnId` 串行化或以其他方式
@@ -812,6 +828,7 @@ window.pluginBridge.on(event, handler)
 - 服务启动/停止/重新启动
 - models.list（返回行数）
 - session.getLlmContext（会话 id、消息数、truncated 标志 —— 不含转录文本）
+- session.getUsageHistory（无载荷字段 —— 仅聚合计数）
 - agent.complete（模型 key、体积、usage —— 不含提示或补全文本）
 
 日志字段：

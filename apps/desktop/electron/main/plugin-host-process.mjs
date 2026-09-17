@@ -280,6 +280,7 @@ function buildApi() {
       list: (input) => call("session.list", [input ?? {}]),
       get: (input) => call("session.get", [input ?? {}]),
       listMessages: (input) => call("session.listMessages", [input ?? {}]),
+      getUsageHistory: (input) => call("session.getUsageHistory", [input ?? {}]),
       import: (input) => call("session.import", [input ?? {}]),
       importBatch: (input) => call("session.importBatch", [input ?? {}]),
       rename: (input) => call("session.rename", [input ?? {}]),

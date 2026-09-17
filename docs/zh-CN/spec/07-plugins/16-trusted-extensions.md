@@ -175,7 +175,7 @@ main、渲染层或插件宿主进程中。
 | `session_info_changed` | 经 `setSessionName` 的会话改名 | 否 |
 | `project_trust` | v1 说明：不触发；按项目启用即信任决定 | 否 |
 | `resources_discover` | v1 说明：不触发；skills 与提示发现留在 Electron main | 不适用 |
-| `before_agent_start` | 回合内首个 provider 请求之前 | 是，系统提示与消息编辑 |
+| `before_agent_start` | 回合内首个 provider 请求之前 | 是，系统提示与消息编辑；`{ block: true, reason }` 以 `TURN_BLOCKED` 拒绝该回合 |
 | `context` | `prepareNextTurn` | 是，替换消息列表 |
 | `before_provider_request`、`before_provider_headers`、`after_provider_response` | provider 调用包装 | 请求与头部为是 |
 | `agent_start`、`agent_end`、`agent_settled` | Agent 循环边界 | 否 |

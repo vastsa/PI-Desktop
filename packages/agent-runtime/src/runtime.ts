@@ -6810,7 +6810,15 @@ Delegation rules:
           return { turnId: this.turnId };
         }
       }
-      await this.extensionBeforeAgentStart(modelInput);
+      const extensionGate = await this.extensionBeforeAgentStart(modelInput);
+      if (extensionGate?.blocked) {
+        this.failBeforeProviderRequest(incomingUserMessage, {
+          code: "TURN_BLOCKED",
+          message: extensionGate.blocked,
+          retriable: false,
+        });
+        return { turnId: this.turnId };
+      }
       if (typeof modelInput === "string") {
         await this.agent.prompt(modelInput);
       } else {
@@ -6848,10 +6856,18 @@ Delegation rules:
     return { turnId: this.turnId };
   }
 
-  /** `before_agent_start` hook: extensions may replace the system prompt for this turn. */
-  private async extensionBeforeAgentStart(input: string | RuntimePrompt): Promise<void> {
+  /**
+   * `before_agent_start` hook: extensions may replace the system prompt for
+   * this turn, or refuse the turn outright with `{ block: true, reason }`
+   * (e.g. a usage-budget extension). A block decision is sticky: later
+   * handlers may still replace the system prompt, but they cannot unblock.
+   * Returns the block reason when the turn was refused.
+   */
+  private async extensionBeforeAgentStart(
+    input: string | RuntimePrompt,
+  ): Promise<{ blocked?: string } | undefined> {
     const runner = this.extensionRunner;
-    if (!runner) return;
+    if (!runner) return undefined;
     this.extensionProviderHeaders = undefined;
     if (runner.hasHandlers("before_provider_headers")) {
       // Handlers edit the headers object in place, as they do in the pi CLI.
@@ -6859,9 +6875,9 @@ Delegation rules:
       await runner.emit("before_provider_headers", { type: "before_provider_headers", headers });
       this.extensionProviderHeaders = headers;
     }
-    if (!runner.hasHandlers("before_agent_start")) return;
+    if (!runner.hasHandlers("before_agent_start")) return undefined;
     const base = this.composeSystemPrompt();
-    const result = await runner.emit<{ systemPrompt?: string }>(
+    const result = await runner.emit<{ systemPrompt?: string; block?: boolean; reason?: string }>(
       "before_agent_start",
       {
         type: "before_agent_start",
@@ -6869,10 +6885,22 @@ Delegation rules:
         systemPrompt: base,
         systemPromptOptions: {},
       },
-      (acc, next) => ({ ...(acc ?? {}), ...next }),
+      (acc, next) => {
+        const merged = { ...(acc ?? {}), ...next };
+        if (acc?.block === true) {
+          merged.block = true;
+          merged.reason = acc.reason;
+        }
+        return merged;
+      },
     );
+    if (result?.block === true) {
+      const reason = typeof result.reason === "string" ? result.reason.trim() : "";
+      return { blocked: reason || "Turn blocked by an extension" };
+    }
     this.agent.state.systemPrompt =
       typeof result?.systemPrompt === "string" ? result.systemPrompt : base;
+    return undefined;
   }
 
   /**

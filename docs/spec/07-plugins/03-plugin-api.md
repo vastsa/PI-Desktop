@@ -338,6 +338,22 @@ session (D333 / D336). Calling this outside a tool execution fails with
 plugin's own tool is stripped from the tail. A compaction summary replaces
 pre-checkpoint history. Combined content is capped at 200k characters.
 
+### session usage history (requires `session.usage.read`)
+```ts
+pi.session.getUsageHistory(input?: {
+  startDate?: number
+  endDate?: number
+  bucket?: "day" | "week" | "month"
+}): Promise<PluginUsageHistoryResult>
+```
+
+The same host-wide token usage history the settings usage view reads, bucketed
+by day, week, or month, with per-bucket and overall totals. The data is
+aggregate counts only — no message content and no session identity — so it
+stays behind its own low-risk permission instead of `session.read`. A budget
+or dashboard plugin combines this with the `usage` carried by
+`session:turnEnded` (§5) to settle its accounting.
+
 ### plugin-owned sessions (P0/P1; requires the matching permission)
 
 Plugins may import and manage only sessions whose origin belongs to that same
@@ -852,14 +868,17 @@ Delivered today:
   a successful `session.configure` that changes provider, model, or thinking
   level.
 - `session:turnEnded` — payload is
-  `{ sessionId: string; turnId: string; reason: "completed" | "aborted" | "error" }`,
+  `{ sessionId: string; turnId: string; reason: "completed" | "aborted" | "error"; usage?: MessageUsage }`,
   sent once per host turn at the end of its teardown, after the durable
   `session.endTurn` attempt. A turn is the one `session.beginTurn` created: a
   user submission, an approved plan execution, or a scheduled run, and a queued
   item that never started produces no event. `completed`, `aborted`, and
   `error` are the three terminal reasons. The event carries the `turnId` the
   terminal runtime event identified, not whichever turn happens to be active,
-  so a late event from an earlier turn cannot settle a newer one. Delivery is
+  so a late event from an earlier turn cannot settle a newer one. When the turn
+  produced token usage, `usage` carries the same aggregated `MessageUsage` the
+  durable `session.endTurn` persisted, so a plugin settles cost accounting
+  without a follow-up query; it is absent when the turn recorded none. Delivery is
   fire-and-forget: there is no ack and no replay, so a plugin that is alive and
   subscribed receives it once, and a delivery that races a plugin crash,
   reload, or host quit is not guaranteed. Receiving it does **not** mean every
@@ -973,6 +992,7 @@ Any of the following calls must be logged for audit:
 - service start / stop / restart
 - models.list (returned row count)
 - session.getLlmContext (session id, message count, truncated flag — never transcript text)
+- session.getUsageHistory (no payload fields — aggregate counts only)
 - agent.complete (model key, sizes, usage — never prompt or completion text)
 
 Log fields:

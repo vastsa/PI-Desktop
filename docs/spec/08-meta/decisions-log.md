@@ -5443,3 +5443,33 @@ that was sitting at the bottom — including after the turn had finished.
 - See ADR 0266, `07-plugins/03-plugin-api.md` §3,
   `07-plugins/13-plugin-permissions-matrix.md` §6, and
   E2E-PLUGIN-fs-root-follows-the-calling-session.
+
+## 2026-09-16 — Plugin usage visibility and the extension turn gate (D433)
+
+- Issue #399 asks for usage visibility and an automatic stop at a spending
+  limit, and the maintainer direction is that the behaviour belongs to plugins.
+  The plugin surface could not support it: no plugin API or event exposed token
+  usage, and nothing could refuse a turn — blocking every `tool_call` stalls a
+  turn that has already started instead of refusing it.
+- `session:turnEnded` now carries an optional `usage: MessageUsage`, the same
+  aggregated record the durable `session.endTurn` persisted, present only when
+  the turn recorded usage. The event still needs no permission; the field is
+  additive to the ADR 0252 payload.
+- A new low-risk `session.usage.read` permission gates
+  `pi.session.getUsageHistory`, wired to the existing
+  `stats.getTokenUsageHistory` host RPC. The data is host-wide aggregate
+  counts — no message content and no session identity — so it does not ride on
+  the high-risk `session.read`.
+- A trusted extension's `before_agent_start` result gains
+  `{ block: true, reason }`: the turn ends before its first provider request
+  with `TURN_BLOCKED` and the extension's reason, closing the durable turn row
+  as `error` like the existing pre-flight failures. A block decision is
+  sticky — later handlers may still replace the system prompt but cannot
+  unblock — and the system-prompt contract is unchanged.
+- The host keeps no budget, no prices, and no spending policy: accumulating
+  usage, choosing limits, and dashboards stay plugin territory (D335), and the
+  gate refuses new turns only, never aborting a running one.
+- See ADR 0267, `07-plugins/03-plugin-api.md` §3/§5,
+  `07-plugins/13-plugin-permissions-matrix.md`,
+  `07-plugins/16-trusted-extensions.md`, and
+  E2E-PLUGIN-usage-history-requires-permission.

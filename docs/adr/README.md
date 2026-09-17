@@ -293,3 +293,4 @@ Each ADR includes:
 | session-content-search | [Discover sessions by indexed message text](session-content-search.md) | Accepted |
 | transcript-reading-ownership | [Share renderer history and search views](transcript-reading-ownership.md) | Accepted |
 | 0266 | [Plugin fs roots follow the calling session](0266-plugin-fs-root-follows-the-calling-session.md) | Accepted (D093) |
+| 0267 | [Plugin usage visibility and the extension turn gate](0267-plugin-usage-visibility-and-turn-gate.md) | Accepted for implementation (D433; amends ADR 0252) |

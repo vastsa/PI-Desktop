@@ -328,6 +328,20 @@ export function createPluginServices({
       get: (pluginId, input) => callPluginSessionHost("plugin.session.get", pluginId, input),
       listMessages: (pluginId, input) =>
         callPluginSessionHost("plugin.session.listMessages", pluginId, input),
+      // Usage history is host-wide aggregate data, not plugin-scoped session
+      // data, so it reads the stats RPC directly instead of the plugin.session.*
+      // channel.
+      getUsageHistory: (_pluginId, input) => {
+        const host = getHost();
+        if (!host) {
+          throw Object.assign(new Error("host unavailable"), { code: "UNSUPPORTED" });
+        }
+        return host.call("stats.getTokenUsageHistory", {
+          startDate: input.startDate,
+          endDate: input.endDate,
+          bucket: input.bucket,
+        });
+      },
       import: (pluginId, input) => callPluginSessionHost("plugin.session.import", pluginId, input),
       importBatch: (pluginId, input) =>
         callPluginSessionHost("plugin.session.importBatch", pluginId, input),

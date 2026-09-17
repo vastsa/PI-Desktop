@@ -240,7 +240,7 @@ are honored where the event type defines a result.
 | `session_info_changed` | Session rename through `setSessionName` | No |
 | `project_trust` | v1 note: not emitted; enablement per project is the trust decision | No |
 | `resources_discover` | v1 note: not emitted; skills and prompt discovery stay in Electron main | n/a |
-| `before_agent_start` | Before the first provider request of a turn | Yes, system prompt and message edits |
+| `before_agent_start` | Before the first provider request of a turn | Yes, system prompt and message edits; `{ block: true, reason }` refuses the turn with `TURN_BLOCKED` |
 | `context` | `prepareNextTurn` | Yes, replacement message list |
 | `before_provider_request`, `before_provider_headers`, `after_provider_response` | Provider call wrapper | Yes for request and headers |
 | `agent_start`, `agent_end`, `agent_settled` | Agent loop boundaries | No |

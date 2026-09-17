@@ -20,6 +20,12 @@ export type TurnEndedPayload = {
   sessionId: string;
   turnId: string;
   reason: TurnEndReason;
+  /**
+   * Aggregated token usage of the turn, present when the turn produced any
+   * usage at all. Lets plugins settle cost/usage accounting without a host
+   * query round-trip.
+   */
+  usage?: MessageUsage;
 };
 
 export type SessionCoordinationDependencies = {

@@ -1820,6 +1820,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "desktop.control": "데스크톱 제어",
       "models.list": "인증된 모델 목록 표시",
       "session.read": "모델에 전송되는 현재 대화 읽기",
+      "session.usage.read": "토큰 사용 내역 읽기",
       "net.fetch": "네트워크 사용",
       "shell.openExternal": "외부 링크 열기",
       "ui.theme": "테마 제공",
@@ -1865,6 +1866,8 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "models.list": "로그인한 모델을 볼 수 있지만 키는 받지 않습니다.",
       "session.read":
         "현재 도구 호출이 처리 중인 대화와 도구 결과를 읽을 수 있습니다.",
+      "session.usage.read":
+        "세션 전반의 집계된 토큰 사용 내역을 읽을 수 있습니다. 대화 내용은 노출되지 않습니다.",
       "net.fetch": "외부 네트워크 요청을 보낼 수 있습니다.",
       "shell.openExternal": "기본 브라우저에서 링크를 열 수 있습니다.",
       "ui.theme": "설정에서 선택할 수 있는 테마를 추가합니다. 스타일만 변경하며 데이터에는 접근하지 않습니다.",

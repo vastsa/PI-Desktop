@@ -269,7 +269,12 @@ function finishTurn(
     // The turn can no longer start a plugin tool, and its finalization record
     // still holds the queue, so the announcement observes a settled turn. Every
     // delivery failure is isolated inside the announcement itself.
-    announceTurnEnded({ sessionId: id, turnId, reason });
+    announceTurnEnded({
+      sessionId: id,
+      turnId,
+      reason,
+      ...(turnUsage ? { usage: turnUsage } : {}),
+    });
   };
 
   let record: Promise<void> | undefined;

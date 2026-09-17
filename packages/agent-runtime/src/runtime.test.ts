@@ -6917,3 +6917,55 @@ describe("DesktopAgentRuntime compaction request headers", () => {
     await runtime.dispose();
   });
 });
+
+describe("DesktopAgentRuntime extension turn gate", () => {
+  it("refuses the turn when a before_agent_start handler blocks it", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const agent = (runtime as any).agent;
+    agent.prompt = vi.fn(async () => undefined);
+    agent.waitForIdle = vi.fn(async () => undefined);
+    (runtime as any).automaticCompactionNeeded = vi.fn(() => false);
+    (runtime as any).extensionRunner = {
+      hasHandlers: (name: string) => name === "before_agent_start",
+      emit: vi.fn(async () => ({ block: true, reason: "budget exceeded" })),
+      dispose: async () => undefined,
+    };
+
+    await runtime.prompt("hello", "user-1");
+
+    expect(agent.prompt).not.toHaveBeenCalled();
+    const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        error: expect.objectContaining({ code: "TURN_BLOCKED", message: "budget exceeded" }),
+      }),
+    );
+    await runtime.dispose();
+  });
+
+  it("keeps a block decision sticky when a later handler only sets the prompt", async () => {
+    const runtime = createRuntime();
+    (runtime as any).extensionRunner = {
+      hasHandlers: (name: string) => name === "before_agent_start",
+      emit: async (
+        _event: string,
+        _payload: unknown,
+        fold?: (acc: any, next: any) => any,
+      ) => {
+        let acc: any;
+        for (const next of [{ block: true, reason: "budget exceeded" }, { systemPrompt: "x" }]) {
+          acc = fold ? fold(acc, next) : next;
+        }
+        return acc;
+      },
+      dispose: async () => undefined,
+    };
+
+    const gate = await (runtime as any).extensionBeforeAgentStart("hello");
+
+    expect(gate).toEqual({ blocked: "budget exceeded" });
+    await runtime.dispose();
+  });
+});

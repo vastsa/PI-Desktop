@@ -4212,3 +4212,24 @@ the retained upstream work-panel lifecycle. See
 - 现在没有可见工作区时会话根也能解析，所以临时对话按会话各自继续工作，而不是所有会话一起失败；这种状态下的面板调用仍然失败关闭。于是 `workspace` 根的 `NOT_FOUND` 更窄：既没有解析出调用会话的项目，也没有可见工作区。
 - 权限、realpath 包含、拒绝名单、声明范围与运行时同意这四类闸门都没有改动，插件 API 表面也未变化：`pi.workspace.get` 仍然以可见工作区及其项目组作答。
 - 见 ADR 0266、`07-plugins/03-plugin-api.md` §3、`07-plugins/13-plugin-permissions-matrix.md` §6 与 E2E-PLUGIN-fs-root-follows-the-calling-session。
+
+## 2026-09-16 —— 插件的用量可见性与扩展回合闸门（D433）
+
+- issue #399 要求用量可见与到达花费上限自动停止，maintainer 的方向是这类行为归插件实现。
+  但当时的插件表面撑不起来：没有任何插件 API 或事件暴露 token 用量，也没有东西能拒绝一次
+  回合——把所有 `tool_call` 都拦下只是把已开始的回合卡死，而不是干净地拒绝。
+- `session:turnEnded` 现在携带可选的 `usage: MessageUsage`，与持久化 `session.endTurn`
+  写入的是同一份聚合记录，仅在回合记录了用量时存在。事件本身仍不需要权限，该字段只是对
+  ADR 0252 载荷的增量补充。
+- 新增低风险权限 `session.usage.read`，门控 `pi.session.getUsageHistory`，接线到既有的
+  `stats.getTokenUsageHistory` 宿主 RPC。数据是宿主级聚合计数——不含消息内容，也不含
+  会话身份——因此不挂在高风险的 `session.read` 上。
+- 可信扩展的 `before_agent_start` 结果新增 `{ block: true, reason }`：回合在首个 provider
+  请求之前以 `TURN_BLOCKED` 与扩展给出的原因结束，持久回合行按 `error` 关闭，与既有
+  pre-flight 失败一致。block 决定是粘性的——靠后的处理器仍可替换系统提示，但不能解除
+  拦截——系统提示契约不变。
+- 宿主不保存预算、价格与任何花费策略：用量累计、限额选择与看板都留在插件侧（D335），
+  且闸门只拒绝新回合，绝不中止正在运行的回合。
+- 见 ADR 0267、`07-plugins/03-plugin-api.md` §3/§5、
+  `07-plugins/13-plugin-permissions-matrix.md`、`07-plugins/16-trusted-extensions.md`
+  与 E2E-PLUGIN-usage-history-requires-permission。

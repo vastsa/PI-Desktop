@@ -1819,6 +1819,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "desktop.control": "Control the desktop",
       "models.list": "List authenticated models",
       "session.read": "Read the current conversation sent to the model",
+      "session.usage.read": "Read token usage history",
       "net.fetch": "Use the network",
       "shell.openExternal": "Open external links",
       "ui.theme": "Provide a theme",
@@ -1865,6 +1866,8 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "models.list": "Can see which models you have signed in for. It does not receive keys.",
       "session.read":
         "Can read the conversation the current tool call is operating on, including tool results.",
+      "session.usage.read":
+        "Can read aggregate token usage history across sessions. No conversation content is exposed.",
       "net.fetch": "Can make outbound network requests.",
       "shell.openExternal": "Can open links in your default browser.",
       "ui.theme": "Adds a theme you can pick in Settings; only styling, no data.",

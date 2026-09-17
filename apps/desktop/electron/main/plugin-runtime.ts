@@ -414,6 +414,7 @@ export type PluginHostServices = {
     list: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     get: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     listMessages: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    getUsageHistory: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     import: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     importBatch: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     rename: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
@@ -497,6 +498,7 @@ const HOST_API_ALLOWLIST = new Set([
   "session.list",
   "session.get",
   "session.listMessages",
+  "session.getUsageHistory",
   "session.import",
   "session.importBatch",
   "session.rename",
@@ -2326,6 +2328,30 @@ export class PluginRuntime {
           throw apiError("UNSUPPORTED", "host api not available: session.listMessages");
         }
         return this.services.session.listMessages(loaded.manifest.id, input);
+      }
+      case "session.getUsageHistory": {
+        this.assertPermission(loaded, "session.usage.read");
+        const raw = args[0] && typeof args[0] === "object" && !Array.isArray(args[0])
+          ? args[0] as Record<string, unknown>
+          : {};
+        const input: Record<string, unknown> = {};
+        for (const key of ["startDate", "endDate"] as const) {
+          const value = raw[key];
+          if (typeof value === "number" && Number.isFinite(value)) input[key] = Math.floor(value);
+        }
+        const bucket = raw.bucket;
+        if (bucket === "day" || bucket === "week" || bucket === "month") input.bucket = bucket;
+        if (!this.services.session?.getUsageHistory) {
+          throw apiError("UNSUPPORTED", "host api not available: session.getUsageHistory");
+        }
+        const history = await this.services.session.getUsageHistory(loaded.manifest.id, input);
+        this.services.audit?.({
+          pluginId: loaded.manifest.id,
+          api: "session.getUsageHistory",
+          ok: true,
+          ts: Date.now(),
+        });
+        return history;
       }
       case "session.rename": {
         this.assertPermission(loaded, "session.update.own");

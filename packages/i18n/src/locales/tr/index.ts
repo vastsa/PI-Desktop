@@ -1820,6 +1820,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "desktop.control": "Masaüstünü kontrol et",
       "models.list": "Kimliği doğrulanmış modelleri listele",
       "session.read": "Modele gönderilen geçerli konuşmayı oku",
+      "session.usage.read": "Belirteç kullanım geçmişini oku",
       "net.fetch": "Ağı kullan",
       "shell.openExternal": "Dış bağlantılar aç",
       "ui.theme": "Tema sağla",
@@ -1865,6 +1866,8 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "models.list": "Oturum açtığınız modelleri görebilir. Anahtar almaz.",
       "session.read":
         "Geçerli araç çağrısının üzerinde çalıştığı konuşmayı, araç sonuçları dahil, okuyabilir.",
+      "session.usage.read":
+        "Oturumlar arası toplu belirteç kullanım geçmişini okuyabilir. Konuşma içeriği açığa çıkarılmaz.",
       "net.fetch": "Dışarıya ağ istekleri yapabilir.",
       "shell.openExternal": "Varsayılan tarayıcınızda bağlantı açabilir.",
       "ui.theme": "Ayarlar’dan seçebileceğiniz bir tema ekler; yalnızca stil, veri yok.",

@@ -261,6 +261,42 @@ export type PluginSessionMessageListResult = {
   nextCursor?: string;
 };
 
+export type PluginUsageHistoryBucket = "day" | "week" | "month";
+
+export type PluginUsageHistoryQuery = {
+  startDate?: number;
+  endDate?: number;
+  bucket?: PluginUsageHistoryBucket;
+};
+
+export type PluginUsageHistoryItem = {
+  date: string;
+  timestamp: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  turnCount: number;
+};
+
+export type PluginUsageHistoryResult = {
+  bucket: PluginUsageHistoryBucket;
+  rangeStart: number;
+  rangeEnd: number;
+  items: PluginUsageHistoryItem[];
+  totals: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    reasoningTokens: number;
+    turnCount: number;
+  };
+};
+
 /** Resolve a plugin label using the active PI-Desktop locale. */
 export function resolvePluginLocalizedString(
   value: string | PluginLocalizedString | undefined,
@@ -992,6 +1028,14 @@ export type PluginHostApi = {
   };
   session: {
     getLlmContext: () => Promise<PluginLlmContext>;
+    /**
+     * Host-wide token usage history bucketed by day/week/month
+     * (`session.usage.read`). Same data the settings usage view reads; no
+     * message content is exposed.
+     */
+    getUsageHistory: (
+      input?: PluginUsageHistoryQuery,
+    ) => Promise<PluginUsageHistoryResult>;
     list: (input?: {
       limit?: number;
       cursor?: string;
@@ -1117,6 +1161,7 @@ export const PLUGIN_PERMISSIONS = [
   "models.list",
   "project.create",
   "session.read",
+  "session.usage.read",
   "session.import",
   "session.read.own",
   "session.update.own",
