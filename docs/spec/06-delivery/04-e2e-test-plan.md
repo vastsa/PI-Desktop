@@ -4157,9 +4157,9 @@ identify the platform validation still needed.
   Copy; after the response settles, the assistant toolbar offers Copy, Fork,
   Regenerate. The user toolbar offers the pager (when variants exist), Copy,
   Edit, Delete. Edit replaces the prompt bubble with a wider composer-matched
-  inline editor plate that uses the composer fill and `--ds-shadow-composer`
-  lift (no stroke) so the light plate stays distinct from the white pane,
-  with Retry and Cancel controls; Escape or Cancel restores the bubble
+  inline editor plate filled with `--ds-tile-deep` (no outer shadow, inset
+  focus ring) so the light plate stays distinct from the white pane without
+  a clipped glow, with Retry and Cancel controls; Escape or Cancel restores the bubble
   unchanged. Retry truncates the transcript from that prompt and streams a new
   answer whether or not the text changed, leaving a `current / total` pager on
   the user turn that restores the original prompt with its full answer tail in
@@ -8473,12 +8473,13 @@ This test plan spec is accepted when:
 ### US-UI-75 Light message-edit plate
 - Open a populated transcript in light and dark themes and choose Edit on a
   user prompt.
-- Expect the inline editor to be a composer-matched plate (`--ds-bg-composer`,
-  `--ds-composer-radius`) that lifts from the pane with `--ds-shadow-composer`
-  and no hairline stroke. On light theme the white plate must remain distinct
-  from the `#ffffff` chat surface; Retry and Cancel stay legible in the footer.
-- Focusing the textarea deepens the lift the same way the docked composer
-  does; Escape or Cancel restores the bubble.
+- Expect the inline editor to be a `--ds-tile-deep` plate at
+  `--ds-composer-radius` with no outer shadow and no hairline stroke. On
+  light theme the 8% ink wash must remain distinct from the `#ffffff` chat
+  surface; the composer glow must not appear or get clipped at the plate
+  edges. Retry and Cancel stay legible in the footer.
+- Focusing the textarea paints an inset 2px accent ring inside the plate;
+  Escape or Cancel restores the bubble.
 
 #### E2E-123: asktool collects multiple answers and returns skipped placeholders
 

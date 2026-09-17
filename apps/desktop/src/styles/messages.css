@@ -1324,8 +1324,7 @@
 @media (prefers-reduced-motion: reduce) {
   .context-inspector-ring-progress,
   .context-inspector-trigger,
-  .context-inspector-popover,
-  .message-edit {
+  .context-inspector-popover {
     transition: none;
   }
 }
@@ -1341,10 +1340,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Compact composer plate: same surface, radius, and lift as the bottom
-   composer. Light `--ds-bg-composer` equals the pane, so the plate must
-   lift or it vanishes (D297: composers lift by shadow, not stroke).
-   The textarea is unboxed; actions sit in a 28px footer. */
+/* Compact in-flow editor. Outer composer shadow clips: the row uses
+   content-visibility (paint containment) and has no horizontal padding, and
+   the transcript scroller clips overflow. Separate from the pane with the
+   same 8% mix as a user bubble (`--ds-tile-deep`); focus uses an inset ring
+   so it stays inside the plate. The textarea is unboxed; actions sit in a
+   28px footer. */
 .message-edit {
   display: flex;
   width: min(100%, var(--chat-prose-max-width, 720px));
@@ -1352,16 +1353,13 @@
   flex-direction: column;
   border: 0;
   border-radius: var(--ds-composer-radius, var(--radius-xl));
-  background: var(--ds-bg-composer);
-  box-shadow: var(--ds-shadow-composer);
+  background: var(--ds-tile-deep);
+  box-shadow: none;
   isolation: isolate;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    box-shadow var(--motion-duration-normal) var(--motion-ease-out);
 }
 
 .message-edit:focus-within {
-  box-shadow: 0 7px 24px color-mix(in oklab, var(--ds-text-primary) 9%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ds-focus) 28%, transparent);
 }
 
 /* A prompt being edited needs typing room, so the user column drops its
