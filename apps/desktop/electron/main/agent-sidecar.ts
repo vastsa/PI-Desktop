@@ -1,11 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import type { HostProcess, ProcessExitHandler, StderrHandler } from "./host-process";
 import { redactValue } from "./logger";
-import { DEFAULT_RPC_TIMEOUT_MS, rpcTimeoutMs } from "@pi-desktop/shared";
+import { DEFAULT_RPC_TIMEOUT_MS, readNdjsonLines, rpcTimeoutMs } from "@pi-desktop/shared";
 
 // stderr lines kept per sidecar so an unexpected exit can be reported with the
 // process's last words instead of a bare "agent sidecar exited".
@@ -123,7 +122,7 @@ export class AgentSidecar {
   private host: HostProcess | null = null;
   private unsubscribeHost: (() => void) | null = null;
   private unsubscribeHostExit: (() => void) | null = null;
-  private readline?: ReturnType<typeof createInterface>;
+  private stdoutReader?: ReturnType<typeof readNdjsonLines>;
   // Tools served by Electron main itself (e.g. BrowserPreview drives the
   // work panel's WebContentsView) — host-core never sees these.
   private localTools = new Map<string, LocalToolHandler>();
@@ -179,9 +178,9 @@ export class AgentSidecar {
       this.notifyExit({ code: null, signal: null, intentional: this.disposed });
     });
 
-    const rl = createInterface({ input: this.child.stdout });
-    this.readline = rl;
-    rl.on("line", (line) => void this.onLine(line));
+    this.stdoutReader = readNdjsonLines(this.child.stdout, (line) =>
+      void this.onLine(line),
+    );
   }
 
   private recordStderr(text: string) {
@@ -210,8 +209,8 @@ export class AgentSidecar {
     for (const timer of this.localToolTimers) clearTimeout(timer);
     this.localToolTimers.clear();
     this.handlers.clear();
-    this.readline?.close();
-    this.readline = undefined;
+    this.stdoutReader?.close();
+    this.stdoutReader = undefined;
     this.child.removeAllListeners("exit");
     this.child.removeAllListeners("error");
     this.child.stderr.removeAllListeners("data");
@@ -426,6 +425,9 @@ export class AgentSidecar {
     try {
       msg = JSON.parse(line);
     } catch {
+      console.warn(
+        `[RPC] Invalid agent-sidecar NDJSON frame (${Buffer.byteLength(line, "utf8")} bytes)`,
+      );
       return;
     }
 

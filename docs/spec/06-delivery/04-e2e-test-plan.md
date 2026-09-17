@@ -7503,6 +7503,7 @@ identify the platform validation still needed.
 
 | Acceptance | Scenarios |
 |---|---|
+| A / C — Unicode stdio framing | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — Sidebar row states | E2E-LAYOUT-sidebar-row-states |
 | A / C / Quality — Sidebar material and settings return | E2E-LAYOUT-sidebar-settings |
@@ -13058,3 +13059,22 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   Renderer fixtures alone do not prove settings persistence.
 - **Specs:** 04-ux/06-settings-ia, 04-ux/08-component-spec,
   04-ux/09-interaction-patterns; ADR turn-process-and-thinking-display.
+
+### E2E-RPC-unicode-separators
+
+- **Preconditions:** Built host-core, shared package and agent runtime; isolated
+  temporary data directory; loopback-only fixture provider. No live credentials.
+- **Steps:** Append a user message containing U+2028/U+2029, CJK text, emoji and
+  escaped CR/LF; read it, restart the host, and read it again. Send a Unicode
+  prompt through AgentSidecar; restore history through the parent host proxy;
+  stream and persist a Unicode answer. Send an unknown method containing the
+  same characters, then a health request.
+- **Expected:** Text survives unchanged across persistence and all stdio
+  directions. Requests settle without RPC timeouts; error replies and subsequent
+  requests remain usable. No migration of existing sessions is needed.
+- **Automation:** `pnpm test:e2e:rpc-unicode`; `ndjson.test.mjs` additionally
+  checks every UTF-8 split boundary, consecutive frames, CRLF, EOF and disposal.
+- **Specs:** 03-runtime/06-host-rpc-protocol §2.
+- **Acceptance:** A (runtime), C (sessions).
+- **Milestone:** M6+.
+- **Status:** Automated; run against the task/PR integration candidate.

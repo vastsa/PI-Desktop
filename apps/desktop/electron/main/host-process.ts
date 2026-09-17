@@ -1,5 +1,4 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -8,6 +7,7 @@ import {
   MAX_HOST_STDIN_LINE_BYTES,
   PROTOCOL_VERSION,
   rpcTimeoutMs,
+  readNdjsonLines,
   stripProxyEnv,
 } from "@pi-desktop/shared";
 import {
@@ -101,7 +101,7 @@ export class HostProcess {
   private exitPromise: Promise<void>;
   private resolveExit!: () => void;
   private disposePromise?: Promise<void>;
-  private readline?: ReturnType<typeof createInterface>;
+  private stdoutReader?: ReturnType<typeof readNdjsonLines>;
   private lastStderr = "";
   readonly binaryPath: string;
   readonly generation = randomUUID();
@@ -169,9 +169,9 @@ export class HostProcess {
       if (this.exitObserved) this.cleanupProcessListeners();
     });
 
-    const rl = createInterface({ input: this.child.stdout });
-    this.readline = rl;
-    rl.on("line", (line) => this.onLine(line));
+    this.stdoutReader = readNdjsonLines(this.child.stdout, (line) =>
+      this.onLine(line),
+    );
   }
 
   private closeTransport(error: Error) {
@@ -184,8 +184,8 @@ export class HostProcess {
     }
     this.pending.clear();
     this.handlers.clear();
-    this.readline?.close();
-    this.readline = undefined;
+    this.stdoutReader?.close();
+    this.stdoutReader = undefined;
   }
 
   private cleanupProcessListeners() {
@@ -264,6 +264,9 @@ export class HostProcess {
     try {
       msg = JSON.parse(line);
     } catch {
+      console.warn(
+        `[RPC] Invalid host-process NDJSON frame (${Buffer.byteLength(line, "utf8")} bytes)`,
+      );
       return;
     }
     if (msg.id !== undefined && msg.id !== null) {

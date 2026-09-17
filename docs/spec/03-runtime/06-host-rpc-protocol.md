@@ -16,7 +16,14 @@ MVP transport decision (**D001**):
 
 - Process: Electron main spawns Rust host-core sidecar
 - Channel: child process stdin/stdout
-- Framing: one JSON object per line (NDJSON)
+- Framing: one JSON object per LF-delimited line (NDJSON); CRLF is accepted.
+  U+2028 and U+2029 inside JSON strings are payload, never frame delimiters.
+  All Node stdio readers preserve UTF-8 characters across input chunks and
+  release buffered fragments/listeners on transport close. A final unterminated
+  frame is accepted at EOF for compatibility.
+- Invalid JSON frames produce a diagnostic containing only the byte length,
+  never payload text, before being discarded. Later complete frames remain
+  readable. Existing session text is not rewritten or migrated.
 - Encoding: UTF-8
 - Request/response: JSON-RPC 2.0 style
 

@@ -3,7 +3,6 @@
  * Protocol: NDJSON JSON-RPC on stdio with Electron main.
  * Host access is proxied through main (single host-core process).
  */
-import { createInterface } from "node:readline";
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { copyFile, mkdir, readFile, realpath, stat } from "node:fs/promises";
@@ -33,6 +32,7 @@ import {
   isCommandShellOption,
   MAX_INLINE_IMAGE_BYTES,
   normalizeMode,
+  readNdjsonLines,
   normalizeNetworkProxy,
   OAUTH_AUTH_KIND,
 } from "@pi-desktop/shared";
@@ -658,13 +658,15 @@ async function handle(method: string, params: any): Promise<unknown> {
   }
 }
 
-const rl = createInterface({ input: process.stdin });
-rl.on("line", async (line) => {
+readNdjsonLines(process.stdin, async (line) => {
   if (!line.trim()) return;
   let msg: any;
   try {
     msg = JSON.parse(line);
   } catch {
+    process.stderr.write(
+      `[agent-sidecar] Invalid NDJSON frame (${Buffer.byteLength(line, "utf8")} bytes)\n`,
+    );
     return;
   }
   // Responses to host.proxy requests from parent
