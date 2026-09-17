@@ -5,7 +5,9 @@ import {
   fileReferenceLabel,
   formatCommandInsert,
   formatFileInsert,
+  formatSessionInsert,
   normalizeLargePasteThreshold,
+  parseSessionRef,
   restoreInlineComposerFileReferenceTokens,
   rewriteIdeographicCommaTrigger,
   serializeComposerFileReferences,
@@ -154,6 +156,14 @@ describe("insert formatting", () => {
     expect(formatFileInsert("src", "dir")).toBe("@src/");
     expect(formatFileInsert("my dir", "dir")).toBe('@"my dir/');
   });
+
+  it("formats session mentions as @session:<uuid>", () => {
+    const id = "42cf934f-ba75-46e1-84b5-e44bb76eba83";
+    expect(formatSessionInsert(id)).toBe(`@session:${id} `);
+    expect(parseSessionRef(`@session:${id}`)).toBe(id);
+    expect(parseSessionRef("@src/a.ts")).toBeNull();
+    expect(parseSessionRef("@session:not-a-uuid")).toBeNull();
+  });
 });
 
 describe("applyCompletion", () => {
@@ -263,6 +273,15 @@ describe("compact file references", () => {
         references,
       ),
     ).toBe("\uE001Make this much clearer");
+  });
+
+  it("serializes session chips as @session:<uuid> instead of file paths", () => {
+    const id = "42cf934f-ba75-46e1-84b5-e44bb76eba83";
+    expect(
+      serializeInlineComposerFileReferences("see \uE001 please", [
+        { path: id, token: "\uE001", kind: "session" },
+      ]),
+    ).toBe(`see @session:${id} please`);
   });
 
   it("normalizes large-paste thresholds to the supported range", () => {

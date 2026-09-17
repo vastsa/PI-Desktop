@@ -274,3 +274,13 @@ test("an ascii filename followed by cjk prose still linkifies", () => {
     ["App.tsx"],
   );
 });
+
+test("splitChatText treats @session:<uuid> as a session chip, not a file", () => {
+  const id = "42cf934f-ba75-46e1-84b5-e44bb76eba83";
+  const segments = splitChatText(`see @session:${id} please`, ROOT);
+  const sessions = segments.filter((s) => s.kind === "target" && s.target.kind === "session");
+  assert.equal(sessions.length, 1);
+  assert.deepEqual(sessions[0].target, { kind: "session", sessionId: id });
+  assert.equal(resolvePreviewTarget(`@session:${id}`)?.kind, "session");
+  assert.equal(resolvePreviewTarget("@src/a.ts", ROOT)?.kind, "file");
+});

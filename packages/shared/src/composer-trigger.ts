@@ -140,9 +140,46 @@ export function formatCommandInsert(name: string): string {
 export function formatFileInsert(path: string, kind: "dir" | "file"): string {
   const needsQuote = /\s/.test(path);
   if (kind === "dir") {
-    return needsQuote ? `@"${path}/` : `@${path}/`;
+    return needsQuote ? `@\"${path}/` : `@${path}/`;
   }
-  return needsQuote ? `@"${path}" ` : `@${path} `;
+  return needsQuote ? `@\"${path}\" ` : `@${path} `;
+}
+
+/** Canonical @ token for another durable session (D442 / ADR 0276). */
+export const SESSION_REFERENCE_PREFIX = "@session:";
+
+const SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type ComposerSerializedReference = {
+  path: string;
+  token?: string;
+  kind?: "image" | "file" | "session";
+};
+
+export function isSessionReferenceId(value: string): boolean {
+  return SESSION_ID_RE.test(value.trim());
+}
+
+/** Insertion text for an accepted session mention. Always unquoted UUID. */
+export function formatSessionInsert(sessionId: string): string {
+  return `${SESSION_REFERENCE_PREFIX}${sessionId} `;
+}
+
+/**
+ * Unwrap `@session:<uuid>` from composer/transcript text. Returns the session
+ * id or null. This is not a filesystem path.
+ */
+export function parseSessionRef(text: string): string | null {
+  const raw = text.trim();
+  if (!raw.startsWith(SESSION_REFERENCE_PREFIX)) return null;
+  const sessionId = raw.slice(SESSION_REFERENCE_PREFIX.length);
+  return isSessionReferenceId(sessionId) ? sessionId : null;
+}
+
+function formatReferenceInsert(reference: ComposerSerializedReference): string {
+  if (reference.kind === "session") return formatSessionInsert(reference.path);
+  return formatFileInsert(reference.path, "file");
 }
 
 /** Return a compact leaf label without changing the canonical reference path. */
@@ -158,12 +195,12 @@ export function fileReferenceLabel(path: string, preferredName?: string): string
  */
 export function serializeComposerFileReferences(
   draft: string,
-  references: ReadonlyArray<{ path: string; token?: string }>,
+  references: ReadonlyArray<ComposerSerializedReference>,
 ): string {
   const content = serializeInlineComposerFileReferences(draft, references);
   const paths = references
     .filter((reference) => !reference.token)
-    .map((reference) => formatFileInsert(reference.path, "file"))
+    .map((reference) => formatReferenceInsert(reference))
     .join("")
     .trim();
   if (!content) return paths;
@@ -178,13 +215,13 @@ export function serializeComposerFileReferences(
  */
 export function serializeInlineComposerFileReferences(
   draft: string,
-  references: ReadonlyArray<{ path: string; token?: string }>,
+  references: ReadonlyArray<ComposerSerializedReference>,
 ): string {
   let content = draft;
   for (const reference of references) {
     const token = reference.token?.trim();
     if (!token || !content.includes(token)) continue;
-    const insert = formatFileInsert(reference.path, "file").trim();
+    const insert = formatReferenceInsert(reference).trim();
     let index = content.indexOf(token);
     while (index !== -1) {
       const nextChar = content[index + token.length];

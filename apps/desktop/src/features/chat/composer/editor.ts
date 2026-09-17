@@ -16,8 +16,17 @@ const AUDIO_FILE_PATTERN = /\.(flac|m4a|mp3|ogg|wav)$/i;
 const VIDEO_FILE_PATTERN = /\.(avi|mkv|m4v|mov|mp4|webm)$/i;
 
 /** Paste/scratch files keep absolute paths; `@` entries are workspace-relative. */
+/** Paste/scratch files keep absolute paths; `@` entries are workspace-relative. */
 export function isPersistedScratchReference(path: string): boolean {
   return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\");
+}
+
+/** Session chips are not workspace-relative files; keep them across project switches. */
+export function isDurableComposerReference(reference: {
+  path: string;
+  kind?: "image" | "file" | "session";
+}): boolean {
+  return reference.kind === "session" || isPersistedScratchReference(reference.path);
 }
 
 export function isImageFilePath(path: string): boolean {
@@ -38,7 +47,7 @@ export function createFileReference(
   preferredName?: string,
   sessionId = "",
   metadata?: {
-    kind?: "image" | "file";
+    kind?: "image" | "file" | "session";
     mimeType?: string;
     token?: string;
   },
@@ -234,10 +243,13 @@ const CHIP_ICON_SVG: Record<string, string> = {
   video:
     '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
   file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  session:
+    '<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><path d="M12 12v3"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
 };
 
 function chipIconKey(reference: ComposerFileReference): string {
+  if (reference.kind === "session") return "session";
   const mime = reference.mimeType ?? "";
   if (reference.kind === "image" || mime.startsWith("image/")) return "image";
   const name = reference.name;
@@ -256,6 +268,7 @@ function chipSvg(key: string, size = 13): string {
 }
 
 export function isEditableTextReference(reference: ComposerFileReference): boolean {
+  if (reference.kind === "session") return false;
   return reference.mimeType?.toLowerCase() === "text/plain" || /\.txt$/i.test(reference.name);
 }
 

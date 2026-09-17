@@ -62,10 +62,9 @@ test("a tool row and a tool result row open a file where the message body does",
   // row land in the bundled file view too (ADR 0262). The call this replaces is
   // the one that let those surfaces pick the destination themselves.
   assert.match(hook, /const openFileRef = useOpenChatFileRef\(\);/);
-  assert.match(
-    hook,
-    /target\.kind === "file" \? openFileRef\(target\.path\) : openUrl\(target\.url\)/,
-  );
+  assert.match(hook, /if \(target\.kind === "file"\) return openFileRef\(target\.path\);/);
+  assert.match(hook, /if \(target\.kind === "session"\) \{/);
+  assert.match(hook, /return openUrl\(target\.url\);/);
   assert.doesNotMatch(hook, /openFile\(target\.path\)/);
   // Both surfaces still call that opener, and neither reaches the host viewer's
   // store action directly: the tool row summary carries the call's own path,

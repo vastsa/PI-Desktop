@@ -1519,7 +1519,7 @@ Single message render — either user (plaintext) or assistant (markdown streami
 ### 8.3 Layout
 
 - Max content band: 760px default, user-resizable via dual edge handles
-  (D439 / ADR 0274). Assistant, tool, and decision rows follow the band.
+  (D439 / ADR 0277). Assistant, tool, and decision rows follow the band.
   User plates stay `min(82%, 600px)`.
 - The live band is `min(available pane, preferred)`. Collapsing the sidebar
   no longer tightens a 640px ceiling; the outer pane stays fluid and the
@@ -2748,7 +2748,7 @@ reasoning-level control.
   There are no visual previews in MVP.
 - No voice input
 
-### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
+### 11.8 Slash commands, @ file and session references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, D442, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222, ADR 0276)
 
 The composer owns an inline autocomplete menu — one component serving two
 modes. Focus never leaves the textarea (D125).
@@ -2772,7 +2772,7 @@ Anatomy:
   shadow, subtle hairline, `--radius-lg`); max-height caps with internal
   scroll and `scrollIntoView(nearest)` keyboard follow.
 - Slash mode (`/` typed at position 0, cursor inside the first token, no
-  whitespace yet): the placeholder teaches `Type / for commands · @ for files`
+  whitespace yet): the placeholder teaches `Type / for commands · @ for files and sessions`
   (localized in zh-CN), and groups appear in order — prompt templates (name +
   `argument-hint` ghost text + description, project source before
   user-global), app commands (builtin slash aliases), plugin commands.
@@ -2783,17 +2783,42 @@ Anatomy:
   short command name to an ellipsis, including in narrow composers. Names and
   hints can still truncate when they themselves exceed the available row width;
   neither command rows nor file rows overflow the menu.
-- File mode (`@` token at cursor, boundary-preceded): rows persistently show
-  only the leaf file or directory name; directories get a trailing `/` and
-  continue completion on accept. The complete relative path remains available
-  through the row tooltip and accessible name. Accepting a completed file
-  (Enter, Tab, or click) replaces the `@` token with an inline leaf-name chip
-  at the caret — the same sentinel-backed chip as a pasted file — whose
-  canonical value is the original `entry.path`; the menu closes and that Enter
-  does not send. Accepting a directory keeps the literal path in the draft so
-  completion can continue. Entries come from `fs/index` (D124, D209, D362). A
-  truncation footnote appears when the index is capped; without a workspace the
-  menu shows an "open a project" empty state.
+- File mode (`@` token at cursor, boundary-preceded) lists two groups from the
+  same menu: **Sessions** then **Files**. Session rows come from the renderer's
+  live session list, exclude the current session, show the session title, and
+  keep the durable `sessionId` in the tooltip and accessible name. An empty
+  query shows the eight most recently updated sessions; a query fuzzy-matches
+  title then id. Accepting a session replaces the `@` token with an inline
+  title chip whose canonical value is `@session:<uuid>` — not a filesystem
+  path. Session chips survive a workspace switch and are never sent as
+  structured file attachments. Sending expands each mention, through existing
+  `session.get` pagination, into frozen complete user/assistant Q&A turns.
+  There is no fixed turn count: all referenced sessions share an estimated
+  context budget, including headings and coverage notices. Settings > AI
+  offers 10%, 25% (default), 50%, or 100% of estimated available context.
+  Each turn joins every eligible parent assistant `content` before the next
+  user, including progress; empty user rows still close the preceding turn.
+  Thinking, tools, nested delegates, and aborted/error/streaming replies are
+  excluded. Wrappers are cleaned per message, before concatenation. A send-time
+  notice reports included turns, known omissions, unread older history, and
+  approximate tokens. The newest turn from every nonempty source must fit
+  together; otherwise sending is blocked without consuming the draft. Older
+  whole turns are added round-robin without splitting or cherry-picking.
+  A 400-line page is not a history limit: follow physical cursors until enough
+  complete turns are available, history ends, or a visible read-safety stop is
+  reached (ADR 0276). Queued snapshots stay frozen. Reference text is not new
+  tool authorization and does not recursively expand mentions. The transcript
+  still shows the chip; clicking it opens that durable session. File rows persistently show only the leaf file or directory
+  name; directories get a trailing `/` and continue completion on accept. The
+  complete relative path remains available through the row tooltip and
+  accessible name. Accepting a completed file (Enter, Tab, or click) replaces
+  the `@` token with an inline leaf-name chip at the caret — the same
+  sentinel-backed chip as a pasted file — whose canonical value is the original
+  `entry.path`; the menu closes and that Enter does not send. Accepting a
+  directory keeps the literal path in the draft so completion can continue.
+  File entries come from `fs/index` (D124, D209, D362). A truncation footnote
+  appears when the index is capped; without a workspace the file group is
+  empty while sessions remain available.
 - Accepting commands and directories inserts text (`/name ` / `@dir/`);
   accepting a completed file inserts the inline chip rather than deleting the
   trigger. Immediately

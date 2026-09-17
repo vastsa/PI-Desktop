@@ -1361,6 +1361,66 @@ identify the platform validation still needed.
 - **Status**: Source-level regression covered (`session-create.test.mjs`,
   `session-switch-performance.test.mjs`); full UI scenario Draft
 
+#### E2E-CHAT-composer-session-mention: @ in the composer can mention another session
+
+- **Preconditions**: At least two durable Agent sessions exist. The composer is
+  focused in one of them. A project may or may not be open.
+- **Steps**: 1) Type `@` and confirm a Sessions group appears above Files, with
+  the current session absent. 2) Type part of the other session's title and
+  accept the row. 3) Inspect the composer chip, then send. 4) Click the chip in
+  the transcript. 5) Switch the project/workspace and confirm the chip remains.
+- **Expected**: Accepting inserts a title chip, not a file path. The sent user
+  turn contains `@session:<uuid>` plus a frozen, budget-selected snapshot of
+  complete Q&A turns from that session, without a fixed turn count. Multiple parent assistant replies in
+  one user turn are concatenated; thinking, tools, and nested delegate rows
+  are absent from the snapshot. The transcript still renders a session chip
+  (the snapshot is stripped from the visible request). Clicking the chip opens
+  that durable session. The mention is not a structured attachment and is not
+  opened by `fs/open`. File `@` completion still works.
+
+- **Specs linked**: `04-ux/08-component-spec.md` §11.8; ADR 0276, D442
+- **Acceptance**: C (conversation), Quality
+- **Milestone**: M6+
+- **Status**: Source-level regression covered (`composer-trigger.test.ts`,
+  `chat-links.test.mjs`, `composer-file-reference-display.test.mjs`); full UI
+  journey Draft
+
+#### E2E-CHAT-session-reference-budget: References use complete paged turns and one visible budget
+
+- **Preconditions**: A source conversation spans more than 400 physical rows,
+  with its question before a long tool trace and its final answer at the tail.
+  Other sources contain more than 20 short turns, an oversized latest turn,
+  multiple wrapped parent replies, and an attachment-only question. A target
+  model has known context metadata; the settings page is available on an empty
+  draft as well as an existing chat.
+- **Steps**: 1) Reference the long tool-trace session and send. 2) Reference the
+  short-turn source with sufficient budget. 3) Reference multiple sources with
+  a tight shared budget. 4) Change Settings > AI > Session reference budget,
+  reload the renderer, and retry. 5) Attempt an oversized latest turn, a missing
+  source, invalid cursors, a timeout, and a model change during reading.
+  6) Exercise ordinary send, steering, queueing, queue restoration, and later
+  queue promotion. 7) Inspect visible request text and the submitted snapshot.
+- **Expected**: Pagination recovers the question and every completed parent
+  reply across pages; tools, thinking, nested delegates, and nonempty failed or
+  streaming replies remain absent. More than 20 small turns can be included.
+  Empty users close the preceding turn; repeated wrapper headings do not erase
+  earlier replies or literal current-request headings. All sources share one
+  estimated budget including metadata. Latest source turns must fit together,
+  and older turns form a chronological contiguous suffix per source. No answer
+  is split or allowed to bypass the budget. Oversized/unrecoverable sources,
+  invalid pagination, stale target bindings, and read errors reject submission
+  without losing the draft or creating an optimistic turn. A warning and the
+  frozen reference block distinguish known omissions from unread older history;
+  unknown totals are not invented. The preference persists renderer-locally,
+  including before the first message. Queued prompts retain the send-time
+  snapshot and do not re-read their sources. No nested expansion, new tool
+  authorization, IPC contract, or storage migration is introduced.
+- **Specs linked**: `04-ux/08-component-spec.md` §11.8; ADR 0276, D442
+- **Acceptance**: C (conversation), Quality
+- **Milestone**: M6+
+- **Status**: Regression checks required for shared pairing/selection/pagination,
+  desktop budgeting/submission, and the rendered settings control; full live
+  provider journey remains a separate manual acceptance check.
 
 ### Conversation Top Bar
 
@@ -4238,7 +4298,7 @@ identify the platform validation still needed.
   `min(available, preferred)` if the pane is narrower). It does not jump to
   640px. The transcript, empty-home stack, and Composer share that envelope.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
-  `04-ux/08-component-spec.md`, ADR 0274, D439
+  `04-ux/08-component-spec.md`, ADR 0277, D439
 - **Acceptance**: Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`sidebar-collapse-animation.test.mjs`,
@@ -4260,7 +4320,7 @@ identify the platform validation still needed.
   User bubbles stay compact. Handles stay keyboard-accessible
   (`role="separator"`). Preference persists as `chatContentMaxWidth`.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`,
-  ADR 0274, D439
+  ADR 0277, D439
 - **Acceptance**: C (conversation), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`chat-content-width.test.mjs`,
@@ -7457,7 +7517,7 @@ identify the platform validation still needed.
 | B / F / Security — Provider copy | E2E-PROVIDER-copy-config-without-credentials |
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
-| C — Conversation & stream | E2E-008, E2E-008d, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll |
+| C — Conversation & stream | E2E-008, E2E-008d, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-CHAT-composer-session-mention, E2E-CHAT-session-reference-budget |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
 | D — Workspace (project ordering) | E2E-253 |
 | E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166, E2E-181, E2E-PLUGIN-imported-pi-package-skills |

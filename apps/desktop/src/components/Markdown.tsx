@@ -50,7 +50,7 @@ import {
 } from "../lib/latex-math";
 import { useAppStore } from "../stores/app-store";
 import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
-import { useOpenChatFileRef } from "../hooks/use-preview-target";
+import { useOpenChatFileRef, useOpenPreviewTarget } from "../hooks/use-preview-target";
 import {
   remarkChatFileLinks,
   resolvePreviewTarget,
@@ -454,8 +454,8 @@ function InlineCode({
 }: ComponentProps<"code"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
   const baseDir = useContext(MarkdownBaseDirContext);
-  const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const openFileRef = useOpenChatFileRef();
+  const openTarget = useOpenPreviewTarget();
   const text = typeof children === "string" ? children : null;
   const target =
     text && !className && !text.includes("\n")
@@ -474,11 +474,17 @@ function InlineCode({
     <button
       type="button"
       className="chat-code-link"
-      title={target.kind === "file" ? fileTitle : urlTitle}
+      title={
+        target.kind === "file"
+          ? fileTitle
+          : target.kind === "session"
+            ? target.sessionId
+            : urlTitle
+      }
       onClick={() =>
         target.kind === "file"
           ? openFileRef(text ?? target.path, baseDir)
-          : openUrl(target.url)
+          : openTarget(target)
       }
     >
       <code className={className} {...rest}>

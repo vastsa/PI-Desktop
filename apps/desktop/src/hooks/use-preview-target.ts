@@ -20,10 +20,21 @@ import { FILE_MANAGER_PLUGIN_TAB, fileManagerPluginTab } from "../lib/work-panel
 export function useOpenPreviewTarget() {
   const openFileRef = useOpenChatFileRef();
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
+  const selectSession = useAppStore((s) => s.selectSession);
+  const showToast = useAppStore((s) => s.showToast);
   return useCallback(
-    (target: ChatPreviewTarget) =>
-      target.kind === "file" ? openFileRef(target.path) : openUrl(target.url),
-    [openFileRef, openUrl],
+    (target: ChatPreviewTarget) => {
+      if (target.kind === "file") return openFileRef(target.path);
+      if (target.kind === "session") {
+        return selectSession(target.sessionId).catch((error: unknown) => {
+          showToast(error instanceof Error ? error.message : String(error), {
+            variant: "error",
+          });
+        });
+      }
+      return openUrl(target.url);
+    },
+    [openFileRef, openUrl, selectSession, showToast],
   );
 }
 

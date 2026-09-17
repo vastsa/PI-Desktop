@@ -72,7 +72,9 @@ const { useOpenPreviewTarget } = loadModule("../src/hooks/use-preview-target.ts"
       },
     },
   },
-  "../lib/chat-links": loadModule("../src/lib/chat-links.ts", {}),
+  "../lib/chat-links": loadModule("../src/lib/chat-links.ts", {
+    "@pi-desktop/shared": { parseSessionRef: () => null },
+  }),
   "../lib/work-panel-tabs": workPanelTabs,
 });
 

@@ -3,7 +3,7 @@ import type { AgentEvent, MessageAttachment, UiMessage } from "@pi-desktop/share
 type OptimisticFileReference = {
   path: string;
   name: string;
-  kind?: "image" | "file";
+  kind?: "image" | "file" | "session";
   mimeType?: string;
   /** Large-text paste tokens travel inline in the text, not as attachments. */
   token?: string;
@@ -22,13 +22,13 @@ export function optimisticUserMessage(
   createdAt: string = new Date().toISOString(),
 ): UiMessage {
   const attachments: MessageAttachment[] = fileReferences
-    .filter((reference) => !reference.token)
+    .filter((reference) => !reference.token && reference.kind !== "session")
     .map((reference) => ({
       kind:
-        reference.kind ??
-        (/\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(reference.path)
+        reference.kind === "image" ||
+        /\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(reference.path)
           ? "image"
-          : "file"),
+          : "file",
       name: reference.name,
       ref: reference.path,
       ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),

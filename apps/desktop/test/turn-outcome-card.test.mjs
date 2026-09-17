@@ -47,8 +47,8 @@ test("outcome card exposes one localized continuation action", () => {
   assert.doesNotMatch(outcome, /toolWorkPanelTab/);
   assert.match(
     sendPrompt,
-    // The send ships the submitted content through the prompt call.
-    /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content,/,
+    // The send ships the expanded snapshot through the prompt call.
+    /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content: promptContent,/,
   );
   assert.match(sendPrompt, /latestTurnResults: withoutRecordKey/);
   assert.doesNotMatch(sendPrompt, /truncateFromMessageId/);

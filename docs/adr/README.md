@@ -302,7 +302,5 @@ Each ADR includes:
 | 0273 | [Git checkout as a Create project source](0273-git-checkout-create-project-source.md) | Accepted for implementation (amends ADR 0233; ADR 0247) |
 | 0274 | [A development plugin is reviewed before it is loaded](0274-development-plugin-permission-review.md) | Accepted for implementation (amends ADR 0005) |
 | 0275 | [A floating widget placement for plugin panels](0275-plugin-panel-floating-widget.md) | Accepted for implementation (amends ADR 0093 §4; ADR 0092 / ADR 0110) |
-<!-- In flight on feat/chat-wide-layout: it claims 0274, which main has since taken
-     (development-plugin-permission-review). The branch owner renumbers it when it
-     lands; this row is kept verbatim rather than rewritten here. -->
-| 0274 | [Draggable chat content width](0274-draggable-chat-content-width.md) | Accepted (D439) |
+| 0276 | [Composer @ mentions other sessions](0276-composer-session-mentions.md) | Accepted (amends ADR 0024 / 0070 / 0163; D442) |
+| 0277 | [Draggable chat content width](0277-draggable-chat-content-width.md) | Accepted (D439) |

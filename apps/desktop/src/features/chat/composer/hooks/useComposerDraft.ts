@@ -29,6 +29,7 @@ import {
 import {
   editorSelectionRange,
   createFileReference,
+  isDurableComposerReference,
   isEditableTextReference,
   isPersistedScratchReference,
   paintEditorValue,
@@ -369,12 +370,12 @@ export function useComposerDraft({
   useEffect(() => {
     const current = fileReferencesRef.current;
     const kept = current.filter((fileReference) =>
-      isPersistedScratchReference(fileReference.path),
+      isDurableComposerReference(fileReference),
     );
     if (kept.length === current.length) return;
     const droppedTokens = new Set(
       current
-        .filter((fileReference) => !isPersistedScratchReference(fileReference.path))
+        .filter((fileReference) => !isDurableComposerReference(fileReference))
         .flatMap((fileReference) =>
           fileReference.token ? [fileReference.token] : [],
         ),

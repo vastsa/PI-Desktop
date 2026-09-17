@@ -4,6 +4,7 @@ import type { ComposerCommand } from "@pi-desktop/shared";
 import type { AutocompleteItem, useComposerAutocomplete } from "../hooks/use-composer-autocomplete";
 import {
   IconBookOpen,
+  IconBranch,
   IconFileText,
   IconFolder,
   IconPlug,
@@ -84,7 +85,9 @@ export function ComposerAutocomplete({
       key:
         item.kind === "command"
           ? `c:${item.command.kind}:${item.command.name}`
-          : `p:${item.entry.path}`,
+          : item.kind === "session"
+            ? `s:${item.session.id}`
+            : `p:${item.entry.path}`,
       type: "button" as const,
       role: "option" as const,
       "aria-selected": active,
@@ -118,6 +121,22 @@ export function ComposerAutocomplete({
         </button>
       );
     }
+    if (item.kind === "session") {
+      return (
+        <button
+          {...commonProps}
+          aria-label={`${item.session.title} — ${item.session.id}`}
+          title={item.session.id}
+        >
+          <span className="composer-ac-icon">
+            <IconBranch size={14} />
+          </span>
+          <span className="composer-ac-name">
+            <Highlighted text={item.session.title} ranges={item.match.ranges} />
+          </span>
+        </button>
+      );
+    }
     const isDir = item.entry.kind === "dir";
     const name = item.entry.path.split("/").pop() ?? item.entry.path;
     const displayName = `${name}${isDir ? "/" : ""}`;
@@ -138,16 +157,23 @@ export function ComposerAutocomplete({
   const rows: React.ReactNode[] = [];
   let lastGroup: string | null = null;
   ac.items.forEach((item, index) => {
-    if (item.kind === "command") {
-      const group = item.command.kind;
-      if (group !== lastGroup) {
-        lastGroup = group;
-        rows.push(
-          <div key={`g:${group}`} className="composer-model-group-label">
-            {t(GROUP_KEYS[group])}
-          </div>,
-        );
-      }
+    const group =
+      item.kind === "command"
+        ? item.command.kind
+        : item.kind === "session"
+          ? "session"
+          : "file";
+    if (group !== lastGroup) {
+      lastGroup = group;
+      rows.push(
+        <div key={`g:${group}`} className="composer-model-group-label">
+          {item.kind === "command"
+            ? t(GROUP_KEYS[item.command.kind])
+            : item.kind === "session"
+              ? t("chat.sessionGroup")
+              : t("chat.fileGroup")}
+        </div>,
+      );
     }
     rows.push(renderRow(item, index));
   });

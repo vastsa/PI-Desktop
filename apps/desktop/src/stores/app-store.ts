@@ -221,6 +221,8 @@ function promptAttachmentsFromDraft(
       (/\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(reference.path)
         ? "image"
         : "file");
+    // Session chips expand at send time; they are never structured attachments.
+    if (kind === "session") return [];
     // Inline chips use tokens for both files and images. Ordinary file chips
     // already serialize to @path text (the model can Read them); only image
     // chips need the structured transport for vision/fallback handling.

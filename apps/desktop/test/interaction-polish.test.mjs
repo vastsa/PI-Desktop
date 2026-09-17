@@ -26,7 +26,7 @@ test("high-traffic chrome uses shared motion tokens on hover fills", () => {
 });
 
 test("empty-home stack gap stays within the 24px workstation ceiling", () => {
-  const block = styles.match(/\.home-stack-inner\s*\{[^}]+\}/)?.[0] ?? "";
+  const block = styles.match(/(?:^|\n)\.home-stack-inner\s*\{[^}]+\}/)?.[0] ?? "";
   assert.match(block, /gap:\s*(?:1[0-9]px|2[0-4]px)/);
   assert.doesNotMatch(block, /gap:\s*2[5-9]px|gap:\s*[3-9]\dpx/);
 });

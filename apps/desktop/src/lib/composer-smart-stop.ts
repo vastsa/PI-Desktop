@@ -1,7 +1,7 @@
 export type ComposerDraftFileReference = {
   path: string;
   name: string;
-  kind?: "image" | "file";
+  kind?: "image" | "file" | "session";
   mimeType?: string;
   /** Visible inline token for a generated large-text paste reference. */
   token?: string;

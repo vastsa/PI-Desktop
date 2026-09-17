@@ -290,8 +290,8 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
   assert.match(sendPrompt, /return false;/);
   assert.match(
     sendPrompt,
-    // The prompt call carries the submitted content and attachment mapping.
-    /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content,[\s\S]*?attachments:[\s\S]*?promptAttachmentsFromDraft\(draft\.fileReferences\)[\s\S]*?\}\);[\s\S]*?return true/,
+    // The prompt call ships the expanded snapshot, not the shorthand `content`.
+    /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content: promptContent,[\s\S]*?attachments:[\s\S]*?promptAttachmentsFromDraft\(draft\.fileReferences\)[\s\S]*?\}\);[\s\S]*?return true/,
   );
 });
 
@@ -327,6 +327,7 @@ test("draft attachment routing keeps image chips structured and file chips textu
       token: "\uE003",
     },
     { path: "src/index.ts", name: "index.ts", kind: "file" },
+    { path: "session:abc", name: "Other chat", kind: "session", token: "\uE004" },
   ]);
   assert.deepEqual(attachments, [
     {

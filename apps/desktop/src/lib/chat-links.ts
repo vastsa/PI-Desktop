@@ -20,6 +20,7 @@
  * still cannot escape the workspace (D322).
  */
 
+import { parseSessionRef } from "@pi-desktop/shared";
 const KNOWN_EXTS = new Set([
   "ts", "tsx", "js", "jsx", "mjs", "cjs", "json", "css", "scss", "less",
   "html", "htm", "md", "mdx", "txt", "rs", "py", "go", "rb", "sh", "zsh",
@@ -183,7 +184,8 @@ export function toWorkspaceRel(
 
 export type ChatPreviewTarget =
   | { kind: "file"; path: string }
-  | { kind: "url"; url: string };
+  | { kind: "url"; url: string }
+  | { kind: "session"; sessionId: string };
 
 /** Resolve one raw chat token into a previewable target, or null. */
 export function resolvePreviewTarget(
@@ -193,6 +195,8 @@ export function resolvePreviewTarget(
 ): ChatPreviewTarget | null {
   const trimmed = text.trim();
   if (isHttpUrl(trimmed)) return { kind: "url", url: trimmed };
+  const sessionId = parseSessionRef(trimmed);
+  if (sessionId) return { kind: "session", sessionId };
   const at = unwrapAtFileRef(trimmed);
   if (at) {
     // Scratch/attachment @refs stay absolute so fs/open can contain them.
@@ -266,7 +270,11 @@ export function splitChatText(
     if (!target) continue;
     if (start > last) segments.push({ kind: "text", text: text.slice(last, start) });
     const label =
-      target.kind === "file" ? leafName(target.path) : raw;
+      target.kind === "file"
+        ? leafName(target.path)
+        : target.kind === "session"
+          ? target.sessionId
+          : raw;
     segments.push({ kind: "target", text: raw, label, target });
     last = start + raw.length;
   }
@@ -325,7 +333,9 @@ export function linkifyMdastTree(
           const url =
             segment.target.kind === "url"
               ? segment.target.url
-              : segment.target.path;
+              : segment.target.kind === "session"
+                ? `@session:${segment.target.sessionId}`
+                : segment.target.path;
           next.push({
             type: "link",
             url,

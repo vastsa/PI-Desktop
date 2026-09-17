@@ -34,6 +34,7 @@ import { FontFamilyRow } from "../../components/settings/FontFamilyRow";
 import { FontSizeRow } from "../../components/settings/FontSizeRow";
 import { LanguageRow } from "../../components/settings/LanguageRow";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
+import { SessionReferenceBudgetRow } from "./SessionReferenceBudgetRow";
 import { ThemeRow } from "../../components/settings/ThemeRow";
 import { NetworkProxySection } from "../../components/settings/NetworkProxySection";
 import { ProjectsPage } from "../../pages/ProjectsPage";
@@ -417,6 +418,7 @@ export function SettingsPage() {
                     <span className="settings-toggle-thumb" />
                   </button>
                 </SettingsRow>
+                <SessionReferenceBudgetRow />
                 <LargePasteThresholdRow
                   settings={settings}
                   saveSettings={saveSettings}

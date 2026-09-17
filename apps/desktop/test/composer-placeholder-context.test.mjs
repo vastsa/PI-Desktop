@@ -36,12 +36,12 @@ test("placeholder changes fade without duplicating the native accessible value",
   assert.match(composerStyles, /opacity:\s*0\s*!important/);
 });
 
-test("both shipped locales provide welcome, command, file, and shortcut guidance", () => {
-  assert.match(english, /placeholderHint:\s*"Type \/ for commands · @ for files"/);
-  assert.match(english, /placeholderHomeHint:\s*"Type \/ for commands · @ for files"/);
+test("both shipped locales provide welcome, command, file, session, and shortcut guidance", () => {
+  assert.match(english, /placeholderHint:\s*"Type \/ for commands · @ for files and sessions"/);
+  assert.match(english, /placeholderHomeHint:\s*"Type \/ for commands · @ for files and sessions"/);
   assert.match(english, /placeholderShortcut:\s*"Shift\+Enter for newline · Use Send to submit"/);
-  assert.match(chinese, /placeholderHint:\s*"输入 \/ 使用命令 · @ 引用文件"/);
-  assert.match(chinese, /placeholderHomeHint:\s*"输入 \/ 使用命令 · @ 引用文件"/);
+  assert.match(chinese, /placeholderHint:\s*"输入 \/ 使用命令 · @ 引用文件或会话"/);
+  assert.match(chinese, /placeholderHomeHint:\s*"输入 \/ 使用命令 · @ 引用文件或会话"/);
   assert.match(chinese, /placeholderShortcut:\s*"Shift\+Enter 换行 · 点击发送提交"/);
 });
 

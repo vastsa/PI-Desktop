@@ -468,7 +468,12 @@ export function Composer({
           acceptedFileReference.name,
           referenceSessionId,
           {
-            kind: isImageFilePath(acceptedFileReference.path) ? "image" : "file",
+            kind:
+              acceptedFileReference.kind === "session"
+                ? "session"
+                : isImageFilePath(acceptedFileReference.path)
+                  ? "image"
+                  : "file",
             token,
           },
         ),
