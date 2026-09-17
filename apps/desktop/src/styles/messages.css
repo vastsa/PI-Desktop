@@ -1324,7 +1324,8 @@
 @media (prefers-reduced-motion: reduce) {
   .context-inspector-ring-progress,
   .context-inspector-trigger,
-  .context-inspector-popover {
+  .context-inspector-popover,
+  .message-edit {
     transition: none;
   }
 }
@@ -1340,9 +1341,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Compact composer plate: same surface and radius as the bottom composer,
-   without the floating shadow. The textarea is unboxed; actions sit in a
-   28px footer. */
+/* Compact composer plate: same surface, radius, and lift as the bottom
+   composer. Light `--ds-bg-composer` equals the pane, so the plate must
+   lift or it vanishes (D297: composers lift by shadow, not stroke).
+   The textarea is unboxed; actions sit in a 28px footer. */
 .message-edit {
   display: flex;
   width: min(100%, var(--chat-prose-max-width, 720px));
@@ -1351,8 +1353,15 @@
   border: 0;
   border-radius: var(--ds-composer-radius, var(--radius-xl));
   background: var(--ds-bg-composer);
-  box-shadow: none;
+  box-shadow: var(--ds-shadow-composer);
   isolation: isolate;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.message-edit:focus-within {
+  box-shadow: 0 7px 24px color-mix(in oklab, var(--ds-text-primary) 9%, transparent);
 }
 
 /* A prompt being edited needs typing room, so the user column drops its

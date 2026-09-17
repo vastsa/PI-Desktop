@@ -867,6 +867,10 @@ model):
   hairline stroke plus the restrained `--elevation-prominent` shadow provides
   separation; the transcript reserves the measured dock height instead of
   painting a full-width gradient veil.
+- In-transcript message-edit uses that same composer fill, radius, and
+  `--ds-shadow-composer` lift (no stroke). Focus deepens the lift the same
+  way the docked composer does, so the light plate stays distinct from the
+  white pane.
 - Dark elevated shell reads as elevated-primary (`#212121f5` / gray-800 96%)
   on `#181818` with standard elevation-prominent
 - Starter cards use a two-column grid at workstation widths and collapse to

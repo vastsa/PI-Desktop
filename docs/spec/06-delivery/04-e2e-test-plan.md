@@ -4157,7 +4157,9 @@ identify the platform validation still needed.
   Copy; after the response settles, the assistant toolbar offers Copy, Fork,
   Regenerate. The user toolbar offers the pager (when variants exist), Copy,
   Edit, Delete. Edit replaces the prompt bubble with a wider composer-matched
-  inline editor plate with Retry and Cancel controls; Escape or Cancel restores the bubble
+  inline editor plate that uses the composer fill and `--ds-shadow-composer`
+  lift (no stroke) so the light plate stays distinct from the white pane,
+  with Retry and Cancel controls; Escape or Cancel restores the bubble
   unchanged. Retry truncates the transcript from that prompt and streams a new
   answer whether or not the text changed, leaving a `current / total` pager on
   the user turn that restores the original prompt with its full answer tail in
@@ -8467,6 +8469,16 @@ This test plan spec is accepted when:
 - **Specs linked**: `04-ux/08-component-spec.md` §1.7, §3.4; decisions-log D304 / D348
 - **Milestone**: M6
 - **Status**: Partially automated (`macos-sidebar-vibrancy.test.mjs` source contract); native visual verification Draft
+
+### US-UI-75 Light message-edit plate
+- Open a populated transcript in light and dark themes and choose Edit on a
+  user prompt.
+- Expect the inline editor to be a composer-matched plate (`--ds-bg-composer`,
+  `--ds-composer-radius`) that lifts from the pane with `--ds-shadow-composer`
+  and no hairline stroke. On light theme the white plate must remain distinct
+  from the `#ffffff` chat surface; Retry and Cancel stay legible in the footer.
+- Focusing the textarea deepens the lift the same way the docked composer
+  does; Escape or Cancel restores the bubble.
 
 #### E2E-123: asktool collects multiple answers and returns skipped placeholders
 
