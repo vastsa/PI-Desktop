@@ -541,6 +541,26 @@ Override PI-Desktop design tokens in that CSS. The host sanitizes contributed
 CSS, refuses imports and non-data URLs, caps each file at 256 KiB, and allows up
 to eight themes per plugin. The user selects the theme in Settings.
 
+Theme contract details:
+
+- `base` is `"light"` or `"dark"` and defaults to `dark` — the palette your
+  overrides layer on.
+- Contributed sheets are appended after the app stylesheets, but append order
+  only wins when specificity is equal. Dark/shared tokens live on
+  `:root, :root[data-theme="dark"]`; light tokens live on
+  `:root[data-theme="light"]`. To override light tokens you must write
+  `:root[data-theme="light"] {…}` (match the shell selector for your `base`).
+- Optional `assets` (absolute paths; extension whitelist
+  png/jpg/jpeg/webp/avif/svg/woff2; 4 MB summed) rewrites matching `url()` to
+  `plugin-asset://…`.
+- Optional `contributes.windowAppearance` (`#rrggbb` / `#rrggbbaa`) needs the
+  `ui.window.appearance` permission and applies only while one of this plugin's
+  themes is selected.
+
+See the [manifest schema](spec/07-plugins/02-plugin-manifest-schema.md) and
+[plugin security §3.1](spec/07-plugins/04-plugin-security.md#31-contributed-theme-css)
+for the full field list and sanitizer rules.
+
 ### 6.8 Work panel view
 
 A view is an interface docked in the app's right work panel, next to Review,
