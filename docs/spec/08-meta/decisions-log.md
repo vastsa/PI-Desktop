@@ -5945,3 +5945,41 @@ that was sitting at the bottom — including after the turn had finished.
   See `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md` and E2E-LAYOUT-sidebar-settings in
   `06-delivery/04-e2e-test-plan.md`.
+
+## 2026-09-17 — A route surface stops holding a stacking context after its entrance
+
+- The plugin install consent modal — and the plugin detail sheet with it — painted
+  under the opaque 46px titlebar band, so the band was not covered by the modal's
+  scrim and the band's controls stayed clickable. A route page is authored inside
+  `.route-surface`, whose entrance animation carried
+  `animation-fill-mode: both`: the fill kept the finished entrance "in effect"
+  for as long as the page was mounted, and therefore kept the surface a stacking
+  context, so an overlay rendered inside the page could not paint above the
+  chrome.
+- `.route-surface` and `.settings-content-enter` no longer carry `forwards` /
+  `both` on their entrance (`apps/desktop/src/styles/chat-shell.css`). The
+  entrance ends on the element's own state, so the fill was redundant; without it
+  the surface stops holding a stacking context once the entrance finishes, and an
+  overlay authored inside a route page paints above the titlebar band again. The
+  keyframes stay opacity-only and the entrance still plays.
+- The plugin detail sheet keeps reserving `--ds-toolbar-height` at its top
+  (`apps/desktop/src/styles/plugins.css`), because on Windows/Linux the
+  renderer-drawn window controls own that top-right corner at `z-index: 200` and
+  stay above any overlay's z-index.
+- The plugin overlays returned to `z-dialog` (40) from their off-scale `80` and
+  `60` (`plugins.css`, and the release-notes overlay with them): once the route
+  surface stopped trapping them they competed in the root stacking context, and
+  at 80 they covered the leaf popups (60) and toasts (50) a dialog raises from
+  inside itself — the install dialog's "copied" toast among them. A source test
+  pins that relationship now.
+- Renderer only: no IPC, storage, schema, protocol, or plugin-SDK change, and no
+  new default. See `04-ux/07-ui-design-system.md` §9,
+  `apps/desktop/test/settings-dialog-overlay.test.mjs`, and
+  `06-delivery/04-e2e-test-plan.md` E2E-LAYOUT-three-column-width-priority (its
+  four overlay assertions live in `scripts/e2e-three-column-layout.mjs`).
+- Not done, and recorded as a follow-up: true modality — inertness, focus
+  containment, shortcut stand-down — needs these overlays on the browser's top
+  layer (`<dialog>.showModal()`). That is blocked until the popups, tooltips, and
+  toasts they open, which are portaled to `document.body`, also move to the top
+  layer, because top-layer content paints above them and makes them unusable; an
+  attempt was withdrawn for exactly that reason.

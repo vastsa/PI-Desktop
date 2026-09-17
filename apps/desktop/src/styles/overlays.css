@@ -316,7 +316,9 @@
 }
 
 .release-notes-overlay {
-  z-index: 80;
+  /* z-dialog, like every other overlay: leaf popups (60) and toasts (50) keep
+     painting above it. */
+  z-index: 40;
 }
 
 .release-notes-dialog {

@@ -4409,3 +4409,12 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 旧 `--ds-settings-rail-bg` 作为共享颜色的可选回退保留，显式 `--ds-bg-sidebar` 优先；不修改主题或原生窗口 API。
 - 侧栏挂载不再等同于展开。专用过渡 hook 只响应可见主界面的折叠状态变化，设置导航取消未完成阶段，返回恢复既有宽度和状态，不重播 `sidebar-in`。动画事件防护、超时清理、自动恢复及减少动态效果仍保留；首次显示由原有启动揭示处理，不再叠加侧栏宽度动画。
 - 不改变 item 缩进、宽度、工作区状态、数据或权限。见 `04-ux/06-settings-ia.md`、`04-ux/07-ui-design-system.md`、`04-ux/08-component-spec.md` 及 `06-delivery/04-e2e-test-plan.md` 的 E2E-LAYOUT-sidebar-settings。
+
+## 2026-09-17 —— 路由表面在入场动画结束后不再持有堆叠上下文
+
+- 插件安装同意模态框 —— 以及随后的插件详情抽屉 —— 原本绘制在不透明的 46px 标题栏带之下，因此该栏没有被模态遮罩覆盖，栏内控件仍然可点击。路由页面挂载在 `.route-surface` 内，而它的入场动画带有 `animation-fill-mode: both`：填充让已结束的入场动画在页面挂载期间始终「生效」，从而让该表面持续成为堆叠上下文，页面内渲染的浮层因此无法绘制到窗口 chrome 之上。
+- `.route-surface` 与 `.settings-content-enter` 的入场动画不再声明 `forwards` / `both` 填充（`apps/desktop/src/styles/chat-shell.css`）。入场动画的终点就是元素自身的状态，因此该填充本是多余的；去掉之后，入场结束时表面不再持有堆叠上下文，路由页面内的浮层重新绘制在标题栏带之上。关键帧仍然只有 opacity，入场动画照常播放。
+- 插件详情抽屉保留顶部的 `--ds-toolbar-height` 预留（`apps/desktop/src/styles/plugins.css`）：在 Windows/Linux 上该右上角归渲染器绘制的窗口控件所有（`z-index: 200`），它们位于任何浮层的 z-index 之上。
+- 插件浮层从刻度外的 `80` 与 `60` 归回到 `z-dialog`（40）（`plugins.css`，发行说明浮层一并处理）：路由表面不再困住它们之后，它们就在根堆叠上下文中参与比较，而在 80 上会盖住对话框自身弹出的叶子级弹出层（60）与 toast（50）—— 其中包括安装对话框的「已复制」提示。现在有源测试钉住这一关系。
+- 仅渲染层：无 IPC、存储、schema、协议或插件 SDK 改动，也没有新增默认值。见 `04-ux/07-ui-design-system.md` §9、`apps/desktop/test/settings-dialog-overlay.test.mjs`，以及 `06-delivery/04-e2e-test-plan.md` 的 E2E-LAYOUT-three-column-width-priority（其四条浮层断言位于 `scripts/e2e-three-column-layout.mjs`）。
+- 未做、留作后续的事项：真正的模态 —— 不可交互化、焦点收束、快捷键让位 —— 需要这些浮层进入浏览器顶层（`<dialog>.showModal()`）。在它们打开的弹出菜单、工具提示与 toast（portal 到 `document.body`）同样迁入顶层之前，这一步无法进行，因为顶层内容会绘制在它们之上并使其不可用；此前的一次尝试正因此被撤回。

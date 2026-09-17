@@ -826,6 +826,74 @@ async function main() {
         ),
       "plugin route remains visible after preview mode",
     );
+    // E2E: a plugin modal covers the window chrome. The 46px band is an opaque
+    // absolute row, and the route surface must not hold a stacking context that
+    // leaves the modal's veil underneath it — that is what put the band over
+    // the install consent. The viewport-fixed work-panel toggle sits inside the
+    // band and used to paint over the veil too; it must not any more.
+    const modalCoverage = await cdp.evaluate(`(async () => {
+      document.querySelector(".plugins-header-menu")?.click?.();
+      for (let i = 0; i < 20; i += 1) {
+        if (document.querySelector('[role="menuitem"][data-action="newFromTemplate"]')) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      document
+        .querySelector('[role="menuitem"][data-action="newFromTemplate"]')
+        ?.click?.();
+      await new Promise((r) => setTimeout(r, 400));
+      const veil = document.querySelector(".plugins-modal-backdrop");
+      if (!veil) return { opened: false };
+      const toggle = document.querySelector(".app-work-panel-toggle");
+      const toggleBox = toggle?.getBoundingClientRect();
+      const toggleStack = toggleBox
+        ? document.elementsFromPoint(
+            toggleBox.left + toggleBox.width / 2,
+            toggleBox.top + toggleBox.height / 2,
+          )
+        : [];
+      // The band opts out of pointer events, so it is made an explicit target
+      // for this one measurement and put back afterwards.
+      const band = document.querySelector(".main-titlebar");
+      const previous = band?.style.pointerEvents ?? "";
+      if (band) band.style.pointerEvents = "auto";
+      const bandBox = band?.getBoundingClientRect();
+      const bandStack = bandBox
+        ? document.elementsFromPoint(
+            bandBox.left + bandBox.width / 2,
+            bandBox.top + bandBox.height / 2,
+          )
+        : [];
+      if (band) band.style.pointerEvents = previous;
+      return {
+        opened: true,
+        veilIsTopmostAtToggle: toggleStack[0] === veil,
+        bandIsTopmost: bandStack[0] === band,
+        bandTopmost: (bandStack[0]?.className ?? bandStack[0]?.tagName ?? "").toString().slice(0, 40),
+      };
+    })()`);
+    check(
+      modalCoverage.opened === true,
+      "a plugin modal opens over the plugins route",
+      JSON.stringify(modalCoverage),
+    );
+    check(
+      modalCoverage.veilIsTopmostAtToggle === true,
+      "the modal veil covers the work-panel toggle in the titlebar band",
+      JSON.stringify(modalCoverage),
+    );
+    check(
+      modalCoverage.bandIsTopmost === false,
+      "the titlebar band does not paint over the modal veil",
+      JSON.stringify(modalCoverage),
+    );
+    const modalClosed = await cdp.evaluate(`(async () => {
+      document
+        .querySelector(".plugins-modal-backdrop .plugins-modal-actions button")
+        ?.click?.();
+      await new Promise((r) => setTimeout(r, 300));
+      return !document.querySelector(".plugins-modal-backdrop");
+    })()`);
+    check(modalClosed === true, "the plugin modal closes and leaves the route clean");
     // Once Extensions is active the footer Plugins button reuses the existing
     // Back action, so a second activation returns to the previous destination
     // (E2E-NAV-plugins-button-goes-back).

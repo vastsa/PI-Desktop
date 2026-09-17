@@ -1241,7 +1241,8 @@
 .plugins-sheet-layer {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* z-dialog: the sheet is a dialog surface, so it stays under leaf popups. */
+  z-index: 40;
   display: flex;
   justify-content: flex-end;
 }
@@ -1735,7 +1736,8 @@
 .plugins-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  /* z-dialog: leaf popups (z-index 60) and toasts (50) stay above the veil. */
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;

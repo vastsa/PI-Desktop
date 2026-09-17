@@ -12255,6 +12255,12 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   28px square on a transparent seat with only a semantic hover wash, so the
   header shows quiet icons rather than filled or raised squares. The collapse
   toggle's open state changes its glyph and ink only.
+- **Overlay coverage measured in the running app**: on the Plugins route a plugin
+  modal opens; the modal veil is the topmost hit at the work-panel toggle inside
+  the titlebar band; the titlebar band is not the topmost hit there, so it does
+  not paint over the modal veil; and closing the modal leaves the route clean.
+  `pnpm test:e2e:layout` asserts those four hits as renderer DOM/CDP evidence,
+  not as native hit-test proof.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md` §10,
   `04-ux/08-component-spec.md` §1 and §5, `04-ux/09-interaction-patterns.md` §8,
   ADR 0238
