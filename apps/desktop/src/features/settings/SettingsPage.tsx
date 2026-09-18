@@ -54,6 +54,7 @@ import {
   ImportSection,
   UpdatesRow,
 } from "./agent-sections";
+import { PromptEnhancementCard } from "./prompt-enhancement-card";
 import { VoiceSettingsCard } from "./voice-settings";
 import { CloseBehaviorSection, DeveloperSection } from "./developer-sections";
 import { PluginSettingsDestination } from "../../components/settings/PluginSettingsDestination";
@@ -427,6 +428,11 @@ export function SettingsPage() {
                   saveSettings={saveSettings}
                 />
               </SettingsCard>
+
+              <PromptEnhancementCard
+                settings={settings}
+                saveSettings={saveSettings}
+              />
             </div>
           )}
 

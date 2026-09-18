@@ -1113,6 +1113,25 @@ sklm: {
     fontSizeXl: "Trenta",
     fontSizeScale: "Text size scale",
     fontSizePercent: "{{value}}%",
+    promptEnhancementTitle: "Prompt enhancement",
+    promptEnhancementDesc:
+      "Applies to the Composer's Enhance prompt action. Saving an empty field restores the built-in default.",
+    promptEnhancementModel: "Enhancement model",
+    promptEnhancementModelDesc:
+      "Model used for prompt enhancement. Follows the current model until a specific one is chosen.",
+    promptEnhancementModelFollow: "Follow the current model",
+    promptEnhancementSystemPrompt: "System prompt",
+    promptEnhancementSystemPromptDesc:
+      "Role, rewrite rules, and output contract sent with every enhancement request.",
+    promptEnhancementUserTemplate: "User template",
+    promptEnhancementUserTemplateDesc:
+      "Wraps the draft. It must include the draft variable; use the insert button to place it.",
+    promptEnhancementInsertDraft: "Insert draft variable",
+    promptEnhancementRestore: "Restore default",
+    promptEnhancementRestoreAll: "Restore all defaults",
+    promptEnhancementMissingDraftVariable:
+      "The user template must contain the draft variable, or the draft cannot be sent.",
+    promptEnhancementSaveError: "Couldn't save the prompt-enhancement settings.",
   },
   project: {
     open: "Open project",

@@ -123,18 +123,46 @@ export function registerAgentIpc({
     }
     const settings = await host.call<any>("settings.get");
     const launchSessionId = sessionId || `prompt-enhancement:${crypto.randomUUID()}`;
-    const launch = await resolveAgentRuntimeLaunch(
-      launchSessionId,
-      session ?? {},
-      settings,
-      {
+    // A pinned enhancement model is a preference, not a hard requirement: a
+    // pin whose provider was disabled, whose account was signed out, or whose
+    // binding no longer exists must not take the action down. Try the pin,
+    // fall back to the Composer's current model, and record why (ADR 0121).
+    const pinnedProviderId =
+      typeof settings?.promptEnhancementProviderId === "string"
+        ? settings.promptEnhancementProviderId.trim()
+        : "";
+    const pinnedModelId =
+      typeof settings?.promptEnhancementModelId === "string"
+        ? settings.promptEnhancementModelId.trim()
+        : "";
+    const composerProviderId =
+      typeof req.providerId === "string" ? req.providerId.trim() : undefined;
+    const composerModelId =
+      typeof req.modelId === "string" ? req.modelId.trim() : undefined;
+    const launchFor = (providerId?: string, modelId?: string) =>
+      resolveAgentRuntimeLaunch(launchSessionId, session ?? {}, settings, {
         mode: "agent",
-        providerId:
-          typeof req.providerId === "string" ? req.providerId.trim() : undefined,
-        modelId: typeof req.modelId === "string" ? req.modelId.trim() : undefined,
+        providerId,
+        modelId,
         thinkingLevel: req.thinkingLevel,
-      },
-    );
+      });
+    let launch: Awaited<ReturnType<typeof launchFor>>;
+    if (pinnedProviderId) {
+      try {
+        launch = await launchFor(pinnedProviderId, pinnedModelId || undefined);
+      } catch (error) {
+        logger.app("session", "warn", "prompt enhancement model unavailable", {
+          data: {
+            pinnedProviderId,
+            pinnedModelId: pinnedModelId || undefined,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+        launch = await launchFor(composerProviderId, composerModelId);
+      }
+    } else {
+      launch = await launchFor(composerProviderId, composerModelId);
+    }
     const runtimeProvider = {
       ...launch.sidecarParams.provider,
       ...(launch.sidecarParams.provider.authKind === OAUTH_AUTH_KIND
@@ -145,7 +173,17 @@ export function registerAgentIpc({
       runtimeProvider,
       draft,
       launch.sidecarParams.thinkingLevel,
-      { sessionId: launchSessionId },
+      {
+        sessionId: launchSessionId,
+        systemPrompt:
+          typeof settings?.promptEnhancementSystemPrompt === "string"
+            ? settings.promptEnhancementSystemPrompt
+            : undefined,
+        userTemplate:
+          typeof settings?.promptEnhancementUserTemplate === "string"
+            ? settings.promptEnhancementUserTemplate
+            : undefined,
+      },
     );
     logger.app("session", "info", "prompt enhanced", {
       sessionId: sessionId || undefined,

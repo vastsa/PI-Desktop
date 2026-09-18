@@ -1097,6 +1097,25 @@ sklm: {
     "fontSizeXl": "Trenta",
     "fontSizeScale": "Textgrößenskala",
     "fontSizePercent": "{{value}}%",
+    "promptEnhancementTitle": "Prompt-Verbesserung",
+    "promptEnhancementDesc":
+      "Gilt für die Aktion „Prompt verbessern“ im Composer. Ein leeres Feld stellt beim Speichern den eingebauten Standard wieder her.",
+    "promptEnhancementModel": "Modell für die Verbesserung",
+    "promptEnhancementModelDesc":
+      "Modell für die Prompt-Verbesserung. Folgt dem aktuellen Modell, bis eines festgelegt wird.",
+    "promptEnhancementModelFollow": "Aktuellem Modell folgen",
+    "promptEnhancementSystemPrompt": "System-Prompt",
+    "promptEnhancementSystemPromptDesc":
+      "Rolle, Umschreibregeln und Ausgabeformat, die mit jeder Anfrage gesendet werden.",
+    "promptEnhancementUserTemplate": "Benutzer-Vorlage",
+    "promptEnhancementUserTemplateDesc":
+      "Umschließt den Entwurf. Muss die Entwurfsvariable enthalten; fügen Sie sie über die Schaltfläche ein.",
+    "promptEnhancementInsertDraft": "Entwurfsvariable einfügen",
+    "promptEnhancementRestore": "Standard wiederherstellen",
+    "promptEnhancementRestoreAll": "Alle Standards wiederherstellen",
+    "promptEnhancementMissingDraftVariable":
+      "Die Benutzer-Vorlage muss die Entwurfsvariable enthalten, sonst kann der Entwurf nicht gesendet werden.",
+    "promptEnhancementSaveError": "Die Prompt-Verbesserungseinstellungen konnten nicht gespeichert werden.",
   },
   "project": {
     "open": "Projekt öffnen",

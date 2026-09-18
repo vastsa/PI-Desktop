@@ -1114,6 +1114,25 @@ sklm: {
     fontSizeXl: "Trenta",
     fontSizeScale: "Metin ölçeği",
     fontSizePercent: "%{{value}}",
+    promptEnhancementTitle: "Prompt iyileştirme",
+    promptEnhancementDesc:
+      "Bestekinin Promtu iyileştir eylemi için geçerlidir. Boş kaydetmek yerleşik varsayılanı geri yükler.",
+    promptEnhancementModel: "İyileştirme modeli",
+    promptEnhancementModelDesc:
+      "Prompt iyileştirme için kullanılan model. Bir model seçilene kadar geçerli modeli izler.",
+    promptEnhancementModelFollow: "Geçerli modeli izle",
+    promptEnhancementSystemPrompt: "Sistem promptu",
+    promptEnhancementSystemPromptDesc:
+      "Her iyileştirme isteğiyle gönderilen rol, yeniden yazma kuralları ve çıktı sözleşmesi.",
+    promptEnhancementUserTemplate: "Kullanıcı şablonu",
+    promptEnhancementUserTemplateDesc:
+      "Taslağı sarar. Taslak değişkenini içermelidir; ekleme düğmesini kullanın.",
+    promptEnhancementInsertDraft: "Taslak değişkenini ekle",
+    promptEnhancementRestore: "Varsayılanı geri yükle",
+    promptEnhancementRestoreAll: "Tüm varsayılanları geri yükle",
+    promptEnhancementMissingDraftVariable:
+      "Kullanıcı şablonu taslak değişkenini içermelidir, aksi halde taslak gönderilemez.",
+    promptEnhancementSaveError: "Prompt iyileştirme ayarları kaydedilemedi.",
   },
   project: {
     open: "Proje aç",

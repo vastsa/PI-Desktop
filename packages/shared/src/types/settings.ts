@@ -28,6 +28,23 @@ export type AppSettings = {
   defaultMode: Mode;
   /** Configured command shell for the agent Bash protocol tool. */
   defaultCommandShell?: CommandShellId;
+  /**
+   * Composer prompt-enhancement overrides (ADR 0121). Absent or blank means the
+   * built-in default in `prompt-enhancement.ts` applies, so "restore default"
+   * and "never customized" are the same stored state. host-core rejects a
+   * non-blank `promptEnhancementUserTemplate` without `{{draft}}` and any
+   * template beyond `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH`.
+   */
+  promptEnhancementSystemPrompt?: string;
+  /** User-side template; must contain `{{draft}}` when non-blank. */
+  promptEnhancementUserTemplate?: string;
+  /**
+   * Model the one-shot enhancement runs on. Absent means "follow the Composer's
+   * current model". When the pinned pair is unusable, main falls back to the
+   * Composer model and logs a warning (ADR 0121).
+   */
+  promptEnhancementProviderId?: string;
+  promptEnhancementModelId?: string;
   /** Global permission mode default; sessions with `inherit` follow this. */
   defaultPermissionMode?: GlobalPermissionMode;
   theme: ThemePreference;

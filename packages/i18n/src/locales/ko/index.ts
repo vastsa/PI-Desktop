@@ -1114,6 +1114,25 @@ sklm: {
     fontSizeXl: "Trenta",
     fontSizeScale: "텍스트 크기 배율",
     fontSizePercent: "{{value}}%",
+    promptEnhancementTitle: "프롬프트 향상",
+    promptEnhancementDesc:
+      "입력창의 '프롬프트 향상' 동작에 적용됩니다. 필드를 비워 저장하면 기본값으로 복원됩니다.",
+    promptEnhancementModel: "향상 모델",
+    promptEnhancementModelDesc:
+      "프롬프트 향상에 사용할 모델입니다. 지정하지 않으면 현재 모델을 따릅니다.",
+    promptEnhancementModelFollow: "현재 모델 따르기",
+    promptEnhancementSystemPrompt: "시스템 프롬프트",
+    promptEnhancementSystemPromptDesc:
+      "모든 향상 요청과 함께 전송되는 역할, 재작성 규칙, 출력 계약입니다.",
+    promptEnhancementUserTemplate: "사용자 템플릿",
+    promptEnhancementUserTemplateDesc:
+      "초안을 감쌉니다. 초안 변수를 반드시 포함해야 하며, 삽입 버튼으로 넣으세요.",
+    promptEnhancementInsertDraft: "초안 변수 삽입",
+    promptEnhancementRestore: "기본값 복원",
+    promptEnhancementRestoreAll: "모두 기본값으로 복원",
+    promptEnhancementMissingDraftVariable:
+      "사용자 템플릿에 초안 변수가 있어야 하며, 없으면 초안을 보낼 수 없습니다.",
+    promptEnhancementSaveError: "프롬프트 향상 설정을 저장하지 못했습니다.",
   },
   project: {
     open: "프로젝트 열기",

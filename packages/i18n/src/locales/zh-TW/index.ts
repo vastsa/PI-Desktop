@@ -1098,6 +1098,25 @@ sklm: {
     fontSizeXl: "超超大杯",
     fontSizeScale: "文字縮放比例",
     fontSizePercent: "{{value}}%",
+    promptEnhancementTitle: "提示詞增強",
+    promptEnhancementDesc:
+      "作用於輸入框的「增強提示詞」操作。將欄位清空儲存即恢復內建預設值。",
+    promptEnhancementModel: "增強模型",
+    promptEnhancementModelDesc:
+      "用於提示詞增強的模型。未指定時跟隨目前工作階段模型。",
+    promptEnhancementModelFollow: "跟隨目前模型",
+    promptEnhancementSystemPrompt: "系統提示詞",
+    promptEnhancementSystemPromptDesc:
+      "每次增強請求都會傳送的角色設定、改寫規則與輸出契約。",
+    promptEnhancementUserTemplate: "使用者範本",
+    promptEnhancementUserTemplateDesc:
+      "用於包裹草稿。必須包含草稿變數，請用插入按鈕寫入。",
+    promptEnhancementInsertDraft: "插入草稿變數",
+    promptEnhancementRestore: "恢復預設",
+    promptEnhancementRestoreAll: "全部恢復預設",
+    promptEnhancementMissingDraftVariable:
+      "使用者範本必須包含草稿變數，否則草稿無法傳送給模型。",
+    promptEnhancementSaveError: "無法儲存提示詞增強設定。",
   },
   project: {
     open: "開啟專案",

@@ -575,6 +575,36 @@ fn drop_session_side_data(st: &AppState, id: &str) {
 const DEFAULT_LARGE_PASTE_THRESHOLD: i64 = 600;
 const MIN_LARGE_PASTE_THRESHOLD: i64 = 1;
 const MAX_LARGE_PASTE_THRESHOLD: i64 = 1_000_000;
+/// Upper bound for one stored prompt-enhancement template, in characters.
+/// Mirrored by `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH` in
+/// `packages/shared/src/prompt-enhancement.ts`; keep the two in step.
+const MAX_PROMPT_ENHANCEMENT_TEMPLATE_CHARS: usize = 8000;
+/// The placeholder a usable user template must carry.
+const PROMPT_ENHANCEMENT_DRAFT_VARIABLE: &str = "{{draft}}";
+
+/// A template override is either absent, blank (meaning "use the default"), or
+/// a non-blank string within the length bound; a user template must also carry
+/// the draft variable, or the draft never reaches the model.
+fn prompt_enhancement_template_error(field: &str, value: &Value) -> Option<String> {
+    let Some(text) = value.as_str() else {
+        return Some(format!("{field} must be a string"));
+    };
+    if text.trim().is_empty() {
+        return None;
+    }
+    if text.chars().count() > MAX_PROMPT_ENHANCEMENT_TEMPLATE_CHARS {
+        return Some(format!(
+            "{field} must not exceed {MAX_PROMPT_ENHANCEMENT_TEMPLATE_CHARS} characters"
+        ));
+    }
+    if field == "promptEnhancementUserTemplate" && !text.contains(PROMPT_ENHANCEMENT_DRAFT_VARIABLE)
+    {
+        return Some(format!(
+            "promptEnhancementUserTemplate must contain {PROMPT_ENHANCEMENT_DRAFT_VARIABLE}"
+        ));
+    }
+    None
+}
 
 fn normalize_settings_value(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {
@@ -603,6 +633,26 @@ fn normalize_settings_value(mut value: Value) -> Value {
                 "largePasteThreshold".into(),
                 Value::Number(DEFAULT_LARGE_PASTE_THRESHOLD.into()),
             );
+        }
+        // A blank override means "use the built-in default", and an unusable
+        // one (wrong type, oversized, or a user template without the draft
+        // variable) falls back to the default too, rather than leaving a
+        // prompt that would silently drop the user's draft.
+        let template_fields = [
+            "promptEnhancementSystemPrompt",
+            "promptEnhancementUserTemplate",
+        ];
+        for field in template_fields {
+            let unusable = match object.get(field) {
+                None => false,
+                Some(value) => match prompt_enhancement_template_error(field, value) {
+                    Some(_) => true,
+                    None => value.as_str().is_some_and(|text| text.trim().is_empty()),
+                },
+            };
+            if unusable {
+                object.remove(field);
+            }
         }
     }
     value
@@ -633,6 +683,16 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
     let Some(object) = value.as_object() else {
         return Ok(());
     };
+    for field in [
+        "promptEnhancementSystemPrompt",
+        "promptEnhancementUserTemplate",
+    ] {
+        if let Some(template_value) = object.get(field) {
+            if let Some(message) = prompt_enhancement_template_error(field, template_value) {
+                return Err(rpc_err(1002, message, "INVALID_PARAMS"));
+            }
+        }
+    }
     if let Some(threshold_value) = object.get("largePasteThreshold") {
         let Some(threshold) = threshold_value.as_i64() else {
             return Err(rpc_err(
@@ -5801,6 +5861,94 @@ mod tests {
         );
         assert!(catalog["choices"].is_array());
         assert!(catalog["effective"].is_object() || catalog["effective"].is_null());
+    }
+
+    #[tokio::test]
+    async fn prompt_enhancement_templates_round_trip_and_validate() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        // Nothing stored yet: the fields are absent, so the renderer falls back
+        // to the built-in defaults.
+        let settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert!(settings.get("promptEnhancementSystemPrompt").is_none());
+        assert!(settings.get("promptEnhancementUserTemplate").is_none());
+
+        // A custom pair persists unchanged.
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "promptEnhancementSystemPrompt": "custom system",
+                "promptEnhancementUserTemplate": "before {{draft}} after",
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let stored = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(stored["promptEnhancementSystemPrompt"], "custom system");
+        assert_eq!(
+            stored["promptEnhancementUserTemplate"],
+            "before {{draft}} after"
+        );
+
+        // A user template without the draft variable would silently drop the
+        // draft, so the write is rejected rather than normalized.
+        let missing_variable = handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "promptEnhancementUserTemplate": "no placeholder" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            missing_variable.data.unwrap()["errorCode"],
+            "INVALID_PARAMS"
+        );
+
+        // An oversized template is rejected too.
+        let oversized = handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "promptEnhancementSystemPrompt": "x".repeat(8001) }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(oversized.data.unwrap()["errorCode"], "INVALID_PARAMS");
+
+        // Writing a blank value means "restore the default": the override is
+        // dropped rather than persisted as an empty string.
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "promptEnhancementSystemPrompt": "",
+                "promptEnhancementUserTemplate": "   ",
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        let cleared = handle_request(
+            state,
+            "settings.get",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(cleared.get("promptEnhancementSystemPrompt").is_none());
+        assert!(cleared.get("promptEnhancementUserTemplate").is_none());
     }
 
     #[tokio::test]

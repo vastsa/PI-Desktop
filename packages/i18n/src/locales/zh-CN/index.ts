@@ -1098,6 +1098,25 @@ sklm: {
     fontSizeXl: "超超大杯",
     fontSizeScale: "文字缩放比例",
     fontSizePercent: "{{value}}%",
+    promptEnhancementTitle: "提示词增强",
+    promptEnhancementDesc:
+      "作用于输入框的「增强提示词」操作。将字段清空保存即恢复内置默认值。",
+    promptEnhancementModel: "增强模型",
+    promptEnhancementModelDesc:
+      "用于提示词增强的模型。未指定时跟随当前会话模型。",
+    promptEnhancementModelFollow: "跟随当前模型",
+    promptEnhancementSystemPrompt: "系统提示词",
+    promptEnhancementSystemPromptDesc:
+      "每次增强请求都会发送的角色设定、改写规则与输出契约。",
+    promptEnhancementUserTemplate: "用户模板",
+    promptEnhancementUserTemplateDesc:
+      "用于包裹草稿。必须包含草稿变量，请用插入按钮写入。",
+    promptEnhancementInsertDraft: "插入草稿变量",
+    promptEnhancementRestore: "恢复默认",
+    promptEnhancementRestoreAll: "全部恢复默认",
+    promptEnhancementMissingDraftVariable:
+      "用户模板必须包含草稿变量，否则草稿无法发送给模型。",
+    promptEnhancementSaveError: "无法保存提示词增强设置。",
   },
   project: {
     open: "打开项目",

@@ -1097,6 +1097,25 @@ sklm: {
     "fontSizeXl": "Trenta",
     "fontSizeScale": "Échelle de taille du texte",
     "fontSizePercent": "{{value}}%",
+    "promptEnhancementTitle": "Amélioration du prompt",
+    "promptEnhancementDesc":
+      "S'applique à l'action « Améliorer le prompt » du compositeur. Enregistrer un champ vide restaure la valeur par défaut.",
+    "promptEnhancementModel": "Modèle d'amélioration",
+    "promptEnhancementModelDesc":
+      "Modèle utilisé pour l'amélioration du prompt. Suit le modèle actuel jusqu'à ce qu'un modèle soit choisi.",
+    "promptEnhancementModelFollow": "Suivre le modèle actuel",
+    "promptEnhancementSystemPrompt": "Prompt système",
+    "promptEnhancementSystemPromptDesc":
+      "Rôle, règles de réécriture et contrat de sortie envoyés avec chaque requête.",
+    "promptEnhancementUserTemplate": "Modèle utilisateur",
+    "promptEnhancementUserTemplateDesc":
+      "Encadre le brouillon. Doit contenir la variable de brouillon ; utilisez le bouton d'insertion.",
+    "promptEnhancementInsertDraft": "Insérer la variable de brouillon",
+    "promptEnhancementRestore": "Rétablir la valeur par défaut",
+    "promptEnhancementRestoreAll": "Rétablir toutes les valeurs par défaut",
+    "promptEnhancementMissingDraftVariable":
+      "Le modèle utilisateur doit contenir la variable de brouillon, sinon le brouillon ne peut pas être envoyé.",
+    "promptEnhancementSaveError": "Impossible d'enregistrer les paramètres d'amélioration du prompt.",
   },
   "project": {
     "open": "Ouvrir le projet",

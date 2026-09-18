@@ -1097,6 +1097,25 @@ sklm: {
     "fontSizeXl": "Trenta",
     "fontSizeScale": "Escala de tamaño de texto",
     "fontSizePercent": "{{value}}%",
+    "promptEnhancementTitle": "Mejora de prompts",
+    "promptEnhancementDesc":
+      "Se aplica a la acción «Mejorar prompt» del compositor. Guardar un campo vacío restaura el valor predeterminado.",
+    "promptEnhancementModel": "Modelo de mejora",
+    "promptEnhancementModelDesc":
+      "Modelo usado para la mejora de prompts. Sigue al modelo actual hasta que se elija uno.",
+    "promptEnhancementModelFollow": "Seguir el modelo actual",
+    "promptEnhancementSystemPrompt": "Prompt del sistema",
+    "promptEnhancementSystemPromptDesc":
+      "Rol, reglas de reescritura y contrato de salida que se envían con cada solicitud.",
+    "promptEnhancementUserTemplate": "Plantilla de usuario",
+    "promptEnhancementUserTemplateDesc":
+      "Envuelve el borrador. Debe incluir la variable del borrador; use el botón de inserción.",
+    "promptEnhancementInsertDraft": "Insertar variable del borrador",
+    "promptEnhancementRestore": "Restaurar predeterminado",
+    "promptEnhancementRestoreAll": "Restaurar todos los predeterminados",
+    "promptEnhancementMissingDraftVariable":
+      "La plantilla de usuario debe contener la variable del borrador; de lo contrario el borrador no puede enviarse.",
+    "promptEnhancementSaveError": "No se pudo guardar la configuración de mejora de prompts.",
   },
   "project": {
     "open": "Abrir proyecto",
