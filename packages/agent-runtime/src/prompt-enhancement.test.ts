@@ -4,8 +4,13 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import {
+  PROMPT_ENHANCEMENT_DEFAULT_SYSTEM_PROMPT,
+  PROMPT_ENHANCEMENT_DEFAULT_USER_TEMPLATE,
+} from "@pi-desktop/shared";
+import {
   enhancePromptDraft,
   promptEnhancementContext,
+  stripWrappingQuotes,
 } from "./prompt-enhancement.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
 
@@ -67,13 +72,32 @@ function streamFor(message: AssistantMessage) {
 describe("prompt enhancement", () => {
   it("builds a single system-plus-user context without history or tools", () => {
     const context = promptEnhancementContext("  Make this clearer.  ");
-    expect(context.systemPrompt).toContain("Output only the");
+    expect(context.systemPrompt).toBe(PROMPT_ENHANCEMENT_DEFAULT_SYSTEM_PROMPT);
     expect(context.messages).toHaveLength(1);
+    expect(context.messages[0]).toMatchObject({ role: "user" });
+    expect(context.tools).toBeUndefined();
+  });
+
+  it("uses the stored templates when they are provided", () => {
+    const context = promptEnhancementContext("draft text", {
+      systemPrompt: "custom system",
+      userTemplate: "custom {{draft}} template",
+    });
+    expect(context.systemPrompt).toBe("custom system");
     expect(context.messages[0]).toMatchObject({
       role: "user",
-      content: "Draft:\n  Make this clearer.  ",
+      content: "custom draft text template",
     });
-    expect(context.tools).toBeUndefined();
+  });
+
+  it("ignores a stored template that lost the draft variable", () => {
+    const context = promptEnhancementContext("draft text", {
+      userTemplate: "no placeholder",
+    });
+    expect(context.messages[0]).toMatchObject({ role: "user" });
+    expect(String((context.messages[0] as { content: string }).content)).toContain(
+      "draft text",
+    );
   });
 
   it("uses the mocked provider stream, passes reasoning, and trims text output", async () => {
@@ -98,6 +122,18 @@ describe("prompt enhancement", () => {
     expect(seenReasoning).toBe("high");
   });
 
+  it("strips a wrapping quotation pair from the model answer", async () => {
+    const enhanced = await enhancePromptDraft(provider, "Keep this", "off", {
+      stream: () =>
+        streamFor(
+          assistantMessage([
+            { type: "text", text: '"请解释这段代码的主要功能与边界情况。"' },
+          ]),
+        ),
+    });
+    expect(enhanced).toBe("请解释这段代码的主要功能与边界情况。");
+  });
+
   it("rejects an empty model response without changing the caller's draft", async () => {
     await expect(
       enhancePromptDraft(provider, "Keep this", "off", {
@@ -117,5 +153,34 @@ describe("prompt enhancement", () => {
           ),
       }),
     ).rejects.toMatchObject({ errorCode: "PROVIDER_UNAUTHORIZED" });
+  });
+});
+
+describe("stripWrappingQuotes", () => {
+  it("removes a matching wrapping pair in every supported style", () => {
+    expect(stripWrappingQuotes('"clearer"')).toBe("clearer");
+    expect(stripWrappingQuotes("'clearer'")).toBe("clearer");
+    expect(stripWrappingQuotes("\u201Cclearer\u201D")).toBe("clearer");
+    expect(stripWrappingQuotes("\u2018clearer\u2019")).toBe("clearer");
+    expect(stripWrappingQuotes('  "clearer"  ')).toBe("clearer");
+  });
+
+  it("keeps quotes that are part of the text", () => {
+    expect(stripWrappingQuotes('"a" and "b"')).toBe('"a" and "b"');
+    expect(stripWrappingQuotes("'it's fine'")).toBe("'it's fine'");
+    expect(stripWrappingQuotes('"unmatched')).toBe('"unmatched');
+    expect(stripWrappingQuotes("unmatched'")).toBe("unmatched'");
+    expect(stripWrappingQuotes("\u201Cunmatched")).toBe("\u201Cunmatched");
+  });
+
+  it("keeps a lone quote or an empty pair without crashing", () => {
+    expect(stripWrappingQuotes('"')).toBe('"');
+    expect(stripWrappingQuotes('""')).toBe('""');
+    expect(stripWrappingQuotes("")).toBe("");
+    expect(stripWrappingQuotes("   ")).toBe("");
+  });
+
+  it("returns unquoted text unchanged", () => {
+    expect(stripWrappingQuotes("  plain text  ")).toBe("plain text");
   });
 });

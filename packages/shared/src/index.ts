@@ -56,3 +56,4 @@ export * from "./provider-retry.js";
 export * from "./message-stream.js";
 export * from "./session-collaboration.js";
 export * from "./window-chrome.js";
+export * from "./prompt-enhancement.js";
