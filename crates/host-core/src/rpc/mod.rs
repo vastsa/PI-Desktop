@@ -2569,6 +2569,18 @@ async fn handle_request(
             Ok(json!({ "moved": moved }))
         }
 
+        "session.getUsage" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .filter(|id| !id.trim().is_empty())
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let usage = sessions::get_session_usage(&st.db, session_id)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(usage)
+        }
+
         "notification.list" => {
             let unread_only = params
                 .get("unreadOnly")

@@ -46,6 +46,11 @@ export type AssistantTurnEntry = {
   kind: "assistant-turn";
   id: string;
   anchorId?: string;
+  /**
+   * `createdAt` of the user row that opened this turn: when the user sent the
+   * prompt, so the reply's total can be measured from that moment.
+   */
+  startedAt?: string;
   parts: AssistantTurnPart[];
 };
 
@@ -191,12 +196,14 @@ export function buildTranscriptEntries(
   }
   const entries: TranscriptEntry[] = [];
   let turn: AssistantTurnEntry | undefined;
+  let turnStartedAt: string | undefined;
 
   const ensureTurn = (message: UiMessage) => {
     if (turn) return turn;
     turn = {
       kind: "assistant-turn",
       id: message.id,
+      ...(turnStartedAt ? { startedAt: turnStartedAt } : {}),
       parts: [],
     };
     entries.push(turn);
@@ -222,6 +229,7 @@ export function buildTranscriptEntries(
   const appendMessage = (message: UiMessage) => {
     if (message.role === "user" || message.role === "system") {
       turn = undefined;
+      turnStartedAt = message.role === "user" ? message.createdAt : undefined;
       entries.push({ kind: "message", message });
       return;
     }
@@ -439,6 +447,48 @@ export function assistantTurnMessages(
 }
 
 /**
+ * Every message of the turn that the model streamed, in transcript order,
+ * whether it arrived as a message part or as an activity row.
+ *
+ * `assistantTurnMessages` only sees the message parts, and a reply that
+ * streamed thinking without content is pushed as an activity item alone. The
+ * turn's timing questions ("how long until the first token", "when did it
+ * finish") are about the stream, not about the parts, so they have to read the
+ * activity rows too. A fragment that carries both thinking and content appears
+ * in both places, so the set is deduplicated by message id.
+ */
+export function assistantTurnStreamedMessages(
+  entry: AssistantTurnEntry,
+): UiMessage[] {
+  const seen = new Set<string>();
+  const messages: UiMessage[] = [];
+  const push = (message: UiMessage) => {
+    if (seen.has(message.id)) return;
+    seen.add(message.id);
+    messages.push(message);
+  };
+  for (const part of entry.parts) {
+    if (part.kind === "message") {
+      push(part.message);
+      continue;
+    }
+    for (const item of part.items) push(item.message);
+  }
+  return messages;
+}
+
+/**
+ * The turn's own model rows: the streamed set without the tool results that
+ * share those activity items. Usage and estimate questions are about what the
+ * model reported for the turn, and only an assistant row carries that.
+ */
+function assistantTurnAssistantMessages(entry: AssistantTurnEntry): UiMessage[] {
+  return assistantTurnStreamedMessages(entry).filter(
+    (message) => message.role === "assistant",
+  );
+}
+
+/**
  * The rows these entries actually render, in transcript order.
  *
  * The minimap resolves a click by finding the marker's `data-minimap-id` node in
@@ -470,7 +520,9 @@ export function assistantTurnTools(entry: AssistantTurnEntry): UiMessage[] {
 export function assistantTurnResponseDuration(
   entry: AssistantTurnEntry,
 ): number | undefined {
-  const durations = assistantTurnMessages(entry).flatMap((message) =>
+  // Every streamed fragment counts, including a thinking-only one that never
+  // reached the message parts.
+  const durations = assistantTurnStreamedMessages(entry).flatMap((message) =>
     typeof message.responseDurationMs === "number" &&
     Number.isFinite(message.responseDurationMs) &&
     message.responseDurationMs > 0
@@ -481,11 +533,54 @@ export function assistantTurnResponseDuration(
   return durations.reduce((total, duration) => total + duration, 0);
 }
 
+/** First-token latency measured for the turn's first streamed reply (D447). */
+export function assistantTurnResponseFirstToken(
+  entry: AssistantTurnEntry,
+): number | undefined {
+  // The turn's *first* stream carries this latency, and that stream may have
+  // been thinking-only — so the activity rows are read too, in transcript
+  // order, before falling through to a later post-tool answer.
+  for (const message of assistantTurnStreamedMessages(entry)) {
+    const value = message.responseFirstTokenMs;
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * When the turn's final assistant stream ended: the row's own start plus the
+ * stream duration it recorded, so the footer can print a completion time
+ * without a second timestamp crossing the wire.
+ */
+export function assistantTurnCompletedAt(
+  entry: AssistantTurnEntry,
+): string | undefined {
+  const messages = assistantTurnStreamedMessages(entry);
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const duration = messages[index].responseDurationMs;
+    if (typeof duration !== "number" || !Number.isFinite(duration)) continue;
+    const startedAt = Date.parse(messages[index].createdAt);
+    if (!Number.isFinite(startedAt)) continue;
+    return new Date(startedAt + Math.max(0, duration)).toISOString();
+  }
+  return undefined;
+}
+
 export function assistantTurnResponseOutputTokens(
   entry: AssistantTurnEntry,
 ): number | undefined {
-  const counts = assistantTurnMessages(entry).flatMap((message) => {
-    const value = message.usage?.outputTokens ?? message.responseOutputTokens;
+  const counts = assistantTurnAssistantMessages(entry).flatMap((message) => {
+    // A provider can report zero output for a stream the runtime still
+    // summarized (an interrupted one). `??` would keep that zero and drop the
+    // summary, which is the only count the turn has left, so the reported value
+    // only wins when it is a positive number.
+    const reported = message.usage?.outputTokens;
+    const value =
+      typeof reported === "number" && Number.isFinite(reported) && reported > 0
+        ? reported
+        : message.responseOutputTokens;
     return typeof value === "number" && Number.isFinite(value) && value > 0
       ? [value]
       : [];
@@ -497,7 +592,7 @@ export function assistantTurnResponseOutputTokens(
 export function assistantTurnResponseOutputIsEstimated(
   entry: AssistantTurnEntry,
 ): boolean {
-  return assistantTurnMessages(entry).some(
+  return assistantTurnAssistantMessages(entry).some(
     (message) =>
       (!message.usage || message.usage.outputTokens <= 0) &&
       typeof message.responseOutputTokens === "number" &&
@@ -515,7 +610,7 @@ export function assistantTurnContent(entry: AssistantTurnEntry): string {
 export function assistantTurnUsage(
   entry: AssistantTurnEntry,
 ): MessageUsage | undefined {
-  const usages = assistantTurnMessages(entry).flatMap((message) =>
+  const usages = assistantTurnAssistantMessages(entry).flatMap((message) =>
     message.usage ? [message.usage] : [],
   );
   if (usages.length === 0) return undefined;

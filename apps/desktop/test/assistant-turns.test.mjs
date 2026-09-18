@@ -7,7 +7,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const {
+  assistantTurnCompletedAt,
   assistantTurnContent,
+  assistantTurnResponseDuration,
+  assistantTurnResponseFirstToken,
   assistantTurnResponseOutputTokens,
   assistantTurnResponseOutputIsEstimated,
   assistantTurnUsage,
@@ -69,6 +72,140 @@ test("assistant turn output prefers exact usage and falls back to stopped estima
   assert.equal(turn.kind, "assistant-turn");
   assert.equal(assistantTurnResponseOutputTokens(turn), 10);
   assert.equal(assistantTurnResponseOutputIsEstimated(turn), true);
+});
+
+test("stamps an assistant turn with the user row that opened it", () => {
+  const { entries } = buildTranscriptEntries([
+    message("user", "user", "Fix the issue"),
+    message("intro", "assistant", "First response"),
+    message("notice", "system", "Session resumed"),
+    message("after", "assistant", "Second response"),
+  ]);
+
+  assert.equal(entries[1].kind, "assistant-turn");
+  assert.equal(entries[1].startedAt, entries[0].message.createdAt);
+  assert.equal(entries[2].kind, "message");
+  // A system row ends the previous turn without timing the next one: there is
+  // no user prompt to measure the reply from.
+  assert.equal(entries[3].kind, "assistant-turn");
+  assert.equal(entries[3].startedAt, undefined);
+});
+
+test("assistant turn reports the first finite first-token latency", () => {
+  const { entries } = buildTranscriptEntries([
+    message("user", "user", "Prompt"),
+    message("thinking", "assistant", "", { thinking: "Planning" }),
+    message("first", "assistant", "One", { responseFirstTokenMs: 1_200 }),
+    message("tool", "tool", "result", { toolCallId: "tool" }),
+    message("second", "assistant", "Two", { responseFirstTokenMs: 340 }),
+  ]);
+  const turn = entries[1];
+  assert.equal(turn.kind, "assistant-turn");
+  assert.equal(assistantTurnResponseFirstToken(turn), 1_200);
+
+  const { entries: unmeasured } = buildTranscriptEntries([
+    message("user-2", "user", "Prompt"),
+    message("nan", "assistant", "One", { responseFirstTokenMs: Number.NaN }),
+    message("infinite", "assistant", "Two", {
+      responseFirstTokenMs: Number.POSITIVE_INFINITY,
+    }),
+    message("absent", "assistant", "Three"),
+  ]);
+  assert.equal(assistantTurnResponseFirstToken(unmeasured[1]), undefined);
+
+  // Zero is a real measurement: a cached prompt can answer instantly.
+  const { entries: instant } = buildTranscriptEntries([
+    message("user-3", "user", "Prompt"),
+    message("immediate", "assistant", "Done", { responseFirstTokenMs: 0 }),
+  ]);
+  assert.equal(assistantTurnResponseFirstToken(instant[1]), 0);
+
+  // A reply that streamed only thinking is an activity row, not a message
+  // part. Its latency is still the turn's first one, not the post-tool
+  // answer's 340 ms.
+  const { entries: thinkingFirst } = buildTranscriptEntries([
+    message("user-4", "user", "Prompt"),
+    message("plan", "assistant", "", {
+      thinking: "Planning the answer",
+      responseFirstTokenMs: 1_200,
+    }),
+    message("read", "tool", "result", { toolCallId: "read" }),
+    message("answer", "assistant", "Done", { responseFirstTokenMs: 340 }),
+  ]);
+  assert.equal(assistantTurnResponseFirstToken(thinkingFirst[1]), 1_200);
+});
+
+test("assistant turn completion time is the last duration added to its row start", () => {
+  const late = message("late", "assistant", "Second", {
+    responseDurationMs: 2_500,
+  });
+  const { entries } = buildTranscriptEntries([
+    message("user", "user", "Prompt"),
+    message("early", "assistant", "First", { responseDurationMs: 1_000 }),
+    late,
+    // A trailing row without a duration does not erase the completion time.
+    message("tail", "assistant", "Third"),
+  ]);
+  const turn = entries[1];
+  assert.equal(turn.kind, "assistant-turn");
+  assert.equal(
+    assistantTurnCompletedAt(turn),
+    new Date(Date.parse(late.createdAt) + 2_500).toISOString(),
+  );
+
+  const { entries: untimed } = buildTranscriptEntries([
+    message("user-2", "user", "Prompt"),
+    message("reply-2", "assistant", "Done"),
+  ]);
+  assert.equal(assistantTurnCompletedAt(untimed[1]), undefined);
+});
+
+test("a thinking-only stream counts once for the turn's duration and end", () => {
+  // The fragment carries both reasoning and text, so the turn renders it as an
+  // activity row *and* as a message part; it is still one stream, so its
+  // duration is summed once.
+  const both = message("both", "assistant", "Done", {
+    thinking: "Working it out",
+    responseDurationMs: 2_000,
+    createdAt: "2026-07-28T00:00:08.000Z",
+  });
+  const { entries } = buildTranscriptEntries([
+    message("user", "user", "Prompt"),
+    message("plan", "assistant", "", {
+      thinking: "Planning",
+      responseDurationMs: 1_000,
+    }),
+    both,
+  ]);
+  const turn = entries[1];
+  assert.equal(turn.kind, "assistant-turn");
+  assert.deepEqual(
+    turn.parts.map((part) => part.kind),
+    ["activity", "message"],
+  );
+  assert.equal(turn.parts[0].items.length, 2, "thinking and the answer row");
+  assert.equal(assistantTurnResponseDuration(turn), 3_000);
+  assert.equal(
+    assistantTurnCompletedAt(turn),
+    new Date(Date.parse(both.createdAt) + 2_000).toISOString(),
+  );
+
+  // A turn that ended on a thinking-only stream still has a completion time,
+  // even though that stream has no message part of its own.
+  const tail = message("tail", "assistant", "", {
+    thinking: "Wrapping up",
+    responseDurationMs: 500,
+    createdAt: "2026-07-28T00:00:09.000Z",
+  });
+  const { entries: endedThinking } = buildTranscriptEntries([
+    message("user-2", "user", "Prompt"),
+    message("done", "assistant", "Answer", { responseDurationMs: 1_000 }),
+    tail,
+  ]);
+  assert.equal(
+    assistantTurnCompletedAt(endedThinking[1]),
+    new Date(Date.parse(tail.createdAt) + 500).toISOString(),
+  );
 });
 
 test("keeps a recovered tool error inside one successful assistant turn", () => {
@@ -146,6 +283,9 @@ test("aggregates provider usage across response fragments", () => {
   };
   const { entries } = buildTranscriptEntries([
     message("user", "user", "Count"),
+    // A fragment that streamed thinking only never reaches the message parts,
+    // but the request behind it still cost what the provider reported.
+    message("think", "assistant", "", { usage, thinking: "plan" }),
     message("first", "assistant", "One", { usage }),
     message("tool", "tool", "result", { toolCallId: "tool" }),
     message("second", "assistant", "Two", { usage }),
@@ -154,11 +294,48 @@ test("aggregates provider usage across response fragments", () => {
 
   assert.equal(turn.kind, "assistant-turn");
   assert.deepEqual(assistantTurnUsage(turn), {
-    inputTokens: 20,
-    outputTokens: 8,
-    cacheReadTokens: 4,
-    totalTokens: 28,
+    inputTokens: 30,
+    outputTokens: 12,
+    cacheReadTokens: 6,
+    totalTokens: 42,
   });
+});
+
+test("a thinking-only fragment still counts towards the turn's output", () => {
+  const { entries } = buildTranscriptEntries([
+    message("user", "user", "Why"),
+    message("think", "assistant", "", {
+      thinking: "hmm",
+      responseOutputTokens: 5,
+    }),
+    message("answer", "assistant", "Because", {
+      usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+    }),
+  ]);
+  const turn = entries[1];
+
+  assert.equal(turn.kind, "assistant-turn");
+  assert.equal(assistantTurnResponseOutputTokens(turn), 7);
+});
+
+test("a provider that reports zero output keeps the runtime's estimate", () => {
+  // The runtime summarizes what a stream actually printed when the provider
+  // reports no output at all. A reported 0 must not shadow that summary, or the
+  // turn loses the only output count it has and the rate row disappears.
+  const { entries } = buildTranscriptEntries([
+    message("user", "user", "Summarize"),
+    message("answer", "assistant", "Partial", {
+      usage: { inputTokens: 100, outputTokens: 0, totalTokens: 100 },
+      responseOutputTokens: 40,
+    }),
+  ]);
+  const turn = entries[1];
+
+  assert.equal(turn.kind, "assistant-turn");
+  assert.equal(assistantTurnResponseOutputTokens(turn), 40);
+  // The two values the footer consumes together: a summarized count that is
+  // flagged as an estimate is what makes the rate row print.
+  assert.equal(assistantTurnResponseOutputIsEstimated(turn), true);
 });
 
 test("nests delegate rows under the Task call that spawned them", () => {

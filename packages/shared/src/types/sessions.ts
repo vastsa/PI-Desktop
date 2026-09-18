@@ -59,6 +59,17 @@ export type SessionDetail = SessionSummary & {
   compactions?: ContextCompactionRecord[];
 };
 
+/** Whole-session token totals over the session's completed turns (D449). */
+export type SessionUsageTotals = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  turnCount: number;
+};
+
 /**
  * @deprecated Not surfaced in settings and not persisted through to the
  * runtime. Retained as the runtime's construction-time override, which the

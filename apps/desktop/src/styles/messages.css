@@ -1052,6 +1052,151 @@
   text-overflow: ellipsis;
 }
 
+/* The per-reply readout: one muted line of segments that opens a card with the
+   full breakdown. Tabular figures stop the clock times and token counts from
+   reflowing as they change (D447, D448). */
+.reply-usage-line {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Only the usage segment is a trigger, so only it reacts to the pointer, and
+   it opens on click: hovering a readout is not a request for a breakdown. */
+.reply-usage-trigger {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reply-usage-trigger:hover,
+.reply-usage-trigger:focus-visible {
+  color: var(--ds-text-secondary);
+}
+
+.reply-usage-trigger:focus-visible {
+  outline: 1px solid var(--ds-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.reply-usage-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* The card is portaled to `body`, which disables selection globally; its
+   numbers are the point, so they stay selectable like message text. */
+.reply-usage-card {
+  -webkit-user-select: text;
+  user-select: text;
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(480px, calc(100vh - 32px));
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-bg-elevated-opaque);
+  padding: 12px 14px;
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-shadow-dialog);
+  font-size: var(--text-xs);
+  line-height: var(--leading-body);
+  text-align: left;
+  white-space: normal;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  visibility: hidden;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--motion-ease-out),
+    visibility 0s linear var(--motion-duration-fast);
+}
+
+.reply-usage-card.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.reply-usage-card-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reply-usage-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.reply-usage-card-heading-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reply-usage-copy {
+  flex: none;
+  align-self: center;
+}
+
+.reply-usage-card-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.reply-usage-card-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.reply-usage-card-row > span {
+  color: var(--ds-text-muted);
+  white-space: nowrap;
+}
+
+.reply-usage-card-row > strong {
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-normal);
+  text-align: right;
+  word-break: break-word;
+}
+/* The prompt's send time sits under the prompt, not under the answer (D447). */
+.message-sent-at {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-compact);
+  font-variant-numeric: tabular-nums;
+}
+
 .context-inspector {
   position: relative;
   display: inline-flex;

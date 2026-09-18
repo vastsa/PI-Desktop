@@ -11,6 +11,7 @@ import {
   type FsChatRefProjectRoot,
   type FsChatRefResolveResult,
   type ProjectGroupRecord,
+  type SessionUsageTotals,
 } from "@pi-desktop/shared";
 import {
   loadComposerTemplates,
@@ -615,6 +616,22 @@ export function registerWorkspaceIpc({
     async (input?: { startDate?: number; endDate?: number; bucket?: string }) => {
       if (!host) throw new Error("host unavailable");
       return host.call("stats.getTokenUsageHistory", input ?? {});
+    },
+  );
+
+  handle(
+    IPC.invoke.sessionGetUsage,
+    async (input: { sessionId?: string } = {}) => {
+      if (!host) throw new Error("host unavailable");
+      const sessionId = String(input?.sessionId ?? "").trim();
+      if (!sessionId) throw new Error("session id required");
+      const usage = await host.call<SessionUsageTotals | null>(
+        "session.getUsage",
+        {
+          sessionId,
+        },
+      );
+      return usage ?? null;
     },
   );
 

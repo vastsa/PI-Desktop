@@ -10,10 +10,13 @@ import type {
 } from "@pi-desktop/shared";
 import { formatCompactTokenCount } from "@pi-desktop/shared";
 import {
+  assistantTurnCompletedAt,
   assistantTurnContent,
   assistantTurnMessages,
   assistantTurnResponseDuration,
+  assistantTurnResponseFirstToken,
   assistantTurnResponseOutputTokens,
+  assistantTurnResponseOutputIsEstimated,
   assistantTurnUsage,
   reuseReadonlyMap,
   subagentRunsEqual,
@@ -35,6 +38,7 @@ import {
   CopyButton,
   MessageMeta,
 } from "./shared";
+import { elapsedBetween } from "../../../lib/message-timing";
 import { activityItemsEqual, ActivityGroup } from "./ActivityGroup";
 import { MessageRow } from "./MessageRow";
 import { TurnProcess } from "./TurnProcess";
@@ -53,6 +57,7 @@ function assistantTurnPropsEqual(
     previous.isActive !== next.isActive ||
     previous.runtimeActivity !== next.runtimeActivity ||
     previous.entry.anchorId !== next.entry.anchorId ||
+    previous.entry.startedAt !== next.entry.startedAt ||
     previous.entry.parts.length !== next.entry.parts.length
   ) {
     return false;
@@ -228,6 +233,7 @@ export const AssistantTurn = memo(function AssistantTurn({
         message.modelId ||
         message.usage ||
         message.responseDurationMs ||
+        message.responseFirstTokenMs ||
         message.responseOutputTokens,
     );
   const latestUsageMessage = [...messages]
@@ -236,6 +242,10 @@ export const AssistantTurn = memo(function AssistantTurn({
   const usage = assistantTurnUsage(entry);
   const responseDurationMs = assistantTurnResponseDuration(entry);
   const responseOutputTokens = assistantTurnResponseOutputTokens(entry);
+  const responseFirstTokenMs = assistantTurnResponseFirstToken(entry);
+  const completedAt = assistantTurnCompletedAt(entry);
+  const responseOutputEstimated =
+    assistantTurnResponseOutputIsEstimated(entry);
   const modelId = metaMessage?.modelId ?? latestUsageMessage?.modelId;
   const hasError = messages.some((message) => Boolean(message.error));
   const complete =
@@ -330,6 +340,10 @@ export const AssistantTurn = memo(function AssistantTurn({
             usage={usage}
             responseDurationMs={responseDurationMs}
             responseOutputTokens={responseOutputTokens}
+            responseOutputEstimated={responseOutputEstimated}
+            totalMs={elapsedBetween(entry.startedAt, completedAt)}
+            firstTokenMs={responseFirstTokenMs}
+            completedAt={completedAt}
           />
         ) : null}
         {(content || hasError) && actionMessage ? (

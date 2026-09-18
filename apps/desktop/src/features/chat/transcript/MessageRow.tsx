@@ -17,6 +17,7 @@ import {
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
 import { SessionMessageOrigin } from "./SessionMessageOrigin";
+import { formatClockTime } from "../../../lib/message-timing";
 import {
   CopyButton,
   FileRefChip,
@@ -53,6 +54,9 @@ export const MessageRow = memo(function MessageRow({
   // Runtime chunks are already progressive. Rendering that source directly
   // avoids a second per-frame state loop while Markdown memoizes stable blocks.
   const displayed = message.content || "";
+  /** When the prompt was sent, under the prompt rather than under the answer. */
+  const sentTime =
+    isUser && !isSessionMessage ? formatClockTime(message.createdAt) : undefined;
   const hasAnswer = Boolean((message.content || "").trim());
   const revisionCount = message.revisionCount ?? 0;
   const activeRevision = message.activeRevision ?? revisionCount;
@@ -195,6 +199,11 @@ export const MessageRow = memo(function MessageRow({
                 <Markdown source={displayed} />
               </div>
             )}
+          </div>
+        ) : null}
+        {sentTime ? (
+          <div className="message-sent-at">
+            {t("chat.timingSent", { time: sentTime })}
           </div>
         ) : null}
         {!editing && (hasAnswer || showRevisionPager) ? (

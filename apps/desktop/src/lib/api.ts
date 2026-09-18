@@ -81,6 +81,7 @@ import type {
   SessionSearchContext,
   SessionSearchContextRequest,
   SessionSummary,
+  SessionUsageTotals,
   SessionCollaborationSummary,
   ToolPermissionResolution,
   UserSkillInput,
@@ -392,6 +393,10 @@ export const api = {
       ...result,
       session: normalizeSessionDetail(result.session),
     })),
+  getSessionUsage: (sessionId: string) =>
+    invoke<SessionUsageTotals | null>(IPC.invoke.sessionGetUsage, {
+      sessionId,
+    }).then((usage) => usage ?? null),
   getSessionCollaboration: (sessionId: string) =>
     invoke<SessionCollaborationSummary>(IPC.invoke.sessionCollaboration, { sessionId }),
   deleteSession: (id: string) => invoke(IPC.invoke.sessionDelete, id),

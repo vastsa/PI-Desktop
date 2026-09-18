@@ -86,6 +86,11 @@ export type UiMessage = {
   usage?: MessageUsage;
   /** Elapsed model streaming time used to calculate output throughput. */
   responseDurationMs?: number;
+  /**
+   * Wait between issuing the provider request and the first streamed token:
+   * the model's own first-token latency, excluding local turn setup.
+   */
+  responseFirstTokenMs?: number;
   /** Output tokens used only for throughput when a stopped stream has no final usage. */
   responseOutputTokens?: number;
   /** Structured failure attached to the assistant turn that failed. */

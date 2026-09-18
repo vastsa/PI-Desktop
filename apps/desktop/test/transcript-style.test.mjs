@@ -325,8 +325,42 @@ test("streaming assistant turns hide answer copy until idle", () => {
 test("assistant context inspector keeps a compact summary and retry action wired", () => {
   assert.match(transcriptSource, /function MessageMeta/);
   assert.match(transcriptSource, /message-meta-chip/);
+  // The per-reply readout is one compact line that opens a card: the prompt's
+  // send time stays under the prompt, everything else belongs to the answer.
+  for (const key of [
+    "chat.timingSent",
+    "chat.timingElapsed",
+    "chat.timingElapsedLabel",
+    "chat.timingFirstTokenLabel",
+  ]) {
+    assert.match(transcriptSource, new RegExp(`t\\("${key}"`));
+  }
+  for (const key of [
+    "chat.replyUsageLabel",
+    "chat.replyUsageTitle",
+    "chat.replyUsageProvider",
+    "chat.usageUncachedInput",
+    "chat.usageOutput",
+    "chat.usageCacheRead",
+    "chat.usageCacheRate",
+    "chat.replyUsageReasoningSuffix",
+    "chat.usageThroughput",
+    "chat.usageThroughputEstimated",
+    "chat.durationHours",
+    "chat.durationMinutes",
+    "chat.durationSeconds",
+    "chat.tokenUnit",
+  ]) {
+    assert.match(transcriptSource, new RegExp(`t\\("${key}"`));
+  }
+  assert.match(transcriptSource, /className="reply-usage-trigger"/);
+  assert.match(transcriptSource, /className="reply-usage-card/);
+  assert.match(transcriptSource, /className="reply-usage-segment"/);
+  assert.match(transcriptSource, /aria-haspopup="dialog"/);
+  assert.match(transcriptSource, /className="message-sent-at"/);
+  assert.match(transcriptSource, /calculateCacheRate/);
+  assert.match(transcriptSource, /createPortal/);
   assert.doesNotMatch(transcriptSource, /ContextUsageInspector/);
-  assert.match(transcriptSource, /showThroughput/);
   assert.match(composerSource, /latest-turn-context/);
   assert.match(composerSource, /latestTurnContextInspector/);
   assert.match(composerSource, /sessionCompactions/);
@@ -343,6 +377,19 @@ test("assistant context inspector keeps a compact summary and retry action wired
   assert.match(inspectorSource, /chat\.usageThroughput/);
   assert.match(inspectorSource, /calculateCacheRate/);
   assert.match(inspectorSource, /chat\.usageCacheRate/);
+  // The panel's whole-session row, from the host aggregate rather than a
+  // renderer sum (D449): the transcript window is paged.
+  assert.match(inspectorSource, /sessionUsage/);
+  assert.match(inspectorSource, /chat\.usageSessionLabel/);
+  assert.match(inspectorSource, /chat\.usageTurns/);
+  assert.match(inspectorSource, /sessionUsage\.turnCount > 0/);
+  // The composer fetches the session aggregate from the host and hands it to
+  // the panel, without summing messages itself.
+  assert.match(composerSource, /\.getSessionUsage\(activeSessionId\)/);
+  assert.match(composerSource, /if \(!activeSessionId \|\| isRunning\) return;/);
+  assert.match(composerSource, /\.\.\.composerContextUsage, sessionUsage/);
+  assert.match(inspectorSource, /chat\.usageSessionTotal/);
+  assert.match(inspectorSource, /sessionCacheRate/);
   assert.match(inspectorSource, /contextOccupancyTokens\(usage\)/);
   assert.match(inspectorSource, /usage\.cacheReadTokens/);
   assert.doesNotMatch(inspectorSource, /turnUsage\.cacheReadTokens/);

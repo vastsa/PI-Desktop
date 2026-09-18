@@ -43,6 +43,7 @@ function loadComponent(name, extras = {}) {
     "../../../components/icons": new Proxy({}, { get: () => Icon }),
     "../../../components/ui": { TooltipButton },
     "./shared": shared,
+    "../../../lib/message-timing": { formatClockTime: () => "12:00:00" },
     ...extras,
   };
   const module = { exports: {} };

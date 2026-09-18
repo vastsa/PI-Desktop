@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import {
   formatCompactTokenCount,
   type MessageUsage,
+  type SessionUsageTotals,
   type UiMessage,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
@@ -40,6 +41,7 @@ export function ContextUsageInspector({
   responseDurationMs,
   responseOutputTokens,
   responseOutputEstimated = false,
+  sessionUsage,
 }: {
   usage: MessageUsage;
   turnUsage: MessageUsage;
@@ -48,6 +50,8 @@ export function ContextUsageInspector({
   responseDurationMs?: number;
   responseOutputTokens?: number;
   responseOutputEstimated?: boolean;
+  /** Totals over every completed turn of this session (D449). */
+  sessionUsage?: SessionUsageTotals;
 }) {
   const { t } = useTranslation();
   const panelId = useId();
@@ -82,6 +86,15 @@ export function ContextUsageInspector({
     usage.inputTokens,
     usage.cacheReadTokens,
   );
+  // The session row aggregates the host's completed-turn totals, so it stays
+  // right however far back the transcript window has been paged (D449).
+  const sessionCacheRate =
+    sessionUsage === undefined
+      ? undefined
+      : calculateCacheRate(
+          sessionUsage.inputTokens,
+          sessionUsage.cacheReadTokens,
+        );
   const toolRows = aggregateToolTokenUsage(tools);
   const toolTotal = toolRows.reduce(
     (total, row) => total + row.totalTokens,
@@ -305,6 +318,39 @@ export function ContextUsageInspector({
         </div>
       </div>
       <div className="context-inspector-summary">
+        {/* A session with no completed turn has nothing to report yet; the
+            newest-turn rows below still describe the current context. */}
+        {sessionUsage && sessionUsage.turnCount > 0 ? (
+          <div className="context-inspector-summary-row">
+            <strong>{t("chat.usageSessionLabel")}</strong>
+            <span className="context-inspector-summary-values">
+              <span>
+                {t("chat.usageTurns", { count: sessionUsage.turnCount })}
+              </span>
+              <span>
+                {t("chat.usageSessionTotal")}{" "}
+                {formatCompactTokenCount(sessionUsage.totalTokens)}
+              </span>
+              <span>
+                {t("chat.usageInput")} {formatCompactTokenCount(sessionUsage.inputTokens)}
+              </span>
+              <span>
+                {t("chat.usageOutput")} {formatCompactTokenCount(sessionUsage.outputTokens)}
+              </span>
+              {sessionUsage.cacheReadTokens > 0 ? (
+                <span>
+                  {t("chat.usageCacheRead")}{" "}
+                  {formatCompactTokenCount(sessionUsage.cacheReadTokens)}
+                </span>
+              ) : null}
+              {sessionCacheRate === undefined ? null : (
+                <span>
+                  {t("chat.usageCacheRate")} {sessionCacheRate}%
+                </span>
+              )}
+            </span>
+          </div>
+        ) : null}
         <div className="context-inspector-summary-row">
           <strong>{t("chat.usageProviderUsage")}</strong>
           <span className="context-inspector-summary-values">

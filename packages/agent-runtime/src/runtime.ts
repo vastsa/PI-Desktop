@@ -1528,6 +1528,10 @@ export class DesktopAgentRuntime {
    * which is the correct anchor: the request goes out once all have resolved. */
   private requestStartedAt?: number;
   private streamStartedAt?: number;
+  /** When the provider request for the in-flight stream was issued. */
+  private requestIssuedAt?: number;
+  /** When the first token of that stream arrived, if any did. */
+  private firstTokenAt?: number;
   private agentActivity?: AgentActivity;
   /** Targets of the in-flight parent wait; live snapshots refresh this set. */
   private delegationWaitTargets?: DelegationRecord[];
@@ -1757,6 +1761,10 @@ Delegation rules:
     this.agent = new Agent({
       streamFn: (m, context, options) => {
         this.setAgentActivity({ phase: "waiting-model", since: Date.now() });
+        // First-token latency is anchored on the request itself, not the turn:
+        // the stream function runs the moment the provider request goes out.
+        this.requestIssuedAt = Date.now();
+        this.firstTokenAt = undefined;
         this.providerResponseStatus = undefined;
         this.providerRetryHeaders = undefined;
         this.providerRequestBytes = undefined;
@@ -5302,6 +5310,7 @@ Delegation rules:
   }
 
   /**
+  /**
    * Rebuild the shared provider transport once the same origin has failed
    * repeatedly without ever answering (issue #234).
    *
@@ -5324,6 +5333,29 @@ Delegation rules:
         result.rebuilt ? "rebuilt after" : "rebuild skipped within throttling for"
       } a ${failure.category} failure (session=${this.sessionId} route=${result.route})\n`,
     );
+  }
+
+  /**
+   * First-token latency for the stream that just ended, measured from the
+   * provider request. A stream that produced content without a single observed
+   * delta (buffered provider) still has a first token: `fallbackAt` stamps it.
+   * Both anchors are consumed here, so a terminal path that arrives without a
+   * fresh request of its own omits the value instead of reusing a stale one.
+   */
+  private takeFirstTokenMs(
+    fallbackAt: number,
+    hasContent: boolean,
+  ): number | undefined {
+    if (this.firstTokenAt === undefined && hasContent) {
+      this.firstTokenAt = fallbackAt;
+    }
+    const firstTokenMs =
+      this.firstTokenAt !== undefined && this.requestIssuedAt !== undefined
+        ? Math.max(0, this.firstTokenAt - this.requestIssuedAt)
+        : undefined;
+    this.firstTokenAt = undefined;
+    this.requestIssuedAt = undefined;
+    return firstTokenMs;
   }
 
   /**
@@ -6654,6 +6686,14 @@ Delegation rules:
           const thinkingDelta = content.hasThinking
             ? cumulativeDelta(previousThinking, content.thinking)
             : { delta: "", reset: false };
+          // The first non-empty delta is the model's first token, so this is
+          // where the request's first-token latency is stamped.
+          if (
+            this.firstTokenAt === undefined &&
+            (textDelta.delta.length > 0 || thinkingDelta.delta.length > 0)
+          ) {
+            this.firstTokenAt = Date.now();
+          }
           this.currentAssistant = {
             ...this.currentAssistant,
             content: nextText,
@@ -6815,6 +6855,8 @@ Delegation rules:
             };
             this.emit({ type: "message_update", message: this.currentAssistant });
             this.streamStartedAt = undefined;
+            this.firstTokenAt = undefined;
+            this.requestIssuedAt = undefined;
             break;
           }
           if (silentTurn) {
@@ -6862,6 +6904,8 @@ Delegation rules:
             };
             this.emit({ type: "message_update", message: this.currentAssistant });
             this.streamStartedAt = undefined;
+            this.firstTokenAt = undefined;
+            this.requestIssuedAt = undefined;
             break;
           }
           const emptyResponse = silentTurn;
@@ -6892,12 +6936,18 @@ Delegation rules:
             };
             this.emit({ type: "message_update", message: this.currentAssistant });
             this.streamStartedAt = undefined;
+            this.firstTokenAt = undefined;
+            this.requestIssuedAt = undefined;
             break;
           }
           const responseDurationMs =
             this.streamStartedAt !== undefined
               ? Math.max(0, endedAt - this.streamStartedAt)
               : undefined;
+          const responseFirstTokenMs = this.takeFirstTokenMs(
+            endedAt,
+            Boolean(nextText.trim() || nextThinking.trim()),
+          );
           const responseOutputTokens =
             aborted && (!usage || usage.outputTokens <= 0)
               ? estimateVisibleResponseOutputTokens({
@@ -6922,6 +6972,9 @@ Delegation rules:
             providerId: this.provider.id,
             ...(usage ? { usage } : {}),
             ...(responseDurationMs !== undefined ? { responseDurationMs } : {}),
+            ...(responseFirstTokenMs !== undefined
+              ? { responseFirstTokenMs }
+              : {}),
             ...(responseOutputTokens !== undefined
               ? { responseOutputTokens }
               : {}),
@@ -7150,10 +7203,20 @@ Delegation rules:
         status === "aborted"
           ? estimateVisibleResponseOutputTokens(this.currentAssistant)
           : undefined;
+      // An attempt that streamed nothing has no first token to report: stamping
+      // the fallback here would print the whole request wait as a latency.
+      const responseFirstTokenMs = this.takeFirstTokenMs(
+        Date.now(),
+        Boolean(
+          this.currentAssistant.content.trim() ||
+            this.currentAssistant.thinking?.trim(),
+        ),
+      );
       this.currentAssistant = {
         ...this.currentAssistant,
         status,
         ...(responseDurationMs !== undefined ? { responseDurationMs } : {}),
+        ...(responseFirstTokenMs !== undefined ? { responseFirstTokenMs } : {}),
         ...(responseOutputTokens !== undefined
           ? { responseOutputTokens }
           : {}),

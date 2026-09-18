@@ -18,6 +18,7 @@ import {
 } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { latestTurnContextInspector } from "../lib/latest-turn-context";
+import { useSessionUsage } from "../features/chat/composer/use-session-usage";
 import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
 import type { QueuedPrompt } from "../lib/queued-prompts";
@@ -86,6 +87,7 @@ export function Composer({
   const sendQueuedNow = useAppStore((s) => s.sendQueuedNow);
   const abort = useAppStore((s) => s.abort);
   const isRunning = useAppStore((s) => s.isRunning);
+  const sessionUsage = useSessionUsage();
   const planningState = useAppStore((s) =>
     s.activeSessionId ? s.planningStates[s.activeSessionId] : undefined,
   );
@@ -594,7 +596,11 @@ export function Composer({
             modelMenu={modelMenu}
             modelLabel={modelLabel}
             thinkingLabel={thinkingLabel}
-            contextUsage={composerContextUsage ?? null}
+            contextUsage={
+              composerContextUsage
+                ? { ...composerContextUsage, sessionUsage }
+                : null
+            }
             enhancementDraft={enhancementDraft}
             value={value}
             modelReady={modelReady}

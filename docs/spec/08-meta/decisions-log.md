@@ -5291,6 +5291,86 @@ Validation contract: E2E-SIDEBAR-global-pinned-conversations.
   unrecognized frontmatter and is ignored exactly like any other unknown key,
   with no error, no warning, and no rewrite of the user's file. A definition
   that relied on the cap therefore loses it silently.
+
+## 2026-09-15 — Per-reply timing readout in the transcript footer (D447)
+
+- A completed assistant reply's meta row keeps its model badge and adds one
+  compact readout line: the turn's usage total, `Elapsed <duration>` with the
+  locale-formatted hours, minutes, and seconds measured from the prompt's send
+  time, and the local completion time, as three segments. The prompt's own send
+  time renders under the sent message, not under
+  the answer. Nothing renders while the reply is still streaming, and a value
+  that is unknown is omitted on its own.
+- First-token latency is measured from the moment the provider request is
+  issued (the agent runtime's stream function) to the first non-empty streamed
+  token, so it reports model latency and deliberately attributes local turn
+  setup to neither side. That wait is not part of the compact line; the timing
+  card the elapsed segment opens spells it out as a labelled `First token` row
+  beside the `Elapsed` row, rather than inside the elapsed segment. A stream
+  that produced content without an observed delta still has a first token; an
+  attempt that streamed nothing reports none rather than the whole request
+  wait.
+- The turn owns those numbers, not the fragment that happens to carry text:
+  the first-token latency is the turn's first streamed reply and the duration
+  and completion time cover its last streamed stream, whether or not either
+  carried answer text. A reply that streamed only reasoning is an activity row
+  rather than a message part, so all three read every assistant row of the turn
+  in transcript order and deduplicate by message id — otherwise a thinking-only
+  first reply is invisible and the row reports the latency of the later
+  post-tool answer, and a fragment that renders as both an activity row and a
+  message part counts twice toward the duration.
+- `responseFirstTokenMs` is additive optional assistant-message metadata next
+  to `responseDurationMs`, so protocol v11 and storage schema v16 remain
+  unchanged and no ADR is required, by the same precedent D184 set for
+  `responseDurationMs`.
+- Decision D447. See E2E-CHAT-per-reply-timing-readout.
+
+## 2026-09-15 — Per-reply usage and speed readout in the transcript footer (D448)
+
+- The same meta row carries this turn's cost and how fast it ran as one compact
+  readout line of three segments — the turn total, a locale-formatted `Elapsed`
+  duration, and the
+  local completion time — and both the usage and the elapsed segment of that
+  line are triggers. Each opens its own portaled card, so the usage segment
+  shows only this turn's usage and the elapsed segment shows only this turn's
+  timing; opening one never opens the other. Each card closes on a second click
+  on its own trigger, Escape, or a click outside, and each keeps its text
+  selectable with a copy control beside its title that copies that card's own
+  rows. Hovering never opens a card, and the completion clock stays plain text.
+  The other segments stay plain text.
+- The usage card's heading shows the turn total on its right and its rows list
+  the provider and model, the provider-reported cache-hit rate, uncached input,
+  cache read, cache write when the turn wrote any, and output (reasoning tokens
+  inline when present), plus the
+  generation rate. The timing card has its own title, no heading total, and two
+  rows: `Elapsed` and `First token`. The heading carries the token unit, so
+  those token rows are
+  bare counts. The total is uncached input + cache read + cache write + output
+  summed over every reply in the turn — the same four fields the composer's
+  session row adds up (D449), so one turn reads the same total on both
+  surfaces, and the listed rows add up to the heading in both places. The line
+  and the cards are grouped text, not
+  one chip per value.
+- The rate row reads the provider's own count, and falls back to the runtime's
+  stopped-stream estimate — labelled differently — when part of the count is
+  estimated, matching the composer context inspector's wording. A turn that is
+  only partly estimated divides the runtime's summarized count rather than the
+  partial provider count, which would report a rate that is too low; a stopped
+  reply that ended with no usage bucket at all still renders its usage segment
+  and card, with that summarized count as the turn total, so the estimated rate
+  is reachable even when the elapsed segment is gone.
+- This partially reverses D184 and D244, which had removed per-message usage
+  chips so that usage lived only in the composer context inspector. The
+  inspector stays the detailed surface (window occupancy, tool
+  aggregates, compaction).
+- Usage was already persisted on each assistant message, so there is no
+  protocol, storage, schema, or migration change. The readout reuses the
+  inspector's existing labels and adds the `chat.timingElapsed`,
+  `chat.timingCardTitle`, `chat.timingElapsedLabel`,
+  `chat.timingFirstTokenLabel`, `chat.replyUsage*`,
+  `chat.usageUncachedInput`, `chat.tokenUnit`, and
+  `chat.duration*` keys to every shipped catalog, replacing `chat.timingTotal`.
+- Decision D448. See E2E-CHAT-per-reply-usage-readout.
 - The `truncated` subagent status leaves the shared run-status union, the
   renderer outcome union, the `chat.subagentStatus` catalog entry in every
   locale, and the delegation topology's warnings count. `timed_out` stays in
@@ -5986,3 +6066,24 @@ that was sitting at the bottom — including after the turn had finished.
   toasts they open, which are portaled to `document.body`, also move to the top
   layer, because top-layer content paints above them and makes them unusable; an
   attempt was withdrawn for exactly that reason.
+
+## 2026-09-15 — Composer session usage totals (D449)
+
+- The composer context inspector's summary now leads with a whole-session row
+  above the provider row: the completed-turn count, the session total, input,
+  output, cache read, and the cache hit rate, labelled `Session`. It is a
+  session-wide aggregate, not the newest turn's own usage, which the provider
+  row below it still shows.
+- The renderer cannot compute that sum itself: the transcript is a paged
+  window, so it never holds every message. The row therefore reads one host
+  aggregate, `session.getUsage({ sessionId }) -> SessionUsageTotals` (exposed
+  as `pi-desktop/session/getUsage`), that sums the session's `status =
+  'completed'` turns and defines the session total as input + output + cache
+  read + cache write.
+- This is an additive read-only RPC over the existing turns table: no
+  protocol-version change, no storage-schema change, and no migration, by the
+  same precedent as `stats.getTokenUsageHistory`. No ADR is required.
+- Per-turn usage is unchanged: each reply keeps its own readout line and card
+  in the transcript, so the new row adds a session total without moving
+  per-turn detail out of the transcript.
+- Decision D449. See E2E-CHAT-composer-session-usage-totals.

@@ -4216,6 +4216,131 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     expect(terminal.event.message.responseOutputTokens).toBeGreaterThan(0);
     await runtime.dispose();
   });
+  it("reports no first token when a failed attempt streamed nothing", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    (runtime as any).requestIssuedAt = Date.now() - 5_000;
+    (runtime as any).currentAssistant = {
+      id: "assistant-empty",
+      role: "assistant",
+      content: "",
+      createdAt: new Date().toISOString(),
+      status: "streaming",
+    };
+
+    (runtime as any).finalizeCurrentAssistant("error", {
+      code: "NETWORK_ERROR",
+      message: "fetch failed",
+      retriable: true,
+    });
+
+    const terminal = onEvent.mock.calls.at(-1)?.[0] as any;
+    expect(terminal.event).toMatchObject({ type: "message_end" });
+    // Nothing streamed, so a value here would claim the whole 5s of request
+    // wait was the first-token latency.
+    expect(terminal.event.message.responseFirstTokenMs).toBeUndefined();
+    await runtime.dispose();
+  });
+  it("does not carry a consumed request anchor into a later finalize", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const now = Date.now();
+    (runtime as any).requestIssuedAt = now - 1_000;
+    (runtime as any).streamStartedAt = now - 900;
+    (runtime as any).firstTokenAt = now - 500;
+    (runtime as any).currentAssistant = {
+      id: "assistant-a",
+      role: "assistant",
+      content: "Answered",
+      createdAt: new Date().toISOString(),
+      status: "streaming",
+    };
+
+    (runtime as any).finalizeCurrentAssistant("aborted");
+
+    const first = onEvent.mock.calls.at(-1)?.[0] as any;
+    expect(first.event.message.responseFirstTokenMs).toBe(500);
+
+    // A second bubble reaches the finalizer without a provider request of its
+    // own: the consumed anchors must not be re-measured as a new latency.
+    (runtime as any).currentAssistant = {
+      id: "assistant-b",
+      role: "assistant",
+      content: "Second answer",
+      createdAt: new Date().toISOString(),
+      status: "streaming",
+    };
+    (runtime as any).finalizeCurrentAssistant("error", {
+      code: "NETWORK_ERROR",
+      message: "fetch failed",
+      retriable: true,
+    });
+
+    const second = onEvent.mock.calls.at(-1)?.[0] as any;
+    expect(second.event.message.responseFirstTokenMs).toBeUndefined();
+    await runtime.dispose();
+  });
+  it("measures first-token latency from the provider request to the first delta", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const handleAgentEvent = (runtime as any).handleAgentEvent.bind(runtime);
+
+    vi.useFakeTimers();
+    try {
+      // `streamFn` anchors the request the moment it goes out; this harness
+      // drives the agent events directly, so it sets the same anchor.
+      (runtime as any).requestIssuedAt = Date.now();
+      await handleAgentEvent({
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      });
+      // The provider waits 1.2s before its first token, then finishes 300ms
+      // later: the wait belongs to the first token, not to the whole stream.
+      vi.setSystemTime(Date.now() + 1_200);
+      await handleAgentEvent({
+        type: "message_update",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Hello" }],
+        },
+      });
+      vi.setSystemTime(Date.now() + 300);
+      await handleAgentEvent({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Hello there" }],
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const terminal = onEvent.mock.calls.at(-1)?.[0] as any;
+    expect(terminal.event).toMatchObject({
+      type: "message_end",
+      message: {
+        status: "complete",
+        responseDurationMs: expect.any(Number),
+        responseFirstTokenMs: expect.any(Number),
+      },
+    });
+    // A lower bound, not equality: the clock only moves through the mocked
+    // jumps here, but the assertion must survive an await being added later.
+    expect(terminal.event.message.responseFirstTokenMs).toBeGreaterThanOrEqual(
+      1_200,
+    );
+    // Harness-specific, not a general invariant: this fixture issues the
+    // request and starts the stream at the same instant, so the stream
+    // duration covers the first-token wait. In real transcripts the first
+    // token is measured from the request while the duration starts at the
+    // stream, and the first token can exceed the duration.
+    //
+    expect(terminal.event.message.responseDurationMs).toBeGreaterThan(
+      terminal.event.message.responseFirstTokenMs,
+    );
+    await runtime.dispose();
+  });
 });
 
 describe("DesktopAgentRuntime compaction restore", () => {

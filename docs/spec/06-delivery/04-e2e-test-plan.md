@@ -1399,6 +1399,123 @@ identify the platform validation still needed.
   `session-switch-performance.test.mjs`); full UI scenario Draft
 
 
+#### E2E-CHAT-per-reply-timing-readout: Prompts show their send time and replies show their duration and completion time
+
+- **Preconditions**: Provider configured; a session can stream an assistant
+  reply with a visible pause before the first token arrives.
+- **Steps**: 1) Send a prompt and watch the reply while it is still streaming.
+  2) Confirm the prompt's send time is already visible under the sent message
+  and that the reply's meta row shows no timing value yet. 3) Wait for the turn
+  to complete. 4) Read the reply's meta row: the model badge plus one compact
+  readout line whose segments read `Usage <total> tok`, `Elapsed <duration>`,
+  and the local completion time.
+  5) Point at the usage and the elapsed segments and confirm neither card opens,
+  then click the elapsed segment alone: only the timing card appears, titled
+  with this turn's timing, with the `Elapsed` and `First token` rows and its
+  own copy control, and no usage total in its heading. Confirm the usage card
+  did not open. 6) Click the elapsed segment again to close the timing card,
+  reopen it and press Escape, reopen it and click outside. 7) Reload the
+  session and read the line again.
+- **Expected**: The prompt shows its local send time under the bubble as soon
+  as it is sent, and that time never moves into the answer's meta row. No
+  timing value renders under the reply while it is still streaming. After the
+  turn ends the meta row carries one compact line of three segments: the
+  turn's usage total, `Elapsed <duration>`, and the local completion time,
+  separated by a wider gap than the `·` inside a segment. `Elapsed` is a
+  locale-formatted duration in hours, minutes, and seconds; first-token
+  latency is the wait from the provider request to the first streamed token
+  (model latency, excluding local turn setup), and it forms no segment of its
+  own — it rides the card's `First token` row, not the inline line;
+  read against one clock, send ≤ first token ≤ completion, and elapsed equals
+  completion minus send for that turn. The usage and the elapsed segments are
+  both triggers, and each opens its own card on click alone — pointing at the
+  readout never opens either, and clicking the same trigger again closes that
+  card — while the completion clock stays plain text; Escape or a click outside
+  closes the open card too. The two cards are independent: the elapsed segment
+  opens only the timing card, its own title, no heading total, the two rows
+  `Elapsed` and `First token`, and its own copy control, while the usage
+  segment opens only the usage card, titled with this turn's usage, with the
+  turn total and a copy control on the right of the heading and the rows
+  provider / model, the cache-hit rate, uncached input, cache read, output, and
+  the generation rate. Each card's text is selectable and its copy control
+  copies that card's own rows, with the token rows showing bare counts because
+  the unit rides the heading and the inline usage segment. A value that is
+  unknown is omitted on its own without hiding the rest of the line. Reloading
+  the session re-renders the same values from persisted message metadata.
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3;
+  `03-runtime/01-ipc-protocol.md` §7
+- **Acceptance**: C (chat stream and per-reply timing), F (transcript
+  metadata), Quality
+- **Milestone**: M6+
+- **Status**: Draft
+
+#### E2E-CHAT-per-reply-usage-readout: Completed replies show this turn's tokens and speed
+
+- **Preconditions**: Provider configured and reporting usage; a session can
+  complete a turn.
+- **Steps**: 1) Send a prompt and stop a different reply mid-stream, then let a
+  third turn finish. 2) After each turn ends, click the usage segment of the
+  reply's compact readout line: only the usage card appears, with the heading
+  total and the unit-less token rows, and no timing rows and no open timing
+  card. 3) Click the elapsed segment instead and confirm only the timing card
+  opens, with the `Elapsed` and `First token` rows. 4) Compare the newest
+  reply's numbers with the composer context inspector. 5) Reload the session
+  and read them again.
+- **Expected**: A reply that reported usage lists uncached input, cache read,
+  and output in the card, with the provider cache-hit rate when the
+  provider reported reads, and a generation rate worded with the provider's own
+  count. Those token rows show bare counts, because the token unit rides the
+  card heading and the inline `Usage` segment rather than the rows. A turn
+  stopped before final usage shows only the estimated rate ("≈ …
+  tokens/s"). Output appends the reasoning tokens inline when reasoning tokens
+  are present; one without omits the suffix. The heading total and the `Usage`
+  segment of the compact line both equal uncached input + cache read + output.
+  Nothing renders while the turn is still streaming. The compact readout line
+  is the one E2E-CHAT-per-reply-timing-readout covers, and the usage card holds
+  only this turn's cost and speed: no timing rows, and no heading total on the
+  separate timing card, which the elapsed segment alone opens with its
+  `Elapsed` and `First token` rows. Opening one card never opens the other, and
+  each closes on Escape, an outside click, or a second click on its own
+  segment. The
+  prompt's send time stays under the prompt rather than in this row. Reloading
+  re-renders the same values from persisted message usage, and the newest
+  reply's input, output, and cache values agree with the composer context
+  inspector.
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3;
+  `03-runtime/01-ipc-protocol.md` §7
+- **Acceptance**: C (conversation), F (persistence), Quality
+- **Milestone**: M6+
+- **Status**: Draft
+
+#### E2E-CHAT-composer-session-usage-totals: The composer usage panel shows whole-session totals that survive transcript paging
+
+- **Preconditions**: Provider configured and reporting usage; a session with
+  several completed turns, each showing its own per-reply usage readout.
+- **Steps**: 1) Open that session and activate the composer context-usage
+  inspector trigger. 2) Read the top `Session` row, above the `Provider usage`
+  row. 3) Scroll the transcript up far enough to load an older message page.
+  4) Re-open the panel if it closed and read the `Session` row again. 5) Sum
+  the per-reply usage readouts in the transcript and compare them with the
+  `Session` row's session total. 6) Open a session with no completed turn and
+  inspect the same panel.
+- **Expected**: The panel's first row is labelled `Session` and lists the
+  session's turn count, session total, input, output, cache read (when any),
+  and the cache hit rate, aggregated by the host through
+  `session.getUsage` / `api.getSessionUsage` over the session's completed
+  turns rather than summed in the renderer. The numbers do not change when
+  older transcript pages load, because they come from the host aggregate and
+  not from the paged window. The session total equals input + output + cache
+  read + cache write and equals the sum of the per-reply readouts for the same
+  session. A session with no completed turn has nothing to aggregate, so the
+  Session row is absent — as it is while that read is still in flight or when
+  it fails — and no placeholder takes its place. Per-turn
+  usage still rides each reply's own readout line.
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3;
+  `03-runtime/01-ipc-protocol.md` §7
+- **Acceptance**: C (conversation), F (persistence), Quality
+- **Milestone**: M6+
+- **Status**: Draft
+
 ### Conversation Top Bar
 
 #### E2E-087: Conversation top bar renders on the chat route
@@ -7540,16 +7657,16 @@ identify the platform validation still needed.
 | B / F / Security — Provider copy | E2E-PROVIDER-copy-config-without-credentials |
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
-| C — Conversation & stream | E2E-008, E2E-008d, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-SUBAGENT-resume-a-settled-delegation |
+| C — Conversation & stream | E2E-008, E2E-008d, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-SUBAGENT-resume-a-settled-delegation, E2E-CHAT-per-reply-timing-readout, E2E-CHAT-per-reply-usage-readout, E2E-CHAT-composer-session-usage-totals |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
 | D — Workspace (project ordering) | E2E-253 |
 | E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166, E2E-181, E2E-PLUGIN-imported-pi-package-skills |
-| F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-102i, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-146a, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168, E2E-171, E2E-177, E2E-178, E2E-183, E2E-186, E2E-005J, E2E-PLUGIN-session-orchestrator-real-workers |
+| F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-102i, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-146a, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168, E2E-171, E2E-177, E2E-178, E2E-183, E2E-186, E2E-005J, E2E-PLUGIN-session-orchestrator-real-workers, E2E-CHAT-per-reply-timing-readout, E2E-CHAT-per-reply-usage-readout, E2E-CHAT-composer-session-usage-totals |
 | F — Persistence (project ordering) | E2E-251 |
 | G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024AA, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection, E2E-PLUGIN-fs-root-follows-the-calling-session |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-146a, E2E-155, E2E-159, E2E-176, E2E-194, E2E-195 |
 | Security | E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158, E2E-187, E2E-196c, E2E-196b, E2E-196, E2E-PLUGIN-fs-root-follows-the-calling-session |
-| Quality | E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
+| Quality | E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation, E2E-CHAT-per-reply-timing-readout, E2E-CHAT-per-reply-usage-readout, E2E-CHAT-composer-session-usage-totals |
 | Quality (project ordering) | E2E-253 |
 | C — Conversation & stream (IME slash alias) | E2E-255 |
 | E — Tools & permissions (Skill residency) | E2E-254 |
@@ -7598,7 +7715,7 @@ identify the platform validation still needed.
 | M2 (IME slash alias) | E2E-255 |
 | M5 (Skill residency) | E2E-254 |
 | M6 | E2E-104, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-103, E2E-172 |
-| M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
+| M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation, E2E-CHAT-per-reply-timing-readout, E2E-CHAT-per-reply-usage-readout, E2E-CHAT-composer-session-usage-totals |
 | M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+ (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |

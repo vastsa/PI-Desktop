@@ -26,7 +26,7 @@ import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-dat
 import { isHtmlFilePath, splitChatText } from "../../../lib/chat-links";
 import type { SourcePositionProps } from "../../../lib/markdown-source";
 import { getToolAction, type ToolAction } from "../../../lib/tool-display";
-import { calculateTokenRate } from "../../../lib/context-usage";
+import { ReplyUsage } from "./ReplyUsage";
 import { useAppStore } from "../../../stores/app-store";
 import { Markdown, useCopy } from "../../../components/Markdown";
 import {
@@ -90,26 +90,39 @@ export function CopyButton({
     </TooltipButton>
   );
 }
+
 export function MessageMeta({
   modelId,
   usage,
   responseDurationMs,
   responseOutputTokens,
+  responseOutputEstimated,
+  firstTokenMs,
+  completedAt,
+  totalMs,
 }: {
   modelId?: string;
+  /** Provider-reported usage summed over every reply in this turn. */
   usage?: MessageUsage;
   responseDurationMs?: number;
   responseOutputTokens?: number;
+  /** True when part of this turn's output count is the runtime's estimate. */
+  responseOutputEstimated?: boolean;
+  /** Provider request → first streamed token, in milliseconds. */
+  firstTokenMs?: number;
+  /** Local clock time the last assistant stream of this turn ended. */
+  completedAt?: string;
+  /** The prompt's send time → that completion time, in milliseconds. */
+  totalMs?: number;
 }) {
-  const { t } = useTranslation();
-  const throughput = calculateTokenRate(
-    responseOutputTokens ?? usage?.outputTokens ?? 0,
-    responseDurationMs,
-  );
-  const showThroughput = !usage && throughput !== undefined;
-  if (!modelId && !showThroughput) {
-    return null;
-  }
+  const hasReadout =
+    Boolean(usage) ||
+    Boolean(modelId) ||
+    firstTokenMs !== undefined ||
+    totalMs !== undefined ||
+    responseDurationMs !== undefined ||
+    responseOutputTokens !== undefined;
+  if (!hasReadout) return null;
   return (
     <div className="message-meta">
       {modelId ? (
@@ -117,13 +130,16 @@ export function MessageMeta({
           {modelId}
         </span>
       ) : null}
-      {showThroughput ? (
-        <span className="message-meta-chip throughput">
-          {t("chat.usageThroughputEstimated", {
-            count: formatCompactTokenCount(throughput),
-          })}
-        </span>
-      ) : null}
+      <ReplyUsage
+        modelId={modelId}
+        usage={usage}
+        responseDurationMs={responseDurationMs}
+        responseOutputTokens={responseOutputTokens}
+        responseOutputEstimated={responseOutputEstimated}
+        firstTokenMs={firstTokenMs}
+        completedAt={completedAt}
+        totalMs={totalMs}
+      />
     </div>
   );
 }

@@ -892,6 +892,7 @@ type UiMessage = {
  thinking?: string; // assistant reasoning, never folded into content
  usage?: MessageUsage; // provider-reported assistant usage
  responseDurationMs?: number; // model stream duration for throughput
+responseFirstTokenMs?: number; // wait from the provider request to the first streamed token
  responseOutputTokens?: number; // estimated partial output when stop has no final usage
  toolName?: string;
  toolCallId?: string;
@@ -919,6 +920,16 @@ type SessionDetail = SessionSummary & {
   messageStart?: number;
   /** True when an older page can be requested with session.get. */
   hasMoreBefore?: boolean;
+};
+
+type SessionUsageTotals = {
+ inputTokens: number;
+ outputTokens: number;
+ totalTokens: number;
+ cacheReadTokens: number;
+ cacheWriteTokens: number;
+ reasoningTokens: number;
+ turnCount: number;
 };
 ```
 
@@ -951,9 +962,9 @@ for the reserved `Alt+Space` binding. Host-core emits the notification
 `keyboard.shortcut({ binding: "Alt+Space" })` when its low-level Windows
 keyboard hook detects the chord; the hook consumes that chord so the active
 window system menu does not open. Non-Windows hosts treat the method as a
-no-op. `responseDurationMs` and `responseOutputTokens` are optional transcript
-  metadata persisted in message metadata, so protocol v11 and storage schema v16
-remain unchanged.
+no-op. `responseDurationMs`, `responseOutputTokens`, and
+`responseFirstTokenMs` are optional transcript metadata persisted in message
+metadata, so protocol v11 and storage schema v16 remain unchanged.
 
 The Settings font picker (ADR 0083) reads installed system font families
 through one Electron-only allowlisted channel:
@@ -990,6 +1001,13 @@ Minimal interface:
   Task `UiMessage`. It is display context outside the physical page, not an
   extra history line. The renderer shares one reading view between ordinary
   paging, search navigation, and subagent details.
+- `session/getUsage({ sessionId }) -> SessionUsageTotals` sums one session's
+  `status = 'completed'` turns into its whole-session token total, exposed to
+  the renderer as `pi-desktop/session/getUsage`; the composer context inspector
+  reads it for its Session row because the renderer's transcript is only a
+  paged window. `totalTokens` is input + output + cache read + cache write.
+  This additive read-only method adds no protocol-version or storage-schema
+  change (D449).
 - `session/search({ query, offset? }) -> SessionSearchPage` forwards to
   `search.sessions`; host-core owns discovery, counts, filtering, and pagination.
 - `session/searchContext(SessionSearchContextRequest) -> SessionSearchContext`
@@ -1095,6 +1113,8 @@ is a runtime estimate from the tool call arguments and result; providers do not
 report per-tool allocation, so the renderer labels these rows as estimates and
 never merges them into the exact provider total. Older peers may omit all of
 these optional fields without breaking the v6 handshake.
+ The panel's newest whole-session row does not derive from either signal: it
+ reads the additive `session/getUsage` aggregate above (D449).
 
 `turn_end.subagentUsage` is the settled subagent total since the previous
 emitted `turn_end` of the same durable turn. Parent `message.usage` stays the
