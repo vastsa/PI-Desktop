@@ -227,6 +227,15 @@ The app settings JSON optionally stores `thinkingDisplayMode` (`detailed` or
 `compact`). Missing values retain detailed presentation. This additive display
 preference neither rewrites stored reasoning nor changes the database schema.
 
+The same blob optionally stores the prompt-enhancement overrides
+`promptEnhancementSystemPrompt`, `promptEnhancementUserTemplate`,
+`promptEnhancementProviderId`, and `promptEnhancementModelId` (ADR 0121).
+Absent or blank template values mean the built-in defaults apply, so clearing a
+field stores no key rather than an empty string. A non-blank user template must
+contain the draft variable and every template must stay within
+`PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH`; host-core rejects a write that breaks
+either rule. No schema version bump is required.
+
 New config domains (e.g. MCP servers) start as a namespace; they graduate to
 tables only when they need relations or indexes.
 

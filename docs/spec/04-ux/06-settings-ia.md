@@ -147,6 +147,14 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   is remaining. The threshold controls when a text-only paste becomes a
   temporary session-scratch file; it defaults to 600 characters and accepts
   integer values from 1 through 1,000,000.
+- **Prompt enhancement** is a card controlling the Composer's Enhance prompt
+  action (ADR 0121). An enhancement-model row follows the Composer's current
+  model until a specific provider/model is pinned. Two template editors show the
+  built-in default text when no override is stored, so the displayed value is
+  the value in force, and a card-level restore action clears both overrides at
+  once. The user-template editor offers an insert action for the draft variable
+  and refuses a save that would leave the template without it. Settings search
+  indexes the card and both template rows.
 - **Thinking display mode** uses a menu select with Detailed (default) and
   Compact. Detailed retains reasoning text; Compact shows only an active
   thinking indicator and hides finished thought rows. The global preference

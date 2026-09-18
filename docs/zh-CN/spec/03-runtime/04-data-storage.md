@@ -1147,6 +1147,14 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 主机读取设置时会将缺失、格式错误或超出范围的值规范化为 600，设置写入则验证
 1–1,000,000 的整数范围。因此现有数据库会在读取时延迟获得默认值，不需要破坏性
 迁移或第二个设置存储。
+
+同一个应用设置 JSON 还可选存储提示词增强的覆盖值
+`promptEnhancementSystemPrompt`、`promptEnhancementUserTemplate`、
+`promptEnhancementProviderId` 与 `promptEnhancementModelId`（ADR 0121）。
+模板字段缺失或为空表示使用内置默认值，因此清空字段不会写入空字符串而是不写该键。
+非空的用户模板必须包含草稿变量，且每个模板都不得超过
+`PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH`；host-core 会拒绝违反任一规则的写入。
+无需提升 schema 版本。
 - Plan 和 Goal 工件永远不会根据转录内容重建。开
   启动,
   一笔交易标志着每笔 `pending` 批准和每笔 `queued` 或

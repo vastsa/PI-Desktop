@@ -42,22 +42,28 @@ main, and invokes agent-runtime's one-shot completion helper. Vendor OAuth
 providers receive a short-lived `ModelAuth` through the existing main-owned
 resolver; no key or refresh token crosses into the renderer.
 
-The completion context contains exactly:
+The completion context is a system prompt plus one user message. Both come from
+templates that default to `packages/shared/src/prompt-enhancement.ts` and can be
+overridden in Settings (see §5). The user template carries a `{{draft}}`
+placeholder; every occurrence is replaced with the draft text, and the default
+template keeps the draft inside `<draft>` tags so draft text reads as content
+to improve rather than as instructions. The default system prompt states the
+role, the rewrite principles, an explicit do-not list (including leaving code,
+commands, file paths, identifiers, and other proper nouns exactly as written),
+language-following rules that forbid language meta notes, a length brake, and
+the output contract.
 
-1. the static `PROMPT_ENHANCEMENT_SYSTEM_PROMPT` from
-   `packages/agent-runtime/src/prompt-templates.ts`; and
-2. one user message, `Draft:\n<draft text>`.
-
-No prior conversation, tools, attachments, or configurable template are
-included. The renderer removes its inline file-reference chip tokens before
-the request and restores those chips in their original order and relative
-position after the text response; the model is not trusted to preserve opaque
-renderer sentinels. The selected thinking level is passed to pi-ai, and
-provider setup retries use the existing bounded retry controller. When the
-resolved provider is OpenCode Go (or another `opencode.ai` host), the one-shot
-forwards the Composer session id as `x-opencode-session`; a request with no
-session gets a per-call id. Model output is consumed as plain text and trimmed.
-Empty or whitespace-only output is a `PROMPT_ENHANCEMENT_EMPTY` failure.
+No prior conversation, tools, attachments, or session state are included. The
+renderer removes its inline file-reference chip tokens before the request and
+restores those chips in their original order and relative position after the
+text response; the model is not trusted to preserve opaque renderer sentinels.
+The selected thinking level is passed to pi-ai, and provider setup retries use
+the existing bounded retry controller. When the resolved provider is OpenCode Go
+(or another `opencode.ai` host), the one-shot forwards the Composer session id
+as `x-opencode-session`; a request with no session gets a per-call id. Model
+output is consumed as plain text, has one matching pair of wrapping quotation
+marks removed, and is trimmed. Empty or whitespace-only output is a
+`PROMPT_ENHANCEMENT_EMPTY` failure.
 
 ## 4. Failure and race handling
 
@@ -70,3 +76,34 @@ request. If the draft changes, is sent/cleared, or the user switches sessions
 before the response arrives, the response is discarded and cannot overwrite
 the newer draft. File chips are not included in the rewrite and are not
 removed by success or failure.
+
+
+## 5. Configurable templates and enhancement model
+
+Settings → AI hosts a Prompt enhancement card controlling four `AppSettings`
+fields:
+
+| Field | Effect when empty |
+|---|---|
+| `promptEnhancementSystemPrompt` | the built-in system prompt |
+| `promptEnhancementUserTemplate` | the built-in user template |
+| `promptEnhancementProviderId` + `promptEnhancementModelId` | follow the Composer's current model |
+
+Each template field shows the built-in default when no override is stored, so
+the value on screen is the value in force, and `Restore all defaults` clears
+both overrides in one write. Editing a field back to the exact default text also
+clears the override rather than storing a frozen copy, so later improvements to
+the defaults still reach users who never customized them. Never persisting the
+default text is deliberate.
+
+The user-template field offers an insert action that writes the draft variable
+at the caret, and a save that would leave the template without it is refused
+locally with a message. host-core enforces the same rules for any writer:
+`promptEnhancementUserTemplate` must contain `{{draft}}` when non-blank, each
+template must be a string within `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH`, and a
+blank value is stored as absent rather than as an empty string.
+
+When `promptEnhancementProviderId` is set, main prefers that pin and logs a
+warning plus falls back to the Composer's current model if the pin cannot be
+resolved. A pinned model is a preference, so a stale pin never disables the
+action.
