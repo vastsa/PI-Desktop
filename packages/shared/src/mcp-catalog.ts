@@ -48,9 +48,22 @@ export type McpCatalogFile = {
   servers: McpCatalogEntry[];
 };
 
-const PLACEHOLDER = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
-const CATALOG_CATEGORIES = new Set<McpCatalogCategory>(["devtools", "web", "docs", "data", "productivity"]);
+/*
+ * The builtin catalog and stdio templates spell a variable `${NAME}` in upper
+ * case. The official registry spells a header variable `{name}` and does not
+ * require upper case, so the header pattern accepts both spellings and consumes
+ * the `$`, leaving no stray dollar behind. stdio keeps its own spelling, so a
+ * brace pair inside a command or an argument is never rewritten.
+ */
+const ENV_PLACEHOLDER = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+const HEADER_PLACEHOLDER = /\$?\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 const ENV_NAME = /^[A-Z_][A-Z0-9_]*$/;
+const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const CATALOG_CATEGORIES = new Set<McpCatalogCategory>(["devtools", "web", "docs", "data", "productivity"]);
+
+function placeholderPattern(transport: unknown): RegExp {
+  return transport === "http" ? HEADER_PLACEHOLDER : ENV_PLACEHOLDER;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -64,13 +77,14 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   return isRecord(value) && Object.values(value).every((item) => typeof item === "string");
 }
 
-function requiredEnvError(value: unknown, id: string): string | null {
+function requiredEnvError(value: unknown, id: string, transport: unknown): string | null {
   if (!Array.isArray(value)) return `${id}: requiredEnv must be an array`;
   const names = new Set<string>();
+  const namePattern = transport === "http" ? VARIABLE_NAME : ENV_NAME;
   for (const item of value) {
     if (!isRecord(item)) return `${id}: requiredEnv items must be objects`;
-    if (typeof item.name !== "string" || !ENV_NAME.test(item.name)) {
-      return `${id}: requiredEnv names must be environment variable names`;
+    if (typeof item.name !== "string" || !namePattern.test(item.name)) {
+      return `${id}: requiredEnv names must be variable names`;
     }
     if (names.has(item.name)) return `${id}: duplicate requiredEnv name ${item.name}`;
     names.add(item.name);
@@ -104,7 +118,7 @@ function entryShapeError(value: unknown): string | null {
   if (value.headers !== undefined && !isStringRecord(value.headers)) return `${id}: headers must be an object of strings`;
   if (value.prerequisites !== undefined && !isStringArray(value.prerequisites)) return `${id}: prerequisites must be an array of strings`;
   if (value.requiredEnv !== undefined) {
-    const error = requiredEnvError(value.requiredEnv, id);
+    const error = requiredEnvError(value.requiredEnv, id, value.transport);
     if (error) return error;
   }
   for (const field of ["description", "author", "homepage", "command", "url", "notes"]) {
@@ -132,8 +146,9 @@ function templateStrings(entry: McpCatalogEntry): string[] {
 /** Every `${NAME}` the entry's install template needs, deduped and sorted. */
 export function collectCatalogPlaceholders(entry: McpCatalogEntry): string[] {
   const names = new Set<string>();
+  const pattern = placeholderPattern(entry.transport);
   for (const text of templateStrings(entry)) {
-    for (const match of text.matchAll(PLACEHOLDER)) names.add(match[1]);
+    for (const match of text.matchAll(pattern)) names.add(match[1]);
   }
   return [...names].sort();
 }
@@ -182,8 +197,9 @@ export function resolveCatalogEntry(
   const error = catalogEntryError(entry);
   if (error) throw new Error(error);
   const declared = declaredNames(entry);
+  const pattern = placeholderPattern(entry.transport);
   const fill = (text: string): string =>
-    text.replace(PLACEHOLDER, (whole, name: string) => {
+    text.replace(pattern, (whole, name: string) => {
       const spec = declared.get(name);
       const value = values[name] ?? spec?.defaultValue ?? "";
       if (!value && !spec?.optional) {

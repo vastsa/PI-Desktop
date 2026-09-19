@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { catalogEntryError } from "./mcp-catalog.js";
+import { catalogEntryError, resolveCatalogEntry } from "./mcp-catalog.js";
 import {
   guessCategory,
   isPublicIpLiteral,
@@ -67,6 +67,57 @@ const remoteRecord: RegistryRecord = {
   },
 };
 
+/*
+ * The official registry spells a header variable as `{name}` and declares it in
+ * `variables` (see the `variables` description in the registry server schema,
+ * which replaces the `{curly_braces}` keys of `value`). Records in the wild use
+ * both that form and the `${NAME}` form the builtin catalog uses.
+ */
+const officialPlaceholderRecord: RegistryRecord = {
+  server: {
+    name: "io.github.example/cloud-toolkit",
+    title: "Cloud Toolkit",
+    description: "web search and page extraction",
+    remotes: [
+      {
+        type: "streamable-http",
+        url: "https://toolkit.example.com/mcp",
+        headers: [
+          {
+            name: "Authorization",
+            value: "Bearer {CLOUD_API_KEY}",
+            isRequired: true,
+            isSecret: true,
+            variables: {
+              CLOUD_API_KEY: {
+                description: "Create a scoped key in the dashboard.",
+                format: "string",
+                isRequired: true,
+                isSecret: true,
+              },
+            },
+          },
+        ],
+      },
+    ],
+  },
+};
+
+const lowercasePlaceholderRecord: RegistryRecord = {
+  server: {
+    name: "ai.example/lowercase",
+    title: "Lowercase",
+    description: "a server whose variable name is not upper case",
+    remotes: [
+      {
+        type: "streamable-http",
+        url: "https://lowercase.example.com/mcp",
+        headers: [{ name: "Authorization", value: "Bearer {api_key}" }],
+      },
+    ],
+  },
+};
+
 describe("registryIdFromName", () => {
   it("slugifies reverse-dns names", () => {
     expect(registryIdFromName("com.pulsemcp/playwright-stealth")).toBe("com-pulsemcp-playwright-stealth");
@@ -116,6 +167,56 @@ describe("mapRegistryServer", () => {
     expect(entry!.requiredEnv).toEqual([{ name: "PROJECT" }, { name: "TOKEN" }]);
     expect(entry!.name).toBe("inference.sh");
     expect(catalogEntryError(entry!)).toBeNull();
+  });
+
+  it("maps a remote record's official {curly_braces} header variables", () => {
+    const entry = mapRegistryServer(officialPlaceholderRecord);
+    expect(entry).not.toBeNull();
+    expect(entry!.headers).toEqual({ Authorization: "Bearer {CLOUD_API_KEY}" });
+    expect(entry!.requiredEnv).toEqual([
+      { name: "CLOUD_API_KEY", description: "Create a scoped key in the dashboard." },
+    ]);
+    expect(catalogEntryError(entry!)).toBeNull();
+  });
+
+  it("accepts a lowercase variable name", () => {
+    const entry = mapRegistryServer(lowercasePlaceholderRecord);
+    expect(entry!.requiredEnv).toEqual([{ name: "api_key" }]);
+    expect(catalogEntryError(entry!)).toBeNull();
+    const input = resolveCatalogEntry(entry!, { api_key: "k-lower-1" });
+    expect(input.headers).toEqual({ Authorization: "Bearer k-lower-1" });
+  });
+
+  it("marks a declared header variable optional when it is not required", () => {
+    const record: RegistryRecord = JSON.parse(JSON.stringify(officialPlaceholderRecord));
+    record.server!.remotes![0].headers![0].variables!.CLOUD_API_KEY = {
+      description: "Optional project selector.",
+      isRequired: false,
+    };
+    const entry = mapRegistryServer(record);
+    expect(entry!.requiredEnv).toEqual([
+      { name: "CLOUD_API_KEY", description: "Optional project selector.", optional: true },
+    ]);
+  });
+
+  it("resolves an official {curly_braces} header into the sent value, not the placeholder", () => {
+    const entry = mapRegistryServer(officialPlaceholderRecord)!;
+    const input = resolveCatalogEntry(entry, { CLOUD_API_KEY: "sk-live-123" });
+    expect(input.headers).toEqual({ Authorization: "Bearer sk-live-123" });
+  });
+
+  it("resolves a builtin ${NAME} header without leaving a stray dollar", () => {
+    const entry = mapRegistryServer(remoteRecord)!;
+    const input = resolveCatalogEntry(entry, { TOKEN: "t-1", PROJECT: "p-9" });
+    expect(input.headers).toEqual({
+      Authorization: "Bearer t-1",
+      "X-Project": "p-9",
+    });
+  });
+
+  it("refuses to resolve an official header whose value is missing", () => {
+    const entry = mapRegistryServer(officialPlaceholderRecord)!;
+    expect(() => resolveCatalogEntry(entry, {})).toThrow(/missing value for CLOUD_API_KEY/);
   });
 
   it("drops records without a runnable form", () => {

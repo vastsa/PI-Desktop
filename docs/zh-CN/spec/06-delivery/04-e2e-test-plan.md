@@ -7753,7 +7753,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 | ID | 场景 | 验证 |
 |---|---|---|
 | E2E-MCP-MARKET-NET-BOUNDARY | URL guard 拒绝凭据、回环、私网、special-use IPv4、v4-mapped、ULA、site-local 和 link-local 及尾点绕过形态；Main 固定已检查的公网地址并逐跳复核 HTTPS 重定向 | 确定性 guard 断言；DNS pin 与响应上限 source-contract 覆盖 |
-| E2E-MCP-MARKET-SEMANTICS | Registry 记录映射为安装模板时保留包版本、named/positional runtime/package 参数与 required/optional 环境变量语义 | 确定性映射断言 |
+| E2E-MCP-MARKET-SEMANTICS | Registry 记录映射为安装模板时保留包版本、named/positional runtime/package 参数与 required/optional 环境变量语义；远端 header 变量同时识别注册表的 `{name}` 与目录的 `${NAME}` 两种写法，会为它索取值，并将其代入实际发出的 header 而不是作为字面量发出（ADR 0298） | 确定性映射断言 |
 | E2E-MCP-MARKET-INSTALL | 内置目录条目经 `resolveCatalogEntry` 解析并通过宿主 `mcp.upsert` RPC 安装；记录落盘 `~/.agents/servers/` | 真实宿主二进制，隔离临时 HOME |
 
 

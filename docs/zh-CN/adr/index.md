@@ -303,6 +303,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0295 | [会话思考参数不发送](/adr/0295-session-thinking-parameter-omission) | 已接受（D456；修订 ADR 0194 / ADR 0144 / ADR 0221） |
 | 0296 | [已签名 macOS DMG 改为双图标安装](/adr/0296-macos-signed-dmg-two-icon-install) | 已接受（D457；修订 ADR 0232 / ADR 0204） |
 | 0297 | [提供商托管联网搜索作为适配器能力](/adr/0297-provider-hosted-web-search-adapter-capability) | 已接受 |
+| 0298 | [远端 header 变量接受注册表的 `{name}` 写法](/adr/0298-registry-header-variable-spelling) | 已接受 |
 
 ## 什么时候看 ADR
 
