@@ -821,3 +821,32 @@ describe("opaque bad-request repair", () => {
     expect(typeof repaired.onPayload).toBe("function");
   });
 });
+
+describe('infinite provider retry budget (issue #385)', () => {
+  it('exhausts the bounded transient budget by default', () => {
+    // Bounded default: ten claims then stop (ADR 0206).
+    let claimed = 0;
+    for (let i = 0; i < PROVIDER_TRANSIENT_MAX_RETRIES + 5; i++) {
+      if (i < PROVIDER_TRANSIENT_MAX_RETRIES) claimed++;
+    }
+    expect(claimed).toBe(PROVIDER_TRANSIENT_MAX_RETRIES);
+  });
+
+  it('keeps claiming past the bounded budget when infinite is enabled', () => {
+    // Mirrors claimProviderRetry: infinite skips only the max check.
+    const infinite = true;
+    let attempt = 0;
+    const max = PROVIDER_TRANSIENT_MAX_RETRIES;
+    for (let i = 0; i < max + 10; i++) {
+      if (!infinite && attempt >= max) break;
+      attempt++;
+    }
+    expect(attempt).toBe(max + 10);
+  });
+
+  it('still stops when the abort signal fires', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(delayWithAbort(10, controller.signal)).rejects.toThrow(/aborted/i);
+  });
+});

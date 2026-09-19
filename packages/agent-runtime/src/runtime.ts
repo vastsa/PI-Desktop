@@ -1588,6 +1588,11 @@ export class DesktopAgentRuntime {
   private providerTransientRetryAttempt = 0;
   /** Shared OpenCode-style 429 retry count across setup and stream phases. */
   private providerRateLimitRetryAttempt = 0;
+  /**
+   * When true, transient and rate-limit provider retries are unbounded
+   * (issue #385). Default false keeps the ADR 0206 ten-retry budget.
+   */
+  infiniteProviderRetry = false;
   private activeProviderRetryAttempt = 0;
   private providerRetryInProgress = false;
   private suppressProviderRetryRunEnd = false;
@@ -5244,15 +5249,25 @@ Delegation rules:
    * phases, so a flapping gateway is retried instead of surfacing an error
    * after a single attempt.
    */
+  /** Enable unbounded provider retries for this runtime (issue #385). */
+  setInfiniteProviderRetry(enabled: boolean): void {
+    this.infiniteProviderRetry = enabled;
+  }
+
   private claimProviderRetry(
     error: ReturnType<typeof classifyAgentError>,
     phase: "request" | "stream",
   ): number | undefined {
     if (!error.retriable) return undefined;
+    // Opt-in unbounded retries for unstable relays (issue #385). Bounded
+    // default stays ADR 0206; only the stop condition changes. Classification,
+    // backoff schedule, and abort/cancel paths are unchanged.
+    const infinite = this.infiniteProviderRetry === true;
     if (error.code === "PROVIDER_RATE_LIMITED") {
       if (
+        !infinite &&
         this.providerRateLimitRetryAttempt >=
-        PROVIDER_RATE_LIMIT_MAX_RETRIES
+          PROVIDER_RATE_LIMIT_MAX_RETRIES
       ) {
         return undefined;
       }
@@ -5266,7 +5281,10 @@ Delegation rules:
     // next must not multiply the budget or reset it by changing phase.
     void phase;
     if (!isTransientProviderRetryCode(error.code)) return undefined;
-    if (this.providerTransientRetryAttempt >= PROVIDER_TRANSIENT_MAX_RETRIES) {
+    if (
+      !infinite &&
+      this.providerTransientRetryAttempt >= PROVIDER_TRANSIENT_MAX_RETRIES
+    ) {
       return undefined;
     }
     const attempt = ++this.providerTransientRetryAttempt;
