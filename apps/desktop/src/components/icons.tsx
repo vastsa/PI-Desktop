@@ -3,6 +3,7 @@ import {
   Activity,
   AppWindow,
   Archive,
+  BarChart3,
   ArchiveRestore,
   ArrowDown,
   ArrowUp,
@@ -23,6 +24,9 @@ import {
   CircleHelp,
   ClipboardPaste,
   Clock,
+  TrendingUp,
+  PieChart,
+  Flame,
   CloudDownload,
   Code2,
   Database,
@@ -147,6 +151,11 @@ export const IconBookOpen = icon(BookOpen);
 /** Paste-from-clipboard actions (MCP config import). */
 export const IconClipboard = icon(ClipboardPaste);
 export const IconArchive = icon(Archive);
+export const IconDatabase = icon(Database);
+export const IconTrendUp = icon(TrendingUp);
+export const IconPieChart = icon(PieChart);
+export const IconFlame = icon(Flame);
+export const IconBarChart = icon(BarChart3);
 export const IconArchiveRestore = icon(ArchiveRestore);
 export const IconActivity = icon(Activity);
 export const IconArrowUpDown = icon(ArrowUpDown);
@@ -180,7 +189,6 @@ export const IconArrowUp = icon(ArrowUp);
 export const IconArrowDown = icon(ArrowDown);
 export const IconCopy = icon(Copy);
 export const IconCode = icon(Code2);
-export const IconDatabase = icon(Database);
 export const IconCheck = icon(Check);
 export const IconBell = icon(Bell);
 export const IconBot = icon(Bot);

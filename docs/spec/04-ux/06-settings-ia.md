@@ -49,14 +49,16 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   8. **Subagents / 子智能体** — Lucide `Bot` (built-in and personal parallel agents)
   9. **Import / 导入** — Lucide `Download` (bring sessions and model configuration in from other tools)
   10. **Projects / 项目** — Lucide `Archive` (durable project index)
-  11. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
+  11. **Index / 索引** — Lucide `Database` (workspace index health and lifecycle)
+  12. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
   with the rail label; do not reuse refresh/rotate glyphs here.
 - The directory remains a flat searchable list in the same exact order. For
   scanability, the destinations are shown in four titled visual clusters:
   `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
-  (Import, Projects), and `System` / `系统` (Info). Headings are muted,
+  (Import, Projects, Index), and
+  `System` / `系统` (Info). Headings are muted,
   non-interactive labels and use whitespace for separation; no divider lines are
   rendered. These are visual landmarks only, not a second navigation level.
   When search filters the directory, empty clusters and their headings disappear.
@@ -204,11 +206,14 @@ and for bindings that are already stored, but nothing here picks a
 transcription or speech provider, protocol, model, or voice, and search indexes
 no speech keys.
 
-Token usage is **not a Settings destination** (D335 / ADR 0173). Completed-turn
-history stays host-owned (`session.endTurn.usage`, `stats.getTokenUsageHistory`).
-The user-facing dashboard is marketplace plugin `pi.token-insights`, opened from
-the command palette (`usage`, `tokens`, `用量`). Settings search does not index
-a usage tab.
+### Usage statistics (no Settings destination)
+
+D335 / ADR 0173 stands, and the interim re-introduction was withdrawn per the #478 call: no `usage` destination
+ships, and no group is reserved for one. The host-owned aggregation
+(`stats.summary` / `stats.topSessions`, over the durable completed-turn
+history) stays on the Core surface alongside `stats.getTokenUsageHistory`.
+The cross-tool dashboard remains the `pi.token-insights` plugin, which ships
+its own UI and cannot import app internals.
 
 ### Shortcuts (`shortcuts` tab)
 - **Keyboard shortcuts** card:
@@ -639,6 +644,40 @@ system while preserving their different data ownership:
 - Activating a project or project session returns to chat; archive and close
   actions keep Project archive open even when the active workspace changes
 
+### Index library (`index` tab, `Workspace` group)
+- One health card for the host-owned workspace index cache: status, indexed
+  file count, indexed size, unreadable-file count, and last-update time
+- A standalone `Codebase` section below the health card carries the single
+  opt-in toggle, `Grep index boost` (`indexGrepBoost`, default off), which
+  owns both sides of the index, because Grep is its only consumer. When
+  on, opening a different workspace marks its index `building` and rebuilds
+  it on the blocking pool, so `workspace.set` stays fast and the health card
+  polls `index.status` once a second while building, pausing when the window
+  is hidden; case-sensitive literal Grep searches may then be served from the
+  index while every other query keeps walking. Re-opening the same workspace
+  re-walks it at most once per ten minutes, and that re-walk is preceded by
+  a stat-only pass that skips the crawl entirely when no visible file
+  changed. Content the host itself writes (Write / Edit / Bash) invalidates
+  the root immediately, so the fast path falls back until the next rebuild;
+  the opt-in `workspace-watch` build feature adds a filesystem watcher for
+  edits made outside the host, and an invalidated root only ever costs
+  speed — per-candidate stat verification keeps Grep's answer identical to
+  the fallback's. The copy promises speed for
+  eligible searches, never changed results. A second "index new folders"
+  toggle would either duplicate this switch or build an index that nothing
+  reads, so the section carries exactly one
+- Actions are Rebuild index and Clear index; both call the host lifecycle
+  RPCs and refresh the card from the returned status. Rebuild is offered only
+  while the opt-in toggle is on, because an index the switch never feeds is
+  just a scan and some disk; Clear stays available so a leftover index can
+  still be removed
+- The copy states that the index is a rebuildable local cache whose data
+  never leaves the machine, and that Grep results never depend on it
+- Empty state: no root yet for the active workspace, with Build index as the
+  single action, gated the same way so the empty state never offers a build
+  the switch would leave unread. Load failure shows a retry instead of a blank
+  card
+
 ### Info
 - app/host/protocol versions + open logs
 - **Report a problem** row: one action opens the GitHub bug issue form in
@@ -687,7 +726,8 @@ system while preserving their different data ownership:
 2. Rail shows the search pill at the top, the back-to-app action pinned at the
    foot on the main sidebar's footer icon line, and exactly General / 常规, AI,
    Shortcuts / 快捷键, Instructions / 指令, Models / 模型, Skills / 技能, MCP,
-   Subagents / 子智能体, Import / 导入, Projects / 项目, and Info / 信息 in
+   Subagents / 子智能体, Import / 导入, Projects / 项目, Index / 索引, and
+   Info / 信息 in
    that order. The rows are grouped under Preferences / 偏好, Agent / 智能体,
    Workspace / 工作区, and System / 系统. There is no Usage / 用量 destination.
 3. Appearance is part of General and has no standalone rail destination

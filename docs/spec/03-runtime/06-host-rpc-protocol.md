@@ -203,6 +203,34 @@ type ToolBudgetHealth = {
 - `workspace.set`
 - `workspace.clear`
 
+### Usage statistics
+- `stats.summary({rangeDays: 7|30, projectId?})` — cards, diagnostics, daily
+  totals, per-model series, model/project usage shares, and the 365-day
+  heatmap, aggregated from completed turns of non-deleted sessions. TTL-cached
+  per (range, project, timezone, metric version, last turn end).
+- `stats.topSessions({rangeDays, projectId?, limit?})` — highest-spend
+  sessions for the jump card.
+
+### Workspace index
+- `index.status({rootPath?})` returns lifecycle status for the host-owned,
+  disposable workspace index. It never exposes file contents.
+- `index.rebuild({rootPath?})` scans the selected workspace into the isolated
+  `<data-dir>/index/index.db` cache. When `rootPath` is omitted, the current
+  workspace is used. The operation enforces fixed file-count and byte budgets.
+- `workspace.set` triggers a background `ensure_index` + rebuild for a changed
+workspace while `indexGrepBoost` is on; with it off, switching workspaces
+never touches the index. `index.clear({rootPath?})` removes the active
+  workspace root namespace. When `rootPath` is present it must equal the active
+  workspace; omission selects that same workspace.
+
+The index database is a rebuildable optimization cache, not filesystem truth.
+`tools.execute` and the public Grep result shape do not change when an index
+exists: the opt-in P2-B fast path only narrows the candidate file list behind
+`indexGrepBoost`, and the same scanner still produces the output. Roots report
+`fresh`, `building`, `stale`, `failed`, `partial`, `disabled`, or
+`skipped_over_limit`. `partial` and `skipped_over_limit` are never eligible for
+the fast path.
+
 ### Review snapshots (ADR 0043)
 - `review.rollback({sessionId, snapshotId})` — verify the current post-tool
   hash, restore the session-owned previous bytes, and return one of

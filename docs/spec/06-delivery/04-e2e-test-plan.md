@@ -1674,6 +1674,169 @@ identify the platform validation still needed.
 - **Milestone**: M2
 - **Status**: Draft
 
+### Workspace Index
+
+#### E2E-INDEX-status-rebuild-clear: isolated index lifecycle stays workspace-scoped
+
+- **Preconditions**: A debug host-core binary is available; the harness can create
+  temporary data, workspace, and outside directories.
+- **Steps**: 1) Start host-core with an isolated `PI_DESKTOP_DATA_DIR`. 2) Set the
+  temporary workspace. 3) Confirm `index.status` is empty. 4) Call
+  `index.rebuild` and confirm one fixture file is indexed. 5) Attempt to rebuild
+  an outside directory. 6) Clear the workspace root and read status again.
+- **Expected**: Rebuild produces one `fresh` root; status exposes metadata but no
+  file content; the outside root fails with `INDEX_ROOT_OUTSIDE_WORKSPACE`;
+  clear removes exactly the selected root and leaves status empty. All index
+  files live under the temporary data directory and are removed by harness
+  cleanup. Grep results stay identical whether or not the cache exists.
+- **Specs linked**: `03-runtime/04-data-storage.md`,
+  `03-runtime/06-host-rpc-protocol.md`
+- **Acceptance**: C (workspace tools and boundaries), Quality (data safety)
+- **Milestone**: M6+
+- **Status**: Automated by `pnpm test:e2e:index`
+
+#### E2E-INDEX-settings-health-card: index health card reflects host lifecycle
+
+- **Preconditions**: The app is running with an active workspace. The Index
+  destination is available under the Workspace settings group.
+- **Steps**: 1) Open Settings → Index. 2) Observe the empty state for a
+  workspace without an index. 3) Activate Build index and wait for the card to
+  refresh. 4) Activate Clear index. 5) Optionally point the window at a
+  workspace whose index is over budget or partial.
+- **Expected**: The card shows the host-reported status, indexed file count,
+  indexed size, unreadable-file count when non-zero, and last-update time.
+  Build and Clear call the host lifecycle RPCs and refresh from the returned
+  status. The copy describes the index as a rebuildable local cache and never
+  claims Grep reads it. Load failure shows a retry action instead of a blank
+  card. Grep results stay unchanged throughout.
+- **Specs linked**: `04-ux/06-settings-ia.md`,
+  `03-runtime/06-host-rpc-protocol.md`, `03-runtime/04-data-storage.md`
+- **Acceptance**: D (workspace), Quality (local data safety)
+- **Milestone**: M6+
+- **Status**: Documented; the RPC lifecycle is covered by
+  `pnpm test:e2e:index`, UI automation is pending
+
+#### E2E-INDEX-grep-boost-opt-in: the fast path stays inert until switched on
+
+- **Preconditions**: A workspace index has been built (`fresh` root); the
+  `indexGrepBoost` setting is absent or false by default.
+- **Steps**: 1) Run a case-sensitive literal Grep and confirm results come
+  from the normal walk. 2) Set `indexGrepBoost: true` through
+  `settings.set`. 3) Run the same literal Grep and a regex Grep. 4) Set the
+  flag back to false.
+- **Expected**: With the flag off, Grep behavior is byte-identical to before
+  the index existed. With the flag on, literal searches may be served from
+  index candidates while regex/short/case-insensitive queries still walk;
+  result shapes stay identical either way. A malformed non-boolean
+  `indexGrepBoost` patch is rejected with `INVALID_PARAMS`.
+- **Specs linked**: `04-ux/06-settings-ia.md`,
+  `03-runtime/03-tools-and-permissions.md`
+- **Acceptance**: E (tools), Quality (behavior preservation)
+- **Milestone**: M6+
+- **Status**: Automated at the RPC boundary in host-core
+  (`index_grep_boost` RPC tests); UI journey pending
+
+#### E2E-INDEX-auto-index: switching workspaces builds the index only when switched on
+
+- **Preconditions**: Host RPC available; two temporary workspaces; the switch
+  at its default.
+- **Steps**: 1) `workspace.set` to workspace A with the switch off and read
+  `index.status`. 2) Turn `indexGrepBoost` on. 3) `workspace.set` to
+  workspace B and poll `index.status`.
+- **Expected**: With the switch off, status stays empty. With it on,
+  the changed workspace is marked `building` immediately and a background
+  rebuild lands it at `fresh` with the fixture file counted; `workspace.set`
+  returns promptly without waiting for the scan.
+- **Specs linked**: `03-runtime/06-host-rpc-protocol.md`,
+  `04-ux/06-settings-ia.md`
+- **Acceptance**: D (workspace), Quality (responsiveness)
+- **Milestone**: M6+
+- **Status**: Automated at the RPC boundary in host-core
+  (`workspace_set_auto_indexes_only_while_the_grep_boost_is_on`)
+
+#### E2E-STATS-summary-cards-range: usage summary renders host aggregation
+
+> **Suite note (2026-09-16)**: the dashboard ships as a plugin (the #478 call), so
+> the UI journeys below are parked. The host-core `stats::tests` suite stays
+> the reproducible floor for what the board used to assert.
+
+- **Preconditions**: Completed turns exist in the host database (fixture).
+- **Steps**: 1) Open Settings → Usage. 2) Switch the range between 7 and 30
+  days. 3) Refresh. 4) Export CSV and JSON.
+- **Expected**: Cards, heatmap, trend, model donut, insights, and top
+  sessions reflect `stats.summary` / `stats.topSessions` values for the
+  selected range; the page states the numbers are computed locally. Export
+  produces CSV/JSON of the current view. Range switching never mutates data.
+- **Specs linked**: `04-ux/06-settings-ia.md`,
+  `03-runtime/06-host-rpc-protocol.md`
+- **Acceptance**: B (model config adjacent), Quality (data correctness)
+- **Milestone**: M6+
+- **Status**: Parked — the dashboard ships as a plugin (the #478 call); the stats
+  RPC stays covered by host unit tests
+
+#### E2E-STATS-heatmap-today: today's heatmap cell is highlighted
+
+- **Preconditions**: A fixture with completed turns on the local day.
+- **Steps**: 1) Seed a known fixture (today has completed turns). 2) Open
+  Settings → Usage. 3) Inspect the activity heatmap.
+- **Expected**: Exactly the current-day cell carries the `.stats-heat-today`
+  highlight; other cells do not. Local-date keying prevents the historical UTC
+  off-by-one that blanked the heatmap.
+- **Specs linked**: `03-runtime/06-host-rpc-protocol.md`,
+  `04-ux/06-settings-ia.md`
+- **Acceptance**: B (data correctness), D (visual), Quality
+- **Milestone**: M6+
+- **Status**: Parked — the dashboard ships as a plugin (the #478 call); the stats
+  RPC stays covered by host unit tests
+
+#### E2E-STATS-project-breakdown: Top8 + Other fold + No-project bucket
+
+- **Preconditions**: A fixture with completed turns spread across more than
+  eight projects plus one session with no project.
+- **Steps**: 1) Seed the fixture. 2) Open Settings → Usage → Project
+  breakdown. 3) Read the rendered rows.
+- **Expected**: The top eight projects render as full-width rows; the tail
+  folds into a single "Other" row whose share equals the sum of folded shares;
+  sessions without a project appear under "No project". Shares renormalise to 1
+  after folding.
+- **Specs linked**: `03-runtime/06-host-rpc-protocol.md`,
+  `04-ux/06-settings-ia.md`
+- **Acceptance**: B (data correctness), D (visual)
+- **Milestone**: M6+
+- **Status**: Parked — the dashboard ships as a plugin (the #478 call); the stats
+  RPC stays covered by host unit tests
+
+#### E2E-STATS-soft-deleted-excluded: trashed sessions never reach the totals (R12)
+
+- **Preconditions**: A fixture where one completed session is soft-deleted
+  (`deleted_at` set) and carries a large token sum.
+- **Steps**: 1) Seed the fixture (including the trashed session). 2) Open
+  Settings → Usage. 3) Read the Total tokens tile.
+- **Expected**: The displayed total equals the SQL sum over completed turns of
+  NON-deleted sessions; the trashed session's tokens are absent. This is the R12
+  regression gate.
+- **Specs linked**: `03-runtime/06-host-rpc-protocol.md`,
+  `04-ux/06-settings-ia.md`
+- **Acceptance**: B (data correctness), Quality (R12 invariant)
+- **Milestone**: M6+
+- **Status**: Parked — the dashboard ships as a plugin (the #478 call); the stats
+  RPC stays covered by host unit tests
+  (`soft_deleted_sessions_exit_summary_and_top_sessions`)
+
+#### E2E-STATS-empty-state: zero completed turns shows the whole-page empty state
+
+- **Preconditions**: A session exists but has no completed turns.
+- **Steps**: 1) Seed a session with no turns. 2) Open Settings → Usage.
+- **Expected**: The page renders the whole-page empty state ("No usage data
+  yet") with a "Back to app" action; no partial/ghost cards and no error-red
+  provenance.
+- **Specs linked**: `04-ux/06-settings-ia.md`,
+  `03-runtime/06-host-rpc-protocol.md`
+- **Acceptance**: D (state completeness), B
+- **Milestone**: M6+
+- **Status**: Parked — the dashboard ships as a plugin (the #478 call); the stats
+  RPC stays covered by host unit tests
+
 ### Workspace Open
 
 #### E2E-012: Open a project directory
@@ -7652,7 +7815,7 @@ identify the platform validation still needed.
 | A / C / F / Quality — Tray session navigation | E2E-TRAY-bounded-session-navigation |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
 | C — Conversation & stream | E2E-008, E2E-008d, E2E-008e, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-259, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-SUBAGENT-resume-a-settled-delegation |
-| D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
+| D — Workspace | E2E-INDEX-status-rebuild-clear, E2E-INDEX-settings-health-card, E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
 | D — Workspace (project ordering) | E2E-253 |
 | E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166, E2E-181, E2E-PLUGIN-imported-pi-package-skills |
 | F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-036, E2E-037, E2E-038, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-102i, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-146a, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168, E2E-171, E2E-177, E2E-178, E2E-183, E2E-186, E2E-005J, E2E-PLUGIN-session-orchestrator-real-workers |
@@ -7660,7 +7823,7 @@ identify the platform validation still needed.
 | G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024AA, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-imported-pi-package-wrapper, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection, E2E-PLUGIN-fs-root-follows-the-calling-session |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-146a, E2E-155, E2E-159, E2E-176, E2E-194, E2E-195 |
 | Security | E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158, E2E-187, E2E-196c, E2E-196b, E2E-196, E2E-PLUGIN-fs-root-follows-the-calling-session |
-| Quality | E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-259, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
+| Quality | E2E-INDEX-status-rebuild-clear, E2E-INDEX-settings-health-card, E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-259, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
 | Quality (project ordering) | E2E-253 |
 | C — Conversation & stream (IME slash alias) | E2E-255 |
 | E — Tools & permissions (Skill residency) | E2E-254 |

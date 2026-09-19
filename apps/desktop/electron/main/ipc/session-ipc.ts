@@ -245,6 +245,22 @@ export function registerSessionIpc({
       };
     },
   );
+
+  handle(IPC.invoke.indexStatus, async (input?: { rootPath?: string }) => {
+    if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
+    return host.call("index.status", input ?? {});
+  });
+
+  handle(IPC.invoke.indexRebuild, async (input?: { rootPath?: string }) => {
+    if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
+    return host.call("index.rebuild", input ?? {});
+  });
+
+  handle(IPC.invoke.indexClear, async (input?: { rootPath?: string }) => {
+    if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
+    return host.call("index.clear", input ?? {});
+  });
+
   handle(
     IPC.invoke.sessionGet,
     async (

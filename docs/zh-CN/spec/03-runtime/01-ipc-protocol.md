@@ -38,6 +38,7 @@
 | `menu` | 列入许可名单的应用程序菜单命令和本机 editing/window 操作 |
 | `notification` | 持久收件箱 list/read/clear 和 new/activated 事件 |
 | `stats` | 已完成回合的 token 历史（host RPC；仪表板由插件拥有） |
+| `index` | 工作区索引生命周期（host RPC；构建本地缓存，仅在开启 `indexGrepBoost` 快路径时被 Grep 读取） |
 
 ## 3. 通道约定
 
@@ -905,6 +906,18 @@ sidecar 用于显示每秒输出令牌的流时间。 `ToolTokenUsage`
 （53 周 / 52 周 / 24 个月），按主机本地日历计算。`week` 的键使用 ISO 周年
 （`%G-W%V`）。结果会填充范围内的空桶。此通道不是设置页面；面向用户的仪表板
 是插件 `pi.token-insights`（D335 / ADR 0173）。
+
+### index
+
+- `pi-desktop/index/status({ rootPath? }) -> { roots: WorkspaceIndexRoot[] }`
+- `pi-desktop/index/rebuild({ rootPath? }) -> { root: WorkspaceIndexRoot }`
+- `pi-desktop/index/clear({ rootPath? }) -> { ok, cleared }`
+
+host 所有的工作区索引缓存生命周期通道。`rootPath` 可选；提供时必须等于当前工作区
+（否则返回 `INDEX_ROOT_OUTSIDE_WORKSPACE`）。`rebuild` 在固定的文件数与字节预算下
+把工作区扫描进 `<data-dir>/index/index.db` 并返回 root 状态。`status` 只返回生命周期
+元数据，绝不返回文件内容。仅在开启 `indexGrepBoost` 快路径时，
+Grep 才读取该缓存来缩小候选文件，结果不变。
 
 ## 8. 设置/秘密 API
 

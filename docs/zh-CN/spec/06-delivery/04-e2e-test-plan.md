@@ -771,6 +771,120 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **里程碑**：M2
 - **状态**：草案
 
+### 工作区索引
+
+#### E2E-INDEX-status-rebuild-clear：隔离索引生命周期仅限当前工作区
+
+- **前置条件**：debug host-core 可用；测试框架可创建临时 data、workspace 和 outside 目录。
+- **步骤**：1）以隔离的 `PI_DESKTOP_DATA_DIR` 启动 host-core。2）设置临时工作区。
+  3）确认 `index.status` 为空。4）调用 `index.rebuild`，确认索引一个 fixture 文件。
+  5）尝试重建工作区外目录。6）清理工作区 root，再次读取状态。
+- **预期**：重建产生一个 `fresh` root；状态仅暴露元数据、不暴露文件内容；
+  工作区外 root 返回 `INDEX_ROOT_OUTSIDE_WORKSPACE`；clear 只删除所选 root，状态随后为空。
+  所有索引文件都位于临时 data 目录并由测试框架清理；索引存在与否都不改变 Grep 的结果。
+- **关联规格**：`03-runtime/04-data-storage.md`、`03-runtime/06-host-rpc-protocol.md`
+- **验收**：C（工作区工具与边界）、质量（数据安全）
+- **里程碑**：M6+
+- **状态**：由 `pnpm test:e2e:index` 自动化
+
+#### E2E-INDEX-settings-health-card：索引健康卡反映 host 生命周期
+
+- **前置条件**：应用正在运行且存在活动工作区；设置的工作区分组下有「索引」目的地。
+- **步骤**：1）打开 设置 → 索引。2）观察无索引工作区的空态。3）点击「建立索引」
+  并等待卡片刷新。4）点击「清理索引」。5）可选：把窗口指向超预算或部分失败的索引工作区。
+- **预期**：卡片显示 host 返回的状态、已索引文件数、已索引体积、非零时的无法读取文件数
+  与最近更新时间。建立与清理都会调用 host 生命周期 RPC 并用返回状态刷新。文案把索引
+  描述为可重建的本地缓存，绝不声称 Grep 读取它。加载失败显示重试而不是空白卡片。
+  全程 Grep 结果保持不变。
+- **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/06-host-rpc-protocol.md`、
+  `03-runtime/04-data-storage.md`
+- **验收**：D（工作区）、质量（本地数据安全）
+- **里程碑**：M6+
+- **状态**：已记录；RPC 生命周期由 `pnpm test:e2e:index` 覆盖，UI 自动化待补
+
+#### E2E-INDEX-grep-boost-opt-in：开关未开时快路径保持惰性
+
+- **前置条件**：工作区索引已建立（`fresh` root）；`indexGrepBoost` 缺省或为 false。
+- **步骤**：1）执行区分大小写的字面量 Grep，确认结果来自常规走查。2）通过
+  `settings.set` 将 `indexGrepBoost` 设为 true。3）重复同一字面量 Grep，并执行正则 Grep。
+  4）把开关设回 false。
+- **预期**：开关关闭时，Grep 行为与索引存在之前完全一致。开关开启后，字面量查询
+  可由索引候选服务，正则/短模式/大小写不敏感查询仍走全量；两种情况下结果形状一致。
+  非布尔的 `indexGrepBoost` 补丁被拒绝并返回 `INVALID_PARAMS`。
+- **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/03-tools-and-permissions.md`
+- **验收**：E（工具）、质量（行为保持）
+- **里程碑**：M6+
+- **状态**：host-core RPC 边界已自动化（`index_grep_boost` RPC 测试）；UI 旅程待补
+
+#### E2E-INDEX-auto-index：仅在开关开启时随工作区切换建立索引
+
+- **前置条件**：host RPC 可用；两个临时工作区；开关为默认值。
+- **步骤**：1）开关关闭时 `workspace.set` 到工作区 A 并读取 `index.status`。
+  2）开启 `indexGrepBoost`。3）`workspace.set` 到工作区 B 并轮询 `index.status`。
+- **预期**：开关关闭时状态保持为空。开关开启后，变更的工作区立即标记 `building`，
+  后台重建最终落到 `fresh` 并统计到 fixture 文件；`workspace.set` 立即返回、不等待扫描。
+- **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
+- **验收**：D（工作区）、质量（响应性）
+- **里程碑**：M6+
+- **状态**：host-core RPC 边界已自动化
+  （`workspace_set_auto_indexes_only_while_the_grep_boost_is_on`）
+
+#### E2E-STATS-summary-cards-range：使用统计页渲染宿主聚合
+
+> **套件说明（2026-09-16）**：仪表盘由插件承载（#478 裁决），下列 UI 旅程全部搁置。
+> host-core `stats::tests` 套件仍是看板原有断言的可复现底线。
+
+- **前置条件**：宿主数据库存在已完成回合（fixture）。
+- **步骤**：1）打开 设置 → 使用统计。2）在 7/30 天间切换范围。3）刷新。4）导出 CSV 与 JSON。
+- **预期**：指标卡、热力图、趋势、模型环形图、诊断与高消耗会话反映所选范围的
+  `stats.summary` / `stats.topSessions` 数值；页面声明统计由本地计算。导出生成当前视图的
+  CSV/JSON。范围切换不改动任何数据。
+- **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/06-host-rpc-protocol.md`
+- **验收**：B（模型配置相关）、质量（数据正确性）
+- **里程碑**：M6+
+- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 面单独交付并在其分支保持覆盖
+
+#### E2E-STATS-heatmap-today：热力图当日单元格高亮
+
+- **前置条件**：fixture 含本地当天的已完成回合。
+- **步骤**：1）注入已知 fixture（当日有已完成回合）。2）打开 设置 → 使用统计。3）检查活动热力图。
+- **预期**：仅当前日单元格带 `.stats-heat-today` 高亮，其余单元格不带。本地日期取键避免历史上导致热力图空白的 UTC 差一天问题。
+- **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
+- **验收**：B（数据正确性）、D（视觉）、质量
+- **里程碑**：M6+
+- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 面单独交付并在其分支保持覆盖
+
+#### E2E-STATS-project-breakdown：Top8 + Other 折叠 + 无项目桶
+
+- **前置条件**：fixture 的已完成回合分布在超过 8 个项目，另有一个无项目会话。
+- **步骤**：1）注入 fixture。2）打开 设置 → 使用统计 → 项目细分。3）读取渲染行。
+- **预期**：前 8 个项目渲染为整行；尾部折叠为单个「Other」行，其份额等于折叠份额之和；无项目的会话归入「无项目」。折叠后份额重归一为 1。
+- **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
+- **验收**：B（数据正确性）、D（视觉）
+- **里程碑**：M6+
+- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 面单独交付并在其分支保持覆盖
+
+#### E2E-STATS-soft-deleted-excluded：已删除会话永不计入合计（R12）
+
+- **前置条件**：fixture 中某个已完成会话被软删除（`deleted_at` 已置）且 token 量很大。
+- **步骤**：1）注入 fixture（含被删会话）。2）打开 设置 → 使用统计。3）读取「总 tokens」指标卡。
+- **预期**：显示合计等于「已完成且未删除会话」回合的 SQL 合计；被删会话的 token 不计入。这是 R12 回归门。
+- **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
+- **验收**：质量（数据正确性）、质量（R12 不变量）
+- **里程碑**：M6+
+- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 面单独交付并在其分支保持覆盖
+  （`soft_deleted_sessions_exit_summary_and_top_sessions`）
+
+#### E2E-STATS-empty-state：零已完成回合显示整页空态
+
+- **前置条件**：存在会话但无已完成回合。
+- **步骤**：1）注入一个无回合的会话。2）打开 设置 → 使用统计。
+- **预期**：页面渲染整页空态（「No usage data yet」）并提供「Back to app」动作；无残缺/幽灵卡片，provenance 不显示为错误红。
+- **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/06-host-rpc-protocol.md`
+- **验收**：D（状态完整性）、B
+- **里程碑**：M6+
+- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 面单独交付并在其分支保持覆盖
+
 ### 工作区打开
 
 #### E2E-012：打开项目目录

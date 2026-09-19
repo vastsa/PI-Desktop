@@ -35,6 +35,7 @@ Principles:
 | `menu` | Allowlisted application-menu commands and native editing/window actions |
 | `notification` | Durable inbox list/read/clear and new/activated events |
 | `stats` | Completed-turn token history (host RPC; dashboard is plugin-owned) |
+| `index` | Workspace index lifecycle (host RPC; builds a local cache Grep reads only behind the opt-in `indexGrepBoost` fast path) |
 
 ## 3. Channel Conventions
 
@@ -1117,6 +1118,20 @@ plus `subagentUsage` into `session.endTurn.usage`.
 ISO week year (`%G-W%V`). The result fills empty buckets in range. This channel
 is not a Settings page; the user-facing dashboard is plugin `pi.token-insights`
 (D335 / ADR 0173).
+
+### index
+
+- `pi-desktop/index/status({ rootPath? }) -> { roots: WorkspaceIndexRoot[] }`
+- `pi-desktop/index/rebuild({ rootPath? }) -> { root: WorkspaceIndexRoot }`
+- `pi-desktop/index/clear({ rootPath? }) -> { ok, cleared }`
+
+Lifecycle channels for the host-owned workspace index cache. `rootPath` is
+optional and must equal the active workspace when present
+(`INDEX_ROOT_OUTSIDE_WORKSPACE` otherwise). `rebuild` scans the workspace into
+`<data-dir>/index/index.db` under fixed file-count and byte budgets and returns
+the resulting root status. `status` returns lifecycle metadata only and never
+file contents. Grep reads this cache only behind the opt-in `indexGrepBoost`
+fast path, which narrows candidates without changing results.
 
 ## 8. Settings / Secrets API
 

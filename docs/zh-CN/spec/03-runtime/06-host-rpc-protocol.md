@@ -185,6 +185,26 @@ type ToolBudgetHealth = {
 - `workspace.set`
 - `workspace.clear`
 
+### 使用统计
+- `stats.summary({rangeDays: 7|30, projectId?})` —— 从非删除会话的已完成回合聚合
+  指标卡、诊断、每日总量、按模型序列、模型/项目用量占比与 365 天热力图；按
+  （范围、项目、时区、口径版本、最后回合结束时间）做 TTL 缓存。
+- `stats.topSessions({rangeDays, projectId?, limit?})` —— 最高消耗会话，供跳转卡。
+
+### 工作区索引
+- `index.status({rootPath?})` 返回 host 所有、可丢弃的工作区索引生命周期状态，不暴露文件内容。
+- `index.rebuild({rootPath?})` 将所选工作区扫描进独立的
+  `<data-dir>/index/index.db` 缓存。省略 `rootPath` 时使用当前工作区；操作受固定文件数和字节预算限制。
+- `indexGrepBoost` 开启时，`workspace.set` 会对变更的工作区触发后台
+`ensure_index` + 重建；关闭时，切换工作区绝不触碰索引。
+`index.clear({rootPath?})` 删除当前工作区的 root namespace；提供 `rootPath` 时必须与当前工作区一致，省略时也选择当前工作区。
+
+索引数据库是可重建的优化缓存，不是文件系统事实来源。索引是否存在不改变
+`tools.execute` 或 Grep 的公开结果形状：可选开启的 P2-B 快路径只在 `indexGrepBoost`
+开启后缩小候选文件列表，输出仍由同一扫描器产生。
+root 状态包括 `fresh`、`building`、`stale`、`failed`、`partial`、
+`disabled`、`skipped_over_limit`；`partial` 和 `skipped_over_limit` 永远不能进入快路径。
+
 ### 查看快照 (ADR 0043)
 - `review.rollback({sessionId, snapshotId})` — 验证当前的后期工具
   hash，恢复会话拥有的先前字节，并返回其中之一

@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 
 use crate::db::Database;
+use crate::index::IndexStore;
 use crate::mcp_servers::McpServerRegistry;
 use crate::permissions::PermissionManager;
 use crate::plans::PlanManager;
@@ -26,6 +27,11 @@ const PLUGIN_DELETE_RATE_LIMIT: usize = 20;
 pub struct AppState {
     pub data_dir: std::path::PathBuf,
     pub db: Database,
+    pub index: IndexStore,
+    /// Opt-in filesystem watcher over indexed workspaces (`workspace-watch`).
+    /// `None` when the feature is off or the platform watcher is unavailable.
+    #[cfg(feature = "workspace-watch")]
+    pub workspace_watcher: Option<crate::index::watch::WorkspaceWatcher>,
     pub secrets: SecretStore,
     pub workspace: WorkspaceState,
     pub permissions: PermissionManager,
@@ -94,6 +100,17 @@ impl AppState {
             Err(error) => tracing::warn!(%error, "in-flight reply sweep failed"),
         }
         let secrets = SecretStore::open(data_dir)?;
+        // The index is an optimization layer: if its store cannot be opened
+        // even after the quarantine-and-retry, degrade to a disabled store
+        // (Grep falls back, the status RPC reports unavailable) instead of
+        // costing the host its boot.
+        let index = match IndexStore::open(data_dir) {
+            Ok(index) => index,
+            Err(error) => {
+                tracing::warn!(%error, "index store unavailable; indexing stays disabled");
+                IndexStore::disabled()
+            }
+        };
         // The marketplace channel is read before the manager builds its first
         // catalog, so a source configured for networks without GitHub access
         // applies on launch instead of only after a manual refresh.
@@ -113,9 +130,17 @@ impl AppState {
         let mcp_servers = McpServerRegistry::new(data_dir);
         let user_skills = UserSkillRegistry::new(data_dir);
         let user_subagents = UserSubagentRegistry::new(data_dir);
+        #[cfg(feature = "workspace-watch")]
+        let workspace_watcher = {
+            let store = std::sync::Arc::new(index.clone());
+            crate::index::watch::WorkspaceWatcher::start(store)
+        };
         Ok(Self {
             data_dir: data_dir.to_path_buf(),
             db,
+            index,
+            #[cfg(feature = "workspace-watch")]
+            workspace_watcher,
             secrets,
             workspace: WorkspaceState::default(),
             permissions: PermissionManager::default(),

@@ -628,6 +628,7 @@ sklm: {
       "subagents": "Subagenten",
       "import": "Importieren Sie",
       "projects": "Projekte",
+      "index": "Index",
       "remoteHosts": "Remote-Hosts",
       "info": "Informationen"
     },
@@ -827,6 +828,7 @@ sklm: {
     "subagentSaved": "Gespeichert {{name}}",
     "import": "Importieren",
     "projectArchive": "Projektarchiv",
+    "index": "Indexbibliothek",
     "remoteHosts": {
       "title": "Remote-Hosts",
       "listError": "Hosts konnten nicht geladen werden",
@@ -2082,7 +2084,54 @@ sklm: {
       "continue": "Weiter",
       "dismiss": "Verwerfen"
     }
-  }
+  },
+  "index": {
+    "loading": "Index-Status wird geladen…",
+    "grepBoost": "Grep-Indexbeschleunigung",
+    "grepBoostDesc": "Solange dieser Schalter an ist, kann Grep case-sensitive literale Suchen aus dem Index dieses Arbeitsbereichs bedienen; beim Wechsel in einen anderen Arbeitsbereich wird dessen Index im Hintergrund aufgebaut. Alles andere fällt auf rg zurück. Alles bleibt auf diesem Rechner.",
+    "loadErrorTitle": "Index-Status nicht verfügbar",
+    "loadErrorDesc": "Der Host hat nicht geantwortet. Grep funktioniert auch ohne Index.",
+    "retry": "Erneut versuchen",
+    "statusDesc": "Der Index ist ein wiederaufbaubarer lokaler Cache; Grep-Ergebnisse hängen nie von ihm ab.",
+    "indexSubtitle": "Der lokale Index ist ein wiederaufbaubarer Beschleunigungs-Cache; Grep behält immer den rg-Fallback.",
+    "nudgeText": "Beide Funktionen laufen lokal und laden keine Arbeitsbereich-Inhalte hoch.",
+    "nudgeDismiss": "Verstanden",
+    "sectionCode": "Codebasis",
+    "fastPathHitRate": "Schnellpfad-Trefferquote",
+    "progressFiles": "{{done}} / {{total}} Dateien",
+    "progressFallback": "Grep fällt automatisch auf rg zurück; die Suche ist nicht betroffen.",
+    "emptyTitle": "Kein Index für den aktuellen Arbeitsbereich",
+    "emptyDesc": "Nach dem Aufbau sehen Sie Dateianzahl und Größe. Der Index bleibt auf diesem Rechner und wird nur bei eingeschalteter Index-Beschleunigung gelesen.",
+    "actions": "Index-Aktionen",
+    "actionsDesc": "Index für den aktuellen Arbeitsbereich aufbauen oder neu aufbauen. Solange die Index-Beschleunigung aus ist, geht das nicht, weil ihn nichts lesen würde.",
+    "localOnly": "Alles wird lokal gespeichert und nie hochgeladen.",
+    "rebuilding": "Wird indiziert…",
+    "clearing": "Wird gelöscht…",
+    "actionError": "Die Index-Aktion ist fehlgeschlagen. Erneut versuchen; Grep bleibt unbeeinflusst.",
+    "card": {
+      "health": "Index-Status",
+      "status": "Status",
+      "files": "Indizierte Dateien",
+      "size": "Indexgröße",
+      "errors": "Unlesbare Dateien",
+      "updated": "Zuletzt aktualisiert",
+    },
+    "action": {
+      "rebuild": "Index neu aufbauen",
+      "build": "Index aufbauen",
+      "clear": "Index löschen",
+    },
+    "status": {
+      "fresh": "Bereit",
+      "building": "Wird aufgebaut",
+      "stale": "Aktualisiert",
+      "failed": "Fehlgeschlagen",
+      "partial": "Teilweise",
+      "disabled": "Aus",
+      "skipped_over_limit": "Budget überschritten",
+    },
+  },
 } satisfies EnglishCatalog;
+
 
 export default de;

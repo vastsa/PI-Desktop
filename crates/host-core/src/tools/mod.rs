@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use ignore::WalkBuilder;
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -16,6 +15,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::sync::{mpsc, watch};
 
+use crate::index::IndexStore;
 use crate::workspace::{resolve_tool_path_with_external, simple_canonicalize, ToolRoot};
 
 mod grep_rg;
@@ -783,6 +783,10 @@ pub struct ToolExecutionOptions<'a> {
     pub bash_options: Option<BashExecutionOptions>,
     pub allow_external_paths: bool,
     pub hashline: Option<HashlineContext<'a>>,
+    /// P2-B: workspace content index consulted by the Grep literal fast path.
+    pub index: Option<&'a IndexStore>,
+    /// P2-B: opt-in switch mirroring the `indexGrepBoost` setting.
+    pub index_grep_boost: bool,
 }
 
 pub fn validate_timeout_ms(timeout_ms: Option<u64>) -> Result<(), (String, String)> {
@@ -1012,9 +1016,27 @@ pub async fn execute_tool_with_options(
             bash_options,
             allow_external_paths: false,
             hashline: None,
+            index: None,
+            index_grep_boost: false,
         },
     )
     .await
+}
+
+/// Execute a builtin tool with the workspace content index in scope so the
+/// Grep literal fast path (`indexGrepBoost`) can serve eligible queries.
+///
+/// The RPC dispatch always goes through this entry; in-crate tests use the
+/// index-less [`execute_tool_with_options`] to stay on the walk-everything
+/// path.
+pub async fn execute_tool_with_index(
+    workspace: Option<&Path>,
+    scratch: Option<&Path>,
+    tool_name: &str,
+    args: &Value,
+    options: ToolExecutionOptions<'_>,
+) -> ToolsExecuteResult {
+    execute_tool_with_path_access(workspace, scratch, tool_name, args, options).await
 }
 
 /// Execute a builtin tool after the host permission gate has decided whether
@@ -1031,6 +1053,8 @@ pub async fn execute_tool_with_path_access(
         bash_options,
         allow_external_paths,
         hashline,
+        index,
+        index_grep_boost,
     } = options;
     let started = Instant::now();
     let timeout_ms = effective_timeout_ms(tool_name, requested_timeout_ms);
@@ -1065,6 +1089,8 @@ pub async fn execute_tool_with_path_access(
             args,
             allow_external_paths,
             hashline.as_ref(),
+            index,
+            index_grep_boost,
         )
         .map_err(Into::into),
         "Write" => tool_write(
@@ -1106,6 +1132,15 @@ pub async fn execute_tool_with_path_access(
 
     match result {
         Ok(content) => {
+            // The host just changed workspace content (or a shell it ran
+            // might have). Invalidate the index for this workspace so Grep's
+            // fast path falls back until a rebuild lands: the index may cost
+            // speed, never correctness.
+            if let (Some(index), Some(root)) = (index, workspace) {
+                if matches!(tool_name, "Write" | "Edit" | "Bash") {
+                    index.mark_stale(root);
+                }
+            }
             // Preserve Bash stdout/stderr/exitCode for the model, but still
             // surface a non-zero command as a failed tool result. Previously
             // the shell process could exit 1/128 while the outer tool stayed
@@ -1546,7 +1581,6 @@ fn search_root(
 
 fn candidate_files(
     search_root: &Path,
-    ignore_root: &Path,
     scoped: bool,
     include: Option<&globset::GlobSet>,
     max_files: usize,
@@ -1565,17 +1599,20 @@ fn candidate_files(
         return (vec![search_root.to_path_buf()], false);
     }
 
-    let mut walker = WalkBuilder::new(search_root);
-    walker.hidden(false).git_ignore(true);
-    if scoped {
-        walker.parents(false);
-    }
-    ignore_rules::configure_walker(&mut walker, ignore_root, scoped);
     let mut candidates: Vec<(PathBuf, SystemTime)> = Vec::new();
     let mut capped = false;
-    for entry in walker.build().flatten() {
+    for entry in ignore_rules::visible_walker(search_root, scoped)
+        .build()
+        .flatten()
+    {
         let path = entry.path();
         if !path.is_file() {
+            continue;
+        }
+        // Whole-workspace searches prune vendor/tooling directories; a path the
+        // caller named explicitly stays reachable (the shared walker already
+        // dropped the parent-scoping rule for that case).
+        if !scoped && ignore_rules::is_vendor_path(search_root, path) {
             continue;
         }
         let relative = path.strip_prefix(search_root).unwrap_or(path);
@@ -1631,18 +1668,8 @@ fn tool_glob(
         .filter(|v| *v > 0)
         .unwrap_or(GLOB_DEFAULT_LIMIT);
 
-    let ignore_root = if root_kind == ToolRoot::Workspace {
-        root
-    } else {
-        search_dir.as_path()
-    };
-    let (files, mut truncated) = candidate_files(
-        &search_dir,
-        ignore_root,
-        scoped,
-        Some(&set),
-        GLOB_MAX_LIMIT * 8,
-    );
+    let (files, mut truncated) =
+        candidate_files(&search_dir, scoped, Some(&set), GLOB_MAX_LIMIT * 8);
     let mut matches: Vec<String> = Vec::new();
     let mut bytes = 0_usize;
     for path in &files {
@@ -1678,6 +1705,8 @@ fn tool_grep(
     args: &Value,
     allow_external_paths: bool,
     hashline: Option<&HashlineContext<'_>>,
+    index: Option<&IndexStore>,
+    index_grep_boost: bool,
 ) -> Result<Value, (String, String)> {
     let root = require_workspace(workspace)?;
     let pattern = args
@@ -1739,38 +1768,67 @@ fn tool_grep(
         search_dir.as_path()
     };
 
+    // P2-B literal fast path. Only the whole-workspace, unfiltered, literal,
+    // case-sensitive case is eligible. The index narrows the candidate file
+    // list; the shared scanner below still decides every hit, so when the fast
+    // path serves we skip the `rg` backend entirely instead of racing it.
+    let mut fast_candidates: Option<Vec<PathBuf>> = None;
+    if index_grep_boost && !scoped && include_pattern.is_none() && search_dir.as_path() == root {
+        if let Some(index) = index {
+            match crate::index::fast_path::admitted_literal(pattern, case_insensitive) {
+                None => index.metrics().record_not_literal(),
+                Some(literal) => {
+                    if let crate::index::fast_path::CandidateSelection::Ready(files) =
+                        crate::index::fast_path::select_candidates(
+                            index,
+                            root,
+                            literal,
+                            GREP_MAX_CANDIDATE_FILES,
+                        )
+                    {
+                        fast_candidates = Some(files);
+                    }
+                }
+            }
+        }
+    }
+
     // Prefer a system `rg` when one is installed (Codex's search default).
     // The result shape, budgets, newest-first order, and scoped-ignore rule
     // stay host-defined; a missing or failing binary falls through.
-    if let Some(value) = grep_rg::try_system_rg(grep_rg::SystemGrep {
-        pattern,
-        search_dir: &search_dir,
-        workspace_root: root,
-        ignore_root,
-        root_kind,
-        scoped,
-        include: include_pattern,
-        mode,
-        case_insensitive,
-        head_limit,
-    }) {
-        return Ok(mint_grep_tags(
-            root,
-            scratch,
-            allow_external_paths,
+    if fast_candidates.is_none() {
+        if let Some(value) = grep_rg::try_system_rg(grep_rg::SystemGrep {
+            pattern,
+            search_dir: &search_dir,
+            workspace_root: root,
+            ignore_root,
+            root_kind,
+            scoped,
+            include: include_pattern,
             mode,
-            value,
-            hashline,
-        ));
+            case_insensitive,
+            head_limit,
+        }) {
+            return Ok(mint_grep_tags(
+                root,
+                scratch,
+                allow_external_paths,
+                mode,
+                value,
+                hashline,
+            ));
+        }
     }
 
-    let (files, mut truncated) = candidate_files(
-        &search_dir,
-        ignore_root,
-        scoped,
-        include.as_ref(),
-        GREP_MAX_CANDIDATE_FILES,
-    );
+    let (files, mut truncated) = match fast_candidates {
+        Some(files) => (files, false),
+        None => candidate_files(
+            &search_dir,
+            scoped,
+            include.as_ref(),
+            GREP_MAX_CANDIDATE_FILES,
+        ),
+    };
 
     let mut hits: Vec<Value> = Vec::new();
     let mut counts: Vec<Value> = Vec::new();
@@ -3231,6 +3289,8 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                index: None,
+                index_grep_boost: false,
             },
         )
         .await;
@@ -3390,6 +3450,8 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                index: None,
+                index_grep_boost: false,
             },
         )
         .await;
@@ -3413,6 +3475,8 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                index: None,
+                index_grep_boost: false,
             },
         )
         .await;
@@ -3436,6 +3500,8 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                index: None,
+                index_grep_boost: false,
             },
         )
         .await;
@@ -3463,6 +3529,8 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                index: None,
+                index_grep_boost: false,
             },
         )
         .await;
@@ -3490,6 +3558,8 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                index: None,
+                index_grep_boost: false,
             },
         )
         .await;
@@ -3511,6 +3581,8 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                index: None,
+                index_grep_boost: false,
             },
         )
         .await;
@@ -3815,6 +3887,86 @@ mod tests {
         .await;
         assert_eq!(limited.content["count"].as_u64(), Some(5));
         assert_eq!(limited.content["truncated"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn grep_candidates_match_the_index_visible_set() {
+        use crate::index::{IndexLimits, IndexStore};
+
+        // Fixture exercises every visibility rule the shared walker owns:
+        // hidden files, `.pi-desktopignore`, `.gitignore`/`.ignore` (inside a
+        // git repo), vendor directories, and plain content — plus the
+        // content-filter boundaries (binary extension, over-size text) that
+        // must stay visible even though the index never ingests them.
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::create_dir_all(root.path().join("node_modules/pkg")).unwrap();
+        std::fs::create_dir_all(root.path().join("ignored_dir")).unwrap();
+        std::fs::create_dir_all(root.path().join(".git")).unwrap();
+        std::fs::create_dir_all(root.path().join("build")).unwrap();
+        std::fs::write(root.path().join(".pi-desktopignore"), "private.txt\n").unwrap();
+        std::fs::write(root.path().join(".gitignore"), "build/\n").unwrap();
+        std::fs::write(root.path().join(".ignore"), "ignored_dir/\n").unwrap();
+        std::fs::write(root.path().join("README.md"), "readme\n").unwrap();
+        std::fs::write(root.path().join("src/main.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(root.path().join("private.txt"), "secret\n").unwrap();
+        std::fs::write(root.path().join(".env"), "KEY=1\n").unwrap();
+        std::fs::write(root.path().join("ignored_dir/skipped.txt"), "skipped\n").unwrap();
+        std::fs::write(root.path().join("node_modules/pkg/a.js"), "x\n").unwrap();
+        std::fs::write(root.path().join(".git/config"), "[core]\n").unwrap();
+        std::fs::write(root.path().join("build/out.js"), "x\n").unwrap();
+        // Visible but never ingested: a binary extension and an over-size text
+        // file. Grep still searches both, so both sets below must still contain
+        // them. This is the boundary the P2-B contract lives or dies on: if the
+        // index dropped them, the fast path would silently report fewer hits.
+        std::fs::write(root.path().join("image.png"), [0_u8, 1, 2, 3]).unwrap();
+        std::fs::write(
+            root.path().join("big.txt"),
+            "b".repeat(crate::index::MAX_FILE_BYTES as usize + 1),
+        )
+        .unwrap();
+
+        let data = tempfile::tempdir().unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+        let mut indexed = store.indexed_rel_paths(root.path()).unwrap();
+        indexed.sort();
+
+        let (candidates, _capped) = candidate_files(root.path(), false, None, 20_000);
+        let mut candidate_rel: Vec<String> = candidates
+            .iter()
+            .map(|path| {
+                path.strip_prefix(root.path())
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+        candidate_rel.sort();
+
+        // The index crawler and Grep's candidate walk must agree exactly.
+        // This is the P2-B invariant: the fast path may only narrow the
+        // candidate set, never change which files a search can reach.
+        assert_eq!(indexed, candidate_rel);
+        assert_eq!(
+            indexed,
+            vec![
+                // `.env` is deliberately ABSENT: the upstream security
+                // denylist (spec 15 §3) keeps credential files out of the
+                // index — ingesting one would copy secrets into index.db —
+                // and out of search results. `.gitignore`/`.ignore` stay
+                // visible: dotfiles are reachable content, not tooling
+                // metadata, even though they *drive* the ignore rules.
+                ".gitignore".to_string(),
+                ".ignore".to_string(),
+                "README.md".to_string(),
+                // Never ingested, still searchable: the index records these so
+                // the fast path cannot drop them.
+                "big.txt".to_string(),
+                "image.png".to_string(),
+                "src/main.rs".to_string()
+            ]
+        );
     }
 
     #[tokio::test]
