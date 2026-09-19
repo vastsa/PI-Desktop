@@ -83,7 +83,7 @@ jobs:
           grep -Fx 'StartupWMClass=pi-desktop' "$desktop_entry" >/dev/null
 
       - name: Upload RPM package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pi-desktop-linux-x64-rpm
           if-no-files-found: error

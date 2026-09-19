@@ -354,7 +354,7 @@ jobs:
         run: mv apps/desktop/release/latest-mac.yml apps/desktop/release/latest-mac-${{ matrix.arch }}.yml
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.artifact }}
           if-no-files-found: error
@@ -450,7 +450,7 @@ jobs:
           cat "$out/${name}.tar.gz.sha256"
 
       - name: Upload pi-host bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pi-host-linux-${{ matrix.arch }}
           if-no-files-found: error
