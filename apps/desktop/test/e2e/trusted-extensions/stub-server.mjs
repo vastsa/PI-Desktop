@@ -39,6 +39,16 @@ createServer((req, res) => {
   let body = "";
   req.on("data", (d) => (body += d));
   req.on("end", () => {
+    if (req.url.endsWith("/images/generations") || req.url.endsWith("/images/edits")) {
+      const payload = JSON.parse(body || "{}");
+      appendFileSync(log, JSON.stringify({ path: req.url, payload }) + "\n");
+      const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a+V8AAAAASUVORK5CYII=";
+      if (payload.model !== "image-fixture" || (req.url.endsWith("/edits") && !payload.images?.[0]?.image_url?.startsWith("data:image/png;base64,"))) {
+        res.writeHead(400); res.end("{}"); return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ data: [{ b64_json: png }] })); return;
+    }
     if (!req.url.endsWith("/chat/completions")) {
       res.writeHead(404); res.end("{}"); return;
     }

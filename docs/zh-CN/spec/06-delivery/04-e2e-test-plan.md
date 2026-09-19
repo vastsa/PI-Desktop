@@ -5134,7 +5134,7 @@ IPC 请求无法关闭。
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
-| 受信任扩展（R7 v1） | E2E-241、E2E-242、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
+| 受信任扩展（R7 v1） | E2E-TRUSTED-EXTENSION-independent-model-completion, E2E-TRUSTED-EXTENSION-image-generation-and-edit, E2E-241、E2E-242、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | M6+（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | M6+（两步删除） | E2E-SESSION-two-click-delete-arms-first |
 | C — 对话和直播（模型回退） | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
@@ -8066,3 +8066,18 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Status:** Automated for the executing native platform; run on macOS/Linux
   runners for native qualification. Optional screenshots are written only to
   `PI_DESKTOP_CHROME_ARTIFACT_DIR`.
+
+### E2E-TRUSTED-EXTENSION-independent-model-completion
+
+隔离配置中设置两个服务商和本地 SSE 模拟服务。会话使用 A，扩展查找 B 并
+完成独立调用；验证 B 的响应和用量、A 的模型绑定和聊天记录不变、无凭据泄露。
+缺失模型不回退，取消和销毁终止请求。自动化：`pnpm test:e2e:trusted-extensions`，
+失败与生命周期路径由定向测试覆盖。状态：已实现，结果按候选版本记录。
+
+### E2E-TRUSTED-EXTENSION-image-generation-and-edit
+
+隔离配置中启用可信扩展，选择本地模拟服务的图片模型，先生成图片，再把返回
+的图片与编辑提示一起提交。验证先后调用生成与编辑端点，返回有效图片块，
+当前会话绑定与聊天记录不变，没有凭据泄露。自动化入口为
+`pnpm test:e2e:trusted-extensions`；单元与集成测试另覆盖 OpenRouter、multipart、
+输入校验、取消和配额。真实服务验收独立记录，不能替代确定性测试。

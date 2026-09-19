@@ -1,3 +1,5 @@
+import { ExtensionModelCompletions } from "./extensions/model-complete-client.js";
+import { createExtensionModelCatalog, type TrustedExtensionHostModel } from "./extensions/model-catalog.js";
 import { randomUUID } from "node:crypto";
 import {
   settledDelegationMessage,
@@ -864,6 +866,7 @@ export type AgentRuntimeOptions = {
   /** Trusted extensions enabled for this session (D387); loaded by
    * `loadTrustedExtensions()` before the first prompt. */
   trustedExtensions?: TrustedExtensionSpec[];
+  extensionModels?: TrustedExtensionHostModel[];
   /** Effective command shell selected by host-core for this session. */
   commandShell: CommandShellOption;
   /** Absolute per-session scratch directory for temporary files (D114).
@@ -1484,6 +1487,8 @@ export class DesktopAgentRuntime {
   private pluginTools: PluginToolDef[];
   private pluginSkills: PluginSkillDef[];
   private trustedExtensionSpecs: TrustedExtensionSpec[];
+  private extensionCompletions: ExtensionModelCompletions;
+  private extensionModels?: TrustedExtensionHostModel[];
   private extensionRunner?: TrustedExtensionRunner;
   private extensionSessionName?: string;
   private extensionTurnIndex = 0;
@@ -1677,7 +1682,13 @@ export class DesktopAgentRuntime {
     this.provider = opts.provider;
     this.thinkingLevel = clampThinkingLevel(opts.provider, opts.thinkingLevel);
     this.host = opts.host;
+    this.extensionCompletions = new ExtensionModelCompletions(this.host, this.sessionId, (model) => {
+      const agent = this.extensionRunner?.findAgentModel(model);
+      const registered = agent?.models.find((item) => item.id === model.id);
+      return agent && registered ? { model: registered, stream: agent.stream } : undefined;
+    });
     this.hostCloseUnsubscribe = this.host.onClose?.(() => {
+      this.extensionCompletions.dispose();
       this.cleanupActiveToolProgress();
     });
     this.streamSink = createStreamCoalescer(opts.onEvent);
@@ -1685,6 +1696,7 @@ export class DesktopAgentRuntime {
     this.pluginTools = opts.pluginTools ?? [];
     this.pluginSkills = opts.pluginSkills ?? [];
     this.trustedExtensionSpecs = opts.trustedExtensions ?? [];
+    this.extensionModels = opts.extensionModels;
     this.subagents = opts.subagents ?? [];
     this.subagentProviders = opts.subagentProviders ?? {};
     this.subagentModelKeys = new Set(opts.subagentModelKeys ?? []);
@@ -2322,25 +2334,17 @@ Delegation rules:
     return !this.agent.state.isStreaming;
   }
 
-  private extensionModelRegistry(): Record<string, unknown> {
-    const getRunner = () => this.extensionRunner;
-    const models = () => [this.model, ...(getRunner()?.getAgentModels() ?? [])];
-    return {
-      getAll: () => [...new Map(models().map((model) => [`${model.provider}/${model.id}`, model])).values()],
-      getAvailable: () => [...new Map(models().map((model) => [`${model.provider}/${model.id}`, model])).values()],
-      find: (providerId: string, modelId: string) =>
-        models().find((model) => model.provider === providerId && model.id === modelId),
-      getProviderDisplayName: (providerId: string) =>
-        getRunner()?.getAgents().find((agent) => agent.providerId === providerId)?.name ??
-        (providerId === this.provider.id ? this.provider.name : providerId),
-      getProviderAuthStatus: (providerId: string) => ({
-        configured: [this.provider.id, ...(getRunner()?.getAgents().map((agent) => agent.providerId) ?? [])].includes(providerId),
-        source: "plugin",
-      }),
-      hasConfiguredAuth: (model: { provider?: string }) =>
-        typeof model.provider === "string" &&
-        [this.provider.id, ...(getRunner()?.getAgents().map((agent) => agent.providerId) ?? [])].includes(model.provider),
-    };
+  /** Replace the host snapshot at the next idle turn boundary, including reused runtimes. */
+  setExtensionModels(models: TrustedExtensionHostModel[] | undefined): void {
+    this.extensionModels = models;
+  }
+
+  private extensionModelRegistry() {
+    return createExtensionModelCatalog({
+      hostModels: () => this.extensionModels,
+      current: () => ({ model: this.model, name: this.provider.name }),
+      agents: () => this.extensionRunner?.getAgents() ?? [],
+    });
   }
 
   getTrustedExtensionReports() {
@@ -2353,7 +2357,11 @@ Delegation rules:
       cwd: this.projectPath ?? process.cwd(),
       getModel: () => runtime.model,
       setModel: (model) => runtime.setExtensionModel(model),
-      modelRegistry: runtime.extensionModelRegistry(),
+      modelRegistryFor: (extension) => ({
+        ...runtime.extensionModelRegistry(),
+        complete: runtime.extensionCompletions.complete.bind(runtime.extensionCompletions, extension.id),
+        generateImages: runtime.extensionCompletions.generateImages.bind(runtime.extensionCompletions, extension.id),
+      }),
       getThinkingLevel: () => agentThinkingLevel(runtime.thinkingLevel),
       setThinkingLevel: (level) => {
         runtime.thinkingLevel = clampThinkingLevel(runtime.provider, level as ThinkingLevel);
@@ -7613,6 +7621,7 @@ Delegation rules:
   }
 
   async abort(): Promise<void> {
+    this.extensionCompletions.abort();
     this.acceptingSteering = false;
     this.gracefulStopRequested = false;
     this.runCancelled = true;
@@ -7653,6 +7662,7 @@ Delegation rules:
   }
 
   async dispose(): Promise<void> {
+    this.extensionCompletions.dispose();
     const runner = this.extensionRunner;
     this.extensionRunner = undefined;
     if (runner) await runner.dispose().catch(() => undefined);

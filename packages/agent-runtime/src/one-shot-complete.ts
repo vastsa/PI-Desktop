@@ -6,6 +6,7 @@
 
 import type {
   Api,
+  AssistantMessage,
   AssistantMessageEventStream,
   Context,
   Model,
@@ -41,6 +42,8 @@ export type OneShotCompleteStream = (
 
 export type OneShotCompleteOptions = {
   signal?: AbortSignal;
+  maxTokens?: number;
+  temperature?: number;
   stream?: OneShotCompleteStream;
   emptyErrorCode?: string;
   emptyErrorMessage?: string;
@@ -69,12 +72,12 @@ function completeError(
  * Run one independent completion with the caller's context and no tools.
  * Provider setup retries follow the same controller as the agent runtime.
  */
-export async function completeOneShot(
+export async function completeOneShotMessage(
   provider: RuntimeProviderConfig,
   context: Context,
   thinkingLevel: ThinkingLevel,
   options: OneShotCompleteOptions = {},
-): Promise<OneShotCompleteResult> {
+): Promise<AssistantMessage> {
   const model = buildProviderModel(provider);
   const models = createProviderModels(provider, model);
   const streamSimple =
@@ -91,6 +94,8 @@ export async function completeOneShot(
       {
         ...(options.signal ? { signal: options.signal } : {}),
         maxRetries: 0,
+        ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+        ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
         ...(thinkingLevel !== "off" ? { reasoning: thinkingLevel } : {}),
         fetch: captureProviderResponse(undefined, (response) => {
           providerStatus = response?.status;
@@ -133,7 +138,14 @@ export async function completeOneShot(
       status: () => providerStatus,
     },
   );
-  const result = await stream.result();
+  return stream.result();
+}
+
+export async function completeOneShot(
+  provider: RuntimeProviderConfig, context: Context, thinkingLevel: ThinkingLevel,
+  options: OneShotCompleteOptions = {},
+): Promise<OneShotCompleteResult> {
+  const result = await completeOneShotMessage(provider, context, thinkingLevel, options);
 
   if (result.stopReason === "aborted") {
     throw completeError("TURN_ABORTED", "The completion was aborted.");

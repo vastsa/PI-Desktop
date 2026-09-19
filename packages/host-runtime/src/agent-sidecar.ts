@@ -70,6 +70,9 @@ const HOST_PROXY_ALLOWED = new Set([
   "extensions.ui.request",
   "extensions.diagnostics.publish",
   "extensions.model.configure",
+  "extensions.model.complete",
+  "extensions.model.generateImages",
+  "extensions.model.cancel",
   "session.rename",
   "session.create",
   "session.fork",
@@ -79,6 +82,10 @@ const HOST_PROXY_ALLOWED = new Set([
 
 /** Host-side answers for the `extensions.*` proxy methods. */
 export type TrustedExtensionSidecarBridge = {
+  generateImages?: (params: Record<string, unknown>) => Promise<unknown>;
+  completeModel?: (params: Record<string, unknown>) => Promise<unknown>;
+  cancelModel?: (params: Record<string, unknown>) => unknown;
+  disposeModels?: () => void;
   publishCommands: (params: Record<string, unknown>) => void;
   publishDiagnostics: (params: Record<string, unknown>) => void;
   requestUi: (params: Record<string, unknown>) => Promise<unknown>;
@@ -198,6 +205,7 @@ export class AgentSidecar {
   private closeTransport(error: Error) {
     if (this.closed) return;
     this.closed = true;
+    this.trustedExtensionBridge?.disposeModels?.();
     this.unsubscribeHost?.();
     this.unsubscribeHost = null;
     this.unsubscribeHostExit?.();
@@ -497,6 +505,17 @@ export class AgentSidecar {
           let result: unknown = { ok: true };
           if (method === "extensions.commands.publish") bridge.publishCommands(params);
           else if (method === "extensions.diagnostics.publish") bridge.publishDiagnostics(params);
+          else if (method === "extensions.model.generateImages") {
+            if (!bridge.generateImages) throw new Error("extension image generation unavailable");
+            result = await bridge.generateImages(params);
+          }
+          else if (method === "extensions.model.complete") {
+            if (!bridge.completeModel) throw new Error("extension model completion unavailable");
+            result = await bridge.completeModel(params);
+          } else if (method === "extensions.model.cancel") {
+            if (!bridge.cancelModel) throw new Error("extension model cancellation unavailable");
+            result = bridge.cancelModel(params);
+          }
           else if (method === "extensions.model.configure") result = await bridge.configureModel(params);
           else if (method === "session.queuePush") result = await bridge.queuePush(params);
           else if (method === "session.queuePrioritize") result = await bridge.queuePrioritize(params);

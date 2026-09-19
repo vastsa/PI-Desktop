@@ -309,3 +309,45 @@ v1 交付顺序：打包 spike（E2E-245）、shared 协议类型，然后运行
 | v2 自定义条目是否持久化到 host-core 并参与压缩？ | 持久化；不进入压缩摘要 |
 | v3 是否把 pi CLI `settings.json` 的启用路径作为发现提示读取？ | 只读提示，永不写入 |
 | 扩展工具是否像插件工具一样按项目可选？ | §3.2 的范围是唯一门控 |
+
+## 独立模型调用（#658）
+
+`getAvailable()` 和 `find(providerId, modelId)` 保持同步。宿主在每轮启动时
+提供启用模型的脱敏快照，复用的运行时也会更新。`getAll`/`find` 可返回尚未
+配置凭据的启用模型；`getAvailable` 仅返回有认证条件的模型及扩展注册模型。
+返回值不含端点、凭据或请求头，同名模型通过 provider ID 区分。
+
+`complete(model, context, options?)` 返回 pi-ai `AssistantMessage`，保留文本、
+用量和停止原因；不会切换会话模型、修改聊天记录或执行工具。宿主重新校验
+目标模型、插件授权和项目范围，不允许退回其他模型。扩展注册的模型由其自身
+传输执行。支持 signal、timeoutMs（最多 90 秒）、maxTokens、temperature、
+reasoning；不接受凭据、请求头和任意请求钩子。请求最多 1 MiB / 1000 条消息，
+系统提示最多 32768 字符；宿主调用每插件每 60 秒最多 8 次，每 sidecar 最多
+32 个并发请求。取消、运行时销毁和 sidecar 断开会终止所属请求。
+
+新增反向 RPC 为 `extensions.model.complete` 和 `extensions.model.cancel`。
+不支持此能力的宿主明确拒绝；生图和审批钩子失败策略不在本功能范围内。
+
+## 图片生成和编辑
+
+`modelRegistry.generateImages(model, context, options?)` 独立于文本 `complete`，
+使用 pi-ai 的 `ImagesContext` 和 `AssistantImages` 类型。模型由现有目录选取，
+实际是否支持生图由服务商决定；宿主重新验证准确的模型 ID、授权与项目范围。
+输入输出不自动写入会话，不切换当前模型。
+
+OpenRouter 使用 pi 0.85.1 自带的延迟加载图片适配器；其他已配置服务商使用
+新增的 OpenAI 兼容 Images 适配器。文字输入走 `/images/generations`，带图片
+的输入走 `/images/edits`，不是 `/responses` 下的子路径。默认编辑请求采用
+Codex 的 `images: [{ image_url: "data:..." }]`；可明确指定 multipart `image[]`。
+
+仅接受内联 base64 PNG、JPEG、WebP，不读取文件路径，不下载远程图片 URL。
+校验编码和图片签名，输入及输出图片分别最多 20 MiB，兼容端点响应最多 32 MiB。
+最多 17 个输入块、32768 个提示字符。支持 signal、timeoutMs（最多 300 秒）、
+n（1–4）、size、quality、background、outputFormat、editFormat。
+固定版本 pi 的 OpenRouter 适配器在此接口只接受 signal 与 timeoutMs，其他
+图片选项明确报错。图片调用与文本调用共享插件配额、授权与取消管理。
+
+新增反向 RPC 为 `extensions.model.generateImages`，取消复用
+`extensions.model.cancel`。不自动重试；中断本地 HTTP 请求不能保证服务商
+停止远端计算或退款。返回服务商提供的 token 用量，不估算图片价格。
+遮罩编辑、Responses 图片工具和远程图片下载不在本功能范围内。

@@ -1,3 +1,4 @@
+import { extensionHostModels } from "./extension-model-catalog";
 import { join } from "node:path";
 import {
   ErrorCodes as SharedErrorCodes,
@@ -657,6 +658,7 @@ export function createSessionLaunchRuntime({
         pluginSkills,
         // Trusted extensions enabled for this project (spec 16 §3.2). The set
         // is part of the runtime match, so a toggle retires the runtime.
+        extensionModels: extensionHostModels(providers.providers, modelsDevCatalog),
         trustedExtensions: plugins
           .getAgentExtensions()
           .filter((extension) => pluginActiveInProject(extension.pluginId, projectPath))

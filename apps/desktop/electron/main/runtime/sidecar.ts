@@ -1,3 +1,6 @@
+import { ExtensionModelCompletionService } from "./extension-model-completions";
+import { resolveExtensionModelProvider } from "./extension-model-provider";
+import { extensionModelError } from "@pi-desktop/agent-runtime";
 import { IPC, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
 import {
   findSubagentProviderSource,
@@ -341,7 +344,27 @@ export function createSidecarRuntime({
     // Request auth for a vendor account (ADR 0098). The sidecar names a provider
   // row it was launched with; main resolves that row's account and returns a
   // short-lived `ModelAuth`. The refresh token never crosses this boundary.
+  const modelCompletions = new ExtensionModelCompletionService({
+    authorize: async (sessionId, extensionId) => {
+      const detail = await runtimeState.host?.call<{ session?: { projectPath?: string } | null }>("session.get", { id: sessionId });
+      const extension = plugins.getAgentExtensions().find((entry) => entry.id === extensionId);
+      if (!detail?.session || !extension || !pluginActiveInProject(extension.pluginId, detail.session.projectPath)) {
+        throw extensionModelError("PERMISSION_DENIED", "Extension is not enabled for this session");
+      }
+      return extension.pluginId;
+    },
+    resolveProvider: (providerId, modelId) => resolveExtensionModelProvider({
+      listProviders: () => listRuntimeProviders(false),
+      getSecret: async (id) => (await runtimeState.host?.call<{ value?: string }>("providers.getSecret", { id }))?.value,
+      catalog: modelsDevCatalog, oauth: vendorOAuth,
+    }, providerId, modelId),
+    audit: (event) => logger.app("plugin", "info", "extension model completion", { data: event }),
+  });
   s.setTrustedExtensionBridge({
+    completeModel: (params) => modelCompletions.complete(params),
+    generateImages: (params) => modelCompletions.generateImages(params),
+    cancelModel: (params) => modelCompletions.cancel(params),
+    disposeModels: () => modelCompletions.dispose(),
     publishCommands: (params) =>
       agentExtensions.publishCommands(
         String(params.sessionId ?? ""),

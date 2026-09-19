@@ -222,7 +222,9 @@ function isolatedEnv(extra = {}) {
   return {
     ...env,
     HOME: homeDir,
-    USERPROFILE: homeDir,
+    // Chromium requires the real Windows profile directory during startup.
+    // App data and Pi state remain isolated by the explicit paths below.
+    ...(process.platform === "win32" ? {} : { USERPROFILE: homeDir }),
     XDG_CONFIG_HOME: join(homeDir, ".config"),
     XDG_CACHE_HOME: join(homeDir, ".cache"),
     PI_DESKTOP_DATA_DIR: dataDir,
@@ -273,7 +275,7 @@ async function main() {
   const electron = spawnChild(
     "trusted-extension-electron",
     electronBin,
-    ["."],
+    [`--user-data-dir=${join(runRoot, "electron-profile")}`, "."],
     {
       cwd: join(root, "apps", "desktop"),
       env: isolatedEnv({

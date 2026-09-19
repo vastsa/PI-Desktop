@@ -22,6 +22,8 @@ Each ADR includes:
 |---|---|---|
 | subagent-model-fallback | [Ordered subagent model fallback](subagent-model-fallback.md) | Accepted for implementation |
 | subagent-model-opt-in | [Separate Subagent Model Opt-In from Definition Pins](subagent-model-opt-in.md) | Accepted for implementation |
+| trusted-extension-host-model-completion | [Host-owned trusted-extension model completions](trusted-extension-host-model-completion.md) | Proposed implementation for review |
+| trusted-extension-images | [Trusted extensions use pi's image surface](trusted-extension-images.md) | Proposed implementation for review |
 | 0001 | Use Electron as the desktop shell | Accepted |
 | 0002 | Use the pi Agent Harness as the kernel | Accepted |
 | 0003 | Hybrid runtime — Rust host core + Node pi agent sidecar | Superseded in part |

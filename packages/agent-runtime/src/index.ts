@@ -22,3 +22,5 @@ export { startAuthenticatedProxyRelay } from "./authenticated-proxy-relay.js";
 export type { AuthenticatedProxyRelay } from "./authenticated-proxy-relay.js";
 
 export * from "./speech/index.js";
+
+export { buildProviderModel } from "./provider-binding.js";

@@ -1,3 +1,4 @@
+import type { TrustedExtensionHostModel } from "./extensions/model-catalog.js";
 /**
  * Node pi agent sidecar.
  * Protocol: NDJSON JSON-RPC on stdio with Electron main.
@@ -101,6 +102,7 @@ type RuntimeParams = {
   pluginSkills?: PluginSkillDef[];
   /** Trusted extensions enabled for this session (D387). */
   trustedExtensions?: TrustedExtensionSpec[];
+  extensionModels?: TrustedExtensionHostModel[];
   /** Delegates this session may spawn through `Task` (ADR 0062). */
   subagents?: SubagentDefinition[];
   /** Provider bindings for pinned models, keyed by `subagentModelKey`. */
@@ -345,6 +347,7 @@ async function runtimeFor(
     runtimes.delete(sessionId);
   }
   if (reusable) {
+    reusable.setExtensionModels(params.extensionModels);
     reusable.setCompactionSettings(params.compactionSettings);
     reusable.setMode(mode);
     return reusable;
@@ -388,6 +391,7 @@ async function runtimeFor(
     pluginTools,
     pluginSkills,
     trustedExtensions,
+    extensionModels: params.extensionModels,
     subagents,
     subagentProviders,
     subagentModelKeys,

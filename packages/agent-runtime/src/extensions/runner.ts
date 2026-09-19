@@ -221,6 +221,7 @@ export interface TrustedExtensionBridge {
   publishDiagnostics(diagnostics: TrustedExtensionDiagnostic[]): void;
   /** Optional read-only registry passed straight through to extensions. */
   modelRegistry?: unknown;
+  modelRegistryFor?: (extension: TrustedExtensionSpec) => unknown;
 }
 
 type ToolDefinitionLike = {
@@ -724,7 +725,7 @@ export class TrustedExtensionRunner {
         getSessionId: () => bridge.sessionId,
         getCwd: () => bridge.cwd,
       },
-      modelRegistry: bridge.modelRegistry ?? {},
+      modelRegistry: bridge.modelRegistryFor?.(extension.spec) ?? bridge.modelRegistry ?? {},
       get model() {
         return bridge.getModel();
       },

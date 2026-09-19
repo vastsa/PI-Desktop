@@ -237,6 +237,97 @@ the declaration so `getFlag` works but exposes no CLI or UI in v1;
 `sessionManager` accessors return empty results; UI setters return a no-op
 `dispose`.
 
+
+### Independent model completions
+
+`ctx.modelRegistry.getAvailable()` and `find(providerId, modelId)` remain
+synchronous. The registry includes all enabled Host provider bindings and the
+session's extension-owned agents. `getAll`/`find` include enabled bindings that
+lack credentials; `getAvailable` includes only bindings with configured auth
+(or `authKind: none`). Provider IDs, not display names, distinguish accounts.
+The Host sends a metadata snapshot on each turn launch. Reused runtimes replace
+that snapshot at the idle turn boundary; configuration changes are visible on
+the next turn. Reads return fresh, explicit projections without endpoint URLs,
+headers, credentials, adapter internals, or secret references.
+
+`complete(model, context, options?)` returns a pi-ai `AssistantMessage` with
+content, usage and stop reason. `model.provider` and `model.id` select the target;
+other fields never control the Host endpoint or credentials. Host calls recheck
+the exact enabled provider and configured model, and fail instead of falling
+back. Registered extension agents use their own transport in the sidecar.
+
+`context` is a bounded pi-ai Context, preserving message roles, assistant
+continuity metadata, and tool-result history. It does not accept new tools and
+never starts a tool loop. Options are `signal`, `timeoutMs` (1?90000 ms, default
+90000), `maxTokens` (1?131072), `temperature` (0?2), and `reasoning`. Credentials,
+headers, payload hooks, and arbitrary provider options are not accepted.
+The request is capped at 1 MiB and 1000 messages; system prompts at 32768
+characters. Host calls allow eight requests per owning plugin per 60 seconds
+and 32 concurrent requests per sidecar. These limits do not govern plugin-owned
+transports. Abort, runtime disposal and sidecar connection closure cancel owned
+requests. Current plugin grants and project scope are rechecked before provider
+execution and before delivery. Disabling a plugin prevents subsequent calls;
+an already running request is canceled when its runtime is retired.
+
+Independent calls do not configure the session, append messages, inherit its
+transcript, execute tools, or add usage to the current assistant message. A
+caller must provide the intended context explicitly. Validation, authorization,
+auth-resolution and cancellation failures reject with a stable error code;
+provider failures retain pi's `error` stop reason with a redacted message.
+Completion audit records contain identities and outcome, never prompt text or
+credentials. This feature does not implement image generation or change the
+existing approval-hook error/timeout policy.
+
+The additive reverse-RPC methods are `extensions.model.complete` and
+`extensions.model.cancel`. Embedding hosts without completion handlers reject
+these explicitly; ordinary chat and existing extension APIs remain available.
+
+
+### Image generation and editing
+
+`ctx.modelRegistry.generateImages(model, context, options?)` is separate from
+text `complete`, following pi-ai 0.85.1's ImagesModels / ImagesContext /
+AssistantImages contract. The same `getAvailable` / `find` catalog selects a
+configured Host provider/model; callers choose a model that their endpoint
+supports for image generation. Catalog presence alone is not a capability probe.
+Image calls do not change the active session or persist their input/output.
+
+The Host uses pi's image collection and credential resolver. OpenRouter uses
+pi's existing lazy image adapter; other configured providers use an additive
+OpenAI-compatible Images adapter. Text-only input selects `/images/generations`;
+input containing an image selects `/images/edits`. Both are standalone Images
+API paths, not paths below `/responses`. A root endpoint gets `/v1`; existing
+custom base paths are preserved. JSON edits use Codex's
+`images: [{ image_url: "data:..." }]` shape. `editFormat: "multipart"` explicitly
+selects `image[]` file parts for compatible gateways. No automatic format or
+model fallback occurs, and image requests are not automatically retried.
+
+Input is `{ input: [TextContent | ImageContent, ...] }` with a nonempty prompt.
+Output is pi's `AssistantImages`: inline base64 image blocks, optional text and
+usage, and `stopReason`. PNG, JPEG and WebP are supported. Remote image URLs and
+filesystem paths are not accepted or fetched. Encodings/media signatures are
+validated. Inputs and returned images are capped at 20 MiB decoded in total;
+OpenAI-compatible response JSON is bounded at 32 MiB. A request accepts at most
+17 input blocks and 32768 prompt characters.
+
+Options are `signal`, `timeoutMs` (1?300000 ms, default 300000), `n` (1?4),
+`size` (`auto` or dimensions such as `1024x1024`), `quality` (`auto`, `low`,
+`medium`, `high`), `background` (`auto`, `opaque`, `transparent`),
+`outputFormat` (`png`, `jpeg`, `webp`), and `editFormat` (`json`, `multipart`).
+Only signal/timeouts apply to pi's pinned OpenRouter adapter; unsupported image
+options fail explicitly rather than being silently ignored. Image calls share
+the existing per-plugin Host quota, cancellation and authorization checks with
+text completions. HTTP abort stops the local request; provider-side work and
+billing after disconnect are controlled by the provider.
+
+The reverse RPC is `extensions.model.generateImages`; cancellation uses
+`extensions.model.cancel`. Host credentials never enter the extension context.
+Provider error bodies are not exposed, but the OpenAI-compatible adapter reports
+safe HTTP status/error categories. Returned token usage is included when the
+provider supplies it; monetary image pricing is not estimated. Plugins own any
+subsequent save, display or attachment operation. Mask-specific editing and
+Responses API image-generation tools are not part of this adapter.
+
 ## 6. Event mapping
 
 Events fire from the desktop runtime's existing hook points. Handler results
