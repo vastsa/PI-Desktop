@@ -1065,6 +1065,31 @@ same gateway backend as the conversation it summarizes.
 + [optional user custom instructions]
 ```
 
+### 7.0.1 User custom system prompt files (issue #542)
+
+The `[optional user custom instructions]` layer is the pi-compatible file pair
+`SYSTEM.md` / `APPEND_SYSTEM.md`, discovered per session launch from
+`<workspace>/.pi/` (project) and `~/.pi/agent/` (global), each kind picking a
+single winner with project over global, exactly like pi CLI. A change to the
+resolved content retires the runtime through the reuse match, so the next
+prompt recomposes; the files are not re-read per tool call like the project
+instruction chain. Native-pi sessions keep resolving them through the upstream
+`DefaultResourceLoader` as before.
+
+Two deliberate deviations from pi CLI's semantics:
+
+- `SYSTEM.md` replaces only the base product persona line, not the whole
+  prompt: the operational rules below (collaboration, search, edit contract,
+  scratch, delegation, skills) are desktop mechanics a persona file must not
+  remove.
+- `APPEND_SYSTEM.md` is appended after the composed base prompt and before
+  the project instruction chain, matching pi's ordering, so the user's own
+  `AGENTS.md` keeps the last word.
+
+Both files are capped at 64 KiB, and a whitespace-only file counts as absent.
+Native `SYSTEM.md` / `APPEND_SYSTEM.md` resolution in a native-pi session is
+unaffected: it stays with the upstream loader.
+
 The base prompt states collaboration rules explicitly, because omitting them
 is what produced silent sessions: "prefer concise, actionable answers" was the
 only relevant line, and a reasoning model executed it as saying nothing at all.

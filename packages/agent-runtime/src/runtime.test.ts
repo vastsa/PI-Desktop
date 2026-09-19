@@ -146,6 +146,7 @@ function createRuntime(
     compactionStrategy: CompactionStrategy;
     projectPath: string;
     scratchDir: string;
+    customSystemPrompt: import("./custom-system-prompt.js").CustomSystemPrompt;
     projectInstructions: import("./project-instructions.js").ProjectInstructions;
     projectMemory: string;
     pluginTools: PluginToolDef[];
@@ -173,6 +174,7 @@ function createRuntime(
     compactionStrategy: overrides.compactionStrategy,
     projectPath: overrides.projectPath,
     scratchDir: overrides.scratchDir,
+    customSystemPrompt: overrides.customSystemPrompt,
     pluginTools: overrides.pluginTools,
     subagents: overrides.subagents,
     subagentProviders: overrides.subagentProviders,
@@ -219,6 +221,7 @@ function runtimeMatches(
     pluginTools: (runtime as any).pluginTools,
     pluginSkills: (runtime as any).pluginSkills,
     projectInstructions: (runtime as any).baseProjectInstructions,
+    customSystemPrompt: (runtime as any).customSystemPrompt,
     projectMemory: (runtime as any).projectMemory,
     projectPath: (runtime as any).projectPath,
     commandShell: (runtime as any).commandShell,
@@ -228,6 +231,100 @@ function runtimeMatches(
     ...overrides,
   });
 }
+
+describe("custom system prompt files (issue #542)", () => {
+  const persona = "You are Custom, a specialized assistant.";
+  const appendix = "MARKER-XYZ-123 Always end with the marker.";
+
+  function promptOf(runtime: DesktopAgentRuntime): string {
+    return (runtime as any).agent.state.systemPrompt as string;
+  }
+
+  it("replaces only the persona, keeping operational rules", async () => {
+    const runtime = createRuntime({
+      customSystemPrompt: { replace: persona },
+    });
+    const prompt = promptOf(runtime);
+
+    expect(prompt).toContain(persona);
+    expect(prompt).not.toContain("You are PI-Desktop");
+    // Operational rules from the default prompt must survive the replacement.
+    expect(prompt).toContain("Collaboration: answer in the same language");
+    expect(prompt).toContain("Searching and reading: prefer the Read");
+    expect(prompt).toContain("multi_tool_use.parallel");
+    expect(prompt).toContain("Editing workflow: use the built-in Edit or Write tool");
+    expect(prompt).toContain("You are operating in Agent mode.");
+
+    await runtime.dispose();
+  });
+
+  it("appends APPEND_SYSTEM.md after the base prompt and before project instructions", async () => {
+    const runtime = createRuntime({
+      customSystemPrompt: { append: appendix },
+      projectInstructions: {
+        entries: [{ source: "AGENTS.md", content: "Run unit tests." }],
+      },
+    });
+    const prompt = promptOf(runtime);
+
+    expect(prompt).toContain(appendix);
+    expect(prompt).toContain("You are PI-Desktop");
+    expect(prompt).toContain("Run unit tests.");
+    expect(prompt.indexOf(appendix)).toBeGreaterThan(
+      prompt.indexOf("You are PI-Desktop"),
+    );
+    expect(prompt.indexOf("Run unit tests.")).toBeGreaterThan(
+      prompt.indexOf(appendix),
+    );
+
+    await runtime.dispose();
+  });
+
+  it("applies replace and append together", async () => {
+    const runtime = createRuntime({
+      customSystemPrompt: { replace: persona, append: appendix },
+    });
+    const prompt = promptOf(runtime);
+
+    expect(prompt).toContain(persona);
+    expect(prompt).toContain(appendix);
+    expect(prompt).not.toContain("You are PI-Desktop");
+
+    await runtime.dispose();
+  });
+
+  it("keeps the default prompt without custom files", async () => {
+    const runtime = createRuntime();
+    const prompt = promptOf(runtime);
+
+    expect(prompt).toContain("You are PI-Desktop");
+    expect(prompt).not.toContain("MARKER-XYZ-123");
+
+    await runtime.dispose();
+  });
+
+  it("retires the runtime when custom prompt content changes", async () => {
+    const runtime = createRuntime({
+      customSystemPrompt: { append: appendix },
+    });
+    expect(
+      runtimeMatches(runtime, { customSystemPrompt: { append: appendix } }),
+    ).toBe(true);
+    expect(
+      runtimeMatches(runtime, {
+        customSystemPrompt: { append: "Different appendix." },
+      }),
+    ).toBe(false);
+    expect(
+      runtimeMatches(runtime, { customSystemPrompt: undefined }),
+    ).toBe(false);
+    expect(
+      runtimeMatches(runtime, { customSystemPrompt: { replace: persona } }),
+    ).toBe(false);
+
+    await runtime.dispose();
+  });
+});
 
 describe("DesktopAgentRuntime configuration matching", () => {
   it("retires an idle runtime when project memory changes", async () => {
