@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { HostProcess } from "./host-process";
+import type { Logger } from "./logger";
 
 type MessageAppend = {
   key: string;
@@ -218,4 +219,18 @@ function isDuplicateMessageIdError(error: unknown): boolean {
  */
 function isPoisonMessageError(error: unknown): boolean {
   return /(?<![A-Z_])PERMISSION_DENIED:/i.test(String(error));
+}
+
+export function createPersistenceRuntime(
+  dataDir: string,
+  logger: Pick<Logger, "app">,
+  getHost: () => HostProcess | null,
+  isStopping: () => boolean,
+) {
+  const persistenceOutbox = new PersistenceOutbox(dataDir, (level, message, data) => {
+    logger.app("persistence", level, message, { data });
+  });
+  const settleTranscript = (sessionId: string) =>
+    persistenceOutbox.drainSession(sessionId, getHost, isStopping);
+  return { persistenceOutbox, settleTranscript };
 }
