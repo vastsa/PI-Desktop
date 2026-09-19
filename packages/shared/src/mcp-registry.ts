@@ -41,10 +41,24 @@ export type RegistryPackage = {
   environmentVariables?: RegistryEnvVar[];
 };
 
+/**
+ * A registry input: the shape shared by a remote header, a package environment
+ * variable and an entry of a header's `variables` map.
+ */
+export type RegistryInput = {
+  description?: string;
+  format?: string;
+  isRequired?: boolean;
+  isSecret?: boolean;
+  value?: string;
+  default?: string;
+  variables?: Record<string, RegistryInput>;
+};
+
 export type RegistryRemote = {
   type?: string;
   url?: string;
-  headers?: Array<{ name?: string; value?: string }>;
+  headers?: Array<RegistryInput & { name?: string }>;
 };
 
 export type RegistryServer = {
@@ -125,7 +139,14 @@ function packageSpecifier(pkg: RegistryPackage, separator: "@" | "=="): string |
   return version ? `${identifier}${separator}${version}` : identifier;
 }
 
-const REMOTE_PLACEHOLDER = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+/*
+ * The official registry schema wraps a header variable in `{curly_braces}`,
+ * spelled without the dollar sign the builtin catalog uses, and it does not
+ * require upper-case names. Values in the wild carry both spellings, so the
+ * matcher accepts any brace-wrapped identifier and only extracts its name —
+ * substitution stays with the caller.
+ */
+const REMOTE_PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 function remoteHeaderTemplates(remote: RegistryRemote): {
   headers: Record<string, string>;
@@ -136,11 +157,26 @@ function remoteHeaderTemplates(remote: RegistryRemote): {
       .filter((header) => typeof header.name === "string" && !!header.name && typeof header.value === "string")
       .map((header) => [header.name!, header.value!]),
   );
+  const declared = new Map<string, RegistryInput>();
+  for (const header of remote.headers ?? []) {
+    for (const [name, variable] of Object.entries(header.variables ?? {})) {
+      if (variable && typeof variable === "object" && !declared.has(name)) declared.set(name, variable);
+    }
+  }
   const names = new Set<string>();
   for (const value of Object.values(headers)) {
     for (const match of value.matchAll(REMOTE_PLACEHOLDER)) names.add(match[1]);
   }
-  const requiredEnv = [...names].sort().map((name) => ({ name }));
+  const requiredEnv = [...names].sort().map((name) => {
+    const variable = declared.get(name);
+    return {
+      name,
+      ...(typeof variable?.description === "string" && variable.description
+        ? { description: variable.description }
+        : {}),
+      ...(variable && variable.isRequired === false ? { optional: true } : {}),
+    };
+  });
   return { headers, ...(requiredEnv.length ? { requiredEnv } : {}) };
 }
 
