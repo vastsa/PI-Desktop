@@ -804,7 +804,15 @@ export class AgentHost {
   private async drainAdmitted(sessionId: string): Promise<void> {
       while (true) {
         const state = this.state(sessionId);
-        if (this.queue.isHeld(sessionId) || this.isOccupied(state)) return;
+        if (this.queue.isHeld(sessionId)) return;
+        if (this.isOccupied(state)) {
+          const active = state.activeTurnId ? state.turns.get(state.activeTurnId) : undefined;
+          if (active && isActive(active.status) &&
+              state.planningState !== "awaiting_approval") {
+            await this.deliverPromotedBlock(state, active.runtimeTurnId ?? active.id);
+          }
+          return;
+        }
         const record = await this.queue.shift(sessionId);
         if (!record) return;
         const turn = this.ensureTurn(state, record.id);
@@ -829,11 +837,6 @@ export class AgentHost {
           this.renumberQueue(state);
           this.renumberQueue(state);
           this.notifyQueue(sessionId);
-          // The rest of the promoted block joins this turn as user input, so the
-          // messages stay adjacent instead of waiting for their own turns
-          // (ADR 0265). A runtime without steering keeps the previous behavior.
-          void this.deliverPromotedBlock(state, started.turnId);
-          return;
         } catch (error) {
           turn.status = "failed";
           turn.endedAt = new Date(this.clock.now()).toISOString();
@@ -846,7 +849,12 @@ export class AgentHost {
           this.emit(state, "turn.failed", { turn: this.toRacpTurn(state, turn) }, { turnId: turn.id });
           this.renumberQueue(state);
           this.notifyQueue(sessionId);
+          continue;
         }
+        // A later delivery failure must not restate a successfully started turn
+        // as a prompt failure. Keep delivery under the same admission lock.
+        if (turn.runtimeTurnId) await this.deliverPromotedBlock(state, turn.runtimeTurnId);
+        return;
       }
   }
 
@@ -871,14 +879,14 @@ export class AgentHost {
   }
 
   /**
-   * Deliver the promoted entries that are still queued into the turn that just
-   * started, so "Send now" twice puts both messages in front of the model
-   * together instead of spreading them over two turns (ADR 0265).
+   * Deliver promoted entries into the active turn in click order. The admission
+   * lock serializes this with normal dispatch and other promotions, so an entry
+   * remains queued until steering acknowledges it and cannot be sent twice by
+   * overlapping drain passes (ADR 0265).
    *
    * The runtime only accepts input for a turn whose run is live, so a refusal is
    * retried a bounded number of times. Anything still undelivered stays queued
-   * and leaves at the next boundary as its own turn: the previous behavior is
-   * the fallback, never a lost prompt.
+   * and starts its own turn after the active turn is finalized.
    */
   private async deliverPromotedBlock(state: SessionState, runtimeTurnId: string): Promise<void> {
     const steer = this.runtime.steer?.bind(this.runtime);
@@ -887,7 +895,7 @@ export class AgentHost {
       const head = this.queue.peek(state.id);
       if (!head || head.priority === undefined) return;
       const active = state.activeTurnId ? state.turns.get(state.activeTurnId) : undefined;
-      if (!active || active.runtimeTurnId !== runtimeTurnId) {
+      if (!active || (active.runtimeTurnId ?? active.id) !== runtimeTurnId) {
         // The turn ended (or moved on) while the block was being delivered.
         return;
       }
@@ -905,6 +913,7 @@ export class AgentHost {
         accepted = false;
       }
       if (!accepted) {
+        if (state.activeTurnId !== active.id || !isActive(active.status)) return;
         await delay(PROMOTED_DELIVERY_RETRY_MS);
         continue;
       }

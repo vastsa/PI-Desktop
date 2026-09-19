@@ -273,9 +273,6 @@ export function createQueueSlice({
       }));
       try {
         await api.prioritizeQueuedPrompt(promptId);
-        // Send now keeps its graceful stop: the active turn reaches its
-        // boundary before the promoted row starts.
-        if (get().runningSessions[sessionId]) await api.stop(sessionId);
       } catch (error) {
         void get().refreshQueuedPrompts(sessionId);
         get().showToast(

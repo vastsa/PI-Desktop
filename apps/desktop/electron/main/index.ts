@@ -49,7 +49,7 @@ import {
   shouldCreateTaskNotification as shouldCreateTaskNotificationPolicy,
   shouldShowNativeNotification,
 } from "./notification-policy";
-import { PersistenceOutbox } from "./persistence-outbox";
+import { createPersistenceRuntime } from "./persistence-outbox";
 import { AgentSidecar } from "./agent-sidecar";
 import { Logger, ignoreBrokenStdio } from "./logger";
 import { installMainProcessErrorHandlers } from "./main-process-errors";
@@ -552,9 +552,7 @@ installMainProcessErrorHandlers({
   },
 });
 
-const persistenceOutbox = new PersistenceOutbox(dataDir, (level, message, data) => {
-  logger.app("persistence", level, message, { data });
-});
+const { persistenceOutbox, settleTranscript } = createPersistenceRuntime(dataDir, logger, () => host, () => quitting);
 const steeringReplies = new Set<string>();
 const scheduledRuntime = createScheduledRuntime({
   dataDir,
@@ -1140,6 +1138,7 @@ const planRuntime = createPlanRuntime({
   resolveAgentRuntimeLaunch,
   isQuitting: () => quitting,
   onTurnSettled: sessionCollaboration.settle,
+  settleTranscript,
 });
 const {
   finishTurn,
@@ -1248,6 +1247,7 @@ const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
 function registerIpc() {
   return registerIpcHandlers({
+    settleTranscript,
     traySessions: applicationLifecycle!.traySessions,
     ipcMain,
     getMainWindow: () => mainWindow,

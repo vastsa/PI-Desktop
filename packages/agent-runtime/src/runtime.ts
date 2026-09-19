@@ -1659,8 +1659,9 @@ export class DesktopAgentRuntime {
   private compactionAborted = false;
   /** Set by the `new_context` tool, consumed at the next turn boundary. */
   private pendingModelCompaction = false;
-  /** One-shot request to finish the current turn at the next boundary. */
-  private gracefulStopRequested = false;
+  /** Stop remains latched until the next durable turn starts. */
+  private gracefulStop = new AbortController();
+  private get gracefulStopRequested(): boolean { return this.gracefulStop.signal.aborted; }
   /** Codex's `claim_*` flags: one of each reminder per context window. */
   private contextReminderClaimed = false;
   private contextFallbackReminderClaimed = false;
@@ -1843,6 +1844,8 @@ Delegation rules:
               : this.models.streamSimple(m, context, retryOptions),
           {
             claim: (error, phase) => this.claimProviderRetry(error, phase),
+            stopSignal: this.gracefulStop.signal,
+            shouldStop: () => this.gracefulStopRequested,
             headers: () => this.providerRetryHeaders,
             status: () => this.providerResponseStatus,
             failure: () => this.providerFetchFailure,
@@ -1891,11 +1894,7 @@ Delegation rules:
       // the next turn boundary. pi-agent-core evaluates this after the
       // assistant response and completed tool batch, before another provider
       // request, so no second concurrent durable turn is created.
-      shouldStopAfterTurn: async () => {
-        if (!this.gracefulStopRequested) return false;
-        this.gracefulStopRequested = false;
-        return true;
-      },
+      shouldStopAfterTurn: async () => this.gracefulStopRequested,
     });
 
     // pi awaits every listener, so a throw here would reject the run in
@@ -4542,6 +4541,9 @@ Delegation rules:
         if (this.turnHadError) this.terminateParentTurn();
         return;
       }
+      // Graceful stop lets delegates finish without another parent request
+      // to integrate their reports.
+      if (this.gracefulStopRequested) return;
       const settled = targets.filter(
         (record) => record.status !== "running" && !record.reportDelivered,
       );
@@ -4654,6 +4656,9 @@ Delegation rules:
             ? targets.length
             : Math.min(Math.max(minCompleted, 1), targets.length);
         const deadline = Date.now() + timeoutSeconds * 1000;
+        const waitAbort = new AbortController();
+        this.steeringWaitAbort = waitAbort;
+        if (this.pendingSteering.size) waitAbort.abort();
         this.beginDelegationWait(targets);
         let timedOut = false;
         try {
@@ -4661,11 +4666,13 @@ Delegation rules:
             targets,
             targetCompleted,
             deadline,
-            signal,
+            AbortSignal.any([waitAbort.signal, ...(signal ? [signal] : [])]),
           );
         } finally {
+          if (this.steeringWaitAbort === waitAbort) this.steeringWaitAbort = undefined;
           this.endDelegationWait();
         }
+        const steered = waitAbort.signal.aborted && !signal?.aborted;
         // A settled report included in this bounded result reached the parent;
         // the idle resume must not deliver it a second time. Omitted reports
         // stay pending so the idle resume can deliver them later. Running
@@ -4685,7 +4692,9 @@ Delegation rules:
               ? formatDelegationHeartbeat(record)
               : (record.result?.report ?? `(${record.status} without a report)`),
         }));
-        const note = timedOut
+        const note = steered
+          ? "Wait interrupted by new user input. Process that input now; unfinished delegates keep working."
+          : timedOut
           ? `Still running after ${timeoutSeconds}s: ${results.filter((r) => r.status !== "running").length}/${targets.length} finished. This is not a failure — unfinished delegates keep working and the runtime will deliver their reports when they finish. Call TaskStop only to cancel.\n${targets
               .filter((record) => record.status === "running")
               .map(formatDelegationHeartbeat)
@@ -4717,7 +4726,7 @@ Delegation rules:
             },
           ],
           details: {
-            status: timedOut ? "timeout" : "completed",
+            status: steered ? "interrupted" : timedOut ? "timeout" : "completed",
             ...(unknownIds.length ? { unknownIds } : {}),
             delegations: results,
           },
@@ -4740,6 +4749,7 @@ Delegation rules:
     const settledCount = () =>
       targets.filter((record) => record.status !== "running").length;
     if (settledCount() >= targetCompleted) return Promise.resolve(false);
+    if (signal?.aborted) return Promise.resolve(true);
     return new Promise<boolean>((resolve) => {
       let done = false;
       const finish = (timedOut: boolean) => {
@@ -5258,7 +5268,7 @@ Delegation rules:
     error: ReturnType<typeof classifyAgentError>,
     phase: "request" | "stream",
   ): number | undefined {
-    if (!error.retriable) return undefined;
+    if (!error.retriable || this.gracefulStopRequested) return undefined;
     if (error.code === "PROVIDER_RATE_LIMITED") {
       if (
         this.providerRateLimitRetryAttempt >=
@@ -5448,7 +5458,16 @@ Delegation rules:
         retryDelayMs: delayMs,
         error: this.retryActivityError(retryError),
       });
-      await delayWithAbort(delayMs, this.providerRetryAbort.signal);
+      try {
+        await delayWithAbort(delayMs, AbortSignal.any([
+          this.providerRetryAbort.signal, this.gracefulStop.signal,
+        ]));
+      } catch (error) {
+        if (!this.gracefulStopRequested || this.runCancelled || this.disposed ||
+            !(error instanceof Error) || error.name !== "AbortError") throw error;
+        return;
+      }
+      if (this.gracefulStopRequested) return;
       if (this.disposed) throw new Error("runtime disposed");
       // The failed attempt has already finished. Only its lifecycle events
       // are suppressed; the retry must close the visible run normally.
@@ -5521,6 +5540,19 @@ Delegation rules:
       this.pendingSilentTurnRerun ||
       this.pendingProgressTurnRerun
     ) {
+      if (this.gracefulStopRequested) {
+        if (this.pendingOverflow) {
+          this.terminateParentTurn();
+          this.emit({ type: "error", error: {
+            code: "CONTEXT_TOO_LARGE",
+            message: "The provider rejected the model context before the turn was stopped",
+            retriable: false,
+          } });
+          this.finishAgentRun();
+          return false;
+        }
+        return true;
+      }
       if (this.pendingProviderRetry) {
         await this.retryPendingProviderFailure();
         continue;
@@ -5559,6 +5591,7 @@ Delegation rules:
           return false;
         }
         this.turnHadError = false;
+        if (this.gracefulStopRequested) return true;
         this.requestStartedAt = Date.now();
         await this.agent.continue();
         await this.waitForIdleAndSteering();
@@ -6862,6 +6895,7 @@ Delegation rules:
           // answer is never rendered. Re-run once with a nudge before letting
           // that surface as a finished turn.
           const silence =
+            !this.gracefulStopRequested &&
             !failed &&
             !aborted &&
             responseText.trim().length === 0 &&
@@ -6918,6 +6952,7 @@ Delegation rules:
           // Autonomous plan/goal: clearly forward-looking text without a tool
           // call is probably progress, not a final answer. Nudge once (#43).
           const progressOnlyTurn =
+            !this.gracefulStopRequested &&
             !failed &&
             !aborted &&
             !silentTurn &&
@@ -7017,6 +7052,7 @@ Delegation rules:
           this.streamStartedAt = undefined;
           this.currentAssistant = undefined;
           const canRecoverOverflow =
+            !this.gracefulStopRequested &&
             this.compactionEnabled &&
             overflow &&
             !this.overflowRecoveryAttempted;
@@ -7033,7 +7069,7 @@ Delegation rules:
             }
           } else if (!failed && !aborted && !emptyResponse) {
             this.appendLiveEntry(assistantId, event.message);
-          } else {
+          } else if (!(aborted && this.gracefulStopRequested && !this.runCancelled)) {
             this.turnHadError = true;
           }
           if (canRecoverOverflow) {
@@ -7123,6 +7159,7 @@ Delegation rules:
         }
         break;
       case "turn_end":
+        if (this.gracefulStopRequested && !this.turnHadError) break;
         if (
           this.suppressOverflowRunEnd ||
           this.suppressProviderRetryRunEnd ||
@@ -7139,6 +7176,7 @@ Delegation rules:
         });
         break;
       case "agent_end":
+        if (this.gracefulStopRequested && !this.turnHadError) break;
         // Input admitted after pi's last queue poll still belongs to this turn.
         // Continue after the current run settles; never wake the follow-up FIFO.
         if (this.pendingSteering.size && this.acceptingSteering && !this.runCancelled && !this.turnHadError) break;
@@ -7150,19 +7188,38 @@ Delegation rules:
           this.keepTurnOpenForDelegates()
         )
           break;
-        this.acceptingSteering = false;
-        this.retainPendingSteering();
-        this.autonomousExecution = false;
-        this.clearAgentActivity();
-        this.reportMutationTermination();
-        this.emit({
-          type: "agent_end",
-          messageIds: [],
-        });
+        this.finishAgentRun();
         break;
       default:
         break;
     }
+  }
+
+  private finishAgentRun(): void {
+    this.acceptingSteering = false;
+    this.retainPendingSteering();
+    this.autonomousExecution = false;
+    this.clearAgentActivity();
+    this.reportMutationTermination();
+    this.emit({ type: "agent_end", messageIds: [] });
+  }
+
+  /** Settle the durable turn across pi loops, recovery, and delegate reports. */
+  private async settlePendingRun(): Promise<void> {
+    if (!(await this.runPendingRecoveries())) return;
+    if (this.turnHadError) {
+      this.terminateParentTurn();
+      return;
+    }
+    await this.resumeAfterDelegations();
+    if (
+      !this.gracefulStopRequested || this.runCancelled || this.turnHadError || this.disposed
+    ) return;
+    this.finalizeCurrentAssistant("aborted");
+    const subagentUsage = this.turnSubagentUsage;
+    this.turnSubagentUsage = undefined;
+    this.emit({ type: "turn_end", ...(subagentUsage ? { subagentUsage } : {}) });
+    this.finishAgentRun();
   }
 
   /**
@@ -7304,7 +7361,7 @@ Delegation rules:
     this.turnId = durableTurnId;
     this.acceptingSteering = true;
     this.pendingUserMessageId = undefined;
-    this.gracefulStopRequested = false;
+    this.gracefulStop = new AbortController();
     this.runCancelled = false;
     this.resetRunRecoveryState();
     this.turnEpoch += 1;
@@ -7355,12 +7412,7 @@ Delegation rules:
     // Same recovery contract as a user prompt: a plan execution that overflows,
     // hits a retriable stream failure, or comes back silent must not end as a
     // run with no end events at all.
-    if (!(await this.runPendingRecoveries())) return { turnId: this.turnId };
-    if (this.turnHadError) {
-      this.terminateParentTurn();
-      return { turnId: this.turnId };
-    }
-    await this.resumeAfterDelegations();
+    await this.settlePendingRun();
     return { turnId: this.turnId };
   }
 
@@ -7379,7 +7431,7 @@ Delegation rules:
     this.hostTurnId = nextTurnId;
     this.turnId = nextTurnId;
     this.acceptingSteering = true;
-    this.gracefulStopRequested = false;
+    this.gracefulStop = new AbortController();
     this.runCancelled = false;
     this.turnSubagentUsage = undefined;
     // Capabilities and path-scoped instruction claims belong to one prompt.
@@ -7432,7 +7484,12 @@ Delegation rules:
           return { turnId: this.turnId };
         }
       }
-      await this.extensionBeforeAgentStart(modelInput);
+      if (!this.gracefulStopRequested) await this.extensionBeforeAgentStart(modelInput);
+      if (this.gracefulStopRequested) {
+        this.keepPreflightUserMessage(incomingUserMessage);
+        await this.settlePendingRun();
+        return { turnId: this.turnId };
+      }
       if (typeof modelInput === "string") {
         await this.agent.prompt(modelInput);
       } else {
@@ -7441,12 +7498,7 @@ Delegation rules:
       await this.waitForIdleAndSteering();
       void this.extensionRunner?.emit("agent_settled", { type: "agent_settled" });
 
-      if (!(await this.runPendingRecoveries())) return { turnId: this.turnId };
-      if (this.turnHadError) {
-        this.terminateParentTurn();
-        return { turnId: this.turnId };
-      }
-      await this.resumeAfterDelegations();
+      await this.settlePendingRun();
     } catch (err) {
       const classifiedError = classifyAgentError(err);
       const diagnosticError =
@@ -7614,7 +7666,7 @@ Delegation rules:
 
   async abort(): Promise<void> {
     this.acceptingSteering = false;
-    this.gracefulStopRequested = false;
+    this.gracefulStop = new AbortController();
     this.runCancelled = true;
     this.resolvePendingAskTools();
     this.abortRunningDelegations();
@@ -7627,11 +7679,13 @@ Delegation rules:
 
   /** Ask pi-agent-core to stop after the current assistant/tool turn. */
   requestGracefulStop(): { requested: boolean } {
-    if (this.disposed || !this.agent.state.isStreaming) {
+    if (
+      this.disposed || !this.getStatus().isRunning
+    ) {
       return { requested: false };
     }
     this.acceptingSteering = false;
-    this.gracefulStopRequested = true;
+    this.gracefulStop.abort();
     return { requested: true };
   }
 
@@ -7671,7 +7725,7 @@ Delegation rules:
     this.terminatingToolCalls.clear();
     this.delegateToolCalls.clear();
     this.appendedDelegationRowIds.clear();
-    this.gracefulStopRequested = false;
+    this.gracefulStop = new AbortController();
     this.hostCloseUnsubscribe?.();
     this.hostCloseUnsubscribe = undefined;
     this.agent.abort();

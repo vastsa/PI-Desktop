@@ -34,6 +34,7 @@ export type AgentIpcDependencies = {
   resolveAgentRuntimeLaunch: (...args: any[]) => Promise<any>;
   acquireSessionOperation: (sessionId: string) => Promise<() => void>;
   finishTurn: FinishTurn;
+  settleTranscript: (sessionId: string) => Promise<boolean>;
   /**
    * Record a cancellation before the cancel request is issued, so a terminal
    * event arriving while it is in flight cannot restate the abort as a
@@ -76,6 +77,7 @@ export function registerAgentIpc({
   resolveAgentRuntimeLaunch,
   acquireSessionOperation,
   finishTurn,
+  settleTranscript,
   lockAbortReason,
   finishApprovedExecution,
   dispatchApprovedPlan,
@@ -311,6 +313,14 @@ export function registerAgentIpc({
     if (!host) throw new Error("host unavailable");
     const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
     try {
+    // Restart may have restored an outbox without a live finalization record.
+    // Flush it before beginning a new turn or reading the prompt's history.
+    if (!(await settleTranscript(req.sessionId))) {
+      throw Object.assign(new Error("Application is shutting down"), { errorCode: "TURN_ABORTED" });
+    }
+    host = getHost();
+    sidecar = getSidecar();
+    if (!host || !sidecar) throw new Error("backend unavailable after transcript settlement");
     const sessionMessage = await resolveSessionMessageInput(host, req);
     // Install the renderer's prompt-time snapshot before any asynchronous
     // setup. This closes the gap where a fast completion could beat the

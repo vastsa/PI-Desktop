@@ -715,11 +715,17 @@ may be retained while exactly one workspace supplies the visible shell context.
   never moves or clears another session's queue.
 - The queue renders above the composer. Each row has an independently
   keyboard-reachable Remove action and a Send now action.
-- Send now moves its row to the head and requests the new `agent/stop` channel.
-  The current assistant response and completed tool batch finish normally;
-  after `agent_end` and durable turn finalization, the promoted row is
-  dispatched through the normal `agent/prompt` flow before the remaining rows.
-  An idle Send now dispatches immediately.
+- Send now promotes the row and asks the Host to deliver the promoted block
+  into the active turn through steering, in click order. It does not request a
+  graceful stop or change the active turn's identity. A row leaves the durable
+  queue only after the runtime accepts it. If the target ends or refuses input,
+  the row stays queued and starts normally after finalization; an idle Send now
+  dispatches immediately. Delivery is serialized with ordinary queue dispatch.
+- Acceptance is not model consumption: an in-flight assistant response stays
+  in its existing transcript row before the new user input. The input reaches
+  the next model request after the current response/tool batch. `TaskWait` and
+  idle delegate waits wake on steering without canceling the delegated work;
+  ordinary tools retain their completion/cancellation semantics.
 - Without Send now, the next FIFO row starts automatically after the active
   turn completes, fails, or is aborted. A terminal event can arrive before
   persistence releases the session; finalization must wake the queue again
@@ -737,7 +743,8 @@ may be retained while exactly one workspace supplies the visible shell context.
   IME candidate (`isComposing` or key code 229) never sends or steers.
 - Steering appears as a user message in the current transcript, clears the
   draft immediately, and reaches the next model request after the current
-  response/tool batch. It creates no FIFO row and does not interrupt tools.
+  response/tool batch. It creates no FIFO row and does not cancel tools.
+  Delegate waits can return early with an interrupted status for new input.
 - Submission captures the session and current turn identity. If that target
   ends, rejects input, or is awaiting approval, the draft is restored in its
   own session and a concise error is shown. New text typed after submission
@@ -1502,7 +1509,7 @@ This does not prevent state changes — it makes them instant.
 2. Enter sends when Enter-to-send is on; when it is off, Cmd/Ctrl+Enter sends and Enter/Shift+Enter insert a newline
 3. Abort immediately cancels running turn and pending permissions without confirmation dialog
 3a. Send stays enabled while running, queues prompts per session, and Send now
-    finishes the current boundary before releasing its prioritized prompt
+    steers promoted prompts into the active turn without stopping it
 4. Long content (>50 lines for messages, >10 for args, >20 for results) is collapsed by default with expand link
 5. Tool results that were cut short show a truncation marker or chip per D306; a filled Read window of a longer file does not
 6. Permission interrupt inserts inline card, disables composer, shows countdown, and re-enables after resolution

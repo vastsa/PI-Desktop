@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { register } from "node:module";
 import test from "node:test";
+import { setImmediate } from "node:timers/promises";
 import { IPC } from "@pi-desktop/shared";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
@@ -76,6 +77,8 @@ test("prompt IPC persists original session text, skips slash expansion and binds
     },
   };
   let released = false;
+  let releaseTranscript;
+  const transcriptReady = new Promise((resolve) => { releaseTranscript = resolve; });
   registerAgentIpc({
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     getHost: () => host,
@@ -93,12 +96,18 @@ test("prompt IPC persists original session text, skips slash expansion and binds
     }),
     acquireSessionOperation: async () => () => { released = true; },
     finishTurn: async () => { assert.fail("the prompt should succeed"); },
+    settleTranscript: async () => { await transcriptReady; return true; },
     emitAgentEvent: (event) => events.push(event), setNotificationViewingSessionId() {},
     optionalWorkspaceRoot: async () => { assert.fail("session text must not expand slash commands"); },
     composerCommandService: { buildComposerCommands: async () => { assert.fail("session text must not expand slash commands"); } },
     loadComposerTemplatesCached: async () => { assert.fail("session text must not expand slash commands"); },
   });
-  assert.deepEqual(await handlers.get(IPC.invoke.agentPrompt)(request), { accepted: true, turnId: "turn-1" });
+  const pendingPrompt = handlers.get(IPC.invoke.agentPrompt)(request);
+  await setImmediate();
+  assert.equal(calls.length, 0, "restored transcript appends must settle before history reads or a new turn");
+  assert.equal(sidecarCalls.length, 0);
+  releaseTranscript();
+  assert.deepEqual(await pendingPrompt, { accepted: true, turnId: "turn-1" });
   const begin = calls.find((entry) => entry.method === "session.beginTurn");
   assert.equal(begin.params.sessionMessageId, message.id);
   const row = calls.find((entry) => entry.method === "session.appendMessage").params.message;

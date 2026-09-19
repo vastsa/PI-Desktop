@@ -144,6 +144,10 @@ export type ProviderRetryController = {
     attempt: number;
     delayMs: number;
   }) => void;
+  /** A completed failed attempt must not start fresh work after a graceful stop. */
+  shouldStop?: () => boolean;
+  /** Wakes a retry delay without aborting an in-flight provider stream. */
+  stopSignal?: AbortSignal;
   /** Test hook; production uses the abortable timer below. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 };
@@ -421,6 +425,7 @@ export function createProviderRetryStream(
   void context;
   const outer = createAssistantMessageEventStream();
   const sleep = controller.sleep ?? delayWithAbort;
+  const shouldStop = () => controller.stopSignal?.aborted || controller.shouldStop?.() === true;
 
   void (async () => {
     // One repair per logical turn: after an opaque 400/422 the next attempt
@@ -428,7 +433,7 @@ export function createProviderRetryStream(
     // transient budget, and a second opaque failure surfaces untouched.
     let limitRepairTried = false;
     for (;;) {
-      if (options.signal?.aborted) throw requestAbortedError();
+      if (options.signal?.aborted || shouldStop()) throw requestAbortedError();
       const inner = createStream({
         ...(limitRepairTried ? withoutDerivedOutputLimit(options) : options),
         maxRetries: 0,
@@ -480,8 +485,13 @@ export function createProviderRetryStream(
       if (opaqueLimitRejection) {
         // Drain the ended stream so providers with deferred cleanup do not
         // overlap the repair request, mirroring the retry path below.
-        await inner.result();
+        const failed = await inner.result();
         if (options.signal?.aborted) throw requestAbortedError();
+        if (shouldStop()) {
+          outer.push({ type: "error", reason: "error", error: failed });
+          outer.end(failed);
+          return;
+        }
         limitRepairTried = true;
         continue;
       }
@@ -498,7 +508,7 @@ export function createProviderRetryStream(
 
       // The failed event has already ended this inner stream. Awaiting its
       // result keeps providers with deferred cleanup from overlapping retries.
-      await inner.result();
+      const failed = await inner.result();
       const delayMs =
         retry.error.code === "PROVIDER_RATE_LIMITED"
           ? providerRateLimitDelayMs(
@@ -516,7 +526,24 @@ export function createProviderRetryStream(
         attempt: retry.attempt,
         delayMs,
       });
-      await sleep(delayMs, options.signal);
+      if (!shouldStop()) {
+        const signal = controller.stopSignal
+          ? AbortSignal.any([controller.stopSignal, ...(options.signal ? [options.signal] : [])])
+          : options.signal;
+        try {
+          await sleep(delayMs, signal);
+        } catch (error) {
+          if (!shouldStop() || options.signal?.aborted ||
+              !(error instanceof Error) || error.name !== "AbortError") throw error;
+        }
+      }
+      if (options.signal?.aborted) throw requestAbortedError();
+      if (shouldStop()) {
+        const terminal = controller.status?.() === 429 ? normalizeRateLimitMessage(failed) : failed;
+        outer.push({ type: "error", reason: "error", error: terminal });
+        outer.end(terminal);
+        return;
+      }
     }
   })().catch((error) => {
     const aborted =

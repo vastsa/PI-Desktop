@@ -30,7 +30,13 @@ to another session is remapped to `{sessionId}:{id}` before the JSONL write
 (D444). The outbox treats `UNIQUE constraint failed: messages.id` as an ack,
 not a pause. A permanently rejected append (`PERMISSION_DENIED:` provenance
 or permission on that row) is dropped the same way so one poison head cannot
-fill the 1024-entry cap and discard every later row (D597).
+block later transcript rows (D597). The outbox's 1024-entry threshold is a
+backlog warning, not permission to drop an already-produced message. Overflow
+is persisted in the same recovery file; per-session turn settlement blocks
+subsequent prompts until that session's writes finish. This preserves restart
+recovery without introducing an in-memory-only overflow queue. A sustained
+outage can grow the recovery file with already-running work; protecting those
+completed messages takes precedence over the former silent-drop cap (#597).
 
 ## Consequences
 

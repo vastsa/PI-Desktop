@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { HostProcess } from "./host-process";
+import type { Logger } from "./logger";
 
 type MessageAppend = {
   key: string;
@@ -11,7 +12,7 @@ type MessageAppend = {
 
 type OutboxLogger = (level: "warn" | "error", message: string, data?: unknown) => void;
 
-const MAX_ENTRIES = 1024;
+const BACKLOG_WARNING_THRESHOLD = 1024;
 
 /**
  * Keeps transcript appends away from a dead host pipe. The file is an
@@ -26,6 +27,7 @@ export class PersistenceOutbox {
   private flushing: Promise<void> | null = null;
   private persistChain = Promise.resolve();
   private readonly loaded: Promise<void>;
+  private readonly enqueuing = new Map<Promise<void>, string>();
 
   constructor(dataDir: string, logger: OutboxLogger) {
     this.path = join(dataDir, "session-message-outbox.json");
@@ -34,7 +36,14 @@ export class PersistenceOutbox {
     this.loaded = this.load();
   }
 
-  async enqueue(
+  enqueue(entry: MessageAppend, getHost: () => HostProcess | null): Promise<void> {
+    // Reserve synchronously: a terminal event can follow before load or disk I/O settles.
+    const pending = this.enqueueEntry(entry, getHost).finally(() => this.enqueuing.delete(pending));
+    this.enqueuing.set(pending, entry.sessionId);
+    return pending;
+  }
+
+  private async enqueueEntry(
     entry: MessageAppend,
     getHost: () => HostProcess | null,
   ): Promise<void> {
@@ -42,13 +51,15 @@ export class PersistenceOutbox {
     const existing = this.entries.findIndex((item) => item.key === entry.key);
     if (existing >= 0) this.entries[existing] = entry;
     else {
-      if (this.entries.length >= MAX_ENTRIES) await this.flush(getHost);
-      if (this.entries.length >= MAX_ENTRIES) {
-        this.logger("error", "session persistence outbox is full", {
+      // Completed messages must remain recoverable until the host acknowledges them.
+      // Persist overflow in the same recovery file instead of acknowledging a
+      // dropped row. Turn settlement prevents subsequent prompts from adding
+      // work in this session until its backlog reaches the host.
+      if (this.entries.length === BACKLOG_WARNING_THRESHOLD) {
+        this.logger("warn", "session persistence outbox backlog is high", {
           size: this.entries.length,
-          max: MAX_ENTRIES,
+          threshold: BACKLOG_WARNING_THRESHOLD,
         });
-        return;
       }
       this.entries.push(entry);
     }
@@ -56,13 +67,41 @@ export class PersistenceOutbox {
     void this.flush(getHost);
   }
 
-  async flush(getHost: () => HostProcess | null): Promise<void> {
+  async flush(getHost: () => HostProcess | null, sessionId?: string): Promise<void> {
     await this.loaded;
-    if (this.flushing) return this.flushing;
-    this.flushing = this.flushLoop(getHost).finally(() => {
-      this.flushing = null;
-    });
-    return this.flushing;
+    while (this.flushing) await this.flushing;
+    const pending = this.flushLoop(getHost, sessionId);
+    this.flushing = pending;
+    try {
+      await pending;
+    } finally {
+      if (this.flushing === pending) this.flushing = null;
+    }
+  }
+
+  /** Hold turn ownership until its transcript is durable; quit leaves the outbox for restart. */
+  async drainSession(
+    sessionId: string,
+    getHost: () => HostProcess | null,
+    isStopping: () => boolean,
+  ): Promise<boolean> {
+    await this.loaded;
+    for (;;) {
+      if (isStopping()) return false;
+      try {
+        const pending = [...this.enqueuing].filter(([, id]) => id === sessionId).map(([write]) => write);
+        await Promise.all(pending);
+        await this.flush(getHost, sessionId);
+        if (!this.entries.some((entry) => entry.sessionId === sessionId) &&
+            ![...this.enqueuing.values()].includes(sessionId)) return true;
+      } catch (error) {
+        // A failed local write must not release the next prompt either.
+        this.logger("warn", "session transcript settlement retrying", { sessionId, error: String(error) });
+      }
+      // This finalization owns the retry timer. It cannot keep the process alive;
+      // shutdown ends the wait on the next iteration and preserves unsaved rows.
+      await new Promise<void>((resolve) => { setTimeout(resolve, 1000).unref(); });
+    }
   }
 
   /**
@@ -81,9 +120,10 @@ export class PersistenceOutbox {
     return this.entries.length;
   }
 
-  private async flushLoop(getHost: () => HostProcess | null): Promise<void> {
-    while (this.entries.length > 0) {
-      const current = this.entries[0];
+  private async flushLoop(getHost: () => HostProcess | null, sessionId?: string): Promise<void> {
+    for (;;) {
+      const current = this.entries.find((entry) => sessionId === undefined || entry.sessionId === sessionId);
+      if (!current) return;
       const currentHost = getHost();
       if (!currentHost || !currentHost.isAvailable()) return;
       try {
@@ -120,7 +160,8 @@ export class PersistenceOutbox {
       }
       // A newer snapshot may have replaced this key while the host wrote it.
       // Only remove the exact entry acknowledged by that write.
-      if (this.entries[0] === current) this.entries.shift();
+      const index = this.entries.indexOf(current);
+      if (index >= 0) this.entries.splice(index, 1);
       await this.persist();
     }
   }
@@ -178,4 +219,18 @@ function isDuplicateMessageIdError(error: unknown): boolean {
  */
 function isPoisonMessageError(error: unknown): boolean {
   return /(?<![A-Z_])PERMISSION_DENIED:/i.test(String(error));
+}
+
+export function createPersistenceRuntime(
+  dataDir: string,
+  logger: Pick<Logger, "app">,
+  getHost: () => HostProcess | null,
+  isStopping: () => boolean,
+) {
+  const persistenceOutbox = new PersistenceOutbox(dataDir, (level, message, data) => {
+    logger.app("persistence", level, message, { data });
+  });
+  const settleTranscript = (sessionId: string) =>
+    persistenceOutbox.drainSession(sessionId, getHost, isStopping);
+  return { persistenceOutbox, settleTranscript };
 }

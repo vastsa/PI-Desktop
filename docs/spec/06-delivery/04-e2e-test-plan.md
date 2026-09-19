@@ -1318,11 +1318,10 @@ identify the platform validation still needed.
   state: disabled Send while idle and empty, enabled Send while running with
   content (which queues the prompt), and Stop while running with an empty
   draft. A's two prompts appear in FIFO order, the removed row never sends,
-  and B's queue remains independent. Send now requests a graceful stop: the
-  current batch completes with a normal `agent_end`/completed turn, then the
-  promoted rows are delivered in the order they were promoted, before any
-  waiting row, without `AGENT_BUSY`: the first starts the turn and the rest join
-  it as adjacent user messages, so the model answers once for the whole block.
+  and B's queue remains independent. Send now delivers promoted rows in click
+  order into the current turn through steering, without a stop request. The
+  turn id stays unchanged. An unavailable target leaves the row queued for
+  normal dispatch after finalization. A promoted row locks move/edit/
   remove, and its Send now button reads as already decided; promotion is
   one-way. Move up/down swaps only waiting rows, never crosses the promoted
   block, and persists. Edit is refused with a visible message while the input
@@ -1346,6 +1345,29 @@ identify the platform validation still needed.
   promotion, reorder, and edit contracts covered at source level
   (`composer-send-state.test.mjs`); full UI scenario Draft
 
+#### E2E-QUEUE-graceful-stop-across-runtime-loops (#597)
+
+- **Boundary**: Real runtime and pi loop against a loopback HTTP/SSE provider;
+  no paid provider or running desktop instance.
+- **Steps**: Hold the first response, request graceful stop, and finish with
+  a silent response. Repeat with a Task that starts a held child response,
+  stopping both during the parent response and while the parent waits. Release
+  the child, then submit the next queued prompt through the runtime API.
+- **Expected**: The stopped durable turn makes no additional parent request
+  for response recovery or report integration. Already-started child work
+  finishes, one parent `agent_end` is emitted, and the next prompt succeeds.
+  Without a stop, existing recovery and delegate-report behavior is preserved.
+- **Additional races**: Request stop after HTTP 429/503 retry admission and
+  after the retry delay begins; no fresh provider request may follow. Pause an
+  old reply's append, finish the runtime, and queue new input: neither durable
+  `endTurn` nor the next prompt may overtake the reply. Recover the host without
+  enqueueing anything else and verify automatic draining. A different session's
+  append failure must not block this session, and shutdown must preserve the
+  paused outbox without dispatching follow-ups.
+- **Validation**: Run the isolated runtime scenario above and verify queue
+  release after durable finalization with
+  `apps/desktop/test/queued-turn-finalization.test.mjs`.
+
 #### E2E-QUEUE-promote-orders-delivery-by-click: Two Send now clicks deliver in click order
 
 - **Preconditions**: Provider configured; session A is running a turn with at
@@ -1356,7 +1378,8 @@ identify the platform validation still needed.
 - **Expected**: The first click is delivered first and the second second — the
   click order is the delivery order, not "last click wins" and not the original
   queue order. Both rows appear as adjacent user messages in one turn and the
-  model answers once; the queue no longer lists either promoted row. Both
+  active turn consumes them at its next available model boundary; the queue no
+  longer lists either acknowledged row. Both
   promoted rows show as already decided and cannot be edited, removed, or
   reordered. The waiting row keeps its actions and is not delivered before
   either promoted row.
@@ -13515,3 +13538,33 @@ frames must produce no further renders or pending callbacks. Card geometry is
 read at press time, and move/release/cancel/unmount paths must clear transient
 transforms and queued frames. Release before the scheduled frame must still save
 the latest destination. These assertions measure work counts, not device FPS.
+
+
+#### E2E-597-overflow: Full recovery outbox preserves queued-turn ordering
+
+- Seed the recovery file with 1024 entries from another session and make host
+  appends fail transiently. Complete the active reply and queue the next input.
+- Verify the reply is retained on disk and the next input does not dispatch.
+  Restore host writes for the active session; its reply must persist before
+  `session.endTurn` and the next user's append, even if the other session fails.
+- Restart with overflow entries still on disk and verify every overflow reply
+  drains once, in order, without dropping unrelated backlog entries.
+- Validate with isolated files, controlled host failures, and controlled retry
+  timers. Existing outbox tests do not cover the complete overflow scenario.
+
+
+#### E2E-597-send-now-steers-active-turn
+
+- While a regular turn is active, queue two messages and click Send now on
+  each. Verify click-order delivery into the same active turn, no graceful
+  stop, and removal from the queue only after acceptance.
+- During TaskWait or an idle delegate wait, send corrective input. Verify the
+  parent wakes without waiting for all children, and children remain running.
+  Ordinary tool calls retain their completion/cancellation behavior.
+- If the active turn ends during delivery, verify refused input stays queued
+  and dispatches after finalization. It must neither disappear nor run twice.
+- The in-flight assistant row remains before the accepted user row; its late
+  deltas update that row. Acceptance does not imply immediate model consumption.
+- Automated coverage: `packages/agent-host/src/agent-host.test.ts` covers
+  promotion and fallback. The runtime delegation suites cover normal waits;
+  steering during TaskWait also requires the interrupted-wait scenario above.

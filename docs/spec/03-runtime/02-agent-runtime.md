@@ -55,12 +55,22 @@ interface AgentRuntime {
 }
 ```
 
-`requestGracefulStop()` is a one-shot request for the active runtime. The pi
-loop evaluates it after `turn_end`, once the current assistant response and
-tool batch have completed, and emits a normal `agent_end` before another model
-request. It does not cancel an active provider stream or running tool. An idle
-runtime returns `{ requested: false }`; immediate `abort()` remains the
-separate cancellation path.
+`requestGracefulStop()` applies to the active durable turn, including a parent
+waiting for its delegates. The request stays latched across pi loop boundaries
+until the next durable turn starts. The current assistant response and tool
+batch finish normally; already-started delegates may finish, but the runtime
+must not start another model request to integrate their reports or recover a
+silent/progress-only response. Terminal events are released after that existing
+work settles, so the next queued prompt can start without `AGENT_BUSY`.
+It does not cancel an active provider stream or running tool. An idle runtime
+returns `{ requested: false }`; immediate `abort()` remains the separate
+cancellation path. Starting, retry-wait, and compaction phases remain active
+for stop admission even while pi is not streaming. A retry that already claimed
+its budget rechecks the stop after its delay; an opaque-400 repair and every
+provider dispatch check before starting fresh work. A failed setup attempt's original error
+remains visible when its retry is suppressed. Graceful stop wakes an existing
+retry timer without cancelling an active provider stream; immediate abort
+retains precedence when both requests arrive.
 
 ### 4.0 Active-turn steering
 
@@ -78,6 +88,12 @@ continues once pi has released the run, with the same turn identity and without
 a second public `agent_start`. Existing context/provider recovery takes
 precedence over that continuation. Steering also wakes a parent that is idle
 waiting for background delegates; it does not cancel those delegates.
+
+For active-turn steering, `TaskWait` returns early when accepted user input is
+pending. Its result has `status: "interrupted"` and explains that the unfinished
+delegates keep running. The parent consumes that input in its next model
+request without changing the durable turn id. An already-pending steer also
+prevents a newly entered TaskWait from sleeping through the input (#597).
 
 Abort, graceful stop, fatal errors and terminal settlement close admission.
 Accepted but unconsumed input remains transcript/context history and is removed

@@ -19,7 +19,7 @@ test("the single-instance lock is taken before anything touches the data directo
   assert.ok(lock > 0, "main must request the single-instance lock");
   assert.ok(mainSource.indexOf("app.setName(APP_NAME)") < lock);
   assert.ok(lock < mainSource.indexOf("new Logger("));
-  assert.ok(lock < mainSource.indexOf("new PersistenceOutbox("));
+  assert.ok(lock < mainSource.indexOf("createPersistenceRuntime("));
 });
 
 test("a launch that loses the lock quits and boots nothing", () => {
