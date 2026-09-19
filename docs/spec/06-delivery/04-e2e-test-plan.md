@@ -5657,6 +5657,25 @@ identify the platform validation still needed.
   validation, persistence, and restart; the deterministic host-core catalog
   test verifies first-available fallback when a stored shell becomes unavailable
 
+#### E2E-SHELL-windows-pwsh-msix-store-alias-is-available
+
+- **Preconditions**: Windows host with PowerShell 7 installed via MSIX /
+  Microsoft Store (`winget` `msixbundle`). `%ProgramFiles%\PowerShell\7\pwsh.exe`
+  is absent. `pwsh.exe` on PATH is the `WindowsApps` app-execution alias
+  (`IO_REPARSE_TAG_APPEXECLINK`).
+- **Steps**: 1) Open Settings → command shell. 2) Inspect `windows-pwsh`
+  availability. 3) Select PowerShell 7 and persist `defaultCommandShell`.
+  4) Run `Bash`.
+- **Expected**: `windows-pwsh` is available and selectable. The host resolves
+  the Store alias without treating it as missing. `Bash` launches PowerShell 7.
+- **Specs linked**: `03-runtime/03-tools-and-permissions.md`,
+  `04-ux/06-settings-ia.md`, ADR 0054, ADR 0209
+- **Acceptance**: B (model/config), E (tools/permissions)
+- **Milestone**: M6
+- **Status**: Documented; host-core unit tests cover the Win32-attribute
+  decision (alias attrs `0x420` + tag `0x8000001B`). Live Store-alias probe is
+  Windows-only and is not run in Linux CI.
+
 #### E2E-113: Stale shell identity fails closed
 
 - **Preconditions**: A Bash turn has a pinned effective shell ID/dialect; the
