@@ -1117,6 +1117,8 @@ const sessionCollaboration = createSessionCollaborationService({
   log: (message, data) => logger.app("runtime", "warn", message, { data }),
 });
 
+const settleTranscript = (sessionId: string) =>
+  persistenceOutbox.drainSession(sessionId, () => host, () => quitting);
 const planRuntime = createPlanRuntime({
   runtimeState,
   planState: planRuntimeState,
@@ -1140,6 +1142,7 @@ const planRuntime = createPlanRuntime({
   resolveAgentRuntimeLaunch,
   isQuitting: () => quitting,
   onTurnSettled: sessionCollaboration.settle,
+  settleTranscript,
 });
 const {
   finishTurn,
@@ -1248,6 +1251,7 @@ const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
 function registerIpc() {
   return registerIpcHandlers({
+    settleTranscript,
     traySessions: applicationLifecycle!.traySessions,
     ipcMain,
     getMainWindow: () => mainWindow,

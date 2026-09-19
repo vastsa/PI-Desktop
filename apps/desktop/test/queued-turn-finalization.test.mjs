@@ -34,7 +34,7 @@ function deferred() {
 const SESSION = "s1";
 const FIRST_TURN = "initial";
 
-function fixture() {
+function fixture({ settleTranscript = async () => true } = {}) {
   const activeTurns = new Map([[SESSION, FIRST_TURN]]);
   const persistedQueue = new Map();
   const prompts = [];
@@ -110,6 +110,7 @@ function fixture() {
   const planRuntime = createPlanRuntime({
     runtimeState: { host, agentHostBridge: bridge },
     planState: { approvedExecutionDrain: null },
+    settleTranscript,
     logger: { app() {} },
     sendToRenderer() {},
     coordination,
@@ -360,7 +361,8 @@ test("a turn whose session moved on releases its waiters and its cancellation lo
   );
 });
 
-test("a promoted queue resumes even when no terminal event reaches Agent Host", async () => {
+test("a promoted queue resumes even when no terminal event reaches Agent Host", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture();
   await f.bridge.queue.push({ sessionId: SESSION, content: "promoted follow-up" });
   const [entry] = f.bridge.queue.list(SESSION);
@@ -375,6 +377,8 @@ test("a promoted queue resumes even when no terminal event reaches Agent Host", 
   await setImmediate();
   f.writes[0].resolve({ ok: true });
   await pending;
+  // A rejected steering attempt may already be waiting for its bounded retry.
+  t.mock.timers.tick(150);
   await setImmediate();
 
   assert.deepEqual(

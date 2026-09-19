@@ -50,19 +50,18 @@ queue at all even though the Host already orders it by a durable `position`.
    refused with a toast while the input is non-empty, and the emptiness check
    runs against the live editor read because the draft cache is not written per
    keystroke.
-6. **The promoted block is delivered as adjacent messages, not as separate
-   turns.** Promotion still does not touch the running turn by itself: the
-   renderer requests the existing graceful `agent/stop`, and the block leaves at
-   the next boundary. The first promoted entry then starts the turn, and every
-   later promoted entry is injected into that same turn as user input over the
-   Composer's existing steering channel. The transcript therefore reads
-   `user: first`, `user: second` and the model answers once. The injection is
-   retried a bounded number of times because the runtime only accepts input for
-   a live run; an entry that is still undelivered stays queued and leaves at the
-   next boundary as its own turn, which is the previous behavior and never a
-   lost prompt. An injected entry's own RACP turn is canceled: its input was
-   delivered by another turn, and no client may be left believing it is still
-   waiting.
+6. **The promoted block steers the active turn.** Send now delivers promoted
+   entries into the current turn through the existing steering channel, in
+   click order, without requesting `agent/stop`. The session admission lock
+   serializes delivery with ordinary queue dispatch. Each entry stays queued
+   until the runtime acknowledges it. A target that ends or refuses steering
+   leaves the entry queued for ordinary dispatch after finalization. If the
+   session is idle, the first entry starts a turn and the rest join it. An
+   injected entry's own RACP turn is canceled because its input was delivered
+   into another turn. This supersedes the original graceful-stop-first behavior
+   for #597: that behavior delayed corrective input behind long delegate waits.
+   Steering wakes TaskWait and idle delegate waits; it does not stop the child
+   agents. Other tools complete before the next model request consumes input.
 7. **The turn's owner is authoritative about its end.** A runtime terminal event
    is not a reliable release: Main drops one that names a turn it no longer owns
    (`isStaleTerminalEvent`), and an abort need not produce one at all. A turn

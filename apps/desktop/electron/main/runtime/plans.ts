@@ -65,6 +65,7 @@ export type PlanRuntimeDependencies = {
   acquireSessionOperation: (sessionId: string) => Promise<() => void>;
   resolveAgentRuntimeLaunch: (...args: any[]) => Promise<any>;
   isQuitting: () => boolean;
+  settleTranscript: (sessionId: string) => Promise<boolean>;
   onTurnSettled?: (sessionId: string, turnId: string) => Promise<void>;
 };
 
@@ -91,6 +92,7 @@ export function createPlanRuntime({
   resolveAgentRuntimeLaunch,
   isQuitting,
   onTurnSettled,
+  settleTranscript,
 }: PlanRuntimeDependencies): {
   finishTurn: FinishTurn;
   finishApprovedExecution: (executionId: string, status: PlanExecutionFinishStatus, errorCode?: string) => Promise<void>;
@@ -196,6 +198,9 @@ function finishTurn(
 
   const runFinalization = async (): Promise<void> => {
     try {
+      // A completed runtime is not yet a durable transcript. Keep queue ownership
+      // while old replies retry, so the next user's direct append cannot overtake them.
+      if (!(await settleTranscript(id))) return;
       if (runtimeState.host) {
         try {
           const result = await runtimeState.host.call<{

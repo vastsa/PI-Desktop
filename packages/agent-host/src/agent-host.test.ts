@@ -384,31 +384,22 @@ describe("AgentHost turns", () => {
   });
 
 
-  it("folds the rest of the promoted block into the started turn, in click order", async () => {
+  it("steers the promoted block into the active turn in click order", async () => {
     const { host, runtime } = build();
     const first = await host.startTurn(controller, { sessionId: "s1", input: { text: "one" }, context: { requestId: "r1" } });
     host.ingest(envelope("s1", first.turn.id, { type: "agent_start" }));
     const second = await host.startTurn(controller, { sessionId: "s1", admission: "queue", input: { text: "two" }, context: { requestId: "r2" } });
     const third = await host.startTurn(controller, { sessionId: "s1", admission: "queue", input: { text: "three" }, context: { requestId: "r3" } });
-    // Send now on the later row first, then on the earlier one: click order is
-    // delivery order.
     await host.prioritizeTurn(controller, third.turn.id);
     await host.prioritizeTurn(controller, second.turn.id);
-    expect(host.queueEntries("s1").map((entry) => entry.content)).toEqual(["three", "two"]);
-
-    host.ingest(envelope("s1", first.turn.id, { type: "agent_end", messageIds: [] }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    // One turn carries both rows: the first click starts it, the second joins it
-    // as input.
-    expect(runtime.prompts.map((prompt) => prompt.content)).toEqual(["one", "three"]);
-    expect(runtime.steers.map((steer) => steer.content)).toEqual(["two"]);
-    expect(runtime.steers[0]?.turnId).toBe("rt_2");
-    expect(host.queueEntries("s1")).toHaveLength(0);
-    // The injected row never runs its own turn.
+    await vi.waitFor(() => expect(host.queueEntries("s1")).toHaveLength(0));
+    expect(runtime.prompts.map((prompt) => prompt.content)).toEqual(["one"]);
+    expect(runtime.steers.map((steer) => steer.content)).toEqual(["three", "two"]);
+    expect(runtime.steers.map((steer) => steer.turnId)).toEqual([first.turn.id, first.turn.id]);
+    expect(runtime.stops).toHaveLength(0);
+    expect(host.getTurn(first.turn.id).status).toBe("running");
     expect(host.getTurn(second.turn.id).status).toBe("canceled");
-    expect(host.getTurn(third.turn.id).status).toBe("running");
+    expect(host.getTurn(third.turn.id).status).toBe("canceled");
   });
 
   it("keeps a promoted row queued when the runtime cannot steer it", async () => {
@@ -422,7 +413,7 @@ describe("AgentHost turns", () => {
     await host.prioritizeTurn(controller, third.turn.id);
 
     host.ingest(envelope("s1", first.turn.id, { type: "agent_end", messageIds: [] }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => expect(runtime.prompts).toHaveLength(2));
 
     // Nothing is lost: the refused row is still the next queued turn.
     expect(runtime.prompts.map((prompt) => prompt.content)).toEqual(["one", "two"]);

@@ -1134,6 +1134,22 @@ sweep promotes a leftover checkpoint whose final row never landed: as
 checkpoint. A user Stop does not touch the checkpoint, because the runtime's
 own aborted final row is still on its way and removes it on arrival.
 Electron handshake awaits the outbox drain before a cold `session.get`.
+Turn finalization also waits for every admitted append in that session before
+`session.endTurn` releases the follow-up queue. Admission is tracked before
+asynchronous file loading or writes, so a following terminal event cannot pass
+an append that is not yet visible in the in-memory queue. A paused append is
+retried every second while finalization owns the session; another session's
+failed head does not block this session's drain. Shutdown ends the wait and
+leaves unsaved entries in the outbox for startup recovery. The next user's
+direct append must never overtake the previous reply during a transient failure
+(#597). Prompt admission applies the same barrier before reading history or
+beginning a turn, including after restart when no in-memory finalization exists.
+The 1024-entry backlog threshold emits a warning; it must not discard completed
+messages. Overflow remains in the same recovery file, including across restart,
+and participates in the same per-session settlement barrier. During a sustained
+host outage the recovery file may grow with already-running work; subsequent
+prompts in each affected session remain blocked until its writes settle.
+
 Renderer-side Stop never rewrites a transcript that has a
 started reply (spec 01 §5.3); its only rewrite is the undo of an unanswered
 prompt, computed from the full durable transcript merged with the live rows.

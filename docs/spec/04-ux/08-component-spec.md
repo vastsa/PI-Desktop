@@ -2639,10 +2639,11 @@ reasoning-level control.
   a toast and nothing changes. Remove drops the row immediately.
 - Send now: promotes the row to the end of the session's priority block, so a
   second Send now leaves behind the first instead of replacing it at the head.
-  It then requests `agent/stop`, and the promoted block is released after the
-  current reply/tool batch completes normally, before every waiting row. The
-  first promoted row starts the turn and the rest join it as adjacent user
-  messages, so the block is answered once. When idle it starts immediately.
+  The Host injects the promoted block into the active turn through steering,
+  without requesting a stop, and removes each row after acceptance. Rejected
+  input remains queued for normal dispatch. When idle the first row starts a
+  turn and the remaining promoted rows join it. Acceptance does not mean the
+  model has already consumed the input; it reads it at the next boundary.
 - A promoted row is locked: move up/down, edit, and remove are disabled with
   their tooltip and `aria-disabled` state intact, and the Send now button reads
   as already decided (`chat.sendNowPending`). The row carries a distinct
