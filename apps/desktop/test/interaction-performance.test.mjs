@@ -61,7 +61,7 @@ test("bootstrap cannot replay navigation after destination state changes", () =>
 });
 
 test("stream rendering avoids duplicate frame state and coalesces following", () => {
-  assert.match(transcript, /const displayed = message\.content \|\| "";/);
+  assert.match(transcript, /const displayed = referenceDisplay\?\.content \?\? message\.content \?\? "";/);
   assert.doesNotMatch(transcript, /useTypewriter/);
   assert.doesNotMatch(transcript, /setVisibleLen/);
   assert.match(transcript, /const scheduleFollowScroll = useCallback/);

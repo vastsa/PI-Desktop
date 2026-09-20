@@ -10,7 +10,7 @@ const rendererHtml = await readFile(
 );
 
 test("streaming content does not add a renderer-side state update loop", () => {
-  assert.match(transcriptSource, /const displayed = message\.content \|\| "";/);
+  assert.match(transcriptSource, /const displayed = referenceDisplay\?\.content \?\? message\.content \?\? "";/);
   assert.doesNotMatch(transcriptSource, /useTypewriter|setVisibleLen|requestAnimationFrame\(tick\)/);
 });
 

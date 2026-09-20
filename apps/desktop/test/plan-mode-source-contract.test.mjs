@@ -108,10 +108,10 @@ test("reject or interruption returns editable planning without changing durable 
   assert.match(sendPromptBlock, /get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"/);
   assert.match(sendPromptBlock, /await api\.prompt\(\{/);
   // The send ships the submitted content through the prompt call.
-  assert.match(sendPromptBlock, /sessionId,\s*content,/);
+  assert.match(sendPromptBlock, /sessionId,\s*content: resolved\.content,/);
   assert.match(
     sendPromptBlock,
-    /attachments: draft[\s\S]*promptAttachmentsFromDraft\(draft\.fileReferences\)/,
+    /attachments: \[\.\.\.\(draft[\s\S]*promptAttachmentsFromDraft\(draft\.fileReferences\)/,
   );
 });
 

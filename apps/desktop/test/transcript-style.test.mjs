@@ -166,7 +166,7 @@ test("transcript density and hover actions are quiet", () => {
 test("transcript markup uses dedicated user text and assistant turn surfaces", () => {
   assert.match(transcriptSource, /className="message-user-text selectable"/);
   assert.match(transcriptSource, /streaming \? " streaming" : ""/);
-  assert.match(transcriptSource, /CopyButton text=\{message\.content\}/);
+  assert.match(transcriptSource, /CopyButton text=\{displayed\}/);
   assert.match(transcriptSource, /className=\{`message-row assistant assistant-turn/);
   assert.match(transcriptSource, /CopyButton text=\{content\}/);
 });
@@ -253,7 +253,7 @@ test("editing a user prompt regenerates it and keeps the old branch reachable", 
   assert.doesNotMatch(transcriptSource, /editAssistantMessage/);
   assert.doesNotMatch(storeSource, /editAssistantMessage/);
   // Slash prompts edit their typed form so the resend re-expands the template.
-  assert.match(transcriptSource, /const editSeed =\s*\(editableUserMessage && message\.command\) \|\| \(message\.content \|\| ""\);/);
+  assert.match(transcriptSource, /const editSeed =\s*referenceDisplay\?\.content \?\? \(\(editableUserMessage && message\.command\) \|\| \(message\.content \|\| ""\)\);/);
   // Same branch mechanics as regenerate, so main archives the replaced turn
   // as a revision the pager can walk back to.
   assert.match(storeSource, /editUserMessage:\s*async \(messageId, content, attachments\)/);
