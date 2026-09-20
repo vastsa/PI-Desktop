@@ -63,7 +63,8 @@ agent 循环上注册工具、命令和事件处理器。`ExtensionAPI` 契约�
 
 插件页 →“导入 pi 扩展”打开原生选择器（main 拥有路径，D344），由用户明确选择本地
 文件或目录。main 把所选源码复制到 `<dataDir>/plugins/imported/<slug>/src/`，生成空操作
-`main.js` 和 id 为 `imported.<slug>` 的 manifest（重复导入时追加唯一后缀），再通过
+`main.cjs`（用 `.cjs` 是让 wrapper 在被复制的 `package.json` 声明 `"type": "module"` 时仍按
+CommonJS 加载）和 id 为 `imported.<slug>` 的 manifest（重复导入时追加唯一后缀），再通过
 既有本地插件流程注册。选择器之前的确认仍是信任决定；生成的 manifest 只声明实际贡献
 所需的权限。
 

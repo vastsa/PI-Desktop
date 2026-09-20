@@ -65,7 +65,7 @@ function createHarness(t, { skillsOnly = false } = {}) {
     hostEntry,
     spawnProcess: ({ entry }) => {
       // Execute only the repository's real plugin host and the importer's
-      // generated no-op main.js. Fixture extension modules are only catalogued.
+      // generated no-op main.cjs. Fixture extension modules are only catalogued.
       const child = fork(entry, [], { stdio: ["ignore", "pipe", "pipe", "ipc"] });
       return {
         postMessage: (message) => { if (child.connected) child.send(message); },
@@ -151,4 +151,48 @@ test("a skill-only pi package loads in the plugin runtime without requiring exec
   const manifest = runtime.getLoaded(imported.id).manifest;
   assert.ok(manifest.permissions.includes("agent.prompt.inject"));
   assert.equal(manifest.permissions.includes("agent.extension"), false);
+});
+
+test("an imported ESM package still loads its generated CommonJS wrapper through the real host", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "pi-imported-esm-"));
+  const source = join(root, "esm-extension");
+  const importRoot = join(root, "imported");
+  mkdirSync(source, { recursive: true });
+  // `"type": "module"` makes Node evaluate a plain `main.js` wrapper as ESM,
+  // where `module.exports` throws (#506); the generated `.cjs` entry stays
+  // CommonJS regardless of the copied package.json.
+  writeFileSync(join(source, "package.json"), JSON.stringify({
+    name: "@fixture/esm-extension",
+    type: "module",
+    pi: { extensions: ["index.ts"] },
+  }));
+  writeFileSync(join(source, "index.ts"), "export default function () {}\n");
+
+  const imported = generateImportedExtensionPlugin(source, importRoot);
+  // The copied package.json keeps the ESM declaration untouched.
+  assert.equal(JSON.parse(readFileSync(join(imported.path, "package.json"), "utf8")).type, "module");
+
+  const runtime = new PluginRuntime({
+    hostEntry,
+    spawnProcess: ({ entry }) => {
+      const child = fork(entry, [], { stdio: ["ignore", "pipe", "pipe", "ipc"] });
+      return {
+        postMessage: (message) => { if (child.connected) child.send(message); },
+        onMessage: (handler) => child.on("message", handler),
+        onExit: (handler) => child.on("exit", (code) => handler(code ?? 0)),
+        kill: () => child.kill(),
+      };
+    },
+    audit: () => {},
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+    runtime.disposeWatchers();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  await runtime.loadFromPath(imported.path);
+  assert.equal(runtime.getAgentExtensions().length, 1);
+  const manifest = JSON.parse(readFileSync(join(imported.path, "manifest.json"), "utf8"));
+  assert.equal(manifest.main, "main.cjs");
 });

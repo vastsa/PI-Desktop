@@ -270,7 +270,8 @@ test("importing a pi extension directory or file generates a plugin holding agen
   assert.deepEqual(manifest.permissions, ["agent.extension"]);
   assert.deepEqual(manifest.contributes, { agentExtensions: ["src/index.ts"] });
   assert.ok(existsSync(join(dir.path, "src", "lib", "util.ts")), "the whole directory is copied");
-  assert.match(readFileSync(join(dir.path, "main.js"), "utf8"), /module\.exports = \{\}/);
+  assert.equal(manifest.main, "main.cjs");
+  assert.match(readFileSync(join(dir.path, "main.cjs"), "utf8"), /module\.exports = \{\}/);
 
   const file = join(root, "solo.ts");
   writeFileSync(file, "export default function () {}\n");
