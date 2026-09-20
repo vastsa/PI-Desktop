@@ -273,7 +273,10 @@ Fireworks, OpenCode Go (`opencode_go`), Z.AI / Z.AI Coding Plan.
 
 China: DeepSeek, Qwen DashScope (`alibaba-cn`), Moonshot (`moonshotai-cn`),
 Zhipu AI / Coding Plan, SiliconFlow (`siliconflow-cn`), Volcengine Ark,
-MiniMax (`anthropic_messages` at `https://api.minimaxi.com/anthropic/v1`),
+Volcengine Ark Coding Plan / Agent Plan (each in an `anthropic_messages`
+variant at `https://ark.cn-beijing.volces.com/api/coding` or `/api/plan`
+and an OpenAI `chat_completions` variant at `/api/coding/v3` or
+`/api/plan/v3`; all keep the shared `volcengine` vendor key), MiniMax (`anthropic_messages` at `https://api.minimaxi.com/anthropic/v1`),
 MiniMax (OpenAI) (`chat_completions` at `https://api.minimaxi.com/v1`, aliases
 `minimax-openai` / `minimax-compatible`), Kimi For Coding (`anthropic_messages`).
 
