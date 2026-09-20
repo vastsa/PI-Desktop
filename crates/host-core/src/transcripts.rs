@@ -825,12 +825,17 @@ pub fn write_transcript_with_compactions(
     swap_into_place(&tmp, &path)
 }
 
-/// Swap a fully written temp file over its target. Windows cannot rename over
-/// an existing file (D010: Windows post-MVP); on POSIX the plain rename keeps
-/// the replacement atomic.
+/// Swap a fully written temp file over its target, atomically.
+///
+/// Both platforms replace the target in place: POSIX `rename(2)`, and on
+/// Windows `std::fs::rename` is `MoveFileExW(..., MOVEFILE_REPLACE_EXISTING)`.
+/// The Windows arm used to `remove_file` first ("Windows cannot rename over an
+/// existing file", D010) — but it can, and between that delete and the rename
+/// the live transcript did not exist: a failure there lost the whole history
+/// while its replacement sat in the temp file. Without the delete, a failed
+/// swap leaves the old transcript untouched and keeps the temp file, so the
+/// caller can still recover the newest content by hand.
 fn swap_into_place(tmp: &Path, path: &Path) -> Result<()> {
-    #[cfg(windows)]
-    let _ = fs::remove_file(path);
     fs::rename(tmp, path).with_context(|| format!("replace {}", path.display()))?;
     Ok(())
 }
@@ -1442,6 +1447,98 @@ mod tests {
             .unwrap()
             .with_extension("jsonl.tmp")
             .exists());
+    }
+    #[test]
+    fn swap_replaces_an_existing_target_with_the_temp_content() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("s1.jsonl");
+        std::fs::write(&target, b"old content").unwrap();
+        let tmp = dir.path().join("s1.jsonl.tmp");
+        std::fs::write(&tmp, b"new content").unwrap();
+        swap_into_place(&tmp, &target).unwrap();
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"new content",
+            "the replacement must be byte-identical to the temp file"
+        );
+        assert!(!tmp.exists(), "a successful swap consumes the temp file");
+    }
+
+    #[test]
+    fn swap_creates_the_target_when_it_does_not_exist() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("s1.jsonl");
+        let tmp = dir.path().join("s1.jsonl.tmp");
+        std::fs::write(&tmp, b"first").unwrap();
+        swap_into_place(&tmp, &target).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"first");
+    }
+
+    #[test]
+    fn swap_failure_keeps_the_target_and_the_temp_file() {
+        let dir = tempdir().unwrap();
+        // A directory cannot be replaced by a file, so the swap fails
+        // deterministically on every platform.
+        let target = dir.path().join("occupied");
+        std::fs::create_dir(&target).unwrap();
+        let tmp = dir.path().join("s1.jsonl.tmp");
+        std::fs::write(&tmp, b"new content").unwrap();
+
+        let error = swap_into_place(&tmp, &target).unwrap_err();
+
+        assert!(!error.to_string().is_empty(), "the failure must surface");
+        assert!(
+            target.is_dir(),
+            "the original target must survive a failed swap"
+        );
+        assert!(
+            tmp.exists(),
+            "the temp file must be kept so the caller can recover"
+        );
+        assert_eq!(
+            std::fs::read(&tmp).unwrap(),
+            b"new content",
+            "the kept temp file still carries the full replacement"
+        );
+    }
+
+    /// The regression this file exists for: the old Windows arm deleted the live
+    /// transcript *before* renaming, so a rename that then failed left no
+    /// transcript at all. A locked temp file is how an external scanner makes it
+    /// fail, and the swap must keep the old file instead.
+    #[cfg(windows)]
+    #[test]
+    fn swap_failure_on_a_locked_temp_keeps_the_live_transcript() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("s1.jsonl");
+        std::fs::write(&target, b"precious transcript").unwrap();
+        let tmp = dir.path().join("s1.jsonl.tmp");
+        std::fs::write(&tmp, b"replacement").unwrap();
+
+        // Hold the temp file the way an external scanner does: readable by
+        // others, but without FILE_SHARE_DELETE (0x0000_0001 is
+        // FILE_SHARE_READ), so no replacing move can proceed.
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x0000_0001)
+            .open(&tmp)
+            .unwrap();
+
+        let result = swap_into_place(&tmp, &target);
+        drop(lock);
+
+        assert!(result.is_err(), "a locked temp file must fail the swap");
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"precious transcript",
+            "a failed swap must never lose the live transcript"
+        );
+        assert!(
+            tmp.exists(),
+            "the temp file must be kept so the caller can recover"
+        );
     }
 
     #[test]
