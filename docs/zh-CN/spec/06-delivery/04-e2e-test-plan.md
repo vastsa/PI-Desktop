@@ -5138,7 +5138,7 @@ IPC 请求无法关闭。
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
-| 受信任扩展（R7 v1） | E2E-241、E2E-242、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
+| 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | 受信任扩展（R7 v1 npm 恢复） | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP 回归覆盖（插件工具调度） | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
 | M6+（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
@@ -8119,3 +8119,18 @@ the latest destination. These assertions measure work counts, not device FPS.
   `desktop_dispatch_outlasts_every_electron_budget_it_wraps` covers the dispatch
   default.
 - **Status:** Contract-covered; no end-to-end driver waits out a real 70s call.
+
+### E2E-DIALOG-long-text-boundaries
+
+- **前提：** 已构建渲染器，使用隔离的 Electron 组件测试窗口。组件、状态、翻译
+  和样式均为生产实现，只在 preload IPC 边界提供确定性宿主回复。
+- **步骤：** 用长 Windows 路径打开扩展输入框，输入、提交、重新打开并关闭；在
+  520×480 下测试明暗主题及中文的长标题、确认文本、选项；检查重命名、项目
+  指令、记忆、删除、插件安装、设置、权限确认与 OAuth 弹窗，并操作关闭按钮。
+- **预期：** 来源路径与其他长文本完整换行显示，不截断，无横向溢出，保留 420px 提示框宽度；
+  高内容在框内滚动，关闭、Escape、输入提交、单选操作正常。
+- **规格：** `04-ux/08-component-spec.md`，弹窗长文本边界。
+- **验收：** 文字保持在边界内，弹窗操作可达。
+- **阶段：** 发布后维护。
+- **自动化：** `pnpm test:e2e:dialog-overflow`；源代码检查不能替代实际布局验证。
+- **状态：** 已实现，原生 Windows 已验证，macOS/Linux 尚未实机验证。

@@ -56,7 +56,8 @@
     "test:e2e:trusted-extensions": "node scripts/e2e-trusted-extensions.mjs",
     "test:e2e:collaboration": "node scripts/e2e-session-collaboration.mjs",
     "test:e2e:session-completion": "node scripts/e2e-session-completion.mjs",
-    "test:e2e:remote-host": "node scripts/e2e-remote-host.mjs"
+    "test:e2e:remote-host": "node scripts/e2e-remote-host.mjs",
+    "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",

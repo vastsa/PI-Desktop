@@ -120,7 +120,7 @@ function RenameDialog({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="session-rename-dialog-head">
-          <div>
+          <div className="session-rename-dialog-heading">
             <h2 id={`${dialogId}-title`} className="session-rename-dialog-title">
               <IconPencil size={16} aria-hidden />
               {title}

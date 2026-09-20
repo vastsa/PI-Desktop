@@ -3733,3 +3733,15 @@ match the requested deletion. Never trim leading newlines or normalize all BRs.
 Remember proven placeholder nodes weakly so native redo cannot restore them.
 Explicit line breaks, IME composition, file references, and chip deletion retain
 their normal behavior. The input owns and disposes the native event listeners.
+
+### Dialog long-text containment
+
+Extension prompts keep the 420px rename-dialog width. Their heading column
+can shrink beside the close button, full source paths wrap within that column,
+and unbroken titles, labels, confirmation text and radio options wrap. Content
+taller than the viewport scrolls inside the prompt, leaving actions reachable.
+Input, selection, submission and dismissal semantics remain unchanged.
+
+Project-delete descriptions and plugin dialog headings/outcomes also wrap long
+project or plugin names instead of overflowing their existing widths. Project
+instructions, memory and OAuth dialogs retain their existing bounded layouts.

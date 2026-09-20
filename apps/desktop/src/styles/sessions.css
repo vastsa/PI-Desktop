@@ -587,7 +587,14 @@
   line-height: var(--leading-heading);
 }
 
+.session-rename-dialog-heading {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
 .session-rename-dialog-title svg {
+  flex-shrink: 0;
   color: var(--ds-text-muted);
 }
 

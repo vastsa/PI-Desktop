@@ -1787,6 +1787,7 @@
 }
 
 .plugins-modal-title {
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--ds-text-primary);
   font-size: var(--text-base-plus);
@@ -1795,6 +1796,7 @@
 }
 
 .plugins-modal-subtitle {
+  overflow-wrap: anywhere;
   margin: 3px 0 0;
   color: var(--ds-text-muted);
   font-size: var(--text-sm-plus);
@@ -1970,6 +1972,7 @@
 }
 
 .plugins-install-outcome {
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--ds-text-primary);
   font-size: var(--text-md);

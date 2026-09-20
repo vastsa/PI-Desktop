@@ -7834,7 +7834,7 @@ identify the platform validation still needed.
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
-| Trusted extensions (R7 v1) | E2E-241, E2E-242, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
+| Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP regression coverage (plugin tool dispatch) | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
 | M6+ (Project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
@@ -13801,3 +13801,23 @@ the latest destination. These assertions measure work counts, not device FPS.
   `desktop_dispatch_outlasts_every_electron_budget_it_wraps` covers the dispatch
   default.
 - **Status:** Contract-covered; no end-to-end driver waits out a real 70s call.
+
+### E2E-DIALOG-long-text-boundaries
+
+- **Preconditions:** Built renderer assets and an isolated Electron component
+  fixture; production components, store, translations and stylesheet are used.
+  Only the preload IPC boundary is replaced with deterministic host replies.
+- **Steps:** Open an extension input prompt with a long Windows source path;
+  type, submit, reopen and dismiss. Repeat long title/message/option prompts in
+  light/dark themes and Chinese at 520×480. Inspect long project/plugin names in
+  rename, instructions, memory, delete, install, settings, permission-review and
+  OAuth dialogs; exercise dismissal controls.
+- **Expected:** Full source paths and other long text wrap without clipping; horizontal
+  overflow is absent, and the 420px prompt width is unchanged. Tall prompts
+  scroll inside the viewport. Close, Escape, typing and radio submission work.
+- **Specs:** `04-ux/08-component-spec.md`, Dialog long-text containment.
+- **Acceptance:** Bounded text and reachable modal controls.
+- **Milestone:** Post-MVP maintenance.
+- **Automation:** `pnpm test:e2e:dialog-overflow`; source/contract dialog suites
+  supplement, but do not replace, real Chromium geometry and pointer checks.
+- **Status:** Implemented. Native Windows evidence; macOS/Linux not qualified.
