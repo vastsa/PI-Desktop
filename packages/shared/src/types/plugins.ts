@@ -2,7 +2,15 @@
 import type { ActivationScope } from "../activation.js";
 import type { TrustedExtensionDiagnostic } from "../trusted-extensions.js";
 
-export type PluginMarketSource = "official" | "mirror" | "custom";
+/**
+ * Where the marketplace catalog comes from.
+ *
+ * `official` keeps its meaning — the official one — and the official one is the
+ * plugin center, so a settings row written before the center existed keeps
+ * meaning what its author picked instead of needing a migration. `github` and
+ * `mirror` are the two backup channels, and `custom` is a URL the user typed.
+ */
+export type PluginMarketSource = "official" | "github" | "mirror" | "custom";
 
 export type PluginUpdateInfo = {
   version: string;
@@ -70,8 +78,44 @@ export type PluginUiMeta = {
   width?: number;
   height?: number;
   title?: string | PluginLocalizedString;
+  /**
+   * Panel placement. `"panel"` (default) keeps the host-owned 46px drag band
+   * and its three-control capsule. `"widget"` is a transparent, frameless
+   * floating surface with neither, sized from the inside: the page owns its
+   * whole rectangle and drags the window through a host-provided drag map.
+   */
+  shape?: "panel" | "widget";
+  /** Floating widget placement only: keep the surface above other windows. */
+  alwaysOnTop?: boolean;
+  /** Overrides the per-shape default: panels are resizable, widgets are not. */
+  resizable?: boolean;
 };
 
+
+/**
+ * A development plugin waiting for its permission review.
+ *
+ * Choosing a folder is a request, not consent: the host answers with what the
+ * folder declares and loads nothing until the user accepts it. `kind` is
+ * `"load"` for a folder or scaffold that is not registered yet, and `"reload"`
+ * for a plugin already loaded whose manifest now asks for more than the
+ * approval it is running under.
+ */
+export type PluginPermissionReview = {
+  kind: "load" | "reload";
+  /** Absolute path of the plugin folder being reviewed. */
+  path: string;
+  id: string;
+  name: string;
+  version?: string;
+  /** Every permission the manifest declares. */
+  permissions: string[];
+  /**
+   * What is beyond the current approval: new permission names, and widened file
+   * scopes rendered as `fs.<mode>…` entries. Empty for a first load.
+   */
+  addedPermissions: string[];
+};
 /**
  * One plugin-contributed work panel view, resolved for the current window.
  *
@@ -94,15 +138,27 @@ export type PluginViewMeta = {
   order: number;
 };
 
-/** A host-resolved, sandboxed plugin Settings destination. */
-export type PluginSettingsDestinationMeta = {
+/** A data-only scenic Settings destination rendered by the host React tree. */
+export type PluginScenicThemesDestinationMeta = {
   pluginId: string;
   destinationId: string;
   ref: string;
   label: string;
+  description: string;
   pluginName: string;
-  icon: "sliders" | "sparkles" | "palette" | "plug" | "settings";
+  icon: "palette";
   keywords: string[];
+  themes: PluginScenicThemeCardMeta[];
+};
+
+/** One host-validated preview card belonging to a scenic destination. */
+export type PluginScenicThemeCardMeta = {
+  themeId: string;
+  label: string;
+  description: string;
+  previewUrl: string;
+  blur: number;
+  blurDefault: number;
 };
 
 /**
@@ -257,11 +313,14 @@ export type PluginAgentExtensionStatus = {
   state: "enabled" | "loaded" | "error";
   toolNames: string[];
   commandNames: string[];
+  /** Custom agents the modules registered through `registerAgent` /
+   * `registerProvider` (spec 07-plugins/16 §5). */
+  agentNames: string[];
   diagnostics: TrustedExtensionDiagnostic[];
 };
 
 /**
- * One folder root of the active project, as a plugin sees it (ADR 0252).
+ * One folder root of the active project, as a plugin sees it (ADR 0263).
  *
  * A project may be a logical group of several local folders (ADR 0249), and
  * only the primary root is the workspace the agent's tools default to. The flag
@@ -287,4 +346,32 @@ export type PluginWorkspaceInfo = {
   projectId?: string;
   /** Every registered folder of that group, primary first. */
   roots?: PluginWorkspaceRoot[];
+};
+
+/** One mirror an install tried, and what it answered. */
+export type PluginInstallMirror = {
+  source: string;
+  url: string;
+  error?: string | null;
+};
+
+/**
+ * What an install is doing, reported while it runs.
+ *
+ * The install is a single request, so without these the interface has nothing
+ * to show between the click and the answer. `error` is set on the report that
+ * ends a failed install; `receivedBytes`/`totalBytes` are a progress pair and
+ * `totalBytes` is 0 when nothing announced a size.
+ */
+export type PluginInstallProgress = {
+  pluginId: string;
+  version: string;
+  phase: "resolve" | "download" | "verify" | "install" | "enable";
+  source?: string | null;
+  attempt?: number;
+  attempts?: number;
+  receivedBytes?: number;
+  totalBytes?: number;
+  tried?: PluginInstallMirror[];
+  error?: string | null;
 };

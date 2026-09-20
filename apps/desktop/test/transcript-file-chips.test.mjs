@@ -1,15 +1,20 @@
-import { readTranscriptSource } from "./helpers/source-contracts.mjs";
+import {
+  readTranscriptModule,
+  readTranscriptSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [transcript, styles, hook, api] = await Promise.all([
+const [transcript, styles, hook, api, toolDetails, toolRow] = await Promise.all([
   readTranscriptSource(),
   read("../src/styles/chat-links.css"),
   read("../src/hooks/use-preview-target.ts"),
   read("../src/lib/api.ts"),
+  read("../src/components/ToolDetails.tsx"),
+  readTranscriptModule("ToolRow.tsx"),
 ]);
 
 test("sent user-message file refs render as composer-like chips", () => {
@@ -48,4 +53,44 @@ test("a file chip is routed by where the reference resolved, never optimisticall
   // stays part of the public IPC surface.
   assert.doesNotMatch(hook, /api\.fsOpen\(/);
   assert.match(api, /fsOpen: \(path: string\) => invoke\(IPC\.invoke\.fsOpen, \{ path \}\)/);
+});
+
+test("a tool row and a tool result row open a file where the message body does", () => {
+  // One opener serves every transcript surface that names a file. It completes
+  // the reference the same way a chat chip does instead of handing the raw path
+  // to the host viewer, so a Read/Write/Edit row summary and a Glob/Grep result
+  // row land in the bundled file view too (ADR 0262). The call this replaces is
+  // the one that let those surfaces pick the destination themselves.
+  assert.match(hook, /const openFileRef = useOpenChatFileRef\(\);/);
+  assert.match(
+    hook,
+    /target\.kind === "file" \? openFileRef\(target\.path\) : openHttpUrl\(target\.url\)/,
+  );
+  assert.doesNotMatch(hook, /openFile\(target\.path\)/);
+  // Both surfaces still call that opener, and neither reaches the host viewer's
+  // store action directly: the tool row summary carries the call's own path,
+  // and the result lists carry one entry per file and per matched file.
+  assert.match(toolRow, /const openTarget = useOpenPreviewTarget\(\)/);
+  assert.match(toolRow, /openTarget\(previewTarget\)/);
+  assert.doesNotMatch(toolRow, /openFileInWorkPanel/);
+  assert.equal(
+    toolDetails.match(/openTarget\(\{ kind: "file", path: rel \}\)/g)?.length,
+    2,
+  );
+  assert.doesNotMatch(toolDetails, /openFileInWorkPanel/);
+});
+
+test("user-message bare paths wait for fs/resolveRef before becoming chips", async () => {
+  const [verified, files] = await Promise.all([
+    read("../src/hooks/use-verified-chat-text.ts"),
+    read("../src/lib/verified-chat-files.ts"),
+  ]);
+  assert.match(transcript, /useVerifiedChatText\(text, attachments\)/);
+  assert.match(transcript, /attachments=\{message\.attachments\}/);
+  assert.match(verified, /useAppStore\(\(s\) => s\.workspace\?\.path\)/);
+  assert.doesNotMatch(verified, /useAppStore\(\(s\) => s\.workspace\)(?!\?)/);
+  assert.match(verified, /api\.fsResolveRef\(/);
+  assert.match(files, /MAX_MESSAGE_CANDIDATES = 32/);
+  assert.match(files, /MAX_CONCURRENT_LOOKUPS = 4/);
+  assert.match(files, /!segment\.text\.startsWith\("@\"\)/);
 });

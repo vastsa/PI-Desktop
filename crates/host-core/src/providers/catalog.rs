@@ -7,8 +7,26 @@ pub(crate) const PROVIDER_SELECT: &str =
 
 pub(crate) const CANONICAL_THINKING_LEVELS: &[&str] =
     &["off", "minimal", "low", "medium", "high", "xhigh", "max"];
-const DEFAULT_CONTEXT_WINDOW: u32 = 128_000;
-const DEFAULT_MAX_TOKENS: u32 = 8_192;
+/// Recognised context-window provenance markers. Anything else is dropped so a
+/// row always falls back to the documented rule instead of a third state no
+/// reader understands.
+const CONTEXT_WINDOW_SOURCES: &[&str] = &["catalog", "user"];
+pub(crate) const DEFAULT_CONTEXT_WINDOW: u32 = 128_000;
+pub(crate) const DEFAULT_MAX_TOKENS: u32 = 8_192;
+
+fn normalize_context_window_source(value: Option<&str>) -> Option<String> {
+    let trimmed = value?.trim().to_ascii_lowercase();
+    CONTEXT_WINDOW_SOURCES
+        .contains(&trimmed.as_str())
+        .then_some(trimmed)
+}
+
+fn default_thinking_level_allowed(level: &str, thinking_levels: &[String]) -> bool {
+    if level == "omit" {
+        return thinking_levels.iter().any(|item| item != "off");
+    }
+    thinking_levels.iter().any(|item| item == level)
+}
 
 pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBinding> {
     bindings
@@ -22,7 +40,8 @@ pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBi
             let default_thinking_level = binding
                 .default_thinking_level
                 .as_deref()
-                .filter(|level| thinking_levels.iter().any(|item| item == level))
+                .map(str::trim)
+                .filter(|level| default_thinking_level_allowed(level, &thinking_levels))
                 .map(str::to_string)
                 .or_else(|| thinking_levels.first().cloned());
             Some(ModelBinding {
@@ -33,6 +52,9 @@ pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBi
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .map(str::to_string),
+                context_window_source: normalize_context_window_source(
+                    binding.context_window_source.as_deref(),
+                ),
                 context_window: if binding.context_window == 0 {
                     DEFAULT_CONTEXT_WINDOW
                 } else {
@@ -48,6 +70,7 @@ pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBi
                 supports_images: binding.supports_images,
                 supports_documents: binding.supports_documents,
                 available_for_subagents: binding.available_for_subagents,
+                native_web_search: binding.native_web_search,
             })
         })
         .collect()
@@ -60,6 +83,7 @@ fn legacy_model_binding(model_id: Option<String>) -> Vec<ModelBinding> {
             vec![ModelBinding {
                 id: id.trim().to_string(),
                 alias: None,
+                context_window_source: None,
                 context_window: DEFAULT_CONTEXT_WINDOW,
                 max_tokens: DEFAULT_MAX_TOKENS,
                 thinking_levels: Vec::new(),
@@ -67,6 +91,7 @@ fn legacy_model_binding(model_id: Option<String>) -> Vec<ModelBinding> {
                 supports_images: None,
                 supports_documents: None,
                 available_for_subagents: None,
+                native_web_search: None,
             }]
         })
         .unwrap_or_default()
@@ -202,4 +227,104 @@ pub fn cache_discovered_models(
     }
     tx.commit()?;
     Ok(changed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn binding(id: &str, context_window: u32) -> ModelBinding {
+        ModelBinding {
+            id: id.to_string(),
+            alias: None,
+            context_window,
+            context_window_source: None,
+            max_tokens: DEFAULT_MAX_TOKENS,
+            thinking_levels: Vec::new(),
+            default_thinking_level: None,
+            supports_images: None,
+            supports_documents: None,
+            available_for_subagents: None,
+            native_web_search: None,
+        }
+    }
+
+    /// The settings surface round-trips a provider through `config_json`, so a
+    /// marker the store drops would silently turn an inherited catalog value
+    /// into a frozen snapshot of its own.
+    #[test]
+    fn a_catalog_sourced_binding_survives_the_config_round_trip() {
+        let raw = r#"{"models":[{"id":"terra","contextWindow":1048576,"maxTokens":64000,
+            "contextWindowSource":"catalog"}]}"#;
+        let saved = config_with_model_bindings("{}", &config_model_bindings(raw, None)).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&saved).unwrap();
+        assert_eq!(value["models"][0]["contextWindowSource"], "catalog");
+        assert_eq!(
+            config_model_bindings(&saved, None)[0]
+                .context_window_source
+                .as_deref(),
+            Some("catalog")
+        );
+
+        let mut user_binding = binding("terra", 128_000);
+        user_binding.context_window_source = Some("user".to_string());
+        let saved = config_with_model_bindings("{}", &[user_binding]).unwrap();
+        assert_eq!(
+            config_model_bindings(&saved, None)[0]
+                .context_window_source
+                .as_deref(),
+            Some("user")
+        );
+    }
+
+    /// Records written before the marker name no source. They stay `None` so
+    /// every reader applies one documented rule instead of guessing.
+    #[test]
+    fn a_binding_without_a_source_stays_unmarked() {
+        let bindings = config_model_bindings(
+            r#"{"models":[{"id":"legacy","contextWindow":128000,"maxTokens":8192}]}"#,
+            None,
+        );
+        assert_eq!(bindings[0].context_window_source, None);
+        let saved = config_with_model_bindings("{}", &bindings).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&saved).unwrap();
+        assert!(value["models"][0].get("contextWindowSource").is_none());
+    }
+
+    /// An unrecognised marker is not a third state: it is dropped so the
+    /// historical rule keeps applying to that row.
+    #[test]
+    fn an_unknown_source_is_dropped_instead_of_persisted() {
+        let bindings = config_model_bindings(
+            r#"{"models":[{"id":"odd","contextWindow":256000,"maxTokens":8192,
+                "contextWindowSource":"derived"}]}"#,
+            None,
+        );
+        assert_eq!(bindings[0].context_window_source, None);
+    }
+
+    /// The zero-value normalisation is what keeps a freshly added model from
+    /// persisting a window of `0`; the source marker must not disturb it.
+    #[test]
+    fn zero_limits_still_fall_back_to_the_generic_defaults() {
+        let normalized = normalize_model_bindings(&[binding("terra", 0)]);
+        assert_eq!(normalized[0].context_window, DEFAULT_CONTEXT_WINDOW);
+        assert_eq!(normalized[0].max_tokens, DEFAULT_MAX_TOKENS);
+    }
+
+    #[test]
+    fn omit_default_survives_on_reasoning_bindings_only() {
+        let mut reasoning = binding("r", DEFAULT_CONTEXT_WINDOW);
+        reasoning.thinking_levels = vec!["high".into(), "medium".into()];
+        reasoning.default_thinking_level = Some("omit".into());
+        let mut off_only = binding("plain", DEFAULT_CONTEXT_WINDOW);
+        off_only.thinking_levels = vec!["off".into()];
+        off_only.default_thinking_level = Some("omit".into());
+        let normalized = normalize_model_bindings(&[reasoning, off_only]);
+        assert_eq!(
+            normalized[0].default_thinking_level.as_deref(),
+            Some("omit")
+        );
+        assert_eq!(normalized[1].default_thinking_level.as_deref(), Some("off"));
+    }
 }

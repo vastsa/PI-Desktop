@@ -856,35 +856,59 @@ export class TrustedExtensionRunner {
       unregisterAgent: (id: string) => {
         this.unregisterAgentDefinition(extension, id);
       },
+      // The upstream compatibility alias: `registerProvider` accepts the same
+      // plugin-owned shape as `registerAgent`, in both the upstream call form
+      // (`(id, config)`) and the object form. A `complete` implementation is
+      // as valid as a streaming one, so it is carried through rather than
+      // dropped.
       registerProvider: (...args: unknown[]) => {
         const first = args[0];
         const second = args[1];
+        const isFunction = (value: unknown): boolean => typeof value === "function";
+        const pickStream = (source: Record<string, unknown>) =>
+          isFunction(source.streamSimple) || isFunction(source.stream)
+            ? ((source.streamSimple ?? source.stream) as TrustedExtensionAgentDefinition["stream"])
+            : undefined;
+        const pickComplete = (source: Record<string, unknown>) =>
+          isFunction(source.complete)
+            ? (source.complete as TrustedExtensionAgentDefinition["complete"])
+            : undefined;
         if (typeof first === "string" && second && typeof second === "object") {
           const config = second as Record<string, unknown>;
           this.registerAgentDefinition(extension, {
             id: first,
             name: typeof config.name === "string" ? config.name : first,
-            models: Array.isArray(config.models) ? config.models as TrustedExtensionAgentModelConfig[] : [],
-            stream: typeof config.streamSimple === "function"
-              ? config.streamSimple as TrustedExtensionAgentDefinition["stream"]
-              : undefined,
+            models: Array.isArray(config.models)
+              ? (config.models as TrustedExtensionAgentModelConfig[])
+              : [],
+            stream: pickStream(config),
+            complete: pickComplete(config),
           });
           return;
         }
         if (first && typeof first === "object") {
           const provider = first as Record<string, unknown>;
           const getModels = provider.getModels;
-          const models = typeof getModels === "function" ? getModels.call(first) : provider.models;
-          const stream = provider.streamSimple ?? provider.stream;
+          const models = isFunction(getModels)
+            ? (getModels as () => unknown).call(first)
+            : provider.models;
           this.registerAgentDefinition(extension, {
             id: typeof provider.id === "string" ? provider.id : "provider",
             name: typeof provider.name === "string" ? provider.name : undefined,
-            models: Array.isArray(models) ? models as TrustedExtensionAgentModelConfig[] : [],
-            stream: typeof stream === "function" ? stream as TrustedExtensionAgentDefinition["stream"] : undefined,
+            models: Array.isArray(models)
+              ? (models as TrustedExtensionAgentModelConfig[])
+              : [],
+            stream: pickStream(provider),
+            complete: pickComplete(provider),
           });
           return;
         }
-        this.report(extension.spec.id, "rejected_registration", "provider needs a name and model stream", "registerProvider");
+        this.report(
+          extension.spec.id,
+          "rejected_registration",
+          "provider needs a name and a model stream",
+          "registerProvider",
+        );
       },
       unregisterProvider: (id: string) => {
         this.unregisterAgentDefinition(extension, id);

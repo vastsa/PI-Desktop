@@ -1,6 +1,8 @@
 import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { isAbsolute, resolve, sep } from "node:path";
 import type { PluginMcpServerContrib } from "@pi-desktop/plugin-sdk";
+import { minimalChildEnv } from "./child-process-env.ts";
+import { userLookupPath } from "./user-login-path.ts";
 
 /** MCP revision we advertise during the handshake. */
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
@@ -8,12 +10,19 @@ export const MCP_PROTOCOL_VERSION = "2025-06-18";
 export const MCP_CONNECT_TIMEOUT_MS = 10_000;
 /** Kept under the plugin tool budget so the MCP error wins the race. */
 export const MCP_CALL_TIMEOUT_MS = 100_000;
-/** A chatty server must not flood the model's tool list. */
-export const MAX_MCP_TOOLS_PER_SERVER = 64;
+/**
+ * Protocol bound, not a prompt budget: MCP tools reach the model as on-demand
+ * entries behind `ToolSearch` rather than as an always-present list, so the
+ * only thing that needs a ceiling is a server streaming forever. Sized like
+ * Codex's per-server MCP catalog bound; a real catalog never approaches it.
+ */
+export const MAX_MCP_TOOLS_PER_SERVER = 2_048;
 /** Keep an MCP endpoint from bouncing requests through an unbounded chain. */
 const MAX_MCP_REDIRECTS = 5;
-/** `tools/list` pages to follow before giving up on a cursor loop. */
-const MAX_TOOL_PAGES = 8;
+/** `tools/list` pages one server may span before its handshake is refused. */
+const MAX_TOOL_PAGES = 100;
+/** A whole `tools/list` traversal must finish inside this budget. */
+export const MCP_TOOL_DISCOVERY_TIMEOUT_MS = 30_000;
 /** Guard against a server streaming an unbounded line at us. */
 const MAX_STDIO_LINE_BYTES = 4 * 1024 * 1024;
 /** Guard against a remote MCP server streaming an unbounded response body. */
@@ -61,6 +70,11 @@ function mcpError(code: string, message: string): McpError {
  * and shell secrets, so only the values the caller declared cross over (D018).
  * `pluginId` is absent for a server the user configured directly, which has no
  * plugin identity to announce.
+ *
+ * PATH is the login-shell PATH (ADR 0045 / D600), not the Finder/Dock GUI
+ * PATH, so a market-installed `uvx`/`npx` server can spawn (issue #571). The
+ * identity variables cross for the same reason the toolchain ones do: the child
+ * is third-party code that resolves `~` through `$HOME` (issue #717).
  */
 export function mcpProcessEnv(
   pluginId: string | undefined,
@@ -69,11 +83,10 @@ export function mcpProcessEnv(
   const env: Record<string, string> = {
     ...(pluginId ? { PI_PLUGIN_ID: pluginId } : {}),
     NODE_ENV: process.env.NODE_ENV ?? "production",
+    ...minimalChildEnv(),
   };
-  for (const key of ["PATH", "SystemRoot", "windir", "TEMP", "TMP", "TMPDIR", "LANG"]) {
-    const value = process.env[key];
-    if (value) env[key] = value;
-  }
+  const path = userLookupPath(process.env.PATH ?? "");
+  if (path) env.PATH = path;
   return { ...env, ...values };
 }
 
@@ -171,7 +184,12 @@ function createStdioTransport(
   });
   child.on("error", (error: Error) => {
     closed = true;
-    handlers.onClose(error.message);
+    const code = (error as NodeJS.ErrnoException).code;
+    handlers.onClose(
+      code === "ENOENT"
+        ? `command not found: ${options.command}. Install it or add it to PATH.`
+        : error.message,
+    );
   });
   child.on("exit", (code) => {
     closed = true;
@@ -382,6 +400,8 @@ export type McpServerClientOptions = {
   auditScope?: string;
   connectTimeoutMs?: number;
   callTimeoutMs?: number;
+  /** Budget for the whole `tools/list` traversal, however many pages it spans. */
+  discoveryTimeoutMs?: number;
   /** Test seams. */
   spawnImpl?: typeof nodeSpawn;
   fetchImpl?: typeof fetch;
@@ -542,30 +562,50 @@ export class McpServerClient {
     );
   }
 
+  /**
+   * Read the server's whole catalog.
+   *
+   * The tool count is bounded only by the protocol guards below, because the
+   * model never receives this as a list: MCP tools land in the on-demand
+   * catalog behind `ToolSearch`, and the prompt block that advertises them is
+   * what truncates. What has to stay bounded is the traversal itself — pages,
+   * items, cursors, and total time — and a server that exceeds any of those is
+   * refused rather than silently contributing a prefix of its catalog.
+   */
   private async listTools(timeoutMs: number): Promise<McpTool[]> {
     const collected: McpTool[] = [];
+    const seenCursors = new Set<string>();
+    const deadline =
+      Date.now() + (this.opts.discoveryTimeoutMs ?? MCP_TOOL_DISCOVERY_TIMEOUT_MS);
     let cursor: string | undefined;
-    for (let page = 0; page < MAX_TOOL_PAGES; page += 1) {
+    for (let page = 0; ; page += 1) {
+      if (page >= MAX_TOOL_PAGES) {
+        throw mcpError(
+          "LIMIT_EXCEEDED",
+          `mcp tools/list exceeded ${MAX_TOOL_PAGES} pages (${collected.length} tools so far)`,
+        );
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw mcpError(
+          "TIMEOUT",
+          `mcp tools/list did not finish inside its budget (${collected.length} tools so far)`,
+        );
+      }
       const result = (await this.request(
         "tools/list",
         cursor ? { cursor } : {},
-        timeoutMs,
+        Math.min(timeoutMs, remaining),
       )) as { tools?: unknown; nextCursor?: unknown } | null;
       const tools = Array.isArray(result?.tools) ? result?.tools : [];
       for (const raw of tools as Array<Record<string, unknown>>) {
         const name = typeof raw?.name === "string" ? raw.name.trim() : "";
         if (!name) continue;
         if (collected.length >= MAX_MCP_TOOLS_PER_SERVER) {
-          this.opts.audit?.({
-            pluginId: this.opts.pluginId,
-            api: this.auditApi("tools.truncated"),
-            ok: false,
-            errorCode: "LIMIT_EXCEEDED",
-            serverId: this.serverId,
-            limit: MAX_MCP_TOOLS_PER_SERVER,
-            ts: Date.now(),
-          });
-          return collected;
+          throw mcpError(
+            "LIMIT_EXCEEDED",
+            `mcp server advertises more than ${MAX_MCP_TOOLS_PER_SERVER} tools`,
+          );
         }
         collected.push({
           name,
@@ -573,11 +613,20 @@ export class McpServerClient {
           inputSchema: raw.inputSchema,
         });
       }
-      const next = typeof result?.nextCursor === "string" ? result.nextCursor : "";
-      if (!next || next === cursor) return collected;
+      const next = result?.nextCursor;
+      // Absent and empty both mean "that was the last page"; anything else has
+      // to be a cursor this client can follow, so a malformed one is refused
+      // rather than mistaken for the end of a catalog.
+      if (next === undefined || next === null || next === "") return collected;
+      if (typeof next !== "string") {
+        throw mcpError("INVALID_RESPONSE", "mcp server returned a non-string tools/list cursor");
+      }
+      if (seenCursors.has(next)) {
+        throw mcpError("INVALID_RESPONSE", "mcp server repeated a tools/list cursor");
+      }
+      seenCursors.add(next);
       cursor = next;
     }
-    return collected;
   }
 
   private request(method: string, params: unknown, timeoutMs: number): Promise<unknown> {

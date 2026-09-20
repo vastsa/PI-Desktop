@@ -35,9 +35,10 @@ export type HostStatusEvent = {
 
 /**
  * How app updates are delivered on this install:
- *  - in-app: electron-updater downloads and installs (Windows NSIS, Linux AppImage)
+ *  - in-app: electron-updater downloads and installs (Windows NSIS, Linux
+ *    AppImage, packaged macOS)
  *  - manual: we only detect new versions and link to the releases page
- *    (unsigned macOS builds, Linux deb)
+ *    (Linux deb/rpm, Windows portable)
  *  - disabled: development / unpackaged build
  */
 export type UpdateMode = "in-app" | "manual" | "disabled";
@@ -84,6 +85,19 @@ export type OnboardingState = {
 
 
 export type ScheduledTaskCadence = "manual" | "hourly" | "daily" | "weekly";
+export type ScheduledTaskSchedule = {
+  hour: number;
+  minute: number;
+  /** Legacy single day, Monday = 0. Used when weekdays is absent. */
+  weekday: number;
+  /** Selected days, Monday = 0. When present, must be nonempty and unique. */
+  weekdays?: number[];
+};
+export type ScheduledTaskRun = {
+  id: string; taskId: string; sessionId: string | null;
+  status: "running" | "completed" | "aborted" | "error";
+  errorCode: string | null; startedAt: string; endedAt: string | null;
+};
 
 export type ScheduledTask = {
   id: string;
@@ -95,4 +109,7 @@ export type ScheduledTask = {
   createdAt: string;
   updatedAt: string;
   lastRunAt?: string;
+  schedule?: ScheduledTaskSchedule | null;
+  nextRunAt?: string;
+  workspacePath?: string;
 };

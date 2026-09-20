@@ -23,7 +23,7 @@ test("contributed css is sanitized in the main process, not the renderer", () =>
   assert.match(register, /sanitizeThemeCss\(raw,\s*THEME_CSS_MAX_BYTES,/);
   assert.match(register, /resolveInsidePlugin/);
   assert.match(register, /INVALID_CSS/);
-  // The hard per-plugin theme cap was removed (ADR 0249 / issue #352).
+  // The hard per-plugin theme cap was removed (ADR 0260 / issue #352).
   assert.doesNotMatch(runtimeSrc, /MAX_THEMES_PER_PLUGIN/);
   // The renderer injects the stored text verbatim, so it must not re-filter.
   assert.doesNotMatch(appSrc, /sanitizeThemeCss/);
@@ -88,6 +88,53 @@ test("sidebar paints color and optional image layers separately", () => {
   const darwin = chromeSrc.slice(chromeSrc.indexOf('data-platform="darwin"'));
   assert.match(darwin, /--ds-bg-sidebar-image/);
 });
+
+test("scenic plugins use the normal full-window shell for compositing", () => {
+  const baseSrc = readFileSync(join(desktopRoot, "src/styles/base.css"), "utf8");
+  const settingsSrc = readFileSync(join(desktopRoot, "src/styles/settings.css"), "utf8");
+  assert.match(baseSrc, /\.app-shell\s*\{[^}]*position:\s*relative;[^}]*isolation:\s*isolate/s);
+  assert.match(baseSrc, /\.app-scenic-backdrop\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0/s);
+  assert.match(baseSrc, /\.app-shell\s*>\s*:not\(\.app-scenic-backdrop\)[^}]*z-index:\s*1/s);
+  assert.match(settingsSrc, /data-plugin-theme\^="plugin:io\.github\.akshayxkill\.nexus-scenic-themes:/);
+  assert.match(settingsSrc, /\.app-shell\.settings-mode[^}]*background:\s*transparent\s*!important/s);
+  assert.match(settingsSrc, /\.settings-content[^}]*background:\s*transparent\s*!important/s);
+});
+
+test("scenic plugin themes expose a full-window settings compositing hook", () => {
+  const settingsCss = readFileSync(join(desktopRoot, "src/styles/settings.css"), "utf8");
+  assert.match(settingsCss, /data-plugin-theme\^="plugin:io\.github\.akshayxkill\.nexus-scenic-themes:/);
+  assert.match(settingsCss, /\.app-shell\.settings-mode[^}]*background:\s*transparent\s*!important/s);
+  assert.match(settingsCss, /\.settings-content[^}]*background:\s*transparent\s*!important/s);
+  assert.match(settingsCss, /\.settings-shell-full\s+\.settings-nav\.sidebar-surface[^}]*background:\s*color-mix/s);
+  assert.match(settingsCss, /\.settings-panel[^}]*background:\s*color-mix/s);
+});
+
+test("scenic background is a host root layer, not an app-shell pseudo-element", () => {
+  assert.match(appSrc, /className=\"app-scenic-backdrop\"/);
+  assert.match(readFileSync(join(desktopRoot, "src/styles/base.css"), "utf8"), /\.app-scenic-backdrop\s*\{[^}]*position:\s*fixed/s);
+  assert.match(readFileSync(join(desktopRoot, "src/styles/base.css"), "utf8"), /\.app-shell\s*>\s*:\s*not\(\.app-scenic-backdrop\)/);
+});
+
+test("core Settings navigation dismisses an active plugin destination", () => {
+  const source = readFileSync(join(desktopRoot, "src/features/settings/SettingsPage.tsx"), "utf8");
+  assert.match(source, /setActiveExtension\(null\);\s*setSettingsTab\(item\.id\);/s);
+});
+
+test("host window-control band inherits the active theme palette without plugin geometry", () => {
+  const chromeCss = readFileSync(join(desktopRoot, "src/styles/chrome.css"), "utf8");
+  const scenicSettingsCss = readFileSync(join(desktopRoot, "src/styles/settings.css"), "utf8");
+  assert.match(chromeCss, /\.window-controls\s*\{[^}]*position:\s*fixed;[^}]*background:\s*var\(--ds-bg-primary\)/s);
+  assert.match(chromeCss, /\.app-shell\s*>\s*\.window-controls\s*\{[^}]*z-index:\s*1100/s);
+  assert.doesNotMatch(scenicSettingsCss, /\.window-controls\s*\{/);
+});
+
+test("host-rendered scenic Settings destinations leave native controls outside extension content", () => {
+  const component = readFileSync(join(repoRoot, "apps/desktop/src/components/settings/PluginScenicThemesDestination.tsx"), "utf8");
+  const css = readFileSync(join(repoRoot, "apps/desktop/src/styles/settings.css"), "utf8");
+  assert.doesNotMatch(component, /<iframe/);
+  assert.match(css, /\.plugin-scenic-themes-destination\s*\{[\s\S]*?background:\s*transparent/s);
+});
+
 
 test("themes only load with ui.theme and are withdrawn on unload", () => {
   const register = runtimeSrc.slice(runtimeSrc.indexOf("private registerThemes"));

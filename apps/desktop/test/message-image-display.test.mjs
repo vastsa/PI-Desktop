@@ -10,7 +10,7 @@ const [transcript, markdown, api, main, panel, protocol, hook] = await Promise.a
   read("../src/components/Markdown.tsx"),
   read("../src/lib/api.ts"),
   readMainSource(),
-  read("../electron/main/fs-panel.ts"),
+  read("../../../packages/host-runtime/src/workspace-files.ts"),
   read("../../../packages/shared/src/protocol.ts"),
   read("../src/lib/use-referenced-image-data-url.ts"),
 ]);

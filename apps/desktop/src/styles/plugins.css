@@ -851,6 +851,11 @@
   flex: 1 1 auto;
 }
 
+.plugins-setting-control > .settings-menu-select-anchor {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .plugins-setting-json {
   min-height: 72px;
   width: 100%;
@@ -1173,8 +1178,9 @@
 
 .plugins-market-settings-control {
   display: flex;
-  flex: 0 0 240px;
+  flex: 0 0 auto;
   min-width: 0;
+  max-width: min(240px, 100%);
   justify-content: flex-end;
 }
 
@@ -1235,7 +1241,8 @@
 .plugins-sheet-layer {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* z-dialog: the sheet is a dialog surface, so it stays under leaf popups. */
+  z-index: 40;
   display: flex;
   justify-content: flex-end;
 }
@@ -1289,11 +1296,10 @@
   app-region: no-drag;
 }
 
-/* The route surface keeps a transform after its entry animation, so this
-   fixed layer stacks inside it and the opaque titlebar band still paints over
-   the top of the sheet. Reserve the band on every platform: on macOS it would
-   otherwise clip the title row, and on Windows/Linux the conversation pane owns
-   the band's top-right 120px — exactly where the close button lands. */
+/* The sheet keeps `--ds-toolbar-height` at the top on every platform: on
+   Windows/Linux the renderer-drawn window controls own that corner at
+   z-index 200 and stay above any overlay; on macOS the same reserve keeps
+   the title row out of the native traffic-light cluster. */
 .plugins-sheet {
   padding-top: var(--ds-toolbar-height);
 }
@@ -1391,14 +1397,6 @@
   font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
-}
-
-.plugins-sheet-section-hint {
-  color: var(--ds-text-faint);
-  font-size: var(--text-3xs);
-  font-weight: var(--font-weight-normal);
-  letter-spacing: normal;
-  text-transform: none;
 }
 
 .plugins-sheet-desc {
@@ -1737,17 +1735,14 @@
 .plugins-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  /* z-dialog: leaf popups (z-index 60) and toasts (50) stay above the veil. */
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: color-mix(in oklab, var(--ds-bg-primary) 78%, transparent);
+  background: var(--ds-modal-veil);
   animation: plugins-fade-in var(--motion-duration-fast) var(--motion-ease-out) both;
-}
-
-:root[data-theme="light"] .plugins-modal-backdrop {
-  background: color-mix(in oklab, #1a1c1f 32%, transparent);
 }
 
 .plugins-modal {
@@ -1792,6 +1787,7 @@
 }
 
 .plugins-modal-title {
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--ds-text-primary);
   font-size: var(--text-base-plus);
@@ -1800,6 +1796,7 @@
 }
 
 .plugins-modal-subtitle {
+  overflow-wrap: anywhere;
   margin: 3px 0 0;
   color: var(--ds-text-muted);
   font-size: var(--text-sm-plus);
@@ -1893,4 +1890,172 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 14px 18px 18px;
+}
+
+/* Manual install and update: one dialog follows the host's reports — the phase
+   it is in, the mirror being tried, the bytes that arrived — and ends either on
+   its own success or as a failure report naming the mirrors that were tried. */
+.plugins-install-modal {
+  width: min(560px, 100%);
+}
+
+.plugins-modal-icon.is-success {
+  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
+  color: var(--ds-success);
+}
+
+.plugins-modal-icon.is-error {
+  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
+  color: var(--ds-error);
+}
+
+.plugins-install-phase {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plugins-install-phase-label {
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+  font-weight: var(--font-weight-medium-plus);
+}
+
+.plugins-install-mirror-label {
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugins-install-bar {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
+}
+
+.plugins-install-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ds-accent);
+  transition: width var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+/* No size was announced, so the bar reports activity instead of a fraction:
+   the same sliding mark the session switch uses for an open-ended wait. */
+.plugins-install-bar.is-indeterminate .plugins-install-bar-fill {
+  width: 28%;
+  animation: plugins-install-slide 720ms var(--motion-ease-standard) infinite;
+  transform: translateX(-110%);
+}
+
+@keyframes plugins-install-slide {
+  to {
+    transform: translateX(460%);
+  }
+}
+
+.plugins-install-figures {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.plugins-install-outcome {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-medium);
+}
+
+.plugins-install-outcome.is-success {
+  color: var(--ds-success);
+}
+
+.plugins-install-failure {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plugins-install-error {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ds-error);
+  font-size: var(--text-sm-plus);
+  line-height: var(--leading-body);
+}
+
+.plugins-install-tried {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: var(--radius-md-plus);
+  padding: 10px 12px;
+  background: var(--plugins-tile);
+}
+
+.plugins-install-tried-title {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-3xs);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.plugins-install-mirrors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plugins-install-mirror-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+  cursor: pointer;
+}
+
+.plugins-install-mirror-source {
+  flex: 0 0 auto;
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.plugins-install-mirror-error {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.plugins-install-mirror-url {
+  display: block;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plugins-install-bar-fill,
+  .plugins-install-bar.is-indeterminate .plugins-install-bar-fill {
+    animation: none;
+    transition: none;
+  }
 }

@@ -15,6 +15,7 @@ import {
 import { cx } from "../ui";
 import { IconCheck, IconChevronDown, IconSearch } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
+import { SettingsRow } from "../../features/settings/primitives";
 import { useAppStore } from "../../stores/app-store";
 
 type ThemeOption = {
@@ -50,18 +51,11 @@ export function ThemeRow({
             ? "settings.themeDark"
             : "settings.themeSystem",
       );
-      const hint = t(
-        id === "light"
-          ? "settings.themeLightDesc"
-          : id === "dark"
-            ? "settings.themeDarkDesc"
-            : "settings.themeSystemDesc",
-      );
       return {
         id,
         title,
-        hint,
-        haystack: `${title} ${hint} ${id}`.toLowerCase(),
+        hint: null,
+        haystack: `${title} ${id}`.toLowerCase(),
         kind: "builtin",
       };
     });
@@ -124,13 +118,11 @@ export function ThemeRow({
   };
 
   return (
-    <div className="settings-row">
-      <div className="settings-row-copy">
-        <div className="settings-row-title">{t("settings.theme")}</div>
-        <div className="settings-row-desc">{t("settings.themeDesc")}</div>
-      </div>
-      <div className="settings-row-control">
-        <AnchoredMenu
+    <SettingsRow
+      title={t("settings.theme")}
+      description={t("settings.themeDesc")}
+    >
+      <AnchoredMenu
           className="settings-theme-anchor"
           open={open}
           onClose={close}
@@ -243,8 +235,7 @@ export function ThemeRow({
               </ul>
             )}
           </div>
-        </AnchoredMenu>
-      </div>
-    </div>
+      </AnchoredMenu>
+    </SettingsRow>
   );
 }

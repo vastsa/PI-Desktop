@@ -3,7 +3,6 @@
  * Protocol: NDJSON JSON-RPC on stdio with Electron main.
  * Host access is proxied through main (single host-core process).
  */
-import { createInterface } from "node:readline";
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { copyFile, mkdir, readFile, realpath, stat } from "node:fs/promises";
@@ -35,6 +34,7 @@ import {
   normalizeMode,
   normalizeNetworkProxy,
   OAUTH_AUTH_KIND,
+  readNdjsonLines,
 } from "@pi-desktop/shared";
 import type {
   AgentEventEnvelope,
@@ -46,7 +46,7 @@ import type {
   Mode,
   MessageAttachment,
   PlanExecution,
-  ThinkingLevel,
+  SessionThinkingLevel,
   UiMessage,
 } from "@pi-desktop/shared";
 
@@ -94,7 +94,7 @@ type RuntimeParams = {
   mode?: Mode;
   /** Durable host turn ID for the prompt currently being executed. */
   turnId?: string;
-  thinkingLevel?: ThinkingLevel;
+  thinkingLevel?: SessionThinkingLevel;
   provider: RuntimeProviderConfig;
   commandShell: CommandShellOption;
   pluginTools?: PluginToolDef[];
@@ -510,6 +510,17 @@ async function handle(method: string, params: any): Promise<unknown> {
         typeof params.userMessageId === "string" && params.userMessageId
           ? params.userMessageId
           : undefined;
+      // A `permissionMode` override on `agent.prompt` is the per-turn ceiling
+      // from spec §7.3 (R1 leftover). The sidecar accepts it so callers do not
+      // have to guard the field, but tool-approval enforcement still consults
+      // the session's stored mode inside host-core. Once host-core
+      // `session.beginTurn` accepts a per-turn override, this record will drive
+      // the enforcement gate; until then it stays a documented stub.
+      if (typeof params.permissionMode === "string" && params.permissionMode) {
+        // Log-only stub: observable in the sidecar log without affecting
+        // execution. Deliberately omitted from user-visible events.
+        void params.permissionMode;
+      }
       const prompt: RuntimePrompt = {
         text: content,
         attachments,
@@ -658,13 +669,15 @@ async function handle(method: string, params: any): Promise<unknown> {
   }
 }
 
-const rl = createInterface({ input: process.stdin });
-rl.on("line", async (line) => {
+readNdjsonLines(process.stdin, async (line) => {
   if (!line.trim()) return;
   let msg: any;
   try {
     msg = JSON.parse(line);
   } catch {
+    process.stderr.write(
+      `[agent-sidecar] Invalid NDJSON frame (${Buffer.byteLength(line, "utf8")} bytes)\n`,
+    );
     return;
   }
   // Responses to host.proxy requests from parent

@@ -1,4 +1,4 @@
-# 0257 — Host-mediated real-time capabilities for plugins
+# ADR 0257: Host-mediated real-time capabilities for plugins
 
 ## Status
 

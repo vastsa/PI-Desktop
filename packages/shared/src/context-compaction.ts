@@ -1,4 +1,5 @@
 import type {
+  ContextCompactionFallback,
   ContextCompactionMark,
   ContextCompactionRecord,
 } from "./types.js";
@@ -31,14 +32,28 @@ export function checkpointSummarized(details: unknown): boolean {
   return value !== "fresh_window";
 }
 
+/**
+ * Whether the checkpoint is the retained-tail recovery written after summary
+ * generation failed (ADR 0049). Its `summary` is a carried-forward earlier
+ * summary plus a fixed recovery notice, never a fresh model summary.
+ */
+export function checkpointFallback(
+  details: unknown,
+): ContextCompactionFallback | undefined {
+  const value = (details as { fallback?: unknown } | null | undefined)?.fallback;
+  return value === "retained_tail" ? value : undefined;
+}
+
 export function contextCompactionMark(
   record: ContextCompactionRecord,
 ): ContextCompactionMark {
+  const fallback = checkpointFallback(record.details);
   return {
     id: record.id,
     throughMessageId: record.throughMessageId,
     generation: checkpointGeneration(record.details),
     summaryTokens: estimateSummaryTokens(record.summary ?? ""),
     summarized: checkpointSummarized(record.details),
+    ...(fallback ? { fallback } : {}),
   };
 }

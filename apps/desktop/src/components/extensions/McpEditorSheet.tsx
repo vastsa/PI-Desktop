@@ -12,10 +12,19 @@ import {
   type McpTransport,
   type ProjectRecord,
 } from "@pi-desktop/shared";
-import { Button, Field, Input, TooltipButton, cx } from "../ui";
+import { Button, Field, HelpIcon, Input, TooltipButton, cx, portalOverlay } from "../ui";
 import { IconPlay, IconServer, IconTerminal, IconX } from "../icons";
 import { ScopeControl } from "./ScopeControl";
 import { KeyValueRows, pairsToRecord, recordToPairs, type KeyValuePair } from "./KeyValueRows";
+
+/**
+ * Tool names shown beside a test result.
+ *
+ * A server may advertise thousands of tools, and the joined list is one line of
+ * muted text under a count that already carries the total, so only the head of
+ * the list is worth rendering.
+ */
+const MCP_TEST_TOOL_NAME_LIMIT = 24;
 
 /**
  * Create/edit sheet for one user-owned MCP server.
@@ -164,11 +173,17 @@ function ManagementScope({
   return (
     <div className="agent-mcp-scope">
       <div className="agent-mcp-scope-copy">
-        <span className="agent-mcp-scope-label">{label}</span>
-        <span className="agent-mcp-scope-hint">
-          {level === "global"
-            ? t("settings.globalScopeHint")
-            : t("settings.projectScopeHint")}
+        <span className="agent-mcp-scope-label">
+          {label}
+          {/* What the level reaches is part of naming the level, so the answer
+              rides on the label instead of a line under it. */}
+          <HelpIcon
+            label={
+              level === "global"
+                ? t("settings.globalScopeHint")
+                : t("settings.projectScopeHint")
+            }
+          />
         </span>
       </div>
       <button
@@ -274,20 +289,17 @@ export function McpEditorSheet({
     id: McpTransport;
     icon: ReactNode;
     labelKey: string;
-    hintKey: string;
   }> = useMemo(
     () => [
       {
         id: "stdio",
         icon: <IconTerminal size={14} />,
         labelKey: "extensions.mcp.transportStdio",
-        hintKey: "extensions.mcp.transportStdioHint",
       },
       {
         id: "http",
         icon: <IconServer size={14} />,
         labelKey: "extensions.mcp.transportHttp",
-        hintKey: "extensions.mcp.transportHttpHint",
       },
     ],
     [],
@@ -295,7 +307,7 @@ export function McpEditorSheet({
   const insecureHttp =
     draft.transport === "http" && isNonLoopbackHttpMcpUrl(draft.url.trim());
 
-  return (
+  return portalOverlay(
     <div
       className="overlay ext-sheet-overlay"
       role="presentation"
@@ -344,7 +356,6 @@ export function McpEditorSheet({
                   </span>
                   <span className="ext-transport-copy">
                     <span className="ext-transport-name">{t(option.labelKey)}</span>
-                    <span className="ext-transport-hint">{t(option.hintKey)}</span>
                   </span>
                 </button>
               ))}
@@ -352,7 +363,7 @@ export function McpEditorSheet({
           </div>
 
           <div className="ext-field-pair">
-            <Field label={t("extensions.mcp.label")} hint={t("extensions.mcp.labelHint")}>
+            <Field label={t("extensions.mcp.label")}>
               <Input
                 value={draft.label}
                 placeholder={t("extensions.mcp.labelPlaceholder")}
@@ -389,8 +400,10 @@ export function McpEditorSheet({
                 />
               </Field>
               <div className="ext-field-group">
-                <div className="ext-field-label">{t("extensions.mcp.env")}</div>
-                <p className="ext-field-hint">{t("extensions.mcp.envHint")}</p>
+                <div className="ext-field-label">
+                  {t("extensions.mcp.env")}
+                  <HelpIcon label={t("extensions.mcp.envHint")} />
+                </div>
                 <KeyValueRows
                   pairs={draft.env}
                   onChange={(next) => set("env", next)}
@@ -416,8 +429,10 @@ export function McpEditorSheet({
                 </p>
               ) : null}
               <div className="ext-field-group">
-                <div className="ext-field-label">{t("extensions.mcp.headers")}</div>
-                <p className="ext-field-hint">{t("extensions.mcp.headersHint")}</p>
+                <div className="ext-field-label">
+                  {t("extensions.mcp.headers")}
+                  <HelpIcon label={t("extensions.mcp.headersHint")} />
+                </div>
                 <KeyValueRows
                   pairs={draft.headers}
                   onChange={(next) => set("headers", next)}
@@ -430,7 +445,7 @@ export function McpEditorSheet({
             </>
           )}
 
-          <Field label={t("extensions.mcp.description")} hint={t("extensions.mcp.descriptionHint")}>
+          <Field label={t("extensions.mcp.description")}>
             <Input
               value={draft.description}
               placeholder={t("extensions.mcp.descriptionPlaceholder")}
@@ -441,10 +456,10 @@ export function McpEditorSheet({
           <div className="ext-field-group">
             <div className="ext-field-label">
               {managementLevel ? t("settings.scope") : t("extensions.scope.title")}
+              <HelpIcon
+                label={managementLevel ? t("settings.scopeHint") : t("extensions.scope.sheetHint")}
+              />
             </div>
-            <p className="ext-field-hint">
-              {managementLevel ? t("settings.scopeHint") : t("extensions.scope.sheetHint")}
-            </p>
             {managementLevel ? (
               <ManagementScope
                 draft={draft}
@@ -475,7 +490,10 @@ export function McpEditorSheet({
                     : status.message || t("extensions.mcp.testFailed")}
               </span>
               {status.state === "ready" && status.toolNames?.length ? (
-                <span className="ext-test-tools">{status.toolNames.join(" · ")}</span>
+                <span className="ext-test-tools">
+                  {status.toolNames.slice(0, MCP_TEST_TOOL_NAME_LIMIT).join(" · ")}
+                  {status.toolNames.length > MCP_TEST_TOOL_NAME_LIMIT ? " …" : ""}
+                </span>
               ) : null}
             </div>
           ) : null}

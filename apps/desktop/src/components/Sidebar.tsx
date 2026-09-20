@@ -1,3 +1,4 @@
+import { IconClock } from "./icons";
 import {
   useCallback,
   useEffect,
@@ -41,6 +42,7 @@ import {
   sidebarSessionStatus,
   type SidebarSessionStatus,
 } from "../lib/sidebar-session-status";
+import { ErrorCodes } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
 import type {
   ProjectMeta,
@@ -52,9 +54,15 @@ import {
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
 } from "../lib/sidebar-preferences";
+import {
+  SIDEBAR_RESIZE_STEP,
+  sidebarPointerResize,
+  sidebarResetWidth,
+} from "../lib/sidebar-resize";
 import { BrandLogo } from "./BrandLogo";
 import { NotificationCenter } from "./NotificationCenter";
 import { ProjectEditDialog } from "./ProjectEditDialog";
+import { useArmedDelete } from "../hooks/use-armed-delete";
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { SessionRenameDialog } from "./SessionRenameDialog";
 import { useUpdateState } from "../hooks/use-update-state";
@@ -94,7 +102,7 @@ type ProjectEntry = {
 };
 
 const VIEWPORT_PADDING = 8;
-const SIDEBAR_RESIZE_STEP = 16;
+
 /** Private MIME so a sidebar session drag is never mistaken for an OS file drop. */
 const SESSION_DRAG_MIME = "application/x-pi-desktop-session";
 
@@ -196,16 +204,20 @@ export function Sidebar({
   onToggleSidebar,
   sidebarToggleShortcut,
   sidebarWidth,
+  widthMax = SIDEBAR_WIDTH_MAX,
   onWidthChange,
   onWidthCommit,
+  onResizeCollapse,
   className,
   onAnimationEnd,
 }: {
   onToggleSidebar: () => void;
   sidebarToggleShortcut: string;
   sidebarWidth: number;
+  widthMax?: number;
   onWidthChange: (width: number) => void;
   onWidthCommit: (width: number) => void;
+  onResizeCollapse: () => void;
   className?: string;
   onAnimationEnd?: ReactAnimationEventHandler<HTMLElement>;
 }) {
@@ -245,6 +257,7 @@ export function Sidebar({
   const restoreSession = useAppStore((s) => s.restoreSession);
   const renameSession = useAppStore((s) => s.renameSession);
   const deleteSessionAction = useAppStore((s) => s.deleteSession);
+  const deleteProjectAction = useAppStore((s) => s.deleteProject);
   const setSessionSort = useAppStore((s) => s.setSessionSort);
   const moveSessionProject = useAppStore((s) => s.moveSessionProject);
   const setSessionArchiveVisibility = useAppStore((s) => s.setSessionArchiveVisibility);
@@ -265,6 +278,8 @@ export function Sidebar({
   const [renameFor, setRenameFor] = useState<SessionSummary | null>(null);
   const [editProjectFor, setEditProjectFor] = useState<ProjectEntry | null>(null);
   const [deleteProjectFor, setDeleteProjectFor] = useState<ProjectEntry | null>(null);
+  // Which row menu item is armed for its second, confirming click.
+  const { armed: armedDelete, setArmed: setArmedDelete } = useArmedDelete();
   const [projectMenu, setProjectMenu] = useState<string | null>(null);
   const [sectionMenu, setSectionMenu] = useState<"sessions" | "projects" | null>(null);
   const [menuPosition, setMenuPosition] = useState<{
@@ -285,6 +300,8 @@ export function Sidebar({
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [draggingProjectKey, setDraggingProjectKey] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{ key: string; insertAfter: boolean } | null>(null);
+  const [windowFocused, setWindowFocused] = useState(true);
+
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuFirstItemRef = useRef<HTMLButtonElement | null>(null);
   const sessionPrefetchTimerRef = useRef<number | undefined>(undefined);
@@ -298,10 +315,13 @@ export function Sidebar({
     insertAfter: boolean,
   ) => void>(() => {});
 
-  const finishSidebarResize = useCallback((cancelled: boolean) => {
+  const finishSidebarResize = useCallback((cancelled: boolean, collapse = false) => {
     const state = sidebarResizeRef.current;
     if (!state) return;
-    if (cancelled) {
+    if (collapse) {
+      // Keep the previewed width for the exit animation and persist nothing:
+      // the shell restores the preferred expanded width on reopen.
+    } else if (cancelled) {
       onWidthChange(state.startWidth);
     } else {
       onWidthChange(state.currentWidth);
@@ -314,13 +334,16 @@ export function Sidebar({
       state.handle.releasePointerCapture(state.pointerId);
     }
     setSidebarResizing(false);
-  }, [onWidthChange, onWidthCommit]);
+    if (collapse) onResizeCollapse();
+  }, [onResizeCollapse, onWidthChange, onWidthCommit]);
 
   const startSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || sidebarResizeRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.focus({ preventScroll: true });
+    // Anchor to the rendered width so pressing the handle never resizes the
+    // column; the live budget only limits where the gesture may land.
     const startWidth = clampSidebarWidth(sidebarWidth);
     sidebarResizeRef.current = {
       pointerId: event.pointerId,
@@ -333,20 +356,28 @@ export function Sidebar({
     setSidebarResizing(true);
     document.documentElement.setAttribute("data-sidebar-resizing", "true");
     event.currentTarget.setPointerCapture(event.pointerId);
-  }, [sidebarWidth]);
+  }, [sidebarWidth, widthMax]);
 
   const moveSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const state = sidebarResizeRef.current;
     if (!state || state.pointerId !== event.pointerId) return;
-    const nextWidth = clampSidebarWidth(state.startWidth + event.clientX - state.startX);
-    state.currentWidth = nextWidth;
+    const result = sidebarPointerResize({
+      startWidth: state.startWidth,
+      deltaX: event.clientX - state.startX,
+      maxWidth: widthMax,
+    });
+    if (result.type === "collapse") {
+      finishSidebarResize(true, true);
+      return;
+    }
+    state.currentWidth = result.width;
     if (state.frame) return;
     state.frame = requestAnimationFrame(() => {
       if (sidebarResizeRef.current !== state) return;
       state.frame = 0;
       onWidthChange(state.currentWidth);
     });
-  }, [onWidthChange]);
+  }, [finishSidebarResize, onWidthChange, widthMax]);
 
   const endSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (sidebarResizeRef.current?.pointerId !== event.pointerId) return;
@@ -362,17 +393,28 @@ export function Sidebar({
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     event.stopPropagation();
-    const currentWidth = clampSidebarWidth(sidebarWidth);
+    const currentWidth = clampSidebarWidth(sidebarWidth, widthMax);
     const nextWidth = event.key === "Home"
       ? SIDEBAR_WIDTH_MIN
       : event.key === "End"
-        ? SIDEBAR_WIDTH_MAX
+        ? clampSidebarWidth(widthMax, widthMax)
         : clampSidebarWidth(
             currentWidth + (event.key === "ArrowRight" ? SIDEBAR_RESIZE_STEP : -SIDEBAR_RESIZE_STEP),
+            widthMax,
           );
     if (nextWidth === currentWidth) return;
     onWidthCommit(nextWidth);
-  }, [onWidthCommit, sidebarWidth]);
+  }, [onWidthCommit, sidebarWidth, widthMax]);
+
+  /**
+   * Double-click reset: the shell's default width, clamped by the live
+   * three-column budget. A pointer gesture that is somehow still open is
+   * dropped first so its release cannot overwrite the reset.
+   */
+  const resetSidebarWidth = useCallback(() => {
+    if (sidebarResizeRef.current) finishSidebarResize(true);
+    onWidthCommit(sidebarResetWidth(widthMax));
+  }, [finishSidebarResize, onWidthCommit, widthMax]);
 
   useEffect(() => {
     if (!sidebarResizing) return;
@@ -395,6 +437,19 @@ export function Sidebar({
       sidebarResizeRef.current = null;
     };
   }, [onWidthChange]);
+
+  // Mirror window focus onto the sidebar; a blurred window can keep CSS :hover
+  // latched on the row under the cursor.
+  useEffect(() => {
+    const onWindowFocus = () => setWindowFocused(document.hasFocus());
+    const onWindowBlur = () => setWindowFocused(false);
+    window.addEventListener("focus", onWindowFocus);
+    window.addEventListener("blur", onWindowBlur);
+    return () => {
+      window.removeEventListener("focus", onWindowFocus);
+      window.removeEventListener("blur", onWindowBlur);
+    };
+  }, []);
 
   const showArchived = sessionView.archived;
   const sessionSort = sessionView.sort;
@@ -1140,6 +1195,53 @@ export function Sidebar({
     }
   };
 
+  /**
+   * Two-step delete for one row's menu item. The first click arms the item and
+   * relabels it; only the second click runs the delete, and the arm expires on
+   * its own. The menu stays open between the two clicks.
+   */
+  const requestDeleteSession = (session: SessionSummary) => {
+    if (armedDelete !== session.id) {
+      setArmedDelete(session.id);
+      return;
+    }
+    setArmedDelete(null);
+    void deleteSession(session);
+  };
+
+  /** Menu items of different surfaces never share an armed key. */
+  const projectDeleteKey = (entry: ProjectEntry) => `project:${entry.key}`;
+
+  /**
+   * Two-step delete for a project row that keeps the running-task safety. The
+   * second click deletes an idle project straight away; a project whose turn is
+   * still live opens the dialog that names those sessions and stops them.
+   */
+  const requestDeleteProject = async (entry: ProjectEntry) => {
+    const key = projectDeleteKey(entry);
+    if (armedDelete !== key) {
+      setArmedDelete(key);
+      return;
+    }
+    setArmedDelete(null);
+    closeMenus(false);
+    if (entry.sessions.some((session) => runningSessions[session.id] === true)) {
+      setDeleteProjectFor(entry);
+      return;
+    }
+    try {
+      await deleteProjectAction(entry.path);
+      showToast(t("project.deleted", { name: entry.name }), { variant: "success" });
+    } catch (error) {
+      // The host refuses a project whose task started after this render.
+      reportError(
+        (error as { errorCode?: unknown } | null)?.errorCode === ErrorCodes.CONFLICT
+          ? new Error(t("project.deleteRunningBlocked"))
+          : error,
+      );
+    }
+  };
+
   const openProjectFolder = async (entry: ProjectEntry) => {
     closeMenus(false);
     try {
@@ -1445,6 +1547,19 @@ export function Sidebar({
           beginSessionDrag(event, session.id);
         }}
         onDragEnd={endSessionDrag}
+        onClick={(event) => {
+          // The row's own controls are the only click targets spelled out in
+          // markup; a click on the row container or its gap to the actions
+          // column - including where a hidden overflow control would sit -
+          // still opens the conversation instead of dying on the wrapper.
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("button, [data-action]")) return;
+          cancelSessionPrefetch();
+          hideSessionHoverCard();
+          void (temporary
+            ? selectTemporarySession(session.id)
+            : selectProjectSession(session));
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -1571,9 +1686,10 @@ export function Sidebar({
     return (
       <section
         key={entry.key}
-        className={`sidebar-session-group project-group ${entry.active ? "active" : ""} ${entry.meta.archived ? "archived" : ""} ${dropProjectKey === entry.key ? "is-drop-target" : ""} ${draggingProjectKey === entry.key ? "is-dragging" : ""} ${dropIndicator?.key === entry.key ? (dropIndicator.insertAfter ? "is-drop-after" : "is-drop-before") : ""}`}
+        className={`sidebar-session-group project-group ${entry.meta.archived ? "archived" : ""} ${dropProjectKey === entry.key ? "is-drop-target" : ""} ${draggingProjectKey === entry.key ? "is-dragging" : ""} ${dropIndicator?.key === entry.key ? (dropIndicator.insertAfter ? "is-drop-after" : "is-drop-before") : ""}`}
         aria-labelledby={projectId}
         data-sidebar-project-group={entry.key}
+        data-current-workspace={entry.active ? "true" : undefined}
         onDragOver={(event) => {
           onProjectDropTargetOver(event, entry);
         }}
@@ -1590,6 +1706,17 @@ export function Sidebar({
       >
         <div
           className="sidebar-session-group-header"
+          onClick={(event) => {
+            // Same one-target rule as a session row: the header's own controls
+            // stay the only spelled-out targets, so the gutter next to a hidden
+            // control still activates and toggles the group.
+            const target = event.target as HTMLElement | null;
+            if (target?.closest("button, [data-action]")) return;
+            void (async () => {
+              if (!entry.active && !(await selectProject(entry.path))) return;
+              setCollapsed(entry.path, !collapsedProject);
+            })();
+          }}
           onContextMenu={(event) => {
             if (projectReorderRef.current) {
               event.preventDefault();
@@ -1693,10 +1820,15 @@ export function Sidebar({
           className={`sidebar-session-group-body project ${collapsedProject ? "collapsed" : ""}`}
           role="region"
           aria-hidden={collapsedProject}
+          inert={collapsedProject ? true : undefined}
         >
-          {entry.sessions.length > 0 ? renderTimeGroupedSessions(visibleSessions) : (
-            <div className="sidebar-session-empty">{t("nav.noProjectSessions")}</div>
-          )}
+          <div className="sidebar-session-group-clip">
+            <div className="sidebar-session-group-list">
+              {entry.sessions.length > 0 ? renderTimeGroupedSessions(visibleSessions) : (
+                <div className="sidebar-session-empty">{t("nav.noProjectSessions")}</div>
+              )}
+            </div>
+          </div>
         </div>
       </section>
     );
@@ -1873,12 +2005,15 @@ export function Sidebar({
               <button
                 type="button"
                 role="menuitem"
-                className="danger"
+                className={cx("danger", armedDelete === session.id && "is-armed")}
                 data-action="delete-session"
-                onClick={() => void deleteSession(session)}
+                data-armed={armedDelete === session.id ? "true" : undefined}
+                onClick={() => requestDeleteSession(session)}
               >
                 <IconX size={14} />
-                {t("nav.deleteTask", { defaultValue: "Delete" })}
+                {armedDelete === session.id
+                  ? t("nav.deleteTaskConfirm", { defaultValue: "Delete?" })
+                  : t("nav.deleteTask", { defaultValue: "Delete" })}
               </button>
             ) : null}
           </>
@@ -1934,22 +2069,15 @@ export function Sidebar({
             <button
               type="button"
               role="menuitem"
-              className="danger"
+              className={cx("danger", armedDelete === projectDeleteKey(entry) && "is-armed")}
               data-action="delete-project"
-              onClick={() => {
-                closeMenus(false);
-                const runningCount = entry.sessions.filter(
-                  (session) => runningSessions[session.id] === true,
-                ).length;
-                if (runningCount > 0) {
-                  showToast(t("project.deleteRunningBlocked"), { variant: "warning" });
-                  return;
-                }
-                setDeleteProjectFor(entry);
-              }}
+              data-armed={armedDelete === projectDeleteKey(entry) ? "true" : undefined}
+              onClick={() => void requestDeleteProject(entry)}
             >
               <IconTrash size={14} />
-              {t("project.delete", { defaultValue: "Delete project" })}
+              {armedDelete === projectDeleteKey(entry)
+                ? t("project.deleteMenuConfirm", { defaultValue: "Delete?" })
+                : t("project.delete", { defaultValue: "Delete project" })}
             </button>
             {entry.open ? (
               <button
@@ -1970,7 +2098,8 @@ export function Sidebar({
 
   return (
     <aside
-      className={cx("sidebar", className)}
+      className={cx("sidebar", "sidebar-surface", className)}
+      data-window-blur={windowFocused ? undefined : "true"}
       onAnimationEnd={onAnimationEnd}
     >
       <div className="sidebar-header">
@@ -1988,7 +2117,7 @@ export function Sidebar({
         <div className="sidebar-header-actions no-drag">
           <TooltipButton
             type="button"
-            className="icon-btn"
+            className="icon-btn icon-btn-square"
             tooltip={
               sidebarToggleShortcut
                 ? `${t("nav.collapseSidebar")} (${sidebarToggleShortcut})`
@@ -2189,6 +2318,17 @@ export function Sidebar({
             >
               <IconPlug size={14} aria-hidden />
             </TooltipButton>
+            <TooltipButton
+              type="button"
+              className={`footer-action ${page === "scheduled" ? "active" : ""}`}
+              data-nav="scheduled"
+              tooltip={t("scheduled.title")}
+              ariaLabel={t("scheduled.title")}
+              onClick={() => setPage("scheduled")}
+              aria-pressed={page === "scheduled"}
+            >
+              <IconClock size={14} aria-hidden />
+            </TooltipButton>
             <NotificationCenter onBeforeOpen={() => closeMenus(false)} />
           </div>
 
@@ -2250,6 +2390,9 @@ export function Sidebar({
             path: deleteProjectFor.path,
             sessionCount: deleteProjectFor.sessions.length,
           }}
+          runningSessionIds={deleteProjectFor.sessions
+            .filter((session) => runningSessions[session.id] === true)
+            .map((session) => session.id)}
           onClose={() => setDeleteProjectFor(null)}
           onDeleted={() => {
             setDeleteProjectFor(null);
@@ -2266,9 +2409,9 @@ export function Sidebar({
         aria-orientation="vertical"
         aria-label={t("nav.resizeSidebar")}
         aria-valuemin={SIDEBAR_WIDTH_MIN}
-        aria-valuemax={SIDEBAR_WIDTH_MAX}
-        aria-valuenow={clampSidebarWidth(sidebarWidth)}
-        aria-valuetext={t("nav.sidebarWidth", { width: clampSidebarWidth(sidebarWidth) })}
+        aria-valuemax={clampSidebarWidth(widthMax, widthMax)}
+        aria-valuenow={clampSidebarWidth(sidebarWidth, widthMax)}
+        aria-valuetext={t("nav.sidebarWidth", { width: clampSidebarWidth(sidebarWidth, widthMax) })}
         tabIndex={0}
         onPointerDown={startSidebarResize}
         onPointerMove={moveSidebarResize}
@@ -2276,6 +2419,7 @@ export function Sidebar({
         onPointerCancel={cancelSidebarResize}
         onLostPointerCapture={cancelSidebarResize}
         onKeyDown={handleSidebarResizeKeyDown}
+        onDoubleClick={resetSidebarWidth}
       />
     </aside>
   );

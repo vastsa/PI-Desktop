@@ -50,34 +50,21 @@ test("failed turns expose a localized continuation prompt", () => {
 });
 
 test("common setup and marketplace copy avoid developer jargon", () => {
-  assert.equal(
-    english["chat.emptyHint"],
-    "Add a provider and open a project to start.",
-  );
   assert.equal(english["nav.temporarySessions"], "Temporary chats");
   assert.equal(english["menu.refreshMarket"], "Refresh marketplace");
   assert.equal(english["settings.providers"], "AI providers");
-  assert.equal(
-    english["settings.apiStyleDesc"],
-    "The request format this service expects.",
-  );
-  assert.match(english["project.subtitle"], /active project/);
-  assert.doesNotMatch(english["chat.emptyHint"], /Configure a provider/);
   assert.doesNotMatch(english["menu.refreshMarket"], /from repo/i);
   assert.doesNotMatch(english["status.hostOk"], /Host/i);
   assert.doesNotMatch(english["status.fatal"], /backend/i);
   assert.equal(chinese["nav.temporarySessions"], "临时对话");
   assert.equal(chinese["settings.providers"], "AI 服务");
   assert.equal(chinese["menu.refreshMarket"], "刷新插件市场");
-  assert.equal(chinese["chat.emptyHint"], "添加服务并打开项目即可开始。");
   assert.equal(traditional["nav.temporarySessions"], "臨時對話");
   assert.equal(traditional["settings.providers"], "AI 服務");
   assert.equal(traditional["menu.refreshMarket"], "重新整理外掛市場");
-  assert.equal(traditional["chat.emptyHint"], "新增服務並開啟專案即可開始。");
   assert.equal(korean["settings.language"], "언어");
   assert.equal(korean["nav.projects"], "프로젝트");
   assert.equal(korean["nav.temporarySessions"], "임시 대화");
-  assert.notEqual(korean["chat.emptyHint"], english["chat.emptyHint"]);
 });
 
 test("Plan mode and Auto permission copy stay explicit in both locales", () => {
@@ -107,15 +94,55 @@ test("Plan mode and Auto permission copy stay explicit in both locales", () => {
   assert.match(chinese["plan.autoWarning"], /可能修改文件/);
 });
 
-test("page copy keeps actions and removes redundant explanatory paragraphs", () => {
-  assert.equal(english["project.archiveSubtitle"], "Opened folders and their chats.");
-  assert.equal(english["scheduled.emptyBody"], "Create a task above.");
-  assert.equal(english["panel.empty.body"], "Choose a tool or open a resource.");
-  assert.equal(chinese["project.archiveSubtitle"], "已打开的文件夹及其对话。");
-  assert.equal(chinese["scheduled.emptyBody"], "请在上方创建任务。");
-  assert.equal(chinese["panel.empty.body"], "选择工具或打开资源。");
-  assert.doesNotMatch(english["project.archiveSubtitle"], /without losing|Activate|archive the rest/);
-  assert.doesNotMatch(chinese["project.archiveSubtitle"], /可以|而不丢失/);
+/**
+ * E2E-024X: a page may not restate its own title as a subtitle, and a setting
+ * may not explain an obvious control. These keys were rendered once and are
+ * gone; keep them gone in every locale.
+ */
+const REMOVED_EXPLANATORY_KEYS = [
+  "project.subtitle",
+  "project.archiveSubtitle",
+  "project.emptyIndexBody",
+  "scheduled.emptyBody",
+  "chat.emptyHint",
+  "panel.empty.body",
+  "panel.review.noChangesHint",
+  "settings.languageDesc",
+  "settings.devToolsDesc",
+  "settings.themeLightDesc",
+  "settings.themeDarkDesc",
+  "settings.themeSystemDesc",
+  "settings.applicationDesc",
+  "settings.logsDesc",
+  "settings.fontDesc",
+  "settings.shortcutDescription",
+  "settings.importScanDesc",
+  "settings.linkOpenTargetDesc",
+  "settings.commandShellDesc",
+  "settings.contextUsageDisplayDesc",
+  "settings.closeBehaviorTrayDesc",
+  "settings.closeBehaviorQuitDesc",
+  "settings.capabilityNoMatchesHint",
+  "settings.fullAccessDesc",
+  "settings.autoReviewDesc",
+  "settings.defaultPermissionsDesc",
+  "settings.apiKeyHint",
+  "settings.baseUrlHint",
+  "settings.apiStyleDesc",
+  "plugins.newFromTemplateHint",
+  "plugins.newFromTemplateBody",
+  "plugins.selectVersion",
+  "extensions.mcp.labelHint",
+  "extensions.mcp.transportStdioHint",
+  "extensions.mcp.transportHttpHint",
+  "extensions.mcp.descriptionHint",
+];
+
+test("removed explanatory copy stays removed", () => {
+  for (const key of REMOVED_EXPLANATORY_KEYS) {
+    assert.equal(english[key], undefined, `en still defines ${key}`);
+    assert.equal(chinese[key], undefined, `zh-CN still defines ${key}`);
+  }
 });
 
 test("font size presets use Starbucks-style cup names", () => {
@@ -127,4 +154,13 @@ test("font size presets use Starbucks-style cup names", () => {
   assert.equal(chinese["settings.fontSizeDefault"], "大杯");
   assert.equal(chinese["settings.fontSizeLarge"], "超大杯");
   assert.equal(chinese["settings.fontSizeXl"], "超超大杯");
+});
+
+test("chat context-menu copy stays user-facing", () => {
+  assert.equal(english["chat.copyFailed"], "Couldn't copy to the clipboard");
+  assert.equal(english["chat.messageMenu"], "Message actions");
+  assert.equal(english["chat.copyConversation"], "Copy conversation");
+  assert.equal(chinese["chat.copyFailed"], "复制到剪贴板失败");
+  assert.equal(chinese["chat.copyConversation"], "复制整个对话");
+  assert.equal(chinese["chat.selectMessageText"], "选中消息文本");
 });

@@ -1,9 +1,11 @@
 name: Docs check
 
-# ci.yml ignores docs/** and **/*.md, so documentation drift (an English spec
-# page without its zh mirror, or the reverse) was never caught. This workflow
-# runs only the locale pair check; `check:release-docs` stays out of CI on
-# purpose because it intentionally fails on rc versions.
+# ci.yml ignores docs/** and **/*.md, so documentation drift was never caught.
+# This workflow runs the documentation checks: the English/Chinese pair check,
+# the whole-tree page/ADR check, the AGENTS.md/CLAUDE.md policy-sync gate, and
+# a VitePress build, which fails on a dead link anywhere in the tree.
+# `check:release-docs` stays out of CI on purpose because it intentionally
+# fails on rc versions.
 
 on:
   push:
@@ -11,6 +13,8 @@ on:
     paths:
       - 'docs/**'
       - 'README*.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
       - 'packages/shared/src/changelog*.ts'
       - 'scripts/check-*.mjs'
       - 'docs/scripts/**'
@@ -19,6 +23,8 @@ on:
     paths:
       - 'docs/**'
       - 'README*.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
       - 'packages/shared/src/changelog*.ts'
       - 'scripts/check-*.mjs'
       - 'docs/scripts/**'
@@ -34,9 +40,9 @@ concurrency:
 
 jobs:
   docs:
-    name: Docs locale pair check
+    name: Docs checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -51,5 +57,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check docs locale pairs
+      - name: Check AGENTS.md / CLAUDE.md policy sync
+        run: pnpm check:agent-policy
+
+      - name: Check locale pairs and every documentation page
         run: pnpm docs:check
+
+      - name: Build the documentation site (dead links and routes)
+        run: pnpm docs:build

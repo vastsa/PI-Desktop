@@ -33,8 +33,8 @@ second renderer-owned diff or durable ownership map.
 3. Failed, denied, scratch, clean, non-Git, and missing-workspace results do not
    render cards. A background session's card remains attached to its own
    transcript and never appears in the currently visible session. The full
-   Review tab remains available as the all-files current-worktree view and
-   continues to open from successful workspace artifacts.
+   Review tab remains available as the all-files current-worktree view; it
+   opens only on explicit user action and never from a tool result (D451).
 4. Remove the session-to-workspace review ownership map. Inline card presence
    is derived from the transcript message, the active workspace, and the
    shared workspace diff; no review-specific persistence or protocol field is

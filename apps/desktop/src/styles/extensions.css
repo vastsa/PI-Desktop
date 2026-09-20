@@ -1264,12 +1264,6 @@
   font-weight: var(--font-weight-medium);
 }
 
-.ext-transport-hint {
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-normal);
-}
-
 .ext-test-result {
   display: flex;
   align-items: baseline;

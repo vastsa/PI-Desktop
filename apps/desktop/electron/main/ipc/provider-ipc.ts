@@ -1,4 +1,12 @@
-import { IPC, ErrorCodes, type ModelBinding, type OAuthRespondInput, type ThinkingLevel } from "@pi-desktop/shared";
+import {
+  IPC,
+  ErrorCodes,
+  resolveBindingContextWindow,
+  type ModelBinding,
+  type ProviderReorderInput,
+  type OAuthRespondInput,
+  type ThinkingLevel,
+} from "@pi-desktop/shared";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import { discoverProviderModels } from "../model-discovery";
 import { genericModelConfig, modelConfigWithBinding, mergeProviderHeaders } from "@pi-desktop/agent-runtime";
@@ -59,6 +67,10 @@ export function registerProviderIpc({
   };
   handle(IPC.invoke.providersList, async () => {
     return enrichProviderList({ providers: await listRuntimeProviders() });
+  });
+  handle(IPC.invoke.providersReorder, async (input: ProviderReorderInput) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("providers.reorder", input);
   });
   handle(IPC.invoke.providersRefreshModelCatalog, async () => {
     const refreshed = await modelsDevCatalog.refresh();
@@ -260,7 +272,11 @@ export function registerProviderIpc({
           ? modelConfigFromModelsDev(modelsDevModel, baseUrl)
           : genericModelConfig(model.modelId, baseUrl);
         const storedModel = provider ? bindingForModel(provider, model.modelId) : undefined;
-        const modelConfig = modelConfigWithBinding(catalogModelConfig, storedModel);
+        const resolvedModel = resolveBindingContextWindow(catalogModelConfig, storedModel);
+        const modelConfig = modelConfigWithBinding(
+          resolvedModel.catalogConfig,
+          resolvedModel.binding,
+        );
         const info = modelsDevModel
           ? modelInfoFromModelsDev(modelsDevModel, provider?.id ?? "")
           : {

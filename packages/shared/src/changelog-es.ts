@@ -2,6 +2,59 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.1",
+    "date": "2026-09-19",
+    "highlights": [
+      "Empareja y gestiona hosts remotos por SSH desde Ajustes, con inicio de sesión por contraseña, instalación y reconexión al arrancar.",
+      "Configura la mejora de prompts (plantilla, modelo y razonamiento) en la tarjeta de ajustes de IA.",
+      "Arrastra los modelos seleccionados para reordenarlos, y añade un nivel «omitir pensamiento» que no envía anulación al proveedor.",
+      "Redimensiona o contrae la barra lateral, y restaura el ancho predeterminado de barra o panel con un doble clic.",
+      "Gestiona proyectos en un archivo agrupado con inspector, e importa cada tipo desde su propio banco de trabajo.",
+      "Escanea e importa en lote skills y servidores MCP de otras herramientas de agente.",
+      "El extra de la barra de menús de macOS usa un status item nativo, con atajos de sesión acotados en la bandeja.",
+      "Las compilaciones oficiales de macOS van firmadas y notarizadas, con actualizaciones in-app.",
+      "La DMG firmada de macOS instala con dos iconos; la nota de apertura sin firmar queda solo en el ZIP.",
+      "Review se abre solo cuando lo pides, y al abrir una sesión aterrizas en el último turno.",
+      "Recupera una cola de envío atascada e ignora orígenes de steering falsificados.",
+    ],
+  },
+
+  {
+    "version": "0.15.0",
+    "date": "2026-09-17",
+    "highlights": [
+      "Reordena, edita, bloquea y promociona prompts en cola para que un mensaje posterior se ejecute a continuación.",
+      "Clona un repositorio git desde el diálogo de crear proyecto.",
+      "Arrastra el ancho del contenido de la conversación dentro de la columna de chat.",
+      "Los fallos de instalación del mercado de skills muestran un reintento en lugar de un botón inerte.",
+      "Los proveedores declarados por plugins aparecen como filas nativas, con claves API y agentes personalizados de confianza.",
+      "Los plugins pueden pedir conexiones en tiempo real, atajos globales, permisos de capacidad y un canal oficial con copias de seguridad.",
+      "Los plugins pueden registrar variables de tema, recursos de tema y un widget flotante transparente.",
+      "Elimina un proyecto junto con las sesiones que le pertenecen, tras una segunda confirmación.",
+      "Los subagentes tienen una lista ordenada de modelos de respaldo, se pueden reanudar desde la misma tarjeta Task, y los builtins se activan en Ajustes.",
+      "Las referencias de archivo en filas de herramientas abren la vista correcta, expandir detalles mantiene la lectura, y el hover de Plan es una placa opaca.",
+    ],
+  },
+
+  {
+    "version": "0.14.9",
+    "date": "2026-09-17",
+    "highlights": [
+      "Reordena, edita, bloquea y promociona prompts en cola para que un mensaje posterior se ejecute a continuación.",
+      "Clona un repositorio git desde el diálogo de crear proyecto.",
+      "Arrastra el ancho del contenido de la conversación dentro de la columna de chat.",
+      "Los fallos de instalación del mercado de skills muestran un reintento en lugar de un botón inerte.",
+      "Los proveedores declarados por plugins aparecen como filas nativas, con claves API y agentes personalizados de confianza.",
+      "Los plugins pueden pedir conexiones en tiempo real, atajos globales, permisos de capacidad y un canal oficial con copias de seguridad.",
+      "Los plugins pueden registrar variables de tema, recursos de tema y un widget flotante transparente.",
+      "Elimina un proyecto junto con las sesiones que le pertenecen, tras una segunda confirmación.",
+      "Los subagentes tienen una lista ordenada de modelos de respaldo, y los builtins incluidos se pueden activar en Ajustes.",
+      "Las referencias de archivo en filas de herramientas abren la vista correcta, expandir detalles mantiene la lectura, y el hover de Plan es una placa opaca.",
+    ],
+  },
+
+
+  {
     "version": "0.14.8",
     "date": "2026-09-14",
     "highlights": [

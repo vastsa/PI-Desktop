@@ -14,7 +14,7 @@ import { AgentSidecar } from "../agent-sidecar";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { BrowserHost } from "../browser-host";
-import type { InflightCheckpointer } from "../inflight-checkpoint";
+import type { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import { summarizeToolResult, type Logger } from "../logger";
 import type { ModelsDevCatalog } from "../models-dev-catalog";
 import type { PluginRuntime } from "../plugin-runtime";

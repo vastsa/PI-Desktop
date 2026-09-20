@@ -7,7 +7,6 @@ import {
   Tray,
 } from "electron";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import {
   applyNetworkProxyFromAppSettings,
   currentNetworkProxy,
@@ -50,7 +49,6 @@ import {
   shouldShowNativeNotification,
 } from "./notification-policy";
 import { PersistenceOutbox } from "./persistence-outbox";
-import { InflightCheckpointer } from "./inflight-checkpoint";
 import { AgentSidecar } from "./agent-sidecar";
 import { Logger, ignoreBrokenStdio } from "./logger";
 import { installMainProcessErrorHandlers } from "./main-process-errors";
@@ -89,14 +87,13 @@ import {
   type PreparedPromptAttachment,
 } from "./prompt-attachments";
 import {
+  InflightCheckpointer,
   executionFromResponse,
   executionListFromResponse,
   planExecutionFromUnknown,
-} from "./plan-execution";
-import {
-  readWindowState,
-  writeWindowState,
-} from "./window-preferences";
+} from "@pi-desktop/host-runtime";
+import { readWindowState, writeWindowState } from "./window-preferences";
+import { applyDevelopmentUserData, desktopDataDir } from "./data-paths";
 import { createPlanUiProbe } from "./plan-ui-probe";
 import type { McpControlController, McpControlServer } from "./mcp-control";
 import type { AgentHostBridge } from "./agent-host-bridge";
@@ -114,7 +111,6 @@ import {
 } from "./ipc/composer-ipc";
 import { registerWindowIpc } from "./ipc/window-ipc";
 import { registerPullsIpc } from "./ipc/pulls-ipc";
-import { registerScheduledIpc } from "./ipc/scheduled-ipc";
 import { registerAgentIpc } from "./ipc/agent-ipc";
 import { registerIpcHandlers } from "./ipc/register";
 import {
@@ -178,23 +174,19 @@ const ErrorCodes = {
 ignoreBrokenStdio();
 installMainProcessErrorHandlers();
 
+const isDevelopmentBuild =
+  process.env.PI_DESKTOP_DEV === "1" || !app.isPackaged;
+
 app.setName(APP_NAME);
+applyDevelopmentUserData(app, isDevelopmentBuild);
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
 }
 
-// One data directory admits exactly one desktop process. host-core owns
-// `pi.sqlite` exclusively (D002), Electron main owns the persistence outbox and
-// the log tree beside it, and the tray, the global launcher shortcut, and the
-// updater are singletons of the running app — a second process fights the first
-// for every one of them and leaves the user with two shells over one database.
-//
-// Electron keeps the lock in `userData`, which is derived from the app name set
-// just above, so it is taken after `setName` and before anything else in this
-// module touches the data directory. That scope is the installation, not
-// `PI_DESKTOP_DATA_DIR`: a run pointed at its own data directory (E2E
-// harnesses, the capture rig, a side-by-side profile) shares no state with the
-// default installation and stays launchable while one is running.
+// One installation, one process. The lock lives in `userData` (set just
+// above), so it is taken after `setName` and before anything else here
+// touches the data directory. A development build is its own installation;
+// `PI_DESKTOP_DATA_DIR` still opts a run out of the lock (E2E, capture rig).
 const singleInstanceRequired = !process.env.PI_DESKTOP_DATA_DIR;
 const hasSingleInstanceLock = singleInstanceRequired
   ? app.requestSingleInstanceLock()
@@ -221,7 +213,7 @@ let pluginLauncherWindow: BrowserWindow | null = null;
 let pluginLauncherCreationPromise: Promise<BrowserWindow> | null = null;
 let pluginLauncherAccelerator: string | null = null;
 let pluginLauncherBinding: string | null = null;
-let summonWindowAccelerator: string | null = null;
+let toggleWindowAccelerator: string | null = null;
 const launcherState: LauncherState = {
   get creationPromise() {
     return pluginLauncherCreationPromise;
@@ -235,17 +227,15 @@ const launcherState: LauncherState = {
   set pluginLauncherAccelerator(value) {
     pluginLauncherAccelerator = value;
   },
-  get summonWindowAccelerator() {
-    return summonWindowAccelerator;
+  get toggleWindowAccelerator() {
+    return toggleWindowAccelerator;
   },
-  set summonWindowAccelerator(value) {
-    summonWindowAccelerator = value;
+  set toggleWindowAccelerator(value) {
+    toggleWindowAccelerator = value;
   },
 };
 let windowCreationPromise: Promise<void> | null = null;
 let applicationBooted = false;
-const isDevelopmentBuild =
-  process.env.PI_DESKTOP_DEV === "1" || !app.isPackaged;
 const pendingApplicationMenuCommands: AppMenuCommand[] = [];
 type MenuRendererReadyGate = {
   window: BrowserWindow;
@@ -474,10 +464,10 @@ const applyPluginLauncherShortcutForLifecycle = (
 ) => {
   launcherRuntime?.applyPluginLauncherShortcut(keybindings);
 };
-const applySummonWindowShortcutForLifecycle = (
+const applyToggleWindowShortcutForLifecycle = (
   keybindings?: KeybindingOverrides,
 ) => {
-  launcherRuntime?.applySummonWindowShortcut(keybindings);
+  launcherRuntime?.applyToggleWindowShortcut(keybindings);
 };
 const applyCloseBehaviorForLifecycle = (next: CloseBehavior) => {
   if (!closeBehaviorRuntime) {
@@ -520,8 +510,11 @@ const {
   safeOpenExternal,
 } = desktopServices;
 
-const dataDir =
-  process.env.PI_DESKTOP_DATA_DIR || join(homedir(), ".pi-desktop");
+const dataDir = desktopDataDir(isDevelopmentBuild);
+// The plugin runtime resolves this root from the environment rather than taking
+// it as a parameter, and a profile split across two directories is the
+// divergence D236 closes.
+process.env.PI_DESKTOP_DATA_DIR = dataDir;
 
 // Agent extensions (D387/D388, ADR 0214): plugins contribute the modules,
 // the sidecar loads them; this bridge carries commands, diagnostics, and
@@ -675,15 +668,16 @@ const pluginServices = createPluginServices({
 const {
   plugins,
   userMcp,
+  mcpOAuth,
   pluginScopes,
   sessionProjects,
   emitBrowserState,
   pluginPanels,
   pluginViews,
-  pluginSettingsViews,
   browserHost,
   browserPane,
   announceTurnEnded,
+  speech,
 } = pluginServices;
 
 const providerCatalogRuntime = createProviderCatalogRuntime({
@@ -725,6 +719,7 @@ const {
   refreshUserMcp,
   activeUserSkills,
   activeUserSubagentDocuments,
+  disabledBuiltinSubagents,
   loadUserSkillBody,
   resolveEffectiveCommandShell,
   resolveAgentRuntimeLaunch,
@@ -784,7 +779,7 @@ function setCurrentWorkspacePath(path: string | null): void {
   // The group snapshot starts cold, so this first push can only carry the bare
   // workspace. Fetch the project's folders once and repeat it, so a plugin that
   // was already open sees them without waiting for the next switch; every later
-  // switch finds the snapshot warm and broadcasts exactly once (ADR 0252).
+  // switch finds the snapshot warm and broadcasts exactly once (ADR 0263).
   if (knownProjectGroups() === null) {
     void refreshProjectGroups(host).then((changed) => {
       if (!changed) return;
@@ -816,6 +811,7 @@ function isHostUnavailable(error: unknown): boolean {
 
 /** Pull the user's MCP server records from host-core into the local runtime. */
 function sendToRenderer(channel: string, payload: unknown) {
+  applicationLifecycle?.traySessions.observeEvent(channel, payload);
   if (channel === IPC.event.pluginChanged) {
     applicationLifecycle?.applyNativeThemeSource({
       theme: applicationAppearanceState.appThemePreference,
@@ -900,6 +896,7 @@ const applicationAppearanceState: ApplicationAppearanceState = {
 };
 
 applicationLifecycle = createApplicationLifecycle({
+  getRunningSessionIds: () => activeTurns.keys(),
   state: windowLifecycleState,
   appState: applicationLifecycleState,
   appearanceState: applicationAppearanceState,
@@ -922,18 +919,19 @@ applicationLifecycle = createApplicationLifecycle({
   applyCloseBehavior: applyCloseBehaviorForLifecycle,
   browserPane,
   pluginViews,
-  pluginSettingsViews,
   plugins,
   logger,
   refreshReleaseNotes: () => updater.refreshReleaseNotes(),
   applyPluginLauncherShortcut: applyPluginLauncherShortcutForLifecycle,
-  applySummonWindowShortcut: applySummonWindowShortcutForLifecycle,
+  applyToggleWindowShortcut: applyToggleWindowShortcutForLifecycle,
   broadcastPluginPanelEvent,
+  getHost: () => host,
 });
 const {
   applyDevelopmentBranding,
   hasVisibleWindow,
   restoreMainWindow,
+  toggleMainWindow,
   updateTrayMenu,
   createTray,
   resetMenuRendererReady,
@@ -980,7 +978,7 @@ const createdLauncher = createLauncher({
   getHost: () => host,
   logger,
   safeOpenExternal,
-  restoreMainWindow,
+  toggleMainWindow,
 });
 launcherRuntime = createdLauncher;
 const {
@@ -988,7 +986,7 @@ const {
   showPluginLauncher,
   togglePluginLauncher,
   applyPluginLauncherShortcut,
-  applySummonWindowShortcut,
+  applyToggleWindowShortcut,
 } = createdLauncher;
 
 /** sessionId → open host turn id, for turn bookkeeping across agent events. */
@@ -1240,16 +1238,19 @@ runtimeLifecycle = createRuntimeLifecycle({
   rememberPluginScopes,
   refreshUserMcp,
   isQuitting: () => quitting,
+  getDisplayLocale: () => applicationAppearanceState.updaterLocale,
 });
 const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
 function registerIpc() {
   return registerIpcHandlers({
+    traySessions: applicationLifecycle!.traySessions,
     ipcMain,
     getMainWindow: () => mainWindow,
     getHost: () => host,
     getSidecar: () => sidecar,
     getAgentHostBridge: () => agentHostBridge,
+    getBackendRouter: () => startupState.backendRouter,
     getNotificationViewingSessionId: () => notificationViewingSessionId,
     setNotificationViewingSessionId: (sessionId: string | null) => {
       notificationViewingSessionId = sessionId;
@@ -1265,6 +1266,7 @@ function registerIpc() {
     persistenceOutbox,
     logger,
     plugins,
+    speech,
     sessionCapabilityContext,
     enrichSession,
     acquireSessionOperation,
@@ -1299,6 +1301,7 @@ function registerIpc() {
     markMenuRendererReady,
     executeNativeMenuAction,
     scheduledRunsBySession,
+    isQuitting: () => quitting,
     isDevelopmentBuild,
     browserHost,
     clipboardHistory,
@@ -1317,11 +1320,12 @@ function registerIpc() {
     dispatchExecutionForProposal,
     emitAgentEvent,
     userMcp,
+    mcpOAuth,
     refreshUserMcp,
     describeError,
     activeUserSubagentDocuments,
+    disabledBuiltinSubagents,
     pluginViews,
-    pluginSettingsViews,
     pluginScopes,
     rememberPluginScopes,
     pluginPanels,
@@ -1362,6 +1366,7 @@ const startupState: StartupState = {
   set agentHostBridge(value) {
     agentHostBridge = value;
   },
+  backendRouter: null,
   get desktopControl() {
     return desktopControl;
   },
@@ -1400,7 +1405,7 @@ registerApplicationStartup({
   applyApplicationMenuSettings,
   applyDeveloperMode,
   applyPluginLauncherShortcut,
-  applySummonWindowShortcut,
+  applyToggleWindowShortcut,
   ensureWindow,
   bootHostStatus,
   flushPendingApplicationMenuCommands,
@@ -1455,11 +1460,11 @@ const shutdownState: ShutdownState = {
   set pluginLauncherAccelerator(value) {
     pluginLauncherAccelerator = value;
   },
-  get summonWindowAccelerator() {
-    return summonWindowAccelerator;
+  get toggleWindowAccelerator() {
+    return toggleWindowAccelerator;
   },
-  set summonWindowAccelerator(value) {
-    summonWindowAccelerator = value;
+  set toggleWindowAccelerator(value) {
+    toggleWindowAccelerator = value;
   },
 };
 
@@ -1475,9 +1480,9 @@ registerShutdownHandlers({
   pluginPanels,
   plugins,
   userMcp,
+  mcpOAuth,
   browserPane,
   pluginViews,
-  pluginSettingsViews,
   updater,
   logger,
   confirmQuitDialog,

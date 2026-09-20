@@ -16,7 +16,7 @@ const {
 } = await import("../electron/main/workspace-roots.ts");
 
 /**
- * The project group behind the one visible workspace (ADR 0249, ADR 0252).
+ * The project group behind the one visible workspace (ADR 0249, ADR 0263).
  *
  * `pi.workspace.get` and the `workspace:changed` broadcast both read this, so
  * the snapshot has to be the single answer: a group's folders in group order

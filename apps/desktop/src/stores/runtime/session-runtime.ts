@@ -82,7 +82,6 @@ export type SessionRuntime = {
   insertOptimisticUserMessage: (sessionId: string, message: UiMessage) => void;
   retractOptimisticUserMessage: (sessionId: string, message: UiMessage) => void;
   cacheBackgroundTranscriptEvent: (envelope: AgentEventEnvelope) => void;
-  projectSideChatEvent: (envelope: AgentEventEnvelope) => void;
   mergeSessionConfiguration: (
     current: SessionConfiguration | undefined,
     next: SessionConfiguration,
@@ -217,14 +216,6 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
 
   function insertOptimisticUserMessage(sessionId: string, message: UiMessage): void {
     const state = get();
-    if (state.sideChatTranscripts[sessionId]) {
-      set((current) => ({
-        sideChatTranscripts: {
-          ...current.sideChatTranscripts,
-          [sessionId]: upsertLiveSessionMessage(current.sideChatTranscripts[sessionId] ?? [], message),
-        },
-      }));
-    }
     if (state.activeSessionId === sessionId) {
       set((current) => ({
         messages: upsertLiveSessionMessage(current.messages, message),
@@ -242,14 +233,6 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
 
   function retractOptimisticUserMessage(sessionId: string, message: UiMessage): void {
     const state = get();
-    if (state.sideChatTranscripts[sessionId]?.includes(message)) {
-      set((current) => ({
-        sideChatTranscripts: {
-          ...current.sideChatTranscripts,
-          [sessionId]: removeLiveSessionMessage(current.sideChatTranscripts[sessionId] ?? [], message.id),
-        },
-      }));
-    }
     if (state.activeSessionId === sessionId) {
       set((current) =>
         current.messages.includes(message)
@@ -364,17 +347,6 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     return next;
   }
 
-  function projectSideChatEvent(envelope: AgentEventEnvelope): void {
-    const state = get();
-    if (!state.sideChats[envelope.sessionId]) return;
-    const current = state.sideChatTranscripts[envelope.sessionId] ?? [];
-    const next = projectTranscriptEvent(current, envelope);
-    if (next === current) return;
-    set((state) => ({
-      sideChatTranscripts: { ...state.sideChatTranscripts, [envelope.sessionId]: next },
-    }));
-  }
-
   function cacheBackgroundTranscriptEvent(envelope: AgentEventEnvelope): void {
     const { sessionId } = envelope;
     const state = get();
@@ -445,7 +417,6 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     insertOptimisticUserMessage,
     retractOptimisticUserMessage,
     cacheBackgroundTranscriptEvent,
-    projectSideChatEvent,
     mergeSessionConfiguration: (current, next) => {
       if (!current) return next;
       const merged: Record<string, unknown> = { ...current };

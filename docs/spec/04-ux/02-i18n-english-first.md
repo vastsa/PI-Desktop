@@ -90,7 +90,9 @@ Also English-first:
 - plugin example docs
 - command titles in core product
 
-Plugins may include localized display fields later, but English fields are required.
+Plugin identity (`manifest.i18n`) is host-resolved (ADR 0267). Plugin-owned UI
+localizes from the host locale (`pi.app.getLocale`, ADR 0280). English remains
+required for flat identity fields.
 
 ## 6. Acceptance
 

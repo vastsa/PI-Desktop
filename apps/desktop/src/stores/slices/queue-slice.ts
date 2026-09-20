@@ -1,4 +1,3 @@
-import { responseAnnotationPrompt } from "../../lib/response-annotations";
 import i18n from "i18next";
 import type {
   AgentQueueChangedEvent,
@@ -10,14 +9,20 @@ import type {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import {
-  clearQueuedPromptSendNow,
   enqueueQueuedPrompt,
-  prioritizeQueuedPrompt,
+  isPendingQueuedPrompt,
+  isPromotedQueuedPrompt,
+  promoteQueuedPrompt,
   queuedPromptForSession,
   removeQueuedPrompt,
+  reorderQueuedPrompt,
   type QueuedPrompt,
+  type QueuedPromptDirection,
 } from "../../lib/queued-prompts";
-import type { ComposerDraftSnapshot } from "../../lib/composer-smart-stop";
+import type {
+  ComposerDraftSnapshot,
+  ComposerPrefill,
+} from "../../lib/composer-smart-stop";
 import { optimisticUserMessage } from "../../lib/session-transcript";
 import type { AppState } from "../app-state";
 import {
@@ -63,6 +68,8 @@ export function createQueueSlice({
   AppState,
   | "enqueuePrompt"
   | "removeQueuedPrompt"
+  | "moveQueuedPrompt"
+  | "editQueuedPrompt"
   | "sendQueuedNow"
   | "refreshQueuedPrompts"
   | "applyQueueChanged"
@@ -72,10 +79,7 @@ export function createQueueSlice({
   const queuedDrafts = new Map<string, ComposerDraftSnapshot>();
   const pendingSubmissions = new Set<string>();
 
-  function toQueuedPrompt(
-    entry: QueuedTurnSummary,
-    previous?: QueuedPrompt,
-  ): QueuedPrompt {
+  function toQueuedPrompt(entry: QueuedTurnSummary): QueuedPrompt {
     return {
       id: entry.id,
       sessionId: entry.sessionId,
@@ -85,7 +89,8 @@ export function createQueueSlice({
         fileReferences: [],
       },
       createdAt: Date.parse(entry.createdAt) || Date.now(),
-      ...(previous?.sendNowRequested ? { sendNowRequested: true } : {}),
+      // The Host owns ordering and priority: entries arrive in delivery order.
+      ...(entry.priority === undefined ? {} : { priority: entry.priority }),
     };
   }
 
@@ -95,13 +100,11 @@ export function createQueueSlice({
   ): void {
     set((state) => {
       const current = state.queuedPrompts[sessionId] ?? [];
-      const pending = current.filter((item) => item.id.startsWith("pending:"));
-      const mirrored = entries.map((entry) =>
-        toQueuedPrompt(entry, current.find((item) => item.id === entry.id)),
-      );
+      const pending = current.filter(isPendingQueuedPrompt);
+      const mirrored = entries.map((entry) => toQueuedPrompt(entry));
       for (const item of current) {
         if (
-          !item.id.startsWith("pending:") &&
+          !isPendingQueuedPrompt(item) &&
           !entries.some((entry) => entry.id === item.id)
         ) {
           queuedDrafts.delete(item.id);
@@ -112,6 +115,22 @@ export function createQueueSlice({
       if (merged.length === 0) delete next[sessionId];
       else next[sessionId] = merged;
       return { queuedPrompts: next };
+    });
+  }
+
+  /** Drop one row locally and, unless it is still optimistic, at the Host. */
+  function detachQueuedPrompt(sessionId: string, promptId: string): void {
+    set((state) => ({
+      queuedPrompts: removeQueuedPrompt(state.queuedPrompts, sessionId, promptId),
+    }));
+    queuedDrafts.delete(promptId);
+    if (promptId.startsWith("pending:")) return;
+    void api.removeQueuedPrompt(promptId).catch((error) => {
+      get().showToast(
+        error instanceof Error ? error.message : String(error),
+        { variant: "error" },
+      );
+      void get().refreshQueuedPrompts(sessionId);
     });
   }
 
@@ -175,22 +194,63 @@ export function createQueueSlice({
     removeQueuedPrompt: (promptId) => {
       const sessionId = get().activeSessionId;
       if (!sessionId) return;
-      set((state) => ({
-        queuedPrompts: removeQueuedPrompt(
-          state.queuedPrompts,
-          sessionId,
-          promptId,
-        ),
-      }));
-      queuedDrafts.delete(promptId);
-      if (promptId.startsWith("pending:")) return;
-      void api.removeQueuedPrompt(promptId).catch((error) => {
+      detachQueuedPrompt(sessionId, promptId);
+    },
+
+    /** Return one waiting row to the composer as an editable draft. */
+    editQueuedPrompt: (promptId) => {
+      const sessionId = get().activeSessionId;
+      if (!sessionId) return;
+      const item = queuedPromptForSession(
+        get().queuedPrompts,
+        sessionId,
+        promptId,
+      );
+      if (!item || isPromotedQueuedPrompt(item)) return;
+      // `item.content` is token-stripped; the row's captured draft is the text
+      // and the inline file references the user actually wrote.
+      const restored: ComposerPrefill = {
+        sessionId,
+        text: item.draft.text,
+        fileReferences: item.draft.fileReferences.map((reference) => ({
+          ...reference,
+        })),
+      };
+      detachQueuedPrompt(sessionId, promptId);
+      set({ composerPrefill: restored });
+    },
+
+    /** Move one waiting row past its neighbour; promoted rows stay locked. */
+    moveQueuedPrompt: async (promptId, direction) => {
+      const sessionId = get().activeSessionId;
+      if (!sessionId) return;
+      const item = queuedPromptForSession(
+        get().queuedPrompts,
+        sessionId,
+        promptId,
+      );
+      if (!item || isPendingQueuedPrompt(item) || isPromotedQueuedPrompt(item)) {
+        return;
+      }
+      const before = get().queuedPrompts;
+      const moved = reorderQueuedPrompt(
+        before,
+        sessionId,
+        promptId,
+        direction,
+      );
+      // A promoted neighbour means the row already sits at its block boundary.
+      if (moved === before) return;
+      set({ queuedPrompts: moved });
+      try {
+        await api.reorderQueuedPrompt(promptId, direction);
+      } catch (error) {
+        void get().refreshQueuedPrompts(sessionId);
         get().showToast(
           error instanceof Error ? error.message : String(error),
           { variant: "error" },
         );
-        void get().refreshQueuedPrompts(sessionId);
-      });
+      }
     },
 
     sendQueuedNow: async (promptId) => {
@@ -201,9 +261,11 @@ export function createQueueSlice({
         sessionId,
         promptId,
       );
-      if (!item || item.id.startsWith("pending:") || item.sendNowRequested) return;
+      if (!item || isPendingQueuedPrompt(item) || isPromotedQueuedPrompt(item)) {
+        return;
+      }
       set((state) => ({
-        queuedPrompts: prioritizeQueuedPrompt(
+        queuedPrompts: promoteQueuedPrompt(
           state.queuedPrompts,
           sessionId,
           promptId,
@@ -211,24 +273,11 @@ export function createQueueSlice({
       }));
       try {
         await api.prioritizeQueuedPrompt(promptId);
-        if (get().runningSessions[sessionId]) {
-          const result = await api.stop(sessionId);
-          if (!result.requested) {
-            set((state) => ({
-              queuedPrompts: clearQueuedPromptSendNow(
-                state.queuedPrompts,
-                sessionId,
-              ),
-            }));
-          }
-        }
+        // Send now keeps its graceful stop: the active turn reaches its
+        // boundary before the promoted row starts.
+        if (get().runningSessions[sessionId]) await api.stop(sessionId);
       } catch (error) {
-        set((state) => ({
-          queuedPrompts: clearQueuedPromptSendNow(
-            state.queuedPrompts,
-            sessionId,
-          ),
-        }));
+        void get().refreshQueuedPrompts(sessionId);
         get().showToast(
           error instanceof Error ? error.message : String(error),
           { variant: "error" },
@@ -306,20 +355,6 @@ export function createQueueSlice({
         }
         if (!sessionId) throw new Error(i18n.t("errors.noActiveSession"));
         if (get().pendingPlans[sessionId]?.status === "pending") return false;
-        // Capture this session's immutable annotation objects before awaiting the host.
-        // Only accepted, unchanged objects are consumed; edits/new attachments survive.
-        const annotationSessionId = sessionId;
-        const annotations = get().responseAnnotations[annotationSessionId] ?? [];
-        const outgoing = responseAnnotationPrompt(content, annotations);
-        const consumeAnnotations = () => set((state) => {
-          const current = state.responseAnnotations[annotationSessionId] ?? [];
-          const remaining = current.filter((item) => !annotations.includes(item));
-          if (remaining.length === current.length) return {};
-          const responseAnnotations = { ...state.responseAnnotations };
-          if (remaining.length) responseAnnotations[annotationSessionId] = remaining;
-          else delete responseAnnotations[annotationSessionId];
-          return { responseAnnotations };
-        });
         if (get().runningSessions[sessionId]) {
           // Native Pi children have no Desktop prompt queue. Reject the send
           // here so the caller restores the draft instead of round-tripping a
@@ -331,8 +366,7 @@ export function createQueueSlice({
             get().showToast(i18n.t("chat.nativeSessionBusy"), { variant: "info" });
             return false;
           }
-          const accepted = await get().enqueuePrompt(outgoing, draft, sessionId);
-          if (accepted) consumeAnnotations();
+          const accepted = await get().enqueuePrompt(content, draft, sessionId);
           return accepted;
         }
         const startedIn = sessionId;
@@ -398,12 +432,11 @@ export function createQueueSlice({
           }
           await api.prompt({
             sessionId,
-            content: outgoing,
+            content,
             messageId: optimisticMessage.id,
             viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
             attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
           });
-          consumeAnnotations();
           const submitted = runtime.submittedComposerDrafts.get(startedIn);
           if (submitted?.abortResolution && (await submitted.abortResolution)) {
             return false;
@@ -413,10 +446,8 @@ export function createQueueSlice({
           runtime.submittedComposerDrafts.delete(startedIn);
           runtime.retractOptimisticUserMessage(startedIn, optimisticMessage);
           const messageError = messageErrorFromUnknown(error);
-          const sideChatChild = Boolean(get().sideChats[startedIn]);
           const errorRow = assistantErrorMessage(messageError);
           set((state) => {
-            const childRows = state.sideChatTranscripts[startedIn];
             return {
               isRunning:
                 state.activeSessionId === startedIn ? false : state.isRunning,
@@ -433,37 +464,14 @@ export function createQueueSlice({
               sessionOutcomes: { ...state.sessionOutcomes, [startedIn]: "failed" },
               ...(state.activeSessionId === startedIn
                 ? { messages: [...state.messages, errorRow] }
-                : sideChatChild && childRows
-                  ? {
-                      sideChatTranscripts: {
-                        ...state.sideChatTranscripts,
-                        [startedIn]: [...childRows, errorRow],
-                      },
-                    }
-                  : {}),
+                : {}),
             };
           });
-          if (sideChatChild && get().activeSessionId !== startedIn) {
-            // The panel is not the visible conversation: surface the failure in
-            // the child projection and as a toast instead of the main transcript.
-            const cached = runtime.sessionTranscriptCache.get(startedIn);
-            if (cached) {
-              runtime.cacheSessionTranscript(startedIn, [...cached, errorRow]);
-            }
-            get().showToast(messageError.message, { variant: "error" });
-          }
           return false;
         }
       } catch (error) {
         // Keep sendPrompt's Promise<boolean> contract so the composer can
         // restore a draft cleared before submission, even on unexpected setup errors.
-        const target = requestedSessionId ?? get().activeSessionId;
-        if (target && get().sideChats[target]) {
-          get().showToast(
-            error instanceof Error ? error.message : String(error),
-            { variant: "error" },
-          );
-        }
         return false;
       } finally {
         pendingSubmissions.delete(submissionKey);

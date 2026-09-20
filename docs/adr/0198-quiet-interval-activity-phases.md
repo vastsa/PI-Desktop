@@ -40,9 +40,12 @@ targets:
 
 The renderer still draws one compact localized row with a monotonic phase
 timer. A one-subagent wait names the agent and its latest action; a
-multi-agent wait lists each running target. Thinking, tool, answer, and
-permission surfaces continue to replace the row. No second progress card
-or percentage is added.
+multi-agent wait lists each running target. The renderer originally hid the
+row behind thinking, tool, and answer surfaces. Issue #669 demonstrated that
+those surfaces can remain unchanged while a turn is still running. The tail
+row now remains visible until completion or pending user interaction, with
+a Working or Planning/Goal fallback when no runtime phase is known. No second
+progress card or percentage is added.
 
 ## Consequences
 

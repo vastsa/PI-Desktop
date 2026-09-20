@@ -41,6 +41,7 @@
 - [17-asktool-questions.md](03-runtime/17-asktool-questions.md)
 - [18-line-anchored-edit-contract.md](03-runtime/18-line-anchored-edit-contract.md)
 - [19-remote-agent-control-protocol.md](03-runtime/19-remote-agent-control-protocol.md)
+- [20-speech.md](03-runtime/20-speech.md)
 
 ## 4. UX
 - [README.md](04-ux/README.md)
@@ -89,6 +90,7 @@
 - [13-plugin-permissions-matrix.md](07-plugins/13-plugin-permissions-matrix.md)
 - [14-plugin-roadmap.md](07-plugins/14-plugin-roadmap.md)
 - [15-plugin-center.md](07-plugins/15-plugin-center.md)
+- [16-trusted-extensions.md](07-plugins/16-trusted-extensions.md)
 
 ## 8. Meta
 - [README.md](08-meta/README.md)

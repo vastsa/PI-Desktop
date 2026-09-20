@@ -33,7 +33,7 @@ try {
     },
     nodePaths: [join(root, "apps/desktop/node_modules")],
   });
-  // Use the built app's complete CSS, including Tailwind reset and bundled fonts.
+  // Use the built app's complete CSS, including the Tailwind reset.
   const renderer = join(root, "apps/desktop/out/renderer");
   const appHtml = await readFile(join(renderer, "index.html"), "utf8");
   const css = [...appHtml.matchAll(/href="([^" ]+\.css)"/g)].map((match) => match[1]);

@@ -47,6 +47,12 @@ read time; their path-scoped memory and filesystem instructions remain readable.
 
 ## 2. File layout
 
+A packaged installation keeps this tree in `~/.pi-desktop`. A development build
+keeps the same tree in `~/.pi-desktop-dev`, because a shipped app and a
+`pnpm dev` host are two installations that have to run at the same time (D599,
+ADR 0094). `PI_DESKTOP_DATA_DIR` replaces either root outright and is resolved
+to an absolute path before it reaches host-core as a child-process variable.
+
 ```text
 ~/.pi-desktop/
  ├── pi.sqlite            # index database (WAL: + -wal/-shm) — host-core only
@@ -63,6 +69,8 @@ read time; their path-scoped memory and filesystem instructions remain readable.
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
  ├── logs/                # NDJSON app/<category>, host/<category>, agent/<category> logs
  ├── cache/               # disposable caches
+ ├── crash-dumps/         # local Crashpad minidumps (never uploaded; D602)
+ ├── crash-dumps.json     # last-reported dump mtime (best-effort marker)
  ├── review-changes/<sessionId>/<snapshotId>/
  │    ├── before          # bounded pre-tool bytes, when reversible
  │    └── meta.json       # path, hashes, diff state, and ownership
@@ -74,6 +82,8 @@ read time; their path-scoped memory and filesystem instructions remain readable.
 ```
 
 One database file keeps cross-entity writes transactional (e.g. session +
+turn + artifact in one commit). The DB stores **no large payloads**: message
+
 turn + artifact in one commit). The DB stores **no large payloads**: message
 content lives in `sessions/`, attachments and tool outputs beyond the limits
 of [16-tool-result-limits](16-tool-result-limits.md) live on disk, referenced
@@ -124,7 +134,27 @@ revisions never rewrites this file:
 
 ```jsonl
 {"type":"revision","rootUserId":"u1","revisionIndex":1,"createdAt":"…","messages":[…message records…],"turns":{"<messageId>":"<turnId>"}}
+{"type":"revision_live","rootUserId":"u2","revisionIndex":2,"createdAt":"…"}
 ```
+
+A branch is the transcript suffix rooted at its user turn, so a branch that is
+**still live** is byte-identical to content the transcript already stores. That
+branch gets a `revision_live` line: identity only, no `messages` payload, with
+the reader resolving the branch against the transcript. Storing the suffix
+instead is what made this file grow quadratically — a measured session wrote
+107 MB to hold 16 MB of unique content, because every finished turn rewrote a
+tail that had grown since the turn before. `revision` stays the line for a
+branch that has **left** the transcript, and it is the only line kind a legacy
+file contains.
+
+A reference line is constant-sized (99 bytes for a UUID family in a measured
+session) and does not grow with the branch it names. It deliberately omits the
+`turns` map a stored branch carries: that map exists for messages a restore has
+to re-attach after they left the index, and a live branch's messages *are* the
+session's index rows, so a restore reads their turns from the index. A copy here
+would put one entry per branch message on every finished turn — measured at 197
+bytes on the first turn and 1943 by the fortieth, which is the same quadratic
+growth this line kind exists to remove.
 
 Rules:
 
@@ -135,6 +165,17 @@ Rules:
   keeps integer ms.
 - Readers skip unknown `type` lines and a torn trailing line: new line kinds
   need no migration, and a crash mid-append cannot poison the file.
+- A `revision_live` line is meaningful only while its branch is the live
+  transcript suffix. Three writers keep that true: `archive_live_branch`
+  (revision switch) and `archive_discarded_regenerate_branch` (regenerate,
+  edit) each write the full `revision` line *before* the rewrite that stops
+  holding the branch, and `archive_dropped_live_branches` — reached through
+  `replace_messages` — does the same when a rewrite deletes the root turn
+  itself (message delete, smart Stop). A branch that is no longer live
+  therefore always ends with a stored payload, and a reader only ever resolves
+  a reference for the branch that is live right now. A new path that drops a
+  branch from the transcript without archiving it first would strand that
+  branch's reference line.
 - `compaction` is a model-context checkpoint, not a message — but it is
   rendered, as a divider row rather than a chat bubble (D203). Readers return
   every message unchanged and separately return **every** still-valid
@@ -222,6 +263,21 @@ CREATE TABLE kv (
 | `cache` | model-refresh stamps, recent model refs (spec 13 §3) |
 | `plugin:<id>` | per-plugin settings; uninstall = `DELETE WHERE ns = ?` |
 | `projectMemory` | durable user-authored context keyed by canonical project path; structured values contain `format: "entries-v1"`, visual `entries`, derived `content`, and `updatedAt` |
+
+The app settings JSON optionally stores `thinkingDisplayMode` (`detailed` or
+`compact`). Missing values retain detailed presentation. This additive display
+preference neither rewrites stored reasoning nor changes the database schema.
+
+The same blob optionally stores the prompt-enhancement overrides
+`promptEnhancementCustomTemplate` (the switch that decides whether a stored
+template applies), `promptEnhancementUserTemplate`,
+`promptEnhancementProviderId`, `promptEnhancementModelId`, and
+`promptEnhancementThinkingLevel` (ADR 0121). An absent or blank user template means the
+built-in default applies, so clearing the field stores no key rather than an
+empty string. A non-blank user template must contain the draft variable and stay
+within `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH`; host-core rejects a write that
+breaks either rule and drops any stored `promptEnhancementSystemPrompt`, which is
+no longer read. No schema version bump is required.
 
 New config domains (e.g. MCP servers) start as a namespace; they graduate to
 tables only when they need relations or indexes.
@@ -377,7 +433,7 @@ CREATE TABLE sessions (
   mode        TEXT NOT NULL DEFAULT 'agent',   -- plan | agent
   thinking_level TEXT NOT NULL DEFAULT 'off'
                 CHECK (thinking_level IN ('off', 'minimal', 'low', 'medium',
-                                          'high', 'xhigh', 'max')),
+                                          'high', 'xhigh', 'max', 'omit')),
   permission_mode TEXT NOT NULL DEFAULT 'inherit' -- D115: inherit follows settings
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
   source      TEXT,                            -- import origin: claude-code | codex | opencode | pi
@@ -416,7 +472,9 @@ CREATE INDEX idx_session_import_origins_plugin
   allowed, and built-in runtimes (e.g. `pi`) never exist in `providers`.
 - `thinking_level` is the durable session selector. New and v2-migrated
   sessions default to `off`; capability resolution may clamp the effective
-  request without rewriting the stored preference.
+  request without rewriting the stored preference. Schema v19 adds `omit`
+  (ADR 0295): send no thinking override. Existing rows keep their stored
+  canonical values.
 
 - `project_id` normalizes v1's free-text `project_path` (grouping, badges,
   hover-`+` new-session-in-project all become indexed lookups).
@@ -595,6 +653,7 @@ CREATE TABLE turn_queue (
   attachments_json TEXT,
   permission_mode  TEXT NOT NULL,
   position         INTEGER NOT NULL,
+  priority         INTEGER,
   created_at       INTEGER NOT NULL
 );
 CREATE INDEX idx_turn_queue_session ON turn_queue(session_id, position);
@@ -605,11 +664,17 @@ CREATE UNIQUE INDEX idx_turn_queue_idempotency
 
 - One row per prompt admitted behind an active turn (D375 / ADR 0213). The
   headless Agent Host module is the only writer through `session.queuePush`,
-  `session.queueList`, and `session.queueRemove`; the store never starts a
-  turn.
+  `session.queueList`, `session.queueRemove`, `session.queuePrioritize`, and
+  `session.queueReorder`; the store never starts a turn.
 - `position` is per session and only grows, so a removed entry never
   reorders the rest. `principal` plus `idempotency_key` make a retried push
   return the same row; a reused key with a different `input_hash` fails with
+  `IDEMPOTENCY_CONFLICT`. A session holds at most eight entries.
+- `priority` (schema v18, ADR 0265) is `NULL` until the entry is promoted with
+  "send now"; a promotion writes `MAX(priority) + 1` inside the session, so
+  promoted entries are delivered first in click order and the remaining entries
+  keep their `position` order. `queueReorder` swaps two adjacent non-promoted
+  `position` values and refuses a promoted entry.
   `IDEMPOTENCY_CONFLICT`. A session holds at most eight entries.
 - `attachments_json` keeps the prompt's attachment references; bytes stay in
   the session scratch or project root like any other prompt attachment.
@@ -700,7 +765,7 @@ stream (as today) with `text = NULL`.
 ```sql
 CREATE TABLE messages (
   mid          INTEGER PRIMARY KEY,             -- stable rowid: FTS anchor, VACUUM-safe
-  id           TEXT NOT NULL UNIQUE,            -- caller-facing uuid (optimistic UI)
+  id           TEXT NOT NULL UNIQUE,            -- caller-facing uuid (optimistic UI); colliding provider toolCallIds remap to {sessionId}:{id} (D444)
   session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn_id      TEXT REFERENCES turns(id) ON DELETE SET NULL,
   seq          INTEGER NOT NULL,                -- per-session ordinal
@@ -726,7 +791,16 @@ type Block =
       toolUsage?: ToolTokenUsage }
   | { type: "attachment"; kind: "image" | "file"; name: string;
       ref: string /* attachments/<sha256> or absolute path */;
-      mimeType?: string; size?: number };
+      mimeType?: string; size?: number }
+  | { type: "hostedSearch"; status: "searching" | "completed" | "failed";
+      rounds: Array<{ id: string;
+        status: "searching" | "completed" | "failed";
+        kind?: "search" | "openPage" | "findInPage";
+        query?: string; url?: string;
+        sources: Array<{ url: string; title?: string }> }>;
+      replay?: Array<{ type: "hostedSearch"; phase: string;
+        blockId?: string; name?: string; input?: unknown;
+        status?: string; isError?: boolean; wire?: unknown }> };
 ```
 
 - Tool results are stored **post-truncation** (16-tool-result-limits); full
@@ -840,7 +914,9 @@ Archives discarded regenerate branches so users can page previous variants
 without stacking them in the live transcript (D105/D109). One row is one
 linear branch rooted at a user turn; the branch **payload** lives in the
 append-only `sessions/<id>.revisions.jsonl` (§2.1), keyed by
-`(rootUserId, revisionIndex)`.
+`(rootUserId, revisionIndex)`. A branch that is still live stores a reference
+(`revision_live`) instead of a second copy of a transcript suffix the session
+already has; see §2.1.
 
 ```sql
 CREATE TABLE message_revisions (
@@ -947,7 +1023,16 @@ CREATE INDEX idx_task_runs ON task_runs(task_id, started_at DESC);
 ```
 
 A run that spawns a session gets its transcript for free via `session_id`.
-Finer schedules (cron) land in `config_json` without a migration.
+The existing JSON extension stores `schedule: {hour, minute, weekday}`,
+`nextRunAt` (epoch milliseconds) and `workspacePath` for desktop automations.
+Optional `weekdays` stores 1–7 unique integers in 0–6, overriding legacy
+`weekday` for weekly schedules. Missing `weekdays` preserves the single-day
+behavior. Invalid or empty selections are rejected before mutation. No table
+migration is needed. Daily/weekly schedules use the host local timezone; hourly
+schedules compute `nextRunAt = now + 3_600_000`, ignoring calendar fields. Absence
+of `schedule` leaves legacy tasks unarmed. No physical schema change is made.
+Task wire fields project `schedule`, RFC3339 `nextRunAt` and `workspacePath`.
+See [the automation ADR](../../adr/scheduled-desktop-automations.md).
 
 Scheduled task `config_json.mode` is a durable operating-mode value. There is
 intentionally no physical `scheduled_tasks.mode` column. The v7→v8
@@ -1082,8 +1167,8 @@ is the source of truth, the index is derived and self-healing.
 
 | session fork (`session.fork`) | write a new transcript with remapped message/tool-call ids; copy/remap the checkpoint only when its boundary is included | single tx: clone session configuration, insert child index rows, set `last_seq`; remove child file on failure |
 | regenerate branch save | append revision line (with `revisionIndex`: a refresh line for that existing variant) | index row with `message_count` (+ `is_active` flip); a refresh only updates `message_count` |
-| turn-completion branch archive (`session.saveActiveRevision`) | append revision line (a refresh line when the active variant is already archived), then rewrite only the root user's transcript line for the pager stamp | index row with `message_count` (+ `is_active` flip); index rows for other messages untouched |
-| revision switch | append a refresh line for the live branch's own variant, read the target branch, atomic transcript rewrite keeping checkpoints whose anchors survive | flip `is_active`, rebuild index rows carrying each surviving message's owning `turn_id`, reset `last_seq` |
+| turn-completion branch archive (`session.saveActiveRevision`) | append a `revision_live` reference line — the branch is still live, so its payload is the transcript — then rewrite only the root user's transcript line for the pager stamp | index row with `message_count` (+ `is_active` flip); index rows for other messages untouched |
+| revision switch | append a full `revision` line for the live branch's own variant (it is about to leave the transcript, so its reference is materialized), read the target branch, atomic transcript rewrite keeping checkpoints whose anchors survive | flip `is_active`, rebuild index rows carrying each surviving message's owning `turn_id`, reset `last_seq` |
 | import | write transcript file | one tx per session: session row + index rows; on failure the file is removed |
 | session delete | remove both session files after row delete | `DELETE FROM sessions` (cascades); Electron main drops that session's outbox entries (D318) |
 | project delete (`projects.remove`) | remove each owned session's files after its row delete | one tx per session (`DELETE FROM sessions`, cascades) plus the project row and its `projectMemory` kv entry; the project folder on disk is never touched |
@@ -1349,7 +1434,11 @@ columns for anything the host filters, joins, sums, or indexes.
 13. Regenerated assistant variants survive restart in
     `sessions/<id>.revisions.jsonl`; the live root user turn reloads with
     `revisionCount` / `activeRevision`, the pager can restore any archived
-    branch, and switching branches never rewrites the revisions file
+    branch, and switching branches never rewrites the revisions file. A branch
+    that is still live is referenced, not copied, so repeated turns over one
+    branch cost the file nothing; a branch that leaves the transcript is stored
+    in full first, and a file written only by an older build still reads back
+    message-for-message.
 14. Completed and failed turns atomically create one durable notification;
     repeated terminal updates do not duplicate it, aborted turns create none,
     and the newest-200 cap survives restart
@@ -1407,7 +1496,18 @@ line and search text, retaining sequence, owning turn and every other row.
 Late partial snapshots and duplicate terminal snapshots cannot overwrite the
 settled result. Recovery promotes the latest checkpoint in that same position.
 The outbox likewise keeps a newer snapshot that replaces an append while its
-host call is still pending. No schema migration is required.
+host call is still pending. If `messages.id` already belongs to another
+session, the host remaps to `{sessionId}:{id}` before any JSONL write; a
+replay of the original id is a no-op against that remapped row. The outbox
+treats `UNIQUE constraint failed: messages.id` as an ack and keeps draining
+(D444). A permanently rejected append whose host error carries a
+`PERMISSION_DENIED:` prefix is likewise dropped so the FIFO can continue;
+`PLUGIN_PERMISSION_DENIED` and other host failures still pause (D597).
+Steering into a claimed collaboration delivery turn is extra human input: it
+must target that delivery's session, is exempt from the delivery
+content/attachment contract, does not inherit the delivery origin, and has
+any client-supplied `session_message` stripped. No schema migration is
+required.
 
 ## 12. Native Pi session authority (ADR 0254)
 
@@ -1429,8 +1529,8 @@ trust, saved-provider/auth, canonical-path, identity, and lease checks pass.
 `AgentSession` and `SessionManager` append the native entries. Desktop host turn
 and transcript append APIs are not invoked. Rename, delete, project move,
 revision, Plan/Goal, collaboration, and queue operations remain unsupported
-for native sessions in this slice. Forking and ordinary text-only side-chat
-send/stop are supported as described here and in the runtime spec.
+for native sessions in this slice. Forking is supported as described here and in
+the runtime spec.
 
 A native fork writes exactly one new v3 JSONL child in the parent's session
 directory. Branch extraction runs against an in-memory manager over the parent
@@ -1457,3 +1557,10 @@ and bounded asynchronous scanning remain deferred performance work.
 Rust host-core persists optional `UiMessage.timeToFirstTokenMs` in existing
 message JSON metadata and restores nonnegative integer values. Legacy rows
 omit it; no schema migration is required. See ADR `first-output-latency.md`.
+
+### Provider display order
+
+`kv(ns="app", key="providers.order")` stores an ordered array of provider IDs.
+Host-core owns updates through `providers.reorder`; missing metadata preserves
+creation order, new IDs follow saved IDs, and deleted IDs are ignored. This
+preference does not rewrite provider configuration or require a schema migration.

@@ -27,7 +27,7 @@
 关于面板。运行时还将 `build/icon_1024.png` 应用于 Dock。库存
 `node_modules` 下的文件永远不会被修改。 Windows/Linux 不断发展
 正常的 electro-vite 可执行文件。尽管如此，Windows Main 还是注册了
-之前 NSIS 包使用的相同 `com.pi-desktop.app` AppUserModelID
+之前 NSIS 包使用的相同 `net.aiuo.pi-desktop` AppUserModelID
 Electron 准备就绪，防止库存主机身份拥有本机
 通知或任务栏组。 Windows 封装另外引脚
 `PI-Desktop` 可执行文件和“开始”菜单快捷方式名称。启动器设置
@@ -43,11 +43,10 @@ Windows 可执行文件和原生窗口图标中使用 `build/icon.ico`。渲染�
 
 ## 2. 先决条件（发布通道）
 
-1. Apple 开发者帐户，具有 **开发者 ID 应用程序** 证书
-   登录钥匙串。
-2、环境变量：
-   - `MAC_SIGNING_IDENTITY` — 例如`Developer ID Application: <Name> (<TEAMID>)`
-   - `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` — 公证所必需。
+1. Apple 开发者帐户，登录钥匙串中具有 **Developer ID Application** 证书。正式证书为 `Developer ID Application: XingYu Liu (DUV63RKYTW)`（Team ID `DUV63RKYTW`）。
+2. 本地签名通道的环境变量：
+   - `MAC_SIGNING_IDENTITY` — 裸通用名 `XingYu Liu (DUV63RKYTW)`；electron-builder 拒绝保留 `Developer ID Application:` 前缀的名称，脚本会自动去掉该前缀
+   - `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` — 公证所必需（`APPLE_TEAM_ID` 必须为 `DUV63RKYTW`）
 3. 安装 Rust 工具链和 pnpm 工作区。Rust 必须在 macOS 本机运行器上运行：
    Apple Silicon 使用 arm64，Intel 使用 x86_64。
 
@@ -55,7 +54,12 @@ Windows 可执行文件和原生窗口图标中使用 `build/icon.ico`。渲染�
 
 - Electron 应用程序具有强化的运行时 + 权利
   (`build/entitlements.mac.plist`: JIT + 无符号可执行内存 +
-  库验证禁用 — 标准 Electron 设置）。
+  库验证禁用 — 标准 Electron 设置），并在 Info.plist 中通过
+  `apps/desktop/package.json` → `mac.extendInfo` 追加
+  `NSLocalNetworkUsageDescription`，使 macOS 15+ 弹出本地网络授权，同时授予
+  Chromium 主进程与 `ELECTRON_RUN_AS_NODE` 的 agent sidecar；否则主进程的
+  Test Provider 能过，但 sidecar 走局域网请求会以 `EHOSTUNREACH` 失败
+  （issue #573）。
 - `Resources/bin/pi-desktop-host-core` — Rust 主机二进制文件（发布版本）。
 - Windows NSIS 构建包含静态链接 MSVC CRT 的 x64
   `pi-desktop-host-core.exe`，因此全新的 Windows x64 或 Windows 11 ARM64
@@ -154,7 +158,7 @@ Windows 可执行文件和原生窗口图标中使用 `build/icon.ico`。渲染�
 ### 4.2 构建/打包
 
 ```bash
-export MAC_SIGNING_IDENTITY="Developer ID Application: ... (TEAMID)"
+export MAC_SIGNING_IDENTITY="XingYu Liu (DUV63RKYTW)"
 export APPLE_ID=...
 export APPLE_APP_SPECIFIC_PASSWORD=...
 export APPLE_TEAM_ID=...
@@ -183,11 +187,7 @@ GitHub Release 工作流程启动所有本机平台运行程序，无需
 调用电子构建器。这避免了多余的桌面构建，而无需
 更改包脚本或发布工件。
 
-**macOS 默认发布策略：** GitHub Release 工作流程默认生成未签名的 macOS
-DMG/ZIP。标签推送以及 `sign_macos` 未填写或设为 `false` 的手动运行都会关闭
-身份发现，不接收签名或公证密钥，并跳过 macOS 装订和签名验证。如需明确签名，
-请针对目标标签手动运行工作流程并设置 `sign_macos: true`。本地
-`scripts/release-macos.sh` 仍是明确的签名通道。
+**macOS 默认发布策略：** GitHub tag 发布会在上传前对 macOS DMG/ZIP 做 Developer ID 签名、公证、装订和 Gatekeeper 校验（D450 / ADR 0289）。缺少签名或公证密钥则作业失败。`workflow_dispatch` 仅可把 `sign_macos: false` 用于未签名调试产物，不得用于 GitHub Release 标签。本地 `scripts/release-macos.sh` 仍是明确的本地签名通道；未配置证书时 `pnpm dist:mac` 保持未签名（D078）。
 
 macOS 矩阵使用 arm64 的 `macos-15` 和 Intel x64 的
 `macos-15-intel`。每个作业验证 `uname -m`，向 electron-builder 传入匹配
@@ -204,18 +204,15 @@ Intel x64 通道发布 `PI-Desktop-<version>-x64.dmg` 和
 上传前，每个 macOS 运行器必须恰好生成一个带架构后缀的 DMG 和 ZIP（包括
 blockmap），任何无后缀或架构错误的 macOS 工件都会使发布失败。
 
-DMG 使用带有品牌视觉的 720×500 背景，并明确展示拖入 Applications 的安装手势。
-应用和 Applications 链接位于主区域；打开说明位于下方的辅助区域，这样未签名构建的
-处理路径可被发现，但不会被误认为正常安装动作。说明显示为 `If app won't open, read this.txt`；
-DMG 不包含可执行的 command 助手。
+DMG 使用带有品牌视觉的 720×440 背景，只展示拖入 Applications 的双图标安装手势。
+窗口里只有应用和 Applications 链接；打开说明和可执行 command 助手都不放入 DMG。
 
-每个 macOS DMG 的安装包根目录都会包含配套的
-`PI-Desktop-macOS-opening-help.txt`，显示名为 `If app won't open, read this.txt`。macOS ZIP
-还包含该说明和可执行的 `PI-Desktop-macOS-open.command`。将 `PI-Desktop.app` 移动到
-`/Applications` 或 `~/Applications` 后，ZIP 用户可以双击该助手。它只搜索这两个
-固定位置，在存在时递归删除唯一的 `com.apple.quarantine` 属性，然后打开 PI-Desktop。
-在执行前它会校验 `CFBundleIdentifier=com.pi-desktop.app`。它不会使用 `sudo`，也不
-接受任意应用路径。标准系统位置的终端备用命令为：
+macOS ZIP 在安装包根目录包含 `PI-Desktop-macOS-opening-help.txt` 和可执行的
+`PI-Desktop-macOS-open.command`。将 `PI-Desktop.app` 移动到 `/Applications` 或
+`~/Applications` 后，ZIP 用户可以双击该助手。它只搜索这两个固定位置，在存在时递归
+删除唯一的 `com.apple.quarantine` 属性，然后打开 PI-Desktop。在执行前它会校验
+`CFBundleIdentifier=net.aiuo.pi-desktop`。它不会使用 `sudo`，也不接受任意应用路径。
+标准系统位置的终端备用命令为：
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
@@ -224,12 +221,7 @@ xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
 该助手仅适用于可信来源的未签名工件在 macOS 上提示应用已损坏的场景；已签名并公证
 的版本无需执行它。
 
-默认 macOS 打包步骤生成未签名工件。只有手动运行明确设置
-`sign_macos: true` 时，才会从 GitHub Actions 密钥接收 `CSC_LINK`、
-`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` 和
-`APPLE_TEAM_ID`，强制执行代码签名和公证，然后验证 Developer ID 权限、代码
-签名完整性、Gatekeeper 评估以及已装订的应用票据。生成的 DMG 也会在任何
-工件上传前显式装订并验证。
+标签构建和 `sign_macos: true`（手动运行的默认值）仅从 GitHub Actions 密钥接收 `CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` 和 `APPLE_TEAM_ID`，通过 `CSC_NAME=XingYu Liu (DUV63RKYTW)`（裸通用名——electron-builder 拒绝 `Developer ID Application:` 前缀）固定证书，强制代码签名与 `notarytool` 公证 `PI-Desktop.app`。随后 DMG 会由 `scripts/notarize-and-staple-macos-release-dmg.sh` 单独提交到同一个服务，只有返回 `Accepted` 才允许装订票据。之后验证身份、代码签名完整性（含 `pi-desktop-host-core`）、Gatekeeper `Notarized Developer ID` 以及两份已装订票据，再进行任何工件上传。
 
 DMG、ZIP、NSIS、AppImage、deb、rpm、块图和更新程序提要输出已
 压缩或压缩不敏感。因此，工作流程会上传它们的
@@ -255,21 +247,117 @@ https://cnb.cool/aixk/Pi-Desktop 拉取的用户使用。
 若 CNB 流水线幂等，对同一标签重跑是安全的。它不会重新构建桌面产物，
 也不会改写 electron-updater 更新源。
 
+### 4.5 GitHub Actions 中的 macOS 签名密钥
+
+在 GitHub → 仓库 `vastsa/PI-Desktop` → Settings → Secrets and variables →
+Actions 中创建下列密钥。不要把 p12、密码、Apple ID 或应用专用密码提交进仓库。
+不要在 CI 中 `echo` 这些值。
+
+| Secret | Value |
+|---|---|
+| `CSC_LINK` | 导出的 Developer ID Application `.p12`（证书+私钥）的 Base64。electron-builder 也接受文件路径，但 CI 使用 Secret 正文。 |
+| `CSC_KEY_PASSWORD` | 导出该 `.p12` 时设置的密码 |
+| `APPLE_ID` | 属于团队 `DUV63RKYTW` 的 Apple ID 邮箱 |
+| `APPLE_APP_SPECIFIC_PASSWORD` | 来自 https://appleid.apple.com → Sign-In and Security → App-Specific Passwords 的应用专用密码 |
+| `APPLE_TEAM_ID` | `DUV63RKYTW` |
+
+在本地把 p12 编成 base64（不要把输出贴到聊天或仓库）：
+
+```bash
+base64 -i developer-id-application.p12 | pbcopy
+```
+
+Linux 使用 `base64 -w0 developer-id-application.p12`。绝不能进入 git 的文件：
+`*.p12`、`*.cer`、`*.p8`、`*.mobileprovision`。
+
+### 4.6 macOS 签名可观测性与超时
+
+`electron-builder` 在开始签名前只打印一行 —— `signing
+file=release/mac-arm64/PI-Desktop.app platform=darwin type=distribution
+identityName=...` —— 之后直到该阶段结束都没有任何输出。这段时间里隐藏了三种机制，
+现在 macOS 通道把它们全部暴露出来：
+
+| 阶段位置 | 发生什么 | 现在如何可见 |
+|---|---|---|
+| 遍历 | `@electron/osx-sign` 遍历 `PI-Desktop.app/Contents`，收集所有 Mach-O 文件以及嵌套的 `.app` 与 `.framework` 包 | `DEBUG=electron-osx-sign*` 打印 `Walking... <dir>`；`scripts/macos-bundle-inventory.mjs` 在打包结束后打印同一个包的数量 |
+| 逐文件签名 | `codesign --force --sign <identity> --timestamp --entitlements ... <file>` 串行执行，最深的文件优先，应用包最后签 | `DEBUG=electron-osx-sign*` 打印 `Signing... <file>` 与 `Executing... <file> codesign ...`；codesign shim 记录每次调用的耗时。若钥匙串拒绝把私钥交给被包裹的 `codesign`，可设置 `PI_SIGNING_NO_CODESIGN_SHIM=1` 在不使用 shim 的情况下运行该阶段 |
+| 静默重试 | 一轮签名失败后最多再重试三次，退避 5s/10s/15s，且没有任何日志行 | 看门狗汇总中的 `codesign-calls` 与 `failures` 行会暴露重复的整轮签名 |
+| 应用公证 | `@electron/notarize` 打包 zip、上传并等待 Apple 队列（`mac.notarize=true`） | `DEBUG=electron-notarize*` 打印 `zipping application to`、`attempting to upload file to Apple`、`notarization success`，随后 electron-builder 打印 `notarization successful` |
+| DMG 公证 | DMG 有自己的签名，因此下一步会用 `xcrun notarytool submit --wait` 再提交一次 | 同一个看门狗让该等待过程可见并且有上限 |
+
+`scripts/macos-signing-watchdog.mjs` 包裹这两个长时间阶段。它给子进程的每一行加上
+`[sign] ` 前缀后转发，并保留子进程退出码，因此通道的失败语义不变；stdout 与 stderr 作为
+两条独立流转发，二者相对顺序可能与直接运行不同，子进程也不会获得 stdin。子进程静默时它打印心跳
+（已用时间、阶段、最后处理的文件、当前活动的 codesign 目标）；当阶段在
+`PI_SIGNING_STALL_SECONDS` 内既无输出也无 codesign 活动时，它输出一次诊断（最后处理的
+文件、签名相关进程的 `ps` 状态、codesign 日志尾部）；并在 `[sign] summary` 块中给出逐文件
+codesign 耗时 —— 调用次数、总耗时、p50、p95、最大值以及最慢的几个文件。可调项：
+
+| 设置 | 默认值 | 作用 |
+|---|---|---|
+| `PI_SIGNING_TIMEOUT_SECONDS` | 2400（CI：打包 1800，DMG 1200） | 被包裹阶段的硬上限：输出诊断、杀掉进程组，并以 124 退出而不是继续挂起 |
+| `PI_SIGNING_STALL_SECONDS` | 300 | 无 codesign 活动的静默持续这么长时间就触发一次诊断输出；阶段继续运行，因为等待 Apple 公证队列是合法等待 |
+| `PI_SIGNING_HEARTBEAT_SECONDS` | 60 | 子进程无输出时的心跳间隔 |
+| `DEBUG` | `electron-osx-sign*,electron-notarize*` | 暴露遍历、逐文件签名与公证进度的命名空间 |
+
+`DEBUG` 只列出两个会自行清洗命令行的命名空间，因为 `electron-builder` 的命名空间在这里
+并不安全：builder-util 打印每条外部命令时所用的敏感词表并不覆盖
+`security set-key-partition-list -k <p12 密码>`。在此之上，看门狗会把
+`CSC_KEY_PASSWORD`、`APPLE_APP_SPECIFIC_PASSWORD` 的取值（不限长度）、`CSC_LINK` 与
+`APPLE_ID` 的取值，以及任何 `--password` 或 `-k` 参数替换为 `[redacted]` —— 包括诊断
+输出（进程视图只打印 `comm`，绝不打印 `argv`）与汇总（只有计数与已脱敏的目标路径）。
+GitHub 本身也会屏蔽所有来自 secret 的值。
+
+在维护者机器上实测：一个 macOS arm64 包需要 93 次 `codesign` 调用（91 次签名、
+1 次校验、1 次 entitlement 显示），`codesign` 墙钟时间约 49s；其中只有 16 个文件是 Mach-O
+代码、5 个是嵌套包。`@electron/osx-sign` 还会给二进制资源签名 —— 33 个 `.pak`，以及
+`.nib`、`.dat`、`.bin`、`.png`、`.icns`、`app.asar` —— 因为它的遍历会选中所有"看起来是
+二进制"的文件，而不只是 Mach-O。用 `mac.signIgnore` 精确排除这些数据文件可以去掉约四分之三
+的调用，但这会改变发布工件所携带的内容，且需要一次真实公证发布来验证，因此这里有意不启用。
+
+`scripts/macos-signing-diagnostics.sh` 在证书导入之前记录 runner 基线：系统版本、
+`codesign --version`、钥匙串身份/列表/默认钥匙串、`xcrun --find notarytool`，以及
+`http://timestamp.apple.com/ts01` 的可达性与延迟。此时 Developer ID 身份理应不存在，
+因为 electron-builder 在打包过程中才从 `CSC_LINK` 导入；只有 `--require-identity`
+才会在缺少身份时判定失败。
+
+签名器现状：`@electron/osx-sign@1.3.3` 由 `app-builder-lib@26.15.3` 精确锁定，且没有任何
+override 作用于它。它的 `signApplication()` 对每个文件 `await` 一次 `codesign`；没有批量或
+并行路径，也没有任何选项或环境变量可以开启并发。因此更快的签名器只能通过 `mac.sign`
+替换钩子实现，那是重写而不是配置开关；所以该通道继续使用锁定的签名器并保留上述诊断。
+
 ## 5. 验证门
 
-对于默认未签名的 macOS 通道，不要将工件视为通过 Gatekeeper 资格验证；
-以下签名和装订检查仅适用于明确设置 `sign_macos: true` 的运行。
+未签名调试产物（`workflow_dispatch` 且 `sign_macos: false`）不视为通过 Gatekeeper。标签发布必须通过以下签名、公证和装订检查，否则工作流失败。
 
-每次发布版本后运行：
+存在两次独立的公证提交，因为 Apple 每次公证一个工件，而 electron-builder 只覆盖应用：
+
+| 工件 | 提交方 | 票据 |
+|---|---|---|
+| `PI-Desktop.app`（ZIP 内） | electron-builder `-c.mac.notarize=true` | 由 electron-builder 装订 |
+| `PI-Desktop-<version>-<arch>.dmg` | `scripts/notarize-and-staple-macos-release-dmg.sh`（`notarytool submit --wait`） | 同一脚本在 `status: Accepted` 后装订 |
+
+从未提交过的 DMG 没有票据，因此装订会失败并报 `Could not find base64 encoded ticket ... Error 65`。只有在 Apple 返回 `Accepted` 之后才允许重试装订。
+
+每次已签名发布后运行：
 
 ```bash
 for APP in apps/desktop/release/mac-*/PI-Desktop.app; do
-  codesign -dv --verbose=2 "$APP"          # identity + hardened runtime flags
-  codesign --verify --deep --strict "$APP" # signature integrity
-  spctl -a -vv "$APP"                      # Gatekeeper assessment (notarized Developer ID)
-  xcrun stapler validate "$APP"             # notarization staple
+  codesign -dv --verbose=4 "$APP"
+  codesign --verify --deep --strict --verbose=2 "$APP"
+  spctl --assess --type execute --verbose=4 "$APP"
+  xcrun stapler validate "$APP"
 done
 xcrun stapler validate apps/desktop/release/*.dmg
+
+当提交未被接受时，Release 工作流会自动打印 Apple 公证日志；手动查看方式：
+
+```bash
+xcrun notarytool log <submission-id> \
+  --apple-id "$APPLE_ID" \
+  --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+  --team-id "$APPLE_TEAM_ID"
+```
 ```
 
 ### 5.1 安装包体积门禁
@@ -344,10 +432,29 @@ Electron 目标布局。
 | CSS | 0.42 MiB | 0.35 MiB |
 | **`out/renderer` 合计** | **31 MiB** | **24 MiB** |
 
-余下体积主要来自两款随包 CJK 字体（`lxgw-wenkai.woff2` 7.6 MiB、
-`noto-sans-sc.woff2` 7.4 MiB）。它们故意不做子集化：ADR 0083 §2 在每个字体栈
-末尾追加 `Noto Sans SC`，以保证中文在离线状态下依然可读，而子集化会丢掉用户
-提供内容中的字形。压缩它们需要修订 ADR，而不是改构建配置。
+渲染器不再产出任何应用字体面。D598 / ADR 0298 移除了四款内置字体（Geist、
+Inter、Noto Sans SC、LXGW WenKai），因此 `out/renderer` 中只剩 KaTeX 的数学
+字形 `woff2`。以下为本机实测，两次均在干净的 `pnpm install --frozen-lockfile`
+之后构建：
+
+| 渲染器分组 | 含内置字体 | 移除后（D598） |
+|---|---:|---:|
+| JavaScript（121 个 chunk） | 9.04 MiB | 9.04 MiB |
+| `woff2`（23 → 19 个文件） | 15.71 MiB | 0.24 MiB |
+| CSS（1 个文件） | 0.48 MiB | 0.48 MiB |
+| PNG 品牌资源（4 个文件） | 0.08 MiB | 0.08 MiB |
+| GIF（2 个文件） | 0.05 MiB | 0.05 MiB |
+| **`out/renderer` 合计**（152 → 148 个文件） | **25.36 MiB** | **9.89 MiB** |
+
+差异完全来自被删除的四个字体面，以下为构建报告的实际大小：
+`lxgw-wenkai.woff2` 8,016.75 kB、`noto-sans-sc.woff2` 7,782.07 kB、
+`inter.woff2` 352.24 kB、`geist.woff2` 69.65 kB，合计 16,220.71 kB，
+即合计体积下降的全部 15.47 MiB。中文现在由系统字体层
+（`PingFang SC`、`Hiragino Sans GB`、`Microsoft YaHei`）渲染，因此不存在因
+子集化而丢失字形的问题：根本不再随包发布字体面。
+开启，旧 `woff`/`truetype` 剔除仍然保留，因为 KaTeX 仍会声明这些来源。
+
+上表是三控件的 `v0.10.8` 记录，早于本次移除，其 `woff2` 行已不再反映现状。
 
 在干净的轮廓上手动烟雾 (`PI_DESKTOP_DATA_DIR=$(mktemp -d)`)：
 
@@ -426,10 +533,6 @@ electron PI-Desktop-<version>-linux-x64.asar
 
 ## 7. 已知限制
 
-- macOS、Linux deb/rpm 和 Windows 便携版 exe 仍保持通知和链接更新模式。
-- Linux x64 包在 Ubuntu 22.04 上构建，因此 host-core 需要 glibc 2.35 或更高
-  版本（Ubuntu 22.04、Debian 12、Fedora 36+）。标签作业运行
-  `scripts/check-linux-host-glibc.mjs`，拒绝需要更新 glibc 的二进制文件。
-- 应用内 macOS 交付、回滚、分阶段部署和预发布渠道政策仍保持公开发布工作。
-  GitHub Release 的 macOS 工件默认未签名；只有手动运行并明确设置
-  `sign_macos: true` 时，才会在发布前完成 Developer ID 签名、公证和装订。
+- Linux deb/rpm 和 Windows 便携版 exe 仍保持通知和链接更新模式。打包的 macOS、Windows NSIS 和 Linux AppImage 使用应用内 `electron-updater`。
+- Linux x64 包在 Ubuntu 22.04 上构建，因此 host-core 需要 glibc 2.35 或更高版本（Ubuntu 22.04、Debian 12、Fedora 36+）。标签作业运行 `scripts/check-linux-host-glibc.mjs`，拒绝需要更新 glibc 的二进制文件。
+- 回滚、分阶段部署和预发布渠道政策仍是开放的发布工作。现有未签名 macOS 安装可能需要先手动安装一次已签名 DMG，之后应用内更新才能成功。

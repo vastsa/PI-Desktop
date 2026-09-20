@@ -56,7 +56,7 @@ test("the template channel travels the same path as loadDev", () => {
   );
 });
 
-test("main validates the template and loads what it scaffolds", () => {
+test("main validates the template and asks before loading what it scaffolds", () => {
   const handler = mainSrc.slice(
     mainSrc.indexOf("IPC.invoke.pluginCreateFromTemplate"),
     mainSrc.indexOf("IPC.invoke.pluginInstallFromPath"),
@@ -65,16 +65,13 @@ test("main validates the template and loads what it scaffolds", () => {
   assert.match(handler, /isTemplateName\(template\)/);
   assert.match(handler, /properties: \["openDirectory", "createDirectory"\]/);
   assert.match(handler, /return \{ canceled: true \}/);
-  // Scaffold, then register as a dev plugin so the first edit is a hot reload.
-  assert.ok(
-    handler.indexOf("scaffold({ dir, template })") <
-      handler.indexOf('host.call<{ plugin: any }>("plugins.loadDev"'),
-  );
-  assert.match(
-    handler,
-    /plugins\.loadFromPath\(dir, loaded\.plugin\?\.permissions \?\? \[\], \{\s*development: true,\s*\}\)/,
-  );
-  assert.match(handler, /plugins\.drainToasts\(\)/);
+  // Scaffolding writes files and nothing else: registering the plugin is the
+  // reviewed load, the same one a hand-picked folder goes through.
+  assert.match(handler, /const created = await scaffold\(\{ dir, template \}\)/);
+  assert.match(handler, /review: reviewFor\(dir, "load"\)/);
+  assert.doesNotMatch(handler, /plugins\.loadDev"/);
+  assert.doesNotMatch(handler, /loadFromPath/);
+  assert.doesNotMatch(handler, /watchDevPlugin/);
 });
 
 test("the renderer template list mirrors the devkit catalogue", () => {
@@ -103,8 +100,6 @@ test("the template action is reachable from the menu and the empty state", () =>
   for (const key of [
     "newFromTemplate",
     "newFromTemplateTitle",
-    "newFromTemplateBody",
-    "newFromTemplateHint",
     "newFromTemplateCreate",
     "newFromTemplateCreating",
     "newFromTemplateDone",
@@ -121,18 +116,24 @@ test("the scaffolded folder is opened as the project", () => {
     pageSrc.indexOf("const createFromTemplate ="),
     pageSrc.indexOf("const checkUpdates ="),
   );
-  // Loading the plugin is not enough: development needs the folder open, which
-  // is what activateProject does (workspace.set plus a switch to chat).
-  assert.match(create, /await activateProject\(created\.dir\)/);
+  // Opening the folder is independent of the grant: the sources land in the
+  // workspace whether the review is accepted or dismissed.
+  assert.match(create, /await activateTemplateProject\(created\)/);
   assert.match(pageSrc, /const activateProject = useAppStore\(\(s\) => s\.activateProject\)/);
-  // The success toast tells the truth about whether the folder actually opened.
-  assert.ok(
-    create.indexOf("activateProject(created.dir)") <
-      create.indexOf("plugins.newFromTemplateOpened"),
+  assert.match(pageSrc, /const activateTemplateProject = async \(created: \{ dir\?: string \}\)/);
+  assert.match(pageSrc, /created\.dir \? await activateProject\(created\.dir\) : null/);
+  // A folder that refuses to open must not erase the created result.
+  assert.match(pageSrc, /return e;/);
+  // The toast is emitted by the shared finisher, and it tells the truth about
+  // whether the folder actually opened.
+  const finish = pageSrc.slice(
+    pageSrc.indexOf("const finishTemplate = async"),
+    pageSrc.indexOf("const confirmReview = async"),
   );
-  assert.match(create, /plugins\.newFromTemplateOpened[\s\S]*plugins\.newFromTemplateDone/);
-  // A folder that refuses to open must not erase the created-and-loaded result.
-  assert.match(create, /openError = e/);
+  assert.match(finish, /plugins\.newFromTemplateOpened[\s\S]*plugins\.newFromTemplateDone/);
+  assert.match(finish, /if \(opened instanceof Error\) \{/);
+  // A review holds the load, so the finisher runs only after the answer.
+  assert.match(create, /if \(created\.review\) \{[\s\S]*setPendingReview\(created\.review\)/);
 });
 
 test("a canceled folder picker is not reported as a success", () => {

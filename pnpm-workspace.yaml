@@ -12,6 +12,7 @@ allowBuilds:
   '@google/genai': true
   protobufjs: true
   electron-winstaller: true
+  node-pty: true
 # Advisory fixes for transitives whose parents still resolve the vulnerable
 # version. Drop each one once its parent ships a release that resolves the
 # patched version on its own.
@@ -43,4 +44,5 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.85.1'
   - '@earendil-works/pi-telemetry@0.85.1'
 patchedDependencies:
+  '@earendil-works/pi-agent-core@0.85.1': patches/@earendil-works__pi-agent-core@0.85.1.patch
   '@earendil-works/pi-ai@0.85.1': patches/@earendil-works__pi-ai@0.85.1.patch

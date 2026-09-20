@@ -43,9 +43,9 @@ test("plugin themes join the same searchable list after the built-ins", () => {
   assert.match(rowSource, /showDivider/);
 });
 
-test("the theme trigger fills the settings control column without a native field chrome", () => {
-  assert.match(styles, pickerRule("\\.settings-theme-anchor", "width:\\s*100%;"));
-  assert.match(styles, pickerRule("\\.settings-theme-trigger", "width:\\s*100%;"));
+test("the theme trigger hugs the current label without a native field chrome", () => {
+  assert.match(styles, pickerRule("\\.settings-theme-anchor", "width:\\s*max-content;"));
+  assert.match(styles, pickerRule("\\.settings-theme-trigger", "width:\\s*max-content;"));
   assert.match(styles, pickerRule("\\.settings-theme-search input", "outline:\\s*none;"));
   assert.match(styles, pickerRule("\\.settings-theme-search input", "padding:\\s*0;"));
 });

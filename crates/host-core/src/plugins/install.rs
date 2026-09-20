@@ -135,6 +135,7 @@ impl PluginManager {
                 ui: manifest.ui.clone(),
                 fs: manifest.fs.clone(),
                 settings: derive_settings(&manifest),
+                i18n: manifest.i18n.clone(),
             };
             let plugin = self.upsert_summary(summary)?;
             Ok(InstallResult {
@@ -164,11 +165,39 @@ impl PluginManager {
         auto_update: bool,
         granted_permissions: Option<Vec<String>>,
     ) -> Result<InstallResult> {
+        let mut observer = NoProgress;
+        self.install_from_market_observed(
+            plugin_id,
+            version,
+            enable,
+            auto_update,
+            granted_permissions,
+            &mut observer,
+        )
+    }
+
+    /// Install a marketplace plugin, reporting what it is doing.
+    ///
+    /// The observer sees every phase the install passes through and decides how
+    /// often to tell anyone: it is called for each chunk of bytes that lands and
+    /// again whenever the phase changes.
+    pub fn install_from_market_observed(
+        &mut self,
+        plugin_id: &str,
+        version: Option<&str>,
+        enable: bool,
+        auto_update: bool,
+        granted_permissions: Option<Vec<String>>,
+        observer: &mut dyn InstallObserver,
+    ) -> Result<InstallResult> {
         let info = self.market_download_info(plugin_id, version)?;
-        let package_path = self.download_market_package(&info)?;
+        let mut report = DownloadReport::new(observer, &info.plugin_id, &info.version);
+        let (package_path, shasum) = self.fetch_market_package(&info, &mut report)?;
         let marketplace = PluginMarketplaceMeta {
-            provider_id: "official".into(),
-            shasum: Some(info.shasum.clone()),
+            // The channel the bytes actually came from, so an installed row can
+            // be told apart from one installed through another source.
+            provider_id: self.channel().as_str().into(),
+            shasum: Some(shasum.clone()),
             // Record the publisher the catalog named. Falling back to the
             // project keeps registries written before publisher-owned sources
             // readable, but a v2 entry must not be relabelled as ours.
@@ -180,18 +209,29 @@ impl PluginManager {
             trust: info.trust.clone(),
             provenance: info.provenance.clone(),
         };
+        // The last safe point: after this the package is being written into the
+        // plugin directory, and stopping half way is worse than finishing.
+        if report.cancelled() {
+            return Err(report.failed(Vec::new(), anyhow!(super::progress::CANCELLED)));
+        }
+        report.phase(InstallPhase::Install);
         let result = self.install_from_path(
             &package_path.to_string_lossy(),
             InstallOptions {
                 source: "marketplace".into(),
                 enable,
                 marketplace: Some(marketplace),
-                expected_shasum: Some(info.shasum),
+                expected_shasum: Some(shasum),
                 auto_update,
                 granted_permissions,
             },
         );
         let _ = fs::remove_file(package_path);
+        if result.is_ok() {
+            // The last thing an install does is make the plugin live; the
+            // caller loads the renderer side of it after this returns.
+            report.phase(InstallPhase::Enable);
+        }
         result
     }
 
@@ -244,7 +284,133 @@ impl PluginManager {
         Ok(results)
     }
 
-    fn download_market_package(&self, info: &MarketDownloadInfo) -> Result<PathBuf> {
+    /// Fetch the package an install needs, through the channel's own path.
+    ///
+    /// Answers with the file it wrote and the digest it verified. The failure
+    /// that ends the install is reported here, exactly once, so a surface
+    /// showing progress always learns how the install finished.
+    fn fetch_market_package(
+        &self,
+        info: &MarketDownloadInfo,
+        report: &mut DownloadReport<'_>,
+    ) -> Result<(PathBuf, String)> {
+        let mut tried: Vec<TriedMirror> = Vec::new();
+        if self.uses_download_resolve() {
+            report.phase(InstallPhase::Resolve);
+            match self.download_market_package_via_resolve(info, report, &mut tried) {
+                Ok(fetched) => return Ok(fetched),
+                // A refusal is an answer, and so is a cancellation: install
+                // nothing, fall back to nothing, and say why.
+                Err(error)
+                    if !super::resolve::is_recoverable(&error)
+                        || super::progress::is_cancelled(&error) =>
+                {
+                    return Err(report.failed(tried, error))
+                }
+                Err(error) => tracing::warn!(
+                    plugin = %info.plugin_id,
+                    version = %info.version,
+                    %error,
+                    "the plugin center did not answer; using the catalog url"
+                ),
+            }
+        }
+        // The catalog's own URL, which is also the documented fallback for a
+        // platform that cannot be reached.
+        report.mirror(None, 0, 0);
+        match self.download_market_package(info, &info.url, &info.shasum, info.size_bytes, report) {
+            Ok(path) => Ok((path, info.shasum.clone())),
+            Err(error) => Err(report.failed(tried, error)),
+        }
+    }
+
+    /// Download through the plugin center's resolve interface.
+    ///
+    /// Every mirror the platform lists is tried in the order it gave: they are
+    /// different hosts, and one can be unreachable, rate limited, or holding
+    /// different bytes under the same version — which the digest catches before
+    /// anything is extracted. The mirrors that failed are recorded in `tried`,
+    /// which the terminal report carries so the surface can list what was
+    /// attempted.
+    fn download_market_package_via_resolve(
+        &self,
+        info: &MarketDownloadInfo,
+        report: &mut DownloadReport<'_>,
+        tried: &mut Vec<TriedMirror>,
+    ) -> Result<(PathBuf, String)> {
+        let catalog_url = self.market_source_url();
+        let device_id = super::device::device_id(&self.data_dir);
+        let resolved =
+            super::resolve::request(&catalog_url, &device_id, &info.plugin_id, &info.version)?;
+        let expected = resolved.sha256.trim().to_ascii_lowercase();
+        let attempts = resolved.downloads.len() as u32;
+        let mut last_error: Option<anyhow::Error> = None;
+        for (index, mirror) in resolved.downloads.iter().enumerate() {
+            if report.cancelled() {
+                return Err(anyhow!(super::progress::CANCELLED));
+            }
+            let url = mirror.url.trim();
+            if url.is_empty() {
+                continue;
+            }
+            // Resolve mirrors are hosts the platform named, not local catalog
+            // fixtures: file:// and bare paths skip the allowlist on the
+            // backup path and must not do so here.
+            if let Err(error) = super::package_host_allowed(url, &catalog_url) {
+                tracing::warn!(
+                    source = %mirror.source,
+                    %url,
+                    %error,
+                    "this mirror is not an allowed package host"
+                );
+                tried.push(TriedMirror {
+                    source: mirror.source.clone(),
+                    url: url.to_string(),
+                    error: Some(error.to_string()),
+                });
+                last_error = Some(error);
+                continue;
+            }
+            report.mirror(Some(&mirror.source), index as u32 + 1, attempts);
+            match self.download_market_package(info, url, &expected, resolved.size_bytes, report) {
+                Ok(path) => return Ok((path, expected)),
+                Err(error) => {
+                    tracing::warn!(
+                        source = %mirror.source,
+                        %url,
+                        %error,
+                        "this mirror did not serve the package"
+                    );
+                    // A cancellation is not a mirror's fault: stop asking.
+                    if super::progress::is_cancelled(&error) {
+                        return Err(error);
+                    }
+                    tried.push(TriedMirror {
+                        source: mirror.source.clone(),
+                        url: url.to_string(),
+                        error: Some(error.to_string()),
+                    });
+                    last_error = Some(error);
+                }
+            }
+        }
+        Err(last_error.unwrap_or_else(|| {
+            anyhow!("PLUGIN_MARKET_NO_SOURCE: the plugin center listed no usable mirror")
+        }))
+    }
+
+    /// Download one package URL, verify it, and leave it in the cache.
+    fn download_market_package(
+        &self,
+        info: &MarketDownloadInfo,
+        url: &str,
+        expected_shasum: &str,
+        expected_size: u64,
+        report: &mut DownloadReport<'_>,
+    ) -> Result<PathBuf> {
+        if report.cancelled() {
+            bail!("{}", super::progress::CANCELLED);
+        }
         let cache = self.data_dir.join("plugins/cache/download").join(format!(
             "{}-{}.piplug",
             sanitize_id(&info.plugin_id),
@@ -253,23 +419,41 @@ impl PluginManager {
         if let Some(parent) = cache.parent() {
             fs::create_dir_all(parent)?;
         }
-        let bytes = if let Some(path) = info.url.strip_prefix("file://") {
-            fs::read(path).with_context(|| format!("read market package {path}"))?
-        } else if info.url.starts_with("http://") || info.url.starts_with("https://") {
+        let bytes = if let Some(path) = url.strip_prefix("file://") {
+            let bytes = fs::read(path).with_context(|| format!("read market package {path}"))?;
+            report.bytes(bytes.len() as u64, expected_size.max(bytes.len() as u64));
+            bytes
+        } else if url.starts_with("http://") || url.starts_with("https://") {
             // Refuse an off-allowlist host before any request leaves the
             // machine, then hold the redirect chain to the same rule.
             let catalog_url = self.market_source_url();
-            package_host_allowed(&info.url, &catalog_url)?;
-            download_url_guarded(&info.url, Some(&catalog_url))?
+            package_host_allowed(url, &catalog_url)?;
+            download_url_observed(url, Some(&catalog_url), expected_size, report)?
         } else {
             // Allow bare local paths in catalogs.
-            fs::read(&info.url).with_context(|| format!("read market package {}", info.url))?
+            let bytes = fs::read(url).with_context(|| format!("read market package {url}"))?;
+            report.bytes(bytes.len() as u64, expected_size.max(bytes.len() as u64));
+            bytes
         };
+        // A cancellation that arrived while the bytes were being read still
+        // stops before anything is verified or written.
+        if report.cancelled() {
+            bail!("{}", super::progress::CANCELLED);
+        }
+        report.phase(InstallPhase::Verify);
         if bytes.len() as u64 > MAX_PACKAGE_BYTES {
             bail!("PLUGIN_INVALID: package exceeds 50MB limit");
         }
+        // A size the platform stated is a sanity check that costs nothing and
+        // catches a mirror serving an unrelated file before the digest does.
+        if expected_size > 0 && bytes.len() as u64 != expected_size {
+            bail!(
+                "PLUGIN_INTEGRITY: package is {} bytes, {expected_size} were announced",
+                bytes.len()
+            );
+        }
         let actual = sha256_hex(&bytes);
-        if !actual.eq_ignore_ascii_case(&info.shasum) {
+        if !actual.eq_ignore_ascii_case(expected_shasum) {
             bail!("PLUGIN_INTEGRITY: checksum mismatch");
         }
         fs::write(&cache, &bytes)?;
@@ -503,7 +687,7 @@ pub(crate) fn decode_windows_code_page(bytes: &[u8], code_page: u32) -> Option<S
 ///
 /// curl writes the body to a file so stdout can carry only the effective URL;
 /// mixing them would corrupt a binary package.
-fn download_scratch_path() -> PathBuf {
+pub(crate) fn download_scratch_path() -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let seq = COUNTER.fetch_add(1, AtomicOrdering::Relaxed);
     let nanos = SystemTime::now()
@@ -525,12 +709,35 @@ fn download_scratch_path() -> PathBuf {
 /// own: redirects are restricted to HTTPS and the effective URL is re-checked
 /// under the same rule before the bytes are accepted.
 pub(crate) fn download_url_guarded(url: &str, package_guard: Option<&str>) -> Result<Vec<u8>> {
+    let mut observer = NoProgress;
+    let mut report = DownloadReport::new(&mut observer, "", "");
+    download_url_observed(url, package_guard, 0, &mut report)
+}
+
+/// Fetch a URL while reporting the bytes that arrive, and stop when asked to.
+///
+/// Same contract as [`download_url_guarded`]. `total_bytes` is what the catalog
+/// or the platform announced for the package, and `0` means nothing announced
+/// one — a surface reads that as an indeterminate transfer. The transfer is a
+/// child process, so progress is the size of the file curl has written so far,
+/// which is exactly what watching the disk would show.
+pub(crate) fn download_url_observed(
+    url: &str,
+    package_guard: Option<&str>,
+    total_bytes: u64,
+    report: &mut DownloadReport<'_>,
+) -> Result<Vec<u8>> {
     if let Some(path) = url.strip_prefix("file://") {
-        return fs::read(path).with_context(|| format!("read local url {path}"));
+        let bytes = fs::read(path).with_context(|| format!("read local url {path}"))?;
+        report.bytes(bytes.len() as u64, total_bytes.max(bytes.len() as u64));
+        return Ok(bytes);
+    }
+    if report.cancelled() {
+        bail!("{}", super::progress::CANCELLED);
     }
 
     // Prefer curl for robust HTTPS support on developer and CI machines.
-    let scratch = package_guard.map(|_| download_scratch_path());
+    let scratch = download_scratch_path();
     let max_filesize = MAX_PACKAGE_BYTES.to_string();
     let mut args: Vec<String> = vec![
         "--silent".into(),
@@ -555,42 +762,63 @@ pub(crate) fn download_url_guarded(url: &str, package_guard: Option<&str>) -> Re
         args.push("--proto-redir".into());
         args.push("=https".into());
     }
-    if let Some(scratch) = scratch.as_ref() {
-        args.push("--output".into());
-        args.push(scratch.to_string_lossy().into_owned());
-        args.push("--write-out".into());
-        args.push("%{url_effective}".into());
-    }
+    args.push("--output".into());
+    args.push(scratch.to_string_lossy().into_owned());
+    args.push("--write-out".into());
+    args.push("%{url_effective}".into());
     args.push(url.to_string());
 
-    let outcome = std::process::Command::new("curl").args(&args).output();
-    if let Ok(output) = outcome {
-        if output.status.success() {
-            let body = match scratch.as_ref() {
-                Some(scratch) => {
-                    let effective = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    let guard_result = match package_guard {
-                        Some(catalog_url) if !effective.is_empty() => {
-                            package_host_allowed(&effective, catalog_url)
-                        }
-                        _ => Ok(()),
-                    };
-                    let body = guard_result.and_then(|()| {
-                        fs::read(scratch).with_context(|| format!("read download {url}"))
-                    });
-                    let _ = fs::remove_file(scratch);
-                    body?
+    let spawned = std::process::Command::new("curl")
+        .args(&args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+    if let Ok(mut child) = spawned {
+        // Watch what curl writes until it exits. This loop is also where a
+        // cancellation lands: killing the transfer and dropping the partial
+        // file is the whole of "stop the download".
+        loop {
+            if report.cancelled() {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_file(&scratch);
+                bail!("{}", super::progress::CANCELLED);
+            }
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) => {
+                    let received = fs::metadata(&scratch).map(|meta| meta.len()).unwrap_or(0);
+                    report.bytes(received, total_bytes);
+                    std::thread::sleep(Duration::from_millis(120));
                 }
-                None => output.stdout,
+                Err(error) => {
+                    let _ = fs::remove_file(&scratch);
+                    bail!("PLUGIN_NETWORK: curl failed for {url}: {error}");
+                }
+            }
+        }
+        let output = child
+            .wait_with_output()
+            .with_context(|| format!("collect download {url}"))?;
+        if output.status.success() {
+            let effective = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let guard_result = match package_guard {
+                Some(catalog_url) if !effective.is_empty() => {
+                    package_host_allowed(&effective, catalog_url)
+                }
+                _ => Ok(()),
             };
+            let body = guard_result
+                .and_then(|()| fs::read(&scratch).with_context(|| format!("read download {url}")));
+            let _ = fs::remove_file(&scratch);
+            let body = body?;
             if body.len() as u64 > MAX_PACKAGE_BYTES {
                 bail!("PLUGIN_INVALID: package exceeds 50MB limit");
             }
+            report.bytes(body.len() as u64, total_bytes.max(body.len() as u64));
             return Ok(body);
         }
-        if let Some(scratch) = scratch.as_ref() {
-            let _ = fs::remove_file(scratch);
-        }
+        let _ = fs::remove_file(&scratch);
         let err = decode_curl_output(&output.stderr);
         // Fall through to raw HTTP only for http:// URLs.
         if url.starts_with("https://") {
@@ -631,6 +859,7 @@ pub(crate) fn download_url_guarded(url: &str, package_guard: Option<&str>) -> Re
         if body.len() as u64 > MAX_PACKAGE_BYTES {
             bail!("PLUGIN_INVALID: package exceeds 50MB limit");
         }
+        report.bytes(body.len() as u64, total_bytes.max(body.len() as u64));
         return Ok(body);
     }
 

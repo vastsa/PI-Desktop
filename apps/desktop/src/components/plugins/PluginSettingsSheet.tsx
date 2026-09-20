@@ -15,8 +15,9 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { Button, TooltipButton, cx, Input, Select, Textarea } from "../ui";
+import { Button, HelpIcon, TooltipButton, cx, Input, Textarea } from "../ui";
 import { IconKeyboard, IconSettings, IconX } from "../icons";
+import { SettingsMenuSelect } from "../settings/SettingsMenuSelect";
 
 type Props = {
   plugin: PluginSummary;
@@ -181,11 +182,13 @@ export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Prop
                 <div className="plugins-setting-copy">
                   <div className="plugins-setting-title">
                     {isShortcut ? <IconKeyboard size={14} aria-hidden="true" /> : null}
-                    <span>{setting.title}</span>
+                    <span>
+                      {setting.title}
+                      {/* The plugin's own blurb about the field; a setting that
+                          declares none leaves no mark. */}
+                      {setting.description ? <HelpIcon label={setting.description} /> : null}
+                    </span>
                   </div>
-                  {setting.description ? (
-                    <p className="plugins-setting-description">{setting.description}</p>
-                  ) : null}
                   {isShortcut ? (
                     <span className="plugins-setting-scope">{t("plugins.settingsPluginScope")}</span>
                   ) : null}
@@ -211,17 +214,18 @@ export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Prop
                       <span className="settings-toggle-thumb" />
                     </button>
                   ) : setting.type === "select" ? (
-                    <Select
+                    <SettingsMenuSelect
+                      label={setting.title}
                       value={String((setting.enum ?? []).findIndex((option) => Object.is(option.value, value)))}
-                      onChange={(event) => {
-                        const option = setting.enum?.[Number(event.target.value)];
+                      onChange={(id) => {
+                        const option = setting.enum?.[Number(id)];
                         if (option) setValue(setting.key, option.value);
                       }}
-                    >
-                      {(setting.enum ?? []).map((option, index) => (
-                        <option key={`${setting.key}-${index}`} value={index}>{option.label}</option>
-                      ))}
-                    </Select>
+                      options={(setting.enum ?? []).map((option, index) => ({
+                        id: String(index),
+                        label: option.label,
+                      }))}
+                    />
                   ) : setting.type === "json" ? (
                     <Textarea
                       className="plugins-setting-json"

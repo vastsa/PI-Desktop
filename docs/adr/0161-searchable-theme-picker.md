@@ -17,9 +17,9 @@ same growing-list problem.
 ## Decision
 
 1. Theme is a searchable picker row, same anchored-menu pattern as
-   Language: the trigger fills the settings control column, the menu
-   portals so the settings card cannot clip it, and search filters the
-   list.
+   Language: the closed trigger sizes to the current label, capped by the
+   settings control column, the menu portals so the settings card cannot clip
+   it, and search filters the list.
 2. Built-in System, Light, and Dark stay pinned at the top. Plugin
    themes follow after a divider, with the existing "Provided by …"
    hint. Search matches labels, descriptions, ids, and plugin ids.

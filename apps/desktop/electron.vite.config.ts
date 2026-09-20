@@ -44,6 +44,16 @@ function dropLegacyFontFallbacks(): Plugin {
 
 export default defineConfig({
   main: {
+    // `ws` loads its optional native accelerators (bufferutil, utf-8-validate)
+    // inside `require` + try/catch and falls back to its own JavaScript
+    // implementation when they are absent. A bundle cannot fail a require, and
+    // Vite turns the unresolved optional peer into a module-level throw that
+    // kills the whole Main bundle before the app starts, so state the documented
+    // "no native accelerator" input to that branch at build time instead.
+    define: {
+      "process.env.WS_NO_BUFFER_UTIL": "\"1\"",
+      "process.env.WS_NO_UTF_8_VALIDATE": "\"1\"",
+    },
     build: {
       rollupOptions: {
         // Bundle JS workspace packages into Main. Only runtime modules that

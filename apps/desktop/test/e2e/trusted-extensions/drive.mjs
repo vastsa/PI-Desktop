@@ -83,7 +83,7 @@ check("Bash blocked by extension", JSON.stringify(bashRow ?? {}).includes("E2E b
 // 3) plugin rows carry the agent-extension state and diagnostics (E2E-241 / 244)
 const listed = await invoke("plugin/list");
 const byName = Object.fromEntries((listed.plugins ?? []).filter((p) => p.id.startsWith("e2e.")).map((p) => [p.id.slice(4), p]));
-check("six fixture plugins listed", Object.keys(byName).length === 6, Object.keys(byName).sort().join(","));
+check("seven fixture plugins listed", Object.keys(byName).length === 7, Object.keys(byName).sort().join(","));
 check("plugins carry the agentExtension capability and permission", Object.values(byName).every((p) => (p.capabilities ?? []).includes("agentExtension") && (p.permissions ?? []).includes("agent.extension")));
 const ax = (n) => byName[n]?.agentExtension;
 check("fx loaded with tool + no diagnostics", ax("fx")?.state === "loaded" && ax("fx")?.toolNames?.includes("fx_add") && ax("fx")?.diagnostics?.length === 0, JSON.stringify(ax("fx")));
@@ -92,6 +92,14 @@ check("bad in error with load_error", ax("bad")?.state === "error" && ax("bad")?
 const tuiKinds = (ax("tui")?.diagnostics ?? []).map((d) => `${d.kind}:${d.member}`).sort();
 check("tui inert with diagnostics", ax("tui")?.state === "loaded" && tuiKinds.includes("stub_symbol:Text") && tuiKinds.includes("unsupported_api:registerShortcut") && tuiKinds.includes("unsupported_api:ui.setWidget"), tuiKinds.join(","));
 check("proj plugin is project scoped and registered its tool", byName.proj?.scope?.mode === "projects" && ax("proj")?.state === "loaded" && ax("proj")?.toolNames?.includes("proj_tool"), JSON.stringify([byName.proj?.scope, ax("proj")?.toolNames]));
+// A custom agent registered through registerAgent / registerProvider reaches the
+// plugin row, and a contributed provider becomes an owned native row (ADR 0259).
+check("agent plugin reports its custom agents on the row", (ax("agent")?.agentNames ?? []).sort().join(",") === "cc-alias,commandcode", JSON.stringify([ax("agent")?.agentNames, ax("agent")?.state]));
+const providerList = await invoke("providers/list");
+const declaredRow = (providerList.providers ?? []).find((p) => p.id === "plugin:e2e.agent:declared");
+check("contributed provider is a row owned by its plugin", declaredRow?.ownerPluginId === "e2e.agent", JSON.stringify([declaredRow?.id, declaredRow?.ownerPluginId, declaredRow?.name]));
+check("the declared row carries the plugin's endpoint and models", declaredRow?.baseUrl?.endsWith("/v1") === true && (declaredRow?.models ?? []).some((m) => m.id === "stub-1"), JSON.stringify([declaredRow?.baseUrl, declaredRow?.models?.map((m) => m.id)]));
+check("other plugins keep no owned provider rows", (providerList.providers ?? []).every((p) => !p.ownerPluginId || p.ownerPluginId === "e2e.agent"));
 
 // 4) commands in palette/composer (E2E-243)
 const palette = await invoke("commandPalette/search", "greet");
@@ -170,6 +178,48 @@ for (let i = 0; i < 60 && !queuedSeen; i++) {
   if (idx >= 0 && ms.slice(idx).some((m) => m.role === "assistant" && /Sum is 42/.test(m.content ?? ""))) queuedSeen = true;
 }
 check("queued user message ran as a turn with the extension tool", queuedSeen);
+
+// 8) plugin-owned model transport: registerAgent + registerProvider + setModel
+//    (spec 07-plugins/16 §5, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding)
+const agentHooks = () => readFileSync(join(root, "hooks.log"), "utf8").split("\n");
+const lastLine = (prefix) => [...agentHooks()].reverse().find((l) => l.startsWith(prefix)) ?? "";
+
+const agentRun = await invoke("extensions/commands/run", { sessionId, name: "agent_model", args: "" });
+check("agent_model command ran", agentRun?.ok === true, JSON.stringify(agentRun));
+const registryLine = agentHooks().find((l) => l.startsWith("agent_model registry=")) ?? "";
+check(
+  "modelRegistry exposes both plugin agents to the extension",
+  registryLine.includes("extension-agent:") && registryLine.includes("/cc-1") && registryLine.includes("/cc-alias-1"),
+  registryLine,
+);
+// The registry is a redacted projection: models and auth availability only.
+check("modelRegistry exposes no host credential material", lastLine("agent_model registryLeaks=").endsWith("=none"), lastLine("agent_model registryLeaks="));
+check("modelRegistry reports auth availability without a secret", /authStatus=\{.*"configured":true.*\}/.test(lastLine("agent_model authStatus=")) && !lastLine("agent_model authStatus=").includes("sk-"), lastLine("agent_model authStatus="));
+const setModelLine = lastLine("agent_model setModel=");
+check("idle setModel returns true and names the plugin provider", /setModel=true model=cc-1 provider=extension-agent:/.test(setModelLine), setModelLine);
+const bound = await tool("pi_session_get", { id: sessionId });
+const boundProvider = bound?.session?.providerId ?? "";
+check("the session binding is persisted under the extension-agent id", boundProvider.startsWith("extension-agent:") && bound?.session?.modelId === "cc-1", JSON.stringify([boundProvider, bound?.session?.modelId]));
+
+// The next turn must reload the extension and run through the plugin's own
+// transport instead of a host adapter.
+await tool("pi_agent_prompt", { sessionId, content: "say hi through your own transport" });
+await waitForTurn(sessionId);
+const pluginTurn = await tool("pi_session_get", { id: sessionId });
+const pluginAssistant = [...(pluginTurn?.session?.messages ?? [])].reverse().find((m) => m.role === "assistant");
+check("the plugin's own stream served the turn", /plugin-transport-ok/.test(pluginAssistant?.content ?? ""), pluginAssistant?.content);
+
+// registerProvider is the upstream compatibility alias: the same plugin-owned
+// shape, selectable and served by the plugin.
+const aliasRun = await invoke("extensions/commands/run", { sessionId, name: "agent_model", args: "cc-alias-1" });
+check("agent_model selects the alias provider's model", aliasRun?.ok === true, JSON.stringify(aliasRun));
+const aliasLine = lastLine("agent_model setModel=");
+check("the alias registers the same plugin-owned shape", /setModel=true model=cc-alias-1 provider=extension-agent:/.test(aliasLine), aliasLine);
+await tool("pi_agent_prompt", { sessionId, content: "say hi through the alias" });
+await waitForTurn(sessionId);
+const aliasTurn = await tool("pi_session_get", { id: sessionId });
+const aliasAssistant = [...(aliasTurn?.session?.messages ?? [])].reverse().find((m) => m.role === "assistant");
+check("the alias provider's transport served the turn", /alias-transport-ok/.test(aliasAssistant?.content ?? ""), aliasAssistant?.content);
 
 console.log("RESULTS " + JSON.stringify(results));
 console.log(`SUMMARY ${results.filter((r) => r.ok).length}/${results.length} passed`);

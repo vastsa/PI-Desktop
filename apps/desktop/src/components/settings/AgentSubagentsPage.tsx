@@ -27,7 +27,11 @@ import {
   subagentPresetCopyKey,
   type SubagentDraft,
 } from "./SubagentEditorSheet";
-import { EMPTY_SUBAGENT_PAGE, fetchSubagentPageData } from "./subagent-settings";
+import {
+  EMPTY_SUBAGENT_PAGE,
+  fetchSubagentPageData,
+  type BuiltinSubagentRow,
+} from "./subagent-settings";
 import {
   IconBot,
   IconCopy,
@@ -101,6 +105,43 @@ export function AgentSubagentsPage() {
         ...current,
         owned: current.owned.map((row) =>
           row.id === subagent.id ? { ...row, enabled: subagent.enabled } : row,
+        ),
+      }));
+      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  /**
+   * A builtin has no document to switch, so its handle is stored in app-local
+   * state instead — but it is the same switch: flip locally first, call the
+   * host, and revert the row only if the host refuses.
+   */
+  const toggleBuiltin = async (builtin: BuiltinSubagentRow) => {
+    const handle = builtin.name;
+    if (busyId === `builtin:${handle}`) return;
+    const next = !builtin.enabled;
+    setBusyId(`builtin:${handle}`);
+    setSubagents((current) => ({
+      ...current,
+      builtins: current.builtins.map((row) =>
+        row.name === handle ? { ...row, enabled: next } : row,
+      ),
+    }));
+    try {
+      await api.setBuiltinSubagentEnabled(handle, next);
+      showToast(
+        t(next ? "settings.capabilityEnabled" : "settings.capabilityDisabled", {
+          name: builtinDisplayName(handle, t),
+        }),
+        { variant: "success" },
+      );
+    } catch (error) {
+      setSubagents((current) => ({
+        ...current,
+        builtins: current.builtins.map((row) =>
+          row.name === handle ? { ...row, enabled: builtin.enabled } : row,
         ),
       }));
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
@@ -218,15 +259,17 @@ export function AgentSubagentsPage() {
   const noMatches = searching && visibleOwned.length === 0 && visibleBuiltins.length === 0;
   const showOwnedGroup = !searching || visibleOwned.length > 0;
 
-  const renderBuiltin = (definition: SubagentDefinition) => {
+  const renderBuiltin = (definition: BuiltinSubagentRow) => {
     const handle = definition.name;
     const name = builtinDisplayName(handle, t);
     const canCopy = !ownedHandles.has(handle);
+    const busy = busyId === `builtin:${handle}`;
     return (
       <CapabilityRow
         key={`builtin:${handle}`}
         glyph={<IconBot size={16} />}
         name={name}
+        off={!definition.enabled}
         command={t("extensions.subagents.handle", { name: handle })}
         badges={
           <span className="agent-capability-badge">{t("extensions.subagents.sourceBuiltin")}</span>
@@ -242,16 +285,24 @@ export function AgentSubagentsPage() {
           ) : undefined
         }
         actions={
-          canCopy ? (
-            <TooltipButton
-              type="button"
-              className="settings-icon-button"
-              tooltip={t("extensions.subagents.copy")}
-              onClick={() => copyBuiltin(definition)}
-            >
-              <IconCopy size={15} />
-            </TooltipButton>
-          ) : null
+          <>
+            {canCopy ? (
+              <TooltipButton
+                type="button"
+                className="settings-icon-button"
+                tooltip={t("extensions.subagents.copy")}
+                onClick={() => copyBuiltin(definition)}
+              >
+                <IconCopy size={15} />
+              </TooltipButton>
+            ) : null}
+            <CapabilityToggle
+              checked={definition.enabled}
+              busy={busy}
+              label={t("settings.toggleCapability", { name })}
+              onChange={() => void toggleBuiltin(definition)}
+            />
+          </>
         }
       />
     );
@@ -350,8 +401,6 @@ export function AgentSubagentsPage() {
   return (
     <AgentCapabilityPage
       className="agent-subagents-page"
-      description={t("settings.subagentsDescription")}
-      note={t("settings.subagentsOnlyGlobal")}
       toolbar={
         <CapabilityToolbar
           search={search}
@@ -369,7 +418,6 @@ export function AgentSubagentsPage() {
         {noMatches ? (
           <CapabilityEmpty
             message={t("settings.capabilityNoMatches")}
-            hint={t("settings.capabilityNoMatchesHint")}
             icon={<IconBot size={18} />}
           />
         ) : (

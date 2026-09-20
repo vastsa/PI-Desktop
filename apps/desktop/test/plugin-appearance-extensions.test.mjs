@@ -17,26 +17,38 @@ test("theme variables remain host-generated and plugin-scoped", () => {
   assert.match(shell, /pluginTheme\.variablesCss/);
 });
 
-test("settings destinations are permission-gated and use the isolated view host", () => {
+test("scenic settings destinations are permission-gated and host-rendered", () => {
   const ipc = read("electron/main/ipc/plugin-ui-ipc.ts");
   const page = read("src/features/settings/SettingsPage.tsx");
-  const component = read("src/components/settings/PluginSettingsDestination.tsx");
-  assert.match(ipc, /pluginSettingsDestinations/);
+  const component = read("src/components/settings/PluginScenicThemesDestination.tsx");
+  assert.match(ipc, /pluginScenicThemesDestinations/);
   assert.match(ipc, /ui\.settings/);
-  assert.match(ipc, /pluginSettingsViews\.open/);
+  assert.match(ipc, /ui\.theme/);
   assert.match(page, /settings\.groupExtensions/);
-  assert.match(page, /PluginSettingsDestination/);
-  assert.match(component, /pluginSettingsViewSetBounds/);
-  assert.match(component, /pluginSettingsViewSetVisible/);
+  assert.match(page, /PluginScenicThemesDestination/);
+  assert.match(component, /aria-pressed/);
+  assert.doesNotMatch(component, /<iframe/);
 });
 
-test("settings extension surfaces are cleaned up on plugin lifecycle changes", () => {
+test("settings extension surfaces are cleaned up by the renderer lifecycle", () => {
   const services = read("electron/main/services/plugin-services.ts");
   const lifecycle = read("electron/main/ipc/plugin-ipc.ts");
-  const window = read("electron/main/bootstrap/window.ts");
-  const shutdown = read("electron/main/bootstrap/shutdown.ts");
-  assert.match(services, /pluginSettingsViews\.closePlugin/);
-  assert.match(lifecycle, /pluginSettingsViews\.closePlugin/);
-  assert.match(window, /pluginSettingsViews\.setWindow/);
-  assert.match(shutdown, /pluginSettingsViews\.dispose/);
+  assert.doesNotMatch(services, /pluginSettingsViews/);
+  assert.doesNotMatch(lifecycle, /pluginSettingsViews/);
+});
+
+test("scenic settings metadata is host-validated before it reaches the renderer", () => {
+  const ipc = read("electron/main/ipc/plugin-ui-ipc.ts");
+  const protocol = read("../../packages/shared/src/protocol.ts");
+  const api = read("src/lib/api.ts");
+
+  assert.match(protocol, /pluginScenicThemesDestinations/);
+  assert.match(ipc, /pluginScenicThemesDestinations/);
+  assert.match(ipc, /scenicThemes/);
+  assert.match(ipc, /ui\.settings/);
+  assert.match(ipc, /ui\.theme/);
+  assert.match(ipc, /previewUrl/);
+  assert.match(ipc, /themeAssetUrl/);
+  assert.match(ipc, /theme\?\.pluginId === pluginId/);
+  assert.match(api, /listPluginScenicThemesDestinations/);
 });

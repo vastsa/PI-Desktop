@@ -90,24 +90,84 @@ write("proj.ts", `export default function (pi: any) {
 }
 `);
 
+// A plugin that owns its own model transport (registerAgent / registerProvider)
+// and also publishes an endpoint into the native provider list.
+write("agent.ts", `import { appendFileSync } from "node:fs";
+const log = (line: string) => appendFileSync(${JSON.stringify(hookLog)}, line + "\\n");
+const reply = (model: any, text: string) => ({
+  role: "assistant" as const,
+  content: [{ type: "text" as const, text }],
+  api: model.api, provider: model.provider, model: model.id,
+  usage: { input: 0, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 1,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+  stopReason: "stop" as const, timestamp: Date.now(),
+});
+export default function (pi: any) {
+  pi.registerAgent({
+    id: "commandcode",
+    name: "Command Code",
+    models: [{ id: "cc-1", name: "Command Code 1" }],
+    complete: async (model: any) => reply(model, "plugin-transport-ok"),
+  });
+  // The upstream compatibility alias registers the same plugin-owned shape.
+  pi.registerProvider({
+    id: "cc-alias",
+    name: "CC Alias",
+    models: [{ id: "cc-alias-1" }],
+    complete: async (model: any) => reply(model, "alias-transport-ok"),
+  });
+  pi.registerCommand("agent_model", { description: "Selects the plugin agent model", async handler(args: string, ctx: any) {
+    const models = await ctx.modelRegistry.getAvailable();
+    log("agent_model registry=" + models.map((m: any) => m.provider + "/" + m.id).sort().join(","));
+    // The registry is a read-only projection: no credential material of any
+    // kind may appear in it (spec 07-plugins/16 §5).
+    const raw = JSON.stringify(models).toLowerCase();
+    // Only real credential material counts: a model legitimately carries
+    // maxTokens and capability flags.
+    const leaks = ["sk-e2e", "secret:provider:", "authorization", "bearer "].filter((k) => raw.includes(k));
+    log("agent_model registryLeaks=" + (leaks.length ? leaks.join("|") : "none"));
+    log("agent_model authStatus=" + JSON.stringify(ctx.modelRegistry.getProviderAuthStatus(models[0].provider)));
+    const wanted = (args ?? "").trim() || "cc-1";
+    const target = models.find((m: any) => m.id === wanted);
+    const ok = await pi.setModel(target);
+    log("agent_model setModel=" + ok + " model=" + wanted + " provider=" + (target?.provider ?? "none"));
+  } });
+}
+`);
+
 /** Wrap one fixture module in a plugin directory holding `agent.extension`. */
 function pluginFor(name) {
   const dir = join(pluginsDir, name);
   mkdirSync(join(dir, "src"), { recursive: true });
   writeFileSync(join(dir, "src", `${name}.ts`), readFileSync(join(extDir, `${name}.ts`)));
   writeFileSync(join(dir, "main.js"), "module.exports = {};\n");
+  const permissions = ["agent.extension"];
+  const contributes = { agentExtensions: [`src/${name}.ts`] };
+  // The agent fixture also declares a provider row (ADR 0259): the declaration
+  // materializes in the native provider list, owned by this plugin.
+  if (name === "agent") {
+    permissions.push("provider.register");
+    contributes.providers = [{
+      id: "declared",
+      name: "E2E declared",
+      baseUrl: `http://127.0.0.1:${stubPort}/v1`,
+      apiStyle: "chat_completions",
+      authKind: "api_key",
+      models: [{ id: "stub-1", name: "Stub 1", contextWindow: 128000, maxTokens: 4096 }],
+    }];
+  }
   writeFileSync(join(dir, "manifest.json"), JSON.stringify({
     schemaVersion: 1,
     id: `e2e.${name}`,
     name: `E2E ${name}`,
     version: "0.0.1",
     main: "main.js",
-    permissions: ["agent.extension"],
-    contributes: { agentExtensions: [`src/${name}.ts`] },
+    permissions,
+    contributes,
   }, null, 2));
   return dir;
 }
-const pluginDirs = Object.fromEntries(["fx", "greet", "tui", "bad", "queue", "proj"].map((n) => [n, pluginFor(n)]));
+const pluginDirs = Object.fromEntries(["fx", "greet", "tui", "bad", "queue", "proj", "agent"].map((n) => [n, pluginFor(n)]));
 
 // --- provider row through host-core ---
 const host = spawn(hostBin, [], { env: { ...process.env, PI_DESKTOP_DATA_DIR: dataDir }, stdio: ["pipe", "pipe", "inherit"] });

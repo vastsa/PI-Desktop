@@ -86,6 +86,7 @@ export function PluginsPage() {
                       key={action.key}
                       type="button"
                       role="menuitem"
+                      data-action={action.key}
                       onClick={() => {
                         setHeaderMenu(false);
                         void action.run();

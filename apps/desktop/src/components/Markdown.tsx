@@ -37,13 +37,18 @@ import {
   IconWorkflow,
 } from "./icons";
 import { TooltipButton } from "./ui";
-import { createPortal } from "react-dom";
+import { ContextMenu, useContextMenu } from "./ContextMenu";
 import { api } from "../lib/api";
+import { openHttpUrl } from "../lib/open-http-url";
 import {
   rehypeSourcePositions,
   sourcePositionProps,
   type SourcePositionProps,
 } from "../lib/markdown-source";
+import {
+  normalizeLatexMathDelimiters,
+  remarkLatexBracketDisplay,
+} from "../lib/latex-math";
 import { useAppStore } from "../stores/app-store";
 import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import { useOpenChatFileRef } from "../hooks/use-preview-target";
@@ -53,7 +58,6 @@ import {
   safeDecodeUri,
   toWorkspaceRel,
 } from "../lib/chat-links";
-import { annotationMarkerToken, splitAnnotationMarkerTokens } from "../lib/response-annotations";
 import {
   isClosedFencedCodeBlock,
   MAX_MERMAID_SOURCE_LENGTH,
@@ -451,7 +455,6 @@ function InlineCode({
 }: ComponentProps<"code"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
   const baseDir = useContext(MarkdownBaseDirContext);
-  const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const openFileRef = useOpenChatFileRef();
   const text = typeof children === "string" ? children : null;
   const target =
@@ -475,47 +478,12 @@ function InlineCode({
       onClick={() =>
         target.kind === "file"
           ? openFileRef(text ?? target.path, baseDir)
-          : openUrl(target.url)
+          : openHttpUrl(target.url)
       }
     >
       <code className={className} {...rest}>
         {children}
       </code>
-    </button>
-  );
-}
-
-/**
- * Inline numbered marker for one response annotation (ADR response-annotations / D-LOCAL-response-annotations).
- *
- * It mirrors the reference overlay's marker: the number of the annotation in
- * array order, with the annotated excerpt as its tooltip.
- */
-function AnnotationMarker({ index }: { index: number }) {
-  const { t } = useTranslation();
-  const annotation = useAppStore((state) =>
-    state.activeSessionId
-      ? (state.responseAnnotations[state.activeSessionId] ?? [])[index - 1]
-      : undefined,
-  );
-  const excerpt = annotation?.text ?? "";
-  const comment = annotation?.annotation?.trim() ?? "";
-  const tooltip = [
-    `${t("chat.annotationSelectedText")} ${excerpt}`,
-    comment ? `${t("chat.annotationComment")} ${comment}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-  return (
-    <button
-      type="button"
-      className="response-annotation-marker"
-      data-annotation-index={index}
-      aria-label={t("chat.annotationMarker", { index })}
-      title={tooltip || undefined}
-      onClick={() => undefined}
-    >
-      {index}
     </button>
   );
 }
@@ -532,76 +500,16 @@ function Anchor({
   const openFileRef = useOpenChatFileRef();
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const showToast = useAppStore((s) => s.showToast);
-  const linkOpenTarget = useAppStore((s) => s.settings?.linkOpenTarget ?? "workpanel");
 
-  const annotationIndex = annotationMarkerIndexFromHref(href);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const anchorRef = useRef<HTMLAnchorElement | null>(null);
+  const { contextMenu, openContextMenu, closeContextMenu } = useContextMenu();
 
-  useEffect(() => {
-    if (!menuPosition) return;
-    const close = () => setMenuPosition(null);
-    const onPointerDown = (event: PointerEvent) => {
-      if (menuRef.current?.contains(event.target as Node)) return;
-      close();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      close();
-      requestAnimationFrame(() => anchorRef.current?.focus());
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("keydown", onKeyDown);
-    const focusFrame = requestAnimationFrame(() => {
-      menuRef.current
-        ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
-        ?.focus();
-    });
-    return () => {
-      cancelAnimationFrame(focusFrame);
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [menuPosition]);
-
-  const onContextMenu = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!href || !/^https?:\/\//i.test(href)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const x = Math.min(e.clientX, window.innerWidth - 200);
-    const y = Math.min(e.clientY + 4, window.innerHeight - 150);
-    setMenuPosition({ top: y, left: x });
-  };
-
-  const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    const items = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"]:not(:disabled)',
-      ),
-    );
-    if (!items.length) return;
-    event.preventDefault();
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
-            items.length;
-    items[next]?.focus();
-  };
-
-  const copyLink = async () => {
-    setMenuPosition(null);
-    if (!href) return;
+  /*
+    Copying reports through the toast host: the menu closes the moment the item
+    runs, so there is no button left to carry its own copied state.
+  */
+  const copyLink = async (target: string) => {
     try {
-      await navigator.clipboard.writeText(href);
+      await navigator.clipboard.writeText(target);
       showToast(t("settings.linkCopied", { defaultValue: "Link copied to clipboard" }), {
         variant: "success",
       });
@@ -613,25 +521,56 @@ function Anchor({
     }
   };
 
-  // An annotated pass carries its number here instead of a link: the marker is
-  // an inline reference, not a destination (ADR response-annotations / D-LOCAL-response-annotations). Every hook above
-  // still runs, so the marker branch cannot change hook order.
-  if (annotationIndex !== null) {
-    return <AnnotationMarker index={annotationIndex} />;
-  }
+  /*
+    A link keeps the renderer's own menu instead of the platform's so both
+    destinations the app can send it to stay one press away. The surface is the
+    shared pointer-anchored menu, which measures before it reveals, clamps inside
+    the viewport, and owns dismissal and arrow-key navigation; only the items are
+    link-specific.
+  */
+  const onContextMenu = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!href || !/^https?:\/\//i.test(href)) return;
+    const target = href;
+    openContextMenu(event, {
+      items: [
+        {
+          id: "open-external",
+          label: t("settings.linkContextMenuOpenExternal", {
+            defaultValue: "Open in default browser",
+          }),
+          icon: <IconExternal size={14} />,
+          onSelect: () => void api.browserOpenExternal(target),
+        },
+        {
+          id: "open-workpanel",
+          label: t("settings.linkContextMenuOpenWorkpanel", {
+            defaultValue: "Open in work panel",
+          }),
+          icon: <IconGlobe size={14} />,
+          onSelect: () => openUrl(target),
+        },
+        {
+          id: "copy-address",
+          label: t("settings.linkContextMenuCopy", {
+            defaultValue: "Copy link address",
+          }),
+          icon: <IconCopy size={14} />,
+          separatorBefore: true,
+          onSelect: () => void copyLink(target),
+        },
+      ],
+    });
+  };
 
-  // Plain click previews in the work panel (or external browser based on setting).
-  // Modified clicks fall through to _blank, which main routes to shell.openExternal.
+  // Plain click follows Link open destination. Modifier clicks fall through
+  // to _blank, which main routes to shell.openExternal.
+
   const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (!href) return;
     if (/^https?:\/\//i.test(href)) {
       e.preventDefault();
-      if (linkOpenTarget === "external") {
-        void api.browserOpenExternal(href);
-      } else {
-        openUrl(href);
-      }
+      openHttpUrl(href);
       return;
     }
     const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
@@ -643,7 +582,6 @@ function Anchor({
   return (
     <>
       <a
-        ref={anchorRef}
         {...rest}
         href={href}
         onClick={onClick}
@@ -653,52 +591,7 @@ function Anchor({
       >
         {children}
       </a>
-      {menuPosition &&
-        createPortal(
-          <div
-            ref={menuRef}
-            className="sidebar-row-menu sidebar-floating-menu"
-            role="menu"
-            onKeyDown={onMenuKeyDown}
-            style={{
-              top: menuPosition.top,
-              left: menuPosition.left,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuPosition(null);
-                if (href) void api.browserOpenExternal(href);
-              }}
-            >
-              <IconExternal size={14} />
-              {t("settings.linkContextMenuOpenExternal", { defaultValue: "Open in default browser" })}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuPosition(null);
-                if (href) openUrl(href);
-              }}
-            >
-              <IconGlobe size={14} />
-              {t("settings.linkContextMenuOpenWorkpanel", { defaultValue: "Open in work panel" })}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => void copyLink()}
-            >
-              <IconCopy size={14} />
-              {t("settings.linkContextMenuCopy", { defaultValue: "Copy link address" })}
-            </button>
-          </div>,
-          document.body,
-        )}
+      <ContextMenu state={contextMenu} onClose={closeContextMenu} />
     </>
   );
 }
@@ -718,7 +611,6 @@ function MarkdownImage({
   const root = useAppStore((s) => s.workspace?.path);
   const baseDir = useContext(MarkdownBaseDirContext);
   const openFileRef = useOpenChatFileRef();
-  const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const fileTitle = usePreviewTitle("file");
   const urlTitle = usePreviewTitle("url");
   const source = typeof src === "string" ? src : "";
@@ -741,7 +633,7 @@ function MarkdownImage({
         alt={alt ?? ""}
         className="chat-image-remote"
         title={urlTitle}
-        onClick={() => openUrl(source)}
+        onClick={() => openHttpUrl(source)}
       />
     );
   }
@@ -824,86 +716,17 @@ const markdownComponents: Components = {
   table: Table,
 };
 
-/** Href scheme the annotation markers travel on through the markdown pipeline. */
-const ANNOTATION_MARKER_SCHEME = "annotation:";
+const staticRemarkPlugins = [remarkGfm, remarkMath];
 
-/** Url resolved for one annotation number. */
-export function annotationMarkerHref(index: number): string {
-  return `${ANNOTATION_MARKER_SCHEME}${index}`;
-}
-/** The annotation number one rendered marker element carries, or null. */
-export function annotationMarkerIndexFromHref(href: string | undefined): number | null {
-  if (!href || !href.startsWith(ANNOTATION_MARKER_SCHEME)) return null;
-  const index = Number(href.slice(ANNOTATION_MARKER_SCHEME.length));
-  return Number.isSafeInteger(index) && index > 0 ? index : null;
-}
-
-type MdastLike = {
-  type?: string;
-  value?: string;
-  url?: string;
-  children?: MdastLike[];
-};
-
-/**
- * Turn `:codex-annotation{index="N"}` tokens into numbered marker elements
- * (ADR response-annotations / D-LOCAL-response-annotations). The token is the reference implementation's own syntax,
- * so an answer that echoes one renders as a marker instead of raw text.
- */
-export function annotationMarkerMdastTree(tree: MdastLike | null | undefined): void {
-  walk(tree);
-
-  function walk(node: MdastLike | null | undefined) {
-    if (!node?.children) return;
-    const next: MdastLike[] = [];
-    for (const child of node.children) {
-      if (child.type === "text" && typeof child.value === "string") {
-        const segments = splitAnnotationMarkerTokens(child.value);
-        if (segments.length === 1 && segments[0].kind === "text") {
-          next.push(child);
-          continue;
-        }
-        for (const segment of segments) {
-          if (segment.kind === "text") {
-            if (segment.value) next.push({ type: "text", value: segment.value });
-            continue;
-          }
-          next.push({
-            type: "link",
-            url: annotationMarkerHref(segment.index),
-            children: [
-              { type: "text", value: annotationMarkerToken(segment.index) },
-            ],
-          });
-        }
-        continue;
-      }
-      walk(child);
-      next.push(child);
-    }
-    node.children = next;
-  }
-}
-
-function remarkAnnotationMarkers() {
-  return (tree: MdastLike) => {
-    annotationMarkerMdastTree(tree);
-  };
-}
-
-const staticRemarkPlugins = [remarkGfm, remarkMath, remarkAnnotationMarkers];
-
-// Extend the default schema only for the media elements rendered above.
+// Extend the default schema only for the media elements rendered above, plus
+// `remark-math`'s math classes on `<code>`: the default `language-*` allow list
+// drops `math-display`, which leaves `rehype-katex` rendering TeX `\[ … \]`
+// (single-line or mid-paragraph) as inline math instead of display math.
 const sanitizeSchema = {
   ...defaultSchema,
-  protocols: {
-    ...defaultSchema.protocols,
-    // The annotation markers travel on their own scheme; without it the
-    // sanitizer drops the href and the raw directive renders as link text.
-    href: [...(defaultSchema.protocols?.href ?? []), ANNOTATION_MARKER_SCHEME.replace(/:$/, "")],
-  },
   attributes: {
     ...defaultSchema.attributes,
+    code: [["className", /^language-./, "math-inline", "math-display"]],
     img: [...(defaultSchema.attributes?.img || []), "src", "alt", "title", "className"],
     audio: ["src", "controls", "preload", "className"],
     video: ["src", "controls", "preload", "className", "poster"],
@@ -978,12 +801,14 @@ function useBlocks(source: string): string[] {
 
 const Block = memo(function MarkdownBlock({
   raw,
+  originalRaw,
   sourceOffset,
   renderDiagrams,
   workspaceRoot,
   baseDir,
 }: {
   raw: string;
+  originalRaw: string;
   sourceOffset: number;
   renderDiagrams: boolean;
   workspaceRoot?: string | null;
@@ -999,9 +824,13 @@ const Block = memo(function MarkdownBlock({
   const remarkPlugins = useMemo(
     () => [
       ...staticRemarkPlugins,
+      // `originalRaw` still carries the TeX `\[ … \]` delimiters so the
+      // bracket-display plugin can promote them to display math after
+      // remark-math parses the pre-normalized `$$ … $$` form.
+      remarkLatexBracketDisplay(originalRaw),
       remarkChatFileLinks(workspaceRoot, baseDir),
     ],
-    [workspaceRoot, baseDir],
+    [originalRaw, workspaceRoot, baseDir],
   );
   const positionedRehypePlugins = useMemo(
     () => [...rehypePlugins!, [rehypeSourcePositions, { offset: sourceOffset }]] as Options["rehypePlugins"],
@@ -1031,17 +860,32 @@ export const Markdown = memo(function Markdown({
   baseDir?: string;
 }) {
   const workspaceRoot = useAppStore((s) => s.workspace?.path);
-  const blocks = useBlocks(source);
+  // Normalize once at the source level: marked's block lexer runs on the raw
+  // text and would otherwise split `\[ … \]` display math whose body puts a
+  // lone `=`/`-` (setext underline) or `+`/`*` (list marker) on its own line,
+  // stranding `\[` and `\]` in different blocks so the delimiters escape as
+  // literal `[`/`]`. The normalizer both rewrites the delimiters to `$$` and
+  // flattens newlines inside every paired region, keeping the whole formula
+  // inside a single markdown block. The rewrite is length-preserving, so we
+  // can still slice the original text at the same offsets for downstream
+  // plugins that need the pre-normalized delimiters.
+  const normalizedSource = useMemo(
+    () => normalizeLatexMathDelimiters(source),
+    [source],
+  );
+  const blocks = useBlocks(normalizedSource);
   let sourceOffset = 0;
   return (
     <MarkdownBaseDirContext.Provider value={baseDir ?? ""}>
       {blocks.map((raw, i) => {
         const start = sourceOffset;
         sourceOffset = start + raw.length;
+        const originalRaw = source.slice(start, start + raw.length);
         return (
           <Block
             key={i}
             raw={raw}
+            originalRaw={originalRaw}
             sourceOffset={start}
             renderDiagrams={renderDiagrams}
             workspaceRoot={workspaceRoot}

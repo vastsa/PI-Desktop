@@ -126,7 +126,7 @@ Plan 和 Goal 是合约模式，而不是严格的只读安全配置文件：Bas
 
 - 产品：`PI-Desktop`
 - 包装：`pi-desktop`
-- 应用程序 ID：`com.pi-desktop.app`
+- 应用程序 ID：`net.aiuo.pi-desktop`
 - 窗口标题：`PI-Desktop`
 
 ## 9. 平台策略

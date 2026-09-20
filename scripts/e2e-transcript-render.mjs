@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,9 +61,66 @@ try {
       },
     ],
   });
+  // The runtime-status scenario measures real geometry, so the page needs the
+  // app's built stylesheet: the Tailwind reset, the design tokens (the
+  // indicator's own type scale), and the transcript layers live there.
+  const renderer = join(root, "apps/desktop/out/renderer");
+  const appHtml = await readFile(join(renderer, "index.html"), "utf8");
+  const css = [...appHtml.matchAll(/href="([^" ]+\.css)"/g)].map(
+    (match) => match[1],
+  );
+  assert(
+    css.length,
+    "Build the app with pnpm build:js before running this check",
+  );
+  await cp(join(renderer, "assets"), join(temp, "assets"), { recursive: true });
+  // The scenario measures a rule that only exists in the built stylesheet, so a
+  // stale build must fail loudly instead of passing against an older CSS file.
+  const laneSource = await readFile(
+    join(root, "apps/desktop/src/styles/chat-shell.css"),
+    "utf8",
+  );
+  // Comments inside the rule describe intent; only its declarations are compared.
+  const laneRule = laneSource
+    .match(/\.transcript-runtime-status \{([\s\S]*?)\}/)?.[1]
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  assert(
+    laneRule,
+    "chat-shell.css declares no .transcript-runtime-status rule",
+  );
+  const builtCss = (
+    await Promise.all(css.map((path) => readFile(join(renderer, path), "utf8")))
+  )
+    .join("\n")
+    .replace(/\s+/g, "");
+  const builtRule = builtCss.match(
+    /\.transcript-runtime-status\{([^}]*)\}/,
+  )?.[1];
+  assert(
+    builtRule,
+    "the built stylesheet predates the runtime status lane; build with pnpm build:js",
+  );
+  // The scenario measures a rule that lives in the built stylesheet, so the two
+  // copies have to agree: a build still carrying a declaration the source has
+  // dropped (or missing one the source added) must fail here rather than pass a
+  // geometry check against CSS that no longer describes the source.
+  const declarations = (rule) =>
+    new Set(rule.replace(/\s+/g, "").split(";").filter(Boolean));
+  const sourceDeclarations = declarations(laneRule);
+  const builtDeclarations = declarations(builtRule);
+  const drift = [
+    ...[...builtDeclarations].filter((value) => !sourceDeclarations.has(value)),
+    ...[...sourceDeclarations].filter((value) => !builtDeclarations.has(value)),
+  ];
+  assert(
+    drift.length === 0,
+    `the built stylesheet is stale (${drift.join(", ")}); build with pnpm build:js`,
+  );
   await writeFile(
     join(temp, "index.html"),
-    '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; style-src \'self\' \'unsafe-inline\'"><title>Transcript render regression</title><script src="renderer.js"></script>',
+    `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:"><title>Transcript render regression</title>${css
+      .map((path) => `<link rel="stylesheet" href="${path}">`)
+      .join("")}<script src="renderer.js"></script>`,
   );
   await writeFile(
     join(temp, "main.cjs"),
@@ -72,11 +129,11 @@ const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
 app.setPath("userData", path.join(__dirname, "profile"));
 app.whenReady().then(async () => {
-  const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   window.webContents.on("console-message", (event) => console.error(event.message));
   try {
     await window.loadFile(path.join(__dirname, "index.html"));
-    const result = await window.webContents.executeJavaScript("globalThis.transcriptRenderProbe()");
+    const result = await window.webContents.executeJavaScript("globalThis.transcriptRenderProbe().then((render) => globalThis.transcriptRuntimeSlotProbe().then((slot) => Object.assign({}, render, { runtimeSlot: slot, ok: render.ok && slot.ok })))");
     console.log("TRANSCRIPT_RENDER_PROBE " + JSON.stringify(result));
     app.quit();
   } catch (error) {
@@ -118,6 +175,14 @@ app.whenReady().then(async () => {
   console.log("TRANSCRIPT_RENDER_PROBE " + JSON.stringify(result));
   assert.equal(code, 0, output.slice(-6000));
   assert.equal(result.ok, true);
+  // The merged result above already carries the geometry snapshots; this turns
+  // a failed scenario into a message that names the checks that failed.
+  // check can be read from the scenario output alone.
+  assert.equal(
+    result.runtimeSlot?.ok,
+    true,
+    `runtime status slot scenario failed: ${JSON.stringify(result.runtimeSlot?.failures)}`,
+  );
 } finally {
   await rm(temp, { recursive: true, force: true });
 }

@@ -119,9 +119,9 @@ unambiguous issue number for this repository.
 - Do not comment on or close unrelated issues. Do not reopen a closed issue
   unless the user explicitly asks.
 
-### R6 — Merge a linked pull request whose principle is sound, then follow up
+### R6 — Land a linked pull request only when it fixes the root cause with a minimal diff
 
-> **A linked GitHub pull request whose direction is sound is merged first. Completeness, style, spec-sync, and polish happen after merge so the contributor's work is not discarded.**
+> **A linked GitHub pull request lands only when it actually removes the reported failure mode at the root, with the smallest coherent change. A sound direction is not enough. Completeness nits may follow after merge; an incomplete fix may not.**
 
 This rule applies when the user prompt includes a GitHub pull request URL or
 an unambiguous pull request number for this repository.
@@ -129,19 +129,25 @@ an unambiguous pull request number for this repository.
 - Fetch the pull request (title, body, files, commits, comments, checks, draft
   state, base/head, and linked issues) before creating a replacement
   implementation or requesting a rewrite.
-- Independently judge whether the **principle** is sound. The change must
-  address a real, in-scope problem, and the approach must be compatible with
-  the baseline, security boundaries, and architecture (or be a justified
-  spec-backed amendment). Judge the direction, not whether the pull request
-  already satisfies R1–R5 completeness.
+- Independently verify all of:
+  1. The reported problem is real and in scope (same bar as R5).
+  2. The change must fix the reported root cause with the smallest coherent
+     change — not a nearby symptom, a docs-only restatement, a config
+     contract test, or a partial workaround that leaves the original path
+     intact.
+  3. Extra files, refactors, and spec theater do not compensate for an
+     incomplete fix. The approach must still be compatible with the
+     baseline, security boundaries, and architecture (or be a justified
+     spec-backed amendment).
 - Do not reimplement the pull request as a replacement, close it for nits, or
-  ask the contributor to start over when the principle is sound.
-- If the principle is sound:
+  ask the contributor to start over when (1)–(3) hold.
+- If (1)–(3) hold:
   1. Merge **that** pull request first, preserving the contributor's commits.
      Use a repository-permitted merge strategy that keeps the contributor as
      author of the landed work.
   2. Missing additional test coverage, documentation, naming cleanup,
-     formatting, and other non-blocking polish are follow-up work. Build,
+     formatting, and other non-blocking polish are follow-up work **only
+     when they are not required to prove the root-cause fix**. Build,
      typecheck, relevant existing test, required E2E, security, data-safety,
      protocol-compatibility, and merge-conflict failures remain landing
      blockers.
@@ -149,19 +155,22 @@ an unambiguous pull request number for this repository.
      fails existing tests for the changed area, or has merge conflicts) may
      receive the smallest commits **on top of** the author's work so the pull
      request can land. Do not squash away the author. Do not rewrite the
-     design.
+     design. Do not expand the diff beyond the root-cause fix.
   4. After the pull request is in `main`, follow R4 for any follow-up
      improvements from the updated `main`.
   5. Comment on the pull request in its language: acknowledge the
      contribution, state what was merged, and list follow-up if any.
-- If the principle is not sound, or a harm blocker exists (secrets, sandbox
-  or privilege bypass, malicious or clearly destructive changes, out-of-scope
-  reversal of a frozen decision, unrelated drive-by payload): do not merge.
-  Comment with the evidence in the pull request's language. Do not silently
-  reimplement the same idea as if the pull request never existed.
+- If (1)–(3) fail, or a harm blocker exists (secrets, sandbox or privilege
+  bypass, malicious or clearly destructive changes, out-of-scope reversal of
+  a frozen decision, unrelated drive-by payload): do not merge, do not
+  approve as "direction is fine, follow up later", and comment with the
+  evidence in the pull request's language. Prefer a minimal completion of
+  the author's approach when that approach can actually reach the root
+  cause. Do not silently reimplement the same idea as if the pull request
+  never existed unless the user asks to take the work over.
 - Do not merge a draft pull request the author has not marked ready, unless
-  the user explicitly asks to merge the draft. Comment with the principle
-  review and wait until it is ready.
+  the user explicitly asks to merge the draft. Comment with the review and
+  wait until it is ready.
 - A pull request link authorizes reviewing, commenting on, and merging
   **that** pull request when this rule applies. It does not authorize
   force-pushing the contributor's branch or publishing unrelated branches.
@@ -229,11 +238,11 @@ Do not weaken these required fields. Blank issues stay disabled.
 
 ## 2. Development Loop
 
-Every change follows this sequence. Steps may be iterated if the implementation reveals new requirements. If the prompt includes a GitHub issue, complete R5 verification before step 1. If the prompt includes a GitHub pull request, complete the R6 principle review (and merge when sound) before starting a replacement or follow-up implementation.
+Every change follows this sequence. Steps may be iterated if the implementation reveals new requirements. If the prompt includes a GitHub issue, complete R5 verification before step 1. If the prompt includes a GitHub pull request, complete the R6 root-cause review (and merge only when the change actually fixes the problem with a minimal diff) before starting a replacement or follow-up implementation.
 
 ```
 0. If a GitHub issue is linked: verify the claim (R5) before any implementation
-0b. If a GitHub pull request is linked: review the principle (R6); merge first when sound; start follow-up only after it is in `main`
+0b. If a GitHub pull request is linked: review root cause and minimality (R6); merge only when it actually fixes the problem; start follow-up only after it is in `main`
 1. Sync main + create a request branch and worktree
 2. Read baseline + relevant specs
 3. Plan change + list impacted specs and necessary validation
@@ -256,7 +265,7 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 | Step | Action | Output |
 |---|---|---|
 | **0. Issue verify** | When a GitHub issue is linked, fetch it and independently verify that the reported problem exists. Stop here (comment, and close only if conclusive) when it does not. | Verified issue, or a comment and close/leave-open decision. |
-| **0b. PR review** | When a GitHub pull request is linked, fetch it and independently judge whether the principle is sound. Merge first when it is; start follow-up only after it is in `main`. Stop (comment, do not rewrite) when it is not. | Merged contributor PR plus follow-up plan, or a comment and no merge. |
+| **0b. PR review** | When a GitHub pull request is linked, fetch it and independently verify that it fixes the reported root cause with the smallest coherent change. Merge only when it does; start follow-up only after it is in `main`. Stop (comment, do not rewrite) when it does not. | Merged contributor PR plus follow-up plan, or a comment and no merge. |
 | **1. Branch + worktree** | Preserve existing work, update from `origin/main`, and create a dedicated request branch in a dedicated worktree. Reuse the primary checkout's environment where safe. | Isolated task files on current `main` with a consistent development environment. |
 | **2. Read** | Read `00-baseline.md` and any specs relevant to the change area. | Mental model of constraints. |
 | **3. Plan** | Describe the intended change. List every spec, ADR, and e2e scenario that will need updates, and assess whether local validation is necessary. | Change plan + impact and validation list. |
@@ -549,9 +558,10 @@ explicit branch-only or draft-only delivery scope:
 11. If a GitHub issue was linked: the claim was verified before implementation;
     the issue received a comment in its language; and the issue was closed when
     the outcome was conclusive.
-12. If a GitHub pull request was linked: the principle was reviewed; the pull
-    request was merged first when sound; follow-up landed after merge; the
-    contributor's work was not discarded.
+12. If a GitHub pull request was linked: the root-cause bar was reviewed; the
+    pull request was merged only when it actually fixed the problem with a
+    minimal diff; follow-up landed after merge; the contributor's work was
+    not discarded.
 13. If launch was requested after delivery: the app was built and started from
     the integrated `main` checkout and its development environment.
 
@@ -591,9 +601,10 @@ D164, and D260. GitHub release notes are not a substitute.
 | Mixing multiple logical changes in one commit without clear message | Loss of history granularity |
 | Implementing a linked GitHub issue without verifying the problem exists | Violates R5; wastes work on invalid or already-fixed claims |
 | Closing a linked GitHub issue without a comment in the issue language | Violates R5; leaves no public record of the outcome |
-| Closing, rewriting, or requesting a restart of a linked pull request whose principle is sound | Violates R6; discards the contributor's work |
-| Blocking merge of a sound linked pull request solely for missing specs, tests, style, or agent-workflow completeness | Violates R6; completeness is follow-up after merge |
-| Merging a linked pull request whose principle is unsound or that introduces a harm blocker | Violates R6; merge-first does not apply to unsafe or wrong-direction changes |
+| Closing, rewriting, or requesting a restart of a linked pull request that already fixes the root cause with a minimal diff, solely for nits | Violates R6; discards the contributor's work |
+| Blocking merge of a root-cause-complete linked pull request solely for missing specs, extra tests, style, or agent-workflow completeness | Violates R6; those are follow-up after merge |
+| Merging a linked pull request that only has a sound direction, leaves the original failure mode, or is larger than the smallest coherent fix without a stated reason | Violates R6; direction is not enough |
+| Merging a linked pull request that introduces a harm blocker | Violates R6 |
 | Force-pushing a contributor's branch to land a linked pull request | Violates R6; landing fixes go on top of the author's commits |
 | Tagging a stable app release without updating `packages/shared/src/changelog.ts` for every shipped locale | Violates D164 / D345 / release runbook; in-app What's new is empty for that locale and version |
 | Tagging a stable app release while `README.md` / `README.zh-CN.md` still state an older release line, or bypassing `scripts/check-release-docs.mjs` with `--skip-docs-check` | Violates D260 / release runbook; published documentation advertises a version the release no longer matches |
@@ -631,6 +642,6 @@ This workflow spec itself is accepted when:
 - [ ] `AGENTS.md` points to this doc, `04-e2e-test-plan.md`, and `05-change-checklist.md`.
 - [ ] Linked GitHub issues are verified before implementation, then commented
       on in the issue language and closed when conclusive.
-- [ ] Linked GitHub pull requests whose principle is sound are merged first,
-      then followed up; contributor work is not discarded.
+- [ ] Linked GitHub pull requests land only when they fix the reported root
+      cause with a minimal diff; contributor work is not discarded for nits.
 - [ ] All indexes updated (NAV, delivery README, spec README, docs README, BOARD).

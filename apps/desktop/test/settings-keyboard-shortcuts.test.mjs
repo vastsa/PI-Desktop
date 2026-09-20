@@ -44,7 +44,7 @@ test("shared shortcut map drives renderer dispatch and native menu accelerators"
     "openWorkPanel",
     "openPluginLauncher",
     "abort",
-    "closeWindow",
+    "toggleWindow",
     "resetZoom",
     "zoomIn",
     "zoomOut",

@@ -291,6 +291,10 @@ test("the transcript shows one row per compaction, the inspector the newest", ()
   assert.match(transcript, /chat\.compactionRow/);
   assert.match(transcript, /mark\.summarized/);
   assert.match(transcript, /chat\.compactionRowNoSummary/);
+  // A retained-tail recovery is labelled as a failed summary, never as a
+  // summary of N tokens (#543).
+  assert.match(transcript, /mark\.fallback/);
+  assert.match(transcript, /chat\.compactionRowSummaryFailed/);
   assert.match(styles, /\.transcript-compaction-row \{/);
   // The inspector keeps its own line, now fed by the newest row.
   assert.match(

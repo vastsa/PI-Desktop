@@ -8,26 +8,7 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { Button, Input, cx } from "../ui";
-
-function SettingsRow({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="settings-row">
-      <div className="settings-row-copy">
-        <div className="settings-row-title">{title}</div>
-        {description ? <div className="settings-row-desc">{description}</div> : null}
-      </div>
-      <div className="settings-row-control">{children}</div>
-    </div>
-  );
-}
+import { SettingsRow } from "../../features/settings/primitives";
 
 const MODES: NetworkProxyMode[] = ["system", "direct", "custom"];
 

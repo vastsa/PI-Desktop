@@ -97,7 +97,7 @@ test("plugin views reach the panel body and the empty state", () => {
 });
 
 test("the native surface keeps its full bounds while the launcher is active", () => {
-  assert.match(panelSource, /blocked=\{\s*exiting \|\| panelBlocked\s*\}/s);
+  assert.match(panelSource, /blocked=\{\s*exiting \|\| panelBlocked \|\| blockingOverlayActive\s*\}/s);
   assert.doesNotMatch(panelSource, /avoid: pluginSurface/);
   assert.doesNotMatch(panelSource, /menuOpen|work-panel-new-menu|placeWorkPanelMenu/);
   assert.doesNotMatch(viewTabSource, /occludedById/);
@@ -275,5 +275,6 @@ test("host panel events reach docked views as well as detached windows", () => {
   assert.match(mainSource, /broadcastPluginPanelEvent\("appearance:changed"/);
   assert.match(mainSource, /broadcastPluginPanelEvent\("workspace:changed"/);
   assert.match(mainSource, /plugins\.broadcastEvent\("workspace:changed"/);
+  assert.match(mainSource, /plugins\.broadcastEvent\("appearance:changed"/);
   assert.match(mainSource, /function setCurrentWorkspacePath/);
 });

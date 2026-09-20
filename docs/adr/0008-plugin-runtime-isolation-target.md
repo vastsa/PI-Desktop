@@ -40,8 +40,10 @@ The target architecture shipped; no transitional in-main runtime remains.
 
 - `apps/desktop/electron/main/plugin-host-process.mjs` is the per-plugin entry,
   forked with `utilityProcess.fork` (one process per plugin, bundled to
-  `out/main/plugin-host-process.js`). It receives a minimal environment, so the
-  host's shell env and provider keys never reach plugin code.
+  `out/main/plugin-host-process.js`). It receives a minimal environment from
+  `pluginChildEnv` (`child-process-env.ts`): `PATH`, toolchain dirs, `HOME` /
+  `USER` / `USERPROFILE`, plus `PI_PLUGIN_ID` and `NODE_ENV`. The host's other
+  shell env and provider keys never reach plugin code (issue #717).
 - `apps/desktop/electron/main/plugin-runtime.ts` became the broker: it keeps the
   registry of commands/tools, and every `pi.*` call arrives as RPC, passes
   `HOST_API_ALLOWLIST`, then `assertPermission`, then the host service, then the

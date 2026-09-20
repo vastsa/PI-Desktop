@@ -13,7 +13,11 @@ const DELETE_KEYS = [
   "deleteSessions_other",
   "deleteFolderKept",
   "deleteRunningBlocked",
+  "deleteRunning_one",
+  "deleteRunning_other",
+  "deleteRunningConfirm",
   "deleteConfirm",
+  "deleteMenuConfirm",
   "deleteCancel",
   "deleting",
   "deleted",
@@ -69,6 +73,30 @@ function deleteHandler(source) {
   return rest.slice(0, end);
 }
 
+/** The props `<ProjectDeleteDialog>` receives on a surface, up to `onClose`. */
+function dialogProps(source) {
+  const start = source.indexOf("<ProjectDeleteDialog");
+  assert.ok(start >= 0, "the dialog is rendered");
+  const rest = source.slice(start);
+  const end = rest.indexOf("onClose=");
+  assert.ok(end > 0, "the dialog receives props");
+  return rest.slice(0, end);
+}
+
+/**
+ * The body of the two-step project delete, from its declaration to the closing
+ * brace at component indentation. The click handler of the menu item is checked
+ * separately, so this helper owns the second half of the flow.
+ */
+function requestBlock(source) {
+  const start = source.indexOf("const requestDeleteProject = async");
+  assert.ok(start >= 0, "the two-step delete handler is present");
+  const rest = source.slice(start);
+  const end = rest.indexOf("\n  };");
+  assert.ok(end > 0, "the two-step delete handler closes");
+  return rest.slice(0, end);
+}
+
 test("the delete dialog is a real confirmation backed by the store action", () => {
   assert.match(dialogSource, /export function ProjectDeleteDialog/);
   assert.match(dialogSource, /const deleteProject = useAppStore\(\(s\) => s\.deleteProject\)/);
@@ -88,7 +116,8 @@ test("the delete dialog is a labelled modal that blocks cancel while busy", () =
   assert.match(dialogSource, /role="dialog"/);
   assert.match(dialogSource, /aria-labelledby="project-delete-dialog-title"/);
   assert.match(dialogSource, /id="project-delete-dialog-title"/);
-  assert.match(dialogSource, /aria-describedby="project-delete-dialog-description/);
+  // The running-session line joins the description by id only while rendered.
+  assert.match(dialogSource, /aria-describedby=\{`project-delete-dialog-description/);
   for (const id of [
     "project-delete-dialog-description",
     "project-delete-dialog-sessions",
@@ -98,7 +127,10 @@ test("the delete dialog is a labelled modal that blocks cancel while busy", () =
   }
   assert.match(dialogSource, /event\.key === "Escape"/);
   assert.match(dialogSource, /disabled=\{busy\}/);
-  assert.match(dialogSource, /busy \? t\("project\.deleting"\) : t\("project\.deleteConfirm"\)/);
+  assert.match(
+    dialogSource,
+    /busy\s*\?\s*t\("project\.deleting"\)\s*:\s*runningCount > 0\s*\?\s*t\("project\.deleteRunningConfirm"\)\s*:\s*t\("project\.deleteConfirm"\)/,
+  );
 });
 
 test("both project menus expose a destructive delete action", () => {
@@ -106,7 +138,10 @@ test("both project menus expose a destructive delete action", () => {
     ["ProjectsPage", projectsSource],
     ["Sidebar", sidebarSource],
   ]) {
-    assert.match(source, /className="danger"\s+data-action="delete-project"/, surface);
+    // The item keeps its destructive styling and adds the armed state on top.
+    // The item keeps its destructive styling and adds the armed state on top.
+    assert.match(source, /className=\{cx\(\s*"danger",/, surface);
+    assert.match(source, /data-action="delete-project"/, surface);
     assert.match(source, /<ProjectDeleteDialog/, surface);
   }
 
@@ -136,35 +171,105 @@ test("both project menus expose a destructive delete action", () => {
   assert.match(sidebarSource, /onError=\{reportError\}/);
 });
 
-test("deleting a project is blocked while its tasks are running", () => {
-  for (const [surface, source, dialogSetter] of [
-    ["ProjectsPage", projectsSource, "setDeleteFor("],
-    ["Sidebar", sidebarSource, "setDeleteProjectFor("],
+test("the menu item arms first and only a live task reaches the dialog", () => {
+  for (const [surface, source] of [
+    ["ProjectsPage", projectsSource],
+    ["Sidebar", sidebarSource],
   ]) {
     const handler = deleteHandler(source);
-    const runningCheck = handler.indexOf("runningSessions[session.id]");
-    assert.ok(runningCheck >= 0, `${surface} consults runningSessions`);
-    assert.match(handler, /\.filter\(/, `${surface} filters the project sessions`);
+    // The item is now the first step of a two-click delete, so the running-task
+    // refusal can no longer live in the menu: the click only arms the row.
+    assert.doesNotMatch(handler, /deleteRunningBlocked/, `${surface} drops the toast refusal`);
+    assert.doesNotMatch(handler, /showToast/, `${surface} does not toast instead of confirming`);
+    assert.doesNotMatch(
+      handler,
+      /setDelete(?:Project)?For\(/,
+      `${surface} arms instead of opening the dialog`,
+    );
     assert.match(
       handler,
-      /showToast\(\s*t\("project\.deleteRunningBlocked"\),\s*\{\s*variant: "warning",?\s*\},?\s*\)/,
-      `${surface} warns instead of deleting`,
+      /requestDeleteProject\(/,
+      `${surface} routes the click through the two-step handler`,
+    );
+    assert.match(handler, /data-armed=/, `${surface} exposes the armed state`);
+    // The label has to name the second click while the item is armed.
+    assert.match(source, /project\.deleteMenuConfirm/, `${surface} relabels the armed item`);
+    assert.match(
+      source,
+      /t\("project\.delete"(?:, \{ defaultValue: "[^"]*" \})?\)/,
+      `${surface} keeps the plain label`,
     );
 
-    // The guard must short-circuit before the dialog state is touched.
-    const dialogState = handler.indexOf(dialogSetter);
-    assert.ok(dialogState > runningCheck, `${surface} checks running tasks first`);
-    assert.match(
-      handler.slice(runningCheck, dialogState),
-      /return;/,
-      `${surface} returns before opening the dialog`,
+    const request = requestBlock(source);
+    assert.match(request, /if \(armedDelete !== key\) \{/, `${surface} arms on the first click`);
+    assert.match(request, /setArmedDelete\(key\)/, `${surface} records the armed key`);
+    assert.ok(
+      request.indexOf("deleteProjectAction(") > request.indexOf("setArmedDelete(key)"),
+      `${surface} deletes only after arming`,
     );
+    // A project with a live turn still gets the dialog that stops it.
+    assert.match(request, /runningSessions\[session\.id\] === true/, `${surface} checks live turns`);
+    assert.match(
+      request,
+      /setDelete(?:Project)?For\(/,
+      `${surface} opens the dialog for a project with a live task`,
+    );
+    assert.match(
+      request,
+      /showToast\(t\("project\.deleted", \{ name: (?:entry|project)\.name \}\), \{ variant: "success" \}\)/,
+      `${surface} reports the idle delete`,
+    );
+    assert.match(
+      request,
+      /errorCode === ErrorCodes\.CONFLICT[\s\S]{0,90}project\.deleteRunningBlocked/,
+      `${surface} keeps the host refusal localized`,
+    );
+
+    // The dialog still has to learn which of the project's sessions are live.
+    const props = dialogProps(source);
+    assert.match(props, /runningSessionIds=\{/, `${surface} passes the running sessions`);
+    assert.match(
+      props,
+      /runningSessions\[session\.id\] === true/,
+      `${surface} derives them from the live store`,
+    );
+    assert.match(props, /\.map\(\(session\) => session\.id\)/, `${surface} passes session ids`);
   }
 
-  // Each surface counts the sessions that belong to the project row itself.
-  assert.match(deleteHandler(projectsSource), /sessionMatchesIndexProject\(session, project\)/);
-  assert.match(deleteHandler(sidebarSource), /entry\.sessions\.filter\(/);
+  // Each surface counts the sessions that belong to its own row.
+  assert.match(dialogProps(projectsSource), /sessionMatchesIndexProject\(session, deleteFor\)/);
+  assert.match(dialogProps(sidebarSource), /deleteProjectFor\.sessions\s*\.filter\(/);
+});
 
+test("the delete dialog names the running sessions and asks for an explicit confirmation", () => {
+  assert.match(dialogSource, /runningSessionIds: string\[\]/);
+  assert.match(dialogSource, /const runningCount = runningSessionIds\.length/);
+  assert.match(dialogSource, /id="project-delete-dialog-running"/);
+  assert.match(dialogSource, /t\("project\.deleteRunning", \{ count: runningCount \}\)/);
+  // The description lists the line only while the line is actually rendered.
+  assert.match(dialogSource, /runningCount > 0 \? " project-delete-dialog-running" : ""/);
+  assert.match(dialogSource, /t\("project\.deleteRunningConfirm"\)/);
+  assert.ok(
+    dialogSource.indexOf('t("project.deleteRunningConfirm")') <
+      dialogSource.indexOf('t("project.deleteConfirm")'),
+    "the running label is offered instead of the plain confirm label",
+  );
+});
+
+test("the delete dialog stops the running sessions before it deletes the project", () => {
+  assert.match(dialogSource, /const abortSession = useAppStore\(\(s\) => s\.abortSession\)/);
+  const confirmBlock =
+    dialogSource.match(/const confirm = async \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
+  assert.ok(confirmBlock, "confirm handler exists");
+  const loop = confirmBlock.indexOf("for (const sessionId of runningSessionIds)");
+  const abortCall = confirmBlock.indexOf("await abortSession(sessionId)");
+  const deleteCall = confirmBlock.indexOf("await deleteProject(project.path)");
+  assert.ok(loop >= 0, "the confirm handler stops the running sessions");
+  assert.ok(abortCall > loop, "each running session is aborted");
+  assert.ok(deleteCall > abortCall, "the delete is awaited only after every stop");
+});
+
+test("deleting a project still explains a host-side running-task refusal", () => {
   const englishBlock = projectBlock(catalogs.get("en"));
   assert.equal(
     projectValue(englishBlock, "deleteRunningBlocked"),
@@ -191,6 +296,29 @@ test("deleting a project is blocked while its tasks are running", () => {
       );
     }
   }
+
+  // The host still refuses a turn that starts after the dialog opened, so the
+  // localized explanation has to stay reachable from the dialog.
+  assert.match(dialogSource, /onError\(new Error\(t\("project\.deleteRunningBlocked"\)\)\)/);
+});
+
+test("the running-session copy is translated in every shipped catalog", () => {
+  const englishBlock = projectBlock(catalogs.get("en"));
+  assert.equal(
+    projectValue(englishBlock, "deleteRunning_one"),
+    "{{count}} session in this project is still running. Deleting the project stops it.",
+  );
+  assert.equal(projectValue(englishBlock, "deleteRunningConfirm"), "Stop tasks and delete");
+  assert.deepEqual(placeholders(projectValue(englishBlock, "deleteRunning_other")), ["count"]);
+  assert.deepEqual(placeholders(projectValue(englishBlock, "deleteRunningConfirm")), []);
+  assert.equal(
+    projectValue(projectBlock(catalogs.get("zh-CN")), "deleteRunningConfirm"),
+    "停止任务并删除",
+  );
+  assert.deepEqual(
+    placeholders(projectValue(projectBlock(catalogs.get("zh-TW")), "deleteRunning_one")),
+    ["count"],
+  );
 });
 
 test("every shipped catalog defines the delete keys with matching placeholders", () => {

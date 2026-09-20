@@ -8,7 +8,11 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import type { MessageUsage, UiMessage } from "@pi-desktop/shared";
+import {
+  formatCompactTokenCount,
+  type MessageUsage,
+  type UiMessage,
+} from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { TooltipButton } from "./ui";
 import {
@@ -24,13 +28,6 @@ import {
   placeContextInspector,
   type ContextInspectorPlacement,
 } from "../lib/context-inspector-position";
-
-function formatTokenCount(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
-  if (value >= 10_000) return `${Math.round(value / 1000)}k`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-  return String(value);
-}
 
 const CONTEXT_RING_RADIUS = 9;
 const CONTEXT_RING_CIRCUMFERENCE = 2 * Math.PI * CONTEXT_RING_RADIUS;
@@ -101,7 +98,7 @@ export function ContextUsageInspector({
   // tooltip contract while `percent`/`count` stay numeric.
   const ariaArguments = {
     percent: display.percent,
-    count: formatTokenCount(display.tokens),
+    count: formatCompactTokenCount(display.tokens),
     state:
       display.display === "used"
         ? t("chat.usageContextAriaUsed")
@@ -264,10 +261,10 @@ export function ContextUsageInspector({
         <strong className="context-inspector-heading-value">
           {display.display === "used"
             ? t("chat.usageContextSpent", {
-                count: formatTokenCount(display.tokens),
+                count: formatCompactTokenCount(display.tokens),
               })
             : t("chat.usageContextLeft", {
-                count: formatTokenCount(display.tokens),
+                count: formatCompactTokenCount(display.tokens),
               })}
         </strong>
         <strong className="context-inspector-heading-percent">
@@ -278,8 +275,8 @@ export function ContextUsageInspector({
         <span>{t("chat.usageContextWindow")}</span>
         <strong>
           {t("chat.usageContextTokens", {
-            used: formatTokenCount(context.usedTokens),
-            window: formatTokenCount(contextWindow),
+            used: formatCompactTokenCount(context.usedTokens),
+            window: formatCompactTokenCount(contextWindow),
           })}
         </strong>
         <span className="context-inspector-window-percent">
@@ -289,7 +286,7 @@ export function ContextUsageInspector({
       <div className="context-inspector-kpis">
         <div>
           <span>{t("chat.usageTurnTotal")}</span>
-          <strong>{formatTokenCount(turnTotal)}</strong>
+          <strong>{formatCompactTokenCount(turnTotal)}</strong>
         </div>
         <div>
           <span>{t("chat.usageThroughputLabel")}</span>
@@ -301,7 +298,7 @@ export function ContextUsageInspector({
                     ? "chat.usageThroughputEstimated"
                     : "chat.usageThroughput",
                   {
-                    count: formatTokenCount(throughput),
+                    count: formatCompactTokenCount(throughput),
                   },
                 )}
           </strong>
@@ -312,14 +309,14 @@ export function ContextUsageInspector({
           <strong>{t("chat.usageProviderUsage")}</strong>
           <span className="context-inspector-summary-values">
             <span>
-              {t("chat.usageInput")} {formatTokenCount(usage.inputTokens)}
+              {t("chat.usageInput")} {formatCompactTokenCount(usage.inputTokens)}
             </span>
             <span>
-              {t("chat.usageOutput")} {formatTokenCount(usage.outputTokens)}
+              {t("chat.usageOutput")} {formatCompactTokenCount(usage.outputTokens)}
             </span>
             {usage.cacheReadTokens !== undefined ? (
               <span>
-                {t("chat.usageCacheRead")} {formatTokenCount(usage.cacheReadTokens)}
+                {t("chat.usageCacheRead")} {formatCompactTokenCount(usage.cacheReadTokens)}
               </span>
             ) : null}
             {cacheRate !== undefined ? (
@@ -329,12 +326,12 @@ export function ContextUsageInspector({
             ) : null}
             {usage.cacheWriteTokens !== undefined ? (
               <span>
-                {t("chat.usageCacheWrite")} {formatTokenCount(usage.cacheWriteTokens)}
+                {t("chat.usageCacheWrite")} {formatCompactTokenCount(usage.cacheWriteTokens)}
               </span>
             ) : null}
             {usage.reasoningTokens !== undefined ? (
               <span>
-                {t("chat.usageReasoning")} {formatTokenCount(usage.reasoningTokens)}
+                {t("chat.usageReasoning")} {formatCompactTokenCount(usage.reasoningTokens)}
               </span>
             ) : null}
           </span>
@@ -346,7 +343,7 @@ export function ContextUsageInspector({
               ? t("chat.usageToolsSummary", {
                   count: toolRows.length,
                   calls: tools.length,
-                  tokens: formatTokenCount(toolTotal),
+                  tokens: formatCompactTokenCount(toolTotal),
                 })
               : t("chat.usageNoTools")}
           </span>
@@ -357,7 +354,7 @@ export function ContextUsageInspector({
           <span>
             {t("chat.usageCompaction", { times: compaction.generation })}
           </span>
-          <strong>~{formatTokenCount(compaction.summaryTokens)}</strong>
+          <strong>~{formatCompactTokenCount(compaction.summaryTokens)}</strong>
         </div>
       ) : null}
     </div>

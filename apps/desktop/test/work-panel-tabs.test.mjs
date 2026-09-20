@@ -2,20 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const {
+  FILE_MANAGER_PLUGIN_TAB,
   activateWorkPanelTabState,
   browserPluginTab,
   closeWorkPanelTabState,
   emptyWorkPanelContext,
   fileWorkPanelTab,
+  hasPluginView,
   isKnownWorkPanelTab,
   isToolWorkPanelTab,
   normalizeWorkPanelFilePath,
   newWorkPanelTab,
   openWorkPanelTabState,
   pluginWorkPanelTab,
+  preferredFileWorkPanelTab,
   replaceWorkPanelTabState,
   sanitizeWorkPanelTabsState,
-  shouldOpenReviewArtifact,
   switchWorkPanelContextState,
   toolWorkPanelTab,
 } = await import("../src/lib/work-panel-tabs.ts");
@@ -140,23 +142,27 @@ test("only plugin views are launchable tools", () => {
   assert.equal(isKnownWorkPanelTab(newWorkPanelTab()), true);
 });
 
-test("review artifacts are recognized independently of the visible session", () => {
-  const base = {
-    toolName: "Write",
-    isError: false,
-    result: { details: { root: "workspace" } },
-  };
+test("a host-chosen project file prefers the bundled file view", () => {
+  // A plan or goal artifact is project markdown the host opens for the user, so
+  // it lands in the same view the user's own file work uses. The bundle is
+  // never required: without that view the host file tab remains.
+  const fileView = { pluginId: "pi.file-manager", viewId: "manager" };
+  const openedInView = preferredFileWorkPanelTab("plans/plan.md", [fileView]);
 
-  assert.equal(shouldOpenReviewArtifact(base), true);
-  assert.equal(shouldOpenReviewArtifact({ ...base, toolName: "Edit" }), true);
-  assert.equal(shouldOpenReviewArtifact({ ...base, toolName: "Bash" }), false);
-  assert.equal(shouldOpenReviewArtifact({ ...base, isError: true }), false);
+  assert.equal(hasPluginView([fileView], FILE_MANAGER_PLUGIN_TAB), true);
   assert.equal(
-    shouldOpenReviewArtifact({
-      ...base,
-      result: { details: { root: "scratch" } },
-    }),
+    hasPluginView(
+      [{ pluginId: "pi.browser", viewId: "browser" }],
+      FILE_MANAGER_PLUGIN_TAB,
+    ),
     false,
+  );
+  assert.equal(openedInView.kind, "plugin");
+  assert.equal(openedInView.id, "plugin:pi.file-manager/manager");
+  assert.equal(openedInView.location, "plans/plan.md");
+  assert.deepEqual(
+    preferredFileWorkPanelTab("plans/plan.md", []),
+    fileWorkPanelTab("plans/plan.md"),
   );
 });
 

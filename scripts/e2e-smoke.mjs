@@ -10,13 +10,13 @@
  *  PI_DESKTOP_HOST_BIN (optional)
  */
 import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PROTOCOL_VERSION } from "../packages/shared/dist/protocol.js";
+import { readNdjsonLines } from "../packages/shared/dist/ndjson.js";
 import {
   loadDevelopmentPlugin,
   resolvePluginExecution,
@@ -61,6 +61,14 @@ function skip(id, detail) {
   console.log(`SKIP ${id} — ${detail}`);
 }
 
+// The Host stores a project path in its canonical spelling
+// (`db::canonical_project_path`): the directory is resolved and the separators are
+// normalized, so `projects.list` reports forward slashes on every platform.
+// Compare list output against that spelling — a native `realpathSync` path never
+// equals it on Windows, which is how the project "removed / still there" clauses
+// passed for the wrong reason.
+const storedProjectPath = (path) => realpathSync(path).replace(/\\/g, "/");
+
 class Host {
   constructor(bin, dataDir) {
     if (process.env.DEBUG_HOST) {
@@ -76,8 +84,7 @@ class Host {
       // keep quiet unless debugging
       if (process.env.DEBUG_HOST) process.stderr.write(b);
     });
-    const rl = createInterface({ input: this.child.stdout });
-    rl.on("line", (line) => {
+    readNdjsonLines(this.child.stdout, (line) => {
       if (process.env.DEBUG_HOST) console.error(`[e2e host stdout] ${line}`);
       let msg;
       try {
@@ -336,6 +343,62 @@ async function main() {
       plugin.id === "demo.hello" && plugin.enabled === true,
     );
 
+    // E2E-0PLUGIN-I18N: plugin labels follow the pushed app language. The
+    // manifest carries both contract locales, and the host — not the renderer —
+    // picks the entry, so the row the desktop draws changes with the language
+    // while the stored manifest does not.
+    {
+      const localizedDir = join(dataDir, "labels-i18n");
+      mkdirSync(localizedDir, { recursive: true });
+      writeFileSync(join(localizedDir, "main.js"), "function onLoad() {}\nfunction onUnload() {}\n");
+      writeFileSync(
+        join(localizedDir, "manifest.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          id: "e2e.labels",
+          name: "小清新待办",
+          version: "0.1.0",
+          description: "作者原话",
+          main: "main.js",
+          permissions: [],
+          i18n: {
+            en: { name: "Todo List", description: "A calm todo list" },
+            "zh-CN": { name: "小清新待办", description: "轻盈的待办清单" },
+          },
+        }),
+      );
+      const loadedRow = await loadDevelopmentPlugin(host, localizedDir);
+      const enRow = (await host.call("plugins.list")).plugins.find(
+        (candidate) => candidate.id === "e2e.labels",
+      );
+      await host.call("plugins.setLocale", { locale: "zh-CN" });
+      const zhRow = (await host.call("plugins.list")).plugins.find(
+        (candidate) => candidate.id === "e2e.labels",
+      );
+      // A plugin is not required to translate itself into every shell locale:
+      // zh-TW reads the English entry rather than half a zh-CN guess (ADR 0182).
+      await host.call("plugins.setLocale", { locale: "zh-TW" });
+      const twRow = (await host.call("plugins.list")).plugins.find(
+        (candidate) => candidate.id === "e2e.labels",
+      );
+      // `auto` is a setting, not a locale: the desktop shell resolves it, and
+      // the host must keep reading the locale it was last given.
+      const afterAuto = await host.call("plugins.setLocale", { locale: "auto" });
+      await host.call("plugins.setLocale", { locale: "en" });
+      record(
+        "E2E-0PLUGIN-I18N",
+        loadedRow.name === "Todo List" &&
+          enRow?.description === "A calm todo list" &&
+          zhRow?.name === "小清新待办" &&
+          zhRow?.description === "轻盈的待办清单" &&
+          twRow?.name === "Todo List" &&
+          afterAuto?.locale === "zh-TW" &&
+          enRow !== undefined &&
+          !("i18n" in enRow),
+        `en=${enRow?.name} zh=${zhRow?.name} zh-TW=${twRow?.name}`,
+      );
+    }
+
     // E2E-024: plugin agent tool dispatch roundtrip. The smoke harness acts
     // as the desktop runner: host emits plugins.execute, we answer via
     // plugins.resolveExecution, and tools.execute returns the plugin result.
@@ -416,6 +479,10 @@ async function main() {
       await host.call("projects.create", { path: removedProjectDir });
       await host.call("projects.create", { path: keptProjectDir });
       // projects.list stores the canonical spelling (db.rs canonical_project_path).
+      // Keep the request paths platform-native, the way a real client sends them,
+      // and compare list output against the stored spelling (`storedProjectPath`).
+      const removedProjectStored = storedProjectPath(removedProjectDir);
+      const keptProjectStored = storedProjectPath(keptProjectDir);
       const removedProjectPath = realpathSync(removedProjectDir);
       const keptProjectPath = realpathSync(keptProjectDir);
 
@@ -482,10 +549,10 @@ async function main() {
           removal.removed === true &&
           removal.sessionsRemoved === 2 &&
           projectsAfter.projects.every(
-            (project) => project.path !== removedProjectPath,
+            (project) => project.path !== removedProjectStored,
           ) &&
           projectsAfter.projects.some(
-            (project) => project.path === keptProjectPath,
+            (project) => project.path === keptProjectStored,
           ) &&
           sessionsAfter.sessions.every(
             (session) => !deletedSessionIds.includes(session.id),
@@ -510,6 +577,7 @@ async function main() {
       mkdirSync(busyProjectDir, { recursive: true });
       await host.call("projects.create", { path: busyProjectDir });
       const busyProjectPath = realpathSync(busyProjectDir);
+      const busyProjectStored = storedProjectPath(busyProjectDir);
       const busySession = await host.call("session.create", {
         title: "E2E busy session",
         mode: "agent",
@@ -531,7 +599,7 @@ async function main() {
         refusal?.code === 1008 && refusal?.data?.errorCode === "CONFLICT";
       const nothingDeleted =
         projectsWhileBusy.projects.some(
-          (project) => project.path === busyProjectPath,
+          (project) => project.path === busyProjectStored,
         ) &&
         sessionsWhileBusy.sessions.some(
           (session) => session.id === busySession.session.id,
@@ -628,6 +696,133 @@ async function main() {
     } else {
       skip("E2E-008-live-model", "PI_DESKTOP_TEST_API_KEY not set");
       skip("E2E-009-stream", "PI_DESKTOP_TEST_API_KEY not set");
+    }
+
+    // E2E-SESSION-revision-round-trip — a regenerate branch that is still live
+    // is a reference on disk, not a second copy of a transcript suffix the
+    // session already holds. The reference resolves to the branch as it stands,
+    // including messages appended after the reference was written; the branch is
+    // stored in full only once it leaves the transcript; and both variants
+    // restore through `session.activateRevision`.
+    {
+      const bound = await host.call("session.create", {
+        title: "E2E revision round trip",
+        mode: "agent",
+      });
+      const sessionId = bound.session.id;
+      const revisionsPath = join(dataDir, "sessions", `${sessionId}.revisions.jsonl`);
+      const readRevisions = () =>
+        existsSync(revisionsPath)
+          ? readFileSync(revisionsPath, "utf8")
+              .split("\n")
+              .filter((line) => line.trim())
+              .map((line) => JSON.parse(line))
+          : [];
+      const append = (message) =>
+        host.call("session.appendMessage", { sessionId, message });
+      const user = (id, text, rootId, count, active) => ({
+        id,
+        role: "user",
+        content: text,
+        createdAt: new Date().toISOString(),
+        status: "complete",
+        revisionRootId: rootId,
+        revisionCount: count,
+        activeRevision: active,
+      });
+      const assistant = (id, text) => ({
+        id,
+        role: "assistant",
+        content: text,
+        createdAt: new Date().toISOString(),
+        status: "complete",
+      });
+      const ids = (messages) => messages.map((message) => message.id);
+
+      // One live branch, archived twice: the second archive must refresh the
+      // reference, not mint a variant.
+      const first = randomUUID();
+      const firstAnswer = randomUUID();
+      const laterAnswer = randomUUID();
+      await append(user(first, "first prompt", first, 1, 1));
+      await append(assistant(firstAnswer, "first answer"));
+      const archived = await host.call("session.saveActiveRevision", { sessionId });
+      await append(assistant(laterAnswer, "a later answer on the same branch"));
+      const refreshed = await host.call("session.saveActiveRevision", { sessionId });
+
+      const references = readRevisions().filter((line) => line.type === "revision_live");
+      const listed = await host.call("session.listRevisions", {
+        sessionId,
+        rootUserId: first,
+      });
+      const restored = await host.call("session.activateRevision", {
+        sessionId,
+        rootUserId: first,
+        revisionIndex: 1,
+        prefix: [],
+      });
+
+      // A regenerate of that prompt discards the second turn, which takes the
+      // branch out of the transcript: it has to be stored in full first.
+      const second = randomUUID();
+      const secondAnswer = randomUUID();
+      await append(user(second, "second prompt", first, 2, 2));
+      await append(assistant(secondAnswer, "second answer"));
+      await host.call("session.saveActiveRevision", { sessionId });
+      const truncated = await host.call("session.truncateFrom", {
+        sessionId,
+        fromMessageId: second,
+      });
+      const storedForSecond = readRevisions().filter(
+        (line) => line.type === "revision" && line.revisionIndex === 2,
+      );
+      const backToFirst = await host.call("session.activateRevision", {
+        sessionId,
+        rootUserId: first,
+        revisionIndex: 1,
+        prefix: [],
+      });
+      const backToSecond = await host.call("session.activateRevision", {
+        sessionId,
+        rootUserId: first,
+        revisionIndex: 2,
+        prefix: [],
+      });
+
+      const checks = {
+        "archives the live branch as revision 1": archived.saved?.activeRevision === 1,
+        "a second archive refreshes instead of minting": refreshed.saved?.archived === false,
+        "still one variant after the refresh": refreshed.saved?.revisionCount === 1,
+        "the live branch was written as a reference": references.length >= 2,
+        "the reference carries no payload": references.every(
+          (line) => !("messages" in line) && !("turns" in line),
+        ),
+        "the reference does not grow with the branch": references.every(
+          (line) => JSON.stringify(line).length < 200,
+        ),
+        "one variant is listed": listed.revisions.length === 1,
+        "it counts the whole live branch": listed.revisions[0]?.messageCount === 3,
+        "the reference resolves to the branch as it stands": ids(restored.messages).join() ===
+          [first, firstAnswer, laterAnswer].join(),
+        "the regenerate discarded the second turn": truncated.discardedCount === 2,
+        "the branch that left is stored in full": storedForSecond.some(
+          (line) => (line.messages ?? []).length === 2,
+        ),
+        "variant 2 restores its own messages":
+          ids(backToSecond.messages).join() === [second, secondAnswer].join(),
+        "variant 1 restores the grown branch":
+          ids(backToFirst.messages).join() === [first, firstAnswer, laterAnswer].join(),
+      };
+      const failed = Object.entries(checks)
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name);
+      record(
+        "E2E-SESSION-revision-round-trip",
+        failed.length === 0,
+        failed.length === 0
+          ? `refs=${references.length} stored=${storedForSecond.length} v1=3 v2=2`
+          : `failed: ${failed.join("; ")}`,
+      );
     }
 
     // agent-runtime unit-ish import check

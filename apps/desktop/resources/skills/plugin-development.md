@@ -119,7 +119,7 @@ user.
   `agent.tool.register`, `agent.complete`, `session.read`, `mcp.server.local`,
   `mcp.server.remote`
 - Medium: `fs.read`, `clipboard.read`, `clipboard.write`, `shell.openExternal`,
-  `background.service`, `bus.publish`, `bus.subscribe`, `models.list`
+  `background.service`, `bus.publish`, `bus.subscribe`, `models.list`, `usage.read`
 - Low: `ui.panel`, `ui.theme`, `notify` (Toast and best-effort native notifications)
 
 ### File and network range

@@ -27,7 +27,7 @@ PI-Desktop in the application menu and uses the canonical icon in the native
 About panel. The runtime also applies `build/icon_1024.png` to the Dock. Stock
 files under `node_modules` are never modified. Windows/Linux development keeps
 the normal electron-vite executable. Windows Main nevertheless registers the
-same `com.pi-desktop.app` AppUserModelID used by the NSIS package before
+same `net.aiuo.pi-desktop` AppUserModelID used by the NSIS package before
 Electron readiness, preventing the stock host identity from owning native
 notifications or taskbar groups. The Windows package additionally pins the
 `PI-Desktop` executable and Start menu shortcut names. The launcher sets
@@ -46,19 +46,30 @@ when macOS `iconutil` is available, without overwriting the canonical source.
 ## 2. Prerequisites (release lane)
 
 1. Apple Developer account with a **Developer ID Application** certificate in
-   the login keychain.
-2. Environment variables:
-   - `MAC_SIGNING_IDENTITY` — e.g. `Developer ID Application: <Name> (<TEAMID>)`
+   the login keychain. Official certificate:
+   `Developer ID Application: XingYu Liu (DUV63RKYTW)` (Team ID `DUV63RKYTW`).
+2. Environment variables for the local signed lane:
+   - `MAC_SIGNING_IDENTITY` — bare common name `XingYu Liu (DUV63RKYTW)`;
+     electron-builder rejects a name that keeps the
+     `Developer ID Application:` prefix, so the script strips it
    - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` — required for
-     notarization.
+     notarization (`APPLE_TEAM_ID` must be `DUV63RKYTW`)
 3. Rust toolchain and pnpm workspace installed. The Rust toolchain must run on
    the native macOS runner: arm64 for Apple Silicon or x86_64 for Intel.
 
 ## 3. What the build ships
 
 - Electron app with hardened runtime + entitlements
-  (`build/entitlements.mac.plist`: JIT + unsigned-executable-memory +
-  library-validation disable — the standard Electron set).
+  (`build/entitlements.mac.plist`: V8 JIT, unsigned-executable-memory,
+  library-validation disable for Electron helpers and plugin native addons,
+  and microphone input for plugin capture after user grant — ADR 0257), plus
+  `NSLocalNetworkUsageDescription` and `NSMicrophoneUsageDescription` in
+  Info.plist (via `apps/desktop/package.json` → `mac.extendInfo`). The local
+  network string is required so macOS 15+ prompts for Local Network access and
+  grants it to both the Chromium main process and the `ELECTRON_RUN_AS_NODE`
+  agent sidecar — without it, LAN provider requests from the sidecar fail with
+  `EHOSTUNREACH` even though the main process's Test Provider fetch succeeds
+  (issue #573).
 - `Resources/bin/pi-desktop-host-core` — Rust host binary (release build).
 - Windows NSIS builds include an x64 `pi-desktop-host-core.exe` statically
   linked to the MSVC CRT, so a clean Windows x64 or Windows 11 ARM64
@@ -173,7 +184,7 @@ Pre-tag checklist:
 ### 4.2 Build / package
 
 ```bash
-export MAC_SIGNING_IDENTITY="Developer ID Application: ... (TEAMID)"
+export MAC_SIGNING_IDENTITY="XingYu Liu (DUV63RKYTW)"
 export APPLE_ID=...
 export APPLE_APP_SPECIFIC_PASSWORD=...
 export APPLE_TEAM_ID=...
@@ -202,26 +213,30 @@ runtime, verifying the host build, building the Desktop application once, and
 invoking electron-builder. This avoids a redundant Desktop build without
 changing the package scripts or release artifacts.
 
-**Default macOS release policy:** the GitHub Release workflow packages macOS
-DMG/ZIP artifacts unsigned by default. Tag pushes and manual runs with
-`sign_macos` omitted or set to `false` disable identity discovery, do not receive
-signing or notarization secrets, and skip macOS stapling and signature
-verification. To explicitly sign a run, manually dispatch the workflow for the
-target tag with `sign_macos: true`. The local `scripts/release-macos.sh` command
-remains the explicit signed lane.
+**Default macOS release policy:** GitHub tag releases Developer ID-sign,
+notarize, staple, and Gatekeeper-verify macOS DMG/ZIP before upload (D450 /
+ADR 0289). Missing signing or notarization secrets fail the job. A
+`workflow_dispatch` run may set `sign_macos: false` only to produce unsigned
+debug artifacts; that path must not be used for a GitHub Release tag. Local
+`scripts/release-macos.sh` remains the explicit signed local lane; `pnpm dist:mac`
+stays unsigned without a configured certificate (D078).
 
 The macOS matrix uses `macos-15` for arm64 and `macos-15-intel` for Intel x64.
 Each job verifies `uname -m`, passes the matching `--arm64` or `--x64` flag to
 electron-builder, and builds `pi-desktop-host-core` on that same native
-runner. The default macOS package step is unsigned. When a manual run explicitly
-sets `sign_macos: true`, it receives `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
-`APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` only from GitHub Actions
-secrets. It then forces code signing and notarization, verifies the Developer ID
-authority, code-signing integrity, Gatekeeper assessment, and stapled app
-ticket, and explicitly staples and validates the generated DMG before any
-artifact upload. The per-architecture
-`latest-mac.yml` files are renamed before upload; the publish job merges them
-into one feed after downloading both artifacts.
+runner. Tag builds and `sign_macos: true` (the dispatch default) receive
+`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
+`APPLE_TEAM_ID` only from GitHub Actions secrets, pin the certificate through
+`CSC_NAME=XingYu Liu (DUV63RKYTW)` (bare common name — electron-builder rejects
+the `Developer ID Application:` prefix), force code signing and
+`notarytool` notarization of `PI-Desktop.app`. The DMG is then submitted to the
+same service on its own (`scripts/notarize-and-staple-macos-release-dmg.sh`),
+and only an `Accepted` status allows the ticket to be stapled. Verification
+then checks the identity, code-signing integrity (including
+`pi-desktop-host-core`), Gatekeeper `Notarized Developer ID`, and both stapled
+tickets before any artifact upload. The per-architecture `latest-mac.yml` files
+are renamed before upload; the publish job merges them into one feed after
+downloading both artifacts.
 
 The shared electron-builder configuration applies the architecture-labelled
 pattern at the macOS platform level for ZIPs and overrides it at the DMG target
@@ -235,22 +250,18 @@ asset names and matching checksums. Before upload, each macOS runner requires
 exactly one architecture-labelled DMG and ZIP (including blockmaps) and rejects
 any unlabelled or wrong-architecture macOS artifact.
 
-The DMG uses a branded 720×500 background with a clear drag-to-Applications
-gesture. The app and Applications link occupy the main row; the first-launch
-opening note sits in a secondary row so the unsigned-build path is discoverable
-without making it the normal installation action. The note is displayed as
-`If app won't open, read this.txt`; the DMG does not include the executable command helper.
+The DMG uses a branded 720×440 background with a two-icon drag-to-Applications
+gesture. The app and Applications link are the only items in the window. The
+opening-help note and the executable command helper are not included in the DMG.
 
-Every macOS DMG includes the companion
-`PI-Desktop-macOS-opening-help.txt` at the package root under that display
-name. The macOS ZIP includes both that note and the executable
-`PI-Desktop-macOS-open.command`. After moving `PI-Desktop.app` to
-`/Applications` or `~/Applications`, ZIP users can double-click the helper. It
-searches only those two fixed locations, removes only the recursive
-`com.apple.quarantine` attribute when present, and opens PI-Desktop. Before
-doing so it verifies `CFBundleIdentifier=com.pi-desktop.app`. It does not use
-`sudo` or accept an arbitrary application path. The manual fallback for the
-standard system location is:
+The macOS ZIP includes both `PI-Desktop-macOS-opening-help.txt` and the
+executable `PI-Desktop-macOS-open.command` at the package root. After moving
+`PI-Desktop.app` to `/Applications` or `~/Applications`, ZIP users can
+double-click the helper. It searches only those two fixed locations, removes
+only the recursive `com.apple.quarantine` attribute when present, and opens
+PI-Desktop. Before doing so it verifies `CFBundleIdentifier=net.aiuo.pi-desktop`.
+It does not use `sudo` or accept an arbitrary application path. The manual
+fallback for the standard system location is:
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
@@ -291,22 +302,138 @@ Re-running the workflow for the same tag is safe if the CNB pipeline is
 idempotent. It does not rebuild desktop artifacts and does not change
 electron-updater feeds.
 
+### 4.5 GitHub Actions secrets for macOS signing
+
+Create these under GitHub → repository `vastsa/PI-Desktop` → Settings →
+Secrets and variables → Actions. Never commit the p12, password, Apple ID, or
+app-specific password. Never `echo` these values in CI.
+
+| Secret | Value |
+|---|---|
+| `CSC_LINK` | Base64 of the exported Developer ID Application `.p12` (Certificate + Private Key). electron-builder also accepts a file path, but CI uses the secret body. |
+| `CSC_KEY_PASSWORD` | Password used when exporting that `.p12` |
+| `APPLE_ID` | Apple ID email that belongs to team `DUV63RKYTW` |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password from https://appleid.apple.com → Sign-In and Security → App-Specific Passwords |
+| `APPLE_TEAM_ID` | `DUV63RKYTW` |
+
+Encode the p12 locally (do not paste the output into chat or the repo):
+
+```bash
+base64 -i developer-id-application.p12 | pbcopy
+```
+
+On Linux use `base64 -w0 developer-id-application.p12`. Files that must never
+enter git: `*.p12`, `*.cer`, `*.p8`, `*.mobileprovision`.
+
+### 4.6 macOS signing observability and timeouts
+
+`electron-builder` prints one line before signing — `signing
+file=release/mac-arm64/PI-Desktop.app platform=darwin type=distribution
+identityName=...` — and then nothing until the phase is over. Three mechanisms
+hide in that gap, and the macOS lanes now expose all three:
+
+| Point in the phase | What happens | How it is visible |
+|---|---|---|
+| Walk | `@electron/osx-sign` walks `PI-Desktop.app/Contents` and collects every Mach-O file plus nested `.app` and `.framework` bundles | `DEBUG=electron-osx-sign*` prints `Walking... <dir>`; `scripts/macos-bundle-inventory.mjs` prints the same bundle's counts right after packaging |
+| Per-file signing | `codesign --force --sign <identity> --timestamp --entitlements ... <file>` runs serially, deepest file first, the app bundle last | `DEBUG=electron-osx-sign*` prints `Signing... <file>` and `Executing... <file> codesign ...`; the codesign shim times every invocation. If a keychain ever refuses to hand the key to a wrapped `codesign`, `PI_SIGNING_NO_CODESIGN_SHIM=1` runs the phase without the shim |
+| Silent retry | A failing pass is retried up to three more times with a 5s/10s/15s backoff and no log line | The watchdog's `codesign-calls` and `failures` lines expose repeated passes |
+| App notarization | `@electron/notarize` zips the app, uploads it, and waits for Apple's queue (`mac.notarize=true`) | `DEBUG=electron-notarize*` prints `zipping application to`, `attempting to upload file to Apple`, `notarization success`, then electron-builder prints `notarization successful` |
+| DMG notarization | The DMG carries its own signature, so the next step submits it again with `xcrun notarytool submit --wait` | The same watchdog keeps that wait observable and bounded |
+
+`scripts/macos-signing-watchdog.mjs` wraps both long phases. It forwards every
+child line with a `[sign] ` prefix and keeps the child's exit code, so the
+failure semantics of the lane do not change. stdout and stderr are forwarded as
+two independent streams, so their relative order can differ from a direct run,
+and the child receives no stdin. It prints a heartbeat while the
+child is silent (elapsed time, phase, last file, active codesign target), dumps
+diagnostics when the phase produces no output and no codesign activity for
+`PI_SIGNING_STALL_SECONDS` (the last file, the `ps` state of the signing
+processes, the codesign log tail), and reports per-file codesign timings — call
+count, total, p50, p95, maximum, and the slowest files — in a `[sign] summary`
+block. The knobs:
+
+| Setting | Default | Effect |
+|---|---|---|
+| `PI_SIGNING_TIMEOUT_SECONDS` | 2400 (CI: 1800 packaging, 1200 DMG) | Hard limit for the wrapped phase: diagnostics are dumped, the process group is killed, and the step exits 124 instead of hanging |
+| `PI_SIGNING_STALL_SECONDS` | 300 | Silence with no codesign activity for this long triggers one diagnostics dump; the phase keeps running, because Apple's notarization queue is a legitimate wait |
+| `PI_SIGNING_HEARTBEAT_SECONDS` | 60 | Heartbeat interval while the child produces no output |
+| `DEBUG` | `electron-osx-sign*,electron-notarize*` | Namespaces that expose walking, per-file signing, and notarization progress |
+
+`DEBUG` lists only the two namespaces that sanitize their own command lines,
+because `electron-builder`'s namespace is not safe here: builder-util prints
+every spawned command through a stem list that does not cover
+`security set-key-partition-list -k <p12 password>`. On top of that the watchdog
+redacts the values of `CSC_KEY_PASSWORD` and `APPLE_APP_SPECIFIC_PASSWORD` at any
+length, the values of `CSC_LINK` and `APPLE_ID`, and any `--password` or `-k`
+argument, from everything it emits — including the diagnostics, whose process
+view prints `comm` only and never `argv`, and the summary, which carries counts
+and redacted target paths. GitHub additionally masks every value that comes from
+a secret.
+
+Measured on the maintainer machine, one macOS arm64 bundle needs 93 `codesign`
+invocations (91 signing, 1 verification, 1 entitlement display) and about 49s of
+`codesign` wall time; only 16 of those files are Mach-O code and 5 are nested
+bundles. `@electron/osx-sign` also signs binary resources — 33 `.pak` files plus
+`.nib`, `.dat`, `.bin`, `.png`, `.icns`, and `app.asar` — because its walk
+selects every file that looks binary, not only Mach-O. Excluding exactly those
+data files with `mac.signIgnore` would remove roughly three quarters of the
+calls, but it changes what the release artifacts carry and needs a notarized
+release to validate, so it is deliberately not enabled.
+
+`scripts/macos-signing-diagnostics.sh` records the runner baseline before the
+certificate is imported: system version, `codesign --version`, keychain
+identities/list/default, `xcrun --find notarytool`, and the reachability and
+latency of `http://timestamp.apple.com/ts01`. The Developer ID identity is
+expected to be absent at that point, because electron-builder imports it from
+`CSC_LINK` while packaging; only `--require-identity` makes a missing identity
+fatal.
+
+Signer status: `@electron/osx-sign@1.3.3` is pinned exactly by
+`app-builder-lib@26.15.3` and no override applies to it. Its
+`signApplication()` awaits one `codesign` per file; it has no batch or parallel
+path and no option or environment variable that enables one. A faster signer
+therefore needs the `mac.sign` replacement hook, which is a rewrite rather than
+a configuration switch, so the lane keeps the pinned signer and the diagnostics
+above.
+
 ## 5. Verification gates
 
-For the default unsigned macOS lane, do not treat macOS artifacts as
-Gatekeeper-qualified. The signature and staple checks below apply only when a
-run explicitly enables `sign_macos: true`.
+Unsigned debug artifacts (`workflow_dispatch` with `sign_macos: false`) are
+not Gatekeeper-qualified. Tag releases must pass the signature, notarization,
+and staple checks below or the workflow fails.
 
-Run after every release build:
+Two separate notarization submissions exist, because Apple notarizes one
+artifact per submission and electron-builder only covers the app:
+
+| Artifact | Submitted by | Ticket |
+|---|---|---|
+| `PI-Desktop.app` (inside the ZIP) | electron-builder `-c.mac.notarize=true` | stapled by electron-builder |
+| `PI-Desktop-<version>-<arch>.dmg` | `scripts/notarize-and-staple-macos-release-dmg.sh` (`notarytool submit --wait`) | stapled by the same script after `status: Accepted` |
+
+A DMG that was never submitted has no ticket, so stapling it fails with
+`Could not find base64 encoded ticket ... Error 65`. Stapler retries are only
+allowed after Apple returns `Accepted`.
+
+Run after every signed release build:
 
 ```bash
 for APP in apps/desktop/release/mac-*/PI-Desktop.app; do
-  codesign -dv --verbose=2 "$APP"          # identity + hardened runtime flags
-  codesign --verify --deep --strict "$APP" # signature integrity
-  spctl -a -vv "$APP"                      # Gatekeeper assessment (notarized Developer ID)
-  xcrun stapler validate "$APP"             # notarization staple
+  codesign -dv --verbose=4 "$APP"          # identity + hardened runtime flags
+  codesign --verify --deep --strict --verbose=2 "$APP"
+  spctl --assess --type execute --verbose=4 "$APP"
+  xcrun stapler validate "$APP"
 done
 xcrun stapler validate apps/desktop/release/*.dmg
+```
+
+To read the Apple notarization log for a submission (the Release workflow does
+this automatically when a submission is not accepted):
+
+```bash
+xcrun notarytool log <submission-id> \
+  --apple-id "$APPLE_ID" \
+  --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+  --team-id "$APPLE_TEAM_ID"
 ```
 
 ### 5.1 Package footprint gate
@@ -384,11 +511,32 @@ against the same tree at `v0.10.8`:
 | CSS | 0.42 MiB | 0.35 MiB |
 | **Total `out/renderer`** | **31 MiB** | **24 MiB** |
 
-The two bundled CJK faces (`lxgw-wenkai.woff2` 7.6 MiB, `noto-sans-sc.woff2`
-7.4 MiB) dominate the remainder. They stay unsubset on purpose: ADR 0083 §2
-appends `Noto Sans SC` to every font stack so Chinese text stays readable
-offline, and subsetting would drop glyphs from user-supplied content. Reducing
-them requires an ADR revision, not a build-config change.
+The renderer no longer emits any application font face. D598 / ADR 0298 removed
+the four bundled families (Geist, Inter, Noto Sans SC, LXGW WenKai), so the only
+`woff2` files left in `out/renderer` are KaTeX's math glyphs. Measured on this
+machine from a clean `pnpm install --frozen-lockfile`, with and without the
+removal:
+
+| Renderer group | Bundled fonts | After D598 |
+|---|---:|---:|
+| JavaScript (121 chunks) | 9.04 MiB | 9.04 MiB |
+| `woff2` (23 → 19 files) | 15.71 MiB | 0.24 MiB |
+| CSS (1 file) | 0.48 MiB | 0.48 MiB |
+| PNG brand assets (4 files) | 0.08 MiB | 0.08 MiB |
+| GIF (2 files) | 0.05 MiB | 0.05 MiB |
+| **Total `out/renderer`** (152 → 148 files) | **25.36 MiB** | **9.89 MiB** |
+
+The entire difference is the four deleted faces, at the sizes the build reports:
+`lxgw-wenkai.woff2` 8,016.75 kB, `noto-sans-sc.woff2` 7,782.07 kB,
+`inter.woff2` 352.24 kB, and `geist.woff2` 69.65 kB — 16,220.71 kB, which is the
+whole 15.47 MiB drop in the total. Chinese text now renders from the system tier
+(`PingFang SC`, `Hiragino Sans GB`, `Microsoft YaHei`), so no glyph coverage is
+lost to subsetting: no face ships.
+The other two controls are unchanged: minification stays explicit, and the
+legacy `woff`/`truetype` strip stays because KaTeX still declares those sources.
+
+The three-controls table above is the `v0.10.8` record and predates the removal,
+so its `woff2` row is no longer current.
 
 Manual smoke on a clean profile (`PI_DESKTOP_DATA_DIR=$(mktemp -d)`):
 
@@ -473,13 +621,13 @@ Shell smoke on each native runner:
 
 ## 7. Known limitations
 
-- macOS, Linux deb/rpm, and the Windows portable exe remain notify-and-link
-  update modes.
+- Linux deb/rpm and the Windows portable exe remain notify-and-link update
+  modes. Packaged macOS, Windows NSIS, and Linux AppImage use in-app
+  `electron-updater`.
 - Linux x64 packages are built on Ubuntu 22.04 so host-core needs glibc 2.35
   or newer (Ubuntu 22.04, Debian 12, Fedora 36+). The tag job runs
   `scripts/check-linux-host-glibc.mjs` and refuses a binary that needs a
   newer glibc.
-- In-app macOS delivery, rollback, staged rollout, and prerelease channel
-  policy remain open release work. GitHub Release macOS artifacts are unsigned
-  by default; only a manual `sign_macos: true` run receives Developer ID
-  signing, notarization, and stapling before publication.
+- Rollback, staged rollout, and prerelease channel policy remain open release
+  work. Existing unsigned macOS installs may need one manual signed DMG before
+  in-app updates succeed.

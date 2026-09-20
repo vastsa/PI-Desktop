@@ -1,7 +1,9 @@
 /**
  * Pure public-network policy shared by renderer validation and main-process
  * request guards. This is deliberately syntactic; callers that make network
- * requests must also pin DNS resolution to the address they validate.
+ * requests must also pin DNS resolution to the address they validate, and ask
+ * the transport which route a request will take before judging that address
+ * (ADR 0272).
  */
 
 export type PublicNetworkAddressKind =
@@ -135,6 +137,222 @@ export function isPublicHttpsUrl(value: string): boolean {
 
 /** Backward-compatible descriptive alias for the generic public URL guard. */
 export const isSafePublicHttpsUrl = isPublicHttpsUrl;
+
+/**
+ * The route the transport will actually take for a URL, as the Chromium session
+ * that carries the request reports it (`Session.resolveProxy`).
+ *
+ * `proxied` means this app dials a proxy rather than the destination, so the
+ * addresses the *local* resolver returns for that host describe no connection
+ * this app makes. `unknown` is never permission: a route the app cannot read
+ * keeps the strict local-DNS verdict (ADR 0272).
+ */
+export type PublicNetworkRoute = "direct" | "proxied" | "unknown";
+
+/** Entry types `resolveProxy` publishes, in its `TYPE host:port` list format. */
+const PROXY_LIST_TYPES = ["PROXY", "HTTP", "HTTPS", "SOCKS", "SOCKS4", "SOCKS5"];
+const PROXY_CHAIN_ENTRY = new RegExp(
+  `^(?:${PROXY_LIST_TYPES.join("|")})\\s+\\S+(?:\\s*,\\s*(?:${PROXY_LIST_TYPES.join("|")})\\s+\\S+)*$`,
+);
+
+/**
+ * Classify Chromium's proxy-list answer for one URL (`Session.resolveProxy`).
+ *
+ * Only a list that names at least one proxy chain and offers no `DIRECT` entry
+ * proves the app's socket can be a proxy rather than the destination. A list
+ * that also offers `DIRECT` stays `unknown`, because Chromium may fall back to
+ * it, and an empty or unparsable answer stays `unknown` too. Nothing here
+ * guesses in the permissive direction (ADR 0272).
+ */
+export function classifyProxyRoute(proxyList: unknown): PublicNetworkRoute {
+  if (typeof proxyList !== "string") return "unknown";
+  const entries = proxyList
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (!entries.length) return "unknown";
+  let direct = false;
+  let proxied = false;
+  for (const entry of entries) {
+    if (/^DIRECT$/i.test(entry)) {
+      direct = true;
+      continue;
+    }
+    if (!PROXY_CHAIN_ENTRY.test(entry)) return "unknown";
+    proxied = true;
+  }
+  if (proxied) return direct ? "unknown" : "proxied";
+  return direct ? "direct" : "unknown";
+}
+
+/**
+ * Whether a resolved address class may be connected to on this route.
+ *
+ * A direct (or unreadable) route keeps the rule the guard always had: the app
+ * dials the resolved address itself, so only a public address passes. On a
+ * proxied route the app dials the proxy, and the one class the local answer can
+ * then still carry is `benchmark` — the RFC 2544 range a TUN fake-IP resolver
+ * synthesizes, which no internal service is addressed by. Every class that
+ * names a real internal target (private, loopback, link-local, multicast, ULA,
+ * site-local) refuses on both routes (ADR 0272).
+ */
+export function isAcceptableResolvedAddress(
+  kind: PublicNetworkAddressKind,
+  route: PublicNetworkRoute,
+): boolean {
+  if (kind === "public") return true;
+  return route === "proxied" && kind === "benchmark";
+}
+
+/**
+ * Name the public-network client stamps on its refusals. A caller that must
+ * stay free of that client's `node:dns` dependency — the skill market
+ * aggregator, which is exercised as a pure module — classifies with this
+ * instead of importing the client.
+ */
+export const PUBLIC_NETWORK_POLICY_ERROR = "PublicNetworkPolicyError";
+
+/** Structural check for a public-network refusal, without importing the client. */
+export function isPublicNetworkPolicyFailure(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { name?: unknown }).name === PUBLIC_NETWORK_POLICY_ERROR
+  );
+}
+
+/**
+ * Why the guard refused, at the granularity a user can act on. Only
+ * `non-public-address` and `url-syntax` are verdicts on the URL itself;
+ * `resolve-failed` means the local resolver produced no answer at all, which is
+ * an environment condition — a proxied or offline resolver — rather than a
+ * policy decision about a resolved address (issue #419, ADR 0243).
+ */
+export type PublicNetworkRefusalReason =
+  | "url-syntax"
+  | "resolve-failed"
+  | "non-public-address"
+  | "redirect-limit";
+
+/**
+ * The structured reason a public-network refusal carries, or `undefined` for an
+ * unrecognized refusal. Callers that must keep the guard's fail-closed behavior
+ * but want to explain it — the skill market's classifier and its diagnostics —
+ * read this instead of re-parsing the message. `undefined` is never permission:
+ * a refusal that cannot name its reason is still a refusal.
+ */
+export function publicNetworkRefusalReason(error: unknown): PublicNetworkRefusalReason | undefined {
+  if (!isPublicNetworkPolicyFailure(error)) return undefined;
+  const reason = (error as { reason?: unknown }).reason;
+  return reason === "url-syntax" ||
+    reason === "resolve-failed" ||
+    reason === "non-public-address" ||
+    reason === "redirect-limit"
+    ? reason
+    : undefined;
+}
+/** A refusal's own account of itself, extractable without importing the client. */
+/** A refusal's own account of itself, extractable without importing the client. */
+export type PublicNetworkRefusalDetail = {
+  reason: PublicNetworkRefusalReason;
+  /** The hostname the guard was classifying, when it got that far. */
+  host?: string;
+  /**
+   * The address that failed the policy, validated as an IP literal before it is
+   * carried. It is the local resolver's answer for `host`, not the user's input
+   * and not a URL component, and it is the single most diagnostic field a
+   * refusal has: `198.18.0.1` reads as a proxy's fake-IP at a glance.
+   */
+  address?: string;
+  /** That address's class, which is what separates a proxy artifact from a target. */
+  addressKind?: PublicNetworkAddressKind;
+  /**
+   * The route that hop was judged on, when the guard could read one. `direct`
+   * is why a fake-IP answer is still a refusal: the app would dial it itself
+   * (ADR 0272).
+   */
+  route?: PublicNetworkRoute;
+};
+
+const PUBLIC_NETWORK_ADDRESS_KINDS: ReadonlyArray<PublicNetworkAddressKind> = [
+  "public",
+  "invalid",
+  "unspecified",
+  "loopback",
+  "private",
+  "cgnat",
+  "link-local",
+  "multicast",
+  "reserved",
+  "documentation",
+  "benchmark",
+  "ula",
+  "site-local",
+];
+
+const PUBLIC_NETWORK_ROUTES: ReadonlyArray<PublicNetworkRoute> = ["direct", "proxied", "unknown"];
+
+/**
+ * The address classes a local proxy hands back for a name it means to resolve
+ * itself, instead of the target's own address. `benchmark` is RFC 2544's
+ * `198.18.0.0/15`, which Clash, Mihomo, sing-box and Surge all ship as their
+ * default fake-IP pool — and `2001:2::/48` in IPv6.
+ *
+ * A caller uses this to explain a block correctly, never to lift one: an address
+ * in this class still fails `isPublicIpLiteral`, and the guard still refuses it
+ * unless the route says this app dials a proxy instead of that address
+ * (ADR 0272, issue #419).
+ */
+export function isProxyFakeIpAddress(kind: PublicNetworkAddressKind | undefined): boolean {
+  return kind === "benchmark";
+}
+
+/**
+ * What a refusal says about itself: why, which host, which address it resolved
+ * to, which class that address fell into, and which route the guard judged that
+ * hop on. Callers that must explain a block — the skill market's classifier and
+ * its diagnostics — read this instead of parsing the message.
+ *
+ * The address and its class travel together: the address is what the user
+ * recognises (`198.18.0.1` is unmistakably a proxy's fake-IP) and the class is
+ * what a machine decides on; `route` is what decides whether that fake-IP class
+ * was tolerated or refused (ADR 0272). Neither the address nor the class is a
+ * secret — both are the local resolver's answer for a hostname the user supplied
+ * — and neither is a URL, a path, a query or a credential.
+ */
+export function publicNetworkRefusalDetail(error: unknown): PublicNetworkRefusalDetail | undefined {
+  const reason = publicNetworkRefusalReason(error);
+  if (!reason) return undefined;
+  const source = error as {
+    host?: unknown;
+    address?: unknown;
+    addressKind?: unknown;
+    route?: unknown;
+  };
+  const host = typeof source.host === "string" && source.host ? source.host : undefined;
+  const addressKind = PUBLIC_NETWORK_ADDRESS_KINDS.includes(
+    source.addressKind as PublicNetworkAddressKind,
+  )
+    ? (source.addressKind as PublicNetworkAddressKind)
+    : undefined;
+  // Only a well-formed IP literal travels: a refusal must never be a channel for
+  // putting arbitrary resolver text into a log line or a settings page.
+  const address =
+    typeof source.address === "string" && classifyIpLiteral(source.address) !== "invalid"
+      ? source.address
+      : undefined;
+  const route = PUBLIC_NETWORK_ROUTES.includes(source.route as PublicNetworkRoute)
+    ? (source.route as PublicNetworkRoute)
+    : undefined;
+  return {
+    reason,
+    ...(host ? { host } : {}),
+    ...(address ? { address } : {}),
+    ...(addressKind ? { addressKind } : {}),
+    ...(route ? { route } : {}),
+  };
+}
+
 
 function parseIpv4(value: string): number | null {
   const parts = value.split(".");

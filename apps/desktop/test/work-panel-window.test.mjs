@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   baseWindowBounds,
   clampBoundsOriginToWorkArea,
+  clampBoundsToWorkArea,
   displayWorkAreaKey,
   emptyWorkPanelReservationState,
   isWorkPanelOuterResizeEdge,
@@ -394,6 +395,30 @@ test("normalizing a dropped window moves its origin without resizing it", () => 
       rightWorkArea,
     ),
     { x: 1920, y: 0, width: 2400, height: 1200 },
+  );
+});
+
+test("restoring a window shrinks an oversized rect to fit the work area", () => {
+  // Regression for issue #544: a display-scale or accessibility "text size"
+  // change can leave a persisted rect wider/taller than the current work area.
+  // The restore path must fit it back on-screen, size included.
+  const restoreArea = { x: 0, y: 0, width: 1280, height: 912 };
+  assert.deepEqual(
+    clampBoundsToWorkArea(
+      { x: -37, y: 22, width: 1572, height: 1056 },
+      restoreArea,
+    ),
+    { x: 0, y: 0, width: 1280, height: 912 },
+  );
+  // A rect that already fits keeps its size and only its origin is clamped.
+  assert.deepEqual(
+    clampBoundsToWorkArea({ x: 900, y: 700, width: 800, height: 600 }, restoreArea),
+    { x: 480, y: 312, width: 800, height: 600 },
+  );
+  // A rect fully inside the work area is returned unchanged.
+  assert.deepEqual(
+    clampBoundsToWorkArea({ x: 40, y: 30, width: 1000, height: 700 }, restoreArea),
+    { x: 40, y: 30, width: 1000, height: 700 },
   );
 });
 

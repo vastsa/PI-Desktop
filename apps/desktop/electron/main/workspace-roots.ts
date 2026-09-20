@@ -5,7 +5,7 @@ import type {
 } from "@pi-desktop/shared";
 
 /**
- * The project-group roots behind the one visible workspace (ADR 0249, ADR 0252).
+ * The project-group roots behind the one visible workspace (ADR 0249, ADR 0263).
  *
  * host-core owns the group records. Main keeps a snapshot of them so both the
  * synchronous `workspace:changed` broadcast and `pi.workspace.get` can answer

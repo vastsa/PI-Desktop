@@ -15,13 +15,13 @@
  * Deterministic: no live network access.
  */
 import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROTOCOL_VERSION } from "../packages/shared/dist/protocol.js";
+import { readNdjsonLines } from "../packages/shared/dist/ndjson.js";
 import {
   BUILTIN_SKILL_CATALOG,
   GLOBAL_SCOPE,
@@ -73,8 +73,7 @@ class Host {
     });
     this.pending = new Map();
     this.child.stderr.on("data", () => {});
-    const rl = createInterface({ input: this.child.stdout });
-    rl.on("line", (line) => {
+    readNdjsonLines(this.child.stdout, (line) => {
       let msg;
       try {
         msg = JSON.parse(line);

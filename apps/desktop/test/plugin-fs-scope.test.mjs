@@ -542,7 +542,7 @@ test("a host action reaches a file in another folder of the open project", async
   assert.deepEqual(opened, [realpathSync(join(ws, "notes.txt"))]);
 
   // A sibling folder's own file can only be named absolutely, and it opens that
-  // file rather than a same-named one in the workspace (ADR 0253).
+  // file rather than a same-named one in the workspace (ADR 0264).
   await runtime.invokePanelBridge("fs.folders.open", "fs.openDefault", {
     path: join(other, "notes.txt"),
   });

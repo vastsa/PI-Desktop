@@ -19,17 +19,11 @@ import {
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 
-/** Static v1 prompt for Composer's one-shot draft enhancement. */
-export const PROMPT_ENHANCEMENT_SYSTEM_PROMPT = `You are a writing assistant that improves message drafts. Rewrite the user's
-draft to be clearer, more concise, and better organized while preserving the
-original meaning, intent, tone, and language. Do not add facts or requests
-that the draft does not imply. Keep the same language as the draft. If the
-draft is already good, return it with at most minor polish. Output only the
-rewritten draft — no explanations, no preamble, no code fences, no quotation
-marks.`;
-
-export const PROMPT_ENHANCEMENT_USER_PREFIX = "Draft:\n";
-
+/**
+ * Prompt-enhancement templates live in `@pi-desktop/shared` so the runtime,
+ * the settings UI, and the "restore default" action all read one copy
+ * (`packages/shared/src/prompt-enhancement.ts`).
+ */
 export type ComposerTemplateSource = "project" | "user";
 
 export type ComposerTemplate = PromptTemplate & {

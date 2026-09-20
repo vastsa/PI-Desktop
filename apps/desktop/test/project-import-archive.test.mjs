@@ -7,7 +7,7 @@ const [appSource, projectSlice, sessionSlice, importSource] = await Promise.all(
   readAppSource(),
   readStoreModule("slices/project-slice.ts"),
   readStoreModule("slices/session-slice.ts"),
-  readFile(new URL("../src/features/settings/agent-sections.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/features/settings/import-page.tsx", import.meta.url), "utf8"),
 ]);
 
 test("session imports restore archived projects only for newly added sessions", () => {

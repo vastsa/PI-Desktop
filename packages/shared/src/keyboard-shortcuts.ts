@@ -10,8 +10,7 @@ export const KEYBOARD_SHORTCUT_IDS = [
   "toggleSidebar",
   "openWorkPanel",
   "abort",
-  "summonWindow",
-  "closeWindow",
+  "toggleWindow",
   "resetZoom",
   "zoomIn",
   "zoomOut",
@@ -54,8 +53,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcutDefinition[] = [
   { id: "toggleSidebar", group: "navigation", defaultBinding: "Mod+B" },
   { id: "openWorkPanel", group: "navigation", defaultBinding: "Mod+J" },
   { id: "abort", group: "agent", defaultBinding: "Mod+Period" },
-  { id: "summonWindow", group: "window", defaultBinding: "Mod+Shift+W" },
-  { id: "closeWindow", group: "window", defaultBinding: "Mod+W" },
+  { id: "toggleWindow", group: "window", defaultBinding: "Alt+Shift+W" },
   { id: "resetZoom", group: "window", defaultBinding: "Mod+0" },
   { id: "zoomIn", group: "window", defaultBinding: "Mod+Equal" },
   { id: "zoomOut", group: "window", defaultBinding: "Mod+Minus" },
@@ -66,6 +64,128 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcutDefinition[] = [
     macDefaultBinding: "Mod+Ctrl+F",
   },
 ] as const;
+
+/**
+ * A keybinding map as it comes back from storage: it may still name ids an
+ * older release shipped, so it is deliberately wider than
+ * `KeybindingOverrides`.
+ */
+export type PersistedKeybindingOverrides = Record<
+  string,
+  string | null | undefined
+>;
+
+/**
+ * Shortcut ids the window toggle replaced (D438). Both are retired outright, so
+ * a stored override for either is folded into `toggleWindow` by
+ * `migrateKeybindingOverrides` instead of being dropped.
+ */
+const RETIRED_WINDOW_SHORTCUTS = [
+  // Hiding is the toggle's primary job, so a customized close binding outranks
+  // a customized summon binding.
+  { id: "closeWindow", defaultBinding: "Mod+W" },
+  { id: "summonWindow", defaultBinding: "Mod+Shift+W" },
+] as const;
+
+/**
+ * Defaults the window toggle shipped before the current one (D439). A stored
+ * value that only repeats one of them carries no user intent, so the toggle
+ * falls back to the default this release ships instead of freezing a superseded
+ * key — which is what keeps `Mod+W`, the platform's own close-window chord, out
+ * of a process-wide registration.
+ */
+const SUPERSEDED_TOGGLE_DEFAULTS = ["Mod+W"] as const;
+
+/**
+ * Fold the retired `closeWindow` / `summonWindow` overrides into the single
+ * `toggleWindow` entry (D438) for a persisted `settings.keybindings` map, and
+ * drop a stored toggle value that only repeats a default this release ships or
+ * already superseded (D439).
+ *
+ * Rules, in order:
+ *
+ * - an existing `toggleWindow` override is kept as it is, so the migration is
+ *   idempotent and never rewrites a later rebind — unless it only names the
+ *   current default or a superseded one, which carries no user intent;
+ * - otherwise the first retired entry that carries a *binding* wins, in the
+ *   order above. Both are retired outright, and `closeWindow` comes first
+ *   because hiding is the toggle's primary job;
+ * - a retired entry that is only `null` (the user unbound it) is honoured after
+ *   that: the toggle stays unbound instead of resurrecting a shipped default;
+ * - a stored value equal to its retired default carries no intent (the
+ *   settings UI deletes overrides that match the shipped default), so it is
+ *   ignored and the new default applies. The same holds for a folded binding
+ *   that lands on the current or a superseded default.
+ */
+export function migrateKeybindingOverrides(
+  overrides:
+    | KeybindingOverrides
+    | PersistedKeybindingOverrides
+    | null
+    | undefined,
+): KeybindingOverrides | undefined {
+  if (!overrides || typeof overrides !== "object") return undefined;
+  const legacy = overrides as PersistedKeybindingOverrides;
+  const migrated: Record<string, string | null> = {};
+  for (const [id, binding] of Object.entries(overrides)) {
+    // A key stored without a value is not an override; JSON cannot hold one
+    // either, so it never reaches the migrated map.
+    if (binding === undefined) continue;
+    if (RETIRED_WINDOW_SHORTCUTS.some((retired) => retired.id === id)) continue;
+    migrated[id] = binding;
+  }
+  // A stored toggle value that only repeats the current default or a superseded
+  // one is "no intent": drop it so the fold below still sees a retired
+  // customization, and the current default otherwise.
+  if (
+    Object.prototype.hasOwnProperty.call(migrated, "toggleWindow") &&
+    !carriesToggleIntent(migrated.toggleWindow)
+  ) {
+    delete migrated.toggleWindow;
+  }
+  if (!Object.prototype.hasOwnProperty.call(migrated, "toggleWindow")) {
+    const inherited = inheritedToggleBinding(legacy);
+    if (inherited === null) migrated.toggleWindow = null;
+    else if (inherited !== undefined && carriesToggleIntent(inherited)) {
+      migrated.toggleWindow = inherited;
+    }
+  }
+  return Object.keys(migrated).length > 0
+    ? (migrated as KeybindingOverrides)
+    : undefined;
+}
+
+/** True for `null` (an explicit unbind) and for any binding a user chose. */
+function carriesToggleIntent(value: string | null): boolean {
+  if (value === null) return true;
+  const binding = normalizeKeybinding(value);
+  if (!binding) return false;
+  const definition = KEYBOARD_SHORTCUTS.find(
+    (shortcut) => shortcut.id === "toggleWindow",
+  );
+  if (definition && binding === normalizeKeybinding(definition.defaultBinding)) {
+    return false;
+  }
+  return !SUPERSEDED_TOGGLE_DEFAULTS.some((superseded) => superseded === binding);
+}
+
+function inheritedToggleBinding(
+  legacy: Record<string, string | null | undefined>,
+): string | null | undefined {
+  let unbound = false;
+  for (const { id, defaultBinding } of RETIRED_WINDOW_SHORTCUTS) {
+    if (!Object.prototype.hasOwnProperty.call(legacy, id)) continue;
+    const value = legacy[id];
+    if (value === null) {
+      unbound = true;
+      continue;
+    }
+    const binding = normalizeKeybinding(value);
+    if (!binding || binding === defaultBinding) continue;
+    return binding;
+  }
+  return unbound ? null : undefined;
+}
 
 const MODIFIER_ORDER = ["Mod", "Ctrl", "Alt", "Shift"] as const;
 const MODIFIERS = new Set<string>(MODIFIER_ORDER);
@@ -211,6 +331,10 @@ export function isReservedKeybinding(
   if (platform === "darwin") {
     common.add("Mod+Q");
     common.add("Mod+H");
+    // macOS spends Cmd+W on its own close-window command. The app used to
+    // register it process-wide as the window toggle; since D439 that binding is
+    // neither the default nor available to anyone else.
+    common.add("Mod+W");
   } else {
     common.add("Mod+Y");
     common.add("Alt+F4");

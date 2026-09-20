@@ -43,6 +43,15 @@ Main risks:
    delivery ledger, permission ceiling, turn binding, callback, cancellation,
    and transcript provenance.
 
+### Host-rendered scenic Settings destinations
+
+`contributes.scenicThemes` is data only. The host validates both grants,
+same-plugin theme ownership, declared preview assets, and the exact bounded
+`--nexus-backdrop-blur` variable before it renders cards in Extensions. A plugin
+cannot supply Settings HTML, CSS, JavaScript, selectors, DOM, arbitrary actions,
+or direct renderer IPC. The host owns the transparent canvas, layout, focus,
+native controls, titlebar, Apply action, and lifecycle fallback to General.
+
 Clipboard history is host-owned and remains in the Electron main process only.
 It is never written to the plugin data directory or the host database. The host
 records explicit clipboard writes and user-initiated Composer paste events; it
@@ -261,7 +270,9 @@ registered under the same `plugin_*` namespace as hand-written plugin tools and
 therefore inherit the tool timeout, the audit trail, and the per-plugin disable
 switch. They are always registered at `risk: "medium"`: their schema and
 description come from a third-party server, so the host cannot trust a
-self-declared risk level. At most 64 tools per server and 8 servers per plugin.
+self-declared risk level. A server's catalog is registered whole — the count is
+bounded only by the protocol guards in §8.1 — while at most 8 servers per plugin
+are admitted.
 
 Plan is an additional host policy boundary for agent tools:
 
@@ -322,7 +333,11 @@ generous `fs.read` scope affordable (§6).
 Still open, tracked separately: `agent.prompt.inject` (skill text can ask a
 shell-capable agent to do the carrying), `shell.openExternal`, a `bus.publish`
 relayed to a net-capable plugin, and raw `fetch` inside the plugin process — the
-last one needs the sandboxed plugin runtime from ADR 0008 D009.
+last one needs the sandboxed plugin runtime from ADR 0008 D009. `pi.net.fetch`
+narrows none of that: the host applies the allowlist, follows redirects by hand,
+and audits the call, but it never retries, throttles, or re-issues a request. An
+upstream `429` reaches the plugin as `429` plus whatever `Retry-After` the server
+sent, and what the plugin does about it is the plugin's own policy.
 
 ## 8.1 MCP server egress and credentials
 
@@ -332,8 +347,13 @@ manifest did not name:
 
 - `transport: "stdio"` spawns a local executable (`mcp.server.local`). The
   `command` must be a bare PATH name or a plugin-relative path; absolute paths
-  are refused at validation time. The child gets a minimal environment — only
-  the declared `env` entries plus what the host needs to run a process.
+  are refused at validation time. The child gets a minimal environment — the
+  declared `env` entries plus one shared allowlist (`child-process-env.ts`):
+  `PATH`, `SystemRoot`, `windir`, `TEMP`, `TMP`, `TMPDIR`, `LANG`, `HOME`,
+  `USER`, `USERPROFILE`. The identity variables are there because the child is
+  third-party code that resolves `~` through `$HOME` rather than calling
+  `os.homedir()` (issue #717); provider keys and other host state still never
+  cross.
 - `transport: "http"` reaches a remote endpoint (`mcp.server.remote`). The `url`
   may use `http` or `https`; non-loopback HTTP is unencrypted and should only be
   used on a trusted network. Plugin endpoints must also be covered by
@@ -343,9 +363,14 @@ manifest did not name:
   `{ "setting": "<key>" }`. The host environment is never passed through, and a
   literal secret in the manifest is a review smell, not a supported pattern
   (D018).
-- Connection budget: 10s to complete `initialize`, 100s per `tools/call`, 8
-  `tools/list` pages, 4MB per stdio line. Servers are connected lazily and torn
-  down when the plugin unloads or is disabled.
+- Connection budget: 10s to complete `initialize`, 100s per `tools/call`, 4MB
+  per stdio line. `tools/list` is followed to its last page under the per-server
+  guards of §8.1 — 2048 tools, 100 pages, a cursor that repeats or is malformed,
+  and 30s for the whole traversal — and a server that breaks one is refused
+  rather than contributing a prefix of its catalog, because MCP tools reach the
+  deferred on-demand entries behind `ToolSearch`, not as an always-present list.
+  Servers are connected lazily and torn down when the plugin unloads or is
+  disabled.
 
 ## 8.2 Desktop control and device access
 
@@ -392,8 +417,8 @@ receives a keyboard hook, `before-input-event`, raw input device, or key event
 stream, so there is no keylogger-shaped surface and no way to see the keys the
 user types. A plugin may only map an accelerator to one of its own registered
 commands, and an accelerator the OS reserves, that PI-Desktop itself currently
-spends (the plugin-launcher and summon-window bindings, `Alt+Space` and
-`Mod+Shift+W` by default; a user rebinding one frees it for plugins), or that
+spends (the plugin-launcher and window-toggle bindings, `Alt+Space` and
+`Alt+Shift+W` by default; a user rebinding one frees it for plugins), or that
 another plugin holds is refused with
 `LIMIT_EXCEEDED` (at most 8 per plugin) instead of being taken over. A trigger
 runs exactly that one command. Register, unregister, and trigger are audited
@@ -453,8 +478,10 @@ Current enforcement:
 5. Marketplace/package install requires explicit permission acceptance in UI
 6. Auto-update refuses silent permission expansion
 7. Plugin main runs in a dedicated `utilityProcess` per plugin (ADR 0008) with a
-   minimal environment; all `pi.*` calls cross an allowlist + permission gateway
-   in the host, and a plugin crash only tears down that plugin
+   minimal environment from the shared `child-process-env.ts` allowlist (PATH,
+   toolchain dirs, `HOME` / `USER` / `USERPROFILE`; no provider keys); all
+   `pi.*` calls cross an allowlist + permission gateway in the host, and a
+   plugin crash only tears down that plugin
 8. Contributed theme CSS is sanitized in the main process before it reaches the
    renderer (§3.1)
 9. Bus routing is host-owned with declared topics and hard caps (§5.1)

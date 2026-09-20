@@ -13,7 +13,12 @@ pub const MAX_IN_FLIGHT_MUTATIONS_PER_SESSION: usize = 1;
 pub const MAX_IN_FLIGHT_PLUGINS: usize = 4;
 pub const MAX_IN_FLIGHT_PER_SESSION: usize = 4;
 pub const MAX_QUEUED_TOOLS: usize = 64;
-const QUEUE_WAIT: Duration = Duration::from_secs(30);
+/// How long a call waits for its class permit before admission fails. A call
+/// waits here after the permission gate and before it runs, so the transport
+/// deadline has to carry it too. Mirrored by `TOOL_QUEUE_WAIT_MS` in
+/// `packages/shared/src/rpc-timeouts.ts`.
+pub const TOOL_QUEUE_WAIT_MS: u64 = 30_000;
+const QUEUE_WAIT: Duration = Duration::from_millis(TOOL_QUEUE_WAIT_MS);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ToolClass {

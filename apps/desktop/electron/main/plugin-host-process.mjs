@@ -150,6 +150,7 @@ function normalizeBytes(value) {
 // the broker only ever holds the descriptor plus a proxy back into this process.
 const commands = new Map();
 const tools = new Map();
+const speechHandles = new Map();
 // Resident services declared in the manifest. The broker decides when they run;
 // this map only holds the callables and whether they are currently up.
 const services = new Map();
@@ -205,6 +206,35 @@ function buildApi() {
       unregister: async (id) => {
         commands.delete(id);
         await call("commands.unregister", [id]);
+      },
+    },
+    speech: {
+      registerAdapter: async (adapter) => {
+        if (!adapter || typeof adapter.protocol !== "string" || !adapter.protocol.trim()) {
+          throw new Error("speech protocol is required");
+        }
+        if (typeof adapter.handle !== "function") {
+          throw new Error("speech handle must be a function");
+        }
+        const protocol = adapter.protocol.trim();
+        const roles = Array.isArray(adapter.roles) ? adapter.roles : [];
+        speechHandles.set(protocol, adapter.handle);
+        try {
+          await call("speech.registerAdapter", [
+            {
+              protocol,
+              label: adapter.label,
+              roles,
+            },
+          ]);
+        } catch (error) {
+          speechHandles.delete(protocol);
+          throw error;
+        }
+      },
+      unregisterAdapter: async (protocol) => {
+        speechHandles.delete(String(protocol ?? ""));
+        await call("speech.unregisterAdapter", [protocol]);
       },
     },
     ui: {
@@ -284,6 +314,12 @@ function buildApi() {
       importBatch: (input) => call("session.importBatch", [input ?? {}]),
       rename: (input) => call("session.rename", [input ?? {}]),
       delete: (input) => call("session.delete", [input ?? {}]),
+    },
+    // Read-only usage facts (`usage.read`). The main-process dispatch owns
+    // the permission check and parameter bounds; the host returns per-turn
+    // counters and identifiers only, so no message body crosses this bridge.
+    usage: {
+      listTurns: (input) => call("usage.listTurns", [input ?? {}]),
     },
     /**
      * Resident background workers (spec 07 §3). Registration is local: the
@@ -483,6 +519,15 @@ async function handleParentCall(method, payload, invocationId) {
       await run();
       return { ok: true };
     }
+    case "speech.handle": {
+      const handle = speechHandles.get(String(payload?.protocol ?? ""));
+      if (!handle) {
+        const error = new Error(`speech adapter not registered: ${payload?.protocol}`);
+        error.code = "NOT_FOUND";
+        throw error;
+      }
+      return handle(payload ?? {});
+    }
     case "tool.execute": {
       if (typeof invocationId !== "string" || !invocationId || invocations.has(invocationId)) {
         throw toolAbortedError("A unique host tool invocation ID is required");
@@ -543,6 +588,7 @@ async function handleParentCall(method, payload, invocationId) {
       }
       commands.clear();
       tools.clear();
+      speechHandles.clear();
       services.clear();
       busHandlers.clear();
       eventListeners.clear();

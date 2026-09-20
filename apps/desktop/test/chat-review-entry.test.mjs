@@ -174,9 +174,9 @@ test("chat renders one message-owned card immediately after its tool row", () =>
     storeSource,
     /rollbackWorkspaceChange:[\s\S]*api\.workspaceReviewRollback[\s\S]*withReviewChangeState/,
   );
-  assert.match(
+  assert.doesNotMatch(
     eventsSource,
-    /if \(\s*shouldOpenReviewArtifact\([\s\S]*openWorkPanelTabForSession/,
+    /shouldOpenReviewArtifact|toolWorkPanelTab\("review"\)/,
   );
   assert.doesNotMatch(storeSource, /workspaceReviewSessions/);
 });

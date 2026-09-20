@@ -32,6 +32,10 @@ PI-Desktop historically imports Pi sessions by flattening them into Desktop-owne
 
 ## Amendment: native side-chat forks (2026-09-14)
 
+The `sidechat:` panel and tab described in this amendment were removed by ADR
+0268; the `session.fork` capability they routed to remains in place and is used
+by the Fork action.
+
 `session/fork` is now source-discriminated. Desktop sources keep the existing
 Rust `session.fork` contract; `native-pi:` sources route to a sidecar
 `native.session.fork`, which returns the child as an ordinary `SessionDetail`.

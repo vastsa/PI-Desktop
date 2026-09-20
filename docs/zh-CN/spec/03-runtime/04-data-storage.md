@@ -38,6 +38,11 @@
 
 ## 2. 文件布局
 
+正式打包版把上述目录树放在 `~/.pi-desktop`；开发构建放在 `~/.pi-desktop-dev`，
+因为正式版与 `pnpm dev` 是两个需要同时运行的安装（D599、ADR 0094）。
+`PI_DESKTOP_DATA_DIR` 会整体替换任一默认根目录，并在作为子进程环境变量传给
+host-core 之前被解析为绝对路径。
+
 ```text
 ~/.pi-desktop/
  ├── pi.sqlite            # index database (WAL: + -wal/-shm) — host-core only
@@ -54,11 +59,15 @@
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
  ├── logs/                # NDJSON app/<category>, host/<category>, agent/<category> logs
  ├── cache/               # disposable caches
+ ├── crash-dumps/         # local Crashpad minidumps (never uploaded; D602)
+ ├── crash-dumps.json     # last-reported dump mtime (best-effort marker)
  ├── review-changes/<sessionId>/<snapshotId>/
  │    ├── before          # bounded pre-tool bytes, when reversible
  │    └── meta.json       # path, hashes, diff state, and ownership
  └── scratch/<sessionId>/ # per-session agent temp files (D114), including
                           # composer pasted files under pasted/ — deleted
+                          # with the session; startup sweep removes orphans
+
                           # with the session; startup sweep removes orphans
                           # and stale dirs
 ```
@@ -348,7 +357,7 @@ CREATE TABLE sessions (
   mode        TEXT NOT NULL DEFAULT 'agent',   -- plan | agent
   thinking_level TEXT NOT NULL DEFAULT 'off'
                 CHECK (thinking_level IN ('off', 'minimal', 'low', 'medium',
-                                          'high', 'xhigh', 'max')),
+                                          'high', 'xhigh', 'max', 'omit')),
   permission_mode TEXT NOT NULL DEFAULT 'inherit' -- D115: inherit follows settings
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
   source      TEXT,                            -- import origin: claude-code | codex | opencode | pi
@@ -554,6 +563,7 @@ CREATE TABLE turn_queue (
   attachments_json TEXT,
   permission_mode  TEXT NOT NULL,
   position         INTEGER NOT NULL,
+  priority         INTEGER,
   created_at       INTEGER NOT NULL
 );
 CREATE INDEX idx_turn_queue_session ON turn_queue(session_id, position);
@@ -563,11 +573,14 @@ CREATE UNIQUE INDEX idx_turn_queue_idempotency
 ```
 
 - 每条在活动回合之后准入的 prompt 一行（D375 / ADR 0213）。无头 Agent Host 模块是唯一
-  写入方，经 `session.queuePush`、`session.queueList`、`session.queueRemove` 操作；存储
-  本身绝不启动回合。
+  写入方，经 `session.queuePush`、`session.queueList`、`session.queueRemove`、
+  `session.queuePrioritize`、`session.queueReorder` 操作；存储本身绝不启动回合。
 - `position` 按会话只增不减，删除一条不会重排其余条目。`principal` 加 `idempotency_key`
   使重试的 push 返回同一行；同一 key 配不同 `input_hash` 则以 `IDEMPOTENCY_CONFLICT`
   失败。每个会话最多八条。
+- `priority`（架构 v18，ADR 0265）在被“立即发送”提升之前为 `NULL`；提升写入会话内的
+  `MAX(priority) + 1`，因此已优先条目按点击顺序最先投递，其余条目保持 `position` 顺序。
+  `queueReorder` 交换两个相邻的未优先条目的 `position`，并拒绝已优先条目。
 - `attachments_json` 保存 prompt 的附件引用；字节和其他 prompt 附件一样留在会话 scratch
   或项目根下。
 - 重启后模块列出全部条目，把每个会话的队列挂起到 controller 接入，并在活动回合终止事件
@@ -645,7 +658,7 @@ CREATE UNIQUE INDEX idx_session_collaboration_receipt
 ```sql
 CREATE TABLE messages (
   mid          INTEGER PRIMARY KEY,             -- stable rowid: FTS anchor, VACUUM-safe
-  id           TEXT NOT NULL UNIQUE,            -- caller-facing uuid (optimistic UI)
+  id           TEXT NOT NULL UNIQUE,            -- 调用方 uuid（乐观 UI）；撞车的供应商 toolCallId 改写为 {sessionId}:{id}（D444）
   session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn_id      TEXT REFERENCES turns(id) ON DELETE SET NULL,
   seq          INTEGER NOT NULL,                -- per-session ordinal
@@ -670,7 +683,16 @@ type Block =
       completedAt?: string; durationMs?: number;
       toolUsage?: ToolTokenUsage }
   | { type: "attachment"; kind: "image" | "file"; name: string;
-      ref: string /* attachments/<sha256> or absolute path */ };
+      ref: string /* attachments/<sha256> or absolute path */ }
+  | { type: "hostedSearch"; status: "searching" | "completed" | "failed";
+      rounds: Array<{ id: string;
+        status: "searching" | "completed" | "failed";
+        kind?: "search" | "openPage" | "findInPage";
+        query?: string; url?: string;
+        sources: Array<{ url: string; title?: string }> }>;
+      replay?: Array<{ type: "hostedSearch"; phase: string;
+        blockId?: string; name?: string; input?: unknown;
+        status?: string; isError?: boolean; wire?: unknown }> };
 ```
 
 - 工具结果存储**截断后**（16 个工具结果限制）；满
@@ -864,7 +886,11 @@ CREATE INDEX idx_task_runs ON task_runs(task_id, started_at DESC);
 ```
 
 生成会话的运行通过 `session_id` 免费获取其转录本。
-更精细的计划 (cron) 无需迁移即可登陆 `config_json`。
+`config_json` 保存 `schedule: {hour, minute, weekday}`、毫秒时间戳 `nextRunAt`
+和 `workspacePath`。每天、每周按宿主本地时区计算。每小时采用 `nextRunAt = now + 3_600_000`，
+忽略日历时间字段。可选 `weekdays` 保存 1–7 个不重复的 0–6 整数，覆盖每周的旧 `weekday`；
+缺失时保留单日语义，空数组、重复或越界值在写入前拒绝。无需表结构迁移。
+无 `schedule` 的旧任务不会自动运行；无需修改表或迁移数据库。
 
 计划任务 `config_json.mode` 是持久操作模式值。有
 故意没有物理 `scheduled_tasks.mode` 列。 v7→v8
@@ -1143,6 +1169,14 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 主机读取设置时会将缺失、格式错误或超出范围的值规范化为 600，设置写入则验证
 1–1,000,000 的整数范围。因此现有数据库会在读取时延迟获得默认值，不需要破坏性
 迁移或第二个设置存储。
+
+同一个应用设置 JSON 还可选存储提示词增强的覆盖值
+`promptEnhancementCustomTemplate`（决定已存模板是否生效的开关）、
+`promptEnhancementUserTemplate`、`promptEnhancementProviderId`、
+`promptEnhancementModelId` 与 `promptEnhancementThinkingLevel`（ADR 0121）。用户模板缺失或为空表示使用内置默认值，
+因此清空字段不会写入空字符串而是不写该键。非空的用户模板必须包含草稿变量，且
+不得超过 `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH`；host-core 会拒绝违反任一规则的
+写入，并丢弃已不再读取的 `promptEnhancementSystemPrompt`。无需提升 schema 版本。
 - Plan 和 Goal 工件永远不会根据转录内容重建。开
   启动,
   一笔交易标志着每笔 `pending` 批准和每笔 `queued` 或
@@ -1270,4 +1304,17 @@ UI投影损失
 终态助手替换索引中的流式助手。更新仅涉及该转录行和搜索文本，保留顺序、所属回合及
 其他所有行。迟到的部分快照和重复终态快照不能覆盖已落定结果。恢复时在原位置应用
 最新检查点。如果主机调用尚未完成时出现更新的追加快照，outbox 同样保留该快照。
-无需存储架构迁移。
+若 `messages.id` 已属于另一会话，主机在写 JSONL 之前改写为 `{sessionId}:{id}`；
+重放原始 id 对该改写行无操作。outbox 把 `UNIQUE constraint failed: messages.id`
+当作确认并继续排空（D444）。带 `PERMISSION_DENIED:` 前缀的永久拒绝同样丢弃该行
+以便 FIFO 继续；`PLUGIN_PERMISSION_DENIED` 和其他宿主失败仍暂停（D597）。
+向已认领的协作投递回合做 steering 是额外的人类输入：必须指向该投递的会话，
+不受投递内容/附件契约约束，不继承投递来源，并清掉客户端带来的
+`session_message`。无需存储架构迁移。
+
+### Provider display order
+
+`kv(ns="app", key="providers.order")` stores an ordered array of provider IDs.
+Host-core owns updates through `providers.reorder`; missing metadata preserves
+creation order, new IDs follow saved IDs, and deleted IDs are ignored. This
+preference does not rewrite provider configuration or require a schema migration.

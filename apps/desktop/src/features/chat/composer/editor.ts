@@ -12,7 +12,7 @@ const CODE_FILE_PATTERN =
   /\.(cjs|css|go|java|js|json|jsx|kt|mjs|php|py|rb|rs|sh|sql|svelte|swift|toml|ts|tsx|vue|ya?ml)$/i;
 const ARCHIVE_FILE_PATTERN = /\.(7z|bz2|gz|jar|rar|tar|zip)$/i;
 const SHEET_FILE_PATTERN = /\.(csv|ods|xls|xlsx)$/i;
-const AUDIO_FILE_PATTERN = /\.(flac|m4a|mp3|ogg|wav)$/i;
+const AUDIO_FILE_PATTERN = /\.(flac|m4a|mp3|ogg|wav|webm)$/i;
 const VIDEO_FILE_PATTERN = /\.(avi|mkv|m4v|mov|mp4|webm)$/i;
 
 /** Paste/scratch files keep absolute paths; `@` entries are workspace-relative. */
@@ -259,6 +259,11 @@ export function isEditableTextReference(reference: ComposerFileReference): boole
   return reference.mimeType?.toLowerCase() === "text/plain" || /\.txt$/i.test(reference.name);
 }
 
+export function isComposerAudioReference(reference: ComposerFileReference): boolean {
+  const mime = reference.mimeType?.toLowerCase() ?? "";
+  return mime.startsWith("audio/") || AUDIO_FILE_PATTERN.test(reference.name);
+}
+
 /** Build the atomic inline chip element for one attachment reference. */
 function buildChipElement(
   reference: ComposerFileReference,
@@ -273,18 +278,19 @@ function buildChipElement(
   chip.dataset.token = token;
   chip.title = reference.path;
   const editableText = isEditableTextReference(reference);
-  chip.setAttribute("role", editableText ? "button" : "listitem");
+  const activate = editableText ? () => onExpandText(token) : undefined;
+  chip.setAttribute("role", activate ? "button" : "listitem");
   chip.setAttribute("aria-label", `${reference.name} — ${reference.path}`);
-  if (editableText) {
+  if (activate) {
     chip.tabIndex = 0;
     chip.dataset.action = "expand-text-reference";
-    chip.addEventListener("click", () => onExpandText(token));
+    chip.addEventListener("click", activate);
     chip.addEventListener("keydown", (event) => {
       if (event.target !== chip) return;
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
       event.stopPropagation();
-      onExpandText(token);
+      activate();
     });
   }
 
@@ -304,6 +310,10 @@ function buildChipElement(
   remove.innerHTML = chipSvg("x", 11);
   // Swallow the mousedown so removing a chip never moves the editable caret.
   remove.addEventListener("mousedown", (event) => event.preventDefault());
+  remove.addEventListener("keydown", (event) => {
+    // Keep native button activation, without bubbling Enter into send.
+    if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+  });
   remove.addEventListener("click", (event) => {
     event.stopPropagation();
     onRemove(token);

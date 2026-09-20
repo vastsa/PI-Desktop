@@ -1,14 +1,15 @@
 import {
   memo,
-  useContext,
   useMemo,
   useRef,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   AgentActivity,
   ContextCompactionMark,
 } from "@pi-desktop/shared";
+import { formatCompactTokenCount } from "@pi-desktop/shared";
 import {
   assistantTurnContent,
   assistantTurnMessages,
@@ -18,17 +19,20 @@ import {
   reuseReadonlyMap,
   subagentRunsEqual,
   type AssistantTurnEntry,
+  type AssistantTurnPart,
   type TranscriptEntry,
 } from "../../../lib/assistant-turns";
 import {
   collectDelegationStatuses,
   collectDelegationTimings,
 } from "../../../lib/subagent-topology";
+import {
+  isLastActivityPart,
+  projectTurnProcess,
+  resolveThinkingDisplayMode,
+  shouldGroupTurnProcess,
+} from "../../../lib/turn-process";
 import { useAppStore } from "../../../stores/app-store";
-import { TranscriptReadOnlyContext } from "./context";
-import { selectionMarkdownWithinRow } from "../../../lib/selection-quote";
-import { selectionAnnotationAnchorWithinRow } from "../../../lib/response-annotation-anchor";
-import { IconQuote, IconChat } from "../../../components/icons";
 import { latestGenerationMessage } from "../../../lib/live-throughput";
 import { Markdown } from "../../../components/Markdown";
 import { IconBranch, IconReview } from "../../../components/icons";
@@ -38,10 +42,15 @@ import {
   CopyButton,
   MessageMeta,
   LiveMessageMeta,
-  formatTokenCount,
 } from "./shared";
 import { activityItemsEqual, ActivityGroup } from "./ActivityGroup";
 import { MessageRow } from "./MessageRow";
+import { assistantTurnMenuItems } from "./menu-items";
+import {
+  useChatTextActions,
+  useTranscriptMenu,
+} from "./TranscriptMenu";
+import { TurnProcess } from "./TurnProcess";
 
 type AssistantTurnProps = {
   entry: AssistantTurnEntry;
@@ -89,7 +98,8 @@ export function compactionMarksEqual(
     previous.throughMessageId === next.throughMessageId &&
     previous.generation === next.generation &&
     previous.summaryTokens === next.summaryTokens &&
-    previous.summarized === next.summarized
+    previous.summarized === next.summarized &&
+    previous.fallback === next.fallback
   );
 }
 
@@ -217,20 +227,10 @@ export const AssistantTurn = memo(function AssistantTurn({
   runtimeActivity,
 }: AssistantTurnProps) {
   const { t } = useTranslation();
+  const openTranscriptMenu = useTranscriptMenu();
+  const { copyText, selectText } = useChatTextActions();
   const retryAssistantMessage = useAppStore((s) => s.retryAssistantMessage);
   const forkAssistantMessage = useAppStore((s) => s.forkAssistantMessage);
-  const annotateLabel = t("chat.annotate");
-  const sideChatLabel = t("chat.startSideChat");
-  const openSideChat = useAppStore((s) => s.openSideChat);
-  const openResponseAnnotationEditor = useAppStore(
-    (s) => s.openResponseAnnotationEditor,
-  );
-  const transcriptReadOnly = useContext(TranscriptReadOnlyContext);
-  // The host refuses a fork while the source turn is still running, so the
-  // affordance is disabled rather than silently doing nothing.
-  const sessionRunning = useAppStore((s) =>
-    s.activeSessionId ? s.runningSessions[s.activeSessionId] === true : false,
-  );
   const messages = assistantTurnMessages(entry);
   const content = assistantTurnContent(entry);
   const actionMessage = [...messages]
@@ -260,6 +260,34 @@ export const AssistantTurn = memo(function AssistantTurn({
     !isActive && !hasError && Boolean(content) && Boolean(actionMessage);
   const streaming =
     isActive && messages.some((message) => message.status === "streaming");
+  /*
+    The turn owns the menu for its whole subtree, the answer rows it renders
+    included: Regenerate and Branch act on the turn's answer message, so a menu
+    owned by a single message part could not offer them honestly.
+  */
+  const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    openTranscriptMenu(event, {
+      label: t("chat.messageMenu"),
+      items: assistantTurnMenuItems({
+        t,
+        answer: content,
+        selectTarget:
+          [
+            ...event.currentTarget.querySelectorAll<HTMLElement>(
+              ".message-bubble",
+            ),
+          ].at(-1) ?? null,
+        complete: complete && Boolean(actionMessage),
+        actions: { copyText, selectText },
+        onRegenerate: () => {
+          if (actionMessage) void retryAssistantMessage(actionMessage.id);
+        },
+        onBranch: () => {
+          if (actionMessage) void forkAssistantMessage(actionMessage.id);
+        },
+      }),
+    });
+  };
 
   // Collect delegation statuses across ALL activity parts of this turn so that
   // a TaskWait in one part can inform the Task cards in a different part.
@@ -293,51 +321,67 @@ export const AssistantTurn = memo(function AssistantTurn({
   );
   statusesRef.current = turnDelegationStatuses;
   timingsRef.current = turnDelegationTimings;
+  const groupProcess = useAppStore((state) =>
+    shouldGroupTurnProcess(
+      resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode),
+    ),
+  );
+  const { process, responses } = projectTurnProcess(entry);
+  const activePart = isActive ? entry.parts.at(-1) : undefined;
+
+  const renderPart = (part: AssistantTurnPart) =>
+    part.kind === "activity" ? (
+      <ActivityGroup
+        embedded
+        key={`activity-${part.items[0].message.id}`}
+        items={part.items}
+        endedAt={part.endedAt}
+        isActive={part === activePart}
+        isLast={isLastActivityPart(entry.parts, part)}
+        runtimeActivity={part === activePart ? runtimeActivity : undefined}
+        turnDelegationStatuses={turnDelegationStatuses}
+        turnDelegationTimings={turnDelegationTimings}
+      />
+    ) : (
+      <div
+        className={`message-bubble assistant-turn-fragment${
+          isActive && part.message.status === "streaming"
+            ? " streaming"
+            : ""
+        }`}
+        data-message-id={part.message.id}
+        key={part.message.id}
+      >
+        {part.message.content ? (
+          <div className="prose-chat">
+            <Markdown source={part.message.content} />
+          </div>
+        ) : null}
+        {part.message.error ? (
+          <AssistantErrorMessage message={part.message} />
+        ) : null}
+      </div>
+    );
 
   return (
     <div
       className={`message-row assistant assistant-turn${streaming ? " streaming" : ""}`}
       data-minimap-id={entry.anchorId}
       data-row-role="assistant"
+      onContextMenu={onContextMenu}
       role="article"
       aria-label={t("chat.assistantMessage")}
     >
       <div className="message-col">
-        {entry.parts.map((part, index) =>
-          part.kind === "activity" ? (
-            <ActivityGroup
-              key={`activity-${part.items[0].message.id}`}
-              items={part.items}
-              endedAt={part.endedAt}
-              isActive={isActive && index === entry.parts.length - 1}
-              runtimeActivity={
-                isActive && index === entry.parts.length - 1
-                  ? runtimeActivity
-                  : undefined
-              }
-              turnDelegationStatuses={turnDelegationStatuses}
-              turnDelegationTimings={turnDelegationTimings}
-            />
-          ) : (
-            <div
-              className={`message-bubble assistant-turn-fragment${
-                isActive && part.message.status === "streaming"
-                  ? " streaming"
-                  : ""
-              }`}
-              data-message-id={part.message.id}
-              key={part.message.id}
-            >
-              {part.message.content ? (
-                <div className="prose-chat">
-                  <Markdown source={part.message.content} />
-                </div>
-              ) : null}
-              {part.message.error ? (
-                <AssistantErrorMessage message={part.message} />
-              ) : null}
-            </div>
-          ),
+        {groupProcess ? (
+          <>
+            <TurnProcess processParts={process} turnParts={entry.parts} isActive={isActive}>
+              {process.map(renderPart)}
+            </TurnProcess>
+            {responses.map(renderPart)}
+          </>
+        ) : (
+          entry.parts.map(renderPart)
         )}
         {!isActive && (metaMessage || latestMessage?.timeToFirstTokenMs !== undefined) ? (
           <MessageMeta
@@ -358,65 +402,25 @@ export const AssistantTurn = memo(function AssistantTurn({
             )}
           />
         ) : null}
-        {(content || hasError) && actionMessage && !transcriptReadOnly ? (
+        {complete && actionMessage ? (
           <div className="message-actions">
-            {complete ? (
-              <CopyButton text={content} label={t("chat.copy")} />
-            ) : null}
-            {complete ? (
-              <TooltipButton
-                className="copy-btn icon"
-                tooltip={t("chat.forkResponse")}
-                ariaLabel={t("chat.forkResponse")}
-                onClick={() => void forkAssistantMessage(actionMessage.id)}
-              >
-                <IconBranch size={13} />
-              </TooltipButton>
-            ) : null}
-            {complete ? (
-              <TooltipButton
-                className="copy-btn icon"
-                tooltip={t("chat.retry")}
-                ariaLabel={t("chat.retry")}
-                onClick={() => void retryAssistantMessage(actionMessage.id)}
-              >
-                <IconReview size={13} />
-              </TooltipButton>
-            ) : null}
-            {complete ? (
-              <TooltipButton
-                className="copy-btn icon"
-                tooltip={annotateLabel}
-                ariaLabel={annotateLabel}
-                onPointerDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  // An annotation is a response concept (D-LOCAL-response-annotations): the selection
-                  // when there is one, the whole answer otherwise. The excerpt
-                  // is read before the editor takes focus. A turn without an
-                  // anchor has no row to annotate.
-                  if (!entry.anchorId) return;
-                  const selection = selectionMarkdownWithinRow(entry.anchorId);
-                  openResponseAnnotationEditor({
-                    messageId: entry.anchorId,
-                    text: selection || content,
-                    anchor: selectionAnnotationAnchorWithinRow(entry.anchorId),
-                  });
-                }}
-              >
-                <IconQuote size={13} />
-              </TooltipButton>
-            ) : null}
-            {complete ? (
-              <TooltipButton
-                className="copy-btn icon"
-                tooltip={sideChatLabel}
-                ariaLabel={sideChatLabel}
-                disabled={sessionRunning}
-                onClick={() => void openSideChat(actionMessage.id)}
-              >
-                <IconChat size={13} />
-              </TooltipButton>
-            ) : null}
+            <CopyButton text={content} label={t("chat.copy")} />
+            <TooltipButton
+              className="copy-btn icon"
+              tooltip={t("chat.forkResponse")}
+              ariaLabel={t("chat.forkResponse")}
+              onClick={() => void forkAssistantMessage(actionMessage.id)}
+            >
+              <IconBranch size={13} />
+            </TooltipButton>
+            <TooltipButton
+              className="copy-btn icon"
+              tooltip={t("chat.retry")}
+              ariaLabel={t("chat.retry")}
+              onClick={() => void retryAssistantMessage(actionMessage.id)}
+            >
+              <IconReview size={13} />
+            </TooltipButton>
           </div>
         ) : null}
       </div>
@@ -437,11 +441,13 @@ export function CompactionRow({ mark }: { mark: ContextCompactionMark }) {
         {t("chat.compactionRow", { times: mark.generation })}
       </span>
       <span className="transcript-compaction-detail">
-        {mark.summarized
-          ? t("chat.compactionRowSummary", {
-              tokens: formatTokenCount(mark.summaryTokens),
-            })
-          : t("chat.compactionRowNoSummary")}
+        {mark.fallback
+          ? t("chat.compactionRowSummaryFailed")
+          : mark.summarized
+            ? t("chat.compactionRowSummary", {
+                tokens: formatCompactTokenCount(mark.summaryTokens),
+              })
+            : t("chat.compactionRowNoSummary")}
       </span>
     </div>
   );

@@ -33,15 +33,15 @@ destination, chat as the home surface, tools and permissions inline.
   **Sessions** section with new-session and sort actions, retained open-project
   groups under a following **Projects** section with a persistent new-project
   action, and the WorkBuddy-inspired footer. The footer keeps compact Settings,
-  Extensions, and notification icon actions; Pull requests and Scheduled
-  are intentionally omitted from the home sidebar. Each retained project is a
+  Extensions, Scheduled (clock), and notification icon actions; Pull requests
+  remains omitted from the home sidebar. Each retained project is a
   path-keyed tab/group that can be
   collapsed independently. Project and conversation rows expose
   non-destructive pin/archive actions, an independent conversation-branch
   command, and sortable views. Projects not retained in the sidebar remain
   discoverable through Settings → Project archive.
-  Collapsible to an icon rail (Cmd/Ctrl+B). Its expanded column is fixed at
-  275px; persisted resize preferences from older builds are ignored.
+  Collapsible to an icon rail (Cmd/Ctrl+B). Its expanded column is user-resizable
+  from 240px to 520px (default 275px); dragging below 160px collapses it.
 - **Product identity**: runtime shell copy uses `PI-Desktop`; the home hero and
   sidebar reuse the derived `src/assets/brand/logo-*.png` marks, while composer prompt
   rows have no leading brand icon and session-creation controls use a dedicated
@@ -56,9 +56,9 @@ destination, chat as the home surface, tools and permissions inline.
   pane (they are pages, not modals). Once Settings or Extensions is selected,
   bootstrap completion and background refreshes must not replace that
   destination with the chat home; only an explicit navigation action may do so.
-  The outer pane stays fluid while the sidebar is collapsed, but the centered
-  chat content band tightens to 640px from its expanded 760–768px ceiling so
-  the wider shell does not create an over-wide, low-density reading surface.
+  The outer pane stays fluid while the sidebar is collapsed. The centered chat
+  content band defaults to 760px and is user-resizable (D439); it compresses
+  with `min(available pane, preferred)` instead of tightening to a 640px ceiling.
 - **Titlebar**: platform-native desktop chrome (D118). macOS uses
   `hiddenInset` traffic lights and the system application menu. The expanded
   sidebar keeps Collapse sidebar in the same 46px row, aligned to
@@ -73,23 +73,38 @@ destination, chat as the home surface, tools and permissions inline.
   left and accessible minimize / maximize-or-restore / close controls at the
   right edge of the conversation pane when the panel is closed (D129). When
   the work panel is open, those controls stay viewport-fixed over the panel
-  header rather than travelling with MainPane. Destination history is
+  header rather than travelling with MainPane. One window-level control band
+  stays outside pane stacking contexts across panel open, preview, restore,
+  and Settings transitions. Its background follows the adjacent titlebar surface
+  (dock header when open, conversation surface when closed) in both themes.
+  Boot splash, search, and toasts stay above that band.
+  Preview navigation must also remain above the panel;
+  macOS keeps native traffic lights and its existing fullscreen insets.
+  Destination history is
   shortcut-first (`Cmd/Ctrl+[` and `Cmd/Ctrl+]`) with no dedicated back/forward
   chrome; while Extensions is active, the footer Plugins button performs one
   Back step as the only pointer affordance. The main titlebar has no
   notification action; the durable local inbox opens from the sidebar footer
   bell instead (D130/D117). In work-panel preview mode, MainChat is unmounted
   and a window-level 46px chrome row keeps New Task, sidebar, and native window
-  controls available. In macOS collapsed-sidebar preview, the panel header
-  reserves the 76px windowed (8px fullscreen) traffic-light inset plus the
-  preview action lane and an 8px gap, so its first tab never overlaps either
-  the traffic lights or the preview controls.
+  controls available without owning a drag or no-drag rectangle across the
+  panel. The panel header alone owns dragging in the preview pane; its actual
+  border box starts after the shell action lane plus an 8px gap, including the
+  expanded-sidebar New Task button, on every platform. The left inset is 8px,
+  or 88px for collapsed-sidebar windowed macOS. Its right native-control
+  exclusion is unchanged. Header paint fills the excluded lane without an
+  opaque overlay hiding tabs or panel actions. The macOS inset uses the shared
+  `--ds-window-lead-inset` token — the cluster's 76px right edge (from
+  `@pi-desktop/shared`) plus a 12px gap — and the main process positions the
+  buttons from that same shared geometry.
 - **Work panel**: docked right column (not an overlay) opened by an artifact,
   the viewport-fixed toggle, or `Cmd/Ctrl + J`. File, URL, browser-preview, and
   successful workspace-edit artifacts create their resources atomically. The
   46px content header exposes a tablist and a fixed `+` trigger. Its tokenized
-  60px right-side safe lane plus separated action rail keep the trigger distinct
-  from the viewport-fixed work-panel toggle. Clicking `+` creates and activates
+  44px right-side safe lane (the 28px control, its 12px viewport inset, and the
+  header's 4px control gap) keeps the `+`, maximize, and viewport-fixed
+  work-panel toggle one button group, spaced by that same gap, while the trigger
+  keeps a distinct hit target. Clicking `+` creates and activates
   a unique New launcher tab; its body presents the same data-driven Review and
   plugin-view rows as buttons, so the user chooses a destination in the page
   instead of opening a dropdown. Selecting a row replaces that launcher tab with
@@ -99,9 +114,10 @@ destination, chat as the home surface, tools and permissions inline.
   revealing it without creating a resource tab and collapsing it without
   discarding one; the create trigger remains unavailable while the panel is
   closed. Closing the final tab keeps the panel open and shows the New launcher.
-  A
-  successful active-session workspace Write/Edit artifact opens Review;
-  scratch, failed, and background-session writes never steal focus. The inner
+  No agent or tool result opens, activates, or resizes the panel: Review is
+  reached only through an explicit user action, so a successful workspace
+  Write/Edit leaves the panel exactly as the user left it and shows its
+  evidence as a transcript card instead. The inner
   divider resizes the panel through the shared three-column budget; moving it
   left takes space until MainChat reaches 450px, at which point the expanded
   sidebar yields immediately, and moving it right gives space back. A manual
@@ -176,7 +192,7 @@ destination, chat as the home surface, tools and permissions inline.
   toolbar places sorting before new-session creation. Both headings keep quiet
   glyph actions and also accept a right-click create menu on the heading or empty
   list chrome so section creation stays discoverable
-  without extra chrome. Its list shows at most five compact rows (140px) before
+  without extra chrome. Its list shows at most five compact rows (146px) before
   scrolling internally, so standalone work stays visible without displacing
   project navigation. The following `Projects` heading exposes the
   folder-picker action; retained project groups use the remaining height and
@@ -184,8 +200,12 @@ destination, chat as the home surface, tools and permissions inline.
 - **Identity**: each project group is keyed by a host-owned logical group id;
   each root path remains canonical and is never inferred from an ambiguous
   folder basename. Legacy single-folder projects are compatibility groups.
-- **Header**: project name, active state, disclosure, new-task action, and an
-  overflow menu. The directory title is one full-row disclosure target;
+- **Header**: project name, current-workspace dot, disclosure, new-task action,
+  and an overflow menu. Workspace context is not navigation selection: project
+  headers have no persistent selected background, including when no conversation
+  is selected. Only the current conversation on the chat page receives selected
+  row paint. Project and conversation rows share full-row hover feedback; the
+  project title itself stays transparent. The directory title is one full-row disclosure target;
   collapse/expand affects only child visibility, and adjacent groups form one
   dense tree rather than detached cards. Hovering or focusing the project title
   reveals the full project path. Pressing the title and moving 8px reorders
@@ -224,8 +244,30 @@ title, status badge, branch meta, external link, and "Review with agent"
 (creates a chat turn). Requires an active workspace and `gh`.
 
 ### 3.4 Scheduled
-Create card + task rows (cadence/enabled badges, prompt preview, last run,
-Run now / toggle / Delete). Run now opens a session seeded with the prompt.
+Tasks and Run history views, with an explicit create/edit form, a cadence dropdown, time,
+next occurrence, saved project, pause/resume and delete confirmation. Hourly
+schedules repeat at one-hour intervals without a time selector. Daily schedules
+use a themed time-period dropdown: Morning 09:00, Afternoon 14:00, Evening
+19:00, Night 22:00. The form does not expose hour/minute editing. AI tools may
+set an exact time; a non-preset time displays as Custom with its HH:mm value
+and survives other form edits until the user explicitly selects a preset. Weekly schedules select one or more weekdays (Monday = 0) in a
+separate dropdown listing Monday through Sunday with selection markers.
+Each day toggles independently; there are no preset combinations. An empty
+selection disables saving. The menu supports arrows, Home/End, Enter/Space,
+Escape/outside dismissal, and exposes selected states. The footer clock and global search open
+this route. Run now dispatches in the background and selects Run history; a
+conversation link opens the real transcript. The latest 100 runs show running,
+completed, failed or interrupted status. Automatic runs never steal foreground
+focus. See [desktop automations](../../adr/scheduled-desktop-automations.md).
+
+The application must remain running. The host polls every 30 seconds and skips
+occurrences more than 90 seconds late or overlapping a running task. Startup
+rearms future occurrences only. Hourly schedules wait a full hour after saving,
+enabling, startup or the preceding automatic admission; Run now leaves the
+automatic occurrence unchanged. Legacy cadence-only tasks require explicit
+schedule configuration. The current project is captured when first configured;
+subsequent foreground project changes do not retarget it. Automatic runs use
+Ask permissions and may wait for input in their conversation.
 New tasks default to Agent. A migrated Plan or Goal task is allowed to remain
 stored, but an unattended run is explicitly rejected before provider, artifact,
 or queue work with `PLAN_REQUIRES_INTERACTIVE_SESSION`; it cannot display or

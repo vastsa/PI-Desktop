@@ -6,6 +6,8 @@ import type { ContextCompactionSettings } from "./sessions.js";
 import type { Mode } from "./common.js";
 import type { GlobalPermissionMode } from "./permissions.js";
 import type { PluginMarketSource } from "./plugins.js";
+import type { SpeechSettings } from "./speech.js";
+import type { ThinkingLevel } from "./models.js";
 
 export type ThemePreference = "system" | "light" | "dark" | `plugin:${string}`;
 
@@ -22,10 +24,42 @@ export type CloseBehavior = "ask" | "tray" | "quit";
 export type AppSettings = {
   defaultProviderId?: string;
   defaultModelId?: string;
+  /** Host speech bindings. Absent means voice actions stay disabled. */
+  speech?: SpeechSettings;
   defaultMode: Mode;
   /** Configured command shell for the agent Bash protocol tool. */
   defaultCommandShell?: CommandShellId;
-  /** Global permission mode default; sessions with `inherit` follow this. */
+  /**
+   * Whether the stored user template replaces the built-in one (ADR 0121).
+   * Absent means off. Turning it off keeps `promptEnhancementUserTemplate` so
+   * toggling back on restores the user's text instead of discarding it.
+   */
+  promptEnhancementCustomTemplate?: boolean;
+  /**
+   * Composer prompt-enhancement user-template override (ADR 0121). Applied only
+   * while `promptEnhancementCustomTemplate` is on. Host-core rejects a non-blank
+   * value without `{{draft}}` and any value beyond
+   * `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH`.
+   *
+   * The system prompt is intentionally not overridable: it carries the rewrite
+   * contract the feature is specified against.
+   */
+  promptEnhancementUserTemplate?: string;
+  /**
+   * Model the one-shot enhancement runs on. Absent means "follow the Composer's
+   * current model". When the pinned pair is unusable, main falls back to the
+   * Composer model and logs a warning (ADR 0121).
+   */
+  promptEnhancementProviderId?: string;
+  promptEnhancementModelId?: string;
+  /**
+   * Reasoning effort for the one-shot enhancement. Absent means `off`: the
+   * enhancement never inherits the session's level, because a rewrite rarely
+   * benefits from reasoning and reasoning is the slow path. The value is clamped
+   * onto the resolved model's ladder, and switching model re-clamps it, so a
+   * stored level is always one the model can run.
+   */
+  promptEnhancementThinkingLevel?: ThinkingLevel;
   defaultPermissionMode?: GlobalPermissionMode;
   theme: ThemePreference;
   /** UI language; `auto` (and absent) follows the OS locale. */
@@ -41,6 +75,8 @@ export type AppSettings = {
    * Absent means 1. Range 0.8–1.5 in 0.025 steps. Window zoom is independent.
    */
   fontScale?: number;
+  /** Transcript presentation only; absent means detailed. Reasoning is retained. */
+  thinkingDisplayMode?: "detailed" | "compact";
   /**
    * @deprecated Unreleased D343 px field. Reads migrate into `fontScale`
    * as `px / 14`; new writes persist `fontScale` instead.
@@ -86,6 +122,12 @@ export type AppSettings = {
    * does not change meaning with this preference.
    */
   contextUsageDisplay?: ContextUsageDisplay;
+  /**
+   * Preferred centered chat band width in CSS px (D439). Absent means 760.
+   * The live band is `min(available pane, this value)` so a squeezed sidebar
+   * or work panel compresses without rewriting the preference.
+   */
+  chatContentMaxWidth?: number;
   onboardingDismissed: boolean;
 };
 

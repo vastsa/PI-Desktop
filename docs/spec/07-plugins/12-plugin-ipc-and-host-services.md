@@ -30,9 +30,16 @@ PluginManager
 ### plugin domain
 - `plugin/list`
 - `plugin/detail`
-- `plugin/loadDev`
-- `plugin/reload` — resolve the registered plugin path, reload it in Electron
-  main, and refresh the development-plugin permission ceiling
+- `plugin/loadDev` — open the folder picker and return what the folder
+  *declares* as a permission review; nothing is registered yet
+- `plugin/loadDevConfirm` — the answer to that review: register the folder as a
+  development plugin and load it with the accepted permissions, which become
+  the ceiling every later hot reload is measured against
+- `plugin/reload` — resolve the registered plugin path, compare the manifest
+  against the recorded approval, and either reload in Electron main or return a
+  review when the manifest now asks for more
+- `plugin/reloadConfirm` — the answer to that review: reload under the accepted
+  permissions and refresh the development-plugin permission ceiling
 - `plugin/installFromPath` ✅
 - `plugin/installFromPackage` ✅
 - `plugin/enable`
@@ -200,7 +207,7 @@ Panel bridge file channels are permission-gated as follows:
 **Implemented (2026-07-29, ADR 0008):** the broker lives in
 `electron/main/plugin-runtime.ts` and every plugin call is a request to the
 plugin's own `utilityProcess`. Budgets: load 15s, lifecycle hook 5s, command 30s,
-tool 110s (under host-core's 120s tool budget). On process exit the broker
+tool 110s (under host-core's 150s dispatch budget). On process exit the broker
 rejects pending calls with `PLUGIN_CRASHED`, deregisters that plugin's commands
 and tools, closes its panel, writes a `plugin.crash` audit entry, and emits a
 toast plus `pluginChanged` to the renderer.
@@ -230,8 +237,14 @@ permission gate and result envelope stay in host-core:
    Electron main executing the registered plugin tool JS and answering via RPC
    `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }`.
 4. host-core resolves the pending execution and returns a standard
-   `ToolsExecuteResult` to the sidecar. Dispatch timeout maps to
-   `TOOL_TIMEOUT`; an unknown/unloaded tool maps to `TOOL_NOT_FOUND`.
+   `ToolsExecuteResult` to the sidecar. Dispatch waits up to 150s
+   (`DESKTOP_TOOL_DISPATCH_TIMEOUT_MS`, above both the 110s plugin tool budget
+   and the widest MCP leg — a 10s lazy handshake, a 30s `tools/list` traversal,
+   then the 100s call) and then maps to `TOOL_TIMEOUT`; an unknown/unloaded tool
+   maps to `TOOL_NOT_FOUND`. The transport deadline for these calls covers the
+   120s permission wait, the 30s admission queue wait, that dispatch, and 10s of
+   slack (`rpcTimeoutMs`), so no outer layer gives up before host-core reports
+   the outcome.
 
 The model-facing registry gains plugin tools per prompt: main passes registered
 defs (`fullName`, description, JSON-schema parameters) to `agent.prompt`, and

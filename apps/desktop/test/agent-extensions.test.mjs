@@ -12,6 +12,10 @@ const {
   generateImportedExtensionPlugin,
   installExtensionDependencies,
 } = await import("../electron/main/agent-extensions.ts");
+const {
+  IMPORTED_PLUGIN_WRAPPER_SOURCE,
+  repairImportedExtensionWrapper,
+} = await import("../electron/main/imported-plugin-wrapper.ts");
 const { withRegistryOnlyProxy } = await import("../electron/main/npm-registry-proxy.ts");
 
 function bridge(overrides = {}) {
@@ -188,12 +192,18 @@ test("a legacy package-lock dependency tree with a non-registry source is droppe
 test("session publications drive the plugin's agent-extension status and the command list", () => {
   const { b, events } = bridge();
   const ids = ["/p/a.ts", "/p/b.ts"];
-  assert.deepEqual(b.statusForPlugin(ids), { state: "enabled", toolNames: [], commandNames: [], diagnostics: [] });
+  assert.deepEqual(b.statusForPlugin(ids), {
+    state: "enabled",
+    toolNames: [],
+    commandNames: [],
+    agentNames: [],
+    diagnostics: [],
+  });
 
   b.publishDiagnostics("s1", [{ extensionId: "/p/a.ts", kind: "unsupported_api", message: "x", member: "setWidget", count: 2 }], [
-    { extensionId: "/p/a.ts", state: "loaded", toolNames: ["fx_add"], commandNames: ["greet"], eventNames: [] },
-    { extensionId: "/p/b.ts", state: "loaded", toolNames: ["fx_two"], commandNames: [], eventNames: [] },
-    { extensionId: "/other.ts", state: "error", toolNames: [], commandNames: [], eventNames: [] },
+    { extensionId: "/p/a.ts", state: "loaded", toolNames: ["fx_add"], commandNames: ["greet"], agentNames: ["commandcode"], eventNames: [] },
+    { extensionId: "/p/b.ts", state: "loaded", toolNames: ["fx_two"], commandNames: [], agentNames: [], eventNames: [] },
+    { extensionId: "/other.ts", state: "error", toolNames: [], commandNames: [], agentNames: [], eventNames: [] },
   ]);
   b.publishCommands("s1", [{ extensionId: "/p/a.ts", extensionLabel: "P", name: "greet", description: "hi" }]);
   b.publishCommands("s2", [{ extensionId: "/p/a.ts", extensionLabel: "P", name: "greet" }, { extensionId: "/p/a.ts", extensionLabel: "P", name: "other" }]);
@@ -202,11 +212,13 @@ test("session publications drive the plugin's agent-extension status and the com
   assert.equal(status.state, "loaded", "the other plugin's error does not leak in");
   assert.deepEqual(status.toolNames, ["fx_add", "fx_two"]);
   assert.deepEqual(status.commandNames, ["greet"]);
+  // A custom agent a module registered reaches the plugin row (spec §11).
+  assert.deepEqual(status.agentNames, ["commandcode"]);
   assert.equal(status.diagnostics[0].member, "setWidget");
   assert.deepEqual(b.allCommands().map((c) => [c.name, c.description]), [["greet", "hi"], ["other", undefined]]);
   assert.deepEqual(b.commandsForSession("s2").map((c) => c.name), ["greet", "other"]);
 
-  b.publishDiagnostics("s1", [], [{ extensionId: "/p/a.ts", state: "error", toolNames: [], commandNames: [], eventNames: [] }]);
+  b.publishDiagnostics("s1", [], [{ extensionId: "/p/a.ts", state: "error", toolNames: [], commandNames: [], agentNames: [], eventNames: [] }]);
   assert.equal(b.statusForPlugin(ids).state, "error");
   b.clearSession("s1");
   b.clearSession("s2");
@@ -262,7 +274,7 @@ test("importing a pi extension directory or file generates a plugin holding agen
   assert.deepEqual(manifest.permissions, ["agent.extension"]);
   assert.deepEqual(manifest.contributes, { agentExtensions: ["src/index.ts"] });
   assert.ok(existsSync(join(dir.path, "src", "lib", "util.ts")), "the whole directory is copied");
-  assert.match(readFileSync(join(dir.path, "main.js"), "utf8"), /module\.exports = \{\}/);
+  assert.match(readFileSync(join(dir.path, "main.cjs"), "utf8"), /module\.exports = \{\}/);
 
   const file = join(root, "solo.ts");
   writeFileSync(file, "export default function () {}\n");
@@ -277,6 +289,49 @@ test("importing a pi extension directory or file generates a plugin holding agen
 
   writeFileSync(join(root, "notes.md"), "# no");
   assert.throws(() => generateImportedExtensionPlugin(join(root, "notes.md"), importRoot), /no extension entry/);
+});
+
+test("repairImportedExtensionWrapper migrates the generated main.js no-op in place", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-ax-repair-"));
+  const dir = join(root, "imported-plugin");
+  mkdirSync(dir);
+  writeFileSync(join(dir, "manifest.json"), JSON.stringify({
+    schemaVersion: 1,
+    id: "imported.git-helper",
+    name: "git-helper",
+    version: "0.0.0",
+    main: "main.js",
+  }, null, 2) + "\n");
+  writeFileSync(join(dir, "main.js"), IMPORTED_PLUGIN_WRAPPER_SOURCE);
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x", type: "module" }));
+  const originalPkg = readFileSync(join(dir, "package.json"), "utf8");
+
+  assert.equal(repairImportedExtensionWrapper(dir), true);
+  assert.equal(JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")).main, "main.cjs");
+  assert.equal(readFileSync(join(dir, "main.cjs"), "utf8"), IMPORTED_PLUGIN_WRAPPER_SOURCE);
+  assert.equal(existsSync(join(dir, "main.js")), false);
+  assert.equal(readFileSync(join(dir, "package.json"), "utf8"), originalPkg);
+  assert.equal(repairImportedExtensionWrapper(dir), false);
+
+  writeFileSync(join(dir, "main.js"), "// Generated by PI-Desktop: this plugin only contributes agent extensions.\nmodule.exports = {};\n");
+  const legacyComment = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+  legacyComment.main = "main.js";
+  writeFileSync(join(dir, "manifest.json"), JSON.stringify(legacyComment, null, 2) + "\n");
+  assert.equal(repairImportedExtensionWrapper(dir), true);
+  assert.equal(JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")).main, "main.cjs");
+
+  writeFileSync(join(dir, "main.js"), "module.exports = { custom: true };\n");
+  const custom = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+  custom.main = "main.js";
+  writeFileSync(join(dir, "manifest.json"), JSON.stringify(custom, null, 2) + "\n");
+  assert.equal(repairImportedExtensionWrapper(dir), false);
+  assert.equal(readFileSync(join(dir, "main.js"), "utf8"), "module.exports = { custom: true };\n");
+
+  custom.id = "demo.not-imported";
+  writeFileSync(join(dir, "manifest.json"), JSON.stringify(custom, null, 2) + "\n");
+  writeFileSync(join(dir, "main.js"), IMPORTED_PLUGIN_WRAPPER_SOURCE);
+  assert.equal(repairImportedExtensionWrapper(dir), false);
+  rmSync(root, { recursive: true, force: true });
 });
 
 test("importing a directory keeps its package.json at the plugin root and never copies node_modules", () => {
@@ -453,6 +508,7 @@ test("dependency install: skips without a manifest or dependencies, runs npm wit
   });
   assert.deepEqual(missingResult, {
     state: "failed",
+    reason: "npm-unavailable",
     error: "npm is not available on PATH; install Node.js/npm before importing dependencies",
   });
 

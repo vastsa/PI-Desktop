@@ -36,6 +36,9 @@ PI-Desktop/
 │ ├── shared/                 # IPC/protocol contracts, error codes, changelog
 │ ├── i18n/                   # shipped UI catalogs plus locale helpers
 │ ├── agent-runtime/          # pi sidecar and runtime wrapper (bundled into the app)
+│ ├── agent-host/             # headless Agent Host module: admission, queue, approvals, event log
+│ ├── host-runtime/           # Electron-independent runtime: stdio transports, supervisor, turn lifecycle
+│ ├── racp/                   # RACP-WS server and client, device-token pairing
 │ ├── plugin-sdk/             # plugin author types and validators
 │ └── plugin-devkit/          # pi-plugin CLI: scaffold, check, pack, publish
 ├── examples/
@@ -125,7 +128,9 @@ Cross-boundary contracts:
 
 ## 3. Runtime data (not in git)
 
-`PI_DESKTOP_DATA_DIR` overrides the default location.
+`PI_DESKTOP_DATA_DIR` overrides the default location: `~/.pi-desktop` for a
+packaged installation, `~/.pi-desktop-dev` for a development build, which is
+how `pnpm dev` runs beside the packaged app (D599).
 
 ```text
 ~/.pi-desktop/

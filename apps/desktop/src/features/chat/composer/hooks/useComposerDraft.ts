@@ -37,10 +37,15 @@ import {
   type ComposerFileReference,
 } from "../editor";
 import type { ComposerPrefill } from "../model";
+import { useComposerImagePreview, type ComposerImagePreviewController } from "./useComposerImagePreview";
+
+import { detachImageTokens, isImageReference } from "../image-attachments";
 
 type ComposerSession = { id: string };
 
 export type ComposerDraftController = {
+  imagePreview: ComposerImagePreviewController;
+  removeImage: (id: string) => void;
   ref: RefObject<HTMLDivElement | null>;
   draftKey: string;
   referenceSessionId: string;
@@ -158,6 +163,7 @@ export function useComposerDraft({
   }, [activeFileReferences]);
   const referenceByTokenRef = useRef(referenceByToken);
   referenceByTokenRef.current = referenceByToken;
+  const imagePreview = useComposerImagePreview({ references: fileReferences, value, sessionId: referenceSessionId, editorRef: ref });
   const removeChipByTokenRef = useRef<(token: string) => void>(() => {});
   const expandTextReferenceRef = useRef<(token: string) => void>(() => {});
   const pendingEditorCaretRef = useRef<number | null>(
@@ -187,7 +193,19 @@ export function useComposerDraft({
 
   useLayoutEffect(() => {
     const element = ref.current;
-    if (!element || editorValueRef.current === value) return;
+    if (!element) return;
+    if (fileReferences.some((reference) => isImageReference(reference) && reference.token)) {
+      const detached = detachImageTokens(value, fileReferences, pendingEditorCaretRef.current ?? cursor);
+      valueRef.current = detached.text;
+      fileReferencesRef.current = detached.references;
+      pendingEditorCaretRef.current = detached.caret;
+      editorValueRef.current = null;
+      setValue(detached.text);
+      setCursor(detached.caret);
+      setFileReferences(detached.references);
+      return;
+    }
+    if (editorValueRef.current === value) return;
     paintCurrentDraft(element, value);
     const pendingCaret = pendingEditorCaretRef.current;
     if (pendingCaret !== null) {
@@ -439,6 +457,12 @@ export function useComposerDraft({
     nextReferences: ComposerFileReference[],
     caret: number,
   ) => {
+    const detached = detachImageTokens(nextText, nextReferences, caret);
+    nextText = detached.text;
+    nextReferences = detached.references;
+    caret = detached.caret;
+    // A token may now refer to a different attachment even when text is equal.
+    editorValueRef.current = null;
     pendingEditorCaretRef.current = caret;
     setValue(nextText);
     setCursor(caret);
@@ -520,9 +544,10 @@ export function useComposerDraft({
     if (ref.current) paintCurrentDraft(ref.current, "");
     setValue("");
     const owner = draftOwnerSessionId(key);
-    setFileReferences((current) =>
-      current.filter((fileReference) => fileReference.sessionId !== owner),
-    );
+    // A rejected send can resume before React commits the cleared state.
+    const remaining = fileReferencesRef.current.filter((reference) => reference.sessionId !== owner);
+    fileReferencesRef.current = remaining;
+    setFileReferences(remaining);
     setCursor(0);
   };
 
@@ -530,10 +555,12 @@ export function useComposerDraft({
     const currentActiveSessionId = useAppStore.getState().activeSessionId;
     const currentKey = draftKeyForSession(currentActiveSessionId);
     if (currentKey !== key) {
-      if (!readComposerDraft(key)?.text) writeComposerDraft(key, snapshot);
+      const cached = readComposerDraft(key);
+      if (!cached?.text && !cached?.fileReferences.length) writeComposerDraft(key, snapshot);
       return;
     }
     if (valueRef.current.trim()) return;
+    if (fileReferencesRef.current.some((reference) => reference.sessionId === (currentActiveSessionId ?? ""))) return;
     const sessionId = currentActiveSessionId ?? "";
     setValue(snapshot.text);
     setFileReferences((current) => [
@@ -562,6 +589,13 @@ export function useComposerDraft({
   });
 
   return {
+    imagePreview,
+    removeImage: (id) => {
+      if (inputBlocked) return;
+      invalidatePromptEnhancement();
+      setFileReferences((current) => current.filter((reference) => reference.id !== id));
+      ref.current?.focus();
+    },
     ref,
     draftKey,
     referenceSessionId,

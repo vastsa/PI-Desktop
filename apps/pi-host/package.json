@@ -1,0 +1,37 @@
+{
+  "name": "@pi-desktop/pi-host",
+  "version": "0.15.2-beta.1",
+  "private": true,
+  "type": "module",
+  "description": "Headless PI Agent Host: RACP-WS server over the Agent Host module, the pi sidecar, and host-core",
+  "bin": {
+    "pi-host": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "bundle": "node scripts/bundle.mjs",
+    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('dist-bundle',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@pi-desktop/agent-host": "workspace:*",
+    "@pi-desktop/agent-runtime": "workspace:*",
+    "@pi-desktop/host-runtime": "workspace:*",
+    "@pi-desktop/racp": "workspace:*",
+    "@pi-desktop/shared": "workspace:*",
+    "ws": "8.21.1"
+  },
+  "optionalDependencies": {
+    "node-pty": "1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

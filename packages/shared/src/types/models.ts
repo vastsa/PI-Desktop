@@ -9,9 +9,14 @@ export const THINKING_LEVELS = [
   "max",
 ] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
-/** Per-subagent selector values; omit leaves the provider's default untouched. */
-export const SUBAGENT_THINKING_LEVELS = [...THINKING_LEVELS, "omit"] as const;
-export type SubagentThinkingLevel = (typeof SUBAGENT_THINKING_LEVELS)[number];
+/**
+ * Session and subagent selector values. `omit` leaves the provider default
+ * untouched and is not a catalog/binding capability.
+ */
+export const SESSION_THINKING_LEVELS = [...THINKING_LEVELS, "omit"] as const;
+export type SessionThinkingLevel = (typeof SESSION_THINKING_LEVELS)[number];
+export const SUBAGENT_THINKING_LEVELS = SESSION_THINKING_LEVELS;
+export type SubagentThinkingLevel = SessionThinkingLevel;
 
 export type ModelProviderMetadata = string | Record<string, unknown>;
 export type ModelExperimentalMetadata = boolean | Record<string, unknown>;
@@ -68,6 +73,15 @@ export function modelIdsMatch(candidate: string, requested: string): boolean {
   return false;
 }
 
+/**
+ * Where a saved context window came from.
+ *
+ * `catalog` is a metadata snapshot: the value follows the published models.dev
+ * record, so a later catalog correction still reaches an already saved binding.
+ * `user` is the user's own number and is never overwritten by the catalog.
+ */
+export type ContextWindowSource = "catalog" | "user";
+
 /** Provider-local model settings persisted with the provider configuration. */
 export type ModelBinding = {
   id: string;
@@ -75,10 +89,14 @@ export type ModelBinding = {
    * shows a model label; the id remains the wire identity. */
   alias?: string;
   contextWindow: number;
+  /** Provenance of `contextWindow`. Absent on records written before the
+   * marker existed; readers then apply the historical rule documented on
+   * `effectiveContextWindow`. */
+  contextWindowSource?: ContextWindowSource;
   maxTokens: number;
-  /** Explicit endpoint levels; an empty or off-only set disables thinking. */
   thinkingLevels: ThinkingLevel[];
-  defaultThinkingLevel: ThinkingLevel | null;
+  /** Canonical enabled level, or `omit` when new sessions should send no override. */
+  defaultThinkingLevel: SessionThinkingLevel | null;
   /**
    * User override for image input. `null` or absent follows the published
    * models.dev capability; `true` forces image transport on for an endpoint the
@@ -97,8 +115,14 @@ export type ModelBinding = {
    * parent agent can pick it at Task time. Defaults to false (opt-in).
    */
   availableForSubagents?: boolean;
+  /**
+   * Opt-in for attaching the provider-hosted web search tool to requests for
+   * this model. Absent/false keeps the tool off. There is no catalog default:
+   * models.dev does not publish hosted-tool capability, so the user's own
+   * knowledge of the endpoint is the only source.
+   */
+  nativeWebSearch?: boolean;
 };
-
 
 export const MODEL_MODALITIES = ["text", "image", "audio", "video", "pdf"] as const;
 export type ModelModality = (typeof MODEL_MODALITIES)[number];

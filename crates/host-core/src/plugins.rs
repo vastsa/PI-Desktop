@@ -17,25 +17,38 @@ pub(crate) use crate::activation::ActivationScope;
 pub(crate) const MAX_PACKAGE_BYTES: u64 = 50 * 1024 * 1024;
 pub(crate) const MAX_PACKAGE_FILES: usize = 2000;
 
+mod device;
 mod install;
 mod manifest;
 pub mod marketplace;
 mod model;
 mod permissions;
+pub(crate) mod progress;
 mod providers;
 mod registry;
+mod resolve;
 mod validation;
 
 pub use manifest::PluginManifest;
 pub use marketplace::{
-    market_source_from_settings, MIRROR_MARKET_CATALOG_URL, OFFICIAL_MARKET_CATALOG_URL,
+    market_channel_from_settings, MarketChannel, GITHUB_BACKUP_CHANNEL_CATALOG_URL,
+    MIRROR_MARKET_CATALOG_URL, OFFICIAL_CHANNEL_CATALOG_URL,
 };
 pub use model::{
     InstallOptions, InstallResult, MarketDownloadInfo, MarketPluginDetail, MarketPluginSummary,
-    MarketProvenance, MarketReview, MarketVersion, PluginMarketplaceMeta, PluginSettingDefinition,
-    PluginSettingOption, PluginSummary, PluginUiMeta, PluginUpdateInfo, PluginYankNotice,
+    MarketProvenance, MarketReview, MarketVersion, PluginDisplayI18n, PluginI18nMap,
+    PluginMarketplaceMeta, PluginSettingDefinition, PluginSettingOption, PluginSummary,
+    PluginUiMeta, PluginUpdateInfo, PluginYankNotice,
 };
 pub(crate) use model::{MarketCatalogEntry, MarketCatalogFile};
+pub(crate) use progress::{
+    CancelToken, DownloadReport, InstallObserver, InstallPhase, InstallProgress, NoProgress,
+    TriedMirror,
+};
+
+/// Locale resolution for plugin/catalog display strings, shared by the
+/// registry and the marketplace readers.
+pub(crate) use model::localized_field;
 pub use registry::PluginManager;
 
 // Domain modules share a small set of crate-private helpers. Re-exporting them

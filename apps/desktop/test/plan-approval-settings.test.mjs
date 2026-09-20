@@ -32,7 +32,10 @@ const interactionSource = readStoreModuleSync("slices/interaction-slice.ts");
 
 test("plan approval exposes only the artifact and remembers the selected mode", () => {
   assert.match(approvalBar, /proposal\.title/);
-  assert.match(approvalBar, /fileWorkPanelTab\(artifactPath\)/);
+  assert.match(
+    approvalBar,
+    /preferredFileWorkPanelTab\(artifactPath, pluginViews\)/,
+  );
   assert.match(approvalBar, /openWorkPanelTabForSession/);
   assert.match(approvalBar, /const isPending = proposal\.status === "pending"/);
   assert.match(approvalBar, /PLAN_APPROVAL_DEFAULT_MODE/);
@@ -109,7 +112,7 @@ test("command-shell settings are catalog-driven and use the existing save flow",
   assert.match(settingsPage, /api\s*\.\s*listCommandShells\(\)/s);
   assert.match(settingsPage, /settings\.defaultCommandShell/);
   assert.match(settingsPage, /catalog\.choices\.map/);
-  assert.match(settingsPage, /disabled=\{!choice\.available\}/);
+  assert.match(settingsPage, /disabled: !choice\.available/);
   assert.match(settingsPage, /saveSettings\(\{ defaultCommandShell: choice\.id \}\)/);
   assert.match(settingsPage, /catalog\.configuredId/);
   assert.match(settingsPage, /catalog\??\.effective/);

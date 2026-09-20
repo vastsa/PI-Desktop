@@ -59,8 +59,28 @@ that drops a table row or a code block is reported even when its prose reads
 complete. The gate runs in `.github/workflows/docs-check.yml`, which covers the
 documentation paths intentionally ignored by the application CI workflow. Treat
 any failure as a list of mirrors to finish, and do not add a new English
-specification without its companion. The VitePress production build separately
-validates the rendered routes and internal links.
+specification without its companion.
+
+`pnpm docs:check` also runs `scripts/check-docs.mjs`, a second gate over every
+Markdown page under `docs/`:
+
+1. exactly one H1, except that a `layout: home` page renders its hero instead,
+2. balanced code fences, and tables whose rows agree on their column count,
+3. the ADR catalog: an `NNNN-slug.md` (or plain slug) file name, one owner per
+   decision id, an H1 that declares that id, and the Status, Context, and
+   Decision sections,
+4. `adr/README.md`, which must list every record exactly once, and may only
+   link a row to the record that owns its id,
+5. every `ADR NNNN` citation under `docs/`, which must resolve to a record, or
+   to a retired id that `08-meta/decisions-log.md` names,
+6. every Chinese page, which must mirror an English page at the same relative
+   path, with `index.md` and `README.md` read as the same page,
+7. `NAV.md`, which must list every page of its own tree, and the two `spec/`
+   trees, whose section directories must match and stay numbered like
+   `01-product`.
+
+The same workflow then runs the VitePress production build, which validates the
+rendered routes and every internal link.
 
 ## Content rules
 

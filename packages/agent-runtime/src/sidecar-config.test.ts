@@ -8,6 +8,7 @@ describe("sidecar thinking-level boundary", () => {
   it("preserves supported levels from IPC params", () => {
     expect(normalizeThinkingLevel("high")).toBe("high");
     expect(normalizeThinkingLevel("off")).toBe("off");
+    expect(normalizeThinkingLevel("omit")).toBe("omit");
   });
 
   it("fails closed to off for malformed or absent params", () => {

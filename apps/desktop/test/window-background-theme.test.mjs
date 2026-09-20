@@ -33,7 +33,12 @@ test("theme changes synchronize the native non-macOS window background", () => {
   // That fallback is the shared built-in theme table, not a literal per call
   // site, so window-ipc, window creation, and the panel host cannot drift.
   assert.match(mainSource, /: builtinWindowBackground\(theme\)/);
-  assert.match(mainSource, /backgroundColor: builtinWindowBackground\(request\.theme\)/);
+  assert.match(
+    mainSource,
+    // A floating widget paints its own silhouette, so the host leaves that
+    // window fully transparent instead of pouring a theme colour behind it.
+    /backgroundColor: widget \? "#00000000" : builtinWindowBackground\(request\.theme\)/,
+  );
   assert.match(
     mainSource,
     /builtinWindowBackground\(\s*nativeTheme\.shouldUseDarkColors \? "dark" : "light",?\s*\)/,

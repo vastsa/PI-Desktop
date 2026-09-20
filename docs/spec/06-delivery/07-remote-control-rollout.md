@@ -104,6 +104,21 @@ match `electron/main/index.ts` by source pattern and must be repointed.
 Deliver the first remote topology (`02-architecture/05-remote-agent-control.md`
 §5.2): the desktop as Remote Client of a headless Host on another machine.
 
+R2 lands in two ordered slices so the desktop-side kernel can ship, be
+tested, and stay dead code until the full topology is ready:
+
+- **R2a — Desktop kernel (delivered, ADR 0286).** The single interception
+  seam, the transport-agnostic backend, the event bridge, the coordinator, an
+  encrypted-at-rest registry, and the boot hook. With an empty registry
+  (default install) the kernel is a full no-op; the router has no remote
+  backends, every renderer call still hits the local handler byte-for-byte.
+  Every subsystem has a `node --test` fixture that exercises it against a
+  fake — or, for the RACP adapter, against the real in-memory harness in
+  `@pi-desktop/racp/test-harness`.
+- **R2b — Pairing, SSH bootstrap, terminal, and reverse tool relay.** The
+  remaining bullets below. R2's exit criteria stay unchanged and land with
+  R2b; R2a alone is not user-visible and does not attempt them.
+
 Deliverables:
 
 - the `pi-host` bundle: the module, the Node pi sidecar, and the platform's
@@ -123,10 +138,15 @@ Deliverables:
 - the remote session ownership split of architecture §6.3;
 - the reverse tool relay: `tools/advertise` and the `tool/execute` server
   request, so desktop MCP servers and workspace-free plugin tools run on the
-  desktop for a remote session; and
+  desktop for a remote session;
 - the terminal: `terminal/open`, `terminal/input`, `terminal/resize`,
   `terminal/close`, `terminal.output`, and a bounded replay ring, running on
-  the remote machine.
+  the remote machine; and
+- the Settings → Remote Hosts destination: a compact host inventory and one
+  Add form with SSH and Pair tabs, no instructional copy, marked Experimental
+  on the settings rail and page title because the topology may still fail, and
+  shown — with its settings-search hits — only while developer mode is on
+  (`04-ux/06-settings-ia.md` §1, §3).
 
 Design decisions (D375, recorded 2026-09-10):
 
@@ -400,9 +420,45 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   composer pushes through `agent/queue/push`, mirrors
   `agent/event/queueChanged`, and "send now" is `turn/prioritize` plus a
   graceful stop.
-- R1 open: a runtime-level per-turn permission ceiling (a capped turn
-  currently fails closed in the bridge).
-- R2 and later: not started.
+- R1 partial (2026-09-18): the runtime-level per-turn permission ceiling is
+  plumbed end-to-end (`AgentPromptRequest.permissionMode` → agent-ipc →
+  `RuntimeService.startTurn` → sidecar `agent.prompt`), and the bridge no
+  longer fails closed on every session/effective-mode mismatch. A widening
+  request (effective more permissive than session) is still refused as
+  defence-in-depth; a narrower ceiling is forwarded and recorded by the
+  sidecar as a documented stub. Turn-scoped enforcement in host-core
+  (`session.beginTurn` accepting an override) is the remaining piece, so a
+  narrower ceiling on a local turn does not yet clamp tool decisions.
+- R2 started (2026-09-18, D447 / ADR 0284): `packages/host-runtime` holds the
+  Electron-independent runtime layer — the host-core and sidecar stdio
+  transports, the restart supervisor, `RuntimeService` (the module's
+  `RuntimePort` with the durable turn lifecycle), transcript persistence, a
+  headless launch resolver, and approved Plan/Goal dispatch — and Electron
+  main runs on it through thin adapters.
+- R2 (2026-09-18, D448 / ADR 0285): `packages/racp` holds the `RACP-WS`
+  server and client cores, the `ws` binding on loopback, and device-token
+  pairing; handshake, authorization, idempotency, queue order, approvals,
+  cursor replay, eviction, epoch change, slow clients, and reconnect without
+  duplicate execution are package tests. The `pi-host` bundle, the desktop
+  adapter, and the SSH bootstrap have since started: the R2a desktop kernel
+  (D449 / ADR 0286) brought the adapter and the bundle, and the SSH bootstrap
+  followed in D453 / ADR 0292.
+- R2b partial (2026-09-19, D453 / ADR 0292): the desktop installs and pairs
+  a `pi-host` over the user's own `ssh` client with `BatchMode=yes`, so the
+  user's configuration, agent, and jump hosts apply and no SSH secret reaches
+  the app. `remote/pi-host-release.ts` holds the pure release coordinates
+  (remote platform, desktop version, published SHA-256, refusal of unpublished
+  targets) and `remote/pi-host-bootstrap-script.ts` generates the single
+  `umask 077` script that downloads, verifies, installs under the remote
+  `$HOME`, restarts the host on loopback with `--pair`, and echoes
+  `PI_HOST_READY` / `PI_HOST_PAIRING_TOKEN`; `remote/ssh-transport.ts` is the
+  injectable transport port and `remote/ssh-tunnel.ts` owns one durable
+  `ssh -N -L` forward per host, re-established on every launch and adopted
+  from the bootstrap so pairing opens exactly one tunnel. Records carry
+  `metadata.transport = "ssh"` plus an SSH descriptor instead of a URL, and
+  `pi-desktop/remoteHost/bootstrap` joins `list` / `pair` / `remove`. The
+  terminal work-panel client, the reverse tool relay, and provider-configuration
+  propagation over the SSH channel are not in this slice.
 
 ## 8. Amendment history
 

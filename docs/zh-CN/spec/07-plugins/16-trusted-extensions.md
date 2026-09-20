@@ -63,9 +63,14 @@ agent 循环上注册工具、命令和事件处理器。`ExtensionAPI` 契约�
 
 插件页 →“导入 pi 扩展”打开原生选择器（main 拥有路径，D344），由用户明确选择本地
 文件或目录。main 把所选源码复制到 `<dataDir>/plugins/imported/<slug>/src/`，生成空操作
-`main.js` 和 id 为 `imported.<slug>` 的 manifest（重复导入时追加唯一后缀），再通过
+CommonJS `main.cjs` 和 id 为 `imported.<slug>` 的 manifest（重复导入时追加唯一后缀），再通过
 既有本地插件流程注册。选择器之前的确认仍是信任决定；生成的 manifest 只声明实际贡献
-所需的权限。
+所需的权限。无论源包的 `type` 为何，manifest 的 `main` 都指向 `main.cjs`；
+两份复制的包声明保留原有模块语义。加载时若导入插件的 `main` 仍是生成的 CommonJS
+`main.js` 空包装器，则就地改写为 `main.cjs` 并更新 manifest；复制的包文件、授权和
+激活范围保持不变。只匹配生成的空操作（含最初的注释文本）。自定义过的 `main.js`
+不会改动。不删除就重新导入仍会创建带唯一后缀的独立插件，不会从旧副本复制授权或
+激活范围。
 
 扩展文件及未声明 `pi.skills` 的包保持既有 `pi-coding-agent` 入口发现规则：先取
 `package.json` 的 `pi.extensions`，否则取 `index.ts` / `index.js`，再否则取一层深度内

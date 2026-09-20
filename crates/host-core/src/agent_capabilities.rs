@@ -1,8 +1,8 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -145,6 +145,28 @@ impl CapabilityState {
         self.save()
     }
 
+    /// Every id of `kind` at `level` whose stored value is an explicit `false`.
+    ///
+    /// Global records default on, so the state file holds only what a user
+    /// turned off. A caller that owns a catalog of records with no document to
+    /// scan — the shipped subagent builtins — needs exactly these ids, because
+    /// the directory scan that prunes state for deleted files can never see
+    /// them. Ids come back sorted so a result never depends on insertion order.
+    pub fn disabled_ids(&self, kind: &str, level: CapabilityLevel) -> Vec<String> {
+        let mut ids: Vec<String> = self
+            .values
+            .iter()
+            .filter(|(_, enabled)| !**enabled)
+            .filter_map(|(raw_key, _)| serde_json::from_str::<StateKey>(raw_key).ok())
+            .filter(|key| {
+                key.kind == kind && key.level == level.as_str() && key.project_path.is_none()
+            })
+            .map(|key| key.id)
+            .collect();
+        ids.sort();
+        ids
+    }
+
     /// Remove state for records that disappeared from the selected directory.
     /// Other project selections remain untouched because they may still exist.
     pub fn prune(
@@ -181,6 +203,44 @@ impl CapabilityState {
         Ok(())
     }
 
+    /// Drop the stored state of one document at its source level.
+    ///
+    /// A global document is one shared file, so its id owns the global default
+    /// and every project override alike: they are all dropped, whichever
+    /// project context the move started from (`project_path` is ignored there).
+    /// A project document has exactly one owner, so only the entry belonging to
+    /// `project_path` goes with it — another project's same-named document is a
+    /// different file with its own state.
+    pub fn forget(
+        &mut self,
+        kind: &str,
+        level: CapabilityLevel,
+        id: &str,
+        project_path: Option<&str>,
+    ) -> Result<()> {
+        let before = self.values.len();
+        self.values.retain(|raw_key, _| {
+            let Ok(key) = serde_json::from_str::<StateKey>(raw_key) else {
+                return false;
+            };
+            if key.kind != kind || key.level != level.as_str() || key.id != id {
+                return true;
+            }
+            match level {
+                CapabilityLevel::Global => false,
+                CapabilityLevel::Project => match (&key.project_path, project_path) {
+                    (Some(owner), Some(selected)) => !same_path(owner, selected),
+                    (None, None) => false,
+                    _ => true,
+                },
+            }
+        });
+        if before != self.values.len() {
+            self.save()?;
+        }
+        Ok(())
+    }
+
     fn save(&self) -> Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
@@ -193,7 +253,21 @@ impl CapabilityState {
     }
 }
 
+/// Repoints the global capability root, the way `PI_DESKTOP_DATA_DIR` repoints
+/// the app-local data directory.
+///
+/// The global `.agents` root is otherwise the real home directory, which leaves
+/// the global half of a level switch untestable and makes an isolated install
+/// impossible. An empty value falls back to the home directory.
+pub const AGENTS_DIR_ENV: &str = "PI_DESKTOP_AGENTS_DIR";
+
 pub fn global_agents_dir() -> PathBuf {
+    if let Ok(configured) = std::env::var(AGENTS_DIR_ENV) {
+        let trimmed = configured.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(AGENTS_DIR)
@@ -235,6 +309,227 @@ pub fn normalize_project_path(path: &str) -> String {
 
 fn same_path(a: &str, b: &str) -> bool {
     normalize_project_path(a).to_lowercase() == normalize_project_path(b).to_lowercase()
+}
+
+/// One place a capability document can live: a level plus, for the project
+/// level, the project that owns it.
+///
+/// A global target may still carry a project path. There it means "resolve the
+/// global document with this project's enabled override", which is the context
+/// a move needs to read the state the user was actually looking at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityTarget {
+    pub level: CapabilityLevel,
+    pub project_path: Option<String>,
+}
+
+impl CapabilityTarget {
+    pub fn new(level: CapabilityLevel, project_path: Option<&str>) -> Result<Self> {
+        let project_path = project_path
+            .map(normalize_project_path)
+            .filter(|value| !value.is_empty());
+        if level == CapabilityLevel::Project && project_path.is_none() {
+            bail!("CAPABILITY_INVALID: projectPath is required for project capabilities");
+        }
+        Ok(Self {
+            level,
+            project_path,
+        })
+    }
+
+    /// True when both targets name the same directory.
+    pub fn same_directory(&self, other: &Self) -> bool {
+        if self.level != other.level {
+            return false;
+        }
+        match (&self.project_path, &other.project_path) {
+            (Some(a), Some(b)) => same_path(a, b),
+            (None, None) => true,
+            // A global target's project path is a state context, not an owner,
+            // so two global targets always name the same directory.
+            _ => self.level == CapabilityLevel::Global,
+        }
+    }
+}
+
+/// Carry a moved document's activation state across to its destination.
+///
+/// The value that travels is the one the user was looking at at the source. A
+/// document arriving in a project gets that project's own state; one arriving
+/// globally gets the global default, never a per-project override, because the
+/// move says nothing about the projects it left behind. The source entry is
+/// dropped first so the old level holds no state for a document it lost, and
+/// `source_project_path` scopes that drop to the document's real owner: moving
+/// project A's document must not clear project B's state for a same-named one.
+// Every parameter names a distinct part of the move (source kind, level, id,
+// owner, target, target id, value); bundling them would hide the owner, which
+// is the one that must not be dropped.
+#[allow(clippy::too_many_arguments)]
+pub fn set_moved_capability_state(
+    state: &mut CapabilityState,
+    kind: &str,
+    source_level: CapabilityLevel,
+    source_id: &str,
+    source_project_path: Option<&str>,
+    target: &CapabilityTarget,
+    target_id: &str,
+    enabled: bool,
+) -> Result<()> {
+    state.forget(kind, source_level, source_id, source_project_path)?;
+    let owner = match target.level {
+        CapabilityLevel::Global => None,
+        CapabilityLevel::Project => target.project_path.as_deref(),
+    };
+    state.set_enabled(kind, target.level, target_id, owner, enabled)
+}
+
+/// How many `-2`, `-3`, … candidates a move tries before giving up.
+pub(crate) const MAX_ID_SUFFIX: u32 = 999;
+
+/// The id a document should carry at a destination that already holds `taken`.
+///
+/// A level switch that silently overwrote a document the user still has would
+/// be data loss, and refusing the move outright would make the global/project
+/// switch useless whenever both sides happen to share a name. Renaming mirrors
+/// how a file manager disambiguates a copy. The returned ordinal is the suffix
+/// that was applied, or `0` when the preferred id was free.
+///
+/// `taken` must already be lowercased, and the comparison is lowercased on
+/// both sides: on macOS and Windows `MyServer.json` and `myserver.json` are the
+/// same file, so a case-sensitive check would hand the arriving document a name
+/// that silently replaces an existing one.
+pub fn suffixed_capability_id(
+    preferred: &str,
+    taken: &HashSet<String>,
+    max_chars: usize,
+) -> Option<(String, u32)> {
+    if !taken.contains(&preferred.to_lowercase()) {
+        return Some((preferred.to_string(), 0));
+    }
+    for ordinal in 2..=MAX_ID_SUFFIX {
+        let suffix = format!("-{ordinal}");
+        let keep = max_chars.saturating_sub(suffix.len());
+        let mut base: String = preferred.chars().take(keep).collect();
+        while base.ends_with('-') {
+            base.pop();
+        }
+        if base.is_empty() {
+            return None;
+        }
+        let candidate = format!("{base}{suffix}");
+        if !taken.contains(&candidate.to_lowercase()) {
+            return Some((candidate, ordinal));
+        }
+    }
+    None
+}
+
+/// The display name for `ordinal` collisions, suffix included.
+///
+/// `ordinal <= 1` is the name itself, trimmed to the character budget.
+/// Otherwise the suffix is appended *after* the base is trimmed to fit, so a
+/// name already at the budget still yields a distinct candidate instead of a
+/// truncated copy of itself, and a base cut mid-word keeps no trailing space
+/// before the suffix.
+pub fn display_name_candidate(name: &str, ordinal: u32, max_chars: usize) -> String {
+    if ordinal <= 1 {
+        return name.chars().take(max_chars).collect();
+    }
+    let suffix = format!(" ({ordinal})");
+    let keep = max_chars.saturating_sub(suffix.len());
+    let mut base: String = name.chars().take(keep).collect();
+    while base.ends_with(' ') {
+        base.pop();
+    }
+    format!("{base}{suffix}")
+}
+
+/// The display name a document should carry at a destination that already
+/// holds `taken` (compared case-insensitively, the way shadowing compares it).
+pub fn suffixed_display_name(preferred: &str, taken: &HashSet<String>, max_chars: usize) -> String {
+    for ordinal in 1..=MAX_ID_SUFFIX {
+        let candidate = display_name_candidate(preferred, ordinal, max_chars);
+        if !candidate.is_empty() && !taken.contains(&candidate.to_lowercase()) {
+            return candidate;
+        }
+    }
+    preferred.to_string()
+}
+
+/// Copy a directory tree, optionally leaving a skill's own `SKILL.md` behind.
+///
+/// Shared by the cross-filesystem fallback of `move_capability_file` and the
+/// skill move that has already written the renamed document and only needs the
+/// resources beside it (`skip_skill_document` skips the document at the root of
+/// `from` — the one the caller wrote; a nested `SKILL.md` is just a resource
+/// and is copied, because the source directory is deleted afterwards).
+/// Same-named files are overwritten: the destination unit is new (its id is
+/// unique at the level), so a file already there can only be the leftover of an
+/// interrupted move, never another skill's data.
+pub fn copy_directory_tree(from: &Path, to: &Path, skip_skill_document: bool) -> Result<()> {
+    fs::create_dir_all(to).map_err(|error| anyhow::anyhow!("create {}: {error}", to.display()))?;
+    let entries = fs::read_dir(from).with_context(|| format!("read {}", from.display()))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name() else {
+            continue;
+        };
+        if skip_skill_document && name.eq_ignore_ascii_case("SKILL.md") {
+            continue;
+        }
+        let target = to.join(name);
+        if path.is_dir() {
+            copy_directory_tree(&path, &target, false)?;
+        } else {
+            fs::copy(&path, &target)
+                .map_err(|error| anyhow::anyhow!("copy {}: {error}", path.display()))?;
+        }
+    }
+    Ok(())
+}
+
+/// Move one capability document or directory, staying byte-identical whenever
+/// the caller does not need to rewrite it.
+///
+/// `fs::rename` is tried first so a same-filesystem move is atomic and cheap;
+/// the copy fallback covers a project on another mount. `fs::copy` cannot move
+/// a directory (it fails with EISDIR), so a directory falls back to a recursive
+/// copy, a destination check, and only then a recursive delete of the source:
+/// the copy is complete before the original is touched, so a failure leaves the
+/// source intact. The caller must have checked that `to` is free, because this
+/// never replaces an existing destination.
+pub fn move_capability_file(from: &Path, to: &Path) -> Result<()> {
+    if to.exists() {
+        bail!(
+            "CAPABILITY_INVALID: destination already exists: {}",
+            to.display()
+        );
+    }
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    match fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            if from.is_dir() {
+                copy_directory_tree(from, to, false)?;
+                if !to.is_dir() {
+                    bail!(
+                        "CAPABILITY_INVALID: could not copy directory {}",
+                        from.display()
+                    );
+                }
+                fs::remove_dir_all(from)
+                    .map_err(|error| anyhow::anyhow!("remove {}: {error}", from.display()))?;
+                return Ok(());
+            }
+            fs::copy(from, to)
+                .map_err(|error| anyhow::anyhow!("copy {}: {error}", from.display()))?;
+            fs::remove_file(from)
+                .map_err(|error| anyhow::anyhow!("remove {}: {error}", from.display()))?;
+            Ok(())
+        }
+    }
 }
 
 pub fn parse_front_matter(raw: &str) -> (BTreeMap<String, String>, String) {
@@ -434,86 +729,31 @@ pub fn sorted_files(dir: &Path, extension: &str) -> Vec<PathBuf> {
     files
 }
 
+/// Test-only seams shared by every capability module.
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
+pub(crate) mod test_support {
+    use std::path::Path;
+    use std::sync::Mutex;
 
-    #[test]
-    fn front_matter_and_body_round_trip() {
-        let (fields, body) =
-            parse_front_matter("---\nname: Review\ndescription: Check code\n---\n\nDo it.\n");
-        assert_eq!(fields.get("name").map(String::as_str), Some("Review"));
-        assert_eq!(
-            fields.get("description").map(String::as_str),
-            Some("Check code")
-        );
-        assert_eq!(body, "Do it.");
-    }
+    static AGENTS_ENV_LOCK: Mutex<()> = Mutex::new(());
 
-    #[test]
-    fn front_matter_reads_folded_yaml_descriptions() {
-        let raw = "---\nname: find-skills\ndescription: >\n  Discover skills when asked\n  how to do X.\n---\n\nFollow the steps.\n";
-        let (fields, body) = parse_front_matter(raw);
-        assert_eq!(fields.get("name").map(String::as_str), Some("find-skills"));
-        assert_eq!(
-            fields.get("description").map(String::as_str),
-            Some("Discover skills when asked how to do X.")
-        );
-        assert_eq!(body, "Follow the steps.");
-    }
-
-    #[test]
-    fn capability_id_falls_back_to_skill_directory_then_hash() {
-        let dir_skill = Path::new("/tmp/code-review/SKILL.md");
-        assert_eq!(capability_id("代码审查", dir_skill, 64), "code-review");
-        assert_eq!(path_stem_for_id(dir_skill), "code-review");
-
-        let hashed = capability_id("代码审查", Path::new("/tmp/代码审查.md"), 64);
-        assert!(hashed.starts_with("skill-"));
-        assert!(valid_capability_id(&hashed, 64));
-        assert_eq!(
-            hashed,
-            capability_id("代码审查", Path::new("/elsewhere/代码审查.md"), 64)
-        );
-        assert_eq!(
-            capability_id("代码审查", Path::new("/Users/me/Downloads/SKILL.md"), 64),
-            hashed
-        );
-        assert_ne!(
-            capability_id("代码审查", Path::new("/Users/me/Downloads/SKILL.md"), 64),
-            "downloads"
-        );
-    }
-
-    #[test]
-    fn state_defaults_on_and_is_project_specific() {
-        let dir = tempdir().unwrap();
-        let mut state = CapabilityState::new(dir.path(), "skills");
-        assert!(state.enabled("skills", CapabilityLevel::Global, "review", Some("/a")));
-        state
-            .set_enabled(
-                "skills",
-                CapabilityLevel::Global,
-                "review",
-                Some("/a"),
-                false,
-            )
-            .unwrap();
-        assert!(!state.enabled("skills", CapabilityLevel::Global, "review", Some("/a")));
-        assert!(state.enabled("skills", CapabilityLevel::Global, "review", Some("/b")));
-        let reopened = CapabilityState::new(dir.path(), "skills");
-        assert!(!reopened.enabled("skills", CapabilityLevel::Global, "review", Some("/a")));
-
-        let mut orphaned = reopened;
-        orphaned
-            .prune(
-                "skills",
-                CapabilityLevel::Global,
-                None,
-                &std::collections::HashSet::new(),
-            )
-            .unwrap();
-        assert!(orphaned.enabled("skills", CapabilityLevel::Global, "review", Some("/a")));
+    /// Point the global capability root at `dir` for the duration of `f`.
+    ///
+    /// `PI_DESKTOP_AGENTS_DIR` is process-global and the test harness runs
+    /// tests in parallel threads, so every repointing test takes this one lock:
+    /// per-module locks would not exclude each other, and two tests would end up
+    /// reading each other's directory.
+    pub fn with_global_agents<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
+        let _guard = AGENTS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        // Safety: test-only process env mutation, serialized by the lock above.
+        unsafe { std::env::set_var(super::AGENTS_DIR_ENV, dir) };
+        let outcome = f();
+        unsafe { std::env::remove_var(super::AGENTS_DIR_ENV) };
+        outcome
     }
 }
+
+#[cfg(test)]
+mod tests;

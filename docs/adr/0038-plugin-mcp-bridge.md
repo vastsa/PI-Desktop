@@ -37,10 +37,14 @@ differently.
 3. The client lives in `apps/desktop/electron/main/plugin-mcp.ts` and speaks
    protocol `2025-06-18`: `initialize`, `tools/list`, `tools/call`. Framing is
    NDJSON over stdio pipes, or streamable HTTP with SSE responses. Budgets: 10s
-   to complete the handshake, 100s per call (under the 110s plugin tool budget,
-   itself under host-core's 120s), 8 `tools/list` pages, 4MB per stdio line, 64
-   tools per server, 8 servers per plugin. Connection is lazy — declaring a
-   server costs nothing until a tool is called — and teardown follows unload.
+   to complete the handshake, 100s per call, 4MB per stdio line, 8 servers per
+   plugin. 2048 tools, 100 `tools/list` pages, 30s for the whole traversal, and
+   a cursor that repeats or is malformed — a server that breaks any bound is
+   refused instead of truncated. host-core's 150s dispatch deadline carries the
+   whole leg — handshake, traversal, and call — so the client reports its own
+   timeout first.
+   Connection is lazy — declaring a server costs nothing
+   until a tool is called — and teardown follows unload.
 4. Discovered tools register into the **existing** plugin tool map as
    `plugin_<pluginIdSafe>_<serverId>_<toolName>`, so no new routing exists
    anywhere between the model and the server.
@@ -60,8 +64,12 @@ differently.
   agent with correct namespacing, auditing, and timeouts.
 - Reviewing what a plugin can reach means reading its manifest: every endpoint
   and executable is declared text, not a runtime decision.
-- The tool cap and the page cap are silent truncations by design — a server with
-  200 tools contributes 64 and logs the drop rather than flooding the prompt.
+- Catalog size is a protocol guard, not a prompt budget: a server with 300 tools
+  contributes all 300, because MCP tools reach the model as deferred on-demand
+  entries behind `ToolSearch` and only the prompt block that advertises them is
+  capped. A server that breaks a guard (count, pages, cursor, time) is refused
+  and contributes nothing, rather than flooding the prompt with a prefix of its
+  catalog.
 - Because MCP tools sit in the same map as hand-written plugin tools, disabling
   the plugin removes both, and a crashed plugin loses both.
 - A remote server sees tool arguments. No amount of host-side care changes that;

@@ -40,21 +40,36 @@ The host is responsible for:
 
 ### Catalog source selection
 
-Plugins → Marketplace picks where the catalog comes from. host-core resolves
-the URL with the environment override on top, so dev builds and tests can point
-at a local catalog without touching persisted settings:
+Plugins → Marketplace picks where the catalog comes from. There are four
+channels, and the user can switch between them at any time:
 
-| Precedence | Source | Value |
-| --- | --- | --- |
-| 1 | `PI_DESKTOP_PLUGIN_MARKET_URL` | any URL |
-| 2 | `pluginMarketSource: "mirror"` | `https://cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/catalog.json` |
-| 2 | `pluginMarketSource: "custom"` | `pluginMarketCustomUrl` |
-| 3 | `pluginMarketSource: "official"` (default) | the default catalog URL above |
+| # | Channel | `pluginMarketSource` | Catalog URL | Package resolution |
+| --- | --- | --- | --- | --- |
+| 1 | Official channel | `"official"` (default) | `https://plugins.aiuo.net/catalog.json` | Platform resolve (below) |
+| 2 | GitHub backup | `"github"` | `https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/catalog.json` | Relative URL against the catalog |
+| 3 | CNB backup | `"mirror"` | `https://cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/catalog.json` | Relative URL against the catalog |
+| 4 | Custom | `"custom"` | `pluginMarketCustomUrl` | Relative URL against the catalog |
 
-The mirror exists for networks that cannot reach `raw.githubusercontent.com`.
-It serves a byte-identical catalog, and catalog package URLs are relative, so
-`resolve_package_url` keeps package downloads on whichever source served the
-catalog and shasum verification is unaffected by the switch.
+The selector labels are localized; the English locale uses exactly these four
+strings: Official channel, GitHub backup, CNB backup, Custom. An unset value
+and an unrecognized value both resolve to the official channel, and `mirror`
+still means CNB, so no persisted setting is migrated. The environment override
+`PI_DESKTOP_PLUGIN_MARKET_URL` stays above every channel so dev builds and
+tests can point at a local catalog without touching persisted settings.
+
+The official channel is the plugin center: its catalog is the generated
+`catalog.json` the center publishes, and a package installed from it is
+resolved through the platform's download API instead of by joining a relative
+path onto a base URL. The two backup channels and `custom` keep the static v1
+and v2 behavior: a relative package URL resolves against the catalog that
+carried it (`artifactBaseUrl` first, then the catalog directory), so a package
+URL never crosses providers and a source switch cannot change the checksum
+being verified. The GitHub and CNB backups exist for networks that cannot reach
+`plugins.aiuo.net` or each other. The CNB mirror is expected to replicate the
+distribution repository, but it can lag — a measured catalog there was older
+(22 plugins, and different bytes for a version the other mirror serves) — which
+is why the official channel verifies each mirror's bytes instead of trusting
+one URL.
 
 Cached catalogs are keyed to their source in `plugins/market/cache-meta.json`.
 A snapshot fetched from a different source is ignored rather than deleted —
@@ -63,6 +78,94 @@ switching back recovers that catalog without a round trip. `settings.set` only
 re-pins the source in memory; fetching there would hold the host RPC state lock
 behind a marketplace timeout, so the renderer triggers `market.refresh` after
 the switch.
+
+### Device identifier
+
+The official channel's resolve call carries a `deviceId`. host-core derives it
+from the machine identity the operating system exposes: the Windows
+`HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`, the macOS platform UUID, or
+Linux `/etc/machine-id` (falling back to `/var/lib/dbus/machine-id` and
+`/sys/class/dmi/id/product_uuid`). What is sent is
+`sha256("pi-desktop.device.v1:" + <machine id>)` as 64-character lowercase hex,
+so the machine code itself never leaves the machine and the digest is
+domain-separated from every other hash the app computes. When no machine
+identity is readable, host-core generates one random 64-hex id and persists it
+under the application data directory (`plugins/market/device.json`), reusing it
+from then on. The value is read once per process, is stable for the installation
+across restarts, is never shown in the UI, and is not a setting the user can
+edit or reset. It is the platform's counting and rate-limit key (see
+[15-plugin-center.md](15-plugin-center.md) §10), not an account or a login.
+
+### Resolve-based install (official channel)
+
+Every install or update from the official channel resolves its package through
+the platform after the catalog has been refreshed:
+
+1. Refresh the catalog and pick the plugin and version, exactly as for any other
+   channel.
+2. `POST {center origin}/api/v1/download/resolve` — the origin that served the
+   official catalog — with a JSON body of `{ deviceId, pluginId, version }`,
+   where `version` is present when the user picked one. POST is used rather than
+   GET because the platform's own contract notes that a device id in a query
+   string lands in access logs.
+3. Try every entry of the returned `downloads` array in order: download, verify
+   the returned `sha256` and the announced `sizeBytes`, then hand the bytes to
+   the installer. A mirror that fails — network error, HTTP error, digest
+   mismatch, size mismatch — is abandoned and the next one is tried. Requests
+   stay on the allowlisted hosts below.
+4. If the list is exhausted, or the resolve call itself failed, fall back to the
+   catalog's own package URL (`artifactBaseUrl` plus the relative `url`). That
+   is the fallback the platform documents, and the install is not counted.
+5. One resolve call per install or update. The answer is never cached, which is
+   why the platform sends `Cache-Control: no-store`; `counted: false` is a
+   normal reply and never an error.
+
+A `200` response always carries a non-empty `downloads` array. Refusals are
+reported, never papered over:
+
+- `403 NOT_PUBLISHED` — the version is not published. Report it and do not
+  retry.
+- `403 PLUGIN_ARCHIVED` — the plugin is archived. Hide it from install and
+  update selection.
+- `404` — the platform has no such version. Report it; a version string the
+  byte route cannot carry (a `+` build-metadata suffix, for example) is a
+  missing version, not a URL to guess at.
+- `429` — the platform rate-limits per device id (600 requests per minute by
+  default). Wait the `Retry-After` interval, retry once, then report.
+- `503` — a deployment problem (`NO_DOWNLOAD_SOURCE` when no mirror can serve
+  the version). Report it without a retry loop.
+
+The resolve digest is authoritative on this path; the catalog's `shasum` stays
+authoritative on the two backup channels and on the step-4 fallback. Nothing
+here switches the channel automatically: an unreachable platform is reported
+after the fallback, and the user changes channels through the existing selector.
+
+### Install progress and cancellation
+
+An install or update is one request, so while it runs it reports where it is.
+The `plugin.installProgress` notification carries `pluginId`, `version`, `phase`
+(`resolve`, `download`, `verify`, `install`, `enable`), `source` (the mirror in
+use) with its 1-based `attempt` / `attempts`, `receivedBytes` / `totalBytes`
+(`0` total means the size is unknown), and `tried[]` — every mirror tried so
+far, each `{ source, url, error }`. The report that ends a failed install also
+carries `error`. Reports are throttled to at most one per 200 ms, plus one per
+phase change and the terminal report, so byte progress cannot flood the
+interface.
+
+`market.cancelInstall { id }` answers `{ cancelled, id }` and cancels only an
+install that is running right now. Only a download can actually be interrupted:
+the request is honoured while bytes arrive, before each mirror is tried, and at
+the last safe point before the package is written. A cancelled install fails
+with `PLUGIN_CANCELLED` (JSON-RPC code 1019), and the dialog closes quietly
+instead of reporting an error.
+
+The dialog opens for a manual install or update, never for a background
+auto-update. It shows the current phase, `mirror n/N · name`, a determinate bar
+from `receivedBytes` / `totalBytes` with the transfer speed, and a cancel button
+enabled only during `download` and `resolve`. A successful install closes the
+dialog about two seconds after it finishes, and that countdown pauses while the
+dialog is hovered. A failed install keeps it open with the readable error and
+the mirrors that were tried, offering a copy action for them and a retry action.
 
 ### Client-visible catalog policy
 
@@ -218,6 +321,15 @@ type MarketPluginSummary = {
  verified?: boolean
  installable?: boolean
 }
+`i18n` is display metadata, not a summary field: the host resolves a card's
+`name` / `description` and a detail view's `safetyNotes` against the app
+language and falls back per field to the entry's own values, so a translated
+plugin reads in the user's language (ADR 0267). A catalog entry declares the
+same block as a manifest — `{ en: { name, description, safetyNotes }, "zh-CN":
+{ … } }`. Search matches every locale, not only the one currently displayed; a
+malformed block fails the catalog parse, while unknown locales and unknown
+fields inside an entry are ignored.
+
 ```
 
 ### MarketPluginDetail
@@ -327,6 +439,14 @@ Redirects are restricted to HTTPS and re-checked: the effective URL after
 redirection must satisfy the same rules as the initial URL. A custom or
 enterprise catalog is trusted for its own host only — pointing the client at a
 private catalog does not widen the allowlist for arbitrary third-party hosts.
+
+The official channel's resolve response names mirrors rather than a free-form
+URL list, and those mirrors are the distribution hosts above: the GitHub raw
+repository and the CNB mirror the platform already publishes from. A mirror
+entry on any other host is refused exactly like a package URL on that host, so
+the next mirror in the list is tried; if every entry names such a host the
+install fails instead of widening the list. Moving a mirror to a host outside
+this table therefore needs a client release, not a platform-side change.
 
 An off-allowlist package URL fails with `PLUGIN_MARKET_UNTRUSTED_HOST` before any
 network request is made, and the failure names the rejected host so an operator

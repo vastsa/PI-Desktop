@@ -351,11 +351,24 @@ Public responses contain only published data and carry a schema version.
 Mutations require a session, CSRF and Origin checks, an idempotency key, and an
 audit event. Internal routes reject browser sessions.
 
-**The desktop client depends only on the generated catalog, not on this API.**
-The API can be unavailable without breaking browse, install, or update, because
-the catalog and artifacts are static files in the distribution repository and its
-CNB mirror. This is the main resilience benefit of dropping object storage, and
-the reason the client needs no code change to reach center-published plugins.
+**The desktop client reads the generated catalog and calls one download route.**
+The official plugin channel resolves each install or update through
+`POST /api/v1/download/resolve`, sending the plugin id, the version when the
+user picked one, and a stable device identifier (`deviceId`), so the platform can
+de-duplicate a download and rate-limit per device instead of per source address.
+The byte sibling of that route, `GET /download/{id}/{version}`, is the
+marketplace page and console path, not the client's. Browse and update checking
+still need nothing but static files, and an install whose resolve call cannot
+reach the platform falls back to the catalog's own package URL, so the API can
+be unavailable without making published plugins unreachable. The client-side
+contract — channels, mirrors, digest verification, and how the identifier is
+derived — is in [07-plugin-marketplace.md](07-plugin-marketplace.md).
+
+A running install reports its own progress on `plugin.installProgress` — the
+phase, the mirror being tried, and the bytes received — and `market.cancelInstall`
+cancels an install that is still running, where only the download is
+interruptible. Both are client-side contract: the platform's resolve call is
+unchanged and still sees one request per install or update.
 
 ## 11. Trust tiers
 

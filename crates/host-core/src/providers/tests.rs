@@ -162,6 +162,7 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                 ModelBinding {
                     id: "reasoning-model".into(),
                     alias: Some("pro".into()),
+                    context_window_source: None,
                     context_window: 256_000,
                     max_tokens: 16_000,
                     thinking_levels: vec!["high".into(), "medium".into()],
@@ -169,10 +170,12 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                     supports_images: Some(true),
                     supports_documents: None,
                     available_for_subagents: Some(true),
+                    native_web_search: None,
                 },
                 ModelBinding {
                     id: "plain-model".into(),
                     alias: None,
+                    context_window_source: None,
                     context_window: 128_000,
                     max_tokens: 8_192,
                     thinking_levels: vec![],
@@ -180,6 +183,7 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                     supports_images: None,
                     supports_documents: Some(false),
                     available_for_subagents: None,
+                    native_web_search: None,
                 },
             ]),
             default_model_id: None,
@@ -273,6 +277,7 @@ fn binding_with_alias(id: &str, alias: Option<&str>) -> ModelBinding {
     ModelBinding {
         id: id.into(),
         alias: alias.map(str::to_string),
+        context_window_source: None,
         context_window: DEFAULT_CONTEXT_WINDOW,
         max_tokens: DEFAULT_MAX_TOKENS,
         thinking_levels: Vec::new(),
@@ -280,6 +285,7 @@ fn binding_with_alias(id: &str, alias: Option<&str>) -> ModelBinding {
         supports_images: None,
         supports_documents: None,
         available_for_subagents: None,
+        native_web_search: None,
     }
 }
 

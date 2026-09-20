@@ -92,26 +92,32 @@
 .work-panel-resize::after {
   content: "";
   position: absolute;
-  inset-block: 0;
+  top: 50%;
   left: 50%;
-  width: 1px;
-  background: transparent;
-  transform: translateX(-50%);
-  transition:
-    width var(--motion-duration-fast) var(--motion-ease-out),
-    background var(--motion-duration-fast) var(--motion-ease-out);
+  width: 2px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 20%, transparent);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .work-panel-resize:hover::after,
 .work-panel-resize:active::after,
 .work-panel-resize:focus-visible::after,
 .work-panel[data-resizing="true"] .work-panel-resize::after {
-  width: 2px;
-  background: var(--ds-focus);
+  opacity: 1;
 }
 
 .work-panel-resize:focus-visible {
   outline: none;
+}
+
+.work-panel-resize:focus-visible::after,
+.work-panel-resize:active::after,
+.work-panel[data-resizing="true"] .work-panel-resize::after {
+  background: var(--ds-accent);
 }
 
 :root[data-work-panel-resizing="true"],
@@ -126,32 +132,31 @@
   height: var(--ds-toolbar-height);
   flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-work-panel-control-gap);
   background: var(--ds-bg-dock-raised);
-  /* Keep the fixed work-panel toggle in its own hit-target lane. The reserve
-     is shared with the toggle's size/inset tokens and leaves a real gap. */
+  /* Keep the fixed work-panel toggle in its own hit-target lane. The reserve is
+     spent from the toggle's size/inset tokens plus the header's own control
+     gap, so the last panel control ends exactly one button gap before the
+     toggle instead of behind a divider. */
   padding: 0
     calc(
       var(--ds-work-panel-toggle-size) + var(--ds-work-panel-toggle-inset) +
-        var(--ds-work-panel-toggle-gap)
+        var(--ds-work-panel-control-gap)
     )
     0 12px;
   -webkit-app-region: drag;
 }
 
-/* In preview mode the panel can move to the window's left edge when the sidebar
-   is collapsed. Keep its first tab clear of both macOS's hiddenInset traffic
-   lights and the preview row's sidebar/new-task action group. */
-:root[data-platform="darwin"]:not([data-fullscreen="true"])
-  .app-shell.work-panel-maximized.sidebar-collapsed
-  .work-panel-header {
-  padding-left: calc(76px + var(--ds-preview-action-lane-width));
+.app-shell.work-panel-maximized .work-panel-header {
+  margin-left: calc(var(--preview-chrome-inset) + var(--preview-chrome-action-lane));
+  padding-left: 0;
 }
 
-:root[data-platform="darwin"][data-fullscreen="true"]
-  .app-shell.work-panel-maximized.sidebar-collapsed
-  .work-panel-header {
-  padding-left: calc(8px + var(--ds-preview-action-lane-width));
+.app-shell.work-panel-maximized .work-panel-main {
+  background: linear-gradient(
+    var(--ds-bg-dock-raised) 0 var(--ds-toolbar-height),
+    transparent var(--ds-toolbar-height)
+  );
 }
 
 :root[data-platform="win32"] .work-panel-header,
@@ -273,14 +278,16 @@
   color: var(--ds-text-primary);
 }
 
+/* One button group with the viewport-fixed collapse toggle: the same control
+   gap the header reserves for it, and no divider, inset, or margin of its own.
+   The rule owns spacing only — `+` and maximize take the shared chrome-control
+   geometry and transparent seat from chrome.css, beside the subagent back
+   control's own matching rule, so the group reads as quiet icon controls. */
 .work-panel-actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
-  margin-right: 8px;
-  padding-right: 8px;
-  border-right: 1px solid var(--ds-border-subtle);
+  gap: var(--ds-work-panel-control-gap);
 }
 
 .work-panel-subagent-back {
@@ -302,21 +309,6 @@
   color: var(--ds-text-primary);
 }
 
-.work-panel-new-tab {
-  display: inline-flex;
-  width: var(--ds-work-panel-toggle-size);
-  height: var(--ds-work-panel-toggle-size);
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  background: var(--ds-tile);
-  color: var(--ds-text-secondary);
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
-}
-
 /* Preview mode: the panel takes MainChat's width as well, so the divider has no
    second column to trade width with and the dock fills its flex row. */
 .work-panel.is-maximized {
@@ -327,27 +319,6 @@
 
 .work-panel.is-maximized .work-panel-resize {
   cursor: default;
-}
-
-.work-panel-maximize {
-  display: inline-flex;
-  width: var(--ds-work-panel-toggle-size);
-  height: var(--ds-work-panel-toggle-size);
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  background: var(--ds-tile);
-  color: var(--ds-text-secondary);
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.work-panel-new-tab:hover,
-.work-panel-new-tab:focus-visible {
-  background: var(--ds-bg-active);
-  color: var(--ds-text-primary);
 }
 
 .work-panel-subagent-heading {

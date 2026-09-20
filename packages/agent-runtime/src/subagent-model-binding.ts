@@ -10,14 +10,21 @@ import {
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
 import { mergeProviderHeaders, withProviderHeaders } from "./provider-headers.js";
+import { clampOutputToContext } from "./output-cap.js";
+import {
+  agentThinkingLevel as agentThinkingLevelFor,
+  omitThinkingModel as withOmittedThinking,
+} from "./thinking-level.js";
 import { captureProviderResponse, carriesRetryDelayHeaders, createProviderRetryStream } from "./provider-retry.js";
 import type { AgentOptions } from "@earendil-works/pi-agent-core";
 import type { SubagentThinkingLevel } from "@pi-desktop/shared";
 import type { ClassifiedAgentError } from "./agent-errors.js";
+import type { ProviderFetchFailure } from "./provider-transport-recovery.js";
 
 export type SubagentProviderRetryState = {
   headers?: Record<string, string>;
   status?: number;
+  failure?: ProviderFetchFailure;
   claim: (error: ClassifiedAgentError, phase: "request" | "stream") => number | undefined;
 };
 
@@ -41,17 +48,11 @@ export function subagentModelBinding(opts: {
       : builtModel;
   const models = createProviderModels(opts.provider, model);
   const omitThinking = opts.thinkingLevel === "omit";
-  const agentThinkingLevel =
-    opts.thinkingLevel === "omit" ? "off" : opts.thinkingLevel;
+  const agentThinkingLevel = agentThinkingLevelFor(opts.thinkingLevel);
   // The Responses adapter's low-level stream still uses a model-level
   // `off` mapping as its fallback. Null it only for the omit path so the
   // provider receives no synthesized reasoning setting at all.
-  const omitThinkingModel = omitThinking
-    ? {
-        ...model,
-        thinkingLevelMap: { ...model.thinkingLevelMap, off: null },
-      }
-    : model;
+  const omitThinkingModel = omitThinking ? withOmittedThinking(model) : model;
   const requestKey = providerRequestKey(opts.provider);
   return {
     model,
@@ -59,13 +60,19 @@ export function subagentModelBinding(opts: {
     streamFn: (m, context, options) => {
       retry.headers = undefined;
       retry.status = undefined;
+      retry.failure = undefined;
       const requestOptions = withProviderHeaders(
         withOpenCodeSessionHeaders(
           {
             ...options,
+            // Same request-side output cap as the parent runtime: the
+            // `omit` branch hits pi-ai's low-level `stream` which never
+            // re-derives max_tokens (issue B).
+            maxTokens: clampOutputToContext(m, context, options?.maxTokens),
             maxRetries: 0,
             sessionId: opts.sessionId,
-            fetch: captureProviderResponse(options?.fetch, (response) => {
+            fetch: captureProviderResponse(options?.fetch, (response, _bytes, failure) => {
+              retry.failure = failure;
               retry.status = response?.status;
               retry.headers = carriesRetryDelayHeaders(
                 response?.status,
@@ -96,6 +103,7 @@ export function subagentModelBinding(opts: {
           claim: (error, phase) => retry.claim(error, phase),
           headers: () => retry.headers,
           status: () => retry.status,
+          failure: () => retry.failure,
         },
       );
     },

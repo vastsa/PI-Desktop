@@ -95,6 +95,14 @@ export function registerMarketIpc({
     return applied;
   });
 
+  handle(IPC.invoke.marketCancelInstall, async (payload: { id: string }) => {
+    if (!host) throw new Error("host unavailable");
+    // The host answers whether an install was actually running: only a
+    // download can be interrupted, and the surface says so rather than
+    // assuming the click did something.
+    return host.call<{ cancelled: boolean; id: string }>("market.cancelInstall", payload);
+  });
+
   handle(IPC.invoke.commandPaletteSearch, async (query: string) => {
     const q = (query || "").toLowerCase();
     const builtin = builtinPaletteItems();

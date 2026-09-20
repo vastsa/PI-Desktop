@@ -3,16 +3,18 @@ import { useTranslation } from "react-i18next";
 import type {
   AppSettings,
   GlobalPermissionMode,
-  PluginSettingsDestinationMeta,
+  PluginScenicThemesDestinationMeta,
   ShortcutPlatform,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import {
-  SETTINGS_NAV,
+  isSettingsDestinationHidden,
   SETTINGS_NAV_GROUP_LABELS,
+  visibleSettingsNav,
   type SettingsNavGroupId,
 } from "../../lib/settings-search";
+import { pluginViewIcon } from "../../lib/plugin-view-icons";
 import {
   IconArchive,
   IconBookOpen,
@@ -20,25 +22,30 @@ import {
   IconChevronLeft,
   IconDownload,
   IconFileText,
+  IconGlobe,
   IconInfo,
   IconKeyboard,
+  IconPalette,
   IconSearch,
   IconServer,
   IconSliders,
   IconSparkles,
 } from "../../components/icons";
-import { Button, cx } from "../../components/ui";
+import { Badge, Button, cx } from "../../components/ui";
 import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../../components/settings/FontFamilyRow";
+import { ThinkingDisplayModeRow } from "../../components/settings/ThinkingDisplayModeRow";
 import { FontSizeRow } from "../../components/settings/FontSizeRow";
 import { LanguageRow } from "../../components/settings/LanguageRow";
+import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 import { ThemeRow } from "../../components/settings/ThemeRow";
 import { NetworkProxySection } from "../../components/settings/NetworkProxySection";
 import { ProjectsPage } from "../../pages/ProjectsPage";
 import { AgentSkillsPage } from "../../components/settings/AgentSkillsPage";
 import { AgentMcpPage } from "../../components/settings/AgentMcpPage";
 import { AgentSubagentsPage } from "../../components/settings/AgentSubagentsPage";
+import { RemoteHostsPage } from "../../components/settings/RemoteHostsPage";
 import {
   CommandShellRow,
   ContextUsageDisplayRow,
@@ -47,13 +54,11 @@ import {
   SettingsCard,
   SettingsRow,
 } from "./primitives";
-import {
-  AgentInstructionsSection,
-  ImportSection,
-  UpdatesRow,
-} from "./agent-sections";
+import { AgentInstructionsSection, UpdatesRow } from "./agent-sections";
+import { ImportSection } from "./import-page";
+import { PromptEnhancementCard } from "./prompt-enhancement-card";
 import { CloseBehaviorSection, DeveloperSection } from "./developer-sections";
-import { PluginSettingsDestination } from "../../components/settings/PluginSettingsDestination";
+import { PluginScenicThemesDestination } from "../../components/settings/PluginScenicThemesDestination";
 
 type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
 
@@ -79,14 +84,20 @@ export function SettingsPage() {
   const refreshProviders = useAppStore((s) => s.refreshProviders);
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
 
+  // Developer-only destinations (Remote Hosts) exist only while developer
+  // mode is on; the rail, the page, and settings search drop them together.
+  const developerMode = settings?.developerMode === true;
+  const navEntries = useMemo(() => visibleSettingsNav(developerMode), [developerMode]);
+  const tabHidden = isSettingsDestinationHidden(tab, developerMode);
+
   const [query, setQuery] = useState("");
   const [recoveringSettings, setRecoveringSettings] = useState(!settings);
   const [settingsRecoveryFailed, setSettingsRecoveryFailed] = useState(false);
-  const [extensions, setExtensions] = useState<PluginSettingsDestinationMeta[]>([]);
-  const [activeExtension, setActiveExtension] = useState<PluginSettingsDestinationMeta | null>(null);
+  const [extensions, setExtensions] = useState<PluginScenicThemesDestinationMeta[]>([]);
+  const [activeExtension, setActiveExtension] = useState<PluginScenicThemesDestinationMeta | null>(null);
 
   useEffect(() => {
-    const refresh = () => void api.listPluginSettingsDestinations().then(setExtensions, () => setExtensions([]));
+    const refresh = () => void api.listPluginScenicThemesDestinations().then(setExtensions, () => setExtensions([]));
     refresh();
     return api.onPluginChanged(refresh);
   }, []);
@@ -97,6 +108,14 @@ export function SettingsPage() {
       setSettingsTab("general");
     }
   }, [activeExtension, extensions, setSettingsTab]);
+
+  // A hidden destination must not keep rendering: leave the page the rail no
+  // longer offers (for example Remote Hosts once developer mode is switched
+  // off) and fall back to General.
+  useEffect(() => {
+    if (!settings || !tabHidden) return;
+    setSettingsTab("general");
+  }, [settings, tabHidden, setSettingsTab]);
 
   const recoverSettings = useCallback(async () => {
     setRecoveringSettings(true);
@@ -165,6 +184,10 @@ export function SettingsPage() {
     await refreshProviders();
   };
 
+  const selectPluginTheme = async (theme: string) => {
+    await saveSettings({ theme: theme as AppSettings["theme"] });
+  };
+
   // Nav structure comes from the shared settings index (lib/settings-search)
   // so the global search dialog and this page stay in sync; only the icons
   // are view-level.
@@ -181,9 +204,10 @@ export function SettingsPage() {
       subagents: <IconBot size={14} />,
       import: <IconDownload size={14} />,
       projects: <IconArchive size={14} />,
+      remoteHosts: <IconGlobe size={14} />,
       about: <IconInfo size={14} />,
     };
-    return SETTINGS_NAV.map((entry) => ({
+    return navEntries.map((entry) => ({
       id: entry.id,
       labelKey: entry.labelKey,
       titleKey: entry.titleKey,
@@ -191,7 +215,7 @@ export function SettingsPage() {
       group: entry.group,
       keywordKeys: entry.keywordKeys,
     }));
-  }, []);
+  }, [navEntries]);
 
   // Search matches the tab label and the titles of the rows inside it, so
   // typing e.g. "theme" or "主题" surfaces Basics even though the tab is
@@ -225,7 +249,7 @@ export function SettingsPage() {
   return (
     <div className="settings-shell settings-shell-full">
       <div className="settings-titlebar" aria-hidden="true" />
-      <aside className="settings-nav" aria-label={t("settings.title")}>
+      <aside className="settings-nav sidebar-surface" aria-label={t("settings.title")}>
         <div className="settings-nav-top drag">
           <div className="settings-search-wrap no-drag">
             <IconSearch size={14} />
@@ -255,10 +279,18 @@ export function SettingsPage() {
                   <button
                     key={item.id}
                     className={cx("settings-nav-item", tab === item.id && "active")}
-                    onClick={() => setSettingsTab(item.id)}
+                    onClick={() => {
+                      setActiveExtension(null);
+                      setSettingsTab(item.id);
+                    }}
                   >
                     <span className="settings-nav-icon">{item.icon}</span>
                     <span className="settings-nav-label">{t(item.labelKey)}</span>
+                    {item.id === "remoteHosts" ? (
+                      <Badge tone="warning" className="settings-nav-experimental">
+                        {t("settings.remoteHosts.experimental")}
+                      </Badge>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -270,12 +302,19 @@ export function SettingsPage() {
               {extensions.filter((entry) => {
                 const q = query.trim().toLowerCase();
                 return !q || [entry.label, ...entry.keywords].some((value) => value.toLowerCase().includes(q));
-              }).map((entry) => (
-                <button key={entry.ref} className={cx("settings-nav-item", activeExtension?.ref === entry.ref && "active")} onClick={() => setActiveExtension(entry)}>
-                  <span className="settings-nav-icon"><IconBookOpen size={14} /></span>
-                  <span className="settings-nav-label">{entry.label}</span>
-                </button>
-              ))}
+              }).map((entry) => {
+                const ExtensionIcon = pluginViewIcon(entry.icon) ?? IconPalette;
+                return (
+                  <button
+                    key={entry.ref}
+                    className={cx("settings-nav-item", activeExtension?.ref === entry.ref && "active")}
+                    onClick={() => setActiveExtension(entry)}
+                  >
+                    <span className="settings-nav-icon"><ExtensionIcon size={14} /></span>
+                    <span className="settings-nav-label">{entry.label}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -298,10 +337,16 @@ export function SettingsPage() {
 
       <div className="settings-content">
         <div className="settings-content-inner">
-          <h1 className="settings-section-title">{activeExtension?.label ?? t(activeTitleKey)}</h1>
+          <div className="settings-content-enter">
+          <h1 className="settings-section-title">
+            <span>{activeExtension?.label ?? t(activeTitleKey)}</span>
+            {!activeExtension && tab === "remoteHosts" && !tabHidden ? (
+              <Badge tone="warning">{t("settings.remoteHosts.experimental")}</Badge>
+            ) : null}
+          </h1>
 
           {activeExtension ? (
-            <PluginSettingsDestination pluginId={activeExtension.pluginId} destinationId={activeExtension.destinationId} label={activeExtension.label} />
+            <PluginScenicThemesDestination destination={activeExtension} selectTheme={selectPluginTheme} />
           ) : <>
 
           {tabNeedsSettings && !settings ? (
@@ -344,22 +389,24 @@ export function SettingsPage() {
                   title={t("settings.permissionMode")}
                   description={t("settings.permissionModeDesc")}
                 >
-                  <select
-                    className="field-select"
-                    aria-label={t("settings.permissionMode")}
+                  <SettingsMenuSelect
+                    className="settings-permission-select"
+                    label={t("settings.permissionMode")}
                     value={settings.defaultPermissionMode ?? "ask"}
-                    onChange={(e) =>
+                    onChange={(mode) =>
                       void saveSettings({
-                        defaultPermissionMode: e.target.value as GlobalPermissionMode,
+                        defaultPermissionMode: mode as GlobalPermissionMode,
                       })
                     }
-                  >
-                    <option value="ask">{t("settings.permissionModeAsk")}</option>
-                    <option value="accept-edits">
-                      {t("settings.permissionModeAcceptEdits")}
-                    </option>
-                    <option value="auto">{t("settings.permissionModeAuto")}</option>
-                  </select>
+                    options={[
+                      { id: "ask", label: t("settings.permissionModeAsk") },
+                      {
+                        id: "accept-edits",
+                        label: t("settings.permissionModeAcceptEdits"),
+                      },
+                      { id: "auto", label: t("settings.permissionModeAuto") },
+                    ]}
+                  />
                 </SettingsRow>
               </SettingsCard>
 
@@ -392,6 +439,7 @@ export function SettingsPage() {
                 </SettingsRow>
                 <CommandShellRow settings={settings} saveSettings={saveSettings} />
                 <LinkOpenTargetRow settings={settings} saveSettings={saveSettings} />
+                <ThinkingDisplayModeRow settings={settings} saveSettings={saveSettings} />
                 <ContextUsageDisplayRow
                   settings={settings}
                   saveSettings={saveSettings}
@@ -418,6 +466,11 @@ export function SettingsPage() {
                   saveSettings={saveSettings}
                 />
               </SettingsCard>
+
+              <PromptEnhancementCard
+                settings={settings}
+                saveSettings={saveSettings}
+              />
             </div>
           )}
 
@@ -445,10 +498,12 @@ export function SettingsPage() {
 
           {tab === "projects" && <ProjectsPage />}
 
+          {tab === "remoteHosts" && !tabHidden && <RemoteHostsPage />}
+
           {tab === "about" && (
             <div className="settings-stack">
               <SettingsCard>
-                <SettingsRow title={t("settings.application")} description={t("settings.applicationDesc")}>
+                <SettingsRow title={t("settings.application")}>
                   <div className="settings-about-meta">
                     <div className="font-medium">
                       {version?.name || "PI-Desktop"} {version?.version}
@@ -458,7 +513,7 @@ export function SettingsPage() {
                     </div>
                   </div>
                 </SettingsRow>
-                <SettingsRow title={t("settings.logs")} description={t("settings.logsDesc")}>
+                <SettingsRow title={t("settings.logs")}>
                   <Button variant="secondary" onClick={() => void api.openLogs()}>
                     {t("settings.openLogs")}
                   </Button>
@@ -484,6 +539,7 @@ export function SettingsPage() {
           )}
           </>}
 
+          </div>
         </div>
       </div>
     </div>

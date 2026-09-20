@@ -117,24 +117,19 @@ export function buildApplicationMenuTemplate({
                 dispatch,
                 accelerator("openSettings"),
               ),
-              // Symmetrical counterpart to closeWindow: bring a hidden
-              // or minimized-to-tray main window back into focus
-              // (D384). The label is locale-resolved at render time.
-              {
-                label: labels.menu.summonWindow,
-                accelerator: accelerator("summonWindow"),
-                click: () => dispatchNative("restoreMainWindow"),
-              },
             ] satisfies MenuItemConstructorOptions[])
           : []),
         { type: "separator" },
-        nativeAction(
-          labels.menu.closeWindow,
-          "close",
-          "close",
-          accelerator("closeWindow"),
-          dispatchNative,
-        ),
+        // One window-visibility key (D438, rebound by D439): `Alt+Shift+W`
+        // hides the window the user is looking at and brings a hidden or
+        // tray-minimized window back. The key is process-wide, so it avoids the
+        // macOS close-window chord `Mod+W`. The retired `Mod+Shift+W` summon
+        // item is gone; the label is locale-resolved at render time.
+        {
+          label: labels.menu.toggleWindow,
+          accelerator: accelerator("toggleWindow"),
+          click: () => dispatchNative("toggleMainWindow"),
+        },
       ],
     },
     {

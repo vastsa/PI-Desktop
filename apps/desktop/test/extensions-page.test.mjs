@@ -172,7 +172,7 @@ test("skill import is one native file and physically targets the selected level"
   assert.doesNotMatch(handler, /\bmultiple\b/);
   assert.match(handler, /host\.call\("skills\.import"/);
   assert.match(settingsComponents.get("AgentSkillsPage.tsx"), /api\.importUserSkill\(/);
-  assert.match(hostCapabilitySources, /fs::copy\(&source_path, &target\)/);
+  assert.match(hostCapabilitySources, /fs::copy\(source, target\)/);
 });
 
 test("MCP management reuses the modal and validates its locked id and transport branches", () => {
@@ -186,6 +186,10 @@ test("MCP management reuses the modal and validates its locked id and transport 
   assert.match(sheet, /command\.includes\("\.\."\)/);
   assert.match(sheet, /isNonLoopbackHttpMcpUrl/);
   assert.match(sheet, /role="dialog" aria-modal/);
+  // A server may advertise thousands of tools, so the name row renders a bounded
+  // prefix and leaves the total to the count beside it.
+  assert.match(sheet, /MCP_TEST_TOOL_NAME_LIMIT = 24/);
+  assert.match(sheet, /slice\(0, MCP_TEST_TOOL_NAME_LIMIT\)/);
 });
 
 test("project records shadow global records before disabled records are filtered", () => {

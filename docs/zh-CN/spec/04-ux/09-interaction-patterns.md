@@ -18,7 +18,7 @@
 | `Cmd/Ctrl + Shift + P` | 打开命令面板 | 全球 (D014) |
 | `Cmd/Ctrl + N` | 新 chat/session | 全球 |
 | `Cmd/Ctrl + O` | 打开项目 | 全球 |
-| `Cmd/Ctrl + W` | 关闭窗口 | 全球 |
+| `Alt + Shift + W` | 呼出或隐藏窗口（切换） | 系统级全局（D439）；隐藏到托盘，绝不退出 |
 | `Cmd/Ctrl + ,` | 打开设置 | 全球 |
 | `Cmd/Ctrl + B` | 切换侧边栏 | 全球 |
 | `Cmd/Ctrl + J` | 打开工作面板 | 全球；活动会话 |
@@ -70,6 +70,13 @@
   专注。如果钩子无法被安装，聚焦窗口后备仍然可用。未绑定时会同时关闭钩子和
   聚焦窗口后备。自定义绑定继续使用 Electron 的全局快捷方式 API。
   启动器始终在最靠近指针的显示屏上打开。
+- 窗口可见性只有一个开关键（`Alt + Shift + W`）：可见且在前台的窗口隐藏到托盘，
+  其余情况 —— 已隐藏、已最小化或被其它应用挡在后面 —— 显示并获得焦点。隐藏
+  不走关闭路径，因此不会弹出关闭行为询问、不会销毁窗口，也绝不会退出应用。
+  该键是系统级全局注册，因此刻意避开 `Cmd/Ctrl + W` —— macOS 把它用于自己的
+  关闭窗口命令，应用一旦占用就会从所有应用程序手里把它抢走。已弃用的
+  `Cmd/Ctrl + Shift + W` 呼出组合键同样不再注册；读取配置映射时，已存储的
+  `closeWindow` / `summonWindow` 覆盖项会并入该开关键（D438、D439）。
 
 ### 1. 5 插件启动器快捷方式
 
@@ -127,15 +134,39 @@
 - 隐藏将从 taskbar/dock 窗口列表中删除主窗口，而
   Electron 进程和后台工作仍然有效。它不坚持
   最小化几何形状或处置 host/sidecar。
-- 单击或双击 PI-Desktop 托盘图标，从其中选择“显示”
-  菜单，或从 macOS 扩展坞激活应用程序可恢复并聚焦
-  现有的窗口。如果窗口关闭，相同的操作会创建一个新的窗口
-  窗口。
-- 托盘菜单使用当前已发布的 shell 语言进行本地化，并且
-  公开 Show PI-Desktop 以及显式退出 PI-Desktop 操作。退出走现有的有序
-  关闭路径。关闭窗口做什么，在 Windows/Linux 上由用户自己选择
-  （ADR 0090），在 macOS 上是一次 Dock 生命周期的关闭；无论哪种情况，
-  托盘图标本身都只在启动时创建一次。
+- Double-clicking the tray icon (or single-clicking on Windows/Linux), choosing
+  Open, or activating the macOS Dock restores/focuses the existing window or
+  creates a new one if it was closed. macOS single-click opens the menu.
+- The localized tray includes Open, bounded session groups, and Quit. Quit
+  keeps confirmation and ordered shutdown. Close behavior remains user-owned
+  on Windows/Linux (ADR 0090), and macOS retains its Dock lifecycle.
+
+### 1.5.2 Tray session navigation (issue #293)
+
+- The native menu shows Running, Unread, and Pinned in that order, at most
+  nine sessions in total. Every non-empty group keeps up to three rows; the
+  share smaller groups leave unused goes to the groups that still overflow,
+  in priority order, so one busy group can fill all nine while the others are
+  empty. Membership is assigned before applying limits; higher-priority
+  overflow never spills into a lower group.
+- Empty groups are hidden. Archived sessions/projects and deleted sessions
+  are excluded. Running/Pinned follow sidebar sorting; Unread follows the
+  latest unread result per session, newest first, including failed results.
+- Long titles use one line capped at 32 display columns including the
+  ellipsis; an East Asian wide or emoji code point counts as two, so a CJK
+  row stays as wide as a Latin one. An overflowing group offers View more to
+  restore the window and expand session navigation. A session row
+  restores/focuses its exact conversation, activating its project through the
+  existing selection flow.
+- macOS single-click opens the menu without restoring/focusing a conversation
+  or marking it read. Entering a conversation uses normal acknowledgement.
+  Open and double-click restore the window; Quit keeps its confirmation and
+  ordered shutdown. Group/action labels follow the active shipped locale.
+- Start/finish, read, pin, rename, archive, delete, and backend restart update
+  the menu. The menu remains available when the main window is hidden or
+  closed, without creating another window until an explicit activation.
+- macOS 不监听托盘 mouse-enter：该事件会替换原生 status item 并让菜单栏图标消失。
+  Windows/Linux 仍可在悬停/右键时重试失败的 Host 读取；macOS 改由下一次会话或收件箱事件刷新。
 
 ### 1. 6 侧边栏项目和对话组织
 
@@ -176,6 +207,11 @@
 - **存档**是非破坏性的。默认情况下，存档的行是隐藏的，
   可通过显示已存档且可恢复。存档不会取消
   转动或删除成绩单。
+- **删除**会永久移除会话或项目，并且需要点击两次：第一次点击武装该溢出菜单项并改写其
+  标签（`nav.deleteTaskConfirm` / `project.deleteMenuConfirm`），只有第二次点击才会移除
+  该行。武装会在几秒后自行失效，因此一行永远不会停留在“再点一次就永久删除”的状态，磁盘
+  上的文件夹也永远不会被触碰。仍有运行中轮次的项目依然会打开确认对话框，由它指明这些会话
+  并先将其停止；空闲的项目在第二次点击时即被移除。
 - **创建分支**快照空闲对话的完整活动状态
   转录到同一 project/Temporary 范围内的独立会话中。
   当源运行时该命令被禁用。成功选择了孩子
@@ -232,7 +268,11 @@
   摘要；发送和粘贴会等待这次进行中的创建，而不是再开一个槽位（ADR 0154）。
 - 首次打开的会话在其最新回合处落定。重新访问的面板回到用户离开的
   偏移，而仍然固定在底部的面板重新锚定到底部；对于重新访问，激活
-  不再重置手动滚动状态（ADR 0137）。
+  不再重置手动滚动状态（ADR 0137）。历史续接（D269）不会把塌缩的
+  滚动容器、或 `scrollTop` 被重置为 0 的已钉住溢出记录当成「在顶部」
+  去翻更早的页；落在近顶部带内的真实手势仍会继续载入历史。空的首帧
+  不会消耗首次提交的水合门闩，因此随后到达的长记录仍会被限制挂载，
+  并在布局阶段、浏览器绘制之前重新吸底。
 - 选择项目范围的对话会激活其项目作为
   商店自有精选交易。选择临时对话将清除
   可见的工作空间。项目范围内的新会话操作通过了目标
@@ -371,10 +411,12 @@
   它的承诺宽度。折叠并最终关闭回收预订，并且
   提交的分隔符调整大小会更新它。本机窗口边缘拖动更改
   仅 MainChat，从不面板宽度（D163，ADR 0032）。
-- 成功的工作区 Write/Edit 在其内部创建或激活 Review
-  发起会话。失败和临时写入不会。背景会议
-  工件仅更新其保留的上下文，并且从不打开、激活、调整大小，
-  焦点，或更改可见面板。
+- 任何工具结果都不会创建或激活工作面板标签页。Review 只由用户的
+  主动操作打开——`+` 启动器的 Review 行，或视口固定开关与
+  `Cmd/Ctrl + J` 显示的会话保留上下文——因此成功的工作区 Write/Edit
+  永远不会抢走用户正在阅读的面板。失败和临时写入同样如此。后台会话
+  事件仅更新其保留的上下文，并且从不打开、激活、调整大小、聚焦，
+  或更改可见面板。
 - 每个成功的工作区 Write/Edit 工具结果都会进行一次持久审查
   快照。其紧凑的 InlineReviewCard 在同一个 Activity 中呈现
   披露，紧随其工具行之后；它永远不会移动到
@@ -389,8 +431,8 @@
   被拒绝，非结构化结果不会呈现卡片。背景
   会话的卡片保留其自己的成绩单并且仅变得可见
   选择该会话后；它的事件永远不会呈现在当前
-  可见会话。成功的工作空间工件仍可能创建或
-  激活单例“审阅”选项卡。
+  可见会话。成功的工作空间工件不会创建或激活单例“审阅”选项卡；
+  它只在用户打开后出现。
 - 每个会话在渲染器中保留 `{open, tabs, activeTabId, browserResource}`
   记忆。选择另一个会话会自动交换可见上下文，
 切换回来可以恢复它；选择没有活动的工作区
@@ -413,11 +455,7 @@
 - 设置 → 信息和应用程序菜单检查共享一种类型的更新状态。
   手动检查公开最新或错误反馈；自动故障不会
   打开 Toast 或环境横幅。
-- 手动交付（`darwin`、非 AppImage Linux，以及带有
-  `PORTABLE_EXECUTABLE_FILE` 的 Windows 便携版运行）在 `available` 停止，并且
-  提供固定的 GitHub 发布页面。应用内交付（Windows NSIS 和
-  Linux AppImage 准备就绪构建）自动推进
-  `downloading` 到稳定的 `downloaded` 状态。
+- 手动交付（非 AppImage Linux，以及带有 `PORTABLE_EXECUTABLE_FILE` 的 Windows 便携版运行）在 `available` 停止，并提供固定的 GitHub 发布页面。应用内交付（打包的 macOS、Windows NSIS 和 Linux AppImage）自动推进 `downloading` 到稳定的 `downloaded` 状态。
 - `downloaded` 保持可操作状态，直至重新启动更新或正常应用退出；
   稍后的 scheduled/manual 检查不会将其替换为 `checking`。
 - 紧凑的更新通知仅出现在主窗格的右上角安全区域中
@@ -439,9 +477,7 @@
   当前版本和发现的可用版本标识为
   紧凑的徽章。列表独立滚动，通过其关闭控制关闭，
   转义或背景，并将焦点恢复到调用控件。
-- D126 标签版本发布所有平台清单和安装程序。 Windows
-  因此，NSIS 和 Linux AppImage 使用应用内通道； macOS 和 Linux deb/rpm
-  保持通知和链接传递模式。
+- D126 标签版本发布所有平台清单和安装程序。打包的 macOS、Windows NSIS 和 Linux AppImage 使用应用内通道；Linux deb/rpm 和 Windows 便携版保持通知和链接传递模式。
 
 ## 2. 流消息行为
 
@@ -467,8 +503,9 @@
   具有经过时间的本地化 `Working…` 状态。当运行时报告一段安静
   间隔时，同一行会标明：正在开始、等待模型、准备下一次请求、
   压缩上下文、补救空回复、重试，或等待委托工作（并带上每个
-  仍在运行的 Subagent 的粗粒度动作）。一旦出现具体的思考/工具/
-  回答反馈或内联权限卡，该行就被替换。
+  仍在运行的 Subagent 的粗粒度动作）。已有思考、工具或回答不会隐藏
+  该行，输出暂停时仍保留底部状态。等待权限、提问或计划/目标批准时
+  隐藏；回合结束和历史阅读窗口不显示实时状态。
 - 当流完成时：光标指示器被成功状态取代（2秒淡出）
 
 ### 2. 2 自动滚动
@@ -502,7 +539,9 @@
 
 - 主动转动可保持转录本下表面清晰。直播助手
   工具行与记录保持一致；没有通用的理解，
-  工作卡或检查卡呈现在它们下方。
+  工作卡或检查卡呈现在它们下方。运行中的回合保留一行紧凑底部状态：
+  优先显示具体运行时阶段，否则显示规划/目标或工作中。已有文字和工具
+  不会隐藏提示；等待用户操作时隐藏。
 - 仅当代理被阻止时，权限卡才保持可见
   明确批准。这是可操作的中断，而不是进度状态
   卡。
@@ -693,12 +732,14 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
 2. Agent 使用选定的合约工具集进行调查。 Read/Glob/Grep 和
    允许使用 BrowserPreview； Bash 遵循可见权限模式。一个
    Contract-mode Bash 命令可能会在 Auto 下发生变化，因此模式芯片仍然可见。
-   该回合处于实时 `planning` 时，Composer 模式芯片脉冲，紧凑的规划行占用与 Working 相同的流前位置；工具或回答行会替换该成绩单行，避免它单独停在输入框上方。
+   该回合处于实时 `planning` 时，Composer 模式芯片脉冲，紧凑的规划行占用与 Working 相同的预留底部位置，直到回合结束或等待用户操作。具体运行时阶段优先，工具和回答不会隐藏运行提示。
 3. Agent 在其工具批次中单独调用 `SubmitPlan` 或 `SubmitGoal`。
    Host-core 将准确的 Markdown 字节保留在新的不可变中
    `.pi/plan/*.md` 或 `.pi/goal/*.md` 工件，记录其 path/hash/size 并结构化
    title/question，渲染器显示共享合同审批卡
    只有标题和神器开启器；问题仍然是主机端合同数据。
+   打开器在该视图可启动时把这一路径交给内置文件视图，否则交给宿主机文件标签，
+   因此工件会在对话旁、与用户其它项目文件相同的视图中打开（D452）。
 4. 批准需要询问/接受编辑/自动选择。渲染器会记住
    该设备上最后选择的模式并将其用作下一个批准的模式
    默认。 Host-core提交批准，`mode = agent`，权限模式，
@@ -856,9 +897,16 @@ Mode/provider/model/permission/shell 配置和新提示仍然存在
   （预订始终为 0）。
 - 后台会话工件永远不会更新可见面板。
 
-- 预览模式会卸载 MainChat，让工作面板填充侧边栏之外的客户区。窗口级 46px
-  chrome 行保留新建任务、侧边栏和本机窗口控件；侧边栏折叠时，macOS 窗口模式
-  左侧预留 76px，全屏预留 8px 给交通灯。
+- Preview mode unmounts MainChat and fills the client area beside the sidebar.
+  The 46px chrome row keeps shell/native controls but declares neither drag nor
+  no-drag across the panel and passes pointer events through outside controls.
+  The panel header alone owns dragging in the preview pane; its border box
+  excludes shell actions plus an 8px gap in both sidebar states on all platforms.
+  The left inset is 8px except collapsed-sidebar windowed macOS (88px through
+  `--ds-window-lead-inset`: the 76px native cluster edge from
+  `@pi-desktop/shared` plus a 12px gap).
+  Native clicks must operate controls and empty-header drags must move the
+  window; DOM/CDP clicks alone are not native hit-test proof.
 
 展开侧边栏固定为 275px。折叠/展开只改变列是否存在；历史上的调整大小手柄
 会隐藏，旧的宽度偏好不会继续持久化。
@@ -940,7 +988,7 @@ Mode/provider/model/permission/shell 配置和新提示仍然存在
   撤消发送。该撤消操作将恢复原始芯片顺序和标签；它
   从不解析序列化的 `@path` 文本。一旦回复内容开始，中止就会继续
   部分抄本，不恢复草稿。
-- 发送成功后，用户气泡仅把这些序列化的 `@path` 标记解析回与输入框一致的叶子名芯片用于展示。持久化消息和模型上下文仍是规范 `@path` 文本。点击芯片先经 `pi-desktop/fs/resolveRef` 补全引用——该通道搜索整个打开的项目，按项目组自身的文件夹顺序、主文件夹优先（ADR 0252）——再按解析结果打开：项目文件在随应用打包的 `pi.file-manager` 工作面板视图中打开（该视图不可用时退回宿主 `file:` 选项卡），会话临时目录或附件文件在宿主 `file:` 选项卡中打开，项目主文件夹中的 `.html`/`.htm` 页面仍在侧边浏览器中打开，因为侧边浏览器本就以该文件夹为根。交给工作面板的地址跟随应答的文件夹：主文件夹中的文件按项目内相对路径传递，同一项目的同级文件夹中的文件按绝对路径传递，与会话临时目录或附件文件一致。什么都没匹配到的芯片不打开任何东西，而是自己报告出来；系统默认应用不再由这次点击触发，该动作仍可从文件视图自己的右键菜单使用。
+- 发送成功后，用户气泡仅把这些序列化的 `@path` 标记解析回与输入框一致的叶子名芯片用于展示。持久化消息和模型上下文仍是规范 `@path` 文本。点击芯片先经 `pi-desktop/fs/resolveRef` 补全引用——该通道搜索整个打开的项目，按项目组自身的文件夹顺序、主文件夹优先（ADR 0263）——再按解析结果打开：项目文件在随应用打包的 `pi.file-manager` 工作面板视图中打开（该视图不可用时退回宿主 `file:` 选项卡），会话临时目录或附件文件在宿主 `file:` 选项卡中打开，项目主文件夹中的 `.html`/`.htm` 页面仍在侧边浏览器中打开，因为侧边浏览器本就以该文件夹为根。交给工作面板的地址跟随应答的文件夹：主文件夹中的文件按项目内相对路径传递，同一项目的同级文件夹中的文件按绝对路径传递，与会话临时目录或附件文件一致。什么都没匹配到的芯片不打开任何东西，而是自己报告出来；系统默认应用不再由这次点击触发，该动作仍可从文件视图自己的右键菜单使用。
 
 ### 8a.3 打开时的键盘
 
@@ -1001,6 +1049,16 @@ Mode/provider/model/permission/shell 配置和新提示仍然存在
   行动。
 - 选择**打开文件夹**打开系统文件中的项目目录
   管理器而不更改活动会话记录。
+
+### 9.1c 侧边栏行状态与操作
+
+- 项目标题与项目、置顶、独立会话行共享整行悬停背景、圆角和过渡。
+  标题按钮透明，不叠加内层背景；已选中会话在悬停时保持选中背景。
+- 当前工作区仅通过项目圆点表达，不再使用另一份选中背景。折叠选中会话
+  的分组、离开聊天页或没有选中会话，都不会让项目标题成为选中导航项。
+- 键盘焦点保留独立轮廓；新建和更多操作按钮保留局部悬停反馈；拖拽目标
+  提示优先于普通悬停背景。
+- 窗口失焦时释放悬停背景和操作显露，不清除当前会话选中背景。
 
 ### 9. 2 侧边栏滚动
 

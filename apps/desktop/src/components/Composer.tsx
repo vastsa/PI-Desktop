@@ -56,6 +56,7 @@ import {
 import { useComposerAttachments } from "../features/chat/composer/hooks/useComposerAttachments";
 import { useComposerDraft } from "../features/chat/composer/hooks/useComposerDraft";
 import { useComposerSubmit } from "../features/chat/composer/hooks/useComposerSubmit";
+import { ComposerImageAttachments } from "../features/chat/composer/ComposerImageAttachments";
 import { ComposerInput } from "../features/chat/composer/ComposerInput";
 import { useComposerModelMenu } from "../features/chat/composer/hooks/useComposerModelMenu";
 import { ComposerToolbar } from "../features/chat/composer/ComposerToolbar";
@@ -81,6 +82,8 @@ export function Composer({
   const sendPrompt = useAppStore((s) => s.sendPrompt);
   const steerPrompt = useAppStore((s) => s.steerPrompt);
   const removeQueuedPrompt = useAppStore((s) => s.removeQueuedPrompt);
+  const moveQueuedPrompt = useAppStore((s) => s.moveQueuedPrompt);
+  const editQueuedPrompt = useAppStore((s) => s.editQueuedPrompt);
   const sendQueuedNow = useAppStore((s) => s.sendQueuedNow);
   const abort = useAppStore((s) => s.abort);
   const isRunning = useAppStore((s) => s.isRunning);
@@ -97,9 +100,6 @@ export function Composer({
   const nativeReadOnly =
     nativeSession && activeSessionSummary.capabilities?.canPrompt !== true;
   const nativeInputBlocked = nativeReadOnly || (nativeSession && isRunning);
-  const hasAnnotations = useAppStore((s) =>
-    Boolean(s.activeSessionId && s.responseAnnotations[s.activeSessionId]?.length),
-  );
   const workspacePath = useAppStore((s) => s.workspace?.path ?? "");
   const providers = useAppStore((s) => s.providers);
   const providerModels = useAppStore((s) => s.providerModels);
@@ -182,6 +182,7 @@ export function Composer({
     restoreDraftForKey,
     persistDraft,
     commitEditorDom,
+    readLiveDraft,
     insertNewlineInEditor,
     handleInput,
   } = draft;
@@ -228,6 +229,16 @@ export function Composer({
     value,
     activeFileReferences,
   );
+  // Edit returns one queued row to the composer. The row is removed and its
+  // captured draft becomes the input, so the input must be empty first: the
+  // live read is the only current source (the draft cache is not per keystroke).
+  const handleEditQueuedPrompt = (id: string) => {
+    if (readLiveDraft().trim() || activeFileReferences.length) {
+      showToast(t("chat.editQueuedPromptBusy"), { variant: "info" });
+      return;
+    }
+    editQueuedPrompt(id);
+  };
   const placeholderKeys = PLACEHOLDER_KEYS[variant];
   const placeholderKey =
     placeholderKeys[placeholderIndex % placeholderKeys.length] ?? placeholderKeys[0];
@@ -382,9 +393,7 @@ export function Composer({
       !!modelId &&
       (provider.hasSecret || provider.authKind === "none");
   const enterToSend = settings?.enterToSend ?? true;
-  // Chips occupy sentinel characters, which `trim()` preserves — text and
-  // attachments share one content check.
-  const hasDraftContent = Boolean(value.trim()) || hasAnnotations;
+  const hasDraftContent = Boolean(value.trim() || activeFileReferences.length);
 
   useEffect(() => {
     if (!controlsBlocked) return;
@@ -425,7 +434,6 @@ export function Composer({
     undoPromptEnhancement,
     submit,
   } = submitController;
-
 
   const composerAc = useComposerAutocomplete({
     value,
@@ -513,9 +521,10 @@ export function Composer({
           t={t}
           queuedPrompts={queuedPrompts}
           removeQueuedPrompt={removeQueuedPrompt}
+          moveQueuedPrompt={moveQueuedPrompt}
+          editQueuedPrompt={handleEditQueuedPrompt}
           sendQueuedNow={sendQueuedNow}
           approvalPending={approvalPending}
-          runActive={runActive}
           enhancementError={enhancementError}
           clearEnhancementError={clearEnhancementError}
           droppedDirectories={droppedDirectories}
@@ -523,6 +532,7 @@ export function Composer({
           insertDroppedDirectoryPaths={insertDroppedDirectoryPaths}
           dismissDroppedDirectories={dismissDroppedDirectories}
         />
+        <ComposerImageAttachments controller={draft.imagePreview} onRemove={draft.removeImage} disabled={inputBlocked} />
         <div
           ref={composerShellRef}
           className={`composer-shell${inputBlocked ? " is-gated" : ""}${
@@ -541,6 +551,7 @@ export function Composer({
             />
           ) : null}
           <ComposerInput
+            imagePreview={draft.imagePreview}
             inputRef={ref}
             value={value}
             placeholderText={placeholderText}

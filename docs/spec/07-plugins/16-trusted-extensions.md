@@ -78,11 +78,19 @@ manifest that lists entries without the permission is invalid
 Plugins → "Import pi extension" opens a native picker (main owns the path,
 D344) for an explicit local file or directory. Main copies the selected
 source under `<dataDir>/plugins/imported/<slug>/src/`, writes a generated
-no-op `main.js` and a manifest with id `imported.<slug>` (a unique suffix is
+CommonJS no-op `main.cjs` and a manifest with id `imported.<slug>` (a unique suffix is
 added for repeated imports), and registers the directory through the existing
 local-plugin flow. The confirmation before the picker remains the trust
 decision; the generated manifest declares the permissions needed by its actual
-contributions.
+contributions. The manifest's `main` points to `main.cjs` regardless of the
+source package's `type`; both copied package declarations retain their module
+semantics. Loading an imported plugin whose `main` is the generated CommonJS
+`main.js` wrapper rewrites that file in place to `main.cjs` and updates the
+manifest; copied package files, grants, and activation scope stay as they are.
+The rewrite matches only the generated no-op (including the original comment
+text). A customized `main.js` is left untouched. Re-importing without removal
+creates a separate plugin with a unique suffix; it does not copy grants or
+activation scope from the older copy.
 
 For extension files and packages without `pi.skills`, entry discovery keeps
 the existing `pi-coding-agent` rules: `package.json` `pi.extensions`, otherwise
@@ -102,6 +110,51 @@ registry-only because npm may inspect all four; the git resolver is disabled.
 No lifecycle script runs. Failed installs remove partial dependencies/cache and
 are reported to the renderer without blocking the import. The confirm discloses
 the npm step alongside the skills disclosure.
+
+If npm or its Node.js runtime is unavailable, the installer returns a structured
+unavailable error. Only this category opens a native Main-owned message box with
+"Choose npm" and "Cancel"; ordinary registry, network, dependency-policy, or
+installation errors never open an executable-path prompt. The message explains
+that npm must come from a trusted Node.js installation, that the choice is
+remembered for future imports, and that Node.js must be installed first if absent.
+Choosing npm opens a native executable picker with `showHiddenFiles`, allowing
+navigation into installations such as `~/.nvm`. On macOS, `noResolveAliases`
+preserves the selected `bin/npm` symlink rather than returning its internal CLI
+target, so the sibling `node` remains discoverable. Selected paths never come
+from renderer text input.
+
+Main validates the selected executable and its Node.js runtime with bounded
+version checks before saving or installing. The checks share the installation
+budget and stop at a bounded ceiling, because a slow machine must not report a
+working npm as unavailable and send the user back to the picker. Invalid
+selections (including npm without usable Node.js) show a localized native
+warning and let the user choose again or cancel; the guidance is to choose npm
+in the same directory as `node`.
+Only a validated selection is persisted, atomically, in Main-owned
+`<dataDir>/npm-path.json`, not renderer settings or Host SQLite. Future imports
+reuse it after validation; a stale saved path returns to the recovery prompt.
+If persistence fails, a native warning explains that the choice could not be
+saved but the current import can still use the validated executable.
+
+The selected executable's directory is added only to the install child's `PATH`
+so npm can find `node`; no shell startup probing or global environment mutation
+is permitted. Version checks and installation retain a minimal environment with
+no inherited credentials. The registry-only proxy, isolated npm configuration,
+bounded two-step install, disabled git resolution, and disabled lifecycle scripts
+remain unchanged. Configured Windows `.cmd`/`.bat` launchers use the adjacent
+`node.exe` and `node_modules/npm/bin/npm-cli.js` directly, without shell
+interpolation; a nonstandard launcher missing this layout is rejected with
+recovery guidance. Recovery retries dependency installation in the already-generated
+plugin directory: it never recopies the source or allocates another plugin id.
+After recovery succeeds, is cancelled (including closing the picker), or ends in
+a dependency error, the generated plugin is loaded and registered exactly once;
+dependency errors remain visible without blocking registration.
+
+All native recovery labels use the active locale's flat `plugins.npmMissingTitle`,
+`npmMissingBody`, `npmChoose`, `npmPickerTitle`, `npmInvalidTitle`, `npmInvalidBody`,
+`npmSaveFailedTitle`, and `npmSaveFailedBody` keys, plus existing `common.cancel`.
+Bodies are standalone localized text without interpolation placeholders; Main
+appends any dynamic diagnostic on a new line.
 
 | Source | Becomes |
 |---|---|
@@ -159,12 +212,22 @@ never in Electron main, the renderer, or a plugin host process.
 ### 4.2 Loader
 
 - The sidecar pins `@earendil-works/pi-coding-agent` at exactly the version
-  pinned for `pi-ai` and `pi-agent-core`, as a types-only dependency. The
-  three versions must match; CI fails when they drift.
+  pinned for `pi-ai` and `pi-agent-core`. The three versions must match; CI
+  fails when they drift. Native Pi sessions run its extension loader
+  in process, so the pin is a bundled runtime dependency and not a
+  types-only contract.
 - The loader mirrors the `pi-coding-agent` discovery rules and uses
   `jiti/static` with `virtualModules`, so the babel transform is bundled
   and no path resolution happens at runtime. The bundling step is verified
   by a contract test that runs the bundle outside the repository (E2E-245).
+- The bundle is built with `--define:PI_BUNDLED_NODE=true`. The
+  `pi-coding-agent` extension loader embeds the kernel modules and
+  `typebox` for a compiled binary, for a bundled Node distribution, and
+  for its own TypeScript-source runtime; every other Node build resolves
+  them from the importing file, which a packaged install
+  (`resources/agent-runtime/`) cannot satisfy. An entry point that
+  bundles pi's session or extension loader in process needs the same
+  define.
 - Import aliases: `pi-ai`, `pi-agent-core`, and `typebox` resolve to the
   sidecar's copies; `@earendil-works/pi-coding-agent` resolves to a runtime
   shim that exports `defineTool` and the tool-result type guards. `@earendil-works/pi-tui`
@@ -201,7 +264,7 @@ unsupported ones.
 
 | Class | Members |
 |---|---|
-| Supported | `registerTool`, `registerCommand`, `registerAgent`, `registerProvider` (plugin-owned streaming compatibility alias), `unregisterAgent`, `unregisterProvider`, `on(...)` for every event in §6, `exec`, `getActiveTools`, `getAllTools`, `setActiveTools`, `getCommands`, `setModel` (configured models and plugin agents; idle-only; persists the current session binding), `getThinkingLevel`, `setThinkingLevel`, `setSessionName`, `getSessionName`, `sendUserMessage` (Host-owned queue, D386), `getFlag` |
+| Supported | `registerTool`, `registerCommand`, `registerAgent`, `registerProvider` (plugin-owned compatibility alias; same shape as `registerAgent`), `unregisterAgent`, `unregisterProvider`, `on(...)` for every event in §6, `exec`, `getActiveTools`, `getAllTools`, `setActiveTools`, `getCommands`, `setModel` (configured models and plugin agents; idle-only; persists the current session binding), `getThinkingLevel`, `setThinkingLevel`, `setSessionName`, `getSessionName`, `sendUserMessage` (Host-owned queue, D386), `getFlag` |
 | Supported on context | `ui.notify`, `ui.confirm`, `ui.select`, `ui.input`, `ui.setStatus`, `ui.setWorkingMessage`, `cwd`, `modelRegistry`, `isIdle`, `abort`, `hasPendingMessages`, `getContextUsage`, `compact`, `getSystemPrompt`, `waitForIdle`, `newSession`, `fork` |
 | Deferred to v2 | `sendMessage`, `appendEntry`, `setLabel`, `sessionManager` read API, `switchSession`, `registerShortcut`, `registerMarkdownTransformer`, `ui.setEditorText`, `ui.getEditorText`, `ui.addAutocompleteProvider`, `registerFlag` value editing |
 | Unsupported | `ui.setWidget`, `ui.setFooter`, `ui.setHeader`, `ui.setTitle`, `ui.custom`, `ui.overlay`, `ui.onTerminalInput`, `ui.setWorkingVisible`, `ui.setWorkingIndicator`, `ui.setHiddenThinkingLabel`, `ui.pasteToEditor`, `ui.editor`, `registerMessageRenderer`, `registerEntryRenderer`, `navigateTree`, `shutdown` |
@@ -219,8 +282,10 @@ successful idle `setModel` persists that provider/model pair through
 agent implementation. `modelRegistry` exposes only models and auth availability;
 it never exposes Host API keys, secret refs, OAuth tokens, arbitrary Host headers,
 or Host provider internals. `registerProvider` and its unregister counterpart
-accept the same plugin-owned stream shape as a compatibility alias; provider
-credentials in the upstream config are ignored by Host and are not persisted.
+accept the same plugin-owned shape as a compatibility alias — a `stream` or
+`complete` implementation, in the upstream `(id, config)` form and in the object
+form; provider credentials in the upstream config are ignored by Host and are
+not persisted.
 
 Neutral values: `getFlag` returns the declared default; `registerFlag` records
 the declaration so `getFlag` works but exposes no CLI or UI in v1;

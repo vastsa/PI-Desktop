@@ -1,32 +1,35 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type AnimationEvent as ReactAnimationEvent } from "react";
-import { useTranslation } from "react-i18next";
 import {
-  KEYBOARD_SHORTCUTS,
+  type AppMenuCommand,
   isActiveInProject,
   isThemeColorScheme,
+  KEYBOARD_SHORTCUTS,
+  type KeyboardShortcutId,
   keybindingDisplayParts,
   keybindingMatchesEvent,
   resolveFontScale,
   resolveKeybinding,
-  type AppMenuCommand,
-  type KeyboardShortcutId,
   type ShortcutPlatform,
 } from "@pi-desktop/shared";
-import { useAppStore } from "../../stores/app-store";
-import { api } from "../../lib/api";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { installRendererApi } from "../../capture/renderer-api";
-import { commitWorkPanelPresentation } from "../../lib/work-panel-presentation";
-import { browserPluginTab } from "../../lib/work-panel-tabs";
-import {
-  MAIN_PANE_MIN_WIDTH,
-  workPanelWidthForSidebarReopen,
-} from "../../lib/work-panel-resize";
+import { StartupSplash } from "../../components/StartupSplash";
+import { api } from "../../lib/api";
 import {
   clampSidebarWidth,
   loadSidebarWidth,
   saveSidebarWidth,
 } from "../../lib/sidebar-preferences";
-import { StartupSplash } from "../../components/StartupSplash";
+import { sidebarWidthBudget } from "../../lib/sidebar-resize";
+import { commitWorkPanelPresentation } from "../../lib/work-panel-presentation";
+import {
+  MAIN_PANE_MIN_WIDTH,
+  workPanelWidthForSidebarReopen,
+} from "../../lib/work-panel-resize";
+import { browserPluginTab } from "../../lib/work-panel-tabs";
+import { useAppStore } from "../../stores/app-store";
+import { useSidebarTransition } from "./useSidebarTransition";
+import { useTraySessions } from "./useTraySessions";
 
 const MODIFIER_ONLY_KEYS = new Set([
   "Alt",
@@ -67,12 +70,21 @@ export function useAppShellRuntime() {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth] = useState(() => loadSidebarWidth());
-  const [sidebarExiting, setSidebarExiting] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => loadSidebarWidth());
+  const { sidebarEntering, sidebarExiting, handleSidebarAnimationEnd } = useSidebarTransition(
+    sidebarCollapsed,
+    ready && page !== "settings",
+  );
   const [shellWidth, setShellWidth] = useState(0);
   const appShellRef = useRef<HTMLDivElement>(null);
   const sidebarCollapsedRef = useRef(sidebarCollapsed);
   const sidebarWidthRef = useRef(sidebarWidth);
+  /**
+   * The last width the user actually committed. A drag preview never writes
+   * it, so a drag that collapses the sidebar and a later reopen return the
+   * preferred column instead of the narrow preview the gesture stopped at.
+   */
+  const sidebarPreferredWidthRef = useRef(sidebarWidth);
   const shellWidthRef = useRef(shellWidth);
   const workPanelWidthRef = useRef(workPanelWidth);
   const workPanelOpenRef = useRef(workPanelVisible);
@@ -100,14 +112,33 @@ export function useAppShellRuntime() {
     observer.observe(shell);
     return () => observer.disconnect();
   }, []);
-  // The sidebar is a fixed-width column: it only collapses and opens.
-  const handleSidebarWidthChange = useCallback(() => {}, []);
-  const handleSidebarWidthCommit = useCallback(() => {}, []);
+  const resolveSidebarMax = () =>
+    sidebarWidthBudget({
+      containerWidth: appShellRef.current?.clientWidth || shellWidthRef.current,
+      workPanelOpen: workPanelOpenRef.current,
+      workPanelWidth: workPanelWidthRef.current,
+      workPanelMaximized: workPanelMaximizedRef.current,
+    });
+  const handleSidebarWidthChange = useCallback((width: number) => {
+    setSidebarWidth(clampSidebarWidth(width, resolveSidebarMax()));
+  }, []);
+  const handleSidebarWidthCommit = useCallback((width: number) => {
+    const nextWidth = clampSidebarWidth(width, resolveSidebarMax());
+    sidebarPreferredWidthRef.current = nextWidth;
+    setSidebarWidth(nextWidth);
+    saveSidebarWidth(nextWidth);
+  }, []);
+  const handleSidebarResizeCollapse = useCallback(() => {
+    autoCollapsedSidebarRef.current = false;
+    setSidebarCollapsed(true);
+  }, []);
   // Reopening prefers the right column: the work panel gives up width first so
   // MainChat keeps the width it already had, and only a would-be breach of the
-  // 450px floor falls back to the 460px reopen target.
+  // 450px floor falls back to the 460px reopen target. The column comes back at
+  // the user's preferred width, which a collapsing drag never overwrites.
   const reopenSidebar = useCallback(() => {
     if (!sidebarCollapsedRef.current) return;
+    const preferredWidth = clampSidebarWidth(sidebarPreferredWidthRef.current);
     if (workPanelOpenRef.current && !workPanelMaximizedRef.current) {
       const currentPanelWidth = workPanelWidthRef.current;
       const width =
@@ -116,14 +147,16 @@ export function useAppShellRuntime() {
         currentPanelWidth + MAIN_PANE_MIN_WIDTH;
       const nextPanelWidth = workPanelWidthForSidebarReopen({
         containerWidth: width,
-        sidebarWidth: sidebarWidthRef.current,
+        sidebarWidth: preferredWidth,
         currentPanelWidth,
       });
       useAppStore.getState().setWorkPanelWidth(nextPanelWidth);
     }
     autoCollapsedSidebarRef.current = false;
+    setSidebarWidth(preferredWidth);
     setSidebarCollapsed(false);
   }, []);
+  useTraySessions({ setSearchOpen, reopenSidebar });
 
   // Stable identity: the keydown and native-menu handlers register once and
   // must never capture a stale `sidebarCollapsed`. Every invocation is a user
@@ -142,33 +175,6 @@ export function useAppShellRuntime() {
     autoCollapsedSidebarRef.current = true;
     setSidebarCollapsed(true);
   }, []);
-  // Keep the exit flag in sync with the collapsed state so collapsing plays
-  // the sidebar-out keyframe and expanding cancels it (mirrors the work-panel
-  // mount-then-animate-then-unmount machine).
-  //
-  // This is adjusted during render, not in an effect. An effect runs after the
-  // commit, so the collapsing render would evaluate `!collapsed || exiting` as
-  // `false || false` and unmount the dock outright; the effect then remounts it
-  // with `is-exiting`. That paints one frame with no dock at all — the whole
-  // sidebar blinks out and back before the collapse keyframe even starts.
-  const prevSidebarCollapsed = useRef(sidebarCollapsed);
-  if (prevSidebarCollapsed.current !== sidebarCollapsed) {
-    prevSidebarCollapsed.current = sidebarCollapsed;
-    setSidebarExiting(sidebarCollapsed);
-  }
-  const handleSidebarAnimationEnd = (event: ReactAnimationEvent<HTMLElement>) => {
-    if (event.target !== event.currentTarget) return;
-    if (!sidebarExiting) return;
-    if (!event.animationName.startsWith("sidebar-out")) return;
-    setSidebarExiting(false);
-  };
-
-  // Fallback in case animationend is skipped (e.g. display:none mid-flight).
-  useEffect(() => {
-    if (!sidebarExiting) return;
-    const timer = window.setTimeout(() => setSidebarExiting(false), 240);
-    return () => window.clearTimeout(timer);
-  }, [sidebarExiting]);
   const [presentedWorkPanelOpen, setPresentedWorkPanelOpen] = useState(false);
   const [workPanelMaximized, setWorkPanelMaximized] = useState(false);
   const [workPanelExiting, setWorkPanelExiting] = useState(false);
@@ -410,7 +416,6 @@ export function useAppShellRuntime() {
 
   useEffect(() => {
     const unsubscribe = api.onMenuCommand((command) => void runMenuCommand(command));
-    void api.menuRendererReady().catch(() => undefined);
     return unsubscribe;
   }, [runMenuCommand]);
 
@@ -539,7 +544,10 @@ export function useAppShellRuntime() {
   useEffect(() => {
     if (bootstrapStartedRef.current) return;
     bootstrapStartedRef.current = true;
-    void bootstrap();
+    // A tray activation must win over bootstrap's initial draft/plan navigation.
+    void bootstrap().finally(() => {
+      void api.menuRendererReady().catch(() => undefined);
+    });
   }, [bootstrap]);
 
   // The Host owns the prompt queue (D375); mirror it whenever the visible
@@ -729,8 +737,11 @@ export function useAppShellRuntime() {
           case "abort":
             void abort();
             break;
-          case "closeWindow":
-            void api.windowControl("close");
+          case "toggleWindow":
+            // The same native action the menu item runs (D438): hide the window
+            // the user is looking at, or bring it back. The window's own close
+            // button stays the only path into the close behaviour.
+            void api.nativeMenuAction("toggleMainWindow");
             break;
           case "resetZoom":
           case "zoomIn":
@@ -844,6 +855,13 @@ export function useAppShellRuntime() {
     : workPanelToggleLabel;
 
 
+  const sidebarWidthMax = sidebarWidthBudget({
+    containerWidth: shellWidth,
+    workPanelOpen: workPanelVisible || presentedWorkPanelOpen,
+    workPanelWidth,
+    workPanelMaximized,
+  });
+
   return {
     t,
     ready,
@@ -857,10 +875,13 @@ export function useAppShellRuntime() {
     setSearchOpen,
     sidebarCollapsed,
     setSidebarCollapsed,
+    sidebarEntering,
     sidebarExiting,
     sidebarWidth,
+    sidebarWidthMax,
     handleSidebarWidthChange,
     handleSidebarWidthCommit,
+    handleSidebarResizeCollapse,
     toggleSidebar,
     reopenSidebar,
     autoCollapseSidebar,

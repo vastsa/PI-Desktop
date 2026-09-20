@@ -26,12 +26,14 @@ import {
   type AfterToolCallContext,
   type AfterToolCallResult,
   type AgentEvent,
+  type AgentMessage,
   type AgentTool,
 } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   addUsage,
   cumulativeDelta,
+  isCertificateVerificationError,
   subagentCanMutate,
   subagentToolsLabel,
   type AgentEventEnvelope,
@@ -42,6 +44,7 @@ import {
   type UiMessage,
 } from "@pi-desktop/shared";
 import { classifyAgentError } from "./agent-errors.js";
+import { withProviderFetchFailure } from "./provider-transport-recovery.js";
 import {
   assistantContent,
   nowIso,
@@ -129,6 +132,12 @@ export type SubagentRunOptions = {
     context: AfterToolCallContext,
   ) => SubagentToolOutcome | undefined;
   signal?: AbortSignal;
+  /**
+   * Prior chain messages that seed this run (ADR 0279). Omitted for a cold
+   * start. The original `task` is still passed to `prompt()` as the new user
+   * turn; these messages are everything that came before it.
+   */
+  initialMessages?: AgentMessage[];
 };
 
 /**
@@ -179,7 +188,8 @@ function boundedReport(value: string): string {
 
 export { addUsage };
 
-/** One delegate execution. Instances are single-use. */
+/** One delegate execution. A resumed run is still a new instance; it is
+ * seeded with the prior chain's messages rather than kept warm in memory. */
 export class SubagentRun {
   private readonly agent: Agent;
   private readonly opts: SubagentRunOptions;
@@ -219,7 +229,7 @@ export class SubagentRun {
         model: binding.model,
         tools: opts.tools,
         thinkingLevel: binding.agentThinkingLevel,
-        messages: [],
+        messages: opts.initialMessages ? [...opts.initialMessages] : [],
       },
       toolExecution: "sequential",
     });
@@ -565,7 +575,10 @@ export class SubagentRun {
             typeof (message as { errorMessage?: unknown }).errorMessage === "string"
               ? ((message as { errorMessage?: string }).errorMessage as string)
               : "provider stream failed";
-          classifiedError = classifyProviderError(raw, this.retryState.status);
+          classifiedError = withProviderFetchFailure(
+            classifyProviderError(raw, this.retryState.status),
+            this.retryState.failure,
+          );
           retryAttempt = this.claimProviderRetry(classifiedError, "stream");
           if (retryAttempt !== undefined) {
             this.pendingProviderRetry = classifiedError;
@@ -609,6 +622,8 @@ export class SubagentRun {
           status: failed ? "error" : stopReason === "aborted" ? "aborted" : "complete",
           ...(messageUsage ? { usage: messageUsage } : {}),
           ...(failed ? { isError: true } : {}),
+          ...(isCertificateVerificationError(classifiedError?.details?.networkCode)
+            ? { error: classifiedError } : {}),
         };
         this.currentAssistant = undefined;
         this.emit({ type: "message_end", message: row });

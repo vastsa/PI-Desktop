@@ -1,3 +1,5 @@
+import { useLayoutEffect } from "react";
+import { installComposerDeletionGuard } from "./native-deletion";
 import type {
   ClipboardEvent,
   Dispatch,
@@ -8,10 +10,13 @@ import type {
 } from "react";
 import type { useComposerAutocomplete } from "../../../hooks/use-composer-autocomplete";
 import { editorSelectionRange, readEditorValue } from "./editor";
+import { ComposerImagePreview } from "./ComposerImagePreview";
+import type { ComposerImagePreviewController } from "./hooks/useComposerImagePreview";
 
 type AutocompleteController = ReturnType<typeof useComposerAutocomplete>;
 
 export type ComposerInputProps = {
+  imagePreview?: ComposerImagePreviewController;
   inputRef: RefObject<HTMLDivElement | null>;
   value: string;
   placeholderText: string;
@@ -34,6 +39,7 @@ export type ComposerInputProps = {
 
 /** Rich contenteditable input; draft state and async operations stay outside. */
 export function ComposerInput({
+  imagePreview,
   inputRef,
   value,
   placeholderText,
@@ -53,8 +59,13 @@ export function ComposerInput({
   onFocus,
   onBlur,
 }: ComposerInputProps) {
+  useLayoutEffect(() => {
+    const editor = inputRef.current;
+    return editor ? installComposerDeletionGuard(editor) : undefined;
+  }, [inputRef]);
   return (
     <div className="composer-input-wrap">
+      {imagePreview ? <ComposerImagePreview controller={imagePreview} /> : null}
       <div className="composer-input-stage">
         {/* React does not render children into this node; the editor module
           paints atomic attachment chips imperatively. */}

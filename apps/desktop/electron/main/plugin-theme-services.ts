@@ -12,7 +12,7 @@ export type PluginThemeServiceWiring = {
 
 /**
  * Wire `app.setTheme` / `themes.*` host reactions after the application
- * lifecycle exists (ADR 0249). Kept out of `index.ts` so that file stays
+ * lifecycle exists (ADR 0260). Kept out of `index.ts` so that file stays
  * under the architecture LOC ceiling.
  */
 export function wirePluginThemeRuntimeServices({

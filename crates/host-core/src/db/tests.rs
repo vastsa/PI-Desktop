@@ -100,6 +100,28 @@ fn v14_database_migrates_to_v15_with_the_turn_queue() {
     assert!(migration_backup_path(&path, 14).exists());
 }
 
+#[test]
+fn v18_database_migrates_session_thinking_omit() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    {
+        let db = Database::open(&path).unwrap();
+        db.conn().pragma_update(None, "user_version", 18).unwrap();
+    }
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(migration_backup_path(&path, 18).exists());
+    let sql: String = db
+        .conn()
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sessions'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(sql.contains("'omit'"), "{sql}");
+}
+
 fn schema_version(conn: &Connection) -> i64 {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap()

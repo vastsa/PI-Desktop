@@ -1,8 +1,8 @@
 import {
   memo,
-  useContext,
   useMemo,
   useState,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { UiMessage } from "@pi-desktop/shared";
@@ -17,10 +17,7 @@ import {
   IconTrash,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
-import { TranscriptReadOnlyContext, useActiveSessionTitle } from "./context";
-import { selectionMarkdownWithinRow } from "../../../lib/selection-quote";
-import { requestTextWithoutAnnotations } from "../../../lib/response-annotations";
-import { IconQuote, IconChat } from "../../../components/icons";
+import { userMessageMenuItems } from "./menu-items";
 import { SessionMessageOrigin } from "./SessionMessageOrigin";
 import {
   CopyButton,
@@ -28,6 +25,10 @@ import {
   LinkifiedText,
   MessageAttachmentImage,
 } from "./shared";
+import {
+  useChatTextActions,
+  useTranscriptMenu,
+} from "./TranscriptMenu";
 
 export const MessageRow = memo(function MessageRow({
   message,
@@ -37,6 +38,8 @@ export const MessageRow = memo(function MessageRow({
   isRunning: boolean;
 }) {
   const { t } = useTranslation();
+  const openTranscriptMenu = useTranscriptMenu();
+  const { copyText, selectText } = useChatTextActions();
   const editUserMessage = useAppStore((s) => s.editUserMessage);
   const activateMessageRevision = useAppStore((s) => s.activateMessageRevision);
   const deleteMessage = useAppStore((s) => s.deleteMessage);
@@ -47,19 +50,14 @@ export const MessageRow = memo(function MessageRow({
   const openFileRef = useOpenChatFileRef();
   // Slash prompts are stored expanded; editing works on the typed form so the
   // resent turn re-expands the template (D123).
-  const editSeed = (editableUserMessage && message.command) || requestTextWithoutAnnotations(message.content || "");
+  const editSeed =
+    (editableUserMessage && message.command) || (message.content || "");
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(editSeed);
   const [retryingEdit, setRetryingEdit] = useState(false);
   const copyLabel = t("chat.copy");
   const editLabel = t("chat.editMessage");
   const deleteLabel = t("chat.deleteMessage");
-  const quoteLabel = t("chat.quote");
-  const sideChatLabel = t("chat.startSideChat");
-  const sessionTitle = useActiveSessionTitle();
-  const openSideChat = useAppStore((s) => s.openSideChat);
-  const quoteMessageIntoComposer = useAppStore((s) => s.quoteMessageIntoComposer);
-  const transcriptReadOnly = useContext(TranscriptReadOnlyContext);
   // Runtime chunks are already progressive. Rendering that source directly
   // avoids a second per-frame state loop while Markdown memoizes stable blocks.
   const displayed = message.content || "";
@@ -89,12 +87,44 @@ export const MessageRow = memo(function MessageRow({
     setRetryingEdit(false);
     if (saved) setEditing(false);
   };
+  /*
+    The pointer path to the actions the hover row already offers. Only a human
+    turn is owned here: an assistant answer belongs to its turn, so this row
+    must not answer for one — it would offer Copy without the Regenerate and
+    Branch items that live on the turn.
+  */
+  const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!isUser) return;
+    openTranscriptMenu(event, {
+      label: t("chat.messageMenu"),
+      items: userMessageMenuItems({
+        t,
+        text: message.content || "",
+        selectTarget:
+          event.currentTarget.querySelector<HTMLElement>(".message-bubble"),
+        editable: editableUserMessage,
+        running: isRunning,
+        revision: showRevisionPager
+          ? { count: revisionCount, active: activeRevision }
+          : null,
+        actions: { copyText, selectText },
+        onEdit: () => {
+          setEditValue(editSeed);
+          setEditing(true);
+        },
+        onDelete: () => void deleteMessage(message.id),
+        onActivateRevision: (index) =>
+          void activateMessageRevision(message.id, index),
+      }),
+    });
+  };
   return (
     <div
       className={`message-row ${isSessionMessage ? "session-message" : isUser ? "user" : message.role}`}
       data-minimap-id={message.id}
       data-message-id={message.id}
       data-row-role={isSessionMessage ? undefined : "user"}
+      onContextMenu={onContextMenu}
       role="article"
       aria-label={isSessionMessage ? t("sessionCollaboration.agentMessage") : isUser ? t("chat.userMessage") : t("chat.assistantMessage")}
     >
@@ -103,7 +133,14 @@ export const MessageRow = memo(function MessageRow({
         {isUser || displayed ? (
           <div className="message-bubble">
             {editing && editableUserMessage ? (
-              <div className="message-edit">
+              <form
+                className="message-edit"
+                aria-busy={retryingEdit || undefined}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void retryEdit();
+                }}
+              >
                 <textarea
                   className="message-edit-input selectable"
                   value={editValue}
@@ -127,22 +164,21 @@ export const MessageRow = memo(function MessageRow({
                 <div className="message-edit-actions">
                   <button
                     type="button"
-                    className="copy-btn"
+                    className="icon-btn message-edit-cancel"
                     disabled={retryingEdit}
                     onClick={cancelEdit}
                   >
                     {t("chat.cancelEdit")}
                   </button>
                   <button
-                    type="button"
-                    className="copy-btn primary"
+                    type="submit"
+                    className="send-btn message-edit-submit"
                     disabled={retryingEdit || (!editValue.trim() && !message.attachments?.length)}
-                    onClick={() => void retryEdit()}
                   >
                     {retryingEdit ? t("chat.retryingEdit") : t("chat.retryEdit")}
                   </button>
                 </div>
-              </div>
+              </form>
             ) : isUser ? (
               <>
                 {extraAttachments.length ? (
@@ -189,7 +225,7 @@ export const MessageRow = memo(function MessageRow({
                         {message.command}
                       </code>
                     ) : (
-                      <LinkifiedText text={requestTextWithoutAnnotations(String(message.content || ""))} />
+                      <LinkifiedText text={String(message.content || "")} attachments={message.attachments} />
                     )}
                   </div>
                 ) : null}
@@ -201,7 +237,7 @@ export const MessageRow = memo(function MessageRow({
             )}
           </div>
         ) : null}
-        {!editing && !transcriptReadOnly && (hasAnswer || showRevisionPager) ? (
+        {!editing && (hasAnswer || showRevisionPager) ? (
           <div className="message-actions">
             {showRevisionPager ? (
               <div className="message-revision-pager" role="group" aria-label={t("chat.revisions")}>
@@ -264,33 +300,6 @@ export const MessageRow = memo(function MessageRow({
                 <IconTrash size={13} />
               </TooltipButton>
             ) : null}
-            <TooltipButton
-              className="copy-btn icon"
-              tooltip={quoteLabel}
-              ariaLabel={quoteLabel}
-              disabled={!editSeed}
-              onClick={() =>
-                quoteMessageIntoComposer({
-                  title: sessionTitle,
-                  text: editSeed,
-                  // The rendered selection is recovered as Markdown, so a quoted
-                  // formula keeps its TeX and a quoted table keeps its rows
-                  // (ADR message-quotes-and-side-chats / D-LOCAL-selection-overlay).
-                  selection: selectionMarkdownWithinRow(message.id),
-                })
-              }
-            >
-              <IconQuote size={13} />
-            </TooltipButton>
-            <TooltipButton
-              className="copy-btn icon"
-              tooltip={sideChatLabel}
-              ariaLabel={sideChatLabel}
-              disabled={isRunning}
-              onClick={() => void openSideChat(message.id)}
-            >
-              <IconChat size={13} />
-            </TooltipButton>
           </div>
         ) : null}
       </div>

@@ -337,8 +337,6 @@ test("native terminal events re-key exactly the provisional row they name", asyn
   const state = {
     activeSessionId: id,
     messages: [provisional, otherStream],
-    sideChats: { [id]: { sessionId: id, parentSessionId: "native-pi:parent", title: "Side chat", anchorMessageId: "a1" } },
-    sideChatTranscripts: { [id]: [provisional, otherStream] },
     retainedTranscripts: { [id]: [provisional, otherStream] },
     runningSessions: { [id]: true },
     isRunning: true,
@@ -357,7 +355,6 @@ test("native terminal events re-key exactly the provisional row they name", asyn
   });
   for (const rows of [
     state.messages,
-    state.sideChatTranscripts[id],
     state.retainedTranscripts[id],
     runtime.sessionTranscriptCache.get(id),
   ]) {
@@ -404,27 +401,6 @@ test("a generic Desktop completion never touches parallel delegate streams", asy
   assert.equal(settled[1].status, "streaming");
 });
 
-test("a durable native user entry reconciles the side-chat projection", () => {
-  const id = "native-pi:child";
-  const state = {
-    activeSessionId: "other-session",
-    messages: [],
-    sideChats: { [id]: { sessionId: id, parentSessionId: "native-pi:parent", title: "Side chat", anchorMessageId: "a1" } },
-    sideChatTranscripts: { [id]: [user("optimistic-1")] },
-    retainedTranscripts: {},
-  };
-  const runtime = {
-    liveSessionTranscripts: new Set(),
-    sessionTranscriptCache: new Map(),
-    cacheSessionTranscript: (key, rows) => runtime.sessionTranscriptCache.set(key, rows),
-  };
-  const slice = createEventsSlice({ ...stateHarness(state), runtime });
-  const event = { type: "user_message_persisted", optimisticMessageId: "optimistic-1", message: user("durable-1") };
-  slice.handleAgentEvent({ sessionId: id, ts: 1, event });
-  slice.handleAgentEvent({ sessionId: id, ts: 2, event });
-  assert.deepEqual(state.sideChatTranscripts[id].map((row) => row.id), ["durable-1"]);
-});
-
 const queueSlice = await read("../src/stores/slices/queue-slice.ts");
 
 test("a running native side-chat send fails before the Desktop queue", () => {
@@ -442,110 +418,4 @@ test("the native busy message is localized in every locale", async () => {
     const source = await read(`../../../packages/i18n/src/locales/${locale}/index.ts`);
     assert.match(source, /nativeSessionBusy:/, locale);
   }
-});
-
-test("an off-active side-chat send failure is visible in the child and never in main", async () => {
-  const { useAppStore } = await import("../src/stores/app-store.ts");
-  const { api } = await import("../src/lib/api.ts");
-  const id = "native-pi:child";
-  useAppStore.setState({
-    activeSessionId: "other-session",
-    sessions: [{ id: "other-session", source: "desktop" }],
-    messages: [],
-    sideChats: {
-      [id]: { sessionId: id, parentSessionId: "native-pi:parent", title: "Side chat", anchorMessageId: "a1" },
-    },
-    sideChatTranscripts: { [id]: [] },
-    runningSessions: {},
-    queuedPrompts: {},
-    latestTurnResults: {},
-    sessionOutcomes: {},
-    toasts: [],
-  });
-  const originalPrompt = api.prompt;
-  api.prompt = async () => {
-    throw Object.assign(new Error("Native Pi provider is unavailable"), {
-      code: "NATIVE_PI_PROVIDER_UNAVAILABLE",
-    });
-  };
-  try {
-    const accepted = await useAppStore
-      .getState()
-      .sendPrompt("child draft", { text: "child draft", fileReferences: [] }, id);
-    assert.equal(accepted, false);
-    const rows = useAppStore.getState().sideChatTranscripts[id];
-    assert.equal(rows.filter((row) => row.status === "error").length, 1);
-    assert.match(rows.at(-1).error.message, /provider is unavailable/);
-    assert.equal(useAppStore.getState().messages.length, 0, "no error row in the main transcript");
-    assert.equal(
-      useAppStore.getState().toasts.some((toast) => /provider is unavailable/.test(toast.message)),
-      true,
-      "the failure is visible as a toast",
-    );
-  } finally {
-    api.prompt = originalPrompt;
-  }
-});
-
-test("a native error before the first assistant surfaces in the off-active side chat", () => {
-  const id = "native-pi:child";
-  const toasts = [];
-  const state = {
-    activeSessionId: "other-session",
-    messages: [],
-    sideChats: {
-      [id]: { sessionId: id, parentSessionId: "native-pi:parent", title: "Side chat", anchorMessageId: "a1" },
-    },
-    sideChatTranscripts: { [id]: [] },
-    runningSessions: { [id]: true },
-    isRunning: false,
-    agentStatuses: {},
-    latestTurnResults: {},
-    sessionOutcomes: {},
-    pendingPermissions: {},
-    pendingAsks: {},
-    showToast: (message, options) => toasts.push({ message, options }),
-  };
-  const runtime = {
-    liveSessionTranscripts: new Set(),
-    sessionTranscriptCache: new Map(),
-    submittedComposerDrafts: new Map(),
-    cacheSessionTranscript: (key, rows) => runtime.sessionTranscriptCache.set(key, rows),
-    projectSideChatEvent: () => {},
-    cacheBackgroundTranscriptEvent: () => {},
-  };
-  const withoutRecordKey = (record, key) => {
-    if (!(key in record)) return record;
-    const next = { ...record };
-    delete next[key];
-    return next;
-  };
-  const slice = createEventsSlice({
-    ...stateHarness(state),
-    runtime,
-    withoutRecordKey,
-    flushPendingSessionConfiguration: async () => {},
-    assistantErrorMessage: (error) => ({
-      id: "native-error-row",
-      role: "assistant",
-      content: "",
-      createdAt: "2026-09-14T00:00:00Z",
-      status: "error",
-      isError: true,
-      error,
-    }),
-  });
-  slice.handleAgentEvent({
-    sessionId: id,
-    ts: 9,
-    event: {
-      type: "error",
-      error: { code: "NATIVE_PI_RUNTIME_ERROR", message: "native runtime failed", retriable: false },
-    },
-  });
-  assert.equal(state.sideChatTranscripts[id].length, 1);
-  assert.equal(state.sideChatTranscripts[id][0].status, "error");
-  assert.equal(toasts.length, 1);
-  assert.match(toasts[0].message, /native runtime failed/);
-  assert.equal(state.messages.length, 0);
 });

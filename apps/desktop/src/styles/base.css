@@ -161,11 +161,25 @@ html {
 }
 
 .app-shell {
+  position: relative;
+  isolation: isolate;
   display: flex;
   height: 100%;
   min-height: 0;
   background: var(--ds-bg-primary);
   color: var(--ds-text-primary);
+}
+
+.app-shell > :not(.app-scenic-backdrop) {
+  z-index: 1;
+}
+
+.app-scenic-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
 }
 
 .app-shell-boot {

@@ -179,3 +179,10 @@ export type OAuthRespondInput = {
   /** Absent cancels the prompt, which aborts the login flow. */
   value?: string;
 };
+
+/** Move one provider relative to another; applies atomically to the current host list. */
+export type ProviderReorderInput = {
+  id: string;
+  targetId: string;
+  placement: "before" | "after";
+};

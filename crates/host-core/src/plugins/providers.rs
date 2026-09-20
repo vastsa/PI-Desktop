@@ -127,6 +127,7 @@ pub(crate) fn declared_providers(manifest: &PluginManifest) -> Vec<DeclaredPlugi
                                     .map(str::trim)
                                     .filter(|value| !value.is_empty())
                                     .map(str::to_string),
+                                context_window_source: None,
                                 context_window: model
                                     .get("contextWindow")
                                     .and_then(Value::as_u64)
@@ -144,6 +145,7 @@ pub(crate) fn declared_providers(manifest: &PluginManifest) -> Vec<DeclaredPlugi
                                     .and_then(Value::as_bool),
                                 supports_documents: None,
                                 available_for_subagents: None,
+                                native_web_search: None,
                             })
                         })
                         .collect::<Vec<_>>()

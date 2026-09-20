@@ -283,3 +283,17 @@ test("the chosen pane narrows a long configured list with its own search", () =>
     /@media \(max-width: 720px\)\s*\{[\s\S]*?\.provider-chosen-search-wrap/,
   );
 });
+
+test("selected models reorder from a dedicated handle, not the copyable id", () => {
+  // The handle is the only drag source so selecting an id still copies it.
+  assert.match(pickerSource, /useModelReorder\(visibleChosen, setModels, busy\)/);
+  assert.match(pickerSource, /provider-chosen-reorder/);
+  assert.match(pickerSource, /IconGripVertical/);
+  assert.match(pickerSource, /settings\.reorderModel/);
+  assert.match(pickerSource, /\{\.\.\.reorder\.handleEvents\(binding\.id\)\}/);
+  assert.match(pickerSource, /\{\.\.\.reorder\.rowEvents\(binding\.id\)\}/);
+  assert.doesNotMatch(pickerSource, /provider-chosen-row-id[\s\S]*draggable/);
+  assert.match(styles, /\.provider-chosen-reorder\s*\{/);
+  assert.match(styles, /\.provider-chosen-row\.is-dragging\s*\{/);
+  assert.match(styles, /\.provider-chosen-row\[data-drop-placement\]::after/);
+});

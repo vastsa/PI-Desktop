@@ -25,7 +25,7 @@ const hostCollectionSource = await readFile(
   "utf8",
 );
 const hostProcessSource = await readFile(
-  new URL("../electron/main/host-process.ts", import.meta.url),
+  new URL("../../../packages/host-runtime/src/host-process.ts", import.meta.url),
   "utf8",
 );
 
@@ -114,6 +114,7 @@ test("a dead host transport degrades quietly instead of warning", () => {
     "refreshUserMcp",
     "activeUserSkills",
     "activeUserSubagentDocuments",
+    "disabledBuiltinSubagents",
   ]) {
     const start = sessionLaunchSource.indexOf(`async function ${fn}(`);
     assert.notEqual(start, -1, fn);
@@ -149,4 +150,19 @@ test("the subagents page recovers when the host comes back", () => {
   // Both subscriptions have to be released, so the effect returns a composed
   // cleanup rather than a single unsubscribe.
   assert.match(hostCollectionSource, /offPluginChanged\(\);\n\s+offHostStatus\(\);/);
+});
+
+test("a switched-off builtin leaves the delegation catalog, not the page", () => {
+  // host-core owns the handle; every launch re-reads it, so the switch takes
+  // effect on the next prompt and the catalog keeps the row for Settings.
+  assert.match(sessionLaunchSource, /"agents\.disabledBuiltins"/);
+  assert.match(
+    sessionLaunchSource,
+    /disabledBuiltins: await disabledBuiltinSubagents\(\),/,
+  );
+  assert.match(
+    sessionLaunchSource,
+    /async function disabledBuiltinSubagents\(\): Promise<string\[\]>/,
+  );
+  assert.match(pageSource, /api\.setBuiltinSubagentEnabled\(handle, next\)/);
 });

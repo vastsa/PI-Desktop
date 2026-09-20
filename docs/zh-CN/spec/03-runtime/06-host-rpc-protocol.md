@@ -19,7 +19,11 @@ MVP 传输决策 (**D001**)：
 
 - 流程：Electron 主要生成 Rust host-core sidecar
 - 通道：子进程 stdin/stdout
-- 成帧：每行一个 JSON 对象 (NDJSON)
+- 成帧：每行一个以 LF 分隔的 JSON 对象（NDJSON）；接受 CRLF。
+  JSON 字符串内的 U+2028 与 U+2029 属于载荷，不是帧分隔符。
+  所有 Node stdio 读取器会跨输入块保留 UTF-8 字符，并在传输关闭时释放缓冲片段和监听器。
+  为兼容起见，EOF 时接受最后一帧未以换行结束的情况。
+- 非法 JSON 帧会先产出仅含字节长度、不含载荷文本的诊断，然后丢弃。后续完整帧仍可读。现有会话文本不会被改写或迁移。
 - 编码：UTF-8
 - Request/response：JSON-RPC 2.0 风格
 
@@ -290,8 +294,13 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
   存在于持久转录本中时，恢复分支之前的前缀取自转录本而非调用方。幸存
   消息保留所属的 `turn_id`
 - `session.beginTurn`
-- `session.queuePush` / `session.queueList` / `session.queueRemove` —— Host 拥有的
-  回合队列（D386 / ADR 0213，架构 v15）；push 按主体与 key 幂等，每会话最多八条
+- `session.queuePush` / `session.queueList` / `session.queueRemove` /
+  `session.queuePrioritize` / `session.queueReorder` —— Host 拥有的回合队列
+  （D386 / ADR 0213 / ADR 0265，架构 v18）；push 按主体与 key 幂等，每会话最多八条。
+  `queuePrioritize` 把条目的 `priority` 写为其会话优先区块的 `MAX + 1`（追加到区块末尾），
+  对已经带优先级的条目返回 `CONFLICT`；`queueReorder` 让一个未优先条目与其相邻的未优先
+  条目互换并返回 `{ moved }`。列出与投递顺序为：已优先条目按 `priority` 升序，其余按
+  `position` 升序
 - `session.endTurn` — 以原子方式将正在运行的回合移动到其终止状态，并且
 有条件地返回新创建的 `completed`/`error` 通知；它还会落定该会话的进行中回复
   检查点（D299）：`completed`/`error` 移除它；`recoverInflight: true`（sidecar
@@ -315,6 +324,9 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
   只读取调用插件自己导入且仍处于活动状态的会话
 - `plugin.session.rename` — 重命名自己拥有的活动导入会话
 - `plugin.session.delete` — `trash` 隐藏并保留转录本；`purge` 删除并允许重新导入
+- `plugin.usage.listTurns` — 未删除会话的已完成 turn 事实页（标识符与 token
+  计数，绝不含消息正文）。由 Electron main 用 `usage.read` 鉴权。增量方法，
+  不升协议版本。
 - 插件会话变更成功后，Electron main 发送一次 `sessionsChanged` 渲染器事件，
   渲染器刷新会话列表；插件不发送此 UI 同步事件
 
@@ -389,10 +401,7 @@ off | minimal | low | medium | high | xhigh | max
 在命令启动后重试命令，并在之前获取超时的子命令
 释放执行槽。
 
-`session.appendMessage` 通过消息 ID 是幂等的。 Electron 主要可以保留
-当 host-core 重新启动时，消息会附加到其应用程序拥有的发件箱中；
-握手成功后，发件箱会按顺序冲洗。进行中检查点从不经过发件箱：检查点只对存活的
-主机有意义，在最终行之后重放它是错误的。
+`session.appendMessage` 通过消息 ID 是幂等的。若该 id 已属于另一会话，则在写 JSONL 之前改写为 `{sessionId}:{id}`，之后重放原始 id 为无操作（D444）。Electron 主进程可以在 host-core 重启时把消息留在应用自有 outbox 里；握手成功后按顺序冲洗，并把 `UNIQUE constraint failed: messages.id` 当作确认而不是停整队。带 `PERMISSION_DENIED:` 前缀的追加同样丢弃以免毒消息卡住 FIFO（D597）。进行中检查点从不经过发件箱：检查点只对存活的主机有意义，在最终行之后重放它是错误的。
 
 ### 权限
 - `permissions.evaluate`
@@ -881,6 +890,12 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
 | 1016 | SKILL_INVALID | 用户技能文档校验失败 |
 | 1017 | SUBAGENT_INVALID | 用户子代理文档校验失败 |
 | 1018 | CAPABILITY_INVALID | Agent 能力 root/scope 设置校验失败 |
+| 1019 | PLUGIN_CANCELLED | 用户在下载过程中取消了市场安装 |
+| 1020 | PLUGIN_MARKET_NOT_PUBLISHED | 平台有该版本但尚未对外提供 |
+| 1021 | PLUGIN_MARKET_ARCHIVED | 插件已被平台下架 |
+| 1022 | PLUGIN_MARKET_NOT_FOUND | 平台没有该插件或该版本 |
+| 1023 | PLUGIN_MARKET_RATE_LIMITED | 下载接口要求客户端等待后重试 |
+| 1024 | PLUGIN_MARKET_NO_SOURCE | 没有任何分发目标能提供该包 |
 | -32029 | HOST_OVERLOADED | RPC 调度程序容量已耗尽 |
 | -32601 | — | 未知方法 |
 | -32700 | — | 无法解析的请求行 |
@@ -958,3 +973,15 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
     产生记录的持久状态和事件
 13. Bash 验证固定 shell ID/dialect，传输 stdout/stderr，强制执行
     60s default/bounded 覆盖，并关闭整个进程树
+
+## 定时任务工具
+
+Agent 模式按需提供 ScheduledTaskList、ScheduledTaskCreate、ScheduledTaskUpdate、
+ScheduledTaskDelete。通过 tools.execute 复用现有授权、审计和定时任务领域处理器。
+查询为低风险；Ask／Accept Edits 下修改需授权。Plan／Goal 即使在 Auto 下也拒绝。
+
+Host 重新检查会话的持久化模式，按调用会话的项目限制访问，不使用前台项目或模型传入路径。
+创建时绑定该项目，查询过滤项目，修改／删除要求项目匹配。未知字段、非法周期、空标题或
+提示词、非法时间和星期在写入前拒绝；不能删除运行中的任务。创建需 title、prompt、cadence；
+每天／每周自动任务需 schedule。修改使用已存在的 ID 并保留未指定字段。界面虽只提供四个
+时段，工具仍支持具体本地时间。不新增数据库 schema 或传输协议。

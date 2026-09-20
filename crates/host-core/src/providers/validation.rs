@@ -3,7 +3,7 @@ use super::*;
 pub(crate) const MAX_HEADERS: usize = 32;
 const MAX_HEADER_KEY_BYTES: usize = 256;
 const MAX_HEADER_VALUE_BYTES: usize = 4096;
-const MAX_MODEL_ALIAS_CHARS: usize = 60;
+pub(crate) const MAX_MODEL_ALIAS_CHARS: usize = 60;
 const FORBIDDEN_HEADER_KEYS: &[&str] = &[
     "authorization",
     "proxy-authorization",

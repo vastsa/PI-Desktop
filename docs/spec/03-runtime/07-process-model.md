@@ -37,6 +37,13 @@ run pointed at its own `PI_DESKTOP_DATA_DIR` (E2E harnesses, the capture rig, a
 side-by-side profile) shares no database, outbox, or logs with the default
 installation and stays launchable while one is running (D236, ADR 0094).
 
+A development build is its own installation rather than a second process of
+the same one: it runs under `PI-Desktop Dev` in the OS application-data root
+and reads `~/.pi-desktop-dev`. `pnpm dev` therefore starts while a packaged app
+holds its lock, and the two never share a database, an outbox, or a log tree
+(D599, ADR 0094). An explicit `--user-data-dir` is honored instead, because the
+E2E harnesses point a build at a throwaway profile with it.
+
 1. Electron main starts
 2. Load English locale defaults
 3. Spawn Rust host-core
@@ -58,7 +65,10 @@ applies it before spawning the agent sidecar (D340). Chromium sessions use
 the same config through `sidecar.configure` and `PI_DESKTOP_PROXY_JSON`.
 HTTP(S) provider requests use undici's proxy dispatcher; SOCKS5 provider
 requests use a buffered CONNECT tunnel so a proxy may coalesce the SOCKS
-handshake response without stalling the request.
+handshake response without stalling the request. Custom URLs with userinfo
+keep credentials for Node and curl; Chromium is pointed at a loopback SOCKS5
+relay that injects them, because `proxyRules` cannot carry userinfo (issue
+#490).
 host-core marketplace `curl` gets `--proxy` from the stored settings and does
 **not** inherit proxy env, so workspace Bash cannot see proxy credentials.
 Marketplace curl diagnostics prefer UTF-8 and fall back to the active Windows
@@ -73,6 +83,16 @@ errors remain readable instead of becoming replacement characters.
 | Rust host crash | mark app degraded, interrupt pending/queued/running approval work, keep pending sessions in their contract mode (Plan or Goal) and already-approved sessions in Agent, attempt restart host, and fail active sessions closed |
 | Node agent crash | abort active turns and live approval waiters/queue entries, keep pending sessions in their contract mode, preserve already-approved Agent mode in Rust, restart sidecar, and never replay an execution |
 | Electron main crash | full app exit |
+
+Crashpad is started local-only (`uploadToServer: false`) before `ready`, and
+dumps are stored under `<data_dir>/crash-dumps` (D602) so a
+`PI_DESKTOP_DATA_DIR` profile does not share dumps with another installation.
+The next launch that holds the single-instance lock writes one diagnostics
+line for dumps newer than `crash-dumps.json`. Crashpad records
+Chromium-process crashes (main, renderer, GPU, utility); a renderer crash the
+app already recovered still leaves a dump and is logged at warn. Host-core and
+sidecar crashes stay on the supervisor path in this section and the `host` /
+`agent` log channels.
 
 Broken stdout/stderr (`EPIPE`/`EIO`) is not a main-process crash. Main ignores
 those writes so a Linux AppImage or GUI launch without a live TTY keeps
@@ -120,7 +140,9 @@ start its local service. Windows 11 ARM64 systems run this x64 package through
 the operating system's x64 emulation; native Windows ARM64 artifacts are not
 currently published.
 
-Supervision parameters (implemented in Electron main):
+Supervision parameters (the transports, restart policy, and turn lifecycle are
+`packages/host-runtime`, ADR 0284; Electron main adapts them and owns the
+renderer-facing status):
 
 - Child exit rejects all in-flight RPCs for that child immediately (no 130s timeout wait).
 - An NDJSON request line over 64 MiB is drained and answered with `LIMIT_EXCEEDED`; it does not end the stdin reader (ADR 0216). Electron rejects the same size before writing stdin (ADR 0217).
@@ -278,3 +300,17 @@ until a post-MVP implementation milestone explicitly amends this section.
 6. A queued/running execution that was already approved is interrupted without
    replay and its durable session remains Agent
 7. Bash timeout/abort shuts down the complete child process tree
+
+
+### Native tray session projection
+
+The tray service keeps Running, Unread, and Pinned groups current independently
+of renderer visibility or lifetime. Host remains authoritative for sessions and
+notifications; root agent events describe running state. Renderer mirrors only
+organization preferences through a main-window-only IPC. Read requests are
+coalesced; obsolete Host results cannot repopulate the menu, failures clear
+shortcuts, and quitting prevents further publication. A closed window retains
+only the last organization copy, which is replaced after renderer bootstrap.
+Menu command readiness is acknowledged after bootstrap's initial navigation,
+so a tray click cannot be overwritten by the startup draft or pending-plan
+selection. See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).

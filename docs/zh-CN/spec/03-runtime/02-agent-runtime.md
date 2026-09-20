@@ -186,13 +186,22 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 当 429 预算耗尽时，最终的助手错误和生命周期 `error` 只发出一次。
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：
 `phase`（`request` 或 `stream`）、`providerStatus`、`providerCode`、
-`providerWaitMs`、`streamMs` 和 `retryAttempt`。对于持续的 429，
+`providerWaitMs`、`streamMs`、`retryAttempt`、网络诊断
+（`networkCategory`、`networkCode`、`networkSyscall`、`networkHost`、
+`networkRoute`）以及请求关联字段（`requestMessages`、`requestBytes`、
+`compactionGeneration`）。
+对于持续的 429，
 `retryAttempt` 为 `5`；对于持续的非 429 瞬时故障，它为 `4`。凭据与不受限制的
-响应正文永远不会进入事件或日志。
+响应正文永远不会进入事件或日志。每次重试都会新建请求、流和 `AbortController`；
+重试唯一共享的状态是进程级 undici dispatcher。当同一来源在一轮内连续两次没有
+任何响应、且新尝试仍无法到达它时，下一次尝试前会重建一次传输（每 30 秒最多一次，
+`dns` 除外），避免重试继续复用连接已死的连接池。重建先安装替换、再优雅关闭旧
+的 dispatcher，并复现已配置的链路，因此其他会话正在进行的请求仍会在原连接池上
+完成，代理也不会被悄悄丢弃。
 
 ### 5e。静默回合恢复
 
-以没有工具调用且没有可见辅助文本结束的回合是不可见的
+以没有工具调用且没有可见辅助文本结束的普通回合是不可见的
 对用户：推理永远不会呈现，因此结论只写在那里
 没有到达。 255 个录制的会话中有 15 个以这种方式结束了一个回合，并且
 用户唯一的办法就是输入“继续”。
@@ -229,7 +238,26 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 可重试的 `EMPTY_MODEL_RESPONSE`，它为转录本提供正常的重试
 行动。在这两种情况下都不会保留空的助理消息。
 
-决定D193；参见 E2E-146。
+Host 账本完成通知（ADR 0239、D446）是唯一例外：其提示已经允许无需确认。
+Main 按 ID 从账本读取排队消息、检查目标会话，再构造来源元数据。只有
+`kind: completion`、目标为当前会话、消息 ID 和回复目标 ID 均非空时，运行时
+才接受静默。静默的通知回复正常发出完成消息和终止生命周期，不重试、不报告
+`EMPTY_MODEL_RESPONSE`。提供商错误和中止仍按原规则处理，同一次尝试的
+provider 重试保留例外；原任务及结果不被改写，完成通知不会要求再次回调。
+
+例外只覆盖通知自己的那条回复：本次运行第一条结算的 assistant 回复会消耗它，
+无论该回复是静默、有文本还是工具批次。因此紧随工具结果之后的回复按本节普通
+规则处理；被接受的 steering 消息一旦进入模型上下文，例外立即撤销，所以对
+用户的回复保留完整的重跑与报错路径。每次新运行都按提示的来源信息重新计算。
+普通用户输入、task/message 投递、复制的来源文本和恢复的历史记录都不能开启它。
+
+被接受的静默回复仍然不值得重发。Main 会把它持久化为一条空的已完成行（转录
+隐藏该行，host 不存文本），但运行时不把它写入自己的条目和 pi 的转录状态，
+上下文投影也会丢弃没有内容块的 assistant，与恢复转录时的处理完全一致。因此
+下一次 provider 请求不会带上空的 assistant 消息。
+
+决定 D193 与 D446（ADR 0239 修订段）；参见 E2E-146 与
+E2E-SESSION-completion-notice-allows-silence。
 
 ### 5. 1 上下文检查点保护（D158/D203、ADR 0030/0049/0061/0064）
 
@@ -338,12 +366,17 @@ Headroom 是 16,384 个代币储备底线的最大值，模型最大输出
 可配置。
 
 传入的用户提示先于第一个提供商参与预算
-请求。如果在自动阈值或溢出期间正常压缩失败
+请求。自动摘要请求在有界的 pi-ai 重试策略下重试瞬时的提供商失败
+（3 次重试，2s/4s/8s 退避，Stop 可取消）；配额、鉴权等确定性失败立即返回。
+预检守卫按 pi 实际序列化的提示（工具结果已截断）估算大小，而不是按原始消息；
+若该提示仍超出窗口，会恰好尝试一次缩减输入（工具结果截为短前缀、去掉思考块、
+不删除任何消息），之后才放弃摘要（ADR 0282）。如果在自动阈值或溢出期间正常压缩仍然失败
 恢复时，运行时会与之前的恢复检查点保持一个简短的恢复检查点
 摘要（如果可用）和一个适用的积极限制尾部。的
 完整的转录本保持持久且可见，而下一个模型请求
 仅接收恢复检查点和尾部。生命周期事件标记
-这作为 `fallback: "retained_tail"` 因此渲染器可以显示警告
+这作为 `fallback: "retained_tail"`，检查点的 mark 也携带同样的 `fallback`，
+因此渲染器可以显示警告并把转录行标为摘要生成失败，
 而不是虚假的成功。如果无法准备、持久或保留后备
 低于安全预算，用户行和助理错误仍然持久并且
 没有提供商请求开始。提供商报告的上下文溢出是最后一个
@@ -447,7 +480,9 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
 ## 5c。思维能力与流契约
 
 - 规范级别为 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、
-  和 `max`。
+  和 `max`。会话（及子智能体）选择器还接受 `omit`，它不是目录/绑定能力：
+  运行时把智能体记账保持为 `off`，走低层 provider 流，不合成思考覆盖
+  （ADR 0194 / ADR 0295）。
 - 随包的 models.dev 发布快照对于已发布的推理支持具有权威性，
   思维层面的映射、限制、输入模式、定价、标题和适配器
   每个已解决的已知模型的兼容性。
@@ -502,7 +537,8 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
 **目录。** 定义是来自两个来源的 Markdown 文档：`agent-runtime` 中内嵌的五个
 内置函数（`explorer`、`code-reviewer`、`test-runner`、`fixer`、`ui-designer`），以及
 `~/.agents/subagents/*.md` 下的全局用户文档。没有项目级子代理目录，`.pi/agents`
-不会作为能力来源被扫描。用户文档在进入加载器前会根据应用本地启用状态过滤。
+不会作为能力来源被扫描。用户文档在进入加载器前会根据应用本地启用状态过滤，
+内置定义则由加载器按同一份应用本地状态过滤（ADR 0270）。
 Electron main 每次启动加载全局目录，并在 sidecar 参数中传递
 `subagents` / `subagentProviders`，因此编辑定义会在下一次提示时生效。目录上限
 为 `MAX_SUBAGENT_DEFINITIONS`（16）；格式错误或不可读文档只产生启动诊断，
@@ -591,6 +627,45 @@ Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行
 `failed` 和 `aborted` 结果。
 父级终态错误还会中止残留委托、跳过续跑提示，并把会话恢复为空闲，这样
 “继续”不会变成 `AGENT_BUSY`（D352）。
+
+**可恢复的委托（ADR 0279）。** `Task` 接受一个可选的 `resume` 参数，携带同一会话中
+某个已结算委托的 `delegationId`。恢复后的委托是一个新的 `SubagentRun`，以该链此前的
+消息为种子 —— 最初的 `task` 简述，加上这条链产出的每一行 —— 然后再以新的 `task`
+提示它，于是一个已经读过或改过某个文件的委托会从那份上下文继续，而不是从零开始。
+种子完全由 transcript 支撑：链的行恰好是那些 `parentToolCallId` 属于该链某个 `Task`
+调用的行，它们用委托自己的绑定（固定的委托模型未必是会话模型）转换成 provider 消息。
+不保活任何内存对象，也不引入新的事件类型、存储 schema 或工具参数。
+
+一条链是共享同一个委托会话的那些 `Task` 调用的序列：第一次调用，加上此后每一个把更早
+的 `delegationId` 当作 `resume` 传入的调用。运行时在启动时从持久化的 transcript 重建
+链索引 —— 每个 `Task` 行都在 `toolResult.details` 里带着自己的 `delegationId` 与结算
+状态、在 `toolArgs.resume` 里带着被恢复的 id，并在重建时归一化 agent 名 —— 因此可恢复性
+能挺过一次 sidecar 重启。链的身份（`delegateSessionId`）始终留在内部；父级只会传
+`delegationId`，由反向映射解析它。
+
+只有 `completed` 与 `failed` 的链可恢复；`stopped` 和 `aborted` 的运行是终态，只能靠
+新建委托重来；而应用在它还在工作时被关掉的那种运行会重建成 `interrupted`，同样不可
+恢复。只读工具输出超过 `MAX_RESUMABLE_READ_LINES`（50000）的链会从可复用清单里消失，
+且不做链内裁剪，因此恢复绝不会悄悄丢掉历史。注册表按定义名最多保留
+`MAX_RESUMABLE_CHAINS_PER_AGENT`（2）条可复用链，并在每次委托结算时淘汰最久未活动的
+那些；仍在工作的链永不淘汰，所以这个上限只算可复用链，活跃链可以让它暂时超出。
+
+恢复严格限定在同一会话内，且从不排队：对正在运行的委托做恢复是一个工具错误，提示父级
+先用 `TaskWait` 收敛；一条链在任何时刻最多只有一条活跃记录。`model` 与 `resume` 同时
+给出会被拒绝，而恢复后的运行会沿用该链记录的绑定：优先使用链解析出的
+`providerId/modelId` 键，从 transcript 重建的链则按模型 id 匹配；当什么都匹配不上时，
+运行会继续使用定义当前的绑定，并把先前的模型 id 记进它生命周期 details 的
+`modelChangedFrom`。有意换模型意味着新建一个委托。未知 id、属于另一个定义的 id、
+不可恢复的状态、超出读预算的链，以及行已经不在的链，各自返回一个说明原因的工具错误；
+对未知 id，还会一并列出当前可复用的 id。
+
+父级通过系统提示发现可复用的链：那里列出每条链最新的 `delegationId`、它的目标，以及它
+读过的文件最多 `MAX_RESUMABLE_LISTED_FILES`（8）个（超出部分带 `(+N more)` 后缀）。
+清单会在委托结算时围绕既有的提示段落重新组装。对 `MAX_SUBAGENT_CONCURRENCY`、
+`TaskWait`、`TaskList`、`TaskStop` 以及生命周期快照而言，恢复来的运行就是一个普通
+委托。`Task` 的立即返回结果与生命周期 details 会增加 `resumedFrom` 以便追溯；
+transcript 把一条链渲染成它最新 `Task` 卡片下的一段连续多轮对话，不带单独的
+“已恢复”标记。
 
 **模型引脚。** Frontmatter 中的 `model: <provider>/<model>` 在每次启动时于
 Electron main 里解析一次——凭据与 models.dev 快照都在那里——匹配提供商 id、
@@ -687,9 +762,10 @@ Composer 增强使用与 agent 请求相同的已解析提供商绑定和重试�
 
 ### 6.2 OpenCode 会话路由标头
 
-对话、子代理、提示增强以及插件的一次性补全，只要其提供商满足下列任一条件——
-`apiStyle` 为 `opencode_go`、`vendorKey` 为 `opencode` 或 `opencode-go`、
-pi-ai 提供商 id 为上述值之一，或 base URL 的主机为 `opencode.ai`——都会发送：
+对话、子代理、上下文压缩摘要、提示增强以及插件的一次性补全，只要其提供商满足
+下列任一条件——`apiStyle` 为 `opencode_go`、`vendorKey` 为 `opencode` 或
+`opencode-go`、pi-ai 提供商 id 为上述值之一，或 base URL 的主机为
+`opencode.ai`——都会发送：
 
 - `x-opencode-session`：持久的对话 id；调用方没有会话时则为一个按次生成的 UUID
 - `x-opencode-client: pi-desktop`
@@ -701,6 +777,11 @@ pi-ai 提供商 id 为上述值之一，或 base URL 的主机为 `opencode.ai`�
 默认值，也优先于适配器的最后写入。保留键无法冲掉 `x-opencode-session`。这属于
 agent 运行时的职责，与官方 Pi 编码 agent 的归属层保持一致；pi-ai 的 `sessionId`
 流选项并不会发出 `x-opencode-session`。
+
+上下文压缩摘要同样是这一类提供商请求，但 harness 会自行组装其流选项，不会经过
+会话的 stream 函数，因此 agent 运行时把这次标头合并应用到交给压缩的模型集合
+上。该请求携带会话自己的对话 id，而不是 harness 否则会生成的按次 id，这样摘要
+就与它所压缩的对话落在同一个网关后端。
 
 
 ## 7. 系统提示组成
@@ -950,3 +1031,18 @@ sidecar 序列化针对相同标准化路径的 IPC/`sequential` 调用
 
 跟踪差距（MVP 后积压）：更丰富的系统提示组成 (§7) 和
 provider/model 目录发现超出当前有线路径。
+
+### Provider certificate trust (issue #714)
+
+The desktop sidecar starts with Node's `--use-system-ca`, retaining bundled
+roots and inherited `NODE_EXTRA_CA_CERTS`. It uses the OS trust store without
+turning off chain or hostname validation. Restart after updating local trust
+or the extra-CA startup environment. Headless pi-host launch behavior and
+System/Direct/Custom proxy routing are unchanged.
+
+Explicit certificate verification errors are terminal for both setup and
+stream recovery in main sessions and built-in delegates. Their structured
+cause survives adapter message flattening, remains on the final error row,
+and never triggers a provider transport rebuild. Protocol errors such as
+`EPROTO` keep their existing retry behavior. See
+[certificate trust ADR](../../../adr/provider-system-certificates.md).

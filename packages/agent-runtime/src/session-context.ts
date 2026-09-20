@@ -24,12 +24,19 @@ import {
   type ReasoningReplayIdentity,
 } from "./reasoning-replay.js";
 
+/**
+ * Failed, aborted, and deferred assistants are transcript rows, not context.
+ * An assistant with no content blocks is not worth resending either: the
+ * runtime never appends one live, a restored transcript drops them, and a
+ * provider would reject or silently skip it (D446).
+ */
 function isContextMessage(message: AgentMessage): boolean {
   return (
     message.role !== "assistant" ||
     (message.stopReason !== "error" &&
       message.stopReason !== "aborted" &&
-      message.stopReason !== "deferred")
+      message.stopReason !== "deferred" &&
+      message.content.length > 0)
   );
 }
 

@@ -90,6 +90,7 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
           "id": { "type": "string", "minLength": 1 },
           "alias": { "type": "string", "maxLength": 60 },
           "contextWindow": { "type": "integer", "minimum": 1 },
+          "contextWindowSource": { "enum": ["catalog", "user"] },
           "maxTokens": { "type": "integer", "minimum": 1 },
           "thinkingLevels": {
             "type": "array",
@@ -98,7 +99,7 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
           },
           "defaultThinkingLevel": {
             "type": ["string", "null"],
-            "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", null]
+            "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", "omit", null]
           },
           "supportsImages": { "type": ["boolean", "null"] },
           "supportsDocuments": { "type": ["boolean", "null"] },
@@ -118,6 +119,14 @@ provider or model resolution; UI naming and clearing rules are specified in
 [04-ux/08-component-spec](../04-ux/08-component-spec.md). Host-core trims the
 alias, drops a blank one, and enforces the 60-character limit by rejecting an
 over-long alias with `MODEL_ALIAS_TOO_LONG`.
+
+`models[].contextWindowSource` records where the stored `contextWindow` came
+from. `catalog` marks a models.dev snapshot that a later catalog correction may
+replace; `user` marks a number entered in Settings and is never replaced. The
+property is optional, so a config written before the marker stays readable and
+older clients ignore it. Host-core keeps only those two values and drops anything
+else, so an unreadable marker cannot turn into a third state. The resolution rule
+is specified in [13-model-catalog-and-selection](13-model-catalog-and-selection.md) §9.1.
 
 `compatibility.supportsReasoning` and
 `compatibility.supportedThinkingLevels` remain readable for stored-record and
@@ -397,6 +406,7 @@ change for the raw snapshot.
 ## 6. IPC / host methods (provider domain)
 
 - `providers.list`
+- `providers.reorder`
 - `providers.get`
 - `providers.create`
 - `providers.update`
@@ -448,6 +458,22 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
 - `ProviderPublic` excludes raw secrets; includes `hasSecret: boolean` (true
   for **either** credential), `hasOauth: boolean`, the non-secret
   `oauthAccountLabel?: string`, and optional `headers?: Record<string, string>`
+
+### `providers.reorder`
+- in: `{ id: string, targetId: string, placement: "before" | "after" }`
+- out: `{ ok: true }`
+- Atomically move the source relative to the target in the current host list.
+  A missing source/target or invalid placement returns `INVALID_PARAMS` without
+  writing. Moving to the current position is a successful no-op.
+- Persist ordered provider IDs in `kv` at `providers.order`. `providers.list`
+  applies that order before returning rows; absent metadata preserves creation
+  order. New providers follow saved rows in creation order, deleted IDs are
+  ignored, and disabled rows keep their relative position when filtered out.
+- This is a display preference, including for plugin-owned rows. Provider
+  configuration, credentials, enabled state, timestamps and the default model
+  remain unchanged. Plugin configuration write restrictions still apply.
+- Uses the existing `kv` extension boundary; no database migration or protocol
+  version bump. Older applications ignore this metadata.
 
 ### `providers.create` / `providers.update`
 - in: provider fields + optional `secretValue` + optional `oauthAccountLabel`

@@ -126,6 +126,28 @@ export function clampBoundsOriginToWorkArea(
   };
 }
 
+/**
+ * Fits a rect entirely inside a work area for a restore/unmaximize path:
+ * first shrinks the size so it never exceeds the work area, then clamps the
+ * origin so no edge falls off-screen.
+ *
+ * Unlike {@link clampBoundsOriginToWorkArea}, this intentionally shrinks an
+ * oversized rect. A persisted rect can exceed the current work area when the
+ * display scale or the Windows accessibility "text size" changed since it was
+ * saved (issue #544): the OS-reported work area and the window bounds both
+ * live in the same scaled coordinate space, so clamping here keeps the window
+ * fully visible regardless of which scale source inflated it. When the work
+ * area is smaller than the rect, the fitted size wins over any minimum.
+ */
+export function clampBoundsToWorkArea(
+  bounds: WindowBounds,
+  workArea: WindowBounds,
+): WindowBounds {
+  const width = Math.min(bounds.width, workArea.width);
+  const height = Math.min(bounds.height, workArea.height);
+  return clampBoundsOriginToWorkArea({ ...bounds, width, height }, workArea);
+}
+
 export function planWorkPanelReservation({
   baseBounds,
   workArea,

@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/docs",
-  "version": "0.14.8-native.1",
+  "version": "0.15.2-beta.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "build": "vitepress build .",
     "preview": "vitepress preview .",
     "check:locales": "node scripts/check-locales.mjs",
+    "check:docs": "node scripts/check-docs.mjs",
     "test": "node --test"
   },
   "devDependencies": {

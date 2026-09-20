@@ -1,9 +1,9 @@
 # ADR 0022: Application Update Delivery
 
-- Status: Accepted (amended by D364 / ADR 0197)
+- Status: Accepted (amended by D364 / ADR 0197, D450 / ADR 0289)
 - Date: 2026-07-26
 - Deciders: PI-Desktop core
-- Related: D120, D126, D364, D010, ADR 0021, ADR 0197
+- Related: D120, D126, D364, D010, D450, ADR 0021, ADR 0197, ADR 0289
 
 ## Context
 
@@ -20,12 +20,12 @@ download-and-install flow.
    Releases feed, update polling, and install lifecycle. Renderer IPC exposes
    only allowlisted check, state, release-link, and install operations; callers
    cannot supply a feed URL.
-2. Development builds keep updates disabled. Packaged macOS and non-AppImage
-   Linux use manual delivery: discovery stops at `available` and opens the
-   fixed releases page. Windows NSIS and Linux AppImage use in-app download and
-   quit-and-install delivery. Windows portable builds (`PORTABLE_EXECUTABLE_FILE`)
-   use the same notify-and-link path as macOS so an NSIS installer cannot replace
-   a no-install run.
+2. Development builds keep updates disabled. Packaged macOS, Windows NSIS, and
+   Linux AppImage use in-app download and quit-and-install delivery. Non-AppImage
+   Linux (deb/rpm) and Windows portable builds (`PORTABLE_EXECUTABLE_FILE`) use
+   notify-and-link delivery so an NSIS installer cannot replace a no-install
+   run. (Packaged macOS was notify-and-link until D450 / ADR 0289 qualified the
+   signed in-app channel.)
 3. The updater always sets `allowPrerelease = false`. electron-updater would
    otherwise pin prerelease installs (for example `0.2.0-rc.6`) to the same
    custom channel (`rc`) and never offer a newer stable GitHub latest release.
@@ -40,8 +40,7 @@ download-and-install flow.
    cannot be validated.
 6. D126 later lifts D010's macOS-only publication scope and publishes all
    platform artifacts and update manifests produced by the release matrix.
-   macOS remains notify-and-link until a signed in-app channel is separately
-   qualified.
+   D450 / ADR 0289 qualifies the signed macOS in-app channel on that same feed.
 7. Dual-locale product "what's new" text (D164) is maintained in
    `packages/shared` as EN + zh-CN catalogs. Main formats notes for the
    discovered version using the product UI locale and attaches them as optional
@@ -54,14 +53,15 @@ download-and-install flow.
   Settings, and the ambient banner.
 - The sandboxed renderer cannot redirect update traffic or install arbitrary
   packages.
-- Windows NSIS and Linux AppImage can update in-app from published tag feeds;
-  macOS, Linux deb, and Windows portable users install from the release page.
+- Windows NSIS, Linux AppImage, and packaged macOS can update in-app from
+  published tag feeds; Linux deb and Windows portable users install from the
+  release page.
 - Prerelease installs graduate to newer stable releases through the same
   latest feed; a dedicated RC channel is not active.
 - In-app bilingual release highlights ship with the build and follow the
   product locale without a second network surface.
-- Signing, rollback, staged rollout, and optional prerelease-channel policy
-  remain operational follow-ups rather than renderer capabilities.
+- Rollback, staged rollout, and optional prerelease-channel policy remain
+  operational follow-ups rather than renderer capabilities.
 
 ## Alternatives
 
@@ -71,3 +71,10 @@ download-and-install flow.
   installation path.
 - Force one delivery mode on every platform: rejected because installer and
   signing guarantees differ by target.
+
+## Amendment (D450 / ADR 0289)
+
+Official GitHub tag macOS artifacts are Developer ID-signed, notarized, and
+stapled. Packaged macOS therefore uses the same in-app `electron-updater` lane
+as Windows NSIS and Linux AppImage. Local unsigned packaging without a
+certificate remains available (D078).

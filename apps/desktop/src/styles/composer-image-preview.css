@@ -1,0 +1,172 @@
+.composer-image-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 6px;
+  box-sizing: border-box;
+  max-height: min(212px, 30dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.composer-image-attachment { position: relative; width: 88px; height: 88px; }
+.composer-image-attachment-open {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  color: var(--ds-text-secondary);
+  background: var(--ds-bg-elevated);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+.composer-image-attachment-open img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.composer-image-attachment-remove {
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  opacity: 0;
+  color: var(--ds-text-secondary);
+  background: var(--ds-bg-elevated);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+.composer-image-attachment:hover .composer-image-attachment-remove,
+.composer-image-attachment:focus-within .composer-image-attachment-remove { opacity: 1; }
+.composer-image-attachment button:focus-visible { outline: 2px solid var(--ds-text-secondary); outline-offset: 2px; }
+@media (hover: none) {
+  .composer-image-attachment-remove { opacity: 1; }
+}
+
+.composer-image-preview {
+  box-sizing: border-box;
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 24px 32px;
+  border: 0;
+  background: transparent;
+  color: var(--gray-0);
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+}
+
+.composer-image-preview[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.composer-image-preview::backdrop {
+  background: color-mix(in oklab, var(--gray-1000) 92%, transparent);
+}
+
+.composer-image-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.composer-image-preview-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+.composer-image-preview-viewport {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.composer-image-preview-viewport > img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.composer-image-preview-viewport > img[data-dragging] { cursor: grabbing; }
+
+.composer-image-preview-status {
+  margin-block: auto;
+  font-size: var(--text-sm);
+}
+
+.composer-image-preview-controls {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  padding: 4px;
+  border-radius: var(--radius-lg);
+  background: var(--gray-800);
+  font-size: var(--text-sm);
+}
+
+.composer-image-preview button,
+.composer-image-preview a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.composer-image-preview button:disabled { opacity: 0.4; cursor: default; }
+.composer-image-preview button:hover:not(:disabled),
+.composer-image-preview a:hover { background: var(--gray-700); }
+.composer-image-preview button:focus-visible,
+.composer-image-preview a:focus-visible { outline: 2px solid var(--gray-0); outline-offset: 2px; }
+.composer-image-preview output { min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 600px) {
+  .composer-image-preview { padding: 16px; gap: 12px; }
+}

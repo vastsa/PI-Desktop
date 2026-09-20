@@ -963,6 +963,24 @@ pub fn is_desktop_dispatched(tool_name: &str) -> bool {
     tool_name.starts_with("plugin_") || tool_name.starts_with("mcp_")
 }
 
+/// How long host-core waits for Electron main to answer an approved
+/// desktop-dispatched tool. It must outlast every budget Electron enforces
+/// inside it — the plugin tool budget (110s), and the widest MCP leg: a lazy
+/// handshake (10s) plus the whole `tools/list` traversal (30s) plus the call
+/// (100s) — so the innermost layer reports its own timeout instead of being cut
+/// off here (`07-plugins/12-plugin-ipc-and-host-services.md`, ADR 0038).
+/// Mirrored by `DESKTOP_TOOL_DISPATCH_TIMEOUT_MS` in
+/// `packages/shared/src/rpc-timeouts.ts`, which sizes the transport deadline
+/// around it. The admission queue wait happens before this budget starts, so
+/// that transport deadline carries it instead of this constant.
+pub const DESKTOP_TOOL_DISPATCH_TIMEOUT_MS: u64 = 150_000;
+
+/// Dispatch deadline for a desktop-dispatched tool. The sidecar sends no
+/// `timeoutMs` for these tools, so the default is what normally applies.
+pub fn desktop_dispatch_timeout_ms(requested: Option<u64>) -> u64 {
+    requested.unwrap_or(DESKTOP_TOOL_DISPATCH_TIMEOUT_MS)
+}
+
 #[cfg(test)]
 pub async fn execute_tool(
     workspace: Option<&Path>,
@@ -2819,6 +2837,33 @@ mod tests {
 
     fn plain_read(content: &str) -> String {
         hashline::strip_write_markup(content)
+    }
+
+    #[test]
+    fn desktop_dispatch_outlasts_every_electron_budget_it_wraps() {
+        // Copies of the Electron budgets, bound to their sources by
+        // `apps/desktop/test/plugin-timeout-budgets.test.mjs`, which reads both
+        // sides: the plugin tool budget (`PLUGIN_TOOL_TIMEOUT_MS`, 110s) and the
+        // widest MCP leg (`MCP_CONNECT_TIMEOUT_MS` + `MCP_TOOL_DISCOVERY_TIMEOUT_MS`
+        // + `MCP_CALL_TIMEOUT_MS`). host-core must not give up first, or a tool
+        // that is still inside its own budget (e.g. an `agent.complete` call, or
+        // an MCP call that first pays a lazy handshake and a catalog traversal)
+        // gets TOOL_TIMEOUT.
+        const PLUGIN_TOOL_TIMEOUT_MS: u64 = 110_000;
+        const MCP_CONNECT_TIMEOUT_MS: u64 = 10_000;
+        const MCP_TOOL_DISCOVERY_TIMEOUT_MS: u64 = 30_000;
+        const MCP_CALL_TIMEOUT_MS: u64 = 100_000;
+
+        assert_eq!(
+            desktop_dispatch_timeout_ms(None),
+            DESKTOP_TOOL_DISPATCH_TIMEOUT_MS
+        );
+        assert!(desktop_dispatch_timeout_ms(None) > PLUGIN_TOOL_TIMEOUT_MS);
+        assert!(
+            desktop_dispatch_timeout_ms(None)
+                > MCP_CONNECT_TIMEOUT_MS + MCP_TOOL_DISCOVERY_TIMEOUT_MS + MCP_CALL_TIMEOUT_MS
+        );
+        assert_eq!(desktop_dispatch_timeout_ms(Some(5_000)), 5_000);
     }
 
     #[cfg(unix)]

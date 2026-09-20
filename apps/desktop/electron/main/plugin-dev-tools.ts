@@ -6,7 +6,7 @@ import {
   scaffold,
   type CheckResult,
 } from "@pi-desktop/plugin-devkit";
-import { resolveWithinRoot } from "./fs-panel";
+import { resolveWithinRoot } from "@pi-desktop/host-runtime";
 import type { AgentSidecar, LocalToolResult } from "./agent-sidecar";
 
 /**

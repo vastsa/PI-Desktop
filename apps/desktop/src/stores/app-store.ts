@@ -37,6 +37,7 @@ import {
   ErrorCodes as SharedErrorCodes,
   initialThinkingLevelForBinding,
   modeForProposalKind,
+  migrateKeybindingOverrides,
   modelIdsMatch,
   normalizeMode,
   normalizeProposalKind,
@@ -100,11 +101,7 @@ import {
 import { settleStoppedAssistantMetrics } from "../lib/context-usage";
 import { formatToolValue } from "../lib/tool-display";
 import { withReviewChangeState } from "../lib/workspace-review";
-import {
-  fileWorkPanelTab,
-  shouldOpenReviewArtifact,
-  toolWorkPanelTab,
-} from "../lib/work-panel-tabs";
+import { preferredFileWorkPanelTab } from "../lib/work-panel-tabs";
 import {
   clearSessionPermissions,
   enqueuePermission,
@@ -139,9 +136,8 @@ import {
   type ComposerPrefill,
 } from "../lib/composer-smart-stop";
 import {
-  clearQueuedPromptSendNow,
   enqueueQueuedPrompt,
-  prioritizeQueuedPrompt,
+  promoteQueuedPrompt,
   queuedPromptForSession,
   removeQueuedPrompt,
   type QueuedPrompt,
@@ -173,8 +169,6 @@ import type {
   ToastOptions,
   ToastVariant,
 } from "./app-state";
-import { createAnnotationSlice } from "./slices/annotation-slice";
-import { createSideChatSlice } from "./slices/side-chat-slice";
 import { createSessionSlice } from "./slices/session-slice";
 import { createQueueSlice } from "./slices/queue-slice";
 import { createTranscriptSlice } from "./slices/transcript-slice";
@@ -318,12 +312,13 @@ export type AppState = import("./app-state").AppState;
 function openPlanArtifact(
   proposal: PlanProposal,
   openWorkPanelTabForSession: AppState["openWorkPanelTabForSession"],
+  pluginViews: AppState["pluginViews"],
 ) {
   const relativePath = proposal.artifact?.relativePath;
   if (!relativePath) return;
   openWorkPanelTabForSession(
     proposal.sessionId,
-    fileWorkPanelTab(relativePath),
+    preferredFileWorkPanelTab(relativePath, pluginViews),
   );
 }
 
@@ -542,6 +537,10 @@ export const useAppStore = create<AppState>((set, get) => {
               defaultMode: normalizeMode(
                 (settingsRaw as { defaultMode?: unknown }).defaultMode,
               ),
+              // Persisted keybindings can still name the retired window ids
+              // (D438); every renderer reader sees the folded map, and the next
+              // shortcut save writes that shape back.
+              keybindings: migrateKeybindingOverrides(settingsRaw.keybindings),
             }
           : settingsRaw;
         // First-run default per D003: Agent. Never force-rewrite an existing
@@ -673,8 +672,18 @@ export const useAppStore = create<AppState>((set, get) => {
         unreadNotificationCount: notifications.unreadCount,
         sessionOutcomes: latestSessionOutcomes(notifications.notifications),
       });
+
+      // The artifact's surface depends on which plugin views are launchable, and
+      // the launcher list is only read after `ready`. Resolve it before the
+      // restore, so the approval artifact does not fall back to the host file tab
+      // and then take a second tab from `selectSession`.
+      await get().refreshPluginViews();
       for (const proposal of activePendingPlans) {
-        openPlanArtifact(proposal, get().openWorkPanelTabForSession);
+        openPlanArtifact(
+          proposal,
+          get().openWorkPanelTabForSession,
+          get().pluginViews,
+        );
       }
       saveSidebarPreferences(preferencesFromState(get()));
       if (currentWorkspace?.path) {
@@ -721,8 +730,6 @@ export const useAppStore = create<AppState>((set, get) => {
     }
   },
 
-  ...createAnnotationSlice({ get, set }),
-  ...createSideChatSlice({ get, set, commitForkedSession, withoutRecordKey }),
   ...createWorkPanelSlice({
     get,
     set,

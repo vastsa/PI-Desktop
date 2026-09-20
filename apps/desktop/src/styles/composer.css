@@ -9,8 +9,6 @@
   display: flex;
   justify-content: center;
   width: 100%;
-  container-type: inline-size;
-  container-name: composer-stack;
 }
 
 /* Thread mode: floating bottom dock. The transcript already reserves the
@@ -46,15 +44,21 @@
   flex-direction: column;
   align-items: stretch;
   gap: 0;
+  container-type: inline-size;
+  container-name: composer-stack;
   transition: width var(--chat-width-transition, var(--motion-duration-normal) var(--motion-ease-out));
 }
 
-/* Asktool uses the same decision surface as Plan and Goal approval. Its
- * transcript card width is intentionally widened here to align with the
- * composer stack instead of leaving an inset panel above the input. */
+/* Asktool uses the same decision surface as Plan and Goal approval: it is
+ * mounted in the transparent composer dock, so it paints the composer plate
+ * with its shadow rather than the in-flow `--ds-tile` wash (03-permission-ux
+ * §9). Its width is the composer stack's instead of an inset panel above the
+ * input. */
 .composer-stack > .asktool-card {
   width: 100%;
   margin: 0 0 8px;
+  background: var(--ds-bg-composer);
+  box-shadow: var(--ds-shadow-composer);
 }
 
 .composer-queued-prompts {
@@ -123,6 +127,33 @@
 .composer-queued-prompt-send-now:disabled {
   cursor: wait;
   opacity: 0.65;
+}
+
+/* A promoted row ("Send now") starts next: it reads as the head of the queue
+   and locks its own actions until the Host delivers it. */
+.composer-queued-prompt[data-priority="true"] {
+  background: var(--ds-bg-elevated);
+  box-shadow:
+    var(--ds-shadow-composer),
+    inset 2px 0 0 0 var(--ds-accent);
+  color: var(--ds-text-primary);
+}
+
+.composer-queued-prompt[data-priority="true"] .composer-queued-prompt-send-now:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+/* A locked row action stays visible and explains the state instead of going
+   dim: the row is already queued as the next turn. */
+.composer-queued-prompt-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.composer-queued-prompt-action:disabled:hover {
+  background: transparent;
+  color: var(--ds-text-muted);
 }
 
 .composer-shell {
@@ -335,7 +366,12 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 0 0 auto;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.composer-right {
+  justify-content: flex-end;
 }
 
 .composer-right .context-inspector-trigger {
@@ -385,7 +421,11 @@
   min-width: 28px;
 }
 
-.composer-enhance-btn.is-loading {
+/* While enhancing, this control carries a label and leaves the square geometry
+   its idle state gets from `.icon-btn-square`. */
+.icon-btn.composer-enhance-btn.is-loading {
+  width: auto;
+  flex: 0 0 auto;
   cursor: wait;
   padding-inline: 8px;
 }
@@ -452,19 +492,20 @@
 
 .send-btn:disabled {
   opacity: 1;
-  background: color-mix(in oklab, var(--ds-text-primary) 18%, transparent);
-  color: color-mix(in oklab, var(--ds-bg-primary) 92%, transparent);
+  background: var(--ds-send-disabled-bg);
+  color: var(--ds-send-disabled-fg);
 }
 
+/*
+  `.send-btn:disabled` scores (0,2,0), but light paints the *enabled* chip from
+  a `:root[data-theme="light"] .send-btn` rule at (0,3,0), which would strand the
+  disabled state on the near-black enabled fill. The disabled state therefore
+  keeps a light-qualified companion — it reads the same tokens, so a contributed
+  theme can still move the chip, and the built-in paint is unchanged.
+*/
 :root[data-theme="light"] .send-btn:disabled {
-  /* Gold empty-home disabled send ~#8e8e90 solid chip + white arrow */
-  background: #8e8e90;
-  color: #ffffff;
-}
-
-:root[data-theme="dark"] .send-btn:disabled {
-  background: color-mix(in oklab, var(--gray-0) 18%, transparent);
-  color: color-mix(in oklab, var(--gray-900) 70%, transparent);
+  background: var(--ds-send-disabled-bg);
+  color: var(--ds-send-disabled-fg);
 }
 
 .stop-btn {
@@ -520,7 +561,9 @@
 }
 
 /* Plan approval surface. Keep the gate in the composer layer so it remains
-   adjacent to the input and follows the same container width as the dock. */
+   adjacent to the input and follows the same container width as the dock.
+   The dock itself is transparent, so this plate uses the composer elevated
+   fill and shadow rather than the in-flow `--ds-tile` wash. */
 .plan-approval-bar {
   display: grid;
   width: 100%;
@@ -531,7 +574,8 @@
   margin-bottom: 8px;
   padding: 7px 9px;
   border-radius: var(--radius-md);
-  background: var(--ds-tile);
+  background: var(--ds-bg-composer);
+  box-shadow: var(--ds-shadow-composer);
 }
 
 .plan-approval-copy {

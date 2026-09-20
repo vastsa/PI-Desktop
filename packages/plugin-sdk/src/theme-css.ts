@@ -44,68 +44,58 @@ const THEME_ASSET_EXTENSION_PATTERN = new RegExp(
 /**
  * `plugin-asset://<pluginId>/<assetPath>` — how a theme reaches its bytes.
  *
- * The key is an absolute filesystem path; see the encoding note below.
+ * Package-relative keys are written directly. Absolute filesystem keys are
+ * percent-encoded so drive colons and URL delimiters cannot change the lookup.
  */
 export function themeAssetUrl(pluginId: string, assetPath: string): string {
-  // Asset keys are always absolute paths, so they are always percent-encoded:
-  // a path may contain a space, `?`, `#` or a drive colon that the URL parser
-  // would otherwise re-read as something other than a path segment. The
-  // `plugin-asset:` handler decodes it back.
-  return `${THEME_ASSET_SCHEME}://${pluginId}/${encodeURIComponent(assetPath.trim())}`;
+  const normalized = normalizeThemeAssetPath(assetPath);
+  const key = isExternalThemeAssetPath(normalized) ? encodeURIComponent(normalized) : normalized;
+  return `${THEME_ASSET_SCHEME}://${pluginId}/${key}`;
 }
 
 /**
- * Whether a normalized asset key is an absolute filesystem path.
- *
- * Windows drive paths (`C:/art/bg.png`) and POSIX absolute paths (`/art/bg.png`)
- * both count; the host serves them straight from the filesystem.
+ * Whether a normalized asset key names an external filesystem path.
  */
 export function isExternalThemeAssetPath(key: string): boolean {
   return key.startsWith("/") || /^[a-zA-Z]:\//.test(key);
 }
 
 /**
- * Normalize an asset reference to a canonical absolute key: forward slashes, no
- * `file:` prefix, no trailing `./`.
+ * Normalize a theme asset reference to either a package-relative forward-slash
+ * path or an absolute filesystem path. The host distinguishes both forms at
+ * load time and keeps package-local files contained inside the plugin root.
  *
- * A theme asset is **always an absolute path** — `C:/art/bg.png`, `/art/bg.png`, or
- * either spelled as a `file:` URL. Package-relative references are rejected: the
- * host serves theme bytes straight from the filesystem.
+ * Both the declaration in the manifest and the `url()` target inside the sheet
+ * go through this, so `./art/bg.png` and `art/bg.png` are one package asset.
  *
- * Returns an empty string when the value cannot name an asset: a relative path, an
- * unknown scheme, a `.`/`..` segment, or an extension off the whitelist.
+ * Returns an empty string when the value cannot name one: an unknown scheme,
+ * empty or `.`/`..` segment, or an extension off the whitelist.
  */
 export function normalizeThemeAssetPath(value: string): string {
   let raw = value.trim();
   if (/^file:/i.test(raw)) {
-    // Parsed by hand: this module is bundled for the renderer too, and it must not
-    // reach for `node:url`.
     const stripped = raw.replace(/^file:\/\//i, "").replace(/^file:/i, "");
-    const decoded = decodeUriComponentSafe(stripped);
-    raw = /^\/[a-zA-Z]:\//.test(decoded) ? decoded.slice(1) : decoded;
+    try {
+      raw = decodeURIComponent(stripped);
+    } catch {
+      return "";
+    }
+    if (/^\/[a-zA-Z]:\//.test(raw)) raw = raw.slice(1);
   }
   const path = raw
     .replace(/\\/g, "/")
     .replace(/^\.\//, "");
   if (!path) return "";
-  if (!isExternalThemeAssetPath(path)) return "";
-  if (path.split("/").some((segment) => segment === "." || segment === "..")) return "";
+  if (path.includes(":" ) && !isExternalThemeAssetPath(path)) return "";
+  const segments = isExternalThemeAssetPath(path) ? path.split("/").filter(Boolean) : path.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === "..")) return "";
   return THEME_ASSET_EXTENSION_PATTERN.test(path) ? path : "";
 }
 
-/** `decodeURIComponent` that returns the input unchanged when it is not valid. */
-function decodeUriComponentSafe(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
 /**
- * `contributes.themes[].assets` entries name the absolute paths a theme may
- * reference, on the extension whitelist. The host serves them from the filesystem;
- * this only rejects the obviously unusable before anything is read.
+ * `contributes.themes[].assets` entries may be package-relative or absolute
+ * filesystem paths, but must be on the extension whitelist. The host contains
+ * package-relative paths inside the plugin root before serving them.
  */
 export function isThemeAssetPath(value: string): boolean {
   return normalizeThemeAssetPath(value) !== "";

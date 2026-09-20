@@ -2,6 +2,7 @@ import {
   createAssistantMessageEventStream,
   type Api,
   type AssistantMessage,
+  type AssistantMessageEvent,
   type AssistantMessageEventStream,
   type Context,
   type FetchFunction,
@@ -13,7 +14,11 @@ import {
   classifyAgentError,
   type ClassifiedAgentError,
 } from "./agent-errors.js";
-
+import {
+  describeProviderFetchFailure,
+  type ProviderFetchFailure,
+  withProviderFetchFailure,
+} from "./provider-transport-recovery.js";
 /** Maximum number of retries after the first rate-limited request. */
 export const PROVIDER_RATE_LIMIT_MAX_RETRIES = PROVIDER_RETRY_MAX_RETRIES;
 export const PROVIDER_RATE_LIMIT_INITIAL_DELAY_MS = 2_000;
@@ -132,6 +137,8 @@ export type ProviderRetryController = {
   headers: () => Readonly<Record<string, string>> | undefined;
   /** Status captured even when the provider body omits the HTTP code. */
   status?: () => number | undefined;
+  /** Cause captured for the attempt that just failed, when the fetch rejected. */
+  failure?: () => ProviderFetchFailure | undefined;
   onRetry?: (input: {
     error: ClassifiedAgentError;
     phase: ProviderRetryPhase;
@@ -304,24 +311,58 @@ export function delayWithAbort(
   });
 }
 
+/**
+ * Serialized request body size, without ever inspecting the body: only the byte
+ * length is retained, never the content. Request size is the one correlation
+ * signal from the reporter of issue #234 that is safe to keep on every attempt.
+ */
+function requestBodyBytes(body: unknown): number | undefined {
+  if (typeof body === "string") return Buffer.byteLength(body, "utf8");
+  if (body instanceof ArrayBuffer) return body.byteLength;
+  if (ArrayBuffer.isView(body)) return body.byteLength;
+  if (typeof Blob !== "undefined" && body instanceof Blob) return body.size;
+  return undefined;
+}
+
 /** Capture HTTP status/headers, including failed 429 responses that pi-ai's
- * onResponse callback intentionally does not expose. */
+ * onResponse callback intentionally does not expose. The second argument is the
+ * outgoing request size, reported even when the request dies before headers, and
+ * the third is the transport cause of a rejection — the same two signals the
+ * reporter of issue #234 had no way to read. */
 export function captureProviderResponse(
   fetchFn: FetchFunction | undefined,
-  onResponse: (response?: ProviderResponseSnapshot) => void,
+  onResponse: (
+    response?: ProviderResponseSnapshot,
+    requestBytes?: number,
+    failure?: ProviderFetchFailure,
+  ) => void,
 ): FetchFunction {
   const baseFetch = fetchFn ?? globalThis.fetch;
   return async (input, init) => {
     // Clear the previous response before a new fetch. If this request fails
     // before receiving headers, a prior 429 must not classify the new failure.
     onResponse();
-    const response = await baseFetch(input, init);
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      headers[key.toLowerCase()] = value;
-    });
-    onResponse({ status: response.status, headers });
-    return response;
+    const requestBytes = requestBodyBytes(init?.body);
+    try {
+      const response = await baseFetch(input, init);
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key.toLowerCase()] = value;
+      });
+      onResponse({ status: response.status, headers }, requestBytes);
+      return response;
+    } catch (error) {
+      // Last point that still sees the original Error: pi-ai hands the runtime a
+      // flattened `errorMessage`, in which the errno undici keeps in
+      // `error.cause` is already gone (issue #234). Describing it here does not
+      // change the rejection the provider sees.
+      onResponse(
+        undefined,
+        requestBytes,
+        describeProviderFetchFailure(error, input),
+      );
+      throw error;
+    }
   };
 }
 
@@ -410,9 +451,13 @@ export function createProviderRetryStream(
             typeof event.error.errorMessage === "string"
               ? event.error.errorMessage
               : event.error;
-          const error = classifyProviderError(
-            errorMessage,
-            controller.status?.(),
+          // Fold in the cause the fetch wrapper captured for this attempt: the
+          // message pi-ai hands over is already flattened, so without it the
+          // retry indicator and the terminal error read `fetch failed` with no
+          // errno (issue #234).
+          const error = withProviderFetchFailure(
+            classifyProviderError(errorMessage, controller.status?.()),
+            controller.failure?.(),
           );
           if (!limitRepairTried && isOpaqueBadRequest(error)) {
             opaqueLimitRejection = error;
@@ -488,4 +533,137 @@ export function createProviderRetryStream(
   });
 
   return outer;
+}
+
+/**
+ * Default zero-event idle budget for a provider stream: a stream that emits
+ * nothing for this long is ended as a retriable stream failure so the shared
+ * transient retry path re-runs the request instead of leaving the turn hung on
+ * a connection the provider never closes.
+ */
+export const STREAM_IDLE_TIMEOUT_DEFAULT_MS = 180_000;
+
+/**
+ * The smallest idle budget a positive override may set. The watchdog wraps the
+ * whole retry adapter, so the backoff wait between two attempts is zero-event
+ * time to it: a budget below the largest retry delay would end a turn that is
+ * pacing exactly as the provider asked it to. `0` still disables the watchdog
+ * outright — this floor only clamps a positive override.
+ */
+export const STREAM_IDLE_TIMEOUT_FLOOR_MS = PROVIDER_RATE_LIMIT_MAX_DELAY_MS;
+
+/**
+ * `PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS` overrides the zero-event idle budget;
+ * `0` disables the watchdog, and any other override is clamped up to
+ * `STREAM_IDLE_TIMEOUT_FLOOR_MS` (see above). A value that is not a number, or
+ * is negative, keeps the default.
+ */
+export function streamIdleTimeoutMs(): number {
+  const raw = process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS;
+  if (raw === undefined || raw.trim() === "") {
+    return STREAM_IDLE_TIMEOUT_DEFAULT_MS;
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    return STREAM_IDLE_TIMEOUT_DEFAULT_MS;
+  }
+  if (value === 0) return 0;
+  return Math.max(STREAM_IDLE_TIMEOUT_FLOOR_MS, Math.floor(value));
+}
+
+function streamIdleTimeoutMessage(timeoutMs: number): string {
+  return `stream stalled: no provider events for ${timeoutMs}ms`;
+}
+
+/**
+ * Zero-event idle watchdog around a provider stream. Every event resets the
+ * timer and total stream duration is never limited, so a long but productive
+ * stream is forwarded unchanged. A stream that stays silent for `timeoutMs` is
+ * ended as a `STREAM_FAILED`-classified error result — the same shape a dropped
+ * socket produces — so the existing transient retry budget picks it up instead
+ * of adding a second recovery path.
+ *
+ * `onStall` is the caller's chance to *stop* what this watchdog abandons, and a
+ * caller that can must pass it. The wrapper sits outside the retry adapter, so
+ * `inner` is that adapter: draining it without aborting it lets it wake from a
+ * backoff and open a second request for the same turn while the runtime is
+ * already re-running the turn — two provider requests and two bills for one
+ * answer. Aborting the request's own signal is what makes the adapter's next
+ * attempt refuse to start and its backoff sleep reject. The abandoned stream is
+ * drained either way, so its queued events are released rather than left to
+ * pile up behind a consumer that has stopped reading.
+ */
+export function withStreamIdleTimeout(
+  inner: AssistantMessageEventStream,
+  model: Model<Api>,
+  timeoutMs: number,
+  onStall?: () => void,
+): AssistantMessageEventStream {
+  if (timeoutMs <= 0) return inner;
+  const outer = createAssistantMessageEventStream();
+
+  void (async () => {
+    const iterator = inner[Symbol.asyncIterator]();
+    for (;;) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const idle = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(streamIdleTimeoutMessage(timeoutMs))),
+          timeoutMs,
+        );
+      });
+      let step: IteratorResult<AssistantMessageEvent>;
+      try {
+        step = await Promise.race([iterator.next(), idle]);
+      } catch {
+        clearTimeout(timer);
+        // Stop before draining: the abort is what keeps the adapter from
+        // starting another request behind the retry the runtime is already
+        // running (see the doc comment above).
+        onStall?.();
+        drainAbandonedStream(iterator);
+        const message = setupErrorMessage(
+          model,
+          new Error(streamIdleTimeoutMessage(timeoutMs)),
+          false,
+        );
+        outer.push({ type: "error", reason: "error", error: message });
+        outer.end(message);
+        return;
+      }
+      clearTimeout(timer);
+      if (step.done) {
+        outer.end(await inner.result());
+        return;
+      }
+      outer.push(step.value);
+      if (step.value.type === "done" || step.value.type === "error") {
+        return;
+      }
+    }
+  })().catch((error) => {
+    // The driver only rejects on a programming error; surface it the way the
+    // retry adapter does so a consumer never waits on a dead wrapper.
+    const message = setupErrorMessage(model, error, false);
+    outer.push({ type: "error", reason: "error", error: message });
+    outer.end(message);
+  });
+
+  return outer;
+}
+
+/** Keep consuming an abandoned stream so its queued events are released. */
+function drainAbandonedStream(
+  iterator: AsyncIterator<AssistantMessageEvent>,
+): void {
+  void (async () => {
+    try {
+      for (;;) {
+        const step = await iterator.next();
+        if (step.done) return;
+      }
+    } catch {
+      // The stalled stream's own late failures are not ours to surface.
+    }
+  })();
 }

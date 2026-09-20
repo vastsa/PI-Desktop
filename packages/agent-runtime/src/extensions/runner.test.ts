@@ -156,6 +156,36 @@ export default function (pi: any) {
     expect(result.content).toEqual([{ type: "text", text: "cc-1" }]);
   });
 
+  it("registerProvider is the same plugin-owned shape as registerAgent", async () => {
+    // The upstream alias takes a `complete` implementation as readily as a
+    // stream, in both of its call forms.
+    const ext = spec(
+      "provider",
+      `export default function (pi: any) {
+  const complete = async (model: any) => ({
+    role: "assistant", content: [{ type: "text", text: model.id }],
+    api: model.api, provider: model.provider, model: model.id,
+    usage: { input: 0, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 1,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+    stopReason: "stop", timestamp: Date.now(),
+  });
+  pi.registerProvider({ id: "object-form", name: "Object form", models: [{ id: "obj-1" }], complete });
+  pi.registerProvider("pair-form", { name: "Pair form", models: [{ id: "pair-1" }], complete });
+}`,
+    );
+    const { bridge } = fakeBridge();
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    const reports = await runner.load();
+    expect([...reports[0].agentNames].sort()).toEqual(["object-form", "pair-form"]);
+    expect(runner.getDiagnostics()).toEqual([]);
+
+    const pair = runner.getAgents().find((agent) => agent.id === "pair-form");
+    expect(pair?.models[0].id).toBe("pair-1");
+    const result = await pair!.stream(pair!.models[0], {} as any).result();
+    expect(result.content).toEqual([{ type: "text", text: "pair-1" }]);
+  });
+
+
   it("keeps loading when one module throws and reports the error", async () => {
     const bad = spec("bad", `throw new Error("boom at load");`);
     const noDefault = spec("nodefault", `export const x = 1;`);

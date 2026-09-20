@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import type { AppSettings, PluginMarketSource } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { Input, Select } from "../ui";
+import { HelpIcon, Input } from "../ui";
+import { SettingsMenuSelect } from "../settings/SettingsMenuSelect";
 
 type MarketplaceSourceSettingsProps = {
   settings: AppSettings;
@@ -65,28 +66,30 @@ export function MarketplaceSourceSettings({
           </h2>
         </div>
         <div className="plugins-market-settings-control">
-          <Select
+          <SettingsMenuSelect
+            label={t("settings.marketProvider")}
             value={source}
-            aria-label={t("settings.marketProvider")}
-            onChange={(event) =>
+            onChange={(id) =>
               void applySource({
-                pluginMarketSource: event.target.value as PluginMarketSource,
+                pluginMarketSource: id as PluginMarketSource,
               })
             }
-          >
-            <option value="official">{t("settings.marketProviderOfficial")}</option>
-            <option value="mirror">{t("settings.marketProviderMirror")}</option>
-            <option value="custom">{t("settings.marketProviderCustom")}</option>
-          </Select>
+            options={[
+              { id: "official", label: t("settings.marketProviderOfficial") },
+              { id: "github", label: t("settings.marketProviderGithub") },
+              { id: "mirror", label: t("settings.marketProviderMirror") },
+              { id: "custom", label: t("settings.marketProviderCustom") },
+            ]}
+          />
         </div>
       </div>
 
       {source === "custom" ? (
         <div className="plugins-market-settings-row">
           <div className="plugins-market-settings-copy">
-            <div className="settings-row-title">{t("settings.marketCustomUrl")}</div>
-            <div className="settings-row-desc">
-              {t("settings.marketCustomUrlDesc")}
+            <div className="settings-row-title">
+              {t("settings.marketCustomUrl")}
+              <HelpIcon label={t("settings.marketCustomUrlDesc")} />
             </div>
           </div>
           <div className="plugins-market-settings-control">

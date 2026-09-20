@@ -1,13 +1,15 @@
 import {
   ErrorCodes as SharedErrorCodes,
-  THINKING_LEVELS,
+  SESSION_THINKING_LEVELS,
   defaultCommandShellForPlatform,
   isCommandShellId,
   modelIdsMatch,
+  resolveBindingContextWindow,
   validateNetworkProxy,
+  validateSpeechSettings,
   type CommandShellId,
   type ModelBinding,
-  type ThinkingLevel,
+  type SessionThinkingLevel,
 } from "@pi-desktop/shared";
 import {
   capabilitiesFromModelConfig,
@@ -51,7 +53,7 @@ export type RuntimeProvider = {
 export type RuntimeSession = {
   providerId?: string;
   modelId?: string;
-  thinkingLevel?: ThinkingLevel;
+  thinkingLevel?: SessionThinkingLevel;
 };
 
 export type SessionCapabilityDefaults = {
@@ -91,9 +93,13 @@ export function createProviderCatalogRuntime({
     modelId: string,
     catalogModelConfig: Parameters<typeof modelConfigWithBinding>[0],
   ) => {
-    const modelConfig = modelConfigWithBinding(
+    const resolved = resolveBindingContextWindow(
       catalogModelConfig,
       bindingForModel(provider, modelId),
+    );
+    const modelConfig = modelConfigWithBinding(
+      resolved.catalogConfig,
+      resolved.binding,
     );
     return {
       modelConfig,
@@ -113,23 +119,37 @@ export function createProviderCatalogRuntime({
       "";
     const storedModel = bindingForModel(provider, modelId);
     const modelsDevModel = modelsDevModelFor(provider, modelId);
-    const modelConfig = modelConfigWithBinding(
+    const resolved = resolveBindingContextWindow(
       modelsDevModel
         ? modelConfigFromModelsDev(modelsDevModel, provider.baseUrl)
         : genericModelConfig(modelId, provider.baseUrl ?? ""),
       storedModel,
     );
+    const modelConfig = modelConfigWithBinding(
+      resolved.catalogConfig,
+      resolved.binding,
+    );
     const models = provider.models?.map((binding) => {
       const catalogModel = modelsDevModelFor(provider, binding.id);
       if (!catalogModel) return binding;
-      const effective = modelConfigWithBinding(
+      const bindingResolved = resolveBindingContextWindow(
         modelConfigFromModelsDev(catalogModel, provider.baseUrl),
         binding,
+      );
+      const effective = modelConfigWithBinding(
+        bindingResolved.catalogConfig,
+        bindingResolved.binding,
       );
       return {
         ...binding,
         contextWindow: effective.contextWindow,
         maxTokens: effective.maxTokens,
+        // An inherited window keeps its catalog provenance on the exposed row,
+        // so saving this form cannot freeze a models.dev value into a snapshot
+        // of its own.
+        ...(bindingResolved.binding.contextWindowSource
+          ? { contextWindowSource: bindingResolved.binding.contextWindowSource }
+          : {}),
       };
     });
     return {
@@ -146,10 +166,10 @@ export function createProviderCatalogRuntime({
     };
   };
 
-  const normalizeThinkingLevel = (value: unknown): ThinkingLevel =>
+  const normalizeThinkingLevel = (value: unknown): SessionThinkingLevel =>
     typeof value === "string" &&
-    (THINKING_LEVELS as readonly string[]).includes(value)
-      ? (value as ThinkingLevel)
+    (SESSION_THINKING_LEVELS as readonly string[]).includes(value)
+      ? (value as SessionThinkingLevel)
       : "off";
 
   const normalizeSettings = <T>(
@@ -190,6 +210,11 @@ export function createProviderCatalogRuntime({
         });
       }
       value.networkProxy = proxy.value;
+    }
+    if (Object.prototype.hasOwnProperty.call(value, "speech")) {
+      (value as T & { speech?: unknown }).speech = validateSpeechSettings(
+        (value as { speech?: unknown }).speech,
+      );
     }
     return settings;
   };
@@ -283,11 +308,15 @@ export function createProviderCatalogRuntime({
     }
     const { provider, modelId } = target;
     const catalogModel = modelsDevModelFor(provider, modelId);
-    const modelConfig = modelConfigWithBinding(
+    const resolved = resolveBindingContextWindow(
       catalogModel
         ? modelConfigFromModelsDev(catalogModel, provider.baseUrl)
         : genericModelConfig(modelId, provider.baseUrl ?? ""),
       bindingForModel(provider, modelId),
+    );
+    const modelConfig = modelConfigWithBinding(
+      resolved.catalogConfig,
+      resolved.binding,
     );
     return {
       ...session,

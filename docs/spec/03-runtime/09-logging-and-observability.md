@@ -29,6 +29,10 @@ Default runtime level:
 | audit | sensitive permission, tool, and plugin actions | host-core SQLite `audit_log` table |
 | plugin | per-plugin logs | `~/.pi-desktop/plugins/logs/<id>.log` |
 
+
+The `~/.pi-desktop` paths above are the packaged installation's. A development
+build writes the same tree under `~/.pi-desktop-dev`, and `PI_DESKTOP_DATA_DIR`
+replaces either root (D599).
 `app`, `host`, and `agent` are NDJSON files written by the Electron main
 `Logger` (`apps/desktop/electron/main/logger.ts`). Host and agent stderr lines
 are wrapped into records on their channel. The audit channel is stored in
@@ -51,7 +55,33 @@ The application categories are:
 - `provider` — provider/model discovery, retries, and cache failures
 - `persistence` — transcript and outbox persistence failures
 - `updater` — updater diagnostics and errors
-- `diagnostics` — blocked navigation, menu, and template diagnostics
+- `diagnostics` — blocked navigation, menu, template, and outbound-fetch
+  diagnostics. The skill market's two channels record one
+  `skillMarket.sourceFailed` / `skillMarket.documentFailed` record per source
+  or document that produced nothing, with `source`, `host`, `kind`, `address`
+  and — for a guard refusal — `reason`, `addressKind` and `route` in `data`. `kind`
+  is `policy` when the guard judged the target's own address, `fake-ip` when it
+  judged a placeholder the local proxy invented for the name (Clash's
+  `198.18.0.0/15`), `unresolved` when the local resolver returned no answer, and
+  `network` otherwise; `code` is `NETWORK_POLICY_BLOCKED` for the first two and
+  `NETWORK_RESOLVE_FAILED` for the third, so one log line separates "the address
+  is not public" from "a proxy answered with a fake-IP" from "the resolver
+  answered nothing". `reason` names the guard's own branch (`url-syntax`,
+  `resolve-failed`, `non-public-address`, `redirect-limit`), `addressKind` the
+  class of the refused address (`benchmark` for a TUN fake-IP, `private` for
+  RFC1918), and `route` the route that address was judged on (`proxied`, `direct`,
+  or `unknown` when the transport reported no readable route), so a fake-IP
+  refusal on a direct route reads apart from one on a route nobody could read
+  (ADR 0272). The record carries the host name, the address it resolved to, that
+  class and that route — never the URL, its path, query or credentials — because a
+  catalog source URL is user-supplied and the refused host and address are the
+  whole diagnostic value (issue #419). After a Chromium-process crash, the next
+  launch writes one `crashDumpsFound` record (`error` if any new dump is the
+  browser/main process, `warn` otherwise) with `count`, `total`,
+  `byProcessType`, `directory`, and `newestMtimeMs`. A recovered renderer crash
+  is therefore not reported as the previous app run aborting. A scan failure is
+  one `crashDumpReportFailed` warn and never blocks the first window (D602).
+
 - `runtime` — host/sidecar lifecycle, uncategorized child output, and
   main-process `uncaughtException` / `unhandledRejection` records
 
@@ -178,8 +208,11 @@ There is no remote telemetry pipeline or cloud crash analytics in the MVP.
 - app/host/agent category logs: rotate each category file at 5 MB and keep two
   rotated files beside it (`<category>.1.log`, `<category>.2.log`);
 - audit log (SQLite): retained with the database and pruned according to the
-  host retention policy; and
+  host retention policy;
+- Crashpad minidumps in `<data_dir>/crash-dumps` are not rotated by the
+  logger; they remain until the user deletes them; and
 - rotation and logging failures must never fail the caller.
+
 
 Session transcripts are user data and are not deleted by log rotation.
 

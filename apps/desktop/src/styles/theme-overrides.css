@@ -20,12 +20,6 @@
   letter-spacing: var(--tracking-tighter);
 }
 
-.page-subtitle {
-  margin-top: 6px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-md);
-}
-
 .page-card {
   border-radius: var(--radius-lg-plus);
   background: var(--ds-tile);
@@ -66,19 +60,28 @@
  * identical in both conversation states. */
 :root[data-theme="light"] .composer-toolbar .icon-btn,
 :root[data-theme="light"] .mode-chip {
-  color: color-mix(in oklab, #1a1c1f 84%, transparent) !important;
+  color: color-mix(in oklab, var(--ds-text-primary) 84%, transparent) !important;
 }
 
 :root[data-theme="light"] .composer-input::placeholder,
 :root[data-theme="light"] .composer-placeholder {
-  /* Gold empty-home placeholder ink ~#525355–#58595b */
-  color: #4a4c4f;
-  -webkit-text-fill-color: #4a4c4f;
+  /* Gold empty-home placeholder ink (--ds-placeholder-ink). */
+  color: var(--ds-placeholder-ink);
+  -webkit-text-fill-color: var(--ds-placeholder-ink);
   opacity: 1;
 }
 
+/*
+  This rule looks redundant next to the tokenized base rule, but it keeps the
+  cascade the light theme already had: at (0,3,0) it out-specifies
+  `.tool-row-content.is-error` (0,2,0) and ties with
+  `.tool-block.is-plain .tool-row-content` (0,3,0) by winning on import order.
+  Dropping it would tint error output and give plain tool blocks a fill in light
+  only. Reading the token keeps the built-in paint identical while letting a
+  contributed theme move the light tile (issue #341).
+*/
 :root[data-theme="light"] .tool-row-content {
-  background: color-mix(in oklab, #1a1c1f 2%, transparent);
+  background: var(--ds-tool-row-bg);
 }
 
 .footer-notification {
@@ -259,9 +262,11 @@
   color: var(--ds-text-secondary) !important;
 }
 
+/* Tone and truncation only. The label-driven chip sets its own padding with
+   `!important`, so the inline padding that used to sit here only ever widened
+   the icon-only controls in this row. */
 .composer-right .icon-btn {
   max-width: 220px;
-  padding: 0 10px;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm);
 }

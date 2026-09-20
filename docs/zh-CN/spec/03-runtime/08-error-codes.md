@@ -68,6 +68,8 @@ type AppError = {
 | `APPROVAL_STALE` | 不 | RACP：审批已被处理或属于更早的回合 |
 | `PAYLOAD_TOO_LARGE` | 不 | RACP：帧超过协商的大小上限 |
 | `TIMEOUT` | 是的 | 通用超时 |
+| `NETWORK_POLICY_BLOCKED` | 不 | 主进程公网策略守卫拒绝了一次抓取,因为它**判定了**目标：URL 未通过公网 HTTPS 语法检查,或本地 DNS 解析返回了策略判定为非公网的地址——其中包括本地代理生成的 fake-IP 占位地址（ADR 0243）。仅桌面端使用；拒绝即判定,因此在地址改变前重试不会成功。本地解析完全没有返回答案时改用 `NETWORK_RESOLVE_FAILED`（issue #419）。 |
+| `NETWORK_RESOLVE_FAILED` | 是的 | 主进程公网策略守卫无法判定目标主机：本地 DNS 解析没有返回答案,或在返回前抛错。请求仍与策略拒绝一样被拒,但没有判定任何地址,因此任何界面或日志都不得把它描述成地址校验的判定结果。与 `NETWORK_ERROR` 不同,后者是请求本身的失败。可重试：当解析器或代理开始应答同一主机时,同一请求即可成功（ADR 0243,issue #419）。 |
 | `HOST_SHUTTING_DOWN` | 是的 | 主机收到 EOF 正在排空；调用被拒绝而不是被启动 |
 | `RATE_LIMITED` | 是的 | 某个按调用方计的主机预算（插件会话导入、批量操作）在其窗口内被超出 |
 | `LIMIT_EXCEEDED` | 不 | 载荷超过了固定的主机上限（条目数、字节数）并被拒绝 |
@@ -94,8 +96,11 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `CONTEXT_TOO_LARGE` | 不 | 恢复后 prompt/context 仍超出安全模型预算、发生第二个提供程序溢出或禁用自动恢复 |
 | `CONTEXT_COMPACTION_FAILED` | 不 | 自动保留尾部恢复无法准备、持久或适合检查点，或手动检查点摘要生成/持久追加失败；受保护的下一个提供程序请求不会启动 |
 | `STREAM_FAILED` | 是的 | 提供程序流在完整响应之前终止、提前关闭或以其他方式结束；最多四次同回合重试可能会在终止事件之前发生 |
-| `EMPTY_MODEL_RESPONSE` | 是的 | 模型在没有工具调用且没有可见文本的情况下结束了两次：一次是流式传输，一次是在自动重新运行后（规范 02-agent-runtime §5e） |
+| `EMPTY_MODEL_RESPONSE` | 是的 | 模型在没有工具调用且没有可见文本的情况下结束了两次：一次是流式传输，一次是在自动重新运行后；对 Host 账本完成通知的第一条回复除外（规范 02-agent-runtime §5e、D446） |
 | `PROMPT_ENHANCEMENT_EMPTY` | 不 | 一次性增强模型没有返回任何文本 |
+| `SPEECH_NOT_CONFIGURED` | 不 | 设置里没有绑定转写或朗读 |
+| `SPEECH_PROTOCOL_UNSUPPORTED` | 不 | 语音协议未知或不支持该角色 |
+| `SPEECH_INPUT_TOO_LARGE` | 不 | 语音输入超过 25 MB |
 | `SUBAGENT_IDLE_TIMEOUT` | 不 | 已撤回（D328）：空闲看门狗不再武装；代码仅为已存储结果保留 |
 | `SUBAGENT_DURATION_TIMEOUT` | 不 | 已撤回（D328）：时长看门狗不再武装；代码仅为已存储结果保留 |
 
@@ -224,6 +229,12 @@ reveal 不并入任何行，必须重新读取。
 | `PLUGIN_MARKET_INVALID` | 不 | 市场目录格式错误或缺少必需的发布字段 |
 | `PLUGIN_MARKET_UNTRUSTED_HOST` | 不 | 目录或包 URL 不在可信市场主机之内 |
 | `PLUGIN_MARKET_YANKED` | 不 | 请求的发布版本已从目录中撤回 |
+| `PLUGIN_MARKET_NOT_PUBLISHED` | 不 | 平台有该版本但尚未对外提供 |
+| `PLUGIN_MARKET_ARCHIVED` | 不 | 插件已被平台下架 |
+| `PLUGIN_MARKET_NOT_FOUND` | 不 | 平台没有该插件或该版本 |
+| `PLUGIN_MARKET_RATE_LIMITED` | 是 | 下载接口要求客户端等待后重试 |
+| `PLUGIN_MARKET_NO_SOURCE` | 也许 | 没有任何分发目标能提供该包 |
+| `PLUGIN_CANCELLED` | 不 | 用户在下载过程中取消了安装 |
 | `MCP_INVALID` | 不 | 用户的 MCP 服务器定义校验失败 |
 | `SKILL_INVALID` | 不 | 用户的技能文档校验失败 |
 | `SUBAGENT_INVALID` | 不 | 用户的子代理文档校验失败 |
@@ -259,6 +270,29 @@ reveal 不并入任何行，必须重新读取。
 同级结果字段中的有界窗口
 （请参阅 [16-工具-结果-限制](/zh-CN/spec/03-runtime/16-tool-result-limits)）。
 
+### 3.8 远程控制（RACP-WS / SSH 引导）
+
+当会话位于经 `RACP-WS` 驱动的已配对远程主机上时，由桌面端的远程主机客户端与
+`pi-host` 服务端发出（参见
+[19-远程代理控制协议](/zh-CN/spec/03-runtime/19-remote-agent-control-protocol)、
+[../05-security/02-remote-control-security](/zh-CN/spec/05-security/02-remote-control-security)、
+ADR 0285）。渲染进程除了一个标识徽章外看不到本地/远程之分；这些码通过与其他调用
+相同的错误对象浮现。
+
+| 码 | 可重试 | 含义 |
+|---|---|---|
+| `HOST_DISCONNECTED` | 是 | 远程主机连接断开；进行中的调用被拒绝，客户端按游标重连并重新订阅 |
+| `HOST_BOOTSTRAP_FAILED` | 否 | 经 SSH 配置远程 `pi-host` 失败（下载、校验和不匹配或 `install.sh`）；`details.reason` 指明阶段 |
+| `HOST_VERSION_MISMATCH` | 否 | 远程 `pi-host` 版本与桌面不匹配；桌面拒绝驱动不兼容的主机 |
+| `REMOTE_AUTH_FAILED` | 否 | 设备或配对令牌在 RACP-WS 升级时被拒 |
+| `REMOTE_CONNECTION_FAILED` | 是 | RACP-WS 传输无法连接（非回环 URL、套接字被拒） |
+| `REMOTE_FORWARD_FAILED` | 是 | 无法建立 SSH 回环端口转发 |
+| `REMOTE_PATH_NOT_FOUND` | 否 | 远程项目/工作区路径在主机上不存在 |
+| `REMOTE_PATH_FORBIDDEN` | 否 | 远程路径在主机允许的根之外 |
+| `PAIRING_FAILED` | 否 | `connection/pair` 无法铸造设备凭据 |
+| `PAIRING_TOKEN_EXPIRED` | 否 | 一次性配对令牌在配对完成前已过期 |
+| `CAPABILITY_UNAVAILABLE` | 否 | 请求的操作对应主机声明为不可用的能力（如附件、工具中继） |
+
 ## 4. 映射规则
 
 ### 主机 RPC 数字 → AppError.code
@@ -289,6 +323,32 @@ Node sidecar 将提供商 SDK 错误映射到：
 不可重试 `PROVIDER_ERROR` 永远不会进入任何预算。预算耗尽后的失败仍然是
 致命的。
 
+`NETWORK_ERROR` 以有界的 `details` 携带真正失败的传输层：
+`networkCategory`（`dns`、`tls`、`timeout`、`refused`、`unreachable`、
+`reset`、`proxy`，或在没有留下任何线索时为 `unknown`）、`networkCode`
+（errno，例如 `ENOTFOUND`、`ECONNRESET`、`EPROTO`、`UND_ERR_SOCKET`），
+以及传输层提供时的 `networkSyscall` 和 `networkHost`。只保留裸主机名——
+绝不包含 URL、端口、路径、查询串或凭据——当 `providerCode` 会重复
+`networkCode` 时省略它。刻意不引入按层划分的错误码（`DNS_ERROR`、
+`TLS_ERROR`、`SOCKET_RESET` 等）：分类字段已能区分这些层，而无需为每一层
+增加用户可见的错误码与本地化文案。
+
+诊断来自 fetch 边界处的实时 cause 链，而不只是提供程序消息：pi-ai 会把被
+拒绝的请求摊平成 `errorMessage`，等到分类运行时 undici 存放在 `error.cause`
+里的 errno 已经消失，裸 `fetch failed` 只能被记为 `networkCategory: unknown`；
+而 fetch 包装层仍持有原始 Error，并从它给出同一组经过校验的字段。捕获到的
+cause 同时确定了阶段：没有任何响应到达时故障记为 `phase: request`，这正是它
+与「响应中途断流」的区别。`networkRoute`（`direct`、`environment-proxy`、
+`http-proxy`、`socks5-proxy`）指出请求实际走的链路，代理这一跳失败无需再从
+errno 猜测。
+
+同一来源在一轮内连续两次这样失败（完全没有响应）时，下一次尝试前会重建提供
+程序传输，而不是继续复用同一个 undici 连接池。重建是进程级的、且有明确边界：
+每个连续失败序列只重建一次，每 30 秒最多一次，且 `dns` 永不触发重建（新连接池
+无法改变名字解析结果）。替换在关闭旧 dispatcher 之前安装，旧的 dispatcher 采
+用优雅关闭，因此其他会话已派发的请求仍会在它原本使用的连接池上完成。生效的
+链路会被原样复现，绝不会悄悄降级为直连。
+
 ### 权限超时
 UI/host 超时在内部发出 `PERMISSION_TIMEOUT`，工具结果向代理显示为拒绝 (`TOOL_DENIED`)。
 
@@ -317,9 +377,15 @@ UI/host 超时在内部发出 `PERMISSION_TIMEOUT`，工具结果向代理显示
 助手错误消息显示本地化摘要和稳定代码，并带有
 包含经过编辑的提供商响应的可访问详细信息披露，
 提供商 ID 和模型 ID。提供商详细信息上限为 600 个字符，并且
-公共 credential/header 值在事件发射之前进行编辑或
+公共 credential/header 值在事件发射或持久化之前进行编辑。
 详细信息披露也可能显示有界的 `phase`、`providerStatus`、`providerCode`、
-`providerWaitMs`、`streamMs` 和 `retryAttempt` 字段。
+`providerWaitMs`、`streamMs`、`retryAttempt`、`networkCategory`、
+`networkCode`、`networkSyscall`、`networkHost`、`networkRoute`、`requestMessages`、
+`requestBytes` 和 `compactionGeneration` 字段。请求字段只有计数与字节大小，
+压缩字段是检查点世代计数器，均不携带消息内容。当瞬时提供商故障正在重试时，
+活动指示器的原因气泡会显示本地化摘要、稳定错误码，并在网络故障时显示传输层
+errno（`NETWORK_ERROR · ENOTFOUND`），因此失败层级在重试期间与日志记录中
+同样可见。
 
 ## 6. i18n 按键约定
 
@@ -346,3 +412,20 @@ errors.<code>.action
    到期、计划拒绝和重新启动中断路径映射到稳定
    代码；仅允许记录的预转目录后备，并且不进行任何工作
    正在重播
+
+### Certificate verification failures (issue #714)
+
+`NETWORK_ERROR` is non-retriable when `details.networkCode` is a recognized
+certificate verification failure, including an untrusted/self-signed chain,
+an expired/not-yet-valid certificate, or `ERR_TLS_CERT_ALTNAME_INVALID`.
+A concrete certificate cause takes precedence over generic socket/proxy
+wrapper codes. Captured fetch causes apply this policy after adapter error
+flattening as well as during direct classification. Unknown and non-certificate
+TLS/protocol errors retain existing recovery behavior.
+
+The transcript keeps the stable error code, transport errno and raw details,
+but uses localized certificate guidance instead of the generic connectivity
+summary. It asks the user to check the certificate, clock, and trusted roots
+used by security software/proxies, then restart after changing trust. It does
+not claim that interception is the only possible cause or offer a TLS bypass.
+Manual Continue remains available after the cause is corrected.

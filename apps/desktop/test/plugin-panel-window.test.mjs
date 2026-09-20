@@ -29,7 +29,10 @@ const bundledPanelSources = [
 test("plugin panels match the cross-platform main-window chrome contract", () => {
   assert.match(hostSource, /frame: false/);
   assert.doesNotMatch(hostSource, /titleBarStyle|trafficLightPosition/);
-  assert.match(hostSource, /backgroundColor: builtinWindowBackground\(request\.theme\)/);
+  assert.match(
+    hostSource,
+    /backgroundColor: widget \? "#00000000" : builtinWindowBackground\(request\.theme\)/,
+  );
   assert.match(hostSource, /win\.setMenu\(null\)/);
   assert.match(hostSource, /pi-plugin-panel-development=1/);
   assert.match(chromeSource, /PLUGIN_PANEL_TITLEBAR_HEIGHT = 46/);
@@ -84,7 +87,9 @@ test("plugin panels expose host-owned dropped-file authorization", () => {
 test("plugin panel close does not read destroyed webContents", () => {
   assert.match(
     hostSource,
-    /const webContentsId = win\.webContents\.id;\s*win\.on\("closed", \(\) => \{\s*this\.pendingDrops\.delete\(webContentsId\);/,
+    /const webContentsId = win\.webContents\.id;\s*if \(widget\) this\.widgetLocales\.set\(webContentsId, request\.locale\);\s*win\.on\("closed", \(\) => \{\s*this\.pendingDrops\.delete\(webContentsId\);/,
+    // The widget locale is cleared with the same captured id, never through a
+    // destroyed webContents object.
   );
   const closedHandler = hostSource.slice(
     hostSource.indexOf('win.on("closed"'),
@@ -164,4 +169,58 @@ test("checked-in plugin panels follow the host chrome contract", () => {
     assert.match(panelSource, /var\(--pi-plugin-titlebar-height, 46px\)/);
     assert.doesNotMatch(panelSource, /top:\s*0/);
   }
+});
+
+test("floating widgets are transparent, chromeless, and still dismissible", () => {
+  // The manifest field has to reach the window: transparent surface, no band,
+  // no capsule, and a smaller minimum than a panel's.
+  assert.match(chromeSource, /PLUGIN_PANEL_WIDGET_ARGUMENT = "--pi-plugin-panel-widget=1"/);
+  assert.match(
+    chromeSource,
+    /PLUGIN_PANEL_WIDGET_MIN_SIZE = \{ width: 120, height: 120 \} as const/,
+  );
+  assert.match(chromeSource, /PLUGIN_PANEL_MIN_SIZE = \{ width: 360, height: 280 \} as const/);
+  assert.match(hostSource, /const widget = request\.shape === "widget";/);
+  assert.match(hostSource, /transparent: widget,/);
+  assert.match(hostSource, /backgroundColor: widget \? "#00000000"/);
+  assert.match(hostSource, /hasShadow: !widget,/);
+  assert.match(hostSource, /skipTaskbar: widget,/);
+  assert.match(hostSource, /maximizable: !widget,/);
+  assert.match(hostSource, /resizable: request\.resizable \?\? !widget,/);
+  assert.match(hostSource, /alwaysOnTop: widget && request\.alwaysOnTop === true,/);
+  assert.match(hostSource, /\.\.\.\(widget \? \[PLUGIN_PANEL_WIDGET_ARGUMENT\] : \[\]\),/);
+
+  // The preload owns the placement: titlebar height 0, no capsule, and a drag
+  // map over the whole window instead of the 46px band.
+  assert.match(preloadSource, /function isWidgetPanel\(\): boolean/);
+  assert.match(
+    preloadSource,
+    /isEmbeddedPanel\(\) \|\| isWidgetPanel\(\) \? 0 : PLUGIN_PANEL_TITLEBAR_HEIGHT/,
+  );
+  assert.match(preloadSource, /isWidgetPanel\(\) \|\| pluginChromeMode\(\) !== "legacy"/);
+  assert.match(preloadSource, /data-pi-plugin-panel-shape/);
+  assert.match(preloadSource, /function installWidgetDragMap\(dragRegion: HTMLElement\): void/);
+  assert.match(preloadSource, /host\.dataset\.chromeMode = "widget"/);
+  assert.match(preloadSource, /installWidgetDragMap\(dragRegion\);/);
+  const widgetBranch = preloadSource.slice(
+    preloadSource.indexOf("if (isWidgetPanel()) {"),
+    preloadSource.indexOf("let labels = chromeLabels();"),
+  );
+  assert.ok(widgetBranch.length > 0, "the widget branch must return before the capsule exists");
+  assert.doesNotMatch(widgetBranch, /className = "capsule"/);
+  // The segment map is the only drag route, so its holes must come from the
+  // same no-drag selector the panel band uses.
+  assert.match(preloadSource, /paintThroughDragSegments\(/);
+  assert.match(preloadSource, /paintThroughNoDragRects\(\)/);
+
+  // A widget has no capsule to close it, so the host menu is the way out.
+  assert.match(chromeSource, /"contextMenu",/);
+  assert.match(preloadSource, /invoke\(PLUGIN_PANEL_WINDOW_CONTROL_CHANNEL, "contextMenu"\)/);
+  assert.match(hostSource, /private showWidgetMenu\(window: BrowserWindow\): void/);
+  assert.match(hostSource, /catalogs\[resolveLocale\(locale\)\]\.pluginPanelWidget/);
+  assert.match(hostSource, /private widgetLocales = new Map<number, string>\(\);/);
+  assert.match(hostSource, /if \(widget\) this\.widgetLocales\.set\(webContentsId, request\.locale\);/);
+  assert.match(hostSource, /this\.widgetLocales\.delete\(webContentsId\);/);
+  // A panel that asks for the widget menu gets nothing: only widgets register.
+  assert.match(hostSource, /if \(locale === undefined\) return;/);
 });

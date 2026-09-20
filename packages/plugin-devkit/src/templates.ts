@@ -427,6 +427,9 @@ function panelHtml(vars: TemplateVars): string {
         document.documentElement.dataset.base = base === "light" || base === "dark"
           ? base
           : window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        if (typeof appearance?.locale === "string" && appearance.locale) {
+          document.documentElement.lang = appearance.locale;
+        }
       };
       window.pluginBridge?.on("appearance:changed", applyAppearance);
       window.pluginBridge?.invoke("app.getAppearance").then(applyAppearance).catch(() => applyAppearance(null));

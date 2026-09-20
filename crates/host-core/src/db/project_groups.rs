@@ -142,13 +142,23 @@ impl Database {
             .find(|group| group.roots.iter().any(|root| root.path == canonical)))
     }
 
-    /// Whether the path is a root of a stored (non-legacy) project group. A
-    /// legacy group is only the projection of the project row itself, so it
-    /// must not block removing that project.
-    pub fn path_is_in_stored_project_group(&self, path: &str) -> Result<bool> {
+    /// The stored (non-legacy) project group that owns `path` as one of its
+    /// roots, if any. A legacy group is only the projection of the project row
+    /// itself, so it is never returned here.
+    pub fn stored_project_group_for_path(&self, path: &str) -> Result<Option<ProjectGroupRecord>> {
         Ok(self
             .project_group_for_path(path)?
-            .is_some_and(|group| !group.legacy))
+            .filter(|group| !group.legacy))
+    }
+
+    /// Delete a stored project group record together with its group-scoped
+    /// memory and instructions. The underlying project rows are left untouched;
+    /// callers remove those separately when appropriate.
+    pub fn delete_project_group_record(&self, id: &str) -> Result<()> {
+        self.kv_delete(GROUP_NAMESPACE, id)?;
+        self.kv_delete(GROUP_MEMORY_NAMESPACE, id)?;
+        self.kv_delete(GROUP_INSTRUCTIONS_NAMESPACE, id)?;
+        Ok(())
     }
 
     pub fn create_project_group(&self, name: &str, paths: &[String]) -> Result<ProjectGroupRecord> {

@@ -40,24 +40,96 @@
 
 ### 目录来源选择
 
-「扩展 → 市场」决定目录从哪里获取。host-core 解析 URL 时把环境变量放在最高
-优先级，这样开发构建和测试可以指向本地目录，而不必改动已持久化的设置：
+「插件 → 市场」决定目录从哪里获取。共有四个渠道，用户可以随时切换：
 
-| 优先级 | 来源 | 取值 |
-| --- | --- | --- |
-| 1 | `PI_DESKTOP_PLUGIN_MARKET_URL` | 任意 URL |
-| 2 | `pluginMarketSource: "mirror"` | `https://cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/catalog.json` |
-| 2 | `pluginMarketSource: "custom"` | `pluginMarketCustomUrl` |
-| 3 | `pluginMarketSource: "official"`（默认） | 上面的默认目录 URL |
+| # | 渠道 | `pluginMarketSource` | 目录地址 | 包地址解析 |
+| --- | --- | --- | --- | --- |
+| 1 | 官方渠道 | `"official"`（默认） | `https://plugins.aiuo.net/catalog.json` | 平台 resolve（见下） |
+| 2 | 海外备份 | `"github"` | `https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/catalog.json` | 相对 URL + 目录 |
+| 3 | 国内备份 | `"mirror"` | `https://cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/catalog.json` | 相对 URL + 目录 |
+| 4 | 自定义 | `"custom"` | `pluginMarketCustomUrl` | 相对 URL + 目录 |
 
-镜像用于无法访问 `raw.githubusercontent.com` 的网络环境。镜像提供的目录与官方
-逐字节一致，且目录中的包路径是相对路径，因此 `resolve_package_url` 会让安装包
-下载跟随提供该目录的来源，切换来源不影响 shasum 校验。
+来源标签按应用语言本地化：简体中文为官方渠道、海外备份、国内备份、自定义。未设置与
+无法识别的取值都归到官方渠道，`mirror` 仍然表示 CNB，因此不需要迁移任何已持久化的
+设置。环境变量 `PI_DESKTOP_PLUGIN_MARKET_URL` 仍高于所有渠道，开发构建和测试可以指向
+本地目录而不改动持久化设置。
+
+官方渠道就是插件中心：它的目录是中心发布的 `catalog.json`，从中安装的包通过平台的
+下载接口解析，而不再把相对路径拼到基址上。两个备份渠道与自定义仍沿用静态解析：
+相对包 URL 按携带它的那份目录解析（先 `artifactBaseUrl`，再目录所在目录），因此包
+URL 绝不跨提供方，切换来源也不会改变正在校验的摘要。海外备份与国内备份用于无法访问
+`plugins.aiuo.net` 或彼此的网络环境。国内备份本应复制分发仓库，但可能滞后——实测该
+镜像上的目录更旧（22 个插件，且同一版本的字节与另一镜像不同）——所以官方渠道逐个
+校验镜像的字节，而不是信任单一地址。
 
 缓存目录会通过 `plugins/market/cache-meta.json` 记录其来源。来自其他来源的快照
 只被忽略而不删除——它的包 URL 指向用户刚切走的那个提供商——所以切回去时无需
 重新请求即可恢复该目录。`settings.set` 只在内存中重新指定来源；在那里发起抓取
 会让 host RPC 状态锁卡在市场超时上，因此切换后由渲染进程触发 `market.refresh`。
+
+### 设备标识
+
+官方渠道的 resolve 请求携带 `deviceId`。host-core 从操作系统暴露的机器标识派生：
+Windows 的 `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`、macOS 的平台 UUID，
+或 Linux 的 `/etc/machine-id`（回退 `/var/lib/dbus/machine-id` 与
+`/sys/class/dmi/id/product_uuid`）。上报的是 `sha256("pi-desktop.device.v1:" + 机器码)`
+的 64 位小写十六进制，因此机器码原文不出本机，该摘要也与应用计算的其他哈希做了域
+分隔。读不到机器标识时，host-core 生成一个随机 64 位十六进制 ID，持久化在应用数据
+目录（`plugins/market/device.json`），之后一直复用。该值每个进程只读取一次，跨重启
+对同一安装保持稳定，不显示在界面上，也不是用户可编辑或重置的设置。它是平台的计数与
+限流键（见 [15-plugin-center.md](15-plugin-center.md) §10），不是账号或登录态。
+
+### 官方渠道的 resolve 安装
+
+官方渠道的每一次安装或更新都在刷新目录之后通过平台解析安装包：
+
+1. 刷新目录并选定插件与版本，与其他渠道完全一致。
+2. `POST {中心 origin}/api/v1/download/resolve`——即提供该官方目录的 origin——JSON
+   body 为 `{ deviceId, pluginId, version }`，用户选定版本时才带 `version`。使用
+   POST 而非 GET，因为平台自己的契约指出设备 ID 出现在查询串里会落到访问日志。
+3. 按顺序尝试返回的 `downloads` 每一项：下载、校验返回的 `sha256` 与声明的
+   `sizeBytes`，再把字节交给安装器。某个镜像失败——网络错误、HTTP 错误、摘要不符、
+   大小不符——就放弃它并尝试下一个。请求仍限于下文的白名单主机。
+4. 列表耗尽，或 resolve 本身失败时，回退到目录自身的包地址（`artifactBaseUrl` 加
+   相对 `url`）。这是平台文档规定的回退路径，该次安装不计入统计。
+5. 每次安装或更新只调用一次 resolve。响应从不缓存，这也是平台发送
+   `Cache-Control: no-store` 的原因；`counted: false` 是正常应答，不是错误。
+
+`200` 响应的 `downloads` 永不为空。拒绝要如实报告，而不是掩盖：
+
+- `403 NOT_PUBLISHED`——该版本尚未发布。报告且不重试。
+- `403 PLUGIN_ARCHIVED`——插件已归档。从安装与更新选择中隐藏它。
+- `404`——平台没有该版本。报告它；字节路由无法承载的版本字符串（例如带 `+` 的构建
+  元数据后缀）属于版本缺失，不能靠猜 URL 绕过。
+- `429`——平台按设备 ID 限流（默认每分钟 600 次）。按 `Retry-After` 等待后重试一次，
+  然后报告。
+- `503`——部署问题（没有任何镜像可服务该版本时为 `NO_DOWNLOAD_SOURCE`）。报告它，
+  不进入重试循环。
+
+这条路径上以 resolve 返回的摘要为准；两个备份渠道与第 4 步的回退仍以目录的 `shasum`
+为准。此处不会自动切换渠道：平台不可达会在回退之后如实报告，用户通过既有选择器切换
+渠道。
+
+### 安装进度与取消
+
+安装或更新是一次请求，因此它在进行期间会报告自己处于哪一步。
+`plugin.installProgress` 通知携带 `pluginId`、`version`、`phase`（`resolve`、
+`download`、`verify`、`install`、`enable`）、`source`（正在使用的镜像）及其从 1 开始的
+`attempt` / `attempts`、`receivedBytes` / `totalBytes`（`totalBytes` 为 `0` 表示大小
+未知），以及 `tried[]`——迄今尝试过的每个镜像，每项为 `{ source, url, error }`。
+以失败结束安装的那一条报告还会带上 `error`。报告被限流为每 200 ms 最多一条，外加每次
+阶段变化与最终报告，因此字节级进度不会淹没界面。
+
+`market.cancelInstall { id }` 返回 `{ cancelled, id }`，且只取消当前正在运行的安装。
+真正能被中断的只有下载：该请求在字节到达时、尝试每个镜像之前，以及写入安装包之前的
+最后一个安全点被检查。被取消的安装以 `PLUGIN_CANCELLED`（JSON-RPC 码 1019）失败，
+对话框静默关闭，而不是报告错误。
+
+对话框只用于手动安装或更新，后台自动更新不会打开它。它显示当前阶段、
+`mirror n/N · name`、由 `receivedBytes` / `totalBytes` 得出的确定进度条与传输速度，
+以及仅在 `download` 与 `resolve` 期间可用的取消按钮。安装成功后约 2 秒自动关闭，
+悬停时暂停该倒计时。安装失败时对话框保持打开，显示可读的错误与尝试过的镜像，
+并提供复制与重试操作。
 
 ### 客户端可见的目录策略
 
@@ -286,6 +358,12 @@ URL 描述的是一个受发布者影响的 release，所以宿主还必须约�
 重定向被限制为 HTTPS 并重新校验：跳转后的最终 URL 必须满足与初始 URL 相同的规则。
 自定义或企业目录只被信任其自身主机——把客户端指向一个私有目录，并不会为任意第三方
 主机放宽白名单。
+
+官方渠道的 resolve 响应给出的是镜像列表，而不是任意 URL 清单，而这些镜像正是上表中的
+分发主机：平台已经发布的 GitHub raw 仓库与 CNB 镜像。位于其他主机的镜像条目会像该
+主机上的包 URL 一样被拒绝，因此客户端会尝试列表中的下一个镜像；如果所有条目都指向
+这类主机，安装就会失败，而不是放宽白名单。因此把镜像迁到本表之外的主机需要客户端
+发版，而不是在平台侧改配置。
 
 白名单之外的包 URL 在任何网络请求发出之前就以 `PLUGIN_MARKET_UNTRUSTED_HOST` 失败，
 错误信息会指出被拒绝的主机，便于运维区分配置错误的私有源和恶意目录条目。

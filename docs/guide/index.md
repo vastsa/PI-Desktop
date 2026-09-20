@@ -14,6 +14,7 @@ inspectable while still making everyday coding work feel direct.
 | If you want to… | Start with |
 |---|---|
 | See what the app looks like | [Screens](/guide/screenshots) |
+| Run recurring local tasks | [Scheduled tasks](/guide/automations) |
 | Understand what is shipped | [Product scope](/spec/01-product/01-product-scope) |
 | Learn how the system fits together | [Architecture](/spec/02-architecture/01-architecture) |
 | Trace a protocol or storage boundary | [Runtime specs](/spec/03-runtime/01-ipc-protocol) |

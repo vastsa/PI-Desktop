@@ -158,7 +158,7 @@ export function PullRequestsPage() {
                 <div className="dest-row-actions">
                   <TooltipButton
                     type="button"
-                    className="icon-btn"
+                    className="icon-btn icon-btn-square"
                     tooltip={t("pulls.open")}
                     ariaLabel={t("pulls.open")}
                     onClick={() => void api.browserOpenExternal(pr.url)}

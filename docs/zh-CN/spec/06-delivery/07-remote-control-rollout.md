@@ -32,7 +32,15 @@ Linux 或 WSL 机器上的项目，即 SSH 隧道远端 Host 拓扑；#100 要�
   loopback RACP-WS 端点。抽取在在途版本发布后开始，`permissions.pending`、
   Host 队列和模块抽取各自独立提交，因为仓库存在并发会话，且 54 个测试按源码
   模式匹配 `electron/main/index.ts`，需要重新指向。
-- R2：SSH 隧道上的远端 Host。交付 `pi-host` 包（模块、Node pi sidecar 与平台
+- R2：SSH 隧道上的远端 Host。分两个有序切片交付，桌面侧内核先落地并保持关闭态：
+  - R2a — 桌面内核（已交付，见 ADR 0286）：backend-router seam、传输无关的 remote-backend、
+    event bridge、per-host coordinator、safeStorage 加密的 remote-host 注册表以及启动引导。
+    默认注册表为空即完整 no-op：router 无远程 backend，renderer 每次调用仍逐字节走本地
+    handler。`node --test` 用 fake 或真实的 `@pi-desktop/racp/test-harness` 覆盖每个模块。
+  - R2b — 配对、SSH 引导、终端、反向工具中继。R2 的出口条件保持不变，随 R2b 一并达成；
+    R2a 单独不面向用户，且不尝试完成这些条件。
+
+  交付项：`pi-host` 包（模块、Node pi sidecar 与平台
   host-core 二进制，与桌面同版本，只绑定 loopback，由桌面经 SSH 上传的引导脚本从
   GitHub Releases 下载并校验公布的 SHA-256，再经该 SSH 会话启动并配对）；位于 `lib/api.ts` 之下的桌面 RACP 客户端适配层，使远程会话像本地
   一样渲染；转发端口上的 `RACP-WS` header profile，遵守安全规格的 loopback 规则
@@ -41,7 +49,7 @@ Linux 或 WSL 机器上的项目，即 SSH 隧道远端 Host 拓扑；#100 要�
   `workspace/list`、`workspace/read`、`workspace/diff`）；以及远程会话归属划分；反向工具中继（`tools/advertise` 与 `tool/execute` 服务端
   请求，让桌面 MCP 服务器和不需工作区的插件工具在远程会话中于桌面执行）；终端
   （`terminal/open`、`terminal/input`、`terminal/resize`、`terminal/close`、
-  `terminal.output` 与有界回放环，在远端机器运行）。
+  `terminal.output` 与有界回放环，在远端机器运行）；设置 → 远程主机为紧凑主机清单加一个 SSH/配对添加表单、不含说明性文案；整项功能在导航与标题上标为实验性，因为远程连接仍可能失败，仅在开发者模式开启时显示（连同其在设置搜索中的命中）（`04-ux/06-settings-ia.md` §1、§3）。
 - R3：出站消息集成（#100）。Host 进程内的又一个模块调用方，无传输、无入站
   监听：订阅 Host 范围与会话事件，把 `turn.completed`、`turn.failed`、
   `approval.requested`、`input.requested` 的脱敏摘要转发到出站渠道（先 Webhook，
@@ -137,8 +145,10 @@ runbook 写明 feature flag、配对撤销路径、远端机器上的数据保�
   `turn_queue` 与其 RPC 方法（D386 / ADR 0213）。
 - R1 已交付：renderer 的内存 prompt 队列已退役；composer 经 `agent/queue/push` 推入，
   镜像 `agent/event/queueChanged`，“立即发送”即 `turn/prioritize` 加优雅停止。
-- R1 未完成：运行时级别的逐回合权限上限（当前被限制的回合在桥接层直接拒绝）。
-- R2 及之后：尚未开始。
+- R1 部分完成（2026-09-18）：运行时级别的逐回合权限上限已在 JS 端全链路串通（`AgentPromptRequest.permissionMode` → agent-ipc → `RuntimeService.startTurn` → sidecar `agent.prompt`），桥接层不再对每一处会话/生效模式不一致直接拒绝。生效模式比会话更宽的请求（提权）仍作为深度防御拒绝；更窄的上限透传并在 sidecar 侧作为文档化的占位收下。turn 级的真正执行还差 host-core 一步（`session.beginTurn` 接受覆盖参数），因此本地回合上的收紧目前尚未夹紧工具决策。
+- R2 已开始（2026-09-18，D447 / ADR 0284）：`packages/host-runtime` 承载与 Electron 无关的运行时层 —— host-core 与 sidecar 的 stdio 传输、重启监督器、`RuntimeService`（模块的 `RuntimePort`，含持久回合生命周期）、转录持久化、无头启动解析器与已批准 Plan/Goal 的派发 —— Electron main 通过薄适配层运行其上。
+- R2（2026-09-18，D448 / ADR 0285）：`packages/racp` 承载 `RACP-WS` 服务端与客户端核心、回环上的 `ws` 绑定与设备令牌配对；握手、鉴权、幂等、队列顺序、审批、游标重放、驱逐、epoch 变更、慢客户端与不重复执行的重连都是包内测试。`pi-host` 包、桌面适配器与 SSH 引导此后均已开始：R2a 桌面内核（D449 / ADR 0286）带来了适配器与 `pi-host` 包，SSH 引导随后在 D453 / ADR 0292 落地。
+- R2b 部分完成（2026-09-19，D453 / ADR 0292）：桌面使用用户自己的 `ssh` 客户端并以 `BatchMode=yes` 在远端安装并配对 `pi-host`，用户的配置、agent 与跳板机照常生效，应用不持有任何 SSH 密钥。`remote/pi-host-release.ts` 承载纯发布坐标（远端平台、桌面版本、已发布的 SHA-256、拒绝未发布的目标），`remote/pi-host-bootstrap-script.ts` 生成唯一的 `umask 077` 脚本：下载、校验、安装到远端 `$HOME`、以 `--pair` 在回环上重启主机，并回显 `PI_HOST_READY` / `PI_HOST_PAIRING_TOKEN`；`remote/ssh-transport.ts` 是可注入的传输端口，`remote/ssh-tunnel.ts` 为每台主机维护一条持久的 `ssh -N -L` 转发，每次启动重新建立，并在引导时被收编（adopt），使配对只建立一条隧道。记录以 `metadata.transport = "ssh"` 加 SSH 描述符取代 URL，`pi-desktop/remoteHost/bootstrap` 加入 `list` / `pair` / `remove`。终端工作面板客户端、反向工具中继，以及经 SSH 通道下发 provider 配置均不在本次范围内。
 
 ## 8. 修订记录
 

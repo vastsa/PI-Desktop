@@ -37,7 +37,15 @@ test("plugins page styles use design tokens in both themes", () => {
   assert.match(section, /\.plugins-search\s*\{[\s\S]*?--ds-text-primary/);
   assert.match(section, /\.plugins-modal\s*\{[\s\S]*?--ds-bg-elevated-opaque/);
   assert.match(section, /\.plugins-installed-mark\s*\{[\s\S]*?--ds-success/);
-  assert.match(section, /:root\[data-theme="light"\] \.plugins-modal-backdrop/);
+  // The permission-review veil is a token now (issue #341): light's 32% ink sits
+  // in the light token block instead of a literal `:root[data-theme]` override,
+  // and dark reads the same token from the base rule.
+  assert.match(
+    section,
+    /\.plugins-modal-backdrop\s*\{[^}]*background:\s*var\(--ds-modal-veil\)/,
+  );
+  assert.equal((stylesSource.match(/^\s*--ds-modal-veil:/gm) ?? []).length, 2);
+  assert.doesNotMatch(stylesSource, /:root\[data-theme="light"\] \.plugins-modal-backdrop/);
   // D296: the header, title glyph and segmented control carry tone, not rules.
   assert.doesNotMatch(section, /\.plugins-page-header\s*\{[^}]*border-bottom/);
   assert.match(section, /\.plugins-title-icon\s*\{[^}]*background:\s*var\(--plugins-tile-deep\)/);

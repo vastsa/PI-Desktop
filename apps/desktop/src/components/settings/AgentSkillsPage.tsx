@@ -33,6 +33,7 @@ import {
   type SkillDraft,
 } from "./SkillEditorSheet";
 import {
+  IconArrowUpDown,
   IconBookOpen,
   IconDownload,
   IconFileText,
@@ -234,15 +235,19 @@ export function AgentSkillsPage() {
     }
   };
 
-  const importSkill = async (level: AgentCapabilityLevel = targetLevel) => {
+  const importSkill = async (
+    level: AgentCapabilityLevel = targetLevel,
+    sourceKind: "file" | "dir" = "file",
+  ) => {
     if (level === "project" && !selectedProjectPath) {
       showToast(t("settings.selectProjectFirst"), { variant: "error" });
       return;
     }
-    setBusyId("import");
+    setBusyId(sourceKind === "dir" ? "import-dir" : "import");
     try {
       const result = await api.importUserSkill({
         level,
+        sourceKind,
         ...(level === "project" && selectedProjectPath
           ? { projectPath: selectedProjectPath }
           : {}),
@@ -284,6 +289,58 @@ export function AgentSkillsPage() {
     [options, selectedProjectPath],
   );
 
+  /** Where a move sends a row, named the way the toast should say it. */
+  const moveTarget: Partial<Record<AgentCapabilityLevel, string>> = {
+    global: t("settings.globalLevel"),
+    project: selectedProjectPath
+      ? `${t("settings.projectLevel")} · ${projectName ?? projectDisplayName(selectedProjectPath)}`
+      : undefined,
+  };
+
+  /**
+   * Move one row to the other level. The project picker owns the destination,
+   * so the same action reads "Move into <project>" on a global row and "Move to
+   * Global" on a project one.
+   *
+   * The host moves the document rather than copying it, and a destination that
+   * already holds the id or display name renames the arriving skill, so the
+   * toast reports the new name instead of pretending the id survived.
+   */
+  const move = async (skill: UserSkillRecord, level: AgentCapabilityLevel) => {
+    const to: AgentCapabilityLevel = level === "global" ? "project" : "global";
+    const target = moveTarget[to];
+    if (!target) {
+      showToast(t("settings.selectProjectFirst"), { variant: "error" });
+      return;
+    }
+    const key = rowKey(level, skill.id);
+    setBusyId(key);
+    try {
+      const result = await api.transferUserSkill({
+        id: skill.id,
+        from: levelQuery(level),
+        to: levelQuery(to),
+      });
+      await load();
+      const name = skill.name || skill.id;
+      const arrived = result.skill;
+      showToast(
+        arrived && arrived.id !== skill.id
+          ? t("settings.capabilityMovedRenamed", {
+              name,
+              target,
+              newName: arrived.name || arrived.id,
+            })
+          : t("settings.capabilityMoved", { name, target }),
+        { variant: "success" },
+      );
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const renderRow = (skill: UserSkillRecord, level: AgentCapabilityLevel) => {
     const key = rowKey(level, skill.id);
     const name = skill.name || skill.id;
@@ -299,6 +356,29 @@ export function AgentSkillsPage() {
           void reveal(skill, level);
         },
       },
+      /**
+       * A move needs a destination, so a global row offers it only while the
+       * picker names a project; a project row always has Global to go back to.
+       */
+      ...(moveTarget[level === "global" ? "project" : "global"]
+        ? [
+            {
+              key: "move",
+              label:
+                level === "global"
+                  ? t("settings.capabilityMoveToProject", {
+                      project:
+                        projectName ?? projectDisplayName(selectedProjectPath ?? ""),
+                    })
+                  : t("settings.capabilityMoveToGlobal"),
+              icon: <IconArrowUpDown size={14} />,
+              onSelect: () => {
+                setMenuFor(null);
+                void move(skill, level);
+              },
+            } satisfies CapabilityMenuItem,
+          ]
+        : []),
       {
         key: "remove",
         label: isArmed ? t("settings.capabilityRemoveConfirm") : t("extensions.skills.remove"),
@@ -375,23 +455,36 @@ export function AgentSkillsPage() {
       ? t("settings.capabilityCreateInProject")
       : t("settings.capabilityCreateInGlobal");
   const importButton = (level: AgentCapabilityLevel) => (
-    <CapabilityButton
-      busy={busyId === "import"}
-      title={
-        level === "project"
-          ? t("settings.capabilityImportToProject")
-          : t("settings.capabilityImportToGlobal")
-      }
-      onClick={() => void importSkill(level)}
-    >
-      <IconDownload size={14} />
-      {t("settings.importSkill")}
-    </CapabilityButton>
+    <>
+      <CapabilityButton
+        busy={busyId === "import"}
+        title={
+          level === "project"
+            ? t("settings.capabilityImportToProject")
+            : t("settings.capabilityImportToGlobal")
+        }
+        onClick={() => void importSkill(level, "file")}
+      >
+        <IconDownload size={14} />
+        {t("settings.importSkillFile")}
+      </CapabilityButton>
+      <CapabilityButton
+        busy={busyId === "import-dir"}
+        title={
+          level === "project"
+            ? t("settings.capabilityImportToProject")
+            : t("settings.capabilityImportToGlobal")
+        }
+        onClick={() => void importSkill(level, "dir")}
+      >
+        <IconDownload size={14} />
+        {t("settings.importSkillDir")}
+      </CapabilityButton>
+    </>
   );
 
   const marketButton = (
     <CapabilityButton
-      title={t("settings.sklm.subtitle")}
       onClick={() => setView("market")}
     >
       <IconFileText size={14} />
@@ -417,8 +510,6 @@ export function AgentSkillsPage() {
 
   return (
     <AgentCapabilityPage
-      description={t("settings.skillsDescription")}
-      note={t("settings.capabilityPriority")}
       toolbar={
         <CapabilityToolbar
           filter={filter}
@@ -455,7 +546,6 @@ export function AgentSkillsPage() {
         {counts.all === 0 && search.trim() ? (
           <CapabilityEmpty
             message={t("settings.capabilityNoMatches")}
-            hint={t("settings.capabilityNoMatchesHint")}
             icon={<IconBookOpen size={18} />}
           />
         ) : (

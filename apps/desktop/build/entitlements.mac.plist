@@ -2,12 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
-    <!-- Standard Electron hardened-runtime entitlements (JIT for V8). -->
+    <!-- V8 / Chromium cannot run under Hardened Runtime without JIT. -->
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
+    <!-- V8 on Apple Silicon also needs unsigned executable memory. -->
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
+    <!-- Electron helpers and plugin-loaded native addons are not all signed by
+         Team DUV63RKYTW; library validation would refuse them. -->
     <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- Isolated plugin panels may capture microphone after the user grants
+         `ui.microphone` (ADR 0257). Host speech v1 does not capture. -->
+    <key>com.apple.security.device.audio-input</key>
     <true/>
   </dict>
 </plist>

@@ -9,6 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useBlockingOverlayActive } from "../../lib/blocking-overlay";
 import type { PluginViewMeta } from "@pi-desktop/shared";
 import {
   isKnownWorkPanelTab,
@@ -26,7 +27,6 @@ import {
   IconBot,
   IconChevronLeft,
   IconClose,
-  IconChat,
   IconDiff,
   IconFileText,
   IconPanelMaximize,
@@ -38,7 +38,6 @@ import { ReviewTab } from "./ReviewTab";
 import { FilesTab } from "./FilesTab";
 import { PluginViewTab } from "./PluginViewTab";
 import { SubagentPanel } from "./SubagentPanel";
-import { SideChatTab } from "./SideChatTab";
 import type { SubagentPanelSelection } from "../../lib/subagent-panel";
 import {
   MAIN_PANE_MIN_WIDTH,
@@ -46,15 +45,15 @@ import {
   WORK_PANEL_MIN_WIDTH,
   clampWorkPanelWidth,
   workPanelLayout,
+  workPanelResetWidth,
+  workPanelWidthBounds,
 } from "../../lib/work-panel-resize";
-import { sideChatTabSessionId } from "../../lib/side-chat";
 
 const TAB_ICONS = {
   new: IconPlus,
   review: IconDiff,
   file: IconFileText,
   plugin: IconPlug,
-  sidechat: IconChat,
 } as const;
 
 type WorkPanelResizeState = {
@@ -87,9 +86,6 @@ function tabLabel(
     // back to its id rather than leaving the tab blank until it closes.
     return view?.title ?? tab.resource ?? t("panel.tabs.plugin");
   }
-  // The side-chat tab shows a conversation, so it reuses the side chat's own
-  // label instead of inventing a second name for the same surface (D-LOCAL-message-quotes).
-  if (tab.kind === "sidechat") return t("sideChat.title");
   if (tab.kind === "new") return t("panel.new.title");
   if (tab.kind !== "file") return t(`panel.tabs.${tab.kind}`);
   const path = tab.resource ?? "";
@@ -173,6 +169,7 @@ export function WorkPanel({
   onToggleMaximize?: () => void;
 }) {
   const { t } = useTranslation();
+  const blockingOverlayActive = useBlockingOverlayActive();
   const rawTabs = useAppStore((s) => s.workPanelTabs);
   const tabs = rawTabs.filter(isKnownWorkPanelTab);
   const activeTabId = useAppStore((s) => s.activeWorkPanelTabId);
@@ -402,8 +399,10 @@ export function WorkPanel({
       // While maximized there is no second column to trade width with.
       if (maximized) return;
       const step = event.shiftKey ? 32 : 16;
-      const minimum = Math.min(panelMinimum, layout.maxPanelWidth);
-      const maximum = Math.max(minimum, layout.maxPanelWidth);
+      const { minimum, maximum } = workPanelWidthBounds(
+        panelMinimum,
+        layout.maxPanelWidth,
+      );
       let nextWidth: number | null = null;
       if (event.key === "ArrowLeft") nextWidth = renderPanelWidth + step;
       else if (event.key === "ArrowRight") nextWidth = renderPanelWidth - step;
@@ -414,6 +413,25 @@ export function WorkPanel({
       setWidth(clampWorkPanelWidth(nextWidth, minimum));
     },
     [finishPanelResize, layout.maxPanelWidth, maximized, panelMinimum, renderPanelWidth, setWidth],
+  );
+
+  /**
+   * Double-click reset: the default width, kept inside the same live bounds
+   * the keyboard path uses, so a reset never breaches the MainChat floor or
+   * reopens a compact panel wider than the window allows.
+   */
+  const onPanelResizeReset = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      // While maximized there is no second column to trade width with.
+      if (maximized) return;
+      // A gesture that is still open (a second pointer) must not overwrite the
+      // reset when it is finally released.
+      const drag = panelResizeState.current;
+      if (drag) finishPanelResize(event.currentTarget, drag.pointerId, true);
+      setPanelDragWidth(null);
+      setWidth(workPanelResetWidth(panelMinimum, layout.maxPanelWidth));
+    },
+    [finishPanelResize, layout.maxPanelWidth, maximized, panelMinimum, setWidth],
   );
 
   const activePluginView =
@@ -472,6 +490,7 @@ export function WorkPanel({
         onPointerCancel={onPanelResizeCancel}
         onLostPointerCapture={onPanelResizeCancel}
         onKeyDown={onPanelResizeKeyDown}
+        onDoubleClick={onPanelResizeReset}
       />
       <div className="work-panel-main">
         <header className="work-panel-header">
@@ -621,27 +640,8 @@ export function WorkPanel({
                     sessionId={activeSessionId ?? undefined}
                     location={activeTab.location}
                     // Native WebContentsViews composite above renderer content.
-                    blocked={exiting || panelBlocked}
+                    blocked={exiting || panelBlocked || blockingOverlayActive}
                   />
-                </div>
-              );
-            })()}
-          {/* A side chat docks the child session's conversation beside the main
-              one. The child retains its renderer-owned transcript while another tab is visible. */}
-          {!subagentPanel &&
-            activeTab?.kind === "sidechat" &&
-            (() => {
-              const sessionId = sideChatTabSessionId(activeTab);
-              if (!sessionId) return null;
-              return (
-                <div
-                  key={activeTab.id}
-                  id={`work-panel-surface-${activeTab.id}`}
-                  className="work-panel-tabpane"
-                  role="tabpanel"
-                  aria-labelledby={`work-panel-tab-${activeTab.id}`}
-                >
-                  <SideChatTab sessionId={sessionId} />
                 </div>
               );
             })()}

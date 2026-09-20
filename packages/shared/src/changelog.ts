@@ -29,6 +29,58 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.15.1",
+    date: "2026-09-19",
+    highlights: [
+      "Pair and manage remote hosts over SSH from Settings, including password login, install, and reconnect on launch.",
+      "Configure prompt enhancement (template, model, and reasoning) from the AI settings card.",
+      "Drag selected models to reorder them, and add an omit thinking level that sends no provider override.",
+      "Resize or collapse the sidebar, and restore default sidebar or panel width with a double-click.",
+      "Manage projects in a grouped archive with an inspector, and import each kind from its own workbench.",
+      "Scan and batch-import skills and MCP servers from other agent tools.",
+      "Keep the macOS menu-bar extra on a native status item, with bounded tray session shortcuts.",
+      "Ship signed and notarized official macOS builds with in-app updates.",
+      "Install from a two-icon signed macOS DMG; the unsigned-opening note stays in the ZIP only.",
+      "Open Review only when you ask, and land on the latest turn when opening a session.",
+      "Recover a stuck send queue, and ignore forged steering origin.",
+    ],
+  },
+
+  {
+    version: "0.15.0",
+    date: "2026-09-17",
+    highlights: [
+      "Reorder, edit, lock, and promote queued prompts so a later message can run next.",
+      "Clone a git repository from the create-project dialog.",
+      "Drag the conversation content width inside the chat column.",
+      "Show skill-market install failures with a retry instead of a dead button.",
+      "Show plugin-declared providers as native rows, including API keys and trusted custom agents.",
+      "Add plugin real-time connections, global shortcuts, capability permissions, and an official channel with backups.",
+      "Let plugins register theme variables, theme assets, and a transparent floating widget.",
+      "Delete a project together with its owned sessions, after a second-click confirm.",
+      "Give subagents an ordered model fallback list, resume a settled one from the same Task card, and switch shipped builtins from Settings.",
+      "Open file references from tool rows, keep the reading position when expanding details, and paint Plan approval hover as an opaque plate.",
+    ],
+  },
+
+  {
+    version: "0.14.9",
+    date: "2026-09-17",
+    highlights: [
+      "Reorder, edit, lock, and promote queued prompts so a later message can run next.",
+      "Clone a git repository from the create-project dialog.",
+      "Drag the conversation content width inside the chat column.",
+      "Show skill-market install failures with a retry instead of a dead button.",
+      "Show plugin-declared providers as native rows, including API keys and trusted custom agents.",
+      "Add plugin real-time connections, global shortcuts, capability permissions, and an official channel with backups.",
+      "Let plugins register theme variables, theme assets, and a transparent floating widget.",
+      "Delete a project together with its owned sessions, after a second-click confirm.",
+      "Give subagents an ordered model fallback list, and switch shipped builtins from Settings.",
+      "Open file references from tool rows, keep the reading position when expanding details, and paint Plan approval hover as an opaque plate.",
+    ],
+  },
+
+  {
     version: "0.14.8",
     date: "2026-09-14",
     highlights: [
@@ -759,6 +811,59 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.15.1",
+    date: "2026-09-19",
+    highlights: [
+      "在设置里通过 SSH 配对和管理远程主机，支持密码登录、安装和启动时重连。",
+      "在 AI 设置卡片里配置提示词增强：模板、模型和推理强度。",
+      "拖动已选模型即可排序，并新增「省略思考」档位，不再向供应商覆盖思考级别。",
+      "可调整或折叠侧边栏，双击分隔条即可恢复默认侧边栏或面板宽度。",
+      "项目改为分组归档加检查器管理，导入页按类型拆成独立工作台。",
+      "可扫描并批量导入其他 Agent 工具里的 Skills 和 MCP 服务器。",
+      "macOS 菜单栏额外项改用原生状态项，并提供有上限的托盘会话快捷入口。",
+      "官方 macOS 构建改为签名、公证，并支持应用内更新。",
+      "已签名的 macOS DMG 改为双图标拖入 Applications 安装，未签名打开说明只保留在 ZIP 里。",
+      "仅在主动打开时显示 Review 面板，打开会话时落在最新一轮。",
+      "卡住的发送队列可自动恢复，并忽略伪造来源的转向消息。",
+    ],
+  },
+
+  {
+    version: "0.15.0",
+    date: "2026-09-17",
+    highlights: [
+      "排队消息支持调整顺序、编辑、锁定，以及提升为下一条立即发送。",
+      "创建项目时可直接克隆 Git 仓库。",
+      "可在对话列内拖动正文宽度。",
+      "技能市场安装失败会显示原因并支持重试，而不再是失效按钮。",
+      "插件声明的提供商显示为原生行，可填写 API 密钥，并支持受信任的自定义 Agent。",
+      "插件可申请实时连接、全局快捷键和能力权限，并支持带备份的官方渠道安装。",
+      "插件可注册主题变量、主题资源，以及透明浮动小组件。",
+      "删除项目时一并删除其拥有的会话，并需二次点击确认。",
+      "子智能体支持按顺序回退的模型列表，已结束的可在同一 Task 卡片上继续，并可在设置中开关内置子智能体。",
+      "工具行中的文件引用会打开对应视图，展开详情时保持阅读位置；Plan 审批悬停使用不透明底板。",
+    ],
+  },
+
+  {
+    version: "0.14.9",
+    date: "2026-09-17",
+    highlights: [
+      "排队消息支持调整顺序、编辑、锁定，以及提升为下一条立即发送。",
+      "创建项目时可直接克隆 Git 仓库。",
+      "可在对话列内拖动正文宽度。",
+      "技能市场安装失败会显示原因并支持重试，而不再是失效按钮。",
+      "插件声明的提供商显示为原生行，可填写 API 密钥，并支持受信任的自定义 Agent。",
+      "插件可申请实时连接、全局快捷键和能力权限，并支持带备份的官方渠道安装。",
+      "插件可注册主题变量、主题资源，以及透明浮动小组件。",
+      "删除项目时一并删除其拥有的会话，并需二次点击确认。",
+      "子智能体支持按顺序回退的模型列表，并可在设置中开关随应用提供的内置子智能体。",
+      "工具行中的文件引用会打开对应视图，展开详情时保持阅读位置；Plan 审批悬停使用不透明底板。",
+    ],
+  },
+
+
+  {
     version: "0.14.8",
     date: "2026-09-14",
     highlights: [
@@ -1487,6 +1592,59 @@ const zhCNEntries: ChangelogEntry[] = [
 ];
 
 const zhTWEntries: ChangelogEntry[] = [
+  {
+    version: "0.15.1",
+    date: "2026-09-19",
+    highlights: [
+      "在設定裡透過 SSH 配對和管理遠端主機，支援密碼登入、安裝和啟動時重連。",
+      "在 AI 設定卡片裡設定提示詞增強：模板、模型和推理強度。",
+      "拖曳已選模型即可排序，並新增「省略思考」檔位，不再向供應商覆寫思考層級。",
+      "可調整或摺疊側邊欄，雙擊分隔條即可恢復預設側邊欄或面板寬度。",
+      "專案改為分組封存加檢查器管理，匯入頁依類型拆成獨立工作台。",
+      "可掃描並批次匯入其他 Agent 工具裡的 Skills 和 MCP 伺服器。",
+      "macOS 選單列額外項改用原生狀態項，並提供有上限的托盤工作階段捷徑。",
+      "官方 macOS 建置改為簽名、公證，並支援應用程式內更新。",
+      "已簽名的 macOS DMG 改為雙圖示拖入 Applications 安裝，未簽名開啟說明只保留在 ZIP 裡。",
+      "僅在主動開啟時顯示 Review 面板，開啟工作階段時落在最新一輪。",
+      "卡住的傳送佇列可自動恢復，並忽略偽造來源的轉向訊息。",
+    ],
+  },
+
+  {
+    version: "0.15.0",
+    date: "2026-09-17",
+    highlights: [
+      "排隊訊息支援調整順序、編輯、鎖定，以及提升為下一則立即傳送。",
+      "建立專案時可直接複製 Git 儲存庫。",
+      "可在對話欄內拖曳正文寬度。",
+      "技能市場安裝失敗會顯示原因並支援重試，而不再是失效按鈕。",
+      "外掛宣告的提供商顯示為原生列，可填寫 API 金鑰，並支援受信任的自訂 Agent。",
+      "外掛可申請即時連線、全域快速鍵和能力權限，並支援帶備份的官方渠道安裝。",
+      "外掛可註冊主題變數、主題資源，以及透明浮動小工具。",
+      "刪除專案時一併刪除其擁有的工作階段，並需二次點選確認。",
+      "子智慧體支援依序回退的模型清單，已結束的可在同一 Task 卡片上繼續，並可在設定中開關內建子智慧體。",
+      "工具列中的檔案引用會開啟對應檢視，展開詳情時保持閱讀位置；Plan 審批懸停使用不透明底板。",
+    ],
+  },
+
+  {
+    version: "0.14.9",
+    date: "2026-09-17",
+    highlights: [
+      "排隊訊息支援調整順序、編輯、鎖定，以及提升為下一則立即傳送。",
+      "建立專案時可直接複製 Git 儲存庫。",
+      "可在對話欄內拖曳正文寬度。",
+      "技能市場安裝失敗會顯示原因並支援重試，而不再是失效按鈕。",
+      "外掛宣告的提供商顯示為原生列，可填寫 API 金鑰，並支援受信任的自訂 Agent。",
+      "外掛可申請即時連線、全域快速鍵和能力權限，並支援帶備份的官方渠道安裝。",
+      "外掛可註冊主題變數、主題資源，以及透明浮動小工具。",
+      "刪除專案時一併刪除其擁有的工作階段，並需二次點選確認。",
+      "子智慧體支援依序回退的模型清單，並可在設定中開關隨應用程式提供的內建子智慧體。",
+      "工具列中的檔案引用會開啟對應檢視，展開詳情時保持閱讀位置；Plan 審批懸停使用不透明底板。",
+    ],
+  },
+
+
   {
     version: "0.14.8",
     date: "2026-09-14",

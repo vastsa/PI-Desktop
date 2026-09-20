@@ -108,20 +108,32 @@ test("an Intel build under Rosetta is a mismatch; native builds are not", () => 
 });
 
 test("host-process turns the refusal into a typed error before glibc matching", () => {
-  const body = hostSrc.slice(hostSrc.indexOf("private unavailableError("));
-  const schemaAt = body.indexOf("parseSchemaTooNew(this.lastStderr)");
-  const glibcAt = body.indexOf("glibcMissingSymbol(this.lastStderr)");
+  // The transport lives in @pi-desktop/host-runtime; the desktop only names
+  // the refusals it can phrase, through the injected failure diagnosis.
+  const body = hostSrc.slice(hostSrc.indexOf("export function diagnoseHostFailure("));
+  const schemaAt = body.indexOf("parseSchemaTooNew(lastStderr)");
+  const glibcAt = body.indexOf("glibcMissingSymbol(lastStderr)");
   assert.ok(schemaAt > 0 && glibcAt > 0);
   assert.ok(schemaAt < glibcAt, "schema refusal must be checked first");
   assert.match(body, /new DbSchemaTooNewError\(schema\)/);
+  assert.match(hostSrc, /diagnoseFailure: diagnoseHostFailure,/);
 });
 
 test("main stops restarting on a schema refusal and pushes a named status", () => {
-  const loop = lifecycleSrc.slice(lifecycleSrc.indexOf("async function superviseRestartLoop("));
-  const schemaAt = loop.indexOf("schemaTooNewOf(error)");
-  const glibcAt = loop.indexOf("isGlibcUnsupportedError(error)");
+  // The restart policy lives in the shared RuntimeSupervisor; main only names
+  // the two unrecoverable refusals and phrases their status for the renderer.
+  const fatal = lifecycleSrc.slice(
+    lifecycleSrc.indexOf("const fatalStatusFor ="),
+    lifecycleSrc.indexOf("const supervisor = new RuntimeSupervisor("),
+  );
+  const schemaAt = fatal.indexOf("schemaTooNewOf(error)");
+  const glibcAt = fatal.indexOf("isGlibcUnsupportedError(error)");
   assert.ok(schemaAt > 0 && schemaAt < glibcAt);
-  assert.match(loop.slice(schemaAt, glibcAt), /message: DB_SCHEMA_TOO_NEW_STATUS,\s*schema,\s*\}\);\s*return;/);
+  assert.match(fatal.slice(schemaAt, glibcAt), /message: DB_SCHEMA_TOO_NEW_STATUS,\s*schema,\s*\};/);
+  assert.match(
+    lifecycleSrc,
+    /isUnrecoverable: \(error\) => Boolean\(schemaTooNewOf\(error\)\) \|\| isGlibcUnsupportedError\(error\)/,
+  );
   const boot = lifecycleSrc.slice(lifecycleSrc.indexOf("const bootHostStatus ="));
   assert.match(boot, /status\.message = DB_SCHEMA_TOO_NEW_STATUS;\s*status\.schema = schema;/);
   assert.match(boot, /status\.archMismatch = \{/);

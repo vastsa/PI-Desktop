@@ -12,8 +12,10 @@ const reservationHandler = mainSource.slice(
 
 test("the main window keeps native edge and corner resizing enabled", () => {
   assert.match(mainSource, /resizable:\s*true/);
-  assert.match(mainSource, /minWidth:\s*windowMinWidth/);
-  assert.match(mainSource, /minHeight:\s*windowMinHeight/);
+  // The BrowserWindow props use the clamped `initialMin*` values so a small
+  // work area does not lock the window past the display's own width.
+  assert.match(mainSource, /minWidth:\s*initialMinWidth/);
+  assert.match(mainSource, /minHeight:\s*initialMinHeight/);
 });
 
 test("bounds recovery waits for a stable native resize snapshot", () => {

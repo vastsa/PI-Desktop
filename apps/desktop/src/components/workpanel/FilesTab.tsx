@@ -321,7 +321,7 @@ export function FilesTab() {
         <div className="file-viewer-header">
           <TooltipButton
             type="button"
-            className="icon-btn"
+            className="icon-btn icon-btn-square"
             tooltip={t("panel.files.back")}
             ariaLabel={t("panel.files.back")}
             onClick={() => {
@@ -337,7 +337,7 @@ export function FilesTab() {
           {file && <span className="file-viewer-size">{formatSize(file.size)}</span>}
           <TooltipButton
             type="button"
-            className="icon-btn"
+            className="icon-btn icon-btn-square"
             tooltip={t("panel.files.reveal")}
             ariaLabel={t("panel.files.reveal")}
             onClick={() => void api.fsReveal(selected)}

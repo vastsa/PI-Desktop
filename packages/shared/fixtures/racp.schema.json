@@ -1918,6 +1918,10 @@
           },
           "version": {
             "type": "string"
+          },
+          "hostId": {
+            "type": "string",
+            "minLength": 1
           }
         }
       },

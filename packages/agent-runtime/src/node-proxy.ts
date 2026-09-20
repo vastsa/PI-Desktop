@@ -8,7 +8,7 @@
  * stay on one package (OpenAI's undici mismatch warning).
  */
 import { connect as tlsConnect } from "node:tls";
-import { connect as netConnect, type Socket } from "node:net";
+import { socks5Connect } from "./socks5.js";
 import {
   applyProxyEnvAssignments,
   effectiveProxyBypass,
@@ -19,6 +19,7 @@ import {
 } from "@pi-desktop/shared";
 import {
   Agent,
+  EnvHttpProxyAgent,
   ProxyAgent,
   fetch as undiciFetch,
   getGlobalDispatcher,
@@ -27,12 +28,61 @@ import {
   type buildConnector,
 } from "undici";
 
+/**
+ * Whether Node built its own fetch transport on the environment proxy. Node
+ * reads `NODE_USE_ENV_PROXY` once, at startup, and installs an
+ * `EnvHttpProxyAgent`; replacing the global dispatcher (which this module does
+ * for a custom proxy) therefore has to remember that choice, or a later
+ * transport rebuild would silently drop proxy routing.
+ */
+const envProxyAtStartup = process.env.NODE_USE_ENV_PROXY === "1";
+
+/**
+ * A transport rebuild swaps a dispatcher every session's provider traffic
+ * shares. Closing idle sockets is cheap, but churning the pool while a network
+ * is down for minutes would make every other session pay a fresh TCP/TLS
+ * handshake on its next request, so rebuilds are rate limited.
+ */
+export const PROVIDER_TRANSPORT_REBUILD_MIN_INTERVAL_MS = 30_000;
+
 let originalFetch: typeof fetch | null = null;
 let originalDispatcher: Dispatcher | null = null;
 let installed = false;
 let activeDispatcher: Dispatcher | null = null;
 /** Plain agent the bypass list routes to; closed together with the proxy. */
 let activeDirectDispatcher: Dispatcher | null = null;
+
+/** Route the sidecar's provider traffic takes, for failure diagnostics. */
+export type NodeTransportRoute =
+  | "direct"
+  | "environment-proxy"
+  | "http-proxy"
+  | "socks5-proxy";
+
+/** Settings behind the installed pair, so a rebuild reproduces exactly them. */
+let activeCustomSettings: NetworkProxySettings | null = null;
+/** Negative infinity: a process that has never rebuilt is never throttled. */
+let lastTransportRebuildAt = Number.NEGATIVE_INFINITY;
+
+function defaultRoute(): NodeTransportRoute {
+  return envProxyAtStartup ? "environment-proxy" : "direct";
+}
+
+function routeForSettings(settings: NetworkProxySettings): NodeTransportRoute {
+  if (settings.mode !== "custom") return defaultRoute();
+  return /^socks/i.test(settings.url ?? "") ? "socks5-proxy" : "http-proxy";
+}
+
+/**
+ * Route the next provider request takes. Reported as `networkRoute` on a
+ * transport failure, because "the provider is down" and "the tunnel died" look
+ * identical in an errno (issue #234).
+ */
+export function activeNodeTransportRoute(): NodeTransportRoute {
+  return activeCustomSettings
+    ? routeForSettings(activeCustomSettings)
+    : defaultRoute();
+}
 
 function ensurePatched(): void {
   if (installed) return;
@@ -41,21 +91,26 @@ function ensurePatched(): void {
   originalDispatcher = getGlobalDispatcher();
 }
 
+/**
+ * The dispatcher Node would install by itself. A rebuild must reproduce it, not
+ * fall back to a direct connection while the process runs on an env proxy.
+ */
+function defaultDispatcher(): Dispatcher {
+  return envProxyAtStartup ? new EnvHttpProxyAgent() : new Agent();
+}
+
 function closeActiveDispatchers(): void {
-  if (activeDispatcher && typeof activeDispatcher.close === "function") {
-    void activeDispatcher.close();
-  }
-  if (activeDirectDispatcher && typeof activeDirectDispatcher.close === "function") {
-    void activeDirectDispatcher.close();
-  }
+  const dispatchers = [activeDispatcher, activeDirectDispatcher];
   activeDispatcher = null;
   activeDirectDispatcher = null;
+  for (const dispatcher of dispatchers) closeDispatcher(dispatcher);
 }
 
 function restoreDefault(): void {
   closeActiveDispatchers();
+  activeCustomSettings = null;
   if (originalDispatcher) setGlobalDispatcher(originalDispatcher);
-  else setGlobalDispatcher(new Agent());
+  else setGlobalDispatcher(defaultDispatcher());
   if (originalFetch) globalThis.fetch = originalFetch;
 }
 
@@ -69,11 +124,27 @@ export function applyNodeNetworkProxy(
     restoreDefault();
     return;
   }
-  const parsed = parseProxyUrl(settings.url ?? "");
-  if (!parsed.ok) {
+  const built = createCustomProxyDispatchers(settings);
+  if (!built) {
     restoreDefault();
     return;
   }
+  installCustomProxyDispatchers(built);
+  activeCustomSettings = settings;
+}
+
+type CustomProxyDispatchers = {
+  dispatcher: Dispatcher;
+  direct: Dispatcher;
+  route: NodeTransportRoute;
+};
+
+/** Build the proxied dispatcher pair for one custom-proxy configuration. */
+function createCustomProxyDispatchers(
+  settings: NetworkProxySettings,
+): CustomProxyDispatchers | null {
+  const parsed = parseProxyUrl(settings.url ?? "");
+  if (!parsed.ok) return null;
   const proxied: Dispatcher = parsed.value.isSocks
     ? new Agent({ connect: socksConnector(parsed.value) })
     : new ProxyAgent(parsed.value.href);
@@ -87,11 +158,91 @@ export function applyNodeNetworkProxy(
         ? direct.dispatch(options, handler)
         : next(options, handler),
   );
-  closeActiveDispatchers();
-  activeDispatcher = dispatcher;
-  activeDirectDispatcher = direct;
-  setGlobalDispatcher(dispatcher);
+  return {
+    dispatcher,
+    direct,
+    route: parsed.value.isSocks ? "socks5-proxy" : "http-proxy",
+  };
+}
+
+/**
+ * Install a freshly built pair and retire the previous one.
+ *
+ * Order matters: the new dispatcher becomes global before the old one is
+ * closed, so no request can be dispatched into a dispatcher that is already
+ * closing. `close()` is graceful — undici lets the requests already in flight
+ * finish on their own sockets and only then tears the pool down — so a rebuild
+ * triggered by one failing session can never abort another session's request.
+ * The old pair is released by its owner here, which is why this module keeps the
+ * reference: nothing else is left holding those sockets.
+ */
+function installCustomProxyDispatchers(built: CustomProxyDispatchers): void {
+  const previous = [activeDispatcher, activeDirectDispatcher];
+  activeDispatcher = built.dispatcher;
+  activeDirectDispatcher = built.direct;
+  setGlobalDispatcher(built.dispatcher);
   globalThis.fetch = undiciFetch as unknown as typeof fetch;
+  for (const dispatcher of previous) closeDispatcher(dispatcher);
+}
+
+/**
+ * Close one replaced dispatcher. A rejection means a socket failed to close: it
+ * must stay visible without rejecting an unawaited promise.
+ */
+function closeDispatcher(dispatcher: Dispatcher | null): void {
+  if (!dispatcher || typeof dispatcher.close !== "function") return;
+  void dispatcher.close().catch((error: unknown) => {
+    process.stderr.write(
+      `[agent-runtime] provider transport close failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+  });
+}
+
+export type TransportRebuildResult = {
+  /** False when the process-wide throttle skipped this rebuild. */
+  rebuilt: boolean;
+  route: NodeTransportRoute;
+};
+
+/**
+ * Rebuild the shared transport after the same origin failed repeatedly without
+ * ever answering (issue #234).
+ *
+ * undici keeps its sockets in one pool per dispatcher, and a socket that died
+ * without the pool noticing is not retired by the failure itself, so a replay
+ * can fail the same way ten times. Closing the pool is the public way to
+ * invalidate it; `createProviderTransportHealth` in
+ * `provider-transport-recovery.ts` owns the question of when that is justified.
+ * Returns whether a rebuild happened, so the caller can record it.
+ */
+export function rebuildNodeNetworkTransport(
+  now = Date.now(),
+): TransportRebuildResult {
+  ensurePatched();
+  const route = activeNodeTransportRoute();
+  if (now - lastTransportRebuildAt < PROVIDER_TRANSPORT_REBUILD_MIN_INTERVAL_MS) {
+    return { rebuilt: false, route };
+  }
+  lastTransportRebuildAt = now;
+  const customSettings = activeCustomSettings;
+  const rebuilt = customSettings
+    ? createCustomProxyDispatchers(customSettings)
+    : null;
+  if (rebuilt) {
+    installCustomProxyDispatchers(rebuilt);
+    return { rebuilt: true, route: rebuilt.route };
+  }
+
+  const previous = getGlobalDispatcher();
+  const fresh = defaultDispatcher();
+  setGlobalDispatcher(fresh);
+  // `restoreDefault` reinstalls the captured dispatcher, so never leave that
+  // reference pointing at the pool this rebuild just closed.
+  if (previous === originalDispatcher) originalDispatcher = fresh;
+  closeDispatcher(previous);
+  return { rebuilt: true, route };
 }
 
 export type ProxyBypassMatcher = (hostname: string, port: number) => boolean;
@@ -240,229 +391,3 @@ function socksConnector(proxy: ParsedProxyUrl): buildConnector.connector {
   };
 }
 
-async function socks5Connect(
-  proxy: ParsedProxyUrl,
-  destHost: string,
-  destPort: number,
-): Promise<Socket> {
-  const proxyPort =
-    proxy.port ??
-    (proxy.scheme === "http" || proxy.scheme === "https" ? 80 : 1080);
-  const socket = await connectTcp(proxy.host, proxyPort);
-  const reader = new SocketReader(socket);
-  try {
-    const methods =
-      proxy.username || proxy.password
-        ? Buffer.from([0x05, 0x02, 0x00, 0x02])
-        : Buffer.from([0x05, 0x01, 0x00]);
-    socket.write(methods);
-    const choice = await reader.readExact(2);
-    if (choice[0] !== 0x05) {
-      throw new Error("SOCKS5: invalid version");
-    }
-    if (choice[1] === 0x02) {
-      const user = Buffer.from(proxy.username ?? "", "utf8");
-      const pass = Buffer.from(proxy.password ?? "", "utf8");
-      if (user.length > 255 || pass.length > 255) {
-        throw new Error("SOCKS5: credentials too long");
-      }
-      socket.write(
-        Buffer.concat([
-          Buffer.from([0x01, user.length]),
-          user,
-          Buffer.from([pass.length]),
-          pass,
-        ]),
-      );
-      const auth = await reader.readExact(2);
-      if (auth[1] !== 0x00) throw new Error("SOCKS5: authentication failed");
-    } else if (choice[1] !== 0x00) {
-      throw new Error("SOCKS5: no acceptable authentication");
-    }
-
-    const dest = encodeSocksHost(destHost);
-    const port = Buffer.alloc(2);
-    port.writeUInt16BE(destPort, 0);
-    socket.write(Buffer.concat([Buffer.from([0x05, 0x01, 0x00]), dest, port]));
-    const header = await reader.readExact(4);
-    if (header[1] !== 0x00) {
-      throw new Error(`SOCKS5: connect failed (${header[1]})`);
-    }
-    await readSocksBind(reader, header[3]);
-    reader.dispose();
-    return socket;
-  } catch (error) {
-    reader.dispose();
-    socket.destroy();
-    throw error;
-  }
-}
-
-function encodeSocksHost(host: string): Buffer {
-  if (host.includes(":") && !host.includes(".")) {
-    const buf = Buffer.alloc(17);
-    buf[0] = 0x04;
-    // Expand IPv6 shorthand via the WHATWG URL parser.
-    const parsed = new URL(`http://[${host.replace(/^\[|\]$/g, "")}]`);
-    const bytes = parsed.hostname.includes(":")
-      ? ipv6ToBytes(parsed.hostname)
-      : null;
-    if (!bytes) throw new Error("SOCKS5: invalid IPv6 host");
-    bytes.copy(buf, 1);
-    return buf;
-  }
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const buf = Buffer.from([
-      0x01,
-      Number(ipv4[1]),
-      Number(ipv4[2]),
-      Number(ipv4[3]),
-      Number(ipv4[4]),
-    ]);
-    return buf;
-  }
-  const name = Buffer.from(host, "utf8");
-  if (name.length > 255) throw new Error("SOCKS5: hostname too long");
-  return Buffer.concat([Buffer.from([0x03, name.length]), name]);
-}
-
-function ipv6ToBytes(host: string): Buffer | null {
-  const hex = host.split(":");
-  if (hex.length > 8) return null;
-  const buf = Buffer.alloc(16);
-  let skip = hex.indexOf("");
-  let filled = 0;
-  if (skip === -1) {
-    if (hex.length !== 8) return null;
-    for (let i = 0; i < 8; i += 1) {
-      const n = Number.parseInt(hex[i] || "0", 16);
-      if (!Number.isInteger(n) || n < 0 || n > 0xffff) return null;
-      buf.writeUInt16BE(n, i * 2);
-    }
-    return buf;
-  }
-  const head = hex.slice(0, skip).filter(Boolean);
-  const tail = hex.slice(skip + 1).filter(Boolean);
-  if (head.length + tail.length > 7) return null;
-  for (const part of head) {
-    const n = Number.parseInt(part, 16);
-    if (!Number.isInteger(n) || n < 0 || n > 0xffff) return null;
-    buf.writeUInt16BE(n, filled);
-    filled += 2;
-  }
-  filled = 16 - tail.length * 2;
-  for (const part of tail) {
-    const n = Number.parseInt(part, 16);
-    if (!Number.isInteger(n) || n < 0 || n > 0xffff) return null;
-    buf.writeUInt16BE(n, filled);
-    filled += 2;
-  }
-  return buf;
-}
-
-async function readSocksBind(reader: SocketReader, atyp: number): Promise<void> {
-  if (atyp === 0x01) await reader.readExact(4 + 2);
-  else if (atyp === 0x04) await reader.readExact(16 + 2);
-  else if (atyp === 0x03) {
-    const len = await reader.readExact(1);
-    await reader.readExact(len[0] + 2);
-  } else {
-    throw new Error("SOCKS5: unknown address type");
-  }
-}
-
-function connectTcp(host: string, port: number): Promise<Socket> {
-  return new Promise((resolve, reject) => {
-    const socket = netConnect({ host, port });
-    const onError = (error: Error) => {
-      socket.destroy();
-      reject(error);
-    };
-    socket.once("error", onError);
-    socket.once("connect", () => {
-      socket.off("error", onError);
-      socket.setNoDelay(true);
-      resolve(socket);
-    });
-  });
-}
-
-class SocketReader {
-  private buffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
-  private readonly waiters: Array<{
-    size: number;
-    resolve: (value: Buffer) => void;
-    reject: (error: Error) => void;
-  }> = [];
-  private closed = false;
-
-  private readonly onData = (chunk: Buffer) => {
-    this.buffer = this.buffer.length
-      ? Buffer.concat([this.buffer, chunk])
-      : chunk;
-    this.drain();
-  };
-
-  private readonly onError = (error: Error) => {
-    this.fail(error);
-  };
-
-  private readonly onClose = () => {
-    this.fail(new Error("SOCKS5: connection closed"));
-  };
-
-  constructor(private readonly socket: Socket) {
-    socket.on("data", this.onData);
-    socket.once("error", this.onError);
-    socket.once("close", this.onClose);
-  }
-
-  readExact(size: number): Promise<Buffer> {
-    if (size <= 0) return Promise.resolve(Buffer.alloc(0));
-    if (this.buffer.length >= size) return Promise.resolve(this.take(size));
-    if (this.closed) {
-      return Promise.reject(new Error("SOCKS5: connection closed"));
-    }
-    return new Promise((resolve, reject) => {
-      this.waiters.push({ size, resolve, reject });
-    });
-  }
-
-  dispose(): void {
-    if (this.closed) return;
-    this.closed = true;
-    if (this.buffer.length > 0) {
-      this.socket.unshift(this.buffer);
-      this.buffer = Buffer.alloc(0);
-    }
-    this.socket.off("data", this.onData);
-    this.socket.off("error", this.onError);
-    this.socket.off("close", this.onClose);
-    this.socket.pause();
-  }
-
-  private take(size: number): Buffer {
-    const value = this.buffer.subarray(0, size);
-    this.buffer = this.buffer.subarray(size);
-    return value;
-  }
-
-  private drain(): void {
-    while (this.waiters.length > 0) {
-      const waiter = this.waiters[0]!;
-      if (this.buffer.length < waiter.size) return;
-      this.waiters.shift();
-      waiter.resolve(this.take(waiter.size));
-    }
-  }
-
-  private fail(error: Error): void {
-    if (this.closed) return;
-    this.closed = true;
-    this.socket.off("data", this.onData);
-    this.socket.off("error", this.onError);
-    this.socket.off("close", this.onClose);
-    for (const waiter of this.waiters.splice(0)) waiter.reject(error);
-  }
-}

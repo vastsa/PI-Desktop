@@ -12,38 +12,71 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { resolveContextUsageDisplay } from "../../lib/context-usage";
-import { Input, Select, cx } from "../../components/ui";
+import { HelpIcon, Input, cx } from "../../components/ui";
+import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 
+/**
+ * One settings decision: the title and its control on a single line.
+ *
+ * The explanation never occupies a permanent second line — it is reached from
+ * the question mark beside the title, which keeps a card scannable (D601).
+ * `detail` is the exception in kind, not in styling: a row that shows a live
+ * value (the pinned default model) keeps it visible, because that is data the
+ * user came to read, not prose explaining a switch.
+ */
 export function SettingsRow({
   title,
   description,
+  detail,
   children,
 }: {
   title: string;
-  description?: ReactNode;
+  /** Explanatory copy, revealed on demand from the help icon. */
+  description?: string;
+  /** Live row metadata that stays visible (not an explanation). */
+  detail?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="settings-row">
       <div className="settings-row-copy">
-        <div className="settings-row-title">{title}</div>
-        {description ? <div className="settings-row-desc">{description}</div> : null}
+        <div className="settings-row-title">
+          {title}
+          {description ? <HelpIcon label={description} /> : null}
+        </div>
+        {detail ? <div className="settings-row-detail">{detail}</div> : null}
       </div>
       <div className="settings-row-control">{children}</div>
     </div>
   );
 }
 
+/**
+ * A titled group of rows. `description` follows the same rule as a row's: it
+ * explains the card, so it lives behind the heading's help icon.
+ */
 export function SettingsCard({
   title,
+  description,
   children,
 }: {
   title?: string;
+  description?: string;
   children: ReactNode;
 }) {
   return (
     <section className="settings-card-block">
-      {title ? <h3 className="settings-card-heading">{title}</h3> : null}
+      {title ? (
+        /*
+          The help mark is the heading's sibling, not its child: a nested
+          button joins the heading's accessible name, and a screen reader's
+          list of headings should not read out every explanation.
+        */
+        <div className="settings-card-heading-help">
+          <h3 className="settings-card-heading">{title}</h3>
+          {description ? <HelpIcon label={description} /> : null}
+        </div>
+      ) : null}
       <div className="settings-panel">{children}</div>
     </section>
   );
@@ -138,10 +171,7 @@ export function CommandShellRow({
   };
 
   return (
-    <SettingsRow
-      title={t("settings.commandShell")}
-      description={t("settings.commandShellDesc")}
-    >
+    <SettingsRow title={t("settings.commandShell")}>
       <div
         className="settings-command-shell-control"
         aria-busy={saving || (!catalog && !loadError)}
@@ -157,22 +187,22 @@ export function CommandShellRow({
             {t("settings.commandShellNoChoices")}
           </span>
         ) : (
-          <Select
+          <SettingsMenuSelect
             className="settings-command-shell-select"
+            label={t("settings.commandShell")}
             value={selectedId}
-            disabled={saving}
-            aria-label={t("settings.commandShell")}
-            onChange={(event) => void onChange(event.target.value)}
-          >
-            {catalog.choices.map((choice) => (
-              <option key={choice.id} value={choice.id} disabled={!choice.available}>
-                {choice.label}
-                {!choice.available
-                  ? ` - ${t("settings.commandShellUnavailable")}`
-                  : ""}
-              </option>
-            ))}
-          </Select>
+            busy={saving}
+            onChange={(value) => void onChange(value)}
+            options={catalog.choices.map((choice) => ({
+              id: choice.id,
+              label: `${choice.label}${
+                choice.available
+                  ? ""
+                  : ` - ${t("settings.commandShellUnavailable")}`
+              }`,
+              disabled: !choice.available,
+            }))}
+          />
         )}
         {effectiveStatus ? (
           <span className="settings-command-shell-status">{effectiveStatus}</span>
@@ -196,10 +226,7 @@ export function LinkOpenTargetRow({
   const { t } = useTranslation();
   const current = settings.linkOpenTarget ?? "workpanel";
   return (
-    <SettingsRow
-      title={t("settings.linkOpenTarget")}
-      description={t("settings.linkOpenTargetDesc")}
-    >
+    <SettingsRow title={t("settings.linkOpenTarget")}>
       <div
         className="settings-segment"
         role="group"
@@ -242,10 +269,7 @@ export function ContextUsageDisplayRow({
   const { t } = useTranslation();
   const current = resolveContextUsageDisplay(settings.contextUsageDisplay);
   return (
-    <SettingsRow
-      title={t("settings.contextUsageDisplay")}
-      description={t("settings.contextUsageDisplayDesc")}
-    >
+    <SettingsRow title={t("settings.contextUsageDisplay")}>
       <div
         className="settings-segment"
         role="radiogroup"

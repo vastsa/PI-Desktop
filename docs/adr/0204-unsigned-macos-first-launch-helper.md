@@ -1,13 +1,13 @@
 # ADR 0204: Explicit Unsigned macOS First-Launch Helper
 
-- Status: Accepted (amended by D406 / ADR 0232)
+- Status: Accepted (amended by D406 / ADR 0232, D450 / ADR 0289, D457 / ADR 0296)
 - Date: 2026-09-09
 - Deciders: PI-Desktop core
-- Related: D078, D371, D406, E2E-196b
+- Related: D078, D371, D406, D450, D457, E2E-196b, ADR 0289, ADR 0296
 
 ## Context
 
-The default macOS distribution lane remains unsigned so contributors and
+Local and debug macOS packaging remain unsigned so contributors and
 release operators can build without Developer ID credentials. A trusted
 download of that artifact can still carry Apple's quarantine attribute, which
 may make Gatekeeper report that PI-Desktop is damaged. The existing guidance
@@ -21,7 +21,7 @@ single attribute that causes this launch failure.
    places the helper in a visible first-launch row below the install gesture.
 2. The helper searches only `/Applications/PI-Desktop.app` and
    `~/Applications/PI-Desktop.app`. It verifies the bundle identifier is
-   `com.pi-desktop.app`, and the user must move the app into one of those
+   `net.aiuo.pi-desktop`, and the user must move the app into one of those
    directories before running it.
 3. When the verified app carries `com.apple.quarantine`, the helper recursively
    removes only that attribute and then opens PI-Desktop. It never uses `sudo`,
@@ -60,3 +60,14 @@ describes a helper that is present in the DMG.
   would expand the privilege and application scope of an installer workaround.
 - Require signing for every local build: rejected because D078 intentionally
   keeps local packaging available without Developer ID credentials.
+
+## Amendment (D450 / ADR 0289)
+
+Official GitHub tag releases are Developer ID-signed and notarized. The
+first-launch helper and opening note remain for trusted unsigned local or
+debug artifacts only. Official Release DMGs must not claim they are unsigned.
+
+## Amendment (D457 / ADR 0296)
+
+The DMG no longer shows the opening-help note. ZIP retains the helper and
+note for trusted unsigned local or debug artifacts.

@@ -300,6 +300,7 @@ Namespace: `pi.plugin.*`
 - `pi.session.list()` / `get()` / `listMessages()` // `session.read.own`
 - `pi.session.rename()` // `session.update.own`
 - `pi.session.delete()` // `session.delete.own`
+- `pi.usage.listTurns()` // `usage.read`; read-only completed-turn facts, no message bodies
 - `pi.agent.complete(input)` // `agent.complete`; host-owned one-shot
 
 Skills are contributed declaratively (`contributes.skills` + `agent.prompt.inject`),

@@ -1,11 +1,11 @@
 import { dialog, globalShortcut, shell, type BrowserWindow } from "electron";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   IPC,
   type ActivationScope,
   type AppSettings,
   type BrowserState,
+  type McpServerStatus,
   type ModelBinding,
   type ShortcutPlatform,
   type ThinkingLevel,
@@ -32,6 +32,7 @@ import { createFsConsentService } from "../plugin-fs-consent";
 import { pluginWorkspaceInfo } from "../workspace-roots";
 import { createDesktopConsentService } from "../plugin-desktop-consent";
 import { PluginRuntime } from "../plugin-runtime";
+import { createSpeechService } from "./speech-service";
 import { PluginShortcutRegistry } from "../plugin-shortcut-registry";
 import { PluginWebSocketRegistry } from "../plugin-websocket";
 import { hostGlobalShortcutBindings } from "../bootstrap/launcher";
@@ -39,8 +40,10 @@ import { UserMcpRuntime } from "../user-mcp";
 import {
   MCP_CALL_TIMEOUT_MS,
   MCP_CONNECT_TIMEOUT_MS,
+  MCP_TOOL_DISCOVERY_TIMEOUT_MS,
   McpServerClient,
 } from "../plugin-mcp";
+import { McpOAuthManager } from "../mcp-oauth";
 import { PluginPanelHost } from "../plugin-panel-host";
 import { PluginViewHost } from "../plugin-view-host";
 import { BrowserPane } from "../browser-view";
@@ -180,7 +183,6 @@ export function createPluginServices({
     unregister: (accelerator) => {
       globalShortcut.unregister(accelerator);
     },
-    // Late-bound: the runtime is constructed just below, and a trigger can
     // Late-bound: the runtime is constructed just below, and a trigger can
     // only arrive once the app is running and a plugin holds a shortcut.
     onTrigger: (entry) => {
@@ -337,6 +339,13 @@ export function createPluginServices({
     project: {
       create: (pluginId, input) => callPluginProjectHost(pluginId, input),
     },
+    // Read-only usage facts: the same host-owned session transport, no
+    // mutation, so no `sessionsChanged` fan-out (callPluginSessionHost only
+    // announces the mutating methods).
+    usage: {
+      listTurns: (pluginId, input) =>
+        callPluginSessionHost("plugin.usage.listTurns", pluginId, input),
+    },
     complete: async (input): Promise<PluginCompleteResult> => {
       if (!getHost()) {
         throw Object.assign(new Error("host unavailable"), { code: "UNSUPPORTED" });
@@ -384,7 +393,14 @@ export function createPluginServices({
         runtimeProvider,
         context,
         launch.sidecarParams.thinkingLevel,
-        { signal: input.signal, sessionId: launchSessionId },
+        {
+          signal: input.signal,
+          sessionId: launchSessionId,
+          // Spec 07-plugins/03-plugin-api.md: empty model output answers the
+          // plugin with INVALID_ARGUMENT, not the runtime's internal code.
+          emptyErrorCode: "INVALID_ARGUMENT",
+          emptyErrorMessage: "The model returned no text.",
+        },
       );
       return {
         text: result.text,
@@ -407,7 +423,6 @@ export function createPluginServices({
       // surface. Drop it; the renderer re-opens it on the pluginChanged event if
       // the tab is still active and the plugin came back.
       pluginViews.closePlugin(pluginId);
-      pluginSettingsViews.closePlugin(pluginId);
       if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
       sendToRenderer(IPC.event.pluginChanged,{ reason: "crash", pluginId });
     },
@@ -435,15 +450,41 @@ export function createPluginServices({
       });
       // Views were loaded from the previous revision of the plugin's files.
       pluginViews.closePlugin(pluginId);
-      pluginSettingsViews.closePlugin(pluginId);
       if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
       sendToRenderer(IPC.event.pluginChanged,{ reason: "reload", pluginId });
     },
   });
-  const userMcp = new UserMcpRuntime({
+  let userMcp: UserMcpRuntime;
+  const mcpOAuth: McpOAuthManager = new McpOAuthManager({
+    call: async (method, params) => {
+      const h = getHost();
+      if (!h) throw new Error("host unavailable");
+      return h.call(method, params);
+    },
+    emit: (event) => sendToRenderer(IPC.event.mcpOauth, event),
+    openExternal: (url) => safeOpenExternal(url),
+    log: (level, message, data) => logger.app("plugin", level, message, { data }),
+    onAuthorized: async (serverId, record): Promise<McpServerStatus> => {
+      const existed = userMcp.listRecords().some((item) => item.id === serverId);
+      if (record && !existed) {
+        userMcp.setRecords([...userMcp.listRecords(), record]);
+      }
+      userMcp.invalidate(serverId);
+      const status: McpServerStatus = await userMcp.test(serverId);
+      if (!existed) {
+        userMcp.invalidate(serverId);
+        userMcp.setRecords(userMcp.listRecords().filter((item) => item.id !== serverId));
+      }
+      sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: serverId });
+      return status;
+    },
+  });
+  userMcp = new UserMcpRuntime({
     createClient: (config) => new McpServerClient(config),
+    oauth: mcpOAuth,
     connectTimeoutMs: MCP_CONNECT_TIMEOUT_MS,
     callTimeoutMs: MCP_CALL_TIMEOUT_MS,
+    discoveryTimeoutMs: MCP_TOOL_DISCOVERY_TIMEOUT_MS,
     audit: (entry) => logger.app("plugin", "info", "mcp.api", entry),
     log: (level, message, data) => logger.app("plugin", level, message, { data }),
   });
@@ -510,17 +551,7 @@ export function createPluginServices({
       data: { api: "view.egress", ok: false, url, ts: Date.now() },
     });
   });
-  // Settings extensions use the same sandboxed preload and egress policy as
-  // work-panel views, but have their own visible surface and lifecycle.
-  const pluginSettingsViews = new PluginViewHost(({ pluginId, url }) => {
-    logger.app("plugin", "warn", "plugin.api", {
-      pluginId,
-      code: "PERMISSION_DENIED",
-      data: { api: "settings.egress", ok: false, url, ts: Date.now() },
-    });
-  });
   pluginPanels.addSenderResolver((senderId) => pluginViews.pluginIdForSender(senderId));
-  pluginPanels.addSenderResolver((senderId) => pluginSettingsViews.pluginIdForSender(senderId));
   const browserHost = new BrowserHost({
     pane: browserPane,
     isPluginLoaded: (pluginId) => Boolean(plugins.getLoaded(pluginId)),
@@ -540,10 +571,7 @@ export function createPluginServices({
     },
     getScratchDir: (sessionId) => {
       if (!sessionId) return null;
-      const root =
-        process.env.PI_DESKTOP_DATA_DIR?.trim() ||
-        join(homedir(), ".pi-desktop");
-      return join(root, "scratch", sessionId);
+      return join(dataDir, "scratch", sessionId);
     },
     onState: emitBrowserState,
   });
@@ -554,9 +582,16 @@ export function createPluginServices({
     /**
      * The richer workspace payload, so `pi.workspace.get` and the
      * `workspace:changed` event both expose the open project's folder roots
-     * (ADR 0252) instead of the bare primary path.
+     * (ADR 0263) instead of the bare primary path.
      */
     getWorkspaceInfo: () => pluginWorkspaceInfo(getWorkspacePath()),
+    /**
+     * The project each live session belongs to, so an fs call made by one
+     * session's tool follows that session instead of whichever project the
+     * window happens to be showing (ADR 0016, D093). Cold for a session whose
+     * runtime has not launched yet, which falls back to the visible workspace.
+     */
+    getWorkspacePathForSession: (sessionId) => sessionProjects.get(sessionId) ?? null,
     agentExtensionsChanged: () =>
       sendToRenderer(IPC.event.pluginChanged, { reason: "agentExtensions" }),
     browser: {
@@ -578,17 +613,24 @@ export function createPluginServices({
       if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
     },
   });
+  const speech = createSpeechService({
+    dataDir,
+    getHost,
+    plugins,
+    logger,
+  });
   return {
     plugins,
     userMcp,
+    mcpOAuth,
     pluginScopes,
     sessionProjects,
     emitBrowserState,
     announceTurnEnded,
     pluginPanels,
     pluginViews,
-    pluginSettingsViews,
     browserHost,
     browserPane,
+    speech,
   };
 }

@@ -19,7 +19,7 @@ import {
   type UserSubagentRecord,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
-import { Button, Field, Input, Select, Textarea, TooltipButton, cx } from "../ui";
+import { Button, Field, HelpIcon, Input, Textarea, TooltipButton, cx, portalOverlay } from "../ui";
 import { IconChevronRight, IconFolderOpen, IconX } from "../icons";
 import {
   groupSubagentModelChoices,
@@ -30,6 +30,7 @@ import {
 } from "./subagent-models";
 import { SubagentModelPicker } from "./SubagentModelPicker";
 import { SubagentFallbackModels } from "./SubagentFallbackModels";
+import { SettingsMenuSelect } from "./SettingsMenuSelect";
 
 /** Hard cap host-core enforces on a definition document. */
 export const MAX_SUBAGENT_BYTES = 32 * 1024;
@@ -319,12 +320,16 @@ function PresetPicker({
         : null;
   return (
     <div className="ext-field-group">
-      <div className="ext-field-label">{t("extensions.subagents.presetLabel")}</div>
+      <div className="ext-field-label">
+        {t("extensions.subagents.presetLabel")}
+        {/* The chosen template's blurb explains what picking it does, and the
+            label is what the user is picking it for. */}
+        {descKey ? <HelpIcon label={t(descKey)} /> : null}
+      </div>
       <div
         className="ext-preset-pick"
         role="group"
         aria-label={t("extensions.subagents.presetLabel")}
-        aria-describedby={descKey ? "subagent-preset-desc" : undefined}
       >
         {SUBAGENT_PRESETS.map((preset) => {
           const nameKey = subagentPresetCopyKey(preset.id, "name");
@@ -343,11 +348,6 @@ function PresetPicker({
           nameLabel={t("extensions.subagents.presetBlank")}
         />
       </div>
-      {descKey ? (
-        <p id="subagent-preset-desc" className="ext-preset-desc">
-          {t(descKey)}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -367,8 +367,12 @@ function ManagementScope({
   return (
     <div className="agent-mcp-scope">
       <div className="agent-mcp-scope-copy">
-        <span className="agent-mcp-scope-label">{t("settings.globalScope")}</span>
-        <span className="agent-mcp-scope-hint">{t("settings.subagentsOnlyGlobal")}</span>
+        <span className="agent-mcp-scope-label">
+          {t("settings.globalScope")}
+          {/* Why there is no scope choice here: the answer belongs to the label
+              it applies to, not to a line under it. */}
+          <HelpIcon label={t("settings.subagentsOnlyGlobal")} />
+        </span>
       </div>
       <button
         type="button"
@@ -445,25 +449,24 @@ function ModelField({
           label={t("extensions.subagents.thinking")}
           hint={t("extensions.subagents.thinkingHint")}
         >
-          <Select
+          <SettingsMenuSelect
+            fullWidth
+            label={t("extensions.subagents.thinking")}
             value={draft.thinkingLevel}
-            onChange={(event) =>
+            onChange={(id) =>
               setDraft({
                 ...draft,
-                thinkingLevel: event.target.value as SubagentThinkingLevel | "",
+                thinkingLevel: id as SubagentThinkingLevel | "",
               })
             }
-          >
-            <option value="">{t("extensions.subagents.thinkingInherit")}</option>
-            <option value="omit">{t("extensions.subagents.thinkingOmit")}</option>
-            {SUBAGENT_THINKING_LEVELS.filter((level) => level !== "omit").map(
-              (level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
+            options={[
+              { id: "", label: t("extensions.subagents.thinkingInherit") },
+              { id: "omit", label: t("extensions.subagents.thinkingOmit") },
+              ...SUBAGENT_THINKING_LEVELS.filter((level) => level !== "omit").map(
+                (level) => ({ id: level, label: level }),
               ),
-            )}
-          </Select>
+            ]}
+          />
         </Field>
       </div>
       <SubagentFallbackModels
@@ -638,7 +641,7 @@ export function SubagentEditorSheet({
     setNameTouched(true);
   };
 
-  return (
+  return portalOverlay(
     <div
       className="overlay ext-sheet-overlay"
       role="presentation"
@@ -701,7 +704,18 @@ export function SubagentEditorSheet({
           </Field>
 
           <div className="ext-field-group">
-            <div className="ext-field-label">{t("extensions.subagents.tools")}</div>
+            <div className="ext-field-label">
+              {t("extensions.subagents.tools")}
+              {/* One mark carries whichever grant note applies, so the row of
+                  chips never grows a sentence under it. */}
+              {draft.inheritTools ? (
+                <HelpIcon label={t("extensions.subagents.toolsInheritHint")} />
+              ) : draft.tools.some(isSubagentMutatingTool) ? (
+                <HelpIcon label={t("extensions.subagents.mutatingHint")} />
+              ) : (
+                <HelpIcon label={t("extensions.subagents.toolsHint")} />
+              )}
+            </div>
             <div
               className="ext-tool-pick"
               role="group"
@@ -735,13 +749,6 @@ export function SubagentEditorSheet({
                 </label>
               ))}
             </div>
-            {draft.inheritTools ? (
-              <p className="ext-field-hint">{t("extensions.subagents.toolsInheritHint")}</p>
-            ) : draft.tools.some(isSubagentMutatingTool) ? (
-              <p className="ext-field-hint">{t("extensions.subagents.mutatingHint")}</p>
-            ) : (
-              <p className="ext-field-hint">{t("extensions.subagents.toolsHint")}</p>
-            )}
           </div>
 
           <div className="ext-field-group">

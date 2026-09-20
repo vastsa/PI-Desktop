@@ -266,6 +266,16 @@ function thinkingLevelMapFromModelsDev(
       if (level && typeof value === "string") map[level] = value;
     }
   }
+  // models.dev effort ladders often omit an off/none value (e.g. grok-4.6).
+  // Pin off=null so adapters omit reasoning when thinking is turned off,
+  // instead of synthesizing effort: "none" which upstream rejects (#603).
+  if (
+    Object.keys(map).length > 0 &&
+    map.off === undefined &&
+    !levels.includes("off")
+  ) {
+    map.off = null;
+  }
   return Object.keys(map).length > 0 ? map : undefined;
 }
 

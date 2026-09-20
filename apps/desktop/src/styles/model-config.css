@@ -426,11 +426,11 @@
   flex-wrap: wrap;
 }
 
-.provider-setup-header-preset {
+.provider-setup-header-preset .settings-menu-select-trigger {
   width: auto;
   max-width: 170px;
-  min-height: 26px;
-  padding: 3px 7px;
+  height: 26px;
+  padding: 0 8px 0 8px;
   color: var(--ds-text-secondary);
   font-size: var(--text-2xs);
 }
@@ -845,8 +845,61 @@
 }
 
 .provider-chosen-row {
+  position: relative;
   border-radius: var(--radius-3xs);
   background: var(--ds-tile);
+}
+
+.provider-chosen-row.is-dragging {
+  opacity: 0.5;
+}
+
+.provider-chosen-row[data-drop-placement]::after {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--ds-accent);
+  pointer-events: none;
+  content: "";
+}
+
+.provider-chosen-row[data-drop-placement="before"]::after {
+  top: -2px;
+}
+
+.provider-chosen-row[data-drop-placement="after"]::after {
+  bottom: -2px;
+}
+
+.provider-chosen-reorder {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-2xs);
+  background: transparent;
+  color: var(--ds-text-muted);
+  cursor: grab;
+  user-select: none;
+}
+
+.provider-chosen-reorder:active {
+  cursor: grabbing;
+}
+
+.provider-chosen-reorder:hover:not(:disabled) {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.provider-chosen-reorder:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .provider-chosen-row-head {
@@ -908,6 +961,8 @@
 }
 
 .provider-chosen-advanced-toggle:focus-visible,
+.provider-chosen-reorder:focus-visible,
+.model-provider-row:focus-visible,
 .provider-chosen-remove:focus-visible {
   outline: 2px solid var(--ds-accent-soft);
   outline-offset: 1px;
@@ -1030,6 +1085,13 @@
   line-height: var(--leading-normal);
 }
 
+/* The context-window field says when its number still follows models.dev. */
+.provider-chosen-limit-hint {
+  color: var(--ds-text-faint);
+  font-size: var(--text-3xs);
+  line-height: var(--leading-normal);
+}
+
 .provider-chosen-thinking-default {
   display: flex;
   align-items: center;
@@ -1037,19 +1099,15 @@
   margin-left: auto;
 }
 
-.provider-chosen-thinking-select {
-  min-height: 24px;
-  padding: 1px 6px;
-  border: 0;
+.provider-chosen-thinking-select .settings-menu-select-trigger {
+  height: 24px;
+  padding: 0 8px;
   border-radius: var(--radius-sm);
-  background: var(--ds-raised);
-  box-shadow: var(--ds-raised-shadow);
-  color: var(--ds-text-primary);
   font-size: var(--text-2xs);
   line-height: var(--leading-normal);
 }
 
-.provider-chosen-thinking-select:focus-visible {
+.provider-chosen-thinking-select .settings-menu-select-trigger:focus-visible {
   outline: 2px solid var(--ds-accent-soft);
   outline-offset: 1px;
 }
@@ -1508,6 +1566,7 @@
 }
 
 .model-provider-row {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1668,6 +1727,7 @@
   .provider-setup-header-preset {
     flex: 1 1 120px;
     min-width: 0;
+    max-width: none;
   }
 
   .model-provider-row {
@@ -1689,4 +1749,22 @@
   .model-default-option {
     transition: none;
   }
+}
+
+/* Provider cards move with the pointer; surrounding cards preview the open slot. */
+.model-provider-row {
+  cursor: grab;
+  touch-action: none;
+  transition: transform 160ms ease;
+}
+.model-provider-row.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+  opacity: 1;
+  box-shadow: var(--ds-shadow-dialog);
+  transition: none;
+}
+.model-provider-list[aria-busy="true"] .model-provider-row { cursor: default; transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .model-provider-row { transition: none; }
 }

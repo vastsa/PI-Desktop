@@ -286,6 +286,7 @@ Host Main (PI-Desktop)
 - `pi.session.list()` / `get()` / `listMessages()` // `session.read.own`
 - `pi.session.rename()` // `session.update.own`
 - `pi.session.delete()` // `session.delete.own`
+- `pi.usage.listTurns()` // `usage.read`；只读已完成回合事实，不含消息正文
 - `pi.agent.complete(input)` // `agent.complete`；宿主代发一次性补全
 
 技能以声明方式贡献（`contributes.skills` + `agent.prompt.inject`），

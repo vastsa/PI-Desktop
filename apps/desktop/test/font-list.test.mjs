@@ -44,7 +44,7 @@ test("buildFontListLayout emits a group row before each group and fixed heights"
 test("buildFontListLayout places group rows only at group boundaries", () => {
   const options = [
     option("System default", "default"),
-    option("Geist", "bundled"),
+    option("Geist", "custom"),
     option("Arial", "system"),
     option("Verdana", "system"),
   ];
@@ -53,7 +53,7 @@ test("buildFontListLayout places group rows only at group boundaries", () => {
     layout.rows
       .filter((row) => row.kind === "group")
       .map((row) => row.label),
-    ["[default]", "[bundled]", "[system]"],
+    ["[default]", "[custom]", "[system]"],
   );
   assert.equal(layout.rows.length, 3 + 4);
   assert.deepEqual(layout.optionRowIndex, [1, 3, 5, 6]);

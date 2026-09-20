@@ -391,6 +391,38 @@ describe("parseCcSwitchProviders", () => {
     expect(rows).toHaveLength(1);
     expect(parseCcSwitchProviders(rows)[0]?.source).toBe("cc-switch");
   });
+
+  // Regression: issue #588 — a stale cc-switch snapshot of ~/.pi/agent/models.json
+  // used to silently outrank the pi source and drop any models added after the
+  // one-shot sync. Rows with app_type='pi' must be ignored here so the "pi"
+  // scanner keeps ownership of the authoritative file.
+  it("skips app_type='pi' rows so the pi native config stays authoritative", () => {
+    const drafts = parseCcSwitchProviders([
+      {
+        id: "opencode-go",
+        appType: "pi",
+        name: "OpenCode Zen Go",
+        settingsConfig: {
+          baseUrl: "https://api.oj.ink/v1",
+          api: "openai-completions",
+          apiKey: "sk-pi",
+          // Stale snapshot: only nine of ten models — missing `deepseek-flash`.
+          models: [
+            { id: "m1" },
+            { id: "m2" },
+            { id: "m3" },
+            { id: "m4" },
+            { id: "m5" },
+            { id: "m6" },
+            { id: "m7" },
+            { id: "m8" },
+            { id: "m9" },
+          ],
+        },
+      },
+    ]);
+    expect(drafts).toEqual([]);
+  });
 });
 
 describe("parseJsonDocument / parseTomlSubset", () => {

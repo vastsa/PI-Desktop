@@ -7,7 +7,7 @@ import type {
   ProposalKind,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
-import { fileWorkPanelTab } from "../lib/work-panel-tabs";
+import { preferredFileWorkPanelTab } from "../lib/work-panel-tabs";
 import { PLAN_APPROVAL_DEFAULT_MODE } from "../lib/plan-mode-state";
 import {
   readPlanApprovalMode,
@@ -56,6 +56,7 @@ export function PlanApprovalBar({ proposal }: { proposal: PlanProposal }) {
   const { t } = useTranslation();
   const resolvePlan = useAppStore((state) => state.resolvePlan);
   const showToast = useAppStore((state) => state.showToast);
+  const pluginViews = useAppStore((state) => state.pluginViews);
   const openWorkPanelTabForSession = useAppStore(
     (state) => state.openWorkPanelTabForSession,
   );
@@ -129,7 +130,7 @@ export function PlanApprovalBar({ proposal }: { proposal: PlanProposal }) {
     if (!artifactPath) return;
     openWorkPanelTabForSession(
       proposal.sessionId,
-      fileWorkPanelTab(artifactPath),
+      preferredFileWorkPanelTab(artifactPath, pluginViews),
     );
   };
 

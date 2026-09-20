@@ -11,7 +11,8 @@
 :root[data-platform="darwin"],
 :root[data-platform="darwin"] body,
 :root[data-platform="darwin"] #root,
-:root[data-platform="darwin"] .app-shell {
+:root[data-platform="darwin"] .app-shell,
+:root[data-platform="darwin"] .settings-shell {
   background: transparent;
 }
 
@@ -32,8 +33,7 @@
 /*
  * On macOS the splash is glass, so the shell that mounts under it as soon as
  * `ready` flips would bleed through the tint. Hide it until the exit fade,
- * then cross-fade with a transition — not an animation, because `.sidebar`
- * owns `sidebar-in` and swapping animation-name would replay it after boot.
+ * then cross-fade without replaying the dock's explicit toggle animation.
  */
 :root[data-platform="darwin"] .app-shell.is-booting:has(.startup-splash:not(.is-exiting))
   > :not(.startup-splash) {
@@ -187,6 +187,14 @@
   }
 }
 
+.sidebar-surface,
+.sidebar-rail {
+  background-color: var(--ds-bg-sidebar, var(--ds-bg-primary));
+  background-image: var(--ds-bg-sidebar-image, none);
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
 .sidebar {
   width: var(--ds-sidebar-width);
   min-width: 0;
@@ -198,23 +206,13 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  background-color: var(--ds-bg-sidebar, var(--ds-bg-primary));
-  background-image: var(--ds-bg-sidebar-image, none);
-  background-repeat: no-repeat;
-  background-size: cover;
-  /* No seam against the main pane (D297): the sidebar's own surface tone is
-     the only edge cue on every platform, as it already was on macOS glass. */
-  /*
-   * Animate the flex allocation with the dock motion. A transform-only
-   * animation leaves MainChat at its final width before the first frame,
-   * making sidebar collapse feel like a layout jump.
-   */
+}
+
+.sidebar.is-entering {
   animation: sidebar-in var(--motion-duration-normal) var(--motion-ease-out) both;
 }
 
 .sidebar-resize-handle {
-  /* The sidebar is fixed-width: collapse/open only, never dragged. */
-  display: none;
   position: absolute;
   top: 0;
   right: 0;
@@ -339,10 +337,6 @@
   flex: 0 0 56px;
   display: flex;
   flex-direction: column;
-  background-color: var(--ds-bg-sidebar, var(--ds-bg-primary));
-  background-image: var(--ds-bg-sidebar-image, none);
-  background-repeat: no-repeat;
-  background-size: cover;
 }
 
 /*
@@ -353,7 +347,7 @@
  * The main pane and titlebars remain opaque `bg-primary`.
  */
 :root[data-platform="darwin"] .startup-splash,
-:root[data-platform="darwin"] .sidebar,
+:root[data-platform="darwin"] .sidebar-surface,
 :root[data-platform="darwin"] .sidebar-rail {
   background-color: var(--ds-sidebar-glass-tint);
   background-image: var(--ds-bg-sidebar-image, none),
@@ -383,40 +377,20 @@
   display: flex;
   align-items: center;
   margin-right: auto;
-  padding-left: 64px; /* traffic lights (76px) minus main-titlebar padding */
+  /* The row already pads 12px, so the title only adds the difference between
+     that and the traffic-light reserve. Platforms with no native traffic
+     lights, and fullscreen, resolve to the row's own padding. */
+  padding-left: max(0px, calc(var(--ds-window-lead-inset) - 12px));
 }
 
-:root[data-platform="win32"] .main-titlebar-left,
-:root[data-platform="linux"] .main-titlebar-left {
-  padding-left: 0;
-}
-
-:root[data-platform="darwin"][data-fullscreen="true"] .main-titlebar-left {
-  padding-left: 0;
-}
-
+/* Preview- and route-band actions take the shared chrome-control geometry from
+   the `.ct-icon-btn` group below (28px square, `--radius-md`, transparent seat,
+   hover wash). Only the press feedback belongs to the lane itself. */
 .title-nav-btn {
-  display: inline-flex;
-  height: 22px;
-  width: 22px;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-2xs);
-  color: color-mix(in oklab, var(--ds-text-primary) 55%, transparent);
-  background: var(--ds-tile);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out),
     transform var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.title-nav-btn:hover:not(:disabled) {
-  color: var(--ds-text-primary);
-  background: var(--ds-bg-hover);
-}
-
-.title-nav-btn:disabled {
-  opacity: 0.28;
 }
 
 .title-nav-btn.active {
@@ -535,11 +509,23 @@
   line-height: var(--leading-compact);
 }
 
+/* One geometry and one seat for every chrome icon control: the topbar's dock
+   toggle, the viewport-fixed work-panel toggle, the preview/route-band lane
+   actions, and the work-panel header's create and maximize controls. The seat is
+   transparent at rest, so the icon alone carries the control and only the pointer
+   hover wash paints a surface under it; keyboard focus keeps the global outline.
+   `flex: 0 0` keeps them square when a crowded band would otherwise squeeze
+   them. */
 .conversation-topbar .ct-icon-btn,
-.app-work-panel-toggle {
+.app-work-panel-toggle,
+.main-titlebar .title-nav-btn,
+.window-chrome-row .title-nav-btn,
+.work-panel-new-tab,
+.work-panel-maximize {
   display: inline-flex;
   height: var(--ds-work-panel-toggle-size);
   width: var(--ds-work-panel-toggle-size);
+  flex: 0 0 var(--ds-work-panel-toggle-size);
   align-items: center;
   justify-content: center;
   border: none;
@@ -552,13 +538,21 @@
 }
 
 .conversation-topbar .ct-icon-btn:hover:not(:disabled),
-.app-work-panel-toggle:hover:not(:disabled) {
+.app-work-panel-toggle:hover:not(:disabled),
+.main-titlebar .title-nav-btn:hover:not(:disabled),
+.window-chrome-row .title-nav-btn:hover:not(:disabled),
+.work-panel-new-tab:hover:not(:disabled),
+.work-panel-maximize:hover:not(:disabled) {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
 
 .conversation-topbar .ct-icon-btn:disabled,
-.app-work-panel-toggle:disabled {
+.app-work-panel-toggle:disabled,
+.main-titlebar .title-nav-btn:disabled,
+.window-chrome-row .title-nav-btn:disabled,
+.work-panel-new-tab:disabled,
+.work-panel-maximize:disabled {
   opacity: 0.4;
   cursor: default;
 }
@@ -593,10 +587,11 @@
   app-region: no-drag;
 }
 
+/* The open state is the glyph swap plus the engaged ink — the same transparent
+   seat as every other chrome icon control, so the toggle never floats over the
+   panel header as a raised pill. */
 .app-work-panel-toggle[aria-pressed="true"] {
-  background: var(--ds-tile-deep);
   color: var(--ds-text-primary);
-  box-shadow: var(--ds-raised-shadow);
 }
 
 .app-work-panel-toggle-icon {
@@ -624,16 +619,28 @@
   );
 }
 
-/* macOS traffic lights occupy the top-left ~76px; only reserve that space
- * when the sidebar is collapsed and the main pane reaches the window edge.
+/* The macOS traffic lights own the window's top-left corner. Everything below
+ * reads `--ds-window-lead-inset`: the cluster's right edge (native geometry,
+ * injected at boot from @pi-desktop/shared — see window-chrome.ts) plus the
+ * breathing room kept before the first shell control. Fullscreen hides the
+ * buttons, so the reserve falls back to the ordinary 8px gutter; Windows and
+ * Linux keep the 0px default from tokens.css and use their renderer-drawn
+ * controls instead.
+ *
  * Only the inset moves per platform — the collapsed padding below derives the
  * title's offset from it, so the two can never drift apart. */
-:root[data-platform="darwin"] .conversation-topbar.ct-collapsed {
-  --ct-lead-inset: 76px;
+:root[data-platform="darwin"] {
+  --ds-window-lead-inset: calc(
+    var(--ds-traffic-light-edge) + var(--ds-traffic-light-gap)
+  );
 }
 
-:root[data-platform="darwin"][data-fullscreen="true"] .conversation-topbar.ct-collapsed {
-  --ct-lead-inset: 8px;
+:root[data-platform="darwin"][data-fullscreen="true"] {
+  --ds-window-lead-inset: 8px;
+}
+
+:root[data-platform="darwin"] .conversation-topbar.ct-collapsed {
+  --ct-lead-inset: var(--ds-window-lead-inset);
 }
 
 /*
@@ -653,9 +660,9 @@
    * The title's edge is `padding-left`; this button must stay exactly 36px to
    * its left (28px button + .ct-left's 8px gap) at EVERY frame, not just at the
    * two endpoints. Deriving `left` from the same inset keeps both ranges
-   * identical (100px on darwin, 36px elsewhere), so the pair interpolates in
-   * lockstep. Offsetting instead of transitioning 12px->76px matters: that range
-   * is only 64px against padding's 100px, and the icon drifts onto the title
+   * identical (112px on darwin, 36px elsewhere), so the pair interpolates in
+   * lockstep. Offsetting instead of transitioning 12px->88px matters: that range
+   * is only 76px against padding's 112px, and the icon drifts onto the title
    * mid-flight. Expanded it lands off the pane's left edge, where it is
    * invisible anyway, and slides in rather than materialising over the title.
    */
@@ -666,7 +673,7 @@
   align-items: center;
   /*
    * Out of flow, so .ct-left's no-drag box no longer covers it: .ct-left starts
-   * at the padding edge (x=112 collapsed) while this sits at x=76. Without its
+   * at the padding edge (x=124 collapsed) while this sits at x=88. Without its
    * own carve-out the button falls inside the top bar's drag region, which on
    * macOS swallows the click and keeps the arrow cursor instead of the pointer.
    */
@@ -981,7 +988,7 @@
   position: fixed;
   top: 0;
   right: 0;
-  z-index: 200; /* above titlebar (10) and work panel chrome */
+  z-index: 1000; /* above every renderer surface and draggable titlebar */
   display: flex;
   align-items: center;
   width: var(--ds-window-controls-width);
@@ -994,10 +1001,25 @@
   /* Continuous with the adjacent titlebar: no side seam (D297). */
 }
 
-/* The main shell keeps one control band mounted inside MainPane, but its
- * viewport-fixed position must not follow MainPane while the work panel reflows. */
-.window-controls.window-controls-in-pane {
-  position: fixed;
+/* Electron resolves app-region hit testing across siblings. The controls must
+ * be a later compositor layer than Settings, plugin content, or a work-panel
+ * drag header. Direct-child overlays (search, toasts, splash) must still win. */
+.app-shell > .window-controls {
+  z-index: 1100;
+}
+
+.app-shell > .search-overlay,
+.app-shell > .toast-viewport {
+  z-index: 1200;
+}
+
+.app-shell > .startup-splash {
+  z-index: 1300;
+}
+
+/* Follow the adjacent titlebar surface when the dock occupies the right edge. */
+.app-shell:has(> .work-panel) > .window-controls {
+  background: var(--ds-bg-dock-raised);
 }
 
 .window-control-btn {
@@ -1052,15 +1074,11 @@
 }
 
 :root[data-platform="darwin"] .sidebar-header {
-  padding-left: 76px;
+  padding-left: var(--ds-window-lead-inset);
 }
 
 :root[data-platform="darwin"] .sidebar-header > .brand {
   display: none;
-}
-
-:root[data-platform="darwin"][data-fullscreen="true"] .sidebar-header {
-  padding-left: 8px;
 }
 
 .sidebar-header-actions {
@@ -1108,18 +1126,22 @@
   user-select: none;
 }
 
-/* Window-level chrome for preview mode: the topbar that normally owns the drag
-   band and the window controls lives in MainChat, which preview mode does not
-   render, so the shell reserves the same 46px band itself. */
-.app-shell.work-panel-maximized .work-panel-header {
-  -webkit-app-region: drag;
+.app-shell.work-panel-maximized {
+  --preview-chrome-inset: 8px;
+  --preview-chrome-action-lane: calc(var(--ds-control-size) + 8px);
 }
 
-.app-shell.work-panel-maximized .work-panel-header button {
-  -webkit-app-region: no-drag;
+.app-shell.work-panel-maximized.sidebar-collapsed {
+  --preview-chrome-action-lane: var(--ds-preview-action-lane-width);
 }
 
-.window-chrome-row {
+:root[data-platform="darwin"] .app-shell.work-panel-maximized.sidebar-collapsed {
+  --preview-chrome-inset: var(--ds-window-lead-inset);
+}
+
+/* Match the scenic backdrop's child-layer specificity so preview navigation
+ * stays above the work panel while non-control pixels remain pass-through. */
+.app-shell > .window-chrome-row {
   position: absolute;
   top: 0;
   right: 0;
@@ -1128,54 +1150,21 @@
   display: flex;
   height: var(--ds-toolbar-height);
   align-items: center;
-  padding-left: 8px;
+  padding-left: var(--preview-chrome-inset);
   pointer-events: none;
-  -webkit-app-region: drag;
-  app-region: drag;
 }
 
 .window-chrome-row.sidebar-expanded {
   left: var(--ds-sidebar-width);
 }
 
-/* Native macOS traffic lights occupy the top-left ~76px of the window. Keep
- * preview actions outside that hit area while the sidebar is collapsed. */
-:root[data-platform="darwin"] .window-chrome-row:not(.sidebar-expanded) {
-  padding-left: 76px;
-}
-
-:root[data-platform="darwin"][data-fullscreen="true"]
-  .window-chrome-row:not(.sidebar-expanded) {
-  padding-left: 8px;
-}
-
 .window-chrome-row button {
   pointer-events: auto;
-}
-
-/* The system buttons keep their ordinary titlebar seat at the top right. */
-.window-chrome-row .window-controls {
-  margin-left: auto;
   -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .window-chrome-drag {
   flex: 1 1 auto;
   align-self: stretch;
-  -webkit-app-region: drag;
-  app-region: drag;
 }
-
-.window-chrome-row .window-controls,
-.window-chrome-row button {
-  -webkit-app-region: no-drag;
-}
-/* Preview mode: the top band replaces MainChat's titlebar, so the system
-   buttons join the band's own flow instead of floating over the panel as a
-   separate opaque block (their fixed seat is meant for the titlebar row). */
-
-
-
-
-/* Preview mode: the three shell actions sit tight at the band's left edge
- * (new task, restore the panel, toggle the panel), then the drag region. */

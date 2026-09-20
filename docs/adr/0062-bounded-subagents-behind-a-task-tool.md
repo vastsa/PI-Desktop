@@ -3,7 +3,8 @@
 
 - Status: Accepted for implementation (definition roots amended by ADR 0112;
   timeout policy amended by ADR 0119; delegation presentation amended by D265;
-  opt-in parent-tool inherit amended by ADR 0246)
+  opt-in parent-tool inherit amended by ADR 0246; resumable delegations amended
+  by ADR 0279)
 - Date: 2026-08-06
 - Deciders: PI-Desktop core
 - Related: D201, ADR 0041 (persistence outbox), ADR 0048 (lazy per-turn tool
@@ -11,7 +12,7 @@
   template documents), D138 (session-scoped inline permission requests),
   D198 (contract modes), ADR 0112 (capability roots and Settings IA), ADR 0119
   (event-driven subagent timeouts), D265 (one delegation reads as a card too),
-  ADR 0246 (opt-in `tools: inherit`)
+  ADR 0246 (opt-in `tools: inherit`), ADR 0279 (resumable delegations)
 
 ## Context
 

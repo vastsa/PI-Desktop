@@ -31,6 +31,7 @@ export const HIGH_RISK_PERMISSIONS = [
   "agent.tool.register",
   "browser.cdp",
   "audio.capture.background",
+  "speech.adapter.register",
 ] as const;
 
 /** Host API surface each permission unlocks, used for the unused-permission hint. */
@@ -58,6 +59,7 @@ const PERMISSION_API_HINTS: Record<string, string[]> = {
   "fs.write": ["fs.writeText"],
   "fs.delete": ["fs.remove"],
   "agent.tool.register": ["agent.registerTool"],
+  "speech.adapter.register": ["speech.registerAdapter"],
   "net.fetch": ["net.fetch"],
   "audio.capture.background": [
     "audio.getInputDevices",

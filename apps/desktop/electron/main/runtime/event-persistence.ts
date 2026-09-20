@@ -1,7 +1,7 @@
 import { applyMessageUpdate, IPC, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
 import type { FinishTurn } from "./plans";
 import type { RuntimeState } from "./context";
-import type { InflightCheckpointer } from "../inflight-checkpoint";
+import type { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import type { Logger } from "../logger";
 import type { PersistenceOutbox } from "../persistence-outbox";
 

@@ -144,7 +144,11 @@ export function ServiceChips({ statuses }: { statuses: readonly PluginServiceSta
 /** Live state of a plugin's ExtensionAPI modules (spec 07-plugins/16 §11). */
 export function AgentExtensionDetails({ status }: { status: PluginAgentExtensionStatus }) {
   const { t } = useTranslation();
-  const names = [...status.toolNames, ...status.commandNames.map((name) => `/${name}`)];
+  const names = [
+    ...status.toolNames,
+    ...status.commandNames.map((name) => `/${name}`),
+    ...status.agentNames,
+  ];
   return (
     <div className="plugins-agent-extension">
       <span

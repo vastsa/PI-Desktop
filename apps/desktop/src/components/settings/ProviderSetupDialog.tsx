@@ -16,8 +16,9 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
-import { Button, Field, Input, Select } from "../ui";
+import { Button, Field, HelpIcon, Input, portalOverlay } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
+import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
 import { CUSTOM_SERVICE, ServicePicker } from "./ServicePicker";
@@ -316,7 +317,7 @@ export function ProviderSetupDialog({
     !baseUrlIssue &&
     models.length > 0;
 
-  return (
+  return portalOverlay(
     <div
       className="overlay provider-setup-overlay"
       role="presentation"
@@ -335,6 +336,8 @@ export function ProviderSetupDialog({
         <div className="provider-setup-head">
           <h3 id="provider-setup-title" className="provider-setup-title">
             {initialDraft ? t("settings.copyProviderTitle") : editing ? t("settings.editProviderTitle") : t("settings.addProviderTitle")}
+            {/* What a copy does and does not take is the title's own promise. */}
+            {initialDraft ? <HelpIcon label={t("settings.copyProviderHint")} /> : null}
           </h3>
           <div className="provider-setup-head-actions">
             {named || custom ? (
@@ -372,7 +375,6 @@ export function ProviderSetupDialog({
         </div>
 
         <div className="provider-setup-body">
-          {initialDraft ? <p className="settings-hint">{t("settings.copyProviderHint")}</p> : null}
           {error ? <div className="provider-setup-error">{error}</div> : null}
 
           <div className="provider-setup-credentials">
@@ -487,26 +489,26 @@ export function ProviderSetupDialog({
                         ? "settings.apiStyleChooseCustom"
                         : "settings.apiStyleLegacyAccount") : undefined}
                     >
-                      <Select
+                      <SettingsMenuSelect
+                        fullWidth
+                        label={t("settings.apiStyle")}
                         value={apiStyle}
                         disabled={saving}
-                        onChange={(event) =>
-                          setApiStyle(event.target.value as CatalogApiStyle)
-                        }
-                      >
-                        {accountOnlyApiStyle ? (
-                          <option value={apiStyle} disabled>
-                            {t(API_STYLE_LABEL_KEYS[apiStyle])}
-                          </option>
-                        ) : null}
-                        {CUSTOM_PROVIDER_API_STYLES.map(
-                          (style) => (
-                            <option key={style} value={style}>
-                              {t(API_STYLE_LABEL_KEYS[style])}
-                            </option>
-                          ),
-                        )}
-                      </Select>
+                        onChange={(id) => setApiStyle(id as CatalogApiStyle)}
+                        options={[
+                          ...(accountOnlyApiStyle
+                            ? [{
+                                id: apiStyle,
+                                label: t(API_STYLE_LABEL_KEYS[apiStyle]),
+                                disabled: true,
+                              }]
+                            : []),
+                          ...CUSTOM_PROVIDER_API_STYLES.map((style) => ({
+                            id: style,
+                            label: t(API_STYLE_LABEL_KEYS[style]),
+                          })),
+                        ]}
+                      />
                     </Field>
                   </div>
                 </>
@@ -526,6 +528,7 @@ export function ProviderSetupDialog({
             listTitle={t("settings.serviceModels")}
             busy={saving}
             onReload={discovery.reload}
+            apiStyle={resolvedApiStyle}
           />
         </div>
       </div>

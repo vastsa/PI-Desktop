@@ -1,5 +1,5 @@
 import { ErrorCodes, IPC, type AgentEventEnvelope, type AppNotification, type PlanExecution, type PlanExecutionFinishStatus, type UiMessage } from "@pi-desktop/shared";
-import { executionFromResponse, executionListFromResponse, planExecutionFromUnknown } from "../plan-execution";
+import { executionFromResponse, executionListFromResponse, planExecutionFromUnknown } from "@pi-desktop/host-runtime";
 import type { RuntimeState } from "./context";
 import type {
   SessionCoordination,
@@ -113,6 +113,28 @@ const {
   clearAbortReason,
   releaseTurnClaims,
 } = coordination;
+/** The Agent Host turn state for one settled turn. */
+function hostTurnStatus(
+  reason: TurnEndReason,
+): "completed" | "failed" | "interrupted" {
+  if (reason === "aborted") return "interrupted";
+  return reason === "error" ? "failed" : "completed";
+}
+
+/**
+ * The error a settled failing turn carries into Agent Host. The terminal event
+ * owns the real message; this path only runs when that event never landed, so the
+ * code the settlement recorded is the best available description.
+ */
+function hostTurnError(
+  reason: TurnEndReason,
+  errorCode: string | undefined,
+): { code: string; message: string; retriable: boolean; traceId: string } | undefined {
+  if (reason !== "error") return undefined;
+  const code = errorCode ?? "TURN_ERROR";
+  return { code, message: code, retriable: false, traceId: "" };
+}
+
 /**
  * Settle one host turn: attempt its durable end, release its local state,
  * announce it to the plugin surfaces, then release the claim.
@@ -267,10 +289,21 @@ function finishTurn(
       turnSettlements.delete(finalizationKey);
       for (const resolve of waiters) resolve();
     }
-    // The terminal event reaches Agent Host while activeTurns still owns this
-    // session. Retry its deferred queue drain once settlement releases both busy
-    // guards, unless the application is shutting down.
-    if (!isQuitting()) runtimeState.agentHostBridge?.agentHost.kick(id);
+    // Main is authoritative about the turn's end: the terminal event may have
+    // been dropped as stale (`isStaleTerminalEvent`) or never emitted at all, and
+    // a turn left active in Agent Host holds that session's queue forever. So the
+    // settlement closes the turn in the module, which also releases the queue it
+    // was holding. `kick` stays as the belt-and-braces retry for a turn the module
+    // never saw.
+    if (!isQuitting()) {
+      runtimeState.agentHostBridge?.endTurn(
+        id,
+        turnId,
+        hostTurnStatus(reason),
+        hostTurnError(reason, errorCode),
+      );
+      runtimeState.agentHostBridge?.agentHost.kick(id);
+    }
     // Settlement of the durable turn is the trigger for the collaborators that
     // follow it; a turn with no durable end has nothing to settle.
     if (!isQuitting() && settledTurnId && typeof onTurnSettled === "function") {

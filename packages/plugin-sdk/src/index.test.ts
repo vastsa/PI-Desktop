@@ -40,6 +40,33 @@ describe("validateManifest", () => {
     ).toMatch(/zh-CN is required/);
   });
 
+  it("validates the floating widget placement fields", () => {
+    expect(validateManifest({ ...base, ui: { shape: "widget" } }).ok).toBe(true);
+    expect(validateManifest({ ...base, ui: { shape: "panel" } }).ok).toBe(true);
+    expect(validateManifest({ ...base, ui: { shape: "orb" } }).error).toMatch(
+      /manifest\.ui\.shape/,
+    );
+    expect(
+      validateManifest({ ...base, ui: { alwaysOnTop: "yes" } }).error,
+    ).toMatch(/manifest\.ui\.alwaysOnTop must be a boolean/);
+    expect(validateManifest({ ...base, ui: { resizable: 1 } }).error).toMatch(
+      /manifest\.ui\.resizable must be a boolean/,
+    );
+    const widget = validateManifest({
+      ...base,
+      ui: {
+        panel: "renderer/index.html",
+        shape: "widget",
+        alwaysOnTop: true,
+        resizable: false,
+      },
+    });
+    expect(widget.ok).toBe(true);
+    expect(widget.manifest?.ui?.shape).toBe("widget");
+    expect(widget.manifest?.ui?.alwaysOnTop).toBe(true);
+    expect(widget.manifest?.ui?.resizable).toBe(false);
+  });
+
   it("accepts the new contribution shapes", () => {
     const result = validateManifest({
       ...base,
@@ -108,7 +135,7 @@ describe("validateManifest", () => {
     ).toMatch(/duplicate session source/);
   });
 
-  it("validates typed theme variables and sandboxed settings destinations", () => {
+  it("validates typed theme variables and data-only scenic Settings contributions", () => {
     expect(
       validateContributions({
         themes: [{
@@ -117,12 +144,18 @@ describe("validateManifest", () => {
           path: "themes/scenic.css",
           variables: [{ name: "--nexus-backdrop-blur", type: "length", unit: "px", min: 0, max: 20, default: 6 }],
         }],
-        settingsDestinations: [{
+        scenicThemes: {
           id: "scenic-themes",
           label: { en: "Scenic themes", "zh-CN": "风景主题" },
+          description: { en: "Scenic cards", "zh-CN": "风景卡片" },
           icon: "palette",
-          entry: "settings/index.html",
-        }],
+          themes: [{
+            themeId: "scenic",
+            label: { en: "Scenic", "zh-CN": "风景" },
+            description: { en: "Scenic card", "zh-CN": "风景卡片" },
+            previewAsset: "assets/scenic.png",
+          }],
+        },
       }),
     ).toBeUndefined();
     expect(
@@ -130,6 +163,26 @@ describe("validateManifest", () => {
         themes: [{ id: "scenic", label: "Scenic", path: "themes/scenic.css", variables: [{ name: "--pi-bg", type: "color", default: "#000000" }] }],
       }),
     ).toMatch(/variable declaration/);
+  });
+
+  it("validates host-rendered scenic Settings contributions", () => {
+    const scenicThemes = {
+      id: "nexus-scenic-themes",
+      label: { en: "Nexus Scenic Themes", "zh-CN": "Nexus 风景主题" },
+      description: { en: "Four scenic themes", "zh-CN": "四款风景主题" },
+      icon: "palette" as const,
+      themes: [{
+        themeId: "twilight-mountains",
+        label: { en: "Twilight Mountains", "zh-CN": "暮光山脉" },
+        description: { en: "Twilight glass", "zh-CN": "暮光玻璃" },
+        previewAsset: "assets/twilight-mountains.png",
+      }],
+    };
+    expect(validateContributions({ scenicThemes })).toBeUndefined();
+    expect(validateContributions({ scenicThemes: { ...scenicThemes, themes: [] } })).toMatch(/1 to 12 cards/);
+    expect(validateContributions({ scenicThemes: { ...scenicThemes, themes: [{ ...scenicThemes.themes[0], previewAsset: "../escape.png" }] } })).toMatch(/previewAsset/);
+    expect(validateContributions({ scenicThemes: { ...scenicThemes, themes: [{ ...scenicThemes.themes[0], label: "Twilight" as unknown as typeof scenicThemes.themes[number]["label"] }] } })).toMatch(/localized label/);
+    expect(validateContributions({ scenicThemes: { ...scenicThemes, keywords: ["scenic" as unknown as { en: string; "zh-CN": string }] } })).toMatch(/keywords/);
   });
 });
 
@@ -332,7 +385,7 @@ describe("planSafeActions contract (ADR 0211)", () => {
 });
 
 describe("contributed theme assets and window appearance", () => {
-  it("accepts a whitelisted absolute asset list", () => {
+  it("accepts whitelisted package-relative and absolute asset lists", () => {
     expect(
       validateContributions({
         themes: [
@@ -340,17 +393,15 @@ describe("contributed theme assets and window appearance", () => {
             id: "midnight",
             label: "Midnight",
             path: "a.css",
-            assets: ["C:/art/bg.png", "file:///C:/font/ui.woff2", "/art/sheen.svg"],
+            assets: ["assets/bg.png", "fonts/ui.woff2", "assets/sheen.svg", "C:/art/external.png"],
           },
         ],
       }),
     ).toBeUndefined();
   });
 
-  it("rejects a relative path, an escape, an unknown scheme or a wrong extension", () => {
+  it("rejects an escape, an unknown scheme or a wrong extension", () => {
     for (const asset of [
-      "art/bg.png",
-      "./art/bg.png",
       "../bg.png",
       "art/../bg.png",
       "C:/art/../bg.png",
@@ -374,7 +425,7 @@ describe("contributed theme assets and window appearance", () => {
             id: "m",
             label: "M",
             path: "a.css",
-            assets: ["C:/art/bg.png", "file:///C:/art/bg.png"],
+            assets: ["assets/bg.png", "./assets/bg.png", "C:/art/external.png", "file:///C:/art/external.png"],
           },
         ],
       }),
@@ -510,12 +561,14 @@ describe("PLUGIN_PERMISSIONS", () => {
       "models.list",
       "project.create",
       "session.read",
+      "usage.read",
       "fs.read",
       "fs.write",
       "fs.delete",
       "browser.cdp",
       "audio.capture.background",
       "audio.playback.background",
+      "speech.adapter.register",
       "keyboard.globalShortcut",
       "net.websocket",
     ]) {
@@ -721,6 +774,48 @@ describe("contributes.providers", () => {
   it("requires a name", () => {
     expect(validateContributions({ providers: [{ ...provider, name: "  " }] })).toMatch(
       /requires a name/,
+    );
+  });
+});
+
+describe("manifest i18n", () => {
+  it("keeps a per-locale display block on the manifest", () => {
+    const result = validateManifest({
+      ...base,
+      description: "小清新待办",
+      i18n: {
+        en: { name: "Todo List", description: "A calm todo list" },
+        "zh-CN": {
+          name: "小清新待办",
+          description: "轻盈的待办清单",
+          safetyNotes: "只读写自己的数据",
+        },
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.i18n?.en.name).toBe("Todo List");
+    expect(result.manifest?.i18n?.["zh-CN"].name).toBe("小清新待办");
+  });
+
+  it("accepts a partial block, which falls back per field", () => {
+    expect(validateManifest({ ...base, i18n: { en: { name: "Hello" } } }).ok).toBe(true);
+    // A locale the shell does not read, and an unknown display field, are the
+    // author's business rather than a load failure.
+    expect(validateManifest({ ...base, i18n: { ja: { name: "ハロー" } } }).ok).toBe(true);
+    expect(
+      validateManifest({ ...base, i18n: { en: { name: "Hello", tagline: "x" } } as never }).ok,
+    ).toBe(true);
+  });
+
+  it("refuses a malformed block", () => {
+    expect(validateManifest({ ...base, i18n: [] as never }).error).toMatch(
+      /manifest\.i18n must be an object/,
+    );
+    expect(validateManifest({ ...base, i18n: { "zh-CN": "小清新待办" } as never }).error).toMatch(
+      /manifest\.i18n\.zh-CN must be an object/,
+    );
+    expect(validateManifest({ ...base, i18n: { en: { name: 7 } } as never }).error).toMatch(
+      /manifest\.i18n\.en\.name must be a string/,
     );
   });
 });

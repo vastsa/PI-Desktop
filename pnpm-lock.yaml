@@ -15,7 +15,8 @@ overrides:
   vite@5: '>=6.4.3 <7'
 
 patchedDependencies:
-  '@earendil-works/pi-ai@0.85.1': 7f0a27b6b948cdfcd19c487093def4b4795865c712e5fc1a578ae77636eb4376
+  '@earendil-works/pi-agent-core@0.85.1': d6395b14bbbfd75778197b1a6a0d96b1b2c9f39c7c317c2291392d4a7dda183b
+  '@earendil-works/pi-ai@0.85.1': 3082768ed4bca473884a4a90cbb263d260c6884fdbc3ec039509da5ae9fcdcab
 
 importers:
 
@@ -36,13 +37,16 @@ importers:
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 0.85.1
-        version: 0.85.1(patch_hash=7f0a27b6b948cdfcd19c487093def4b4795865c712e5fc1a578ae77636eb4376)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
+        version: 0.85.1(patch_hash=3082768ed4bca473884a4a90cbb263d260c6884fdbc3ec039509da5ae9fcdcab)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
       '@pi-desktop/agent-host':
         specifier: workspace:*
         version: link:../../packages/agent-host
       '@pi-desktop/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
+      '@pi-desktop/host-runtime':
+        specifier: workspace:*
+        version: link:../../packages/host-runtime
       '@pi-desktop/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -52,6 +56,9 @@ importers:
       '@pi-desktop/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      '@pi-desktop/racp':
+        specifier: workspace:*
+        version: link:../../packages/racp
       '@pi-desktop/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -146,6 +153,47 @@ importers:
         specifier: ^5.0.15
         version: 5.0.15(@types/react@19.2.18)(react@19.2.8)
 
+  apps/pi-host:
+    dependencies:
+      '@pi-desktop/agent-host':
+        specifier: workspace:*
+        version: link:../../packages/agent-host
+      '@pi-desktop/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
+      '@pi-desktop/host-runtime':
+        specifier: workspace:*
+        version: link:../../packages/host-runtime
+      '@pi-desktop/racp':
+        specifier: workspace:*
+        version: link:../../packages/racp
+      '@pi-desktop/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      ws:
+        specifier: 8.21.1
+        version: 8.21.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))
+    optionalDependencies:
+      node-pty:
+        specifier: 1.1.0
+        version: 1.1.0
+
   docs:
     devDependencies:
       vitepress:
@@ -172,10 +220,10 @@ importers:
     dependencies:
       '@earendil-works/pi-agent-core':
         specifier: 0.85.1
-        version: 0.85.1(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
+        version: 0.85.1(patch_hash=d6395b14bbbfd75778197b1a6a0d96b1b2c9f39c7c317c2291392d4a7dda183b)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-ai':
         specifier: 0.85.1
-        version: 0.85.1(patch_hash=7f0a27b6b948cdfcd19c487093def4b4795865c712e5fc1a578ae77636eb4376)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
+        version: 0.85.1(patch_hash=3082768ed4bca473884a4a90cbb263d260c6884fdbc3ec039509da5ae9fcdcab)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
         specifier: 0.85.1
         version: 0.85.1(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
@@ -198,6 +246,28 @@ importers:
       esbuild:
         specifier: ^0.25.12
         version: 0.25.12
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))
+
+  packages/host-runtime:
+    dependencies:
+      '@pi-desktop/agent-host':
+        specifier: workspace:*
+        version: link:../agent-host
+      '@pi-desktop/agent-runtime':
+        specifier: workspace:*
+        version: link:../agent-runtime
+      '@pi-desktop/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -236,6 +306,34 @@ importers:
         specifier: ^1.3.13
         version: 1.3.13
     devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))
+
+  packages/racp:
+    dependencies:
+      '@pi-desktop/agent-host':
+        specifier: workspace:*
+        version: link:../agent-host
+      '@pi-desktop/shared':
+        specifier: workspace:*
+        version: link:../shared
+      typebox:
+        specifier: ^1.3.13
+        version: 1.3.13
+      ws:
+        specifier: 8.21.1
+        version: 8.21.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -3252,6 +3350,10 @@ packages:
     resolution: {integrity: sha512-vLBWCKb+7LWsX+TbfzWOkw0W81m377tyx3hOweBTjO43CXZnRGS1/JPWs20fr0PgZyDXk6ROYrylsEycK8raDA==}
     engines: {node: '>=22.12.0'}
 
+  node-addon-api@7.1.0:
+    resolution: {integrity: sha512-mNcltoe1R8o7STTegSOHdnJNN7s5EUvhoS7ShnTHDyOSd+8H+UdWODq6qSv67PjC8Zc5JRT8+oLAMCr0SIXw7g==}
+    engines: {node: ^16 || ^18 || >= 20}
+
   node-api-version@0.2.1:
     resolution: {integrity: sha512-2xP/IGGMmmSQpI1+O/k72jF/ykvZ89JeuKX3TLJAYPDVLUalrshrLHkeVcCCZqG/eEa635cr8IBYzgnDvM2O8Q==}
 
@@ -3271,6 +3373,9 @@ packages:
 
   node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
+
+  node-pty@1.1.0:
+    resolution: {integrity: sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==}
 
   node-releases@2.0.51:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
@@ -4665,10 +4770,10 @@ snapshots:
     dependencies:
       esbuild: 0.28.1
 
-  '@earendil-works/pi-agent-core@0.85.1(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)':
+  '@earendil-works/pi-agent-core@0.85.1(patch_hash=d6395b14bbbfd75778197b1a6a0d96b1b2c9f39c7c317c2291392d4a7dda183b)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)':
     dependencies:
       '@earendil-works/chord': 0.85.1
-      '@earendil-works/pi-ai': 0.85.1(patch_hash=7f0a27b6b948cdfcd19c487093def4b4795865c712e5fc1a578ae77636eb4376)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-ai': 0.85.1(patch_hash=3082768ed4bca473884a4a90cbb263d260c6884fdbc3ec039509da5ae9fcdcab)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-telemetry': 0.85.1
       diff: 8.0.4
       ignore: 7.0.5
@@ -4682,7 +4787,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.85.1(patch_hash=7f0a27b6b948cdfcd19c487093def4b4795865c712e5fc1a578ae77636eb4376)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)':
+  '@earendil-works/pi-ai@0.85.1(patch_hash=3082768ed4bca473884a4a90cbb263d260c6884fdbc3ec039509da5ae9fcdcab)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.123.0(zod@4.4.3)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
@@ -4705,8 +4810,8 @@ snapshots:
   '@earendil-works/pi-coding-agent@0.85.1(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)':
     dependencies:
       '@earendil-works/chord': 0.85.1
-      '@earendil-works/pi-agent-core': 0.85.1(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
-      '@earendil-works/pi-ai': 0.85.1(patch_hash=7f0a27b6b948cdfcd19c487093def4b4795865c712e5fc1a578ae77636eb4376)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-agent-core': 0.85.1(patch_hash=d6395b14bbbfd75778197b1a6a0d96b1b2c9f39c7c317c2291392d4a7dda183b)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-ai': 0.85.1(patch_hash=3082768ed4bca473884a4a90cbb263d260c6884fdbc3ec039509da5ae9fcdcab)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-tui': 0.85.1
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
@@ -7640,6 +7745,9 @@ snapshots:
     dependencies:
       semver: 7.8.5
 
+  node-addon-api@7.1.0:
+    optional: true
+
   node-api-version@0.2.1:
     dependencies:
       semver: 7.8.5
@@ -7666,6 +7774,11 @@ snapshots:
       which: 6.0.1
 
   node-int64@0.4.0: {}
+
+  node-pty@1.1.0:
+    dependencies:
+      node-addon-api: 7.1.0
+    optional: true
 
   node-releases@2.0.51: {}
 

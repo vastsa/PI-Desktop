@@ -259,6 +259,74 @@ test("a delegate turn with both reasoning and text keeps both rows", () => {
   );
 });
 
+test("a resumed delegation continues in the latest Task card (ADR 0279)", () => {
+  const { entries, visible } = buildTranscriptEntries([
+    message("user", "user", "Audit the store"),
+    message("task-1", "tool", "report", {
+      toolName: "Task",
+      toolCallId: "task-1",
+      toolArgs: { agent: "explorer", task: "Explore the parser." },
+      toolResult: { details: { delegationId: "del-1" } },
+    }),
+    message("delegate-1", "assistant", "Found the parser.", {
+      parentToolCallId: "task-1",
+      agentName: "explorer",
+    }),
+    message("task-2", "tool", "report", {
+      toolName: "Task",
+      toolCallId: "task-2",
+      toolArgs: { agent: "explorer", task: "Now cover the lexer.", resume: "del-1" },
+      toolResult: { details: { delegationId: "del-2" } },
+    }),
+    message("delegate-2", "assistant", "Covered the lexer.", {
+      parentToolCallId: "task-2",
+      agentName: "explorer",
+    }),
+    message("final", "assistant", "Both halves are covered."),
+  ]);
+
+  // Each `Task` call still owns its own row in the parent's turn stream…
+  assert.deepEqual(
+    visible.map((entry) => entry.id),
+    ["user", "task-1", "task-2", "final"],
+  );
+  const turn = entries[1];
+  const activity = turn.parts[0];
+  assert.equal(activity.kind, "activity");
+  assert.equal(activity.items.length, 2);
+  // …but the chain's rows all live on the latest card, in production order, so
+  // a resumed run reads as one continuing conversation instead of a card that
+  // starts from nothing.
+  assert.equal(activity.items[0].delegate, undefined);
+  assert.equal(activity.items[1].delegate.agentName, "explorer");
+  assert.deepEqual(
+    activity.items[1].delegate.items.map((item) => item.message.id),
+    ["delegate-1", "delegate-2"],
+  );
+});
+
+test("a resume link whose parent Task row is gone leaves the card intact", () => {
+  const { entries } = buildTranscriptEntries([
+    message("user", "user", "Audit the store"),
+    message("task-2", "tool", "report", {
+      toolName: "Task",
+      toolCallId: "task-2",
+      toolArgs: { agent: "explorer", task: "More.", resume: "del-1" },
+      toolResult: { details: { delegationId: "del-2" } },
+    }),
+    message("delegate-2", "assistant", "More.", {
+      parentToolCallId: "task-2",
+      agentName: "explorer",
+    }),
+  ]);
+
+  const delegate = entries[1].parts[0].items[0].delegate;
+  assert.deepEqual(
+    delegate.items.map((item) => item.message.id),
+    ["delegate-2"],
+  );
+});
+
 function mark(id, throughMessageId, overrides = {}) {
   return {
     id,

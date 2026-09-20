@@ -18,9 +18,10 @@ import {
 import type { Logger } from "../logger";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { RuntimeState } from "./context";
+import { syncPluginDisplayLocale } from "../plugin-display-locale";
+import { RuntimeSupervisor } from "@pi-desktop/host-runtime";
 
 type RestartKind = "host" | "sidecar";
-
 export type RuntimeLifecycleDependencies = {
   runtimeState: RuntimeState;
   dataDir: string;
@@ -37,6 +38,12 @@ export type RuntimeLifecycleDependencies = {
   ) => void;
   refreshUserMcp: () => Promise<unknown>;
   isQuitting: () => boolean;
+  /**
+   * App language the plugin rows resolve their labels in. The host holds it,
+   * and a fresh host process starts in English, so it is pushed again whenever
+   * a host is (re)started.
+   */
+  getDisplayLocale: () => string;
 };
 
 export function createRuntimeLifecycle({
@@ -53,110 +60,115 @@ export function createRuntimeLifecycle({
   rememberPluginScopes,
   refreshUserMcp,
   isQuitting,
+  getDisplayLocale,
 }: RuntimeLifecycleDependencies): {
   superviseRestart: (kind: RestartKind) => Promise<void>;
   bootHostStatus: (bootError: unknown) => HostStatusEvent;
   runtimeArch: () => ReturnType<typeof detectRuntimeArch>;
   bootBackends: () => Promise<void>;
 } {
-  const restartState = {
-    host: { count: 0, windowStart: 0 },
-    sidecar: { count: 0, windowStart: 0 },
-  };
-  const restartInFlight: Record<RestartKind, Promise<void> | null> = {
-    host: null,
-    sidecar: null,
-  };
   let runtimeArchCache: ReturnType<typeof detectRuntimeArch> | null = null;
 
-  const superviseRestart = (kind: RestartKind): Promise<void> => {
-    const existing = restartInFlight[kind];
-    if (existing) return existing;
-    const run = superviseRestartLoop(kind).finally(() => {
-      if (restartInFlight[kind] === run) restartInFlight[kind] = null;
-    });
-    restartInFlight[kind] = run;
-    return run;
+  /**
+   * Fatal boot refusals a restart can never fix (D380): the schema check comes
+   * first because its stderr line is the more specific one.
+   */
+  const fatalStatusFor = (kind: RestartKind, error: unknown): HostStatusEvent | null => {
+    const schema = schemaTooNewOf(error);
+    if (schema) {
+      logger.app("runtime", "error", "local data schema is newer than this build", {
+        code: ErrorCodes.HOST_UNAVAILABLE,
+        data: schema,
+      });
+      return {
+        ok: false,
+        component: kind,
+        fatal: true,
+        message: DB_SCHEMA_TOO_NEW_STATUS,
+        schema,
+      };
+    }
+    if (isGlibcUnsupportedError(error)) {
+      logger.app("runtime", "error", "linux glibc is below the packaged host floor", {
+        code: ErrorCodes.HOST_UNAVAILABLE,
+        data: String(error),
+      });
+      return {
+        ok: false,
+        component: kind,
+        fatal: true,
+        message: GLIBC_UNSUPPORTED_STATUS,
+      };
+    }
+    return null;
   };
 
-  async function superviseRestartLoop(kind: RestartKind): Promise<void> {
-    const state = restartState[kind];
-    while (!isQuitting()) {
-      const now = Date.now();
-      if (now - state.windowStart > 120_000) {
-        state.windowStart = now;
-        state.count = 0;
-      }
-      state.count += 1;
-      if (state.count > 3) {
-        logger.app(
-          "runtime",
-          "error",
-          kind + " restart limit reached; giving up",
-          { code: ErrorCodes.HOST_UNAVAILABLE },
-        );
-        sendToRenderer(IPC.event.hostStatus, {
-          ok: false,
-          component: kind,
-          fatal: true,
-        });
-        return;
-      }
-      const delay = Math.min(500 * 2 ** (state.count - 1), 4000);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      if (isQuitting()) return;
-      try {
-        if (kind === "host") {
-          await startHost();
-          const sidecar = runtimeState.sidecar;
-          const host = runtimeState.host;
-          if (sidecar && host) sidecar.setHost(host);
-        } else {
-          await startSidecar();
-        }
-        await drainApprovedPlanExecutions();
-        logger.app("runtime", "warn", kind + " restarted after crash");
-        sendToRenderer(IPC.event.hostStatus, {
-          ok: true,
-          component: kind,
-          restarted: true,
-        });
-        return;
-      } catch (error) {
-        const schema = schemaTooNewOf(error);
-        if (schema) {
-          logger.app("runtime", "error", "local data schema is newer than this build", {
-            code: ErrorCodes.HOST_UNAVAILABLE,
-            data: schema,
-          });
+  // The restart policy itself (backoff, window budget, single flight) is the
+  // shared supervisor; everything renderer- or plugin-facing stays here.
+  const supervisor = new RuntimeSupervisor({
+    start: {
+      host: async () => {
+        await startHost();
+        const sidecar = runtimeState.sidecar;
+        const host = runtimeState.host;
+        if (sidecar && host) sidecar.setHost(host);
+        // A fresh host process starts in English, so the app language and
+        // the language-dependent rows it draws have to be restored here:
+        // nothing else re-applies settings after a crash.
+        await syncPluginDisplayLocale(host, getDisplayLocale());
+      },
+      sidecar: startSidecar,
+    },
+    afterRestart: () => drainApprovedPlanExecutions(),
+    isUnrecoverable: (error) => Boolean(schemaTooNewOf(error)) || isGlibcUnsupportedError(error),
+    isShuttingDown: isQuitting,
+    onEvent: (event) => {
+      const { kind } = event;
+      switch (event.phase) {
+        case "fatal": {
+          if (event.reason === "unrecoverable") {
+            const status = fatalStatusFor(kind, event.error);
+            if (status) sendToRenderer(IPC.event.hostStatus, status);
+            return;
+          }
+          logger.app(
+            "runtime",
+            "error",
+            kind + " restart limit reached; giving up",
+            { code: ErrorCodes.HOST_UNAVAILABLE },
+          );
           sendToRenderer(IPC.event.hostStatus, {
             ok: false,
             component: kind,
             fatal: true,
-            message: DB_SCHEMA_TOO_NEW_STATUS,
-            schema,
           });
           return;
         }
-        if (isGlibcUnsupportedError(error)) {
-          logger.app("runtime", "error", "linux glibc is below the packaged host floor", {
-            code: ErrorCodes.HOST_UNAVAILABLE,
-            data: String(error),
-          });
+        case "restarted": {
+          logger.app("runtime", "warn", kind + " restarted after crash");
           sendToRenderer(IPC.event.hostStatus, {
-            ok: false,
+            ok: true,
             component: kind,
-            fatal: true,
-            message: GLIBC_UNSUPPORTED_STATUS,
+            restarted: true,
           });
+          // The plugin rows were drawn from the dead process: re-read them so a
+          // restart is invisible in the Extensions page and the launcher.
+          sendToRenderer(IPC.event.pluginChanged, { reason: "hostRestart" });
           return;
         }
-        logger.app("runtime", "error", kind + " restart failed", {
-          data: String(error),
-        });
+        case "restart_failed":
+          logger.app("runtime", "error", kind + " restart failed", {
+            data: String(event.error),
+          });
+          return;
+        case "restarting":
+          return;
       }
-    }
-  }
+    },
+  });
+
+  const superviseRestart = (kind: RestartKind): Promise<void> =>
+    supervisor.superviseRestart(kind);
 
   /**
    * Boot outcome pushed once the renderer has mounted. Known unrecoverable
@@ -208,6 +220,10 @@ export function createRuntimeLifecycle({
       data: { protocolVersion: PROTOCOL_VERSION },
     });
     await startHost();
+    // Plugin rows are resolved in the host, so the app language is pushed once
+    // the process answers. The startup sequence re-applies it with the stored
+    // settings; this keeps a host that boots without that write honest.
+    await syncPluginDisplayLocale(runtimeState.host, getDisplayLocale());
     try {
       const stored = await runtimeState.host!.call("settings.get");
       await applyNetworkProxyFromAppSettings(stored);

@@ -12,6 +12,9 @@ public interfaces.
 Read the documents relevant to your change:
 
 - [`AGENTS.md`](AGENTS.md) — repository rules for contributors and agents.
+- [`CLAUDE.md`](CLAUDE.md) — Claude Code / Cowork mirror of the non-negotiables.
+  When you change either policy file, update the other, set the same
+  `Policy-Sync:` token, and run `pnpm check:agent-policy`.
 - [`README.md`](README.md) — product overview and development context.
 - [`docs/spec/00-baseline.md`](docs/spec/00-baseline.md) — frozen architecture
   and product decisions.

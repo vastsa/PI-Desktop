@@ -102,11 +102,13 @@ test("the host no longer offers Files or Browser as built-in tools", () => {
   assert.match(panelSource, /activeTab\?\.kind === "review"/);
 });
 
-test("Review still opens itself from workspace edit artifacts", () => {
-  // Removing the launcher entry must not remove the way Review appears at all.
+test("Review opens only from an explicit user action", () => {
+  // The New launcher row and the viewport-fixed toggle are the only ways in,
+  // so a workspace edit can no longer reveal or activate Review by itself.
   const storeSource = readStoreSourceSync();
-  assert.match(storeSource, /shouldOpenReviewArtifact\(\{/);
-  assert.match(storeSource, /toolWorkPanelTab\("review"\)/);
+  assert.doesNotMatch(storeSource, /shouldOpenReviewArtifact/);
+  assert.doesNotMatch(storeSource, /toolWorkPanelTab\("review"\)/);
+  assert.match(panelSource, /toolWorkPanelTab\("review"\)/);
 });
 
 test("Browser ships as an ordinary plugin over the public CDP API", () => {

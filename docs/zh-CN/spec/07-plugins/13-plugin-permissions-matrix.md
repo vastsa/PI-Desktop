@@ -49,7 +49,9 @@
 | `session.read.own` | 中等 | `pi.session.list`、`pi.session.get`、`pi.session.listMessages` | 安装时确认 | 只能读取本插件导入的会话；不能跨插件访问 |
 | `session.update.own` | 中等 | `pi.session.rename` | 安装时确认 | 只能重命名本插件拥有的活动导入会话 |
 | `session.delete.own` | 高 | `pi.session.delete` | 安装时确认 | 只能回收或清除本插件导入的会话；有频率限制 |
+| `usage.read` | 中等 | `pi.usage.listTurns` | 安装时确认 | 已完成 turn 事实行的只读列举（每回合 token 计数与标识符，keyset 分页）；不含消息正文，无写路径 |
 | `agent.complete` | 高 | `pi.agent.complete` | 安装时确认 | 宿主代发一次性补全；消耗用户额度；`includeSessionContext` 还需要 `session.read` |
+| `speech.adapter.register` | 高 | `pi.speech.registerAdapter` / `unregisterAdapter` | 安装时确认 | 注册语音协议。handle 留在插件进程；HTTP 计划由宿主用绑定密钥代发且必须同 origin |
 
 ## 2A. 权限是开关，manifest 承载范围
 
@@ -144,7 +146,9 @@ Agent，在 Plan 中不可见。主机返回 `PLUGIN_DISABLED_IN_PLAN`
 | `session.read.own` | Read sessions imported by this plugin | 读取此插件导入的会话 |
 | `session.update.own` | Rename sessions imported by this plugin | 重命名此插件导入的会话 |
 | `session.delete.own` | Trash or purge sessions imported by this plugin | 将此插件导入的会话移入回收站或清除 |
+| `usage.read` | Read usage statistics | 读取用量统计 |
 | `agent.complete` | Run a one-shot completion with your models | 用你的模型发起一次补全 |
+| `speech.adapter.register` | Register a speech adapter | 注册语音适配器 |
 | `audio.capture.background` | Use the microphone in the background | 后台使用麦克风 |
 | `audio.playback.background` | Play audio in the background | 后台播放声音 |
 | `keyboard.globalShortcut` | Register system-wide shortcuts | 注册系统级快捷键 |
@@ -170,14 +174,15 @@ assertPermission(pluginId, perm) {
 顺序固定 —— 后面的门只能拒绝，永远不能放宽：
 
 ```ts
-assertFsAccess(pluginId, mode, requestedPath) {
+assertFsAccess(pluginId, mode, requestedPath, sessionId) {
  assertPermission(pluginId, `fs.${mode}`)              // 已声明且已授予
- full = realpathWithinRoot(root(pluginId, mode), requestedPath)
+ full = realpathWithinRoot(root(pluginId, mode, sessionId), requestedPath)
  if (!full) throw NOT_FOUND | INVALID_ARGUMENT         // 先解析软链
  if (isDenied(full) || isHostReserved(full)) throw ERROR_PERMISSION_DENIED
  if (!inScope(full, declaredScope(pluginId, mode))) await confirmWithUser(...)
 }
 ```
+`workspace` 根是调用该调用的工具会话所属的项目，面板调用没有工具会话，回退到可见工作区（ADR 0266）。
 
 ## 7. 验收
 

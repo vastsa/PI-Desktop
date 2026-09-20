@@ -93,7 +93,7 @@ export function SessionHoverCard({
         : session.permissionMode === "accept-edits" ? "chat.permissionAcceptEdits"
           : session.permissionMode === "ask" ? "chat.permissionAsk" : "chat.modeAgent";
   const result = summary ? currentCollaborationResult(summary) : undefined;
-  const modelName = summary?.modelName;
+  const modelLabel = summary?.modelName || summary?.providerName;
   const timestamp = (value: string | undefined) => formatSessionTimestamp(value, i18n.language);
   const openSessionReference = (reference: SessionReference) => {
     void onOpenSession(reference.sessionId);
@@ -116,10 +116,12 @@ export function SessionHoverCard({
     >
       <div className="sidebar-session-hover-card-title">{session.title}</div>
       <div className="sidebar-session-hover-card-tags">
-        <span className="sidebar-session-hover-card-tag">
-          <IconBranch size={12} aria-hidden />
-          {summary?.createdBySession ? t("sessionCollaboration.sessionTask") : t("nav.hoverCardLocalTask")}
-        </span>
+        {summary?.createdBySession ? (
+          <span className="sidebar-session-hover-card-tag">
+            <IconBranch size={12} aria-hidden />
+            {t("sessionCollaboration.sessionTask")}
+          </span>
+        ) : null}
         <span className="sidebar-session-hover-card-tag sidebar-session-hover-card-tag-accent">{t(modeKey)}</span>
         <span className="sidebar-session-hover-card-status" data-status={readState === "ready" ? summary?.status : readState}>
           {readState === "ready" && summary
@@ -127,7 +129,6 @@ export function SessionHoverCard({
             : readState === "unavailable" ? t("sessionCollaboration.unavailable") : t("sessionCollaboration.loading")}
         </span>
       </div>
-      <code className="sidebar-session-hover-card-id">{session.id}</code>
       {summary?.createdBySession ? (
         <div className="sidebar-session-hover-card-section">
           <span className="sidebar-session-hover-card-section-label">{t("sessionCollaboration.createdBy")}</span>
@@ -154,7 +155,6 @@ export function SessionHoverCard({
               <span className="sr-only">{t("sessionCollaboration.referenceUnavailable")}</span>
             </span>
           )}
-          <code className="sidebar-session-hover-card-id">{summary.createdBySession.sessionId}</code>
         </div>
       ) : null}
       {summary?.createdSessions?.length ? (
@@ -226,42 +226,26 @@ export function SessionHoverCard({
         </div>
       ) : null}
       <div className="sidebar-session-hover-card-meta">
-        {modelName || summary?.providerName ? (
-          <div className="sidebar-session-hover-card-detail">
-            {summary?.providerName ? (
-              <>
-                <span className="sidebar-session-hover-card-meta-label">{t("sessionCollaboration.provider")}</span>
-                <span className="sidebar-session-hover-card-model">{summary.providerName}</span>
-              </>
-            ) : null}
-            {modelName ? (
-              <>
-                <span className="sidebar-session-hover-card-meta-label">{t("sessionCollaboration.model")}</span>
-                <span className="sidebar-session-hover-card-model">{modelName}</span>
-              </>
-            ) : null}
-          </div>
-        ) : null}
+        {modelLabel ? <div className="sidebar-session-hover-card-model">{modelLabel}</div> : null}
         <div className="sidebar-session-hover-card-meta-row">
           <span className="sidebar-session-hover-card-meta-icon" aria-hidden><IconFolder size={12} /></span>
-          <span className="sidebar-session-hover-card-meta-label">{t("nav.hoverCardSpace")}</span>
-          <span className="sidebar-session-hover-card-meta-value">{project.space}</span>
+          <span className="sidebar-session-hover-card-meta-value">
+            <span className="sr-only">{t("nav.hoverCardSpace")} </span>
+            {project.space}
+            {project.branch ? (
+              <>
+                <span aria-hidden> · </span>
+                <span aria-label={t("nav.hoverCardBranchAria", { name: project.branch })}>{project.branch}</span>
+              </>
+            ) : null}
+          </span>
         </div>
-        {project.branch ? (
-          <div className="sidebar-session-hover-card-meta-row">
-            <span className="sidebar-session-hover-card-meta-icon" aria-hidden><IconBranch size={12} /></span>
-            <span className="sidebar-session-hover-card-meta-value" aria-label={t("nav.hoverCardBranchAria", { name: project.branch })}>
-              {project.branch}
-            </span>
-          </div>
-        ) : null}
         <div className="sidebar-session-hover-card-meta-row">
           <span className="sidebar-session-hover-card-meta-icon" aria-hidden><IconClock size={12} /></span>
-          <span className="sidebar-session-hover-card-meta-label">
+          <span className="sidebar-session-hover-card-meta-value">
             {t("nav.hoverCardUpdatedAt", { when: timestamp(session.updatedAt) })}
           </span>
         </div>
-        {summary ? <span className="sidebar-session-hover-card-observed">{t("sessionCollaboration.checkedAt", { when: timestamp(summary.observedAt) })}</span> : null}
       </div>
     </div>,
     document.body,

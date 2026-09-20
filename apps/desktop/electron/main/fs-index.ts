@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { FsIndexEntry, FsIndexResult } from "@pi-desktop/shared";
-import { isIgnoredName } from "./fs-panel.js";
+import { isIgnoredName } from "@pi-desktop/host-runtime";
 
 /**
  * Workspace file index for the composer "@" menu (D124, ADR 0024).

@@ -5,13 +5,11 @@
  * .github/workflows/release.yml. Discovery always tracks the latest stable
  * release (`allowPrerelease = false`) so RC installs still graduate to newer
  * stables. Delivery mode per install:
- *  - Windows NSIS / Linux AppImage → full in-app flow: silent background
- *    download, "restart to update" prompt, install-on-quit fallback.
+ *  - Windows NSIS / Linux AppImage / packaged macOS → full in-app flow: silent
+ *    background download, "restart to update" prompt, install-on-quit fallback.
  *  - Windows portable (`PORTABLE_EXECUTABLE_FILE`) → notify + link. The
  *    NSIS installer must not replace a no-install run.
- *  - macOS → manual discovery and a releases-page link. In-app installation
- *    remains disabled pending a separate delivery-policy qualification.
- *  - Linux deb (no $APPIMAGE in env) → notify + link, like macOS.
+ *  - Linux deb (no $APPIMAGE in env) → notify + link.
  *  - Unpackaged dev runs → disabled (no app-update.yml in resources).
  */
 import { app, shell } from "electron";
@@ -64,8 +62,9 @@ export function resolveUpdateMode(
   if (platform === "win32") {
     return env.PORTABLE_EXECUTABLE_FILE ? "manual" : "in-app";
   }
+  if (platform === "darwin") return "in-app";
   if (platform === "linux" && env.APPIMAGE) return "in-app";
-  // darwin (unsigned) and non-AppImage linux installs
+  // non-AppImage linux installs
   return "manual";
 }
 

@@ -100,12 +100,14 @@ describe("streaming payload benchmark", () => {
       return { elapsed, stats: coalescer.stats() };
     };
 
+    run(4_000);
     const small = run(4_000);
     const large = run(40_000);
     expect(large.stats.emittedPayloadChars).toBe(40_000);
     expect(small.stats.emittedPayloadChars).toBe(4_000);
     // Wire work is per-chunk. A 10× longer stream may take more total time,
-    // but not quadratically more.
-    expect(large.elapsed).toBeLessThan(Math.max(40, small.elapsed * 20));
+    // but not quadratically more. The 120ms floor absorbs shared-runner
+    // jitter when the small sample is only a couple of milliseconds.
+    expect(large.elapsed).toBeLessThan(Math.max(120, small.elapsed * 25));
   });
 });

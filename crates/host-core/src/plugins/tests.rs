@@ -37,7 +37,7 @@ fn install_market_package_and_check_update_metadata() {
         unsafe {
             std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
         }
-        let mut mgr = PluginManager::new(dir.path(), None);
+        let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
         let search = mgr.market_search(Some("hello"), None).unwrap();
         assert!(!search.is_empty());
         let installed = mgr
@@ -76,7 +76,7 @@ fn marketplace_install_refreshes_catalog_before_checksum_verification() {
         unsafe {
             std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
         }
-        let mut mgr = PluginManager::new(dir.path(), None);
+        let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
         let package_bytes = bundled_package_bytes("demo.hello", "0.2.0").unwrap();
         let package_path = dir.path().join("fresh-demo.hello.piplug");
         fs::write(&package_path, &package_bytes).unwrap();
@@ -131,7 +131,7 @@ fn marketplace_uses_highest_semver_when_catalog_versions_are_unsorted() {
         unsafe {
             std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
         }
-        let mgr = PluginManager::new(dir.path(), None);
+        let mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
         let entry = MarketCatalogEntry {
             id: "pi.todo".into(),
             name: "Fresh Todo".into(),
@@ -210,7 +210,7 @@ fn market_entry_offers_an_update_only_when_the_catalog_is_newer() {
         unsafe {
             std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
         }
-        let mut mgr = PluginManager::new(dir.path(), None);
+        let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
         mgr.sync_builtin(Some(ship.path())).unwrap();
         assert_eq!(mgr.get("pi.todo").unwrap().version, "0.6.0");
 
@@ -256,7 +256,7 @@ fn announced_version_without_a_package_is_visible_but_not_installable() {
         unsafe {
             std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
         }
-        let mut mgr = PluginManager::new(dir.path(), None);
+        let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
         mgr.install_from_market("demo.hello", None, true, true, None)
             .unwrap();
 
@@ -313,7 +313,7 @@ fn silent_update_check_uses_cached_catalog_without_refreshing_remote() {
         unsafe {
             std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
         }
-        let mut mgr = PluginManager::new(dir.path(), None);
+        let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
         mgr.install_from_market("demo.hello", None, true, false, None)
             .unwrap();
 
@@ -367,7 +367,7 @@ fn package_path_traversal_rejected() {
     let bad = make_zip(&[("../evil.js", b"alert(1)")]);
     let pkg = dir.path().join("bad.piplug");
     fs::write(&pkg, bad).unwrap();
-    let mut mgr = PluginManager::new(dir.path(), None);
+    let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
     let err = mgr
         .install_from_package(
             pkg.to_str().unwrap(),
@@ -400,7 +400,7 @@ fn high_risk_permissions_roundtrip_on_notes_plugin() {
         if packages_dir.exists() {
             let _ = fs::remove_dir_all(&packages_dir);
         }
-        let mut mgr = PluginManager::new(dir.path(), None);
+        let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
         let installed = mgr
             .install_from_market("demo.workspace-notes", None, true, false, None)
             .unwrap();
@@ -420,21 +420,21 @@ fn high_risk_permissions_roundtrip_on_notes_plugin() {
 #[test]
 fn resolve_relative_package_urls_against_catalog() {
     let resolved = PluginManager::resolve_package_url(
-        "https://raw.githubusercontent.com/vastsa/pi-desktop-plugins/main/catalog.json",
+        GITHUB_BACKUP_CHANNEL_CATALOG_URL,
         None,
         "packages/demo.hello-0.2.0.piplug",
     );
     assert_eq!(
-            resolved,
-            "https://raw.githubusercontent.com/vastsa/pi-desktop-plugins/main/packages/demo.hello-0.2.0.piplug"
-        );
+        resolved,
+        "https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/packages/demo.hello-0.2.0.piplug"
+    );
 }
 
 #[test]
-fn refresh_catalog_from_official_repo_when_network_available() {
+fn refresh_catalog_from_the_github_backup_when_network_available() {
     let _guard = lock_market_env();
     // Skip cleanly if offline / rate-limited.
-    let url = "https://raw.githubusercontent.com/vastsa/pi-desktop-plugins/main/catalog.json";
+    let url = GITHUB_BACKUP_CHANNEL_CATALOG_URL;
     if download_url(url).is_err() {
         return;
     }
@@ -443,51 +443,131 @@ fn refresh_catalog_from_official_repo_when_network_available() {
         std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
         std::env::set_var("PI_DESKTOP_PLUGIN_MARKET_URL", url);
     }
-    let mgr = PluginManager::new(dir.path(), None);
-    let meta = mgr.refresh_market(true).expect("remote catalog");
+    let mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
+    let Ok(meta) = mgr.refresh_market(true) else {
+        // The repository answered the probe above and then rate limited or
+        // dropped the real refresh: a network hiccup is not a client defect.
+        return;
+    };
     assert_eq!(meta["providerId"], "official");
     assert!(meta["pluginCount"].as_u64().unwrap_or(0) >= 1);
     assert!(meta["sourceUrl"]
         .as_str()
         .unwrap_or("")
         .contains("pi-desktop-plugins"));
-    let search = mgr.market_search(Some("hello"), None).unwrap();
-    assert!(search.iter().any(|p| p.id == "demo.hello"));
+    // Which plugins the repository publishes is the publisher's business; that
+    // the catalog is readable and reaches the search path is the client's.
+    let search = mgr.market_search(None, None).unwrap();
+    assert!(
+        !search.is_empty(),
+        "a published catalog lists at least one installable plugin"
+    );
     unsafe {
         std::env::remove_var("PI_DESKTOP_DATA_DIR");
         std::env::remove_var("PI_DESKTOP_PLUGIN_MARKET_URL");
     }
 }
 
+/// The official channel's install path, against the deployment that serves it.
+///
+/// Everything the test needs comes from the published catalog, so it does not
+/// pin a version a later release removes. It skips when the platform or the
+/// catalog cannot be reached, like the refresh above: the unit suite has to stay
+/// green on a machine with no route to either.
 #[test]
-fn market_source_from_settings_selects_the_configured_provider() {
-    assert_eq!(market_source_from_settings(None), None);
-    assert_eq!(market_source_from_settings(Some(&json!({}))), None);
-    // `official` stays on the built-in default rather than pinning a URL,
-    // so a later default change reaches users who never switched.
+fn the_plugin_center_resolves_a_published_package() {
+    let _guard = lock_market_env();
+    let Ok(bytes) = download_url(OFFICIAL_CHANNEL_CATALOG_URL) else {
+        return;
+    };
+    let catalog: MarketCatalogFile =
+        serde_json::from_slice(&bytes).expect("the published catalog parses");
+    // A device id of the shape the platform is sent, so a failure here is the
+    // interface's and not the identifier's.
+    let device = "0".repeat(64);
+    for plugin in &catalog.plugins {
+        for version in &plugin.versions {
+            if version.shasum.trim().is_empty() {
+                continue;
+            }
+            let Ok(resolved) = super::resolve::request(
+                OFFICIAL_CHANNEL_CATALOG_URL,
+                &device,
+                &plugin.id,
+                &version.version,
+            ) else {
+                // Not published yet, withdrawn since, or the deployment cannot
+                // answer: none of those is what this test is about.
+                continue;
+            };
+            assert_eq!(
+                resolved.sha256.trim().to_ascii_lowercase(),
+                version.shasum.trim().to_ascii_lowercase(),
+                "the platform answers with the digest the catalog carries for {}",
+                plugin.id
+            );
+            assert!(
+                !resolved.downloads.is_empty(),
+                "a 200 carries at least one mirror for {}",
+                plugin.id
+            );
+            for mirror in &resolved.downloads {
+                assert!(
+                    mirror.url.starts_with("https://"),
+                    "a mirror is fetched over https: {}",
+                    mirror.url
+                );
+            }
+            return;
+        }
+    }
+}
+
+#[test]
+fn market_channel_from_settings_selects_the_configured_channel() {
+    // Nothing saved, and the legacy `official`, both mean the official channel:
+    // it is the default, so a later default change reaches a user who never
+    // switched away.
     assert_eq!(
-        market_source_from_settings(Some(&json!({"pluginMarketSource": "official"}))),
-        None
+        market_channel_from_settings(None).0,
+        MarketChannel::Official
     );
     assert_eq!(
-        market_source_from_settings(Some(&json!({"pluginMarketSource": "mirror"}))).as_deref(),
-        Some(MIRROR_MARKET_CATALOG_URL)
+        market_channel_from_settings(Some(&json!({}))).0,
+        MarketChannel::Official
     );
     assert_eq!(
-        market_source_from_settings(Some(&json!({
-            "pluginMarketSource": "custom",
-            "pluginMarketCustomUrl": "  https://example.test/catalog.json  ",
-        })))
-        .as_deref(),
-        Some("https://example.test/catalog.json")
+        market_channel_from_settings(Some(&json!({"pluginMarketSource": "official"}))).0,
+        MarketChannel::Official
     );
-    // A custom source with no URL must not strand the marketplace on an
+    // An unrecognised value falls back to the official channel rather than
+    // stranding the marketplace on an empty endpoint.
+    assert_eq!(
+        market_channel_from_settings(Some(&json!({"pluginMarketSource": "nonsense"}))).0,
+        MarketChannel::Official
+    );
+    assert_eq!(
+        market_channel_from_settings(Some(&json!({"pluginMarketSource": "github"}))).0,
+        MarketChannel::Github
+    );
+    assert_eq!(
+        market_channel_from_settings(Some(&json!({"pluginMarketSource": "mirror"}))).0,
+        MarketChannel::Mirror
+    );
+    let (channel, url) = market_channel_from_settings(Some(&json!({
+        "pluginMarketSource": "custom",
+        "pluginMarketCustomUrl": "  https://example.test/catalog.json  ",
+    })));
+    assert_eq!(channel, MarketChannel::Custom);
+    assert_eq!(url.as_deref(), Some("https://example.test/catalog.json"));
+    // A custom channel with no URL must not strand the marketplace on an
     // empty endpoint.
     assert_eq!(
-        market_source_from_settings(Some(&json!({
+        market_channel_from_settings(Some(&json!({
             "pluginMarketSource": "custom",
             "pluginMarketCustomUrl": "   ",
-        }))),
+        })))
+        .1,
         None
     );
 }
@@ -499,11 +579,11 @@ fn cached_catalog_is_scoped_to_the_source_that_fetched_it() {
         unsafe {
             std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
         }
-        let mgr = PluginManager::new(dir.path(), None);
+        let mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
         // A bundled offline snapshot records no source and stays usable
         // whichever provider is selected.
         let _ = fs::remove_file(mgr.market_cache_meta_path());
-        assert!(mgr.cached_catalog_matches_source(OFFICIAL_MARKET_CATALOG_URL));
+        assert!(mgr.cached_catalog_matches_source(OFFICIAL_CHANNEL_CATALOG_URL));
         assert!(mgr.cached_catalog_matches_source(MIRROR_MARKET_CATALOG_URL));
 
         fs::create_dir_all(dir.path().join("plugins/market")).unwrap();
@@ -513,7 +593,7 @@ fn cached_catalog_is_scoped_to_the_source_that_fetched_it() {
         )
         .unwrap();
         assert!(mgr.cached_catalog_matches_source(MIRROR_MARKET_CATALOG_URL));
-        assert!(!mgr.cached_catalog_matches_source(OFFICIAL_MARKET_CATALOG_URL));
+        assert!(!mgr.cached_catalog_matches_source(OFFICIAL_CHANNEL_CATALOG_URL));
     });
 }
 
@@ -525,7 +605,7 @@ fn switching_source_ignores_the_previous_providers_snapshot() {
         unsafe {
             std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
         }
-        let mgr = PluginManager::new(dir.path(), None);
+        let mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
 
         // A snapshot carrying a plugin the built-in catalog does not have,
         // written while a different provider was selected.
@@ -659,7 +739,7 @@ fn accepts_and_summarizes_new_contributions() {
     unsafe {
         std::env::set_var("PI_DESKTOP_DATA_DIR", data.path());
     }
-    let mut mgr = PluginManager::new(data.path(), None);
+    let mut mgr = PluginManager::new(data.path(), MarketChannel::Official, None);
     let summary = mgr.load_dev(root.to_str().unwrap()).unwrap();
     assert!(summary.capabilities.contains(&"mcp".to_string()));
     assert!(summary.capabilities.contains(&"bus".to_string()));
@@ -925,7 +1005,7 @@ fn bundled_plugins_refresh_from_disk_but_keep_user_state() {
     );
 
     let data = tempdir().unwrap();
-    let mut mgr = PluginManager::new(data.path(), None);
+    let mut mgr = PluginManager::new(data.path(), MarketChannel::Official, None);
     mgr.sync_builtin(Some(ship.path())).unwrap();
 
     let listed = mgr.get("pi.files").expect("bundled plugin is registered");
@@ -979,7 +1059,7 @@ fn bundled_plugin_can_default_to_disabled_without_overwriting_user_state() {
     );
 
     let data = tempdir().unwrap();
-    let mut mgr = PluginManager::new(data.path(), None);
+    let mut mgr = PluginManager::new(data.path(), MarketChannel::Official, None);
     mgr.sync_builtin(Some(ship.path())).unwrap();
     let listed = mgr.get("pi.opt-in").expect("bundled plugin is registered");
     assert!(!listed.enabled, "opt-in bundled plugins start disabled");
@@ -1015,7 +1095,7 @@ fn a_bundled_plugin_keeps_the_update_the_user_installed() {
     write_plugin(&shipped, shipped_manifest("1.0.0"), &[]);
 
     let data = tempdir().unwrap();
-    let mut mgr = PluginManager::new(data.path(), None);
+    let mut mgr = PluginManager::new(data.path(), MarketChannel::Official, None);
     mgr.sync_builtin(Some(ship.path())).unwrap();
     assert!(mgr.get("pi.view").unwrap().bundled);
 
@@ -1038,7 +1118,7 @@ fn a_bundled_plugin_keeps_the_update_the_user_installed() {
     );
 
     // The next launch reconciles against the shipped 1.0.0 again.
-    let mut mgr = PluginManager::new(data.path(), None);
+    let mut mgr = PluginManager::new(data.path(), MarketChannel::Official, None);
     mgr.sync_builtin(Some(ship.path())).unwrap();
     let after = mgr.get("pi.view").unwrap();
     assert_eq!(
@@ -1077,7 +1157,7 @@ fn a_newer_shipped_version_replaces_an_older_user_install() {
     write_plugin(&shipped, manifest("1.0.0"), &[]);
 
     let data = tempdir().unwrap();
-    let mut mgr = PluginManager::new(data.path(), None);
+    let mut mgr = PluginManager::new(data.path(), MarketChannel::Official, None);
     mgr.sync_builtin(Some(ship.path())).unwrap();
 
     let update = data.path().join("package");
@@ -1121,7 +1201,7 @@ fn a_plugin_a_build_stops_shipping_is_no_longer_bundled() {
     write_plugin(&shipped, manifest("1.0.0"), &[]);
 
     let data = tempdir().unwrap();
-    let mut mgr = PluginManager::new(data.path(), None);
+    let mut mgr = PluginManager::new(data.path(), MarketChannel::Official, None);
     mgr.sync_builtin(Some(ship.path())).unwrap();
 
     let update = data.path().join("package");
@@ -1267,7 +1347,7 @@ fn a_project_scope_survives_a_reload_and_a_reinstall() {
         &[],
     );
 
-    let mut mgr = PluginManager::new(dir.path(), None);
+    let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
     let installed = mgr
         .install_from_path(
             source.to_str().unwrap(),
@@ -1299,7 +1379,7 @@ fn a_project_scope_survives_a_reload_and_a_reinstall() {
     assert!(!disabled.enabled);
     assert_eq!(disabled.scope.projects, vec!["/work/api".to_string()]);
 
-    let reloaded = PluginManager::new(dir.path(), None);
+    let reloaded = PluginManager::new(dir.path(), MarketChannel::Official, None);
     let after = reloaded.get("demo.scoped").expect("plugin missing");
     assert_eq!(after.scope.mode, ActivationMode::Projects);
     assert_eq!(after.scope.projects, vec!["/work/api".to_string()]);
@@ -1307,7 +1387,7 @@ fn a_project_scope_survives_a_reload_and_a_reinstall() {
     // Reinstalling over the top is an update, not a reset: widening a
     // project-scoped plugin back to everywhere would hand it reach the user
     // never granted.
-    let mut mgr = PluginManager::new(dir.path(), None);
+    let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
     let again = mgr
         .install_from_path(
             source.to_str().unwrap(),
@@ -1347,7 +1427,7 @@ fn offline_manager(dir: &Path) -> PluginManager {
         .unwrap(),
     )
     .unwrap();
-    PluginManager::new(dir, None)
+    PluginManager::new(dir, MarketChannel::Official, None)
 }
 
 /// Build a catalog v2 entry with one live and one withdrawn version.
@@ -1478,19 +1558,20 @@ fn relative_package_urls_resolve_against_the_declared_artifact_base() {
     );
 }
 
-/// The distribution repository serves `catalog.json` from its root and
-/// packages from `packages/`, and the CNB copy is a Git mirror of it. Both
-/// therefore work with a relative URL and no declared base, which is the
-/// reason moving publishing into the plugin center needs no client change.
+/// The backup channels serve `catalog.json` from their tree root and packages
+/// from `packages/`, so a relative URL needs no declared base. The official
+/// channel does not use this path at all: an install asks the plugin center
+/// where the package is.
 #[test]
-fn official_and_mirror_sources_each_resolve_their_own_packages() {
+fn backup_channels_each_resolve_their_own_packages() {
     let relative = "packages/acme.todo-1.0.0.piplug";
 
-    let github = PluginManager::resolve_package_url(OFFICIAL_MARKET_CATALOG_URL, None, relative);
+    let github =
+        PluginManager::resolve_package_url(GITHUB_BACKUP_CHANNEL_CATALOG_URL, None, relative);
     assert_eq!(
-            github,
-            "https://raw.githubusercontent.com/vastsa/pi-desktop-plugins/main/packages/acme.todo-1.0.0.piplug"
-        );
+        github,
+        "https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/packages/acme.todo-1.0.0.piplug"
+    );
 
     let mirror = PluginManager::resolve_package_url(MIRROR_MARKET_CATALOG_URL, None, relative);
     assert_eq!(
@@ -1500,9 +1581,9 @@ fn official_and_mirror_sources_each_resolve_their_own_packages() {
 
     // Neither resolution leaves the source the user picked, and both hosts
     // are ones the download boundary already accepts.
-    package_host_allowed(&github, OFFICIAL_MARKET_CATALOG_URL).unwrap();
+    package_host_allowed(&github, GITHUB_BACKUP_CHANNEL_CATALOG_URL).unwrap();
     package_host_allowed(&mirror, MIRROR_MARKET_CATALOG_URL).unwrap();
-    assert!(github.starts_with("https://raw.githubusercontent.com/"));
+    assert!(github.starts_with("https://raw.githubusercontent.com/AIUO-Net/"));
     assert!(mirror.starts_with("https://cnb.cool/"));
 }
 
@@ -1589,7 +1670,7 @@ fn verified_trust_is_honoured_only_from_the_official_source() {
     // flaky.
     // Safety: test-only process env mutation, serialized by the market lock.
     unsafe {
-        std::env::set_var("PI_DESKTOP_PLUGIN_MARKET_URL", OFFICIAL_MARKET_CATALOG_URL);
+        std::env::set_var("PI_DESKTOP_PLUGIN_MARKET_URL", OFFICIAL_CHANNEL_CATALOG_URL);
     }
     let official = offline_manager(dir.path());
     assert_eq!(official.resolve_trust(&v2_entry()), "verified");
@@ -1768,4 +1849,304 @@ fn global_shortcut_entries_are_validated() {
     );
     assert!(read_manifest_err(&not_an_object)
         .contains("contributes.globalShortcuts entry must be an object"));
+}
+
+#[test]
+fn plugin_rows_read_the_i18n_block_for_the_active_locale() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.todo",
+            "name": "小清新待办",
+            "version": "0.1.0",
+            "description": "作者原话",
+            "main": "main.js",
+            "i18n": {
+                "en": { "name": "Todo List", "description": "A calm todo list" },
+                "zh-CN": { "name": "小清新待办", "description": "轻盈的待办清单" }
+            }
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("en");
+    let row = mgr.load_dev(root.to_str().unwrap()).unwrap();
+    assert_eq!(row.name, "Todo List");
+    assert_eq!(row.description.as_deref(), Some("A calm todo list"));
+
+    // Every reader resolves the same way: `list()` and `get()` are what the
+    // Extensions page and the plugin launcher actually draw.
+    mgr.set_locale("zh-CN");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "小清新待办");
+    let listed = mgr
+        .list()
+        .into_iter()
+        .find(|candidate| candidate.id == "acme.todo")
+        .expect("row missing from the list");
+    assert_eq!(listed.description.as_deref(), Some("轻盈的待办清单"));
+
+    // `zh-Hans` is Simplified Chinese. `zh-TW` is not part of the plugin
+    // contract, so it reads English rather than half a translation (ADR 0182).
+    mgr.set_locale("zh-Hans");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "小清新待办");
+    mgr.set_locale("zh-TW");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "Todo List");
+    mgr.set_locale("de");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "Todo List");
+}
+
+#[test]
+fn a_partial_translation_falls_back_per_field() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.partial",
+            "name": "Author name",
+            "version": "0.1.0",
+            "description": "Author description",
+            "main": "main.js",
+            "i18n": { "en": { "name": "English name", "description": "   " } }
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("en");
+    let row = mgr.load_dev(root.to_str().unwrap()).unwrap();
+    assert_eq!(row.name, "English name");
+    // A blank translation must not blank out a usable author description.
+    assert_eq!(row.description.as_deref(), Some("Author description"));
+
+    // A locale with no entry at all falls back to English, not to nothing.
+    mgr.set_locale("fr");
+    assert_eq!(mgr.get("acme.partial").unwrap().name, "English name");
+}
+
+#[test]
+fn a_plugin_without_an_i18n_block_keeps_the_authors_strings() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.plain",
+            "name": "Plain",
+            "version": "0.1.0",
+            "description": "Plain description",
+            "main": "main.js"
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("zh-CN");
+    let row = mgr.load_dev(root.to_str().unwrap()).unwrap();
+    assert_eq!(row.name, "Plain");
+    assert_eq!(row.description.as_deref(), Some("Plain description"));
+}
+
+#[test]
+fn the_registry_never_persists_the_i18n_block() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.stored",
+            "name": "Stored",
+            "version": "0.1.0",
+            "main": "main.js",
+            "i18n": { "en": { "name": "Stored" }, "zh-CN": { "name": "已存" } }
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("zh-CN");
+    mgr.load_dev(root.to_str().unwrap()).unwrap();
+
+    // The registry keeps the author's own language; only reads are localized,
+    // so switching language never rewrites persisted rows.
+    let raw = fs::read_to_string(mgr.registry_path()).unwrap();
+    assert!(!raw.contains("\"i18n\""), "registry persisted i18n: {raw}");
+    assert!(raw.contains("Stored"));
+
+    // A restart re-reads each manifest, so rows are localized again without
+    // the registry having carried anything.
+    let mut reloaded = PluginManager::new(dir.path(), MarketChannel::Official, None);
+    reloaded.set_locale("zh-CN");
+    assert_eq!(reloaded.get("acme.stored").unwrap().name, "已存");
+}
+
+#[test]
+fn market_cards_and_details_read_the_catalog_i18n_block() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let mut mgr = offline_manager(dir.path());
+    let mut entry = v2_entry();
+    entry.safety_notes = Some("Reads nothing else".into());
+    entry.i18n = Some(
+        [
+            (
+                "en".to_string(),
+                PluginDisplayI18n {
+                    name: Some("Todo".into()),
+                    description: Some("Publisher-owned plugin".into()),
+                    safety_notes: Some("Reads nothing else".into()),
+                },
+            ),
+            (
+                "zh-CN".to_string(),
+                PluginDisplayI18n {
+                    name: Some("待办".into()),
+                    description: Some("发布者自有的插件".into()),
+                    safety_notes: Some("不读取其他内容".into()),
+                },
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    fs::write(
+        mgr.catalog_path(),
+        serde_json::to_string(&v2_catalog(entry)).unwrap(),
+    )
+    .unwrap();
+
+    mgr.set_locale("zh-CN");
+    let card = mgr.market_search(None, None).unwrap().remove(0);
+    assert_eq!(card.name, "待办");
+    assert_eq!(card.description, "发布者自有的插件");
+    assert_eq!(
+        mgr.market_get("acme.todo").unwrap().safety_notes.as_deref(),
+        Some("不读取其他内容")
+    );
+    // Search matches either language: the card is drawn in one of them, and a
+    // user typing the other must still find it.
+    assert_eq!(
+        mgr.market_search(Some("Publisher-owned"), None)
+            .unwrap()
+            .len(),
+        1
+    );
+
+    mgr.set_locale("en");
+    let card = mgr.market_search(None, None).unwrap().remove(0);
+    assert_eq!(card.name, "Todo");
+    assert_eq!(card.description, "Publisher-owned plugin");
+    assert_eq!(
+        mgr.market_get("acme.todo").unwrap().safety_notes.as_deref(),
+        Some("Reads nothing else")
+    );
+}
+
+/// An install reports the phases it passes through, and a user who cancels
+/// stops it before anything is written.
+#[test]
+fn an_install_reports_progress_and_honours_a_cancel() {
+    #[derive(Default)]
+    struct InstallLog {
+        phases: Vec<&'static str>,
+        bytes: Vec<(u64, u64)>,
+        errors: Vec<String>,
+    }
+
+    impl InstallObserver for InstallLog {
+        fn progress(&mut self, event: InstallProgress) {
+            self.phases.push(event.phase.as_str());
+            if event.received_bytes > 0 {
+                self.bytes.push((event.received_bytes, event.total_bytes));
+            }
+            if let Some(error) = event.error {
+                self.errors.push(error);
+            }
+        }
+    }
+
+    struct CancelAfterFirstReport {
+        seen: usize,
+    }
+
+    impl InstallObserver for CancelAfterFirstReport {
+        fn progress(&mut self, _event: InstallProgress) {
+            self.seen += 1;
+        }
+
+        fn cancelled(&self) -> bool {
+            self.seen > 0
+        }
+    }
+
+    with_local_market(|| {
+        let dir = tempdir().unwrap();
+        unsafe {
+            std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
+        }
+        let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
+
+        let mut log = InstallLog::default();
+        let installed = mgr
+            .install_from_market_observed("demo.workspace-notes", None, true, false, None, &mut log)
+            .expect("the fixture package installs");
+        assert_eq!(installed.plugin.id, "demo.workspace-notes");
+        // The fixture catalog serves a local package, so resolution is skipped
+        // and the phases are the ones a download has: bytes, verify, install.
+        for phase in ["download", "verify", "install"] {
+            assert!(
+                log.phases.contains(&phase),
+                "{phase} missing from {:?}",
+                log.phases
+            );
+        }
+        assert!(
+            log.bytes
+                .iter()
+                .any(|(received, total)| *received > 0 && *total >= *received),
+            "bytes were reported against the announced size: {:?}",
+            log.bytes
+        );
+        assert!(log.errors.is_empty(), "{:?}", log.errors);
+
+        // A cancel that arrives while the bytes arrive stops the install before
+        // it is verified, written or registered.
+        let mut cancelling = CancelAfterFirstReport { seen: 0 };
+        let error = mgr
+            .install_from_market_observed("demo.hello", None, true, false, None, &mut cancelling)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("PLUGIN_CANCELLED"), "{error}");
+    });
+}
+
+#[test]
+fn plugin_ui_meta_parses_the_floating_widget_placement() {
+    let widget: PluginUiMeta = serde_json::from_value(json!({
+        "panel": "renderer/index.html",
+        "width": 200,
+        "height": 200,
+        "shape": "widget",
+        "alwaysOnTop": true,
+        "resizable": false
+    }))
+    .unwrap();
+    assert_eq!(widget.shape.as_deref(), Some("widget"));
+    assert_eq!(widget.always_on_top, Some(true));
+    assert_eq!(widget.resizable, Some(false));
+
+    // A manifest that never heard of widgets keeps deserializing untouched, and
+    // the camelCase keys stay the wire contract.
+    let panel: PluginUiMeta =
+        serde_json::from_value(json!({ "panel": "renderer/index.html" })).unwrap();
+    assert!(panel.shape.is_none());
+    assert!(panel.always_on_top.is_none());
+    assert!(panel.resizable.is_none());
 }

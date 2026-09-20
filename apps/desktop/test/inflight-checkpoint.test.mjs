@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   InflightCheckpointer,
   isCheckpointableMessage,
-} from "../electron/main/inflight-checkpoint.ts";
+} from "../../../packages/host-runtime/src/inflight-checkpoint.ts";
 
 const assistant = (id, content, thinking) => ({
   id,

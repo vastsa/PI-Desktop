@@ -8,6 +8,35 @@
   background: var(--ds-bg-primary);
 }
 
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .app-shell.settings-mode,
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-shell,
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-shell-full,
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-content,
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-content-inner,
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-titlebar {
+  background: transparent !important;
+}
+
+/* Scenic plugin themes own the image canvas. Keep the host Settings page as
+ * transparent compositing surfaces so the single root scenic layer remains
+ * visible beneath it; ordinary themes never match this attribute. */
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .app-shell.settings-mode,
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-shell,
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-shell-full,
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-content,
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-content-inner,
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-titlebar {
+  background: transparent !important;
+}
+
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-shell-full .settings-nav.sidebar-surface {
+  background: color-mix(in oklab, var(--ds-bg-sidebar) 72%, transparent);
+}
+
+:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-panel {
+  background: color-mix(in oklab, var(--ds-bg-elevated) 72%, transparent);
+}
+
 .settings-shell,
 .settings-shell-full {
   position: relative;
@@ -16,6 +45,64 @@
   min-height: 0;
   width: 100%;
   background: var(--ds-bg-primary);
+}
+
+.plugin-scenic-themes-destination {
+  display: grid;
+  gap: 18px;
+  background: transparent;
+}
+
+.plugin-scenic-themes-description {
+  margin: -8px 0 0;
+  color: var(--ds-text-muted);
+}
+
+.plugin-scenic-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.plugin-scenic-theme-card {
+  position: relative;
+  min-height: 178px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--ds-border) 84%, transparent);
+  border-radius: var(--radius-md-plus);
+  background: color-mix(in srgb, var(--ds-bg-elevated) 76%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, #000 24%, transparent);
+  color: var(--ds-text-primary);
+  cursor: pointer;
+  isolation: isolate;
+  text-align: left;
+}
+
+.plugin-scenic-theme-card:hover { border-color: var(--ds-accent); }
+.plugin-scenic-theme-card:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; }
+.plugin-scenic-theme-card.active { border-color: var(--ds-accent); box-shadow: 0 0 0 1px var(--ds-accent), 0 12px 28px color-mix(in srgb, #000 30%, transparent); }
+.plugin-scenic-theme-card > img { position: absolute; z-index: -2; width: 100%; height: 100%; inset: 0; object-fit: cover; }
+.plugin-scenic-theme-card-shade { position: absolute; z-index: -1; inset: 0; background: linear-gradient(180deg, transparent 18%, color-mix(in srgb, #000 72%, transparent) 100%); }
+.plugin-scenic-theme-card-content { position: absolute; right: 16px; bottom: 15px; left: 16px; display: grid; gap: 3px; }
+.plugin-scenic-theme-card-title { font-weight: 650; font-size: 15px; text-shadow: 0 1px 7px #000; }
+.plugin-scenic-theme-card-description { color: color-mix(in srgb, #fff 78%, transparent); font-size: 12px; text-shadow: 0 1px 5px #000; }
+.plugin-scenic-theme-card-check { position: absolute; top: 12px; right: 12px; display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--ds-accent); color: var(--ds-accent-foreground); font-weight: 700; }
+
+.plugin-scenic-blur-control { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px; border: 1px solid color-mix(in srgb, var(--ds-border) 84%, transparent); border-radius: var(--radius-md-plus); background: color-mix(in srgb, var(--ds-bg-elevated) 82%, transparent); box-shadow: 0 10px 24px color-mix(in srgb, #000 16%, transparent); }
+.plugin-scenic-blur-copy { display: grid; gap: 3px; }
+.plugin-scenic-blur-label { font-weight: 600; }
+.plugin-scenic-blur-actions { display: flex; align-items: center; gap: 12px; min-width: min(100%, 360px); }
+.plugin-scenic-blur-actions input { flex: 1; min-width: 110px; }
+.plugin-scenic-blur-actions output { min-width: 34px; color: var(--ds-text-muted); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 720px) {
+  .plugin-scenic-theme-grid { grid-template-columns: 1fr; }
+  .plugin-scenic-blur-control { align-items: stretch; flex-direction: column; }
+  .plugin-scenic-blur-actions { min-width: 0; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .plugin-scenic-theme-card, .plugin-scenic-blur-control { background: var(--ds-bg-elevated); }
 }
 
 /* The band spans the content column only. Spanning the full window width
@@ -47,7 +134,6 @@
   width: var(--ds-settings-nav-width);
   flex: 0 0 var(--ds-settings-nav-width);
   /* D297: no right rule; the rail's own tone separates it from the content. */
-  background: var(--ds-settings-rail-bg);
   padding: 0;
   gap: 0;
   overflow: hidden;
@@ -221,20 +307,34 @@
   margin: 0;
 }
 
-/* The renderer owns this measured hole; the sandboxed WebContentsView paints
-   only here, never over the rail, titlebar, or native window controls. */
+/* The renderer owns this sandboxed iframe. It stays in normal Settings flow,
+   so it cannot cover the titlebar, native controls, rail, or resize edges. */
 .plugin-settings-destination {
+  display: block;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
   min-height: min(720px, calc(100vh - 150px));
   width: 100%;
 }
 
 .settings-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 28px;
   color: var(--ds-text-primary);
   font-size: var(--text-2xl);
   font-weight: var(--font-weight-strong);
   letter-spacing: var(--tracking-tighter);
   line-height: var(--leading-heading);
+}
+
+.settings-nav-experimental {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
 }
 
 .settings-recovery {
@@ -258,6 +358,13 @@
   font-weight: var(--font-weight-strong);
 }
 
+/* The heading's help mark sits beside the heading rather than inside it: a
+   nested button would join the heading's accessible name. */
+.settings-card-heading-help {
+  display: flex;
+  align-items: center;
+}
+
 .settings-card-heading-row {
   display: flex;
   align-items: flex-end;
@@ -268,13 +375,6 @@
 
 .settings-card-heading-row .settings-card-heading {
   margin-bottom: 3px;
-}
-
-.settings-card-description {
-  margin: 0;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-body);
 }
 
 .settings-text-action {
@@ -357,6 +457,150 @@
   padding: 12px 14px 14px;
 }
 
+/*
+  Remote hosts: inventory tiles, one Add form with SSH/Pair tabs, and
+  Experimental rows. The form keeps a two-column grid; host cards are
+  inventory rows rather than settings-copy + control.
+*/
+.settings-remote-host-list {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-remote-host-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+}
+
+.settings-remote-host-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+  color: var(--ds-text-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-compact);
+}
+
+.settings-remote-host-empty-detail {
+  flex: 1 1 100%;
+  color: var(--ds-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-plus);
+}
+
+.settings-remote-host-pulse {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+  background: var(--ds-text-muted);
+}
+
+.settings-remote-host-pulse.is-online {
+  background: var(--ds-success);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--ds-success) 22%, transparent);
+}
+
+.settings-remote-host-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-remote-host-name {
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: var(--text-md-plus);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-compact);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-remote-host-meta {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-compact);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-remote-host-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.settings-card-heading-row.settings-remote-host-add-heading {
+  align-items: center;
+}
+
+.settings-card-heading-row.settings-remote-host-add-heading .settings-card-heading {
+  margin-bottom: 0;
+}
+
+.settings-remote-host-form {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px 14px;
+}
+
+.settings-remote-host-add-panel[hidden] {
+  display: none;
+}
+
+.settings-remote-host-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-remote-host-form-row.is-narrow-port {
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.4fr);
+}
+
+.settings-remote-host-form-auth {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.settings-remote-host-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+@media (max-width: 720px) {
+  .settings-remote-host-form-row,
+  .settings-remote-host-form-row.is-narrow-port {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-remote-host-card {
+    flex-wrap: wrap;
+  }
+
+  .settings-remote-host-card-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
 .settings-row {
   display: flex;
   align-items: center;
@@ -379,12 +623,13 @@
   line-height: var(--leading-compact);
 }
 
-.settings-row-desc {
+/* A row's live value (not an explanation): visible, and secondary to the
+   title the same way the retired desc line was. */
+.settings-row-detail {
   margin-top: 3px;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
-  max-width: 62ch;
 }
 
 .settings-row-control {
@@ -396,10 +641,23 @@
   justify-content: flex-end;
 }
 
-.settings-row-control .field-select,
+/*
+  A toggle paired with an icon action (prompt enhancement). The control column
+  has no gap of its own, so the two would otherwise touch.
+*/
+.settings-row-control:has(> .settings-toggle + .settings-icon-button) {
+  gap: 8px;
+}
 .settings-row-control .field-input {
   width: 100%;
   min-width: 140px;
+}
+
+.settings-row-control .field-select,
+.settings-row-control .settings-menu-select-anchor {
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .settings-number-control {
@@ -687,6 +945,23 @@
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
 }
 
+/*
+  A disabled switch still reads as a switch: dimmed, not restyled, and the
+  cursor says why clicking does nothing.
+*/
+.settings-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-toggle:disabled:hover {
+  background: var(--ds-switch-track-off);
+}
+
+.settings-toggle.on:disabled:hover {
+  background: var(--ds-accent);
+}
+
 .settings-toggle.is-busy .settings-toggle-thumb {
   animation: settings-toggle-pending 900ms ease-in-out infinite alternate;
 }
@@ -731,7 +1006,9 @@
 
 .settings-pill-select,
 .settings-row-control .field-select {
-  min-width: 132px;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
   height: 30px;
   border-radius: var(--radius-full);
   border: 0;
@@ -743,46 +1020,10 @@
   font-size: var(--text-sm-plus);
 }
 
-/* Global UI font picker (Appearance card). Pill trigger mirrors the
-   shared settings select; the menu portals to document.body as a fixed
-   floating layer so the settings card's overflow cannot clip it. */
-.settings-font {
-  position: relative;
-}
-
-.settings-font-trigger {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 200px;
-  max-width: 280px;
-  height: 30px;
-  padding: 0 12px;
-  border-radius: var(--radius-full);
-  background: var(--ds-raised);
-  box-shadow: var(--ds-raised-shadow);
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm-plus);
-}
-
-.settings-font-trigger:hover {
-  background: var(--ds-bg-hover);
-}
-
-.settings-font-trigger-label {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: left;
-}
-
-.settings-font-trigger > svg {
-  flex: 0 0 auto;
-  color: var(--ds-text-muted);
-}
-
+/* Global UI font picker (Appearance card). The closed pill shares the
+   language / theme trigger definition below; the menu portals to
+   document.body as a fixed floating layer so the settings card's overflow
+   cannot clip it. */
 .settings-font-menu {
   position: fixed;
   z-index: 60;
@@ -888,15 +1129,6 @@
   white-space: nowrap;
 }
 
-.settings-font-item-license {
-  flex: 0 0 auto;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-strong);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-}
-
 .settings-font-check {
   flex: 0 0 auto;
   color: var(--ds-accent);
@@ -909,24 +1141,37 @@
   text-align: center;
 }
 
-/* Language and theme pickers (Appearance). Pill trigger matches the font
-   picker; the menu is an AnchoredMenu so the settings card cannot clip it. */
+/* Appearance pickers (language, theme, font) plus the short-list menu selects
+   on the remaining tabs. The closed control hugs the current label (capped by
+   the row) so a short value does not stretch the column. Language and theme
+   menus are AnchoredMenu; the font menu portals itself. One definition here
+   means a design change reaches every Settings picker together. */
 .settings-language-anchor,
-.settings-theme-anchor {
+.settings-theme-anchor,
+.settings-menu-select-anchor,
+.settings-font {
   position: relative;
-  width: 100%;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
 }
 
+.settings-menu-select-anchor.is-full {
+  width: 100%;
+}
+
 .settings-language-trigger,
-.settings-theme-trigger {
-  display: flex;
+.settings-theme-trigger,
+.settings-menu-select-trigger,
+.settings-font-trigger {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
   height: 30px;
-  padding: 0 12px;
+  padding: 0 10px 0 12px;
   border-radius: var(--radius-full);
   background: var(--ds-raised);
   box-shadow: var(--ds-raised-shadow);
@@ -934,29 +1179,51 @@
   font-size: var(--text-sm-plus);
 }
 
+.settings-menu-select-anchor.is-full .settings-menu-select-trigger {
+  display: flex;
+  width: 100%;
+}
+
 .settings-language-trigger:hover,
-.settings-theme-trigger:hover {
+.settings-theme-trigger:hover,
+.settings-menu-select-trigger:hover,
+.settings-font-trigger:hover {
   background: var(--ds-bg-hover);
 }
 
+/* A write in flight keeps the trigger readable but not re-openable. */
+.settings-menu-select-trigger:disabled {
+  color: var(--ds-text-secondary);
+  cursor: default;
+}
+
 .settings-language-trigger-label,
-.settings-theme-trigger-label {
+.settings-theme-trigger-label,
+.settings-menu-select-trigger-label,
+.settings-font-trigger-label {
   min-width: 0;
-  flex: 1;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
 }
 
+.settings-menu-select-anchor.is-full .settings-menu-select-trigger-label {
+  flex: 1;
+}
+
 .settings-language-trigger > svg,
-.settings-theme-trigger > svg {
+.settings-theme-trigger > svg,
+.settings-menu-select-trigger > svg,
+.settings-font-trigger > svg {
   flex: 0 0 auto;
   color: var(--ds-text-muted);
 }
 
 .settings-language-menu,
-.settings-theme-menu {
+.settings-theme-menu,
+.settings-menu-select-menu {
   position: fixed;
   z-index: 60;
   width: min(240px, calc(100vw - 48px));
@@ -971,8 +1238,15 @@
   visibility: hidden;
 }
 
+.settings-menu-select-menu {
+  width: max-content;
+  min-width: 8rem;
+  max-width: min(280px, calc(100vw - 48px));
+}
+
 .settings-language-menu.is-open,
-.settings-theme-menu.is-open {
+.settings-theme-menu.is-open,
+.settings-menu-select-menu.is-open {
   opacity: 1;
   pointer-events: auto;
   visibility: visible;
@@ -1017,7 +1291,8 @@
 }
 
 .settings-language-results,
-.settings-theme-results {
+.settings-theme-results,
+.settings-menu-select-results {
   min-height: 0;
   max-height: min(360px, calc(100vh - 220px));
   overflow-y: auto;
@@ -1026,14 +1301,16 @@
 }
 
 .settings-language-list,
-.settings-theme-list {
+.settings-theme-list,
+.settings-menu-select-list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .settings-language-option,
-.settings-theme-option {
+.settings-theme-option,
+.settings-menu-select-option {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1048,12 +1325,25 @@
 .settings-language-option:hover,
 .settings-language-option.is-active,
 .settings-theme-option:hover,
-.settings-theme-option.is-active {
+.settings-theme-option.is-active,
+.settings-menu-select-option:hover,
+.settings-menu-select-option.is-active {
   background: var(--ds-bg-hover);
 }
 
+/* A host-reported unavailable shell stays listed but cannot be chosen. */
+.settings-menu-select-option:disabled {
+  color: var(--ds-text-muted);
+  cursor: default;
+}
+
+.settings-menu-select-option:disabled:hover {
+  background: transparent;
+}
+
 .settings-language-option.is-current .settings-language-option-native,
-.settings-theme-option.is-current .settings-theme-option-title {
+.settings-theme-option.is-current .settings-theme-option-title,
+.settings-menu-select-option.is-current .settings-menu-select-option-label {
   color: var(--ds-text-primary);
 }
 
@@ -1067,12 +1357,22 @@
 }
 
 .settings-language-option-native,
-.settings-theme-option-title {
+.settings-theme-option-title,
+.settings-menu-select-option-label {
   overflow: hidden;
   color: var(--ds-text-primary);
   font-size: var(--text-sm-plus);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-menu-select-option:disabled .settings-menu-select-option-label {
+  color: var(--ds-text-muted);
+}
+
+.settings-menu-select-option-label {
+  min-width: 0;
+  flex: 1;
 }
 
 .settings-language-option-english,
@@ -1086,7 +1386,8 @@
 }
 
 .settings-language-check,
-.settings-theme-check {
+.settings-theme-check,
+.settings-menu-select-check {
   flex: 0 0 auto;
   color: var(--ds-accent);
 }
@@ -1626,6 +1927,16 @@
   }
 }
 
+.agent-capability-row-actions > .settings-icon-button.is-action-highlight {
+  opacity: 1;
+  color: var(--ds-accent);
+}
+
+.agent-capability-row-actions > .settings-icon-button.is-action-highlight:hover:not(:disabled) {
+  color: var(--ds-accent);
+  background: color-mix(in oklab, var(--ds-accent) 14%, transparent);
+}
+
 .agent-capability-row.menu-open {
   background: var(--ds-tile-hover);
 }
@@ -1775,54 +2086,25 @@
 .agent-capability-project-picker {
   position: relative;
   display: inline-flex;
-  min-width: 148px;
   max-width: 200px;
   align-items: center;
   color: var(--ds-text-muted);
 }
 
-.agent-capability-project-picker select {
+.agent-capability-project-picker .settings-menu-select-trigger {
   min-width: 0;
-  width: 100%;
+  max-width: 200px;
   height: var(--agent-capability-control-height, 32px);
-  appearance: none;
-  border: 0;
+  padding-left: 26px;
   border-radius: var(--radius-sm);
-  background: var(--ds-raised);
-  box-shadow: var(--ds-raised-shadow);
-  padding: 0 25px;
-  color: var(--ds-text-primary);
-  cursor: pointer;
   font-size: var(--text-xs-plus);
-  outline: none;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.agent-capability-project-picker > svg:first-of-type {
+.agent-capability-project-picker > svg {
   position: absolute;
   left: 8px;
+  z-index: 1;
   pointer-events: none;
-}
-
-.agent-capability-project-picker > svg:last-of-type {
-  position: absolute;
-  right: 7px;
-  pointer-events: none;
-}
-
-.agent-capability-project-picker select:hover:not(:disabled) {
-  background: var(--ds-bg-hover);
-}
-
-.agent-capability-project-picker select:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
-}
-
-.agent-capability-project-picker select:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 /* Skeleton loading mirrors the row anatomy instead of a labeled block. */
@@ -1901,14 +2183,17 @@
 }
 
 /*
-  Direct child only. As a descendant selector this also dressed the icon inside
-  the empty state's own CTA button as a 34px faint chip, which ate the glyph and
-  stretched the button.
+  Chip the empty-state glyph on a wrapper, never on the SVG. Lucide icons set
+  inline width/height; padding those attributes crushes the stroke to a blank
+  chip. The CTA inside `.agent-capability-empty-action` keeps its own icon.
 */
-.agent-capability-empty > svg {
+.agent-capability-empty-icon {
+  display: inline-flex;
   width: 34px;
   height: 34px;
-  padding: 8px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-md);
   background: var(--ds-bg-chip);
   color: var(--ds-text-faint);
@@ -2002,7 +2287,7 @@
   .agent-capability-panel.is-refreshing .agent-capability-list,
   .agent-capability-row-actions > .settings-icon-button,
   .agent-capability-row-actions .agent-capability-menu-wrap,
-  .agent-capability-project-picker select,
+  .agent-capability-project-picker .settings-menu-select-trigger,
   .agent-capability-skeleton-glyph,
   .agent-capability-skeleton-line,
   .agent-capability-badge.is-connecting .agent-capability-status-dot {
@@ -2105,7 +2390,13 @@
   text-overflow: ellipsis;
 }
 
+.extension-prompt-dialog {
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+
 .extension-prompt-message {
+  overflow-wrap: anywhere;
   margin: 0 0 12px;
   color: var(--ds-text-primary);
   font-size: var(--text-sm);
@@ -2120,6 +2411,7 @@
 }
 
 .extension-prompt-option {
+  overflow-wrap: anywhere;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2130,12 +2422,15 @@
   cursor: pointer;
 }
 
+.extension-prompt-option input {
+  flex-shrink: 0;
+}
+
 .extension-prompt-source-path {
   display: block;
   margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-size: var(--text-3xs);
 }
 
@@ -3000,6 +3295,11 @@
   margin: 0;
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
+}
+
+/* A failed preview must read as an error, not as a muted side note. */
+.sklm-note.is-error {
+  color: var(--ds-error);
 }
 
 .sklm-note-label {

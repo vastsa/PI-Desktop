@@ -372,8 +372,8 @@
         </button>
         <button class="node" style="--tint: var(--child)" data-node="env">
           <span class="node-name">最小环境</span>
-          <span class="node-desc">只透传 PATH/TEMP/LANG 等；宿主 env 里的 provider key 与 shell 密钥不进插件</span>
-          <span class="node-meta">pluginProcessEnv()</span>
+          <span class="node-desc">透传 PATH/TEMP/LANG/HOME/USER/USERPROFILE；宿主 env 里的 provider key 与 shell 密钥不进插件</span>
+          <span class="node-meta">pluginChildEnv()</span>
         </button>
       </div>
     </section>
@@ -481,7 +481,7 @@
     <li><span class="step-n">1</span><span class="step-where" style="--tint:var(--agent)">Sidecar</span><span class="step-what">模型发起 tool_use，工具名形如 <code>plugin_demo_hello_echo</code></span></li>
     <li><span class="step-n">2</span><span class="step-where" style="--tint:var(--rust)">host-core</span><span class="step-what"><code>plugin_</code> 前缀命中 → 不本地执行，改发 <code>plugins.execute</code> 通知（executionId + toolCallId）</span></li>
     <li><span class="step-n">3</span><span class="step-where" style="--tint:var(--main)">Main</span><span class="step-what">按 fullName 在注册表找工具；找不到即 <code>TOOL_NOT_FOUND</code></span></li>
-    <li><span class="step-n">4</span><span class="step-where" style="--tint:var(--child)">Child</span><span class="step-what"><code>tool.execute</code> 帧下发，预算 <span class="gate">110s</span><em>（压在 host-core 120s 之下，好让插件侧错误先返回）</em></span></li>
+    <li><span class="step-n">4</span><span class="step-where" style="--tint:var(--child)">Child</span><span class="step-what"><code>tool.execute</code> 帧下发，预算 <span class="gate">110s</span><em>（压在 host-core 150s 调度之下，好让插件侧错误先返回）</em></span></li>
     <li><span class="step-n">5</span><span class="step-where" style="--tint:var(--child)">Child</span><span class="step-what">执行 <code>tool.execute(args, ctx)</code>，ctx 提供 sessionId/turnId/log；抛错归一化为 <code>TOOL_FAILED</code></span></li>
     <li><span class="step-n">6</span><span class="step-where" style="--tint:var(--rust)">host-core</span><span class="step-what"><code>plugins.resolveExecution</code> 回填结果 → 进模型上下文；同时 <code>logger.app</code> 落审计、drainToasts 推 UI</span></li>
   </ol>
@@ -583,7 +583,7 @@
       <li><code>PLUGIN_LOAD_TIMEOUT_MS</code> — 15s（模块求值 + onLoad）</li>
       <li><code>PLUGIN_HOOK_TIMEOUT_MS</code> — 5s（onUnload）</li>
       <li><code>PLUGIN_COMMAND_TIMEOUT_MS</code> — 30s（面向用户，快速失败）</li>
-      <li><code>PLUGIN_TOOL_TIMEOUT_MS</code> — 110s（&lt; host-core 的 120s）</li>
+      <li><code>PLUGIN_TOOL_TIMEOUT_MS</code> — 110s（&lt; host-core 的 150s）</li>
       <li>watcher 去抖 300ms / 最多 16 个开发插件</li>
     </ul>
   </div>
@@ -748,8 +748,8 @@ const DETAILS = {
     "子进程持 run/execute 函数，宿主只持描述符 + 一个回打过去的代理",
     "宿主注册失败时子进程回滚本地 Map，两侧不会不一致",
     "工具名在宿主侧改成 plugin_<id>_<tool>，插件内部仍用原名"]],
-  "env": ["最小环境", "pluginProcessEnv()", [
-    "只注入 PI_PLUGIN_ID、NODE_ENV，以及 PATH / SystemRoot / windir / TEMP / TMP / TMPDIR / LANG",
+  "env": ["最小环境", "pluginChildEnv()", [
+    "只注入 PI_PLUGIN_ID、NODE_ENV，以及 PATH / SystemRoot / windir / TEMP / TMP / TMPDIR / LANG / HOME / USER / USERPROFILE",
     "宿主 env 里可能带 provider key 与 shell 密钥，插件没有理由看到",
     "serviceName 形如 pi-plugin-<sanitized-id>，便于在活动监视器里定位"]],
   "tools-expose": ["工具暴露", "pluginToolName() · D015", [

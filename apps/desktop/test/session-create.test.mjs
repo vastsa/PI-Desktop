@@ -62,6 +62,11 @@ test("creating a session reveals the empty destination before host IO", () => {
   assert.match(persist, /commitCreatedEmptySession/);
   assert.match(sessionCoordination, /function commitCreatedEmptySession/);
   assert.match(sessionCoordination, /scheduleHomeDraftAdopt/);
+  assert.match(persist, /inheritedSessionModelBinding/);
+  assert.match(persist, /providerId: inherited\.providerId/);
+  assert.match(persist, /modelId: inherited\.modelId/);
+  assert.doesNotMatch(persist, /providerId: draftConfig\?\.providerId/);
+  assert.doesNotMatch(persist, /modelId: draftConfig\?\.modelId/);
 });
 
 test("send and paste wait for an in-flight New Task instead of creating a second session", () => {
@@ -72,3 +77,14 @@ test("send and paste wait for an in-flight New Task instead of creating a second
   assert.match(materialize, /pendingNewSessionRequests/);
   assert.match(materialize, /await pending/);
 });
+
+test("opening an unpinned session snapshots its first selected model", () => {
+  const select =
+    sessionSlice.match(/selectSession: async[\s\S]*?\n    newSession: async/)?.[0] ?? "";
+  assert.ok(select.length > 0, "selectSession implementation not found");
+  assert.match(select, /sessionNeedsModelPin/);
+  assert.match(select, /pinnedSessionModelBinding/);
+  assert.match(select, /configureActiveSession/);
+  assert.match(select, /api\.configureSession\(id,/);
+});
+

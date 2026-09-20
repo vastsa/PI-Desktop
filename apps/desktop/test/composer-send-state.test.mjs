@@ -43,6 +43,8 @@ const [
   readComposerModule("hooks/useComposerDraft.ts"),
 ]);
 
+const queuedPromptsLib = await read("../src/lib/queued-prompts.ts");
+
 test("composer send/stop button follows draft content and the visible session's run state", () => {
   const composerRight = toolbar.match(/<div className="composer-right">[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
   // Plan mode widens the running condition: `runActive` folds an in-flight
@@ -105,20 +107,86 @@ test("running session configuration is queued for the next turn", () => {
   assert.match(eventsSlice, /event\.type === "agent_end"[\s\S]*flushPendingSessionConfiguration\(envelope\.sessionId\)/);
 });
 
-test("running prompts use a removable per-session FIFO queue", () => {
+test("running prompts use a removable per-session queue with priority actions", () => {
   assert.match(store, /queuedPrompts: QueuedPrompts/);
   assert.match(store, /enqueueQueuedPrompt\(state\.queuedPrompts, item\)/);
-  assert.match(store, /prioritizeQueuedPrompt\(/);
+  assert.match(store, /promoteQueuedPrompt\(/);
   // The Host owns the queue (D375 / D386): the renderer pushes through the
   // agent/queue channels and mirrors the durable entries after agent_end.
   assert.match(store, /api\s*\.queuePrompt\(/);
   assert.match(store, /api\.prioritizeQueuedPrompt\(promptId\)/);
+  assert.match(store, /api\.reorderQueuedPrompt\(promptId, direction\)/);
   assert.match(store, /event\.type === "agent_end"[\s\S]*refreshQueuedPrompts\(envelope\.sessionId\)/);
   assert.doesNotMatch(store, /drainQueuedPrompts/);
   assert.match(composer, /data-testid="queued-prompt"/);
   assert.match(composer, /removeQueuedPrompt\(item\.id\)/);
+  assert.match(composer, /moveQueuedPrompt\(item\.id, "up"\)/);
+  assert.match(composer, /moveQueuedPrompt\(item\.id, "down"\)/);
+  assert.match(composer, /editQueuedPrompt\(item\.id\)/);
   assert.match(composer, /sendQueuedNow\(item\.id\)/);
-  assert.match(composer, /approvalPending[\s\S]*item\.sendNowRequested/);
+  // Send now promotes a row into the priority block instead of jumping to the
+  // head, so two promoted rows leave in the order they were clicked.
+  assert.match(
+    queuedPromptsLib,
+    /\.\.\.promoted,\s*\n\s*\{ \.\.\.item, priority: highest \+ 1 \},\s*\n\s*\.\.\.waiting,/,
+  );
+  assert.match(queuedPromptsLib, /Math\.max\(max, candidate\.priority\)/);
+  // A promoted row is the next turn: move up/down, edit, and remove all lock.
+  assert.match(composer, /data-priority=\{promoted \? "true" : "false"\}/);
+  assert.match(composer, /disabled=\{sendNowLocked\}/);
+  assert.match(
+    composer,
+    /\{promoted \? t\("chat\.sendNowPending"\) : t\("chat\.sendNow"\)\}/,
+  );
+  assert.equal(
+    (composer.match(/disabled=\{promoted\}/g) ?? []).length,
+    8,
+    "four promoted rows set disabled and aria-disabled on move up/down, edit, and remove",
+  );
+  assert.equal(
+    (composer.match(/aria-disabled=\{promoted\}/g) ?? []).length,
+    4,
+    "each locked action carries its own aria-disabled state",
+  );
+  assert.doesNotMatch(composer, /sendNowRequested/);
+  assert.doesNotMatch(queuedPromptsLib, /sendNowRequested/);
+  assert.doesNotMatch(queuedPromptsLib, /clearQueuedPromptSendNow/);
+});
+
+test("reordering a queued prompt swaps plain neighbours only", () => {
+  // The Host reorders durable positions; the renderer mirrors one swap and
+  // never moves a promoted row or crosses into the priority block.
+  assert.match(
+    queuedPromptsLib,
+    /if \(!item \|\| isPromotedQueuedPrompt\(item\)\) return queues;/,
+  );
+  assert.match(
+    queuedPromptsLib,
+    /if \(!target \|\| isPromotedQueuedPrompt\(target\)\) return queues;/,
+  );
+  assert.match(
+    queueSlice,
+    /if \(!item \|\| isPendingQueuedPrompt\(item\) \|\| isPromotedQueuedPrompt\(item\)\) \{/,
+  );
+  // A boundary no-op must not reach the Host.
+  assert.match(queueSlice, /if \(moved === before\) return;/);
+});
+
+test("editing a queued prompt needs an empty composer and restores its draft", () => {
+  // The live read is the only current source: the draft cache is not written
+  // per keystroke, so the store cannot decide emptiness on its own.
+  assert.match(
+    composer,
+    /const handleEditQueuedPrompt = \(id: string\) => \{[\s\S]{0,400}?readLiveDraft\(\)\.trim\(\)[\s\S]{0,200}?chat\.editQueuedPromptBusy[\s\S]{0,200}?return;[\s\S]{0,200}?editQueuedPrompt\(id\);/,
+  );
+  assert.match(composer, /editQueuedPrompt=\{handleEditQueuedPrompt\}/);
+  assert.match(queueSlice, /editQueuedPrompt: \(promptId\) => \{[\s\S]*composerPrefill: restored/);
+  // `item.content` is token-stripped, so the row's captured draft is restored.
+  assert.match(
+    queueSlice,
+    /text: item\.draft\.text,[\s\S]*fileReferences: item\.draft\.fileReferences\.map\(/,
+  );
+  assert.doesNotMatch(queueSlice, /text: item\.content/);
 });
 
 test("new task persists or reuses an empty session and keeps the run flag scoped", () => {
@@ -222,9 +290,8 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
   assert.match(sendPrompt, /return false;/);
   assert.match(
     sendPrompt,
-    // An annotated send ships the block the model reads, not the bare draft
-    // text, so the prompt call carries the composed prompt (D-LOCAL-response-annotations).
-    /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content: outgoing,[\s\S]*?attachments:[\s\S]*?promptAttachmentsFromDraft\(draft\.fileReferences\)[\s\S]*?\}\);[\s\S]*?return true;/,
+    // The prompt call carries the submitted content and attachment mapping.
+    /await api\.prompt\(\{[\s\S]*?sessionId,[\s\S]*?content,[\s\S]*?attachments:[\s\S]*?promptAttachmentsFromDraft\(draft\.fileReferences\)[\s\S]*?\}\);[\s\S]*?return true/,
   );
 });
 

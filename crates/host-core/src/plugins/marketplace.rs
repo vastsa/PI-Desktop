@@ -3,37 +3,103 @@ use super::*;
 pub mod catalog;
 pub(crate) use catalog::{built_in_catalog, bundled_package_bytes};
 
-/// Official marketplace catalog, served from the dedicated GitHub repo.
-pub const OFFICIAL_MARKET_CATALOG_URL: &str =
-    "https://raw.githubusercontent.com/vastsa/pi-desktop-plugins/main/catalog.json";
-
-/// Mirror for networks that cannot reach `raw.githubusercontent.com`.
+/// Official channel: the plugin center.
 ///
-/// The mirror serves a byte-identical catalog and packages, and catalog
-/// package URLs are relative, so `resolve_package_url` keeps downloads on
-/// whichever source the catalog came from and shasum verification is
-/// unaffected by the switch.
+/// The catalog it serves is the client's listing contract, and an install asks
+/// the same host where the package is (`plugins::resolve`) instead of resolving
+/// a relative package URL against a git host.
+pub const OFFICIAL_CHANNEL_CATALOG_URL: &str = "https://plugins.aiuo.net/catalog.json";
+
+/// Backup channel: the GitHub copy of the distribution repository.
+///
+/// Catalog and packages live in one tree, so a relative package URL resolves
+/// against whichever host served the catalog and a switch can never cross
+/// providers.
+pub const GITHUB_BACKUP_CHANNEL_CATALOG_URL: &str =
+    "https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/catalog.json";
+
+/// Backup channel: the CNB copy, for networks that cannot reach GitHub.
 pub const MIRROR_MARKET_CATALOG_URL: &str =
     "https://cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/catalog.json";
 
-/// Resolve the catalog URL pinned by persisted app settings.
+/// The catalog source a user chose.
 ///
-/// `pluginMarketSource` selects the provider; `custom` reads the URL from
-/// `pluginMarketCustomUrl`. Returns `None` when settings do not pin a source
-/// (or pin `custom` without a URL), which leaves the official default in
-/// place.
-pub fn market_source_from_settings(settings: Option<&Value>) -> Option<String> {
-    let settings = settings?;
-    match settings.get("pluginMarketSource").and_then(Value::as_str) {
-        Some("mirror") => Some(MIRROR_MARKET_CATALOG_URL.to_string()),
-        Some("custom") => settings
-            .get("pluginMarketCustomUrl")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|url| !url.is_empty())
-            .map(str::to_string),
-        _ => None,
+/// `official` keeps its meaning — "the official one" — and the official one is
+/// now the plugin center. That is why a settings row written before this change
+/// keeps meaning what its author picked, and why no migration is needed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MarketChannel {
+    /// The plugin center (the default).
+    Official,
+    /// The GitHub backup.
+    Github,
+    /// The CNB backup.
+    Mirror,
+    /// A catalog URL the user typed.
+    Custom,
+}
+
+impl MarketChannel {
+    /// Persisted value, and the `providerId` an install records.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MarketChannel::Official => "official",
+            MarketChannel::Github => "github",
+            MarketChannel::Mirror => "mirror",
+            MarketChannel::Custom => "custom",
+        }
     }
+
+    /// Channel named by a persisted `pluginMarketSource` value.
+    ///
+    /// An absent value, the legacy `official`, and anything unrecognised all
+    /// mean the official channel: the old resolution fell back to its default
+    /// for exactly those three cases, and the default is now the center.
+    pub fn from_setting(value: Option<&str>) -> Self {
+        match value.map(str::trim) {
+            Some("github") => MarketChannel::Github,
+            Some("mirror") => MarketChannel::Mirror,
+            Some("custom") => MarketChannel::Custom,
+            _ => MarketChannel::Official,
+        }
+    }
+
+    /// Catalog URL, for every channel that has a fixed one.
+    pub fn catalog_url(self) -> Option<&'static str> {
+        match self {
+            MarketChannel::Official => Some(OFFICIAL_CHANNEL_CATALOG_URL),
+            MarketChannel::Github => Some(GITHUB_BACKUP_CHANNEL_CATALOG_URL),
+            MarketChannel::Mirror => Some(MIRROR_MARKET_CATALOG_URL),
+            MarketChannel::Custom => None,
+        }
+    }
+}
+
+/// Catalog URL forced by the environment, when one is set.
+///
+/// Dev builds and tests point this at a local catalog so they never touch
+/// persisted settings, and it outranks the channel on purpose.
+pub(crate) fn market_source_env_override() -> Option<String> {
+    std::env::var("PI_DESKTOP_PLUGIN_MARKET_URL")
+        .ok()
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+}
+
+/// Channel and custom URL pinned by persisted app settings.
+pub fn market_channel_from_settings(settings: Option<&Value>) -> (MarketChannel, Option<String>) {
+    let Some(settings) = settings else {
+        return (MarketChannel::Official, None);
+    };
+    let channel =
+        MarketChannel::from_setting(settings.get("pluginMarketSource").and_then(Value::as_str));
+    let custom_url = settings
+        .get("pluginMarketCustomUrl")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .map(str::to_string);
+    (channel, custom_url)
 }
 
 impl PluginManager {
@@ -42,23 +108,58 @@ impl PluginManager {
     /// The environment override stays on top so dev builds and tests can point
     /// at a local catalog without touching persisted settings.
     pub fn market_source_url(&self) -> String {
-        if let Ok(url) = std::env::var("PI_DESKTOP_PLUGIN_MARKET_URL") {
-            if !url.trim().is_empty() {
-                return url;
-            }
+        if let Some(url) = market_source_env_override() {
+            return url;
         }
-        self.market_source
-            .clone()
-            .unwrap_or_else(|| OFFICIAL_MARKET_CATALOG_URL.to_string())
+        match self.market_channel {
+            // A custom channel with no URL keeps the official default, which is
+            // what an empty setting meant before the channel existed.
+            MarketChannel::Custom => self
+                .market_custom_url
+                .clone()
+                .unwrap_or_else(|| OFFICIAL_CHANNEL_CATALOG_URL.to_string()),
+            channel => channel
+                .catalog_url()
+                .unwrap_or(OFFICIAL_CHANNEL_CATALOG_URL)
+                .to_string(),
+        }
     }
 
-    /// Re-pin the catalog source after the user switches providers.
+    /// Channel the user selected.
+    pub fn channel(&self) -> MarketChannel {
+        self.market_channel
+    }
+
+    /// Re-pin the catalog channel after the user switches sources.
     ///
     /// Cached snapshots are left on disk: they are keyed back to their source
-    /// through `cache-meta.json`, so a snapshot from another provider is
-    /// ignored rather than deleted and switching back keeps working offline.
-    pub fn set_market_source(&mut self, market_source: Option<String>) {
-        self.market_source = market_source;
+    /// through `cache-meta.json`, so a snapshot from another channel is ignored
+    /// rather than deleted and switching back keeps working offline.
+    pub fn set_market_channel(&mut self, channel: MarketChannel, custom_url: Option<String>) {
+        self.market_channel = channel;
+        self.market_custom_url = custom_url;
+    }
+
+    /// Whether an install asks the plugin center where the package is.
+    ///
+    /// Only the official channel does, and only when the catalog really is the
+    /// center's: an environment override names a catalog file somebody put
+    /// somewhere, and such a catalog lists packages the way a git host serves
+    /// them, so it keeps the relative-URL path.
+    pub(crate) fn uses_download_resolve(&self) -> bool {
+        self.market_channel == MarketChannel::Official && market_source_env_override().is_none()
+    }
+
+    /// Make the install that is about to run cancellable.
+    ///
+    /// The token is held here rather than passed around, because the cancel
+    /// action arrives as its own RPC while the install is still running.
+    pub(crate) fn set_install_cancel(&mut self, token: Option<CancelToken>) {
+        match &token {
+            Some(value) => super::progress::arm_active_cancel(value),
+            None => super::progress::disarm_active_cancel(),
+        }
+        self.install_cancel = token;
     }
 
     pub(crate) fn market_cache_meta_path(&self) -> PathBuf {
@@ -300,8 +401,12 @@ impl PluginManager {
             }
             if !q.is_empty() {
                 let hay = format!(
-                    "{} {} {} {}",
-                    entry.id, entry.name, entry.description, entry.author
+                    "{} {} {} {} {}",
+                    entry.id,
+                    entry.name,
+                    entry.description,
+                    entry.author,
+                    localized_search_haystack(entry.i18n.as_ref()),
                 )
                 .to_lowercase();
                 if !hay.contains(&q) {
@@ -328,6 +433,14 @@ impl PluginManager {
         let permissions = latest_market_version(&entry.versions)
             .map(|v| v.permissions.clone())
             .unwrap_or_default();
+        // Resolved before the fields move out of `entry`; the flat field stays
+        // the fallback for a catalog without an `i18n` block, and a partial
+        // translation falls back per field.
+        let safety_notes = localized_field(entry.i18n.as_ref(), &self.locale, |text| {
+            text.safety_notes.as_ref()
+        })
+        .cloned()
+        .or(entry.safety_notes.clone());
         Ok(MarketPluginDetail {
             summary,
             readme_markdown: entry.readme_markdown,
@@ -336,7 +449,7 @@ impl PluginManager {
             homepage: entry.homepage,
             repository: entry.repository,
             permissions,
-            safety_notes: entry.safety_notes,
+            safety_notes,
         })
     }
 
@@ -488,8 +601,14 @@ impl PluginManager {
         let catalog_url = self.market_source_url();
         MarketPluginSummary {
             id: entry.id.clone(),
-            name: entry.name.clone(),
-            description: entry.description.clone(),
+            name: localized_field(entry.i18n.as_ref(), &self.locale, |text| text.name.as_ref())
+                .cloned()
+                .unwrap_or_else(|| entry.name.clone()),
+            description: localized_field(entry.i18n.as_ref(), &self.locale, |text| {
+                text.description.as_ref()
+            })
+            .cloned()
+            .unwrap_or_else(|| entry.description.clone()),
             author: entry.author.clone(),
             icon_url: entry.icon_url.clone(),
             latest_version: latest.clone(),
@@ -555,17 +674,25 @@ impl PluginManager {
                 }
             });
         match declared.as_str() {
-            "verified" if self.is_official_market_source() => "verified".into(),
+            "verified" if self.is_trusted_channel() => "verified".into(),
             "verified" => "community".into(),
             "community" => "community".into(),
             _ => "unknown".into(),
         }
     }
 
-    /// Whether the catalog in effect is the project's own source or its mirror.
-    fn is_official_market_source(&self) -> bool {
+    /// Whether the catalog in effect is one this project issues.
+    ///
+    /// The three channels are the project's own catalogs; a URL somebody typed
+    /// into `custom` may describe its own plugins but cannot assert a tier. The
+    /// comparison stays on the effective URL rather than on the setting, so a
+    /// catalog reached through `PI_DESKTOP_PLUGIN_MARKET_URL` counts only when
+    /// it actually names one of them.
+    fn is_trusted_channel(&self) -> bool {
         let url = self.market_source_url();
-        url == OFFICIAL_MARKET_CATALOG_URL || url == MIRROR_MARKET_CATALOG_URL
+        url == OFFICIAL_CHANNEL_CATALOG_URL
+            || url == GITHUB_BACKUP_CHANNEL_CATALOG_URL
+            || url == MIRROR_MARKET_CATALOG_URL
     }
 }
 
@@ -692,4 +819,17 @@ impl PartialOrd for ParsedPluginVersion<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
+}
+
+/// Every locale's name and description, so a search matches whatever language
+/// the user typed rather than only the one currently displayed.
+fn localized_search_haystack(map: Option<&PluginI18nMap>) -> String {
+    let Some(map) = map else {
+        return String::new();
+    };
+    map.values()
+        .flat_map(|entry| [entry.name.as_deref(), entry.description.as_deref()])
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
 }

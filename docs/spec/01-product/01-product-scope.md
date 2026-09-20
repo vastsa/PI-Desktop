@@ -125,7 +125,7 @@ the internal `page = "chat"` route value; that value is not an operating mode.
 
 - Product: `PI-Desktop`
 - Package: `pi-desktop`
-- Application ID: `com.pi-desktop.app`
+- Application ID: `net.aiuo.pi-desktop`
 - Window title: `PI-Desktop`
 
 ## 9. Platform strategy

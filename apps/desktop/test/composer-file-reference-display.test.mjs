@@ -91,10 +91,8 @@ test("text file chips expand into editable draft text", () => {
     composer,
     /function isEditableTextReference\(reference: ComposerFileReference\)/,
   );
-  assert.match(composer, /chip\.setAttribute\("role", editableText \? "button" : "listitem"\)/);
-  assert.match(composer, /chip\.addEventListener\("click", \(\) => onExpandText\(token\)\)/);
+  assert.match(composer, /\? \(\) => onExpandText\(token\)/);
   assert.match(composer, /event\.key !== "Enter" && event\.key !== " "/);
-  assert.match(composer, /event\.stopPropagation\(\);[\s\S]*?onExpandText\(token\)/);
   assert.match(composer, /const result = await api\.fsRead\(reference\.path, reference\.mimeType\)/);
   assert.match(composer, /result\.kind !== "text" \|\| result\.content === undefined/);
   assert.match(

@@ -208,6 +208,14 @@ export const MAX_SUBAGENT_DEFINITIONS = 16;
 export const MAX_SUBAGENT_PROVIDERS = 8;
 /** Running delegates per session, across batches (see ADR 0089). */
 export const MAX_SUBAGENT_CONCURRENCY = 10;
+/** Resumable chains kept per subagent name before the oldest is evicted
+ * (ADR 0279). A chain is one delegate session across any number of `resume`s. */
+export const MAX_RESUMABLE_CHAINS_PER_AGENT = 2;
+/** Cumulative lines a chain's read-only tools may read before it leaves the
+ * resumable list and the next delegation for that work runs cold (ADR 0279). */
+export const MAX_RESUMABLE_READ_LINES = 50_000;
+/** Files listed per chain in the parent's resumable-session prompt block. */
+export const MAX_RESUMABLE_LISTED_FILES = 8;
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 

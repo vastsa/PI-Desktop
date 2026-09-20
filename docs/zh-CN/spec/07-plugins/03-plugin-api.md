@@ -42,17 +42,23 @@ type PluginAppearance = {
 ```
 
 面板通过桥通道 `app.getAppearance` 读取同一个值，并在 `appearance:changed`
-事件（见下文）上收到实时更新。在没有该通道的旧宿主上，调用以
-`UNSUPPORTED` 拒绝；面板应回退到操作系统偏好和它自己的面板内选择。
+事件（见下文）上收到实时更新。插件进程通过 `pi.events` 收到同一事件。在没有该通道的
+旧宿主上，调用以 `UNSUPPORTED` 拒绝；面板应回退到操作系统偏好和它自己的面板内选择。
 
-`app.setTheme`（需要 `ui.theme`，ADR 0249）应用与设置选择器相同的
+`app.getLocale` 与 `getAppearance().locale` 是同一个语言标签。插件自有界面（面板、
+视图、widget、设置入口、toast、运行时命令标题）据此自行本地化。宿主不再给更多贡献字段
+加 `{ en, "zh-CN" }`；生成式 `contributes.settings` 标题保持作者语言纯字符串
+（ADR 0280）。宿主拥有的身份文案（`manifest.i18n`）以及已经落地的 chrome 标签
+（`ui.title`、视图标题、设置入口）仍走既有契约（ADR 0267、ADR 0082）。
+
+`app.setTheme`（需要 `ui.theme`，ADR 0260）应用与设置选择器相同的
 `AppSettings.theme`。接受内置偏好或当前已注册的插件主题 id；未知 id 以
 `INVALID_ARGUMENT` 拒绝。宿主会持久化设置、刷新原生 chrome / 面板外观，
 并向渲染进程发出 `settingsChanged`。
 
 ### 主题（需要 `ui.theme`）
 
-调用方插件自有主题的运行时注册表。生产模式可用，无需卸载/重载（ADR 0249）。
+调用方插件自有主题的运行时注册表。生产模式可用，无需卸载/重载（ADR 0260）。
 
 ```ts
 pi.themes.upsert(input: {
@@ -82,9 +88,12 @@ pi.plugin.getDataPath(): Promise<string> // plugin-private directory
 ```
 
 插件页面会渲染 `contributes.settings` 中声明的字段，并将修改持久化到插件私有设置文件。
-支持生成字符串、数字、布尔、枚举、JSON 和 `shortcut` 控件。快捷键仅属于插件域：只有在
-PI-Desktop 窗口聚焦且插件激活范围匹配当前项目时，才会调用声明的命令；本版本不会注册操作系统
-全局快捷键。用户编辑后，主机会向插件发送 `plugin:settingsChanged`，便于刷新内存中的配置。
+支持生成字符串、数字、布尔、枚举、JSON 和 `shortcut` 控件。生成式 `title` /
+`description` / `enum[].label` 是作者语言纯字符串，宿主不会在这些字段上解析 locale
+map。需要本地化设置页的插件应贡献 `settingsDestinations` 并读取 `pi.app.getLocale`
+（ADR 0280）。快捷键仅属于插件域：只有在 PI-Desktop 窗口聚焦且插件激活范围匹配当前项目时，
+才会调用声明的命令；本版本不会注册操作系统全局快捷键。用户编辑后，主机会向插件发送
+`plugin:settingsChanged`，便于刷新内存中的配置。
 
 ### 命令
 ```ts
@@ -97,6 +106,21 @@ pi.commands.register(def: {
 
 pi.commands.unregister(id: string): Promise<void>
 ```
+
+### 语音（`speech.adapter.register`）
+```ts
+pi.speech.registerAdapter(adapter: {
+  protocol: string
+  label: string
+  roles: Array<"transcribe" | "synthesize">
+  handle: (input) => Promise<{ kind: "text"; text: string } | { kind: "audio"; mimeType: string; data: string } | { kind: "http"; call: SpeechHttpCall }>
+}): Promise<void>
+pi.speech.unregisterAdapter(protocol: string): Promise<void>
+```
+
+handle 留在插件进程。内置协议 id `openai_audio` 和 `openai_chat_audio` 保留。
+HTTP 计划由宿主用绑定 provider 的密钥代发，且必须落在该 origin。
+
 
 ### 用户界面
 ```ts
@@ -172,7 +196,7 @@ pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 
 `workspace.get` 回答主根——`path` 与其叶子 `name` 都保持不变——并在该文件夹属于某个项目组
 （ADR 0249）时额外给出 `projectId` 与 `roots`：项目组按自身顺序登记的全部文件夹，主文件夹在前，
-每项为 `{ path, name, primary }`（ADR 0252）。`workspace:changed` 携带同一对象，两者都由主机持有
+每项为 `{ path, name, primary }`（ADR 0263）。`workspace:changed` 携带同一对象，两者都由主机持有
 的项目组记录回答，因此事件与主动拉取不会互相矛盾。无法解析项目组的主机会省略 `projectId` 与
 `roots`，也就是插件本来就会处理的 `{ path, name }`；读取这些元数据不需要新权限，也不新增 SDK 方法。
 
@@ -184,12 +208,12 @@ pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 `fs.readText` 使用相同的 `fs.read` 根目录、符号链接、受保护路径、拒绝列表和范围检查；
 目录会被拒绝。主机会记录这次操作。路径默认相对根目录；只有「本项目已注册的另一个文件夹根」
 之内的绝对路径才会被接受，而且**只有这个动作与 `fs.reveal` 接受**（其他模式一律不接受
-绝对路径），该根随即成为这次请求的包含基点（ADR 0249 §5、ADR 0253）——这正是视图用来指
+绝对路径），该根随即成为这次请求的包含基点（ADR 0249 §5、ADR 0264）——这正是视图用来指
 名「非主文件夹里的文件」的形状。
 
 `fs.reveal` 在操作系统文件管理器中显示一个已存在且可读取的文件，并在平台支持时选中它。
 它使用相同的 `fs.read` 检查，拒绝目录，并记录成功和失败。路径的接受方式与 `fs.openDefault`
-完全一致：默认相对根目录，落在本项目另一个已注册文件夹根之内时可以是绝对路径（ADR 0253）。
+完全一致：默认相对根目录，落在本项目另一个已注册文件夹根之内时可以是绝对路径（ADR 0264）。
 
 路径相对于该模式的 root —— 工作区，或者当该模式声明
 `root: "userSelected"` 时，用户通过 `requestDirectory()` 选中的目录。
@@ -197,6 +221,8 @@ pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 而凭证 deny-list 压过两者（参见
 [04-plugin-security.md](/zh-CN/spec/07-plugins/04-plugin-security) §6）。
 `remove` 不递归，并且把路径移进系统回收站。
+在 `workspace` 根下，路径相对于调用该调用的工具会话所属的项目，面板调用没有工具会话时
+回退到可见工作区（ADR 0266）。
 
 `list` 返回单个目录的条目（按名称排序），使插件可以惰性遍历目录树，
 而不必拉取整个仓库的 `glob` 再自行重组。它施加与 `glob` 完全相同的守卫，
@@ -343,6 +369,44 @@ Projects 页面也会据此刷新持久项目索引；插件不需要、也不�
 5 次批量导入和 20 次删除。写入前会移除工具 `__pi*` 与 `piDesktop.*` 对象键。
 P2/P3（会话创建、消息变更、任意重新绑定、provider/model 绑定、批量删除、标签）不属于本次接口。
 
+### 用量（需要 `usage.read`）
+
+面向用户仍可见的未删除会话，提供只读的**已完成回合事实行**。宿主只提供
+每个 turn 一行的扁平事实——计数与标识符；绝不包含消息正文、转录投影或任何
+写路径。**刻意不提供仪表盘形状**：连续天数、热力图、分模型占比、高消耗
+排名都是插件在这些事实行之上自己的计算——日后调整指标口径也不会变成
+SDK 的破坏性变更。
+
+```ts
+pi.usage.listTurns(input?: {
+  fromMs?: number      // 含端点的窗口起点（epoch ms）；默认 toMs - 30 天
+  toMs?: number        // 含端点的窗口终点（epoch ms）；默认当前时间
+  projectId?: number | null
+  sessionId?: string
+  cursor?: string      // 上一次 nextCursor 返回的不透明分页游标
+  limit?: number       // 1..=500 行；默认 200
+}): Promise<{
+  turns: Array<{
+    turnId: string; sessionId: string; sessionTitle: string | null
+    projectId: number | null; providerId: string | null; modelId: string | null
+    startedAt: number; endedAt: number
+    inputTokens: number; outputTokens: number
+    cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number
+  }>
+  nextCursor: string | null
+}>
+```
+
+语义：
+
+- 只列出未删除会话的已完成 turn。用户删除的会话会从列表中消失。
+- 行按 `endedAt` 升序 + keyset 游标排列，窗口填充时翻页依然稳定；仪表盘
+  展示的排名是插件自己的排序，不是宿主的。
+- 窗口跨度至多 365 天；`limit` 为 1..=500（默认 200）。Electron 侧先校验，
+  宿主 RPC 边界按同样界限再次校验。缺省与 `null` 边界等价；空会话标题返回
+  `null`。
+- `usage_json` 缺失或畸形时 cache/reasoning 计数记 0——绝不返回残缺行。
+
 ### 会话协作（需要 `desktop.control`）
 
 官方 Session Orchestrator 组合了已审查的 desktop-control 目录；这不是第二套 session API，
@@ -380,6 +444,12 @@ type CancelInput = { sessionId: string; messageId?: string }
 Session ID，并复用该会话的项目、模型、上下文和权限配置；`messageId` 只标识一条投递，
 不是 worker 身份。`status` 和 `result` 是有界投影，不会加载完整转录本。`cancel` 只中断
 精确的排队投递或绑定回合，并保留目标会话及其历史。
+
+`spawn` 中显式指定的 `modelKey` 属于 AI 自动调度的模型选择，需要该模型自身的
+`ModelBinding.availableForSubagents` 许可；对用户未勾选的模型，宿主在创建 worker 之前
+返回 `PERMISSION_DENIED`。省略 `modelKey` 仍然是继承——先取已勾选的模型，否则取默认
+模型——显式写出默认模型自己的键同样按继承处理，而不是一次选择
+（ADR subagent-model-opt-in）。
 
 `spawn` 和 `send` 仅在插件当前 Agent 工具调用期间有效。broker 注入 `pluginId`、来源
 `sessionId`、来源 `turnId` 和调用身份；插件参数不能提供或覆盖这些字段。面向用户的插件
@@ -510,6 +580,12 @@ pi.net.fetch(input: {
  timeoutMs?: number
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
+
+`fetch` 原样返回上游响应 —— `status`、`headers`、`bodyText` —— 所以 `429`
+是插件能读到的数据（`Retry-After` 也在里面），而不是被主机藏起来的错误。宿主
+不重试、不限流、也不重新发起请求：遇到 `429` 之后的重试与退避是插件自己的
+策略，响应头就是插件唯一能拿到的退避信号。失败的调用（`status >= 400`）在
+审计里记为 `ok: false`，并在响应声明了延迟时附带它通告的 `retryAfter`（§7）。
 
 ```ts
 pi.net.websocket.connect(input: {
@@ -646,7 +722,7 @@ type PluginGlobalShortcut = {
 
 `command` 必须已经由调用插件注册；否则以 `INVALID_ARGUMENT` 失败。被操作
 系统保留、被 PI-Desktop 自己当前占用（默认 `Alt+Space` 打开插件启动器、
-`Mod+Shift+W` 唤起窗口；用户改绑后释放出来的加速键可以再次被插件使用）或
+`Alt+Shift+W` 呼出或隐藏窗口；用户改绑后释放出来的加速键可以再次被插件使用）或
 已被另一个插件持有的加速键会被拒绝而不是被抢走，被拒绝的重新注册会保留原来
 的绑定。拒绝是返回的结果，不是抛出的异常：
 `registerGlobalShortcut` 以 `registered: false` 解析，并带 `error` 为
@@ -694,10 +770,12 @@ pi.events.off(event, handler)
   论点。 `pi.bus.subscribe` 是接收这些信息的正常方式； `events.on`
 查看插件持有的每个订阅的原始流。
 - `workspace:changed` —— 载荷是 `workspace.get()` 的对象或 `null`，在缓存的工作区路径变化时发送：
-  主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0252）。
+  主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0263）。
   一次运行中的第一个工作区可能先不带文件夹发送一次、再带文件夹重发一次，因为项目组记录是在那次推送
   之后才读取的。
 - `plugin:settingsChanged`（由插件设置页面编辑触发）
+- `appearance:changed` —— 载荷是 `PluginAppearance`，在应用配色或语言变化时发送，
+  因此插件进程可以像打开的面板一样实时重标文案（ADR 0280）。
 - `session:modelChanged` — `{ sessionId, modelKey, thinkingLevel }`，在成功的
   `session.configure` 改变 provider、模型或 thinking level 之后发送
 - `session:turnEnded` —— 载荷为
@@ -718,8 +796,6 @@ pi.events.off(event, handler)
 
 计划活动：
 - `session:activated`
-- `app:themeChanged` —— 目前面板通过面板事件 `appearance:changed` 实时跟随
-  配色；插件进程侧的这个事件仍在规划中。
 
 ## 6. 面板桥 API
 
@@ -776,7 +852,7 @@ window.pluginBridge.on(event, handler)
 - `appearance:changed` —— 载荷是上面的 `PluginAppearance`，在应用的配色或
   语言发生变化时发送，因此面板可以实时重新着色和重新标注文案。
 - `workspace:changed` —— 载荷是 `workspace.get()` 的对象或 `null`，在打开的项目变化时发送：
-  主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0252）。
+  主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0263）。
 - `view:open`（仅限停靠的工作面板视图；独立 `ui.panel` 窗口不会收到）——载荷为
   `{ path: string }`，即主机要求该视图展示的 location。创建时就带 location 的视图
   已经从入口 URL 拿到它；这个事件投递的是之后的 location。
@@ -812,6 +888,8 @@ window.pluginBridge.on(event, handler)
 - TS
 - 会话 ID？
 - 好的/错误代码
+- status / retryAfter（仅 `net.fetch`：已完成调用的上游状态码，以及失败调用所
+  声明的 `Retry-After` —— 绝不记录整个头部集合或响应体）
 
 ## 8. 版本控制策略
 
@@ -829,6 +907,8 @@ window.pluginBridge.on(event, handler)
   `fs.writeText` / `fs.glob` / `fs.list` / `fs.remove` / `fs.requestDirectory`，
   范围由 `manifest.fs` 限定（ADR 0088）
 - `agent.registerTool` / `unregisterTool` / `agent.complete`
+- `speech.registerAdapter` / `unregisterAdapter`（`speech.adapter.register`）
+
 - `models.list`、`session.getLlmContext`
 - `clipboard.*`、`shell.openExternal`、`net.fetch`
 - `browser.*`（访客页 CDP；`browser.cdp`）

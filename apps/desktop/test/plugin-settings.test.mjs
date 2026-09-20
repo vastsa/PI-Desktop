@@ -26,6 +26,17 @@ test("plugin settings expose generated fields and plugin-local shortcut metadata
   assert.match(sheet, /api\.setPluginSettings/);
 });
 
+test("generated plugin settings stay author-language; plugins localize from the host locale", () => {
+  assert.match(sdk, /export type PluginSettingContrib = \{[\s\S]*?title: string;/);
+  assert.doesNotMatch(
+    sdk,
+    /export type PluginSettingContrib = \{[\s\S]*?title: string \| PluginLocalizedString/,
+  );
+  assert.doesNotMatch(runtime, /resolvePluginLocalizedString\(setting\.title/);
+  assert.match(main, /plugins\.broadcastEvent\("appearance:changed"/);
+  assert.match(sdk, /getLocale: \(\) => Promise<string>/);
+});
+
 test("settings writes validate values, notify the plugin, and never use global shortcuts", () => {
   assert.match(protocol, /pluginSettingsGet/);
   assert.match(protocol, /pluginSettingsSet/);

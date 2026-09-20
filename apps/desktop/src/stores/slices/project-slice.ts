@@ -1,5 +1,3 @@
-import { removeSideChatsForSessions, sideChatSessionIds, sideChatWorkPanelTab } from "../../lib/side-chat";
-import type { WorkPanelTab } from "../../lib/work-panel-tabs";
 import i18n from "i18next";
 import type {
   ProjectWorkspace,
@@ -60,6 +58,65 @@ export type ProjectSliceDependencies = StoreAccess & {
   ) => ProjectWorkspace[];
   persistCurrentSidebar: (getState: () => AppState) => void;
 };
+
+/**
+ * Create one logical project group from already-resolved folders and activate
+ * its primary root. The Create project dialog reaches this through a local
+ * folder pick and through a git checkout, so both sources share one project
+ * semantic and one activation path.
+ */
+async function createNamedProjectGroup(
+  {
+    get,
+    set,
+    runtime,
+  }: Pick<ProjectSliceDependencies, "get" | "set" | "runtime">,
+  {
+    name,
+    folders,
+    primaryPath,
+  }: { name: string; folders: string[]; primaryPath?: string },
+): Promise<void> {
+  const normalizedName = name.trim();
+  if (!normalizedName) {
+    throw new Error(i18n.t("errors.projectNameLength"));
+  }
+  const uniqueFolders = folders.filter(
+    (path, index, all) =>
+      Boolean(normalizeProjectPath(path)) &&
+      all.findIndex(
+        (candidate) => normalizeProjectPath(candidate) === normalizeProjectPath(path),
+      ) === index,
+  );
+  if (uniqueFolders.length === 0) {
+    throw new Error(i18n.t("project.createFolderRequired"));
+  }
+  const normalizedPrimary = normalizeProjectPath(primaryPath ?? uniqueFolders[0]);
+  const primary =
+    uniqueFolders.find((path) => normalizeProjectPath(path) === normalizedPrimary) ??
+    uniqueFolders[0];
+  const orderedFolders = [
+    primary,
+    ...uniqueFolders.filter(
+      (path) => normalizeProjectPath(path) !== normalizeProjectPath(primary),
+    ),
+  ];
+  const intent = runtime.beginNavigationIntent();
+  const created = await api.createProjectGroup(normalizedName, orderedFolders);
+  if (!runtime.navigationIntentIsCurrent(intent)) return;
+  const groupPrimary = created.group.primaryPath || primary;
+  const workspace = await get().activateProject(groupPrimary, {
+    navigationIntent: intent,
+  });
+  if (!workspace || !runtime.navigationIntentIsCurrent(intent)) return;
+  // Keep the existing renderer-local metadata in sync so the sidebar can
+  // render the group name immediately; the host group is authoritative on
+  // the next archive refresh and for agent context.
+  get().renameProject(groupPrimary, normalizedName);
+  const onboarding = await api.getOnboarding();
+  if (!runtime.navigationIntentIsCurrent(intent)) return;
+  set({ createProjectDialogOpen: false, onboarding, page: "chat" });
+}
 
 /**
  * Purge renderer-local state for one session whose durable row is already gone
@@ -165,6 +222,7 @@ export function createProjectSlice({
   | "openProject"
   | "closeProjectDialog"
   | "createProjectFromFolders"
+  | "createProjectFromGit"
   | "clearProject"
   | "deleteProject"
   | "toggleSessionPinned"
@@ -319,46 +377,19 @@ export function createProjectSlice({
     closeProjectDialog: () => {
       set({ createProjectDialogOpen: false });
     },
-    createProjectFromFolders: async ({ name, folders, primaryPath }) => {
-      const normalizedName = name.trim();
-      if (!normalizedName) {
-        throw new Error(i18n.t("errors.projectNameLength"));
-      }
-      const uniqueFolders = folders.filter(
-        (path, index, all) =>
-          Boolean(normalizeProjectPath(path)) &&
-          all.findIndex(
-            (candidate) => normalizeProjectPath(candidate) === normalizeProjectPath(path),
-          ) === index,
+    createProjectFromFolders: async ({ name, folders, primaryPath }) =>
+      createNamedProjectGroup(
+        { get, set, runtime },
+        { name, folders, primaryPath },
+      ),
+    createProjectFromGit: async ({ name, url, parentPath }) => {
+      // Clone first, then create the project through the same group path, so a
+      // checkout and a folder pick produce identical project semantics.
+      const checkout = await api.cloneProjectInto(url, parentPath);
+      await createNamedProjectGroup(
+        { get, set, runtime },
+        { name, folders: [checkout.path], primaryPath: checkout.path },
       );
-      if (uniqueFolders.length === 0) {
-        throw new Error(i18n.t("project.createFolderRequired"));
-      }
-      const normalizedPrimary = normalizeProjectPath(primaryPath);
-      const primary =
-        uniqueFolders.find((path) => normalizeProjectPath(path) === normalizedPrimary) ??
-        uniqueFolders[0];
-      const orderedFolders = [
-        primary,
-        ...uniqueFolders.filter(
-          (path) => normalizeProjectPath(path) !== normalizeProjectPath(primary),
-        ),
-      ];
-      const intent = runtime.beginNavigationIntent();
-      const created = await api.createProjectGroup(normalizedName, orderedFolders);
-      if (!runtime.navigationIntentIsCurrent(intent)) return;
-      const groupPrimary = created.group.primaryPath || primary;
-      const workspace = await get().activateProject(groupPrimary, {
-        navigationIntent: intent,
-      });
-      if (!workspace || !runtime.navigationIntentIsCurrent(intent)) return;
-      // Keep the existing renderer-local metadata in sync so the sidebar can
-      // render the group name immediately; the host group is authoritative on
-      // the next archive refresh and for agent context.
-      get().renameProject(groupPrimary, normalizedName);
-      const onboarding = await api.getOnboarding();
-      if (!runtime.navigationIntentIsCurrent(intent)) return;
-      set({ createProjectDialogOpen: false, onboarding, page: "chat" });
     },
 
     clearProject: async (opts) => {
@@ -532,63 +563,6 @@ export function createProjectSlice({
         { get, set, runtime, manualSessionTitles, withoutRecordKey },
         id,
       );
-      // A side chat is renderer-owned state spanning two sessions: deleting either
-      // the child or the parent releases it, together with every side chat opened
-      // from it. The child session itself is deleted through its own sidebar row,
-      // so this only drops the panel projection (D-LOCAL-message-quotes).
-      set((state) => {
-        const sideChats = removeSideChatsForSessions(state.sideChats, [id]);
-        if (sideChats === state.sideChats) return {};
-        const released = sideChatSessionIds(state.sideChats).filter(
-          (sessionId) => !sideChats[sessionId],
-        );
-        const sideChatTranscripts = { ...state.sideChatTranscripts };
-        for (const sessionId of released) delete sideChatTranscripts[sessionId];
-        // A released side chat's tab outlives its session in every panel context
-        // that still lists it, and a dead tab would offer a live composer for a
-        // deleted session, so the tabs are stripped with the registration.
-        const releasedTabIds = new Set(
-          released.map((sessionId) => sideChatWorkPanelTab(sessionId).id),
-        );
-        const stripTabs = (tabs: WorkPanelTab[]) =>
-          tabs.filter((tab) => !releasedTabIds.has(tab.id));
-        const workPanelTabs = stripTabs(state.workPanelTabs);
-        const activeTabReleased = Boolean(
-          state.activeWorkPanelTabId &&
-            releasedTabIds.has(state.activeWorkPanelTabId),
-        );
-        const workPanelContexts = Object.fromEntries(
-          Object.entries(state.workPanelContexts).map(
-            ([contextSessionId, context]) => {
-              const tabs = stripTabs(context.tabs);
-              if (tabs.length === context.tabs.length) {
-                return [contextSessionId, context];
-              }
-              const activeTabId =
-                context.activeTabId && releasedTabIds.has(context.activeTabId)
-                  ? tabs.at(-1)?.id ?? null
-                  : context.activeTabId;
-              return [
-                contextSessionId,
-                { ...context, tabs, activeTabId, open: activeTabId ? context.open : false },
-              ];
-            },
-          ),
-        );
-        return {
-          sideChats,
-          sideChatTranscripts,
-          workPanelTabs,
-          workPanelContexts,
-          activeWorkPanelTabId: activeTabReleased
-            ? workPanelTabs.at(-1)?.id ?? null
-            : state.activeWorkPanelTabId,
-          workPanelOpen:
-            activeTabReleased && workPanelTabs.length === 0
-              ? false
-              : state.workPanelOpen,
-        };
-      });
       persistCurrentSidebar(get);
       await get().refreshSessions();
     },

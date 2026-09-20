@@ -119,7 +119,7 @@ Codex as a visual reference. The identity contract is deliberately small:
   name, version, and canonical icon; no stock Electron name or icon is visible.
   Development launches use a generated branded host bundle because AppKit
   reads this identity from the host bundle rather than Electron runtime APIs.
-- On Windows, Electron Main registers the canonical `com.pi-desktop.app`
+- On Windows, Electron Main registers the canonical `net.aiuo.pi-desktop`
   AppUserModelID before readiness. The runtime ID, packaged executable name,
   and NSIS shortcut identity stay aligned so native notifications,
   notification settings, and taskbar groups identify the app as `PI-Desktop`
@@ -223,7 +223,7 @@ opacity-only changes, so actions remain legible in dark and light themes.
 Light-surface polish (D148):
 
 - Docked work panel uses quiet inset paper (`#fafafa`) with a white header band and a combined create trigger in the header so the tool column stays on content without any divider (D297 removed the remaining edge rules).
-- The work-panel header keeps its add-tab action in a separated rail: a tokenized 60px safe lane reserves the viewport-fixed panel toggle, with at least 24px of visual separation between the two hit targets on supported window sizes.
+- The work-panel header spends one control gap (`--ds-work-panel-control-gap`, 4px) on the whole row: the tab strip to the action group, `+` to maximize, and — through the tokenized 44px safe lane the panel header reserves for the viewport-fixed panel toggle — the action group to that toggle. The three buttons read as one group with no divider between the maximize control and the collapse toggle. Because maximize sits between them, the `+` trigger still keeps more than 24px of visual separation from the toggle hit target on supported window sizes. All three are the shared chrome icon control — 28px square on a transparent seat, hover wash on pointer, dimmed when disabled — so `+`, maximize, and the collapse toggle stay quiet icons instead of filled or raised squares. The toggle's `aria-pressed` state changes glyph and ink only.
 - Shared form fields, browser URL, settings segment tracks, and shortcut keycaps use `--ds-tile` fills with no stroke (D297); focus lifts to white with an accent-tinted ring. An Unbound shortcut uses a localized text state instead of an empty keycap and keeps its recorder and restore controls keyboard-focusable.
 - Settings toggles keep a near-black on-track and force a white knob in light mode.
   Off/on track and knob colours come from the `--ds-switch-*` theme tokens; a
@@ -346,12 +346,13 @@ Implementation note: Tailwind v4 supports CSS-first configuration. The `@theme` 
 
 The UI stack is user-overridable from Settings → Basics → Appearance
 (ADR 0083). The Font row persists a CSS stack in `AppSettings.fontFamily`;
-an absent or empty value keeps the token stack above. Bundled open-licensed
-families (Geist, Inter, Noto Sans SC, LXGW WenKai — SIL OFL 1.1) ship locally
-under `apps/desktop/src/assets/fonts/` with license texts, and installed
-system families are enumerated by Electron main. Every custom stack appends a
-CJK fallback tier so Chinese text stays readable. The mono stack
-(`--font-mono`) is not user-configurable.
+an absent or empty value keeps the token stack above. The app ships no font
+files (ADR 0298): the picker offers the System default and the installed
+system families enumerated by Electron main, and a stack saved while a
+removed family existed still appears under Saved. Every generated stack ends
+in the system-only CJK fallback tier (`PingFang SC`, `Hiragino Sans GB`,
+`Microsoft YaHei`, `sans-serif`) so Chinese text stays readable. The mono
+stack (`--font-mono`) is not user-configurable.
 
 The Font size row (D343 / ADR 0180) persists an optional multiplier in
 `AppSettings.fontScale` (default 1, range 0.8–1.5). The renderer sets
@@ -416,6 +417,7 @@ Weights use `--font-weight-*` tokens only (Codex uses variable-font intermediate
 
 | Token | Value | Usage |
 |---|---|---|
+| `space-0.25` | 1px | Hairline row gaps in dense list rhythms (sidebar session rows, settings rail items) |
 | `space-0.5` | 2px | Tight inline gaps |
 | `space-1` | 4px | Icon-text gaps, badge padding |
 | `space-1.5` | 6px | Compact inner padding |
@@ -496,9 +498,9 @@ same 6px contract and scroll-reveal mark. This keeps first-party surfaces such
 as the Files view aligned with the host renderer; the external page loaded
 inside the Browser guest remains page-owned and keeps its own scrollbar style.
 
-The expanded sidebar is a fixed 275px column. Collapse/open changes only whether
-the column is present; the historical resize handle is hidden and legacy width
-preferences are not persisted.
+The expanded sidebar is user-resizable from 240px to 520px (default 275px).
+Dragging the right-edge handle below 160px collapses the column. Collapse/open
+preserves the preferred expanded width.
 
 The profile menu is `280px` wide, opens `8px` above the footer, and uses the
 standard opaque elevated-menu surface, subtle border, and dialog shadow. Its
@@ -507,10 +509,13 @@ followed by a divider and compact Settings / Logs / Theme rows.
 
 Toolbar rows are 46px. macOS places traffic lights at `{x:16,y:16}` and keeps
 the expanded sidebar's Collapse sidebar icon button right-aligned
-in that same row. The macOS row omits the sidebar logo/title, reserves `76px`
+in that same row. The macOS row omits the sidebar logo/title, reserves `88px`
 on the left for native chrome in windowed mode, and reclaims that padding in
-fullscreen. Windows/Linux keep the identity and sidebar actions in their first
-row and reserve the rightmost 120px for three frameless-window controls. The
+fullscreen. That reserve is the shared `--ds-window-lead-inset` token — the
+cluster's `76px` right edge (the same `@pi-desktop/shared` geometry the main
+process positions the buttons with) plus `12px` of breathing room. Windows/Linux
+keep the identity and sidebar actions in their first row and reserve the
+rightmost 120px for three frameless-window controls. The
 controls retain 112px of full-height hit targets, while the outer band adds an
 8px visual buffer before adjacent work-panel actions. The band paints an opaque
 `bg-primary` surface so page content never shows through the controls, and its
@@ -568,10 +573,26 @@ floating layers where an edge is an elevation cue rather than a partition.
 | Tile | `--ds-tile` (3.5% text mix); hover `--ds-tile-hover` (6%); deep `--ds-tile-deep` (8%) | Panels, list rows, cards, form fields, chips, code blocks, empty states |
 | Raised | `--ds-raised` + `--ds-raised-shadow` | The active pill of a segmented control, a disclosed detail block, a recorder keycap |
 | Dock | `--ds-bg-dock` (the column), `--ds-bg-dock-raised` (its header and viewer strips) | The work-panel column and the bars inside it. Both are tokens, not literals, so a contributed theme can move them (D419) |
-| Settings rail | `--ds-settings-rail-bg` (light `#f4f4f4`, dark `#000000`) | Full-window settings navigation column |
+| Sidebar / settings rail | `--ds-bg-sidebar` (opaque fallback: light `#f3f3f3`, dark `#000000`), `--ds-bg-sidebar-image`, shared macOS glass tint/sheen | One `sidebar-surface` material for both navigation columns; content stays opaque |
 | Settings search | `--ds-settings-field-bg` (light `#ffffff`, dark `#212121`) | Search pill on the settings rail |
 | Active settings item | `--ds-settings-nav-active` (light 12% `#1a1c1f` mixed over white; dark 10% `--gray-0` over transparent) | Selected navigation pill |
 | Inset search | `--ds-field-inset-bg`, `--ds-field-inset-focus-bg` (light `#f3f3f3` / white; dark 5% / 7% primary-text mix over transparent) | Plugin search and Agent capability search, including focus |
+| Prose keycap / thinking code | `--ds-prose-kbd-fg` (light `#303030`, dark `--ds-text-secondary`), `--ds-thinking-code-bg` (light `#f0f0f0`, dark 4.5% text mix) | Keycap ink and the thinking-prose code chip |
+| Code-card chrome | `--ds-code-head-bg`, `--ds-code-hover-bg` (light 3.5% / 6% `#1a1c1f` over the plate; dark 4% / 8% white) | The `.code-block` head band and its hover fills. The Shiki syntax plate and its ink are deliberately not tokens — see below |
+| Mermaid canvas | `--ds-mermaid-canvas` (light `#ffffff`, dark 94% `--ds-bg-primary` + 6% text mix) | The diagram body inside `.mermaid-block` |
+| Scrim / veil | `--ds-scrim` (dark ~45% black, light ~28% `#1a1c1f`, D148), `--ds-modal-veil` (dark 78% `--ds-bg-primary`, light ~32% `#1a1c1f`) | The dialog scrim and the plugin permission backdrop |
+| Tool output | `--ds-tool-row-bg` (light 2% `#1a1c1f`, dark `--ds-tile`) | Tool result and error output blocks in the transcript |
+| Disabled send chip | `--ds-send-disabled-bg`, `--ds-send-disabled-fg` (light `#8e8e90` / `#ffffff`; dark 18% text mix / 70% `--gray-900`) | The composer's disabled send button |
+| Composer placeholder | `--ds-placeholder-ink` (light `#4a4c4f`, dark 42% white) | Input and placeholder ink in both composer states |
+
+Main and settings navigation share the same material, not just matching colors.
+The legacy `--ds-settings-rail-bg` remains readable with the shared built-in
+palette and supplies the sidebar color fallback, including theme overrides.
+An explicit `--ds-bg-sidebar` override takes precedence. This preserves legacy
+color reads and inputs without retaining
+an independent settings-only plate or creating a circular alias. On macOS the
+shared tint derives from that color; on other platforms the shared plate is
+opaque. Background imagery uses `--ds-bg-sidebar-image` for both rails.
 
 The dark composer shell consumes `--ds-bg-elevated-primary` directly; light
 continues to use `--ds-bg-composer`. Switch on-state knobs consume
@@ -580,17 +601,58 @@ focus rings, and shadows while allowing a contributed stylesheet to override
 the variables. Theme-specific component rules may retain their existing shadow
 or layout differences, but must not replace a token-driven fill with a literal.
 
-Every surface colour the shell paints must come from a token. A
-`:root[data-theme="light"]` override that writes a literal raises specificity
-above the base token rule and does not read a variable, so it silently pins that
-surface out of every theme's reach — see D419.
+Prose and transcript inks ride `--ds-text-primary`: the light overrides that
+used to hardcode `#1a1c1f` now mix the token, so the whole light ink tier moves
+with the theme (headings 5/6 at 62%, list markers 40%, quote ink 72%, link
+underlines 30% and 80% on hover, the inline-code chip at 6% with full-strength
+ink, thinking prose 58% and its code 68%).
 
-`pnpm lint` also guards `background` / `background-color` on the migrated
-settings rail, search, navigation item, switch thumb, capability search, plugin
-search, and composer-shell families against bare hex, CSS color functions,
-`white`, and `black`. The guard is intentionally scoped; it does not establish
-full color-token coverage of prose, scrims, other chrome, or plugin CSS. Real
-rendered theme checks remain necessary to verify cascade and focus behavior.
+**Convention:** a `:root[data-theme="…"]` rule must not write a literal colour.
+Such a rule out-specifies the base token rule *and* never reads a variable, so it
+silently pins that surface out of every theme's reach — see D419. A
+theme-specific value belongs in the token blocks of `styles/tokens.css`, where
+both palettes define the same `--ds-*` name and the base rule reads it once.
+
+`pnpm lint` runs `scripts/style-surface-tokens.mjs`, which enforces that
+convention mechanically. Rule 1: inside a `:root[data-theme]` rule every colour
+declaration — `color`, `background`/`-color`/`-image`, `text-decoration-color`,
+`-webkit-text-fill-color`, `border` and its colour longhands, `outline`,
+`fill`, `stroke`, `accent-color`, `caret-color`, and `box-shadow` — must resolve
+through a custom property; the token blocks themselves are the place for
+literals, and a component-local custom property holding a literal colour is a
+violation too, because it shadows the root token. Rule 2: the base rules of the
+migrated chrome families — settings rail, search, navigation item, switch thumb,
+capability search, plugin search, composer shell, composer toolbar/chip/
+placeholder/input, plus prose, code-card (`code-block`, head band, language
+rail), Mermaid (block, body, head, title, error, source), scrims, tool rows,
+send button and empty hero — must not paint a literal either.
+
+Its exemptions are enumerated with reasons rather than left silent:
+
+- the `one-dark-pro` / `one-light` Shiki palette (the plate and its ink are
+  authored by the Shiki theme and emitted as inline colours on the highlighted
+  markup, so the pair has to move together — through the Shiki theme, not a CSS
+  token);
+- translucent black- or white-alpha shadow values (`box-shadow`, `text-shadow`,
+  `filter`), which only offset darkness; an opaque shadow colour is still
+  checked;
+- the ⌘K `.search-overlay` veil, which keeps the dark 45% black mix in both
+  palettes and so still departs from D148's lighter light veil. That one is a
+  maintainer decision recorded as a known gap: it is checked by the guard *and*
+  allowed there, so removing the allowance fails `pnpm lint`.
+
+Two boundaries stay open by design. The family rule is a fixed list, not every
+selector in the renderer, so it catches a regression in a migrated surface but
+not a brand-new literal on a selector nobody has reviewed. And the guard is
+static text: it cannot see a cascade conflict between two token-reading rules
+(#339's root cause). Both are why the rendered checks in
+`pnpm test:e2e:theme-surfaces` remain necessary — that probe compares the built
+paint of every migrated surface against values sampled from the pre-change app,
+so a token whose default is not exactly the old literal fails there. Keep the
+light-qualified `.tool-row-content` rule that probe pins: at (0,3,0) it
+out-specifies `.tool-row-content.is-error` and ties with
+`.tool-block.is-plain .tool-row-content`, so dropping it would tint error output
+and give plain tool blocks a fill in light only.
 
 | Context | Treatment |
 |---|---|
@@ -599,7 +661,7 @@ rendered theme checks remain necessary to verify cascade and focus behavior.
 | Selection (theme, language, level) | Deeper tint or raised pill plus the existing check mark; no selected border |
 | Floating layers (menus, popovers, dialogs, tooltips, toasts, hover cards) | `0 0 0 0.5px border-default` + shadow on the container; no rules inside |
 | Focus rings | accent tint, 2px box-shadow |
-| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition |
+| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition. The sidebar and work-panel dividers paint a 32px centered grip on direct hover/focus, not a full-height rail; keyboard focus and an in-progress drag use the solid accent |
 
 ## 7. Iconography
 
@@ -766,8 +828,8 @@ model):
 - Column `flex: 1; min-height: 0; overflow: hidden`
 - Inner scroller (`.home-scroll`) is the only vertical overflow surface for
   the hero and optional checklist
-- Stack (`.home-stack-inner`) uses content width **`min(100%, 768px)`** in the
-  expanded shell and **`min(100%, 640px)`** while the sidebar is collapsed,
+- Stack (`.home-stack-inner`) uses content width
+  **`min(100%, var(--chat-content-max-width))`** (default 760px, D439),
   with **`gap: 16px`** (workstation ceiling), and auto margins to center the
   column when the viewport is tall
 - The content order is **hero → optional onboarding checklist**. Task entry
@@ -806,6 +868,10 @@ model):
   hairline stroke plus the restrained `--elevation-prominent` shadow provides
   separation; the transcript reserves the measured dock height instead of
   painting a full-width gradient veil.
+- In-transcript message-edit uses `--ds-tile-deep` and `--ds-composer-radius`
+  with no outer shadow. The row's paint containment and the transcript
+  scroller would clip a composer lift. Focus uses an inset 2px accent ring
+  so the cue stays inside the plate.
 - Dark elevated shell reads as elevated-primary (`#212121f5` / gray-800 96%)
   on `#181818` with standard elevation-prominent
 - Starter cards use a two-column grid at workstation widths and collapse to
@@ -857,13 +923,18 @@ The composer renders only controls connected to the active pi session:
   trigger shows a Bot icon, the current model, and reasoning level; `off` omits
   the level text. Its single `role="menu"`
   popover opens above the trigger at `bottom: calc(100% + 8px)` and starts with
-  exactly two current-value entries. Each entry replaces the menu contents
-  in-place with a back row and its submenu. The Model submenu contains search
-  plus sticky provider groups. Each model row begins at one tab stop beneath
-  its provider heading, making the provider → model hierarchy legible without
-  altering the model label. The Reasoning submenu contains only the selected
-  provider's real `supportedThinkingLevels` with a selected-row check. Selecting
-  either value returns to the root without dismissing the popover.
+  exactly two current-value entries. When the menu lists more than one
+  level (`omit` plus the binding's enabled canonical levels), a drag slider
+  sits directly beneath the Reasoning level entry; slider and tick commits
+  apply without leaving the root. Tick labels are not tab stops — the range
+  input is the accessible control. Each entry replaces
+  the menu contents in-place with a back row and its submenu. The Model
+  submenu contains search plus sticky provider groups. Each model row begins
+  at one tab stop beneath its provider heading, making the provider → model
+  hierarchy legible without altering the model label. The Reasoning submenu
+  lists `omit` then the enabled levels as radio rows with a selected-row
+  check; selecting from the list returns to the root without dismissing the
+  popover.
 - While the active session is running, the draft and runtime controls stay
   editable as next-turn choices; only Send is disabled. Host configuration
   remains pinned for the in-flight turn and the latest queued choice is
@@ -958,6 +1029,13 @@ Rules:
   renderer layer, so no `z-index` in the table above can raise a popover over
   them. A body-portaled popover clamps to the conversation pane, which ends
   where the work panel begins, instead of to the viewport.
+- A route surface holds no stacking context once its entrance animation
+  finishes, so an overlay authored inside a route page — a modal, a sheet, or
+  their scrims — covers the titlebar band without any `z-index` juggling. On
+  Windows/Linux the renderer-drawn window controls stay above renderer overlays.
+  Route overlays therefore sit on `z-dialog` (40): a leaf popup (60) or a toast
+  (50) a dialog raises — portaled to `document.body`, so in that same stacking
+  context — keeps painting above the dialog's scrim and keeps taking clicks.
 
 ## 10. Layout shell metrics
 
@@ -968,14 +1046,14 @@ Codex parity decisions (D034/D070) supersede any older value here.
 |---|---|---|
 | Titlebar row height | 46px | Codex toolbar rhythm (D034); traffic lights {x:16,y:16} |
 | Sidebar width (collapsed) | 48px | Icon-only rail |
-| Sidebar width (expanded) | 275px | Fixed column; collapse/open does not resize it |
+| Sidebar width (expanded) | 240–520px (default 275px) | Right-edge handle; drag below 160px collapses (ADR 0141 / ADR 0290) |
 | Main pane minimum readable width | 450px | The MainChat hard floor; the sidebar yields before it is breached (ADR 0238) |
 | Work panel width (closed) | 0px | Hidden by default |
 | Work panel width (open) | `≥244px` (new-profile default 360px), capped by `client width - 450px - expanded sidebar` with no fixed pixel cap | the panel is an in-flow column whose width is taken from the existing client area; the renderer owns its divider (ADR 0033 / ADR 0151 / ADR 0238); saved widths remain unchanged |
 | Composer shell minimum | ~80px | One-line draft + toolbar padding |
 | Composer toolbar | MainChat `≥450px` | Left/right control groups stay on one row and do not shrink; mode/permission labels stay single-line and ellipsize |
 | Composer draft height | 1–7 text lines | Auto-grow; internal scroll beyond line 7 |
-| Chat message max width | 720px assistant / 560px user plate | Prevent eye-span over-stretch; user turns stay compact |
+| Chat message max width | 760px default band (user-resizable, min 560px) / 600px user plate | Band follows `min(pane, preferred)`; user turns stay compact |
 | Window min width | 1040px | Enforced by Electron for the whole app; opening the panel never changes native bounds |
 | Window min height | 700px | Enforced by Electron |
 
@@ -995,11 +1073,18 @@ retain the fade-and-slide exit.
 
 Preview mode is a transient shell state: MainChat is unmounted and the work
 panel occupies the client width beside the sidebar. A window-level 46px chrome
-row owns the drag area, New Task/sidebar actions, and native window controls.
-Collapsed-sidebar preview reserves 76px on the left for macOS traffic lights in
-windowed mode and 8px in fullscreen. The maximized panel header retains that
-native reserve, then adds the preview action lane and an 8px gap before its
-first tab.
+row is pointer-transparent outside New Task/sidebar and native window controls;
+it declares neither drag nor no-drag across the panel. The panel header alone
+owns the preview pane's drag area. Its border box, not just its padding, excludes
+the left action lane plus an 8px gap in both sidebar states on all platforms.
+The left inset is 8px except for collapsed-sidebar windowed macOS (88px).
+That macOS reserve is the shared `--ds-window-lead-inset` token — the traffic-light
+cluster's 76px right edge (native geometry from `@pi-desktop/shared`, the same
+constants the main process positions the buttons with) plus a 12px gap.
+The action lane uses the shared 28px control size plus an 8px gap when expanded,
+and the shared preview action lane (two controls, 4px spacing, 8px gap) when collapsed.
+The right native-control exclusion remains unchanged. The panel paints the
+header-height background behind the excluded lane without covering its controls.
 
 ### 10.1 Responsive collapse
 
@@ -1031,7 +1116,16 @@ These are **token-level foundations** for common primitives. Detailed component 
 | Primary | px-3 py-1.5 | 32px | text-sm 500 | radius-sm | none | accent |
 | Secondary | px-3 py-1.5 | 32px | text-sm 400 | radius-sm | none (D297) | `--ds-tile`, hover `--ds-tile-hover` |
 | Ghost | px-2 py-1 | 28px | text-sm 400 | radius-sm | none | transparent |
+| Icon-only | none | 28px | — | radius-full | none | transparent; `.icon-btn-square` pins the width to `--ds-control-size` |
 | Danger | px-3 py-1.5 | 32px | text-sm 500 | radius-sm | none | error |
+
+An icon-only control states `.icon-btn-square`. `.icon-btn` alone takes its
+width from its content — glyph plus 8px of side padding — which is what a
+label-driven pill wants and what a control with no label must not inherit. The
+variant pins both axes to `--ds-control-size` (28px), keeps `flex: 0 0` so a
+crowded toolbar row cannot shrink it back out of square, and drops the side
+padding that under the global `border-box` would leave a 12px content box for a
+15px glyph.
 
 ### 11.2 Input / textarea
 
@@ -1150,12 +1244,13 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
 |---|---|
 | **Base padding 8px (space-2)** | Default inner padding for list items, form groups |
 | **Message gap 10px** | Between chat message rows — denser WorkBuddy-like transcript |
-| **Section gap 16px (space-4)** | Between distinct UI sections (sidebar sections, settings groups) |
+| **Section gap 16px (space-4)** | Between distinct UI sections (destination pages, settings groups, page-level blocks) |
 | **Panel gap 0px** | Panels touch edge-to-edge with border-subtle separator — no gutters |
 | **Compact list rows 28px height** | Sidebar session items, settings list rows |
+| **Sidebar rhythm 1px / 2px / 8px** | Sidebar lists: 1px between rows, 2px from a group header or section label to its first row, 8px after an expanded project group and between sidebar sections (1px when the preceding group is collapsed) |
 | **Button rows 32px height** | Standard buttons |
 | **Never exceed 24px vertical gap** | Even for "breathing room" — this is a workstation |
-| **Max content width 720px** | Chat messages, tool disclosure rows — prevent over-wide eye-span |
+| **Max content width 760px default** | Chat band is user-resizable (min 560px); user plates stay compact |
 
 ## 14. Do / Don't
 
@@ -1211,7 +1306,7 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
 - Floating composer plate: Codex elevated-primary (`#212121f5` / `color-mix(gray-800 96%, transparent)`) with standard elevation-prominent (`0 0 0 .5px` stroke + `0 3px 7.5px #0000000a` + `0 0 20px #0000000d`); no heavier night-only lift
 - Light workspace chips capsule: elevated gray `#f4f4f4` (not pure white-on-white)
 - Combined workspace chips: elevated translucent plate over main, not flat main gray
-- Stage Manager: host re-asserts min bounds while collapsed (permanent watchdog)
+- Stage Manager (macOS only): host re-asserts min bounds while collapsed (permanent watchdog). The watchdog does not run on Windows/Linux, so no platform re-layers its own window unprompted (D447)
 
 ## Destination pages
 
@@ -1219,14 +1314,27 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
   is embedded in Settings with no duplicate page title or outer page padding;
   the earlier standalone Projects destination and card grid (D042) are
   superseded by D133. Per D267 the destination is composed exactly like the
-  agent capability pages (D257): a quiet description-only intro line, one
-  toolbar (sort segment, search, primary action), and one elevated panel whose
-  Pinned / All projects / Archived groups are in-panel header strips carrying
-  the only counts on the page. It has no hero block, no decorative gradient,
-  and no page-level counter run
+  agent capability pages (D257): one toolbar (sort segment, search, primary
+  action) and one index whose
+  Pinned / All projects / Archived groups are plain section header lines
+  carrying the only counts on the page. Per D455 it stays one column with no
+  side-by-side
+  pane, and the index is an inset grouped list in the iOS sense: each row reads
+  left to right as identity (glyph, name, status tag, path) and right to left as
+  detail (session count, last active, disclosure indicator), and the selected
+  row is the header of the card that opens under it — so the detail repeats no
+  name, path, or tag. It has no hero block, no decorative gradient, and no
+  page-level counter run
 - **Settings**: full-page Codex shell per D063/D090/D133/D166 (275px compact
-  eight-destination rail, `#f4f4f4` light, elevated content cards, Back to app);
+  navigation rail sharing the main sidebar material, elevated content cards, Back to app);
   per D092, the content cards fill the pane width available from the current
   window instead of retaining D070's fixed 720px cap — the earlier in-shell
   200px rail and broad grouped directory are superseded
+- **Import**: four kinds (sessions / models / skills / MCP) behind one
+  page-scale segmented switcher, composed like the agent capability pages: a
+  quiet pre-scan next-action state per kind, one toolbar per kind (select-all
+  with both counts, the kind's own option, re-scan, import selected), and one
+  list whose group headers are quiet label lines and whose candidates are
+  individual tiles. No per-kind scan card, no tinted group band, no second
+  copy of the settings row scaffold
 - Light destination cards use white elevated plates (not flat gray fills)

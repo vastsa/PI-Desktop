@@ -6,7 +6,9 @@
 - Amended by: ADR 0061 (the fallback stays reserved for the blocking hard
   boundary; a failed background build is discarded silently) / ADR 0064 (there
   is no background build left to discard, and the `fresh_window` family issues
-  no summary request, so this path cannot trigger there)
+  no summary request, so this path cannot trigger there) / ADR 0282 (the
+  summary request retries transient failures and the preflight guard sizes
+  the serialized prompt, with one reduced pass, before this fallback runs)
 
 ## Context
 

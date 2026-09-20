@@ -311,3 +311,102 @@ test("plugin session read, update, and delete permissions are independent", asyn
     "delete:PERMISSION_DENIED",
   ]);
 });
+
+test("plugin usage listTurns requires usage.read and forwards the plugin id", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    usage: {
+      listTurns: async (pluginId, input) => {
+        calls.push(["listTurns", pluginId, input]);
+        return { turns: [{ turnId: "t2", inputTokens: 100 }], nextCursor: null };
+      },
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    id: "demo.usage",
+    permissions: ["usage.read"],
+    main: `
+      module.exports = {
+        async onLoad() {
+          await pi.commands.register({
+            id: "read-usage",
+            title: "Read usage",
+            run: async () => {
+              const page = await pi.usage.listTurns({ fromMs: 1, toMs: 2, limit: 7 });
+              await pi.ui.showToast("rows:" + page.turns.length);
+              await pi.usage.listTurns({ limit: 5, projectId: 3, sessionId: "s2", cursor: "abc" });
+              for (const [name, call] of [
+                ["badWindow", () => pi.usage.listTurns({ fromMs: 0, toMs: 1 + 365 * 86400000 })],
+                ["badOrder", () => pi.usage.listTurns({ fromMs: 10, toMs: 1 })],
+                ["badFromOnly", () => pi.usage.listTurns({ fromMs: 0 })],
+                ["badLimit", () => pi.usage.listTurns({ limit: 0 })],
+                ["badProject", () => pi.usage.listTurns({ projectId: "seven" })],
+                ["badFrom", () => pi.usage.listTurns({ fromMs: -1 })]
+              ]) {
+                try { await call(); }
+                catch (error) { await pi.ui.showToast(name + ":" + error.code); }
+              }
+            }
+          });
+        }
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, ["usage.read"]);
+  await runCommand(runtime, "read-usage");
+  // Authorized calls forward with the plugin id and only the normalized fields.
+  assert.deepEqual(calls, [
+    ["listTurns", "demo.usage", { fromMs: 1, toMs: 2, limit: 7 }],
+    ["listTurns", "demo.usage", { limit: 5, projectId: 3, sessionId: "s2", cursor: "abc" }],
+  ]);
+  assert.deepEqual(runtime.drainToasts(), [
+    "rows:1",
+    "badWindow:INVALID_PARAMS",
+    "badOrder:INVALID_PARAMS",
+    "badFromOnly:INVALID_PARAMS",
+    "badLimit:INVALID_PARAMS",
+    "badProject:INVALID_PARAMS",
+    "badFrom:INVALID_PARAMS",
+  ]);
+});
+
+test("plugin usage listTurns is refused without the usage.read permission", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    usage: {
+      listTurns: async () => calls.push("listTurns"),
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    id: "demo.usage-denied",
+    permissions: ["session.read.own"],
+    main: `
+      module.exports = {
+        async onLoad() {
+          await pi.commands.register({
+            id: "peek",
+            title: "Peek",
+            run: async () => {
+              try { await pi.usage.listTurns(); }
+              catch (error) { await pi.ui.showToast("listTurns:" + error.code); }
+            }
+          });
+        }
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, ["session.read.own"]);
+  await runCommand(runtime, "peek");
+  assert.deepEqual(calls, []);
+  assert.deepEqual(runtime.drainToasts(), ["listTurns:PERMISSION_DENIED"]);
+});

@@ -157,3 +157,60 @@ test("scanModelConfigs keeps same-endpoint CC Switch profiles with different key
   assert.equal(drafts.find((d) => d.externalId === "claude:packy")?.secretValue, "sk-cc");
   assert.equal(drafts.find((d) => d.externalId === "claude:other")?.secretValue, "sk-other");
 });
+
+// Regression: issue #588. Reproduces the reporter's scenario — a stale
+// cc-switch v18 pi snapshot missing one model, plus a newer ~/.pi/agent/models.json
+// that lists all ten. The old code returned the snapshot under the "cc-switch"
+// source and silently dropped the tenth model. The fix routes pi rows through
+// the "pi" scanner so the authoritative file wins.
+test("scanModelConfigs keeps the pi native config authoritative when a cc-switch snapshot exists", async () => {
+  const home = await mkdtemp(join(tmpdir(), "pi-cc-switch-pi-"));
+  await mkdir(join(home, ".pi", "agent"), { recursive: true });
+  await mkdir(join(home, ".cc-switch"), { recursive: true });
+
+  // Newer, authoritative pi config with ten models.
+  await writeFile(
+    join(home, ".pi", "agent", "models.json"),
+    JSON.stringify({
+      providers: {
+        "opencode-go": {
+          name: "opencode-go",
+          baseUrl: "https://api.oj.ink/v1",
+          api: "openai-completions",
+          apiKey: "sk-pi",
+          models: Array.from({ length: 10 }, (_, i) => ({ id: `m${i + 1}` })),
+        },
+      },
+    }),
+  );
+
+  // Stale cc-switch snapshot: same endpoint + key, only nine models, and a
+  // renamed label that used to leak into the UI.
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(join(home, ".cc-switch", "cc-switch.db"));
+  db.exec(
+    "CREATE TABLE providers (id TEXT, app_type TEXT, name TEXT, settings_config TEXT)",
+  );
+  db.prepare("INSERT INTO providers VALUES (?, ?, ?, ?)").run(
+    "opencode-go",
+    "pi",
+    "OpenCode Zen Go",
+    JSON.stringify({
+      baseUrl: "https://api.oj.ink/v1",
+      api: "openai-completions",
+      apiKey: "sk-pi",
+      models: Array.from({ length: 9 }, (_, i) => ({ id: `m${i + 1}` })),
+    }),
+  );
+  db.close();
+
+  const drafts = await scanModelConfigs({ homeDir: home, env: {} });
+  const piDrafts = drafts.filter((d) => d.source === "pi");
+  const ccDrafts = drafts.filter((d) => d.source === "cc-switch");
+  assert.equal(ccDrafts.length, 0, "no pi rows should surface under the cc-switch source");
+  assert.equal(piDrafts.length, 1);
+  assert.equal(piDrafts[0].externalId, "opencode-go");
+  assert.equal(piDrafts[0].name, "opencode-go");
+  assert.equal(piDrafts[0].modelIds.length, 10);
+  assert.ok(piDrafts[0].modelIds.includes("m10"));
+});

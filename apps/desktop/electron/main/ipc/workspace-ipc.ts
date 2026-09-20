@@ -1,4 +1,4 @@
-import { dialog, shell } from "electron";
+import { BrowserWindow, dialog, shell, type OpenDialogOptions } from "electron";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, statSync } from "node:fs";
@@ -25,7 +25,7 @@ import {
   consumeComposerPickerSelection,
   rememberComposerPickerSelection,
 } from "../composer-picker";
-import { collectWorkspaceDiff } from "../git-diff";
+import { collectWorkspaceDiff } from "@pi-desktop/host-runtime";
 import { parseAllowedExternalUrl } from "../safe-open-external";
 import {
   isAttachmentBlobRef,
@@ -34,7 +34,7 @@ import {
   readOpenableImage,
   resolveOpenablePath,
   resolveRealOpenablePath,
-} from "../fs-panel";
+} from "@pi-desktop/host-runtime";
 import { resolveChatFileRef } from "../chat-ref-resolve";
 import { getWorkspaceFileIndex } from "../fs-index";
 import {
@@ -74,6 +74,7 @@ export function createComposerTemplateLoader(
 
 export type WorkspaceIpcDependencies = {
   registrar: IpcRegistrar;
+  getMainWindow: () => Electron.BrowserWindow | null;
   getHost: () => HostProcess | null;
   getSidecar: () => AgentSidecar | null;
   dataDir: string;
@@ -91,6 +92,7 @@ export type WorkspaceIpcDependencies = {
 
 export function registerWorkspaceIpc({
   registrar,
+  getMainWindow,
   getHost,
   getSidecar,
   dataDir,
@@ -124,6 +126,46 @@ export function registerWorkspaceIpc({
     });
   };
   const assertMainWindowSender = registrar.assertMainWindowSender;
+  let composerPickerActive = false;
+  let projectPickerActive = false;
+
+  // Native composer dialogs are process-wide; reject duplicate requests while
+  // one is open instead of queueing another dialog behind it.
+  const openComposerPicker = async (
+    event: Electron.IpcMainInvokeEvent,
+    options: OpenDialogOptions,
+  ): Promise<{ token: string | null; canceled: boolean }> => {
+    if (composerPickerActive) return { token: null, canceled: true };
+    composerPickerActive = true;
+    try {
+      const owner = BrowserWindow.fromWebContents(event.sender);
+      const result = owner
+        ? await dialog.showOpenDialog(owner, options)
+        : await dialog.showOpenDialog(options);
+      if (result.canceled || result.filePaths.length === 0) {
+        return { token: null, canceled: true };
+      }
+      return {
+        token: rememberComposerPickerSelection(result.filePaths, event.sender.id),
+        canceled: false,
+      };
+    } finally {
+      composerPickerActive = false;
+    }
+  };
+
+  const openProjectPicker = async (options: OpenDialogOptions) => {
+    if (projectPickerActive) return null;
+    projectPickerActive = true;
+    try {
+      const owner = getMainWindow();
+      return owner
+        ? await dialog.showOpenDialog(owner, options)
+        : await dialog.showOpenDialog(options);
+    } finally {
+      projectPickerActive = false;
+    }
+  };
 
   const managedProjectPath = async (input: unknown): Promise<string> => {
     if (!host) throw new Error("host unavailable");
@@ -349,10 +391,10 @@ export function registerWorkspaceIpc({
   });
   handle(IPC.invoke.projectOpen, async () => {
     if (!host) throw new Error("host unavailable");
-    const result = await dialog.showOpenDialog({
+    const result = await openProjectPicker({
       properties: ["openDirectory", "createDirectory"],
     });
-    if (result.canceled || !result.filePaths[0]) {
+    if (!result || result.canceled || !result.filePaths[0]) {
       return { workspace: null, canceled: true };
     }
     const res = (await host.call("workspace.set", {
@@ -362,10 +404,10 @@ export function registerWorkspaceIpc({
     return { workspace: await withGitBranch(res.workspace), canceled: false };
   });
   handle(IPC.invoke.projectPickFolders, async () => {
-    const result = await dialog.showOpenDialog({
+    const result = await openProjectPicker({
       properties: ["openDirectory", "multiSelections", "createDirectory"],
     });
-    if (result.canceled || result.filePaths.length === 0) {
+    if (!result || result.canceled || result.filePaths.length === 0) {
       return { folders: [], canceled: true };
     }
     return { folders: result.filePaths, canceled: false };
@@ -374,11 +416,11 @@ export function registerWorkspaceIpc({
     const parentDefault = currentWorkspacePath()
       ? dirname(currentWorkspacePath()!)
       : homedir();
-    const picked = await dialog.showOpenDialog({
+    const picked = await openProjectPicker({
       defaultPath: parentDefault,
       properties: ["openDirectory", "createDirectory"],
     });
-    if (picked.canceled || !picked.filePaths[0]) {
+    if (!picked || picked.canceled || !picked.filePaths[0]) {
       return { workspace: null, canceled: true };
     }
     const dest = await cloneGitRepository({
@@ -391,6 +433,28 @@ export function registerWorkspaceIpc({
     });
     return { workspace, canceled: false };
   });
+
+  handle(
+    IPC.invoke.projectCloneCheckout,
+    async (input: { url?: unknown; parentPath?: unknown } = {}) => {
+      const url = typeof input.url === "string" ? input.url.trim() : "";
+      const parentPath =
+        typeof input.parentPath === "string" ? input.parentPath.trim() : "";
+      if (!url || !parentPath) {
+        throw Object.assign(
+          new Error("repository URL and parent folder required"),
+          { errorCode: ErrorCodes.INVALID_ARGUMENT },
+        );
+      }
+      // Clone only. The renderer still creates the logical project group, so
+      // the active host workspace stays untouched until activation.
+      const dest = await cloneGitRepository({ url, parentPath });
+      return {
+        path: dest,
+        name: dest.split(/[\\/]/).filter(Boolean).at(-1) || dest,
+      };
+    },
+  );
   handle(IPC.invoke.projectSet, async (path: string) => {
     if (!host) throw new Error("host unavailable");
     setCurrentWorkspacePath(path);
@@ -461,34 +525,20 @@ export function registerWorkspaceIpc({
     },
   );
 
-  handleWithEvent(IPC.invoke.composerPickFiles, async (event) => {
-    const result = await dialog.showOpenDialog({
+  handleWithEvent(IPC.invoke.composerPickFiles, async (event) =>
+    openComposerPicker(event, {
       properties: ["openFile", "multiSelections"],
-    });
-    if (result.canceled || result.filePaths.length === 0) {
-      return { token: null, canceled: true };
-    }
-    return {
-      token: rememberComposerPickerSelection(result.filePaths, event.sender.id),
-      canceled: false,
-    };
-  });
+    }),
+  );
 
-  handleWithEvent(IPC.invoke.composerPickPhotos, async (event) => {
-    const result = await dialog.showOpenDialog({
+  handleWithEvent(IPC.invoke.composerPickPhotos, async (event) =>
+    openComposerPicker(event, {
       properties: ["openFile", "multiSelections"],
       filters: [
         { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "heic", "tif", "tiff"] },
       ],
-    });
-    if (result.canceled || result.filePaths.length === 0) {
-      return { token: null, canceled: true };
-    }
-    return {
-      token: rememberComposerPickerSelection(result.filePaths, event.sender.id),
-      canceled: false,
-    };
-  });
+    }),
+  );
 
   handleWithEvent(
     IPC.invoke.composerImportFiles,

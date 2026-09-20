@@ -202,7 +202,8 @@ CSS 无法脚本化，但它可能会产生误导：主题仍然是第三方代�
 因此继承工具超时、审计跟踪和每个插件禁用
 转变。它们始终在 `risk: "medium"` 处注册：它们的架构和
 描述来自第三方服务器，因此主机无法信任
-自我声明的风险水平。每个服务器最多 64 个工具，每个插件最多 8 个服务器。
+自我声明的风险水平。服务器的目录被完整注册——数量只受 §8.1 中的
+协议护栏约束——而每个插件最多接入 8 个服务器。
 
 Plan 是代理工具的附加主机策略边界：
 
@@ -256,7 +257,10 @@ Plan 是代理工具的附加主机策略边界：
 仍然敞着、单独跟踪的：`agent.prompt.inject`（技能文本可以让一个有 shell
 能力的 Agent 替它搬运）、`shell.openExternal`、`bus.publish` 转给一个有网络
 能力的插件，以及插件进程里的原生 `fetch` —— 最后一项需要 ADR 0008 D009
-的沙箱化插件运行时。
+的沙箱化插件运行时。`pi.net.fetch` 并不会缩小这些缺口：宿主只负责套用白名单、
+手工跟随重定向并审计这次调用，它从不重试、不限流、也不重新发起请求 —— 上游的
+`429` 会带着服务器给出的 `Retry-After` 原样到达插件，插件怎么处理是插件自己
+的策略。
 
 ## 8. 1 MCP 服务器出口和凭证
 
@@ -266,8 +270,11 @@ MCP 服务器是 `net.fetch` 旁边的第二个出口路径，因此它是声明
 
 - `transport: "stdio"` 生成本地可执行文件 (`mcp.server.local`)。的
   `command` 必须是裸路径名称或插件相对路径；绝对路径
-  在验证时被拒绝。孩子得到的环境是最小的——只有
-  声明的 `env` 条目加上主机运行进程所需的内容。
+  在验证时被拒绝。子进程拿到的是最小环境——声明的 `env` 条目，加上共享
+  白名单（`child-process-env.ts`）：`PATH`、`SystemRoot`、`windir`、`TEMP`、
+  `TMP`、`TMPDIR`、`LANG`、`HOME`、`USER`、`USERPROFILE`。身份变量要透传，
+  是因为子进程是第三方代码，用 `$HOME` 解析 `~` 而不是调用 `os.homedir()`
+  （issue #717）；provider key 和其它宿主状态仍然不会穿越。
 - `transport: "http"` 到达远程端点 (`mcp.server.remote`)。`url` 可以使用
   `http` 或 `https`；非回环 HTTP 不加密，只应在可信网络中使用。插件端点还
   必须被 `manifest.net.domains` 覆盖。工具参数会离开机器，这就是为什么权限
@@ -276,9 +283,12 @@ MCP 服务器是 `net.fetch` 旁边的第二个出口路径，因此它是声明
   `{ "setting": "<key>" }`。宿主环境永远不会被穿越，并且
   清单中的字面秘密是审查气味，而不是受支持的模式
   （D018）。
-- 连接预算：完成 `initialize` 需要 10 秒，每个 `tools/call` 需要 100 秒，8
-  `tools/list` 页，每条 stdio 线 4MB。服务器连接缓慢且撕裂
-  当插件卸载或禁用时关闭。
+- 连接预算：完成 `initialize` 需要 10 秒，每个 `tools/call` 需要 100 秒，每条
+  stdio 线 4MB。`tools/list` 在 §8.1 的每服务器护栏下跟进到最后一页
+  ——2048 个工具、100 页、重复或畸形游标、整轮遍历 30 秒——突破任一护栏的服务器会被
+  拒绝，而不是贡献其目录的一个前缀，因为 MCP 工具是以延迟加载的按需条目
+  （`ToolSearch` 之后）而非常驻列表的形式到达模型的。服务器按需连接，
+  并在插件卸载或禁用时关闭。
 
 ## 8.2 桌面控制与设备访问
 
@@ -315,7 +325,7 @@ MCP 调用相同的 IPC 校验、生命周期检查、完成事件和审计条�
 Electron 的 `globalShortcut`；插件永远拿不到键盘钩子、`before-input-event`、
 原始输入设备或按键事件流，所以不存在键盘记录器形状的表面，也无法看到用户
 按下的键。插件只能把加速键映射到自己已注册的一条命令；被操作系统保留、被
-PI-Desktop 自己当前占用（默认是 `Alt+Space` 与 `Mod+Shift+W`；用户改绑后
+PI-Desktop 自己当前占用（默认是 `Alt+Space` 与 `Alt+Shift+W`；用户改绑后
 即可释放给插件）或已被另一个插件持有的
 加速键会被拒绝，返回 `SHORTCUT_CONFLICT` / `SHORTCUT_UNAVAILABLE` /
 `INVALID_ACCELERATOR` / `LIMIT_EXCEEDED`（每个插件最多 8 条），而不是被抢走。
@@ -370,8 +380,9 @@ PI-Desktop 自己当前占用（默认是 `Alt+Space` 与 `Mod+Shift+W`；用户
 4. 插件仍然无法访问 Secrets/host DB
 5. Marketplace/package 安装需要在 UI 中明确接受权限
 6.自动更新拒绝静默权限扩展
-7. 插件主程序在每个插件专用的 `utilityProcess` (ADR 0008) 中运行，并带有
-   最小环境；所有 `pi.*` 调用都跨越白名单 + 权限网关
+7. 插件主程序在每个插件专用的 `utilityProcess` (ADR 0008) 中运行，环境来自
+   共享白名单 `child-process-env.ts`（PATH、工具链目录、`HOME` / `USER` /
+   `USERPROFILE`，不含 provider key）；所有 `pi.*` 调用都跨越白名单 + 权限网关
    在主机中，插件崩溃只会破坏该插件
 8. 贡献的主题 CSS 在到达主进程之前会在主进程中进行清理
    渲染器（§3.1）

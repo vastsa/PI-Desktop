@@ -111,6 +111,36 @@ describe("loadSubagentDefinitions", () => {
     expect(definitions.map((d) => d.name)).toContain("code-reviewer");
   });
 
+  it("drops a switched-off builtin from the catalog and keeps it as a builtin row", async () => {
+    const { definitions, builtins, diagnostics } = await loadSubagentDefinitions(null, {
+      disabledBuiltins: ["fixer"],
+    });
+
+    expect(diagnostics).toEqual([]);
+    expect(definitions.map((d) => d.name)).not.toContain("fixer");
+    expect(definitions.map((d) => d.name)).toContain("explorer");
+    // Settings needs the row back: its switch is the only way on again, and a
+    // builtin has no document to delete.
+    expect(builtins.map((d) => d.name)).toContain("fixer");
+    expect(builtins.every((d) => d.source === "builtin")).toBe(true);
+  });
+
+  it("lets a user document keep a handle the user switched the builtin off", async () => {
+    const { definitions, builtins } = await loadSubagentDefinitions(null, {
+      userDocuments: [
+        {
+          id: "fixer",
+          document: "---\nname: fixer\ndescription: Mine.\ntools: [Read]\n---\nMine.\n",
+          filePath: "/home/.agents/subagents/fixer.md",
+        },
+      ],
+      disabledBuiltins: ["fixer"],
+    });
+
+    expect(definitions.find((d) => d.name === "fixer")?.source).toBe("user");
+    expect(builtins.map((d) => d.name)).not.toContain("fixer");
+  });
+
   it("reports a malformed document without losing the others", async () => {
     await writeFile(join(dir, "broken.md"), "---\ntools: [Read]\n---\n\n", "utf8");
     await writeFile(

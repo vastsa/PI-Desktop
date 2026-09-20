@@ -280,6 +280,8 @@ test("models.dev records retain all published model parameters and modalities", 
     high: "high",
     xhigh: "xhigh",
     max: "max",
+    // Effort ladder without a published none/off value (#603).
+    off: null,
   });
   assert.deepEqual(info.provider, { npm: "@ai-sdk/anthropic" });
   assert.deepEqual(info.experimental, { modes: { fast: { enabled: true } } });
@@ -315,6 +317,8 @@ test("models.dev records retain all published model parameters and modalities", 
     high: "high",
     xhigh: "xhigh",
     max: "max",
+    // Effort ladder without a published none/off value (#603).
+    off: null,
   });
   assert.equal(config.cost.reasoning, 25);
   assert.deepEqual(config.provider, { npm: "@ai-sdk/anthropic" });
@@ -629,6 +633,23 @@ test("models.dev reasoning options map to canonical levels", () => {
   assert.deepEqual(thinkingLevelsFromModelsDev(true, [{ type: "budget_tokens", min: 1024 }]), ["off", "medium"]);
   assert.deepEqual(thinkingLevelsFromModelsDev(true, []), ["low", "medium", "high"]);
   assert.deepEqual(thinkingLevelsFromModelsDev(false, [{ type: "effort", values: ["high"] }]), []);
+});
+
+test("toggle ladders still map off to none", () => {
+  const [provider] = parseModelsDevCatalog({
+    vendor: {
+      name: "Vendor",
+      models: {
+        "toggle-model": {
+          id: "toggle-model",
+          reasoning: true,
+          reasoning_options: [{ type: "toggle" }],
+        },
+      },
+    },
+  });
+  const info = modelInfoFromModelsDev(provider.models[0], "row");
+  assert.equal(info.thinkingLevelMap?.off, "none");
 });
 
 test("the application loads the bundled release snapshot without network access", async () => {

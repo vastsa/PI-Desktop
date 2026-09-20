@@ -5,7 +5,7 @@ import {
   parseFilePatch,
   parseStatusZ,
   splitUnifiedDiff,
-} from "../electron/main/git-diff.ts";
+} from "../../../packages/host-runtime/src/workspace-diff.ts";
 
 test("parses porcelain -z status including renames and untracked", () => {
   const raw = [

@@ -8,7 +8,7 @@
 set -euo pipefail
 
 readonly APP_BUNDLE_NAME="PI-Desktop.app"
-readonly EXPECTED_BUNDLE_ID="com.pi-desktop.app"
+readonly EXPECTED_BUNDLE_ID="net.aiuo.pi-desktop"
 
 show_alert() {
   local title="$1"

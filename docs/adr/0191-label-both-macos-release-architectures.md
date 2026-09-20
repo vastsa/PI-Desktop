@@ -1,9 +1,9 @@
 # ADR 0191: Label Both macOS Release Architectures
 
-- Status: Accepted
+- Status: Accepted (amended by D450 / ADR 0289)
 - Date: 2026-09-09
 - Deciders: PI-Desktop core
-- Related: D126, D285, D353, D354, ADR 0145, E2E-092
+- Related: D126, D285, D353, D354, D450, ADR 0145, ADR 0289, E2E-092
 
 ## Context
 
@@ -24,8 +24,8 @@ electron-builder.
 4. The convention applies to unsigned and signed macOS workflow paths. The
    generated per-architecture updater feeds retain these final asset URLs and
    checksums before the publish job merges them.
-5. This changes release asset naming only; updater ownership, signing policy, and
-   notify-and-link delivery remain unchanged.
+5. This changes release asset naming only. Signing policy and in-app macOS
+   delivery are recorded in D450 / ADR 0289.
 
 ## Consequences
 
@@ -42,3 +42,9 @@ electron-builder.
 - Use `Intel` for x64 and `Apple-Silicon` for arm64: rejected because the release
   matrix and Electron target use standard architecture identifiers, which are
   shorter and easier to match to the actual package contents.
+
+## Amendment (D450 / ADR 0289)
+
+Architecture-labelled ZIP names remain the in-app updater payloads. Official
+tag artifacts are signed and notarized; the `-arm64` / `-x64` convention is
+unchanged.

@@ -6,7 +6,7 @@ import type {
   FsChatRefProjectRoot,
   FsChatRefRoot,
 } from "@pi-desktop/shared";
-import { isAttachmentBlobRef, isIgnoredName } from "./fs-panel.js";
+import { isAttachmentBlobRef, isIgnoredName } from "@pi-desktop/host-runtime";
 import { getWorkspaceFileIndex } from "./fs-index.js";
 
 /**

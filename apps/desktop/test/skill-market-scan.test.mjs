@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import test from "node:test";
-import { createSkillMarketAggregator } from "../electron/main/skill-market-scan.ts";
+import { fileURLToPath } from "node:url";
+import {
+  classifySkillMarketFailure,
+  createSkillMarketAggregator,
+  skillMarketFailureDetail,
+  skillMarketHost,
+} from "../electron/main/skill-market-scan.ts";
+import { PublicNetworkPolicyError } from "../electron/main/public-https-fetch.ts";
 
 const source = {
   id: "anthropics-skills",
@@ -96,8 +105,268 @@ test("main-process aggregator routes through the public-network client", async (
     new URL("../electron/main/skill-market-catalog.ts", import.meta.url),
     "utf8",
   );
-  assert.match(src, /import \{ createPublicHttpsClient \} from "\.\/public-https-fetch"/);
-  assert.match(src, /createPublicHttpsClient\(\{ fetchImpl: \(url, init\) => net\.fetch\(url, init\) \}\)/);
+  assert.match(src, /import \{ net, session \} from "electron"/);
+  assert.match(src, /fetchImpl: \(url, init\) => net\.fetch\(url, init\)/);
+  assert.match(
+    src,
+    /routeImpl: \(url\) => session\.defaultSession\.resolveProxy\(url\)/,
+  );
   assert.match(src, /createSkillMarketAggregator\(client\.request\)/);
   assert.doesNotMatch(src, /node:https|node:http|axios|got\(/);
+});
+
+test("a failed source reports whether the policy or the transport refused it", async () => {
+  const aggregator = createSkillMarketAggregator(async (url) => {
+    if (url.includes("blocked.example")) {
+      throw new PublicNetworkPolicyError(
+        "hostname resolves to a non-public address: blocked.example -> 198.18.0.4 (benchmark)",
+        {
+          reason: "non-public-address",
+          host: "blocked.example",
+          address: "198.18.0.4",
+          addressKind: "benchmark",
+        },
+      );
+    }
+    throw new Error("responded 502");
+  });
+  const result = await aggregator.search("", [
+    { id: "blocked", name: "blocked/repo", url: "https://blocked.example/catalog.json" },
+    { id: "down", name: "down/repo", url: "https://down.example/catalog.json" },
+    { id: "local", name: "local", url: "https://127.0.0.1/catalog.json" },
+  ]);
+  assert.deepEqual(result.entries, []);
+  assert.deepEqual([...result.failedSources].sort(), ["blocked/repo", "down/repo", "local"]);
+  // Issue #419: a policy refusal must not be indistinguishable from a dead host,
+  // from a source that never left the syntactic guard, or from a fake-IP the
+  // local proxy invented. The address here is the proxy's placeholder for
+  // `blocked.example`, so it is reported as its own cause.
+  assert.deepEqual(result.failureKinds, {
+    "blocked/repo": "fake-ip",
+    "down/repo": "network",
+    local: "policy",
+  });
+  // …and each name carries what it was about, not just which bucket it landed
+  // in. A transport failure answers a 502 with a bare host.
+  assert.deepEqual(result.failureDetails["blocked/repo"], {
+    kind: "fake-ip",
+    host: "blocked.example",
+    reason: "non-public-address",
+    address: "198.18.0.4",
+    addressKind: "benchmark",
+  });
+  assert.deepEqual(result.failureDetails.local, {
+    kind: "policy",
+    host: "127.0.0.1",
+    reason: "url-syntax",
+  });
+  assert.deepEqual(result.failureDetails["down/repo"], { kind: "network", host: "down.example" });
+});
+
+test("a repeated display name keeps the refusal, and a hostile name stays own", async () => {
+  const aggregator = createSkillMarketAggregator(async () => {
+    throw new Error("responded 502");
+  });
+  const result = await aggregator.search("", [
+    { id: "a", name: "same", url: "https://127.0.0.1/catalog.json" },
+    { id: "b", name: "same", url: "https://down.example/catalog.json" },
+    { id: "c", name: "__proto__", url: "https://127.0.0.1/catalog.json" },
+  ]);
+  // `failedSources` cannot tell the two "same" sources apart, so the kind that
+  // is worth surfacing (the refusal) must survive the merge.
+  assert.equal(result.failureKinds.same, "policy");
+  // A source named `__proto__` must land as an own property, not vanish into
+  // the prototype where `Object.values` would never see it.
+  assert.equal(Object.hasOwn(result.failureKinds, "__proto__"), true);
+  assert.equal(result.failureKinds.__proto__, "policy");
+  assert.deepEqual(Object.values(result.failureKinds), ["policy", "policy"]);
+  // `failureDetails` is keyed the same way, and inherits the same hazard.
+  assert.equal(Object.hasOwn(result.failureDetails, "__proto__"), true);
+  assert.deepEqual(Object.keys(result.failureDetails).sort(), ["__proto__", "same"]);
+});
+
+test("the most specific failure survives a shared display name", async () => {
+  // One label can hide three causes, and `failedSources` cannot tell them apart.
+  // The merge keeps the most specific: a judged address beats a resolver with no
+  // answer, which beats a plain transport failure. Surfacing the weaker one
+  // would send the user after the wrong problem.
+  const request = async (url) => {
+    if (url.includes("judged.example")) {
+      throw new PublicNetworkPolicyError("hostname resolves to a non-public address", {
+        reason: "non-public-address",
+        host: "judged.example",
+        addressKind: "benchmark",
+      });
+    }
+    if (url.includes("silent.example")) {
+      throw new PublicNetworkPolicyError("hostname does not resolve: silent.example", {
+        reason: "resolve-failed",
+        host: "silent.example",
+      });
+    }
+    throw new Error("responded 502");
+  };
+  const withJudged = await createSkillMarketAggregator(request).search("", [
+    { id: "a", name: "shared", url: "https://silent.example/catalog.json" },
+    { id: "b", name: "shared", url: "https://down.example/catalog.json" },
+    { id: "c", name: "shared", url: "https://judged.example/catalog.json" },
+  ]);
+  assert.equal(withJudged.failureKinds.shared, "fake-ip");
+  assert.equal(withJudged.failureDetails.shared.reason, "non-public-address");
+
+  const withoutJudged = await createSkillMarketAggregator(request).search("", [
+    { id: "a", name: "shared", url: "https://silent.example/catalog.json" },
+    { id: "b", name: "shared", url: "https://down.example/catalog.json" },
+  ]);
+  assert.equal(withoutJudged.failureKinds.shared, "unresolved");
+  assert.equal(withoutJudged.failureDetails.shared.reason, "resolve-failed");
+});
+
+test("a diagnostics record names the host, never the URL or its credentials", async () => {
+  // Issue #419: the market's failures wrote nothing to the app log, so a user
+  // behind a proxy had no way to report which host was refused — or whether the
+  // resolver had answered at all. The record is built here so its shape is fixed
+  // and its redaction is testable.
+  assert.deepEqual(
+    skillMarketFailureDetail(
+      { name: "anthropics/skills", url: "https://user:secret@github.com:8443/org/repo?token=abc#x" },
+      new PublicNetworkPolicyError("hostname resolves to a non-public address", {
+        reason: "non-public-address",
+        host: "api.github.com",
+        address: "198.18.0.4",
+        addressKind: "benchmark",
+      }),
+    ),
+    {
+      source: "anthropics/skills",
+      // The host the guard classified wins over the source's own host: a GitHub
+      // `owner/repo` source is scanned through `api.github.com`, and naming the
+      // repository host there would point at a host that was never refused.
+      host: "api.github.com",
+      kind: "fake-ip",
+      reason: "non-public-address",
+      address: "198.18.0.4",
+      addressKind: "benchmark",
+    },
+  );
+  // The class travels; so does the address, and what must not is the URL.
+  const judged = skillMarketFailureDetail(
+    { name: "anthropics/skills", url: "https://github.com/anthropics/skills" },
+    new PublicNetworkPolicyError("hostname resolves to a non-public address: api.github.com -> 198.18.0.4", {
+      reason: "non-public-address",
+      host: "api.github.com",
+      address: "198.18.0.4",
+      addressKind: "benchmark",
+    }),
+  );
+  // The address travels with the class: it is the local resolver's own answer for
+  // the host, and `198.18.0.4` is what a user recognises as fake-IP mode at a
+  // glance (issue #419). The URL, its path, its query and its credentials still
+  // never do.
+  assert.equal(judged.address, "198.18.0.4");
+  const serialized = JSON.stringify(judged);
+  assert.equal(serialized.includes("secret"), false);
+  assert.equal(serialized.includes("token"), false);
+  assert.equal(serialized.includes("/org/repo"), false);
+  // A resolver that answered nothing is not an address verdict, and the record
+  // must not claim one.
+  assert.deepEqual(
+    skillMarketFailureDetail(
+      { name: "anthropics/skills", url: "https://github.com/anthropics/skills" },
+      new PublicNetworkPolicyError("hostname does not resolve: api.github.com (ENOTFOUND)", {
+        reason: "resolve-failed",
+        host: "api.github.com",
+      }),
+    ),
+    {
+      source: "anthropics/skills",
+      host: "api.github.com",
+      kind: "unresolved",
+      reason: "resolve-failed",
+    },
+  );
+  // A transport failure is not a refusal — including a 403, which is what a
+  // rate-limited GitHub scan answers with.
+  assert.equal(skillMarketFailureDetail(source, new Error("responded 502")).kind, "network");
+  assert.equal(skillMarketFailureDetail(source, new Error("responded 403")).kind, "network");
+  // A source the syntactic guard never let out still logs its name.
+  assert.deepEqual(
+    skillMarketFailureDetail({ name: "broken", url: "http://insecure.example" }, undefined),
+    { source: "broken", host: "insecure.example", kind: "network" },
+  );
+  // An unparseable or missing URL must not produce a host field, and must not
+  // throw while a failure is being reported.
+  assert.equal(skillMarketHost(undefined), undefined);
+  assert.equal(skillMarketHost("not a url"), undefined);
+  assert.equal(skillMarketHost(42), undefined);
+  assert.deepEqual(skillMarketFailureDetail({}, new Error("x")), { kind: "network" });
+});
+
+test("the classifier matches the aggregator's own classification", async () => {
+  // One classifier, so the log line and the panel can never disagree.
+  const unresolved = new PublicNetworkPolicyError("hostname does not resolve: x.example", {
+    reason: "resolve-failed",
+    host: "x.example",
+  });
+  const judged = new PublicNetworkPolicyError("hostname resolves to a non-public address: x.example", {
+    reason: "non-public-address",
+    host: "x.example",
+    address: "198.18.0.1",
+    addressKind: "benchmark",
+  });
+  const privateTarget = new PublicNetworkPolicyError(
+    "hostname resolves to a non-public address: x.example",
+    {
+      reason: "non-public-address",
+      host: "x.example",
+      address: "10.1.2.3",
+      addressKind: "private",
+    },
+  );
+  assert.equal(classifySkillMarketFailure(unresolved), "unresolved");
+  // Same reason and same code, different address class — which is the whole
+  // distinction between a proxy's fake-IP and the target's own private address.
+  assert.equal(classifySkillMarketFailure(judged), "fake-ip");
+  assert.equal(classifySkillMarketFailure(privateTarget), "policy");
+  assert.equal(classifySkillMarketFailure(new Error("fetch failed")), "network");
+  const aggregator = createSkillMarketAggregator(async () => {
+    throw unresolved;
+  });
+  const result = await aggregator.search("", [source]);
+  assert.equal(result.failureKinds["anthropics/skills"], classifySkillMarketFailure(unresolved));
+  assert.equal(result.failureDetails["anthropics/skills"].reason, "resolve-failed");
+});
+
+test("both market channels report their failures to the app log", () => {
+  // `skills-ipc.ts` imports Electron, so the wiring is asserted on the source:
+  // the host, the guard's own reason and the class of address must all reach the
+  // log, and the log must never carry the full URL.
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../electron/main/ipc/skills-ipc.ts"),
+    "utf8",
+  );
+  assert.match(src, /import type \{ Logger \} from "\.\.\/logger"/);
+  assert.match(src, /logger: Pick<Logger, "app">/);
+  assert.match(src, /logger\.app\("diagnostics", "warn", "skill market source produced no entries"/);
+  assert.match(src, /logger\.app\("diagnostics", "warn", "skill market document fetch failed"/);
+  assert.match(src, /event: "skillMarket\.sourceFailed"/);
+  assert.match(src, /event: "skillMarket\.documentFailed"/);
+  // Two codes, because only one of the two refusals judged an address.
+  assert.match(src, /ErrorCodes\.NETWORK_POLICY_BLOCKED/);
+  assert.match(src, /ErrorCodes\.NETWORK_RESOLVE_FAILED/);
+  // The record carries the guard's own reason and the address class — the two
+  // fields that tell "the resolver answered nothing" from "the address is not
+  // public" (§09 diagnostics).
+  assert.match(src, /reason: detail\.reason/);
+  assert.match(src, /addressKind: detail\.addressKind/);
+  // The address travels with the class — `198.18.0.1` is what names fake-IP mode
+  // for a user reading the log (issue #419).
+  assert.match(src, /address: detail\.address/);
+  assert.doesNotMatch(src, /data: \{ url|url: source\.url/);
+  // The registration site must supply the logger, or the wiring above is dead.
+  const register = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../electron/main/ipc/register.ts"),
+    "utf8",
+  );
+  assert.match(register, /registerSkillsIpc\(\{[\s\S]*?logger,[\s\S]*?\}\)/);
 });

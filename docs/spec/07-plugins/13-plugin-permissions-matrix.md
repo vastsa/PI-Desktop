@@ -10,7 +10,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 |---|---|---|---|---|
 | `ui.panel` | low | Open the plugin panel | Granted at install | Needed by almost all UI plugins |
 | `ui.view` | low | `contributes.views` are listed in the work panel and may be opened | Granted at install | Same isolation as a panel window: sandboxed page, per-plugin partition, `net.domains` egress. Filtered by activation scope |
-| `ui.theme` | low | `contributes.themes` CSS is loaded and offered in Settings; runtime `pi.themes.upsert` / `remove` / `list` and `pi.app.setTheme` (ADR 0249) | Granted at install | CSS is sanitized by the host; it cannot script. Declared `assets` are served over the host's read-only `plugin-asset:` scheme. `setTheme` may only select a built-in preference or a currently registered plugin theme. There is no per-plugin theme count cap |
+| `ui.theme` | low | `contributes.themes` CSS is loaded and offered in Settings; runtime `pi.themes.upsert` / `remove` / `list` and `pi.app.setTheme` (ADR 0260) | Granted at install | CSS is sanitized by the host; it cannot script. Declared `assets` are served over the host's read-only `plugin-asset:` scheme. `setTheme` may only select a built-in preference or a currently registered plugin theme. There is no per-plugin theme count cap |
 | `ui.window.appearance` | low | `contributes.windowAppearance` sets the native window background while one of the plugin's themes is selected | Granted at install | `#rrggbb` / `#rrggbbaa` only; applied per resolved palette and back to the host default once the theme is gone. macOS keeps vibrancy |
 | `clipboard.read` | medium | `clipboard.readText`, `clipboard.getHistory` | Confirm on first use | May read sensitive information and retained clipboard history |
 | `clipboard.write` | medium | `clipboard.writeText` | Confirm on first use | Prevents clipboard pollution |
@@ -46,7 +46,9 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `session.read.own` | medium | `pi.session.list`, `pi.session.get`, `pi.session.listMessages` | Confirm at install | Reads only sessions imported by the calling plugin; no cross-plugin access |
 | `session.update.own` | medium | `pi.session.rename` | Confirm at install | Renames only the calling plugin's active imported sessions |
 | `session.delete.own` | high | `pi.session.delete` | Confirm at install | Trash/purge only the calling plugin's imported sessions; rate-limited |
+| `usage.read` | medium | `pi.usage.listTurns` | Confirm at install | Read-only listing of completed-turn facts (per-turn token counters and identifiers, keyset-paginated); no message body and no write path |
 | `agent.complete` | high | `pi.agent.complete` | Confirm at install | Host-owned one-shot; spends user quota; `includeSessionContext` also needs `session.read` |
+| `speech.adapter.register` | high | `pi.speech.registerAdapter` / `unregisterAdapter` | Confirm at install | Registers a speech protocol. Handles stay in the guest; HTTP plans are executed by the host with the bound provider key and must stay on that origin. Built-in protocol ids are reserved |
 
 ## 2A. A permission is the switch; the manifest carries the range
 
@@ -147,7 +149,9 @@ so "Modify the files it lists" is followed by the list.
 | `session.read.own` | Read sessions imported by this plugin | 读取此插件导入的会话 |
 | `session.update.own` | Rename sessions imported by this plugin | 重命名此插件导入的会话 |
 | `session.delete.own` | Trash or purge sessions imported by this plugin | 将此插件导入的会话移入回收站或清除 |
+| `usage.read` | Read usage statistics | 读取用量统计 |
 | `agent.complete` | Run a one-shot completion with your models | 用你的模型发起一次补全 |
+| `speech.adapter.register` | Register a speech adapter | 注册语音适配器 |
 | `audio.capture.background` | Use the microphone in the background | 后台使用麦克风 |
 | `audio.playback.background` | Play audio in the background | 后台播放声音 |
 | `keyboard.globalShortcut` | Register system-wide shortcuts | 注册系统级快捷键 |
@@ -173,14 +177,16 @@ Every Host API entry point must assert first. A file entry point then passes
 three more gates, in this order — a later gate can only refuse, never widen:
 
 ```ts
-assertFsAccess(pluginId, mode, requestedPath) {
+assertFsAccess(pluginId, mode, requestedPath, sessionId) {
  assertPermission(pluginId, `fs.${mode}`)              // declared AND granted
- full = realpathWithinRoot(root(pluginId, mode), requestedPath)
+ full = realpathWithinRoot(root(pluginId, mode, sessionId), requestedPath)
  if (!full) throw NOT_FOUND | INVALID_ARGUMENT         // symlinks resolved first
  if (isDenied(full) || isHostReserved(full)) throw ERROR_PERMISSION_DENIED
  if (!inScope(full, declaredScope(pluginId, mode))) await confirmWithUser(...)
 }
 ```
+The `workspace` root is the invoking tool session's project, falling back to the
+visible workspace for a panel call (ADR 0266).
 
 ## 7. Acceptance
 

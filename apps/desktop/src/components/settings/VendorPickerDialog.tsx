@@ -2,7 +2,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { OAuthVendor } from "@pi-desktop/shared";
-import { Button } from "../ui";
+import { Button, portalOverlay } from "../ui";
 
 export function VendorPickerDialog({
   vendors,
@@ -24,7 +24,7 @@ export function VendorPickerDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  return (
+  return portalOverlay(
     <div className="overlay provider-dialog-overlay" role="presentation">
       <div
         className="dialog oauth-dialog"

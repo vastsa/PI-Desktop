@@ -25,6 +25,34 @@ test("selecting System default persists an empty stack so the override clears", 
   assert.doesNotMatch(rowSource, /fontFamily: undefined/);
 });
 
+test("the closed trigger and search use the localized system-default label", () => {
+  assert.match(rowSource, /const defaultLabel = t\("settings\.fontSystemDefault"\)/);
+  assert.match(
+    rowSource,
+    /selectedOption\?\.group === "default" \|\| selectedValue === ""/,
+  );
+  assert.match(
+    rowSource,
+    /option\.group === "default"[\s\S]*?`\$\{defaultLabel\} \$\{option\.label\}`\.toLowerCase\(\)/,
+  );
+});
+
+test("the font trigger hugs the current label like language and theme", () => {
+  assert.match(
+    styles,
+    /\.settings-language-anchor,\s*\.settings-theme-anchor,\s*\.settings-menu-select-anchor,\s*\.settings-font\s*\{[^}]*width:\s*max-content/s,
+  );
+  assert.match(
+    styles,
+    /\.settings-language-trigger,\s*\.settings-theme-trigger,\s*\.settings-menu-select-trigger,\s*\.settings-font-trigger\s*\{[^}]*width:\s*max-content/s,
+  );
+  assert.match(
+    styles,
+    /\.settings-language-trigger-label,\s*\.settings-theme-trigger-label,\s*\.settings-menu-select-trigger-label,\s*\.settings-font-trigger-label\s*\{[^}]*flex:\s*0 1 auto/s,
+  );
+  assert.doesNotMatch(styles, /\.settings-font-trigger\s*\{[^}]*min-width:\s*200px;/s);
+});
+
 test("font list windows the rows so only the visible slice is in the DOM", () => {
   assert.match(rowSource, /visibleRowRange\(layout, scrollTop/);
   assert.match(rowSource, /layout\.rows\.slice\(start, end\)/);
@@ -53,4 +81,12 @@ test("menu repositioning ignores scrolls inside the font list", () => {
     rowSource,
     /menuRef\.current\?\.contains\(target\)/,
   );
+});
+
+test("the picker has no bundled group, license badge, or fontBundled copy", () => {
+  assert.doesNotMatch(rowSource, /group === "bundled"/);
+  assert.doesNotMatch(rowSource, /settings\.fontBundled/);
+  assert.doesNotMatch(rowSource, /settings-font-item-license/);
+  assert.doesNotMatch(rowSource, /option\.license/);
+  assert.doesNotMatch(styles, /\.settings-font-item-license\s*\{/);
 });

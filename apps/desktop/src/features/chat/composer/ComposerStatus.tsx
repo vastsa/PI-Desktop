@@ -1,17 +1,28 @@
 import type { TFunction } from "i18next";
 import { TooltipButton } from "../../../components/ui";
-import { IconFolder, IconX } from "../../../components/icons";
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconFolder,
+  IconPencil,
+  IconX,
+} from "../../../components/icons";
 import type { ComposerDropItem } from "../../../lib/composer-drop";
-import type { QueuedPrompt } from "../../../lib/queued-prompts";
-import { requestTextWithoutAnnotations } from "../../../lib/response-annotations";
+import {
+  isPendingQueuedPrompt,
+  isPromotedQueuedPrompt,
+  type QueuedPrompt,
+  type QueuedPromptDirection,
+} from "../../../lib/queued-prompts";
 
 export type ComposerStatusProps = {
   t: TFunction;
   queuedPrompts: readonly QueuedPrompt[];
   removeQueuedPrompt: (id: string) => void;
+  moveQueuedPrompt: (id: string, direction: QueuedPromptDirection) => Promise<void>;
+  editQueuedPrompt: (id: string) => void;
   sendQueuedNow: (id: string) => Promise<void>;
   approvalPending: boolean;
-  runActive: boolean;
   enhancementError: { message: string; code: string } | null;
   clearEnhancementError: () => void;
   droppedDirectories: ComposerDropItem[];
@@ -25,9 +36,10 @@ export function ComposerStatus({
   t,
   queuedPrompts,
   removeQueuedPrompt,
+  moveQueuedPrompt,
+  editQueuedPrompt,
   sendQueuedNow,
   approvalPending,
-  runActive,
   enhancementError,
   clearEnhancementError,
   droppedDirectories,
@@ -45,36 +57,80 @@ export function ComposerStatus({
         >
           {queuedPrompts.map((item) => {
             const label =
-              requestTextWithoutAnnotations(item.content).trim() ||
+              item.content.trim() ||
               item.draft.fileReferences.map((reference) => reference.name).join(", ") ||
               t("chat.queuedPromptEmpty");
+            const promoted = isPromotedQueuedPrompt(item);
+            const sendNowLocked =
+              approvalPending || promoted || isPendingQueuedPrompt(item);
+            // A promoted row is already the next turn: every edit action is
+            // locked, and the disabled controls say why instead of going quiet.
+            const actionLabel = (action: string) =>
+              promoted ? `${action} · ${t("chat.sendNowPending")}` : action;
             return (
               <div
                 key={item.id}
                 className="composer-queued-prompt"
                 role="listitem"
                 data-testid="queued-prompt"
+                data-priority={promoted ? "true" : "false"}
               >
                 <span className="composer-queued-prompt-text" title={label}>
                   {label}
                 </span>
                 <TooltipButton
                   type="button"
-                  className="composer-queued-prompt-action"
-                  tooltip={t("chat.removeQueuedPrompt")}
-                  ariaLabel={t("chat.removeQueuedPrompt")}
-                  onClick={() => removeQueuedPrompt(item.id)}
+                  className="composer-queued-prompt-action composer-queued-prompt-move-up"
+                  tooltip={actionLabel(t("chat.moveQueuedPromptUp"))}
+                  ariaLabel={actionLabel(t("chat.moveQueuedPromptUp"))}
+                  disabled={promoted}
+                  aria-disabled={promoted}
+                  onClick={() => void moveQueuedPrompt(item.id, "up")}
                 >
-                  <IconX size={13} aria-hidden />
+                  <IconArrowUp size={13} aria-hidden />
+                </TooltipButton>
+                <TooltipButton
+                  type="button"
+                  className="composer-queued-prompt-action composer-queued-prompt-move-down"
+                  tooltip={actionLabel(t("chat.moveQueuedPromptDown"))}
+                  ariaLabel={actionLabel(t("chat.moveQueuedPromptDown"))}
+                  disabled={promoted}
+                  aria-disabled={promoted}
+                  onClick={() => void moveQueuedPrompt(item.id, "down")}
+                >
+                  <IconArrowDown size={13} aria-hidden />
                 </TooltipButton>
                 <button
                   type="button"
                   className="composer-queued-prompt-send-now"
-                  disabled={approvalPending || (runActive && item.sendNowRequested === true)}
+                  disabled={sendNowLocked}
+                  aria-disabled={sendNowLocked}
                   onClick={() => void sendQueuedNow(item.id)}
                 >
-                  {item.sendNowRequested ? t("chat.sendNowPending") : t("chat.sendNow")}
+                  {promoted ? t("chat.sendNowPending") : t("chat.sendNow")}
                 </button>
+                <TooltipButton
+                  type="button"
+                  className="composer-queued-prompt-action composer-queued-prompt-edit"
+                  tooltip={actionLabel(t("chat.editQueuedPrompt"))}
+                  ariaLabel={actionLabel(t("chat.editQueuedPrompt"))}
+                  disabled={promoted}
+                  aria-disabled={promoted}
+                  onClick={() => editQueuedPrompt(item.id)}
+                >
+                  <IconPencil size={13} aria-hidden />
+                </TooltipButton>
+                <TooltipButton
+                  type="button"
+                  className="composer-queued-prompt-action composer-queued-prompt-remove"
+                  tooltip={actionLabel(t("chat.removeQueuedPrompt"))}
+                  ariaLabel={actionLabel(t("chat.removeQueuedPrompt"))}
+                  disabled={promoted}
+                  aria-disabled={promoted}
+                  onClick={() => removeQueuedPrompt(item.id)}
+                >
+                  <IconX size={13} aria-hidden />
+                </TooltipButton>
               </div>
             );
           })}

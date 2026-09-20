@@ -3,7 +3,7 @@ import type { CloseBehavior } from "@pi-desktop/shared";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { BrowserPane } from "../browser-view";
 import type { HostProcess } from "../host-process";
-import type { InflightCheckpointer } from "../inflight-checkpoint";
+import type { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import type { Logger } from "../logger";
 import type { PersistenceOutbox } from "../persistence-outbox";
 import type { PluginPanelHost } from "../plugin-panel-host";
@@ -12,6 +12,8 @@ import type { PluginViewHost } from "../plugin-view-host";
 import type { AppUpdaterController } from "../updater";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { McpControlServer } from "../mcp-control";
+import type { McpOAuthManager } from "../mcp-oauth";
+import { getActiveRemoteHostsBoot, setActiveRemoteHostsBoot } from "./remote-hosts";
 
 const QUIT_TURN_SETTLE_BUDGET_MS = 2_000;
 
@@ -23,7 +25,7 @@ export type ShutdownState = {
   closeBehavior: CloseBehavior;
   tray: Tray | null;
   pluginLauncherAccelerator: string | null;
-  summonWindowAccelerator: string | null;
+  toggleWindowAccelerator: string | null;
 };
 
 export type ShutdownDependencies = {
@@ -38,9 +40,9 @@ export type ShutdownDependencies = {
   pluginPanels: Pick<PluginPanelHost, "closeAll">;
   plugins: Pick<PluginRuntime, "disposeAll">;
   userMcp: Pick<UserMcpRuntime, "disposeAll">;
+  mcpOAuth?: Pick<McpOAuthManager, "disposeAll">;
   browserPane: Pick<BrowserPane, "dispose">;
   pluginViews: Pick<PluginViewHost, "dispose">;
-  pluginSettingsViews: Pick<PluginViewHost, "dispose">;
   updater: Pick<AppUpdaterController, "dispose" | "isInstallingUpdate">;
   logger: Pick<Logger, "app">;
   confirmQuitDialog: () => Promise<boolean>;
@@ -59,9 +61,9 @@ export function registerShutdownHandlers({
   pluginPanels,
   plugins,
   userMcp,
+  mcpOAuth,
   browserPane,
   pluginViews,
-  pluginSettingsViews,
   updater,
   logger,
   confirmQuitDialog,
@@ -120,11 +122,16 @@ export function registerShutdownHandlers({
       globalShortcut.unregister(state.pluginLauncherAccelerator);
       state.pluginLauncherAccelerator = null;
     }
-    if (state.summonWindowAccelerator) {
-      globalShortcut.unregister(state.summonWindowAccelerator);
-      state.summonWindowAccelerator = null;
+    if (state.toggleWindowAccelerator) {
+      globalShortcut.unregister(state.toggleWindowAccelerator);
+      state.toggleWindowAccelerator = null;
     }
     state.shutdownPromise = (async () => {
+      // Close every paired remote host before the local host-core so any
+      // in-flight remote turn's abort still goes over a live socket. Bounded
+      // parallelism inside `closeAll`; safe to run before local disposals.
+      const remoteHostsShutdown = getActiveRemoteHostsBoot()?.closeAll();
+      setActiveRemoteHostsBoot(null);
       // Replies still streaming are stopped through the sidecar first so their
       // aborted final rows can reach the transcript while host-core is alive;
       // whatever does not make it in time is covered by the last checkpoint
@@ -147,9 +154,9 @@ export function registerShutdownHandlers({
       // end every quit in error logs, toasts, and restarts into a closing app.
       const pluginShutdown = plugins.disposeAll();
       userMcp.disposeAll();
+      mcpOAuth?.disposeAll();
       browserPane.dispose();
       pluginViews.dispose();
-      pluginSettingsViews.dispose();
       inflightCheckpointer.dispose();
       const sidecarShutdown = getSidecar()?.dispose();
 
@@ -163,6 +170,7 @@ export function registerShutdownHandlers({
         pluginShutdown,
         sidecarShutdown,
         mcpShutdown,
+        remoteHostsShutdown,
       ]);
     })();
 

@@ -12,7 +12,12 @@ import {
   type CatalogApiStyle,
 } from "./model-catalog.js";
 import { matchNamedPreset, normalizeEndpointUrl } from "./provider-presets.js";
-import type { ModelBinding, ProviderCreateInput, ThinkingLevel } from "./types.js";
+import type {
+  ContextWindowSource,
+  ModelBinding,
+  ProviderCreateInput,
+  ThinkingLevel,
+} from "./types.js";
 
 export const MODEL_CONFIG_IMPORT_SOURCES = [
   "claude-code",
@@ -533,10 +538,13 @@ function parseCcSwitchProvider(
     );
   }
   if (appType === "pi") {
-    return retagCcSwitch(
-      row,
-      parsePiModelConfig({ providers: { [row.id]: row.settingsConfig } }, env),
-    );
+    // Pi providers have an authoritative native config (`~/.pi/agent/models.json`).
+    // CC Switch only stores a one-shot v18 migration snapshot of that file; models
+    // added afterwards never make it back in, and our dedupe key ignores `models`
+    // coverage. Trusting the snapshot silently drops the newer entries and lands
+    // pi providers under the "CC Switch" group with a renamed label. Let the `pi`
+    // scanner own these rows so the source of truth wins. See issue #588.
+    return [];
   }
   if (appType === "codex" || appType === "grokbuild") {
     return parseCcSwitchTomlApp(row, env, appType === "codex" ? "responses" : "chat_completions");
@@ -814,8 +822,24 @@ function bindingFromGenericModel(
   return {
     ...base,
     contextWindow: contextWindow ?? base.contextWindow,
+    // A window the file states is an explicit answer from its author; the
+    // generic seed it falls back to keeps following the catalog.
+    contextWindowSource:
+      importedContextWindowSource(record?.contextWindowSource) ??
+      (contextWindow === undefined ? base.contextWindowSource : "user"),
     maxTokens: maxTokens ?? base.maxTokens,
+    ...(record?.nativeWebSearch === true || record?.native_web_search === true
+      ? { nativeWebSearch: true }
+      : {}),
   };
+}
+
+/**
+ * A config exported by PI-Desktop carries the provenance marker; an older or
+ * foreign config does not.
+ */
+function importedContextWindowSource(value: unknown): ContextWindowSource | undefined {
+  return value === "catalog" || value === "user" ? value : undefined;
 }
 
 function bindingFromPiModel(value: unknown): ModelBinding | null {

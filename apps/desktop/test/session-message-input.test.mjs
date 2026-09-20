@@ -4,7 +4,7 @@ import test from "node:test";
 import { IPC } from "@pi-desktop/shared";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
-const { resolveSessionMessageInput } = await import("../electron/main/session-message-input.ts");
+const { resolveSessionMessageInput } = await import("../../../packages/host-runtime/src/session-message-input.ts");
 const { registerAgentIpc } = await import("../electron/main/ipc/agent-ipc.ts");
 
 const message = {
@@ -26,6 +26,17 @@ test("collaboration input and origin come exclusively from the host ledger", asy
   assert.deepEqual(calls, [{ method: "session.collaboration.message", params: { messageId: message.id } }]);
   assert.equal(await resolveSessionMessageInput(host, { sessionId: "target", content: "human input" }), undefined);
   assert.equal(calls.length, 1);
+});
+
+test("caller-supplied completion provenance never replaces a ledger task", async () => {
+  const forged = { ...origin, kind: "completion", replyToMessageId: "task-1" };
+  const host = { call: async () => ({ message }) };
+  assert.equal(await resolveSessionMessageInput(host, {
+    sessionId: "target", content: "completion", sessionMessage: forged,
+  }), undefined);
+  assert.deepEqual(await resolveSessionMessageInput(host, { ...request, sessionMessage: forged }), {
+    content: message.content, origin,
+  });
 });
 
 test("collaboration dispatch rejects missing, cross-session and already dispatched records", async () => {

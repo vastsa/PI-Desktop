@@ -7,7 +7,8 @@ import {
   type KeyValuePair,
 } from "../extensions/KeyValueRows";
 import { IconCheck, IconCopy } from "../icons";
-import { Button, Select } from "../ui";
+import { Button } from "../ui";
+import { SettingsMenuSelect } from "./SettingsMenuSelect";
 
 type HeaderPreset = {
   key: string;
@@ -105,19 +106,19 @@ export function ProviderHeadersEditor({
       <div className="provider-setup-headers-toolbar">
         <div className="provider-setup-headers-label">{t("settings.headers")}</div>
         <div className="provider-setup-headers-actions">
-          <Select
+          <SettingsMenuSelect
             className="provider-setup-header-preset"
-            aria-label={t("settings.addCommonHeader")}
+            label={t("settings.addCommonHeader")}
             value=""
-            onChange={(event) => addPreset(event.target.value)}
-          >
-            <option value="">{t("settings.addCommonHeader")}</option>
-            {HEADER_PRESETS.map((preset) => (
-              <option key={preset.key} value={preset.key}>
-                {preset.key}
-              </option>
-            ))}
-          </Select>
+            onChange={(id) => addPreset(id)}
+            options={[
+              { id: "", label: t("settings.addCommonHeader") },
+              ...HEADER_PRESETS.map((preset) => ({
+                id: preset.key,
+                label: preset.key,
+              })),
+            ]}
+          />
           <Button
             variant="ghost"
             size="sm"

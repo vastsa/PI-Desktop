@@ -34,25 +34,28 @@ change or starting follow-up:
 
 - [ ] Pull request title, body, files, commits, comments, checks, draft
   state, base/head, and linked issues were fetched.
-- [ ] The **principle** was independently judged (real in-scope problem;
-  approach compatible with baseline, security, and architecture).
-- [ ] Completeness gaps (specs, tests, i18n, e2e docs, style, naming) were
-  not treated as merge blockers.
-- [ ] If the principle is sound: the pull request was merged first,
+- [ ] The **root-cause bar** was independently judged: real in-scope problem;
+  the change actually removes that failure mode at the root; the diff is the
+  smallest coherent fix; approach compatible with baseline, security, and
+  architecture.
+- [ ] Completeness gaps (specs, extra tests, i18n, e2e docs, style, naming)
+  were not treated as merge blockers **unless** they are required to prove
+  the root-cause fix.
+- [ ] If the root-cause bar holds: the pull request was merged first,
   preserving the contributor's commits; landing blockers received only
   smallest-on-top commits.
 - [ ] Follow-up started only after the pull request was in `main`, using a
   new R4 request branch and worktree.
-- [ ] If the principle is not sound or a harm blocker exists: the pull
-  request was not merged, and a comment recorded the evidence. The idea was
-  not silently reimplemented.
+- [ ] If the root-cause bar fails or a harm blocker exists: the pull
+  request was not merged, was not approved as "direction is fine", and a
+  comment recorded the evidence. The idea was not silently reimplemented.
 - [ ] A draft pull request was not merged unless the user explicitly asked.
 - [ ] The comment uses the pull request's language.
 - [ ] No unrelated pull request was commented on or merged.
 - [ ] The contributor's branch was not force-pushed. Unrelated remote
   publishing was not inferred from the pull request link.
 
-See [R6 — Merge a linked pull request whose principle is sound, then follow up](03-ai-development-workflow.md#r6--merge-a-linked-pull-request-whose-principle-is-sound-then-follow-up).
+See [R6 — Land a linked pull request only when it fixes the root cause with a minimal diff](03-ai-development-workflow.md#r6--land-a-linked-pull-request-only-when-it-fixes-the-root-cause-with-a-minimal-diff).
 
 ---
 
@@ -97,6 +100,9 @@ Reference the [spec update matrix](03-ai-development-workflow.md#3-spec-update-m
 After implementation (or alongside it):
 
 - [ ] Every affected spec file is updated with the new behavior.
+- [ ] If `AGENTS.md` changed: `CLAUDE.md` still mirrors the non-negotiables,
+  both files share the same `Policy-Sync:` token, and `pnpm check:agent-policy`
+  passes. The reverse applies when only `CLAUDE.md` changed.
 - [ ] If architectural boundary changed: ADR is written or updated in `docs/adr/`.
 - [ ] If an implementation default changed: `decisions-log.md` entry updated.
 - [ ] If baseline frozen decisions are affected: baseline bump + explicit ADR (not MVP-normal).
@@ -239,7 +245,7 @@ user's delivery scope:
 | 9 | Requested local/remote `main` integration completed under R4; expected commits verified and merged worktree/branch removed; any requested launch uses integrated `main` | [R4 — Request branch + worktree + merge gate](03-ai-development-workflow.md#r4--request-branch--worktree--merge-gate) |
 | 10 | No merged worktree left on disk; `git worktree list` has no stale entry for this request | [§6.1 Merge Cleanup Checklist](#61-merge-cleanup-checklist) |
 | 11 | If a GitHub issue was linked: verified before work; commented in the issue language; closed when conclusive | [R5 — Verify linked GitHub issues](03-ai-development-workflow.md#r5--verify-linked-github-issues-before-work-then-reply-and-close) |
-| 12 | If a GitHub pull request was linked: principle reviewed; merged first when sound; follow-up after merge; contributor work not discarded | [R6 — Merge a linked pull request whose principle is sound, then follow up](03-ai-development-workflow.md#r6--merge-a-linked-pull-request-whose-principle-is-sound-then-follow-up) |
+| 12 | If a GitHub pull request was linked: root-cause bar reviewed; merged only when it actually fixes the problem with a minimal diff; follow-up after merge; contributor work not discarded for nits | [R6 — Land a linked pull request only when it fixes the root cause with a minimal diff](03-ai-development-workflow.md#r6--land-a-linked-pull-request-only-when-it-fixes-the-root-cause-with-a-minimal-diff) |
 
 If any applicable gate fails, the requested integration is **not Done**; report
 the blocker without weakening the gate.

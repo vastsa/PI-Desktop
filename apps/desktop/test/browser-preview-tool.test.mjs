@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const sidecarSource = await readFile(
-  new URL("../electron/main/agent-sidecar.ts", import.meta.url),
+  new URL("../../../packages/host-runtime/src/agent-sidecar.ts", import.meta.url),
   "utf8",
 );
 const mainSource = await readMainSource();

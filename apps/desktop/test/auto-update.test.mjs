@@ -91,11 +91,12 @@ test("main process registers update handlers and the auto-check lifecycle", () =
 });
 
 test("updater gates delivery mode by platform and delivery policy", () => {
-  // macOS stays manual-delivery even for notarized artifacts; dev builds are
-  // disabled outright.
+  // Packaged macOS, Windows NSIS, and Linux AppImage use in-app delivery.
+  // Dev builds are disabled outright.
   assert.match(updaterSource, /if \(!isPackaged\) return "disabled"/);
   assert.match(updaterSource, /win32.*in-app|in-app.*win32/s);
   assert.match(updaterSource, /PORTABLE_EXECUTABLE_FILE \? "manual"/);
+  assert.match(updaterSource, /platform === "darwin"[\s\S]*return "in-app"/);
   assert.match(updaterSource, /APPIMAGE/);
   assert.match(updaterSource, /autoInstallOnAppQuit = true/);
   assert.match(

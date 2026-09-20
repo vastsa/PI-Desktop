@@ -69,19 +69,54 @@ test("a viewport-fixed toggle is the sole pointer collapse control", () => {
   );
   assert.match(
     globalStyles,
-    /--ds-work-panel-toggle-gap:\s*20px/,
+    /--ds-work-panel-control-gap:\s*4px/,
+  );
+  // One gap for the whole header row: the same token spaces the strip-to-actions
+  // gap, the `+`/maximize pair, and the reserve that ends the content one gap
+  // before the viewport-fixed toggle.
+  assert.doesNotMatch(globalStyles, /--ds-work-panel-toggle-gap/);
+  assert.match(
+    globalStyles,
+    /\.work-panel-header \{[^}]*gap:\s*var\(--ds-work-panel-control-gap\);/s,
   );
   assert.match(
     globalStyles,
-    /\.work-panel-header \{[^}]*padding:\s*0\s+calc\([\s\S]*?var\(--ds-work-panel-toggle-size\)[\s\S]*?var\(--ds-work-panel-toggle-inset\)[\s\S]*?var\(--ds-work-panel-toggle-gap\)[\s\S]*?\)\s+0 12px;/s,
+    /\.work-panel-header \{[^}]*padding:\s*0\s+calc\([\s\S]*?var\(--ds-work-panel-toggle-size\)[\s\S]*?var\(--ds-work-panel-toggle-inset\)[\s\S]*?var\(--ds-work-panel-control-gap\)[\s\S]*?\)\s+0 12px;/s,
   );
+  // The action group states spacing only: the divider, inset, and margin that
+  // used to set the three panel buttons apart are gone, so they read as one
+  // group with the fixed collapse toggle at the shared control gap.
   assert.match(
     globalStyles,
-    /\.work-panel-actions \{[^}]*margin-right:\s*8px;[^}]*padding-right:\s*8px;[^}]*border-right:\s*1px solid var\(--ds-border-subtle\);/s,
+    /\.work-panel-actions \{[^}]*gap:\s*var\(--ds-work-panel-control-gap\);/s,
   );
+  assert.doesNotMatch(
+    globalStyles,
+    /\.work-panel-actions \{[^}]*margin-right:/s,
+  );
+  assert.doesNotMatch(
+    globalStyles,
+    /\.work-panel-actions \{[^}]*padding-right:/s,
+  );
+  assert.doesNotMatch(
+    globalStyles,
+    /\.work-panel-actions \{[^}]*border-right:/s,
+  );
+  // `+` and maximize are chrome icon controls: transparent at rest, hover wash
+  // only. A filled tile of their own re-seated the header's quiet group as two
+  // filled squares beside the toggle (chrome-control-geometry.test.mjs owns the
+  // family and its interaction states).
   assert.match(
     globalStyles,
-    /\.work-panel-new-tab \{[^}]*background:\s*var\(--ds-tile\);/s,
+    /\.work-panel-new-tab,\n\.work-panel-maximize \{[^}]*background:\s*transparent;/s,
+  );
+  assert.doesNotMatch(
+    globalStyles,
+    /\.work-panel-(?:new-tab|maximize)\s*\{[^}]*background:\s*var\(--ds-tile/,
+  );
+  assert.doesNotMatch(
+    globalStyles,
+    /\.app-work-panel-toggle\[aria-pressed="true"\] \{[^}]*box-shadow:/s,
   );
   assert.match(mainSource, /WORK_PANEL_HEADER_PROBE/);
   assert.match(mainSource, /querySelector\('\.work-panel-new-tab'\)/);
@@ -148,7 +183,7 @@ test("work panel uses the fixed-window internal dock", () => {
   // guest clamped to the plugin view is gone before the dock CSS animation.
   assert.match(
     panelSource,
-    /blocked=\{\s*exiting \|\| panelBlocked\s*\}/,
+    /blocked=\{\s*exiting \|\| panelBlocked \|\| blockingOverlayActive\s*\}/,
   );
   assert.match(panelSource, /nativeSurfaceReadyForExit/);
   assert.match(panelSource, /is-exit-pending/);
@@ -224,7 +259,7 @@ test("work panel header exposes a scrollable tab strip and direct new-page actio
   const pluginSurface = panelSource.slice(pluginSurfaceStart, pluginSurfaceEnd);
   assert.match(
     pluginSurface,
-    /blocked=\{\s*exiting \|\| panelBlocked\s*\}/s,
+    /blocked=\{\s*exiting \|\| panelBlocked \|\| blockingOverlayActive\s*\}/s,
   );
   assert.doesNotMatch(pluginSurface, /isResizing/);
   assert.doesNotMatch(panelSource, /createPortal|newTabMenuRef|menuOpen/);
@@ -367,17 +402,40 @@ test("work panel separator exposes internal panel width resizing", () => {
   assert.match(panelSource, /onPointerCancel=\{onPanelResizeCancel\}/);
   assert.match(panelSource, /onLostPointerCapture=\{onPanelResizeCancel\}/);
   assert.match(panelSource, /onKeyDown=\{onPanelResizeKeyDown\}/);
+  assert.match(panelSource, /onDoubleClick=\{onPanelResizeReset\}/);
+  assert.match(
+    panelSource,
+    /if \(drag\) finishPanelResize\(event\.currentTarget, drag\.pointerId, true\)/,
+  );
+  assert.match(panelSource, /workPanelResetWidth\(panelMinimum, layout\.maxPanelWidth\)/);
+  assert.match(panelSource, /workPanelWidthBounds\(/);
   assert.match(panelSource, /data-work-panel-resizing/);
   assert.match(globalStyles, /\.work-panel-resize \{[^}]*width:\s*10px;/s);
   assert.match(globalStyles, /touch-action:\s*none/);
   assert.match(globalStyles, /\.work-panel-resize:focus-visible/);
+  // Same short grip as the sidebar: 32px, centered, no full-height rail.
+  const resizeMarker =
+    globalStyles.match(/\.work-panel-resize::after\s*\{[^}]+\}/s)?.[0] ?? "";
+  assert.match(resizeMarker, /top:\s*50%/);
+  assert.match(resizeMarker, /height:\s*32px/);
+  assert.match(resizeMarker, /border-radius:\s*var\(--radius-full\)/);
+  assert.match(globalStyles, /\.work-panel-resize:hover::after,/);
+  assert.match(
+    globalStyles,
+    /\.work-panel-resize:focus-visible::after,[\s\S]*?background:\s*var\(--ds-accent\)/,
+  );
 });
 
 test("Electron enforces the responsive shell minimum", () => {
   assert.match(mainSource, /const WINDOW_MIN_WIDTH = 1040/);
   assert.match(mainSource, /const WINDOW_MIN_HEIGHT = 700/);
-  assert.match(mainSource, /minWidth:\s*windowMinWidth/);
-  assert.match(mainSource, /minHeight:\s*windowMinHeight/);
+  // The window creation clamps the minimum to fit the current work area, so
+  // the props are the clamped `initialMin*` values, both derived from
+  // `windowMin*` via `Math.min(windowMin*, restoreWorkArea.*)`.
+  assert.match(mainSource, /minWidth:\s*initialMinWidth/);
+  assert.match(mainSource, /minHeight:\s*initialMinHeight/);
+  assert.match(mainSource, /initialMinWidth = Math\.min\(windowMinWidth/);
+  assert.match(mainSource, /initialMinHeight = Math\.min\(windowMinHeight/);
 });
 
 test("built-in terminal is absent while the work panel keeps its other surfaces", () => {
@@ -390,30 +448,17 @@ test("built-in terminal is absent while the work panel keeps its other surfaces"
   assert.doesNotMatch(transcriptSource, /openTerminal|terminalArtifact|chat\.openTerminal/);
 });
 
-test("workspace artifacts attach review to their originating session", () => {
-  const artifactIndex = storeSource.indexOf("shouldOpenReviewArtifact({");
-  const openReviewMatch = storeSource.match(
-    /get\(\)\.openWorkPanelTabForSession\(\s*envelope\.sessionId,\s*toolWorkPanelTab\("review"\),?\s*\)/,
-  );
-  const openReviewIndex = openReviewMatch?.index ?? -1;
-  const gateIndex = storeSource.indexOf(
-    "if (envelope.sessionId !== get().activeSessionId)",
-  );
-  assert.ok(artifactIndex > -1, "workspace artifact gate exists");
-  assert.ok(openReviewIndex > artifactIndex, "review artifact records its session tab");
-  assert.ok(gateIndex > -1, "cross-session gate exists");
-  assert.ok(
-    openReviewIndex < gateIndex,
-    "background artifacts must be recorded before the cross-session early-return",
-  );
-  assert.match(
-    storeSource,
-    /shouldOpenReviewArtifact\(\{[\s\S]*toolName,[\s\S]*isError:\s*event\.isError,[\s\S]*result:\s*event\.result/s,
-  );
+test("tool results never open the Review tab on their own", () => {
+  // Review opens only from an explicit user action: the viewport toggle
+  // reveals the retained context and the `+` launcher lists its row. A
+  // successful Write/Edit may not record, activate, or reveal a tab for any
+  // session, visible or background.
+  assert.doesNotMatch(storeSource, /shouldOpenReviewArtifact/);
   assert.doesNotMatch(
-    storeSource.match(/shouldOpenReviewArtifact\(\{[\s\S]*?\}\)/)?.[0] ?? "",
-    /activeSessionId|sessionId/,
+    storeSource,
+    /openWorkPanelTabForSession\([\s\S]{0,120}toolWorkPanelTab\("review"\)/,
   );
+  assert.match(storeSource, /openWorkPanelTabForSession:/);
 });
 
 test("work panel context is retained by session instead of cleared on selection", () => {
@@ -562,7 +607,7 @@ test("preview mode keeps shell actions and restores routes before navigation", (
   assert.match(appSource, /className=\{cx\([\s\S]*?"window-chrome-row"/);
   assert.match(appSource, /data-nav="new-task"/);
   assert.match(appSource, /<CollapsedTitlebarActions[\s\S]*?onNewTask=/);
-  assert.match(appSource, /<WindowControls contained \/>/);
+  assert.match(appSource, /\{ready && !showSplash && <WindowControls \/>\}/);
   assert.match(appSource, /const workPanelMaximizedRef = useRef\(false\)/);
   assert.match(
     appSource,
@@ -576,28 +621,18 @@ test("preview mode keeps shell actions and restores routes before navigation", (
     appSource,
     /case "newTask":[\s\S]*?if \(workPanelMaximizedRef\.current\) setWorkPanelMaximized\(false\);/,
   );
-  assert.match(
-    globalStyles,
-    /\.window-chrome-row \{[\s\S]*?-webkit-app-region: drag;/,
-  );
-  assert.match(
-    globalStyles,
-    /\.window-chrome-row\.sidebar-expanded \{[\s\S]*?left: var\(--ds-sidebar-width\);/,
-  );
-  assert.match(
-    globalStyles,
-    /:root\[data-platform="darwin"\] \.window-chrome-row:not\(\.sidebar-expanded\) \{[\s\S]*?padding-left:\s*76px;/,
-  );
-  assert.match(
-    globalStyles,
-    /:root\[data-platform="darwin"\]\[data-fullscreen="true"\][\s\S]*?\.window-chrome-row:not\(\.sidebar-expanded\) \{[\s\S]*?padding-left:\s*8px;/,
-  );
-  assert.match(
-    globalStyles,
-    /:root\[data-platform="darwin"\]:not\(\[data-fullscreen="true"\]\)[\s\S]*?\.app-shell\.work-panel-maximized\.sidebar-collapsed\s+\.work-panel-header\s*\{[^}]*padding-left:\s*calc\(76px \+ var\(--ds-preview-action-lane-width\)\);/,
-  );
-  assert.match(
-    globalStyles,
-    /:root\[data-platform="darwin"\]\[data-fullscreen="true"\][\s\S]*?\.app-shell\.work-panel-maximized\.sidebar-collapsed\s+\.work-panel-header\s*\{[^}]*padding-left:\s*calc\(8px \+ var\(--ds-preview-action-lane-width\)\);/,
-  );
+  const row = globalStyles.match(/\.window-chrome-row \{[^}]*\}/)?.[0] ?? "";
+  const spacer = globalStyles.match(/\.window-chrome-drag \{[^}]*\}/)?.[0] ?? "";
+  assert.match(row, /pointer-events:\s*none/);
+  assert.match(row, /padding-left:\s*var\(--preview-chrome-inset\)/);
+  assert.ok(spacer);
+  assert.doesNotMatch(row + spacer, /app-region:|background:/);
+  assert.match(globalStyles, /\.window-chrome-row button \{[^}]*pointer-events:\s*auto;[^}]*app-region:\s*no-drag;/);
+  assert.match(globalStyles, /\.window-chrome-row\.sidebar-expanded \{[^}]*left: var\(--ds-sidebar-width\);/);
+  assert.match(globalStyles, /\.app-shell\.work-panel-maximized \{[^}]*--preview-chrome-inset:\s*8px;[^}]*--preview-chrome-action-lane:\s*calc\(var\(--ds-control-size\) \+ 8px\);/);
+  assert.match(globalStyles, /\.app-shell\.work-panel-maximized\.sidebar-collapsed \{[^}]*--preview-chrome-action-lane:\s*var\(--ds-preview-action-lane-width\);/);
+  assert.match(globalStyles, /:root\[data-platform="darwin"\] \.app-shell\.work-panel-maximized\.sidebar-collapsed \{[^}]*--preview-chrome-inset:\s*var\(--ds-window-lead-inset\);/);
+  assert.match(globalStyles, /\.app-shell\.work-panel-maximized \.work-panel-header \{[^}]*margin-left:\s*calc\(var\(--preview-chrome-inset\) \+ var\(--preview-chrome-action-lane\)\);[^}]*padding-left:\s*0;/);
+  assert.match(globalStyles, /\.work-panel-header \{[^}]*app-region:\s*drag;/);
+  assert.match(globalStyles, /\.app-shell\.work-panel-maximized \.work-panel-main \{[^}]*var\(--ds-bg-dock-raised\) 0 var\(--ds-toolbar-height\)/);
 });

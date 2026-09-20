@@ -5,11 +5,12 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [store, transcript, messagesStyles, proseStyles, en, zh] =
+const [store, transcript, messagesStyles, chatShellStyles, proseStyles, en, zh] =
   await Promise.all([
     readStoreSource(),
     readTranscriptSource(),
     read("../src/styles/messages.css"),
+    read("../src/styles/chat-shell.css"),
     read("../src/styles/prose.css"),
     read("../../../packages/i18n/src/locales/en/index.ts"),
     read("../../../packages/i18n/src/locales/zh-CN/index.ts"),
@@ -48,7 +49,7 @@ test("active turns show immediate and phase-specific feedback without a progress
   assert.match(transcript, /\{showPlanning \? <PlanningIndicator kind=\{planningKind\} \/> : null\}/);
   assert.match(
     transcript,
-    /planningState === "planning"[\s\S]*!activeToolGroup[\s\S]*!assistantIsAnswering/,
+    /planningState === "planning"[\s\S]*!hasSpecializedActivity/,
   );
   const planningBlock =
     transcript.match(/function PlanningIndicator\([\s\S]*?\n\}/)?.[0] ?? "";
@@ -76,8 +77,61 @@ test("active turns show immediate and phase-specific feedback without a progress
   assert.match(messagesStyles, /\.run-activity-error-popover\.message-error/);
   assert.match(
     messagesStyles,
+    /\.run-activity-error-popover\.message-error \{[\s\S]*?background:\s*color-mix\(in oklab,\s*var\(--ds-error\)[^;]*var\(--ds-bg-elevated-opaque\)/,
+  );
+  assert.match(
+    messagesStyles,
     /\.run-activity-retry-reason:hover[\s\S]*\.run-activity-error-popover/,
   );
+  // The retry plate hangs above the tail row inside `.thread-scroll`, whose
+  // `overflow: auto` clips it at the scrollport edge, and the conversation bar
+  // paints over the same band one stacking level higher. An unbounded plate
+  // therefore lost the first lines of a long provider message, so the plate is
+  // bounded to the room the tail row leaves and the rest scrolls.
+  const popoverRule =
+    messagesStyles.match(/\.run-activity-error-popover\.message-error \{[\s\S]*?\n\}/)?.[0] ??
+    "";
+  assert.match(
+    popoverRule,
+    /max-height: calc\(100vh - var\(--ds-toolbar-height, 46px\) - var\(--composer-dock-height, 228px\) - 70px\);/,
+  );
+  assert.match(
+    popoverRule,
+    /max-height: var\(--run-activity-error-max-height, calc\(100dvh - var\(--ds-toolbar-height, 46px\) - var\(--composer-dock-height, 228px\) - 70px\)\);/,
+  );
+  // The room depends on where the tail row sits, so the component measures it
+  // against the conversation bar and republishes it on resize and scroll.
+  assert.match(transcript, /--run-activity-error-max-height/);
+  assert.match(
+    transcript,
+    /closest\("\.thread-scroll"\)[\s\S]*?addEventListener\("scroll", measure/,
+  );
+  // The plate clips; only the body scrolls, so no scrollbar crosses the radius.
+  assert.match(popoverRule, /overflow: hidden;/);
+  const bodyRule =
+    messagesStyles.match(/\.run-activity-error-message \{[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.match(
+    bodyRule,
+    /max-height: var\(--run-activity-error-body-max-height, none\);/,
+  );
+  assert.match(bodyRule, /overflow-y: auto;/);
+  assert.match(bodyRule, /overscroll-behavior-y: contain;/);
+  assert.match(transcript, /--run-activity-error-body-max-height/);
+  // A bounded plate only helps if the revealed state can take the pointer.
+  const retryRevealRule =
+    messagesStyles.match(/\.run-activity-retry-reason:hover[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.match(retryRevealRule, /pointer-events: auto;/);
+  // The plate sits one gap above the trigger, and that band belongs to the
+  // indicator row: without a bridge on the trigger the pointer loses `:hover`
+  // while travelling to the plate's scrollbar and the message closes mid-reach.
+  assert.match(
+    messagesStyles,
+    /\.run-activity-retry-reason::before \{[\s\S]*?height: var\(--run-activity-error-gap\);[\s\S]*?\n\}/,
+  );
+  assert.match(popoverRule, /bottom: calc\(100% \+ var\(--run-activity-error-gap\)\);/);
+  // Leaving keeps the plate for one short beat so the trip is recoverable.
+  assert.match(popoverRule, /visibility 0s linear calc\(var\(--motion-duration-fast\) \+ 240ms\);/);
+  assert.doesNotMatch(retryRevealRule, /pointer-events: none;/);
   assert.match(messagesStyles, /\.run-activity-indicator\[data-phase="waiting-subagents"\]/);
   assert.match(messagesStyles, /\.working-indicator-mark > span\s*\{[\s\S]*?animation:\s*working-indicator-dot\s+1s/);
   assert.doesNotMatch(proseStyles, /\.working-indicator\s*\{|\.shimmer-text\s*\{/);
@@ -107,4 +161,29 @@ test("active turns show immediate and phase-specific feedback without a progress
   }
   assert.match(store, /agentStatuses: Record<string, AgentStatus>/);
   assert.match(store, /event\.type === "status"/);
+  // The tail status lane is part of the layout for the whole running turn, so
+  // the indicators coming and going cannot resize the transcript (issue #323).
+  assert.match(transcript, /const runtimeStatusLane = transcriptRunning;/);
+  assert.match(transcript, /\{runtimeStatusLane \? \(/);
+  assert.match(transcript, /className="transcript-runtime-status"/);
+  assert.match(
+    chatShellStyles,
+    /\.transcript-runtime-status \{[\s\S]*?display: flow-root;[\s\S]*?min-height: calc\(var\(--text-sm-plus\) \* var\(--leading-body\) \+ 22px\);/,
+  );
+  // An empty lane must read as nothing at all: the reserve is geometry only,
+  // so the rule may not paint a surface of its own.
+  const laneRule =
+    chatShellStyles.match(/\.transcript-runtime-status \{[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.match(laneRule, /min-height:/);
+  assert.doesNotMatch(laneRule, /background|box-shadow|border-style|border-width|border:/);
+  // The reserve is sized from the indicator's own box, so the two must be
+  // changed together or the row starts moving again.
+  assert.match(
+    messagesStyles,
+    /\.working-indicator \{[\s\S]*?margin: 2px 0 8px;[\s\S]*?padding: 8px 0 4px 16px;/,
+  );
+  assert.match(
+    messagesStyles,
+    /\.planning-state-indicator \{[\s\S]*?margin: 2px 0 8px;[\s\S]*?padding: 8px 0 4px 16px;/,
+  );
 });

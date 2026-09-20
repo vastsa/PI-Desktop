@@ -4,6 +4,12 @@
 - Date: 2026-09-15
 - Related: ADR 0073, ADR 0242, ADR `live-turn-throughput-estimate`
 
+## Context
+
+Completed throughput does not explain the wait before the first visible output.
+Renderer mount times cannot measure that wait consistently across reloads or
+tool-loop continuations, so the request owner must provide the timing.
+
 ## Decision
 
 The parent agent runtime measures one logical model request from entering its
@@ -26,6 +32,11 @@ The active and completed meta rows show seconds to one decimal place. A logical
 turn with several model calls displays the latest assistant message's value,
 never a sum or average. Subagent-native timing is outside this initial scope.
 Existing TPS sampling and provider diagnostic timing keep their meaning.
+
+## Consequences
+
+The readout survives reloads without changing existing database layouts. It
+measures client-observed latency; provider-internal timing remains unknown.
 
 ## Validation
 

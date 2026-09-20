@@ -119,7 +119,6 @@ export function LanguageRow({
     <div className="settings-row">
       <div className="settings-row-copy">
         <div className="settings-row-title">{t("settings.language")}</div>
-        <div className="settings-row-desc">{t("settings.languageDesc")}</div>
       </div>
       <div className="settings-row-control">
         <AnchoredMenu

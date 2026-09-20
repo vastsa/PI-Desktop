@@ -1,7 +1,10 @@
 PI-Desktop macOS first launch
 
-This build is unsigned. After moving PI-Desktop.app to Applications, if macOS
-says the app is damaged or does not open, open Terminal and run:
+Official GitHub Release builds are Developer ID-signed and notarized. After
+moving PI-Desktop.app to Applications, the app should open without extra steps.
+
+If you are using a local or unsigned build and macOS says the app is damaged
+or does not open, open Terminal and run:
 
 xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
 

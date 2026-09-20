@@ -37,6 +37,9 @@ PI-Desktop/
 │ ├── shared/                 # IPC/协议契约、错误码、更新日志
 │ ├── i18n/                   # en 与 zh-CN 目录及 locale 辅助函数
 │ ├── agent-runtime/          # pi sidecar 与运行时包装（打包进应用）
+│ ├── agent-host/             # 无头 Agent Host 模块：准入、队列、审批、事件日志
+│ ├── host-runtime/           # 与 Electron 无关的运行时：stdio 传输、监督器、回合生命周期
+│ ├── racp/                   # RACP-WS 服务端与客户端、设备令牌配对
 │ ├── plugin-sdk/             # 插件作者类型与校验器
 │ └── plugin-devkit/          # pi-plugin CLI：scaffold、check、pack、publish
 ├── examples/
@@ -110,7 +113,8 @@ Node 对 pi 的包装：
 
 ## 3. 运行时数据（不在 git 中）
 
-`PI_DESKTOP_DATA_DIR` 可覆盖默认位置。
+`PI_DESKTOP_DATA_DIR` 可覆盖默认位置：正式打包版为 `~/.pi-desktop`，开发构建为
+`~/.pi-desktop-dev`，`pnpm dev` 借此与正式版并行运行（D599）。
 
 ```text
 ~/.pi-desktop/

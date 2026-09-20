@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { IPC, type PluginSettingsDestinationMeta, type PluginViewMeta } from "@pi-desktop/shared";
-import { resolvePluginLocalizedString } from "@pi-desktop/plugin-sdk";
+import { IPC, type PluginScenicThemesDestinationMeta, type PluginViewMeta } from "@pi-desktop/shared";
+import { normalizeThemeAssetPath, pluginThemeId, resolvePluginLocalizedString, themeAssetUrl } from "@pi-desktop/plugin-sdk";
 import type { BrowserHost } from "../browser-host";
 import { BROWSER_PLUGIN_ID, BROWSER_VIEW_ID } from "../browser-host";
 import type { PluginRuntime } from "../plugin-runtime";
@@ -16,7 +16,6 @@ export type PluginUiIpcDependencies = {
   plugins: PluginRuntime;
   browserHost: BrowserHost;
   pluginViews: PluginViewHost;
-  pluginSettingsViews: PluginViewHost;
   pluginPanels: PluginPanelHost;
   pluginActiveInProject: (pluginId: string, projectPath: string | null | undefined) => boolean;
   currentWorkspacePath: () => string | null;
@@ -30,7 +29,6 @@ export function registerPluginUiIpc({
   plugins,
   browserHost,
   pluginViews,
-  pluginSettingsViews,
   pluginPanels,
   pluginActiveInProject,
   currentWorkspacePath,
@@ -55,6 +53,9 @@ export function registerPluginUiIpc({
       title: resolvePluginLocalizedString(manifest.ui.title, getUpdaterLocale(), manifest.name),
       locale: getUpdaterLocale(),
       theme: getPluginPanelTheme(),
+      shape: manifest.ui.shape,
+      alwaysOnTop: manifest.ui.alwaysOnTop,
+      resizable: manifest.ui.resizable,
       width: manifest.ui.width ?? 480,
       height: manifest.ui.height ?? 360,
       htmlPath,
@@ -104,46 +105,73 @@ export function registerPluginUiIpc({
     );
   });
 
-  handle(IPC.invoke.pluginSettingsDestinations, async () => {
-    const destinations: PluginSettingsDestinationMeta[] = [];
+  handle(IPC.invoke.pluginScenicThemesDestinations, async () => {
+    const destinations: PluginScenicThemesDestinationMeta[] = [];
     for (const loaded of plugins.listLoaded()) {
-      if (!loaded.permissions.has("ui.settings")) continue;
-      for (const destination of loaded.manifest.contributes?.settingsDestinations ?? []) {
-        const entry = resolveInsidePluginRoot(loaded.path, destination.entry);
-        if (!entry || !existsSync(entry)) continue;
-        destinations.push({
-          pluginId: loaded.manifest.id,
-          destinationId: destination.id,
-          ref: pluginViewKey(loaded.manifest.id, destination.id),
-          label: resolvePluginLocalizedString(destination.label, getUpdaterLocale(), destination.id),
-          pluginName: loaded.manifest.name,
-          icon: destination.icon,
-          keywords: (destination.keywords ?? []).map((keyword) => resolvePluginLocalizedString(keyword, getUpdaterLocale(), "")),
+      if (!loaded.permissions.has("ui.settings") || !loaded.permissions.has("ui.theme")) continue;
+      const scenicThemes = loaded.manifest.contributes?.scenicThemes;
+      if (!scenicThemes) continue;
+      const pluginId = loaded.manifest.id;
+      const cards: PluginScenicThemesDestinationMeta["themes"] = [];
+      let valid = true;
+      for (const card of scenicThemes.themes) {
+        const contribution = (loaded.manifest.contributes?.themes ?? []).find((theme) => theme.id === card.themeId);
+        const namespacedThemeId = pluginThemeId(pluginId, card.themeId);
+        const theme = plugins.getThemes().find((candidate) => candidate.id === namespacedThemeId);
+        const previewAsset = normalizeThemeAssetPath(card.previewAsset);
+        const ownsTheme = theme?.pluginId === pluginId;
+        const ownsPreview = !!contribution && !!previewAsset && (contribution.assets ?? []).some((asset) => normalizeThemeAssetPath(asset) === previewAsset);
+        const blur = contribution?.variables?.find((variable) => variable.name === "--nexus-backdrop-blur");
+        const validBlur = blur?.type === "length" && blur.unit === "px" && blur.min === 0 && blur.max === 20 && Number.isInteger(blur.default);
+        if (!ownsTheme || !ownsPreview || !validBlur) {
+          valid = false;
+          break;
+        }
+        const stored = plugins.getThemeVariableValue(pluginId, namespacedThemeId, "--nexus-backdrop-blur");
+        const currentBlur = typeof stored === "number" && Number.isInteger(stored) && stored >= 0 && stored <= 20 ? stored : blur.default;
+        cards.push({
+          themeId: namespacedThemeId,
+          label: resolvePluginLocalizedString(card.label, getUpdaterLocale(), card.themeId),
+          description: resolvePluginLocalizedString(card.description, getUpdaterLocale(), ""),
+          previewUrl: themeAssetUrl(pluginId, previewAsset),
+          blur: currentBlur,
+          blurDefault: blur.default,
         });
       }
+      if (!valid || !cards.length) continue;
+      destinations.push({
+        pluginId,
+        destinationId: scenicThemes.id,
+        ref: pluginViewKey(pluginId, scenicThemes.id),
+        label: resolvePluginLocalizedString(scenicThemes.label, getUpdaterLocale(), scenicThemes.id),
+        description: resolvePluginLocalizedString(scenicThemes.description, getUpdaterLocale(), ""),
+        pluginName: loaded.manifest.name,
+        icon: "palette",
+        keywords: (scenicThemes.keywords ?? []).map((keyword) => resolvePluginLocalizedString(keyword, getUpdaterLocale(), "")),
+        themes: cards,
+      });
     }
     return destinations.sort((a, b) => a.pluginName.localeCompare(b.pluginName) || a.destinationId.localeCompare(b.destinationId));
   });
 
-  handle(IPC.invoke.pluginSettingsViewOpen, async (payload: { pluginId?: string; destinationId?: string }) => {
+  handle(IPC.invoke.pluginScenicThemesSetBlur, async (payload: { pluginId?: string; themeId?: string; blur?: unknown }) => {
     const pluginId = String(payload?.pluginId ?? "");
-    const destinationId = String(payload?.destinationId ?? "");
+    const themeId = String(payload?.themeId ?? "");
+    const blur = payload?.blur;
+    if (!Number.isInteger(blur) || (blur as number) < 0 || (blur as number) > 20) {
+      throw new Error("INVALID_ARGUMENT: blur must be an integer from 0 to 20");
+    }
     const loaded = plugins.getLoaded(pluginId);
-    if (!loaded || !loaded.permissions.has("ui.settings")) throw new Error("PERMISSION_DENIED: ui.settings");
-    const destination = (loaded.manifest.contributes?.settingsDestinations ?? []).find((entry) => entry.id === destinationId);
-    const htmlPath = destination ? resolveInsidePluginRoot(loaded.path, destination.entry) : null;
-    if (!htmlPath || !existsSync(htmlPath)) throw new Error("settings destination entry missing");
-    pluginSettingsViews.open({ pluginId, viewId: destinationId, locale: getUpdaterLocale(), theme: getPluginPanelTheme(), htmlPath, netDomains: loaded.manifest.net?.domains?.map(String) });
+    const destination = loaded?.manifest.contributes?.scenicThemes;
+    if (!loaded || !destination || !loaded.permissions.has("ui.settings") || !loaded.permissions.has("ui.theme")) {
+      throw new Error("PERMISSION_DENIED: scenic theme controls unavailable");
+    }
+    const owned = destination.themes.some((card) => pluginThemeId(pluginId, card.themeId) === themeId);
+    if (!owned) throw new Error("NOT_FOUND: scenic theme not found");
+    await plugins.setScenicThemeBlur(pluginId, themeId, blur as number);
     return { ok: true };
   });
-  handle(IPC.invoke.pluginSettingsViewSetBounds, async (bounds: { x: number; y: number; width: number; height: number }) => {
-    pluginSettingsViews.setBounds(bounds ?? { x: 0, y: 0, width: 0, height: 0 });
-    return { ok: true };
-  });
-  handle(IPC.invoke.pluginSettingsViewSetVisible, async (payload: { pluginId?: string; destinationId?: string; visible?: boolean }) => {
-    pluginSettingsViews.setVisible(String(payload?.pluginId ?? ""), String(payload?.destinationId ?? ""), payload?.visible === true);
-    return { ok: true };
-  });
+
 
   handle(
     IPC.invoke.pluginViewOpen,

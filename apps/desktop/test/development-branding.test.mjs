@@ -189,7 +189,7 @@ test(
         "canonical-icon",
       );
       assert.match(plist, /<string>PI-Desktop<\/string>/);
-      assert.match(plist, /<string>com\.pi-desktop\.app\.dev<\/string>/);
+      assert.match(plist, /<string>net\.aiuo\.pi-desktop\.dev<\/string>/);
       assert.equal(prepareMacDevelopmentBundle(options), brandedExecutable);
     } finally {
       await rm(root, { recursive: true, force: true });

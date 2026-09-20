@@ -72,6 +72,7 @@ pub struct AppState {
 impl AppState {
     pub fn open(data_dir: &std::path::Path) -> Result<Self> {
         let db = Database::open_in_dir(data_dir)?;
+        crate::scheduled::automation::recover(&db)?;
         // Replies that were still streaming when the previous process ended
         // are promoted into their transcripts before any client can read them
         // (D299). The turn sweep inside `open` has already marked those turns
@@ -94,15 +95,14 @@ impl AppState {
             Err(error) => tracing::warn!(%error, "in-flight reply sweep failed"),
         }
         let secrets = SecretStore::open(data_dir)?;
-        // The marketplace source is read before the manager builds its first
-        // catalog, so a mirror configured for networks without GitHub access
+        // The marketplace channel is read before the manager builds its first
+        // catalog, so a source configured for networks without GitHub access
         // applies on launch instead of only after a manual refresh.
         let app_settings = db.get_setting("app").unwrap_or_default();
         crate::network_proxy::apply_from_settings(app_settings.as_ref());
-        let plugins = PluginManager::new(
-            data_dir,
-            crate::plugins::market_source_from_settings(app_settings.as_ref()),
-        );
+        let (channel, custom_url) =
+            crate::plugins::market_channel_from_settings(app_settings.as_ref());
+        let plugins = PluginManager::new(data_dir, channel, custom_url);
         // Provider rows a plugin declared are rebuilt from the registry on
         // launch, so the table matches the enabled plugins whatever path
         // (install, enable, an upgraded manifest) last changed them.

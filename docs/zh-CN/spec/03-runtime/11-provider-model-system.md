@@ -70,9 +70,9 @@ OpenCode Go 以一个名为 `opencode_go` 的 API 风格预设暴露。它仍然
 `https://opencode.ai/zen/go/v1`，使用 Bearer API key 认证，从 `/models` 发现
 模型，并通过 pi-ai 的 OpenAI Chat Completions 适配器发送对话回合。它不会另建
 第二条传输链路，也不会形成封闭的模型许可名单。Agent 运行时会在每一次 LLM
-请求上注入 OpenCode 路由标头（会话回合、子代理、提示增强以及插件的一次性
-调用）：`x-opencode-session` 是持久的对话 id（调用方没有会话时则是按次生成的
-UUID），`x-opencode-client` 为 `pi-desktop`，`User-Agent` 为
+请求上注入 OpenCode 路由标头（会话回合、子代理、上下文压缩摘要、提示增强以及
+插件的一次性调用）：`x-opencode-session` 是持久的对话 id（调用方没有会话时则是
+按次生成的 UUID），`x-opencode-client` 为 `pi-desktop`，`User-Agent` 为
 `pi-desktop/<APP_VERSION>`，除非该行设置了 `headers["User-Agent"]`。base URL
 主机为 `opencode.ai` 的自定义 OpenAI 兼容行也会收到同样的标头。系统不依赖
 pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth 账户）都可以
@@ -189,8 +189,8 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
    sidecar 与上下文检查器仍处在同一个有效窗口上。
 8. 设置为每个 binding 渲染七个规范思考级别。对已知的推理模型，已发布的级别
    一开始就是选中的。非推理或未知模型显示同样的选项但不选中，并附一行简短的
-   手动覆盖说明。`defaultThinkingLevel` 从该 binding 已启用的级别中选取，
-   因此存下来的默认值始终属于那个显式集合。
+   手动覆盖说明。`defaultThinkingLevel` 从 `omit` 加上该 binding 已启用的级别
+   中选取，因此存下来的默认值要么是 `omit`，要么属于那个显式集合。
 9. `supportsImages` 与 `supportsDocuments` 是三态覆盖。缺省或 `null` 表示跟随
    已发布的 models.dev 模态，因此目录的更正仍然能作用到已保存的 binding；
    `true` 或 `false` 是用户的显式回答，并在目录变动后继续有效。与思考级别
@@ -201,6 +201,16 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
 10. 设置里的复选框展示的是相对于已发布基线的有效答案；把某一项设回已发布的
     值，存下来的是"跟随目录"，而不是一个取值相同的覆盖。因此与 models.dev
     保持一致本身就是重置，不需要另外的重置控件，也不需要逐项能力的解释文案。
+10a. `nativeWebSearch` 是两态的主动开启（缺省即关闭；没有目录基线，因为
+    models.dev 不发布托管工具能力）。启用且模型解析后的线路 API 是
+    `anthropic-messages`、`openai-responses` 或 `azure-openai-responses`
+    （存储的 apiStyle 为 `anthropic_messages` / `responses`）时，适配器会
+    附加提供商托管的联网搜索工具（`web_search_20250305` / `web_search`），
+    把搜索活动提取为 `UiMessage.hostedSearch`（`rounds` 用于展示，`replay`
+    用于 convertMessages），并在后续回合——包括重启之后——回放这些原始
+    搜索块（ADR 0297）。提供商接口风格不属于这两种时复选框禁用。不支持
+    该工具的网关会把提供商错误暴露出来；处理方式是取消勾选。搜索在提供商
+    侧执行：没有本地抓取，也没有权限询问。压缩仍会丢掉搜索块。
 11. `ModelInfo` 是设置界面用来对照的已发布记录，因此已存储的 binding 不得
     塑造它的能力或推理字段。有效上限、推理与思考级别都通过那个确切的 binding
     解析；有效的传输模态数组还会额外套用显式的附件覆盖。
@@ -278,9 +288,12 @@ type UserModelConfig = {
 type ModelBinding = {
   id: string
   contextWindow: number
+  /** `contextWindow` 的来源；早于该标记的记录没有此字段，按历史规则解析
+   * （见 `13-model-catalog-and-selection.md` §9.1）。 */
+  contextWindowSource?: "catalog" | "user"
   maxTokens: number
   thinkingLevels: ThinkingLevel[]
-  defaultThinkingLevel: ThinkingLevel | null
+  defaultThinkingLevel: SessionThinkingLevel | null
   availableForSubagents?: boolean // opt-in for AI-driven delegation
 }
 
@@ -318,7 +331,9 @@ agent 系统提示的委托目录中。父 agent 随后就能通过 Task 工具�
 正常的固定模型解析生效，包括 `Task.model` 重复该定义自己的固定键。按需匹配使用唯一
 provider id/vendor/name 查找，不得用另一账号凭据覆盖固定模型。多个账号的 vendor/model 别名冲突时，已勾选账号改用
 确切的提供商 ID 作为覆盖键。优先级保持 Task.model → 定义固定模型 → 会话模型
-（D278；ADR subagent-model-opt-in）。
+（D278；ADR subagent-model-opt-in）。该许可约束所有让 AI 为委派工作挑选模型的入口，
+而不只是 `Task.model`：`session/collaboration/spawn` 的 `modelKey` 指向未勾选的模型时
+以 `PERMISSION_DENIED` 拒绝，省略该键或写出默认模型自己的键仍按继承处理。
 
 ## 8. 秘密
 

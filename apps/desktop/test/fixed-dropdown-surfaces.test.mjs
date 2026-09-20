@@ -29,6 +29,7 @@ const anchoredSurfaceSources = await Promise.all(
 const dropdownSurfaces = [
   "settings-font-menu",
   "settings-theme-menu",
+  "settings-menu-select-menu",
   "provider-service-menu",
   "model-default-menu",
   "provider-model-multi-menu",
@@ -47,6 +48,7 @@ const dropdownSurfaces = [
   "composer-autocomplete",
   "context-inspector-popover",
   "home-project-switcher-menu",
+  "context-menu",
 ];
 
 function findSurfaceRule(className) {

@@ -159,6 +159,28 @@ pairing only binds a desktop device to the Host it started.
 - Provider configuration for the remote Host is written over the SSH channel
   by the bootstrap step as Host-local configuration; it never crosses RACP.
 
+**SSH credential handling (ADR 0293).** The desktop MAY hold the SSH login
+password for a host the user paired that way, under these rules:
+
+- The password is supplied by the user in Settings, is passed to the system
+  `ssh` client through OpenSSH's askpass helper, and is never an `ssh`
+  argument, an environment variable value, or part of a URL.
+- Credential material exists on disk only inside a `0700` directory as a `0600`
+  file, only while an `ssh` child can still prompt for it, and is removed on
+  every path including a failed forward and `dispose`.
+- It is persisted at rest only through the same OS-keychain encryption the
+  device token uses, and a password that cannot be decrypted costs the secret
+  rather than the paired host.
+- The renderer never receives it: `RemoteHostSummary` and
+  `RemoteHostSshMetadata` carry no secret field.
+- A password containing a line break cannot survive the askpass round trip and
+  is rejected before any remote command runs. Windows OpenSSH cannot execute
+  the helper and is refused with a remedy instead.
+- Password mode is exclusive: `PubkeyAuthentication=no` and
+  `NumberOfPasswordPrompts=1`. Default identities are not tried, because an
+  encrypted local key would consume the single askpass answer as a passphrase.
+  A user with both a key and a password picks key mode.
+
 ## 4. Authorization model
 
 ### 4.1 Role matrix
@@ -478,7 +500,10 @@ separate, explicitly specified credential-management capability is added.
 20. A session terminal opens only for the SSH-paired owner or a principal
     with the `terminal` scope, with its working directory inside the session
     root.
-
+    root.
+21. An SSH login password is supplied only by the user, reaches `ssh` only
+    through the askpass helper, is stored only encrypted, and never appears in
+    a process argument list, the renderer, or a log line.
 ## 13. Amendment history
 
 D374 (2026-09-10) added the browser cookie/header authentication profiles,
@@ -502,3 +527,8 @@ D385 (2026-09-10) withdrew the first-party identity source: remote control
 is user-local by construction, every credential is issued by the user's own
 Host, and any Gateway is self-hosted and admits clients with those device
 credentials.
+
+D454 (2026-09-19) added SSH password authentication for the bootstrap (§3.4,
+ADR 0293): the credential-handling rules above and gate 21. It relaxes
+`BatchMode=yes` for a password target only, with `NumberOfPasswordPrompts=1`
+and `PubkeyAuthentication=no`, and keeps a key or agent as the default path.

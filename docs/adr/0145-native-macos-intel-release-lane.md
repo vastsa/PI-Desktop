@@ -1,9 +1,9 @@
 # ADR 0145: Publish Native macOS Intel Artifacts
 
-- Status: Accepted (amended by D353 and ADR 0191)
+- Status: Accepted (amended by D353, ADR 0191, D450 / ADR 0289)
 - Date: 2026-09-01
 - Deciders: PI-Desktop core
-- Related: D126, D285, D353, D354, ADR 0022, ADR 0191, E2E-092
+- Related: D126, D285, D353, D354, D450, ADR 0022, ADR 0191, ADR 0289, E2E-092
 
 ## Context
 
@@ -34,9 +34,9 @@ unless the sidecar architecture is independently managed and verified.
    supersedes that suffix convention: both lanes now use their standard
    architecture labels, `-arm64` and `-x64`, with updater URLs and checksums
    generated from those final names.
-6. macOS update behavior remains notify-and-link until a signed in-app channel
-   is qualified. This decision changes release artifact coverage and native
-   packaging only; it does not change updater ownership or signing policy.
+6. macOS in-app update delivery is qualified separately by D450 / ADR 0289.
+   This decision changes release artifact coverage and native packaging only;
+   it does not change updater ownership.
 
 ## Consequences
 
@@ -62,3 +62,8 @@ unless the sidecar architecture is independently managed and verified.
 - Publish separate updater feeds permanently: rejected because the current
   macOS delivery mode is notify-and-link and the GitHub Release should expose
   one macOS feed when a signed update channel becomes available.
+
+## Amendment (D450 / ADR 0289)
+
+The merged `latest-mac.yml` now drives in-app macOS updates. Architecture
+coverage and native packaging in this ADR are unchanged.

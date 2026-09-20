@@ -16,7 +16,7 @@ import {
   resolveRealOpenablePath,
   resolveWithinRoot,
   MAX_TEXT_BYTES,
-} from "../electron/main/fs-panel.ts";
+} from "../../../packages/host-runtime/src/workspace-files.ts";
 
 const ROOT = resolve("virtual-workspace");
 

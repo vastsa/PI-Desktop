@@ -38,7 +38,12 @@ function handle(msg) {
     send({
       jsonrpc: "2.0",
       id: msg.id,
-      result: { tools: [{ name: "lookup", description: "Look something up" }, { name: "ping" }] },
+      result: {
+        tools: [{ name: "lookup", description: "Look something up" }, { name: "ping" }],
+        // A server that keeps handing back the same cursor can never be listed
+        // to its last page, so the client has to refuse it.
+        ...(process.env.STUB_REPEAT_CURSOR ? { nextCursor: "more" } : {}),
+      },
     });
     return;
   }
@@ -445,4 +450,22 @@ test("configurationChanged separates what a server is from who may use it", () =
   assert.equal(configurationChanged(base, { ...base, enabled: false }), true);
   // Re-enabling does not invalidate anything: nothing was running.
   assert.equal(configurationChanged({ ...base, enabled: false }, base), false);
+});
+
+test("a server whose catalog cannot be listed lands as failed with the reason", async (t) => {
+  const dir = stubDir();
+  const rt = runtime(t);
+  rt.setRecords([stubRecord(dir, { env: { STUB_REPEAT_CURSOR: "1" } })]);
+
+  // The guard trips inside the handshake, so the server contributes nothing
+  // rather than a prefix of its catalog.
+  assert.deepEqual(await rt.toolsForProject("/repo"), []);
+  const status = rt.statusFor("stub");
+  assert.equal(status.state, "failed");
+  assert.equal(status.toolCount, 0);
+  assert.match(status.message, /repeated a tools\/list cursor/);
+
+  // A server that already failed this run is not handshaken again per session.
+  assert.deepEqual(await rt.toolsForProject("/repo"), []);
+  assert.equal(rt.statusFor("stub").state, "failed");
 });

@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.14.8-native.1",
+  "version": "0.15.2-beta.1",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -37,9 +37,11 @@
     "@earendil-works/pi-ai": "0.85.1",
     "@pi-desktop/agent-host": "workspace:*",
     "@pi-desktop/agent-runtime": "workspace:*",
+    "@pi-desktop/host-runtime": "workspace:*",
     "@pi-desktop/i18n": "workspace:*",
     "@pi-desktop/plugin-devkit": "workspace:*",
     "@pi-desktop/plugin-sdk": "workspace:*",
+    "@pi-desktop/racp": "workspace:*",
     "@pi-desktop/shared": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.18",
@@ -73,7 +75,7 @@
     "zustand": "^5.0.15"
   },
   "build": {
-    "appId": "com.pi-desktop.app",
+    "appId": "net.aiuo.pi-desktop",
     "productName": "PI-Desktop",
     "directories": {
       "output": "release"
@@ -145,6 +147,14 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "PI-Desktop needs local network access so agents can reach OpenAI-compatible providers, Ollama, and other AI endpoints running on your LAN. / PI-Desktop 需要本地网络访问权限，以便助手请求同一局域网中的 OpenAI 兼容服务、Ollama 等本地 AI 端点。",
+        "NSMicrophoneUsageDescription": "PI-Desktop plugins may use the microphone after you grant them audio access. / 在你授权后，PI-Desktop 插件可以使用麦克风。",
+        "NSBonjourServices": [
+          "_http._tcp",
+          "_https._tcp"
+        ]
+      },
       "extraResources": [
         {
           "from": "../../target/release/pi-desktop-host-core",
@@ -163,29 +173,23 @@
     "dmg": {
       "artifactName": "PI-Desktop-${version}-${arch}.${ext}",
       "background": "build/dmg-background.png",
+      "icon": "build/icon.icns",
       "window": {
         "width": 720,
-        "height": 500
+        "height": 440
       },
-      "iconSize": 96,
+      "iconSize": 128,
       "iconTextSize": 12,
       "contents": [
         {
           "x": 180,
-          "y": 240
+          "y": 196
         },
         {
           "x": 540,
-          "y": 240,
+          "y": 196,
           "type": "link",
           "path": "/Applications"
-        },
-        {
-          "x": 470,
-          "y": 370,
-          "type": "file",
-          "name": "If app won't open, read this.txt",
-          "path": "PI-Desktop-macOS-opening-help.txt"
         }
       ]
     },

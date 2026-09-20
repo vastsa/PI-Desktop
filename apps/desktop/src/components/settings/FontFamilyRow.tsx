@@ -24,10 +24,12 @@ import { IconCheck, IconChevronDown, IconSearch } from "../icons";
 
 /**
  * Global UI font picker (Settings → Basics → Appearance). Offers the
- * system default, bundled open-licensed families, and installed system
- * families; the selected stack is persisted as `AppSettings.fontFamily`
- * and applied to `--font-sans` by App. Selecting System default persists an
- * empty stack, which every consumer treats as the built-in token stack.
+ * system default and installed system families; the app bundles no fonts of
+ * its own. The selected stack is persisted as `AppSettings.fontFamily`
+ * and applied to `--font-sans` by App. Selecting the localized system-default
+ * option persists an empty stack, which every consumer treats as the built-in
+ * token stack. The closed trigger and search haystack use `settings.fontSystemDefault`
+ * so the English catalog label in `fonts.ts` never reaches the UI.
  */
 export function FontFamilyRow({
   settings,
@@ -153,20 +155,26 @@ export function FontFamilyRow({
   const selectedValue = settings.fontFamily ?? "";
   const selectedOption =
     options.find((option) => option.value === selectedValue) ?? null;
+  const defaultLabel = t("settings.fontSystemDefault");
   const selectedLabel =
-    selectedOption?.label ?? readableFontFamily(settings.fontFamily ?? "");
+    selectedOption?.group === "default" || selectedValue === ""
+      ? defaultLabel
+      : selectedOption?.label ?? readableFontFamily(settings.fontFamily ?? "");
   const selectedFamily = selectedOption?.family ?? readableFontFamily(selectedValue);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return options;
-    return options.filter((option) =>
-      option.label.toLowerCase().includes(needle),
-    );
-  }, [options, query]);
+    return options.filter((option) => {
+      const haystack =
+        option.group === "default"
+          ? `${defaultLabel} ${option.label}`.toLowerCase()
+          : option.label.toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [defaultLabel, options, query]);
 
   const groupLabel = useCallback((group: string) => {
-    if (group === "bundled") return t("settings.fontBundled");
     if (group === "system") return t("settings.fontSystem");
     if (group === "custom") return t("settings.fontCustom");
     return t("settings.fontSystemDefault");
@@ -294,7 +302,6 @@ export function FontFamilyRow({
     <div className="settings-row">
       <div className="settings-row-copy">
         <div className="settings-row-title">{t("settings.font")}</div>
-        <div className="settings-row-desc">{t("settings.fontDesc")}</div>
       </div>
       <div className="settings-row-control">
         <div className="settings-font" ref={rootRef} onKeyDown={onKeyDown}>
@@ -405,11 +412,6 @@ export function FontFamilyRow({
                                 ? t("settings.fontSystemDefault")
                                 : row.option.label}
                             </span>
-                            {row.option.license ? (
-                              <span className="settings-font-item-license">
-                                {row.option.license}
-                              </span>
-                            ) : null}
                             {row.option.value === selectedValue ? (
                               <IconCheck
                                 size={14}

@@ -361,15 +361,21 @@ or executable path hash is accepted as shell identity.
   `~/.zshrc` / `~/.zprofile` would otherwise be invisible to agent commands.
   The probe is best-effort: missing shell, non-zero exit, or timeout fall back
   to the host PATH unchanged. Agent commands stay POSIX bash (D181 / ADR 0045).
+  Electron main applies the same lookup to stdio MCP spawn (`uvx`/`npx` from
+  the market) so a Finder/Dock launch can find them (D600 / issue #571).
 - No bash bundled in the installer: Git for Windows is the Windows prerequisite (the app requires git anyway)
 - Resolution failure returns stable `SHELL_NOT_FOUND` with install guidance
 - Windows PowerShell and cmd use their native non-interactive invocation.
 - PowerShell 7 resolves `pwsh.exe` from `%ProgramFiles%\PowerShell\7` (or
   `ProgramW6432` when the host process is 32-bit), then PATH, which covers
-  machine-scope, Store, user-scope, and portable installs. It shares the
-  Windows PowerShell 5.1 invocation contract and is never selected implicitly,
-  so it cannot change an existing user's default shell. Resolution failure
-  returns `SHELL_NOT_FOUND` naming the locations that were searched.
+  machine-scope, Store, user-scope, and portable installs. The PATH probe
+  treats Microsoft Store / MSIX app-execution aliases under `WindowsApps`
+  (`IO_REPARSE_TAG_APPEXECLINK`) as present executables, because winget's
+  default PowerShell 7 layout is an `msixbundle` that does not create
+  `%ProgramFiles%\PowerShell\7`. It shares the Windows PowerShell 5.1
+  invocation contract and is never selected implicitly, so it cannot change an
+  existing user's default shell. Resolution failure returns `SHELL_NOT_FOUND`
+  naming the locations that were searched.
 - Git Bash uses the discovered Git for Windows executable.
 - Unix Bash uses an approved system Bash entry.
 - User abort and timeout terminate the complete process tree before returning.

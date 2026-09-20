@@ -5,10 +5,16 @@
  * (the public-HTTPS client). One failing source only costs itself.
  */
 import {
+  PUBLIC_NETWORK_POLICY_ERROR,
+  isProxyFakeIpAddress,
   isSafeSkillSourceUrl,
+  publicNetworkRefusalDetail,
   sanitizeSkillCatalogId,
   splitSkillDocument,
   validateSkillCatalogFile,
+  type PublicNetworkAddressKind,
+  type PublicNetworkRefusalReason,
+  type PublicNetworkRoute,
   type SkillCatalogCategory,
   type SkillCatalogEntry,
   type SkillMarketSource,
@@ -17,9 +23,70 @@ import {
 
 export type CatalogRequest = (url: string, kind: "json" | "text") => Promise<unknown>;
 
+/**
+ * Why a source failed. `policy` means the guard judged an address (or the URL
+ * itself) and refused it, and the address is the target's own. `fake-ip` is a
+ * refusal of an address the *local proxy* invented for the name — Clash's
+ * `198.18.0.0/15`, refused exactly as any other non-public address, but a
+ * condition of the local network rather than a fact about the source.
+ * `unresolved` means the local resolver produced no answer at all, so nothing
+ * was judged — also an environment condition, and likewise never an
+ * address-check block. `network` is everything else (issue #419).
+ */
+export type SkillMarketFailureKind = "policy" | "fake-ip" | "unresolved" | "network";
+
+/** Everything the panel and the log may say about one failed source. */
+export type SkillMarketFailureDetail = {
+  kind: SkillMarketFailureKind;
+  /**
+   * The host that actually failed. For a GitHub scan that is `api.github.com`
+   * or `cdn.jsdelivr.net`, not the repository URL the user typed, so the
+   * diagnostics name the host the guard really refused.
+   */
+  host?: string;
+  /** The guard's structured reason, when a guard refusal produced this. */
+  reason?: PublicNetworkRefusalReason;
+  /**
+   * The address the guard resolved `host` to, when a policy check judged one.
+   * This is the local resolver's answer — not user input, not a URL component —
+   * and it is the most diagnostic field a refusal has: `198.18.0.1` reads as a
+   * proxy in fake-IP mode at a glance, which is exactly the case issue #419 is
+   * about. Only a well-formed IP literal is carried (see
+   * `publicNetworkRefusalDetail`).
+   */
+  address?: string;
+  /**
+   * The class of that address — `benchmark` for a TUN fake-IP, `private` for
+   * RFC1918, `loopback` for a redirect to localhost. The class is what a caller
+   * decides on; the address is what the user recognises.
+   */
+  addressKind?: PublicNetworkAddressKind;
+  /**
+   * The route the guard judged the failing address on, when the transport could
+   * name one. A fake-IP answer is tolerated on a proxied route because this app
+   * never dials it, and refused on a direct or unreadable one because it would
+   * (ADR 0272).
+   */
+  route?: PublicNetworkRoute;
+};
+
 export type SkillMarketSearchResult = {
   entries: SourcedSkillEntry[];
   failedSources: string[];
+  /**
+   * `failedSources` alone cannot tell the user why the market went quiet. Keyed
+   * by the same display name so the panel can explain a policy refusal apart
+   * from a source that is merely unreachable, or from a host the *local
+   * resolver* never answered. Repeated names collapse, exactly as they already
+   * do in `failedSources`, keeping the most specific explanation.
+   */
+  failureKinds: Record<string, SkillMarketFailureKind>;
+  /**
+   * The same keys as `failureKinds`, with the host and the structured reason —
+   * what the panel and the diagnostics log need to name the refused host
+   * instead of just the source label (issue #419).
+   */
+  failureDetails: Record<string, SkillMarketFailureDetail>;
 };
 
 export type SkillMarketDocument = {
@@ -33,6 +100,77 @@ const CACHE_TTL_MS = 5 * 60_000;
 const GITHUB_REPO = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/?#]|$)/;
 const JSDELIVR_GH = /^https:\/\/cdn\.jsdelivr\.net\/gh\/([^/]+)\/([^/]+)@([^/]+)\/(.+)$/;
 const SKILL_FILE = /(?:^|\/)SKILL\.md$/;
+
+/**
+ * Why a request failed, exported so the IPC boundary and the aggregator share
+ * one classifier instead of re-deriving it (issue #419).
+ */
+export function classifySkillMarketFailure(error: unknown): SkillMarketFailureKind {
+  // Structural check so this module keeps no dependency on the client's
+  // `node:dns` import and stays testable as a pure module. A refusal that
+  // cannot name its reason is still a refusal, so it stays `policy`.
+  const refusal = publicNetworkRefusalDetail(error);
+  if (!refusal) return "network";
+  if (refusal.reason === "resolve-failed") return "unresolved";
+  // A fake-IP answer is refused like any other non-public address, but the
+  // address is the *proxy's* placeholder for the name rather than the target's
+  // own, so it gets its own cause and its own advice (issue #419).
+  if (refusal.reason === "non-public-address" && isProxyFakeIpAddress(refusal.addressKind)) {
+    return "fake-ip";
+  }
+  return "policy";
+}
+
+/**
+ * Bare hostname for a diagnostics record, or undefined when the URL cannot be
+ * parsed. Never a path, query, port or credential: a catalog source URL is
+ * user-supplied and the log line only needs to name the host that was refused.
+ */
+export function skillMarketHost(url: unknown): string | undefined {
+  if (typeof url !== "string") return undefined;
+  try {
+    return new URL(url).hostname.toLowerCase() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The diagnostics payload for one failed source. Built here, not at the call
+ * site, so the shape is unit-testable without Electron and so every failure
+ * record carries the same fields.
+ */
+export function skillMarketFailureDetail(
+  source: { name?: unknown; url?: unknown },
+  error: unknown,
+): { source?: string; host?: string; kind: SkillMarketFailureKind } & Omit<
+  SkillMarketFailureDetail,
+  "kind" | "host"
+> {
+  const refusal = publicNetworkRefusalDetail(error);
+  // A guard refusal knows the host it was classifying, which is the host that
+  // actually failed. The source URL is only a fallback: a GitHub `owner/repo`
+  // source is scanned through `api.github.com`, and naming the repository's
+  // host there would point the user at a host that was never refused.
+  const host = refusal?.host ?? skillMarketHost(source.url);
+  return {
+    ...(typeof source.name === "string" && source.name ? { source: source.name } : {}),
+    ...(host ? { host } : {}),
+    kind: classifySkillMarketFailure(error),
+    ...(refusal ? { reason: refusal.reason } : {}),
+    ...(refusal?.address ? { address: refusal.address } : {}),
+    ...(refusal?.addressKind ? { addressKind: refusal.addressKind } : {}),
+    ...(refusal?.route ? { route: refusal.route } : {}),
+  };
+}
+
+/** The most specific explanation wins when one display name maps to two sources. */
+const FAILURE_RANK: Record<SkillMarketFailureKind, number> = {
+  network: 0,
+  unresolved: 1,
+  "fake-ip": 2,
+  policy: 3,
+};
 
 const SKILL_CATEGORY_KEYWORDS: ReadonlyArray<readonly [SkillCatalogCategory, string[]]> = [
   ["data", ["data", "sql", "database", "postgres", "mongo", "redis", "analytics", "dataset", "spreadsheet", "excel", "xlsx", "csv", "dashboard", "chart", "visualization"]],
@@ -152,9 +290,33 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
   async function search(query: string, sources: SkillMarketSource[]): Promise<SkillMarketSearchResult> {
     const trimmed = query.trim().toLocaleLowerCase();
     const usable = sources.filter((source) => isSafeSkillSourceUrl(source.url));
-    const failedSources = sources
-      .filter((source) => !isSafeSkillSourceUrl(source.url))
-      .map((source) => source.name);
+    // A source the syntactic guard never let out is a policy refusal, not a
+    // transport failure, and it must not be reported as an unreachable host.
+    const refused = sources.filter((source) => !isSafeSkillSourceUrl(source.url));
+    const failedSources = refused.map((source) => source.name);
+    // Two sources can carry the same display name (a default source and a user
+    // source with the same label), and `failedSources` already cannot tell such
+    // a pair apart. The most specific explanation is the one worth surfacing,
+    // so `FAILURE_RANK` decides the merge. A `Map` plus `Object.fromEntries`
+    // also keeps a source called `__proto__` from disappearing into the
+    // prototype.
+    const details = new Map<string, SkillMarketFailureDetail>();
+    const markFailure = (name: string, detail: SkillMarketFailureDetail) => {
+      const current = details.get(name);
+      if (!current || FAILURE_RANK[detail.kind] > FAILURE_RANK[current.kind]) {
+        details.set(name, detail);
+      }
+    };
+    for (const source of refused) {
+      // Nothing left the process, so the syntactic check is the reason and the
+      // source URL is the only host this refusal is allowed to name.
+      const host = skillMarketHost(source.url);
+      markFailure(source.name, {
+        kind: "policy",
+        reason: "url-syntax",
+        ...(host ? { host } : {}),
+      });
+    }
     const settled = await Promise.allSettled(
       usable.map(async (source) => {
         const entries = await loadSource(source);
@@ -170,7 +332,18 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
     const seen = new Set<string>();
     settled.forEach((result, index) => {
       if (result.status === "rejected") {
-        failedSources.push(usable[index].name);
+        const source = usable[index];
+        failedSources.push(source.name);
+        const refusal = publicNetworkRefusalDetail(result.reason);
+        const host = refusal?.host ?? skillMarketHost(source.url);
+        markFailure(source.name, {
+          kind: classifySkillMarketFailure(result.reason),
+          ...(host ? { host } : {}),
+          ...(refusal ? { reason: refusal.reason } : {}),
+          ...(refusal?.address ? { address: refusal.address } : {}),
+          ...(refusal?.addressKind ? { addressKind: refusal.addressKind } : {}),
+          ...(refusal?.route ? { route: refusal.route } : {}),
+        });
         return;
       }
       for (const entry of result.value) {
@@ -179,11 +352,25 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
         entries.push(entry);
       }
     });
-    return { entries, failedSources };
+    return {
+      entries,
+      failedSources,
+      failureKinds: Object.fromEntries([...details].map(([name, detail]) => [name, detail.kind])),
+      failureDetails: Object.fromEntries(details),
+    };
   }
 
   async function fetchEntryDocument(entry: SkillCatalogEntry): Promise<SkillMarketDocument> {
-    if (!isSafeSkillSourceUrl(entry.url)) throw new Error("document url must be a public https address");
+    if (!isSafeSkillSourceUrl(entry.url)) {
+      // A document URL the syntactic guard refuses is a decision about the URL,
+      // not a dead host. Carrying the shared name and reason means the one
+      // classifier reports it as the policy refusal it is, instead of telling
+      // the user the document was unreachable.
+      throw Object.assign(new Error("document url must be a public https address"), {
+        name: PUBLIC_NETWORK_POLICY_ERROR,
+        reason: "url-syntax" satisfies PublicNetworkRefusalReason,
+      });
+    }
     return fetchDocument(entry.url);
   }
 

@@ -59,7 +59,19 @@ pnpm docs:check
 代码块时，即使散文读起来完整也会被报告。该门禁由
 `.github/workflows/docs-check.yml` 执行，覆盖应用 CI 工作流有意忽略的文档路径。
 应把任何失败视为待补齐的镜像清单，并且不要在没有配套中文文件的情况下新增英文
-规范。VitePress 生产构建另外验证渲染的路线和内部链接。
+规范。
+
+`pnpm docs:check` 还会运行 `scripts/check-docs.mjs`，对 `docs/` 下每个 Markdown 页面做第二道校验：
+
+1. 只有一个一级标题，`layout: home` 页面以 hero 代替；
+2. 代码围栏成对，且同一张表格各行的列数一致；
+3. ADR 目录：文件名为 `NNNN-slug.md`（或纯 slug）、一个决策编号只有一个归属、H1 声明该编号，并含 Status、Context、Decision 段；
+4. `adr/README.md`：每条记录恰好一行索引，且行内链接只能指向拥有该编号的记录；
+5. `docs/` 下所有 `ADR NNNN` 引用都能解析到记录，或解析到 `08-meta/decisions-log.md` 声明退役的编号；
+6. 每个中文页面在同相对路径都有英文页面，其中 `index.md` 与 `README.md` 视为同一页；
+7. `NAV.md` 列出本树每个页面，且两棵 `spec/` 树的章节目录必须一致并保持 `01-product` 这样的编号。
+
+随后同一工作流会运行 VitePress 生产构建，验证渲染路由与每条内部链接。
 
 ## 内容规则
 

@@ -5,7 +5,6 @@ import * as React from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
-import { requestTextWithoutAnnotations } from "../src/lib/response-annotations.ts";
 
 const t = (key, values) => values?.name ? `${key}: ${values.name}` : key;
 const store = {
@@ -44,9 +43,11 @@ function loadComponent(name, extras = {}) {
     "../../../components/icons": new Proxy({}, { get: () => Icon }),
     "../../../components/ui": { TooltipButton },
     "./shared": shared,
-    "./context": { TranscriptReadOnlyContext: React.createContext(false), useActiveSessionTitle: () => "Title" },
-    "../../../lib/selection-quote": { selectionMarkdownWithinRow: () => "" },
-    "../../../lib/response-annotations": { requestTextWithoutAnnotations },
+    "./menu-items": { userMessageMenuItems: () => [] },
+    "./TranscriptMenu": {
+      useTranscriptMenu: () => () => {},
+      useChatTextActions: () => ({ copyText: () => {}, selectText: () => {} }),
+    },
     ...extras,
   };
   const module = { exports: {} };

@@ -154,7 +154,11 @@ PI-Desktop (Remote Client)                    Remote machine
 
 Bootstrap runs over the user's own SSH session, never over RACP:
 
-1. The desktop opens SSH with the user's existing configuration and keys.
+1. The desktop opens SSH with the user's existing configuration and keys. A
+   login password MAY be supplied instead of a key (ADR 0293): it is handed to
+   the `ssh` client through an askpass helper, never as an argument, and is
+   stored encrypted in the desktop's secure storage so the host can reconnect
+   after a restart.
 2. It uploads a small bootstrap script that downloads the `pi-host` bundle
    for the remote platform at the desktop's version from GitHub Releases,
    verifies the published SHA-256, and installs it under the user's home. A

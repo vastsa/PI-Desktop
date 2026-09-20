@@ -66,6 +66,8 @@ registered; reserved codes in §3.7 remain intentionally absent from
 | `APPROVAL_STALE` | no | RACP: the approval was already settled or belongs to an older turn |
 | `PAYLOAD_TOO_LARGE` | no | RACP: a frame exceeded the negotiated size bound |
 | `TIMEOUT` | yes | generic timeout |
+| `NETWORK_POLICY_BLOCKED` | no | the main-process public-network guard refused a fetch because it *judged* the target: the URL failed the syntactic public-HTTPS check, or the local DNS lookup returned an address the policy classifies as non-public — including a fake-IP placeholder a local proxy invented (ADR 0243). A desktop-only code; a refusal is a verdict, so retrying cannot succeed until the address changes. A resolver that returned no answer at all is `NETWORK_RESOLVE_FAILED` instead (issue #419). |
+| `NETWORK_RESOLVE_FAILED` | yes | the main-process public-network guard could not classify the target host: the local DNS lookup returned no answer, or threw before returning one. The request is refused exactly as a policy refusal is, but no address was judged, so no page or log may report it as an address-check decision. Distinct from `NETWORK_ERROR`, which is a failure of the request itself. Retriable: a resolver or proxy that starts answering the same host makes the same request succeed (ADR 0243, issue #419). |
 | `HOST_SHUTTING_DOWN` | yes | the host received EOF and is draining; the call was refused rather than started |
 | `RATE_LIMITED` | yes | a per-caller host budget (plugin session import, batch operations) was exceeded inside its window |
 | `LIMIT_EXCEEDED` | no | a payload exceeded a fixed host bound (item count, byte size, or a 64 MiB NDJSON request line) and was refused |
@@ -93,11 +95,13 @@ does not turn temporary thread pressure into a host process exit.
 | `CONTEXT_TOO_LARGE` | no | prompt/context still exceeds the safe model budget after recovery, the second provider overflow occurred, or automatic recovery is disabled |
 | `CONTEXT_COMPACTION_FAILED` | no | automatic retained-tail recovery could not prepare, persist, or fit a checkpoint, or manual checkpoint summary generation / durable append failed; the guarded next provider request does not start |
 | `STREAM_FAILED` | yes | provider stream was terminated, closed prematurely, or otherwise ended before a complete response; up to ten same-turn retries may precede the terminal event |
-| `EMPTY_MODEL_RESPONSE` | yes | the model ended its turn with no tool call and no visible text twice: once as streamed, once after the automatic re-run (spec 02-agent-runtime §5e) |
+| `EMPTY_MODEL_RESPONSE` | yes | the model ended its turn with no tool call and no visible text twice: once as streamed, once after the automatic re-run; the first reply to a Host-ledger completion notice is exempt (spec 02-agent-runtime §5e, D446) |
 | `PROMPT_ENHANCEMENT_EMPTY` | no | the one-shot enhancement model returned no text |
+| `SPEECH_NOT_CONFIGURED` | no | host speech ASR or TTS is not bound in settings |
+| `SPEECH_PROTOCOL_UNSUPPORTED` | no | the speech protocol is unknown or does not support this role |
+| `SPEECH_INPUT_TOO_LARGE` | no | speech input exceeds 25 MB |
 | `SUBAGENT_IDLE_TIMEOUT` | no | withdrawn (D328): idle watchdogs are not armed; the code remains for stored results |
 | `SUBAGENT_DURATION_TIMEOUT` | no | withdrawn (D328): duration watchdogs are not armed; the code remains for stored results |
-
 ### 3.3 Workspace / tools / permissions
 
 | code | retriable | meaning |
@@ -229,6 +233,12 @@ malformed.
 | `PLUGIN_MARKET_INVALID` | no | the marketplace catalog is malformed or missing required release fields |
 | `PLUGIN_MARKET_UNTRUSTED_HOST` | no | the catalog or package URL is outside the trusted marketplace hosts |
 | `PLUGIN_MARKET_YANKED` | no | the requested release was withdrawn from the catalog |
+| `PLUGIN_MARKET_NOT_PUBLISHED` | no | the platform has the version and is not offering it yet |
+| `PLUGIN_MARKET_ARCHIVED` | no | the plugin was withdrawn from the platform |
+| `PLUGIN_MARKET_NOT_FOUND` | no | the platform does not have that plugin or version |
+| `PLUGIN_MARKET_RATE_LIMITED` | yes | the download endpoint asked the client to wait |
+| `PLUGIN_MARKET_NO_SOURCE` | maybe | no distribution target can serve the package |
+| `PLUGIN_CANCELLED` | no | the user cancelled an install while it was downloading |
 | `MCP_INVALID` | no | a user MCP server definition failed validation |
 | `SKILL_INVALID` | no | a user skill document failed validation |
 | `SUBAGENT_INVALID` | no | a user subagent document failed validation |
@@ -264,6 +274,29 @@ carries a marker naming which end survived and where the rest is, or reports
 the bounded window in sibling result fields
 (see [16-tool-result-limits](16-tool-result-limits.md)).
 
+### 3.8 Remote control (RACP-WS / SSH bootstrap)
+
+Emitted by the desktop's remote-host client and the `pi-host` server when a
+session lives on a paired remote machine driven over `RACP-WS`
+(see [19-remote-agent-control-protocol](19-remote-agent-control-protocol.md),
+[../05-security/02-remote-control-security](../05-security/02-remote-control-security.md),
+ADR 0285). The renderer never sees the local/remote split beyond a badge; these
+codes surface through the same error object as any other call.
+
+| code | retriable | meaning |
+|---|---|---|
+| `HOST_DISCONNECTED` | yes | the remote host connection dropped; in-flight calls are rejected and the client reconnects and resubscribes by cursor |
+| `HOST_BOOTSTRAP_FAILED` | no | provisioning the remote `pi-host` over SSH failed (download, checksum mismatch, or `install.sh`); `details.reason` names the stage |
+| `HOST_VERSION_MISMATCH` | no | the remote `pi-host` version does not match the desktop; the desktop refuses to drive an incompatible host |
+| `REMOTE_AUTH_FAILED` | no | the device or pairing token was rejected on the RACP-WS upgrade |
+| `REMOTE_CONNECTION_FAILED` | yes | the RACP-WS transport could not connect (non-loopback URL, refused socket) |
+| `REMOTE_FORWARD_FAILED` | yes | the SSH loopback port forward could not be established |
+| `REMOTE_PATH_NOT_FOUND` | no | a remote project/workspace path does not exist on the host |
+| `REMOTE_PATH_FORBIDDEN` | no | a remote path is outside the host's permitted roots |
+| `PAIRING_FAILED` | no | `connection/pair` could not mint a device credential |
+| `PAIRING_TOKEN_EXPIRED` | no | the single-use pairing token expired before pairing completed |
+| `CAPABILITY_UNAVAILABLE` | no | an operation was requested for a capability the host advertised as unavailable (e.g. attachments, tool relay) |
+
 ## 4. Mapping rules
 
 ### Host RPC numeric → AppError.code
@@ -295,6 +328,39 @@ waits 1, 2, 4, then remains at 8 seconds for later retries. Only the failed
 request is replayed; the session and its tool state are untouched. A
 non-retryable `PROVIDER_ERROR` from a
 malformed 400/422 request never enters either budget.
+
+A `NETWORK_ERROR` carries the failing transport layer as bounded `details`:
+`networkCategory` (`dns`, `tls`, `timeout`, `refused`, `unreachable`, `reset`,
+`proxy`, or `unknown` when nothing survived), `networkCode` (the errno, e.g.
+`ENOTFOUND`, `ECONNRESET`, `EPROTO`, `UND_ERR_SOCKET`), and, when the transport
+reported them, `networkSyscall` and `networkHost`. Only the bare hostname is
+kept — never a URL, port, path, query, or credential — and `providerCode` is
+omitted when it would repeat `networkCode`. Per-layer codes (`DNS_ERROR`,
+`TLS_ERROR`, `SOCKET_RESET`, …) are deliberately not introduced: the category
+splits the layers without adding user-visible codes and locale strings for
+each of them.
+
+The diagnosis is read from the live cause chain at the fetch boundary, not only
+from the provider message. pi-ai flattens a rejected request into
+`errorMessage`, so by the time classification runs the errno undici keeps in
+`error.cause` is already gone and a bare `fetch failed` can only be reported as
+`networkCategory: unknown`; the fetch wrapper still holds the original Error and
+supplies the same validated fields from it. A captured cause also settles the
+phase: the fault is reported as `phase: request` because no response ever
+arrived, which is what distinguishes it from a stream that ended mid-response.
+`networkRoute` (`direct`, `environment-proxy`, `http-proxy`, `socks5-proxy`)
+names the hop the request was taking, so a failure at the proxy is readable
+without guessing from an errno.
+
+When one origin fails this way repeatedly inside a turn — twice in a row,
+without any response — the provider transport is rebuilt before the next attempt
+instead of replaying into the same undici pool. The rebuild is process-wide and
+deliberately bounded: one rebuild per streak, at most one every 30 seconds, and
+never for a `dns` failure, which a fresh pool cannot change. The replacement is
+installed before the previous dispatcher is closed, and the previous one is
+closed gracefully, so a request another session already dispatched finishes on
+the pool it started on. The route in effect is reproduced, never downgraded to a
+direct connection.
 
 ### Permission timeout
 UI/host timeout emits `PERMISSION_TIMEOUT` internally, tool result presented as denied (`TOOL_DENIED`) to agent.
@@ -328,8 +394,17 @@ with an accessible details disclosure containing the redacted provider response,
 provider ID, and model ID. Provider detail is capped at 600 characters and
 common credential/header values are redacted before event emission or
 persistence. When available, the details disclosure may also show bounded
-`phase`, `providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`, and
-`retryAttempt` fields. The assistant error card offers a localized
+`phase`, `providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`,
+`retryAttempt`, `networkCategory`, `networkCode`, `networkSyscall`,
+`networkHost`, `networkRoute`, `requestMessages`, `requestBytes`, and
+`compactionGeneration`
+fields. The request fields are counts and byte sizes only and the compaction
+field is the checkpoint generation counter; none of them carries message
+content. While a transient provider failure retries, the activity indicator's
+reason popover shows the localized summary, the stable code, and — for a
+network failure — the transport errno (`NETWORK_ERROR · ENOTFOUND`), so the
+failing layer is visible during the retry loop as well as in the log record.
+The assistant error card offers a localized
 Continue action that resends the continuation prompt (`继续当前任务` /
 `Continue the current task`) in the same session without truncating the failed
 turn. The session-scoped failed-turn recovery card is used only when no
@@ -361,3 +436,20 @@ Examples:
    expiry, scheduled-rejection, and restart-interruption paths map to stable
    codes; only the documented pre-turn catalog fallback is allowed and no work
    is replayed
+
+### Certificate verification failures (issue #714)
+
+`NETWORK_ERROR` is non-retriable when `details.networkCode` is a recognized
+certificate verification failure, including an untrusted/self-signed chain,
+an expired/not-yet-valid certificate, or `ERR_TLS_CERT_ALTNAME_INVALID`.
+A concrete certificate cause takes precedence over generic socket/proxy
+wrapper codes. Captured fetch causes apply this policy after adapter error
+flattening as well as during direct classification. Unknown and non-certificate
+TLS/protocol errors retain existing recovery behavior.
+
+The transcript keeps the stable error code, transport errno and raw details,
+but uses localized certificate guidance instead of the generic connectivity
+summary. It asks the user to check the certificate, clock, and trusted roots
+used by security software/proxies, then restart after changing trust. It does
+not claim that interception is the only possible cause or offer a TLS bypass.
+Manual Continue remains available after the cause is corrected.

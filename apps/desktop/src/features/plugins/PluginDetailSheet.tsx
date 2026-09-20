@@ -7,6 +7,7 @@ import {
   IconX,
 } from "../../components/icons";
 import { Markdown } from "../../components/Markdown";
+import { openHttpUrl } from "../../lib/open-http-url";
 import {
   formatBytes,
   formatDate,
@@ -37,7 +38,6 @@ export function PluginDetailSheet({
   installedDetail,
   busyId,
   queueInstall,
-  openUrlInWorkPanel,
   setSelectedVersion,
 }: PluginsPageModel) {
   return (
@@ -173,7 +173,7 @@ export function PluginDetailSheet({
                               key={link.key}
                               type="button"
                               className="plugins-sheet-link"
-                              onClick={() => openUrlInWorkPanel(link.url)}
+                              onClick={() => openHttpUrl(link.url)}
                             >
                               <IconLink size={13} />
                               <span className="plugins-sheet-link-label">
@@ -196,7 +196,7 @@ export function PluginDetailSheet({
                           type="button"
                           className="plugins-sheet-link"
                           onClick={() =>
-                            openUrlInWorkPanel(activeVersion.provenance!.sourceRepository)
+                            openHttpUrl(activeVersion.provenance!.sourceRepository)
                           }
                         >
                           <IconLink size={13} />
@@ -274,9 +274,6 @@ export function PluginDetailSheet({
                   <section className="plugins-sheet-section">
                     <h3 className="plugins-sheet-section-title">
                       {t("plugins.versions")}
-                      <span className="plugins-sheet-section-hint">
-                        {t("plugins.selectVersion")}
-                      </span>
                     </h3>
                     <div className="plugins-version-list">
                       {(detail.versions ?? []).map((version) => {

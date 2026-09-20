@@ -16,7 +16,14 @@ MVP transport decision (**D001**):
 
 - Process: Electron main spawns Rust host-core sidecar
 - Channel: child process stdin/stdout
-- Framing: one JSON object per line (NDJSON)
+- Framing: one JSON object per LF-delimited line (NDJSON); CRLF is accepted.
+  U+2028 and U+2029 inside JSON strings are payload, never frame delimiters.
+  All Node stdio readers preserve UTF-8 characters across input chunks and
+  release buffered fragments/listeners on transport close. A final unterminated
+  frame is accepted at EOF for compatibility.
+- Invalid JSON frames produce a diagnostic containing only the byte length,
+  never payload text, before being discarded. Later complete frames remain
+  readable. Existing session text is not rewritten or migrated.
 - Encoding: UTF-8
 - Request/response: JSON-RPC 2.0 style
 
@@ -317,7 +324,8 @@ to later refresh and inference; the vendor picker does not collect them.
   only session metadata and does not update `updated_at`, transcript content,
   message count, or historical notification title snapshots.
 - `session.configure` — atomically persists `mode`, `providerId`, `modelId`,
-  and optional `thinkingLevel` for the next pi turn; omitting/null
+  and optional `thinkingLevel` (`off|minimal|low|medium|high|xhigh|max|omit`)
+  for the next pi turn; omitting/null
   `thinkingLevel` preserves the current value; invalid modes or levels return
   `INVALID_PARAMS`; mode is `plan | goal | agent` and changing any session
   configuration is allowed only while idle and without a pending/queued/running
@@ -397,9 +405,15 @@ to later refresh and inference; the vendor picker does not collect them.
   session, rechecks its permission ceiling, claims the delivery, and binds the
   new turn to its message id. A collaboration turn cannot be started from
   caller-supplied replacement text.
-- `session.queuePush` / `session.queueList` / `session.queueRemove` — the
-  Host-owned turn queue (D386 / ADR 0213, schema v15); push is idempotent per
-  principal and key, bounded at eight entries per session
+- `session.queuePush` / `session.queueList` / `session.queueRemove` /
+  `session.queuePrioritize` / `session.queueReorder` — the Host-owned turn queue
+  (D386 / ADR 0213 / ADR 0265, schema v18); push is idempotent per principal and
+  key, bounded at eight entries per session. `queuePrioritize` appends an entry
+  to the end of its session's priority block (`priority = MAX + 1`) and refuses
+  an already promoted entry with `CONFLICT`; `queueReorder` swaps one
+  non-promoted entry with its adjacent non-promoted neighbour and reports
+  `{ moved }`. Listing and delivery order is `priority ASC` for promoted entries
+  followed by `position ASC` for the rest
 - `session.endTurn` — atomically moves a running turn to its terminal state and
   conditionally returns the newly created notification for `completed`/`error`;
   returns no notification when `createNotification=false`, for `aborted`, or
@@ -426,6 +440,9 @@ Electron main after plugin permission and manifest-source checks:
 - `plugin.session.rename` — rename an owned active imported session
 - `plugin.session.delete` — `trash` hides and retains the transcript; `purge`
   removes it and permits re-import
+- `plugin.usage.listTurns` — keyset page of completed-turn facts (identifiers
+  and token counters, never a message body) for non-deleted sessions. Gated
+  in Electron main by `usage.read`. Additive; no protocol version bump.
 - Successful plugin session mutations cause Electron main to emit one
   `sessionsChanged` renderer event; the renderer refreshes the session list,
   and plugins do not emit this UI synchronization event.
@@ -461,7 +478,9 @@ The ledger is durable across a host restart. A queued entry with its
 an unclaimed or running delivery is marked `interrupted` by the startup fence
 and is never replayed automatically. Transcript provenance is host-derived and
 cannot be forged or removed by `session.appendMessage` or transcript
-replacement.
+replacement. Steering (`UiMessage.steering`) into a claimed delivery turn is
+additional human input in that session: it does not receive the delivery
+origin, and a client-supplied `session_message` is stripped (D597).
 
 The host rejects unknown roles, non-RFC3339 or non-monotonic timestamps, and
 oversized/deep payloads. Tool values are sanitized for host-reserved keys. The
@@ -547,14 +566,18 @@ resource exhaustion (`EAGAIN` / `WouldBlock`) with bounded backoff, never
 retries a command after it has started, and reaps timed-out children before
 releasing the execution slot.
 
-`session.appendMessage` is idempotent by message id. Electron main may keep
+`session.appendMessage` is idempotent by message id. An id already indexed in
+another session is remapped to `{sessionId}:{id}` before the JSONL write, and
+a later replay of the original id is a no-op (D444). Electron main may keep
 message appends in its application-owned outbox while host-core is restarting;
-the outbox flushes in order after a successful handshake. A missing sessions
-row is restored from the live JSONL (or created as a stub under the same id
-when the file is gone) so a queued outbox can drain (D318). `session.delete`
-drops that session's outbox entries. In-flight checkpoints never go through
-the outbox: a checkpoint is only meaningful against a live host, and replaying
-one after the final row would be wrong.
+the outbox flushes in order after a successful handshake and treats
+`UNIQUE constraint failed: messages.id` as an ack rather than pausing the
+queue. A `PERMISSION_DENIED:` append is dropped the same way so a poison head
+cannot stall the FIFO (D597). A missing sessions row is restored from the live JSONL (or created as a
+stub under the same id when the file is gone) so a queued outbox can drain
+(D318). `session.delete` drops that session's outbox entries. In-flight
+checkpoints never go through the outbox: a checkpoint is only meaningful
+against a live host, and replaying one after the final row would be wrong.
 
 ### Permissions
 - `permissions.evaluate`
@@ -607,14 +630,28 @@ one after the final row would be wrong.
 ### Agent capabilities (skills, subagents, MCP servers)
 - `skills.list` / `skills.active` / `skills.read` / `skills.create` /
   `skills.update` / `skills.remove` / `skills.import` /
-  `skills.setEnabled` / `skills.setScope` — user skill documents
-  (`SKILL_INVALID` on validation failure)
+  `skills.setEnabled` / `skills.setScope` / `skills.transfer` — user skill
+  documents (`SKILL_INVALID` on validation failure)
 - `agents.list` / `agents.active` / `agents.read` / `agents.create` /
   `agents.update` / `agents.remove` / `agents.setEnabled` /
   `agents.setScope` — user subagent documents (`SUBAGENT_INVALID`)
 - `mcp.list` / `mcp.active` / `mcp.upsert` / `mcp.remove` /
-  `mcp.setEnabled` / `mcp.setScope` — user MCP server definitions
-  (`MCP_INVALID`)
+  `mcp.setEnabled` / `mcp.setScope` / `mcp.transfer` — user MCP server
+  definitions (`MCP_INVALID`)
+
+`skills.transfer` and `mcp.transfer` take `{ id, from, to }`, each end a
+`{ level, projectPath? }` target (`projectPath` is required for the project
+level), and return `{ skill }` / `{ server }` for the document where it landed.
+A transfer moves the document between the two levels rather than copying it, so
+the source level stops listing the entry. A destination that already owns the
+same id gives the arriving document a `-2`/`-3` id suffix; one that owns the
+same display name / label, compared case-insensitively, gives it a matching
+` (2)`/` (3)` display suffix. The existing entry stays untouched. Enablement
+travels with the document: the source level drops every state entry for the old
+id, including its project overrides, and the destination stores the value the
+source was showing (a project target keeps that project's state, a global
+target the global default). Naming the source's own directory as the
+destination is a no-op.
 
 `*.active` returns the entries that apply to the given project after
 activation-scope filtering (`CAPABILITY_INVALID` for an unknown scope).
@@ -1072,6 +1109,12 @@ numeric slot; the string is the contract, the number is transport detail.
 | 1016 | SKILL_INVALID | user skill document failed validation |
 | 1017 | SUBAGENT_INVALID | user subagent document failed validation |
 | 1018 | CAPABILITY_INVALID | agent capability root/scope setting failed validation |
+| 1019 | PLUGIN_CANCELLED | the user cancelled a marketplace install while it was downloading |
+| 1020 | PLUGIN_MARKET_NOT_PUBLISHED | the platform has the version and is not offering it yet |
+| 1021 | PLUGIN_MARKET_ARCHIVED | the plugin was withdrawn from the platform |
+| 1022 | PLUGIN_MARKET_NOT_FOUND | the platform does not have that plugin or version |
+| 1023 | PLUGIN_MARKET_RATE_LIMITED | the download endpoint asked the client to wait |
+| 1024 | PLUGIN_MARKET_NO_SOURCE | no distribution target can serve the package |
 | -32029 | HOST_OVERLOADED | RPC dispatcher capacity exhausted |
 | -32601 | — | unknown method |
 | -32700 | — | unparseable request line |
@@ -1149,3 +1192,21 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
     produce the documented durable statuses and events
 13. Bash validates the pinned shell ID/dialect, streams stdout/stderr, enforces
     the 60s default/bounded override, and shuts down the complete process tree
+
+## Scheduled automation tools
+
+Agent mode advertises on-demand ScheduledTaskList, ScheduledTaskCreate,
+ScheduledTaskUpdate and ScheduledTaskDelete tools. They run through
+`tools.execute`, including existing permissions and audit records, and reuse
+the scheduled RPC domain handlers. List is low risk; mutations require normal
+approval in Ask/Accept Edits. Plan/Goal deny all four even under Auto.
+
+The Host rechecks durable session mode and derives project scope from the
+calling session, never the foreground workspace or model-supplied paths.
+Create binds that scope; list filters it; update/delete require matching scope.
+Unknown fields, invalid cadence, empty title/prompt, invalid time and invalid
+weekday selections are rejected before mutation. Delete refuses active runs.
+Create requires title, prompt and cadence; automatic daily/weekly tasks require
+a schedule. Update takes an existing ID and partial fields, preserving all
+unspecified configuration. Exact local times remain supported despite the
+UI's four period presets. No new DB schema or transport is introduced.

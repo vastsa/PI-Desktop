@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { UiMessage } from "@pi-desktop/shared";
-import { useOpenChatFileRef, useOpenPreviewTarget } from "../../../hooks/use-preview-target";
+import { useOpenPreviewTarget } from "../../../hooks/use-preview-target";
 import { useFollowScroll } from "../../../hooks/use-follow-scroll";
 import { getToolPreviewTarget } from "../../../lib/chat-links";
 import {
@@ -54,6 +54,7 @@ import {
   IconStop,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
+import { DisclosureAnchorContext } from "../../../lib/disclosure-anchor-context";
 import {
   AssistantErrorMessage,
   DisclosureCollapseRail,
@@ -79,6 +80,8 @@ type ToolRowProps = {
   delegate?: SubagentRun;
   /** Card treatment used when several Task calls form a delegation topology. */
   variant?: "default" | "topology";
+  /** Open the latest detailed-mode tool unless the user took over. */
+  autoOpen?: boolean;
   /** Claims the containing activity group when this row is manually used. */
   onUserInteraction?: () => void;
   /** Live delegation statuses read from the turn's lifecycle-tool rows. */
@@ -108,6 +111,7 @@ function toolRowPropsEqual(
   if (
     previous.message !== next.message ||
     previous.variant !== next.variant ||
+    previous.autoOpen !== next.autoOpen ||
     previous.onUserInteraction !== next.onUserInteraction ||
     !subagentRunsEqual(previous.delegate, next.delegate)
   ) {
@@ -132,6 +136,7 @@ export const ToolRow = memo(function ToolRow({
   message,
   delegate,
   variant = "default",
+  autoOpen = false,
   onUserInteraction,
   delegationStatuses,
   delegationTimings,
@@ -149,10 +154,14 @@ export const ToolRow = memo(function ToolRow({
   // (D227). Property reads only, so a streaming row can afford it every tick.
   const run = action === "run" ? runOutcome(message) : null;
   const failed = status === "error" || run === "failed";
-  // Tool details are always user-opened. Failure stays visible in the row head
-  // through its status icon/label without expanding the payload automatically.
-  const disclosure = useAutomaticDisclosure(false);
+  // Detailed mode opens the last tool of the last activity group. Compact keeps
+  // payloads collapsed so a live burst only updates the header. Failure and
+  // denial stay in the row head without expanding the payload automatically.
+  const disclosure = useAutomaticDisclosure(
+    autoOpen && !failed && status !== "denied",
+  );
   const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } = disclosure;
+  const titleRef = disclosure.titleRef;
   const toggleRow = useCallback(() => {
     onUserInteraction?.();
     toggleDisclosure();
@@ -377,6 +386,7 @@ export const ToolRow = memo(function ToolRow({
       ) : (
         <div className={`tool-row-head${runHead ? " is-run" : ""}`}>
           <button
+            ref={titleRef}
             className="tool-row-header"
             aria-expanded={open}
             aria-controls={hasDetails ? detailsId : undefined}
@@ -514,7 +524,7 @@ export const ToolRow = memo(function ToolRow({
  * one level in and stay collapsed with the call. Only one level is possible: a
  * delegate has no `Task` tool of its own (ADR 0062).
  */
-export function SubagentRunRows({
+export const SubagentRunRows = memo(function SubagentRunRows({
   run,
   agentName,
   onCollapse,
@@ -564,7 +574,7 @@ export function SubagentRunRows({
       />
     </div>
   );
-}
+});
 
 /**
  * Nested follow-scroll for one expanded delegate (D302). Mounted only once
@@ -588,6 +598,7 @@ function SubagentRunFollow({
     handleScroll,
     jumpToLatest,
     scheduleFollowScroll,
+    disclosureAnchorNotifier,
   } = useFollowScroll();
 
   useLayoutEffect(() => {
@@ -596,59 +607,66 @@ function SubagentRunFollow({
   }, [items, scheduleFollowScroll, scrollable]);
 
   return (
-    <div className="subagent-run-follow">
-      {/* The rows scroll inside the run rather than growing the transcript
-        * (D271). Follow sticks to the latest output while pinned (D302).
-        * Labelled and focusable so a keyboard reader can reach the scroll
-        * area the pointer can already use. */}
-      <div
-        ref={scrollRef}
-        className={`subagent-run-rows${scrollable ? "" : " is-panel-flow"}`}
-        role="group"
-        tabIndex={scrollable ? 0 : undefined}
-        aria-labelledby={headingId}
-        onScroll={scrollable ? handleScroll : undefined}
-      >
-        <div ref={contentRef}>
-          {items.map((item) =>
-            item.kind === "tool" ? (
-              <Fragment key={item.message.id}>
-                <ToolRow message={item.message} />
-                <ReviewChangeCard message={item.message} />
-              </Fragment>
-            ) : item.kind === "thinking" ? (
-              <ThinkingRow
-                key={`thinking-${item.message.id}`}
-                message={item.message}
-                streaming={item.message.status === "streaming"}
-              />
-            ) : (
-              <div className="subagent-answer" data-message-id={item.message.id} key={`answer-${item.message.id}`}>
-                {item.message.content ? (
-                  <div className="prose-chat">
-                    <Markdown source={item.message.content} />
-                  </div>
-                ) : null}
-                {item.message.error ? (
-                  <AssistantErrorMessage message={item.message} />
-                ) : null}
-              </div>
-            ),
-          )}
-        </div>
-      </div>
-      {scrollable && showJump ? (
-        <TooltipButton
-          type="button"
-          className="jump-latest-btn"
-          ariaLabel={t("chat.scrollToBottom")}
-          tooltip={t("chat.scrollToBottom")}
-          onClick={jumpToLatest}
+    <DisclosureAnchorContext.Provider value={disclosureAnchorNotifier}>
+      <div className="subagent-run-follow">
+        {/* The rows scroll inside the run rather than growing the transcript
+          * (D271). Follow sticks to the latest output while pinned (D302).
+          * Labelled and focusable so a keyboard reader can reach the scroll
+          * area the pointer can already use. */}
+        <div
+          ref={scrollRef}
+          data-scroll-owner="follow"
+          className={`subagent-run-rows${scrollable ? "" : " is-panel-flow"}`}
+          role="group"
+          tabIndex={scrollable ? 0 : undefined}
+          aria-labelledby={headingId}
+          onScroll={scrollable ? handleScroll : undefined}
         >
-          <IconArrowDown size={14} />
-        </TooltipButton>
-      ) : null}
-    </div>
+          <div ref={contentRef}>
+            {items.map((item) =>
+              item.kind === "tool" ? (
+                <Fragment key={item.message.id}>
+                  <ToolRow message={item.message} />
+                  <ReviewChangeCard message={item.message} />
+                </Fragment>
+              ) : item.kind === "thinking" ? (
+                <ThinkingRow
+                  key={`thinking-${item.message.id}`}
+                  message={item.message}
+                  streaming={item.message.status === "streaming"}
+                />
+              ) : (
+                <div
+                  className="subagent-answer"
+                  data-message-id={item.message.id}
+                  key={`answer-${item.message.id}`}
+                >
+                  {item.message.content ? (
+                    <div className="prose-chat">
+                      <Markdown source={item.message.content} />
+                    </div>
+                  ) : null}
+                  {item.message.error ? (
+                    <AssistantErrorMessage message={item.message} />
+                  ) : null}
+                </div>
+              ),
+            )}
+          </div>
+        </div>
+        {scrollable && showJump ? (
+          <TooltipButton
+            type="button"
+            className="jump-latest-btn"
+            ariaLabel={t("chat.scrollToBottom")}
+            tooltip={t("chat.scrollToBottom")}
+            onClick={jumpToLatest}
+          >
+            <IconArrowDown size={14} />
+          </TooltipButton>
+        ) : null}
+      </div>
+    </DisclosureAnchorContext.Provider>
   );
 }
 

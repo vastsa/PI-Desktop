@@ -1,8 +1,8 @@
 # ADR 0239: Host-owned session collaboration messages
 
-- Status: Accepted
+- Status: Accepted; amended by D446
 - Date: 2026-09-13
-- Decision: D409
+- Decision: D409 (amended by D446)
 - Amends: ADR 0237, ADR 0165, ADR 0213
 
 ## Context
@@ -38,6 +38,9 @@ Messages have explicit task, message, or completion provenance, persisted with
 the transcript and rendered separately from human input. Live model prompts and
 restored history use the same source framing. Session messages are not new human
 authorization and do not participate in user-message editing or regeneration.
+Accepted user steering into a claimed delivery turn remains human input: it does
+not receive the delivery origin, and a client-supplied `session_message` is
+stripped (D597).
 
 A requested completion callback produces at most one durable completion message
 to the originating session. It references the original delivery and the actual
@@ -69,3 +72,38 @@ Validation covers concurrent senders, durable identity, reuse, queue admission,
 source preservation across reload, exactly-once callback creation, failure and
 cancellation results, permission ceilings, model resolution, hover lifecycle,
 and the relevant host/Electron E2E journeys.
+
+## Amendment (2026-09-18, D446): a completion notice's own reply may stay silent
+
+Issue #504: the completion prompt states that a notice needs no
+acknowledgement, yet the runtime's silent-turn recovery (spec 02-agent-runtime
+§5e) retried the resulting silence and reported `EMPTY_MODEL_RESPONSE` after a
+task that had succeeded. This amendment bounds one exception; every other
+decision above is unchanged.
+
+- The first settled assistant reply to a completion notice may end with no
+  visible text and no tool call without silent-turn recovery or
+  `EMPTY_MODEL_RESPONSE`. The reply is emitted as a completed message with the
+  normal terminal lifecycle. Provider errors and aborts keep their handling;
+  a provider retry of the same attempt keeps the exception.
+- The exception covers exactly that reply. It is spent by the first settled
+  response whether silent, textual, or a tool batch, so a reply that follows
+  tool results or accepted user steering in the same run is ordinary. It is
+  also revoked as soon as an accepted steering message enters the model
+  context, and every new run recomputes it.
+- Only provenance that Main resolved from the queued Host ledger record can
+  enable it: `kind: completion`, the current target session, and nonempty
+  message and reply-to IDs. Prompt text, plugin or model content, task and
+  ordinary message deliveries, copied notice framing, and restored history
+  cannot. No protocol field or caller authority is added.
+- An accepted silent reply is still not worth resending. Main persists it as
+  an empty completed row (hidden by the renderer, `NULL` text in the host), but
+  the runtime keeps it out of its entries and pi's transcript state, and the
+  context projection drops any assistant without content blocks, matching what
+  a restored transcript already did. The next request therefore carries no
+  empty assistant message for a provider to reject or skip.
+
+Validation: runtime unit coverage for the accepted shapes, the trust boundary,
+tool batches, provider retry, steering before and after the reply, and context
+exclusion; `pnpm test:e2e:session-completion` against the real host ledger,
+sidecar, and a local SSE provider. See E2E-SESSION-completion-notice-allows-silence.

@@ -82,6 +82,20 @@ describe("buildSessionContext", () => {
     ).toBe("ok");
   });
 
+  it("drops assistants that have no content blocks", () => {
+    // D446: an accepted silent completion reply, or any other empty
+    // assistant, is not worth resending and would be rejected by providers.
+    const empty = assistant("a1", "", 1);
+    (empty.message as { content: unknown[] }).content = [];
+    const messages = buildSessionContext([
+      user("u1", "notice", 0),
+      empty,
+      user("u2", "next", 2),
+      assistant("a2", "answer", 3),
+    ]).messages;
+    expect(messages.map((message) => message.role)).toEqual(["user", "user", "assistant"]);
+  });
+
   it("slices from the newest compaction and puts the summary before the tail", () => {
     const keptUser = user("u2", "keep me", 3).message;
     const messages = buildSessionContext([

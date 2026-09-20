@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import type { OAuthPromptRequest, OAuthVendor } from "@pi-desktop/shared";
 import type { OAuthLoginSession } from "../../lib/oauth-login-session";
 import { canSubmitOAuthPrompt } from "../../lib/oauth-login-prompt";
-import { Button, Input, TooltipButton, cx } from "../ui";
+import { Button, Input, TooltipButton, cx, portalOverlay } from "../ui";
 import { IconCheck, IconCopy, IconExternal } from "../icons";
 
 type AuthUrlState = { url: string; instructions?: string; opened: boolean };
@@ -144,7 +144,7 @@ export function OAuthLoginDialog({
   };
   const canSubmitAnswer = canSubmitOAuthPrompt(prompt, answer);
 
-  return (
+  return portalOverlay(
     <div className="overlay provider-dialog-overlay" role="presentation">
       <div
         className="dialog oauth-dialog"

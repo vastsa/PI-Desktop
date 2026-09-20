@@ -11,10 +11,14 @@
 //!
 //! The transcript starts with a `{"type":"session",...}` header line followed
 //! by one `{"type":"message",...}` line per message; `seq` is implied by line
-//! order. The revisions file is append-only — one `{"type":"revision",...}`
-//! line per archived branch; the active flag lives in the DB index only.
-//! Readers skip unknown line types and a torn trailing line, so new line
-//! kinds need no migration and a crash mid-append cannot poison the file.
+//! order. The revisions file is append-only and holds one line per archived
+//! branch. A branch that is still live needs no payload line — it already is
+//! the transcript from its root — so `{"type":"revision_live",...}` records
+//! its identity only, while `{"type":"revision",...}` stores the messages of
+//! the branches that have left the transcript. The active flag lives in the
+//! DB index only. Readers skip unknown line types and a torn trailing line, so
+//! new line kinds need no migration and a crash mid-append cannot poison the
+//! file.
 //!
 //! Unlike scratch dirs these files are user data: they are removed only with
 //! their session, never by an age or orphan sweep.
@@ -87,6 +91,67 @@ pub struct RevisionRecord {
     /// deletes; carrying it here lets the switch back restore attribution.
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub turns: std::collections::HashMap<String, String>,
+}
+
+/// One `revision_live` line: a branch whose payload is still the live
+/// transcript, so only its identity and turn attribution are stored.
+///
+/// A branch is the transcript suffix rooted at its user turn, so a live branch
+/// is byte-identical to content the session already keeps on disk. Refreshing a
+/// stored copy on every finished turn therefore copied that suffix once per
+/// turn, and because the suffix grows with every turn the file grew
+/// quadratically: one measured session wrote 107 MB to hold 16 MB of unique
+/// content, 94% of it tool output copied over and over.
+///
+/// The line is written only while the branch is live, and it must stop being
+/// the reader's answer the moment the branch leaves the transcript. Three
+/// writers cover that: `archive_live_branch` (revision switch) and
+/// `archive_discarded_regenerate_branch` (regenerate, edit) write the full
+/// `revision` line before the rewrite that stops holding the branch, and
+/// `archive_dropped_live_branches` does the same for a rewrite that deletes the
+/// root turn itself (`session.replaceMessages`). A new path that drops a branch
+/// from the transcript without archiving it first would strand its reference.
+///
+/// It carries no `turns` map, unlike a stored branch, and that is not an
+/// omission. That map exists for the messages a restore has to re-attach after
+/// the branch left the index; a live branch's messages *are* the session's own
+/// index rows, so a restore reads their turns from the index directly. Carrying
+/// a copy here would put one entry per branch message on every finished turn —
+/// 197 bytes on the first turn of a measured session, 1943 bytes by the
+/// fortieth — which is the same quadratic growth this line exists to remove.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveRevisionRecord {
+    pub root_user_id: String,
+    pub revision_index: i64,
+    pub created_at: String,
+}
+
+/// The payload of one archived branch, as the revisions file records it.
+#[derive(Debug, Clone)]
+pub enum RevisionPayload {
+    /// The branch messages are stored in the revisions file.
+    Stored(RevisionRecord),
+    /// The branch is the live transcript from its root. Resolve it against the
+    /// transcript the caller already holds: it is the same suffix
+    /// `live_branch_start` picks out for that root.
+    Live(LiveRevisionRecord),
+}
+
+impl RevisionPayload {
+    /// message id -> owning turn id, for a branch that has left the index.
+    ///
+    /// Empty for a live branch: its messages are still the session's own index
+    /// rows, so a restore reads their turns from there. See
+    /// [`LiveRevisionRecord`].
+    pub fn turns(&self) -> &std::collections::HashMap<String, String> {
+        static NONE: std::sync::OnceLock<std::collections::HashMap<String, String>> =
+            std::sync::OnceLock::new();
+        match self {
+            RevisionPayload::Stored(record) => &record.turns,
+            RevisionPayload::Live(_) => NONE.get_or_init(Default::default),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -249,6 +314,7 @@ fn sniff_line_kind(line: &str) -> Option<&'static str> {
                     b"compaction" => Some("compaction"),
                     b"session" => Some("session"),
                     b"revision" => Some("revision"),
+                    b"revision_live" => Some("revision_live"),
                     _ => None,
                 };
             }
@@ -825,12 +891,17 @@ pub fn write_transcript_with_compactions(
     swap_into_place(&tmp, &path)
 }
 
-/// Swap a fully written temp file over its target. Windows cannot rename over
-/// an existing file (D010: Windows post-MVP); on POSIX the plain rename keeps
-/// the replacement atomic.
+/// Swap a fully written temp file over its target, atomically.
+///
+/// Both platforms replace the target in place: POSIX `rename(2)`, and on
+/// Windows `std::fs::rename` is `MoveFileExW(..., MOVEFILE_REPLACE_EXISTING)`.
+/// The Windows arm used to `remove_file` first ("Windows cannot rename over an
+/// existing file", D010) — but it can, and between that delete and the rename
+/// the live transcript did not exist: a failure there lost the whole history
+/// while its replacement sat in the temp file. Without the delete, a failed
+/// swap leaves the old transcript untouched and keeps the temp file, so the
+/// caller can still recover the newest content by hand.
 fn swap_into_place(tmp: &Path, path: &Path) -> Result<()> {
-    #[cfg(windows)]
-    let _ = fs::remove_file(path);
     fs::rename(tmp, path).with_context(|| format!("replace {}", path.display()))?;
     Ok(())
 }
@@ -892,42 +963,211 @@ pub fn append_revision(data_dir: &Path, session_id: &str, record: &RevisionRecor
         .with_context(|| format!("append revisions {}", path.display()))
 }
 
-/// Find one archived branch by its family key and index (linear scan; the
-/// file holds at most a handful of branches per root). The LAST match wins:
-/// a crash between file append and index commit can leave a duplicate index
-/// on disk, and the newest line is the one the DB accepted.
+/// Append the reference line for a branch that is still live. Cheap by
+/// construction: this is the line every finished turn writes, so it must not
+/// scale with the branch it names.
+pub fn append_live_revision(
+    data_dir: &Path,
+    session_id: &str,
+    record: &LiveRevisionRecord,
+) -> Result<()> {
+    let path = revisions_path(data_dir, session_id)?;
+    append_line(&path, None, tagged("revision_live", record)?)
+        .with_context(|| format!("append revisions {}", path.display()))
+}
+/// The kind and the family keys at the top level of one revisions line, read
+/// without decoding the line.
+///
+/// `serde_json` sorts the object it serializes, so `messages` sits between
+/// `type` and the family keys and a decoder has to walk the whole payload to
+/// reach them. This walks the object's top level and skips each value by depth
+/// instead, so a multi-megabyte snapshot belonging to another branch costs a
+/// byte scan and no allocation.
+///
+/// It reads the keys the record itself would carry, nested keys and strings
+/// that only look like keys are never considered, so the caller can decide a
+/// match on this alone. A line that is not a `revision` / `revision_live`
+/// record — including one torn before its last key, which cannot be read at all
+/// — returns `None`.
+fn revision_line_head(line: &str) -> Option<(&'static str, &str, i64)> {
+    let bytes = line.as_bytes();
+    let mut index = 0usize;
+    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+        index += 1;
+    }
+    if index >= bytes.len() || bytes[index] != b'{' {
+        return None;
+    }
+    index += 1;
+    let mut depth = 1usize;
+    let mut kind: Option<&'static str> = None;
+    let mut root: Option<&str> = None;
+    let mut revision: Option<i64> = None;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'"' => {
+                let (key, next) = scan_json_string(bytes, index)?;
+                index = next;
+                // A top-level member is a key only when ':' follows it; a string
+                // in value position is stepped over by the next iteration.
+                if depth != 1 {
+                    continue;
+                }
+                let mut colon = index;
+                while colon < bytes.len() && bytes[colon].is_ascii_whitespace() {
+                    colon += 1;
+                }
+                if colon >= bytes.len() || bytes[colon] != b':' {
+                    continue;
+                }
+                index = colon + 1;
+                while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+                    index += 1;
+                }
+                match key {
+                    b"type" => {
+                        if bytes.get(index) != Some(&b'"') {
+                            return None;
+                        }
+                        let (value, next) = scan_json_string(bytes, index)?;
+                        kind = match value {
+                            b"revision" => Some("revision"),
+                            b"revision_live" => Some("revision_live"),
+                            _ => return None,
+                        };
+                        index = next;
+                    }
+                    b"rootUserId" => {
+                        if bytes.get(index) != Some(&b'"') {
+                            return None;
+                        }
+                        let (value, next) = scan_json_string(bytes, index)?;
+                        root = Some(std::str::from_utf8(value).ok()?);
+                        index = next;
+                    }
+                    b"revisionIndex" => {
+                        let start = index;
+                        while index < bytes.len()
+                            && (bytes[index].is_ascii_digit() || bytes[index] == b'-')
+                        {
+                            index += 1;
+                        }
+                        revision = Some(
+                            std::str::from_utf8(&bytes[start..index])
+                                .ok()?
+                                .parse::<i64>()
+                                .ok()?,
+                        );
+                    }
+                    _ => {}
+                }
+                if let (Some(kind), Some(root), Some(revision)) = (kind, root, revision) {
+                    return Some((kind, root, revision));
+                }
+            }
+            b'{' | b'[' => {
+                depth += 1;
+                index += 1;
+            }
+            b'}' | b']' => {
+                depth -= 1;
+                index += 1;
+                if depth == 0 {
+                    return None;
+                }
+            }
+            _ => index += 1,
+        }
+    }
+    None
+}
+
+/// Find one archived branch by its family key and index. The LAST matching line
+/// that decodes wins: a crash between file append and index commit can leave a
+/// duplicate on disk, the newest line is the one the DB accepted, and a line
+/// torn mid-append must not answer for the copy behind it.
+///
+/// The file is streamed once to record where its matching lines are, and only
+/// the newest of them is decoded. Both halves matter for size. `serde_json`
+/// sorts the object it serializes, so `messages` sits *before* the family keys
+/// and a decoder has to walk the whole payload to reach them; and every refresh
+/// of one branch repeats that branch's key, so matching alone would decode the
+/// branch once per refresh. A real 107 MB file of eleven snapshots decoded ten
+/// of them — 102 MB — to answer with the eleventh.
+///
+/// `revision_line_head` reads the top level instead of decoding it, so the
+/// match decision is the record's own keys and nothing else: text inside a tool
+/// result that happens to be spelled like a family key is not a key, and cannot
+/// answer for a family it does not belong to.
+///
+/// A live reference resolves against the transcript, so a branch that is still
+/// live is returned without the file holding a second copy of it.
 pub fn read_revision(
     data_dir: &Path,
     session_id: &str,
     root_user_id: &str,
     revision_index: i64,
-) -> Result<Option<RevisionRecord>> {
+) -> Result<Option<RevisionPayload>> {
     let path = revisions_path(data_dir, session_id)?;
-    let raw = match fs::read_to_string(&path) {
-        Ok(raw) => raw,
+    let file = match File::open(&path) {
+        Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
     };
-    let mut found = None;
-    for line in raw.lines() {
-        let line = line.trim();
-        if line.is_empty() {
+    // (byte offset, line kind) of every matching line, oldest first.
+    let mut matches: Vec<(u64, &'static str)> = Vec::new();
+    let mut reader = BufReader::new(file);
+    let mut line = String::new();
+    let mut offset = 0u64;
+    loop {
+        // A rejected snapshot must not leave its capacity attached to every
+        // following read.
+        if line.capacity() > 1024 * 1024 {
+            line = String::new();
+        }
+        line.clear();
+        let read = reader.read_line(&mut line)?;
+        if read == 0 {
+            break;
+        }
+        // A torn trailing line has no newline yet. `append_line` terminates it
+        // before the next record, which turns it into a complete line that this
+        // head read rejects on its own; until then there is nothing after it to
+        // find, so the scan is done.
+        if !line.ends_with('\n') {
+            break;
+        }
+        if let Some((kind, root, index)) = revision_line_head(line.trim()) {
+            if root == root_user_id && index == revision_index {
+                matches.push((offset, kind));
+            }
+        }
+        offset += read as u64;
+    }
+    for (offset, kind) in matches.iter().rev() {
+        if line.capacity() > 1024 * 1024 {
+            line = String::new();
+        }
+        line.clear();
+        reader.seek(SeekFrom::Start(*offset))?;
+        if reader.read_line(&mut line)? == 0 {
             continue;
         }
-        let Ok(value) = serde_json::from_str::<Value>(line) else {
-            continue;
+        let body = line.trim();
+        let decoded = if *kind == "revision_live" {
+            serde_json::from_str::<LiveRevisionRecord>(body)
+                .ok()
+                .map(RevisionPayload::Live)
+        } else {
+            serde_json::from_str::<RevisionRecord>(body)
+                .ok()
+                .map(RevisionPayload::Stored)
         };
-        if value.get("type").and_then(|t| t.as_str()) != Some("revision") {
-            continue;
-        }
-        let Ok(record) = serde_json::from_value::<RevisionRecord>(value) else {
-            continue;
-        };
-        if record.root_user_id == root_user_id && record.revision_index == revision_index {
-            found = Some(record);
+        if decoded.is_some() {
+            return Ok(decoded);
         }
     }
-    Ok(found)
+    Ok(None)
 }
 
 /// Remove a session's transcript, revisions, and any temp leftover
@@ -1443,6 +1683,98 @@ mod tests {
             .with_extension("jsonl.tmp")
             .exists());
     }
+    #[test]
+    fn swap_replaces_an_existing_target_with_the_temp_content() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("s1.jsonl");
+        std::fs::write(&target, b"old content").unwrap();
+        let tmp = dir.path().join("s1.jsonl.tmp");
+        std::fs::write(&tmp, b"new content").unwrap();
+        swap_into_place(&tmp, &target).unwrap();
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"new content",
+            "the replacement must be byte-identical to the temp file"
+        );
+        assert!(!tmp.exists(), "a successful swap consumes the temp file");
+    }
+
+    #[test]
+    fn swap_creates_the_target_when_it_does_not_exist() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("s1.jsonl");
+        let tmp = dir.path().join("s1.jsonl.tmp");
+        std::fs::write(&tmp, b"first").unwrap();
+        swap_into_place(&tmp, &target).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"first");
+    }
+
+    #[test]
+    fn swap_failure_keeps_the_target_and_the_temp_file() {
+        let dir = tempdir().unwrap();
+        // A directory cannot be replaced by a file, so the swap fails
+        // deterministically on every platform.
+        let target = dir.path().join("occupied");
+        std::fs::create_dir(&target).unwrap();
+        let tmp = dir.path().join("s1.jsonl.tmp");
+        std::fs::write(&tmp, b"new content").unwrap();
+
+        let error = swap_into_place(&tmp, &target).unwrap_err();
+
+        assert!(!error.to_string().is_empty(), "the failure must surface");
+        assert!(
+            target.is_dir(),
+            "the original target must survive a failed swap"
+        );
+        assert!(
+            tmp.exists(),
+            "the temp file must be kept so the caller can recover"
+        );
+        assert_eq!(
+            std::fs::read(&tmp).unwrap(),
+            b"new content",
+            "the kept temp file still carries the full replacement"
+        );
+    }
+
+    /// The regression this file exists for: the old Windows arm deleted the live
+    /// transcript *before* renaming, so a rename that then failed left no
+    /// transcript at all. A locked temp file is how an external scanner makes it
+    /// fail, and the swap must keep the old file instead.
+    #[cfg(windows)]
+    #[test]
+    fn swap_failure_on_a_locked_temp_keeps_the_live_transcript() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("s1.jsonl");
+        std::fs::write(&target, b"precious transcript").unwrap();
+        let tmp = dir.path().join("s1.jsonl.tmp");
+        std::fs::write(&tmp, b"replacement").unwrap();
+
+        // Hold the temp file the way an external scanner does: readable by
+        // others, but without FILE_SHARE_DELETE (0x0000_0001 is
+        // FILE_SHARE_READ), so no replacing move can proceed.
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x0000_0001)
+            .open(&tmp)
+            .unwrap();
+
+        let result = swap_into_place(&tmp, &target);
+        drop(lock);
+
+        assert!(result.is_err(), "a locked temp file must fail the swap");
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"precious transcript",
+            "a failed swap must never lose the live transcript"
+        );
+        assert!(
+            tmp.exists(),
+            "the temp file must be kept so the caller can recover"
+        );
+    }
 
     #[test]
     fn rewrite_preserves_the_whole_compaction_chain() {
@@ -1486,9 +1818,143 @@ mod tests {
         append_revision(dir.path(), "s1", &rev(2, "second")).unwrap();
 
         let found = read_revision(dir.path(), "s1", "u1", 2).unwrap().unwrap();
+        let RevisionPayload::Stored(found) = found else {
+            panic!("a stored line must read back as a stored payload");
+        };
         assert_eq!(found.messages[0].blocks[0]["text"], "second");
         assert!(read_revision(dir.path(), "s1", "u9", 1).unwrap().is_none());
         assert!(read_revision(dir.path(), "s1", "u1", 3).unwrap().is_none());
+    }
+
+    /// The two line kinds coexist in one file and the last matching line is the
+    /// answer whichever kind it is: a snapshot written by an older build stays
+    /// readable, the reference written after it takes over while the branch is
+    /// live, and the full copy written when the branch leaves takes over again
+    /// without the reference ever having to be removed.
+    #[test]
+    fn revisions_resolve_the_newest_line_across_kinds() {
+        let dir = tempdir().unwrap();
+        let stored = |text: &str| RevisionRecord {
+            turns: Default::default(),
+            root_user_id: "u1".into(),
+            revision_index: 1,
+            created_at: "2026-07-26T00:00:00Z".into(),
+            messages: vec![record("m", text)],
+        };
+        let live = LiveRevisionRecord {
+            root_user_id: "u1".into(),
+            revision_index: 1,
+            created_at: "2026-07-26T00:00:00Z".into(),
+        };
+
+        append_revision(dir.path(), "s1", &stored("archived")).unwrap();
+        append_live_revision(dir.path(), "s1", &live).unwrap();
+        assert!(
+            matches!(
+                read_revision(dir.path(), "s1", "u1", 1).unwrap().unwrap(),
+                RevisionPayload::Live(_)
+            ),
+            "the reference written last is the answer"
+        );
+
+        append_revision(dir.path(), "s1", &stored("materialized")).unwrap();
+        let found = read_revision(dir.path(), "s1", "u1", 1).unwrap().unwrap();
+        let RevisionPayload::Stored(found) = found else {
+            panic!("the stored line written last is the answer");
+        };
+        assert_eq!(found.messages[0].blocks[0]["text"], "materialized");
+    }
+
+    /// A branch's messages are arbitrary text, and a transcript prints files. A
+    /// tool result that happens to contain the compact spelling of another
+    /// family's keys must not be that family's answer: the match is decided on
+    /// the line's own top-level keys, not on the bytes somewhere inside it.
+    #[test]
+    fn a_payload_that_spells_another_family_is_not_an_answer() {
+        let dir = tempdir().unwrap();
+        let decoy = RevisionRecord {
+            turns: Default::default(),
+            root_user_id: "u1".into(),
+            revision_index: 1,
+            created_at: "2026-07-26T00:00:00Z".into(),
+            messages: vec![record(
+                "m",
+                "{\"rootUserId\":\"u2\",\"revisionIndex\":7,\"messages\":[]}",
+            )],
+        };
+        append_revision(dir.path(), "s1", &decoy).unwrap();
+
+        assert!(
+            read_revision(dir.path(), "s1", "u2", 7).unwrap().is_none(),
+            "text inside a payload is not a family key"
+        );
+        let RevisionPayload::Stored(found) =
+            read_revision(dir.path(), "s1", "u1", 1).unwrap().unwrap()
+        else {
+            panic!("the family the line actually names is still readable");
+        };
+        assert_eq!(found.messages.len(), 1);
+    }
+
+    /// A crash mid-append is terminated by the next append rather than repaired,
+    /// so the fragment becomes a complete line whose head reads and whose body
+    /// does not. The newest match has to fall back to the copy behind it instead
+    /// of answering with nothing.
+    #[test]
+    fn a_torn_newest_match_falls_back_to_the_stored_copy() {
+        let dir = tempdir().unwrap();
+        append_revision(
+            dir.path(),
+            "s1",
+            &RevisionRecord {
+                turns: Default::default(),
+                root_user_id: "u1".into(),
+                revision_index: 1,
+                created_at: "2026-07-26T00:00:00Z".into(),
+                messages: vec![record("m", "intact")],
+            },
+        )
+        .unwrap();
+        let path = revisions_path(dir.path(), "s1").unwrap();
+
+        // The bytes a write that died before its final brace leaves behind, after
+        // the next append terminated them and added its own record.
+        let torn = tagged(
+            "revision",
+            &RevisionRecord {
+                turns: Default::default(),
+                root_user_id: "u1".into(),
+                revision_index: 1,
+                created_at: "2026-07-26T00:00:00Z".into(),
+                messages: vec![record("m", "torn")],
+            },
+        )
+        .unwrap();
+        assert!(torn.ends_with('}'));
+        {
+            let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+            file.write_all(&torn.as_bytes()[..torn.len() - 1]).unwrap();
+            file.write_all(b"\n").unwrap();
+        }
+        append_revision(
+            dir.path(),
+            "s1",
+            &RevisionRecord {
+                turns: Default::default(),
+                root_user_id: "u9".into(),
+                revision_index: 1,
+                created_at: "2026-07-26T00:00:01Z".into(),
+                messages: vec![record("m", "other family")],
+            },
+        )
+        .unwrap();
+
+        let RevisionPayload::Stored(found) =
+            read_revision(dir.path(), "s1", "u1", 1).unwrap().unwrap()
+        else {
+            panic!("the intact copy behind the fragment answers");
+        };
+        assert_eq!(found.messages[0].blocks[0]["text"], "intact");
     }
 
     #[test]

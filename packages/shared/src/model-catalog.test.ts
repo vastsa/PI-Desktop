@@ -5,6 +5,8 @@ import {
   bindingSupportsDocuments,
   effectiveContextWindow,
   bindingSupportsImages,
+  formatCompactTokenCount,
+  formatTokenCount,
   modelMatchesFilter,
   normalizeApiStyle,
 } from "./model-catalog.js";
@@ -41,6 +43,54 @@ describe("effective model context windows", () => {
   it("preserves a non-default per-model override", () => {
     expect(effectiveContextWindow(1_050_000, 256_000)).toBe(256_000);
     expect(effectiveContextWindow(1_050_000, undefined)).toBe(1_050_000);
+  });
+});
+
+describe("binding context-window provenance", () => {
+  it("marks the catalog snapshot a fresh binding is seeded with", () => {
+    const binding = bindingFromModelInfo({
+      ...textModel(),
+      limit: { context: 1_048_576, output: 64_000 },
+    });
+    expect(binding.contextWindow).toBe(1_048_576);
+    expect(binding.contextWindowSource).toBe("catalog");
+  });
+
+  it("follows a catalog correction for a catalog-sourced window", () => {
+    // The bug this guards: a binding saved before models.dev corrected the
+    // model kept the old snapshot forever, so the only fix was deleting and
+    // re-adding the model.
+    expect(effectiveContextWindow(1_050_000, 1_048_576, "catalog")).toBe(1_050_000);
+    expect(effectiveContextWindow(1_050_000, 64_000, "catalog")).toBe(1_050_000);
+  });
+
+  it("keeps a hand-edited window even when it equals the generic seed", () => {
+    // 128k is a real user answer, not the "inherit the catalog" sentinel, once
+    // the binding records where the value came from.
+    expect(effectiveContextWindow(1_050_000, 128_000, "user")).toBe(128_000);
+    expect(effectiveContextWindow(1_050_000, 256_000, "user")).toBe(256_000);
+    // An unpublished model leaves the stored value as the only answer.
+    expect(effectiveContextWindow(undefined, 256_000, "user")).toBe(256_000);
+    expect(effectiveContextWindow(undefined, 128_000, "catalog")).toBe(128_000);
+  });
+
+  it("keeps the historical rule for records written before the marker", () => {
+    // Older bindings name no source. The documented fallback is the rule this
+    // helper always applied: only the generic 128k seed is inherited.
+    expect(effectiveContextWindow(1_050_000, 128_000, undefined)).toBe(1_050_000);
+    expect(effectiveContextWindow(1_050_000, 1_048_576, undefined)).toBe(1_048_576);
+    expect(effectiveContextWindow(1_050_000, 256_000, null)).toBe(256_000);
+    expect(effectiveContextWindow(undefined, 128_000, undefined)).toBe(128_000);
+  });
+
+  it("keeps the provenance marker across a JSON round trip", () => {
+    const stored = JSON.parse(JSON.stringify(bindingFromModelInfo(textModel())));
+    expect(stored.contextWindowSource).toBe("catalog");
+    // An edit path stamps the user as the author.
+    const edited = { ...stored, contextWindow: 256_000, contextWindowSource: "user" };
+    expect(effectiveContextWindow(1_050_000, edited.contextWindow, edited.contextWindowSource)).toBe(
+      256_000,
+    );
   });
 });
 
@@ -90,5 +140,52 @@ describe("effective binding attachment capabilities", () => {
     expect(custom.supportsImages).toBeNull();
     expect(bindingSupportsImages(custom, null)).toBe(false);
     expect(bindingSupportsImages({ supportsImages: true }, null)).toBe(true);
+  });
+});
+
+describe("compact token counts", () => {
+  it("keeps neighbouring published windows distinguishable", () => {
+    // models.dev publishes all three of these along the 1M line. One rounded
+    // decimal collapsed them into `1M` / `1.1M` / `1.1M`.
+    const rendered = [
+      formatTokenCount(1_000_000),
+      formatTokenCount(1_050_000),
+      formatTokenCount(1_100_000),
+    ];
+    expect(rendered).toEqual(["1M", "1.05M", "1.1M"]);
+    expect(new Set(rendered).size).toBe(3);
+  });
+
+  it("never reports a window above the published value's own precision", () => {
+    // `1.1M` overstated 1,050,000 by 50k tokens, which is what made unrelated
+    // models look like they shared one limit.
+    expect(formatTokenCount(1_050_000)).not.toBe("1.1M");
+    expect(formatTokenCount(1_048_576)).toBe("1.05M");
+    expect(formatTokenCount(1_064_000)).toBe("1.06M");
+    expect(formatTokenCount(1_131_072)).toBe("1.13M");
+  });
+
+  it("keeps the K and M scales exact at their boundaries", () => {
+    expect(formatTokenCount(999)).toBe("999");
+    expect(formatTokenCount(1_000)).toBe("1K");
+    expect(formatTokenCount(1_500)).toBe("1.5K");
+    expect(formatTokenCount(200_000)).toBe("200K");
+    expect(formatTokenCount(262_144)).toBe("262.1K");
+    expect(formatTokenCount(10_000_000)).toBe("10M");
+  });
+
+  it("promotes a K mantissa instead of rendering `1000K`", () => {
+    expect(formatTokenCount(999_949)).toBe("999.9K");
+    expect(formatTokenCount(999_999)).toBe("1M");
+    expect(formatTokenCount(1_000_000)).toBe("1M");
+  });
+
+  it("reads an unpublished limit as absent, but a real count as a number", () => {
+    expect(formatTokenCount(undefined)).toBe("—");
+    expect(formatTokenCount(0)).toBe("—");
+    // Usage counters report a real zero, so they must not borrow the dash.
+    expect(formatCompactTokenCount(0)).toBe("0");
+    expect(formatCompactTokenCount(12)).toBe("12");
+    expect(formatCompactTokenCount(1_500)).toBe("1.5K");
   });
 });

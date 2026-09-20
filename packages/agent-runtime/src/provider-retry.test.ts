@@ -15,15 +15,21 @@ import {
   PROVIDER_TRANSIENT_MAX_RETRIES,
   providerRateLimitDelayMs,
   providerSetupRetryDelayMs,
+  STREAM_IDLE_TIMEOUT_DEFAULT_MS,
+  STREAM_IDLE_TIMEOUT_FLOOR_MS,
+  streamIdleTimeoutMs,
   stripOutputLimitFields,
   withoutDerivedOutputLimit,
+  withStreamIdleTimeout,
 } from "./provider-retry.js";
+import { activeNodeTransportRoute } from "./node-proxy.js";
+import { describeProviderFetchFailure } from "./provider-transport-recovery.js";
+import type { ClassifiedAgentError } from "./agent-errors.js";
 
 const model = {
   id: "model",
   api: "openai-completions",
   provider: "provider",
-  name: "Model",
   reasoning: false,
   input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -249,6 +255,132 @@ describe("provider rate-limit retry", () => {
     expect(snapshot?.status).toBe(429);
     await expect(wrapped("https://provider.invalid", {})).rejects.toThrow("fetch failed");
     expect(snapshot).toBeUndefined();
+  });
+
+  it("describes the transport cause of a rejected fetch and keeps the error", async () => {
+    const failures: Array<ReturnType<typeof describeProviderFetchFailure>> = [];
+    const original = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("read ECONNRESET"), {
+        code: "ECONNRESET",
+        syscall: "read",
+      }),
+    });
+    const wrapped = captureProviderResponse(
+      async () => {
+        throw original;
+      },
+      (_response, _requestBytes, failure) => {
+        failures.push(failure);
+      },
+    );
+
+    await expect(
+      wrapped("https://chatgpt.com/backend-api/codex/responses", {}),
+    ).rejects.toBe(original);
+    // The first entry is the clear before the attempt, the last is the cause.
+    expect(failures).toEqual([
+      undefined,
+      {
+        origin: "https://chatgpt.com",
+        category: "reset",
+        fields: {
+          networkCategory: "reset",
+          networkCode: "ECONNRESET",
+          networkSyscall: "read",
+          networkRoute: activeNodeTransportRoute(),
+        },
+      },
+    ]);
+  });
+  it("names the failing layer on the retried error, not just fetch failed", async () => {
+    let attempts = 0;
+    const retried: ClassifiedAgentError[] = [];
+    const failure = describeProviderFetchFailure(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("read ECONNRESET"), {
+          code: "ECONNRESET",
+        }),
+      }),
+      "https://chatgpt.com/backend-api/codex/responses",
+    );
+    const stream = createProviderRetryStream(
+      model,
+      context,
+      {},
+      () => {
+        attempts += 1;
+        return failedStream({ errorMessage: "fetch failed" });
+      },
+      {
+        claim: () => (attempts <= 1 ? attempts : undefined),
+        headers: () => undefined,
+        status: () => undefined,
+        failure: () => failure,
+        onRetry: ({ error }) => {
+          retried.push(error);
+        },
+      },
+    );
+
+    const final = await stream.result();
+
+    // The retry indicator renders this object, so the errno has to be on it;
+    // the provider message itself stays untouched.
+    expect(retried).toHaveLength(1);
+    expect(retried[0]).toMatchObject({
+      code: "NETWORK_ERROR",
+      message: "fetch failed",
+      details: { networkCategory: "reset", networkCode: "ECONNRESET" },
+    });
+    expect(final.errorMessage).toBe("fetch failed");
+  });
+
+  it("reports the request body size even when the request dies first", async () => {
+    const seen: Array<[number | undefined, number | undefined]> = [];
+    const body = JSON.stringify({ model: "gpt-5.6-sol", input: "hello" });
+    const wrapped = captureProviderResponse(
+      async () => {
+        throw new Error("fetch failed");
+      },
+      (response, requestBytes) => {
+        seen.push([response?.status, requestBytes]);
+      },
+    );
+
+    await expect(
+      wrapped("https://provider.invalid", { method: "POST", body }),
+    ).rejects.toThrow("fetch failed");
+
+    // The clearing call, then the failure: only the size survives, never the
+    // body content, and a request that never got headers still reports it.
+    expect(seen).toEqual([
+      [undefined, undefined],
+      [undefined, Buffer.byteLength(body, "utf8")],
+    ]);
+  });
+
+  it("reports no request size when the body cannot be measured unread", async () => {
+    const sizes: Array<number | undefined> = [];
+    const wrapped = captureProviderResponse(
+      async () => new Response("ok", { status: 200 }),
+      (_response, requestBytes) => {
+        sizes.push(requestBytes);
+      },
+    );
+
+    // A body the transport does not expose as a string/buffer/blob reports no
+    // size instead of throwing or being read.
+    await wrapped("https://provider.invalid", {
+      method: "POST",
+      body: new FormData(),
+    });
+    expect(sizes.at(-1)).toBeUndefined();
+
+    await wrapped("https://provider.invalid", {
+      method: "POST",
+      body: new Uint8Array([1, 2, 3, 4]),
+    });
+    expect(sizes.at(-1)).toBe(4);
   });
 
   it("rejects an abortable retry delay without waiting for the timer", async () => {
@@ -691,5 +823,174 @@ describe("opaque bad-request repair", () => {
     expect(repaired.maxRetries).toBe(0);
     expect(repaired.fetch).toBe(options.fetch);
     expect(typeof repaired.onPayload).toBe("function");
+  });
+});
+
+describe("stream idle watchdog", () => {
+  it("reads the idle budget from the environment with a safe default", () => {
+    const previous = process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS;
+    try {
+      delete process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS;
+      expect(streamIdleTimeoutMs()).toBe(STREAM_IDLE_TIMEOUT_DEFAULT_MS);
+      process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS = "45000";
+      expect(streamIdleTimeoutMs()).toBe(45_000);
+      process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS = "0";
+      expect(streamIdleTimeoutMs()).toBe(0);
+      process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS = "not-a-number";
+      expect(streamIdleTimeoutMs()).toBe(STREAM_IDLE_TIMEOUT_DEFAULT_MS);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS;
+      } else {
+        process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS = previous;
+      }
+    }
+  });
+
+  it("clamps a positive override up to the retry backoff floor", () => {
+    const previous = process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS;
+    try {
+      // The watchdog wraps the retry adapter, so a budget under the largest
+      // retry delay would end a turn that is backing off exactly as the
+      // provider asked it to. `0` still disables it outright.
+      process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS = "1000";
+      expect(streamIdleTimeoutMs()).toBe(STREAM_IDLE_TIMEOUT_FLOOR_MS);
+      expect(STREAM_IDLE_TIMEOUT_FLOOR_MS).toBeGreaterThan(1_000);
+      process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS = "0";
+      expect(streamIdleTimeoutMs()).toBe(0);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS;
+      } else {
+        process.env.PI_DESKTOP_STREAM_IDLE_TIMEOUT_MS = previous;
+      }
+    }
+  });
+
+  it("passes the stream through unchanged when the watchdog is disabled", () => {
+    const stream = createAssistantMessageEventStream();
+    expect(withStreamIdleTimeout(stream, model, 0)).toBe(stream);
+  });
+
+  it("forwards a productive stream unchanged", async () => {
+    const wrapped = withStreamIdleTimeout(successfulStream(), model, 1_000);
+    const events: string[] = [];
+    for await (const event of wrapped) events.push(event.type);
+    expect(events).toEqual(["start", "done"]);
+    expect(await wrapped.result()).toMatchObject({
+      stopReason: "stop",
+      errorMessage: undefined,
+    });
+  });
+
+  it("ends a silent stream as a retriable stream failure", async () => {
+    vi.useFakeTimers();
+    try {
+      const stalled = createAssistantMessageEventStream();
+      stalled.push({ type: "start", partial: assistantMessage() });
+      const wrapped = withStreamIdleTimeout(stalled, model, 1_000);
+
+      const events: string[] = [];
+      const collected = (async () => {
+        for await (const event of wrapped) events.push(event.type);
+      })();
+      await vi.advanceTimersByTimeAsync(600);
+      expect(events).toEqual(["start"]);
+      await vi.advanceTimersByTimeAsync(400);
+      await collected;
+
+      expect(events).toEqual(["start", "error"]);
+      const result = await wrapped.result();
+      expect(result.stopReason).toBe("error");
+      expect(result.errorMessage).toContain("stream stalled");
+      // The timeout must merge into the existing transient retry path: the
+      // classified code is retriable and claims the shared budget.
+      const classified = classifyProviderError(result.errorMessage);
+      expect(classified).toMatchObject({
+        code: "STREAM_FAILED",
+        retriable: true,
+      });
+      expect(isTransientProviderRetryCode(classified.code)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resets the idle timer on every event", async () => {
+    vi.useFakeTimers();
+    try {
+      const slow = createAssistantMessageEventStream();
+      slow.push({ type: "start", partial: assistantMessage() });
+      const wrapped = withStreamIdleTimeout(slow, model, 1_000);
+
+      const events: string[] = [];
+      const collected = (async () => {
+        for await (const event of wrapped) events.push(event.type);
+      })();
+      // An event at t=800 re-arms the watchdog; without the reset the stream
+      // would already have failed at t=1000.
+      await vi.advanceTimersByTimeAsync(800);
+      slow.push({ type: "text_start", contentIndex: 0, partial: assistantMessage() });
+      await vi.advanceTimersByTimeAsync(800);
+      expect(events).toEqual(["start", "text_start"]);
+      await vi.advanceTimersByTimeAsync(400);
+      await collected;
+      expect(events).toEqual(["start", "text_start", "error"]);
+      expect((await wrapped.result()).errorMessage).toContain("stream stalled");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops the retry adapter it abandons instead of letting it issue a second request", async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = new AbortController();
+      let attempts = 0;
+      const adapter = createProviderRetryStream(
+        model,
+        context,
+        { signal: controller.signal } as any,
+        () => {
+          attempts += 1;
+          return failedStream({
+            errorMessage:
+              'OpenAI API error (502): {"type":"api_error","message":"Upstream API request failed."}',
+          });
+        },
+        {
+          claim: (error) =>
+            isTransientProviderRetryCode(error.code) ? 1 : undefined,
+          headers: () => undefined,
+          status: () => 502,
+        },
+      );
+      // 500 ms: inside the adapter's first 1 s backoff, which is zero-event time
+      // to this wrapper. The real `sleep` is used on purpose — it is the thing
+      // the abort has to reject.
+      const wrapped = withStreamIdleTimeout(adapter, model, 500, () =>
+        controller.abort(),
+      );
+
+      const events: string[] = [];
+      const collected = (async () => {
+        for await (const event of wrapped) events.push(event.type);
+      })();
+      // The first attempt fails retriably and the adapter starts backing off.
+      // That wait is zero-event time to the watchdog, which fires inside it and
+      // aborts the request: the backoff rejects instead of resolving, so the
+      // adapter never opens the second request the runtime's own retry is
+      // already covering.
+      await vi.advanceTimersByTimeAsync(120_000);
+      await collected;
+
+      expect(controller.signal.aborted).toBe(true);
+      expect(events).toEqual(["error"]);
+      expect(attempts).toBe(1);
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(attempts).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

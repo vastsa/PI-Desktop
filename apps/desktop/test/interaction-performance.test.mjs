@@ -52,7 +52,7 @@ test("bootstrap cannot replay navigation after destination state changes", () =>
   assert.match(app, /const bootstrapStartedRef = useRef\(false\);/);
   assert.match(
     app,
-    /useEffect\(\(\) => \{\s*if \(bootstrapStartedRef\.current\) return;\s*bootstrapStartedRef\.current = true;\s*void bootstrap\(\);\s*\}, \[bootstrap\]\);/,
+    /useEffect\(\(\) => \{\s*if \(bootstrapStartedRef\.current\) return;\s*bootstrapStartedRef\.current = true;[\s\S]*?void bootstrap\(\)\.finally\(\(\) => \{\s*void api\.menuRendererReady\(\)\.catch\(\(\) => undefined\);\s*\}\);\s*\}, \[bootstrap\]\);/,
   );
   const subscriptions =
     app.match(/useEffect\(\(\) => \{\s*const offEvent = api\.onAgentEvent[\s\S]*?\n  \}, \[/)?.[0] ?? "";
@@ -94,15 +94,12 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
 });
 
 test("expanded live tool output stays local to the changed row", () => {
-  // Running rows remain collapsed until the user asks to inspect output, so a
-  // burst of Bash updates does not walk or render the cumulative payload for
-  // every row in the activity group.
+  // Only the last detailed-mode tool opens automatically. Collapsed rows skip
+  // the payload walk so a Bash burst does not rerender every sibling.
   assert.match(transcript, /const ToolRow = memo\(function ToolRow/);
   assert.match(transcript, /function toolRowPropsEqual\(/);
-  assert.match(transcript, /if \(previous\.variant !== "topology"\) return true;/);
-  // Tool rows remain collapsed during a live burst; only their action/status
-  // header updates. The latest thinking row owns the automatic detail view.
-  assert.match(transcript, /const disclosure = useAutomaticDisclosure\(false\)/);
+  assert.match(transcript, /if \(previous.variant !== "topology"\) return true;/);
+  assert.match(transcript, /const autoOpenLatest =\s*!compact && isLast && itemIndex === items.length - 1/);
   assert.match(
     transcript,
     /const blocks =\s*variant !== "topology" && open && hasDetails\s*\?\s*buildToolPresentation\(/,
@@ -111,21 +108,21 @@ test("expanded live tool output stays local to the changed row", () => {
 
 test("stream event bursts are coalesced until a paint or terminal event", () => {
   assert.match(store, /createFrameBatcher<AgentEventEnvelope>/);
-  assert.match(store, /streamUpdates\.enqueue\(/);
-  assert.match(store, /streamUpdates\.flushNow\(\)/);
-  assert.match(store, /event\.type === "message_update"/);
-  assert.match(store, /event\.type === "tool_update"/);
+  assert.match(store, /streamUpdates.enqueue\(/);
+  assert.match(store, /streamUpdates.flushNow\(\)/);
+  assert.match(store, /event.type === "message_update"/);
+  assert.match(store, /event.type === "tool_update"/);
 });
 
 test("tool errors stay local to their rows instead of failing the activity group", () => {
-  assert.doesNotMatch(toolRow, /const hasFailure = items\.some/);
+  assert.doesNotMatch(toolRow, /const hasFailure = items.some/);
   assert.doesNotMatch(toolRow, /processingFailedAfter/);
   assert.doesNotMatch(toolRow, /tool-activity-group[\s\S]*?failed/);
-  // Failures remain visible in the row header, but their payload stays
-  // collapsed until the user opens it.
-  assert.match(toolRow, /const disclosure = useAutomaticDisclosure\(false\)/);
-  assert.match(`${toolRow}\n${transcriptShared}`, /if \(userInteractedRef\.current\) return/);
-  assert.match(toolRow, /status === "error"\s*\? t\("chat\.toolFailed"\)/);
+  // Failures remain visible in the row header; automatic open is last-tool
+  // ownership, not error ownership.
+  assert.match(toolRow, /const disclosure = useAutomaticDisclosure\(\s*autoOpen && !failed && status !== "denied",\s*\)/);
+  assert.match(`${toolRow}\n${transcriptShared}`, /if \(userInteractedRef.current\) return/);
+  assert.match(toolRow, /status === "error"\s*\? t\("chat.toolFailed"\)/);
 });
 
 test("manual upward scrolling cancels pending transcript follow work", () => {
@@ -152,22 +149,23 @@ test("send re-pins before paint instead of flashing the old transcript position"
 test("layout clamps after send cannot release transcript follow as a gesture", () => {
   assert.match(transcript, /const lastScrollGestureAtRef = useRef\(-Infinity\)/);
   assert.match(transcript, /markScrollGesture = useCallback/);
+  // Input classification lives in the shared scroll helper (#324); the rules
+  // themselves are unit-tested against `isScrollGestureInput`, so the
+  // transcript only has to route real DOM events through it.
+  assert.match(transcript, /readScrollInputContext\(/);
   assert.match(
     transcript,
-    /event\.type === "wheel" \|\|\s*event\.type === "touchstart" \|\|\s*event\.type === "touchmove"/,
+    /isScrollGestureInput\(event\.type as ScrollInputType, input\)/,
   );
-  assert.match(transcript, /event\.type === "pointerdown"/);
   assert.match(transcript, /el\.addEventListener\("wheel", markScrollGesture/);
   assert.match(transcript, /className="thread-wrap"\s+ref=\{wrapRef\}/);
-  assert.match(
-    transcript,
-    /const released =\s*transition\.releasedFollow &&\s*isRecentScrollGesture\(/,
-  );
+  assert.match(transcript, /const gesturing = isRecentScrollGesture\(/);
   assert.match(
     transcript,
     /isRecentScrollGesture\(\s*performance\.now\(\),\s*lastScrollGestureAtRef\.current,\s*\)/,
   );
   assert.match(transcript, /if \(transition\.releasedFollow\) cancelFollowScroll\(\)/);
+  assert.match(transcript, /if \(gesturing && transition\.releasedFollow\) \{/);
 });
 
 test("session activation pins the latest record before the first paint", () => {
@@ -183,7 +181,7 @@ test("session activation pins the latest record before the first paint", () => {
   // first layout: settle at the newest turn with no cross-session state to
   // unwind, before the first paint.
   const activationEffect = transcript.match(
-    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, scrollToBottom\]\);/,
+    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, releaseDisclosureAnchor, scrollToBottom\]\);/,
   )?.[1];
   assert.ok(activationEffect);
   assert.match(activationEffect, /cancelFollowScroll\(\)/);
@@ -198,10 +196,10 @@ test("a revealed pane restores its own scroll position in the layout phase", () 
   // scroller can be clamped while its content grows off screen, and a passive
   // effect would leave one visible frame at the wrong offset (ADR 0137).
   const revealEffect = transcript.match(
-    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, paneVisible, scrollToBottom\]\);/,
+    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, paneVisible, releaseDisclosureAnchor, scrollToBottom\]\);/,
   )?.[1];
   assert.ok(revealEffect, "the reveal must restore position in a layout effect");
-  assert.match(revealEffect, /retainedScrollTopRef\.current = el\.scrollTop/);
+  assert.match(revealEffect, /retainedScrollTopRef\.current = lastLaidOutScrollTopRef\.current/);
   assert.match(revealEffect, /if \(pinnedRef\.current\) \{\s*scrollToBottom\(\);/);
   assert.match(revealEffect, /el\.scrollTop = retained/);
   assert.match(revealEffect, /lastScrollTopRef\.current = retained/);
@@ -293,6 +291,11 @@ test("first-commit hydration expands without moving the transcript", () => {
     transcript,
     /boundedFirstCommitRef\.current = true;\n\s*const frame = requestAnimationFrame/,
     "the flag is armed in the same effect that queues the expansion",
+  );
+  assert.match(
+    transcript,
+    /if \(allHistoryEntries\.length > 0\) firstCommitRef\.current = false/,
+    "an empty first paint must not spend the first-commit gate",
   );
 });
 

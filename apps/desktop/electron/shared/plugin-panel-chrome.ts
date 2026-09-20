@@ -50,6 +50,23 @@ export const PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX = "--pi-plugin-panel-locale=";
  */
 export const PLUGIN_PANEL_EMBEDDED_ARGUMENT = "--pi-plugin-panel-embedded=1";
 
+/**
+ * Marks a plugin surface as a floating widget: a transparent, frameless window
+ * with no 46px titlebar band and no host control capsule. The preload publishes
+ * a titlebar height of 0, installs a drag map over the whole window, and routes
+ * right-click to the host's widget menu. `window.pluginBridge` is identical to
+ * a panel, so one HTML entry can serve both placements.
+ */
+export const PLUGIN_PANEL_WIDGET_ARGUMENT = "--pi-plugin-panel-widget=1";
+
+/**
+ * Smallest surface each placement may ask for. A panel is sized around
+ * plugin-drawn content; a widget draws its own silhouette — a floating orb —
+ * and may shrink far below that.
+ */
+export const PLUGIN_PANEL_MIN_SIZE = { width: 360, height: 280 } as const;
+export const PLUGIN_PANEL_WIDGET_MIN_SIZE = { width: 120, height: 120 } as const;
+
 export const PLUGIN_PANEL_WINDOW_CONTROL_CHANNEL =
   "pi-plugin-panel-window-control";
 export const PLUGIN_PANEL_WINDOW_STATE_CHANNEL =
@@ -59,6 +76,10 @@ export const PLUGIN_PANEL_WINDOW_CONTROL_ACTIONS = [
   "getState",
   "minimize",
   "toggleMaximize",
+  // A floating widget has no capsule, so right-click on the surface asks the
+  // host for its widget menu: close, minimize, always on top. A panel answers
+  // the same action with a no-op — panels keep the capsule.
+  "contextMenu",
   "close",
 ] as const;
 

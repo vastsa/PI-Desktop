@@ -3,22 +3,32 @@ import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
 import { isHtmlFilePath, toWorkspaceRel, type ChatPreviewTarget } from "../lib/chat-links";
-import { FILE_MANAGER_PLUGIN_TAB, fileManagerPluginTab } from "../lib/work-panel-tabs";
+import { openHttpUrl } from "../lib/open-http-url";
+import {
+  FILE_MANAGER_PLUGIN_TAB,
+  fileManagerPluginTab,
+  hasPluginView,
+} from "../lib/work-panel-tabs";
 
 /**
- * Open a resolved chat reference in the work panel: files in the viewer, URLs
- * in the embedded browser. Shared by the transcript's tool row summaries and
- * tool result file/match lists.
+ * Open one target the transcript named.
+ *
+ * A file never opens its own path directly. It goes through the same
+ * completion the message body uses (`useOpenChatFileRef`, ADR 0262), so the
+ * surface that named the file stops deciding where it shows: a tool row's
+ * summary and a tool result's file/match list land in the bundled file view on
+ * a project file exactly like a chat chip, and fall back the same way when the
+ * view, the file, or the reference is not there. One opener for the whole
+ * transcript is also what keeps a shorthand honest — a click opens the file
+ * that matched, or reports that nothing did. HTTP(S) URLs follow the Link
+ * open destination setting.
  */
 export function useOpenPreviewTarget() {
-  const openFile = useAppStore((s) => s.openFileInWorkPanel);
-  const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
+  const openFileRef = useOpenChatFileRef();
   return useCallback(
-    (target: ChatPreviewTarget) => {
-      if (target.kind === "file") openFile(target.path);
-      else openUrl(target.url);
-    },
-    [openFile, openUrl],
+    (target: ChatPreviewTarget) =>
+      target.kind === "file" ? openFileRef(target.path) : openHttpUrl(target.url),
+    [openFileRef],
   );
 }
 
@@ -56,12 +66,7 @@ export function useOpenChatFileRef() {
   const showToast = useAppStore((s) => s.showToast);
 
   const fileViewAvailable = useMemo(
-    () =>
-      pluginViews.some(
-        (view) =>
-          view.pluginId === FILE_MANAGER_PLUGIN_TAB.pluginId &&
-          view.viewId === FILE_MANAGER_PLUGIN_TAB.viewId,
-      ),
+    () => hasPluginView(pluginViews, FILE_MANAGER_PLUGIN_TAB),
     [pluginViews],
   );
 
@@ -91,7 +96,7 @@ export function useOpenChatFileRef() {
         if (match.root === "workspace") {
           // A project group can hold several folders, and a relative path always
           // means the primary one, so a file from a sibling folder travels by its
-          // absolute path and the file view switches to that folder (ADR 0252).
+          // absolute path and the file view switches to that folder (ADR 0263).
           const inPrimary = match.projectRoot ? match.projectRoot.primary : true;
           const target = inPrimary ? match.relativePath : match.absolutePath;
           if (inPrimary && isHtmlFilePath(match.relativePath)) {

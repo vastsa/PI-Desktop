@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ContextCompactionRecord } from "./types.js";
 import {
+  checkpointFallback,
   checkpointGeneration,
   checkpointSummarized,
   contextCompactionMark,
@@ -60,6 +61,37 @@ describe("contextCompactionMark", () => {
       contextCompactionMark(record({ details: { strategy: "fresh_window" } }))
         .summarized,
     ).toBe(false);
+  });
+
+  it("flags the retained-tail recovery so the row does not present it as a summary", () => {
+    const mark = contextCompactionMark(
+      record({
+        details: {
+          generation: 2,
+          fallback: "retained_tail",
+          failureCode: "CONTEXT_COMPACTION_FAILED",
+        },
+      }),
+    );
+    expect(mark.fallback).toBe("retained_tail");
+    expect(mark.generation).toBe(2);
+    // Any other value stays absent rather than leaking into the event.
+    expect(
+      contextCompactionMark(record({ details: { fallback: "something_else" } })),
+    ).not.toHaveProperty("fallback");
+    expect(contextCompactionMark(record({ details: { generation: 1 } }))).not.toHaveProperty(
+      "fallback",
+    );
+  });
+});
+
+describe("checkpointFallback", () => {
+  it("only recognizes the retained-tail recovery family", () => {
+    expect(checkpointFallback({ fallback: "retained_tail" })).toBe("retained_tail");
+    expect(checkpointFallback({ fallback: "other" })).toBeUndefined();
+    expect(checkpointFallback({})).toBeUndefined();
+    expect(checkpointFallback(undefined)).toBeUndefined();
+    expect(checkpointFallback("details")).toBeUndefined();
   });
 });
 

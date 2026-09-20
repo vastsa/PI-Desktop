@@ -1,19 +1,18 @@
-import { basename } from "node:path";
-
 import {
   AgentHost,
   RacpError,
   type ApprovalPort,
-  type PendingToolRequest,
   type Principal,
   type QueueEntryView,
-  type QueueStore,
-  type QueuedTurnRecord,
   type RuntimePort,
-  type SessionPort,
-  type SessionSummary,
   type TurnStartRequest,
+  type TurnSteerRequest,
 } from "@pi-desktop/agent-host";
+import {
+  createHostQueueStore,
+  createHostSessionPort,
+  listPendingToolRequests,
+} from "@pi-desktop/host-runtime";
 import type {
   AgentEventEnvelope,
   AgentQueueChangedEvent,
@@ -21,13 +20,27 @@ import type {
   AskToolResolution,
   QueuedTurnSummary,
   RacpApprovalResult,
-  RacpItemSummary,
   RacpPermissionMode,
-  UiMessage,
 } from "@pi-desktop/shared";
 import { IPC, isGlobalPermissionMode } from "@pi-desktop/shared";
 
 type IpcInvoke = (channel: string, args: readonly unknown[]) => Promise<unknown>;
+
+/**
+ * Rank the three permission modes on a permissive scale so a "narrower"
+ * per-turn ceiling can be recognised. `ask` (0) is most restrictive; `auto`
+ * (2) is most permissive. A ceiling that lowers rank narrows; one that
+ * raises rank widens (an escalation the runtime must refuse).
+ */
+const PERMISSION_MODE_RANK: Record<RacpPermissionMode, number> = {
+  ask: 0,
+  "accept-edits": 1,
+  auto: 2,
+};
+
+function isWidening(session: RacpPermissionMode, effective: RacpPermissionMode): boolean {
+  return PERMISSION_MODE_RANK[effective] > PERMISSION_MODE_RANK[session];
+}
 
 type HostLike = {
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
@@ -52,19 +65,6 @@ export const DESKTOP_PRINCIPAL: Principal = {
   pairedDevice: true,
 };
 
-type HostSessionRecord = {
-  id: string;
-  title?: string;
-  projectId?: string;
-  projectPath?: string;
-  mode?: string;
-  permissionMode?: string;
-  planningState?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  messages?: UiMessage[];
-};
-
 /**
  * Electron Main's adapter around the headless Agent Host module (rollout R1,
  * D374/D375). The module wraps the existing registered IPC handlers through
@@ -86,22 +86,45 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
     async prompt(request: TurnStartRequest) {
       try {
         const summary = await sessions.get(request.sessionId);
-        if (summary && summary.permissionMode !== request.effectivePermissionMode) {
-          // The local prompt path runs under the session's durable permission
-          // mode. A per-turn ceiling needs runtime support that lands with the
-          // RACP-WS binding; until then a capped turn fails closed.
+        // A per-turn ceiling that would WIDEN the session's stored mode is a
+        // real escalation attempt — e.g. a remote viewer whose principal is
+        // subject to `remoteMaxPermissionMode: "ask"` should never be able to
+        // run a turn at `auto`. Refuse before the sidecar sees the request.
+        //
+        // A NARROWER ceiling (or the same mode) is safe to accept: it can only
+        // reduce what the turn is allowed to do. The runtime still uses the
+        // session's stored mode when it enforces tool decisions, so a narrower
+        // request is not yet honoured turn-locally — that is the R1 leftover
+        // waiting on host-core to accept a `permissionMode` override on
+        // `session.beginTurn`. We plumb the parameter end-to-end anyway so the
+        // enforcement gate can flip on without another wire change.
+        if (
+          summary &&
+          summary.permissionMode !== request.effectivePermissionMode &&
+          isWidening(summary.permissionMode, request.effectivePermissionMode)
+        ) {
           throw new RacpError(
             "FORBIDDEN",
-            "the local runtime cannot apply a per-turn permission ceiling yet",
-            { details: { effectivePermissionMode: request.effectivePermissionMode } },
+            "the local runtime cannot widen the per-turn permission ceiling",
+            {
+              details: {
+                sessionPermissionMode: summary.permissionMode,
+                effectivePermissionMode: request.effectivePermissionMode,
+              },
+            },
           );
         }
+        const permissionModeOverride =
+          summary && summary.permissionMode !== request.effectivePermissionMode
+            ? request.effectivePermissionMode
+            : undefined;
         const result = (await options.invoke(options.channels.agentPrompt, [
           {
             sessionId: request.sessionId,
             content: request.content,
             ...(request.sessionMessageId ? { sessionMessageId: request.sessionMessageId } : {}),
             ...(request.attachments ? { attachments: request.attachments } : {}),
+            ...(permissionModeOverride ? { permissionMode: permissionModeOverride } : {}),
           },
         ])) as { accepted?: boolean; turnId: string };
         return { turnId: result.turnId };
@@ -121,6 +144,32 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
           }
         }
         throw error;
+      }
+    },
+    /**
+     * Deliver one more user message into a running turn (`send now` keeps the
+     * promoted messages adjacent). This is the same channel the Composer's
+     * Alt+Enter uses, so admission, attachments, and persistence are unchanged.
+     */
+    async steer(request: TurnSteerRequest) {
+      try {
+        const result = (await options.invoke(options.channels.agentSteer, [
+          {
+            sessionId: request.sessionId,
+            expectedTurnId: request.turnId,
+            content: request.content,
+            ...(request.sessionMessageId ? { messageId: request.sessionMessageId } : {}),
+            ...(request.attachments ? { attachments: request.attachments } : {}),
+          },
+        ])) as { accepted?: boolean } | undefined;
+        return { accepted: result?.accepted !== false };
+      } catch (error) {
+        options.log("warn", "agent host steer failed", {
+          sessionId: request.sessionId,
+          turnId: request.turnId,
+          error: String(error),
+        });
+        return { accepted: false };
       }
     },
     async stop(sessionId: string) {
@@ -182,70 +231,13 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
         resolvingViaModule.delete(input.proposalId);
       }
     },
-    async listPendingTools(sessionId) {
-      const host = options.getHost();
-      if (!host) return [];
-      const result = await host.call<{ requests?: PendingToolRequest[] }>("permissions.pending", {
-        ...(sessionId ? { sessionId } : {}),
-      });
-      return result.requests ?? [];
-    },
+    listPendingTools: (sessionId) => listPendingToolRequests(options.getHost, sessionId),
   };
 
-  const sessions: SessionPort = {
-    async get(sessionId) {
-      const record = await fetchSession(sessionId);
-      return record ? toSummary(record) : null;
-    },
-    async history(sessionId, { limit, beforeItemId }) {
-      const record = await fetchSession(sessionId);
-      const messages = record?.messages ?? [];
-      const end = beforeItemId ? messages.findIndex((message) => message.id === beforeItemId) : messages.length;
-      const cut = end === -1 ? messages.length : end;
-      const start = Math.max(0, cut - limit);
-      return {
-        items: messages.slice(start, cut).map(toItem),
-        hasMore: start > 0,
-      };
-    },
-  };
-
-  async function fetchSession(sessionId: string): Promise<HostSessionRecord | null> {
-    const host = options.getHost();
-    if (!host) return null;
-    const result = await host.call<{ session?: HostSessionRecord | null }>("session.get", { id: sessionId });
-    return result.session ?? null;
-  }
-
-  /** The Host-owned turn queue persisted by host-core (schema v15, ADR 0213). */
-  const queueStore: QueueStore = {
-    async listAll() {
-      const host = options.getHost();
-      if (!host) return [];
-      const result = await host.call<{ entries?: HostQueueEntry[] }>("session.queueList", {});
-      return (result.entries ?? []).map(fromHostQueueEntry);
-    },
-    async push(record) {
-      await requireHost().call("session.queuePush", {
-        id: record.id,
-        sessionId: record.sessionId,
-        principal: record.principalSubject,
-        ...(record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}),
-        inputHash: record.inputHash,
-        content: record.content,
-        ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
-        ...(record.attachments ? { attachments: record.attachments } : {}),
-        permissionMode: record.effectivePermissionMode,
-      });
-    },
-    async remove(id) {
-      const result = await requireHost().call<{ removed?: boolean }>("session.queueRemove", { id });
-      return result.removed === true;
-    },
-    async prioritize(id) {
-      await requireHost().call("session.queuePrioritize", { id });
-    },
-  };
+  // Session reads and the persisted turn queue (schema v15, ADR 0213) go
+  // straight to host-core; the same ports serve the headless Host.
+  const sessions = createHostSessionPort(options.getHost);
+  const queueStore = createHostQueueStore(options.getHost);
 
   const agentHost = new AgentHost({
     runtime,
@@ -306,6 +298,12 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
     async prioritize(turnId: string): Promise<void> {
       await forIpc(() => agentHost.prioritizeTurn(DESKTOP_PRINCIPAL, turnId));
     },
+    async reorder(
+      turnId: string,
+      direction: "up" | "down",
+    ): Promise<{ moved: boolean }> {
+      return forIpc(() => agentHost.reorderTurn(DESKTOP_PRINCIPAL, turnId, direction));
+    },
   };
 
   return {
@@ -351,6 +349,30 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
         options.log("warn", "agent host settle failed", { approvalId, error: String(error) });
       }
     },
+    /**
+     * The runtime settled one turn. Main is authoritative here: a real abort can
+     * lose its terminal event (`isStaleTerminalEvent` drops a terminal event for
+     * a turn main no longer owns, and the runtime need not emit one), and a turn
+     * left active in the Host would hold the queue forever.
+     */
+    endTurn(
+      sessionId: string,
+      turnId: string,
+      status: "completed" | "failed" | "interrupted" | "canceled",
+      error?: { code: string; message: string; retriable: boolean; traceId: string },
+    ): void {
+      abortingSessions.delete(sessionId);
+      try {
+        agentHost.endTurn(sessionId, turnId, status, error ? { error } : {});
+      } catch (error_) {
+        options.log("warn", "agent host end turn failed", {
+          sessionId,
+          turnId,
+          status,
+          error: String(error_),
+        });
+      }
+    },
     markAborting(sessionId: string): void {
       abortingSessions.add(sessionId);
     },
@@ -382,72 +404,7 @@ function toQueueSummary(entry: QueueEntryView): QueuedTurnSummary {
     ...(entry.sessionMessageId ? { sessionMessageId: entry.sessionMessageId } : {}),
     ...(entry.attachments ? { attachments: entry.attachments } : {}),
     position: entry.turn.queuePosition ?? 0,
+    ...(entry.priority !== undefined ? { priority: entry.priority } : {}),
     createdAt: entry.turn.startedAt ?? new Date().toISOString(),
-  };
-}
-
-type HostQueueEntry = {
-  id: string;
-  sessionId: string;
-  principal: string;
-  idempotencyKey?: string;
-  inputHash: string;
-  content: string;
-  sessionMessageId?: string;
-  attachments?: unknown;
-  permissionMode: string;
-  position: number;
-  createdAt: string;
-};
-
-function fromHostQueueEntry(entry: HostQueueEntry): QueuedTurnRecord {
-  const permissionMode: RacpPermissionMode =
-    entry.permissionMode === "accept-edits" || entry.permissionMode === "auto" ? entry.permissionMode : "ask";
-  return {
-    id: entry.id,
-    sessionId: entry.sessionId,
-    principalSubject: entry.principal,
-    content: entry.content,
-    ...(entry.sessionMessageId ? { sessionMessageId: entry.sessionMessageId } : {}),
-    ...(Array.isArray(entry.attachments) ? { attachments: entry.attachments as QueuedTurnRecord["attachments"] } : {}),
-    effectivePermissionMode: permissionMode,
-    ...(entry.idempotencyKey ? { idempotencyKey: entry.idempotencyKey } : {}),
-    inputHash: entry.inputHash,
-    createdAt: Date.parse(entry.createdAt) || 0,
-  };
-}
-
-function toSummary(record: HostSessionRecord): SessionSummary {
-  const mode = record.mode === "plan" || record.mode === "goal" ? record.mode : "agent";
-  const permissionMode: RacpPermissionMode =
-    record.permissionMode === "accept-edits" || record.permissionMode === "auto" ? record.permissionMode : "ask";
-  const planningState =
-    record.planningState === "planning" || record.planningState === "awaiting_approval"
-      ? record.planningState
-      : "inactive";
-  return {
-    id: record.id,
-    title: record.title ?? "",
-    ...(record.projectId ? { projectId: record.projectId } : {}),
-    ...(record.projectPath ? { workspaceLabel: basename(record.projectPath) } : {}),
-    mode,
-    permissionMode,
-    planningState,
-    createdAt: record.createdAt ?? new Date(0).toISOString(),
-    updatedAt: record.updatedAt ?? record.createdAt ?? new Date(0).toISOString(),
-  };
-}
-
-function toItem(message: UiMessage): RacpItemSummary {
-  const turnId = (message as { turnId?: string }).turnId ?? "";
-  return {
-    id: message.id,
-    turnId,
-    itemType: "message",
-    status: message.status === "streaming" ? "streaming" : "completed",
-    createdAt: message.createdAt,
-    ...(message.parentToolCallId ? { parentToolCallId: message.parentToolCallId } : {}),
-    ...(message.agentName ? { agentName: message.agentName } : {}),
-    content: message,
   };
 }

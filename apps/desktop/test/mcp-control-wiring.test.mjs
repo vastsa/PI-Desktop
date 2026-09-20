@@ -62,7 +62,9 @@ test("native picker handlers and secret-write channels stay out of the MCP catal
       const from = starts[index].index ?? 0;
       const to = index + 1 < starts.length ? (starts[index + 1].index ?? source.length) : source.length;
       const block = source.slice(from, to);
-      if (block.includes("showOpenDialog")) pickerKeys.push(starts[index][1]);
+      if (block.includes("showOpenDialog") || block.includes("openProjectPicker")) {
+        pickerKeys.push(starts[index][1]);
+      }
     }
   }
   assert.ok(pickerKeys.includes("pluginLoadDev"));

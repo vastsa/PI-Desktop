@@ -30,6 +30,8 @@ import {
   Copy,
   Dot,
   ExternalLink,
+  Eye,
+  EyeOff,
   FileDiff,
   FileSpreadsheet,
   FileText,
@@ -84,7 +86,7 @@ import {
   Sun,
   Target,
   Terminal,
-  TextQuote,
+  TextSelect,
   Trash2,
   TriangleAlert,
   UserRound,
@@ -152,8 +154,6 @@ export const IconArrowUpDown = icon(ArrowUpDown);
 export const IconSearch = icon(Search);
 export const IconRefresh = icon(RefreshCcw);
 export const IconChat = icon(MessageSquare);
-/** Message reference: quote part of a message into the composer (D-LOCAL-message-quotes). */
-export const IconQuote = icon(TextQuote);
 /** Session creation affordance. Keep it distinct from generic add actions. */
 export const IconNewSession = icon(MessageSquarePlus);
 export const IconFolder = icon(Folder);
@@ -180,6 +180,8 @@ export const IconSidebar = icon(PanelLeft);
 export const IconArrowUp = icon(ArrowUp);
 export const IconArrowDown = icon(ArrowDown);
 export const IconCopy = icon(Copy);
+/* Chat context menus: hand a message's rendered text to the platform selection. */
+export const IconTextSelect = icon(TextSelect);
 export const IconCode = icon(Code2);
 export const IconDatabase = icon(Database);
 export const IconCheck = icon(Check);
@@ -243,6 +245,9 @@ export const IconStar = icon(Star);
 export const IconCircleCheck = icon(CircleCheck);
 export const IconCircleAlert = icon(CircleAlert);
 export const IconTriangleAlert = icon(TriangleAlert);
+/* Password field reveal toggle (see PasswordInput). */
+export const IconEye = icon(Eye);
+export const IconEyeOff = icon(EyeOff);
 
 export function IconStop({ size = 16, style, ...props }: IconProps) {
   return (

@@ -92,3 +92,25 @@ test("cloneGitRepository runs git clone -- url dest", async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("cloneGitRepository rejects a private host before git runs", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-clone-"));
+  try {
+    let ran = false;
+    await assert.rejects(
+      () =>
+        cloneGitRepository({
+          url: "https://192.168.1.2/team/repo.git",
+          parentPath: root,
+          run: async () => {
+            ran = true;
+            return { code: 0, stderr: "" };
+          },
+        }),
+      /git repository URL/,
+    );
+    assert.equal(ran, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

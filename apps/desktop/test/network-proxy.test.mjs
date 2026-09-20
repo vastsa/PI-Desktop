@@ -15,7 +15,7 @@ const nodeProxy = await readFile(
   "utf8",
 );
 const hostProcess = await readFile(
-  new URL("../electron/main/host-process.ts", import.meta.url),
+  new URL("../../../packages/host-runtime/src/host-process.ts", import.meta.url),
   "utf8",
 );
 const hostProxy = await readFile(
@@ -29,6 +29,8 @@ test("Electron main applies Chromium proxy and net.fetch", () => {
   assert.match(electronProxy, /session-created/);
   assert.match(electronProxy, /pi-desktop\/network\/testProxy|PROXY_TEST_URL/);
   assert.match(electronProxy, /PI_DESKTOP_PROXY_JSON/);
+  assert.match(electronProxy, /startAuthenticatedProxyRelay/);
+  assert.match(electronProxy, /proxyHasCredentials/);
 });
 
 test("sidecar reconfigures undici without a restart", () => {

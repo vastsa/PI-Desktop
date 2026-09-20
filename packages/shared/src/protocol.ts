@@ -1,8 +1,8 @@
 export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
-export const APP_ID = "com.pi-desktop.app";
+export const APP_ID = "net.aiuo.pi-desktop";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.14.8-native.1";
+export const APP_VERSION = "0.15.2-beta.1";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -34,6 +34,7 @@ export const NATIVE_MENU_ACTIONS = [
   "toggleMaximize",
   "close",
   "restoreMainWindow",
+  "toggleMainWindow",
 ] as const;
 
 export type NativeMenuAction = (typeof NATIVE_MENU_ACTIONS)[number];
@@ -70,6 +71,9 @@ export const IPC = {
     agentPrompt: "pi-desktop/agent/prompt",
     agentSteer: "pi-desktop/agent/steer",
     promptEnhance: "pi-desktop/prompt/enhance",
+    speechTranscribe: "pi-desktop/speech/transcribe",
+    speechSynthesize: "pi-desktop/speech/synthesize",
+    speechGetStatus: "pi-desktop/speech/getStatus",
     agentCompact: "pi-desktop/agent/compact",
     agentAbort: "pi-desktop/agent/abort",
     agentStop: "pi-desktop/agent/stop",
@@ -77,6 +81,7 @@ export const IPC = {
     agentQueueList: "pi-desktop/agent/queue/list",
     agentQueueRemove: "pi-desktop/agent/queue/remove",
     agentQueuePrioritize: "pi-desktop/agent/queue/prioritize",
+    agentQueueReorder: "pi-desktop/agent/queue/reorder",
     agentGetStatus: "pi-desktop/agent/getStatus",
     agentInstructionsGet: "pi-desktop/agent/instructions/get",
     agentInstructionsSave: "pi-desktop/agent/instructions/save",
@@ -125,6 +130,7 @@ export const IPC = {
     projectGroupInstructionsGet: "pi-desktop/project-group/instructions/get",
     projectGroupInstructionsSave: "pi-desktop/project-group/instructions/save",
     projectClone: "pi-desktop/project/clone",
+    projectCloneCheckout: "pi-desktop/project/cloneCheckout",
     projectGet: "pi-desktop/project/get",
     projectList: "pi-desktop/project/list",
     projectSet: "pi-desktop/project/set",
@@ -136,11 +142,34 @@ export const IPC = {
     scheduledUpdate: "pi-desktop/scheduled/update",
     scheduledDelete: "pi-desktop/scheduled/delete",
     scheduledRun: "pi-desktop/scheduled/run",
+    scheduledExecute: "pi-desktop/scheduled/execute",
+    scheduledListRuns: "pi-desktop/scheduled/listRuns",
     toolResolvePermission: "pi-desktop/tool/resolvePermission",
     askToolResolve: "pi-desktop/agent/askTool/resolve",
     plansPending: "pi-desktop/plans/pending",
     plansResolve: "pi-desktop/plans/resolve",
+    /**
+     * List every paired remote `pi-host` this desktop knows, redacted so no
+     * device token reaches the renderer. See ADR 0286 (R2b pairing UX).
+     */
+    remoteHostList: "pi-desktop/remoteHost/list",
+    /**
+     * Pair with a `pi-host` at `url` using a single-use `pairingToken`, mint
+     * a device token, persist it encrypted, and open the live connection.
+     */
+    remoteHostPair: "pi-desktop/remoteHost/pair",
+    /** Close the live connection for `hostKey` and drop its persisted record. */
+    remoteHostRemove: "pi-desktop/remoteHost/remove",
+    /**
+     * Install and pair a `pi-host` on a machine the user reaches over SSH:
+     * upload the bootstrap script, download and verify the published bundle
+     * there, start the host, forward its loopback port, and exchange the
+     * pairing token (spec §5.2). Uses the user's own SSH keys; no credential
+     * crosses this channel.
+     */
+    remoteHostBootstrap: "pi-desktop/remoteHost/bootstrap",
     providersList: "pi-desktop/providers/list",
+    providersReorder: "pi-desktop/providers/reorder",
     providersCreate: "pi-desktop/providers/create",
     providersUpdate: "pi-desktop/providers/update",
     providersDelete: "pi-desktop/providers/delete",
@@ -165,7 +194,15 @@ export const IPC = {
     extensionsCommandRun: "pi-desktop/extensions/commands/run",
     extensionsUiRespond: "pi-desktop/extensions/ui/respond",
     pluginLoadDev: "pi-desktop/plugin/loadDev",
+    /**
+     * The answer to a development plugin's permission review. Loading a folder
+     * is a two-step: `pluginLoadDev` returns the declaration, and this commits
+     * the permissions the user accepted.
+     */
+    pluginLoadDevConfirm: "pi-desktop/plugin/loadDevConfirm",
     pluginReload: "pi-desktop/plugin/reload",
+    /** Commits a reviewed widening for an already-loaded development plugin. */
+    pluginReloadConfirm: "pi-desktop/plugin/reloadConfirm",
     pluginCreateFromTemplate: "pi-desktop/plugin/createFromTemplate",
     pluginInstallFromPath: "pi-desktop/plugin/installFromPath",
     pluginInstallFromPackage: "pi-desktop/plugin/installFromPackage",
@@ -180,33 +217,39 @@ export const IPC = {
     pluginLauncherToggle: "pi-desktop/pluginLauncher/toggle",
     pluginLauncherDismiss: "pi-desktop/pluginLauncher/dismiss",
     pluginThemes: "pi-desktop/plugin/themes",
-    pluginSettingsDestinations: "pi-desktop/plugin/settings/destinations",
+    pluginScenicThemesDestinations: "pi-desktop/plugin/scenicThemes/destinations",
+    pluginScenicThemesSetBlur: "pi-desktop/plugin/scenicThemes/setBlur",
     pluginServices: "pi-desktop/plugin/services",
     pluginViews: "pi-desktop/plugin/views",
     pluginViewOpen: "pi-desktop/plugin/view/open",
     pluginViewClose: "pi-desktop/plugin/view/close",
     pluginViewSetBounds: "pi-desktop/plugin/view/setBounds",
     pluginViewSetVisible: "pi-desktop/plugin/view/setVisible",
-    pluginSettingsViewOpen: "pi-desktop/plugin/settings/view/open",
-    pluginSettingsViewSetBounds: "pi-desktop/plugin/settings/view/setBounds",
-    pluginSettingsViewSetVisible: "pi-desktop/plugin/settings/view/setVisible",
     mcpList: "pi-desktop/mcp/list",
     mcpUpsert: "pi-desktop/mcp/upsert",
     mcpRemove: "pi-desktop/mcp/remove",
     mcpSetEnabled: "pi-desktop/mcp/setEnabled",
     mcpSetScope: "pi-desktop/mcp/setScope",
+    mcpTransfer: "pi-desktop/mcp/transfer",
     mcpTest: "pi-desktop/mcp/test",
+    mcpOauthStart: "pi-desktop/mcp/oauth/start",
+    mcpOauthCancel: "pi-desktop/mcp/oauth/cancel",
     mcpImport: "pi-desktop/mcp/import",
+    mcpImportScan: "pi-desktop/mcp/importScan",
+    mcpImportRun: "pi-desktop/mcp/importRun",
     mcpMarketSearch: "pi-desktop/mcp/market/search",
     skillList: "pi-desktop/skill/list",
     skillCreate: "pi-desktop/skill/create",
     skillImport: "pi-desktop/skill/import",
+    skillImportScan: "pi-desktop/skill/importScan",
+    skillImportRun: "pi-desktop/skill/importRun",
     skillMarketSearch: "pi-desktop/skill/market/search",
     skillMarketFetch: "pi-desktop/skill/market/fetch",
     skillUpdate: "pi-desktop/skill/update",
     skillRemove: "pi-desktop/skill/remove",
     skillSetEnabled: "pi-desktop/skill/setEnabled",
     skillSetScope: "pi-desktop/skill/setScope",
+    skillTransfer: "pi-desktop/skill/transfer",
     skillRead: "pi-desktop/skill/read",
     skillReveal: "pi-desktop/skill/reveal",
     subagentList: "pi-desktop/subagent/list",
@@ -217,6 +260,7 @@ export const IPC = {
     subagentRemove: "pi-desktop/subagent/remove",
     subagentSetEnabled: "pi-desktop/subagent/setEnabled",
     subagentSetScope: "pi-desktop/subagent/setScope",
+    subagentSetBuiltinEnabled: "pi-desktop/subagent/setBuiltinEnabled",
     subagentReveal: "pi-desktop/subagent/reveal",
     marketRefresh: "pi-desktop/market/refresh",
     marketSearch: "pi-desktop/market/search",
@@ -224,6 +268,7 @@ export const IPC = {
     marketInstall: "pi-desktop/market/install",
     marketCheckUpdates: "pi-desktop/market/checkUpdates",
     marketApplyUpdates: "pi-desktop/market/applyUpdates",
+    marketCancelInstall: "pi-desktop/market/cancelInstall",
     commandPaletteSearch: "pi-desktop/commandPalette/search",
     commandPaletteExecute: "pi-desktop/commandPalette/execute",
     logOpenFolder: "pi-desktop/log/openFolder",
@@ -258,10 +303,13 @@ export const IPC = {
     closeBehaviorGet: "pi-desktop/window/closeBehavior/get",
     closeBehaviorSet: "pi-desktop/window/closeBehavior/set",
     menuRendererReady: "pi-desktop/menu/rendererReady",
+    traySetSessionPreferences: "pi-desktop/tray/setSessionPreferences",
     nativeMenuAction: "pi-desktop/menu/nativeAction",
   },
   event: {
     pluginChanged: "pi-desktop/event/pluginChanged",
+    /** Progress of an install or update, while it is still running. */
+    pluginInstallProgress: "pi-desktop/plugin/event/installProgress",
     /** Host-originated app settings mutation (e.g. plugin `app.setTheme`). */
     settingsChanged: "pi-desktop/app/event/settingsChanged",
     extensionsUiPrompt: "pi-desktop/extensions/event/uiPrompt",
@@ -277,11 +325,13 @@ export const IPC = {
     windowFullScreen: "pi-desktop/window/event/fullscreen",
     windowWorkPanelResize: "pi-desktop/window/event/workPanelResize",
     menuCommand: "pi-desktop/menu/event/command",
+    traySessionActivated: "pi-desktop/tray/event/sessionActivated",
     notificationChanged: "pi-desktop/notification/event/changed",
     sessionsChanged: "pi-desktop/session/event/changed",
     notificationActivated: "pi-desktop/notification/event/activated",
     plansChanged: "pi-desktop/plans/event/changed",
     providersOauth: "pi-desktop/providers/oauth/event",
+    mcpOauth: "pi-desktop/mcp/oauth/event",
     updatesState: "pi-desktop/updates/event/state",
   },
 } as const;

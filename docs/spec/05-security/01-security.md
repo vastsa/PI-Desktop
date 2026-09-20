@@ -100,11 +100,17 @@ replace an artifact.
 
 The renderer does not fetch skill catalogs or SKILL.md documents. Electron
 main performs those HTTPS requests under the public-network policy (ADR 0243 /
-D413): `https` only, a shared syntactic public-host check, DNS classification
-of every resolved address, and `redirect: "manual"` with per-hop
-re-validation. Loopback, RFC1918, ULA, link-local, and mapped IPv6 targets
-are rejected. Install writes markdown only through `skills.create`. The host
-document cap remains 128 KiB after sibling markdown is inlined.
+D413, amended by ADR 0272 / D436): `https` only, a shared syntactic public-host
+check, `redirect: "manual"`, and a per-hop verdict that follows the route the
+request will actually take. Before each hop the client asks the session that
+carries `net.fetch` for its own proxy decision (`Session.resolveProxy`): on a
+proxied route the hop is judged on its route rather than on a local address the
+app would never dial, so only the resolver-artifact class (`benchmark`, a TUN
+fake-IP) is tolerated there, while a direct or unreadable route keeps the full
+local classification and rejects loopback, RFC1918, ULA, link-local, mapped
+IPv6, and every other non-public class. Install writes markdown only through
+`skills.create`. The host document cap remains 128 KiB after sibling markdown
+is inlined.
 
 ## 4.2 MCP market egress
 
@@ -164,28 +170,28 @@ explicit local/LAN endpoints; the market path does not widen that policy.
   GitHub's latest stable release rather than a same-channel prerelease pin.
 - Feed manifests bind artifacts with electron-builder hashes. An error,
   unavailable feed, hash mismatch, or invalid updater state must not install.
-- Packaged macOS is manual-only: it detects a release and opens the fixed
-  releases page, but never downloads or installs it in-app. Enabling a signed
-  macOS in-app channel requires a later explicit decision and qualification.
+- Packaged macOS, Windows NSIS, and Linux AppImage download and install in-app
+  from the GitHub Releases feed. Linux deb/rpm and Windows portable detect a
+  release and open the fixed releases page.
 - D126 tag releases publish Windows NSIS and Linux AppImage installers with
   their update manifests, plus Linux deb/rpm packages and a Windows portable
   exe. The NSIS and AppImage artifacts activate the existing in-app lanes.
   The portable exe uses notify-and-link delivery and does not write
-  `latest.yml`. macOS tag artifacts
-  are Developer ID-signed, notarized, and stapled before upload; rollback and
-  staged-rollout qualification remain release follow-ups.
+  `latest.yml`. macOS tag artifacts are Developer ID-signed, notarized, and
+  stapled before upload; rollback and staged-rollout qualification remain
+  release follow-ups.
 - The client carries no GitHub token. A private or otherwise unreachable feed
   fails closed; automatic failures stay ambient and explicit checks expose the
   error.
 - Unsigned macOS distributions keep a narrow first-launch fallback for trusted
-  sources. The DMG exposes only a text note named `If app won't open, read this.txt`; it gives
-  the manual `com.apple.quarantine` command and says signed/notarized builds do
-  not need it. The ZIP package also includes the executable helper, which
-  searches only `/Applications/PI-Desktop.app` and `~/Applications/PI-Desktop.app`,
-  verifies `CFBundleIdentifier` is `com.pi-desktop.app`, removes only
+  sources. The DMG is a two-icon install and does not include that note. The ZIP
+  package includes a text note and the executable helper, which searches only
+  `/Applications/PI-Desktop.app` and `~/Applications/PI-Desktop.app`,
+  verifies `CFBundleIdentifier` is `net.aiuo.pi-desktop`, removes only
   `com.apple.quarantine` recursively when present, and opens the app. It accepts
   no arbitrary path, uses no privilege escalation, and is not a substitute for
-  Developer ID signing or notarization.
+  Developer ID signing or notarization. The note gives the manual
+  `com.apple.quarantine` command and says signed/notarized builds do not need it.
 - Localized product "what's new" text (D164/D345) is selected in Main from the
   shipped changelog catalog and attached to `UpdateState.releaseNotes`. The
   renderer cannot supply a notes URL, feed, or remote body; missing catalog

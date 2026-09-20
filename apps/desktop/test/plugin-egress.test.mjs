@@ -141,6 +141,60 @@ test("net.fetch reaches a declared host", async (t) => {
   assert.equal(result.bodyText, "ok");
 });
 
+test("a failed upstream call is audited with its status and retry hint", async (t) => {
+  // The host passes the response through and never retries on the plugin's
+  // behalf, so a 429 has to be legible in the audit log: a failed call, naming
+  // the delay the plugin is expected to honor itself.
+  const hits = [];
+  const server = await listenOnce((req, res) => {
+    hits.push(req.url);
+    if (req.url === "/limited") {
+      res.writeHead(429, { "retry-after": "2" }).end("slow down");
+      return;
+    }
+    if (req.url === "/limited-ms") {
+      res.writeHead(429, { "retry-after-ms": "1500", "retry-after": "9" }).end("slow down");
+      return;
+    }
+    res.writeHead(200, { "retry-after": "7" }).end("ok");
+  });
+  t.after(() => server.close());
+
+  const { runtime, audits } = createRuntime(t);
+  const dir = writePlugin({ id: "egress.limited", net: { domains: ["127.0.0.1"] } });
+  await runtime.loadFromPath(dir);
+  const call = (path) =>
+    runtime.invokePanelBridge("egress.limited", "net.fetch", {
+      url: `http://127.0.0.1:${server.port}${path}`,
+    });
+
+  const limited = await call("/limited");
+  // Untouched passthrough: status, headers and body still reach the plugin.
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers["retry-after"], "2");
+  assert.equal(limited.bodyText, "slow down");
+  // One request: nothing here retried the plugin's call.
+  assert.equal(hits.length, 1);
+
+  assert.equal((await call("/limited-ms")).status, 429);
+  assert.equal((await call("/ok")).status, 200);
+  assert.equal(hits.length, 3);
+
+  const entries = audits.filter((e) => e.api === "net.fetch");
+  const limitedEntry = entries.find((e) => e.url.endsWith("/limited"));
+  assert.equal(limitedEntry.ok, false, "a 429 is a failed call");
+  assert.equal(limitedEntry.status, 429);
+  assert.equal(limitedEntry.retryAfter, "2");
+  // `retry-after-ms` wins, the precedence the provider retry already uses.
+  assert.equal(entries.find((e) => e.url.endsWith("/limited-ms")).retryAfter, "1500");
+  // A success keeps the shape it always had: the hint is a failure detail, and
+  // a body never enters the log.
+  const okEntry = entries.find((e) => e.url.endsWith("/ok"));
+  assert.equal(okEntry.ok, true);
+  assert.equal("retryAfter" in okEntry, false);
+  assert.equal(JSON.stringify(entries).includes("slow down"), false);
+});
+
 test("a redirect off the allowlist cannot carry the request out", async (t) => {
   // The classic bypass: declare a benign host, then let it 302 to the collector.
   const collector = await listenOnce((_req, res) => {
@@ -210,7 +264,9 @@ test("ui.microphone grants audio-only media permission to a panel", async (t) =>
   assert.equal(panels[0].allowMicrophone, true);
   assert.match(panelHostSrc, /mediaTypes/);
   assert.match(panelHostSrc, /type === "audio"/);
-  assert.match(panelHostSrc, /details\.mediaType === "audio"/);
+  assert.match(panelHostSrc, /details\.mediaType !== "video"/);
+  assert.match(panelHostSrc, /askForMediaAccess/);
+
 });
 
 test("the panel session filters requests and refuses device permissions", () => {

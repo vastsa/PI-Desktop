@@ -10,6 +10,7 @@ const THINKING_LEVELS = [
 ] as const;
 
 type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+type SessionThinkingLevel = ThinkingLevel | "omit";
 
 export type SessionThinkingSnapshot = {
   providerId?: string;
@@ -22,7 +23,7 @@ export type SessionThinkingSnapshot = {
 export type OptimisticSessionConfiguration = {
   providerId?: string;
   modelId?: string;
-  thinkingLevel?: ThinkingLevel;
+  thinkingLevel?: SessionThinkingLevel;
   mode?: unknown;
   permissionMode?: unknown;
 };

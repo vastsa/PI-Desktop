@@ -210,7 +210,7 @@ test("the transcript bounds mounted history and escalates at the top", () => {
   // older page once the window already covers it.
   assert.match(
     transcript,
-    /if \(el\.scrollTop <= HISTORY_REVEAL_THRESHOLD_PX\) reachTop\(\)/,
+    /isHistoryRevealPosition\(el, pinnedRef\.current && !gesturing\)/,
   );
   const reachTop = transcript.match(
     /const reachTop = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[loadOlder, windowSize\]\);/,
@@ -276,7 +276,7 @@ test("a visible history boundary advances without waiting for a scroll event", (
   );
   // Escalation is bounded per run: one growth step or one page request, and the
   // effect only re-runs when that step actually changed the projection.
-  assert.match(transcript, /root\.scrollTop > HISTORY_REVEAL_THRESHOLD_PX/);
+  assert.match(transcript, /!isHistoryRevealPosition\(root, pinnedRef\.current\)/);
   assert.match(transcript, /observer\.disconnect\(\)/);
 });
 

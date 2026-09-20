@@ -4,17 +4,20 @@ import { readFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+// The distribution repository the plugin center publishes to, which is what a
+// release gate has to read: the center serves the same document with a package
+// base filled in.
 const DEFAULT_URL =
   process.env.PI_DESKTOP_PLUGIN_MARKET_URL ||
-  "https://raw.githubusercontent.com/vastsa/pi-desktop-plugins/main/catalog.json";
+  "https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/catalog.json";
 
 /**
  * Hosts a published package may be served from.
  *
- * Mirrors PACKAGE_HOST_ALLOWLIST in crates/host-core/src/plugins.rs. A catalog
- * that passes preflight but names a host the client refuses would be a release
- * nobody can install, so the gate is checked here rather than discovered by the
- * first user.
+ * Mirrors PACKAGE_HOST_ALLOWLIST in
+ * crates/host-core/src/plugins/validation.rs. A catalog that passes preflight
+ * but names a host the client refuses would be a release nobody can install, so
+ * the gate is checked here rather than discovered by the first user.
  */
 const PACKAGE_HOST_ALLOWLIST = ["github.com", "githubusercontent.com", "cnb.cool"];
 

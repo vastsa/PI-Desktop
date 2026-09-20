@@ -1,0 +1,163 @@
+/**
+ * A menu select for a Settings row.
+ *
+ * Settings cards clip their overflow (`.settings-panel` draws the frame with
+ * `overflow: hidden`), so the option list opens through `AnchoredMenu`. A
+ * native `<select>` draws its popup at the OS level instead: it ignores the
+ * menu surface tokens, shows the platform highlight, and has no current-value
+ * marker. The closed trigger sizes to the current label (capped by its parent)
+ * so a short value does not stretch the settings control column. Rows whose
+ * list is short still use this control so one Settings window does not mix two
+ * popup implementations.
+ *
+ * Unlike the Appearance pickers this list is not searchable — the longest
+ * catalog here is the host command-shell list — so the menu opens on the
+ * current option and keyboard users move with arrows alone.
+ */
+import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { cx } from "../ui";
+import { IconCheck, IconChevronDown } from "../icons";
+import { AnchoredMenu } from "./AnchoredMenu";
+
+export type MenuSelectOption = {
+  id: string;
+  label: string;
+  /** Listed but not selectable; the host may report an unavailable shell. */
+  disabled?: boolean;
+};
+
+export function SettingsMenuSelect({
+  value,
+  options,
+  onChange,
+  label,
+  disabled = false,
+  busy = false,
+  fullWidth = false,
+  className,
+}: {
+  value: string;
+  options: MenuSelectOption[];
+  onChange: (id: string) => void;
+  /** Accessible name for the trigger and the menu. */
+  label: string;
+  disabled?: boolean;
+  /** Keeps the trigger non-interactive while a write is in flight. */
+  busy?: boolean;
+  /** Stretch across a form field. Compact settings rows leave this off. */
+  fullWidth?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [activeId, setActiveId] = useState(value);
+  const optionRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  const current = options.find((option) => option.id === value);
+  const selectable = options.filter((option) => !option.disabled);
+
+  const close = () => setOpen(false);
+
+  const choose = (option: MenuSelectOption) => {
+    close();
+    if (option.disabled || option.id === value) return;
+    onChange(option.id);
+  };
+
+  const moveActive = (from: string, delta: number) => {
+    if (selectable.length === 0) return;
+    const index = selectable.findIndex((option) => option.id === from);
+    const next =
+      index === -1
+        ? delta > 0
+          ? 0
+          : selectable.length - 1
+        : (index + delta + selectable.length) % selectable.length;
+    const target = selectable[next];
+    if (!target) return;
+    setActiveId(target.id);
+    optionRefs.current.get(target.id)?.focus();
+  };
+
+  /* Arrow keys wrap over the selectable rows for parity with the Appearance
+     pickers; Home/End and Enter stay with the focused option button. */
+  const onMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    moveActive(activeId, event.key === "ArrowDown" ? 1 : -1);
+  };
+
+  return (
+    <div className={cx("settings-menu-select-anchor", fullWidth && "is-full", className)}>
+      <AnchoredMenu
+        open={open}
+        onClose={close}
+        menuClassName="settings-menu-select-menu"
+        label={label}
+        align="end"
+        onMenuKeyDown={onMenuKeyDown}
+        trigger={(ref) => (
+          <button
+            ref={ref}
+            type="button"
+            className="settings-menu-select-trigger"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            aria-label={label}
+            disabled={disabled || busy}
+            onClick={() => {
+              setActiveId(value);
+              setOpen((current) => !current);
+            }}
+          >
+            <span className="settings-menu-select-trigger-label">
+              {current?.label ?? value}
+            </span>
+            <IconChevronDown size={14} aria-hidden />
+          </button>
+        )}
+      >
+        <div className="settings-menu-select-results">
+          <ul className="settings-menu-select-list">
+            {options.map((option) => {
+              const isCurrent = option.id === value;
+              return (
+                <li key={option.id}>
+                  <button
+                    ref={(node) => {
+                      if (node) optionRefs.current.set(option.id, node);
+                      else optionRefs.current.delete(option.id);
+                    }}
+                    type="button"
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={isCurrent}
+                    disabled={option.disabled}
+                    className={cx(
+                      "settings-menu-select-option",
+                      isCurrent && "is-current",
+                      option.id === activeId && "is-active",
+                    )}
+                    onMouseEnter={() => setActiveId(option.id)}
+                    onFocus={() => setActiveId(option.id)}
+                    onClick={() => choose(option)}
+                  >
+                    <span className="settings-menu-select-option-label">
+                      {option.label}
+                    </span>
+                    {isCurrent ? (
+                      <IconCheck
+                        size={14}
+                        className="settings-menu-select-check"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </AnchoredMenu>
+    </div>
+  );
+}

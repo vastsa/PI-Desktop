@@ -13,7 +13,7 @@ const { parseChatRef, resolveChatFileRef } = await import(
 );
 
 /**
- * The resolver takes the open project's folders, primary first (ADR 0252). A
+ * The resolver takes the open project's folders, primary first (ADR 0263). A
  * single-folder project is a one-element list, so tests that do not care about
  * groups keep the earlier `{ workspace }` spelling through this shorthand.
  */

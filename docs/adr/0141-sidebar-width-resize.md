@@ -1,6 +1,6 @@
 # ADR 0141: Make Expanded Sidebar Width User-Resizable
 
-- Status: Accepted
+- Status: Accepted (amended by [ADR 0290](0290-resizable-sidebar-collapse-threshold.md))
 - Date: 2026-09-01
 
 ## Context

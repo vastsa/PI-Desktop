@@ -6,7 +6,11 @@ import type { BrowserHost } from "../browser-host";
 import type { HostProcess } from "../host-process";
 import { BROWSER_PLUGIN_ID } from "../browser-host";
 import type { Logger } from "../logger";
-import type { PluginRuntime } from "../plugin-runtime";
+import {
+  readDevPluginDeclaration,
+  widenedFsScope,
+  type PluginRuntime,
+} from "../plugin-runtime";
 import { PluginViewHost } from "../plugin-view-host";
 import type { IpcRegistrar } from "./types";
 
@@ -17,7 +21,6 @@ export type PluginIpcDependencies = {
   agentExtensions: AgentExtensionBridge;
   browserHost: BrowserHost;
   pluginViews: PluginViewHost;
-  pluginSettingsViews: PluginViewHost;
   pluginScopes: Map<string, ActivationScope>;
   rememberPluginScopes: (list: any[]) => void;
   sendToRenderer: (channel: string, payload?: unknown) => void;
@@ -32,7 +35,6 @@ export function registerPluginIpc({
   agentExtensions,
   browserHost,
   pluginViews,
-  pluginSettingsViews,
   pluginScopes,
   rememberPluginScopes,
   sendToRenderer,
@@ -44,6 +46,71 @@ export function registerPluginIpc({
       host = getHost();
       return fn(...args);
     });
+  };
+
+  /**
+   * Register a development plugin folder, load it with the permissions the user
+   * just approved, and arm the watcher whose ceiling is that approval.
+   *
+   * `plugins.loadDev` rewrites the registry row from the manifest, so the row
+   * always states the current declaration; `loadFromPath` filters the approval
+   * through that declaration, so an answer can never exceed the request.
+   */
+  const loadDevPlugin = async (
+    path: string,
+    grantedPermissions: string[] = [],
+    reason: "loadDev" | "reload",
+  ) => {
+    if (!host) throw new Error("host unavailable");
+    const loaded = await host.call<{ plugin: any }>("plugins.loadDev", { path });
+    await plugins.loadFromPath(path, grantedPermissions, { development: true });
+    if (loaded.plugin?.id) plugins.watchDevPlugin(loaded.plugin.id);
+    for (const toast of plugins.drainToasts()) {
+      sendToRenderer(IPC.event.toast, { message: toast });
+    }
+    sendToRenderer(IPC.event.pluginChanged, {
+      reason,
+      pluginId: loaded.plugin?.id,
+    });
+    return loaded;
+  };
+
+  /** A development plugin folder as a review the renderer can render. */
+  const reviewFor = (
+    path: string,
+    kind: "load" | "reload",
+    addedPermissions: string[] = [],
+  ) => {
+    const declared = readDevPluginDeclaration(path);
+    return {
+      kind,
+      path,
+      id: declared.manifest.id,
+      name: declared.manifest.name,
+      version: declared.manifest.version,
+      permissions: declared.permissions,
+      addedPermissions,
+    };
+  };
+
+  /**
+   * What a manifest edit asks for beyond the current approval. Both the manual
+   * reload and the hot reload answer this the same way, so a save and a click
+   * cannot disagree about whether the user has to decide.
+   */
+  const beyondApproval = (pluginId: string, path: string) => {
+    const approval = plugins.devApproval(pluginId);
+    const declared = readDevPluginDeclaration(path);
+    if (!approval) {
+      // Never reviewed in this session: the load itself is the review.
+      return { declared, added: declared.permissions, widened: [] as string[] };
+    }
+    const ceiling = new Set(approval.permissions);
+    return {
+      declared,
+      added: declared.permissions.filter((permission) => !ceiling.has(permission)),
+      widened: widenedFsScope(approval.fs, declared.fs),
+    };
   };
   handle(IPC.invoke.pluginList, async () => {
     if (!host) throw new Error("host unavailable");
@@ -98,27 +165,43 @@ export function registerPluginIpc({
     if (result.canceled || !result.filePaths[0]) {
       return { canceled: true };
     }
-    const path = result.filePaths[0];
-    const loaded = await host.call<{ plugin: any }>("plugins.loadDev", { path });
-    await plugins.loadFromPath(path, loaded.plugin?.permissions ?? [], {
-      development: true,
-    });
-    if (loaded.plugin?.id) plugins.watchDevPlugin(loaded.plugin.id);
-    for (const toast of plugins.drainToasts()) {
-      sendToRenderer(IPC.event.toast, { message: toast });
-    }
-    sendToRenderer(IPC.event.pluginChanged,{
-      reason: "loadDev",
-      pluginId: loaded.plugin?.id,
-    });
-    return loaded;
+    // Picking the folder is not the grant. The folder declares what it wants,
+    // the user answers, and only then is anything registered or loaded.
+    return { canceled: false, review: reviewFor(result.filePaths[0], "load") };
   });
+
+  handle(
+    IPC.invoke.pluginLoadDevConfirm,
+    async (input: { path?: unknown; grantedPermissions?: unknown }) => {
+      if (!host) throw new Error("host unavailable");
+      const path = typeof input?.path === "string" ? input.path : "";
+      if (!path) throw new Error("INVALID_PARAMS: path required");
+      const granted = Array.isArray(input?.grantedPermissions)
+        ? input.grantedPermissions.filter(
+            (permission): permission is string => typeof permission === "string",
+          )
+        : [];
+      const loaded = await loadDevPlugin(path, granted, "loadDev");
+      return { ...loaded, grantedPermissions: granted };
+    },
+  );
 
   handle(IPC.invoke.pluginReload, async (id: string) => {
     if (!host) throw new Error("host unavailable");
     const listed = await host.call<{ plugins: any[] }>("plugins.list");
     const plugin = (listed.plugins ?? []).find((candidate) => candidate?.id === id);
     if (!plugin?.path) throw new Error(`PLUGIN_NOT_FOUND: ${id}`);
+    if (plugin.source === "dev") {
+      // A manifest edit is a request for more, and the approval is the answer:
+      // it is never widened by loading. Ask the user first instead.
+      const { added, widened } = beyondApproval(id, plugin.path);
+      if (added.length || widened.length) {
+        return {
+          plugin,
+          review: reviewFor(plugin.path, "reload", [...added, ...widened]),
+        };
+      }
+    }
     await plugins.loadFromPath(plugin.path, plugin.permissions ?? [], {
       development: plugin.source === "dev",
     });
@@ -130,8 +213,29 @@ export function registerPluginIpc({
     return { plugin };
   });
 
+  handle(
+    IPC.invoke.pluginReloadConfirm,
+    async (input: { id?: unknown; grantedPermissions?: unknown }) => {
+      if (!host) throw new Error("host unavailable");
+      const id = typeof input?.id === "string" ? input.id : "";
+      if (!id) throw new Error("INVALID_PARAMS: id required");
+      const listed = await host.call<{ plugins: any[] }>("plugins.list");
+      const plugin = (listed.plugins ?? []).find((candidate) => candidate?.id === id);
+      if (!plugin?.path) throw new Error(`PLUGIN_NOT_FOUND: ${id}`);
+      const granted = Array.isArray(input?.grantedPermissions)
+        ? input.grantedPermissions.filter(
+            (permission): permission is string => typeof permission === "string",
+          )
+        : [];
+      const loaded = await loadDevPlugin(plugin.path, granted, "reload");
+      return { ...loaded, grantedPermissions: granted };
+    },
+  );
+
   // Scaffold a starter plugin and load it as a dev plugin in one step (D171),
-  // so "I want to write a plugin" never starts with an empty folder.
+  // so "I want to write a plugin" never starts with an empty folder. The
+  // scaffold only writes files; loading waits for the same review as a folder
+  // picked by hand.
   handle(
     IPC.invoke.pluginCreateFromTemplate,
     async (req: { template?: string }) => {
@@ -148,21 +252,12 @@ export function registerPluginIpc({
       }
       const dir = picked.filePaths[0];
       const created = await scaffold({ dir, template });
-      const loaded = await host.call<{ plugin: any }>("plugins.loadDev", {
-        path: dir,
-      });
-      await plugins.loadFromPath(dir, loaded.plugin?.permissions ?? [], {
-        development: true,
-      });
-      plugins.watchDevPlugin(created.id);
-      for (const toast of plugins.drainToasts()) {
-        sendToRenderer(IPC.event.toast, { message: toast });
-      }
       return {
         id: created.id,
         name: created.name,
         dir: created.dir,
         files: created.files,
+        review: reviewFor(dir, "load"),
       };
     },
   );
@@ -245,7 +340,6 @@ export function registerPluginIpc({
   handle(IPC.invoke.pluginDisable, async (id: string) => {
     if (!host) throw new Error("host unavailable");
     pluginViews.closePlugin(id);
-    pluginSettingsViews.closePlugin(id);
     if (id === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
     await plugins.unload(id);
     logger.app("plugin", "info", "plugin disabled", { pluginId: id });
@@ -257,7 +351,6 @@ export function registerPluginIpc({
   handle(IPC.invoke.pluginUninstall, async (id: string) => {
     if (!host) throw new Error("host unavailable");
     pluginViews.closePlugin(id);
-    pluginSettingsViews.closePlugin(id);
     await plugins.unload(id);
     logger.app("plugin", "info", "plugin uninstalled", { pluginId: id });
     const res = await host.call("plugins.uninstall", { id });

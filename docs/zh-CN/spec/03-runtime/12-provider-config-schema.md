@@ -87,6 +87,7 @@
           "id": { "type": "string", "minLength": 1 },
           "alias": { "type": "string", "maxLength": 60 },
           "contextWindow": { "type": "integer", "minimum": 1 },
+          "contextWindowSource": { "enum": ["catalog", "user"] },
           "maxTokens": { "type": "integer", "minimum": 1 },
           "thinkingLevels": {
             "type": "array",
@@ -95,7 +96,7 @@
           },
           "defaultThinkingLevel": {
             "type": ["string", "null"],
-            "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", null]
+            "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", "omit", null]
           },
           "supportsImages": { "type": ["boolean", "null"] },
           "supportsDocuments": { "type": ["boolean", "null"] },
@@ -122,6 +123,12 @@
 `models[].alias` 是可选展示标签（ADR 0192）。`models[].id` 仍是发给提供商的
 身份，别名从不用于提供商或模型解析。host-core 会修剪别名、丢弃空白值，
 并在超过 60 个 Unicode 字符时以 `MODEL_ALIAS_TOO_LONG` 拒绝。
+
+`models[].contextWindowSource` 记录存储的 `contextWindow` 来自哪里：`catalog` 表示
+models.dev 快照，之后的目录修正可以替换它；`user` 表示用户在设置中手改的值，永不被
+替换。该字段可选，因此早于该标记写出的配置仍可读，旧客户端会忽略它。host-core 只
+保留这两个取值、丢弃其它值，避免出现第三种无人识别的状态。解析规则见
+[13-model-catalog-and-selection](13-model-catalog-and-selection.md) §9.1。
 
 `compatibility.supportsReasoning` 和
 `compatibility.supportedThinkingLevels` 对于存储的记录保持可读状态
@@ -273,6 +280,7 @@ Copilot 的上下文相关请求标头；已保存的同名自定义 header 会�
 ## 5. IPC / 主机方法（提供商域）
 
 - `providers.list`
+- `providers.reorder`
 - `providers.get`
 - `providers.create`
 - `providers.update`
@@ -321,6 +329,22 @@ Copilot 的上下文相关请求标头；已保存的同名自定义 header 会�
 - `ProviderPublic` 排除原始秘密；包括 `hasSecret: boolean`（**任一种**凭据
   存在即为真）、`hasOauth: boolean`、非敏感的 `oauthAccountLabel?: string`
   与可选的 `headers?: Record<string, string>`
+
+### `providers.reorder`
+- in: `{ id: string, targetId: string, placement: "before" | "after" }`
+- out: `{ ok: true }`
+- Atomically move the source relative to the target in the current host list.
+  A missing source/target or invalid placement returns `INVALID_PARAMS` without
+  writing. Moving to the current position is a successful no-op.
+- Persist ordered provider IDs in `kv` at `providers.order`. `providers.list`
+  applies that order before returning rows; absent metadata preserves creation
+  order. New providers follow saved rows in creation order, deleted IDs are
+  ignored, and disabled rows keep their relative position when filtered out.
+- This is a display preference, including for plugin-owned rows. Provider
+  configuration, credentials, enabled state, timestamps and the default model
+  remain unchanged. Plugin configuration write restrictions still apply.
+- Uses the existing `kv` extension boundary; no database migration or protocol
+  version bump. Older applications ignore this metadata.
 
 ### `providers.create` / `providers.update`
 - 在：提供商字段 + 可选的 `secretValue` + 可选的 `oauthAccountLabel`

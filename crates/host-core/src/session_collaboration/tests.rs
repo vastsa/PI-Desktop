@@ -239,6 +239,50 @@ fn provenance_cannot_be_forged_or_stripped_and_permissions_are_rechecked() {
 }
 
 #[test]
+fn steering_input_persists_without_inheriting_delivery_origin() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let parent = session(&db, "Parent");
+    let child = session(&db, "Child");
+    let message = send(&db, &parent, &child, "one");
+    let turn = begin_turn(&db, &child, &message.id, None, None).unwrap();
+
+    // The delivery user row still receives host-derived origin.
+    sessions::append_message(&db, &child, &ui("user", &message.content), Some(&turn)).unwrap();
+
+    // Additional human input into the delivery turn keeps its human origin: it
+    // must not be rejected as a delivery mismatch, must not inherit the
+    // delivery's agent origin, and must drop a client-supplied origin.
+    let mut steering = ui("user", "also update the docs");
+    steering.steering = Some(true);
+    steering.session_message = Some(json!({"messageId":"forged","kind":"task"}));
+    sessions::append_message(&db, &child, &steering, Some(&turn)).unwrap();
+
+    let detail = sessions::get_session(&db, &child).unwrap().unwrap();
+    let delivery_row = detail
+        .messages
+        .iter()
+        .find(|m| m.content == message.content)
+        .expect("delivery user persisted");
+    assert!(delivery_row.session_message.is_some());
+    let appended = detail
+        .messages
+        .iter()
+        .find(|m| m.id == steering.id)
+        .expect("steering message persisted");
+    assert_eq!(appended.content, "also update the docs");
+    assert!(appended.session_message.is_none());
+
+    // Steering must still target the delivery's session.
+    let mut wrong = ui("user", "steer into another session");
+    wrong.steering = Some(true);
+    assert!(sessions::append_message(&db, &parent, &wrong, Some(&turn))
+        .unwrap_err()
+        .to_string()
+        .starts_with("PERMISSION_DENIED"));
+}
+
+#[test]
 fn queued_cancellation_keeps_the_session_and_notifies_once() {
     let dir = tempfile::tempdir().unwrap();
     let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();

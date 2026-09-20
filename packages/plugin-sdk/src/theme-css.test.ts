@@ -168,13 +168,13 @@ describe("maskNonCodeCss", () => {
 });
 
 describe("theme assets", () => {
-  const ASSET = "C:/art/bg.png";
+  const ASSET = "assets/bg.png";
   const resolveAsset: ThemeCssAssetResolver = (target) => {
     const normalized = normalizeThemeAssetPath(target);
     return normalized === ASSET ? themeAssetUrl("demo.hello", normalized) : null;
   };
 
-  it("rewrites an absolute reference to the host scheme", () => {
+  it("rewrites a package-relative reference to the host scheme", () => {
     const result = sanitizeThemeCss(
       `.a { background: url("${ASSET}") no-repeat; }`,
       undefined,
@@ -182,15 +182,15 @@ describe("theme assets", () => {
     );
     expect(result).toEqual({
       ok: true,
-      css: `.a { background: url("plugin-asset://demo.hello/${encodeURIComponent(ASSET)}") no-repeat; }`,
+      css: `.a { background: url("plugin-asset://demo.hello/${ASSET}") no-repeat; }`,
     });
   });
 
-  it("accepts the file: URL spelling of the same absolute path", () => {
-    const result = sanitizeThemeCss(".a { background: url(file:///C:/art/bg.png); }", undefined, resolveAsset);
+  it("accepts the normalized package-relative spelling of the same asset", () => {
+    const result = sanitizeThemeCss(".a { background: url(./assets/bg.png); }", undefined, resolveAsset);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.css).toContain(`plugin-asset://demo.hello/${encodeURIComponent(ASSET)}`);
+      expect(result.css).toContain(`plugin-asset://demo.hello/${ASSET}`);
     }
   });
 
@@ -219,20 +219,18 @@ describe("theme assets", () => {
     expect(sanitizeThemeCss(css, undefined, resolveAsset)).toEqual({ ok: true, css });
   });
 
-  it("accepts absolute paths only — package-relative ones are no longer assets", () => {
+  it("accepts normalized package-relative and absolute paths", () => {
     expect(isThemeAssetPath(ASSET)).toBe(true);
-    expect(normalizeThemeAssetPath("C:\\art\\bg.png")).toBe(ASSET);
-    expect(normalizeThemeAssetPath("file:///C:/art/bg.png")).toBe(ASSET);
+    expect(normalizeThemeAssetPath("assets\\bg.png")).toBe(ASSET);
+    expect(normalizeThemeAssetPath("./assets/bg.png")).toBe(ASSET);
+    expect(normalizeThemeAssetPath("C:\\art\\bg.png")).toBe("C:/art/bg.png");
+    expect(normalizeThemeAssetPath("file:///C:/art/bg.png")).toBe("C:/art/bg.png");
     expect(normalizeThemeAssetPath("/art/bg.png")).toBe("/art/bg.png");
-    expect(normalizeThemeAssetPath("file:///art/bg.png")).toBe("/art/bg.png");
     for (const refused of [
-      "art/bg.png",
-      "./art/bg.png",
-      "art\\bg.png",
       "../escape.png",
       "art/../../x.png",
       "art//bg.png",
-      "C:/art/bg.gif",
+      "assets/bg.gif",
       "C:/art/../bg.png",
       "https://x/y.png",
       "",
@@ -242,9 +240,12 @@ describe("theme assets", () => {
     }
   });
 
-  it("builds the host url with the absolute path percent-encoded", () => {
+  it("builds host urls for package-relative and absolute paths", () => {
     expect(themeAssetUrl("demo.hello", ASSET)).toBe(
-      `plugin-asset://demo.hello/${encodeURIComponent(ASSET)}`,
+      `plugin-asset://demo.hello/${ASSET}`,
+    );
+    expect(themeAssetUrl("demo.hello", "C:/art/bg.png")).toBe(
+      `plugin-asset://demo.hello/${encodeURIComponent("C:/art/bg.png")}`,
     );
   });
 });

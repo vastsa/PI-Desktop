@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { readNdjsonLines } from "../../packages/shared/dist/ndjson.js";
 import { assert, shortJson } from "./assert.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -65,7 +65,7 @@ export class Host {
     this.binary = binary;
     this.dataDir = dataDir;
     this.child = null;
-    this.readline = null;
+    this.stdoutReader = null;
     this.pending = new Map();
     this.notifications = [];
     this.stderr = "";
@@ -107,8 +107,7 @@ export class Host {
       this.stderr += String(chunk);
       if (process.env.DEBUG_HOST) process.stderr.write(chunk);
     });
-    this.readline = createInterface({ input: child.stdout });
-    this.readline.on("line", (line) => {
+    this.stdoutReader = readNdjsonLines(child.stdout, (line) => {
       let message;
       try {
         message = JSON.parse(line);
@@ -199,8 +198,8 @@ export class Host {
       }
       await Promise.race([this.exitPromise, delay(3_000)]);
     }
-    this.readline?.close();
-    this.readline = null;
+    this.stdoutReader?.close();
+    this.stdoutReader = null;
     this.child = null;
     if (!this.exited) throw new Error("host did not exit during cleanup");
   }

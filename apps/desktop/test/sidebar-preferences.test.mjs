@@ -378,11 +378,12 @@ test("persists retained project paths and per-project collapse state", () => {
   }
 });
 
-test("keeps the expanded sidebar at its fixed width without persistence", () => {
+test("clamps and persists the expanded sidebar width", () => {
   assert.equal(clampSidebarWidth(Number.NaN), SIDEBAR_WIDTH_DEFAULT);
-  assert.equal(clampSidebarWidth(SIDEBAR_WIDTH_MIN - 1), SIDEBAR_WIDTH_DEFAULT);
-  assert.equal(clampSidebarWidth(312.4), SIDEBAR_WIDTH_DEFAULT);
-  assert.equal(clampSidebarWidth(SIDEBAR_WIDTH_MAX + 1), SIDEBAR_WIDTH_DEFAULT);
+  assert.equal(clampSidebarWidth(SIDEBAR_WIDTH_MIN - 1), SIDEBAR_WIDTH_MIN);
+  assert.equal(clampSidebarWidth(312.4), 312);
+  assert.equal(clampSidebarWidth(SIDEBAR_WIDTH_MAX + 1), SIDEBAR_WIDTH_MAX);
+  assert.equal(clampSidebarWidth(400, 300), 300);
 
   const values = new Map();
   const previousStorage = globalThis.localStorage;
@@ -410,10 +411,9 @@ test("keeps the expanded sidebar at its fixed width without persistence", () => 
   try {
     assert.equal(loadSidebarWidth(), SIDEBAR_WIDTH_DEFAULT);
     saveSidebarWidth(SIDEBAR_WIDTH_MAX + 100);
-    assert.equal(loadSidebarWidth(), SIDEBAR_WIDTH_DEFAULT);
+    assert.equal(loadSidebarWidth(), SIDEBAR_WIDTH_MAX);
     saveSidebarWidth(SIDEBAR_WIDTH_MIN - 100);
-    assert.equal(loadSidebarWidth(), SIDEBAR_WIDTH_DEFAULT);
-    assert.equal(values.size, 0);
+    assert.equal(loadSidebarWidth(), SIDEBAR_WIDTH_MIN);
   } finally {
     globalThis.localStorage = previousStorage;
   }

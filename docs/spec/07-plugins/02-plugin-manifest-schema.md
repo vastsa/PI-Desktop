@@ -9,10 +9,13 @@ exactly one type: `length` (`unit: "px"`, numeric `min`, `max`, and `default`),
 (fixed safe `values` and default). Host-reserved prefixes are refused. Values
 are not CSS fragments.
 
-`contributes.settingsDestinations` declares sandboxed Settings entries with a
-stable `id`, localized `label`, closed icon token, optional localized keywords,
-and a plugin-relative `.html` `entry`. An entry requires `ui.settings`; it is
-rendered only in the host-owned Extensions group.
+`contributes.scenicThemes` declares a data-only host-rendered Settings entry:
+a stable `id`, localized label and description, `palette` icon token, localized
+keywords, and one to twelve ordered cards. Every card names a same-plugin
+theme, localized name/description, and a relative image asset declared by that
+theme. It requires both `ui.settings` and `ui.theme`. Plugins provide neither
+Settings HTML nor CSS or JavaScript: the host renders the Extensions entry,
+cards, range control, and Apply action in its normal React tree.
 
 ## 1. Purpose
 
@@ -35,6 +38,18 @@ type PluginManifestV1 = {
  description?: string;
  author?: string | { name: string; url?: string; email?: string };
  homepage?: string;
+ /**
+  * Display strings per locale, shown in place of `name`/`description` when the
+  * shell's language matches one of the declared locales (see §3.1). The flat
+  * fields stay the author's own language and remain the fallback.
+  */
+ i18n?: {
+   [locale: string]: {
+     name?: string;
+     description?: string;
+     safetyNotes?: string;
+   };
+ };
  repository?: string;
  icon?: string; // relative path
  main?: string; // plugin runtime entry
@@ -79,6 +94,49 @@ type PluginUiConfig = {
 };
 ```
 
+### 3.1 Localized labels (`i18n`)
+
+`name`, `description`, and `safetyNotes` are display text, so a plugin may
+declare them per locale in a top-level `i18n` block. The Extensions page, the
+plugin launcher, and the marketplace (which reads the same block from a catalog
+entry) show the entry matching the **app language** rather than the author's own
+language:
+
+```json
+{
+  "name": "小清新待办",
+  "description": "作者原话",
+  "i18n": {
+    "en": { "name": "Todo List", "description": "A calm todo list" },
+    "zh-CN": { "name": "小清新待办", "description": "轻盈的待办清单", "safetyNotes": "只写自己的数据" }
+  }
+}
+```
+
+Rules:
+
+1. `en` and `zh-CN` are the contract locales. Every Chinese shell locale
+   (`zh`, `zh-CN`, `zh-Hans`, `zh-SG`) reads `zh-CN`; every other locale reads
+   `en`. A plugin is not required to translate itself into the other shipped
+   shell locales, so `zh-TW` reads English rather than half a `zh-CN` guess
+   (ADR 0182).
+2. Both locales and all three fields are required by the plugin repository's
+   validator, but the host is permissive: a missing locale, a missing field, or
+   an empty string falls back per field to the other contract locale, and from
+   there to the author's flat `name` / `description`.
+3. Resolution happens in the host, against the language the desktop shell
+   pushes down (`settings.language`, or the OS locale while it is `auto`). The
+   stored row keeps the author's strings, so a language change only changes what
+   is read and never rewrites the registry.
+4. The block is display metadata. A malformed one (not an object of locale →
+   object) fails manifest validation; unknown locales and unknown fields inside
+   an entry are ignored.
+5. The block is identity only (`name`, `description`, `safetyNotes`). Plugin-owned
+   copy — panels, views, widgets, generated settings, toasts, runtime command
+   titles — is not translated here. The host publishes the active language
+   (`pi.app.getLocale`, `appearance:changed`); the plugin localizes itself
+   (ADR 0280).
+
 ## 4. contributes
 
 ```ts
@@ -90,6 +148,7 @@ type PluginContributes = {
  providers?: PluginProviderContrib[]; // Host-owned provider rows; needs `provider.register` (spec 13)
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
+ scenicThemes?: PluginScenicThemesContrib;
  windowAppearance?: PluginWindowAppearanceContrib; // native window background; needs `ui.window.appearance`
  mcpServers?: PluginMcpServerContrib[];
   services?: PluginServiceContrib[];
@@ -119,7 +178,7 @@ type PluginAgentToolContrib = {
 
 type PluginSettingContrib = {
  key: string;
- title: string;
+ title: string; // author language; the generated sheet does not localize
  description?: string;
  type: "string" | "number" | "boolean" | "select" | "json" | "shortcut";
  default?: unknown;
@@ -158,6 +217,20 @@ type PluginThemeContrib = {
  base?: "light" | "dark"; // palette the overrides layer on, default `dark`
  assets?: string[]; // absolute png/jpg/jpeg/webp/avif/svg/woff2, 4 MB summed;
                     // each matching `url()` is rewritten to `plugin-asset://`
+};
+
+type PluginScenicThemesContrib = {
+ id: string;
+ label: { en: string; "zh-CN": string };
+ description: { en: string; "zh-CN": string };
+ keywords?: Array<{ en: string; "zh-CN": string }>;
+ icon: "palette";
+ themes: Array<{
+   themeId: string;
+   label: { en: string; "zh-CN": string };
+   description: { en: string; "zh-CN": string };
+   previewAsset: string;
+ }>;
 };
 
 type PluginWindowAppearanceContrib = {
@@ -255,8 +328,10 @@ type PluginPermission =
  | "session.read.own"
  | "session.update.own"
  | "session.delete.own"
+ | "usage.read"
  | "audio.capture.background"
  | "audio.playback.background"
+ | "speech.adapter.register"
  | "keyboard.globalShortcut"
  | "net.websocket";
 ```

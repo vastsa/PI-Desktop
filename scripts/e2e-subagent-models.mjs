@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { createInterface } from "node:readline";
+import { readNdjsonLines } from "../packages/shared/dist/ndjson.js";
 import { fileURLToPath } from "node:url";
 
 const requests = [];
@@ -104,8 +104,7 @@ const child = spawn(process.execPath, [fileURLToPath(new URL("../packages/agent-
 let stderr = "";
 child.stderr.on("data", (chunk) => { stderr += chunk; });
 const send = (message) => child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
-const lines = createInterface({ input: child.stdout });
-lines.on("line", (line) => {
+readNdjsonLines(child.stdout, (line) => {
   const message = JSON.parse(line);
   if (message.method === "host.proxy") {
     const { method, params } = message.params;

@@ -213,6 +213,9 @@ owner，工作区读取都按会话持久根、Host 忽略规则和 `PATH_OUTSID
 | `terminal/input` | controller | 向已打开终端写入字节 |
 | `terminal/resize` | controller | 调整已打开终端尺寸 |
 | `terminal/close` | controller | 关闭终端，幂等 |
+| `connection/pair` | authenticated | 用升级请求携带的一次性配对令牌换取设备凭证（安全规格 §3.4）；仅在配对连接上有效（D448） |
+| `project/register` | owner | 将 Host 上的目录注册为项目：Host 规范化并校验路径，返回项目 id（D448） |
+| `project/browse` | owner | 列出 Host 某路径下的目录，有界，供远程目录选择器使用（D448） |
 
 仍推迟的本地操作：
 
@@ -335,6 +338,11 @@ Plan/Goal 审批为带显式 `permissionMode` 的 `approve` 或 `reject`，且�
 | `APPROVAL_STALE` | no | 审批响应针对旧 revision |
 | `PAYLOAD_TOO_LARGE` | no | 请求、事件或附件超限 |
 | `RATE_LIMITED` | yes | 主体、会话或 Host 超额 |
+| `PAIRING_FAILED` | no | 配对令牌未知或已被兑换 |
+| `PAIRING_TOKEN_EXPIRED` | no | 配对令牌的引导窗口已过 |
+| `CAPABILITY_UNAVAILABLE` | no | Host 未宣告该操作所需的能力 |
+| `REMOTE_PATH_NOT_FOUND` | no | Host 侧路径不存在 |
+| `REMOTE_PATH_FORBIDDEN` | no | Host 侧路径超出主体可达范围 |
 | `INTERNAL` | maybe | 带 trace id 的内部错误 |
 
 错误必须同时携带稳定 code、可重试标记和 trace id。重复 mutation 使用同一

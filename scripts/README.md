@@ -14,6 +14,7 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 |---|---|---|
 | `release.mjs` | `node scripts/release.mjs <version> [--tag]` | Bump every workspace version surface, commit, and optionally create the `vX.Y.Z` tag the Release workflow builds from |
 | `check-release-docs.mjs` | `pnpm check:release-docs` | Verify the changelog, its test list, `APP_VERSION`, workspace versions, Cargo versions, and both README release lines agree |
+| `check-agent-policy-sync.mjs` | `pnpm check:agent-policy` | Verify `AGENTS.md` and `CLAUDE.md` share the same `Policy-Sync` token, cross-references, and non-negotiable policy anchors |
 | `check-marketplace-catalog.mjs` | `pnpm check:marketplace -- --url <url> --plugin <id>` | Marketplace catalog preflight; rejects a version record missing a checksum, package URL, size, or permissions, and a catalog `author` that is not a string |
 | `check-style-tokens.mjs` | run by the desktop `lint` script | Fail renderer styles that hardcode values instead of design-system tokens |
 
@@ -21,9 +22,12 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 
 | Script | Alias | Purpose |
 |---|---|---|
-| `release-macos.sh` | `scripts/release-macos.sh` | Signed and notarized local native macOS release lane. Requires `MAC_SIGNING_IDENTITY` and Apple notarization credentials; local package and distribution lanes remain unsigned when no signing identity is configured. |
-| `staple-macos-release-dmg.sh` | `scripts/staple-macos-release-dmg.sh [release-dir]` | Attach Apple's notarization ticket (`xcrun stapler staple`) to the single DMG a native macOS job produced; run by the Release workflow when `sign_macos` is set |
+| `notarize-and-staple-macos-release-dmg.sh` | `scripts/notarize-and-staple-macos-release-dmg.sh [release-dir]` | Submit the single DMG a native macOS job produced to Apple's notary service (`xcrun notarytool submit --wait`), require `status: Accepted`, then attach and validate the ticket (`xcrun stapler staple` / `validate`); run by the Release workflow when `sign_macos` is set. electron-builder only notarizes the `.app`, so the DMG needs this separate submission |
 | `verify-macos-release.sh` | `scripts/verify-macos-release.sh [release-dir]` | Fail unless the one `PI-Desktop.app` and DMG under the release directory are Developer ID-signed, notarized, and stapled; run by the Release workflow after stapling |
+| `macos-signing-diagnostics.sh` | `scripts/macos-signing-diagnostics.sh [--require-identity]` | Print the non-secret signing baseline before packaging (system, `codesign`, keychain identities/list/default, Xcode notary tools, Apple timestamp reachability). Informational by default, because the Developer ID identity is imported from `CSC_LINK` during packaging; `--require-identity` makes a missing Developer ID fatal |
+| `macos-bundle-inventory.mjs` | `node scripts/macos-bundle-inventory.mjs <app-or-release-dir>` | Count what the signing phase has to touch: entries, Mach-O binaries, `.dylib`/`.node`/frameworks/nested bundles, per-directory cost, and the largest binaries (`signing-candidates`). Informational; run after every macOS package build |
+| `macos-signing-watchdog.mjs` | `node scripts/macos-signing-watchdog.mjs [options] -- <command>` | Run a long silent phase (`electron-builder` signing, `notarytool submit --wait`) with a heartbeat, phase tracking, stall diagnostics (last file, `ps` state, codesign log tail), per-file codesign timings, and a hard timeout that fails instead of hanging; it forwards the child output and exit code unchanged and redacts `CSC_KEY_PASSWORD`/`APPLE_APP_SPECIFIC_PASSWORD`/`CSC_LINK` values plus `--password` arguments |
+| `macos-codesign-shim.sh` | used by `macos-signing-watchdog.mjs` | PATH shim that timestamps every `codesign` invocation and then executes the real `codesign`; inert unless `PI_CODESIGN_LOG` is set |
 | `export-linux-asar.mjs` | `node scripts/export-linux-asar.mjs` | Copy the Linux `linux-unpacked/resources/app.asar` into the versioned release asset used for system-Electron repackaging |
 | `check-linux-host-glibc.mjs` | `node scripts/check-linux-host-glibc.mjs [bin]` | Fail a Linux host-core binary whose needed glibc is above 2.35 |
 | `make-icon.py` | `python3 scripts/make-icon.py` | Derive the package PNG, the macOS tray template, and the iconset/ICNS from the canonical PNG |
@@ -77,7 +81,17 @@ job uses Ubuntu 22.04 so host-core stays on glibc 2.35, then
 `scripts/check-linux-host-glibc.mjs` refuses a binary that needs a newer
 glibc. The Linux runner also exports the exact app.asar from `linux-unpacked`
 as a versioned release asset; the macOS matrix covers arm64 and Intel x64 and
-the publish job assembles the GitHub Release. The release workflow defaults to
-unsigned macOS artifacts; manually dispatch it with `sign_macos: true` to opt
-into signing and notarization. See the [release
+the publish job assembles the GitHub Release. Tag builds Developer ID-sign,
+notarize, and staple macOS artifacts; `workflow_dispatch` may set
+`sign_macos: false` only for unsigned debug artifacts. See the [release
 runbook](../docs/spec/06-delivery/06-release-runbook.md).
+
+### Provider certificate regression
+
+- `node scripts/e2e-provider-certificates.mjs`: real desktop launcher and
+  bundled sidecar against a loopback TLS model; tests trust, terminal failure,
+  inherited extra CA, and hostname validation. Requires installed Electron.
+- `node scripts/e2e-provider-certificate-ui.mjs`: production transcript error
+  component, localized guidance and detail disclosure. Requires built desktop
+  styles. Optional `PI_CERTIFICATE_EVIDENCE_DIR` saves a review screenshot;
+  `--baseline` renders the `origin/main` error component for comparison.

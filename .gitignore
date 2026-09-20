@@ -17,6 +17,7 @@ apps/desktop/dist-electron/
 apps/desktop/release/
 packages/*/dist/
 packages/*/dist-bundle/
+apps/*/dist-bundle/
 
 # Local design-source exports
 docs/image/pi_logo.png
@@ -28,6 +29,10 @@ docs/image/pi_logo.webp
 .env.*
 !.env.example
 *.local
+*.p12
+*.cer
+*.p8
+*.mobileprovision
 
 # IDE / OS
 .DS_Store
@@ -42,6 +47,7 @@ coverage/
 # Local runtime data
 .pi-desktop/
 .pi-desktop-test/
+.pi/
 .cc-connect/
 
 .playwright-mcp/
