@@ -7,6 +7,9 @@ use uuid::Uuid;
 use crate::db::{ms_to_ts, now_ms, ts_to_ms, Database};
 use crate::sessions;
 
+pub mod automation;
+pub mod timing;
+
 /// Wire format matches the legacy Electron `scheduled-tasks.json` records so
 /// the renderer keeps working unchanged (camelCase, RFC3339 timestamps).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +25,12 @@ pub struct ScheduledTask {
     pub updated_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_run_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<timing::Schedule>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_run_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -142,6 +151,7 @@ fn updated_config_json(db: &Database, id: &str, params_json: &Value) -> Result<O
 }
 
 fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScheduledTask> {
+    let config = config_json_value(&row.get::<_, String>(4)?);
     Ok(ScheduledTask {
         id: row.get(0)?,
         title: row.get(1)?,
@@ -152,6 +162,17 @@ fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScheduledTask> {
         created_at: ms_to_ts(row.get(6)?),
         updated_at: ms_to_ts(row.get(7)?),
         last_run_at: row.get::<_, Option<i64>>(8)?.map(ms_to_ts),
+        schedule: config
+            .get("schedule")
+            .and_then(|value| serde_json::from_value(value.clone()).ok()),
+        next_run_at: config
+            .get("nextRunAt")
+            .and_then(Value::as_i64)
+            .map(ms_to_ts),
+        workspace_path: config
+            .get("workspacePath")
+            .and_then(Value::as_str)
+            .map(str::to_string),
     })
 }
 
@@ -195,16 +216,30 @@ pub fn create_task(db: &Database, params_json: &Value) -> Result<ScheduledTask> 
         .collect();
     let cadence = normalize_cadence(params_json.get("cadence").and_then(|v| v.as_str()));
     let mode = task_mode(params_json);
-    let config_json = config_with_mode(config_value(config_input(params_json)), &mode);
+    let mut config = config_value(config_input(params_json));
+    automation::configure(&mut config, params_json, &cadence, now_ms())?;
+    let config_json = config_with_mode(config, &mode);
     let id = Uuid::new_v4().to_string();
     let now = now_ms();
+    let enabled = params_json
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
     db.conn()
         .prepare_cached(
             "INSERT INTO scheduled_tasks
                 (id, title, prompt, cadence, config_json, enabled, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?7, ?6, ?6)",
         )?
-        .execute(params![id, title, prompt, cadence, config_json, now])?;
+        .execute(params![
+            id,
+            title,
+            prompt,
+            cadence,
+            config_json,
+            now,
+            enabled
+        ])?;
     Ok(get_task(db, &id)?.expect("task just inserted"))
 }
 
@@ -219,6 +254,14 @@ pub fn update_task(db: &Database, params_json: &Value) -> Result<Option<Schedule
     let Some(config_json) = updated_config_json(db, id, params_json)? else {
         return Ok(None);
     };
+    let mut config = config_json_value(&config_json);
+    let existing = get_task(db, id)?;
+    let effective_cadence = cadence
+        .as_deref()
+        .or_else(|| existing.as_ref().map(|task| task.cadence.as_str()))
+        .unwrap_or("manual");
+    automation::configure(&mut config, params_json, effective_cadence, now_ms())?;
+    let config_json = config.to_string();
     let n = db
         .conn()
         .prepare_cached(
@@ -250,6 +293,9 @@ pub fn update_task(db: &Database, params_json: &Value) -> Result<Option<Schedule
 }
 
 pub fn delete_task(db: &Database, id: &str) -> Result<bool> {
+    if automation::running(db, id)? {
+        anyhow::bail!("cannot delete a running task");
+    }
     let n = db
         .conn()
         .prepare_cached("DELETE FROM scheduled_tasks WHERE id = ?1")?

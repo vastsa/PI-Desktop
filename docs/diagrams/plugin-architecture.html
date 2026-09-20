@@ -372,8 +372,8 @@
         </button>
         <button class="node" style="--tint: var(--child)" data-node="env">
           <span class="node-name">最小环境</span>
-          <span class="node-desc">只透传 PATH/TEMP/LANG 等；宿主 env 里的 provider key 与 shell 密钥不进插件</span>
-          <span class="node-meta">pluginProcessEnv()</span>
+          <span class="node-desc">透传 PATH/TEMP/LANG/HOME/USER/USERPROFILE；宿主 env 里的 provider key 与 shell 密钥不进插件</span>
+          <span class="node-meta">pluginChildEnv()</span>
         </button>
       </div>
     </section>
@@ -748,8 +748,8 @@ const DETAILS = {
     "子进程持 run/execute 函数，宿主只持描述符 + 一个回打过去的代理",
     "宿主注册失败时子进程回滚本地 Map，两侧不会不一致",
     "工具名在宿主侧改成 plugin_<id>_<tool>，插件内部仍用原名"]],
-  "env": ["最小环境", "pluginProcessEnv()", [
-    "只注入 PI_PLUGIN_ID、NODE_ENV，以及 PATH / SystemRoot / windir / TEMP / TMP / TMPDIR / LANG",
+  "env": ["最小环境", "pluginChildEnv()", [
+    "只注入 PI_PLUGIN_ID、NODE_ENV，以及 PATH / SystemRoot / windir / TEMP / TMP / TMPDIR / LANG / HOME / USER / USERPROFILE",
     "宿主 env 里可能带 provider key 与 shell 密钥，插件没有理由看到",
     "serviceName 形如 pi-plugin-<sanitized-id>，便于在活动监视器里定位"]],
   "tools-expose": ["工具暴露", "pluginToolName() · D015", [

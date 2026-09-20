@@ -327,11 +327,26 @@
 
 .run-activity-retry-reason {
   position: relative;
+  /* The plate hangs this far above the trigger; the bridge below covers it. */
+  --run-activity-error-gap: 8px;
   display: inline-flex;
   min-width: 0;
   align-items: center;
   cursor: help;
   outline: none;
+}
+
+/* The pointer has to cross the gap between the trigger and the plate to reach
+   the plate's scrollbar. That band belongs to the indicator row, not to the
+   trigger, so `:hover` dropped there and the plate closed mid-reach. The bridge
+   is part of the trigger, which keeps the path hovered. */
+.run-activity-retry-reason::before {
+  content: "";
+  position: absolute;
+  top: calc(-1 * var(--run-activity-error-gap));
+  left: 0;
+  right: 0;
+  height: var(--run-activity-error-gap);
 }
 
 .run-activity-retry-reason:focus-visible {
@@ -342,31 +357,54 @@
 /* The retry reason borrows the assistant error card's hierarchy without
    adding a second transcript row. It is hover/focus-only so the active row
    remains compact at rest. The in-flow `.message-error` wash is transparent;
-   this floating tooltip mixes the same tint over an opaque elevated plate. */
+   this floating tooltip mixes the same tint over an opaque elevated plate.
+   The plate hangs above the tail status row inside `.thread-scroll`, whose
+   `overflow: auto` clips it at the scrollport edge, and the conversation bar
+   paints over the same band one stacking level higher, so an unbounded plate
+   lost the first lines of a long provider message (ADR 0196) - the part a
+   reader needs. Cap it to the room the tail row leaves: the window minus the
+   conversation bar, minus the composer reserve `.thread-content` already
+   holds (16px above `--composer-dock-height`), minus the 46px status row and
+   this plate's own 8px gap. The remainder scrolls, the way
+   `.message-error-details pre` already handles long error text. */
 .run-activity-error-popover.message-error {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + var(--run-activity-error-gap));
   left: 0;
   z-index: 8;
   display: block;
   width: min(360px, calc(100vw - 32px));
   padding: 10px 12px;
+  max-height: calc(100vh - var(--ds-toolbar-height, 46px) - var(--composer-dock-height, 228px) - 70px);
+  /* RunActivityIndicator measures the room the tail row actually leaves and
+     publishes it here; the calc is only the first-paint fallback. */
+  max-height: var(--run-activity-error-max-height, calc(100dvh - var(--ds-toolbar-height, 46px) - var(--composer-dock-height, 228px) - 70px));
+  /* The plate itself does not scroll: Chromium paints a scrollbar outside a
+     rounded corner, so the bar crossed the radius. The body below the heading
+     owns the scrolling instead. */
+  overflow: hidden;
   background: color-mix(in oklab, var(--ds-error) 10%, var(--ds-bg-elevated-opaque));
   box-shadow: var(--ds-shadow-dialog);
   opacity: 0;
   pointer-events: none;
   transform: translateY(4px);
   visibility: hidden;
+  /* Leaving the trigger keeps the plate for one short beat, so a reader
+     reaching for the scrollbar is not punished for the trip. */
   transition:
-    opacity var(--motion-duration-fast) var(--motion-ease-out),
-    transform var(--motion-duration-fast) var(--motion-ease-out),
-    visibility 0s linear var(--motion-duration-fast);
+    opacity var(--motion-duration-fast) var(--motion-ease-out) 240ms,
+    transform var(--motion-duration-fast) var(--motion-ease-out) 240ms,
+    visibility 0s linear calc(var(--motion-duration-fast) + 240ms);
 }
 
 .run-activity-retry-reason:hover .run-activity-error-popover,
 .run-activity-retry-reason:focus-visible .run-activity-error-popover {
   opacity: 1;
-  pointer-events: none;
+  /* The capped plate is scrollable, so the revealed state has to take the
+     pointer. Hovering the plate keeps this trigger's `:hover` alive - the
+     plate is its child - so a long provider message can be scrolled and
+     selected instead of losing its first lines above the scrollport. */
+  pointer-events: auto;
   transform: translateY(0);
   visibility: visible;
   transition-delay: 0s;
@@ -380,6 +418,11 @@
   font-size: var(--text-xs);
   line-height: var(--leading-normal);
   overflow-wrap: anywhere;
+  /* Body-only scrolling (measured by RunActivityIndicator): the heading above
+     stays put while a long provider message scrolls inside the plate. */
+  max-height: var(--run-activity-error-body-max-height, none);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 @media (prefers-reduced-motion: reduce) {

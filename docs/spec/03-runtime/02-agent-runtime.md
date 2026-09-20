@@ -1368,3 +1368,18 @@ no Desktop provider fallback. Missing cwd, required project trust, unsupported
 format, repair-needing newline, unavailable provider/auth, active lease, or
 external byte change makes continuation fail closed while detail remains
 browseable.
+
+### Provider certificate trust (issue #714)
+
+The desktop sidecar starts with Node's `--use-system-ca`, retaining bundled
+roots and inherited `NODE_EXTRA_CA_CERTS`. It uses the OS trust store without
+turning off chain or hostname validation. Restart after updating local trust
+or the extra-CA startup environment. Headless pi-host launch behavior and
+System/Direct/Custom proxy routing are unchanged.
+
+Explicit certificate verification errors are terminal for both setup and
+stream recovery in main sessions and built-in delegates. Their structured
+cause survives adapter message flattening, remains on the final error row,
+and never triggers a provider transport rebuild. Protocol errors such as
+`EPROTO` keep their existing retry behavior. See
+[certificate trust ADR](../../adr/provider-system-certificates.md).

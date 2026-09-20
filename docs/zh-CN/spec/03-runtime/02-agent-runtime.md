@@ -1031,3 +1031,18 @@ sidecar 序列化针对相同标准化路径的 IPC/`sequential` 调用
 
 跟踪差距（MVP 后积压）：更丰富的系统提示组成 (§7) 和
 provider/model 目录发现超出当前有线路径。
+
+### Provider certificate trust (issue #714)
+
+The desktop sidecar starts with Node's `--use-system-ca`, retaining bundled
+roots and inherited `NODE_EXTRA_CA_CERTS`. It uses the OS trust store without
+turning off chain or hostname validation. Restart after updating local trust
+or the extra-CA startup environment. Headless pi-host launch behavior and
+System/Direct/Custom proxy routing are unchanged.
+
+Explicit certificate verification errors are terminal for both setup and
+stream recovery in main sessions and built-in delegates. Their structured
+cause survives adapter message flattening, remains on the final error row,
+and never triggers a provider transport rebuild. Protocol errors such as
+`EPROTO` keep their existing retry behavior. See
+[certificate trust ADR](../../../adr/provider-system-certificates.md).

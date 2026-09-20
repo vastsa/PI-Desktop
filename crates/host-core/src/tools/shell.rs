@@ -571,10 +571,63 @@ fn is_executable(path: &Path) -> bool {
 
 #[cfg(windows)]
 fn is_executable(path: &Path) -> bool {
-    path.is_file()
-        && path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case(OsStr::new("exe")))
+    if !path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case(OsStr::new("exe")))
+    {
+        return false;
+    }
+    windows_path_exists_as_non_directory(path)
+}
+
+/// Win32 `FILE_ATTRIBUTE_DIRECTORY`.
+#[cfg(any(windows, test))]
+const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x0000_0010;
+
+/// Decide whether a Windows `.exe` candidate exists from Win32 attributes.
+///
+/// `attributes` is `None` when `GetFileAttributesExW` failed (missing path,
+/// typically `ERROR_PATH_NOT_FOUND` / `ERROR_FILE_NOT_FOUND`). Size is not an
+/// input: Store app-execution aliases report size 0 and must still be accepted.
+///
+/// The reparse tag is optional because `GetFileAttributesExW` does not return
+/// it. When present, `IO_REPARSE_TAG_APPEXECLINK` (0x8000001B) is accepted the
+/// same as any other existing non-directory file.
+#[cfg(any(windows, test))]
+fn windows_exe_exists_from_win32_attrs(attributes: Option<u32>, _reparse_tag: Option<u32>) -> bool {
+    let Some(attrs) = attributes else {
+        return false;
+    };
+    if attrs & FILE_ATTRIBUTE_DIRECTORY != 0 {
+        return false;
+    }
+    // Store aliases (`IO_REPARSE_TAG_APPEXECLINK`) and other non-directory
+    // reparse points stay launchable via CreateProcessW even though CreateFileW
+    // returns ERROR_CANT_ACCESS_FILE (1920). Do not require size > 0.
+    true
+}
+
+/// `Path::is_file()` / `std::fs::metadata` use CreateFileW, which fails on
+/// Microsoft Store app-execution aliases. `GetFileAttributesExW` succeeds on
+/// those reparse points and still rejects a missing path.
+#[cfg(windows)]
+fn windows_path_exists_as_non_directory(path: &Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileAttributesExW, GetFileExInfoStandard, WIN32_FILE_ATTRIBUTE_DATA,
+    };
+
+    let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+    wide.push(0);
+    let mut info = WIN32_FILE_ATTRIBUTE_DATA::default();
+    let ok = unsafe {
+        GetFileAttributesExW(wide.as_ptr(), GetFileExInfoStandard, (&raw mut info).cast())
+    };
+    if ok == 0 {
+        windows_exe_exists_from_win32_attrs(None, None)
+    } else {
+        windows_exe_exists_from_win32_attrs(Some(info.dwFileAttributes), None)
+    }
 }
 
 #[cfg(test)]
@@ -827,5 +880,47 @@ mod tests {
             &long_command,
         );
         assert!(too_long.is_err());
+    }
+
+    // Win32 FILE_ATTRIBUTE_* / IO_REPARSE_TAG_* values used by the PATH
+    // executable probe. These tests stay platform-agnostic so Linux CI covers
+    // the Store alias decision that Path::is_file() gets wrong on Windows.
+    const FILE_ATTRIBUTE_ARCHIVE: u32 = 0x0000_0020;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    const IO_REPARSE_TAG_APPEXECLINK: u32 = 0x8000_001B;
+
+    #[test]
+    fn windows_exe_attrs_accept_store_appexeclink_alias() {
+        // Microsoft Store / MSIX app-execution aliases report ARCHIVE|REPARSE_POINT
+        // and size 0. CreateFileW returns ERROR_CANT_ACCESS_FILE (1920), so
+        // Path::is_file() / metadata reject them even though CreateProcessW
+        // launches them. GetFileAttributesExW succeeds with these bits.
+        let attrs = FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_REPARSE_POINT;
+        assert_eq!(attrs, 0x420);
+        assert!(windows_exe_exists_from_win32_attrs(
+            Some(attrs),
+            Some(IO_REPARSE_TAG_APPEXECLINK),
+        ));
+    }
+
+    #[test]
+    fn windows_exe_attrs_reject_directory() {
+        assert!(!windows_exe_exists_from_win32_attrs(
+            Some(FILE_ATTRIBUTE_DIRECTORY),
+            None,
+        ));
+    }
+
+    #[test]
+    fn windows_exe_attrs_reject_missing_path() {
+        assert!(!windows_exe_exists_from_win32_attrs(None, None));
+    }
+
+    #[test]
+    fn windows_exe_attrs_accept_normal_file() {
+        assert!(windows_exe_exists_from_win32_attrs(
+            Some(FILE_ATTRIBUTE_ARCHIVE),
+            None,
+        ));
     }
 }

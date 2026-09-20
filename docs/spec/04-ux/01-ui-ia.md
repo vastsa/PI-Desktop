@@ -33,8 +33,8 @@ destination, chat as the home surface, tools and permissions inline.
   **Sessions** section with new-session and sort actions, retained open-project
   groups under a following **Projects** section with a persistent new-project
   action, and the WorkBuddy-inspired footer. The footer keeps compact Settings,
-  Extensions, and notification icon actions; Pull requests and Scheduled
-  are intentionally omitted from the home sidebar. Each retained project is a
+  Extensions, Scheduled (clock), and notification icon actions; Pull requests
+  remains omitted from the home sidebar. Each retained project is a
   path-keyed tab/group that can be
   collapsed independently. Project and conversation rows expose
   non-destructive pin/archive actions, an independent conversation-branch
@@ -244,8 +244,30 @@ title, status badge, branch meta, external link, and "Review with agent"
 (creates a chat turn). Requires an active workspace and `gh`.
 
 ### 3.4 Scheduled
-Create card + task rows (cadence/enabled badges, prompt preview, last run,
-Run now / toggle / Delete). Run now opens a session seeded with the prompt.
+Tasks and Run history views, with an explicit create/edit form, a cadence dropdown, time,
+next occurrence, saved project, pause/resume and delete confirmation. Hourly
+schedules repeat at one-hour intervals without a time selector. Daily schedules
+use a themed time-period dropdown: Morning 09:00, Afternoon 14:00, Evening
+19:00, Night 22:00. The form does not expose hour/minute editing. AI tools may
+set an exact time; a non-preset time displays as Custom with its HH:mm value
+and survives other form edits until the user explicitly selects a preset. Weekly schedules select one or more weekdays (Monday = 0) in a
+separate dropdown listing Monday through Sunday with selection markers.
+Each day toggles independently; there are no preset combinations. An empty
+selection disables saving. The menu supports arrows, Home/End, Enter/Space,
+Escape/outside dismissal, and exposes selected states. The footer clock and global search open
+this route. Run now dispatches in the background and selects Run history; a
+conversation link opens the real transcript. The latest 100 runs show running,
+completed, failed or interrupted status. Automatic runs never steal foreground
+focus. See [desktop automations](../../adr/scheduled-desktop-automations.md).
+
+The application must remain running. The host polls every 30 seconds and skips
+occurrences more than 90 seconds late or overlapping a running task. Startup
+rearms future occurrences only. Hourly schedules wait a full hour after saving,
+enabling, startup or the preceding automatic admission; Run now leaves the
+automatic occurrence unchanged. Legacy cadence-only tasks require explicit
+schedule configuration. The current project is captured when first configured;
+subsequent foreground project changes do not retarget it. Automatic runs use
+Ask permissions and may wait for input in their conversation.
 New tasks default to Agent. A migrated Plan or Goal task is allowed to remain
 stored, but an unattended run is explicitly rejected before provider, artifact,
 or queue work with `PLAN_REQUIRES_INTERACTIVE_SESSION`; it cannot display or

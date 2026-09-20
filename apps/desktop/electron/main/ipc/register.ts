@@ -34,6 +34,7 @@ import type { IpcRegistrar } from "./types";
 import type { createTraySessions } from "../tray-sessions";
 
 export type RegisterIpcDependencies = {
+  isQuitting: () => boolean;
   ipcMain: IpcMain;
   getMainWindow: () => BrowserWindow | null;
   getHost: () => HostProcess | null;
@@ -297,9 +298,16 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     registrar,
     getHost,
     scheduledRunsBySession,
+    isQuitting: dependencies.isQuitting,
+    invoke: async (channel, args) => {
+      const handler = ipcHandlers.get(channel);
+      if (!handler) throw new Error("scheduled prompt handler unavailable");
+      return handler(...args);
+    },
   });
   registerWorkspaceIpc({
     registrar,
+    getMainWindow,
     getHost,
     getSidecar,
     dataDir,

@@ -315,4 +315,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 
 ## Tray session shortcuts
 
+定时任务的调度、存储、权限与桌面入口决策见
+[ADR: Desktop automations](/adr/scheduled-desktop-automations)。
+
 [ADR tray-session-shortcuts](/adr/tray-session-shortcuts) defines bounded native session groups and the renderer/Main ownership boundary.

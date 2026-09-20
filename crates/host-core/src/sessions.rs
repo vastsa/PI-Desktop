@@ -2135,7 +2135,96 @@ fn compaction_valid_for_records(compaction: &CompactionRecord, records: &[Messag
     })
 }
 
+/// Store in full every regenerate family this rewrite is about to drop.
+///
+/// A branch that is still live is referenced rather than copied, so its
+/// reference line only resolves while its root is in the transcript. A rewrite
+/// that removes the root — deleting the turn that owns the family, a regenerate
+/// or edit that cuts a later family away, a revision switch that restores a
+/// prefix from before it — would otherwise leave the file naming a suffix that
+/// no longer exists. Every dropped family is written out first, from `before`,
+/// exactly as a revision switch writes the branch it pages away from.
+///
+/// A rewrite that only shortens a live branch is left alone: the reference then
+/// describes the transcript as the user just made it, which is the same
+/// authority the durable transcript has everywhere else.
+///
+/// `already_stored` names families the caller has just written itself, so the
+/// payload is not written twice.
+fn archive_dropped_live_branches(
+    db: &Database,
+    session_id: &str,
+    before: &[UiMessage],
+    kept: &[UiMessage],
+    already_stored: &[String],
+) -> Result<()> {
+    for root in dropped_revision_roots(db, session_id, kept, already_stored)? {
+        archive_live_branch(db, session_id, &root, before)?;
+    }
+    Ok(())
+}
+
+/// The families indexed for this session whose root `kept` no longer holds: the
+/// branches a rewrite from the current transcript would strand. Index rows only,
+/// so a rewrite that drops nothing pays no transcript read.
+fn dropped_revision_roots(
+    db: &Database,
+    session_id: &str,
+    kept: &[UiMessage],
+    already_stored: &[String],
+) -> Result<Vec<String>> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare_cached(
+        "SELECT DISTINCT root_user_id FROM message_revisions WHERE session_id = ?1",
+    )?;
+    let rows = stmt.query_map(params![session_id], |row| row.get::<_, String>(0))?;
+    let mut dropped = Vec::new();
+    for row in rows {
+        let root = row?;
+        if already_stored.iter().any(|stored| stored == &root) {
+            continue;
+        }
+        if live_branch_start(kept, &root).is_none() {
+            dropped.push(root);
+        }
+    }
+    Ok(dropped)
+}
+
+/// Rewrite a session's whole transcript from `messages`, leaving every
+/// regenerate family the rewrite would drop stored in full.
 pub fn replace_messages(db: &Database, session_id: &str, messages: &[UiMessage]) -> Result<()> {
+    rewrite_transcript(db, session_id, messages, &[])
+}
+
+/// Rewrite the transcript and reseat the index rows.
+///
+/// `already_stored` names families the caller stored on its own way here, so
+/// [`archive_dropped_live_branches`] does not write them a second time.
+fn rewrite_transcript(
+    db: &Database,
+    session_id: &str,
+    messages: &[UiMessage],
+    already_stored: &[String],
+) -> Result<()> {
+    // The guard writes from the OLD transcript, so it has to read it before the
+    // rewrite below replaces it — and only when a family is actually dropped.
+    if !dropped_revision_roots(db, session_id, messages, already_stored)?.is_empty() {
+        if let Some(detail) = get_session(db, session_id)? {
+            archive_dropped_live_branches(
+                db,
+                session_id,
+                &detail.messages,
+                messages,
+                already_stored,
+            )?;
+        }
+    }
+    rewrite_transcript_body(db, session_id, messages)
+}
+
+/// The rewrite itself, with no regard for the revisions the caller drops.
+fn rewrite_transcript_body(db: &Database, session_id: &str, messages: &[UiMessage]) -> Result<()> {
     let session_created = session_created_at(db, session_id)?;
     crate::session_collaboration::validate_replacement(db, session_id, messages)?;
     let (records, texts) = records_and_texts(messages);
@@ -2258,7 +2347,14 @@ pub fn truncate_from(
 
     let aborted_turn_id = abort_running_turn(db, session_id)?;
     let revision = archive_discarded_regenerate_branch(db, session_id, discarded)?;
-    replace_messages(db, session_id, kept)?;
+    // The regenerate root's branch is already stored above; every OTHER family
+    // the cut takes away is not, and the guard in `rewrite_transcript` stores
+    // those. Skipping the one that is done keeps it from being written twice.
+    let already_stored: Vec<String> = revision
+        .iter()
+        .map(|meta| meta.root_user_id.clone())
+        .collect();
+    rewrite_transcript(db, session_id, kept, &already_stored)?;
     let _ = transcripts::remove_inflight(db.data_dir(), session_id);
     Ok(TruncateFromResult {
         ok: true,
@@ -2295,6 +2391,10 @@ fn abort_running_turn(db: &Database, session_id: &str) -> Result<Option<String>>
 
 /// Archive the discarded regenerate tail the way Electron main used to, but
 /// without copying the branch across the JSON-RPC pipe.
+///
+/// The tail is about to be cut out of the transcript, so this always writes the
+/// payload in full: a live reference would stop resolving the moment
+/// `truncate_from` replaces the file.
 fn archive_discarded_regenerate_branch(
     db: &Database,
     session_id: &str,
@@ -2555,6 +2655,82 @@ pub fn refresh_message_revision(
     })
 }
 
+/// Record a branch that is still live as revision `revision_index` of its user
+/// root, without copying its messages: while the branch is live the transcript
+/// *is* the payload, so the file gets its identity and turn attribution, and
+/// the index row gets the count the pager reads.
+///
+/// The line is written before the index transaction, like every other
+/// transcript write, so a crash between the two costs an index row rather than
+/// content.
+fn save_live_branch_revision(
+    db: &Database,
+    session_id: &str,
+    root_user_id: &str,
+    revision_index: i64,
+    branch: &[UiMessage],
+) -> Result<MessageRevisionSummary> {
+    let conn = db.conn();
+    let existing: Option<(i64, bool)> = conn
+        .query_row(
+            "SELECT created_at, is_active FROM message_revisions
+             WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
+            params![session_id, root_user_id, revision_index],
+            |row| Ok((row.get(0)?, row.get::<_, i64>(1)? != 0)),
+        )
+        .optional()?;
+    let created = existing.map_or_else(now_ms, |(created, _)| created);
+    let is_active = existing.is_none_or(|(_, is_active)| is_active);
+    transcripts::append_live_revision(
+        db.data_dir(),
+        session_id,
+        &transcripts::LiveRevisionRecord {
+            root_user_id: root_user_id.to_string(),
+            revision_index,
+            created_at: ms_to_ts(created),
+        },
+    )?;
+    let tx = conn.unchecked_transaction()?;
+    if existing.is_some() {
+        tx.prepare_cached(
+            "UPDATE message_revisions SET message_count = ?4
+             WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
+        )?
+        .execute(params![
+            session_id,
+            root_user_id,
+            revision_index,
+            branch.len() as i64
+        ])?;
+    } else {
+        tx.prepare_cached(
+            "UPDATE message_revisions SET is_active = 0
+             WHERE session_id = ?1 AND root_user_id = ?2",
+        )?
+        .execute(params![session_id, root_user_id])?;
+        tx.prepare_cached(
+            "INSERT INTO message_revisions (
+                id, session_id, root_user_id, revision_index, is_active, message_count, created_at
+             ) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)",
+        )?
+        .execute(params![
+            Uuid::new_v4().to_string(),
+            session_id,
+            root_user_id,
+            revision_index,
+            branch.len() as i64,
+            created
+        ])?;
+    }
+    tx.commit()?;
+    Ok(MessageRevisionSummary {
+        revision_index,
+        is_active,
+        created_at: ms_to_ts(created),
+        message_count: branch.len() as i64,
+    })
+}
+
 /// Where a revision family starts in the live transcript: the root itself, or
 /// (after a regenerate gave the live prompt a new id) the first user message
 /// stamped with that family key.
@@ -2573,6 +2749,10 @@ fn live_branch_start(messages: &[UiMessage], root_user_id: &str) -> Option<usize
 /// before a switch replaces it. Anything appended since the last archive
 /// (later prompts, error-ended turns that never hit agent_end) would otherwise
 /// vanish the moment the user pages away and back.
+///
+/// This is also what turns a live reference back into a stored payload: while
+/// the branch is live the revisions file holds no copy of it, and this call
+/// writes one before the switch below takes the branch away.
 ///
 /// Returns the branch start in `live` when the family is present at all.
 fn archive_live_branch(
@@ -2689,28 +2869,27 @@ pub fn save_active_branch_revision(
     let already_archived = existing
         .iter()
         .any(|revision| revision.revision_index == desired_active);
-    let mut active = if desired_active > 0 {
+    let branch = &messages[root_index..];
+    // The branch is still live, so the transcript already holds its payload and
+    // this records a reference to it. Refreshing a stored copy here is what made
+    // the file quadratic: the copy grew with the branch, so a session that ran N
+    // turns wrote O(N²) bytes to restate what the transcript already said. A
+    // branch leaves the transcript only through `archive_live_branch` or
+    // `archive_discarded_regenerate_branch`, and both write the full copy first.
+    let mut active = if already_archived {
+        save_live_branch_revision(db, session_id, &root_user_id, desired_active, branch)?;
         desired_active
     } else {
-        existing.len() as i64 + 1
+        let next = existing
+            .iter()
+            .map(|revision| revision.revision_index)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        save_live_branch_revision(db, session_id, &root_user_id, next, branch)?;
+        next
     };
-    let mut archived = false;
-    if already_archived {
-        // The branch grew past its stored copy (this turn appended to it).
-        // Refresh the payload so paging away and back restores all of it.
-        refresh_message_revision(
-            db,
-            session_id,
-            &root_user_id,
-            desired_active,
-            &messages[root_index..],
-        )?;
-    } else {
-        let saved =
-            save_message_revision(db, session_id, &root_user_id, &messages[root_index..], true)?;
-        active = saved.revision_index;
-        archived = true;
-    }
+    let archived = !already_archived;
     let total = list_message_revisions(db, session_id, &root_user_id)?.len() as i64;
     if active < 1 {
         active = total;
@@ -2767,11 +2946,33 @@ pub fn activate_message_revision(
         None => prefix,
     };
 
-    let revision =
+    let payload =
         transcripts::read_revision(db.data_dir(), session_id, root_user_id, revision_index)?
             .ok_or_else(|| anyhow!("revision payload missing from revisions file"))?;
-    let archived_turns = revision.turns;
-    let branch: Vec<UiMessage> = revision.messages.into_iter().map(record_to_ui).collect();
+    let archived_turns = payload.turns().clone();
+    let branch: Vec<UiMessage> = match payload {
+        transcripts::RevisionPayload::Stored(record) => {
+            record.messages.into_iter().map(record_to_ui).collect()
+        }
+        // The branch never left the transcript, so its messages are the live
+        // suffix rooted at its user turn — the same slice `archive_live_branch`
+        // measured one call ago, and the reason no copy of it is on disk.
+        transcripts::RevisionPayload::Live(record) => {
+            // The line names the family it belongs to; the slice below is only
+            // that family's if the two agree.
+            if record.root_user_id != root_user_id || record.revision_index != revision_index {
+                return Err(anyhow!(
+                    "revision payload names {}/{} not {root_user_id}/{revision_index}",
+                    record.root_user_id,
+                    record.revision_index
+                ));
+            }
+            let start = live_start.ok_or_else(|| {
+                anyhow!("revision payload missing from transcript for {root_user_id}")
+            })?;
+            live.get(start..).unwrap_or_default().to_vec()
+        }
+    };
 
     let conn = db.conn();
     let total: i64 = conn.query_row(
@@ -2813,6 +3014,17 @@ pub fn activate_message_revision(
             .into_iter()
             .filter(|record| compaction_valid_for_records(record, &records))
             .collect();
+    // The switch drops everything the restored variant does not contain. Any
+    // other family whose root is in that prefix was referenced rather than
+    // copied while it was live, so it has to be stored in full before the
+    // transcript stops holding it. The target family was archived above.
+    archive_dropped_live_branches(
+        db,
+        session_id,
+        &live,
+        &combined,
+        &[root_user_id.to_string()],
+    )?;
     invalidate_transcript_layout(session_id);
     transcripts::write_transcript_with_compactions(
         db.data_dir(),
@@ -5274,12 +5486,15 @@ mod tests {
         assert_eq!(detail.messages[0].active_revision, Some(2));
         assert_eq!(detail.messages[0].revision_root_id.as_deref(), Some("u1"));
 
-        // The archived branch carries the final answer, so switching back to it
-        // later restores a complete turn.
-        let branch = transcripts::read_revision(db.data_dir(), &session.id, "u1", 2)
+        // The branch carries the final answer, so switching back to it later
+        // restores a complete turn. It is still live, so what the file holds is
+        // a reference to the transcript suffix rather than a second copy of it.
+        let payload = transcripts::read_revision(db.data_dir(), &session.id, "u1", 2)
             .unwrap()
             .expect("branch payload");
-        assert_eq!(branch.messages.last().unwrap().id, "a9");
+        assert!(matches!(payload, transcripts::RevisionPayload::Live(_)));
+        let branch = &detail.messages[live_branch_start(&detail.messages, "u1").unwrap()..];
+        assert_eq!(branch.last().unwrap().id, "a9");
 
         // A one-line stamp must not reseat the index: seq order and the owning
         // turn stay intact.
@@ -5374,20 +5589,300 @@ mod tests {
             .unwrap();
         assert!(!saved.archived, "no new index is minted");
         assert_eq!(saved.revision_count, 1);
-        let branch = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
+        // The branch is still live, so the refresh records a reference and the
+        // messages stay in the transcript instead of being copied into the
+        // revisions file again on every turn.
+        let payload = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
             .unwrap()
             .unwrap();
+        assert!(matches!(payload, transcripts::RevisionPayload::Live(_)));
+        let live = get_session(&db, &session.id).unwrap().unwrap().messages;
+        let branch = &live[live_branch_start(&live, "u1").unwrap()..];
         assert_eq!(
-            branch
-                .messages
-                .iter()
-                .map(|m| m.id.as_str())
-                .collect::<Vec<_>>(),
+            branch.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             vec!["u1", "u2", "a2"],
         );
         let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
         assert_eq!(listed[0].message_count, 3);
         assert!(listed[0].is_active);
+    }
+
+    /// The reason a live branch is referenced and not copied: a branch that is
+    /// still in the transcript must cost the revisions file nothing, however
+    /// many turns run over it. Copying it per turn is what made a real session
+    /// reach 107 MB for 1152 messages — every turn rewrote a tail that had grown
+    /// since the turn before, which is O(N²) bytes for content the transcript
+    /// already held.
+    #[test]
+    fn a_live_branch_is_referenced_and_never_copied() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
+        let mut root = user_msg("u1", "start", "2025-05-01T00:00:00Z");
+        root.revision_count = Some(1);
+        root.active_revision = Some(1);
+        append_message(&db, &session.id, &root, Some(&turn)).unwrap();
+
+        // Ten finished turns, each appending a sizeable answer, each archived
+        // exactly the way a real turn ends.
+        for index in 0..10 {
+            let mut answer = user_msg(
+                &format!("a{index}"),
+                &"x".repeat(20_000),
+                "2025-05-01T00:01:00Z",
+            );
+            answer.role = "assistant".into();
+            append_message(&db, &session.id, &answer, Some(&turn)).unwrap();
+            assert!(
+                save_active_branch_revision(&db, &session.id)
+                    .unwrap()
+                    .is_some(),
+                "the stamped root archives on every turn"
+            );
+        }
+
+        let path = transcripts::revisions_path(db.data_dir(), &session.id).unwrap();
+        let written = std::fs::metadata(&path).unwrap().len();
+        assert!(
+            written < 8 * 1024,
+            "ten turns over a 200 KB branch wrote {written} bytes; \
+             a live branch must be referenced, not copied"
+        );
+
+        // The branch is still one revision, still counted, and still resolves
+        // to every message the transcript holds.
+        let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].message_count, 11);
+        assert!(matches!(
+            transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
+                .unwrap()
+                .unwrap(),
+            transcripts::RevisionPayload::Live(_)
+        ));
+        let live = get_session(&db, &session.id).unwrap().unwrap().messages;
+        let branch = &live[live_branch_start(&live, "u1").unwrap()..];
+        assert_eq!(branch.len(), 11);
+        assert_eq!(branch.last().unwrap().id, "a9");
+        // The reference carries no turn map: a live branch's rows are the
+        // session's own index rows, so a restore reads their turns from there.
+        // That is what keeps the reference constant-sized instead of one entry
+        // per branch message on every turn.
+        let payload = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
+            .unwrap()
+            .unwrap();
+        assert!(payload.turns().is_empty());
+        let line_bytes = {
+            let raw = std::fs::read_to_string(
+                transcripts::revisions_path(db.data_dir(), &session.id).unwrap(),
+            )
+            .unwrap();
+            raw.lines().last().unwrap().len()
+        };
+        assert!(
+            line_bytes < 160,
+            "the newest reference is {line_bytes} bytes; it must not grow with the branch"
+        );
+
+        // And the restore still re-attaches every message to its turn.
+        let restored = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        assert_eq!(restored.len(), 11);
+        let with_turn: i64 = db
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM messages
+                 WHERE session_id = ?1 AND turn_id = ?2",
+                params![session.id, turn],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(with_turn, 11, "all eleven rows keep their owning turn");
+    }
+
+    /// Deleting the turn that owns a regenerate family takes its branch out of
+    /// the transcript, so the reference written while that branch was live has
+    /// to become a stored payload in the same breath. Otherwise the file names
+    /// a suffix that no longer exists and paging back to the variant fails.
+    #[test]
+    fn dropping_a_branch_root_stores_its_live_reference_first() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
+        let mut root = user_msg("u1", "start", "2025-05-01T00:00:00Z");
+        root.revision_count = Some(1);
+        root.active_revision = Some(1);
+        append_message(&db, &session.id, &root, Some(&turn)).unwrap();
+        let mut answer = user_msg("a1", "the answer", "2025-05-01T00:01:00Z");
+        answer.role = "assistant".into();
+        append_message(&db, &session.id, &answer, Some(&turn)).unwrap();
+        save_active_branch_revision(&db, &session.id)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
+                .unwrap()
+                .unwrap(),
+            transcripts::RevisionPayload::Live(_)
+        ));
+
+        // The user deletes the turn. No revision call of its own runs for it.
+        let mut other = user_msg("u2", "another question", "2025-05-01T00:02:00Z");
+        other.role = "assistant".into();
+        replace_messages(&db, &session.id, &[other]).unwrap();
+
+        let stored = match transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
+            .unwrap()
+            .expect("the dropped branch was stored before the rewrite")
+        {
+            transcripts::RevisionPayload::Stored(record) => record,
+            transcripts::RevisionPayload::Live(_) => {
+                panic!("a branch that left the transcript must be stored")
+            }
+        };
+        assert_eq!(
+            stored
+                .messages
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["u1", "a1"]
+        );
+    }
+
+    /// Two user turns each own a regenerate family and both are referenced, then
+    /// an edit cuts the earlier one away. The later family's root leaves the
+    /// transcript in that same rewrite, so its reference has to be stored in
+    /// full — it is not the branch the truncate archives itself.
+    #[test]
+    fn truncate_from_stores_a_later_familys_reference_first() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
+        let mut first = user_msg("u1", "one", "2025-05-01T00:00:00Z");
+        first.revision_count = Some(1);
+        first.active_revision = Some(1);
+        append_message(&db, &session.id, &first, Some(&turn)).unwrap();
+        let mut first_answer = user_msg("a1", "first answer", "2025-05-01T00:00:01Z");
+        first_answer.role = "assistant".into();
+        append_message(&db, &session.id, &first_answer, Some(&turn)).unwrap();
+        save_active_branch_revision(&db, &session.id)
+            .unwrap()
+            .unwrap();
+
+        let mut second = user_msg("u2", "two", "2025-05-01T00:01:00Z");
+        second.revision_count = Some(1);
+        second.active_revision = Some(1);
+        append_message(&db, &session.id, &second, Some(&turn)).unwrap();
+        let mut second_answer = user_msg("a2", "second answer", "2025-05-01T00:01:01Z");
+        second_answer.role = "assistant".into();
+        append_message(&db, &session.id, &second_answer, Some(&turn)).unwrap();
+        save_active_branch_revision(&db, &session.id)
+            .unwrap()
+            .unwrap();
+
+        let second_index =
+            list_message_revisions(&db, &session.id, "u2").unwrap()[0].revision_index;
+        assert!(matches!(
+            transcripts::read_revision(db.data_dir(), &session.id, "u2", second_index)
+                .unwrap()
+                .unwrap(),
+            transcripts::RevisionPayload::Live(_)
+        ));
+
+        // Editing the FIRST turn cuts the whole second turn away from the
+        // transcript, and only the first family is the regenerate root.
+        truncate_from(&db, &session.id, Some("u1"), None).unwrap();
+
+        let stored =
+            match transcripts::read_revision(db.data_dir(), &session.id, "u2", second_index)
+                .unwrap()
+                .expect("the later family was stored before its root left the transcript")
+            {
+                transcripts::RevisionPayload::Stored(record) => record,
+                transcripts::RevisionPayload::Live(_) => {
+                    panic!("a branch that left the transcript must be stored")
+                }
+            };
+        assert_eq!(
+            stored
+                .messages
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["u2", "a2"]
+        );
+    }
+
+    /// The other half of the same hazard: a revision switch restores a prefix
+    /// from before a later family, and that later family leaves the transcript
+    /// without the switch ever naming it.
+    #[test]
+    fn activate_message_revision_stores_a_later_familys_reference_first() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
+        // Family u1 has two variants: the first does not contain u2 at all.
+        let mut first = user_msg("u1", "one", "2025-05-01T00:00:00Z");
+        first.revision_count = Some(2);
+        first.active_revision = Some(2);
+        append_message(&db, &session.id, &first, Some(&turn)).unwrap();
+        let mut first_answer = user_msg("a1", "v1 answer", "2025-05-01T00:00:01Z");
+        first_answer.role = "assistant".into();
+        save_message_revision(
+            &db,
+            &session.id,
+            "u1",
+            &[first.clone(), first_answer.clone()],
+            false,
+        )
+        .unwrap();
+        append_message(&db, &session.id, &first_answer, Some(&turn)).unwrap();
+
+        let mut second = user_msg("u2", "two", "2025-05-01T00:01:00Z");
+        second.revision_count = Some(1);
+        second.active_revision = Some(1);
+        append_message(&db, &session.id, &second, Some(&turn)).unwrap();
+        let mut second_answer = user_msg("a2", "second answer", "2025-05-01T00:01:01Z");
+        second_answer.role = "assistant".into();
+        append_message(&db, &session.id, &second_answer, Some(&turn)).unwrap();
+        save_active_branch_revision(&db, &session.id)
+            .unwrap()
+            .unwrap();
+
+        let second_index =
+            list_message_revisions(&db, &session.id, "u2").unwrap()[0].revision_index;
+        assert!(matches!(
+            transcripts::read_revision(db.data_dir(), &session.id, "u2", second_index)
+                .unwrap()
+                .unwrap(),
+            transcripts::RevisionPayload::Live(_)
+        ));
+
+        // Variant 1 of u1 predates u2, so restoring it drops u2 entirely.
+        let restored = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
+        assert_eq!(
+            restored.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["u1", "a1"]
+        );
+
+        let stored =
+            match transcripts::read_revision(db.data_dir(), &session.id, "u2", second_index)
+                .unwrap()
+                .expect("the later family was stored before the switch dropped it")
+            {
+                transcripts::RevisionPayload::Stored(record) => record,
+                transcripts::RevisionPayload::Live(_) => {
+                    panic!("a branch that left the transcript must be stored")
+                }
+            };
+        assert_eq!(
+            stored
+                .messages
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["u2", "a2"]
+        );
     }
 
     /// The incident shape: a branch archived on agent_end kept growing (later
@@ -5525,8 +6020,14 @@ mod tests {
         let original = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
             .unwrap()
             .unwrap();
+        let stored = match original {
+            transcripts::RevisionPayload::Stored(record) => record,
+            transcripts::RevisionPayload::Live(_) => {
+                panic!("variant 1 was archived before the switch and stays stored")
+            }
+        };
         assert_eq!(
-            original.messages.last().unwrap().id,
+            stored.messages.last().unwrap().id,
             "a1",
             "variant 1 is intact"
         );
@@ -5687,8 +6188,14 @@ mod tests {
         let payload = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
             .unwrap()
             .unwrap();
+        let stored = match payload {
+            transcripts::RevisionPayload::Stored(record) => record,
+            transcripts::RevisionPayload::Live(_) => {
+                panic!("a branch that left the transcript must be stored in full")
+            }
+        };
         assert_eq!(
-            payload
+            stored
                 .messages
                 .iter()
                 .map(|m| m.id.as_str())

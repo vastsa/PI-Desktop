@@ -37,6 +37,13 @@ test("home project switcher lists sidebar projects and can clone a git repo", ()
   assert.match(switcher, /initialFocus="input"/);
 });
 
+test("home project switcher guards project operations before React rerenders", () => {
+  assert.match(switcher, /const busyRef = useRef\(false\)/);
+  assert.match(switcher, /if \(busy \|\| busyRef\.current\) return;/);
+  assert.match(switcher, /busyRef\.current = true;\s*setBusy\(true\)/);
+  assert.match(switcher, /busyRef\.current = false;\s*setBusy\(false\)/);
+});
+
 test("home project switcher is a fixed portaled menu that stays inline in the hero", () => {
   assert.match(
     styles,

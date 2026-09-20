@@ -350,8 +350,9 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **先决条件**：已配置提供商。
 - **步骤**：1) 创建新会话。 2) 输入消息。 3）发送。
 - **预期**：转录结果立即显示紧凑的本地化 `Working…`
-  发送后、第一个助手或工具事件之前的状态。它产生
-  具体的 thinking/tool/answer 反馈，并在回合结束时消失。
+  发送后、第一个助手或工具事件之前的状态。思考、工具和回答出现后
+  仍保留提示，已知具体阶段时显示对应等待状态。等待用户操作时隐藏，
+  回合结束时消失。
 - **链接规格**：`03-runtime/02-agent-runtime.md`、`03-runtime/10-session-state-machine.md`
 - **接受**：C（新会话，发送消息）
 - **里程碑**：M2
@@ -2369,8 +2370,9 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   完成。
 - **预期**：没有一般理解、工作、检查或完成
   当回合处于活动状态时，卡片会出现在成绩单下方。助理和
-  工具行保持内联；只有实际的权限请求才会呈现
-  可操作的卡。后台活动永远不会改变可见会话，
+  工具行保持内联；整轮保留一行紧凑底部状态，包括部分回答暂停和工具
+  完成后的空档。具体阶段优先于规划/目标或工作中，等待用户操作时隐藏。
+  只有实际的权限请求才会呈现可操作的权限卡。后台活动永远不会改变可见会话，
   成绩单、输入框焦点或项目。
 - **链接规格**：`04-ux/08-component-spec.md`，
   `04-ux/09-interaction-patterns.md`、`03-runtime/10-session-state-machine.md`
@@ -3807,6 +3809,8 @@ IPC 请求无法关闭。
 - **预期**：
   - Plan/Goal 审批条使用 `--ds-bg-composer` 加 `--ds-shadow-composer`，而不是正文流里的 `--ds-tile` 薄洗，因此在透明停靠栏上仍可读。
   - 重试 hover tooltip 把错误色混在 `--ds-bg-elevated-opaque` 上，记录正文不会透出。
+  - 重试 tooltip 的高度被限制在尾部状态行上方的可用空间内，其余部分可滚动，
+    因此较长的 provider 消息会保留开头几行，不会被记录滚动容器或会话顶栏遮住。
 - **链接规格**：`04-ux/03-permission-ux.md`、`04-ux/08-component-spec.md`
 - **接受**：C、品质
 - **里程碑**：M6
@@ -5054,8 +5058,10 @@ IPC 请求无法关闭。
 
 
 
+
 | 验收 | 应用场景 |
 |---|---|
+| C / F / Quality — 桌面定时任务 | E2E-SCHEDULED-desktop-automation-lifecycle |
 | A / C — Unicode stdio 成帧 | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — 侧边栏行状态 | E2E-LAYOUT-sidebar-row-states |
@@ -5064,7 +5070,7 @@ IPC 请求无法关闭。
 | B / F / Quality — 已选模型顺序 | E2E-MODEL-selected-order-persists |
 | A — 应用程序启动 | E2E-001、E2E-002、E2E-003、E2E-004、E2E-067、E2E-076、E2E-079、E2E-092、E2E-097、E2E-143、E2E-150、E2E-168、E2E-204、E2E-217 |
 | B——模型配置 | E2E-005、E2E-005G、E2E-006、E2E-007、E2E-038、E2E-050、E2E-052、E2E-055、E2E-066、E2E-080、E2E-082、E2E-151、E2E-005J、E2E-199、E2E-201、E2E-202、E2E-203、E2E-209、E2E-166 |
-| C — 对话和直播 | E2E-008、E2E-008d、E2E-008a、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-031、E2E-040、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-052、 E2E-053、E2E-054、E2E-055、E2E-059、E2E-059a、E2E-060c、E2E-060d、E2E-061、E2E-061a、E2E-062、E2E-064、E2E-065、E2E-068、E2E-071、 E2E-073、E2E-074、E2E-075、E2E-081、E2E-083、E2E-084、E2E-086、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-094、E2E-095、E2E-096、 E2E-097、E2E-098、E2E-099、E2E-102、E2E-102a、E2E-102b、E2E-106、E2E-109、E2E-111、E2E-114、E2E-116、E2E-117、E2E-118、E2E-119、 E2E-120、E2E-121、E2E-代理-001、E2E-142、E2E-144、E2E-145、E2E-146、E2E-147、E2E-151、E2E-199、E2E-250、E2E-166、E2E-SUBAGENT-resume-a-settled-delegation |
+| C — 对话和直播 | E2E-CHAT-running-status-survives-output-pauses、E2E-008、E2E-008d、E2E-008a、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-031、E2E-040、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-052、 E2E-053、E2E-054、E2E-055、E2E-059、E2E-059a、E2E-060c、E2E-060d、E2E-061、E2E-061a、E2E-062、E2E-064、E2E-065、E2E-068、E2E-071、 E2E-073、E2E-074、E2E-075、E2E-081、E2E-083、E2E-084、E2E-086、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-094、E2E-095、E2E-096、 E2E-097、E2E-098、E2E-099、E2E-102、E2E-102a、E2E-102b、E2E-106、E2E-109、E2E-111、E2E-114、E2E-116、E2E-117、E2E-118、E2E-119、 E2E-120、E2E-121、E2E-代理-001、E2E-142、E2E-144、E2E-145、E2E-146、E2E-147、E2E-151、E2E-199、E2E-250、E2E-166、E2E-SUBAGENT-resume-a-settled-delegation |
 | A / C / F / Quality — Tray session navigation | E2E-TRAY-bounded-session-navigation |
 | D——工作区 | E2E-012、E2E-013、E2E-022B、E2E-024I、E2E-047、E2E-049、E2E-057、E2E-058、E2E-060、E2E-068、E2E-075、E2E-078、E2E-153 |
 | D——工作区（项目排序） | E2E-253 |
@@ -5074,7 +5080,7 @@ IPC 请求无法关闭。
 | G——插件 | E2E-022、E2E-022A、E2E-022B、E2E-022C、E2E-023、E2E-024、E2E-024B、E2E-024C、E2E-024D、E2E-024AA、E2E-024E、E2E-024W、E2E-024F、E2E-024G、E2E-024H、 E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M、E2E-024N、E2E-024O、E2E-024P、E2E-025、E2E-026、E2E-105、E2E-117、E2E-120、E2E-122、E2E-123、E2E-148、E2E-153、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-imported-pi-package-wrapper、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
 | H——诊断 | E2E-027、E2E-031、E2E-034、E2E-042、E2E-096、E2E-098、E2E-104、E2E-107、E2E-108、E2E-109、E2E-110、E2E-113、E2E-115、E2E-116、 E2E-118、E2E-121、E2E-146、E2E-194、E2E-195 |
 | 安全性 | E2E-028、E2E-029、E2E-030、E2E-024J、E2E-024K、E2E-024M、E2E-049、E2E-068、E2E-086、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、 E2E-110、E2E-112、E2E-113、E2E-115、E2E-116、E2E-117、E2E-119、E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-151、E2E-153 |
-| 品质 | E2E-032、E2E-033、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-050、E2E-053、E2E-055、 E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、 E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、 E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-094、E2E-095、E2E-096、E2E-097、E2E-098、E2E-099、E2E-100、E2E-101、E2E-102、 E2E-102a、E2E-102b、E2E-103、E2E-AGENTS-001、E2E-024N、E2E-024O、E2E-059a、E2E-060b、E2E-060c、E2E-060d、E2E-061a、E2E-073a、E2E-111、 E2E-114、E2E-117、E2E-118、E2E-119、E2E-120、E2E-122、E2E-123、E2E-142、E2E-143、E2E-144、E2E-145、E2E-146、E2E-147、E2E-148、E2E-150、E2E-151、E2E-153、E2E-194、E2E-195、E2E-199、E2E-200、E2E-201、E2E-202、E2E-203、E2E-204、E2E-209、E2E-210、E2E-250、E2E-PLUGIN-imported-pi-package-skills、E2E-SUBAGENT-resume-a-settled-delegation |
+| 品质 | E2E-CHAT-running-status-survives-output-pauses、E2E-032、E2E-033、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-050、E2E-053、E2E-055、 E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、 E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、 E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-094、E2E-095、E2E-096、E2E-097、E2E-098、E2E-099、E2E-100、E2E-101、E2E-102、 E2E-102a、E2E-102b、E2E-103、E2E-AGENTS-001、E2E-024N、E2E-024O、E2E-059a、E2E-060b、E2E-060c、E2E-060d、E2E-061a、E2E-073a、E2E-111、 E2E-114、E2E-117、E2E-118、E2E-119、E2E-120、E2E-122、E2E-123、E2E-142、E2E-143、E2E-144、E2E-145、E2E-146、E2E-147、E2E-148、E2E-150、E2E-151、E2E-153、E2E-194、E2E-195、E2E-199、E2E-200、E2E-201、E2E-202、E2E-203、E2E-204、E2E-209、E2E-210、E2E-250、E2E-PLUGIN-imported-pi-package-skills、E2E-SUBAGENT-resume-a-settled-delegation |
 | 品质（项目排序） | E2E-253 |
 | C — 对话和直播（输入法斜杠别名） | E2E-255 |
 | E——工具和权限（Skill 常驻） | E2E-254 |
@@ -5120,7 +5126,7 @@ IPC 请求无法关闭。
 | M2 | E2E-004、E2E-005、E2E-006、E2E-007、E2E-008、E2E-008d、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-020、E2E-021、E2E-027、E2E-031、 E2E-036、E2E-037、E2E-042、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-144、E2E-005J、E2E-201 |
 | M3 | E2E-012、E2E-013、E2E-014、E2E-015、E2E-016、E2E-017、E2E-018、E2E-019、E2E-040 |
 | M4 | E2E-022、E2E-023、E2E-024、E2E-025、E2E-026、E2E-030、E2E-038 |
-| M5 | E2E-008a、E2E-032、E2E-033、E2E-034、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-050、 E2E-051、E2E-052、E2E-053、E2E-054、E2E-055、E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、 E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、 E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-096、E2E-097、E2E-098、E2E-099、 E2E-100、E2E-101、E2E-102、E2E-102a、E2E-102b、E2E-AGENTS-001、E2E-059a、E2E-060b、E2E-060c、E2E-061a、E2E-073a、E2E-094、E2E-095、E2E-143、E2E-145、E2E-146、E2E-147、E2E-194、E2E-195、E2E-204、E2E-250 |
+| M5 | E2E-CHAT-running-status-survives-output-pauses、E2E-008a、E2E-032、E2E-033、E2E-034、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-050、 E2E-051、E2E-052、E2E-053、E2E-054、E2E-055、E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、 E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、 E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-096、E2E-097、E2E-098、E2E-099、 E2E-100、E2E-101、E2E-102、E2E-102a、E2E-102b、E2E-AGENTS-001、E2E-059a、E2E-060b、E2E-060c、E2E-061a、E2E-073a、E2E-094、E2E-095、E2E-143、E2E-145、E2E-146、E2E-147、E2E-194、E2E-195、E2E-204、E2E-250 |
 | M5（项目排序） | E2E-253 |
 | M2（输入法斜杠别名） | E2E-255 |
 | M5（Skill 常驻） | E2E-254 |
@@ -5136,7 +5142,7 @@ IPC 请求无法关闭。
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
-| 受信任扩展（R7 v1） | E2E-241、E2E-242、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
+| 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | 受信任扩展（R7 v1 npm 恢复） | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP 回归覆盖（插件工具调度） | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
 | M6+（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
@@ -7835,6 +7841,25 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：C（对话与流式）、E（工具与权限）、品质
 - **里程碑**：M6+
 - **状态**：部分自动化。`pnpm test:e2e:transcript-disclosure` 在真实的 600 CSS px Electron 视口中挂载真实的转录滚动 hook 与真实的工具行，用真实 DOM 点击标题，并对转录以及嵌套跟随滚动器断言标题相对滚动器顶边的偏移与滚动偏移；没有该修复时，同一个夹具会报告标题移动了整个展开详情的高度。夹具未链接应用样式表，因此高度来自内联填充与组件自身的固有尺寸。`disclosure-anchor.test.mjs` 覆盖纯锚点与输入归属数学，`transcript-disclosure-reading.test.mjs` 覆盖接线。键盘、滚轮与活动组动画路径仍属补充验证。
+#### E2E-CHAT-running-status-survives-output-pauses
+
+- **先决条件**：Electron 中的生产 `ChatTranscript`、真实 store 和 React DOM，使用确定性消息/状态转换，无需模型凭据。
+- **步骤**：发送一轮，输出部分文字后停止增量，开始并完成工具，切换和清空具体阶段，恢复文字后完成、停止或失败。在详细与紧凑模式重复；验证规划、权限、提问与提案等待、历史阅读及会话切换。
+- **预期**：输出暂停和工具完成后仍有且仅有一行本地化、可访问的底部状态。具体阶段优先于规划/目标或工作中。等待用户操作时隐藏；回合结束与历史阅读时移除。会话切换只使用对应会话的状态；已有内容与权限操作保持可用。运行中与含助手错误的回合不挂载空操作栏；默认字号下，部分回答的片段盒底部到状态文字顶部为 24 CSS px。结束后的无错误正文保留复制、分支与重新生成。详细和紧凑模式均需验证。历史阅读和权限卡保留正常消息间距；回合结束后贴底模式继续跟随底部，恢复正常操作栏高度；向上阅读时正文位置和滚动偏移保持不变。
+- **链接规格**：`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md`
+- **验收**：C（对话与流式）、品质（交互和可访问性）
+- **里程碑**：M5
+- **状态**：`pnpm test:e2e:transcript` 自动化（`scripts/e2e/transcript-status.tsx`）。上游 `ecece8f570fc0c18f21e4941eafe52244a7c6e5f` 可复现 #669；不代表真实模型验证。
+
+#### E2E-CHAT-initial-wait-spacing
+
+- 发送用户消息且助手尚未输出：保留原有用户操作栏和间距，默认纯文字用例气泡到状态文字为 52px。
+- 宽窗口和窄窗口下复制可聚焦、可命中；编辑、删除、版本按钮保持运行中禁用。
+  含版本分页时，状态与所有操作按钮的命中区域也不重叠。
+- 状态/底部空白右键打开会话菜单，消息右键打开消息菜单。阶段变化、首次输出或输出前停止，
+  运行状态始终只有一处，结束后恢复消息操作。
+- 覆盖：`scripts/e2e/transcript-status.tsx`，`pnpm test:e2e:transcript`。
+
 #### E2E-CHAT-runtime-status-keeps-row-position
 
 - **先决条件**：一个活动会话，其转录高于对话视口，且尾部由一行已完成的工具占用；窗格已构建（`pnpm build:js`）并已安装 Electron。
@@ -7845,9 +7870,9 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   4. 再次清空运行时活动，让布局稳定下来。
   5. 结束该轮（`isRunning` 为 false），检查尾部。
 - **预期**：
-  - 等待行占用预留的状态通道：在状态出现期间以及清空之后，内容高度、滚动高度、滚动偏移，以及每一个已渲染行的位置都保持不变（误差在 0.01px 以内）。
-  - 空通道在深色与浅色两种主题下都保持已预留且不可见 —— 没有背景、边框或阴影。
-  - 状态行保持其活动区域语义（`role="status"`、`aria-live="polite"`），而空通道不携带任何可供播报的文本。
+  - 等待行占用预留的状态通道：在 Working 切换到具体等待状态再恢复时，内容高度、滚动高度、滚动偏移，以及每一个已渲染行的位置都保持不变（误差在 0.01px 以内）。
+  - 通道在深色与浅色两种主题下都保持预留和透明，没有背景、边框或阴影；清空具体阶段后恢复 Working。
+  - 状态行保持其活动区域语义（`role="status"`、`aria-live="polite"`），等待用户操作时预留通道为空，不携带可供播报的文本。
   - 已结束的空闲转录完全不渲染状态通道，因此其布局不变。
 - **链接规格**：`04-ux/08-component-spec.md`
 - **验收**：C（对话与流式）、品质
@@ -8098,3 +8123,66 @@ the latest destination. These assertions measure work counts, not device FPS.
   `desktop_dispatch_outlasts_every_electron_budget_it_wraps` covers the dispatch
   default.
 - **Status:** Contract-covered; no end-to-end driver waits out a real 70s call.
+
+### E2E-SCHEDULED-desktop-automation-lifecycle
+
+- **前提：** 独立桌面配置、构建后的任务候选版本、本地 SSE 模拟模型；不使用真实
+  服务凭据或付费 API。
+- **步骤：** 点击页脚时钟；创建每天上午 09:00 的任务；编辑名称；暂停／启用；立即运行；
+  打开结果会话；验证周期／四个时段主题下拉菜单、星期多选及选中标记、保存回显、空选择与固定时间；
+  验证方向键、Home/End、Enter、Escape／Tab 和外部点击关闭；
+  验证每小时无时间输入且首次等待一小时；设置每天任务在下一个真实分钟执行；
+  观察自动完成；删除已结束的任务。普通 Agent 对话经模型工具调用发现、创建、查询、
+  修改任务到 15:30，再删除；验证页面显示具体时间，改名保存不覆盖。模型为本地确定性夹具。
+- **预期：** 配置持久化并显示下次时间；暂停后不触发；手动与自动入口均调用真实
+  Agent sidecar；历史记录链接到持久化会话；自动执行不依赖渲染器发送提示词。
+  宿主测试补充验证重复准入、错过时段、无效输入和重启恢复。
+- **规格：** 04-ux/01-ui-ia §3.4；03-runtime/04-data-storage §4.11；
+  ADR scheduled-desktop-automations。
+- **验收：** 定时执行与可恢复的运行历史。
+- **里程碑：** MVP 后的桌面自动化。
+- **状态：** `node scripts/e2e-scheduled.mjs` 自动化覆盖；按 AGENTS.md 在任务候选
+  版本上运行，并记录已测提交与基线。
+
+### E2E-DIALOG-long-text-boundaries
+
+- **前提：** 已构建渲染器，使用隔离的 Electron 组件测试窗口。组件、状态、翻译
+  和样式均为生产实现，只在 preload IPC 边界提供确定性宿主回复。
+- **步骤：** 用长 Windows 路径打开扩展输入框，输入、提交、重新打开并关闭；在
+  520×480 下测试明暗主题及中文的长标题、确认文本、选项；检查重命名、项目
+  指令、记忆、删除、插件安装、设置、权限确认与 OAuth 弹窗，并操作关闭按钮。
+- **预期：** 来源路径与其他长文本完整换行显示，不截断，无横向溢出，保留 420px 提示框宽度；
+  高内容在框内滚动，关闭、Escape、输入提交、单选操作正常。
+- **规格：** `04-ux/08-component-spec.md`，弹窗长文本边界。
+- **验收：** 文字保持在边界内，弹窗操作可达。
+- **阶段：** 发布后维护。
+- **自动化：** `pnpm test:e2e:dialog-overflow`；源代码检查不能替代实际布局验证。
+- **状态：** 已实现，原生 Windows 已验证，macOS/Linux 尚未实机验证。
+
+### E2E-PROVIDER-certificate-trust-and-terminal-errors
+
+- **Preconditions:** Built request candidate incorporating current `origin/main`,
+  Electron installed, isolated test process/profile and loopback HTTPS fixture.
+  No real provider, credentials, user profile, or OS certificate-store writes.
+- **Steps:** Run `node scripts/e2e-provider-certificates.mjs`. Launch the actual
+  desktop sidecar and submit a chat prompt against an untrusted localhost
+  certificate. Relaunch with its CA in `NODE_EXTRA_CA_CERTS`, then request the
+  same certificate through a hostname absent from its SAN.
+- **Expected:** The child's default CA set includes system roots and extra CAs.
+  The first request fails once with a non-retriable certificate error and no
+  retry status; the trusted request returns text; the hostname mismatch still
+  fails once. TLS and hostname verification remain enabled.
+- **UI:** Run `node scripts/e2e-provider-certificate-ui.mjs` for the real error
+  component in isolated Chromium. Certificate errors get localized guidance;
+  DNS and protocol errors retain the generic summary. Errno/raw details remain
+  visible, and details can be closed and reopened. Optional
+  `PI_CERTIFICATE_EVIDENCE_DIR` records a screenshot; `--baseline` uses the
+  upstream error component with the same fixture and stylesheet.
+- **Lower-level coverage:** `provider-certificate-flow.test.ts` enters main
+  session `prompt()` and delegate `run()` through real Agent/pi-ai wiring,
+  with only the external fetch mocked. Both stop after one request and retain
+  the certificate cause. Error classification and recovery suites cover direct,
+  nested, flattened, non-certificate and wrapped certificate failures.
+- **Limits:** OS-root inclusion is checked without installing a root. The TLS
+  success fixture uses a child-only extra CA; it does not reproduce a specific
+  antivirus installation or claim native macOS/Linux verification.

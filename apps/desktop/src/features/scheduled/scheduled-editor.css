@@ -1,0 +1,30 @@
+.scheduled-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 24px;
+}
+.scheduled-fields > * { min-width: 0; max-width: 100%; }
+.scheduled-fields .settings-menu-select-trigger {
+  height: 36px;
+  border-radius: var(--radius-md);
+}
+.scheduled-weekday-trigger { max-width: min(300px, 100%); }
+.scheduled-weekday-menu { min-width: 132px; }
+.scheduled-weekday-option { min-height: 38px; }
+.scheduled-weekday-option:focus-visible { outline: none; background: var(--ds-bg-hover); }
+.scheduled-day-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--ds-text-muted);
+  border-radius: var(--radius-full);
+}
+.scheduled-weekday-option[aria-selected="true"] .scheduled-day-marker {
+  background: var(--ds-text-primary);
+  border-color: var(--ds-text-primary);
+  color: var(--ds-bg-primary);
+}

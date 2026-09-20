@@ -1,18 +1,38 @@
 import { IPC } from "@pi-desktop/shared";
 import type { HostProcess } from "../host-process";
 import type { IpcRegistrar } from "./types";
+import { executeScheduledTask } from "../runtime/scheduled-runner";
 
 export type ScheduledIpcDependencies = {
   registrar: IpcRegistrar;
   getHost: () => HostProcess | null;
   scheduledRunsBySession: Map<string, string>;
+  invoke: (channel: string, args: readonly unknown[]) => Promise<unknown>;
+  isQuitting: () => boolean;
 };
 
 export function registerScheduledIpc({
   registrar,
   getHost,
   scheduledRunsBySession,
+  invoke,
+  isQuitting,
 }: ScheduledIpcDependencies): void {
+  registrar.handle(IPC.invoke.scheduledListRuns, async () => {
+    const host = getHost();
+    if (!host) throw new Error("host unavailable");
+    return host.call("scheduled.listRuns", { limit: 100 });
+  });
+  registrar.handle(IPC.invoke.scheduledExecute, async (id: string, automatic = false) => {
+    if (typeof id !== "string" || typeof automatic !== "boolean") throw new Error("invalid task request");
+    const host = getHost();
+    if (!host) throw new Error("host unavailable");
+    return executeScheduledTask({
+      host, id, automatic, runs: scheduledRunsBySession,
+      isCurrent: () => !isQuitting() && getHost() === host,
+      prompt: (sessionId, content) => invoke(IPC.invoke.agentPrompt, [{ sessionId, content }]),
+    });
+  });
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
     registrar.handle(channel, async (...args) => fn(getHost(), ...args));
   };

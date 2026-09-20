@@ -8,6 +8,8 @@
  * "error") and the rejected-promise paths.
  */
 
+import { isCertificateVerificationError } from "@pi-desktop/shared";
+
 export type ClassifiedAgentError = {
   code: string;
   message: string;
@@ -170,6 +172,7 @@ const NETWORK_CATEGORY_PATTERNS: ReadonlyArray<
 function networkCategoryForCode(
   code: string,
 ): NetworkFailureCategory | undefined {
+  if (isCertificateVerificationError(code)) return "tls";
   for (const [pattern, category] of NETWORK_CATEGORY_PATTERNS) {
     if (pattern.test(code)) return category;
   }
@@ -177,14 +180,15 @@ function networkCategoryForCode(
 }
 
 /**
- * Pick the errno worth reporting and its category. A code naming the proxy wins
- * wherever it sits in the chain, because that is the layer that actually failed
- * — undici reports the proxy's own socket errno as a deeper cause.
+ * A concrete certificate rejection wins over a generic socket/proxy wrapper:
+ * retrying cannot repair trust. Otherwise prefer the proxy layer's own code.
  */
 function pickNetworkCode(codes: readonly string[]): {
   code?: string;
   category?: NetworkFailureCategory;
 } {
+  const certificate = codes.find(isCertificateVerificationError);
+  if (certificate) return { code: certificate, category: "tls" };
   for (const candidate of codes) {
     if (networkCategoryForCode(candidate) === "proxy") {
       return { code: candidate, category: "proxy" };
@@ -292,10 +296,12 @@ export function describeNetworkFailure(
   // errno (bounded, errno-shaped) before it can be reported; the object chain
   // above is probed first and its codes are kept.
   for (const match of message.matchAll(
-    /\b(?:E[A-Z]{3,}|UND_ERR_[A-Z_]+|ERR_[A-Z0-9_]+|HPE_[A-Z_]+)\b/g,
+    /\b[A-Z][A-Z0-9_]{2,63}\b/g,
   )) {
     if (codes.length >= 16) break;
-    if (SAFE_NETWORK_CODE_PATTERN.test(match[0])) codes.push(match[0]);
+    if (networkCategoryForCode(match[0]) !== undefined || NETWORK_PATTERN.test(match[0])) {
+      codes.push(match[0]);
+    }
   }
   if (hostname === undefined) {
     const dnsHost = message.match(
@@ -393,11 +399,13 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
   // "fetch failed" causes don't fall through to the generic bucket. The cause
   // chain is summarized as a coarse category plus the transport errno, so the
   // failing layer is identifiable without a user-visible code per layer.
-  if (hasNetworkCause(err, rawMessage)) {
+  const network = describeNetworkFailure(err, rawMessage);
+  const certificateFailure = isCertificateVerificationError(network.code);
+  if (hasNetworkCause(err, rawMessage) || (status === undefined && certificateFailure)) {
     return result(
       "NETWORK_ERROR",
-      true,
-      networkDetailFields(describeNetworkFailure(err, rawMessage)),
+      !certificateFailure,
+      networkDetailFields(network),
     );
   }
 

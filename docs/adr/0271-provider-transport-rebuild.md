@@ -86,3 +86,9 @@ string by pi-ai before classification, so the log could only say
   free-form provider text (URLs, header values, query strings) into logs and the
   transcript for a small diagnostic gain over the errno, the category, and the
   route.
+
+## Amendment: certificate verification (issue #714)
+
+Recognized certificate verification errors also skip rebuilding. Unlike the
+broader TLS/protocol category, these cannot be repaired by replacing a socket
+pool. See [system certificate trust](provider-system-certificates.md).

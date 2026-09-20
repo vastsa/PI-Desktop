@@ -31,7 +31,7 @@ test("the sidebar footer is an action bar, not a fabricated identity", () => {
   }
 });
 
-test("footer exposes settings, plugins and notifications in one row", () => {
+test("footer exposes settings, plugins, scheduled tasks and notifications in one row", () => {
   assert.match(sidebarSource, /className="footer-actions"/);
   assert.match(sidebarSource, /data-nav="settings"/);
   assert.match(sidebarSource, /data-nav="plugins"/);
@@ -50,13 +50,13 @@ test("footer exposes settings, plugins and notifications in one row", () => {
   const actions = sidebarSource
     .split("<TooltipButton")
     .filter((chunk) => /className=(?:"footer-action"|\{`footer-action )/.test(chunk));
-  assert.equal(actions.length, 2);
+  assert.equal(actions.length, 3);
   for (const action of actions) {
     const attrs = action.slice(0, action.indexOf(">"));
     assert.match(attrs, /tooltip=/);
     assert.match(attrs, /ariaLabel=/);
   }
-  // Both footer destinations report their active state to assistive tech; the
+  // All footer destinations report their active state to assistive tech; the
   // Plugins button also reports the Back toggle a second activation performs.
   const footerAttributes = (marker) => {
     const at = sidebarSource.indexOf(marker);
@@ -74,6 +74,7 @@ test("footer exposes settings, plugins and notifications in one row", () => {
     footerAttributes('data-nav="plugins"'),
     /aria-pressed=\{page === "plugins"\}/,
   );
+  assert.match(footerAttributes('data-nav="scheduled"'), /aria-pressed=\{page === "scheduled"\}/);
 });
 
 test("footer sits on the sidebar content grid without a hairline", () => {

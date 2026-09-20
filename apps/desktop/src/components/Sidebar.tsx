@@ -1,3 +1,4 @@
+import { IconClock } from "./icons";
 import {
   useCallback,
   useEffect,
@@ -2316,6 +2317,17 @@ export function Sidebar({
               aria-pressed={page === "plugins"}
             >
               <IconPlug size={14} aria-hidden />
+            </TooltipButton>
+            <TooltipButton
+              type="button"
+              className={`footer-action ${page === "scheduled" ? "active" : ""}`}
+              data-nav="scheduled"
+              tooltip={t("scheduled.title")}
+              ariaLabel={t("scheduled.title")}
+              onClick={() => setPage("scheduled")}
+              aria-pressed={page === "scheduled"}
+            >
+              <IconClock size={14} aria-hidden />
             </TooltipButton>
             <NotificationCenter onBeforeOpen={() => closeMenus(false)} />
           </div>

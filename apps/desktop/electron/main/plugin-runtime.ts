@@ -77,6 +77,7 @@ import {
   resolveRealPathWithinRoot,
   resolveWithinRoot,
 } from "@pi-desktop/host-runtime";
+import { pluginChildEnv } from "./child-process-env";
 import { desktopDataDir } from "./data-paths";
 import { McpServerClient, type McpServerClientOptions } from "./plugin-mcp";
 import { PluginToolInvocations, type PluginToolInvocation } from "./plugin-tool-invocations";
@@ -1156,29 +1157,13 @@ function resolveWindowBackground(
   return result.light || result.dark ? result : undefined;
 }
 
-/**
- * Minimal environment for a plugin process: the host's own env may carry
- * provider keys and shell secrets, and plugins have no business seeing them.
- */
-function pluginProcessEnv(pluginId: string): Record<string, string> {
-  const env: Record<string, string> = {
-    PI_PLUGIN_ID: pluginId,
-    NODE_ENV: process.env.NODE_ENV ?? "production",
-  };
-  for (const key of ["PATH", "SystemRoot", "windir", "TEMP", "TMP", "TMPDIR", "LANG"]) {
-    const value = process.env[key];
-    if (value) env[key] = value;
-  }
-  return env;
-}
-
 /** Default spawner: an Electron utilityProcess per plugin. */
 const spawnUtilityProcess: PluginProcessSpawner = async ({ pluginId, entry }) => {
   const { utilityProcess } = await import("electron");
   const child = utilityProcess.fork(entry, [], {
     serviceName: `pi-plugin-${pluginId.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
     stdio: "pipe",
-    env: pluginProcessEnv(pluginId),
+    env: pluginChildEnv(pluginId),
   });
   return {
     postMessage: (message) => child.postMessage(message),

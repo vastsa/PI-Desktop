@@ -1,4 +1,5 @@
 import { turnProcessProbe } from "./turn-process";
+import { transcriptStatusProbe } from "./transcript-status";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
@@ -218,8 +219,10 @@ globalThis.transcriptRenderProbe = async () => {
       "Task completion timing did not update to 4s",
     );
 
+    const statusLifecycle = await transcriptStatusProbe();
     return {
-      ok: true,
+      ok: statusLifecycle.ok,
+      statusLifecycle,
       groups,
       textUpdates: 20,
       textUpdateRenders,
@@ -284,8 +287,8 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
       message(`answer-${index}`, "assistant", `Finished step ${index}.`),
     );
   }
-  // A completed tool row owns the tail, so no status row is shown until the
-  // runtime reports the wait between tool execution and the model response.
+  // A completed tool row does not finish the turn: the fallback remains until
+  // the runtime reports the next phase or the turn reaches a terminal state.
   messages.push(
     message("tool-tail", "tool", "done", {
       toolName: "Bash",
@@ -333,6 +336,8 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
       scrollTop: scroller()?.scrollTop ?? null,
       firstRowTop: rows[0]?.getBoundingClientRect().top ?? null,
       lastRowBottom: rows.at(-1)?.getBoundingClientRect().bottom ?? null,
+      lastTextBottom: [...host.querySelectorAll(".assistant-turn-fragment")]
+        .at(-1)?.getBoundingClientRect().bottom ?? null,
       laneHeight: element?.getBoundingClientRect().height ?? null,
       laneChildren: element?.childElementCount ?? null,
       laneText: element?.textContent ?? null,
@@ -395,12 +400,12 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
     await settle();
     const atRest = snapshot();
     check(
-      atRest.laneChildren === 0,
-      `the status lane was not empty at rest: ${JSON.stringify(atRest)}`,
+      atRest.laneChildren === 1,
+      `the fallback status was missing: ${JSON.stringify(atRest)}`,
     );
     check(
-      atRest.laneText === "",
-      "the empty status lane still carried text for a live region to announce",
+      Boolean(host.querySelector('[data-testid="working-indicator"]')),
+      "the running turn did not show the fallback status",
     );
     check(
       (atRest.laneHeight ?? 0) > 0,
@@ -417,8 +422,8 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
       `the fixture transcript is not scrolled to its own bottom: ${JSON.stringify(atRest)}`,
     );
 
-    // The reserve has to be invisible in either theme: a background, border, or
-    // shadow on an empty row reads as a stray block under the transcript.
+    // The lane itself stays transparent in either theme; only its status
+    // content is painted.
     for (const theme of ["dark", "light"]) {
       document.documentElement.dataset.theme = theme;
       await frame();
@@ -473,12 +478,12 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
     await settle();
     const cleared = snapshot();
     check(
-      cleared.laneChildren === 0,
-      "clearing the status left the indicator mounted",
+      cleared.laneChildren === 1,
+      "clearing the phase removed the running indicator",
     );
     check(
-      cleared.laneText === "",
-      "clearing the status left its label behind",
+      Boolean(host.querySelector('[data-testid="working-indicator"]')),
+      "clearing the phase did not restore the fallback",
     );
     compare("status cleared", cleared, atRest);
 
@@ -489,6 +494,41 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
       lane() === null,
       "an idle transcript still reserved the runtime status lane",
     );
+    const compareEnd = (label: string, ended: Snap, active: Snap, pinned: boolean) => {
+      // Ending restores the real toolbar; its height need not match the lane.
+      // Unpinned readers must keep their text position despite that change.
+      if (!pinned) {
+        for (const field of ["scrollTop", "firstRowTop", "lastTextBottom"] as const) {
+          const before = active[field];
+          const after = ended[field];
+          check(before !== null && after !== null && Math.abs(after - before) <= 0.01,
+            `${label}: ${field} changed (${after} vs ${before})`);
+        }
+      }
+      const element = scroller();
+      if (pinned && element) {
+        check(Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop) <= 1,
+          `${label}: lost pinned follow`);
+      }
+    };
+    compareEnd("pinned turn ends", snapshot(), cleared, true);
+
+    running = true;
+    flushSync(paint);
+    await settle();
+    const scrollElement = scroller();
+    if (scrollElement) {
+      scrollElement.dispatchEvent(new WheelEvent("wheel", { deltaY: -120, bubbles: true }));
+      scrollElement.scrollTop = Math.max(0, scrollElement.scrollTop - 120);
+      scrollElement.dispatchEvent(new Event("scroll", { bubbles: true }));
+    }
+    await settle();
+    const reading = snapshot();
+    check((reading.scrollTop ?? 0) < (cleared.scrollTop ?? 0), "fixture did not scroll up before stopping");
+    running = false;
+    flushSync(paint);
+    await settle();
+    compareEnd("scrolled-up turn ends", snapshot(), reading, false);
     check(
       renderErrors.length === 0,
       `React render failed: ${renderErrors.map(String).join("; ")}`,

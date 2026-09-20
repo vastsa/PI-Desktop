@@ -270,8 +270,11 @@ MCP 服务器是 `net.fetch` 旁边的第二个出口路径，因此它是声明
 
 - `transport: "stdio"` 生成本地可执行文件 (`mcp.server.local`)。的
   `command` 必须是裸路径名称或插件相对路径；绝对路径
-  在验证时被拒绝。孩子得到的环境是最小的——只有
-  声明的 `env` 条目加上主机运行进程所需的内容。
+  在验证时被拒绝。子进程拿到的是最小环境——声明的 `env` 条目，加上共享
+  白名单（`child-process-env.ts`）：`PATH`、`SystemRoot`、`windir`、`TEMP`、
+  `TMP`、`TMPDIR`、`LANG`、`HOME`、`USER`、`USERPROFILE`。身份变量要透传，
+  是因为子进程是第三方代码，用 `$HOME` 解析 `~` 而不是调用 `os.homedir()`
+  （issue #717）；provider key 和其它宿主状态仍然不会穿越。
 - `transport: "http"` 到达远程端点 (`mcp.server.remote`)。`url` 可以使用
   `http` 或 `https`；非回环 HTTP 不加密，只应在可信网络中使用。插件端点还
   必须被 `manifest.net.domains` 覆盖。工具参数会离开机器，这就是为什么权限
@@ -377,8 +380,9 @@ PI-Desktop 自己当前占用（默认是 `Alt+Space` 与 `Alt+Shift+W`；用户
 4. 插件仍然无法访问 Secrets/host DB
 5. Marketplace/package 安装需要在 UI 中明确接受权限
 6.自动更新拒绝静默权限扩展
-7. 插件主程序在每个插件专用的 `utilityProcess` (ADR 0008) 中运行，并带有
-   最小环境；所有 `pi.*` 调用都跨越白名单 + 权限网关
+7. 插件主程序在每个插件专用的 `utilityProcess` (ADR 0008) 中运行，环境来自
+   共享白名单 `child-process-env.ts`（PATH、工具链目录、`HOME` / `USER` /
+   `USERPROFILE`，不含 provider key）；所有 `pi.*` 调用都跨越白名单 + 权限网关
    在主机中，插件崩溃只会破坏该插件
 8. 贡献的主题 CSS 在到达主进程之前会在主进程中进行清理
    渲染器（§3.1）

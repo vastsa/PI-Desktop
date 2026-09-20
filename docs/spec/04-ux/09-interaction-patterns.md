@@ -611,9 +611,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   quiet interval, that same row names the wait: starting, waiting for the
   model, preparing the next request, compacting context, recovering an empty
   response, retrying a provider request, or waiting for delegated work (with
-  each running subagent's latest coarse action). It is replaced by concrete
-  thinking/tool/answer feedback or the inline permission card as soon as one of
-  those states exists.
+  each running subagent's latest coarse action). Existing thinking, tool, or
+  answer output does not hide the row: the running turn keeps one tail status
+  through output pauses. Pending permissions, questions, and plan/goal
+  approvals suppress it; terminal turns and history reading have no live row.
 - When stream completes: cursor indicator replaced by success state (2s fade)
 
 ### 2.2 Auto-scroll
@@ -650,10 +651,10 @@ may be retained while exactly one workspace supplies the visible shell context.
 - An active turn keeps the lower transcript surface clear. Streamed assistant
   and tool rows remain inline with the transcript; no generic understanding,
   working, or checking card is rendered underneath them. A compact runtime
-  status row is the only exception, and appears only when it explains a quiet
-  interval that has no transcript row of its own: a provider wait or retry,
-  context compaction, silent-turn recovery, the gap before the next request,
-  or a delegated-work wait.
+  status row remains in the reserved tail lane for the running turn. It shows
+  the runtime phase when known, otherwise Planning/Goal or Working. Text and
+  tool rows can stop changing while the turn remains active; their presence
+  must not suppress that feedback. User-interaction waits suppress the row.
 - A permission card remains visible only when the agent is blocked on an
   explicit approval. It is an actionable interruption, not a progress status
   card.
@@ -885,8 +886,9 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    BrowserPreview are allowed; Bash follows the visible permission mode. A
    contract-mode Bash command may mutate under Auto, so the mode chip remains visible.
    While that turn is live `planning`, the Composer mode chip pulses and a compact
-   Planning row occupies the same pre-stream slot as Working; tool or answer rows
-   replace that transcript row so it does not sit orphaned above the composer.
+   Planning row occupies the same reserved tail slot as Working until completion
+   or pending user interaction. A known runtime phase takes precedence; tool
+   and answer output do not hide the running status.
 3. The Agent calls `SubmitPlan` or `SubmitGoal` alone in its tool batch.
    Host-core preserves the exact Markdown bytes in a new immutable
    `.pi/plan/*.md` or `.pi/goal/*.md` artifact, records its path/hash/size and structured

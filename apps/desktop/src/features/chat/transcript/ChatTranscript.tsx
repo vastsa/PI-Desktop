@@ -147,45 +147,24 @@ function TranscriptBody({
     readingWindow,
   });
 
-  const lastEntry = tailEntry;
-  const lastTurnPart =
-    lastEntry?.kind === "assistant-turn" ? lastEntry.parts.at(-1) : undefined;
-  const activeToolGroup = transcriptRunning && lastTurnPart?.kind === "activity";
-  const assistantIsAnswering =
-    lastTurnPart?.kind === "message" &&
-    lastTurnPart.message.status === "streaming" &&
-    Boolean((lastTurnPart.message.content || "").trim());
   const specializedActivity = agentActivity;
   const hasSpecializedActivity = specializedActivity !== undefined;
-  const showRunActivity =
+  // Existing output does not mean the turn has finished: a text stream can
+  // pause, and completed tool rows can outlive their activity. Keep one tail
+  // status until the turn ends or a user interaction owns the pending state.
+  const showStatus =
     transcriptRunning &&
     !pendingPermission &&
     !askPending &&
-    !approvalPending &&
-    !assistantIsAnswering &&
-    hasSpecializedActivity;
-  // Show immediate feedback after send, then let the concrete activity row
-  // (thinking/tool/answer) take over so the transcript never duplicates state.
+    !approvalPending;
+  const showRunActivity = showStatus && hasSpecializedActivity;
   const showWorking =
-    transcriptRunning &&
-    !pendingPermission &&
-    !askPending &&
-    !approvalPending &&
+    showStatus &&
     planningState !== "planning" &&
-    !activeToolGroup &&
-    !assistantIsAnswering &&
     !hasSpecializedActivity;
-  // Same pre-stream slot as Working: once tools or an answer exist, activity
-  // rows carry the live state so a Planning label does not sit orphaned above
-  // the composer. The Composer mode chip keeps pulsing for the turn.
   const showPlanning =
-    transcriptRunning &&
+    showStatus &&
     planningState === "planning" &&
-    !approvalPending &&
-    !pendingPermission &&
-    !askPending &&
-    !activeToolGroup &&
-    !assistantIsAnswering &&
     !hasSpecializedActivity;
 
   // The tail status lane is part of the layout for the whole running turn: the

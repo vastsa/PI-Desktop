@@ -1192,3 +1192,21 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
     produce the documented durable statuses and events
 13. Bash validates the pinned shell ID/dialect, streams stdout/stderr, enforces
     the 60s default/bounded override, and shuts down the complete process tree
+
+## Scheduled automation tools
+
+Agent mode advertises on-demand ScheduledTaskList, ScheduledTaskCreate,
+ScheduledTaskUpdate and ScheduledTaskDelete tools. They run through
+`tools.execute`, including existing permissions and audit records, and reuse
+the scheduled RPC domain handlers. List is low risk; mutations require normal
+approval in Ask/Accept Edits. Plan/Goal deny all four even under Auto.
+
+The Host rechecks durable session mode and derives project scope from the
+calling session, never the foreground workspace or model-supplied paths.
+Create binds that scope; list filters it; update/delete require matching scope.
+Unknown fields, invalid cadence, empty title/prompt, invalid time and invalid
+weekday selections are rejected before mutation. Delete refuses active runs.
+Create requires title, prompt and cadence; automatic daily/weekly tasks require
+a schedule. Update takes an existing ID and partial fields, preserving all
+unspecified configuration. Exact local times remain supported despite the
+UI's four period presets. No new DB schema or transport is introduced.

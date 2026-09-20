@@ -386,31 +386,25 @@ export const AssistantTurn = memo(function AssistantTurn({
             responseOutputTokens={responseOutputTokens}
           />
         ) : null}
-        {(content || hasError) && actionMessage ? (
+        {complete && actionMessage ? (
           <div className="message-actions">
-            {complete ? (
-              <CopyButton text={content} label={t("chat.copy")} />
-            ) : null}
-            {complete ? (
-              <TooltipButton
-                className="copy-btn icon"
-                tooltip={t("chat.forkResponse")}
-                ariaLabel={t("chat.forkResponse")}
-                onClick={() => void forkAssistantMessage(actionMessage.id)}
-              >
-                <IconBranch size={13} />
-              </TooltipButton>
-            ) : null}
-            {complete ? (
-              <TooltipButton
-                className="copy-btn icon"
-                tooltip={t("chat.retry")}
-                ariaLabel={t("chat.retry")}
-                onClick={() => void retryAssistantMessage(actionMessage.id)}
-              >
-                <IconReview size={13} />
-              </TooltipButton>
-            ) : null}
+            <CopyButton text={content} label={t("chat.copy")} />
+            <TooltipButton
+              className="copy-btn icon"
+              tooltip={t("chat.forkResponse")}
+              ariaLabel={t("chat.forkResponse")}
+              onClick={() => void forkAssistantMessage(actionMessage.id)}
+            >
+              <IconBranch size={13} />
+            </TooltipButton>
+            <TooltipButton
+              className="copy-btn icon"
+              tooltip={t("chat.retry")}
+              ariaLabel={t("chat.retry")}
+              onClick={() => void retryAssistantMessage(actionMessage.id)}
+            >
+              <IconReview size={13} />
+            </TooltipButton>
           </div>
         ) : null}
       </div>

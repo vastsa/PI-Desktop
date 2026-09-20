@@ -698,6 +698,133 @@ async function main() {
       skip("E2E-009-stream", "PI_DESKTOP_TEST_API_KEY not set");
     }
 
+    // E2E-SESSION-revision-round-trip — a regenerate branch that is still live
+    // is a reference on disk, not a second copy of a transcript suffix the
+    // session already holds. The reference resolves to the branch as it stands,
+    // including messages appended after the reference was written; the branch is
+    // stored in full only once it leaves the transcript; and both variants
+    // restore through `session.activateRevision`.
+    {
+      const bound = await host.call("session.create", {
+        title: "E2E revision round trip",
+        mode: "agent",
+      });
+      const sessionId = bound.session.id;
+      const revisionsPath = join(dataDir, "sessions", `${sessionId}.revisions.jsonl`);
+      const readRevisions = () =>
+        existsSync(revisionsPath)
+          ? readFileSync(revisionsPath, "utf8")
+              .split("\n")
+              .filter((line) => line.trim())
+              .map((line) => JSON.parse(line))
+          : [];
+      const append = (message) =>
+        host.call("session.appendMessage", { sessionId, message });
+      const user = (id, text, rootId, count, active) => ({
+        id,
+        role: "user",
+        content: text,
+        createdAt: new Date().toISOString(),
+        status: "complete",
+        revisionRootId: rootId,
+        revisionCount: count,
+        activeRevision: active,
+      });
+      const assistant = (id, text) => ({
+        id,
+        role: "assistant",
+        content: text,
+        createdAt: new Date().toISOString(),
+        status: "complete",
+      });
+      const ids = (messages) => messages.map((message) => message.id);
+
+      // One live branch, archived twice: the second archive must refresh the
+      // reference, not mint a variant.
+      const first = randomUUID();
+      const firstAnswer = randomUUID();
+      const laterAnswer = randomUUID();
+      await append(user(first, "first prompt", first, 1, 1));
+      await append(assistant(firstAnswer, "first answer"));
+      const archived = await host.call("session.saveActiveRevision", { sessionId });
+      await append(assistant(laterAnswer, "a later answer on the same branch"));
+      const refreshed = await host.call("session.saveActiveRevision", { sessionId });
+
+      const references = readRevisions().filter((line) => line.type === "revision_live");
+      const listed = await host.call("session.listRevisions", {
+        sessionId,
+        rootUserId: first,
+      });
+      const restored = await host.call("session.activateRevision", {
+        sessionId,
+        rootUserId: first,
+        revisionIndex: 1,
+        prefix: [],
+      });
+
+      // A regenerate of that prompt discards the second turn, which takes the
+      // branch out of the transcript: it has to be stored in full first.
+      const second = randomUUID();
+      const secondAnswer = randomUUID();
+      await append(user(second, "second prompt", first, 2, 2));
+      await append(assistant(secondAnswer, "second answer"));
+      await host.call("session.saveActiveRevision", { sessionId });
+      const truncated = await host.call("session.truncateFrom", {
+        sessionId,
+        fromMessageId: second,
+      });
+      const storedForSecond = readRevisions().filter(
+        (line) => line.type === "revision" && line.revisionIndex === 2,
+      );
+      const backToFirst = await host.call("session.activateRevision", {
+        sessionId,
+        rootUserId: first,
+        revisionIndex: 1,
+        prefix: [],
+      });
+      const backToSecond = await host.call("session.activateRevision", {
+        sessionId,
+        rootUserId: first,
+        revisionIndex: 2,
+        prefix: [],
+      });
+
+      const checks = {
+        "archives the live branch as revision 1": archived.saved?.activeRevision === 1,
+        "a second archive refreshes instead of minting": refreshed.saved?.archived === false,
+        "still one variant after the refresh": refreshed.saved?.revisionCount === 1,
+        "the live branch was written as a reference": references.length >= 2,
+        "the reference carries no payload": references.every(
+          (line) => !("messages" in line) && !("turns" in line),
+        ),
+        "the reference does not grow with the branch": references.every(
+          (line) => JSON.stringify(line).length < 200,
+        ),
+        "one variant is listed": listed.revisions.length === 1,
+        "it counts the whole live branch": listed.revisions[0]?.messageCount === 3,
+        "the reference resolves to the branch as it stands": ids(restored.messages).join() ===
+          [first, firstAnswer, laterAnswer].join(),
+        "the regenerate discarded the second turn": truncated.discardedCount === 2,
+        "the branch that left is stored in full": storedForSecond.some(
+          (line) => (line.messages ?? []).length === 2,
+        ),
+        "variant 2 restores its own messages":
+          ids(backToSecond.messages).join() === [second, secondAnswer].join(),
+        "variant 1 restores the grown branch":
+          ids(backToFirst.messages).join() === [first, firstAnswer, laterAnswer].join(),
+      };
+      const failed = Object.entries(checks)
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name);
+      record(
+        "E2E-SESSION-revision-round-trip",
+        failed.length === 0,
+        failed.length === 0
+          ? `refs=${references.length} stored=${storedForSecond.length} v1=3 v2=2`
+          : `failed: ${failed.join("; ")}`,
+      );
+    }
+
     // agent-runtime unit-ish import check
     try {
       await import(pathToFileURL(join(root, "packages/agent-runtime/dist/index.js")).href);

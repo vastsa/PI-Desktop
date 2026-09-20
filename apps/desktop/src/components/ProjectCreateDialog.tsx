@@ -52,9 +52,11 @@ export function ProjectCreateDialog() {
   const [gitUrl, setGitUrl] = useState("");
   const [cloneParent, setCloneParent] = useState("");
   const [busy, setBusy] = useState(false);
+  const [folderPickerBusy, setFolderPickerBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const busyRef = useRef(false);
+  const folderPickerInFlightRef = useRef(false);
   // The repository name seeds the project name until the user types their own.
   const nameTouchedRef = useRef(false);
   const cloneTarget = parseGitCloneUrl(gitUrl);
@@ -67,8 +69,10 @@ export function ProjectCreateDialog() {
     setGitUrl("");
     setCloneParent("");
     busyRef.current = false;
+    folderPickerInFlightRef.current = false;
     nameTouchedRef.current = false;
     setBusy(false);
+    setFolderPickerBusy(false);
     const previousOverflow = document.body.style.overflow;
     const previouslyFocused = document.activeElement as HTMLElement | null;
     document.body.style.overflow = "hidden";
@@ -113,7 +117,9 @@ export function ProjectCreateDialog() {
   if (!open) return null;
 
   const addFolders = async () => {
-    if (busyRef.current) return;
+    if (busyRef.current || folderPickerInFlightRef.current) return;
+    folderPickerInFlightRef.current = true;
+    setFolderPickerBusy(true);
     try {
       const result = await api.pickProjectFolders();
       if (result.canceled || result.folders.length === 0) return;
@@ -127,11 +133,16 @@ export function ProjectCreateDialog() {
       showToast(error instanceof Error ? error.message : String(error), {
         variant: "error",
       });
+    } finally {
+      folderPickerInFlightRef.current = false;
+      setFolderPickerBusy(false);
     }
   };
 
   const chooseCloneParent = async () => {
-    if (busyRef.current) return;
+    if (busyRef.current || folderPickerInFlightRef.current) return;
+    folderPickerInFlightRef.current = true;
+    setFolderPickerBusy(true);
     try {
       const result = await api.pickProjectFolders();
       if (result.canceled || result.folders.length === 0) return;
@@ -140,6 +151,9 @@ export function ProjectCreateDialog() {
       showToast(error instanceof Error ? error.message : String(error), {
         variant: "error",
       });
+    } finally {
+      folderPickerInFlightRef.current = false;
+      setFolderPickerBusy(false);
     }
   };
 
@@ -358,7 +372,7 @@ export function ProjectCreateDialog() {
                   aria-label={t("project.createAddFolder")}
                   className={`project-create-add-folder${folders.length === 0 ? " is-empty" : ""}`}
                   onClick={() => void addFolders()}
-                  disabled={busy}
+                  disabled={busy || folderPickerBusy}
                 >
                   <span className="project-create-add-folder-icon" aria-hidden>
                     <IconNewProject size={18} />
@@ -406,7 +420,7 @@ export function ProjectCreateDialog() {
                   }`}
                   aria-label={t("project.createChooseLocation")}
                   onClick={() => void chooseCloneParent()}
-                  disabled={busy}
+                  disabled={busy || folderPickerBusy}
                 >
                   <span className="project-create-dialog-location-icon" aria-hidden>
                     <IconFolder size={17} />

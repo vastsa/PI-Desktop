@@ -1,4 +1,5 @@
 import type {
+  ScheduledTaskRun,
   ActivationScope,
   AgentCapabilityMove,
   AgentCapabilityQuery,
@@ -745,10 +746,13 @@ export const api = {
     prompt: string;
     cadence?: ScheduledTask["cadence"];
     enabled?: boolean;
+    schedule?: ScheduledTask["schedule"];
   }) => invoke<{ task: ScheduledTask }>(IPC.invoke.scheduledCreate, input),
   updateScheduled: (input: Partial<ScheduledTask> & { id: string }) =>
     invoke<{ task: ScheduledTask }>(IPC.invoke.scheduledUpdate, input),
   deleteScheduled: (id: string) => invoke(IPC.invoke.scheduledDelete, id),
+  executeScheduled: (id: string) => invoke<{ sessionId: string }>(IPC.invoke.scheduledExecute, id),
+  listScheduledRuns: () => invoke<{ runs: ScheduledTaskRun[] }>(IPC.invoke.scheduledListRuns),
   runScheduled: (id: string) =>
     invoke<{ sessionId: string; prompt: string; task: ScheduledTask }>(
       IPC.invoke.scheduledRun,

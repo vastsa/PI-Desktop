@@ -1,6 +1,7 @@
 import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { isAbsolute, resolve, sep } from "node:path";
 import type { PluginMcpServerContrib } from "@pi-desktop/plugin-sdk";
+import { minimalChildEnv } from "./child-process-env.ts";
 import { userLookupPath } from "./user-login-path.ts";
 
 /** MCP revision we advertise during the handshake. */
@@ -71,7 +72,9 @@ function mcpError(code: string, message: string): McpError {
  * plugin identity to announce.
  *
  * PATH is the login-shell PATH (ADR 0045 / D600), not the Finder/Dock GUI
- * PATH, so a market-installed `uvx`/`npx` server can spawn (issue #571).
+ * PATH, so a market-installed `uvx`/`npx` server can spawn (issue #571). The
+ * identity variables cross for the same reason the toolchain ones do: the child
+ * is third-party code that resolves `~` through `$HOME` (issue #717).
  */
 export function mcpProcessEnv(
   pluginId: string | undefined,
@@ -80,11 +83,8 @@ export function mcpProcessEnv(
   const env: Record<string, string> = {
     ...(pluginId ? { PI_PLUGIN_ID: pluginId } : {}),
     NODE_ENV: process.env.NODE_ENV ?? "production",
+    ...minimalChildEnv(),
   };
-  for (const key of ["SystemRoot", "windir", "TEMP", "TMP", "TMPDIR", "LANG"]) {
-    const value = process.env[key];
-    if (value) env[key] = value;
-  }
   const path = userLookupPath(process.env.PATH ?? "");
   if (path) env.PATH = path;
   return { ...env, ...values };

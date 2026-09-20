@@ -14,6 +14,7 @@ import type {
 } from "@pi-desktop/shared";
 import {
   formatCompactTokenCount,
+  isCertificateVerificationError,
   THINKING_LEVELS,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -136,7 +137,16 @@ export function AssistantErrorMessage({ message }: { message: UiMessage }) {
   const detailsId = useId();
   const error = message.error;
   if (!error) return null;
-  const localizedKey = `errors.${error.code}`;
+  const networkDetails = error.details;
+  const certificateFailure =
+    error.code === "NETWORK_ERROR" &&
+    networkDetails !== null && typeof networkDetails === "object" &&
+    isCertificateVerificationError(
+      (networkDetails as { networkCode?: unknown }).networkCode,
+    );
+  const localizedKey = certificateFailure
+    ? "errors.providerCertificate"
+    : `errors.${error.code}`;
   const localized = t(localizedKey);
   const summary = localized === localizedKey ? t("chat.responseFailed") : localized;
   const configurationError = [

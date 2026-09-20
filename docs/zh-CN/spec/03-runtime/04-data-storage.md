@@ -886,7 +886,11 @@ CREATE INDEX idx_task_runs ON task_runs(task_id, started_at DESC);
 ```
 
 生成会话的运行通过 `session_id` 免费获取其转录本。
-更精细的计划 (cron) 无需迁移即可登陆 `config_json`。
+`config_json` 保存 `schedule: {hour, minute, weekday}`、毫秒时间戳 `nextRunAt`
+和 `workspacePath`。每天、每周按宿主本地时区计算。每小时采用 `nextRunAt = now + 3_600_000`，
+忽略日历时间字段。可选 `weekdays` 保存 1–7 个不重复的 0–6 整数，覆盖每周的旧 `weekday`；
+缺失时保留单日语义，空数组、重复或越界值在写入前拒绝。无需表结构迁移。
+无 `schedule` 的旧任务不会自动运行；无需修改表或迁移数据库。
 
 计划任务 `config_json.mode` 是持久操作模式值。有
 故意没有物理 `scheduled_tasks.mode` 列。 v7→v8

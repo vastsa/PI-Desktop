@@ -347,8 +347,13 @@ manifest did not name:
 
 - `transport: "stdio"` spawns a local executable (`mcp.server.local`). The
   `command` must be a bare PATH name or a plugin-relative path; absolute paths
-  are refused at validation time. The child gets a minimal environment — only
-  the declared `env` entries plus what the host needs to run a process.
+  are refused at validation time. The child gets a minimal environment — the
+  declared `env` entries plus one shared allowlist (`child-process-env.ts`):
+  `PATH`, `SystemRoot`, `windir`, `TEMP`, `TMP`, `TMPDIR`, `LANG`, `HOME`,
+  `USER`, `USERPROFILE`. The identity variables are there because the child is
+  third-party code that resolves `~` through `$HOME` rather than calling
+  `os.homedir()` (issue #717); provider keys and other host state still never
+  cross.
 - `transport: "http"` reaches a remote endpoint (`mcp.server.remote`). The `url`
   may use `http` or `https`; non-loopback HTTP is unencrypted and should only be
   used on a trusted network. Plugin endpoints must also be covered by
@@ -473,8 +478,10 @@ Current enforcement:
 5. Marketplace/package install requires explicit permission acceptance in UI
 6. Auto-update refuses silent permission expansion
 7. Plugin main runs in a dedicated `utilityProcess` per plugin (ADR 0008) with a
-   minimal environment; all `pi.*` calls cross an allowlist + permission gateway
-   in the host, and a plugin crash only tears down that plugin
+   minimal environment from the shared `child-process-env.ts` allowlist (PATH,
+   toolchain dirs, `HOME` / `USER` / `USERPROFILE`; no provider keys); all
+   `pi.*` calls cross an allowlist + permission gateway in the host, and a
+   plugin crash only tears down that plugin
 8. Contributed theme CSS is sanitized in the main process before it reaches the
    renderer (§3.1)
 9. Bus routing is host-owned with declared topics and hard caps (§5.1)

@@ -368,10 +368,14 @@ or executable path hash is accepted as shell identity.
 - Windows PowerShell and cmd use their native non-interactive invocation.
 - PowerShell 7 resolves `pwsh.exe` from `%ProgramFiles%\PowerShell\7` (or
   `ProgramW6432` when the host process is 32-bit), then PATH, which covers
-  machine-scope, Store, user-scope, and portable installs. It shares the
-  Windows PowerShell 5.1 invocation contract and is never selected implicitly,
-  so it cannot change an existing user's default shell. Resolution failure
-  returns `SHELL_NOT_FOUND` naming the locations that were searched.
+  machine-scope, Store, user-scope, and portable installs. The PATH probe
+  treats Microsoft Store / MSIX app-execution aliases under `WindowsApps`
+  (`IO_REPARSE_TAG_APPEXECLINK`) as present executables, because winget's
+  default PowerShell 7 layout is an `msixbundle` that does not create
+  `%ProgramFiles%\PowerShell\7`. It shares the Windows PowerShell 5.1
+  invocation contract and is never selected implicitly, so it cannot change an
+  existing user's default shell. Resolution failure returns `SHELL_NOT_FOUND`
+  naming the locations that were searched.
 - Git Bash uses the discovered Git for Windows executable.
 - Unix Bash uses an approved system Bash entry.
 - User abort and timeout terminate the complete process tree before returning.

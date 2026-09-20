@@ -33,6 +33,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   addUsage,
   cumulativeDelta,
+  isCertificateVerificationError,
   subagentCanMutate,
   subagentToolsLabel,
   type AgentEventEnvelope,
@@ -43,6 +44,7 @@ import {
   type UiMessage,
 } from "@pi-desktop/shared";
 import { classifyAgentError } from "./agent-errors.js";
+import { withProviderFetchFailure } from "./provider-transport-recovery.js";
 import {
   assistantContent,
   nowIso,
@@ -573,7 +575,10 @@ export class SubagentRun {
             typeof (message as { errorMessage?: unknown }).errorMessage === "string"
               ? ((message as { errorMessage?: string }).errorMessage as string)
               : "provider stream failed";
-          classifiedError = classifyProviderError(raw, this.retryState.status);
+          classifiedError = withProviderFetchFailure(
+            classifyProviderError(raw, this.retryState.status),
+            this.retryState.failure,
+          );
           retryAttempt = this.claimProviderRetry(classifiedError, "stream");
           if (retryAttempt !== undefined) {
             this.pendingProviderRetry = classifiedError;
@@ -617,6 +622,8 @@ export class SubagentRun {
           status: failed ? "error" : stopReason === "aborted" ? "aborted" : "complete",
           ...(messageUsage ? { usage: messageUsage } : {}),
           ...(failed ? { isError: true } : {}),
+          ...(isCertificateVerificationError(classifiedError?.details?.networkCode)
+            ? { error: classifiedError } : {}),
         };
         this.currentAssistant = undefined;
         this.emit({ type: "message_end", message: row });

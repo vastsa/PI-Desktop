@@ -412,3 +412,20 @@ errors.<code>.action
    到期、计划拒绝和重新启动中断路径映射到稳定
    代码；仅允许记录的预转目录后备，并且不进行任何工作
    正在重播
+
+### Certificate verification failures (issue #714)
+
+`NETWORK_ERROR` is non-retriable when `details.networkCode` is a recognized
+certificate verification failure, including an untrusted/self-signed chain,
+an expired/not-yet-valid certificate, or `ERR_TLS_CERT_ALTNAME_INVALID`.
+A concrete certificate cause takes precedence over generic socket/proxy
+wrapper codes. Captured fetch causes apply this policy after adapter error
+flattening as well as during direct classification. Unknown and non-certificate
+TLS/protocol errors retain existing recovery behavior.
+
+The transcript keeps the stable error code, transport errno and raw details,
+but uses localized certificate guidance instead of the generic connectivity
+summary. It asks the user to check the certificate, clock, and trusted roots
+used by security software/proxies, then restart after changing trust. It does
+not claim that interception is the only possible cause or offer a TLS bypass.
+Manual Continue remains available after the cause is corrected.

@@ -85,3 +85,13 @@ the publish job assembles the GitHub Release. Tag builds Developer ID-sign,
 notarize, and staple macOS artifacts; `workflow_dispatch` may set
 `sign_macos: false` only for unsigned debug artifacts. See the [release
 runbook](../docs/spec/06-delivery/06-release-runbook.md).
+
+### Provider certificate regression
+
+- `node scripts/e2e-provider-certificates.mjs`: real desktop launcher and
+  bundled sidecar against a loopback TLS model; tests trust, terminal failure,
+  inherited extra CA, and hostname validation. Requires installed Electron.
+- `node scripts/e2e-provider-certificate-ui.mjs`: production transcript error
+  component, localized guidance and detail disclosure. Requires built desktop
+  styles. Optional `PI_CERTIFICATE_EVIDENCE_DIR` saves a review screenshot;
+  `--baseline` renders the `origin/main` error component for comparison.

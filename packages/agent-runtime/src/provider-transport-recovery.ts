@@ -34,6 +34,7 @@ import type {
 } from "./agent-errors.js";
 import { networkFailureDiagnostics } from "./agent-errors.js";
 import { activeNodeTransportRoute } from "./node-proxy.js";
+import { isCertificateVerificationError } from "@pi-desktop/shared";
 
 /** Consecutive unanswered failures for one origin that justify a rebuild. */
 export const PROVIDER_TRANSPORT_REBUILD_THRESHOLD = 2;
@@ -68,9 +69,9 @@ export function explainsProviderFetchFailure(code: string): boolean {
 }
 
 /**
- * Categories a fresh pool cannot fix. DNS is the whole list: the lookup happens
- * before a connection exists, so rebuilding the pool would close other
- * sessions' idle sockets and still resolve the name the same way.
+ * DNS happens before a connection exists. Certificate verification errors are
+ * excluded separately by their exact code; the broader TLS category includes
+ * protocol failures for which a fresh connection can still help.
  */
 const UNREBUILDABLE_CATEGORIES: ReadonlySet<NetworkFailureCategory> = new Set([
   "dns",
@@ -162,7 +163,10 @@ export function createProviderTransportHealth(): ProviderTransportHealth {
 
   return {
     observeFailure(failure) {
-      if (UNREBUILDABLE_CATEGORIES.has(failure.category)) {
+      if (
+        UNREBUILDABLE_CATEGORIES.has(failure.category) ||
+        isCertificateVerificationError(failure.fields.networkCode)
+      ) {
         clear();
         return false;
       }
@@ -201,6 +205,7 @@ export function withProviderFetchFailure(
   }
   return {
     ...error,
+    retriable: error.retriable && !isCertificateVerificationError(failure.fields.networkCode),
     details: { ...(error.details ?? {}), ...failure.fields },
   };
 }

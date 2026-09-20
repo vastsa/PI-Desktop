@@ -973,3 +973,15 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
     产生记录的持久状态和事件
 13. Bash 验证固定 shell ID/dialect，传输 stdout/stderr，强制执行
     60s default/bounded 覆盖，并关闭整个进程树
+
+## 定时任务工具
+
+Agent 模式按需提供 ScheduledTaskList、ScheduledTaskCreate、ScheduledTaskUpdate、
+ScheduledTaskDelete。通过 tools.execute 复用现有授权、审计和定时任务领域处理器。
+查询为低风险；Ask／Accept Edits 下修改需授权。Plan／Goal 即使在 Auto 下也拒绝。
+
+Host 重新检查会话的持久化模式，按调用会话的项目限制访问，不使用前台项目或模型传入路径。
+创建时绑定该项目，查询过滤项目，修改／删除要求项目匹配。未知字段、非法周期、空标题或
+提示词、非法时间和星期在写入前拒绝；不能删除运行中的任务。创建需 title、prompt、cadence；
+每天／每周自动任务需 schedule。修改使用已存在的 ID 并保留未指定字段。界面虽只提供四个
+时段，工具仍支持具体本地时间。不新增数据库 schema 或传输协议。

@@ -134,7 +134,27 @@ revisions never rewrites this file:
 
 ```jsonl
 {"type":"revision","rootUserId":"u1","revisionIndex":1,"createdAt":"…","messages":[…message records…],"turns":{"<messageId>":"<turnId>"}}
+{"type":"revision_live","rootUserId":"u2","revisionIndex":2,"createdAt":"…"}
 ```
+
+A branch is the transcript suffix rooted at its user turn, so a branch that is
+**still live** is byte-identical to content the transcript already stores. That
+branch gets a `revision_live` line: identity only, no `messages` payload, with
+the reader resolving the branch against the transcript. Storing the suffix
+instead is what made this file grow quadratically — a measured session wrote
+107 MB to hold 16 MB of unique content, because every finished turn rewrote a
+tail that had grown since the turn before. `revision` stays the line for a
+branch that has **left** the transcript, and it is the only line kind a legacy
+file contains.
+
+A reference line is constant-sized (99 bytes for a UUID family in a measured
+session) and does not grow with the branch it names. It deliberately omits the
+`turns` map a stored branch carries: that map exists for messages a restore has
+to re-attach after they left the index, and a live branch's messages *are* the
+session's index rows, so a restore reads their turns from the index. A copy here
+would put one entry per branch message on every finished turn — measured at 197
+bytes on the first turn and 1943 by the fortieth, which is the same quadratic
+growth this line kind exists to remove.
 
 Rules:
 
@@ -145,6 +165,17 @@ Rules:
   keeps integer ms.
 - Readers skip unknown `type` lines and a torn trailing line: new line kinds
   need no migration, and a crash mid-append cannot poison the file.
+- A `revision_live` line is meaningful only while its branch is the live
+  transcript suffix. Three writers keep that true: `archive_live_branch`
+  (revision switch) and `archive_discarded_regenerate_branch` (regenerate,
+  edit) each write the full `revision` line *before* the rewrite that stops
+  holding the branch, and `archive_dropped_live_branches` — reached through
+  `replace_messages` — does the same when a rewrite deletes the root turn
+  itself (message delete, smart Stop). A branch that is no longer live
+  therefore always ends with a stored payload, and a reader only ever resolves
+  a reference for the branch that is live right now. A new path that drops a
+  branch from the transcript without archiving it first would strand that
+  branch's reference line.
 - `compaction` is a model-context checkpoint, not a message — but it is
   rendered, as a divider row rather than a chat bubble (D203). Readers return
   every message unchanged and separately return **every** still-valid
@@ -883,7 +914,9 @@ Archives discarded regenerate branches so users can page previous variants
 without stacking them in the live transcript (D105/D109). One row is one
 linear branch rooted at a user turn; the branch **payload** lives in the
 append-only `sessions/<id>.revisions.jsonl` (§2.1), keyed by
-`(rootUserId, revisionIndex)`.
+`(rootUserId, revisionIndex)`. A branch that is still live stores a reference
+(`revision_live`) instead of a second copy of a transcript suffix the session
+already has; see §2.1.
 
 ```sql
 CREATE TABLE message_revisions (
@@ -990,7 +1023,16 @@ CREATE INDEX idx_task_runs ON task_runs(task_id, started_at DESC);
 ```
 
 A run that spawns a session gets its transcript for free via `session_id`.
-Finer schedules (cron) land in `config_json` without a migration.
+The existing JSON extension stores `schedule: {hour, minute, weekday}`,
+`nextRunAt` (epoch milliseconds) and `workspacePath` for desktop automations.
+Optional `weekdays` stores 1–7 unique integers in 0–6, overriding legacy
+`weekday` for weekly schedules. Missing `weekdays` preserves the single-day
+behavior. Invalid or empty selections are rejected before mutation. No table
+migration is needed. Daily/weekly schedules use the host local timezone; hourly
+schedules compute `nextRunAt = now + 3_600_000`, ignoring calendar fields. Absence
+of `schedule` leaves legacy tasks unarmed. No physical schema change is made.
+Task wire fields project `schedule`, RFC3339 `nextRunAt` and `workspacePath`.
+See [the automation ADR](../../adr/scheduled-desktop-automations.md).
 
 Scheduled task `config_json.mode` is a durable operating-mode value. There is
 intentionally no physical `scheduled_tasks.mode` column. The v7→v8
@@ -1125,8 +1167,8 @@ is the source of truth, the index is derived and self-healing.
 
 | session fork (`session.fork`) | write a new transcript with remapped message/tool-call ids; copy/remap the checkpoint only when its boundary is included | single tx: clone session configuration, insert child index rows, set `last_seq`; remove child file on failure |
 | regenerate branch save | append revision line (with `revisionIndex`: a refresh line for that existing variant) | index row with `message_count` (+ `is_active` flip); a refresh only updates `message_count` |
-| turn-completion branch archive (`session.saveActiveRevision`) | append revision line (a refresh line when the active variant is already archived), then rewrite only the root user's transcript line for the pager stamp | index row with `message_count` (+ `is_active` flip); index rows for other messages untouched |
-| revision switch | append a refresh line for the live branch's own variant, read the target branch, atomic transcript rewrite keeping checkpoints whose anchors survive | flip `is_active`, rebuild index rows carrying each surviving message's owning `turn_id`, reset `last_seq` |
+| turn-completion branch archive (`session.saveActiveRevision`) | append a `revision_live` reference line — the branch is still live, so its payload is the transcript — then rewrite only the root user's transcript line for the pager stamp | index row with `message_count` (+ `is_active` flip); index rows for other messages untouched |
+| revision switch | append a full `revision` line for the live branch's own variant (it is about to leave the transcript, so its reference is materialized), read the target branch, atomic transcript rewrite keeping checkpoints whose anchors survive | flip `is_active`, rebuild index rows carrying each surviving message's owning `turn_id`, reset `last_seq` |
 | import | write transcript file | one tx per session: session row + index rows; on failure the file is removed |
 | session delete | remove both session files after row delete | `DELETE FROM sessions` (cascades); Electron main drops that session's outbox entries (D318) |
 | project delete (`projects.remove`) | remove each owned session's files after its row delete | one tx per session (`DELETE FROM sessions`, cascades) plus the project row and its `projectMemory` kv entry; the project folder on disk is never touched |
@@ -1392,7 +1434,11 @@ columns for anything the host filters, joins, sums, or indexes.
 13. Regenerated assistant variants survive restart in
     `sessions/<id>.revisions.jsonl`; the live root user turn reloads with
     `revisionCount` / `activeRevision`, the pager can restore any archived
-    branch, and switching branches never rewrites the revisions file
+    branch, and switching branches never rewrites the revisions file. A branch
+    that is still live is referenced, not copied, so repeated turns over one
+    branch cost the file nothing; a branch that leaves the transcript is stored
+    in full first, and a file written only by an older build still reads back
+    message-for-message.
 14. Completed and failed turns atomically create one durable notification;
     repeated terminal updates do not duplicate it, aborted turns create none,
     and the newest-200 cap survives restart

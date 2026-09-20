@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
@@ -49,6 +50,7 @@ export function HomeProjectSwitcher({
   const [cloneUrl, setCloneUrl] = useState("");
   const [highlight, setHighlight] = useState(0);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
   const projects = useMemo(
     () =>
@@ -86,16 +88,18 @@ export function HomeProjectSwitcher({
 
   const selectProject = useCallback(
     async (nextPath: string) => {
-      if (busy) return;
+      if (busy || busyRef.current) return;
       const nextKey = normalizeProjectPath(nextPath);
       close();
       if (!nextKey || nextKey === activeKey) return;
+      busyRef.current = true;
       setBusy(true);
       try {
         await newSession({ projectPath: nextPath });
       } catch (error) {
         reportError(error);
       } finally {
+        busyRef.current = false;
         setBusy(false);
       }
     },
@@ -103,7 +107,8 @@ export function HomeProjectSwitcher({
   );
 
   const startClone = useCallback(async () => {
-    if (busy || !cloneTarget) return;
+    if (busy || busyRef.current || !cloneTarget) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       const previous = normalizeProjectPath(
@@ -119,13 +124,15 @@ export function HomeProjectSwitcher({
     } catch (error) {
       reportError(error);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }, [busy, cloneProject, cloneTarget, close, newSession, reportError]);
 
   const pickFolder = useCallback(async () => {
-    if (busy) return;
+    if (busy || busyRef.current) return;
     close();
+    busyRef.current = true;
     setBusy(true);
     try {
       const previous = normalizeProjectPath(
@@ -140,6 +147,7 @@ export function HomeProjectSwitcher({
     } catch (error) {
       reportError(error);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }, [busy, close, newSession, openProject, reportError]);

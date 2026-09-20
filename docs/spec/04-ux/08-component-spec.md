@@ -353,9 +353,9 @@ path-less history under `Sessions` and retained project tabs under `Projects`; t
 collapsed state is an icon rail. Retained tabs are renderer presentation state,
 not additional host workspaces.
 The sidebar body is reserved for Pinned, Sessions, and Projects; the footer exposes the
-Plugins destination beside Settings. Projects is managed through Settings →
-Project archive, while Pull requests and Scheduled are not rendered in the
-sidebar.
+Plugins and Scheduled destinations beside Settings. Scheduled uses a clock
+action with a localized accessible name and active state. Projects is managed
+through Settings → Project archive; Pull requests is not rendered in the sidebar.
 
 Section-level create and sort controls stay visually quiet at rest and reveal
 when the owning Sessions or Projects toolbar is hovered or keyboard-focused.
@@ -526,6 +526,8 @@ visually distinct from list content.
   Git repository as equal filled tiles without strokes (D297); the active source
   uses a deeper tile, not a selected border. A repository URL reuses the clone
   rules of ADR 0247 and its checkout becomes the primary root of the same group.
+  Repeated clicks on Add folder or the clone destination while a native folder
+  picker is open are ignored; only one project folder picker can be active.
   The dialog does not add explanatory copy for durable memory or multi-selection.
   The surface has no outer stroke, section rules, footer divider, source-option
   stroke, field stroke, or dashed picker border. The action row stays fixed
@@ -837,7 +839,7 @@ reasoning or changes model thinking configuration. See
 |---|---|
 | Empty | Restrained hero + optional onboarding checklist in a scrollable content region, with a bottom-reserved home composer and no starter-card or contextual quick-action layer (D111/D204/D206). A project-bound empty session underlines the project name; the control opens a searchable switcher of the sidebar's open projects, with clone-git-project and open-project actions. |
 | Streaming | Auto-scroll follows while pinned; new tokens append |
-| Active progress | Immediately after send, before the first assistant or tool event, a compact localized `Working…` status with elapsed time appears inline. Its model and subagent elapsed labels use the carried-unit format in §9.1. When the runtime names a quiet interval, that same row identifies starting, waiting for the model, preparing the next request, compacting context, recovering an empty response, retrying, or waiting for delegated work (with each running subagent's latest coarse action). It yields to concrete thinking, tool, and answer rows, while a permission card owns the approval state; no large generic progress card is rendered. The row lives in the reserved tail lane, so it appears and clears mid-turn without changing the transcript's content height. A retrying row remains compact at rest; hovering or focusing it reveals an error-styled tooltip with the localized error summary, stable code/HTTP status, and bounded provider message. The tooltip mixes the error tint over `--ds-bg-elevated-opaque` so transcript text does not show through. |
+| Active progress | Immediately after send, before the first assistant or tool event, a compact localized `Working…` status with elapsed time appears inline. Its model and subagent elapsed labels use the carried-unit format in §9.1. When the runtime names a quiet interval, that same row identifies starting, waiting for the model, preparing the next request, compacting context, recovering an empty response, retrying, or waiting for delegated work (with each running subagent's latest coarse action). It remains visible through thinking, tool execution, completed-tool gaps, and partial answers until the turn ends. Runtime phases take precedence over the Planning/Goal or Working fallback. Pending permissions, questions, and plan/goal approvals suppress the row; history reading never shows live status; no large generic progress card is rendered. The row lives in the reserved tail lane, so it appears and clears mid-turn without changing the transcript's content height. A retrying row remains compact at rest; hovering or focusing it reveals an error-styled tooltip with the localized error summary, stable code/HTTP status, and bounded provider message. The tooltip mixes the error tint over `--ds-bg-elevated-opaque` so transcript text does not show through. |
 | Turn outcome | After a failed turn, a session-scoped recovery card summarizes the interruption and tool evidence. Completed turns use the existing transcript and message-scoped InlineReviewCard without an extra success card; failed turns can continue through one localized prompt without losing the transcript. |
 | Session switch | A first-opened session paints at its latest record; a revisited pane paints at its own retained position. Bounded first commit and full-history expansion show the same position: no post-paint height correction may shift the visible rows, in either direction |
 | Turn start (send / retry / regenerate) | Re-pins and positions the latest content before paint, even if the user had scrolled up; the later persisted user-message event does not flash the transcript at its top, and the composer collapse / indicator layout clamps during the send never release follow mode |
@@ -1390,9 +1392,9 @@ storage but compose into one assistant turn until the next user message.
 | Session transition | A warm destination pane is revealed immediately with its retained content and position. If it is running or still holds a not-yet-flushed completed reply, its live renderer snapshot survives the durable revalidation read. A cold destination leaves the visible pane on its own session under a thin progress track until it commits; nothing is dimmed, hidden panes stay mounted and inert, and current stream updates are not deferred |
 | Streaming | New tokens append; auto-scroll only while pinned to bottom |
 | Turn start | Send / retry / regenerate re-pins follow mode and jumps to bottom |
-| Thinking-only streaming | Transcript opens; the latest thinking disclosure opens unless the user has taken it over; no empty answer bubble or duplicate Working row |
-| Pre-stream working | Compact animated-dot Working row until thinking, tools, or an answer exist |
-| Pre-stream planning | Compact animated-dot Planning / Goal row in that same slot; the Composer mode chip pulses. Once tools or an answer exist, the transcript row yields so it does not sit orphaned above the composer |
+| Thinking-only streaming | Transcript opens; the latest thinking disclosure opens unless the user has taken it over; no empty answer bubble; the tail status continues to identify the running turn |
+| Running fallback | Compact animated-dot Working row throughout the running turn when no specific runtime phase or planning state is known, including pauses after partial output or completed tools |
+| Running planning | Compact animated-dot Planning / Goal row in that same slot throughout the planning turn; a runtime phase takes precedence, and pending user interaction or turn completion hides it. The Composer mode chip pulses |
 | Idle | Scrollable; no auto-scroll |
 | Permission pending | PermissionCard inserted inline; transcript continues after resolution |
 | Context checkpoint | Existing transcript remains visible; compaction adds one divider row after the message it covers and one warning toast |
@@ -1410,6 +1412,14 @@ storage but compose into one assistant turn until the next user message.
   `role="article"` turn. The turn exposes one trailing meta row and one action
   toolbar; Copy joins all contentful fragments in order, while Fork and
   Regenerate use the last contentful assistant message as the durable boundary.
+  The toolbar mounts only when those actions are available: active turns and
+  turns with assistant errors reserve no empty toolbar box. Running feedback
+  stays adjacent to the last output instead of sitting below invisible buttons.
+  Preserve the normal 14px assistant bottom padding and the runtime lane's
+  full reserve (24px from a plain-text fragment to its status label at the
+  default scale). User messages retain their real hover-action row and normal
+  spacing, including before the first assistant output. Opacity hides those
+  buttons without removing their space, so hover does not shift content.
 - Toggle Thinking disclosure: expand/collapse reasoning independently from the
   final answer. The latest reasoning row opens while it streams and closes when
   the turn settles only if the user has not interacted with it. The expanded
@@ -2846,6 +2856,8 @@ reasoning-level control.
   inserts an inline temporary-file token at the paste position (D197, D209,
   D262, ADR 0059, ADR 0070, ADR 0131)
 - The Composer `+` button opens one native file picker with no type-choice menu.
+  While that picker or its import is in flight, repeated clicks are ignored so
+  only one composer picker can be active at a time.
   The picker accepts regular files, and the importer classifies each selected
   item as an image or file from its MIME/extension metadata before copying it
   into the active session's scratch `pasted/` directory and adding its compact
@@ -3721,3 +3733,15 @@ match the requested deletion. Never trim leading newlines or normalize all BRs.
 Remember proven placeholder nodes weakly so native redo cannot restore them.
 Explicit line breaks, IME composition, file references, and chip deletion retain
 their normal behavior. The input owns and disposes the native event listeners.
+
+### Dialog long-text containment
+
+Extension prompts keep the 420px rename-dialog width. Their heading column
+can shrink beside the close button, full source paths wrap within that column,
+and unbroken titles, labels, confirmation text and radio options wrap. Content
+taller than the viewport scrolls inside the prompt, leaving actions reachable.
+Input, selection, submission and dismissal semantics remain unchanged.
+
+Project-delete descriptions and plugin dialog headings/outcomes also wrap long
+project or plugin names instead of overflowing their existing widths. Project
+instructions, memory and OAuth dialogs retain their existing bounded layouts.

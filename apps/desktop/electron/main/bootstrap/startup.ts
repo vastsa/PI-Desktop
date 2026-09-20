@@ -1,4 +1,5 @@
 import { app, BrowserWindow, crashReporter, Menu, safeStorage } from "electron";
+import { createScheduledRunner } from "../runtime/scheduled-runner";
 import {
   APP_NAME,
   APP_VERSION,
@@ -285,6 +286,13 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       });
     }
     if (!bootError) planUiProbe.install();
+    const scheduledRunner = createScheduledRunner({
+      getHost,
+      execute: (id) => invokeIpc(IPC.invoke.scheduledExecute, [id, true]),
+      report: (error) => logger.app("runtime", "warn", "scheduled task dispatch failed", { data: String(error) }),
+    });
+    scheduledRunner.start();
+    app.once("before-quit", () => scheduledRunner.stop());
     if (!bootError && state.agentHostBridge) {
       // Restore the persisted turn queue now that host-core answers. Restored
       // entries stay held until a controller attaches (D375).

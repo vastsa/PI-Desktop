@@ -8,6 +8,34 @@
 
 ## 1. Goals
 
+### E2E-SCHEDULED-desktop-automation-lifecycle
+
+- **Preconditions:** Isolated desktop profile, built task candidate, local SSE
+  fixture model; no real provider credentials or paid API.
+- **Steps:** Open the footer clock; create a daily Morning task at 09:00; edit its name;
+  select a daily time period from four fixed defaults; open the weekday menu,
+  select custom days, save and reopen; reject empty days; verify the four defaults,
+  arrows, Home/End, Enter, Escape/Tab and outside dismissal; select hourly without time
+  fields and verify its first occurrence is one hour away; pause/resume; Run now;
+  open the result conversation; configure a daily task for the next real minute;
+  observe automatic completion; delete the settled task. In a normal Agent
+  conversation, use model tool calls to discover, create, list, update to 15:30
+  and delete a task. Verify the custom time appears in the form and survives
+  renaming. The model is a local deterministic fixture, not a live provider.
+- **Expected:** Configuration persists, next time is visible, paused tasks do
+  not dispatch, both execution paths reach the real Agent sidecar, history links
+  to the persisted transcript, and automatic execution does not require a
+  renderer prompt. Host tests additionally prove duplicate admission rejection,
+  stale/missed occurrence handling, invalid input rejection and recovery.
+- **Specs:** 04-ux/01-ui-ia §3.4; 03-runtime/04-data-storage §4.11;
+  ADR scheduled-desktop-automations.
+- **Acceptance:** Scheduled task execution and recoverable run history.
+- **Milestone:** Post-MVP desktop automations.
+- **Status:** Automated in `node scripts/e2e-scheduled.mjs`; run against the
+  request candidate per AGENTS.md, with tested head and base recorded.
+
+
+
 ### E2E-PLUGIN-appearance-extension-lifecycle
 
 - **Preconditions:** A fixture plugin declares `ui.theme`, `ui.settings`, one
@@ -854,10 +882,9 @@ identify the platform validation still needed.
 - **Preconditions**: Provider configured.
 - **Steps**: 1) Create new session. 2) Type a message. 3) Send.
 - **Expected**: The transcript immediately shows a compact localized `Working…`
-  status after send, before the first assistant or tool event. It yields to
-  concrete thinking/tool/answer feedback, or identifies a runtime-reported
-  model wait/retry when no transcript row can explain the delay. It disappears
-  when the turn ends.
+  status after send, before the first assistant or tool event. It remains
+  visible through thinking/tool/answer output, or identifies a runtime-reported
+  wait. Pending user interaction suppresses it; it disappears when the turn ends.
   The conversation topbar keeps only the task title and window actions; it does
   not add a separate running-state indicator.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`, `03-runtime/10-session-state-machine.md`
@@ -3653,11 +3680,11 @@ identify the platform validation still needed.
   completion.
 - **Expected**: No generic Understanding, Working, Checking, or completion
   card appears below the transcript while the turn is active. Assistant and
-  tool rows remain inline; a compact runtime status row may appear only when it
-  explains a quiet interval with no transcript row of its own (provider
-  wait/retry, compaction, silent-turn recovery, the gap before the next
-  request, or a delegated-work wait). Only an actual permission request renders
-  an actionable card.
+  tool rows remain inline. One compact tail status remains visible throughout
+  the running turn, including partial-answer pauses and completed-tool gaps.
+  Runtime phases take precedence over Working or Planning/Goal; pending user
+  interaction suppresses the status. Only an actual permission request renders
+  an actionable permission card.
   Background activity never changes the visible session, transcript, composer
   focus, or project.
 - **Specs linked**: `04-ux/08-component-spec.md`,
@@ -4949,6 +4976,45 @@ identify the platform validation still needed.
   measures real geometry against; full provider streaming and shell
   responsiveness remain Draft.
 
+#### E2E-CHAT-running-status-survives-output-pauses
+
+- **Preconditions**: Production `ChatTranscript`, real store and React DOM in
+  Electron; deterministic messages/status transitions, no provider credentials.
+- **Steps**: Send a turn, stream partial text, stop delivering deltas, start and
+  finish a tool, clear/set runtime phases, resume text, then complete, stop, or
+  fail. Repeat in detailed and compact modes. Exercise planning, permission,
+  question and proposal waits, history reading, and switching sessions.
+- **Expected**: Exactly one localized, accessible tail status remains through
+  output pauses and completed-tool gaps. Runtime phases take precedence over
+  Planning/Goal or Working. Pending user interaction suppresses it; terminal
+  turns and history reading remove it. Switching sessions uses that session's
+  status only. Existing content and permission actions remain available.
+  Active and assistant-error turns mount no empty action toolbar. A partial
+  answer has 24 CSS px between its fragment box and the status label
+  at the default font scale; settled non-error content retains Copy, Fork,
+  and Regenerate. Check detailed and compact modes. History reading and
+  permission cards retain normal message padding. Ending a turn keeps pinned
+  follow at the bottom while restoring the normal toolbar height. A scrolled-up reader keeps the exact text position
+  and scroll offset.
+- **Specs linked**: `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`
+- **Acceptance**: C (chat stream), Quality (interaction and accessibility)
+- **Milestone**: M5
+- **Status**: Automated by `pnpm test:e2e:transcript`
+  (`scripts/e2e/transcript-status.tsx`). Reproduces issue #669 on upstream
+  `ecece8f570fc0c18f21e4941eafe52244a7c6e5f`; no real-provider claim.
+
+#### E2E-CHAT-initial-wait-spacing
+
+- Send a user message before any assistant output: retain the original user
+  action row and spacing (52px bubble-to-status in the default text fixture).
+- At wide and narrow transcript widths, Copy remains focusable and pointer
+  reachable; edit/delete/revision controls retain their disabled running state.
+  Status and action hit targets never overlap, including revision pagers.
+- Right-click the status/background for the conversation menu and the message
+  for its own menu. Change runtime phase, receive first output, or stop before
+  output: exactly one status follows the active turn and terminal actions return.
+- Coverage: `scripts/e2e/transcript-status.tsx`, `pnpm test:e2e:transcript`.
+
 #### E2E-CHAT-runtime-status-keeps-row-position
 
 - **Preconditions**: An active session whose transcript is taller than the
@@ -4966,11 +5032,11 @@ identify the platform validation still needed.
 - **Expected**:
   - The waiting row occupies the reserved status lane: the content height,
     scroll height, scroll offset, and the position of every already-rendered row
-    are unchanged (within 0.01px) while the status appears and after it clears.
-  - The empty lane stays reserved and invisible — no background, border, or
-    shadow — in both the dark and light themes.
+    are unchanged (within 0.01px) while Working switches to the named wait and back.
+  - The lane stays reserved and transparent — no background, border, or
+    shadow — in both themes. Clearing a runtime phase restores Working.
   - The status row keeps its live-region semantics (`role="status"`,
-    `aria-live="polite"`), while the empty lane carries no text to announce.
+    `aria-live="polite"`); pending user interaction leaves the reserved lane empty.
   - An idle finished transcript renders no status lane at all, so its layout is
     unchanged.
 - **Specs linked**: `04-ux/08-component-spec.md`
@@ -5586,6 +5652,10 @@ identify the platform validation still needed.
 - **Expected**:
   - The Plan/Goal approval bar paints `--ds-bg-composer` with `--ds-shadow-composer` rather than the in-flow `--ds-tile` wash, so it remains a readable plate over the transparent composer dock.
   - The retry hover tooltip mixes the error tint over `--ds-bg-elevated-opaque`, so transcript text does not show through.
+  - The retry tooltip is capped to the room above the tail status row and
+    scrolls the remainder, so a long provider message keeps its first lines
+    inside the transcript scrollport and below the conversation bar instead of
+    being hidden by either.
 - **Specs linked**: `04-ux/03-permission-ux.md`, `04-ux/08-component-spec.md`
 - **Acceptance**: C, Quality
 - **Milestone**: M6
@@ -5717,9 +5787,9 @@ identify the platform validation still needed.
   mode, and the Composer chip does not pulse until that live state projects
   `planning`. After the terminal event flushes the configuration the session is
   durable Plan with editable planning state, and the sent prompt surfaces the
-  `Plan / planning` indicator in the pre-stream slot while the chip pulses.
-  Once tools or an answer exist, the transcript planning row yields and the
-  chip pulse remains the live cue.
+  `Plan / planning` indicator in the reserved tail slot while the chip pulses.
+  Tools and answers do not hide it; runtime phases take precedence, and
+  pending user interaction or turn completion suppresses it.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `03-runtime/10-session-state-machine.md`, `04-ux/08-component-spec.md`
 - **Acceptance**: C (conversation/stream), Quality
@@ -5750,6 +5820,25 @@ identify the platform validation still needed.
 - **Status**: Automated (passed 2026-08-04): `test:e2e:plan` verifies catalog,
   validation, persistence, and restart; the deterministic host-core catalog
   test verifies first-available fallback when a stored shell becomes unavailable
+
+#### E2E-SHELL-windows-pwsh-msix-store-alias-is-available
+
+- **Preconditions**: Windows host with PowerShell 7 installed via MSIX /
+  Microsoft Store (`winget` `msixbundle`). `%ProgramFiles%\PowerShell\7\pwsh.exe`
+  is absent. `pwsh.exe` on PATH is the `WindowsApps` app-execution alias
+  (`IO_REPARSE_TAG_APPEXECLINK`).
+- **Steps**: 1) Open Settings → command shell. 2) Inspect `windows-pwsh`
+  availability. 3) Select PowerShell 7 and persist `defaultCommandShell`.
+  4) Run `Bash`.
+- **Expected**: `windows-pwsh` is available and selectable. The host resolves
+  the Store alias without treating it as missing. `Bash` launches PowerShell 7.
+- **Specs linked**: `03-runtime/03-tools-and-permissions.md`,
+  `04-ux/06-settings-ia.md`, ADR 0054, ADR 0209
+- **Acceptance**: B (model/config), E (tools/permissions)
+- **Milestone**: M6
+- **Status**: Documented; host-core unit tests cover the Win32-attribute
+  decision (alias attrs `0x420` + tag `0x8000001B`). Live Store-alias probe is
+  Windows-only and is not run in Linux CI.
 
 #### E2E-113: Stale shell identity fails closed
 
@@ -6474,12 +6563,16 @@ identify the platform validation still needed.
 - **Preconditions**: The app is running with a home or Agent composer and a
   durable session. The native picker can select a text file and an image outside
   the active workspace.
-- **Steps**: 1) Click the Composer `+` button; confirm it opens the native file
-  picker directly without an intermediate type-choice menu. 2) Select both
+- **Steps**: 1) Click the Composer `+` button twice in quick succession;
+  confirm that only one native file picker opens, directly without an
+  intermediate type-choice menu. 2) Select both
   fixtures. 3) Inspect the draft chips and send a prompt asking the agent to
   read the text fixture and identify the image marker. 4) Inspect the renderer
   request, session transcript, and the session scratch directory.
-- **Expected**: The native picker returns a short-lived one-shot token, never a
+- **Expected**: While the native picker or its renderer import is in flight,
+  repeated `+` clicks are ignored. While the native picker is open, the main
+  process rejects duplicate picker requests instead of opening another dialog.
+  The native picker returns a short-lived one-shot token, never a
   source absolute path, and the selections are copied into
   `<data_dir>/scratch/<sessionId>/pasted/` before they enter the draft. The app
   classifies each selected item from its MIME/extension metadata, so the same
@@ -7693,6 +7786,7 @@ identify the platform validation still needed.
 
 | Acceptance | Scenarios |
 |---|---|
+| C / F / Quality — Desktop automations | E2E-SCHEDULED-desktop-automation-lifecycle |
 | A / C — Unicode stdio framing | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — Sidebar row states | E2E-LAYOUT-sidebar-row-states |
@@ -7702,7 +7796,7 @@ identify the platform validation still needed.
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
 | A / C / F / Quality — Tray session navigation | E2E-TRAY-bounded-session-navigation |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
-| C — Conversation & stream | E2E-008, E2E-008d, E2E-008e, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-259, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-SUBAGENT-resume-a-settled-delegation |
+| C — Conversation & stream | E2E-CHAT-running-status-survives-output-pauses, E2E-008, E2E-008d, E2E-008e, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-259, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-SUBAGENT-resume-a-settled-delegation |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
 | D — Workspace (project ordering) | E2E-253 |
 | E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166, E2E-181, E2E-PLUGIN-imported-pi-package-skills |
@@ -7711,7 +7805,7 @@ identify the platform validation still needed.
 | G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024AA, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-imported-pi-package-wrapper, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection, E2E-PLUGIN-fs-root-follows-the-calling-session |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-146a, E2E-155, E2E-159, E2E-176, E2E-194, E2E-195 |
 | Security | E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158, E2E-187, E2E-196c, E2E-196b, E2E-196, E2E-PLUGIN-fs-root-follows-the-calling-session |
-| Quality | E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-259, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
+| Quality | E2E-CHAT-running-status-survives-output-pauses, E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-259, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
 | Quality (project ordering) | E2E-253 |
 | C — Conversation & stream (IME slash alias) | E2E-255 |
 | E — Tools & permissions (Skill residency) | E2E-254 |
@@ -7757,7 +7851,7 @@ identify the platform validation still needed.
 | M2 | E2E-004, E2E-005, E2E-006, E2E-007, E2E-008, E2E-008d, E2E-008e, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-020, E2E-021, E2E-021a, E2E-027, E2E-031, E2E-036, E2E-037, E2E-042, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-144, E2E-005J, E2E-201, E2E-202, E2E-207, E2E-206 |
 | M3 | E2E-012, E2E-013, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-040 |
 | M4 | E2E-022, E2E-023, E2E-024, E2E-025, E2E-026, E2E-030, E2E-038 |
-| M5 | E2E-008a, E2E-032, E2E-033, E2E-034, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-051, E2E-052, E2E-053, E2E-054, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-AGENTS-001, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-094, E2E-095, E2E-143, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-177, E2E-178, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-204, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-252, E2E-102i |
+| M5 | E2E-CHAT-running-status-survives-output-pauses, E2E-008a, E2E-032, E2E-033, E2E-034, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-051, E2E-052, E2E-053, E2E-054, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-AGENTS-001, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-094, E2E-095, E2E-143, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-177, E2E-178, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-204, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-252, E2E-102i |
 | M5 (project ordering) | E2E-253 |
 | M2 (IME slash alias) | E2E-255 |
 | M5 (Skill residency) | E2E-254 |
@@ -7773,7 +7867,7 @@ identify the platform validation still needed.
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
-| Trusted extensions (R7 v1) | E2E-241, E2E-242, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
+| Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP regression coverage (plugin tool dispatch) | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
 | M6+ (Project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
@@ -12701,14 +12795,17 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Preconditions**: The Create project dialog opens from the Projects heading
   (no existing project is required); `git` is installed.
 - **Steps**:
-  1. Switch the source selector to Git repository.
-  2. Paste `https://github.com/octocat/Hello-World.git` and confirm the project
+  1. Open the Create project dialog and click Add folder twice quickly; confirm
+     that only one native folder picker opens, then cancel it.
+  2. Switch the source selector to Git repository.
+  3. Paste `https://github.com/octocat/Hello-World.git` and confirm the project
      name field is seeded with `Hello-World`, then type a custom name.
-  3. Choose a clone destination folder and confirm the destination row shows it.
-  4. Confirm Create and inspect the workspace, sidebar, and project archive.
-  5. Reopen the dialog, switch to Git repository, and paste a private or
+  4. Choose a clone destination folder and confirm the destination row shows it.
+  5. Confirm Create and inspect the workspace, sidebar, and project archive.
+  6. Reopen the dialog, switch to Git repository, and paste a private or
      malformed remote.
-- **Expected**: The dialog swaps the folder list for a repository URL field plus
+- **Expected**: Repeated folder-picker clicks are ignored while the native
+  picker is open. The dialog swaps the folder list for a repository URL field plus
   a clone destination row and keeps one project name field. Source options and
   fields are filled tiles without strokes; keyboard focus uses the shared
   accent-tinted ring. Create stays
@@ -13741,3 +13838,50 @@ the latest destination. These assertions measure work counts, not device FPS.
 ## Composer plugin reference acceptance
 
 In an isolated desktop fixture, load a trusted renderer entry, type its trigger, accept a candidate, insert it again, remove it, and switch drafts. Confirm one stable chip, removal notification, draft restoration, independent resolver fallback, and model/display separation for send, steering and queue restart. Existing file and slash autocomplete must still work. With more than five plugin matches, confirm only five are shown, Files starts collapsed, keyboard and pointer activation toggle it without changing the draft, expanded files remain selectable, and filtering searches the full candidate set. Use a temporary Host profile for schema-v19 upgrade and queued-display round trips; no live provider is required.
+### E2E-DIALOG-long-text-boundaries
+
+- **Preconditions:** Built renderer assets and an isolated Electron component
+  fixture; production components, store, translations and stylesheet are used.
+  Only the preload IPC boundary is replaced with deterministic host replies.
+- **Steps:** Open an extension input prompt with a long Windows source path;
+  type, submit, reopen and dismiss. Repeat long title/message/option prompts in
+  light/dark themes and Chinese at 520×480. Inspect long project/plugin names in
+  rename, instructions, memory, delete, install, settings, permission-review and
+  OAuth dialogs; exercise dismissal controls.
+- **Expected:** Full source paths and other long text wrap without clipping; horizontal
+  overflow is absent, and the 420px prompt width is unchanged. Tall prompts
+  scroll inside the viewport. Close, Escape, typing and radio submission work.
+- **Specs:** `04-ux/08-component-spec.md`, Dialog long-text containment.
+- **Acceptance:** Bounded text and reachable modal controls.
+- **Milestone:** Post-MVP maintenance.
+- **Automation:** `pnpm test:e2e:dialog-overflow`; source/contract dialog suites
+  supplement, but do not replace, real Chromium geometry and pointer checks.
+- **Status:** Implemented. Native Windows evidence; macOS/Linux not qualified.
+
+### E2E-PROVIDER-certificate-trust-and-terminal-errors
+
+- **Preconditions:** Built request candidate incorporating current `origin/main`,
+  Electron installed, isolated test process/profile and loopback HTTPS fixture.
+  No real provider, credentials, user profile, or OS certificate-store writes.
+- **Steps:** Run `node scripts/e2e-provider-certificates.mjs`. Launch the actual
+  desktop sidecar and submit a chat prompt against an untrusted localhost
+  certificate. Relaunch with its CA in `NODE_EXTRA_CA_CERTS`, then request the
+  same certificate through a hostname absent from its SAN.
+- **Expected:** The child's default CA set includes system roots and extra CAs.
+  The first request fails once with a non-retriable certificate error and no
+  retry status; the trusted request returns text; the hostname mismatch still
+  fails once. TLS and hostname verification remain enabled.
+- **UI:** Run `node scripts/e2e-provider-certificate-ui.mjs` for the real error
+  component in isolated Chromium. Certificate errors get localized guidance;
+  DNS and protocol errors retain the generic summary. Errno/raw details remain
+  visible, and details can be closed and reopened. Optional
+  `PI_CERTIFICATE_EVIDENCE_DIR` records a screenshot; `--baseline` uses the
+  upstream error component with the same fixture and stylesheet.
+- **Lower-level coverage:** `provider-certificate-flow.test.ts` enters main
+  session `prompt()` and delegate `run()` through real Agent/pi-ai wiring,
+  with only the external fetch mocked. Both stop after one request and retain
+  the certificate cause. Error classification and recovery suites cover direct,
+  nested, flattened, non-certificate and wrapped certificate failures.
+- **Limits:** OS-root inclusion is checked without installing a root. The TLS
+  success fixture uses a child-only extra CA; it does not reproduce a specific
+  antivirus installation or claim native macOS/Linux verification.

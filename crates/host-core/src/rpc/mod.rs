@@ -1,3 +1,6 @@
+mod scheduled_rpc;
+mod scheduled_tools;
+
 use std::io::{self, BufRead, BufReader as StdBufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -19,7 +22,6 @@ use crate::plugin_sessions;
 use crate::plugin_usage;
 use crate::providers::{self, DiscoveredModelInput, ProviderCreateInput, ProviderUpdateInput};
 use crate::review;
-use crate::scheduled;
 use crate::scratch;
 use crate::sessions::{self, UiMessage};
 use crate::state::{AppState, HOST_VERSION, PROTOCOL_VERSION};
@@ -3113,126 +3115,18 @@ async fn handle_request(
             Ok(json!({ "ok": true, "changed": changed }))
         }
 
-        "scheduled.list" => {
+        method if method.starts_with("scheduled.") => {
             let st = state.lock().await;
-            let tasks = scheduled::list_tasks(&st.db)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            Ok(json!({ "tasks": tasks }))
-        }
-        "scheduled.create" => {
-            let st = state.lock().await;
-            let task = scheduled::create_task(&st.db, &params)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            Ok(json!({ "task": task }))
-        }
-        "scheduled.update" => {
-            let st = state.lock().await;
-            let task = scheduled::update_task(&st.db, &params)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
-                .ok_or_else(|| rpc_err(1007, "task not found", "NOT_FOUND"))?;
-            Ok(json!({ "task": task }))
-        }
-        "scheduled.delete" => {
-            let id = params
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
-            let st = state.lock().await;
-            let ok = scheduled::delete_task(&st.db, id)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            Ok(json!({ "ok": ok }))
-        }
-        "scheduled.import" => {
-            let tasks = params
-                .get("tasks")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let st = state.lock().await;
-            let imported = scheduled::import_tasks(&st.db, &tasks)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            Ok(json!({ "imported": imported }))
-        }
-        "scheduled.run" => {
-            let id = params
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
-            let st = state.lock().await;
-            let task = scheduled::get_task(&st.db, id)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
-                .ok_or_else(|| rpc_err(1007, "task not found", "NOT_FOUND"))?;
-            // Both contract modes need a human to approve their proposal (D198),
-            // so neither can run unattended.
-            if sessions::is_contract_mode(&task.mode) {
-                return Err(plan_rpc_err("PLAN_REQUIRES_INTERACTIVE_SESSION"));
-            }
-            let settings = st
-                .db
-                .get_setting("app")
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
-                .unwrap_or_else(|| json!({}));
-            let session = sessions::create_session(
-                &st.db,
-                Some(task.title.clone()),
-                Some("agent".into()),
-                settings
-                    .get("defaultProviderId")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                settings
-                    .get("defaultModelId")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                st.workspace.get().map(|w| w.path),
-            )
-            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            let run_id = match scheduled::begin_run(&st.db, id, Some(&session.id)) {
-                Ok(run_id) => run_id,
-                Err(error) => {
-                    let _ = sessions::delete_session(&st.db, &session.id);
-                    return Err(rpc_err(1000, error.to_string(), "INTERNAL"));
-                }
-            };
-            let task = scheduled::get_task(&st.db, id)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
-                .unwrap_or(task);
-            Ok(json!({
-                "sessionId": session.id,
-                "prompt": task.prompt,
-                "task": task,
-                "runId": run_id
-            }))
-        }
-        "scheduled.finishRun" => {
-            let run_id = params
-                .get("runId")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| rpc_err(1002, "runId required", "INVALID_PARAMS"))?;
-            let status = params
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("completed");
-            let st = state.lock().await;
-            let ok = scheduled::finish_run(
-                &st.db,
-                run_id,
-                status,
-                params.get("errorCode").and_then(|v| v.as_str()),
-            )
-            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            Ok(json!({ "ok": ok }))
-        }
-        "scheduled.listRuns" => {
-            let task_id = params.get("taskId").and_then(|v| v.as_str());
-            let limit = params.get("limit").and_then(|v| v.as_i64()).unwrap_or(50);
-            let st = state.lock().await;
-            let runs = scheduled::list_runs(&st.db, task_id, limit)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            Ok(json!({ "runs": runs }))
+            scheduled_rpc::handle(&st, method, params)
         }
 
-        "tools.list" => Ok(json!({ "tools": tools::builtin_tool_defs() })),
+        "tools.list" => {
+            let mut definitions = tools::builtin_tool_defs();
+            if let Some(items) = definitions.as_array_mut() {
+                items.extend(scheduled_tools::definitions());
+            }
+            Ok(json!({ "tools": definitions }))
+        }
         "tools.execute" => {
             let call_started = std::time::Instant::now();
             let p: ToolsExecuteParams = serde_json::from_value(params.clone())
@@ -3730,6 +3624,9 @@ async fn handle_request(
                         &durable_mode,
                     )
                     .await
+                } else if scheduled_tools::recognizes(&p.tool_name) {
+                    let st = state.lock().await;
+                    scheduled_tools::execute(&st, &p)
                 } else {
                     tools::execute_tool_with_path_access(
                         ws_path.as_deref(),

@@ -824,6 +824,7 @@
 }
 
 .project-delete-dialog-body {
+  overflow-wrap: anywhere;
   display: flex;
   flex-direction: column;
   gap: 8px;

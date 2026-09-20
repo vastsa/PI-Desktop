@@ -12,6 +12,29 @@ import {
 /** The reporter's endpoint (issue #234): a provider fetch that never answered. */
 const CODEX_URL = "https://chatgpt.com/backend-api/codex/responses";
 
+it("neither rebuilds nor retries a captured certificate rejection after flattening", () => {
+  const failure = describeProviderFetchFailure(
+    fetchFailed(coded("SELF_SIGNED_CERT_IN_CHAIN")), CODEX_URL,
+  );
+  expect(failure).toBeDefined();
+  if (!failure) throw new Error("missing failure");
+  const health = createProviderTransportHealth();
+  expect(health.observeFailure(buildFailure(failure.origin, "reset"))).toBe(false);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    expect(health.observeFailure(failure)).toBe(false);
+  }
+  expect(withProviderFetchFailure({
+    code: "NETWORK_ERROR", message: "Connection error.", retriable: true,
+  }, failure)).toMatchObject({
+    retriable: false,
+    details: { networkCode: "SELF_SIGNED_CERT_IN_CHAIN" },
+  });
+  const protocol = describeProviderFetchFailure(fetchFailed(coded("EPROTO")), CODEX_URL);
+  if (!protocol) throw new Error("missing protocol failure");
+  expect(health.observeFailure(protocol)).toBe(false);
+  expect(health.observeFailure(protocol)).toBe(true);
+});
+
 function fetchFailed(cause?: unknown): TypeError {
   return Object.assign(new TypeError("fetch failed"), {
     ...(cause === undefined ? {} : { cause }),

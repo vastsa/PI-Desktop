@@ -52,7 +52,9 @@ export class AgentSidecar extends RuntimeAgentSidecar {
     super({
       launch: {
         command: process.execPath,
-        args: [resolveSidecarEntry()],
+        // Electron 43's Node supports the OS trust store. Keep bundled roots
+        // and inherited NODE_EXTRA_CA_CERTS; never bypass TLS verification.
+        args: ["--use-system-ca", resolveSidecarEntry()],
         env: {
           ...process.env,
           ELECTRON_RUN_AS_NODE: "1",

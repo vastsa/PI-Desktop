@@ -169,7 +169,7 @@ test("only PluginCheck is available outside agent mode", () => {
   assert.doesNotMatch(nonAgentBranch, /PluginScaffold|PluginPack/);
   assert.match(
     builder.slice(agentBranchStart),
-    /tools\.push\("PluginScaffold", "PluginPack"\)/,
+    /tools\.push\("PluginScaffold", "PluginPack"/,
   );
 });
 

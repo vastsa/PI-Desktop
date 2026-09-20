@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.15.1",
+  "version": "0.15.2-beta.1",
   "description": "Local-first AI coding agent desktop client",
   "packageManager": "pnpm@11.18.0",
   "engines": {
@@ -21,6 +21,7 @@
     "test": "pnpm build:js && pnpm -r --if-present test && cargo test -p host-core",
     "test:host": "cargo test -p host-core",
     "test:e2e": "node scripts/e2e-smoke.mjs",
+    "test:e2e:scheduled": "node scripts/e2e-scheduled.mjs",
     "test:e2e:rpc-unicode": "node scripts/e2e-rpc-unicode.mjs",
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",
@@ -56,7 +57,8 @@
     "test:e2e:trusted-extensions": "node scripts/e2e-trusted-extensions.mjs",
     "test:e2e:collaboration": "node scripts/e2e-session-collaboration.mjs",
     "test:e2e:session-completion": "node scripts/e2e-session-completion.mjs",
-    "test:e2e:remote-host": "node scripts/e2e-remote-host.mjs"
+    "test:e2e:remote-host": "node scripts/e2e-remote-host.mjs",
+    "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",

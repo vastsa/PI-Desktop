@@ -72,6 +72,7 @@ pub struct AppState {
 impl AppState {
     pub fn open(data_dir: &std::path::Path) -> Result<Self> {
         let db = Database::open_in_dir(data_dir)?;
+        crate::scheduled::automation::recover(&db)?;
         // Replies that were still streaming when the previous process ended
         // are promoted into their transcripts before any client can read them
         // (D299). The turn sweep inside `open` has already marked those turns

@@ -5,6 +5,44 @@ import {
 } from "./agent-errors.js";
 
 describe("classifyAgentError", () => {
+  it.each([
+    "SELF_SIGNED_CERT_IN_CHAIN",
+    "DEPTH_ZERO_SELF_SIGNED_CERT",
+    "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+    "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+    "CERT_HAS_EXPIRED",
+    "CERT_NOT_YET_VALID",
+    "ERR_TLS_CERT_ALTNAME_INVALID",
+  ])("makes certificate verification failure %s terminal", (code) => {
+    const cause = Object.assign(new Error("certificate verification failed"), { code });
+    for (const error of [cause, new Error("Connection error.", { cause }), code]) {
+      expect(classifyAgentError(error)).toMatchObject({
+        code: "NETWORK_ERROR",
+        retriable: false,
+        details: { networkCategory: "tls", networkCode: code },
+      });
+    }
+  });
+
+  it.each(["EPROTO", "ERR_SSL_PROTOCOL_ERROR", "ECONNRESET"])(
+    "keeps non-certificate transport failure %s retryable", (code) => {
+      expect(classifyAgentError(new Error("fetch failed", {
+        cause: Object.assign(new Error(code), { code }),
+      })).retriable).toBe(true);
+    },
+  );
+
+  it.each(["UND_ERR_SOCKET", "ERR_PROXY_CONNECTION_FAILED"])(
+    "keeps the certificate cause terminal beneath %s", (code) => {
+      const error = Object.assign(new Error("fetch failed"), {
+        code, cause: Object.assign(new Error("certificate failed"), { code: "CERT_HAS_EXPIRED" }),
+      });
+      expect(classifyAgentError(error)).toMatchObject({
+        retriable: false, details: { networkCode: "CERT_HAS_EXPIRED", networkCategory: "tls" },
+      });
+    },
+  );
+
   it("classifies auth failures from status fields", () => {
     const err = Object.assign(new Error("Incorrect API key provided"), {
       status: 401,

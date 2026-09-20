@@ -1,3 +1,4 @@
+import { scheduledToolParameters, scheduledToolDescriptions } from "./scheduled-tools.js";
 import { randomUUID } from "node:crypto";
 import {
   settledDelegationMessage,
@@ -143,6 +144,7 @@ import {
   seedDelegateMessages,
   type DelegationChain,
 } from "./delegation-history.js";
+import { clampOutputToContext } from "./output-cap.js";
 import {
   composeSubagentSystemPrompt,
   SubagentRun,
@@ -198,12 +200,15 @@ import {
   isTransientProviderRetryCode,
   providerRateLimitDelayMs,
   providerSetupRetryDelayMs,
+  streamIdleTimeoutMs,
+  withStreamIdleTimeout,
 } from "./provider-retry.js";
 
 import { rebuildNodeNetworkTransport } from "./node-proxy.js";
 import {
   createProviderTransportHealth,
   explainsProviderFetchFailure,
+  withProviderFetchFailure,
   type ProviderFetchFailure,
   type ProviderTransportHealth,
 } from "./provider-transport-recovery.js";
@@ -1833,10 +1838,31 @@ Delegation rules:
           ),
         );
         const hookedOptions = this.withExtensionProviderHooks(requestOptions, m);
-        return createProviderRetryStream(
+        // The watchdog must be able to *stop* what it abandons. It wraps the
+        // retry adapter, so draining alone would let the adapter wake from its
+        // backoff and open a second request for this turn while the runtime is
+        // already re-running the turn — two provider requests and two bills for
+        // one answer. So the stall trips a signal this request owns, combined
+        // with pi's own run signal (Stop must keep working): the adapter refuses
+        // to start an attempt on an aborted signal, and its backoff sleep rejects.
+        const stallAbort = new AbortController();
+        const attemptOptions: SimpleStreamOptions = {
+          ...hookedOptions,
+          // Cap the output budget at the pi-desktop layer so the estimate
+          // holds for both adapter branches: `streamSimple` re-derives
+          // max_tokens, but the low-level `stream` path used by
+          // `thinkingLevel: "omit"` would otherwise send it untouched, and
+          // both consume an estimate that under-counts CJK text (issue B).
+          maxTokens: clampOutputToContext(m, context, hookedOptions.maxTokens),
+          signal: AbortSignal.any([
+            ...(hookedOptions.signal ? [hookedOptions.signal] : []),
+            stallAbort.signal,
+          ]),
+        };
+        const retryStream = createProviderRetryStream(
           m,
           context,
-          hookedOptions,
+          attemptOptions,
           (retryOptions) =>
             this.thinkingLevel === "omit"
               ? this.models.stream(omitThinkingModel(m), context, retryOptions)
@@ -1856,6 +1882,13 @@ Delegation rules:
               });
             },
           },
+        );
+        // Zero-event idle watchdog: a stream that emits nothing for the
+        // configured budget ends as a STREAM_FAILED error and re-enters the
+        // shared transient retry path instead of hanging the turn on a
+        // connection the provider never closes.
+        return withStreamIdleTimeout(retryStream, m, streamIdleTimeoutMs(), () =>
+          stallAbort.abort(),
         );
       },
       // A vendor account has no long-lived key. Leaving it unset keeps pi-ai
@@ -2670,6 +2703,7 @@ Delegation rules:
     const externalPathHint =
       " An explicit path outside the workspace and session scratch roots requires permission unless the effective mode is Auto.";
     const describe = (toolName: string): string => {
+      if (scheduledToolDescriptions[toolName]) return scheduledToolDescriptions[toolName];
       switch (toolName) {
         case "BrowserPreview":
           return "Open a workspace HTML file in PI-Desktop's built-in browser panel. `path` is workspace-relative (e.g. \"demo/index.html\"). The preview live-reloads on later edits to the file or its sibling assets, so call once per page.";
@@ -3101,7 +3135,7 @@ Delegation rules:
         label: toolName,
         description: describe(toolName),
         parameters: Type.Object(
-          parameters[toolName] ?? { command: Type.String() },
+          scheduledToolParameters[toolName] ?? parameters[toolName] ?? { command: Type.String() },
         ),
         // Normalizing here, above the write lock, means every consumer below
         // this line — the lock key, the host call, the transcript record — sees
@@ -3180,7 +3214,7 @@ Delegation rules:
           ]
         : ["Read", "Glob", "Grep", "BrowserPreview", "Bash"];
     if (this.mode === "agent") {
-      tools.push("PluginScaffold", "PluginPack");
+      tools.push("PluginScaffold", "PluginPack", ...Object.keys(scheduledToolParameters));
     }
     const builtins = tools.map(exec);
 
@@ -5290,7 +5324,8 @@ Delegation rules:
     providerWaitMs?: number,
     streamMs?: number,
   ): ReturnType<typeof classifyAgentError> {
-    const existingDetails = isRecord(error.details) ? error.details : {};
+    const explained = withProviderFetchFailure(error, this.providerFetchFailure);
+    const existingDetails = explained.details ?? {};
     // A capture exists only for an attempt that rejected before any response, so
     // it is also the honest phase: whatever the message lifecycle that surfaced
     // the failure looks like, this request never reached the provider, and
@@ -5302,12 +5337,9 @@ Delegation rules:
         ? this.providerFetchFailure
         : undefined;
     return {
-      ...error,
+      ...explained,
       details: {
         ...existingDetails,
-        // First-hand cause, so it replaces the `unknown` the text classifier
-        // falls back to for a bare `fetch failed`.
-        ...(captured ? captured.fields : {}),
         phase: captured ? "request" : phase,
         // Correlation for a failure that produced no response to inspect: how
         // much context and how many bytes the attempt carried, and which
