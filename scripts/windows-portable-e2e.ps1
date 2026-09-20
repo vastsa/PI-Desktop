@@ -135,6 +135,7 @@ $pinWasPresent = $false
 $baselinePinPaths = @()
 $baselinePinsCaptured = $false
 $createdPinPaths = @()
+$childPids = @()
 $runs = @()
 
 try {
@@ -147,6 +148,7 @@ try {
   $runs += $firstWrapper
   $firstChild = Wait-Until { Get-PortableProcess $appPath }
   if ($null -eq $firstChild) { throw "Portable app did not start at $appPath" }
+  $childPids += $firstChild.ProcessId
   Write-Host "RUNNING_APP_PATH=$($firstChild.ExecutablePath)"
 
   $pinnedBefore = @(
@@ -204,6 +206,7 @@ try {
   $runs += $secondWrapper
   $secondChild = Wait-Until { Get-PortableProcess $appPath }
   if ($null -eq $secondChild) { throw "Portable app did not recreate $appPath" }
+  $childPids += $secondChild.ProcessId
   Write-Host "RELAUNCH_APP_PATH=$($secondChild.ExecutablePath)"
   if ($secondChild.ExecutablePath -ne $appPath) {
     throw "Portable relaunch used an unexpected path: $($secondChild.ExecutablePath)"
@@ -236,6 +239,7 @@ try {
   $runs += $buildBWrapper
   $buildBChild = Wait-Until { Get-PortableProcess $appPath }
   if ($null -eq $buildBChild) { throw "Second portable build did not start at $appPath" }
+  $childPids += $buildBChild.ProcessId
   Write-Host "SECOND_BUILD_APP_PATH=$($buildBChild.ExecutablePath)"
   if ($buildBChild.ExecutablePath -ne $appPath) {
     throw "Second portable build used an unexpected path: $($buildBChild.ExecutablePath)"
@@ -248,6 +252,7 @@ try {
   $runs += $concurrencyWrapper
   $concurrencyChild = Wait-Until { Get-PortableProcess $appPath }
   if ($null -eq $concurrencyChild) { throw "Concurrency probe could not start the first wrapper" }
+  $childPids += $concurrencyChild.ProcessId
   $concurrencyPid = $concurrencyChild.ProcessId
   $concurrencyBeforeHash = (Get-FileHash -LiteralPath $appPath -Algorithm SHA256).Hash
   $probeWrapper = Start-Process -FilePath $secondPortablePath -PassThru
@@ -278,10 +283,16 @@ try {
   $probeChild = $concurrencyChildren |
     Where-Object { $_.ProcessId -ne $concurrencyPid } |
     Select-Object -First 1
+  if ($null -ne $probeChild) {
+    $childPids += $probeChild.ProcessId
+  }
   Stop-PortableRun -Wrapper $probeWrapper -Child $probeChild
   Stop-PortableRun -Wrapper $concurrencyWrapper -Child $concurrencyChild
 }
 finally {
+  foreach ($childId in @($childPids | Select-Object -Unique)) {
+    Stop-Process -Id $childId -Force -ErrorAction SilentlyContinue
+  }
   foreach ($run in $runs) {
     Stop-Process -Id $run.Id -Force -ErrorAction SilentlyContinue
   }
@@ -301,6 +312,9 @@ finally {
     Remove-Item -LiteralPath $pinPath -Force -ErrorAction SilentlyContinue
   }
   Remove-Item -LiteralPath $unpackRoot -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $unpackRoot) {
+    Write-Host "PORTABLE_CLEANUP_WARNING=extraction directory remains after cleanup"
+  }
 }
 
 Write-Host "WINDOWS_PORTABLE_E2E=PASS"
