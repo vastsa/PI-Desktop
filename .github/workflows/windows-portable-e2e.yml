@@ -1,0 +1,94 @@
+name: Windows portable E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/desktop/package.json"
+      - "apps/desktop/test/auto-update.test.mjs"
+      - "scripts/windows-portable-e2e.ps1"
+      - ".github/workflows/windows-portable-e2e.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-portable-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable:
+    name: Windows portable package and taskbar smoke
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build package inputs
+        run: |
+          set -euo pipefail
+          cargo build --release --locked -p host-core &
+          host_build_pid=$!
+          trap 'kill "$host_build_pid" 2>/dev/null || true' EXIT
+
+          pnpm install --frozen-lockfile
+          pnpm --filter '@pi-desktop/desktop^...' --fail-if-no-match build
+
+          wait "$host_build_pid"
+          trap - EXIT
+
+      - name: Build Windows packages
+        run: pnpm --filter @pi-desktop/desktop run dist:win -- --x64
+
+      - name: Preserve first portable build
+        run: |
+          set -euo pipefail
+          mkdir -p apps/desktop/release/build-a
+          mv apps/desktop/release/PI-Desktop-Portable-*.exe apps/desktop/release/build-a/
+
+      - name: Build second portable version from the same source
+        working-directory: apps/desktop
+        run: >-
+          pnpm exec electron-builder --win portable --x64 --publish never
+          -c.extraMetadata.version=0.15.2-test-b
+          -c.directories.output=release/build-b
+
+      - name: Run portable extraction and taskbar smoke
+        shell: pwsh
+        run: |
+          $portable = Get-ChildItem "apps/desktop/release/build-a/PI-Desktop-Portable-*.exe" |
+            Select-Object -First 1
+          $secondPortable = Get-ChildItem "apps/desktop/release/build-b/PI-Desktop-Portable-*.exe" |
+            Select-Object -First 1
+          if ($null -eq $portable -or $null -eq $secondPortable) {
+            throw "Both Windows portable artifacts were not produced"
+          }
+          ./scripts/windows-portable-e2e.ps1 `
+            -PortableExe $portable.FullName `
+            -SecondPortableExe $secondPortable.FullName `
+            -RequireTaskbarPin
+
+      - name: Upload portable smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable-e2e-release
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            apps/desktop/release/build-a/PI-Desktop-Portable-*.exe
+            apps/desktop/release/build-b/PI-Desktop-Portable-*.exe

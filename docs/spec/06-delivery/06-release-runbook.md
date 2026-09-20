@@ -595,8 +595,13 @@ runs use notify-and-link delivery (`PORTABLE_EXECUTABLE_FILE`); NSIS keeps
 the in-app download and quit-and-install lane. Data stays in the existing
 application data directory. Portable requests user execution level, so launch
 does not require administrator rights. Its self-extracted app uses the fixed
-per-user temp directory name `PI-Desktop-Portable`, keeping the executable path
-stable for Windows taskbar grouping and pinned shortcuts across launches.
+per-user temp path `%TEMP%\PI-Desktop-Portable\PI-Desktop.exe`, so the running
+executable identity is stable across builds and launches. The launcher removes
+that directory before extraction and after exit; a pin targeting the unpacked
+file can therefore be missing or blank while the app is stopped and is only
+re-established when the app launches again. All portable wrappers for one user
+share the path, so do not run two versions concurrently; an installed NSIS copy
+uses a separate tree.
 
 RPM targets pass `_build_id_links none` to FPM. Bundled Electron binaries live
 under `/opt/PI-Desktop`; omitting global `/usr/lib/.build-id` links prevents

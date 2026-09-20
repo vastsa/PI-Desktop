@@ -16,7 +16,10 @@ ownership or to the NSIS in-app update lane.
 electron-builder's `portable` target produces a user-level self-extracting
 executable. It does not write `latest.yml`. Applying the NSIS updater to a
 portable run would launch the installer and convert the no-install copy into
-an installed one.
+an installed one. In electron-builder 26, the default extraction directory is
+a build-time ksuid: it is stable for one artifact, but changes between builds.
+The taskbar fix therefore needs an explicit name, while also accounting for
+the portable launcher's cleanup and shared-directory behavior.
 
 ## Decision
 
@@ -33,10 +36,11 @@ an installed one.
 6. User data, logs, and secrets stay in the existing application data
    directory. This decision does not introduce a beside-the-exe profile.
 7. The portable target uses the fixed per-user temp directory name
-   `PI-Desktop-Portable` for extraction. The directory is still removed by the
-   portable launcher after exit, but every launch of the same artifact resolves
-   the packaged executable through the same path for Windows taskbar grouping
-   and pinned shortcuts.
+   `PI-Desktop-Portable` for extraction. The packaged executable therefore
+   resolves to `%TEMP%\PI-Desktop-Portable\PI-Desktop.exe` while running and
+   on the next launch, including across portable builds. The launcher still
+   removes that directory before extraction and after the app exits; this is a
+   stable runtime identity, not a persistent installation or pin target.
 
 ## Consequences
 
@@ -47,12 +51,17 @@ an installed one.
 - NSIS in-app updates, hashes, and feed ownership are unchanged.
 - The portable process still unpacks application files under the Windows temp
   directory for that launch, using the stable `PI-Desktop-Portable` directory
-  name.
-  Whitelisting applies to the downloaded portable executable; a policy that
-  also blocks temp-directory execution may still require the NSIS install.
-- Only one PI-Desktop portable launch should use a user profile at a time; the
-  stable extraction directory is shared by launches so taskbar pin targets do
-  not change between runs.
+  name. The launcher deletes the directory on exit, so a taskbar pin that
+  targets the unpacked executable may be missing or show a blank icon while
+  the app is stopped; the next launch recreates the path and restores the
+  running-window identity. Whitelisting applies to the downloaded portable
+  executable; a policy that also blocks temp-directory execution may still
+  require the NSIS install.
+- All portable wrappers for one user, including different versions, share the
+  extraction directory. Do not launch two portable wrappers concurrently or
+  replace one while another is running: the second launcher can remove or
+  overwrite the first launch's files before Electron's single-instance lock
+  is acquired. An installed NSIS copy uses a separate tree.
 
 ## Alternatives considered
 

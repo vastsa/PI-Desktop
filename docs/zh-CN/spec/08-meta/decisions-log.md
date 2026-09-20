@@ -465,7 +465,7 @@
 | 身份证号 | 主题 | 决定 | 基本原理 |
 |---|---|---|---|
 | D126 | 三平台发布交付（电梯D010） | *(amended by D364)* **标签构建将矩阵生成的每个工件发布到 GitHub 版本：macOS dmg/zip (arm64)、Windows NSIS x64、Linux AppImage + deb (x64)，每个都有块图和平台的 `latest*.yml` 电子更新器提要。发布提要会激活 D120 的 Windows NSIS 和 Linux AppImage 的应用内更新通道； macOS 保持通知和链接模式，直到签名通道合格为止。 NSIS 工件名称固定为无空格 (`PI-Desktop-Setup-${version}.${ext}`)，因为 GitHub 资产 URL 会损坏空格。根据基线凹凸规则（基线 `0.4.7`），D010 的仅限 macOS 范围被提升；发布管道本身在 v0.1.1-rc.1/v0.1.1 上通过了端到端合格。** | 无论如何，管道都会在每个标签上构建并验证所有三个平台；将安装程序保留为过期的 Actions 工件（保留 90 天）会阻止用户安装它们，而不会增加安全性。发布更新源是交付的重点：具有应用程序内通道的平台会静默更新，并且未来的平台回归会通过实际安装而不是未使用的工件来呈现。 |
-| D364 | Windows portable exe without installer | **Amend D120 / D126 / ADR 0022: tag builds publish a Windows x64 portable exe `PI-Desktop-Portable-${version}.exe` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The portable target does not write `latest.yml`. Packaged portable runs (`PORTABLE_EXECUTABLE_FILE`) use notify-and-link delivery. NSIS installs keep in-app download and quit-and-install. Data stays in the existing application data directory. Portable requests user execution level. The portable target sets `unpackDirName` to `PI-Desktop-Portable`, so every launch of the same artifact uses a stable per-user extraction path for Windows taskbar grouping and pinning; concurrent launches of that artifact under one user are unsupported.** | Company environments that whitelist a single executable cannot run the NSIS installer. Applying the NSIS updater to a portable run would install the app, so portable stays manual (ADR 0197, E2E-211). A stable extraction directory keeps the packaged executable identity consistent across launches, while the single-user launch constraint prevents concurrent instances from sharing that directory. |
+| D364 | Windows portable exe without installer | **Amend D120 / D126 / ADR 0022: tag builds publish a Windows x64 portable exe `PI-Desktop-Portable-${version}.exe` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The portable target does not write `latest.yml`. Packaged portable runs (`PORTABLE_EXECUTABLE_FILE`) use notify-and-link delivery. NSIS installs keep in-app download and quit-and-install. Data stays in the existing application data directory. Portable requests user execution level. The target sets `unpackDirName` to `PI-Desktop-Portable`, so the running executable resolves to `%TEMP%\PI-Desktop-Portable\PI-Desktop.exe` across builds and launches. The launcher deletes that directory before extraction and after exit, so a stopped pin may be blank until relaunch. All portable wrappers for one user, including different versions, share the directory and must not run concurrently.** | Company environments that whitelist a single executable cannot run the NSIS installer. Applying the NSIS updater to a portable run would install the app, so portable stays manual (ADR 0197, E2E-211). The explicit path keeps the running taskbar identity consistent across builds, while the launcher cleanup and shared directory make stopped pins and concurrent wrappers known limitations. |
 | D260 | 发布文档是一个版本载体 | **稳定版本号提升必须在打标签之前更新每一处带版本号的载体：双语言的应用内变更日志及其测试清单、每个工作区的 `package.json`（包括之前被第三个工作区根 `scripts/release.mjs` 跳过的 `docs/package.json`）、Cargo 工作区版本与 `host-core` 的锁文件条目、`APP_VERSION`，以及 `README.md` 和 `README.zh-CN.md` 中声明的 `<major>.<minor>.x` 发布线。`scripts/check-release-docs.mjs` 校验全部这些；`scripts/release.mjs` 在提升版本号之后运行它，只要任一载体不一致就拒绝提交或打标签，`--skip-docs-check` 仅保留给刻意的非发布性版本提升。扩展 D164。** | 仅有应用内变更日志这道闸门，导致已发布的文档落后：版本已到 `0.10.8`，两个 README 仍在宣传 `0.5.x` 线，而 `docs/package.json` 停在 `0.5.8`。标签是不可逆的，所以这项检查在标签存在之前运行，而不是作为评审礼节。 |
 | D371 | 显式的未签名 macOS 首次启动助手 | *（由 D406 和 D443 修订）* **每个 macOS 分发都附带可执行的 `PI-Desktop-macOS-open.command`，放在 DMG 上拖入 Applications 手势下方的可见首启行。它只查找 `/Applications/PI-Desktop.app` 与 `~/Applications/PI-Desktop.app`，校验 `CFBundleIdentifier` 为 `net.aiuo.pi-desktop`，仅在存在时移除 `com.apple.quarantine`，然后打开应用。永不使用 `sudo`，不接受任意路径，也不替代 Developer ID 签名或公证。** | 未签名的 macOS 通道可能被 quarantine 拦截并显示误导性的\"已损坏\"提示，而仅限终端的 `xattr -cr` 说明比启动失败所需的范围更宽（ADR 0204，E2E-196b） |
 | D443 | 规范应用 ID 与 macOS 代码签名标识 | **修订 D141 / D371 / ADR 0204：应用 ID 为 `net.aiuo.pi-desktop`（`APP_ID`、electron-builder `appId`、macOS `CFBundleIdentifier`、Windows AppUserModelID）。开发用 macOS 宿主为 `net.aiuo.pi-desktop.dev`。不要在 `afterPack`/`afterSign` 对未签名包做 adhoc 签名：嵌套 Electron helper 此时尚未签名，`codesign` 会报 `code object is not signed at all`。见 ADR 0278、issue #524。** | 所有者域名为 `net.aiuo.pi-desktop`。未签名包的 Identifier 绑定推迟到有安全的 helper 签名路径之后。 |
@@ -3543,9 +3543,10 @@ D193 和 D194。
   发布 `PI-Desktop-Portable-<version>.exe`。便携版目标不写入 `latest.yml`。
   已打包的便携版运行（`PORTABLE_EXECUTABLE_FILE`）使用通知加链接交付；NSIS
   仍走应用内下载并在退出时安装。数据仍在现有应用数据目录。便携版请求
-  user 执行级别。目标将 `unpackDirName` 固定为 `PI-Desktop-Portable`，使同一
-  工件在每位用户下都使用稳定的解压路径，以保持任务栏分组和固定项一致；同一
-  用户不支持并发启动该工件。
+  user 执行级别。目标将 `unpackDirName` 固定为 `PI-Desktop-Portable`，使运行中
+  可执行文件在不同构建和多次启动间都解析到 `%TEMP%\PI-Desktop-Portable\PI-Desktop.exe`。
+  启动器会在解压前和退出后删除该目录，因此停止期间固定项可能为空白，重新启动后才恢复。
+  同一用户的所有便携启动器（包括不同版本）共享该目录，不得并发运行。
 - 参见 ADR 0197 与 E2E-211。
 
 ## 2026-09-09 —— 为每个安静间隔命名活动行（D365）
@@ -4590,4 +4591,3 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - host-core 与 sidecar 崩溃仍走监督器路径以及 `host` / `agent` 日志通道。
   什么都不上传。见 `03-runtime/07-process-model.md` §4、
   `03-runtime/09-logging-and-observability.md` 与 `03-runtime/04-data-storage.md`。
-

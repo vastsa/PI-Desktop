@@ -11279,26 +11279,35 @@ are withdrawn with ADR 0165.
 
 #### E2E-211: Windows portable exe launches without an installer (D364)
 
-- **Preconditions**: A Windows x64 tag or `dist:win` package has produced both
-  `PI-Desktop-Setup-<version>.exe` and `PI-Desktop-Portable-<version>.exe` from
-  the shared electron-builder config; a clean user profile is available; the
-  account is a standard user without administrator elevation.
-- **Steps**: 1) Inspect the release directory and `latest.yml`. 2) Launch the
-  portable exe without running the NSIS installer. 3) Confirm the process
-  environment includes `PORTABLE_EXECUTABLE_FILE` and the unpacked app path
-  uses the stable `%TEMP%\PI-Desktop-Portable` directory. 4) Pin the running app
-  to the taskbar, quit, and relaunch the same portable file. 5) Confirm the
-  taskbar entry keeps the PI-Desktop icon and the pinned target resolves to the
-  same unpacked path. 6) Invoke Check for Updates. 7) Confirm Settings → Info
-  offers the releases page rather than Restart to update.
+- **Preconditions**: Windows x64 portable packages from two builds are
+  available (A and B), alongside the matching NSIS package and `latest.yml`;
+  a clean user profile is available; the account is a standard user without
+  administrator elevation.
+- **Steps**: 1) Inspect the release directory and `latest.yml`. 2) Launch
+  portable package A without running the NSIS installer. 3) Confirm the process
+  environment includes `PORTABLE_EXECUTABLE_FILE` and the unpacked app path is
+  `%TEMP%\PI-Desktop-Portable\PI-Desktop.exe`. 4) Pin the running app to the
+  taskbar and record the pinned target and icon. 5) Quit A before launching
+  anything else; confirm the launcher removes the extraction directory and
+  record whether the stopped pin is missing or blank. 6) Relaunch A and confirm
+  the same path is recreated, the running icon is correct, and the pin resolves
+  again. 7) After A has exited, launch package B and confirm it uses the same
+  fixed path. 8) In an isolated run, start B while A is still running and
+  capture the shared-directory removal/overwrite risk; terminate both and mark
+  concurrent portable wrappers unsupported. 9) Invoke Check for Updates. 10)
+  Confirm Settings → Info offers the releases page rather than Restart to update.
 - **Expected**: Both Windows artifacts are space-free and uploaded. `latest.yml`
-  points at the NSIS installer only. The portable exe starts without a setup
+  points at the NSIS installer only. Each portable exe starts without a setup
   wizard or administrator prompt, uses the existing application data directory,
   and reports update mode `manual`. An available update does not download or
-  run `PI-Desktop-Setup-<version>.exe`. Relaunch restores sessions from that
-  same profile. The portable executable path remains stable across launches, so
-  taskbar grouping, icon lookup, and a pinned shortcut do not depend on a new
-  random temp directory.
+  run `PI-Desktop-Setup-<version>.exe`. The explicit unpack path is stable
+  across builds and launches, so the running taskbar grouping and icon lookup
+  use the same path rather than a new build-time ksuid. The launcher removes
+  that path on exit, so the stopped pin may be unavailable or blank; relaunch
+  recreates the path and restores the running icon/pin target. A second portable
+  wrapper must not run concurrently because it can remove or overwrite the
+  first wrapper's shared extraction directory. Relaunch restores sessions from
+  the same profile.
 - **Specs linked**: `01-product/01-product-scope.md`,
   `06-delivery/06-release-runbook.md`, `03-runtime/07-process-model.md`,
   ADR 0197 / D364
