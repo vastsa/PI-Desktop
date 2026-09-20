@@ -72,6 +72,7 @@
 - [05-change-checklist.md](06-delivery/05-change-checklist.md)
 - [06-release-runbook.md](06-delivery/06-release-runbook.md)
 - [07-remote-control-rollout.md](06-delivery/07-remote-control-rollout.md)
+- [rg-baseline-2026-09-13.md](06-delivery/rg-baseline-2026-09-13.md)
 
 ## 7. Plugins
 - [README.md](07-plugins/README.md)

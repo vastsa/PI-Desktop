@@ -69,6 +69,9 @@ to an absolute path before it reaches host-core as a child-process variable.
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
  ├── logs/                # NDJSON app/<category>, host/<category>, agent/<category> logs
  ├── cache/               # disposable caches
+ ├── index/               # rebuildable workspace-search cache (host-core only)
+ │    ├── index.db        # root metadata + file metadata + FTS5 text
+ │    └── index.db.corrupt-<timestamp> # quarantined cache after integrity/schema failure
  ├── review-changes/<sessionId>/<snapshotId>/
  │    ├── before          # bounded pre-tool bytes, when reversible
  │    └── meta.json       # path, hashes, diff state, and ownership
@@ -84,6 +87,17 @@ turn + artifact in one commit). The DB stores **no large payloads**: message
 content lives in `sessions/`, attachments and tool outputs beyond the limits
 of [16-tool-result-limits](16-tool-result-limits.md) live on disk, referenced
 by path/hash.
+
+`index/index.db` is deliberately separate from `pi.sqlite`. It is a disposable,
+rebuildable optimization cache and never filesystem truth. It stores normalized
+root and relative paths, file size and modification time, lifecycle/error
+metadata, and indexed text in FTS5. It stores no credentials, message history,
+project entity records, or file hashes. It is excluded from application backup,
+export, and sync surfaces; corruption or an unsupported index schema quarantines
+the old cache and creates a new empty index without touching `pi.sqlite`.
+The index RPCs are lifecycle-only. Grep reads this cache only through the
+opt-in `indexGrepBoost` fast path, which narrows the candidate file list and
+still verifies every hit with the same scanner, so results stay identical.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 

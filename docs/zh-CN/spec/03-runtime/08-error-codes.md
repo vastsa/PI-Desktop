@@ -110,6 +110,9 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 |---|---|---|
 | `WORKSPACE_REQUIRED` | 不 | 无工作空间限制 |
 | `PATH_OUTSIDE_WORKSPACE` | 不 | 在显式外部路径权限决策之前路径逃逸沙箱，或提示词附件位于其会话 scratch/project/attachment 根目录之外 |
+| `INDEX_UNAVAILABLE` | 不 | 索引存储无法打开，或重建工作线程失败；Grep 始终通过 rg 回退，不受影响 |
+| `INDEX_ROOT_OUTSIDE_WORKSPACE` | 不 | index.status/rebuild/clear 传入了与当前活动工作区根不一致的 root |
+| `INDEX_REBUILD_FAILED` | 不 | 后台索引重建中途失败；索引标记为 failed，Grep 始终通过 rg 回退，不受影响 |
 | `WORKSPACE_PATH_DENIED` | 不 | 显式的 `Read`/`Write`/`Edit` 路径命中了始终开启的安全拒绝名单（私钥、`.env` 文件、凭证包、`.git/objects`）；外部路径授权不会解除它（规格 15 §3） |
 | `READ_PATH_IS_DIRECTORY` | 不 | `Read` 拿到的是目录；结果附带一条 `Glob` 建议 |
 | `TOOL_BINARY_CONTENT` | 不 | `Read` 拒绝把二进制文件倾倒进模型上下文 |

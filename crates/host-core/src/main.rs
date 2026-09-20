@@ -3,6 +3,7 @@ mod agent_capabilities;
 mod artifacts;
 mod audit;
 mod db;
+mod index;
 mod keyboard;
 mod mcp_servers;
 mod network_proxy;

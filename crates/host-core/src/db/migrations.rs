@@ -10,6 +10,10 @@ impl Database {
             "CREATE INDEX IF NOT EXISTS idx_turns_ended_at ON turns(ended_at DESC)",
             [],
         );
+        let _ = self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_turns_started ON turns(started_at)",
+            [],
+        );
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "UPDATE turns

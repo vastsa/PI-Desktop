@@ -1829,13 +1829,20 @@
   background: currentcolor;
 }
 
+/*
+  State tints use one 14% mix, the repo-wide standard (`.idx-chip`,
+  `.idx-badge`, `.agent-capability-glyph`, and the other state pills all sit at
+  14%). These three badge rules were the only 13% holdouts, so a ready/failed
+  capability badge read one step dimmer than the identical state on a glyph or
+  a metric badge.
+*/
 .agent-capability-badge.is-ready {
-  background: color-mix(in oklab, var(--ds-success) 13%, transparent);
+  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
   color: var(--ds-success);
 }
 
 .agent-capability-badge.is-connecting {
-  background: color-mix(in oklab, var(--ds-warning) 13%, transparent);
+  background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
   color: var(--ds-warning);
 }
 
@@ -1844,7 +1851,7 @@
 }
 
 .agent-capability-badge.is-failed {
-  background: color-mix(in oklab, var(--ds-error) 13%, transparent);
+  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
   color: var(--ds-error);
 }
 
@@ -2302,6 +2309,186 @@
   width: 100%;
 }
 
+/* Index library settings page */
+.idx-state {
+  color: var(--ds-text-secondary);
+}
+
+.idx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+/*
+  Metric tile surface, unified with the settings card language (D297): the same
+  translucent `--ds-tile` fill that `.settings-panel` and `.settings-row` use,
+  plus one hairline so a 4-up grid of tiles keeps a readable edge on the dark
+  plate where a 3.5% fill alone can wash out.
+
+  Radius moves off the compact-control rung (`--radius-xs`, 8px) onto
+  `--radius-md-plus` (14px). That is the documented "cards" rung and it is the
+  rung `.settings-row` already uses, so the two-tier system is now: structural
+  panels at `--radius-lg` (16px), cards at 14px. The tile is a card, not a
+  panel, so 14px is the consistent choice.
+*/
+.idx-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+  /*
+    `--ds-border-default` rather than `--ds-border-subtle`: the tile fill sits
+    only ~1.09:1 over the page plate, so the hairline is what actually reads as
+    the card edge. The mockup's border carries similar weight.
+  */
+  border: 1px solid var(--ds-border-default);
+}
+
+.idx-tile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.idx-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--radius-2xs);
+}
+
+.idx-chip-accent {
+  background: color-mix(in oklab, var(--ds-accent) 14%, transparent);
+  color: var(--ds-accent);
+}
+
+.idx-chip-success {
+  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
+  color: var(--ds-success);
+}
+
+.idx-chip-warning {
+  background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
+  color: var(--ds-warning);
+}
+
+.idx-chip-danger {
+  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
+  color: var(--ds-error);
+}
+
+.idx-tile-label {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  overflow: hidden;
+  /* A wrapped two-line label reads better than a truncated one when a badge
+     squeezes the head row (e.g. en "Current streak" at narrow widths). */
+  white-space: normal;
+}
+
+.idx-tile-value {
+  color: var(--ds-text-primary);
+  font-size: var(--text-2xl);
+  line-height: var(--leading-compact);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.idx-tile-caption {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+/*
+  Badges sit in a 26px header row next to the tile label. Without `nowrap` a
+  longer localized label (e.g. the "highest/record/on track" badges, or an
+  error count) wraps to a second line and pushes the 26px row taller, breaking
+  the row rhythm across the grid.
+*/
+.idx-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  white-space: nowrap;
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
+  color: var(--ds-text-secondary);
+}
+
+.idx-badge-warn {
+  background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
+  color: var(--ds-warning);
+}
+
+.idx-badge-ok {
+  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
+  color: var(--ds-success);
+}
+
+.idx-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  white-space: nowrap;
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
+}
+
+.idx-status.ok {
+  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
+  color: var(--ds-success);
+}
+
+.idx-status.busy {
+  background: color-mix(in oklab, var(--ds-accent) 14%, transparent);
+  color: var(--ds-accent);
+}
+
+.idx-status.warn {
+  background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
+  color: var(--ds-warning);
+}
+
+.idx-status.error {
+  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
+  color: var(--ds-error);
+}
+
+.idx-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.idx-error-line {
+  margin-top: var(--space-2);
+  color: var(--ds-error);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.idx-subtitle {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  margin-top: calc(var(--space-2) * -1);
+}
+
 /* Agent extension state inside a plugin row (spec 16 §11). */
 .plugins-agent-extension {
   display: flex;
@@ -2379,10 +2566,105 @@
 }
 
 .agent-extension-diagnostic-message {
-  overflow: hidden;
+ overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/*
+  Build progress row at the top of the index health card: thin determinate bar
+  + file counter + the always-true "Grep is unaffected" reassurance.
+*/
+.idx-progress {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.idx-progress-bar {
+  display: block;
+  flex: 1 1 120px;
+  min-width: 120px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
+  overflow: hidden;
+}
+
+.idx-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--ds-accent);
+  transition: width var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.idx-progress-count {
+  color: var(--ds-text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.idx-progress-note {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* Icon chip + title line for the codebase switch rows (MetricTile head voice). */
+.idx-row-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/*
+  Fast-path value line inside the status tile's caption: a second quiet line
+  with tabular digits, so the health grid stays 4 cards.
+*/
+.idx-tile-metrics {
+  display: block;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+  One-time local-only note at the bottom of the index page. Same soft-tile
+  treatment as the trust notice above; `role="note"` keeps it out of the
+  critical path, so muted ink and a ghost dismiss.
+*/
+.idx-nudge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+
+.idx-nudge-text {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  /*
+    Index tiles reflow on their own (`auto-fit`/`minmax(200px, 1fr)`); only the
+    action row needs help. At ≤820px `.settings-row` stacks and makes its
+    control full-width and left-aligned, but `.idx-actions` (declared later in
+    this file, so it wins on order) pins the buttons right inside that
+    full-width box. This rule comes after `.idx-actions`, so it can restore the
+    left edge. Above 820px the control hugs its content, so the declaration is
+    a no-op there and the horizontal row is untouched.
+  */
+  .idx-actions {
+    justify-content: flex-start;
+  }
+}
 .extension-prompt-message {
   margin: 0 0 12px;
   color: var(--ds-text-primary);

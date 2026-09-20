@@ -31,6 +31,8 @@ rand = "0.10"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+notify = { version = "8.2.0", optional = true }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
@@ -46,3 +48,12 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
+
+[features]
+default = ["workspace-watch"]
+# Filesystem watcher: marks a workspace's index stale on external edits
+# (editor, git, build tools) so Grep's fast path falls back instead of
+# serving candidates that predate the change. On by default — a release
+# host without it would serve fresh roots that external edits have already
+# invalidated, which trades Grep correctness for build convenience.
+workspace-watch = ["dep:notify"]

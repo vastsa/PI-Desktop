@@ -637,6 +637,7 @@ sklm: {
       "subagents": "Sous-agents",
       "import": "Importation",
       "projects": "Projets",
+      "index": "Index",
       "remoteHosts": "Hôtes distants",
       "info": "Informations"
     },
@@ -836,6 +837,7 @@ sklm: {
     "subagentSaved": "Enregistré {{name}}",
     "import": "Importation",
     "projectArchive": "Archive du projet",
+    "index": "Bibliothèque d'index",
     "remoteHosts": {
       "title": "Hôtes distants",
       "listError": "Impossible de charger les hôtes",
@@ -2090,7 +2092,54 @@ sklm: {
       "continue": "Continuer",
       "dismiss": "Ignorer"
     }
-  }
+  },
+  "index": {
+    "loading": "Chargement de l'état de l'index…",
+    "grepBoost": "Accélération de Grep par index",
+    "grepBoostDesc": "Tant que ce commutateur est actif, Grep peut servir depuis l'index de cet espace les recherches littérales sensibles à la casse ; changer d'espace construit le sien en arrière-plan. Le reste retombe sur rg. Tout reste sur cette machine.",
+    "loadErrorTitle": "État de l'index indisponible",
+    "loadErrorDesc": "L'hôte n'a pas répondu. Grep fonctionne sans index.",
+    "retry": "Réessayer",
+    "statusDesc": "L'index est un cache local reconstruisible ; les résultats de Grep n'en dépendent jamais.",
+    "indexSubtitle": "L'index local est un cache accélérateur reconstruisible ; Grep conserve toujours sa solution de repli rg.",
+    "nudgeText": "Ces deux fonctions s'exécutent localement et ne téléversent jamais le contenu de l'espace de travail.",
+    "nudgeDismiss": "Compris",
+    "sectionCode": "Base de code",
+    "fastPathHitRate": "Taux de réussite du chemin rapide",
+    "progressFiles": "{{done}} / {{total}} fichiers",
+    "progressFallback": "Grep bascule automatiquement sur rg ; la recherche n'est pas affectée.",
+    "emptyTitle": "Aucun index pour l'espace actuel",
+    "emptyDesc": "Créez-en un pour voir le nombre et la taille des fichiers. L'index reste sur cette machine et n'est lu que si l'accélération d'index est active.",
+    "actions": "Actions de l'index",
+    "actionsDesc": "Construit ou reconstruit l'index de l'espace courant. Impossible tant que l'accélération d'index est désactivée, puisque rien ne le lirait.",
+    "localOnly": "Tout est stocké localement et jamais envoyé.",
+    "rebuilding": "Indexation…",
+    "clearing": "Effacement…",
+    "actionError": "L'action a échoué. Réessayez ; Grep reste inchangé.",
+    "card": {
+      "health": "État de l'index",
+      "status": "État",
+      "files": "Fichiers indexés",
+      "size": "Taille indexée",
+      "errors": "Fichiers illisibles",
+      "updated": "Dernière mise à jour",
+    },
+    "action": {
+      "rebuild": "Reconstruire l'index",
+      "build": "Créer l'index",
+      "clear": "Effacer l'index",
+    },
+    "status": {
+      "fresh": "Prêt",
+      "building": "Construction",
+      "stale": "Mise à jour",
+      "failed": "Échec",
+      "partial": "Partiel",
+      "disabled": "Désactivé",
+      "skipped_over_limit": "Budget dépassé",
+    },
+  },
 } satisfies EnglishCatalog;
+
 
 export default fr;

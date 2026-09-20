@@ -315,6 +315,7 @@ test("settings nav icons map each destination to a semantic lucide glyph", () =>
   assert.match(settingsPageSource, /agent: <IconBot/);
   assert.match(settingsPageSource, /import: <IconDownload/);
   assert.match(settingsPageSource, /projects: <IconArchive/);
+  assert.match(settingsPageSource, /index: <IconDatabase/);
   assert.match(settingsPageSource, /about: <IconInfo/);
   assert.doesNotMatch(settingsPageSource, /general: <IconSettings/);
   assert.doesNotMatch(settingsPageSource, /agent: <IconConfig/);
@@ -351,6 +352,7 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
     "agent",
     "import",
     "projects",
+    "index",
     "about",
   ].map((id) => settingsSearchSource.indexOf(`id: "${id}"`));
   assert.ok(navOrder.every((index) => index >= 0));
@@ -360,7 +362,6 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
   const shortcutsStart = settingsSearchSource.indexOf('id: "shortcuts"');
   const generalEntry = settingsSearchSource.slice(generalStart, aiStart);
   const aiEntry = settingsSearchSource.slice(aiStart, shortcutsStart);
-  assert.equal(settingsSearchSource.indexOf('id: "usage"'), -1);
   assert.doesNotMatch(generalEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.commandShell/);

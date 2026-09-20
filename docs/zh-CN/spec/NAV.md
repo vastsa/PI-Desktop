@@ -75,6 +75,7 @@
 - [05-change-checklist.md](/zh-CN/spec/06-delivery/05-change-checklist)
 - [06-release-runbook.md](/zh-CN/spec/06-delivery/06-release-runbook)
 - [07-remote-control-rollout.md](/zh-CN/spec/06-delivery/07-remote-control-rollout)
+- [rg-baseline-2026-09-13.md](/zh-CN/spec/06-delivery/rg-baseline-2026-09-13)
 
 ## 7. 插件
 - [README.md](/zh-CN/spec/07-plugins/README)

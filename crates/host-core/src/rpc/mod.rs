@@ -469,6 +469,24 @@ fn rpc_err(code: i64, message: impl Into<String>, error_code: &str) -> JsonRpcEr
     }
 }
 
+fn checked_index_root(
+    requested: Option<PathBuf>,
+    current: PathBuf,
+) -> Result<PathBuf, JsonRpcError> {
+    let current = crate::index::normalize_root(&current);
+    let requested = requested
+        .map(|root| crate::index::normalize_root(&root))
+        .unwrap_or_else(|| current.clone());
+    if requested != current {
+        return Err(rpc_err(
+            1002,
+            "rootPath must match the active workspace",
+            "INDEX_ROOT_OUTSIDE_WORKSPACE",
+        ));
+    }
+    Ok(current)
+}
+
 fn provider_rpc_err(error: impl ToString) -> JsonRpcError {
     let message = error.to_string();
     if message.starts_with("MODEL_ALIAS_TOO_LONG:") {
@@ -679,6 +697,16 @@ fn effective_command_shell_id(settings: Option<&Value>) -> Option<String> {
         .map(|shell| shell.id)
 }
 
+/// P2-B: whether Grep may serve literal searches from the workspace index.
+/// Absent or `false` leaves the fast path inert, which is the shipping
+/// default until the spec/E2E work for the opt-in lands.
+fn index_grep_boost_enabled(settings: Option<&Value>) -> bool {
+    settings
+        .and_then(|value| value.get("indexGrepBoost"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
     let Some(object) = value.as_object() else {
         return Ok(());
@@ -710,6 +738,17 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
     }
     if let Err(message) = crate::network_proxy::validate_network_proxy(value) {
         return Err(rpc_err(1002, message, "INVALID_PARAMS"));
+    }
+    // P2-B: the Grep fast path is opt-in. Reject non-booleans so a malformed
+    // patch cannot switch it on through JSON truthiness.
+    if let Some(flag) = object.get("indexGrepBoost") {
+        if !flag.is_boolean() {
+            return Err(rpc_err(
+                1002,
+                "indexGrepBoost must be a boolean",
+                "INVALID_PARAMS",
+            ));
+        }
     }
     let Some(shell_value) = object.get("defaultCommandShell") else {
         return Ok(());
@@ -1450,6 +1489,143 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "projects": projects }))
         }
+        "index.status" => {
+            let started = std::time::Instant::now();
+            let requested_root = params
+                .get("rootPath")
+                .and_then(Value::as_str)
+                .map(PathBuf::from);
+            let (index, current_root) = {
+                let st = state.lock().await;
+                (
+                    st.index.clone(),
+                    st.workspace
+                        .get()
+                        .map(|workspace| PathBuf::from(workspace.path)),
+                )
+            };
+            let Some(current_root) = current_root else {
+                tracing::info!(
+                    method = "index.status",
+                    duration_ms = started.elapsed().as_millis() as u64,
+                    "index rpc served"
+                );
+                return Ok(json!({ "roots": [] }));
+            };
+            let root = checked_index_root(requested_root, current_root)?;
+            let roots = tokio::task::spawn_blocking(move || index.status(Some(&root)))
+                .await
+                .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?
+                .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?;
+            tracing::info!(
+                method = "index.status",
+                roots = roots.len(),
+                duration_ms = started.elapsed().as_millis() as u64,
+                "index rpc served"
+            );
+            Ok(json!({ "roots": roots }))
+        }
+        "index.rebuild" => {
+            let started = std::time::Instant::now();
+            let requested_root = params
+                .get("rootPath")
+                .and_then(Value::as_str)
+                .map(PathBuf::from);
+            let (index, current_root) = {
+                let st = state.lock().await;
+                (
+                    st.index.clone(),
+                    st.workspace
+                        .get()
+                        .map(|workspace| PathBuf::from(workspace.path)),
+                )
+            };
+            let current_root = current_root
+                .ok_or_else(|| rpc_err(1002, "active workspace required", "INVALID_PARAMS"))?;
+            let root = checked_index_root(requested_root, current_root)?;
+            let audit_root = root.to_string_lossy().into_owned();
+            #[cfg(feature = "workspace-watch")]
+            let watch_root = root.clone();
+            let status = tokio::task::spawn_blocking(move || {
+                index.rebuild(&root, crate::index::IndexLimits::default())
+            })
+            .await
+            .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_REBUILD_FAILED"))?
+            .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_REBUILD_FAILED"))?;
+            // A manually built root is served by the fast path, so it must
+            // also be watched: an external edit has to invalidate it.
+            #[cfg(feature = "workspace-watch")]
+            {
+                let mut st = state.lock().await;
+                if let Some(watcher) = st.workspace_watcher.as_mut() {
+                    if let Err(error) = watcher.watch(&watch_root) {
+                        tracing::warn!(error = %error, "workspace watch failed");
+                    }
+                }
+                drop(st);
+            }
+            // Destructive lifecycle operation: record who rebuilt which root.
+            // Only the redacted summary fields go to the audit log — never any
+            // file content.
+            let st = state.lock().await;
+            let _ = audit::append(
+                &st.db,
+                "index_rebuild",
+                None,
+                json!({
+                    "rootPath": audit_root,
+                    "status": status.status,
+                    "fileCount": status.file_count,
+                    "errorCount": status.error_count,
+                }),
+            );
+            tracing::info!(
+                method = "index.rebuild",
+                status = %status.status,
+                file_count = status.file_count,
+                duration_ms = started.elapsed().as_millis() as u64,
+                "index rpc served"
+            );
+            Ok(json!({ "root": status }))
+        }
+        "index.clear" => {
+            let started = std::time::Instant::now();
+            let requested_root = params
+                .get("rootPath")
+                .and_then(Value::as_str)
+                .map(PathBuf::from);
+            let (index, current_root) = {
+                let st = state.lock().await;
+                (
+                    st.index.clone(),
+                    st.workspace
+                        .get()
+                        .map(|workspace| PathBuf::from(workspace.path)),
+                )
+            };
+            let current_root = current_root
+                .ok_or_else(|| rpc_err(1002, "active workspace required", "INVALID_PARAMS"))?;
+            let root = checked_index_root(requested_root, current_root)?;
+            let audit_root = root.to_string_lossy().into_owned();
+            let cleared = tokio::task::spawn_blocking(move || index.clear(Some(&root)))
+                .await
+                .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?
+                .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?;
+            let st = state.lock().await;
+            let _ = audit::append(
+                &st.db,
+                "index_clear",
+                None,
+                json!({ "rootPath": audit_root, "cleared": cleared }),
+            );
+            tracing::info!(
+                method = "index.clear",
+                cleared,
+                duration_ms = started.elapsed().as_millis() as u64,
+                "index rpc served"
+            );
+            Ok(json!({ "ok": true, "cleared": cleared }))
+        }
         "project.groups.list" => {
             let st = state.lock().await;
             let groups = st
@@ -1705,6 +1881,7 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
             let mut st = state.lock().await;
+            let previous = st.workspace.get().map(|workspace| workspace.path);
             st.hashline.drop_all();
             let ws = st.workspace.set(PathBuf::from(path));
             let pid = st
@@ -1714,11 +1891,93 @@ async fn handle_request(
             st.db
                 .kv_set("app", "currentProjectId", &json!(pid))
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            // P2-B: auto-index the workspace while the Grep boost is on. That
+            // one switch owns both sides of the index because Grep is its
+            // only consumer. A changed path always (re)indexes; an unchanged
+            // path refreshes at most once per refresh interval, so in-place
+            // edits are picked up without re-walking on every workspace.set.
+            // The scan runs on the blocking pool, so workspace.set stays fast
+            // and `index.status` reports `building` until it lands.
+            let settings = st.db.get_setting("app").ok().flatten();
+            let changed = previous.as_deref() != Some(ws.path.as_str());
+            let index = st.index.clone();
+            let root = PathBuf::from(ws.path.clone());
+            let boost = index_grep_boost_enabled(settings.as_ref());
+            let refresh_due = !changed && boost && index.refresh_due(&root);
+            // The index store owns its connection, so its calls below do not
+            // need the app state lock; drop the lock before doing them so
+            // concurrent RPCs are not serialized behind this one.
+            // Keep the opt-in watcher pointed at the workspace the boost
+            // serves: external edits to a watched root mark it stale, so Grep
+            // falls back instead of trusting a candidate set that predates
+            // the change.
+            #[cfg(feature = "workspace-watch")]
+            {
+                if boost {
+                    if let Some(watcher) = st.workspace_watcher.as_mut() {
+                        if let Err(error) = watcher.watch(&root) {
+                            tracing::warn!(error = %error, "workspace watch failed");
+                        }
+                    }
+                }
+            }
+            drop(st);
+            if boost && changed {
+                match index.ensure_index(&root) {
+                    Ok(crate::index::EnsureOutcome::Triggered) => {
+                        // Mark only on a successful trigger: a failed one
+                        // stays due and retries on the next workspace.set.
+                        index.refresh_mark(&root);
+                        let build_index = index.clone();
+                        let build_root = root.clone();
+                        tokio::task::spawn_blocking(move || {
+                            if let Err(error) = build_index
+                                .rebuild(&build_root, crate::index::IndexLimits::default())
+                            {
+                                tracing::warn!(error = %error, "background index rebuild failed");
+                            }
+                        });
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!(error = %error, "auto index ensure failed");
+                    }
+                }
+            } else if boost && refresh_due {
+                // Same-path refresh: a stat-only probe first, and the crawl
+                // only runs when the probe says something actually changed.
+                // Both the probe and the crawl belong on the blocking pool;
+                // the interval is consumed by the attempt either way.
+                let build_index = index.clone();
+                let build_root = root.clone();
+                tokio::task::spawn_blocking(move || {
+                    match build_index.refresh_if_changed(&build_root) {
+                        Ok(true) => {
+                            if let Err(error) = build_index
+                                .rebuild(&build_root, crate::index::IndexLimits::default())
+                            {
+                                tracing::warn!(error = %error, "background index rebuild failed");
+                            }
+                        }
+                        Ok(false) => {}
+                        Err(error) => {
+                            tracing::warn!(error = %error, "index freshness probe failed");
+                        }
+                    }
+                    build_index.refresh_mark(&build_root);
+                });
+            }
             Ok(json!({ "workspace": ws }))
         }
         "workspace.clear" => {
             let mut st = state.lock().await;
             st.hashline.drop_all();
+            #[cfg(feature = "workspace-watch")]
+            if let Some(previous) = st.workspace.get() {
+                if let Some(watcher) = st.workspace_watcher.as_mut() {
+                    watcher.unwatch(std::path::Path::new(&previous.path));
+                }
+            }
             st.workspace.clear();
             st.db
                 .kv_delete("app", "currentProjectId")
@@ -1750,6 +2009,9 @@ async fn handle_request(
                         session_id,
                         &crate::tools::hashline::canonical_key(&resolved),
                     );
+                    // A rollback rewrites workspace content, so the index is
+                    // invalid the same way it is after a Write/Edit.
+                    st.index.mark_stale(std::path::Path::new(root));
                 }
                 sessions::update_tool_review_state(
                     &st.db,
@@ -1799,6 +2061,10 @@ async fn handle_request(
             {
                 gate_default_command_shell_setting(&st)?;
             }
+            // Captured before `stored` is consumed by the merge below: the
+            // boost-enable check compares the incoming switch against the
+            // stored one.
+            let boost_was_on = index_grep_boost_enabled(stored.as_ref());
             let settings = normalize_settings_value(merge_settings_value(stored, params));
             st.db
                 .set_setting("app", &settings)
@@ -1819,6 +2085,35 @@ async fn handle_request(
                 }
             }
             crate::network_proxy::apply_from_settings(Some(&settings));
+            // Turning the Grep boost on must arm the index for the workspace
+            // the user is looking at; otherwise the boost only takes effect
+            // after the next workspace switch or a manual Build, and the
+            // switch's lifetime is disjoint from its only consumer.
+            if index_grep_boost_enabled(Some(&settings)) && !boost_was_on {
+                if let Some(workspace) = st.workspace.get() {
+                    let index = st.index.clone();
+                    let root = PathBuf::from(workspace.path);
+                    drop(st);
+                    match index.ensure_index(&root) {
+                        Ok(crate::index::EnsureOutcome::Triggered) => {
+                            tokio::task::spawn_blocking(move || {
+                                if let Err(error) =
+                                    index.rebuild(&root, crate::index::IndexLimits::default())
+                                {
+                                    tracing::warn!(
+                                        error = %error,
+                                        "boost-enable index build failed"
+                                    );
+                                }
+                            });
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            tracing::warn!(error = %error, "boost-enable ensure failed");
+                        }
+                    }
+                }
+            }
             Ok(json!({ "ok": true }))
         }
 
@@ -3718,6 +4013,30 @@ async fn handle_request(
                     });
                 }
 
+                // Grep consults the index (boost-gated). Write/Edit/Bash get
+                // the store too — not for acceleration, but so a successful
+                // content-changing call can invalidate the workspace's index
+                // (mark stale) and the fast path can never serve a candidate
+                // set that predates the write.
+                let needs_index_for_invalidation =
+                    matches!(p.tool_name.as_str(), "Write" | "Edit" | "Bash");
+                let (index_store, index_grep_boost) =
+                    if p.tool_name == "Grep" || needs_index_for_invalidation {
+                        let st = state.lock().await;
+                        let settings = st
+                            .db
+                            .get_setting("app")
+                            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                        let boost = if p.tool_name == "Grep" {
+                            index_grep_boost_enabled(settings.as_ref())
+                        } else {
+                            false
+                        };
+                        (Some(st.index.clone()), boost)
+                    } else {
+                        (None, false)
+                    };
+
                 let mut result = if tools::is_desktop_dispatched(&p.tool_name) {
                     // Plugin dispatch keeps its existing bounded default timeout;
                     // command-shell timeout semantics apply only to Bash.
@@ -3730,7 +4049,7 @@ async fn handle_request(
                     )
                     .await
                 } else {
-                    tools::execute_tool_with_path_access(
+                    tools::execute_tool_with_index(
                         ws_path.as_deref(),
                         scratch_path.as_deref(),
                         &p.tool_name,
@@ -3740,6 +4059,8 @@ async fn handle_request(
                             bash_options,
                             allow_external_paths: external_path_permission,
                             hashline: Some(hashline_ctx),
+                            index: index_store.as_ref(),
+                            index_grep_boost,
                         },
                     )
                     .await
@@ -4664,9 +4985,10 @@ mod tests {
     use tokio::sync::{mpsc, Mutex};
 
     use super::{
-        capability_err, handle_request, parse_capability_query, parse_capability_target,
-        peek_jsonrpc_id, provider_rpc_err, resolve_plan_workspace, resolve_tool_workspace,
-        resolve_tool_workspace_for_call, scope_err, skill_err,
+        capability_err, handle_request, index_grep_boost_enabled, parse_capability_query,
+        parse_capability_target, peek_jsonrpc_id, provider_rpc_err, resolve_plan_workspace,
+        resolve_tool_workspace, resolve_tool_workspace_for_call, scope_err, skill_err,
+        validate_settings_value,
     };
     use crate::agent_capabilities::CapabilityLevel;
     use crate::plans::{PlanResolveParams, PlanSubmitParams};
@@ -6087,6 +6409,8 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: false,
                 hashline: None,
+                index: None,
+                index_grep_boost: false,
             },
         )
         .await;
@@ -6107,6 +6431,8 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: false,
                 hashline: None,
+                index: None,
+                index_grep_boost: false,
             },
         )
         .await;
@@ -6681,6 +7007,173 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    /// Drives one literal Grep through the real RPC dispatch, so the
+    /// `indexGrepBoost` switch is exercised end to end and not just at the
+    /// tool boundary.
+    async fn execute_literal_grep_through_rpc(
+        state: Arc<Mutex<AppState>>,
+        session_id: &str,
+        tool_call_id: &str,
+        tx: mpsc::UnboundedSender<String>,
+    ) -> Value {
+        handle_request(
+            state,
+            "tools.execute",
+            json!({
+                "sessionId": session_id,
+                "toolCallId": tool_call_id,
+                "toolName": "Grep",
+                "args": { "pattern": "needle" },
+                "mode": "agent"
+            }),
+            tx,
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn grep_literal_fast_path_is_opt_in_and_keeps_results_identical() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(project.join("src")).unwrap();
+        fs::write(project.join("src/main.rs"), "let needle = 1;\n").unwrap();
+        fs::write(project.join("other.txt"), "no match here\n").unwrap();
+
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        // A `fresh` index is the fast path's only precondition; everything else
+        // is the setting.
+        let status = app_state
+            .index
+            .rebuild(&project, crate::index::IndexLimits::default())
+            .unwrap();
+        assert_eq!(status.status, "fresh");
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Index boost".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        // Shipping default: the switch is absent, so Grep walks the tree.
+        let walked = execute_literal_grep_through_rpc(
+            state.clone(),
+            &session.id,
+            "grep-default",
+            tx.clone(),
+        )
+        .await;
+        assert_eq!(walked["content"]["count"].as_u64(), Some(1));
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "indexGrepBoost": true }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+
+        // Same query, now served from the index. The candidate *source*
+        // changed, so the reported result must not.
+        let boosted = execute_literal_grep_through_rpc(
+            state.clone(),
+            &session.id,
+            "grep-boosted",
+            tx.clone(),
+        )
+        .await;
+        assert_eq!(boosted["content"], walked["content"]);
+    }
+
+    #[test]
+    fn index_grep_boost_defaults_off_and_rejects_non_booleans() {
+        assert!(!index_grep_boost_enabled(None));
+        assert!(!index_grep_boost_enabled(Some(&json!({}))));
+        assert!(!index_grep_boost_enabled(Some(
+            &json!({ "indexGrepBoost": false })
+        )));
+        assert!(index_grep_boost_enabled(Some(
+            &json!({ "indexGrepBoost": true })
+        )));
+
+        assert!(validate_settings_value(&json!({ "indexGrepBoost": true })).is_ok());
+        assert!(validate_settings_value(&json!({ "theme": "light" })).is_ok());
+        // A truthy string must not be able to switch the fast path on.
+        assert!(validate_settings_value(&json!({ "indexGrepBoost": "true" })).is_err());
+        assert!(validate_settings_value(&json!({ "indexGrepBoost": 1 })).is_err());
+    }
+
+    #[tokio::test]
+    async fn workspace_set_auto_indexes_only_while_the_grep_boost_is_on() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(workspace.path().join("auto.txt"), "auto index target\n").unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        // Switch off (the default): no index rows are created for the root.
+        handle_request(
+            state.clone(),
+            "workspace.set",
+            json!({ "path": workspace.path().display().to_string() }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let off = handle_request(state.clone(), "index.status", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(off["roots"].as_array().unwrap().len(), 0);
+
+        // Turn the Grep boost on, then switch to a different workspace: the
+        // background rebuild must land at a fresh root.
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "indexGrepBoost": true }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let other = tempfile::tempdir().unwrap();
+        std::fs::write(other.path().join("other.txt"), "other workspace\n").unwrap();
+        handle_request(
+            state.clone(),
+            "workspace.set",
+            json!({ "path": other.path().display().to_string() }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let mut fresh = false;
+        // 20s budget: CI runners under parallel load can take multiple seconds
+        // for the spawned rebuild to win the SQLite write lock and commit.
+        for _ in 0..200 {
+            let status = handle_request(state.clone(), "index.status", json!({}), tx.clone())
+                .await
+                .unwrap();
+            let roots = status["roots"].as_array().unwrap();
+            if roots
+                .first()
+                .is_some_and(|root| root["status"] == "fresh" && root["fileCount"] == 1)
+            {
+                fresh = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(fresh, "background rebuild did not reach fresh in time");
     }
 
     #[tokio::test]
@@ -8608,6 +9101,45 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM notifications", [], |row| row.get(0))
             .unwrap();
         assert_eq!(remaining, 0);
+    }
+
+    #[tokio::test]
+    async fn index_rebuild_and_clear_are_audited() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(workspace.path().join("audit.txt"), "audit target\n").unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "workspace.set",
+            json!({ "path": workspace.path().display().to_string() }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        handle_request(state.clone(), "index.rebuild", json!({}), tx.clone())
+            .await
+            .unwrap();
+        handle_request(state.clone(), "index.clear", json!({}), tx.clone())
+            .await
+            .unwrap();
+
+        let st = state.lock().await;
+        let mut kinds: Vec<String> = st
+            .db
+            .conn()
+            .prepare("SELECT kind FROM audit_log WHERE kind LIKE 'index_%' ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        kinds.sort();
+        assert_eq!(kinds, vec!["index_clear", "index_rebuild"]);
     }
 
     #[tokio::test]

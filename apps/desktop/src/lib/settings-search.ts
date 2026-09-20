@@ -5,6 +5,14 @@
  * like "主题" or "theme" can surface the tab that owns the row.
  */
 
+/**
+ * Settings destinations.
+ *
+ * Usage statistics is deliberately absent: the boundary that keeps the
+ * cross-session dashboard out of Settings (D335 / ADR 0173) stands. The
+ * dashboard ships as a plugin (ADR 0273), so only the index destination
+ * lives here; Core still owns the turns / usage / stats RPCs.
+ */
 export type SettingsTabId =
   | "general"
   | "ai"
@@ -16,6 +24,7 @@ export type SettingsTabId =
   | "subagents"
   | "import"
   | "projects"
+  | "index"
   | "remoteHosts"
   | "about";
 
@@ -231,6 +240,21 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "project.archive",
       "project.restore",
       "project.delete",
+    ],
+  },
+  {
+    id: "index",
+    labelKey: "settings.nav.index",
+    titleKey: "settings.index",
+    // Host/workspace lifecycle — the switch, its status and the rebuild/clear
+    // actions — so it joins the Workspace group instead of a group of its own.
+    group: "workspace",
+    keywordKeys: [
+      "index.card.health",
+      "index.card.files",
+      "index.card.size",
+      "index.action.rebuild",
+      "index.action.clear",
     ],
   },
   {

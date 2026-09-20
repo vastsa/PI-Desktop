@@ -71,6 +71,18 @@ workspace/scratch containment, timeout, and audit rules do not change when a
 tool is loaded. `ToolSearch` itself never executes a workspace operation and
 never bypasses host-core policy.
 
+### 2.2 Grep workspace-index fast path (opt-in, default off)
+
+When `indexGrepBoost` is false or absent, Grep behavior is byte-identical to
+the pre-index walk. When the user enables it, a case-sensitive literal
+pattern (no regex metacharacters, at least three code points) on a `fresh`
+index root may be served from the index: the index narrows the candidate
+file list, and the same per-line scanner and result budget produce the
+output, so the result shape is unchanged. Regex, short, and
+case-insensitive queries always walk. A per-candidate freshness check falls
+back to the normal walk on drift. The index visible set is held equal to
+Grep's visible set by `tools/ignore_rules` and a diff property test.
+
 ## 3. Common Tool Constraints
 
 Every non-interactive execution tool must have:

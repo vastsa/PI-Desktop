@@ -637,6 +637,7 @@ sklm: {
       "subagents": "Subagentes",
       "import": "Importar",
       "projects": "Proyectos",
+      "index": "Índice",
       "remoteHosts": "Hosts remotos",
       "info": "Información"
     },
@@ -836,6 +837,7 @@ sklm: {
     "subagentSaved": "Guardado {{name}}",
     "import": "Importar",
     "projectArchive": "Archivo de proyecto",
+    "index": "Biblioteca de índices",
     "remoteHosts": {
       "title": "Hosts remotos",
       "listError": "No se pudieron cargar los hosts",
@@ -2090,7 +2092,54 @@ sklm: {
       "continue": "Continuar",
       "dismiss": "Descartar"
     }
-  }
+  },
+  "index": {
+    "loading": "Cargando estado del índice…",
+    "grepBoost": "Aceleración de Grep por índice",
+    "grepBoostDesc": "Mientras este interruptor está activo, Grep puede servir desde el índice de este espacio las búsquedas literales sensibles a mayúsculas; al cambiar de espacio, el suyo se construye en segundo plano. Todo lo demás vuelve a rg. Todo queda en este equipo.",
+    "loadErrorTitle": "Estado del índice no disponible",
+    "loadErrorDesc": "El host no respondió. Grep funciona sin índice.",
+    "retry": "Reintentar",
+    "statusDesc": "El índice es una caché local reconstruible; los resultados de Grep nunca dependen de él.",
+    "indexSubtitle": "El índice local es una caché aceleradora reconstruible; Grep siempre conserva su respaldo con rg.",
+    "nudgeText": "Ambas funciones se ejecutan localmente y nunca suben el contenido del espacio de trabajo.",
+    "nudgeDismiss": "Entendido",
+    "sectionCode": "Base de código",
+    "fastPathHitRate": "Acierto de ruta rápida",
+    "progressFiles": "{{done}} / {{total}} archivos",
+    "progressFallback": "Grep usa rg como respaldo automáticamente; la búsqueda no se ve afectada.",
+    "emptyTitle": "Sin índice para el espacio actual",
+    "emptyDesc": "Créalo para ver el número y el tamaño de archivos. El índice queda en este equipo y solo se lee con la aceleración de índice activa.",
+    "actions": "Acciones del índice",
+    "actionsDesc": "Crea o reconstruye el índice del espacio actual. No se puede crear con la aceleración de índice desactivada, porque nada lo leería.",
+    "localOnly": "Todo se guarda localmente y nunca se sube.",
+    "rebuilding": "Indexando…",
+    "clearing": "Borrando…",
+    "actionError": "La acción falló. Puedes reintentarlo; Grep no se ve afectado.",
+    "card": {
+      "health": "Estado del índice",
+      "status": "Estado",
+      "files": "Archivos indexados",
+      "size": "Tamaño indexado",
+      "errors": "Archivos ilegibles",
+      "updated": "Última actualización",
+    },
+    "action": {
+      "rebuild": "Reconstruir índice",
+      "build": "Crear índice",
+      "clear": "Borrar índice",
+    },
+    "status": {
+      "fresh": "Listo",
+      "building": "Construyendo",
+      "stale": "Actualizando",
+      "failed": "Error",
+      "partial": "Parcial",
+      "disabled": "Desactivado",
+      "skipped_over_limit": "Presupuesto excedido",
+    },
+  },
 } satisfies EnglishCatalog;
+
 
 export default es;
