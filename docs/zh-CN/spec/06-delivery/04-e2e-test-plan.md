@@ -7769,6 +7769,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 | E2E-MCP-MARKET-NET-BOUNDARY | URL guard 拒绝凭据、回环、私网、special-use IPv4、v4-mapped、ULA、site-local 和 link-local 及尾点绕过形态；Main 固定已检查的公网地址并逐跳复核 HTTPS 重定向 | 确定性 guard 断言；DNS pin 与响应上限 source-contract 覆盖 |
 | E2E-MCP-MARKET-SEMANTICS | Registry 记录映射为安装模板时保留包版本、named/positional runtime/package 参数与 required/optional 环境变量语义 | 确定性映射断言 |
 | E2E-MCP-MARKET-INSTALL | 内置目录条目经 `resolveCatalogEntry` 解析并通过宿主 `mcp.upsert` RPC 安装；记录落盘 `~/.agents/servers/` | 真实宿主二进制，隔离临时 HOME |
+| E2E-MCP-MARKET-KEYED-ENV | 带密钥的 stdio 目录条目将密钥声明为必填值，解析后只进入启动环境变量而绝不进入 argv；安装表单未提供该值时解析失败 | 针对内置 `firecrawl` 条目的确定性解析断言 |
 
 
 #### E2E-SKILL-MARKET-NET-BOUNDARY：技能源公网 HTTPS 策略拒绝私网与回环

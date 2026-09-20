@@ -13132,6 +13132,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 | E2E-MCP-MARKET-NET-BOUNDARY | URL guard rejects credentials, loopback, private, special-use IPv4, v4-mapped, ULA, site-local and link-local bypass forms (trailing dot included); Main pins the checked public address and rechecks HTTPS redirects | deterministic guard assertions; source-contract coverage for DNS pin and bounded responses |
 | E2E-MCP-MARKET-SEMANTICS | Registry records map to install templates preserving package versions, named/positional runtime/package arguments and required/optional env variables | deterministic mapping assertions |
 | E2E-MCP-MARKET-INSTALL | Builtin catalog entry resolves through `resolveCatalogEntry` and installs via the host `mcp.upsert` RPC; record lands in `~/.agents/servers/` | real host binary, isolated temp HOME |
+| E2E-MCP-MARKET-KEYED-ENV | A keyed stdio catalog entry declares its key as a required value, resolves it into the launcher environment and never into argv, and fails to resolve when the install form supplies no value | deterministic resolution assertions over the builtin `firecrawl` entry |
 
 
 #### E2E-SKILL-MARKET-NET-BOUNDARY: Public-HTTPS skill sources reject private and loopback URLs
