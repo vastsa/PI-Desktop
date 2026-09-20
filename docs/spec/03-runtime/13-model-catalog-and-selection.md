@@ -193,8 +193,23 @@ time, except `omit`, which is preserved on a reasoning model and sends no
 thinking override. An empty binding or a binding containing only `off`
 resolves to `off`.
 
-For a newly created session, the renderer resolves the selected (or app-default)
-model's `ModelBinding`. A reasoning model starts at that binding's
+For a newly created session, the renderer resolves an explicit Composer draft,
+then the last usable explicit Composer provider/model choice on this device,
+then the app default. The last choice must still belong to an enabled,
+authenticated provider and a configured model; otherwise use the app default,
+not an older remembered model. This selection never changes Settings defaults.
+
+Composer model/reasoning actions remember the selected level per provider/model
+in versioned, bounded renderer-local device preferences (at most 100 pairs).
+Opening old conversations, session pinning, mode/permission changes, forks,
+and background API callers do not update this memory. A rejected configuration
+does not update it; accepted next-turn staging does. Older async completions
+cannot replace a later explicit choice. Storage corruption/unavailability
+falls back to Settings and never prevents configuring or creating a session.
+
+A new session or model selection restores that pair's remembered thinking
+level, clamped onto the currently enabled levels (`omit` survives only for
+reasoning models). Without a remembered level, a reasoning model starts at the binding's
 `defaultThinkingLevel` (`omit` is preserved; other values are clamped onto the
 enabled levels). When the default is unset it falls back to the highest enabled
 level seeded from published `supportedThinkingLevels`. A non-reasoning or
@@ -204,7 +219,7 @@ a creation default only and never rewrites an existing session's stored choice.
 Unpinned sessions still advertise that inherited default model's reasoning
 capability on session list/get/create/fork/configure. Enrichment does not pin
 `providerId`/`modelId`; desktop session create does, by writing the then-current
-app default (or Composer draft override) into the durable ids. Later Settings
+resolved Composer choice (or Settings fallback) into the durable ids. Later Settings
 default-model changes do not rewrite an already created session. Opening a
 legacy row whose ids are still empty snapshots the last used turn, else the
 current default, so it stops following Settings. The Composer never treats a
@@ -374,12 +389,12 @@ App-level default:
 - if none configured, onboarding checklist requires provider setup before first agent run
 
 Session-level:
-- inherits app default at creation and stores that `providerId`/`modelId` pair
-- later Settings default-model changes apply only to new sessions and the
-  unpersisted home draft, not to already created sessions
-- initializes thinking to the highest level enabled by the inherited model's
-  binding; published levels seed a new binding, while an empty or `off`-only
-  binding starts at `off`
+- snapshots explicit draft > last usable Composer choice > app default at creation
+- Settings defaults remain the fallback; already created sessions keep their pair
+- restores thinking per provider/model, then the binding default, then the highest
+  enabled level; an empty or `off`-only binding starts at `off`
+- permission and operating mode still follow existing global defaults; a prior
+  session's Auto permission is never remembered for new sessions
 - can override independently
 
 ## 11. Capability gating
@@ -505,9 +520,9 @@ same model to the check mark, the toggle and the duplicate guard.
       refresh keeps the cached picker populated
 - [ ] capability badges visible
 - [ ] session model change applies to next turn only
-- [ ] a newly created session stores the then-current default provider/model, and later default-model changes do not rewrite that session
-- [ ] a new session defaults a reasoning-capable inherited model to that
-      binding's stored default thinking level (clamped onto the enabled set;
+- [ ] a newly created session snapshots draft > remembered usable choice > Settings; later default-model changes do not rewrite that session
+- [ ] a new session restores remembered thinking for the provider/model, else
+      the binding's stored default (clamped onto the enabled set;
       strongest-enabled only when unset) and otherwise defaults to `off`
 - [ ] the settings picker always exposes the canonical thinking ladder;
       published levels seed known models and explicit binding levels clamp the

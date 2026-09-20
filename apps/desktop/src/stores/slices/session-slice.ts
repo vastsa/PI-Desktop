@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { rememberComposerModel } from "../../lib/composer-model-preferences";
 import { prepareTranscriptAction } from "../runtime/transcript-action";
 import type {
   Mode,
@@ -119,6 +120,7 @@ export function createSessionSlice({
   | "configureActiveSession"
   | "abortSession"
 > {
+  let modelChoiceIntent = 0;
   const refreshSessionList = createRefreshCoordinator(async () => {
     const result = await api.listSessions();
     set({ sessions: decorateSessions(result.sessions, get().sessionMeta) });
@@ -574,9 +576,16 @@ export function createSessionSlice({
       }
     },
 
-    configureActiveSession: async (config) => {
+    configureActiveSession: async (config, options) => {
       const sessionId = get().activeSessionId;
+      const choiceIntent = options?.rememberModel ? ++modelChoiceIntent : undefined;
+      const rememberChoice = () => {
+        if (choiceIntent !== undefined && choiceIntent === modelChoiceIntent) {
+          rememberComposerModel(config);
+        }
+      };
       if (!sessionId) {
+        rememberChoice();
         set((state) => ({
           draftConfiguration: {
             mode: config.mode,
@@ -602,6 +611,7 @@ export function createSessionSlice({
             config,
           ),
         );
+        rememberChoice();
         set((state) => ({
           sessions: state.sessions.map((session) =>
             session.id === sessionId
@@ -617,6 +627,7 @@ export function createSessionSlice({
       );
       runtime.pendingSessionConfigurations.delete(sessionId);
       const result = await api.configureSession(sessionId, payload);
+      rememberChoice();
       set((state) => ({
         sessions: state.sessions.map((session) =>
           session.id === sessionId

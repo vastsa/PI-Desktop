@@ -155,16 +155,12 @@ test("draft Composer thinking follows the exact model selected in its menu", () 
     composerSource,
     /const nextModelProvider = thinkingProviderForModel\([\s\S]*?providerModels\[candidate\.id\]/,
   );
-  assert.match(
-    composerSource,
-    /const nextThinkingLevel = activeSession[\s\S]*?thinkingLevelForProvider\(nextModelProvider, thinkingLevel\)[\s\S]*?initialThinkingLevelForBinding\(/,
-  );
-  assert.match(composerSource, /const selectedBinding = provider\?\.models\.find/);
-  assert.match(composerSource, /const draftThinkingLevel = initialThinkingLevelForBinding\(/);
+  assert.match(composerSource, /const nextThinkingLevel = rememberedComposerThinking\(/);
+  assert.match(composerSource, /newSessionModelConfiguration\(/);
   assert.doesNotMatch(composerSource, /highestSupportedThinkingLevel/);
 });
 
-test("new sessions default to the selected model binding's thinking level", () => {
+test("new sessions use the shared remembered model and thinking resolver", () => {
   const materializeSource =
     sessionCoordinationSource.match(
       /async function persistSessionAndSelect[\s\S]*?\n  }\n\n  async function materializeDraftSession/,
@@ -173,11 +169,10 @@ test("new sessions default to the selected model binding's thinking level", () =
     materializeSource.length > 0,
     "materializeDraftSession implementation not found",
   );
-  assert.match(materializeSource, /initialThinkingLevelForBinding\(/);
-  assert.match(materializeSource, /inheritedBinding/);
+  assert.match(materializeSource, /newSessionModelConfiguration\(/);
   assert.match(
     materializeSource,
-    /thinkingLevel:[\s\S]*?defaultThinkingLevel/,
+    /thinkingLevel: inherited\.thinkingLevel/,
   );
   assert.doesNotMatch(materializeSource, /highestSupportedThinkingLevel\(/);
 });

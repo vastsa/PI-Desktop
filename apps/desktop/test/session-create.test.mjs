@@ -62,7 +62,7 @@ test("creating a session reveals the empty destination before host IO", () => {
   assert.match(persist, /commitCreatedEmptySession/);
   assert.match(sessionCoordination, /function commitCreatedEmptySession/);
   assert.match(sessionCoordination, /scheduleHomeDraftAdopt/);
-  assert.match(persist, /inheritedSessionModelBinding/);
+  assert.match(persist, /newSessionModelConfiguration/);
   assert.match(persist, /providerId: inherited\.providerId/);
   assert.match(persist, /modelId: inherited\.modelId/);
   assert.doesNotMatch(persist, /providerId: draftConfig\?\.providerId/);

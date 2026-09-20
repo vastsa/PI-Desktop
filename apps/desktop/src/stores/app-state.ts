@@ -200,7 +200,7 @@ export type AppState = {
     modelId?: string;
     thinkingLevel: SessionThinkingLevel;
     permissionMode?: PermissionMode;
-  }) => Promise<void>;
+  }, options?: { rememberModel?: boolean }) => Promise<void>;
   /** Returns true once accepted unless concurrent smart Stop restores it. */
   sendPrompt: (
     content: string,

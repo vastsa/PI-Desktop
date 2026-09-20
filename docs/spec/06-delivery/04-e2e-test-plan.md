@@ -7786,6 +7786,7 @@ identify the platform validation still needed.
 
 | Acceptance | Scenarios |
 |---|---|
+| B / C / F / Quality - Remember Composer model and thinking | E2E-COMPOSER-remember-model-and-thinking |
 | C / F / Quality — Desktop automations | E2E-SCHEDULED-desktop-automation-lifecycle |
 | A / C — Unicode stdio framing | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
@@ -13854,3 +13855,25 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Automation:** `pnpm test:e2e:dialog-overflow`; source/contract dialog suites
   supplement, but do not replace, real Chromium geometry and pointer checks.
 - **Status:** Implemented. Native Windows evidence; macOS/Linux not qualified.
+
+### E2E-COMPOSER-remember-model-and-thinking
+
+- **Preconditions:** Isolated device profile; two configured reasoning models;
+  global default Alpha/high/Ask; an existing non-empty conversation.
+- **Steps:** Select Beta then low in the Composer. Switch to Alpha and back to
+  Beta. Set the current session's permission to Auto. Open an older Alpha
+  conversation and create a new task. Reload the renderer and create again.
+  Reject a configuration write; complete an older write after a newer choice.
+- **Expected:** Beta/low is restored both on model return and new task/reload;
+  new permissions still inherit Ask. Existing sessions and Settings are unchanged.
+  Navigation and rejected/stale writes do not replace the last explicit choice.
+  Removed/disabled providers or models fall back to Settings; invalid thinking
+  is clamped and corrupt/unavailable storage degrades safely.
+- **Specs:** `03-runtime/13-model-catalog-and-selection.md`,
+  `04-ux/03-permission-ux.md`.
+- **Acceptance:** B / C / F / Quality.
+- **Milestone:** Post-MVP.
+- **Status:** Automated with `node scripts/e2e-composer-preferences.mjs`
+  (real React/Chromium/renderer wiring and localStorage; host API fixtures,
+  no live profiles or provider calls). Invalid-data cases are covered
+  by `apps/desktop/test/composer-model-preferences.test.mjs`.

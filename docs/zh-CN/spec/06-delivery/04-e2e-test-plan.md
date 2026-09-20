@@ -5061,6 +5061,7 @@ IPC 请求无法关闭。
 
 | 验收 | 应用场景 |
 |---|---|
+| B / C / F / Quality — 记忆模型和思考等级 | E2E-COMPOSER-remember-model-and-thinking |
 | C / F / Quality — 桌面定时任务 | E2E-SCHEDULED-desktop-automation-lifecycle |
 | A / C — Unicode stdio 成帧 | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
@@ -8158,3 +8159,16 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **阶段：** 发布后维护。
 - **自动化：** `pnpm test:e2e:dialog-overflow`；源代码检查不能替代实际布局验证。
 - **状态：** 已实现，原生 Windows 已验证，macOS/Linux 尚未实机验证。
+
+### E2E-COMPOSER-remember-model-and-thinking
+
+- **前置条件：** 隔离测试配置，两个推理模型，默认 Alpha/high/Ask，已有非空会话。
+- **步骤：** 选择 Beta/low；切到 Alpha 再回 Beta；当前会话权限改为 Auto；
+  浏览旧 Alpha 会话后新建任务；重载后再次创建；验证配置失败和异步旧请求晚完成。
+- **预期：** 新会话及切回模型恢复 Beta/low，权限仍继承 Ask；旧会话及全局设置不变。
+  浏览历史、失败及过时写入不覆盖记忆；模型失效回退默认，思考档位校验，存储异常安全降级。
+- **规格：** `03-runtime/13-model-catalog-and-selection.md`、`04-ux/03-permission-ux.md`。
+- **验收：** B / C / F / Quality。
+- **里程碑：** Post-MVP。
+- **状态：** `node scripts/e2e-composer-preferences.mjs` 自动化；真实 React/Chromium、
+  渲染器与 localStorage，主机 API 使用测试夹具，不访问真实用户配置或模型服务。

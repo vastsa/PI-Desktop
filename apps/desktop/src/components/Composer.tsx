@@ -17,6 +17,7 @@ import {
   stripInlineComposerFileReferenceTokens,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
+import { newSessionModelConfiguration } from "../lib/composer-model-preferences";
 import { latestTurnContextInspector } from "../lib/latest-turn-context";
 import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
@@ -323,18 +324,19 @@ export function Composer({
       : sessionPermissionMode;
   const composerPermissionMode: Exclude<PermissionMode, "inherit"> =
     mode === "goal" ? "auto" : effectivePermissionMode;
+  const newModel = !activeSession
+    ? newSessionModelConfiguration({
+        draft: draftConfiguration,
+        settings,
+        providers,
+      })
+    : undefined;
   const provider = providers.find(
-    (candidate) =>
-      candidate.id ===
-      (activeSession?.providerId ??
-        (!activeSession ? draftConfiguration?.providerId : undefined) ??
-        settings?.defaultProviderId),
+    (candidate) => candidate.id ===
+      (activeSession?.providerId ?? newModel?.providerId ?? settings?.defaultProviderId),
   );
-  const modelId =
-    activeSession?.modelId ??
-    (!activeSession ? draftConfiguration?.modelId : undefined) ??
-    settings?.defaultModelId ??
-    provider?.defaultModelId;
+  const modelId = activeSession?.modelId ?? newModel?.modelId ??
+    settings?.defaultModelId ?? provider?.defaultModelId;
   const selectedModelCatalog = provider ? providerModels[provider.id] : undefined;
   const catalogThinkingProvider = thinkingProviderForModel(
     provider,
@@ -347,19 +349,11 @@ export function Composer({
     activeSession,
     catalogThinkingProvider,
   });
-  const selectedBinding = provider?.models.find((candidate) =>
-    modelIdsMatch(candidate.id, modelId ?? ""),
-  );
-  // A draft without a session starts at the selected model's stored default
-  // thinking level, clamped onto that binding's enabled ladder.
-  const draftThinkingLevel = initialThinkingLevelForBinding(
-    selectedBinding,
-    thinkingProvider?.supportedThinkingLevels,
-  );
-  const sessionThinkingLevel =
-    activeSession?.thinkingLevel ??
-    (!activeSession ? draftConfiguration?.thinkingLevel : undefined) ??
-    draftThinkingLevel;
+  const sessionThinkingLevel = activeSession?.thinkingLevel ?? newModel?.thinkingLevel ??
+    initialThinkingLevelForBinding(
+      provider?.models.find((candidate) => modelIdsMatch(candidate.id, modelId ?? "")),
+      thinkingProvider?.supportedThinkingLevels,
+    );
   const configuredThinkingLevel = isThinkingLevel(sessionThinkingLevel)
     ? sessionThinkingLevel
     : "off";

@@ -6,8 +6,6 @@ import type {
 } from "@pi-desktop/shared";
 import {
   contextCompactionMark,
-  initialThinkingLevelForBinding,
-  modelIdsMatch,
   normalizeMode,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
@@ -18,7 +16,7 @@ import {
   FORKED_SESSION_WINDOW,
 } from "../../lib/session-fork";
 import { EMPTY_SESSION_WINDOW } from "../../lib/session-create";
-import { inheritedSessionModelBinding } from "../../lib/session-model";
+import { newSessionModelConfiguration } from "../../lib/composer-model-preferences";
 import {
   clearSessionPanes,
   retainSessionPane,
@@ -280,21 +278,11 @@ export function createSessionCoordination({
       options && "draftConfiguration" in options
         ? options.draftConfiguration
         : state.draftConfiguration;
-    const inherited = inheritedSessionModelBinding({
+    const inherited = newSessionModelConfiguration({
       draft: draftConfig,
       settings,
       providers: state.providers,
     });
-    const defaultProvider = state.providers.find(
-      (provider) => provider.id === inherited.providerId,
-    );
-    const inheritedBinding = defaultProvider?.models.find((candidate) =>
-      modelIdsMatch(candidate.id, inherited.modelId ?? ""),
-    );
-    const defaultThinkingLevel = initialThinkingLevelForBinding(
-      inheritedBinding,
-      defaultProvider?.supportedThinkingLevels,
-    );
     const previousSessionId = state.activeSessionId;
     revealEmptyCreatingSession(active);
     let created: Awaited<ReturnType<typeof api.createSession>>;
@@ -302,7 +290,7 @@ export function createSessionCoordination({
       created = await api.createSession({
         title: untitledTaskTitle(),
         mode: draftConfig?.mode ?? normalizeMode(settings?.defaultMode),
-        thinkingLevel: draftConfig?.thinkingLevel ?? defaultThinkingLevel,
+        thinkingLevel: inherited.thinkingLevel,
         permissionMode: draftConfig?.permissionMode,
         providerId: inherited.providerId,
         modelId: inherited.modelId,

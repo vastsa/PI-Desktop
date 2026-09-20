@@ -4,11 +4,8 @@ import type {
   ProviderPublic,
   SessionThinkingLevel,
 } from "@pi-desktop/shared";
-import {
-  initialThinkingLevelForBinding,
-  modelIdsMatch,
-} from "@pi-desktop/shared";
 import { useAppStore } from "../../../../stores/app-store";
+import { rememberedComposerThinking } from "../../../../lib/composer-model-preferences";
 import {
   composerModelMatchesQuery,
   composerModelsForProvider,
@@ -18,7 +15,6 @@ import {
 import { providerThinkingLevels } from "../../../../lib/session-thinking";
 import {
   sessionThinkingMenuLevels,
-  thinkingLevelForProvider,
   thinkingProviderForModel,
   type ComposerMenuView,
 } from "../model";
@@ -83,7 +79,7 @@ export function useComposerModelMenu({
           providerId: current.providerId,
           modelId: current.modelId,
           thinkingLevel: level,
-        });
+        }, { rememberModel: true });
       },
       onError: (error) => {
         const current = thinkingConfigRef.current;
@@ -245,29 +241,27 @@ export function useComposerModelMenu({
   };
 
   const selectModel = async (candidate: ProviderPublic, nextModelId: string) => {
+    const sessionId = useAppStore.getState().activeSessionId;
     thinkingQueueRef.current?.invalidate();
     await thinkingQueueRef.current?.idle();
+    if (useAppStore.getState().activeSessionId !== sessionId) return;
     try {
       const nextModelProvider = thinkingProviderForModel(
         candidate,
         nextModelId,
         providerModels[candidate.id],
       );
-      const nextBinding = candidate.models.find((entry) =>
-        modelIdsMatch(entry.id, nextModelId),
+      const nextThinkingLevel = rememberedComposerThinking(
+        candidate,
+        nextModelId,
+        nextModelProvider?.supportedThinkingLevels,
       );
-      const nextThinkingLevel = activeSessionId
-        ? thinkingLevelForProvider(nextModelProvider, thinkingLevel)
-        : initialThinkingLevelForBinding(
-            nextBinding,
-            nextModelProvider?.supportedThinkingLevels,
-          );
       await configureActiveSession({
         mode,
         providerId: candidate.id,
         modelId: nextModelId,
         thinkingLevel: nextThinkingLevel,
-      });
+      }, { rememberModel: true });
       setQuery("");
       setView("root");
       setModelHighlight(-1);
