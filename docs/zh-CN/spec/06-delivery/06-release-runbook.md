@@ -507,7 +507,8 @@ Native-runner 输出矩阵：
 
 便携版 Windows 目标不会写入 `latest.yml`。已打包的便携版运行使用通知加链接
 交付（`PORTABLE_EXECUTABLE_FILE`）；NSIS 仍走应用内下载并在退出时安装。
-数据仍在现有应用数据目录。便携版请求 user 执行级别，因此启动不需要管理员权限。
+数据仍在现有应用数据目录。便携版请求 user 执行级别，因此启动不需要管理员权限。自解压应用使用固定的
+每用户临时目录名 `PI-Desktop-Portable`，使 Windows 任务栏分组和固定快捷方式在多次启动间保持稳定。
 
 RPM 目标会向 FPM 传入 `_build_id_links none`。捆绑的 Electron 二进制文件位于
 `/opt/PI-Desktop` 下；省略全局 `/usr/lib/.build-id` 链接，可以避免与其他捆绑相同

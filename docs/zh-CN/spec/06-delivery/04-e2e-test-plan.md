@@ -6907,12 +6907,15 @@ IPC 请求无法关闭。
   产出 `PI-Desktop-Setup-<version>.exe` 和 `PI-Desktop-Portable-<version>.exe`；
   有干净用户配置；账户是无需管理员提升的标准用户。
 - **步骤**：1) 检查发布目录和 `latest.yml`。2) 不运行 NSIS 安装程序，直接启动
-  便携版 exe。3) 确认进程环境包含 `PORTABLE_EXECUTABLE_FILE`。4) 调用检查更新。
-  5) 确认设置 → 信息提供发布页而不是“重启以更新”。6) 退出并再次启动同一便携文件。
+  便携版 exe。3) 确认进程环境包含 `PORTABLE_EXECUTABLE_FILE`，并且解压后的应用路径使用稳定的
+  `%TEMP%\PI-Desktop-Portable` 目录。4) 将运行中的应用固定到任务栏，退出并再次启动同一便携文件。
+  5) 确认任务栏入口保留 PI-Desktop 图标，且固定目标解析到相同的解压路径。6) 调用检查更新。
+  7) 确认设置 → 信息提供发布页而不是“重启以更新”。
 - **预期**：两个 Windows 工件都无空格并已上传。`latest.yml` 只指向 NSIS 安装程序。
   便携版 exe 无需安装向导或管理员提示即可启动，使用现有应用数据目录，
   并报告更新模式 `manual`。可用更新不会下载或运行
-  `PI-Desktop-Setup-<version>.exe`。再次启动从同一配置恢复会话。
+  `PI-Desktop-Setup-<version>.exe`。再次启动从同一配置恢复会话。便携可执行文件路径在多次启动间保持稳定，
+  因此任务栏分组、图标查找和固定快捷方式不依赖新的随机临时目录。
 - **链接规格**：`01-product/01-product-scope.md`、
   `06-delivery/06-release-runbook.md`、`03-runtime/07-process-model.md`、
   ADR 0197 / D364
