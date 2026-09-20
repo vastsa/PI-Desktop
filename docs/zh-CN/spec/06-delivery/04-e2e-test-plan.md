@@ -6926,8 +6926,9 @@ IPC 请求无法关闭。
 - **状态**：打包契约由单元测试覆盖；`Windows portable E2E` 工作流自动执行
   NSIS/便携版工件检查、解压、清理、重新启动、跨构建和并发 smoke。若 hosted
   runner 没有 Explorer 固定命令，默认运行会将任务栏固定资格记录为
-  `NOT_RUN`；需要在具备交互式桌面会话的 Windows 运行器上手动分发并设置
-  `require_taskbar_pin=true`，才能完成原生任务栏资格验证。
+  `NOT_RUN`。要完成原生任务栏资格验证，需要为该工作流配置具备交互式桌面会话的
+  Windows 运行器（或直接在那里运行脚本），并设置 `require_taskbar_pin=true`；默认的
+  `windows-latest` 运行器不能可靠地提供这一能力。
 
 #### E2E-201：为已配置模型设置别名并复制模型 id
 

@@ -11317,9 +11317,11 @@ are withdrawn with ADR 0165.
 - **Status**: Packaging contract is unit-covered; `Windows portable E2E` workflow
   automates the native NSIS/portable artifact checks, extraction, cleanup,
   relaunch, cross-build, and concurrency smoke. The hosted-runner default records
-  taskbar pin qualification as `NOT_RUN` when no Explorer pin verb is available;
-  dispatch with `require_taskbar_pin=true` on a Windows runner with an interactive
-  desktop session to complete native taskbar qualification.
+  taskbar pin qualification as `NOT_RUN` when no Explorer pin verb is available.
+  Provision an interactive Windows runner for this workflow (or run the script
+  there) and enable `require_taskbar_pin=true` to complete native taskbar
+  qualification; the default `windows-latest` runner does not provide that
+  capability reliably.
 
 #### E2E-213: The first Composer model menu paint keeps configured aliases
 

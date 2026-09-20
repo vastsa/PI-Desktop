@@ -102,5 +102,7 @@ Windows x64 packaging and native-shell smoke. It builds the NSIS and portable
 artifacts, verifies the NSIS feed, checks extraction/cleanup and the known
 shared-directory concurrency limitation described by E2E-211. The default
 hosted-runner path records taskbar pin qualification as `NOT_RUN` when Explorer
-does not expose the pin verb; dispatch it with `require_taskbar_pin=true` on a
-Windows runner that has an interactive desktop session for that qualification.
+does not expose the pin verb. To complete that qualification, provision an
+interactive Windows runner for this workflow (or run the script there) and
+enable `require_taskbar_pin=true`; the repository's default `windows-latest`
+runner does not provide that capability reliably.

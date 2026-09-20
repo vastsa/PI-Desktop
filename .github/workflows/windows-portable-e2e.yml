@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       require_taskbar_pin:
-        description: "Fail unless an interactive Windows shell can pin the app"
+        description: "Fail unless the selected Windows runner can pin the app"
         required: false
         default: false
         type: boolean
