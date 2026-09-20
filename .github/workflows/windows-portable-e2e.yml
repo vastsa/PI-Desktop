@@ -2,6 +2,12 @@ name: Windows portable E2E
 
 on:
   workflow_dispatch:
+    inputs:
+      require_taskbar_pin:
+        description: "Fail unless an interactive Windows shell can pin the app"
+        required: false
+        default: false
+        type: boolean
   pull_request:
     paths:
       - "apps/desktop/package.json"
@@ -54,6 +60,38 @@ jobs:
       - name: Build Windows packages
         run: pnpm --filter @pi-desktop/desktop run dist:win -- --x64
 
+      - name: Verify Windows release artifacts
+        shell: pwsh
+        run: |
+          $release = "apps/desktop/release"
+          $nsis = @(Get-ChildItem -LiteralPath $release -Filter "PI-Desktop-Setup-*.exe" -File)
+          $portable = @(Get-ChildItem -LiteralPath $release -Filter "PI-Desktop-Portable-*.exe" -File)
+          $feedPath = Join-Path $release "latest.yml"
+          if ($nsis.Count -ne 1) {
+            throw "Expected exactly one NSIS installer, found $($nsis.Count)"
+          }
+          if ($portable.Count -ne 1) {
+            throw "Expected exactly one portable executable, found $($portable.Count)"
+          }
+          if (-not (Test-Path -LiteralPath $feedPath -PathType Leaf)) {
+            throw "NSIS update feed was not produced: $feedPath"
+          }
+          foreach ($artifact in @($nsis + $portable)) {
+            if ($artifact.Name -match "\s") {
+              throw "Windows artifact name contains whitespace: $($artifact.Name)"
+            }
+          }
+          $feed = Get-Content -LiteralPath $feedPath -Raw
+          if ($feed -notmatch "PI-Desktop-Setup-") {
+            throw "latest.yml does not reference the NSIS installer"
+          }
+          if ($feed -match "PI-Desktop-Portable-") {
+            throw "latest.yml must not reference the portable executable"
+          }
+          Write-Host "NSIS_ARTIFACT=$($nsis[0].Name)"
+          Write-Host "PORTABLE_ARTIFACT=$($portable[0].Name)"
+          Write-Host "UPDATE_FEED=$feedPath"
+
       - name: Preserve first portable build
         run: |
           set -euo pipefail
@@ -69,6 +107,8 @@ jobs:
 
       - name: Run portable extraction and taskbar smoke
         shell: pwsh
+        env:
+          REQUIRE_TASKBAR_PIN: ${{ inputs.require_taskbar_pin }}
         run: |
           $portable = Get-ChildItem "apps/desktop/release/build-a/PI-Desktop-Portable-*.exe" |
             Select-Object -First 1
@@ -77,10 +117,27 @@ jobs:
           if ($null -eq $portable -or $null -eq $secondPortable) {
             throw "Both Windows portable artifacts were not produced"
           }
-          ./scripts/windows-portable-e2e.ps1 `
-            -PortableExe $portable.FullName `
-            -SecondPortableExe $secondPortable.FullName `
-            -RequireTaskbarPin
+          $arguments = @{
+            PortableExe = $portable.FullName
+            SecondPortableExe = $secondPortable.FullName
+          }
+          if ([string]::Equals([string]$env:REQUIRE_TASKBAR_PIN, "true", [StringComparison]::OrdinalIgnoreCase)) {
+            $arguments.RequireTaskbarPin = $true
+          }
+          $output = @()
+          $scriptSucceeded = $false
+          try {
+            $output = @(& ./scripts/windows-portable-e2e.ps1 @arguments *>&1)
+            $scriptSucceeded = $?
+          } catch {
+            $output += $_
+          }
+          $outputText = @($output | ForEach-Object { "$_" })
+          $outputText |
+            Tee-Object -FilePath windows-portable-e2e.log
+          if (-not $scriptSucceeded -or $outputText -notcontains "WINDOWS_PORTABLE_E2E=PASS") {
+            exit 1
+          }
 
       - name: Upload portable smoke logs
         if: always()
@@ -92,3 +149,7 @@ jobs:
           path: |
             apps/desktop/release/build-a/PI-Desktop-Portable-*.exe
             apps/desktop/release/build-b/PI-Desktop-Portable-*.exe
+            apps/desktop/release/PI-Desktop-Setup-*.exe
+            apps/desktop/release/PI-Desktop-Setup-*.exe.blockmap
+            apps/desktop/release/latest.yml
+            windows-portable-e2e.log

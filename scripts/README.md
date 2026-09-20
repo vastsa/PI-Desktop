@@ -32,7 +32,7 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 | `check-linux-host-glibc.mjs` | `node scripts/check-linux-host-glibc.mjs [bin]` | Fail a Linux host-core binary whose needed glibc is above 2.35 |
 | `make-icon.py` | `python3 scripts/make-icon.py` | Derive the package PNG, the macOS tray template, and the iconset/ICNS from the canonical PNG |
 | `publish-screenshots.py` | `python3 scripts/publish-screenshots.py` | Publish documentation screenshots |
-| `windows-portable-e2e.ps1` | `pwsh scripts/windows-portable-e2e.ps1 -PortableExe <path> -SecondPortableExe <path> -RequireTaskbarPin` | Windows-runner smoke for portable extraction, cleanup, taskbar pin target, relaunch, cross-build path reuse, and shared-directory concurrency |
+| `windows-portable-e2e.ps1` | `pwsh scripts/windows-portable-e2e.ps1 -PortableExe <path> -SecondPortableExe <path> [-RequireTaskbarPin]` | Windows-runner smoke for portable extraction, cleanup, relaunch, cross-build path reuse, and shared-directory concurrency; taskbar pin qualification is opt-in on an interactive runner |
 
 ## Development
 
@@ -98,6 +98,9 @@ runbook](../docs/spec/06-delivery/06-release-runbook.md).
   `--baseline` renders the `origin/main` error component for comparison.
 
 `.github/workflows/windows-portable-e2e.yml` is a manually dispatchable
-Windows x64 packaging and native-shell smoke. It builds a real portable exe,
-checks extraction/cleanup and the taskbar pin target, then probes the known
-shared-directory concurrency limitation described by E2E-211.
+Windows x64 packaging and native-shell smoke. It builds the NSIS and portable
+artifacts, verifies the NSIS feed, checks extraction/cleanup and the known
+shared-directory concurrency limitation described by E2E-211. The default
+hosted-runner path records taskbar pin qualification as `NOT_RUN` when Explorer
+does not expose the pin verb; dispatch it with `require_taskbar_pin=true` on a
+Windows runner that has an interactive desktop session for that qualification.

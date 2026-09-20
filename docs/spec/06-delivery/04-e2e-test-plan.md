@@ -11302,7 +11302,8 @@ are withdrawn with ADR 0165.
   and reports update mode `manual`. An available update does not download or
   run `PI-Desktop-Setup-<version>.exe`. The explicit unpack path is stable
   across builds and launches, so the running taskbar grouping and icon lookup
-  use the same path rather than a new build-time ksuid. The launcher removes
+  use the same stable path rather than a new build-time ksuid; running-window
+  grouping remains owned by the app user model ID. The launcher removes
   that path on exit, so the stopped pin may be unavailable or blank; relaunch
   recreates the path and restores the running icon/pin target. A second portable
   wrapper must not run concurrently because it can remove or overwrite the
@@ -11314,9 +11315,11 @@ are withdrawn with ADR 0165.
 - **Acceptance**: Quality (release packaging)
 - **Milestone**: M6+
 - **Status**: Packaging contract is unit-covered; `Windows portable E2E` workflow
-  automates the native packaging, extraction, cleanup, pin, relaunch, cross-build,
-  and concurrency smoke. Native taskbar qualification remains pending a capable
-  Windows runner.
+  automates the native NSIS/portable artifact checks, extraction, cleanup,
+  relaunch, cross-build, and concurrency smoke. The hosted-runner default records
+  taskbar pin qualification as `NOT_RUN` when no Explorer pin verb is available;
+  dispatch with `require_taskbar_pin=true` on a Windows runner with an interactive
+  desktop session to complete native taskbar qualification.
 
 #### E2E-213: The first Composer model menu paint keeps configured aliases
 

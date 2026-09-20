@@ -109,17 +109,47 @@ function Stop-PortableRun {
   }
 }
 
+function Stop-PortableProcesses {
+  param([Parameter(Mandatory = $true)] [string]$Root)
+
+  $canonicalRoot = [IO.Path]::GetFullPath($Root)
+  $rootPrefix = $canonicalRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  for ($attempt = 0; $attempt -lt 10; $attempt++) {
+    $processes = @(
+      Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+          $path = $_.ExecutablePath
+          if ($null -eq $path) { return $false }
+          try {
+            $canonicalPath = [IO.Path]::GetFullPath($path)
+          } catch {
+            return $false
+          }
+          $canonicalPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)
+        }
+    )
+    foreach ($process in $processes) {
+      Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    if ($processes.Count -eq 0) { return $true }
+    Start-Sleep -Milliseconds 500
+  }
+  return $false
+}
+
 $portablePath = (Resolve-Path -LiteralPath $PortableExe).Path
 $secondPortablePath = if ($SecondPortableExe) {
   (Resolve-Path -LiteralPath $SecondPortableExe).Path
 } else {
   $portablePath
 }
-$tempRoot = (Resolve-Path -LiteralPath $env:TEMP).Path
-$unpackRoot = Join-Path $tempRoot $UnpackDirName
-$appPath = Join-Path $unpackRoot "PI-Desktop.exe"
+$tempRoot = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $env:TEMP).Path)
+$unpackRoot = [IO.Path]::GetFullPath((Join-Path $tempRoot $UnpackDirName))
+$appPath = [IO.Path]::GetFullPath((Join-Path $unpackRoot "PI-Desktop.exe"))
+$tempPrefix = $tempRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 
-if (-not $unpackRoot.StartsWith($tempRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+if ([string]::Equals($unpackRoot, $tempRoot, [StringComparison]::OrdinalIgnoreCase) -or
+    -not $unpackRoot.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase)) {
   throw "Refusing to use an unpack path outside TEMP: $unpackRoot"
 }
 
@@ -159,6 +189,10 @@ try {
   $pinWasPresent = $pinnedBefore.Count -gt 0
   $pinCreated = $pinWasPresent -or (Invoke-PinToTaskbar $appPath)
   Write-Host "TASKBAR_PIN_CREATED=$pinCreated"
+  if (-not $pinCreated) {
+    Write-Host "TASKBAR_PIN_E2E=NOT_RUN"
+    Write-Host "TASKBAR_PIN_NOT_RUN_REASON=Windows shell did not expose a Pin to taskbar verb"
+  }
   if (-not $pinCreated -and $RequireTaskbarPin) {
     throw "Windows shell did not expose a Pin to taskbar verb for $appPath"
   }
@@ -182,8 +216,12 @@ try {
       $createdPinPaths = @($pinnedWhileRunning | ForEach-Object { $_.Path })
     }
   }
-  if ($RequireTaskbarPin -and $pinnedWhileRunning.Count -eq 0) {
+  if ($pinCreated -and $pinnedWhileRunning.Count -eq 0) {
+    Write-Host "TASKBAR_PIN_E2E=FAIL"
     throw "Pin to taskbar did not create a shortcut targeting $appPath"
+  }
+  if ($pinnedWhileRunning.Count -gt 0) {
+    Write-Host "TASKBAR_PIN_E2E=PASS"
   }
 
   Stop-PortableRun -Wrapper $firstWrapper -Child $firstChild
@@ -225,10 +263,11 @@ try {
   if ($pinnedAfterRelaunch.Count -gt 0) {
     Write-Host "TASKBAR_PIN_ICON_RELAUNCH=$($pinnedAfterRelaunch[0].IconLocation)"
   }
+  if ($pinCreated -and $pinnedAfterRelaunch.Count -eq 0) {
+    Write-Host "TASKBAR_PIN_E2E=FAIL"
+    throw "Taskbar pin did not resolve after relaunch"
+  }
   if ($RequireTaskbarPin) {
-    if ($pinnedAfterRelaunch.Count -eq 0) {
-      throw "Taskbar pin did not resolve after relaunch"
-    }
     if ([string]::IsNullOrWhiteSpace([string]$pinnedAfterRelaunch[0].IconLocation)) {
       throw "Taskbar pin has no icon location after relaunch"
     }
@@ -295,7 +334,9 @@ finally {
   }
   foreach ($run in $runs) {
     Stop-Process -Id $run.Id -Force -ErrorAction SilentlyContinue
+    Wait-Process -Id $run.Id -Timeout 10 -ErrorAction SilentlyContinue
   }
+  $pinCleanupComplete = $true
   $cleanupPinPaths = @($createdPinPaths)
   if ($baselinePinsCaptured) {
     try {
@@ -306,15 +347,38 @@ finally {
       }
     } catch {
       Write-Host "TASKBAR_PIN_CLEANUP_SCAN_ERROR=$($_.Exception.Message)"
+      $pinCleanupComplete = $false
     }
   }
   foreach ($pinPath in @($cleanupPinPaths | Select-Object -Unique)) {
     Remove-Item -LiteralPath $pinPath -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $pinPath) {
+      Write-Host "TASKBAR_PIN_CLEANUP_FAILED=$pinPath"
+      $pinCleanupComplete = $false
+    }
   }
-  Remove-Item -LiteralPath $unpackRoot -Recurse -Force -ErrorAction SilentlyContinue
-  if (Test-Path -LiteralPath $unpackRoot) {
-    Write-Host "PORTABLE_CLEANUP_WARNING=extraction directory remains after cleanup"
+  $portableProcessesStopped = $true
+  $portableCleanupComplete = $false
+  for ($attempt = 0; $attempt -lt 10; $attempt++) {
+    $portableProcessesStopped = Stop-PortableProcesses $unpackRoot
+    Remove-Item -LiteralPath $unpackRoot -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path -LiteralPath $unpackRoot)) {
+      $portableProcessesStopped = Stop-PortableProcesses $unpackRoot
+      if ($portableProcessesStopped) {
+        $portableCleanupComplete = $true
+        break
+      }
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  if (-not $portableProcessesStopped) {
+    Write-Host "PORTABLE_CHILD_CLEANUP_FAILED=processes remain under $unpackRoot"
+  }
+  if (-not $portableCleanupComplete) {
+    Write-Host "PORTABLE_CLEANUP_FAILED=extraction directory remains after cleanup"
+  }
+  if (-not $pinCleanupComplete -or -not $portableProcessesStopped -or -not $portableCleanupComplete) {
+    throw "Portable smoke cleanup failed"
   }
 }
-
 Write-Host "WINDOWS_PORTABLE_E2E=PASS"
