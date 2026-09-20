@@ -189,8 +189,8 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
    sidecar 与上下文检查器仍处在同一个有效窗口上。
 8. 设置为每个 binding 渲染七个规范思考级别。对已知的推理模型，已发布的级别
    一开始就是选中的。非推理或未知模型显示同样的选项但不选中，并附一行简短的
-   手动覆盖说明。`defaultThinkingLevel` 从该 binding 已启用的级别中选取，
-   因此存下来的默认值始终属于那个显式集合。
+   手动覆盖说明。`defaultThinkingLevel` 从 `omit` 加上该 binding 已启用的级别
+   中选取，因此存下来的默认值要么是 `omit`，要么属于那个显式集合。
 9. `supportsImages` 与 `supportsDocuments` 是三态覆盖。缺省或 `null` 表示跟随
    已发布的 models.dev 模态，因此目录的更正仍然能作用到已保存的 binding；
    `true` 或 `false` 是用户的显式回答，并在目录变动后继续有效。与思考级别
@@ -201,6 +201,16 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
 10. 设置里的复选框展示的是相对于已发布基线的有效答案；把某一项设回已发布的
     值，存下来的是"跟随目录"，而不是一个取值相同的覆盖。因此与 models.dev
     保持一致本身就是重置，不需要另外的重置控件，也不需要逐项能力的解释文案。
+10a. `nativeWebSearch` 是两态的主动开启（缺省即关闭；没有目录基线，因为
+    models.dev 不发布托管工具能力）。启用且模型解析后的线路 API 是
+    `anthropic-messages`、`openai-responses` 或 `azure-openai-responses`
+    （存储的 apiStyle 为 `anthropic_messages` / `responses`）时，适配器会
+    附加提供商托管的联网搜索工具（`web_search_20250305` / `web_search`），
+    把搜索活动提取为 `UiMessage.hostedSearch`（`rounds` 用于展示，`replay`
+    用于 convertMessages），并在后续回合——包括重启之后——回放这些原始
+    搜索块（ADR 0297）。提供商接口风格不属于这两种时复选框禁用。不支持
+    该工具的网关会把提供商错误暴露出来；处理方式是取消勾选。搜索在提供商
+    侧执行：没有本地抓取，也没有权限询问。压缩仍会丢掉搜索块。
 11. `ModelInfo` 是设置界面用来对照的已发布记录，因此已存储的 binding 不得
     塑造它的能力或推理字段。有效上限、推理与思考级别都通过那个确切的 binding
     解析；有效的传输模态数组还会额外套用显式的附件覆盖。
@@ -283,7 +293,7 @@ type ModelBinding = {
   contextWindowSource?: "catalog" | "user"
   maxTokens: number
   thinkingLevels: ThinkingLevel[]
-  defaultThinkingLevel: ThinkingLevel | null
+  defaultThinkingLevel: SessionThinkingLevel | null
   availableForSubagents?: boolean // opt-in for AI-driven delegation
 }
 

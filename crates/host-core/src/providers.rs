@@ -14,6 +14,7 @@ pub(crate) use crate::secrets::{
 mod catalog;
 mod credentials;
 mod model;
+mod order;
 mod repository;
 mod validation;
 
@@ -23,6 +24,7 @@ pub use model::{
     DiscoveredModelInput, ModelBinding, ModelCatalogItem, ProviderCreateInput, ProviderPublic,
     ProviderUpdateInput,
 };
+pub use order::{reorder_providers, ProviderReorderInput};
 pub use repository::{
     create_provider, delete_provider, get_provider, list_providers, set_provider_secret,
     update_provider,
@@ -50,3 +52,6 @@ pub(crate) use validation::{
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod order_tests;

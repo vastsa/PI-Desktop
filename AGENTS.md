@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Policy-Sync: 2026-02-16.2
+Policy-Sync: 2026-09-20.1
 
 Mandatory rules for AI coding agents working in PI-Desktop.
 
@@ -713,15 +713,40 @@ and leave it open. Do not implement first and investigate later.
 
 ## 15. GitHub Pull Request Intake
 
-For a linked pull request, evaluate whether its **principle and
-direction** are sound before replacing anything.
+For a linked pull request, fetch it first. Do not replace the
+contributor's work until the review below is complete.
 
-If the direction is sound:
+A sound direction is not enough to land. Independently verify that the
+change must fix the reported root cause with the smallest coherent
+change:
+
+1. The reported problem is real (same bar as § 14).
+2. The diff removes that failure mode at the root — not a nearby
+   symptom, a docs-only restatement, a config contract test, or a
+   partial workaround that leaves the original path intact.
+3. Extra files, refactors, and spec theater do not compensate for an
+   incomplete fix.
+
+If (2) or (3) fail:
+
+* do not merge
+* do not approve as "direction is fine, follow up later"
+* comment with the evidence in the pull request's language
+* prefer a minimal completion of the author's approach when that
+  approach can actually reach the root cause
+* do not rewrite from scratch, force-push, or silently reimplement
+  unless the user asks to take the work over
+
+If (1)–(3) hold:
 
 * preserve the contributor's work and authorship
 * do not force-push a contributor's branch
 * do not ask them to restart for minor style / completeness issues
-* make only minimal landing fixes when necessary
+* missing specs, extra tests, i18n, naming, or formatting are
+  follow-up only when they are not required to prove the root-cause
+  fix (see § 12)
+* make only minimal landing fixes when a landing blocker would
+  break `main`
 
 Do not merge a draft PR unless explicitly authorized or marked ready.
 
@@ -737,6 +762,8 @@ Landing blockers:
 * secret leakage
 * privilege / sandbox bypass
 * unresolved incompatible protocol change
+* does not actually fix the reported root cause
+* larger than the smallest coherent fix without a stated reason
 
 A sound idea does not override a failing landing gate.
 

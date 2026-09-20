@@ -111,20 +111,96 @@ export async function turnProcessProbe() {
   try {
     render(messages);
     check(
-      container.querySelectorAll(".turn-process").length === 1,
-      "one process per turn",
-    );
-    check(
-      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
-      "completed process starts collapsed",
+      container.querySelectorAll(".turn-process").length === 0,
+      "detailed does not wrap a process",
     );
     check(
       visible(container.querySelector('[data-message-id="answer"]')),
       "final answer stays visible",
     );
     check(
-      header()?.textContent?.includes("5 steps"),
-      "process counts thought, tools and progress once",
+      visible(container.querySelector('[data-message-id="progress"]')),
+      "detailed keeps intermediate progress visible",
+    );
+    check(
+      container.querySelector('[data-message-id="edit"]')?.classList.contains("open") === true,
+      "detailed opens the last tool",
+    );
+    check(
+      container.querySelector('[data-message-id="read"]')?.classList.contains("open") !== true,
+      "detailed keeps earlier tools collapsed",
+    );
+    check(
+      container.querySelectorAll(".tool-row").length === 3,
+      "detailed shows thinking and both tools in place",
+    );
+    render(
+      [intro, { ...read, toolStatus: "error", isError: true }, answer],
+      false,
+      null,
+      "failed-last-tool",
+    );
+    check(
+      container.querySelector('[data-message-id="read"]')?.classList.contains("open") !== true,
+      "detailed keeps a last failed tool collapsed",
+    );
+
+    const streaming = message("stream", "assistant", "Live text", {
+      status: "streaming",
+    });
+    render([streaming], true, null, "stream");
+    check(
+      !header() && visible(container.querySelector('[data-message-id="stream"]')),
+      "streamed answer is never delayed behind disclosure",
+    );
+    render([streaming, read], true, null, "stream");
+    check(
+      !header() && visible(container.querySelector('[data-message-id="stream"]')),
+      "detailed keeps streamed text visible after later tools",
+    );
+    render([intro, read, { ...answer, status: "aborted" }], false, null, "aborted");
+    check(
+      visible(container.querySelector('[data-message-id="answer"]')),
+      "stopped partial answer remains visible",
+    );
+    render(
+      [
+        intro,
+        read,
+        message("failure", "assistant", "", {
+          error: { code: "INTERNAL", message: "Connection failed", retryable: true },
+        }),
+      ],
+      false,
+      null,
+      "error",
+    );
+    check(
+      visible(container.querySelector('[data-message-id="failure"]')),
+      "failure remains visible",
+    );
+
+    flushSync(() =>
+      useAppStore.setState({
+        settings: { ...settings, thinkingDisplayMode: "compact" },
+      }),
+    );
+    render(messages, false, null, "compact-group");
+    check(
+      container.querySelectorAll(".turn-process").length === 1,
+      "one process per turn",
+    );
+    check(
+      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
+      "compact completed process starts collapsed",
+    );
+    check(
+      container.querySelector('[data-message-id="edit"]')?.classList.contains("open") !== true,
+      "compact keeps tool payloads collapsed",
+    );
+    check(
+      header()?.textContent?.includes("4 steps"),
+      "process counts tools and progress once",
     );
     click(header());
     check(
@@ -132,11 +208,11 @@ export async function turnProcessProbe() {
       "expanding reveals intermediate progress",
     );
     check(
-      process()?.querySelectorAll(".tool-row").length === 3,
-      "expanding retains thinking and both tools",
+      process()?.querySelectorAll(".tool-row").length === 2,
+      "compact expanding retains both tools without thinking",
     );
-    render(messages, true);
-    render(messages);
+    render(messages, true, null, "compact-group");
+    render(messages, false, null, "compact-group");
     check(
       header()?.getAttribute("aria-expanded") === "true",
       "manual disclosure survives active-to-complete transition",
@@ -144,19 +220,14 @@ export async function turnProcessProbe() {
 
     render([intro, read], true, null, "live");
     check(
-      header()?.getAttribute("aria-expanded") === "true",
-      "detailed process opens while active",
-    );
-    render(messages, false, null, "live");
-    check(
       header()?.getAttribute("aria-expanded") === "false",
-      "unclaimed process collapses on completion",
+      "compact live process stays collapsed without a tool failure",
     );
     render(
       messages,
       false,
       { sessionId: "s", messageId: "progress", query: "problem", requestId: 1 },
-      "live",
+      "search",
     );
     check(
       visible(container.querySelector('[data-message-id="progress"]')),
@@ -181,7 +252,7 @@ export async function turnProcessProbe() {
       "thinking-transition",
     );
     check(
-      processLabel()?.startsWith(i18n.t("chat.processingFor", { time: "" })) &&
+      !header() &&
         visible(container.querySelector('[data-message-id="live-thought"]')),
       "answer streaming ends the thinking label even when reasoning is retained",
     );
@@ -201,39 +272,10 @@ export async function turnProcessProbe() {
       "a later answer takes precedence over an earlier streaming thought",
     );
 
-    const streaming = message("stream", "assistant", "Live text", {
-      status: "streaming",
-    });
-    render([streaming], true, null, "stream");
-    check(
-      !header() && visible(container.querySelector('[data-message-id="stream"]')),
-      "streamed answer is never delayed behind disclosure",
-    );
-    render([streaming, read], true, null, "stream");
+    render([streaming, read], true, null, "stream-compact");
     check(
       process()?.querySelector('[data-message-id="stream"]'),
       "later tool moves provisional text into process",
-    );
-    render([intro, read, { ...answer, status: "aborted" }], false, null, "aborted");
-    check(
-      visible(container.querySelector('[data-message-id="answer"]')),
-      "stopped partial answer remains visible",
-    );
-    render(
-      [
-        intro,
-        read,
-        message("failure", "assistant", "", {
-          error: { code: "INTERNAL", message: "Connection failed", retryable: true },
-        }),
-      ],
-      false,
-      null,
-      "error",
-    );
-    check(
-      visible(container.querySelector('[data-message-id="failure"]')),
-      "failure remains outside folded process",
     );
 
     render(
@@ -309,6 +351,10 @@ export async function turnProcessProbe() {
       "compact thinking ends as soon as answer text starts",
     );
     render(messages, false, null, "compact-tools");
+    check(
+      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
+      "compact completed process starts collapsed",
+    );
     click(header());
     check(
       !container.querySelector(".thinking") &&

@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-19
-- Decision: D451
+- Decision: D459
 - Amends: [ADR 0141](0141-sidebar-width-resize.md) ·
   [ADR 0238](0238-three-column-width-priority.md)
 - Related: [01-ui-ia](../spec/04-ux/01-ui-ia.md) ·

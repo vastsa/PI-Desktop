@@ -1,0 +1,81 @@
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import type { i18n } from "i18next";
+import { I18nextProvider } from "react-i18next";
+import { Composer } from "../../apps/desktop/src/components/Composer";
+import { useAppStore } from "../../apps/desktop/src/stores/app-store";
+import { writeComposerDraft, deleteComposerDraft } from "../../apps/desktop/src/lib/composer-draft-cache";
+import type { ComposerDraftSnapshot } from "../../apps/desktop/src/lib/composer-smart-stop";
+
+const assert = (value: unknown, message: string) => { if (!value) throw new Error(message); };
+const painted = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+/** Exercise the complete composer with only the send service replaced. */
+export async function verifyComposerSubmission(imagePath: string, i18n: i18n) {
+  const previous = useAppStore.getState();
+  const sessionId = "submission-fixture";
+  const host = document.createElement("div");
+  host.style.cssText = "position: relative; width: 360px; height: 500px; overflow: hidden";
+  document.body.append(host);
+  const errors: unknown[] = [];
+  const root = createRoot(host, { onUncaughtError: (error) => errors.push(error) });
+  const attachment = { path: imagePath, name: "image.png", kind: "image" as const, mimeType: "image/png" };
+  const sent: { content: string; draft: ComposerDraftSnapshot | undefined }[] = [];
+  let accepted = false;
+  const prefill = (text: string, fileReferences = [attachment]) => {
+    flushSync(() => useAppStore.setState({ composerPrefill: { sessionId, text, fileReferences } }));
+  };
+  const sendButton = () => host.querySelector<HTMLButtonElement>(".send-btn")!;
+  const editor = () => host.querySelector<HTMLElement>(".composer-input")!;
+  try {
+    writeComposerDraft(sessionId, { text: "retry draft", fileReferences: [attachment] });
+    useAppStore.setState({
+      activeSessionId: sessionId, isRunning: false,
+      sessions: [{
+        id: sessionId, title: "Submission fixture", source: "pi-native", messageCount: 0,
+        mode: "agent", permissionMode: "ask", thinkingLevel: "off",
+        createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
+        capabilities: { canPrompt: true, canStop: true, canRefresh: true },
+      }],
+      sendPrompt: async (content, draft) => { sent.push({ content, draft }); return accepted; },
+    });
+    flushSync(() => root.render(<I18nextProvider i18n={i18n}><Composer /></I18nextProvider>));
+    await painted();
+    assert(errors.length === 0, `composer render failed: ${errors.map(String)}`);
+    // Do not flush the click: an immediate rejection must beat React's next render.
+    sendButton().click();
+    await painted();
+    assert(sent.length === 1 && editor().textContent === "retry draft" && host.querySelectorAll(".composer-image-attachment").length === 1,
+      "immediately rejected submission must restore text and image attachments");
+
+    prefill("");
+    await painted();
+    assert(!sendButton().disabled, "image-only draft must enable the actual send button");
+    accepted = true;
+    sendButton().click();
+    await painted();
+    assert(sent.length === 2 && sent[1].content === "" && sent[1].draft?.fileReferences[0]?.path === imagePath,
+      "image-only send must preserve the attachment at the submission boundary");
+    assert(!host.querySelector(".composer-image-attachment") && sendButton().disabled,
+      "accepted image-only submission must clear the composer");
+
+    prefill("", Array.from({ length: 20 }, (_, index) => ({ ...attachment, name: `image-${index}.png` })));
+    await painted();
+    const tray = host.querySelector<HTMLElement>(".composer-image-attachments")!;
+    assert(tray.scrollHeight > tray.clientHeight && ["auto", "scroll"].includes(getComputedStyle(tray).overflowY),
+      "many image attachments must use a bounded scroll region");
+    assert(tray.getBoundingClientRect().top >= host.getBoundingClientRect().top,
+      "attachment list must stay inside the chat pane");
+    tray.scrollTop = tray.scrollHeight;
+    const last = tray.lastElementChild as HTMLElement;
+    assert(last.getBoundingClientRect().bottom <= tray.getBoundingClientRect().bottom + 1,
+      "last image must be reachable by scrolling");
+    flushSync(() => last.querySelector<HTMLButtonElement>(".composer-image-attachment-remove")!.click());
+    assert(tray.children.length === 19 && !sendButton().disabled, "scrolled attachment removal must preserve other images");
+  } finally {
+    flushSync(() => root.unmount());
+    host.remove();
+    deleteComposerDraft(sessionId);
+    useAppStore.setState(previous, true);
+  }
+}

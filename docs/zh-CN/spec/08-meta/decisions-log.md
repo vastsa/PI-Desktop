@@ -28,6 +28,9 @@
 | D447 | 无头运行时边界 | **修订 ADR 0205 里程碑 R2 的前置条件（ADR 0284）：Agent Host 模块之下与 Electron 无关的运行时层放入 `packages/host-runtime` —— host-core 与 sidecar 的 stdio 传输、重启监督器（进程模型 §4 的策略）、持久回合生命周期（`RuntimeService` 作为模块的 `RuntimePort`：`session.beginTurn` → 用户行 → prompt → `session.endTurn`、中止锁、过期终态事件守卫、单飞终结）、带 D299 检查点的转录持久化、基于 host-core 自身注册表的无头启动解析器、已批准 Plan/Goal 的派发（D189），以及 `SessionPort` / `QueueStore` / `permissions.pending` 的 host-core 适配器。Electron main 只保留薄适配层（二进制与资源位置、`ELECTRON_RUN_AS_NODE`、脱敏 stderr、schema/glibc 诊断、渲染层状态推送）以及自己的本地 prompt 路径。`TurnStartRequest` 新增可选 `userMessageId`。不改 IPC、sidecar、host-core、插件 SDK、默认值或持久化数据。** | `pi-host` 必须在没有 Electron 的情况下运行与桌面相同的生命周期不变量；第二份中止锁、过期终态事件与持久落库后释放队列的实现会与桌面已修好的那份漂移 |
 | D448 | RACP-WS 传输与设备配对 | **修订 ADR 0205 里程碑 R2（ADR 0285）：`packages/racp` 同时承载规范绑定 `RACP-WS` 的两端。`RacpServer` 按目录的角色规则把每个操作分发到 Agent Host 模块与 Host 实现的 `RacpHostOperations` 接口；`RacpClient` 关联请求、应答服务端发起的请求、按会话记录最后的持久游标、以有界退避重连，并让断开连接上未完成的调用以 `HOST_DISCONNECTED` 失败而不是重发。认证采用 header profile：Host 签发的 `pdt1.` 设备令牌与一次性、有时限的 `ppt1.` 配对令牌（散列存储、常量时间比较、绝不出现在 URL 中）；`connection/pair` 铸造 `owner` 设备。`connection/pair`、`project/register`、`project/browse`、`server.hostId`、`events/closed` 通知，以及错误码 `PAIRING_FAILED`、`PAIRING_TOKEN_EXPIRED`、`CAPABILITY_UNAVAILABLE`、`REMOTE_PATH_NOT_FOUND`、`REMOTE_PATH_FORBIDDEN`、`HOST_DISCONNECTED`、`HOST_BOOTSTRAP_FAILED`、`HOST_VERSION_MISMATCH`、`REMOTE_AUTH_FAILED`、`REMOTE_CONNECTION_FAILED`、`REMOTE_FORWARD_FAILED` 进入契约（规格 §14a）。绑定拒绝非回环地址；附件与工具中继宣告为不可用。** | SSH 隧道拓扑需要 `pi-host` 能绑定的服务端和桌面能运行的客户端，以及安全规格描述的配对；不需要机器边界的一致性行为成为包内测试 |
 | D451 | 审阅面板只在用户主动操作时打开 | **工具结果永不打开、激活或改变工作面板。移除 `tool_end` 中的 artifact 门控与 `shouldOpenReviewArtifact`；Review 仅从 `+` 新建启动器的 Review 行，或视口固定开关 / `Cmd/Ctrl + J` 显示的会话保留上下文进入。成功的 workspace Write/Edit 仍会在 transcript 中记录消息级内联审阅卡片。** | Agent 编辑静默弹出侧边栏会与用户正在阅读的内容和布局争夺注意力，且 transcript 卡片已承载变更证据。见 ADR 0043、`04-ux/01-ui-ia.md`、`04-ux/08-component-spec.md` §5、`04-ux/09-interaction-patterns.md`、E2E-057。 |
+| D452 | 计划与目标工件在内置文件视图中打开 | **审批卡的工件打开器把不可变的 `.pi/plan/*.md` 或 `.pi/goal/*.md` 路径交给内置 `pi.file-manager` 视图（该视图可启动时），否则交给宿主机文件标签——与对话文件引用已有的偏好与回退一致（ADR 0241）。工件仍会在其来源会话中创建或激活标签，因此审批揭示本身不变，只有承载界面改变。仅渲染进程；不改协议、宿主、存储、工件内容或权限。见 D189、ADR 0043、`04-ux/08-component-spec.md` §5.4 与 §10A.2、`04-ux/09-interaction-patterns.md` §5A、E2E-106。** | 审批打开器原先使用宿主机文件标签，而对话提到的其它项目文件都已进入用户自己的文件视图，于是计划或目标落在了用户唯一不浏览项目文件的界面上。 |
+| D459 | 恢复可拖拽侧边栏宽度，过窄时收起 | **修订 D408 / ADR 0238 并恢复 ADR 0141（ADR 0290）：展开侧边栏重新成为渲染层拥有的 `240px..520px` 列（默认 `275px`），右缘手柄在指针按下时预览、释放时持久，并支持左右方向键（16px）、Home 与 End。指针宽度低于 `160px` 时以用户操作收起，不覆盖首选展开宽度；键盘调整永不收起。实时上限为扣除 MainChat 450px 下限后的三栏余量。仅渲染进程；沿用 `pi.desktop.sidebarWidth` 偏好。见 E2E-168。** | 长标签需要可回收宽度；ADR 0238 固定 275px 会挡住这一点，而三栏实时预算本就可以限制用户选定的宽度。该决策曾被误记为 D451（已由「审阅面板只在用户主动操作时打开」占用）；按 issue #620 改号。 |
+| D457 | 已签名 macOS DMG 改为双图标安装 | **修订 D406 / ADR 0232 / ADR 0204：正式与本地 DMG 只包含 PI-Desktop.app 和 Applications 链接，使用 720×440 品牌背景。不再放入 `If app won't open, read this.txt` 或 command 助手。macOS ZIP 仍附带打开说明和 `PI-Desktop-macOS-open.command`，供可信未签名工件使用。见 ADR 0296 与 E2E-196b。** | 标签 DMG 已签名公证（D450）；安装盘上的未签名打开说明读起来像报错。 |
 | D450 | 签名的 macOS GitHub Release | **修订 D078 / ADR 0022：GitHub tag 发布使用身份 `Developer ID Application: XingYu Liu (DUV63RKYTW)` / 团队 `DUV63RKYTW`，通过 Actions 密钥（`CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`）对 macOS DMG/ZIP 做 Developer ID 签名、`notarytool` 公证、装订和 Gatekeeper 校验；缺少密钥则失败。无证书的本地未签名打包仍可用。`workflow_dispatch` 仅可把 `sign_macos: false` 用于未签名调试产物。打包的 macOS 走应用内 `electron-updater`（ZIP + 合并后的 `latest-mac.yml`）；Linux deb/rpm 与 Windows portable 仍为通知并打开发布页。禁止 afterPack/afterSign adhoc 签名（ADR 0278）。** | 正式 DMG 应无需 Gatekeeper 警告即可打开，已签名 macOS 安装可下载并重启到新 tag。见 ADR 0289、E2E-196c、E2E-067A。 |
 
 ## B. 辅助实现默认值
@@ -87,7 +90,7 @@
 | D403 | 按住标题移动即可重排 | **修订 D402 / D093 / ADR 0228：鼠标和触控笔按住项目标题并移动 8px 开始重排；没有足够移动的单击仍会选中并折叠/展开。触摸不会开始重排。强调色插入线标出前/后放置位置。`ArrowUp`/`ArrowDown` 与 Escape 不变。见 ADR 0229 与 E2E-253。** | 静止按住 400ms 是移动端长按模式，比 ChatGPT 一类桌面侧边栏列表更慢。 |
 | D404 | Skill 随 Agent 核心工具集下发 | **修订 D174 / D185 / ADR 0048 / ADR 0219：`Skill` 加入 Agent 模式核心工具集，因此只要技能目录非空，第一个 provider 请求就带有它的 schema。它从延迟目录中移除，不再出现在 `# On-demand tools`；其他按需能力与 `ToolSearch` 不变，Plan 与 Goal 仍然完全不提供该工具。不改协议、存储、权限或技能正文。见 ADR 0230 与 E2E-254。** | 用户输入的 `/skill-id` 与 `# Skills` 段落都要求模型调用 `Skill`，而 schema 中不存在的工具根本无法被调用；延迟注册让任何技能正文加载前都多一次发现往返（issue #204）。 |
 | D405 | 顿号打开斜杠菜单 | **修订 D123 / D139 / ADR 0024：当输入框为空时，第 1 个字符提交的「、」（U+3001）会在触发检测前改写为 `/`，中文输入法因此无需切换输入方式即可打开普通斜杠菜单。只改写该位置；其他位置的「、」仍是普通标点，`@` 文件菜单不受影响。仅共享语法与渲染器改动；不改 IPC、存储或补全数据源。见 ADR 0231 与 E2E-255。** | 要唤出 `/new`、`/compact`、模式别名或某个 Skill，中文输入法用户必须在书写中途切到 ASCII 输入再切回（issue #65）。 |
-| D406 | macOS DMG 只保留打开说明 | **修订 D371 / ADR 0204：macOS DMG 以 Finder 名称 `If app won't open, read this.txt` 展示打开说明，不再包含或暴露可执行的 `PI-Desktop-macOS-open.command`。macOS ZIP 安装包保留说明和助手。说明为可信未签名构建提供范围明确的终端备用命令；已签名和公证版本无需执行。见 ADR 0232 与 E2E-196b。** | DMG 应保持应用拖入 Applications 的正常安装路径简洁，同时在未签名应用打不开时提供可见且可执行的处理指引。 |
+| D406 | macOS DMG 只保留打开说明 | *（由 D457 修订）* **修订 D371 / ADR 0204：macOS DMG 以 Finder 名称 `If app won't open, read this.txt` 展示打开说明，不再包含或暴露可执行的 `PI-Desktop-macOS-open.command`。macOS ZIP 安装包保留说明和助手。说明为可信未签名构建提供范围明确的终端备用命令；已签名和公证版本无需执行。见 ADR 0232 与 E2E-196b。** | DMG 应保持应用拖入 Applications 的正常安装路径简洁，同时在未签名应用打不开时提供可见且可执行的处理指引。 |
 | D407 | 导入会话后恢复已归档项目 | **针对 issue #250 的渲染器增量行为：核心或插件导入新增项目绑定会话时，导入触发的会话刷新会规范化项目路径，并清除该项目的渲染器归档状态。无路径会话、跳过的导入、没有活动绑定的插件历史路径和普通刷新保持归档状态不变。host 项目行、IPC 通道、插件方法、存储 schema 和数据格式不变。见 ADR 0236 与 E2E-257。** | host 可以在项目下成功生成导入会话，而渲染器仍将该项目侧边栏行隐藏为已归档。只恢复新导入绑定对应的项目，可以让结果可发现，同时不会在普通刷新时削弱用户的归档选择（issue #250）。 |
 | D408 | 三栏布局中优先保障 MainChat | **针对 issue #267 修订 ADR 0226 / ADR 0151 / ADR 0033：MainChat 保持 450px 硬下限；工作面板上限为动态预算（`客户端宽度 − 450px − 展开的左栏宽度`，无固定上限）；中栏到达阈值时展开的左栏立即让位（`sidebar-out` 退场期间仍计入预算）。手动重开左栏优先占用右栏宽度，否则以 460px 为目标；关闭右栏只恢复由布局机制收起的左栏。原生窗口不变：预留 seam 保持 0 且不套用任何面板几何。预览模式临时卸载 MainChat 并使用窗口级 chrome 行；侧边栏折叠时，macOS 窗口模式预留 88px、全屏预留 8px 给交通灯（D433）。见 ADR 0238 与 E2E-LAYOUT-three-column-width-priority。** | 固定客户区此前没有明确的宽度优先级，侧边停靠可以把 MainChat 压到下限、使 composer 不可用；显式化让位顺序后聊天在固定窗口内保持可读，且不重新引入原生窗口增长（issue #267）。 |
 | D409 | 宿主拥有的会话协作消息 | *（由 D446 修订）* **修订 ADR 0237 / ADR 0165 / ADR 0213：Rust host-core 拥有以消息 id 和真实源/目标 Session ID 为键的持久会话协作 ledger。插件驱动的 `spawn`、`send`、`status`、`result` 和 `cancel` 使用已审查的 desktop-control 网关；发送者绑定当前插件 Agent 工具调用，目标回合保留原有配置，每条投递由实际持久回合认领。完成回调持久化且最多一次，并引用已结算回合。来源信息随转录行持久化，不能在重生成中伪造、剥离或编辑。增量架构 v16 迁移在重启后保留排队工作但不无人值守重放，执行权限上限和有界自主跳数，同时保持既有 Task 系列不变。见 ADR 0239 与 E2E-PLUGIN-session-orchestrator-real-workers。** | 插件之前的创建/提示轮询路径既无法推断持久回合结果，也无法安全确认双向发送者身份。宿主拥有的 ledger 让投递、来源、回调、取消和重启行为可审计，同时不恢复已撤回的 A2A 协议。 |
@@ -173,8 +176,9 @@
 | D133 | 项目索引移至设置存档 | *（五个目的地 count/order 被 D166 取代；平面列表演示被 D168 取代）* **主页侧边栏不再具有独立的项目目的地。设置在导入之后、信息之前添加项目归档（zh-CN: 项目归档），将压缩目录带到基础/模型配置/导入/项目归档/信息。存档重用持久的项目索引，并且始终包含存档记录，包括搜索、添加、激活、任务扩展、固定、archive/restore 和关闭操作。项目和会话组仍保留在主侧边栏中以进行积极的工作。全局搜索将存档公开为“设置”结果，而不是独立页面。这取代了 D042/D066 的独立目标子句和 D090 的四个目标限制，而不更改项目存储或激活语义。** | 活跃的项目工作已经存在于保留的侧边栏组中；将历史项目管理移至“设置”可减少主要导航，同时保持恢复和存档控件可发现。 |
 | D168 | 项目档案演示重新设计 | *（堆叠带布局与每部分面板被 D267 取代）* **项目存档呈现三个堆叠带：一个概述横幅（意图句、主要添加项目以及用于项目、打开、存档、会话的四个派生计数器）、一个工具栏（具有清晰的可见性和实时匹配计数的搜索，以及 Recent/Name 排序分段控件），以及一个分组索引，其始终可见的部分运行“固定/所有项目/存档”，每个部分计数、每个部分一个设置面板和细线行分隔符。行包含公开控件、字形、带有 Active/Open/pinned/Archived 标签的名称、一条元行（缩短的等宽路径、分支、会话计数）、相对最后活动时间和 hover/focus-revealed 新任务加行菜单；菜单将 create/edit 置于引脚上方、archive/restore 和破坏性关闭中，并在 Escape 或外部按下时关闭。存档的行被分组和软化，从不隐藏或过滤，因此 D133 的不可见性切换规则仍然有效。这取代了 D133 的平面列表演示，而无需更改项目存储、搜索匹配、会话批处理或激活语义。** | 平面单列表存档对固定、工作和存档记录给予同等重视，并将其披露和行操作隐藏在悬停后面，因此扫描长期持久索引意味着读取每一行。使用派生计数器进行分组并进行显式排序，使状态一目了然，同时保持存档历史记录永久可访问。 |
 | D267 | 项目存档是一个工作台，而不是三个堆叠带 | *（行剖析与行内展开被 D455 取代）* **修订 D168 的堆叠带布局：设置 → 项目存档改为呈现 D257 的一个工作台构成 —— 一条仅承载页面说明的安静引导行、一个工具栏（使用共享 `settings-segment` 基元的“最近/名称”排序、带清除可供性与实时匹配计数的搜索、主要“添加项目”），以及一个设置面板，其始终可见的固定/所有项目/存档分组是面板内带每部分计数的非交互标题条，而不是每部分一个面板。装饰渐变英雄带被移除，它承载的四个页面级概览计数器也一并移除，并停用 `project.statProjects`、`project.statOpen`、`project.statArchived` 和 `project.statSessions` 键；面板标题条上的分组计数现在是唯一的总计。外部大写部分标签也被移除；行几何与能力页面行一致（32px 控件、14px 列表间距、28px 行字形）。除停用上述四个计数器键外，其余仅为演示层变更：D168 的行剖析、行菜单分组、搜索匹配、会话批处理、激活语义和无障碍语义均不变，且不需要新的 ADR。** | D168 的概述横幅使用了装饰渐变和 `--text-xl` 计数器格，而设计系统明确禁止两者，且其每部分面板把同一个高架框重复了三次。把计数器降级为内联串只是保留了杂乱而没有换来价值：它们展示的每个总计都已能从分组条计数中读出，因此在工具栏上方重述这些数字既重复了数字，也让该目的地拥有了兄弟页面都没有的页头。移除它们后，持久索引在外观和行为上都与智能体能力页面一致。 |
-| D455 | 项目存档改为列表 + 检查器 | **修订 D267 的展开行：设置 → 项目存档保留安静引导行和工具栏，随后是单列工作台。索引仍按已置顶 / 全部项目 / 已归档分组并显示计数，且没有可见性开关（D133）。精简行显示字形、名称、一个状态标签、会话计数和相对时间。单击选中并留在设置页；双击、Enter 或检查器的打开操作激活项目并返回聊天。文件夹、对话（每批 8 条）和行菜单在选中行下方铺满宽度打开。搜索仍匹配会话标题并选中所属项目。仅演示层：无 IPC、存储或宿主改动。见 ADR 0294 与 E2E-038。** | 行内展开和行菜单让长索引难以扫读，单击名称还会离开设置页，不利于管理。 |
-| D456 | 会话思考参数不发送 | **修订 ADR 0194 / ADR 0144 / ADR 0221：会话 `thinkingLevel` 在七个规范档位之外接受 `omit`。Composer 在推理模型上把 `omit` 放在菜单最前。运行时记账仍为 `off`，走低层 provider 流，不合成思考覆盖。绑定/目录能力列表保持规范档位。Schema v19 把会话 CHECK 扩到包含 `omit`。握手协议版本不变。见 ADR 0295 与 E2E-203a。** | 显式 `off` 仍会序列化为关闭思考；用户需要与子智能体一致的会话级不发送。 |
+| D455 | 项目存档改为列表 + 检查器 | *（行剖析被同日的「项目档案呈现为内嵌分组卡片列表」条目取代）* **修订 D267 的展开行：设置 → 项目存档保留安静引导行和工具栏，随后是单列工作台。索引仍按已置顶 / 全部项目 / 已归档分组并显示计数，且没有可见性开关（D133）。精简行显示字形、名称、一个状态标签、会话计数和相对时间。单击选中并留在设置页；双击、Enter 或检查器的打开操作激活项目并返回聊天。文件夹、对话（每批 8 条）和行菜单在选中行下方铺满宽度打开。搜索仍匹配会话标题并选中所属项目。仅演示层：无 IPC、存储或宿主改动。见 ADR 0294 与 E2E-038。** | 行内展开和行菜单让长索引难以扫读，单击名称还会离开设置页，不利于管理。 |
+| D456 | 会话思考参数不发送 | **修订 ADR 0194 / ADR 0144 / ADR 0221：会话 `thinkingLevel` 在七个规范档位之外接受 `omit`。Composer 在推理模型上把 `omit` 放在菜单最前。设置页 `defaultThinkingLevel` 在绑定启用任一推理档时也接受 `omit`。运行时记账仍为 `off`，走低层 provider 流，不合成思考覆盖。绑定/目录能力列表保持规范档位。Schema v19 把会话 CHECK 扩到包含 `omit`。握手协议版本不变。见 ADR 0295 与 E2E-203a。** | 显式 `off` 仍会序列化为关闭思考；用户需要与子智能体一致的会话级不发送。 |
+| D458 | Composer 菜单根层承载推理滑块 | **修订组合的模型 × 推理菜单：列出一个以上等级时，推理等级条目下方放一条原生 range 滑杆，每个等级一个带标签刻度。滑杆和刻度提交通过 `configureActiveSession` 持久化最后一次待提交档位且不离开根层；条目仍打开经典单选列表。刻度标签不是 Tab 停靠点。仅渲染层。见 issue #417、`04-ux/08-component-spec.md` 与 E2E-050。** | 改档原先必须进子菜单；Codex 风格滑杆保留单选列表，同时让临时调整只需拖一次。 |
 
 ## E.M5 强化决策 (0.4.0)
 
@@ -274,6 +278,7 @@
 | D324 | 空闲切换保留尚未刷入的已完成尾巴 | **在渲染器中修订 D317 / ADR 0137：`selectSession` 在会话仍在运行或仍有实时来源（`liveSessionTranscripts`）时，把有界持久化页缝到实时快照上。持久化页尚未包含的已完成助手/工具行予以保留。只有当该页已包含每一个实时 id 时才清掉实时来源，而不是回合一结束就清。仅渲染器：不改动 IPC、存储、主机协议或分页。** | 用户提示在模型运行前就落盘；助手/工具行走异步 outbox，在 `message_end` 之后才写入。`agent_end` 之后的空闲再验证只用持久化页，会丢掉已经显示在屏幕上的回复（issue #41）。 |
 | D327 | 已完成回复在进程重启后仍然存在 | **修订 D299 / ADR 0153 / ADR 0041：`message_end` 的完成快照在 outbox 追加之前先做检查点；`completed`/`error` 的 `session.endTurn` 仅在该 id 已索引时才删除 `.inflight.json`；启动恢复跳过已完成残留以便 outbox 先追加；握手等待排空后再用 `session.recoverInflightMessages` 把剩下的提升为 `complete`。附加 RPC，不改协议或 schema 版本。** | 与 issue #41 相同的「只剩用户消息」画面，但发生在完全退出之后（issue #42）：用户行在模型运行前就落盘，助手/工具行停在 outbox，D324 的实时缝合无法跨进程。 |
 | D444 | 跨会话消息 id 碰撞时改写；outbox 的 UNIQUE 不再停整队 | **修订 ADR 0041 / D327：`session.appendMessage` 仍把本会话已索引的 id 当作无操作（或用终态助手替换流式行）。若该全局唯一 `messages.id` 已属于另一会话，主机在写 JSONL 或索引之前改写为 `{sessionId}:{id}`，之后重放原始 id 也对改写后的行无操作。Electron 持久化 outbox 把 `UNIQUE constraint failed: messages.id` 当作幂等确认并继续排空，因此一个撞车的 toolCallId 不会卡住之后所有助手/工具行，也不会把 1024 上限填满。不改协议或 schema 版本。** | 工具行曾把 `toolCallId`（如 `call_421522`）当作 `messages.id`，这些 id 并不全局唯一。碰撞会在 JSONL 写完后 SQLite 失败，FIFO outbox 停在队头，所有会话的后续行都无法落盘，退出后再开就像前期历史丢了（issue #523）。 |
+| D597 | 丢弃 outbox 毒消息；接受投递回合内的 steering | **修订 ADR 0041 / ADR 0239 / ADR active-turn-steering / D444：Electron 持久化 outbox 把消息正文带 `PERMISSION_DENIED:` 前缀的追加当作永久拒绝，丢掉该行并继续排空。`PLUGIN_PERMISSION_DENIED` 和其他失败仍暂停。宿主 provenance 在目标会话一致时接受已认领协作投递回合上的 `UiMessage.steering`，不盖投递来源，并清掉客户端带来的 `session_message`。跨会话 steering 仍是 `PERMISSION_DENIED`。不改协议或 schema 版本。** | 向 session-collaboration 投递回合按 Alt+Enter 会被当成投递不匹配拒绝，outbox 永远重试队头，打满 1024 后丢掉后面的助手/工具行，转录只剩用户消息。 |
 | D328 | 由父级判定的子智能体寿命 | **修订 ADR 0089 / ADR 0119 / ADR 0129：不武装空闲和时长看门狗；父级 `agent_end` 不中止仍在跑的委托；运行时保持持久回合打开，完成时把报告交给父级。`TaskWait` 超时和 `TaskList` 返回心跳。只有 `TaskStop` 和用户 Stop 会中止委托。显式 `maxTurns` 和并发上限 10 保留。运行时专用，不改 IPC、存储或主机协议。** | 父级看不到实时委托工作，把 `TaskWait` 到期当成可以收工；等待是事件循环，模型不是。 |
 | D352 | 父级终态错误中止残留委托 | **修订 D328 / ADR 0166：父级空闲仍不中止委托。终端父级 provider/stream 错误（含耗尽的 HTTP 429）、溢出恢复失败、变更预算终止或拒绝的提示会中止残留委托、跳过 D328 续跑提示并发出 `agent_end`。`isRunning` 在该错误后不计残留委托，因此继续不会变成 `AGENT_BUSY`。见 ADR 0189 与 E2E-155。** | 父级 429 后 UI 显示继续，子智能体仍占 sidecar，下一条提示变成 session already has an active turn。 |
 | D354 | 同时标注两个 macOS 发布架构 | **修订 D353 / ADR 0145：两条原生 macOS 发布通道都使用带架构后缀的 electron-builder 模式。公开资产为 `PI-Desktop-<version>-arm64.dmg` / `-arm64-mac.zip` 以及 `-x64.dmg` / `-x64-mac.zip`。更新源 URL 与校验和保持一致。只改发布资产命名。** | arm64 资产原先不标明架构，x64 又用另一套 Intel 约定。 |
@@ -301,6 +306,9 @@
 | D275 | 在上下文压缩期间保留活动任务边界 | **修订 D203 / ADR 0064（代理运行时）：检查点记录不透明的 `details.retainedTailMode`。当提供商必须在工具结果、`toolUse` 或溢出恢复后继续时，活动回合检查点只保留最新的用户消息（沿用现有 20,000 令牌上限）。在终止边界、发送新提示之前和手动压缩时，已完成回合检查点的保留尾部为空，摘要是已完成工作的权威内容。没有该模式的旧记录归一化为最新的用户消息。不改变可见转录本、存储 schema、主机所有权或协议形状。** | 压缩掉完成消息却保留多个最近用户提示，会让下一条提示看起来像旧任务的延续（issue #22）。恢复时必须显式保留任务边界，同时活动工具循环仍需保留继续当前任务所需的提示。 |
 | D278 | 子代理模型选择 | **Task.model 覆盖定义中固定的模型；只有带 `availableForSubagents` 的模型出现在委托目录中；启动时未预解析的模型由按需 RPC 解析** | 父代理需要按任务选择模型，又不能暴露完整的服务商配置。选择加入的标志让委托目录保持有界且有意为之，按需解析则避免 sidecar 启动后新增模型的绑定过期。参见 §3/02 §5f、§3/11 §7 与 E2E-166。 |
 | D365 | 为实时活动行的每个安静间隔命名 | **修订 D338 / ADR 0175：`AgentActivity` 增加 `preparing`、`compacting`、`recovering`；`starting` 显示独立标签；`waiting-subagents` 携带实时运行快照（`name`、`lastPhase`、`lastToolName`），随子级工具/思考变化更新而非逐 token 更新。该行保持为一条紧凑的内联状态，不恢复活动分组胶囊。** | 压缩、静默回合恢复、工具后间隙与启动都像卡住的通用等待，父级等待也隐藏了委托在做什么（ADR 0198，E2E-008c / E2E-094） |
+| D599 | 开发构建是一个独立安装 | **收窄 D236 / 修订 ADR 0094：开发构建（未打包，或 `PI_DESKTOP_DEV=1`）以 `PI-Desktop Dev` 作为 Electron `userData`（随之独立的单实例锁、渲染层 `localStorage`、插件面板 partition 与浏览器面板 Cookie），数据目录为 `~/.pi-desktop-dev`。显式 `--user-data-dir` 仍然优先，E2E 装置正是用它把构建指向临时 profile。正式安装仍保持 `PI-Desktop` 与 `~/.pi-desktop`，既有 profile 不会被搬迁。`PI_DESKTOP_DATA_DIR` 仍优先于两种 profile，并在作为子进程环境变量传给 host-core 之前被绝对化；Electron 主进程把解析结果回写到该变量，使插件运行时读到同一个根目录。不改 IPC、协议、schema 或正式安装路径。见 `03-runtime/07-process-model.md` 与 E2E-150。** | 已在运行的正式版持有锁，`pnpm dev` 一启动就退出；而抢到锁的开发 host 会把第二个 host-core 压到同一个单写者 `pi.sqlite`、outbox 与日志树上。 |
+| D602 | 崩溃转储留在数据目录 | **Electron 的 Crashpad 报告器在 `ready` 之前以本地模式启动（`uploadToServer: false`）。转储放在 `<data_dir>/crash-dumps`，而不是 Electron 默认的 `userData` crashDumps 路径，因此 `PI_DESKTOP_DATA_DIR` profile 不会与其它安装共用转储。下一次持有单实例锁的启动会为新于 `crash-dumps.json` 的转储写一条 `diagnostics` 记录，按 Crashpad `ptype` 分类：任一新转储属于 browser/main 进程则为 `error`，已恢复的 renderer/GPU/utility 崩溃为 `warn`。host-core 与 sidecar 崩溃仍走监督器路径。不上传，不改 IPC，不改 schema。** | 崩溃留下的 minidump 无人读取。Crashpad 也会记录已恢复的渲染进程崩溃，因此下次启动用 `error` 声称上次运行已死是错的；而数据目录之外的转储会逃出 `PI_DESKTOP_DATA_DIR` 隔离。 |
+
 
 ## M0. 模型目录决策
 
@@ -376,7 +384,8 @@
 | D234 | 插件拥有的面板表面与主机窗口控制胶囊 | **插件面板在 macOS、Windows 和 Linux 上均使用无框窗口。沙盒化 preload 在每个平台预留相同的透明 46px 安全区，并在右上角的封闭 Shadow DOM 中仅渲染一个固定胶囊，胶囊恰好包含最小化、最大化或还原、关闭三个按钮。主机不再渲染面板标题或开发安全区提示；插件拥有标题、工具栏、背景以及其他所有可见面板界面。普通流内容会自动偏移，固定或粘性界面使用现有的 `--pi-plugin-titlebar-height: 46px`，插件自己的拖拽区域使用 `-webkit-app-region: drag`，交互控件退出拖拽。私有的验证发送方控制通道、本地化标签、页面自适应颜色、`window.pluginBridge`、每插件 partition、host protocol v9 和存储架构保持不变。本决策修订 D218 / ADR 0081 以及 D232 / ADR 0082。** | 主机标题栏占用了插件自己的视觉层级，并且仍然让 macOS 与 Windows/Linux 表现不同。紧凑的主机控制胶囊保留安全的原生窗口操作，同时把面板表面交还给插件。 |
 | D235 | 严格 46px 插件拖拽带与简约胶囊 | **插件面板在每个平台均严格预留 46px 的透明主机拖拽带。普通流内容按该数值偏移，拖拽带内除胶囊外不接受插件点击，开发面板显示本地化提示，说明顶部 46px 仅用于拖拽。主机不渲染面板标题。固定在右上角的胶囊保持在拖拽带内，恰好包含最小化、最大化或还原、关闭三个按钮，并使用简洁的页面自适应表面，不添加厚重阴影或模糊效果。本决策修订 D234 / ADR 0092；私有的验证发送方控制通道、封闭 Shadow DOM、`window.pluginBridge`、protocol v9 和存储架构保持不变。** | 无框面板需要可靠的拖拽目标和清晰的开发约束，但主机拖拽带不能增长，也不能抢占插件自己的视觉层级。 |
 | D343 | 自定义全局文字缩放 | **设置 → 常规 → 外观在字体行下增加字体大小。星巴克式杯型档位（中杯 / 大杯 / 超大杯 / 超超大杯）加上百分比滑杆，持久化为可选 `AppSettings.fontScale`（`1` = 产品字号阶，缺失 = 1，范围 0.8–1.5、步进 0.025）。渲染器在根元素设置 `--font-scale`；每个 `--text-*` 令牌和 `--leading-row` 都是 `calc(<产品 px> * var(--font-scale))`，共享 Lucide 图标使用同一倍率，正文、chrome、标题、代码和图标无需重载即保持相对阶。界面不出现 px 输入。窗口放大/缩小/重置仍独立。未发布的遗留 `fontSize` px 字段在没有 `fontScale` 时按 `px / 14` 迁移。无协议/存储版本升级。** | `--text-*` 阶本身就是一组相对尺寸；一个倍率可以一次缩放所有台阶。窗口缩放仍会缩放布局。只改阅读区的 px 会让同一窗口出现两套字号，还强迫用户填一个只对应 `--text-base` 的数字（ADR 0180）。 |
-| D232 | 自定义全局界面字体 | **设置 → 基础 → 外观新增可搜索的字体选择器（触发器以当前字体的字样预览）。选择结果持久化为 `AppSettings.fontFamily`（CSS 字体栈）；缺失时保持内置 `--font-sans` 令牌栈，渲染器通过覆盖根元素的 `--font-sans` 应用字体栈，无需重载。四款内置字体——Geist、Inter、Noto Sans SC、LXGW WenKai——以 woff2 格式按 SIL OFL 1.1 本地发布并附许可证文本；每个自定义字体栈都追加 CJK 回退层，等宽字体栈保持不变。系统已安装字体由 Electron 主进程仅使用平台工具枚举（macOS 用 `system_profiler`、Windows 用 PowerShell、Linux 用 `fc-list`），去重/排序/过滤并缓存 60 秒，通过新增的允许通道 `pi-desktop/app/systemFonts` 暴露；主机协议 v9 与存储架构 v10 不变。** | 用户需要 Codex/dbx 风格的全局字体偏好，但沙盒化渲染器无法枚举系统字体，而针对仅渲染器偏好不应扩大主机 RPC 面。内置 OFL 许可字体保证每个可选字体均商用安全且可离线使用，60 秒缓存限制了 macOS 枚举的耗时（ADR 0083）。 |
+| D232 | 自定义全局界面字体 | *(由 D598 修订)* **设置 → 基础 → 外观新增可搜索的字体选择器（触发器以当前字体的字样预览）。选择结果持久化为 `AppSettings.fontFamily`（CSS 字体栈）；缺失时保持内置 `--font-sans` 令牌栈，渲染器通过覆盖根元素的 `--font-sans` 应用字体栈，无需重载。四款内置字体——Geist、Inter、Noto Sans SC、LXGW WenKai——以 woff2 格式按 SIL OFL 1.1 本地发布并附许可证文本；每个自定义字体栈都追加 CJK 回退层，等宽字体栈保持不变。系统已安装字体由 Electron 主进程仅使用平台工具枚举（macOS 用 `system_profiler`、Windows 用 PowerShell、Linux 用 `fc-list`），去重/排序/过滤并缓存 60 秒，通过新增的允许通道 `pi-desktop/app/systemFonts` 暴露；主机协议 v9 与存储架构 v10 不变。** | 用户需要 Codex/dbx 风格的全局字体偏好，但沙盒化渲染器无法枚举系统字体，而针对仅渲染器偏好不应扩大主机 RPC 面。内置 OFL 许可字体保证每个可选字体均商用安全且可离线使用，60 秒缓存限制了 macOS 枚举的耗时（ADR 0083）。 |
+| D598 | 应用不再随包发布任何字体 | **修订 D232 / ADR 0083：所有内置字体全部移除。`apps/desktop/src/assets/fonts/`（四个 `woff2` 文件及其 OFL 许可证文本）、`apps/desktop/src/styles/fonts.css` 以及 `styles/globals.css` 中的 `@import "./fonts.css";` 均已删除，`BUNDLED_FONTS`、`BundledFont` 类型、`FontOption.license`、选择器上的许可证角标，以及全部八份语言目录中的 `settings.fontBundled` 一并移除。选择器保留「跟随系统」（持久化为空字符串）与系统已安装字体两类选项，枚举机制完全不变，仍通过白名单通道 `pi-desktop/app/systemFonts` 获取；已保存的字体栈若不再匹配任何选项，仍在「已保存」（`custom`）分组中排在首位。每个生成的字体栈现在追加纯系统 CJK 回退层 `"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`，前面不再有内置字体。此前保存的指向内置字体的字体栈（例如 `"Geist", "PingFang SC", …`）按原样保留，显示在「已保存」分组，并穿过该回退层渲染。协议版本、schema 版本与存储迁移均不变。** | 四款 OFL 字体重复提供每个目标操作系统本就具备的字形覆盖，占用 `out/renderer` 约 15.7 MiB 的 `woff2`（LXGW WenKai 7.6 MiB、Noto Sans SC 7.4 MiB），并为操作系统已安装列表之外的四个选项承担字体文件许可证告知义务。见 ADR 0298、E2E-126 与 E2E-092。 |
 | D230 | 用户可配置的关闭行为与关闭到托盘 | **Windows/Linux 的关闭行为是由 Electron 主进程存放在 `<data>/close-behavior.json` 的持久化偏好。`ask` 是尚未设置的过渡态：首次关闭弹出原生模态框（取消 / 关闭到托盘 / 退出），选定其一即永久保存，取消则保持窗口打开且偏好仍未设置。可设置的只有 `tray` 和 `quit` —— 设置 → 通用仅在 Windows/Linux 渲染两项单选段（关闭到托盘 / 退出应用），`pi-desktop/window/closeBehavior/set` 拒绝 `ask`，因此选择可以切换但无法退回到每次询问。`tray` 把窗口隐藏到 D216 常驻的托盘图标之下（点击恢复，菜单显示或退出）；切换到 `quit` 不会销毁该图标，因为最小化到托盘仍然需要它。除了已经获准的退出之外，每一次非 macOS 的关闭都会被拦截；`quitting` 与 macOS 的关闭直接放行，`quit` 分支自己调用 `app.quit()`，而 `window-all-closed` 只在 `tray` 下保持沉默，因此启动探针与显式退出不受影响，常驻托盘也不会让 `quit` 会话继续活着。在 macOS 上 `closeBehavior/set` 同样以 `INVALID_ARGUMENT` 失败。边界看门狗跳过最小化和隐藏的窗口，所以隐藏到托盘的窗口不会被强制恢复。macOS 保持原生 Dock 生命周期（D216、ADR 0078、ADR 0090）。** | 最小化本来就把窗口收进 D216 的托盘；缺口在关闭：它在 Windows/Linux 上直接退出。固定的关闭到托盘会让期待退出的用户意外，所以这个选择只问一次、记住、并可在设置里回访 —— 与 Codex 风格外壳让长时会话继续存活但不接管关闭按钮的做法一致。 |
 | D363 | 显式退出在关机前确认 | **修订 D230 / D216：Cmd+Q、应用菜单退出和托盘退出显示一次原生警告（取消 / 退出）。取消让应用继续运行，之后的退出会再次询问。确认走有序 `before-quit` 关机。已在 D230 对话框选择退出的关窗路径设置 `quitConfirmed`，不再问第二次。boot、supervision 和 capture 探针跳过对话框，应用内更新所执行的退出同样跳过：`autoUpdater.quitAndInstall()` 会先于 `app.quit()` 启动平台安装器，而该安装器一旦发现应用超出等待窗口就会中止，因此更新重启必须不经询问直接进入有序关机。见 E2E-204。** | 显式退出会拆掉 host-core、sidecar 和进行中的工作；一步确认避免误触 Cmd+Q 或托盘退出。 |
 | D252 | Windows 任务栏保留原生最小化/恢复 | *（显式的渲染器/菜单最小化条款被 D256 / ADR 0123 取代）* **修订 D216 / ADR 0078：当聚焦的 Windows 主窗口从它的任务栏按钮被切换时，Electron 让原生 `minimize` 过渡走完，而不是隐藏窗口。任务栏条目保持可用，下一次点击任务栏会恢复并聚焦它。显式的渲染器/菜单最小化操作仍然隐藏到常驻托盘；macOS/Linux 的原生最小化仍然驻留托盘。不改动 IPC、存储、主机协议或后台工作。** | D216 无条件的 `window.hide()` 把任务栏发起的 Windows `minimize` 事件当成托盘隐藏处理，意外移除了任务栏条目，只给用户留下托盘恢复这一条路。 |
@@ -437,7 +446,7 @@
 | D215 | Windows 保留的全局快捷方式回退 | **在 Windows 上，host-core 为有效的 `Alt+Space` 默认绑定安装一个狭窄的 `WH_KEYBOARD_LL` 挂钩，因为 shell 可能会从 Electron 的 `globalShortcut` 中保留它。 hook 仅消耗匹配的和弦并发出 `keyboard.shortcut({ binding: "Alt+Space" })`； Electron 切换现有插件启动器。每当设置更改时，Electron 都会调用附加的 `keyboard.setGlobalShortcut({ binding })`，而 host-core 仅针对该精确绑定启用挂钩。其他平台和自定义绑定保留在 Electron 的全局快捷路径上。** | 每当 PI-Desktop 未获得焦点时，Windows 的活动窗口系统菜单保留都会导致附带的全局启动器不可用。范围狭窄的主机回退会保留快捷方式，而不读取文本或扩展 plugin/renderer 权限 (ADR 0076)。 |
 | D217 | 启动完成后预热插件启动器 | **主应用及后端完成启动后，Electron 创建并加载保留的插件启动器，同时保持窗口隐藏。窗口创建使用一个共享的进行中 promise，因此预热期间收到的快捷键会复用同一次渲染器加载；若预热失败，则销毁未完成的窗口、清除 promise，并允许下次调用重试。每次显示窗口时仍会刷新实时插件目录。** | 将 BrowserWindow 分配和渲染器启动移出首次可见调用，使启动器的显示延迟更稳定，同时不拖慢主应用启动，也不削弱插件目录的新鲜度、IPC 或沙盒边界（ADR 0080）。 |
 | D219 | 插件启动器的最近使用历史 | **启动器渲染器把每个成功打开过的插件 id 连同时间戳记录在渲染器本地的 `localStorage` 里（键 `pi.desktop.pluginLaunchHistory`，上限 24 条），并在查询为空时按最近使用顺序呈现。键入查询后，先按搜索相关性排序，仅在同等相关时用最近使用作为决胜条件，因此未用过的插件按名称排在最近使用的之后。存储损坏或不可用时降级为原有的名称顺序，不影响启动。这只是细化 D211 的呈现，不改变 IPC、主机 RPC、权限、协议 v9 或存储架构 v11。** | 以键盘为先的启动器用户会反复打开同一批插件；记住上次使用顺序让最常用的目标始终只差一个 Enter，而用户一旦键入，相关性仍然是权威。 |
-| D221 | 渲染器产物体积控制 | **渲染器构建显式设置 `minify: "esbuild"`，因为 `electron-vite` 将其渲染器预设硬编码为 `minify: false`。`pi-drop-legacy-font-fallbacks` 插件以 `enforce: "pre"` 在 Vite 将 `url()` 登记为资源之前剥离逗号前缀的 `woff`/`truetype` `src` 条目，因为内置 Chromium 始终支持 `woff2`；唯一来源为旧格式的字体保持不变。`BrandLogo` 导入由规范母版派生的 192x192 标记 `src/assets/brand/logo-{light,dark}.png`，而非 `build/` 中的 1024px 安装器图标，在不改变视觉标识的前提下细化 D079/D094。`packaging-footprint.test.mjs` 对这三项均有断言，使框架默认值或被回退的导入无法静默回归。两个内置 CJK 字体依据 ADR 0083 第 2 节保持不裁剪。** | `out/renderer` 从 31 MiB 降至 24 MiB 且无功能损失；未压缩的默认值与安装器图标导入属于意外成本，而 CJK 子集化会丢失用户内容中的字形，需要修订 ADR |
+| D221 | 渲染器产物体积控制 | *(内置 CJK 字体条款由 D598 取代)* **渲染器构建显式设置 `minify: "esbuild"`，因为 `electron-vite` 将其渲染器预设硬编码为 `minify: false`。`pi-drop-legacy-font-fallbacks` 插件以 `enforce: "pre"` 在 Vite 将 `url()` 登记为资源之前剥离逗号前缀的 `woff`/`truetype` `src` 条目，因为内置 Chromium 始终支持 `woff2`；唯一来源为旧格式的字体保持不变。`BrandLogo` 导入由规范母版派生的 192x192 标记 `src/assets/brand/logo-{light,dark}.png`，而非 `build/` 中的 1024px 安装器图标，在不改变视觉标识的前提下细化 D079/D094。`packaging-footprint.test.mjs` 对这三项均有断言，使框架默认值或被回退的导入无法静默回归。两个内置 CJK 字体依据 ADR 0083 第 2 节保持不裁剪。** | `out/renderer` 从 31 MiB 降至 24 MiB 且无功能损失；未压缩的默认值与安装器图标导入属于意外成本，而 CJK 子集化会丢失用户内容中的字形，需要修订 ADR |
 | D198 | Goal模式为第二种合约模式 | **Goal 是第三种持久操作模式 (`agent` / `plan` / `goal`)，它端到端地重用 Plan 审批管道。 `EnterGoalMode` 将活跃的 Agent 切换为 Goal 合约状态； `SubmitGoal(title, markdown, question)` 写入主机拥有的不可变 `.pi/goal/<unique-name>.md` 工件并插入一个待处理的 `plan_approvals` 行。单个审批表在 schema v11 中获得 `kind` 列（`plan` 或 `goal`，默认为 `plan`）；这种类型（而不是预计的计划状态）选择提示、工件目录、提交工具和 i18n 命名空间，因此一个批准栏和一个执行队列同时服务于这两者。 Plan 和 Goal 是合约模式：它们共享一个工具白名单（Read/Glob/Grep/BrowserPreview/Bash 加上他们自己的提交工具）、针对持久模式评估的 Write/Edit/plugin/unknown 工具的一台主机硬拒绝、共享 `*_IN_PLAN` 错误代码以及对无人值守运行的 `PLAN_REQUIRES_INTERACTIVE_SESSION` 拒绝。经批准的 Goal 在 Agent 中自主执行：它选择自己的方法并继续工作，直到验证每个验收标准或边界阻止它，然后逐个报告标准。线 `kind` 是可选的，不存在意味着 `plan`，因此这是协议 v9 中的附加内容。** | Plan 回答“执行这些步骤”；用户还需要“达到这个结果，自己决定步骤”（Claude Code的计划模式和Codex的目标型运行）。在批准的合同中制定目标声明、验收标准和边界可以保持自治的可审核性，并且按类型区分一条管道可以避免出现不可避免的漂移的平行表、批准表面和许可边界。 |
 | D144 | 侧边栏主镀铬为 14 像素 | **扩展侧边栏主要镶边（新任务、插件、会话标题、页脚标识名称、配置文件菜单操作）使用 `--text-base` (14px)。 Project/group 标题和空状态副本使用 `--text-md` (13px)。部分标签使用 `--text-sm` (12px)。主要侧边栏内容不得使用微型 `--text-xs` 带。** | 13px 侧边栏主体在 14px 聊天界面旁边感觉尺寸过小；仅碰撞原色铬可以保持密度，同时恢复视觉平衡，而无需全局类型比例变化。 |
 | D145 | 禁用可编辑字段上的浏览器文本更正 | **桌面渲染器中的每个文本 `input` 和 `textarea` 都会禁用浏览器文本校正：`spellCheck={false}`、`autoCorrect="off"` 和 `autoCapitalize="off"`。共享 `Input`/`Textarea` 原语默认这些值；原始字段（编写器、消息编辑、命令选项板、全局搜索、settings/plugins/projects 搜索、模型搜索、浏览器 URL 栏、提供程序模型组合）显式设置它们。复选框和非文本控件保持不变。** | 编码提示、路径、模型 ID 和 URL 不得带有红色下划线或通过 Chromium/OS 文本更正自动更改； shell 是一个应用程序，而不是文档编辑器。 |
@@ -2730,7 +2739,8 @@ D193 和 D194。
 - 侧边栏折叠独立于首选展开宽度。不新增 IPC、原生窗口边界、工作面板预留或
   项目/会话顺序契约。参见 ADR 0141 和 E2E-168。
 - D408 取代了本宽度契约在当前 shell 中的行为：展开侧边栏固定为 275px，
-  历史上的调整大小手柄会隐藏。
+  历史上的调整大小手柄会隐藏。D459 / ADR 0290 恢复了可调整大小的手柄，
+  并增加低于 160px 时收起的规则。
 
 ## 2026-09-01 —— 支持非回环 HTTP MCP 端点（D281）
 
@@ -4063,6 +4073,17 @@ D193 和 D194。
 - Registry 的 npm/PyPI 版本以及 runtime/package 参数会保留到安装模板。只映射 `streamable-http` 公网 HTTPS remote；远程 header 占位符变成明确的安装表单值。跨 origin 的 MCP 重定向不会转发调用方 header。
 - 手动配置的用户 MCP 仍保留 ADR 0142 的显式本地/LAN 端点策略。见 ADR 0245 和 E2E-MCP-MARKET-*。
 
+### Tray session shortcuts (issue #293)
+
+[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) amends the D216 native
+tray menu with Running, Unread, and Pinned groups after global priority
+assignment: each non-empty group keeps up to three rows, then overflowing groups
+reclaim the share smaller groups leave unused, in priority order, up to nine rows
+in total. Host session/inbox reads and runtime events remain the
+source of truth; renderer organization is mirrored without a persistence
+change. macOS single-click opens the menu without restoring the window;
+selection is delivered after bootstrap and uses normal session navigation.
+Validation contract: E2E-TRAY-bounded-session-navigation.
 
 ## 2026-09-14 — Upstream integration compatibility
 
@@ -4477,4 +4498,94 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 运行时钳位在推理模型上保留 `omit`。智能体记账仍为 `off`，父级流与子智能体
   共用低层 omit 路径，适配器不发送思考字段。显式 `off` 仍关闭思考。
 - Composer 推理菜单在所选模型有已启用规范档位时把 `omit` 放在最前，芯片渲染
-  规范字符串。Schema v19 重建 `sessions` 以使 CHECK 包含 `omit`。见 ADR 0295 与 E2E-203a。
+  规范字符串。设置页推理绑定的 `defaultThinkingLevel` 也接受 `omit`，新会话
+  可以不发送思考覆盖。Schema v19 重建 `sessions` 以使 CHECK 包含 `omit`。见 ADR 0295 与 E2E-203a。
+
+## 2026-09-19 —— 丢弃 outbox 毒消息；接受投递回合内的 steering（D597）
+
+- 决策 D597 修订 ADR 0041、ADR 0239、ADR active-turn-steering 与 D444。
+  宿主追加错误消息带 `PERMISSION_DENIED:` 前缀时是永久的、消息级拒绝。
+  Electron outbox 丢掉该行并继续排空，避免一条毒消息把 1024 上限填满。
+  `PLUGIN_PERMISSION_DENIED` 这类子串以及其他宿主失败仍暂停。
+- 向已认领的协作投递回合做 steering 是该会话里额外的人类输入：不受投递
+  内容/附件契约约束，不继承投递来源，并清掉客户端带来的 `session_message`。
+  指向另一会话的 steering 仍是 `PERMISSION_DENIED`。
+- 见 `03-runtime/04-data-storage.md`、`03-runtime/06-host-rpc-protocol.md`、
+  E2E-SESSION-outbox-poison-does-not-drop-history。
+
+## 2026-09-20 —— 项目档案呈现为内嵌分组卡片列表
+
+- 仅修订 D455 的呈现：该目的地仍为单列，详情在选中行下方，没有并排面板；
+  但索引改为 iOS 意义上的内嵌分组列表。每行自左向右是身份（颜色字形、项目名、
+  一个状态标签、缩短的等宽路径），自右向左是细节（会话计数、相对上次活动时间、
+  展开指示器）。行仍以行间距分隔，从不使用分隔线。
+- 选中的行就是它自己卡片的表头，因此详情面板不重复名称、路径或状态标签：
+  它先是操作栏（新任务、项目不是当前工作区时的「打开」、更多菜单），
+  接着是只读的文件夹与分支信息、会话计数，最后是会话列表。更多菜单的条目、
+  顺序与两步删除保持不变。
+- 方向键选中改为沿渲染顺序（分组顺序 + 当前排序）移动，而不是索引构建顺序，并把真实
+  焦点移到该行；该处理器会让位于展开的卡片，因此详情内的 Enter 仍是该控件自身的操作。
+  行元素 id 经过编码，只靠分隔符区分的两条路径不会再撞车。索引为空时在宿主列表返回前
+  显示等待指示器，而不是「暂无项目」；展开的卡片与展开指示器遵循减少动效设置。
+- 再次单击已展开卡片的那一行会收起卡片，走同一个共享切换函数。选中与卡片展开是
+  两个独立状态：当前行在卡片收起时仍保留选中环，展开指示器只在卡片真正展开时
+  转向下方。用方向键移动选中时总会展开落点所在的那一行。
+  仅演示层：无 IPC、存储、宿主协议或激活语义改动。见 `04-ux/06-settings-ia.md`、
+  `04-ux/07-ui-design-system.md` 与 ADR 0294。
+
+## 2026-09-20 —— 项目档案默认收起，且不再带页面级说明文字
+
+- 该目的地不再呈现说明行：工具栏是页面标题下的第一个元素，形态与智能体能力页面和
+  导入目的地一致。`project.archiveSubtitle` 键从全部语言目录中退役，而不是留作未使用。
+- 用户单击某一行之前不展开任何内容。选中与卡片展开原本是两个状态，现合并为一个：
+  收起的索引不高亮任何行，`aria-expanded` 与旋转的展开指示器只描述展开的卡片，
+  项目从列表中消失（搜索不再匹配）时卡片随之关闭。`resolveSelectedPath`
+  （总会解析出一个选中项：优先当前工作区、其次首行）随它所服务的自动展开一并移除。
+- 仅演示层：无 IPC、存储、宿主协议或激活语义改动。搜索仍匹配会话标题，并让所属项目
+  留在索引中。见 `04-ux/06-settings-ia.md`。
+
+## 2026-09-20 —— 菜单根层直接承载推理滑块（#417，D458）
+
+- Composer 的推理等级此前只能在一个子菜单里的竖向单选列表中切换。Issue #417 希望参考 Codex 桌面版做成滑动条，同时保留原有的「点击值标签进入下拉列表」交互。
+- 合并后的「模型 × 推理」菜单根层现在直接展示一个原生 range 输入，每个已启用等级一个刻度，并配有可点击的刻度标签，位置就在「推理等级」条目正下方。拖动滑块或点击刻度都会通过同一条 `configureActiveSession` 路径立即提交等级，并停留在菜单原处，因此临时调整不必再往子菜单里跑一趟。「推理等级」条目本身仍然打开经典单选列表，保留其单选语义、末尾勾选、上/下/Enter/左键契约与返回根层的行为。
+- 滑块在获得焦点时自行掌管方向键/Home/End/Enter，因此这些按键用于调整等级而不再驱动菜单导航，Escape 仍然关闭菜单。拖过多个刻度只保留最后一次待提交的档位，提交按 latest-wins 串行，空闲会话的持久化不会把中间档写进去；会话或模型变化会作废未完成的提交。本地拖动前导值避免受控输入在 store 确认回写之前被弹回。刻度标签可点但不进入 Tab 顺序。当菜单只列出一个等级时，滑块整体隐藏。
+- 等级值仍是未翻译的规范字符串，在绑定暴露已启用规范档位时也包括会话级 `omit`（D456）。七级阶梯、提供方过滤与钳制规则均未改动；仅渲染层：无协议、存储、宿主、权限或迁移改动。见 `04-ux/08-component-spec.md`、`04-ux/07-ui-design-system.md` 与 E2E-050。
+
+## 2026-09-20 —— 开发构建是一个独立安装（D599）
+
+- 正式打包版与 `pnpm dev` 不再共享定义「一个安装」的那两个目录。开发构建运行在操作系统应用数据根目录下的 `PI-Desktop Dev`（即独立的 Electron `userData`，随之独立的单实例锁、渲染层 `localStorage`、插件面板 partition 与浏览器面板 Cookie），数据目录为 `~/.pi-desktop-dev`。正式安装仍保持 `PI-Desktop` 与 `~/.pi-desktop` 不变，既有 profile 不会被搬迁。
+- 因此已在运行的正式版不再拒绝开发启动所需的锁，两者也不会把两个 host-core 压到同一个 `pi.sqlite`、同一个持久化 outbox 或同一棵日志树上。`PI_DESKTOP_DATA_DIR` 仍然优先于两种 profile，并且在作为子进程环境变量传给 host-core 之前被绝对化；Electron 主进程把解析结果回写到该变量，使插件运行时读到同一个根目录，而不是回退到正式版默认值。
+- 显式 `--user-data-dir` 仍然优先，E2E 装置正是用它把构建指向临时 profile。
+- 决策 D599 收窄 D236 并修订 ADR 0094：锁仍以「安装」为作用域，而开发构建现在是第二个安装，不再是一个含义模糊的第二个进程。未改动任何 IPC 通道、宿主协议、存储 schema 或正式安装的路径。见 `03-runtime/07-process-model.md`、`03-runtime/04-data-storage.md` 与 `02-architecture/03-repo-structure.md`。
+
+## 2026-09-20 — 应用不再随包发布任何字体（D598）
+
+- 决策 D598 修订 D232 / ADR 0083。四款内置字体（Geist、Inter、Noto Sans SC、LXGW WenKai）、
+  它们的 `woff2` 文件与 OFL 许可证文本、`styles/fonts.css` 及其 `@import` 全部删除，
+  `BUNDLED_FONTS`、`BundledFont` 类型、`FontOption.license`、选择器的许可证角标，
+  以及全部八份目录中的 `settings.fontBundled` 键一并移除。
+- 设置字体选择器的形态不变：「跟随系统」持久化为空字符串，其后是 Electron 主进程
+  通过 `pi-desktop/app/systemFonts` 枚举的系统已安装字体（仅用平台工具，去重、过滤、排序、
+  缓存 60 秒）。`bundled` 分组消失；不再匹配任何选项的已保存字体栈仍排在列表中
+  「已保存」分组的首位。
+- 每个生成的字体栈追加纯系统 CJK 回退层 `"PingFang SC", "Hiragino Sans GB",
+  "Microsoft YaHei", sans-serif`，前面不再有内置字体。此前保存的指向内置字体的字体栈
+  （例如 `"Geist", "PingFang SC", …`）按原样保留，显示在「已保存」分组，并穿过该回退层
+  渲染。无迁移、协议或 schema 变更。
+- 渲染器产物不再产出任何应用字体面，只剩 KaTeX 的 `woff2` 字形。见 ADR 0298、
+  `04-ux/06-settings-ia.md`、`04-ux/07-ui-design-system.md` 与 E2E-126。
+
+## 2026-09-20 —— 崩溃转储留在数据目录（D602）
+
+- Crashpad 在 `ready` 之前以本地模式启动（`uploadToServer: false`）。转储放在
+  `<data_dir>/crash-dumps`，而不是 Electron 默认的 `userData` crashDumps 路径，
+  因此 `PI_DESKTOP_DATA_DIR` profile 不会与其它安装共用转储。标记文件
+  `crash-dumps.json` 记录已经报告过的最新 mtime。
+- 下一次持有单实例锁的启动会为新于该标记的转储写一条 `diagnostics` 记录，
+  按 Crashpad 的 `ptype` 注解分类：任一新转储属于 browser/main 进程则为
+  `error`，已恢复的 renderer、GPU 或 utility 崩溃为 `warn`。扫描失败是一条
+  `crashDumpReportFailed` 警告，永不挡住第一扇窗口。
+- host-core 与 sidecar 崩溃仍走监督器路径以及 `host` / `agent` 日志通道。
+  什么都不上传。见 `03-runtime/07-process-model.md` §4、
+  `03-runtime/09-logging-and-observability.md` 与 `03-runtime/04-data-storage.md`。
+

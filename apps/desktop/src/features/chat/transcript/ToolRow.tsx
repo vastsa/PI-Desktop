@@ -80,6 +80,8 @@ type ToolRowProps = {
   delegate?: SubagentRun;
   /** Card treatment used when several Task calls form a delegation topology. */
   variant?: "default" | "topology";
+  /** Open the latest detailed-mode tool unless the user took over. */
+  autoOpen?: boolean;
   /** Claims the containing activity group when this row is manually used. */
   onUserInteraction?: () => void;
   /** Live delegation statuses read from the turn's lifecycle-tool rows. */
@@ -109,6 +111,7 @@ function toolRowPropsEqual(
   if (
     previous.message !== next.message ||
     previous.variant !== next.variant ||
+    previous.autoOpen !== next.autoOpen ||
     previous.onUserInteraction !== next.onUserInteraction ||
     !subagentRunsEqual(previous.delegate, next.delegate)
   ) {
@@ -133,6 +136,7 @@ export const ToolRow = memo(function ToolRow({
   message,
   delegate,
   variant = "default",
+  autoOpen = false,
   onUserInteraction,
   delegationStatuses,
   delegationTimings,
@@ -150,9 +154,12 @@ export const ToolRow = memo(function ToolRow({
   // (D227). Property reads only, so a streaming row can afford it every tick.
   const run = action === "run" ? runOutcome(message) : null;
   const failed = status === "error" || run === "failed";
-  // Tool details are always user-opened. Failure stays visible in the row head
-  // through its status icon/label without expanding the payload automatically.
-  const disclosure = useAutomaticDisclosure(false);
+  // Detailed mode opens the last tool of the last activity group. Compact keeps
+  // payloads collapsed so a live burst only updates the header. Failure and
+  // denial stay in the row head without expanding the payload automatically.
+  const disclosure = useAutomaticDisclosure(
+    autoOpen && !failed && status !== "denied",
+  );
   const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } = disclosure;
   const titleRef = disclosure.titleRef;
   const toggleRow = useCallback(() => {

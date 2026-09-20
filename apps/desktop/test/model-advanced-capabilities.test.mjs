@@ -32,15 +32,15 @@ const sidecarSource = await readFile(
 );
 const styles = await loadStyles();
 
-test("advanced settings choose the default thinking level among the enabled ones", () => {
+test("advanced settings choose the default thinking level among omit and the enabled ones", () => {
   // Offering the published ladder instead of the enabled subset would store a
-  // default the runtime clamps away on the next request.
+  // default the runtime clamps away on the next request. omit is a client
+  // selector, so it sits on the default picker rather than the capability chips.
   assert.match(pickerSource, /settings\.defaultThinkingLevel/);
   assert.match(pickerSource, /const enabledLevels = sortThinkingLevels\(/);
-  assert.match(pickerSource, /enabledLevels\.map\(\(level\) => \(/);
-  assert.match(pickerSource, /defaultThinkingLevel: id as ThinkingLevel/);
-  // Nothing to choose when a binding enables one level or none.
-  assert.match(pickerSource, /enabledLevels\.length > 1 \?/);
+  assert.match(pickerSource, /bindingDefaultThinkingMenuLevels\(enabledLevels\)\.map/);
+  assert.match(pickerSource, /defaultThinkingLevel: id as SessionThinkingLevel/);
+  assert.match(pickerSource, /bindingDefaultThinkingMenuLevels\(enabledLevels\)\.length > 1 \?/);
 });
 
 test("the capability checkboxes show and follow the published value", () => {
@@ -109,7 +109,7 @@ test("selected thinking chips keep high contrast in both themes", () => {
 test("thinking levels use a compact accessible grouped control", () => {
   assert.match(
     pickerSource,
-    /className="provider-chosen-thinking-head">[\s\S]*?provider-chosen-thinking-hint[\s\S]*?<\/div>\s*<div[\s\S]*?className="provider-chosen-thinking-chips"/,
+    /className="provider-chosen-thinking-head">[\s\S]*?thinkingManualOverrideHint[\s\S]*?<\/div>\s*<div[\s\S]*?className="provider-chosen-thinking-chips"/,
   );
   assert.match(pickerSource, /role="group"/);
   assert.match(styles, /\.provider-chosen-thinking-head \{/);
@@ -205,11 +205,14 @@ test("a model the catalog does not describe still reports its binding overrides"
 
 test("the advanced body is a compact sheet without helper paragraphs", () => {
   // The generic Field + hint paragraph made the disclosure a stacked form dump
-  // inside a half-pane. Labels stay 2xs, the alias hint is a title tooltip, and
-  // the default selector sits on the thinking label row.
+  // inside a half-pane. Labels stay 2xs, the alias hint is the help mark beside
+  // the label, and the default selector sits on the thinking label row.
   assert.match(pickerSource, /className="provider-chosen-field"/);
-  assert.match(pickerSource, /title=\{t\("settings.modelAliasHint"\)\}/);
-  assert.doesNotMatch(pickerSource, /hint=\{t\("settings.modelAliasHint"\)\}/);
+  assert.match(
+    pickerSource,
+    /<HelpIcon label=\{t\("settings\.modelAliasHint"\)\} \/>/,
+  );
+  assert.doesNotMatch(pickerSource, /hint=\{t\("settings\.modelAliasHint"\)\}/);
   assert.match(pickerSource, /aria-controls=\{advancedId\}/);
   assert.match(pickerSource, /models\[0\]\?\.id \?\? null/);
   assert.match(
@@ -236,13 +239,17 @@ test("the offered default and the saved default use one order", () => {
   // The panel lists enabled levels in canonical order; the save path must fall
   // back to the same first entry, or the user is shown one default and another
   // is persisted for a binding whose levels were toggled out of order.
-  const orderings = pickerSource.match(/sortThinkingLevels\(/g) ?? [];
-  assert.ok(orderings.length >= 3, `expected 3+ orderings, saw ${orderings.length}`);
-  assert.match(pickerSource, /: \(sortThinkingLevels\(next\)\[0\] \?\? null\)/);
   assert.match(
     pickerSource,
     /const thinkingLevels = sortThinkingLevels\(binding\.thinkingLevels\)/,
   );
   assert.match(pickerSource, /const enabled = thinkingLevels/);
-  assert.match(pickerSource, /: \(enabled\[0\] \?\? null\)/);
+  assert.match(
+    pickerSource,
+    /resolveBindingDefaultThinkingLevel\(\s*binding\.defaultThinkingLevel,\s*enabled,/,
+  );
+  assert.match(
+    pickerSource,
+    /resolveBindingDefaultThinkingLevel\(\s*binding\.defaultThinkingLevel,\s*sortThinkingLevels\(next\),/,
+  );
 });

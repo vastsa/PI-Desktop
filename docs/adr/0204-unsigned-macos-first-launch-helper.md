@@ -1,9 +1,9 @@
 # ADR 0204: Explicit Unsigned macOS First-Launch Helper
 
-- Status: Accepted (amended by D406 / ADR 0232, D450 / ADR 0289)
+- Status: Accepted (amended by D406 / ADR 0232, D450 / ADR 0289, D457 / ADR 0296)
 - Date: 2026-09-09
 - Deciders: PI-Desktop core
-- Related: D078, D371, D406, D450, E2E-196b, ADR 0289
+- Related: D078, D371, D406, D450, D457, E2E-196b, ADR 0289, ADR 0296
 
 ## Context
 
@@ -66,3 +66,8 @@ describes a helper that is present in the DMG.
 Official GitHub tag releases are Developer ID-signed and notarized. The
 first-launch helper and opening note remain for trusted unsigned local or
 debug artifacts only. Official Release DMGs must not claim they are unsigned.
+
+## Amendment (D457 / ADR 0296)
+
+The DMG no longer shows the opening-help note. ZIP retains the helper and
+note for trusted unsigned local or debug artifacts.

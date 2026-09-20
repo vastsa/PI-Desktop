@@ -91,6 +91,11 @@ test("tool block bodies stay bounded and role-coded", () => {
   assert.ok(fileItem);
   assert.match(fileItem, /display:\s*block;/);
   assert.match(fileItem, /width:\s*100%;/);
+  // A column flex list with a height cap shrinks every row whose overflow
+  // is not visible: the automatic minimum size is zero, so a long result is
+  // pressed into a sliver and the paths are clipped away. Rows keep their
+  // content height and the list scrolls instead.
+  assert.match(fileItem, /flex:\s*none;/);
   // stderr and error notes carry the error hue, host notices stay neutral.
   assert.match(stylesSource, /\.tool-row-content\.is-error \{[\s\S]*?var\(--ds-error\)/);
   assert.match(stylesSource, /\.tool-chip\.is-error \{[\s\S]*?var\(--ds-error\)/);
@@ -314,7 +319,7 @@ test("message toolbars are icon-only with hover tooltips", () => {
 });
 
 test("streaming assistant turns hide answer copy until idle", () => {
-  assert.ok(transcriptSource.includes("{complete ? ("));
+  assert.ok(transcriptSource.includes("{complete && actionMessage ? ("));
   assert.ok(
     transcriptSource.includes(
       '<CopyButton text={content} label={t("chat.copy")} />',

@@ -12,7 +12,7 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 
-import { IconEye, IconEyeOff } from "./icons";
+import { IconEye, IconEyeOff, IconHelp } from "./icons";
 
 export function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -492,6 +492,33 @@ export function TooltipButton({
   );
 }
 
+/**
+ * The one affordance for "there is an explanation here": the sentence itself
+ * lives in the tooltip, and this icon is the only trace of it left in the
+ * layout (D601). It is a real button, so a keyboard reaches the same text a
+ * pointer hovers, and its accessible name is that sentence.
+ */
+export function HelpIcon({
+  label,
+  className,
+}: {
+  /** The explanation, revealed on hover/focus and used as the name. */
+  label: string;
+  className?: string;
+}) {
+  return (
+    <TooltipButton
+      type="button"
+      className={cx("ui-help-icon", className)}
+      tooltip={label}
+      tooltipClassName="ui-tooltip-help"
+      ariaLabel={label}
+    >
+      <IconHelp size={13} />
+    </TooltipButton>
+  );
+}
+
 export function Button({
   variant = "secondary",
   size = "md",
@@ -601,9 +628,11 @@ export function Field({
 }) {
   return (
     <label className="block space-y-1.5">
-      <div className="text-sm text-text-secondary">{label}</div>
+      <div className="text-sm text-text-secondary">
+        {label}
+        {hint ? <HelpIcon label={hint} /> : null}
+      </div>
       {children}
-      {hint ? <div className="text-xs text-text-muted">{hint}</div> : null}
     </label>
   );
 }

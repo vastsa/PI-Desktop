@@ -3,7 +3,7 @@ import test from "node:test";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -471,10 +471,20 @@ test("the stdio environment carries no host secrets", () => {
     assert.equal(env.TOKEN, "t0ken");
     assert.equal(env.PI_LEAKED_SECRET, undefined);
     // PATH still crosses, or a bare command name could never be found.
-    assert.equal(env.PATH, process.env.PATH);
+    assert.ok(typeof env.PATH === "string" && env.PATH.length > 0);
+    for (const part of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
+      assert.ok(env.PATH.split(delimiter).includes(part), part);
+    }
   } finally {
     delete process.env.PI_LEAKED_SECRET;
   }
+});
+
+test("stdio PATH uses the login-shell lookup and names a missing command", () => {
+  const src = readFileSync(join(desktopRoot, "electron/main/plugin-mcp.ts"), "utf8");
+  assert.match(src, /import \{ userLookupPath \} from "\.\/user-login-path\.ts"/);
+  assert.match(src, /userLookupPath\(process\.env\.PATH/);
+  assert.match(src, /command not found: \$\{options\.command\}/);
 });
 
 test("a command may not escape the plugin directory", () => {

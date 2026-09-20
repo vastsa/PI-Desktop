@@ -148,6 +148,26 @@ test("composer opens one unified file picker directly from the plus button", () 
   assert.doesNotMatch(composer, /plusOpen|plusRef|composer-plus-menu|pickAndAttach\("photos"\)/);
 });
 
+test("composer ignores repeated picker clicks while selection is in flight", () => {
+  assert.match(composer, /const pickerInFlight = useRef\(false\)/);
+  assert.match(composer, /if \(pickerInFlight\.current \|\| isInputBlocked\) return;/);
+  assert.match(
+    composer,
+    /pickerInFlight\.current = true;\s*setPasting\(true\);[\s\S]*?await api\.pickFiles\(\)/,
+  );
+  assert.match(
+    composer,
+    /pickerInFlight\.current = false;\s*setPasting\(false\);/,
+  );
+  assert.match(main, /let composerPickerActive = false/);
+  assert.match(
+    main,
+    /if \(composerPickerActive\) return \{ token: null, canceled: true \};/,
+  );
+  assert.match(main, /BrowserWindow\.fromWebContents\(event\.sender\)/);
+  assert.match(main, /dialog\.showOpenDialog\(owner, options\)/);
+});
+
 test("pasted bytes stay in the session scratch directory", () => {
   assert.match(saver, /join\(dataDir, "scratch", sessionId, "pasted"\)/);
   assert.match(saver, /basename\(normalized\)/);

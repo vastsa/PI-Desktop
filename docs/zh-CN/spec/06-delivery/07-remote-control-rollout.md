@@ -49,7 +49,7 @@ Linux 或 WSL 机器上的项目，即 SSH 隧道远端 Host 拓扑；#100 要�
   `workspace/list`、`workspace/read`、`workspace/diff`）；以及远程会话归属划分；反向工具中继（`tools/advertise` 与 `tool/execute` 服务端
   请求，让桌面 MCP 服务器和不需工作区的插件工具在远程会话中于桌面执行）；终端
   （`terminal/open`、`terminal/input`、`terminal/resize`、`terminal/close`、
-  `terminal.output` 与有界回放环，在远端机器运行）。
+  `terminal.output` 与有界回放环，在远端机器运行）；设置 → 远程主机为紧凑主机清单加一个 SSH/配对添加表单、不含说明性文案；整项功能在导航与标题上标为实验性，因为远程连接仍可能失败，仅在开发者模式开启时显示（连同其在设置搜索中的命中）（`04-ux/06-settings-ia.md` §1、§3）。
 - R3：出站消息集成（#100）。Host 进程内的又一个模块调用方，无传输、无入站
   监听：订阅 Host 范围与会话事件，把 `turn.completed`、`turn.failed`、
   `approval.requested`、`input.requested` 的脱敏摘要转发到出站渠道（先 Webhook，

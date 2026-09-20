@@ -12,14 +12,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   THINKING_LEVELS,
+  bindingDefaultThinkingMenuLevels,
   bindingForCustomModel,
   bindingFromModelInfo,
   formatTokenCount,
   modelMatchesFilter,
+  nativeWebSearchSupportedOn,
   publishedThinkingLevels,
+  resolveBindingDefaultThinkingLevel,
   sortThinkingLevels,
   type ModelBinding,
   type ModelInfo,
+  type SessionThinkingLevel,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import {
@@ -27,12 +31,13 @@ import {
   MAX_OUTPUT_PRESETS,
   matchPresetIndex,
 } from "../../lib/model-limit-presets";
-import { Button, Field, Input, Tooltip, TooltipButton, cx } from "../ui";
-import { IconClose, IconHelp, IconPlus, IconRefresh, IconSearch } from "../icons";
+import { Button, Field, HelpIcon, Input, Tooltip, TooltipButton, cx } from "../ui";
+import { IconClose, IconGripVertical, IconHelp, IconPlus, IconRefresh, IconSearch } from "../icons";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { filterChosenModels, hidesAddedBinding } from "./model-chosen-filter";
 import { describeModelsFetchError } from "./model-fetch-error";
 import type { ProviderModelsState } from "./useProviderModels";
+import { useModelReorder } from "./useModelReorder";
 
 /** One row of the model list: what the service returned, plus its binding. */
 export type ModelRow = {
@@ -127,10 +132,10 @@ export function useModelSelection(
         // would save a different default than the one the user was shown.
         const thinkingLevels = sortThinkingLevels(binding.thinkingLevels);
         const enabled = thinkingLevels;
-        const defaultThinkingLevel =
-          binding.defaultThinkingLevel && enabled.includes(binding.defaultThinkingLevel)
-            ? binding.defaultThinkingLevel
-            : (enabled[0] ?? null);
+        const defaultThinkingLevel = resolveBindingDefaultThinkingLevel(
+          binding.defaultThinkingLevel,
+          enabled,
+        );
         if (
           thinkingLevels.length === binding.thinkingLevels.length &&
           defaultThinkingLevel === binding.defaultThinkingLevel
@@ -182,6 +187,12 @@ export type ModelSelectionPanesProps = {
   busy?: boolean;
   /** Probe the service's model list now, skipping the edit debounce. */
   onReload?: () => void;
+  /**
+   * Effective API style of the provider being configured. Gates the native
+   * web search opt-in: only wires that can carry a provider-hosted search
+   * tool offer the checkbox at all.
+   */
+  apiStyle?: string;
 };
 
 /**
@@ -195,6 +206,7 @@ export function ModelSelectionPanes({
   listTitle,
   busy = false,
   onReload,
+  apiStyle,
 }: ModelSelectionPanesProps) {
   const { t } = useTranslation();
   const { rows, models, publishedLevelsById, setModels } = selection;
@@ -245,6 +257,11 @@ export function ModelSelectionPanes({
     if (models.length === 0) setChosenQuery("");
   }, [models.length]);
 
+  // The hosted web search tool only exists on two wires; on any other
+  // style the opt-in cannot work, so the checkbox stays present but disabled
+  // with an explanatory hint instead of silently doing nothing.
+  const nativeWebSearchWireCapable = nativeWebSearchSupportedOn(apiStyle);
+
   /**
    * The chosen list narrows with the discovered list's rule plus the binding's
    * alias: a case-insensitive substring match over the id, the alias, and the
@@ -256,6 +273,7 @@ export function ModelSelectionPanes({
     () => filterChosenModels(models, chosenQuery, rows),
     [chosenQuery, models, rows],
   );
+  const reorder = useModelReorder(visibleChosen, setModels, busy);
 
   /** A discovered row arrives enriched; a hand-typed id gets generic limits. */
   const bindingForRow = (row: ModelRow): ModelBinding =>
@@ -416,7 +434,17 @@ export function ModelSelectionPanes({
                 onChange={(event) => toggleVisibleModels(event.target.checked)}
               />
             ) : null}
-            <h4 className="provider-models-title">{listTitle}</h4>
+            <h4 className="provider-models-title">
+              {listTitle}
+              {/* Where this batch came from is the heading's answer now, so the
+                  list keeps its height whether the source is the catalog or
+                  the fallback. */}
+              {discovery.source === "catalog" ? (
+                <HelpIcon label={t("settings.modelsFromCatalogNote")} />
+              ) : discovery.source === "fallback" ? (
+                <HelpIcon label={t("settings.modelsFallbackNote")} />
+              ) : null}
+            </h4>
             {onReload ? (
               <button
                 type="button"
@@ -450,12 +478,6 @@ export function ModelSelectionPanes({
           </div>
         </div>
 
-        {discovery.source === "catalog" ? (
-          <div className="provider-models-note">{t("settings.modelsFromCatalogNote")}</div>
-        ) : null}
-        {discovery.source === "fallback" ? (
-          <div className="provider-models-note">{t("settings.modelsFallbackNote")}</div>
-        ) : null}
         {fetchFailed && !emptyFetchError ? (
           <ModelsFetchErrorMessage error={discovery.error} variant="banner" />
         ) : null}
@@ -511,8 +533,27 @@ export function ModelSelectionPanes({
               const expanded = expandedModelId === binding.id;
               const advancedId = `model-advanced-${binding.id}`;
               return (
-                <li className="provider-chosen-row" key={binding.id}>
+                <li
+                  className={cx(
+                    "provider-chosen-row",
+                    reorder.draggingId === binding.id && "is-dragging",
+                  )}
+                  key={binding.id}
+                  data-drop-placement={
+                    reorder.dropTarget?.id === binding.id ? reorder.dropTarget.placement : undefined
+                  }
+                  {...reorder.rowEvents(binding.id)}
+                >
                   <div className="provider-chosen-row-head">
+                    <button
+                      type="button"
+                      className="provider-chosen-reorder"
+                      aria-label={t("settings.reorderModel", { name: binding.id })}
+                      title={t("settings.reorderModel", { name: binding.id })}
+                      {...reorder.handleEvents(binding.id)}
+                    >
+                      <IconGripVertical size={14} aria-hidden />
+                    </button>
                     <span className="provider-chosen-row-id font-mono selectable">
                       {binding.id}
                     </span>
@@ -551,7 +592,7 @@ export function ModelSelectionPanes({
                       <IconClose size={12} />
                     </TooltipButton>
                   </div>
-                  {/* Dense sheet: 2xs labels, alias hint as a title tooltip. */}
+                  {/* Dense sheet: 2xs labels, explanations behind the help marks. */}
                   <div
                     className="provider-chosen-row-body"
                     id={advancedId}
@@ -560,11 +601,11 @@ export function ModelSelectionPanes({
                     <label className="provider-chosen-field">
                       <span className="provider-chosen-field-label">
                         {t("settings.modelAlias")}
+                        <HelpIcon label={t("settings.modelAliasHint")} />
                       </span>
                       <Input
                         value={binding.alias ?? ""}
                         placeholder={t("settings.modelAliasPlaceholder")}
-                        title={t("settings.modelAliasHint")}
                         spellCheck={false}
                         autoCorrect="off"
                         autoCapitalize="off"
@@ -579,8 +620,14 @@ export function ModelSelectionPanes({
                     </label>
                     <div className="provider-chosen-limits">
                       <label className="provider-chosen-field">
+                        {/* A catalog window keeps following models.dev until the
+                            user pins a number; the mark beside the label is the
+                            only place that still says so. */}
                         <span className="provider-chosen-field-label">
                           {t("settings.contextWindow")}
+                          {followsCatalog ? (
+                            <HelpIcon label={t("settings.contextWindowCatalogHint")} />
+                          ) : null}
                         </span>
                         {/* Preset ladder (#202): click writes the token count;
                             the input stays hand-editable off the ladder. */}
@@ -630,13 +677,6 @@ export function ModelSelectionPanes({
                             })
                           }
                         />
-                        {/* A catalog window keeps following models.dev; the hint
-                            says so until the user pins a number. */}
-                        {followsCatalog ? (
-                          <span className="provider-chosen-limit-hint">
-                            {t("settings.contextWindowCatalogHint")}
-                          </span>
-                        ) : null}
                       </label>
                       <label className="provider-chosen-field">
                         <span className="provider-chosen-field-label">
@@ -692,13 +732,13 @@ export function ModelSelectionPanes({
                       <div className="provider-chosen-thinking-head">
                         <span className="provider-chosen-thinking-label">
                           {t("settings.supportedThinkingLevels")}
+                          {/* Nothing published means every level here is a
+                              manual override; that is what the mark explains. */}
+                          {publishedLevels.length === 0 ? (
+                            <HelpIcon label={t("settings.thinkingManualOverrideHint")} />
+                          ) : null}
                         </span>
-                        {publishedLevels.length === 0 ? (
-                          <span className="provider-chosen-thinking-hint">
-                            {t("settings.thinkingManualOverrideHint")}
-                          </span>
-                        ) : null}
-                        {enabledLevels.length > 1 ? (
+                        {bindingDefaultThinkingMenuLevels(enabledLevels).length > 1 ? (
                           <div className="provider-chosen-thinking-default">
                             <span className="provider-chosen-thinking-label">
                               {t("settings.defaultThinkingLevel")}
@@ -707,20 +747,22 @@ export function ModelSelectionPanes({
                               className="provider-chosen-thinking-select"
                               label={t("settings.defaultThinkingLevel")}
                               value={
-                                binding.defaultThinkingLevel &&
-                                enabledLevels.includes(binding.defaultThinkingLevel)
-                                  ? binding.defaultThinkingLevel
-                                  : (enabledLevels[0] ?? "")
+                                resolveBindingDefaultThinkingLevel(
+                                  binding.defaultThinkingLevel,
+                                  enabledLevels,
+                                ) ?? ""
                               }
                               onChange={(id) =>
                                 updateBinding(binding.id, {
-                                  defaultThinkingLevel: id as ThinkingLevel,
+                                  defaultThinkingLevel: id as SessionThinkingLevel,
                                 })
                               }
-                              options={enabledLevels.map((level) => ({
-                                id: level,
-                                label: level,
-                              }))}
+                              options={bindingDefaultThinkingMenuLevels(enabledLevels).map(
+                                (level) => ({
+                                  id: level,
+                                  label: level,
+                                }),
+                              )}
                             />
                           </div>
                         ) : null}
@@ -748,11 +790,10 @@ export function ModelSelectionPanes({
                                   : [...binding.thinkingLevels, level];
                                 updateBinding(binding.id, {
                                   thinkingLevels: next,
-                                  defaultThinkingLevel: next.includes(
-                                    binding.defaultThinkingLevel as ThinkingLevel,
-                                  )
-                                    ? binding.defaultThinkingLevel
-                                    : (sortThinkingLevels(next)[0] ?? null),
+                                  defaultThinkingLevel: resolveBindingDefaultThinkingLevel(
+                                    binding.defaultThinkingLevel,
+                                    sortThinkingLevels(next),
+                                  ),
                                 });
                               }}
                             >
@@ -801,6 +842,36 @@ export function ModelSelectionPanes({
                             className="provider-chosen-delegation-help"
                             label={t("settings.availableForSubagentsHint")}
                             ariaLabel={t("settings.availableForSubagentsHint")}
+                          >
+                            <IconHelp size={13} />
+                          </Tooltip>
+                        </span>
+                        <span className="provider-chosen-delegation">
+                          <label className="provider-chosen-capability">
+                            <input
+                              type="checkbox"
+                              checked={binding.nativeWebSearch === true}
+                              disabled={!nativeWebSearchWireCapable}
+                              onChange={(event) =>
+                                updateBinding(binding.id, {
+                                  nativeWebSearch: event.target.checked || undefined,
+                                })
+                              }
+                            />
+                            <span>{t("settings.nativeWebSearch")}</span>
+                          </label>
+                          <Tooltip
+                            className="provider-chosen-delegation-help"
+                            label={t(
+                              nativeWebSearchWireCapable
+                                ? "settings.nativeWebSearchHint"
+                                : "settings.nativeWebSearchUnsupported",
+                            )}
+                            ariaLabel={t(
+                              nativeWebSearchWireCapable
+                                ? "settings.nativeWebSearchHint"
+                                : "settings.nativeWebSearchUnsupported",
+                            )}
                           >
                             <IconHelp size={13} />
                           </Tooltip>

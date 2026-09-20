@@ -18,6 +18,7 @@ import {
   FORKED_SESSION_WINDOW,
 } from "../../lib/session-fork";
 import { EMPTY_SESSION_WINDOW } from "../../lib/session-create";
+import { inheritedSessionModelBinding } from "../../lib/session-model";
 import {
   clearSessionPanes,
   retainSessionPane,
@@ -279,16 +280,16 @@ export function createSessionCoordination({
       options && "draftConfiguration" in options
         ? options.draftConfiguration
         : state.draftConfiguration;
+    const inherited = inheritedSessionModelBinding({
+      draft: draftConfig,
+      settings,
+      providers: state.providers,
+    });
     const defaultProvider = state.providers.find(
-      (provider) =>
-        provider.id === (draftConfig?.providerId ?? settings?.defaultProviderId),
+      (provider) => provider.id === inherited.providerId,
     );
-    const inheritedModelId =
-      draftConfig?.modelId ??
-      settings?.defaultModelId ??
-      defaultProvider?.defaultModelId;
     const inheritedBinding = defaultProvider?.models.find((candidate) =>
-      modelIdsMatch(candidate.id, inheritedModelId ?? ""),
+      modelIdsMatch(candidate.id, inherited.modelId ?? ""),
     );
     const defaultThinkingLevel = initialThinkingLevelForBinding(
       inheritedBinding,
@@ -303,8 +304,8 @@ export function createSessionCoordination({
         mode: draftConfig?.mode ?? normalizeMode(settings?.defaultMode),
         thinkingLevel: draftConfig?.thinkingLevel ?? defaultThinkingLevel,
         permissionMode: draftConfig?.permissionMode,
-        providerId: draftConfig?.providerId,
-        modelId: draftConfig?.modelId,
+        providerId: inherited.providerId,
+        modelId: inherited.modelId,
         projectPath: projectPath ?? undefined,
       });
     } catch (error) {

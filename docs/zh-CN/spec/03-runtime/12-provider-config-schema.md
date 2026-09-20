@@ -96,7 +96,7 @@
           },
           "defaultThinkingLevel": {
             "type": ["string", "null"],
-            "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", null]
+            "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", "omit", null]
           },
           "supportsImages": { "type": ["boolean", "null"] },
           "supportsDocuments": { "type": ["boolean", "null"] },
@@ -280,6 +280,7 @@ Copilot 的上下文相关请求标头；已保存的同名自定义 header 会�
 ## 5. IPC / 主机方法（提供商域）
 
 - `providers.list`
+- `providers.reorder`
 - `providers.get`
 - `providers.create`
 - `providers.update`
@@ -328,6 +329,22 @@ Copilot 的上下文相关请求标头；已保存的同名自定义 header 会�
 - `ProviderPublic` 排除原始秘密；包括 `hasSecret: boolean`（**任一种**凭据
   存在即为真）、`hasOauth: boolean`、非敏感的 `oauthAccountLabel?: string`
   与可选的 `headers?: Record<string, string>`
+
+### `providers.reorder`
+- in: `{ id: string, targetId: string, placement: "before" | "after" }`
+- out: `{ ok: true }`
+- Atomically move the source relative to the target in the current host list.
+  A missing source/target or invalid placement returns `INVALID_PARAMS` without
+  writing. Moving to the current position is a successful no-op.
+- Persist ordered provider IDs in `kv` at `providers.order`. `providers.list`
+  applies that order before returning rows; absent metadata preserves creation
+  order. New providers follow saved rows in creation order, deleted IDs are
+  ignored, and disabled rows keep their relative position when filtered out.
+- This is a display preference, including for plugin-owned rows. Provider
+  configuration, credentials, enabled state, timestamps and the default model
+  remain unchanged. Plugin configuration write restrictions still apply.
+- Uses the existing `kv` extension boundary; no database migration or protocol
+  version bump. Older applications ignore this metadata.
 
 ### `providers.create` / `providers.update`
 - 在：提供商字段 + 可选的 `secretValue` + 可选的 `oauthAccountLabel`

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanningState, UiMessage } from "@pi-desktop/shared";
 import { proposalKindForMode } from "@pi-desktop/shared";
@@ -20,25 +20,15 @@ import { useTranscriptScroll } from "./hooks/useTranscriptScroll";
 import type { TranscriptSearchTarget } from "../../../lib/transcript-reading";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { DisclosureAnchorContext } from "../../../lib/disclosure-anchor-context";
+import { conversationPlainText } from "../../../lib/chat-transcript-text";
+import {
+  TranscriptMenuProvider,
+  useChatTextActions,
+  useTranscriptMenu,
+} from "./TranscriptMenu";
+import { conversationMenuItems } from "./menu-items";
 
-export const ChatTranscript = memo(function ChatTranscript({
-  sessionId,
-  messages,
-  hasMoreBefore = false,
-  onLoadOlder,
-  isRunning,
-  pendingPermission,
-  queuedPermissions = 0,
-  askPending = false,
-  planningState,
-  paneVisible = true,
-  searchTarget = null,
-  readingWindow = false,
-  hasMoreAfter = false,
-  onLoadNewer,
-  onReturnToLatest,
-  navigationLoading = false,
-}: {
+type ChatTranscriptProps = {
   sessionId: string | undefined;
   messages: UiMessage[];
   hasMoreBefore?: boolean;
@@ -61,8 +51,44 @@ export const ChatTranscript = memo(function ChatTranscript({
   onLoadNewer?: () => Promise<void>;
   onReturnToLatest?: () => void;
   navigationLoading?: boolean;
-}) {
+};
+
+/**
+ * The transcript facade only mounts the right-click menu provider: the
+ * scroller's own background menu has to consume that context, and a component
+ * cannot read a provider it renders itself.
+ */
+export const ChatTranscript = memo(function ChatTranscript(
+  props: ChatTranscriptProps,
+) {
+  return (
+    <TranscriptMenuProvider>
+      <TranscriptBody {...props} />
+    </TranscriptMenuProvider>
+  );
+});
+
+function TranscriptBody({
+  sessionId,
+  messages,
+  hasMoreBefore = false,
+  onLoadOlder,
+  isRunning,
+  pendingPermission,
+  queuedPermissions = 0,
+  askPending = false,
+  planningState,
+  paneVisible = true,
+  searchTarget = null,
+  readingWindow = false,
+  hasMoreAfter = false,
+  onLoadNewer,
+  onReturnToLatest,
+  navigationLoading = false,
+}: ChatTranscriptProps) {
   const { t } = useTranslation();
+  const openTranscriptMenu = useTranscriptMenu();
+  const { copyText, selectText } = useChatTextActions();
   const transcriptRunning = isRunning && !readingWindow;
   const latestTurnResult = useAppStore((state) =>
     sessionId ? state.latestTurnResults[sessionId] : undefined,
@@ -121,45 +147,24 @@ export const ChatTranscript = memo(function ChatTranscript({
     readingWindow,
   });
 
-  const lastEntry = tailEntry;
-  const lastTurnPart =
-    lastEntry?.kind === "assistant-turn" ? lastEntry.parts.at(-1) : undefined;
-  const activeToolGroup = transcriptRunning && lastTurnPart?.kind === "activity";
-  const assistantIsAnswering =
-    lastTurnPart?.kind === "message" &&
-    lastTurnPart.message.status === "streaming" &&
-    Boolean((lastTurnPart.message.content || "").trim());
   const specializedActivity = agentActivity;
   const hasSpecializedActivity = specializedActivity !== undefined;
-  const showRunActivity =
+  // Existing output does not mean the turn has finished: a text stream can
+  // pause, and completed tool rows can outlive their activity. Keep one tail
+  // status until the turn ends or a user interaction owns the pending state.
+  const showStatus =
     transcriptRunning &&
     !pendingPermission &&
     !askPending &&
-    !approvalPending &&
-    !assistantIsAnswering &&
-    hasSpecializedActivity;
-  // Show immediate feedback after send, then let the concrete activity row
-  // (thinking/tool/answer) take over so the transcript never duplicates state.
+    !approvalPending;
+  const showRunActivity = showStatus && hasSpecializedActivity;
   const showWorking =
-    transcriptRunning &&
-    !pendingPermission &&
-    !askPending &&
-    !approvalPending &&
+    showStatus &&
     planningState !== "planning" &&
-    !activeToolGroup &&
-    !assistantIsAnswering &&
     !hasSpecializedActivity;
-  // Same pre-stream slot as Working: once tools or an answer exist, activity
-  // rows carry the live state so a Planning label does not sit orphaned above
-  // the composer. The Composer mode chip keeps pulsing for the turn.
   const showPlanning =
-    transcriptRunning &&
+    showStatus &&
     planningState === "planning" &&
-    !approvalPending &&
-    !pendingPermission &&
-    !askPending &&
-    !activeToolGroup &&
-    !assistantIsAnswering &&
     !hasSpecializedActivity;
 
   // The tail status lane is part of the layout for the whole running turn: the
@@ -168,6 +173,32 @@ export const ChatTranscript = memo(function ChatTranscript({
   // the user is already reading (issue #323). An idle transcript renders no
   // lane at all, so a finished transcript keeps its exact layout.
   const runtimeStatusLane = transcriptRunning;
+
+  /*
+    The background menu answers the right-clicks no row claimed: the space below
+    the last turn, a system row, a permission or outcome card. It reads the
+    conversation rather than one message, so it is the only surface that can
+    copy the whole thread.
+  */
+  const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    openTranscriptMenu(event, {
+      label: t("chat.conversationMenu"),
+      items: conversationMenuItems({
+        t,
+        conversation: conversationPlainText(messages, {
+          user: t("chat.speakerYou"),
+          assistant: t("chat.speakerAssistant"),
+        }),
+        scrollRef,
+        contentRef,
+        actions: { copyText, selectText },
+        onReturnToLatest: () => {
+          onReturnToLatest?.();
+          jumpToLatest();
+        },
+      }),
+    });
+  };
 
   return (
     <TranscriptSearchContext.Provider value={searchTarget}>
@@ -196,6 +227,7 @@ export const ChatTranscript = memo(function ChatTranscript({
         className="thread-scroll"
         ref={scrollRef}
         data-scroll-owner="transcript"
+        onContextMenu={onContextMenu}
         onScroll={handleScroll}
         role="log"
         aria-live="polite"
@@ -310,4 +342,4 @@ export const ChatTranscript = memo(function ChatTranscript({
     </DisclosureAnchorContext.Provider>
     </TranscriptSearchContext.Provider>
   );
-});
+}

@@ -1886,6 +1886,21 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "providers": list }))
         }
+        "providers.reorder" => {
+            let input: providers::ProviderReorderInput = serde_json::from_value(params)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let moved = providers::reorder_providers(&st.db, &st.secrets, input)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            if !moved {
+                return Err(rpc_err(
+                    1002,
+                    "provider or reorder target not found",
+                    "INVALID_PARAMS",
+                ));
+            }
+            Ok(json!({ "ok": true }))
+        }
         "providers.create" => {
             let input: ProviderCreateInput = serde_json::from_value(params)
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
@@ -3704,13 +3719,14 @@ async fn handle_request(
                 }
 
                 let mut result = if tools::is_desktop_dispatched(&p.tool_name) {
-                    // Plugin dispatch keeps its existing bounded default timeout;
-                    // command-shell timeout semantics apply only to Bash.
+                    // Plugin and MCP dispatch has its own bounded default, sized
+                    // to outlast Electron's budgets; command-shell timeout
+                    // semantics apply only to Bash.
                     execute_plugin_tool(
                         &state,
                         &tx,
                         &p,
-                        p.timeout_ms.unwrap_or(60_000),
+                        tools::desktop_dispatch_timeout_ms(p.timeout_ms),
                         &durable_mode,
                     )
                     .await

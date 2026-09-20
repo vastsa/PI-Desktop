@@ -37,7 +37,7 @@ import {
   IconWorkflow,
 } from "./icons";
 import { TooltipButton } from "./ui";
-import { createPortal } from "react-dom";
+import { ContextMenu, useContextMenu } from "./ContextMenu";
 import { api } from "../lib/api";
 import { openHttpUrl } from "../lib/open-http-url";
 import {
@@ -501,73 +501,15 @@ function Anchor({
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const showToast = useAppStore((s) => s.showToast);
 
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const anchorRef = useRef<HTMLAnchorElement | null>(null);
+  const { contextMenu, openContextMenu, closeContextMenu } = useContextMenu();
 
-  useEffect(() => {
-    if (!menuPosition) return;
-    const close = () => setMenuPosition(null);
-    const onPointerDown = (event: PointerEvent) => {
-      if (menuRef.current?.contains(event.target as Node)) return;
-      close();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      close();
-      requestAnimationFrame(() => anchorRef.current?.focus());
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("keydown", onKeyDown);
-    const focusFrame = requestAnimationFrame(() => {
-      menuRef.current
-        ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
-        ?.focus();
-    });
-    return () => {
-      cancelAnimationFrame(focusFrame);
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [menuPosition]);
-
-  const onContextMenu = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!href || !/^https?:\/\//i.test(href)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const x = Math.min(e.clientX, window.innerWidth - 200);
-    const y = Math.min(e.clientY + 4, window.innerHeight - 150);
-    setMenuPosition({ top: y, left: x });
-  };
-
-  const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    const items = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"]:not(:disabled)',
-      ),
-    );
-    if (!items.length) return;
-    event.preventDefault();
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
-            items.length;
-    items[next]?.focus();
-  };
-
-  const copyLink = async () => {
-    setMenuPosition(null);
-    if (!href) return;
+  /*
+    Copying reports through the toast host: the menu closes the moment the item
+    runs, so there is no button left to carry its own copied state.
+  */
+  const copyLink = async (target: string) => {
     try {
-      await navigator.clipboard.writeText(href);
+      await navigator.clipboard.writeText(target);
       showToast(t("settings.linkCopied", { defaultValue: "Link copied to clipboard" }), {
         variant: "success",
       });
@@ -577,6 +519,47 @@ function Anchor({
         { variant: "error" },
       );
     }
+  };
+
+  /*
+    A link keeps the renderer's own menu instead of the platform's so both
+    destinations the app can send it to stay one press away. The surface is the
+    shared pointer-anchored menu, which measures before it reveals, clamps inside
+    the viewport, and owns dismissal and arrow-key navigation; only the items are
+    link-specific.
+  */
+  const onContextMenu = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!href || !/^https?:\/\//i.test(href)) return;
+    const target = href;
+    openContextMenu(event, {
+      items: [
+        {
+          id: "open-external",
+          label: t("settings.linkContextMenuOpenExternal", {
+            defaultValue: "Open in default browser",
+          }),
+          icon: <IconExternal size={14} />,
+          onSelect: () => void api.browserOpenExternal(target),
+        },
+        {
+          id: "open-workpanel",
+          label: t("settings.linkContextMenuOpenWorkpanel", {
+            defaultValue: "Open in work panel",
+          }),
+          icon: <IconGlobe size={14} />,
+          onSelect: () => openUrl(target),
+        },
+        {
+          id: "copy-address",
+          label: t("settings.linkContextMenuCopy", {
+            defaultValue: "Copy link address",
+          }),
+          icon: <IconCopy size={14} />,
+          separatorBefore: true,
+          onSelect: () => void copyLink(target),
+        },
+      ],
+    });
   };
 
   // Plain click follows Link open destination. Modifier clicks fall through
@@ -599,7 +582,6 @@ function Anchor({
   return (
     <>
       <a
-        ref={anchorRef}
         {...rest}
         href={href}
         onClick={onClick}
@@ -609,52 +591,7 @@ function Anchor({
       >
         {children}
       </a>
-      {menuPosition &&
-        createPortal(
-          <div
-            ref={menuRef}
-            className="sidebar-row-menu sidebar-floating-menu"
-            role="menu"
-            onKeyDown={onMenuKeyDown}
-            style={{
-              top: menuPosition.top,
-              left: menuPosition.left,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuPosition(null);
-                if (href) void api.browserOpenExternal(href);
-              }}
-            >
-              <IconExternal size={14} />
-              {t("settings.linkContextMenuOpenExternal", { defaultValue: "Open in default browser" })}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuPosition(null);
-                if (href) openUrl(href);
-              }}
-            >
-              <IconGlobe size={14} />
-              {t("settings.linkContextMenuOpenWorkpanel", { defaultValue: "Open in work panel" })}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => void copyLink()}
-            >
-              <IconCopy size={14} />
-              {t("settings.linkContextMenuCopy", { defaultValue: "Copy link address" })}
-            </button>
-          </div>,
-          document.body,
-        )}
+      <ContextMenu state={contextMenu} onClose={closeContextMenu} />
     </>
   );
 }

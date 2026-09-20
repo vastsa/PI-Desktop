@@ -828,6 +828,9 @@ function bindingFromGenericModel(
       importedContextWindowSource(record?.contextWindowSource) ??
       (contextWindow === undefined ? base.contextWindowSource : "user"),
     maxTokens: maxTokens ?? base.maxTokens,
+    ...(record?.nativeWebSearch === true || record?.native_web_search === true
+      ? { nativeWebSearch: true }
+      : {}),
   };
 }
 

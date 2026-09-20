@@ -29,6 +29,10 @@ Users need that third choice on the Composer model × reasoning menu.
    otherwise. Agent bookkeeping stays `off`; the parent stream uses the same
    low-level omit path as subagents (`thinkingLevelMap.off = null`).
 4. Schema v19 rebuilds `sessions` so the CHECK includes `omit`. Handshake protocol version is unchanged.
+5. Settings `defaultThinkingLevel` accepts `omit` when the binding enables any
+   canonical reasoning level, so new sessions can start without a thinking
+   override. Capability chips stay canonical; an off-only binding still
+   rejects `omit`.
 
 ## Consequences
 
@@ -36,3 +40,4 @@ Users need that third choice on the Composer model × reasoning menu.
   control without disabling thinking.
 - Existing sessions keep their stored canonical levels.
 - Subagent inherit of a parent `omit` continues to omit.
+- A reasoning model's Settings default can be `omit`; new sessions inherit it.

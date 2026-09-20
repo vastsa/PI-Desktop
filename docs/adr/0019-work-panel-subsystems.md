@@ -25,7 +25,8 @@ The retained work-panel subsystems are:
    navigation policy, permission denial, external popup handling, and
    measured bounds clamp.
 2. **Review.** Message-owned review snapshots and guarded rollback remain
-   host-integrated surfaces opened by successful workspace Write/Edit artifacts.
+   host-integrated; Review opens only on explicit user action and never from a
+   tool result (D451).
 3. **Files.** Project browsing is supplied by the bundled `pi.files` plugin over
    the public contributed-view and filesystem APIs.
 4. **Transcript resources.** File and URL artifacts remain session-scoped tabs

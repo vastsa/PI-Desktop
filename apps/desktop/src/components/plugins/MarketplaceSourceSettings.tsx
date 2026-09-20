@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { AppSettings, PluginMarketSource } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { Input } from "../ui";
+import { HelpIcon, Input } from "../ui";
 import { SettingsMenuSelect } from "../settings/SettingsMenuSelect";
 
 type MarketplaceSourceSettingsProps = {
@@ -87,9 +87,9 @@ export function MarketplaceSourceSettings({
       {source === "custom" ? (
         <div className="plugins-market-settings-row">
           <div className="plugins-market-settings-copy">
-            <div className="settings-row-title">{t("settings.marketCustomUrl")}</div>
-            <div className="settings-row-desc">
-              {t("settings.marketCustomUrlDesc")}
+            <div className="settings-row-title">
+              {t("settings.marketCustomUrl")}
+              <HelpIcon label={t("settings.marketCustomUrlDesc")} />
             </div>
           </div>
           <div className="plugins-market-settings-control">

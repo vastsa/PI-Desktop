@@ -13,7 +13,7 @@ const { electronBinary } = resolveElectronBinary(root);
 const temp = await mkdtemp(join(tmpdir(), "pi-theme-surfaces-"));
 try {
   await cp(join(root, "scripts/e2e/theme-surfaces.js"), join(temp, "renderer.js"));
-  // Use the built app's complete CSS, including Tailwind reset and bundled fonts.
+  // Use the built app's complete CSS, including the Tailwind reset.
   const renderer = join(root, "apps/desktop/out/renderer");
   const appHtml = await readFile(join(renderer, "index.html"), "utf8");
   const css = [...appHtml.matchAll(/href="([^" ]+\.css)"/g)].map((match) => match[1]);

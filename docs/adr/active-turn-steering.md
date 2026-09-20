@@ -30,7 +30,11 @@ row. Host append permits a terminal assistant to replace its own streaming
 reservation, retaining sequence and turn ownership; completed rows remain
 immutable on replay. Recovery updates the reservation in place. The persisted
 `UiMessage.steering` marker protects input from Smart Stop, including after
-renderer reload; no separate renderer submission registry is needed.
+renderer reload; no separate renderer submission registry is needed. Host
+provenance treats steering into a claimed collaboration delivery turn as extra
+human input: it must target that delivery's session, does not inherit the
+delivery's agent origin, and strips any client-supplied `session_message`
+(D597).
 
 ## Consequences and validation
 

@@ -567,14 +567,16 @@ export function registerSessionIpc({
   );
 
   handle(IPC.invoke.sessionImportScan, async () => {
-    const sessions = await scanAllSources();
+    const { sessions, truncated } = await scanAllSources();
     scannedImportSessions = new Map(
       sessions.map((session) => [`${session.source}:${session.externalId}`, session]),
     );
     return {
       sessions: sessions.map(({ filePath: _filePath, ...candidate }) => candidate),
+      ...(Object.keys(truncated).length > 0 ? { truncated } : {}),
     };
   });
+
   handle(
     IPC.invoke.sessionImportRun,
     async (selections: unknown) => {

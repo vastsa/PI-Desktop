@@ -16,7 +16,7 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
-import { Button, Field, Input, portalOverlay } from "../ui";
+import { Button, Field, HelpIcon, Input, portalOverlay } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { useProviderModels } from "./useProviderModels";
@@ -336,6 +336,8 @@ export function ProviderSetupDialog({
         <div className="provider-setup-head">
           <h3 id="provider-setup-title" className="provider-setup-title">
             {initialDraft ? t("settings.copyProviderTitle") : editing ? t("settings.editProviderTitle") : t("settings.addProviderTitle")}
+            {/* What a copy does and does not take is the title's own promise. */}
+            {initialDraft ? <HelpIcon label={t("settings.copyProviderHint")} /> : null}
           </h3>
           <div className="provider-setup-head-actions">
             {named || custom ? (
@@ -373,7 +375,6 @@ export function ProviderSetupDialog({
         </div>
 
         <div className="provider-setup-body">
-          {initialDraft ? <p className="settings-hint">{t("settings.copyProviderHint")}</p> : null}
           {error ? <div className="provider-setup-error">{error}</div> : null}
 
           <div className="provider-setup-credentials">
@@ -527,6 +528,7 @@ export function ProviderSetupDialog({
             listTitle={t("settings.serviceModels")}
             busy={saving}
             onReload={discovery.reload}
+            apiStyle={resolvedApiStyle}
           />
         </div>
       </div>

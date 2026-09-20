@@ -2,7 +2,7 @@ export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
 export const APP_ID = "net.aiuo.pi-desktop";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.15.1-beta.6";
+export const APP_VERSION = "0.15.1";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -167,6 +167,7 @@ export const IPC = {
      */
     remoteHostBootstrap: "pi-desktop/remoteHost/bootstrap",
     providersList: "pi-desktop/providers/list",
+    providersReorder: "pi-desktop/providers/reorder",
     providersCreate: "pi-desktop/providers/create",
     providersUpdate: "pi-desktop/providers/update",
     providersDelete: "pi-desktop/providers/delete",
@@ -300,6 +301,7 @@ export const IPC = {
     closeBehaviorGet: "pi-desktop/window/closeBehavior/get",
     closeBehaviorSet: "pi-desktop/window/closeBehavior/set",
     menuRendererReady: "pi-desktop/menu/rendererReady",
+    traySetSessionPreferences: "pi-desktop/tray/setSessionPreferences",
     nativeMenuAction: "pi-desktop/menu/nativeAction",
   },
   event: {
@@ -321,6 +323,7 @@ export const IPC = {
     windowFullScreen: "pi-desktop/window/event/fullscreen",
     windowWorkPanelResize: "pi-desktop/window/event/workPanelResize",
     menuCommand: "pi-desktop/menu/event/command",
+    traySessionActivated: "pi-desktop/tray/event/sessionActivated",
     notificationChanged: "pi-desktop/notification/event/changed",
     sessionsChanged: "pi-desktop/session/event/changed",
     notificationActivated: "pi-desktop/notification/event/activated",

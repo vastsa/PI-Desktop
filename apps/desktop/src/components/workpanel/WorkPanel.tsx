@@ -9,6 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useBlockingOverlayActive } from "../../lib/blocking-overlay";
 import type { PluginViewMeta } from "@pi-desktop/shared";
 import {
   isKnownWorkPanelTab,
@@ -168,6 +169,7 @@ export function WorkPanel({
   onToggleMaximize?: () => void;
 }) {
   const { t } = useTranslation();
+  const blockingOverlayActive = useBlockingOverlayActive();
   const rawTabs = useAppStore((s) => s.workPanelTabs);
   const tabs = rawTabs.filter(isKnownWorkPanelTab);
   const activeTabId = useAppStore((s) => s.activeWorkPanelTabId);
@@ -638,7 +640,7 @@ export function WorkPanel({
                     sessionId={activeSessionId ?? undefined}
                     location={activeTab.location}
                     // Native WebContentsViews composite above renderer content.
-                    blocked={exiting || panelBlocked}
+                    blocked={exiting || panelBlocked || blockingOverlayActive}
                   />
                 </div>
               );

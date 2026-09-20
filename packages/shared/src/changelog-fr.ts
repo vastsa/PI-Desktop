@@ -2,6 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.1",
+    "date": "2026-09-19",
+    "highlights": [
+      "Appariez et gérez des hôtes distants en SSH depuis les Réglages, avec mot de passe, installation et reconnexion au lancement.",
+      "Configurez l'amélioration de prompt (gabarit, modèle et raisonnement) depuis la carte Réglages IA.",
+      "Réordonnez les modèles sélectionnés par glisser-déposer, et ajoutez un niveau « omettre la réflexion » sans surcharge fournisseur.",
+      "Redimensionnez ou réduisez la barre latérale, et rétablissez la largeur par défaut d'une barre ou d'un panneau d'un double-clic.",
+      "Gérez les projets dans une archive groupée avec inspecteur, et importez chaque type depuis son propre établi.",
+      "Analysez et importez en lot les skills et serveurs MCP d'autres outils d'agent.",
+      "L'extra de la barre de menus macOS reste sur un status item natif, avec des raccourcis de session limités dans le plateau.",
+      "Les builds macOS officiels sont signés, notariés, et gèrent les mises à jour in-app.",
+      "La DMG macOS signée s'installe en deux icônes ; la note d'ouverture non signée reste uniquement dans le ZIP.",
+      "Review ne s'ouvre que sur action explicite, et l'ouverture d'une session atterrit sur le dernier tour.",
+      "Une file d'envoi bloquée se rétablit, et les origines de steering falsifiées sont ignorées.",
+    ],
+  },
+
+  {
     "version": "0.15.0",
     "date": "2026-09-17",
     "highlights": [

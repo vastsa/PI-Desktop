@@ -166,7 +166,10 @@ test("plan approval sends exact identities and waits for host confirmation", () 
   assert.doesNotMatch(transcriptSource, /PlanApprovalCard|plan-approval-card/);
   assert.doesNotMatch(transcriptSource, /\bpendingPlan\b/);
   assert.match(storeSource, /openPlanArtifact/);
-  assert.match(storeSource, /fileWorkPanelTab\(relativePath\)/);
+  assert.match(
+    storeSource,
+    /preferredFileWorkPanelTab\(relativePath, pluginViews\)/,
+  );
   assert.match(barSource, /const isPending = proposal\.status === "pending"/);
   const resolveBlock = interactionSource.slice(interactionSource.indexOf("resolvePlan: async"));
   assert.match(resolveBlock, /await api\.resolvePlan\(resolution\)/);
@@ -174,6 +177,38 @@ test("plan approval sends exact identities and waits for host confirmation", () 
   assert.doesNotMatch(resolveBlock, /planApprovalPermissionMode/);
   assert.doesNotMatch(storeSource, /planApprovalPermissionMode/);
   assert.doesNotMatch(resolveBlock, /finally[\s\S]*pendingPlans/);
+});
+
+test("the startup artifact restore resolves launchable views first", () => {
+  // The artifact's surface comes from the launchable plugin views, and the
+  // renderer only reads that list after `ready`. Opening the artifact before
+  // that read used the host file tab and then took a second tab when
+  // `selectSession` restored the same approval.
+  const bootstrapStart = storeSource.indexOf("bootstrap: async");
+  assert.ok(bootstrapStart > -1, "bootstrap is declared in the store source");
+  const bootstrap = storeSource.slice(bootstrapStart);
+  const resolvedViews = bootstrap.indexOf("await get().refreshPluginViews();");
+  // The same loop shape also runs once before the restore, so search from the
+  // refresh rather than from the top of `bootstrap`.
+  const restoreLoop = bootstrap.indexOf(
+    "for (const proposal of activePendingPlans)",
+    resolvedViews,
+  );
+
+  assert.ok(resolvedViews > -1, "bootstrap resolves the launchable views");
+  assert.ok(
+    restoreLoop > resolvedViews,
+    "the view list resolves before the pending-plan restore loop",
+  );
+  assert.ok(
+    bootstrap.indexOf("openPlanArtifact(", resolvedViews) > restoreLoop,
+    "no artifact opens before that loop",
+  );
+  // Every slice call site forwards the live list, so a stub list cannot hide
+  // the wrong surface behind a green run.
+  for (const slice of [eventsSource, sessionSource]) {
+    assert.match(slice, /openPlanArtifact\([\s\S]{0,120}?get\(\)\.pluginViews/);
+  }
 });
 
 test("plan approval bar paints the composer plate over the transparent dock", () => {

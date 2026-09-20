@@ -932,8 +932,10 @@ Electron main enriches session list/get/create/fork/configure results with
 effective reasoning capability from the local models.dev record for that
 session's exact provider/API URL and model. Sessions without a pinned
 `providerId`/`modelId` inherit the app default provider/model for this
-enrichment only; the durable ids remain unset so later default-model changes
-still apply. An ID absent from the snapshot, or a session with no resolvable
+enrichment only. Desktop session create writes the then-current default (or an
+explicit Composer draft override) into the durable ids; later default-model
+changes do not rewrite an already created session. A home draft with no session
+still follows the live default. An ID absent from the snapshot, or a session with no resolvable
 default, gets `supportsReasoning: false` and `off`; cached/provider claims do
 not replace catalog semantics. The Rust host remains authoritative only for the
 durable `thinkingLevel`.
@@ -1014,7 +1016,7 @@ Minimal interface:
   directory, creates it if missing, and opens it in the system file manager.
   The renderer supplies only the session id; Main rejects a path outside the
   scratch root.
-- `session/importScan`
+- `session/importScan -> { sessions, truncated? }`
 - `session/importRun(candidates) -> { imported, skipped, failed }`
 - `modelConfig/importScan -> { providers }`
 - `modelConfig/importRun(candidates) -> { imported, skipped, failed }`
@@ -1024,13 +1026,17 @@ Import candidates carry `projectPath: string | null` and
 importer's sampled-scan threshold; larger files are sampled (head + tail) so
 scanning a multi-gigabyte archive stays interactive, and their `messageCount`
 is null — the import list renders an em dash for it, while imported sessions
-always compute their real message count at convert time. Scan titles come
+always compute their real message count at convert time. Codex discovery also
+caps traversal at 250 session files, walking `YYYY/MM/DD` paths newest-first
+(path date, not `updatedAt`). Hitting that cap sets `truncated.codex` to 250
+so the renderer can say the list is incomplete. Scan titles come
 from the first real user message: known synthetic injections (repo
 instructions, the IDE-context family such as `# Context from my IDE setup:`
 or `# Browser comments:`) are skipped, while pasted markdown starting with
 `#` is kept. A corrupt or out-of-range stored timestamp falls back to the
 source file's mtime, never to the import moment. A successful import
 refreshes both sessions and the durable Projects index.
+
 
 `modelConfig/importScan` reads Claude Code, Codex, OpenCode, Pi, and CC
 Switch config files from the user home directory and returns public provider drafts
@@ -1878,6 +1884,26 @@ Window bounds persistence and display reconciliation therefore operate on the
 ordinary application bounds; there is no panel-specific width or x-offset
 reservation, and background artifacts cannot change visible window geometry.
 
+### Tray session shortcuts (ADR tray-session-shortcuts)
+
+- `pi-desktop/tray/setSessionPreferences({ sessionMeta, archivedProjectPaths, sort })`
+  returns `{ ok: true }`. `sessionMeta` maps IDs to optional boolean `pinned`
+  and `archived` flags plus a non-negative safe integer `order`. `sort` is
+  `recent`, `created`, `oldest`, `name`, or `manual`; the renderer mirrors the
+  sidebar's effective sort. Main validates the payload, strips unrelated
+  metadata, and rejects senders other than the current main window. The setter
+  is excluded from the local MCP catalog and persists nothing.
+- Main emits `pi-desktop/tray/event/sessionActivated { sessionId: string | null }`
+  after restoring/focusing the window, waiting for post-bootstrap
+  `menu/rendererReady`, and checking that the session still exists and is not
+  archived. Renderer enters normal session selection, including cross-project
+  navigation and unread acknowledgement. A null ID closes search, returns to
+  the conversation page, and expands the sidebar for View more. Merely opening
+  the menu is read-only.
+- Main reads existing Host session/inbox APIs, observes root runtime events and
+  successful session/inbox mutations, and combines them with the ephemeral
+  organization copy. No host protocol or storage schema changes.
+
 ## 13c. Composer input APIs (D123/D124/D197, ADR 0024/0059)
 
 Electron-only channels backing composer autocomplete and file references.
@@ -2215,3 +2241,11 @@ submissions remain distinct; SDK entry IDs are never rewritten. Desktop event
 semantics are unchanged. Native terminal completion follows SDK settlement,
 not intermediate retry/compaction loop ends. Native abort never invokes
 `replaceSessionMessages` and reloads durable detail after abort returns.
+
+### Provider ordering
+
+`pi-desktop/providers/reorder({ id, targetId, placement: "before" | "after" })`
+returns `{ ok: true }` and forwards to host `providers.reorder`. The sandboxed
+preload permits this channel through the shared IPC registry. Invalid placement
+or missing providers returns `INVALID_PARAMS`; configuration and defaults are
+unchanged. See [provider configuration](12-provider-config-schema.md).

@@ -176,7 +176,9 @@ test("the English catalog ships every mapped preset copy key", async () => {
 });
 
 test("the create sheet is a compact chip row with an Advanced disclosure", () => {
-  assert.match(editorSource, /id="subagent-preset-desc"/);
+  // The preset blurb travels as the help mark's label, so the row of chips
+  // stays one line high.
+  assert.match(editorSource, /\{descKey \? <HelpIcon label=\{t\(descKey\)\} \/> : null\}/);
   assert.match(editorSource, /function AdvancedFields/);
   assert.match(editorSource, /useState\(!!editing\)/);
   assert.doesNotMatch(editorSource, /extensions\.subagents\.presetApply/);

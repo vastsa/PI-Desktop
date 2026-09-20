@@ -36,6 +36,12 @@ PI-Desktop.app
 截图装置、并行 profile）与默认安装不共享数据库、outbox 或日志，在已有实例运行时
 仍可启动（D236、ADR 0094）。
 
+开发构建本身就是独立安装，而不是同一安装的第二个进程：它运行在操作系统应用
+数据根目录下的 `PI-Desktop Dev`，数据目录为 `~/.pi-desktop-dev`。因此正式打包版
+持有锁时 `pnpm dev` 仍可启动，两者不会共享数据库、outbox 或日志树（D599、
+ADR 0094）。显式 `--user-data-dir` 仍然优先，E2E 装置正是用它把构建指向临时
+profile。
+
 1. Electron 主启动
 2. 加载英文语言环境默认值
 3. 生成 Rust host-core
@@ -59,6 +65,13 @@ queued/running `plan_approvals` 执行状态已中断并中止它们
 | Rust 主机崩溃 | 将应用程序标记为降级、中断 pending/queued/running 审批工作、将待处理会话保留在其合同模式（Plan 或 Goal）中并将已批准的会话保留在 Agent 中、尝试重新启动主机并关闭活动会话失败 |
 | Node 代理崩溃 | 中止活动轮次和实时批准 waiters/queue 条目，在合同模式下保留待处理会话，在 Rust 中保留已批准的 Agent 模式，重新启动 sidecar，并且从不重播执行 |
 | Electron 主要崩溃 | 完整的应用程序退出 |
+
+Crashpad 在 `ready` 之前以本地模式启动（`uploadToServer: false`），转储放在
+`<data_dir>/crash-dumps`（D602），因此 `PI_DESKTOP_DATA_DIR` profile 不会与
+其它安装共用转储。下一次持有单实例锁的启动会为新于 `crash-dumps.json` 的
+转储写一条诊断记录。Crashpad 记录 Chromium 进程崩溃（main、renderer、GPU、
+utility）；应用已经恢复的 renderer 崩溃仍会留下转储，并记为 warn。host-core
+与 sidecar 崩溃仍走本节的监督器路径以及 `host` / `agent` 日志通道。
 
 断开的 stdout/stderr（`EPIPE`/`EIO`）不是主进程崩溃。Main 会忽略这些写入，
 因此 Linux AppImage 或没有活动 TTY 的 GUI 启动会继续监管 host/sidecar，而不是
@@ -221,3 +234,17 @@ Gateway 负责路由已认证客户，但不拥有工作区状态。
 6. 已批准的 queued/running 执行被中断，无需
    重播及其持久会话仍然是 Agent
 7. Bash timeout/abort 关闭完整的子进程树
+
+
+### Native tray session projection
+
+The tray service keeps Running, Unread, and Pinned groups current independently
+of renderer visibility or lifetime. Host remains authoritative for sessions and
+notifications; root agent events describe running state. Renderer mirrors only
+organization preferences through a main-window-only IPC. Read requests are
+coalesced; obsolete Host results cannot repopulate the menu, failures clear
+shortcuts, and quitting prevents further publication. A closed window retains
+only the last organization copy, which is replaced after renderer bootstrap.
+Menu command readiness is acknowledged after bootstrap's initial navigation,
+so a tray click cannot be overwritten by the startup draft or pending-plan
+selection. See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).

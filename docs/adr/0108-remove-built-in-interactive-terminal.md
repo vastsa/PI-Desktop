@@ -29,7 +29,8 @@ invocations and bounded output remain visible in the conversation.
 
 1. Remove the work-panel interactive terminal. The panel retains
    plugin-contributed views including the bundled Files and Browser views
-   (ADR 0170), and Review/file tabs opened by conversation artifacts.
+   (ADR 0170), file tabs opened by conversation artifacts, and the Review tab
+   the user opens themselves (D451).
 2. Keep Agent Bash unchanged. It remains a permission-aware, non-interactive
    agent tool whose command, output, status, copy behavior, and `IconTerminal`
    presentation stay in the transcript. Generic lifecycle values such as
@@ -48,7 +49,7 @@ invocations and bounded output remain visible in the conversation.
 ## Consequences
 
 - The work panel has no interactive shell tab or terminal launcher, and its
-  empty state lists Browser and in-scope plugin views only.
+  empty state lists the Review row, Browser, and in-scope plugin views.
 - Desktop packaging no longer carries the PTY native module or terminal
   renderer dependencies, reducing native build and release surface.
 - Interactive shell workflows require an external terminal. Agent Bash remains

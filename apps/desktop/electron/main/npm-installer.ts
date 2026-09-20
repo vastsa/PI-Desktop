@@ -1,29 +1,24 @@
-import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withRegistryOnlyProxy } from "./npm-registry-proxy";
+import {
+  defaultDependencyRunner,
+  isNpmLaunchError,
+  NpmUnavailableError,
+  prepareNpmExecutable,
+  type DependencyCommandRunner,
+  type NpmExecutable,
+} from "./npm-executable";
+export { defaultDependencyRunner, type DependencyCommandRunner } from "./npm-executable";
 
 export type ExtensionDependencyInstallResult =
   | { state: "skipped"; reason: "no-package-json" | "no-dependencies" }
   | { state: "installed" }
-  | { state: "failed"; error: string };
-
-/** Injectable so tests never run npm. Resolves with the exit code and captured stderr. */
-export type DependencyCommandRunner = (
-  command: string,
-  args: string[],
-  cwd: string,
-  timeoutMs: number,
-  envOverrides?: Record<string, string>,
-) => Promise<{ code: number; stderr: string }>;
+  | { state: "failed"; error: string; reason?: "npm-unavailable" };
 
 const NPM_INSTALL_TIMEOUT_MS = 120_000;
 /** npm output is not toast-shaped; the tail carries the actual failure. */
 const DEPENDENCY_ERROR_TAIL_CHARS = 200;
-/** Rolling cap so a chatty npm cannot balloon the main process's memory. */
-const DEPENDENCY_STDERR_KEEP_CHARS = 8192;
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 const NPM_LOCKFILE_NAMES = ["package-lock.json", "npm-shrinkwrap.json"] as const;
 const NON_NPM_LOCKFILE_NAMES = ["yarn.lock", "pnpm-lock.yaml"] as const;
@@ -139,95 +134,6 @@ function lockfileHasUnsafeSource(value: unknown): boolean {
   return false;
 }
 
-export function defaultDependencyRunner(
-  command: string,
-  args: string[],
-  cwd: string,
-  timeoutMs: number,
-  envOverrides?: Record<string, string>,
-): Promise<{ code: number; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    // Shell only where npm is a .cmd shim (Windows); every arg is a literal.
-    // A shell kill on Windows terminates the shim, possibly leaving npm
-    // itself running — the process-tree kill below handles both.
-    // Explicit minimal environment: npm must not see npm auth tokens,
-    // proxy/SSH configuration or anything else from the desktop process.
-    const isolatedUserConfig = join(tmpdir(), `.pi-desktop-npm-user-${randomUUID()}.npmrc`);
-    const isolatedGlobalConfig = join(tmpdir(), `.pi-desktop-npm-global-${randomUUID()}.npmrc`);
-    const isolatedGit = join(tmpdir(), `.pi-desktop-npm-git-${randomUUID()}`);
-    const isolatedCache = join(cwd, ".npm-cache");
-    const child = spawn(command, args, {
-      cwd,
-      shell: process.platform === "win32",
-      detached: process.platform !== "win32",
-      windowsHide: true,
-      stdio: ["ignore", "ignore", "pipe"],
-      env: {
-        PATH: process.env.PATH ?? "",
-        HOME: process.env.HOME ?? process.env.USERPROFILE ?? "",
-        TMPDIR: process.env.TMPDIR ?? process.env.TEMP ?? "",
-        LANG: process.env.LANG ?? "en_US.UTF-8",
-        npm_config_userconfig: isolatedUserConfig,
-        npm_config_globalconfig: isolatedGlobalConfig,
-        npm_config_registry: PUBLIC_NPM_REGISTRY,
-        npm_config_proxy: "",
-        npm_config_https_proxy: "",
-        npm_config_noproxy: "*",
-        npm_config_git: isolatedGit,
-        npm_config_cache: isolatedCache,
-        npm_config_ignore_scripts: "true",
-        npm_config_audit: "false",
-        npm_config_fund: "false",
-        npm_config_update_notifier: "false",
-        ...envOverrides,
-      },
-    });
-    let stderr = "";
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-      if (stderr.length > DEPENDENCY_STDERR_KEEP_CHARS * 2) {
-        stderr = stderr.slice(-DEPENDENCY_STDERR_KEEP_CHARS);
-      }
-    });
-    const killProcessTree = (signal: NodeJS.Signals) => {
-      const pid = child.pid;
-      if (!pid) return;
-      if (process.platform === "win32") {
-        const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
-          windowsHide: true,
-          stdio: "ignore",
-        });
-        killer.once("error", () => {
-          // Best effort: the child close handler still settles the runner.
-        });
-        killer.unref();
-        return;
-      }
-      try {
-        process.kill(-pid, signal);
-      } catch {
-        child.kill(signal);
-      }
-    };
-    let killTimer: ReturnType<typeof setTimeout> | undefined;
-    const timer = setTimeout(() => {
-      stderr += `\nnpm dependency install exceeded ${timeoutMs}ms and was terminated`;
-      killProcessTree("SIGTERM");
-      killTimer = setTimeout(() => killProcessTree("SIGKILL"), 5_000);
-    }, timeoutMs);
-    const settle = (fn: () => void) => {
-      clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
-      fn();
-    };
-    child.on("error", (err) => {
-      settle(() => reject(err));
-    });
-    child.on("close", (code) => {
-      settle(() => resolve({ code: code ?? 1, stderr }));
-    });
-  });
-}
 
 function sanitizeDependencyLockfiles(pluginDir: string): {
   snapshots: Map<string, string>;
@@ -298,8 +204,9 @@ function cleanupDependencyCache(pluginDir: string): void {
  */
 export async function installExtensionDependencies(
   pluginDir: string,
-  options?: { runner?: DependencyCommandRunner; timeoutMs?: number },
+  options?: { runner?: DependencyCommandRunner; timeoutMs?: number; npmPath?: string },
 ): Promise<ExtensionDependencyInstallResult> {
+  const deadline = Date.now() + (options?.timeoutMs ?? NPM_INSTALL_TIMEOUT_MS);
   const packageJsonPath = join(pluginDir, "package.json");
   if (!existsSync(packageJsonPath)) {
     return { state: "skipped", reason: "no-package-json" };
@@ -348,14 +255,30 @@ export async function installExtensionDependencies(
   if (!hasDependencies) {
     return { state: "skipped", reason: "no-dependencies" };
   }
-  const runner = options?.runner ?? defaultDependencyRunner;
-  const timeoutMs = options?.timeoutMs ?? NPM_INSTALL_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
-  const runNpm = (args: string[], envOverrides?: Record<string, string>) =>
-    runner("npm", args, pluginDir, Math.max(1, deadline - Date.now()), envOverrides);
-  const failed = (message: string): ExtensionDependencyInstallResult => {
+  const failed = (message: string, reason?: "npm-unavailable"): ExtensionDependencyInstallResult => {
     cleanupFailedDependencyInstall(pluginDir, lockfiles.snapshots);
-    return { state: "failed", error: dependencyErrorTail(message) };
+    return { state: "failed", error: dependencyErrorTail(message), ...(reason ? { reason } : {}) };
+  };
+  let tool: NpmExecutable = { command: "npm", args: [], env: {} };
+  try {
+    // Injected runners keep existing offline tests independent of local tools.
+    if (!options?.runner || options.npmPath !== undefined) {
+      tool = await prepareNpmExecutable(options?.npmPath, Math.max(0, deadline - Date.now()));
+    }
+  } catch (err) {
+    return failed(dependencyRunnerError(err), "npm-unavailable");
+  }
+  const runner = options?.runner ?? defaultDependencyRunner;
+  const runNpm = async (args: string[], envOverrides?: Record<string, string>) => {
+    try {
+      if (Date.now() >= deadline) throw new Error("npm dependency install exceeded its time budget");
+      return await runner(tool.command, [...tool.args, ...args], pluginDir,
+        Math.max(1, deadline - Date.now()), { ...tool.env, ...envOverrides });
+    } catch (err) {
+      // Classify launch failures here, not filesystem/proxy/registry errors.
+      if (isNpmLaunchError(err)) throw new NpmUnavailableError(dependencyRunnerError(err));
+      throw err;
+    }
   };
   const execute = async (envOverrides?: Record<string, string>): Promise<ExtensionDependencyInstallResult> => {
     try {
@@ -388,7 +311,7 @@ export async function installExtensionDependencies(
       }
       return { state: "installed" };
     } catch (err) {
-      return failed(dependencyRunnerError(err));
+      return failed(dependencyRunnerError(err), err instanceof NpmUnavailableError ? "npm-unavailable" : undefined);
     }
   };
   try {

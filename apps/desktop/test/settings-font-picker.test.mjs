@@ -82,3 +82,11 @@ test("menu repositioning ignores scrolls inside the font list", () => {
     /menuRef\.current\?\.contains\(target\)/,
   );
 });
+
+test("the picker has no bundled group, license badge, or fontBundled copy", () => {
+  assert.doesNotMatch(rowSource, /group === "bundled"/);
+  assert.doesNotMatch(rowSource, /settings\.fontBundled/);
+  assert.doesNotMatch(rowSource, /settings-font-item-license/);
+  assert.doesNotMatch(rowSource, /option\.license/);
+  assert.doesNotMatch(styles, /\.settings-font-item-license\s*\{/);
+});

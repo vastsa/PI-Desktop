@@ -208,8 +208,9 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
 8. Settings renders the seven canonical thinking levels for every binding.
    Published levels begin selected for a known reasoning model. A non-reasoning
    or unknown model shows the same choices unselected, with a short manual
-   override note. `defaultThinkingLevel` is chosen from the levels the binding
-   enables, so a stored default is always part of the explicit set.
+   override note. `defaultThinkingLevel` is chosen from `omit` plus the levels
+   the binding enables, so a stored default is either `omit` or part of that
+   explicit set.
 9. `supportsImages` and `supportsDocuments` are three-state overrides. Absent
    or `null` follows the published models.dev modality, so a catalog correction
    still reaches a saved binding; `true` or `false` is the user's explicit
@@ -224,6 +225,19 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
     catalog" rather than an equal-valued override. Agreeing with models.dev is
     therefore the reset, and no separate reset control or per-capability
     explanatory copy is required.
+10a. `nativeWebSearch` is a two-state opt-in (absent means off; there is no
+    catalog baseline because models.dev publishes no hosted-tool capability).
+    When enabled and the model's resolved wire API is `anthropic-messages`,
+    `openai-responses`, or `azure-openai-responses` (stored apiStyle
+    `anthropic_messages` / `responses`), the adapter attaches the provider's
+    hosted web search tool (`web_search_20250305` / `web_search`), extracts
+    the search activity into `UiMessage.hostedSearch` (`rounds` for display,
+    `replay` for convertMessages), and restores those raw blocks on later
+    turns including after a restart (ADR 0297). The checkbox is disabled
+    when the provider's API style is neither of those two. Gateways that do
+    not support the tool surface the provider error; the remedy is unchecking.
+    Search runs on the provider: there is no local fetch and no permission
+    prompt. Compaction still drops search blocks.
 11. `ModelInfo` is the published record the settings surface compares against,
     so a stored binding must not shape its capabilities or reasoning fields.
     Effective limits, reasoning and thinking levels are resolved through the
@@ -311,7 +325,7 @@ type ModelBinding = {
   contextWindowSource?: "catalog" | "user"
   maxTokens: number
   thinkingLevels: ThinkingLevel[]
-  defaultThinkingLevel: ThinkingLevel | null
+  defaultThinkingLevel: SessionThinkingLevel | null
   availableForSubagents?: boolean // opt-in for AI-driven delegation
 }
 

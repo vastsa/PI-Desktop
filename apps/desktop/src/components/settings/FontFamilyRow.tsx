@@ -24,8 +24,8 @@ import { IconCheck, IconChevronDown, IconSearch } from "../icons";
 
 /**
  * Global UI font picker (Settings → Basics → Appearance). Offers the
- * system default, bundled open-licensed families, and installed system
- * families; the selected stack is persisted as `AppSettings.fontFamily`
+ * system default and installed system families; the app bundles no fonts of
+ * its own. The selected stack is persisted as `AppSettings.fontFamily`
  * and applied to `--font-sans` by App. Selecting the localized system-default
  * option persists an empty stack, which every consumer treats as the built-in
  * token stack. The closed trigger and search haystack use `settings.fontSystemDefault`
@@ -175,7 +175,6 @@ export function FontFamilyRow({
   }, [defaultLabel, options, query]);
 
   const groupLabel = useCallback((group: string) => {
-    if (group === "bundled") return t("settings.fontBundled");
     if (group === "system") return t("settings.fontSystem");
     if (group === "custom") return t("settings.fontCustom");
     return t("settings.fontSystemDefault");
@@ -413,11 +412,6 @@ export function FontFamilyRow({
                                 ? t("settings.fontSystemDefault")
                                 : row.option.label}
                             </span>
-                            {row.option.license ? (
-                              <span className="settings-font-item-license">
-                                {row.option.license}
-                              </span>
-                            ) : null}
                             {row.option.value === selectedValue ? (
                               <IconCheck
                                 size={14}

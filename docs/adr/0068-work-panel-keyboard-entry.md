@@ -31,10 +31,11 @@ the missing capability is panel entry rather than a new resource protocol.
    panel context to open at its committed width without creating or activating a
    resource tab. Existing tabs, active resource, and Browser resource remain
    unchanged.
-3. The empty panel header remains the manual resource chooser for Browser
-   and in-scope plugin views. Artifact triggers continue to create and activate
-   resources atomically, and background-session artifacts cannot open the
-   visible panel.
+3. The empty panel header remains the manual resource chooser for the Review
+   row, Browser, and in-scope plugin views. Review opens only on explicit user
+   action (D451), while a plan or goal approval artifact still creates or
+   activates a tab in its originating session (D452); background-session
+   artifacts cannot open the visible panel.
 4. The shortcut is ignored while Settings is active and is a no-op without an
    active session. No host protocol, IPC channel, or native application-menu
    command is added.

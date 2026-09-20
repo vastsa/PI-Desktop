@@ -159,7 +159,7 @@ export function EnhancementModelCard() {
     <>
         <SettingsRow
           title={t("settings.promptEnhancementModel")}
-          description={
+          detail={
             settings.promptEnhancementProviderId && settings.promptEnhancementModelId ? (
               <span className="model-default-value">
                 <span className="model-default-provider">

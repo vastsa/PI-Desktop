@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { PluginScenicThemesDestinationMeta } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { Button, cx } from "../ui";
+import { Button, HelpIcon, cx } from "../ui";
 
 type Props = {
   destination: PluginScenicThemesDestinationMeta;
@@ -83,8 +83,10 @@ export function PluginScenicThemesDestination({ destination, selectTheme }: Prop
       </div>
       <div className="plugin-scenic-blur-control">
         <div className="plugin-scenic-blur-copy">
-          <span className="plugin-scenic-blur-label">Backdrop blur</span>
-          <span className="plugin-scenic-blur-help">Applies to {selectedCard.label}</span>
+          <span className="plugin-scenic-blur-label">
+            Backdrop blur
+            <HelpIcon label={`Applies to ${selectedCard.label}`} />
+          </span>
         </div>
         <div className="plugin-scenic-blur-actions">
           <label className="sr-only" htmlFor="plugin-scenic-backdrop-blur">Backdrop blur</label>

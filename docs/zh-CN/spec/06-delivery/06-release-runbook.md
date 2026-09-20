@@ -204,18 +204,15 @@ Intel x64 通道发布 `PI-Desktop-<version>-x64.dmg` 和
 上传前，每个 macOS 运行器必须恰好生成一个带架构后缀的 DMG 和 ZIP（包括
 blockmap），任何无后缀或架构错误的 macOS 工件都会使发布失败。
 
-DMG 使用带有品牌视觉的 720×500 背景，并明确展示拖入 Applications 的安装手势。
-应用和 Applications 链接位于主区域；打开说明位于下方的辅助区域，这样未签名构建的
-处理路径可被发现，但不会被误认为正常安装动作。说明显示为 `If app won't open, read this.txt`；
-DMG 不包含可执行的 command 助手。
+DMG 使用带有品牌视觉的 720×440 背景，只展示拖入 Applications 的双图标安装手势。
+窗口里只有应用和 Applications 链接；打开说明和可执行 command 助手都不放入 DMG。
 
-每个 macOS DMG 的安装包根目录都会包含配套的
-`PI-Desktop-macOS-opening-help.txt`，显示名为 `If app won't open, read this.txt`。macOS ZIP
-还包含该说明和可执行的 `PI-Desktop-macOS-open.command`。将 `PI-Desktop.app` 移动到
-`/Applications` 或 `~/Applications` 后，ZIP 用户可以双击该助手。它只搜索这两个
-固定位置，在存在时递归删除唯一的 `com.apple.quarantine` 属性，然后打开 PI-Desktop。
-在执行前它会校验 `CFBundleIdentifier=net.aiuo.pi-desktop`。它不会使用 `sudo`，也不
-接受任意应用路径。标准系统位置的终端备用命令为：
+macOS ZIP 在安装包根目录包含 `PI-Desktop-macOS-opening-help.txt` 和可执行的
+`PI-Desktop-macOS-open.command`。将 `PI-Desktop.app` 移动到 `/Applications` 或
+`~/Applications` 后，ZIP 用户可以双击该助手。它只搜索这两个固定位置，在存在时递归
+删除唯一的 `com.apple.quarantine` 属性，然后打开 PI-Desktop。在执行前它会校验
+`CFBundleIdentifier=net.aiuo.pi-desktop`。它不会使用 `sudo`，也不接受任意应用路径。
+标准系统位置的终端备用命令为：
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app
@@ -435,10 +432,29 @@ Electron 目标布局。
 | CSS | 0.42 MiB | 0.35 MiB |
 | **`out/renderer` 合计** | **31 MiB** | **24 MiB** |
 
-余下体积主要来自两款随包 CJK 字体（`lxgw-wenkai.woff2` 7.6 MiB、
-`noto-sans-sc.woff2` 7.4 MiB）。它们故意不做子集化：ADR 0083 §2 在每个字体栈
-末尾追加 `Noto Sans SC`，以保证中文在离线状态下依然可读，而子集化会丢掉用户
-提供内容中的字形。压缩它们需要修订 ADR，而不是改构建配置。
+渲染器不再产出任何应用字体面。D598 / ADR 0298 移除了四款内置字体（Geist、
+Inter、Noto Sans SC、LXGW WenKai），因此 `out/renderer` 中只剩 KaTeX 的数学
+字形 `woff2`。以下为本机实测，两次均在干净的 `pnpm install --frozen-lockfile`
+之后构建：
+
+| 渲染器分组 | 含内置字体 | 移除后（D598） |
+|---|---:|---:|
+| JavaScript（121 个 chunk） | 9.04 MiB | 9.04 MiB |
+| `woff2`（23 → 19 个文件） | 15.71 MiB | 0.24 MiB |
+| CSS（1 个文件） | 0.48 MiB | 0.48 MiB |
+| PNG 品牌资源（4 个文件） | 0.08 MiB | 0.08 MiB |
+| GIF（2 个文件） | 0.05 MiB | 0.05 MiB |
+| **`out/renderer` 合计**（152 → 148 个文件） | **25.36 MiB** | **9.89 MiB** |
+
+差异完全来自被删除的四个字体面，以下为构建报告的实际大小：
+`lxgw-wenkai.woff2` 8,016.75 kB、`noto-sans-sc.woff2` 7,782.07 kB、
+`inter.woff2` 352.24 kB、`geist.woff2` 69.65 kB，合计 16,220.71 kB，
+即合计体积下降的全部 15.47 MiB。中文现在由系统字体层
+（`PingFang SC`、`Hiragino Sans GB`、`Microsoft YaHei`）渲染，因此不存在因
+子集化而丢失字形的问题：根本不再随包发布字体面。
+开启，旧 `woff`/`truetype` 剔除仍然保留，因为 KaTeX 仍会声明这些来源。
+
+上表是三控件的 `v0.10.8` 记录，早于本次移除，其 `woff2` 行已不再反映现状。
 
 在干净的轮廓上手动烟雾 (`PI_DESKTOP_DATA_DIR=$(mktemp -d)`)：
 

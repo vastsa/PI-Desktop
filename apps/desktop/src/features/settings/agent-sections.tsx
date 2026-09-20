@@ -39,10 +39,12 @@ export function AgentInstructionsSection() {
   const globalDirty = global !== null && globalDraft !== global.content;
   return (
     <div className="settings-stack">
-      <SettingsCard title={t("settings.instructionsGlobal")}>
+      <SettingsCard
+        title={t("settings.instructionsGlobal")}
+        description={t("settings.instructionsGlobalDesc")}
+      >
         <div className="settings-form-grid">
           <div className="settings-row-copy">
-            <div className="settings-row-desc">{t("settings.instructionsGlobalDesc")}</div>
             <div className="settings-instruction-path">{global?.path ?? ""}</div>
           </div>
           <textarea

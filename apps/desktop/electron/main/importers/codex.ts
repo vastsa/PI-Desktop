@@ -156,8 +156,20 @@ async function parseFile(filePath: string): Promise<ParsedCodexFile | null> {
   return parsed.items.length > 0 ? parsed : null;
 }
 
-async function listSessionFiles(dir: string = SESSIONS_DIR): Promise<string[]> {
+export const CODEX_SCAN_FULL_PARSE_MAX_BYTES = 5 * 1024 * 1024;
+// Newest-first walk of ~/.codex/sessions/YYYY/MM/DD. Reverse path sort is a
+// creation-date proxy, not mtime or the session's updatedAt — a January
+// session still being appended to can fall outside this cap.
+export const CODEX_SCAN_MAX_FILES = 250;
+const CODEX_SCAN_HEAD_BYTES = 1024 * 1024;
+const CODEX_SCAN_TAIL_BYTES = 256 * 1024;
+
+async function listSessionFiles(
+  dir: string = SESSIONS_DIR,
+  maxFiles: number = CODEX_SCAN_MAX_FILES,
+): Promise<{ files: string[]; truncated: boolean }> {
   const out: string[] = [];
+  let truncated = false;
   const walk = async (dir: string, depth: number) => {
     let entries: string[] = [];
     try {
@@ -165,7 +177,12 @@ async function listSessionFiles(dir: string = SESSIONS_DIR): Promise<string[]> {
     } catch {
       return;
     }
+    entries.sort().reverse();
     for (const entry of entries) {
+      if (out.length >= maxFiles) {
+        truncated = true;
+        return;
+      }
       const full = path.join(dir, entry);
       if (entry.endsWith(".jsonl")) {
         out.push(full);
@@ -175,7 +192,7 @@ async function listSessionFiles(dir: string = SESSIONS_DIR): Promise<string[]> {
     }
   };
   await walk(dir, 0);
-  return out;
+  return { files: out, truncated };
 }
 
 // ---------- Scan (#264): sampled metadata extraction for large archives ----------
@@ -194,9 +211,6 @@ async function listSessionFiles(dir: string = SESSIONS_DIR): Promise<string[]> {
 // - messageCount: null (the UI shows "—" — counting items exactly would
 //   require reading the whole file, which sampling exists to avoid).
 
-export const CODEX_SCAN_FULL_PARSE_MAX_BYTES = 5 * 1024 * 1024;
-const CODEX_SCAN_HEAD_BYTES = 1024 * 1024;
-const CODEX_SCAN_TAIL_BYTES = 256 * 1024;
 
 interface CodexScanMeta {
   externalId: string;
@@ -395,11 +409,17 @@ async function scanFile(filePath: string): Promise<CodexScanMeta | null> {
   }
 }
 
-export async function scanCodexSessions(
+export interface CodexScanResult {
+  sessions: ExternalSessionSummary[];
+  truncated: boolean;
+}
+
+export async function scanCodexSessionsResult(
   dir: string = SESSIONS_DIR,
-): Promise<ExternalSessionSummary[]> {
-  const files = await listSessionFiles(dir);
-  const summaries: ExternalSessionSummary[] = [];
+  maxFiles: number = CODEX_SCAN_MAX_FILES,
+): Promise<CodexScanResult> {
+  const { files, truncated } = await listSessionFiles(dir, maxFiles);
+  const sessions: ExternalSessionSummary[] = [];
   for (const filePath of files) {
     const meta = await scanFile(filePath);
     if (!meta || meta.firstUserText === null) continue;
@@ -407,7 +427,7 @@ export async function scanCodexSessions(
     // session's history to the import moment (#265): the file's own mtime is
     // the honest fallback for both ends.
     const fileTime = toIso(meta.mtimeMs);
-    summaries.push({
+    sessions.push({
       source: "codex",
       externalId: meta.externalId,
       title: truncateTitle(meta.firstUserText) || meta.externalId,
@@ -419,8 +439,16 @@ export async function scanCodexSessions(
       filePath,
     });
   }
-  return summaries;
+  return { sessions, truncated };
 }
+
+export async function scanCodexSessions(
+  dir: string = SESSIONS_DIR,
+  maxFiles: number = CODEX_SCAN_MAX_FILES,
+): Promise<ExternalSessionSummary[]> {
+  return (await scanCodexSessionsResult(dir, maxFiles)).sessions;
+}
+
 
 export const codexImporter: SessionImporter = {
   source: "codex",

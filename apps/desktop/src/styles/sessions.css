@@ -131,15 +131,6 @@
   height: 28px;
 }
 
-/* Import mode leaves the one-line toolbar alone but stays readable. */
-.import-hint {
-  margin: -4px 1px 0;
-  max-width: 92ch;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-body);
-}
-
 /* D297: the list dissolves into the page — each row is its own tile. */
 .settings-panel.import-panel {
   gap: 6px;
@@ -313,18 +304,11 @@
   color: var(--ds-text-faint);
 }
 
-.import-idle-copy {
-  margin: 0;
-  max-width: 62ch;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-body);
-}
-
-.import-idle-note {
-  margin: 0;
-  color: var(--ds-text-faint);
-  font-size: var(--text-2xs);
+/* The idle action, with the help icon that says what a scan will cover. */
+.import-idle-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* A scan that found nothing keeps its action in the toolbar above. */

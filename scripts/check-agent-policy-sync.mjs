@@ -129,6 +129,12 @@ const REQUIRED_ANCHORS = [
     id: "specs-stay-synchronized",
     anyOf: ["observable behavior changes must update the relevant spec"],
   },
+  {
+    id: "pr-root-cause-minimal",
+    anyOf: [
+      "must fix the reported root cause with the smallest coherent change",
+    ],
+  },
 ];
 
 function requireContains(label, haystack, needle, message) {

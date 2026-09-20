@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.15.1-beta.6",
+  "version": "0.15.1",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -173,29 +173,23 @@
     "dmg": {
       "artifactName": "PI-Desktop-${version}-${arch}.${ext}",
       "background": "build/dmg-background.png",
+      "icon": "build/icon.icns",
       "window": {
         "width": 720,
-        "height": 500
+        "height": 440
       },
-      "iconSize": 96,
+      "iconSize": 128,
       "iconTextSize": 12,
       "contents": [
         {
           "x": 180,
-          "y": 240
+          "y": 196
         },
         {
           "x": 540,
-          "y": 240,
+          "y": 196,
           "type": "link",
           "path": "/Applications"
-        },
-        {
-          "x": 470,
-          "y": 370,
-          "type": "file",
-          "name": "If app won't open, read this.txt",
-          "path": "PI-Desktop-macOS-opening-help.txt"
         }
       ]
     },

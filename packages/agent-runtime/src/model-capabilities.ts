@@ -78,6 +78,7 @@ export function modelConfigWithBinding(
         | "thinkingLevels"
         | "supportsImages"
         | "supportsDocuments"
+        | "nativeWebSearch"
       >
     | null,
 ): ModelConfig {
@@ -112,6 +113,7 @@ export function modelConfigWithBinding(
     supportedThinkingLevels: enabledThinkingLevels,
     ...(Object.keys(thinkingLevelMap).length > 0 ? { thinkingLevelMap } : {}),
     ...modalityOverride(model, binding),
+    ...(binding.nativeWebSearch === true ? { webSearch: true } : {}),
   };
 }
 

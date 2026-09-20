@@ -135,6 +135,52 @@ export function projectBucket(project: ProjectIndexItem): GroupId {
   return "projects";
 }
 
+/**
+ * Row state of one project. Archived outranks both live states so a record can
+ * never read as "active" while it sits in the Archived group, and the live
+ * workspace outranks a merely retained project. `null` is a plain project.
+ */
+export type ProjectStatus = "active" | "open" | "archived";
+
+export const PROJECT_STATUS_LABEL_KEYS: Record<ProjectStatus, string> = {
+  active: "project.active",
+  open: "project.openTag",
+  archived: "project.archivedTag",
+};
+
+export function projectStatus(args: {
+  project: Pick<ProjectIndexItem, "path" | "archived">;
+  workspacePath?: string | null;
+  openProjectPaths: readonly string[];
+}): ProjectStatus | null {
+  const { project, workspacePath, openProjectPaths } = args;
+  if (project.archived === true) return "archived";
+  if (normalizeProjectPath(workspacePath) === normalizeProjectPath(project.path)) {
+    return "active";
+  }
+  if (
+    openProjectPaths.some(
+      (path) => normalizeProjectPath(path) === normalizeProjectPath(project.path),
+    )
+  ) {
+    return "open";
+  }
+  return null;
+}
+
+/**
+ * One row click, resolved: the row whose card is already open closes it, and
+ * any other row opens its card. There is no separate selection to keep — the
+ * open card *is* the current row — so nothing is expanded until the user asks
+ * for it, and the disclosure indicator can mean exactly what it shows.
+ */
+export function nextArchiveOpenPath(
+  openPath: string | null,
+  clickedPath: string,
+): string | null {
+  return openPath === clickedPath ? null : clickedPath;
+}
+
 export function compareProjects(
   a: ProjectIndexItem,
   b: ProjectIndexItem,
@@ -231,36 +277,17 @@ export function displayedProjectSessions(
 }
 
 /**
- * Keep the current row when it still matches. Otherwise prefer the live
- * workspace, then the first visible row. An empty index has no selection.
+ * The row `delta` steps from `currentPath` in the rendered order, clamped to
+ * the ends. With no row current yet the first press lands on the first row
+ * whichever way it points, so an arrow key always has somewhere to go.
  */
-export function resolveSelectedPath(args: {
-  selectedPath: string | null;
-  filtered: readonly ProjectIndexItem[];
-  preferredPath?: string | null;
-}) {
-  const { selectedPath, filtered, preferredPath } = args;
-  if (filtered.length === 0) return null;
-  if (selectedPath && filtered.some((project) => project.path === selectedPath)) {
-    return selectedPath;
-  }
-  const preferred = normalizeProjectPath(preferredPath);
-  if (preferred) {
-    const match = filtered.find(
-      (project) => normalizeProjectPath(project.path) === preferred,
-    );
-    if (match) return match.path;
-  }
-  return filtered[0]?.path ?? null;
-}
-
 export function neighborPath(
   filtered: readonly ProjectIndexItem[],
-  selectedPath: string | null,
+  currentPath: string | null,
   delta: number,
 ) {
   if (filtered.length === 0) return null;
-  const index = filtered.findIndex((project) => project.path === selectedPath);
+  const index = filtered.findIndex((project) => project.path === currentPath);
   const from = index >= 0 ? index : delta > 0 ? -1 : 0;
   const next = Math.min(filtered.length - 1, Math.max(0, from + delta));
   return filtered[next]?.path ?? null;

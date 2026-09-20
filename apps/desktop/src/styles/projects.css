@@ -1,33 +1,16 @@
 /*
-  Settings → Project archive — one quiet description line, one toolbar (sort,
-  search, add project), and a one-column workbench. Pinned / projects /
-  archived stay grouped in the index; folders, chats, and actions open under
-  the selected row so a long index stays scannable (D455).
+  Settings → Project archive — one toolbar (sort, search, add project) and a
+  one-column workbench (D455). Nothing is expanded until a row is clicked, and
+  clicking that row again closes it.
+
+  The workbench is an iOS-style inset grouped index: a quiet section label, then
+  rows that read left-to-right as identity (glyph, name, path) and right-to-left
+  as detail (sessions, last active, disclosure). The open row is the header of
+  its own card, so its detail opens under the row and never repeats the name.
+  Separators are spacing, never rules — tiles carry the structure (D297).
 */
 
 /* ---------- Settings → Project archive ---------- */
-.settings-project-archive {
-  gap: 14px;
-}
-
-/* One quiet description line, same as `.agent-capability-intro` on the sibling
-   capability pages. The workbench below carries the per-group counts. */
-.projects-intro {
-  display: flex;
-  max-width: 92ch;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
-  margin: -12px 0 0;
-  padding: 0 1px;
-}
-
-.projects-intro-desc {
-  margin: 0;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-md);
-  line-height: var(--leading-body);
-}
 
 /*
   One toolbar owns sort, search, the live match count, and the primary action.
@@ -64,6 +47,7 @@
 }
 
 .projects-result-count {
+  flex: 0 0 auto;
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
   font-variant-numeric: tabular-nums;
@@ -108,7 +92,7 @@
 /*
   One search field for the whole index. The fill lives on the wrapper because
   the clear button sits inside it, matching `.agent-capability-search-wrap`.
-  Filled at rest, accent ring only while focused (D297).
+  Filled at rest, accent ring only while focused (D297/D297 search language).
 */
 .projects-search-wrap {
   display: inline-flex;
@@ -119,7 +103,7 @@
   align-items: center;
   gap: 6px;
   border-radius: var(--radius-full);
-  background: var(--ds-tile-hover);
+  background: var(--ds-field-inset-bg);
   padding: 0 11px;
   color: var(--ds-text-muted);
   transition:
@@ -128,8 +112,8 @@
 }
 
 .projects-search-wrap:focus-within {
-  background: var(--ds-raised);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 40%, transparent);
+  background: var(--ds-field-inset-focus-bg);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 45%, transparent);
 }
 
 .projects-search-wrap > svg {
@@ -180,14 +164,14 @@
   color: var(--ds-text-primary);
 }
 
-/* Group label above its rows: Pinned, Projects, Archived — and how many. It
-   is a bare label, not a banded strip (D297). */
+/* Section label above its rows: Pinned, All projects, Archived — and how many.
+   One quiet label line, never a tinted band (D297). */
 .projects-group-head {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 8px;
-  padding: 0 4px 8px;
+  padding: 0 4px 6px;
 }
 
 .projects-group-label {
@@ -235,9 +219,6 @@
   min-width: 0;
   flex-direction: column;
   gap: 16px;
-}
-
-.projects-index {
   outline: none;
 }
 
@@ -252,6 +233,8 @@
   gap: 4px;
 }
 
+/* One project is one tile; selecting it grows the tile into the card that
+   carries its detail below the row. */
 .projects-row-block {
   position: relative;
   border-radius: var(--radius-md-plus);
@@ -266,12 +249,13 @@
   background: var(--ds-tile-hover);
 }
 
-/* The open project is the deepest tile; selection uses a quiet accent ring. */
+/* The live project is the deepest tile; the row whose card is open carries a
+   quiet accent ring. Nothing else is highlighted, so a closed index is quiet. */
 .projects-row-block.active {
   background: var(--ds-tile-deep);
 }
 
-.projects-row-block.selected {
+.projects-row-block.open {
   background: var(--ds-tile-deep);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 34%, transparent);
 }
@@ -290,9 +274,9 @@
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
-  padding: 8px 12px;
+  padding: 8px 14px;
   text-align: left;
   border-radius: var(--radius-md-plus);
   cursor: pointer;
@@ -330,17 +314,16 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
-  color: #fff;
+  color: var(--gray-0);
   flex: 0 0 auto;
 }
-
 
 .projects-name-copy {
   min-width: 0;
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .projects-name-title {
@@ -361,33 +344,67 @@
   white-space: nowrap;
 }
 
-.projects-name-meta {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs-plus);
-  line-height: var(--leading-normal);
-}
-
+/* The path is the row's second line: it is what disambiguates two projects with
+   the same display name, so it is readable without selecting the row. */
 .projects-name-path {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--ds-text-muted);
   font-family: var(--font-mono);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-normal);
 }
 
-.projects-name-branch,
-.projects-name-sessions {
+/* Trailing detail column, mirrored against the identity column. */
+/* Trailing detail is one line, mirrored against the identity column. */
+.projects-row-meta {
+  display: flex;
+  min-width: 0;
   flex: 0 0 auto;
+  align-items: baseline;
+  gap: 8px;
+  margin-left: 4px;
+}
+
+.projects-name-sessions,
+.projects-updated {
   white-space: nowrap;
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-normal);
+  font-variant-numeric: tabular-nums;
 }
 
-.projects-meta-dot {
+.projects-name-sessions {
+  color: var(--ds-text-muted);
+}
+
+/*
+  Muted, not faint: `--ds-text-faint` is #afafaf in light mode, which lands at
+  2.2:1 on the card and makes a timestamp the user actually reads unreadable.
+  Quietness comes from size and the trailing column instead.
+*/
+.projects-updated {
+  color: var(--ds-text-muted);
+}
+
+/* Disclosure indicator: points at the row, turns down once its detail is open. */
+.projects-row-disclosure {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
   flex: 0 0 auto;
-  color: var(--ds-text-faint);
+  align-items: center;
+  justify-content: center;
+  color: var(--ds-text-muted);
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+/* Keyed on the open card, not on selection: a selected row whose card was
+   closed again must point right, or the indicator lies about the state. */
+.projects-row-block.open .projects-row-disclosure {
+  transform: rotate(90deg);
 }
 
 .projects-tag {
@@ -409,59 +426,210 @@
   color: var(--ds-accent);
 }
 
-.projects-tag.is-pin {
-  padding: 2px;
-  color: var(--ds-text-muted);
-}
-
 .projects-tag.is-archived {
   background: var(--ds-tile-deep);
   color: var(--ds-text-muted);
 }
 
-.projects-updated {
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding-left: 8px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  white-space: nowrap;
-}
+/* ---------- Selected project card ---------- */
 
+/*
+  The detail panel is inset to the row's text column, so its sections read as
+  children of the project above them rather than as a second surface.
+*/
 .projects-inspector {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 10px;
-  padding: 0 14px 14px 50px;
+  gap: 8px;
+  padding: 0 14px 12px 54px;
+  animation: projects-detail-in var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.projects-inspector-head {
+@keyframes projects-detail-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Actions sit on one quiet bar above the read-only facts. */
+.projects-detail-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 26px;
+  min-width: 0;
+}
+
+.projects-detail-facts {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.projects-detail-roots {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.projects-detail-root {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+.projects-detail-root.is-branch {
+  font-family: var(--font-mono);
+}
+
+.projects-detail-root span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projects-detail-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-width: 0;
+  min-height: 20px;
+  margin-top: 2px;
 }
 
-.projects-inspector-meta {
+.projects-detail-label {
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-strong);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.projects-detail-new,
+.projects-detail-more {
+  color: var(--ds-text-secondary);
+}
+
+.projects-detail-more {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.projects-detail-empty {
+  padding: 2px 2px 4px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm-plus);
+}
+
+.projects-detail-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.projects-detail-task-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  border-radius: var(--radius-2xs);
+}
+
+.projects-detail-task {
   display: flex;
   min-width: 0;
   flex: 1;
   align-items: center;
-  gap: 5px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs-plus);
+  gap: 9px;
+  text-align: left;
+  border-radius: var(--radius-2xs);
+  padding: 6px 8px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+  cursor: pointer;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.projects-inspector-actions {
-  display: flex;
+.projects-detail-task-icon {
+  flex: 0 0 auto;
+  color: var(--ds-text-faint);
+}
+
+.projects-detail-task-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projects-detail-task-updated {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 10px;
+  color: var(--ds-text-faint);
+  font-size: var(--text-xs-plus);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.projects-detail-task:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.projects-detail-task:hover .projects-detail-task-icon {
+  color: var(--ds-text-muted);
+}
+
+.projects-detail-task:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ds-accent) 70%, transparent);
+}
+
+.projects-detail-task-rename {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
   flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  border-radius: var(--radius-2xs);
+  color: var(--ds-text-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out),
+    opacity var(--motion-duration-fast) var(--motion-ease-out);
 }
+
+.projects-detail-task-row:hover .projects-detail-task-rename,
+.projects-detail-task-row:focus-within .projects-detail-task-rename,
+.projects-detail-task-rename:focus-visible {
+  opacity: 1;
+}
+
+.projects-detail-task-rename:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+/* ---------- Index menu ---------- */
 
 .projects-menu-wrap {
   position: relative;
@@ -499,12 +667,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .projects-menu.is-open {
-    animation: none;
   }
 }
 
@@ -550,149 +712,6 @@
   height: 6px;
 }
 
-.projects-detail-roots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-}
-
-.projects-detail-root {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  gap: 5px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-}
-
-.projects-detail-root span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.projects-detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 26px;
-  margin-top: 4px;
-}
-
-.projects-detail-label {
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-}
-
-.projects-detail-new,
-.projects-detail-more {
-  color: var(--ds-text-secondary);
-}
-
-.projects-detail-more {
-  margin-top: 4px;
-}
-
-.projects-detail-empty {
-  padding: 4px 2px 6px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm-plus);
-}
-
-.projects-detail-tasks {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.projects-detail-task-row {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-  border-radius: var(--radius-2xs);
-}
-
-.projects-detail-task {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  align-items: center;
-  gap: 9px;
-  text-align: left;
-  border-radius: var(--radius-2xs);
-  padding: 7px 8px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm-plus);
-  cursor: pointer;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.projects-detail-task-icon {
-  flex: 0 0 auto;
-  color: var(--ds-text-faint);
-}
-
-.projects-detail-task-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.projects-detail-task-updated {
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding-left: 10px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs-plus);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.projects-detail-task:hover {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
-}
-
-.projects-detail-task:hover .projects-detail-task-icon {
-  color: var(--ds-text-muted);
-}
-
-.projects-detail-task-rename {
-  display: inline-flex;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-2xs);
-  color: var(--ds-text-muted);
-  opacity: 0;
-  cursor: pointer;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out),
-    opacity var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.projects-detail-task-row:hover .projects-detail-task-rename,
-.projects-detail-task-row:focus-within .projects-detail-task-rename,
-.projects-detail-task-rename:focus-visible {
-  opacity: 1;
-}
-
-.projects-detail-task-rename:hover {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
-}
-
 /* Quiet in-panel empty state: centered glyph + copy, no decorative frame. */
 .projects-empty {
   display: flex;
@@ -736,7 +755,7 @@
   margin-top: 3px;
 }
 
-/* Narrow content panes stack the toolbar and the workbench. */
+/* Narrow content panes stack the toolbar above the workbench. */
 @media (max-width: 720px) {
   .projects-toolbar {
     align-items: stretch;
@@ -764,6 +783,10 @@
     margin-left: 0;
   }
 
+  .projects-row-meta {
+    display: none;
+  }
+
   .projects-inspector {
     padding-left: 14px;
   }
@@ -773,9 +796,15 @@
   .projects-row-block,
   .projects-icon-btn,
   .projects-search-wrap,
+  .projects-row-disclosure,
   .projects-detail-task,
   .projects-detail-task-rename {
     transition: none;
+  }
+
+  .projects-inspector,
+  .projects-menu.is-open {
+    animation: none;
   }
 }
 
@@ -841,5 +870,5 @@
 }
 
 .project-delete-dialog-confirm:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--ds-error) 85%, #000);
+  background: color-mix(in oklab, var(--ds-error) 85%, var(--gray-1000));
 }

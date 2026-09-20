@@ -56,6 +56,13 @@ export type ModelConfig = {
   input: Array<"text" | "image">;
   contextWindow: number;
   maxTokens: number;
+  /**
+   * Opt-in for the provider-hosted web search tool. Set from the model
+   * binding when the user enables native web search for this model; the
+   * adapter attaches the vendor tool and extracts its stream blocks only
+   * when this is true.
+   */
+  webSearch?: boolean;
   headers?: Record<string, string>;
   compat?: Record<string, unknown>;
   /**

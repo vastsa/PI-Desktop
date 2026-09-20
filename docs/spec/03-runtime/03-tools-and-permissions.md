@@ -361,6 +361,8 @@ or executable path hash is accepted as shell identity.
   `~/.zshrc` / `~/.zprofile` would otherwise be invisible to agent commands.
   The probe is best-effort: missing shell, non-zero exit, or timeout fall back
   to the host PATH unchanged. Agent commands stay POSIX bash (D181 / ADR 0045).
+  Electron main applies the same lookup to stdio MCP spawn (`uvx`/`npx` from
+  the market) so a Finder/Dock launch can find them (D600 / issue #571).
 - No bash bundled in the installer: Git for Windows is the Windows prerequisite (the app requires git anyway)
 - Resolution failure returns stable `SHELL_NOT_FOUND` with install guidance
 - Windows PowerShell and cmd use their native non-interactive invocation.

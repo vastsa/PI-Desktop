@@ -4,7 +4,11 @@ import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
 import { isHtmlFilePath, toWorkspaceRel, type ChatPreviewTarget } from "../lib/chat-links";
 import { openHttpUrl } from "../lib/open-http-url";
-import { FILE_MANAGER_PLUGIN_TAB, fileManagerPluginTab } from "../lib/work-panel-tabs";
+import {
+  FILE_MANAGER_PLUGIN_TAB,
+  fileManagerPluginTab,
+  hasPluginView,
+} from "../lib/work-panel-tabs";
 
 /**
  * Open one target the transcript named.
@@ -62,12 +66,7 @@ export function useOpenChatFileRef() {
   const showToast = useAppStore((s) => s.showToast);
 
   const fileViewAvailable = useMemo(
-    () =>
-      pluginViews.some(
-        (view) =>
-          view.pluginId === FILE_MANAGER_PLUGIN_TAB.pluginId &&
-          view.viewId === FILE_MANAGER_PLUGIN_TAB.viewId,
-      ),
+    () => hasPluginView(pluginViews, FILE_MANAGER_PLUGIN_TAB),
     [pluginViews],
   );
 

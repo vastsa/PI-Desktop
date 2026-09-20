@@ -1,6 +1,6 @@
 # ADR 0232: Keep macOS DMG Opening Guidance Text-Only
 
-- Status: Accepted
+- Status: Accepted (amended by D457 / [ADR 0296](0296-macos-signed-dmg-two-icon-install.md))
 - Date: 2026-09-12
 - Deciders: PI-Desktop release maintainers
 - Amends: D371 / [ADR 0204](0204-unsigned-macos-first-launch-helper.md)
@@ -43,3 +43,8 @@ command item beside the normal installation action.
 Chinese Finder label, absence of the command helper from that list, and the
 retained ZIP helper assets. E2E-196b covers native DMG and ZIP archive
 inspection on macOS.
+
+## Amendment (D457 / ADR 0296)
+
+Official signed DMGs no longer include the opening-help note. The two-icon
+install row is the whole DMG. The ZIP still ships the note and helper.

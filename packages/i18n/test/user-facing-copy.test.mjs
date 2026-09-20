@@ -94,13 +94,6 @@ test("Plan mode and Auto permission copy stay explicit in both locales", () => {
   assert.match(chinese["plan.autoWarning"], /可能修改文件/);
 });
 
-test("page copy keeps actions and removes redundant explanatory paragraphs", () => {
-  assert.equal(english["project.archiveSubtitle"], "Opened folders and their chats.");
-  assert.equal(chinese["project.archiveSubtitle"], "已打开的文件夹及其对话。");
-  assert.doesNotMatch(english["project.archiveSubtitle"], /without losing|Activate|archive the rest/);
-  assert.doesNotMatch(chinese["project.archiveSubtitle"], /可以|而不丢失/);
-});
-
 /**
  * E2E-024X: a page may not restate its own title as a subtitle, and a setting
  * may not explain an obvious control. These keys were rendered once and are
@@ -108,6 +101,7 @@ test("page copy keeps actions and removes redundant explanatory paragraphs", () 
  */
 const REMOVED_EXPLANATORY_KEYS = [
   "project.subtitle",
+  "project.archiveSubtitle",
   "project.emptyIndexBody",
   "scheduled.emptyBody",
   "chat.emptyHint",
@@ -160,4 +154,13 @@ test("font size presets use Starbucks-style cup names", () => {
   assert.equal(chinese["settings.fontSizeDefault"], "大杯");
   assert.equal(chinese["settings.fontSizeLarge"], "超大杯");
   assert.equal(chinese["settings.fontSizeXl"], "超超大杯");
+});
+
+test("chat context-menu copy stays user-facing", () => {
+  assert.equal(english["chat.copyFailed"], "Couldn't copy to the clipboard");
+  assert.equal(english["chat.messageMenu"], "Message actions");
+  assert.equal(english["chat.copyConversation"], "Copy conversation");
+  assert.equal(chinese["chat.copyFailed"], "复制到剪贴板失败");
+  assert.equal(chinese["chat.copyConversation"], "复制整个对话");
+  assert.equal(chinese["chat.selectMessageText"], "选中消息文本");
 });

@@ -9,15 +9,10 @@ import { TooltipButton } from "./ui";
  *
  * macOS keeps native inset traffic lights; other platforms run a frameless
  * window, so minimize/maximize/close live here — flat Codex-style glyph
- * buttons pinned to the top-right of the 46px titlebar band. The main shell
- * can contain the controls in the conversation pane while Settings keeps them
- * fixed to the full window.
+ * buttons pinned to the top-right of the 46px titlebar band. AppShell owns a
+ * single control band outside the conversation and work-panel stacking contexts.
  */
-export function WindowControls({
-  contained = false,
-}: {
-  contained?: boolean;
-} = {}) {
+export function WindowControls() {
   const { t } = useTranslation();
   const platform = window.piDesktop?.platform ?? "darwin";
   const [maximized, setMaximized] = useState(false);
@@ -41,9 +36,7 @@ export function WindowControls({
 
   return (
     <div
-      className={`window-controls no-drag${
-        contained ? " window-controls-in-pane" : ""
-      }`}
+      className="window-controls no-drag"
     >
       <TooltipButton
         type="button"

@@ -168,15 +168,44 @@ recency only breaks ties between equally relevant matches.
   window from the taskbar/dock window list while the Electron process and
   background work remain alive. It does not persist a minimized geometry or
   dispose the host/sidecar.
-- Clicking or double-clicking the PI-Desktop tray icon, choosing Show from its
-  menu, or activating the app from the macOS dock restores and focuses the
+- Double-clicking the PI-Desktop tray icon (or single-clicking on Windows/Linux),
+  choosing Open, or activating the app from the macOS dock restores and focuses the
   existing window. If the window was closed, the same action creates a fresh
   window.
 - The tray menu is localized with the active shipped shell locale and
-  exposes Show PI-Desktop plus an explicit Quit PI-Desktop action. Quit uses
+  exposes Open, bounded session groups, and an explicit Quit action. Quit uses
   the existing ordered shutdown path. What closing the window does is the
   user's own choice on Windows/Linux (ADR 0090) and a Dock-lifecycle close on
   macOS; the tray icon itself is created once at startup either way.
+
+### 1.5.2 Tray session navigation (issue #293)
+
+- The native menu shows Running, Unread, and Pinned in that order, at most
+  nine sessions in total. Every non-empty group keeps up to three rows; the
+  share smaller groups leave unused goes to the groups that still overflow,
+  in priority order, so one busy group can fill all nine while the others are
+  empty. Membership is assigned before applying limits; higher-priority
+  overflow never spills into a lower group.
+- Empty groups are hidden. Archived sessions/projects and deleted sessions
+  are excluded. Running/Pinned follow sidebar sorting; Unread follows the
+  latest unread result per session, newest first, including failed results.
+- Long titles use one line capped at 32 display columns including the
+  ellipsis; an East Asian wide or emoji code point counts as two, so a CJK
+  row stays as wide as a Latin one. An overflowing group offers View more to
+  restore the window and expand session navigation. A session row
+  restores/focuses its exact conversation, activating its project through the
+  existing selection flow.
+- macOS single-click opens the menu without restoring/focusing a conversation
+  or marking it read. Entering a conversation uses normal acknowledgement.
+  Open and double-click restore the window; Quit keeps its confirmation and
+  ordered shutdown. Group/action labels follow the active shipped locale.
+- Start/finish, read, pin, rename, archive, delete, and backend restart update
+  the menu. The menu remains available when the main window is hidden or
+  closed, without creating another window until an explicit activation.
+- macOS does not listen for tray mouse-enter: that event replaces the native
+  status item and hides the extra. Windows/Linux still retry a failed Host
+  read on hover/right-click; macOS retries from the next session or inbox event.
+
 
 ### 1.6 Sidebar project and conversation organization
 
@@ -371,6 +400,13 @@ may be retained while exactly one workspace supplies the visible shell context.
   trigger unless the pattern explicitly retains input focus.
 - Native `<select>` popups remain platform-owned; this rule covers custom
   renderer surfaces only.
+- Pointer-anchored context menus (transcript rows, conversation
+  background, markdown links) are the same family: they portal to
+  `document.body` as a viewport-fixed layer, measure before reveal so
+  they never flash at the origin, clamp inside the viewport instead of
+  flipping, and close on outside press, Escape, Tab, window blur, or a
+  scroll of anything behind them. An empty item list never opens a
+  surface.
 
 ### 1.6 Local profile footer
 
@@ -575,9 +611,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   quiet interval, that same row names the wait: starting, waiting for the
   model, preparing the next request, compacting context, recovering an empty
   response, retrying a provider request, or waiting for delegated work (with
-  each running subagent's latest coarse action). It is replaced by concrete
-  thinking/tool/answer feedback or the inline permission card as soon as one of
-  those states exists.
+  each running subagent's latest coarse action). Existing thinking, tool, or
+  answer output does not hide the row: the running turn keeps one tail status
+  through output pauses. Pending permissions, questions, and plan/goal
+  approvals suppress it; terminal turns and history reading have no live row.
 - When stream completes: cursor indicator replaced by success state (2s fade)
 
 ### 2.2 Auto-scroll
@@ -614,10 +651,10 @@ may be retained while exactly one workspace supplies the visible shell context.
 - An active turn keeps the lower transcript surface clear. Streamed assistant
   and tool rows remain inline with the transcript; no generic understanding,
   working, or checking card is rendered underneath them. A compact runtime
-  status row is the only exception, and appears only when it explains a quiet
-  interval that has no transcript row of its own: a provider wait or retry,
-  context compaction, silent-turn recovery, the gap before the next request,
-  or a delegated-work wait.
+  status row remains in the reserved tail lane for the running turn. It shows
+  the runtime phase when known, otherwise Planning/Goal or Working. Text and
+  tool rows can stop changing while the turn remains active; their presence
+  must not suppress that feedback. User-interaction waits suppress the row.
 - A permission card remains visible only when the agent is blocked on an
   explicit approval. It is an actionable interruption, not a progress status
   card.
@@ -771,17 +808,19 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 4.2 Collapse indicator
 
-- Tool activity starts as a lightweight collapsed row; failed calls open
-  automatically so the error remains local to its invocation.
-- One assistant turn has one process disclosure containing thinking, tool calls
-  and intermediate progress text. The trailing answer streams outside it;
-  later activity moves that text into the process. The header updates elapsed
-  time once per second while active and shows the visible step count.
-- Detailed mode opens the active process and retains the latest thinking row's
-  automatic disclosure. Completed process areas collapse unless a click,
-  keyboard activation or search reveal has taken ownership. Tool details keep
-  their individual controls. Failed tool calls open an unclaimed active process so
-  their errors stay visible.
+- Tool activity starts as a lightweight collapsed row. Failed calls keep their
+  error in the row header; they do not auto-expand.
+- Compact mode gives one assistant turn one process disclosure containing
+  thinking, tool calls and intermediate progress text. The trailing answer
+  streams outside it; later activity moves that text into the process. The
+  header updates elapsed time once per second while active and shows the
+  visible step count.
+- Detailed mode does not wrap a process. Its last tool-call or hosted-search
+  row of the last activity group starts expanded; earlier tool details stay
+  collapsed. Compact completed process areas collapse unless a click, keyboard
+  activation or search reveal has taken ownership. Tool details keep their
+  individual controls. Failed tool calls open an unclaimed active process so
+  their errors stay visible even in compact mode.
 - Compact thinking mode shows only a status indicator while reasoning streams;
   when answer text starts or reasoning ends, the thought row disappears. Tools
   and progress text remain accessible, and a completed thinking-only process
@@ -847,13 +886,17 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    BrowserPreview are allowed; Bash follows the visible permission mode. A
    contract-mode Bash command may mutate under Auto, so the mode chip remains visible.
    While that turn is live `planning`, the Composer mode chip pulses and a compact
-   Planning row occupies the same pre-stream slot as Working; tool or answer rows
-   replace that transcript row so it does not sit orphaned above the composer.
+   Planning row occupies the same reserved tail slot as Working until completion
+   or pending user interaction. A known runtime phase takes precedence; tool
+   and answer output do not hide the running status.
 3. The Agent calls `SubmitPlan` or `SubmitGoal` alone in its tool batch.
    Host-core preserves the exact Markdown bytes in a new immutable
    `.pi/plan/*.md` or `.pi/goal/*.md` artifact, records its path/hash/size and structured
    title/question, and the renderer displays the shared contract approval card with
    only the title and artifact opener; the question remains host-side contract data.
+   The opener hands that path to the bundled file view when it is launchable and to
+   the host file tab otherwise, so the artifact opens beside the conversation in the
+   same view the user's other project files use (D452).
 4. Approve requires Ask / Accept edits / Auto selection. The renderer remembers
    the last selected mode on this device and uses it as the next approval's
    default. Host-core commits the approval, `mode = agent`, permission mode,

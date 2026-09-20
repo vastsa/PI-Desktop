@@ -29,6 +29,10 @@ Default runtime level:
 | audit | sensitive permission, tool, and plugin actions | host-core SQLite `audit_log` table |
 | plugin | per-plugin logs | `~/.pi-desktop/plugins/logs/<id>.log` |
 
+
+The `~/.pi-desktop` paths above are the packaged installation's. A development
+build writes the same tree under `~/.pi-desktop-dev`, and `PI_DESKTOP_DATA_DIR`
+replaces either root (D599).
 `app`, `host`, and `agent` are NDJSON files written by the Electron main
 `Logger` (`apps/desktop/electron/main/logger.ts`). Host and agent stderr lines
 are wrapped into records on their channel. The audit channel is stored in
@@ -71,7 +75,13 @@ The application categories are:
   (ADR 0272). The record carries the host name, the address it resolved to, that
   class and that route — never the URL, its path, query or credentials — because a
   catalog source URL is user-supplied and the refused host and address are the
-  whole diagnostic value (issue #419).
+  whole diagnostic value (issue #419). After a Chromium-process crash, the next
+  launch writes one `crashDumpsFound` record (`error` if any new dump is the
+  browser/main process, `warn` otherwise) with `count`, `total`,
+  `byProcessType`, `directory`, and `newestMtimeMs`. A recovered renderer crash
+  is therefore not reported as the previous app run aborting. A scan failure is
+  one `crashDumpReportFailed` warn and never blocks the first window (D602).
+
 - `runtime` — host/sidecar lifecycle, uncategorized child output, and
   main-process `uncaughtException` / `unhandledRejection` records
 
@@ -198,8 +208,11 @@ There is no remote telemetry pipeline or cloud crash analytics in the MVP.
 - app/host/agent category logs: rotate each category file at 5 MB and keep two
   rotated files beside it (`<category>.1.log`, `<category>.2.log`);
 - audit log (SQLite): retained with the database and pruned according to the
-  host retention policy; and
+  host retention policy;
+- Crashpad minidumps in `<data_dir>/crash-dumps` are not rotated by the
+  logger; they remain until the user deletes them; and
 - rotation and logging failures must never fail the caller.
+
 
 Session transcripts are user data and are not deleted by log rotation.
 

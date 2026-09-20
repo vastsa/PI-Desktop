@@ -12,7 +12,7 @@ import {
   type McpTransport,
   type ProjectRecord,
 } from "@pi-desktop/shared";
-import { Button, Field, Input, TooltipButton, cx, portalOverlay } from "../ui";
+import { Button, Field, HelpIcon, Input, TooltipButton, cx, portalOverlay } from "../ui";
 import { IconPlay, IconServer, IconTerminal, IconX } from "../icons";
 import { ScopeControl } from "./ScopeControl";
 import { KeyValueRows, pairsToRecord, recordToPairs, type KeyValuePair } from "./KeyValueRows";
@@ -173,11 +173,17 @@ function ManagementScope({
   return (
     <div className="agent-mcp-scope">
       <div className="agent-mcp-scope-copy">
-        <span className="agent-mcp-scope-label">{label}</span>
-        <span className="agent-mcp-scope-hint">
-          {level === "global"
-            ? t("settings.globalScopeHint")
-            : t("settings.projectScopeHint")}
+        <span className="agent-mcp-scope-label">
+          {label}
+          {/* What the level reaches is part of naming the level, so the answer
+              rides on the label instead of a line under it. */}
+          <HelpIcon
+            label={
+              level === "global"
+                ? t("settings.globalScopeHint")
+                : t("settings.projectScopeHint")
+            }
+          />
         </span>
       </div>
       <button
@@ -394,8 +400,10 @@ export function McpEditorSheet({
                 />
               </Field>
               <div className="ext-field-group">
-                <div className="ext-field-label">{t("extensions.mcp.env")}</div>
-                <p className="ext-field-hint">{t("extensions.mcp.envHint")}</p>
+                <div className="ext-field-label">
+                  {t("extensions.mcp.env")}
+                  <HelpIcon label={t("extensions.mcp.envHint")} />
+                </div>
                 <KeyValueRows
                   pairs={draft.env}
                   onChange={(next) => set("env", next)}
@@ -421,8 +429,10 @@ export function McpEditorSheet({
                 </p>
               ) : null}
               <div className="ext-field-group">
-                <div className="ext-field-label">{t("extensions.mcp.headers")}</div>
-                <p className="ext-field-hint">{t("extensions.mcp.headersHint")}</p>
+                <div className="ext-field-label">
+                  {t("extensions.mcp.headers")}
+                  <HelpIcon label={t("extensions.mcp.headersHint")} />
+                </div>
                 <KeyValueRows
                   pairs={draft.headers}
                   onChange={(next) => set("headers", next)}
@@ -446,10 +456,10 @@ export function McpEditorSheet({
           <div className="ext-field-group">
             <div className="ext-field-label">
               {managementLevel ? t("settings.scope") : t("extensions.scope.title")}
+              <HelpIcon
+                label={managementLevel ? t("settings.scopeHint") : t("extensions.scope.sheetHint")}
+              />
             </div>
-            <p className="ext-field-hint">
-              {managementLevel ? t("settings.scopeHint") : t("extensions.scope.sheetHint")}
-            </p>
             {managementLevel ? (
               <ManagementScope
                 draft={draft}

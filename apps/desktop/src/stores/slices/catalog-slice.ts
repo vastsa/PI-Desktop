@@ -45,13 +45,14 @@ export function createCatalogSlice({
 > {
   return {
     refreshProviders: async () => {
+      const generation = catalogRuntime.beginProviderRefresh();
       const [providers, sessions, settings, onboarding] = await Promise.all([
         api.listProviders(),
         api.listSessions(),
         api.getSettings(),
         api.getOnboarding(),
       ]);
-      catalogRuntime.beginProviderRefresh();
+      if (generation !== catalogRuntime.providerGeneration()) return;
       set((state) => ({
         providers: providers.providers,
         providerModels: {},

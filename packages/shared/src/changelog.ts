@@ -29,6 +29,24 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.15.1",
+    date: "2026-09-19",
+    highlights: [
+      "Pair and manage remote hosts over SSH from Settings, including password login, install, and reconnect on launch.",
+      "Configure prompt enhancement (template, model, and reasoning) from the AI settings card.",
+      "Drag selected models to reorder them, and add an omit thinking level that sends no provider override.",
+      "Resize or collapse the sidebar, and restore default sidebar or panel width with a double-click.",
+      "Manage projects in a grouped archive with an inspector, and import each kind from its own workbench.",
+      "Scan and batch-import skills and MCP servers from other agent tools.",
+      "Keep the macOS menu-bar extra on a native status item, with bounded tray session shortcuts.",
+      "Ship signed and notarized official macOS builds with in-app updates.",
+      "Install from a two-icon signed macOS DMG; the unsigned-opening note stays in the ZIP only.",
+      "Open Review only when you ask, and land on the latest turn when opening a session.",
+      "Recover a stuck send queue, and ignore forged steering origin.",
+    ],
+  },
+
+  {
     version: "0.15.0",
     date: "2026-09-17",
     highlights: [
@@ -793,6 +811,24 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.15.1",
+    date: "2026-09-19",
+    highlights: [
+      "在设置里通过 SSH 配对和管理远程主机，支持密码登录、安装和启动时重连。",
+      "在 AI 设置卡片里配置提示词增强：模板、模型和推理强度。",
+      "拖动已选模型即可排序，并新增「省略思考」档位，不再向供应商覆盖思考级别。",
+      "可调整或折叠侧边栏，双击分隔条即可恢复默认侧边栏或面板宽度。",
+      "项目改为分组归档加检查器管理，导入页按类型拆成独立工作台。",
+      "可扫描并批量导入其他 Agent 工具里的 Skills 和 MCP 服务器。",
+      "macOS 菜单栏额外项改用原生状态项，并提供有上限的托盘会话快捷入口。",
+      "官方 macOS 构建改为签名、公证，并支持应用内更新。",
+      "已签名的 macOS DMG 改为双图标拖入 Applications 安装，未签名打开说明只保留在 ZIP 里。",
+      "仅在主动打开时显示 Review 面板，打开会话时落在最新一轮。",
+      "卡住的发送队列可自动恢复，并忽略伪造来源的转向消息。",
+    ],
+  },
+
+  {
     version: "0.15.0",
     date: "2026-09-17",
     highlights: [
@@ -1556,6 +1592,24 @@ const zhCNEntries: ChangelogEntry[] = [
 ];
 
 const zhTWEntries: ChangelogEntry[] = [
+  {
+    version: "0.15.1",
+    date: "2026-09-19",
+    highlights: [
+      "在設定裡透過 SSH 配對和管理遠端主機，支援密碼登入、安裝和啟動時重連。",
+      "在 AI 設定卡片裡設定提示詞增強：模板、模型和推理強度。",
+      "拖曳已選模型即可排序，並新增「省略思考」檔位，不再向供應商覆寫思考層級。",
+      "可調整或摺疊側邊欄，雙擊分隔條即可恢復預設側邊欄或面板寬度。",
+      "專案改為分組封存加檢查器管理，匯入頁依類型拆成獨立工作台。",
+      "可掃描並批次匯入其他 Agent 工具裡的 Skills 和 MCP 伺服器。",
+      "macOS 選單列額外項改用原生狀態項，並提供有上限的托盤工作階段捷徑。",
+      "官方 macOS 建置改為簽名、公證，並支援應用程式內更新。",
+      "已簽名的 macOS DMG 改為雙圖示拖入 Applications 安裝，未簽名開啟說明只保留在 ZIP 裡。",
+      "僅在主動開啟時顯示 Review 面板，開啟工作階段時落在最新一輪。",
+      "卡住的傳送佇列可自動恢復，並忽略偽造來源的轉向訊息。",
+    ],
+  },
+
   {
     version: "0.15.0",
     date: "2026-09-17",

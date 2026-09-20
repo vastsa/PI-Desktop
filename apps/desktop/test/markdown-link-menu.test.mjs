@@ -11,26 +11,22 @@ const koreanCatalog = await readFile(
   "utf8",
 );
 
-test("chat link menus keep inside clicks and keyboard navigation", () => {
-  assert.match(
-    markdownSource,
-    /if \(menuRef\.current\?\.contains\(event\.target as Node\)\) return;/,
-  );
-  assert.match(markdownSource, /ref=\{menuRef\}/);
-  assert.match(markdownSource, /onKeyDown=\{onMenuKeyDown\}/);
-  assert.match(
-    markdownSource,
-    /querySelector<HTMLButtonElement>\('\[role="menuitem"\]'\)/,
-  );
+test("chat links use the shared pointer-anchored menu", () => {
+  assert.match(markdownSource, /useContextMenu\(\)/);
+  assert.match(markdownSource, /<ContextMenu state=\{contextMenu\} onClose=\{closeContextMenu\} \/>/);
+  assert.match(markdownSource, /openContextMenu\(event, \{/);
+  assert.match(markdownSource, /id: "open-external"/);
+  assert.match(markdownSource, /id: "open-workpanel"/);
+  assert.match(markdownSource, /id: "copy-address"/);
 });
 
 test("copy link feedback follows the clipboard result", () => {
-  assert.match(markdownSource, /await navigator\.clipboard\.writeText\(href\)/);
+  assert.match(markdownSource, /await navigator\.clipboard\.writeText\(target\)/);
   assert.match(markdownSource, /t\("settings\.linkCopied"/);
   assert.match(markdownSource, /t\("settings\.linkCopyFailed"/);
   assert.doesNotMatch(
     markdownSource,
-    /void navigator\.clipboard\.writeText\(href\);\s*showToast\(/,
+    /void navigator\.clipboard\.writeText\([^)]+\);\s*showToast\(/,
   );
 });
 

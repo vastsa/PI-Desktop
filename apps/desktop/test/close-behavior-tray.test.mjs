@@ -146,3 +146,14 @@ test("explicit quit asks for confirmation except probes and update restarts", ()
     /already chose to quit in the close-behavior dialog[\s\S]*?windowState\.quitConfirmed = true/,
   );
 });
+
+test("macOS tray keeps the native status item instead of mouse-enter tracking", async () => {
+  const lifecycle = await readMainModule("bootstrap/app-lifecycle.ts");
+  const create = lifecycle.slice(lifecycle.indexOf("function createTray()"));
+  const body = create.slice(0, create.indexOf("function resetMenuRendererReady"));
+  assert.match(
+    body,
+    /if \(process\.platform !== "darwin"\) \{[\s\S]*on\("mouse-enter"[\s\S]*on\("right-click"/,
+  );
+  assert.equal((body.match(/on\("mouse-enter"/g) || []).length, 1);
+});

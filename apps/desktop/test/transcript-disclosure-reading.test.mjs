@@ -54,8 +54,8 @@ test("every manual title hands over the element the reader clicked", () => {
   );
   assert.equal(
     toolHeaders?.length,
-    2,
-    "the thinking row and the tool row must both anchor their own header",
+    3,
+    "the thinking row, the tool row and the hosted search row must each anchor their own header",
   );
   assert.match(transcript, /onCollapse=\{collapseDisclosure\}/);
   const collapseWrappers = transcript.match(
@@ -63,8 +63,8 @@ test("every manual title hands over the element the reader clicked", () => {
   );
   assert.equal(
     collapseWrappers?.length,
-    2,
-    "the thinking row and the tool row must both anchor when their rail collapses them",
+    3,
+    "the thinking row, the tool row and the hosted search row must each anchor when their rail collapses them",
   );
 });
 

@@ -22,6 +22,7 @@ import {
   thinkingProviderForModel,
   type ComposerMenuView,
 } from "../model";
+import { createLatestCommitQueue } from "../thinking-commit-queue";
 
 type UseComposerModelMenuOptions = {
   mode: Mode;
@@ -56,6 +57,42 @@ export function useComposerModelMenu({
   const modelSearchRef = useRef<HTMLInputElement>(null);
   const modelListRef = useRef<HTMLDivElement>(null);
   const thinkingListRef = useRef<HTMLDivElement>(null);
+  const thinkingConfigRef = useRef({
+    mode,
+    providerId: provider?.id,
+    modelId,
+    configureActiveSession,
+    showToast,
+  });
+  thinkingConfigRef.current = {
+    mode,
+    providerId: provider?.id,
+    modelId,
+    configureActiveSession,
+    showToast,
+  };
+  const thinkingQueueRef = useRef<ReturnType<typeof createLatestCommitQueue<SessionThinkingLevel>> | null>(
+    null,
+  );
+  if (!thinkingQueueRef.current) {
+    thinkingQueueRef.current = createLatestCommitQueue<SessionThinkingLevel>({
+      send: async (level) => {
+        const current = thinkingConfigRef.current;
+        await current.configureActiveSession({
+          mode: current.mode,
+          providerId: current.providerId,
+          modelId: current.modelId,
+          thinkingLevel: level,
+        });
+      },
+      onError: (error) => {
+        const current = thinkingConfigRef.current;
+        current.showToast(error instanceof Error ? error.message : String(error), {
+          variant: "error",
+        });
+      },
+    });
+  }
 
   const thinkingProvider =
     resolvedThinkingProvider ??
@@ -157,9 +194,14 @@ export function useComposerModelMenu({
     setModelHighlight(-1);
     setThinkingHighlight(-1);
   }, [open]);
+  useEffect(() => {
+    thinkingQueueRef.current?.invalidate();
+  }, [activeSessionId, provider?.id, modelId]);
 
   useEffect(() => {
-    if (controlsBlocked) setOpen(false);
+    if (!controlsBlocked) return;
+    setOpen(false);
+    thinkingQueueRef.current?.invalidate();
   }, [controlsBlocked]);
 
   useEffect(() => {
@@ -203,6 +245,8 @@ export function useComposerModelMenu({
   };
 
   const selectModel = async (candidate: ProviderPublic, nextModelId: string) => {
+    thinkingQueueRef.current?.invalidate();
+    await thinkingQueueRef.current?.idle();
     try {
       const nextModelProvider = thinkingProviderForModel(
         candidate,
@@ -235,22 +279,23 @@ export function useComposerModelMenu({
     }
   };
 
+  /**
+   * Commit a reasoning level without leaving the menu surface. Latest-wins:
+   * a drag that crosses several stops only persists the last pending level
+   * after the in-flight write settles. Returns false when the configuration
+   * is rejected or invalidated by a session/model change.
+   */
+  const commitThinkingLevel = (level: SessionThinkingLevel) => {
+    const queue = thinkingQueueRef.current;
+    if (!queue) return Promise.resolve(false);
+    return queue.commit(level);
+  };
+
   const selectThinkingLevel = async (level: SessionThinkingLevel) => {
-    try {
-      await configureActiveSession({
-        mode,
-        providerId: provider?.id,
-        modelId,
-        thinkingLevel: level,
-      });
-      setView("root");
-      setModelHighlight(-1);
-      setThinkingHighlight(-1);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), {
-        variant: "error",
-      });
-    }
+    if (!(await commitThinkingLevel(level))) return;
+    setView("root");
+    setModelHighlight(-1);
+    setThinkingHighlight(-1);
   };
 
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -320,6 +365,7 @@ export function useComposerModelMenu({
     thinkingMenuLevels,
     showView,
     selectModel,
+    commitThinkingLevel,
     selectThinkingLevel,
     onMenuKeyDown,
     controlsBlocked,

@@ -13,10 +13,10 @@
  * Fixture A uses the pinned, pure-JavaScript is-number@7.0.0 package. No
  * lifecycle scripts are allowed to run. Fixture B never accesses the network.
  */
-import { register } from "node:module";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire, register } from "node:module";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, isAbsolute, join, resolve } from "node:path";
 
 register(new URL("../apps/desktop/test/helpers/ts-import-hooks.mjs", import.meta.url));
 
@@ -25,6 +25,9 @@ const {
   installExtensionDependencies,
 } = await import("../apps/desktop/electron/main/agent-extensions.ts");
 const { TrustedExtensionRunner } = await import("../packages/agent-runtime/dist/index.js");
+const { registerAgentExtensionIpc } = await import("../apps/desktop/electron/main/agent-extensions-ipc.ts");
+const { readNpmPath, writeNpmPath } = await import("../apps/desktop/electron/main/npm-preferences.ts");
+const { IPC } = await import("../packages/shared/dist/index.js");
 
 const results = [];
 function record(id, ok, detail = "") {
@@ -166,6 +169,78 @@ try {
       );
     } finally {
       await runner?.dispose();
+    }
+  }
+
+  // ── E2E-PLUGIN-import-extension-recovers-missing-npm ──────────────────
+  {
+    const id = "E2E-PLUGIN-import-extension-recovers-missing-npm";
+    const inheritedPath = process.env.PATH;
+    try {
+      const name = process.platform === "win32" ? "npm.cmd" : "npm";
+      const npmPath = (inheritedPath ?? "").split(delimiter)
+        .filter((directory) => isAbsolute(directory))
+        .map((directory) => join(directory, name)).find((path) => existsSync(path));
+      if (!npmPath) throw new Error("The E2E requires npm on the original PATH");
+      const sourceRoot = join(tempRoot, "picker-source");
+      const importRoot = join(tempRoot, "picker-imported");
+      const dataDir = join(tempRoot, "picker-data");
+      const emptyPath = join(tempRoot, "empty-bin");
+      mkdirSync(emptyPath);
+      writeExtensionSource(sourceRoot, {
+        name: "picker-extension", version: "1.0.0",
+        pi: { extensions: ["index.mjs"] }, dependencies: { "is-number": "7.0.0" },
+        scripts: { install: "node -e \"require('node:fs').writeFileSync('install-ran.txt', 'ran')\"" },
+      });
+      const handlers = new Map();
+      let sourcePicks = 0;
+      let npmPicks = 0;
+      let prompts = 0;
+      let loads = 0;
+      let dependencyLoaded = false;
+      process.env.PATH = emptyPath;
+      registerAgentExtensionIpc({
+        handle: (channel, handler) => handlers.set(channel, handler),
+        bridge: { respond: () => true },
+        window: () => null,
+        getLocale: () => "en",
+        getNpmPath: () => readNpmPath(dataDir),
+        setNpmPath: (path) => writeNpmPath(dataDir, path),
+        importRoot,
+        dialogs: {
+          async showMessageBox() { prompts++; return { response: 1 }; },
+          async showOpenDialog(options) {
+            if (options.properties.includes("openDirectory")) {
+              sourcePicks++;
+              return { canceled: false, filePaths: [sourceRoot] };
+            }
+            if (++npmPicks > 1) throw new Error("npm selection did not recover installation");
+            return { canceled: false, filePaths: [npmPath] };
+          },
+        },
+        loadDevPlugin: async (path) => {
+          loads++;
+          const require = createRequire(join(path, "package.json"));
+          dependencyLoaded = require("is-number")("42");
+          return { path };
+        },
+        runCommand: async () => ({ handled: true }),
+      });
+      const result = await handlers.get(IPC.invoke.pluginImportExtension)();
+      const lockfile = JSON.parse(readFileSync(join(result.path, "package-lock.json"), "utf8"));
+      const urls = collectResolvedUrls(lockfile);
+      const ok = result.dependencies.state === "installed" && dependencyLoaded &&
+        sourcePicks === 1 && npmPicks === 1 && prompts === 1 && loads === 1 &&
+        readdirSync(importRoot).length === 1 && readNpmPath(dataDir) === npmPath &&
+        process.env.PATH === emptyPath && !existsSync(join(result.path, "install-ran.txt")) &&
+        urls.length > 0 && urls.every((url) => url.startsWith("https://registry.npmjs.org/"));
+      record(id, ok, ok ? "native-dialog boundary selected npm; real install recovered with isolated PATH" :
+        JSON.stringify({ dependencies: result.dependencies, sourcePicks, npmPicks, prompts, loads, dependencyLoaded }));
+    } catch (error) {
+      record(id, false, error instanceof Error ? error.message : String(error));
+    } finally {
+      if (inheritedPath === undefined) delete process.env.PATH;
+      else process.env.PATH = inheritedPath;
     }
   }
 

@@ -134,15 +134,39 @@
 - 隐藏将从 taskbar/dock 窗口列表中删除主窗口，而
   Electron 进程和后台工作仍然有效。它不坚持
   最小化几何形状或处置 host/sidecar。
-- 单击或双击 PI-Desktop 托盘图标，从其中选择“显示”
-  菜单，或从 macOS 扩展坞激活应用程序可恢复并聚焦
-  现有的窗口。如果窗口关闭，相同的操作会创建一个新的窗口
-  窗口。
-- 托盘菜单使用当前已发布的 shell 语言进行本地化，并且
-  公开 Show PI-Desktop 以及显式退出 PI-Desktop 操作。退出走现有的有序
-  关闭路径。关闭窗口做什么，在 Windows/Linux 上由用户自己选择
-  （ADR 0090），在 macOS 上是一次 Dock 生命周期的关闭；无论哪种情况，
-  托盘图标本身都只在启动时创建一次。
+- Double-clicking the tray icon (or single-clicking on Windows/Linux), choosing
+  Open, or activating the macOS Dock restores/focuses the existing window or
+  creates a new one if it was closed. macOS single-click opens the menu.
+- The localized tray includes Open, bounded session groups, and Quit. Quit
+  keeps confirmation and ordered shutdown. Close behavior remains user-owned
+  on Windows/Linux (ADR 0090), and macOS retains its Dock lifecycle.
+
+### 1.5.2 Tray session navigation (issue #293)
+
+- The native menu shows Running, Unread, and Pinned in that order, at most
+  nine sessions in total. Every non-empty group keeps up to three rows; the
+  share smaller groups leave unused goes to the groups that still overflow,
+  in priority order, so one busy group can fill all nine while the others are
+  empty. Membership is assigned before applying limits; higher-priority
+  overflow never spills into a lower group.
+- Empty groups are hidden. Archived sessions/projects and deleted sessions
+  are excluded. Running/Pinned follow sidebar sorting; Unread follows the
+  latest unread result per session, newest first, including failed results.
+- Long titles use one line capped at 32 display columns including the
+  ellipsis; an East Asian wide or emoji code point counts as two, so a CJK
+  row stays as wide as a Latin one. An overflowing group offers View more to
+  restore the window and expand session navigation. A session row
+  restores/focuses its exact conversation, activating its project through the
+  existing selection flow.
+- macOS single-click opens the menu without restoring/focusing a conversation
+  or marking it read. Entering a conversation uses normal acknowledgement.
+  Open and double-click restore the window; Quit keeps its confirmation and
+  ordered shutdown. Group/action labels follow the active shipped locale.
+- Start/finish, read, pin, rename, archive, delete, and backend restart update
+  the menu. The menu remains available when the main window is hidden or
+  closed, without creating another window until an explicit activation.
+- macOS 不监听托盘 mouse-enter：该事件会替换原生 status item 并让菜单栏图标消失。
+  Windows/Linux 仍可在悬停/右键时重试失败的 Host 读取；macOS 改由下一次会话或收件箱事件刷新。
 
 ### 1. 6 侧边栏项目和对话组织
 
@@ -479,8 +503,9 @@
   具有经过时间的本地化 `Working…` 状态。当运行时报告一段安静
   间隔时，同一行会标明：正在开始、等待模型、准备下一次请求、
   压缩上下文、补救空回复、重试，或等待委托工作（并带上每个
-  仍在运行的 Subagent 的粗粒度动作）。一旦出现具体的思考/工具/
-  回答反馈或内联权限卡，该行就被替换。
+  仍在运行的 Subagent 的粗粒度动作）。已有思考、工具或回答不会隐藏
+  该行，输出暂停时仍保留底部状态。等待权限、提问或计划/目标批准时
+  隐藏；回合结束和历史阅读窗口不显示实时状态。
 - 当流完成时：光标指示器被成功状态取代（2秒淡出）
 
 ### 2. 2 自动滚动
@@ -514,7 +539,9 @@
 
 - 主动转动可保持转录本下表面清晰。直播助手
   工具行与记录保持一致；没有通用的理解，
-  工作卡或检查卡呈现在它们下方。
+  工作卡或检查卡呈现在它们下方。运行中的回合保留一行紧凑底部状态：
+  优先显示具体运行时阶段，否则显示规划/目标或工作中。已有文字和工具
+  不会隐藏提示；等待用户操作时隐藏。
 - 仅当代理被阻止时，权限卡才保持可见
   明确批准。这是可操作的中断，而不是进度状态
   卡。
@@ -700,12 +727,14 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
 2. Agent 使用选定的合约工具集进行调查。 Read/Glob/Grep 和
    允许使用 BrowserPreview； Bash 遵循可见权限模式。一个
    Contract-mode Bash 命令可能会在 Auto 下发生变化，因此模式芯片仍然可见。
-   该回合处于实时 `planning` 时，Composer 模式芯片脉冲，紧凑的规划行占用与 Working 相同的流前位置；工具或回答行会替换该成绩单行，避免它单独停在输入框上方。
+   该回合处于实时 `planning` 时，Composer 模式芯片脉冲，紧凑的规划行占用与 Working 相同的预留底部位置，直到回合结束或等待用户操作。具体运行时阶段优先，工具和回答不会隐藏运行提示。
 3. Agent 在其工具批次中单独调用 `SubmitPlan` 或 `SubmitGoal`。
    Host-core 将准确的 Markdown 字节保留在新的不可变中
    `.pi/plan/*.md` 或 `.pi/goal/*.md` 工件，记录其 path/hash/size 并结构化
    title/question，渲染器显示共享合同审批卡
    只有标题和神器开启器；问题仍然是主机端合同数据。
+   打开器在该视图可启动时把这一路径交给内置文件视图，否则交给宿主机文件标签，
+   因此工件会在对话旁、与用户其它项目文件相同的视图中打开（D452）。
 4. 批准需要询问/接受编辑/自动选择。渲染器会记住
    该设备上最后选择的模式并将其用作下一个批准的模式
    默认。 Host-core提交批准，`mode = agent`，权限模式，

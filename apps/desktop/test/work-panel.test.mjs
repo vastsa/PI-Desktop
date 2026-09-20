@@ -183,7 +183,7 @@ test("work panel uses the fixed-window internal dock", () => {
   // guest clamped to the plugin view is gone before the dock CSS animation.
   assert.match(
     panelSource,
-    /blocked=\{\s*exiting \|\| panelBlocked\s*\}/,
+    /blocked=\{\s*exiting \|\| panelBlocked \|\| blockingOverlayActive\s*\}/,
   );
   assert.match(panelSource, /nativeSurfaceReadyForExit/);
   assert.match(panelSource, /is-exit-pending/);
@@ -259,7 +259,7 @@ test("work panel header exposes a scrollable tab strip and direct new-page actio
   const pluginSurface = panelSource.slice(pluginSurfaceStart, pluginSurfaceEnd);
   assert.match(
     pluginSurface,
-    /blocked=\{\s*exiting \|\| panelBlocked\s*\}/s,
+    /blocked=\{\s*exiting \|\| panelBlocked \|\| blockingOverlayActive\s*\}/s,
   );
   assert.doesNotMatch(pluginSurface, /isResizing/);
   assert.doesNotMatch(panelSource, /createPortal|newTabMenuRef|menuOpen/);
@@ -413,16 +413,16 @@ test("work panel separator exposes internal panel width resizing", () => {
   assert.match(globalStyles, /\.work-panel-resize \{[^}]*width:\s*10px;/s);
   assert.match(globalStyles, /touch-action:\s*none/);
   assert.match(globalStyles, /\.work-panel-resize:focus-visible/);
-  // The hover/drag line is a tint of the accent, never the solid value: the
-  // accent is pure white on the dark plate, so a solid full-height hairline
-  // reads as a bright seam rather than a control. Keyboard focus keeps it.
+  // Same short grip as the sidebar: 32px, centered, no full-height rail.
+  const resizeMarker =
+    globalStyles.match(/\.work-panel-resize::after\s*\{[^}]+\}/s)?.[0] ?? "";
+  assert.match(resizeMarker, /top:\s*50%/);
+  assert.match(resizeMarker, /height:\s*32px/);
+  assert.match(resizeMarker, /border-radius:\s*var\(--radius-full\)/);
+  assert.match(globalStyles, /\.work-panel-resize:hover::after,/);
   assert.match(
     globalStyles,
-    /\.work-panel-resize:hover::after,\s*\.work-panel-resize:active::after,\s*\.work-panel\[data-resizing="true"\] \.work-panel-resize::after \{\s*background: color-mix\(in oklab, var\(--ds-focus\) 50%, transparent\)/s,
-  );
-  assert.match(
-    globalStyles,
-    /\.work-panel-resize:focus-visible::after,[\s\S]*?\{\s*width: 2px;\s*background: var\(--ds-focus\);/,
+    /\.work-panel-resize:focus-visible::after,[\s\S]*?background:\s*var\(--ds-accent\)/,
   );
 });
 
@@ -607,7 +607,7 @@ test("preview mode keeps shell actions and restores routes before navigation", (
   assert.match(appSource, /className=\{cx\([\s\S]*?"window-chrome-row"/);
   assert.match(appSource, /data-nav="new-task"/);
   assert.match(appSource, /<CollapsedTitlebarActions[\s\S]*?onNewTask=/);
-  assert.match(appSource, /<WindowControls contained \/>/);
+  assert.match(appSource, /\{ready && !showSplash && <WindowControls \/>\}/);
   assert.match(appSource, /const workPanelMaximizedRef = useRef\(false\)/);
   assert.match(
     appSource,

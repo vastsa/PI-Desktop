@@ -73,7 +73,14 @@ destination, chat as the home surface, tools and permissions inline.
   left and accessible minimize / maximize-or-restore / close controls at the
   right edge of the conversation pane when the panel is closed (D129). When
   the work panel is open, those controls stay viewport-fixed over the panel
-  header rather than travelling with MainPane. Destination history is
+  header rather than travelling with MainPane. One window-level control band
+  stays outside pane stacking contexts across panel open, preview, restore,
+  and Settings transitions. Its background follows the adjacent titlebar surface
+  (dock header when open, conversation surface when closed) in both themes.
+  Boot splash, search, and toasts stay above that band.
+  Preview navigation must also remain above the panel;
+  macOS keeps native traffic lights and its existing fullscreen insets.
+  Destination history is
   shortcut-first (`Cmd/Ctrl+[` and `Cmd/Ctrl+]`) with no dedicated back/forward
   chrome; while Extensions is active, the footer Plugins button performs one
   Back step as the only pointer affordance. The main titlebar has no

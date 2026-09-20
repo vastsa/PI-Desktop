@@ -45,15 +45,20 @@ about 277 MB, so the renderer is the only part worth tuning.
    device pixel ratio. Regenerate them from the masters with `sips -Z 192`
    whenever the canonical marks change; the visual identity is unchanged.
 
-The two bundled CJK faces stay unsubset. ADR 0083 section 2 appends
-`Noto Sans SC` to every font stack so Chinese text stays readable offline, and
-subsetting would drop glyphs from user-supplied content. Reducing those 15 MiB
-requires revising ADR 0083, not a build-config change.
+*(Superseded by [ADR 0298](0298-remove-bundled-fonts.md): the app ships no
+fonts, so there is nothing to subset.)* The two bundled CJK faces stayed
+unsubset while they existed. ADR 0083 section 2 appended `Noto Sans SC` to
+every font stack so Chinese text stayed readable offline, and subsetting would
+have dropped glyphs from user-supplied content; reducing those 15 MiB required
+revising ADR 0083, not a build-config change. ADR 0298 removed the faces
+instead, and `out/renderer` now keeps only KaTeX's `woff2` glyphs.
 
 ## Consequences
 
 - `out/renderer` drops from 31 MiB to 24 MiB: JavaScript 12.53 to 7.72 MiB,
   legacy font fallbacks 0.78 MiB to 0, PNG brand assets 1.23 to 0.06 MiB.
+  Measured before [ADR 0298](0298-remove-bundled-fonts.md); the bundled
+  `woff2` payload is no longer part of the renderer.
 - Minified renderer stack traces need the devtools source view; no sourcemaps
   are emitted, which matches the previous release behavior.
 - The brand marks now exist in two places. `packaging-footprint.test.mjs`

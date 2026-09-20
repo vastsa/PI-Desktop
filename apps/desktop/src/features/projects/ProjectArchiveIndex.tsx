@@ -1,43 +1,37 @@
 import { type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cx } from "../../components/ui";
-import { IconFolder, IconStar } from "../../components/icons";
+import { IconChevronRight, IconFolder, IconStar } from "../../components/icons";
 import { projectColor } from "../../lib/recent-projects";
-import { normalizeProjectPath } from "../../lib/sidebar-session-groups";
 import {
   formatUpdated,
   GROUP_LABEL_KEYS,
+  PROJECT_STATUS_LABEL_KEYS,
+  projectStatus,
+  shortenPath,
   type GroupId,
   type ProjectIndexItem,
 } from "../../lib/project-archive";
 
+/**
+ * Row element id. Encoded rather than slugged: two projects whose paths differ
+ * only in separators (`/w/api-server` vs `/w/api/server`) slugged to one id, so
+ * `getElementById` returned whichever row came first in the document.
+ */
 export function projectRowId(path: string) {
-  return `projects-row-${path.replace(/[^a-zA-Z0-9]+/g, "-")}`;
+  return `projects-row-${encodeURIComponent(path)}`;
 }
 
-function rowStatus(args: {
-  project: ProjectIndexItem;
-  workspacePath?: string | null;
-  openProjectPaths: readonly string[];
-}): "active" | "open" | "archived" | null {
-  const { project, workspacePath, openProjectPaths } = args;
-  if (project.archived === true) return "archived";
-  if (normalizeProjectPath(workspacePath) === normalizeProjectPath(project.path)) {
-    return "active";
-  }
-  if (
-    openProjectPaths.some(
-      (path) => normalizeProjectPath(path) === normalizeProjectPath(project.path),
-    )
-  ) {
-    return "open";
-  }
-  return null;
-}
-
+/*
+  The index is one inset grouped list in the iOS sense: a quiet section label,
+  then rows that read left-to-right as identity (glyph, name, path) and
+  right-to-left as detail (session count, last active, disclosure). Selecting a
+  row expands its detail in place under the row, so the row itself is always the
+  header of the open card and no name is ever repeated inside it (D455).
+*/
 export function ProjectArchiveIndex({
   groups,
-  selectedPath,
+  openPath,
   workspacePath,
   openProjectPaths,
   locale,
@@ -47,7 +41,8 @@ export function ProjectArchiveIndex({
   onActivate,
 }: {
   groups: { id: GroupId; rows: ProjectIndexItem[] }[];
-  selectedPath: string | null;
+  /** Path whose card is open, or `null` while the index is only a list. */
+  openPath: string | null;
   workspacePath?: string | null;
   openProjectPaths: readonly string[];
   locale?: string;
@@ -73,8 +68,8 @@ export function ProjectArchiveIndex({
           </div>
           <div className="projects-group-rows" role="list">
             {group.rows.map((project) => {
-              const selected = selectedPath === project.path;
-              const status = rowStatus({
+              const open = openPath === project.path;
+              const status = projectStatus({
                 project,
                 workspacePath,
                 openProjectPaths,
@@ -86,10 +81,9 @@ export function ProjectArchiveIndex({
                   key={project.path}
                   id={projectRowId(project.path)}
                   role="listitem"
-                  aria-selected={selected}
                   className={cx(
                     "projects-row-block",
-                    selected && "selected",
+                    open && "open",
                     status === "active" && "active",
                     status === "archived" && "archived",
                   )}
@@ -99,8 +93,8 @@ export function ProjectArchiveIndex({
                     className="projects-row"
                     title={project.path}
                     aria-label={t("project.selectProject", { name: project.name })}
-                    aria-expanded={selected}
-                    aria-current={selected ? "true" : undefined}
+                    aria-expanded={open}
+                    aria-current={open ? "true" : undefined}
                     onClick={() => onSelect(project.path)}
                     onDoubleClick={() => onActivate(project.path)}
                   >
@@ -114,25 +108,29 @@ export function ProjectArchiveIndex({
                     <span className="projects-name-copy">
                       <span className="projects-name-title">
                         <span className="projects-name-text">{project.name}</span>
-                        {status === "active" ? (
-                          <span className="projects-tag is-active">{t("project.active")}</span>
-                        ) : status === "open" ? (
-                          <span className="projects-tag">{t("project.openTag")}</span>
-                        ) : status === "archived" ? (
-                          <span className="projects-tag is-archived">{t("project.archivedTag")}</span>
+                        {status ? (
+                          <span className={cx("projects-tag", status !== "open" && `is-${status}`)}>
+                            {t(PROJECT_STATUS_LABEL_KEYS[status])}
+                          </span>
                         ) : null}
                       </span>
-                      <span className="projects-name-meta">
-                        <span className="projects-name-sessions">
-                          {t("project.sessionsCount", { count: totalSessions })}
-                        </span>
+                      <span className="projects-name-path">
+                        {shortenPath(project.path)}
                       </span>
                     </span>
-                    <span className="projects-updated">
-                      {formatUpdated(project.openedAt, locale, t("project.updatedNever"))}
+                    <span className="projects-row-meta">
+                      <span className="projects-name-sessions">
+                        {t("project.sessionsCount", { count: totalSessions })}
+                      </span>
+                      <span className="projects-updated">
+                        {formatUpdated(project.openedAt, locale, t("project.updatedNever"))}
+                      </span>
+                    </span>
+                    <span className="projects-row-disclosure" aria-hidden>
+                      <IconChevronRight size={14} />
                     </span>
                   </button>
-                  {selected && detail ? (
+                  {open && detail ? (
                     <div
                       className="projects-inspector"
                       role="region"

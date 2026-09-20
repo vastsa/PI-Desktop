@@ -21,6 +21,13 @@ fn normalize_context_window_source(value: Option<&str>) -> Option<String> {
         .then_some(trimmed)
 }
 
+fn default_thinking_level_allowed(level: &str, thinking_levels: &[String]) -> bool {
+    if level == "omit" {
+        return thinking_levels.iter().any(|item| item != "off");
+    }
+    thinking_levels.iter().any(|item| item == level)
+}
+
 pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBinding> {
     bindings
         .iter()
@@ -33,7 +40,8 @@ pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBi
             let default_thinking_level = binding
                 .default_thinking_level
                 .as_deref()
-                .filter(|level| thinking_levels.iter().any(|item| item == level))
+                .map(str::trim)
+                .filter(|level| default_thinking_level_allowed(level, &thinking_levels))
                 .map(str::to_string)
                 .or_else(|| thinking_levels.first().cloned());
             Some(ModelBinding {
@@ -62,6 +70,7 @@ pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBi
                 supports_images: binding.supports_images,
                 supports_documents: binding.supports_documents,
                 available_for_subagents: binding.available_for_subagents,
+                native_web_search: binding.native_web_search,
             })
         })
         .collect()
@@ -82,6 +91,7 @@ fn legacy_model_binding(model_id: Option<String>) -> Vec<ModelBinding> {
                 supports_images: None,
                 supports_documents: None,
                 available_for_subagents: None,
+                native_web_search: None,
             }]
         })
         .unwrap_or_default()
@@ -235,6 +245,7 @@ mod tests {
             supports_images: None,
             supports_documents: None,
             available_for_subagents: None,
+            native_web_search: None,
         }
     }
 
@@ -299,5 +310,21 @@ mod tests {
         let normalized = normalize_model_bindings(&[binding("terra", 0)]);
         assert_eq!(normalized[0].context_window, DEFAULT_CONTEXT_WINDOW);
         assert_eq!(normalized[0].max_tokens, DEFAULT_MAX_TOKENS);
+    }
+
+    #[test]
+    fn omit_default_survives_on_reasoning_bindings_only() {
+        let mut reasoning = binding("r", DEFAULT_CONTEXT_WINDOW);
+        reasoning.thinking_levels = vec!["high".into(), "medium".into()];
+        reasoning.default_thinking_level = Some("omit".into());
+        let mut off_only = binding("plain", DEFAULT_CONTEXT_WINDOW);
+        off_only.thinking_levels = vec!["off".into()];
+        off_only.default_thinking_level = Some("omit".into());
+        let normalized = normalize_model_bindings(&[reasoning, off_only]);
+        assert_eq!(
+            normalized[0].default_thinking_level.as_deref(),
+            Some("omit")
+        );
+        assert_eq!(normalized[1].default_thinking_level.as_deref(), Some("off"));
     }
 }

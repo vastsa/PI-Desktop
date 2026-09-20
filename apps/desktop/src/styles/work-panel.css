@@ -92,39 +92,32 @@
 .work-panel-resize::after {
   content: "";
   position: absolute;
-  inset-block: 0;
+  top: 50%;
   left: 50%;
-  width: 1px;
-  background: transparent;
-  transform: translateX(-50%);
-  transition:
-    width var(--motion-duration-fast) var(--motion-ease-out),
-    background var(--motion-duration-fast) var(--motion-ease-out);
+  width: 2px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 20%, transparent);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .work-panel-resize:hover::after,
 .work-panel-resize:active::after,
 .work-panel-resize:focus-visible::after,
 .work-panel[data-resizing="true"] .work-panel-resize::after {
-  width: 2px;
-  background: var(--ds-focus);
-}
-
-/*
- * Pointer states paint a tint of that accent instead of the solid value. The
- * accent is pure white on the dark plate, so a full-height solid hairline reads
- * as a bright seam rather than a control; 50% holds the line at roughly 5.3:1
- * against the dark plates and 3.3:1 against the light ones. Keyboard focus keeps
- * the full accent, because a focus ring is not a pointer cue.
- */
-.work-panel-resize:hover::after,
-.work-panel-resize:active::after,
-.work-panel[data-resizing="true"] .work-panel-resize::after {
-  background: color-mix(in oklab, var(--ds-focus) 50%, transparent);
+  opacity: 1;
 }
 
 .work-panel-resize:focus-visible {
   outline: none;
+}
+
+.work-panel-resize:focus-visible::after,
+.work-panel-resize:active::after,
+.work-panel[data-resizing="true"] .work-panel-resize::after {
+  background: var(--ds-accent);
 }
 
 :root[data-work-panel-resizing="true"],

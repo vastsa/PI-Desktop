@@ -106,3 +106,16 @@ test("the chained write step produces a package.json Node will treat as ESM", as
     await rm(workDir, { recursive: true, force: true });
   }
 });
+
+test("agent-runtime bundle declares the bundled-Node flag for the kernel extension loader", () => {
+  // pi-coding-agent's extension loader embeds typebox and the kernel modules
+  // only for compiled or bundled Node distributions. Without the define it
+  // resolves them from the importing file, which a packaged install under
+  // resources/agent-runtime cannot satisfy, so every native Pi extension fails
+  // with "Cannot find module 'typebox'" (see bundle.test.ts for the behavior).
+  assert.match(
+    bundleScript,
+    /--define:PI_BUNDLED_NODE=true\b/,
+    "bundle must define PI_BUNDLED_NODE so the packaged sidecar can load native Pi extensions",
+  );
+});

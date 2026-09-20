@@ -14,22 +14,25 @@ thinking indicator without rapidly changing reasoning text.
 
 ## Decision
 
-The renderer projects each existing assistant-turn entry into one process
-area and its trailing answer. Thinking, tools and intermediate assistant text
-keep their original order inside the process. A trailing assistant text stays
+Compact mode projects each assistant-turn entry into one process area and
+its trailing answer. Thinking, tools and intermediate assistant text keep
+their original order inside the process. A trailing assistant text stays
 visible while streaming; if a later tool or thinking block follows, that text
 belongs to the process. There is no semantic final-answer marker in UiMessage,
 so the renderer does not guess intent from the wording. User/system messages
 and compaction dividers retain their existing turn boundaries.
 
-Completed process areas start collapsed. Detailed mode opens the active
-process automatically and retains the existing thinking-row disclosures.
-Manual disclosure choices survive streaming and completion. Search navigation
-opens the containing process. Tool failures open an unclaimed active process so the
-invocation error stays visible; that does not mark the whole turn as failed.
+Detailed mode does not wrap a process: thinking, tools and intermediate
+assistant text stay in transcript order beside the answer. Its last tool-call
+or hosted-search row of the last activity group starts expanded; earlier tool
+details stay collapsed. Compact mode starts completed process areas collapsed
+and keeps individual tool payloads collapsed. Manual disclosure choices survive
+streaming and completion. Search navigation opens the containing process.
+Tool failures open an unclaimed active process so the invocation error stays
+visible even in compact mode; that does not mark the whole turn as failed.
 Assistant errors and stopped trailing partial answers stay outside the process.
 Tool/delegation detail controls, permission cards, and transcript actions retain
-their existing behavior.
+their existing behavior aside from that detailed last-tool default.
 
 Settings → AI → Defaults includes `thinkingDisplayMode`, an optional
 `detailed | compact` AppSettings field. Absent or unrecognized values display
@@ -37,7 +40,8 @@ as detailed. Compact mode renders no reasoning text or excerpt: while a
 thinking-only message streams it shows a status indicator, and when reasoning
 ends the thinking row disappears. Answer text ends that indicator even while
 the assistant message is still streaming. A completed thinking-only process
-leaves no empty header. Tool rows and progress text remain expandable.
+leaves no empty header. Tool rows and progress text remain expandable; detailed
+mode opens the last tool of the last activity group by default.
 Changing the setting updates mounted history and nested thinking rows.
 
 The field uses the existing host-owned settings JSON; no database migration or
@@ -49,8 +53,8 @@ tool and intermediate-text items and omit hidden compact-mode thinking.
 
 ## Consequences
 
-- One completed turn has one process disclosure plus its visible answer.
-- Reasoning remains available by switching back to detailed mode.
+- Compact completed turns have one process disclosure plus the visible answer.
+- Detailed mode does not group that work; compact remains the collapsed process.
 - Unchanged activity groups keep their memoized boundary during text deltas;
   the process wrapper does not move execution or persistence into the renderer.
 - This groups loaded transcript entries; it does not reconstruct history that

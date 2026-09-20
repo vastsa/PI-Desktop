@@ -2,6 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.1",
+    "date": "2026-09-19",
+    "highlights": [
+      "Ayarlar'dan SSH ile uzak ana bilgisayarları eşleyin ve yönetin; parola girişi, kurulum ve açılışta yeniden bağlanma dahildir.",
+      "Yapay zeka ayar kartından istem geliştirmeyi (şablon, model ve akıl yürütme) yapılandırın.",
+      "Seçili modelleri sürükleyerek yeniden sıralayın; sağlayıcıya düşünme düzeyi göndermeyen bir atlama düzeyi ekleyin.",
+      "Kenar çubuğunu boyutlandırın veya daraltın; çift tıklayınca kenar çubuğu veya panel varsayılan genişliğine döner.",
+      "Projeleri gruplu bir arşiv ve denetçiyle yönetin; her türü kendi çalışma tezgahından içe aktarın.",
+      "Diğer ajan araçlarındaki skill ve MCP sunucularını tarayıp toplu içe aktarın.",
+      "macOS menü çubuğu eklentisi yerel bir durum öğesinde kalır; tepside sınırlı oturum kısayolları vardır.",
+      "Resmi macOS derlemeleri imzalanır, noter onaylanır ve uygulama içi güncellemeyi destekler.",
+      "İmzalı macOS DMG iki simgeyle kurulur; imzasız açılış notu yalnızca ZIP'te kalır.",
+      "Review yalnızca siz isteyince açılır; oturum açınca en son tura iner.",
+      "Takılı bir gönderim kuyruğunu kurtarır ve sahte steering kökenlerini yok sayar.",
+    ],
+  },
+
+  {
     "version": "0.15.0",
     "date": "2026-09-17",
     "highlights": [

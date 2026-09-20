@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Policy-Sync: 2026-02-16.2
+Policy-Sync: 2026-09-20.1
 
 Instructions for Claude Code CLI and Claude Cowork on PI-Desktop.
 
@@ -305,7 +305,7 @@ Do not push, open a PR, or merge unless the user explicitly asks.
 
 **Issue:** fetch, read body/comments/labels, verify against code. Bugs: reproduce or give concrete evidence; classify as confirmed regression / existing defect / already fixed / expected behavior / environment-specific / insufficient evidence. Do not implement first and investigate later.
 
-**PR:** judge principle and direction before replacing work. Preserve authorship on a sound PR. Landing blockers include build/typecheck/test/E2E failure, merge conflict, data corruption risk, security violation, secret leakage, sandbox bypass, incompatible protocol change.
+**PR:** fetch first. Do not land on direction alone — the change must fix the reported root cause with the smallest coherent change (not a leftover workaround, docs-only restatement, or extra files instead of a fix). Preserve authorship when that bar is met; do not force-push or rewrite for nits. Request changes and do not merge when the root cause remains. Landing blockers include build/typecheck/test/E2E failure, merge conflict, data corruption risk, security violation, secret leakage, sandbox bypass, incompatible protocol change, an incomplete fix, and an oversized diff without a stated reason.
 
 Security reports are private via `SECURITY.md` — never open a public issue for vulnerabilities or credential exposure.
 

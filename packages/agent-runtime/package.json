@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/agent-runtime",
-  "version": "0.15.1-beta.6",
+  "version": "0.15.1",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -17,7 +17,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "bundle": "esbuild src/sidecar.ts --bundle --platform=node --format=esm --outfile=dist-bundle/sidecar.js --banner:js=\"import { createRequire as __piCreateRequire } from 'node:module'; const require = __piCreateRequire(import.meta.url);\" && node -e \"fs.writeFileSync('dist-bundle/package.json', JSON.stringify({ type: 'module' }, null, 2) + '\\n')\"",
+    "bundle": "esbuild src/sidecar.ts --bundle --platform=node --format=esm --define:PI_BUNDLED_NODE=true --outfile=dist-bundle/sidecar.js --banner:js=\"import { createRequire as __piCreateRequire } from 'node:module'; const require = __piCreateRequire(import.meta.url);\" && node -e \"fs.writeFileSync('dist-bundle/package.json', JSON.stringify({ type: 'module' }, null, 2) + '\\n')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('dist-bundle',{recursive:true,force:true})\""

@@ -54,6 +54,32 @@ export function hasFailedProcessTool(parts: readonly AssistantTurnPart[]): boole
   );
 }
 
+/** Compact groups a turn into one process disclosure; detailed does not. */
+export function shouldGroupTurnProcess(mode: ThinkingDisplayMode): boolean {
+  return mode === "compact";
+}
+
+/** The last activity chunk of a turn owns detailed-mode's default-open tool. */
+export function isLastActivityPart(
+  parts: readonly AssistantTurnPart[],
+  part: AssistantTurnPart,
+): boolean {
+  if (part.kind !== "activity") return false;
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    if (parts[index].kind === "activity") return parts[index] === part;
+  }
+  return false;
+}
+
+/** Compact process stays collapsed unless an active tool failed. */
+export function shouldAutoOpenTurnProcess(
+  mode: ThinkingDisplayMode,
+  isActive: boolean,
+  hasToolFailure: boolean,
+): boolean {
+  return mode === "compact" && isActive && hasToolFailure;
+}
+
 /**
  * Only a trailing assistant text can be the answer: text followed by tools is
  * progress. The stream carries no final-answer marker, so a live trailing text

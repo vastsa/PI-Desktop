@@ -38,6 +38,9 @@ Messages have explicit task, message, or completion provenance, persisted with
 the transcript and rendered separately from human input. Live model prompts and
 restored history use the same source framing. Session messages are not new human
 authorization and do not participate in user-message editing or regeneration.
+Accepted user steering into a claimed delivery turn remains human input: it does
+not receive the delivery origin, and a client-supplied `session_message` is
+stripped (D597).
 
 A requested completion callback produces at most one durable completion message
 to the originating session. It references the original delivery and the actual

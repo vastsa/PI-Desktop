@@ -36,8 +36,16 @@ does not ship a standalone Node/npm executable.
    and generated lockfiles while preserving a safe source lockfile when possible.
 6. Imported copies omit credential files and repository metadata, create the
    destination directory atomically, and derive the plugin id from the final
-   unique directory name. Missing system npm is reported as a clear warning;
-   the import remains non-blocking but its dependencies do not load.
+   unique directory name. Missing npm or Node.js has a structured unavailable
+   error and a Main-owned native executable picker recovery flow (spec §3.2).
+   Cancellation or a dependency failure remains non-blocking for registration.
+7. A validated user-selected npm path is saved atomically in Main-owned
+   `<dataDir>/npm-path.json` and revalidated on future imports. Stale choices
+   prompt again; save failure warns without preventing the current install.
+   Validation uses bounded npm/Node version checks and the install child alone
+   receives the selected directory in `PATH`. No shell startup probing, global
+   environment mutation, or credential inheritance is introduced. Recovery
+   retries the existing generated directory and registers it exactly once.
 
 ## Consequences
 
@@ -45,7 +53,9 @@ does not ship a standalone Node/npm executable.
   npm aliases, and lifecycle-build dependencies are intentionally unsupported
   by this import path.
 - The explicit import flow still requires a user-trusted local extension and a
-  system npm on `PATH` when dependencies are present.
+  usable Node.js/npm installation, either on `PATH` or explicitly selected from
+  a trusted installation. Ordinary registry/network errors do not prompt for a
+  different executable.
 - The main process owns the proxy and child-process lifecycle; dependency
   installation remains outside the renderer and sidecar.
 - The dependency install and full picker/provider journey remain separate E2E

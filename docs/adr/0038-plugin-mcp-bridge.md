@@ -37,13 +37,14 @@ differently.
 3. The client lives in `apps/desktop/electron/main/plugin-mcp.ts` and speaks
    protocol `2025-06-18`: `initialize`, `tools/list`, `tools/call`. Framing is
    NDJSON over stdio pipes, or streamable HTTP with SSE responses. Budgets: 10s
-   to complete the handshake, 100s per call (under the 110s plugin tool budget,
-   itself under host-core's 120s), 4MB per stdio line, 8 servers per plugin.
-   2048 tools, 100 `tools/list` pages, 30s for the whole traversal, and a cursor
-   that repeats or is malformed — a server that breaks any bound is refused
-   instead of truncated. Connection is lazy — declaring a server costs nothing
+   to complete the handshake, 100s per call, 4MB per stdio line, 8 servers per
+   plugin. 2048 tools, 100 `tools/list` pages, 30s for the whole traversal, and
+   a cursor that repeats or is malformed — a server that breaks any bound is
+   refused instead of truncated. host-core's 150s dispatch deadline carries the
+   whole leg — handshake, traversal, and call — so the client reports its own
+   timeout first.
+   Connection is lazy — declaring a server costs nothing
    until a tool is called — and teardown follows unload.
-   is called — and teardown follows unload.
 4. Discovered tools register into the **existing** plugin tool map as
    `plugin_<pluginIdSafe>_<serverId>_<toolName>`, so no new routing exists
    anywhere between the model and the server.

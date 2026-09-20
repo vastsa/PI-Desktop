@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.15.1-beta.6",
+  "version": "0.15.1",
   "description": "Local-first AI coding agent desktop client",
   "packageManager": "pnpm@11.18.0",
   "engines": {
@@ -29,10 +29,12 @@
     "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
     "test:e2e:transcript": "node scripts/e2e-transcript-render.mjs",
     "test:e2e:transcript-disclosure": "node scripts/e2e-transcript-disclosure-anchor.mjs",
+    "test:e2e:provider-order": "node scripts/e2e-provider-order.mjs",
     "test:e2e:provider-api-style": "node scripts/e2e-provider-api-style.mjs",
     "test:e2e:oauth-retry": "node --test apps/desktop/test/anthropic-oauth-retry.test.mjs",
     "test:e2e:boot": "node scripts/e2e-electron-boot.mjs",
     "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
+    "test:e2e:window-controls": "node scripts/e2e-window-controls.mjs",
     "test:e2e:supervision": "node scripts/e2e-supervision.mjs",
     "test:e2e:subagents": "node scripts/e2e-subagents.mjs",
     "test:e2e:subagent-models": "node scripts/e2e-subagent-models.mjs",

@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date: 2026-09-10**
+**Effective date: 2026-09-20**
 
 This Privacy Policy describes how PI-Desktop handles information when you use
 the PI-Desktop desktop application. PI-Desktop is a local-first, open-source
@@ -22,7 +22,7 @@ processing.
 - Projects, sessions, settings, transcripts, and application logs are stored
   locally by default.
 - PI-Desktop does not currently operate a remote telemetry pipeline or cloud
-  crash-analytics service.
+  crash-analytics service. Crash minidumps stay on this machine.
 - Your prompts, files, tool results, and other content may be sent to the model
   provider, gateway, local model server, plugin, or MCP server that you choose
   or invoke.
@@ -43,6 +43,8 @@ computer:
   encrypted local secret store and are not shown in the UI;
 - plugin code, plugin settings, plugin-owned data, and plugin logs;
 - application, host, agent, and audit logs;
+- local Crashpad minidumps of Chromium processes (main, renderer, GPU,
+  utility) under the data directory, never uploaded;
 - temporary files, caches, review snapshots, and other operational data; and
 - a bounded in-memory clipboard history containing explicit clipboard writes
   and user-initiated paste events. It may retain up to 500 entries or 256 MB for
@@ -157,6 +159,8 @@ backup, and operating-system behavior.
   files.
 - Application, host, and agent logs are size-capped and rotated. Audit records
   are retained locally and normally pruned after 90 days.
+- Crashpad minidumps remain in the data directory until you delete them; they
+  are never uploaded.
 - Temporary session scratch data is removed with the session, and disposable
   caches may be recreated or removed during maintenance.
 - Provider credentials remain until you remove the provider or credential,

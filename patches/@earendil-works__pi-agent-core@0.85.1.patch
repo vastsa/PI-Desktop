@@ -1,0 +1,17 @@
+diff --git a/dist/agent-loop.js b/dist/agent-loop.js
+index ca1186cb920c1da692381694538b388af0c5261c..234aab333cafb376131fd364086973641ca5be1a 100644
+--- a/dist/agent-loop.js
++++ b/dist/agent-loop.js
+@@ -213,6 +213,12 @@ async function streamAssistantResponse(context, config, signal, emit, streamFunc
+             case "toolcall_start":
+             case "toolcall_delta":
+             case "toolcall_end":
++            // Hosted web search (PI-Desktop): the pi-ai adapters push
++            // `hosted_search_update` when a provider-side search block starts
++            // or completes. Forward it like any other progress event so the
++            // application renders each search round as it happens instead of
++            // only learning about searches from the final message.
++            case "hosted_search_update":
+                 if (partialMessage) {
+                     partialMessage = event.partial;
+                     context.messages[context.messages.length - 1] = partialMessage;

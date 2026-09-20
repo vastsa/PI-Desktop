@@ -2,60 +2,15 @@
  * Global UI font model for the Settings picker.
  *
  * A selection is stored as a CSS `font-family` stack string in
- * `AppSettings.fontFamily`. Bundled families are open-licensed
- * (SIL OFL 1.1) and shipped with the app; system families are enumerated
- * by Electron main. Every stack keeps CJK fallbacks so Chinese text stays
- * readable when the selected family has no CJK glyphs.
+ * `AppSettings.fontFamily`. Only installed system families are offered — the
+ * app ships no fonts of its own — and every stack keeps system CJK fallbacks
+ * so Chinese text stays readable when the selected family has no CJK glyphs.
  */
 /**
- * CJK fallback tier appended to every custom stack. Noto Sans SC is bundled
- * (OFL); PingFang/YaHei cover platforms where it is not installed.
+ * CJK fallback tier appended to every custom stack. All three families are
+ * provided by the platform; the app bundles no CJK face of its own.
  */
-const CJK_FALLBACK = `"Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
-
-export type BundledFont = {
-  /** Stable id used only for option keys, never persisted. */
-  id: string;
-  /** Human-readable family name shown in the picker. */
-  label: string;
-  /** CSS family name registered by @font-face (fonts.css). */
-  family: string;
-  /** Full CSS stack persisted when the option is selected. */
-  stack: string;
-  /** Short license note shown under the option. */
-  license: string;
-};
-
-export const BUNDLED_FONTS: readonly BundledFont[] = [
-  {
-    id: "geist",
-    label: "Geist",
-    family: "Geist",
-    license: "OFL",
-    stack: `"Geist", ${CJK_FALLBACK}`,
-  },
-  {
-    id: "inter",
-    label: "Inter",
-    family: "Inter",
-    license: "OFL",
-    stack: `"Inter", ${CJK_FALLBACK}`,
-  },
-  {
-    id: "noto-sans-sc",
-    label: "Noto Sans SC",
-    family: "Noto Sans SC",
-    license: "OFL",
-    stack: `"Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`,
-  },
-  {
-    id: "lxgw-wenkai",
-    label: "LXGW WenKai",
-    family: "LXGW WenKai",
-    license: "OFL",
-    stack: `"LXGW WenKai", ${CJK_FALLBACK}`,
-  },
-];
+const CJK_FALLBACK = `"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
 
 export type FontOption = {
   /** CSS stack persisted on selection; `""` selects the system default. */
@@ -64,8 +19,7 @@ export type FontOption = {
   label: string;
   /** Family used to render the picker preview in the chosen face. */
   family: string;
-  group: "default" | "bundled" | "system" | "custom";
-  license?: string;
+  group: "default" | "system" | "custom";
 };
 
 /** Quote a bare family name for use inside a CSS font-family stack. */
@@ -84,9 +38,11 @@ function systemStack(family: string): string {
 }
 
 /**
- * Build the picker options: system default, bundled open-licensed families,
- * then installed system families. The current stored stack is re-added first
- * when it no longer matches any known option (e.g. the font was uninstalled).
+ * Build the picker options: the system default, then installed system
+ * families. The current stored stack is re-added first when it no longer
+ * matches any known option — the family was uninstalled, or the stack names
+ * one of the bundled faces an earlier build shipped and this one no longer
+ * does.
  */
 export function buildFontOptions(
   systemFonts: readonly string[],
@@ -94,13 +50,6 @@ export function buildFontOptions(
 ): FontOption[] {
   const options: FontOption[] = [
     { value: "", label: "System default", family: "", group: "default" },
-    ...BUNDLED_FONTS.map((font) => ({
-      value: font.stack,
-      label: font.label,
-      family: font.family,
-      license: font.license,
-      group: "bundled" as const,
-    })),
     ...systemFonts.map((family) => ({
       value: systemStack(family),
       label: family,

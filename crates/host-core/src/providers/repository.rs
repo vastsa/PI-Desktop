@@ -74,7 +74,9 @@ pub fn list_providers(
     };
     let mut stmt = db.conn().prepare_cached(&sql)?;
     let rows = stmt.query_map([], |row| provider_from_row(row, secrets))?;
-    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    let mut providers = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    super::order::apply_saved_order(db, &mut providers)?;
+    Ok(providers)
 }
 
 pub fn create_provider(

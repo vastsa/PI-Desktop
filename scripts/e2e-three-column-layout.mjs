@@ -716,7 +716,7 @@ async function main() {
         const actions = [...row.querySelectorAll("[data-nav]")];
         const headerBox = header.getBoundingClientRect();
         const firstTab = document.querySelector(".work-panel-tab");
-        const controls = row.querySelector(".window-controls");
+        const controls = document.querySelector(".window-controls");
         const sidebar = document.querySelector(".sidebar");
         const platform = document.documentElement.dataset.platform;
         const inset = parseFloat(getComputedStyle(row).paddingLeft);
@@ -779,7 +779,7 @@ async function main() {
         sidebarToggle:
           !!document.querySelector('.window-chrome-row [data-nav="toggle-sidebar"]') ||
           !!document.querySelector('.sidebar [data-nav="toggle-sidebar"]'),
-        controls: !!document.querySelector(".window-chrome-row .window-controls"),
+        controls: !!document.querySelector(".window-controls"),
       };
     })()`);
     check(
@@ -1061,7 +1061,7 @@ async function main() {
     };
     const e2eChromeProbe = `(() => {
       const band = document.querySelector(".window-chrome-row");
-      const controls = document.querySelector(".window-chrome-row .window-controls");
+      const controls = document.querySelector(".window-controls");
       const sidebar = document.querySelector(".sidebar, .sidebar-rail");
       const handle = document.querySelector(".sidebar-resize-handle");
       const panel = document.querySelector('[data-testid="work-panel"]');

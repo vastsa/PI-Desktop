@@ -30,8 +30,9 @@ has a different ownership boundary.
 2. The bundled plugin is enabled by default, cannot be uninstalled, and can be
    disabled by the user. Its filesystem access uses the public permission-gated
    read APIs.
-3. Only the Files *tool* migrates. Transcript-owned `file:<path>` resources and
-   Review artifacts remain host-rendered and message/session scoped.
+3. Only the Files *tool* migrates. Transcript-owned `file:<path>` resources
+   stay as they are. Review remains the user-opened surface over the same
+   transcript-owned evidence and is never opened by a tool result (D451).
 4. Browser chrome and agent CDP ship as bundled plugin `pi.browser` (ADR 0170).
    The guest `WebContentsView` and debugger remain host window machinery,
    reached only through the public `pi.browser.*` API.
@@ -43,8 +44,9 @@ has a different ownership boundary.
 
 - The shipped plugin is a real consumer of the public contributed-view and
   filesystem APIs; gaps in those APIs are caught by a first-party feature.
-- The launcher lists Browser and active plugin views. Review and file resources
-  are opened by conversation artifacts.
+- The launcher lists the Review row plus Browser and in-scope plugin views.
+  File resources are opened by conversation artifacts; Review opens only on
+  explicit user action (D451).
 - The plugin trust boundary stays unchanged: no plugin permission can spawn an
   interactive shell.
 

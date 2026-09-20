@@ -1,6 +1,11 @@
+import { useComposerSubmit } from "../../apps/desktop/src/features/chat/composer/hooks/useComposerSubmit";
+import { verifyComposerSubmission } from "./composer-submission";
+import { ComposerImageAttachments } from "../../apps/desktop/src/features/chat/composer/ComposerImageAttachments";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
+import { I18nextProvider } from "react-i18next";
+import { isBlockingOverlayActive } from "../../apps/desktop/src/lib/blocking-overlay";
 import type { TFunction } from "i18next";
 import { en } from "@pi-desktop/i18n";
 import {
@@ -13,6 +18,7 @@ import {
   type ComposerDraftController,
 } from "../../apps/desktop/src/features/chat/composer/hooks/useComposerDraft";
 import {
+  createFileReference,
   editorSelectionRange,
   readEditorValue,
   setEditorCaret,
@@ -25,6 +31,9 @@ import {
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 
 declare global {
+  var composerPreviewPointer: (input: { type: "mousePressed" | "mouseMoved" | "mouseReleased"; x: number; y: number }) => Promise<void>;
+  var composerPreviewPressKey: (key: string) => Promise<void>;
+  var composerPreviewCapture: (() => Promise<void>) | undefined;
   var composerPasteProbe: () => Promise<unknown>;
 }
 const assert = (value: unknown, message: string) => {
@@ -34,6 +43,8 @@ const sessions = [{ id: "paste-a" }, { id: "paste-b" }];
 const noop = () => {};
 let controller: ComposerDraftController;
 let pastePending: Promise<unknown> | undefined;
+let submitted = 0;
+let rejectSubmission: () => Promise<void>;
 function Fixture({ sessionId, t }: { sessionId: string; t: TFunction }) {
   const draft = useComposerDraft({
     variant: "docked",
@@ -47,6 +58,12 @@ function Fixture({ sessionId, t }: { sessionId: string; t: TFunction }) {
     inputBlocked: false,
   });
   controller = draft;
+  rejectSubmission = useComposerSubmit({
+    value: draft.value, draftKey: draft.draftKey, activeSessionId: sessionId,
+    thinkingLevel: "off", modelReady: true, sendBlocked: false, pasting: false,
+    activeFileReferences: draft.activeFileReferences, t, draft,
+    sendPrompt: async () => false, steerPrompt: async () => false, showToast: noop,
+  }).submit;
   const attachments = useComposerAttachments({
     inputBlocked: false,
     activeSessionId: sessionId,
@@ -56,30 +73,36 @@ function Fixture({ sessionId, t }: { sessionId: string; t: TFunction }) {
     draft,
   });
   return (
-    <ComposerInput
-      inputRef={draft.ref}
-      value={draft.value}
-      placeholderText=""
-      placeholderKey="fixture"
-      inputBlocked={attachments.pasting}
-      pasting={attachments.pasting}
-      enterToSend={false}
-      runActive={false}
-      composerAc={
-        { open: false, close: noop } as ComposerInputProps["composerAc"]
-      }
-      onPaste={(event) => {
-        pastePending = Promise.resolve(attachments.pasteClipboardFiles(event));
-      }}
-      onAcceptCompletion={noop}
-      onSubmit={noop}
-      onInsertNewline={draft.insertNewlineInEditor}
-      onInput={draft.handleInput}
-      onCompositionStart={noop}
-      onCompositionEnd={noop}
-      onFocus={noop}
-      onBlur={noop}
-    />
+    <div className="composer-stack">
+      <ComposerImageAttachments controller={draft.imagePreview} onRemove={draft.removeImage} disabled={attachments.pasting} />
+      <div className="composer-shell">
+      <ComposerInput
+        imagePreview={draft.imagePreview}
+        inputRef={draft.ref}
+        value={draft.value}
+        placeholderText=""
+        placeholderKey="fixture"
+        inputBlocked={attachments.pasting}
+        pasting={attachments.pasting}
+        enterToSend={true}
+        runActive={false}
+        composerAc={
+          { open: false, close: noop } as ComposerInputProps["composerAc"]
+        }
+        onPaste={(event) => {
+          pastePending = Promise.resolve(attachments.pasteClipboardFiles(event));
+        }}
+        onAcceptCompletion={noop}
+        onSubmit={() => { submitted++; }}
+        onInsertNewline={draft.insertNewlineInEditor}
+        onInput={draft.handleInput}
+        onCompositionStart={noop}
+        onCompositionEnd={noop}
+        onFocus={noop}
+        onBlur={noop}
+      />
+      </div>
+    </div>
   );
 }
 
@@ -100,7 +123,7 @@ globalThis.composerPasteProbe = async () => {
   const render = (sessionId = "paste-a") => {
     useAppStore.setState({ activeSessionId: sessionId });
     flushSync(() =>
-      root.render(<Fixture key={key} sessionId={sessionId} t={i18n.t} />),
+      root.render(<I18nextProvider i18n={i18n}><Fixture key={key} sessionId={sessionId} t={i18n.t} /></I18nextProvider>),
     );
     assert(
       errors.length === 0,
@@ -114,6 +137,7 @@ globalThis.composerPasteProbe = async () => {
   ) => {
     key++;
     resetComposerDraftCache();
+    useAppStore.setState({ workPanelOpen: false, workspace: null });
     render();
     const editor = controller.ref.current!;
     flushSync(() => controller.applyEditorDraft(source, [], start));
@@ -320,6 +344,248 @@ globalThis.composerPasteProbe = async () => {
         controller.fileReferences[0].kind === "image",
       "native image file was mistaken for text",
     );
+    assert(!controller.ref.current!.querySelector("img"), "image thumbnails must be outside the text editor");
+    assert(document.querySelector(".composer-image-attachments"), "image thumbnails must have a separate row above the input");
+    const tray = document.querySelector<HTMLElement>(".composer-image-attachments")!;
+    const shell = document.querySelector<HTMLElement>(".composer-shell")!;
+    assert(!shell.contains(tray) && tray.getBoundingClientRect().bottom <= shell.getBoundingClientRect().top,
+      "attachment row must sit above and outside the input shell");
+    assert(readEditorValue(controller.ref.current!) === "prefix  suffix", "image token leaked into visible text");
+    // #117: enter through the real attachment, read through sandboxed image IPC,
+    // and keep the draft, caret, and work-panel state independent of inspection.
+    editor = controller.ref.current!;
+    const beforePreview = readEditorValue(editor);
+    const imageReference = controller.fileReferences[0];
+    const chip = document.querySelector<HTMLButtonElement>(".composer-image-attachment-open")!;
+    assert(chip.tagName === "BUTTON" && chip.tabIndex === 0,
+      "image attachment must be keyboard accessible");
+    const dialog = () => document.querySelector<HTMLDialogElement>("dialog.composer-image-preview[open]");
+    const until = async (condition: () => unknown, message: string) => {
+      const deadline = performance.now() + 5000;
+      while (!condition() && performance.now() < deadline) await new Promise(requestAnimationFrame);
+      assert(condition(), `${message}; errors=${errors.map(String)}; dialog=${dialog()?.textContent}; image=${dialog()?.querySelector("img")?.outerHTML}`);
+    };
+    let previewCheck = 0;
+    const previewReady = async () => {
+      previewCheck++;
+      await until(() => {
+        const img = dialog()?.querySelector<HTMLImageElement>(".composer-image-preview-viewport img");
+        return img?.complete && img.naturalWidth > 0 && img.style.width !== "";
+      }, `image preview did not load at check ${previewCheck}`);
+      await new Promise(requestAnimationFrame);
+      return dialog()!.querySelector<HTMLImageElement>(".composer-image-preview-viewport img")!;
+    };
+    const button = (label: string) => Array.from(dialog()!.querySelectorAll<HTMLButtonElement>("button"))
+      .find((element) => element.getAttribute("aria-label") === label || element.textContent === label)!;
+    const close = () => flushSync(() => button(i18n.t("common.close")).click());
+    await until(() => chip.querySelector<HTMLImageElement>("img")?.naturalWidth === 1, "attachment thumbnail missing");
+    editor.focus();
+    setEditorCaret(editor, 7);
+    flushSync(() => chip.click());
+    assert(dialog(), "image attachment must open an overlay instead of the work panel");
+    assert(dialog()!.matches(":modal"), "preview must use native modal focus containment");
+    assert(isBlockingOverlayActive(), "preview must suppress native plugin surfaces");
+    const preview = await previewReady();
+    editor.focus();
+    assert(dialog()!.contains(document.activeElement), "modal allowed background input focus");
+    button(i18n.t("chat.imagePreview.fit")).focus();
+    await globalThis.composerPreviewPressKey("Tab");
+    assert(dialog()!.contains(document.activeElement), "Tab escaped the preview");
+    assert(preview.naturalWidth === 1 && preview.getBoundingClientRect().width === 1,
+      "small image must not be stretched to fill the window");
+    assert(!useAppStore.getState().workPanelOpen, "preview opened the work panel");
+    const viewport = dialog()!.querySelector<HTMLElement>(".composer-image-preview-viewport")!;
+    assert(Math.abs((preview.getBoundingClientRect().left + preview.getBoundingClientRect().right) / 2 -
+      (viewport.getBoundingClientRect().left + viewport.getBoundingClientRect().right) / 2) <= 1,
+      "preview must be horizontally centered");
+    assert(readEditorValue(editor) === beforePreview && controller.fileReferences.length === 1,
+      "preview changed the unsent draft");
+    flushSync(() => button(i18n.t("menu.zoomIn")).click());
+    assert(dialog()!.querySelector("output")?.textContent === "125%", `zoom in failed: ${dialog()!.querySelector("output")?.textContent}, disabled=${button(i18n.t("menu.zoomIn")).disabled}, imageStyle=${preview.getAttribute("style")}`);
+    flushSync(() => button(i18n.t("chat.imagePreview.fit")).click());
+    assert(dialog()!.querySelector("output")?.textContent === "100%", "fit did not reset zoom");
+    const download = dialog()!.querySelector<HTMLAnchorElement>("a[download]")!;
+    assert(download.download === imageReference.name && download.href === preview.src,
+      "download did not point to the original image with its filename");
+    close();
+    assert(!dialog() && !isBlockingOverlayActive(), "closing left the modal or native-view blocker active");
+    assert(document.activeElement === editor && editorSelectionRange(editor).start === 7,
+      "closing did not restore the draft caret");
+    for (const key of ["Enter", " "]) {
+      chip.focus();
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      flushSync(() => chip.dispatchEvent(event));
+      assert(event.defaultPrevented, "preview key inserted text or sent the draft");
+      await previewReady();
+      assert(readEditorValue(editor) === beforePreview && submitted === 0,
+        "preview key altered or sent the draft");
+      await globalThis.composerPreviewPressKey("Escape");
+      await until(() => !dialog(), "native Escape did not dismiss the preview");
+      assert(!dialog() && document.activeElement === chip, "cancel did not close and restore attachment focus");
+    }
+    // The isolated host supplies real images within the allowed scratch directory.
+    const wide = createFileReference(imageReference.path.replace(/[^/\\]+$/, "wide-fixture.png"), "wide.png", "paste-a", {
+      kind: "image", mimeType: "image/png", token: "\ueffe",
+    });
+    flushSync(() => controller.applyEditorDraft(`${beforePreview}${wide.token}`, [imageReference, wide], 7));
+    flushSync(() => document.querySelector<HTMLButtonElement>(".composer-image-attachment-open")!.click());
+    await previewReady();
+    assert(button(i18n.t("chat.imagePreview.previous")).disabled, "first image should disable previous");
+    flushSync(() => button(i18n.t("chat.imagePreview.next")).click());
+    const widePreview = await previewReady();
+    const rect = widePreview.getBoundingClientRect();
+    assert(widePreview.naturalWidth === 1200 && Math.abs(rect.width / rect.height - 2) < 0.02,
+      "wide preview lost its original aspect ratio");
+    assert(rect.width <= dialog()!.querySelector<HTMLElement>(".composer-image-preview-viewport")!.clientWidth + 1 && rect.height <= dialog()!.querySelector<HTMLElement>(".composer-image-preview-viewport")!.clientHeight + 1,
+      "large image did not fit the preview viewport");
+    assert(button(i18n.t("chat.imagePreview.next")).disabled, "last image should disable next");
+    const startX = rect.left + rect.width / 2;
+    const startY = rect.top + rect.height / 2;
+    await globalThis.composerPreviewPointer({ type: "mousePressed", x: startX, y: startY });
+    await globalThis.composerPreviewPointer({ type: "mouseMoved", x: startX + 80, y: startY + 40 });
+    await globalThis.composerPreviewPointer({ type: "mouseReleased", x: startX + 80, y: startY + 40 });
+    await new Promise(requestAnimationFrame);
+    assert(dialog() && Math.abs(widePreview.getBoundingClientRect().left - rect.left - 80) <= 1 &&
+      Math.abs(widePreview.getBoundingClientRect().top - rect.top - 40) <= 1,
+      "dragging the image must move it without dismissing the preview");
+    flushSync(() => button(i18n.t("chat.imagePreview.fit")).click());
+    assert(Math.abs(widePreview.getBoundingClientRect().left - rect.left) <= 1,
+      "fit must recenter a dragged image");
+    const panViewport = dialog()!.querySelector<HTMLElement>(".composer-image-preview-viewport")!;
+    flushSync(() => panViewport.dispatchEvent(new WheelEvent("wheel", { deltaX: 30, deltaY: 20, bubbles: true, cancelable: true })));
+    assert(Math.abs(widePreview.getBoundingClientRect().left - rect.left + 30) <= 1,
+      "ordinary scrolling must pan the image");
+    flushSync(() => button(i18n.t("chat.imagePreview.fit")).click());
+    let capturedPointer = -1;
+    widePreview.addEventListener("pointerdown", (event) => { capturedPointer = event.pointerId; }, { once: true });
+    await globalThis.composerPreviewPointer({ type: "mousePressed", x: startX, y: startY });
+    assert(capturedPointer !== -1 && widePreview.hasPointerCapture(capturedPointer), "image drag did not capture its pointer");
+    flushSync(() => widePreview.dispatchEvent(new PointerEvent("pointercancel", { pointerId: capturedPointer, bubbles: true })));
+    assert(!widePreview.hasPointerCapture(capturedPointer) && !widePreview.hasAttribute("data-dragging"),
+      "cancelling must release capture and clear the dragging cursor");
+    await globalThis.composerPreviewPointer({ type: "mouseMoved", x: startX + 60, y: startY + 20 });
+    await globalThis.composerPreviewPointer({ type: "mouseReleased", x: startX + 60, y: startY + 20 });
+    await new Promise(requestAnimationFrame);
+    assert(dialog() && Math.abs(widePreview.getBoundingClientRect().left - rect.left) <= 1,
+      "cancelled pointer kept moving or dismissed the image");
+
+
+    flushSync(() => button(i18n.t("menu.zoomIn")).click());
+    const zoomedViewport = dialog()!.querySelector<HTMLElement>(".composer-image-preview-viewport")!;
+    const zoomedRect = widePreview.getBoundingClientRect();
+    assert(Math.abs((zoomedRect.left + zoomedRect.right) / 2 -
+      (zoomedViewport.getBoundingClientRect().left + zoomedViewport.getBoundingClientRect().right) / 2) <= 1,
+      "zoom must preserve the image center");
+    await globalThis.composerPreviewPointer({ type: "mousePressed", x: startX, y: startY });
+    await globalThis.composerPreviewPointer({ type: "mouseMoved", x: startX - 100, y: startY - 50 });
+    await globalThis.composerPreviewPointer({ type: "mouseReleased", x: startX - 100, y: startY - 50 });
+    await new Promise(requestAnimationFrame);
+    assert(Math.abs(widePreview.getBoundingClientRect().left - zoomedRect.left + 100) <= 1 && dialog(),
+      "zoomed image must support dragging");
+    flushSync(() => dialog()!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+    await previewReady();
+    assert(dialog()!.querySelector("output")?.textContent === "100%", "gallery switch retained another image's zoom");
+    flushSync(() => dialog()!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    const returnedPreview = await previewReady();
+    assert(Math.abs(returnedPreview.getBoundingClientRect().left - rect.left) <= 1,
+      "switching images must reset the pan position");
+    const backdrop = dialog()!.querySelector<HTMLElement>(".composer-image-preview-viewport")!;
+    flushSync(() => backdrop.click());
+    assert(!dialog(), "blank-area click did not close preview");
+    if (globalThis.composerPreviewCapture) await globalThis.composerPreviewCapture();
+    editor.focus();
+    select(editor, 0, readEditorValue(editor).length);
+    assert(document.execCommand("insertText", false, "new prompt"), "text replacement failed");
+    await new Promise(requestAnimationFrame);
+    assert(controller.fileReferences.length === 2 && document.querySelectorAll(".composer-image-attachment").length === 2,
+      "editing all text removed independent image attachments");
+    assert(controller.draftSnapshot("new prompt").fileReferences.length === 2,
+      "submission snapshot lost detached images");
+    assert(document.execCommand("undo"), "image draft text undo unavailable");
+    await new Promise(requestAnimationFrame);
+    assert(readEditorValue(editor) === beforePreview && controller.fileReferences.length === 2,
+      "text undo changed image attachments");
+
+    // Cancelled image reads must never overwrite a later draft's image.
+    const realRead = api.fsReadImageDataUrl;
+    let rejectRead: ((reason: Error) => void) | undefined;
+    const delayed = createFileReference(imageReference.path, "delayed.png", "paste-a", {
+      kind: "image", mimeType: "image/png", token: imageReference.token,
+    });
+    api.fsReadImageDataUrl = () => new Promise((_resolve, reject) => { rejectRead = reject; });
+    try {
+      flushSync(() => controller.applyEditorDraft(beforePreview, [delayed], 7));
+      flushSync(() => document.querySelector<HTMLButtonElement>(".composer-image-attachment-open")!.click());
+      assert(rejectRead && dialog(), "deferred image read was not started");
+      api.fsReadImageDataUrl = realRead;
+      flushSync(() => controller.applyEditorDraft(beforePreview, [imageReference], 7));
+      assert(!dialog(), "removed preview attachment left the dialog open");
+      flushSync(() => document.querySelector<HTMLButtonElement>(".composer-image-attachment-open")!.click());
+      await previewReady();
+      rejectRead!(new Error("late fixture read failure"));
+      await new Promise(requestAnimationFrame);
+      assert(dialog()?.querySelector("img"), "stale failure replaced the newer preview");
+    } finally { api.fsReadImageDataUrl = realRead; }
+    render("paste-b");
+    await new Promise(requestAnimationFrame);
+    assert(!dialog() && !isBlockingOverlayActive(), "session switch retained the old preview");
+    render("paste-a");
+    await new Promise(requestAnimationFrame);
+    editor = controller.ref.current!;
+    const currentChip = document.querySelector<HTMLButtonElement>(".composer-image-attachment-open")!;
+    assert(currentChip, "returning to the session did not restore its image chip");
+    useAppStore.setState({ activeSessionId: "paste-b" });
+    flushSync(() => currentChip.click());
+    assert(!dialog(), "old chip opened in another session");
+    useAppStore.setState({ activeSessionId: "paste-a" });
+    const remove = currentChip.parentElement!.querySelector<HTMLButtonElement>(".composer-image-attachment-remove")!;
+    flushSync(() => {
+      remove.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      remove.click();
+    });
+    assert(!dialog() && submitted === 0, "remove opened the preview or submitted the prompt");
+    assert(controller.fileReferences.length === 0 && readEditorValue(editor) === "prefix  suffix",
+      "remove did not preserve the surrounding draft");
+
+    // Failed images remain attached, show a retry action, and never blank the draft.
+    const missing = createFileReference(`${imageReference.path}.missing.png`, "missing.png", "paste-a", {
+      kind: "image", mimeType: "image/png", token: imageReference.token,
+    });
+    flushSync(() => controller.applyEditorDraft(beforePreview, [missing], 7));
+    flushSync(() => document.querySelector<HTMLButtonElement>(".composer-image-attachment-open")!.click());
+    await until(() => dialog()?.textContent?.includes(i18n.t("chat.imagePreview.error")), "missing image did not show an error");
+    assert(readEditorValue(editor) === beforePreview && controller.fileReferences.length === 1,
+      "failed preview lost the draft");
+    api.fsReadImageDataUrl = () => realRead(imageReference.path, imageReference.mimeType);
+    try {
+      flushSync(() => button(i18n.t("chat.imagePreview.retry")).click());
+      await previewReady();
+    } finally { api.fsReadImageDataUrl = realRead; }
+    close();
+    const corrupt = createFileReference(imageReference.path.replace(/[^/\\]+$/, "corrupt-fixture.png"), "corrupt.png", "paste-a", {
+      kind: "image", mimeType: "image/png", token: imageReference.token,
+    });
+    flushSync(() => controller.applyEditorDraft(beforePreview, [corrupt], 7));
+    flushSync(() => document.querySelector<HTMLButtonElement>(".composer-image-attachment-open")!.click());
+    await until(() => dialog()?.textContent?.includes(i18n.t("chat.imagePreview.error")), "undecodable image did not show retry");
+    assert(readEditorValue(editor) === beforePreview, "decode failure changed the draft");
+    close();
+
+    // An image-only draft remains sendable and survives session switching.
+    editor = await paste("", [image], true);
+    assert(readEditorValue(editor) === "" && controller.draftSnapshot("").fileReferences.length === 1,
+      "image-only draft lost its sendable attachment");
+    const attachedId = controller.fileReferences[0].path;
+    flushSync(() => controller.restoreDraftForKey("paste-a", { text: "older draft", fileReferences: [] }));
+    assert(readEditorValue(editor) === "" && controller.fileReferences[0]?.path === attachedId,
+      "restoring an old draft overwrote a newer image-only draft");
+    render("paste-b");
+    flushSync(() => controller.restoreDraftForKey("paste-a", { text: "older draft", fileReferences: [] }));
+    render("paste-a");
+    await new Promise(requestAnimationFrame);
+    assert(controller.fileReferences[0]?.path === attachedId && document.querySelector(".composer-image-attachment"),
+      "image-only draft did not survive session switching");
+
     await paste("file names", nativeFiles);
     assert(
       controller.fileReferences.length === 2,
@@ -330,6 +596,16 @@ globalThis.composerPasteProbe = async () => {
       "native text file became inline text",
     );
 
+    const mixedDraft = controller.value;
+    const mixedReferences = controller.fileReferences;
+    flushSync(() => controller.ref.current!.querySelector<HTMLElement>('[data-action="expand-text-reference"]')!.click());
+    const textDeadline = performance.now() + 5000;
+    while (controller.fileReferences.length !== 1 && performance.now() < textDeadline) {
+      await new Promise(requestAnimationFrame);
+    }
+    assert(controller.value.includes("native file bytes") && controller.fileReferences[0]?.kind === "image",
+      "text chip no longer expands while preserving the image attachment");
+    flushSync(() => controller.applyEditorDraft(mixedDraft, mixedReferences, mixedDraft.length));
     const saved = readComposerDraft("paste-a");
     assert(
       saved?.fileReferences.length === 2,
@@ -344,7 +620,7 @@ globalThis.composerPasteProbe = async () => {
       controller.fileReferences.length === 2,
       "session switch lost attachments",
     );
-    const reference = controller.fileReferences[0];
+    const reference = createFileReference("/fixture/file.bin", "file.bin", "paste-a", { kind: "file", token: "\ueffd" });
     flushSync(() =>
       controller.applyEditorDraft(
         `left${reference.token}right`,
@@ -364,14 +640,29 @@ globalThis.composerPasteProbe = async () => {
       controller.fileReferences.length === 0,
       "replaced attachment stayed in draft metadata",
     );
+    // No store subscription forces a render between clearing and rejection.
+    const retryImage = createFileReference(imageReference.path, "retry.png", "paste-a", { kind: "image", mimeType: "image/png" });
+    flushSync(() => controller.applyEditorDraft("retry draft", [retryImage], 11));
+    await new Promise(requestAnimationFrame);
+    await rejectSubmission();
+    await new Promise(requestAnimationFrame);
+    assert(readEditorValue(controller.ref.current!) === "retry draft" && controller.fileReferences[0]?.path === imageReference.path,
+      "fast rejection before React commits must restore the text and attachments");
+    await verifyComposerSubmission(imageReference.path, i18n);
     return {
       ok: true,
+      fullComposerSubmissionAndOverflow: true,
       mixedShortText: true,
       multilineAndUndoRedo: true,
       crossBreakAndChipSelection: true,
       mixedLongText: true,
       imageOnly: true,
       nativeImageFile: true,
+      imagePreviewAndKeyboard: true,
+      centeredImageGallery: true,
+      imageDragAndReset: true,
+      separateImageAttachmentRow: true,
+      imageZoomFocusAndRecovery: true,
       nativeMultipleFiles: true,
       selectionAndSessionDrafts: true,
     };

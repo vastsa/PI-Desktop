@@ -2,6 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.1",
+    "date": "2026-09-19",
+    "highlights": [
+      "Remote-Hosts lassen sich in den Einstellungen per SSH koppeln und verwalten, inklusive Passwort-Login, Installation und erneuter Verbindung beim Start.",
+      "Prompt-Enhancement (Vorlage, Modell und Reasoning) wird in der KI-Einstellungskarte konfiguriert.",
+      "Ausgewählte Modelle lassen sich per Drag-and-Drop umordnen; eine Stufe „Thinking weglassen“ sendet keine Anbieter-Überschreibung.",
+      "Die Seitenleiste lässt sich vergrößern oder einklappen; ein Doppelklick stellt die Standardbreite von Seitenleiste oder Panel wieder her.",
+      "Projekte werden in einem gruppierten Archiv mit Inspektor verwaltet; der Import hat pro Art eine eigene Werkbank.",
+      "Skills und MCP-Server anderer Agent-Tools lassen sich scannen und gesammelt importieren.",
+      "Das macOS-Menüleisten-Extra bleibt auf einem nativen Statusitem, mit begrenzten Tray-Sitzungs-Shortcuts.",
+      "Offizielle macOS-Builds sind signiert und notariell beglaubigt und unterstützen In-App-Updates.",
+      "Die signierte macOS-DMG ist eine Zwei-Symbol-Installation; der Hinweis für unsignierte Starts bleibt nur im ZIP.",
+      "Review öffnet sich nur auf ausdrückliche Aktion; das Öffnen einer Sitzung landet bei der neuesten Runde.",
+      "Eine blockierte Sendewarteschlange wird wiederhergestellt, gefälschte Steering-Origins werden ignoriert.",
+    ],
+  },
+
+  {
     "version": "0.15.0",
     "date": "2026-09-17",
     "highlights": [

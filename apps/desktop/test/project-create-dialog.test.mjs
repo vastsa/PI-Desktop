@@ -6,8 +6,9 @@ import { readStoreSource } from "./helpers/store-source.mjs";
 
 const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), "utf8");
 
-const [dialog, store, api, protocol, main, styles] = await Promise.all([
+const [dialog, editDialog, store, api, protocol, main, styles] = await Promise.all([
   read("../src/components/ProjectCreateDialog.tsx"),
+  read("../src/components/ProjectEditDialog.tsx"),
   readStoreSource(),
   read("../src/lib/api.ts"),
   read("../../../packages/shared/src/protocol.ts"),
@@ -86,6 +87,28 @@ test("folder picker is a renderer-only multi-directory selection", () => {
   assert.match(handler, /createDirectory/);
   assert.match(handler, /folders:/);
   assert.doesNotMatch(handler, /workspace\.set/);
+});
+
+test("project folder pickers ignore repeated requests while a dialog is open", () => {
+  for (const source of [dialog, editDialog]) {
+    assert.match(source, /const folderPickerInFlightRef = useRef\(false\)/);
+    assert.match(
+      source,
+      /if \(busyRef\.current \|\| folderPickerInFlightRef\.current\) return;/,
+    );
+    assert.match(
+      source,
+      /folderPickerInFlightRef\.current = true;\s*setFolderPickerBusy\(true\);[\s\S]*?api\.pickProjectFolders\(\)/,
+    );
+    assert.match(
+      source,
+      /folderPickerInFlightRef\.current = false;\s*setFolderPickerBusy\(false\);/,
+    );
+  }
+  assert.match(main, /let projectPickerActive = false/);
+  assert.match(main, /const openProjectPicker = async/);
+  assert.match(main, /if \(!result \|\| result\.canceled/);
+  assert.match(main, /const owner = getMainWindow\(\)/);
 });
 
 test("clone checkout handler clones without touching the active workspace", () => {

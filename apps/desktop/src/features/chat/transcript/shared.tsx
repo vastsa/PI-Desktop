@@ -3,7 +3,6 @@ import {
   useCallback,
   useId,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -23,7 +22,8 @@ import { useDisclosureAnchorNotifier } from "../../../lib/disclosure-anchor-cont
 import { isThinkingActive, resolveThinkingDisplayMode } from "../../../lib/turn-process";
 import { messageThinking as thinkingText } from "../../../lib/assistant-turns";
 import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-data-url";
-import { isHtmlFilePath, splitChatText } from "../../../lib/chat-links";
+import { useVerifiedChatText } from "../../../hooks/use-verified-chat-text";
+import { isHtmlFilePath } from "../../../lib/chat-links";
 import type { SourcePositionProps } from "../../../lib/markdown-source";
 import { getToolAction, type ToolAction } from "../../../lib/tool-display";
 import { calculateTokenRate } from "../../../lib/context-usage";
@@ -451,12 +451,11 @@ export function MessageAttachmentImage({
 }
 
 /** Plain user text: @paths become composer-like chips; URLs stay text links. */
-export function LinkifiedText({ text }: { text: string }) {
+export function LinkifiedText({ text, attachments }: { text: string; attachments?: readonly MessageAttachment[] }) {
   const { t } = useTranslation();
-  const root = useAppStore((s) => s.workspace?.path);
   const openTarget = useOpenPreviewTarget();
   const openFileRef = useOpenChatFileRef();
-  const segments = useMemo(() => splitChatText(text, root), [text, root]);
+  const segments = useVerifiedChatText(text, attachments);
   let offset = 0;
   return (
     <>

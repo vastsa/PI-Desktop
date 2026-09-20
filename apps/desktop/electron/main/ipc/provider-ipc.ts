@@ -3,6 +3,7 @@ import {
   ErrorCodes,
   resolveBindingContextWindow,
   type ModelBinding,
+  type ProviderReorderInput,
   type OAuthRespondInput,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -66,6 +67,10 @@ export function registerProviderIpc({
   };
   handle(IPC.invoke.providersList, async () => {
     return enrichProviderList({ providers: await listRuntimeProviders() });
+  });
+  handle(IPC.invoke.providersReorder, async (input: ProviderReorderInput) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("providers.reorder", input);
   });
   handle(IPC.invoke.providersRefreshModelCatalog, async () => {
     const refreshed = await modelsDevCatalog.refresh();

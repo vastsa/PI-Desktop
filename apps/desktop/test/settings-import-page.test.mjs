@@ -56,7 +56,9 @@ test("every kind keeps its own scan and its state across a tab switch", () => {
   }
   // No kind may start another kind's scan.
   assert.match(page, /api\.scanImportSessions\(\)/);
+  assert.match(page, /settings\.importCodexCapped/);
   assert.match(page, /api\.scanExternalMcp\(\)/);
+
 
   // Panels stay mounted and only `hidden` takes the inactive one out of view.
   assert.match(page, /hidden={kind !== entry\.id}/);

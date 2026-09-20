@@ -129,6 +129,35 @@ export function fileManagerPluginTab(location: string): WorkPanelTab {
   };
 }
 
+/** The identity of one plugin-contributed view, as tabs and manifests key it. */
+export type PluginViewRef = { pluginId: string; viewId: string };
+
+/** Whether that view is currently launchable in the work panel. */
+export function hasPluginView(
+  views: readonly PluginViewRef[],
+  target: PluginViewRef,
+): boolean {
+  return views.some(
+    (view) => view.pluginId === target.pluginId && view.viewId === target.viewId,
+  );
+}
+
+/**
+ * The tab the host opens a project file in when the host, not the user, chose
+ * the file: the bundled file view whenever it is launchable, and the host file
+ * tab otherwise — the same preference and fallback a chat file reference
+ * already uses, so a plan or goal artifact lands where the user's other file
+ * work lives. The bundle is never required: an absent view leaves the host tab.
+ */
+export function preferredFileWorkPanelTab(
+  path: string,
+  pluginViews: readonly PluginViewRef[],
+): WorkPanelTab {
+  return hasPluginView(pluginViews, FILE_MANAGER_PLUGIN_TAB)
+    ? fileManagerPluginTab(path)
+    : fileWorkPanelTab(path);
+}
+
 export function parsePluginViewRef(
   resource: string | undefined,
 ): { pluginId: string; viewId: string } | null {

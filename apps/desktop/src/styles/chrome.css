@@ -1001,18 +1001,25 @@
   /* Continuous with the adjacent titlebar: no side seam (D297). */
 }
 
-/* The main shell keeps one control band mounted inside MainPane, but its
- * viewport-fixed position must not follow MainPane while the work panel reflows. */
-.window-controls.window-controls-in-pane {
-  position: fixed;
-  isolation: isolate;
-}
-
 /* Electron resolves app-region hit testing across siblings. The controls must
  * be a later compositor layer than Settings, plugin content, or a work-panel
- * drag header. */
+ * drag header. Direct-child overlays (search, toasts, splash) must still win. */
 .app-shell > .window-controls {
   z-index: 1100;
+}
+
+.app-shell > .search-overlay,
+.app-shell > .toast-viewport {
+  z-index: 1200;
+}
+
+.app-shell > .startup-splash {
+  z-index: 1300;
+}
+
+/* Follow the adjacent titlebar surface when the dock occupies the right edge. */
+.app-shell:has(> .work-panel) > .window-controls {
+  background: var(--ds-bg-dock-raised);
 }
 
 .window-control-btn {
@@ -1132,7 +1139,9 @@
   --preview-chrome-inset: var(--ds-window-lead-inset);
 }
 
-.window-chrome-row {
+/* Match the scenic backdrop's child-layer specificity so preview navigation
+ * stays above the work panel while non-control pixels remain pass-through. */
+.app-shell > .window-chrome-row {
   position: absolute;
   top: 0;
   right: 0;

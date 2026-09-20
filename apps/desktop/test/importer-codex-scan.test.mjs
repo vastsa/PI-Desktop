@@ -9,9 +9,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(joinPath(here, "helpers/ts-import-hooks.mjs")));
-const { CODEX_SCAN_FULL_PARSE_MAX_BYTES, scanCodexSessions } = await import(
-  "../electron/main/importers/codex.ts"
-);
+const {
+  CODEX_SCAN_FULL_PARSE_MAX_BYTES,
+  CODEX_SCAN_MAX_FILES,
+  scanCodexSessions,
+  scanCodexSessionsResult,
+} = await import("../electron/main/importers/codex.ts");
+
 
 const iso = (value) => new Date(value).toISOString();
 
@@ -396,3 +400,69 @@ test("the sampled path also falls back to the file mtime", async () => {
     },
   );
 });
+
+test("scans newest sessions first and bounds total files to limit", async () => {
+  assert.equal(CODEX_SCAN_MAX_FILES, 250);
+  await withArchive(
+    [
+      [
+        "2026/01/01/old.jsonl",
+        [
+          metaLine("old-1", "/repo", "2026-01-01T00:00:00Z"),
+          responseItem("user", "很早以前的消息", "2026-01-01T00:00:01Z"),
+        ].join("\n"),
+      ],
+      [
+        "2026/09/18/new.jsonl",
+        [
+          metaLine("new-1", "/repo", "2026-09-18T00:00:00Z"),
+          responseItem("user", "今天的最新消息", "2026-09-18T00:00:01Z"),
+        ].join("\n"),
+      ],
+    ],
+    async (dir) => {
+      const summaries = await scanCodexSessions(dir, 1);
+      assert.equal(summaries.length, 1);
+      assert.equal(summaries[0].externalId, "new-1");
+      assert.equal(summaries[0].title, "今天的最新消息");
+      const detailed = await scanCodexSessionsResult(dir, 1);
+      assert.equal(detailed.truncated, true);
+      assert.equal(detailed.sessions[0].externalId, "new-1");
+      const uncapped = await scanCodexSessionsResult(dir);
+      assert.equal(uncapped.truncated, false);
+      assert.equal(uncapped.sessions.length, 2);
+    },
+  );
+});
+
+test("the default 250-file cap keeps the newest path-dated sessions", async () => {
+  const cases = [];
+  for (let i = 0; i < CODEX_SCAN_MAX_FILES; i += 1) {
+    const id = `new-${String(i).padStart(3, "0")}`;
+    cases.push([
+      `2026/09/18/${id}.jsonl`,
+      [
+        metaLine(id, "/repo", "2026-09-18T00:00:00Z"),
+        responseItem("user", id, "2026-09-18T00:00:01Z"),
+      ].join("\n"),
+    ]);
+  }
+  cases.push([
+    "2026/01/01/old.jsonl",
+    [
+      metaLine("old-1", "/repo", "2026-01-01T00:00:00Z"),
+      responseItem("user", "很早以前的消息", "2026-01-01T00:00:01Z"),
+    ].join("\n"),
+  ]);
+  await withArchive(cases, async (dir) => {
+    const { sessions, truncated } = await scanCodexSessionsResult(dir);
+    assert.equal(truncated, true);
+    assert.equal(sessions.length, CODEX_SCAN_MAX_FILES);
+    assert.ok(sessions.every((session) => session.externalId.startsWith("new-")));
+    assert.equal(
+      sessions.some((session) => session.externalId === "old-1"),
+      false,
+    );
+  });
+});
+

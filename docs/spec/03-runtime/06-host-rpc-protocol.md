@@ -478,7 +478,9 @@ The ledger is durable across a host restart. A queued entry with its
 an unclaimed or running delivery is marked `interrupted` by the startup fence
 and is never replayed automatically. Transcript provenance is host-derived and
 cannot be forged or removed by `session.appendMessage` or transcript
-replacement.
+replacement. Steering (`UiMessage.steering`) into a claimed delivery turn is
+additional human input in that session: it does not receive the delivery
+origin, and a client-supplied `session_message` is stripped (D597).
 
 The host rejects unknown roles, non-RFC3339 or non-monotonic timestamps, and
 oversized/deep payloads. Tool values are sanitized for host-reserved keys. The
@@ -570,7 +572,8 @@ a later replay of the original id is a no-op (D444). Electron main may keep
 message appends in its application-owned outbox while host-core is restarting;
 the outbox flushes in order after a successful handshake and treats
 `UNIQUE constraint failed: messages.id` as an ack rather than pausing the
-queue. A missing sessions row is restored from the live JSONL (or created as a
+queue. A `PERMISSION_DENIED:` append is dropped the same way so a poison head
+cannot stall the FIFO (D597). A missing sessions row is restored from the live JSONL (or created as a
 stub under the same id when the file is gone) so a queued outbox can drain
 (D318). `session.delete` drops that session's outbox entries. In-flight
 checkpoints never go through the outbox: a checkpoint is only meaningful

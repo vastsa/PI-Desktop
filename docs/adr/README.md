@@ -66,7 +66,7 @@ Each ADR includes:
 | 0042 | Message-scoped inline review cards | Superseded by 0043 |
 | 0043 | Message-owned review snapshots and guarded rollback | Accepted |
 | 0044 | Session-bound project instruction preflight | Accepted |
-| 0045 | Bash tool inherits the user's login-shell PATH | Accepted |
+| 0045 | Bash tool inherits the user's login-shell PATH | Accepted (amended D600 / issue #571) |
 | 0046 | Categorized process log files | Accepted |
 | 0047 | Context usage inspector with exact and estimated token sources | Accepted |
 | 0048 | Lazy per-turn tool activation | Accepted |
@@ -99,12 +99,12 @@ Each ADR includes:
 | 0075 | Manual reload for development-plugin permission ceilings | Accepted |
 | 0076 | Capture the Windows-reserved plugin launcher chord in host-core | Accepted |
 | 0077 | Add an interactive multi-question asktool | Accepted for implementation |
-| 0078 | Cross-platform tray-resident minimize | Accepted for implementation (amended by 0117 and 0123) |
+| 0078 | Cross-platform tray-resident minimize | Accepted for implementation (amended by 0117, 0123, and tray-session-shortcuts) |
 | 0079 | Use VitePress for the bilingual documentation site | Accepted |
 | 0080 | Prewarm the global plugin launcher after boot | Accepted |
 | 0081 | Host-owned cross-platform plugin panel chrome | Accepted |
 | 0082 | Localized and page-adaptive plugin panel chrome | Accepted |
-| 0083 | Custom global UI font | Accepted |
+| 0083 | Custom global UI font | Superseded in part by 0298 |
 | 0084 | Defer new-task session creation until the first message | Accepted |
 | 0085 | Make the work panel shortcut a toggle | Accepted (amends 0068) |
 | 0086 | Keep macOS on the regular activation policy | Accepted |
@@ -254,7 +254,7 @@ Each ADR includes:
 | 0229 | Press-and-move project title reorder | Accepted (amends 0228) |
 | 0230 | Skill ships with the Agent core tool set | Accepted (amends D174 / ADR 0048 / ADR 0219; issue #204) |
 | 0231 | Ideographic comma opens the composer slash menu | Accepted (amends D123 / D139 / ADR 0024; issue #65) |
-| 0232 | Keep macOS DMG opening guidance text-only | Accepted (amends D371 / ADR 0204) |
+| 0232 | Keep macOS DMG opening guidance text-only | Accepted (amended by 0296; amends D371 / ADR 0204) |
 | 0233 | Renderer-owned multi-folder project creation | Accepted (amends ADR 0011 / ADR 0016) |
 | 0234 | Keep project memory host-owned and path-scoped | Accepted |
 | 0235 | Preserve domain facades and enforce architecture budgets | Accepted |
@@ -293,6 +293,7 @@ Each ADR includes:
 | session-content-search | [Discover sessions by indexed message text](session-content-search.md) | Accepted |
 | transcript-reading-ownership | [Share renderer history and search views](transcript-reading-ownership.md) | Accepted |
 | 0266 | [Plugin fs roots follow the calling session](0266-plugin-fs-root-follows-the-calling-session.md) | Accepted (D093) |
+| tray-session-shortcuts | [Bounded session navigation in the native tray](tray-session-shortcuts.md) | Accepted (amends ADR 0078; issue #293) |
 | 0267 | [Plugin labels follow the app language](0267-plugin-labels-follow-the-app-language.md) | Accepted (amends 0160; ADR 0182) |
 | 0270 | [Builtin subagents can be switched off](0270-builtin-subagents-can-be-disabled.md) | Accepted for implementation (amends ADR 0063; ADR 0112) |
 | 0271 | [Rebuild the shared provider transport after repeated unanswered failures](0271-provider-transport-rebuild.md) | Accepted for implementation (issue #234) |
@@ -316,10 +317,14 @@ Each ADR includes:
 | 0287 | [Host-rendered plugin scenic Settings surfaces](0287-host-rendered-plugin-scenic-settings-surfaces.md) | Accepted for implementation |
 | 0288 | [Package-local theme assets remain available](0288-package-local-theme-assets.md) | Accepted for implementation (amends ADR 0255) |
 | 0289 | [Signed macOS GitHub Releases and in-app update delivery](0289-signed-macos-github-releases.md) | Accepted (D450; amends ADR 0022 / 0145 / 0191 / 0204 / D078) |
-| 0290 | [Restore resizable sidebar width with collapse-below-threshold](0290-resizable-sidebar-collapse-threshold.md) | Accepted (D451; amends ADR 0141 / ADR 0238) |
+| 0290 | [Restore resizable sidebar width with collapse-below-threshold](0290-resizable-sidebar-collapse-threshold.md) | Accepted (D459; amends ADR 0141 / ADR 0238) |
 | 0291 | [Remove the speech settings UI](0291-remove-speech-settings-ui.md) | Accepted (amends ADR 0281) |
 | 0292 | [SSH bootstrap for remote hosts](0292-ssh-remote-host-bootstrap.md) | Accepted for implementation (D453; ADR 0205 R2b, extends ADR 0286) |
 | 0293 | [SSH password authentication for the remote-host bootstrap](0293-ssh-password-authentication.md) | Accepted (D454; amends ADR 0292) |
 | 0294 | [Project archive is a list + inspector workbench](0294-project-archive-list-inspector.md) | Accepted (D455; amends D267 / D168) |
 | 0295 | [Session thinking-parameter omission](0295-session-thinking-parameter-omission.md) | Accepted (D456; amends ADR 0194 / ADR 0144 / ADR 0221) |
+| 0296 | [Signed macOS DMG is a two-icon install](0296-macos-signed-dmg-two-icon-install.md) | Accepted (D457; amends ADR 0232 / ADR 0204) |
+| 0297 | [Provider-hosted web search as an adapter capability](0297-provider-hosted-web-search-adapter-capability.md) | Accepted |
+| 0298 | [The app ships no fonts](0298-remove-bundled-fonts.md) | Accepted (D598; amends ADR 0083 / D232) |
 | turn-process-and-thinking-display | [Turn process and thinking presentation](turn-process-and-thinking-display.md) | Accepted |
+| provider-display-order | [Provider display order](provider-display-order.md) | Accepted |

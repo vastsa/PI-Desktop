@@ -10,7 +10,6 @@ import {
   IconArchiveRestore,
   IconChat,
   IconFileText,
-  IconFolder,
   IconMore,
   IconPencil,
   IconPin,
@@ -36,18 +35,16 @@ import {
   countProjectSessions,
   displayedProjectSessions,
   filterArchiveItems,
-  formatUpdated,
   groupArchiveRows,
   neighborPath,
-  resolveSelectedPath,
+  nextArchiveOpenPath,
   sessionMatchesIndexProject,
-  sessionTimestamp,
-  shortenPath,
   type ProjectIndexItem,
   type SessionIndexRecord,
   type SortMode,
 } from "../lib/project-archive";
-import { ProjectArchiveIndex } from "../features/projects/ProjectArchiveIndex";
+import { ProjectArchiveIndex, projectRowId } from "../features/projects/ProjectArchiveIndex";
+import { ProjectDetailPanel } from "../features/projects/ProjectDetailPanel";
 
 export function ProjectsPage() {
   const { t, i18n } = useTranslation();
@@ -68,14 +65,18 @@ export function ProjectsPage() {
   const setPage = useAppStore((s) => s.setPage);
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const renameSession = useAppStore((s) => s.renameSession);
-  const showToast = useAppStore((s) => s.showToast);
   const sessions = useAppStore((s) => s.sessions);
   const runningSessions = useAppStore((s) => s.runningSessions);
+  const showToast = useAppStore((s) => s.showToast);
   const [recents, setRecents] = useState<RecentProject[]>(() => loadRecentProjects());
   const [durableProjects, setDurableProjects] = useState<ProjectGroupRecord[]>([]);
+  // The host listing is the slow half of the index; until it settles an empty
+  // index means "not loaded yet" rather than "no projects".
+  const [loadingProjects, setLoadingProjects] = useState(true);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortMode>("recent");
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // The row whose card is open. Closed until the user asks for one.
+  const [openPath, setOpenPath] = useState<string | null>(null);
   const [visibleSessionCounts, setVisibleSessionCounts] = useState<Record<string, number>>({});
   const [menuFor, setMenuFor] = useState<string | null>(null);
   // Which row menu item is armed for its second, confirming click.
@@ -119,6 +120,9 @@ export function ProjectsPage() {
       })
       .catch(() => {
         // Session-derived entries below keep the index useful if host listing fails.
+      })
+      .finally(() => {
+        if (!canceled) setLoadingProjects(false);
       });
     return () => {
       canceled = true;
@@ -154,16 +158,22 @@ export function ProjectsPage() {
     [filtered, items, locale, sessions, sort],
   );
 
-  useEffect(() => {
-    const next = resolveSelectedPath({
-      selectedPath,
-      filtered,
-      preferredPath: workspace?.path,
-    });
-    if (next !== selectedPath) setSelectedPath(next);
-  }, [filtered, selectedPath, workspace?.path]);
+  // The order the user sees: section order with each section's active sort
+  // already applied, which is what the arrow keys must follow.
+  const renderedRows = useMemo(
+    () => groups.flatMap((group) => group.rows),
+    [groups],
+  );
 
-  const project = filtered.find((item) => item.path === selectedPath) ?? null;
+  // An open card cannot outlive its row: a search that no longer matches the
+  // project drops it from the list, and the card closes with it.
+  useEffect(() => {
+    if (openPath && !filtered.some((item) => item.path === openPath)) {
+      setOpenPath(null);
+    }
+  }, [filtered, openPath]);
+
+  const project = filtered.find((item) => item.path === openPath) ?? null;
   const selectedSessions = project
     ? displayedProjectSessions(sessions, project, query)
     : { related: [] as SessionIndexRecord[], displayed: [] as SessionIndexRecord[], sessionSearchMatch: false };
@@ -332,25 +342,44 @@ export function ProjectsPage() {
       (path) => normalizeProjectPath(path) === normalizeProjectPath(project.path),
     );
   const selectedArchived = project?.archived === true;
+
+  /*
+    The index is one selectable list, so the arrow keys walk it and Enter takes
+    the chat path. Selection moves real focus with it, otherwise the next arrow
+    key would keep firing from wherever the user last clicked.
+
+    Two bounds keep the handler from stealing its own children's keys. It walks
+    the rows in rendered order — the section order and the active sort, not the
+    index build order — and it stays out of the open card entirely, so Enter on
+    a session row or the overflow trigger stays that control's own action
+    instead of being answered as "activate this project".
+  */
   const onIndexKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest(".projects-inspector")) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      const next = neighborPath(filtered, selectedPath, event.key === "ArrowDown" ? 1 : -1);
-      if (next) setSelectedPath(next);
+      const next = neighborPath(
+        renderedRows,
+        openPath,
+        event.key === "ArrowDown" ? 1 : -1,
+      );
+      if (!next || next === openPath) return;
+      setOpenPath(next);
+      setMenuFor(null);
+      document
+        .getElementById(projectRowId(next))
+        ?.querySelector<HTMLButtonElement>(".projects-row")
+        ?.focus();
       return;
     }
-    if (event.key === "Enter" && selectedPath) {
+    if (event.key === "Enter" && openPath) {
       event.preventDefault();
-      void activate(selectedPath);
+      void activate(openPath);
     }
   };
 
   return (
-    <div className="settings-stack settings-project-archive">
-      <div className="projects-intro">
-        <p className="projects-intro-desc">{t("project.archiveSubtitle")}</p>
-      </div>
-
+    <div className="settings-stack">
       <div className="projects-toolbar">
         <div
           className="settings-segment projects-sort"
@@ -374,7 +403,7 @@ export function ProjectsPage() {
           ))}
         </div>
         <div className="projects-search-wrap">
-          <IconSearch size={13} aria-hidden="true" />
+          <IconSearch size={14} aria-hidden="true" />
           <input
             ref={searchRef}
             className="projects-search"
@@ -426,15 +455,26 @@ export function ProjectsPage() {
       {groups.length === 0 ? (
         <div className="settings-panel projects-empty">
           <span className="projects-empty-icon" aria-hidden>
-            <IconArchive size={18} />
+            {items.length === 0 && loadingProjects ? (
+              <span className="route-pending-indicator" />
+            ) : (
+              <IconArchive size={18} />
+            )}
           </span>
           <div className="projects-empty-title">
-            {items.length === 0 ? t("project.noProjects") : t("project.noSearchResults")}
+            {items.length === 0 && loadingProjects
+              ? t("common.loading")
+              : items.length === 0
+                ? t("project.noProjects")
+                : t("project.noSearchResults")}
           </div>
+          {/* A pending host listing must not silence the hint for the one
+              case that still has rows to talk about: a query that matched
+              nothing. */}
           {items.length === 0 ? null : (
             <div className="projects-empty-body">{t("project.noSearchResultsBody")}</div>
           )}
-          {items.length === 0 ? (
+          {items.length === 0 && loadingProjects ? null : items.length === 0 ? (
             <Button variant="primary" onClick={addProject}>
               <IconPlus size={14} />
               {t("project.add")}
@@ -446,305 +486,205 @@ export function ProjectsPage() {
           )}
         </div>
       ) : (
-        <div
-          className="projects-workbench"
-          tabIndex={0}
-          onKeyDown={onIndexKeyDown}
-        >
+        <div className="projects-workbench" tabIndex={0} onKeyDown={onIndexKeyDown}>
           <ProjectArchiveIndex
-              groups={groups}
-              selectedPath={selectedPath}
-              workspacePath={workspace?.path}
-              openProjectPaths={openProjectPaths}
-              locale={locale}
-              sessionCounts={sessionCounts}
-              onSelect={(path) => {
-                setSelectedPath(path);
-                setMenuFor(null);
-              }}
-              onActivate={(path) => void activate(path)}
-              detail={
-                project ? (
-                  <>
-                <div className="projects-inspector-head">
-                    <div className="projects-inspector-meta">
-                      <span className="projects-name-path" title={project.path}>
-                        {shortenPath(project.path)}
-                      </span>
-                      {project.branch ? (
-                        <>
-                          <span className="projects-meta-dot" aria-hidden>
-                            ·
-                          </span>
-                          <span className="projects-name-branch">{project.branch}</span>
-                        </>
-                      ) : null}
-                    </div>
-                  <div className="projects-inspector-actions">
-                    {selectedActive ? null : (
-                      <Button size="sm" variant="primary" onClick={() => void activate(project.path)}>
-                        {t("project.open")}
-                      </Button>
-                    )}
-                    <TooltipButton
-                      type="button"
-                      className="projects-icon-btn"
-                      tooltip={t("project.newTask")}
-                      ariaLabel={t("project.newTask")}
-                      onClick={() => void startTask(project.path)}
-                    >
-                      <IconPlus size={15} />
-                    </TooltipButton>
-                    <AnchoredMenu
-                      className="projects-menu-wrap"
-                      open={menuOpen}
-                      onClose={() => setMenuFor(null)}
-                      menuClassName="projects-menu"
-                      label={t("project.openActions", { name: project.name })}
-                      role="menu"
-                      align="end"
-                      trigger={(ref) => (
-                        <TooltipButton
-                          ref={ref}
-                          type="button"
-                          className="projects-icon-btn"
-                          tooltip={t("project.openActions", { name: project.name })}
-                          ariaLabel={t("project.openActions", { name: project.name })}
-                          aria-haspopup="menu"
-                          aria-expanded={menuOpen}
-                          onClick={() =>
-                            setMenuFor((cur) => (cur === project.path ? null : project.path))
-                          }
+            groups={groups}
+            openPath={openPath}
+            workspacePath={workspace?.path}
+            openProjectPaths={openProjectPaths}
+            locale={locale}
+            sessionCounts={sessionCounts}
+            onSelect={(path) => {
+              setOpenPath((current) => nextArchiveOpenPath(current, path));
+              setMenuFor(null);
+            }}
+            onActivate={(path) => void activate(path)}
+            detail={
+              project ? (
+                <ProjectDetailPanel
+                  project={project}
+                  sessions={visibleSessions}
+                  displayedCount={displayedSessions.length}
+                  hiddenCount={hiddenSessionCount}
+                  initialCount={INITIAL_VISIBLE_SESSION_COUNT}
+                  locale={locale}
+                  onOpenSession={(sessionId) =>
+                    void openProjectSession(project.path, sessionId)
+                  }
+                  onNewTask={() => void startTask(project.path)}
+                  onRenameSession={setRenameFor}
+                  onShowMore={() =>
+                    setVisibleSessionCounts((prev) => ({
+                      ...prev,
+                      [project.path]: visibleCount + INITIAL_VISIBLE_SESSION_COUNT,
+                    }))
+                  }
+                  onShowLess={() =>
+                    setVisibleSessionCounts((prev) => ({
+                      ...prev,
+                      [project.path]: INITIAL_VISIBLE_SESSION_COUNT,
+                    }))
+                  }
+                  actions={
+                    <>
+                      {selectedActive ? null : (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => void activate(project.path)}
                         >
-                          <IconMore size={16} />
-                        </TooltipButton>
+                          {t("project.open")}
+                        </Button>
                       )}
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuFor(null);
-                          void startTask(project.path);
-                        }}
-                      >
-                        <IconChat size={14} />
-                        {t("project.newTask")}
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuFor(null);
-                          setInstructionsFor({
-                            name: project.name,
-                            path: project.path,
-                            groupId: project.groupId,
-                            legacy: project.legacy,
-                          });
-                        }}
-                      >
-                        <IconFileText size={14} />
-                        {t("project.editInstructions")}
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuFor(null);
-                          setMemoryFor({
-                            name: project.name,
-                            path: project.path,
-                            groupId: project.groupId,
-                            legacy: project.legacy,
-                          });
-                        }}
-                      >
-                        <IconSparkles size={14} />
-                        {t("project.editMemory")}
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        data-action="edit-project"
-                        onClick={() => {
-                          setMenuFor(null);
-                          setEditProjectFor({
-                            path: project.path,
-                            name: project.name,
-                            groupId: project.groupId,
-                            roots: project.roots,
-                            legacy: project.legacy,
-                          });
-                        }}
-                      >
-                        <IconPencil size={14} />
-                        {t("project.edit", { defaultValue: "Edit project" })}
-                      </button>
-                      <div className="projects-menu-sep" role="separator" />
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          toggleProjectPinned(project.path, !project.pinned);
-                          setMenuFor(null);
-                        }}
-                      >
-                        <IconPin size={14} />
-                        {project.pinned ? t("project.unpin") : t("project.pin")}
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => void toggleProjectArchive(project)}
-                      >
-                        {selectedArchived ? (
-                          <IconArchiveRestore size={14} />
-                        ) : (
-                          <IconArchive size={14} />
+                      <AnchoredMenu
+                        className="projects-menu-wrap"
+                        open={menuOpen}
+                        onClose={() => setMenuFor(null)}
+                        menuClassName="projects-menu"
+                        label={t("project.openActions", { name: project.name })}
+                        role="menu"
+                        align="end"
+                        trigger={(ref) => (
+                          <TooltipButton
+                            ref={ref}
+                            type="button"
+                            className="projects-icon-btn"
+                            tooltip={t("project.openActions", { name: project.name })}
+                            ariaLabel={t("project.openActions", { name: project.name })}
+                            aria-haspopup="menu"
+                            aria-expanded={menuOpen}
+                            onClick={() =>
+                              setMenuFor((cur) => (cur === project.path ? null : project.path))
+                            }
+                          >
+                            <IconMore size={16} />
+                          </TooltipButton>
                         )}
-                        {selectedArchived ? t("project.restore") : t("project.archive")}
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className={cx(
-                          "danger",
-                          armedDelete === projectDeleteKey(project.path) && "is-armed",
-                        )}
-                        data-action="delete-project"
-                        data-armed={
-                          armedDelete === projectDeleteKey(project.path) ? "true" : undefined
-                        }
-                        onClick={() => void requestDeleteProject(project, totalSessions)}
                       >
-                        <IconTrash size={14} />
-                        {armedDelete === projectDeleteKey(project.path)
-                          ? t("project.deleteMenuConfirm")
-                          : t("project.delete")}
-                      </button>
-                      {selectedRetained ? (
                         <button
                           type="button"
                           role="menuitem"
-                          className="danger"
                           onClick={() => {
                             setMenuFor(null);
-                            void closeProjectFromIndex(project.path);
+                            void startTask(project.path);
                           }}
                         >
-                          <IconX size={14} />
-                          {t("project.close")}
+                          <IconChat size={14} />
+                          {t("project.newTask")}
                         </button>
-                      ) : null}
-                    </AnchoredMenu>
-                  </div>
-                </div>
-
-                <div
-                  className="projects-detail-roots"
-                  aria-label={t("project.foldersLabel", { defaultValue: "Project folders" })}
-                >
-                  {project.roots.map((root) => (
-                    <span className="projects-detail-root" key={root.path} title={root.path}>
-                      <IconFolder size={12} aria-hidden />
-                      <span>{shortenPath(root.path)}</span>
-                    </span>
-                  ))}
-                </div>
-
-                <div className="projects-detail-header">
-                  <div className="projects-detail-label">
-                    {t("project.sessionsCount", { count: displayedSessions.length })}
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="projects-detail-new"
-                    onClick={() => void startTask(project.path)}
-                  >
-                    <IconPlus size={13} />
-                    {t("project.newTask")}
-                  </Button>
-                </div>
-                {displayedSessions.length === 0 ? (
-                  <div className="projects-detail-empty">{t("project.noSessions")}</div>
-                ) : (
-                  <div className="projects-detail-tasks">
-                    {visibleSessions.map((s) => {
-                      const title = s.title || s.id;
-                      return (
-                        <div
-                          key={s.id}
-                          className="projects-detail-task-row"
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            setRenameFor(s);
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setMenuFor(null);
+                            setInstructionsFor({
+                              name: project.name,
+                              path: project.path,
+                              groupId: project.groupId,
+                              legacy: project.legacy,
+                            });
                           }}
                         >
+                          <IconFileText size={14} />
+                          {t("project.editInstructions")}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setMenuFor(null);
+                            setMemoryFor({
+                              name: project.name,
+                              path: project.path,
+                              groupId: project.groupId,
+                              legacy: project.legacy,
+                            });
+                          }}
+                        >
+                          <IconSparkles size={14} />
+                          {t("project.editMemory")}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          data-action="edit-project"
+                          onClick={() => {
+                            setMenuFor(null);
+                            setEditProjectFor({
+                              path: project.path,
+                              name: project.name,
+                              groupId: project.groupId,
+                              roots: project.roots,
+                              legacy: project.legacy,
+                            });
+                          }}
+                        >
+                          <IconPencil size={14} />
+                          {t("project.edit", { defaultValue: "Edit project" })}
+                        </button>
+                        <div className="projects-menu-sep" role="separator" />
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            toggleProjectPinned(project.path, !project.pinned);
+                            setMenuFor(null);
+                          }}
+                        >
+                          <IconPin size={14} />
+                          {project.pinned ? t("project.unpin") : t("project.pin")}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => void toggleProjectArchive(project)}
+                        >
+                          {selectedArchived ? (
+                            <IconArchiveRestore size={14} />
+                          ) : (
+                            <IconArchive size={14} />
+                          )}
+                          {selectedArchived ? t("project.restore") : t("project.archive")}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={cx(
+                            "danger",
+                            armedDelete === projectDeleteKey(project.path) && "is-armed",
+                          )}
+                          data-action="delete-project"
+                          data-armed={
+                            armedDelete === projectDeleteKey(project.path) ? "true" : undefined
+                          }
+                          onClick={() => void requestDeleteProject(project, totalSessions)}
+                        >
+                          <IconTrash size={14} />
+                          {armedDelete === projectDeleteKey(project.path)
+                            ? t("project.deleteMenuConfirm")
+                            : t("project.delete")}
+                        </button>
+                        {selectedRetained ? (
                           <button
                             type="button"
-                            className="projects-detail-task"
-                            onClick={() => void openProjectSession(project.path, s.id)}
-                            title={title}
+                            role="menuitem"
+                            className="danger"
+                            onClick={() => {
+                              setMenuFor(null);
+                              void closeProjectFromIndex(project.path);
+                            }}
                           >
-                            <IconChat size={13} className="projects-detail-task-icon" />
-                            <span className="projects-detail-task-title">{title}</span>
-                            <span className="projects-detail-task-updated">
-                              {formatUpdated(
-                                sessionTimestamp(s.updatedAt),
-                                locale,
-                                t("project.updatedNever"),
-                              )}
-                            </span>
+                            <IconX size={14} />
+                            {t("project.close")}
                           </button>
-                          <TooltipButton
-                            type="button"
-                            className="projects-detail-task-rename"
-                            tooltip={t("session.renameAction", { title })}
-                            ariaLabel={t("session.renameAction", { title })}
-                            onClick={() => setRenameFor(s)}
-                          >
-                            <IconPencil size={13} aria-hidden />
-                          </TooltipButton>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {hiddenSessionCount > 0 ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="projects-detail-more"
-                    onClick={() =>
-                      setVisibleSessionCounts((prev) => ({
-                        ...prev,
-                        [project.path]: visibleCount + INITIAL_VISIBLE_SESSION_COUNT,
-                      }))
-                    }
-                  >
-                    {t("project.showMoreSessions", { count: hiddenSessionCount })}
-                  </Button>
-                ) : displayedSessions.length > INITIAL_VISIBLE_SESSION_COUNT ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="projects-detail-more"
-                    onClick={() =>
-                      setVisibleSessionCounts((prev) => ({
-                        ...prev,
-                        [project.path]: INITIAL_VISIBLE_SESSION_COUNT,
-                      }))
-                    }
-                  >
-                    {t("project.showFewerSessions")}
-                  </Button>
-                ) : null}
-              </>
-                ) : null
-              }
-            />
+                        ) : null}
+                      </AnchoredMenu>
+                    </>
+                  }
+                />
+              ) : null
+            }
+          />
         </div>
       )}
       {instructionsFor ? (

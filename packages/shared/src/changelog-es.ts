@@ -2,6 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.1",
+    "date": "2026-09-19",
+    "highlights": [
+      "Empareja y gestiona hosts remotos por SSH desde Ajustes, con inicio de sesión por contraseña, instalación y reconexión al arrancar.",
+      "Configura la mejora de prompts (plantilla, modelo y razonamiento) en la tarjeta de ajustes de IA.",
+      "Arrastra los modelos seleccionados para reordenarlos, y añade un nivel «omitir pensamiento» que no envía anulación al proveedor.",
+      "Redimensiona o contrae la barra lateral, y restaura el ancho predeterminado de barra o panel con un doble clic.",
+      "Gestiona proyectos en un archivo agrupado con inspector, e importa cada tipo desde su propio banco de trabajo.",
+      "Escanea e importa en lote skills y servidores MCP de otras herramientas de agente.",
+      "El extra de la barra de menús de macOS usa un status item nativo, con atajos de sesión acotados en la bandeja.",
+      "Las compilaciones oficiales de macOS van firmadas y notarizadas, con actualizaciones in-app.",
+      "La DMG firmada de macOS instala con dos iconos; la nota de apertura sin firmar queda solo en el ZIP.",
+      "Review se abre solo cuando lo pides, y al abrir una sesión aterrizas en el último turno.",
+      "Recupera una cola de envío atascada e ignora orígenes de steering falsificados.",
+    ],
+  },
+
+  {
     "version": "0.15.0",
     "date": "2026-09-17",
     "highlights": [

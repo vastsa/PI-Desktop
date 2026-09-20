@@ -8,6 +8,7 @@ import {
   isTurnThinking,
   processContainsMessage,
   resolveThinkingDisplayMode,
+  shouldAutoOpenTurnProcess,
   turnProcessTiming,
   visibleProcessSteps,
 } from "../../../lib/turn-process";
@@ -42,7 +43,7 @@ export function TurnProcess({
   const hasToolFailure = hasFailedProcessTool(processParts);
   const thinkingNow = isTurnThinking(turnParts, isActive);
   const disclosure = useAutomaticDisclosure(
-    isActive && (hasToolFailure || mode === "detailed"),
+    shouldAutoOpenTurnProcess(mode, isActive, hasToolFailure),
     revealRequest,
   );
   const detailsId = useId();

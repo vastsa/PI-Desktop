@@ -508,6 +508,7 @@ test("dependency install: skips without a manifest or dependencies, runs npm wit
   });
   assert.deepEqual(missingResult, {
     state: "failed",
+    reason: "npm-unavailable",
     error: "npm is not available on PATH; install Node.js/npm before importing dependencies",
   });
 

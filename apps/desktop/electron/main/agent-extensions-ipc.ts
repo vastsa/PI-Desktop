@@ -7,18 +7,17 @@
  * the same path as "Load local plugin"; the `agent.extension` permission is
  * what the plugin row shows and what the sidecar loader checks.
  */
-import { dialog, type BrowserWindow } from "electron";
+import type { OpenDialogOptions } from "electron";
 import { ErrorCodes, IPC, type TrustedExtensionUiPromptResponse } from "@pi-desktop/shared";
 import {
   generateImportedExtensionPlugin,
-  installExtensionDependencies,
   type AgentExtensionBridge,
 } from "./agent-extensions.js";
+import { installDependenciesWithNpmRecovery, type NpmRecoveryDependencies } from "./npm-install-recovery";
 
-export type AgentExtensionIpcDeps = {
+export type AgentExtensionIpcDeps = NpmRecoveryDependencies & {
   handle: (channel: string, fn: (...args: any[]) => Promise<any>) => void;
   bridge: AgentExtensionBridge;
-  window: () => BrowserWindow | null;
   /** Directory the generated plugins live in, e.g. `<dataDir>/plugins/imported`. */
   importRoot: string;
   /** Register the generated directory as a development plugin. */
@@ -68,16 +67,19 @@ export function registerAgentExtensionIpc(deps: AgentExtensionIpcDeps): void {
   // user can inspect, reload, and remove like any other.
   handle(IPC.invoke.pluginImportExtension, async () => {
     const window = deps.window();
-    const picked = await dialog.showOpenDialog(window ?? undefined!, {
+    const options: OpenDialogOptions = {
       properties: ["openFile", "openDirectory"],
       filters: [{ name: "pi extension", extensions: ["ts", "js", "mjs", "mts"] }],
-    });
+    };
+    const picked = window && !window.isDestroyed()
+      ? await deps.dialogs.showOpenDialog(window, options)
+      : await deps.dialogs.showOpenDialog(options);
     const source = picked.canceled ? undefined : picked.filePaths[0];
     if (!source) return { canceled: true };
     const generated = generateImportedExtensionPlugin(source, deps.importRoot);
     // Install before registration so the extension's first load already sees
     // its dependencies; a failed install registers anyway and is reported.
-    const dependencies = await installExtensionDependencies(generated.path);
+    const dependencies = await installDependenciesWithNpmRecovery(generated.path, deps);
     const loaded = await deps.loadDevPlugin(generated.path);
     return { canceled: false, ...generated, loaded, dependencies };
   });

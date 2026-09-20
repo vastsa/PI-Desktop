@@ -7,9 +7,9 @@ import {
   filterArchiveItems,
   groupArchiveRows,
   neighborPath,
+  nextArchiveOpenPath,
   projectBucket,
   projectMatchesQuery,
-  resolveSelectedPath,
   sessionMatchesIndexProject,
   sessionMatchesQuery,
   sessionTimestamp,
@@ -100,21 +100,19 @@ test("search keeps a project when a session title matches", () => {
   assert.equal(shown.displayed[0]?.id, "s1");
 });
 
-test("selection stays on the current row, then the live workspace, then the first match", () => {
+test("the arrow keys walk the rows the user can see", () => {
   const rows = [
     { path: "/a", name: "A", openedAt: 1, groupId: "a", roots: [], legacy: false },
     { path: "/b", name: "B", openedAt: 2, groupId: "b", roots: [], legacy: false },
   ];
-  assert.equal(resolveSelectedPath({ selectedPath: "/b", filtered: rows }), "/b");
-  assert.equal(
-    resolveSelectedPath({ selectedPath: "/gone", filtered: rows, preferredPath: "/a" }),
-    "/a",
-  );
-  assert.equal(resolveSelectedPath({ selectedPath: null, filtered: rows }), "/a");
-  assert.equal(resolveSelectedPath({ selectedPath: "/a", filtered: [] }), null);
   assert.equal(neighborPath(rows, "/a", 1), "/b");
   assert.equal(neighborPath(rows, "/b", 1), "/b");
   assert.equal(neighborPath(rows, "/b", -1), "/a");
+  // With nothing open yet the first key press lands on the first row, either
+  // direction, and an empty index has nowhere to go.
+  assert.equal(neighborPath(rows, null, 1), "/a");
+  assert.equal(neighborPath(rows, null, -1), "/a");
+  assert.equal(neighborPath([], null, 1), null);
 });
 
 test("the index merges durable groups ahead of recents and session seeds", () => {
@@ -148,4 +146,15 @@ test("the index merges durable groups ahead of recents and session seeds", () =>
   assert.equal(shortenPath("/Users/lan/PI-Desktop"), "~/PI-Desktop");
   assert.equal(INITIAL_VISIBLE_SESSION_COUNT, 8);
   assert.ok(sessionTimestamp("2026-01-02T00:00:00.000Z") > 0);
+});
+
+test("one row click opens that row's card and closes the open one", () => {
+  // Nothing is expanded to begin with, so the first click opens a card.
+  assert.equal(nextArchiveOpenPath(null, "/a"), "/a");
+  // Any other row takes the open card with it.
+  assert.equal(nextArchiveOpenPath("/a", "/b"), "/b");
+  // Clicking the open row closes it again. This is the path the index was
+  // missing: the click re-selected the row and the card stayed up.
+  assert.equal(nextArchiveOpenPath("/a", "/a"), null);
+  assert.equal(nextArchiveOpenPath(null, "/a"), "/a");
 });

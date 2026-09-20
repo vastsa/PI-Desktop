@@ -113,7 +113,8 @@ Node 对 pi 的包装：
 
 ## 3. 运行时数据（不在 git 中）
 
-`PI_DESKTOP_DATA_DIR` 可覆盖默认位置。
+`PI_DESKTOP_DATA_DIR` 可覆盖默认位置：正式打包版为 `~/.pi-desktop`，开发构建为
+`~/.pi-desktop-dev`，`pnpm dev` 借此与正式版并行运行（D599）。
 
 ```text
 ~/.pi-desktop/

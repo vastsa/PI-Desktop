@@ -32,7 +32,7 @@ import {
   groupImportCandidates,
   type ImportGroupBy,
 } from "../../lib/import-groups";
-import { Badge, Button, cx } from "../../components/ui";
+import { Badge, Button, HelpIcon, cx } from "../../components/ui";
 import { IconChevronLeft, IconDownload } from "../../components/icons";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 
@@ -128,6 +128,7 @@ function ImportToolbar({
   onScan,
   onImport,
   options,
+  hint,
 }: {
   found: string;
   selectedCount: number;
@@ -140,6 +141,8 @@ function ImportToolbar({
   onImport: () => void;
   /** Kind-specific control in front of the actions, e.g. grouping or mode. */
   options?: ReactNode;
+  /** The current result set's caveat (a source cap), on demand. */
+  hint?: string;
 }) {
   const { t } = useTranslation();
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -170,6 +173,7 @@ function ImportToolbar({
       </label>
       <div className="import-toolbar-actions">
         {options}
+        {hint ? <HelpIcon label={hint} /> : null}
         <Button
           variant="secondary"
           disabled={scanning}
@@ -198,16 +202,22 @@ function ImportOption({
   label,
   value,
   options,
+  hint,
   onChange,
 }: {
   label: string;
   value: string;
   options: { id: string; label: string }[];
+  /** Explains the choice, reached from the label's help icon. */
+  hint?: string;
   onChange: (id: string) => void;
 }) {
   return (
     <label className="import-option">
-      <span className="import-option-label">{label}</span>
+      <span className="import-option-label">
+        {label}
+        {hint ? <HelpIcon label={hint} /> : null}
+      </span>
       <SettingsMenuSelect
         className="import-option-select"
         label={label}
@@ -345,17 +355,19 @@ function ImportIdle({
   scanning: boolean;
 }) {
   const { t } = useTranslation();
+  const help = [description, note].filter(Boolean).join(" · ");
   return (
     <div className="settings-panel import-panel">
       <div className="import-idle">
         <span className="import-idle-glyph" aria-hidden>
           <IconDownload size={20} />
         </span>
-        {description ? <p className="import-idle-copy">{description}</p> : null}
-        {note ? <p className="import-idle-note">{note}</p> : null}
-        <Button variant="secondary" disabled={scanning} onClick={onScan}>
-          {scanning ? t("settings.importScanning") : t("settings.importScan")}
-        </Button>
+        <div className="import-idle-actions">
+          <Button variant="secondary" disabled={scanning} onClick={onScan}>
+            {scanning ? t("settings.importScanning") : t("settings.importScan")}
+          </Button>
+          {help ? <HelpIcon label={help} /> : null}
+        </div>
       </div>
     </div>
   );
@@ -414,6 +426,8 @@ export function SessionImportPanel() {
   const disclosure = useGroupDisclosure();
   const [scanning, setScanning] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [codexCap, setCodexCap] = useState<number | null>(null);
+
 
   const keyOf = (candidate: ImportCandidate) =>
     `${candidate.source}:${candidate.externalId}`;
@@ -423,8 +437,10 @@ export function SessionImportPanel() {
     try {
       const res = await api.scanImportSessions();
       setCandidates(res.sessions);
+      setCodexCap(typeof res.truncated?.codex === "number" ? res.truncated.codex : null);
       setSelected(new Set());
       disclosure.reset();
+
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
     } finally {
@@ -512,6 +528,11 @@ export function SessionImportPanel() {
             importing={importing}
             onScan={() => void scan()}
             onImport={() => void runImport()}
+            hint={
+              codexCap != null
+                ? t("settings.importCodexCapped", { limit: codexCap })
+                : undefined
+            }
             options={
               <ImportOption
                 label={t("settings.importGroupBy")}
@@ -533,6 +554,7 @@ export function SessionImportPanel() {
             }
           >
             <div className="import-groups">
+
               {groups.map((group, groupIndex) => {
                 const groupKeys = group.items.map(keyOf);
                 const groupSelected = groupKeys.filter((k) => selected.has(k)).length;
@@ -917,6 +939,7 @@ export function SkillsScanImportPanel() {
                 label={t("settings.importAgentScanMode")}
                 value={mode}
                 onChange={(id) => setMode(id as "copy" | "link")}
+                hint={t("settings.importAgentScanModeHint")}
                 options={[
                   { id: "copy", label: t("settings.importAgentScanModeCopy") },
                   { id: "link", label: t("settings.importAgentScanModeLink") },
@@ -924,7 +947,6 @@ export function SkillsScanImportPanel() {
               />
             }
           />
-          <p className="import-hint">{t("settings.importAgentScanModeHint")}</p>
           <ImportResults
             message={
               result.candidates.length === 0

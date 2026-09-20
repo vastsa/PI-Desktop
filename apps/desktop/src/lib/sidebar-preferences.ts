@@ -1,4 +1,6 @@
-import type { ProjectWorkspace, SessionSummary } from "@pi-desktop/shared";
+import type { ProjectWorkspace, SessionSummary, SessionSort } from "@pi-desktop/shared";
+export type { SessionSort } from "@pi-desktop/shared";
+export { sortSessions, sessionIsPinned, sessionIsArchived } from "@pi-desktop/shared";
 
 /** Local copy keeps this pure module runnable in Node's TS test loader. */
 export function normalizeProjectPath(projectPath?: string | null): string | null {
@@ -14,7 +16,6 @@ export function normalizeProjectPath(projectPath?: string | null): string | null
   return normalized || "/";
 }
 
-export type SessionSort = "recent" | "created" | "oldest" | "name" | "manual";
 export type ProjectSort = "recent" | "created" | "oldest" | "name" | "manual";
 export type SessionMeta = {
   pinned?: boolean;
@@ -230,12 +231,6 @@ export function saveSidebarWidth(value: number): void {
   write(SIDEBAR_WIDTH_KEY, clampSidebarWidth(value));
 }
 
-export function sessionIsPinned(id: string, meta: Record<string, SessionMeta>): boolean {
-  return meta[id]?.pinned === true;
-}
-export function sessionIsArchived(id: string, meta: Record<string, SessionMeta>): boolean {
-  return meta[id]?.archived === true;
-}
 export function projectIsPinned(path: string, meta: Record<string, ProjectMeta>): boolean {
   const key = normalizeProjectPath(path);
   return !!key && meta[key]?.pinned === true;
@@ -247,61 +242,6 @@ export function projectIsArchived(path: string, meta: Record<string, ProjectMeta
 export function projectIsCollapsed(path: string, meta: Record<string, ProjectMeta>): boolean {
   const key = normalizeProjectPath(path);
   return !!key && meta[key]?.collapsed === true;
-}
-function timestamp(value?: string): number {
-  const parsed = value ? Date.parse(value) : NaN;
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-export function sortSessions(
-  sessions: SessionSummary[],
-  meta: Record<string, SessionMeta>,
-  sort: SessionSort = "recent",
-  includeArchived = false,
-): SessionSummary[] {
-  const rows = includeArchived
-    ? sessions
-    : sessions.filter((session) => !sessionIsArchived(session.id, meta));
-  return [...rows].sort((a, b) => {
-    const archived = Number(sessionIsArchived(a.id, meta)) - Number(sessionIsArchived(b.id, meta));
-    if (archived) return archived;
-    const pinned = Number(sessionIsPinned(b.id, meta)) - Number(sessionIsPinned(a.id, meta));
-    if (pinned) return pinned;
-    if (sort === "name") {
-      const byName = a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
-      if (byName) return byName;
-    } else if (sort === "created") {
-      const byCreated = compareOptionalNumber(
-        timestamp(a.createdAt) || undefined,
-        timestamp(b.createdAt) || undefined,
-        true,
-      );
-      if (byCreated) return byCreated;
-    } else if (sort === "oldest") {
-      const byCreated = compareOptionalNumber(
-        timestamp(a.createdAt) || undefined,
-        timestamp(b.createdAt) || undefined,
-        false,
-      );
-      if (byCreated) return byCreated;
-    } else if (sort === "manual") {
-      const byOrder = (manualOrder(meta[a.id]?.order) ?? Number.MAX_SAFE_INTEGER) -
-        (manualOrder(meta[b.id]?.order) ?? Number.MAX_SAFE_INTEGER);
-      if (byOrder) return byOrder;
-    } else {
-      const byUpdated = compareOptionalNumber(
-        timestamp(a.updatedAt) || undefined,
-        timestamp(b.updatedAt) || undefined,
-        true,
-      );
-      if (byUpdated) return byUpdated;
-    }
-    return compareOptionalNumber(
-      timestamp(a.updatedAt) || undefined,
-      timestamp(b.updatedAt) || undefined,
-      true,
-    ) || a.id.localeCompare(b.id);
-  });
 }
 
 export type SidebarProject = Pick<ProjectWorkspace, "path" | "name" | "branch"> & {

@@ -793,9 +793,10 @@ type SessionDetail = SessionSummary & {
 
 Electron 主进程用该会话精确 provider/API URL 与 model 的本地 models.dev
 记录，丰富 session list/get/create/fork/configure 结果中的有效推理能力。
-未固定 `providerId`/`modelId` 的会话仅在此丰富步骤继承应用默认供应商/模型；
-持久化 id 保持为空，以便之后的默认模型变更仍然生效。快照中没有该 ID、或
-会话无法解析出默认目标时，得到 `supportsReasoning: false` 和 `off`；缓存/
+未固定 `providerId`/`modelId` 的会话仅在此丰富步骤继承应用默认供应商/模型。
+桌面创建会话时会把当时的默认（或 Composer 草稿覆盖）写入持久化 id；之后改
+默认模型不会改写已创建会话。没有会话的首页草稿仍跟随当前默认。快照中没有该
+ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false` 和 `off`；缓存/
 供应商声明不能取代目录语义。Rust 主机仅对持久化的 `thinkingLevel` 权威。
 
 全局插件启动器使用仅 Electron 允许的通道：
@@ -1512,6 +1513,26 @@ Electron 报告的右侧角）改变的是面板目标。Main 通过
 仅针对当前可见的会话设置此目标：背景工件
 无法更改可见的保留几何形状。
 
+### Tray session shortcuts (ADR tray-session-shortcuts)
+
+- `pi-desktop/tray/setSessionPreferences({ sessionMeta, archivedProjectPaths, sort })`
+  returns `{ ok: true }`. `sessionMeta` maps IDs to optional boolean `pinned`
+  and `archived` flags plus a non-negative safe integer `order`. `sort` is
+  `recent`, `created`, `oldest`, `name`, or `manual`; the renderer mirrors the
+  sidebar's effective sort. Main validates the payload, strips unrelated
+  metadata, and rejects senders other than the current main window. The setter
+  is excluded from the local MCP catalog and persists nothing.
+- Main emits `pi-desktop/tray/event/sessionActivated { sessionId: string | null }`
+  after restoring/focusing the window, waiting for post-bootstrap
+  `menu/rendererReady`, and checking that the session still exists and is not
+  archived. Renderer enters normal session selection, including cross-project
+  navigation and unread acknowledgement. A null ID closes search, returns to
+  the conversation page, and expands the sidebar for View more. Merely opening
+  the menu is read-only.
+- Main reads existing Host session/inbox APIs, observes root runtime events and
+  successful session/inbox mutations, and combines them with the ephemeral
+  organization copy. No host protocol or storage schema changes.
+
 ## 13c. Composer 输入 API（D123/D124/D197、ADR 0024/0059）
 
 仅电子通道支持输入框自动完成和剪贴板文件
@@ -1775,3 +1796,11 @@ MCP 调用方无法调用它们。
 | `WORKSPACE_REQUIRED` | 需要项目目录 |
 | `PATH_OUTSIDE_WORKSPACE` | 在明确的外部路径权限决策之前路径超出范围 |
 | `INTERNAL` | 未分类的内部错误 |
+
+### Provider ordering
+
+`pi-desktop/providers/reorder({ id, targetId, placement: "before" | "after" })`
+returns `{ ok: true }` and forwards to host `providers.reorder`. The sandboxed
+preload permits this channel through the shared IPC registry. Invalid placement
+or missing providers returns `INVALID_PARAMS`; configuration and defaults are
+unchanged. See [provider configuration](12-provider-config-schema.md).

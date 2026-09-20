@@ -101,7 +101,7 @@ import {
 import { settleStoppedAssistantMetrics } from "../lib/context-usage";
 import { formatToolValue } from "../lib/tool-display";
 import { withReviewChangeState } from "../lib/workspace-review";
-import { fileWorkPanelTab } from "../lib/work-panel-tabs";
+import { preferredFileWorkPanelTab } from "../lib/work-panel-tabs";
 import {
   clearSessionPermissions,
   enqueuePermission,
@@ -312,12 +312,13 @@ export type AppState = import("./app-state").AppState;
 function openPlanArtifact(
   proposal: PlanProposal,
   openWorkPanelTabForSession: AppState["openWorkPanelTabForSession"],
+  pluginViews: AppState["pluginViews"],
 ) {
   const relativePath = proposal.artifact?.relativePath;
   if (!relativePath) return;
   openWorkPanelTabForSession(
     proposal.sessionId,
-    fileWorkPanelTab(relativePath),
+    preferredFileWorkPanelTab(relativePath, pluginViews),
   );
 }
 
@@ -671,8 +672,18 @@ export const useAppStore = create<AppState>((set, get) => {
         unreadNotificationCount: notifications.unreadCount,
         sessionOutcomes: latestSessionOutcomes(notifications.notifications),
       });
+
+      // The artifact's surface depends on which plugin views are launchable, and
+      // the launcher list is only read after `ready`. Resolve it before the
+      // restore, so the approval artifact does not fall back to the host file tab
+      // and then take a second tab from `selectSession`.
+      await get().refreshPluginViews();
       for (const proposal of activePendingPlans) {
-        openPlanArtifact(proposal, get().openWorkPanelTabForSession);
+        openPlanArtifact(
+          proposal,
+          get().openWorkPanelTabForSession,
+          get().pluginViews,
+        );
       }
       saveSidebarPreferences(preferencesFromState(get()));
       if (currentWorkspace?.path) {

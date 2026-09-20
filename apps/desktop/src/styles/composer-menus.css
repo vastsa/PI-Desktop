@@ -237,6 +237,103 @@
   overflow-y: auto;
 }
 
+/* Reasoning slider (issue #417): the menu root carries the slider directly
+   under the Reasoning level entry; the entry opens the classic radio list. */
+.composer-thinking-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 6px 4px;
+}
+
+.composer-thinking-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.composer-thinking-range:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 2px;
+}
+
+.composer-thinking-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    to right,
+    var(--ds-accent) 0,
+    var(--ds-accent) var(--composer-thinking-progress, 0%),
+    var(--ds-border-subtle) var(--composer-thinking-progress, 0%),
+    var(--ds-border-subtle) 100%
+  );
+}
+
+.composer-thinking-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 2px solid var(--ds-bg-elevated-opaque);
+  border-radius: var(--radius-full);
+  background: var(--ds-accent);
+}
+
+.composer-thinking-range::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--ds-border-subtle);
+}
+
+.composer-thinking-range::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--ds-accent);
+}
+.composer-thinking-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ds-bg-elevated-opaque);
+  border-radius: var(--radius-full);
+  background: var(--ds-accent);
+}
+
+/* One label per stop; long ladders ellipsize instead of wrapping. */
+.composer-thinking-ticks {
+  display: flex;
+  gap: 2px;
+}
+
+.composer-thinking-tick {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.composer-thinking-tick:hover,
+.composer-thinking-tick:focus-visible {
+  color: var(--ds-text-primary);
+}
+
+.composer-thinking-tick.active {
+  color: var(--ds-accent);
+  font-weight: var(--font-weight-strong);
+}
+
 @keyframes composer-menu-in {
   from {
     opacity: 0;

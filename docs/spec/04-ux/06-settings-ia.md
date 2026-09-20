@@ -49,17 +49,25 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   8. **Subagents / 子智能体** — Lucide `Bot` (built-in and personal parallel agents)
   9. **Import / 导入** — Lucide `Download` (bring sessions and model configuration in from other tools)
   10. **Projects / 项目** — Lucide `Archive` (durable project index)
-  11. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
+  11. **Remote Hosts / 远程主机** — Lucide `Globe` (SSH bootstrap and pairing inventory; developer mode only)
+  12. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
   with the rail label; do not reuse refresh/rotate glyphs here.
 - The directory remains a flat searchable list in the same exact order. For
   scanability, the destinations are shown in four titled visual clusters:
   `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
-  (Import, Projects), and `System` / `系统` (Info). Headings are muted,
-  non-interactive labels and use whitespace for separation; no divider lines are
-  rendered. These are visual landmarks only, not a second navigation level.
+  (Import, Projects), and `System` / `系统` (Remote Hosts, Info). Headings are
+  muted, non-interactive labels and use whitespace for separation; no divider
+  lines are rendered. These are visual landmarks only, not a second navigation
+  level.
   When search filters the directory, empty clusters and their headings disappear.
+- **Remote Hosts / 远程主机** is a developer-only, Experimental destination: its
+  rail row, its page, and its settings-search hits exist only while
+  `AppSettings.developerMode` is `true`. With developer mode off the row is
+  absent rather than disabled, settings search returns no hit for it, and a
+  rail position left on it falls back to General. The row and the page title
+  carry the Experimental badge (`settings.remoteHosts.experimental`)
 - Loaded plugin Settings entries may appear only in a final **Extensions** group
   after all core groups. The host owns their ordering, search result, titlebar
   and fallback to General. The rail icon is the destination's host token
@@ -89,11 +97,14 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     Adding a locale is a catalog plus a registry row; the picker does not
     hard-code the option list.
   - **Font**: a searchable picker row (trigger shows the current family rendered
-    in that face) offering the System default, bundled open-licensed families
-    (Geist, Inter, Noto Sans SC, LXGW WenKai — SIL OFL 1.1, shipped locally),
-    and installed system families enumerated by Electron main; selection
+    in that face) offering the System default and installed system families
+    enumerated by Electron main; the app ships no fonts of its own (ADR 0298),
+    so there is no bundled group and no license badge, and a stack saved while
+    a removed family existed still appears under Saved; selection
     persists as `AppSettings.fontFamily` and applies to the global UI stack
     (`--font-sans`) without a reload; System default clears the override;
+    every stack ends in the system-only CJK fallback tier (`PingFang SC`,
+    `Hiragino Sans GB`, `Microsoft YaHei`, `sans-serif`);
     long system lists are windowed so only the visible slice is in the DOM
     (bounded font loading) and opening the picker never blocks input
   - **Font size**: Starbucks-style cup presets (Tall / Grande / Venti /
@@ -172,8 +183,10 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   to Off, and has no follow-the-session entry. Settings search indexes the card,
   its switch, the template row, the default-model row, and the reasoning row.
 - **Thinking display mode** uses a menu select with Detailed (default) and
-  Compact. Detailed retains reasoning text; Compact shows only an active
-  thinking indicator and hides finished thought rows. The global preference
+  Compact. Detailed shows reasoning, tools and intermediate text in place
+  without grouping them into a process; Compact groups that work into a
+  process, collapses completed processes, shows only an active thinking
+  indicator, and hides finished thought rows. The global preference
   persists as `thinkingDisplayMode` in host-owned settings; missing values use
   Detailed. It affects presentation only, not model reasoning configuration.
   Settings search indexes the row and both mode names.
@@ -547,7 +560,11 @@ system while preserving their different data ownership:
   project-path grouping behavior follows
   [08-component-spec §18](08-component-spec.md#18-import-destination).
   The Group-by control is the same in-app menu select as the Appearance and
-  Permissions pickers, not a platform-drawn `<select>`.
+  Permissions pickers, not a platform-drawn `<select>`. A Codex archive larger
+  than `CODEX_SCAN_MAX_FILES` (250) is truncated to the newest session files by
+  `YYYY/MM/DD` path date; the workbench shows a localized cap note, and omitted
+  Codex files are not in that candidate list.
+
 - Model configuration: review provider drafts through
   `ModelConfigImportPanel`
   ([08-component-spec §18.5](08-component-spec.md#185-modelconfigimportpanel)).
@@ -578,44 +595,56 @@ system while preserving their different data ownership:
   retained as roots of that same project rather than separate project tabs.
   Chats, project instructions, and project memory are shared by the group.
 - The destination is one workbench (D267), revised by D455 into a one-column
-  list with an in-row inspector. A quiet intro line sits above one toolbar above the workbench. It
-  reuses the same composition, control height, and row rhythm as the agent
-  capability pages (D257) and adds no page-specific chrome.
-  1. **Intro line** — one quiet description line, the same shape as the
-     capability pages' intro. The destination shows no page-level totals: there
-     is no hero block, decorative gradient, counter banner, or inline counter
-     run. The per-group counts on the index header strips are the only totals,
-     so a number is never repeated in two places
-  2. **Toolbar** — one row carrying the Recent/Name sort as the shared
+  list with an in-row inspector, and revised again into an inset grouped index
+  in the iOS sense: the selected row is the header of its own card, so the
+  detail opens under the row and repeats nothing the row already states. One
+  toolbar leads the page and nothing is expanded in it: like the capability and
+  Import destinations, the destination carries no description line, so no
+  sentence sits between the page title and the controls. It reuses the same
+  composition, control height, and row rhythm as the agent capability pages
+  (D257) and adds no page-specific chrome.
+  1. **Toolbar** — one row carrying the Recent/Name sort as the shared
      segmented control, the search field with a clear affordance and a match
-     count while searching, and the primary Add project action right-aligned
-  3. **Workbench** — one column. The always-visible index sections run Pinned,
-     All projects, Archived as non-interactive header strips, each carrying its
+     count while searching, and the primary Add project action right-aligned.
+     The destination shows no page-level totals: there is no hero block,
+     decorative gradient, counter banner, or inline counter run. The per-group
+     counts on the index sections are the only totals, so a number is never
+     repeated in two places
+  2. **Workbench** — one column. The always-visible index sections run Pinned,
+     All projects, Archived as non-interactive header lines, each carrying its
      label and row count. Every section is a labelled region wrapping its own
-     list, so the strip is never a non-list child of a list and each row keeps
-     its group name in the accessibility tree. Selecting a row opens its
-     inspector under that row at full content width. Empty sections are omitted,
-     and an index with no rows renders one quiet empty state instead of the
-     workbench
-- Compact row anatomy: color glyph, project name with one status tag (Active,
-  Open, or Archived), session count, and a relative last-active time. The
-  colored glyph uses Folder for ordinary projects and a filled Star for pinned
-  projects. A click selects the row and keeps Settings open; double-click or
-  Enter activates the project and returns to chat
-- The inspector shows the selected project's name and tags (Active, Open,
-  pinned, Archived), shortened monospace path and branch, Open and New task
-  actions, folders, and chats. The inspector menu groups create/edit actions
-  above pin, archive/restore, and the destructive Close action, and closes on
-  Escape or any outside press
+     list, so the header is never a non-list child of a list and each row keeps
+     its group name in the accessibility tree. Clicking a row opens its card
+     under that row at full content width, and that row's disclosure indicator
+     turns down while the card is open. Empty sections are omitted, and an index
+     with no rows renders one quiet empty state instead of the workbench
+- Row anatomy reads left to right as identity and right to left as detail: the
+  color glyph, the project name with one status tag (Active, Open, or
+  Archived), and the shortened monospace path that tells two same-named
+  projects apart, then the right-aligned session count and relative last-active
+  time, closed by the row's disclosure indicator. The colored glyph uses Folder
+  for ordinary projects and a filled Star for pinned projects. Rows are tiles
+  separated by the row gap, never by rules. The index starts closed: clicking a
+  row opens its card and keeps Settings open, clicking that row again closes the
+  card, and clicking any other row moves the open card to it. The disclosure
+  indicator turns down only while the card is open, so it never claims a closed
+  card is open. Double-click or Enter activates the project and returns to chat
+- The card under the selected row is the detail panel, and it repeats nothing
+  the row already states — no second copy of the name, the path, or the status
+  tag. It opens with an action bar (New task, Open while the project is not the
+  live workspace, and the overflow menu), continues with the read-only folder
+  and branch facts and the sessions count, and ends with the chats themselves.
+  The overflow menu groups create/edit actions above pin, archive/restore, and
+  the destructive Close action, and closes on Escape or any outside press
 - The inspector menu includes Project memory. Its editor is a compact
   viewport-level dialog with a list of editable memory cards. Each card
   supports an optional title, multiline content, and removal; the dialog also
   supports adding entries, shows an empty state, and keeps Cancel/Save
   actions. Saved entries are scoped to that project's path and are available
   in later chats for the project.
-- Project search also matches session titles. Matching a session retains and
-  selects its owning project; the inspector lists matching sessions ordered by
-  latest activity, shows a count and relative update time, and reveals
+- Project search also matches session titles. Matching a session keeps its
+  owning project in the index; opening that project lists the matching sessions
+  ordered by latest activity, shows a count and relative update time, and reveals
   additional rows in batches of eight rather than silently truncating the
   history
 - Activating a project or project session returns to chat; archive and close
@@ -634,8 +663,8 @@ system while preserving their different data ownership:
     `AppSettings.developerMode` value is `true`
   - the developer mode switch unlocks the Open console button, F12 on every
     platform, Ctrl+Shift+I on Windows/Linux, the macOS View-menu developer
-    tools item, and Copy conversation ID / Open session path on the
-    conversation overflow menu
+    tools item, Copy conversation ID / Open session path on the conversation
+    overflow menu, and the Remote Hosts destination on the rail
   - disabling developer mode closes an open console and disables or removes
     every entry point; Settings search indexes the card, switch, and console
     action
@@ -662,6 +691,10 @@ system while preserving their different data ownership:
 - Project archive is indexed by Settings search and is not duplicated as a home
   sidebar destination or standalone global-search page
 - Back to app returns to chat shell from the rail's pinned footer action
+- Developer-only destinations join and leave the rail, the page, and settings
+  search as one unit: while developer mode is off the rail omits the row,
+  settings search returns no hit for it, and an open Remote Hosts page returns
+  to General
 
 ## 4. Acceptance
 
@@ -670,8 +703,10 @@ system while preserving their different data ownership:
    foot on the main sidebar's footer icon line, and exactly General / 常规, AI,
    Shortcuts / 快捷键, Instructions / 指令, Models / 模型, Skills / 技能, MCP,
    Subagents / 子智能体, Import / 导入, Projects / 项目, and Info / 信息 in
-   that order. The rows are grouped under Preferences / 偏好, Agent / 智能体,
-   Workspace / 工作区, and System / 系统. There is no Usage / 用量 destination.
+   that order, with Remote Hosts / 远程主机 between Projects and Info only
+   while developer mode is on. The rows are grouped under Preferences / 偏好,
+   Agent / 智能体, Workspace / 工作区, and System / 系统. There is no
+   Usage / 用量 destination.
 3. Appearance is part of General and has no standalone rail destination
 4. Providers is part of Agent and has no standalone rail destination
 5. Plugins has no Settings destination; the app-shell Plugins page supports
@@ -689,8 +724,12 @@ system while preserving their different data ownership:
 8. Model configuration shows compact Defaults, separate vendor accounts, the
    account edit/add dialogs, and AI service cards rather than a dense always-on
    form dump
-9. Row descriptions use semantic secondary text and maintain at least 4.5:1
-   contrast against their card surface in both light and dark themes
+9. A row's or card heading's explanation is not a permanent second line: it
+   travels as a string into the question mark beside the title, which reveals
+   it on hover and keyboard focus and keeps at least 4.5:1 contrast against its
+   card surface in both light and dark themes. A row's live value (the pinned
+   default model) is data rather than prose and stays visible, and a form
+   field's hint follows the same rule as a row's explanation
 10. Dragging the empty top band from either side of Settings moves the native
    window without blocking Back, search, or navigation controls
 11. Resizing the window expands or contracts the content cards with the
@@ -698,13 +737,13 @@ system while preserving their different data ownership:
     the page does not gain horizontal overflow
 12. Project archive always exposes archived records and can restore them without
     duplicating the index in the app shell
-13. Project archive renders one quiet description line — no hero, banner, or
-    page-level counter run — above one search + sort toolbar and a list +
-    one-column workbench whose index holds the Pinned / All projects / Archived
-    group strips; each strip's count agrees with its rendered rows, a click
-    selects a row without leaving Settings, sorting reorders rows inside every
-    section without hiding any, and clearing the search restores the complete
-    index
+13. Project archive renders no description line — no hero, banner, or page-level
+    counter run — above one search + sort toolbar and a list + one-column
+    workbench whose index holds the Pinned / All projects / Archived section
+    headers; each header's count agrees with its rendered rows, the index starts
+    with nothing expanded and a click opens one row's card without leaving
+    Settings, sorting reorders rows inside every section without hiding any, and
+    clearing the search restores the complete index
 14. Info renders disabled, checking, up-to-date, available, downloading,
     downloaded, and error update states without adding another destination
 15. Native select option lists remain readable in both light and dark themes,

@@ -93,17 +93,30 @@ export class PersistenceOutbox {
           turnId: current.turnId,
         });
       } catch (error) {
-        if (!isDuplicateMessageIdError(error)) {
+        // A duplicate message id means the host already has the row; drop it
+        // and keep draining (D318/#560).
+        if (isDuplicateMessageIdError(error)) {
+          this.logger("warn", "session persistence flush skipped duplicate message id", {
+            key: current.key,
+            data: String(error),
+          });
+        } else if (isPoisonMessageError(error)) {
+          // The host will reject this row forever (provenance / permission
+          // on this message). Drop only this entry and keep draining so one
+          // poisoned head cannot starve later transcript rows (D597).
+          this.logger("warn", "session persistence flush dropped poisoned message", {
+            key: current.key,
+            data: String(error),
+          });
+        } else {
+          // Transient failure (host busy/overloaded/pipe dead). Keep the head
+          // and retry on the next enqueue.
           this.logger("warn", "session persistence flush paused", {
             key: current.key,
             data: String(error),
           });
           return;
         }
-        this.logger("warn", "session persistence flush skipped duplicate message id", {
-          key: current.key,
-          data: String(error),
-        });
       }
       // A newer snapshot may have replaced this key while the host wrote it.
       // Only remove the exact entry acknowledged by that write.
@@ -154,4 +167,15 @@ export class PersistenceOutbox {
 
 function isDuplicateMessageIdError(error: unknown): boolean {
   return /UNIQUE constraint failed: messages\.id/i.test(String(error));
+}
+
+/**
+ * The host will reject this message on every retry. Match the host-core
+ * provenance prefix in the JSON-RPC message body (append maps those failures
+ * as INTERNAL). Do not treat PLUGIN_PERMISSION_DENIED or schema
+ * INVALID_PARAMS as poison — those are a different surface, and serde
+ * failures do not even put INVALID_PARAMS in the message text.
+ */
+function isPoisonMessageError(error: unknown): boolean {
+  return /(?<![A-Z_])PERMISSION_DENIED:/i.test(String(error));
 }

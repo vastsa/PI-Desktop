@@ -9,7 +9,6 @@
   responsive/reduced-motion tail last so it can override what precedes it.
   Reordering these imports changes rendering.
 */
-@import "./fonts.css";
 @import "./tokens.css";
 @import "./base.css";
 @import "./chrome.css";

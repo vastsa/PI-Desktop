@@ -128,7 +128,9 @@ Cross-boundary contracts:
 
 ## 3. Runtime data (not in git)
 
-`PI_DESKTOP_DATA_DIR` overrides the default location.
+`PI_DESKTOP_DATA_DIR` overrides the default location: `~/.pi-desktop` for a
+packaged installation, `~/.pi-desktop-dev` for a development build, which is
+how `pnpm dev` runs beside the packaged app (D599).
 
 ```text
 ~/.pi-desktop/

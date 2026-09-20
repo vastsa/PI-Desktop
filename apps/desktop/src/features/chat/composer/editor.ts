@@ -278,18 +278,19 @@ function buildChipElement(
   chip.dataset.token = token;
   chip.title = reference.path;
   const editableText = isEditableTextReference(reference);
-  chip.setAttribute("role", editableText ? "button" : "listitem");
+  const activate = editableText ? () => onExpandText(token) : undefined;
+  chip.setAttribute("role", activate ? "button" : "listitem");
   chip.setAttribute("aria-label", `${reference.name} — ${reference.path}`);
-  if (editableText) {
+  if (activate) {
     chip.tabIndex = 0;
     chip.dataset.action = "expand-text-reference";
-    chip.addEventListener("click", () => onExpandText(token));
+    chip.addEventListener("click", activate);
     chip.addEventListener("keydown", (event) => {
       if (event.target !== chip) return;
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
       event.stopPropagation();
-      onExpandText(token);
+      activate();
     });
   }
 
@@ -309,6 +310,10 @@ function buildChipElement(
   remove.innerHTML = chipSvg("x", 11);
   // Swallow the mousedown so removing a chip never moves the editable caret.
   remove.addEventListener("mousedown", (event) => event.preventDefault());
+  remove.addEventListener("keydown", (event) => {
+    // Keep native button activation, without bubbling Enter into send.
+    if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+  });
   remove.addEventListener("click", (event) => {
     event.stopPropagation();
     onRemove(token);

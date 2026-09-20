@@ -38,6 +38,11 @@
 
 ## 2. 文件布局
 
+正式打包版把上述目录树放在 `~/.pi-desktop`；开发构建放在 `~/.pi-desktop-dev`，
+因为正式版与 `pnpm dev` 是两个需要同时运行的安装（D599、ADR 0094）。
+`PI_DESKTOP_DATA_DIR` 会整体替换任一默认根目录，并在作为子进程环境变量传给
+host-core 之前被解析为绝对路径。
+
 ```text
 ~/.pi-desktop/
  ├── pi.sqlite            # index database (WAL: + -wal/-shm) — host-core only
@@ -54,11 +59,15 @@
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
  ├── logs/                # NDJSON app/<category>, host/<category>, agent/<category> logs
  ├── cache/               # disposable caches
+ ├── crash-dumps/         # local Crashpad minidumps (never uploaded; D602)
+ ├── crash-dumps.json     # last-reported dump mtime (best-effort marker)
  ├── review-changes/<sessionId>/<snapshotId>/
  │    ├── before          # bounded pre-tool bytes, when reversible
  │    └── meta.json       # path, hashes, diff state, and ownership
  └── scratch/<sessionId>/ # per-session agent temp files (D114), including
                           # composer pasted files under pasted/ — deleted
+                          # with the session; startup sweep removes orphans
+
                           # with the session; startup sweep removes orphans
                           # and stale dirs
 ```
@@ -674,7 +683,16 @@ type Block =
       completedAt?: string; durationMs?: number;
       toolUsage?: ToolTokenUsage }
   | { type: "attachment"; kind: "image" | "file"; name: string;
-      ref: string /* attachments/<sha256> or absolute path */ };
+      ref: string /* attachments/<sha256> or absolute path */ }
+  | { type: "hostedSearch"; status: "searching" | "completed" | "failed";
+      rounds: Array<{ id: string;
+        status: "searching" | "completed" | "failed";
+        kind?: "search" | "openPage" | "findInPage";
+        query?: string; url?: string;
+        sources: Array<{ url: string; title?: string }> }>;
+      replay?: Array<{ type: "hostedSearch"; phase: string;
+        blockId?: string; name?: string; input?: unknown;
+        status?: string; isError?: boolean; wire?: unknown }> };
 ```
 
 - 工具结果存储**截断后**（16 个工具结果限制）；满
@@ -1284,4 +1302,15 @@ UI投影损失
 最新检查点。如果主机调用尚未完成时出现更新的追加快照，outbox 同样保留该快照。
 若 `messages.id` 已属于另一会话，主机在写 JSONL 之前改写为 `{sessionId}:{id}`；
 重放原始 id 对该改写行无操作。outbox 把 `UNIQUE constraint failed: messages.id`
-当作确认并继续排空（D444）。无需存储架构迁移。
+当作确认并继续排空（D444）。带 `PERMISSION_DENIED:` 前缀的永久拒绝同样丢弃该行
+以便 FIFO 继续；`PLUGIN_PERMISSION_DENIED` 和其他宿主失败仍暂停（D597）。
+向已认领的协作投递回合做 steering 是额外的人类输入：必须指向该投递的会话，
+不受投递内容/附件契约约束，不继承投递来源，并清掉客户端带来的
+`session_message`。无需存储架构迁移。
+
+### Provider display order
+
+`kv(ns="app", key="providers.order")` stores an ordered array of provider IDs.
+Host-core owns updates through `providers.reorder`; missing metadata preserves
+creation order, new IDs follow saved IDs, and deleted IDs are ignored. This
+preference does not rewrite provider configuration or require a schema migration.

@@ -170,6 +170,7 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                     supports_images: Some(true),
                     supports_documents: None,
                     available_for_subagents: Some(true),
+                    native_web_search: None,
                 },
                 ModelBinding {
                     id: "plain-model".into(),
@@ -182,6 +183,7 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                     supports_images: None,
                     supports_documents: Some(false),
                     available_for_subagents: None,
+                    native_web_search: None,
                 },
             ]),
             default_model_id: None,
@@ -283,6 +285,7 @@ fn binding_with_alias(id: &str, alias: Option<&str>) -> ModelBinding {
         supports_images: None,
         supports_documents: None,
         available_for_subagents: None,
+        native_web_search: None,
     }
 }
 

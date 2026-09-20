@@ -138,6 +138,7 @@ export function VendorAccountDialog({
             listTitle={t("settings.accountModels")}
             busy={saving}
             onReload={discovery.reload}
+            apiStyle={provider.apiStyle ?? ""}
           />
         </div>
 

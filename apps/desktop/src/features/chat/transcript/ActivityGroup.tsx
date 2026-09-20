@@ -55,12 +55,14 @@ import { ToolRow } from "./ToolRow";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { useAppStore } from "../../../stores/app-store";
 import { resolveThinkingDisplayMode } from "../../../lib/turn-process";
+import { HostedSearchRow } from "./HostedSearchRow";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 type ActivityItem = AssistantActivityItem;
 
 export function activityItemDetail(item: ActivityItem): string {
+  if (item.kind === "hostedSearch") return item.round.query ?? "";
   if (item.kind === "thinking") {
     // Latest thought line, so a collapsed header reads like a live ticker.
     const lines = thinkingText(item.message)
@@ -150,6 +152,8 @@ type ActivityGroupProps = {
   embedded?: boolean;
   isActive: boolean;
   endedAt?: string;
+  /** Last activity chunk of this assistant turn. */
+  isLast?: boolean;
   /** Current runtime wait phase, when the group owns the live turn tail. */
   runtimeActivity?: AgentActivity;
   /** Delegation statuses from the entire assistant turn (cross-activity-part). */
@@ -169,6 +173,9 @@ export function activityItemsEqual(
   if (previous.kind === "tool" && next.kind === "tool") {
     return subagentRunsEqual(previous.delegate, next.delegate);
   }
+  if (previous.kind === "hostedSearch" && next.kind === "hostedSearch") {
+    return previous.round === next.round;
+  }
   return true;
 }
 
@@ -180,6 +187,7 @@ function activityGroupPropsEqual(
     previous.embedded !== next.embedded ||
     previous.isActive !== next.isActive ||
     previous.endedAt !== next.endedAt ||
+    previous.isLast !== next.isLast ||
     previous.runtimeActivity !== next.runtimeActivity ||
     previous.items.length !== next.items.length
   ) {
@@ -206,6 +214,7 @@ export const ActivityGroup = memo(function ActivityGroup({
   embedded = false,
   isActive,
   endedAt,
+  isLast = false,
   runtimeActivity,
   turnDelegationStatuses,
   turnDelegationTimings,
@@ -340,16 +349,33 @@ export const ActivityGroup = memo(function ActivityGroup({
           />
         );
       }
-      return item.kind === "tool" ? (
-        <Fragment key={item.message.id}>
-          <ToolRow
-            message={item.message}
+      const autoOpenLatest =
+        !compact && isLast && itemIndex === items.length - 1;
+      if (item.kind === "tool") {
+        return (
+          <Fragment key={item.message.id}>
+            <ToolRow
+              message={item.message}
+              autoOpen={autoOpenLatest}
+              onUserInteraction={claimDisclosure}
+              {...(item.delegate ? { delegate: item.delegate } : {})}
+            />
+            <ReviewChangeCard message={item.message} />
+          </Fragment>
+        );
+      }
+      if (item.kind === "hostedSearch") {
+        return (
+          <HostedSearchRow
+            key={`hosted-search-${item.message.id}-${item.round.id}`}
+            round={item.round}
+            streaming={isActive && item.message.status === "streaming"}
+            autoOpen={autoOpenLatest}
             onUserInteraction={claimDisclosure}
-            {...(item.delegate ? { delegate: item.delegate } : {})}
           />
-          <ReviewChangeCard message={item.message} />
-        </Fragment>
-      ) : (
+        );
+      }
+      return (
         <ThinkingRow
           key={`thinking-${item.message.id}`}
           message={item.message}
@@ -435,7 +461,7 @@ export const ActivityGroup = memo(function ActivityGroup({
   );
 }, activityGroupPropsEqual);
 
-/** Keep the transcript responsive while the model waits for its first event. */
+/** Keep the running turn visible when no more specific runtime phase is known. */
 export function WorkingIndicator({ startedAt }: { startedAt?: number } = {}) {
   const { t } = useTranslation();
   const [elapsed, setElapsed] = useState(0);

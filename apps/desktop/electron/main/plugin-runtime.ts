@@ -12,7 +12,6 @@ import type { Stats } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { homedir } from "node:os";
 import {
   busTopicAllowed,
   isDeniedFsPath,
@@ -78,6 +77,7 @@ import {
   resolveRealPathWithinRoot,
   resolveWithinRoot,
 } from "@pi-desktop/host-runtime";
+import { desktopDataDir } from "./data-paths";
 import { McpServerClient, type McpServerClientOptions } from "./plugin-mcp";
 import { PluginToolInvocations, type PluginToolInvocation } from "./plugin-tool-invocations";
 import { DevPluginWatcher, type DevPluginWatcherDeps } from "./plugin-watcher";
@@ -4026,11 +4026,16 @@ export class PluginRuntime {
     return result;
   }
 
-  /** Per-plugin data directory. Host-owned; the fs API cannot reach it. */
+  /**
+   * Per-plugin data directory. Host-owned; the fs API cannot reach it.
+   *
+   * Electron main publishes the resolved data directory to
+   * `PI_DESKTOP_DATA_DIR` at boot, so this reads the installation's own root
+   * and a development host never writes plugin data into the packaged
+   * profile's tree (D236).
+   */
   private pluginDataDir(pluginId: string): string {
-    const root = process.env.PI_DESKTOP_DATA_DIR
-      ? resolve(process.env.PI_DESKTOP_DATA_DIR)
-      : join(homedir(), ".pi-desktop");
+    const root = desktopDataDir();
     return join(root, "plugins", "data", pluginId.replace(/[^a-zA-Z0-9._-]/g, "_"));
   }
 

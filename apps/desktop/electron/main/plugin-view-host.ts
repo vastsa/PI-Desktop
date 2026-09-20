@@ -58,7 +58,9 @@ export type PluginViewOpenRequest = {
    * What this view should show, when the opener knows (D320 follow-up).
    *
    * A work-panel view is opened either from the tool launcher, which has no
-   * specific subject, or from a chat file reference, which does. The value is
+   * specific subject, from a chat file reference, which does, or by a plan or
+   * goal approval artifact, whose host-chosen view receives the artifact path
+   * (D452). The value is
    * opaque to the host: it travels as the entry URL's `piViewOpen` query
    * parameter on creation and as the `view:open` event afterwards, and the
    * plugin decides what it means. `pi.browser` uses its own chrome channel

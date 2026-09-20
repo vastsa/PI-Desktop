@@ -346,12 +346,13 @@ Implementation note: Tailwind v4 supports CSS-first configuration. The `@theme` 
 
 The UI stack is user-overridable from Settings → Basics → Appearance
 (ADR 0083). The Font row persists a CSS stack in `AppSettings.fontFamily`;
-an absent or empty value keeps the token stack above. Bundled open-licensed
-families (Geist, Inter, Noto Sans SC, LXGW WenKai — SIL OFL 1.1) ship locally
-under `apps/desktop/src/assets/fonts/` with license texts, and installed
-system families are enumerated by Electron main. Every custom stack appends a
-CJK fallback tier so Chinese text stays readable. The mono stack
-(`--font-mono`) is not user-configurable.
+an absent or empty value keeps the token stack above. The app ships no font
+files (ADR 0298): the picker offers the System default and the installed
+system families enumerated by Electron main, and a stack saved while a
+removed family existed still appears under Saved. Every generated stack ends
+in the system-only CJK fallback tier (`PingFang SC`, `Hiragino Sans GB`,
+`Microsoft YaHei`, `sans-serif`) so Chinese text stays readable. The mono
+stack (`--font-mono`) is not user-configurable.
 
 The Font size row (D343 / ADR 0180) persists an optional multiplier in
 `AppSettings.fontScale` (default 1, range 0.8–1.5). The renderer sets
@@ -660,7 +661,7 @@ and give plain tool blocks a fill in light only.
 | Selection (theme, language, level) | Deeper tint or raised pill plus the existing check mark; no selected border |
 | Floating layers (menus, popovers, dialogs, tooltips, toasts, hover cards) | `0 0 0 0.5px border-default` + shadow on the container; no rules inside |
 | Focus rings | accent tint, 2px box-shadow |
-| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition. The work-panel divider paints a 50% accent tint on hover and while dragging (roughly 5.3:1 dark, 3.3:1 light); the solid accent is reserved for keyboard focus |
+| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition. The sidebar and work-panel dividers paint a 32px centered grip on direct hover/focus, not a full-height rail; keyboard focus and an in-progress drag use the solid accent |
 
 ## 7. Iconography
 
@@ -922,13 +923,18 @@ The composer renders only controls connected to the active pi session:
   trigger shows a Bot icon, the current model, and reasoning level; `off` omits
   the level text. Its single `role="menu"`
   popover opens above the trigger at `bottom: calc(100% + 8px)` and starts with
-  exactly two current-value entries. Each entry replaces the menu contents
-  in-place with a back row and its submenu. The Model submenu contains search
-  plus sticky provider groups. Each model row begins at one tab stop beneath
-  its provider heading, making the provider → model hierarchy legible without
-  altering the model label. The Reasoning submenu contains only the selected
-  provider's real `supportedThinkingLevels` with a selected-row check. Selecting
-  either value returns to the root without dismissing the popover.
+  exactly two current-value entries. When the menu lists more than one
+  level (`omit` plus the binding's enabled canonical levels), a drag slider
+  sits directly beneath the Reasoning level entry; slider and tick commits
+  apply without leaving the root. Tick labels are not tab stops — the range
+  input is the accessible control. Each entry replaces
+  the menu contents in-place with a back row and its submenu. The Model
+  submenu contains search plus sticky provider groups. Each model row begins
+  at one tab stop beneath its provider heading, making the provider → model
+  hierarchy legible without altering the model label. The Reasoning submenu
+  lists `omit` then the enabled levels as radio rows with a selected-row
+  check; selecting from the list returns to the root without dismissing the
+  popover.
 - While the active session is running, the draft and runtime controls stay
   editable as next-turn choices; only Send is disabled. Host configuration
   remains pinned for the in-flight turn and the latest queued choice is
@@ -1308,11 +1314,17 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
   is embedded in Settings with no duplicate page title or outer page padding;
   the earlier standalone Projects destination and card grid (D042) are
   superseded by D133. Per D267 the destination is composed exactly like the
-  agent capability pages (D257): a quiet description-only intro line, one
-  toolbar (sort segment, search, primary action), and one elevated panel whose
-  Pinned / All projects / Archived groups are in-panel header strips carrying
-  the only counts on the page. It has no hero block, no decorative gradient,
-  and no page-level counter run
+  agent capability pages (D257): one toolbar (sort segment, search, primary
+  action) and one index whose
+  Pinned / All projects / Archived groups are plain section header lines
+  carrying the only counts on the page. Per D455 it stays one column with no
+  side-by-side
+  pane, and the index is an inset grouped list in the iOS sense: each row reads
+  left to right as identity (glyph, name, status tag, path) and right to left as
+  detail (session count, last active, disclosure indicator), and the selected
+  row is the header of the card that opens under it — so the detail repeats no
+  name, path, or tag. It has no hero block, no decorative gradient, and no
+  page-level counter run
 - **Settings**: full-page Codex shell per D063/D090/D133/D166 (275px compact
   navigation rail sharing the main sidebar material, elevated content cards, Back to app);
   per D092, the content cards fill the pane width available from the current

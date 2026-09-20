@@ -2,15 +2,12 @@
  * Settings destination for paired remote `pi-host` machines (R2b pairing UX,
  * ADR 0286 §Registry).
  *
- * List every host stored in `<dataDir>/remote-hosts.json`, show its live
- * connection state, and offer a compact form to pair a new one with a URL +
- * pairing token issued by the target `pi-host`. The renderer never sees a
- * device token — pairing exchange and encrypted persistence stay inside
- * Electron main.
- *
- * Cards run from the common path to the advanced one: install over SSH first,
- * pairing a URL + token by hand last. A password typed into the SSH form lives
- * in this component's state only; it is never persisted or logged here.
+ * Inventory of `<dataDir>/remote-hosts.json` plus one Add form: SSH install
+ * first, URL + pairing token second. Instructional copy stays out of the
+ * renderer. The destination is marked Experimental on the settings rail and
+ * page title; pairing and SSH bootstrap still call the same IPC. A password
+ * typed into the SSH form lives in this component's state only; it is never
+ * persisted or logged here.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,7 +15,8 @@ import type { RemoteHostSshAuth, RemoteHostSummary } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
 import { Badge, Button, Field, Input, PasswordInput, cx } from "../ui";
-import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
+
+type AddMode = "ssh" | "pair";
 
 type PairForm = {
   url: string;
@@ -58,6 +56,7 @@ export function RemoteHostsPage() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [sshForm, setSshForm] = useState<SshForm>(EMPTY_SSH_FORM);
   const [installing, setInstalling] = useState(false);
+  const [addMode, setAddMode] = useState<AddMode>("ssh");
 
   const refresh = useCallback(async () => {
     try {
@@ -170,319 +169,308 @@ export function RemoteHostsPage() {
     },
     [sshForm, refresh, showToast, t],
   );
-
+  const busy = installing || pairing;
   const sshSubmitDisabled =
     installing ||
     !sshForm.host.trim() ||
     !sshForm.label.trim() ||
     (sshForm.auth === "password" && sshForm.password === "");
+  const pairSubmitDisabled =
+    pairing || !form.url.trim() || !form.pairingToken.trim() || !form.label.trim();
 
   return (
     <div className="settings-stack">
-      <SettingsCard title={t("settings.remoteHosts.listTitle")}>
-        <div className="settings-row-copy" role="note">
-          <div className="settings-row-desc">
-            {t("settings.remoteHosts.overview")}
-          </div>
-        </div>
+      <div
+        className="settings-remote-host-list"
+        role="list"
+        aria-busy={hosts === null || removing !== null}
+      >
         {error ? (
-          <SettingsRow title={t("settings.remoteHosts.listError")}>
-            <span className="text-text-muted">{error}</span>
-          </SettingsRow>
-        ) : null}
-        {hosts === null ? (
-          <SettingsRow title={t("settings.remoteHosts.loading")}>
-            <span aria-hidden="true">…</span>
-          </SettingsRow>
+          <div className="settings-remote-host-empty" role="alert">
+            {t("settings.remoteHosts.listError")}
+            <span className="settings-remote-host-empty-detail">{error}</span>
+          </div>
+        ) : hosts === null ? (
+          <div className="settings-remote-host-empty" role="status">
+            {t("settings.remoteHosts.loading")}
+          </div>
         ) : hosts.length === 0 ? (
-          <SettingsRow title={t("settings.remoteHosts.emptyTitle")}>
-            <span className="text-text-muted">{t("settings.remoteHosts.emptyBody")}</span>
-          </SettingsRow>
+          <div className="settings-remote-host-empty" role="status">
+            {t("settings.remoteHosts.empty")}
+          </div>
         ) : (
           hosts.map((host) => (
-            <SettingsRow
-              key={host.hostKey}
-              title={host.label}
-              description={
-                <span className="font-mono text-xs-plus text-text-muted">
-                  {host.transport === "ssh"
-                    ? `${t("settings.remoteHosts.transportSsh")} · `
-                    : ""}
-                  {host.url}
-                </span>
-              }
-            >
+            <article key={host.hostKey} className="settings-remote-host-card" role="listitem">
               <span
-                className="settings-remote-host-status"
-                role="status"
-                aria-live="polite"
-              >
+                className={cx(
+                  "settings-remote-host-pulse",
+                  host.connected && "is-online",
+                )}
+                aria-hidden="true"
+              />
+              <div className="settings-remote-host-copy">
+                <div className="settings-remote-host-name">{host.label}</div>
+                <div className="settings-remote-host-meta">
+                  {host.transport === "ssh"
+                    ? `${t("settings.remoteHosts.transportSsh")} · ${host.url}`
+                    : host.url}
+                </div>
+              </div>
+              <span className="settings-remote-host-card-actions">
                 <Badge tone={host.connected ? "success" : "neutral"}>
                   {host.connected
                     ? t("settings.remoteHosts.statusOnline")
                     : t("settings.remoteHosts.statusOffline")}
                 </Badge>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  disabled={removing === host.hostKey}
+                  onClick={() => void remove(host)}
+                >
+                  {removing === host.hostKey
+                    ? t("settings.remoteHosts.removing")
+                    : t("settings.remoteHosts.remove")}
+                </Button>
               </span>
-              <Button
-                variant="ghost"
-                type="button"
-                disabled={removing === host.hostKey}
-                onClick={() => void remove(host)}
-              >
-                {removing === host.hostKey
-                  ? t("settings.remoteHosts.removing")
-                  : t("settings.remoteHosts.remove")}
-              </Button>
-            </SettingsRow>
+            </article>
           ))
         )}
-      </SettingsCard>
+      </div>
 
-      <SettingsCard title={t("settings.remoteHosts.sshTitle")}>
-        <div className="settings-row-copy" role="note">
-          <div className="settings-row-desc">{t("settings.remoteHosts.sshBody")}</div>
+      <section className="settings-card-block">
+        <div className="settings-card-heading-row settings-remote-host-add-heading">
+          <h3 className="settings-card-heading">{t("settings.remoteHosts.addTitle")}</h3>
+          <div
+            className="settings-segment"
+            role="tablist"
+            aria-label={t("settings.remoteHosts.addTitle")}
+          >
+            {(["ssh", "pair"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                role="tab"
+                id={`remote-host-add-${mode}`}
+                aria-selected={addMode === mode}
+                aria-controls={`remote-host-add-panel-${mode}`}
+                className={cx("settings-segment-item", addMode === mode && "active")}
+                disabled={busy}
+                onClick={() => setAddMode(mode)}
+              >
+                {mode === "ssh"
+                  ? t("settings.remoteHosts.addSsh")
+                  : t("settings.remoteHosts.addPair")}
+              </button>
+            ))}
+          </div>
         </div>
-        <form onSubmit={submitSsh} className="settings-remote-host-form">
-          <div className="settings-remote-host-form-row">
-            <Field
-              label={t("settings.remoteHosts.fieldLabel")}
-              hint={t("settings.remoteHosts.fieldLabelDesc")}
-            >
-              <Input
-                value={sshForm.label}
-                onChange={(event) =>
-                  setSshForm((prev) => ({ ...prev, label: event.target.value }))
-                }
-                placeholder={t("settings.remoteHosts.fieldLabelPlaceholder")}
-                aria-label={t("settings.remoteHosts.fieldLabel")}
-                autoComplete="off"
-                spellCheck={false}
-                disabled={installing}
-              />
-            </Field>
-            <Field
-              label={t("settings.remoteHosts.sshHost")}
-              hint={t("settings.remoteHosts.sshHostDesc")}
-            >
-              <Input
-                value={sshForm.host}
-                onChange={(event) =>
-                  setSshForm((prev) => ({ ...prev, host: event.target.value }))
-                }
-                placeholder={t("settings.remoteHosts.sshHostPlaceholder")}
-                aria-label={t("settings.remoteHosts.sshHost")}
-                autoComplete="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                disabled={installing}
-              />
-            </Field>
-          </div>
-
-          <div className="settings-remote-host-form-row is-narrow-port">
-            <Field
-              label={t("settings.remoteHosts.sshUser")}
-              hint={t("settings.remoteHosts.sshUserDesc")}
-            >
-              <Input
-                value={sshForm.user}
-                onChange={(event) =>
-                  setSshForm((prev) => ({ ...prev, user: event.target.value }))
-                }
-                aria-label={t("settings.remoteHosts.sshUser")}
-                autoComplete="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                disabled={installing}
-              />
-            </Field>
-            <Field
-              label={t("settings.remoteHosts.sshPort")}
-              hint={t("settings.remoteHosts.sshPortDesc")}
-            >
-              <Input
-                value={sshForm.port}
-                onChange={(event) =>
-                  setSshForm((prev) => ({ ...prev, port: event.target.value }))
-                }
-                aria-label={t("settings.remoteHosts.sshPort")}
-                inputMode="numeric"
-                autoComplete="off"
-                spellCheck={false}
-                disabled={installing}
-              />
-            </Field>
-          </div>
-
-          <div className="settings-remote-host-form-auth">
-            <div
-              className="text-sm text-text-secondary"
-              id="settings-remote-host-auth-label"
-            >
-              {t("settings.remoteHosts.sshAuthMode")}
-            </div>
-            <div
-              className="settings-segment"
-              role="radiogroup"
-              aria-labelledby="settings-remote-host-auth-label"
-              aria-describedby="settings-remote-host-auth-desc"
-            >
-              {(["key", "password"] as const).map((auth) => (
-                <button
-                  key={auth}
-                  type="button"
-                  role="radio"
-                  className={cx(
-                    "settings-segment-item",
-                    sshForm.auth === auth && "active",
-                  )}
-                  aria-checked={sshForm.auth === auth}
-                  aria-pressed={sshForm.auth === auth}
+        <div className="settings-panel">
+          <form
+            id="remote-host-add-panel-ssh"
+            role="tabpanel"
+            aria-labelledby="remote-host-add-ssh"
+            hidden={addMode !== "ssh"}
+            className="settings-remote-host-form settings-remote-host-add-panel"
+            onSubmit={submitSsh}
+          >
+            <div className="settings-remote-host-form-row">
+              <Field label={t("settings.remoteHosts.fieldLabel")}>
+                <Input
+                  value={sshForm.label}
+                  onChange={(event) =>
+                    setSshForm((prev) => ({ ...prev, label: event.target.value }))
+                  }
+                  placeholder={t("settings.remoteHosts.fieldLabelPlaceholder")}
+                  aria-label={t("settings.remoteHosts.fieldLabel")}
+                  autoComplete="off"
+                  spellCheck={false}
                   disabled={installing}
-                  onClick={() => selectSshAuth(auth)}
-                >
-                  {auth === "key"
-                    ? t("settings.remoteHosts.sshAuthKey")
-                    : t("settings.remoteHosts.sshAuthPassword")}
-                </button>
-              ))}
+                />
+              </Field>
+              <Field label={t("settings.remoteHosts.sshHost")}>
+                <Input
+                  value={sshForm.host}
+                  onChange={(event) =>
+                    setSshForm((prev) => ({ ...prev, host: event.target.value }))
+                  }
+                  placeholder={t("settings.remoteHosts.sshHostPlaceholder")}
+                  aria-label={t("settings.remoteHosts.sshHost")}
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  disabled={installing}
+                />
+              </Field>
             </div>
-            <div
-              className="text-xs text-text-muted"
-              id="settings-remote-host-auth-desc"
-            >
-              {t("settings.remoteHosts.sshAuthModeDesc")}
-            </div>
-          </div>
 
-          {sshForm.auth === "key" ? (
-            <Field
-              label={t("settings.remoteHosts.sshIdentityFile")}
-              hint={t("settings.remoteHosts.sshIdentityFileDesc")}
-            >
+            <div className="settings-remote-host-form-row is-narrow-port">
+              <Field label={t("settings.remoteHosts.sshUser")}>
+                <Input
+                  value={sshForm.user}
+                  onChange={(event) =>
+                    setSshForm((prev) => ({ ...prev, user: event.target.value }))
+                  }
+                  aria-label={t("settings.remoteHosts.sshUser")}
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  disabled={installing}
+                />
+              </Field>
+              <Field label={t("settings.remoteHosts.sshPort")}>
+                <Input
+                  value={sshForm.port}
+                  onChange={(event) =>
+                    setSshForm((prev) => ({ ...prev, port: event.target.value }))
+                  }
+                  aria-label={t("settings.remoteHosts.sshPort")}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={installing}
+                />
+              </Field>
+            </div>
+
+            <div className="settings-remote-host-form-auth">
+              <div
+                className="text-sm text-text-secondary"
+                id="settings-remote-host-auth-label"
+              >
+                {t("settings.remoteHosts.sshAuthMode")}
+              </div>
+              <div
+                className="settings-segment"
+                role="radiogroup"
+                aria-labelledby="settings-remote-host-auth-label"
+              >
+                {(["key", "password"] as const).map((auth) => (
+                  <button
+                    key={auth}
+                    type="button"
+                    role="radio"
+                    className={cx(
+                      "settings-segment-item",
+                      sshForm.auth === auth && "active",
+                    )}
+                    aria-checked={sshForm.auth === auth}
+                    aria-pressed={sshForm.auth === auth}
+                    disabled={installing}
+                    onClick={() => selectSshAuth(auth)}
+                  >
+                    {auth === "key"
+                      ? t("settings.remoteHosts.sshAuthKey")
+                      : t("settings.remoteHosts.sshAuthPassword")}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {sshForm.auth === "key" ? (
+              <Field label={t("settings.remoteHosts.sshIdentityFile")}>
+                <Input
+                  value={sshForm.identityFile}
+                  onChange={(event) =>
+                    setSshForm((prev) => ({ ...prev, identityFile: event.target.value }))
+                  }
+                  aria-label={t("settings.remoteHosts.sshIdentityFile")}
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  disabled={installing}
+                />
+              </Field>
+            ) : (
+              <Field label={t("settings.remoteHosts.sshPassword")}>
+                <PasswordInput
+                  value={sshForm.password}
+                  onChange={(event) =>
+                    setSshForm((prev) => ({ ...prev, password: event.target.value }))
+                  }
+                  placeholder={t("settings.remoteHosts.sshPasswordPlaceholder")}
+                  aria-label={t("settings.remoteHosts.sshPassword")}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={installing}
+                  showLabel={t("settings.remoteHosts.sshShowPassword")}
+                  hideLabel={t("settings.remoteHosts.sshHidePassword")}
+                />
+              </Field>
+            )}
+
+            <div className="settings-remote-host-form-actions">
+              <Button type="submit" variant="primary" disabled={sshSubmitDisabled}>
+                {installing
+                  ? t("settings.remoteHosts.sshRunning")
+                  : t("settings.remoteHosts.sshAction")}
+              </Button>
+            </div>
+          </form>
+
+          <form
+            id="remote-host-add-panel-pair"
+            role="tabpanel"
+            aria-labelledby="remote-host-add-pair"
+            hidden={addMode !== "pair"}
+            className="settings-remote-host-form settings-remote-host-add-panel"
+            onSubmit={submit}
+          >
+            <div className="settings-remote-host-form-row">
+              <Field label={t("settings.remoteHosts.fieldLabel")}>
+                <Input
+                  value={form.label}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, label: event.target.value }))
+                  }
+                  placeholder={t("settings.remoteHosts.fieldLabelPlaceholder")}
+                  aria-label={t("settings.remoteHosts.fieldLabel")}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={pairing}
+                />
+              </Field>
+              <Field label={t("settings.remoteHosts.fieldUrl")}>
+                <Input
+                  value={form.url}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, url: event.target.value }))
+                  }
+                  placeholder={t("settings.remoteHosts.fieldUrlPlaceholder")}
+                  aria-label={t("settings.remoteHosts.fieldUrl")}
+                  inputMode="url"
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  disabled={pairing}
+                />
+              </Field>
+            </div>
+            <Field label={t("settings.remoteHosts.fieldPairingToken")}>
               <Input
-                value={sshForm.identityFile}
+                value={form.pairingToken}
                 onChange={(event) =>
-                  setSshForm((prev) => ({ ...prev, identityFile: event.target.value }))
+                  setForm((prev) => ({ ...prev, pairingToken: event.target.value }))
                 }
-                aria-label={t("settings.remoteHosts.sshIdentityFile")}
+                placeholder={t("settings.remoteHosts.fieldPairingTokenPlaceholder")}
+                aria-label={t("settings.remoteHosts.fieldPairingToken")}
                 autoComplete="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                disabled={installing}
+                type="password"
+                disabled={pairing}
               />
             </Field>
-          ) : (
-            <Field
-              label={t("settings.remoteHosts.sshPassword")}
-              hint={`${t("settings.remoteHosts.sshPasswordDesc")} ${t(
-                "settings.remoteHosts.sshPasswordStored",
-              )}`}
-            >
-              <PasswordInput
-                value={sshForm.password}
-                onChange={(event) =>
-                  setSshForm((prev) => ({ ...prev, password: event.target.value }))
-                }
-                placeholder={t("settings.remoteHosts.sshPasswordPlaceholder")}
-                aria-label={t("settings.remoteHosts.sshPassword")}
-                autoComplete="off"
-                spellCheck={false}
-                disabled={installing}
-                showLabel={t("settings.remoteHosts.sshShowPassword")}
-                hideLabel={t("settings.remoteHosts.sshHidePassword")}
-              />
-            </Field>
-          )}
-
-          <div className="settings-remote-host-form-actions">
-            <span className="text-xs text-text-muted">
-              {t("settings.remoteHosts.sshActionHint")}
-            </span>
-            <Button type="submit" variant="primary" disabled={sshSubmitDisabled}>
-              {installing
-                ? t("settings.remoteHosts.sshRunning")
-                : t("settings.remoteHosts.sshAction")}
-            </Button>
-          </div>
-        </form>
-      </SettingsCard>
-
-      <SettingsCard title={t("settings.remoteHosts.pairTitle")}>
-        <div className="settings-row-copy" role="note">
-          <div className="settings-row-desc">{t("settings.remoteHosts.pairBody")}</div>
+            <div className="settings-remote-host-form-actions">
+              <Button type="submit" variant="primary" disabled={pairSubmitDisabled}>
+                {pairing
+                  ? t("settings.remoteHosts.pairing")
+                  : t("settings.remoteHosts.pair")}
+              </Button>
+            </div>
+          </form>
         </div>
-        <form onSubmit={submit}>
-          <SettingsRow
-            title={t("settings.remoteHosts.fieldLabel")}
-            description={t("settings.remoteHosts.fieldLabelDesc")}
-          >
-            <Input
-              value={form.label}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, label: event.target.value }))
-              }
-              placeholder={t("settings.remoteHosts.fieldLabelPlaceholder")}
-              aria-label={t("settings.remoteHosts.fieldLabel")}
-              autoComplete="off"
-              spellCheck={false}
-              disabled={pairing}
-            />
-          </SettingsRow>
-          <SettingsRow
-            title={t("settings.remoteHosts.fieldUrl")}
-            description={t("settings.remoteHosts.fieldUrlDesc")}
-          >
-            <Input
-              value={form.url}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, url: event.target.value }))
-              }
-              placeholder="ws://127.0.0.1:9443/racp"
-              aria-label={t("settings.remoteHosts.fieldUrl")}
-              inputMode="url"
-              autoComplete="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              disabled={pairing}
-            />
-          </SettingsRow>
-          <SettingsRow
-            title={t("settings.remoteHosts.fieldPairingToken")}
-            description={t("settings.remoteHosts.fieldPairingTokenDesc")}
-          >
-            <Input
-              value={form.pairingToken}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, pairingToken: event.target.value }))
-              }
-              placeholder="ppt1.…"
-              aria-label={t("settings.remoteHosts.fieldPairingToken")}
-              autoComplete="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              type="password"
-              disabled={pairing}
-            />
-          </SettingsRow>
-          <SettingsRow title={t("settings.remoteHosts.pairAction")}>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={
-                pairing ||
-                !form.url.trim() ||
-                !form.pairingToken.trim() ||
-                !form.label.trim()
-              }
-            >
-              {pairing
-                ? t("settings.remoteHosts.pairing")
-                : t("settings.remoteHosts.pair")}
-            </Button>
-          </SettingsRow>
-        </form>
-      </SettingsCard>
+      </section>
     </div>
   );
 }

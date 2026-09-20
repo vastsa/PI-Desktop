@@ -88,7 +88,6 @@ export function AppShell() {
     if (page === "settings") {
       shell = (
         <>
-          <WindowControls />
           <Suspense fallback={<RoutePending />}>
             <SettingsPage />
           </Suspense>
@@ -144,13 +143,11 @@ export function AppShell() {
                 </TooltipButton>
               )}
               <div className="window-chrome-drag" aria-hidden />
-              <WindowControls contained />
             </div>
           )}
 
           {!workPanelMaximized && (
           <section className="main-pane">
-            <WindowControls contained />
             {page === "chat" ? (
               <ConversationTopbar
                 sidebarCollapsed={sidebarCollapsed}
@@ -311,6 +308,8 @@ export function AppShell() {
     >
       <div className="app-scenic-backdrop" aria-hidden />
       {shell}
+      {/* Outside pane stacking; skip splash so the band cannot cover boot chrome. */}
+      {ready && !showSplash && <WindowControls />}
       <ProjectCreateDialog />
       {splash}
     </div>

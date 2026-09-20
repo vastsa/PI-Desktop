@@ -99,7 +99,7 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
           },
           "defaultThinkingLevel": {
             "type": ["string", "null"],
-            "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", null]
+            "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", "omit", null]
           },
           "supportsImages": { "type": ["boolean", "null"] },
           "supportsDocuments": { "type": ["boolean", "null"] },
@@ -406,6 +406,7 @@ change for the raw snapshot.
 ## 6. IPC / host methods (provider domain)
 
 - `providers.list`
+- `providers.reorder`
 - `providers.get`
 - `providers.create`
 - `providers.update`
@@ -457,6 +458,22 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
 - `ProviderPublic` excludes raw secrets; includes `hasSecret: boolean` (true
   for **either** credential), `hasOauth: boolean`, the non-secret
   `oauthAccountLabel?: string`, and optional `headers?: Record<string, string>`
+
+### `providers.reorder`
+- in: `{ id: string, targetId: string, placement: "before" | "after" }`
+- out: `{ ok: true }`
+- Atomically move the source relative to the target in the current host list.
+  A missing source/target or invalid placement returns `INVALID_PARAMS` without
+  writing. Moving to the current position is a successful no-op.
+- Persist ordered provider IDs in `kv` at `providers.order`. `providers.list`
+  applies that order before returning rows; absent metadata preserves creation
+  order. New providers follow saved rows in creation order, deleted IDs are
+  ignored, and disabled rows keep their relative position when filtered out.
+- This is a display preference, including for plugin-owned rows. Provider
+  configuration, credentials, enabled state, timestamps and the default model
+  remain unchanged. Plugin configuration write restrictions still apply.
+- Uses the existing `kv` extension boundary; no database migration or protocol
+  version bump. Older applications ignore this metadata.
 
 ### `providers.create` / `providers.update`
 - in: provider fields + optional `secretValue` + optional `oauthAccountLabel`

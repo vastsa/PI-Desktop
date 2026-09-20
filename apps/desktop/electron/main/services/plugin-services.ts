@@ -1,5 +1,4 @@
 import { dialog, globalShortcut, shell, type BrowserWindow } from "electron";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   IPC,
@@ -572,10 +571,7 @@ export function createPluginServices({
     },
     getScratchDir: (sessionId) => {
       if (!sessionId) return null;
-      const root =
-        process.env.PI_DESKTOP_DATA_DIR?.trim() ||
-        join(homedir(), ".pi-desktop");
-      return join(root, "scratch", sessionId);
+      return join(dataDir, "scratch", sessionId);
     },
     onState: emitBrowserState,
   });

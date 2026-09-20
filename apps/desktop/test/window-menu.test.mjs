@@ -165,15 +165,8 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   assert.match(controlsSource, /windowControl\("getState"\)/);
   assert.match(controlsSource, /ariaLabel=\{t\("window\.minimize"/);
   assert.match(controlsSource, /ariaLabel=\{t\("window\.close"/);
-  assert.match(controlsSource, /window-controls-in-pane/);
-  assert.match(
-    appSource,
-    /<section className="main-pane">[\s\S]*?<WindowControls contained \/>/,
-  );
-  assert.match(
-    stylesSource,
-    /\.window-controls\.window-controls-in-pane\s*\{[^}]*position:\s*fixed;/s,
-  );
+  assert.equal((appSource.match(/<WindowControls\s*\/>/g) ?? []).length, 1);
+  assert.match(appSource, /\{shell\}[\s\S]*?\{ready && !showSplash && <WindowControls \/>\}/);
   assert.match(
     stylesSource,
     /\.window-control-btn\s*\{[^}]*-webkit-app-region:\s*no-drag;[^}]*pointer-events:\s*auto;/s,

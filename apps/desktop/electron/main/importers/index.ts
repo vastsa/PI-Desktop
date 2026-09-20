@@ -1,5 +1,5 @@
 import { claudeImporter } from "./claude";
-import { codexImporter } from "./codex";
+import { CODEX_SCAN_MAX_FILES, codexImporter, scanCodexSessionsResult } from "./codex";
 import { opencodeImporter } from "./opencode";
 import { piImporter } from "./pi";
 import type {
@@ -19,19 +19,29 @@ const importers: SessionImporter[] = [
   piImporter,
 ];
 
-export async function scanAllSources(): Promise<ExternalSessionSummary[]> {
+export async function scanAllSources(): Promise<{
+  sessions: ExternalSessionSummary[];
+  truncated: Partial<Record<ExternalSource, number>>;
+}> {
+  const truncated: Partial<Record<ExternalSource, number>> = {};
   const results = await Promise.all(
     importers.map(async (imp) => {
       try {
+        if (imp.source === "codex") {
+          const result = await scanCodexSessionsResult();
+          if (result.truncated) truncated.codex = CODEX_SCAN_MAX_FILES;
+          return result.sessions;
+        }
         return await imp.scan();
       } catch {
         return [];
       }
     }),
   );
-  return results
-    .flat()
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  return {
+    sessions: results.flat().sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
+    truncated,
+  };
 }
 
 export async function convertSession(
@@ -41,3 +51,4 @@ export async function convertSession(
   if (!importer) throw new Error(`unknown import source: ${summary.source}`);
   return importer.convert(summary);
 }
+

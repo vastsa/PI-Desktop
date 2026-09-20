@@ -2,17 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const {
+  FILE_MANAGER_PLUGIN_TAB,
   activateWorkPanelTabState,
   browserPluginTab,
   closeWorkPanelTabState,
   emptyWorkPanelContext,
   fileWorkPanelTab,
+  hasPluginView,
   isKnownWorkPanelTab,
   isToolWorkPanelTab,
   normalizeWorkPanelFilePath,
   newWorkPanelTab,
   openWorkPanelTabState,
   pluginWorkPanelTab,
+  preferredFileWorkPanelTab,
   replaceWorkPanelTabState,
   sanitizeWorkPanelTabsState,
   switchWorkPanelContextState,
@@ -137,6 +140,30 @@ test("only plugin views are launchable tools", () => {
   assert.equal(isToolWorkPanelTab(pluginWorkPanelTab("pi.file-manager", "manager")), true);
   assert.equal(isKnownWorkPanelTab({ id: "browser", kind: "browser" }), false);
   assert.equal(isKnownWorkPanelTab(newWorkPanelTab()), true);
+});
+
+test("a host-chosen project file prefers the bundled file view", () => {
+  // A plan or goal artifact is project markdown the host opens for the user, so
+  // it lands in the same view the user's own file work uses. The bundle is
+  // never required: without that view the host file tab remains.
+  const fileView = { pluginId: "pi.file-manager", viewId: "manager" };
+  const openedInView = preferredFileWorkPanelTab("plans/plan.md", [fileView]);
+
+  assert.equal(hasPluginView([fileView], FILE_MANAGER_PLUGIN_TAB), true);
+  assert.equal(
+    hasPluginView(
+      [{ pluginId: "pi.browser", viewId: "browser" }],
+      FILE_MANAGER_PLUGIN_TAB,
+    ),
+    false,
+  );
+  assert.equal(openedInView.kind, "plugin");
+  assert.equal(openedInView.id, "plugin:pi.file-manager/manager");
+  assert.equal(openedInView.location, "plans/plan.md");
+  assert.deepEqual(
+    preferredFileWorkPanelTab("plans/plan.md", []),
+    fileWorkPanelTab("plans/plan.md"),
+  );
 });
 
 test("empty work panel context has no visible or retained resource state", () => {

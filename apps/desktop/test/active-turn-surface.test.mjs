@@ -49,7 +49,7 @@ test("active turns show immediate and phase-specific feedback without a progress
   assert.match(transcript, /\{showPlanning \? <PlanningIndicator kind=\{planningKind\} \/> : null\}/);
   assert.match(
     transcript,
-    /planningState === "planning"[\s\S]*!activeToolGroup[\s\S]*!assistantIsAnswering/,
+    /planningState === "planning"[\s\S]*!hasSpecializedActivity/,
   );
   const planningBlock =
     transcript.match(/function PlanningIndicator\([\s\S]*?\n\}/)?.[0] ?? "";

@@ -74,6 +74,32 @@ entitled to it.
 - A custom model ID is always accepted, so a gateway without a `/models` route
   stays usable.
 
+### Settings: selected model order
+
+The AI service and OAuth vendor-account editors share the selected-model pane.
+Each selected row has a dedicated reorder handle: drag it before or after
+another visible row, or focus it and press the Up or Down arrow key to move it
+past the neighboring visible row. Reordering is disabled while the form is
+busy or fewer than two selected rows are visible. Dragging text still selects
+it for copying; checkbox, Advanced, and Remove actions keep their existing
+behavior and do not start a reorder.
+
+The complete `models` binding array owns the order. Filtering only hides rows:
+a move inserts the existing binding before or after the visible target in that
+complete array, preserving hidden bindings and their relative order. Model IDs,
+aliases, and advanced overrides travel with their bindings. A canceled drag or
+a drop outside a selected row does not change the draft.
+
+Saving persists the new order through the existing provider update flow, and
+reopening either editor displays it again. Canceling the editor discards its
+unsaved order. The provider's compatibility `defaultModelId` still mirrors the
+first binding on save, so moving a model to the head changes that provider
+default. When the edited service or account is the app's default provider,
+saving also synchronizes the app-level default model to that first binding,
+as the existing save flow does. The app default is unchanged when editing
+another provider, and an explicitly bound session keeps its stored model
+choice. No storage schema or IPC contract changes are required.
+
 ### Discovery precedence
 
 `providers.listModels` resolves in this order, and the order is load-bearing:
@@ -169,18 +195,22 @@ resolves to `off`.
 
 For a newly created session, the renderer resolves the selected (or app-default)
 model's `ModelBinding`. A reasoning model starts at that binding's
-`defaultThinkingLevel`, clamped onto the enabled levels. When the default is
-unset it falls back to the highest enabled level seeded from published
-`supportedThinkingLevels`. A non-reasoning or unknown model starts at `off`
-until the user enables a non-`off` level. This is a creation default only and
-never rewrites an existing session's stored choice.
+`defaultThinkingLevel` (`omit` is preserved; other values are clamped onto the
+enabled levels). When the default is unset it falls back to the highest enabled
+level seeded from published `supportedThinkingLevels`. A non-reasoning or
+unknown model starts at `off` until the user enables a non-`off` level. This is
+a creation default only and never rewrites an existing session's stored choice.
 
 Unpinned sessions still advertise that inherited default model's reasoning
 capability on session list/get/create/fork/configure. Enrichment does not pin
-`providerId`/`modelId`. The Composer never treats a `supportsReasoning: false`
-or empty thinking-level snapshot as authoritative when the selected
-catalog/binding model exposes levels, so a mid-turn thinking or model pick
-cannot collapse the menu to Off-only.
+`providerId`/`modelId`; desktop session create does, by writing the then-current
+app default (or Composer draft override) into the durable ids. Later Settings
+default-model changes do not rewrite an already created session. Opening a
+legacy row whose ids are still empty snapshots the last used turn, else the
+current default, so it stops following Settings. The Composer never treats a
+`supportsReasoning: false` or empty thinking-level snapshot as authoritative
+when the selected catalog/binding model exposes levels, so a mid-turn thinking
+or model pick cannot collapse the menu to Off-only.
 
 ## 5. Capability warnings
 
@@ -344,7 +374,9 @@ App-level default:
 - if none configured, onboarding checklist requires provider setup before first agent run
 
 Session-level:
-- inherits app default at creation
+- inherits app default at creation and stores that `providerId`/`modelId` pair
+- later Settings default-model changes apply only to new sessions and the
+  unpersisted home draft, not to already created sessions
 - initializes thinking to the highest level enabled by the inherited model's
   binding; published levels seed a new binding, while an empty or `off`-only
   binding starts at `off`
@@ -459,6 +491,11 @@ same model to the check mark, the toggle and the duplicate guard.
       output-token entry; overrides stay behind a per-model Advanced disclosure
 - [ ] the API-key path and the OAuth vendor-account path use the same live model
       list and the same binding shape
+- [ ] selected models can be reordered by drag handle or Up/Down arrow keys in
+      both editors; saving and reopening preserves the order, aliases, and
+      overrides, and a filtered move preserves hidden bindings and their order
+- [ ] canceling a drag or the editor preserves the previous applicable order;
+      busy forms disable reordering, and text-copy and row actions still work
 - [ ] an unsaved provider can be probed from the form before it is persisted,
       and a saved one reuses its stored secret without a retyped key
 - [ ] custom model id path works without catalog hit
@@ -468,6 +505,7 @@ same model to the check mark, the toggle and the duplicate guard.
       refresh keeps the cached picker populated
 - [ ] capability badges visible
 - [ ] session model change applies to next turn only
+- [ ] a newly created session stores the then-current default provider/model, and later default-model changes do not rewrite that session
 - [ ] a new session defaults a reasoning-capable inherited model to that
       binding's stored default thinking level (clamped onto the enabled set;
       strongest-enabled only when unset) and otherwise defaults to `off`

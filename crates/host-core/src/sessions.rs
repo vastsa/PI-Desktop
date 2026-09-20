@@ -207,6 +207,10 @@ pub struct UiMessage {
     /// Subagent definition name that produced the row.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
+    /// Provider-hosted web search activity for this assistant turn. Persisted
+    /// as an additive `hostedSearch` transcript block; no SQL migration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_search: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -340,6 +344,18 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     if let Some(thinking) = &message.thinking {
         blocks.push(json!({ "type": "thinking", "text": thinking }));
     }
+    if let Some(hosted_search) = &message.hosted_search {
+        let mut block = serde_json::Map::new();
+        block.insert("type".into(), json!("hostedSearch"));
+        if let Value::Object(fields) = hosted_search {
+            for (key, value) in fields {
+                if key != "type" {
+                    block.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        blocks.push(Value::Object(block));
+    }
     let text = if message.role == "tool" {
         let mut block = serde_json::Map::new();
         block.insert("type".into(), json!("tool_call"));
@@ -469,6 +485,16 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
         })
         .collect::<Vec<_>>();
     let thinking = (!thinking.is_empty()).then(|| thinking.concat());
+    let hosted_search = blocks
+        .iter()
+        .find(|b| b.get("type").and_then(|t| t.as_str()) == Some("hostedSearch"))
+        .map(|b| {
+            let mut fields = b.clone();
+            if let Value::Object(map) = &mut fields {
+                map.remove("type");
+            }
+            fields
+        });
     let is_error = record.is_error.then_some(true);
     let attachments = blocks
         .iter()
@@ -539,6 +565,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             is_error,
             parent_tool_call_id,
             agent_name,
+            hosted_search: hosted_search.clone(),
         }
     } else {
         let content = blocks
@@ -578,6 +605,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             is_error,
             parent_tool_call_id,
             agent_name,
+            hosted_search,
         }
     }
 }
@@ -3436,6 +3464,7 @@ mod tests {
             is_error: None,
             parent_tool_call_id: None,
             agent_name: None,
+            hosted_search: None,
             session_message: None,
         }
     }
@@ -3946,6 +3975,7 @@ mod tests {
             is_error: None,
             parent_tool_call_id: None,
             agent_name: None,
+            hosted_search: None,
             session_message: None,
         };
         append_message(&db, &session.id, &tool, None).unwrap();
@@ -4381,6 +4411,7 @@ mod tests {
             is_error: None,
             parent_tool_call_id: None,
             agent_name: None,
+            hosted_search: None,
             session_message: None,
         };
         append_message(&db, &session.id, &assistant, None).unwrap();
@@ -4422,6 +4453,124 @@ mod tests {
         assert_eq!(usage.total_tokens, 48);
         assert_eq!(detail.messages[0].response_duration_ms, Some(2_000));
         assert_eq!(detail.messages[0].response_output_tokens, Some(34));
+    }
+
+    #[test]
+    fn assistant_hosted_search_roundtrips_as_canonical_blocks() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let assistant = UiMessage {
+            id: "assistant-search-1".into(),
+            role: "assistant".into(),
+            content: "answer with sources".into(),
+            attachments: None,
+            steering: None,
+            created_at: "2025-05-01T00:00:01Z".into(),
+            thinking: None,
+            status: Some("complete".into()),
+            model_id: Some("model-1".into()),
+            provider_id: Some("provider-1".into()),
+            usage: None,
+            response_duration_ms: None,
+            response_output_tokens: None,
+            error: None,
+            revision_root_id: None,
+            revision_count: None,
+            active_revision: None,
+            tool_name: None,
+            tool_call_id: None,
+            tool_status: None,
+            tool_args: None,
+            tool_result: None,
+            tool_completed_at: None,
+            tool_duration_ms: None,
+            is_error: None,
+            parent_tool_call_id: None,
+            agent_name: None,
+            hosted_search: Some(json!({
+                "status": "completed",
+                "rounds": [
+                    {
+                        "id": "srvtoolu_01",
+                        "status": "completed",
+                        "query": "pi-desktop release notes",
+                        "sources": [
+                            { "url": "https://example.com/a", "title": "A" }
+                        ]
+                    }
+                ],
+                "replay": [
+                    {
+                        "type": "hostedSearch",
+                        "phase": "server_tool_use",
+                        "blockId": "srvtoolu_01",
+                        "name": "web_search",
+                        "input": { "query": "pi-desktop release notes" }
+                    }
+                ]
+            })),
+            session_message: None,
+        };
+        append_message(&db, &session.id, &assistant, None).unwrap();
+
+        let records = transcripts::read_transcript(db.data_dir(), &session.id).unwrap();
+        assert_eq!(records.len(), 1);
+        let blocks = &records[0].blocks;
+        assert_eq!(
+            blocks[0],
+            json!({
+                "type": "hostedSearch",
+                "status": "completed",
+                "rounds": [
+                    {
+                        "id": "srvtoolu_01",
+                        "status": "completed",
+                        "query": "pi-desktop release notes",
+                        "sources": [
+                            { "url": "https://example.com/a", "title": "A" }
+                        ]
+                    }
+                ],
+                "replay": [
+                    {
+                        "type": "hostedSearch",
+                        "phase": "server_tool_use",
+                        "blockId": "srvtoolu_01",
+                        "name": "web_search",
+                        "input": { "query": "pi-desktop release notes" }
+                    }
+                ]
+            })
+        );
+
+        let detail = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(
+            detail.messages[0].hosted_search,
+            Some(json!({
+                "status": "completed",
+                "rounds": [
+                    {
+                        "id": "srvtoolu_01",
+                        "status": "completed",
+                        "query": "pi-desktop release notes",
+                        "sources": [
+                            { "url": "https://example.com/a", "title": "A" }
+                        ]
+                    }
+                ],
+                "replay": [
+                    {
+                        "type": "hostedSearch",
+                        "phase": "server_tool_use",
+                        "blockId": "srvtoolu_01",
+                        "name": "web_search",
+                        "input": { "query": "pi-desktop release notes" }
+                    }
+                ]
+            }))
+        );
+        // The additive block must not disturb text reconstruction.
+        assert_eq!(detail.messages[0].content, "answer with sources");
     }
 
     #[test]

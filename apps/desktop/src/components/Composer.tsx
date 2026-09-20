@@ -56,6 +56,7 @@ import {
 import { useComposerAttachments } from "../features/chat/composer/hooks/useComposerAttachments";
 import { useComposerDraft } from "../features/chat/composer/hooks/useComposerDraft";
 import { useComposerSubmit } from "../features/chat/composer/hooks/useComposerSubmit";
+import { ComposerImageAttachments } from "../features/chat/composer/ComposerImageAttachments";
 import { ComposerInput } from "../features/chat/composer/ComposerInput";
 import { useComposerModelMenu } from "../features/chat/composer/hooks/useComposerModelMenu";
 import { ComposerToolbar } from "../features/chat/composer/ComposerToolbar";
@@ -392,9 +393,7 @@ export function Composer({
       !!modelId &&
       (provider.hasSecret || provider.authKind === "none");
   const enterToSend = settings?.enterToSend ?? true;
-  // Chips occupy sentinel characters, which `trim()` preserves — text and
-  // attachments share one content check.
-  const hasDraftContent = Boolean(value.trim());
+  const hasDraftContent = Boolean(value.trim() || activeFileReferences.length);
 
   useEffect(() => {
     if (!controlsBlocked) return;
@@ -533,6 +532,7 @@ export function Composer({
           insertDroppedDirectoryPaths={insertDroppedDirectoryPaths}
           dismissDroppedDirectories={dismissDroppedDirectories}
         />
+        <ComposerImageAttachments controller={draft.imagePreview} onRemove={draft.removeImage} disabled={inputBlocked} />
         <div
           ref={composerShellRef}
           className={`composer-shell${inputBlocked ? " is-gated" : ""}${
@@ -551,6 +551,7 @@ export function Composer({
             />
           ) : null}
           <ComposerInput
+            imagePreview={draft.imagePreview}
             inputRef={ref}
             value={value}
             placeholderText={placeholderText}

@@ -1,10 +1,10 @@
 # ADR 0045: Bash tool inherits the user's login-shell PATH
 
-- Status: Accepted
+- Status: Accepted (amended 2026-09-20, D600 / issue #571)
 - Date: 2026-08-02
 - Related: [D084](../spec/08-meta/decisions-log.md) ·
+  [D181](../spec/08-meta/decisions-log.md) ·
   [Tools and permissions](../spec/03-runtime/03-tools-and-permissions.md)
-
 ## Context
 
 The Bash tool runs agent commands through `bash -lc` (D084). A login bash
@@ -41,6 +41,9 @@ further shrinks the environment to a minimal GUI PATH.
   overhead; every later Bash call is cache-only.
 - A slow or interactive-only user rc degrades gracefully to the previous
   behavior instead of failing the tool.
+- Stdio MCP servers spawned from Electron main use the same login-shell PATH
+  (D600 / issue #571), because they share the Finder/Dock GUI PATH problem and
+  cannot reuse the host-core probe.
 
 ## Alternatives rejected
 

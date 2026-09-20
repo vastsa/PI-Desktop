@@ -62,6 +62,15 @@ test("configured models remain selectable when discovery is unavailable", () => 
   assert.equal(models[0].displayName, "my-model-v2");
 });
 
+test("Composer preserves configured order even when discovery returns another order", () => {
+  const configured = ["z-custom", "gpt-6-astra", "claude-opus-4-6"];
+  const models = composerModelsForProvider(
+    { id: "custom", models: configured.map(binding) },
+    [model("claude-opus-4-6"), model("gpt-6-astra")],
+  );
+  assert.deepEqual(models.map(({ modelId }) => modelId), configured);
+});
+
 test("legacy providers fall back to their default model binding", () => {
   const models = composerModelsForProvider(
     { id: "legacy", models: [], defaultModelId: "legacy-model" },

@@ -91,7 +91,6 @@
 .plugin-scenic-blur-control { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px; border: 1px solid color-mix(in srgb, var(--ds-border) 84%, transparent); border-radius: var(--radius-md-plus); background: color-mix(in srgb, var(--ds-bg-elevated) 82%, transparent); box-shadow: 0 10px 24px color-mix(in srgb, #000 16%, transparent); }
 .plugin-scenic-blur-copy { display: grid; gap: 3px; }
 .plugin-scenic-blur-label { font-weight: 600; }
-.plugin-scenic-blur-help { color: var(--ds-text-muted); font-size: 12px; }
 .plugin-scenic-blur-actions { display: flex; align-items: center; gap: 12px; min-width: min(100%, 360px); }
 .plugin-scenic-blur-actions input { flex: 1; min-width: 110px; }
 .plugin-scenic-blur-actions output { min-width: 34px; color: var(--ds-text-muted); font-variant-numeric: tabular-nums; }
@@ -320,12 +319,22 @@
 }
 
 .settings-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 28px;
   color: var(--ds-text-primary);
   font-size: var(--text-2xl);
   font-weight: var(--font-weight-strong);
   letter-spacing: var(--tracking-tighter);
   line-height: var(--leading-heading);
+}
+
+.settings-nav-experimental {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
 }
 
 .settings-recovery {
@@ -347,6 +356,13 @@
   color: var(--ds-text-primary);
   font-size: var(--text-md-plus);
   font-weight: var(--font-weight-strong);
+}
+
+/* The heading's help mark sits beside the heading rather than inside it: a
+   nested button would join the heading's accessible name. */
+.settings-card-heading-help {
+  display: flex;
+  align-items: center;
 }
 
 .settings-card-heading-row {
@@ -442,18 +458,110 @@
 }
 
 /*
-  Remote hosts: the SSH install is a real form (label + field cells), not a row
-  list, so it keeps the rhythm of `.settings-form-grid` and lays its fields out
-  in a two-column grid instead of five stacked full-width rows.
+  Remote hosts: inventory tiles, one Add form with SSH/Pair tabs, and
+  Experimental rows. The form keeps a two-column grid; host cards are
+  inventory rows rather than settings-copy + control.
 */
+.settings-remote-host-list {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-remote-host-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+}
+
+.settings-remote-host-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+  color: var(--ds-text-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-compact);
+}
+
+.settings-remote-host-empty-detail {
+  flex: 1 1 100%;
+  color: var(--ds-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-plus);
+}
+
+.settings-remote-host-pulse {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+  background: var(--ds-text-muted);
+}
+
+.settings-remote-host-pulse.is-online {
+  background: var(--ds-success);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--ds-success) 22%, transparent);
+}
+
+.settings-remote-host-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-remote-host-name {
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: var(--text-md-plus);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-compact);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-remote-host-meta {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-compact);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-remote-host-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.settings-card-heading-row.settings-remote-host-add-heading {
+  align-items: center;
+}
+
+.settings-card-heading-row.settings-remote-host-add-heading .settings-card-heading {
+  margin-bottom: 0;
+}
+
 .settings-remote-host-form {
   display: grid;
   gap: 12px;
   padding: 12px 14px 14px;
 }
 
-/* Label + host. The port only needs room for five digits, so the user row
-   trades its second column for a narrow one. */
+.settings-remote-host-add-panel[hidden] {
+  display: none;
+}
+
 .settings-remote-host-form-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -464,41 +572,32 @@
   grid-template-columns: minmax(0, 1fr) minmax(120px, 0.4fr);
 }
 
-/* Authentication mode: label, the shared segmented control, and its note.
-   The segment keeps its paint from `.settings-segment` and only takes its
-   position from here. */
 .settings-remote-host-form-auth {
   display: grid;
   gap: 6px;
   justify-items: start;
 }
 
-/* The install action sits right; its hint stays with it on the left. */
 .settings-remote-host-form-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
   gap: 12px;
 }
 
-/* Paired-host row: the status pill and the remove action need a gap, which the
-   row's control column does not have by default. */
-.settings-row-control:has(> .settings-remote-host-status) {
-  gap: 10px;
-}
-
-.settings-remote-host-status {
-  display: inline-flex;
-  align-items: center;
-}
-
-/* Same breakpoint as the other two-column grid in this sheet
-   (`.plugin-scenic-theme-grid`): one field per row before the columns pinch. */
 @media (max-width: 720px) {
   .settings-remote-host-form-row,
   .settings-remote-host-form-row.is-narrow-port {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-remote-host-card {
+    flex-wrap: wrap;
+  }
+
+  .settings-remote-host-card-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 
@@ -524,12 +623,13 @@
   line-height: var(--leading-compact);
 }
 
-.settings-row-desc {
+/* A row's live value (not an explanation): visible, and secondary to the
+   title the same way the retired desc line was. */
+.settings-row-detail {
   margin-top: 3px;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
-  max-width: 62ch;
 }
 
 .settings-row-control {
@@ -1027,15 +1127,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.settings-font-item-license {
-  flex: 0 0 auto;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-strong);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
 }
 
 .settings-font-check {

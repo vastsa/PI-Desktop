@@ -2760,6 +2760,7 @@
  */
 .tool-file-item {
   display: block;
+  flex: none;
   width: 100%;
   min-width: 0;
   overflow: hidden;
@@ -2980,4 +2981,56 @@
 .turn-process-error {
   display: inline-flex;
   color: var(--ds-error);
+}
+
+/* Provider-hosted web search round. The row reuses the tool-row idiom; only
+ * the body payload needs its own rules. */
+.hosted-search-query {
+  margin: 2px 0 6px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.hosted-search-sources {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hosted-search-sources a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.hosted-search-sources a:hover {
+  text-decoration: underline;
+}
+
+.hosted-search-source-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hosted-search-source-host {
+  color: var(--ds-text-tertiary);
+  flex: none;
+}
+
+.hosted-search-more {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--ds-text-tertiary);
+  font-size: var(--text-sm);
 }

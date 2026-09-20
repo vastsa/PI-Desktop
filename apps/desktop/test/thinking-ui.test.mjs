@@ -231,22 +231,23 @@ test("expanded assistant activity rails collapse their disclosures", () => {
   assert.match(stylesSource, /\.disclosure-collapse-rail:focus-visible\s*\{/);
 });
 
-test("live thinking follows the latest step without auto-expanding tool details", () => {
+test("detailed mode opens the last tool while compact keeps payloads collapsed", () => {
   assert.match(transcriptSource, /function useAutomaticDisclosure\(automaticOpen: boolean, revealRequest\?: number\)/);
   assert.match(transcriptSource, /const userInteractedRef = useRef\(false\)/);
   assert.match(transcriptSource, /useLayoutEffect\(\(\) => \{/);
-  assert.match(transcriptSource, /if \(userInteractedRef\.current\) return/);
+  assert.match(transcriptSource, /if \(userInteractedRef.current\) return/);
   assert.match(transcriptSource, /const \{ open, toggle: toggleDisclosure, collapse: collapseDisclosure \}/);
   assert.match(transcriptSource, /useAutomaticDisclosure\(live, revealRequest\)/);
   assert.match(
     transcriptSource,
-    /<ThinkingRow[\s\S]*?autoOpen=\{live && itemIndex === items\.length - 1\}/,
+    /<ThinkingRow[\s\S]*?autoOpen=\{live && itemIndex === items.length - 1\}/,
   );
-  assert.doesNotMatch(
+  assert.match(
     transcriptSource,
-    /<ToolRow[\s\S]{0,220}autoOpen=\{live && itemIndex === items\.length - 1\}/,
+    /const autoOpenLatest =\s*!compact && isLast && itemIndex === items.length - 1/,
   );
-  assert.match(transcriptSource, /const disclosure = useAutomaticDisclosure\(false\)/);
+  assert.match(transcriptSource, /<ToolRow[\s\S]*?autoOpen=\{autoOpenLatest\}/);
+  assert.match(transcriptToolRowSource, /const disclosure = useAutomaticDisclosure\(\s*autoOpen && !failed && status !== "denied",\s*\)/);
   assert.match(transcriptSource, /onClick=\{toggleDisclosure\}/);
   assert.match(transcriptSource, /onCollapse=\{collapseDisclosure\}/);
   assert.match(transcriptSource, /onUserInteraction=\{claimDisclosure\}/);
