@@ -449,3 +449,8 @@ runtime, main, and renderer tracks in parallel.
 | Should v2 custom entries persist to host-core and take part in compaction? | Persist; excluded from compaction summaries |
 | Should v3 read the pi CLI's `settings.json` enabled paths as discovery hints? | Read-only hints, never written |
 | Should extension tools be selectable per project like plugin tools? | Scope from §3.2 is the only gate |
+
+
+## Trusted renderer host
+
+Trusted renderer entries are separate from the agent host specified above. Their first supported surfaces are composer completion and reference lifecycle callbacks. The host draws these surfaces; arbitrary component slots are not included. See [Composer references](17-composer-references.md).

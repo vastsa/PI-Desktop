@@ -158,11 +158,11 @@ export function fileReferenceLabel(path: string, preferredName?: string): string
  */
 export function serializeComposerFileReferences(
   draft: string,
-  references: ReadonlyArray<{ path: string; token?: string }>,
+  references: ReadonlyArray<{ path: string; token?: string; kind?: string; name?: string }>,
 ): string {
   const content = serializeInlineComposerFileReferences(draft, references);
   const paths = references
-    .filter((reference) => !reference.token)
+    .filter((reference) => !reference.token && reference.kind !== "reference")
     .map((reference) => formatFileInsert(reference.path, "file"))
     .join("")
     .trim();
@@ -178,13 +178,13 @@ export function serializeComposerFileReferences(
  */
 export function serializeInlineComposerFileReferences(
   draft: string,
-  references: ReadonlyArray<{ path: string; token?: string }>,
+  references: ReadonlyArray<{ path: string; token?: string; kind?: string; name?: string }>,
 ): string {
   let content = draft;
   for (const reference of references) {
     const token = reference.token?.trim();
     if (!token || !content.includes(token)) continue;
-    const insert = formatFileInsert(reference.path, "file").trim();
+    const insert = reference.kind === "reference" ? (reference.name ?? reference.path) : formatFileInsert(reference.path, "file").trim();
     let index = content.indexOf(token);
     while (index !== -1) {
       const nextChar = content[index + token.length];

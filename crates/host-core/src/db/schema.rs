@@ -115,6 +115,7 @@ CREATE TABLE turn_queue (
   input_hash       TEXT NOT NULL,
   content          TEXT NOT NULL,
   attachments_json TEXT,
+  composer_display_json TEXT,
   session_message_id TEXT,
   permission_mode  TEXT NOT NULL,
   position         INTEGER NOT NULL,

@@ -1,3 +1,5 @@
+import { restoreComposerReferenceDraft } from "../../features/plugins/renderer/restore-composer-reference-draft";
+import { resolveComposerReferences } from "../../features/plugins/renderer/resolve-composer-references";
 import i18n from "i18next";
 import type {
   AgentQueueChangedEvent,
@@ -83,11 +85,8 @@ export function createQueueSlice({
     return {
       id: entry.id,
       sessionId: entry.sessionId,
-      content: entry.content,
-      draft: queuedDrafts.get(entry.id) ?? {
-        text: entry.content,
-        fileReferences: [],
-      },
+      content: entry.composerDisplay?.content ?? entry.content,
+      draft: queuedDrafts.get(entry.id) ?? restoreComposerReferenceDraft(entry.content, entry.composerDisplay),
       createdAt: Date.parse(entry.createdAt) || Date.now(),
       // The Host owns ordering and priority: entries arrive in delivery order.
       ...(entry.priority === undefined ? {} : { priority: entry.priority }),
@@ -146,6 +145,7 @@ export function createQueueSlice({
             })),
           }
         : { text: content, fileReferences: [] };
+      const resolved = await resolveComposerReferences(content, queuedDraft);
       const item: QueuedPrompt = {
         id: `pending:${crypto.randomUUID()}`,
         sessionId,
@@ -160,8 +160,9 @@ export function createQueueSlice({
       return api
         .queuePrompt({
           sessionId,
-          content,
-          ...(attachments.length ? { attachments } : {}),
+          content: resolved.content,
+          composerDisplay: resolved.composerDisplay,
+          attachments: [...attachments, ...resolved.attachments],
         })
         .then((entry) => {
           queuedDrafts.set(entry.id, queuedDraft);
@@ -315,9 +316,10 @@ export function createQueueSlice({
       message.steering = true;
       runtime.insertOptimisticUserMessage(sessionId, message);
       try {
+        const resolved = await resolveComposerReferences(content, draft);
         await api.steer({
-          sessionId, expectedTurnId, content, messageId: message.id,
-          attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
+          sessionId, expectedTurnId, content: resolved.content, composerDisplay: resolved.composerDisplay, messageId: message.id,
+          attachments: [...(draft ? promptAttachmentsFromDraft(draft.fileReferences) : []), ...resolved.attachments],
         });
         return true;
       } catch (error) {
@@ -430,12 +432,16 @@ export function createQueueSlice({
             runtime.submittedComposerDrafts.delete(startedIn);
             return false;
           }
+          const resolved = await resolveComposerReferences(content, draft);
+          const liveSubmission = runtime.submittedComposerDrafts.get(startedIn);
+          if (liveSubmission !== submission || (liveSubmission.abortResolution && await liveSubmission.abortResolution)) return false;
           await api.prompt({
             sessionId,
-            content,
+            content: resolved.content,
+            composerDisplay: resolved.composerDisplay,
             messageId: optimisticMessage.id,
             viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
-            attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
+            attachments: [...(draft ? promptAttachmentsFromDraft(draft.fileReferences) : []), ...resolved.attachments],
           });
           const submitted = runtime.submittedComposerDrafts.get(startedIn);
           if (submitted?.abortResolution && (await submitted.abortResolution)) {

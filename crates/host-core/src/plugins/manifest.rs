@@ -40,7 +40,7 @@ impl PluginManager {
         }
         let raw = fs::read_to_string(&manifest_path)
             .with_context(|| format!("read manifest {}", manifest_path.display()))?;
-        let manifest: PluginManifest =
+        let mut manifest: PluginManifest =
             serde_json::from_str(&raw).map_err(|e| anyhow!("PLUGIN_INVALID: {e}"))?;
         if manifest.id.trim().is_empty() || manifest.main.trim().is_empty() {
             bail!("PLUGIN_INVALID: id/main required");
@@ -58,6 +58,34 @@ impl PluginManager {
                 if !panel_path.exists() {
                     bail!("PLUGIN_INVALID: ui.panel missing");
                 }
+            }
+        }
+        let fields: Value = serde_json::from_str(&raw)?;
+        if let Some(renderer) = fields.get("renderer") {
+            let entry = renderer
+                .as_str()
+                .filter(|entry| !entry.trim().is_empty())
+                .ok_or_else(|| anyhow!("PLUGIN_INVALID: renderer must be a non-empty string"))?;
+            if std::path::Path::new(entry).is_absolute()
+                || entry.contains('\\')
+                || entry.split('/').any(|part| part == "..")
+            {
+                bail!("PLUGIN_INVALID: renderer entry must be a relative path without traversal");
+            }
+            let root = path.canonicalize()?;
+            let target = path
+                .join(entry)
+                .canonicalize()
+                .context("PLUGIN_INVALID: renderer entry missing")?;
+            if !target.starts_with(&root) || !target.is_file() {
+                bail!("PLUGIN_INVALID: renderer entry must stay inside the plugin directory");
+            }
+            if !manifest
+                .permissions
+                .iter()
+                .any(|permission| permission == "ui.renderer")
+            {
+                manifest.permissions.push("ui.renderer".into());
             }
         }
         validate_contributions(path, &manifest)?;

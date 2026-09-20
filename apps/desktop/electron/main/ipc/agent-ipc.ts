@@ -1,3 +1,4 @@
+import { parseComposerPromptDisplay } from "@pi-desktop/shared";
 import { IPC, ErrorCodes, isGlobalPermissionMode, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
 import { expandSlashInvocation, enhancePromptDraft, summarizeSessionTitle, visionFromModelConfig, type ComposerTemplate, type RuntimeProviderConfig } from "@pi-desktop/agent-runtime";
@@ -276,6 +277,7 @@ export function registerAgentIpc({
       id: durableUserMessageId(req.messageId, session.session?.messages ?? []),
       role: "user",
       content: req.content,
+      composerDisplay: parseComposerPromptDisplay(req.composerDisplay),
       status: "complete",
       createdAt: new Date().toISOString(),
       steering: true,
@@ -296,7 +298,7 @@ export function registerAgentIpc({
   handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {
     if (!sidecar) throw new Error("sidecar unavailable");
     if (req.sessionId.startsWith("native-pi:")) {
-      if (req.sessionMessageId || req.truncateFromMessageId || req.truncateBefore !== undefined || req.attachments?.length) {
+      if (req.composerDisplay || req.sessionMessageId || req.truncateFromMessageId || req.truncateBefore !== undefined || req.attachments?.length) {
         throw Object.assign(new Error("Native Pi continuation currently supports text prompts only"), {
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
@@ -524,6 +526,7 @@ export function registerAgentIpc({
 
       role: "user" as const,
       content: promptContent,
+      composerDisplay: parseComposerPromptDisplay(req.composerDisplay),
       ...(sessionMessage ? { sessionMessage: sessionMessage.origin } : {}),
       createdAt: new Date().toISOString(),
       status: "complete" as const,
@@ -712,7 +715,7 @@ export function registerAgentIpc({
   handle(IPC.invoke.agentQueuePush, async (req: AgentQueuePushRequest) => {
     rejectNativeAgentOperation(req.sessionId);
     if (!agentHostBridge) throw new Error("agent host unavailable");
-    return agentHostBridge.queue.push(req);
+    return agentHostBridge.queue.push({ ...req, composerDisplay: parseComposerPromptDisplay(req.composerDisplay) });
   });
   handle(IPC.invoke.agentQueueList, async (req: { sessionId: string }) => {
     rejectNativeAgentOperation(req.sessionId);

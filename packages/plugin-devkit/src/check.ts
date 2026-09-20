@@ -23,6 +23,7 @@ import {
  * copy the install dialog actually renders.
  */
 export const HIGH_RISK_PERMISSIONS = [
+  "ui.renderer",
   "net.fetch",
   "net.websocket",
   "fs.write",
@@ -190,6 +191,10 @@ export async function check(dirInput: string): Promise<CheckResult> {
       code: "main.missing",
       message: `manifest.main "${manifest.main}" does not exist`,
     });
+  }
+
+  if (manifest.renderer && !(await fileExists(join(dir, manifest.renderer)))) {
+    errors.push({ code: "renderer.missing", message: `manifest.renderer "${manifest.renderer}" does not exist` });
   }
 
   const icon = manifest.icon;
@@ -402,7 +407,7 @@ export async function check(dirInput: string): Promise<CheckResult> {
   const hasContribution = Object.values(contributes).some((value) =>
     Array.isArray(value) ? value.length > 0 : Boolean(value),
   );
-  if (!hasContribution) {
+  if (!hasContribution && !manifest.renderer) {
     warnings.push({
       code: "contributes.empty",
       message: "the manifest contributes nothing, so the plugin has no visible effect",

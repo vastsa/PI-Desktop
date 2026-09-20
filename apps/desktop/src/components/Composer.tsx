@@ -1,3 +1,4 @@
+import { useComposerPluginReferences } from "../features/chat/composer/hooks/useComposerPluginReferences";
 import {
   useEffect,
   useLayoutEffect,
@@ -48,10 +49,7 @@ import {
   type ComposerPrefill,
 } from "../features/chat/composer/model";
 import {
-  createFileReference,
   editorSelectionRange,
-  isImageFilePath,
-  nextChipToken,
 } from "../features/chat/composer/editor";
 import { useComposerAttachments } from "../features/chat/composer/hooks/useComposerAttachments";
 import { useComposerDraft } from "../features/chat/composer/hooks/useComposerDraft";
@@ -435,6 +433,7 @@ export function Composer({
     submit,
   } = submitController;
 
+  const insertCompletion = useComposerPluginReferences(draft, inputBlocked, invalidatePromptEnhancement);
   const composerAc = useComposerAutocomplete({
     value,
     cursor,
@@ -446,33 +445,7 @@ export function Composer({
     const result = composerAc.accept(index);
     if (!result) return;
     invalidatePromptEnhancement();
-    // File accept strips the @ token (empty insert) and used to store a
-    // token-less chip above the textarea. Inline chips only paint when a
-    // sentinel is in the draft, so Enter looked like the reference vanished.
-    const acceptedFileReference = result.fileReference;
-    if (!acceptedFileReference) {
-      applyEditorDraft(result.value, fileReferencesRef.current, result.cursor);
-      return;
-    }
-    const token = nextChipToken();
-    const nextText =
-      result.value.slice(0, result.cursor) + token + result.value.slice(result.cursor);
-    applyEditorDraft(
-      nextText,
-      [
-        ...fileReferencesRef.current,
-        createFileReference(
-          acceptedFileReference.path,
-          acceptedFileReference.name,
-          referenceSessionId,
-          {
-            kind: isImageFilePath(acceptedFileReference.path) ? "image" : "file",
-            token,
-          },
-        ),
-      ],
-      result.cursor + token.length,
-    );
+    insertCompletion(result);
   };
 
   // Keep the transcript's bottom reserve in sync with the composer's real

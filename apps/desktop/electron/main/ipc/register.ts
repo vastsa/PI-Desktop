@@ -377,6 +377,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     browserHost,
     pluginViews,
     pluginScopes,
+    currentWorkspacePath,
     rememberPluginScopes,
     sendToRenderer,
     logger,

@@ -150,6 +150,8 @@ pub struct UiMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_message: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composer_display: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<MessageAttachment>>,
     /// Accepted input to an existing turn, preserved by Stop after renderer reload.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -282,6 +284,9 @@ fn is_default_title(title: &str) -> bool {
 /// the search index row (None for tool rows, matching the FTS triggers).
 pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String>) {
     let mut meta_obj = serde_json::Map::new();
+    if let Some(display) = &message.composer_display {
+        meta_obj.insert("composerDisplay".into(), display.clone());
+    }
     if let Some(origin) = &message.session_message {
         meta_obj.insert("sessionMessage".into(), origin.clone());
     }
@@ -430,6 +435,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     };
     let meta = record.meta.unwrap_or(Value::Null);
     let session_message = meta.get("sessionMessage").cloned();
+    let composer_display = meta.get("composerDisplay").cloned();
     let steering = meta.get("steering").and_then(Value::as_bool);
     let status = meta
         .get("status")
@@ -532,6 +538,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             role: record.role,
             content: text,
             session_message,
+            composer_display,
             attachments: None,
             steering,
             created_at: record.created_at,
@@ -581,6 +588,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             role: record.role,
             content,
             session_message,
+            composer_display,
             attachments,
             steering,
             created_at: record.created_at,
@@ -3466,6 +3474,7 @@ mod tests {
             agent_name: None,
             hosted_search: None,
             session_message: None,
+            composer_display: None,
         }
     }
 
@@ -3977,6 +3986,7 @@ mod tests {
             agent_name: None,
             hosted_search: None,
             session_message: None,
+            composer_display: None,
         };
         append_message(&db, &session.id, &tool, None).unwrap();
         // Host recovery may replay the Electron persistence outbox; a message
@@ -4413,6 +4423,7 @@ mod tests {
             agent_name: None,
             hosted_search: None,
             session_message: None,
+            composer_display: None,
         };
         append_message(&db, &session.id, &assistant, None).unwrap();
 
@@ -4510,6 +4521,7 @@ mod tests {
                 ]
             })),
             session_message: None,
+            composer_display: None,
         };
         append_message(&db, &session.id, &assistant, None).unwrap();
 

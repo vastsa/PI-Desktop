@@ -387,12 +387,12 @@ export function useComposerDraft({
   useEffect(() => {
     const current = fileReferencesRef.current;
     const kept = current.filter((fileReference) =>
-      isPersistedScratchReference(fileReference.path),
+      (fileReference.kind === "reference" || isPersistedScratchReference(fileReference.path)),
     );
     if (kept.length === current.length) return;
     const droppedTokens = new Set(
       current
-        .filter((fileReference) => !isPersistedScratchReference(fileReference.path))
+        .filter((fileReference) => !(fileReference.kind === "reference" || isPersistedScratchReference(fileReference.path)))
         .flatMap((fileReference) =>
           fileReference.token ? [fileReference.token] : [],
         ),
@@ -527,10 +527,11 @@ export function useComposerDraft({
   const snapshotReferences = (sourceSessionId: string) =>
     fileReferencesRef.current
       .filter((fileReference) => fileReference.sessionId === sourceSessionId)
-      .map(({ path, name, kind, mimeType, token }) => ({
+      .map(({ path, name, kind, mimeType, token, pluginReference }) => ({
         path,
         name,
         kind,
+        ...(pluginReference ? { pluginReference } : {}),
         ...(mimeType ? { mimeType } : {}),
         ...(token ? { token } : {}),
       }));
@@ -579,10 +580,11 @@ export function useComposerDraft({
         (fileReference) =>
           !fileReference.token || text.includes(fileReference.token),
       )
-      .map(({ path, name, kind, mimeType, token }) => ({
+      .map(({ path, name, kind, mimeType, token, pluginReference }) => ({
         path,
         name,
         kind,
+        ...(pluginReference ? { pluginReference } : {}),
         ...(mimeType ? { mimeType } : {}),
         ...(token ? { token } : {}),
       })),

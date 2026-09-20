@@ -242,7 +242,10 @@ export const ko = {
     slashGroupExtensions: "확장 명령",
     slashGroupSkills: "스킬",
     slashEmpty: "일치하는 명령 없음",
+    fileGroup: "파일",
     fileMenu: "파일 참조",
+    referenceMenu: "참조",
+    referenceEmpty: "일치하는 참조 없음",
     removeFileReference: "파일 참조 {{name}} 제거",
     messageAttachments: "이 메시지의 첨부 파일",
     fileEmpty: "일치하는 파일 없음",
@@ -1764,6 +1767,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "agent.prompt.inject": "에이전트 지침 조정",
       "agent.complete": "모델로 일회성 완성 실행",
       "agent.extension": "에이전트 안에서 코드 실행",
+      "ui.renderer": "Run trusted code inside the app UI",
       "provider.register": "모델 목록에 프로바이더 추가",
       "desktop.control": "데스크톱 제어",
       "models.list": "인증된 모델 목록 표시",
@@ -1808,6 +1812,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "agent.complete":
         "모델 할당량을 사용해 일회성 완성을 실행할 수 있습니다. 플러그인은 API 키를 받지 않습니다.",
       "agent.extension": "ExtensionAPI 모듈을 에이전트 프로세스 안에서 에이전트 자체 도구와 같은 권한으로 실행합니다. 신뢰하는 코드만 켜세요.",
+      "ui.renderer": "Runs with access to the application UI and its data. Enable only code you trust; this entry is not sandboxed.",
       "provider.register":
         "이 플러그인이 정의한 프로바이더를 설정의 프로바이더 목록에 추가합니다. 플러그인은 엔드포인트와 모델을 제공하며, API 키는 PI-Desktop에 남습니다.",
       "desktop.control":

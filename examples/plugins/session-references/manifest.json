@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "pi.session-references",
+  "name": "Session References",
+  "version": "0.1.0",
+  "description": "Type @ to reference completed answers from another conversation.",
+  "i18n": {
+    "zh-CN": {
+      "name": "会话引用",
+      "description": "输入 @，引用其他会话中已经完成的问答。"
+    }
+  },
+  "main": "main.js",
+  "renderer": "renderer.js",
+  "permissions": []
+}

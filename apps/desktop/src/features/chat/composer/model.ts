@@ -1,3 +1,4 @@
+import type { ComposerPluginReference as PluginReference } from "@pi-desktop/plugin-sdk";
 import type {
   ModelInfo,
   Mode,
@@ -65,7 +66,8 @@ export type ComposerFileReference = {
   sessionId: string;
   path: string;
   name: string;
-  kind: "image" | "file";
+  kind: "image" | "file" | "reference";
+  pluginReference?: PluginReference;
   mimeType?: string;
   token?: string;
 };

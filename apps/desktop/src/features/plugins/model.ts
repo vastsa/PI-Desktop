@@ -46,6 +46,7 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "agent.tool.register": "high",
   "agent.complete": "high",
   "agent.extension": "high",
+  "ui.renderer": "high",
   "desktop.control": "high",
   "session.read": "high",
   "browser.cdp": "high",

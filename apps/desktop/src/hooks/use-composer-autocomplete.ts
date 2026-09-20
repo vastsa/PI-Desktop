@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { composerPluginRegistry } from "../features/plugins/renderer/composer-registry";
+import { detectPluginComposerTrigger, usePluginCompletions, type PluginAutocompleteItem, type PluginComposerTrigger } from "../features/plugins/renderer/use-plugin-completions";
+import type { PluginReference } from "../features/plugins/renderer/composer-registry";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   applyCompletion,
   compareMatches,
-  detectTrigger,
   fileReferenceLabel,
   formatCommandInsert,
   formatFileInsert,
@@ -10,7 +12,6 @@ import {
   fuzzyMatchPath,
   selectBestMatches,
   type ComposerCommand,
-  type ComposerTrigger,
   type FsIndexEntry,
   type FuzzyMatch,
 } from "@pi-desktop/shared";
@@ -25,9 +26,12 @@ import { useAppStore } from "../stores/app-store";
  */
 
 const MAX_FILE_ITEMS = 50;
+const MAX_REFERENCE_ITEMS = 5;
 const SOURCE_TTL_MS = 10_000;
 
 export type AutocompleteItem =
+  | PluginAutocompleteItem
+  | { kind: "file-group"; count: number; expanded: boolean }
   | { kind: "command"; command: ComposerCommand; match: FuzzyMatch }
   | { kind: "path"; entry: FsIndexEntry; match: FuzzyMatch };
 
@@ -148,12 +152,14 @@ export function useComposerAutocomplete({
     truncated: boolean;
   } | null>(null);
   const [highlight, setHighlight] = useState(0);
+  const [filesExpanded, setFilesExpanded] = useState(false);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
-  const frozenRef = useRef<ComposerTrigger | null>(null);
+  const frozenRef = useRef<PluginComposerTrigger | null>(null);
 
+  const pluginRevision = useSyncExternalStore(composerPluginRegistry.subscribe, composerPluginRegistry.snapshot);
   const liveTrigger = useMemo(
-    () => (enabled ? detectTrigger(value, cursor) : null),
-    [enabled, value, cursor],
+    () => (enabled ? detectPluginComposerTrigger(value, cursor) : null),
+    [enabled, value, cursor, pluginRevision],
   );
   // During IME composition the menu freezes: no opening, closing, or
   // re-filtering until compositionend re-evaluates (D125).
@@ -162,8 +168,11 @@ export function useComposerAutocomplete({
     if (!composing) frozenRef.current = liveTrigger;
   }, [composing, liveTrigger]);
 
-  const triggerKey = trigger ? `${trigger.mode}:${trigger.tokenStart}` : null;
+  const triggerKey = trigger ? `${trigger.triggerChar}:${trigger.tokenStart}` : null;
   const dismissed = triggerKey !== null && triggerKey === dismissedKey;
+  useEffect(() => { setFilesExpanded(false); }, [triggerKey, workspaceKey]);
+
+  const pluginItems = usePluginCompletions(trigger, dismissed, composing);
 
   // Escape-dismissal clears once the trigger token goes away.
   useEffect(() => {
@@ -172,7 +181,7 @@ export function useComposerAutocomplete({
 
   // Lazy source fetch with a short TTL, keyed by workspace.
   useEffect(() => {
-    if (!trigger || dismissed) return;
+    if (!trigger || dismissed || trigger.pluginOnly) return;
     const now = Date.now();
     if (trigger.mode === "slash") {
       if (
@@ -227,25 +236,28 @@ export function useComposerAutocomplete({
     return () => {
       cancelled = true;
     };
-  }, [trigger?.mode, dismissed, workspaceKey, hasWorkspace]);
+  }, [trigger?.mode, trigger?.pluginOnly, dismissed, workspaceKey, hasWorkspace]);
 
   const items = useMemo<AutocompleteItem[]>(() => {
     if (!trigger || dismissed) return [];
     if (trigger.mode === "slash") {
-      return commands ? filterCommands(commands, trigger.query) : [];
+      return [...(commands ? filterCommands(commands, trigger.query) : []), ...pluginItems];
     }
-    return files ? filterFiles(files.entries, trigger.query) : [];
-  }, [trigger, dismissed, commands, files]);
+    const fileItems = !trigger.pluginOnly && files ? filterFiles(files.entries, trigger.query) : [];
+    const references = pluginItems.slice(0, MAX_REFERENCE_ITEMS);
+    if (!fileItems.length) return references;
+    return [...references, { kind: "file-group", count: fileItems.length, expanded: filesExpanded }, ...(filesExpanded ? fileItems : [])];
+  }, [trigger, dismissed, commands, files, pluginItems, filesExpanded]);
 
   // New query or mode restarts keyboard navigation at the top hit.
-  const itemsKey = trigger ? `${trigger.mode}:${trigger.query}` : "";
+  const itemsKey = trigger ? `${trigger.triggerChar}:${trigger.query}` : "";
   useEffect(() => {
     setHighlight(0);
   }, [itemsKey]);
 
   const sourceReady =
     !!trigger &&
-    (trigger.mode === "slash" ? commands !== null : files !== null);
+    (trigger.pluginOnly || pluginItems.length > 0 || (trigger.mode === "slash" ? commands !== null : files !== null));
   const open = !!trigger && !dismissed && sourceReady;
 
   const close = useCallback(() => {
@@ -260,11 +272,19 @@ export function useComposerAutocomplete({
           value: string;
           cursor: number;
           fileReference?: { path: string; name: string };
+          pluginReference?: PluginReference;
         }
       | null => {
       if (!trigger) return null;
       const item = items[index];
       if (!item) return null;
+      if (item.kind === "file-group") {
+        setFilesExpanded((expanded) => !expanded);
+        return null;
+      }
+      if (item.kind === "reference") {
+        return { ...applyCompletion(value, trigger, ""), pluginReference: item.reference };
+      }
       if (item.kind === "path" && item.entry.kind === "file") {
         return {
           ...applyCompletion(value, trigger, ""),
@@ -286,13 +306,14 @@ export function useComposerAutocomplete({
   return {
     open,
     mode: open && trigger ? trigger.mode : null,
+    pluginOnly: open && Boolean(trigger?.pluginOnly),
     query: open && trigger ? trigger.query : "",
     items: open ? items : [],
     hasItems: open && items.length > 0,
     highlight,
     setHighlight,
-    truncated: open && trigger?.mode === "file" ? (files?.truncated ?? false) : false,
-    noWorkspace: open && trigger?.mode === "file" && !hasWorkspace,
+    truncated: open && !trigger?.pluginOnly && trigger?.mode === "file" ? (files?.truncated ?? false) : false,
+    noWorkspace: open && !trigger?.pluginOnly && !pluginItems.length && trigger?.mode === "file" && !hasWorkspace,
     close,
     accept,
   };

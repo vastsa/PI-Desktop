@@ -1,5 +1,7 @@
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { relative, isAbsolute, sep } from "node:path";
 import { dialog } from "electron";
-import { IPC, type ActivationScope } from "@pi-desktop/shared";
+import { IPC, isActiveInProject, type ActivationScope } from "@pi-desktop/shared";
 import { isTemplateName, scaffold } from "@pi-desktop/plugin-devkit";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { BrowserHost } from "../browser-host";
@@ -8,6 +10,7 @@ import { BROWSER_PLUGIN_ID } from "../browser-host";
 import type { Logger } from "../logger";
 import {
   readDevPluginDeclaration,
+  resolveInsidePlugin,
   widenedFsScope,
   type PluginRuntime,
 } from "../plugin-runtime";
@@ -22,6 +25,7 @@ export type PluginIpcDependencies = {
   browserHost: BrowserHost;
   pluginViews: PluginViewHost;
   pluginScopes: Map<string, ActivationScope>;
+  currentWorkspacePath: () => string | null;
   rememberPluginScopes: (list: any[]) => void;
   sendToRenderer: (channel: string, payload?: unknown) => void;
   logger: Pick<Logger, "app">;
@@ -36,6 +40,7 @@ export function registerPluginIpc({
   browserHost,
   pluginViews,
   pluginScopes,
+  currentWorkspacePath,
   rememberPluginScopes,
   sendToRenderer,
   logger,
@@ -112,6 +117,29 @@ export function registerPluginIpc({
       widened: widenedFsScope(approval.fs, declared.fs),
     };
   };
+  handle(IPC.invoke.pluginRendererEntries, async () => {
+    if (!host) throw new Error("host unavailable");
+    const result = await host.call<{ plugins: Array<{ id: string; enabled: boolean; scope?: ActivationScope }> }>("plugins.list");
+    const entries: Array<{ pluginId: string; source: string }> = [];
+    for (const plugin of result.plugins) {
+      const loaded = plugins.getLoaded(plugin.id);
+      if (!isActiveInProject(plugin, currentWorkspacePath()) || !loaded?.manifest.renderer || !loaded.permissions.has("ui.renderer")) continue;
+      const entry = resolveInsidePlugin(loaded.path, loaded.manifest.renderer);
+      if (!entry) continue;
+      try {
+        const root = realpathSync(loaded.path);
+        const file = realpathSync(entry);
+        const path = relative(root, file);
+        if (!path || path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) continue;
+        if (!statSync(file).isFile() || statSync(file).size > 1024 * 1024) continue;
+        entries.push({ pluginId: plugin.id, source: readFileSync(file, "utf8") });
+      } catch (error) {
+        logger.app("plugin", "warn", "Renderer entry could not be read", { data: String(error) });
+      }
+    }
+    return { entries };
+  });
+
   handle(IPC.invoke.pluginList, async () => {
     if (!host) throw new Error("host unavailable");
     const result = await host.call<{ plugins: any[] }>("plugins.list");

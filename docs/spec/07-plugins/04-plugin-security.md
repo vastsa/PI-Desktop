@@ -516,3 +516,8 @@ Not enforced yet:
   user unchecking them at install
 - A `userSelected` root does not survive a restart, so a plugin has to ask again
   each session
+
+
+## Trusted renderer tier
+
+A declared `renderer` entry is a trusted UI execution tier, independent of trusted agent extensions. It shares the application realm and can access UI data and APIs. Installation and permission expansion review show the derived high-risk `ui.renderer` grant. Only reviewed, enabled entries active in the current project load. See [Composer references](17-composer-references.md).
