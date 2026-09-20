@@ -11313,8 +11313,10 @@ are withdrawn with ADR 0165.
   ADR 0197 / D364
 - **Acceptance**: Quality (release packaging)
 - **Milestone**: M6+
-- **Status**: Unit/source-contract covered (`auto-update.test.mjs`); native
-  Windows launch remains runner validation (run only in a capable environment when this surface changes)
+- **Status**: Packaging contract is unit-covered; `Windows portable E2E` workflow
+  automates the native packaging, extraction, cleanup, pin, relaunch, cross-build,
+  and concurrency smoke. Native taskbar qualification remains pending a capable
+  Windows runner.
 
 #### E2E-213: The first Composer model menu paint keeps configured aliases
 
