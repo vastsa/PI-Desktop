@@ -87,6 +87,7 @@ does not turn temporary thread pressure into a host process exit.
 | `AGENT_NOT_FOUND` | no | session missing |
 | `TURN_NOT_FOUND` | no | turn id invalid |
 | `TURN_ABORTED` | no | turn aborted by user/system |
+| `TURN_BLOCKED` | no | a trusted extension refused the turn in its `before_agent_start` hook; the extension's reason is surfaced as the error message |
 | `MODEL_NOT_CONFIGURED` | no | no usable model selected, or provider rejects the selected model as unknown |
 | `PROVIDER_ERROR` | yes | upstream provider failure; a retryable one (5xx gateway) gets up to ten same-turn retries, a malformed 400/422 request is terminal |
 | `PROVIDER_UNAUTHORIZED` | no | bad/missing provider credentials |
