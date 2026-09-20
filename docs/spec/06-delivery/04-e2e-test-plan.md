@@ -11285,15 +11285,20 @@ are withdrawn with ADR 0165.
   account is a standard user without administrator elevation.
 - **Steps**: 1) Inspect the release directory and `latest.yml`. 2) Launch the
   portable exe without running the NSIS installer. 3) Confirm the process
-  environment includes `PORTABLE_EXECUTABLE_FILE`. 4) Invoke Check for Updates.
-  5) Confirm Settings → Info offers the releases page rather than Restart to
-  update. 6) Quit and relaunch the same portable file.
+  environment includes `PORTABLE_EXECUTABLE_FILE` and the unpacked app path
+  uses the stable `%TEMP%\PI-Desktop-Portable` directory. 4) Pin the running app
+  to the taskbar, quit, and relaunch the same portable file. 5) Confirm the
+  taskbar entry keeps the PI-Desktop icon and the pinned target resolves to the
+  same unpacked path. 6) Invoke Check for Updates. 7) Confirm Settings → Info
+  offers the releases page rather than Restart to update.
 - **Expected**: Both Windows artifacts are space-free and uploaded. `latest.yml`
   points at the NSIS installer only. The portable exe starts without a setup
   wizard or administrator prompt, uses the existing application data directory,
   and reports update mode `manual`. An available update does not download or
   run `PI-Desktop-Setup-<version>.exe`. Relaunch restores sessions from that
-  same profile.
+  same profile. The portable executable path remains stable across launches, so
+  taskbar grouping, icon lookup, and a pinned shortcut do not depend on a new
+  random temp directory.
 - **Specs linked**: `01-product/01-product-scope.md`,
   `06-delivery/06-release-runbook.md`, `03-runtime/07-process-model.md`,
   ADR 0197 / D364

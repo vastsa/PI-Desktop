@@ -32,6 +32,11 @@ an installed one.
    quit-and-install.
 6. User data, logs, and secrets stay in the existing application data
    directory. This decision does not introduce a beside-the-exe profile.
+7. The portable target uses the fixed per-user temp directory name
+   `PI-Desktop-Portable` for extraction. The directory is still removed by the
+   portable launcher after exit, but every launch of the same artifact resolves
+   the packaged executable through the same path for Windows taskbar grouping
+   and pinned shortcuts.
 
 ## Consequences
 
@@ -41,9 +46,13 @@ an installed one.
   replace the portable file themselves.
 - NSIS in-app updates, hashes, and feed ownership are unchanged.
 - The portable process still unpacks application files under the Windows temp
-  directory for that launch. Whitelisting applies to the downloaded portable
-  executable; a policy that also blocks temp-directory execution may still
-  require the NSIS install.
+  directory for that launch, using the stable `PI-Desktop-Portable` directory
+  name.
+  Whitelisting applies to the downloaded portable executable; a policy that
+  also blocks temp-directory execution may still require the NSIS install.
+- Only one PI-Desktop portable launch should use a user profile at a time; the
+  stable extraction directory is shared by launches so taskbar pin targets do
+  not change between runs.
 
 ## Alternatives considered
 

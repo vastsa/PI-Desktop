@@ -229,7 +229,8 @@
     },
     "portable": {
       "artifactName": "PI-Desktop-Portable-${version}.${ext}",
-      "requestExecutionLevel": "user"
+      "requestExecutionLevel": "user",
+      "unpackDirName": "PI-Desktop-Portable"
     },
     "deb": {
       "packageName": "pi-desktop",

@@ -594,7 +594,9 @@ The portable Windows target does not write `latest.yml`. Packaged portable
 runs use notify-and-link delivery (`PORTABLE_EXECUTABLE_FILE`); NSIS keeps
 the in-app download and quit-and-install lane. Data stays in the existing
 application data directory. Portable requests user execution level, so launch
-does not require administrator rights.
+does not require administrator rights. Its self-extracted app uses the fixed
+per-user temp directory name `PI-Desktop-Portable`, keeping the executable path
+stable for Windows taskbar grouping and pinned shortcuts across launches.
 
 RPM targets pass `_build_id_links none` to FPM. Bundled Electron binaries live
 under `/opt/PI-Desktop`; omitting global `/usr/lib/.build-id` links prevents
