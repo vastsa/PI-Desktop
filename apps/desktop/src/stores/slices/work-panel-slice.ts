@@ -356,8 +356,8 @@ export function createWorkPanelSlice({
     saveWorkPanelWidth(get().workPanelWidth);
   },
 
-  openFileInWorkPanel: (path, mimeType) => {
-    get().openWorkPanelTab(fileWorkPanelTab(path, mimeType));
+  openFileInWorkPanel: (path, mimeType, position) => {
+    get().openWorkPanelTab(fileWorkPanelTab(path, mimeType, position));
   },
   openUrlInWorkPanel: (url) => {
     const hasBrowser = get().pluginViews.some(

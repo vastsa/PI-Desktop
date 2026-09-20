@@ -2,7 +2,13 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
-import { isHtmlFilePath, toWorkspaceRel, type ChatPreviewTarget } from "../lib/chat-links";
+import {
+  fileLocationWithPosition,
+  isHtmlFilePath,
+  parseFileRefPosition,
+  toWorkspaceRel,
+  type ChatPreviewTarget,
+} from "../lib/chat-links";
 import { openHttpUrl } from "../lib/open-http-url";
 import {
   FILE_MANAGER_PLUGIN_TAB,
@@ -27,7 +33,12 @@ export function useOpenPreviewTarget() {
   const openFileRef = useOpenChatFileRef();
   return useCallback(
     (target: ChatPreviewTarget) =>
-      target.kind === "file" ? openFileRef(target.path) : openHttpUrl(target.url),
+      target.kind === "file"
+        ? openFileRef(target.path, undefined, undefined, {
+            line: target.line,
+            column: target.column,
+          })
+        : openHttpUrl(target.url),
     [openFileRef],
   );
 }
@@ -36,6 +47,11 @@ export function useOpenPreviewTarget() {
 function isDotRelative(path: string): boolean {
   return path.startsWith("./") || path.startsWith("../");
 }
+
+export type ChatFileRefPosition = {
+  line?: number;
+  column?: number;
+};
 
 /**
  * Open a file reference the conversation mentioned.
@@ -54,6 +70,11 @@ function isDotRelative(path: string): boolean {
  * A workspace `.html` page in the primary folder stays with the side browser
  * (ADR 0163): it is a page to run, not a file to read. A reference that matches
  * nothing says so instead of opening an empty panel.
+ *
+ * Tokens such as `src/a.ts:42` carry a 1-based line (and optional column).
+ * Those are stripped before path resolution, then re-attached on the open
+ * request so the file view can jump to the cited line (#681). Plugin locations
+ * use `path#L{line}` (see `fileLocationWithPosition`).
  */
 export function useOpenChatFileRef() {
   const { t } = useTranslation();
@@ -71,9 +92,17 @@ export function useOpenChatFileRef() {
   );
 
   return useCallback(
-    (path: string, baseDir?: string, mimeType?: string) => {
-      const raw = String(path ?? "").trim();
+    (
+      path: string,
+      baseDir?: string,
+      mimeType?: string,
+      position?: ChatFileRefPosition,
+    ) => {
+      const parsed = parseFileRefPosition(path) ?? { path: path.trim() };
+      const raw = String(parsed.path ?? "").trim();
       if (!raw) return;
+      const line = position?.line ?? parsed.line;
+      const column = position?.column ?? parsed.column;
       // `./x` and `../x` are the one shape the caller resolves better than the
       // main process can: the base is the markdown file on screen, which only
       // the caller knows. Everything else is completed against the roots.
@@ -104,13 +133,17 @@ export function useOpenChatFileRef() {
             return;
           }
           if (fileViewAvailable) {
-            openTab(fileManagerPluginTab(target));
+            openTab(
+              fileManagerPluginTab(
+                fileLocationWithPosition(target, { line, column }),
+              ),
+            );
             return;
           }
-          openFile(target, mimeType);
+          openFile(target, mimeType, { line, column });
           return;
         }
-        openFile(match.absolutePath, mimeType);
+        openFile(match.absolutePath, mimeType, { line, column });
       })();
     },
     [

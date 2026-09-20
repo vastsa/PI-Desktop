@@ -119,7 +119,7 @@ function HighlightedText({ path, content }: { path: string; content: string }) {
     <pre className="file-viewer-code">
       {tokens
         ? tokens.tokens.map((row, i) => (
-            <div className="file-viewer-line" key={i}>
+            <div className="file-viewer-line" id={`file-viewer-line-${i + 1}`} key={i}>
               {row.length === 0
                 ? "\n"
                 : row.map((token, j) => (
@@ -130,7 +130,7 @@ function HighlightedText({ path, content }: { path: string; content: string }) {
             </div>
           ))
         : visible.split("\n").map((line, i) => (
-            <div className="file-viewer-line" key={i}>
+            <div className="file-viewer-line" id={`file-viewer-line-${i + 1}`} key={i}>
               {line || "\n"}
             </div>
           ))}
@@ -156,6 +156,7 @@ export function FilesTab() {
   const [selected, setSelected] = useState<string | null>(null);
   const [file, setFile] = useState<FsReadResult | null>(null);
   const [fileError, setFileError] = useState(false);
+  const pendingLineRef = useRef<number | null>(null);
 
   // Workspace switches reset all browsing state. Guarded so it only fires on
   // an actual root change: an unconditional [root] effect also runs on the
@@ -241,7 +242,28 @@ export function FilesTab() {
       for (const dir of ancestors) void loadDir(dir);
     }
     void openFile(path, fileRequest.mimeType);
+    // Chat `path:line` refs land here when the bundled file view is absent;
+    // remember the line so the viewer can scroll once the content loads (#681).
+    pendingLineRef.current = fileRequest.line ?? null;
   }, [fileRequest, root, loadDir, openFile]);
+
+  useEffect(() => {
+    const line = pendingLineRef.current;
+    if (!line || !file) return;
+    pendingLineRef.current = null;
+    const id = `file-viewer-line-${line}`;
+    // Lines render 1-based; fall back to query by ordinal if ids are absent.
+    requestAnimationFrame(() => {
+      const node = document.getElementById(id);
+      if (node) {
+        node.scrollIntoView({ block: "center" });
+        return;
+      }
+      const lines = document.querySelectorAll(".file-viewer-line");
+      const target = lines[line - 1];
+      if (target) target.scrollIntoView({ block: "center" });
+    });
+  }, [file]);
 
   const renderDir = (rel: string, depth: number): React.ReactNode => {
     const state = dirs[rel];

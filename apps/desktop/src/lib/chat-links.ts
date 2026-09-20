@@ -51,8 +51,65 @@ export function isHtmlFilePath(path: string): boolean {
   return /\.html?$/i.test(path);
 }
 
-function stripLineRef(path: string): string {
+export function stripLineRef(path: string): string {
   return path.replace(/:\d+(?::\d+)?$/, "");
+}
+
+export type FileRefPosition = {
+  path: string;
+  /** 1-based line from `path:line[:col]` refs; omitted when absent. */
+  line?: number;
+  /** 1-based column when the token carried `path:line:col`. */
+  column?: number;
+};
+
+const LINE_COL_SUFFIX_RE = /:(\d+)(?::(\d+))?$/;
+
+/**
+ * Split a chat `path:line[:col]` token into a file path plus optional
+ * 1-based position. `parseFileRef` keeps returning the path alone; this
+ * helper preserves the line the transcript named so openers can jump to it
+ * instead of landing at the top of the file (#681).
+ */
+export function parseFileRefPosition(text: string): FileRefPosition | null {
+  const path = parseFileRef(text);
+  if (!path) return null;
+  const raw = text.trim().replace(/^@/, "");
+  const match = LINE_COL_SUFFIX_RE.exec(raw);
+  if (!match) return { path };
+  const line = Number(match[1]);
+  if (!Number.isFinite(line) || line < 1) return { path };
+  const column = match[2] === undefined ? undefined : Number(match[2]);
+  if (column !== undefined && (!Number.isFinite(column) || column < 1)) {
+    return { path, line };
+  }
+  return column === undefined ? { path, line } : { path, line, column };
+}
+
+/**
+ * Encode a workspace path plus optional line for plugin-view location
+ * delivery (`piViewOpen` / `view:open`). Host and plugin agree on `#L{line}`
+ * so the path itself stays a normal relative path when no line is present.
+ */
+export function fileLocationWithPosition(
+  path: string,
+  position?: { line?: number; column?: number },
+): string {
+  if (!position?.line || position.line < 1) return path;
+  if (position.column && position.column >= 1) {
+    return `${path}#L${position.line}:C${position.column}`;
+  }
+  return `${path}#L${position.line}`;
+}
+
+/** Inverse of `fileLocationWithPosition` for openers that receive a location. */
+export function splitFileLocation(location: string): FileRefPosition {
+  const hash = /#L(\d+)(?::C(\d+))?$/.exec(location);
+  if (!hash) return { path: location };
+  const path = location.slice(0, hash.index);
+  const line = Number(hash[1]);
+  const column = hash[2] === undefined ? undefined : Number(hash[2]);
+  return column === undefined ? { path, line } : { path, line, column };
 }
 
 function leafName(path: string): string {
@@ -182,8 +239,45 @@ export function toWorkspaceRel(
 }
 
 export type ChatPreviewTarget =
-  | { kind: "file"; path: string }
-  | { kind: "url"; url: string };
+  | { kind: "url"; url: string }
+  | {
+      kind: "file";
+      path: string;
+      /** 1-based line from `path:line` tokens; omitted when absent. */
+      line?: number;
+      /** 1-based column when the token carried `path:line:col`. */
+      column?: number;
+    };
+
+function extractLineColumn(token: string): {
+  line?: number;
+  column?: number;
+} {
+  const cleaned = token
+    .trim()
+    .replace(/^@/, "")
+    .replace(/^"|"$/g, "");
+  const match = /:(\d+)(?::(\d+))?$/.exec(cleaned);
+  if (!match) return {};
+  const line = Number(match[1]);
+  if (!Number.isFinite(line) || line < 1) return {};
+  const column = match[2] === undefined ? undefined : Number(match[2]);
+  if (column !== undefined && (!Number.isFinite(column) || column < 1)) {
+    return { line };
+  }
+  return column === undefined ? { line } : { line, column };
+}
+
+function fileTarget(
+  path: string,
+  line?: number,
+  column?: number,
+): ChatPreviewTarget {
+  if (!line) return { kind: "file", path };
+  return column
+    ? { kind: "file", path, line, column }
+    : { kind: "file", path, line };
+}
 
 /** Resolve one raw chat token into a previewable target, or null. */
 export function resolvePreviewTarget(
@@ -193,17 +287,21 @@ export function resolvePreviewTarget(
 ): ChatPreviewTarget | null {
   const trimmed = text.trim();
   if (isHttpUrl(trimmed)) return { kind: "url", url: trimmed };
+  const { line, column } = extractLineColumn(trimmed);
   const at = unwrapAtFileRef(trimmed);
   if (at) {
     // Scratch/attachment @refs stay absolute so fs/open can contain them.
-    if (at.startsWith("/")) return { kind: "file", path: at };
-    const rel = toWorkspaceRel(at, root, baseDir);
-    return rel ? { kind: "file", path: rel } : null;
+    const rawPath = stripLineRef(at);
+    if (rawPath.startsWith("/")) return fileTarget(rawPath, line, column);
+    const rel = toWorkspaceRel(rawPath, root, baseDir);
+    if (!rel) return null;
+    return fileTarget(rel, line, column);
   }
   const file = parseFileRef(trimmed);
   if (!file) return null;
   const rel = toWorkspaceRel(file, root, baseDir);
-  return rel ? { kind: "file", path: rel } : null;
+  if (!rel) return null;
+  return fileTarget(rel, line, column);
 }
 
 /** Tool-call args → preview target (Read/Write/Edit paths, fetch URLs). */

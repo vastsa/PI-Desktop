@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   fileDirOf,
+  fileLocationWithPosition,
   getToolPreviewTarget,
   isHttpUrl,
   linkifyMdastTree,
   parseFileRef,
+  parseFileRefPosition,
   remarkChatFileLinks,
   resolvePreviewTarget,
   splitChatText,
+  splitFileLocation,
   toWorkspaceRel,
 } from "../src/lib/chat-links.ts";
 
@@ -23,6 +26,41 @@ test("parseFileRef accepts pathy tokens and strips line refs", () => {
   assert.equal(parseFileRef("docs/Makefile"), "docs/Makefile");
   assert.equal(parseFileRef("./README.md"), "./README.md");
   assert.equal(parseFileRef("../adr/0163.md"), "../adr/0163.md");
+});
+
+test("parseFileRefPosition keeps the line the transcript named (#681)", () => {
+  assert.deepEqual(parseFileRefPosition("src/main.rs:42"), {
+    path: "src/main.rs",
+    line: 42,
+  });
+  assert.deepEqual(parseFileRefPosition("src/main.rs:42:7"), {
+    path: "src/main.rs",
+    line: 42,
+    column: 7,
+  });
+  assert.deepEqual(parseFileRefPosition("apps/desktop/src/App.tsx"), {
+    path: "apps/desktop/src/App.tsx",
+  });
+  assert.equal(parseFileRefPosition("hello world"), null);
+});
+
+test("fileLocationWithPosition encodes #L for plugin open locations (#681)", () => {
+  assert.equal(fileLocationWithPosition("src/a.ts"), "src/a.ts");
+  assert.equal(fileLocationWithPosition("src/a.ts", { line: 10 }), "src/a.ts#L10");
+  assert.equal(
+    fileLocationWithPosition("src/a.ts", { line: 10, column: 3 }),
+    "src/a.ts#L10:C3",
+  );
+  assert.deepEqual(splitFileLocation("src/a.ts#L10"), {
+    path: "src/a.ts",
+    line: 10,
+  });
+  assert.deepEqual(splitFileLocation("src/a.ts#L10:C3"), {
+    path: "src/a.ts",
+    line: 10,
+    column: 3,
+  });
+  assert.deepEqual(splitFileLocation("src/a.ts"), { path: "src/a.ts" });
 });
 
 test("parseFileRef accepts bare names only with known extensions", () => {
@@ -91,6 +129,7 @@ test("resolvePreviewTarget classifies urls and workspace files", () => {
   assert.deepEqual(resolvePreviewTarget("src/a.ts:10", ROOT), {
     kind: "file",
     path: "src/a.ts",
+    line: 10,
   });
   assert.deepEqual(resolvePreviewTarget("./README.md", ROOT, "docs"), {
     kind: "file",

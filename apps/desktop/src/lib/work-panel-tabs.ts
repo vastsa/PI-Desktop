@@ -12,6 +12,10 @@ export type WorkPanelTab = {
   location?: string;
   /** Stored attachment mimeType for extension-less `attachments/<sha256>` images. */
   mimeType?: string;
+  /** 1-based line from a chat `path:line` ref (#681); omitted when unknown. */
+  line?: number;
+  /** 1-based column when the chat token carried `path:line:col`. */
+  column?: number;
 };
 
 export type WorkPanelTabsState = {
@@ -19,9 +23,17 @@ export type WorkPanelTabsState = {
   activeTabId: string | null;
 };
 
+export type WorkPanelFileRequest = {
+  path: string;
+  seq: number;
+  mimeType?: string;
+  line?: number;
+  column?: number;
+};
+
 export type WorkPanelContext = WorkPanelTabsState & {
   open: boolean;
-  fileRequest: { path: string; seq: number; mimeType?: string } | null;
+  fileRequest: WorkPanelFileRequest | null;
 };
 
 let newWorkPanelTabSequence = 0;
@@ -239,13 +251,20 @@ export function normalizeWorkPanelFilePath(path: string): string {
   return absolute ? `/${normalized}` : normalized;
 }
 
-export function fileWorkPanelTab(path: string, mimeType?: string): WorkPanelTab {
+export function fileWorkPanelTab(
+  path: string,
+  mimeType?: string,
+  position?: { line?: number; column?: number },
+): WorkPanelTab {
   const resource = normalizeWorkPanelFilePath(path);
   return {
     id: `file:${resource}`,
     kind: "file",
     resource,
     ...(mimeType ? { mimeType } : {}),
+    ...(position?.line
+      ? { line: position.line, column: position.column }
+      : {}),
   };
 }
 

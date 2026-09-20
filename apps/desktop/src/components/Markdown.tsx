@@ -53,9 +53,12 @@ import { useAppStore } from "../stores/app-store";
 import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import { useOpenChatFileRef } from "../hooks/use-preview-target";
 import {
+  parseFileRefPosition,
   remarkChatFileLinks,
   resolvePreviewTarget,
   safeDecodeUri,
+  splitFileLocation,
+  stripLineRef,
   toWorkspaceRel,
 } from "../lib/chat-links";
 import {
@@ -477,7 +480,10 @@ function InlineCode({
       title={target.kind === "file" ? fileTitle : urlTitle}
       onClick={() =>
         target.kind === "file"
-          ? openFileRef(text ?? target.path, baseDir)
+          ? openFileRef(text ?? target.path, baseDir, undefined, {
+              line: target.line,
+              column: target.column,
+            })
           : openHttpUrl(target.url)
       }
     >
@@ -576,7 +582,12 @@ function Anchor({
     const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
     if (rel) {
       e.preventDefault();
-      openFileRef(rel, baseDir);
+      const decoded = safeDecodeUri(href);
+      const fromHash = splitFileLocation(decoded);
+      const fromColon = parseFileRefPosition(decoded);
+      const line = fromHash.line ?? fromColon?.line;
+      const column = fromHash.column ?? fromColon?.column;
+      openFileRef(stripLineRef(rel), baseDir, undefined, { line, column });
     }
   };
   return (

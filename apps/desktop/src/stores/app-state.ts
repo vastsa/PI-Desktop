@@ -371,7 +371,11 @@ export type AppState = {
   /** Hide the visible panel while retaining its session-owned context. */
   resetWorkPanelContext: () => void;
   setWorkPanelWidth: (width: number) => void;
-  openFileInWorkPanel: (path: string, mimeType?: string) => void;
+  openFileInWorkPanel: (
+    path: string,
+    mimeType?: string,
+    position?: { line?: number; column?: number },
+  ) => void;
   openUrlInWorkPanel: (url: string) => void;
 };
 
