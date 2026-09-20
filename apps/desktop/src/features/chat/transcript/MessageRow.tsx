@@ -102,7 +102,7 @@ export const MessageRow = memo(function MessageRow({
       label: t("chat.messageMenu"),
       items: userMessageMenuItems({
         t,
-        text: message.content || "",
+        text: displayed,
         selectTarget:
           event.currentTarget.querySelector<HTMLElement>(".message-bubble"),
         editable: editableUserMessage,
