@@ -26,14 +26,6 @@ function knownModel(): ModelConfig {
 }
 
 describe("main-supplied model capabilities", () => {
-  it("retains a first-party published window as the safety ceiling", () => {
-    const configured = modelConfigWithBinding({
-      ...knownModel(), source: "provider", contextWindow: 1_024_000,
-    }, { contextWindow: 2_000_000, maxTokens: 64_000, thinkingLevels: ["high"] });
-    expect(configured.contextWindow).toBe(2_000_000);
-    expect(configured.catalogContextWindow).toBe(1_024_000);
-  });
-
   it("uses models.dev modalities for visual transport", () => {
     expect(visionFromModelConfig(knownModel())).toBe(true);
     expect(

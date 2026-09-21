@@ -59,4 +59,4 @@ ownership remain unchanged.
 - [Step 5 Preview guide](https://platform.stepfun.com/docs/zh/guides/models/step-5-preview)
 - `GET https://api.stepfun.com/v1/models` (verified 2026-09-21; no credentials
   or account data are retained in repository fixtures)
-- `apps/desktop/test/stepfun-model.test.mjs`
+- `apps/desktop/electron/main/stepfun-model-metadata.ts`
