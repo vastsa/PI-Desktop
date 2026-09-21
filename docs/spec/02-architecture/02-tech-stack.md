@@ -12,14 +12,15 @@
 | Host backend | **Rust** | stable Rust toolchain | tools/plugins/permissions/persistence adapters |
 | Rust async | tokio | stable | host services |
 | Host RPC | stdio JSON-RPC (NDJSON) | frozen (D001) | Electron main ↔ Rust host |
-| Agent engine | `@earendil-works/pi-agent-core` | 0.85.1 | agent loop |
-| Model API | `@earendil-works/pi-ai` | 0.85.1 | provider adapters, OAuth, and stream handling |
+| Agent engine | `@earendil-works/pi-agent-core` | 0.86.1 | agent loop |
+| Model API | `@earendil-works/pi-ai` | 0.86.1 | provider adapters, OAuth, and stream handling |
 | Model catalog | `https://models.dev/api.json` | bundled release snapshot + process-local refresh | sole provider/model metadata source |
 
 > pi-ai is not consulted for model names, capabilities, limits, modalities,
 > thinking levels, or prices. It remains the request transport dependency.
 > ChatGPT Plus/Pro and GitHub Copilot OAuth availability still comes from the
-> pinned pi-ai catalog; 0.85.1 is the first pin that lists `gpt-6-astra`.
+> pinned pi-ai catalog; 0.86.1 includes the `gpt-6-astra` catalog entry.
+> The 0.86.1 pi-ai catalog also registers Meta/Muse subscription OAuth; Desktop enumerates it dynamically rather than maintaining a separate vendor list.
 
 | Node runtime | Node.js | `>= 22.19` | pi requirement |
 | DB | SQLite | Rust host-core via `rusqlite` | sessions/settings |

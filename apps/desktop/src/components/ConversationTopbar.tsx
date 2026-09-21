@@ -20,15 +20,6 @@ function isDefaultSessionTitle(title?: string | null) {
   return ["new task", "new chat", "新建任务", "新对话"].includes(trimmed);
 }
 
-const TOPBAR_TITLE_MAX_LENGTH = 10;
-
-function truncateTopbarTitle(title: string) {
-  const characters = Array.from(title);
-  return characters.length > TOPBAR_TITLE_MAX_LENGTH
-    ? `${characters.slice(0, TOPBAR_TITLE_MAX_LENGTH).join("")}…`
-    : title;
-}
-
 export function ConversationTopbar({
   sidebarCollapsed,
   workPanelOpen,
@@ -52,7 +43,6 @@ export function ConversationTopbar({
   const fullTaskTitle = isDefaultSessionTitle(activeSession?.title)
     ? t("chat.untitledTask")
     : activeSession?.title || t("chat.untitledTask");
-  const taskTitle = truncateTopbarTitle(fullTaskTitle);
   const project = projectName(workspace?.path, workspace?.name);
 
   return (
@@ -85,7 +75,7 @@ export function ConversationTopbar({
           className="ct-title-wrap"
           title={project ? `${project} · ${fullTaskTitle}` : fullTaskTitle}
         >
-          <span className="ct-title">{taskTitle}</span>
+          <span className="ct-title">{fullTaskTitle}</span>
         </div>
       </div>
 

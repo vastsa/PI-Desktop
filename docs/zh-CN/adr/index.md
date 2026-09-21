@@ -294,7 +294,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0283 | [远程 MCP 服务端 OAuth 2.1 认证](/adr/0283-remote-mcp-oauth) | 已接受 |
 | 0284 | [`packages/host-runtime` 的无头运行时边界](/adr/0284-headless-runtime-boundary) | 已接受（实施中）（D447；ADR 0205 R2 前置） |
 | 0285 | [`packages/racp` 的 `RACP-WS` 传输](/adr/0285-racp-ws-transport) | 已接受（实施中）（D448；ADR 0205 R2） |
-| turn-process-and-thinking-display | [回合过程与思考展示](/adr/turn-process-and-thinking-display) | 已接受 |
+| turn-process-and-thinking-display | [回合过程与思考展示](/zh-CN/adr/turn-process-and-thinking-display) | 已接受（2026-09-20 修订） |
 | 0289 | [签名的 macOS GitHub Release 与应用内更新](/adr/0289-signed-macos-github-releases) | 已接受（D450；修订 ADR 0022 / 0145 / 0191 / 0204 / D078） |
 | 0290 | [恢复可拖拽侧边栏宽度，过窄时收起](/adr/0290-resizable-sidebar-collapse-threshold) | 已接受（D459；修订 ADR 0141 / ADR 0238） |
 | 0291 | [移除设置页面的语音界面](/adr/0291-remove-speech-settings-ui) | 已接受（修订 ADR 0281） |

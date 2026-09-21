@@ -1,13 +1,6 @@
 use super::super::*;
 
-pub(crate) fn built_in_catalog() -> MarketCatalogFile {
-    let data_dir = std::env::var("PI_DESKTOP_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".pi-desktop")
-        });
+pub(crate) fn built_in_catalog_at(data_dir: &Path) -> MarketCatalogFile {
     let package_dir = data_dir.join("plugins/market/packages");
     let hello_path = package_dir.join("demo.hello-0.2.0.piplug");
     let notes_path = package_dir.join("demo.workspace-notes-0.1.0.piplug");

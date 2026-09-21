@@ -45,11 +45,11 @@ let controller: ComposerDraftController;
 let pastePending: Promise<unknown> | undefined;
 let submitted = 0;
 let rejectSubmission: () => Promise<void>;
-function Fixture({ sessionId, t }: { sessionId: string; t: TFunction }) {
+function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunction; workspacePath: string }) {
   const draft = useComposerDraft({
     variant: "docked",
     activeSessionId: sessionId,
-    workspacePath: "",
+    workspacePath,
     sessions,
     composerPrefill: null,
     clearComposerPrefill: noop,
@@ -120,10 +120,10 @@ globalThis.composerPasteProbe = async () => {
     onUncaughtError: (error) => errors.push(error),
   });
   let key = 0;
-  const render = (sessionId = "paste-a") => {
+  const render = (sessionId = "paste-a", workspacePath = "") => {
     useAppStore.setState({ activeSessionId: sessionId });
     flushSync(() =>
-      root.render(<I18nextProvider i18n={i18n}><Fixture key={key} sessionId={sessionId} t={i18n.t} /></I18nextProvider>),
+      root.render(<I18nextProvider i18n={i18n}><Fixture key={key} sessionId={sessionId} t={i18n.t} workspacePath={workspacePath} /></I18nextProvider>),
     );
     assert(
       errors.length === 0,
@@ -190,6 +190,64 @@ globalThis.composerPasteProbe = async () => {
     selection.addRange(range);
   };
   try {
+    // Settings replaces ChatSurface, then remounts the composer in the same
+    // workspace. Exercise the real draft hook and DOM across that lifecycle.
+    render("paste-a", "/project-a");
+    const referenceDraft = "Check \uE001 and \uE002";
+    const references = [
+      createFileReference("src/main.ts", "main.ts", "paste-a", { token: "\uE001" }),
+      createFileReference("/scratch/paste-a/notes.txt", "notes.txt", "paste-a", { token: "\uE002" }),
+    ];
+    flushSync(() => controller.applyEditorDraft(referenceDraft, references, referenceDraft.length));
+    await new Promise(requestAnimationFrame);
+    flushSync(() => root.render(null));
+    render("paste-a", "/project-a");
+    await new Promise(requestAnimationFrame);
+    assert(readEditorValue(controller.ref.current!) === referenceDraft,
+      "Settings round-trip lost a workspace file reference from the draft");
+    assert(controller.fileReferences.length === 2 && controller.ref.current!.textContent!.includes("main.ts"),
+      "Settings round-trip must restore both workspace and scratch chips");
+    flushSync(() => root.render(null));
+    render("paste-a", "/project-b");
+    await new Promise(requestAnimationFrame);
+    assert(readEditorValue(controller.ref.current!) === "Check  and \uE002",
+      "changing workspace while the composer is unmounted must remove the previous workspace's chip");
+    assert(controller.fileReferences.length === 1 && controller.fileReferences[0].path === references[1].path,
+      "changing workspace must preserve scratch references");
+    flushSync(() => root.render(null));
+    resetComposerDraftCache();
+
+    // Keep the source attachment snapshot when a paste finishes in another session.
+    await reset("keep \uE010 ", 7, 7);
+    const originalReference = createFileReference("/scratch/paste-a/original.txt", "original.txt", "paste-a", { token: "\uE010", kind: "file" });
+    flushSync(() => controller.applyEditorDraft("keep \uE010 ", [originalReference], 7));
+    await new Promise(requestAnimationFrame);
+    const originalPasteFiles = api.pasteFiles;
+    let releasePaste!: () => void;
+    const responseGate = new Promise<void>((resolve) => { releasePaste = resolve; });
+    let started = false;
+    api.pasteFiles = async () => {
+      started = true;
+      await responseGate;
+      return { files: [{ path: "/scratch/paste-a/new.txt", name: "new.txt", kind: "file", mimeType: "text/plain" }] };
+    };
+    try {
+      const pendingPaste = dispatchPaste(controller.ref.current!, "", [new File(["new"], "new.txt", {type: "text/plain"})]);
+      while (!started) await new Promise(requestAnimationFrame);
+      render("paste-b");
+      await new Promise(requestAnimationFrame);
+      releasePaste();
+      await pendingPaste;
+      assert(controller.value === "", "pending paste changed the destination draft");
+      render("paste-a");
+      await new Promise(requestAnimationFrame);
+      const names = controller.fileReferences.map((r) => r.name);
+      assert(names.includes("original.txt") && names.includes("new.txt"),
+        "PENDING_PASTE_SESSION_SWITCH lost original attachment: " + JSON.stringify({ names, text: readEditorValue(controller.ref.current!), visible: controller.ref.current!.textContent }));
+    } finally {
+      releasePaste();
+      api.pasteFiles = originalPasteFiles;
+    }
     const nativeFiles = Array.from(
       (document.getElementById("native-files") as HTMLInputElement).files!,
     );
@@ -665,6 +723,8 @@ globalThis.composerPasteProbe = async () => {
       imageZoomFocusAndRecovery: true,
       nativeMultipleFiles: true,
       selectionAndSessionDrafts: true,
+      workspaceReferencesAcrossRemount: true,
+      pendingPasteAcrossSessionSwitch: true,
     };
   } finally {
     flushSync(() => root.unmount());

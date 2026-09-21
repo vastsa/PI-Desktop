@@ -73,7 +73,19 @@ describe("createHeadlessLaunchResolver", () => {
     expect(launch.sidecarParams.pluginTools).toEqual([]);
     expect(launch.sidecarParams.projectMemory).toBe("remember me");
     expect(launch.sidecarParams.commandShell).toMatchObject({ id: "bash" });
+    expect(launch.sidecarParams.infiniteProviderRetry).toBe(false);
     expect(calls.some((call) => call.method === "providers.getSecret")).toBe(true);
+  });
+
+  it("forwards the opt-in infinite provider retry setting", async () => {
+    const { host } = hostWith([provider], { p1: "sk-test" });
+    const resolver = createHeadlessLaunchResolver({ getHost: () => host, dataDir: "/data", log: () => undefined });
+    const launch = await resolver.resolve(
+      "s1",
+      { providerId: "p1", modelId: "gpt-a" },
+      { defaultMode: "agent", infiniteProviderRetry: true },
+    );
+    expect(launch.sidecarParams.infiniteProviderRetry).toBe(true);
   });
 
   it("falls back to the default provider and refuses a provider without a secret", async () => {

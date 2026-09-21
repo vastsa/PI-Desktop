@@ -2,6 +2,19 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.2",
+    "date": "2026-09-21",
+    "highlights": [
+      "La actividad de herramientas sigue el ancho de la conversación y contiene correctamente las etiquetas largas.",
+      "Los archivos adjuntos pegados se conservan aunque el pegado termine después de cambiar de sesión.",
+      "El modelo predeterminado seleccionado se conserva al editar proveedores y se aplica un respaldo seguro si se elimina.",
+      "Las secciones anidadas de pensamiento y actividad de herramientas son más fáciles de leer, recorrer y recuperar.",
+      "Mejora los diseños del Composer, los controles de razonamiento y la coherencia de temas del espacio de trabajo.",
+      "Añade un interruptor opcional en Ajustes para reintentar fallos de red y temporales del proveedor hasta que tengan éxito.",
+    ],
+  },
+
+  {
     "version": "0.15.1",
     "date": "2026-09-19",
     "highlights": [

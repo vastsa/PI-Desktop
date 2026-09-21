@@ -29,6 +29,19 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.15.2",
+    date: "2026-09-21",
+    highlights: [
+      "Keep tool activity aligned with the conversation width and contain long activity labels cleanly.",
+      "Preserve pasted file attachments when a paste finishes after switching sessions.",
+      "Keep the selected default model when editing providers, and fall back safely when it is removed.",
+      "Make nested thinking and tool activity disclosures easier to read, navigate, and recover.",
+      "Improve Composer layouts, reasoning controls, and theme consistency across the workspace.",
+      "Add an opt-in Settings switch to keep retrying network and transient provider failures until they succeed.",
+    ],
+  },
+
+  {
     version: "0.15.1",
     date: "2026-09-19",
     highlights: [
@@ -811,6 +824,19 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.15.2",
+    date: "2026-09-21",
+    highlights: [
+      "让工具活动跟随对话宽度排列，并妥善收纳过长的活动名称。",
+      "切换会话后，如果粘贴操作稍后完成，文件附件也会保留。",
+      "编辑提供商时保留已选的默认模型；模型被移除后安全回退。",
+      "优化嵌套思考和工具活动的展开收起，更易阅读、导航和恢复。",
+      "改进 Composer 布局、推理强度控制和工作区主题一致性。",
+      "设置里新增可选的无尽重试：网络或临时服务故障会一直重试到成功。",
+    ],
+  },
+
+  {
     version: "0.15.1",
     date: "2026-09-19",
     highlights: [
@@ -1592,6 +1618,19 @@ const zhCNEntries: ChangelogEntry[] = [
 ];
 
 const zhTWEntries: ChangelogEntry[] = [
+  {
+    version: "0.15.2",
+    date: "2026-09-21",
+    highlights: [
+      "讓工具活動跟隨對話寬度排列，並妥善收納過長的活動名稱。",
+      "切換工作階段後，即使貼上操作稍後完成，檔案附件也會保留。",
+      "編輯提供商時保留已選的預設模型；模型被移除後安全回退。",
+      "優化巢狀思考和工具活動的展開收合，更易閱讀、導覽和恢復。",
+      "改進 Composer 版面、推理強度控制和工作區主題一致性。",
+      "設定裡新增可選的無盡重試：網路或暫時性服務故障會持續重試到成功。",
+    ],
+  },
+
   {
     version: "0.15.1",
     date: "2026-09-19",

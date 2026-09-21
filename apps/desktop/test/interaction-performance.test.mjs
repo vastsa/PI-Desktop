@@ -100,10 +100,8 @@ test("expanded live tool output stays local to the changed row", () => {
   assert.match(transcript, /function toolRowPropsEqual\(/);
   assert.match(transcript, /if \(previous.variant !== "topology"\) return true;/);
   assert.match(transcript, /const autoOpenLatest =\s*!compact && isLast && itemIndex === items.length - 1/);
-  assert.match(
-    transcript,
-    /const blocks =\s*variant !== "topology" && open && hasDetails\s*\?\s*buildToolPresentation\(/,
-  );
+  assert.match(transcript, /if \(variant !== "topology" && open && hasDetails && disclosure\.parentVisible/);
+  assert.match(transcript, /const blocks = variant !== "topology" && open && hasDetails \? presentation\.current\?\.blocks : null/);
 });
 
 test("stream event bursts are coalesced until a paint or terminal event", () => {
@@ -120,8 +118,8 @@ test("tool errors stay local to their rows instead of failing the activity group
   assert.doesNotMatch(toolRow, /tool-activity-group[\s\S]*?failed/);
   // Failures remain visible in the row header; automatic open is last-tool
   // ownership, not error ownership.
-  assert.match(toolRow, /const disclosure = useAutomaticDisclosure\(\s*autoOpen && !failed && status !== "denied",\s*\)/);
-  assert.match(`${toolRow}\n${transcriptShared}`, /if \(userInteractedRef.current\) return/);
+  assert.match(toolRow, /const disclosure = useAutomaticDisclosure\(\s*autoOpen && !failed && status !== "denied",\s*revealRequest,\s*disclosureKey\("tool"/);
+  assert.match(transcript, /bodyEvents: \{ onPointerDownCapture: claim, onFocusCapture: claim \}/);
   assert.match(toolRow, /status === "error"\s*\? t\("chat.toolFailed"\)/);
 });
 

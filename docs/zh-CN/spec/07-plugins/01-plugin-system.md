@@ -499,6 +499,16 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
   而不是每次调用都反复连接。已移除的工具返回 `TOOL_NOT_FOUND`。恢复从不
   重放失败的 `tools/call`，因为那次调用可能已经产生过副作用。
 
+- Streamable HTTP `202 Accepted` acknowledgements for notifications and client
+  responses are not JSON-RPC replies. Any acknowledgement body is discarded,
+  including plain-text `Accepted`; ordinary request replies still follow the
+  JSON/SSE parsing and response-size limits.
+- The MCP row shows “Authorization required” only when runtime status explicitly
+  reports `authRequired`. Missing credentials, an untested connection, and
+  non-authentication failures do not imply OAuth is required. A stored OAuth
+  credential does not hide a subsequent authentication failure. Manual OAuth
+  authorization remains available from the HTTP server menu.
+
 ### 12. 3 设置 > 智能体中的技能管理
 
 - 技能页面使用 `~/.agents/skills` 和 `<project>/.agents/skills` 下的全局/项目栏。

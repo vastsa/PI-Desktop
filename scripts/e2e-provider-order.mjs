@@ -51,7 +51,14 @@ app.whenReady().then(async () => {
     await host.start();
     const fixtures = [];
     for (const name of ["A", "B", "C"]) {
-      const { provider } = await host.call("providers.create", { name, authKind: "none", defaultModelId: "model-" + name });
+      const { provider } = await host.call("providers.create", {
+        name, authKind: "none", baseUrl: "http://127.0.0.1:9/v1",
+        apiStyle: "chat_completions", defaultModelId: "model-" + name,
+        models: name === "A" ? ["deepseek-chat", "deepseek-reasoner"].map(id => ({
+          id, contextWindow: 128000, maxTokens: 8192,
+          thinkingLevels: ["off"], defaultThinkingLevel: "off",
+        })) : undefined,
+      });
       fixtures.push(provider);
     }
     await host.call("settings.set", { defaultProviderId: fixtures[0].id, defaultModelId: fixtures[0].defaultModelId });
@@ -86,6 +93,7 @@ app.whenReady().then(async () => {
       bindingForModel: (provider, modelId) => provider.models?.find((model) => model.id === modelId),
     });
     registrar.handle(IPC.invoke.settingsGet, () => host.call("settings.get"));
+    registrar.handle(IPC.invoke.settingsSet, (settings) => host.call("settings.set", settings));
     registrar.handle(IPC.invoke.sessionList, () => host.call("session.list"));
     registrar.handle(IPC.invoke.appGetOnboarding, async () => ({ dismissed: true }));
     window = new BrowserWindow({ show: false, width: 1000, height: 1000, webPreferences: {

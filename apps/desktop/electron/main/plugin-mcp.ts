@@ -360,6 +360,16 @@ function createHttpTransport(
           }
           const nextSession = response.headers.get("mcp-session-id");
           if (nextSession && new URL(url).origin === initialOrigin) sessionId = nextSession;
+          // Notifications and client responses have no JSON-RPC reply. Some
+          // servers include a plain-text "Accepted" body with their HTTP 202.
+          if (response.status === 202 && (message.method === undefined || message.id === undefined)) {
+            try {
+              await response.body?.cancel();
+            } catch {
+              // The acknowledgement body is not part of the MCP response.
+            }
+            return;
+          }
           const contentType = response.headers.get("content-type") ?? "";
           const body = await readBoundedHttpBody(response);
           if (!body.trim()) return;

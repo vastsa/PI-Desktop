@@ -183,6 +183,11 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 子代理和一次性 composer 提示增强使用相同的错误码、预算大小和
 优先级。
 
+应用设置 `infiniteProviderRetry` 默认关闭。开启后，主会话及其内置子代理只跳过可重试
+网络/瞬时故障（含 `PROVIDER_RATE_LIMITED`）的次数上限。退避、`Retry-After`、可见重试状态和
+停止路径不变。不可重试错误、上下文恢复、压缩、工具执行和一次性补全仍走原有有界预算。
+开启后可能在用户停止回合前持续消耗 API 用量。
+
 当 429 预算耗尽时，最终的助手错误和生命周期 `error` 只发出一次。
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：
 `phase`（`request` 或 `stream`）、`providerStatus`、`providerCode`、
@@ -390,6 +395,9 @@ Headroom 是 16,384 个代币储备底线的最大值，模型最大输出
 失去防护，无法恢复。手动 `/compact` 仍然存在
 会话空闲时可用。检查点生成是可中止的并且
 计为运行状态，直到持久持久性完成。
+
+委托（第 5f 节）对照它自己解析出的模型走同一条推导，并在它自己的回合边界上压缩，
+但没有属于它自己的持久检查点链（ADR 0299）。
 
 ## 5b.运营模式及规划状态
 
@@ -679,6 +687,31 @@ Electron main 里解析一次——凭据与 models.dev 快照都在那里——
 永远无法解析它。只有斜杠是结构性字符——提供商部分按归一化别名匹配，
 因此包含空格的显示名是合法的。
 
+
+**上下文预算与压缩（ADR 0299）。** 委托拥有与会话相同的窗口保护，并且以相同方式
+推导。预算取自该次运行实际解析出的模型 —— `Task.model` 覆盖、定义引脚，或继承
+的会话模型 —— 走第 5.1 节那条共享推导，因此 `hardLimit` 就是该窗口减去同样的
+请求余量，而按定义声明的 `maxTokens` 上限作为输出预算参与其中。在委托的回合边界
+上，该次运行会重新估计它自己的上下文；达到或超过 `hardLimit` 时，就在下一次提供商
+请求之前同步压缩，保留模式按与会话相同的生命周期规则选择：仍有待处理工具结果的
+边界按活动回合保留，已完成的边界按完成回合保留。没有任何预计算，也没有第二道阈值。
+
+当摘要无法生成，或压缩后的上下文仍然超出预算时，该次运行降级：只保留原始任务简报
+加最近的若干条消息，丢弃其余历史，继续运行，并记录它已被降级，因此报告与生命周期
+details 会说明该委托丢失了历史，而不是把一个不完整的答案当作完整答案呈现。若连这样
+也放不下，该次运行以 `SUBAGENT_CONTEXT_OVERFLOW`（不可重试）失败，点名父级可以改变
+什么 —— 缩小任务范围、改用窗口更大的模型、一次读取更少内容 —— 而不是把提供商的
+溢出文本转发出去。
+
+有序备选模型在被尝试之前会对照它自己窗口重新评估：预算装不下已携带上下文的备选
+会被跳过，并以该理由记入 `modelFailures`，而不是被重试进同一个失败。恢复来的链在
+预算之内播种 —— `seedDelegateMessages` 保留原始任务简报与最近的轮次，并优先丢弃最旧
+的工具结果 —— 因此一次恢复从 `hardLimit` 之下开始，而不是在它的第一次请求上就溢出。
+
+委托压缩只影响委托的模型上下文。它不改写任何持久化的转录行，不写入 host-core 检查点，
+也不添加压缩行、警告 toast 或上下文检查器条目；委托保留它完整的可见行，父级依旧只看到
+报告。压缩完全自动：`new_context` 对委托仍然被拒绝，因为执行它会设置父级运行时的待压缩
+标记。
 
 **事件与上下文。** 委托发出的每个事件都在信封上携带 `parentToolCallId` 和
 `agentName`，Electron main 会把这两者一并复制到持久化的行上。运行时重建模型
@@ -1032,17 +1065,14 @@ sidecar 序列化针对相同标准化路径的 IPC/`sequential` 调用
 跟踪差距（MVP 后积压）：更丰富的系统提示组成 (§7) 和
 provider/model 目录发现超出当前有线路径。
 
-### Provider certificate trust (issue #714)
+### Provider certificate trust（issue #714）
 
-The desktop sidecar starts with Node's `--use-system-ca`, retaining bundled
-roots and inherited `NODE_EXTRA_CA_CERTS`. It uses the OS trust store without
-turning off chain or hostname validation. Restart after updating local trust
-or the extra-CA startup environment. Headless pi-host launch behavior and
-System/Direct/Custom proxy routing are unchanged.
+桌面 sidecar 使用 Node 的 `--use-system-ca` 启动，同时保留内置根证书和继承的
+`NODE_EXTRA_CA_CERTS`。它使用操作系统信任库，但不会关闭证书链或主机名校验。
+更新本地信任库或额外 CA 启动环境后，需要重启桌面应用。无头 pi-host 启动行为以及
+System/Direct/Custom 代理路由保持不变。
 
-Explicit certificate verification errors are terminal for both setup and
-stream recovery in main sessions and built-in delegates. Their structured
-cause survives adapter message flattening, remains on the final error row,
-and never triggers a provider transport rebuild. Protocol errors such as
-`EPROTO` keep their existing retry behavior. See
-[certificate trust ADR](../../../adr/provider-system-certificates.md).
+在主 session 和内置 delegate 中，明确的证书校验错误在初始化和流恢复阶段都视为
+终态。结构化原因会穿过 adapter 的错误扁平化，保留在最终错误行中，也不会触发
+provider transport 重建。`EPROTO` 等协议错误继续使用原有重试行为。详见
+[证书信任 ADR](../../../adr/provider-system-certificates.md)。

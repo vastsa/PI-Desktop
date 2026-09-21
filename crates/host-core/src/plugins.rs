@@ -63,7 +63,7 @@ pub(crate) use install::decode_windows_code_page;
 pub(crate) use marketplace::catalog::make_zip;
 pub(crate) use marketplace::compare_plugin_versions;
 pub(crate) use marketplace::{
-    built_in_catalog, bundled_package_bytes, has_package_metadata, host_supports_version,
+    built_in_catalog_at, bundled_package_bytes, has_package_metadata, host_supports_version,
     latest_market_version,
 };
 pub(crate) use permissions::{derive_capabilities, derive_settings, permission_diff, sanitize_id};

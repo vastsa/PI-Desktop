@@ -52,14 +52,29 @@ test("home snapshots keep file references owned by the empty session id", () => 
 });
 
 test("the module cache survives a Composer remount", () => {
-  captureComposerDraft("sess-a", "draft A", []);
+  captureComposerDraft("sess-a", "draft A", [], "/project-a");
   captureComposerDraft(HOME_DRAFT_KEY, "home draft", [
     { sessionId: "", path: "/tmp/note.txt", name: "note.txt", kind: "file" },
-  ]);
+  ], "/project-a");
   // A remount is just another reader of the same map.
   assert.equal(readComposerDraft("sess-a")?.text, "draft A");
+  assert.equal(readComposerDraft("sess-a")?.workspacePath, "/project-a");
   assert.equal(readComposerDraft(HOME_DRAFT_KEY)?.text, "home draft");
   assert.equal(readComposerDraft(HOME_DRAFT_KEY)?.fileReferences[0]?.name, "note.txt");
+});
+
+test("adopting a home draft preserves its workspace owner", () => {
+  captureComposerDraft(HOME_DRAFT_KEY, "home draft", [
+    { sessionId: "", path: "src/main.ts", name: "main.ts", kind: "file", token: "\uE000" },
+  ], "/project-a");
+  adoptHomeDraftForSession("sess-new");
+  assert.equal(readComposerDraft("sess-new")?.workspacePath, "/project-a");
+});
+
+test("draft writes without workspace metadata retain the existing owner", () => {
+  captureComposerDraft("sess-a", "draft A", [], "/project-a");
+  writeComposerDraft("sess-a", { text: "draft A with an attachment", fileReferences: [] });
+  assert.equal(readComposerDraft("sess-a")?.workspacePath, "/project-a");
 });
 
 test("pruning drops deleted sessions and keeps home plus the live key", () => {

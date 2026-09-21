@@ -22,6 +22,7 @@ import { useTranscriptView } from "../../hooks/use-transcript-view";
 import { useTranscriptSearchFocus } from "../../hooks/use-transcript-search-focus";
 import { IconArrowDown } from "../icons";
 import { DisclosureAnchorContext } from "../../lib/disclosure-anchor-context";
+import { TranscriptDisclosureProvider } from "../../features/chat/transcript/disclosure";
 import { TooltipButton } from "../ui";
 import { SubagentDetail } from "../ChatTranscript";
 
@@ -51,6 +52,14 @@ function findSelectedSubagent(
 }
 
 export function SubagentPanel({ selection }: { selection: SubagentPanelSelection }) {
+  return (
+    <TranscriptDisclosureProvider key={`${selection.sessionId}:${selection.delegationId}`}>
+      <SubagentPanelSurface selection={selection} />
+    </TranscriptDisclosureProvider>
+  );
+}
+
+function SubagentPanelSurface({ selection }: { selection: SubagentPanelSelection }) {
   const { t } = useTranslation();
   const activeSessionId = useAppStore((state) => state.activeSessionId);
   const transcript = useTranscriptView(selection.sessionId);

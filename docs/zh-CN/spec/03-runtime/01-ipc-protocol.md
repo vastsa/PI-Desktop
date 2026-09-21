@@ -440,7 +440,7 @@ type AgentActivity =
      reason: "manual" | "threshold" | "overflow" }
  | { phase: "recovering"; since: number }
  | { phase: "retrying"; since: number; attempt: number;
-     retryDelayMs?: number; error?: AgentActivityError }
+     infinite?: boolean; retryDelayMs?: number; error?: AgentActivityError }
  | { phase: "waiting-subagents"; since: number; subagentCount: number;
      agents?: AgentActivityAgent[] };
 

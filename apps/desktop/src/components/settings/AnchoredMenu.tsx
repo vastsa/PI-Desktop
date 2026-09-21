@@ -214,8 +214,8 @@ export function AnchoredMenu({
     const onViewportChange = (event: Event) => {
       // Scrolling inside the menu cannot move a fixed layer, so skip it rather
       // than forcing a layout read on every scroll tick.
-      const target = event.target as Node | null;
-      if (target && menuRef.current?.contains(target)) return;
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) return;
       updatePosition();
     };
     window.addEventListener("resize", onViewportChange);

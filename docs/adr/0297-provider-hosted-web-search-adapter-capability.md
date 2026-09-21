@@ -23,7 +23,7 @@ shape that landed instead.
 
 Two upstream facts forced the design:
 
-- pi-ai 0.85.1 drops vendor search blocks in both adapters: the Anthropic
+- pi-ai 0.86.1 drops vendor search blocks in both adapters: the Anthropic
   stream loop has no `server_tool_use` / `web_search_tool_result` /
   `citations_delta` branches, and the Responses item loop has no
   `web_search_call` slot or annotation handling. Extraction must therefore
@@ -45,7 +45,7 @@ Two upstream facts forced the design:
    API — never vendor names, base URL hostnames, or model-id substrings.
 
 2. **Attachment and extraction live in the pi-ai adapters**, delivered by
-   extending `patches/@earendil-works__pi-ai@0.85.1.patch`:
+   extending `patches/@earendil-works__pi-ai@0.86.1.patch`:
    - `anthropic-messages.js` appends the `web_search_20250305` tool when
      `model.webSearch === true`, captures search blocks as `hostedSearch`
      content parts (raw wire block kept whole, streamed `input_json_delta`
@@ -57,7 +57,7 @@ Two upstream facts forced the design:
      creates a `hostedSearch` slot for `web_search_call` items, collects
      `url_citation` annotations, and replays the item for the same model.
    Both adapters push a `hosted_search_update` stream event per block
-   transition; `patches/@earendil-works__pi-agent-core@0.85.1.patch` teaches
+   transition; `patches/@earendil-works__pi-agent-core@0.86.1.patch` teaches
    the agent loop to forward it as `message_update` — without that second
    patch the events die in the loop's switch and search activity renders only
    when the whole turn finishes. The patches are a stopgap; the same changes

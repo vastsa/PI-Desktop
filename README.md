@@ -36,6 +36,8 @@ Local-first · Model-agnostic · Plugin-powered · macOS / Windows / Linux
 
 </div>
 
+> **Current release line: 0.15.x (Early Preview).**
+
 ---
 
 ## Why PI-Desktop?

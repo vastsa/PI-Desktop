@@ -40,43 +40,18 @@
 
 ### R4 — 请求分支+工作树+合并门
 
-> **每个开发请求都必须从 `main` 的专用分支和工作树开始。用户请求提交或推送时，还必须通过获准的交付路径将该任务集成到 `main`。**
+> **每个开发请求都必须从当前 `origin/main` 的专用分支和工作树开始。打开或更新 PR 时，该 head 必须包含最新的 `origin/main`。**
 
-- 在编辑之前，保留任何现有的未提交工作，获取 `origin/main`，
-  当工作树干净时快进本地 `main`，并创建一个新请求
-  来自最新提交的分支和工作树。小学现有工作
-  决不能仅仅为了开始新的操作而移动、隐藏或覆盖结账
-  请求。
-- 每个请求使用一个短期分支。命名它
-  `<type>/<short-description>`，其中 `type` 匹配常规更改
-  实用时键入，例如 `feat/provider-import` 或
-  `docs/request-branch-workflow`。
-- 每个请求使用一个专用工作树。不要在
-  主要结账或重用另一个请求的工作树。
-- 在安全的情况下重用主要结帐的开发环境：已安装
-  工具链、包管理器存储、构建缓存和忽略本地
-  环境配置仍然是规范环境。参考或
-  需要时将这些资源链接到请求工作树中；请勿复制
-  环境状态写入跟踪文件。安装或生成worktree-local
-  仅当隔离或版本兼容性需要时才声明。
-- 禁止对 `main` 进行开发提交和直接推送。
-- 用户请求提交、推送或两者时，即授权并要求将本次任务集成到本地
-  `main`。如果用户没有明确要求仅保留分支或草稿，不得停在任务分支提交或推送，
-  也不得再次请求合并确认。
-- 仅请求提交或本地合并，并不自动授权远程发布。未获远程交付授权时，完成必要的
-  验证并合入本地 `main`，不要推送或创建远程 PR/MR。
-- 远程推送获得授权后，推送请求分支，创建面向 `main` 的 PR/MR，通过所需的远程
-  检查和审查，并使用仓库允许的策略合并。随后安全地获取并同步本地 `main`。
-  不得据此推断可以直接推送 `main`、强制推送或丢弃无关本地工作。
-- 两条交付路径都必须保留验证、E2E、安全和冲突门禁。如果门禁、认证、权限或所需
-  审查阻止集成，必须报告实际阻塞原因和剩余工作；该请求尚未完成。
-- 工作树清理是强制性的并且是立即的。一旦请求分支
-  集成到 `main` — 包括请求时的本地 `main` 合并
-  在没有远程 PR/MR 的情况下交付 — 删除工作树并删除合并的
-  分支。合并的请求不得在磁盘上留下工作树。仅删除您的
-  自己的工作树和分支，并且只有在验证合并提交之后
-  存在于 `main` 中。
-- 如果用户在交付后要求启动应用，必须从已集成的 `main` 工作树和开发环境构建并启动。
+- 编辑前保留未提交工作，获取 `origin/main`，工作树干净时快进本地 `main`，并从该提交创建请求分支和工作树。不得为了开新请求而移动、藏匿或覆盖主工作区里的现有工作。
+- 每个请求使用一个短期分支，命名为 `<type>/<short-description>`。
+- 每个请求使用一个专用工作树。不要在主工作区或别人的工作树里实现新请求。
+- 在安全的情况下复用主工作区的工具链、包存储和缓存。
+- 禁止在 `main` 上开发或直接推送。
+- 仅请求提交并不授权远程发布。未获远程授权时，停在任务分支提交；不要为了跑 E2E 把任务合进本地 `main`。
+- 打开或更新 PR/MR 之前，获取 `origin/main` 并确认它是请求 head 的祖先（`git merge-base --is-ancestor origin/main HEAD` 或 `pnpm check:pr-base`）。私有分支用 rebase；已共享且不宜改写历史时用非破坏性合并。不得打开或更新落后于 `origin/main` 的 PR。
+- 获准远程交付后，按 `AGENTS.md` 的固定顺序：相对最新 `origin/main` 刷新，在工作树跑 task-candidate E2E，推送请求分支，打开面向 `main` 的 PR/MR，通过远程检查（含 PR-base 门）和审查后合并，再同步本地 `main`。
+- 合入 `main` 后立即删除自己的工作树和已合并分支。
+- 若用户要求启动应用，从已集成的 `main` 构建并启动。
 
 ### R5 — 先核实链接的 GitHub issue，再回复并关闭
 
@@ -310,9 +285,7 @@
   安全的本地配置。请求可能会创建隔离的本地状态
   当共享不安全或不兼容时，但该状态仍被忽略
 并且不得泄漏到提交中。
-- **交付遵循 R4 的授权边界。** 仅提交的交付完成经过验证的本地 `main` 合并；获得
-  远程交付授权时，完成进入远程 `main` 的 PR/MR 合并并同步本地 `main`。明确要求仅
-  分支或草稿时，以较窄的范围为准。
+- **交付遵循 R4 的授权边界及其固定顺序。** 仅提交的交付停在工作树里的请求分支提交。获准远程交付时，先相对最新 `origin/main` 刷新（`pnpm check:pr-base`），在工作树跑 task-candidate E2E，再推送并打开 PR/MR，合入远程 `main` 后同步本地。明确要求仅分支或草稿时，以较窄的范围为准。不得打开或更新落后于 `origin/main` 的 PR。
 
 典型请求开始（从主结帐运行；选择其外部的路径）：
 
@@ -339,42 +312,36 @@ git worktree add -b <type>/<short-description> <worktree-path> origin/main
 并清理）：
 
 ```bash
+# from the request worktree
+git fetch origin main
+git rebase origin/main   # private branch; do not force-push a shared branch
+pnpm check:pr-base
+# run the required task-candidate E2E suites for this change (R7)
 git push -u origin <type>/<short-description>
 gh pr create --base main --head <type>/<short-description>
 gh pr checks --watch
 gh pr merge --merge
-cd <primary-checkout>
+git fetch origin main
+# from a clean primary checkout
 git switch main
-git pull --ff-only origin main
-git merge-base --is-ancestor <type>/<short-description> main
+git merge --ff-only origin/main
 git worktree remove <worktree-path>
 git branch -d <type>/<short-description>
 git worktree prune
 git push origin --delete <type>/<short-description>
 ```
 
-通过合并到本地 `main` 来集成请求时进行请求清理
-而不是远程 PR/MR（从主结帐运行）：
+远程合并后，尽可能快进同步本地 `main`。确认请求提交已在远程 `main` 且没有仅本地提交后，才把本地 `main` 重置到 `origin/main`。
 
-```bash
-git switch main
-git merge <type>/<short-description>
-git merge-base --is-ancestor <type>/<short-description> main
-git worktree remove <worktree-path>
-git branch -d <type>/<short-description>
-git worktree prune
-```
+如果主工作区无法做这次同步，另开一个短命的 `main` 工作树，不要打扰无关工作。
 
-本地交付时，如果请求分支仍跟踪不包含本地提交的 `origin/main`，`git branch -d` 可能
-会拒绝删除。仅当上面的 ancestry 检查成功且该分支确实属于本次请求时，才解除上游后
-再次执行普通删除：
+不要为了跑 E2E 或开 PR 把请求分支合进本地 `main`。无远程 PR/MR 的本地交付留在请求分支上，直到用户明确要求集成。
 
-```bash
-git branch --unset-upstream <type>/<short-description>
-git branch -d <type>/<short-description>
-```
-
-本地 `main` 必须包含每个任务提交；已发布但尚未合入远程 `main` 的请求分支不适用此回退。
+拆卸前工作树必须清洁；提交或丢弃请求自己的
+首先进行剩余的更改。使用 `git branch -d` 而不是 `-D` 因此未合并
+分支拒绝删除。如果 `git worktree remove` 报告工作树为脏
+或锁定，解决该状态而不是强制删除，并且永远不要删除
+另一个请求的工作树。
 
 拆卸前工作树必须清洁；提交或丢弃请求自己的
 首先进行剩余的更改。使用 `git branch -d` 而不是 `-D` 因此未合并
@@ -429,6 +396,7 @@ D164 与 D260。 GitHub 发行说明并不能替代。
 | 直接在 `main` 上开发、提交或推送 | 违反 R4；绕过隔离和审查门 |
 | 在主结帐或另一个请求的工作树中开发新请求 | 违反 R4；混合任务文件和本地状态 |
 | 重用请求分支来完成不相关的工作 | 混合请求范围并削弱可追溯性 |
+| 打开或更新 head 落后于 `origin/main` 的 PR/MR | 违反 R4；审查会从过期基线开始 |
 | 用户要求提交/推送交付时停在任务分支提交或推送 | 违反 R4，除非用户明确限定为分支或草稿交付 |
 | 将合并的请求工作树保留在磁盘上 | 违反 R4；陈旧的工作树积累并导致交叉请求污染 |
 | 修改基线冻结决策，无需 ADR + 版本升级 | 基线被冻结；变更需要正式流程 |

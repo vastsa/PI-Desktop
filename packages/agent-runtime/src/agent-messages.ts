@@ -31,7 +31,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** JSON-clone an opaque value so it satisfies pi 0.85 `JsonValue`. */
+/** JSON-clone an opaque value so it satisfies pi 0.86 `JsonValue`. */
 export function toJsonValue(value: unknown): JsonValue | undefined {
   if (value === undefined) return undefined;
   try {
@@ -39,6 +39,12 @@ export function toJsonValue(value: unknown): JsonValue | undefined {
   } catch {
     return undefined;
   }
+}
+export function toJsonObject(value: unknown): Record<string, JsonValue> {
+  const normalized = toJsonValue(value);
+  return normalized && typeof normalized === "object" && !Array.isArray(normalized)
+    ? normalized
+    : {};
 }
 
 export function usageFromPi(

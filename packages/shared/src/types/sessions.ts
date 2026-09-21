@@ -178,6 +178,8 @@ export type AgentActivity =
       phase: "retrying";
       since: number;
       attempt: number;
+      /** The retry budget is unbounded for this active turn. */
+      infinite?: boolean;
       retryDelayMs?: number;
       error?: AgentActivityError;
     }

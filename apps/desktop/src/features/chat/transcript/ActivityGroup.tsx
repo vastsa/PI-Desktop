@@ -1,3 +1,6 @@
+import { visibleActivityItems } from "../../../lib/activity-summary";
+import { DisclosureScope, disclosureKey } from "./disclosure";
+import { ProcessActivityGroup } from "./ProcessActivityGroup";
 import {
   Fragment,
   memo,
@@ -140,7 +143,7 @@ export function runActivityLabel(
       return t("chat.retryingModel", {
         delaySeconds: retryDelaySeconds(activity, now),
         attempt: activity.attempt,
-        maxAttempts: PROVIDER_RETRY_MAX_RETRIES,
+        maxAttempts: activity.infinite ? "∞" : PROVIDER_RETRY_MAX_RETRIES,
       });
     case "waiting-subagents":
       return waitingSubagentsLabel(activity, t);
@@ -211,7 +214,7 @@ function activityGroupPropsEqual(
 
 export const ActivityGroup = memo(function ActivityGroup({
   items,
-  embedded = false,
+  embedded: _embedded = false,
   isActive,
   endedAt,
   isLast = false,
@@ -249,13 +252,14 @@ export const ActivityGroup = memo(function ActivityGroup({
   const searchTarget = useContext(TranscriptSearchContext);
   const revealRequest = searchTarget && items.some((item) => item.message.id === searchTarget.messageId)
     ? searchTarget.requestId : undefined;
-  const {
-    open,
-    toggle: toggleDisclosure,
-    collapse: collapseDisclosure,
-    claim: claimDisclosure,
-    titleRef,
-  } = useAutomaticDisclosure(live, revealRequest);
+  const visibleItems = visibleActivityItems(items, compact, isActive);
+  const first = items[0];
+  const disclosure = useAutomaticDisclosure(
+    hasSubagentTopology ? live : visibleItems.length <= 1 || (!compact && live),
+    revealRequest,
+    disclosureKey("activity", first?.message.id ?? "", first?.kind ?? "", first?.kind === "hostedSearch" ? first.round.id : ""),
+  );
+  const { open, toggle: toggleDisclosure, collapse: collapseDisclosure, claim: claimDisclosure, titleRef } = disclosure;
   const [now, setNow] = useState(Date.now);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
   const wasActiveRef = useRef(live);
@@ -368,6 +372,7 @@ export const ActivityGroup = memo(function ActivityGroup({
         return (
           <HostedSearchRow
             key={`hosted-search-${item.message.id}-${item.round.id}`}
+            messageId={item.message.id}
             round={item.round}
             streaming={isActive && item.message.status === "streaming"}
             autoOpen={autoOpenLatest}
@@ -387,9 +392,12 @@ export const ActivityGroup = memo(function ActivityGroup({
     });
   };
 
-  if (compact && onlyThinking && !thinkingNow) return null;
-  if (embedded && !hasSubagentTopology) {
-    return <div className="turn-process-activity">{renderActivityItems()}</div>;
+  if (!hasSubagentTopology) {
+    return (
+      <ProcessActivityGroup items={visibleItems} active={isActive} disclosure={disclosure}>
+        {renderActivityItems()}
+      </ProcessActivityGroup>
+    );
   }
 
   return (
@@ -443,6 +451,8 @@ export const ActivityGroup = memo(function ActivityGroup({
         </div>
       ) : null}
       <div
+        ref={disclosure.bodyRef}
+        {...disclosure.bodyEvents}
         className="tool-activity-collapse"
         aria-hidden={!open}
         inert={!open}
@@ -450,10 +460,10 @@ export const ActivityGroup = memo(function ActivityGroup({
         <div className="tool-activity-collapse-inner">
           <div className="tool-activity-body" id={detailsId}>
             <DisclosureCollapseRail
-              label={t("chat.collapseDetails")}
+              label={t("chat.collapseActivityGroup")}
               onCollapse={collapseDisclosure}
             />
-            {renderActivityItems()}
+            <DisclosureScope disclosure={disclosure}>{renderActivityItems()}</DisclosureScope>
           </div>
         </div>
       </div>

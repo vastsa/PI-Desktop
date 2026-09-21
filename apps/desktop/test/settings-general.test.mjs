@@ -108,6 +108,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(aiSource, /settings\.defaultsTitle/);
   assert.match(aiSource, /CommandShellRow/);
   assert.match(aiSource, /enterToSend: !settings\.enterToSend/);
+  assert.match(aiSource, /infiniteProviderRetry: settings\.infiniteProviderRetry !== true/);
   assert.match(aiSource, /LargePasteThresholdRow/);
   assert.match(aiSource, /ContextUsageDisplayRow/);
   assert.match(aiSource, /PromptEnhancementCard/);
@@ -120,6 +121,8 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
     "settings.contextUsageDisplay",
     "settings.contextUsageDisplayRemaining",
     "settings.contextUsageDisplayUsed",
+    "settings.infiniteProviderRetry",
+    "settings.infiniteProviderRetryDesc",
   ]) {
     assert.match(settingsSearchSource, new RegExp(key.replaceAll(".", "\\.")));
     assert.match(enLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
@@ -127,6 +130,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
     assert.match(trLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
   }
   assert.match(sharedTypesSource, /contextUsageDisplay\?: ContextUsageDisplay/);
+  assert.match(sharedTypesSource, /infiniteProviderRetry\?: boolean/);
   assert.match(sharedTypesSource, /ContextUsageDisplay = "remaining" \| "used"/);
   assert.match(sharedTypesSource, /chatContentMaxWidth\?: number/);
   assert.match(settingsPageSource, /largePasteThreshold/);

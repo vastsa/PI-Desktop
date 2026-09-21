@@ -54,6 +54,8 @@ export type ModelConfig = {
   catalogProvider?: ModelProviderMetadata;
   /** Adapter-facing subset; models.dev modalities remain complete above. */
   input: Array<"text" | "image">;
+  /** Published context window retained as a safety ceiling for user overrides. */
+  catalogContextWindow?: number;
   contextWindow: number;
   maxTokens: number;
   /**

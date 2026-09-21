@@ -102,6 +102,7 @@ does not turn temporary thread pressure into a host process exit.
 | `SPEECH_INPUT_TOO_LARGE` | no | speech input exceeds 25 MB |
 | `SUBAGENT_IDLE_TIMEOUT` | no | withdrawn (D328): idle watchdogs are not armed; the code remains for stored results |
 | `SUBAGENT_DURATION_TIMEOUT` | no | withdrawn (D328): duration watchdogs are not armed; the code remains for stored results |
+| `SUBAGENT_CONTEXT_OVERFLOW` | no | a delegate's own model context exceeded its safe budget and neither automatic turn-boundary compaction nor the degraded retry that keeps only the task brief and the most recent messages brought it back below the limit; the failure names the actionable recovery instead of the provider's overflow text |
 ### 3.3 Workspace / tools / permissions
 
 | code | retriable | meaning |
@@ -327,7 +328,11 @@ non-429 path applies the same precedence with an 8-second cap and otherwise
 waits 1, 2, 4, then remains at 8 seconds for later retries. Only the failed
 request is replayed; the session and its tool state are untouched. A
 non-retryable `PROVIDER_ERROR` from a
-malformed 400/422 request never enters either budget.
+malformed 400/422 request never enters either budget. The persisted
+`infiniteProviderRetry` setting is false by default; when true it removes only
+the retry-count ceiling for the admitted transient/network classes (including
+429). Backoff, `Retry-After`, cancellation, and terminal classification remain
+unchanged, and the setting may continue API usage until the user stops the turn.
 
 A `NETWORK_ERROR` carries the failing transport layer as bounded `details`:
 `networkCategory` (`dns`, `tls`, `timeout`, `refused`, `unreachable`, `reset`,

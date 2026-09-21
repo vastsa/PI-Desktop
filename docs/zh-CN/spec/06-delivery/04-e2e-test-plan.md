@@ -97,7 +97,7 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 
 ## E2E PR 合入门
 
-每个代码 pull request 都必须在合入前通过与其回归面相关的 E2E。代码变更包括渲染器、Electron Main、Preload、Agent Runtime、Rust host-core、会话、转录、计划、插件、MCP、权限、供应商/模型运行时、持久化、进程生命周期、打包/启动，以及影响应用执行的构建或 CI 行为。仅文档更改在不影响可执行行为时可豁免。
+每个代码 pull request 都必须在打开或更新前，在已经包含最新 `origin/main` 的候选上通过与其回归面相关的 E2E（`pnpm check:pr-base`）。不得打开落后于 `origin/main` 的 PR。不要为了跑 E2E 把任务合进本地 `main`。代码变更包括渲染器、Electron Main、Preload、Agent Runtime、Rust host-core、会话、转录、计划、插件、MCP、权限、供应商/模型运行时、持久化、进程生命周期、打包/启动，以及影响应用执行的构建或 CI 行为。仅文档更改在不影响可执行行为时可豁免。
 
 根目录 `package.json` 是可执行命令的事实来源。最低选择如下：
 
@@ -616,8 +616,9 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **预期**：在聊天路径上，对话顶部栏仅显示标题和操作；
   它没有模型或 Agent|Plan|Goal 模式控制。左侧输入 Composer 芯片拥有
   活动会话的 Agent/Plan/Goal 开关，Composer 右侧组合芯片拥有模型和推理选择。的
-  任务标题是唯一可见的标题文本，最多 10 个字符
-  带有省略号；项目范围可通过其工具提示获得。紧凑型
+  任务标题是唯一可见的标题文本，使用可用宽度，仅在溢出时显示省略号。
+  在宽窄布局、侧边栏展开/折叠及工作面板打开/关闭时，检查超过 10 个字符的
+  英文标题，确保标题不会覆盖操作按钮。完整标题和项目范围可通过工具提示获得。紧凑型
   运行时出现状态点。侧边栏
   切换仅在折叠状态下存在（没有
   侧边栏控件的重复）。在所有其他路线上均采用无框拖曳
@@ -1061,31 +1062,31 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **里程碑**：M5
 - **状态**：单位覆盖（`settings-responsive-layout.test.mjs`）；场景已记录
 
-#### E2E-040：Codex 风格的工具活动在转录本重新加载后仍然存在
-- **先决条件**：已配置提供商；项目开放；一个会话可以运行一个
-  成功的工具和失败或中止的工具。
-- **步骤**：1) 运行代表性读取、搜索和命令工具。 2) 检查
-  处于活动状态时折叠的处理标头。 3）等待完成
-  并扩大加工组。 4) 展开已完成的行并复制其
-  输出。 5) 单击展开行旁边的垂直线，然后单击键盘焦点
-  并激活处理组的垂直规则。 6) 重新加载会话并
-  展开恢复的组。
-- **预期**：连续调用默认折叠在一个本地化版本下
-  处理标头更新然后冻结其经过的时间并显示
-  步数。扩展调用使用透明语义活动行
-  动作图标、自然语言动词、等宽主要参数和安静
-  披露。处理组使用完整的辅助列宽度，因此
-  短标签或有效负载不会将扩展的细节缩小为内容大小
-  芯片。每个扩展内容垂直规则都是一个指针并且可通过键盘聚焦
-  对其自身披露的崩溃控制。嵌套扩展显示输出
-  在夹紧滚动区域中的原始输入之前。实时部分输出更新
-  地方。重新加载的行保留工具名称、参数、结果和状态。
-- **链接规格**：`04-ux/01-ui-ia.md`，
-  `04-ux/07-ui-design-system.md`、`04-ux/08-component-spec.md`、
-  `04-ux/09-interaction-patterns.md`
-- **接受**：C（聊天流）、E（工具）、F（持久性）
+#### E2E-040：嵌套工具活动在转录重新加载后仍然存在
+- **先决条件**：已配置提供商并打开项目；回合可以包含进度文字、多个搜索／工具／思考
+  条目，以及失败或被拒工具。
+- **步骤**：1) 在详细模式流式输出进度段落 A、多项搜索片段、进度段落 B 和多项命令
+  片段。2) 检查已展开的整体过程和活动组；在更多输出到达时手动收起活动组。3) 完成
+  回合并比较未操作与用户接管的组。4) 展开一个已完成组和其中一个条目，复制输出，
+  收起并重新展开该组，再独立打开同级组。5) 分别检查单项片段，以及最后一个活动组的
+  字面最后一项为工具／搜索、思考、失败工具和被拒工具。6) 切换到紧凑模式，检查活动
+  思考、失败后恢复及完成状态。7) 在保留窗格内重新挂载行，然后重载渲染器并重新打开
+  会话。
+- **预期**：两种模式都使用一个整体过程披露，末尾回答位于其外。详细模式的活动中和
+  已完成过程默认展开；活动多项组展开，并且只在用户未操作时于完成后收起。紧凑模式
+  的过程、组和所有载荷默认收起，推理正文隐藏；记录过失败／被拒工具的未操作活动过程
+  会在后续恢复期间保持展开。单项没有组包装。详细模式只在最后一个活动组的字面最后
+  一项是符合条件的工具／搜索时自动展开载荷；不会越过思考向前查找，失败／被拒保护会
+  保持叶子关闭。父级、子级和同级选择彼此独立；收起并重新展开父级会保留下级状态，
+  流式更新和完成不会覆盖用户接管的选择。保留窗格中的重新挂载保留选择；渲染器重启
+  重新应用默认值，但工具名称、参数、结果和状态仍会恢复。组／过程标题显示有界运行和
+  问题摘要，不会把整个回合标记为失败。
+- **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/07-ui-design-system.md`、
+  `04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md`
+- **验收**：C（聊天流）、E（工具）、F（持久性）
 - **里程碑**：M3
-- **状态**：草案
+- **状态**：草案。2026-09-20 的嵌套披露变更仅把本场景作为静态源码／设计审查的
+  预期行为；该范围不新增或运行单元、组件、集成、浏览器、Electron 或 E2E 测试。
 
 #### E2E-041：对话小地图导航长记录
 
@@ -1852,7 +1853,7 @@ hover/focus 不带移位标签，项目标题 hover/focus 路径显示
 #### E2E-050：Composer 模型 × 推理菜单遵循精确能力
 
 - **先决条件**：一种编目推理模型、一种非推理模型，以及一个未知的自由格式模型 ID。
-- **步骤**：1) 打开 Composer 模型 × 推理芯片。2) 确认根层包含带当前值的模型和推理等级条目，以及推理等级条目正下方每个支持等级一个刻度的滑杆。3) 拖动并点击滑杆跨过多档，再点击一个刻度标签，确认芯片更新且菜单留在根层。4) 打开模型，搜索并从一个提供商分组选择模型；确认菜单仍在根层打开。5) 打开推理等级并从单选列表选择一档。6) 对非推理提供商和未知自由格式模型 ID 重复；练习 Escape、外部点击、上/下、Enter、左方向键和滑杆方向键。
+- **步骤**：1) 打开 Composer 模型 × 推理芯片。2) 确认根层包含带当前值的模型和推理等级条目，以及推理等级条目正下方轨道上每个支持等级一个刻度点的滑杆；确认每个等级在轨道下方都保留可见标签、各自对齐到自己的刻度点。3) 拖动并点击滑杆跨过多档，再点击一个刻度标签，确认芯片更新且菜单留在根层、选中档的刻度点位于滑块正下方。4) 打开模型，搜索并从一个提供商分组选择模型；确认菜单仍在根层打开。5) 打开推理等级并从单选列表选择一档。6) 对非推理提供商和未知自由格式模型 ID 重复；练习 Escape、外部点击、上/下、Enter、左方向键和滑杆方向键。
 - **预期**：芯片在右侧工具栏，带 Bot 图标，位于独立提示词增强 Sparkles 动作和发送/中止之前；Off 省略等级文本。单个锚定菜单把根层原地替换成返回行和子菜单，从不打开标签页或第二个弹出层，再打开总是从根层开始。模型搜索过滤粘性提供商分组；推理等级来自 `omit` 然后绑定已启用档位的规范顺序。当列出一个以上等级时，根层在推理等级条目正下方承载拖动滑杆（单档绑定隐藏滑杆）。拖过多个刻度只持久化最后一次待提交的档位；刻度标签不是 Tab 停靠点。滑杆和刻度提交立即更新芯片且菜单留在根层。推理等级条目打开单选列表，使用单选语义、末尾勾选和当前模型支持说明。选择任一值立即更新芯片和根层值、清除模型过滤并保持菜单打开。非推理或未知模型从 `off` 开始，但显式 Settings 绑定可以提供其配置档位；发现不会自动提升。刷新发现的模型数据不能覆盖绑定。第一条消息创建会话之前，Composer 使用模型菜单里选中的精确模型而不是提供商默认模型；物化后仍保持同一精确模型能力。
 - **链接规格**：`03-runtime/11-provider-model-system.md`，
   `03-runtime/12-provider-config-schema.md`，
@@ -2146,6 +2147,23 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
 - **验收**：质量、安全
 - **里程碑**：M5
 - **状态**：草案（手动）
+
+#### E2E-BROWSER-session-preview-race：切换会话不显示过期预览
+
+- **前置条件**：两个会话具有不同 HTML 预览，浏览器面板上下文分别保留。夹具可以独立
+  延迟目录查询和文档加载。
+- **步骤**：预览 A，在后台生成 B 的预览；折叠 A 的面板后打开 B，延迟 B 的目录查询和
+  加载，然后切回 A。快速切换 B → C，最后才完成旧 B 的目录查询。再分别验证已经开始的
+  旧加载、空会话、加载失败和 guest 销毁。
+- **预期**：后台 B 不导航 A。切换后，B 的面板不显示 A 的文档，后续尺寸与可见性更新
+  也不能显示它。只有最新导航可以显示 guest，旧 B 查询迟到不能覆盖 C。切回 A 恢复 A，
+  空会话保持空白。迟到完成不能撤销关闭或销毁。同会话正常导航保留当前页面。
+  非法目标、失败或超时不能把上一个文档报告为目标会话已经就绪。切换导航超过既有
+  15 秒等待上限后保持隐藏，需重试，不承诺迟到完成自动显示。
+- **关联规范**：`04-ux/08-component-spec.md` §5.3；ADR 0028、ADR 0170。
+- **状态**：`browser-host-session.test.mjs` 与 `browser-pane-navigation.test.mjs`
+  覆盖生产 BrowserHost/BrowserPane 服务路径，控制原生浏览器与 Host 边界，采用确定性
+  时钟。尚不覆盖原生 Electron 合成显示或报告者的真实会话。
 
 #### E2E-060：文件选项卡浏览停留在工作区中
 
@@ -3658,6 +3676,7 @@ IPC 请求无法关闭。
   6. 运行 503 `Retry-After` 装置并检查观察到的等待。
   7. 重新加载会话并验证是否只有已完成的响应或
      单终端故障助手依然耐用。
+  8. 打开设置中的「无尽重试」后，故障超过默认次数仍继续；停止回合时不再发起后续请求，关闭后恢复有界上限。
 - **预期**：
   - `terminated` 被分类为 `STREAM_FAILED`，上游网关
     `502`/`503`/`504` 被分类为可重试的 `PROVIDER_ERROR`。
@@ -3687,7 +3706,8 @@ IPC 请求无法关闭。
     预算互不占用。
   - 身份验证、模型选择、上下文和格式错误的请求失败
     不进入任何提供程序重播路径，包括来自格式错误的 400/422
-    请求的不可重试 `PROVIDER_ERROR`。
+    请求的不可重试 `PROVIDER_ERROR`。无尽模式不改变分类，只去掉已准入网络/瞬时故障的次数上限；
+    仍可中止，并以无界重试指示标出。
 - **链接规格**：`03-runtime/01-ipc-protocol.md`，
   `03-runtime/02-agent-runtime.md`、`03-runtime/08-error-codes.md`、
   `08-meta/decisions-log.md`（D186、D259）、ADR 0050、ADR 0128
@@ -3796,17 +3816,21 @@ IPC 请求无法关闭。
   输入 CDP 或输出。默认无钥匙运行仍为 5/5 与现场案例
   明确跳过。
 
-#### E2E-CHAT-opaque-floating-decision-and-retry-surfaces：Plan 审批条与重试 hover 保持不透明
+#### E2E-CHAT-opaque-floating-decision-and-retry-surfaces：停靠区、Plan 审批条与重试表面遮住正文
 
-- **状态**：已自动化（`apps/desktop/test/plan-mode-source-contract.test.mjs`、`apps/desktop/test/active-turn-surface.test.mjs`）
+- **状态**：已自动化（`pnpm test:e2e:composer-occlusion`、`pnpm test:e2e:theme-surfaces`、`apps/desktop/test/plan-mode-source-contract.test.mjs`、`apps/desktop/test/active-turn-surface.test.mjs`）
 - **优先级**：P2
 - **覆盖**：C、品质 / 浮动 Composer 与重试表面
 - **先决条件**：渲染器 CSS 为 `apps/desktop/src/styles` 下的生产源。
 - **步骤**：
-  1. 检查 Composer 停靠栏样式中的 `.plan-approval-bar`。
-  2. 检查记录样式中的 `.run-activity-error-popover.message-error`。
-  3. 在实时会话中悬停或聚焦正在重试的活动行。
+  1. 在两套内置主题和一套自定义主题中检查 `.composer-dock-docked` 的计算背景。
+  2. 滚动长会话，让一行正文经过悬浮 Composer 下方。
+  3. 检查 Composer 停靠栏样式中的 `.plan-approval-bar`。
+  4. 检查记录样式中的 `.run-activity-error-popover.message-error`。
+  5. 在实时会话中悬停或聚焦正在重试的活动行。
 - **预期**：
+  - 停靠区横跨整个宽度绘制不透明的 `--ds-bg-primary` 工作区表面；正文在
+    Composer 边界处消失，不会留在输入框下方或圆角外侧。
   - Plan/Goal 审批条使用 `--ds-bg-composer` 加 `--ds-shadow-composer`，而不是正文流里的 `--ds-tile` 薄洗，因此在透明停靠栏上仍可读。
   - 重试 hover tooltip 把错误色混在 `--ds-bg-elevated-opaque` 上，记录正文不会透出。
   - 重试 tooltip 的高度被限制在尾部状态行上方的可用空间内，其余部分可滚动，
@@ -4279,6 +4303,86 @@ IPC 请求无法关闭。
   `delegation-history.test.ts`、`runtime.test.ts`、
   `apps/desktop/test/assistant-turns.test.mjs`）；桌面旅程需要具备条件的环境。必需套件：
   `test:e2e`、`test:e2e:subagents`、`test:e2e:transcript`。
+
+#### E2E-SUBAGENT-context-overflow-compacts-before-failing
+
+- **先决条件**：一个使用确定性本地传输的 Agent 会话，其模型元数据声明了一个很小的
+  上下文窗口（例如 16,000 个 token），回复也是脚本化的。这个小窗口由注入的伪提供商
+  给出，绝不来自真实提供商：在本仓库里，真实提供商与付费 API 不是默认测试环境。
+  一份用户定义 `~/.agents/subagents/reader.md` 声明 `Read`、`Glob` 与 `Grep`，
+  工作区里的文件大到只需两三次读取就会越过委托的硬边界。
+- **步骤**：
+  1. 委派一个必须按顺序读完这些文件的任务简报，记录传输收到的每一次请求及其
+     估算大小。
+  2. 读取委托越过硬边界之后的那一次请求。
+  3. 让越界发生在仍有待处理工具结果的时刻，再让它发生在一个已完成的回合上，
+     各重复一次。
+  4. 把摘要请求脚本化为失败，再重复一次。
+  5. 用同一套夹具让会话 Agent 跑同样的任务简报，把它的请求与转录行同本次改动
+     之前记录的一次运行作对比。
+  6. 在委托结算后检查委派卡片、转录、上下文检查器，以及父级自己的模型上下文。
+- **预期**：委托继续工作，而不是失败。越界之后的那一次请求低于硬边界，携带摘要
+  加上适用的保留尾部；没有任何请求超出窗口被发出。仍有待处理工具结果时按活动
+  回合保留（只留最新的用户消息），已完成的回合不保留。摘要失败会降级为原始任务
+  简报加最近的若干条消息，该次运行依然完成，报告与生命周期 details 会说明它已被
+  降级，而不是把一个不完整的答案当作完整答案呈现。委托压缩不添加转录行、不写
+  host-core 检查点、不弹警告 toast、也不添加上下文检查器条目；委托自己的行保持
+  完整，父级的模型上下文里依旧只有那份报告。会话 Agent 的行为与改动之前完全一致。
+- **链接规格**：`03-runtime/02-agent-runtime.md` §5.1、§5f、
+  `03-runtime/08-error-codes.md` §3.2、ADR 0299、ADR 0064、ADR 0136
+- **验收**：C — 对话和直播；品质
+- **里程碑**：M6+
+- **状态**：草稿。必需套件：`test:e2e`、`test:e2e:subagents`。
+
+#### E2E-SUBAGENT-context-overflow-reports-actionable-failure
+
+- **先决条件**：同一个注入的小窗口伪提供商，窗口小到连降级后的上下文也放不下。
+  一份定义声明两个有序 `fallbackModels`：一个窗口不比主模型更大，另一个更大。
+  第二份定义不声明任何备选。
+- **步骤**：
+  1. 委派一个会一路越过压缩与降级的任务简报，读取父级收到的工具结果以及生命周期
+     details。
+  2. 对声明了那两个备选定义重复一次，记录传输实际被请求了哪些备选。
+  3. 让每个备选都处在同样的小窗口上，再重复一次。
+  4. 分别在英文与中文下读取委派卡片与报告。
+  5. 继续父级回合，然后发送一条新的提示。
+- **预期**：该次运行以 `SUBAGENT_CONTEXT_OVERFLOW`（不可重试）失败，父级读到的内容
+  点名它可以改变什么 —— 缩小任务范围、改用上下文窗口更大的模型、一次读取更少内容。
+  提供商原始的溢出语句不是父级收到的东西。自身预算装不下已携带上下文的备选永远不会
+  被请求，并以该理由出现在 `modelFailures` 里；窗口更大的那个备选会被尝试，并且可以
+  成功。当没有任何备选装得下时，结果仍是 `SUBAGENT_CONTEXT_OVERFLOW`，而不是最后那个
+  提供商错误。委托的行保持持久且可见，会话回到空闲，下一条提示不会是 `AGENT_BUSY`。
+- **链接规格**：`03-runtime/02-agent-runtime.md` §5f、
+  `03-runtime/08-error-codes.md` §3.2、ADR 0299、
+  ADR subagent-model-fallback
+- **验收**：C — 对话和直播；品质
+- **里程碑**：M6+
+- **状态**：草稿。必需套件：`test:e2e`、`test:e2e:subagents`、
+  `test:e2e:subagent-models`。
+
+#### E2E-SUBAGENT-resume-seeds-within-context-budget
+
+- **先决条件**：同一个注入的小窗口伪提供商。一条已结算的 `reader` 链读取的内容
+  足以超出委托的硬边界，但仍在 `MAX_RESUMABLE_READ_LINES` 以内；第二条已结算的
+  链远远落在预算之内。
+- **步骤**：
+  1. 对超出预算的那条链执行 `Task.resume`，完整捕获它的第一次提供商请求。
+  2. 对落在预算之内的那条链执行 `Task.resume`，捕获同样的请求。
+  3. 向恢复后的运行询问该链在最近一轮得出的结论，再询问它在第一轮得出的结论。
+  4. 重启应用，从转录重建链索引，再次恢复那条超出预算的链。
+  5. 在一条链里累积超过 `MAX_RESUMABLE_READ_LINES` 的只读输出，读取下一条提示给出
+     的可复用清单。
+- **预期**：恢复后运行的第一次请求低于硬边界。它以原始任务简报开头，并保有最近的
+  若干轮；最旧的工具结果优先被丢弃，而丢弃一条助手消息会连同它的工具调用一起丢弃，
+  因此没有孤立的工具调用会到达提供商。落在预算之内的链仍按原样整条播种。最近一轮的
+  结论能从播种的上下文里答出；第一轮的结论可能已经不在，此时该次运行会照实说明，而
+  不是凭空编造。一次恢复绝不会在它的第一次请求上以 `CONTEXT_TOO_LARGE` 或
+  `SUBAGENT_CONTEXT_OVERFLOW` 失败。`MAX_RESUMABLE_READ_LINES` 仍然会把读取过多的链
+  移出可复用清单；裁剪不会让它重新变得可恢复。
+- **链接规格**：`03-runtime/02-agent-runtime.md` §5f、ADR 0299、ADR 0279
+- **验收**：C — 对话和直播；品质
+- **里程碑**：M6+
+- **状态**：草稿。必需套件：`test:e2e`、`test:e2e:subagents`。
 
 #### E2E-145：工具结果读取为结构化块，从不 JSON
 
@@ -5162,6 +5266,9 @@ IPC 请求无法关闭。
 | F — 持久化（目录窗口来源） | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
 | 品质（目录窗口来源） | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
 | M6+（目录窗口来源） | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
+| C — 对话和直播（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
+| 品质（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
+| M6+（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -6497,7 +6604,7 @@ IPC 请求无法关闭。
   编辑器不再缺少高级设置。在账户模型上启用的等级会持久化，并在重新打开编辑器后
   依然存在。OpenAI Codex 的 `openai-codex` 适配器键会解析匹配的 `openai`
   models.dev 记录，因此 `gpt-6-astra` 不会显示为通用的 128,000 / 8,192 /
-  无推理默认值。已认证的 ChatGPT 列表本身来自已固定的 pi-ai 目录（0.85.1
+  无推理默认值。已认证的 ChatGPT 列表本身来自已固定的 pi-ai 目录（0.86.1
   包含 `gpt-6-astra`）；models.dev 不能补上缺失的 OAuth ID。没有已发布记录
   的模型则保留其已存等级不变。账户的默认模型仍是首个绑定。
 - **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/08-component-spec.md` §19、
@@ -8052,6 +8159,12 @@ metadata round trips. See ADR `first-output-latency.md`.
 - **里程碑**：M6+
 - **状态**：草稿
 
+- **Local fallback regression**: Set the process default data directory to a
+  different temporary root, then create a plugin manager with its own root.
+  All bundled fallback package URLs must stay beneath the manager's root;
+  installing the bundled package must still report byte progress, validate its
+  size and checksum, and preserve cancellation behavior.
+
 #### E2E-PLUGIN-cancel-during-download-installs-nothing：在下载期间取消会停止安装、不留下任何已安装内容，并让对话框静默关闭
 
 - **先决条件**：一次官方渠道安装，其安装包足够大或镜像足够慢，使下载阶段持续一段时间；能够应答 `market.cancelInstall`；同时可以查看插件目录、安装缓存与已安装列表。
@@ -8197,28 +8310,62 @@ the latest destination. These assertions measure work counts, not device FPS.
 
 ### E2E-PROVIDER-certificate-trust-and-terminal-errors
 
-- **Preconditions:** Built request candidate incorporating current `origin/main`,
-  Electron installed, isolated test process/profile and loopback HTTPS fixture.
-  No real provider, credentials, user profile, or OS certificate-store writes.
-- **Steps:** Run `node scripts/e2e-provider-certificates.mjs`. Launch the actual
-  desktop sidecar and submit a chat prompt against an untrusted localhost
-  certificate. Relaunch with its CA in `NODE_EXTRA_CA_CERTS`, then request the
-  same certificate through a hostname absent from its SAN.
-- **Expected:** The child's default CA set includes system roots and extra CAs.
-  The first request fails once with a non-retriable certificate error and no
-  retry status; the trusted request returns text; the hostname mismatch still
-  fails once. TLS and hostname verification remain enabled.
-- **UI:** Run `node scripts/e2e-provider-certificate-ui.mjs` for the real error
-  component in isolated Chromium. Certificate errors get localized guidance;
-  DNS and protocol errors retain the generic summary. Errno/raw details remain
-  visible, and details can be closed and reopened. Optional
-  `PI_CERTIFICATE_EVIDENCE_DIR` records a screenshot; `--baseline` uses the
-  upstream error component with the same fixture and stylesheet.
-- **Lower-level coverage:** `provider-certificate-flow.test.ts` enters main
-  session `prompt()` and delegate `run()` through real Agent/pi-ai wiring,
-  with only the external fetch mocked. Both stop after one request and retain
-  the certificate cause. Error classification and recovery suites cover direct,
-  nested, flattened, non-certificate and wrapped certificate failures.
-- **Limits:** OS-root inclusion is checked without installing a root. The TLS
-  success fixture uses a child-only extra CA; it does not reproduce a specific
-  antivirus installation or claim native macOS/Linux verification.
+- **前提：** 已构建、包含当前 `origin/main` 的任务候选版本，已安装 Electron，使用
+  隔离的测试进程／配置和回环 HTTPS 夹具。不使用真实 provider、凭据或用户配置，
+  也不写入操作系统证书库。
+- **步骤：** 运行 `node scripts/e2e-provider-certificates.mjs`。启动真实桌面
+  sidecar，使用不受信任的 localhost 证书提交聊天提示。再将其 CA 放入
+  `NODE_EXTRA_CA_CERTS` 后重启，并通过 SAN 中不存在的主机名请求同一证书。
+- **预期：** 子进程默认 CA 集合包含系统根证书和额外 CA。首次请求只失败一次，
+  返回不可重试的证书错误且没有重试状态；信任 CA 后请求返回文本；主机名不匹配
+  仍只失败一次。TLS 和主机名校验始终保持启用。
+- **UI：** 运行 `node scripts/e2e-provider-certificate-ui.mjs`，在隔离 Chromium
+  中验证真实错误组件。证书错误显示本地化指引；DNS 和协议错误保留通用摘要。
+  errno／原始 details 仍可见，详情可以关闭并重新打开。可选的
+  `PI_CERTIFICATE_EVIDENCE_DIR` 会记录截图；`--baseline` 使用相同夹具和样式的
+  upstream 错误组件。
+- **低层覆盖：** `provider-certificate-flow.test.ts` 通过真实 Agent/pi-ai wiring
+  进入主 session 的 `prompt()` 和 delegate 的 `run()`，仅 mock 外部 fetch。两条
+  路径都只请求一次并保留证书原因；错误分类和恢复测试覆盖直接、嵌套、扁平化、
+  非证书以及包装后的证书错误。
+- **限制：** OS 根证书的纳入在不安装根证书的条件下检查。TLS 成功夹具只使用
+  子进程额外 CA，不复现某个具体杀毒软件安装，也不宣称已完成 macOS/Linux 实机验证。
+
+### E2E-CHAT-turn-process-and-thinking-display
+
+- **先决条件：** 一个回合包含进度段落 A、多次搜索及思考、进度段落 B、多条命令及
+  思考和最终回答；详细与紧凑显示模式。
+- **步骤：** 在详细模式静态审查嵌套披露路径，包括相互独立的组／条目切换、父级收起
+  与恢复、单项片段、字面最后一项选择、失败／被拒／恢复和保留窗格重新挂载。
+  随后在紧凑模式重复，并覆盖权限／提问／计划／目标操作卡、中止的部分回答、
+  助手错误和委派子任务。
+- **预期：** 两种模式都使用一个整体过程披露，并把最终回答、助手错误、中止后的末尾
+  文字和待处理操作留在过程之外。详细模式的活动中／已完成过程默认展开；活动多项组
+  展开，未操作组在完成时收起。紧凑模式的过程、组和载荷默认收起，隐藏推理；记录过
+  失败／被拒工具的未操作活动过程会在恢复期间保持展开，并在完成后收起。单项没有组。
+  详细模式只自动展开最后一个活动组中符合条件的字面最后工具／搜索项；不会越过思考
+  向前查找，失败／被拒叶子保持关闭。父级、子级和同级状态相互独立；窗格拥有的用户
+  选择跨更新、模式切换和重新挂载保留，渲染器重启后重新应用默认值。已保存模式跨重启
+  保留，缺失或未知设置按详细模式处理。
+- **2026-09-20 变更的验证范围：** 本次变更只包含多级折叠与活动组呈现；精确转录搜索
+  定位不在本次范围内，保持原有搜索行为。
+- **规格：** 04-ux/06-settings-ia、04-ux/08-component-spec、
+  04-ux/09-interaction-patterns；ADR turn-process-and-thinking-display。
+
+### E2E-MCP-HTTP-ACK — HTTP acknowledgement and authorization status
+
+- **Preconditions**: A local mock Streamable HTTP server returns JSON for
+  initialize, `202` with plain-text `Accepted` for notifications/initialized,
+  SSE for tools/list, and JSON for tools/call. No provider credentials needed.
+- **Steps**: Connect, discover a tool, and call it. Render the MCP settings row
+  with idle, connecting, ready, non-authentication failure, and authentication
+  failure statuses, including an expired stored OAuth credential.
+- **Expected**: The acknowledgement does not enter the JSON parser; discovery,
+  calls, and session headers remain functional. Only explicit authRequired
+  status shows the authorization-required badge. Non-authentication failures
+  retain their original error. Authentication failures remain actionable.
+- **Specs**: 07-plugins/01-plugin-system §12.2; ADR 0038; ADR 0283.
+- **Acceptance**: HTTP client integration and settings component rendering.
+- **Milestone**: Maintenance.
+- **Status**: Covered by the existing HTTP client integration fixture and a
+  focused component-render validation; no live IDA process required.

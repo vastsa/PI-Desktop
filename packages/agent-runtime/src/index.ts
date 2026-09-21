@@ -1,4 +1,5 @@
 export * from "./host-client.js";
+export * from "./custom-system-prompt.js";
 export * from "./model-capabilities.js";
 export * from "./mode-prompts.js";
 export * from "./runtime.js";

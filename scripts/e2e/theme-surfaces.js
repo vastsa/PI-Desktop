@@ -34,6 +34,7 @@ const surfaces = {
   kbd: [".prose-chat kbd", "--ds-prose-kbd-fg", "ink"],
   asktoolCard: [".composer-stack > .asktool-card", "--ds-bg-composer"],
   asktoolOption: [".asktool-option", "--ds-tile-deep"],
+  dockMask: [".composer-dock-docked", "--ds-bg-primary"],
 };
 
 // Issue #360: the dock question card rides the composer plate and its option
@@ -41,15 +42,18 @@ const surfaces = {
 Object.assign(DEFAULT_RGBA.light, {
   asktoolCard: [255, 255, 255, 255],
   asktoolOption: [26, 26, 26, 20],
+  dockMask: [255, 255, 255, 255],
 });
 Object.assign(DEFAULT_RGBA.dark, {
   asktoolCard: [33, 33, 33, 245],
   asktoolOption: [255, 255, 255, 20],
+  dockMask: [24, 24, 24, 255],
 });
 const COMPOSER_SHADOW = "rgba(0, 0, 0, 0.04) 0px 3px 7.5px 0px, rgba(0, 0, 0, 0.05) 0px 0px 20px 0px";
 Object.assign(DEFAULT_SHADOWS.light, { asktoolCard: COMPOSER_SHADOW });
 Object.assign(DEFAULT_SHADOWS.dark, { asktoolCard: COMPOSER_SHADOW });
 const customColors = {
+  "--ds-bg-primary": "#26313d",
   "--ds-settings-rail-bg": "#243645",
   "--ds-settings-field-bg": "#365476",
   "--ds-settings-nav-active": "#526f82",
@@ -138,4 +142,19 @@ globalThis.themeSurfacesProbe = async (theme, custom) => {
   return { ok: failures.length === 0, theme, custom, values, failures,
     elevatedToken: getComputedStyle(document.documentElement).getPropertyValue("--ds-bg-elevated-primary").trim(),
     elevatedRgba: rgba(getComputedStyle(document.documentElement).getPropertyValue("--ds-bg-elevated-primary").trim()) };
+};
+
+// The Composer occlusion regression is intentionally independent from the
+// fixture's keyboard-focus checks, whose :focus-visible state depends on the
+// test window owning macOS foreground focus.
+globalThis.themeDockMaskProbe = async (theme, custom) => {
+  const result = await globalThis.themeSurfacesProbe(theme, custom);
+  const dock = result.values.dockMask;
+  const expected = rgba(
+    getComputedStyle(document.documentElement).getPropertyValue("--ds-bg-primary").trim(),
+  );
+  const failures = [];
+  if (String(dock.rgba) !== String(expected)) failures.push("dock mask ignores --ds-bg-primary");
+  if (dock.rgba[3] !== 255) failures.push("dock mask is not opaque");
+  return { ok: failures.length === 0, theme, custom, dock, expected, failures };
 };

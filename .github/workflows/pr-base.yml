@@ -1,0 +1,33 @@
+name: PR base
+
+# Every pull request must contain the current target branch tip (`main`).
+# ci.yml ignores docs, so this gate lives on its own and runs for every PR.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-base-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-base:
+    name: Head contains latest base
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check PR base ancestry
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/check-pr-base-main.mjs --base "$PR_BASE_SHA" --head "$PR_HEAD_SHA"
+
+      - name: Unit-test the PR base check
+        run: node --test scripts/check-pr-base-main.test.mjs

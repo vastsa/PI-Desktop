@@ -104,7 +104,7 @@ const child = spawn(process.execPath, [fileURLToPath(new URL("../packages/agent-
 let stderr = "";
 child.stderr.on("data", (chunk) => { stderr += chunk; });
 const send = (message) => child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
-readNdjsonLines(child.stdout, (line) => {
+const lines = readNdjsonLines(child.stdout, (line) => {
   const message = JSON.parse(line);
   if (message.method === "host.proxy") {
     const { method, params } = message.params;

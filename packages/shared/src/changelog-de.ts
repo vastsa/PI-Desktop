@@ -2,6 +2,19 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.2",
+    "date": "2026-09-21",
+    "highlights": [
+      "Werkzeugaktivitäten folgen der Gesprächsbreite; lange Aktivitätsnamen werden sauber begrenzt.",
+      "Dateianhänge aus dem Einfügen bleiben erhalten, auch wenn der Vorgang nach einem Sitzungswechsel endet.",
+      "Das ausgewählte Standardmodell bleibt beim Bearbeiten von Anbietern erhalten und fällt sicher zurück, wenn es entfernt wird.",
+      "Verschachtelte Denk- und Werkzeugaktivitäten lassen sich leichter lesen, navigieren und wiederherstellen.",
+      "Composer-Layouts, Reasoning-Steuerung und die Theme-Konsistenz im Arbeitsbereich wurden verbessert.",
+      "Optionale Einstellung, Netzwerk- und vorübergehende Anbieterfehler bis zum Erfolg zu wiederholen.",
+    ],
+  },
+
+  {
     "version": "0.15.1",
     "date": "2026-09-19",
     "highlights": [

@@ -375,6 +375,7 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
         mode: normalizeMode(overrides.mode ?? sessionMode ?? defaultMode ?? "agent"),
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
+        infiniteProviderRetry: settings.infiniteProviderRetry === true,
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
         attachmentsDir: join(dataDir, "attachments"),

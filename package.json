@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.15.2-beta.1",
+  "version": "0.15.2-beta.2",
   "description": "Local-first AI coding agent desktop client",
   "packageManager": "pnpm@11.18.0",
   "engines": {
@@ -26,6 +26,7 @@
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",
     "test:e2e:theme-surfaces": "node scripts/e2e-theme-surfaces.mjs",
+    "test:e2e:composer-occlusion": "node scripts/e2e-theme-surfaces.mjs --dock-mask-only",
     "test:e2e:composer-autocomplete": "node scripts/e2e-composer-autocomplete.mjs",
     "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
     "test:e2e:transcript": "node scripts/e2e-transcript-render.mjs",
@@ -42,6 +43,7 @@
     "check:marketplace": "node scripts/check-marketplace-catalog.mjs",
     "check:release-docs": "node scripts/check-release-docs.mjs",
     "check:agent-policy": "node scripts/check-agent-policy-sync.mjs",
+    "check:pr-base": "node scripts/check-pr-base-main.mjs",
     "docs:dev": "pnpm --filter @pi-desktop/docs dev",
     "docs:build": "pnpm --filter @pi-desktop/docs build",
     "docs:preview": "pnpm --filter @pi-desktop/docs preview",

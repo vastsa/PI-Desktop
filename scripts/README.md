@@ -70,7 +70,8 @@ and on manual dispatch, skipping both when a change touches only `docs/**` or
 `.github/workflows/docs-check.yml` covers the paths `ci.yml` ignores: it runs
 `pnpm docs:check` (the docs locale pair check) when `docs/**`, the READMEs, the
 shared changelog sources, or the check scripts change. `check:release-docs` is
-deliberately not in CI because it fails on rc versions by design.
+deliberately not in CI because release branches must pass it with the stable
+version explicitly supplied for a prerelease preview.
 
 `.github/workflows/release.yml` builds on a `v*.*.*` tag. A `verify` job first
 repeats the `ci.yml` checks (a tag push does not trigger `ci.yml`), and the

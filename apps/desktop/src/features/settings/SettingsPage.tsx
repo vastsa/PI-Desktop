@@ -461,6 +461,28 @@ export function SettingsPage() {
                     <span className="settings-toggle-thumb" />
                   </button>
                 </SettingsRow>
+                <SettingsRow
+                  title={t("settings.infiniteProviderRetry")}
+                  description={t("settings.infiniteProviderRetryDesc")}
+                >
+                  <button
+                    type="button"
+                    className={cx(
+                      "settings-toggle",
+                      settings.infiniteProviderRetry === true && "on",
+                    )}
+                    role="switch"
+                    aria-checked={settings.infiniteProviderRetry === true}
+                    aria-label={t("settings.infiniteProviderRetry")}
+                    onClick={() =>
+                      void saveSettings({
+                        infiniteProviderRetry: settings.infiniteProviderRetry !== true,
+                      })
+                    }
+                  >
+                    <span className="settings-toggle-thumb" />
+                  </button>
+                </SettingsRow>
                 <LargePasteThresholdRow
                   settings={settings}
                   saveSettings={saveSettings}

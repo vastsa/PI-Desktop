@@ -1,7 +1,7 @@
 /**
  * Vendor-account (OAuth) login for model providers.
  *
- * pi-ai owns the seven login flows and the locked token refresh; persistence
+ * pi-ai owns all supported login flows and the locked token refresh; persistence
  * and the user-facing half of the conversation are the app's job (see
  * `auth/types.d.ts`: "Login/account-removal orchestration is app-owned"). This module is
  * that half:

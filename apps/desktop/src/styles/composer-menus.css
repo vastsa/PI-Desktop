@@ -37,6 +37,8 @@
 
 .composer-model-thinking {
   position: relative;
+  /* Keep the label-sized trigger inside its shrinking toolbar slot. */
+  display: flex;
   min-width: 0;
   flex: 0 1 auto;
 }
@@ -118,6 +120,12 @@
 .composer-model-thinking-chip:hover {
   background: var(--ds-bg-hover) !important;
   color: var(--ds-text-primary) !important;
+}
+
+/* The menu measures this button on release. A press-scale transition would
+   cache a transient anchor rect until the first selection repositions it. */
+.composer-model-thinking-chip:active:not(:disabled) {
+  transform: none;
 }
 
 .composer-model-thinking-icon {
@@ -238,20 +246,113 @@
 }
 
 /* Reasoning slider (issue #417): the menu root carries the slider directly
-   under the Reasoning level entry; the entry opens the classic radio list. */
+   under the Reasoning level entry; the entry opens the classic radio list.
+
+   Stop/label alignment contract: the rail and the labels are full-width
+   n-column grids, so dot i, label i and the thumb at index i all sit on the
+   same column center W/(2n) + i·W/n. The range input overlays the rail at
+   full width and is inset on both sides by half a column minus half the thumb
+   (W/(2n) - r) — that inset is what moves the native thumb's first/last stops
+   inward from the radius edge onto the grid's first/last column centers. The
+   input's own track is transparent — the rail line and dots are drawn on the
+   grids instead — so the thumb glides over the dots. The thumb radius lives
+   in --thinking-thumb-radius so the formula stays correct if it changes. */
 .composer-thinking-slider {
+  --thinking-thumb-radius: 7px;
+  --thinking-dot-radius: 2px;
+  --thinking-track-height: 4px;
+  --thinking-track-center: 7px; /* (18 - 4) / 2 inside the 18px input */
+  --thinking-inset: calc(100% / (2 * var(--stop-count, 1)) - var(--thinking-thumb-radius));
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 0 6px 4px;
 }
 
+/* Rail: full-width positioning context for the dots row and the input. */
+.composer-thinking-rail {
+  position: relative;
+  height: 18px;
+}
+
+/* The rail line spans the stop-to-stop distance: it starts and ends half a
+   column in from the edges so its tips land on the first/last dot centers.
+   The muted base rail is ::before and the accent fill is ::after, a separate
+   layer whose width transitions smoothly between stops. */
+.composer-thinking-rail::before,
+.composer-thinking-rail::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  top: var(--thinking-track-center);
+  left: calc(100% / (2 * var(--stop-count, 1)));
+  height: var(--thinking-track-height);
+  border-radius: var(--radius-full);
+}
+
+.composer-thinking-rail::before {
+  right: calc(100% / (2 * var(--stop-count, 1)));
+  background: var(--ds-border-subtle);
+}
+
+.composer-thinking-rail::after {
+  /* Cover the first dot's full rounded cap without moving the target end. */
+  left: calc(100% / (2 * var(--stop-count, 1)) - var(--thinking-dot-radius));
+  width: calc(var(--composer-thinking-progress, 0%) + var(--thinking-dot-radius));
+  background: var(--ds-accent);
+  transition: width var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+/* One dot per stop, centered on the rail at each full-width column center. */
+.composer-thinking-dots {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--stop-count, 1), minmax(0, 1fr));
+  align-items: center;
+  pointer-events: none;
+}
+
+.composer-thinking-dot {
+  justify-self: center;
+  width: calc(2 * var(--thinking-dot-radius));
+  height: calc(2 * var(--thinking-dot-radius));
+  border-radius: var(--radius-full);
+  background: var(--ds-text-muted);
+  opacity: 0.55;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-out),
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+/* The thumb covers the selected dot; accent keeps a partial cover readable. */
+.composer-thinking-dot.active {
+  background: var(--ds-accent);
+  opacity: 1;
+}
+
+.composer-thinking-dot[data-hovered]:not([data-filled]):not(.active) {
+  position: relative;
+  z-index: 1;
+  background: var(--ds-accent);
+  opacity: 1;
+  transform: scale(1.3);
+}
+
+/* The accessible control overlays the rail at full width; the inset padding
+   moves the thumb stops onto the column centers. Its track stays transparent
+   so the rail line and dots show through under the thumb. */
 .composer-thinking-range {
+  z-index: 3;
   -webkit-appearance: none;
   appearance: none;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 18px;
   margin: 0;
+  padding: 0 var(--thinking-inset);
   background: transparent;
   cursor: pointer;
 }
@@ -263,54 +364,65 @@
 }
 
 .composer-thinking-range::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(
-    to right,
-    var(--ds-accent) 0,
-    var(--ds-accent) var(--composer-thinking-progress, 0%),
-    var(--ds-border-subtle) var(--composer-thinking-progress, 0%),
-    var(--ds-border-subtle) 100%
-  );
+  height: var(--thinking-track-height);
+  background: transparent;
 }
 
 .composer-thinking-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 14px;
   height: 14px;
-  margin-top: -5px;
-  border: 2px solid var(--ds-bg-elevated-opaque);
+  margin-top: calc((var(--thinking-track-height) - 14px) / 2);
+  border: 0;
   border-radius: var(--radius-full);
-  background: var(--ds-accent);
+  background: transparent;
 }
 
 .composer-thinking-range::-moz-range-track {
-  height: 4px;
-  border-radius: var(--radius-full);
-  background: var(--ds-border-subtle);
+  height: var(--thinking-track-height);
+  background: transparent;
 }
 
-.composer-thinking-range::-moz-range-progress {
-  height: 4px;
-  border-radius: var(--radius-full);
-  background: var(--ds-accent);
-}
 .composer-thinking-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+}
+
+/* Decoration never changes the native range's hit target or accessible value.
+   Equal-width, gapless columns share the same center formula as the input. */
+.composer-thinking-thumb {
+  z-index: 2;
+  position: absolute;
+  top: 2px;
+  left: calc(100% / (2 * var(--stop-count, 1)) + var(--composer-thinking-progress, 0%));
   width: 14px;
   height: 14px;
   border: 2px solid var(--ds-bg-elevated-opaque);
   border-radius: var(--radius-full);
   background: var(--ds-accent);
+  transform: translateX(-50%);
+  pointer-events: none;
+  transition: left var(--motion-duration-normal) var(--motion-ease-out);
 }
 
-/* One label per stop; long ladders ellipsize instead of wrapping. */
+
+.composer-thinking-slider[data-dragging] .composer-thinking-thumb,
+.composer-thinking-slider[data-dragging] .composer-thinking-rail::after {
+  transition: none;
+}
+
+/* Labels form the same full-width n-column grid as the dots, so label i
+   centers under dot i and the thumb at index i. Long words ellipsize inside
+   the column; every label stays visible. */
 .composer-thinking-ticks {
-  display: flex;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: repeat(var(--stop-count, 1), minmax(0, 1fr));
 }
 
 .composer-thinking-tick {
-  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
   padding: 0;
@@ -318,13 +430,14 @@
   color: var(--ds-text-muted);
   font-size: var(--text-2xs);
   line-height: var(--leading-compact);
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
   transition: color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.composer-thinking-tick:hover,
+.composer-thinking-tick[data-hovered],
 .composer-thinking-tick:focus-visible {
   color: var(--ds-text-primary);
 }
@@ -349,6 +462,13 @@
 @media (prefers-reduced-motion: reduce) {
   .composer-model-thinking-menu {
     animation: none;
+  }
+
+  .composer-thinking-thumb,
+  .composer-thinking-rail::after,
+  .composer-thinking-dot,
+  .composer-thinking-tick {
+    transition: none;
   }
 }
 

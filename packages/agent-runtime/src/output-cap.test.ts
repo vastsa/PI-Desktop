@@ -123,6 +123,15 @@ describe("clampOutputToContext", () => {
     expect(clampOutputToContext(model, BASE_CONTEXT, 8888)).toBe(8888);
   });
 
+  it("uses the published window as a safety ceiling", () => {
+    const model = {
+      contextWindow: 262_144,
+      catalogContextWindow: 128_000,
+      maxTokens: 200_000,
+    };
+    expect(clampOutputToContext(model, BASE_CONTEXT, 200_000)).toBe(123_904);
+  });
+
   it("never exceeds the requested budget", () => {
     const context: OutputCapContext = {
       messages: [{ role: "user", content: "a".repeat(100) }],

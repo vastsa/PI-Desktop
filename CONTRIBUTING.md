@@ -35,6 +35,9 @@ For a suspected security vulnerability, do not open a public issue. Follow
 - Create the branch from an up-to-date `origin/main` and use a name such as
   `feat/provider-import`, `fix/session-refresh`, or
   `docs/contributing-guide`.
+- Before opening or updating a pull request, `origin/main` must be an ancestor
+  of the request head. Run `pnpm check:pr-base`. Do not open or update a PR
+  that is behind `origin/main`.
 - Preserve uncommitted work in the primary checkout. Do not reset, stash, move,
   or overwrite another contributor's work.
 - Do not reuse another request's branch or worktree. Remove only your own
@@ -122,11 +125,11 @@ Run only the relevant subset when the change is low risk. Documentation-only
 changes normally need no runtime tests; at minimum, review the rendered
 Markdown and run `git diff --check`.
 
-Code-bearing changes require the relevant E2E suite on the integrated local
-`main` before the request branch is pushed and the pull request is opened. A
-run on the request branch itself is useful for debugging but does not replace
-that gate. Record any unavailable required suite as `NOT RUN` with its reason,
-alternative validation, and remaining risk.
+Code-bearing changes require the relevant E2E suite on a candidate that
+contains latest `origin/main` before the request branch is pushed and the pull
+request is opened. A run on a stale request branch is useful for debugging but
+does not replace that gate. Record any unavailable required suite as `NOT RUN`
+with its reason, alternative validation, and remaining risk.
 
 ## Commit and Pull Request
 
@@ -144,8 +147,9 @@ Before committing, review the complete diff. Never commit:
 - Local databases, logs, configuration, or machine-specific paths.
 - `node_modules/`, build artifacts, release packages, or unrelated changes.
 
-Merge the request branch into local `main` and run the required E2E suite from
-that integrated checkout first; then open a pull request against `main` with:
+Refresh against latest `origin/main` (`pnpm check:pr-base`) and run the
+required E2E suite from the request worktree first; then open a pull request
+against `main` with:
 
 - a concise summary and rationale;
 - affected specs, ADRs, and E2E scenarios;
@@ -169,14 +173,14 @@ git branch -d <type>/<short-description>
 git worktree prune
 ```
 
-Local `main` already carries its own integration merge of the request branch,
-so the remote merge is synchronized with `git merge origin/main` rather than a
-fast-forward pull. Reset local `main` to `origin/main` once the request commits
-are verified present in remote `main` and that local merge is no longer needed.
+After a remote merge, local `main` is synchronized with `git merge --ff-only
+origin/main` (or `git merge origin/main` if it has diverged). Do not merge the
+request branch into local `main` merely to open a PR.
 
-For code-bearing changes, record the required E2E result from the integrated
-local `main` before the pull request is opened, and rerun the affected suites
-when the remote merge lands executable content that differs from that commit.
+For code-bearing changes, record the required E2E result from a candidate that
+contains latest `origin/main` before the pull request is opened, and rerun the
+affected suites when the remote merge lands executable content that differs
+from that commit.
 
 ## Issue and Security Reports
 

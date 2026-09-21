@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useRef,
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,6 +13,7 @@ import type { UiMessage } from "@pi-desktop/shared";
 import { useOpenPreviewTarget } from "../../../hooks/use-preview-target";
 import { useFollowScroll } from "../../../hooks/use-follow-scroll";
 import { getToolPreviewTarget } from "../../../lib/chat-links";
+import { disclosureKey } from "./disclosure";
 import {
   formatToolDuration,
   getToolAction,
@@ -67,6 +69,7 @@ import {
   TOOL_ACTION_KEYS,
   TOOL_RUNNING_KEYS,
   useAutomaticDisclosure,
+  useMessageRevealRequest,
 } from "./shared";
 import {
   delegateAgentName,
@@ -157,8 +160,11 @@ export const ToolRow = memo(function ToolRow({
   // Detailed mode opens the last tool of the last activity group. Compact keeps
   // payloads collapsed so a live burst only updates the header. Failure and
   // denial stay in the row head without expanding the payload automatically.
+  const revealRequest = useMessageRevealRequest(message.id);
   const disclosure = useAutomaticDisclosure(
     autoOpen && !failed && status !== "denied",
+    revealRequest,
+    disclosureKey("tool", message.id),
   );
   const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } = disclosure;
   const titleRef = disclosure.titleRef;
@@ -208,15 +214,25 @@ export const ToolRow = memo(function ToolRow({
   // The delegate's last answer row is its report, so the body must not print
   // the same text a second time.
   const nestedReport = delegate?.items.some((item) => item.kind === "answer");
-  // Streaming updates replace the message object each tick; only pay the
-  // full payload walk once the row is actually expanded.
-  const blocks =
-    variant !== "topology" && open && hasDetails
-      ? buildToolPresentation(message, {
-          hideSummaryArg: true,
-          ...(nestedReport ? { hideDelegateReport: true } : {}),
-        })
-      : null;
+  // Keep mounted output and its reading position while an ancestor is folded,
+  // but defer formatting hidden streaming updates until it becomes visible.
+  const presentation = useRef<{
+    message: UiMessage;
+    nestedReport: boolean | undefined;
+    blocks: ReturnType<typeof buildToolPresentation>;
+  } | null>(null);
+  if (variant !== "topology" && open && hasDetails && disclosure.parentVisible &&
+    (presentation.current?.message !== message || presentation.current?.nestedReport !== nestedReport)) {
+    presentation.current = {
+      message,
+      nestedReport,
+      blocks: buildToolPresentation(message, {
+        hideSummaryArg: true,
+        ...(nestedReport ? { hideDelegateReport: true } : {}),
+      }),
+    };
+  }
+  const blocks = variant !== "topology" && open && hasDetails ? presentation.current?.blocks : null;
   const outcome =
     variant === "topology" ? subagentOutcome(message, delegationStatuses) : null;
   // A bare `running` Task row (no delegation result yet) is still being
@@ -327,8 +343,9 @@ export const ToolRow = memo(function ToolRow({
       {variant === "topology" ? (
         <button
           className="subagent-topology-node-header"
+          data-subagent-trigger={panelSelectionId}
           aria-expanded={panelOpen}
-          aria-controls={hasDetails ? "subagent-panel" : undefined}
+          aria-controls={panelOpen ? "subagent-panel" : undefined}
           disabled={!hasDetails}
           title={[agentName || rawName, modelLabel, summary].filter(Boolean).join(" · ")}
           onClick={() => {
@@ -498,9 +515,9 @@ export const ToolRow = memo(function ToolRow({
         </span>
       ) : null}
       {blocks && blocks.length > 0 ? (
-        <div className="tool-row-body" id={detailsId}>
+        <div className="tool-row-body" id={detailsId} ref={disclosure.bodyRef} {...disclosure.bodyEvents}>
           <DisclosureCollapseRail
-            label={t("chat.collapseDetails")}
+            label={t("chat.collapseToolOutput")}
             onCollapse={collapseRow}
           />
           <ToolDetailBlocks blocks={blocks} plain={runHead} />

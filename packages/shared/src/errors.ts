@@ -85,6 +85,13 @@ export const ErrorCodes = {
   SPEECH_INPUT_TOO_LARGE: "SPEECH_INPUT_TOO_LARGE",
   SUBAGENT_IDLE_TIMEOUT: "SUBAGENT_IDLE_TIMEOUT",
   SUBAGENT_DURATION_TIMEOUT: "SUBAGENT_DURATION_TIMEOUT",
+  /**
+   * A delegate's own model context exceeded the safe budget: automatic
+   * compaction and the degraded retry both failed to bring the subagent's
+   * input back under its model's limit. Not retriable — the task itself, the
+   * delegate's model, or how much it reads at once has to change.
+   */
+  SUBAGENT_CONTEXT_OVERFLOW: "SUBAGENT_CONTEXT_OVERFLOW",
   WORKSPACE_REQUIRED: "WORKSPACE_REQUIRED",
   PATH_OUTSIDE_WORKSPACE: "PATH_OUTSIDE_WORKSPACE",
   TOOL_NOT_FOUND: "TOOL_NOT_FOUND",

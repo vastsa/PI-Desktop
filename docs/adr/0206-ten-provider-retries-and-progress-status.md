@@ -15,6 +15,16 @@ product's target behavior. The active-turn row also shows only the retry
 number, so it does not tell the user how long the current wait is or where the
 retry sits in the budget.
 
+### Amendment: opt-in infinite provider retry
+
+The default ten-retry budgets remain unchanged. AppSettings may opt into
+`infiniteProviderRetry`; the runtime then skips only the retry-count ceiling for
+admitted network/transient provider failures in the main session and builtin
+subagents. Backoff, server retry hints, response-only reset, cancellation,
+terminal classification, and failed-request-only replay remain unchanged. The
+Settings copy warns that the user can stop the turn but API usage may continue
+while the switch is enabled. One-shot completions keep the bounded budget.
+
 ## Decision
 
 1. `PROVIDER_RATE_LIMITED` and the admitted non-429 transient provider errors

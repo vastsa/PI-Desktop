@@ -151,17 +151,19 @@ Each scenario is documented in this format:
 ## E2E Main Integration Validation
 
 Every code-bearing change must pass the E2E suites relevant to its regression
-surface on the integrated local `main` that carries the change, before the
-request branch is pushed and the pull request is opened. Code-bearing changes
-include Renderer, Electron Main, Preload, Agent Runtime, Rust host-core,
-sessions, transcripts, plans, plugins, MCP, permissions, provider/model
-runtime, persistence, process lifecycle, packaging/runtime startup, and build
-or CI behavior that affects application execution. Documentation-only changes
-are exempt when they do not alter executable behavior.
+surface on a candidate that already contains the latest `origin/main`, before
+the request branch is pushed and the pull request is opened. Code-bearing
+changes include Renderer, Electron Main, Preload, Agent Runtime, Rust
+host-core, sessions, transcripts, plans, plugins, MCP, permissions,
+provider/model runtime, persistence, process lifecycle, packaging/runtime
+startup, and build or CI behavior that affects application execution.
+Documentation-only changes are exempt when they do not alter executable
+behavior.
 
-Run the selected suites from the latest integrated local `main` checkout and
-commit. An E2E run on the request branch is exploratory and does not satisfy
-this gate.
+Run the selected suites from the request worktree after `pnpm check:pr-base`
+passes. An E2E run on a branch that is behind `origin/main` is exploratory and
+does not satisfy this gate. Do not merge the task into local `main` to create
+the candidate.
 
 Use the root `package.json` as the source of truth for executable commands.
 The minimum selection is:
@@ -501,8 +503,8 @@ identify the platform validation still needed.
 #### E2E-005A: Edit provider model bindings and migrate a legacy model
 
 - **Preconditions**: One provider saved with two model bindings; one fixture provider row exists with only the legacy `default_model_id` and no `config_json.models`; one fixture row carries an unknown or legacy `apiStyle` string.
-- **Steps**: 1) Reopen the saved provider; confirm the single form opens with its cached model list painted immediately, and that the API key field explains an unchanged key is kept. 2) Confirm the live probe then refreshes that list without a retyped key, because the stored secret is reused. 3) Confirm both existing bindings are still chosen and check-marked, with their limits, thinking chips and defaults intact. 4) Enable a level the fixture catalog does not publish, edit one row's limits and save. 5) Reopen the fixture provider and confirm its legacy model appears as one chosen row with 128,000 context, 8,192 max output and all seven thinking choices available but unselected. 6) Reopen the unknown-style fixture and confirm the editor renders with Chat Completions selected instead of an error boundary; save it and confirm the repaired style is persisted. 7) Save the fixture provider without changing the model. 8) Make the edited provider the global default, reopen it, remove its first model so a different binding becomes the head, and save. 9) Take the service offline or revoke the key, reopen the provider, and confirm the cached rows stay visible with a compact classified discovery error rather than an empty list or a raw host dump.
-- **Expected**: Editing never drops an unmodified binding. An explicitly enabled level remains saved even when the catalog does not publish it, so the Composer reads the same binding rather than silently narrowing it; a binding whose model discovery is unavailable keeps its stored levels untouched. Legacy read materializes one binding without losing the old model ID; the subsequent write stores `config_json.models` and keeps `defaultModelId` equal to the first binding for older readers. An unknown or legacy `apiStyle` is treated as a compatibility input: the editor falls back to Chat Completions, remains usable, and repairs the stored value on save. When the edited provider is the global default and its first model changed, `settings.defaultModelId` is re-synced to the new head binding. A failed live probe degrades to the cached list plus a compact classified error, never to a blank picker or a raw HTTP/JSON dump, and a catalog fallback is never written into the model cache.
+- **Steps**: 1) Reopen the saved provider; confirm the single form opens with its cached model list painted immediately, and that the API key field explains an unchanged key is kept. 2) Confirm the live probe then refreshes that list without a retyped key, because the stored secret is reused. 3) Confirm both existing bindings are still chosen and check-marked, with their limits, thinking chips and defaults intact. 4) Enable a level the fixture catalog does not publish, edit one row's limits and save. 5) Reopen the fixture provider and confirm its legacy model appears as one chosen row with 128,000 context, 8,192 max output and all seven thinking choices available but unselected. 6) Reopen the unknown-style fixture and confirm the editor renders with Chat Completions selected instead of an error boundary; save it and confirm the repaired style is persisted. 7) Save the fixture provider without changing the model. 8) Select the second binding as the app default, reopen the provider and save unchanged; confirm the app default stays on that binding. Save another provider and confirm the app default is unchanged. Reopen the default provider, remove the selected binding, and save; confirm the app default falls back to the first remaining binding. 9) Take the service offline or revoke the key, reopen the provider, and confirm the cached rows stay visible with a compact classified discovery error rather than an empty list or a raw host dump.
+- **Expected**: Editing never drops an unmodified binding. An explicitly enabled level remains saved even when the catalog does not publish it, so the Composer reads the same binding rather than silently narrowing it; a binding whose model discovery is unavailable keeps its stored levels untouched. Legacy read materializes one binding without losing the old model ID; the subsequent write stores `config_json.models` and keeps `defaultModelId` equal to the first binding for older readers. An unknown or legacy `apiStyle` is treated as a compatibility input: the editor falls back to Chat Completions, remains usable, and repairs the stored value on save. Saving the default provider preserves `settings.defaultModelId` while the selected model remains configured; only removal of that model falls back to the first remaining binding. Editing another provider never changes the app default. A failed live probe degrades to the cached list plus a compact classified error, never to a blank picker or a raw HTTP/JSON dump, and a catalog fallback is never written into the model cache.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, ADR 0114
 - **Acceptance**: F (provider persistence and migration)
 - **Milestone**: M2
@@ -1235,7 +1237,10 @@ identify the platform validation still needed.
   and inspect the composer. 3) Type a different prompt in B, then switch back
   to A. 4) Create a new session and inspect its composer. 5) Return to B and
   then delete B; revisit the remaining sessions and the home composer if it is
-  available. 6) Type in A, open Settings (or Plugins), then return to chat.
+  available. 6) Type in A, add a workspace file through `@` and a pasted scratch
+  file, open Settings (or Plugins), then return to chat. Confirm both file chips
+  and the surrounding text remain. Change the workspace of the same draft and
+  confirm only its workspace-relative reference is removed.
   7) Hide the app window and show it again with an unsent draft in A.
 - **Expected**: B initially shows an empty composer, A restores its original
   unsent prompt, and the new session starts empty rather than inheriting A or
@@ -1250,7 +1255,9 @@ identify the platform validation still needed.
 - **Acceptance**: C (session isolation and composer input)
 - **Milestone**: M2
 - **Status**: Source-level regression covered
-  (`composer-draft-cache.test.mjs`); full UI scenario Draft
+  (`composer-draft-cache.test.mjs`); real React remount and workspace-change
+  coverage in `scripts/e2e/composer-paste.tsx` (`pnpm test:e2e:composer-paste`);
+  full UI scenario Draft
 
 #### E2E-011d: New task creates an immediate durable empty slot
 
@@ -1481,8 +1488,11 @@ identify the platform validation still needed.
   or Agent|Plan|Goal mode control. The
   left-of-input Composer chip owns the active session's Agent/Plan/Goal switch,
   and the Composer-right combined chip owns model and reasoning selection. The
-  task title is the only visible title text and is capped at 10 characters
-  with an ellipsis; project scope is available through its tooltip. The sidebar
+  task title is the only visible title text and uses the available width,
+  with an ellipsis only on overflow. Check an English title longer than 10
+  characters in wide and narrow layouts, with the sidebar expanded/collapsed
+  and the work panel open/closed; titles must not overlap the action buttons.
+  The complete title and project scope remain available through its tooltip. The sidebar
   toggle is present only in the collapsed state (no
   duplicate of the sidebar's control). On every other route the frameless drag
   band renders instead (no chat top-bar controls) while retaining the same
@@ -2140,45 +2150,41 @@ identify the platform validation still needed.
 - **Milestone**: M5
 - **Status**: Unit-covered (`settings-responsive-layout.test.mjs`); scenario Documented
 
-#### E2E-040: Codex-style tool activity survives transcript reload
-- **Preconditions**: Provider configured; project open; a session can run a
-  successful tool and a failing or aborted tool.
-- **Steps**: 1) Run representative read, search, edit, and command tools. 2)
-  While the turn is active, inspect the latest processing group and its latest
-  tool/thinking row. 3) Confirm the group header retains its localized
-  processing label, elapsed time, and step count while live activity remains
-  in the rows or dedicated runtime indicator. 4) Wait for completion and inspect
-  the settled transcript. 5)
-  Manually expand a completed group and row, then copy its output. 6) While a
-  later turn is streaming, manually collapse its active group and verify that
-  new stream updates do not reopen it. 7) Click the vertical rule beside an
-  expanded row, then keyboard-focus and activate the processing group's
-  vertical rule. 8) Reload the session and expand the restored group.
-- **Expected**: The latest active group opens automatically so the process list
-  is visible. Compact tool-call details, including failed tool details, remain
-  collapsed. In detailed mode the last tool-call of the last activity group
-  starts expanded and earlier rows stay collapsed. The latest thinking step
-  opens automatically while it streams; older groups and rows remain collapsed.
-  The header shows its localized processing label, elapsed time, and step count
-  without an additional status capsule. When the turn settles, the automatic
-  thinking disclosure closes, while a group or row touched by the user keeps
-  its chosen state. A user-expanded tool call keeps its detail heading and
-  content aligned with the tool row rather than introducing another horizontal
-  indent; the collapse rail remains usable beside the body. Expanded calls use
-  transparent semantic activity rows with an action icon, natural-language verb,
-  monospace primary argument, and quiet disclosure. The processing group uses
-  the full assistant-column width, so a short label or payload does not shrink
-  expanded details into a content-sized chip. Each expanded-content vertical rule
-  is a pointer and keyboard-focusable collapse control for its owning disclosure.
-  Nested expansion shows output before raw input in clamped scroll regions. Live
-  partial output updates in place. Reloaded rows preserve the tool name,
-  arguments, result, and status.
+#### E2E-040: Nested tool activity survives transcript reload
+- **Preconditions**: Provider configured; project open; a turn can contain
+  progress text, multiple search/tool/thinking items, and a failed or denied tool.
+- **Steps**: 1) In Detailed, stream progress paragraph A, a multi-item search
+  segment, progress paragraph B, and a multi-item command segment. 2) Inspect the
+  open whole process and active group; manually close the active group while more
+  output arrives. 3) Complete the turn and inspect untouched versus user-owned
+  groups. 4) Open one completed group and one item, copy its output, close and
+  reopen the group, then open a sibling group independently. 5) Repeat with a
+  singleton item and with the last activity group's literal final item set to a
+  tool/search, thinking, failed tool, and denied tool. 6) Switch to Compact and
+  inspect the active-thinking, failure/recovery and completed states. 7) Remount
+  rows within the retained pane, then reload the renderer and reopen the session.
+- **Expected**: Both modes use one whole-process disclosure and keep the trailing
+  answer outside it. Detailed keeps active and completed processes open; the
+  active multi-item group opens, then closes on completion only if untouched.
+  Compact starts processes/groups and all payloads closed, hides reasoning text,
+  and keeps an untouched active process open after a failed/denied tool through
+  later recovery. A singleton has no group wrapper. Detailed auto-opens a payload
+  only when the literal final item of the last activity group is an eligible
+  tool/search; it never scans backward past thinking, and failure/denial guards
+  keep that leaf closed. Parent, child and sibling choices are independent;
+  closing/reopening a parent preserves descendants, and streaming/completion does
+  not override user-owned choices. Retained-pane remounts preserve choices;
+  renderer restart reapplies defaults while tool names, arguments, results and
+  statuses remain restored. Group/process headers show bounded running and issue
+  summaries without marking the whole turn failed.
 - **Specs linked**: `04-ux/01-ui-ia.md`,
   `04-ux/07-ui-design-system.md`, `04-ux/08-component-spec.md`,
   `04-ux/09-interaction-patterns.md`
 - **Acceptance**: C (chat stream), E (tools), F (persistence)
 - **Milestone**: M3
-- **Status**: Draft
+- **Status**: Draft. For the 2026-09-20 nested-disclosure change, this scenario is
+  intended behavior for static source/design review only; no unit, component,
+  integration, browser, Electron or E2E test is added or run by that scoped task.
 
 #### E2E-041: Conversation minimap navigates long transcripts
 
@@ -3099,14 +3105,40 @@ identify the platform validation still needed.
   and one unknown free-form model id.
 - **Steps**: 1) Open the Composer model × reasoning chip. 2) Confirm the root
   contains the Model and Reasoning level entries with current values, plus a
-  slider with one labeled stop per supported level directly beneath the
-  Reasoning level entry. 3) Drag and click the slider across multiple
-  supported levels and click a tick label, confirming the chip updates while
-  the menu stays at the root. 4) Open Model, search for a model, and select a
+  slider with one track dot per supported level on a rail directly beneath the
+  Reasoning level entry; confirm every level keeps a visible label under the
+  rail, each centered on its track dot. 3) Drag and click the slider across
+  multiple supported levels and click a tick label, confirming the chip
+  updates while the menu stays at the root and the selected track dot sits
+  under the thumb. 4) Open Model, search for a model, and select a
   model from a provider group; confirm the menu remains open at the root.
   5) Open Reasoning level and choose a level from the radio list. 6) Repeat
   with a non-reasoning provider and an unknown free-form model id; exercise
   Escape, outside click, Up/Down, Enter, Left, and the slider's arrow keys.
+  In both roomy and crowded toolbars, switch `omit`, `low`, `high`, `max`,
+  and `off` without closing the menu: its horizontal position stays stable,
+  and the trigger stays inside its slot, including with a long model name.
+  Moving the anchor and dispatching a viewport resize must reposition the
+  menu without an event-target type error. Automated geometry coverage:
+  `node scripts/e2e-composer-thinking-layout.mjs` (isolated Electron fixture,
+  production React picker and compiled styles; no live providers).
+  Repeat native mouse press/release to open, select the first and subsequent
+  reasoning levels, close, and reopen three times with motion enabled. The
+  menu must retain its opening position on every selection; synthetic DOM
+  `click()` alone does not exercise the trigger's `:active` transition.
+  Hover each dot and its label: the corresponding label highlights. Unfilled
+  dots brighten and enlarge slightly; filled dots and the selected thumb stay unchanged
+  without shifting the menu. Move outside: the preview clears and the selected
+  value remains unchanged. Reduced motion disables hover transitions.
+  Click a non-adjacent level and verify the thumb travels through intermediate
+  positions while the selected value already equals the target. Interrupt
+  travel with another click; the thumb retargets without jumping to the old
+  start, and only the clicked levels are submitted. Check save failure,
+  stale completion, remount, and 3/5/7/8-stop alignment. At each stop, verify
+  the fill covers the first dot's left edge and still ends at the thumb center.
+  Native range dragging
+  follows immediately; arrow keys retain focus and update the selection.
+  With reduced motion enabled, the target is shown without a transition.
 - **Expected**: The chip is in the right toolbar with a Bot icon, before the
   standalone prompt-enhancement Sparkles action and Send/Abort; Off omits the
   level text. The single anchored menu replaces its root
@@ -3418,6 +3450,30 @@ identify the platform validation still needed.
 - **Acceptance**: Quality, Security
 - **Milestone**: M5
 - **Status**: Draft (manual)
+
+#### E2E-BROWSER-session-preview-race: Session switching does not expose a stale preview
+
+- **Preconditions**: Two sessions have distinct HTML previews; their Browser
+  panel contexts are retained independently. Directory lookups and document
+  loads can be delayed independently by the fixture.
+- **Steps**: Preview A; produce B's preview in the background; collapse A's
+  panel and open B; delay B's directory lookup and load, then return to A.
+  Switch rapidly B → C and finish the older B lookup last. Repeat with an
+  already-started old load, an empty session, a failed load, and disposal.
+- **Expected**: Background B does not navigate A. On switching, no A document
+  appears in B's panel, even after bounds/visibility updates. Only the latest
+  navigation can reveal the guest; the late B lookup cannot replace C.
+  Returning to A restores A, while an empty session remains empty. Closing or
+  disposing cannot be undone by a delayed completion. Same-session navigation
+  keeps its current page visible. Invalid, failed, or timed-out loads do not
+  report the previous document as the destination being ready. A switch that
+  exceeds the existing 15-second load wait stays hidden until retried; automatic
+  late reveal is not promised.
+- **Specs linked**: `04-ux/08-component-spec.md` §5.3; ADR 0028, ADR 0170.
+- **Status**: Automated service-path coverage in `browser-host-session.test.mjs`
+  and `browser-pane-navigation.test.mjs`: production BrowserHost/BrowserPane,
+  controlled native-browser/Host boundaries, and deterministic timers. Native
+  Electron compositing and the reporter's live sessions are not covered.
 
 #### E2E-060: Files tab browsing stays inside the workspace
 
@@ -3847,7 +3903,7 @@ identify the platform validation still needed.
   runnable with the generic text-only, non-reasoning shape; pi-ai supplies only
   the selected wire adapter, OAuth flow, and account model availability. A
   ChatGPT Plus/Pro or GitHub Copilot account lists `gpt-6-astra` from the
-  pinned pi-ai 0.85.1 catalog; models.dev then supplies its published metadata.
+  pinned pi-ai 0.86.1 catalog; models.dev then supplies its published metadata.
 - **Specs linked**: `02-architecture/02-tech-stack.md`,
   `03-runtime/11-provider-model-system.md`,
   `03-runtime/13-model-catalog-and-selection.md`, ADR 0134
@@ -5427,6 +5483,10 @@ identify the platform validation still needed.
      no repair request starts.
   9. Reload the session and verify that only the completed response or the
      single terminal failed assistant remains durable.
+  10. Open Settings → AI → Defaults, enable infinite provider retry, and repeat
+      a network fixture that fails beyond ten attempts before recovering. Stop the
+      turn during backoff and verify no later request starts; disable the setting
+      and verify a fresh persistent outage stops after ten retries.
 - **Expected**:
   - `terminated` is classified as `STREAM_FAILED`, and an upstream gateway
     `502`/`503`/`504` as retryable `PROVIDER_ERROR`.
@@ -5465,7 +5525,9 @@ identify the platform validation still needed.
   - Authentication, model-selection, context, and descriptive
     malformed-request failures do not enter either provider replay path. The
     opaque empty-body 400/422 case is the bounded repair exception described
-    above.
+    above. Infinite mode changes no classification and only removes the retry
+    ceiling for admitted network/transient failures; it remains abortable and
+    is visibly marked with an unbounded retry indicator.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `03-runtime/02-agent-runtime.md`, `03-runtime/08-error-codes.md`,
   `08-meta/decisions-log.md` (D186, D259, D378), ADR 0050, ADR 0128, ADR 0206
@@ -5639,17 +5701,22 @@ identify the platform validation still needed.
   entered CDP or output. The default no-key run remains 5/5 with the live case
   explicitly skipped.
 
-#### E2E-CHAT-opaque-floating-decision-and-retry-surfaces: Plan approval and retry hover stay opaque
+#### E2E-CHAT-opaque-floating-decision-and-retry-surfaces: Dock, Plan approval, and retry surfaces occlude transcript text
 
-- **Status**: Automated (`apps/desktop/test/plan-mode-source-contract.test.mjs`, `apps/desktop/test/active-turn-surface.test.mjs`)
+- **Status**: Automated (`pnpm test:e2e:composer-occlusion`, `pnpm test:e2e:theme-surfaces`, `apps/desktop/test/plan-mode-source-contract.test.mjs`, `apps/desktop/test/active-turn-surface.test.mjs`)
 - **Priority**: P2
 - **Covers**: C, Quality / floating composer and retry surfaces
 - **Preconditions**: Renderer CSS is the production source under `apps/desktop/src/styles`.
 - **Steps**:
-  1. Inspect `.plan-approval-bar` in the composer dock styles.
-  2. Inspect `.run-activity-error-popover.message-error` in the transcript styles.
-  3. Hover or focus a retrying active-turn row in a live session.
+  1. Inspect the computed background of `.composer-dock-docked` in both built-in themes and a custom theme.
+  2. Scroll a long transcript until a row passes beneath the floating Composer.
+  3. Inspect `.plan-approval-bar` in the composer dock styles.
+  4. Inspect `.run-activity-error-popover.message-error` in the transcript styles.
+  5. Hover or focus a retrying active-turn row in a live session.
 - **Expected**:
+  - The dock paints the opaque `--ds-bg-primary` workspace surface across its
+    full width. Transcript text disappears at the Composer boundary and cannot
+    remain visible below the shell or around its rounded corners.
   - The Plan/Goal approval bar paints `--ds-bg-composer` with `--ds-shadow-composer` rather than the in-flow `--ds-tile` wash, so it remains a readable plate over the transparent composer dock.
   - The retry hover tooltip mixes the error tint over `--ds-bg-elevated-opaque`, so transcript text does not show through.
   - The retry tooltip is capped to the room above the tail status row and
@@ -7242,7 +7309,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: A build with `registerBunOAuthFlows()` running at startup
   and a real subscription for at least one PKCE vendor (Anthropic) and one
-  device-code vendor (xAI or GitHub Copilot). No provider row exists yet for
+  device-code vendor (xAI, GitHub Copilot, or Meta/Muse). No provider row exists yet for
   either vendor.
 - **Steps**: 1) Open Settings -> Model configuration, confirm the Vendor
   accounts card starts empty, and open Add account — the picker lists every
@@ -7269,13 +7336,13 @@ identify the platform validation still needed.
   used as the OAuth provider group heading, while the configured model alias is
   shown on its model row. 5) Resolve
   and use each account separately, including model discovery and one streamed
-  turn per account. 6) Start the device-code login on a second vendor, then
-  press Cancel while the dialog is polling; confirm no row or credential is
-  left. 7) Remove the first Anthropic account, then confirm its provider row
-  and OAuth secret are gone while the second Anthropic account remains usable.
-  8) If the removed account was default, confirm Defaults points to another
-  ready provider or shows no default. 9) Grep sidecar and renderer logs for
-  token material.
+  turn per account. 6) Start the device-code login on a second vendor, including
+  Meta/Muse when available, then press Cancel while the dialog is polling;
+  confirm no row or credential is left. 7) Remove the first Anthropic account,
+  then confirm its provider row and OAuth secret are gone while the second
+  Anthropic account remains usable. 8) If the removed account was default,
+  confirm Defaults points to another ready provider or shows no default. 9) Grep
+  sidecar and renderer logs for token material.
 - **Expected**: Each successful login creates a distinct row with
   `authKind: "oauth"`, `hasSecret` and `hasOauth` both true, a non-secret
   account label, and `baseUrl`/`apiStyle`/`defaultModelId` filled from that
@@ -7283,10 +7350,10 @@ identify the platform validation still needed.
   `secret:provider:<providerId>:oauth` ref and row-scoped pi-ai collection;
   resolving one account never returns the other account's token. The model list
   is the authenticated catalog (a Copilot account lists only what its
-  subscription includes), not a `/models` probe. Matching models.dev metadata
-  supplies each newly logged-in binding's limits, modalities, and thinking
-  levels; an ID missing from models.dev uses the conservative generic
-  text-only/non-reasoning shape. The account editor updates only non-secret
+  subscription includes; a Meta account lists Muse Spark models), not a
+  `/models` probe. Matching models.dev metadata supplies each newly logged-in
+  binding's limits, modalities, and thinking levels; an ID missing from
+  models.dev uses the conservative generic text-only/non-reasoning shape.
   label/model fields and the full per-model bindings, and Test connection
   resolves that exact account. Both turns run without a
   pasted key and reuse the same warm runtime — the launch payload carries
@@ -7887,6 +7954,9 @@ identify the platform validation still needed.
 | F — Persistence (catalog window provenance) | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
 | Quality (catalog window provenance) | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
 | M6+ (catalog window provenance) | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
+| C — Conversation & stream (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
+| Quality (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
+| M6+ (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
@@ -9874,6 +9944,108 @@ This test plan spec is accepted when:
   capable environment. Required suites: `test:e2e`, `test:e2e:subagents`,
   `test:e2e:transcript`.
 
+#### E2E-SUBAGENT-context-overflow-compacts-before-failing
+
+- **Preconditions**: An Agent session on a deterministic local transport whose
+  model metadata declares a small context window (for example 16,000 tokens)
+  and whose replies are scripted. The small window is injected through that
+  fake provider, never a real one: real providers and paid APIs are not
+  default test environments in this repository. A user definition
+  `~/.agents/subagents/reader.md` declares `Read`, `Glob`, and `Grep`, and the
+  workspace holds files large enough that two or three reads cross the
+  delegate's hard limit.
+- **Steps**:
+  1. Delegate a brief that requires reading those files in sequence and record
+     every request the transport receives, with its estimated size.
+  2. Read the request that follows the boundary at which the delegate crosses
+     its hard limit.
+  3. Repeat with the crossing landing while a tool result is still pending,
+     then with it landing on a completed turn.
+  4. Repeat with the summary request scripted to fail.
+  5. Run the same brief as the session Agent on the same fixture and compare
+     its requests and transcript rows with a run recorded before this change.
+  6. Inspect the delegation card, the transcript, the context inspector, and
+     the parent's own model context after the delegate settles.
+- **Expected**: The delegate keeps working instead of failing. The request
+  after the crossing is below the hard limit and carries a summary plus the
+  applicable retained tail; no request is sent above the window. A pending
+  tool result retains as an active turn (latest user message only), a
+  completed turn retains none. A failed summary degrades to the original task
+  brief plus the most recent message(s), the run still completes, and the
+  report and lifecycle details say it was degraded rather than presenting a
+  partial answer as complete. Delegate compaction adds no transcript row, no
+  host-core checkpoint, no warning toast, and no context-inspector line; the
+  delegate's own rows stay complete and the parent's model context still holds
+  only the report. The session Agent behaves exactly as it did before.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5.1, §5f,
+  `03-runtime/08-error-codes.md` §3.2, ADR 0299, ADR 0064, ADR 0136
+- **Acceptance criterion**: C — Conversation & stream; Quality
+- **Milestone**: M6+
+- **Status**: Draft. Required suites: `test:e2e`, `test:e2e:subagents`.
+
+#### E2E-SUBAGENT-context-overflow-reports-actionable-failure
+
+- **Preconditions**: The same injected small-window fake provider, sized so
+  even the degraded context cannot fit. One definition declares two ordered
+  `fallbackModels`: one whose window is no larger than the primary's and one
+  that is larger. A second definition declares none.
+- **Steps**:
+  1. Delegate a brief that overflows past both compaction and degradation, and
+     read the tool result the parent receives plus the lifecycle details.
+  2. Repeat for the definition that declares the two alternatives, recording
+     which alternatives the transport is actually asked for.
+  3. Repeat with every alternative at the same small window.
+  4. Read the delegation card and the report in English and in Chinese.
+  5. Continue the parent turn, then send a new prompt.
+- **Expected**: The run fails with `SUBAGENT_CONTEXT_OVERFLOW`, not retriable,
+  and what the parent reads names what it can change — narrow the task,
+  delegate to a model with a larger context window, read less at once. The
+  provider's raw overflow sentence is not what the parent receives. An
+  alternative whose own budget cannot hold the carried context is never
+  requested and appears in `modelFailures` with that reason; the larger
+  alternative is attempted and can succeed. With no alternative that fits, the
+  outcome stays `SUBAGENT_CONTEXT_OVERFLOW` rather than the final provider
+  error. The delegate's rows stay durable and visible, the session returns to
+  idle, and the next prompt is not `AGENT_BUSY`.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
+  `03-runtime/08-error-codes.md` §3.2, ADR 0299,
+  ADR subagent-model-fallback
+- **Acceptance criterion**: C — Conversation & stream; Quality
+- **Milestone**: M6+
+- **Status**: Draft. Required suites: `test:e2e`, `test:e2e:subagents`,
+  `test:e2e:subagent-models`.
+
+#### E2E-SUBAGENT-resume-seeds-within-context-budget
+
+- **Preconditions**: The same injected small-window fake provider. One settled
+  `reader` chain read enough to exceed the delegate hard limit while staying
+  under `MAX_RESUMABLE_READ_LINES`; a second settled chain fits well inside
+  the budget.
+- **Steps**:
+  1. `Task.resume` the over-budget chain and capture its first provider
+     request in full.
+  2. `Task.resume` the chain that fits and capture the same request.
+  3. Ask the resumed run for a conclusion the chain reached in its most recent
+     round, and for one it reached in its first round.
+  4. Relaunch the app, rebuild the chain index from the transcript, and resume
+     the over-budget chain again.
+  5. Accumulate more than `MAX_RESUMABLE_READ_LINES` of read-only output in a
+     chain and read the reusable list the next prompt offers.
+- **Expected**: The first request of a resumed run is below the hard limit. It
+  opens with the original task brief and holds the most recent turns; the
+  oldest tool results are dropped first, and dropping an assistant message
+  drops its tool calls with it, so no orphaned tool call reaches the provider.
+  A chain that fits is seeded whole, exactly as before. The most recent
+  conclusion is answered from the seeded context; the first round's may be
+  gone, and the run says so rather than inventing it. A resume never fails
+  with `CONTEXT_TOO_LARGE` or `SUBAGENT_CONTEXT_OVERFLOW` on its first
+  request. `MAX_RESUMABLE_READ_LINES` still removes an over-read chain from
+  the reusable list; truncation does not make it resumable again.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f, ADR 0299, ADR 0279
+- **Acceptance criterion**: C — Conversation & stream; Quality
+- **Milestone**: M6+
+- **Status**: Draft. Required suites: `test:e2e`, `test:e2e:subagents`.
+
 #### E2E-161: A delegation lifecycle row reads as a subagent row
 
 - **Preconditions**: A project-bound Agent session with a mocked provider stream
@@ -10198,7 +10370,7 @@ This test plan spec is accepted when:
   catalog does not publish. OpenAI Codex's `openai-codex` adapter key resolves
   the matching `openai` models.dev record, so `gpt-6-astra` is not shown with
   generic 128,000 / 8,192 / no-reasoning defaults. The authenticated ChatGPT
-  list itself comes from the pinned pi-ai catalog (0.85.1 includes
+  list itself comes from the pinned pi-ai catalog (0.86.1 includes
   `gpt-6-astra`); models.dev cannot add a missing OAuth ID. A model with no published
   record keeps its explicit levels and starts with all choices available for
   manual opt-in. The account's default model stays the head binding.
@@ -13755,6 +13927,12 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Milestone**: M6+
 - **Status**: Draft
 
+- **Local fallback regression**: Set the process default data directory to a
+  different temporary root, then create a plugin manager with its own root.
+  All bundled fallback package URLs must stay beneath the manager's root;
+  installing the bundled package must still report byte progress, validate its
+  size and checksum, and preserve cancellation behavior.
+
 #### E2E-PLUGIN-cancel-during-download-installs-nothing: Cancelling during the download stops the install, leaves nothing installed, and closes the dialog without an error
 
 - **Preconditions**: An official-channel install of a package large enough or a mirror slow enough that the download phase lasts, a way to answer `market.cancelInstall`, and a view of the plugin directory, the install cache, and the Installed list.
@@ -13777,26 +13955,33 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 ### E2E-CHAT-turn-process-and-thinking-display
 
-- **Preconditions:** A turn with thinking, multiple tools, intermediate progress
-  and a final answer; detailed and compact display modes.
-- **Steps:** Stream the turn; finish it; expand/collapse its process; search an
-  intermediate message; switch display modes through Settings → AI → Defaults.
-  Repeat with a stopped partial answer, an assistant error and a failed tool.
-- **Expected:** In detailed mode, thinking, tools and intermediate text stay
-  in place with no process wrapper, and the last tool-call of the last activity
-  group starts expanded. Compact mode keeps that process collapsed
-  until expanded, with tool payloads collapsed. Manual choices survive updates; search reveals its target; live answer text
-  stays readable. Errors and stopped trailing text stay visible. Compact mode
-  exposes no reasoning text or excerpt, shows a live indicator, and leaves no
-  completed thinking-only header. Tools and progress remain accessible. Switching
-  to detailed restores reasoning from unchanged messages. Saved mode survives
-  application restart; an older settings blob without the field uses detailed.
-- **Automation:** `test:e2e:transcript` covers the mounted renderer interactions,
-  settings control and unchanged-group performance. `test:e2e:transcript-disclosure`
-  covers scroll anchoring; `test:e2e:theme-surfaces` covers the shared theme
-  controls. Isolated Host `settings.set/get` checks verify both modes across
-  process restart and preservation during unrelated partial settings writes.
-  Renderer fixtures alone do not prove settings persistence.
+- **Preconditions:** A turn with progress paragraph A, multiple searches plus
+  thinking, progress paragraph B, multiple commands plus thinking, and a final
+  answer; Detailed and Compact display modes; legacy message-level transcript
+  search targets.
+- **Steps:** Review the nested disclosure path in Detailed, including independent
+  group/item toggles, parent close/reopen, a singleton segment, literal-final-item
+  leaf selection, failure/denial/recovery, retained-pane remounts and a legacy
+  search reveal. Repeat in Compact and with permission/question/plan/goal action
+  cards, a stopped partial answer, an assistant error and delegated child work.
+- **Expected:** Both modes use one whole-process disclosure and leave the final
+  answer, assistant errors, stopped trailing text and pending actions outside it.
+  Detailed starts active/completed processes open; the active multi-item group is
+  open and an untouched group closes on completion. Compact starts processes and
+  groups closed, hides reasoning, and keeps payloads closed; an untouched active
+  process with a recorded failed/denied tool stays open through recovery and closes
+  on completion. Singletons have no group. Detailed auto-opens only an eligible
+  literal final tool/search item of the last activity group; it does not scan past
+  thinking, and failed/denied leaves stay closed. Parent/child/sibling states remain
+  independent, pane-owned user choices survive updates, mode changes and remounts,
+  and renderer restart reapplies defaults. Search reveals the process and activity
+  group that own the named message once per request; item-level targeting is not
+  part of this change, and Compact reasoning requires an
+  explicit switch to Detailed. Saved mode survives restart and a missing/unknown
+  setting resolves to Detailed.
+- **Validation scope for the 2026-09-20 change:** Nested disclosure and activity
+  group presentation only; precise item-level transcript search targeting is out
+  of scope and keeps the existing message-level search behavior.
 - **Specs:** 04-ux/06-settings-ia, 04-ux/08-component-spec,
   04-ux/09-interaction-patterns; ADR turn-process-and-thinking-display.
 
@@ -13917,6 +14102,23 @@ the latest destination. These assertions measure work counts, not device FPS.
   supplement, but do not replace, real Chromium geometry and pointer checks.
 - **Status:** Implemented. Native Windows evidence; macOS/Linux not qualified.
 
+### E2E-OUTPUT-CAP-716: Keep model requests inside the published context window
+
+- **Preconditions:** A deterministic provider fixture exposes a published context
+  window, supports parent and subagent requests, and records request payloads.
+- **Steps:** Configure a user context override larger than the published window;
+  send a CJK-heavy parent prompt, invoke a subagent, and run a one-shot
+  completion. Repeat the parent request with `thinkingLevel: "omit"`.
+- **Expected:** Each request carries a concrete output budget no larger than the
+  remaining published window after input estimation and safety reserve. The
+  runtime compacts against the published safety ceiling, and no request is sent
+  with `input + output` beyond that ceiling. Small ASCII requests retain the
+  configured budget when it fits.
+- **Specs linked:** `03-runtime/02-agent-runtime.md`,
+  `03-runtime/13-model-catalog-and-selection.md`
+- **Acceptance:** F (runtime provider requests), C (chat and stream)
+- **Status:** Unit-covered; deterministic provider fixture pending
+
 ### E2E-PROVIDER-certificate-trust-and-terminal-errors
 
 - **Preconditions:** Built request candidate incorporating current `origin/main`,
@@ -13944,3 +14146,21 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Limits:** OS-root inclusion is checked without installing a root. The TLS
   success fixture uses a child-only extra CA; it does not reproduce a specific
   antivirus installation or claim native macOS/Linux verification.
+
+### E2E-MCP-HTTP-ACK — HTTP acknowledgement and authorization status
+
+- **Preconditions**: A local mock Streamable HTTP server returns JSON for
+  initialize, `202` with plain-text `Accepted` for notifications/initialized,
+  SSE for tools/list, and JSON for tools/call. No provider credentials needed.
+- **Steps**: Connect, discover a tool, and call it. Render the MCP settings row
+  with idle, connecting, ready, non-authentication failure, and authentication
+  failure statuses, including an expired stored OAuth credential.
+- **Expected**: The acknowledgement does not enter the JSON parser; discovery,
+  calls, and session headers remain functional. Only explicit authRequired
+  status shows the authorization-required badge. Non-authentication failures
+  retain their original error. Authentication failures remain actionable.
+- **Specs**: 07-plugins/01-plugin-system §12.2; ADR 0038; ADR 0283.
+- **Acceptance**: HTTP client integration and settings component rendering.
+- **Milestone**: Maintenance.
+- **Status**: Covered by the existing HTTP client integration fixture and a
+  focused component-render validation; no live IDA process required.

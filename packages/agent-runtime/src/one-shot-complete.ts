@@ -13,6 +13,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import type { MessageUsage, ThinkingLevel } from "@pi-desktop/shared";
 import { classifyAgentError } from "./agent-errors.js";
+import { clampOutputToContext } from "./output-cap.js";
 import { assistantContent, usageFromPi } from "./agent-messages.js";
 import {
   buildProviderModel,
@@ -25,6 +26,10 @@ import {
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
 import { mergeProviderHeaders, withProviderHeaders } from "./provider-headers.js";
+import {
+  withProviderFetchFailure,
+  type ProviderFetchFailure,
+} from "./provider-transport-recovery.js";
 import {
   captureProviderResponse,
   createProviderRetryStream,
@@ -83,18 +88,21 @@ export async function completeOneShot(
       models.streamSimple(requestModel, requestContext, streamOptions));
   let providerStatus: number | undefined;
   let providerHeaders: Record<string, string> | undefined;
+  let providerFailure: ProviderFetchFailure | undefined;
   let transientRetryAttempt = 0;
   let rateLimitRetryAttempt = 0;
 
   const requestOptions: SimpleStreamOptions = withProviderHeaders(
     withOpenCodeSessionHeaders(
       {
+        maxTokens: clampOutputToContext(model, context, undefined),
         ...(options.signal ? { signal: options.signal } : {}),
         maxRetries: 0,
         ...(thinkingLevel !== "off" ? { reasoning: thinkingLevel } : {}),
-        fetch: captureProviderResponse(undefined, (response) => {
+        fetch: captureProviderResponse(undefined, (response, _requestBytes, failure) => {
           providerStatus = response?.status;
           providerHeaders = response?.headers;
+          providerFailure = failure;
         }),
       },
       {
@@ -131,6 +139,7 @@ export async function completeOneShot(
       },
       headers: () => providerHeaders,
       status: () => providerStatus,
+      failure: () => providerFailure,
     },
   );
   const result = await stream.result();
@@ -139,7 +148,10 @@ export async function completeOneShot(
     throw completeError("TURN_ABORTED", "The completion was aborted.");
   }
   if (result.stopReason === "error") {
-    const classified = classifyAgentError(result.errorMessage || "Completion failed.");
+    const classified = withProviderFetchFailure(
+      classifyAgentError(result.errorMessage || "Completion failed."),
+      providerFailure,
+    );
     throw completeError(
       classified.code,
       classified.message,
