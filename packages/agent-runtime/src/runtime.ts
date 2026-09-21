@@ -602,6 +602,9 @@ const AGENT_CORE_TOOL_NAMES = new Set([
 const MAX_ON_DEMAND_TOOL_PROMPT_ENTRIES = 64;
 const MAX_TOOL_SEARCH_RESULT_NAMES = 24;
 
+/** Ids named in the one log line a duplicate-collision rebuild writes. */
+const MAX_LOGGED_DUPLICATE_TOOL_CALLS = 8;
+
 /** Tools that ask the host to switch this session into a contract mode (D198). */
 const ENTER_TOOL_NAMES: Record<ProposalKind, string> = {
   plan: "EnterPlanMode",
@@ -1897,9 +1900,12 @@ Delegation rules:
       // A vendor account has no long-lived key. Leaving it unset keeps pi-ai
       // from overriding the auth the provider just resolved for this request.
       getApiKey: async () => runtimeApiKey || undefined,
+      // The provider's rule that a tool-call id is unique is enforced here, on
+      // the last view before the wire: the request is the only place it can be
+      // guaranteed for both a rebuilt context and one that grew in this process.
       convertToLlm: (messages) =>
         alignRetainedReasoningIdentity(
-          convertToLlm(messages),
+          convertToLlm(this.dropDuplicateToolCalls(messages)),
           this.reasoningReplayIdentity(),
         ),
       prepareNextTurnWithContext: (context, signal) =>
@@ -2689,6 +2695,79 @@ Delegation rules:
       (entry) =>
         entry.message.role !== "assistant" || entry.message.content.length > 0,
     );
+  }
+
+  /**
+   * A `tool_use` id has to be unique across the request: Anthropic-family
+   * endpoints (DeepSeek's included) reject the whole turn with "tool_use ids
+   * must be unique" (issue #718), and a session that hits that 400 cannot
+   * continue. Every message the next request carries passes through here, so
+   * this is the one place that can guarantee the provider's rule for both a
+   * rebuilt context and one that grew during this process.
+   *
+   * The transcript is append-only and tolerates a retried append, so the same
+   * call can reach the request twice: under the same row id (which the host's
+   * keep-last dedupe already collapses) or a new one (which it cannot). The
+   * first occurrence wins, and a later call *or* a later result for that id is
+   * dropped, so the pair the provider validates stays well-formed — one call,
+   * one result. What was dropped is logged with its ids, because the next
+   * report of this should name the writer instead of only the provider's
+   * sentence.
+   */
+  private dropDuplicateToolCalls(messages: AgentMessage[]): AgentMessage[] {
+    const claimedCalls = new Set<string>();
+    const claimedResults = new Set<string>();
+    const droppedIds = new Set<string>();
+    let droppedCount = 0;
+    const note = (id: string) => {
+      droppedCount += 1;
+      if (droppedIds.size < MAX_LOGGED_DUPLICATE_TOOL_CALLS) droppedIds.add(id);
+    };
+    const next: AgentMessage[] = [];
+    for (const message of messages) {
+      if (message.role === "assistant") {
+        const content = (message as AssistantMessage).content;
+        if (!Array.isArray(content)) {
+          next.push(message);
+          continue;
+        }
+        const kept = content.filter((block) => {
+          if (!isRecord(block) || block.type !== "toolCall") return true;
+          const id = typeof block.id === "string" ? block.id : undefined;
+          if (!id) return true;
+          if (claimedCalls.has(id)) {
+            note(id);
+            return false;
+          }
+          claimedCalls.add(id);
+          return true;
+        });
+        next.push(
+          kept.length === content.length
+            ? message
+            : { ...(message as AssistantMessage), content: kept },
+        );
+        continue;
+      }
+      if (message.role === "toolResult") {
+        const id = (message as { toolCallId?: unknown }).toolCallId;
+        if (typeof id === "string" && id) {
+          if (claimedResults.has(id)) {
+            note(id);
+            continue;
+          }
+          claimedResults.add(id);
+        }
+      }
+      next.push(message);
+    }
+    if (droppedCount === 0) return messages;
+    process.stderr.write(
+      `[agent-runtime] dropped ${droppedCount} duplicate tool call ${
+        droppedCount === 1 ? "entry" : "entries"
+      } before the request (session=${this.sessionId} ids=${[...droppedIds].join(",")})\n`,
+    );
+    return next;
   }
 
   private entriesWithCompaction(
