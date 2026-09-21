@@ -62,6 +62,7 @@ export function ProjectsPage() {
   const restoreProject = useAppStore((s) => s.restoreProject);
   const newSession = useAppStore((s) => s.newSession);
   const selectSession = useAppStore((s) => s.selectSession);
+  const restoreSession = useAppStore((s) => s.restoreSession);
   const setPage = useAppStore((s) => s.setPage);
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const renameSession = useAppStore((s) => s.renameSession);
@@ -223,6 +224,9 @@ export function ProjectsPage() {
     }
     try {
       await selectSession(sessionId);
+      if (useAppStore.getState().sessionMeta[sessionId]?.archived === true) {
+        restoreSession(sessionId);
+      }
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
     }

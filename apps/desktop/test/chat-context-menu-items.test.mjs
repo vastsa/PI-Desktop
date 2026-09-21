@@ -133,7 +133,8 @@ test("a streaming assistant turn without a settled answer offers no items", () =
 test("the conversation menu copies the thread and keeps scroll actions", () => {
   const items = conversationMenuItems({
     t,
-    conversation: "You:\nHi",
+    canCopy: true,
+    onCopyConversation: noop,
     scrollRef: { current: null },
     contentRef: { current: null },
     actions,
@@ -151,7 +152,8 @@ test("the conversation menu copies the thread and keeps scroll actions", () => {
 test("an empty conversation disables copy instead of writing a blank clipboard", () => {
   const items = conversationMenuItems({
     t,
-    conversation: "",
+    canCopy: false,
+    onCopyConversation: noop,
     scrollRef: { current: null },
     contentRef: { current: null },
     actions,
@@ -190,7 +192,8 @@ test("copy conversation ignores a live selection", () => {
   };
   const items = conversationMenuItems({
     t,
-    conversation: "You:\nHi",
+    canCopy: true,
+    onCopyConversation: () => copyActions.copyText("You:\nHi"),
     scrollRef: { current: null },
     contentRef: { current: null },
     actions: copyActions,

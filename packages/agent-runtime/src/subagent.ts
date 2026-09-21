@@ -721,6 +721,10 @@ export class SubagentRun {
             }
           }
         }
+        if (!failed && stopReason !== "aborted") {
+          this.providerTransientRetryAttempt = 0;
+          this.providerRateLimitRetryAttempt = 0;
+        }
         const messageUsage = usageFromPi(message.usage);
         this.usage = addUsage(this.usage, messageUsage);
         // The report is the last assistant text; a call-only turn has none and

@@ -164,6 +164,38 @@ export function useComposerDraft({
     }
     return map;
   }, [activeFileReferences]);
+  // Native undo restores chip DOM, but deletion has already removed its metadata.
+  const deletedReferencesRef = useRef(new Map<string, ComposerFileReference>());
+  useEffect(() => {
+    deletedReferencesRef.current.clear();
+    // Observe every transition, including A -> B -> A in one React batch.
+    return useAppStore.subscribe((state, previous) => {
+      if ((state.workspace?.path ?? "") !== (previous.workspace?.path ?? "")) {
+        deletedReferencesRef.current.clear();
+      }
+    });
+  }, [draftKey]);
+
+  const reconcileEditorReferences = (text: string) => {
+    const current = fileReferencesRef.current;
+    const next = current.filter((reference) => {
+      if (!reference.token || text.includes(reference.token)) return true;
+      deletedReferencesRef.current.set(reference.token, reference);
+      return false;
+    });
+    // Only recover an actual restored chip, never a pasted private-use character.
+    for (const chip of ref.current?.querySelectorAll<HTMLElement>(".composer-chip") ?? []) {
+      const token = chip.dataset.token ?? "";
+      const reference = deletedReferencesRef.current.get(token);
+      if (!reference || !text.includes(token)) continue;
+      if (!next.some((item) => item.token === token)) next.push(reference);
+      deletedReferencesRef.current.delete(token);
+    }
+    if (next.length === current.length && next.every((reference, index) => reference === current[index])) return;
+    fileReferencesRef.current = next;
+    setFileReferences(next);
+  };
+
   const referenceByTokenRef = useRef(referenceByToken);
   referenceByTokenRef.current = referenceByToken;
   const imagePreview = useComposerImagePreview({ references: fileReferences, value, sessionId: referenceSessionId, editorRef: ref });
@@ -273,13 +305,7 @@ export function useComposerDraft({
     }
     valueRef.current = nextValue;
     setValue(nextValue);
-    setFileReferences((current) => {
-      const next = current.filter(
-        (fileReference) =>
-          !fileReference.token || nextValue.includes(fileReference.token),
-      );
-      return next.length === current.length ? current : next;
-    });
+    reconcileEditorReferences(nextValue);
     updateCursor(caret);
     return nextValue;
   };
@@ -294,13 +320,7 @@ export function useComposerDraft({
     editorValueRef.current = nextValue;
     valueRef.current = nextValue;
     setValue(nextValue);
-    setFileReferences((current) => {
-      const next = current.filter(
-        (fileReference) =>
-          !fileReference.token || nextValue.includes(fileReference.token),
-      );
-      return next.length === current.length ? current : next;
-    });
+    reconcileEditorReferences(nextValue);
     updateCursor(start);
   };
 
@@ -557,6 +577,7 @@ export function useComposerDraft({
     deleteComposerDraft(key);
     const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
     if (currentKey !== key) return;
+    deletedReferencesRef.current.clear();
     valueRef.current = "";
     if (ref.current) paintCurrentDraft(ref.current, "");
     setValue("");

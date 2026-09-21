@@ -85,6 +85,11 @@ export function useChatTextActions() {
     and the row is already on screen, so nothing needs measuring.
   */
   const selectText = useCallback((element: HTMLElement | null) => {
+    if (element instanceof HTMLTextAreaElement) {
+      element.focus();
+      element.select();
+      return;
+    }
     const selection = window.getSelection();
     if (!element || !selection) return;
     const range = document.createRange();

@@ -322,7 +322,11 @@ transient failures — `STREAM_FAILED`, `NETWORK_ERROR`, `TIMEOUT`, and retryabl
 `PROVIDER_ERROR` such as an upstream gateway 502/503/504 — share their own
 bounded budget of ten retries after the initial attempt, also counted together
 across setup and stream, and separate from the 429 budget. Both budgets are
-abortable. The 429 path honors `retry-after-ms`, `retry-after` seconds, and
+abortable and reset after a complete successful model response, including a
+tool-call response, in both the main session and builtin subagents. Headers,
+partial output, and phase changes do not replenish them. Terminal exhaustion
+reports `retryAttempt: 10` from the applicable budget even after retry activity
+cleanup. The 429 path honors `retry-after-ms`, `retry-after` seconds, and
 HTTP-date headers before client backoff and caps a wait at 30 seconds; the
 non-429 path applies the same precedence with an 8-second cap and otherwise
 waits 1, 2, 4, then remains at 8 seconds for later retries. Only the failed

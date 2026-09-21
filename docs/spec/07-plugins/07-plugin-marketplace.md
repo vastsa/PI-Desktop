@@ -543,6 +543,11 @@ error states.
 Marketplace cards render a monogram glyph rather than fetching `iconUrl`; the
 renderer performs no remote image loads (D169).
 
+Closing a detail sheet with Escape clears focus from its marketplace opener,
+matching pointer dismissal: no line or focus ring remains on the card.
+Subsequent Tab navigation still shows a complete focus ring inside the rounded
+detail button in both themes, without clipping above the install footer.
+
 ## 8. Trust model
 
 | Level | Meaning |

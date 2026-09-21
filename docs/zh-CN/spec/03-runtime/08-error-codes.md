@@ -312,10 +312,10 @@ Node sidecar 将提供商 SDK 错误映射到：
 
 精确的 `terminated` 提供商消息和等效的过早流关闭
 消息映射到 `STREAM_FAILED`。请求设置阶段或响应后的
-`PROVIDER_RATE_LIMITED` 使用共享的运行时预算：初始尝试之后最多五次重试，
+`PROVIDER_RATE_LIMITED` 使用共享的运行时预算：初始尝试之后最多 10 次重试，
 且设置和流式传输失败一起计数。非 429 瞬时故障——`STREAM_FAILED`、
 `NETWORK_ERROR`、`TIMEOUT` 以及可重试的 `PROVIDER_ERROR`（例如上游网关
-502/503/504）——共享它们自己的有界预算：初始尝试之后最多四次重试，同样
+502/503/504）——共享它们自己的有界预算：初始尝试之后最多 10 次重试，同样
 跨请求设置和流式传输一起计数，并且与 429 预算相互独立。两个预算都是
 可中止的。429 路径在客户端退避之前先遵循 `retry-after-ms`、`retry-after`
 秒和 HTTP 日期标头，并将等待上限设为 30 秒；非 429 路径应用相同的优先级，
@@ -324,6 +324,11 @@ Node sidecar 将提供商 SDK 错误映射到：
 不可重试 `PROVIDER_ERROR` 永远不会进入任何预算。预算耗尽后的失败仍然是
 致命的。设置 `infiniteProviderRetry` 默认关闭；开启后只移除上述可重试网络/瞬时类别的次数上限，
 不会改变退避、`Retry-After`、取消或终止分类，并可能在用户停止回合前持续消耗 API 用量。
+
+**Synchronized update (#699):** A complete successful model response resets
+both budgets, including a tool-call response, in the main session and builtin
+subagents. Headers, partial output, and phase changes do not replenish them.
+Exhaustion reports `retryAttempt: 10` from the relevant budget counter.
 
 `NETWORK_ERROR` 以有界的 `details` 携带真正失败的传输层：
 `networkCategory`（`dns`、`tls`、`timeout`、`refused`、`unreachable`、

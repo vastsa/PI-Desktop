@@ -1003,8 +1003,8 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 #### E2E-038：设置拥有项目存档目标
 
 - **先决条件**：应用程序运行时至少有一个已配置的提供程序、一个受支持的本地会话存储、一个保留的项目和一个存档的项目。
-- **步骤**：1) 打开设置。 2) 检查完整的设置导轨。 3) 打开Basics 并使用可搜索主题选择器更改其外观卡中的主题。 4) 打开全局 AI 并检查权限和默认项卡，包括命令 Shell 行；确认上下文管理没有设置卡。 5) 打开快捷方式并检查键盘快捷方式卡。 6) 打开指令并保存全局指令。 7) 打开模型配置并检查提供商工作室。 8) 按顺序打开“导入”、“项目存档”和“信息”。 9) 搜索设置“项目”或“存档”。 10) 在项目存档中，将每个分组条的计数与其呈现的行进行比较。 11) 将排序控件从“最近”切换到“名称”。 12) 搜索已知的会话标题，检查其展开的项目行，然后显示八个以上的会话；通过清晰的功能来清除搜索。 13) 打开行菜单，使用 Escape 并按下外部按钮将其关闭。 14) 恢复存档的项目，然后激活它。 15) 返回应用程序外壳并打开插件。
-- **预期**：该导轨按顺序包含基础知识、全局 AI/AI、快捷方式、说明、模型配置、导入、项目存档和信息，每个都有其语义 Lucide 图标（滑块/火花/键盘/文件文本/机器人/下载/存档/信息）；行按四个柔和的非交互标题分组：Personal / 个人包含基础知识、全局 AI 和快捷键，Agent / 智能体包含说明和模型配置，Workspace / 工作区包含导入和项目存档，About / 关于包含信息；分组之间使用留白而不是分割线，搜索保持目的地结果扁平，并将空分组及其标题一起隐藏。外观保留在基础下，权限、默认项和命令 Shell 行位于全局 AI 下；可用的已选 Shell 由选择器表示，不重复显示“已配置”状态；默认、回退和无实际 Shell 状态仍明确展示；上下文管理没有设置卡；键盘快捷键和全局指令都有自己的目的地；开发者生活在 Info 下；项目存档显示活动、关闭和存档的持久行，无需可见性切换，将它们分组在一个面板内始终可见的固定/所有项目/存档分组条 (D168/D267) 下，并带有每个部分的计数。该目的地不呈现英雄区块，也没有页面级计数器串：引导区是一条安静的说明行，每个分组条的计数与其呈现的行一致；按名称排序会重新排序每个部分内的行，而不隐藏任何行；搜索匹配项目字段和会话标题并报告匹配计数，会话标题结果扩展其所属项目，按最新活动和相对更新时间列出会话，并以八个批次显示历史记录；清除搜索将恢复完整索引。行菜单在 Escape 和外部按下时关闭。恢复使存档保持打开状态，激活返回以与侧栏中保留的恢复项目聊天；主页侧边栏和全局页面结果没有独立的项目目标；设置搜索找到项目存档；插件仍然是一个独立的应用程序外壳目的地。
+- **步骤**：1) 打开设置。 2) 检查完整的设置导轨。 3) 打开Basics 并使用可搜索主题选择器更改其外观卡中的主题。 4) 打开全局 AI 并检查权限和默认项卡，包括命令 Shell 行；确认上下文管理没有设置卡。 5) 打开快捷方式并检查键盘快捷方式卡。 6) 打开指令并保存全局指令。 7) 打开模型配置并检查提供商工作室。 8) 按顺序打开“导入”、“项目存档”和“信息”。 9) 搜索设置“项目”或“存档”。 10) 在项目存档中，将每个分组条的计数与其呈现的行进行比较。 11) 将排序控件从“最近”切换到“名称”。 12) 搜索已知的会话标题，检查其展开的项目行，然后显示八个以上的会话；通过清晰的功能来清除搜索。 13) 打开行菜单，使用 Escape 并按下外部按钮将其关闭。 14) 恢复存档的项目，然后激活它。 15) 归档一个项目会话，从项目归档中打开它，然后返回项目归档。 16) 返回应用程序外壳并打开插件。
+- **预期**：该导轨按顺序包含基础知识、全局 AI/AI、快捷方式、说明、模型配置、导入、项目存档和信息，每个都有其语义 Lucide 图标（滑块/火花/键盘/文件文本/机器人/下载/存档/信息）；行按四个柔和的非交互标题分组：Personal / 个人包含基础知识、全局 AI 和快捷键，Agent / 智能体包含说明和模型配置，Workspace / 工作区包含导入和项目存档，About / 关于包含信息；分组之间使用留白而不是分割线，搜索保持目的地结果扁平，并将空分组及其标题一起隐藏。外观保留在基础下，权限、默认项和命令 Shell 行位于全局 AI 下；可用的已选 Shell 由选择器表示，不重复显示“已配置”状态；默认、回退和无实际 Shell 状态仍明确展示；上下文管理没有设置卡；键盘快捷键和全局指令都有自己的目的地；开发者生活在 Info 下；项目存档显示活动、关闭和存档的持久行，无需可见性切换，将它们分组在一个面板内始终可见的固定/所有项目/存档分组条 (D168/D267) 下，并带有每个部分的计数。该目的地不呈现英雄区块，也没有页面级计数器串：引导区是一条安静的说明行，每个分组条的计数与其呈现的行一致；按名称排序会重新排序每个部分内的行，而不隐藏任何行；搜索匹配项目字段和会话标题并报告匹配计数，会话标题结果扩展其所属项目，按最新活动和相对更新时间列出会话，并以八个批次显示历史记录；清除搜索将恢复完整索引。行菜单在 Escape 和外部按下时关闭。恢复使存档保持打开状态，激活返回以与侧栏中保留的恢复项目聊天。打开归档会话时，应用会先成功选择该会话，再清除它的归档状态；聊天页选中该会话，项目侧边栏重新显示它，返回项目归档后它也不再处于归档状态。主页侧边栏和全局页面结果没有独立的项目目标；设置搜索找到项目存档；插件仍然是一个独立的应用程序外壳目的地。
 - **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/01-ui-ia.md`、`03-runtime/11-provider-model-system.md`
 - **接受**：B（模型配置），F（会话导入）
 - **里程碑**：M4
@@ -1214,6 +1214,8 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **规格链接**：`07-plugins/07-plugin-marketplace.md`
 - **接受**：G（市场详细信息用户体验）
 - **状态**：已记录
+
+- **焦点回归**：在浅色和深色主题下打开市场卡片，再按 Escape。与鼠标关闭一样，Escape 关闭后卡片不残留横线或焦点框。再用 Tab 和 Shift+Tab 导航：详情按钮显示完整、未裁剪的焦点框，安装按钮仍可单独获得焦点。 自动化焦点状态回归：`node scripts/e2e-plugin-detail-focus.mjs`；焦点框外观需进行视觉验证。
 
 #### E2E-024W：插件剪贴板历史捕获有界的文本和图片
 
@@ -2214,7 +2216,7 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
 #### E2E-CHAT-transcript-context-menu：右键消息或记录
 
 - **前提条件**：会话中有一条完成的用户提示和一条完成的助手回答；对话面板已聚焦。
-- **步骤**：1）右键用户板。2）选择复制，再选择选中消息文本。3）在用户板里选中一段文字，再右键该板并选择复制；收起选区后再右键复制一次。4）右键助手回合并选择复制。5）右键最后一回合下方空白处，选择复制整个对话。6）在打开的菜单上按 Escape，再按 Tab。7）右键回答里的 markdown 链接。
+- **步骤**：1）右键用户板。2）选择复制，再选择选中消息文本。3）在用户板里选中一段文字，再右键该板并选择复制；收起选区后再右键复制一次。4）右键助手回合并选择复制。5）右键最后一回合下方空白处，选择复制整个对话。6）在打开的菜单上按 Escape，再按 Tab。7）右键回答里的 markdown 链接。8）编辑用户消息、替换内容、选中一段草稿并右键复制；再验证无选区复制、选中消息文本和取消编辑后的复制。
 - **预期**：用户菜单列出复制、选中消息文本、编辑，以及分隔后的删除；助手菜单列出复制、选中消息文本、重新生成和分叉。复制写入打开菜单时该行内的选中文本；光标折叠或选区在行外时退回整段。复制整个对话仍写入带说话人标签的整段对话。两者都显示 toast。选中文本会高亮气泡。Escape 和 Tab 关闭菜单且不执行项。链接仍提供在默认浏览器打开、在工作面板打开、复制链接地址。引用、批注、打开侧边聊天不出现（ADR 0268）。表面是视口固定的文档级层，不会改变记录高度。
 - **链接规格**：`04-ux/08-component-spec.md` §8.3 / §8.5，
   `04-ux/09-interaction-patterns.md`（浮动下拉表面），
@@ -2224,6 +2226,9 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
 - **状态**：单位覆盖（`chat-context-menu.test.mjs`、
   `chat-context-menu-items.test.mjs`、`chat-context-menu-surface.test.mjs`）；
   完整 UI 场景草稿
+
+- **完整历史回归**：打开包含 140 条消息的会话，不向上翻页，选择复制整个对话；剪贴板必须包含第 1–140 条消息。从搜索上下文窗口和长消息截断预览重复验证。保留当前可见的生成中文字；读取失败时提示错误，剪贴板保持不变。仅在选择复制后读取完整历史，不改变阅读位置。运行 `node scripts/e2e-copy-conversation.mjs`。
+- 编辑时复制应使用草稿选区，无选区时复制整份草稿；选中消息文本应选中草稿。菜单不提供编辑、删除或版本切换；取消后原消息及其菜单保持不变。自动化验证：`node scripts/e2e-message-edit-copy.mjs`。
 
 #### E2E-060b：镀铬中性灰色调
 
@@ -3658,21 +3663,21 @@ IPC 请求无法关闭。
 
 - **先决条件**：项目绑定的 Agent 会话使用确定性
   发出部分辅助流的提供商装置，终止一次，
-  然后下一个请求成功；第二场比赛可以终止五次；
+  然后下一个请求成功；第二场比赛可以终止 11 次；
   第三个装置在一次尝试中于标头之前返回
   `OpenAI API error (502)`，并在下一次尝试中于流中返回它；
-  第四个装置返回连续六个 502；第五个装置返回带
+  第四个装置返回连续 11 个 502；第五个装置返回带
   `Retry-After` 的 503。
 - **步骤**：
   1. 使用单端接夹具开始 Agent 转动，并观察
      部分助理回应。
   2. 等待有界重试并检查成绩单、会话状态和
      恢复后的终端诊断。
-  3. 对五端夹具重复并检查端子错误
+  3. 对 11 次终止夹具重复并检查端子错误
      message/event 及其诊断详细信息。
   4. 运行混合阶段 502 装置，并针对标头之前和流中的
      502 检查请求计数与终端诊断。
-  5. 运行持续六次 502 的装置并检查终端错误。
+  5. 运行持续 11 次 502 的装置并检查终端错误。
   6. 运行 503 `Retry-After` 装置并检查观察到的等待。
   7. 重新加载会话并验证是否只有已完成的响应或
      单终端故障助手依然耐用。
@@ -3681,12 +3686,12 @@ IPC 请求无法关闭。
   - `terminated` 被分类为 `STREAM_FAILED`，上游网关
     `502`/`503`/`504` 被分类为可重试的 `PROVIDER_ERROR`。
   - 非 429 瞬时故障共享一个有界预算：在初始尝试之后最多
-    重试四次，总共五次提供程序尝试，由请求设置和流式传输
+    重试 10 次，总共 11 次提供程序尝试，由请求设置和流式传输
     交付共享。每次重试都等待一个可中止的有界退避，从模型
     上下文中删除失败的助手，并且不产生重复的助手气泡或
     终端错误通知。
   - 流中的 502 会被重试，而不是立即显现。混合阶段装置在两个
-    阶段之间花费同一个计数器，总共进行五次尝试，而不是每个
+    阶段之间花费同一个计数器，总共进行 11 次尝试，而不是每个
     阶段各重试一次。在没有 `Retry-After` 标头时，观察到的等待
     依次为 1 秒、2 秒、4 秒，然后是 8 秒，并且在两个阶段中完全
     相同。
@@ -3695,14 +3700,14 @@ IPC 请求无法关闭。
   - 恢复的回合发出一个终端生命周期并保持相同的可见
     助理消息 ID。时序日志为每次重试记录 `outcome=retry`
     及其尝试编号，以及最终结果。
-  - 第五次终止发出一个终端 `STREAM_FAILED` 辅助错误和
+  - 第 11 次终止发出一个终端 `STREAM_FAILED` 辅助错误和
     生命周期事件；持续 502 的装置发出一个终端
-    `PROVIDER_ERROR`。两者都携带 `retryAttempt: 4`。可用的详细
+    `PROVIDER_ERROR`。两者都携带 `retryAttempt: 10`。可用的详细
     信息包括阶段、流计时和提供商状态，无需凭据或不受限制的
     提供商正文。
   - 503 装置等待服务器的 `Retry-After`，而不是客户端退避。非 429
     的服务器等待和回退等待都以 8 秒为上限。
-  - 流中的 HTTP 429 由 429 预算单独的五次重试路径覆盖；两个
+  - 流中的 HTTP 429 由 429 预算单独的 10 次重试路径覆盖；两个
     预算互不占用。
   - 身份验证、模型选择、上下文和格式错误的请求失败
     不进入任何提供程序重播路径，包括来自格式错误的 400/422
@@ -3715,6 +3720,20 @@ IPC 请求无法关闭。
 - **里程碑**：M5
 - **状态**：单位覆盖（`agent-errors.test.ts`、`provider-retry.test.ts`、
   `runtime.test.ts`、`subagent.test.ts`）；完整 provider/UI 旅程草案
+
+**Synchronized update (#699, E2E-096 / E2E-149):** Alternate one network
+failure with each of eleven successful Read responses, then fail once before
+the final answer. All twelve independent failures must recover, starting at
+retry 1 each time, with no duplicate tool execution. Complete successful
+responses replenish both budgets; headers, partial output, and phase changes
+do not. A new persistent outage after recovery still gets ten retries and
+reports `retryAttempt: 10`. Restore the provider and verify Continue succeeds.
+The same reset rule applies to rate limits and builtin subagents.
+
+The socket-failure, interrupted-stream, Responses, exhaustion, Continue, and
+eleven-tool-round desktop paths are verified by
+`scripts/e2e-provider-recovery.mjs`; real agent-loop coverage is in
+`provider-recovery-flow.test.ts`. Other scenario variants remain Draft.
 
 ## 7A。 M6 Plan 和 shell 场景
 
@@ -5270,6 +5289,8 @@ IPC 请求无法关闭。
 | C — 对话和直播（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | 品质（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
+| G — 插件宿主生命周期（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
+| 品质（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -7881,8 +7902,10 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 | ID | 场景 | 验证 |
 |---|---|---|
 | E2E-MCP-MARKET-NET-BOUNDARY | URL guard 拒绝凭据、回环、私网、special-use IPv4、v4-mapped、ULA、site-local 和 link-local 及尾点绕过形态；Main 固定已检查的公网地址并逐跳复核 HTTPS 重定向 | 确定性 guard 断言；DNS pin 与响应上限 source-contract 覆盖 |
-| E2E-MCP-MARKET-SEMANTICS | Registry 记录映射为安装模板时保留包版本、named/positional runtime/package 参数与 required/optional 环境变量语义 | 确定性映射断言 |
+| E2E-MCP-MARKET-SEMANTICS | Registry 记录映射为安装模板时保留包版本、named/positional runtime/package 参数与 required/optional 环境变量语义；远端 header 变量同时识别注册表的 `{name}` 与目录的 `${NAME}` 两种写法，仅为已声明的可编辑值显示输入，保留未声明花括号字面量，并按各 header 的作用域处理默认值、固定值与可选标记，不合并不同 header 的同名输入（ADR registry-header-variable-spelling） | 确定性映射断言 |
 | E2E-MCP-MARKET-INSTALL | 内置目录条目经 `resolveCatalogEntry` 解析并通过宿主 `mcp.upsert` RPC 安装；记录落盘 `~/.agents/servers/` | 真实宿主二进制，隔离临时 HOME |
+| E2E-MCP-MARKET-HEADER-SCOPE | Registry header-local `{token}` resolves only in its header; same-named URL path/query tokens remain literal through mapping, resolution, host upsert/list and persistence. URL templates retain only legacy `${NAME}` substitution. When `headerBindings` exists (even empty or partial), unbound tokens in every header stay literal and never consume another header's input or default | shared regressions plus real host binary with isolated temporary storage; remote entry disabled, no network call |
+| E2E-MCP-MARKET-partial-header-bindings-stay-literal | Resolve a catalog with only Authorization bound and another header using the same `{token}` / `${token}`; an undeclared `${UNBOUND}` in a third header also remains literal through host upsert/list and disk persistence | real host binary, disabled remote entry, synthetic input and isolated temporary storage; no network call |
 
 
 #### E2E-SKILL-MARKET-NET-BOUNDARY：技能源公网 HTTPS 策略拒绝私网与回环
@@ -8365,3 +8388,17 @@ preference, and save. Repeat with retry explicitly false and true. Both
 renderer and main validation must accept the normalized boolean while retaining
 the chosen retry state. Reject invalid non-boolean writes. Covered by settings
 round-trip tests in `turn-process.test.mjs` and `provider-catalog-runtime.test.mjs`.
+
+### E2E-PLUGIN-crash-report-names-the-exit-code
+
+- **先决条件：** 已加载的插件宿主进程自行死亡——夹具为写一行 stderr 后 `process.exit(7)`——并带一个常驻服务，使监督器路径也被覆盖。
+  隔离的桌面配置；不访问市场或网络。
+- **步骤：** 加载插件并让宿主进程死亡。读取加载错误、`failed` 服务状态、`plugin.crash` 审计记录与 `plugin` 日志通道。若有条件，
+  再用一次硬故障（Windows `0xC0000005` 一类退出）重复；最后在插件宿主存活时退出应用。
+- **预期：** 上述每一处都给出退出码（`exit code 7`；硬故障为 `exit code 3221225477 (0xC0000005)`），而夹具的 stderr 行不会出现在
+  加载错误或崩溃审计记录中。干净退出完全不上报崩溃：退出是关闭而不是崩溃。
+- **规格：** 07-plugins/05-plugin-lifecycle §3.1 / §8、08-meta/decisions-log D607。
+- **验收：** G（插件宿主生命周期）、品质（可诊断性）。**里程碑：** Post-MVP 回归覆盖。
+- **自动化：** `apps/desktop/test/plugin-services.test.mjs` 真实 fork 宿主进程、以夹具退出码杀死它，并断言服务状态与审计记录上的
+  退出码及原始 stderr 缺失；`plugin-isolation.test.mjs` 与关闭用例覆盖"退出不是崩溃"那一半。
+- **状态：** 运行时层已自动化；无 UI 驱动读取插件页的错误文本。
