@@ -1,6 +1,6 @@
 # ADR 0113: Persist the New Task empty slot immediately and deduplicate it by message count
 
-- **Status:** Accepted
+- **Status:** Superseded by reinstatement of ADR 0084 (#746)
 - **Date:** 2026-08-21
 - **Supersedes:** ADR 0084 / D220
 - **Related:** D088 · D093 · D305 · E2E-011b · E2E-011d · E2E-011e · E2E-011g

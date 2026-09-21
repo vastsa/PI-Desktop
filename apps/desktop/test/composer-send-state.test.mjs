@@ -189,26 +189,18 @@ test("editing a queued prompt needs an empty composer and restores its draft", (
   assert.doesNotMatch(queueSlice, /text: item\.content/);
 });
 
-test("new task persists or reuses an empty session and keeps the run flag scoped", () => {
+test("new task opens an unpersisted draft and keeps the run flag scoped", () => {
   const newSession = sessionSlice.match(
     /newSession: async [\s\S]*?\n    forkSession: async/,
   )?.[0] ?? "";
   assert.ok(newSession.length > 0, "newSession implementation not found");
-  assert.match(newSession, /latestSessionInScope/);
-  assert.match(newSession, /sessionIsReusableEmpty/);
-  assert.match(newSession, /persistSessionAndSelect/);
+  assert.match(newSession, /New task starts as an unpersisted draft/);
+  assert.match(newSession, /activeSessionId: undefined/);
   assert.match(newSession, /pendingNewSessionRequests/);
   assert.doesNotMatch(newSession, /refreshSessions/);
-  // A newly selected empty session uses its own run state, so a turn still
-  // streaming in the previous session cannot leave it stuck on the stop
-  // button.
   assert.match(
     sessionCoordination,
-    /async function persistSessionAndSelect[\s\S]*?\n    return sessionId;\n  }\n/,
-  );
-  assert.match(
-    sessionCoordination,
-    /isRunning: current\.runningSessions\[summary\.id\] \?\? false/,
+    /async function materializeDraftSession[\s\S]*?\n    return persistSessionAndSelect\(\{ intent \}\);\n  \}\n/,
   );
 });
 

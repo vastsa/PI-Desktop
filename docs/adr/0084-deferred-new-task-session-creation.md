@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-14
-- **Related:** D220 · D088 · D093 · E2E-011b · E2E-011d
+- **Related:** D220 · D088 · D093 · E2E-011b · E2E-011d · #746
 
 ## Context
 

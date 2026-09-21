@@ -619,10 +619,9 @@ export function Sidebar({
       : sessions.filter(
           (session) => !sessionArchived(session, sessionMeta[session.id]),
         );
-    // Empty sessions are durable sidebar rows now. Their message count, not
-    // their title, controls New Task reuse, so a manual rename never changes
-    // the empty-slot behavior.
-    return candidates;
+    // New-task drafts stay out of history until they carry input: sessions
+    // with only a default title (including legacy empty drafts) never render.
+    return candidates.filter((session) => !isDefaultSessionTitle(session.title));
   }, [sessions, showArchived, sessionMeta]);
 
   const compareSessions = useCallback((a: SessionSummary, b: SessionSummary) => {

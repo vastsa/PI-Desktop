@@ -23,6 +23,7 @@ import {
   sessionNeedsModelPin,
 } from "../../lib/session-model";
 import {
+  clearSessionPanes,
   retainSessionPane,
 } from "../../lib/session-panes";
 import {
@@ -476,28 +477,23 @@ export function createSessionSlice({
           if (!runtime.navigationIntentIsCurrent(intent)) return;
         }
 
-        const latest = runtime.latestSessionInScope(
-          get().sessions,
-          requestedProjectPath,
-          get().sessionMeta,
-        );
-        if (
-          latest &&
-          sessionIsReusableEmpty(latest, {
-            running: get().runningSessions[latest.id] === true,
-            liveMessageCount: runtime.liveMessageCountForSession(latest.id, get()),
-            submitted: runtime.submittedComposerDrafts.has(latest.id),
-          })
-        ) {
-          if (get().activeSessionId === latest.id && get().page === "chat") return;
-          await get().selectSession(latest.id, { navigationIntent: intent });
-          return;
-        }
-
-        await persistSessionAndSelect({
-          intent,
-          projectPath: requestedProjectPath,
-          draftConfiguration: null,
+        // New task starts as an unpersisted draft (ADR 0084): no session is created
+        // and no sidebar history row appears until the first message materializes it.
+        // The draft stays within its requested project scope, if any.
+        set((s) => {
+          const stack = s.navStack.slice(0, s.navIndex + 1);
+          const nextStack = [...stack, { page: "chat" as const }].slice(-50);
+          return {
+            ...switchWorkPanelSession(s, undefined),
+            ...clearSessionPanes(),
+            activeSessionId: undefined,
+            draftConfiguration: null,
+            messages: [],
+            page: "chat" as const,
+            navStack: nextStack,
+            navIndex: nextStack.length - 1,
+            isRunning: false,
+          };
         });
       })();
       runtime.pendingNewSessionRequests.set(scopeKey, request);
