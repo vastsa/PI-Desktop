@@ -6470,3 +6470,22 @@ that was sitting at the bottom — including after the turn had finished.
 - Renderer CSS and the theme surface regression change only. There is no scroll
   state, protocol, persistence, theme schema, or permission change. See
   `04-ux/08-component-spec.md` and E2E-CHAT-opaque-floating-decision-and-retry-surfaces.
+
+## 2026-09-21 — The context estimate is calibrated conservatively (D606)
+
+- Every budget threshold reads one number, and that number is corrected against
+  what requests actually cost. pi's estimator anchors on the last assistant
+  usage and estimates the rest as `chars / 4`, which under-counts CJK text by
+  roughly a factor of 2–4 and, with no anchor left, omits the system prompt and
+  tool schemas entirely.
+- The two errors are applied separately: the per-character bias as a
+  scale-free ratio over the guessed tail, and an unanchored residual as a ratio
+  only for observations taken at a comparable scale (0.5×–2×), otherwise as the
+  observed overhead capped at 32,000 tokens. A 100k-scale sample therefore
+  cannot be applied as a ratio to a 1M projection.
+- The correction is asymmetric: upward applies once three observations exist;
+  downward needs three agreeing samples, is capped at 15 % per step, and can
+  never take the value below 85 % of the raw estimate, so a projection at
+  1.18× the hard limit still compacts. A report outside 0.5×–3× of what the
+  calibration predicted is a misreport, and two consecutive misreports freeze
+  the downward direction. See `03-runtime/02-agent-runtime.md` §5.1.

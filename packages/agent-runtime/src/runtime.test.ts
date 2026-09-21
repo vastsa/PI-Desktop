@@ -8486,4 +8486,89 @@ describe("DesktopAgentRuntime hosted web search rounds (ADR 0297)", () => {
     ]);
     await restored.dispose();
   });
+
+describe("context estimate calibration", () => {
+  /** A request-level usage report: the shape `usageFromPi` hands the runtime. */
+  const report = (inputTokens: number) => ({
+    inputTokens,
+    outputTokens: 1,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: inputTokens + 1,
+  });
+
+  const messages = [
+    { role: "user" as const, content: "x".repeat(4_000), timestamp: 1 },
+  ];
+
+  it("moves the gate by what past requests actually cost", async () => {
+    const runtime = createRuntime();
+    const raw = (runtime as any).contextBudget(messages).tokens;
+    expect(raw).toBeGreaterThan(0);
+
+    // Two unanchored reports, each costing three times the estimate: CJK text
+    // against the estimator's `chars / 4` constant. Below the sample threshold
+    // the gate has to stay exactly where it was.
+    for (let i = 0; i < 2; i++) {
+      (runtime as any).inFlightContextEstimate = {
+        tokens: raw,
+        usageTokens: 0,
+        trailingTokens: raw,
+        lastUsageIndex: null,
+      };
+      (runtime as any).recordContextCalibration(report(raw * 3), false);
+    }
+    expect((runtime as any).contextBudget(messages).tokens).toBe(raw);
+
+    (runtime as any).inFlightContextEstimate = {
+      tokens: raw,
+      usageTokens: 0,
+      trailingTokens: raw,
+      lastUsageIndex: null,
+    };
+    (runtime as any).recordContextCalibration(report(raw * 3), false);
+    expect((runtime as any).contextBudget(messages).tokens).toBe(raw * 3);
+
+    await runtime.dispose();
+  });
+
+  it("ignores a failed attempt, a missing report, and a consumed park", async () => {
+    const runtime = createRuntime();
+    const raw = (runtime as any).contextBudget(messages).tokens;
+    const parked = {
+      tokens: raw,
+      usageTokens: 0,
+      trailingTokens: raw,
+      lastUsageIndex: null,
+    };
+    const overhead = () => (runtime as any).contextCalibration.overheadTokens();
+
+    // Two usable observations, then four that must not count. If any of them
+    // did, the series would already be trusted and the overhead non-zero.
+    for (let i = 0; i < 2; i++) {
+      (runtime as any).inFlightContextEstimate = { ...parked };
+      (runtime as any).recordContextCalibration(report(raw * 3), false);
+    }
+    (runtime as any).inFlightContextEstimate = { ...parked };
+    // A failed stream never carried the request...
+    (runtime as any).recordContextCalibration(report(raw * 3), true);
+    // ...and it still consumed the park, so this report has nothing to pair
+    // with rather than reusing the failed attempt's estimate.
+    (runtime as any).recordContextCalibration(report(raw * 3), false);
+    // A settled attempt whose response carried no usage at all.
+    (runtime as any).inFlightContextEstimate = { ...parked };
+    (runtime as any).recordContextCalibration(undefined, false);
+    // A report with nothing parked.
+    (runtime as any).recordContextCalibration(report(raw * 10), false);
+    expect(overhead()).toBe(0);
+
+    // The third usable observation crosses the threshold: the two above plus
+    // this one, each measuring `3 * raw - raw`.
+    (runtime as any).inFlightContextEstimate = { ...parked };
+    (runtime as any).recordContextCalibration(report(raw * 3), false);
+    expect(overhead()).toBe(raw * 2);
+
+    await runtime.dispose();
+  });
+});
 });

@@ -5269,6 +5269,7 @@ IPC 请求无法关闭。
 | C — 对话和直播（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | 品质（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
+| C / F / 品质 —— 上下文估算保持安全（校准） | E2E-CONTEXT-estimate-calibration-stays-safe |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -8315,6 +8316,16 @@ the latest destination. These assertions measure work counts, not device FPS.
   定位不在本次范围内，保持原有搜索行为。
 - **规格：** 04-ux/06-settings-ia、04-ux/08-component-spec、
   04-ux/09-interaction-patterns；ADR turn-process-and-thinking-display。
+
+### E2E-CONTEXT-estimate-calibration-stays-safe
+
+- **先决条件：** 可脚本化上报用量的确定性提供商夹具；占用接近硬边界的会话；不使用真实凭据。
+- **步骤：** 连续上报低于预测的用量，确认显示占用不低于下限且压缩仍然触发；上报远离合理区间的用量，确认数值不动；跑一个
+  中文为主的会话，比较显示占用与上报用量。
+- **预期：** 校准后的占用保持在原始估算的 0.85×–6× 之内；有证据即上调；只有方向一致的样本才下调；处在硬限制 1.18× 的
+  投影仍触发压缩；误报不产生任何方向的移动；中文文本不再只有实测成本的四分之一。
+- **规格：** 03-runtime/02-agent-runtime §5.1、08-meta/decisions-log D606。**验收：** C（对话与流）、F（持久化）、品质。
+  **状态：** 单元测试覆盖（含中文与边界用例）；桌面 E2E 待补。
 
 ### E2E-MCP-HTTP-ACK — HTTP acknowledgement and authorization status
 
