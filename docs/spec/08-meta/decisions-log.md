@@ -175,7 +175,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D267 | Project archive is one workbench, not three bands | *(row anatomy and inline expansion superseded by D455)* **Revise D168's band layout: Settings → Project archive renders the D257 one-workbench composition — a quiet intro line carrying only the page description, one toolbar (Recent/Name sort on the shared `settings-segment` primitive, search with clear affordance and live match count, primary Add project), and one settings panel whose always-visible Pinned / All projects / Archived groups are non-interactive in-panel header strips with per-section counts instead of one panel per section. The decorative gradient hero band is removed together with the four page-level overview counters it carried, retiring the `project.statProjects`, `project.statOpen`, `project.statArchived`, and `project.statSessions` keys; the per-group counts on the panel's header strips are now the only totals. The external uppercase section labels are removed as well; row geometry matches the capability rows (32px controls, 14px list gap, 28px row glyph). Beyond dropping the four retired counter keys this is presentation only: D168's row anatomy, row menu grouping, search matching, session batching, activation semantics, and accessibility semantics are unchanged, and no ADR is required.** | D168's overview banner used a decorative gradient and `--text-xl` counter tiles, which the design system forbids, and its per-section panels repeated the same elevated frame three times. Demoting the counters to an inline run kept the clutter without earning it: every total they showed is already legible from the per-group strip counts, so restating them above the toolbar duplicated numbers and gave the destination a header no sibling page has. Dropping them leaves the durable index looking and behaving like the agent capability pages. |
 | D455 | Project archive is a list + inspector | *(row anatomy superseded by the same-day "Project archive reads as an inset grouped card list" entry)* **Revise D267's expanding rows: Settings → Project archive keeps the quiet intro and toolbar, then a one-column workbench. The index remains Pinned / All projects / Archived with per-section counts and no visibility toggle (D133). Compact rows show glyph, name, one status tag, session count, and relative time. A click selects and stays in Settings; double-click, Enter, or the inspector Open action activates and returns to chat. Folders, chats (batches of eight), and the row menu open under the selected row at full width. Search still matches session titles and selects the owning project. Presentation only: no IPC, storage, or host change. See ADR 0294 and E2E-038.** | Inline expansion and per-row menus made a long durable index hard to scan, and clicking a name left Settings instead of managing the project. |
 | D456 | Session thinking-parameter omission | **Amend ADR 0194 / ADR 0144 / ADR 0221: session `thinkingLevel` accepts `omit` in addition to the seven canonical levels. Composer prepends `omit` on a reasoning model. Settings `defaultThinkingLevel` also accepts `omit` when the binding enables any reasoning level. Runtime bookkeeping stays `off` and uses the low-level provider stream so no thinking override is synthesized. Binding/catalog capability lists stay canonical. Schema v19 widens the session CHECK to include `omit`. Handshake protocol version is unchanged. See ADR 0295 and E2E-203a.** | Explicit `off` still serializes a disable; users need a session-level do-not-send matching subagents. |
-| D458 | Composer reasoning slider on the menu root | **Amend the combined model × reasoning menu: when more than one level is listed, a native range slider with one labeled stop per level sits under the Reasoning level entry. Slider and tick commits persist the last pending level through `configureActiveSession` without leaving the root; the entry still opens the classic radio list. Tick labels are not tab stops. Renderer only. See issue #417, `04-ux/08-component-spec.md`, and E2E-050.** | Switching a level required a submenu trip; a Codex-style slider keeps the radio list while making quick adjustments one drag. |
+| D458 | Composer reasoning slider on the menu root | **Amend the combined model × reasoning menu: when more than one level is listed, a native range slider with one labeled stop per level sits under the Reasoning level entry. Slider and tick commits persist the last pending level through `configureActiveSession` without leaving the root; the entry still opens the classic radio list. Tick labels are not tab stops. The slider shows a rail with one track dot per stop and a visible label under each stop; the dots row and labels row are full-width n-column grids and the range input overlays the rail inset by half a column minus the thumb radius, so the dot, thumb and label share one column center for every stop count. The selected stop uses the accent token, the rest muted. Renderer only. See issue #417, `04-ux/08-component-spec.md`, and E2E-050.** | Switching a level required a submenu trip; a Codex-style slider keeps the radio list while making quick adjustments one drag. |
 
 ## E. M5 hardening decisions (0.4.0)
 
@@ -6457,3 +6457,52 @@ that was sitting at the bottom — including after the turn had finished.
   `03-runtime/07-process-model.md` §4, `03-runtime/09-logging-and-observability.md`,
   and `03-runtime/04-data-storage.md`.
 
+## 2026-09-20 — The dock occludes transcript paint below Composer (D603, issue #728)
+
+- The transcript scrollport fills the conversation pane while its content
+  reserves the measured Composer height. Because the absolutely positioned dock
+  was transparent, a row could keep painting below the floating shell and stay
+  visible in its bottom gap or outside its rounded corners.
+- `.composer-dock-docked` now paints the opaque `--ds-bg-primary` workspace
+  surface across its full width. The Composer retains its existing translucent
+  elevated token, radius, shadow, and measured scroll reserve; the backing band
+  removes only transcript paint that has crossed the Composer boundary.
+- Renderer CSS and the theme surface regression change only. There is no scroll
+  state, protocol, persistence, theme schema, or permission change. See
+  `04-ux/08-component-spec.md` and E2E-CHAT-opaque-floating-decision-and-retry-surfaces.
+
+## 2026-09-21 — A tool-call id is unique in every request (D608, issue #718)
+
+- Anthropic-family endpoints, DeepSeek's included, reject a whole turn with
+  `tool_use ids must be unique` when the request carries a call id twice, and
+  the session cannot continue while that lasts. The transcript is an append-only
+  snapshot stream that tolerates a retried append, so the same call can reach
+  the assembled context twice: under one row id, which the host's keep-last read
+  already collapses, or under two, which it cannot.
+- The last view before the wire therefore keeps the first occurrence of each
+  `toolCall` id and drops a later call or a later result for that id, so the
+  call/result pair the provider validates stays well-formed. A request with no
+  duplicates is returned unchanged (identity, not a copy). Nothing is rewritten
+  on disk and no compaction or retention rule changes.
+- A drop is reported once on the `agent` log channel with the session and the
+  ids, so the next report of this names the writer instead of only the
+  provider's sentence. See `03-runtime/02-agent-runtime.md` §5.
+- The guard is deliberately the request boundary rather than the history
+  rebuild: it also covers a duplicate that appears while the session runs, which
+  a rebuild-time filter cannot see.
+
+## 2026-09-21 — A plugin crash reports its exit code without copying raw output (D607, issue #747)
+
+- The host-process crash path reported only the plugin id, so a report read
+  `plugin host process exited: <id>` and carried nothing else — the reporter in
+  issue #747 had exactly that sentence and no way to say more. The exit code it
+  already had is now part of the message, the `failed` service state, the
+  `plugin.crash` audit record and the `plugin` log channel; on Windows a hard
+  fault (`0xC0000005` and friends, delivered as a negative signed int, printed
+  alongside its unsigned hex form) and a plugin's own `process.exit(1)` are
+  different bugs and this is the only field that tells them apart.
+- Plugin stdout/stderr is not copied into the load error, crash audit record, or
+  crash log payload because it may contain workspace data or secrets. Nothing
+  new is persisted and no permission or API surface changes; the existing
+  `plugin.stdio` audit stream is otherwise unchanged.
+- See `07-plugins/05-plugin-lifecycle.md` §3.1.

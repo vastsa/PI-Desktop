@@ -98,8 +98,8 @@ pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入�
    之内的图片才会被读进内存；更大的图片走流式哈希/复制以及既有的安全路径回退
 7. 为本回合快照有效的 shell ID 与方言
 8. 用解析出的会话配置和有效思考级别启动 pi 回合；HTTP 429 的建连与流式失败
-   使用运行时自有的静默五次重试预算，其他瞬时的 transport/provider 失败则在
-   建连与流式两个阶段之间共享一份运行时自有的四次重试有界预算
+   使用运行时自有的静默 10 次重试预算，其他瞬时的 transport/provider 失败则在
+   建连与流式两个阶段之间共享一份运行时自有的 10 次重试有界预算
    （D127、D186、D245、D258）
 9. 将规范化的回答与思考事件流式传输到 UI
 10. 工具调用时，携带持久的 `sessionId` 委托给 Rust 主机桥；由主机解析会话
@@ -126,10 +126,10 @@ pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入�
 ### 5d。有界提供商流恢复和诊断（D186、D245、D259、ADR 0091、ADR 0128）
 
 提供程序请求设置和流式传输交付是两个独立的故障阶段，但
-HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
+HTTP 429 处理是一个响应恢复策略。此路径禁用了 pi-ai 的嵌套
 适配器重试，因此运行时可以在两个阶段之间共享一个预算。
 
-`PROVIDER_RATE_LIMITED` 在初始尝试之后最多重试五次，总共六次
+`PROVIDER_RATE_LIMITED` 在初始尝试之后最多重试 10 次，总共 11 次
 提供程序尝试。设置阶段的 429 在提供程序流适配器内部重试。
 流中的 429 会从下一个模型上下文中删除失败的助手，并在同一
 回合中调用 `continue()`。两个阶段占用同一个计数器，因此设置阶段的
@@ -151,8 +151,8 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 运行时从 fetch 捕获失败的响应状态和标头，因为 pi-ai 的普通响应
 回调仅涵盖已建立的响应。
 
-非 429 瞬时故障共享它们自己的有界逻辑回合预算：在初始尝试之后
-最多重试四次，总共五次提供程序尝试。该预算由请求设置和流式
+非 429 瞬时故障共享它们自己的有界响应恢复预算：在初始尝试之后
+最多重试 10 次，总共 11 次提供程序尝试。该预算由请求设置和流式
 传输交付共享，因此在两个阶段之间移动的故障无法重置或倍增它，
 并且它与 429 预算相互独立。它只接受 `NETWORK_ERROR`、`TIMEOUT`、
 `STREAM_FAILED` 和可重试的 `PROVIDER_ERROR`——包括在标头到达之前
@@ -160,6 +160,13 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 请求、上下文以及其他不可重试的错误不会进入任何提供程序重放路径，
 并且来自格式错误的 400/422 请求的不可重试 `PROVIDER_ERROR` 仍然是
 终止的。
+
+**Synchronized update (#699):** Both budgets reset after a complete, non-error,
+non-aborted model response, including tool-call responses, in the main session
+and builtin subagents. Headers, partial output, and phase changes never reset
+them. New requests start at retry 1; persistent outages remain bounded at ten
+retries per class. Exhaustion diagnostics use the applicable budget counter,
+not temporary retry activity. See the English source section 5d and ADR 0206.
 
 在把 HTTP 400/422 那种消息以 `(no body)` 结尾的流前 `PROVIDER_ERROR` 抛给上层
 之前，运行时最多做一次静默的修复尝试：移除生成的输出上限字段
@@ -183,6 +190,11 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 子代理和一次性 composer 提示增强使用相同的错误码、预算大小和
 优先级。
 
+应用设置 `infiniteProviderRetry` 默认关闭。开启后，主会话及其内置子代理只跳过可重试
+网络/瞬时故障（含 `PROVIDER_RATE_LIMITED`）的次数上限。退避、`Retry-After`、可见重试状态和
+停止路径不变。不可重试错误、上下文恢复、压缩、工具执行和一次性补全仍走原有有界预算。
+开启后可能在用户停止回合前持续消耗 API 用量。
+
 当 429 预算耗尽时，最终的助手错误和生命周期 `error` 只发出一次。
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：
 `phase`（`request` 或 `stream`）、`providerStatus`、`providerCode`、
@@ -191,7 +203,7 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 `networkRoute`）以及请求关联字段（`requestMessages`、`requestBytes`、
 `compactionGeneration`）。
 对于持续的 429，
-`retryAttempt` 为 `5`；对于持续的非 429 瞬时故障，它为 `4`。凭据与不受限制的
+`retryAttempt` 为 `10`；对于持续的非 429 瞬时故障，它也为 `10`。凭据与不受限制的
 响应正文永远不会进入事件或日志。每次重试都会新建请求、流和 `AbortController`；
 重试唯一共享的状态是进程级 undici dispatcher。当同一来源在一轮内连续两次没有
 任何响应、且新尝试仍无法到达它时，下一次尝试前会重建一次传输（每 30 秒最多一次，
@@ -391,6 +403,9 @@ Headroom 是 16,384 个代币储备底线的最大值，模型最大输出
 会话空闲时可用。检查点生成是可中止的并且
 计为运行状态，直到持久持久性完成。
 
+委托（第 5f 节）对照它自己解析出的模型走同一条推导，并在它自己的回合边界上压缩，
+但没有属于它自己的持久检查点链（ADR 0299）。
+
 ## 5b.运营模式及规划状态
 
 - 默认产品模式：**Agent**
@@ -509,6 +524,11 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
   恢复为错误结果；辅助行丢失的工具行
   获得合成的仅呼叫辅助运营商，以便 call/result 对保留
 格式良好，适用于每个提供商 API。
+- 每个请求里的工具调用 id 必须唯一。转录是仅追加的快照流，容忍重试造成的重复追加，因此同一次调用可能两次进入组装后的
+  上下文——同一个行 id（宿主按 keep-last 读取时已折叠），或者两个不同的行 id（宿主无法折叠）。因此上线前的最后一个视图
+  对每个 `toolCall` id 只保留第一次出现，丢弃其后重复的调用或结果，使提供商校验的「一调用一结果」配对保持完整；没有重复的
+  请求原样返回。一旦发生丢弃，会在 `agent` 日志通道上报告一次，带上会话与 id（D608）。Anthropic 系端点（含 DeepSeek）
+  会以 `tool_use ids must be unique` 拒绝整个回合（issue #718），使该会话无法继续。
 - 视觉运行时只从会话绑定的附件、scratch 与项目根目录中水合持久化的图片引用。
   处于 10 MB 内联安全上限之内的图片会成为临时的 pi-ai 图片块；超限或不可用的
   图片则退化为安全的 `@path` 回退。超限历史的水合会直接复制文件，不会先把内容
@@ -679,6 +699,31 @@ Electron main 里解析一次——凭据与 models.dev 快照都在那里——
 永远无法解析它。只有斜杠是结构性字符——提供商部分按归一化别名匹配，
 因此包含空格的显示名是合法的。
 
+
+**上下文预算与压缩（ADR 0299）。** 委托拥有与会话相同的窗口保护，并且以相同方式
+推导。预算取自该次运行实际解析出的模型 —— `Task.model` 覆盖、定义引脚，或继承
+的会话模型 —— 走第 5.1 节那条共享推导，因此 `hardLimit` 就是该窗口减去同样的
+请求余量，而按定义声明的 `maxTokens` 上限作为输出预算参与其中。在委托的回合边界
+上，该次运行会重新估计它自己的上下文；达到或超过 `hardLimit` 时，就在下一次提供商
+请求之前同步压缩，保留模式按与会话相同的生命周期规则选择：仍有待处理工具结果的
+边界按活动回合保留，已完成的边界按完成回合保留。没有任何预计算，也没有第二道阈值。
+
+当摘要无法生成，或压缩后的上下文仍然超出预算时，该次运行降级：只保留原始任务简报
+加最近的若干条消息，丢弃其余历史，继续运行，并记录它已被降级，因此报告与生命周期
+details 会说明该委托丢失了历史，而不是把一个不完整的答案当作完整答案呈现。若连这样
+也放不下，该次运行以 `SUBAGENT_CONTEXT_OVERFLOW`（不可重试）失败，点名父级可以改变
+什么 —— 缩小任务范围、改用窗口更大的模型、一次读取更少内容 —— 而不是把提供商的
+溢出文本转发出去。
+
+有序备选模型在被尝试之前会对照它自己窗口重新评估：预算装不下已携带上下文的备选
+会被跳过，并以该理由记入 `modelFailures`，而不是被重试进同一个失败。恢复来的链在
+预算之内播种 —— `seedDelegateMessages` 保留原始任务简报与最近的轮次，并优先丢弃最旧
+的工具结果 —— 因此一次恢复从 `hardLimit` 之下开始，而不是在它的第一次请求上就溢出。
+
+委托压缩只影响委托的模型上下文。它不改写任何持久化的转录行，不写入 host-core 检查点，
+也不添加压缩行、警告 toast 或上下文检查器条目；委托保留它完整的可见行，父级依旧只看到
+报告。压缩完全自动：`new_context` 对委托仍然被拒绝，因为执行它会设置父级运行时的待压缩
+标记。
 
 **事件与上下文。** 委托发出的每个事件都在信封上携带 `parentToolCallId` 和
 `agentName`，Electron main 会把这两者一并复制到持久化的行上。运行时重建模型
@@ -1032,17 +1077,14 @@ sidecar 序列化针对相同标准化路径的 IPC/`sequential` 调用
 跟踪差距（MVP 后积压）：更丰富的系统提示组成 (§7) 和
 provider/model 目录发现超出当前有线路径。
 
-### Provider certificate trust (issue #714)
+### Provider certificate trust（issue #714）
 
-The desktop sidecar starts with Node's `--use-system-ca`, retaining bundled
-roots and inherited `NODE_EXTRA_CA_CERTS`. It uses the OS trust store without
-turning off chain or hostname validation. Restart after updating local trust
-or the extra-CA startup environment. Headless pi-host launch behavior and
-System/Direct/Custom proxy routing are unchanged.
+桌面 sidecar 使用 Node 的 `--use-system-ca` 启动，同时保留内置根证书和继承的
+`NODE_EXTRA_CA_CERTS`。它使用操作系统信任库，但不会关闭证书链或主机名校验。
+更新本地信任库或额外 CA 启动环境后，需要重启桌面应用。无头 pi-host 启动行为以及
+System/Direct/Custom 代理路由保持不变。
 
-Explicit certificate verification errors are terminal for both setup and
-stream recovery in main sessions and built-in delegates. Their structured
-cause survives adapter message flattening, remains on the final error row,
-and never triggers a provider transport rebuild. Protocol errors such as
-`EPROTO` keep their existing retry behavior. See
-[certificate trust ADR](../../../adr/provider-system-certificates.md).
+在主 session 和内置 delegate 中，明确的证书校验错误在初始化和流恢复阶段都视为
+终态。结构化原因会穿过 adapter 的错误扁平化，保留在最终错误行中，也不会触发
+provider transport 重建。`EPROTO` 等协议错误继续使用原有重试行为。详见
+[证书信任 ADR](../../../adr/provider-system-certificates.md)。

@@ -274,3 +274,79 @@ test("an ascii filename followed by cjk prose still linkifies", () => {
     ["App.tsx"],
   );
 });
+
+
+test("splitChatText preserves parentheses inside HTTP URLs", () => {
+  for (const url of [
+    "https://en.wikipedia.org/wiki/React_(software)",
+    "https://example.com/a_(b_(c))/details?q=(one)&next=two#part(3)",
+    "https://example.com/React_%28software%29",
+  ]) {
+    const segments = splitChatText(url, ROOT);
+    assert.equal(segments.length, 1);
+    assert.deepEqual(segments[0].target, { kind: "url", url });
+    assert.equal(segments[0].text, url);
+  }
+});
+
+test("splitChatText keeps prose closing parentheses outside URL links", () => {
+  for (const url of ["https://example.com", "https://en.wikipedia.org/wiki/React_(software)"]) {
+    for (const suffix of [")", ")).", "), next"]) {
+      const source = `See (${url}${suffix}`;
+      const segments = splitChatText(source, ROOT);
+      assert.deepEqual(segments.filter(s => s.kind === "target").map(s => s.target), [{ kind: "url", url }]);
+      assert.equal(segments.map(s => s.text).join(""), source);
+      assert.equal(segments.at(-1).text, suffix);
+    }
+  }
+});
+
+test("markdown bare-link rewriting preserves parenthesized URL destinations", () => {
+  const url = "https://en.wikipedia.org/wiki/React_(software)";
+  const tree = { type: "root", children: [{ type: "paragraph", children: [{ type: "text", value: `See (${url}).` }] }] };
+  linkifyMdastTree(tree, ROOT);
+  const nodes = tree.children[0].children;
+  assert.equal(nodes.find(node => node.type === "link").url, url);
+  assert.equal(nodes.at(-1).value, ").");
+});
+
+
+test("a prose wrapper does not swallow the next URL or file reference", () => {
+  const source = "(https://example.com)src/a.ts (https://example.org)https://example.net";
+  const segments = splitChatText(source, ROOT);
+  assert.deepEqual(segments.filter(s => s.kind === "target").map(s => s.target), [
+    { kind: "url", url: "https://example.com" },
+    { kind: "file", path: "src/a.ts" },
+    { kind: "url", url: "https://example.org" },
+    { kind: "url", url: "https://example.net" },
+  ]);
+  assert.equal(segments.map(s => s.text).join(""), source);
+});
+
+
+test("sentence punctuation after URLs stays outside the link", () => {
+  for (const url of [
+    "https://example.com",
+    "https://en.wikipedia.org/wiki/React_(software)",
+    "https://example.com/report_(draft).html?q=(one)#part(2)",
+  ]) {
+    for (const suffix of [".", ",", "!", "?", ";", ":", "。", "，", "！", "？", "..."]) {
+      const source = `See ${url}${suffix}`;
+      const segments = splitChatText(source, ROOT);
+      assert.equal(segments.find(s => s.kind === "target").target.url, url);
+      assert.equal(segments.at(-1).text, suffix);
+      assert.equal(segments.map(s => s.text).join(""), source);
+    }
+  }
+  assert.equal(
+    splitChatText("See https://example.com/report_(draft).html, next", ROOT)[1].target.url,
+    "https://example.com/report_(draft).html",
+  );
+});
+
+test("adjacent parenthesis-wrapped URLs all remain independently linkable", () => {
+  const source = "(https://example.com)".repeat(1000);
+  const segments = splitChatText(source, ROOT);
+  assert.equal(segments.filter(s => s.kind === "target").length, 1000);
+  assert.equal(segments.map(s => s.text).join(""), source);
+});

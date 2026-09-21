@@ -85,6 +85,15 @@ function pointForEvent(event: ReactMouseEvent<HTMLElement>): ContextMenuPoint {
  * starts in this row still belongs to Copy here.
  */
 function snapshotSelection(root: EventTarget): string {
+  // Textarea ranges are not represented by the document Selection.
+  const editor = document.activeElement;
+  if (
+    root instanceof Node &&
+    editor instanceof HTMLTextAreaElement &&
+    root.contains(editor)
+  ) {
+    return editor.value.slice(editor.selectionStart, editor.selectionEnd);
+  }
   const live = window.getSelection();
   if (!live || live.rangeCount === 0 || live.isCollapsed) return "";
   const text = live.toString();

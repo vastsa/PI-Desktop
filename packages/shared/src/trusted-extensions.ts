@@ -148,7 +148,7 @@ export const TRUSTED_EXTENSION_HANDLER_TIMEOUT_MS = 30_000;
 export const TRUSTED_EXTENSION_PROMPT_TIMEOUT_MS = 5 * 60_000;
 
 /** The pinned kernel version every pi package in the sidecar must share (spec §13). */
-export const TRUSTED_EXTENSION_KERNEL_VERSION = "0.85.1";
+export const TRUSTED_EXTENSION_KERNEL_VERSION = "0.86.1";
 
 /** Palette command id prefix for extension commands. */
 export const TRUSTED_EXTENSION_COMMAND_ID_PREFIX = "extension:";

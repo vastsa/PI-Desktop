@@ -1,8 +1,7 @@
 diff --git a/dist/agent-loop.js b/dist/agent-loop.js
-index ca1186cb920c1da692381694538b388af0c5261c..234aab333cafb376131fd364086973641ca5be1a 100644
 --- a/dist/agent-loop.js
 +++ b/dist/agent-loop.js
-@@ -213,6 +213,12 @@ async function streamAssistantResponse(context, config, signal, emit, streamFunc
+@@ -256,6 +256,12 @@
              case "toolcall_start":
              case "toolcall_delta":
              case "toolcall_end":

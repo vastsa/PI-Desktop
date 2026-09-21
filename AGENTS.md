@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Policy-Sync: 2026-09-20.1
+Policy-Sync: 2026-09-21.1
 
 Mandatory rules for AI coding agents working in PI-Desktop.
 
@@ -253,6 +253,22 @@ integration strategy or rely on the PR integration candidate per § 16.
 Resolve conflicts inside your own worktree. Never resolve task conflicts
 by modifying the primary checkout.
 
+### Before opening or updating a PR
+
+The request head must contain the latest `origin/main`. `origin/main`
+must be an ancestor of that head:
+
+```bash
+git fetch origin main
+git merge-base --is-ancestor origin/main HEAD
+pnpm check:pr-base
+```
+
+If that fails, refresh in the task worktree (`git rebase origin/main` on
+a private branch; a non-destructive merge when rewriting history would
+be unsafe), then re-run the check. Do not open or update a PR that is
+behind `origin/main`.
+
 ### Fixed delivery order
 
 ```text
@@ -261,7 +277,7 @@ by modifying the primary checkout.
 3. run targeted static/unit/integration checks
 4. review the task diff
 5. commit the task
-6. refresh the task branch against latest origin/main
+6. refresh the task branch against latest origin/main (`pnpm check:pr-base`)
 7. resolve conflicts inside the task worktree
 8. run required task-candidate E2E in the task worktree
 9. push the request branch
@@ -274,7 +290,8 @@ by modifying the primary checkout.
 
 Do not insert `merge task → local main` between steps 6 and 8. The task
 branch itself becomes the local integration candidate by incorporating
-the latest `origin/main`.
+the latest `origin/main`. Do not open or update a PR that is behind
+`origin/main`.
 
 A task-candidate E2E result is valid only when its tested commit and
 base revision are known. The PR integration gate then protects against
@@ -757,6 +774,7 @@ Landing blockers:
 * relevant test failure
 * required E2E failure
 * merge conflict
+* PR head does not contain the latest `origin/main`
 * data corruption risk
 * security violation
 * secret leakage

@@ -47,6 +47,7 @@ const DELEGATION_STATUSES = new Set<SubagentOutcome>([
   "aborted",
   "failed",
   "stopped",
+  "denied",
 ]);
 
 function asDelegationStatus(value: unknown): SubagentOutcome | null {

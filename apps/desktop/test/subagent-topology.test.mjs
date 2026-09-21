@@ -202,6 +202,27 @@ test("reads settled delegation status from a persisted TaskWait result", () => {
     "completed",
   );
 });
+test("preserves denied lifecycle outcomes", () => {
+  const statuses = collectDelegationStatuses([
+    lifecycle("TaskWait", {
+      delegations: [
+        { delegationId: "denied", agent: "reviewer", status: "denied" },
+      ],
+    }),
+  ]);
+  assert.equal(statuses.get("denied"), "denied");
+  assert.equal(
+    delegationRosterOutcome(delegationRoster({
+      toolName: "TaskWait",
+      toolResult: {
+        details: {
+          delegations: [{ delegationId: "denied", agent: "reviewer", status: "denied" }],
+        },
+      },
+    })),
+    "denied",
+  );
+});
 
 test("reads stopped status from TaskStop, including a running snapshot", () => {
   const statuses = collectDelegationStatuses([

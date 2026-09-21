@@ -1,8 +1,8 @@
 import {
   memo,
   useCallback,
+  useContext,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -21,6 +21,9 @@ import {
 import { useOpenChatFileRef, useOpenPreviewTarget } from "../../../hooks/use-preview-target";
 import { useDisclosureAnchorNotifier } from "../../../lib/disclosure-anchor-context";
 import { isThinkingActive, resolveThinkingDisplayMode } from "../../../lib/turn-process";
+import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
+import { disclosureKey, useAutomaticDisclosure } from "./disclosure";
+export { useAutomaticDisclosure } from "./disclosure";
 import { messageThinking as thinkingText } from "../../../lib/assistant-turns";
 import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-data-url";
 import { useVerifiedChatText } from "../../../hooks/use-verified-chat-text";
@@ -54,6 +57,17 @@ import {
   IconWrench,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
+
+/**
+ * Legacy message navigation reveals the row it names, at message precision.
+ * Item-level targeting is not part of this change.
+ */
+export function useMessageRevealRequest(messageId: string) {
+  const target = useContext(TranscriptSearchContext);
+  return target && target.messageId === messageId
+    ? target.requestId
+    : undefined;
+}
 
 export function CopyButton({
   text,
@@ -316,57 +330,6 @@ export function ToolActionIcon({ action }: { action: ToolAction }) {
   }
 }
 
-/**
- * Automatic disclosure is deliberately separate from user disclosure state.
- * A running process may open its latest details and close them when it settles,
- * but one user click takes ownership for the rest of that component's lifetime.
- * Layout effects keep the automatic transition from moving the transcript for a
- * painted frame.
- *
- * A *manual* toggle also hands its own title to the scroller that owns it,
- * before the state changes (#324): the height under the click may keep changing
- * for several frames, and the reader's place in the transcript is the one thing
- * that must not move while it does. The automatic transition below goes through
- * `setOpen` directly and never claims a reading position.
- */
-export function useAutomaticDisclosure(automaticOpen: boolean, revealRequest?: number) {
-  const [open, setOpen] = useState(automaticOpen || revealRequest !== undefined);
-  const notifyAnchor = useDisclosureAnchorNotifier();
-  const titleRef = useRef<HTMLButtonElement | null>(null);
-  const userInteractedRef = useRef(false);
-  const previousAutomaticOpenRef = useRef(automaticOpen);
-
-  useLayoutEffect(() => {
-    if (userInteractedRef.current) return;
-    if (previousAutomaticOpenRef.current === automaticOpen) return;
-    previousAutomaticOpenRef.current = automaticOpen;
-    setOpen(automaticOpen);
-  }, [automaticOpen]);
-
-  const claim = useCallback(() => {
-    userInteractedRef.current = true;
-  }, []);
-
-  useLayoutEffect(() => {
-    if (revealRequest === undefined) return;
-    claim();
-    setOpen(true);
-  }, [claim, revealRequest]);
-
-  const toggle = useCallback(() => {
-    claim();
-    notifyAnchor?.(titleRef.current);
-    setOpen((value) => !value);
-  }, [claim, notifyAnchor]);
-
-  const collapse = useCallback(() => {
-    claim();
-    notifyAnchor?.(titleRef.current);
-    setOpen(false);
-  }, [claim, notifyAnchor]);
-
-  return { open, toggle, collapse, claim, titleRef };
-}
 
 /** Actions whose path/url argument makes sense to preview in the panel. */
 export const PREVIEWABLE_ACTIONS = new Set<ToolAction>(["read", "write", "edit", "fetch"]);
@@ -550,7 +513,8 @@ export const ThinkingRow = memo(function ThinkingRow({
 }) {
   const { t } = useTranslation();
   const detailsId = useId();
-  const disclosure = useAutomaticDisclosure(autoOpen);
+  const revealRequest = useMessageRevealRequest(message.id);
+  const disclosure = useAutomaticDisclosure(autoOpen, revealRequest, disclosureKey("thinking", message.id));
   const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } = disclosure;
   const titleRef = disclosure.titleRef;
   const toggleRow = useCallback(() => {
@@ -600,7 +564,7 @@ export const ThinkingRow = memo(function ThinkingRow({
         </span>
       </button>
       {open ? (
-        <div className="tool-row-body" id={detailsId}>
+        <div className="tool-row-body" id={detailsId} ref={disclosure.bodyRef} {...disclosure.bodyEvents}>
           <DisclosureCollapseRail
             label={t("chat.thinkingHide")}
             onCollapse={collapseRow}

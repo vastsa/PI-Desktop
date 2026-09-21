@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { estimateTokens } from "@earendil-works/pi-agent-core";
+import type { Message } from "@earendil-works/pi-ai";
 import { MAX_RESUMABLE_READ_LINES, type UiMessage } from "@pi-desktop/shared";
+import {
+  contextBudgetLimitsFor,
+  type ContextBudgetLimits,
+} from "./context-budget.js";
 import {
   chainRowsToMessages,
   extractReadFiles,
@@ -25,6 +31,43 @@ function provider(): RuntimeProviderConfig {
     apiStyle: "openai-completions",
     apiKey: "test-key",
   } as RuntimeProviderConfig;
+}
+
+/** Limits whose hard limit the small fixture rows in this file never reach. */
+function generousBudget(): ContextBudgetLimits {
+  return contextBudgetLimitsFor({ contextWindow: 1_000_000, maxTokens: 32_000 });
+}
+
+/** Limits with an exact hard limit, for truncation tests. */
+function budgetAt(hardLimit: number): ContextBudgetLimits {
+  return { hardLimit, requestHeadroom: 0, keepRecentTokens: 0 };
+}
+
+/** Estimated size of a seeded list, the same heuristic the truncation applies. */
+function seededTokens(messages: readonly Message[]): number {
+  return messages.reduce((sum, message) => sum + estimateTokens(message), 0);
+}
+
+/**
+ * Assert the provider-side pairing invariant: every tool result follows an
+ * assistant carrying its call, every call has its result, and no assistant
+ * carries nothing.
+ */
+function expectWellFormedPairs(messages: readonly Message[]): void {
+  const callIds: string[] = [];
+  const resultIds: string[] = [];
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      expect(message.content.length).toBeGreaterThan(0);
+      for (const block of message.content) {
+        if (block.type === "toolCall") callIds.push(block.id);
+      }
+    } else if (message.role === "toolResult") {
+      expect(callIds).toContain(message.toolCallId);
+      resultIds.push(message.toolCallId);
+    }
+  }
+  expect([...resultIds].sort()).toEqual([...callIds].sort());
 }
 
 function delegateAssistant(
@@ -211,6 +254,7 @@ describe("seedDelegateMessages", () => {
       rows,
       provider: provider(),
       model: buildProviderModel(provider()),
+      budget: generousBudget(),
     });
     expect(messages[0]).toMatchObject({
       role: "user",
@@ -251,6 +295,7 @@ describe("seedDelegateMessages", () => {
       rows,
       provider: provider(),
       model: buildProviderModel(provider()),
+      budget: generousBudget(),
     });
     expect(messages.filter((message) => message.role === "user")).toHaveLength(1);
   });
@@ -264,6 +309,7 @@ describe("seedDelegateMessages", () => {
       rows,
       provider: provider(),
       model: buildProviderModel(provider()),
+      budget: generousBudget(),
     });
     expect(messages).toHaveLength(3);
     expect(messages[1]).toMatchObject({ role: "assistant", stopReason: "toolUse" });
@@ -289,6 +335,7 @@ describe("seedDelegateMessages", () => {
       rows,
       provider: provider(),
       model: buildProviderModel(provider()),
+      budget: generousBudget(),
     });
     const assistants = messages.filter((message) => message.role === "assistant");
     expect(assistants).toHaveLength(1);
@@ -296,6 +343,235 @@ describe("seedDelegateMessages", () => {
       assistants[0].role === "assistant" &&
         assistants[0].content.some((block) => block.type === "text"),
     ).toBe(false);
+  });
+});
+
+describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
+  /** ~1000 estimated tokens of tool output. */
+  const BIG = "x".repeat(4000);
+  /** ~500 estimated tokens of tool output. */
+  const MEDIUM = "y".repeat(2000);
+
+  function bigRead(toolCallId: string, text: string): UiMessage {
+    return delegateTool(
+      toolCallId,
+      "Read",
+      { path: `${toolCallId}.ts` },
+      { content: [{ type: "text", text }] },
+      "call-1",
+    );
+  }
+
+  function seed(
+    rows: UiMessage[],
+    hardLimit: number,
+    originalTask = "explore the parser",
+  ): Message[] {
+    return seedDelegateMessages({
+      originalTask,
+      rows,
+      provider: provider(),
+      model: buildProviderModel(provider()),
+      budget: budgetAt(hardLimit),
+    });
+  }
+
+  it("leaves a seed that fits entirely alone", () => {
+    const rows: UiMessage[] = [
+      delegateAssistant("a1", "looking", "call-1"),
+      delegateTool("t1", "Read", { path: "a.ts" }, { content: "body" }, "call-1"),
+      delegateAssistant("a2", "done", "call-1"),
+    ];
+    const messages = seed(rows, 1_000_000);
+    expect(messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "toolResult",
+      "assistant",
+    ]);
+    expectWellFormedPairs(messages);
+  });
+
+  it("drops the oldest tool result with its call before newer history", () => {
+    const rows: UiMessage[] = [
+      delegateAssistant("a1", "first look", "call-1"),
+      bigRead("t1", BIG),
+      delegateAssistant("a2", "second look", "call-1"),
+      bigRead("t2", BIG),
+      delegateAssistant("a3", "summary", "call-1"),
+    ];
+    const messages = seed(rows, 1050);
+
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "explore the parser" }],
+    });
+    // The oldest pair is gone, call and result together; the carrier keeps its
+    // text, and the newer pair survives untouched.
+    expect(
+      messages.some(
+        (message) => message.role === "toolResult" && message.toolCallId === "t1",
+      ),
+    ).toBe(false);
+    expect(
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.some(
+            (block) => block.type === "toolCall" && block.id === "t1",
+          ),
+      ),
+    ).toBe(false);
+    expect(
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.some(
+            (block) => block.type === "text" && block.text === "first look",
+          ),
+      ),
+    ).toBe(true);
+    // The stripped carrier keeps its text but no longer claims "toolUse" —
+    // no call survives for that stopReason to refer to.
+    const strippedCarrier = messages.find(
+      (message) =>
+        message.role === "assistant" &&
+        message.content.some(
+          (block) => block.type === "text" && block.text === "first look",
+        ),
+    );
+    expect(strippedCarrier).toMatchObject({ stopReason: "stop" });
+    expect(
+      messages.some(
+        (message) => message.role === "toolResult" && message.toolCallId === "t2",
+      ),
+    ).toBe(true);
+    expectWellFormedPairs(messages);
+    expect(seededTokens(messages)).toBeLessThan(1050);
+  });
+
+  it("drops parallel calls on one carrier as one unit", () => {
+    const rows: UiMessage[] = [
+      delegateAssistant("a1", "checking two files", "call-1"),
+      bigRead("t1", MEDIUM),
+      bigRead("t2", MEDIUM),
+      delegateAssistant("a2", "both read", "call-1"),
+    ];
+    const messages = seed(rows, 100);
+
+    const toolCallIds: string[] = [];
+    for (const message of messages) {
+      if (message.role !== "assistant") continue;
+      for (const block of message.content) {
+        if (block.type === "toolCall") toolCallIds.push(block.id);
+      }
+    }
+    expect(toolCallIds).toEqual([]);
+    expect(messages.some((message) => message.role === "toolResult")).toBe(false);
+    // The carrier's text and the recent turn survive the drop.
+    expect(
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.some(
+            (block) =>
+              block.type === "text" && block.text === "checking two files",
+          ),
+      ),
+    ).toBe(true);
+    expectWellFormedPairs(messages);
+    expect(seededTokens(messages)).toBeLessThan(100);
+  });
+
+  it("removes a carrier left with nothing once its pair is dropped", () => {
+    const rows: UiMessage[] = [
+      // An orphan tool row gets a synthesized, text-free carrier.
+      bigRead("t1", BIG),
+      delegateAssistant("a2", "recent summary", "call-1"),
+    ];
+    const messages = seed(rows, 50);
+
+    expect(messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(messages[1]).toMatchObject({ role: "assistant" });
+    expectWellFormedPairs(messages);
+    expect(seededTokens(messages)).toBeLessThan(50);
+  });
+
+  it("drops tool results before older plain history", () => {
+    const rows: UiMessage[] = [
+      delegateAssistant("a1", `old:${"a".repeat(2000)}`, "call-1"),
+      delegateAssistant("a2", "reading", "call-1"),
+      bigRead("t1", MEDIUM),
+      delegateAssistant("a3", "done", "call-1"),
+    ];
+    const messages = seed(rows, 520);
+
+    // The older plain text survives while the newer tool pair goes first.
+    expect(
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.some(
+            (block) => block.type === "text" && block.text.startsWith("old:"),
+          ),
+      ),
+    ).toBe(true);
+    expect(messages.some((message) => message.role === "toolResult")).toBe(false);
+    expectWellFormedPairs(messages);
+    expect(seededTokens(messages)).toBeLessThan(520);
+  });
+
+  it("drops whole older messages once no tool pairs remain", () => {
+    const rows: UiMessage[] = [
+      delegateAssistant("a1", `old:${"a".repeat(2000)}`, "call-1"),
+      delegateAssistant("a2", `mid:${"b".repeat(2000)}`, "call-1"),
+      delegateAssistant("a3", `new:${"c".repeat(2000)}`, "call-1"),
+    ];
+    const messages = seed(rows, 1010);
+
+    expect(messages).toHaveLength(3);
+    expect(messages[0]).toMatchObject({ role: "user" });
+    const texts: string[] = [];
+    for (const message of messages) {
+      if (message.role !== "assistant") continue;
+      for (const block of message.content) {
+        if (block.type === "text") texts.push(block.text);
+      }
+    }
+    // Oldest-first: the recent turns are the ones kept.
+    expect(texts).toEqual([
+      `mid:${"b".repeat(2000)}`,
+      `new:${"c".repeat(2000)}`,
+    ]);
+    expect(seededTokens(messages)).toBeLessThan(1010);
+  });
+
+  it("seeds the brief alone when nothing else fits", () => {
+    const rows: UiMessage[] = [
+      delegateAssistant("a1", BIG, "call-1"),
+      bigRead("t1", BIG),
+    ];
+    const messages = seed(rows, 20);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "explore the parser" }],
+    });
+    expect(seededTokens(messages)).toBeLessThan(20);
+  });
+
+  it("keeps the brief even when it alone crosses the hard limit", () => {
+    const brief = `task:${"x".repeat(200)}`;
+    const rows: UiMessage[] = [delegateAssistant("a1", "small", "call-1")];
+    const messages = seed(rows, 10, brief);
+
+    // Truncation cannot go below the brief; a resume never loses its task.
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: brief }],
+    });
   });
 });
 

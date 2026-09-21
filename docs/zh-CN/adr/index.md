@@ -294,7 +294,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0283 | [远程 MCP 服务端 OAuth 2.1 认证](/adr/0283-remote-mcp-oauth) | 已接受 |
 | 0284 | [`packages/host-runtime` 的无头运行时边界](/adr/0284-headless-runtime-boundary) | 已接受（实施中）（D447；ADR 0205 R2 前置） |
 | 0285 | [`packages/racp` 的 `RACP-WS` 传输](/adr/0285-racp-ws-transport) | 已接受（实施中）（D448；ADR 0205 R2） |
-| turn-process-and-thinking-display | [回合过程与思考展示](/adr/turn-process-and-thinking-display) | 已接受 |
+| turn-process-and-thinking-display | [回合过程与思考展示](/zh-CN/adr/turn-process-and-thinking-display) | 已接受（2026-09-20 修订） |
 | 0289 | [签名的 macOS GitHub Release 与应用内更新](/adr/0289-signed-macos-github-releases) | 已接受（D450；修订 ADR 0022 / 0145 / 0191 / 0204 / D078） |
 | 0290 | [恢复可拖拽侧边栏宽度，过窄时收起](/adr/0290-resizable-sidebar-collapse-threshold) | 已接受（D459；修订 ADR 0141 / ADR 0238） |
 | 0291 | [移除设置页面的语音界面](/adr/0291-remove-speech-settings-ui) | 已接受（修订 ADR 0281） |
@@ -304,6 +304,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0296 | [已签名 macOS DMG 改为双图标安装](/adr/0296-macos-signed-dmg-two-icon-install) | 已接受（D457；修订 ADR 0232 / ADR 0204） |
 | 0297 | [提供商托管联网搜索作为适配器能力](/adr/0297-provider-hosted-web-search-adapter-capability) | 已接受 |
 | 0298 | [应用不再随包发布任何字体](/adr/0298-remove-bundled-fonts) | 已接受（D598；修订 ADR 0083 / D232） |
+| registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](/adr/registry-header-variable-spelling) | Proposed |
 
 ## 什么时候看 ADR
 

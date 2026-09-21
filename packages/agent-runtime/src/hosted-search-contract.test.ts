@@ -5,7 +5,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 /**
  * Contract tests for the pi-ai hosted web search patch.
  *
- * The patch (patches/@earendil-works__pi-ai@0.85.1.patch) teaches the
+ * The patch (patches/@earendil-works__pi-ai@0.86.1.patch) teaches the
  * anthropic-messages and openai-responses adapters to attach the provider
  * hosted web search tool when the model record opts in, to extract the search
  * blocks and citations from the stream, and to replay the search items on
@@ -258,6 +258,94 @@ describe("pi-ai hosted web search: responses message replay", () => {
       "pi-desktop release notes",
     );
   });
+
+  it("replays an Anthropic search error with its error block type", async () => {
+    const { streamSimple } = await import("@earendil-works/pi-ai/api/anthropic-messages");
+    let request: AnyRecord | undefined;
+    const context = {
+      messages: [
+        { role: "user", content: "search again", timestamp: 1 },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "hostedSearch",
+              phase: "server_tool_use",
+              blockId: "srv_1",
+              name: "web_search",
+              input: { query: "release notes" },
+            },
+            {
+              type: "hostedSearch",
+              phase: "web_search_tool_result",
+              blockId: "srv_1",
+              isError: true,
+              wire: {
+                type: "web_search_tool_result_error",
+                tool_use_id: "srv_1",
+                content: "search unavailable",
+              },
+            },
+          ],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "claude-test",
+          timestamp: 2,
+          usage: {
+            input: 1,
+            output: 1,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 2,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+        },
+      ],
+    };
+    const sse =
+      'event: message_start\ndata: {"type":"message_start","message":{"id":"m","type":"message","role":"assistant","content":[],"model":"claude-test","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":0}}}\n\n' +
+      'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}\n\n' +
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+    const stream = streamSimple(
+      {
+        id: "claude-test",
+        api: "anthropic-messages",
+        provider: "anthropic",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 100_000,
+        maxTokens: 1_000,
+        baseUrl: "http://localhost",
+      } as never,
+      context as never,
+      {
+        apiKey: "test",
+        fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+          request = JSON.parse(String(init?.body));
+          return new Response(sse, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          });
+        }) as never,
+      } as never,
+    );
+    await stream.result();
+    const messages = Array.isArray(request?.messages)
+      ? (request.messages as AnyRecord[])
+      : [];
+    const assistant = messages.find(
+      (message: AnyRecord) => message.role === "assistant",
+    );
+    expect(assistant?.content).toEqual([
+      { type: "server_tool_use", id: "srv_1", name: "web_search", input: { query: "release notes" } },
+      {
+        type: "web_search_tool_result_error",
+        tool_use_id: "srv_1",
+        content: "search unavailable",
+      },
+    ]);
+  });
 });
 
 describe("pi-ai hosted web search: streaming progress events", () => {
@@ -326,7 +414,7 @@ describe("pi-ai hosted web search: streaming progress events", () => {
 
 describe("pi-agent-core hosted web search forwarding", () => {
   it("forwards hosted_search_update as message_update", async () => {
-    // Locks the agent-loop patch (patches/@earendil-works__pi-agent-core@0.85.1.patch):
+    // Locks the agent-loop patch (patches/@earendil-works__pi-agent-core@0.86.1.patch):
     // without it the loop's switch drops the event and search rounds render only
     // after the whole turn finishes.
     const { agentLoop } = await import("@earendil-works/pi-agent-core");
@@ -374,7 +462,7 @@ describe("pi-agent-core hosted web search forwarding", () => {
     const emitted: AnyRecord[] = [];
     const agentStream = agentLoop(
       [{ role: "user", content: "search please", timestamp: Date.now() }],
-      { systemPrompt: "", messages: [], tools: [] },
+      { messages: [{ role: "system", content: "", timestamp: Date.now() }], tools: [] },
       {
         model: {
           id: "gpt-test",

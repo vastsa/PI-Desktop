@@ -27,6 +27,11 @@ export type AppSettings = {
   /** Host speech bindings. Absent means voice actions stay disabled. */
   speech?: SpeechSettings;
   defaultMode: Mode;
+  /**
+   * Keep retryable provider/network failures retrying until the request succeeds.
+   * Absent and false use the bounded ten-retry policy.
+   */
+  infiniteProviderRetry?: boolean;
   /** Configured command shell for the agent Bash protocol tool. */
   defaultCommandShell?: CommandShellId;
   /**

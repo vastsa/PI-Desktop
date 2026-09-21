@@ -327,7 +327,12 @@ describe("native continuation review regressions", () => {
     }`);
     const requests: { systemPrompt?: string; tools: unknown[]; messages: unknown }[] = [];
     vi.spyOn(ModelRuntime.prototype, "streamSimple").mockImplementation((_model, context) => {
-      requests.push({ systemPrompt: context.systemPrompt, tools: context.tools ?? [], messages: context.messages });
+      const systemMessage = context.messages.find((message) => message.role === "system");
+      requests.push({
+        systemPrompt: typeof systemMessage?.content === "string" ? systemMessage.content : undefined,
+        tools: context.tools ?? [],
+        messages: context.messages,
+      });
       return fauxStream();
     });
     const service = new NativePiSessionService(f);
@@ -523,8 +528,9 @@ describe("native fork children", () => {
       expect(after.match(/fixture reply/g)).toHaveLength(1);
       const reopened = SessionManager.open(childPath);
       const branch = reopened.getBranch().filter((entry) => entry.type === "message");
-      expect(branch.map((entry) => entry.message.role)).toEqual(["user", "user", "assistant"]);
-      expect(new Set(branch.map((entry) => entry.id)).size).toBe(3);
+      const visibleBranch = branch.filter((entry) => entry.message.role !== "system");
+      expect(visibleBranch.map((entry) => entry.message.role)).toEqual(["user", "user", "assistant"]);
+      expect(new Set(visibleBranch.map((entry) => entry.id)).size).toBe(3);
       expect(reopened.getSessionId()).toBe(childId);
       expect(readFileSync(f.file, "utf8")).toBe(parentBytes);
     } finally { service.disposeAll(); }

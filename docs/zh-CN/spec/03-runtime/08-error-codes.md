@@ -103,6 +103,7 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `SPEECH_INPUT_TOO_LARGE` | 不 | 语音输入超过 25 MB |
 | `SUBAGENT_IDLE_TIMEOUT` | 不 | 已撤回（D328）：空闲看门狗不再武装；代码仅为已存储结果保留 |
 | `SUBAGENT_DURATION_TIMEOUT` | 不 | 已撤回（D328）：时长看门狗不再武装；代码仅为已存储结果保留 |
+| `SUBAGENT_CONTEXT_OVERFLOW` | 不 | 委派自身的模型上下文超出其安全预算，自动的回合边界压缩与仅保留任务简报和最近消息的降级重试都没能把它带回限制以内；该失败给出可执行的恢复方式，而不是提供商的溢出文本 |
 
 ### 3. 3 工作空间/工具/权限
 
@@ -311,17 +312,23 @@ Node sidecar 将提供商 SDK 错误映射到：
 
 精确的 `terminated` 提供商消息和等效的过早流关闭
 消息映射到 `STREAM_FAILED`。请求设置阶段或响应后的
-`PROVIDER_RATE_LIMITED` 使用共享的运行时预算：初始尝试之后最多五次重试，
+`PROVIDER_RATE_LIMITED` 使用共享的运行时预算：初始尝试之后最多 10 次重试，
 且设置和流式传输失败一起计数。非 429 瞬时故障——`STREAM_FAILED`、
 `NETWORK_ERROR`、`TIMEOUT` 以及可重试的 `PROVIDER_ERROR`（例如上游网关
-502/503/504）——共享它们自己的有界预算：初始尝试之后最多四次重试，同样
+502/503/504）——共享它们自己的有界预算：初始尝试之后最多 10 次重试，同样
 跨请求设置和流式传输一起计数，并且与 429 预算相互独立。两个预算都是
 可中止的。429 路径在客户端退避之前先遵循 `retry-after-ms`、`retry-after`
 秒和 HTTP 日期标头，并将等待上限设为 30 秒；非 429 路径应用相同的优先级，
 上限为 8 秒，在其他情况下依次等待 1 秒、2 秒、4 秒，然后是 8 秒。只有失败
 的请求会被重放；会话及其工具状态保持不变。来自格式错误的 400/422 请求的
 不可重试 `PROVIDER_ERROR` 永远不会进入任何预算。预算耗尽后的失败仍然是
-致命的。
+致命的。设置 `infiniteProviderRetry` 默认关闭；开启后只移除上述可重试网络/瞬时类别的次数上限，
+不会改变退避、`Retry-After`、取消或终止分类，并可能在用户停止回合前持续消耗 API 用量。
+
+**Synchronized update (#699):** A complete successful model response resets
+both budgets, including a tool-call response, in the main session and builtin
+subagents. Headers, partial output, and phase changes do not replenish them.
+Exhaustion reports `retryAttempt: 10` from the relevant budget counter.
 
 `NETWORK_ERROR` 以有界的 `details` 携带真正失败的传输层：
 `networkCategory`（`dns`、`tls`、`timeout`、`refused`、`unreachable`、
@@ -413,19 +420,15 @@ errors.<code>.action
    代码；仅允许记录的预转目录后备，并且不进行任何工作
    正在重播
 
-### Certificate verification failures (issue #714)
+### 证书校验失败（issue #714）
 
-`NETWORK_ERROR` is non-retriable when `details.networkCode` is a recognized
-certificate verification failure, including an untrusted/self-signed chain,
-an expired/not-yet-valid certificate, or `ERR_TLS_CERT_ALTNAME_INVALID`.
-A concrete certificate cause takes precedence over generic socket/proxy
-wrapper codes. Captured fetch causes apply this policy after adapter error
-flattening as well as during direct classification. Unknown and non-certificate
-TLS/protocol errors retain existing recovery behavior.
+当 `details.networkCode` 是已识别的证书校验错误时，`NETWORK_ERROR` 不可重试，
+包括不受信任或自签名链、证书已过期或尚未生效，以及
+`ERR_TLS_CERT_ALTNAME_INVALID`。具体证书原因优先于通用 socket/proxy 包装错误。
+即使 adapter 已将错误扁平化，捕获的 fetch 原因仍会应用这条策略。未知 TLS 错误和
+非证书协议错误继续使用原有恢复行为。
 
-The transcript keeps the stable error code, transport errno and raw details,
-but uses localized certificate guidance instead of the generic connectivity
-summary. It asks the user to check the certificate, clock, and trusted roots
-used by security software/proxies, then restart after changing trust. It does
-not claim that interception is the only possible cause or offer a TLS bypass.
-Manual Continue remains available after the cause is corrected.
+transcript 保留稳定错误码、传输 errno 和原始 details，但使用本地化的证书指引，
+而不是通用连接错误摘要。它会提示用户检查证书、系统时间以及安全软件或代理使用的
+信任根，并在修改信任设置后重启。文案不会断言一定是流量拦截，也不会提供关闭 TLS
+校验的绕过方式。修复原因后，用户仍可手动继续。

@@ -116,6 +116,14 @@ describe("main-supplied model capabilities", () => {
     ]);
     expect(configured.thinkingLevelMap).toMatchObject({ max: "max" });
 
+    const enlarged = modelConfigWithBinding(knownModel(), {
+      contextWindow: 256_000,
+      maxTokens: 8_192,
+      thinkingLevels: [],
+    });
+    expect(enlarged.contextWindow).toBe(256_000);
+    expect(enlarged.catalogContextWindow).toBe(128_000);
+
     const unknown = modelConfigWithBinding(genericModelConfig("unknown"), {
       contextWindow: 16_000,
       maxTokens: 2_000,

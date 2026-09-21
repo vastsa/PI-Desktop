@@ -6,7 +6,12 @@ import {
   IconCircleAlert,
   IconGlobe,
 } from "../../../components/icons";
-import { DisclosureCollapseRail, useAutomaticDisclosure } from "./shared";
+import {
+  DisclosureCollapseRail,
+  useAutomaticDisclosure,
+  useMessageRevealRequest,
+} from "./shared";
+import { disclosureKey } from "./disclosure";
 
 /**
  * One provider-hosted web search round, rendered on the same tool-row idiom
@@ -27,11 +32,13 @@ function sourceHost(url: string): string {
 }
 
 export const HostedSearchRow = memo(function HostedSearchRow({
+  messageId,
   round,
   streaming,
   autoOpen = false,
   onUserInteraction,
 }: {
+  messageId: string;
   round: HostedSearchRound;
   streaming: boolean;
   autoOpen?: boolean;
@@ -41,7 +48,8 @@ export const HostedSearchRow = memo(function HostedSearchRow({
   const detailsId = useId();
   const searching = streaming && round.status === "searching";
   const failed = round.status === "failed";
-  const disclosure = useAutomaticDisclosure(autoOpen && !failed);
+  const revealRequest = useMessageRevealRequest(messageId);
+  const disclosure = useAutomaticDisclosure(autoOpen && !failed, revealRequest, disclosureKey("hostedSearch", messageId, round.id));
   const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } = disclosure;
   const titleRef = disclosure.titleRef;
   const toggleRow = useCallback(() => {
@@ -105,7 +113,7 @@ export const HostedSearchRow = memo(function HostedSearchRow({
         ) : null}
       </button>
       {open && expandable ? (
-        <div className="tool-row-body" id={detailsId}>
+        <div className="tool-row-body" id={detailsId} ref={disclosure.bodyRef} {...disclosure.bodyEvents}>
           <DisclosureCollapseRail
             label={t("chat.collapseDetails")}
             onCollapse={collapseRow}
@@ -142,6 +150,7 @@ export const HostedSearchRow = memo(function HostedSearchRow({
     </div>
   );
 }, (previous, next) =>
+  previous.messageId === next.messageId &&
   previous.round === next.round &&
   previous.streaming === next.streaming &&
   previous.autoOpen === next.autoOpen &&

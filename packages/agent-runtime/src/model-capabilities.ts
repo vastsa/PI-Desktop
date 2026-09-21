@@ -101,8 +101,14 @@ export function modelConfigWithBinding(
   const contextWindow =
     effectiveContextWindow(model.contextWindow, binding.contextWindow) ??
     model.contextWindow;
+  const catalogContextWindow =
+    model.catalogContextWindow ??
+    (model.source === "models.dev" && model.contextWindow > 0
+      ? model.contextWindow
+      : undefined);
   return {
     ...model,
+    ...(catalogContextWindow !== undefined ? { catalogContextWindow } : {}),
     contextWindow,
     limit: {
       ...(model.limit ?? {}),

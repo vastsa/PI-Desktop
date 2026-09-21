@@ -28,8 +28,23 @@ export type OutputCapContext = {
 /** Structural view of the active model. */
 export type OutputCapModel = {
   contextWindow: number;
+  /** Published limit, when a user override may have enlarged contextWindow. */
+  catalogContextWindow?: number;
   maxTokens: number;
 };
+
+function positiveWindow(value: number | undefined): number | undefined {
+  if (!Number.isFinite(value) || (value ?? 0) <= 0) return undefined;
+  return Math.max(1, Math.round(value!));
+}
+
+/** Use the published window as a hard safety ceiling for configured values. */
+export function effectiveModelContextWindow(model: OutputCapModel): number {
+  const configured = positiveWindow(model.contextWindow);
+  const catalog = positiveWindow(model.catalogContextWindow);
+  if (configured === undefined) return catalog ?? 0;
+  return catalog === undefined ? configured : Math.min(configured, catalog);
+}
 
 /** Fallback reserve when the window is too small to afford the ratio. */
 const OUTPUT_SAFETY_FLOOR_TOKENS = 4096;
@@ -146,14 +161,14 @@ export function clampOutputToContext(
   context: OutputCapContext,
   requestedMaxTokens: number | undefined,
 ): number {
-  const contextWindow = Math.max(1, Math.round(model.contextWindow || 0));
+  const contextWindow = effectiveModelContextWindow(model);
   const desired = Math.max(
     1,
     Math.round(requestedMaxTokens ?? model.maxTokens),
   );
   // Unknown window: there is nothing context-based to clamp against; keep the
   // configured budget (mirrors pi-ai's `contextWindow <= 0` behavior).
-  if (model.contextWindow <= 0) return desired;
+  if (contextWindow <= 0) return desired;
   const inputTokens = estimateOutputCapInputTokens(context);
   const reserve = Math.max(
     OUTPUT_SAFETY_FLOOR_TOKENS,

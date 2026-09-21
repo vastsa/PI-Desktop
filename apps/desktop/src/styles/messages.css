@@ -1801,10 +1801,19 @@
   overflow-clip-margin: 8px;
 }
 
+/*
+ * A disclosure header is a row, not a chip. A content-sized `inline-flex`
+ * header (the whole process, an ordinary group, a subagent card) stopped at
+ * its own label, so the tool call never used the conversation width: it stayed
+ * narrow next to full-width prose and did not change when the band was dragged
+ * wider, and a long label overran the chip because only the level-specific
+ * overrides below carried an ellipsis. The row claims the band like every
+ * other transcript row; the label ellipsizes and the caret trails it.
+ */
 .tool-activity-header {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   min-width: 0;
-  max-width: 100%;
   min-height: 26px;
   align-items: center;
   gap: 5px;
@@ -1827,9 +1836,14 @@
   color: var(--ds-text-muted);
 }
 
+/* Long labels ellipsize inside the band-wide header instead of overrunning it. */
 .tool-activity-label {
-  flex: none;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
   font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-activity-count {
@@ -1852,15 +1866,17 @@
   white-space: nowrap;
 }
 
+/* The caret closes the row, so a short label keeps it at the trailing edge. */
 .tool-activity-caret {
   display: inline-flex;
   flex: none;
+  margin-inline-start: auto;
   color: var(--ds-text-muted);
   opacity: 0.65;
   transition: transform var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.tool-activity-group.open .tool-activity-caret {
+.tool-activity-group.open > .tool-activity-header > .tool-activity-caret {
   transform: rotate(90deg);
 }
 
@@ -1872,7 +1888,7 @@
     opacity var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.tool-activity-group.open .tool-activity-collapse {
+.tool-activity-group.open > .tool-activity-collapse {
   grid-template-rows: 1fr;
   opacity: 1;
 }
@@ -1906,18 +1922,13 @@
   background: var(--ds-tile);
 }
 
+/* The subagent card only re-dresses the shared header row: its material is the
+   card itself, so the row loses the radius and the bleed. */
 .tool-activity-group.has-subagents .tool-activity-header {
-  display: flex;
-  width: 100%;
-  max-width: none;
   min-height: 42px;
   margin: 0;
   border-radius: 0;
   padding: 10px 16px;
-}
-
-.tool-activity-group.has-subagents .tool-activity-caret {
-  margin-inline-start: auto;
 }
 
 .subagent-activity-metrics {
@@ -2256,7 +2267,11 @@
   }
 }
 
+/* A tool row claims the conversation column whatever its parent displays as:
+   the disclosure header is the row's only width-bearing box. */
 .tool-row {
+  width: 100%;
+  min-width: 0;
   margin: 3px 0;
 }
 
@@ -2445,7 +2460,7 @@
   flex: none;
   margin-left: 2px;
   color: var(--ds-text-muted);
-  opacity: 0;
+  opacity: 0.65;
   transition: transform var(--motion-duration-fast) var(--motion-ease-out);
 }
 
@@ -2457,7 +2472,9 @@
   opacity: 1;
 }
 
-.tool-row.open .tool-row-caret {
+.tool-row.open > .tool-row-header > .tool-row-caret,
+.tool-row.open > .tool-row-head > .tool-row-header > .tool-row-caret,
+.tool-row.open > .tool-row-head > .tool-row-caret {
   transform: rotate(90deg);
 }
 
@@ -2989,14 +3006,15 @@
   font-size: var(--text-xs);
 }
 
-/* One disclosure owns the process; tools retain their own detail controls. */
+/* Process, activity groups and item details own independent disclosure levels. */
 .turn-process {
   width: 100%;
   margin: 0 0 8px;
   min-width: 0;
 }
 
-.turn-process.open > .tool-activity-header > .tool-activity-caret {
+.turn-process.open > .tool-activity-header > .tool-activity-caret,
+.process-activity-group.open > .tool-activity-header > .tool-activity-caret {
   transform: rotate(90deg);
 }
 
@@ -3005,7 +3023,8 @@
   padding-left: 18px;
 }
 
-.turn-process-body[hidden] {
+.turn-process-body[hidden],
+.process-activity-body[hidden] {
   display: none;
 }
 
@@ -3013,6 +3032,26 @@
   color: var(--ds-text-secondary);
   margin-block: 8px;
 }
+
+.process-activity-group {
+  width: 100%;
+  min-width: 0;
+  margin-block: 6px;
+}
+
+.process-activity-body {
+  position: relative;
+  min-width: 0;
+}
+
+.process-activity-group.grouped > .process-activity-body {
+  margin-block: 3px 6px;
+  padding-inline-start: 12px;
+}
+
+/* The nested process levels share the base header row: no level-specific
+   width, label or caret overrides are needed now that the row claims the
+   band itself (see `.tool-activity-header`). */
 
 .thinking-compact {
   display: flex;
@@ -3023,6 +3062,10 @@
 
 .turn-process-error {
   display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: var(--text-xs-plus);
   color: var(--ds-error);
 }
 
@@ -3060,7 +3103,10 @@
   text-decoration: underline;
 }
 
+/* The title ellipsizes inside the row: an inline-flex anchor would otherwise
+   let a long source name push the host label past the band. */
 .hosted-search-source-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

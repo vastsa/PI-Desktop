@@ -36,7 +36,7 @@ test("a topology node toggles a session-scoped side-panel selection", () => {
   assert.match(transcriptSource, /const toggleSubagentPanel = useAppStore\(\(s\) => s\.toggleSubagentPanel\)/);
   assert.match(transcriptSource, /const panelSelectionId =/);
   assert.match(transcriptSource, /toggleSubagentPanel\(panelSelectionId\)/);
-  assert.match(transcriptSource, /aria-controls=\{hasDetails \? "subagent-panel" : undefined\}/);
+  assert.match(transcriptSource, /aria-controls=\{panelOpen \? "subagent-panel" : undefined\}/);
   assert.match(transcriptSource, /variant !== "topology" && open/);
   assert.match(transcriptSource, /variant !== "topology" && open && hasDetails/);
   assert.match(storeSource, /subagentPanel: SubagentPanelSelection \| null/);

@@ -37,9 +37,9 @@ The rules below govern every change to the PI-Desktop codebase and documentation
 
 ### R4 — Request branch + worktree + merge gate
 
-> **Every development request starts from `main` in a dedicated branch and
-> worktree. A user request to commit or push includes completing the task's
-> integration into `main` through the authorized delivery route.**
+> **Every development request starts from current `origin/main` in a
+> dedicated branch and worktree. Opening or updating a pull request
+> requires that head to contain the latest `origin/main`.**
 
 - Before editing, preserve any existing uncommitted work, fetch `origin/main`,
   fast-forward local `main` when its worktree is clean, and create a new request
@@ -59,34 +59,33 @@ The rules below govern every change to the PI-Desktop codebase and documentation
   environment state into tracked files. Install or generate worktree-local
   state only when isolation or version compatibility requires it.
 - Development commits and direct pushes on `main` are forbidden.
-- A user request to commit, push, or both authorizes and requires integrating
-  this task into local `main`. Do not stop after a task-branch commit or push,
-  or ask for a second merge confirmation. Explicit branch-only or draft-only
-  instructions override this completion target.
-- A commit or local-merge request does not itself authorize remote publishing.
-  If remote delivery has not been authorized, complete the required validation
-  and merge into local `main` without pushing or opening a remote PR/MR.
+- A commit request does not itself authorize remote publishing. If remote
+  delivery has not been authorized, stop after the request-branch commit in the
+  worktree. Do not merge the task into local `main` to create an E2E candidate.
+- Before opening or updating a PR/MR, fetch `origin/main` and make it an
+  ancestor of the request head (`git merge-base --is-ancestor origin/main HEAD`,
+  or `pnpm check:pr-base`). Refresh in the task worktree (`git rebase
+  origin/main` on a private branch; a non-destructive merge when rewriting
+  history would be unsafe). Do not open or update a PR that is behind
+  `origin/main`.
 - When a push or other remote delivery is authorized, the fixed delivery order
-  applies: merge the request branch into local `main`, run the required E2E
-  gate against that integrated commit (R7), and only then push the request
-  branch, open a PR/MR targeting `main`, pass the required remote checks and
-  reviews, and merge using a permitted strategy. Fetch and safely synchronize
-  local `main` with the landed change. Do not infer permission to push directly
-  to `main`, force-push, or discard unrelated local work.
-- A code-bearing change is pushed for review, opened as a PR/MR, and merged
-  remotely only after the request branch is merged into local `main` and the
-  R7 gate has run against that integrated commit.
+  in `AGENTS.md` applies: refresh against latest `origin/main`, run
+  task-candidate E2E in the worktree, push the request branch, open a PR/MR
+  targeting `main`, pass the required remote checks (including the PR-base
+  gate) and reviews, and merge using a permitted strategy. Then fetch and
+  safely synchronize local `main` with the landed change. Do not infer
+  permission to push directly to `main`, force-push, or discard unrelated
+  local work.
 - Both routes retain the required validation, security, and conflict gates.
-  Relevant E2E runs on the integrated local `main` before the request branch is
-  pushed for review, under R7. If a gate, authentication, permissions, or
-  required review prevents integration, report the actual blocker and remaining
-  work; the requested integration is not Done.
+  Relevant E2E runs on a candidate that already contains latest `origin/main`
+  (R7). If a gate, authentication, permissions, or required review prevents
+  integration, report the actual blocker and remaining work; the requested
+  integration is not Done.
 - Worktree cleanup is mandatory and immediate. As soon as the request branch is
-  integrated into `main` — including a local `main` merge when the request is
-  delivered without a remote PR/MR — remove the worktree and delete the merged
-  branch. A merged request must not leave a worktree on disk. Remove only your
-  own worktree and branch, and only after verifying the merge commits are
-  present in `main`.
+  integrated into remote `main` (or the user-authorized local-only delivery is
+  complete), remove the worktree and delete the merged branch. A merged request
+  must not leave a worktree on disk. Remove only your own worktree and branch,
+  and only after verifying the merge commits are present in `main`.
 - If the user requests a launch after delivery, build and start the app from
   the integrated `main` checkout and its development environment.
 
@@ -182,9 +181,9 @@ an unambiguous pull request number for this repository.
 
 ### R7 — Code-bearing changes require relevant E2E after main integration
 
-> **Every code-bearing change must pass relevant E2E on the integrated local
-> `main` before its request branch is pushed, a PR/MR is opened, or a
-> commit-only delivery is declared complete.**
+> **Every code-bearing change must pass relevant E2E on a candidate that
+> already contains the latest `origin/main`, before its request branch is
+> pushed or a PR/MR is opened.**
 
 This rule applies to changes that modify executable or runtime-affecting
 content, including `apps/`, `packages/`, `crates/`, runtime scripts, build or
@@ -192,12 +191,10 @@ CI configuration, packaging behavior, protocol behavior, and persisted data.
 Documentation-only changes are exempt when they do not alter executable
 behavior.
 
-E2E execution is mandatory for code-bearing changes, and the gate runs on the
-integrated local `main` commit that carries the change, before the branch push
-and the PR/MR; a route that stops at local `main` runs it before the change is
-declared delivered. Run the selected suites from the latest integrated local
-`main` checkout and commit. An E2E run on the request branch itself is
-exploratory and does not satisfy R7. Select suites using the
+E2E execution is mandatory for code-bearing changes. Task-candidate E2E runs
+in the request worktree after incorporating `origin/main`. Do not merge the
+task into local `main` to satisfy this gate. An E2E run on a branch that is
+behind `origin/main` does not satisfy R7. Select suites using the
 regression-surface guidance in `04-e2e-test-plan.md`; build, typecheck,
 lint, unit tests, integration tests, manual review, and source inspection do
 not replace relevant E2E.
@@ -209,8 +206,8 @@ If a required suite cannot run in the current environment, record the suite,
 reason, alternative validation, and remaining risk as `NOT RUN`. The branch
 push and PR/MR may still proceed with that record so the change can be
 validated in a capable environment, but the gate is not satisfied and delivery
-remains incomplete until the suite passes against the integrated `main` that
-carries the change. A failed required suite blocks the push, the PR/MR, and
+remains incomplete until the suite passes against a candidate that contains
+latest `origin/main`. A failed required suite blocks the push, the PR/MR, and
 declaring the change delivered until the failure is classified and fixed.
 
 After the PR/MR merges into remote `main`, rerun the affected suites when the
@@ -252,8 +249,8 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 7. Run targeted local checks necessary for the change's risk
 8. Commit with conventional message
 9. Update BOARD if milestone-related
-10. Complete the requested local `main` integration and run the relevant E2E
-    gate from that integrated commit (R7); when remote delivery is authorized,
+10. Refresh against latest `origin/main` (`pnpm check:pr-base`) and run
+    task-candidate E2E in the worktree (R7); when remote delivery is authorized,
     push branch + open PR/MR to main only after that gate
 11. Merge the PR/MR into remote `main` through the remote gates when remote
     delivery is authorized, synchronize local `main`, verify, and clean up
@@ -272,11 +269,11 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 | **4. Implement** | Write code, config, or assets. | Changed files. |
 | **5. Spec-sync** | Update specs per the impact list. Add ADR if architectural. Update `decisions-log.md` if an implementation default changes. | Updated docs/spec/\* and/or docs/adr/\*. |
 | **6. E2E doc** | When R3 applies, add or update scenario entries in `04-e2e-test-plan.md` and link to acceptance criteria IDs (A–H). Otherwise, confirm no scenario update is needed. | Updated e2e test plan, or confirmed not applicable. |
-| **7. Validate** | Use change risk and regression scope to select the smallest useful local checks. The relevant E2E gate for a code-bearing change runs on the integrated local `main` after step 10's local integration and before any branch push or PR/MR; a suite that cannot run is recorded as `NOT RUN` and keeps delivery incomplete. | Targeted check and E2E results, or an explicit environment limitation. |
+| **7. Validate** | Use change risk and regression scope to select the smallest useful local checks. The relevant E2E gate for a code-bearing change runs in the request worktree after `origin/main` is incorporated (`pnpm check:pr-base`) and before any branch push or PR/MR; a suite that cannot run is recorded as `NOT RUN` and keeps delivery incomplete. | Targeted check and E2E results, or an explicit environment limitation. |
 | **8. Commit** | Git commit with conventional message (see §4). | One or more commits. |
 | **9. BOARD** | If the change completes a milestone deliverable, update `docs/project/BOARD.md`. | Updated board. |
-| **10. Local integrate + gate** | Complete the requested local `main` integration, then run the relevant E2E gate from that integrated commit. When remote publishing is authorized, push the request branch and open a PR/MR targeting `main` only after that gate. | Verified local `main` integration with the E2E gate result, or a recorded `NOT RUN` limitation; reviewable remote change or a local-only delivery route. |
-| **11. Remote merge + cleanup** | For authorized remote delivery, merge the PR/MR into remote `main` through the required gates and synchronize local `main`; rerun the affected suites when the landed executable content differs from the commit the gate ran on. Verify the expected commits and remove the merged worktree and branch. | Requested integration complete, or an explicit blocker / narrower user-requested handoff. |
+| **10. Refresh + gate** | Refresh against latest `origin/main`, confirm it is an ancestor of HEAD (`pnpm check:pr-base`), then run task-candidate E2E in the worktree. When remote publishing is authorized, push the request branch and open a PR/MR targeting `main` only after that gate. | Verified candidate with the E2E gate result, or a recorded `NOT RUN` limitation; reviewable remote change or a local-only delivery route. |
+| **11. Remote merge + cleanup** | For authorized remote delivery, merge the PR/MR into remote `main` through the required gates (including the PR-base check) and synchronize local `main`; rerun the affected suites when the landed executable content differs from the commit the gate ran on. Verify the expected commits and remove the merged worktree and branch. | Requested integration complete, or an explicit blocker / narrower user-requested handoff. |
 | **12. Launch** | When requested, build and start from the integrated `main` checkout and its development environment. | Running app includes the delivered change. |
 
 ### Local Validation and E2E Execution Policy
@@ -285,29 +282,29 @@ Every change follows this sequence. Steps may be iterated if the implementation 
   delivery. Documentation-only changes and low-risk mechanical edits normally
   require no local tests or checks and proceed to the authorized delivery route
   under R4. No separate approval or waiver is needed to skip unnecessary checks;
-  the required E2E gate on the integrated local `main` still applies to
-  code-bearing changes.
+  the required E2E gate on a candidate that already contains latest
+  `origin/main` still applies to code-bearing changes.
 - Changes with material regression risk, including security boundaries,
   protocol contracts, data migrations, build configuration, or widely shared
   behavior, normally require the smallest targeted non-E2E validation that can
   address that risk. A full local suite is not the default.
 - E2E scenario documentation and E2E execution are separate concerns. R3 still
   requires scenario updates for user-visible or protocol-visible behavior.
-- Every code-bearing change must run at least one relevant E2E suite on the
-  integrated local `main` before its branch is pushed or a PR/MR is opened,
-  and must run the union of suites required by the affected regression
-  surfaces. The available commands are defined by the root `package.json` and
-  the selection matrix in `04-e2e-test-plan.md`.
-- Development-time iteration remains risk-based: an E2E run on the request
-  branch may be used for debugging, but only a run against the integrated local
-  `main` commit satisfies this policy.
+- Every code-bearing change must run at least one relevant E2E suite on a
+  candidate that contains latest `origin/main` before its branch is pushed or
+  a PR/MR is opened, and must run the union of suites required by the affected
+  regression surfaces. The available commands are defined by the root
+  `package.json` and the selection matrix in `04-e2e-test-plan.md`.
+- Development-time iteration remains risk-based: an E2E run on a stale request
+  branch may be used for debugging, but only a run after incorporating
+  `origin/main` satisfies this policy.
 - If the environment cannot run a required suite, record the suite, reason,
   alternative validation, and remaining risk as `NOT RUN`. The branch push and
   PR/MR may proceed with that record, but the gate is not satisfied and
-  delivery remains incomplete until the suite passes against the integrated
-  `main` that carries the change.
+  delivery remains incomplete until the suite passes against a candidate that
+  contains latest `origin/main`.
 - Required E2E jobs that the hosting platform starts before a remote merge do
-  not replace the local `main` gate. Observe and report their result; after
+  not replace the task-candidate gate. Observe and report their result; after
   the remote merge, rerun the affected suites when the landed executable
   content differs from the commit the gate ran on. Otherwise the recorded
   result stands.
@@ -429,12 +426,13 @@ The repository uses a mandatory request-branch and worktree workflow:
   when sharing would be unsafe or incompatible, but that state stays ignored
   and must not leak into commits.
 - **Delivery follows R4's authorization boundary and its fixed order.**
-  Commit-only delivery completes a validated local `main` merge. Authorized
-  push/remote delivery first merges the request branch into local `main` and
-  runs the required E2E gate against that integrated commit (R7), then pushes
-  the request branch and opens the PR/MR, merges it into remote `main` through
-  the PR/MR gates, and synchronizes local `main`. Explicit branch-only or
-  draft-only requests retain their narrower scope.
+  Commit-only delivery stops at the request-branch commit in the worktree.
+  Authorized push/remote delivery first refreshes against latest `origin/main`
+  (`pnpm check:pr-base`), runs task-candidate E2E in the worktree (R7), then
+  pushes the request branch and opens the PR/MR, merges it into remote `main`
+  through the PR/MR gates (including the PR-base check), and synchronizes
+  local `main`. Explicit branch-only or draft-only requests retain their
+  narrower scope. Do not open or update a PR that is behind `origin/main`.
 
 Typical request start (run from the primary checkout; choose a path outside it):
 
@@ -446,10 +444,9 @@ git worktree add -b <type>/<short-description> <worktree-path> origin/main
 
 If `main` is checked out in a clean primary worktree, `git switch main` plus
 `git fetch origin main` and `git pull --ff-only origin main` should be run
-before `git worktree add`. That fast-forward fails once local `main` carries
-its own integration merge of a delivered request; synchronize with
-`git merge origin/main` in that case, and resolve the divergence before
-starting new work without discarding commits. If the primary worktree is not
+before `git worktree add`. If local `main` has diverged, synchronize with
+`git merge origin/main` and resolve the divergence before starting new work
+without discarding commits. If the primary worktree is not
 clean or is on another branch, leave it untouched and create the request
 worktree directly from the fetched `origin/main`. Never discard, stash, move,
 or overwrite unrelated work merely to satisfy this sequence.
@@ -464,62 +461,35 @@ Typical authorized GitHub delivery (use the hosting platform's equivalent when
 needed; synchronize and clean up from the clean primary checkout after merge):
 
 ```bash
-# from the primary checkout: local `main` integration and the R7 E2E gate come first
-cd <primary-checkout>
+# from the request worktree
 git fetch origin main
-git switch main
-git merge <type>/<short-description>
-# run the required E2E suites for this change from the integrated local `main` (R7)
+git rebase origin/main   # private branch; do not force-push a shared branch
+pnpm check:pr-base
+# run the required task-candidate E2E suites for this change (R7)
 git push -u origin <type>/<short-description>
 gh pr create --base main --head <type>/<short-description>
 gh pr checks --watch
 gh pr merge --merge
 git fetch origin main
-git merge origin/main
-git merge-base --is-ancestor <type>/<short-description> origin/main
+# from a clean primary checkout
+git switch main
+git merge --ff-only origin/main
 git worktree remove <worktree-path>
 git branch -d <type>/<short-description>
 git worktree prune
 git push origin --delete <type>/<short-description>
 ```
 
-After the remote merge, synchronize local `main` with `git merge origin/main`:
-local `main` normally carries its own integration merge of the request branch
-and is no longer strictly behind `origin/main`. Reset local `main` to
-`origin/main` once the request commits are verified present in remote `main`
-and that local merge is no longer needed; the reset also restores plain
-fast-forward synchronization for later requests.
+After the remote merge, synchronize local `main` with a fast-forward when
+possible. Reset local `main` to `origin/main` only after the request commits
+are verified present in remote `main` and no local-only commits remain.
 
-If the primary checkout cannot take the local integration merge, use a
-short-lived worktree for `main` instead of disturbing unrelated work. If the
-PR/MR is abandoned, the local integration merge remains in local `main` until
-it is reset.
+If the primary checkout cannot take that synchronization, use a short-lived
+worktree for `main` instead of disturbing unrelated work.
 
-Request cleanup when the request is integrated by merging into local `main`
-instead of a remote PR/MR (run from the primary checkout):
-
-```bash
-git switch main
-git merge <type>/<short-description>
-git merge-base --is-ancestor <type>/<short-description> main
-git worktree remove <worktree-path>
-git branch -d <type>/<short-description>
-git worktree prune
-```
-
-For local-only delivery, `git branch -d` may refuse because the request branch
-still tracks `origin/main`, which does not contain the locally delivered
-commits. Only if the ancestry check above exited successfully and this is your
-own request branch with that inherited upstream, unset its upstream and retry
-normal deletion:
-
-```bash
-git branch --unset-upstream <type>/<short-description>
-git branch -d <type>/<short-description>
-```
-
-Local `main` must contain every task commit. This fallback does not apply to
-a published request branch whose remote `main` integration is still pending.
+Do not merge the request branch into local `main` to create an E2E candidate
+or to open a PR. Local-only delivery (no remote PR/MR) stays on the request
+branch until the user explicitly asks to integrate it.
 
 The worktree must be clean before removal; commit or discard the request's own
 leftover changes first. Use `git branch -d` rather than `-D` so an unmerged
@@ -540,19 +510,19 @@ explicit branch-only or draft-only delivery scope:
 3. All impacted specs are updated.
 4. E2E scenarios are documented (or confirmed not needed per §3).
 5. Necessary targeted local validation passes; for a code-bearing change the
-   relevant E2E gate has run against the integrated local `main` commit before
-   the branch push, the PR/MR, or a commit-only completion, or the environment
-   limitation is recorded as `NOT RUN` and delivery remains incomplete until
-   the suite passes against the integrated `main` that carries the change;
-   automatically triggered remote gates also pass.
+   relevant E2E gate has run on a candidate that contains latest `origin/main`
+   before the branch push, the PR/MR, or a commit-only completion, or the
+   environment limitation is recorded as `NOT RUN` and delivery remains
+   incomplete until that suite passes; automatically triggered remote gates
+   also pass, including the PR-base ancestry check.
 6. Change is committed with a conventional message.
 7. BOARD is updated if a milestone deliverable completed.
 8. No secrets or local data are present in the commit.
-9. Requested commit/push delivery is integrated into local `main` before the
-   request branch is pushed or the PR/MR is opened. When remote delivery was
-   authorized, the PR/MR was reviewed and merged into remote `main`, local
-   `main` includes the landed change, and the affected suites were rerun when
-   the landed executable content differs from the commit the gate ran on.
+9. Before a PR/MR is opened or updated, `origin/main` is an ancestor of the
+   request head (`pnpm check:pr-base`). When remote delivery was authorized,
+   the PR/MR was reviewed and merged into remote `main`, local `main` includes
+   the landed change, and the affected suites were rerun when the landed
+   executable content differs from the commit the gate ran on.
 10. After integration, the expected commits were verified in `main`, the request
     worktree was removed, and the merged request branch was deleted.
 11. If a GitHub issue was linked: the claim was verified before implementation;
@@ -589,12 +559,13 @@ D164, and D260. GitHub release notes are not a substitute.
 | Large uncommitted diffs | Violates R2; loss of granularity |
 | Changing behavior without spec update | Violates R1; specs become unreliable |
 | Skipping e2e doc for user-visible changes | Violates R3; traceability gap |
-| Declaring a code-bearing change complete without successful relevant E2E after integration into local or remote `main` | Violates R7 and leaves cross-process behavior unverified |
+| Declaring a code-bearing change complete without successful relevant E2E after incorporating latest `origin/main` | Violates R7 and leaves cross-process behavior unverified |
 | Treating the full local test/check suite as an automatic pre-push requirement | Ignores risk-based validation and delays delivery without evidence of need |
 | Developing or creating development commits on `main`, or pushing it directly | Violates R4; bypasses isolation and review gates |
 | Developing a new request in the primary checkout or another request's worktree | Violates R4; mixes task files and local state |
 | Reusing a request branch for unrelated work | Mixes request scope and weakens traceability |
-| Stopping at a task-branch commit or push when the user requested commit/push delivery | Violates R4 unless the user explicitly limited delivery to a branch or draft |
+| Opening or updating a PR/MR whose head is behind `origin/main` | Violates R4; review starts on a stale base |
+| Stopping at a task-branch commit or push when the user requested remote delivery | Violates R4 unless the user explicitly limited delivery to a branch or draft |
 | Leaving a merged request worktree on disk | Violates R4; stale worktrees accumulate and invite cross-request contamination |
 | Modifying baseline frozen decisions without ADR + version bump | Baseline is frozen; changes need formal process |
 | Committing generated artifacts that CI should rebuild | Repo bloat, merge conflicts |
@@ -608,7 +579,7 @@ D164, and D260. GitHub release notes are not a substitute.
 | Force-pushing a contributor's branch to land a linked pull request | Violates R6; landing fixes go on top of the author's commits |
 | Tagging a stable app release without updating `packages/shared/src/changelog.ts` for every shipped locale | Violates D164 / D345 / release runbook; in-app What's new is empty for that locale and version |
 | Tagging a stable app release while `README.md` / `README.zh-CN.md` still state an older release line, or bypassing `scripts/check-release-docs.mjs` with `--skip-docs-check` | Violates D260 / release runbook; published documentation advertises a version the release no longer matches |
-| Pushing a request branch or opening a PR/MR before the required E2E has run against the integrated local `main`, or declaring a code-bearing change delivered without that result (except a recorded `NOT RUN` limitation) | Violates R7's fixed order; review would start on an unvalidated commit |
+| Pushing a request branch or opening a PR/MR before the required E2E has run against a candidate that contains latest `origin/main`, or declaring a code-bearing change delivered without that result (except a recorded `NOT RUN` limitation) | Violates R7's fixed order; review would start on an unvalidated commit |
 
 ---
 
@@ -624,17 +595,20 @@ This workflow spec itself is accepted when:
       worktree created from current `main`.
 - [ ] Request worktrees reuse the primary checkout's environment where safe
       without committing local environment state.
-- [ ] Commit/push requests complete local `main` integration without another
-      merge confirmation; explicit branch-only or draft-only limits prevail.
+- [ ] Opening or updating a PR/MR requires `origin/main` to be an ancestor of
+      the request head (`pnpm check:pr-base`); a PR behind `origin/main` is
+      rejected.
 - [ ] Remote publishing requires authorization and uses PR/MR gates before
       remote `main` integration and local synchronization.
-- [ ] Local `main` integration and the relevant E2E gate precede the request
-      branch push and the pull request.
+- [ ] Refreshing against latest `origin/main` and the relevant E2E gate precede
+      the request branch push and the pull request. Do not merge the task into
+      local `main` to create that candidate.
 - [ ] Worktree removal and branch deletion are required immediately after the
-      request branch is merged into `main`, including local-merge delivery.
-- [ ] Relevant E2E execution is mandatory for code-bearing changes on the
-      integrated local `main` before the PR/MR is opened, without a separate
-      test request; E2E documentation remains mandatory under R3.
+      request branch is merged into `main`.
+- [ ] Relevant E2E execution is mandatory for code-bearing changes on a
+      candidate that contains latest `origin/main` before the PR/MR is opened,
+      without a separate test request; E2E documentation remains mandatory
+      under R3.
 - [ ] Local validation is risk-based; unnecessary checks may be skipped without
       blocking commit, push, or PR/MR creation.
 - [ ] Definition of Done is complete and actionable.

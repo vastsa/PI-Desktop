@@ -1,8 +1,7 @@
 diff --git a/dist/api/anthropic-messages.js b/dist/api/anthropic-messages.js
-index e1538a5dfcf2225da9dc3ec622576564ee7c8530..711636f5b847d3db15384063f30532222784395f 100644
 --- a/dist/api/anthropic-messages.js
 +++ b/dist/api/anthropic-messages.js
-@@ -467,6 +467,39 @@ export const stream = (model, context, options) => {
+@@ -474,6 +474,39 @@
                          output.content.push(block);
                          stream.push({ type: "toolcall_start", contentIndex: output.content.length - 1, partial: output });
                      }
@@ -42,7 +41,7 @@ index e1538a5dfcf2225da9dc3ec622576564ee7c8530..711636f5b847d3db15384063f3053222
                  }
                  else if (event.type === "content_block_delta") {
                      if (event.delta.type === "text_delta") {
-@@ -508,6 +541,18 @@ export const stream = (model, context, options) => {
+@@ -515,6 +548,18 @@
                                  partial: output,
                              });
                          }
@@ -61,10 +60,12 @@ index e1538a5dfcf2225da9dc3ec622576564ee7c8530..711636f5b847d3db15384063f3053222
                      }
                      else if (event.delta.type === "signature_delta") {
                          const index = blocks.findIndex((b) => b.index === event.index);
-@@ -517,6 +562,16 @@ export const stream = (model, context, options) => {
+@@ -522,6 +567,16 @@
+                         if (block && block.type === "thinking") {
+                             block.thinkingSignature = block.thinkingSignature || "";
                              block.thinkingSignature += event.delta.signature;
-                         }
-                     }
++                        }
++                    }
 +                    // Hosted web search (PI-Desktop): citations arrive as deltas
 +                    // on the text block that follows the search result. Collect
 +                    // them on the message for the application to render.
@@ -73,27 +74,25 @@ index e1538a5dfcf2225da9dc3ec622576564ee7c8530..711636f5b847d3db15384063f3053222
 +                        if (citation && typeof citation === "object") {
 +                            output.hostedSearchCitations = output.hostedSearchCitations ?? [];
 +                            output.hostedSearchCitations.push(citation);
-+                        }
-+                    }
+                         }
+                     }
                  }
-                 else if (event.type === "content_block_stop") {
-                     const index = blocks.findIndex((b) => b.index === event.index);
-@@ -551,6 +606,12 @@ export const stream = (model, context, options) => {
+@@ -557,6 +612,12 @@
+                                 toolCall: block,
                                  partial: output,
                              });
-                         }
++                        }
 +                        // Hosted search blocks carry no streaming scratch
 +                        // state; closing one just drops the index marker.
 +                        else if (block.type === "hostedSearch") {
 +                            delete block.index;
 +                            delete block.inputJson;
-+                        }
+                         }
                      }
                  }
-                 else if (event.type === "message_delta") {
-@@ -838,6 +899,15 @@ function buildParams(model, context, isOAuthToken, options) {
-             ...convertTools(deferredTools, isOAuthToken, compat.supportsEagerToolInputStreaming, compat.supportsStrictTools, undefined, true),
-         ];
+@@ -868,6 +929,15 @@
+             params.tools = convertTools(tools, isOAuthToken, compat.supportsEagerToolInputStreaming, compat.supportsStrictTools, toolCacheControl);
+         }
      }
 +    // Hosted web search (PI-Desktop): attach the server-side tool when the
 +    // model record opts in. A hosted tool has no client execute; its blocks
@@ -107,7 +106,7 @@ index e1538a5dfcf2225da9dc3ec622576564ee7c8530..711636f5b847d3db15384063f3053222
      // Managed effort models always use adaptive thinking so prefix mismatches can
      // be dropped instead of surfacing as persistent 400 responses.
      if (model.compat?.supportsMidConvoEffort === true) {
-@@ -1028,6 +1098,30 @@ function convertMessages(transformedMessages, isOAuthToken, cacheControl, allowE
+@@ -1072,6 +1142,30 @@
                          input: block.arguments ?? {},
                      });
                  }
@@ -129,7 +128,7 @@ index e1538a5dfcf2225da9dc3ec622576564ee7c8530..711636f5b847d3db15384063f3053222
 +                        const replay = { ...wire };
 +                        delete replay.type;
 +                        blocks.push({
-+                            type: "web_search_tool_result",
++                            type: block.isError ? "web_search_tool_result_error" : "web_search_tool_result",
 +                            tool_use_id: block.blockId,
 +                            ...replay,
 +                        });
@@ -139,10 +138,9 @@ index e1538a5dfcf2225da9dc3ec622576564ee7c8530..711636f5b847d3db15384063f3053222
              if (blocks.length === 0)
                  continue;
 diff --git a/dist/api/azure-openai-responses.js b/dist/api/azure-openai-responses.js
-index d40f2bba38093d88ad8e6a3c80a521f79d231ed2..1431552a1df48732b972406541f3e2ab3558918f 100644
 --- a/dist/api/azure-openai-responses.js
 +++ b/dist/api/azure-openai-responses.js
-@@ -223,6 +223,12 @@ function buildParams(model, context, options, deploymentName, grammarToolInputPr
+@@ -235,6 +235,12 @@
      if (options?.toolChoice !== undefined) {
          params.tool_choice = options.toolChoice;
      }
@@ -155,7 +153,7 @@ index d40f2bba38093d88ad8e6a3c80a521f79d231ed2..1431552a1df48732b972406541f3e2ab
      if (model.reasoning) {
          if (options?.reasoningEffort || options?.reasoningSummary) {
              const effort = options?.reasoningEffort
-@@ -240,6 +246,12 @@ function buildParams(model, context, options, deploymentName, grammarToolInputPr
+@@ -252,6 +258,12 @@
              };
          }
      }
@@ -169,10 +167,9 @@ index d40f2bba38093d88ad8e6a3c80a521f79d231ed2..1431552a1df48732b972406541f3e2ab
      if (options?.samplingParams) {
          Object.assign(params, options.samplingParams);
 diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
-index 48464f2bf56b9369d5c202e4f02fc4f13d35b412..4d7105cd6441115804517156c8c8584e02dde238 100644
 --- a/dist/api/openai-completions.js
 +++ b/dist/api/openai-completions.js
-@@ -1042,21 +1042,27 @@ export function convertMessages(model, context, compat, options) {
+@@ -1039,21 +1039,27 @@
              if (preservedReasoningDetails) {
                  assistantMsg.reasoning_details = preservedReasoningDetails;
              }
@@ -206,10 +203,11 @@ index 48464f2bf56b9369d5c202e4f02fc4f13d35b412..4d7105cd6441115804517156c8c8584e
              }
              params.push(assistantMsg);
          }
-@@ -1141,6 +1147,41 @@ export function convertMessages(model, context, compat, options) {
+@@ -1120,6 +1126,41 @@
+             continue;
          }
          lastRole = msg.role;
-     }
++    }
 +    // DeepSeek-style endpoints reject a history in which only some assistant
 +    // messages carry a reasoning field, while all-or-none is accepted. Prefer
 +    // the field already present on the history (reasoning_content,
@@ -244,15 +242,13 @@ index 48464f2bf56b9369d5c202e4f02fc4f13d35b412..4d7105cd6441115804517156c8c8584e
 +                }
 +            }
 +        }
-+    }
+     }
      return params;
  }
- function convertTools(tools, compat) {
 diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
-index 43e463dbfd1e6cc437ebc680468036f47678de26..c024c08ace55b7b7f0f9ef5f6c3514dd04f95ca0 100644
 --- a/dist/api/openai-responses-shared.js
 +++ b/dist/api/openai-responses-shared.js
-@@ -162,6 +162,11 @@ export function convertResponsesMessages(model, context, allowedToolCallProvider
+@@ -202,6 +202,11 @@
                          phase: parsedSignature?.phase,
                      });
                  }
@@ -264,7 +260,7 @@ index 43e463dbfd1e6cc437ebc680468036f47678de26..c024c08ace55b7b7f0f9ef5f6c3514dd
                  else if (block.type === "toolCall") {
                      const toolCall = block;
                      const [callId, itemIdRaw] = toolCall.id.split("|");
-@@ -405,6 +410,28 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -405,6 +410,28 @@
              stream.push({ type: "toolcall_start", contentIndex: slot.contentIndex, partial: output });
              return slot;
          }
@@ -293,10 +289,11 @@ index 43e463dbfd1e6cc437ebc680468036f47678de26..c024c08ace55b7b7f0f9ef5f6c3514dd
          return undefined;
      };
      const getOrCreateSlot = (outputIndex, item) => {
-@@ -529,6 +556,27 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -528,6 +555,27 @@
+                 delta: event.delta,
                  partial: output,
              });
-         }
++        }
 +        // Hosted web search (PI-Desktop): citation annotations arrive while
 +        // the text streams. They are collected on the output message so the
 +        // application can render sources without parsing text offsets.
@@ -317,11 +314,10 @@ index 43e463dbfd1e6cc437ebc680468036f47678de26..c024c08ace55b7b7f0f9ef5f6c3514dd
 +            if (item && typeof item === "object" && item.type === "web_search_call") {
 +                getOrCreateSlot(event.output_index, item);
 +            }
-+        }
+         }
          else if (event.type === "response.refusal.delta") {
              const slot = getSlot(event.output_index, "text");
-             if (!slot)
-@@ -633,9 +681,25 @@ export async function processResponsesStream(openaiStream, output, stream, model
+@@ -633,9 +681,25 @@
                  });
                  outputSlots.delete(event.output_index);
              }
@@ -348,10 +344,9 @@ index 43e463dbfd1e6cc437ebc680468036f47678de26..c024c08ace55b7b7f0f9ef5f6c3514dd
          else if (event.type === "error") {
              throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
 diff --git a/dist/api/openai-responses.js b/dist/api/openai-responses.js
-index 52fcb306b5512c99518e7a05cd99d6ac55c7c8f0..7c612528ae8138cb84bbd20318cef6d7ebce7532 100644
 --- a/dist/api/openai-responses.js
 +++ b/dist/api/openai-responses.js
-@@ -247,6 +247,12 @@ function buildParams(model, context, options, compat = getCompat(model), grammar
+@@ -242,6 +242,12 @@
              supportsOpenAIGrammarTools: compat.supportsOpenAIGrammarTools,
          });
      }
@@ -364,7 +359,7 @@ index 52fcb306b5512c99518e7a05cd99d6ac55c7c8f0..7c612528ae8138cb84bbd20318cef6d7
      if (options?.toolChoice !== undefined) {
          params.tool_choice = options.toolChoice;
      }
-@@ -269,6 +275,12 @@ function buildParams(model, context, options, compat = getCompat(model), grammar
+@@ -264,6 +270,12 @@
          if (model.provider === "xai")
              params.include = ["reasoning.encrypted_content"];
      }
@@ -378,22 +373,12 @@ index 52fcb306b5512c99518e7a05cd99d6ac55c7c8f0..7c612528ae8138cb84bbd20318cef6d7
      if (options?.samplingParams) {
          Object.assign(params, options.samplingParams);
 diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
-index 8692e906caa2609396bdccae98d4d593e024ecf6..029138715f58dbb2e5825f9a2d0c182ed7e81f2a 100644
 --- a/dist/auth/oauth/anthropic.js
 +++ b/dist/auth/oauth/anthropic.js
-@@ -140,21 +140,90 @@ async function startCallbackServer(expectedState) {
+@@ -140,21 +140,90 @@
          });
      });
  }
--async function postJson(url, body, signal) {
--    const response = await fetch(url, {
--        method: "POST",
--        headers: {
--            "Content-Type": "application/json",
--            Accept: "application/json",
--        },
--        body: JSON.stringify(body),
--        signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
 +class AnthropicOAuthTokenError extends Error {
 +    constructor(status, code, grantType) {
 +        const recovery = grantType === "authorization_code"
@@ -437,12 +422,23 @@ index 8692e906caa2609396bdccae98d4d593e024ecf6..029138715f58dbb2e5825f9a2d0c182e
 +            reject(signal.reason);
 +        };
 +        signal.addEventListener("abort", abort, { once: true });
-     });
++    });
++}
+ async function postJson(url, body, signal) {
+-    const response = await fetch(url, {
+-        method: "POST",
+-        headers: {
+-            "Content-Type": "application/json",
+-            Accept: "application/json",
+-        },
+-        body: JSON.stringify(body),
+-        signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+-    });
 -    const responseBody = await response.text();
 -    if (!response.ok) {
 -        throw new Error(`HTTP request failed. status=${response.status}; url=${url}; body=${responseBody}`);
-+}
-+async function postJson(url, body, signal) {
+-    }
+-    return responseBody;
 +    // Keep one deadline for all attempts, including response bodies and waits.
 +    // The caller's signal can impose an earlier refresh deadline or cancellation.
 +    const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
@@ -480,12 +476,11 @@ index 8692e906caa2609396bdccae98d4d593e024ecf6..029138715f58dbb2e5825f9a2d0c182e
 +        if (delay >= deadline - performance.now())
 +            throw failure; // Never shorten the server's requested wait.
 +        await waitForTokenRetry(delay, requestSignal);
-     }
--    return responseBody;
++    }
  }
  async function exchangeAuthorizationCode(code, state, verifier, redirectUri, signal) {
      let responseBody;
-@@ -169,6 +238,8 @@ async function exchangeAuthorizationCode(code, state, verifier, redirectUri, sig
+@@ -169,6 +238,8 @@
          }, signal);
      }
      catch (error) {
@@ -494,7 +489,7 @@ index 8692e906caa2609396bdccae98d4d593e024ecf6..029138715f58dbb2e5825f9a2d0c182e
          throw new Error(`Token exchange request failed. url=${TOKEN_URL}; redirect_uri=${redirectUri}; response_type=authorization_code; details=${formatErrorDetails(error)}`);
      }
      let tokenData;
-@@ -176,7 +247,7 @@ async function exchangeAuthorizationCode(code, state, verifier, redirectUri, sig
+@@ -176,7 +247,7 @@
          tokenData = JSON.parse(responseBody);
      }
      catch (error) {
@@ -503,7 +498,7 @@ index 8692e906caa2609396bdccae98d4d593e024ecf6..029138715f58dbb2e5825f9a2d0c182e
      }
      return {
          type: "oauth",
-@@ -280,6 +351,8 @@ async function refreshAnthropicToken(refreshToken, signal) {
+@@ -280,6 +351,8 @@
          }, signal);
      }
      catch (error) {
@@ -512,7 +507,7 @@ index 8692e906caa2609396bdccae98d4d593e024ecf6..029138715f58dbb2e5825f9a2d0c182e
          throw new Error(`Anthropic token refresh request failed. url=${TOKEN_URL}; details=${formatErrorDetails(error)}`);
      }
      let data;
-@@ -287,7 +360,7 @@ async function refreshAnthropicToken(refreshToken, signal) {
+@@ -287,7 +360,7 @@
          data = JSON.parse(responseBody);
      }
      catch (error) {

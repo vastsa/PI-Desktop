@@ -92,6 +92,10 @@ const REQUIRED_ANCHORS = [
     anyOf: ["merge task → local main"],
   },
   {
+    id: "pr-contains-latest-main",
+    anyOf: ["do not open or update a PR that is behind `origin/main`"],
+  },
+  {
     id: "task-candidate-e2e",
     anyOf: ["task-candidate e2e"],
   },

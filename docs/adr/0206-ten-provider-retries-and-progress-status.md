@@ -7,6 +7,19 @@
 
 ## Context
 
+### Amendment: successful response boundary (issue #699, 2026-09-20)
+
+Desktop fault injection reproduced a long task stopping on its eleventh
+independent network failure after ten successful recoveries and tool calls.
+The budget previously survived successful model responses for the whole user
+turn. Both retry classes now reset after a complete successful model response,
+including a tool-call response, in the main runtime and builtin subagents.
+Partial output, response headers, and phase changes do not reset the counters.
+The ten-retry bound, separate classes, cancellation, and failed-request-only
+replay remain unchanged. Exhaustion diagnostics read the appropriate counter,
+not temporary activity state. This narrows the budget scope in decision 1
+below without introducing a new setting or changing persisted contracts.
+
 PI-Desktop already owns provider retries so request setup and mid-stream
 failures share one counter and pi-ai does not multiply attempts through a
 nested retry loop. The current budgets of five rate-limit retries and four
@@ -14,6 +27,16 @@ other transient retries still surface short provider outages earlier than the
 product's target behavior. The active-turn row also shows only the retry
 number, so it does not tell the user how long the current wait is or where the
 retry sits in the budget.
+
+### Amendment: opt-in infinite provider retry
+
+The default ten-retry budgets remain unchanged. AppSettings may opt into
+`infiniteProviderRetry`; the runtime then skips only the retry-count ceiling for
+admitted network/transient provider failures in the main session and builtin
+subagents. Backoff, server retry hints, response-only reset, cancellation,
+terminal classification, and failed-request-only replay remain unchanged. The
+Settings copy warns that the user can stop the turn but API usage may continue
+while the switch is enabled. One-shot completions keep the bounded budget.
 
 ## Decision
 

@@ -111,8 +111,12 @@ export async function turnProcessProbe() {
   try {
     render(messages);
     check(
-      container.querySelectorAll(".turn-process").length === 0,
-      "detailed does not wrap a process",
+      container.querySelectorAll(".turn-process").length === 1,
+      "detailed wraps one process per turn",
+    );
+    check(
+      header()?.getAttribute("aria-expanded") === "true" && visible(process()),
+      "detailed starts the process open",
     );
     check(
       visible(container.querySelector('[data-message-id="answer"]')),
@@ -155,7 +159,8 @@ export async function turnProcessProbe() {
     );
     render([streaming, read], true, null, "stream");
     check(
-      !header() && visible(container.querySelector('[data-message-id="stream"]')),
+      header()?.getAttribute("aria-expanded") === "true" &&
+        visible(container.querySelector('[data-message-id="stream"]')),
       "detailed keeps streamed text visible after later tools",
     );
     render([intro, read, { ...answer, status: "aborted" }], false, null, "aborted");
@@ -199,7 +204,7 @@ export async function turnProcessProbe() {
       "compact keeps tool payloads collapsed",
     );
     check(
-      header()?.textContent?.includes("4 steps"),
+      header()?.textContent?.includes("2 tools"),
       "process counts tools and progress once",
     );
     click(header());

@@ -9,7 +9,6 @@ import {
   BACKGROUND_CONTEXT,
   compact,
   convertToLlm,
-  estimateContextTokens,
   estimateTokens,
   prepareCompaction,
   withAbortSignal,
@@ -117,11 +116,16 @@ import {
   isRecord,
   nowIso,
   timestampMs,
+  toJsonObject,
   toJsonValue,
   usageFromPi,
   usageToPi,
 } from "./agent-messages.js";
 import { buildSessionContext } from "./session-context.js";
+import {
+  dedupeToolCallMessages,
+  reportDuplicateToolCallDrop,
+} from "./tool-call-dedupe.js";
 import {
   apiBindingForProviderModel,
   buildProviderModel,
@@ -133,6 +137,12 @@ import {
   providerRequestKey,
   type RuntimeProviderConfig,
 } from "./provider-binding.js";
+import {
+  contextBudgetFor,
+  contextBudgetLimitsFor,
+  retainedUserMessageBudget,
+  type ContextBudget,
+} from "./context-budget.js";
 import { PathMutex } from "./path-lock.js";
 import { DelegationChainRegistry } from "./delegation-chain.js";
 import {
@@ -144,7 +154,10 @@ import {
   seedDelegateMessages,
   type DelegationChain,
 } from "./delegation-history.js";
-import { clampOutputToContext } from "./output-cap.js";
+import {
+  clampOutputToContext,
+  effectiveModelContextWindow,
+} from "./output-cap.js";
 import {
   composeSubagentSystemPrompt,
   SubagentRun,
@@ -167,6 +180,7 @@ import {
 import { genericModelConfig, visionFromModelConfig } from "./model-capabilities.js";
 import type { ProjectInstructions } from "./project-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
+import type { CustomSystemPrompt } from "./custom-system-prompt.js";
 import { projectMemoryPrompt } from "./project-memory-prompt.js";
 import {
   pluginSkillsPrompt,
@@ -437,6 +451,14 @@ function delegationSummary(record: DelegationRecord): Record<string, unknown> {
     ...(record.completedAt ? { completedAt: record.completedAt } : {}),
     ...(record.result?.modelFailures ? { modelFailures: record.result.modelFailures } : {}),
     ...(record.result?.error ? { error: record.result.error } : {}),
+    // A delegate that compacted or lost history says so in its lifecycle
+    // details, not only in the report text (ADR 0299, decision 4).
+    ...(record.result?.contextCompactions
+      ? { contextCompactions: record.result.contextCompactions }
+      : {}),
+    ...(record.result?.contextDegraded
+      ? { contextDegraded: record.result.contextDegraded }
+      : {}),
     ...(record.resumedFrom ? { resumedFrom: record.resumedFrom } : {}),
     ...(record.modelChangedFrom
       ? { modelChangedFrom: record.modelChangedFrom }
@@ -527,27 +549,6 @@ function formatDelegationResults(
     includedDelegationIds,
   };
 }
-/**
- * Tokens held back from the context window for the summary prompt and the
- * model's own output. Compaction thresholds are derived from the active model's
- * window rather than configured, and this floor reproduces the reserve that
- * used to be the default setting, so the hard safety boundary is unchanged.
- */
-const COMPACTION_RESERVE_FLOOR_TOKENS = 16_384;
-/**
- * Retained-tail target as a share of the safe budget, bounded so a 32K window
- * still keeps a usable tail and a 1M window does not carry the whole session
- * forward. A single fixed token count cannot serve both.
- */
-const COMPACTION_KEEP_RECENT_RATIO = 0.2;
-const COMPACTION_MIN_KEEP_RECENT_TOKENS = 8_000;
-const COMPACTION_MAX_KEEP_RECENT_TOKENS = 64_000;
-/**
- * Cap on the user messages carried across a compaction boundary, matching
- * Codex's `COMPACT_USER_MESSAGE_MAX_TOKENS`. Clamped against the safe budget so
- * a small model window is not filled by retention alone.
- */
-const COMPACTION_RETAINED_USER_MESSAGE_MAX_TOKENS = 20_000;
 const COMPACTION_FALLBACK_KEEP_RECENT_RATIO = 0.25;
 const COMPACTION_FALLBACK_MAX_SUMMARY_CHARS = 12_000;
 const COMPACTION_SUMMARY_PROMPT_SAFETY_TOKENS = 2_048;
@@ -604,6 +605,7 @@ const AGENT_CORE_TOOL_NAMES = new Set([
 ]);
 const MAX_ON_DEMAND_TOOL_PROMPT_ENTRIES = 64;
 const MAX_TOOL_SEARCH_RESULT_NAMES = 24;
+
 
 /** Tools that ask the host to switch this session into a contract mode (D198). */
 const ENTER_TOOL_NAMES: Record<ProposalKind, string> = {
@@ -802,24 +804,6 @@ function contextFallbackReminder(): string {
 }
 
 
-/**
- * Context thresholds derived from the active model's window.
- *
- * `hardLimit` is the safety boundary: the next provider request must not be
- * issued while the context is at or above it. Compaction happens inline at that
- * boundary, the way Codex does it — there is no off-critical-path variant.
- */
-type ContextBudget = {
-  /** Estimated tokens in the reconstructed model context. */
-  tokens: number;
-  /** Point where an uncompacted provider request is no longer allowed. */
-  hardLimit: number;
-  /** Tokens reserved for the request's own prompt and output. */
-  requestHeadroom: number;
-  /** Approximate recent-context tokens a checkpoint should retain. */
-  keepRecentTokens: number;
-};
-
 export type PluginToolDef = {
   /** Full exposed name (`plugin_<pluginIdSafe>_<toolName>`, D015). */
   name: string;
@@ -844,7 +828,11 @@ export type AgentRuntimeOptions = {
   turnId?: string;
   provider: RuntimeProviderConfig;
   thinkingLevel: SessionThinkingLevel;
+  /** Persisted opt-in for retrying transient provider failures until success. */
+  infiniteProviderRetry?: boolean;
   systemPrompt?: string;
+  /** pi-compatible SYSTEM.md / APPEND_SYSTEM.md resolved for the session (issue #542). */
+  customSystemPrompt?: CustomSystemPrompt;
   /** Session-bound workspace root used for path-scoped instruction requests. */
   projectPath?: string;
   /** Instructions resolved from the session's workspace. */
@@ -899,6 +887,7 @@ export type RuntimeMatchConfig = {
   pluginTools?: PluginToolDef[];
   pluginSkills?: PluginSkillDef[];
   trustedExtensions?: TrustedExtensionSpec[];
+  customSystemPrompt?: CustomSystemPrompt;
   projectInstructions?: ProjectInstructions;
   projectMemory?: string;
   projectPath?: string;
@@ -1398,10 +1387,14 @@ function toolResultFromUi(
     toolCallId: m.toolCallId ?? "",
     toolName: m.toolName ?? "",
     content: blocks,
-    ...(isRecord(raw) && raw.details !== undefined
-      ? { details: raw.details }
+    ...(toJsonValue(rawRecord?.details) !== undefined || addedToolNames.length > 0
+      ? {
+          details: {
+            ...toJsonObject(rawRecord?.details),
+            ...(addedToolNames.length > 0 ? { addedToolNames } : {}),
+          },
+        }
       : {}),
-    ...(addedToolNames.length > 0 ? { addedToolNames } : {}),
     isError:
       interrupted ||
       m.toolStatus === "error" ||
@@ -1427,7 +1420,7 @@ function estimateToolTokenUsage(
         type: "toolCall" as const,
         id: toolCallId,
         name: toolName,
-        arguments: isRecord(args) ? args : { value: args },
+        arguments: toJsonObject(isRecord(args) ? args : { value: args }),
       },
     ],
     api: model.api,
@@ -1483,6 +1476,7 @@ export class DesktopAgentRuntime {
   private onEvent: (envelope: AgentEventEnvelope) => void;
   private streamSink: StreamCoalescer;
   private baseSystemPrompt: string;
+  private customSystemPrompt?: CustomSystemPrompt;
   private planningState: PlanningState;
   private pendingPlanId?: string;
   private currentAssistant?: UiMessage;
@@ -1587,13 +1581,12 @@ export class DesktopAgentRuntime {
   private readonly providerTransportHealth: ProviderTransportHealth =
     createProviderTransportHealth();
   private pendingProviderRetry?: ReturnType<typeof classifyAgentError>;
-  /**
-   * Shared bounded retry count for non-rate-limit transient failures, counted
-   * across the request-setup and stream phases (D259).
-   */
+  /** Non-429 setup + stream failures since the last successful response. */
   private providerTransientRetryAttempt = 0;
   /** Shared OpenCode-style 429 retry count across setup and stream phases. */
   private providerRateLimitRetryAttempt = 0;
+  /** Opt-in mode removes only the retry-count ceiling; abort and backoff stay intact. */
+  private infiniteProviderRetry = false;
   private activeProviderRetryAttempt = 0;
   private providerRetryInProgress = false;
   private suppressProviderRetryRunEnd = false;
@@ -1681,6 +1674,7 @@ export class DesktopAgentRuntime {
     this.planningState = proposalKindForMode(this.mode) ? "planning" : "inactive";
     this.provider = opts.provider;
     this.thinkingLevel = clampThinkingLevel(opts.provider, opts.thinkingLevel);
+    this.infiniteProviderRetry = opts.infiniteProviderRetry === true;
     this.host = opts.host;
     this.hostCloseUnsubscribe = this.host.onClose?.(() => {
       this.cleanupActiveToolProgress();
@@ -1702,6 +1696,7 @@ export class DesktopAgentRuntime {
     this.commandShell = opts.commandShell;
     this.scratchDir = opts.scratchDir;
     this.projectPath = opts.projectPath?.trim() || undefined;
+    this.customSystemPrompt = opts.customSystemPrompt;
     this.baseProjectInstructions = opts.projectInstructions;
     this.projectInstructions = opts.projectInstructions;
     this.projectMemory = opts.projectMemory?.trim() || undefined;
@@ -1723,7 +1718,9 @@ export class DesktopAgentRuntime {
       rebuildChainsFromTranscript(this.transcriptHistory),
     );
     const skillsPrompt = pluginSkillsPrompt(this.pluginSkills);
-    const defaultSystemPrompt = [
+    // Parts: [0] is the product persona; [1:] are operational rules a custom
+    // SYSTEM.md must not remove (tool guidance, delegation, scratch, skills).
+    const defaultSystemPromptParts = [
       DEFAULT_RUNTIME_SYSTEM_PROMPT,
       // Collaboration rules. Measured sessions ran hours with 380 assistant
       // messages and exactly one non-empty text body: a reasoning model reads
@@ -1783,8 +1780,18 @@ Delegation rules:
       // path-scoped instruction reload never drops it, and it stays ahead of
       // the instruction chain so the user's own AGENTS.md keeps the last word.
       ...(skillsPrompt ? [skillsPrompt] : []),
+    ];
+    // A custom SYSTEM.md replaces only the product persona line, never the
+    // operational rules in the default parts: tool guidance, delegation
+    // steering and scratch mechanics keep the desktop working (issue #542).
+    this.baseSystemPrompt = [
+      (
+        opts.customSystemPrompt?.replace ??
+        opts.systemPrompt ??
+        DEFAULT_RUNTIME_SYSTEM_PROMPT
+      ).trim(),
+      ...defaultSystemPromptParts.slice(1),
     ].join("\n\n");
-    this.baseSystemPrompt = opts.systemPrompt ?? defaultSystemPrompt;
     this.agent = new Agent({
       streamFn: (m, context, options) => {
         this.setAgentActivity({ phase: "waiting-model", since: Date.now() });
@@ -1877,6 +1884,7 @@ Delegation rules:
                 phase: "retrying",
                 since: Date.now(),
                 attempt,
+                ...(this.infiniteProviderRetry ? { infinite: true } : {}),
                 retryDelayMs: delayMs,
                 error: this.retryActivityError(error),
               });
@@ -1894,9 +1902,12 @@ Delegation rules:
       // A vendor account has no long-lived key. Leaving it unset keeps pi-ai
       // from overriding the auth the provider just resolved for this request.
       getApiKey: async () => runtimeApiKey || undefined,
+      // The provider's rule that a tool-call id is unique is enforced here, on
+      // the last view before the wire: the request is the only place it can be
+      // guaranteed for both a rebuilt context and one that grew in this process.
       convertToLlm: (messages) =>
         alignRetainedReasoningIdentity(
-          convertToLlm(messages),
+          convertToLlm(this.dropDuplicateToolCalls(messages)),
           this.reasoningReplayIdentity(),
         ),
       prepareNextTurnWithContext: (context, signal) =>
@@ -1952,6 +1963,12 @@ Delegation rules:
     );
   }
 
+  /** Update the opt-in retry policy without rebuilding an idle runtime. */
+  setInfiniteProviderRetry(enabled: boolean): void {
+    if (this.disposed) throw new Error("runtime disposed");
+    this.infiniteProviderRetry = enabled;
+  }
+
   /** Switch the planning state on this Agent without creating another Agent. */
   setMode(mode: Mode): void {
     if (this.disposed) throw new Error("runtime disposed");
@@ -1968,13 +1985,47 @@ Delegation rules:
     this.activeDeferredToolNames.clear();
     this.rebuildToolCatalog();
     this.restoreDeferredToolsFromContext();
-    this.agent.state.systemPrompt = this.composeSystemPrompt();
+    this.setAgentSystemPrompt(this.composeSystemPrompt());
     this.agent.state.tools = this.activeTools();
     this.setPlanningState(planningState, details);
   }
 
   getMode(): Mode {
     return this.mode;
+  }
+
+  private agentUsesTranscriptSystemMessages(): boolean {
+    let current: object | null = this.agent.state as unknown as object;
+    while (current) {
+      const descriptor = Object.getOwnPropertyDescriptor(current, "systemPrompt");
+      if (descriptor) return typeof descriptor.get === "function" && !descriptor.set;
+      current = Object.getPrototypeOf(current) as object | null;
+    }
+    return false;
+  }
+
+  private setAgentSystemPrompt(prompt: string): void {
+    if (!this.agentUsesTranscriptSystemMessages()) {
+      (this.agent.state as unknown as { systemPrompt: string }).systemPrompt = prompt;
+      return;
+    }
+    const messages = this.agent.state.messages.filter((message) => message.role !== "system");
+    this.agent.state.messages = [
+      { role: "system", content: prompt, timestamp: Date.now() },
+      ...messages,
+    ];
+  }
+
+  private setAgentMessages(messages: AgentMessage[]): void {
+    if (!this.agentUsesTranscriptSystemMessages()) {
+      this.agent.state.messages = messages;
+      return;
+    }
+    const systemPrompt = this.agent.state.systemPrompt;
+    this.agent.state.messages = [
+      { role: "system", content: systemPrompt, timestamp: Date.now() },
+      ...messages.filter((message) => message.role !== "system"),
+    ];
   }
 
   private composeSystemPrompt(): string {
@@ -1991,6 +2042,7 @@ Delegation rules:
       this.mode,
       [
         this.baseSystemPrompt,
+        ...(this.customSystemPrompt?.append ? [this.customSystemPrompt.append] : []),
         ...(optionalToolsPrompt ? [optionalToolsPrompt] : []),
         ...(projectPrompt ? [projectPrompt] : []),
         ...(memoryPrompt ? [memoryPrompt] : []),
@@ -2019,7 +2071,7 @@ Delegation rules:
       this.resumablePromptStale = true;
       return;
     }
-    this.agent.state.systemPrompt = this.composeSystemPrompt();
+    this.setAgentSystemPrompt(this.composeSystemPrompt());
   }
 
   /** Apply a resumable-list refresh that a transient prompt variant deferred. */
@@ -2243,6 +2295,10 @@ Delegation rules:
       safeJson(this.commandShell) === safeJson(config.commandShell) &&
       safeJson(this.baseProjectInstructions ?? null) ===
         safeJson(config.projectInstructions ?? null) &&
+      // Editing SYSTEM.md / APPEND_SYSTEM.md retires the runtime so the next
+      // prompt recomposes from the fresh content.
+      safeJson(this.customSystemPrompt ?? null) ===
+        safeJson(config.customSystemPrompt ?? null) &&
       (this.projectMemory ?? "") === (config.projectMemory?.trim() ?? "") &&
       (this.projectPath ?? "") === (config.projectPath?.trim() ?? "") &&
       // Enabling a plugin, revoking agent.prompt.inject or renaming a skill
@@ -2631,9 +2687,7 @@ Delegation rules:
           type: "toolCall",
           id: m.toolCallId,
           name: m.toolName,
-          arguments: isRecord(m.toolArgs)
-            ? (m.toolArgs as Record<string, unknown>)
-            : {},
+          arguments: toJsonObject(m.toolArgs),
         });
         toolCarrier.stopReason = "toolUse";
         append(m.id, toolResultFromUi(m, timestamp));
@@ -2643,6 +2697,29 @@ Delegation rules:
       (entry) =>
         entry.message.role !== "assistant" || entry.message.content.length > 0,
     );
+  }
+
+  /**
+   * A `tool_use` id has to be unique across the request: Anthropic-family
+   * endpoints (DeepSeek's included) reject the whole turn with "tool_use ids
+   * must be unique" (issue #718), and a session that hits that 400 cannot
+   * continue. Every message the next request carries passes through here, so
+   * this is the one place that can guarantee the provider's rule for both a
+   * rebuilt context and one that grew during this process.
+   *
+   * The transcript is append-only and tolerates a retried append, so the same
+   * call can reach the request twice: under the same row id (which the host's
+   * keep-last dedupe already collapses) or a new one (which it cannot). The
+   * first occurrence wins, and a later call *or* a later result for that id is
+   * dropped, so the pair the provider validates stays well-formed — one call,
+   * one result. What was dropped is logged with its ids, because the next
+   * report of this should name the writer instead of only the provider's
+   * sentence.
+   */
+  private dropDuplicateToolCalls(messages: AgentMessage[]): AgentMessage[] {
+    const drop = dedupeToolCallMessages(messages);
+    reportDuplicateToolCallDrop(this.sessionId, drop);
+    return drop.messages;
   }
 
   private entriesWithCompaction(
@@ -3488,7 +3565,6 @@ Delegation rules:
         return {
           content: [{ type: "text", text }],
           details: { query, matches, activated },
-          ...(activated.length > 0 ? { addedToolNames: activated } : {}),
         };
       },
     };
@@ -3880,11 +3956,16 @@ Delegation rules:
     if (!originalTask) return undefined;
     const rows = selectChainRows(this.transcriptHistory, chain);
     if (rows.length === 0) return undefined;
+    // The seed is truncated against the delegate's own budget (ADR 0299 §7),
+    // derived from the same model the resumed run will use, so the first
+    // request fits the window instead of overflowing on arrival.
+    const model = buildProviderModel(provider);
     return seedDelegateMessages({
       originalTask,
       rows,
       provider,
-      model: buildProviderModel(provider),
+      model,
+      budget: contextBudgetLimitsFor(model),
     });
   }
 
@@ -4158,6 +4239,7 @@ Delegation rules:
           parentToolCallId: toolCallId,
           task,
           provider,
+          infiniteProviderRetry: this.infiniteProviderRetry,
           thinkingLevel,
           fallbackModels: (definition.fallbackModels ?? []).map((pin) => ({
             key: subagentModelKey(pin),
@@ -4919,7 +5001,9 @@ Delegation rules:
       if (isMissingToolResultPlaceholder(message.content)) continue;
       const names =
         message.toolName === TOOL_SEARCH_NAME
-          ? (message.addedToolNames ?? [])
+          ? (isRecord(message.details) && Array.isArray(message.details.addedToolNames)
+              ? message.details.addedToolNames.filter((name): name is string => typeof name === "string")
+              : [])
           : [message.toolName];
       for (const name of names) {
         if (this.deferredToolNames.has(name)) {
@@ -5203,7 +5287,7 @@ Delegation rules:
 
   private applyProjectInstructions(resolved: ProjectInstructions | undefined): void {
     this.projectInstructions = resolved;
-    this.agent.state.systemPrompt = this.composeSystemPrompt();
+    this.setAgentSystemPrompt(this.composeSystemPrompt());
   }
 
   /**
@@ -5293,8 +5377,10 @@ Delegation rules:
     phase: "request" | "stream",
   ): number | undefined {
     if (!error.retriable) return undefined;
+    const infinite = this.infiniteProviderRetry;
     if (error.code === "PROVIDER_RATE_LIMITED") {
       if (
+        !infinite &&
         this.providerRateLimitRetryAttempt >=
         PROVIDER_RATE_LIMIT_MAX_RETRIES
       ) {
@@ -5310,7 +5396,10 @@ Delegation rules:
     // next must not multiply the budget or reset it by changing phase.
     void phase;
     if (!isTransientProviderRetryCode(error.code)) return undefined;
-    if (this.providerTransientRetryAttempt >= PROVIDER_TRANSIENT_MAX_RETRIES) {
+    if (
+      !infinite &&
+      this.providerTransientRetryAttempt >= PROVIDER_TRANSIENT_MAX_RETRIES
+    ) {
       return undefined;
     }
     const attempt = ++this.providerTransientRetryAttempt;
@@ -5326,6 +5415,9 @@ Delegation rules:
   ): ReturnType<typeof classifyAgentError> {
     const explained = withProviderFetchFailure(error, this.providerFetchFailure);
     const existingDetails = explained.details ?? {};
+    const retryAttempt = error.code === "PROVIDER_RATE_LIMITED"
+      ? this.providerRateLimitRetryAttempt
+      : isTransientProviderRetryCode(error.code) ? this.providerTransientRetryAttempt : 0;
     // A capture exists only for an attempt that rejected before any response, so
     // it is also the honest phase: whatever the message lifecycle that surfaced
     // the failure looks like, this request never reached the provider, and
@@ -5364,9 +5456,7 @@ Delegation rules:
         existingDetails.providerStatus === undefined
           ? { providerStatus: this.providerResponseStatus }
           : {}),
-        ...(this.activeProviderRetryAttempt > 0
-          ? { retryAttempt: this.activeProviderRetryAttempt }
-          : {}),
+        ...(retryAttempt > 0 ? { retryAttempt } : {}),
       },
     };
   }
@@ -5452,8 +5542,11 @@ Delegation rules:
     if (messages.at(-1)?.role !== "assistant") {
       throw new Error("Cannot retry a provider stream without its failed assistant message");
     }
-    messages.pop();
-    this.agent.state.messages = messages;
+    // A failed stream can be represented by more than one trailing assistant
+    // message after a tool round. Remove the whole failed suffix before
+    // continuing; pi-agent-core rejects any assistant-terminated transcript.
+    while (messages.at(-1)?.role === "assistant") messages.pop();
+    this.setAgentMessages(messages);
 
     this.providerRetryInProgress = true;
     this.requestStartedAt = Date.now();
@@ -5477,6 +5570,7 @@ Delegation rules:
         phase: "retrying",
         since: Date.now(),
         attempt: retryAttempt,
+        ...(this.infiniteProviderRetry ? { infinite: true } : {}),
         retryDelayMs: delayMs,
         error: this.retryActivityError(retryError),
       });
@@ -5512,11 +5606,11 @@ Delegation rules:
     // and this one carries nothing worth resending anyway.
     const messages = [...this.agent.state.messages];
     if (messages.at(-1)?.role === "assistant") messages.pop();
-    this.agent.state.messages = messages;
+    this.setAgentMessages(messages);
 
     const promptBefore = this.agent.state.systemPrompt;
     const promptWithNudge = `${promptBefore}\n\n${SILENT_TURN_NUDGE}`;
-    this.agent.state.systemPrompt = promptWithNudge;
+    this.setAgentSystemPrompt(promptWithNudge);
     this.silentTurnRerunInProgress = true;
     this.requestStartedAt = Date.now();
     this.setAgentActivity({ phase: "recovering", since: Date.now() });
@@ -5526,7 +5620,7 @@ Delegation rules:
       await this.waitForIdleAndSteering();
     } finally {
       if (this.agent.state.systemPrompt === promptWithNudge) {
-        this.agent.state.systemPrompt = promptBefore;
+        this.setAgentSystemPrompt(promptBefore);
       }
       this.applyPendingResumablePrompt();
       this.silentTurnRerunInProgress = false;
@@ -5563,7 +5657,7 @@ Delegation rules:
         this.overflowRecoveryAttempted = true;
         const messages = [...this.agent.state.messages];
         if (messages.at(-1)?.role === "assistant") messages.pop();
-        this.agent.state.messages = messages;
+        this.setAgentMessages(messages);
         const compacted = await this.runCompaction(
           "overflow",
           true,
@@ -5620,11 +5714,11 @@ Delegation rules:
     // bubble, so it must not be sent back as model context.
     const messages = [...this.agent.state.messages];
     if (messages.at(-1)?.role === "assistant") messages.pop();
-    this.agent.state.messages = messages;
+    this.setAgentMessages(messages);
 
     const promptBefore = this.agent.state.systemPrompt;
     const promptWithNudge = `${promptBefore}\n\n${PROGRESS_TURN_NUDGE}`;
-    this.agent.state.systemPrompt = promptWithNudge;
+    this.setAgentSystemPrompt(promptWithNudge);
     this.progressTurnRerunInProgress = true;
     this.requestStartedAt = Date.now();
     this.setAgentActivity({ phase: "recovering", since: Date.now() });
@@ -5635,7 +5729,7 @@ Delegation rules:
       await this.waitForIdleAndSteering();
     } finally {
       if (this.agent.state.systemPrompt === promptWithNudge) {
-        this.agent.state.systemPrompt = promptBefore;
+        this.setAgentSystemPrompt(promptBefore);
       }
       this.applyPendingResumablePrompt();
       this.progressTurnRerunInProgress = false;
@@ -5656,43 +5750,7 @@ Delegation rules:
   }
 
   private contextBudget(messages: AgentMessage[]): ContextBudget {
-    const contextWindow = Math.max(
-      1,
-      Math.round(this.model.contextWindow || DEFAULT_CONTEXT_WINDOW),
-    );
-    const modelOutputBudget = Math.min(
-      Math.max(1, Math.round(this.model.maxTokens || DEFAULT_MAX_TOKENS)),
-      Math.max(1, Math.floor(contextWindow * 0.25)),
-    );
-    const reserveFloor = Math.min(
-      COMPACTION_RESERVE_FLOOR_TOKENS,
-      Math.max(1, Math.floor(contextWindow * 0.5)),
-    );
-    const requestHeadroom = Math.min(
-      contextWindow - 1,
-      Math.max(
-        reserveFloor,
-        modelOutputBudget,
-        Math.ceil(contextWindow * 0.05),
-      ),
-    );
-    const hardLimit = Math.max(1, contextWindow - requestHeadroom);
-    const keepRecentTokens = Math.min(
-      Math.max(
-        COMPACTION_MIN_KEEP_RECENT_TOKENS,
-        Math.min(
-          COMPACTION_MAX_KEEP_RECENT_TOKENS,
-          Math.floor(hardLimit * COMPACTION_KEEP_RECENT_RATIO),
-        ),
-      ),
-      Math.max(1, Math.floor(hardLimit * 0.5)),
-    );
-    return {
-      tokens: estimateContextTokens(messages).tokens,
-      hardLimit,
-      requestHeadroom,
-      keepRecentTokens,
-    };
+    return contextBudgetFor(this.model, messages);
   }
 
   private automaticCompactionNeeded(
@@ -5704,19 +5762,8 @@ Delegation rules:
     return this.compactionEnabled && budget.tokens >= budget.hardLimit;
   }
 
-  /**
- * Cap on the active user message a checkpoint carries forward. Codex uses a
- * flat 20k; the clamp keeps a small model window from being filled by
- * retention alone, which would leave the summary no room.
-   */
   private retainedUserMessageBudget(budget: ContextBudget): number {
-    return Math.max(
-      1,
-      Math.min(
-        COMPACTION_RETAINED_USER_MESSAGE_MAX_TOKENS,
-        Math.floor(budget.hardLimit * 0.5),
-      ),
-    );
+    return retainedUserMessageBudget(budget);
   }
 
   /**
@@ -5818,13 +5865,13 @@ Delegation rules:
   private rebuiltAgentContext(): AgentContext {
     const messages = this.liveSessionContext().messages;
     const tools = this.activeTools();
-    this.agent.state.messages = messages;
+    this.setAgentMessages(messages);
     this.agent.state.tools = tools;
     return {
-      systemPrompt: this.agent.state.systemPrompt,
-      messages,
+      messages: this.agent.state.messages,
       tools,
-    };
+      systemPrompt: this.agent.state.systemPrompt,
+    } as AgentContext;
   }
 
   /**
@@ -5910,10 +5957,19 @@ Delegation rules:
     const remaining = Math.max(0, budget.hardLimit - budget.tokens);
     const reminder = this.claimContextBudgetReminder(remaining, budget);
     if (!reminder) return context;
+    const legacyContext = context as AgentContext & { systemPrompt?: string };
+    const systemPrompt =
+      typeof legacyContext.systemPrompt === "string"
+        ? `${legacyContext.systemPrompt}\n\n${reminder}`
+        : undefined;
     return {
       ...context,
-      systemPrompt: `${context.systemPrompt}\n\n${reminder}`,
-    };
+      ...(systemPrompt ? { systemPrompt } : {}),
+      messages: [
+        ...context.messages,
+        { role: "system", content: reminder, timestamp: Date.now() },
+      ],
+    } as AgentContext;
   }
 
   private claimContextBudgetReminder(
@@ -6262,7 +6318,7 @@ Delegation rules:
     // resetting its `claim_*` flags when the context window turns over.
     this.contextReminderClaimed = false;
     this.contextFallbackReminderClaimed = false;
-    this.agent.state.messages = this.liveSessionContext().messages;
+    this.setAgentMessages(this.liveSessionContext().messages);
     this.emit({
       type: "compaction_end",
       reason,
@@ -6812,7 +6868,7 @@ Delegation rules:
             | undefined;
           const overflow = isContextOverflow(
             event.message as AssistantMessage,
-            this.model.contextWindow || DEFAULT_CONTEXT_WINDOW,
+            effectiveModelContextWindow(this.model) || DEFAULT_CONTEXT_WINDOW,
           );
           const failed = stopReason === "error" || overflow;
           const aborted = stopReason === "aborted";
@@ -6889,10 +6945,13 @@ Delegation rules:
               streamMs,
             );
           }
-          // A turn with no tool call and no visible text ends the run while
-          // leaving the user with nothing: the reasoning that may hold the
-          // answer is never rendered. Re-run once with a nudge before letting
-          // that surface as a finished turn.
+          // Only a completed response replenishes both budgets. Headers and
+          // partial output must not let a repeatedly broken stream retry forever.
+          if (!failed && !aborted) {
+            this.providerTransientRetryAttempt = 0;
+            this.providerRateLimitRetryAttempt = 0;
+          }
+          // Re-run an invisible answer once before surfacing a finished turn.
           const silence =
             !failed &&
             !aborted &&
@@ -7061,7 +7120,7 @@ Delegation rules:
             // anything else should that order ever change.
             const messages = this.agent.state.messages;
             if (messages.at(-1) === event.message) {
-              this.agent.state.messages = messages.slice(0, -1);
+              this.setAgentMessages(messages.slice(0, -1));
             }
           } else if (!failed && !aborted && !emptyResponse) {
             this.appendLiveEntry(assistantId, event.message);
@@ -7288,9 +7347,8 @@ Delegation rules:
     const userMessageId = this.pendingUserMessageId || randomUUID();
     this.pendingUserMessageId = undefined;
     this.appendLiveEntry(userMessageId, incomingUserMessage);
-    this.agent.state.messages = this.liveSessionContext().messages;
+    this.setAgentMessages(this.liveSessionContext().messages);
   }
-
   private failBeforeProviderRequest(
     incomingUserMessage: AgentMessage,
     error: ReturnType<typeof classifyAgentError>,
@@ -7380,8 +7438,8 @@ Delegation rules:
       timestamp: Date.now(),
     };
     this.appendLiveEntry(internalId, internalMessage);
-    this.agent.state.messages = this.liveSessionContext().messages;
     this.setAgentActivity({ phase: "starting", since: Date.now() });
+    this.setAgentMessages(this.liveSessionContext().messages);
     await this.agent.continue();
     await this.waitForIdleAndSteering();
     // Same recovery contract as a user prompt: a plan execution that overflows,
@@ -7525,10 +7583,10 @@ Delegation rules:
       },
       (acc, next) => ({ ...(acc ?? {}), ...next }),
     );
-    this.agent.state.systemPrompt =
-      typeof result?.systemPrompt === "string" ? result.systemPrompt : base;
+    this.setAgentSystemPrompt(
+      typeof result?.systemPrompt === "string" ? result.systemPrompt : base,
+    );
   }
-
   /**
    * `before_provider_request` rides pi-ai's `onPayload`, `after_provider_response`
    * its `onResponse`, and the per-turn `before_provider_headers` result merges
@@ -7617,12 +7675,12 @@ Delegation rules:
   private retainPendingSteering(): void {
     this.agent.clearSteeringQueue();
     for (const [message, id] of this.pendingSteering) {
-      if (!this.agent.state.messages.includes(message)) this.agent.state.messages = [...this.agent.state.messages, message];
+      if (!this.agent.state.messages.includes(message)) this.setAgentMessages([...this.agent.state.messages, message]);
       this.appendLiveEntry(id, message);
     }
     this.pendingSteering.clear();
-  }
 
+  }
   private async waitForIdleAndSteering(): Promise<void> {
     await this.agent.waitForIdle();
     if (!this.acceptingSteering || this.runCancelled || this.turnHadError) {

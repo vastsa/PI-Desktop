@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentEventEnvelope, SubagentDefinition } from "@pi-desktop/shared";
+import type { Message } from "@earendil-works/pi-ai";
 import {
   composeSubagentSystemPrompt,
   MAX_SUBAGENT_REPORT_CHARS,
@@ -135,6 +136,59 @@ describe("SubagentRun event forwarding", () => {
     expect(run.agent.streamFunction.toString()).toContain(
       "models.stream(omitThinkingModel, context, retryOptions)",
     );
+  });
+  it("deduplicates repeated tool calls before a subagent request", () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const { run } = createRun({
+        initialMessages: [
+          assistantMessage({
+            content: [
+              { type: "toolCall", id: "child-read", name: "Read", arguments: {} },
+            ],
+          }),
+          {
+            role: "toolResult",
+            toolCallId: "child-read",
+            toolName: "Read",
+            content: [{ type: "text", text: "first" }],
+            isError: false,
+            timestamp: 2,
+          },
+          assistantMessage({
+            content: [
+              { type: "toolCall", id: "child-read", name: "Read", arguments: {} },
+            ],
+          }),
+          {
+            role: "toolResult",
+            toolCallId: "child-read",
+            toolName: "Read",
+            content: [{ type: "text", text: "retry" }],
+            isError: false,
+            timestamp: 3,
+          },
+        ] as unknown as NonNullable<SubagentRunOptions["initialMessages"]>,
+      });
+      const outgoing = run.agent.convertToLlm(run.agent.state.messages) as Message[];
+      const toolCalls = outgoing.flatMap((message) =>
+        message.role === "assistant"
+          ? message.content.filter((block) => block.type === "toolCall")
+          : [],
+      );
+
+      expect(toolCalls.map((call) => call.id)).toEqual(["child-read"]);
+      expect(outgoing.filter((message) => message.role === "toolResult")).toHaveLength(1);
+      expect(
+        outgoing.filter(
+          (message) => message.role === "assistant" && message.content.length === 0,
+        ),
+      ).toHaveLength(0);
+      expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join(""))
+        .toContain("session=session-1");
+    } finally {
+      stderr.mockRestore();
+    }
   });
 
   it("does not synthesize a Responses reasoning setting when omitted", async () => {
@@ -521,6 +575,13 @@ describe("SubagentRun watchdogs", () => {
     expect(freshClaim(rateLimited, "stream")).toBeUndefined();
     // Permanent failures stay terminal.
     expect(freshClaim(classifyAgentError("401: invalid api key"), "request")).toBeUndefined();
+
+    const { run: infinite } = createRun({ infiniteProviderRetry: true });
+    const infiniteClaim = (error: unknown, phase: string) =>
+      (infinite as any).claimProviderRetry(error, phase);
+    for (let attempt = 1; attempt <= PROVIDER_TRANSIENT_MAX_RETRIES + 2; attempt += 1) {
+      expect(infiniteClaim(gateway502, "stream")).toBe(attempt);
+    }
   });
 
   it("never terminates the delegate on a turn count", async () => {
@@ -536,6 +597,149 @@ describe("SubagentRun watchdogs", () => {
   });
 });
 
+describe("SubagentRun context budget (ADR 0299)", () => {
+  it("wires the delegate's turn boundary through prepareNextTurnWithContext", () => {
+    const { run } = createRun();
+
+    expect(typeof run.agent.prepareNextTurnWithContext).toBe("function");
+  });
+
+  it("remaps a provider context overflow no fallback could absorb", async () => {
+    const { run } = createRun();
+    const failure = {
+      ...assistantMessage({ content: [], stopReason: "error" }),
+      errorMessage: "prompt is too long: 300000 tokens",
+    };
+    const state = { messages: [] as Array<Record<string, unknown>> };
+    run.agent = {
+      state,
+      prompt: vi.fn(async () => {
+        state.messages = [{ role: "user", content: "task" }, failure];
+        run.handleEvent({ type: "message_start", message: failure });
+        run.handleEvent({ type: "message_end", message: failure });
+      }),
+      waitForIdle: vi.fn(async () => undefined),
+      abort: vi.fn(),
+    };
+
+    const result = await (run as unknown as SubagentRun).run();
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("SUBAGENT_CONTEXT_OVERFLOW");
+    expect(result.error?.message).toContain("larger context window");
+    expect(result.error?.message).not.toContain("prompt is too long");
+    expect(result.report).toContain("Narrow the task");
+  });
+
+  it("keeps the boundary guard's overflow code instead of classifying its thrown text", () => {
+    const { run } = createRun();
+    run.pendingContextOverflow = {
+      code: "SUBAGENT_CONTEXT_OVERFLOW",
+      message: "degraded context still does not fit",
+    };
+
+    run.handleEvent({
+      type: "message_end",
+      message: {
+        ...assistantMessage({ content: [], stopReason: "error" }),
+        errorMessage: "degraded context still does not fit",
+      },
+    });
+
+    expect(run.streamError).toEqual({
+      code: "SUBAGENT_CONTEXT_OVERFLOW",
+      message: "degraded context still does not fit",
+    });
+    expect(run.pendingContextOverflow).toBeUndefined();
+  });
+
+  it("skips a fallback whose window cannot hold the carried context", () => {
+    const small: RuntimeProviderConfig = {
+      ...provider,
+      id: "small",
+      modelId: "small-model",
+      modelConfig: {
+        source: "generic",
+        name: "small-model",
+        baseUrl: provider.baseUrl ?? "",
+        reasoning: false,
+        input: ["text"],
+        contextWindow: 4_096,
+        maxTokens: 1_024,
+      },
+    };
+    const { run } = createRun({
+      fallbackModels: [{ key: "small/small-model", provider: small }],
+    });
+    const brief = { role: "user", content: "y".repeat(12_000), timestamp: 1 };
+    const failure = {
+      ...assistantMessage({ content: [], stopReason: "error" }),
+      errorMessage: "prompt is too long",
+    };
+    run.agent.state.messages = [brief, failure];
+    run.streamError = { code: "CONTEXT_TOO_LARGE", message: "prompt is too long" };
+
+    const switched = run.useNextModel();
+
+    expect(switched).toBe(false);
+    expect(run.agent.state.model.id).toBe("local-model");
+    expect(run.modelFailures).toEqual([
+      expect.objectContaining({
+        model: "local/local-model",
+        code: "CONTEXT_TOO_LARGE",
+      }),
+      expect.objectContaining({
+        model: "small/small-model",
+        code: "SUBAGENT_CONTEXT_OVERFLOW",
+      }),
+    ]);
+  });
+
+  it("carries the uncompacted context onto a fallback whose window fits", () => {
+    const big: RuntimeProviderConfig = {
+      ...provider,
+      id: "big",
+      modelId: "big-model",
+    };
+    const { run, events } = createRun({
+      fallbackModels: [{ key: "big/big-model", provider: big }],
+    });
+    const brief = { role: "user", content: "y".repeat(12_000), timestamp: 1 };
+    const failure = {
+      ...assistantMessage({ content: [], stopReason: "error" }),
+      errorMessage: "prompt is too long",
+    };
+    run.agent.state.messages = [brief, failure];
+    run.streamError = { code: "CONTEXT_TOO_LARGE", message: "prompt is too long" };
+
+    const switched = run.useNextModel();
+
+    expect(switched).toBe(true);
+    expect(run.agent.state.model.id).toBe("big-model");
+    // Only the failed assistant row is dropped; nothing is compacted away.
+    expect(run.agent.state.messages).toEqual([brief]);
+    expect(run.streamError).toBeUndefined();
+    expect(events.some((event) => event.event.type === "message_end")).toBe(true);
+  });
+
+  it("reports compactions and degradation on the run result", () => {
+    const { run } = createRun();
+    run.contextCompactions = 2;
+    run.contextDegraded = true;
+
+    const result = run.result("completed", "Done.");
+
+    expect(result.contextCompactions).toBe(2);
+    expect(result.contextDegraded).toBe(true);
+    expect(result.report).toContain("older working history was discarded");
+
+    const clean = createRun();
+    const cleanResult = clean.run.result("completed", "Done.");
+    expect(cleanResult.contextCompactions).toBeUndefined();
+    expect(cleanResult.contextDegraded).toBeUndefined();
+    expect(cleanResult.report).toBe("Done.");
+  });
+});
 
 describe("SubagentRun retries before fallback", () => {
   it.each([429, 503])("exhausts the shared retry budget before switching after HTTP %s", async (status) => {

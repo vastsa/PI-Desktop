@@ -28,6 +28,13 @@ const panelSource = await readFile(
 const transcriptSource = await readTranscriptSource();
 const storeSource = await readStoreSource();
 const globalStyles = await loadStyles();
+test("closing a subagent panel restores focus to its transcript trigger", () => {
+  assert.match(panelSource, /const closeSubagentPanelAndFocus = useCallback/);
+  assert.match(panelSource, /data-subagent-trigger/);
+  assert.match(panelSource, /candidate\.dataset\.subagentTrigger === delegationId/);
+  assert.match(panelSource, /trigger\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(panelSource, /onClick=\{closeSubagentPanelAndFocus\}/);
+});
 
 test("work panel replaces the context panel overlay", async () => {
   await assert.rejects(

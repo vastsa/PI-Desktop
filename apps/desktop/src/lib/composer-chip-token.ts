@@ -13,4 +13,3 @@ export function isChipTokenChar(char: string): boolean {
   const code = char.codePointAt(0) ?? 0;
   return code >= CHIP_TOKEN_BASE && code <= CHIP_TOKEN_END;
 }
-

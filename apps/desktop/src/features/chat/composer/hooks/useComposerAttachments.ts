@@ -173,6 +173,7 @@ export function useComposerAttachments({
       const sourceValue = readEditorValue(editor);
       const sourceSessionId = activeSessionId;
       const sourceDraftKey = draftKey;
+      const previousReferences = snapshotReferences(sourceSessionId ?? "");
       setPasting(true);
       try {
         const payload = files.length
@@ -218,7 +219,6 @@ export function useComposerAttachments({
           sourceValue.slice(0, selectionStart) +
           inserted +
           sourceValue.slice(selectionEnd);
-        const previousReferences = snapshotReferences(sourceSessionId ?? "");
         const nextReferences = [
           ...previousReferences.map((reference) =>
             createFileReference(reference.path, reference.name, sessionId!, reference),

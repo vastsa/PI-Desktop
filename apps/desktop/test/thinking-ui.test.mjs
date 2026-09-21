@@ -18,6 +18,7 @@ const composerModelPickerSource = await readComposerModule("ComposerModelPicker.
 const transcriptSource = await readTranscriptSource();
 const transcriptSharedSource = await readTranscriptModule("shared.tsx");
 const transcriptToolRowSource = await readTranscriptModule("ToolRow.tsx");
+const transcriptDisclosureSource = await readTranscriptModule("disclosure.tsx");
 const transcriptActivityGroupSource = await readTranscriptModule("ActivityGroup.tsx");
 const appSource = await readFile(
   new URL("../src/components/ChatSurface.tsx", import.meta.url),
@@ -108,8 +109,13 @@ test("conversation topbar keeps the title and actions free of a running indicato
   assert.doesNotMatch(topbarSource, /className="ct-project"/);
   assert.doesNotMatch(topbarSource, /className="ct-title-chevron"/);
   assert.match(topbarSource, /className="ct-title"/);
+  assert.doesNotMatch(topbarSource, /TOPBAR_TITLE_MAX_LENGTH|truncateTopbarTitle/);
   assert.doesNotMatch(topbarSource, /runningSessions|const isRunning|ct-running|role="status"/);
   assert.match(stylesSource, /\.conversation-topbar \.ct-title-wrap[\s\S]*?align-items: center/);
+  assert.match(
+    stylesSource,
+    /\.conversation-topbar \.ct-title[\s\S]*?overflow:\s*hidden[\s\S]*?text-overflow:\s*ellipsis[\s\S]*?white-space:\s*nowrap/,
+  );
   assert.match(
     stylesSource,
     /\.conversation-topbar \.ct-title[\s\S]*?font-size: var\(--text-base\)/,
@@ -232,12 +238,11 @@ test("expanded assistant activity rails collapse their disclosures", () => {
 });
 
 test("detailed mode opens the last tool while compact keeps payloads collapsed", () => {
-  assert.match(transcriptSource, /function useAutomaticDisclosure\(automaticOpen: boolean, revealRequest\?: number\)/);
-  assert.match(transcriptSource, /const userInteractedRef = useRef\(false\)/);
-  assert.match(transcriptSource, /useLayoutEffect\(\(\) => \{/);
-  assert.match(transcriptSource, /if \(userInteractedRef.current\) return/);
-  assert.match(transcriptSource, /const \{ open, toggle: toggleDisclosure, collapse: collapseDisclosure \}/);
-  assert.match(transcriptSource, /useAutomaticDisclosure\(live, revealRequest\)/);
+  assert.match(transcriptDisclosureSource, /export function useAutomaticDisclosure\(/);
+  assert.match(transcriptDisclosureSource, /revealRequest\?: number/);
+  assert.match(transcriptDisclosureSource, /const currentOpen = useRef\(open\)/);
+  assert.match(transcriptDisclosureSource, /const setManualOpen = useCallback/);
+  assert.match(transcriptSource, /useAutomaticDisclosure\(\s*hasSubagentTopology \? live : visibleItems\.length <= 1/);
   assert.match(
     transcriptSource,
     /<ThinkingRow[\s\S]*?autoOpen=\{live && itemIndex === items.length - 1\}/,
@@ -247,7 +252,7 @@ test("detailed mode opens the last tool while compact keeps payloads collapsed",
     /const autoOpenLatest =\s*!compact && isLast && itemIndex === items.length - 1/,
   );
   assert.match(transcriptSource, /<ToolRow[\s\S]*?autoOpen=\{autoOpenLatest\}/);
-  assert.match(transcriptToolRowSource, /const disclosure = useAutomaticDisclosure\(\s*autoOpen && !failed && status !== "denied",\s*\)/);
+  assert.match(transcriptToolRowSource, /const disclosure = useAutomaticDisclosure\(\s*autoOpen && !failed && status !== "denied",\s*revealRequest/);
   assert.match(transcriptSource, /onClick=\{toggleDisclosure\}/);
   assert.match(transcriptSource, /onCollapse=\{collapseDisclosure\}/);
   assert.match(transcriptSource, /onUserInteraction=\{claimDisclosure\}/);

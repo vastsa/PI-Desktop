@@ -241,4 +241,32 @@ describe("subagent model fallback over real transport", () => {
     expect(g.requests.every((request) => request.reasoning_effort === undefined)).toBe(true);
   });
 
+  it("skips a fallback whose window cannot hold the carried context (ADR 0299)", async () => {
+    const f = await fixture({ failureStatus: { primary: 413 } });
+    const base = f.provider("secondary");
+    const small: RuntimeProviderConfig = {
+      ...base,
+      modelConfig: {
+        ...genericModelConfig("secondary", base.baseUrl!),
+        contextWindow: 4_096,
+        maxTokens: 1_024,
+      },
+    };
+    const result = await f.run({
+      initialMessages: [{ role: "user", content: "z".repeat(12_000), timestamp: 1 }],
+      fallbackModels: [{ key: "secondary/secondary", provider: small }],
+    });
+    // The carried context (~3 000 tokens) never reaches the 2 048-token safe
+    // budget of the fallback, so the fallback is skipped without a request and
+    // the run reports the actionable overflow instead of the raw provider text.
+    expect(result.status).toBe("failed");
+    expect(f.requests.map((request) => request.model)).toEqual(["primary"]);
+    expect(result.error?.code).toBe("SUBAGENT_CONTEXT_OVERFLOW");
+    expect(result.error?.message).toContain("larger context window");
+    expect(result.modelFailures).toEqual([
+      expect.objectContaining({ model: "primary/primary", code: "CONTEXT_TOO_LARGE" }),
+      expect.objectContaining({ model: "secondary/secondary", code: "SUBAGENT_CONTEXT_OVERFLOW" }),
+    ]);
+  });
+
 });

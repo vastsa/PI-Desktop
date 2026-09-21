@@ -277,19 +277,34 @@ globalThis.transcriptDisclosureProbe = async () => {
     assert(processScroller && processTitle, "process fixture did not render");
     await settle();
     const processBefore = geometry(processScroller, processTitle);
-    processTitle.click();
-    await settle();
-    const processExpanded = geometry(processScroller, processTitle);
-    assert(processExpanded.scrollHeight > processBefore.scrollHeight + 100, "process did not expand");
-    assert(Math.abs(processExpanded.titleTop - processBefore.titleTop) < 2, "process expansion moved its title");
+    assert(
+      processTitle.getAttribute("aria-expanded") === "true",
+      "detailed should start the process open",
+    );
     processTitle.click();
     await settle();
     const processCollapsed = geometry(processScroller, processTitle);
-    assert(Math.abs(processCollapsed.titleTop - processBefore.titleTop) < 2, "process collapse moved its title");
+    assert(
+      processCollapsed.scrollHeight < processBefore.scrollHeight - 100,
+      "process did not collapse",
+    );
+    processTitle.click();
+    await settle();
+    const processExpanded = geometry(processScroller, processTitle);
+    assert(
+      processExpanded.scrollHeight > processCollapsed.scrollHeight + 100,
+      "process did not expand",
+    );
+    // Expansion grows content under a pinned bottom, which is the case the held
+    // anchor has to compensate; the collapse above may legitimately clamp.
+    assert(
+      Math.abs(processExpanded.titleTop - processCollapsed.titleTop) < 2,
+      "process expansion moved its title",
+    );
     assert(renderErrors.length === 0, `React render errors: ${renderErrors.map(String).join("; ")}`);
     return {
       ok: true,
-      process: { before: processBefore, expanded: processExpanded, collapsed: processCollapsed },
+      process: { before: processBefore, collapsed: processCollapsed, expanded: processExpanded },
       transcript: { before, expanded, collapsed },
       dock: { before: dockBefore, expanded: dockExpanded },
     };

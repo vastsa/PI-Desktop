@@ -5,8 +5,9 @@ import { readTranscriptSource } from "./helpers/source-contracts.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [transcript, followScroll, anchorControl, scrollInput] = await Promise.all([
+const [transcript, disclosure, followScroll, anchorControl, scrollInput] = await Promise.all([
   readTranscriptSource(),
+  read("../src/features/chat/transcript/disclosure.tsx"),
   read("../src/hooks/use-follow-scroll.ts"),
   read("../src/hooks/use-disclosure-anchor.ts"),
   read("../src/lib/scroll-input.ts"),
@@ -14,31 +15,24 @@ const [transcript, followScroll, anchorControl, scrollInput] = await Promise.all
 
 test("a manual disclosure hands over its title before the state changes", () => {
   // The scroller has to measure the title while the layout still matches what
-  // the reader clicked, so the notification comes before `setOpen` (#324).
-  assert.match(
-    transcript,
-    /const notifyAnchor = useDisclosureAnchorNotifier\(\);\s*const titleRef = useRef<HTMLButtonElement \| null>\(null\);/,
-  );
-  assert.match(
-    transcript,
-    /const toggle = useCallback\(\(\) => \{\s*claim\(\);\s*notifyAnchor\?\.\(titleRef\.current\);\s*setOpen\(\(value\) => !value\);/,
-  );
-  assert.match(
-    transcript,
-    /const collapse = useCallback\(\(\) => \{\s*claim\(\);\s*notifyAnchor\?\.\(titleRef\.current\);\s*setOpen\(false\);/,
-  );
-  assert.match(transcript, /return \{ open, toggle, collapse, claim, titleRef \};/);
+  // the reader clicked, so the notification comes before the choice changes (#324).
+  assert.match(disclosure, /const notifyAnchor = useDisclosureAnchorNotifier\(\);/);
+  assert.match(disclosure, /const setManualOpen = useCallback\(\(next: boolean\) => \{/);
+  assert.match(disclosure, /notifyAnchor\?\.\(titleRef\.current\);/);
+  assert.match(disclosure, /choices\.set\(key, \{ \.\.\.choices\.get\(key\), open: next \}\)/);
+  assert.match(disclosure, /const toggle = useCallback\(\(\) => setManualOpen\(!currentOpen\.current\)/);
+  assert.match(disclosure, /const collapse = useCallback\(\(\) => setManualOpen\(false\)/);
 });
 
-test("the automatic open/close never claims a reading position", () => {
-  // Only a user click holds the viewport. The running/settled transition keeps
-  // going through `setOpen` directly, so the automatic rules are unchanged.
-  const automatic = transcript.match(
-    /useLayoutEffect\(\(\) => \{\s*if \(userInteractedRef\.current\) return;([\s\S]*?)\n  \}, \[automaticOpen\]\);/,
-  )?.[1];
-  assert.ok(automatic, "the automatic disclosure effect is missing");
-  assert.doesNotMatch(automatic, /notifyAnchor/);
-  assert.match(automatic, /setOpen\(automaticOpen\);/);
+test("automatic disclosure does not claim a reading position", () => {
+  // Automatic reveal/collapse may claim the parent hierarchy, but never calls
+  // the scroll anchor notifier reserved for direct user interaction.
+  assert.match(disclosure, /if \(previousOpen\.current && !open && !choice && ownsReadingPosition/);
+  const revealEffect = disclosure.match(
+    /useLayoutEffect\(\(\) => \{\s*if \(revealRequest === undefined[\s\S]*?\n  \}, \[choices, key, parent\.claim, revealRequest\]\);/,
+  )?.[0];
+  assert.ok(revealEffect, "the automatic reveal effect is missing");
+  assert.doesNotMatch(revealEffect, /notifyAnchor/);
 });
 
 test("every manual title hands over the element the reader clicked", () => {

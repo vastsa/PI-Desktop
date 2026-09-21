@@ -282,7 +282,7 @@ async function startHttpServer(t) {
         return;
       }
       if (message.method === "notifications/initialized") {
-        res.writeHead(202).end();
+        res.writeHead(202, { "content-type": "text/plain" }).end("Accepted");
         return;
       }
       if (message.method === "tools/list") {

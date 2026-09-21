@@ -19,6 +19,12 @@ Isolate plugin data from the host's core data to avoid cross-contamination and u
  └── ...
 ```
 
+Bundled marketplace fallback packages use the owning plugin manager's data
+root (`plugins/market/packages`), just like its catalog and download cache.
+Catalog construction never re-reads the process-wide `PI_DESKTOP_DATA_DIR`;
+independent host instances must not share package paths through that mutable
+default. Package size and checksum validation remain mandatory.
+
 ## 3. registry.json (logical model)
 
 ```ts

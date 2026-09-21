@@ -4,7 +4,7 @@
  *
  * The default picker lists each configured model, while provider rows use
  * `models[0]` as the provider's quick default. Editing the default provider
- * re-syncs `settings.defaultModelId` when that first model changes.
+ * preserves `settings.defaultModelId` while that model remains configured.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -159,8 +159,7 @@ export function ModelConfigPage() {
   };
 
   /**
-   * A saved provider that is also the global default may have changed its first
-   * model, which is what `settings.defaultModelId` points at.
+   * Preserve the selected app default unless it was removed from the provider.
    */
   const afterSaved = async (saved: ProviderPublic, models: ModelBinding[]) => {
     const firstModelId = models[0]?.id;
@@ -175,7 +174,10 @@ export function ModelConfigPage() {
         });
         showToast(t("settings.providerSaved"), { variant: "success" });
       } else {
-        if (settings.defaultProviderId === saved.id && firstModelId) {
+        if (
+          settings.defaultProviderId === saved.id && firstModelId &&
+          !models.some((model) => modelIdsMatch(model.id, settings.defaultModelId ?? ""))
+        ) {
           await api.setSettings({ ...settings, defaultModelId: firstModelId });
         }
         showToast(t("settings.providerUpdated"), { variant: "success" });

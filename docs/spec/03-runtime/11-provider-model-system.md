@@ -192,7 +192,7 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    preserving all raw records in the file for future surfaces. Image input is
    sent as a transient image content block only when the model accepts image
    input. PDF capability is surfaced and retained in model metadata; because
-   pi-ai 0.85 has no native PDF content block, PDF attachments remain bounded
+   pi-ai 0.86.1 has no native PDF content block, PDF attachments remain bounded
    file references rather than being incorrectly encoded as images.
 7. User-edited `ModelBinding` values remain explicit provider configuration:
    they control selected request limits, enabled thinking levels, the default
@@ -219,7 +219,7 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    self-hosted endpoint routinely accepts input its catalog entry omits.
    Enabling image input turns on the transient image content block; enabling PDF
    input records the capability but does not change the encoding, since pi-ai
-   0.85 has no PDF content block and PDFs stay bounded file references.
+   0.86.1 has no PDF content block and PDFs stay bounded file references.
 10. The settings checkboxes show the effective answer against the published
     baseline, and setting one back to the published value stores "follow the
     catalog" rather than an equal-valued override. Agreeing with models.dev is
@@ -437,7 +437,7 @@ same vendor key.
 
 ### Anthropic token endpoint rate limits
 
-The pinned pi-ai 0.85.1 patch gives Anthropic authorization-code exchange and
+The pinned pi-ai 0.86.1 patch gives Anthropic authorization-code exchange and
 refresh a shared, bounded token-request policy: retry only an explicit HTTP
 429, at most three total requests. Wait at least 1 s then 2 s, or longer when
 `Retry-After` gives delta seconds or an HTTP date. A server delay beyond the
@@ -677,7 +677,7 @@ response, it stops consuming the stream instead of awaiting the server's
 TCP FIN. Upstream pi-ai keeps iterating until the server closes the
 connection, which hangs the turn behind reverse proxies that hold the idle
 connection open. Until the fix ships upstream, `patches/` carries a pnpm
-patch on `@earendil-works/pi-ai@0.85.1` that breaks the event loop on the
+patch on `@earendil-works/pi-ai@0.86.1` that breaks the event loop on the
 terminal event (the OpenAI SDK aborts the underlying request when the
 consumer stops iterating). Drop the patch once a pi-ai release includes the
 fix.

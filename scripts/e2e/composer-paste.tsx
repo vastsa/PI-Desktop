@@ -1,3 +1,4 @@
+import { serializeInlineComposerFileReferences } from "@pi-desktop/shared";
 import { useComposerSubmit } from "../../apps/desktop/src/features/chat/composer/hooks/useComposerSubmit";
 import { verifyComposerSubmission } from "./composer-submission";
 import { ComposerImageAttachments } from "../../apps/desktop/src/features/chat/composer/ComposerImageAttachments";
@@ -45,11 +46,11 @@ let controller: ComposerDraftController;
 let pastePending: Promise<unknown> | undefined;
 let submitted = 0;
 let rejectSubmission: () => Promise<void>;
-function Fixture({ sessionId, t }: { sessionId: string; t: TFunction }) {
+function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunction; workspacePath: string }) {
   const draft = useComposerDraft({
     variant: "docked",
     activeSessionId: sessionId,
-    workspacePath: "",
+    workspacePath,
     sessions,
     composerPrefill: null,
     clearComposerPrefill: noop,
@@ -120,10 +121,10 @@ globalThis.composerPasteProbe = async () => {
     onUncaughtError: (error) => errors.push(error),
   });
   let key = 0;
-  const render = (sessionId = "paste-a") => {
+  const render = (sessionId = "paste-a", workspacePath = "") => {
     useAppStore.setState({ activeSessionId: sessionId });
     flushSync(() =>
-      root.render(<I18nextProvider i18n={i18n}><Fixture key={key} sessionId={sessionId} t={i18n.t} /></I18nextProvider>),
+      root.render(<I18nextProvider i18n={i18n}><Fixture key={key} sessionId={sessionId} t={i18n.t} workspacePath={workspacePath} /></I18nextProvider>),
     );
     assert(
       errors.length === 0,
@@ -190,6 +191,62 @@ globalThis.composerPasteProbe = async () => {
     selection.addRange(range);
   };
   try {
+    // Settings replaces ChatSurface, then remounts the composer in the same
+    // workspace. Exercise the real draft hook and DOM across that lifecycle.
+    render("paste-a", "/project-a");
+    const referenceDraft = "Check \uE001 and \uE002";
+    const references = [
+      createFileReference("src/main.ts", "main.ts", "paste-a", { token: "\uE001" }),
+      createFileReference("/scratch/paste-a/notes.txt", "notes.txt", "paste-a", { token: "\uE002" }),
+    ];
+    flushSync(() => controller.applyEditorDraft(referenceDraft, references, referenceDraft.length));
+    await new Promise(requestAnimationFrame);
+    flushSync(() => root.render(null));
+    render("paste-a", "/project-a");
+    await new Promise(requestAnimationFrame);
+    assert(readEditorValue(controller.ref.current!) === referenceDraft,
+      "Settings round-trip lost a workspace file reference from the draft");
+    assert(controller.fileReferences.length === 2 && controller.ref.current!.textContent!.includes("main.ts"),
+      "Settings round-trip must restore both workspace and scratch chips");
+    flushSync(() => root.render(null));
+    render("paste-a", "/project-b");
+    await new Promise(requestAnimationFrame);
+    assert(readEditorValue(controller.ref.current!) === "Check  and \uE002",
+      "changing workspace while the composer is unmounted must remove the previous workspace's chip");
+    assert(controller.fileReferences.length === 1 && controller.fileReferences[0].path === references[1].path,
+      "changing workspace must preserve scratch references");
+
+    // Keep the source attachment snapshot when a paste finishes in another session.
+    await reset("keep \uE010 ", 7, 7);
+    const originalReference = createFileReference("/scratch/paste-a/original.txt", "original.txt", "paste-a", { token: "\uE010", kind: "file" });
+    flushSync(() => controller.applyEditorDraft("keep \uE010 ", [originalReference], 7));
+    await new Promise(requestAnimationFrame);
+    const originalPasteFiles = api.pasteFiles;
+    let releasePaste!: () => void;
+    const responseGate = new Promise<void>((resolve) => { releasePaste = resolve; });
+    let started = false;
+    api.pasteFiles = async () => {
+      started = true;
+      await responseGate;
+      return { files: [{ path: "/scratch/paste-a/new.txt", name: "new.txt", kind: "file", mimeType: "text/plain" }] };
+    };
+    try {
+      const pendingPaste = dispatchPaste(controller.ref.current!, "", [new File(["new"], "new.txt", {type: "text/plain"})]);
+      while (!started) await new Promise(requestAnimationFrame);
+      render("paste-b");
+      await new Promise(requestAnimationFrame);
+      releasePaste();
+      await pendingPaste;
+      assert(controller.value === "", "pending paste changed the destination draft");
+      render("paste-a");
+      await new Promise(requestAnimationFrame);
+      const names = controller.fileReferences.map((r) => r.name);
+      assert(names.includes("original.txt") && names.includes("new.txt"),
+        "PENDING_PASTE_SESSION_SWITCH lost original attachment: " + JSON.stringify({ names, text: readEditorValue(controller.ref.current!), visible: controller.ref.current!.textContent }));
+    } finally {
+      releasePaste();
+      api.pasteFiles = originalPasteFiles;
+    }
     const nativeFiles = Array.from(
       (document.getElementById("native-files") as HTMLInputElement).files!,
     );
@@ -648,12 +705,73 @@ globalThis.composerPasteProbe = async () => {
     await new Promise(requestAnimationFrame);
     assert(readEditorValue(controller.ref.current!) === "retry draft" && controller.fileReferences[0]?.path === imageReference.path,
       "fast rejection before React commits must restore the text and attachments");
+    // Native undo must restore reference metadata as well as the visible chip.
+    await reset("inspect \uE050 please", 8, 9);
+    const undoReference = createFileReference("src/main.ts", "main.ts", "paste-a", { token: "\uE050" });
+    flushSync(() => controller.applyEditorDraft("inspect \uE050 please", [undoReference], 9));
+    await new Promise(requestAnimationFrame);
+    const undoEditor = controller.ref.current!;
+    undoEditor.focus();
+    select(undoEditor, 8, 9);
+    assert(document.execCommand("delete"), "native chip deletion unavailable");
+    await new Promise(requestAnimationFrame);
+    assert(document.execCommand("undo"), "native chip undo unavailable");
+    await new Promise(requestAnimationFrame);
+    assert(controller.fileReferences.some(r => r.path === "src/main.ts"), "Undo restored the chip without its file reference metadata");
+    assert(serializeInlineComposerFileReferences(readEditorValue(undoEditor), controller.activeFileReferences) === "inspect @src/main.ts please",
+      "undo must restore the path used by submission");
+    assert(document.execCommand("redo"), "native chip redo unavailable");
+    await new Promise(requestAnimationFrame);
+    assert(controller.fileReferences.length === 0, "redo retained a deleted attachment");
+    assert(document.execCommand("undo"), "second native chip undo unavailable");
+    await new Promise(requestAnimationFrame);
+    assert(controller.fileReferences.length === 1, "repeated undo lost the attachment");
+    render("paste-b");
+    await new Promise(requestAnimationFrame);
+    assert(controller.fileReferences.length === 0, "undo metadata leaked into another chat");
+    render("paste-a");
+    await new Promise(requestAnimationFrame);
+    assert(controller.fileReferences.some(r => r.path === "src/main.ts"),
+      "the restored reference did not survive a chat round-trip");
+    const restoredEditor = controller.ref.current!;
+    restoredEditor.focus();
+    select(restoredEditor, 8, 9);
+    assert(document.execCommand("delete"), "second chip deletion unavailable");
+    await new Promise(requestAnimationFrame);
+    assert(document.execCommand("insertText", false, "\uE050"), "private-use text insertion unavailable");
+    await new Promise(requestAnimationFrame);
+    assert(controller.fileReferences.length === 0,
+      "typing a removed chip's token must not resurrect an attachment");
+
+    // A batched away-and-back project change must invalidate deleted history,
+    // too: native undo must never attach the old relative path to a new context.
+    const priorWorkspace = useAppStore.getState().workspace;
+    await reset("inspect \uE050 please", 8, 9);
+    flushSync(() => controller.applyEditorDraft("inspect \uE050 please", [undoReference], 9));
+    await new Promise(requestAnimationFrame);
+    const workspaceUndoEditor = controller.ref.current!;
+    workspaceUndoEditor.focus();
+    select(workspaceUndoEditor, 8, 9);
+    assert(document.execCommand("delete"), "workspace undo deletion unavailable");
+    await new Promise(requestAnimationFrame);
+    flushSync(() => {
+      useAppStore.setState({ workspace: { path: "/other-project", name: "Other" } });
+      useAppStore.setState({ workspace: priorWorkspace });
+    });
+    assert(document.execCommand("undo"), "workspace native undo unavailable");
+    await new Promise(requestAnimationFrame);
+    assert(controller.fileReferences.length === 0,
+      "undo resurrected a reference after a batched workspace round-trip");
+    flushSync(() => root.render(null));
+    resetComposerDraftCache();
+
     await verifyComposerSubmission(imageReference.path, i18n);
     return {
       ok: true,
       fullComposerSubmissionAndOverflow: true,
       mixedShortText: true,
       multilineAndUndoRedo: true,
+      fileReferenceUndoRedo: true,
       crossBreakAndChipSelection: true,
       mixedLongText: true,
       imageOnly: true,
@@ -665,6 +783,8 @@ globalThis.composerPasteProbe = async () => {
       imageZoomFocusAndRecovery: true,
       nativeMultipleFiles: true,
       selectionAndSessionDrafts: true,
+      workspaceReferencesAcrossRemount: true,
+      pendingPasteAcrossSessionSwitch: true,
     };
   } finally {
     flushSync(() => root.unmount());

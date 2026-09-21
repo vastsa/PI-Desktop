@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Context, Model } from "@earendil-works/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import { stream } from "@earendil-works/pi-ai/api/openai-responses";
 
 const model: Model<"openai-responses"> = {
@@ -15,8 +15,11 @@ const model: Model<"openai-responses"> = {
   maxTokens: 4096,
 };
 
-const context: Context = {
-  messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
+const context = {
+  messages: [
+    { role: "system", content: "", timestamp: Date.now() },
+    { role: "user", content: "hi", timestamp: Date.now() },
+  ],
 };
 
 const completedEvent = {
@@ -80,7 +83,7 @@ describe("OpenAI Responses stream termination (issue #130)", () => {
         headers: { "content-type": "text/event-stream" },
       });
 
-    const events = await stream(model, context, { apiKey: "sk-test", fetch: fetchImpl as any });
+    const events = await stream(model, context as never, { apiKey: "sk-test", fetch: fetchImpl as any });
     const seen: string[] = [];
     // Reading to completion must not hang: with the fix the stream consumer
     // stops after the terminal event, so `result()` resolves promptly.

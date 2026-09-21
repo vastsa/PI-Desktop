@@ -55,6 +55,33 @@ fn install_market_package_and_check_update_metadata() {
 }
 
 #[test]
+fn default_catalog_materializes_packages_under_manager_data_dir() {
+    with_local_market(|| {
+        let manager_dir = tempdir().unwrap();
+        let env_dir = tempdir().unwrap();
+        unsafe {
+            std::env::set_var("PI_DESKTOP_DATA_DIR", env_dir.path());
+        }
+
+        let _manager = PluginManager::new(manager_dir.path(), MarketChannel::Official, None);
+        let expected = bundled_package_bytes("demo.workspace-notes", "0.1.0").unwrap();
+        let package = manager_dir
+            .path()
+            .join("plugins/market/packages/demo.workspace-notes-0.1.0.piplug");
+        let env_package = env_dir
+            .path()
+            .join("plugins/market/packages/demo.workspace-notes-0.1.0.piplug");
+
+        assert_eq!(fs::read(package).unwrap(), expected);
+        assert!(!env_package.exists());
+
+        unsafe {
+            std::env::remove_var("PI_DESKTOP_DATA_DIR");
+        }
+    });
+}
+
+#[test]
 fn curl_diagnostic_decoding_preserves_utf8() {
     let diagnostic = "curl: (35) TLS handshake failed\n";
     assert_eq!(decode_curl_output(diagnostic.as_bytes()), diagnostic);
@@ -81,7 +108,7 @@ fn marketplace_install_refreshes_catalog_before_checksum_verification() {
         let package_path = dir.path().join("fresh-demo.hello.piplug");
         fs::write(&package_path, &package_bytes).unwrap();
 
-        let mut remote = built_in_catalog();
+        let mut remote = built_in_catalog_at(dir.path());
         let remote_version = &mut remote.plugins[0].versions[0];
         remote_version.url = format!("file://{}", package_path.to_string_lossy());
         remote_version.shasum = sha256_hex(&package_bytes);
@@ -261,7 +288,7 @@ fn announced_version_without_a_package_is_visible_but_not_installable() {
             .unwrap();
 
         // The publisher announced 0.9.0 but has not uploaded its package.
-        let mut catalog = built_in_catalog();
+        let mut catalog = built_in_catalog_at(dir.path());
         let announced = MarketVersion {
             version: "0.9.0".into(),
             published_at: "2026-08-13T00:00:00Z".into(),
@@ -317,7 +344,7 @@ fn silent_update_check_uses_cached_catalog_without_refreshing_remote() {
         mgr.install_from_market("demo.hello", None, true, false, None)
             .unwrap();
 
-        let mut cached = built_in_catalog();
+        let mut cached = built_in_catalog_at(dir.path());
         cached.plugins[0].versions[0].version = "0.3.0".into();
         fs::write(
             mgr.catalog_path(),
@@ -609,7 +636,7 @@ fn switching_source_ignores_the_previous_providers_snapshot() {
 
         // A snapshot carrying a plugin the built-in catalog does not have,
         // written while a different provider was selected.
-        let mut foreign = built_in_catalog();
+        let mut foreign = built_in_catalog_at(dir.path());
         foreign.provider_id = "mirror".into();
         foreign.plugins.truncate(1);
         foreign.plugins[0].id = "mirror.only".into();
@@ -1408,12 +1435,10 @@ fn a_project_scope_survives_a_reload_and_a_reinstall() {
 
 /// Build a manager whose catalog is already on disk.
 ///
-/// `PluginManager::new` falls back to `built_in_catalog` when no catalog
-/// exists, and that helper reads the process-wide `PI_DESKTOP_DATA_DIR` and
-/// materializes packages under it. A test that triggers the fallback
-/// therefore writes into whichever directory another test happens to have
-/// set, which is how this suite becomes order-dependent. Pre-writing the
-/// catalog keeps these tests off that path entirely.
+/// `PluginManager::new` falls back to a built-in catalog when no catalog exists
+/// and materializes its packages under the manager's own data directory. Tests
+/// that build fixture catalogs use the same helper, so pre-writing this catalog
+/// keeps those tests off the fallback materialization path entirely.
 fn offline_manager(dir: &Path) -> PluginManager {
     let catalog_path = dir.join("plugins/market/catalog.json");
     fs::create_dir_all(catalog_path.parent().unwrap()).unwrap();
@@ -1664,10 +1689,8 @@ fn verified_trust_is_honoured_only_from_the_official_source() {
     let dir = tempdir().unwrap();
 
     // A catalog already on disk keeps manager construction offline. It is
-    // written literally rather than from `built_in_catalog`, which reads
-    // the process-wide PI_DESKTOP_DATA_DIR: borrowing another test's data
-    // directory is exactly the kind of shared state that makes a suite
-    // flaky.
+    // written literally rather than from the built-in catalog: keeping this
+    // test's snapshot self-contained avoids exercising package materialization.
     // Safety: test-only process env mutation, serialized by the market lock.
     unsafe {
         std::env::set_var("PI_DESKTOP_PLUGIN_MARKET_URL", OFFICIAL_CHANNEL_CATALOG_URL);
@@ -2088,10 +2111,21 @@ fn an_install_reports_progress_and_honours_a_cancel() {
 
     with_local_market(|| {
         let dir = tempdir().unwrap();
+        // The manager's directory owns its packages, even when another host
+        // or test changes the process-wide default directory.
+        let other = tempdir().unwrap();
         unsafe {
-            std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
+            std::env::set_var("PI_DESKTOP_DATA_DIR", other.path());
         }
         let mut mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
+        let catalog: MarketCatalogFile =
+            serde_json::from_str(&fs::read_to_string(mgr.catalog_path()).unwrap()).unwrap();
+        for plugin in &catalog.plugins {
+            for version in &plugin.versions {
+                let local = version.url.strip_prefix("file://").unwrap();
+                assert!(Path::new(local).starts_with(dir.path()));
+            }
+        }
 
         let mut log = InstallLog::default();
         let installed = mgr

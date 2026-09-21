@@ -275,6 +275,17 @@ export function WorkPanel({
     },
     [closeTab, tabs],
   );
+  const closeSubagentPanelAndFocus = useCallback(() => {
+    const delegationId = subagentPanel?.delegationId;
+    onCloseSubagentPanel?.();
+    if (!delegationId) return;
+    requestAnimationFrame(() => {
+      const trigger = [...document.querySelectorAll<HTMLElement>("[data-subagent-trigger]")].find(
+        (candidate) => candidate.dataset.subagentTrigger === delegationId,
+      );
+      trigger?.focus({ preventScroll: true });
+    });
+  }, [onCloseSubagentPanel, subagentPanel?.delegationId]);
 
   const onTabKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLButtonElement>, tabId: string) => {
@@ -564,7 +575,7 @@ export function WorkPanel({
                 className="work-panel-subagent-back"
                 tooltip={t("panel.subagentClose")}
                 ariaLabel={t("panel.subagentClose")}
-                onClick={onCloseSubagentPanel}
+                onClick={closeSubagentPanelAndFocus}
               >
                 <IconChevronLeft size={15} />
               </TooltipButton>

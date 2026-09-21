@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
@@ -270,6 +270,58 @@ describe("completeOneShot OpenCode headers", () => {
     );
     expect(captured?.sessionId).toBe("session-9");
     expect(captured?.headers?.[OPENCODE_SESSION_HEADER]).toBeUndefined();
+  });
+
+  it("keeps a certificate rejection terminal in one-shot completions", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("certificate rejected"), {
+          code: "SELF_SIGNED_CERT_IN_CHAIN",
+        }),
+      }),
+    );
+    let attempts = 0;
+    try {
+      await expect(
+        completeOneShot(
+          provider,
+          { systemPrompt: "s", messages: [] },
+          "off",
+          {
+            stream: (_model, _context, options) => {
+              attempts += 1;
+              const stream = createAssistantMessageEventStream();
+              const failed = {
+                ...assistantOk(),
+                content: [],
+                stopReason: "error" as const,
+                errorMessage: "fetch failed",
+              };
+              void options?.fetch?.("https://provider.invalid", {}).then(
+                () => {
+                  stream.push({ type: "error", reason: "error", error: failed });
+                  stream.end(failed);
+                },
+                () => {
+                  stream.push({ type: "error", reason: "error", error: failed });
+                  stream.end(failed);
+                },
+              );
+              return stream;
+            },
+          },
+        ),
+      ).rejects.toMatchObject({
+        errorCode: "NETWORK_ERROR",
+        data: {
+          networkCode: "SELF_SIGNED_CERT_IN_CHAIN",
+          retriable: false,
+        },
+      });
+      expect(attempts).toBe(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
 

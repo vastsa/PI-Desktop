@@ -1,7 +1,7 @@
 use super::*;
 
 pub mod catalog;
-pub(crate) use catalog::{built_in_catalog, bundled_package_bytes};
+pub(crate) use catalog::{built_in_catalog_at, bundled_package_bytes};
 
 /// Official channel: the plugin center.
 ///
@@ -178,7 +178,7 @@ impl PluginManager {
                 if let Some(parent) = path.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                let catalog = built_in_catalog();
+                let catalog = built_in_catalog_at(&self.data_dir);
                 fs::write(&path, serde_json::to_string_pretty(&catalog)?)?;
                 self.materialize_local_package_urls(&catalog)?;
                 let _ = remote_err;
@@ -367,7 +367,7 @@ impl PluginManager {
             }
         }
 
-        let catalog = built_in_catalog();
+        let catalog = built_in_catalog_at(&self.data_dir);
         self.materialize_local_package_urls(&catalog)?;
         Ok(catalog)
     }

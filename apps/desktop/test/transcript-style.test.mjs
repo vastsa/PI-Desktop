@@ -56,8 +56,9 @@ test("tool rows render structured blocks instead of dumping JSON", async () => {
   assert.doesNotMatch(transcriptSource, /getToolSections|hasToolSections/);
   assert.doesNotMatch(permissionSource, /JSON\.stringify|formatToolValue/);
   assert.match(transcriptSource, /buildToolPresentation\(message, \{\n\s+hideSummaryArg: true,/);
-  // Blocks stay behind the open guard so streaming ticks stay cheap.
-  assert.match(transcriptSource, /open && hasDetails\s*\?\s*buildToolPresentation/);
+  // Formatting remains lazy and the cached blocks are read only while visible.
+  assert.match(transcriptSource, /if \(variant !== "topology" && open && hasDetails && disclosure\.parentVisible/);
+  assert.match(transcriptSource, /const blocks = variant !== "topology" && open && hasDetails \? presentation\.current\?\.blocks : null/);
   assert.match(transcriptSource, /<ToolChips chips=\{chips\} \/>/);
   assert.match(transcriptSource, /<ToolDetailBlocks blocks=\{blocks\} plain=\{runHead\} \/>/);
   assert.match(permissionSource, /<ToolDetailBlocks blocks=\{argBlocks\} \/>/);
@@ -119,6 +120,50 @@ test("tool details do not add a second visual indent", () => {
   // Thinking and topology have separate visual hierarchies and keep their
   // dedicated layout rules rather than inheriting the flat tool detail rule.
   assert.match(stylesSource, /\.subagent-topology-node > \.tool-row-body,[\s\S]*?margin-left:\s*38px;/);
+});
+
+/*
+ * The width regression this guards: a content-sized `inline-flex` disclosure
+ * header stopped at its own label, so a tool call never used the conversation
+ * width — it stayed narrower than the prose, ignored the dragged band width,
+ * and let a long label overrun the chip. The header row now claims the band at
+ * every level, the label ellipsizes, and the caret trails the row.
+ */
+test("tool-call disclosure headers span the conversation band", () => {
+  const header = stylesSource.match(/\n\.tool-activity-header \{([^}]*)\}/)?.[1];
+  assert.ok(header);
+  assert.match(header, /display:\s*flex;/);
+  assert.match(header, /width:\s*100%;/);
+  assert.match(header, /min-width:\s*0;/);
+  // A chip default (content width) or a max-width cap would freeze the row.
+  assert.doesNotMatch(header, /inline-flex|max-width/);
+
+  const label = stylesSource.match(/\n\.tool-activity-label \{([^}]*)\}/)?.[1];
+  assert.ok(label);
+  assert.match(label, /text-overflow:\s*ellipsis;/);
+  assert.match(label, /min-width:\s*0;/);
+  assert.match(label, /white-space:\s*nowrap;/);
+
+  const caret = stylesSource.match(/\n\.tool-activity-caret \{([^}]*)\}/)?.[1];
+  assert.ok(caret);
+  assert.match(caret, /margin-inline-start:\s*auto;/);
+
+  // No level keeps its own width or label override: every disclosure header
+  // resolves through the single base row.
+  assert.doesNotMatch(
+    stylesSource,
+    /\.(process-activity-group|turn-process) > \.tool-activity-header[^{]*\{[^}]*width:/,
+  );
+  assert.doesNotMatch(
+    stylesSource,
+    /\.tool-activity-group\.has-subagents \.tool-activity-header \{[^}]*width:/,
+  );
+
+  // A tool row itself owns the column so no parent display mode can shrink it.
+  const row = stylesSource.match(/\n\.tool-row \{([^}]*)\}/)?.[1];
+  assert.ok(row);
+  assert.match(row, /width:\s*100%;/);
+  assert.match(row, /min-width:\s*0;/);
 });
 
 test("assistant turns stay transparent full-width prose", () => {

@@ -692,6 +692,15 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             return Err(rpc_err(1002, message, "INVALID_PARAMS"));
         }
     }
+    if let Some(infinite_retry) = object.get("infiniteProviderRetry") {
+        if !infinite_retry.is_boolean() {
+            return Err(rpc_err(
+                1002,
+                "infiniteProviderRetry must be a boolean",
+                "INVALID_PARAMS",
+            ));
+        }
+    }
     if let Some(threshold_value) = object.get("largePasteThreshold") {
         let Some(threshold) = threshold_value.as_i64() else {
             return Err(rpc_err(
@@ -6044,6 +6053,29 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(updated["largePasteThreshold"], 801);
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "infiniteProviderRetry": true }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let retry_settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(retry_settings["infiniteProviderRetry"], true);
+
+        let invalid_retry = handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "infiniteProviderRetry": "yes" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(invalid_retry.data.unwrap()["errorCode"], "INVALID_PARAMS");
 
         let invalid_threshold = handle_request(
             state.clone(),

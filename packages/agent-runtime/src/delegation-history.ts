@@ -21,11 +21,13 @@
  * and api/replay details depend on the binding.
  */
 
+import { estimateTokens } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
   Message,
   Model,
   Api,
+  ToolCall,
   ToolResultMessage,
   UserMessage,
 } from "@earendil-works/pi-ai";
@@ -35,7 +37,8 @@ import {
   normalizeSubagentName,
   type UiMessage,
 } from "@pi-desktop/shared";
-import { isRecord, timestampMs, usageToPi } from "./agent-messages.js";
+import { isRecord, timestampMs, toJsonObject, toJsonValue, usageToPi } from "./agent-messages.js";
+import type { ContextBudgetLimits } from "./context-budget.js";
 import {
   apiBindingForProviderModel,
   type RuntimeProviderConfig,
@@ -292,7 +295,7 @@ export function chainRowsToMessages(
         type: "toolCall",
         id: row.toolCallId,
         name: row.toolName,
-        arguments: isRecord(row.toolArgs) ? row.toolArgs : {},
+        arguments: toJsonObject(row.toolArgs),
       });
       toolCarrier.stopReason = "toolUse";
       messages.push(toolResultFromUi(row, timestamp));
@@ -307,12 +310,20 @@ export function chainRowsToMessages(
   );
 }
 
-/** Seed a resumed run: original task as the first user turn, then history. */
+/**
+ * Seed a resumed run: original task as the first user turn, then history.
+ *
+ * The seed is truncated against the delegate's budget (ADR 0299 §7) so a
+ * resumed run's first request fits its own window instead of overflowing on
+ * arrival. Truncation drops the oldest tool results first and never splits a
+ * call from its result; the task brief itself is always kept.
+ */
 export function seedDelegateMessages(options: {
   originalTask: string;
   rows: readonly UiMessage[];
   provider: RuntimeProviderConfig;
   model: Model<Api>;
+  budget: ContextBudgetLimits;
 }): Message[] {
   const history = chainRowsToMessages(options.rows, options.provider, options.model);
   const first: UserMessage = {
@@ -330,7 +341,83 @@ export function seedDelegateMessages(options: {
         message.content[0].text === options.originalTask
       ),
   );
-  return [first, ...rest];
+  return truncateSeededMessages(
+    [first, ...rest],
+    options.budget.hardLimit,
+  );
+}
+
+/**
+ * Bring a seeded chain under the delegate's hard limit (ADR 0299 §7).
+ *
+ * `messages[0]` is the original task brief and is never dropped. The oldest
+ * tool results go first: they are the bulkiest entries, and the delegate can
+ * re-read a file but cannot reconstruct its most recent turns. A result always
+ * leaves together with its call, and a carrier left with neither text nor
+ * calls is removed too, so the replay never holds an orphaned `toolUse` /
+ * `toolResult` pair (providers reject those). If stripping every pair is not
+ * enough, whole messages go oldest-first until only the brief is left; a brief
+ * that alone crosses the limit is kept as is, because a resume cannot start
+ * with less than its task.
+ *
+ * Sizes are measured with the per-message heuristic rather than
+ * `estimateContextTokens`: that estimator anchors on the last assistant's
+ * recorded usage, which still counts the history this truncation drops, so the
+ * anchor could never fall below the limit no matter how much is removed.
+ */
+function truncateSeededMessages(
+  messages: Message[],
+  hardLimit: number,
+): Message[] {
+  const kept = [...messages];
+  const tokenCounts = kept.map((message) => estimateTokens(message));
+  let total = tokenCounts.reduce((sum, count) => sum + count, 0);
+  if (total < hardLimit) return kept;
+
+  // Phase 1: strip tool call/result pairs, oldest first.
+  for (let i = 1; i < kept.length && total >= hardLimit; ) {
+    const message = kept[i];
+    if (message.role !== "assistant") {
+      i += 1;
+      continue;
+    }
+    const callIds = new Set(
+      message.content
+        .filter((block): block is ToolCall => block.type === "toolCall")
+        .map((block) => block.id),
+    );
+    if (callIds.size === 0) {
+      i += 1;
+      continue;
+    }
+    const content = message.content.filter((block) => block.type !== "toolCall");
+    // A carrier whose calls are gone must not keep claiming "toolUse" — the
+    // replay would hand the model a stopReason no provider produced (the same
+    // rule chainRowsToMessages applies to failed rows above).
+    const carrier: AssistantMessage | undefined =
+      content.length > 0 ? { ...message, content, stopReason: "stop" } : undefined;
+    const carrierTokens = carrier ? estimateTokens(carrier) : 0;
+    // A carrier's results sit directly behind it, one per call, in order.
+    let end = i + 1;
+    while (end < kept.length) {
+      const next = kept[end];
+      if (next.role !== "toolResult" || !callIds.has(next.toolCallId)) break;
+      total -= tokenCounts[end];
+      end += 1;
+    }
+    total -= tokenCounts[i] - carrierTokens;
+    kept.splice(i, end - i, ...(carrier ? [carrier] : []));
+    tokenCounts.splice(i, end - i, ...(carrier ? [carrierTokens] : []));
+  }
+
+  // Phase 2: no pairs remain; drop whole messages oldest-first down to the
+  // brief.
+  for (let i = 1; i < kept.length && total >= hardLimit; ) {
+    total -= tokenCounts[i];
+    kept.splice(i, 1);
+    tokenCounts.splice(i, 1);
+  }
+  return kept;
 }
 
 function toolResultFromUi(m: UiMessage, timestamp: number): ToolResultMessage {
@@ -369,7 +456,7 @@ function toolResultFromUi(m: UiMessage, timestamp: number): ToolResultMessage {
           : MISSING_TOOL_RESULT_PLACEHOLDER,
     });
   }
-  const details = isRecord(raw) ? raw.details : undefined;
+  const details = toJsonValue(isRecord(raw) ? raw.details : undefined);
   return {
     role: "toolResult",
     toolCallId: m.toolCallId ?? "",

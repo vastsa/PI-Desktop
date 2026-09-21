@@ -120,9 +120,8 @@ app.whenReady().then(async () => {
       assert(["Escape", "Tab"].includes(key));
       window.webContents.sendInputEvent({ type: "keyDown", keyCode: key });
       window.webContents.sendInputEvent({ type: "keyUp", keyCode: key });
-      await window.webContents.executeJavaScript("globalThis.composerPreviewKeyDone()");
     });
-    await window.webContents.executeJavaScript('globalThis.composerPreviewPressKey = key => new Promise(resolve => { globalThis.composerPreviewKeyDone = resolve; console.log("PI_PREVIEW_KEY:" + key); }); void 0');
+    await window.webContents.executeJavaScript('globalThis.composerPreviewPressKey = key => new Promise(resolve => { document.addEventListener("keyup", () => requestAnimationFrame(resolve), { once: true }); console.log("PI_PREVIEW_KEY:" + key); }); void 0');
     if (process.env.PI_COMPOSER_PREVIEW_SCREENSHOT) {
       window.webContents.on("console-message", async (event) => {
         if (event.message !== "PI_PREVIEW_CAPTURE") return;

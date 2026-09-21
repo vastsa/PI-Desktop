@@ -433,8 +433,7 @@ export function AgentMcpPage() {
     const needsAuth =
       isHttp &&
       !hasAuthHeader &&
-      !status?.hasOauth &&
-      (Boolean(status?.authRequired) || status?.state !== "ready");
+      Boolean(status?.authRequired);
     const items: CapabilityMenuItem[] = [
       {
         key: "test",

@@ -164,16 +164,59 @@ globalThis.providerOrderProbe = async (restart = false) => {
     host.scrollTop = 0;
     await painted();
 
+    // Saving a provider must preserve the exact app default picked by the user.
+    const click = (element: HTMLButtonElement | null) => {
+      assert(element, "missing provider action");
+      flushSync(() => {
+        element!.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 5, button: 0, bubbles: true }));
+        element!.click();
+      });
+    };
+    click(host.querySelector(".model-default-row button"));
+    await until(() => !!document.querySelector('[aria-label="A · deepseek-reasoner"]'), "second model missing from default picker");
+    click(document.querySelector('[aria-label="A · deepseek-reasoner"]'));
+    await until(() => useAppStore.getState().settings?.defaultModelId === "deepseek-reasoner",
+      "default picker did not select the second model");
+    const edit = async (name: string) => {
+      const selector = `[aria-label="${i18n.t("settings.editProvider")}"]`;
+      await until(() => !row(name).querySelector<HTMLButtonElement>(selector)?.disabled,
+        "provider is still saving");
+      click(row(name).querySelector(selector));
+      await until(() => !!document.querySelector(".provider-setup-dialog"), "provider editor did not open");
+    };
+    const save = async () => {
+      click([...document.querySelectorAll<HTMLButtonElement>("button")]
+        .find((button) => button.textContent?.trim() === i18n.t("settings.saveProvider"))!);
+      await until(() => !document.querySelector(".provider-setup-dialog"), "provider editor did not close");
+      await useAppStore.getState().refreshProviders();
+    };
+    await edit("A");
+    await save();
+    assert(useAppStore.getState().settings?.defaultModelId === "deepseek-reasoner",
+      "unchanged provider save reset the selected default model");
+    assert(host.querySelector(".model-default-model")?.textContent === "deepseek-reasoner",
+      "saved default model summary changed");
+    await edit("B");
+    await save();
+    assert(useAppStore.getState().settings?.defaultModelId === "deepseek-reasoner",
+      "editing another provider changed the app default");
+    await edit("A");
+    click([...document.querySelectorAll<HTMLElement>(".provider-chosen-row")]
+      .find((entry) => entry.querySelector(".provider-chosen-row-id")?.textContent === "deepseek-reasoner")!
+      .querySelector(".provider-chosen-remove"));
+    await save();
+    assert(useAppStore.getState().settings?.defaultModelId === "deepseek-chat",
+      "removing the selected default must fall back to the first remaining model");
+
     await i18n.changeLanguage("zh-CN");
-    await painted();
-    assert(row("B").getAttribute("aria-label")?.includes("拖动"), "card reorder instruction must follow the interface language");
+    await until(() => !!row("B").getAttribute("aria-label")?.includes("拖动"), "card reorder instruction must follow the interface language");
     flushSync(() => host.querySelector<HTMLButtonElement>(".composer-model-thinking-chip")!.click());
     flushSync(() => document.querySelector<HTMLButtonElement>(".composer-menu-entry")!.click());
     await until(() => document.querySelectorAll(".composer-model-group").length === 3, "model menu groups missing");
     const groups = Array.from(document.querySelectorAll(".composer-model-group"), (group) => group.getAttribute("aria-label"));
     assert(groups.join(",") === "B,C,A", `composer model menu did not follow provider order: ${groups}`);
     assert(errors.length === 0, `render errors: ${errors.map(String)}`);
-    return { ok: true, drag: true, keyboard: true, cancelledDrag: true, failedSave: true, staleRefresh: true, modelMenu: true };
+    return { ok: true, drag: true, keyboard: true, cancelledDrag: true, failedSave: true, staleRefresh: true, modelMenu: true, defaultModelPreserved: true, removedDefaultFallback: true };
   } finally {
     api.reorderProviders = realReorder;
     api.listProviders = realList;
