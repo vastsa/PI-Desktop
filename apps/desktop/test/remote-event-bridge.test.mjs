@@ -14,6 +14,9 @@ const { makeRemoteApprovalRequestId, makeRemoteSessionId } = await import(
 const { createRemoteEventBridge } = await import(
   "../electron/main/remote/remote-event-bridge.ts"
 );
+const { pendingAsksRegistry } = await import(
+  "../electron/main/pending-asks.ts"
+);
 
 const HOST_KEY = "hostA";
 const HOST_SESSION_ID = "sess-1";
@@ -219,6 +222,32 @@ test("input.requested synthesizes an asktool_request keyed by the RACP input id"
   assert.equal(request.toolCallId, "tc-parent");
   assert.equal(request.questions.length, 1);
   assert.equal(request.questions[0].multiSelect, false);
+  const pending = pendingAsksRegistry.list(REMOTE_SESSION_ID);
+  assert.equal(pending.kind, "pending");
+  assert.equal(pending.asks[0].requestId, "input-42");
+  assert.equal(pending.asks[0].sessionId, REMOTE_SESSION_ID);
+});
+
+test("top-level input uses its id as lifecycle key and input.resolved clears it", () => {
+  const { bridge } = collect();
+  bridge.handle(makeEnvelope({
+    kind: "input.requested",
+    payload: {
+      id: "top-level-input",
+      sessionId: HOST_SESSION_ID,
+      questions: [{ id: "q", question: "continue?", options: ["yes", "no"] }],
+    },
+  }));
+  let pending = pendingAsksRegistry.list(REMOTE_SESSION_ID);
+  assert.equal(pending.asks.at(-1).requestId, "top-level-input");
+  assert.equal(pending.asks.at(-1).toolCallId, "top-level-input");
+
+  bridge.handle(makeEnvelope({
+    kind: "input.resolved",
+    payload: { inputId: "top-level-input" },
+  }));
+  pending = pendingAsksRegistry.list(REMOTE_SESSION_ID);
+  assert.equal(pending.asks.some((ask) => ask.requestId === "top-level-input"), false);
 });
 
 test("terminal and resync kinds are silently dropped in Stage 2 — later stages own them", () => {

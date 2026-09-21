@@ -74,6 +74,7 @@ const fixtureChannels = {
   sessionDelete: "pi-desktop/session/delete",
   sessionConfigure: "pi-desktop/session/configure",
   plansResolve: "pi-desktop/plans/resolve",
+  askToolPending: "pi-desktop/agent/askTool/pending",
   agentPrompt: "pi-desktop/agent/prompt",
 };
 
@@ -173,7 +174,28 @@ test("local MCP control server authenticates, discovers, and invokes desktop ope
   assert.ok(toolNames.includes("pi_control_describe"));
   assert.ok(toolNames.includes("pi_project_open"));
   assert.ok(toolNames.includes("pi_plans_resolve"));
+  assert.ok(toolNames.includes("pi_asktool_pending"));
   assert.ok(toolNames.includes("pi_session_configure"));
+
+  const pendingAsks = await post(
+    info.url,
+    info.token,
+    {
+      jsonrpc: "2.0",
+      id: 21,
+      method: "tools/call",
+      params: {
+        name: "pi_asktool_pending",
+        arguments: { sessionId: "session-1" },
+      },
+    },
+    { "Mcp-Session-Id": sessionId },
+  );
+  assert.equal(pendingAsks.body.result.structuredContent.ok, true);
+  assert.deepEqual(calls.at(-1), {
+    channel: "pi-desktop/agent/askTool/pending",
+    args: [{ sessionId: "session-1" }],
+  });
 
   const opened = await post(
     info.url,

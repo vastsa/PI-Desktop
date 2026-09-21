@@ -22,6 +22,7 @@ import type { PluginRuntime } from "../plugin-runtime";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
 import type { FinishTurn } from "./plans";
+import { pendingAsksRegistry } from "../pending-asks";
 
 export type SidecarRuntimeDependencies = {
   runtimeState: RuntimeState;
@@ -96,6 +97,7 @@ export function createSidecarRuntime({
     // the current turn's state in Agent Host or the renderer. Persistence is a
     // separate call, so dropping it here still archives it as history.
     if (isStaleTerminalEvent(envelope)) return;
+    pendingAsksRegistry.ingest(envelope);
     runtimeState.agentHostBridge?.ingest(envelope);
     sendToRenderer(IPC.event.agentMessage, envelope);
   };
@@ -172,7 +174,9 @@ export function createSidecarRuntime({
     if (method === "native.agent.event") {
       // Native AgentSession already persisted the event to its canonical Pi
       // JSONL. It owns neither the Desktop outbox nor Host queue/turn state.
-      sendToRenderer(IPC.event.agentMessage, params as AgentEventEnvelope);
+      const envelope = params as AgentEventEnvelope;
+      pendingAsksRegistry.ingest(envelope);
+      sendToRenderer(IPC.event.agentMessage, envelope);
       return;
     }
     if (method === "agent.event") {
@@ -244,6 +248,13 @@ export function createSidecarRuntime({
     activeToolCalls.clear();
     runtimeState.sidecar = null;
     steeringReplies.clear();
+    const crashedSessions = new Set([
+      ...activeTurns.keys(),
+      ...interruptedToolCalls.map((tool) => tool.sessionId),
+    ]);
+    for (const sessionId of crashedSessions) {
+      pendingAsksRegistry.clearSession(sessionId);
+    }
     if (intentional || isQuitting()) return;
     for (const tool of interruptedToolCalls) {
       logger.app("tool", "error", "tool execution interrupted", {

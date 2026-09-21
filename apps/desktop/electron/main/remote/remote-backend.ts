@@ -39,6 +39,7 @@ import {
   sessionIdForCall,
 } from "./backend-router.js";
 import { racpSessionToSummary, snapshotToSessionDetail } from "./remote-transcript.js";
+import { pendingAsksRegistry } from "../pending-asks";
 
 /** The subset of `RacpClient` this backend needs; kept minimal for testing. */
 export type RemoteRacpClient = {
@@ -306,6 +307,7 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
           answers: resolution.answers,
           context: context(),
         });
+        pendingAsksRegistry.settle(resolution.sessionId, resolution.requestId);
         return { ok: true };
       }
       case IPC.invoke.plansResolve: {

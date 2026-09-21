@@ -244,6 +244,7 @@ const CONTROL_OPERATION_SPECS: OperationSpec[] = [
   spec("pullsList", "pulls/list", "List pull requests for the active workspace.", "read", []),
   spec("scheduledList", "scheduled/list", "List scheduled tasks.", "read", []),
   spec("toolResolvePermission", "tool/resolvePermission", "Resolve a pending tool permission request.", "dangerous", ["resolution"]),
+  spec("askToolPending", "agent/askTool/pending", "List pending Agent questions.", "read", ["input"]),
   spec("askToolResolve", "agent/askTool/resolve", "Answer an Agent question.", "dangerous", ["resolution"]),
   spec("plansPending", "plans/pending", "List pending Plan or Goal approvals.", "read", ["input"]),
   spec("plansResolve", "plans/resolve", "Approve or reject a Plan or Goal checkpoint.", "dangerous", ["resolution"]),
@@ -403,6 +404,13 @@ const CORE_TOOL_SPECS = [
     "Compact an idle session context.",
     objectSchema({ sessionId: stringSchema("Target session id.") }, ["sessionId"]),
     "agent/compact",
+    (input) => [input],
+  ),
+  coreTool(
+    "pi_asktool_pending",
+    "List pending Agent questions.",
+    objectSchema({ sessionId: stringSchema("Optional session id filter.") }),
+    "agent/askTool/pending",
     (input) => [input],
   ),
   coreTool(

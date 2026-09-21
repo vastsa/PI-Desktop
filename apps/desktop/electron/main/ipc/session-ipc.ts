@@ -29,6 +29,7 @@ import type { PluginRuntime } from "../plugin-runtime";
 import { readSessionCollaboration } from "../services/session-collaboration";
 import { searchSessionsAcrossSources } from "../services/session-search";
 import type { IpcRegistrar } from "./types";
+import { pendingAsksRegistry } from "../pending-asks";
 
 type RuntimeSession = {
   id?: string;
@@ -330,6 +331,7 @@ export function registerSessionIpc({
     }
     if (!host) throw new Error("host unavailable");
     const res = await host.call("session.delete", { id });
+    pendingAsksRegistry.clearSession(id);
     await persistenceOutbox.dropSession(id);
     // Drop the session's pi-agent so a later session with the same id (or a
     // stale runtime) can't answer with this session's context.
