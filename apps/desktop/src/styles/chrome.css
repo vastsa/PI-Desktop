@@ -487,7 +487,7 @@
 .conversation-topbar .ct-title-wrap {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 8px;
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -498,7 +498,7 @@
 
 .conversation-topbar .ct-title {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -507,6 +507,31 @@
   font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-tight);
   line-height: var(--leading-compact);
+}
+
+.conversation-topbar .ct-branch {
+  display: inline-flex;
+  height: 20px;
+  max-width: min(180px, 32vw);
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-pill);
+  padding: 0 7px;
+  background: var(--ds-bg-secondary);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-compact);
+}
+
+.conversation-topbar .ct-branch > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* One geometry and one seat for every chrome icon control: the topbar's dock

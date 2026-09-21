@@ -14129,3 +14129,23 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Milestone**: Maintenance.
 - **Status**: Covered by the existing HTTP client integration fixture and a
   focused component-render validation; no live IDA process required.
+### E2E-CHAT-active-git-branch
+
+- **Preconditions:** An isolated Git project (including a linked worktree) with
+  one project-bound session and one temporary session; no provider credentials.
+- **Steps:** Open the project session, switch its branch outside PI-Desktop,
+  refocus the app, then open the temporary session. Repeat with a long branch
+  name and a non-Git folder.
+- **Expected:** The conversation topbar shows the active project's current
+  branch beside the task title, refreshes after focus, and ellipsizes long names
+  without displacing New/Search. Temporary sessions and non-Git folders show no
+  branch badge. The Composer keeps its existing no-workspace-rail contract.
+- **Specs:** 04-ux/08-component-spec.md, Topbar.
+- **Acceptance:** The project session exposes enough branch context to avoid
+  operating in the wrong checkout.
+- **Milestone:** Post-MVP maintenance.
+- **Automation:** apps/desktop/test/app-store-sidebar.test.mjs covers the
+  renderer/store contract; apps/desktop/test/git-branch.test.mjs covers standard
+  repositories, linked worktrees, detached HEAD, and non-Git folders.
+- **Status:** Implemented. Native macOS project/worktree badge and truncation
+  visually qualified; Windows/Linux not qualified.

@@ -52,6 +52,7 @@ import { PersistenceOutbox } from "./persistence-outbox";
 import { AgentSidecar } from "./agent-sidecar";
 import { Logger, ignoreBrokenStdio } from "./logger";
 import { installMainProcessErrorHandlers } from "./main-process-errors";
+import { withGitBranch } from "./git-branch";
 import {
   isDbSchemaTooNewError,
 } from "./host-boot-diagnostics";
@@ -1058,24 +1059,6 @@ const {
   isSessionBusy,
   isStaleTerminalEvent,
 } = sessionCoordination;
-
-async function withGitBranch<T extends { path?: string; name?: string } | null | undefined>(
-  workspace: T,
-): Promise<T> {
-  if (!workspace || !workspace.path) return workspace;
-  try {
-    const { readFile } = await import("node:fs/promises");
-    const { join } = await import("node:path");
-    const head = await readFile(join(workspace.path, ".git/HEAD"), "utf8");
-    const match = head.match(/ref:\s*refs\/heads\/(.+)$/m);
-    return {
-      ...workspace,
-      branch: match?.[1]?.trim() || "detached",
-    };
-  } catch {
-    return { ...workspace, branch: undefined };
-  }
-}
 
 /**
  * Applies a close-behavior choice. The tray icon is owned by D216 and stays

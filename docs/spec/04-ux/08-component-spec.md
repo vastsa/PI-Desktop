@@ -224,15 +224,16 @@ See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).
 
 ### 2.1 Purpose
 
-Global controls bar: task title and window actions. Project scope remains
-available in the title tooltip. The active session's Agent/Plan/Goal control and
-model selection belong to the Composer. (Settings is reached from the command
-palette / application menu, not the top bar.)
+Global controls bar: task title, the active Git branch when available, and
+window actions. Project scope remains available in the title tooltip. The active
+session's Agent/Plan/Goal control and model selection belong to the Composer.
+(Settings is reached from the command palette / application menu, not the top
+bar.)
 
 ### 2.2 Anatomy
 
 ```text
-[☰ Sidebar] [Task title]                          [＋ New] [🔍 Search]
+[☰ Sidebar] [Task title] [⑂ branch]              [＋ New] [🔍 Search]
 ```
 
 (Icons described functionally; actual render uses Lucide SVGs. The `[☰ Sidebar]`
@@ -242,10 +243,13 @@ expanded it owns that control, so the top bar does not duplicate it. The
 does not duplicate it. Keyboard shortcuts and the application menu remain
 available.)
 
-The conversation top bar renders for the chat route only; Pull requests, Scheduled,
-Plugins, and Settings keep the frameless drag band. It owns the task title and
-window actions only. Project scope remains in the title tooltip instead of adding
-another visible label. The Composer owns the Agent/Plan/Goal control and the
+The conversation top bar renders for the chat route only; Pull requests,
+Scheduled, Plugins, and Settings keep the frameless drag band. It owns the task
+title, a compact Git branch badge for the active project, and window actions.
+The full project scope remains in the title tooltip. The branch badge is omitted
+for temporary sessions and non-Git folders. It refreshes when a session is
+selected and when the window regains focus, so a branch changed outside the app
+does not remain stale. The Composer owns the Agent/Plan/Goal control and the
 combined model × reasoning selection (§11).
 
 ### 2.3 Layout
@@ -271,15 +275,17 @@ combined model × reasoning selection (§11).
   overlay hiding tabs or panel actions.
   Resource close actions stay in their tabs so a second header `×` does not echo
   the native Windows close control (D357).
-- Title cluster (task title) flexes to the remaining width after toolbar
-  reservations (sidebar lead-in, action icons, work-panel toggle, and
-  platform window controls). The visible title uses CSS ellipsis only when
-  that width overflows; the full title remains in the native tooltip.
+- Title cluster (task title plus optional branch badge) flexes to the remaining
+  width after toolbar reservations (sidebar lead-in, action icons, work-panel
+  toggle, and platform window controls). The visible task title uses CSS
+  ellipsis only when that width overflows; the full title remains in the native
+  tooltip. The branch badge keeps its icon and ellipsizes long branch names
+  within 180px.
   The right cluster (action icons) is `flex: 0 0 auto`
   and is never squeezed by a long title. The conversation surface keeps a
   `min-width` so its content is not crushed on narrow windows.
-- Project scope is available from the title tooltip but is not rendered as a
-  second visible label.
+- Project scope is available from the title tooltip. Only its current Git branch
+  is repeated visibly, as a compact badge rather than a second project label.
 - macOS fullscreen resets the left reserve to 8px (mirrors the sidebar header).
 - Sticky: `z-sticky`
 - Items: left-aligned controls, right-aligned actions
@@ -322,6 +328,7 @@ combined model × reasoning selection (§11).
 | Element | Default | Running | Error | No workspace |
 |---|---|---|---|---|
 | Task title | session title (or untitled), uses the available width, with an ellipsis only on overflow | same | same | same |
+| Git branch | current active-project branch | same, refreshed on window focus | same | omitted |
 | New task / Search | icon buttons | same | same | same |
 | Composer stop control | hidden | visible only when the running composer draft is empty | hidden | hidden |
 | Project name | title tooltip only | same | same | omitted |

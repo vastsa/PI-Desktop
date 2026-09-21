@@ -8349,3 +8349,20 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **自动化：** `apps/desktop/test/plugin-services.test.mjs` 真实 fork 宿主进程、以夹具退出码杀死它，并断言服务状态与审计记录上的
   退出码与 stderr 行；`plugin-isolation.test.mjs` 与关闭用例覆盖"退出不是崩溃"那一半。
 - **状态：** 运行时层已自动化；无 UI 驱动读取插件页的错误文本。
+### E2E-CHAT-active-git-branch
+
+- **前提：** 独立 Git 项目（包括 linked worktree）中有一个项目会话和一个临时
+  会话，不使用提供商凭据。
+- **步骤：** 打开项目会话，在 PI-Desktop 外切换 Git 分支，重新聚焦应用，再打开
+  临时会话；使用长分支名和非 Git 文件夹重复验证。
+- **预期：** 对话顶部栏在任务标题旁显示活动项目的当前分支，窗口重新聚焦后更新；
+  长名称会省略且不挤走新建和搜索按钮。临时会话及非 Git 文件夹不显示分支标记。
+  Composer 继续保持无工作区信息栏的现有契约。
+- **规格：** 04-ux/08-component-spec.md 的顶部栏章节。
+- **验收：** 项目会话提供足够的分支上下文，降低在错误检出目录中操作的风险。
+- **阶段：** 发布后维护。
+- **自动化：** apps/desktop/test/app-store-sidebar.test.mjs 覆盖渲染器与状态契约；
+  apps/desktop/test/git-branch.test.mjs 覆盖普通仓库、linked worktree、detached HEAD
+  和非 Git 文件夹。
+- **状态：** 已实现；原生 macOS 已验证项目/worktree 分支标记及长名称省略，
+  Windows/Linux 尚未实机验证。

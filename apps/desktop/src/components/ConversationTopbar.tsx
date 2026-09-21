@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app-store";
 import {
   IconSidebar,
+  IconBranch,
   IconNewSession,
   IconSearch,
 } from "./icons";
@@ -37,13 +39,26 @@ export function ConversationTopbar({
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const sessions = useAppStore((s) => s.sessions);
   const workspace = useAppStore((s) => s.workspace);
+  const refreshProject = useAppStore((s) => s.refreshProject);
 
   const activeSession = sessions.find((session) => session.id === activeSessionId);
+  const projectPath = workspace?.path;
+
+  useEffect(() => {
+    if (!projectPath) return;
+    const refreshBranch = () => {
+      void refreshProject(projectPath);
+    };
+    refreshBranch();
+    window.addEventListener("focus", refreshBranch);
+    return () => window.removeEventListener("focus", refreshBranch);
+  }, [activeSessionId, projectPath, refreshProject]);
 
   const fullTaskTitle = isDefaultSessionTitle(activeSession?.title)
     ? t("chat.untitledTask")
     : activeSession?.title || t("chat.untitledTask");
   const project = projectName(workspace?.path, workspace?.name);
+  const branch = workspace?.branch?.trim();
 
   return (
     <div
@@ -76,6 +91,16 @@ export function ConversationTopbar({
           title={project ? `${project} · ${fullTaskTitle}` : fullTaskTitle}
         >
           <span className="ct-title">{fullTaskTitle}</span>
+          {branch ? (
+            <span
+              className="ct-branch"
+              aria-label={t("nav.hoverCardBranchAria", { name: branch })}
+              title={branch}
+            >
+              <IconBranch size={12} aria-hidden />
+              <span>{branch}</span>
+            </span>
+          ) : null}
         </div>
       </div>
 
