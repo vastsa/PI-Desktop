@@ -116,7 +116,13 @@ before it is ever sent to the UI:
   `vibrancy` and is never sent one
 - The CSS is read from disk at load time and delivered whole over IPC; the
   renderer injects it into a single dedicated `<style>` element appended after
-  the app's own stylesheets, so it can override tokens but never inject markup
+  the app's own stylesheets, so it can override tokens but never inject markup.
+  Append order only wins when specificity is equal: dark and shared tokens are
+  declared on `:root, :root[data-theme="dark"]` (specificity `(0,1,0)`), while
+  light tokens use `:root[data-theme="light"]` (specificity `(0,2,0)`). A bare
+  `:root {…}` rule therefore wins in dark mode but loses under light; to override
+  light tokens, write `:root[data-theme="light"] {…}` (match the shell selector
+  for the declared `base` so load order decides)
 - Selecting a theme is a settings value (`plugin:<pluginId>:<themeId>`); if the
   providing plugin is disabled or uninstalled the setting falls back to `system`
 

@@ -513,9 +513,25 @@ root 本身。`net.fetch` 接受 HTTP(S)，并且只能到达 `manifest.net.doma
 }
 ```
 
-覆盖该 CSS 中的 PI-Desktop 设计标记。楼主对贡献的内容进行了清理
-CSS，拒绝导入和非数据 URL，每个文件的上限为 256 KiB，并允许
-每个插件有八个主题。用户在“设置”中选择主题。
+覆盖该 CSS 中的 PI-Desktop 设计标记。宿主会对贡献的 CSS 做清理，拒绝
+导入和非 data URL，每个文件上限 256 KiB，每个插件最多八个主题。用户在
+「设置」中选择主题。
+
+主题契约要点：
+
+- `base` 为 `"light"` 或 `"dark"`，默认 `dark` —— 覆盖层叠在其上的调色板。
+- 贡献的样式表追加在应用样式表之后，但仅在特异度相同时靠顺序取胜。深色与
+  共享令牌在 `:root, :root[data-theme="dark"]`；浅色令牌在
+  `:root[data-theme="light"]`。要覆盖浅色令牌必须写
+  `:root[data-theme="light"] {…}`（与壳层为你的 `base` 使用的选择器对齐）。
+- 可选 `assets`（绝对路径；扩展名白名单 png/jpg/jpeg/webp/avif/svg/woff2；
+  总量 4MB）会把匹配的 `url()` 改写为 `plugin-asset://…`。
+- 可选 `contributes.windowAppearance`（`#rrggbb` / `#rrggbbaa`）需要
+  `ui.window.appearance` 权限，且只在本插件某个主题被选中时生效。
+
+完整字段与清理规则见
+[清单 Schema](/zh-CN/spec/07-plugins/02-plugin-manifest-schema) 与
+[插件安全 §3.1](/zh-CN/spec/07-plugins/04-plugin-security#31-贡献主题css)。
 
 ### 6.8 MCP 服务器
 
