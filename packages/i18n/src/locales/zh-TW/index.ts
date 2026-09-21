@@ -1509,6 +1509,23 @@ sklm: {
     empty: {
     },
     review: {
+      feedback: {
+        review: "審核",
+        open: "開啟",
+        location: "第 {{lines}} 行的修改意見",
+        range: "舊行 {{old}} · 新行 {{new}}",
+        "attachment": "審閱評論",
+        "historical": "歷史快照：修改前需核對目前檔案。",
+        "context": "所選程式碼（舊行/新行）",
+        "remove": "移除評論",
+        "selectHint": "點擊新增評論，按住拖曳選取多行。",
+        "line": "選擇舊行 {{old}}，新行 {{new}}",
+        "comment": "給 Agent 的修改意見",
+        "pending": "請先傳送或移除審閱區中待傳送的意見。",
+        "added": "待傳送 · 隨下一則訊息傳給 AI",
+        "tooLarge": "請選擇較少的程式碼（最多 16,000 個字元）。",
+        "add": "儲存意見"
+      },
       filesChanged_one: "1 個檔案有改動",
       filesChanged_other: "{{count}} 個檔案有改動",
       changes_one: "記錄了 1 項改動",

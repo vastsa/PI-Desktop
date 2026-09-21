@@ -1,3 +1,5 @@
+import type { ReviewFeedback } from "./review-feedback";
+
 export type ComposerDraftFileReference = {
   path: string;
   name: string;
@@ -9,6 +11,7 @@ export type ComposerDraftFileReference = {
 
 export type ComposerDraftSnapshot = {
   text: string;
+  reviewFeedback?: ReviewFeedback;
   fileReferences: ComposerDraftFileReference[];
 };
 

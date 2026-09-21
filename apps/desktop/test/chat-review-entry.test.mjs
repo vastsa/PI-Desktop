@@ -168,7 +168,7 @@ test("chat renders one message-owned card immediately after its tool row", () =>
   assert.doesNotMatch(transcriptSource, /workspaceDiff|findWorkspaceChange/);
   assert.match(cardSource, /aria-expanded=\{open\}/);
   assert.match(cardSource, /chat\.reviewChangeShow/);
-  assert.match(cardSource, /change\.hunks\.map/);
+  assert.match(cardSource, /<ReviewFeedbackDiff\s+change=\{change\}\s+message=\{message\}\s+enabled=\{enableFeedback\}/);
   assert.match(cardSource, /workspaceReviewRollback|rollbackWorkspaceChange/);
   assert.match(
     storeSource,

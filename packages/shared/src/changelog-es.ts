@@ -6,6 +6,7 @@ export const esEntries: ChangelogEntry[] = [
     "date": "2026-09-21",
     "highlights": [
       "Genera y edita imágenes en el chat, elige un modelo y crea lotes con la habilidad integrada imagegen.",
+      "Envía comentarios de revisión con el código seleccionado y sus líneas históricas desde un cambio registrado a la conversación.",
       "La actividad de herramientas sigue el ancho de la conversación y contiene correctamente las etiquetas largas.",
       "Los archivos adjuntos pegados se conservan aunque el pegado termine después de cambiar de sesión.",
       "El modelo predeterminado seleccionado se conserva al editar proveedores y se aplica un respaldo seguro si se elimina.",

@@ -41,9 +41,13 @@ import { useComposerImagePreview, type ComposerImagePreviewController } from "./
 
 import { detachImageTokens, isImageReference } from "../image-attachments";
 
+import { clearReviewFeedback, pruneReviewFeedback, readReviewFeedback, stageReviewFeedback, useReviewFeedbackDrafts } from "../review-feedback-drafts";
+import { feedbackBelongsTo, type ReviewFeedback } from "../../../../lib/review-feedback";
+
 type ComposerSession = { id: string };
 
 export type ComposerDraftController = {
+  reviewFeedback: ReviewFeedback | undefined;
   imagePreview: ComposerImagePreviewController;
   removeImage: (id: string) => void;
   ref: RefObject<HTMLDivElement | null>;
@@ -91,6 +95,7 @@ type UseComposerDraftOptions = {
   sessions: readonly ComposerSession[];
   composerPrefill: {
     sessionId: string;
+    reviewFeedback?: ReviewFeedback;
     text: string;
     fileReferences: ComposerDraftSnapshot["fileReferences"];
   } | null;
@@ -120,6 +125,9 @@ export function useComposerDraft({
 }: UseComposerDraftOptions): ComposerDraftController {
   const draftKey = draftKeyForSession(activeSessionId);
   const referenceSessionId = activeSessionId ?? "";
+  const pendingFeedback = useReviewFeedbackDrafts((state) => state.drafts.get(referenceSessionId));
+  const reviewFeedback = feedbackBelongsTo(pendingFeedback, activeSessionId, workspacePath) ? pendingFeedback : undefined;
+  useEffect(() => { pruneReviewFeedback(sessions.map((session) => session.id)); }, [sessions]);
   const initialDraft = readComposerDraft(draftKey);
   const [value, setValue] = useState(() => initialDraft?.text ?? "");
   const [fileReferences, setFileReferences] = useState<ComposerFileReference[]>(() =>
@@ -459,6 +467,7 @@ export function useComposerDraft({
 
   useEffect(() => {
     if (!composerPrefill || composerPrefill.sessionId !== activeSessionId) return;
+    if (feedbackBelongsTo(composerPrefill.reviewFeedback, activeSessionId, workspacePath) && composerPrefill.reviewFeedback) stageReviewFeedback(composerPrefill.reviewFeedback);
     setValue(composerPrefill.text);
     setFileReferences((current) => [
       ...current.filter(
@@ -575,6 +584,7 @@ export function useComposerDraft({
   const clearDraftForKey = (key: string) => {
     invalidatePromptEnhancement();
     deleteComposerDraft(key);
+    clearReviewFeedback(key);
     const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
     if (currentKey !== key) return;
     deletedReferencesRef.current.clear();
@@ -590,6 +600,11 @@ export function useComposerDraft({
   };
 
   const restoreDraftForKey = (key: string, snapshot: ComposerDraftSnapshot) => {
+    if (snapshot.reviewFeedback?.sessionId === key) {
+      const pending = readReviewFeedback(key, snapshot.reviewFeedback.workspacePath);
+      if (pending && pending !== snapshot.reviewFeedback) return;
+      stageReviewFeedback(snapshot.reviewFeedback);
+    }
     const currentActiveSessionId = useAppStore.getState().activeSessionId;
     const currentKey = draftKeyForSession(currentActiveSessionId);
     if (currentKey !== key) {
@@ -612,6 +627,7 @@ export function useComposerDraft({
 
   const draftSnapshot = (text: string): ComposerDraftSnapshot => ({
     text: text.trim(),
+    ...(readReviewFeedback(referenceSessionId, workspacePath) ? { reviewFeedback: readReviewFeedback(referenceSessionId, workspacePath) } : {}),
     fileReferences: activeFileReferences
       .filter(
         (fileReference) =>
@@ -627,6 +643,7 @@ export function useComposerDraft({
   });
 
   return {
+    reviewFeedback,
     imagePreview,
     removeImage: (id) => {
       if (inputBlocked) return;

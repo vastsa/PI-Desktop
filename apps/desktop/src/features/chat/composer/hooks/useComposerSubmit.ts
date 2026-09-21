@@ -17,6 +17,8 @@ import { resolveComposerCommand } from "../../../../hooks/use-composer-autocompl
 import { readEditorValue, setEditorCaret, type ComposerFileReference } from "../editor";
 import type { ComposerDraftController } from "./useComposerDraft";
 
+import { feedbackBelongsTo, serializeReviewFeedback } from "../../../../lib/review-feedback";
+
 type UseComposerSubmitOptions = {
   value: string;
   draftKey: string;
@@ -191,12 +193,16 @@ export function useComposerSubmit({
 
   const submit = async (steering = false) => {
     const text = draft.ref.current ? readEditorValue(draft.ref.current) : value;
-    const inlineContent = serializeInlineComposerFileReferences(
+    const submittedDraft = draft.draftSnapshot(text);
+    const owner = useAppStore.getState();
+    if (draftKeyForSession(owner.activeSessionId) !== draftKey) return;
+    if (submittedDraft.reviewFeedback && !feedbackBelongsTo(submittedDraft.reviewFeedback, owner.activeSessionId, owner.workspace?.path ?? "")) return;
+    const inlineContent = serializeReviewFeedback(serializeInlineComposerFileReferences(
       text,
       activeFileReferences,
-    );
+    ), submittedDraft.reviewFeedback);
     const serializedContent = serializeComposerFileReferences(text, activeFileReferences);
-    if (!serializedContent) return;
+    if (!serializedContent && !submittedDraft.reviewFeedback) return;
     if (sendBlocked) {
       if (pasting) showToast(t("chat.pasteInProgress"), { variant: "info" });
       return;
@@ -205,7 +211,7 @@ export function useComposerSubmit({
     const submittedDraftKey = draftKey;
     // Slash dispatch stays local for builtin and extension commands, while
     // templates, skills, and unknown aliases continue as normal prompt text.
-    if (!steering && serializedContent.startsWith("/")) {
+    if (!steering && !submittedDraft.reviewFeedback && serializedContent.startsWith("/")) {
       const commandEnd = serializedContent.search(/\s/);
       const name = serializedContent.slice(
         1,
@@ -272,7 +278,6 @@ export function useComposerSubmit({
       showToast(t("errors.MODEL_NOT_CONFIGURED"), { variant: "error" });
       return;
     }
-    const submittedDraft = draft.draftSnapshot(text);
     draft.clearDraftForKey(submittedDraftKey);
     const accepted = steering
       ? await steerPrompt(inlineContent, submittedDraft)

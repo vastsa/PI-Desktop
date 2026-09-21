@@ -7929,6 +7929,7 @@ identify the platform validation still needed.
 
 | Acceptance | Scenarios |
 |---|---|
+| C / D / Quality — Review feedback | E2E-REVIEW-feedback-to-composer |
 | C / F / Quality — Desktop automations | E2E-SCHEDULED-desktop-automation-lifecycle |
 | A / C — Unicode stdio framing | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
@@ -14286,3 +14287,41 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Expected**: The complete URL, including `(software)`, opens the React software article. The outer prose closing parenthesis and sentence-ending punctuation after the URL parenthesis are not part of the link. Adjacent references remain independently clickable. Nested parentheses, query/fragment parentheses and percent-encoded parentheses remain intact.
 - **Coverage**: `chat-links.test.mjs`; native desktop click-through with the normal browser destination.
 - **Specs linked**: `04-ux/08-component-spec.md` §8.3.
+### E2E-REVIEW-feedback-to-composer
+
+- **Preconditions:** Request candidate built with current upstream, isolated
+  Electron profile, production ReviewTab/ReviewChangeCard, Composer, draft,
+  queue and send-store wiring. Deterministic replies replace only preload IPC.
+- **Steps:** Open Review and expand a successful Edit card; click the gutter plus and drag forward/backward to select a
+  mixed deletion/addition range; enter feedback below the selection and save it. Inspect
+  context, switch session and workspace, return and remount. Send feedback
+  alone, reject a send, enqueue while running, edit the queue entry, and remove
+  the attachment. Attempt rollback after a later file mutation. Repeat in
+  Chinese/light theme at narrow width.
+- **Expected:** Snapshot ids, exact source and independent old/new coordinates
+  reach the owning session's prompt; they are labelled historical and never
+  reinterpreted as current-file coordinates. No send occurs before Send.
+  Switching scope cannot leak feedback. Accepted sends clear; rejected sends
+  and queue editing restore. Rollback conflict guards remain active. Controls
+  remain reachable without horizontal page overflow. Pending comments remain
+  embedded after the selected line; collapsed diffs show a comment marker.
+  Review and Open actions navigate to the correct snapshot and file.
+  Transcript diffs are read-only, and no
+  comment card appears above the composer.
+- **Specs:** `04-ux/08-component-spec.md`, Review feedback in the Review panel.
+- **Acceptance:** Review and chat user-path coverage; no new host contract.
+- **Milestone:** Post-MVP enhancement.
+- **Automation:** `node scripts/test-review-feedback.mjs`; pure selection and
+  ownership coverage in `apps/desktop/test/review-feedback.test.mjs`.
+- **Status:** Automated with isolated IPC fixture. Real-provider acceptance is
+  a separate, explicitly authorized complete-application run, never implied by
+  this deterministic suite. `--baseline` captures the upstream card from HEAD.
+
+Review/Open actions are visible only inside an expanded transcript diff,
+right-aligned below its code in the same row as the existing rollback action.
+All three buttons are direct children of the action row and share its gap.
+Collapsing the change hides the action row.
+
+Gutter plus buttons support single-click and pointer-drag comments with
+release-to-edit focus. No permanent selection hint is rendered. Shift-click
+remains optional; pointer cancellation and focus loss abort tentative drags.

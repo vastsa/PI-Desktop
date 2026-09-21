@@ -1510,6 +1510,23 @@ sklm: {
     "empty": {
     },
     "review": {
+      feedback: {
+        review: "Prüfen",
+        open: "Öffnen",
+        location: "Kommentar zu Zeilen {{lines}}",
+        range: "Alte Zeilen {{old}} · Neue Zeilen {{new}}",
+        "attachment": "Review-Kommentar",
+        "historical": "Historischer Stand – vor Änderungen die aktuelle Datei lesen.",
+        "context": "Ausgewählter Code (alte/neue Zeilen)",
+        "remove": "Kommentar entfernen",
+        "selectHint": "Zum Kommentieren klicken; für mehrere Zeilen ziehen.",
+        "line": "Alte Zeile {{old}}, neue Zeile {{new}} auswählen",
+        "comment": "Feedback für den Agenten",
+        "pending": "Zuerst den ausstehenden Kommentar senden oder entfernen.",
+        "added": "Bereit – wird mit der nächsten Nachricht gesendet.",
+        "tooLarge": "Weniger Zeilen auswählen (maximal 16.000 Zeichen).",
+        "add": "Kommentar speichern"
+      },
       "filesChanged_one": "1 Datei geändert",
       "filesChanged_other": "{{count}} Dateien geändert",
       "changes_one": "1 aufgezeichnete Änderung",

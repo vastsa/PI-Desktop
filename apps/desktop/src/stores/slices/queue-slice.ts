@@ -140,6 +140,7 @@ export function createQueueSlice({
       if (!sessionId) return false;
       const queuedDraft: ComposerDraftSnapshot = draft
         ? {
+            ...draft,
             text: draft.text,
             fileReferences: draft.fileReferences.map((reference) => ({
               ...reference,
@@ -211,6 +212,7 @@ export function createQueueSlice({
       // and the inline file references the user actually wrote.
       const restored: ComposerPrefill = {
         sessionId,
+        ...item.draft,
         text: item.draft.text,
         fileReferences: item.draft.fileReferences.map((reference) => ({
           ...reference,
@@ -378,6 +380,7 @@ export function createQueueSlice({
           messageCountBeforeSend,
           draft: draft
             ? {
+                ...draft,
                 text: draft.text,
                 fileReferences: draft.fileReferences.map((reference) => ({
                   ...reference,

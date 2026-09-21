@@ -1510,6 +1510,23 @@ sklm: {
     "empty": {
     },
     "review": {
+      feedback: {
+        review: "Réviser",
+        open: "Ouvrir",
+        location: "Commentaire sur les lignes {{lines}}",
+        range: "Anciennes lignes {{old}} · Nouvelles {{new}}",
+        "attachment": "Commentaire de révision",
+        "historical": "Version historique : lire le fichier actuel avant modification.",
+        "context": "Code sélectionné (anciennes/nouvelles lignes)",
+        "remove": "Supprimer le commentaire",
+        "selectHint": "Cliquez pour commenter ; faites glisser pour sélectionner plusieurs lignes.",
+        "line": "Sélectionner ancienne ligne {{old}}, nouvelle ligne {{new}}",
+        "comment": "Remarques pour l’agent",
+        "pending": "Envoyez ou supprimez d’abord le commentaire en attente.",
+        "added": "En attente : envoyé avec votre prochain message.",
+        "tooLarge": "Sélectionnez moins de lignes (16 000 caractères maximum).",
+        "add": "Enregistrer le commentaire"
+      },
       "filesChanged_one": "1 fichier modifié",
       "filesChanged_other": "{{count}} fichiers modifiés",
       "changes_one": "1 modification enregistrée",

@@ -5184,6 +5184,7 @@ eleven-tool-round desktop paths are verified by
 
 | 验收 | 应用场景 |
 |---|---|
+| C / D / Quality — Review feedback | E2E-REVIEW-feedback-to-composer |
 | C / F / Quality — 桌面定时任务 | E2E-SCHEDULED-desktop-automation-lifecycle |
 | A / C — Unicode stdio 成帧 | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
@@ -8457,3 +8458,26 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **预期**：打开包含 `(software)` 的完整网址，进入 React 软件词条；正文外层的右括号和紧跟 URL 右括号的句末标点不属于链接，相邻引用仍能独立点击。嵌套圆括号、查询和片段内的圆括号、百分号编码的圆括号均保持完整。
 - **覆盖**：`chat-links.test.mjs`；桌面端通过正常浏览器目标实际点击验证。
 - **链接规格**：`04-ux/08-component-spec.md` §8.3。
+
+
+### E2E-REVIEW-feedback-to-composer
+
+The [English scenario](/spec/06-delivery/04-e2e-test-plan#e2e-review-feedback-to-composer)
+defines selection, send, rejection recovery, queue editing, ownership isolation,
+and rollback coverage. Run `node scripts/test-review-feedback.mjs` with the
+production renderer and isolated preload fixture. Real-provider acceptance is
+separate and requires explicit authorization.
+
+Review feedback is authored below selected code in the right-side Review panel.
+Saved comments remain embedded after their selected line with a remove action;
+no comment card appears above the chat input. Transcript diffs stay read-only
+and offer Review/Open actions. Collapsed changes show a comment marker.
+
+Review/Open actions are visible only inside an expanded transcript diff,
+right-aligned below its code in the same row as the existing rollback action.
+All three buttons are direct children of the action row and share its gap.
+Collapsing the change hides the action row.
+
+Gutter plus buttons support single-click and pointer-drag comments with
+release-to-edit focus. No permanent selection hint is rendered. Shift-click
+remains optional; pointer cancellation and focus loss abort tentative drags.

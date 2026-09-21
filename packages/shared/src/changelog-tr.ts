@@ -6,6 +6,7 @@ export const trEntries: ChangelogEntry[] = [
     "date": "2026-09-21",
     "highlights": [
       "Sohbette görsel oluşturun ve düzenleyin; tek bir görsel modeli ve yerleşik imagegen becerisiyle toplu üretim yapın.",
+      "Kaydedilmiş bir değişiklikten seçilen kod ve geçmiş satır bağlamıyla inceleme yorumunu doğrudan sohbete gönderin.",
       "Araç etkinlikleri konuşma genişliğini izler ve uzun etkinlik etiketleri düzgünce sığdırılır.",
       "Oturum değiştirdikten sonra yapıştırma tamamlansa bile yapıştırılan dosya ekleri korunur.",
       "Sağlayıcıları düzenlerken seçili varsayılan model korunur; model kaldırılırsa güvenli bir yedek kullanılır.",

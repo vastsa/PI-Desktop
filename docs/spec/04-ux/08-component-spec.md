@@ -868,6 +868,48 @@ pending action cards remain reachable outside a hidden process. See
 | Idle (after stream) | Auto-scroll unlocked; user can scroll freely |
 | Message-scoped review snapshot | Each successful workspace Write/Edit tool row is followed by one compact InlineReviewCard carrying that message's added/modified/deleted status and explicit addition/deletion totals. It renders as a single flat list row on the tool-row rhythm — disclosure caret, Git-style status letter (`A`/`M`/`D`), path, addition/deletion counts — with no card border, status rail, icon plate, or status pill; hover fill is the only row chrome, and a rolled-back change is struck through. Its hunks sit behind an expandable disclosure: every review card (inline and in the Review tab) is collapsed by default, and the user expands it on demand. The card remains after a Git commit, never becomes a bottom/global entry, and offers hash-guarded rollback without leaking into another session's transcript. |
 
+### Review feedback in the Review panel
+
+Expanded message-owned changes in the right-side Review panel let users
+click the line gutter plus button to comment on one line, or hold and drag
+it up/down to select a range within one hunk. Shift-click remains optional.
+The plus appears on hover or keyboard focus (always available on touch);
+there are no permanent selection instructions. Pointer capture keeps dragging
+stable outside the gutter and scrolls near the diff edge. Cancelled pointers,
+focus loss and unmount release the capture and cancel the tentative selection. The comment editor opens immediately
+below the selected range. Save comment stages one comment in Review without
+sending or changing files. Transcript diffs remain read-only. A second comment
+cannot replace an unsent one; the user must send or remove the first.
+
+The saved comment stays embedded immediately after the last selected line of
+its exact historical snapshot in Review. It uses the existing review typography,
+small corner radius, theme tokens, and quiet action buttons. Collapsed changes
+show a comment marker; expanding them restores the inline comment. The main
+conversation shows Review and Open actions at the bottom right inside each expanded
+change: Review reveals that snapshot in the right panel, and Open uses the
+existing file-preview resolver. Transcript diffs never show comment editors. No comment card is
+rendered above the composer. It carries the immutable tool snapshot and message ids, session
+id, and workspace path. These coordinates are explicitly historical: the
+model-facing user text instructs the agent to read and reconcile the current
+file before editing, or clarify if the context no longer matches. This is
+contextual feedback, not a current-file validation or an automatic patch.
+Existing host-owned edit/rollback guards and permissions remain authoritative.
+
+Comments are renderer-memory drafts, survive composer remounts, and are visible
+only in their owning session/workspace. Sending serializes the comment as user
+text through the existing prompt path; no RPC or persisted schema changes.
+Successful sends clear it; rejected sends restore it without overwriting a
+newer comment. Queue editing and unanswered-stop restoration retain its draft
+metadata. After a renderer restart a queued prompt still contains the serialized
+feedback, but its structured attachment presentation is not reconstructed.
+
+Feedback alone enables Send. With feedback attached, slash-like prompt text is
+sent as text instead of dispatching a local command that would discard context.
+Plan approval, read-only sessions, model readiness, and steering gates still
+apply. Comments are capped at 4,000 characters and selected code at 16,000;
+binary, truncated, and unparseable hunks cannot create attachments. Removed
+lines retain old-side coordinates and never receive invented new-side numbers.
+
 ### 4.5 Accessibility
 
 - `role="log"` for transcript container
@@ -3825,3 +3867,12 @@ Input, selection, submission and dismissal semantics remain unchanged.
 Project-delete descriptions and plugin dialog headings/outcomes also wrap long
 project or plugin names instead of overflowing their existing widths. Project
 instructions, memory and OAuth dialogs retain their existing bounded layouts.
+
+Review/Open actions are visible only inside an expanded transcript diff,
+right-aligned below its code in the same row as the existing rollback action.
+All three buttons are direct children of the action row and share its gap.
+Collapsing the change hides the action row.
+
+Gutter plus buttons support single-click and pointer-drag comments with
+release-to-edit focus. No permanent selection hint is rendered. Shift-click
+remains optional; pointer cancellation and focus loss abort tentative drags.

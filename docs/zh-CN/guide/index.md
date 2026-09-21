@@ -42,3 +42,22 @@ Renderer 负责呈现；Electron main 协调桌面能力：窗口生命周期、
 不需要为了阅读完整内容不断跳回英文站点。
 
 切换到 [English](/guide/) 查看完整的英文快速开始文档，或使用顶部搜索直接查找协议方法、错误码和决策编号。
+
+
+## Review feedback
+
+The [review feedback guide](/guide/#ask-for-changes-from-a-review) describes
+line selection in Review, Save comment, explicit Send, and historical snapshot context.
+
+Review feedback is authored below selected code in the right-side Review panel.
+Saved comments remain embedded after their selected line with a remove action;
+no comment card appears above the chat input. Transcript diffs stay read-only
+and offer Review/Open actions. Collapsed changes show a comment marker.
+
+Review/Open actions are visible only inside an expanded transcript diff,
+right-aligned below its code in the same row as the existing rollback action.
+Collapsing the change hides the action row.
+
+Gutter plus buttons support single-click and pointer-drag comments with
+release-to-edit focus. No permanent selection hint is rendered. Shift-click
+remains optional; pointer cancellation and focus loss abort tentative drags.

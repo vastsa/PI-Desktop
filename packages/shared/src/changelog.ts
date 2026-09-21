@@ -33,6 +33,7 @@ const enEntries: ChangelogEntry[] = [
     date: "2026-09-21",
     highlights: [
       "Generate and edit images in chat, choose one image model, and create batches with the built-in imagegen skill.",
+      "Send a review comment with selected code and historical line context directly from a recorded change to the conversation.",
       "Keep tool activity aligned with the conversation width and contain long activity labels cleanly.",
       "Preserve pasted file attachments when a paste finishes after switching sessions.",
       "Keep the selected default model when editing providers, and fall back safely when it is removed.",
@@ -829,6 +830,7 @@ const zhCNEntries: ChangelogEntry[] = [
     date: "2026-09-21",
     highlights: [
       "支持聊天生图与图片编辑，可设置唯一生图模型，并通过内置 imagegen 技能批量生成。",
+      "从已记录的代码变更选择行并添加审阅评论，携带原始代码和历史行号发送到当前会话。",
       "让工具活动跟随对话宽度排列，并妥善收纳过长的活动名称。",
       "切换会话后，如果粘贴操作稍后完成，文件附件也会保留。",
       "编辑提供商时保留已选的默认模型；模型被移除后安全回退。",
@@ -1625,6 +1627,7 @@ const zhTWEntries: ChangelogEntry[] = [
     date: "2026-09-21",
     highlights: [
       "支援聊天生圖與圖片編輯，可設定唯一生圖模型，並透過內建 imagegen 技能批次生成。",
+      "從已記錄的程式碼變更選擇行並新增審閱評論，攜帶原始程式碼與歷史行號傳送至目前對話。",
       "讓工具活動跟隨對話寬度排列，並妥善收納過長的活動名稱。",
       "切換工作階段後，即使貼上操作稍後完成，檔案附件也會保留。",
       "編輯提供商時保留已選的預設模型；模型被移除後安全回退。",

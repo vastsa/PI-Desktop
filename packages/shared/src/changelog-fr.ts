@@ -6,6 +6,7 @@ export const frEntries: ChangelogEntry[] = [
     "date": "2026-09-21",
     "highlights": [
       "Générez et modifiez des images dans le chat, choisissez un modèle et créez des lots avec la compétence intégrée imagegen.",
+      "Envoyez un commentaire de révision avec le code sélectionné et ses lignes historiques depuis une modification enregistrée vers la conversation.",
       "L'activité des outils suit la largeur de la conversation et contient proprement les libellés longs.",
       "Les pièces jointes collées sont conservées même si le collage se termine après un changement de session.",
       "Le modèle par défaut sélectionné est conservé lors de la modification des fournisseurs, avec un repli sûr s'il est supprimé.",

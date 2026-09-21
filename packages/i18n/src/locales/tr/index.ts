@@ -1526,6 +1526,23 @@ sklm: {
     empty: {
     },
     review: {
+      feedback: {
+        review: "İncele",
+        open: "Aç",
+        location: "{{lines}} satırları için yorum",
+        range: "Eski satırlar {{old}} · Yeni satırlar {{new}}",
+        "attachment": "İnceleme yorumu",
+        "historical": "Geçmiş anlık görüntü: düzenlemeden önce güncel dosyayı okuyun.",
+        "context": "Seçilen kod (eski/yeni satırlar)",
+        "remove": "Yorumu kaldır",
+        "selectHint": "Yorum için tıklayın; birden çok satır seçmek için sürükleyin.",
+        "line": "Eski satır {{old}}, yeni satır {{new}} seç",
+        "comment": "Aracıya geri bildirim",
+        "pending": "Önce bekleyen yorumu gönderin veya kaldırın.",
+        "added": "Bekliyor · Sonraki mesajınızla gönderilecek.",
+        "tooLarge": "Daha az satır seçin (en fazla 16.000 karakter).",
+        "add": "Yorumu kaydet"
+      },
       filesChanged_one: "1 dosya değişti",
       filesChanged_other: "{{count}} dosya değişti",
       changes_one: "1 kayıtlı değişiklik",

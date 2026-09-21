@@ -1526,6 +1526,23 @@ sklm: {
     empty: {
     },
     review: {
+      feedback: {
+        review: "검토",
+        open: "열기",
+        location: "{{lines}}행 댓글",
+        range: "이전 줄 {{old}} · 새 줄 {{new}}",
+        "attachment": "검토 의견",
+        "historical": "과거 스냅샷입니다. 수정 전에 현재 파일을 확인하세요.",
+        "context": "선택한 코드 (이전/새 줄)",
+        "remove": "의견 제거",
+        "selectHint": "클릭하여 댓글을 추가하거나 드래그하여 여러 줄을 선택하세요.",
+        "line": "이전 줄 {{old}}, 새 줄 {{new}} 선택",
+        "comment": "에이전트에게 전달할 의견",
+        "pending": "대기 중인 의견을 먼저 보내거나 제거하세요.",
+        "added": "대기 중 · 다음 메시지와 함께 전송됩니다.",
+        "tooLarge": "더 적은 줄을 선택하세요 (최대 16,000자).",
+        "add": "댓글 저장"
+      },
       filesChanged_one: "파일 1개 변경됨",
       filesChanged_other: "파일 {{count}}개 변경됨",
       changes_one: "기록된 변경 1개",

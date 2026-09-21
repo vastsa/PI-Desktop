@@ -63,6 +63,7 @@ import { useComposerModelMenu } from "../features/chat/composer/hooks/useCompose
 import { ComposerToolbar } from "../features/chat/composer/ComposerToolbar";
 import { ComposerStatus } from "../features/chat/composer/ComposerStatus";
 
+
 const EMPTY_QUEUED_PROMPTS: QueuedPrompt[] = [];
 
 export {
@@ -234,7 +235,7 @@ export function Composer({
   // captured draft becomes the input, so the input must be empty first: the
   // live read is the only current source (the draft cache is not per keystroke).
   const handleEditQueuedPrompt = (id: string) => {
-    if (readLiveDraft().trim() || activeFileReferences.length) {
+    if (readLiveDraft().trim() || activeFileReferences.length || draft.reviewFeedback) {
       showToast(t("chat.editQueuedPromptBusy"), { variant: "info" });
       return;
     }
@@ -395,7 +396,7 @@ export function Composer({
       !isImageGenerationModel(settings?.imageGeneration, provider.id, modelId) &&
       (provider.hasSecret || provider.authKind === "none");
   const enterToSend = settings?.enterToSend ?? true;
-  const hasDraftContent = Boolean(value.trim() || activeFileReferences.length);
+  const hasDraftContent = Boolean(value.trim() || activeFileReferences.length || draft.reviewFeedback);
 
   useEffect(() => {
     if (!controlsBlocked) return;

@@ -1509,6 +1509,23 @@ sklm: {
     empty: {
     },
     review: {
+      feedback: {
+        review: "审核",
+        open: "打开",
+        location: "第 {{lines}} 行的修改意见",
+        range: "旧行 {{old}} · 新行 {{new}}",
+        "attachment": "审阅评论",
+        "historical": "历史快照：修改前需核对当前文件。",
+        "context": "所选代码（旧行/新行）",
+        "remove": "移除评论",
+        "selectHint": "点击添加评论，按住拖动选择多行。",
+        "line": "选择旧行 {{old}}，新行 {{new}}",
+        "comment": "修改意见",
+        "pending": "请先发送或移除审阅区中待发送的意见。",
+        "added": "待发送 · 随下一条消息发给 AI",
+        "tooLarge": "请选择更少的代码（最多 16,000 个字符）。",
+        "add": "保存意见"
+      },
       filesChanged_one: "1 个文件有改动",
       filesChanged_other: "{{count}} 个文件有改动",
       changes_one: "记录了 1 项改动",

@@ -1526,6 +1526,23 @@ sklm: {
     empty: {
     },
     review: {
+      feedback: {
+        review: "Review",
+        open: "Open",
+        location: "Comment on lines {{lines}}",
+        range: "Old lines {{old}} · New lines {{new}}",
+        "attachment": "Review comment",
+        "historical": "Historical snapshot — read the current file before editing.",
+        "context": "Selected code (old/new lines)",
+        "remove": "Remove comment",
+        "selectHint": "Click to comment; drag to select multiple lines.",
+        "line": "Select old line {{old}}, new line {{new}}",
+        "comment": "Feedback for the agent",
+        "pending": "Send or remove the pending comment first.",
+        "added": "Ready — sent with your next message.",
+        "tooLarge": "Select fewer lines (up to 16,000 characters).",
+        "add": "Save comment"
+      },
       filesChanged_one: "1 file changed",
       filesChanged_other: "{{count}} files changed",
       changes_one: "1 recorded change",

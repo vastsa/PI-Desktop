@@ -59,3 +59,35 @@ number; use the sidebar when you are exploring a domain.
 See the [AI development workflow](/spec/06-delivery/03-ai-development-workflow)
 and [change checklist](/spec/06-delivery/05-change-checklist) for the complete
 repository rules.
+
+
+## Ask for changes from a review
+
+Open the right-side **Review** panel and expand a recorded change. Hover beside a code line and click **+** to comment, or hold and drag it
+across several lines in the same block. Release to focus the inline editor.
+Shift-click remains available as an alternative.
+Enter your feedback below the selected code and choose **Save comment**.
+The saved comment stays directly below its selected code in Review. You can
+remove it there. A collapsed change shows a comment marker. In the main chat,
+use **Review** at the bottom right inside an expanded change to reveal it in the review panel,
+or **Open** to view the current file. Choose **Send** in the chat input to send it with your next message; saving
+a comment does not execute it. No comment card appears above the chat input.
+
+One comment can be pending per conversation. Send or remove it before adding
+another. Switching conversations hides the attachment until you return to its
+original workspace and conversation. An unsent comment is a memory-only draft
+and does not survive an application restart.
+
+Line numbers refer to the original change snapshot. The agent receives the
+quoted code and your comment with an instruction to read the current file
+before making changes. Review feedback does not automatically validate or
+apply an old patch. Existing permissions and rollback conflict checks still
+apply.
+
+Review/Open actions are visible only inside an expanded transcript diff,
+right-aligned below its code in the same row as the existing rollback action.
+Collapsing the change hides the action row.
+
+Gutter plus buttons support single-click and pointer-drag comments with
+release-to-edit focus. No permanent selection hint is rendered. Shift-click
+remains optional; pointer cancellation and focus loss abort tentative drags.

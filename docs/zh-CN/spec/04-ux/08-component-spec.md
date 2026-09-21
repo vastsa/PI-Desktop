@@ -631,6 +631,14 @@ expanded/collapsed 侧边栏仍为 20px/18px 且启动画面为 64 像素。
 | 空闲（流后） | 自动滚动解锁；用户可以自由滚动 |
 | 消息范围的审核快照 | 每个成功的工作区 Write/Edit 工具行后面都有一个紧凑的 InlineReviewCard，其中包含该消息的 added/modified/deleted 状态和显式 addition/deletion 总计。它的大块头位于可扩展的披露后面：默认情况下，每个评论卡（内联和“评论”选项卡中）都是折叠的，用户可以根据需要展开它。该卡在 Git 提交后保留，永远不会成为 bottom/global 条目，并提供哈希保护的回滚，而不会泄漏到另一个会话的记录中。 |
 
+### Review feedback in the Review panel
+
+See the [English source specification](/spec/04-ux/08-component-spec#review-feedback-in-the-review-panel)
+for line selection, historical snapshot context, session/workspace isolation,
+send failure recovery, queue editing, and draft limits. The new flow adds one
+pending comment to Review and requires an explicit Send; it never changes files
+or rollback permissions itself.
+
 ### 4.5 辅助功能
 
 - `role="log"` 用于转录容器
@@ -2750,3 +2758,17 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 
 项目删除说明和插件弹窗标题、安装结果中的长名称也在现有宽度内换行。
 项目指令、项目记忆和 OAuth 弹窗维持已有的边界处理。
+
+Review feedback is authored below selected code in the right-side Review panel.
+Saved comments remain embedded after their selected line with a remove action;
+no comment card appears above the chat input. Transcript diffs stay read-only
+and offer Review/Open actions. Collapsed changes show a comment marker.
+
+Review/Open actions are visible only inside an expanded transcript diff,
+right-aligned below its code in the same row as the existing rollback action.
+All three buttons are direct children of the action row and share its gap.
+Collapsing the change hides the action row.
+
+Gutter plus buttons support single-click and pointer-drag comments with
+release-to-edit focus. No permanent selection hint is rendered. Shift-click
+remains optional; pointer cancellation and focus loss abort tentative drags.
