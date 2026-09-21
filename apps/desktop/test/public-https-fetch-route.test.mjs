@@ -40,11 +40,12 @@ function response(status, body, location) {
 }
 
 /** A client whose session reports `route` and whose resolver answers `address`. */
-function clientFor({ route, address, fetchImpl }) {
+function clientFor({ route, address, fetchImpl, allowFakeIp }) {
   return createPublicHttpsClient({
     fetchImpl: fetchImpl ?? (async () => response(200, "# skill\n")),
     lookupImpl: async () => (address ? [{ address }] : []),
     ...(route === undefined ? {} : { routeImpl: async () => route }),
+    ...(allowFakeIp === undefined ? {} : { allowFakeIp }),
   });
 }
 
@@ -124,6 +125,26 @@ test("a direct route keeps the strict verdict for fake-IP and private answers al
       `expected ${address} to stay refused on a direct route`,
     );
   }
+});
+test("an explicit fake-IP opt-in permits only the benchmark class on a direct route", async () => {
+  const client = clientFor({ route: "DIRECT", address: FAKE_IP, allowFakeIp: true });
+  assert.equal(
+    await client.request("https://cdn.jsdelivr.net/gh/x/SKILL.md", "text"),
+    "# skill\n",
+  );
+
+  const privateClient = clientFor({
+    route: "DIRECT",
+    address: "10.0.0.8",
+    allowFakeIp: true,
+    fetchImpl: async () => {
+      throw new Error("a refused request must never reach the network");
+    },
+  });
+  await assert.rejects(
+    () => privateClient.assertPublicUrl("https://cdn.jsdelivr.net/gh/x/SKILL.md"),
+    (error) => error instanceof PublicNetworkPolicyError && error.addressKind === "private",
+  );
 });
 
 test("a route the transport cannot name falls back to the strict verdict", async () => {

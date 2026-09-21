@@ -4308,10 +4308,9 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 ## 2026-09-17 —— 按请求实际会走的线路判定公网地址（D436）
 
 - 技能市场的主进程守卫此前用*本地*解析器判定目标主机，而 `net.fetch` 走的是 Chromium 的代理栈（ADR 0177）。在 TUN / fake-IP 解析器下，那个答案是应用永远不会建立的连接的合成地址（`198.18.0.0/15`），于是每个目录源都被判为「被应用的地址校验阻止」（issue #419）。
-- 现在每一跳都向承载 `net.fetch` 的会话询问它自己的判定（`Session.resolveProxy`），共享的 `classifyProxyRoute` 把该答案归为 `proxied` / `direct` / `unknown`。在 `proxied` 线路上，`isAcceptableResolvedAddress` 只容忍解析器自身产物的那一类（`benchmark`）；所有真实内网类别与「解析器没有应答」仍然拒绝。`direct` 线路与改动前逐字一致；列表里任何位置出现 `DIRECT` 都按 `unknown` 处理（Chromium 可能回退到它），而 `unknown` 走严格路径。
+- 现在每一跳都向承载 `net.fetch` 的会话询问它自己的判定（`Session.resolveProxy`），共享的 `classifyProxyRoute` 把该答案归为 `proxied` / `direct` / `unknown`。在 `proxied` 线路上，`isAcceptableResolvedAddress` 只容忍解析器自身产物的那一类（`benchmark`）；所有真实内网类别与「解析器没有应答」仍然拒绝。`direct` 线路默认与改动前逐字一致，但显式 `allowFakeIp` 仅可额外放行 benchmark 占位地址；列表里任何位置出现 `DIRECT` 都按 `unknown` 处理（Chromium 可能回退到它），而 `unknown` 走严格路径。
 - 拒绝与市场的 `failureDetails` 现在都带 `route`，因此「直连线路上的 fake-IP 拒绝」与「读不出线路的拒绝」在诊断里可以区分。
-- MCP 市场仍使用自己的地址钉定 Node HTTPS 守卫（ADR 0245），本次不变；fake-IP 环境下它的源仍会被拒绝。
-- 见 ADR 0272、`05-security/01-security.md` §4.1、`03-runtime/09-logging-and-observability.md` 与 `06-delivery/04-e2e-test-plan.md` 的 E2E-SKILL-MARKET-NET-BOUNDARY。
+- MCP 市场现在也在每一跳向 Electron session 询问线路：完整代理线路使用 `net.fetch`，让 fake-IP 源能够到达已配置的代理；直连和未知线路默认继续使用固定 Node HTTPS 地址的严格公网规则。显式 `allowFakeIp` 选项仅为透明路由器/TUN 部署放行 benchmark 占位地址，真实私网答案在所有线路上仍然拒绝。见 ADR 0245。
 
 ## 2026-09-17 —— dock 内的问题卡是 composer 板（#360，D437）
 
@@ -4600,6 +4599,16 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
   或权限。见 `04-ux/08-component-spec.md` 与
   E2E-CHAT-opaque-floating-decision-and-retry-surfaces。
 
+## 2026-09-21 —— 上下文估算采用保守校准（D606）
+
+- 所有预算阈值读取同一个数字，该数字按请求的真实开销校正。pi 的估算器以最后一条助手用量为锚、其余按 `chars / 4` 估算，
+  这会低估中文文本约 2–4 倍；没有锚点时还会完全漏掉系统提示与工具结构。
+- 两类误差分开应用：逐字符偏差是按比例（与量级无关）作用于猜测尾部；无锚点残差只在量级相当的样本（0.5×–2×）上按比例
+  应用，否则只加观测到的固定开销（上限 32,000 词元）。因此 100k 量级的样本不会作为比例系数套到 1M 的投影上。
+- 校正不对称：向上修正有三个观测即生效；向下修正需要三个方向一致的样本、每次最多 15 %，且不会低于原始估算的 85 %——
+  处在硬限制 1.18× 的投影仍会压缩。偏离预测 0.5×–3× 的报告视为误报，连续两次误报冻结向下修正。
+  见 `03-runtime/02-agent-runtime §5.1`。
+
 ## 2026-09-21 —— 每个请求里的工具调用 id 必须唯一（D608，issue #718）
 
 - Anthropic 系端点（含 DeepSeek）在请求中同一个调用 id 出现两次时，会以 `tool_use ids must be unique` 拒绝整个回合，
@@ -4608,7 +4617,7 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 因此上线前的最后一个视图对每个 `toolCall` id 只保留第一次出现，丢弃其后重复的调用或结果，使提供商校验的「一调用一结果」
   配对保持完整；没有重复的请求原样返回（返回同一对象，而非副本）。磁盘上的内容不会被改写，压缩与保留规则也不变。
 - 一旦发生丢弃，会在 `agent` 日志通道上报告一次，带上会话与 id，使下一次同类报障能指向写入方而不只是提供商那句话。
-  见 `03-runtime/02-agent-runtime.md` §5。
+  见 `03-runtime/02-agent-runtime §5`。
 - 守卫刻意放在请求边界而不是历史重建处：这样也能覆盖**会话运行期间**产生的重复，而重建期的过滤看不到它。
 
 ## 2026-09-21 —— 插件崩溃上报带上退出码但不复制原始输出（D607，issue #747）
@@ -4620,3 +4629,17 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 插件 stdout/stderr 不复制进加载错误、崩溃审计记录或崩溃日志负载，因为其中可能包含工作区数据或敏感信息。不新增任何持久化，权限与 API 面不变；
   既有的 `plugin.stdio` 审计流保持不变。
 - 见 `07-plugins/05-plugin-lifecycle.md` §3.1。
+
+## 2026-09-20 —— 新建项目的名称默认取主要文件夹（D609）
+
+- 新建项目对话框原本要求先填名称才能创建，本地选文件夹时不得不先编一个标题；
+  Git 来源此前已用仓库名预填该字段（D438、ADR 0273）。
+- 名称字段现在对两种来源都可选。它按所选来源预填——本地来源取第一个（主要）
+  文件夹的名称，Git 来源取仓库名——用户一旦自己输入就不再跟随来源。创建按钮
+  只由来源决定是否可用（一个文件夹，或解析成功的地址加保存位置），字段留空时
+  回退为同一个默认名。
+- 派生名称会截断到 `MAX_PROJECT_NAME_CHARS`（80），以保证侧边栏偏好持久化和
+  名称字段都能原样接受。文件夹名解析移到
+  `apps/desktop/src/lib/project-name.ts`，与对话框的文件夹行共用。
+- 仅渲染器改动：不改协议、存储、宿主、权限或迁移，也不新增默认值。见
+  `04-ux/08-component-spec.md`、ADR 0233、ADR 0273、E2E-012a / E2E-256。

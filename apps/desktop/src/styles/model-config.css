@@ -10,6 +10,10 @@
 
 /* ------------------------------------------------- catalog status footer */
 
+.model-config-page .model-default-panel {
+  gap: 12px;
+}
+
 /* models.dev is the enrichment source, so the page only reports its snapshot. */
 .model-catalog-status {
   display: flex;
@@ -1624,6 +1628,7 @@
   flex: none;
 }
 
+/* A plugin-declared row lets the plugin provide its fields; a key entry belongs
    to the plugin, so the user supplies only the key. */
 .model-provider-key-entry {
   display: flex;

@@ -550,6 +550,19 @@ export const fr = {
     "dismiss": "Ignorer"
   },
   "settings": {
+    "imageModel": "Modèle de génération d’images",
+    "imageModelUnset": "Non configuré",
+    "imageModelUnavailable": "Indisponible pour le moment",
+    "imageModelSaveFailed": "Impossible d’enregistrer le modèle.",
+    "clearImageModel": "Effacer",
+    "setImageModel": "Définir comme modèle d’images",
+    "imageModelSelected": "Modèle d’images sélectionné",
+    "generatedImage": "Image générée {{index}}",
+    "imagePreviewUnavailable": "Aperçu indisponible ; ouvrir le fichier",
+    "imageGenerationFailed": "L’image {{index}} n’a pas été terminée.",
+    "imageModelSetupHint": "Configurez un modèle d’images dans Paramètres → Modèles.",
+    "configureImageModel": "Configurer le modèle d’images",
+
 
 sklm: {
       browse: "Marché",
@@ -1004,6 +1017,8 @@ sklm: {
     "proxyUrlPlaceholder": "chaussettes5://127.0.0.1:1080",
     "proxyBypass": "Contourner",
     "proxyBypassDesc": "Hôtes qui ignorent le proxy.",
+    proxyFakeIp: "Autoriser les fake-IP du proxy pour les sources du marché",
+    proxyFakeIpDesc: "À activer uniquement avec un proxy transparent de routeur/TUN. Les autres adresses privées restent bloquées.",
     "proxyInvalid": "Saisissez une URL http, https ou chaussettes5 avec un hôte.",
     "proxySaveError": "Impossible d'enregistrer le proxy.",
     "proxyTest": "Test",

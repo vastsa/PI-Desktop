@@ -550,6 +550,19 @@ export const es = {
     "dismiss": "Descartar"
   },
   "settings": {
+    "imageModel": "Modelo de imágenes",
+    "imageModelUnset": "Sin configurar",
+    "imageModelUnavailable": "No disponible por ahora",
+    "imageModelSaveFailed": "No se pudo guardar el modelo.",
+    "clearImageModel": "Borrar",
+    "setImageModel": "Usar para generar imágenes",
+    "imageModelSelected": "Modelo de imágenes seleccionado",
+    "generatedImage": "Imagen generada {{index}}",
+    "imagePreviewUnavailable": "Vista previa no disponible; abrir archivo",
+    "imageGenerationFailed": "La imagen {{index}} no se completó.",
+    "imageModelSetupHint": "Configura un modelo de imágenes en Ajustes → Modelos.",
+    "configureImageModel": "Configurar modelo de imágenes",
+
 
 sklm: {
       browse: "Mercado",
@@ -1004,6 +1017,8 @@ sklm: {
     "proxyUrlPlaceholder": "calcetines5://127.0.0.1:1080",
     "proxyBypass": "Omitir",
     "proxyBypassDesc": "Hosts que omiten el proxy.",
+    proxyFakeIp: "Permitir fake-IP del proxy para fuentes del mercado",
+    proxyFakeIpDesc: "Actívalo solo con un proxy transparente de router/TUN. Las demás direcciones privadas siguen bloqueadas.",
     "proxyInvalid": "Ingrese una URL http, https o Socks5 con un host.",
     "proxySaveError": "No se pudo guardar el proxy.",
     "proxyTest": "Prueba",

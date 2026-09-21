@@ -494,7 +494,9 @@ export class SubagentRun {
     if (messages.at(-1)?.role !== "assistant") {
       throw new Error("Cannot retry a subagent provider stream without its failed assistant message");
     }
-    messages.pop();
+    // A failed provider stream can leave more than one assistant row after a
+    // tool round. Remove the entire failed suffix before continuing.
+    while (messages.at(-1)?.role === "assistant") messages.pop();
     this.agent.state.messages = messages;
     this.providerRetryInProgress = true;
     try {

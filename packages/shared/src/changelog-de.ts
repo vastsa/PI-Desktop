@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     "version": "0.15.2",
     "date": "2026-09-21",
     "highlights": [
+      "Bilder im Chat generieren und bearbeiten, ein Bildmodell wählen und mit dem integrierten imagegen-Skill Stapel erstellen.",
       "Werkzeugaktivitäten folgen der Gesprächsbreite; lange Aktivitätsnamen werden sauber begrenzt.",
       "Dateianhänge aus dem Einfügen bleiben erhalten, auch wenn der Vorgang nach einem Sitzungswechsel endet.",
       "Das ausgewählte Standardmodell bleibt beim Bearbeiten von Anbietern erhalten und fällt sicher zurück, wenn es entfernt wird.",

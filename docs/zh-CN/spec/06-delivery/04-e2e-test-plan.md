@@ -5288,6 +5288,7 @@ eleven-tool-round desktop paths are verified by
 | C — 对话和直播（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | 品质（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
+| C / F / 品质 —— 上下文估算保持安全（校准） | E2E-CONTEXT-estimate-calibration-stays-safe |
 | C — 对话与流式（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | 品质（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | G — 插件宿主生命周期（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
@@ -7902,7 +7903,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 | ID | 场景 | 验证 |
 |---|---|---|
-| E2E-MCP-MARKET-NET-BOUNDARY | URL guard 拒绝凭据、回环、私网、special-use IPv4、v4-mapped、ULA、site-local 和 link-local 及尾点绕过形态；Main 固定已检查的公网地址并逐跳复核 HTTPS 重定向 | 确定性 guard 断言；DNS pin 与响应上限 source-contract 覆盖 |
+| E2E-MCP-MARKET-NET-BOUNDARY | URL guard 拒绝凭据、回环、私网、special-use IPv4、v4-mapped、ULA、site-local 和 link-local 及尾点绕过形态；direct/unknown 默认固定已检查的公网地址，完整 proxied 线路使用 session 传输，显式 `allowFakeIp` 可覆盖透明路由器 fake-IP 源但不允许真实私网答案 | 确定性 guard 断言；DNS pin、代理线路选择、fake-IP 选项范围与响应上限 source-contract 覆盖 |
 | E2E-MCP-MARKET-SEMANTICS | Registry 记录映射为安装模板时保留包版本、named/positional runtime/package 参数与 required/optional 环境变量语义；远端 header 变量同时识别注册表的 `{name}` 与目录的 `${NAME}` 两种写法，仅为已声明的可编辑值显示输入，保留未声明花括号字面量，并按各 header 的作用域处理默认值、固定值与可选标记，不合并不同 header 的同名输入（ADR registry-header-variable-spelling） | 确定性映射断言 |
 | E2E-MCP-MARKET-INSTALL | 内置目录条目经 `resolveCatalogEntry` 解析并通过宿主 `mcp.upsert` RPC 安装；记录落盘 `~/.agents/servers/` | 真实宿主二进制，隔离临时 HOME |
 | E2E-MCP-MARKET-HEADER-SCOPE | Registry header-local `{token}` resolves only in its header; same-named URL path/query tokens remain literal through mapping, resolution, host upsert/list and persistence. URL templates retain only legacy `${NAME}` substitution. When `headerBindings` exists (even empty or partial), unbound tokens in every header stay literal and never consume another header's input or default | shared regressions plus real host binary with isolated temporary storage; remote entry disabled, no network call |
@@ -8262,6 +8263,36 @@ the latest destination. These assertions measure work counts, not device FPS.
   default.
 - **Status:** Contract-covered; no end-to-end driver waits out a real 70s call.
 
+### E2E-IMAGES-desktop-conversation
+
+- **Preconditions:** Isolated desktop profile and workspace, built image feature,
+  local chat and OpenAI Images HTTP fixtures; no live provider credentials.
+- **Steps:** Open Models settings; verify the conversation and image defaults
+  share a compact panel. Submit a two-image request through the composer, then
+  edit the first output through a follow-up message. Collapse tool details.
+  Clear the binding and follow the visible configuration action back to Models.
+- **Expected:** A 12px default-row gap, decoded image previews outside collapsed
+  process details, multipart source upload for editing, preserved originals,
+  and no image HTTP request while unconfigured.
+- **Settings interactions:** The image summary has no Change/Clear buttons and
+  matches the default model's provider/model text styles. Select another
+  provider's image model in Advanced and save; the summary changes while the
+  chat default stays unchanged. Missing/disabled bindings show only Currently
+  unavailable. Covered in `scripts/e2e-image-generation-ui.mjs`.
+- **Conversation selection:** The selected image provider/model is absent from
+  default and Composer candidates. Other providers retain same-ID models. An
+  existing session pinned to the image binding is rejected before inference.
+- **Transport contracts:** Real stdio reverse RPC retains a thrown local image
+  error's stable code in the production ParentHostProxy. Local HTTP tests check
+  single/multiple binary multipart fields and boundaries, DALL-E `b64_json`
+  requests, GPT Image parameter omission, bounded responses, and rejection of
+  more than four references before I/O. These are protocol tests, not official
+  provider account/live compatibility certification.
+- **Status:** Automated in `node scripts/e2e-image-chat.mjs`; optional screenshots
+  use `PI_IMAGE_CHAT_EVIDENCE_DIR`. The images are deterministic raster fixtures,
+  not evidence of real-model quality or provider compatibility.
+
+
 ### E2E-SCHEDULED-desktop-automation-lifecycle
 
 - **前提：** 独立桌面配置、构建后的任务候选版本、本地 SSE 模拟模型；不使用真实
@@ -8341,6 +8372,16 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **规格：** 04-ux/06-settings-ia、04-ux/08-component-spec、
   04-ux/09-interaction-patterns；ADR turn-process-and-thinking-display。
 
+### E2E-CONTEXT-estimate-calibration-stays-safe
+
+- **先决条件：** 可脚本化上报用量的确定性提供商夹具；占用接近硬边界的会话；不使用真实凭据。
+- **步骤：** 连续上报低于预测的用量，确认显示占用不低于下限且压缩仍然触发；上报远离合理区间的用量，确认数值不动；跑一个
+  中文为主的会话，比较显示占用与上报用量。
+- **预期：** 校准后的占用保持在原始估算的 0.85×–6× 之内；有证据即上调；只有方向一致的样本才下调；处在硬限制 1.18× 的
+  投影仍触发压缩；误报不产生任何方向的移动；中文文本不再只有实测成本的四分之一。
+- **规格：** 03-runtime/02-agent-runtime §5.1、08-meta/decisions-log D606。**验收：** C（对话与流）、F（持久化）、品质。
+  **状态：** 单元测试覆盖（含中文与边界用例）；桌面 E2E 待补。
+
 ### E2E-RUNTIME-unique-tool-call-ids-per-request
 
 - **先决条件：** 一份把同一次工具调用携带两次的会话转录（重试追加让该调用落在第二个行 id 上），在确定性提供商夹具下加载进
@@ -8386,6 +8427,29 @@ the latest destination. These assertions measure work counts, not device FPS.
   退出码及原始 stderr 缺失；`plugin-isolation.test.mjs` 与关闭用例覆盖"退出不是崩溃"那一半。
 - **状态：** 运行时层已自动化；无 UI 驱动读取插件页的错误文本。
 
+
+### E2E-IMAGE-generation-and-editing
+
+- **Preconditions:** Built task candidate containing latest origin/main; isolated
+  host data directory, local image HTTP fixture, no production credentials.
+- **Steps:** Choose a model in Advanced, cancel and verify no change; save and
+  replace it through another provider's Advanced settings. Clear the binding via
+  the test settings API to verify recovery. Generate same-prompt variants and distinct images,
+  edit a generated image, inspect partial failures, then restart the host/session.
+  Attempt the tool in a durable Plan session and verify no HTTP request occurs.
+- **Expected:** One image binding persists without changing the chat default;
+  generated files, edit sources and transcript references survive restart.
+  Images render in chat; unconfigured errors navigate to Models settings.
+- **Specs:** 03-runtime/21-image-generation; 03-runtime/13-model-catalog-and-selection.
+- **Acceptance:** Configured image generation/editing, safe cancellation and persistence.
+- **Milestone:** Post-MVP.
+- **Status:** Automated by `scripts/e2e-image-generation.mjs` and
+  `scripts/e2e-image-generation-ui.mjs`; backend test uses real Rust/stdio/HTTP/files,
+  UI test uses real Chromium and production components with API-boundary fixtures.
+
+| Scenario | Acceptance | Specification | Automation |
+| --- | --- | --- | --- |
+| E2E-IMAGE-generation-and-editing | Image capability and recovery | 03-runtime/21-image-generation | Host and UI suites above |
 
 #### E2E-CHAT-parenthesized-url：用户消息中的完整网址
 

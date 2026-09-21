@@ -559,6 +559,19 @@ export const tr = {
     dismiss: "Kapat",
   },
   settings: {
+    "imageModel": "Görsel oluşturma modeli",
+    "imageModelUnset": "Yapılandırılmadı",
+    "imageModelUnavailable": "Şu anda kullanılamıyor",
+    "imageModelSaveFailed": "Görsel modeli kaydedilemedi.",
+    "clearImageModel": "Temizle",
+    "setImageModel": "Görsel modeli olarak ayarla",
+    "imageModelSelected": "Seçili görsel modeli",
+    "generatedImage": "Oluşturulan görsel {{index}}",
+    "imagePreviewUnavailable": "Önizleme yok; dosyayı aç",
+    "imageGenerationFailed": "Görsel {{index}} tamamlanmadı.",
+    "imageModelSetupHint": "Ayarlar → Modeller bölümünde bir görsel modeli yapılandırın.",
+    "configureImageModel": "Görsel modelini yapılandır",
+
 
 sklm: {
       browse: "Market",
@@ -1017,6 +1030,8 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "Muaf tut",
     proxyBypassDesc: "Vekili atlayan ana makineler.",
+    proxyFakeIp: "Pazar kaynakları için proxy fake-IP adreslerine izin ver",
+    proxyFakeIpDesc: "Yalnızca şeffaf yönlendirici/TUN proxy için açın. Diğer özel adresler engellenmeye devam eder.",
     proxyInvalid: "Ana makineli bir http, https veya socks5 URL’si girin.",
     proxySaveError: "Vekil kaydedilemedi.",
     proxyTest: "Dene",

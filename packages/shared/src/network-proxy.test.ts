@@ -76,6 +76,16 @@ describe("validateNetworkProxy", () => {
       value: { mode: "direct" },
     });
   });
+  it("preserves the explicit fake-IP market opt-in without widening other modes", () => {
+    expect(validateNetworkProxy({ mode: "direct", allowFakeIp: true })).toEqual({
+      ok: true,
+      value: { mode: "direct", allowFakeIp: true },
+    });
+    expect(validateNetworkProxy({ mode: "system", allowFakeIp: false })).toEqual({
+      ok: true,
+      value: { mode: "system" },
+    });
+  });
 
   it("requires a valid URL in custom mode", () => {
     expect(validateNetworkProxy({ mode: "custom" }).ok).toBe(false);

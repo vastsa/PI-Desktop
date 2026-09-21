@@ -14,6 +14,21 @@ describe("ParentHostProxy RPC deadlines", () => {
     vi.restoreAllMocks();
   });
 
+  it("exposes the stable error code received from the host", async () => {
+    const stdout = stubStdout();
+    const proxy = new ParentHostProxy();
+    try {
+      const pending = proxy.call("tools.execute", { toolName: "GenerateImages" });
+      const request = JSON.parse(String(stdout.mock.calls.at(-1)?.[0]));
+      proxy.handleParentMessage({ id: request.id, error: {
+        code: -32000, message: "Denied", data: { errorCode: "PERMISSION_DENIED" },
+      } });
+      await expect(pending).rejects.toMatchObject({
+        code: -32000, errorCode: "PERMISSION_DENIED", data: { errorCode: "PERMISSION_DENIED" },
+      });
+    } finally { await proxy.dispose(); stdout.mockRestore(); }
+  });
+
   it("honors a per-call timeout", async () => {
     vi.useFakeTimers();
     const stdout = stubStdout();

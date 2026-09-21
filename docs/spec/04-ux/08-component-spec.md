@@ -501,17 +501,19 @@ visually distinct from list content.
   without deleting tabs; the work-panel header keeps its tab strip and fixed `+`
   menu, while each tab owns resource closing
 - Click the `Projects` heading folder-plus action: open the Create project
-  dialog. The dialog accepts a project name and one or more local folders,
-  lists every selected folder with a remove action, and marks the first folder
-  as Primary. Creation makes one logical project group: the primary folder is
-  activated and names the group, while every other selected folder is retained
-  as a group root and is shown in Project archive details, not as an open
-  project tab. Group chats, instructions, and memory use the same group
-  identity. A source selector offers This computer and Git repository: the git
-  source swaps the folder list for a repository URL field plus a clone
-  destination row, seeds the project name from the repository name until the
-  user types their own, and creates the project by cloning into the chosen
-  folder first. The dialog follows
+  dialog. The dialog accepts an optional project name and one or more local
+  folders, lists every selected folder with a remove action, and marks the
+  first folder as Primary. The name field seeds from the picked source until
+  the user types their own name: the first selected folder names a local pick
+  and the repository name names a git checkout. Create falls back to the same
+  derived name, so an empty name field never blocks creation. Creation makes
+  one logical project group: the primary folder is activated and names the
+  group, while every other selected folder is retained as a group root and is
+  shown in Project archive details, not as an open project tab. Group chats,
+  instructions, and memory use the same group identity. A source selector
+  offers This computer and Git repository: the git source swaps the folder
+  list for a repository URL field plus a clone destination row and creates
+  the project by cloning into the chosen folder first. The dialog follows
   the shell's neutral gray surfaces, with a 480px maximum width,
   `--radius-lg-plus` (18px) corners, and the shared `--ds-shadow-dialog`
   elevation. Its compact type hierarchy uses `--text-lg` for the title,

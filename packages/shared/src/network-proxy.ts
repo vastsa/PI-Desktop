@@ -42,6 +42,12 @@ export type NetworkProxySettings = {
    * {@link DEFAULT_NETWORK_PROXY_BYPASS} for custom mode.
    */
   bypass?: string;
+  /**
+   * Opt in to router/TUN fake-IP answers for public market sources. This only
+   * permits the benchmark placeholder range; all other non-public classes stay
+   * blocked. Absent means disabled.
+   */
+  allowFakeIp?: boolean;
 };
 
 export type ParsedProxyUrl = {
@@ -81,6 +87,7 @@ export function normalizeNetworkProxy(value: unknown): NetworkProxySettings {
     settings.url = record.url.trim();
   }
   if (bypass) settings.bypass = bypass;
+  if (record?.allowFakeIp === true) settings.allowFakeIp = true;
   return settings;
 }
 
@@ -189,7 +196,9 @@ export function validateNetworkProxy(
 ): { ok: true; value: NetworkProxySettings } | { ok: false; error: string } {
   const settings = normalizeNetworkProxy(value);
   if (settings.mode !== "custom") {
-    return { ok: true, value: { mode: settings.mode } };
+    const next: NetworkProxySettings = { mode: settings.mode };
+    if (settings.allowFakeIp) next.allowFakeIp = true;
+    return { ok: true, value: next };
   }
   const parsed = parseProxyUrl(settings.url ?? "");
   if (!parsed.ok) return parsed;
@@ -198,6 +207,7 @@ export function validateNetworkProxy(
     url: parsed.value.href,
   };
   if (settings.bypass?.trim()) next.bypass = settings.bypass.trim();
+  if (settings.allowFakeIp) next.allowFakeIp = true;
   return { ok: true, value: next };
 }
 

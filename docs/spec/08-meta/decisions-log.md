@@ -5761,12 +5761,17 @@ that was sitting at the bottom — including after the turn had finished.
   On a `proxied` route `isAcceptableResolvedAddress` tolerates only the
   resolver-artifact class (`benchmark`); every real internal class and an
   unanswered resolver still refuse. A `direct` route keeps the pre-change
-  semantics byte for byte, a `DIRECT` entry anywhere in the list is read as
+  semantics by default; an explicit `allowFakeIp` setting may permit only the
+  benchmark placeholder. A `DIRECT` entry anywhere in the list is read as
   `unknown` because Chromium may fall back to it, and `unknown` stays strict.
 - Refusals and the market's `failureDetails` now carry `route`, so a fake-IP
   refusal on a direct route reads apart from one on an unreadable route.
-- The MCP market keeps its pinned Node HTTPS guard (ADR 0245) and is unchanged;
-  a fake-IP environment still refuses its sources.
+- The MCP market now asks the Electron session for its route per hop: fully
+  proxied hops use `net.fetch` so fake-IP sources can reach the configured proxy,
+  while direct and unknown hops retain the pinned Node HTTPS guard and strict
+  public-address rule by default. The explicit `allowFakeIp` setting permits
+  only benchmark placeholders for transparent router/TUN deployments; real
+  private answers remain refused. See ADR 0245.
 - See ADR 0272, `05-security/01-security.md` §4.1,
   `03-runtime/09-logging-and-observability.md`, and
   `06-delivery/04-e2e-test-plan.md` E2E-SKILL-MARKET-NET-BOUNDARY.
@@ -6471,6 +6476,25 @@ that was sitting at the bottom — including after the turn had finished.
   state, protocol, persistence, theme schema, or permission change. See
   `04-ux/08-component-spec.md` and E2E-CHAT-opaque-floating-decision-and-retry-surfaces.
 
+## 2026-09-21 — The context estimate is calibrated conservatively (D606)
+
+- Every budget threshold reads one number, and that number is corrected against
+  what requests actually cost. pi's estimator anchors on the last assistant
+  usage and estimates the rest as `chars / 4`, which under-counts CJK text by
+  roughly a factor of 2–4 and, with no anchor left, omits the system prompt and
+  tool schemas entirely.
+- The two errors are applied separately: the per-character bias as a
+  scale-free ratio over the guessed tail, and an unanchored residual as a ratio
+  only for observations taken at a comparable scale (0.5×–2×), otherwise as the
+  observed overhead capped at 32,000 tokens. A 100k-scale sample therefore
+  cannot be applied as a ratio to a 1M projection.
+- The correction is asymmetric: upward applies once three observations exist;
+  downward needs three agreeing samples, is capped at 15 % per step, and can
+  never take the value below 85 % of the raw estimate, so a projection at
+  1.18× the hard limit still compacts. A report outside 0.5×–3× of what the
+  calibration predicted is a misreport, and two consecutive misreports freeze
+  the downward direction. See `03-runtime/02-agent-runtime.md` §5.1.
+
 ## 2026-09-21 — A tool-call id is unique in every request (D608, issue #718)
 
 - Anthropic-family endpoints, DeepSeek's included, reject a whole turn with
@@ -6506,3 +6530,23 @@ that was sitting at the bottom — including after the turn had finished.
   new is persisted and no permission or API surface changes; the existing
   `plugin.stdio` audit stream is otherwise unchanged.
 - See `07-plugins/05-plugin-lifecycle.md` §3.1.
+
+## 2026-09-20 — The Create project name defaults to the primary folder (D609)
+
+- The Create project dialog required a typed name before Create became
+  available, so a local folder pick could not be confirmed without inventing a
+  title; the git source already seeded the field from the repository name
+  (D438, ADR 0273).
+- The name field is now optional for both sources. It seeds from the picked
+  source — the first selected folder's name for a local pick, the repository
+  name for a git checkout — and stops following the source as soon as the user
+  types their own name. Create is gated by the source alone (one folder, or a
+  parsed URL plus a destination), and a field left empty falls back to the same
+  derived name.
+- Derived names are cut to `MAX_PROJECT_NAME_CHARS` (80) so the persisted
+  sidebar preference and the name field accept them unchanged. Folder-name
+  parsing moves to `apps/desktop/src/lib/project-name.ts` and is shared with the
+  dialog's folder rows.
+- Renderer only: no protocol, storage, host, permission, or migration change,
+  and no new default. See `04-ux/08-component-spec.md`, ADR 0233, ADR 0273, and
+  E2E-012a / E2E-256.

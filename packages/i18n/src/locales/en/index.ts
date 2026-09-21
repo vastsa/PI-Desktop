@@ -557,6 +557,19 @@ export const en = {
     dismiss: "Dismiss",
   },
   settings: {
+    imageModel: "Image generation model",
+    imageModelUnset: "Not configured",
+    imageModelUnavailable: "Currently unavailable",
+    imageModelSaveFailed: "Could not save the image model.",
+    clearImageModel: "Clear",
+    setImageModel: "Set as image model",
+    imageModelSelected: "Selected image model",
+    generatedImage: "Generated image {{index}}",
+    imagePreviewUnavailable: "Preview unavailable; open file",
+    imageGenerationFailed: "Image {{index}} did not complete.",
+    imageModelSetupHint: "Configure an image model in Settings → Models before generating images.",
+    configureImageModel: "Configure image model",
+
 
 sklm: {
       browse: "Market",
@@ -1016,6 +1029,8 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "Bypass",
     proxyBypassDesc: "Hosts that skip the proxy.",
+    proxyFakeIp: "Allow proxy fake-IP for market sources",
+    proxyFakeIpDesc: "Only enable this for a transparent router/TUN proxy. Other private addresses remain blocked.",
     proxyInvalid: "Enter an http, https, or socks5 URL with a host.",
     proxySaveError: "Couldn't save the proxy.",
     proxyTest: "Test",

@@ -554,6 +554,19 @@ export const zhCN = {
     dismiss: "关闭",
   },
   settings: {
+    imageModel: "生图模型",
+    imageModelUnset: "未配置",
+    imageModelUnavailable: "暂不可用",
+    imageModelSaveFailed: "无法保存生图模型。",
+    clearImageModel: "清除",
+    setImageModel: "设为生图模型",
+    imageModelSelected: "已设为生图模型",
+    generatedImage: "生成图片 {{index}}",
+    imagePreviewUnavailable: "预览不可用，打开文件",
+    imageGenerationFailed: "图片 {{index}} 未完成。",
+    imageModelSetupHint: "请前往 设置 → 模型 → 生图模型 完成配置。",
+    configureImageModel: "配置生图模型",
+
 
 sklm: {
       browse: "市场",
@@ -1004,6 +1017,8 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "绕过列表",
     proxyBypassDesc: "不走代理的主机。",
+    proxyFakeIp: "允许市场源使用代理 fake-IP",
+    proxyFakeIpDesc: "仅在路由器/TUN 透明代理下开启；其他私网地址仍会被阻止。",
     proxyInvalid: "请输入带主机名的 http、https 或 socks5 URL。",
     proxySaveError: "无法保存代理设置。",
     proxyTest: "测试",

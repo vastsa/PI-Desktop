@@ -71,6 +71,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.proxyDirect",
       "settings.proxyCustom",
       "settings.proxyUrl",
+      "settings.proxyFakeIp",
     ],
   },
   {
@@ -85,6 +86,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.permissionModeAcceptEdits",
       "settings.permissionModeAuto",
       "settings.defaultsTitle",
+      "settings.imageModel",
       "settings.mode",
       "settings.commandShell",
       "settings.linkOpenTarget",

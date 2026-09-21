@@ -96,11 +96,9 @@ CDP 插件工具在 Plan 中仍被拒绝）。 Bash 在 Plan 中仍然可用：�
 
 ## 4.1 技能市场出网
 
-渲染层不拉取技能目录或 SKILL.md。Electron 主进程按公网策略发起 HTTPS 请求（ADR 0243 / D413，由 ADR 0272 / D436 修订）：仅 `https`、共享的公网主机语法检查、`redirect: "manual"`，以及按请求实际会走的线路逐跳判定。每一跳之前，客户端都会向承载 `net.fetch` 的会话询问它自己的代理判定（`Session.resolveProxy`）：`proxied` 线路上按线路判定，而不是按应用永远不会拨打的本地地址判定，因此只容忍解析器自身产物的那一类（`benchmark`，TUN fake-IP）；`direct` 或读不出线路时保留完整的本地分类，回环、RFC1918、ULA、link-local、mapped IPv6 以及其他所有非公网类别一律拒绝。安装只通过 `skills.create` 写入 markdown。内联相邻 markdown 后仍受 128 KiB 宿主上限约束。
+渲染层不拉取技能目录或 SKILL.md。Electron 主进程按公网策略发起 HTTPS 请求（ADR 0243 / D413，由 ADR 0272 / D436 修订）：仅 `https`、共享的公网主机语法检查、`redirect: "manual"`，以及按请求实际会走的线路逐跳判定。每一跳之前，客户端都会向承载 `net.fetch` 的会话询问它自己的代理判定（`Session.resolveProxy`）：`proxied` 线路上按线路判定，因此容忍解析器自身产物的那一类（`benchmark`，TUN fake-IP）；`direct` 或读不出线路时默认保留完整的本地分类，回环、RFC1918、ULA、link-local、mapped IPv6 以及其他所有非公网类别一律拒绝。显式 `allowFakeIp` 选项仅可为透明路由器/TUN 部署额外放行 benchmark 占位地址。安装只通过 `skills.create` 写入 markdown。内联相邻 markdown 后仍受 128 KiB 宿主上限约束。
 
-## 4.2 MCP 市场出网
-
-MCP 市场只接受无凭据的公网 HTTPS 源和目录端点。Main 在每次连接前解析主机名，并把选中的公网地址固定到 HTTPS socket，同时保留原主机名用于 TLS SNI 和 HTTP Host。重定向手动跟随、仅限 HTTPS、最多五跳，并在每次连接前重新检查。响应上限为 4 MiB，请求共享 8 秒截止时间，源、缓存和条目数量均有界。跨 origin 的用户 MCP 重定向不会转发调用方 header。
+MCP 市场只接受无凭据的公网 HTTPS 源和目录端点。Main 在每一跳前向承载请求的同一 Electron session 询问代理线路。在完整的 `proxied` 线路上使用 Chromium `net.fetch`，让系统/PAC 和自定义代理能够解析 fake-IP 主机；此时容忍本地解析器的 `benchmark` fake-IP 类别，但真实私网及其他非公网类别仍然拒绝。在 `direct` 或 `unknown` 线路上保留原有 Node HTTPS 路径，把选中的公网地址固定到 socket，同时保留原主机名用于 TLS SNI 和 HTTP Host；显式 `allowFakeIp` 选项仅额外允许 benchmark 答案，绝不允许其他非公网类别。重定向手动跟随、仅限 HTTPS、最多五跳，并在每次连接前重新检查。响应上限为 4 MiB，请求共享 8 秒截止时间，源、缓存和条目数量均有界。跨 origin 的用户 MCP 重定向不会转发调用方 header。
 
 手动配置的用户 MCP 仍遵循 ADR 0142，可以显式使用本地/LAN 端点；市场路径不会扩大该策略。
 

@@ -85,6 +85,10 @@ const preloadSource = await readFile(
 );
 const sharedTypesSource = await readSharedTypesSource();
 const stylesSource = await loadStyles();
+const networkProxySource = await readFile(
+  new URL("../src/components/settings/NetworkProxySection.tsx", import.meta.url),
+  "utf8",
+);
 
 test("Basics and AI tabs expose their respective app and AI controls", () => {
   const generalStart = settingsPageSource.indexOf('{tab === "general" && settings && (');
@@ -165,10 +169,13 @@ test("language persists as part of shared app settings", () => {
   assert.match(sharedTypesSource, /networkProxy\?: NetworkProxySettings/);
 });
 
-test("General Network card persists a custom HTTP or SOCKS5 proxy", () => {
+test("General Network card persists a custom HTTP or SOCKS5 proxy and fake-IP opt-in", () => {
   assert.match(settingsPageSource, /<NetworkProxySection /);
+  assert.match(networkProxySource, /settings\.proxyFakeIp/);
+  assert.match(networkProxySource, /allowFakeIp/);
   assert.match(settingsSearchSource, /settings\.proxy/);
   assert.match(settingsSearchSource, /settings\.proxyCustom/);
+  assert.match(settingsSearchSource, /settings\.proxyFakeIp/);
   assert.match(electronMainSource, /applyNetworkProxyFromAppSettings/);
   assert.match(electronMainSource, /IPC\.invoke\.networkProxyTest/);
   assert.match(protocolSource, /networkProxyTest: "pi-desktop\/network\/testProxy"/);
@@ -181,6 +188,8 @@ test("General Network card persists a custom HTTP or SOCKS5 proxy", () => {
   ]) {
     assert.match(source, /proxyCustom:/);
     assert.match(source, /proxyUrlPlaceholder:/);
+    assert.match(source, /proxyFakeIp:/);
+    assert.match(source, /proxyFakeIpDesc:/);
   }
 });
 

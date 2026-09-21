@@ -179,6 +179,8 @@ export function applyVisibleModelSelection(
 }
 
 export type ModelSelectionPanesProps = {
+  imageModelId?: string;
+  onImageModelChange?: (id: string) => void;
   discovery: ProviderModelsState & { canReload?: boolean };
   selection: ModelSelection;
   /** Heading of the discovered list: a service's models, or an account's. */
@@ -207,6 +209,8 @@ export function ModelSelectionPanes({
   busy = false,
   onReload,
   apiStyle,
+  imageModelId,
+  onImageModelChange,
 }: ModelSelectionPanesProps) {
   const { t } = useTranslation();
   const { rows, models, publishedLevelsById, setModels } = selection;
@@ -598,6 +602,7 @@ export function ModelSelectionPanes({
                     id={advancedId}
                     hidden={!expanded}
                   >
+                    {onImageModelChange ? <button type="button" className="provider-chosen-advanced-toggle" disabled={busy || imageModelId === binding.id} onClick={() => onImageModelChange(binding.id)}>{t(imageModelId === binding.id ? "settings.imageModelSelected" : "settings.setImageModel")}</button> : null}
                     <label className="provider-chosen-field">
                       <span className="provider-chosen-field-label">
                         {t("settings.modelAlias")}

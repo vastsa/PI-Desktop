@@ -135,8 +135,10 @@ export function createPublicHttpsClient(options: {
   lookupImpl?: PublicHttpsLookup;
   /** Must be the session that carries `fetchImpl`; absent stays strict. */
   routeImpl?: PublicHttpsRouteLookup;
+  /** Permit only benchmark fake-IP answers when the user explicitly opts in. */
+  allowFakeIp?: boolean | (() => boolean);
   timeoutMs?: number;
-} ): PublicHttpsClient {
+}): PublicHttpsClient {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const lookupImpl =
     options.lookupImpl ??
@@ -188,13 +190,18 @@ export function createPublicHttpsClient(options: {
     }
     for (const address of addresses) {
       const addressKind = classifyIpLiteral(address.address);
-      if (!isAcceptableResolvedAddress(addressKind, route)) {
+      const allowFakeIp =
+        typeof options.allowFakeIp === "function"
+          ? options.allowFakeIp()
+          : options.allowFakeIp === true;
+      if (
+        !isAcceptableResolvedAddress(addressKind, route) &&
+        !(allowFakeIp && addressKind === "benchmark")
+      ) {
         // The class travels with the refusal: `benchmark` is a TUN fake-IP
-        // (198.18.0.0/15) and `private` is a real RFC1918 target, and only the
-        // class tells those apart in the log and in the panel. The route travels
-        // with it too: a fake-IP answer is tolerated on a proxied route because
-        // this app never dials it, and refused on a direct or unreadable route
-        // because this app would (ADR 0272).
+        // (198.18.0.0/15) and `private` is a real RFC1918 target. The explicit
+        // fake-IP opt-in never changes the verdict for any other non-public
+        // class (ADR 0272).
         throw new PublicNetworkPolicyError(
           `hostname resolves to a non-public address: ${host} -> ${address.address} (${addressKind}, ${route} route)`,
           { reason: "non-public-address", host, address: address.address, addressKind, route },

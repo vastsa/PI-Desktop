@@ -566,3 +566,7 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 - 命令允许列表/拒绝列表
 - 空运行模式
 - 预览后应用补丁
+
+## 图片生成与编辑
+
+`GenerateImages` 是仅供 Agent 使用的高风险能力，可信桌面执行请求前必须由 host-core 授权。即使处于 Auto，Plan/Goal 仍被拒绝。取消、限制和结果语义见[图片生成规格](/zh-CN/spec/03-runtime/21-image-generation)。

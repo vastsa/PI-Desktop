@@ -556,3 +556,10 @@ The metadata source is `provider`, distinct from `models.dev`; user binding
 overrides keep their existing precedence. Other endpoints and model IDs are
 unchanged. The desktop does not add video attachment transport. See ADR
 `stepfun-first-party-model-metadata` and the StepFun setup guide.
+
+## Image model binding
+
+The default conversation model has a separate **Image generation model** row below
+it. Model Advanced can select that unique binding; provider form Save commits it,
+Cancel discards it, and replacing it leaves the conversation default unchanged.
+See [image generation and editing](21-image-generation.md) for the tool and batch contract.

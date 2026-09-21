@@ -15,20 +15,25 @@
  * whole catalog regardless of what is cached. One failing source only costs
  * itself, and a total outage degrades to the built-in catalog.
  */
+import { net, session } from "electron";
 import { lookup } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
 import type { IncomingHttpHeaders } from "node:http";
 import { isIP } from "node:net";
 import {
-  isPublicIpLiteral,
+  classifyIpLiteral,
+  classifyProxyRoute,
+  isAcceptableResolvedAddress,
   isSafeMarketSourceUrl,
   mapRegistryServer,
   sanitizeMarketSources,
   validateMcpCatalogFile,
   type MarketSource,
+  type PublicNetworkRoute,
   type RegistryRecord,
   type SourcedCatalogEntry,
 } from "@pi-desktop/shared";
+import { currentNetworkProxy } from "./network-proxy";
 
 const PAGE_SIZE = 100;
 /** First browse paints two pages; every "load more" appends this many. */
@@ -43,7 +48,7 @@ const MAX_CACHE_ENTRIES = 128;
 const MAX_MARKET_SOURCES = 16;
 const MAX_CACHED_ENTRIES = 2_000;
 
-type ResolvedAddress = { address: string; family: 4 | 6 };
+type ResolvedAddress = { address: string; family: 4 | 6; route: PublicNetworkRoute };
 type PolicyResponse = {
   status: number;
   headers: { get: (name: string) => string | null };
@@ -80,6 +85,16 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   ]);
 }
 
+async function resolveProxyRoute(url: string, timeoutMs: number): Promise<PublicNetworkRoute> {
+  try {
+    return classifyProxyRoute(
+      await withTimeout(session.defaultSession.resolveProxy(url), timeoutMs),
+    );
+  } catch {
+    return "unknown";
+  }
+}
+
 /**
  * Resolve a public hostname once and return the address that must be used for
  * the connection. The caller must not resolve the hostname again: doing so
@@ -89,25 +104,39 @@ async function resolvePublicUrl(url: string, timeoutMs: number): Promise<Resolve
   if (!isSafeMarketSourceUrl(url)) {
     throw new Error("url rejected by the public-network policy");
   }
+  const deadline = Date.now() + timeoutMs;
   const parsed = new URL(url);
   const host = parsed.hostname.toLowerCase().replace(/\.+$/, "");
   const literal = host.startsWith("[") ? host.slice(1, -1) : host;
+  const route = await resolveProxyRoute(url, timeoutMs);
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error("market source request timed out");
   const literalFamily = isIP(literal);
   if (literalFamily === 4 || literalFamily === 6) {
-    return { address: literal, family: literalFamily };
+    return { address: literal, family: literalFamily, route };
   }
-  const addresses = await withTimeout(lookup(host, { all: true, verbatim: true }), timeoutMs);
+  const addresses = await withTimeout(
+    lookup(host, { all: true, verbatim: true }),
+    remaining,
+  );
   if (!addresses.length) throw new Error(`hostname does not resolve: ${host}`);
+  const allowFakeIp = currentNetworkProxy().allowFakeIp === true;
   for (const address of addresses) {
-    if (!isPublicIpLiteral(address.address)) {
-      throw new Error(`hostname resolves to a non-public address: ${host}`);
+    const addressKind = classifyIpLiteral(address.address);
+    if (
+      !isAcceptableResolvedAddress(addressKind, route) &&
+      !(allowFakeIp && addressKind === "benchmark")
+    ) {
+      throw new Error(
+        `hostname resolves to a non-public address: ${host} -> ${address.address} (${addressKind}, ${route} route)`,
+      );
     }
   }
   const first = addresses[0];
   if (first.family !== 4 && first.family !== 6) {
     throw new Error(`hostname resolved with an unsupported address family: ${host}`);
   }
-  return { address: first.address, family: first.family };
+  return { address: first.address, family: first.family, route };
 }
 
 /**
@@ -202,10 +231,55 @@ function requestPinnedHttps(
     req.end();
   });
 }
+async function readProxiedResponseBody(response: Response): Promise<string> {
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_SOURCE_RESPONSE_BYTES) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error("market source response is too large");
+  }
+  if (!response.body) {
+    const body = await response.text();
+    if (Buffer.byteLength(body, "utf8") > MAX_SOURCE_RESPONSE_BYTES) {
+      throw new Error("market source response is too large");
+    }
+    return body;
+  }
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value);
+      bytes += chunk.byteLength;
+      if (bytes > MAX_SOURCE_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("market source response is too large");
+      }
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  } finally {
+    reader.releaseLock();
+  }
+}
+// Fetch through the session's proxy stack; the session owns DNS resolution.
+async function requestProxiedHttps(url: string, timeoutMs: number): Promise<PolicyResponse> {
+  const response = await net.fetch(url, {
+    redirect: "manual",
+    signal: AbortSignal.timeout(Math.max(1, timeoutMs)),
+  });
+  return {
+    status: response.status,
+    headers: { get: (name) => response.headers.get(name) },
+    body: await readProxiedResponseBody(response),
+  };
+}
 
 /**
- * Fetch with the public-network policy applied per hop. Manual redirects and
- * pinned addresses ensure every request goes only to an approved public IP.
+ * pinned addresses ensure direct requests go only to an approved public IP;
+ * proxied requests stay inside the session's configured proxy stack.
  */
 async function fetchPolicy<T>(url: string, kind: "json" | "text"): Promise<T> {
   let current = url;
@@ -214,7 +288,10 @@ async function fetchPolicy<T>(url: string, kind: "json" | "text"): Promise<T> {
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Error("market source request timed out");
     const resolved = await resolvePublicUrl(current, remaining);
-    const response = await requestPinnedHttps(current, resolved, deadline - Date.now());
+    const response =
+      resolved.route === "proxied"
+        ? await requestProxiedHttps(current, deadline - Date.now())
+        : await requestPinnedHttps(current, resolved, deadline - Date.now());
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (!location) throw new Error("redirect without a location header");

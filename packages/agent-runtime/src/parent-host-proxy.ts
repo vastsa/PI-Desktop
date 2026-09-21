@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { rpcTimeoutMs } from "@pi-desktop/shared";
+import { rpcErrorFromWire, rpcTimeoutMs } from "@pi-desktop/shared";
 
 export type ParentHostCloseHandler = (error: Error) => void;
 
@@ -62,9 +62,7 @@ export class ParentHostProxy {
         this.pending.delete(String(msg.id));
         if (pending.timer) clearTimeout(pending.timer);
         if (msg.error) {
-          const err = new Error(msg.error.message) as Error & { data?: unknown };
-          err.data = msg.error.data;
-          pending.reject(err);
+          pending.reject(rpcErrorFromWire(msg.error));
         } else {
           pending.resolve(msg.result);
         }

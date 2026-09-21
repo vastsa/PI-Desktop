@@ -333,3 +333,5 @@ Each ADR includes:
 | registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](registry-header-variable-spelling.md) | Proposed |
 | provider-system-certificates | [Desktop sidecar uses OS-trusted certificates](provider-system-certificates.md) | Accepted |
 | stepfun-first-party-model-metadata | [First-party StepFun metadata for a newly released model](stepfun-first-party-model-metadata.md) | Accepted (amends ADR 0134) |
+
+| image-generation-capability | [Image generation as a configured Agent capability](image-generation-capability.md) | Accepted |
