@@ -123,6 +123,10 @@ import {
 } from "./agent-messages.js";
 import { buildSessionContext } from "./session-context.js";
 import {
+  dedupeToolCallMessages,
+  reportDuplicateToolCallDrop,
+} from "./tool-call-dedupe.js";
+import {
   apiBindingForProviderModel,
   buildProviderModel,
   copilotRequestHeaders,
@@ -602,8 +606,6 @@ const AGENT_CORE_TOOL_NAMES = new Set([
 const MAX_ON_DEMAND_TOOL_PROMPT_ENTRIES = 64;
 const MAX_TOOL_SEARCH_RESULT_NAMES = 24;
 
-/** Ids named in the one log line a duplicate-collision rebuild writes. */
-const MAX_LOGGED_DUPLICATE_TOOL_CALLS = 8;
 
 /** Tools that ask the host to switch this session into a contract mode (D198). */
 const ENTER_TOOL_NAMES: Record<ProposalKind, string> = {
@@ -2715,59 +2717,9 @@ Delegation rules:
    * sentence.
    */
   private dropDuplicateToolCalls(messages: AgentMessage[]): AgentMessage[] {
-    const claimedCalls = new Set<string>();
-    const claimedResults = new Set<string>();
-    const droppedIds = new Set<string>();
-    let droppedCount = 0;
-    const note = (id: string) => {
-      droppedCount += 1;
-      if (droppedIds.size < MAX_LOGGED_DUPLICATE_TOOL_CALLS) droppedIds.add(id);
-    };
-    const next: AgentMessage[] = [];
-    for (const message of messages) {
-      if (message.role === "assistant") {
-        const content = (message as AssistantMessage).content;
-        if (!Array.isArray(content)) {
-          next.push(message);
-          continue;
-        }
-        const kept = content.filter((block) => {
-          if (!isRecord(block) || block.type !== "toolCall") return true;
-          const id = typeof block.id === "string" ? block.id : undefined;
-          if (!id) return true;
-          if (claimedCalls.has(id)) {
-            note(id);
-            return false;
-          }
-          claimedCalls.add(id);
-          return true;
-        });
-        next.push(
-          kept.length === content.length
-            ? message
-            : { ...(message as AssistantMessage), content: kept },
-        );
-        continue;
-      }
-      if (message.role === "toolResult") {
-        const id = (message as { toolCallId?: unknown }).toolCallId;
-        if (typeof id === "string" && id) {
-          if (claimedResults.has(id)) {
-            note(id);
-            continue;
-          }
-          claimedResults.add(id);
-        }
-      }
-      next.push(message);
-    }
-    if (droppedCount === 0) return messages;
-    process.stderr.write(
-      `[agent-runtime] dropped ${droppedCount} duplicate tool call ${
-        droppedCount === 1 ? "entry" : "entries"
-      } before the request (session=${this.sessionId} ids=${[...droppedIds].join(",")})\n`,
-    );
-    return next;
+    const drop = dedupeToolCallMessages(messages);
+    reportDuplicateToolCallDrop(this.sessionId, drop);
+    return drop.messages;
   }
 
   private entriesWithCompaction(

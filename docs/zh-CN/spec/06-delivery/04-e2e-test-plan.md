@@ -8417,3 +8417,11 @@ round-trip tests in `turn-process.test.mjs` and `provider-catalog-runtime.test.m
 - **自动化：** `apps/desktop/test/plugin-services.test.mjs` 真实 fork 宿主进程、以夹具退出码杀死它，并断言服务状态与审计记录上的
   退出码及原始 stderr 缺失；`plugin-isolation.test.mjs` 与关闭用例覆盖"退出不是崩溃"那一半。
 - **状态：** 运行时层已自动化；无 UI 驱动读取插件页的错误文本。
+
+
+#### E2E-CHAT-parenthesized-url：用户消息中的完整网址
+
+- **步骤**：在用户消息中发送 `https://en.wikipedia.org/wiki/React_(software)` 并点击链接，再验证正文用圆括号包裹该网址、网址后跟句号及紧接另一链接或文件引用的情况。
+- **预期**：打开包含 `(software)` 的完整网址，进入 React 软件词条；正文外层的右括号和紧跟 URL 右括号的句末标点不属于链接，相邻引用仍能独立点击。嵌套圆括号、查询和片段内的圆括号、百分号编码的圆括号均保持完整。
+- **覆盖**：`chat-links.test.mjs`；桌面端通过正常浏览器目标实际点击验证。
+- **链接规格**：`04-ux/08-component-spec.md` §8.3。

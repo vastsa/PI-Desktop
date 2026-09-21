@@ -245,7 +245,25 @@ export type ChatTextSegment =
 // uses `(?![A-Za-z0-9_])` rather than `\b`: in unicode mode `\b` treats CJK
 // letters as word characters, which would stop `App.tsx文件` from linking.
 const SCAN_RE =
-  /@"[^"\n]+"|@[^\s]+|https?:\/\/[^\s<>"'()[\]{}]+|(?:~\/)?\/?\.{1,2}\/(?:[\p{L}\p{N}_@+.-]+\/)*[\p{L}\p{N}_@+.-]+(?::\d+(?::\d+)?)?|(?:~\/)?\/?(?:[\p{L}\p{N}_@+.-]+\/)+[\p{L}\p{N}_@+.-]+(?::\d+(?::\d+)?)?|[\p{L}\p{N}_@+-][\p{L}\p{N}_@+.-]*\.[A-Za-z0-9]{1,8}(?![A-Za-z0-9_])/gu;
+  /@"[^"\n]+"|@[^\s]+|https?:\/\/(?=[^\s<>"'()[\]{}])|(?:~\/)?\/?\.{1,2}\/(?:[\p{L}\p{N}_@+.-]+\/)*[\p{L}\p{N}_@+.-]+(?::\d+(?::\d+)?)?|(?:~\/)?\/?(?:[\p{L}\p{N}_@+.-]+\/)+[\p{L}\p{N}_@+.-]+(?::\d+(?::\d+)?)?|[\p{L}\p{N}_@+-][\p{L}\p{N}_@+.-]*\.[A-Za-z0-9]{1,8}(?![A-Za-z0-9_])/gu;
+
+/** Scan once, keeping URL parentheses but stopping at a closing prose wrapper. */
+function scanUrl(text: string, start: number): string {
+  let depth = 0;
+  let end = start;
+  for (; end < text.length; end += 1) {
+    const character = text[end];
+    if (/[\s<>"'[\]{}]/u.test(character)) break;
+    if (character === "(") depth += 1;
+    else if (character === ")") {
+      if (depth === 0) break;
+      depth -= 1;
+    }
+  }
+  // Sentence punctuation belongs to the surrounding prose, regardless of
+  // whether the URL itself ends with a parenthesized path segment.
+  return text.slice(start, end).replace(/[.,!?;:，。！？；：]+$/u, "");
+}
 
 /**
  * Split plain chat text (user messages) into literal runs and previewable
@@ -259,9 +277,13 @@ export function splitChatText(
 ): ChatTextSegment[] {
   const segments: ChatTextSegment[] = [];
   let last = 0;
-  for (const match of text.matchAll(SCAN_RE)) {
-    const raw = match[0];
-    const start = match.index ?? 0;
+  const scanner = new RegExp(SCAN_RE);
+  for (let match = scanner.exec(text); match; match = scanner.exec(text)) {
+    const start = match.index;
+    const raw = /^https?:\/\//i.test(match[0])
+      ? scanUrl(text, start)
+      : match[0];
+    scanner.lastIndex = start + raw.length;
     const target = resolvePreviewTarget(raw, root, baseDir);
     if (!target) continue;
     if (start > last) segments.push({ kind: "text", text: text.slice(last, start) });
