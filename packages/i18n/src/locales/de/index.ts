@@ -961,6 +961,7 @@ sklm: {
     "thinkingDisplayModeDesc": "Der Modus Detailliert zeigt den Fortschritt in einem ausklappbaren Prozess mit verschachtelten Tool-Gruppen und dem Denkprozess. Der Modus Kompakt startet mit eingeklapptem Prozess und blendet den Denkprozess aus.",
     "thinkingDisplayDetailed": "Detailliert (Standard)",
     "thinkingDisplayCompact": "Kompakt",
+    "thinkingDisplayAuto": "Automatisch (ChatGPT-Stil)",
     "contextUsageDisplay": "Kontextnutzung-Anzeige",
     "contextUsageDisplayRemaining": "Verbleibend",
     "contextUsageDisplayUsed": "Verwendet",

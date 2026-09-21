@@ -961,6 +961,7 @@ sklm: {
     "thinkingDisplayModeDesc": "Le mode détaillé affiche la progression dans un processus dépliable avec des groupes d'outils imbriqués et le raisonnement. Le mode compact démarre avec le processus replié et masque le raisonnement.",
     "thinkingDisplayDetailed": "Détaillé (par défaut)",
     "thinkingDisplayCompact": "Compact",
+    "thinkingDisplayAuto": "Automatique (style ChatGPT)",
     "contextUsageDisplay": "Affichage de l'usage du contexte",
     "contextUsageDisplayRemaining": "Restant",
     "contextUsageDisplayUsed": "Utilisé",

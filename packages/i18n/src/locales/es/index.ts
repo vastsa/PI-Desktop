@@ -961,6 +961,7 @@ sklm: {
     "thinkingDisplayModeDesc": "Detallado muestra el progreso en un proceso expandible con grupos de herramientas anidados y razonamiento. Compacto inicia el proceso contraído y oculta el razonamiento.",
     "thinkingDisplayDetailed": "Detallado (predeterminado)",
     "thinkingDisplayCompact": "Compacto",
+    "thinkingDisplayAuto": "Automático (estilo ChatGPT)",
     "contextUsageDisplay": "Lectura del uso del contexto",
     "contextUsageDisplayRemaining": "Restante",
     "contextUsageDisplayUsed": "Usado",

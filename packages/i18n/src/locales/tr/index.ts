@@ -971,6 +971,7 @@ sklm: {
     thinkingDisplayModeDesc: "Ayrıntılı mod ilerlemeyi, iç içe araç grupları ve düşünmeyle birlikte genişletilebilir bir işlemde gösterir. Sade mod işlemi daraltılmış olarak başlatır ve düşünmeyi gizler.",
     thinkingDisplayDetailed: "Ayrıntılı (varsayılan)",
     thinkingDisplayCompact: "Sade",
+    thinkingDisplayAuto: "Otomatik (ChatGPT stili)",
     contextUsageDisplay: "Bağlam kullanımı göstergesi",
     contextUsageDisplayRemaining: "Kalan",
     contextUsageDisplayUsed: "Kullanılan",

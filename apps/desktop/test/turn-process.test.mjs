@@ -97,11 +97,13 @@ test("missing and unknown display settings retain detailed mode", () => {
     assert.equal(resolveThinkingDisplayMode(value), "detailed");
   }
   assert.equal(resolveThinkingDisplayMode("compact"), "compact");
+  assert.equal(resolveThinkingDisplayMode("auto"), "auto");
 });
 
-test("both display modes group a turn and only compact auto-opens active failures", () => {
+test("all display modes group a turn; auto mode opens while thinking and closes on answer", () => {
   assert.equal(shouldGroupTurnProcess("detailed"), true);
   assert.equal(shouldGroupTurnProcess("compact"), true);
+  assert.equal(shouldGroupTurnProcess("auto"), true);
   assert.equal(shouldAutoOpenTurnProcess("detailed", false, false), true);
   assert.equal(shouldAutoOpenTurnProcess("detailed", true, false), true);
   assert.equal(shouldAutoOpenTurnProcess("detailed", true, true), true);
@@ -109,6 +111,12 @@ test("both display modes group a turn and only compact auto-opens active failure
   assert.equal(shouldAutoOpenTurnProcess("compact", true, false), false);
   assert.equal(shouldAutoOpenTurnProcess("compact", true, true), true);
   assert.equal(shouldAutoOpenTurnProcess("compact", false, true), false);
+  // Auto (ChatGPT style): opens during active thinking without answer; collapses when answer starts or turn completes
+  assert.equal(shouldAutoOpenTurnProcess("auto", true, false, false), true);
+  assert.equal(shouldAutoOpenTurnProcess("auto", true, false, true), false);
+  assert.equal(shouldAutoOpenTurnProcess("auto", false, false, false), false);
+  assert.equal(shouldAutoOpenTurnProcess("auto", false, false, true), false);
+  assert.equal(shouldAutoOpenTurnProcess("auto", true, true, true), true);
 });
 
 test("the last activity part owns detailed-mode's default-open tool", () => {

@@ -28,12 +28,14 @@ export function TurnProcess({
   turnParts,
   delegationStatuses,
   isActive,
+  hasAnswer,
   children,
 }: {
   turnId: string;
   processParts: readonly AssistantTurnPart[];
   turnParts: readonly AssistantTurnPart[];
   isActive: boolean;
+  hasAnswer?: boolean;
   delegationStatuses?: ReadonlyMap<string, SubagentOutcome>;
   children: ReactNode;
 }) {
@@ -45,7 +47,7 @@ export function TurnProcess({
   const summary = activitySummary(processParts.flatMap((part) => part.kind === "activity" ? part.items : []), delegationStatuses);
   const thinkingNow = isTurnThinking(turnParts, isActive);
   const disclosure = useAutomaticDisclosure(
-    shouldAutoOpenTurnProcess(mode, isActive, summary.issues > 0),
+    shouldAutoOpenTurnProcess(mode, isActive, summary.issues > 0, hasAnswer),
     revealRequest,
     disclosureKey("turn", turnId),
   );

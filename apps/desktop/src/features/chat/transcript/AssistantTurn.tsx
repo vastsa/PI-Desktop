@@ -370,7 +370,7 @@ export const AssistantTurn = memo(function AssistantTurn({
       <div className="message-col">
         {groupProcess ? (
           <>
-            <TurnProcess turnId={entry.id} processParts={process} turnParts={entry.parts} isActive={isActive} delegationStatuses={turnDelegationStatuses}>
+            <TurnProcess turnId={entry.id} processParts={process} turnParts={entry.parts} isActive={isActive} hasAnswer={responses.length > 0} delegationStatuses={turnDelegationStatuses}>
               {process.map(renderPart)}
             </TurnProcess>
             {responses.map(renderPart)}

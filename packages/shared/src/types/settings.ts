@@ -76,7 +76,7 @@ export type AppSettings = {
    */
   fontScale?: number;
   /** Transcript presentation only; absent means detailed. Reasoning is retained. */
-  thinkingDisplayMode?: "detailed" | "compact";
+  thinkingDisplayMode?: "detailed" | "compact" | "auto";
   /**
    * @deprecated Unreleased D343 px field. Reads migrate into `fontScale`
    * as `px / 14`; new writes persist `fontScale` instead.

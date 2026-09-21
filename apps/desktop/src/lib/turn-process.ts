@@ -5,7 +5,7 @@ import { activityItemHasIssue } from "./activity-summary";
 type ThinkingDisplayMode = NonNullable<AppSettings["thinkingDisplayMode"]>;
 
 export function resolveThinkingDisplayMode(value: unknown): ThinkingDisplayMode {
-  return value === "compact" ? "compact" : "detailed";
+  return value === "compact" ? "compact" : value === "auto" ? "auto" : "detailed";
 }
 
 export function isThinkingActive(message: UiMessage, active: boolean): boolean {
@@ -51,7 +51,7 @@ export function hasFailedProcessTool(parts: readonly AssistantTurnPart[]): boole
 
 /** Both presentation modes expose the same process hierarchy. */
 export function shouldGroupTurnProcess(mode: ThinkingDisplayMode): boolean {
-  return mode === "detailed" || mode === "compact";
+  return mode === "detailed" || mode === "compact" || mode === "auto";
 }
 
 /** The last activity chunk of a turn owns detailed-mode's default-open tool. */
@@ -66,12 +66,19 @@ export function isLastActivityPart(
   return false;
 }
 
-/** Detailed keeps narration visible; compact reveals active failures only. */
+/**
+ * Detailed keeps narration visible; compact reveals active failures only;
+ * auto (ChatGPT style) stays open while thinking and collapses once answers start.
+ */
 export function shouldAutoOpenTurnProcess(
   mode: ThinkingDisplayMode,
   isActive: boolean,
   hasToolFailure: boolean,
+  hasAnswer?: boolean,
 ): boolean {
+  if (mode === "auto") {
+    return (isActive && !hasAnswer) || (isActive && hasToolFailure);
+  }
   return mode === "detailed" || (isActive && hasToolFailure);
 }
 
@@ -112,6 +119,7 @@ export function visibleProcessSteps(
       if (
         item.kind !== "thinking" ||
         mode === "detailed" ||
+        mode === "auto" ||
         isThinkingActive(item.message, active)
       ) {
         count += 1;
