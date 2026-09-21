@@ -151,3 +151,13 @@ test("a bulk session refresh reuses catalog matches while preserving each sessio
   }
   assert.equal(modelReads, 0, "session list refreshes must not repeat catalog matching work");
 });
+
+test("loaded retry defaults survive a settings edit and save", async () => {
+  const { runtime } = await fixtureRuntime();
+  for (const settings of [{}, { infiniteProviderRetry: false }, { infiniteProviderRetry: true }]) {
+    const loaded = runtime.normalizeSettings(settings);
+    const edited = { ...loaded, theme: "light" };
+    assert.equal(edited.infiniteProviderRetry, settings.infiniteProviderRetry === true);
+    assert.equal(runtime.validateSettingsWrite(edited), edited);
+  }
+});

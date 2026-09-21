@@ -6,13 +6,14 @@ import {
   ModelsDevCatalog, modelConfigFromModelsDev, modelInfoFromModelsDev,
 } from "../electron/main/models-dev-catalog.ts";
 
-const baseUrl = "https://api.stepfun.com/v1";
+const baseUrl = "https://api.stepfun.com/step_plan/v1";
 const catalogPath = new URL("../resources/models.dev/api.json", import.meta.url).pathname;
-const target = { baseUrl, vendorKey: "stepfun", modelId: "step-5-preview" };
+const target = { baseUrl, vendorKey: "stepfun-plan", modelId: "step-5-preview" };
 
 test("StepFun selection retains official capabilities through a saved model binding", async () => {
   const preset = matchNamedPreset({ baseUrl });
-  assert.equal(preset?.id, "stepfun");
+  assert.equal(preset?.id, "stepfun-plan");
+  assert.equal(matchNamedPreset({ baseUrl: "https://api.stepfun.com/v1", vendorKey: "stepfun" }), undefined);
   assert.equal(preset.apiStyle, "chat_completions");
   const catalog = new ModelsDevCatalog({ catalogPath });
   await catalog.ensureLoaded();

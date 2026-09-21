@@ -181,9 +181,7 @@ export function createProviderCatalogRuntime({
     return {
       ...(value as T),
       infiniteProviderRetry: (value as T & { infiniteProviderRetry?: unknown })
-        .infiniteProviderRetry === true
-        ? true
-        : undefined,
+        .infiniteProviderRetry === true,
       defaultCommandShell: isCommandShellId(value.defaultCommandShell)
         ? value.defaultCommandShell
         : defaultCommandShellForPlatform(process.platform),

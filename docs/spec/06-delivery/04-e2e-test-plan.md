@@ -14109,7 +14109,9 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Preconditions:** Isolated task candidate; no production profile. Mock the
   external HTTP boundary for automated checks; live API use requires explicit
   authorization and a temporary credential.
-- **Steps:** Select StepFun, discover `step-5-preview`, select/save its binding,
+- **Steps:** Select StepFun Plan, verify its subscription endpoint and that no
+  ordinary StepFun API preset is offered or rematched to Plan, discover
+  `step-5-preview`, select/save its binding,
   restore the binding, send text with an image, execute a returned tool call,
   and continue with the tool result. Repeat low, medium and high reasoning.
   Refresh to a catalog with a first-party record; retain user overrides.
@@ -14124,3 +14126,11 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Status:** Automated service/adapter user path in
   `apps/desktop/test/stepfun-model.test.mjs`; authenticated live API validation
   is opt-in. No desktop visual verification is implied.
+
+### E2E-SETTINGS-retry-default-round-trip
+
+Load legacy settings without `infiniteProviderRetry`, change an unrelated
+preference, and save. Repeat with retry explicitly false and true. Both
+renderer and main validation must accept the normalized boolean while retaining
+the chosen retry state. Reject invalid non-boolean writes. Covered by settings
+round-trip tests in `turn-process.test.mjs` and `provider-catalog-runtime.test.mjs`.

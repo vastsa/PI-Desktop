@@ -1076,3 +1076,9 @@ System/Direct/Custom 代理路由保持不变。
 终态。结构化原因会穿过 adapter 的错误扁平化，保留在最终错误行中，也不会触发
 provider transport 重建。`EPROTO` 等协议错误继续使用原有重试行为。详见
 [证书信任 ADR](../../../adr/provider-system-certificates.md)。
+
+### Retry preference read/write compatibility
+
+Settings reads normalize missing or disabled `infiniteProviderRetry` to the
+boolean `false`. A loaded settings object remains valid when another preference
+is changed and saved. Explicit invalid non-boolean writes remain rejected.

@@ -344,9 +344,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     ...settings,
     defaultMode: normalizeMode((settings as { defaultMode?: unknown }).defaultMode),
     infiniteProviderRetry:
-      (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true
-        ? true
-        : undefined,
+      (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,
     defaultCommandShell: isCommandShellId(
       (settings as { defaultCommandShell?: unknown }).defaultCommandShell,
     )

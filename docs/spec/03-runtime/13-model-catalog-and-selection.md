@@ -541,9 +541,12 @@ same model to the check mark, the toggle and the duplicate guard.
 
 ### StepFun Step 5 Preview
 
-The StepFun preset selects `https://api.stepfun.com/v1` and Chat Completions.
+The service picker exposes only StepFun Plan for StepFun, selecting
+`https://api.stepfun.com/step_plan/v1` and Chat Completions. Ordinary API
+services remain usable as custom configurations; existing saved endpoints
+are never rewritten or relabelled as subscription services.
 Discovery still determines which models the key can use. For exactly
-`step-5-preview` at that endpoint, a reviewed first-party metadata supplement
+`step-5-preview` at the plan endpoint or a saved ordinary API endpoint, a reviewed first-party metadata supplement
 provides a 1,024,000-token context/input window, a conservative 64,000-token
 output cap, image and tool support, and low/medium/high reasoning when the
 first-party models.dev record is absent. Third-party catalog records do not

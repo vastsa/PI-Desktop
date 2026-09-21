@@ -169,7 +169,8 @@ test("user boundaries retain independent processes and delegation details stay a
 });
 
 test("settings writes validate the mode without changing other preferences", async () => {
-  const { validateSettingsWrite } = await import("../src/lib/api.ts");
+  const { api, normalizeSettings, validateSettingsWrite } = await import("../src/lib/api.ts");
+  const { IPC } = await import("@pi-desktop/shared");
   const settings = {
     defaultMode: "agent",
     theme: "dark",
@@ -177,6 +178,30 @@ test("settings writes validate the mode without changing other preferences", asy
     onboardingDismissed: false,
   };
   assert.equal(validateSettingsWrite(settings), settings);
+  for (const infiniteProviderRetry of [undefined, false, true]) {
+    const loaded = normalizeSettings({ ...settings, defaultCommandShell: "bash", infiniteProviderRetry });
+    const edited = { ...loaded, theme: "light" };
+    assert.equal(edited.infiniteProviderRetry, infiniteProviderRetry === true);
+    assert.equal(validateSettingsWrite(edited), edited);
+    const previousWindow = globalThis.window;
+    let persisted;
+    globalThis.window = { piDesktop: { platform: "darwin", invoke: async (channel, input) => {
+      if (channel === IPC.invoke.settingsGet) return { ok: true, data: { ...settings, infiniteProviderRetry } };
+      assert.equal(channel, IPC.invoke.settingsSet);
+      persisted = input;
+      return { ok: true, data: {} };
+    } } };
+    try {
+      const current = await api.getSettings();
+      await api.setSettings({ ...current, theme: "light" });
+      assert.equal(persisted.theme, "light");
+      assert.equal(persisted.infiniteProviderRetry, infiniteProviderRetry === true);
+    } finally {
+      if (previousWindow === undefined) delete globalThis.window;
+      else globalThis.window = previousWindow;
+    }
+
+  }
   const infiniteSettings = { ...settings, infiniteProviderRetry: true };
   assert.equal(validateSettingsWrite(infiniteSettings), infiniteSettings);
   assert.throws(

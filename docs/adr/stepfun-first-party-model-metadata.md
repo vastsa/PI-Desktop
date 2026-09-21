@@ -17,7 +17,8 @@ reasoning; its official model guide documents vision, tools and 64k output.
 ## Decision
 
 Keep models.dev as the general catalog. Introduce one reviewed, source-labelled
-supplement for exactly `step-5-preview` at `https://api.stepfun.com/v1`.
+supplement for exactly `step-5-preview` at `https://api.stepfun.com/v1`
+and the official Step Plan endpoint `https://api.stepfun.com/step_plan/v1`.
 The supplement lives in a separate pure module in Electron main. A first-party
 models.dev record for the same endpoint/model takes precedence as soon as it
 exists; otherwise the supplement precedes cross-provider matches. It is also
@@ -31,7 +32,7 @@ migration. Lookup still goes through the same settings/session/subagent path;
 explicit binding overrides remain authoritative.
 
 Only exact HTTPS origin and version path matches qualify. Custom gateways,
-lookalike hosts, subscription endpoints and other model IDs retain their
+lookalike hosts and other model IDs retain their
 existing behavior. Live discovery remains the authority on availability: the
 supplement does not insert a model into an endpoint's response or claim that
 an API key has access. Video capability metadata does not add video attachment

@@ -21,13 +21,13 @@ export function stepfunModelSupplement(input: {
   }
   if (
     endpoint.origin !== "https://api.stepfun.com" ||
-    endpoint.pathname.replace(/\/+$/, "") !== "/v1" ||
+    !["/v1", "/step_plan/v1"].includes(endpoint.pathname.replace(/\/+$/, "")) ||
     endpoint.username || endpoint.password || endpoint.search || endpoint.hash
   ) return undefined;
   return {
     providerKey: "stepfun",
     providerName: "StepFun",
-    providerApi: "https://api.stepfun.com/v1",
+    providerApi: `${endpoint.origin}${endpoint.pathname.replace(/\/+$/, "")}`,
     metadataSource: "provider",
     modelId: "step-5-preview",
     displayName: "Step 5 Preview",

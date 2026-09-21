@@ -1058,7 +1058,7 @@ sklm: {
     "presetMinimaxCn": "MiniMax",
     "presetMinimaxCnOpenai": "MiniMax (OpenAI)",
     "presetKimiCoding": "Kimi für Codierung",
-    presetStepfun: "StepFun",
+    presetStepfunPlan: "StepFun Plan",
     "presetXiaomi": "Xiaomi",
     "apiStyleResponses": "OpenAI-Antworten",
     "apiStyleAnthropic": "Anthropic Messages",
