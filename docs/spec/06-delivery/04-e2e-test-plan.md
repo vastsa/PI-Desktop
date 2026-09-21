@@ -7957,6 +7957,8 @@ identify the platform validation still needed.
 | C — Conversation & stream (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | Quality (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+ (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
+| C — Conversation & stream (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
+| Quality (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
@@ -14084,6 +14086,30 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Limits:** OS-root inclusion is checked without installing a root. The TLS
   success fixture uses a child-only extra CA; it does not reproduce a specific
   antivirus installation or claim native macOS/Linux verification.
+
+### E2E-RUNTIME-unique-tool-call-ids-per-request
+
+- **Preconditions:** A session transcript that carries the same tool call twice
+  (a retried append leaves the call under a second row id), loaded into a
+  recreated runtime against a deterministic provider fixture. No real provider
+  credentials.
+- **Steps:** Send one prompt so the runtime assembles and issues a request. Read
+  the outgoing request the fixture received, and the `agent` log channel. Repeat
+  with a transcript whose calls are already unique.
+- **Expected:** The outgoing request carries exactly one `toolCall` for that id
+  and exactly one matching result, so no provider can answer
+  `tool_use ids must be unique`. The log channel gets one line naming the
+  session and the ids. The unique transcript's request is unchanged, byte for
+  byte, and logs nothing.
+- **Specs:** `03-runtime/02-agent-runtime.md` §5,
+  `08-meta/decisions-log.md` D608.
+- **Acceptance:** C (conversation and stream), Quality.
+- **Milestone:** Post-MVP regression coverage.
+- **Automation:** `packages/agent-runtime/src/runtime.test.ts` covers both halves
+  against a real runtime built from a duplicated history (drop + one log line)
+  and a unique one (identity, no log line).
+- **Status:** Unit-covered; no end-to-end driver issues a real provider request
+  against a duplicated transcript.
 
 ### E2E-MCP-HTTP-ACK — HTTP acknowledgement and authorization status
 

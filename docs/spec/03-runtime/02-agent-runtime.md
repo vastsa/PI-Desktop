@@ -654,6 +654,17 @@ criterion-by-criterion report of what was met and the evidence observed.
   restored into durable UI messages or transcript records.
 - Failed assistant messages remain durable diagnostic transcript entries but
   are never restored into pi model context on a later turn.
+- A tool-call id is unique in every request. The transcript is an append-only
+  snapshot stream that tolerates a retried append, so the same call can reach
+  the assembled context twice — under one row id, which the host's keep-last
+  read already collapses, or under two, which it cannot. The last view before
+  the wire therefore keeps the first occurrence of each `toolCall` id and drops
+  a later call or a later result for it, so the pair the provider validates
+  stays well-formed; a request with no duplicates is returned unchanged. A drop
+  is reported once on the `agent` log channel with the session and the ids
+  (D608). Anthropic-family endpoints, including DeepSeek's, reject the whole
+  turn with `tool_use ids must be unique` (issue #718), which leaves the session
+  unable to continue.
 - Restored checkpoints clear provider usage from retained assistant messages
   for budgeting. That usage measured the pre-compacted request and must not
   make the summary + tail appear as large as the discarded context.

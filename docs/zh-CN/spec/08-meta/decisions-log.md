@@ -4599,3 +4599,14 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 仅改动渲染器 CSS 与主题表面回归测试；不改变滚动状态、协议、持久化、主题 schema
   或权限。见 `04-ux/08-component-spec.md` 与
   E2E-CHAT-opaque-floating-decision-and-retry-surfaces。
+
+## 2026-09-21 —— 每个请求里的工具调用 id 必须唯一（D608，issue #718）
+
+- Anthropic 系端点（含 DeepSeek）在请求中同一个调用 id 出现两次时，会以 `tool_use ids must be unique` 拒绝整个回合，
+  期间该会话无法继续。转录是仅追加的快照流、容忍重试造成的重复追加，因此同一次调用可能两次进入组装后的上下文：同一个行 id
+  （宿主按 keep-last 读取时已折叠）或两个不同行 id（宿主无法折叠）。
+- 因此上线前的最后一个视图对每个 `toolCall` id 只保留第一次出现，丢弃其后重复的调用或结果，使提供商校验的「一调用一结果」
+  配对保持完整；没有重复的请求原样返回（返回同一对象，而非副本）。磁盘上的内容不会被改写，压缩与保留规则也不变。
+- 一旦发生丢弃，会在 `agent` 日志通道上报告一次，带上会话与 id，使下一次同类报障能指向写入方而不只是提供商那句话。
+  见 `03-runtime/02-agent-runtime.md` §5。
+- 守卫刻意放在请求边界而不是历史重建处：这样也能覆盖**会话运行期间**产生的重复，而重建期的过滤看不到它。

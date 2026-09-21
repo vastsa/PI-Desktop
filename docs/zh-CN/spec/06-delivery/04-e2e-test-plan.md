@@ -5269,6 +5269,8 @@ IPC 请求无法关闭。
 | C — 对话和直播（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | 品质（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
+| C — 对话与流式（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
+| 品质（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -8315,6 +8317,19 @@ the latest destination. These assertions measure work counts, not device FPS.
   定位不在本次范围内，保持原有搜索行为。
 - **规格：** 04-ux/06-settings-ia、04-ux/08-component-spec、
   04-ux/09-interaction-patterns；ADR turn-process-and-thinking-display。
+
+### E2E-RUNTIME-unique-tool-call-ids-per-request
+
+- **先决条件：** 一份把同一次工具调用携带两次的会话转录（重试追加让该调用落在第二个行 id 上），在确定性提供商夹具下加载进
+  重新创建的运行时；不使用真实凭据。
+- **步骤：** 发一条提示，使运行时组装并发出请求。读取夹具收到的出站请求与 `agent` 日志通道。再用工具调用本就唯一的转录重复一次。
+- **预期：** 出站请求对那个 id 只携带一个 `toolCall` 与恰好一个对应结果，因此提供商不可能回 `tool_use ids must be unique`；
+  日志通道出现一行，带会话与 id。唯一转录的请求逐字不变，且不产生任何日志。
+- **规格：** 03-runtime/02-agent-runtime §5、08-meta/decisions-log D608。**验收：** C（对话与流）、品质。
+  **里程碑：** Post-MVP 回归覆盖。
+- **自动化：** `packages/agent-runtime/src/runtime.test.ts` 用真实的运行时覆盖两半：重复历史（丢弃 + 一行日志）与唯一历史
+  （同一对象、无日志）。
+- **状态：** 单元测试覆盖；没有端到端驱动对重复转录发出真实提供商请求。
 
 ### E2E-MCP-HTTP-ACK — HTTP acknowledgement and authorization status
 
