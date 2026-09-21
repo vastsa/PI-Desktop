@@ -16,12 +16,13 @@ export type ThinkingCapabilitySet = {
 };
 
 /**
- * Serializable model metadata resolved in Electron main from models.dev.
+ * Serializable model metadata resolved in Electron main from models.dev or a
+ * reviewed first-party supplement.
  * pi-ai consumes this record through its selected transport adapter but does
  * not provide model names, limits, modalities, thinking levels, or prices.
  */
 export type ModelConfig = {
-  source: "models.dev" | "generic";
+  source: "models.dev" | "provider" | "generic";
   name: string;
   baseUrl: string;
   description?: string;

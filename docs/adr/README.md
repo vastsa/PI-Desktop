@@ -331,3 +331,4 @@ Each ADR includes:
 | turn-process-and-thinking-display | [Turn process and thinking presentation](turn-process-and-thinking-display.md) | Accepted |
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |
 | provider-system-certificates | [Desktop sidecar uses OS-trusted certificates](provider-system-certificates.md) | Accepted |
+| stepfun-first-party-model-metadata | [First-party StepFun metadata for a newly released model](stepfun-first-party-model-metadata.md) | Accepted (amends ADR 0134) |

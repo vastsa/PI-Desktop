@@ -1,6 +1,6 @@
 # ADR 0134: Use models.dev as the sole model metadata source with a local snapshot
 
-- Status: Accepted
+- Status: Accepted; amended by [StepFun first-party metadata](stepfun-first-party-model-metadata.md)
 - Date: 2026-08-29
 - Deciders: PI-Desktop core
 - Amends: ADR 0027, ADR 0133, D136, D266
@@ -22,7 +22,9 @@ cost tiers. Those fields need one stable owner and a local offline snapshot.
 
 ## Decision
 
-`https://models.dev/api.json` is the only model metadata/configuration source.
+`https://models.dev/api.json` is the general model metadata/configuration source.
+The StepFun amendment defines a source-labelled, exact-endpoint exception for
+`step-5-preview` until its first-party record is available.
 
 1. Electron main reads the bundled public document from
    `resources/models.dev/api.json` in development and

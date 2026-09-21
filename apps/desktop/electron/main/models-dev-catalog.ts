@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { stepfunModelSupplement } from "./stepfun-model-metadata.ts";
 import { modelIdsMatch } from "@pi-desktop/shared";
 import type {
   ModelCost,
@@ -54,6 +55,8 @@ export type ModelsDevProvider = {
 };
 
 export type ModelsDevModel = {
+  /** Absent for models.dev; explicit for a reviewed first-party supplement. */
+  metadataSource?: "provider";
   providerKey: string;
   providerName: string;
   providerApi?: string;
@@ -717,7 +720,7 @@ export function modelInfoFromModelsDev(
     capabilities: capabilityList(model),
     supportedThinkingLevels: [...model.thinkingLevels],
     source: "discovered",
-    catalogSource: "models.dev",
+    catalogSource: model.metadataSource ?? "models.dev",
   };
 }
 
@@ -742,7 +745,7 @@ export function modelConfigFromModelsDev(
     ...(model.cost?.tiers ? { tiers: model.cost.tiers } : {}),
   };
   const config: ModelConfig = {
-    source: "models.dev",
+    source: model.metadataSource ?? "models.dev",
     name: model.displayName,
     baseUrl: baseUrl ?? model.providerApi ?? "",
     reasoning,
@@ -1002,7 +1005,11 @@ export class ModelsDevCatalog {
     candidates.sort((left, right) =>
       right.score - left.score || left.model.modelId.length - right.model.modelId.length,
     );
-    const result = candidates[0]?.model;
+    const supplement = stepfunModelSupplement(input);
+    const firstParty = supplement && preferred.find(({ model, provider }) =>
+      apiMatches(input.baseUrl, provider.api) && modelIdsMatch(model.modelId, requested),
+    )?.model;
+    const result = firstParty ?? supplement ?? candidates[0]?.model;
     // Cache the result (a miss included) so a repeated miss is also O(1) and
     // cannot grow the candidate index with query-dependent keys.
     this.lookupMemo.set(memoKey, result);

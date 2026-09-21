@@ -5170,6 +5170,7 @@ IPC 请求无法关闭。
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — 侧边栏行状态 | E2E-LAYOUT-sidebar-row-states |
 | A / C / Quality — 侧栏材质与设置返回 | E2E-LAYOUT-sidebar-settings |
+| B / C / Quality — StepFun Step 5 Preview | E2E-PROVIDER-stepfun-preview-tool-round-trip |
 | B / F / Security — 提供商复制 | E2E-PROVIDER-copy-config-without-credentials |
 | B / F / Quality — 已选模型顺序 | E2E-MODEL-selected-order-persists |
 | A — 应用程序启动 | E2E-001、E2E-002、E2E-003、E2E-004、E2E-067、E2E-076、E2E-079、E2E-092、E2E-097、E2E-143、E2E-150、E2E-168、E2E-204、E2E-217 |
@@ -8333,3 +8334,24 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Milestone**: Maintenance.
 - **Status**: Covered by the existing HTTP client integration fixture and a
   focused component-render validation; no live IDA process required.
+
+### E2E-PROVIDER-stepfun-preview-tool-round-trip
+
+- **Preconditions:** Isolated task candidate; no production profile. Mock the
+  external HTTP boundary for automated checks; live API use requires explicit
+  authorization and a temporary credential.
+- **Steps:** Select StepFun, discover `step-5-preview`, select/save its binding,
+  restore the binding, send text with an image, execute a returned tool call,
+  and continue with the tool result. Repeat low, medium and high reasoning.
+  Refresh to a catalog with a first-party record; retain user overrides.
+- **Expected:** Exact official endpoint and model ID; 1,024,000 context and
+  64,000 output before first-party catalog coverage; image, reasoning and tools
+  remain enabled after restoration. Reasoning content and tool IDs survive
+  replay. Final text and usage are delivered. Gateways and other models remain
+  unchanged; new first-party catalog metadata supersedes the supplement.
+- **Specs:** `03-runtime/13-model-catalog-and-selection.md`; ADR
+  `stepfun-first-party-model-metadata`.
+- **Acceptance:** B (models), C (conversation), Quality.
+- **Status:** Automated service/adapter user path in
+  `apps/desktop/test/stepfun-model.test.mjs`; authenticated live API validation
+  is opt-in. No desktop visual verification is implied.

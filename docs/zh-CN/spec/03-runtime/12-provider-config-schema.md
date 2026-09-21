@@ -423,3 +423,8 @@ secret:provider:<providerId>:oauth
 两个引用相互独立，因此一行可以只有密钥、只有厂商账户，或两者兼有；参见
 [14-secrets-storage](14-secrets-storage.md) §10。未来的多重秘密提供商可能会
 继续添加后缀（`:client_secret` 等）。
+
+The optional `catalogSource: "provider"` identifies the reviewed first-party
+StepFun Step 5 Preview supplement (ADR `stepfun-first-party-model-metadata`).
+It is additive metadata, not a new persisted model availability source;
+`source: bundled | discovered | user` and credential ownership are unchanged.

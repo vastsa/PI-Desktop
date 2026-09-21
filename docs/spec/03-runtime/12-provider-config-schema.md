@@ -383,7 +383,7 @@ type ModelCatalogCacheRecord = {
   contextWindow?: number
   source: "bundled" | "discovered" | "user"
   /** Renderer annotation for a row resolved from the bundled models.dev snapshot. */
-  catalogSource?: "models.dev"
+  catalogSource?: "models.dev" | "provider"
   updatedAt: string
   raw?: unknown
 }
@@ -569,3 +569,8 @@ secret:provider:<providerId>:oauth
 The two refs are independent, so one row may hold a key, a vendor account, or
 both; see [14-secrets-storage](14-secrets-storage.md) §10. Future multi-secret
 providers may add further suffixes (`:client_secret`, etc.).
+
+The optional `catalogSource: "provider"` identifies the reviewed first-party
+StepFun Step 5 Preview supplement (ADR `stepfun-first-party-model-metadata`).
+It is additive metadata, not a new persisted model availability source;
+`source: bundled | discovered | user` and credential ownership are unchanged.
