@@ -312,6 +312,7 @@ export function usePluginsPage() {
     [plugins, installedQuery],
   );
 
+  const [applyingAutoUpdates, setApplyingAutoUpdates] = useState(false);
   const installedGroups = useMemo(() => {
     const buckets = new Map<GroupId, PluginSummary[]>();
     for (const plugin of filteredInstalled) {
@@ -508,11 +509,24 @@ export function usePluginsPage() {
 
   const applyAutoUpdates = () =>
     run(async () => {
-      const res = await api.marketApplyUpdates(true);
-      await refreshPlugins();
-      showToast(t("plugins.autoUpdatesApplied", { count: res.results?.length ?? 0 }), {
-        variant: "success",
-      });
+      if (applyingAutoUpdates) return;
+      setApplyingAutoUpdates(true);
+      try {
+        const res = await api.marketApplyUpdates(true);
+        await refreshPlugins();
+        const count = res.results?.length ?? 0;
+        if (count > 0) {
+          showToast(t("plugins.autoUpdatesApplied", { count }), {
+            variant: "success",
+          });
+        } else {
+          showToast(t("plugins.noAutoUpdatesApplied"), {
+            variant: "info",
+          });
+        }
+      } finally {
+        setApplyingAutoUpdates(false);
+      }
     });
 
   const queueInstall = (input: {
@@ -715,6 +729,7 @@ export function usePluginsPage() {
     createFromTemplate,
     checkUpdates,
     applyAutoUpdates,
+    applyingAutoUpdates,
     queueInstall,
     confirmInstall,
     installJob,

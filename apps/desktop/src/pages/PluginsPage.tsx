@@ -28,6 +28,7 @@ export function PluginsPage() {
     marketLoading,
     market,
     applyAutoUpdates,
+    applyingAutoUpdates,
   } = page;
 
   return (
@@ -109,8 +110,14 @@ export function PluginsPage() {
                 {t("plugins.updatesReady", { count: stats.updates })}
               </span>
             </div>
-            <Button variant="secondary" size="sm" onClick={() => void applyAutoUpdates()}>
-              {t("plugins.applyAutoUpdates")}
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={applyingAutoUpdates}
+              busy={applyingAutoUpdates}
+              onClick={() => void applyAutoUpdates()}
+            >
+              {t(applyingAutoUpdates ? "plugins.applyingAutoUpdates" : "plugins.applyAutoUpdates")}
             </Button>
           </div>
         ) : null}
