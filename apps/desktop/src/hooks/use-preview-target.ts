@@ -6,8 +6,11 @@ import { isHtmlFilePath, toWorkspaceRel, type ChatPreviewTarget } from "../lib/c
 import { openHttpUrl } from "../lib/open-http-url";
 import {
   FILE_MANAGER_PLUGIN_TAB,
+  OFFICE_PLUGIN_TAB,
   fileManagerPluginTab,
   hasPluginView,
+  isDocxFilePath,
+  officePluginTab,
 } from "../lib/work-panel-tabs";
 
 /**
@@ -69,6 +72,10 @@ export function useOpenChatFileRef() {
     () => hasPluginView(pluginViews, FILE_MANAGER_PLUGIN_TAB),
     [pluginViews],
   );
+  const officeViewAvailable = useMemo(
+    () => hasPluginView(pluginViews, OFFICE_PLUGIN_TAB),
+    [pluginViews],
+  );
 
   return useCallback(
     (path: string, baseDir?: string, mimeType?: string) => {
@@ -103,6 +110,10 @@ export function useOpenChatFileRef() {
             openUrl(match.relativePath);
             return;
           }
+          if (officeViewAvailable && isDocxFilePath(target)) {
+            openTab(officePluginTab(target));
+            return;
+          }
           if (fileViewAvailable) {
             openTab(fileManagerPluginTab(target));
             return;
@@ -115,6 +126,7 @@ export function useOpenChatFileRef() {
     },
     [
       fileViewAvailable,
+      officeViewAvailable,
       openFile,
       openTab,
       openUrl,

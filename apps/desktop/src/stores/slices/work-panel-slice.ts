@@ -5,7 +5,9 @@ import {
   closeWorkPanelTabState,
   emptyWorkPanelContext,
   fileWorkPanelTab,
+  isDocxFilePath,
   newWorkPanelTab,
+  officePluginTab,
   openWorkPanelTabState,
   replaceWorkPanelTabState,
   sanitizeWorkPanelTabsState,
@@ -357,7 +359,15 @@ export function createWorkPanelSlice({
   },
 
   openFileInWorkPanel: (path, mimeType) => {
-    get().openWorkPanelTab(fileWorkPanelTab(path, mimeType));
+    const state = get();
+    const hasOfficeView = state.pluginViews.some(
+      (view) => view.pluginId === "pi.office" && view.viewId === "editor",
+    );
+    if (hasOfficeView && isDocxFilePath(path)) {
+      state.openWorkPanelTab(officePluginTab(path));
+      return;
+    }
+    state.openWorkPanelTab(fileWorkPanelTab(path, mimeType));
   },
   openUrlInWorkPanel: (url) => {
     const hasBrowser = get().pluginViews.some(

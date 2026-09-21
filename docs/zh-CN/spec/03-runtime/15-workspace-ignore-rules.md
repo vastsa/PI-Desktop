@@ -45,7 +45,7 @@ Goal/scanning/reading/writing/MVP/`.pi-desktopignore`/`~/.pi-desktop/ignore` 路
 
 ## 4. 默认忽略（应用程序）
 
-```gitignore
+```text
 .git/
 node_modules/
 dist/

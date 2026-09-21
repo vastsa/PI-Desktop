@@ -1624,7 +1624,7 @@
   flex: none;
 }
 
-   to the plugin, so the user supplies only the key. */
+/* Key entry shown when a provider delegates credential storage to a plugin. */
 .model-provider-key-entry {
   display: flex;
   align-items: flex-end;

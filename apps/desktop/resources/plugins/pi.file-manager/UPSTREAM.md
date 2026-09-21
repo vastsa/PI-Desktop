@@ -34,7 +34,7 @@ stores LF, and this repository's `.gitattributes` keeps it that way.
 
 | File | Bytes | sha256 |
 | --- | --- | --- |
-| `main.js` | 63234 | `43cface10124728f16e72530e699678177f97353b57190532e89c03186e6960d` |
+| `main.js` | 63507 | `195156e89d197a563e0a5fad1dbe0c8e4f866ae309ec05b049541d3e1a412d5f` |
 | `README.md` | 20039 | `8c524f6d13eac557e286fa0ec9b9cf5138bed0bd66d4a7914f3484443e627a01` |
 | `views/index.html` | 345 | `771fd3d8afdea7fca75ed1f1918c1ce93ad1c87babdb321cfb85e910465cd2c1` |
 | `views/assets/index.js` | 1345417 | `d0a1dc369764bed2ab12ce0e65fe983fe0b4f9919f2f8ff4546b736208d66dac` |
@@ -45,7 +45,7 @@ directory carries the built view the plugin publishes, not its React source.
 
 ## Local changes
 
-Two, so a re-sync stays a copy:
+Three, so a re-sync stays a copy:
 
 - `manifest.json` gains `"license": "MIT"` (after `author`), making the vendored
   copy 14191 bytes
@@ -62,6 +62,9 @@ Two, so a re-sync stays a copy:
   ancestor's `"module"`, which is why the marker cannot live one directory up.
   In a packaged app the file is inert, and deleting it only costs the developer
   experience, never a user.
+- `main.js` routes `.docx` reads through the host's `ui.openWorkPanelFile`
+  bridge so the bundled Office view can own DOCX editing. Other extensions keep
+  the upstream file-manager behavior.
 
 ## Re-syncing a newer release
 

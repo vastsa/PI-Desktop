@@ -775,6 +775,15 @@ async function handleRead(payload) {
   const base = { path: rel, size: stat.size, mtimeMs: stat.mtimeMs };
   const extension = path.extname(rel).toLowerCase();
 
+  if (extension === ".docx" && typeof pi.ui.openWorkPanelFile === "function") {
+    await pi.ui
+      .openWorkPanelFile({
+        path: abs,
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      })
+      .catch(() => {});
+  }
+
   // 数据库：只读 100 字节的头部就能认出它，所以这一支**不做体积限制**——
   // 几百 MB 的 .db 也会在这里秒开（真正的取数走 fm.sqlite.*，一次只拿一页）。
   // 扩展名像但魔数不对的（比如 Windows 的 thumbs.db 其实是 OLE 文件）继续按普通文件走。

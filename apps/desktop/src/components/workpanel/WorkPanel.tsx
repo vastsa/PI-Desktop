@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { useBlockingOverlayActive } from "../../lib/blocking-overlay";
 import type { PluginViewMeta } from "@pi-desktop/shared";
 import {
+  OFFICE_PLUGIN_TAB,
   isKnownWorkPanelTab,
   parsePluginViewRef,
   pluginWorkPanelTab,
@@ -75,6 +76,13 @@ type WorkPanelTool = {
   shortcut?: string;
 };
 
+function locationBasename(location: string | undefined): string | null {
+  const normalized = location?.trim().replace(/[\\/]+$/, "");
+  if (!normalized) return null;
+  const basename = normalized.split(/[\\/]/).filter(Boolean).pop();
+  return basename || null;
+}
+
 function tabLabel(
   tab: WorkPanelTab,
   t: (key: string) => string,
@@ -82,9 +90,13 @@ function tabLabel(
 ) {
   if (tab.kind === "plugin") {
     const view = pluginViews.find((candidate) => candidate.ref === tab.resource);
+    const documentName =
+      view?.pluginId === OFFICE_PLUGIN_TAB.pluginId
+        ? locationBasename(tab.location)
+        : null;
     // A view whose plugin was disabled mid-session no longer resolves; fall
     // back to its id rather than leaving the tab blank until it closes.
-    return view?.title ?? tab.resource ?? t("panel.tabs.plugin");
+    return documentName ?? view?.title ?? tab.resource ?? t("panel.tabs.plugin");
   }
   if (tab.kind === "new") return t("panel.new.title");
   if (tab.kind !== "file") return t(`panel.tabs.${tab.kind}`);

@@ -574,6 +574,11 @@ export function useAppShellRuntime() {
           ...browserPluginTab(event.path ?? event.url),
         });
     });
+    const offPluginOpenWorkPanelFile = api.onPluginOpenWorkPanelFile((event) => {
+      const path = typeof event.path === "string" ? event.path.trim() : "";
+      if (!path) return;
+      useAppStore.getState().openFileInWorkPanel(path, event.mimeType);
+    });
     const offHostStatus = api.onHostStatus((status) => {
       if (status.archMismatch) setArchMismatch(status.archMismatch);
       if (status.ok) {
@@ -760,6 +765,7 @@ export function useAppShellRuntime() {
       offPlansChanged();
       offToast();
       offBrowserPreview();
+      offPluginOpenWorkPanelFile();
       offHostStatus();
       offNotificationChanged();
       offSessionsChanged();

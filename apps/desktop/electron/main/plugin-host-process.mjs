@@ -240,6 +240,7 @@ function buildApi() {
     ui: {
       openPanel: (options) => call("ui.openPanel", [options]),
       closePanel: () => call("ui.closePanel"),
+      openWorkPanelFile: (input) => call("ui.openWorkPanelFile", [input ?? {}]),
       showToast: (message, level) => call("ui.showToast", [message, level]),
       notify: (input) => call("ui.notify", [input]),
       getNotificationPermission: () => call("ui.getNotificationPermission"),

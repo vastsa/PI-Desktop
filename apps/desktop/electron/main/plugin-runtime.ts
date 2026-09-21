@@ -319,6 +319,8 @@ export type PluginHostServices = {
   readClipboardHistory: () => Promise<ClipboardHistoryEntry[]>;
   openPanel: (request: PluginPanelRequest) => Promise<void>;
   closePanel: (pluginId: string) => Promise<void>;
+  /** Ask the renderer to open a file through the normal work-panel router. */
+  openWorkPanelFile?: (input: { path: string; mimeType?: string }) => void | Promise<void>;
   fetch?: (input: {
     url: string;
     method?: string;
@@ -464,6 +466,7 @@ const HOST_API_ALLOWLIST = new Set([
   "plugin.getDataPath",
   "ui.openPanel",
   "ui.closePanel",
+  "ui.openWorkPanelFile",
   "ui.showToast",
   "ui.notify",
   "ui.getNotificationPermission",
@@ -4803,6 +4806,29 @@ export class PluginRuntime {
         },
         closePanel: async () => {
           await this.services.closePanel(pluginId);
+        },
+        openWorkPanelFile: async (input: { path: string; mimeType?: string }) => {
+          this.assertPermission(loaded, "ui.view");
+          const path = typeof input?.path === "string" ? input.path.trim() : "";
+          if (!path || path.length > 4096) {
+            throw apiError("INVALID_ARGUMENT", "file path must be a non-empty string");
+          }
+          const service = this.services.openWorkPanelFile;
+          if (!service) {
+            throw apiError("UNSUPPORTED", "host api not available: ui.openWorkPanelFile");
+          }
+          await service({
+            path,
+            ...(typeof input?.mimeType === "string" && input.mimeType
+              ? { mimeType: input.mimeType }
+              : {}),
+          });
+          this.services.audit?.({
+            pluginId,
+            api: "ui.openWorkPanelFile",
+            ok: true,
+            ts: Date.now(),
+          });
         },
         showToast: async (message: string, level?: "info" | "warn" | "error") => {
           this.services.showToast(message, level);

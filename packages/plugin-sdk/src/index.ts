@@ -1016,6 +1016,8 @@ export type PluginHostApi = {
   ui: {
     openPanel: (opts?: { title?: string }) => Promise<void>;
     closePanel: () => Promise<void>;
+    /** Open a file in the host work panel, using the host's file-type routing. */
+    openWorkPanelFile: (input: { path: string; mimeType?: string }) => Promise<void>;
     showToast: (message: string, level?: "info" | "warn" | "error") => Promise<void>;
     notify: (input: { title: string; body?: string }) => Promise<void>;
     getNotificationPermission: () => Promise<PluginNotificationPermission>;

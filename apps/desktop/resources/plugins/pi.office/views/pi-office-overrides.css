@@ -1,0 +1,484 @@
+/* PI-Desktop does not expose GenOffice's Genspark AI entry points. */
+.ribbon-group:has(.ai-entry),
+.ribbon-group:has(.ai-entry) + .ribbon-sep {
+  display: none !important;
+}
+
+/* Remove AI actions that are mixed into otherwise useful Word groups. */
+.ribbon .rb-big:has(.ai-feature-icon),
+.ribbon .rb-big[data-tip*="AI"],
+.ribbon .rb-big[data-tip*="IA"],
+.ribbon .rb-big[data-tip*="KI"],
+.ribbon .rb-big[data-tip*="Genspark"] {
+  display: none !important;
+}
+
+.ribbon-group:has(> .ribbon-group-items > .rb-split-wrap:only-child > .rb-big:has(.ai-feature-icon)),
+.ribbon-group:has(> .ribbon-group-items > .rb-split-wrap:only-child > .rb-big:has(.ai-feature-icon)) + .ribbon-sep {
+  display: none !important;
+}
+
+/* The view-tab AI toggle has no stable class in the extracted vendor UI. */
+.ribbon-group button[data-tip="显示/隐藏 AI 面板"],
+.ribbon-group button[data-tip="Show/hide the AI panel"],
+.ribbon-group button[data-tip="AI パネルの表示/非表示"],
+.ribbon-group button[data-tip="AI 패널 표시/숨기기"] {
+  display: none !important;
+}
+
+/* AI selection actions and queued edit controls can render outside the dock. */
+.ai-ask-pop,
+.ai-ask-trigger,
+.ai-queue,
+.ai-scope-row,
+.ai-scope-preview,
+.ai-partial-card,
+.ai-panel,
+.ai-dock,
+.ai-rail,
+.ai-work-group,
+.ai-login-btn,
+.ai-header-btn,
+.ai-panel-resizer,
+.ai-track-btn,
+.ai-attach-btn,
+.copilot,
+.copilot-btn,
+.copilot-badge,
+.genspark-badge,
+.ctx-item:has(.copilot-badge) {
+  display: none !important;
+}
+
+/* The extracted file-pane toggle depends on an unavailable desktop surface. */
+.file-tab-wrap,
+.files-edge-tab,
+.ribbon-group button[data-tip="文件"],
+.ribbon-group button[data-tip="Files"],
+.ribbon-group button[data-tip="ファイル"],
+.ribbon-group button[data-tip="파일"],
+.files-pane {
+  display: none !important;
+}
+
+/* Opening another editor tab belongs to the desktop shell, not this view. */
+.ribbon-group button[data-tip*="新建标签"],
+.ribbon-group button[data-tip*="切换标签"],
+.ribbon-group button[data-tip*="New tab"],
+.ribbon-group button[data-tip*="Switch tab"] {
+  display: none !important;
+}
+
+/* Keep the two ribbon rows horizontal and compact inside the docked work panel. */
+.ribbon-tabs,
+.ribbon-body {
+  position: relative;
+  scrollbar-width: none;
+  scroll-behavior: auto;
+}
+
+.ribbon-tabs::-webkit-scrollbar,
+.ribbon-body::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.ribbon-tabs {
+  gap: 0;
+  padding: 2px 8px 0 !important;
+  flex-wrap: nowrap !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+}
+
+/* The category row is fixed. Only the command row is paged. */
+.pi-office-toolbar-tabs {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden !important;
+}
+
+.ribbon-tabs > .qa-btn,
+.ribbon-tabs > .autosave-toggle,
+.ribbon-tabs > .qa-sep,
+.ribbon-tabs > .ribbon-tab,
+.ribbon-tabs > .file-tab-wrap {
+  flex: 0 0 auto !important;
+}
+
+.ribbon-tabs-win,
+.ribbon-tabs-mac {
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
+.ribbon-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 5px 7px 4px !important;
+  font-size: 12px !important;
+  line-height: 18px;
+}
+
+.ribbon-tab.active:after {
+  left: 9px;
+  right: 9px;
+}
+
+.ribbon-tabs-spacer {
+  min-width: 0;
+}
+
+.ribbon-body {
+  box-sizing: border-box;
+  height: 44px !important;
+  min-height: 44px;
+  padding: 2px 8px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+}
+
+.ribbon-body > .ribbon-group,
+.ribbon-body > .ribbon-sep,
+.ribbon-body > .table-ribbon-body > .ribbon-group,
+.ribbon-body > .table-ribbon-body > .ribbon-sep,
+.ribbon-body > .table-ribbon-body > .table-tool-group {
+  flex: 0 0 auto;
+}
+
+.ribbon-group {
+  flex-direction: row;
+  align-items: center;
+  min-width: max-content;
+  padding: 0 2px;
+}
+
+.ribbon-group-items,
+.rb-font-group {
+  align-items: center;
+  gap: 2px;
+  flex-wrap: nowrap !important;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+.rb-font-group {
+  flex-direction: row !important;
+}
+
+.rb-big {
+  flex-direction: row;
+  flex: 0 0 auto;
+  gap: 3px;
+  padding: 3px 5px 3px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.rb-big-icon,
+.rb-big .rb-big-icon {
+  min-height: 20px;
+  flex: 0 0 auto;
+  padding: 1px 2px;
+  margin: 0;
+}
+
+.rb-big-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.rb-small {
+  flex: 0 0 auto;
+  gap: 3px;
+  padding: 3px 5px;
+  font-size: 11px;
+}
+
+/* GenOffice nests several compact commands in vertical columns. Keep the
+   commands in one horizontal row so the command bar never grows vertically. */
+.ribbon-body .rb-col,
+.ribbon-body .rb-row,
+.ribbon-body .layout-para,
+.ribbon-body .layout-col,
+.ribbon-body .layout-num,
+.ribbon-body .table-tool-row,
+.ribbon-body .table-tool-grid,
+.ribbon-body .style-gallery-wrap,
+.ribbon-body .style-gallery {
+  flex-wrap: nowrap !important;
+  white-space: nowrap;
+}
+
+.ribbon .ribbon-body .pi-office-layout-para {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  flex-flow: row nowrap !important;
+  align-items: center !important;
+  gap: 7px !important;
+  min-width: max-content;
+}
+
+.ribbon .ribbon-body .pi-office-layout-col {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  flex-flow: row nowrap !important;
+  align-items: center !important;
+  gap: 3px !important;
+  min-width: max-content;
+}
+
+.ribbon-body .rb-col,
+.ribbon-body .layout-col {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 3px;
+}
+
+.ribbon-body .layout-para {
+  gap: 7px;
+}
+
+.ribbon-body .layout-num {
+  flex: 0 0 auto;
+  gap: 3px;
+  font-size: 11px;
+}
+
+.ribbon-body .layout-num > span:first-child {
+  width: auto;
+  font-size: 11px;
+}
+
+.ribbon-body .layout-num input {
+  width: 32px;
+  height: 24px;
+}
+
+.ribbon-body .layout-unit {
+  font-size: 10px;
+}
+
+.ribbon-body .table-tool-grid {
+  display: flex !important;
+  gap: 3px;
+}
+
+.ribbon-body .style-gallery-wrap,
+.ribbon-body .style-gallery {
+  height: 32px;
+  overflow: hidden;
+}
+
+/* The compact toolbar gallery uses a horizontal preview-label card. The
+   vendor gallery is taller and stacked for its full ribbon, which clips when
+   the command row is paged into the narrow work-panel toolbar. */
+.ribbon-body .style-gallery .style-card {
+  display: inline-flex;
+  flex-direction: row !important;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 4px;
+  width: 74px;
+  height: 28px;
+  padding: 2px 5px;
+}
+
+.ribbon-body .style-gallery .style-card-preview {
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.ribbon-body .style-gallery .style-card-preview.style-h1 {
+  font-size: 14px;
+}
+
+.ribbon-body .style-gallery .style-card-preview.style-h2 {
+  font-size: 12px;
+}
+
+.ribbon-body .style-gallery .style-card-preview.style-h3 {
+  font-size: 11px;
+}
+
+.ribbon-body .style-gallery .style-card-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9.5px;
+  line-height: 1;
+}
+
+.ribbon-body .style-gallery-more {
+  height: 28px;
+}
+
+/* Pages containing only one compact module should use the middle column as a
+   centered stage. This keeps the style gallery and color controls balanced
+   after the surrounding groups have paged out of view. */
+.ribbon-body.pi-office-toolbar-single-column > .ribbon-group,
+.ribbon-body.pi-office-toolbar-single-column > .table-ribbon-body {
+  justify-content: center;
+}
+
+.ribbon-body.pi-office-toolbar-single-column .style-gallery {
+  justify-content: center;
+}
+
+.ribbon-body.pi-office-toolbar-single-column .rb-col,
+.ribbon-body.pi-office-toolbar-single-column .rb-row {
+  justify-content: center;
+}
+
+.ribbon-body.pi-office-toolbar-single-column .rb-col {
+  align-items: center;
+}
+
+.ribbon-body .rb-split-wrap,
+.ribbon-body .table-tool-group {
+  flex: 0 0 auto;
+}
+
+/* A page boundary must never leave a partially visible command. Keep the
+   command's layout width so page stops remain stable, but hide the command
+   until the page containing it is active. */
+.ribbon-body .pi-office-toolbar-partial-item {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* The clipboard group is a high-frequency fixed-width cluster. Its labels
+   are available through aria-label/data-tip while the compact bar shows the
+   familiar icons without consuming a second line. */
+.ribbon-body .pi-office-clipboard-group {
+  min-width: max-content;
+}
+
+.ribbon-body .pi-office-clipboard-group .rb-big > span:last-child {
+  display: none;
+}
+
+.ribbon-body .pi-office-clipboard-group .rb-big-icon {
+  min-width: 22px;
+}
+
+.rb-icon {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 3px;
+}
+
+.rb-select,
+.rb-caret.rb-combo-caret {
+  height: 26px;
+}
+
+.rb-font-family {
+  width: 112px;
+}
+
+.rb-font-size {
+  width: 40px;
+}
+
+.rb-caret.rb-combo-caret {
+  width: 16px;
+}
+
+.rb-mini-sep {
+  height: 18px;
+  margin: 0 3px;
+}
+
+.ribbon-sep {
+  margin: 0 4px;
+}
+
+/* Keep paging controls outside the command row. They stay fixed while one full
+   toolbar page at a time moves horizontally inside .ribbon-body. */
+.ribbon.pi-office-toolbar-host {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  grid-template-rows: auto 44px;
+  align-items: stretch;
+}
+
+.ribbon.pi-office-toolbar-host > .ribbon-tabs {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.ribbon.pi-office-toolbar-host > .ribbon-body {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  width: auto;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  scroll-padding-inline: 8px;
+}
+
+.ribbon.pi-office-toolbar-host > .pi-office-toolbar-nav {
+  position: static;
+  grid-row: 2;
+  align-self: stretch;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--chrome-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  box-shadow: none;
+}
+
+.ribbon.pi-office-toolbar-host > .pi-office-toolbar-nav svg {
+  width: 15px;
+  height: 15px;
+}
+
+.ribbon.pi-office-toolbar-host > .pi-office-toolbar-nav:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text-primary);
+}
+
+.ribbon.pi-office-toolbar-host > .pi-office-toolbar-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.ribbon.pi-office-toolbar-host > .pi-office-toolbar-nav-previous {
+  grid-column: 1;
+}
+
+.ribbon.pi-office-toolbar-host > .pi-office-toolbar-nav-next {
+  grid-column: 3;
+}
+
+.ribbon.pi-office-toolbar-host .pi-office-original-collapse-control {
+  display: none !important;
+}
+
+.ribbon.pi-office-toolbar-host > .pi-office-toolbar-nav[hidden] {
+  display: inline-flex !important;
+}
+
+.ribbon.pi-office-toolbar-host.pi-office-ribbon-collapsed {
+  grid-template-rows: auto;
+}
+
+.ribbon.pi-office-toolbar-host.pi-office-ribbon-collapsed > .ribbon-body,
+.ribbon.pi-office-toolbar-host.pi-office-ribbon-collapsed > .pi-office-toolbar-nav {
+  display: none !important;
+}

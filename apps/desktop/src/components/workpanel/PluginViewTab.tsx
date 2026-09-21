@@ -42,15 +42,19 @@ export function PluginViewTab({
   // the previous web contents while this tab stays open.
   useEffect(() => {
     let current = true;
-    const open = () => {
-      void api.pluginViewOpen(pluginId, viewId, { sessionId, location }).then(
-        () => {
-          if (current) setFailed(false);
-        },
-        () => {
-          if (current) setFailed(true);
-        },
-      );
+    const open = async () => {
+      try {
+        await api.pluginViewOpen(pluginId, viewId, { sessionId, location });
+        if (!current) return;
+        // A reload destroys the native WebContentsView before the renderer
+        // receives pluginChanged. Re-attach it only after open has completed;
+        // calling setVisible earlier races the host's view creation and leaves
+        // the work panel with a stale, non-interactive surface.
+        await api.pluginViewSetVisible(pluginId, viewId, !blocked, sessionId);
+        if (current) setFailed(false);
+      } catch {
+        if (current) setFailed(true);
+      }
     };
     open();
     const off = api.onPluginChanged((event) => {
@@ -61,7 +65,7 @@ export function PluginViewTab({
       current = false;
       off();
     };
-  }, [pluginId, viewId, sessionId, location]);
+  }, [blocked, pluginId, viewId, sessionId, location]);
 
   useEffect(() => {
     const surface = surfaceRef.current;

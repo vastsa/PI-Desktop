@@ -47,7 +47,7 @@ outside-path grant does not lift the denial. `Bash` is not filtered (§6).
 
 ## 4. Default ignore (app)
 
-```gitignore
+```text
 .git/
 node_modules/
 dist/

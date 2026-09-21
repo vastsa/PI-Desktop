@@ -118,6 +118,23 @@ export const FILE_MANAGER_PLUGIN_TAB = {
   viewId: "manager",
 } as const;
 
+export const OFFICE_PLUGIN_TAB = {
+  pluginId: "pi.office",
+  viewId: "editor",
+} as const;
+
+export function isDocxFilePath(path: string): boolean {
+  return /\.docx$/i.test(path.trim());
+}
+
+/** A DOCX file uses the bundled Office editor when that view is available. */
+export function officePluginTab(location: string): WorkPanelTab {
+  return {
+    ...pluginWorkPanelTab(OFFICE_PLUGIN_TAB.pluginId, OFFICE_PLUGIN_TAB.viewId),
+    location,
+  };
+}
+
 /** The file view, asked to show one file. */
 export function fileManagerPluginTab(location: string): WorkPanelTab {
   return {

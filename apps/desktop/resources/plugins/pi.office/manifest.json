@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "pi.office",
+  "name": "Office",
+  "version": "0.1.0",
+  "description": "Edit and preview DOCX files in the work panel.",
+  "i18n": {
+    "en": {
+      "name": "Office",
+      "description": "Edit and preview DOCX files in the work panel.",
+      "safetyNotes": "This bundled plugin is a browser-only extraction of GenOffice's DOCX editor. File bytes are read and written by the plugin process through the PI plugin bridge. It accepts only DOCX files, refuses credential paths, uses optimistic conflict checks, and writes through a temporary file followed by fsync and replace. It declares no network domains and does not include GenOffice's AI, account, remote-service, or Electron shell features."
+    },
+    "zh-CN": {
+      "name": "Office",
+      "description": "在工作面板中编辑和预览 DOCX 文件。",
+      "safetyNotes": "这个内置插件只抽取 GenOffice 的 DOCX 编辑器浏览器渲染层。文件字节由插件进程通过 PI 插件桥接读写，只接受 DOCX，拒绝凭据路径，保存前检查外部改动，并通过临时文件、fsync 和替换写入。不声明网络域名，也不包含 GenOffice 的 AI、账号、远程服务或独立 Electron 外壳。"
+    }
+  },
+  "author": "PI-Desktop",
+  "license": "Apache-2.0",
+  "main": "main.js",
+  "enabledByDefault": true,
+  "contributes": {
+    "views": [
+      {
+        "id": "editor",
+        "title": { "en": "Office", "zh-CN": "Office" },
+        "icon": "book",
+        "entry": "views/index.html",
+        "order": 30
+      }
+    ]
+  },
+  "permissions": ["ui.view"],
+  "engines": { "piDesktop": ">=0.9.0" },
+  "activationEvents": ["onStartup"]
+}

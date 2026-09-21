@@ -3,6 +3,7 @@ import test from "node:test";
 
 const {
   FILE_MANAGER_PLUGIN_TAB,
+  OFFICE_PLUGIN_TAB,
   activateWorkPanelTabState,
   browserPluginTab,
   closeWorkPanelTabState,
@@ -10,10 +11,12 @@ const {
   fileWorkPanelTab,
   hasPluginView,
   isKnownWorkPanelTab,
+  isDocxFilePath,
   isToolWorkPanelTab,
   normalizeWorkPanelFilePath,
   newWorkPanelTab,
   openWorkPanelTabState,
+  officePluginTab,
   pluginWorkPanelTab,
   preferredFileWorkPanelTab,
   replaceWorkPanelTabState,
@@ -164,6 +167,16 @@ test("a host-chosen project file prefers the bundled file view", () => {
     preferredFileWorkPanelTab("plans/plan.md", []),
     fileWorkPanelTab("plans/plan.md"),
   );
+});
+
+test("DOCX files prefer the bundled Office view when available", () => {
+  assert.equal(isDocxFilePath("docs/contract.DOCX"), true);
+  assert.equal(isDocxFilePath("docs/contract.doc"), false);
+  const officeView = [OFFICE_PLUGIN_TAB];
+  const tab = officePluginTab("docs/contract.docx");
+  assert.equal(hasPluginView(officeView, OFFICE_PLUGIN_TAB), true);
+  assert.equal(tab.id, "plugin:pi.office/editor");
+  assert.equal(tab.location, "docs/contract.docx");
 });
 
 test("empty work panel context has no visible or retained resource state", () => {
