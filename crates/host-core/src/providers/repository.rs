@@ -8,7 +8,7 @@ pub(crate) fn provider_from_row(
     let id: String = row.get(0)?;
     let legacy_model_id: Option<String> = row.get(9)?;
     let config_raw: String = row.get(11).unwrap_or_else(|_| "{}".to_string());
-    let models = config_model_bindings(&config_raw, legacy_model_id.clone());
+    let models = config_model_bindings(&config_raw, legacy_model_id.clone(), &id);
     let has_api_key = secret_ref.as_ref().map(|r| secrets.has(r)).unwrap_or(false);
     let has_oauth = secrets.has(&secret_ref_for_provider_oauth(&id));
     Ok(ProviderPublic {

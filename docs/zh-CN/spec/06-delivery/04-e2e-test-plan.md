@@ -5293,6 +5293,8 @@ eleven-tool-round desktop paths are verified by
 | 品质（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | G — 插件宿主生命周期（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
 | 品质（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
+| F — 持久化（存储的模型绑定数组） | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
+| 品质（存储的模型绑定数组） | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -8457,3 +8459,21 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **预期**：打开包含 `(software)` 的完整网址，进入 React 软件词条；正文外层的右括号和紧跟 URL 右括号的句末标点不属于链接，相邻引用仍能独立点击。嵌套圆括号、查询和片段内的圆括号、百分号编码的圆括号均保持完整。
 - **覆盖**：`chat-links.test.mjs`；桌面端通过正常浏览器目标实际点击验证。
 - **链接规格**：`04-ux/08-component-spec.md` §8.3。
+
+#### E2E-PROVIDER-stored-binding-array-reads-entry-by-entry：存储的模型绑定数组逐条读取
+
+- **前置条件**：一次性数据目录与 host-core 可执行文件；通过 `providers.create`
+  建立一个至少含三条完整绑定的提供商；不使用真实提供商或凭据。
+- **步骤**：调用 `providers.list`，确认全部绑定都返回。编辑存储的
+  `config_json`，删掉其中一个绑定的 `maxTokens`，再次 list。补回该字段后再
+  list。最后把某个绑定的 `contextWindow` 改成字符串，再 list 一次。
+- **预期**：除最后一次外，三种情况下三条绑定全部返回；最后一次按存储顺序返回
+  两条可读绑定。丢失 `maxTokens` 的绑定以通用默认输出上限读出，补回字段后数值
+  恢复。宿主日志为无法解码的条目带上提供商 id、条目下标与原因。
+- **链接规格**：`03-runtime/12-provider-config-schema.md` §2、
+  `08-meta/decisions-log.md` D610
+- **验收**：F（持久化）、品质
+- **状态**：单元覆盖（`providers::catalog::tests`、
+  `providers::tests::a_stored_array_survives_an_entry_that_lost_a_field`）；
+  宿主 RPC 路径由 `scripts/e2e-smoke.mjs` 覆盖提供商的创建与列举，但没有套件
+  驱动手工编辑的 `config_json`。

@@ -82,13 +82,13 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "contextWindow", "maxTokens", "thinkingLevels", "defaultThinkingLevel"],
+        "required": ["id"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "alias": { "type": "string", "maxLength": 60 },
-          "contextWindow": { "type": "integer", "minimum": 1 },
+          "contextWindow": { "type": "integer", "minimum": 0 },
           "contextWindowSource": { "enum": ["catalog", "user"] },
-          "maxTokens": { "type": "integer", "minimum": 1 },
+          "maxTokens": { "type": "integer", "minimum": 0 },
           "thinkingLevels": {
             "type": "array",
             "items": { "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"] },
@@ -123,6 +123,19 @@
 `models[].alias` 是可选展示标签（ADR 0192）。`models[].id` 仍是发给提供商的
 身份，别名从不用于提供商或模型解析。host-core 会修剪别名、丢弃空白值，
 并在超过 60 个 Unicode 字符时以 `MODEL_ALIAS_TOO_LONG` 拒绝。
+
+`models[].contextWindow` 与 `models[].maxTokens` 在线为可选。缺失的键、或显式的 `0`，
+都不是按模型的选择：host 把它读作 0 并补上通用默认值（128,000 / 8,192）——这与上面
+legacy 绑定被物化时用的是同一个值，也与未声明限额的插件 manifest 已经产生的值相同。
+存储数组与 manifest 由此对“没有限额的模型”取得一致（D610）。
+
+存储的 `models` 数组逐条解码。不再符合 schema 的条目会被跳过，并在宿主日志里带上
+提供商 id、条目下标与原因上报，而不是丢弃整个数组：此前一个手改或部分写入的绑定会让
+该提供商读回来只剩单个 legacy 默认模型，其它已配置模型全部消失且没有任何说明
+（D610）。缺失的 `models` 键、空数组、以及所有条目都不可读的数组，都仍旧读作 legacy
+绑定，使提供商无论存储形态如何都保持可选；只有第三种会被上报，因为空数组是合法状态，
+而缺失键则是早于绑定机制的记录。保存依旧只写入客户端发来的绑定，因此存储数组只会被
+一次显式写入替换。
 
 `models[].contextWindowSource` 记录存储的 `contextWindow` 来自哪里：`catalog` 表示
 models.dev 快照，之后的目录修正可以替换它；`user` 表示用户在设置中手改的值，永不被

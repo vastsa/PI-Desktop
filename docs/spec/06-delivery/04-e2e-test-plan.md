@@ -8035,6 +8035,8 @@ identify the platform validation still needed.
 | M6+ (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | C / F / Quality — The context estimate stays safe (calibration) | E2E-CONTEXT-estimate-calibration-stays-safe |
 | C — Conversation & stream (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
+| F — Persistence (stored model binding array) | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
+| Quality (stored model binding array) | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
 | Quality (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | G — Plugin host lifecycle (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 | Quality (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
@@ -14194,6 +14196,28 @@ the latest destination. These assertions measure work counts, not device FPS.
   success fixture uses a child-only extra CA; it does not reproduce a specific
   antivirus installation or claim native macOS/Linux verification.
 
+
+### E2E-PROVIDER-stored-binding-array-reads-entry-by-entry
+
+- **Preconditions:** A throwaway data directory and the host-core binary; a
+  provider created through `providers.create` with at least three complete
+  bindings; no real provider or credentials.
+- **Steps:** Call `providers.list` and confirm every binding returns. Edit the
+  stored `config_json` to delete one binding's `maxTokens` and list again.
+  Restore the field and list again. Then set one binding's `contextWindow` to a
+  string and list once more.
+- **Expected:** All three bindings return in every case except the last, where
+  the two readable bindings return in their stored order. The binding that lost
+  `maxTokens` reads with the generic default output cap, and restoring the field
+  restores the value. The host log names the provider id, the entry's index and
+  the reason for the entry that could not be decoded.
+- **Specs linked:** `03-runtime/12-provider-config-schema.md` §2,
+  `08-meta/decisions-log.md` D610
+- **Acceptance:** F (persistence), Quality
+- **Status:** Unit-covered (`providers::catalog::tests`,
+  `providers::tests::a_stored_array_survives_an_entry_that_lost_a_field`); the
+  host RPC path is exercised by `scripts/e2e-smoke.mjs` for provider create and
+  list, but no suite drives a hand-edited `config_json`.
 ### E2E-CONTEXT-estimate-calibration-stays-safe
 
 - **Preconditions:** Deterministic provider fixture whose reported usage can be
