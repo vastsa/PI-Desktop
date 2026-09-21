@@ -411,11 +411,11 @@ export function createPluginServices({
     },
     // A plugin host process dying is contained: contributions are already
     // deregistered by the runtime, we only have to tell the user and the UI.
-    onPluginCrash: ({ pluginId, exitCode }) => {
+    onPluginCrash: ({ pluginId, exitCode, lastOutput }) => {
       logger.app("plugin", "error", "plugin host process crashed", {
         pluginId,
         code: "PLUGIN_CRASHED",
-        data: { exitCode },
+        data: { exitCode, ...(lastOutput ? { lastOutput } : {}) },
       });
       // No toast here: the runtime already raised one through `showToast` on the
       // same code path, and a second identical message reads as two failures.

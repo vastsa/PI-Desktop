@@ -7922,6 +7922,8 @@ identify the platform validation still needed.
 | C — Conversation & stream (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | Quality (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+ (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
+| G — Plugin host lifecycle (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
+| Quality (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
@@ -13978,6 +13980,31 @@ the latest destination. These assertions measure work counts, not device FPS.
   `desktop_dispatch_outlasts_every_electron_budget_it_wraps` covers the dispatch
   default.
 - **Status:** Contract-covered; no end-to-end driver waits out a real 70s call.
+
+### E2E-PLUGIN-crash-report-names-the-exit-code
+
+- **Preconditions:** A loaded plugin whose host process dies on its own —
+  `process.exit(7)` after writing one line to stderr is the fixture — with a
+  resident service so the supervisor path is exercised too. Isolated desktop
+  profile; no marketplace or network access.
+- **Steps:** Load the plugin and let the host process die. Read the load error,
+  the `failed` service state, the `plugin.crash` audit record and the `plugin`
+  log channel. Repeat with a hard fault (a Windows `0xC0000005`-class exit) if
+  one is available, and then quit the app while a plugin host is alive.
+- **Expected:** Every one of those surfaces names the exit code (`exit code 7`,
+  and `exit code 3221225477 (0xC0000005)` for the fault), and the newest plugin
+  output line travels with the load error and the audit record. A clean quit
+  reports no crash at all: quitting is a shutdown, not a crash.
+- **Specs:** `07-plugins/05-plugin-lifecycle.md` §3.1 / §8,
+  `08-meta/decisions-log.md` D607.
+- **Acceptance:** G (plugin host lifecycle), Quality (diagnosability).
+- **Milestone:** Post-MVP regression coverage.
+- **Automation:** `apps/desktop/test/plugin-services.test.mjs` forks a real host
+  process, kills it with a fixture exit code and asserts the code and the stderr
+  line on the service state and the audit record; `plugin-isolation.test.mjs`
+  and the shutdown cases cover the "quit is not a crash" half.
+- **Status:** Automated at the runtime level; no UI driver reads the plugin
+  page's error text.
 
 ### E2E-DIALOG-long-text-boundaries
 

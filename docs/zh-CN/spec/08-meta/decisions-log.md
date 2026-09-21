@@ -4599,3 +4599,14 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 仅改动渲染器 CSS 与主题表面回归测试；不改变滚动状态、协议、持久化、主题 schema
   或权限。见 `04-ux/08-component-spec.md` 与
   E2E-CHAT-opaque-floating-decision-and-retry-surfaces。
+
+## 2026-09-21 —— 插件崩溃上报带上退出码与最后一行输出（D607，issue #747）
+
+- 宿主进程崩溃路径此前只报插件 id，于是报障里只有 `plugin host process exited: <id>` 一句话——issue #747 的报告者手里
+  就是这么一句。现在运行时代码本来就已经拿到的**退出码**会出现在消息、`failed` 服务状态、`plugin.crash` 审计记录与
+  `plugin` 日志通道里；Windows 上的硬故障（`0xC0000005` 一类，以负的有符号整数交付，同时打印其无符号十六进制形式）与
+  插件自己调用 `process.exit(1)` 是两类不同的问题，而这个字段是唯一能区分它们的。
+- 插件**最新一行输出**随之一同上报：运行时按插件保留最近三行 stdout/stderr（每行有长度上限），并把最新一行引用进
+  加载错误与审计记录（`message`）——因抛错而死的插件通常先打印了原因。不新增任何持久化，权限与 API 面不变；
+  每行原本已作为 `plugin.stdio` 进入审计流。
+- 见 `07-plugins/05-plugin-lifecycle.md` §3.1。

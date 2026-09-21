@@ -6470,3 +6470,21 @@ that was sitting at the bottom — including after the turn had finished.
 - Renderer CSS and the theme surface regression change only. There is no scroll
   state, protocol, persistence, theme schema, or permission change. See
   `04-ux/08-component-spec.md` and E2E-CHAT-opaque-floating-decision-and-retry-surfaces.
+
+## 2026-09-21 — A plugin crash reports its exit code and its last words (D607, issue #747)
+
+- The host-process crash path reported only the plugin id, so a report read
+  `plugin host process exited: <id>` and carried nothing else — the reporter in
+  issue #747 had exactly that sentence and no way to say more. The exit code it
+  already had is now part of the message, the `failed` service state, the
+  `plugin.crash` audit record and the `plugin` log channel; on Windows a hard
+  fault (`0xC0000005` and friends, delivered as a negative signed int, printed
+  alongside its unsigned hex form) and a plugin's own `process.exit(1)` are
+  different bugs and this is the only field that tells them apart.
+- The plugin's newest output line rides with it. The runtime keeps the last
+  three stdout/stderr lines per plugin, each bounded, and quotes the newest in
+  the load error and the audit record (`message`), because a plugin that died on
+  a thrown error usually printed the reason first. Nothing new is persisted and
+  no permission or API surface changes; the audit thread already recorded every
+  line as `plugin.stdio`.
+- See `07-plugins/05-plugin-lifecycle.md` §3.1.

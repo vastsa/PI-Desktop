@@ -5249,6 +5249,8 @@ IPC 请求无法关闭。
 | C — 对话和直播（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | 品质（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
+| G — 插件宿主生命周期（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
+| 品质（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -8289,3 +8291,17 @@ the latest destination. These assertions measure work counts, not device FPS.
   定位不在本次范围内，保持原有搜索行为。
 - **规格：** 04-ux/06-settings-ia、04-ux/08-component-spec、
   04-ux/09-interaction-patterns；ADR turn-process-and-thinking-display。
+
+### E2E-PLUGIN-crash-report-names-the-exit-code
+
+- **先决条件：** 已加载的插件宿主进程自行死亡——夹具为写一行 stderr 后 `process.exit(7)`——并带一个常驻服务，使监督器路径也被覆盖。
+  隔离的桌面配置；不访问市场或网络。
+- **步骤：** 加载插件并让宿主进程死亡。读取加载错误、`failed` 服务状态、`plugin.crash` 审计记录与 `plugin` 日志通道。若有条件，
+  再用一次硬故障（Windows `0xC0000005` 一类退出）重复；最后在插件宿主存活时退出应用。
+- **预期：** 上述每一处都给出退出码（`exit code 7`；硬故障为 `exit code 3221225477 (0xC0000005)`），且插件最新一行输出随加载错误与
+  审计记录一同出现。干净退出完全不上报崩溃：退出是关闭而不是崩溃。
+- **规格：** 07-plugins/05-plugin-lifecycle §3.1 / §8、08-meta/decisions-log D607。
+- **验收：** G（插件宿主生命周期）、品质（可诊断性）。**里程碑：** Post-MVP 回归覆盖。
+- **自动化：** `apps/desktop/test/plugin-services.test.mjs` 真实 fork 宿主进程、以夹具退出码杀死它，并断言服务状态与审计记录上的
+  退出码与 stderr 行；`plugin-isolation.test.mjs` 与关闭用例覆盖"退出不是崩溃"那一半。
+- **状态：** 运行时层已自动化；无 UI 驱动读取插件页的错误文本。
