@@ -70,6 +70,21 @@ test("project archive makes project sessions searchable and progressively visibl
   assert.match(projectsDetailSource, /projects-detail-task-updated/);
 });
 
+test("opening an archived project session restores it after selection succeeds", () => {
+  const openSession =
+    projectsPageSource.match(
+      /const openProjectSession = async[\s\S]*?\n  };/,
+    )?.[0] ?? "";
+  assert.match(openSession, /await selectSession\(sessionId\)/);
+  assert.match(openSession, /sessionMeta\[sessionId\]\?\.archived === true/);
+  assert.match(openSession, /restoreSession\(sessionId\)/);
+  assert.ok(
+    openSession.indexOf("await selectSession(sessionId)") <
+      openSession.indexOf("restoreSession(sessionId)"),
+    "the archive state changes only after the session opens successfully",
+  );
+});
+
 test("project archive is no longer a standalone app page", () => {
   assert.doesNotMatch(searchDialogSource, /page: "projects"/);
   assert.doesNotMatch(appSource, /page === "projects"/);

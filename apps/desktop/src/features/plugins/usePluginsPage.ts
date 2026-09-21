@@ -171,6 +171,12 @@ export function usePluginsPage() {
   };
 
   const closeDetail = () => {
+    // Escape leaves the opener focused; match pointer dismissal without
+    // removing the focus indicator used by subsequent keyboard navigation.
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused.matches(".plugins-card-hit")) {
+      focused.blur();
+    }
     setSelectedId(null);
     setDetail(null);
     setSelectedVersion("");

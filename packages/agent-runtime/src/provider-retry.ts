@@ -35,7 +35,7 @@ export const PROVIDER_SETUP_MAX_RETRY_DELAY_MS = 8_000;
  * Retries allowed after the first non-rate-limit transient failure. Upstream
  * gateway faults (502/503/504, dropped
  * sockets) routinely need more than one attempt, so they share one bounded
- * logical-turn budget the way rate limits do instead of getting a single retry
+ * response-recovery budget the way rate limits do instead of getting a single retry
  * per phase.
  */
 export const PROVIDER_TRANSIENT_MAX_RETRIES = PROVIDER_RETRY_MAX_RETRIES;
@@ -128,7 +128,7 @@ export type ProviderResponseSnapshot = {
 };
 
 export type ProviderRetryController = {
-  /** Claim one retry in the shared logical-turn budget. */
+  /** Claim one retry across setup/stream failures of the current response. */
   claim: (
     error: ClassifiedAgentError,
     phase: ProviderRetryPhase,

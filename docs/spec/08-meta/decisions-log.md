@@ -6497,3 +6497,39 @@ that was sitting at the bottom — including after the turn had finished.
 - Renderer CSS and the theme surface regression change only. There is no scroll
   state, protocol, persistence, theme schema, or permission change. See
   `04-ux/08-component-spec.md` and E2E-CHAT-opaque-floating-decision-and-retry-surfaces.
+
+## 2026-09-21 — A tool-call id is unique in every request (D608, issue #718)
+
+- Anthropic-family endpoints, DeepSeek's included, reject a whole turn with
+  `tool_use ids must be unique` when the request carries a call id twice, and
+  the session cannot continue while that lasts. The transcript is an append-only
+  snapshot stream that tolerates a retried append, so the same call can reach
+  the assembled context twice: under one row id, which the host's keep-last read
+  already collapses, or under two, which it cannot.
+- The last view before the wire therefore keeps the first occurrence of each
+  `toolCall` id and drops a later call or a later result for that id, so the
+  call/result pair the provider validates stays well-formed. A request with no
+  duplicates is returned unchanged (identity, not a copy). Nothing is rewritten
+  on disk and no compaction or retention rule changes.
+- A drop is reported once on the `agent` log channel with the session and the
+  ids, so the next report of this names the writer instead of only the
+  provider's sentence. See `03-runtime/02-agent-runtime.md` §5.
+- The guard is deliberately the request boundary rather than the history
+  rebuild: it also covers a duplicate that appears while the session runs, which
+  a rebuild-time filter cannot see.
+
+## 2026-09-21 — A plugin crash reports its exit code without copying raw output (D607, issue #747)
+
+- The host-process crash path reported only the plugin id, so a report read
+  `plugin host process exited: <id>` and carried nothing else — the reporter in
+  issue #747 had exactly that sentence and no way to say more. The exit code it
+  already had is now part of the message, the `failed` service state, the
+  `plugin.crash` audit record and the `plugin` log channel; on Windows a hard
+  fault (`0xC0000005` and friends, delivered as a negative signed int, printed
+  alongside its unsigned hex form) and a plugin's own `process.exit(1)` are
+  different bugs and this is the only field that tells them apart.
+- Plugin stdout/stderr is not copied into the load error, crash audit record, or
+  crash log payload because it may contain workspace data or secrets. Nothing
+  new is persisted and no permission or API surface changes; the existing
+  `plugin.stdio` audit stream is otherwise unchanged.
+- See `07-plugins/05-plugin-lifecycle.md` §3.1.

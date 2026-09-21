@@ -98,8 +98,8 @@ pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入�
    之内的图片才会被读进内存；更大的图片走流式哈希/复制以及既有的安全路径回退
 7. 为本回合快照有效的 shell ID 与方言
 8. 用解析出的会话配置和有效思考级别启动 pi 回合；HTTP 429 的建连与流式失败
-   使用运行时自有的静默五次重试预算，其他瞬时的 transport/provider 失败则在
-   建连与流式两个阶段之间共享一份运行时自有的四次重试有界预算
+   使用运行时自有的静默 10 次重试预算，其他瞬时的 transport/provider 失败则在
+   建连与流式两个阶段之间共享一份运行时自有的 10 次重试有界预算
    （D127、D186、D245、D258）
 9. 将规范化的回答与思考事件流式传输到 UI
 10. 工具调用时，携带持久的 `sessionId` 委托给 Rust 主机桥；由主机解析会话
@@ -126,10 +126,10 @@ pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入�
 ### 5d。有界提供商流恢复和诊断（D186、D245、D259、ADR 0091、ADR 0128）
 
 提供程序请求设置和流式传输交付是两个独立的故障阶段，但
-HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
+HTTP 429 处理是一个响应恢复策略。此路径禁用了 pi-ai 的嵌套
 适配器重试，因此运行时可以在两个阶段之间共享一个预算。
 
-`PROVIDER_RATE_LIMITED` 在初始尝试之后最多重试五次，总共六次
+`PROVIDER_RATE_LIMITED` 在初始尝试之后最多重试 10 次，总共 11 次
 提供程序尝试。设置阶段的 429 在提供程序流适配器内部重试。
 流中的 429 会从下一个模型上下文中删除失败的助手，并在同一
 回合中调用 `continue()`。两个阶段占用同一个计数器，因此设置阶段的
@@ -151,8 +151,8 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 运行时从 fetch 捕获失败的响应状态和标头，因为 pi-ai 的普通响应
 回调仅涵盖已建立的响应。
 
-非 429 瞬时故障共享它们自己的有界逻辑回合预算：在初始尝试之后
-最多重试四次，总共五次提供程序尝试。该预算由请求设置和流式
+非 429 瞬时故障共享它们自己的有界响应恢复预算：在初始尝试之后
+最多重试 10 次，总共 11 次提供程序尝试。该预算由请求设置和流式
 传输交付共享，因此在两个阶段之间移动的故障无法重置或倍增它，
 并且它与 429 预算相互独立。它只接受 `NETWORK_ERROR`、`TIMEOUT`、
 `STREAM_FAILED` 和可重试的 `PROVIDER_ERROR`——包括在标头到达之前
@@ -160,6 +160,13 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 请求、上下文以及其他不可重试的错误不会进入任何提供程序重放路径，
 并且来自格式错误的 400/422 请求的不可重试 `PROVIDER_ERROR` 仍然是
 终止的。
+
+**Synchronized update (#699):** Both budgets reset after a complete, non-error,
+non-aborted model response, including tool-call responses, in the main session
+and builtin subagents. Headers, partial output, and phase changes never reset
+them. New requests start at retry 1; persistent outages remain bounded at ten
+retries per class. Exhaustion diagnostics use the applicable budget counter,
+not temporary retry activity. See the English source section 5d and ADR 0206.
 
 在把 HTTP 400/422 那种消息以 `(no body)` 结尾的流前 `PROVIDER_ERROR` 抛给上层
 之前，运行时最多做一次静默的修复尝试：移除生成的输出上限字段
@@ -196,7 +203,7 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 `networkRoute`）以及请求关联字段（`requestMessages`、`requestBytes`、
 `compactionGeneration`）。
 对于持续的 429，
-`retryAttempt` 为 `5`；对于持续的非 429 瞬时故障，它为 `4`。凭据与不受限制的
+`retryAttempt` 为 `10`；对于持续的非 429 瞬时故障，它也为 `10`。凭据与不受限制的
 响应正文永远不会进入事件或日志。每次重试都会新建请求、流和 `AbortController`；
 重试唯一共享的状态是进程级 undici dispatcher。当同一来源在一轮内连续两次没有
 任何响应、且新尝试仍无法到达它时，下一次尝试前会重建一次传输（每 30 秒最多一次，
@@ -517,6 +524,11 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
   恢复为错误结果；辅助行丢失的工具行
   获得合成的仅呼叫辅助运营商，以便 call/result 对保留
 格式良好，适用于每个提供商 API。
+- 每个请求里的工具调用 id 必须唯一。转录是仅追加的快照流，容忍重试造成的重复追加，因此同一次调用可能两次进入组装后的
+  上下文——同一个行 id（宿主按 keep-last 读取时已折叠），或者两个不同的行 id（宿主无法折叠）。因此上线前的最后一个视图
+  对每个 `toolCall` id 只保留第一次出现，丢弃其后重复的调用或结果，使提供商校验的「一调用一结果」配对保持完整；没有重复的
+  请求原样返回。一旦发生丢弃，会在 `agent` 日志通道上报告一次，带上会话与 id（D608）。Anthropic 系端点（含 DeepSeek）
+  会以 `tool_use ids must be unique` 拒绝整个回合（issue #718），使该会话无法继续。
 - 视觉运行时只从会话绑定的附件、scratch 与项目根目录中水合持久化的图片引用。
   处于 10 MB 内联安全上限之内的图片会成为临时的 pi-ai 图片块；超限或不可用的
   图片则退化为安全的 `@path` 回退。超限历史的水合会直接复制文件，不会先把内容

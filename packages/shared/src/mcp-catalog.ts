@@ -20,6 +20,9 @@ export type McpCatalogRequiredEnv = {
   defaultValue?: string;
 };
 
+/** A registry header token resolves to a form input or a non-editable literal. */
+export type McpCatalogHeaderBinding = { input: string } | { value: string };
+
 export type McpCatalogEntry = {
   id: string;
   name: string;
@@ -33,9 +36,14 @@ export type McpCatalogEntry = {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
-  /** http template. Market endpoints must use credentials-free public HTTPS. */
+  /** Public HTTPS template; only legacy `${NAME}` URL tokens are expanded. */
   url?: string;
   headers?: Record<string, string>;
+  /**
+   * Header-local token bindings. When present (even empty), every unbound token
+   * stays literal, including in headers without a binding map.
+   */
+  headerBindings?: Record<string, Record<string, McpCatalogHeaderBinding>>;
   requiredEnv?: McpCatalogRequiredEnv[];
   prerequisites?: string[];
   notes?: string;
@@ -48,9 +56,18 @@ export type McpCatalogFile = {
   servers: McpCatalogEntry[];
 };
 
-const PLACEHOLDER = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
-const CATALOG_CATEGORIES = new Set<McpCatalogCategory>(["devtools", "web", "docs", "data", "productivity"]);
+/*
+ * The builtin catalog and stdio templates spell a variable `${NAME}` in upper
+ * case. The official registry spells a header variable `{name}` and does not
+ * require upper case, so the header pattern accepts both spellings and consumes
+ * the `$`, leaving no stray dollar behind. URLs and stdio keep their legacy
+ * spelling; header-local brace tokens never authorize URL substitution.
+ */
+const ENV_PLACEHOLDER = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+const HEADER_PLACEHOLDER = /\$?\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 const ENV_NAME = /^[A-Z_][A-Z0-9_]*$/;
+const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const CATALOG_CATEGORIES = new Set<McpCatalogCategory>(["devtools", "web", "docs", "data", "productivity"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -64,13 +81,14 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   return isRecord(value) && Object.values(value).every((item) => typeof item === "string");
 }
 
-function requiredEnvError(value: unknown, id: string): string | null {
+function requiredEnvError(value: unknown, id: string, transport: unknown): string | null {
   if (!Array.isArray(value)) return `${id}: requiredEnv must be an array`;
   const names = new Set<string>();
+  const namePattern = transport === "http" ? VARIABLE_NAME : ENV_NAME;
   for (const item of value) {
     if (!isRecord(item)) return `${id}: requiredEnv items must be objects`;
-    if (typeof item.name !== "string" || !ENV_NAME.test(item.name)) {
-      return `${id}: requiredEnv names must be environment variable names`;
+    if (typeof item.name !== "string" || !namePattern.test(item.name)) {
+      return `${id}: requiredEnv names must be variable names`;
     }
     if (names.has(item.name)) return `${id}: duplicate requiredEnv name ${item.name}`;
     names.add(item.name);
@@ -82,6 +100,22 @@ function requiredEnvError(value: unknown, id: string): string | null {
     }
     if (item.defaultValue !== undefined && typeof item.defaultValue !== "string") {
       return `${id}: requiredEnv defaultValue must be a string`;
+    }
+  }
+  return null;
+}
+
+function headerBindingsError(value: unknown, headers: unknown, id: string): string | null {
+  if (!isRecord(value) || !isStringRecord(headers)) return `${id}: headerBindings requires headers`;
+  for (const [header, bindings] of Object.entries(value)) {
+    if (!Object.hasOwn(headers, header) || !isRecord(bindings)) return `${id}: invalid header bindings`;
+    for (const [token, binding] of Object.entries(bindings)) {
+      if (!/^\$?\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(token) || !isRecord(binding) || Object.keys(binding).length !== 1) {
+        return `${id}: invalid header token binding`;
+      }
+      if (typeof binding.value !== "string" && (typeof binding.input !== "string" || !VARIABLE_NAME.test(binding.input))) {
+        return `${id}: header token binding requires an input or literal value`;
+      }
     }
   }
   return null;
@@ -102,9 +136,14 @@ function entryShapeError(value: unknown): string | null {
   if (value.args !== undefined && !isStringArray(value.args)) return `${id}: args must be an array of strings`;
   if (value.env !== undefined && !isStringRecord(value.env)) return `${id}: env must be an object of strings`;
   if (value.headers !== undefined && !isStringRecord(value.headers)) return `${id}: headers must be an object of strings`;
+  if (value.headerBindings !== undefined) {
+    if (value.transport !== "http") return `${id}: headerBindings requires http transport`;
+    const error = headerBindingsError(value.headerBindings, value.headers, id);
+    if (error) return error;
+  }
   if (value.prerequisites !== undefined && !isStringArray(value.prerequisites)) return `${id}: prerequisites must be an array of strings`;
   if (value.requiredEnv !== undefined) {
-    const error = requiredEnvError(value.requiredEnv, id);
+    const error = requiredEnvError(value.requiredEnv, id, value.transport);
     if (error) return error;
   }
   for (const field of ["description", "author", "homepage", "command", "url", "notes"]) {
@@ -129,13 +168,35 @@ function templateStrings(entry: McpCatalogEntry): string[] {
   ];
 }
 
-/** Every `${NAME}` the entry's install template needs, deduped and sorted. */
+/** Every editable input referenced by an install template, deduped and sorted. */
 export function collectCatalogPlaceholders(entry: McpCatalogEntry): string[] {
   const names = new Set<string>();
-  for (const text of templateStrings(entry)) {
-    for (const match of text.matchAll(PLACEHOLDER)) names.add(match[1]);
+  const declared = declaredNames(entry);
+  const collect = (text: string, pattern: RegExp, bindings?: Record<string, McpCatalogHeaderBinding>) => {
+    for (const match of text.matchAll(pattern)) {
+      if (bindings) {
+        const binding = Object.hasOwn(bindings, match[0]) ? bindings[match[0]] : undefined;
+        if (binding && "input" in binding) names.add(binding.input);
+      } else if (match[0].startsWith("$") || declared.has(match[1])) {
+        names.add(match[1]);
+      }
+    }
+  };
+  if (entry.transport === "http") {
+    collect(entry.url ?? "", ENV_PLACEHOLDER);
+    for (const [header, template] of Object.entries(entry.headers ?? {})) {
+      collect(template, HEADER_PLACEHOLDER, bindingsForHeader(entry, header));
+    }
+  } else {
+    for (const text of templateStrings(entry)) collect(text, ENV_PLACEHOLDER);
   }
   return [...names].sort();
+}
+
+function bindingsForHeader(entry: McpCatalogEntry, header: string): Record<string, McpCatalogHeaderBinding> | undefined {
+  // Only catalogs without binding metadata use the legacy global input scope.
+  if (entry.headerBindings === undefined) return undefined;
+  return Object.hasOwn(entry.headerBindings, header) ? entry.headerBindings[header] : {};
 }
 
 function declaredNames(entry: McpCatalogEntry): Map<string, McpCatalogRequiredEnv> {
@@ -182,10 +243,18 @@ export function resolveCatalogEntry(
   const error = catalogEntryError(entry);
   if (error) throw new Error(error);
   const declared = declaredNames(entry);
-  const fill = (text: string): string =>
-    text.replace(PLACEHOLDER, (whole, name: string) => {
+  const fill = (text: string, pattern: RegExp, bindings?: Record<string, McpCatalogHeaderBinding>): string =>
+    text.replace(pattern, (whole, name: string) => {
+      if (bindings) {
+        const binding = Object.hasOwn(bindings, whole) ? bindings[whole] : undefined;
+        if (!binding) return whole;
+        if ("value" in binding) return binding.value;
+        name = binding.input;
+      } else if (!whole.startsWith("$") && !declared.has(name)) {
+        return whole;
+      }
       const spec = declared.get(name);
-      const value = values[name] ?? spec?.defaultValue ?? "";
+      const value = (Object.hasOwn(values, name) ? values[name] : undefined) ?? spec?.defaultValue ?? "";
       if (!value && !spec?.optional) {
         throw new Error(`${entry.name}: missing value for ${name}`);
       }
@@ -200,21 +269,21 @@ export function resolveCatalogEntry(
   if (entry.transport === "http") {
     const headers: Record<string, string> = {};
     for (const [key, template] of Object.entries(entry.headers ?? {})) {
-      const value = fill(template);
+      const value = fill(template, HEADER_PLACEHOLDER, bindingsForHeader(entry, key));
       if (value) headers[key] = value;
     }
-    return { ...base, transport: "http", url: fill(entry.url!), headers };
+    return { ...base, transport: "http", url: fill(entry.url!, ENV_PLACEHOLDER), headers };
   }
   const env: Record<string, string> = {};
   for (const [key, template] of Object.entries(entry.env ?? {})) {
-    const value = fill(template);
+    const value = fill(template, ENV_PLACEHOLDER);
     if (value) env[key] = value;
   }
   return {
     ...base,
     transport: "stdio",
-    command: fill(entry.command!),
-    args: (entry.args ?? []).map((arg) => fill(arg)),
+    command: fill(entry.command!, ENV_PLACEHOLDER),
+    args: (entry.args ?? []).map((arg) => fill(arg, ENV_PLACEHOLDER)),
     env,
   };
 }

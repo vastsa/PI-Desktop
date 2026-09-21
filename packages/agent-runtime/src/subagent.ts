@@ -63,6 +63,10 @@ import {
   subagentContextOverflowError,
 } from "./subagent-context.js";
 import {
+  dedupeToolCallMessages,
+  reportDuplicateToolCallDrop,
+} from "./tool-call-dedupe.js";
+import {
   classifyProviderError,
   delayWithAbort,
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
@@ -242,7 +246,8 @@ export class SubagentRun {
     this.agent = new Agent({
       streamFn: binding.streamFn,
       getApiKey: binding.getApiKey,
-      convertToLlm,
+      convertToLlm: (messages) =>
+        convertToLlm(this.dedupeToolCalls(messages)),
       // The same turn-boundary context protection the session has (ADR 0299):
       // re-estimate at each boundary, compact before the next request, degrade
       // before failing. The budget derives from this run's resolved model.
@@ -315,6 +320,11 @@ export class SubagentRun {
 
   private modelBinding() {
     return this.bindingFor(this.provider, this.thinkingLevel);
+  }
+  private dedupeToolCalls(messages: AgentMessage[]): AgentMessage[] {
+    const drop = dedupeToolCallMessages(messages);
+    reportDuplicateToolCallDrop(this.opts.sessionId, drop);
+    return drop.messages;
   }
 
   private bindingFor(
@@ -720,6 +730,10 @@ export class SubagentRun {
               };
             }
           }
+        }
+        if (!failed && stopReason !== "aborted") {
+          this.providerTransientRetryAttempt = 0;
+          this.providerRateLimitRetryAttempt = 0;
         }
         const messageUsage = usageFromPi(message.usage);
         this.usage = addUsage(this.usage, messageUsage);

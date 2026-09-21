@@ -186,15 +186,17 @@ export function assistantTurnMenuItems({
  */
 export function conversationMenuItems({
   t,
-  conversation,
+  canCopy,
+  onCopyConversation,
   scrollRef,
   contentRef,
   actions,
   onReturnToLatest,
 }: {
   t: TFunction;
-  /** Labelled dialogue text; empty means nothing worth copying. */
-  conversation: string;
+  /** The loaded window or older/newer history contains dialogue to copy. */
+  canCopy: boolean;
+  onCopyConversation: () => void;
   scrollRef: { current: HTMLElement | null };
   contentRef: { current: HTMLElement | null };
   actions: MenuItemActions;
@@ -206,9 +208,9 @@ export function conversationMenuItems({
       id: "copy-conversation",
       label: t("chat.copyConversation"),
       icon: copyIcon(),
-      disabled: !conversation,
+      disabled: !canCopy,
       // The labelled thread is the action; a live selection belongs to Copy on a turn.
-      onSelect: () => actions.copyText(conversation),
+      onSelect: () => onCopyConversation(),
     },
     {
       id: "select-conversation",

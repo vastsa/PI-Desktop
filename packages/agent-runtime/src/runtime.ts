@@ -124,6 +124,10 @@ import {
 } from "./agent-messages.js";
 import { buildSessionContext } from "./session-context.js";
 import {
+  dedupeToolCallMessages,
+  reportDuplicateToolCallDrop,
+} from "./tool-call-dedupe.js";
+import {
   apiBindingForProviderModel,
   buildProviderModel,
   copilotRequestHeaders,
@@ -602,6 +606,7 @@ const AGENT_CORE_TOOL_NAMES = new Set([
 ]);
 const MAX_ON_DEMAND_TOOL_PROMPT_ENTRIES = 64;
 const MAX_TOOL_SEARCH_RESULT_NAMES = 24;
+
 
 /** Tools that ask the host to switch this session into a contract mode (D198). */
 const ENTER_TOOL_NAMES: Record<ProposalKind, string> = {
@@ -1578,10 +1583,7 @@ export class DesktopAgentRuntime {
   private readonly providerTransportHealth: ProviderTransportHealth =
     createProviderTransportHealth();
   private pendingProviderRetry?: ReturnType<typeof classifyAgentError>;
-  /**
-   * Shared bounded retry count for non-rate-limit transient failures, counted
-   * across the request-setup and stream phases (D259).
-   */
+  /** Non-429 setup + stream failures since the last successful response. */
   private providerTransientRetryAttempt = 0;
   /** Shared OpenCode-style 429 retry count across setup and stream phases. */
   private providerRateLimitRetryAttempt = 0;
@@ -1902,9 +1904,12 @@ Delegation rules:
       // A vendor account has no long-lived key. Leaving it unset keeps pi-ai
       // from overriding the auth the provider just resolved for this request.
       getApiKey: async () => runtimeApiKey || undefined,
+      // The provider's rule that a tool-call id is unique is enforced here, on
+      // the last view before the wire: the request is the only place it can be
+      // guaranteed for both a rebuilt context and one that grew in this process.
       convertToLlm: (messages) =>
         alignRetainedReasoningIdentity(
-          convertToLlm(messages),
+          convertToLlm(this.dropDuplicateToolCalls(messages)),
           this.reasoningReplayIdentity(),
         ),
       prepareNextTurnWithContext: (context, signal) =>
@@ -2694,6 +2699,29 @@ Delegation rules:
       (entry) =>
         entry.message.role !== "assistant" || entry.message.content.length > 0,
     );
+  }
+
+  /**
+   * A `tool_use` id has to be unique across the request: Anthropic-family
+   * endpoints (DeepSeek's included) reject the whole turn with "tool_use ids
+   * must be unique" (issue #718), and a session that hits that 400 cannot
+   * continue. Every message the next request carries passes through here, so
+   * this is the one place that can guarantee the provider's rule for both a
+   * rebuilt context and one that grew during this process.
+   *
+   * The transcript is append-only and tolerates a retried append, so the same
+   * call can reach the request twice: under the same row id (which the host's
+   * keep-last dedupe already collapses) or a new one (which it cannot). The
+   * first occurrence wins, and a later call *or* a later result for that id is
+   * dropped, so the pair the provider validates stays well-formed — one call,
+   * one result. What was dropped is logged with its ids, because the next
+   * report of this should name the writer instead of only the provider's
+   * sentence.
+   */
+  private dropDuplicateToolCalls(messages: AgentMessage[]): AgentMessage[] {
+    const drop = dedupeToolCallMessages(messages);
+    reportDuplicateToolCallDrop(this.sessionId, drop);
+    return drop.messages;
   }
 
   private entriesWithCompaction(
@@ -5389,6 +5417,9 @@ Delegation rules:
   ): ReturnType<typeof classifyAgentError> {
     const explained = withProviderFetchFailure(error, this.providerFetchFailure);
     const existingDetails = explained.details ?? {};
+    const retryAttempt = error.code === "PROVIDER_RATE_LIMITED"
+      ? this.providerRateLimitRetryAttempt
+      : isTransientProviderRetryCode(error.code) ? this.providerTransientRetryAttempt : 0;
     // A capture exists only for an attempt that rejected before any response, so
     // it is also the honest phase: whatever the message lifecycle that surfaced
     // the failure looks like, this request never reached the provider, and
@@ -5427,9 +5458,7 @@ Delegation rules:
         existingDetails.providerStatus === undefined
           ? { providerStatus: this.providerResponseStatus }
           : {}),
-        ...(this.activeProviderRetryAttempt > 0
-          ? { retryAttempt: this.activeProviderRetryAttempt }
-          : {}),
+        ...(retryAttempt > 0 ? { retryAttempt } : {}),
       },
     };
   }
@@ -5515,7 +5544,10 @@ Delegation rules:
     if (messages.at(-1)?.role !== "assistant") {
       throw new Error("Cannot retry a provider stream without its failed assistant message");
     }
-    messages.pop();
+    // A failed stream can be represented by more than one trailing assistant
+    // message after a tool round. Remove the whole failed suffix before
+    // continuing; pi-agent-core rejects any assistant-terminated transcript.
+    while (messages.at(-1)?.role === "assistant") messages.pop();
     this.setAgentMessages(messages);
 
     this.providerRetryInProgress = true;
@@ -6913,10 +6945,13 @@ Delegation rules:
               streamMs,
             );
           }
-          // A turn with no tool call and no visible text ends the run while
-          // leaving the user with nothing: the reasoning that may hold the
-          // answer is never rendered. Re-run once with a nudge before letting
-          // that surface as a finished turn.
+          // Only a completed response replenishes both budgets. Headers and
+          // partial output must not let a repeatedly broken stream retry forever.
+          if (!failed && !aborted) {
+            this.providerTransientRetryAttempt = 0;
+            this.providerRateLimitRetryAttempt = 0;
+          }
+          // Re-run an invisible answer once before surfacing a finished turn.
           const silence =
             !failed &&
             !aborted &&

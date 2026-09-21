@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentEventEnvelope, SubagentDefinition } from "@pi-desktop/shared";
+import type { Message } from "@earendil-works/pi-ai";
 import {
   composeSubagentSystemPrompt,
   MAX_SUBAGENT_REPORT_CHARS,
@@ -135,6 +136,59 @@ describe("SubagentRun event forwarding", () => {
     expect(run.agent.streamFunction.toString()).toContain(
       "models.stream(omitThinkingModel, context, retryOptions)",
     );
+  });
+  it("deduplicates repeated tool calls before a subagent request", () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const { run } = createRun({
+        initialMessages: [
+          assistantMessage({
+            content: [
+              { type: "toolCall", id: "child-read", name: "Read", arguments: {} },
+            ],
+          }),
+          {
+            role: "toolResult",
+            toolCallId: "child-read",
+            toolName: "Read",
+            content: [{ type: "text", text: "first" }],
+            isError: false,
+            timestamp: 2,
+          },
+          assistantMessage({
+            content: [
+              { type: "toolCall", id: "child-read", name: "Read", arguments: {} },
+            ],
+          }),
+          {
+            role: "toolResult",
+            toolCallId: "child-read",
+            toolName: "Read",
+            content: [{ type: "text", text: "retry" }],
+            isError: false,
+            timestamp: 3,
+          },
+        ] as unknown as NonNullable<SubagentRunOptions["initialMessages"]>,
+      });
+      const outgoing = run.agent.convertToLlm(run.agent.state.messages) as Message[];
+      const toolCalls = outgoing.flatMap((message) =>
+        message.role === "assistant"
+          ? message.content.filter((block) => block.type === "toolCall")
+          : [],
+      );
+
+      expect(toolCalls.map((call) => call.id)).toEqual(["child-read"]);
+      expect(outgoing.filter((message) => message.role === "toolResult")).toHaveLength(1);
+      expect(
+        outgoing.filter(
+          (message) => message.role === "assistant" && message.content.length === 0,
+        ),
+      ).toHaveLength(0);
+      expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join(""))
+        .toContain("session=session-1");
+    } finally {
+      stderr.mockRestore();
+    }
   });
 
   it("does not synthesize a Responses reasoning setting when omitted", async () => {

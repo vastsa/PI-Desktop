@@ -1030,6 +1030,12 @@
   text-align: left;
 }
 
+/* Keep the keyboard focus ring inside the tile's overflow clip. */
+.plugins-card-hit:focus-visible {
+  outline-offset: -3px;
+  border-radius: var(--radius-lg);
+}
+
 .plugins-card-head {
   display: flex;
   align-items: center;

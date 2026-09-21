@@ -1686,7 +1686,11 @@ Single message render — either user (plaintext) or assistant (markdown streami
    image thumbnail resolves and opens the same way. A chip whose reference
    matches nothing opens nothing and reports itself; the OS default application
    is no longer what this click does.
-  HTTP(S) URLs remain inline text links. Plain clicks — including markdown
+  HTTP(S) URLs remain inline text links. Bare URLs preserve balanced parentheses
+  in paths, queries, and fragments; an unmatched closing parenthesis wrapping
+  the URL in prose stays outside the link. Sentence punctuation immediately
+  after a closing URL parenthesis stays outside as well; suffixes such as
+  `(draft).html` remain part of the URL. Plain clicks — including markdown
   links, autolinked URLs, inline-code URLs, and remote images — follow the
   persisted Link open destination setting (Work panel browser by default, or
   the system default browser). Right-clicking a link opens a body-level
@@ -1741,7 +1745,10 @@ Single message render — either user (plaintext) or assistant (markdown streami
   nothing. Copy on a speaking-turn menu writes the live selection in that
   turn captured when the menu opened; a collapsed caret, or a selection
   outside the row, falls back to the whole turn.
-  Copy conversation still writes the labelled thread. Copying from the
+  Copy conversation reads the complete session on demand, including unloaded
+  history and untruncated message text, and preserves the visible in-flight
+  tail. It does not change the reading window or scroll position. A failed
+  read reports an error without copying partial history. Copying from the
   menu reports through the toast host because the surface closes as soon
   as the item runs.
   Fork creates and activates an independent session whose snapshot ends at the
@@ -1872,7 +1879,10 @@ message its checkpoint covers.
   Home / End navigation, Escape / Tab / outside-press / scroll-behind
   dismissal, and an accessible name (`chat.messageMenu` or
   `chat.conversationMenu`). Focus returns to whatever the right-click
-  interrupted.
+  interrupted. While editing a user message, Copy uses the selected draft text
+  (or the whole draft if the caret is collapsed), and Select message text selects
+  the draft. Saved-message Edit, Delete, and revision actions are not offered
+  until editing ends.
 
 ### 8.6 MVP constraints
 
@@ -3819,7 +3829,10 @@ remove a newly created BR only when removing that exact node makes the draft
 match the requested deletion. Never trim leading newlines or normalize all BRs.
 Remember proven placeholder nodes weakly so native redo cannot restore them.
 Explicit line breaks, IME composition, file references, and chip deletion retain
-their normal behavior. The input owns and disposes the native event listeners.
+their normal behavior. Native undo of chip deletion restores its file-reference metadata
+as well as its DOM, so submission and draft caching retain the path. Deleted
+reference history is local to the current draft/workspace and is cleared on send;
+pasting a private-use character alone must not restore an attachment. The input owns and disposes the native event listeners.
 
 ### Dialog long-text containment
 
