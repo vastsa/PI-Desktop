@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/pi-host",
-  "version": "0.15.2-beta.2",
+  "version": "0.15.2",
   "private": true,
   "type": "module",
   "description": "Headless PI Agent Host: RACP-WS server over the Agent Host module, the pi sidecar, and host-core",

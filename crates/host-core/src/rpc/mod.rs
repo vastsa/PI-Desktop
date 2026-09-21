@@ -685,6 +685,21 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
     let Some(object) = value.as_object() else {
         return Ok(());
     };
+    if let Some(binding) = object.get("imageGeneration").filter(|v| !v.is_null()) {
+        for (key, max) in [("providerId", 128), ("modelId", 256)] {
+            if !binding
+                .get(key)
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.trim().is_empty() && s.len() <= max)
+            {
+                return Err(rpc_err(
+                    1002,
+                    "invalid image generation binding",
+                    "INVALID_PARAMS",
+                ));
+            }
+        }
+    }
     if let Some(template_value) = object.get("promptEnhancementUserTemplate") {
         if let Some(message) =
             prompt_enhancement_template_error("promptEnhancementUserTemplate", template_value)
@@ -1096,7 +1111,7 @@ fn bash_cancellation_requested(receiver: &Option<tokio::sync::watch::Receiver<bo
 }
 
 async fn clear_bash_cancellation(state: &Arc<Mutex<AppState>>, p: &ToolsExecuteParams) {
-    if p.tool_name != "Bash" {
+    if !matches!(p.tool_name.as_str(), "Bash" | "GenerateImages") {
         return;
     }
     let mut st = state.lock().await;
@@ -3204,7 +3219,8 @@ async fn handle_request(
 
             // Register before permission evaluation so tools.abort can cancel
             // an approval wait as well as an already-spawned process.
-            let cancellation_receiver = if p.tool_name == "Bash" {
+            let cancellation_receiver = if matches!(p.tool_name.as_str(), "Bash" | "GenerateImages")
+            {
                 let mut st = state.lock().await;
                 match st.register_bash_cancellation(&p.session_id, &p.tool_call_id) {
                     Ok(receiver) => Some(receiver),
@@ -8604,5 +8620,27 @@ mod tests {
         }
         let st = state.lock().await;
         assert_eq!(st.plugins.locale(), "en-US");
+    }
+}
+
+#[cfg(test)]
+mod image_generation_settings_tests {
+    use super::*;
+    #[test]
+    fn validates_optional_image_binding() {
+        for value in [
+            json!({}),
+            json!({"imageGeneration": null}),
+            json!({"imageGeneration": {"providerId": "p", "modelId": "image"}}),
+        ] {
+            assert!(validate_settings_value(&value).is_ok());
+        }
+        for value in [
+            json!(false),
+            json!({}),
+            json!({"providerId": "p", "modelId": " "}),
+        ] {
+            assert!(validate_settings_value(&json!({"imageGeneration": value})).is_err());
+        }
     }
 }

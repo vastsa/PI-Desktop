@@ -538,3 +538,10 @@ same model to the check mark, the toggle and the duplicate guard.
 - [ ] compact limit text never reads above the published value, keeps the
       neighbouring 1M-line windows apart (`1M` / `1.05M` / `1.1M`), and never
       renders a `K` mantissa at or above 1000
+
+## Image model binding
+
+The default conversation model has a separate **Image generation model** row below
+it. Model Advanced can select that unique binding; provider form Save commits it,
+Cancel discards it, and replacing it leaves the conversation default unchanged.
+See [image generation and editing](21-image-generation.md) for the tool and batch contract.

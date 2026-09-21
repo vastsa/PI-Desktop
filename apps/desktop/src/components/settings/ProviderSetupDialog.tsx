@@ -120,7 +120,8 @@ export type ProviderSetupDialogProps = {
   provider?: ProviderPublic | null;
   initialDraft?: ProviderCopyDraft | null;
   onClose: () => void;
-  onSaved: (provider: ProviderPublic, models: ModelBinding[]) => void;
+  imageModelId?: string;
+  onSaved: (provider: ProviderPublic, models: ModelBinding[], imageModelId?: string) => void | Promise<void>;
 };
 
 export function ProviderSetupDialog({
@@ -128,8 +129,10 @@ export function ProviderSetupDialog({
   initialDraft,
   onClose,
   onSaved,
+  imageModelId,
 }: ProviderSetupDialogProps) {
   const { t } = useTranslation();
+  const [imageModelDraft, setImageModelDraft] = useState<string | undefined>();
   const editing = !!provider;
   const apiKeyRef = useRef<HTMLInputElement>(null);
   const [service, setService] = useState(() => initialDraft
@@ -284,7 +287,7 @@ export function ProviderSetupDialog({
           headers,
           ...(apiKey ? { secretValue: apiKey } : {}),
         });
-        onSaved(result.provider ?? provider, persisted);
+        await onSaved(result.provider ?? provider, persisted, persisted.some((model) => model.id === imageModelDraft) ? imageModelDraft : undefined);
       } else {
         const result = await api.createProvider({
           name: providerName,
@@ -299,7 +302,7 @@ export function ProviderSetupDialog({
           apiStyle: resolvedApiStyle,
           headers,
         });
-        onSaved(result.provider, persisted);
+        await onSaved(result.provider, persisted, persisted.some((model) => model.id === imageModelDraft) ? imageModelDraft : undefined);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -529,6 +532,8 @@ export function ProviderSetupDialog({
             busy={saving}
             onReload={discovery.reload}
             apiStyle={resolvedApiStyle}
+            imageModelId={imageModelDraft ?? imageModelId}
+            onImageModelChange={setImageModelDraft}
           />
         </div>
       </div>

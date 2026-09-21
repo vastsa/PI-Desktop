@@ -8,6 +8,35 @@
 
 ## 1. Goals
 
+### E2E-IMAGES-desktop-conversation
+
+- **Preconditions:** Isolated desktop profile and workspace, built image feature,
+  local chat and OpenAI Images HTTP fixtures; no live provider credentials.
+- **Steps:** Open Models settings; verify the conversation and image defaults
+  share a compact panel. Submit a two-image request through the composer, then
+  edit the first output through a follow-up message. Collapse tool details.
+  Clear the binding and follow the visible configuration action back to Models.
+- **Expected:** A 12px default-row gap, decoded image previews outside collapsed
+  process details, multipart source upload for editing, preserved originals,
+  and no image HTTP request while unconfigured.
+- **Settings interactions:** The image summary has no Change/Clear buttons and
+  matches the default model's provider/model text styles. Select another
+  provider's image model in Advanced and save; the summary changes while the
+  chat default stays unchanged. Missing/disabled bindings show only Currently
+  unavailable. Covered in `scripts/e2e-image-generation-ui.mjs`.
+- **Conversation selection:** The selected image provider/model is absent from
+  default and Composer candidates. Other providers retain same-ID models. An
+  existing session pinned to the image binding is rejected before inference.
+- **Transport contracts:** Real stdio reverse RPC retains a thrown local image
+  error's stable code in the production ParentHostProxy. Local HTTP tests check
+  single/multiple binary multipart fields and boundaries, DALL-E `b64_json`
+  requests, GPT Image parameter omission, bounded responses, and rejection of
+  more than four references before I/O. These are protocol tests, not official
+  provider account/live compatibility certification.
+- **Status:** Automated in `node scripts/e2e-image-chat.mjs`; optional screenshots
+  use `PI_IMAGE_CHAT_EVIDENCE_DIR`. The images are deterministic raster fixtures,
+  not evidence of real-model quality or provider compatibility.
+
 ### E2E-SCHEDULED-desktop-automation-lifecycle
 
 - **Preconditions:** Isolated desktop profile, built task candidate, local SSE
@@ -58,8 +87,8 @@
 - Document every user-visible and protocol-visible behavior that MVP must verify.
 - Provide a scenario catalog that maps to acceptance criteria (A–H) and milestones (M1–M6).
 - Serve as the traceability backbone: scenario ID ↔ acceptance criterion ↔ spec.
-- Define the required E2E gate for code-bearing changes on the integrated
-  `main` that precedes the pull request.
+- Define the required E2E gate for code-bearing task candidates containing the
+  latest `origin/main`, before the pull request; do not merge into local `main`.
 - Keep validation evidence tied to the commit the gate ran on, plus any later
   commit that changes the landed executable content.
 
@@ -1740,8 +1769,9 @@ identify the platform validation still needed.
 - **Steps**:
   1. Invoke Add project from Settings → Project archive or the sidebar Projects
      heading and inspect the empty dialog.
-  2. Enter a project name and add two folders with the folder picker. Confirm
-     both rows render and the first row is marked Primary.
+  2. Add two folders with the folder picker without typing a name. Confirm the
+     name field seeds with the first folder's name, both rows render, and the
+     first row is marked Primary.
   3. Remove one row, check the count, and add it again.
   4. Inspect the empty and populated states in light and dark themes, including
      a narrow window and reduced-motion settings.
@@ -1755,8 +1785,9 @@ identify the platform validation still needed.
 - **Expected**: The dialog traps focus, closes on Escape or outside click while
   idle, and keeps the name and selected folders visible without horizontal
   overflow. The native picker allows multiple directories in one selection.
-  Removing a folder updates the count and never removes another row. Create is
-  disabled until both a name and one folder are present. On creation one
+  Removing a folder updates the count and never removes another row. Create
+  needs one folder and no typed name; an empty name field falls back to the
+  first folder's name. On creation one
   logical project group receives the entered display name; its primary folder
   becomes the active workspace and every selected folder is retained as a group
   root. The Project archive shows one group row, and its sessions, shared
@@ -5526,8 +5557,9 @@ identify the platform validation still needed.
   - Non-429 transient failures share one bounded budget of ten retries after
     the initial attempt, for eleven provider attempts total, shared by request
     setup and stream delivery. Each retry waits for an abortable bounded
-    backoff, removes the failed assistant from model context, and produces no
-    duplicate assistant bubble or terminal error notification.
+    backoff, removes the entire failed assistant suffix from model context,
+    and produces no duplicate assistant bubble or terminal error notification. A retry never
+    calls native continuation while an assistant remains the last model message.
   - A mid-stream 502 is retried rather than surfacing immediately. The
     mixed-phase fixture spends one counter across both phases and makes eleven
     attempts in total, not one retry per phase. A complete successful response
@@ -8001,6 +8033,7 @@ identify the platform validation still needed.
 | C — Conversation & stream (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | Quality (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+ (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
+| C / F / Quality — The context estimate stays safe (calibration) | E2E-CONTEXT-estimate-calibration-stays-safe |
 | C — Conversation & stream (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | Quality (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | G — Plugin host lifecycle (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
@@ -13029,7 +13062,8 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   a clone destination row and keeps one project name field. Source options and
   fields are filled tiles without strokes; keyboard focus uses the shared
   accent-tinted ring. Create stays
-  disabled until the URL parses and a folder is chosen. Confirming runs
+  disabled until the URL parses and a folder is chosen; a name left empty falls
+  back to the parsed repository name. Confirming runs
   `git clone` into the chosen folder with the renderer still owning project
   creation: the checkout becomes the primary root and the entered name names the
   group. Private, loopback, link-local, credential-bearing, and malformed
@@ -13446,7 +13480,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 | ID | Scenario | Verification |
 |---|---|---|
-| E2E-MCP-MARKET-NET-BOUNDARY | URL guard rejects credentials, loopback, private, special-use IPv4, v4-mapped, ULA, site-local and link-local bypass forms (trailing dot included); Main pins the checked public address and rechecks HTTPS redirects | deterministic guard assertions; source-contract coverage for DNS pin and bounded responses |
+| E2E-MCP-MARKET-NET-BOUNDARY | URL guard rejects credentials, loopback, private, special-use IPv4, v4-mapped, ULA, site-local and link-local bypass forms (trailing dot included); direct/unknown routes pin the checked public address by default, while a fully proxied route uses the session transport and an explicit `allowFakeIp` opt-in can cover transparent-router fake-IP sources without allowing real private answers | deterministic guard assertions; source-contract coverage for DNS pin, proxy route selection, explicit fake-IP scope and bounded responses |
 | E2E-MCP-MARKET-SEMANTICS | Registry records map to install templates preserving package versions, named/positional runtime/package arguments and required/optional env variables; a remote header variable is recognized in both the registry's `{name}` and the catalog's `${NAME}` spelling, prompts for declared editable values, preserves unbound brace literals, and resolves header-local defaults, fixed values, and optional flags without merging same-named inputs across headers (ADR registry-header-variable-spelling) | deterministic mapping assertions |
 | E2E-MCP-MARKET-INSTALL | Builtin catalog entry resolves through `resolveCatalogEntry` and installs via the host `mcp.upsert` RPC; record lands in `~/.agents/servers/` | real host binary, isolated temp HOME |
 | E2E-MCP-MARKET-HEADER-SCOPE | Registry header-local `{token}` resolves only in its header; same-named URL path/query tokens remain literal through mapping, resolution, host upsert/list and persistence. URL templates retain only legacy `${NAME}` substitution. When `headerBindings` exists (even empty or partial), unbound tokens in every header stay literal and never consume another header's input or default | shared regressions plus real host binary with isolated temporary storage; remote entry disabled, no network call |
@@ -14222,6 +14256,27 @@ the latest destination. These assertions measure work counts, not device FPS.
   success fixture uses a child-only extra CA; it does not reproduce a specific
   antivirus installation or claim native macOS/Linux verification.
 
+### E2E-CONTEXT-estimate-calibration-stays-safe
+
+- **Preconditions:** Deterministic provider fixture whose reported usage can be
+  scripted; a session whose occupancy is close to the hard boundary; no real
+  provider credentials.
+- **Steps:** Report usage below the prediction repeatedly and confirm the
+  displayed occupancy never falls below the floor and compaction still fires;
+  report usage far outside the plausible band and confirm the value does not
+  move; run a CJK-heavy session and compare the displayed occupancy with the
+  reported usage.
+- **Expected:** The calibrated occupancy stays within 0.85×–6× of the raw
+  estimate, moves up as soon as there is evidence, moves down only after
+  agreeing samples, and a projection at 1.18× the hard limit still compacts.
+  Misreports move it in neither direction. CJK text no longer reads at a
+  quarter of its measured cost.
+- **Specs linked:** `03-runtime/02-agent-runtime.md` §5.1,
+  `08-meta/decisions-log.md` D606
+- **Acceptance:** C (chat and stream), F (persistence), Quality
+- **Status:** Unit-covered (`context-calibration.test.ts`, including the CJK and
+  boundary cases); desktop E2E pending
+
 ### E2E-RUNTIME-unique-tool-call-ids-per-request
 
 - **Preconditions:** A session transcript that carries the same tool call twice
@@ -14264,6 +14319,28 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Status**: Covered by the existing HTTP client integration fixture and a
   focused component-render validation; no live IDA process required.
 
+### E2E-IMAGE-generation-and-editing
+
+- **Preconditions:** Built task candidate containing latest origin/main; isolated
+  host data directory, local image HTTP fixture, no production credentials.
+- **Steps:** Choose a model in Advanced, cancel and verify no change; save and
+  replace it through another provider's Advanced settings. Clear the binding via
+  the test settings API to verify recovery. Generate same-prompt variants and distinct images,
+  edit a generated image, inspect partial failures, then restart the host/session.
+  Attempt the tool in a durable Plan session and verify no HTTP request occurs.
+- **Expected:** One image binding persists without changing the chat default;
+  generated files, edit sources and transcript references survive restart.
+  Images render in chat; unconfigured errors navigate to Models settings.
+- **Specs:** 03-runtime/21-image-generation; 03-runtime/13-model-catalog-and-selection.
+- **Acceptance:** Configured image generation/editing, safe cancellation and persistence.
+- **Milestone:** Post-MVP.
+- **Status:** Automated by `scripts/e2e-image-generation.mjs` and
+  `scripts/e2e-image-generation-ui.mjs`; backend test uses real Rust/stdio/HTTP/files,
+  UI test uses real Chromium and production components with API-boundary fixtures.
+
+| Scenario | Acceptance | Specification | Automation |
+| --- | --- | --- | --- |
+| E2E-IMAGE-generation-and-editing | Image capability and recovery | 03-runtime/21-image-generation | Host and UI suites above |
 
 #### E2E-CHAT-parenthesized-url: Complete URLs in user messages
 

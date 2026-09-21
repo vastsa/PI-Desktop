@@ -127,7 +127,7 @@ impl PermissionManager {
     pub fn tool_risk_with_declared(tool_name: &str, declared: Option<&str>) -> Risk {
         match tool_name {
             "Read" | "Glob" | "Grep" | "ScheduledTaskList" => Risk::Low,
-            "Write" | "Edit" | "Bash" => Risk::High,
+            "Write" | "Edit" | "Bash" | "GenerateImages" => Risk::High,
             name if name.starts_with("plugin_") => match declared {
                 Some("low") => Risk::Low,
                 Some("high") => Risk::High,
@@ -733,6 +733,46 @@ mod tests {
         assert_eq!(
             req.args_preview.get("path").unwrap().as_str().unwrap(),
             "a.txt"
+        );
+    }
+}
+
+#[cfg(test)]
+mod image_generation_tests {
+    use super::*;
+
+    #[test]
+    fn image_generation_requires_approval_and_is_not_plan_safe() {
+        assert!(matches!(
+            PermissionManager::tool_risk_with_declared("GenerateImages", None),
+            Risk::High
+        ));
+        let manager = PermissionManager::default();
+        let grants = HashMap::new();
+        for mode in ["ask", "accept-edits"] {
+            assert!(manager
+                .evaluate_auto_with_permission_mode("s", "GenerateImages", "agent", mode, &grants)
+                .is_none());
+        }
+        assert_eq!(
+            manager.evaluate_auto_with_permission_mode(
+                "s",
+                "GenerateImages",
+                "plan",
+                "auto",
+                &grants
+            ),
+            Some(PermissionDecision::Deny)
+        );
+        assert_eq!(
+            manager.evaluate_auto_with_permission_mode(
+                "s",
+                "GenerateImages",
+                "goal",
+                "auto",
+                &grants
+            ),
+            Some(PermissionDecision::Deny)
         );
     }
 }

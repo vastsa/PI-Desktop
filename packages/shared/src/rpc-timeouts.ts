@@ -1,3 +1,5 @@
+import { IMAGE_BATCH_TIMEOUT_MS } from "./image-generation.js";
+
 export const DEFAULT_RPC_TIMEOUT_MS = 130_000;
 export const PERMISSION_TIMEOUT_MS = 120_000;
 export const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;
@@ -53,6 +55,7 @@ export function rpcTimeoutMs(
   if (method !== "tools.execute") return DEFAULT_RPC_TIMEOUT_MS;
 
   const input = isRecord(params) ? params : undefined;
+  if (input?.toolName === "GenerateImages") return IMAGE_BATCH_TIMEOUT_MS + PERMISSION_TIMEOUT_MS + TOOL_QUEUE_WAIT_MS + COMMAND_RPC_BUFFER_MS;
   if (isDesktopDispatchedTool(input?.toolName)) {
     return executionRpcTimeoutMs(
       input?.timeoutMs,

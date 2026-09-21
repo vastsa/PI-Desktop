@@ -105,7 +105,7 @@ test("the built-in plugin skill only activates for plugin workspaces", () => {
   assert.match(builtinSrc, /isPluginWorkspace/);
   assert.match(builtinSrc, /schemaVersion.*number/s);
   assert.match(builtinSrc, /pluginPaths\.some/);
-  assert.match(builtinSrc, /if \(!isPluginWorkspace\(input\.workspacePath, input\.pluginPaths\)\) return \[\]/);
+  assert.match(builtinSrc, /if \(isPluginWorkspace\(input\.workspacePath, input\.pluginPaths\)\) ids\.push\(PLUGIN_DEV_SKILL_ID\)/);
   assert.match(mainSrc, /builtinSkills\(\{/);
 });
 

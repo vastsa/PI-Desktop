@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/agent-host",
-  "version": "0.15.2-beta.2",
+  "version": "0.15.2",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",

@@ -614,3 +614,10 @@ Naming:
 - command allowlist / denylist
 - dry-run mode
 - apply patches after preview
+
+## Image generation and editing
+
+`GenerateImages` is a high-risk Agent-only capability, authorized by host-core
+before the trusted desktop executes the request. Plan/Goal remain denied even
+under Auto. See [image generation](21-image-generation.md) for cancellation,
+limits and result semantics.

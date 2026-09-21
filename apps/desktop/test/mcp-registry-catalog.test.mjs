@@ -11,6 +11,18 @@ test("market source requests pin the checked DNS address", () => {
   assert.match(source, /servername: isIP\(host\) \? undefined : host/);
   assert.match(source, /if \(response\.status >= 300 && response\.status < 400\)/);
 });
+test("fake-IP proxy routes use the session transport without weakening direct pinning", () => {
+  assert.match(source, /resolveProxy\(url\)/);
+  assert.match(source, /classifyProxyRoute/);
+  assert.match(source, /isAcceptableResolvedAddress\(addressKind, route\)/);
+  assert.match(source, /resolved\.route === "proxied"/);
+  assert.match(source, /requestProxiedHttps/);
+  assert.match(source, /net\.fetch\(url/);
+  assert.match(source, /requestPinnedHttps\(current, resolved/);
+  assert.match(source, /MAX_SOURCE_RESPONSE_BYTES/);
+  assert.match(source, /currentNetworkProxy\(\)\.allowFakeIp/);
+  assert.match(source, /allowFakeIp && addressKind === "benchmark"/);
+});
 
 test("market source responses and caches are bounded", () => {
   assert.match(source, /MAX_SOURCE_RESPONSE_BYTES = 4 \* 1024 \* 1024/);

@@ -236,6 +236,9 @@ the main session and its builtin subagents skip only the ten-retry ceiling for
 force. Non-retryable errors, context recovery, compaction, tool execution, and
 one-shot completions are unchanged. The setting can keep billing requests alive
 indefinitely until the user stops the turn.
+Settings reads expose an explicit boolean for this flag: absent or disabled
+values normalize to `false`. Read-modify-write operations on unrelated settings
+must remain valid without enabling retries; non-boolean writes stay invalid.
 Each retry is abortable and reports its current backoff through the normalized
 status event. The `retrying` activity carries the classified error code, the
 bounded/redacted provider message, and the HTTP status when known. The main
@@ -480,6 +483,26 @@ derived from the model window as 20% of the hard budget clamped to
 boundary falls, not what survives it. The active-user retention limit is 20,000
 tokens, capped at half the hard budget so retention alone cannot fill a small
 window and leave the summary no room. None of these values are configurable.
+
+**Estimate calibration (D606).** Every threshold above is compared against one
+number, and that number is corrected against what requests actually cost. pi's
+`estimateContextTokens` anchors on the last assistant usage and estimates
+everything after it as `chars / 4`: that constant under-counts CJK text, and
+with no anchor left it omits the system prompt and the tool schemas, which the
+next request still pays for. The two errors are measured and applied
+separately — the per-character bias as a scale-free ratio over the guessed
+tail, and an unanchored residual as a ratio only for observations taken at a
+comparable scale (0.5×–2× of the estimate), otherwise as the observed overhead
+capped at 32,000 tokens.
+
+The correction is asymmetric because this number gates compaction: upward
+applies once three observations exist, downward needs three agreeing samples,
+is capped at 15 % per step and can never take the value below 85 % of the raw
+estimate, so a projection at 1.18× the hard limit (`1 / 0.85`) still compacts.
+A report outside 0.5×–3× of what the calibration predicted is treated as a
+misreport, and two consecutive misreports freeze the downward direction until a
+usable report arrives.
+
 
 The provider request layer also caps the concrete output budget before every
 parent, subagent, and one-shot request. It estimates the serialized input with

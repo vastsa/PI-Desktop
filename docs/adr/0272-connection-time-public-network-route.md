@@ -51,12 +51,13 @@ boundary change. This ADR is that change.
    of a split-horizon or hostile resolver, and this app cannot see what the proxy
    would dial for it.
 
-3. **`direct` and `unknown` keep the pre-ADR rule byte for byte.** The app dials
-   the resolved address itself there, so only `public` passes. `unknown` covers no
-   route resolver wired at all, a resolver that throws, an empty or unparsable
-   answer, and a list that offers `DIRECT` anywhere — Chromium may fall back to a
-   direct connection, so an offered direct hop is never read as proxied. Fail
-   closed, exactly as before.
+3. **`direct` and `unknown` keep the pre-ADR rule by default.** The app dials
+   the resolved address itself there, so only `public` passes. An explicit
+   `allowFakeIp` setting may additionally permit the `benchmark` placeholder
+   class for transparent router/TUN deployments; it never permits any other
+   non-public class. `unknown` covers no route resolver wired at all, a resolver
+   that throws, an empty or unparsable answer, and a list that offers `DIRECT`
+   anywhere. Fail closed unless that narrow opt-in is enabled.
 
 4. **The syntactic guard is untouched.** `isSafePublicHttpsUrl` still runs first
    for every hop and still refuses non-HTTPS, credential-bearing, non-public
@@ -146,14 +147,14 @@ When to roll this back:
 
 - A proxied or fake-IP user's skill market works: no source is refused for an
   address the request would never dial (issue #419).
-- A `direct`-route user keeps the old verdicts, so the change cannot be used to
-  reach an internal address by not being behind a proxy.
-- The MCP market is **not** covered by this change. It dials a pinned public
-  address with Node HTTPS (ADR 0245), so its guard already checks the address it
-  connects to, and it does not consult Chromium's proxy route; a fake-IP
-  environment still refuses MCP market sources. Fixing that means giving that
-  path a proxy-aware pinned dispatcher, which ADR 0245 already lists as open
-  work.
+- A `direct`-route user keeps the old verdicts by default. The explicit
+  `allowFakeIp` opt-in is limited to benchmark placeholders and cannot be used
+  to reach a private, loopback, link-local, or other non-public address.
+- The MCP market now applies the same route-aware verdict before each hop. A
+  fully proxied hop uses the session's `net.fetch`, so a TUN fake-IP answer can
+  reach the configured proxy; direct and unknown hops retain the pinned Node
+  HTTPS path and strict public-address rule. Real private answers remain refused
+  on every route. ADR 0245 defines the MCP-specific transport and body limits.
 - A TUN user who configured no proxy the app can see is still refused: the
   transport reports `DIRECT` while the local resolver answers fake-IP. That case
   is deliberately left strict (clause 3), and its remedy is to enable the system

@@ -1220,7 +1220,7 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 - `pi-desktop/skill/market/search` — `{ query, sources[] }` →
   `{ entries, failedSources, failureKinds, failureDetails }`。
   主进程聚合目录 JSON 与 GitHub 仓库 SKILL.md 扫描。源 URL 必须通过公网 HTTPS 策略（ADR 0243）。单源失败只丢掉该源。
-  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（守卫判定了目标自身的非公网地址并拒绝）、`fake-ip`（判定的是本地代理伪造的 fake-IP 占位地址,如 Clash 默认的 `198.18.0.0/15`；在直连或读不出线路时仍被拒绝,因为守卫在那里失败关闭、这个应用会自己去连该地址,但这是本地网络的状况而不是源的问题）、`unresolved`（本地 DNS 解析没有返回答案,因此没有判定任何地址）或 `network`。`failureDetails` 以同样的键携带真正失败的主机、解析到的地址、守卫自己的 `reason`、地址类别以及判定该地址的线路（`proxied`、`direct`,或传输层读不出线路时的 `unknown`,ADR 0272）；面板据此说明**被拒的是什么**（例如「代理把 github.com 应答为 198.18.0.1」）,而不只是哪个源没出结果。
+  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（守卫判定了目标自身的非公网地址并拒绝）、`fake-ip`（判定的是本地代理伪造的 fake-IP 占位地址，如 Clash 默认的 `198.18.0.0/15`；在直连或读不出线路时默认仍被拒绝，显式 `allowFakeIp` 只可为透明路由器/TUN 部署放行 benchmark 占位地址）、`unresolved`（本地 DNS 解析没有返回答案，因此没有判定任何地址）或 `network`。`failureDetails` 以同样的键携带真正失败的主机、解析到的地址、守卫自己的 `reason`、地址类别以及判定该地址的线路（`proxied`、`direct` 或传输层读不出线路时的 `unknown`，ADR 0272）；面板据此说明**被拒的是什么**，而不只是哪个源没出结果。
   判定型拒绝与 fake-IP 拒绝都以 `NETWORK_POLICY_BLOCKED` 暴露（两者都是守卫作出的拒绝）,解析器无应答以 `NETWORK_RESOLVE_FAILED` 暴露（spec 08 §3.1）；安装面板正是按这些错误码与结构化 `reason` 分类。
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`。
   主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。该策略即主进程公网网络客户端：语法 URL 防护、按承载 `net.fetch` 的会话线路判定的逐跳 DNS 分类（ADR 0272）、逐跳重定向复核与响应上限——渲染层绝不直接触网。目录 id 会净化为 host `valid_capability_id`。
@@ -1229,7 +1229,7 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 桌面专用 MCP 市场通道（不是 host RPC）走 Electron IPC：
 
 - `pi-desktop/mcp/market/search` — `{ query?, sources[], more? }` →
-  `{ entries, failedSources, exhausted }`。Main 校验源 URL，固定每个解析出的公网地址，只跟随有界的 HTTPS 重定向，并为 browse 与服务端搜索保留 cursor 状态。单个源失败不会丢弃成功源；响应和缓存均有界。
+  `{ entries, failedSources, exhausted }`。Main 校验源 URL，并在每一跳向 Electron session 询问线路。完整代理线路使用 session 传输；直连和未知线路默认固定解析出的公网地址，显式 `allowFakeIp` 仅限 benchmark 占位地址。重定向仍是有界 HTTPS，browse 与服务端搜索保留 cursor 状态；单个源失败不会丢弃成功源，响应和缓存均有界。
 
 ### MCP OAuth（ADR 0283）
 

@@ -1,3 +1,5 @@
+import { GeneratedImages } from "./GeneratedImages";
+import "../../../styles/generated-images.css";
 import {
   Fragment,
   memo,
@@ -85,6 +87,8 @@ type ToolRowProps = {
   variant?: "default" | "topology";
   /** Open the latest detailed-mode tool unless the user took over. */
   autoOpen?: boolean;
+  /** The containing turn renders image results outside its process disclosure. */
+  imagesInTurn?: boolean;
   /** Claims the containing activity group when this row is manually used. */
   onUserInteraction?: () => void;
   /** Live delegation statuses read from the turn's lifecycle-tool rows. */
@@ -115,6 +119,7 @@ function toolRowPropsEqual(
     previous.message !== next.message ||
     previous.variant !== next.variant ||
     previous.autoOpen !== next.autoOpen ||
+    previous.imagesInTurn !== next.imagesInTurn ||
     previous.onUserInteraction !== next.onUserInteraction ||
     !subagentRunsEqual(previous.delegate, next.delegate)
   ) {
@@ -140,6 +145,7 @@ export const ToolRow = memo(function ToolRow({
   delegate,
   variant = "default",
   autoOpen = false,
+  imagesInTurn = false,
   onUserInteraction,
   delegationStatuses,
   delegationTimings,
@@ -523,6 +529,7 @@ export const ToolRow = memo(function ToolRow({
           <ToolDetailBlocks blocks={blocks} plain={runHead} />
         </div>
       ) : null}
+      {!imagesInTurn && <GeneratedImages message={message} />}
       {inlineOpen && delegate ? (
         <SubagentRunRows
           run={delegate}

@@ -565,6 +565,19 @@ export const ko = {
     dismiss: "닫기",
   },
   settings: {
+    "imageModel": "이미지 생성 모델",
+    "imageModelUnset": "설정되지 않음",
+    "imageModelUnavailable": "현재 사용 불가",
+    "imageModelSaveFailed": "이미지 모델을 저장할 수 없습니다.",
+    "clearImageModel": "지우기",
+    "setImageModel": "이미지 모델로 설정",
+    "imageModelSelected": "선택된 이미지 모델",
+    "generatedImage": "생성된 이미지 {{index}}",
+    "imagePreviewUnavailable": "미리보기 불가; 파일 열기",
+    "imageGenerationFailed": "이미지 {{index}} 생성이 완료되지 않았습니다.",
+    "imageModelSetupHint": "설정 → 모델에서 이미지 모델을 설정하세요.",
+    "configureImageModel": "이미지 모델 설정",
+
 
 sklm: {
       browse: "마켓",
@@ -1023,6 +1036,8 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "우회",
     proxyBypassDesc: "프록시를 사용하지 않을 호스트입니다.",
+    proxyFakeIp: "마켓 소스에 프록시 fake-IP 허용",
+    proxyFakeIpDesc: "투명한 라우터/TUN 프록시에서만 켜세요. 다른 사설 주소는 계속 차단됩니다.",
     proxyInvalid: "호스트가 포함된 http, https 또는 socks5 URL을 입력하세요.",
     proxySaveError: "프록시를 저장할 수 없습니다.",
     proxyTest: "테스트",

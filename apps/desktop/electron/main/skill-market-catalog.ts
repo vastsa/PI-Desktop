@@ -9,6 +9,7 @@
 import { net, session } from "electron";
 import type { SkillCatalogEntry, SkillMarketSource } from "@pi-desktop/shared";
 import { createPublicHttpsClient } from "./public-https-fetch";
+import { currentNetworkProxy } from "./network-proxy";
 import {
   createSkillMarketAggregator,
   type SkillMarketDocument,
@@ -27,6 +28,7 @@ export { guessSkillCategories } from "./skill-market-scan";
 const client = createPublicHttpsClient({
   fetchImpl: (url, init) => net.fetch(url, init),
   routeImpl: (url) => session.defaultSession.resolveProxy(url),
+  allowFakeIp: () => currentNetworkProxy().allowFakeIp === true,
 });
 const aggregator = createSkillMarketAggregator(client.request);
 

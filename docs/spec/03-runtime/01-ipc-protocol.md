@@ -1528,9 +1528,11 @@ Desktop-only skill market channels (not host RPC) live on Electron IPC:
   still return. `failureKinds` maps each name in `failedSources` to `policy`
   (the guard judged the target's own non-public address and refused it),
   `fake-ip` (it judged a fake-IP placeholder the local proxy invented for the
-  name — Clash's `198.18.0.0/15`; still refused on a direct or unreadable route,
-  where the guard fails closed and this app would dial that address itself, but a
-  condition of the local network rather than a fact about the source),
+  name — Clash's `198.18.0.0/15`; it remains refused on a direct or unreadable
+  route by default, while the explicit `allowFakeIp` setting may permit only
+  the benchmark placeholder for a transparent router/TUN deployment),
+  `unresolved` (the local DNS lookup returned no answer, so no address was
+  judged), or `network`.
   `unresolved` (the local DNS lookup returned no answer, so no address was
   judged), or `network`.
   `failureDetails` carries the same keys with the host that actually failed, the
@@ -1555,10 +1557,12 @@ Desktop-only skill market channels (not host RPC) live on Electron IPC:
 Desktop-only MCP market channels (not host RPC) live on Electron IPC:
 
 - `pi-desktop/mcp/market/search` — `{ query?, sources[], more? }` →
-  `{ entries, failedSources, exhausted }`. Main validates source URLs, pins
-  each resolved public address, follows only bounded HTTPS redirects, and keeps
-  cursor state for browse and server-side search. One failed source does not
-  discard successful sources; the response and caches are bounded.
+  `{ entries, failedSources, exhausted }`. Main validates source URLs and asks
+  the Electron session for the route on every hop. Fully proxied hops use the
+  session transport; direct and unknown hops pin the resolved public address by
+  default, with explicit `allowFakeIp` limited to benchmark placeholders.
+  Redirects stay bounded HTTPS, browse/search cursors are retained, and one
+  failed source does not discard successful sources; responses and caches are bounded.
 
 ### MCP OAuth (ADR 0283)
 

@@ -17,6 +17,10 @@ allowBuilds:
 # version. Drop each one once its parent ships a release that resolves the
 # patched version on its own.
 overrides:
+  # Tailwind's CSS optimizer in 4.3.3 emits a false warning for the valid
+  # Custom Highlight API selector `::highlight()`. The parser fix ships in
+  # lightningcss 1.33.0.
+  '@tailwindcss/node>lightningcss': 1.33.0
   # Ships in the app. mermaid allows ^3.3.3 but resolves its own copy, so the
   # renderer would load an unpatched sanitizer next to our patched one.
   dompurify@3: '>=3.4.13 <4' # detached-subtree XSS, via mermaid

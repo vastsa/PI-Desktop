@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.15.2-beta.2",
+  "version": "0.15.2",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -229,7 +229,8 @@
     },
     "portable": {
       "artifactName": "PI-Desktop-Portable-${version}.${ext}",
-      "requestExecutionLevel": "user"
+      "requestExecutionLevel": "user",
+      "unpackDirName": "PI-Desktop-Portable"
     },
     "deb": {
       "packageName": "pi-desktop",

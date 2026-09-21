@@ -1,6 +1,7 @@
 export * from "./activation.js";
 export * from "./protocol.js";
 export * from "./errors.js";
+export * from "./rpc-error.js";
 export * from "./certificate-errors.js";
 export * from "./types.js";
 export * from "./transcript-truncation.js";
@@ -49,6 +50,7 @@ export * from "./github-feedback.js";
 export * from "./network-proxy.js";
 export * from "./attachment-limits.js";
 export * from "./speech.js";
+export * from "./image-generation.js";
 export * from "./font-size.js";
 export * from "./chat-content-width.js";
 export * from "./racp.js";

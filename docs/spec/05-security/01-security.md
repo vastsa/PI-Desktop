@@ -108,19 +108,28 @@ proxied route the hop is judged on its route rather than on a local address the
 app would never dial, so only the resolver-artifact class (`benchmark`, a TUN
 fake-IP) is tolerated there, while a direct or unreadable route keeps the full
 local classification and rejects loopback, RFC1918, ULA, link-local, mapped
-IPv6, and every other non-public class. Install writes markdown only through
+IPv6, and every other non-public class by default. The explicit `allowFakeIp`
+setting may additionally permit only the `benchmark` placeholder for a
+transparent router/TUN deployment. Install writes markdown only through
 `skills.create`. The host document cap remains 128 KiB after sibling markdown
 is inlined.
 
 ## 4.2 MCP market egress
 
 The MCP market accepts only credentials-free public HTTPS sources and catalog
-endpoints. Main resolves every hostname immediately before connecting and pins
-the selected public address to the HTTPS socket while retaining the original
-host for TLS SNI and HTTP Host. Redirects are manual, HTTPS-only, limited to
-five hops, and checked again before each connection. Responses are capped at
-4 MiB, requests share an 8-second deadline, and source/cache/entry counts are
-bounded. Cross-origin user-MCP redirects do not forward caller headers.
+endpoints. Main asks the same Electron session that carries the request for its
+proxy route before every hop. On a fully `proxied` route, it uses Chromium
+`net.fetch`, which lets system/PAC and custom proxies resolve fake-IP names; the
+local resolver's `benchmark` fake-IP class is tolerated there, while real private
+and other non-public classes remain rejected. On `direct` or `unknown` routes,
+Main keeps the existing Node HTTPS path and pins the selected public address to
+the socket, retaining the original host for TLS SNI and HTTP Host. The explicit
+`allowFakeIp` setting may additionally permit only benchmark answers on those
+routes; it never permits other non-public classes. Redirects are manual,
+HTTPS-only, limited to five hops, and checked again before each connection.
+connection. Responses are capped at 4 MiB, requests share an 8-second
+deadline, and source/cache/entry counts are bounded. Cross-origin user-MCP
+redirects do not forward caller headers.
 
 Manual user-owned MCP configuration remains covered by ADR 0142 and may use
 explicit local/LAN endpoints; the market path does not widen that policy.
