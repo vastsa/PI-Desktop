@@ -24,7 +24,8 @@
 // The canonical list and the normalization function are consumed by the tool
 // dispatch and permission paths this series wires up next (D619). Until those
 // land, this binary crate has no non-test reference to them and rustc would
-// report the whole module as unreachable. Drop this allow with the first caller.
+// report the whole module as unreachable. The host-core lane (D619) drops this
+// allow together with its first caller.
 #![allow(dead_code)]
 
 use std::borrow::Cow;
@@ -50,7 +51,9 @@ pub const CANONICAL_TOOL_NAMES: &[&str] = &[
     "skill",
     "browser_preview",
     "generate_images",
-    "review",
+    "check_plugin",
+    "scaffold_plugin",
+    "pack_plugin",
     "enter_plan_mode",
     "enter_goal_mode",
     "submit_plan",
@@ -80,7 +83,9 @@ pub const LEGACY_TOOL_NAME_ALIASES: &[(&str, &str)] = &[
     ("Skill", "skill"),
     ("BrowserPreview", "browser_preview"),
     ("GenerateImages", "generate_images"),
-    ("Review", "review"),
+    ("PluginCheck", "check_plugin"),
+    ("PluginScaffold", "scaffold_plugin"),
+    ("PluginPack", "pack_plugin"),
     ("EnterPlanMode", "enter_plan_mode"),
     ("EnterGoalMode", "enter_goal_mode"),
     ("SubmitPlan", "submit_plan"),
@@ -158,7 +163,9 @@ mod tests {
         ("Skill", "skill"),
         ("BrowserPreview", "browser_preview"),
         ("GenerateImages", "generate_images"),
-        ("Review", "review"),
+        ("PluginCheck", "check_plugin"),
+        ("PluginScaffold", "scaffold_plugin"),
+        ("PluginPack", "pack_plugin"),
         ("EnterPlanMode", "enter_plan_mode"),
         ("EnterGoalMode", "enter_goal_mode"),
         ("SubmitPlan", "submit_plan"),
@@ -173,6 +180,7 @@ mod tests {
         ("browserPREVIEW", "browser_preview"),
         ("New_Context", "new_context"),
         ("ASKTOOL", "asktool"),
+        ("PLUGINCHECK", "check_plugin"),
         // Names that are not ours to rewrite.
         ("PowerShell", "PowerShell"),
         ("powershell", "powershell"),

@@ -27,7 +27,9 @@ const NORMALIZATION_CASES: ReadonlyArray<readonly [string, string]> = [
   ["Skill", "skill"],
   ["BrowserPreview", "browser_preview"],
   ["GenerateImages", "generate_images"],
-  ["Review", "review"],
+  ["PluginCheck", "check_plugin"],
+  ["PluginScaffold", "scaffold_plugin"],
+  ["PluginPack", "pack_plugin"],
   ["EnterPlanMode", "enter_plan_mode"],
   ["EnterGoalMode", "enter_goal_mode"],
   ["SubmitPlan", "submit_plan"],
@@ -42,6 +44,7 @@ const NORMALIZATION_CASES: ReadonlyArray<readonly [string, string]> = [
   ["browserPREVIEW", "browser_preview"],
   ["New_Context", "new_context"],
   ["ASKTOOL", "asktool"],
+  ["PLUGINCHECK", "check_plugin"],
   // Names that are not ours to rewrite.
   ["PowerShell", "PowerShell"],
   ["powershell", "powershell"],

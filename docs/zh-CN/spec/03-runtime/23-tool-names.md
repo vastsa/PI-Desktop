@@ -36,7 +36,9 @@ subagent 工具集用它声明，转录本用它存储。pi 运行时在 `extrac
 | `Skill` | `skill` | |
 | `BrowserPreview` | `browser_preview` | |
 | `GenerateImages` | `generate_images` | |
-| `Review` | `review` | |
+| `PluginCheck` | `check_plugin` | 动词在前，见表下说明 |
+| `PluginScaffold` | `scaffold_plugin` | |
+| `PluginPack` | `pack_plugin` | |
 | `EnterPlanMode` | `enter_plan_mode` | |
 | `EnterGoalMode` | `enter_goal_mode` | |
 | `SubmitPlan` | `submit_plan` | |
@@ -44,8 +46,11 @@ subagent 工具集用它声明，转录本用它存储。pi 运行时在 `extrac
 | `asktool` | `asktool` | 已是小写；本次决策不改动 |
 | `new_context` | `new_context` | 已是小写；本次决策不改动 |
 
-该表是迁移范围，而不是"今天已经在发出"的清单。表外的工具名——`PluginCheck`、
-`PluginScaffold`、`PluginPack`，以及 MCP 服务自报的名字——在进入该表之前保持现有拼写。
+该表是迁移范围，而不是"今天已经在发出"的清单。表外的工具名——MCP 服务自报的名字、
+`PowerShell` 这类 shell id、任何第三方 `plugin_*` / `mcp_*` 工具——保持自己的拼写。
+
+三个插件开发工具刻意采用动词在前的命名（`check_plugin`）：`plugin_` 是"第三方插件贡献的
+工具"的保留前缀，宿主按该前缀分支，因此给宿主自己的插件开发工具加上它会让二者无法区分。
 
 ## 2. 归一化边界
 
@@ -96,3 +101,6 @@ export function normalizeToolName(name: string): string;
 
 同步测试读取两侧源码，因此只在单侧新增名字就会失败。它比较的是表格而不是行为：行为由各自
 实现旁边的单元测试钉住。
+
+在宿主侧第一个调用点落地（D619）之前，Rust 模块带有 `#![allow(dead_code)]`、再导出带有
+`#[allow(unused_imports)]`，因为该二进制 crate 目前还没有任何引用；那一次改动会同时删除两者。

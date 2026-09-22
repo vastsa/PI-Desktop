@@ -36,7 +36,9 @@ spelled differently is a name pi does not recognize.
 | `Skill` | `skill` | |
 | `BrowserPreview` | `browser_preview` | |
 | `GenerateImages` | `generate_images` | |
-| `Review` | `review` | |
+| `PluginCheck` | `check_plugin` | verb-first, see the note below the table |
+| `PluginScaffold` | `scaffold_plugin` | |
+| `PluginPack` | `pack_plugin` | |
 | `EnterPlanMode` | `enter_plan_mode` | |
 | `EnterGoalMode` | `enter_goal_mode` | |
 | `SubmitPlan` | `submit_plan` | |
@@ -45,8 +47,13 @@ spelled differently is a name pi does not recognize.
 | `new_context` | `new_context` | already lowercase; unchanged by this decision |
 
 The table is the migration surface, not a statement that every entry is emitted
-today. A tool name outside it — `PluginCheck`, `PluginScaffold`, `PluginPack`,
-an MCP server's own name — keeps its current spelling until the table covers it.
+today. A tool name outside it — an MCP server's own name, a shell id such as
+`PowerShell`, any third-party `plugin_*` / `mcp_*` tool — keeps its own spelling.
+
+The three plugin-development tools are named verb-first (`check_plugin`) on
+purpose. `plugin_` is the reserved marker for a tool a third-party plugin
+contributes, and the host branches on that prefix, so prefixing the host's own
+plugin-development tools with it would make the two indistinguishable.
 
 ## 2. The normalization boundary
 
@@ -106,3 +113,8 @@ normalization.
 The sync test reads both sources, so a name added on one side alone fails it. It
 compares the tables, not the behavior: behavior is pinned by the unit test next
 to each implementation.
+
+Until the first host-core caller lands (D619), the Rust module carries a
+`#![allow(dead_code)]` and the re-export carries `#[allow(unused_imports)]`,
+because this binary crate has no reference to either yet. That change removes
+both.
