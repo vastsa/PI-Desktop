@@ -15,10 +15,10 @@ Plan 和 Goal 是**合约模式**：两者在执行之前协商提案
 
 ```text
 Agent / inactive
-  -- user selects Plan while idle OR Agent calls EnterPlanMode --> Plan / planning
-  -- user selects Goal while idle OR Agent calls EnterGoalMode --> Goal / planning
+  -- user selects Plan while idle OR Agent calls enter_plan_mode --> Plan / planning
+  -- user selects Goal while idle OR Agent calls enter_goal_mode --> Goal / planning
 Plan | Goal / planning
-  -- SubmitPlan | SubmitGoal (title, markdown, question) --> awaiting_approval
+  -- submit_plan | submit_goal (title, markdown, question) --> awaiting_approval
 Plan | Goal / awaiting_approval
   -- approve(permission mode) --> Agent / queued, same Agent continues
   -- reject | expiry | abort | crash | persistence failure
@@ -29,11 +29,11 @@ Agent / running
   -- complete | fail | abort --> Agent / inactive
 ```
 
-两种合约模式都保留了权限模式选择器。他们的 `Bash` 政策是
+两种合约模式都保留了权限模式选择器。他们的 `bash` 政策是
 `ask` 或
 `accept-edits` = 确认，`auto` = 不确认，所以是合约模式
 表达协商意图，但不是严格的只读安全配置文件。
-Write/Edit 和
+write/edit 和
 在每个 Plan 或 Goal 权限模式下，插件工具仍被主机策略拒绝。
 
 这些类型的区别仅在于合同内容和排队执行内容
@@ -121,7 +121,7 @@ accept_prompt
 10. 提供 `throughMessageId` 仅更改快照边界。助理
     Fork/Edit 仍然创建一个新的空闲会话 ID，没有共享轮次，
     权限等待、运行时或提供商缓存状态 (D134)。
-11. `EnterPlanMode`、`EnterGoalMode`、`SubmitPlan` 和 `SubmitGoal` 必须是
+11. `enter_plan_mode`、`enter_goal_mode`、`submit_plan` 和 `submit_goal` 必须是
     他们中唯一的工具调用
     助理批次。提交工具在新的文件中保留精确的 Markdown 字节
     主机拥有的 `.pi/<kind>/*.md` 工件并创建一个待处理的
@@ -203,11 +203,11 @@ accept_prompt
    `queued`/reject/expiry/interruption 收敛于相同的规划状态，并且
 批准恢复
    Agent 模式下的 Agent
-9. 合约模式策略仅通过选择的权限模式允许Bash
+9. 合约模式策略仅通过选择的权限模式允许bash
    和
-   在 Goal 中拒绝 Write/Edit/plugins，无论 `auto` 或会话授权如何
+   在 Goal 中拒绝 write/edit/plugins，无论 `auto` 或会话授权如何
    与 Plan 完全相同
-10. SubmitPlan/SubmitGoal 使用以下命令写入精确唯一的 `.pi/<kind>/*.md` 工件
+10. submit_plan/submit_goal 使用以下命令写入精确唯一的 `.pi/<kind>/*.md` 工件
     hash/size，
     保持 title/question 结构化，并且只有 approve/reject 可以解析其
     `plan_approvals` 行

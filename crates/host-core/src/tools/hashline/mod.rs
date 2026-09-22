@@ -1,7 +1,7 @@
-//! Line-anchored Edit contract (ADR 0087).
+//! Line-anchored edit contract (ADR 0087).
 //!
 //! Tags, the session snapshot store, the op parser, and apply live here so
-//! `tools::mod` can keep Read/Write/Grep/Edit as thin adapters.
+//! `tools::mod` can keep `read`/`write`/`grep`/`edit` as thin adapters.
 
 mod apply;
 mod parse;

@@ -9,7 +9,7 @@ All marked provider/model pairs are excluded from the default conversation picke
 
 ## Agent contract
 
-`GenerateImages({items: [{prompt, count?, images?}]})` is an Agent-mode tool.
+`generate_images({items: [{prompt, count?, images?}]})` is an Agent-mode tool.
 `count` defaults to 1. Both distinct prompts and same-prompt variants are supported,
 with 1–10 output images total. An optional `images` array supplies 1–4 local source
 files per item for editing; a previous generated path supports iterative edits.

@@ -171,7 +171,7 @@ pub fn strip_line_prefix(line: &str) -> Option<&str> {
     Some(rest)
 }
 
-/// Strip a pasted Read window (`[path#TAG]` + `N:` prefixes) from Write content.
+/// Strip a pasted read window (`[path#TAG]` + `N:` prefixes) from Write content.
 pub fn strip_write_markup(content: &str) -> String {
     let trailing_nl = content.ends_with('\n');
     let mut lines: Vec<&str> = content.split('\n').collect();

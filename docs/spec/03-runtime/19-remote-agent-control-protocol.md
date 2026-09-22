@@ -883,7 +883,7 @@ The Host sends:
       "turnId": "turn_01J...",
       "kind": "tool",
       "summary": "Run the selected shell command",
-      "toolName": "Bash",
+      "toolName": "bash",
       "risk": "medium",
       "expiresAt": "2026-09-09T12:00:00.000Z",
       "revision": 22,

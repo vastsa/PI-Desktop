@@ -4769,3 +4769,24 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
   与 subagent 工具白名单保持原有字节，旧数据无需迁移即可继续可用。本决策记录契约并新增这两个
   模块；注册表、派发、权限、提示词与界面调用点由 D619 至 D621 跟进。见
   `docs/zh-CN/spec/03-runtime/23-tool-names.md`。
+
+## 2026-09-22 —— host-core 按唯一规范名派发工具（D619）
+
+- `builtin_tool_defs()` 是模型可见工具 schema 的唯一真源，因此它的六个名字改为规范拼写——
+  `read`、`glob`、`grep`、`write`、`edit`、`bash`——描述文本中提到这些工具的地方一并改，
+  目录读取返回的结构化 `Glob` 建议同样改为规范名。
+- 派发分支、准入类别、风险分级、契约模式允许清单、越界路径判定、review 快照操作与 subagent
+  工具白名单，现在都按规范名比较。
+- 这些边界都是"读入时归一化"，不写回存储：`tools.execute` 在入口处对 `toolName` 归一化一次
+  （覆盖 shell 分支、权限判定、它记下的会话授权、准入信号量、review 快照与派发本身），
+  `effective_timeout_ms` 对自己的参数归一化，权限匹配同时对传入调用与每条会话授权归一化。
+  因此回放的 `Read`、用户此前保存的 `Bash` 授权，以及声明 `tools: [Read]` 的 subagent 文档
+  都继续有效，且不改变任何已存字节。
+- 本 lane 有意不动的两个名字：`PowerShell` 是 shell id 而非工具名；`plugin_*` / `mcp_*` 是第三方
+  身份，`is_desktop_dispatched()` 的前缀判定保持不变。
+- 回归测试贴在各自边界旁（`legacy_tool_names_dispatch_to_the_same_builtin`、
+  `legacy_bash_name_resolves_to_the_bash_timeout`、
+  `legacy_tool_names_match_the_same_permission_rules`、
+  `legacy_tool_names_map_to_the_same_admission_class`、
+  `legacy_tool_declarations_resolve_to_canonical_names`），另有一条回放 RPC 请求的用例。
+  见 `docs/zh-CN/spec/03-runtime/23-tool-names.md` 与 D618。

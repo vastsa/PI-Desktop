@@ -160,7 +160,7 @@ token.
 
 Prompt execution resolves `mode`, `providerId`, `modelId`, and `thinkingLevel`
 from the durable session record and snapshots the effective command shell ID and
-dialect for Bash.
+dialect for bash.
 The renderer changes those values through
 `pi-desktop/session/configure` while the session is idle:
 
@@ -361,7 +361,7 @@ type PlanProposalStatus =
 type PlanExecutionState =
   | "queued" | "running" | "completed" | "interrupted";
 
-// Same shape for SubmitPlan and SubmitGoal; the tool name selects the kind.
+// Same shape for submit_plan and submit_goal; the tool name selects the kind.
 type SubmitPlanInput = {
   title: string;
   markdown: string;
@@ -653,7 +653,7 @@ type AgentEventEnvelope = {
  turnId?: string;
  ts: number;
  event: AgentEvent;
- /** Set on events emitted inside a subagent (D201, ADR 0062): the `Task` call
+ /** Set on events emitted inside a subagent (D201, ADR 0062): the `task` call
   * that spawned it, and the definition name. */
  parentToolCallId?: string;
  agentName?: string;
@@ -723,7 +723,7 @@ descriptor uses `PlanExecution` and is carried by the host result/notification.
 The authoritative host approval/queue transition is the separate `plans.changed`
 notification forwarded through `IPC.event.plansChanged`.
 `tools.output` is a host notification consumed by `packages/agent-runtime`
-while a Bash tool runs; it is not an AgentEvent.
+while a bash tool runs; it is not an AgentEvent.
 
 `turn_end` closes one model/tool turn but is not a terminal desktop run event:
 another provider request may follow immediately. Renderer busy state and
@@ -914,7 +914,7 @@ type UiMessage = {
  error?: AppError;  // structured failure owned by this assistant turn
  createdAt: string;
  // Rows produced inside a subagent (D201, ADR 0062); absent on the session's own
- parentToolCallId?: string;   // `Task` call that spawned the delegate
+ parentToolCallId?: string;   // `task` call that spawned the delegate
  agentName?: string;          // delegate definition name
  // status/tool fields omitted here
 };
@@ -1087,7 +1087,7 @@ Message-scoped assistant Fork/Edit uses this option so the child receives a
 new session id and therefore cannot reuse or mutate the source pi runtime or
 its provider cache.
 
-Protocol version 9 adds the checkpoint Plan contract: `SubmitPlan`, unique
+Protocol version 9 adds the checkpoint Plan contract: `submit_plan`, unique
 `.pi/plan/*.md` artifact metadata, approve/reject-only responses, absolute
 expiry, `plan_approvals` execution fields, shell catalog/identity fields, and
 streamed stdout/stderr events. A v7 or older host, and any incompatible v8
@@ -1345,7 +1345,7 @@ type ToolPermissionRequest = {
  risk: "low" | "medium" | "high";
  reason: string;
  /** Definition name when a subagent asked (D201, ADR 0062); absent for the
-  * session's own calls, together with the `Task` call that spawned it. */
+  * session's own calls, together with the `task` call that spawned it. */
  agentName?: string;
  parentToolCallId?: string;
 };
@@ -1361,7 +1361,7 @@ The renderer queues them per session and answers the oldest first; the resolutio
 contract is unchanged, because it was already keyed by `requestId`
 (`04-ux/03-permission-ux.md` §6a).
 
-Plan does not replace this generic permission contract. A Plan `Bash` call
+Plan does not replace this generic permission contract. A Plan `bash` call
 uses the normal session-scoped permission flow: `ask` and `accept-edits` emit a
 tool permission request, while `auto` executes without confirmation. Plan
 approval is a separate state transition and always uses the `plan` methods
@@ -1384,12 +1384,12 @@ above.
 - Protocol v6 added durable context checkpoints plus the manual/lifecycle
   channels. A v5 peer is rejected because silently omitting a checkpoint can
   make the next provider request unsafe (ADR 0030).
-- Protocol v9 supersedes the earlier v7 Plan contract. It adds `SubmitPlan`,
+- Protocol v9 supersedes the earlier v7 Plan contract. It adds `submit_plan`,
   exact unique artifact metadata, approve/reject-only resolution, 30-minute
   absolute expiry, `plan_approvals` execution states, shell selection and
   pinned ID/dialect, and streamed command output. A v7/v8 peer is rejected
   before the UI becomes interactive because it cannot enforce or represent this
-  boundary (ADR 0053/0054). `SubmitGoal` and the optional `kind` discriminator
+  boundary (ADR 0053/0054). `submit_goal` and the optional `kind` discriminator
   ride along inside v9 and need no version bump, because an absent `kind` is
   exactly the pre-Goal behavior.
 
@@ -1509,7 +1509,7 @@ one-liner.
 
 The list contains frontmatter-derived `name` and `description`, not the body.
 Only the description enters the prompt, and the body is fetched when the model
-invokes `Skill` (D174). A missing file is removed from the list and its local
+invokes `skill` (D174). A missing file is removed from the list and its local
 state is pruned during the next scan.
 
 Desktop-only channels scan skill folders written by other agent tools on this
@@ -1686,7 +1686,7 @@ Command sources:
 
 Work panel channels are Electron-main implementations. User-driven workspace
 operations resolve the visible root from `workspace.get` and fail closed
-without one. Agent-driven BrowserPreview routing resolves the originating
+without one. Agent-driven browser_preview routing resolves the originating
 conversation through `session.get`, so a background preview never inherits the
 visible session's workspace.
 

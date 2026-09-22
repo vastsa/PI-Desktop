@@ -349,7 +349,7 @@ mod tests {
         let session = sessions::create_session(&db, None, None, None, None, None).unwrap();
         let mut parent = message("parent-row", "");
         parent.role = "tool".into();
-        parent.tool_name = Some("Task".into());
+        parent.tool_name = Some("task".into());
         parent.tool_call_id = Some("parent-call".into());
         parent.tool_args = Some(json!({ "task": "large task ".repeat(20_000) }));
         sessions::append_message(&db, &session.id, &parent, None).unwrap();

@@ -26,10 +26,9 @@ pub mod shell;
 
 pub use hashline::{HashlineContext, HashlineStore};
 
-// Both are re-exported for the dispatch and permission call sites this series
-// wires up next (D619); there is no caller inside this commit yet, so rustc
-// would otherwise report the re-export as unused.
-#[allow(unused_imports)]
+// The canonical-name table and its normalization function are the wire
+// identity of every tool this crate dispatches, so the dispatch, permission,
+// admission and review paths all resolve a name through this one module (D619).
 pub use names::{normalize_tool_name, CANONICAL_TOOL_NAMES};
 
 /// Ceiling on what the streaming capture retains per stream.
@@ -478,12 +477,12 @@ pub enum Direction {
 /// Per-tool output budget (spec 03-runtime/16).
 ///
 /// One shared 256KB cap used to govern every tool, which in practice meant no
-/// cap at all: measured sessions averaged 154KB per `Read` and spent 56% of
+/// cap at all: measured sessions averaged 154KB per `read` and spent 56% of
 /// their whole context on read/search results, which then forced compaction
 /// and re-searching. Search and read results still get a tighter budget than
 /// shell because they are re-fetchable on demand. 48KB was too tight: a 500-line
 /// window of ordinary source or a spec table row already overflowed, so almost
-/// every Read reported `truncated` and the agent re-searched what it had.
+/// every `read` reported `truncated` and the agent re-searched what it had.
 #[derive(Debug, Clone, Copy)]
 pub struct OutputBudget {
     pub max_bytes: usize,
@@ -491,7 +490,7 @@ pub struct OutputBudget {
     pub direction: Direction,
 }
 
-/// Read / Glob / Grep. 128KB fits a 2000-line window of typical source; 4000
+/// `read` / `glob` / `grep`. 128KB fits a 2000-line window of typical source; 4000
 /// lines is the explicit ceiling so a default window is not also the max.
 pub const BUDGET_SEARCH: OutputBudget = OutputBudget {
     max_bytes: 128 * 1024,
@@ -499,7 +498,7 @@ pub const BUDGET_SEARCH: OutputBudget = OutputBudget {
     direction: Direction::Head,
 };
 
-/// Bash stdout: a command's output is usually the whole point of the call and
+/// `bash` stdout: a command's output is usually the whole point of the call and
 /// cannot be re-derived by narrowing a pattern, so it keeps a larger share.
 pub const BUDGET_SHELL: OutputBudget = OutputBudget {
     max_bytes: 96 * 1024,
@@ -507,7 +506,7 @@ pub const BUDGET_SHELL: OutputBudget = OutputBudget {
     direction: Direction::Head,
 };
 
-/// Bash stderr keeps the tail: when a command fails, the actionable message is
+/// `bash` stderr keeps the tail: when a command fails, the actionable message is
 /// the last thing it printed. Dropping it to retain 96KB of progress noise is
 /// exactly what makes the model retry blindly.
 pub const BUDGET_SHELL_ERR: OutputBudget = OutputBudget {
@@ -524,28 +523,28 @@ pub const SPILL_MAX_BYTES: usize = 512 * 1024;
 
 /// Longest single line any tool hands to the model. Minified bundles and
 /// sourcemaps are routinely one multi-megabyte line; 2000 chars also clipped
-/// ordinary spec tables and JSONL, which then marked the whole Read truncated.
+/// ordinary spec tables and JSONL, which then marked the whole `read` truncated.
 /// 16,384 still clips a minified one-liner while leaving a decision-log row
 /// intact. The byte budget still bounds how many such lines a result can hold.
 pub const MAX_LINE_CHARS: usize = 16_384;
 
-/// Read window when the caller does not ask for one.
+/// `read` window when the caller does not ask for one.
 const DEFAULT_READ_LINES: usize = 2000;
 
-/// Grep hits returned when the caller does not ask for a limit.
+/// `grep` hits returned when the caller does not ask for a limit.
 const GREP_DEFAULT_HEAD_LIMIT: usize = 200;
 
-/// Bound on the file list Grep sorts before scanning, so a pathological tree
+/// Bound on the file list `grep` sorts before scanning, so a pathological tree
 /// cannot make the candidate pass itself unbounded.
 const GREP_MAX_CANDIDATE_FILES: usize = 20_000;
 
-/// Glob entries returned when the caller does not ask for a limit, and the
+/// `glob` entries returned when the caller does not ask for a limit, and the
 /// ceiling it may ask for.
 const GLOB_DEFAULT_LIMIT: usize = 100;
 const GLOB_MAX_LIMIT: usize = 1000;
 
 /// Internal-only classifier used to enrich a public INVALID_ARGUMENT result
-/// with a machine-actionable Glob recovery. It never crosses the RPC boundary.
+/// with a machine-actionable glob recovery. It never crosses the RPC boundary.
 const READ_PATH_IS_DIRECTORY: &str = "READ_PATH_IS_DIRECTORY";
 
 /// Extensions we refuse to read as text even when the byte sniff is
@@ -609,7 +608,7 @@ fn fits(text: &str, budget: OutputBudget) -> bool {
 }
 
 /// Truncate to `budget`, first spilling the fuller copy under `scratch` so the
-/// marker can point the model at something it can Grep instead of re-running
+/// marker can point the model at something it can `grep` instead of re-running
 /// the command. Best-effort: a failed spill costs the hint, never the result.
 fn truncate_with_spill(
     text: &str,
@@ -677,7 +676,7 @@ fn truncate_to(text: &str, budget: OutputBudget, spilled: Option<&Path>) -> Stri
 
     let hint = match spilled {
         Some(path) => format!(
-            " Full output saved to {} — Grep it, or Read it with offset/limit.",
+            " Full output saved to {} — grep it, or read it with offset/limit.",
             path.display()
         ),
         None => " Narrow the request to see more.".to_string(),
@@ -815,8 +814,14 @@ fn validate_bash_timeout_ms(timeout_ms: u64) -> Result<(), (String, String)> {
     Ok(())
 }
 
+/// The execution timeout a tool call resolves to.
+///
+/// Only `bash` has a default of its own and bounds of its own; every other
+/// tool either carries an explicit `timeoutMs` or runs without one. The name is
+/// normalized first, so a call replayed from a transcript that still spells it
+/// `Bash` lands on the same budget.
 pub fn effective_timeout_ms(tool_name: &str, timeout_ms: Option<u64>) -> Option<u64> {
-    if tool_name == "Bash" {
+    if normalize_tool_name(tool_name) == "bash" {
         Some(timeout_ms.unwrap_or(DEFAULT_BASH_TIMEOUT_MS))
     } else {
         timeout_ms
@@ -849,7 +854,7 @@ impl LineReader<BufReader<File>> {
 impl<R: BufRead> LineReader<R> {
     /// Peek the buffered head of the stream and decide whether it is binary,
     /// without consuming anything. Cheaper than a second open, and it keeps
-    /// Grep from matching lossy garbage inside object files.
+    /// `grep` from matching lossy garbage inside object files.
     fn looks_binary(&mut self) -> bool {
         let Ok(head) = self.reader.fill_buf() else {
             return false;
@@ -996,6 +1001,11 @@ pub async fn execute_tool(
     args: &Value,
     timeout_ms: u64,
 ) -> ToolsExecuteResult {
+    // Test and local entry point: normalize here too so a test may call either
+    // spelling and reach the same dispatch, exactly as a replayed transcript
+    // does through `tools.execute`.
+    let normalized = normalize_tool_name(tool_name);
+    let tool_name: &str = &normalized;
     let command_shell_id = shell::catalog(None)
         .effective
         .map(|option| option.id)
@@ -1006,7 +1016,7 @@ pub async fn execute_tool(
         tool_name,
         args,
         Some(timeout_ms),
-        if tool_name == "Bash" {
+        if tool_name == "bash" {
             Some(BashExecutionOptions::local(
                 command_shell_id,
                 Some(timeout_ms),
@@ -1057,6 +1067,12 @@ pub async fn execute_tool_with_path_access(
         allow_external_paths,
         hashline,
     } = options;
+    // One normalization boundary for the whole tool body: the name that reaches
+    // the scratch pre-check, the dispatch below and the Bash failure check may
+    // still be a pre-rename spelling when it came from a replayed transcript or
+    // an imported session, and each of them compares canonical names.
+    let normalized = normalize_tool_name(tool_name);
+    let tool_name: &str = &normalized;
     let started = Instant::now();
     let timeout_ms = effective_timeout_ms(tool_name, requested_timeout_ms);
     let tool_call_id = bash_options
@@ -1067,9 +1083,9 @@ pub async fn execute_tool_with_path_access(
         .as_ref()
         .map(|options| options.command_shell_id.clone());
     // Scratch is created lazily, and only for tools that can produce files
-    // there — Read/Glob/Grep on a session that never wrote scratch files
+    // there — `read`/`glob`/`grep` on a session that never wrote scratch files
     // should not leave empty directories behind.
-    if matches!(tool_name, "Write" | "Edit" | "Bash") {
+    if matches!(tool_name, "write" | "edit" | "bash") {
         if let Some(dir) = scratch {
             let _ = std::fs::create_dir_all(dir);
         }
@@ -1077,8 +1093,8 @@ pub async fn execute_tool_with_path_access(
     let result: Result<Value, hashline::ToolError> = match tool_name {
         // Authorize the desktop-owned image request through the normal host gate.
         // Only the trusted desktop runner performs the external call.
-        "GenerateImages" => Ok(serde_json::json!({ "authorized": true })),
-        "Read" => tool_read(
+        "generate_images" => Ok(serde_json::json!({ "authorized": true })),
+        "read" => tool_read(
             workspace,
             scratch,
             args,
@@ -1086,8 +1102,8 @@ pub async fn execute_tool_with_path_access(
             hashline.as_ref(),
         )
         .map_err(Into::into),
-        "Glob" => tool_glob(workspace, scratch, args, allow_external_paths).map_err(Into::into),
-        "Grep" => tool_grep(
+        "glob" => tool_glob(workspace, scratch, args, allow_external_paths).map_err(Into::into),
+        "grep" => tool_grep(
             workspace,
             scratch,
             args,
@@ -1095,7 +1111,7 @@ pub async fn execute_tool_with_path_access(
             hashline.as_ref(),
         )
         .map_err(Into::into),
-        "Write" => tool_write(
+        "write" => tool_write(
             workspace,
             scratch,
             args,
@@ -1103,14 +1119,14 @@ pub async fn execute_tool_with_path_access(
             hashline.as_ref(),
         )
         .map_err(Into::into),
-        "Edit" => tool_edit(
+        "edit" => tool_edit(
             workspace,
             scratch,
             args,
             allow_external_paths,
             hashline.as_ref(),
         ),
-        "Bash" => {
+        "bash" => {
             let options = bash_options.unwrap_or_else(|| {
                 let id = shell::catalog(None)
                     .effective
@@ -1134,12 +1150,12 @@ pub async fn execute_tool_with_path_access(
 
     match result {
         Ok(content) => {
-            // Preserve Bash stdout/stderr/exitCode for the model, but still
+            // Preserve bash stdout/stderr/exitCode for the model, but still
             // surface a non-zero command as a failed tool result. Previously
             // the shell process could exit 1/128 while the outer tool stayed
             // successful, which hid command failures from the UI and timing
             // logs and encouraged blind patch retries.
-            let command_failed = tool_name == "Bash"
+            let command_failed = tool_name == "bash"
                 && match content.get("exitCode") {
                     Some(Value::Number(code)) => code.as_i64() != Some(0),
                     Some(Value::Null) => true,
@@ -1172,7 +1188,7 @@ pub async fn execute_tool_with_path_access(
                 }
             }
             if read_path_is_directory {
-                content["suggestedTool"] = json!("Glob");
+                content["suggestedTool"] = json!("glob");
                 content["suggestedArgs"] = json!({
                     "path": args.get("path").and_then(Value::as_str).unwrap_or_default(),
                     "pattern": "**/*",
@@ -1253,14 +1269,14 @@ fn tool_read(
         return Err((
             READ_PATH_IS_DIRECTORY.into(),
             format!(
-                "Read requires a file, but {path} is a directory; use Glob with path={path:?} and pattern=\"**/*\" (activate Glob first if it is deferred)"
+                "read requires a file, but {path} is a directory; use glob with path={path:?} and pattern=\"**/*\" (activate glob first if it is deferred)"
             ),
         ));
     }
     if !meta.is_file() {
         return Err((
             "INVALID_ARGUMENT".into(),
-            format!("Read requires a regular file: {path}"),
+            format!("read requires a regular file: {path}"),
         ));
     }
     let display = display_tool_path(root_kind, root, &resolved);
@@ -1408,7 +1424,7 @@ fn tool_edit(
     let tag = args.get("tag").and_then(|v| v.as_str()).ok_or_else(|| {
         hashline::ToolError::new(
             "EDIT_TAG_REQUIRED",
-            "tag required; pass the 4-hex tag from the latest Read, Grep, Write, or Edit",
+            "tag required; pass the 4-hex tag from the latest read, grep, write, or edit",
         )
     })?;
     let ops = args
@@ -2663,7 +2679,7 @@ async fn tool_bash(
             // smaller. stderr keeps its tail because a failing command's
             // actionable message is the last thing it prints, and the
             // over-budget copy spills to scratch so the marker can name a real
-            // file to Grep instead of just apologizing. The runner-error probe
+            // file to grep instead of just apologizing. The runner-error probe
             // runs first: the marker must be found before the tail budget can
             // cut it away.
             let (stdout, budget_trunc_out) =
@@ -2702,7 +2718,7 @@ fn relative_display(root: &Path, path: &Path) -> String {
 
     // Tool results are protocol-visible: Windows separators are normalized to
     // POSIX spelling, while POSIX filenames may legally contain a literal
-    // backslash that must remain round-trippable through Read/Edit.
+    // backslash that must remain round-trippable through read/edit.
     #[cfg(windows)]
     {
         display.replace('\\', "/")
@@ -2716,20 +2732,20 @@ fn relative_display(root: &Path, path: &Path) -> String {
 pub fn builtin_tool_defs() -> Value {
     // Descriptions carry the real limits and the scoping parameters on purpose:
     // when a tool looks like it can only do the naive thing, the model routes
-    // around it through Bash, and hand-rolled shell pipelines are what blew up
+    // around it through bash, and hand-rolled shell pipelines are what blew up
     // context in the first place.
-    json!([
+    let defs = json!([
         {
-            "name": "Read",
+            "name": "read",
             "description": format!(
                 "Read a window of an existing regular text file inside the workspace or the session scratch directory. \
-                 Read never accepts a directory; activate and use Glob when a directory must be listed or the file name is uncertain. \
+                 A directory is never accepted; activate and use glob when a directory must be listed or the file name is uncertain. \
                  Returns at most {} lines ({}KB) starting at `offset`; lines longer than {} characters are cut. \
-                 `content` is line-numbered (`N:`) under a `[path#TAG]` header; `tag` is the whole-file 4-hex Edit anchor. \
+                 `content` is line-numbered (`N:`) under a `[path#TAG]` header; `tag` is the whole-file 4-hex edit anchor. \
                  `totalLines` is always reported so you know the file scale upfront. \
                  `truncated` is true only when this window was cut short (budget or a clipped line), not merely because the file continues. \
-                 For files beyond the default window, Grep to locate the target, then Read the range with offset/limit. \
-                 Prefer this over `cat`/`sed`/`head` in Bash.",
+                 For files beyond the default window, grep to locate the target, then read the range with offset/limit. \
+                 Prefer this over `cat`/`sed`/`head` in bash.",
                 DEFAULT_READ_LINES,
                 BUDGET_SEARCH.max_bytes / 1024,
                 MAX_LINE_CHARS
@@ -2746,18 +2762,18 @@ pub fn builtin_tool_defs() -> Value {
             }
         },
         {
-            "name": "Glob",
+            "name": "glob",
             "description": format!(
                 "List files by glob pattern, newest first. Returns at most `limit` entries (default {}, max {}). \
                  The pattern matches either the path relative to the search root or the bare file name, so both \
-                 `src/**/*.ts` and `*.ts` work. Prefer this over `find`/`ls` in Bash.",
+                 `src/**/*.ts` and `*.ts` work. Prefer this over `find`/`ls` in bash.",
                 GLOB_DEFAULT_LIMIT, GLOB_MAX_LIMIT
             ),
             "risk": "low",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "pattern": { "type": "string", "description": "Glob pattern, e.g. `**/*.rs`" },
+                    "pattern": { "type": "string", "description": "glob pattern, e.g. `**/*.rs`" },
                     "path": { "type": "string", "description": "Directory to search in; defaults to the workspace root. Pass it explicitly to search inside a git-ignored tree such as node_modules or dist" },
                     "limit": { "type": "integer", "description": format!("Max entries (default {}, max {})", GLOB_DEFAULT_LIMIT, GLOB_MAX_LIMIT), "minimum": 1 }
                 },
@@ -2765,7 +2781,7 @@ pub fn builtin_tool_defs() -> Value {
             }
         },
         {
-            "name": "Grep",
+            "name": "grep",
             "description": format!(
                 "Search file contents by regex, results ordered by file modification time (newest first). \
                  Uses the system's `rg` when installed, otherwise an in-process searcher; the result shape is the same. \
@@ -2783,7 +2799,7 @@ pub fn builtin_tool_defs() -> Value {
                 "properties": {
                     "pattern": { "type": "string", "description": "Rust-regex pattern matched per line" },
                     "path": { "type": "string", "description": "File or directory to search; defaults to the workspace root. Pass it explicitly to search inside a git-ignored tree such as node_modules or dist" },
-                    "include": { "type": "string", "description": "Glob filter on file path or name, e.g. `*.{ts,tsx}`" },
+                    "include": { "type": "string", "description": "glob filter on file path or name, e.g. `*.{ts,tsx}`" },
                     "outputMode": { "type": "string", "enum": ["content", "filesWithMatches", "count"], "description": "content (default): matching lines; filesWithMatches: matching file paths; count: per-file match counts" },
                     "headLimit": { "type": "integer", "description": format!("Max matches (content) or files (other modes); default {}", GREP_DEFAULT_HEAD_LIMIT), "minimum": 1 },
                     "caseInsensitive": { "type": "boolean" }
@@ -2792,8 +2808,8 @@ pub fn builtin_tool_defs() -> Value {
             }
         },
         {
-            "name": "Write",
-            "description": "Create or overwrite a file inside the workspace or the session scratch directory. Strips a pasted `[path#TAG]` header and `N:` line prefixes. Returns the post-write `tag` so a following Edit needs no extra Read.",
+            "name": "write",
+            "description": "Create or overwrite a file inside the workspace or the session scratch directory. Strips a pasted `[path#TAG]` header and `N:` line prefixes. Returns the post-write `tag` so a following edit needs no extra read.",
             "risk": "high",
             "parameters": {
                 "type": "object",
@@ -2805,28 +2821,28 @@ pub fn builtin_tool_defs() -> Value {
             }
         },
         {
-            "name": "Edit",
-            "description": "Replace, insert, or delete lines in an existing file. Names positions and supplies new content only — never old_string. Required args: path, tag (4 hex from the latest Read/Grep/Write/Edit), ops. \
+            "name": "edit",
+            "description": "Replace, insert, or delete lines in an existing file. Names positions and supplies new content only — never old_string. Required args: path, tag (4 hex from the latest read/grep/write/edit), ops. \
     Ops: `PUT N.=M:` replace inclusive lines N–M (body rows required); `PUT <N:` insert before N; `PUT >N:` insert after N; `PUT >$:` append; `CUT N.=M` delete; `REM` delete the file; `MV DEST` rename after other ops. \
     Body rows are `+` plus the final line text; a bare `+` is an empty line. Every PUT with body rows must include the trailing colon, for example `PUT 48.=48:` followed by a `+replacement` row; `PUT 48.=48` followed by `+` rows is invalid. A colonless PUT is only for a register paste such as `PUT <1 @name`. No `-old` or context rows. Ranges name only the lines being changed — a pure insert uses a gap locator, not a widened PUT that restates survivors. \
-    All line numbers refer to the tagged snapshot and are 1-indexed. Re-ground on the tag returned by every successful write. After one failed Edit, classify the error: Read the live file for a stale tag or unseen lines (or retry unchanged on a complete EDIT_LINES_UNSEEN reveal), but correct syntax or range errors directly; do not guess.",
+    All line numbers refer to the tagged snapshot and are 1-indexed. Re-ground on the tag returned by every successful write. After one failed edit, classify the error: read the live file for a stale tag or unseen lines (or retry unchanged on a complete EDIT_LINES_UNSEEN reveal), but correct syntax or range errors directly; do not guess.",
             "risk": "high",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": { "type": "string" },
-                    "tag": { "type": "string", "description": "4 uppercase hex from the latest Read, Grep, Write, or Edit for this path" },
+                    "tag": { "type": "string", "description": "4 uppercase hex from the latest read, grep, write, or edit for this path" },
                     "ops": { "type": "string", "description": "One or more operation headers with + body rows, newline separated" }
                 },
                 "required": ["path", "tag", "ops"]
             }
         },
         {
-            "name": "Bash",
+            "name": "bash",
             "description": format!(
                 "Run a non-interactive shell command in the workspace. stdout keeps its first {}KB, stderr its \
                  last {}KB, and anything over budget is spilled to a file named in the truncation marker. \
-                 Use Read/Glob/Grep for reading and searching instead of shell equivalents; when a shell search \
+                 Use read/glob/grep for reading and searching instead of shell equivalents; when a shell search \
                  is genuinely needed prefer `rg` and exclude build output.",
                 BUDGET_SHELL.max_bytes / 1024,
                 BUDGET_SHELL_ERR.max_bytes / 1024
@@ -2838,7 +2854,19 @@ pub fn builtin_tool_defs() -> Value {
                 "required": ["command"]
             }
         }
-    ])
+    ]);
+    // This function is the single source of the model-visible tool names, so it
+    // owns the first of the contract's invariants: every name it publishes is
+    // canonical. A capitalized spelling here would reach the model verbatim and
+    // silently stop matching the dispatch, permission and pi-side names below.
+    debug_assert!(
+        defs.as_array()
+            .is_some_and(|defs| defs.iter().all(|def| def["name"]
+                .as_str()
+                .is_some_and(|name| CANONICAL_TOOL_NAMES.contains(&name)))),
+        "a builtin tool def carries a non-canonical name"
+    );
+    defs
 }
 
 #[cfg(test)]
@@ -2887,7 +2915,7 @@ mod tests {
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle" }),
             5_000,
         )
@@ -2907,7 +2935,7 @@ mod tests {
         let read = execute_tool(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": r"src/util\test.ts" }),
             5_000,
         )
@@ -2919,14 +2947,14 @@ mod tests {
     #[test]
     fn bash_timeout_defaults_at_the_tool_boundary() {
         assert_eq!(
-            effective_timeout_ms("Bash", None),
+            effective_timeout_ms("bash", None),
             Some(DEFAULT_BASH_TIMEOUT_MS)
         );
         assert_eq!(
-            effective_timeout_ms("Bash", Some(MIN_BASH_TIMEOUT_MS)),
+            effective_timeout_ms("bash", Some(MIN_BASH_TIMEOUT_MS)),
             Some(MIN_BASH_TIMEOUT_MS)
         );
-        assert_eq!(effective_timeout_ms("Read", None), None);
+        assert_eq!(effective_timeout_ms("read", None), None);
     }
 
     #[test]
@@ -2980,7 +3008,7 @@ mod tests {
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Bash",
+            "bash",
             &serde_json::json!({ "command": command }),
             15_000,
         )
@@ -3001,7 +3029,7 @@ mod tests {
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Bash",
+            "bash",
             &serde_json::json!({ "command": command }),
             15_000,
         )
@@ -3027,7 +3055,7 @@ mod tests {
         let result = execute_tool(
             Some(ws.path()),
             Some(&scratch),
-            "Bash",
+            "bash",
             &serde_json::json!({ "command": command }),
             30_000,
         )
@@ -3069,7 +3097,7 @@ mod tests {
         let result = execute_tool(
             Some(ws.path()),
             None,
-            "Bash",
+            "bash",
             &serde_json::json!({ "command": command }),
             30_000,
         )
@@ -3110,7 +3138,7 @@ mod tests {
         let first = execute_tool(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": "big.txt" }),
             5_000,
         )
@@ -3141,7 +3169,7 @@ mod tests {
         let tail = execute_tool(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": "big.txt", "offset": 69_998, "limit": 10 }),
             5_000,
         )
@@ -3169,7 +3197,7 @@ mod tests {
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": "bundle.min.js" }),
             5_000,
         )
@@ -3196,7 +3224,7 @@ mod tests {
         let window = execute_tool(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": "notes.txt", "offset": 10, "limit": 20 }),
             5_000,
         )
@@ -3214,12 +3242,12 @@ mod tests {
         assert_eq!(window_lines[1], "11:line 11");
         let notice = window.content["notice"].as_str().unwrap();
         assert!(notice.contains("next offset is 30"), "{notice}");
-        assert!(!notice.contains("use Grep"), "{notice}");
+        assert!(!notice.contains("use grep"), "{notice}");
 
         let whole = execute_tool(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": "notes.txt" }),
             5_000,
         )
@@ -3242,7 +3270,7 @@ mod tests {
             let result = execute_tool(
                 Some(dir.path()),
                 None,
-                "Read",
+                "read",
                 &serde_json::json!({ "path": name }),
                 5_000,
             )
@@ -3267,7 +3295,7 @@ mod tests {
         let read = execute_tool(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": ".env" }),
             5_000,
         )
@@ -3279,7 +3307,7 @@ mod tests {
         let external = execute_tool_with_path_access(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": ".env" }),
             ToolExecutionOptions {
                 timeout_ms: Some(5_000),
@@ -3297,7 +3325,7 @@ mod tests {
         let example = execute_tool(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": ".env.example" }),
             5_000,
         )
@@ -3307,7 +3335,7 @@ mod tests {
         let write = execute_tool(
             Some(dir.path()),
             None,
-            "Write",
+            "write",
             &serde_json::json!({ "path": "keys/id_rsa", "content": "x" }),
             5_000,
         )
@@ -3318,7 +3346,7 @@ mod tests {
         let grep = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle" }),
             5_000,
         )
@@ -3332,7 +3360,7 @@ mod tests {
         let glob = execute_tool(
             Some(dir.path()),
             None,
-            "Glob",
+            "glob",
             &serde_json::json!({ "pattern": "**/*" }),
             5_000,
         )
@@ -3357,7 +3385,7 @@ mod tests {
         let unscoped = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle", "outputMode": "filesWithMatches" }),
             5_000,
         )
@@ -3381,7 +3409,7 @@ mod tests {
             let scoped = execute_tool(
                 Some(dir.path()),
                 None,
-                "Grep",
+                "grep",
                 &serde_json::json!({ "pattern": "needle", "path": path }),
                 5_000,
             )
@@ -3403,7 +3431,7 @@ mod tests {
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": "src" }),
             5_000,
         )
@@ -3412,10 +3440,10 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(result.error_code.as_deref(), Some("INVALID_ARGUMENT"));
         let error = result.content["error"].as_str().unwrap_or_default();
-        assert!(error.contains("Read requires a file"));
-        assert!(error.contains("use Glob"));
+        assert!(error.contains("read requires a file"));
+        assert!(error.contains("use glob"));
         assert!(error.contains("pattern=\"**/*\""));
-        assert_eq!(result.content["suggestedTool"].as_str(), Some("Glob"));
+        assert_eq!(result.content["suggestedTool"].as_str(), Some("glob"));
         assert_eq!(
             result.content["suggestedArgs"]["path"].as_str(),
             Some("src")
@@ -3438,7 +3466,7 @@ mod tests {
         let read = execute_tool_with_path_access(
             Some(workspace.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": file.to_str().unwrap() }),
             ToolExecutionOptions {
                 timeout_ms: None,
@@ -3458,7 +3486,7 @@ mod tests {
         let grep = execute_tool_with_path_access(
             Some(workspace.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({
                 "pattern": "needle",
                 "path": outside.path().to_str().unwrap(),
@@ -3481,7 +3509,7 @@ mod tests {
         let exact_grep = execute_tool_with_path_access(
             Some(workspace.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({
                 "pattern": "needle",
                 "path": file.to_str().unwrap(),
@@ -3508,7 +3536,7 @@ mod tests {
         let glob = execute_tool_with_path_access(
             Some(workspace.path()),
             None,
-            "Glob",
+            "glob",
             &serde_json::json!({
                 "pattern": "*.rs",
                 "path": outside.path().join("src").to_str().unwrap(),
@@ -3538,7 +3566,7 @@ mod tests {
         let write = execute_tool_with_path_access(
             Some(workspace.path()),
             None,
-            "Write",
+            "write",
             &serde_json::json!({ "path": file.to_str().unwrap(), "content": "before" }),
             ToolExecutionOptions {
                 timeout_ms: None,
@@ -3555,7 +3583,7 @@ mod tests {
         let edit = execute_tool_with_path_access(
             Some(workspace.path()),
             None,
-            "Edit",
+            "edit",
             &serde_json::json!({
                 "path": file.to_str().unwrap(),
                 "tag": tag,
@@ -3590,7 +3618,7 @@ mod tests {
         let scoped = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle", "path": "src", "include": "*.ts" }),
             5_000,
         )
@@ -3606,7 +3634,7 @@ mod tests {
         let clipped = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle", "path": "dist" }),
             5_000,
         )
@@ -3622,7 +3650,7 @@ mod tests {
         let files = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle", "outputMode": "filesWithMatches" }),
             5_000,
         )
@@ -3645,7 +3673,7 @@ mod tests {
         let aliased_files = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({
                 "pattern": "needle",
                 "outputMode": "files_with_matches",
@@ -3663,7 +3691,7 @@ mod tests {
         let counts = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle", "path": "src", "outputMode": "count" }),
             5_000,
         )
@@ -3675,7 +3703,7 @@ mod tests {
         let single_file = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({
                 "pattern": "needle",
                 "path": "src/a.ts",
@@ -3698,7 +3726,7 @@ mod tests {
         let excluded_file = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({
                 "pattern": "needle",
                 "path": "src/a.ts",
@@ -3719,7 +3747,7 @@ mod tests {
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle", "headLimit": 5 }),
             5_000,
         )
@@ -3769,7 +3797,7 @@ mod tests {
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle" }),
             5_000,
         )
@@ -3803,7 +3831,7 @@ mod tests {
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle" }),
             5_000,
         )
@@ -3833,7 +3861,7 @@ mod tests {
         let unscoped = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle" }),
             5_000,
         )
@@ -3848,7 +3876,7 @@ mod tests {
         let scoped = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle", "path": "node_modules/pkg" }),
             5_000,
         )
@@ -3863,7 +3891,7 @@ mod tests {
         let limited = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle", "path": "many.txt", "headLimit": 5 }),
             5_000,
         )
@@ -3892,7 +3920,7 @@ mod tests {
         let unscoped = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle" }),
             5_000,
         )
@@ -3906,7 +3934,7 @@ mod tests {
         let scoped = execute_tool(
             Some(dir.path()),
             None,
-            "Grep",
+            "grep",
             &serde_json::json!({ "pattern": "needle", "path": "node_modules/pkg" }),
             5_000,
         )
@@ -3920,7 +3948,7 @@ mod tests {
         let globbed = execute_tool(
             Some(dir.path()),
             None,
-            "Glob",
+            "glob",
             &serde_json::json!({ "pattern": "*.js", "path": "node_modules/pkg" }),
             5_000,
         )
@@ -3943,7 +3971,7 @@ mod tests {
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Glob",
+            "glob",
             &serde_json::json!({ "pattern": "*.rs" }),
             5_000,
         )
@@ -3960,7 +3988,7 @@ mod tests {
         let limited = execute_tool(
             Some(dir.path()),
             None,
-            "Glob",
+            "glob",
             &serde_json::json!({ "pattern": "*.rs", "limit": 1 }),
             5_000,
         )
@@ -3971,7 +3999,7 @@ mod tests {
         let file_path = execute_tool(
             Some(dir.path()),
             None,
-            "Glob",
+            "glob",
             &serde_json::json!({ "pattern": "*.rs", "path": "new.rs" }),
             5_000,
         )
@@ -3986,7 +4014,7 @@ mod tests {
 
     #[test]
     fn tool_defs_advertise_the_scoping_parameters() {
-        // The model only reaches for these instead of Bash if it can see them.
+        // The model only reaches for these instead of `bash` if it can see them.
         let defs = builtin_tool_defs();
         let by_name = |name: &str| -> Value {
             defs.as_array()
@@ -3996,19 +4024,19 @@ mod tests {
                 .unwrap()
                 .clone()
         };
-        let read = by_name("Read");
+        let read = by_name("read");
         assert!(read["parameters"]["properties"]["offset"].is_object());
         assert!(read["parameters"]["properties"]["limit"].is_object());
-        let grep = by_name("Grep");
+        let grep = by_name("grep");
         for param in ["path", "include", "outputMode", "headLimit"] {
             assert!(
                 grep["parameters"]["properties"][param].is_object(),
-                "Grep advertises {param}"
+                "grep advertises {param}"
             );
         }
-        assert!(by_name("Glob")["parameters"]["properties"]["limit"].is_object());
+        assert!(by_name("glob")["parameters"]["properties"]["limit"].is_object());
         assert!(read["description"].as_str().unwrap().contains("2000 lines"));
-        let edit = by_name("Edit");
+        let edit = by_name("edit");
         assert!(edit["parameters"]["properties"]["tag"].is_object());
         assert!(edit["parameters"]["properties"]["ops"].is_object());
         assert!(edit["description"]
@@ -4035,7 +4063,7 @@ mod tests {
         assert!(read["description"]
             .as_str()
             .unwrap()
-            .contains("never accepts a directory"));
+            .contains("A directory is never accepted"));
         assert!(grep["parameters"]["properties"]["path"]["description"]
             .as_str()
             .unwrap()
@@ -4046,13 +4074,13 @@ mod tests {
     async fn write_and_read_in_scratch_root() {
         let ws = tempfile::tempdir().unwrap();
         let data = tempfile::tempdir().unwrap();
-        // Not created up front: execute_tool creates it lazily for Write.
+        // Not created up front: execute_tool creates it lazily for `write`.
         let scratch = data.path().join("scratch/session-1");
         let target = scratch.join("notes/tmp.txt");
         let write = execute_tool(
             Some(ws.path()),
             Some(&scratch),
-            "Write",
+            "write",
             &serde_json::json!({ "path": target.to_str().unwrap(), "content": "scratch!" }),
             5_000,
         )
@@ -4065,7 +4093,7 @@ mod tests {
         let read = execute_tool(
             Some(ws.path()),
             Some(&scratch),
-            "Read",
+            "read",
             &serde_json::json!({ "path": target.to_str().unwrap() }),
             5_000,
         )
@@ -4077,6 +4105,159 @@ mod tests {
         );
         assert_eq!(read.content["root"].as_str(), Some("scratch"));
     }
+    /// Every builtin answers to its pre-rename spelling too.
+    ///
+    /// Transcripts, saved configuration and imported sessions hold the name the
+    /// model emitted at the time, and the rename never rewrites stored bytes
+    /// (spec 23 §3), so a replay that reaches the dispatcher with `Read` has to
+    /// land on the same tool as `read`.
+    #[tokio::test]
+    async fn legacy_tool_names_dispatch_to_the_same_builtin() {
+        let ws = tempfile::tempdir().unwrap();
+        std::fs::write(ws.path().join("notes.txt"), "alpha\nbeta\n").unwrap();
+
+        for name in ["Write", "write"] {
+            let write = execute_tool(
+                Some(ws.path()),
+                None,
+                name,
+                &serde_json::json!({ "path": "notes.txt", "content": "alpha\nbeta\n" }),
+                5_000,
+            )
+            .await;
+            assert!(write.ok, "{name} failed: {:?}", write.content);
+            assert_eq!(write.content["path"].as_str(), Some("notes.txt"));
+        }
+
+        for name in ["Read", "read"] {
+            let read = execute_tool(
+                Some(ws.path()),
+                None,
+                name,
+                &serde_json::json!({ "path": "notes.txt" }),
+                5_000,
+            )
+            .await;
+            assert!(read.ok, "{name} failed: {:?}", read.content);
+            assert_eq!(
+                plain_read(read.content["content"].as_str().unwrap()),
+                "alpha\nbeta"
+            );
+        }
+
+        for name in ["Glob", "glob"] {
+            let listed = execute_tool(
+                Some(ws.path()),
+                None,
+                name,
+                &serde_json::json!({ "pattern": "*.txt" }),
+                5_000,
+            )
+            .await;
+            assert!(listed.ok, "{name} failed: {:?}", listed.content);
+            assert_eq!(listed.content["matches"][0].as_str(), Some("notes.txt"));
+        }
+
+        for name in ["Grep", "grep"] {
+            let found = execute_tool(
+                Some(ws.path()),
+                None,
+                name,
+                &serde_json::json!({ "pattern": "beta" }),
+                5_000,
+            )
+            .await;
+            assert!(found.ok, "{name} failed: {:?}", found.content);
+            assert_eq!(
+                found.content["matches"][0]["path"].as_str(),
+                Some("notes.txt")
+            );
+        }
+
+        for name in ["Edit", "edit"] {
+            // The tag is re-ground per pass: each successful edit moves the
+            // snapshot the next one has to anchor on.
+            let read = execute_tool(
+                Some(ws.path()),
+                None,
+                "read",
+                &serde_json::json!({ "path": "notes.txt" }),
+                5_000,
+            )
+            .await;
+            let tag = read.content["tag"].as_str().unwrap();
+            let edit = execute_tool(
+                Some(ws.path()),
+                None,
+                name,
+                &serde_json::json!({
+                    "path": "notes.txt",
+                    "tag": tag,
+                    // Distinct text per pass: an edit that changes nothing is
+                    // rejected as EDIT_NO_CHANGE.
+                    "ops": format!("PUT 1.=1:\n+{name}-line\n")
+                }),
+                5_000,
+            )
+            .await;
+            assert!(edit.ok, "{name} failed: {:?}", edit.content);
+        }
+    }
+
+    /// The shell builtin is the one the timeout boundary keys off, so it gets
+    /// its own pass over the legacy spelling.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn legacy_bash_name_reaches_the_shell_builtin() {
+        let ws = tempfile::tempdir().unwrap();
+        for name in ["Bash", "bash"] {
+            let ran = execute_tool(
+                Some(ws.path()),
+                None,
+                name,
+                &serde_json::json!({ "command": "printf legacy" }),
+                15_000,
+            )
+            .await;
+            assert!(ran.ok, "{name} failed: {:?}", ran.content);
+            assert_eq!(ran.content["stdout"].as_str(), Some("legacy"));
+        }
+    }
+
+    #[test]
+    fn legacy_bash_name_resolves_to_the_bash_timeout() {
+        for name in ["Bash", "bash", "BASH"] {
+            assert_eq!(
+                effective_timeout_ms(name, None),
+                Some(DEFAULT_BASH_TIMEOUT_MS),
+                "{name} did not resolve to the shell default"
+            );
+            assert_eq!(effective_timeout_ms(name, Some(9_000)), Some(9_000));
+        }
+        for name in ["Read", "read"] {
+            assert_eq!(effective_timeout_ms(name, None), None);
+        }
+    }
+
+    /// The defs this module publishes are the model-visible names, so they are
+    /// canonical by contract: the dispatch arms, the risk buckets, the admission
+    /// classes and pi's own name helpers all key off exactly these strings.
+    #[test]
+    fn builtin_tool_defs_publish_canonical_names() {
+        let defs = builtin_tool_defs();
+        let defs = defs.as_array().unwrap();
+        let names: Vec<&str> = defs
+            .iter()
+            .map(|def| def["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, vec!["read", "glob", "grep", "write", "edit", "bash"]);
+        for name in names {
+            assert!(
+                CANONICAL_TOOL_NAMES.contains(&name),
+                "{name} is not a canonical tool name"
+            );
+        }
+    }
 
     #[tokio::test]
     async fn workspace_write_reports_workspace_root() {
@@ -4085,7 +4266,7 @@ mod tests {
         let result = execute_tool(
             Some(ws.path()),
             Some(scratch.path()),
-            "Write",
+            "write",
             &serde_json::json!({ "path": "a.txt", "content": "hi" }),
             5_000,
         )
@@ -4104,7 +4285,7 @@ mod tests {
         let missing_tag = execute_tool(
             Some(ws.path()),
             None,
-            "Edit",
+            "edit",
             &serde_json::json!({
                 "path": "note.txt",
                 "ops": "PUT 1.=1:\n+BEFORE\n"
@@ -4118,7 +4299,7 @@ mod tests {
         let stale = execute_tool(
             Some(ws.path()),
             None,
-            "Edit",
+            "edit",
             &serde_json::json!({
                 "path": "note.txt",
                 "tag": "0000",
@@ -4133,7 +4314,7 @@ mod tests {
         let read = execute_tool(
             Some(ws.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": "note.txt" }),
             5_000,
         )
@@ -4142,7 +4323,7 @@ mod tests {
         let ok = execute_tool(
             Some(ws.path()),
             None,
-            "Edit",
+            "edit",
             &serde_json::json!({
                 "path": "note.txt",
                 "tag": tag,
@@ -4158,14 +4339,14 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn bash_inherits_user_login_path() {
-        // D181: the Bash tool runs with the user's login-shell PATH so nvm /
+        // D181: the `bash` tool runs with the user's login-shell PATH so nvm /
         // Homebrew tools resolve; when no probe is possible it falls back to
         // the host PATH (still non-empty for the spawned bash).
         let dir = tempfile::tempdir().unwrap();
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Bash",
+            "bash",
             &serde_json::json!({ "command": "printf %s \"$PATH\"" }),
             15_000,
         )
@@ -4196,7 +4377,7 @@ mod tests {
         let result = execute_tool(
             Some(ws.path()),
             Some(&scratch),
-            "Bash",
+            "bash",
             &serde_json::json!({ "command": "printf %s \"$PI_SCRATCH_DIR\"" }),
             15_000,
         )
@@ -4206,7 +4387,7 @@ mod tests {
             result.content["stdout"].as_str(),
             Some(scratch.to_str().unwrap())
         );
-        assert!(scratch.is_dir(), "scratch dir created for Bash");
+        assert!(scratch.is_dir(), "scratch dir created for bash");
     }
 
     #[tokio::test]
@@ -4223,7 +4404,7 @@ mod tests {
         let result = execute_tool_with_options(
             Some(dir.path()),
             None,
-            "Bash",
+            "bash",
             &serde_json::json!({ "command": command }),
             Some(15_000),
             Some(BashExecutionOptions {
@@ -4332,7 +4513,7 @@ mod tests {
         let output = execute_tool_with_options(
             Some(&workspace),
             None,
-            "Bash",
+            "bash",
             &serde_json::json!({
                 "command": "[Console]::Out.Write('stdout π \"quoted\" & <meta>'); [Console]::Error.Write('stderr π \"quoted\" & <meta>')"
             }),
@@ -4357,7 +4538,7 @@ mod tests {
         let cwd = execute_tool_with_options(
             Some(&workspace),
             None,
-            "Bash",
+            "bash",
             &serde_json::json!({ "command": "[Console]::Out.Write((Get-Location).Path)" }),
             Some(5_000),
             Some(options()),
@@ -4376,7 +4557,7 @@ mod tests {
         let error = execute_tool_with_options(
             Some(&workspace),
             None,
-            "Bash",
+            "bash",
             &serde_json::json!({
                 "command": "Get-Item -LiteralPath 'missing file for pi desktop'"
             }),
@@ -4396,7 +4577,7 @@ mod tests {
         let native = execute_tool_with_options(
             Some(&workspace),
             None,
-            "Bash",
+            "bash",
             &serde_json::json!({ "command": "cmd /c exit 7" }),
             Some(5_000),
             Some(options()),
@@ -4413,18 +4594,18 @@ mod tests {
         let read = execute_tool(
             Some(dir.path()),
             None,
-            "Read",
+            "read",
             &serde_json::json!({ "path": "crlf.txt" }),
             5_000,
         )
         .await;
-        assert!(read.ok, "Read failed: {:?}", read.content);
+        assert!(read.ok, "read failed: {:?}", read.content);
         let tag = read.content["tag"].as_str().unwrap();
 
         let result = execute_tool(
             Some(dir.path()),
             None,
-            "Edit",
+            "edit",
             &serde_json::json!({
                 "path": "crlf.txt",
                 "tag": tag,
@@ -4433,7 +4614,7 @@ mod tests {
             5_000,
         )
         .await;
-        assert!(result.ok, "Edit failed on CRLF file: {:?}", result.content);
+        assert!(result.ok, "edit failed on CRLF file: {:?}", result.content);
         assert_eq!(result.content["tag"].as_str().unwrap().len(), 4);
 
         let written = std::fs::read_to_string(&target).unwrap();

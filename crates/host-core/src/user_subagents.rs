@@ -5,6 +5,7 @@ use crate::agent_capabilities::{
     capability_dir, file_timestamp, parse_front_matter, slugify, sorted_files, CapabilityLevel,
     CapabilityState,
 };
+use crate::tools::normalize_tool_name;
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -19,15 +20,18 @@ const MAX_DESCRIPTION_CHARS: usize = 400;
 /// Mirrors `MAX_SUBAGENT_MAX_TOKENS` in `packages/shared`. No published model
 /// accepts an output limit above 128k, so a larger declared value is a typo.
 const MAX_TOKENS_CEILING: u32 = 200_000;
-const DEFAULT_TOOLS: [&str; 3] = ["Read", "Glob", "Grep"];
+/// Canonical tool names a subagent declaration may list (spec 23): the defaults
+/// when a document names none, and the whole assignable set. A declaration
+/// written before the rename is resolved through `normalize_tool_name`.
+const DEFAULT_TOOLS: [&str; 3] = ["read", "glob", "grep"];
 const ASSIGNABLE_TOOLS: [&str; 7] = [
-    "Read",
-    "Glob",
-    "Grep",
-    "BrowserPreview",
-    "Bash",
-    "Edit",
-    "Write",
+    "read",
+    "glob",
+    "grep",
+    "browser_preview",
+    "bash",
+    "edit",
+    "write",
 ];
 const THINKING_LEVELS: [&str; 8] = [
     "off", "minimal", "low", "medium", "high", "xhigh", "max", "omit",
@@ -109,6 +113,14 @@ fn clip(value: &str, max_chars: usize) -> String {
     trimmed.chars().take(max_chars).collect()
 }
 
+/// Resolve a subagent's declared `tools:` list against the assignable set.
+///
+/// A declaration is user configuration, so it is normalized rather than
+/// rewritten: a file written before the rename spells `Read` or `BrowserPreview`,
+/// and matching case-insensitively is not enough for those because the canonical
+/// form changes the letter case of every letter (`BrowserPreview` versus
+/// `browser_preview`). Anything outside the set is dropped, and `inherit` is
+/// kept as the marker it is, not as a tool name.
 fn normalize_tools(requested: Option<&Vec<String>>) -> Vec<String> {
     let requested = requested
         .filter(|tools| !tools.is_empty())
@@ -127,12 +139,13 @@ fn normalize_tools(requested: Option<&Vec<String>>) -> Vec<String> {
             inherit = true;
             continue;
         }
-        if let Some(canonical) = ASSIGNABLE_TOOLS
+        let canonical = normalize_tool_name(trimmed);
+        if let Some(matched) = ASSIGNABLE_TOOLS
             .iter()
-            .find(|candidate| candidate.eq_ignore_ascii_case(trimmed))
+            .find(|candidate| **candidate == &*canonical)
         {
-            if !result.iter().any(|value: &String| value == canonical) {
-                result.push((*canonical).to_string());
+            if !result.iter().any(|value: &String| value == matched) {
+                result.push((*matched).to_string());
             }
         }
     }
@@ -562,8 +575,8 @@ mod tests {
     #[test]
     fn tools_are_normalized_and_unknown_tools_are_dropped() {
         assert_eq!(
-            normalize_tools(Some(&vec!["read".into(), "Nope".into(), "Bash".into()])),
-            vec!["Read", "Bash"]
+            normalize_tools(Some(&vec!["read".into(), "Nope".into(), "bash".into()])),
+            vec!["read", "bash"]
         );
     }
 
@@ -574,8 +587,8 @@ mod tests {
             vec!["inherit"]
         );
         assert_eq!(
-            normalize_tools(Some(&vec!["inherit".into(), "Bash".into(), "Nope".into()])),
-            vec!["inherit".to_string(), "Bash".to_string()]
+            normalize_tools(Some(&vec!["inherit".into(), "bash".into(), "Nope".into()])),
+            vec!["inherit".to_string(), "bash".to_string()]
         );
     }
 
@@ -646,7 +659,7 @@ mod tests {
             description: "Review code".into(),
             enabled: false,
             scope: ActivationScope::default(),
-            tools: vec!["Read".into()],
+            tools: vec!["read".into()],
             model: None,
             fallback_models: Vec::new(),
             thinking_level: None,
@@ -668,7 +681,7 @@ mod tests {
             description: "Review code".into(),
             enabled: true,
             scope: ActivationScope::default(),
-            tools: vec!["Read".into()],
+            tools: vec!["read".into()],
             model: None,
             fallback_models: Vec::new(),
             thinking_level: None,
@@ -808,5 +821,35 @@ mod tests {
             .path()
             .join("agent-capabilities/subagent-builtins.json")
             .exists());
+    }
+    /// A subagent document is user configuration, so a `tools:` list written
+    /// before the rename still resolves. `BrowserPreview` is the case a purely
+    /// case-insensitive comparison misses, because its canonical form changes
+    /// the case of every letter.
+    #[test]
+    fn legacy_tool_declarations_resolve_to_canonical_names() {
+        assert_eq!(
+            normalize_tools(Some(&vec![
+                "Read".into(),
+                "BrowserPreview".into(),
+                "browserPreview".into(),
+                "Nope".into()
+            ])),
+            vec!["read", "browser_preview"]
+        );
+        assert_eq!(
+            normalize_tools(Some(&vec!["Write".into(), "write".into()])),
+            vec!["write"],
+            "the same tool declared twice collapses into one entry"
+        );
+        assert_eq!(
+            normalize_tools(None),
+            vec!["read", "glob", "grep"],
+            "the default set is canonical too"
+        );
+        assert_eq!(
+            normalize_tools(Some(&vec!["inherit".into(), "Bash".into()])),
+            vec!["inherit".to_string(), "bash".to_string()]
+        );
     }
 }

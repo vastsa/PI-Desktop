@@ -21,12 +21,6 @@
 //! `apps/desktop/test/tool-names-sync.test.mjs` fails when the two drift apart.
 //! The contract itself is documented in `docs/spec/03-runtime/23-tool-names.md`.
 
-// The canonical list and the normalization function are consumed by the tool
-// dispatch and permission paths this series wires up next (D619). Until those
-// land, this binary crate has no non-test reference to them and rustc would
-// report the whole module as unreachable. Drop this allow with the first caller.
-#![allow(dead_code)]
-
 use std::borrow::Cow;
 
 /// Canonical, model-visible tool names.

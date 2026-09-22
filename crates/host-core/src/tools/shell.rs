@@ -2,7 +2,7 @@
 //!
 //! The catalog is intentionally uncached. Shell installations and operator
 //! overrides can change while the host is running, and execution must resolve
-//! the configured shell again immediately before a Bash call starts.
+//! the configured shell again immediately before a bash call starts.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -446,7 +446,7 @@ fn find_cmd() -> Result<PathBuf, String> {
     Err("Command Prompt is not available on this platform".into())
 }
 
-/// Best-effort PATH exported by the user's own login shell, so the Bash tool
+/// Best-effort PATH exported by the user's own login shell, so the bash tool
 /// resolves the same toolchain a fresh terminal would (nvm, Homebrew, conda,
 /// ...). The app may be launched from Finder/Dock with a minimal GUI
 /// environment, and `bash -lc` alone only sources the *bash* profile — on
@@ -455,7 +455,7 @@ fn find_cmd() -> Result<PathBuf, String> {
 /// returns `None` when no login shell can be probed, so callers fall back to
 /// the host environment unchanged.
 /// Windows keeps `bash -c` with the host environment (D084 unchanged):
-/// no login-shell probe, so the Bash tool behaves exactly as before.
+/// no login-shell probe, so the bash tool behaves exactly as before.
 #[cfg(windows)]
 pub fn user_login_path() -> Option<&'static str> {
     None
@@ -494,7 +494,7 @@ fn probe_user_login_path() -> Option<String> {
             let _ = tx.send(output);
         })
         .ok()?;
-    // A wedged rc (waiting on input/network) must not stall the first Bash
+    // A wedged rc (waiting on input/network) must not stall the first bash
     // call; probing is best-effort and the host PATH remains the fallback.
     let output = rx.recv_timeout(Duration::from_secs(5)).ok()?.ok()?;
     if !output.status.success() {
@@ -507,7 +507,7 @@ fn probe_user_login_path() -> Option<String> {
 
 /// Locate a user-installed program the way a login shell would: process PATH
 /// first, then the Unix login PATH probe. Windows stays on the host PATH.
-/// Used by Grep to prefer a system `rg` without assuming it exists.
+/// Used by grep to prefer a system `rg` without assuming it exists.
 pub fn find_user_program(name: &str) -> Option<PathBuf> {
     for candidate in program_names(name) {
         if let Some(path) = search_path(&candidate, |_| true) {

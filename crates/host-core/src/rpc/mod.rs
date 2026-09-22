@@ -1039,7 +1039,7 @@ fn requires_external_path_permission(
     tool_name: &str,
     args: &Value,
 ) -> bool {
-    if !matches!(tool_name, "Read" | "Glob" | "Grep" | "Write" | "Edit") {
+    if !matches!(tool_name, "read" | "glob" | "grep" | "write" | "edit") {
         return false;
     }
     let Some(path) = args.get("path").and_then(Value::as_str) else {
@@ -1184,7 +1184,7 @@ fn bash_cancellation_requested(receiver: &Option<tokio::sync::watch::Receiver<bo
 }
 
 async fn clear_bash_cancellation(state: &Arc<Mutex<AppState>>, p: &ToolsExecuteParams) {
-    if !matches!(p.tool_name.as_str(), "Bash" | "GenerateImages") {
+    if !matches!(p.tool_name.as_str(), "bash" | "generate_images") {
         return;
     }
     let mut st = state.lock().await;
@@ -3243,11 +3243,19 @@ async fn handle_request(
         }
         "tools.execute" => {
             let call_started = std::time::Instant::now();
-            let p: ToolsExecuteParams = serde_json::from_value(params.clone())
+            let mut p: ToolsExecuteParams = serde_json::from_value(params.clone())
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            // Single normalization boundary for a tool call that reaches the
+            // host (spec 23 §3). A replayed transcript, an imported session or an
+            // older sidecar may still spell the name the pre-rename way, and
+            // everything below — the shell branch, external-path gating, the
+            // permission gate, the session grants recorded here, the admission
+            // class, the review snapshot and the dispatch itself — compares
+            // canonical names.
+            p.tool_name = tools::normalize_tool_name(&p.tool_name).into_owned();
             let execution_timeout_ms = tools::effective_timeout_ms(&p.tool_name, p.timeout_ms);
 
-            let command_shell_id = if p.tool_name == "Bash" {
+            let command_shell_id = if p.tool_name == "bash" {
                 let catalog = {
                     let st = state.lock().await;
                     command_shell_catalog(&st)?
@@ -3271,7 +3279,7 @@ async fn handle_request(
                     let result = shell_failure_result(
                         &p,
                         "COMMAND_SHELL_CHANGED",
-                        "expectedCommandShellId is required for Bash execution",
+                        "expectedCommandShellId is required for bash execution",
                         Some(effective.id.clone()),
                         call_started,
                     );
@@ -3309,26 +3317,26 @@ async fn handle_request(
 
             // Register before permission evaluation so tools.abort can cancel
             // an approval wait as well as an already-spawned process.
-            let cancellation_receiver = if matches!(p.tool_name.as_str(), "Bash" | "GenerateImages")
-            {
-                let mut st = state.lock().await;
-                match st.register_bash_cancellation(&p.session_id, &p.tool_call_id) {
-                    Ok(receiver) => Some(receiver),
-                    Err(error_code) => {
-                        let result = shell_failure_result(
-                            &p,
-                            &error_code,
-                            "another Bash call is already active for this tool call ID",
-                            command_shell_id.clone(),
-                            call_started,
-                        );
-                        return serde_json::to_value(result)
-                            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"));
+            let cancellation_receiver =
+                if matches!(p.tool_name.as_str(), "bash" | "generate_images") {
+                    let mut st = state.lock().await;
+                    match st.register_bash_cancellation(&p.session_id, &p.tool_call_id) {
+                        Ok(receiver) => Some(receiver),
+                        Err(error_code) => {
+                            let result = shell_failure_result(
+                                &p,
+                                &error_code,
+                                "another bash call is already active for this tool call ID",
+                                command_shell_id.clone(),
+                                call_started,
+                            );
+                            return serde_json::to_value(result)
+                                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"));
+                        }
                     }
-                }
-            } else {
-                None
-            };
+                } else {
+                    None
+                };
 
             let outcome: Result<Value, JsonRpcError> = async {
                 let (
@@ -3404,7 +3412,7 @@ async fn handle_request(
                                 plan_safe_actions: p.plan_safe_actions.as_deref(),
                             },
                         );
-                    // Write/Edit targeting the session scratch dir never touch
+                    // `write`/`edit` targeting the session scratch dir never touch
                     // the user's project — skip the prompt (D114). The lexical
                     // pre-check only decides prompting; execution still goes
                     // through the symlink-aware resolver, so it cannot be used
@@ -3412,7 +3420,7 @@ async fn handle_request(
                     // never bypassed.
                     if !sessions::is_contract_mode(&durable_mode)
                         && auto.is_none()
-                        && matches!(p.tool_name.as_str(), "Write" | "Edit")
+                        && matches!(p.tool_name.as_str(), "write" | "edit")
                     {
                         if let (Some(scratch_dir), Some(path)) = (
                             scratch.as_deref(),
@@ -3438,8 +3446,8 @@ async fn handle_request(
                             "Accesses a path outside the session workspace"
                         } else {
                             match p.tool_name.as_str() {
-                                "Write" | "Edit" => "Modifies files in your workspace",
-                                "Bash" => "Runs a shell command in your workspace",
+                                "write" | "edit" => "Modifies files in your workspace",
+                                "bash" => "Runs a shell command in your workspace",
                                 name if name.starts_with("mcp_") => {
                                     "MCP server tool requires approval"
                                 }
@@ -3577,8 +3585,8 @@ async fn handle_request(
                         && !PermissionManager::plan_mode_allows(&p.tool_name)
                     {
                         match p.tool_name.as_str() {
-                            "Write" => "WRITE_DISABLED_IN_PLAN",
-                            "Edit" => "EDIT_DISABLED_IN_PLAN",
+                            "write" => "WRITE_DISABLED_IN_PLAN",
+                            "edit" => "EDIT_DISABLED_IN_PLAN",
                             name if name.starts_with("plugin_") => "PLUGIN_DISABLED_IN_PLAN",
                             _ => "TOOL_DISABLED_IN_PLAN",
                         }
@@ -3674,7 +3682,7 @@ async fn handle_request(
                     None
                 });
                 let mut bash_options = None;
-                if p.tool_name == "Bash" {
+                if p.tool_name == "bash" {
                     let (shell_id, cancellation) = {
                         let st = state.lock().await;
                         let catalog = command_shell_catalog(&st)?;
@@ -3693,7 +3701,7 @@ async fn handle_request(
                             let result = shell_failure_result(
                                 &p,
                                 "COMMAND_SHELL_CHANGED",
-                                "expectedCommandShellId is required for Bash execution",
+                                "expectedCommandShellId is required for bash execution",
                                 Some(effective.id.clone()),
                                 call_started,
                             );
@@ -3730,7 +3738,7 @@ async fn handle_request(
                 let mut result = if tools::is_desktop_dispatched(&p.tool_name) {
                     // Plugin and MCP dispatch has its own bounded default, sized
                     // to outlast Electron's budgets; command-shell timeout
-                    // semantics apply only to Bash.
+                    // semantics apply only to bash.
                     execute_plugin_tool(
                         &state,
                         &tx,
@@ -3794,14 +3802,14 @@ async fn handle_request(
                 let result_root = result.content.get("root").and_then(|v| v.as_str());
                 if result.ok
                     && result_root == Some("workspace")
-                    && matches!(p.tool_name.as_str(), "Write" | "Edit")
+                    && matches!(p.tool_name.as_str(), "write" | "edit")
                 {
                     if let Some(rel) = result.content.get("path").and_then(|v| v.as_str()) {
                         let abs = match ws_path.as_deref() {
                             Some(root) => root.join(rel).to_string_lossy().to_string(),
                             None => rel.to_string(),
                         };
-                        let op = if p.tool_name == "Write" {
+                        let op = if p.tool_name == "write" {
                             "write"
                         } else {
                             "edit"
@@ -5879,7 +5887,7 @@ mod tests {
             }
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
-        panic!("Bash cancellation was not registered");
+        panic!("bash cancellation was not registered");
     }
 
     async fn assert_bash_registry_empty(state: &Arc<Mutex<AppState>>) {
@@ -6093,7 +6101,7 @@ mod tests {
         let written = crate::tools::execute_tool_with_path_access(
             Some(&root),
             Some(&scratch),
-            "Write",
+            "write",
             &json!({ "path": "notes.txt", "content": "temporary" }),
             crate::tools::ToolExecutionOptions {
                 timeout_ms: None,
@@ -6113,7 +6121,7 @@ mod tests {
         let read = crate::tools::execute_tool_with_path_access(
             Some(&root),
             Some(&scratch),
-            "Read",
+            "read",
             &json!({ "path": "notes.txt" }),
             crate::tools::ToolExecutionOptions {
                 timeout_ms: None,
@@ -6771,7 +6779,7 @@ mod tests {
             json!({
                 "sessionId": session.id,
                 "toolCallId": "mismatch-call",
-                "toolName": "Bash",
+                "toolName": "bash",
                 "args": { "command": command },
                 "expectedCommandShellId": expected_shell_id,
                 "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(expected_shell_id),
@@ -6825,7 +6833,7 @@ mod tests {
             json!({
                 "sessionId": session.id,
                 "toolCallId": "dialect-mismatch",
-                "toolName": "Bash",
+                "toolName": "bash",
                 "args": { "command": command },
                 "expectedCommandShellId": current_shell_id,
                 "expectedCommandShellDialect": stale_dialect,
@@ -6884,7 +6892,7 @@ mod tests {
                 json!({
                     "sessionId": session_id,
                     "toolCallId": "abort-before-approval",
-                    "toolName": "Bash",
+                    "toolName": "bash",
                     "args": { "command": sleeping_bash_command() },
                     "expectedCommandShellId": shell_id,
                     "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(&shell_id),
@@ -6971,7 +6979,7 @@ mod tests {
                 json!({
                     "sessionId": session_id,
                     "toolCallId": "pending-read",
-                    "toolName": "Bash",
+                    "toolName": "bash",
                     "args": { "command": sleeping_bash_command() },
                     "expectedCommandShellId": shell_id,
                     "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(&shell_id),
@@ -7004,7 +7012,7 @@ mod tests {
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0]["requestId"], request_id);
         assert_eq!(requests[0]["sessionId"], session.id);
-        assert_eq!(requests[0]["toolName"], "Bash");
+        assert_eq!(requests[0]["toolName"], "bash");
         assert_eq!(requests[0]["timeoutMs"], 120000);
         assert!(
             requests[0]["expiresAt"].as_str().unwrap() > requests[0]["createdAt"].as_str().unwrap()
@@ -7084,7 +7092,7 @@ mod tests {
                 json!({
                     "sessionId": session_id,
                     "toolCallId": "abort-during-approval",
-                    "toolName": "Bash",
+                    "toolName": "bash",
                     "args": { "command": sleeping_bash_command() },
                     "expectedCommandShellId": shell_id,
                     "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(&shell_id),
@@ -7179,7 +7187,7 @@ mod tests {
                 json!({
                     "sessionId": session_id,
                     "toolCallId": "abort-during-execution",
-                    "toolName": "Bash",
+                    "toolName": "bash",
                     "args": { "command": started_command },
                     "expectedCommandShellId": shell_id,
                     "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(&shell_id),
@@ -7267,7 +7275,7 @@ mod tests {
             json!({
                 "sessionId": session.id,
                 "toolCallId": "timeout-call",
-                "toolName": "Bash",
+                "toolName": "bash",
                 "args": { "command": timeout_command },
                 "expectedCommandShellId": shell_id,
                 "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(&shell_id),
@@ -7292,7 +7300,7 @@ mod tests {
             json!({
                 "sessionId": "missing-session",
                 "toolCallId": "early-error",
-                "toolName": "Bash",
+                "toolName": "bash",
                 "args": { "command": sleeping_bash_command() },
                 "expectedCommandShellId": shell_id,
                 "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(&shell_id),
@@ -7343,7 +7351,7 @@ mod tests {
             json!({
                 "sessionId": session.id,
                 "toolCallId": "output-call",
-                "toolName": "Bash",
+                "toolName": "bash",
                 "args": { "command": output_bash_command() },
                 "expectedCommandShellId": shell_id,
                 "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(&shell_id),
@@ -7398,7 +7406,7 @@ mod tests {
             json!({
                 "sessionId": "missing-session",
                 "toolCallId": "mismatch-no-register",
-                "toolName": "Bash",
+                "toolName": "bash",
                 "args": { "command": "should-not-run" },
                 "expectedCommandShellId": expected_shell_id,
                 "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(expected_shell_id),
@@ -7782,6 +7790,74 @@ mod tests {
         assert_eq!(missing.data.unwrap()["errorCode"], "NOT_FOUND");
     }
 
+    /// A replayed tool call still carries the spelling the model emitted before
+    /// the rename, and stored data is never rewritten (spec 23 §3). The host
+    /// normalizes the name once at the RPC boundary, so a legacy spelling takes
+    /// the same permission path, admission class, review snapshot and dispatch
+    /// as its canonical form — and the audit row records the canonical name.
+    #[tokio::test]
+    async fn legacy_tool_name_in_a_replayed_request_still_executes() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        fs::write(project.join("note.txt"), "hello").unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Replayed".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        for (index, tool_name) in ["Read", "read"].into_iter().enumerate() {
+            let result = handle_request(
+                state.clone(),
+                "tools.execute",
+                json!({
+                    "sessionId": session.id,
+                    "toolCallId": format!("replayed-{index}"),
+                    "toolName": tool_name,
+                    "args": { "path": "note.txt" },
+                    "mode": "agent"
+                }),
+                tx.clone(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(result["ok"], json!(true), "{tool_name}: {result}");
+            assert!(
+                result["content"]["content"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("hello"),
+                "{tool_name} did not read the file: {result}"
+            );
+        }
+
+        let st = state.lock().await;
+        let payload: String = st
+            .db
+            .conn()
+            .query_row(
+                "SELECT payload_json FROM audit_log WHERE kind = 'tool_execute' ORDER BY id DESC LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(
+            payload["toolName"],
+            json!("read"),
+            "the audit row carries the canonical name"
+        );
+    }
+
     /// D137: the audit row for a tool call must carry the three segments
     /// separately, so "the tool was slow" can be told apart from "the user
     /// took 20s to approve it".
@@ -7805,7 +7881,7 @@ mod tests {
         let state = Arc::new(Mutex::new(app_state));
         let (tx, _rx) = mpsc::unbounded_channel();
 
-        // Read is low risk, so it auto-allows and never prompts — the run
+        // read is low risk, so it auto-allows and never prompts — the run
         // therefore has a zero approval segment by construction.
         let result = handle_request(
             state.clone(),
@@ -7813,7 +7889,7 @@ mod tests {
             json!({
                 "sessionId": session.id,
                 "toolCallId": "tc-1",
-                "toolName": "Read",
+                "toolName": "read",
                 "args": { "path": "note.txt" },
                 "mode": "agent"
             }),
@@ -7834,7 +7910,7 @@ mod tests {
             )
             .unwrap();
         let payload: serde_json::Value = serde_json::from_str(&payload).unwrap();
-        assert_eq!(payload["toolName"], json!("Read"));
+        assert_eq!(payload["toolName"], json!("read"));
         assert_eq!(payload["prompted"], json!(false));
         // Auto-allowed, so the approval segment is bookkeeping only: assert it
         // is negligible rather than exactly zero, since a loaded test runner
@@ -7902,7 +7978,7 @@ mod tests {
                 json!({
                     "sessionId": session_id,
                     "toolCallId": "outside-plan-read",
-                    "toolName": "Read",
+                    "toolName": "read",
                     "args": { "path": path_for_request },
                     "mode": "agent"
                 }),
@@ -7943,7 +8019,7 @@ mod tests {
                 json!({
                     "sessionId": session_id,
                     "toolCallId": "outside-plan-read-allowed",
-                    "toolName": "Read",
+                    "toolName": "read",
                     "args": { "path": path_for_request },
                     "mode": "agent"
                 }),
@@ -7988,7 +8064,7 @@ mod tests {
             json!({
                 "sessionId": session.id,
                 "toolCallId": "outside-plan-auto-read",
-                "toolName": "Read",
+                "toolName": "read",
                 "args": { "path": outside_file.to_string_lossy() },
                 "mode": "agent"
             }),
@@ -8018,7 +8094,7 @@ mod tests {
             Some(project.to_string_lossy().into_owned()),
         )
         .unwrap();
-        // Session mode is `ask`: without a scope, Write prompts (ADR 0089).
+        // Session mode is `ask`: without a scope, write prompts (ADR 0089).
         sessions::configure_session_with_thinking(
             &app_state.db,
             &session.id,
@@ -8033,7 +8109,7 @@ mod tests {
         let session_id = session.id.clone();
         let outside_path = outside.join("note.txt").to_string_lossy().into_owned();
 
-        // 1. In-workspace Write under `permissionScope: accept-edits` resolves
+        // 1. In-workspace write under `permissionScope: accept-edits` resolves
         //    without a permission request, despite the session being in `ask`.
         let (notify_tx, mut notify_rx) = mpsc::unbounded_channel();
         let allowed = handle_request(
@@ -8042,7 +8118,7 @@ mod tests {
             json!({
                 "sessionId": session_id.clone(),
                 "toolCallId": "delegate-write-scoped",
-                "toolName": "Write",
+                "toolName": "write",
                 "args": { "path": "file.txt", "content": "delegated" },
                 "mode": "agent",
                 "permissionScope": "accept-edits"
@@ -8060,7 +8136,7 @@ mod tests {
         match stray {
             Err(_) | Ok(None) => {}
             Ok(Some(text)) => {
-                panic!("scoped in-workspace Write raised an unexpected notification: {text}")
+                panic!("scoped in-workspace write raised an unexpected notification: {text}")
             }
         }
 
@@ -8075,7 +8151,7 @@ mod tests {
                 json!({
                     "sessionId": pending_session_id,
                     "toolCallId": "delegate-write-unscoped",
-                    "toolName": "Write",
+                    "toolName": "write",
                     "args": { "path": "file2.txt", "content": "delegated" },
                     "mode": "agent"
                 }),
@@ -8101,7 +8177,7 @@ mod tests {
         .unwrap();
         assert_eq!(pending.await.unwrap().unwrap()["ok"], true);
 
-        // 3. An external-path Write keeps prompting even under the scope: the
+        // 3. An external-path write keeps prompting even under the scope: the
         //    scope only relaxes the session mode, never the path gate.
         let (notify_tx, mut notify_rx) = mpsc::unbounded_channel();
         let pending_state = state.clone();
@@ -8114,7 +8190,7 @@ mod tests {
                 json!({
                     "sessionId": pending_session_id,
                     "toolCallId": "delegate-write-external",
-                    "toolName": "Write",
+                    "toolName": "write",
                     "args": { "path": pending_outside_path, "content": "delegated" },
                     "mode": "agent",
                     "permissionScope": "accept-edits"
@@ -8180,7 +8256,7 @@ mod tests {
         let (notify_tx, mut notify_rx) = mpsc::unbounded_channel();
         let outside_path = outside.to_string_lossy().into_owned();
 
-        // A builtin fixer inherits the parent mode, so the same external Glob
+        // A builtin fixer inherits the parent mode, so the same external glob
         // that triggered the reported card is allowed in auto without a scope.
         let result = handle_request(
             state,
@@ -8188,7 +8264,7 @@ mod tests {
             json!({
                 "sessionId": session_id,
                 "toolCallId": "delegate-external-glob-auto",
-                "toolName": "Glob",
+                "toolName": "glob",
                 "args": { "path": outside_path, "pattern": "**/*", "limit": 10 },
                 "mode": "agent"
             }),
@@ -8196,8 +8272,8 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(result["ok"], true, "external auto Glob failed: {result}");
-        // External Glob results are absolute rather than carrying a root field.
+        assert_eq!(result["ok"], true, "external auto glob failed: {result}");
+        // External glob results are absolute rather than carrying a root field.
         let canonical_outside_file = crate::workspace::simple_canonicalize(&outside_file).unwrap();
         assert_eq!(
             result["content"]["matches"][0],
@@ -8209,7 +8285,7 @@ mod tests {
         match stray {
             Err(_) | Ok(None) => {}
             Ok(Some(text)) => {
-                panic!("auto external Glob raised an unexpected notification: {text}")
+                panic!("auto external glob raised an unexpected notification: {text}")
             }
         }
     }
@@ -8251,12 +8327,12 @@ mod tests {
 
         for (tool_name, args, expected) in [
             (
-                "Write",
+                "write",
                 json!({ "path": "ignored.txt", "content": "no" }),
                 "WRITE_DISABLED_IN_PLAN",
             ),
             (
-                "Edit",
+                "edit",
                 json!({ "path": "ignored.txt", "tag": "ABCD", "ops": "PUT 1.=1:\n+b\n" }),
                 "EDIT_DISABLED_IN_PLAN",
             ),
@@ -8287,7 +8363,7 @@ mod tests {
             json!({
                 "sessionId": session_id,
                 "toolCallId": "bash-auto",
-                "toolName": "Bash",
+                "toolName": "bash",
                 "args": { "command": plan_bash_command },
                 "expectedCommandShellId": command_shell_id,
                 "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(command_shell_id),
@@ -8323,7 +8399,7 @@ mod tests {
                 json!({
                     "sessionId": session_id,
                     "toolCallId": "bash-ask",
-                    "toolName": "Bash",
+                    "toolName": "bash",
                     "args": { "command": ask_bash_command },
                     "expectedCommandShellId": command_shell_id,
                     "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(command_shell_id),
@@ -8382,12 +8458,12 @@ mod tests {
 
         for (tool_name, args, expected) in [
             (
-                "Write",
+                "write",
                 json!({ "path": "ignored.txt", "content": "no" }),
                 "WRITE_DISABLED_IN_PLAN",
             ),
             (
-                "Edit",
+                "edit",
                 json!({ "path": "ignored.txt", "tag": "ABCD", "ops": "PUT 1.=1:\n+b\n" }),
                 "EDIT_DISABLED_IN_PLAN",
             ),
@@ -8413,7 +8489,7 @@ mod tests {
             assert_eq!(result["ok"], false);
         }
 
-        // Bash still follows the permission mode rather than the allowlist.
+        // bash still follows the permission mode rather than the allowlist.
         #[cfg(windows)]
         let goal_bash_command = "[Console]::Out.Write('goal-bash')";
         #[cfg(not(windows))]
@@ -8425,7 +8501,7 @@ mod tests {
             json!({
                 "sessionId": session_id,
                 "toolCallId": "goal-bash-auto",
-                "toolName": "Bash",
+                "toolName": "bash",
                 "args": { "command": goal_bash_command },
                 "expectedCommandShellId": command_shell_id,
                 "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(command_shell_id),

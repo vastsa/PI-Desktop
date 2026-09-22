@@ -480,9 +480,9 @@ Plan 和 Goal 是两种 **合约模式** (D198)。他们共用一个耐用的
 可以知道会话处于哪种持久模式。
 
 当用户选择 Plan 时，`Agent / inactive` 进入 `Plan / planning`
-空闲时或 Agent 调用 `EnterPlanMode` 时。在 Plan 中，Agent 可以
-检查、使用上下文控制、通过选定的权限模式运行 Bash，
-并调用 `SubmitPlan(title, markdown, question)`。主机核心保留
+空闲时或 Agent 调用 `enter_plan_mode` 时。在 Plan 中，Agent 可以
+检查、使用上下文控制、通过选定的权限模式运行 bash，
+并调用 `submit_plan(title, markdown, question)`。主机核心保留
 在新的不可变中提交 Markdown 字节
 `.pi/plan/<unique-name>.md` 工件，记录其相对 path/hash/size 和
 在 `plan_approvals` 中构造 title/question，并将活动状态移至
@@ -495,8 +495,8 @@ Plan 和 Goal 是两种 **合约模式** (D198)。他们共用一个耐用的
 绝对过期、待处理的中断、过时的响应或持久性
 失败关闭批准行并将活动状态返回为可编辑
 `Plan / planning` 不授予执行工具。后来接受的 Plan 提示
-是一个新的转折：早期的 `SubmitPlan` 调用仍然是历史不可变的
-检查点，并且 Agent 必须调用 `SubmitPlan`
+是一个新的转折：早期的 `submit_plan` 调用仍然是历史不可变的
+检查点，并且 Agent 必须调用 `submit_plan`
 一次使用新的完整 Markdown 快照来创建新的工件。如果批准
 已提交且 queued/running 执行被中断，持久模式
 仍然是 Agent 并且不会重播执行。
@@ -509,9 +509,9 @@ Plan 和 Goal 是两种 **合约模式** (D198)。他们共用一个耐用的
 仅在会话空闲后才提交配置。
 
 `Agent / inactive` 进入 `Goal / planning` 两种方式相同，由用户选择
-空闲时或通过 Agent 调用 `EnterGoalMode`。 Goal 有相同的工具
+空闲时或通过 Agent 调用 `enter_goal_mode`。 Goal 有相同的工具
 表面为 Plan，只不过其提交工具是
-`SubmitGoal(title, markdown, question)` 及其工件被写入
+`submit_goal(title, markdown, question)` 及其工件被写入
 `.pi/goal/<unique-name>.md`。提交的 Markdown 是一个**目标合约**——
 要达到的结果、证明已达到的验收标准以及
 不得跨越的界限——不是实施步骤的列表。一个
@@ -617,7 +617,7 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   `delegationId`。当会话已经在运行 `MAX_SUBAGENT_CONCURRENCY`（10）个
   委托时，启动会以工具错误失败。
 
-  `Task` 工具接受一个可选的 `model` 参数（`"provider/modelId"`），用于在本次
+  `task` 工具接受一个可选的 `model` 参数（`"provider/modelId"`），用于在本次
   运行中覆盖该委托的模型。解析优先级：Task.model 参数 → 定义 frontmatter 的
   引脚 → 会话模型。父 agent 会在系统提示中看到一份模型摘要，列出提供商设置里
   所有标记为 `availableForSubagents` 的模型。若委托目录为空，提示会告诉模型
@@ -627,13 +627,13 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   固定使用的模型，只有前者授权缓存覆盖并生成模型摘要。缺省列表为空；按需解析成功
   写入独立覆盖缓存，不得覆盖定义固定模型或改变运行时复用判断。按需匹配使用与
   固定模型相同的唯一 id/vendor/name 规则。许可列表变化会在下一次启动时替换空闲运行时。
-  省略 `model`，或 `Task.model` 重复该定义自己的固定模型键时，定义仍可使用未勾选自动调度的固定模型。Task 的定义目录展示
+  省略 `model`，或 `task.model` 重复该定义自己的固定模型键时，定义仍可使用未勾选自动调度的固定模型。Task 的定义目录展示
   每项默认模型，并提示省略或重复该键以保留默认值。参见
   [ADR subagent-model-opt-in](/adr/subagent-model-opt-in)。
   当某个模型键没有被预先解析时，运行时会请求 Electron main 通过
-  `provider.resolveSubagentModel` RPC 按需解析。已启动的 `Task` 结果详情会记录
+  `provider.resolveSubagentModel` RPC 按需解析。已启动的 `task` 结果详情会记录
   本次运行实际使用的 `modelId`。
-- `TaskWait(delegationIds?, mode?, minCompleted?, timeoutSeconds?)` — 收敛
+- `task_wait(delegationIds?, mode?, minCompleted?, timeoutSeconds?)` — 收敛
   正在运行的委托（默认全部）并返回它们的报告；`mode: "any"` 配合
   `minCompleted` 可以在前 N 个完成时提前收敛。已结算的委托立即返回，
   因此按 id 重读报告代价很低。合并结果上限为 `MAX_TASKWAIT_RESULT_CHARS`
@@ -641,16 +641,16 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   所以这个上限决定了会话最长能看起来卡住多久。到点不是失败，也不会停掉委托
   （D328）—— 等待返回心跳（谁、状态、已用时、轮数、最后工具）以及已完成的
   报告。运行时会保持父级回合打开，并在它们完成时把剩余报告交回，即使父级已经
-  停止调用工具。只有 `TaskStop` 或用户 Stop 才会中止委托。
-- `TaskList()` — 报告会话的每个委托及其状态和运行中心跳。
-- `TaskStop(delegationIds?)` — 停止正在运行的委托（默认全部）；等待每次
+  停止调用工具。只有 `task_stop` 或用户 Stop 才会中止委托。
+- `task_list()` — 报告会话的每个委托及其状态和运行中心跳。
+- `task_stop(delegationIds?)` — 停止正在运行的委托（默认全部）；等待每次
   中止结算后，在 `details.stopped[]` 上持久化 `status: "stopped"` 与
   `completedAt`。被停止的委托读作 `stopped`。
 
 **委托循环。** `SubagentRun` 是同一 sidecar 进程中的第二个 pi `Agent`，
 使用该定义的系统提示、其（可能已固定的）provider/model、其声明的工具，
 以及与父级相同的主机连接，并遵循与父级相同的有界提供程序重试策略。
-委托没有轮次上限：它会在自己结束时、父级调用 `TaskStop` 时、用户 Stop 时结束，
+委托没有轮次上限：它会在自己结束时、父级调用 `task_stop` 时、用户 Stop 时结束，
 或因父级终态错误而被中止（ADR 0253）。仍声明 `maxTurns` 的文档会正常加载，该键
 会像其他任何无法识别的 frontmatter 键一样被忽略。
 `maxTokens` 是可选的按定义输出上限（最大 200000）；省略、`none` 或 `0` 表示跟随模型
@@ -658,21 +658,21 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 `max_tokens` / `max_completion_tokens` / `max_output_tokens` 都会带上它；它只约束该
 委托自身的响应 —— 会话自己的请求仍沿用模型绑定。超过天花板的值属于笔误，会被钳制
 而不会转发给 provider。
-内置的 `explorer` 声明 `Read`、
-`Glob`、`Grep` 和 `Bash`，而 `code-reviewer` 保持只读；`fixer` 与 `ui-designer`
-会在工作区内写入，`ui-designer` 另外声明 `BrowserPreview`，以便在报告前检查渲染结果。
+内置的 `explorer` 声明 `read`、
+`glob`、`grep` 和 `bash`，而 `code-reviewer` 保持只读；`fixer` 与 `ui-designer`
+会在工作区内写入，`ui-designer` 另外声明 `browser_preview`，以便在报告前检查渲染结果。
 其状态为 `completed`、`failed`、`aborted`、`timed_out` 以及仅存在于注册表的
-`stopped`；终态通过 `TaskWait` 呈现，其文本是报告（上限为
+`stopped`；终态通过 `task_wait` 呈现，其文本是报告（上限为
 `MAX_SUBAGENT_REPORT_CHARS`，12k），其 details 携带 `delegationId`、`agent`、
 `status`、`startedAt`、结算后的 `completedAt`、`turns`、`toolCalls`，以及失败或
 超时时的 `error`。`startedAt` 与 `completedAt` 是以毫秒计的运行时时间戳，也是
-渲染器展示委托时长的事实来源；`Task` 那次立即返回的工具调用时长只覆盖启动
+渲染器展示委托时长的事实来源；`task` 那次立即返回的工具调用时长只覆盖启动
 后台工作这一段。
 
 **委托生命周期（D328）。** 运行时不再用空闲或总时长掐死委托。
 `idle-timeout` / `max-duration` 仍会解析以便旧文档能加载，但不会被武装。
-委托一直跑到自己结束、失败、被 `TaskStop`，或用户
-Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行中只能看到
+委托一直跑到自己结束、失败、被 `task_stop`，或用户
+Stop / 运行时销毁。主 Agent 用 `task_stop` 判断要不要取消；运行中只能看到
 一行心跳（谁、状态、已用时、轮数、最后工具）。
 
 当父级在委托仍在跑时停止调用工具，运行时吞掉这次 `agent_end`，保持持久
@@ -683,17 +683,17 @@ Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行
 父级终态错误还会中止残留委托、跳过续跑提示，并把会话恢复为空闲，这样
 “继续”不会变成 `AGENT_BUSY`（D352）。
 
-**可恢复的委托（ADR 0279）。** `Task` 接受一个可选的 `resume` 参数，携带同一会话中
+**可恢复的委托（ADR 0279）。** `task` 接受一个可选的 `resume` 参数，携带同一会话中
 某个已结算委托的 `delegationId`。恢复后的委托是一个新的 `SubagentRun`，以该链此前的
 消息为种子 —— 最初的 `task` 简述，加上这条链产出的每一行 —— 然后再以新的 `task`
 提示它，于是一个已经读过或改过某个文件的委托会从那份上下文继续，而不是从零开始。
-种子完全由 transcript 支撑：链的行恰好是那些 `parentToolCallId` 属于该链某个 `Task`
+种子完全由 transcript 支撑：链的行恰好是那些 `parentToolCallId` 属于该链某个 `task`
 调用的行，它们用委托自己的绑定（固定的委托模型未必是会话模型）转换成 provider 消息。
 不保活任何内存对象，也不引入新的事件类型、存储 schema 或工具参数。
 
-一条链是共享同一个委托会话的那些 `Task` 调用的序列：第一次调用，加上此后每一个把更早
+一条链是共享同一个委托会话的那些 `task` 调用的序列：第一次调用，加上此后每一个把更早
 的 `delegationId` 当作 `resume` 传入的调用。运行时在启动时从持久化的 transcript 重建
-链索引 —— 每个 `Task` 行都在 `toolResult.details` 里带着自己的 `delegationId` 与结算
+链索引 —— 每个 `task` 行都在 `toolResult.details` 里带着自己的 `delegationId` 与结算
 状态、在 `toolArgs.resume` 里带着被恢复的 id，并在重建时归一化 agent 名 —— 因此可恢复性
 能挺过一次 sidecar 重启。链的身份（`delegateSessionId`）始终留在内部；父级只会传
 `delegationId`，由反向映射解析它。
@@ -706,7 +706,7 @@ Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行
 那些；仍在工作的链永不淘汰，所以这个上限只算可复用链，活跃链可以让它暂时超出。
 
 恢复严格限定在同一会话内，且从不排队：对正在运行的委托做恢复是一个工具错误，提示父级
-先用 `TaskWait` 收敛；一条链在任何时刻最多只有一条活跃记录。`model` 与 `resume` 同时
+先用 `task_wait` 收敛；一条链在任何时刻最多只有一条活跃记录。`model` 与 `resume` 同时
 给出会被拒绝，而恢复后的运行会沿用该链记录的绑定：优先使用链解析出的
 `providerId/modelId` 键，从 transcript 重建的链则按模型 id 匹配；当什么都匹配不上时，
 运行会继续使用定义当前的绑定，并把先前的模型 id 记进它生命周期 details 的
@@ -717,9 +717,9 @@ Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行
 父级通过系统提示发现可复用的链：那里列出每条链最新的 `delegationId`、它的目标，以及它
 读过的文件最多 `MAX_RESUMABLE_LISTED_FILES`（8）个（超出部分带 `(+N more)` 后缀）。
 清单会在委托结算时围绕既有的提示段落重新组装。对 `MAX_SUBAGENT_CONCURRENCY`、
-`TaskWait`、`TaskList`、`TaskStop` 以及生命周期快照而言，恢复来的运行就是一个普通
-委托。`Task` 的立即返回结果与生命周期 details 会增加 `resumedFrom` 以便追溯；
-transcript 把一条链渲染成它最新 `Task` 卡片下的一段连续多轮对话，不带单独的
+`task_wait`、`task_list`、`task_stop` 以及生命周期快照而言，恢复来的运行就是一个普通
+委托。`task` 的立即返回结果与生命周期 details 会增加 `resumedFrom` 以便追溯；
+transcript 把一条链渲染成它最新 `task` 卡片下的一段连续多轮对话，不带单独的
 “已恢复”标记。
 
 **模型引脚。** Frontmatter 中的 `model: <provider>/<model>` 在每次启动时于
@@ -736,7 +736,7 @@ Electron main 里解析一次——凭据与 models.dev 快照都在那里——
 
 
 **上下文预算与压缩（ADR 0299）。** 委托拥有与会话相同的窗口保护，并且以相同方式
-推导。预算取自该次运行实际解析出的模型 —— `Task.model` 覆盖、定义引脚，或继承
+推导。预算取自该次运行实际解析出的模型 —— `task.model` 覆盖、定义引脚，或继承
 的会话模型 —— 走第 5.1 节那条共享推导，因此 `hardLimit` 就是该窗口减去同样的
 请求余量，而按定义声明的 `maxTokens` 上限作为输出预算参与其中。在委托的回合边界
 上，该次运行会重新估计它自己的上下文；达到或超过 `hardLimit` 时，就在下一次提供商
@@ -762,14 +762,14 @@ details 会说明该委托丢失了历史，而不是把一个不完整的答案
 
 **事件与上下文。** 委托发出的每个事件都在信封上携带 `parentToolCallId` 和
 `agentName`，Electron main 会把这两者一并复制到持久化的行上。运行时重建模型
-上下文时会跳过每一条带 `parentToolCallId` 的行：父级从始至终只通过 `TaskWait`
+上下文时会跳过每一条带 `parentToolCallId` 的行：父级从始至终只通过 `task_wait`
 或运行时的完成提示（D328）看到报告，重放委托的行既与这一点相矛盾，也会重新
 引入委托机制本就是为了避免的上下文开销。
 
 **回合所有权。** 委托的生命周期永远不会轮到 Electron main
-处理。父级可以在 `Task` 之后继续自己的主线或对用户说话。如果它在委托仍在
+处理。父级可以在 `task` 之后继续自己的主线或对用户说话。如果它在委托仍在
 跑时停止调用工具，运行时保持持久回合打开，并在它们完成时交回报告。用户
-Stop、`TaskStop`、运行时销毁或父级终态错误（D352）会中止仍在运行的委托。
+Stop、`task_stop`、运行时销毁或父级终态错误（D352）会中止仍在运行的委托。
 
 ### 5f.1 委托权限作用域（ADR 0089）
 
@@ -781,7 +781,7 @@ Stop、`TaskStop`、运行时销毁或父级终态错误（D352）会中止仍�
 模式一样始终高于作用域：契约模式的硬拒绝（委托只存在于 Agent 模式）
 和外部路径门禁 —— 带作用域的委托在触碰工作区与 scratch 根之外的任何
 东西之前仍然会询问。因此 `accept-edits` 意味着“工作区内的
-Write/Edit 免提示裁决；其余一切按会话模式行事”。
+write/edit 免提示裁决；其余一切按会话模式行事”。
 
 周围的合约位于 `03-tools-and-permissions.md` §10.2（什么是
 代表可以致电），`04-data-storage.md` §4.7a（持久归属），
@@ -794,9 +794,9 @@ Write/Edit 免提示裁决；其余一切按会话模式行事”。
 `Peer` 邮箱（ADR 0138 / ADR 0140）与 host-core 的 A2A 代理（ADR 0147 /
 ADR 0162 / ADR 0164）均已撤销。
 
-协调工作仍然走既有的委托契约：父方撰写彼此独立的任务简报，启动 `Task`，
-再通过 `TaskWait` / `TaskList` / `TaskStop` 收集各自完备的报告。如果还需要
-下一轮工作，那就是一个新的 `Task`，其简报里包含先前的报告。`A2A` 与 `Peer`
+协调工作仍然走既有的委托契约：父方撰写彼此独立的任务简报，启动 `task`，
+再通过 `task_wait` / `task_list` / `task_stop` 收集各自完备的报告。如果还需要
+下一轮工作，那就是一个新的 `task`，其简报里包含先前的报告。`A2A` 与 `Peer`
 不是可分配的工具；定义中若出现这两个名字，会被当作未知工具名，并在解析时
 带警告丢弃。
 
@@ -892,23 +892,23 @@ agent 运行时的职责，与官方 Pi 编码 agent 的归属层保持一致；
   当模型发出一个模型时，运行时会记录它
 
 它还说明了与主机端预算相匹配的搜索偏好
-[16-工具结果限制](/zh-CN/spec/03-runtime/16-tool-result-limits)：范围 `Read`、`Grep` 和
-`Glob` 用自己的参数代替手卷 `Read`/`Grep`/16-tool-result-limits.md/
-`find`。 `Read` 仅接受现有的常规文本文件。当文件名是
-不确定或必须列出目录时，Agent 会激活 `Glob`
+[16-工具结果限制](/zh-CN/spec/03-runtime/16-tool-result-limits)：范围 `read`、`grep` 和
+`glob` 用自己的参数代替手卷 `read`/`grep`/16-tool-result-limits.md/
+`find`。 `read` 仅接受现有的常规文本文件。当文件名是
+不确定或必须列出目录时，Agent 会激活 `glob`
 通过 `ToolSearch` 获取当前提示，而不是猜测名称或阅读
-目录。 `Glob.path` 是一个目录，而 `Grep.path` 可能是一个文件或一个
-目录树。调用使用 `Read.offset/limit`、`Glob.path/limit` 和
-`Grep.path/include/outputMode/headLimit`； `filesWithMatches` 或 `count` 避免
+目录。 `glob.path` 是一个目录，而 `grep.path` 可能是一个文件或一个
+目录树。调用使用 `read.offset/limit`、`glob.path/limit` 和
+`grep.path/include/outputMode/headLimit`； `filesWithMatches` 或 `count` 避免
 不需要的内容。工作区相对路径仍然是可移植的默认路径，带有
 仅当本机工具不足时才在活动 shell 中使用有界命令。
 Grep 在本机装有 `rg` 时使用它，否则使用进程内搜索器；代理应调用 Grep 而不是在 Bash 里跑 `rg`。Bash 仍不得假定 `rg` 存在。代理不得重复已经在上下文中的搜索。
 
 编辑规范块携带
 [18-line-anchored-edit-contract](/zh-CN/spec/03-runtime/18-line-anchored-edit-contract)
-的行锚定 `Edit` 契约：操作表、仅 `+` 正文规则、“范围只命名被改动的行”、
+的行锚定 `edit` 契约：操作表、仅 `+` 正文规则、“范围只命名被改动的行”、
 “在每次成功写入后依据返回的 tag 重新定位”，以及成文的反模式。sidecar 的
-`Edit` schema 是 `{ path, tag, ops }`；`old_string` 与 `new_string` 不再存在，
+`edit` schema 是 `{ path, tag, ops }`；`old_string` 与 `new_string` 不再存在，
 并且 sidecar 的工具描述必须在实质上与 host-core 的 `builtin_tool_defs()` 条目
 逐字一致，因为按一种语法教出来、却用另一种语法校验的模型每次调用都会失败。
 
@@ -918,19 +918,19 @@ sidecar 构建了一个完整的工具注册表，但它不会序列化每个工
 将模式注册到每个提供商请求中。每个新用户提示都以
 该模式的核心集：
 
-- Agent：`Read`、`Bash`、`Edit` 和 `Write`（匹配 pi 的编码代理核心）
-- Agent：只要技能目录非空，`Skill` 也在核心集中（D404、ADR 0230）——`# Skills`
+- Agent：`read`、`bash`、`edit` 和 `write`（匹配 pi 的编码代理核心）
+- Agent：只要技能目录非空，`skill` 也在核心集中（D404、ADR 0230）——`# Skills`
   段落与用户输入的 `/skill-id` 都要求模型调用它，而模式中缺失的工具根本无法被调用
-- Agent：当子代理目录非空时，`Task`、`TaskWait`、`TaskList` 和
-  `TaskStop` 也是如此 (§5f) — 模型必须寻找的能力是它不会使用的能力，
+- Agent：当子代理目录非空时，`task`、`task_wait`、`task_list` 和
+  `task_stop` 也是如此 (§5f) — 模型必须寻找的能力是它不会使用的能力，
   委托生命周期值得每个请求的额外模式
-- Plan：`Read`、`Glob`、`Grep`、`BrowserPreview` 和 `Bash`
+- Plan：`read`、`glob`、`grep`、`browser_preview` 和 `bash`
 - 两种模式：`ToolSearch`（当至少存在一种延迟功能时）
 
-在Agent模式下，`Glob`和`Grep`加入`BrowserPreview`、插件工具，
+在Agent模式下，`glob`和`grep`加入`browser_preview`、插件工具，
 以及延迟集中的插件开发助手。两种合约模式均保留
 他们的 read/inspection 核心可用，而该类的提交工具
-（`SubmitPlan` 或 `SubmitGoal`）仅在规划状态期间公开，并且
+（`submit_plan` 或 `submit_goal`）仅在规划状态期间公开，并且
 仅适用于主动类型。延迟工具已注册，但其名称和
 紧凑型
 一行描述出现在 `# On-demand tools` 目录中；参数
@@ -951,7 +951,7 @@ pi-agent-core 的 `addedToolNames`，并用这些重建下一轮上下文
 在重用延迟功能之前，运行时仍然需要重新搜索。
 
 对于用户可见的 HTML 可交付成果，默认系统提示要求代理
-创建页面或创建第一个页面后激活 `BrowserPreview` 一次
+创建页面或创建第一个页面后激活 `browser_preview` 一次
 使用工作区相对路径进行有意义的可视化编辑。代理重用
 迭代时实时重新加载预览，而不是发出重复预览
 来电。生成的、仅供测试的和非可视的 HTML 文件被排除在外。当
@@ -962,15 +962,15 @@ Plan 提示告诉相同的 Agent 了解请求，检查
 相关 repository/specification/test 上下文，识别受影响的文件并
 风险，包括重点验证和 migration/recovery 影响、表面风险
 开放式问题。当任何初始或修订计划准备就绪时，必须调用
-`SubmitPlan` 在当前回合中立即恰好一次，并完成一个
+`submit_plan` 在当前回合中立即恰好一次，并完成一个
 降价快照。已接受的新 Plan 提示没有事先等待批准；
 记录中较早提交的内容是历史上不可变的检查点。
 拒绝、过期或中断后，Agent 可能会在新一轮中修改，并且
-必须遵循相同的 one-SubmitPlan 规则。它不得声称变更是
+必须遵循相同的 one-submit_plan 规则。它不得声称变更是
 做了。主机写入不可变的 `.pi/plan/*.md` 工件； Agent 确实
 本身不编写或编辑它，并且不接收请求更改流。
 
-该提示可能会将 Bash 描述为受权限限制且可能会发生变异。它
+该提示可能会将 bash 描述为受权限限制且可能会发生变异。它
 不得将 Plan 描述为严格的只读安全边界。
 
 ### 7. 2a Goal 提示要求
@@ -981,12 +981,12 @@ Goal 提示告诉同一个 Agent 在任何事情之前协商目标合同。
 步骤，因为 Agent 在批准后自行决定这些步骤。每一次接受
 标准必须能够在执行后由 Agent 客观地检查——命令
 那必须过去，或者是可观察到的行为。 Agent 检查工作空间并
-首先询问任何不明确的问题，然后立即准确地调用 `SubmitGoal`
+首先询问任何不明确的问题，然后立即准确地调用 `submit_goal`
 当前回合中一次，包含一个完整的 Markdown 快照。
 
 一次提交规则、历史检查点规则、关闭后修改规则、
 no-chat-confirmation 规则和 host-writes-the-artifact 规则相同
-作为 Plan，用 `SubmitGoal` 和 `.pi/goal/*.md` 代替 Plan
+作为 Plan，用 `submit_goal` 和 `.pi/goal/*.md` 代替 Plan
 等价物。提示还指出，一旦获得批准，合同即为
 Agent 所遵循的标准：自主追求目标、选择
 它自己的方法，只有当每个验收标准都得到验证或一个
@@ -1008,8 +1008,8 @@ order：委托框架、定义的 Markdown 正文和工具
 
 指导块与会话提示使用的文本相同，仅在以下情况下包含：
 该定义声明了匹配工具：search/read 范围为
-Read/Grep/Glob，编辑 Edit/Write 的规则，命令 shell 合约
-Bash 以及会话具有临时目录时的临时目录规则
+read/grep/glob，编辑 edit/write 的规则，命令 shell 合约
+bash 以及会话具有临时目录时的临时目录规则
 代表可以写。附加项目指令链（§7.3）
 最后，因此代表遵循与其会话相同的项目规则。
 
@@ -1021,8 +1021,8 @@ Electron主流程首先解析全局
 按以下顺序最多使用一个非空文件：`AGENTS.override.md`、`AGENTS.md`、
 `CLAUDE.md`，然后是 `.claude/CLAUDE.md`。条目由项目串联而成
 root 到目标目录，因此最接近的文件最后出现并占用
-优先。初始链的目标是项目根。在 `Read` 之前，
-`Write`、`Edit` 或 `BrowserPreview` 调用，sidecar 要求 Electron main
+优先。初始链的目标是项目根。在 `read` 之前，
+`write`、`edit` 或 `browser_preview` 调用，sidecar 要求 Electron main
 解析目标路径并用该路径替换活动指令部分
 工具执行之前路径的完整链。这使得规则变得懒惰并且
 防止代理移动到同级目录后保留同级目录规则
@@ -1062,11 +1062,11 @@ sidecar 从不直接读取工作区指令。改变的根链
 | 同一会话 | 单圈串联 |
 | 不同的会话 | 有限并行 |
 | 工具 | 默认情况下是顺序的 |
-| `Task` 通过一条助理消息进行呼叫 | 并行，每会话 10 个运行委托 (ADR 0089) |
+| `task` 通过一条助理消息进行呼叫 | 并行，每会话 10 个运行委托 (ADR 0089) |
 
 工具并发性通过 pi 执行模式来表示：每个目录工具都是
-`sequential` 和 `Task` 单独为 `parallel`，并且 pi 按顺序运行批处理
-一旦它包含一个顺序工具。因此，全 `Task` 批次是唯一的批次
+`sequential` 和 `task` 单独为 `parallel`，并且 pi 按顺序运行批处理
+一旦它包含一个顺序工具。因此，全 `task` 批次是唯一的批次
 扇出，并且所有其他订购保证均不变。代表问题
 主机独立调用，以及 host-core 的每次会话一次突变准入
 防止写入撕裂，但留下两个无序的相同路径突变，因此

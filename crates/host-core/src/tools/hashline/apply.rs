@@ -185,7 +185,7 @@ fn lower(ops: &ParsedOps, line_count: usize) -> Result<Plan, ToolError> {
     if plan.rem && plan.mv.is_some() {
         return Err(ToolError::new(
             "EDIT_RANGE_INVALID",
-            "REM and MV cannot share one Edit call",
+            "REM and MV cannot share one edit call",
         ));
     }
     if plan.rem && (!plan.inserts.is_empty() || !plan.deletes.is_empty()) {
@@ -485,7 +485,7 @@ pub fn apply_edit(
     if tag.len() != 4 || !tag.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(ToolError::new(
             "EDIT_TAG_REQUIRED",
-            "tag must be 4 hexadecimal digits from the latest Read, Grep, Write, or Edit result",
+            "tag must be 4 hexadecimal digits from the latest read, grep, write, or edit result",
         ));
     }
     let expected = tag.to_uppercase();
@@ -525,7 +525,7 @@ pub fn apply_edit(
                     return Err(ToolError::new(
                         "EDIT_TAG_UNKNOWN",
                         format!(
-                            "tag {expected} is well-formed but this session never recorded it for {display_path}; Read the file and retry with the live tag {live_tag}"
+                            "tag {expected} is well-formed but this session never recorded it for {display_path}; read the file and retry with the live tag {live_tag}"
                         ),
                     )
                     .with_extra(extra));
@@ -535,7 +535,7 @@ pub fn apply_edit(
             return Err(ToolError::new(
                 "EDIT_TAG_MISMATCH",
                 format!(
-                    "tag {expected} does not hash the live file (live tag {live_tag}); Read {display_path} and retry with the live tag"
+                    "tag {expected} does not hash the live file (live tag {live_tag}); read {display_path} and retry with the live tag"
                 ),
             )
             .with_extra(extra));

@@ -119,15 +119,15 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 |---|---|---|
 | `WORKSPACE_REQUIRED` | 不 | 无工作空间限制 |
 | `PATH_OUTSIDE_WORKSPACE` | 不 | 在显式外部路径权限决策之前路径逃逸沙箱，或提示词附件位于其会话 scratch/project/attachment 根目录之外 |
-| `WORKSPACE_PATH_DENIED` | 不 | 显式的 `Read`/`Write`/`Edit` 路径命中了始终开启的安全拒绝名单（私钥、`.env` 文件、凭证包、`.git/objects`）；外部路径授权不会解除它（规格 15 §3） |
-| `READ_PATH_IS_DIRECTORY` | 不 | `Read` 拿到的是目录；结果附带一条 `Glob` 建议 |
-| `TOOL_BINARY_CONTENT` | 不 | `Read` 拒绝把二进制文件倾倒进模型上下文 |
+| `WORKSPACE_PATH_DENIED` | 不 | 显式的 `read`/`write`/`edit` 路径命中了始终开启的安全拒绝名单（私钥、`.env` 文件、凭证包、`.git/objects`）；外部路径授权不会解除它（规格 15 §3） |
+| `READ_PATH_IS_DIRECTORY` | 不 | `read` 拿到的是目录；结果附带一条 `glob` 建议 |
+| `TOOL_BINARY_CONTENT` | 不 | `read` 拒绝把二进制文件倾倒进模型上下文 |
 | `TOOL_NOT_FOUND` | 不 | 未知工具 |
 | `TOOL_DENIED` | 不 | 权限被拒绝/模式被禁止 |
 | `TOOL_TIMEOUT` | 是的 | 工具执行超时 |
 | `TOOL_FAILED` | 也许 | 工具已执行但失败 |
 | `TOOL_ABORTED` | 不 | 工具在完成前被用户停止或回合中止取消 |
-| `MUTATION_RETRY_BUDGET_EXHAUSTED` | 是 | 重复保护在同路径 `Edit` 或 shell patch 反复失败后终止了本轮；携带 `details.kind`（`edit` 或 `patch-command`）与最后一个工具错误代码 |
+| `MUTATION_RETRY_BUDGET_EXHAUSTED` | 是 | 重复保护在同路径 `edit` 或 shell patch 反复失败后终止了本轮；携带 `details.kind`（`edit` 或 `patch-command`）与最后一个工具错误代码 |
 | `PROCESS_RESOURCE_EXHAUSTED` | 是的 | shell 进程无法启动，因为操作系统暂时耗尽了进程资源 |
 | `SHELL_NOT_FOUND` | 不 | 目录回退后没有有效的平台 shell 可用；消息承载指引 |
 | `COMMAND_SHELL_CHANGED` | 不 | 固定的 shell ID 或方言在执行前已更改 |
@@ -139,8 +139,8 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `PLUGIN_DISABLED_IN_PLAN` | 不 | 每个插件工具的契约模式硬拒绝 |
 | `TOOL_DISABLED_IN_PLAN` | 不 | unknown/unlisted 工具的契约模式硬拒绝 |
 | `PLAN_NOT_ACTIVE` | 不 | 在没有协商合同的情况下运行了提交工具 |
-| `PLAN_KIND_MISMATCH` | 不 | Goal 模式下的 `SubmitPlan`，或 Plan 模式下的 `SubmitGoal` |
-| `PLAN_APPROVAL_REQUIRED` | 不 | SubmitPlan/SubmitGoal 正在等待单独的批准 |
+| `PLAN_KIND_MISMATCH` | 不 | Goal 模式下的 `submit_plan`，或 Plan 模式下的 `submit_goal` |
+| `PLAN_APPROVAL_REQUIRED` | 不 | submit_plan/submit_goal 正在等待单独的批准 |
 | `PLAN_APPROVAL_TIMEOUT` | 不 | 绝对 30 分钟计划批准期限已过 |
 | `PLAN_APPROVAL_STALE` | 不 | 响应与实时 proposal/session/turn/tool-call/version 不匹配 |
 | `PLAN_APPROVAL_INTERRUPTED` | 不 | 待批准在中止、崩溃或持久性失败期间关闭 |
@@ -185,15 +185,15 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 
 ### 3. 4 Edit 契约（ADR 0087）
 
-仅由 `Edit` 发出。版本与来源失败拥有各自的代码，因为每一个都指向不同的
+仅由 `edit` 发出。版本与来源失败拥有各自的代码，因为每一个都指向不同的
 下一步动作；把它们报告为 `TOOL_FAILED` 会丢失这一信息。见
 [18-line-anchored-edit-contract](18-line-anchored-edit-contract.md) §11。
 
 | 代码 | 可重试 | 含义 |
 |---|---|---|
 | `EDIT_TAG_REQUIRED` | 否 | `tag` 缺失或不是 4 位十六进制 |
-| `EDIT_TAG_MISMATCH` | `Read` 之后可以 | tag 无法哈希出实时文件且漂移恢复拒绝；携带实时 tag 与锚点处的当前内容 |
-| `EDIT_TAG_UNKNOWN` | `Read` 之后可以 | tag 格式正确，但本会话没有为该路径记录过对应内容 |
+| `EDIT_TAG_MISMATCH` | `read` 之后可以 | tag 无法哈希出实时文件且漂移恢复拒绝；携带实时 tag 与锚点处的当前内容 |
+| `EDIT_TAG_UNKNOWN` | `read` 之后可以 | tag 格式正确，但本会话没有为该路径记录过对应内容 |
 | `EDIT_LINES_UNSEEN` | 是 | 锚点引用了会话从未显示过的行；携带被揭示的内容 |
 | `EDIT_PARSE_FAILED` | 否 | 操作头格式错误、无冒号头下出现正文行、缺少正文，或出现 `-`/上下文行 |
 | `EDIT_RANGE_INVALID` | 否 | 范围反向、行号越界、操作重叠，或锚点重复 |
@@ -204,7 +204,7 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `EDIT_NO_CHANGE` | 否 | 应用产生了与输入完全相同的文本 |
 | `EDIT_AMPLIFICATION_LIMIT` | 否 | 下降展开超过膨胀上限 |
 
-当消息报告 reveal 完整时，`EDIT_LINES_UNSEEN` **无需**再次 `Read` 即可重试：
+当消息报告 reveal 完整时，`EDIT_LINES_UNSEEN` **无需**再次 `read` 即可重试：
 被揭示的行已并入会话来源集，因此原样重试同一个 `tag` 即可应用。被截断的
 reveal 不并入任何行，必须重新读取。
 
@@ -420,7 +420,7 @@ errors.<code>.action
 
 1. 每次 IPC 失败都会返回 `AppError.code`
 2. 主路径上没有原始非类型化字符串故障
-3. Plan/Goal 硬否认使用显式特定于工具的代码； Bash 从未被否认
+3. Plan/Goal 硬否认使用显式特定于工具的代码； bash 从未被否认
    仅仅因为运营模式而采用任一合同模式，而不是
    遵循权限策略
 4. 主机数字代码映射到稳定的字符串代码

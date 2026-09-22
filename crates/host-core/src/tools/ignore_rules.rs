@@ -6,7 +6,7 @@
 //!    are never read, written, edited, or surfaced by a search, whichever
 //!    root the path resolved into. The denylist cannot be disabled.
 //! 2. App defaults: build output and dependency trees are hidden from an
-//!    unscoped `Glob`/`Grep` walk. An explicit `path` argument opts back in,
+//!    unscoped `glob`/`grep` walk. An explicit `path` argument opts back in,
 //!    the same way it already bypasses parent `.gitignore` rules.
 //! 3. Workspace rules: a gitignore-style `.pi-desktopignore` at the workspace
 //!    root, honored by unscoped walks.
@@ -94,7 +94,7 @@ pub fn is_sensitive_path(path: &Path) -> bool {
     false
 }
 
-/// Denial error for an explicit Read/Write/Edit on a denylisted path.
+/// Denial error for an explicit `read`/`write`/`edit` on a denylisted path.
 pub fn denied_error(display: &str) -> (String, String) {
     (
         DENIED_CODE.into(),
