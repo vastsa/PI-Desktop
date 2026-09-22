@@ -265,7 +265,7 @@ async function main() {
     const read = await host.call("tools.execute", {
       sessionId: session.session.id,
       toolCallId: randomUUID(),
-      toolName: "Read",
+      toolName: "read",
       args: { path: "README.md" },
       mode: "agent",
     });
@@ -277,7 +277,7 @@ async function main() {
     const glob = await host.call("tools.execute", {
       sessionId: session.session.id,
       toolCallId: randomUUID(),
-      toolName: "Glob",
+      toolName: "glob",
       args: { pattern: "src/**/*.js" },
       mode: "agent",
     });
@@ -290,7 +290,7 @@ async function main() {
     const escapePending = host.call("tools.execute", {
       sessionId: session.session.id,
       toolCallId: escapeToolCallId,
-      toolName: "Read",
+      toolName: "read",
       args: { path: "../outside.txt" },
       mode: "agent",
     });
@@ -325,7 +325,7 @@ async function main() {
     const planWrite = await host.call("tools.execute", {
       sessionId: planSession.session.id,
       toolCallId: randomUUID(),
-      toolName: "Write",
+      toolName: "write",
       args: { path: "x.txt", content: "nope" },
       mode: "agent",
     });

@@ -66,7 +66,7 @@ try {
         {
           type: "function",
           function: {
-            name: "GenerateImages",
+            name: "generate_images",
             description: imageGenerationDescription,
             parameters: {
               type: "object",
@@ -84,7 +84,7 @@ try {
   const call = (await chat.json()).choices?.[0]?.message?.tool_calls?.[0];
   assert.equal(
     call?.function?.name,
-    "GenerateImages",
+    "generate_images",
     "DeepSeek did not return the expected tool call.",
   );
   const input = JSON.parse(call.function.arguments);

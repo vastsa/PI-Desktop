@@ -52,7 +52,7 @@
 > `0.4.13` replaces the Chat operating profile with the Plan operating state
 > through D188 / ADR 0052. Plan is the same pi Agent in planning state, keeps
 > permission-mode selection, exposes Bash subject to that policy, denies
-> Write/Edit/plugin tools, and submits structured plans through a separate
+> write/edit/plugin tools, and submits structured plans through a separate
 > host-owned approval transition. The host protocol is v7 and storage schema
 > v8; persisted Chat values migrate to Plan while Agent remains the default.
 > `0.4.14` replaces that proposal with immutable host-written Markdown
@@ -127,7 +127,7 @@
 15. Product operating selector: **Agent | Plan**; the internal `page = "chat"`
     value remains a conversation-surface implementation detail, not an
     operating mode
-16. Agent tools: **Read / Glob / Grep / Write / Edit / Bash**
+16. Agent tools: **read / glob / grep / write / edit / bash**
 17. Permission timeout: **120s → deny**
 18. Session grant scope: **by toolName**
 19. `~/.pi` one-shot auto-import: **not in MVP**. ADR 0254 adds read-only
@@ -175,11 +175,11 @@
      checkpoints, and one overflow retry. The model can request a new window through
      `new_context`; every compaction adds a transcript row and one warning.
      No user-facing settings**
-44. Plan tools and policy: **Read / Glob / Grep / BrowserPreview / Bash plus
-    `EnterPlanMode` and `SubmitPlan`; Write/Edit/plugin and
+44. Plan tools and policy: **read / glob / grep / browser_preview / bash plus
+    `enter_plan_mode` and `submit_plan`; write/edit/plugin and
     unknown tools are denied. Bash follows `ask`, `accept-edits`, or `auto`, so
     Plan is planning intent, not a strict read-only security profile.**
-45. Plan checkpoint: **`SubmitPlan(title, markdown, question)` causes host-core
+45. Plan checkpoint: **`submit_plan(title, markdown, question)` causes host-core
     to preserve the exact Markdown bytes in a new unique
     `<workspaceRoot>/.pi/plan/*.md` artifact, while title/question remain
     structured fields in the existing `plan_approvals` row. The row records the

@@ -312,7 +312,7 @@ Plan/Goal 审批为带显式 `permissionMode` 的 `approve` 或 `reject`，且�
 | Concurrent subscriptions per connection | 8 |
 | Connected clients per Agent Host | 16 |
 | `connection/initialize` deadline | 10 seconds |
-| Read/metadata operation deadline | 15 seconds |
+| read/metadata operation deadline | 15 seconds |
 | `turn/start` admission deadline | 5 seconds |
 | Approval lifetime, local default | 120 秒后拒绝 |
 | Approval lifetime, remote policy | 有远程订阅者接入时默认 30 分钟；Host 配置、有界，以 `approvalLifetimeMs` 公布 |

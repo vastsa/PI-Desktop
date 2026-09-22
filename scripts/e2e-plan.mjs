@@ -185,7 +185,7 @@ function bashParams(sessionId, toolCallId, shell, command, extra = {}) {
   return {
     sessionId,
     toolCallId,
-    toolName: "Bash",
+    toolName: "bash",
     args: { command },
     mode: "agent",
     expectedCommandShellId: shell.id,
@@ -204,7 +204,7 @@ async function scenario105(binary, tempRoot) {
     const read = await ctx.host.call("tools.execute", {
       sessionId: session.id,
       toolCallId: "e2e105-read",
-      toolName: "Read",
+      toolName: "read",
       args: { path: "readme.txt" },
       mode: "agent",
     });
@@ -215,9 +215,9 @@ async function scenario105(binary, tempRoot) {
     );
 
     const forbidden = [
-      ["Write", { path: "forged-write.txt", content: "must-not-write" }, "WRITE_DISABLED_IN_PLAN"],
+      ["write", { path: "forged-write.txt", content: "must-not-write" }, "WRITE_DISABLED_IN_PLAN"],
       [
-        "Edit",
+        "edit",
         { path: "readme.txt", tag: "ABCD", ops: "PUT 1.=1:\n+changed\n" },
         "EDIT_DISABLED_IN_PLAN",
       ],

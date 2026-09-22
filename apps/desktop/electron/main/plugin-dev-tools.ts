@@ -14,7 +14,7 @@ import type { AgentSidecar, LocalToolResult } from "./agent-sidecar";
  *
  * They live here rather than in host-core because the devkit, the plugin
  * registry and the dev-plugin loader are all main-process concerns, and the
- * same reason `BrowserPreview` is a local tool applies: no host round-trip
+ * same reason `browser_preview` is a local tool applies: no host round-trip
  * needed, and the agent gets the registry's live view.
  */
 
@@ -75,14 +75,14 @@ export function registerPluginDevTools(
   sidecar: Pick<AgentSidecar, "setLocalTool">,
   deps: PluginDevToolDeps,
 ): void {
-  sidecar.setLocalTool("PluginScaffold", async ({ args, sessionId }) => {
+  sidecar.setLocalTool("scaffold_plugin", async ({ args, sessionId }) => {
     const template = String((args as { template?: unknown })?.template ?? "").trim();
     if (!isTemplateName(template)) {
       return failure(
-        `PluginScaffold: \`template\` must be one of ${TEMPLATE_NAMES.join(", ")}.`,
+        `scaffold_plugin: \`template\` must be one of ${TEMPLATE_NAMES.join(", ")}.`,
       );
     }
-    const target = await resolveTarget(deps, sessionId, "PluginScaffold", args);
+    const target = await resolveTarget(deps, sessionId, "scaffold_plugin", args);
     if ("error" in target) return target.error;
 
     let created;
@@ -94,7 +94,7 @@ export function registerPluginDevTools(
         name: optionalString((args as { name?: unknown })?.name),
       });
     } catch (error) {
-      return failure(`PluginScaffold: ${(error as Error).message}`);
+      return failure(`scaffold_plugin: ${(error as Error).message}`);
     }
 
     // Load it immediately: the point of scaffolding is a plugin that already
@@ -119,31 +119,31 @@ export function registerPluginDevTools(
     };
   });
 
-  sidecar.setLocalTool("PluginCheck", async ({ args, sessionId }) => {
-    const target = await resolveTarget(deps, sessionId, "PluginCheck", args);
+  sidecar.setLocalTool("check_plugin", async ({ args, sessionId }) => {
+    const target = await resolveTarget(deps, sessionId, "check_plugin", args);
     if ("error" in target) return target.error;
 
     let result: CheckResult;
     try {
       result = await check(target.path);
     } catch (error) {
-      return failure(`PluginCheck: ${(error as Error).message}`);
+      return failure(`check_plugin: ${(error as Error).message}`);
     }
     const detail = formatCheck(result);
     if (!result.ok) {
-      return failure(`PluginCheck failed for ${target.path}.\n${detail}`);
+      return failure(`check_plugin failed for ${target.path}.\n${detail}`);
     }
     return {
       ok: true,
       content: [
-        `PluginCheck passed for ${result.manifest?.id ?? target.path}: ${result.fileCount} file(s) would be packaged.`,
+        `check_plugin passed for ${result.manifest?.id ?? target.path}: ${result.fileCount} file(s) would be packaged.`,
         detail || "No warnings.",
       ].join("\n"),
     };
   });
 
-  sidecar.setLocalTool("PluginPack", async ({ args, sessionId }) => {
-    const target = await resolveTarget(deps, sessionId, "PluginPack", args);
+  sidecar.setLocalTool("pack_plugin", async ({ args, sessionId }) => {
+    const target = await resolveTarget(deps, sessionId, "pack_plugin", args);
     if ("error" in target) return target.error;
 
     try {
@@ -158,7 +158,7 @@ export function registerPluginDevTools(
           `Install it from the plugins page.${warnings}`,
       };
     } catch (error) {
-      return failure(`PluginPack: ${(error as Error).message}`);
+      return failure(`pack_plugin: ${(error as Error).message}`);
     }
   });
 }

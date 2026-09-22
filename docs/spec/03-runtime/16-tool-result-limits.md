@@ -8,10 +8,10 @@ Keep agent context healthy and UI responsive by bounding tool outputs without si
 
 Budgets are per tool class, not one shared cap. A single 256KB cap governing
 everything meant no cap in practice: measured sessions averaged 154KB per
-`Read` and spent 56% of their whole context on read/search results, which
+`read` and spent 56% of their whole context on read/search results, which
 forced compaction and made the agent re-search what it had already found.
 
-Read/Glob/Grep get a tighter budget than shell because their results are
+read/glob/grep get a tighter budget than shell because their results are
 re-fetchable on demand (narrow the pattern, advance the offset). 48KB was too
 tight: a default window of ordinary source already overflowed, so almost every
 Read reported `truncated` and the agent re-searched what it had.
@@ -24,21 +24,21 @@ copy could never be fuller than the excerpt it exists to back.
 
 | channel | limit | action when exceeded |
 |---|---|---|
-| Read / Glob / Grep result (`BUDGET_SEARCH`) | 128 KB, 4000 lines | bound the window + `notice` naming the next step |
-| Bash stdout (`BUDGET_SHELL`) | 96 KB, 4000 lines, head | truncate + marker + spill |
-| Bash stderr (`BUDGET_SHELL_ERR`) | 96 KB, 4000 lines, **tail** | truncate + marker + spill |
+| read / glob / grep result (`BUDGET_SEARCH`) | 128 KB, 4000 lines | bound the window + `notice` naming the next step |
+| bash stdout (`BUDGET_SHELL`) | 96 KB, 4000 lines, head | truncate + marker + spill |
+| bash stderr (`BUDGET_SHELL_ERR`) | 96 KB, 4000 lines, **tail** | truncate + marker + spill |
 | any single line (`MAX_LINE_CHARS`) | 16,384 chars | clip, count it in `notice` |
-| Read window | 2000 lines default (max 4000), `offset`/`limit`; `totalLines` always reported | paginate; `truncated` only when this window was cut |
-| Grep matches (`headLimit`) | 200 default | stop with `truncated: true` |
-| Glob entries (`limit`) | 100 default, 1000 max | stop with `truncated: true` |
-| Bash capture retention (`CAPTURE_MAX_BYTES` / `CAPTURE_MAX_LINES`) | 512 KB, 200000 lines | stop retaining; report omitted bytes and lines |
+| read window | 2000 lines default (max 4000), `offset`/`limit`; `totalLines` always reported | paginate; `truncated` only when this window was cut |
+| grep matches (`headLimit`) | 200 default | stop with `truncated: true` |
+| glob entries (`limit`) | 100 default, 1000 max | stop with `truncated: true` |
+| bash capture retention (`CAPTURE_MAX_BYTES` / `CAPTURE_MAX_LINES`) | 512 KB, 200000 lines | stop retaining; report omitted bytes and lines |
 | spilled full output (`SPILL_MAX_BYTES`) | 512 KB | stop retaining; marker still names the file |
-| Bash output stream | per-stream sequence | preserve stdout/stderr separation |
-| Bash timeout | 60s default; 1–21,600s override | kill process tree + error |
-| `Edit.ops` payload | 256 KB, 200 ops | `INVALID_ARGUMENT`; further Edit caps in [18](18-line-anchored-edit-contract.md) §12 |
+| bash output stream | per-stream sequence | preserve stdout/stderr separation |
+| bash timeout | 60s default; 1–21,600s override | kill process tree + error |
+| `edit.ops` payload | 256 KB, 200 ops | `INVALID_ARGUMENT`; further Edit caps in [18](18-line-anchored-edit-contract.md) §12 |
 
-A clipped line is not a displayed line. `Read` excludes every line it cut at
-`MAX_LINE_CHARS` from the provenance set the `Edit` contract validates against
+A clipped line is not a displayed line. `read` excludes every line it cut at
+`MAX_LINE_CHARS` from the provenance set the `edit` contract validates against
 ([18-line-anchored-edit-contract](18-line-anchored-edit-contract.md) §4.3), so a
 minified or generated line must be narrowed into view before it can be edited.
 Clipping therefore bounds context *and* blocks blind edits on the part that was
@@ -68,12 +68,12 @@ A marker always states which end survived, how much was kept out of the total,
 the limit that applied, and where to get the rest. The spill sentence appears
 only when a full copy was actually written.
 
-Read/Glob/Grep do not embed a marker in their payload: the window metadata
+read/glob/grep do not embed a marker in their payload: the window metadata
 (`offset`, `lineCount`, `totalLines`, `truncated`) plus a `notice` string carry
 the same information as sibling fields, which keeps the payload itself
-mechanically parseable. `Read` content is line-numbered and headed by
+mechanically parseable. `read` content is line-numbered and headed by
 `[path#TAG]` (ADR 0087); it is no longer byte-faithful, so a consumer copying it
-into `Write` must strip the header and the `N:` prefixes, which `Write` also does
+into `write` must strip the header and the `N:` prefixes, which `write` also does
 defensively.
 
 Checkpoint-only aggregate truncation uses the distinct model-context marker in
@@ -100,7 +100,7 @@ ignore files from applying — the same rule that lets `path` reach into
 - model receives truncated payload with marker
 - Renderer receives ordered `stdout` and `stderr` chunks while Bash runs; the
   final model/UI result remains the bounded combined payload.
-- UI may offer “open full output in viewer” for Bash/Read later (post-MVP optional)
+- UI may offer “open full output in viewer” for bash/read later (post-MVP optional)
 - full raw output is not required to persist forever; session may store truncated form in MVP
 - the per-result host cap does not bound a parallel batch in aggregate, and it
   does not need to during context compaction: an active-turn checkpoint retains
@@ -131,7 +131,7 @@ requested or default window of a longer file reports `truncated: false`;
 remainder. Grep and Glob set `truncated: true` when the match/entry cap hid
 remaining hits.
 
-Read/Glob/Grep additionally report what was bounded and how to continue:
+read/glob/grep additionally report what was bounded and how to continue:
 
 ```ts
 type ReadResult = {
@@ -156,8 +156,8 @@ type GlobResult = { matches: string[]; count: number; truncated: boolean; notice
 `tags` is present only in `content` mode, because only that mode displays lines.
 The other two modes are searchable but not editable anchors.
 
-For an approved external path, `path` is absolute; `Read` also reports
-`root: "external"`. `Glob` and `Grep` use absolute paths for their external
+For an approved external path, `path` is absolute; `read` also reports
+`root: "external"`. `glob` and `grep` use absolute paths for their external
 matches. The sidecar emits `filesWithMatches`; host-core also normalizes the
 common `files_with_matches` and `files-with-matches` provider spellings.
 
@@ -191,7 +191,7 @@ counts are the stable signals. The UI truncated chip follows `truncated`.
 - [x] Bash stderr retains its final lines when truncated
 - [x] Grep stops at `headLimit` with `truncated: true`
 - [x] Grep and Read clip lines at 16,384 chars, and a clipped line is excluded
-  from the `Edit` provenance set
+  from the `edit` provenance set
 - [x] Read paginates a multi-megabyte file instead of refusing it, reports the
   next offset, and does not set `truncated` when the requested window was filled
 - [x] Read refuses binary content with `TOOL_BINARY_CONTENT`

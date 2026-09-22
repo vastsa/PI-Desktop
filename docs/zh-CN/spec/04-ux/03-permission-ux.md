@@ -142,7 +142,7 @@ open/close 循环介入对话。
 ## 9. Plan 和 Goal 合同审批卡
 
 Plan 和 Goal 批准不是通用工具许可卡。它们被渲染
-在 `SubmitPlan(...)` 或 `SubmitGoal(...)` 之后的原始会话中内联
+在 `submit_plan(...)` 或 `submit_goal(...)` 之后的原始会话中内联
 导致 host-core 在新的不可变中保留确切的 Markdown 字节
 `.pi/plan/*.md` 或 `.pi/goal/*.md` 工件。卡片位于透明的
 Composer 停靠栏上，因此使用 `--ds-bg-composer` 加 `--ds-shadow-composer`，

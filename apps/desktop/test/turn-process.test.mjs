@@ -29,9 +29,9 @@ test("one turn groups thinking, tools and progress while retaining only the trai
   const entry = turn([
     message("user", "user", "Inspect"),
     message("intro", "assistant", "I will inspect", { thinking: "Plan" }),
-    message("read", "tool", "result", { toolName: "Read" }),
+    message("read", "tool", "result", { toolName: "read" }),
     message("progress", "assistant", "I found the cause"),
-    message("edit", "tool", "updated", { toolName: "Edit" }),
+    message("edit", "tool", "updated", { toolName: "edit" }),
     message("final", "assistant", "Fixed"),
   ]);
   const projected = projectTurnProcess(entry);
@@ -47,7 +47,7 @@ test("streamed text stays readable until later work establishes it as progress",
   const text = message("text", "assistant", "Inspecting", { status: "streaming" });
   assert.equal(projectTurnProcess(turn([text])).responses[0].message, text);
   const projected = projectTurnProcess(
-    turn([text, message("tool", "tool", "", { toolName: "Read" })]),
+    turn([text, message("tool", "tool", "", { toolName: "read" })]),
   );
   assert.equal(projected.responses.length, 0);
   assert.equal(projected.process[0].message, text);
@@ -114,9 +114,9 @@ test("both display modes group a turn and only compact auto-opens active failure
 test("the last activity part owns detailed-mode's default-open tool", () => {
   const entry = turn([
     message("intro", "assistant", "Inspect", { thinking: "Plan" }),
-    message("read", "tool", "result", { toolName: "Read" }),
+    message("read", "tool", "result", { toolName: "read" }),
     message("progress", "assistant", "Next"),
-    message("edit", "tool", "updated", { toolName: "Edit" }),
+    message("edit", "tool", "updated", { toolName: "edit" }),
     message("final", "assistant", "Fixed"),
   ]);
   const activities = entry.parts.filter((part) => part.kind === "activity");
@@ -156,7 +156,7 @@ test("history timing uses recorded ends and rejects invalid timestamps and durat
 test("user boundaries retain independent processes and delegation details stay attached", () => {
   const entries = buildTranscriptEntries([
     message("u1", "user", "one"),
-    message("task", "tool", "started", { toolName: "Task", toolCallId: "call" }),
+    message("task", "tool", "started", { toolName: "task", toolCallId: "call" }),
     message("nested", "assistant", "Delegate answer", { parentToolCallId: "call" }),
     message("a1", "assistant", "one done"),
     message("u2", "user", "two"),

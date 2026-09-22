@@ -460,7 +460,7 @@ last valid catalog for an offline install, but it still verifies the downloaded
 bytes against that catalog checksum.
 
 `.piplug` packages are now producible locally: `pnpm pi-plugin pack <dir>`
-(equally, the `PluginPack` agent tool) writes `dist/<id>-<version>.piplug` and
+(equally, the `pack_plugin` agent tool) writes `dist/<id>-<version>.piplug` and
 prints its sha256, and the plugins page installs that file through the same
 validation and permission review as a marketplace download. Distribution through
 the marketplace is therefore optional — a plugin written for personal use never

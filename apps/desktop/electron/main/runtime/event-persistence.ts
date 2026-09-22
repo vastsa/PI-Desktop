@@ -1,4 +1,10 @@
-import { applyMessageUpdate, IPC, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
+import {
+  applyMessageUpdate,
+  IPC,
+  normalizeToolName,
+  type AgentEventEnvelope,
+  type UiMessage,
+} from "@pi-desktop/shared";
 import type { FinishTurn } from "./plans";
 import type { RuntimeState } from "./context";
 import type { InflightCheckpointer } from "@pi-desktop/host-runtime";
@@ -124,8 +130,9 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
         : {}),
       ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
     });
+    const planTool = normalizeToolName(event.toolName);
     if (
-      (event.toolName === "SubmitPlan" || event.toolName === "SubmitGoal") &&
+      (planTool === "submit_plan" || planTool === "submit_goal") &&
       (envelope.turnId || turnId)
     ) {
       planSubmissionTurnIds.add(

@@ -31,12 +31,12 @@ test("groups assistant fragments and tools into one conversational turn", () => 
     message("user", "user", "Fix the issue"),
     message("intro", "assistant", "I will inspect the code."),
     message("read", "tool", "result", {
-      toolName: "Read",
+      toolName: "read",
       toolCallId: "read",
     }),
     message("followup", "assistant", "The problem is in the renderer."),
     message("edit", "tool", "done", {
-      toolName: "Edit",
+      toolName: "edit",
       toolCallId: "edit",
     }),
     message("final", "assistant", "Fixed and verified."),
@@ -75,14 +75,14 @@ test("keeps a recovered tool error inside one successful assistant turn", () => 
   const { entries } = buildTranscriptEntries([
     message("user", "user", "Inspect the handlers"),
     message("read", "tool", "directory", {
-      toolName: "Read",
+      toolName: "read",
       toolCallId: "read",
       toolStatus: "error",
       isError: true,
     }),
     message("recovery", "assistant", "I will list the directory instead."),
     message("glob", "tool", "router.go", {
-      toolName: "Glob",
+      toolName: "glob",
       toolCallId: "glob",
       toolStatus: "success",
     }),
@@ -121,7 +121,7 @@ test("keeps thinking and tool-only activity in the assistant turn", () => {
     message("user", "user", "Inspect"),
     message("thinking", "assistant", "", { thinking: "Planning" }),
     message("tool", "tool", "result", {
-      toolName: "Read",
+      toolName: "read",
       toolCallId: "tool",
     }),
     message("answer", "assistant", "Done"),
@@ -165,7 +165,7 @@ test("nests delegate rows under the Task call that spawned them", () => {
   const { entries, visible } = buildTranscriptEntries([
     message("user", "user", "Audit the store"),
     message("task", "tool", "report", {
-      toolName: "Task",
+      toolName: "task",
       toolCallId: "task-1",
     }),
     message("delegate-think", "assistant", "", {
@@ -174,7 +174,7 @@ test("nests delegate rows under the Task call that spawned them", () => {
       agentName: "code-reviewer",
     }),
     message("delegate-read", "tool", "file", {
-      toolName: "Read",
+      toolName: "read",
       toolCallId: "read-1",
       parentToolCallId: "task-1",
       agentName: "code-reviewer",
@@ -209,20 +209,20 @@ test("parallel delegate nodes keep parent Task order when child rows interleave"
   const { entries } = buildTranscriptEntries([
     message("user", "user", "Fan out"),
     message("task-a", "tool", "first report", {
-      toolName: "Task",
+      toolName: "task",
       toolCallId: "task-a",
     }),
     message("task-b", "tool", "second report", {
-      toolName: "Task",
+      toolName: "task",
       toolCallId: "task-b",
     }),
     message("b-read", "tool", "b", {
-      toolName: "Read",
+      toolName: "read",
       parentToolCallId: "task-b",
       agentName: "scout-b",
     }),
     message("a-read", "tool", "a", {
-      toolName: "Read",
+      toolName: "read",
       parentToolCallId: "task-a",
       agentName: "scout-a",
     }),
@@ -244,7 +244,7 @@ test("parallel delegate nodes keep parent Task order when child rows interleave"
 test("a delegate turn with both reasoning and text keeps both rows", () => {
   const { entries } = buildTranscriptEntries([
     message("user", "user", "Delegate"),
-    message("task", "tool", "report", { toolName: "Task", toolCallId: "t" }),
+    message("task", "tool", "report", { toolName: "task", toolCallId: "t" }),
     message("both", "assistant", "Here is the report.", {
       thinking: "Summarizing",
       parentToolCallId: "t",
@@ -263,7 +263,7 @@ test("a resumed delegation continues in the latest Task card (ADR 0279)", () => 
   const { entries, visible } = buildTranscriptEntries([
     message("user", "user", "Audit the store"),
     message("task-1", "tool", "report", {
-      toolName: "Task",
+      toolName: "task",
       toolCallId: "task-1",
       toolArgs: { agent: "explorer", task: "Explore the parser." },
       toolResult: { details: { delegationId: "del-1" } },
@@ -273,7 +273,7 @@ test("a resumed delegation continues in the latest Task card (ADR 0279)", () => 
       agentName: "explorer",
     }),
     message("task-2", "tool", "report", {
-      toolName: "Task",
+      toolName: "task",
       toolCallId: "task-2",
       toolArgs: { agent: "explorer", task: "Now cover the lexer.", resume: "del-1" },
       toolResult: { details: { delegationId: "del-2" } },
@@ -309,7 +309,7 @@ test("a resume link whose parent Task row is gone leaves the card intact", () =>
   const { entries } = buildTranscriptEntries([
     message("user", "user", "Audit the store"),
     message("task-2", "tool", "report", {
-      toolName: "Task",
+      toolName: "task",
       toolCallId: "task-2",
       toolArgs: { agent: "explorer", task: "More.", resume: "del-1" },
       toolResult: { details: { delegationId: "del-2" } },
@@ -363,7 +363,7 @@ test("a compaction row ends the assistant turn it lands inside", () => {
     [
       message("user", "user", "Work"),
       message("before", "assistant", "Reading"),
-      message("tool", "tool", "result", { toolName: "Read", toolCallId: "t" }),
+      message("tool", "tool", "result", { toolName: "read", toolCallId: "t" }),
       message("after", "assistant", "Done"),
     ],
     [mark("cp-1", "tool")],
@@ -449,22 +449,22 @@ test("parent tools after a Task fan-out stay out of the delegation card (D319)",
     message("user", "user", "Investigate"),
     message("think-before", "assistant", "", { thinking: "I will delegate." }),
     message("task-a", "tool", "running", {
-      toolName: "Task",
+      toolName: "task",
       toolCallId: "task-a",
     }),
     message("task-b", "tool", "running", {
-      toolName: "Task",
+      toolName: "task",
       toolCallId: "task-b",
     }),
     message("think-after", "assistant", "", {
       thinking: "I will keep working in parallel.",
     }),
     message("read", "tool", "file", {
-      toolName: "Read",
+      toolName: "read",
       toolCallId: "read",
     }),
     message("wait", "tool", "done", {
-      toolName: "TaskWait",
+      toolName: "task_wait",
       toolCallId: "wait",
     }),
   ]);
@@ -491,7 +491,7 @@ test("reuses unchanged activity parts when only the tail thinking token changes"
   for (let index = 0; index < 40; index += 1) {
     history.push(
       message(`read-${index}`, "tool", "ok", {
-        toolName: "Read",
+        toolName: "read",
         toolCallId: `read-${index}`,
       }),
     );

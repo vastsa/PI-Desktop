@@ -206,7 +206,7 @@ export function resolvePreviewTarget(
   return rel ? { kind: "file", path: rel } : null;
 }
 
-/** Tool-call args → preview target (Read/Write/Edit paths, fetch URLs). */
+/** Tool-call args → preview target (read/write/edit paths, fetch URLs). */
 export function getToolPreviewTarget(
   args: unknown,
   root?: string | null,

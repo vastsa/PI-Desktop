@@ -1289,8 +1289,8 @@ export async function createWindow({
               `void window.__PI_DESKTOP__?.seedRunRows?.(0)`,
             );
             await new Promise((r) => setTimeout(r, 250));
-            // Every delegation is a card, a lone one included: seed one `Task`
-            // and a two-`Task` fan-out so the scene shows the two read alike.
+            // Every delegation is a card, a lone one included: seed one `task`
+            // and a two-`task` fan-out so the scene shows the two read alike.
             await windowState.mainWindow!.webContents.executeJavaScript(
               `void window.__PI_DESKTOP__?.seedDelegationRows?.(3)`,
             );

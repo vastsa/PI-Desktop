@@ -60,7 +60,7 @@ export function imageChatModel() {
       if (pending) {
         const result = request.messages.find((item) => item.role === "tool" && item.tool_call_id === pending.id);
         assert.ok(result, "tool result returns to model");
-        if (pending.name === "GenerateImages") {
+        if (pending.name === "generate_images") {
           const text = typeof result.content === "string" ? result.content : result.content.map((item) => item.text ?? "").join("");
           const value = JSON.parse(text);
           results.push({ scenario, value });
@@ -72,9 +72,9 @@ export function imageChatModel() {
       const base = { id: `image-chat-${++calls}`, object: "chat.completion.chunk", created: 1, model: request.model };
       const emit = (delta, finish_reason = null) => res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
       if (!done) {
-        const available = request.tools?.some((tool) => tool.function?.name === "GenerateImages");
-        const name = available ? "GenerateImages" : "ToolSearch";
-        let args = { query: "GenerateImages" };
+        const available = request.tools?.some((tool) => tool.function?.name === "generate_images");
+        const name = available ? "generate_images" : "tool_search";
+        let args = { query: "generate_images" };
         if (available) {
           const source = results.find((result) => result.scenario === "batch")?.value.results?.[0]?.path;
           if (scenario === "edit") assert.ok(source, "generation returns an editable path");

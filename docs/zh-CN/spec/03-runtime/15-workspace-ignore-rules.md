@@ -18,7 +18,7 @@
 5. 显式工具路径仍受安全拒绝名单和
    外部路径权限门
 
-`Glob`/`Grep` 的显式 `path` 参数会让遍历跳出第 2–4 层（与它已经绕过上层
+`glob`/`grep` 的显式 `path` 参数会让遍历跳出第 2–4 层（与它已经绕过上层
 `.gitignore` 规则的方式相同），因此显式点名 `node_modules/pkg` 或 `dist` 的
 调用者仍然可以搜索它们。第 1 层对每一次遍历和每一个显式路径都生效。
 
@@ -36,9 +36,9 @@ Goal/scanning/reading/writing/MVP/`.pi-desktopignore`/`~/.pi-desktop/ignore` 路
   `.env.template` 除外，它们不含密钥，而且通常正是编码任务需要的
 - 凭证文件：`*.p12`、`*.pfx`、`credentials.json` (Google)、带有令牌的 `.npmrc`（尽力而为）
 
-文件名匹配不区分大小写。`Glob` 和 `Grep` 会静默地把命中的文件从结果中丢掉；
-显式的 `Read`、`Write` 或 `Edit`（包括 `Edit` 的移动目标）以
-`WORKSPACE_PATH_DENIED` 失败，外部路径授权也不会解除这一拒绝。`Bash` 不做
+文件名匹配不区分大小写。`glob` 和 `grep` 会静默地把命中的文件从结果中丢掉；
+显式的 `read`、`write` 或 `edit`（包括 `edit` 的移动目标）以
+`WORKSPACE_PATH_DENIED` 失败，外部路径授权也不会解除这一拒绝。`bash` 不做
 过滤（§6）。
 
 > 后续版本中 Read 可能在明确的权限提示下被允许；MVP 一律失败关闭。
@@ -79,11 +79,11 @@ coverage/
 
 | 工具 | 忽略应用程序 |
 |---|---|
-| Glob | 无范围遍历：第 1–4 层过滤结果；显式 `path`：仅第 1 层 |
-| Grep | 无范围遍历：第 1–4 层过滤文件集（进程内遍历器与系统 `rg` 快速路径一致）；显式 `path`：仅第 1 层 |
-| Read | 命中拒绝名单的文件返回 `WORKSPACE_PATH_DENIED`；否则当显式路径在外部时权限门控；拒绝后 `TOOL_DENIED` |
-| Write/Edit | 命中拒绝名单的文件或移动目标返回 `WORKSPACE_PATH_DENIED`；否则当显式路径在外部时权限门控；拒绝后 `TOOL_DENIED` |
-| Bash | 路径沙箱仍然由主机强制执行；忽略文件不会扩展 bash 权限 |
+| glob | 无范围遍历：第 1–4 层过滤结果；显式 `path`：仅第 1 层 |
+| grep | 无范围遍历：第 1–4 层过滤文件集（进程内遍历器与系统 `rg` 快速路径一致）；显式 `path`：仅第 1 层 |
+| read | 命中拒绝名单的文件返回 `WORKSPACE_PATH_DENIED`；否则当显式路径在外部时权限门控；拒绝后 `TOOL_DENIED` |
+| write/edit | 命中拒绝名单的文件或移动目标返回 `WORKSPACE_PATH_DENIED`；否则当显式路径在外部时权限门控；拒绝后 `TOOL_DENIED` |
+| bash | 路径沙箱仍然由主机强制执行；忽略文件不会扩展 bash 权限 |
 
 ## 7. 诊断
 
@@ -94,11 +94,11 @@ coverage/
 - `WORKSPACE_PATH_DENIED` — 显式路径命中了安全拒绝名单（请参阅
   [08-错误代码 §3.3](/zh-CN/spec/03-runtime/08-error-codes)）
 
-UI 可以选择稍后显示 Glob/Grep 的“被忽略规则隐藏”计数。
+UI 可以选择稍后显示 glob/grep 的“被忽略规则隐藏”计数。
 
 ## 8. 验收标准
 
 - [x] 外部路径在非自动模式下需要许可，并且在自动模式下允许
-- [x] 默认忽略规则在 Glob/Grep 中隐藏 node_modules
+- [x] 默认忽略规则在 glob/grep 中隐藏 node_modules
 - [x] 工作区忽略文件得到遵守
 - [x] 无法从 MVP 中的 UI 禁用安全拒绝列表

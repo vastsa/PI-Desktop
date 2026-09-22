@@ -9,10 +9,10 @@ export function scheduledModelFixture() {
   let calls = 0;
   const results = [];
   const scenarios = {
-    create: ["ScheduledTaskCreate", "ScheduledTaskList"],
-    read: ["ScheduledTaskList"],
-    update: ["ScheduledTaskList", "ScheduledTaskUpdate", "ScheduledTaskList"],
-    delete: ["ScheduledTaskList", "ScheduledTaskDelete", "ScheduledTaskList"],
+    create: ["scheduled_task_create", "scheduled_task_list"],
+    read: ["scheduled_task_list"],
+    update: ["scheduled_task_list", "scheduled_task_update", "scheduled_task_list"],
+    delete: ["scheduled_task_list", "scheduled_task_delete", "scheduled_task_list"],
   };
   const handler = async (req, res) => {
     try {
@@ -24,10 +24,10 @@ export function scheduledModelFixture() {
         const message = request.messages.find((item) => item.role === "tool" && item.tool_call_id === pending.id);
         assert.ok(message, `model receives ${pending.name} result`);
         const text = typeof message.content === "string" ? message.content : message.content.map((item) => item.text ?? "").join("");
-        if (pending.name !== "ToolSearch") {
+        if (pending.name !== "tool_search") {
           const value = JSON.parse(text);
           assert.equal(value.error, undefined, text);
-          if (pending.name === "ScheduledTaskCreate") taskId = value.task.id;
+          if (pending.name === "scheduled_task_create") taskId = value.task.id;
           results.push({ scenario, name: pending.name, value });
           step++;
         }
@@ -41,15 +41,15 @@ export function scheduledModelFixture() {
         let name = wanted;
         let args = {};
         if (!(request.tools ?? []).some((tool) => tool.function?.name === wanted)) {
-          name = "ToolSearch";
+          name = "tool_search";
           assert.ok((request.tools ?? []).some((tool) => tool.function?.name === name), "ToolSearch is exposed");
           args = { query: wanted };
-        } else if (name === "ScheduledTaskCreate") {
+        } else if (name === "scheduled_task_create") {
           args = { title: "AI managed task", prompt: "Summarize the project", cadence: "daily", enabled: false, schedule: { hour: 14, minute: 0, weekday: 0 } };
-        } else if (name === "ScheduledTaskUpdate") {
+        } else if (name === "scheduled_task_update") {
           assert.ok(taskId);
           args = { id: taskId, schedule: { hour: 15, minute: 30, weekday: 0 } };
-        } else if (name === "ScheduledTaskDelete") {
+        } else if (name === "scheduled_task_delete") {
           assert.ok(taskId);
           args = { id: taskId };
         }

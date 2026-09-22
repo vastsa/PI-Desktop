@@ -54,7 +54,7 @@ export function verifyProviderRecovery(cases) {
     if (index === 4) {
       assert.equal(tools.length, 11, "eleven actual tools preserved");
       assert(
-        tools.every((m) => m.toolName === "Read" && m.toolStatus === "success"),
+        tools.every((m) => m.toolName === "read" && m.toolStatus === "success"),
         "all real Reads succeeded",
       );
       assert.equal(

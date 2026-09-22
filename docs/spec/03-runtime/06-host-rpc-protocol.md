@@ -42,7 +42,7 @@ The RPC dispatcher caps active requests at 32. `tools.execute` then enters a
 bounded execution budget:
 
 - 16 total tool executions
-- 4 concurrent `Bash` processes globally, 2 per session
+- 4 concurrent `bash` processes globally, 2 per session
 - 8 read/search tools globally
 - 2 mutating tools globally, 1 per session
 - 4 plugin tools globally
@@ -54,7 +54,7 @@ Permission prompts do not consume an execution slot. A full queue returns
 waiting indefinitely or spawning more work. The limits are host-owned so
 Electron and the sidecar cannot independently over-admit the same resources.
 The per-session mutation permit is acquired before the global mutation slot;
-queued `Write`/`Edit` calls therefore do not hold global capacity while waiting
+queued `write`/`edit` calls therefore do not hold global capacity while waiting
 for an earlier mutation in the same session.
 
 Electron's `HostProcess` treats an explicit `HOST_OVERLOADED` response as
@@ -790,7 +790,7 @@ Authoritative mode and workspace resolution are session-scoped:
 7. A database/session-resolution error returns `INTERNAL` and fails closed;
    only a confirmed missing session may use the legacy fallback.
 
-For `Read`/`Glob`/`Grep`/`Write`/`Edit`, the host classifies an explicit path
+For `read`/`glob`/`grep`/`write`/`edit`, the host classifies an explicit path
 outside the workspace and scratch roots before the low-risk auto-allow rule.
 `auto` executes it, while `ask` and `accept-edits` emit
 `permissions.request`; denial, timeout, or cancellation returns `TOOL_DENIED`
@@ -800,14 +800,14 @@ not inherit this exception.
 
 Before generic permission evaluation, host-core applies the mode policy:
 
-- Plan and Goal allow `Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, and the
-  kind's submit tool (`SubmitPlan` / `SubmitGoal`) as applicable to the live
+- Plan and Goal allow `read`, `glob`, `grep`, `browser_preview`, `bash`, and the
+  kind's submit tool (`submit_plan` / `submit_goal`) as applicable to the live
   planning state.
-- Plan and Goal deny `Write`, `Edit`, every plugin tool, and unknown tools under
+- Plan and Goal deny `write`, `edit`, every plugin tool, and unknown tools under
   all permission modes and grants. The host reads the session's **durable** mode
   for this check, so a sidecar claiming `agent` in `tools.execute` cannot widen
   it, and the `*_IN_PLAN` error codes are shared by both kinds.
-- Plan and Goal `Bash` follows the resolved permission mode: `ask` and
+- Plan and Goal `bash` follows the resolved permission mode: `ask` and
   `accept-edits`
   emit `permissions.request`; `auto` executes without confirmation and may
   mutate. The host re-resolves the effective shell ID/dialect and requires the
@@ -832,7 +832,7 @@ type ToolsExecuteResult = {
   durationMs: number
   denied?: boolean
   errorCode?: string
-  // Workspace Write/Edit results may include content.details.review. The
+  // Workspace write/edit results may include content.details.review. The
   // record is persisted with the tool message and is independent of Git.
   // Bash command failures preserve content.exitCode/stdout/stderr while
   // setting ok=false, isError=true, and errorCode=TOOL_FAILED.
@@ -843,7 +843,7 @@ type ToolsExecuteResult = {
 
 ### 5.1 Plan and Goal submission and approval contracts
 
-`SubmitPlan` and `SubmitGoal` are handled as host transitions before generic
+`submit_plan` and `submit_goal` are handled as host transitions before generic
 tool execution. The host preserves the exact Markdown bytes in a new unique
 artifact under the kind's directory before publishing the proposal.
 
@@ -1130,7 +1130,7 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
 ## 8. Concurrency / ordering
 
 1. Requests may be concurrent within the dispatcher cap. Read/search tools may
-   run in parallel; `Write`/`Edit` are bounded and FIFO-ordered per session,
+   run in parallel; `write`/`edit` are bounded and FIFO-ordered per session,
    with at most one mutation in flight for a session.
 2. Different sessions may continue concurrently across retained project tabs;
    each resolves its own project root and grants
@@ -1181,7 +1181,7 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
 9. Forking through a message excludes every later source row and rejects an
    unknown message without creating a child
 10. A forged `requestedMode` cannot authorize a tool against the durable mode;
-    Plan and Goal deny Write/Edit/plugin/unknown tools and apply permission
+    Plan and Goal deny write/edit/plugin/unknown tools and apply permission
     prompts to Bash according to `ask`/`accept-edits`/`auto`
 11. SubmitPlan and SubmitGoal write exact Markdown bytes to a unique
     `.pi/plan/*.md` or `.pi/goal/*.md` file with

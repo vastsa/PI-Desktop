@@ -409,7 +409,7 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 #### E2E-008a：首轮工具按需加载
 
-- **先决条件**：Agent 模式；提供商已配置； `BrowserPreview` 或
+- **先决条件**：Agent 模式；提供商已配置； `browser_preview` 或
   启用插件工具可用；请求捕获可以检查第一个和
   后续提供商有效负载。
 - **步骤**： 1) 创建一个新会话并发送一个简单的提示。 2) 检查
@@ -417,12 +417,12 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
   HTML 页面并观察工具活动。 4) 之后启动第二个用户提示
   预览任务完成。
 - **预期**：第一个请求仅包含模式核心工具（Agent：
-  `Working…`/thinking/tool/answer/`03-runtime/02-agent-runtime.md`/`03-runtime/10-session-state-machine.md`；聊天：`BrowserPreview`/Agent/Agent)
-和本地 `ToolSearch`；延迟模式是
+  `Working…`/thinking/tool/answer/`03-runtime/02-agent-runtime.md`/`03-runtime/10-session-state-machine.md`；聊天：`browser_preview`/Agent/Agent)
+和本地 `tool_search`；延迟模式是
   仅由有界 `# On-demand tools` 目录表示。代理打电话
-  `ToolSearch` 在 `BrowserPreview` 之前（或选定的 plugin/`ToolSearch` 工具）
+  `tool_search` 在 `browser_preview` 之前（或选定的 plugin/`tool_search` 工具）
   当需要该功能并且匹配模式可用时
-  下一个模型回合。对于用户可见的 HTML 可交付成果，`BrowserPreview` 是
+  下一个模型回合。对于用户可见的 HTML 可交付成果，`browser_preview` 是
   创建或第一次有意义的视觉编辑后调用一次，然后重复使用
   在页面优化时通过实时重新加载。已生成，仅供测试，并且
   非可视 HTML 文件不会触发预览调用。加载的集合不
@@ -442,14 +442,14 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
   会话；可用 Plan 会话。
 - **步骤**：1) 确认插件页列出 `pi.browser`，已启用，不可卸载。
   2) 打开工作面板并从插件视图启动浏览器。3) 让代理预览工作区 HTML
-  文件（`BrowserPreview`），再通过 ToolSearch `cdp` / `Browser` 做 snapshot。
+  文件（`browser_preview`），再通过 ToolSearch `cdp` / `Browser` 做 snapshot。
   4) 切到 Plan 并调用插件 Browser 工具。5) 禁用 `pi.browser`。
-  6) 调用 `BrowserPreview` 并点击 http(s) 对话链接。7) 从第三方或测试调用方
+  6) 调用 `browser_preview` 并点击 http(s) 对话链接。7) 从第三方或测试调用方
   通过 `pi.browser.cdp` 发送 `Network.getAllCookies`。
 - **预期**：启动项没有宿主 Browser 行。预览打开插件视图并实时重载文件。
   插件工具 `plugin_pi_browser_Browser` 在 ToolSearch 后可以 snapshot。Plan 拒绝
-  插件工具（`PLUGIN_DISABLED_IN_PLAN`），而 `BrowserPreview` 仍可调用。禁用后
-  隐藏视图和工具；`BrowserPreview` 报错；http(s) 芯片走 `openExternal`。Cookie
+  插件工具（`PLUGIN_DISABLED_IN_PLAN`），而 `browser_preview` 仍可调用。禁用后
+  隐藏视图和工具；`browser_preview` 报错；http(s) 芯片走 `openExternal`。Cookie
   CDP 被拒绝。访客页边界留在插件视图内。
 - **链接规格**：ADR 0170、D333、`07-plugins/03-plugin-api.md`、
   `03-runtime/03-tools-and-permissions.md`
@@ -687,11 +687,11 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 - **先决条件**：聊天路线激活；选定的会话。
 - **步骤**： 1) 单击左侧输入的 Composer 模式芯片，进入 Plan。 2）
-  发送通常需要 Write/Edit 的提示并观察行为。 3）
+  发送通常需要 write/edit 的提示并观察行为。 3）
 单击同一 Composer 芯片返回 Agent。 4) 开始回合并尝试
   在运行中或待处理的 Plan 批准可见时切换模式。
 - **预期**：Composer 芯片更新活动会话 `mode`（Plan 和
-  Goal 硬否认 Write/Edit 和插件工具，而 Bash 遵循所选的
+  Goal 硬否认 write/edit 和插件工具，而 Bash 遵循所选的
   权限模式； Agent 根据权限设置允许其正常工具）。的
   当存在轮流或活动待批准时芯片被禁用并重新启用
   会话返回 idle/planning 后。不呈现顶栏模式控件。
@@ -822,18 +822,18 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 - **前提条件**：项目目录打开。
 - **步骤**： 1) 要求代理读取项目中的文件。 2）观察结果。
-- **预期**：`Read` 在项目范围内立即返回。在 Agent 模式下，
-  代理在使用之前通过 `ToolSearch` 激活 `Glob` 或 `Grep`；
+- **预期**：`read` 在项目范围内立即返回。在 Agent 模式下，
+  代理在使用之前通过 `tool_search` 激活 `glob` 或 `grep`；
   Plan 在第一次请求时保持其 read/search 内核可用。所有结果
   保持在项目范围内。
 - **链接规格**：`03-runtime/03-tools-and-permissions.md`
-- **验收**：E（Read/Glob/Grep 工作），D（基于项目的工具）
+- **验收**：E（read/glob/grep 工作），D（基于项目的工具）
 - **里程碑**：M3
 - **状态**：自动化（协议烟雾：示例项目中的 Read + Glob）
 
 ### 权限允许/拒绝/超时
 
-#### E2E-014：Write/Edit/Bash 触发权限卡
+#### E2E-014：write/edit/bash 触发权限卡
 
 - **先决条件**：Agent 模式；项目开放。
 - **步骤**： 1) 要求代理写入文件。 2）遵守许可卡。
@@ -841,7 +841,7 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
   包含工具名称、工作区、参数预览、倒计时和 allow/deny
   选项。它不创建背景或模式，也不覆盖其他会话。
 - **链接规格**：`04-ux/03-permission-ux.md`、`03-runtime/03-tools-and-permissions.md`
-- **接受**：E（Write/Edit/Bash 触发确认）
+- **接受**：E（write/edit/bash 触发确认）
 - **里程碑**：M3
 - **状态**：草案
 
@@ -895,11 +895,11 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 - **先决条件**：Agent 或 Plan 模式；项目开放；存在可读文件
   在会话项目和暂存根之外。
-- **步骤**：1) 选择“询问”后，要求客服人员 `Read` 外部文件并
+- **步骤**：1) 选择“询问”后，要求客服人员 `read` 外部文件并
   观察内联许可卡。 2) 拒绝一次并确认没有内容
   回来了。 3）重复并允许一次；验证工具结果携带
   `root: "external"` 和规范的绝对路径。 4) 切换到自动和
-  重复 `Grep` 或 `Glob`；验证没有卡片出现以及有界结果
+  重复 `grep` 或 `glob`；验证没有卡片出现以及有界结果
   返回。 5) 重复接受编辑；仍然验证外部 read/search
   请求许可。
 - **预期**：在用户可以之前，显式外部路径永远不会发生硬故障
@@ -918,12 +918,12 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **步骤**：1) 延迟时激活 Agent/Plan 并检查其架构。
   2) 使用工作区相关的 `path`、`include`、`headLimit` 进行搜索
   `outputMode: "filesWithMatches"` 或 `"count"`，首先是一个目录，然后
-  然后是一个显式文件。 3) 使用目录调用 `Read` 并遵循其
+  然后是一个显式文件。 3) 使用目录调用 `read` 并遵循其
   结构化的全局建议。 4) 使用平台的本机 shell 重复此操作
   选择，而不更改工具参数。
 - **预期**：模式在每个
-  平台； `Read` 声明仅文件输入，`Glob` 声明目录输入，
-  `Grep` 接受文件或目录。 `filesWithMatches` 被接受为
+  平台； `read` 声明仅文件输入，`glob` 声明目录输入，
+  `grep` 接受文件或目录。 `filesWithMatches` 被接受为
   规范输出模式。目录读取返回 `INVALID_ARGUMENT`
   `suggestedTool=Glob` 和有界参数；更正后的调用成功。搜索
   结果使用项目内工作区相对路径和绝对路径
@@ -965,8 +965,8 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 #### E2E-019c：权限模式管理高风险批准 (D115/D132)
 
 - **先决条件**：Agent 模式；项目开放；全局默认`ask`。
-- **步骤**： 1) 使用新继承的会话和全局默认“每次询问”，打开编写器菜单 - 期望“每次询问”都被选中，且没有 global-default/inherit 标签 - 然后要求 Agent 写入工作区文件并期望获得权限卡。 2) 将会话芯片切换为接受编辑；重复一下——预计 Write/Edit 不会出现任何卡，但 Bash 仍然会出现卡。 3) 切换到“自动”——预计 Bash 也不会卡。 4) 在设置中将全局默认值设置为接受编辑后创建另一个继承会话 - 期望输入框芯片和菜单选择直接显示接受编辑并且自动允许 Write/Edit。 5) 将会话切换到 Plan，然后切换到 Goal，并设置自动 — 预计 Write/Edit/plugin 会被拒绝，但 Bash 会允许而无需确认。
-- **预期**：有效模式=会话覆盖→全局默认→询问； Plan 和 Goal Write/Edit/plugin 硬否认超越每种模式，而他们的 Bash 遵循所选模式；输入框芯片和菜单始终显示有效模式，无需 default/inherit 出处。
+- **步骤**： 1) 使用新继承的会话和全局默认“每次询问”，打开编写器菜单 - 期望“每次询问”都被选中，且没有 global-default/inherit 标签 - 然后要求 Agent 写入工作区文件并期望获得权限卡。 2) 将会话芯片切换为接受编辑；重复一下——预计 write/edit 不会出现任何卡，但 Bash 仍然会出现卡。 3) 切换到“自动”——预计 Bash 也不会卡。 4) 在设置中将全局默认值设置为接受编辑后创建另一个继承会话 - 期望输入框芯片和菜单选择直接显示接受编辑并且自动允许 write/edit。 5) 将会话切换到 Plan，然后切换到 Goal，并设置自动 — 预计 write/edit/plugin 会被拒绝，但 Bash 会允许而无需确认。
+- **预期**：有效模式=会话覆盖→全局默认→询问； Plan 和 Goal write/edit/plugin 硬否认超越每种模式，而他们的 Bash 遵循所选模式；输入框芯片和菜单始终显示有效模式，无需 default/inherit 出处。
 - **链接规格**：`03-runtime/03-tools-and-permissions.md §6`、`03-runtime/04-data-storage.md`、`08-meta/decisions-log.md` (D115/D132)
 - **接受**：E（权限模式解析并强制主机端）
 - **里程碑**：M5
@@ -1212,7 +1212,7 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 #### E2E-022C：检查、打包、安装往返
 
 - **先决条件**：脚手架插件目录。
-- **步骤**：1) `pnpm pi-plugin check <dir>`。 2) 删除 `main` 命名的文件并再次运行 `check`。 3) 恢复它，声明 `contributes.skills` 而不声明 `agent.prompt.inject`，然后再次运行 `check`。 4) `pnpm pi-plugin pack <dir>`。 5) 从插件页面安装生成的 `.piplug`。 6) 要求代理在同一目录上运行 `PluginCheck` 和 `PluginPack`。
+- **步骤**：1) `pnpm pi-plugin check <dir>`。 2) 删除 `main` 命名的文件并再次运行 `check`。 3) 恢复它，声明 `contributes.skills` 而不声明 `agent.prompt.inject`，然后再次运行 `check`。 4) `pnpm pi-plugin pack <dir>`。 5) 从插件页面安装生成的 `.piplug`。 6) 要求代理在同一目录上运行 `check_plugin` 和 `pack_plugin`。
 - **预期**：脚手架插件检查干净并报告其文件计数和大小；缺少 `main` 是一个阻止 `pack` 的错误； inert-skills 情况是一个不会阻止的警告； `pack` 使用仅存储条目写入 `dist/<id>-<version>.piplug` 并打印其 sha256；该软件包通过正常的权限审查进行安装，并显示在“活动”下；代理工具会产生相同的判断并拒绝会话工作区之外的任何目录。
 - **链接规格**：`07-plugins/10-plugin-devex.md` §5–§6、`07-plugins/06-plugin-packaging.md`、ADR 0039
 - **承兑**：G（本地包装往返）
@@ -1344,8 +1344,8 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 #### E2E-024I：插件技能到达代理并按需加载
 
 - **先决条件**：`examples/plugins/hello` 启用并授予 `agent.prompt.inject`；未经许可的舱单第二份副本；一个工作区是插件目录，另一个工作区不是。
-- **步骤**： 1) 开始会话并询问客服人员拥有哪些技能。 2) 要求它遵循 Hello 演示技能，以便它调用 `Skill` 工具。 3) 编辑技能文档并重复步骤2。 4) 禁用插件并开始新一轮。 5) 加载不带 `agent.prompt.inject` 的变体并重复步骤 1。 6) 声明一个大于每个技能上限的文档。 7) 依次打开两个工作区。
-- **预期**：目录列出了技能 ID、名称和修剪后的描述，但没有正文，位于内置技能之后、项目指令链之前；仅在请求时才通过 `ToolSearch` 加载 `Skill` 架构，并读取已编辑的文件而无需重新启动；禁用插件会重建运行时，因此该技能从下一回合就会消失；未经许可的变种加载正常，无技能贡献；过大的文档会通过审核行跳过，而不是夹在提示中；内置的 `plugin-development` 技能在插件工作区中进行编目，而在其他工作区中则不存在，而 `PluginCheck` 则在两者的有界按需工具目录中列出。
+- **步骤**： 1) 开始会话并询问客服人员拥有哪些技能。 2) 要求它遵循 Hello 演示技能，以便它调用 `skill` 工具。 3) 编辑技能文档并重复步骤2。 4) 禁用插件并开始新一轮。 5) 加载不带 `agent.prompt.inject` 的变体并重复步骤 1。 6) 声明一个大于每个技能上限的文档。 7) 依次打开两个工作区。
+- **预期**：目录列出了技能 ID、名称和修剪后的描述，但没有正文，位于内置技能之后、项目指令链之前；仅在请求时才通过 `tool_search` 加载 `skill` 架构，并读取已编辑的文件而无需重新启动；禁用插件会重建运行时，因此该技能从下一回合就会消失；未经许可的变种加载正常，无技能贡献；过大的文档会通过审核行跳过，而不是夹在提示中；内置的 `plugin-development` 技能在插件工作区中进行编目，而在其他工作区中则不存在，而 `check_plugin` 则在两者的有界按需工具目录中列出。
 - **链接规格**：`07-plugins/02-plugin-manifest-schema.md`、`07-plugins/04-plugin-security.md` §7.1、`07-plugins/10-plugin-devex.md`、ADR 0039、ADR 0037、D174
 - **接受**：G（技能激活）+ E（工具和权限）+ D（高风险权限门控）
 - **状态**：单元覆盖（`plugin-skills.test.mjs`、代理运行时 prompt/digest 测试）；面向代理的场景草稿
@@ -1610,7 +1610,7 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
   chips 只显示名称，选中项的一句话说明出现在整行下方；没有长副标题、没有每张卡片上的“套用”，
   “高级”默认收起。带连字符的 id（`code-reviewer`、`test-runner`）必须显示目录译名，而不是
   `presetCode-reviewerName` 这类原始 key。
-  2) 选择探索者，确认名称、描述、Read / Glob / Grep / Bash 工具和完整提示词均已填入，
+  2) 选择探索者，确认名称、描述、read / glob / grep / bash 工具和完整提示词均已填入，
   模型仍沿用当前会话。3) 重新打开并选择修复者，确认工具和提示词更新，且显示可修改工具的提示。
   4) 展开高级并打开模型选择器，确认每个已配置的
   可运行提供商的模型都出现（按提供商分组），选择一个模型，确认保存值为
@@ -1639,16 +1639,16 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **前提条件**：应用已运行。`~/.agents/subagents` 为空。五个内置定义存在，没有一个被关闭，且没有用户文档覆盖它们。
 - **步骤**：
   1. 打开设置 → 智能体 → 子智能体。确认内置分组列出 `explorer`、`code-reviewer`、
-     `test-runner`、`fixer`、`ui-designer`，带本地化名称、`Task(<handle>)`、工具授权、「内置」徽标、
+     `test-runner`、`fixer`、`ui-designer`，带本地化名称、`task(<handle>)`、工具授权、「内置」徽标、
      「复制为我的定义」，以及处于打开位置的启用开关。确认这些行没有在文件夹中显示或删除。
   2. 确认全局分组仍显示本地化的 `settings.subagentsEmpty` 文案和「新建子智能体」。
   3. 在内置行上关掉 `fixer`。确认该行随开关关闭而变暗，toast 指出它的名字，
      `~/.agents/subagents` 中没有出现任何东西，且该行仍留在列表里，因为那个开关就是重新打开的入口。
-  4. 在 `fixer` 关闭的情况下发送一次提示。确认 `Task` 目录不再提供它，而其余四个仍在；然后把它重新打开，
+  4. 在 `fixer` 关闭的情况下发送一次提示。确认 `task` 目录不再提供它，而其余四个仍在；然后把它重新打开，
      确认下一次提示又提供它。
   5. 在 explorer 上选择「复制为我的定义」。确认新建表单按该定义预填（名称、描述、工具、正文），
      且选中的是探索者模板芯片而不是空白开始。保存后确认 explorer 只出现在全局用户行，并从内置分组
-     消失，且下一次提示的 `Task` 目录使用该用户文档。
+     消失，且下一次提示的 `task` 目录使用该用户文档。
   6. 禁用该用户 explorer 并重新加载。确认用户行关闭，explorer 重新出现在内置分组（未启用的用户文档不会进入加载器，因此内置定义重新生效）。
 - **预期**：设置页展示主智能体实际可委派的默认子智能体，且每一个都能从自己的行上关闭。内置项的启用状态是应用本地状态而不是文档，因此被关闭的默认项保留自己的行；复制内置项仍是改写它的方式；在文件夹中显示与删除仍然只作用于用户自建的行，因为它们以文件为后端。
 - **链接规格**：`04-ux/06-settings-ia.md` §2、`03-runtime/01-ipc-protocol.md` §12c、
@@ -1684,8 +1684,8 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 #### E2E-035：Bash 工具使用有效的目录 shell
 
 - **前提条件**：工作区打开；代理模式。
-- **步骤**：1) 选择可用的目录 shell 并运行 `Bash`（例如 `echo ok`）。 2) 使持久选择不可用，并在运行下一轮之前检查有效目录。 3) 使用上一回合快照运行。
-- **预期**：未更改的 `Bash` 协议调用使用选定的目录条目。稍后不可用的持久选择会回退到第一个可用的平台 shell 并标记目录回退；上一个回合的快照被 `COMMAND_SHELL_CHANGED` 拒绝为过时的，而不是默默地更改 shell。不会发生部分执行； E2E-113 覆盖过时的身份路径。
+- **步骤**：1) 选择可用的目录 shell 并运行 `bash`（例如 `echo ok`）。 2) 使持久选择不可用，并在运行下一轮之前检查有效目录。 3) 使用上一回合快照运行。
+- **预期**：未更改的 `bash` 协议调用使用选定的目录条目。稍后不可用的持久选择会回退到第一个可用的平台 shell 并标记目录回退；上一个回合的快照被 `COMMAND_SHELL_CHANGED` 拒绝为过时的，而不是默默地更改 shell。不会发生部分执行； E2E-113 覆盖过时的身份路径。
 - **链接规格**：`03-runtime/03-tools-and-permissions.md`、`03-runtime/06-host-rpc-protocol.md`、`03-runtime/08-error-codes.md`、ADR 0054
 - **接受**：H（错误暴露稳定代码）
 - **里程碑**：M5
@@ -2122,7 +2122,7 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   回滚；检查冲突结果并验证后面的字节是否保留。 7）
   切换到会话 B 和后台项目会话，然后返回到 A。8)
   重复失败、拒绝和临时写入。
-- **预期**：每个成功的工作区 Write/Edit 都会创建一个消息拥有的
+- **预期**：每个成功的工作区 write/edit 都会创建一个消息拥有的
   查看记录和一张相邻的键盘可访问卡；该卡从来都不是
   bottom/global 条目。完成时不打开任何东西：面板保持用户离开时的样子，
   审阅只在用户打开后出现。每张评论卡，内联和评论选项卡中，都是
@@ -2454,7 +2454,7 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
 #### E2E-095：终端故障暴露恢复而没有成功卡
 
 - **先决条件**：确定性提供商可以从失败中恢复
-  目录 `Read` 和 `Glob`，通过工作区编辑完成一圈，然后失败
+  目录 `read` 和 `glob`，通过工作区编辑完成一圈，然后失败
   另一轮出现可重试错误；该会话有一个可见的输入框。
 - **步骤**： 1) 运行失败-读取然后成功-Glob 恢复轮次并
   检查其活动组。 2) 完成工作区编辑回合。 3) 确认
@@ -3085,7 +3085,7 @@ IPC 请求无法关闭。
   也在A中请求。 5）显式打开B，只解析B的请求，然后
   返回A并解决A的请求。 6) 会话时快速选择 A 然后 B
   详细信息以相反的完成顺序加载。 7) 当B加载时，解析A的
-  Write/Edit 请求，因此其工具完成时记录一张内联审阅卡，然后让 B 发出
+  write/edit 请求，因此其工具完成时记录一张内联审阅卡，然后让 B 发出
   当 A 可见时，BrowserPreview 伪影。切换回每个会话。
 - **预期**：B的后台事件仅更新B的行和保留状态；
   他们不会更改 A 的活动 session/project/page、记录、草稿、卷轴、
@@ -3676,14 +3676,14 @@ IPC 请求无法关闭。
 #### E2E-093：变异工具序列化并从过时的编辑上下文中恢复
 
 - **先决条件**：项目绑定的 Agent 会话具有可写工作区；
-  提供商装置可以在一个中发出两个相同会话的 Agent/`Write` 调用
+  提供商装置可以在一个中发出两个相同会话的 Agent/`write` 调用
   工具批次；第二次编辑可以被赋予一个过时的 `tag`；
   Bash 命令可以返回带有诊断信息的非零退出代码。
 - **步骤**：
   1. 启动一个任务，为同一会话发出两个突变，同时还
      发出独立的 read/search 调用。
   2. 在第一个突变运行时检查关键工具结果和转录本。
-  3. 强制第二个 `Edit` 携带一个已无法哈希出该文件的 `tag`，且其锚点
+  3. 强制第二个 `edit` 携带一个已无法哈希出该文件的 `tag`，且其锚点
      无法被恢复重映射，然后允许代理重新读取文件并从当前内容重试。
   4. 运行以非零值退出的 Bash 命令并检查其工具结果
      内联状态。
@@ -3691,7 +3691,7 @@ IPC 请求无法关闭。
   6. 如果任务使用广告工作区之外的专用工作树，
      验证其受保护的 Bash 编辑和生成的 `git diff`。
 - **预期**：
-  - Read/search 调用可能会重叠，但一次只执行一个 Agent/`Write`
+  - Read/search 调用可能会重叠，但一次只执行一个 Agent/`write`
     一次会话；排队的突变不会消耗另一个全局变量
     等待时的变异槽。
   - 过时 tag 的编辑在不更改文件的情况下失败，并返回携带实时 tag 与锚点处
@@ -3825,11 +3825,11 @@ eleven-tool-round desktop paths are verified by
 
 - **先决条件**：项目绑定会话在 Plan 和 BrowserPreview 中处于空闲状态，
   一个插件工具和一个伪造的 `requestedMode = "agent"` 夹具。
-- **步骤**：1) 检查可见的 Plan 工具。 2) 使用 Read/Glob/Grep 和
+- **步骤**：1) 检查可见的 Plan 工具。 2) 使用 read/glob/grep 和
   BrowserPreview。 3) 尝试编写、编辑、插入和
   各种权限模式下通过主机的未知工具。 4) 在下面运行 Bash
   询问、接受编辑和自动。
-- **预期**：Plan 拒绝 Write/Edit/plugin/unknown 工具，无论
+- **预期**：Plan 拒绝 write/edit/plugin/unknown 工具，无论
   伪造模式、补助金或自动； Bash 遵循所选的权限模式。的
   运行时仍为 1 pi Agent 并且所有拒绝都会经过审核。
 - **链接规格**：`03-runtime/02-agent-runtime.md`，
@@ -3854,7 +3854,7 @@ eleven-tool-round desktop paths are verified by
   并验证下一个批准默认为自动。 5) 拒绝
   提案。 6) 确认持久模式为Plan，实时状态为可编辑`planning`，
   批准门已清除，并接受稍后的提示。 7）让
-  Agent 在新回合中修改并调用 `SubmitPlan` 一次，并带有完整的
+  Agent 在新回合中修改并调用 `submit_plan` 一次，并带有完整的
   快照。 8) 使用记住的自动模式批准第二个提案。
 - **预期**：主机将准确提交的 Markdown 字节保留在新的文件中
   独特的神器，记录其相关的 path/hash/size 与结构化
@@ -3880,8 +3880,8 @@ eleven-tool-round desktop paths are verified by
   artifact/approval 生命周期。可选的实时 `test:e2e:plan-ui` 案例
   需要环境提供的 OpenAI 兼容提供程序；授权运行
   模型 `gpt-5.6-luna` 通过了 6/6，控制台诊断为零。它使用了
-  真正控制Composer和Send，现场Agent调用`EnterPlanMode`
-  `SubmitPlan`，正常呈现 通过 preload/Main 请求批准解决，
+  真正控制Composer和Send，现场Agent调用`enter_plan_mode`
+  `submit_plan`，正常呈现 通过 preload/Main 请求批准解决，
   批准的执行会发出精确的耐用标记，并且私人
   env-gate WeakMap 检查之前证明了相同的 `DesktopAgentRuntime` 对象
   并在批准后。 Main/Host/sidecar PID 保持稳定；凭据从不
@@ -4033,11 +4033,11 @@ eleven-tool-round desktop paths are verified by
   拒绝不可用或错误的平台 ID。 3）选择可用的shell
   并坚持 `defaultCommandShell`。 4）使坚持的选择不可用，
   重新启动，并验证目录选择第一个可用的平台 shell
-  与 `fallback: true`。 5) 执行未更改的 `Bash` 工具。
+  与 `fallback: true`。 5) 执行未更改的 `bash` 工具。
 - **预期**：设置仅保留有效的稳定 shell ID；不可用
   条目在指导下仍然不可用，并且稍后仍然不可用
   选择有意使用第一个可用的后备。主机调用
-  有效 shell，同时 tool/protocol 名称保留为 `Bash`，并且 shell
+  有效 shell，同时 tool/protocol 名称保留为 `bash`，并且 shell
   选择遵循空闲配置边界。
 - **链接规格**：`03-runtime/01-ipc-protocol.md`，
   `03-runtime/03-tools-and-permissions.md`、`03-runtime/06-host-rpc-protocol.md`、
@@ -4070,7 +4070,7 @@ eleven-tool-round desktop paths are verified by
 
 - **先决条件**：选定的 shell 可用且确定性命令
   写入交错的 stdout 和 stderr 块。
-- **步骤**： 1) 通过 `Bash` 执行命令。 2）观察host/RPC/UI
+- **步骤**： 1) 通过 `bash` 执行命令。 2）观察host/RPC/UI
   输出事件。 3) 检查最终的有界结果和成绩单行。
 - **预期**：stdout 和 stderr 保持独立，按工具调用排序，并且
   进程运行时可见。最终输出保留截断元数据；
@@ -4202,14 +4202,14 @@ eleven-tool-round desktop paths are verified by
   `~/.agents/subagents/scout.md`（只读，无 `tools` 键）、`~/.agents/subagents/fixer.md`
   (`tools: Read, Edit`)、`~/.agents/subagents/pinned.md` (`model:` 命名第二个
   配置的提供程序）和 `~/.agents/subagents/broken.md`（缺少 `name`）；提供商
-  可以驱动其流在一条辅助消息中发出两个 `Task` 调用；
-  权限模式 `ask`，因此代表的 `Edit` 被门控；读取访问权限
+  可以驱动其流在一条辅助消息中发出两个 `task` 调用；
+  权限模式 `ask`，因此代表的 `edit` 被门控；读取访问权限
   `<data_dir>/sessions/<id>.jsonl` 和 `messages` 索引。
 - **步骤**：
-1. 提示一个回合，其中助手发出两个 `Task` 呼叫 — `scout` 和
+1. 提示一个回合，其中助手发出两个 `task` 呼叫 — `scout` 和
      `pinned` — 在一条消息中。观察代表团卡，同时运行和
      各自安顿下来后；折叠它，然后展开每个节点。
-  2. 提示一个回合，其中助手消息只发出一个 `Task` 调用 — `scout`
+  2. 提示一个回合，其中助手消息只发出一个 `task` 调用 — `scout`
      — 并将其呈现方式与步骤 1 的进行比较。
   3. 提示轮流，其中两个 `fixer` 代表各自编辑不同的文件，并且
      仅回答第一张许可卡。
@@ -4217,19 +4217,19 @@ eleven-tool-round desktop paths are verified by
      代表们编辑**相同**文件。
   5. 当一张卡出现在屏幕上而另一张卡出现时，启动扇出并按停止。
      排队。
-  6. 提示 `Task` 调用命名为 `broken`，然后调用一个不命名的代理
+  6. 提示 `task` 调用命名为 `broken`，然后调用一个不命名的代理
      存在，则其定义固定未配置的提供商。
   7. 将会话切换到 Plan，然后切换到 Goal，并检查工具目录。
-  8. 重新加载会话并重新展开委托卡和每个 `Task`
+  8. 重新加载会话并重新展开委托卡和每个 `task`
      节点。
 - **预期**：
   - 步骤 1 中的两个代表同时运行，并且 `pinned` 单独进行流式传输
     provider/model，而父级保留会话的。
-  - 步骤 1 中的两个 `Task` 调用形成一张全角委托卡。同时
+  - 步骤 1 中的两个 `task` 调用形成一张全角委托卡。同时
     活动时，它打开一次，其标题会更新子代理和已结算的计数；
     结算后保留用户的扩展选择并汇总报告
     成功、警告或问题状态加上经过的时间。
-  - 步骤 2 中单独的 `Task` 画出同一张卡，只是只有一个委派节点
+  - 步骤 2 中单独的 `task` 画出同一张卡，只是只有一个委派节点
     — 相同的根、连接线、结果、运行时长和步骤数 — 而绝不是
     紧凑的单行工具行（D265）。它的聚合行按一个 Subagent 措辞，
     所以任何语言都不会读成“1 个 Subagents”或“Subagents 正在工作”。
@@ -4245,16 +4245,16 @@ eleven-tool-round desktop paths are verified by
   - 仅渲染头部许可卡；它命名了请求代表并
     后面等待的号码。回答它会显示下一张牌，并且都不会
     答案解决了另一个请求。
-  - `scout` 根本无法调用 `Edit` 或 `Write`； `fixer` 可以。相同文件编辑
+  - `scout` 根本无法调用 `edit` 或 `write`； `fixer` 可以。相同文件编辑
     步骤 4 按定义的顺序应用，并且不会丢失对方的写入。
   - Stop 拒绝显示的请求和排队的请求，并且两个委托都结束
-    `aborted` 位于其自己的 `Task` 节点内的文本和图标中 — 父轮
+    `aborted` 位于其自己的 `task` 节点内的文本和图标中 — 父轮
     结束一次，聚合卡结算并发出警告。
   - `broken` 不在带有启动诊断和会话的目录中
     保留其他三名代表；未知的代理和无法解析的模型
-    每个引脚都会失败，因为 `Task` 工具错误指出了原因，没有回退到
+    每个引脚都会失败，因为 `task` 工具错误指出了原因，没有回退到
     会话提供商并且没有转向失败。
-  - `Task` 不在 Plan 和 Goal 的目录中。
+  - `task` 不在 Plan 和 Goal 的目录中。
   - 充值后卡片默认折叠；重新扩展保留节点
     顺序、归因、结果和嵌套内容与出现的完全相同
     住。
@@ -4294,7 +4294,7 @@ eleven-tool-round desktop paths are verified by
 - **预期**：两种拼写都能作为有效定义加载。声明的键会像其他任何无法识别的
   frontmatter 键一样被忽略：没有解析错误，没有点名它的警告或诊断，定义仍然能够
   解析，文件也不会被改写。该委派永远不会在两轮处被停止，也永远不会报告
-  `truncated`；它只在完成或被 `TaskStop` 时结束。应用中的任何界面，以及任何
+  `truncated`；它只在完成或被 `task_stop` 时结束。应用中的任何界面，以及任何
   语言环境下 `chat.subagentStatus` 的文案，都不会报告回合上限或“已达到回合上限”
   状态。
 - **链接规格**：`03-runtime/02-agent-runtime.md` §5f、
@@ -4309,37 +4309,37 @@ eleven-tool-round desktop paths are verified by
 - **先决条件**：一个使用确定性本地传输的 Agent 会话，可以按需让委派完成、失败、被停止，或保持
   运行。两份用户定义：`~/.agents/subagents/scout.md`（只读）与
   `~/.agents/subagents/fixer.md`；工作区文件 `src/report.ts`，其结论容易按文件与行号定位；以及
-  一个可以从当前配置中移除的模型绑定。父级目录提供 `Task`、`TaskWait`、`TaskList` 和
-  `TaskStop`。
+  一个可以从当前配置中移除的模型绑定。父级目录提供 `task`、`task_wait`、`task_list` 和
+  `task_stop`。
 - **步骤**：
   1. 把一份「结束时必须给出一个结论及其文件与行号」的任务委派给 `scout`，让它以 `completed`
      结束。记下 Task 结果返回的 `delegationId`。
-  2. 发送一轮，把该 id 作为 `Task.resume` 传入，要求复述同一个结论，并找出第一次运行没有触及的
+  2. 发送一轮，把该 id 作为 `task.resume` 传入，要求复述同一个结论，并找出第一次运行没有触及的
      第二次出现。展开委派卡片，再检查父级自己收到的内容。
   3. 发送一轮，只说「复用一下 scout 已经找到的东西」，不传 `resume`。
-  4. 启动一个长时间运行的 `scout` 委派，在它仍在运行时对它调用 `Task.resume`；然后，在另一条链
-     恢复后的运行仍未结束时，对该链再次调用 `Task.resume`。
-  5. 用 `TaskStop` 停止一个委派，终止第二个，并在第三个仍在工作时关闭应用。重启后，按
-     `TaskWait` 报告的 id 对这三个逐个调用 `Task.resume`。
-  6. 让一个委派在成功读取一次后失败，然后对它调用 `Task.resume`。
-  7. 发送一次同时携带 `resume` 与 `model` 的 `Task` 调用。
-  8. 把该链记录的模型从当前配置中移除，然后 `Task.resume` 该链，并查看它的委派生命周期 details
+  4. 启动一个长时间运行的 `scout` 委派，在它仍在运行时对它调用 `task.resume`；然后，在另一条链
+     恢复后的运行仍未结束时，对该链再次调用 `task.resume`。
+  5. 用 `task_stop` 停止一个委派，终止第二个，并在第三个仍在工作时关闭应用。重启后，按
+     `task_wait` 报告的 id 对这三个逐个调用 `task.resume`。
+  6. 让一个委派在成功读取一次后失败，然后对它调用 `task.resume`。
+  7. 发送一次同时携带 `resume` 与 `model` 的 `task` 调用。
+  8. 把该链记录的模型从当前配置中移除，然后 `task.resume` 该链，并查看它的委派生命周期 details
      与卡片。
   9. 让 `scout` 的两条链先后结束，`resume` 较早的那条，再让同一定义的第三条链结束，读取下一次
      提示给出的可复用清单；随后让一条链保持运行，同时同一定义另有两条链结束。
-  10. 让一条链累计超过 5 万行只读工具输出，然后用它的 id 调用 `Task.resume`。
-  11. 分别以 `Explorer`、`explorer.md`、另一个定义的名称作为 `Task.agent`，恢复一条 `scout` 链。
+  10. 让一条链累计超过 5 万行只读工具输出，然后用它的 id 调用 `task.resume`。
+  11. 分别以 `Explorer`、`explorer.md`、另一个定义的名称作为 `task.agent`，恢复一条 `scout` 链。
   12. 让一条链读过超过八个文件，并在同一会话内再发两次提示，比较每次提示编排出的可复用清单。
-  13. 重启应用，在不改动其它任何设置的情况下 `Task.resume` 重启前那条 `completed` 的链。
+  13. 重启应用，在不改动其它任何设置的情况下 `task.resume` 重启前那条 `completed` 的链。
   14. 在一个能解析某条链、但已不再持有该链任何委派行的固定装置会话中，用该 id 调用
-      `Task.resume`。
+      `task.resume`。
 - **预期**：
   - 步骤 2 从该链继续：新的运行给出先前结论的确切文件与行号，且它的行里没有对那个文件的重新
-    整读。`Task` 返回一个新的 `delegationId`，而父级自身上下文里仍然只有该委派的一份最终报告，
+    整读。`task` 返回一个新的 `delegationId`，而父级自身上下文里仍然只有该委派的一份最终报告，
     也没有委派工具行。
   - 步骤 3 是冷启动：一个全新的委派，行里没有先前的结论，持有新的 `delegationId`，且与先前的链
     没有关联。不传 id 就绝不继承上下文，无论提示怎么写。
-  - 步骤 4 两次都以工具错误失败。仍在运行的委派被报告为仍在运行，并提示先用 `TaskWait` 收敛；
+  - 步骤 4 两次都以工具错误失败。仍在运行的委派被报告为仍在运行，并提示先用 `task_wait` 收敛；
     不会启动任何东西，也不会排队，运行中的委派继续工作。
   - 步骤 5 把 `stopped`、`aborted`，以及应用在它仍在工作时被关掉的运行（重启后读作
     `interrupted`）一律拒绝为不可恢复，各自说明该原因并指向新建委派；没有任何运行被启动。
@@ -4381,7 +4381,7 @@ eleven-tool-round desktop paths are verified by
 - **先决条件**：一个使用确定性本地传输的 Agent 会话，其模型元数据声明了一个很小的
   上下文窗口（例如 16,000 个 token），回复也是脚本化的。这个小窗口由注入的伪提供商
   给出，绝不来自真实提供商：在本仓库里，真实提供商与付费 API 不是默认测试环境。
-  一份用户定义 `~/.agents/subagents/reader.md` 声明 `Read`、`Glob` 与 `Grep`，
+  一份用户定义 `~/.agents/subagents/reader.md` 声明 `read`、`glob` 与 `grep`，
   工作区里的文件大到只需两三次读取就会越过委托的硬边界。
 - **步骤**：
   1. 委派一个必须按顺序读完这些文件的任务简报，记录传输收到的每一次请求及其
@@ -4438,8 +4438,8 @@ eleven-tool-round desktop paths are verified by
   足以超出委托的硬边界，但仍在 `MAX_RESUMABLE_READ_LINES` 以内；第二条已结算的
   链远远落在预算之内。
 - **步骤**：
-  1. 对超出预算的那条链执行 `Task.resume`，完整捕获它的第一次提供商请求。
-  2. 对落在预算之内的那条链执行 `Task.resume`，捕获同样的请求。
+  1. 对超出预算的那条链执行 `task.resume`，完整捕获它的第一次提供商请求。
+  2. 对落在预算之内的那条链执行 `task.resume`，捕获同样的请求。
   3. 向恢复后的运行询问该链在最近一轮得出的结论，再询问它在第一轮得出的结论。
   4. 重启应用，从转录重建链索引，再次恢复那条超出预算的链。
   5. 在一条链里累积超过 `MAX_RESUMABLE_READ_LINES` 的只读输出，读取下一条提示给出
@@ -4473,7 +4473,7 @@ eleven-tool-round desktop paths are verified by
   5. 读取截断的文件并复制每个块。
 - **预期**：
   - 没有扩展行显示转义的 JSON，并且没有有效负载出现两次。
-  - Read/Write 显示突出显示的内容； Bash 显示命令、输出和
+  - read/write 显示突出显示的内容； Bash 显示命令、输出和
     错误色调的 stderr 作为单独的块，省略了空通道；全球演出
     路径列表； Grep 显示按文件分组的匹配结果以及 `content` 中的行号
     模式、`filesWithMatches` 中的路径列表以及 `count` 中的每个文件总计；的
@@ -4535,7 +4535,7 @@ eleven-tool-round desktop paths are verified by
   多兆字节源文件，一个带有 `.map` 同级的缩小包（一行，
   兆字节长）、二进制文件和 `.gitignore` 排除的依赖树。
 - **步骤**：
-  1. 检查 `tools.list` 中的 `Read`、`Glob` 和 `Grep`。
+  1. 检查 `tools.list` 中的 `read`、`glob` 和 `grep`。
   2.读取多兆文件，然后从上报的next处再次读取
 抵消。
   3. Grep 命中缩小包及其 `.map` 的令牌。
@@ -4551,7 +4551,7 @@ eleven-tool-round desktop paths are verified by
      批次之间。
 - **预期**：
   - 每个描述都带有其参数和实际限制数。
-  - 没有任何一个工具结果超出其预算：Read/Glob/Grep 为 128 KB，96 KB
+  - 没有任何一个工具结果超出其预算：read/glob/grep 为 128 KB，96 KB
     对于 Bash。读取报告 `offset`、`lineCount`、`fileBytes` 和下一个偏移量
     `notice`；第二次读取继续，没有重叠；`totalLines` 从第一次读取就始终
     报告。填满的默认或请求窗口即使文件更长也报告 `truncated: false`。
@@ -4598,7 +4598,7 @@ eleven-tool-round desktop paths are verified by
   8. 重命名服务器并重新调整范围；再问一次。
   9. 将服务器的命令指向不存在的二进制文件，保存并打开
      一个新的会话。
-  10. 恢复有效命令并测试连接。通过 `ToolSearch` 激活一个工具，然后在两次
+  10. 恢复有效命令并测试连接。通过 `tool_search` 激活一个工具，然后在两次
       调用之间终止 stub 服务器进程。在同一会话中再次调用该工具，不再搜索。
   11. 用重启后不再提供该工具的 stub 重复；以及在恢复前禁用或改出作用域。
       也试一次断开后的并发调用，以及恢复握手失败的服务器。
@@ -4667,7 +4667,7 @@ eleven-tool-round desktop paths are verified by
   - 没有描述的保存将被拒绝，并显示一条消息命名该字段：
     描述是进入提示的唯一部分。
 - 基本提示包含技能的 ID、名称和精简的描述以及
-    不是它的身体；主体仅通过 `Skill` 工具到达。
+    不是它的身体；主体仅通过 `skill` 工具到达。
   - 切换“关闭”和“返回”可恢复所选项目，而无需重新选择它。
   - 缩小范围后，只有范围内的项目的会话可以调用它；另一个
     得到“未启用此项目”。
@@ -4961,10 +4961,10 @@ eleven-tool-round desktop paths are verified by
   在 Agent 模式下空闲；工作区允许创建主机工件并且没有
   先前的测试目标工件。
 - **步骤**： 1) 将会话切换到 Goal 并让 Agent 调用
-  `EnterGoalMode`，然后是 `SubmitGoal(title, markdown, question)`。 2) 检查
+  `enter_goal_mode`，然后是 `submit_goal(title, markdown, question)`。 2) 检查
   新 `.pi/goal/*.md` 工件中的确切 Markdown 字节以及匹配的
   `plan_approvals` 行。 3) 确认共享审批卡仅公开
-  Approve/Reject 和 Goal 否认 Write/Edit/plugin 工具，而 Bash 紧随其后
+  Approve/Reject 和 Goal 否认 write/edit/plugin 工具，而 Bash 紧随其后
   所选的权限模式。 4) 通过询问进行批准并遵守相同的 Agent
   在 Agent 模式下恢复。 5）逐个标准检查最终响应
   验证或显式边界，然后重新加载会话。
@@ -6079,7 +6079,7 @@ eleven-tool-round desktop paths are verified by
 - 打开空的主页，停靠的成绩单，设置搜索，插件市场搜索，
   项目存档搜索、全局搜索（现在包括命令）、提供商模型组合、
   消息编辑文本区域，以及工作面板浏览器 URL 栏（浅色和深色）。
-- 期望每个文本 Write/Edit/panel/window 都暴露 `spellcheck="false"` (React
+- 期望每个文本 write/edit/panel/window 都暴露 `spellcheck="false"` (React
   `spellCheck={false}`) 加上 `autocorrect="off"` 和 `autocapitalize="off"`。
 - 输入类似代码的标记、路径、模型时不要出现红色拼写下划线
   ID 或 URL；复选框和非文本控件保持不变。
@@ -6280,13 +6280,13 @@ eleven-tool-round desktop paths are verified by
 #### E2E-130：Read 生成的 tag 可被 Edit 直接使用而无需重读
 
 - **先决条件**：项目绑定的 Agent 会话具有可写工作区和一个至少 300 行的源文件。
-  提供商装置可以发出精确的 `Edit` 负载。
+  提供商装置可以发出精确的 `edit` 负载。
 - **步骤**：
-  1. 不带 `offset` 地 `Read` 该文件，记录 `[path#TAG]` 头、`tag` 字段以及返回行上的
+  1. 不带 `offset` 地 `read` 该文件，记录 `[path#TAG]` 头、`tag` 字段以及返回行上的
      `N:` 前缀。
-  2. 用该 `tag` 发出 `Edit`，其中包含一个 `PUT N.=M:`，正文替换读取窗口内的两行。
-  3. 确认成功结果报告了新的 `tag`，随后用返回的 tag 发出第二次 `Edit`，执行
-     `PUT >$:` 追加，中间不做任何 `Read`。
+  2. 用该 `tag` 发出 `edit`，其中包含一个 `PUT N.=M:`，正文替换读取窗口内的两行。
+  3. 确认成功结果报告了新的 `tag`，随后用返回的 tag 发出第二次 `edit`，执行
+     `PUT >$:` 追加，中间不做任何 `read`。
   4. 在某个 `offset` 处读取 200 行窗口，然后使用该窗口读取所得的 tag 编辑窗口内的一行。
   5. 在磁盘上重新打开文件，与预期内容逐字节比较。
 - **预期**：头部的 tag 是整文件 tag，而不是窗口的 tag，因此窗口读取也能正确锚定；
@@ -6304,12 +6304,12 @@ eleven-tool-round desktop paths are verified by
 - **先决条件**：一个仅读取了某 400 行文件第 1–50 行的会话。第二个装置文件有一行
   长度超过 16,384 个字符。
 - **步骤**：
-  1. 用正确的 `tag` 发出带 `PUT 300.=301:` 操作的 `Edit`。
+  1. 用正确的 `tag` 发出带 `PUT 300.=301:` 操作的 `edit`。
   2. 检查错误代码，确认消息内联了第 300 与 301 行的当前内容。
-  3. 原样重试完全相同的 `Edit` 负载，包括同一个 `tag`。
+  3. 原样重试完全相同的 `edit` 负载，包括同一个 `tag`。
   4. 用正确的 tag 发出跨越 56 个未显示行的 `PUT 5.=60:` 操作，并检查 reveal。
   5. 原样重试该负载。
-  6. `Read` 第二个装置，确认长行被剪辑并计入 `notice`，然后 `Edit` 该被剪辑的行。
+  6. `read` 第二个装置，确认长行被剪辑并计入 `notice`，然后 `edit` 该被剪辑的行。
 - **预期**：第 1 步以 `EDIT_LINES_UNSEEN` 失败且文件未变。第 3 步应用成功，因为
   完整的 reveal 已把这些行并入会话来源集。第 4 步以在 40 行处截断的 reveal 失败并
   提示重新读取该范围，第 5 步再次失败——被截断的 reveal 不并入任何行，因此该闸门
@@ -6325,12 +6325,12 @@ eleven-tool-round desktop paths are verified by
 - **先决条件**：一个逐行内容已知的已读文件。
 - **步骤**：
   1. 在单个 `ops` 负载中组合 `PUT <1:`、`PUT >40:`、`CUT 12.=14` 与 `PUT 80.=80:`
-     发出一次 `Edit`。
+     发出一次 `edit`。
   2. 将结果与按原始行号独立计算的这四项改动相比较。
   3. 对同一文件发出 `PUT >$:`，确认追加落在最后一行之后且只有一个终止换行。
   4. 发出一个正文行以字面 `-` 开头（写作 `+- item`）的 `ops` 负载，以及一个以字面 `+`
      开头（写作 `++ item`）的负载。
-  5. 发出一个 `PUT` 正文与该范围当前内容完全相同的 `Edit`。
+  5. 发出一个 `PUT` 正文与该范围当前内容完全相同的 `edit`。
 - **预期**：每个锚点都索引被 tag 命名的快照，因此没有操作会移动另一个操作，组合结果
   等于四项独立改动。`+-` 与 `++` 写出单个前导 `-` 与 `+`。第 5 步返回 `EDIT_NO_CHANGE`
   而不是报告一次“成功写入了什么都没写”，并且不留下审核记录。
@@ -6366,14 +6366,14 @@ eleven-tool-round desktop paths are verified by
 
 - **先决条件**：同一会话中的两个已读文件。
 - **步骤**：
-  1. 在一次 `Edit` 中先发出 `CUT 20.=30` 再发出无寄存器标签的 `PUT <5 `，确认这些行在
+  1. 在一次 `edit` 中先发出 `CUT 20.=30` 再发出无寄存器标签的 `PUT <5 `，确认这些行在
      文件内完成了搬移。
-  2. 在一次 `Edit` 中发出两个无标签 `CUT` 再发出一次无标签粘贴。
-  3. 对第一个文件发出 `CUT 40* @fn`，然后在另一次 `Edit` 调用中对第二个文件发出
+  2. 在一次 `edit` 中发出两个无标签 `CUT` 再发出一次无标签粘贴。
+  3. 对第一个文件发出 `CUT 40* @fn`，然后在另一次 `edit` 调用中对第二个文件发出
      `PUT <10 @fn`。
   4. 对一个从未设置过的寄存器发出 `PUT <10 @missing`。
   5. 发出附带正文行的 `PUT 10.=12 @fn`。
-  6. 在一次未做任何捕获的新 `Edit` 调用中发出无标签的 `PUT <1 `。
+  6. 在一次未做任何捕获的新 `edit` 调用中发出无标签的 `PUT <1 `。
   7. 删除源文件，然后在之后的调用中再次粘贴 `@fn`。
 - **预期**：第 1 步作为一次搬移应用，没有重复或孤立的行。第 2 步以
   `EDIT_REGISTER_AMBIGUOUS` 失败，而不是使用最近一次捕获。第 3 步跨两次调用完成跨文件
@@ -6391,7 +6391,7 @@ eleven-tool-round desktop paths are verified by
 
 - **先决条件**：一个已记录 tag 的已读文件。外部进程可以在读取与编辑之间修改该文件。
 - **步骤**：
-  1. 从会话外部在编辑目标之上插入 10 行无关内容，然后用过时 `tag` 发出原来的 `Edit`。
+  1. 从会话外部在编辑目标之上插入 10 行无关内容，然后用过时 `tag` 发出原来的 `edit`。
   2. 检查成功结果上的警告，确认改动落在移位后的位置，而不是原来的行号。
   3. 换成修改某个锚点行本身的改动重复。
   4. 换成在多操作负载的两个锚点之间插入行的改动重复，使这些锚点需要移动不同的偏移量。
@@ -6414,8 +6414,8 @@ eleven-tool-round desktop paths are verified by
   1. 从外部修改文件中部，然后用过时 tag 发出 `PUT >$:`。
   2. 用同一个过时 tag 对 `PUT <1:` 重复。
   3. 换成混合 `PUT >$:` 与带锚点的 `PUT 50.=50:` 的负载重复。
-  4. 发出一个 `tag` 格式正确但本会话从未为该路径记录过的 `Edit`。
-  5. 发出一个 `tag` 不是四位十六进制的 `Edit`。
+  4. 发出一个 `tag` 格式正确但本会话从未为该路径记录过的 `edit`。
+  5. 发出一个 `tag` 不是四位十六进制的 `edit`。
 - **预期**：第 1 与第 2 步以漂移警告应用，因为这两个锚点都不会被内容漂移移动。第 3 步
   不走位置稳定路径：它进入恢复，失败后进入 `EDIT_TAG_MISMATCH`。第 4 步返回
   `EDIT_TAG_UNKNOWN`，第 5 步返回 `EDIT_TAG_REQUIRED`；两者都不被报告为通用的
@@ -6446,12 +6446,12 @@ eleven-tool-round desktop paths are verified by
 
 - **先决条件**：一个 Review 可见的项目绑定会话，以及工作区根内的一个已读文件。
 - **步骤**：
-  1. 在同一个 `ops` 负载中发出带 `PUT` 操作加 `MV DEST` 的 `Edit`。
+  1. 在同一个 `ops` 负载中发出带 `PUT` 操作加 `MV DEST` 的 `edit`。
   2. 检查该工具调用的审核记录与 Review 面板行。
   3. 回滚该改动，确认源与目标都回到调用前的状态。
-  4. 发出带 `REM` 的 `Edit`，然后回滚。
-  5. 回滚之后，使用会话在回滚前持有的 tag 发出 `Edit`。
-  6. 对一个不存在、但其基名与 tag 恰好匹配本会话记录过的唯一文件的路径发出 `Edit`，
+  4. 发出带 `REM` 的 `edit`，然后回滚。
+  5. 回滚之后，使用会话在回滚前持有的 tag 发出 `edit`。
+  6. 对一个不存在、但其基名与 tag 恰好匹配本会话记录过的唯一文件的路径发出 `edit`，
      并检查警告。
   7. 在有两个共享该基名与 tag 的候选记录时重复第 6 步。
 - **预期**：第 1 步在一次工具调用下记录一次源删除与一次目标创建；第 3 步要么同时恢复
@@ -6469,15 +6469,15 @@ eleven-tool-round desktop paths are verified by
 - **先决条件**：一个具备子代理能力的会话（§5f）、同一工作区上的第二个会话，以及一个
   文件数多于快照存储路径上限的装置。
 - **步骤**：
-  1. 在父会话中读取一个文件，然后让委派代理在不先读取的情况下用父会话的 tag `Edit`
+  1. 在父会话中读取一个文件，然后让委派代理在不先读取的情况下用父会话的 tag `edit`
      该文件。
-  2. 在会话 A 中读取一个文件，并从会话 B 发出相同的 `Edit` 负载。
+  2. 在会话 A 中读取一个文件，并从会话 B 发出相同的 `edit` 负载。
   3. 读取多于存储所保留数量的不同路径，然后用最初的 tag 编辑最先读取的那个路径。
   4. 读取同一路径五次，期间内容不断变化，然后使用第一次读取的 tag 进行编辑。
   5. 读取一个文件，然后在不同 `offset` 上再读取两次未变的同一文件，确认一个 tag 覆盖
      全部三个窗口。
-  6. 重启应用，然后用重启之前的 tag 发出 `Edit`。
-  7. 通过一个会被保存钩子重新格式化的路径写入文件，然后用该写入返回的 tag 进行 `Edit`。
+  6. 重启应用，然后用重启之前的 tag 发出 `edit`。
+  7. 通过一个会被保存钩子重新格式化的路径写入文件，然后用该写入返回的 tag 进行 `edit`。
 - **预期**：第 1 与第 2 步失败——来源按读取者隔离，任何会话都不会把自己的 tag 交给另一个
   会话。第 3、4、6 步以 `EDIT_TAG_UNKNOWN` 与重新读取的指示失败，绝不会以错误写入结束。
   第 5 步可以在三个窗口的并集内任意位置应用而无需第四次读取。第 7 步应用成功，因为被
@@ -6492,17 +6492,17 @@ eleven-tool-round desktop paths are verified by
 
 - **先决条件**：一个读取过文件的会话，以及能在调用之间让文件在磁盘上漂移的方式。
 - **步骤**：
-  1. 让文件漂移，然后用现在已过时的 tag 发出锚点无法重映射的 `Edit`，使其以
+  1. 让文件漂移，然后用现在已过时的 tag 发出锚点无法重映射的 `edit`，使其以
      `EDIT_TAG_MISMATCH` 失败。
-  2. 重新读取，然后发出一次锚定在会话从未显示过的行上的 `Edit`，使其以
+  2. 重新读取，然后发出一次锚定在会话从未显示过的行上的 `edit`，使其以
      `EDIT_LINES_UNSEEN` 与一个被截断的 reveal 失败。
-  3. 在同一路径上发出一次头格式错误的 `Edit`。
-  4. 再发出一次头格式错误的 `Edit`。
-  5. 第三次发出头格式错误的 `Edit`。
+  3. 在同一路径上发出一次头格式错误的 `edit`。
+  4. 再发出一次头格式错误的 `edit`。
+  5. 第三次发出头格式错误的 `edit`。
 - **预期**：第 1 与第 2 步返回各自的代码且不带 `terminate` 提示——每个可恢复代码在该
   路径上花掉它唯一的宽限，本轮继续进行，因此代理可以按错误交回的信息行动。第 3 与第 4
   步分别计为尝试 1 与 2，仍然不终止。第 5 步终止。在第 5 步之前任意位置插入一次成功的
-  `Edit` 都会重置计数，因此其后的失败又是尝试 1。
+  `edit` 都会重置计数，因此其后的失败又是尝试 1。
 - **链接规格**：`03-runtime/18-line-anchored-edit-contract.md` §9.3、§11、
   `03-runtime/03-tools-and-permissions.md` §4d、ADR 0087、ADR 0207
 - **验收**：E（工具和权限）、质量
@@ -6511,12 +6511,12 @@ eleven-tool-round desktop paths are verified by
 
 #### E2E-141：额度耗尽时本轮以一条可见、可重试的错误行结束
 
-- **先决条件**：一个在某条路径上每次 `Edit` 都以不可恢复代码失败的会话。
+- **先决条件**：一个在某条路径上每次 `edit` 都以不可恢复代码失败的会话。
 - **步骤**：
-  1. 在一个提示内对同一路径发出三次失败的 `Edit` 调用。
+  1. 在一个提示内对同一路径发出三次失败的 `edit` 调用。
   2. 在代理循环停止之后观察会话记录。
   3. 在同一会话中发送一条后续提示。
-  4. 用三次失败的 `apply_patch` shell 命令代替 `Edit` 重复上述过程。
+  4. 用三次失败的 `apply_patch` shell 命令代替 `edit` 重复上述过程。
 - **预期**：第三次调用携带终止提示并停止循环，但本轮不是仅仅完成：会话记录以一条带
   `MUTATION_RETRY_BUDGET_EXHAUSTED` 的 assistant 错误行结束，被标记为可重试，指明路径与
   下一步动作，并且同一个代码作为错误事件到达。该 turn 被记为失败，而不是完成却没有最终
@@ -6536,34 +6536,34 @@ eleven-tool-round desktop paths are verified by
   `code-reviewer`、`test-runner`、`fixer`、`ui-designer`）以及一个全局 `~/.agents/subagents/readonly.md`
   定义。内置定义使用默认的 `permission: inherit` 行为。
 - **步骤**：
-  1. 提示一轮，其中助手在一条消息里发出两次 `Task` 调用 —— 一个 `explorer`
+  1. 提示一轮，其中助手在一条消息里发出两次 `task` 调用 —— 一个 `explorer`
      查一个方向，另一个 `explorer` 查另一个方向 —— 然后不结束本轮，继续自己
-     的工具调用，最后用 `TaskWait` 收敛。
-  2. 确认父级的可见文本在 `Task` 与 `TaskWait` 之间持续流出（没有死掉的一
-     轮）、两条 `Task` 行组成一张一次展开的委托卡片，并且 `TaskWait` 那行
+     的工具调用，最后用 `task_wait` 收敛。
+  2. 确认父级的可见文本在 `task` 与 `task_wait` 之间持续流出（没有死掉的一
+     轮）、两条 `task` 行组成一张一次展开的委托卡片，并且 `task_wait` 那行
      展示了两份报告。
   3. 先将会话设为 `ask`，用一份多文件规格委托给 `fixer`；确认它的
-     `Write`/`Edit`、`Bash` 和外部路径调用都会渲染标明 `fixer` 的权限卡片。切换
-     到 `accept-edits`，确认只有工作区内的 `Write`/`Edit` 自动放行。切换到 `auto`，
-     确认同一委托的 `Write`/`Edit`、`Bash` 以及外部 `Glob`/`Write` 调用都无需第二张
+     `write`/`edit`、`bash` 和外部路径调用都会渲染标明 `fixer` 的权限卡片。切换
+     到 `accept-edits`，确认只有工作区内的 `write`/`edit` 自动放行。切换到 `auto`，
+     确认同一委托的 `write`/`edit`、`bash` 以及外部 `glob`/`write` 调用都无需第二张
      授权卡即可完成。
   4. 提示一轮，启动三个委托后以 `mode: "any"`、`minCompleted: 1` 调用
-     `TaskWait`；确认它在第一个结算时立即返回，且仍在运行的委托继续运行。
-  5. 提示一轮，启动一个委托后不调用 `TaskWait`/`TaskStop` 就结束本轮；确认
+     `task_wait`；确认它在第一个结算时立即返回，且仍在运行的委托继续运行。
+  5. 提示一轮，启动一个委托后不调用 `task_wait`/`task_stop` 就结束本轮；确认
      该委托在运行结束时被停止、其节点读作 `aborted`，并且下一轮的模型上下文
      中没有任何委托行。
-  6. 在一轮里提示十次 `Task` 再加一次；确认第十一次以指明 10 个委托上限的
-     工具错误失败，并且 `TaskStop` 会释放一个名额，使第十一个委托得以启动。
-  7. 重新加载会话；确认委托卡片、它的节点和 `TaskWait` 行都持久化并折叠重
-     绘，并且 `TaskWait` 能按 id 重读已结算委托的报告而不重新运行它。
+  6. 在一轮里提示十次 `task` 再加一次；确认第十一次以指明 10 个委托上限的
+     工具错误失败，并且 `task_stop` 会释放一个名额，使第十一个委托得以启动。
+  7. 重新加载会话；确认委托卡片、它的节点和 `task_wait` 行都持久化并折叠重
+     绘，并且 `task_wait` 能按 id 重读已结算委托的报告而不重新运行它。
   8. 把 `~/.agents/subagents/readonly.md` 改成声明 `permission: auto` 并重新加载目录；
      确认该定义仍然加载但带着一条警告，且它的委托仍在会话的有效模式下裁决
-     （工作区内的 `Write` 依旧弹出权限卡片）。
-  9. 提示一轮，启动一个委托，让 `TaskWait` 超时使节点仍显示 running，再调用
-     `TaskStop`；确认拓扑节点和 `TaskStop` 行都读作 `stopped` 而不是
+     （工作区内的 `write` 依旧弹出权限卡片）。
+  9. 提示一轮，启动一个委托，让 `task_wait` 超时使节点仍显示 running，再调用
+     `task_stop`；确认拓扑节点和 `task_stop` 行都读作 `stopped` 而不是
      `running`。结束本轮并重新加载会话；确认卡片不再标为工作中，也不再持续计时。
-- **预期**：`Task` 立即带着 `delegationId` 返回，父级继续工作；`TaskWait`
-  带着每个委托的报告与状态收敛；`TaskList`/`TaskStop` 驱动生命周期；`TaskStop`
+- **预期**：`task` 立即带着 `delegationId` 返回，父级继续工作；`task_wait`
+  带着每个委托的报告与状态收敛；`task_list`/`task_stop` 驱动生命周期；`task_stop`
   的结果和已结束的一轮都不会留下实时的“子智能体工作中”卡片；内置 `fixer`
   继承所选的会话权限模式，因此 `auto` 也会让明确的外部路径无需重复授权卡，
   而 `ask` 和 `accept-edits` 保留各自的审批边界；项目定义声明的作用域被丢弃；
@@ -6758,9 +6758,9 @@ eleven-tool-round desktop paths are verified by
 - **前提条件**：绑定项目的 Agent 会话；工作区有一个至少 3000 行、每行短于
   16,384 个字符的文本文件，以及首行超过该上限的夹具。
 - **步骤**：
-  1. 不带 `offset`/`limit` 地 `Read` 该长文件。
-  2. 用报告的下一个偏移和一个适度的 `limit` 再 `Read` 同一文件。
-  3. `Read` 超长行夹具。
+  1. 不带 `offset`/`limit` 地 `read` 该长文件。
+  2. 用报告的下一个偏移和一个适度的 `limit` 再 `read` 同一文件。
+  3. `read` 超长行夹具。
   4. Grep 一个匹配数超过默认 `headLimit` 的词。
 - **预期**：
   - 步骤 1 返回默认 2000 行窗口，`truncated: false`，无截断芯片，
@@ -6898,8 +6898,8 @@ eleven-tool-round desktop paths are verified by
   4. 再用第二个同样没有 ASCII 名称的目录技能，以及一份 `|` 块描述的技能重复一遍。
 - **预期**：
   - 导入成功。目录列出两个 id 不同的技能。
-  - 下一个会话的系统提示包含每个技能的 id、名称和展平描述。`Skill` 工具能按该 id 加载正文。
-  - 拼错的 `Skill` id 会在可用技能里列出用户技能 id，而不只是插件 id。
+  - 下一个会话的系统提示包含每个技能的 id、名称和展平描述。`skill` 工具能按该 id 加载正文。
+  - 拼错的 `skill` id 会在可用技能里列出用户技能 id，而不只是插件 id。
   - 文档不会因为标题是非 ASCII、或因为两个文件都叫 `SKILL.md` 而被丢掉。
 - **链接规格**：`03-runtime/01-ipc-protocol.md` §12b、
   `07-plugins/01-plugin-system.md` §12.3、`08-meta/decisions-log.md`（D174、
@@ -7161,8 +7161,8 @@ eleven-tool-round desktop paths are verified by
 
 #### E2E-202：子智能体思考跟随其精确模型绑定
 
-- **前提条件**：已配置提供商有标记 `availableForSubagents` 的模型绑定。目录将该模型标为非推理，或未发布绑定显式启用的某一档。用户子智能体定义和内置 `Task` 目录可用。
-- **步骤**：1) 在设置 → 模型配置中为委托模型启用 `medium` 和 `high`，并标记可用于子智能体。2) 将该定义的思考级别设为 `high`，保存并重启。3) 用 frontmatter 模型引脚运行该定义。4) 用内置 `Task.model` 选择同一绑定（含按需解析路径）。5) 在父会话为 `medium` 时运行没有模型引脚的定义。
+- **前提条件**：已配置提供商有标记 `availableForSubagents` 的模型绑定。目录将该模型标为非推理，或未发布绑定显式启用的某一档。用户子智能体定义和内置 `task` 目录可用。
+- **步骤**：1) 在设置 → 模型配置中为委托模型启用 `medium` 和 `high`，并标记可用于子智能体。2) 将该定义的思考级别设为 `high`，保存并重启。3) 用 frontmatter 模型引脚运行该定义。4) 用内置 `task.model` 选择同一绑定（含按需解析路径）。5) 在父会话为 `medium` 时运行没有模型引脚的定义。
 - **预期**：已固定和显式选择的委托保留绑定启用的思考档，即使 models.dev 说不可推理或集合稀疏，仍发送所选非 `off` 档。未固定的委托继承父级有效级别。没有任何非 `off` 档的绑定仍解析为 `off`。
 - **链接规格**：`03-runtime/02-agent-runtime.md`、`03-runtime/11-provider-model-system.md`、ADR 0144 / D283
 - **验收**：B + C + 质量
@@ -7420,9 +7420,9 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   `notes.txt`、`node_modules/pkg/index.js`、`generated/out.txt`、`debug.log`，以及
   根目录下写有 `generated/` 的 `.pi-desktopignore`。每个文件都包含单词 `needle`。
   会话为 Agent 模式，权限模式 `auto`。
-- **步骤**：1）请求 `Read` `.env`，再请求 `Read` `.env.example`。2）请求 `Write`
-  到 `keys/id_rsa`。3）对 `needle` 运行无范围的 `Grep` 和 `Glob`。4）以
-  `path: node_modules/pkg` 和 `path: generated` 运行 `Grep`。5）分别在安装了系统 `rg`
+- **步骤**：1）请求 `read` `.env`，再请求 `read` `.env.example`。2）请求 `write`
+  到 `keys/id_rsa`。3）对 `needle` 运行无范围的 `grep` 和 `glob`。4）以
+  `path: node_modules/pkg` 和 `path: generated` 运行 `grep`。5）分别在安装了系统 `rg`
   和设置 `PI_DESKTOP_DISABLE_RG=1` 的情况下重复步骤 1。
 - **预期**：步骤 1 和 2 以 `WORKSPACE_PATH_DENIED` 失败，`.env.example` 的读取成功，
   且不会创建 `keys/id_rsa` 文件。无范围搜索只列出 `notes.txt` 和 `.env.example`：
@@ -7441,8 +7441,8 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 - **前提条件**：一个项目包含 `dangling -> /tmp/outside/planted.txt`（目标不存在）
   和 `inner -> ./not-yet.txt`。Agent 模式，`auto` 权限。
-- **步骤**：1）请求 `Write` 到 `dangling`。2）请求 `Write` 到 `dangling-dir/new.txt`，
-  其中 `dangling-dir -> /tmp/outside/dir`。3）请求 `Write` 到 `inner`。
+- **步骤**：1）请求 `write` 到 `dangling`。2）请求 `write` 到 `dangling-dir/new.txt`，
+  其中 `dangling-dir -> /tmp/outside/dir`。3）请求 `write` 到 `inner`。
 - **预期**：步骤 1 和 2 以 `PATH_OUTSIDE_WORKSPACE` 失败，`/tmp/outside` 下没有任何
   东西出现。步骤 3 在项目内创建 `not-yet.txt`。软链环路以 canonicalize 错误失败，
   而不是挂起。
@@ -7572,7 +7572,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 #### E2E-238：未知会话的工具请求不会回退
 
 - **前提条件**：host-core 运行中；一个 JSON-RPC 探针接到其 stdio 上。
-- **步骤**：1）发送 `sessionId: "missing"` 的 `tools.execute`，请求 `Read`
+- **步骤**：1）发送 `sessionId: "missing"` 的 `tools.execute`，请求 `read`
   `README.md`。2）以同一个 id 发送 `plans.enter`。
 - **预期**：两者都以 `SESSION_NOT_FOUND` 失败（分别对应数字码 `1007` 和
   `PLAN_SESSION_NOT_FOUND`）；最近打开的工作区下没有任何文件被读取。
@@ -7663,15 +7663,15 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 #### E2E-254：技能在第一个 Agent 回合即可加载
 
-- **前提条件**：当前项目至少有一个已激活的 Skill；已配置提供商；会话处于 Agent 模式，且存在另一个按需能力（例如 `BrowserPreview` 或某个插件工具）。
+- **前提条件**：当前项目至少有一个已激活的 Skill；已配置提供商；会话处于 Agent 模式，且存在另一个按需能力（例如 `browser_preview` 或某个插件工具）。
 - **步骤**：
   1. 打开新的 Agent 会话，发送一条匹配该 Skill 描述的提示。
   2. 检查第一个 provider 请求及其工具列表。
-  3. 确认模型直接用精确 id 调用 `Skill`，且没有先调用 `ToolSearch`，返回内容就是技能正文。
+  3. 确认模型直接用精确 id 调用 `skill`，且没有先调用 `tool_search`，返回内容就是技能正文。
   4. 在输入框发送 `/<skill-id>`，检查随后的回合。
   5. 把会话切换到 Plan 模式，再次检查工具列表。
   6. 禁用或移除全部 Skill，再发起一个 Agent 回合。
-- **预期**：只要技能目录非空，`Skill` 就随第一个请求下发，且绝不出现在 `# On-demand tools` 中，因此匹配任务与 `/skill-id` 调用都能直接加载正文，不再多一次发现往返。`ToolSearch` 仍服务于其他按需能力，且永远不会返回 `Skill`。Plan 模式不提供该工具与 `# Skills` 段落；目录为空时不注册任何 `Skill` 工具。
+- **预期**：只要技能目录非空，`skill` 就随第一个请求下发，且绝不出现在 `# On-demand tools` 中，因此匹配任务与 `/skill-id` 调用都能直接加载正文，不再多一次发现往返。`tool_search` 仍服务于其他按需能力，且永远不会返回 `skill`。Plan 模式不提供该工具与 `# Skills` 段落；目录为空时不注册任何 `skill` 工具。
 - **链接规格**：`03-runtime/02-agent-runtime.md`（§7.1）、`03-runtime/03-tools-and-permissions.md`（§2.1）、`04-ux/04-builtin-commands.md`（§8）、`08-meta/decisions-log.md`（D404）、ADR 0048、ADR 0219、ADR 0230
 - **验收**：C（对话与流）、E（工具与权限）、品质
 - **里程碑**：M5

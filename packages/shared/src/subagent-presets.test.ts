@@ -50,20 +50,20 @@ describe("SUBAGENT_PRESETS", () => {
     }
   });
 
-  it("grants Edit/Write only to roles that need them", () => {
+  it("grants edit/write only to roles that need them", () => {
     const fixer = findSubagentPreset("fixer");
     const explorer = findSubagentPreset("explorer");
     const reviewer = findSubagentPreset("code-reviewer");
     const runner = findSubagentPreset("test-runner");
     const designer = findSubagentPreset("ui-designer");
-    expect(fixer?.tools).toContain("Edit");
-    expect(fixer?.tools).toContain("Write");
-    expect(designer?.tools).toContain("Edit");
-    expect(designer?.tools).toContain("Write");
-    expect(designer?.tools).toContain("BrowserPreview");
-    expect(explorer?.tools ?? []).not.toContain("Edit");
-    expect(reviewer?.tools ?? []).not.toContain("Edit");
-    expect(runner?.tools ?? []).not.toContain("Edit");
+    expect(fixer?.tools).toContain("edit");
+    expect(fixer?.tools).toContain("write");
+    expect(designer?.tools).toContain("edit");
+    expect(designer?.tools).toContain("write");
+    expect(designer?.tools).toContain("browser_preview");
+    expect(explorer?.tools ?? []).not.toContain("edit");
+    expect(reviewer?.tools ?? []).not.toContain("edit");
+    expect(runner?.tools ?? []).not.toContain("edit");
   });
 });
 

@@ -81,9 +81,9 @@ import {
 
 type ToolRowProps = {
   message: UiMessage;
-  /** Rows the delegate produced, when this row is a `Task` call (ADR 0062). */
+  /** Rows the delegate produced, when this row is a `task` call (ADR 0062). */
   delegate?: SubagentRun;
-  /** Card treatment used when several Task calls form a delegation topology. */
+  /** Card treatment used when several task calls form a delegation topology. */
   variant?: "default" | "topology";
   /** Open the latest detailed-mode tool unless the user took over. */
   autoOpen?: boolean;
@@ -241,7 +241,7 @@ export const ToolRow = memo(function ToolRow({
   const blocks = variant !== "topology" && open && hasDetails ? presentation.current?.blocks : null;
   const outcome =
     variant === "topology" ? subagentOutcome(message, delegationStatuses) : null;
-  // A bare `running` Task row (no delegation result yet) is still being
+  // A bare `running` task row (no delegation result yet) is still being
   // created: the delegate runtime is spawning and no structured snapshot
   // exists. Show it as starting rather than a generic running state.
   const creating =
@@ -299,7 +299,7 @@ export const ToolRow = memo(function ToolRow({
   const [now, setNow] = useState(Date.now);
   // While a delegation is still being created it has no `startedAt` in the
   // result, so the elapsed clock ticks from the call's own timestamp instead
-  // of waiting for the Task handle — the node never reads as stalled.
+  // of waiting for the task handle — the node never reads as stalled.
   const nodeStartedAt =
     delegationTiming?.startedAt !== undefined
       ? delegationTiming.startedAt
@@ -542,11 +542,11 @@ export const ToolRow = memo(function ToolRow({
 }, toolRowPropsEqual);
 
 /**
- * What a delegate did, nested under the `Task` call that spawned it.
+ * What a delegate did, nested under the `task` call that spawned it.
  *
  * The rows are the delegate's context, not the parent's, so they are visibly
  * one level in and stay collapsed with the call. Only one level is possible: a
- * delegate has no `Task` tool of its own (ADR 0062).
+ * delegate has no `task` tool of its own (ADR 0062).
  */
 export const SubagentRunRows = memo(function SubagentRunRows({
   run,

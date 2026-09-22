@@ -216,7 +216,7 @@ test("a nested result opens its real Task and exposes its answer even outside th
   });
   const parent = message("parent-row", "", {
     role: "tool",
-    toolName: "Task",
+    toolName: "task",
     toolCallId: "task-call",
   });
   const r = reader(async () => page([child], { navigationParent: parent }));
@@ -292,7 +292,7 @@ test("a session switch cannot let an old nested search open the new session's pa
   r.set({ activeSessionId: "other", retainedSessionIds: ["other", "s"] });
   pending.resolve(
     page([message("child", "needle", { parentToolCallId: "task" })], {
-      navigationParent: message("task", "", { role: "tool", toolName: "Task", toolCallId: "task" }),
+      navigationParent: message("task", "", { role: "tool", toolName: "task", toolCallId: "task" }),
     }),
   );
   await navigation;

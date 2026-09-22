@@ -16,7 +16,7 @@ intentionally targets a path outside the session workspace.
 5. Explicit tool path still subject to the security denylist and the
    outside-path permission gate
 
-An explicit `path` argument on `Glob`/`Grep` opts that walk out of layers 2–4
+An explicit `path` argument on `glob`/`grep` opts that walk out of layers 2–4
 (the same way it already bypasses parent `.gitignore` rules), so a caller who
 names `node_modules/pkg` or `dist` can still search it. Layer 1 applies to
 every walk and every explicit path.
@@ -24,7 +24,7 @@ every walk and every explicit path.
 ## 3. Security denylist (always)
 
 Outside-workspace read/write/search is denied by default. An explicit
-`Read`/`Glob`/`Grep`/`Write`/`Edit` path may proceed only after the host applies
+`read`/`glob`/`grep`/`write`/`edit` path may proceed only after the host applies
 the permission mode: `auto` allows it, while `ask` and `accept-edits` ask the
 user. An implicit recursive walk never gains outside-workspace access.
 
@@ -37,10 +37,10 @@ root) for:
   coding task usually needs
 - credential files: `*.p12`, `*.pfx`, `credentials.json` (Google), `.npmrc` with tokens (best-effort)
 
-File-name matching is case-insensitive. `Glob` and `Grep` drop matching files
-from their results silently; an explicit `Read`, `Write`, or `Edit` (including
-the `Edit` move destination) fails with `WORKSPACE_PATH_DENIED`, and an
-outside-path grant does not lift the denial. `Bash` is not filtered (§6).
+File-name matching is case-insensitive. `glob` and `grep` drop matching files
+from their results silently; an explicit `read`, `write`, or `edit` (including
+the `edit` move destination) fails with `WORKSPACE_PATH_DENIED`, and an
+outside-path grant does not lift the denial. `bash` is not filtered (§6).
 
 > Read may be allowed with an explicit permission prompt in a later revision;
 > MVP fails closed.
@@ -81,11 +81,11 @@ Syntax: gitignore-compatible subset.
 
 | tool | ignore application |
 |---|---|
-| Glob | unscoped walk: layers 1–4 filter results; explicit `path`: layer 1 only |
-| Grep | unscoped walk: layers 1–4 filter the file set (in-process walker and the system `rg` fast path alike); explicit `path`: layer 1 only |
-| Read | `WORKSPACE_PATH_DENIED` on a denylisted file; otherwise permission-gated when the explicit path is outside; `TOOL_DENIED` after denial |
-| Write/Edit | `WORKSPACE_PATH_DENIED` on a denylisted file or move destination; otherwise permission-gated when the explicit path is outside; `TOOL_DENIED` after denial |
-| Bash | path sandbox still enforced by host; ignore file does not expand bash powers |
+| glob | unscoped walk: layers 1–4 filter results; explicit `path`: layer 1 only |
+| grep | unscoped walk: layers 1–4 filter the file set (in-process walker and the system `rg` fast path alike); explicit `path`: layer 1 only |
+| read | `WORKSPACE_PATH_DENIED` on a denylisted file; otherwise permission-gated when the explicit path is outside; `TOOL_DENIED` after denial |
+| write/edit | `WORKSPACE_PATH_DENIED` on a denylisted file or move destination; otherwise permission-gated when the explicit path is outside; `TOOL_DENIED` after denial |
+| bash | path sandbox still enforced by host; ignore file does not expand bash powers |
 
 ## 7. Diagnostics
 
@@ -96,11 +96,11 @@ Tools should return stable errors:
 - `WORKSPACE_PATH_DENIED` — an explicit path hit the security denylist (see
   [08-error-codes §3.3](08-error-codes.md))
 
-UI can show “hidden by ignore rules” counts for Glob/Grep optionally later.
+UI can show “hidden by ignore rules” counts for glob/grep optionally later.
 
 ## 8. Acceptance criteria
 
 - [x] outside paths require permission in non-auto modes and are allowed in Auto
-- [x] default ignores hide node_modules from Glob/Grep
+- [x] default ignores hide node_modules from glob/grep
 - [x] workspace ignore file honored
 - [x] security denylist cannot be disabled from UI in MVP

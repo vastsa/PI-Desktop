@@ -30,7 +30,7 @@ Create from template            (the folder opens as the project)
   活动项目，因此源已经在代理的工作区中并且
   文件面板读取。如果该文件夹无法作为项目打开，则该插件
   仍然保持加载状态，并且 toast 仅表示它已创建并加载。
-- **Agent** — `PluginScaffold`，在对话中（“给我写一个插件……”）。
+- **Agent** — `scaffold_plugin`，在对话中（“给我写一个插件……”）。
   它在已打开的当前工作区中写入。
 - **CLI** — `pnpm pi-plugin init <template> <dir>`。
 
@@ -126,9 +126,9 @@ Electron main 提供三个工具（host-core 从未见过它们），每个工�
 
 | 工具 | 模式 | 效果 |
 |---|---|---|
-| `PluginCheck` | 全部 | 验证插件目录；只读 |
-| `PluginScaffold` | 代理人 | 编写模板，然后将其作为开发插件加载 |
-| `PluginPack` | 代理人 | 验证，然后写入 `dist/<id>-<version>.piplug` |
+| `check_plugin` | 全部 | 验证插件目录；只读 |
+| `scaffold_plugin` | 代理人 | 编写模板，然后将其作为开发插件加载 |
+| `pack_plugin` | 代理人 | 验证，然后写入 `dist/<id>-<version>.piplug` |
 
 内置技能 `apps/desktop/resources/skills/plugin-development.md`，
 记录清单模式、权限层、主机 API 表面，以及

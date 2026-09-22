@@ -2058,7 +2058,10 @@ seconds when non-zero) from one hour onward. Zero-value units are omitted, so
 - The processing group spans the full available assistant column, so expanded
   result details keep a usable width even when the header or payload is short.
 - The visible label is a natural-language action (`Read`, `Ran`, `Searched`),
-  not the raw function name. Running actions use the progressive form.
+  not the raw function name. The capitalized form is a display label derived
+  from the canonical tool name (`read` renders as `Read`), never the identity
+  itself: the model calls the lowercase canonical name. Running actions use the
+  progressive form.
 - The primary argument is a clamped single-line monospace hint.
 - Result chips follow the hint: exit code (error hue), match/file counts,
   replacement count, Write byte size, Read line count plus its 1-based closed

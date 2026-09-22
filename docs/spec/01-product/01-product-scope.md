@@ -66,7 +66,7 @@ across devices without synchronizing conversation history or source files.
 - Secure API key storage
 - Streaming output + abort
 - Workspace binding
-- Builtin tools: Read / Write / Edit / Glob / Bash (+ Grep)
+- Builtin tools: read / write / edit / glob / bash (+ grep)
 - Tool-call visualization
 - Permission confirmations
 - JSONL transcript persistence with a SQLite index
@@ -98,13 +98,13 @@ across devices without synchronizing conversation history or source files.
 | Product selector | Behavior |
 |---|---|
 | Agent | The pi Agent runs with the full execution tool set under the selected permission policy. |
-| Plan | The same pi Agent runs in planning state. It can inspect with Read/Glob/Grep/BrowserPreview, run Bash under the selected permission policy, use plan/context controls, and call `SubmitPlan(title, markdown, question)`. Host-core preserves the exact Markdown bytes in a new immutable `<workspaceRoot>/.pi/plan/*.md` artifact before separate approval; title/question remain structured approval fields and the card opens the artifact. Write/Edit/plugin tools are denied. |
-| Goal | The same pi Agent negotiates an outcome contract through `SubmitGoal(title, markdown, question)`, preserving an immutable `<workspaceRoot>/.pi/goal/*.md` artifact before separate approval. After approval it returns to Agent mode and works toward the stated acceptance criteria, reporting the criteria it verified or the boundary that stopped it. |
+| Plan | The same pi Agent runs in planning state. It can inspect with read/glob/grep/browser_preview, run bash under the selected permission policy, use plan/context controls, and call `submit_plan(title, markdown, question)`. Host-core preserves the exact Markdown bytes in a new immutable `<workspaceRoot>/.pi/plan/*.md` artifact before separate approval; title/question remain structured approval fields and the card opens the artifact. write/edit/plugin tools are denied. |
+| Goal | The same pi Agent negotiates an outcome contract through `submit_goal(title, markdown, question)`, preserving an immutable `<workspaceRoot>/.pi/goal/*.md` artifact before separate approval. After approval it returns to Agent mode and works toward the stated acceptance criteria, reporting the criteria it verified or the boundary that stopped it. |
 
-Plan and Goal are contract modes, not strict read-only security profiles: Bash
-under `ask` or `accept-edits` prompts, while Bash under `auto` runs without
+Plan and Goal are contract modes, not strict read-only security profiles: bash
+under `ask` or `accept-edits` prompts, while bash under `auto` runs without
 confirmation and may mutate the workspace or scratch directory. The mode
-selector and `EnterPlanMode`/`EnterGoalMode` all address the same Agent;
+selector and `enter_plan_mode`/`enter_goal_mode` all address the same Agent;
 approval transitions that Agent into Agent execution without creating a second
 planner. Approval is approve/reject only, and the explicit execution permission
 selection defaults to Ask. A host restart interrupts pending, queued, or

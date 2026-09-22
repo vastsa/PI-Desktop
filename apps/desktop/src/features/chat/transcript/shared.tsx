@@ -277,7 +277,7 @@ export const TOOL_ACTION_KEYS: Record<ToolAction, string> = {
 
 /**
  * A lifecycle row says what it did to subagents, not that it "delegated":
- * `Task` is the only call that delegates (ADR 0062, ADR 0089, D268).
+ * `task` is the only call that delegates (ADR 0062, ADR 0089, D268).
  */
 export const LIFECYCLE_LABEL_KEYS: Record<"wait" | "list" | "stop", string> = {
   wait: "chat.subagentWaited",
@@ -464,7 +464,7 @@ export function LinkifiedText({ text, attachments }: { text: string; attachments
   );
 }
 
-/** Definition name a `Task` row delegated to, from the rows it produced or,
+/** Definition name a `task` row delegated to, from the rows it produced or,
  * before any arrived, from the call's own argument. */
 
 export function ToolCommandCopy({ command }: { command: string }) {

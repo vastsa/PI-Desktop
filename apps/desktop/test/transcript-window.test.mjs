@@ -164,7 +164,7 @@ test("mounted rows exclude tool rows and delegate rows", () => {
       content: "output",
       createdAt: "2026-01-01T00:00:00Z",
       toolCallId: "t1",
-      toolName: "Bash",
+      toolName: "bash",
     },
     {
       id: "d1",

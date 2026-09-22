@@ -68,7 +68,7 @@ globalThis.transcriptRenderProbe = async () => {
     for (let index = 0; index < groups; index++) {
       messages.push(
         message(`tool-${index}`, "tool", "done", {
-          toolName: "Bash",
+          toolName: "bash",
           toolCallId: `call-${index}`,
           toolStatus: "success",
           toolArgs: { command: `printf step-${index}` },
@@ -122,7 +122,7 @@ globalThis.transcriptRenderProbe = async () => {
     // update its terminal status and timing (#238), unlike unrelated text.
     const start = Date.now() - 12_000;
     const task = message("task", "tool", "started", {
-      toolName: "Task",
+      toolName: "task",
       toolCallId: "task-call",
       toolStatus: "success",
       toolArgs: { agent: "explorer", task: "Inspect a module" },
@@ -135,7 +135,7 @@ globalThis.transcriptRenderProbe = async () => {
       },
     });
     let lifecycle = message("wait", "tool", "running", {
-      toolName: "TaskWait",
+      toolName: "task_wait",
       toolCallId: "wait-call",
       toolStatus: "success",
       toolResult: {
@@ -276,7 +276,7 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
   for (let index = 0; index < 8; index++) {
     messages.push(
       message(`tool-${index}`, "tool", "done", {
-        toolName: "Bash",
+        toolName: "bash",
         toolCallId: `call-${index}`,
         toolStatus: "success",
         toolArgs: { command: `printf step-${index}` },
@@ -291,7 +291,7 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
   // the runtime reports the next phase or the turn reaches a terminal state.
   messages.push(
     message("tool-tail", "tool", "done", {
-      toolName: "Bash",
+      toolName: "bash",
       toolCallId: "call-tail",
       toolStatus: "success",
       toolArgs: { command: "printf tail" },

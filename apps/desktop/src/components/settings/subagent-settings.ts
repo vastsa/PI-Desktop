@@ -26,7 +26,7 @@ export const EMPTY_SUBAGENT_PAGE: SubagentPageData = {
 
 /**
  * Settings lists two sources: the writable global registry, and the shipped
- * defaults `Task` offers. Catalog load failures must not hide the user list, so
+ * defaults `task` offers. Catalog load failures must not hide the user list, so
  * builtins fall back to the shared preset catalog — reported enabled, because a
  * failed read cannot say which handles the user turned off.
  */

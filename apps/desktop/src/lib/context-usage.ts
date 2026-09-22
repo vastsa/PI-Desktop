@@ -1,6 +1,7 @@
 import {
   effectiveContextWindow,
   modelIdsMatch,
+  normalizeToolName,
   type ContextUsageDisplay,
   type MessageUsage,
   type ModelBinding,
@@ -9,6 +10,7 @@ import {
   type ToolTokenUsage,
   type UiMessage,
 } from "@pi-desktop/shared";
+
 
 export const DEFAULT_CONTEXT_WINDOW = 128_000;
 
@@ -240,7 +242,10 @@ export function aggregateToolTokenUsage(
   const groups = new Map<string, ToolTokenUsageSummary>();
 
   for (const message of messages) {
-    const toolName = message.toolName?.trim() || undefined;
+    // Identity, not spelling: a transcript written before the rename (`Read`)
+    // and one written after (`read`) are the same tool and share a group (D621).
+    const stored = message.toolName?.trim();
+    const toolName = stored ? normalizeToolName(stored) : undefined;
     const key = toolName ?? "__unknown_tool__";
     const usage = toolTokenUsage(message);
     const durationMs = toolDuration(message.toolDurationMs);

@@ -44,7 +44,7 @@ builtin command contracts.
   Agent/Plan/Goal chip. They update an idle session immediately. With no active
   session, they update the persisted default for the next session; a running
   session or pending approval is not changed.
-- `SubmitPlan` and `SubmitGoal` are model tools, not palette commands. There is
+- `submit_plan` and `submit_goal` are model tools, not palette commands. There is
   no Chat mode or request-changes alias.
 - The former app/project/settings/plugin/log commands remain available through
   their dedicated surfaces where applicable, but are not part of the command
@@ -108,7 +108,7 @@ template with the same name.
 
 Selecting a Skill inserts `/<skill-id> `. Sending `/<skill-id>` with optional
 prompt text keeps that typed form as the visible transcript chip and asks the
-model to call the existing `Skill` tool with the validated id before answering.
+model to call the existing `skill` tool with the validated id before answering.
 Only Skills active for the current project are listed or accepted, so project
 scope and plugin activation remain enforced at send time. If the Skill is no
 longer active, the text follows the normal unknown-slash prompt path.

@@ -78,11 +78,11 @@ test("preset ids and builtin document ids agree", () => {
 test("preset tools match the runtime builtin documents", () => {
   // Spot-check explorer and fixer — they cover the read-only and
   // write-capable extremes.
-  assert.match(presetSource, /id: "explorer"[\s\S]*?tools: \["Read", "Glob", "Grep", "Bash"\]/);
-  assert.match(presetSource, /id: "code-reviewer"[\s\S]*?tools: \["Read", "Glob", "Grep"\]/);
-  assert.match(presetSource, /id: "test-runner"[\s\S]*?tools: \["Read", "Glob", "Grep", "Bash"\]/);
-  assert.match(presetSource, /id: "fixer"[\s\S]*?tools: \["Read", "Glob", "Grep", "Edit", "Write", "Bash"\]/);
-  assert.match(presetSource, /id: "ui-designer"[\s\S]*?tools: \["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Edit", "Write"\]/);
+  assert.match(presetSource, /id: "explorer"[\s\S]*?tools: \["read", "glob", "grep", "bash"\]/);
+  assert.match(presetSource, /id: "code-reviewer"[\s\S]*?tools: \["read", "glob", "grep"\]/);
+  assert.match(presetSource, /id: "test-runner"[\s\S]*?tools: \["read", "glob", "grep", "bash"\]/);
+  assert.match(presetSource, /id: "fixer"[\s\S]*?tools: \["read", "glob", "grep", "edit", "write", "bash"\]/);
+  assert.match(presetSource, /id: "ui-designer"[\s\S]*?tools: \["read", "glob", "grep", "browser_preview", "bash", "edit", "write"\]/);
 });
 
 test("preset bodies mirror the runtime markdown frontmatter bodies", () => {

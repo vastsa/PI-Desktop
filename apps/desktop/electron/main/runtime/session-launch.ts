@@ -444,7 +444,7 @@ export function createSessionLaunchRuntime({
     await refreshUserMcp(projectPath);
     const userMcpTools = await userMcp.toolsForProject(projectPath ?? null);
     // Skill catalog (D174): only id/name/description cross to the sidecar; the
-    // document body is fetched on demand through the local `Skill` tool. Host
+    // document body is fetched on demand through the local `skill` tool. Host
     // skills come first so a plugin's entry reads as a refinement of them, and
     // the user's own skills come last so they win a name clash in the model's
     // reading order.
@@ -670,7 +670,7 @@ export function createSessionLaunchRuntime({
           })),
         ],
         // Plugin skills (D174): only the catalog crosses to the sidecar; the
-        // document body is fetched on demand through the local `Skill` tool.
+        // document body is fetched on demand through the local `skill` tool.
         pluginSkills,
         // Trusted extensions enabled for this project (spec 16 §3.2). The set
         // is part of the runtime match, so a toggle retires the runtime.

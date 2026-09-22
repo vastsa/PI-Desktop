@@ -85,11 +85,11 @@ Required (all **implemented**):
 Plan is not itself the workspace security boundary. Host-core resolves the
 durable session mode for every `tools.execute` call and applies the Plan matrix
 before permission modes, grants, plugin risk, or renderer/sidecar state. Plan
-denies Write/Edit/plugin/unknown tools, while BrowserPreview is the explicit
+denies write/edit/plugin/unknown tools, while BrowserPreview is the explicit
 read-only UI inspection exception (it reveals bundled `pi.browser` chrome; raw
 CDP plugin tools stay denied in Plan). Bash remains available in Plan: Ask and
 Accept edits prompt, and Auto runs without confirmation and may mutate the
-workspace or scratch directory. The UI must state this tradeoff. `SubmitPlan`
+workspace or scratch directory. The UI must state this tradeoff. `submit_plan`
 preserves exact Markdown bytes in a new unique `<workspaceRoot>/.pi/plan/*.md`
 file through host-core, validates the in-root artifact path, computes SHA-256
 and byte size, and only then creates the `plan_approvals` record with
@@ -307,7 +307,7 @@ host-core. They do not change the loopback-only rule above.
 ## 11. Security acceptance gates
 
 1. Renderer cannot `require('fs')` (sandbox + no nodeIntegration) — verified
-2. Plan Write/Edit/plugin calls cannot run under any permission mode; Bash is
+2. Plan write/edit/plugin calls cannot run under any permission mode; Bash is
    confirmed under Ask/Accept edits and may run without confirmation only under
    explicit Auto
 3. Writing outside the workspace fails — verified (host tests)

@@ -158,7 +158,7 @@ test("rendered Markdown and file chips map source-only hits to their visible own
     const parent = {
       id: "parent-row",
       role: "tool",
-      toolName: "Task",
+      toolName: "task",
       toolCallId: "task",
       content: "",
       toolArgs: { task: "Review this" },

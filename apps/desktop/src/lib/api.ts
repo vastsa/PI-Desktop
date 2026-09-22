@@ -1103,7 +1103,7 @@ export const api = {
   listUserSubagents: (query?: Pick<AgentCapabilityQuery, "level">) =>
     invoke<{ subagents: UserSubagentRecord[] }>(IPC.invoke.subagentList, query),
   /**
-   * What `Task` would offer right now, merged across the shipped builtins and
+   * What `task` would offer right now, merged across the shipped builtins and
    * the registry. `builtins` keeps a switched-off default in the list, flagged
    * `enabled: false`, so Settings can still show that row and its switch.
    */
@@ -1131,7 +1131,7 @@ export const api = {
   setUserSubagentEnabled: (id: string, enabled: boolean) =>
     invoke(IPC.invoke.subagentSetEnabled, { id, enabled }),
   /**
-   * Turn one shipped default off, or back on. The id is the `Task` handle
+   * Turn one shipped default off, or back on. The id is the `task` handle
    * (`explorer`), never a document id: a builtin has no file to switch.
    */
   setBuiltinSubagentEnabled: (id: string, enabled: boolean) =>

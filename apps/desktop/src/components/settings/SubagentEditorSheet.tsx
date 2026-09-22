@@ -19,6 +19,7 @@ import {
   type UserSubagentRecord,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
+import { canonicalToolName } from "../../lib/tool-display";
 import { Button, Field, HelpIcon, Input, Textarea, TooltipButton, cx, portalOverlay } from "../ui";
 import { IconChevronRight, IconFolderOpen, IconX } from "../icons";
 import {
@@ -58,18 +59,27 @@ export type SubagentDraft = {
   scope: ActivationScope;
 };
 
-/** Split a stored tools list into the inherit flag and assignable extras. */
+/**
+ * Split a stored tools list into the inherit flag and assignable extras.
+ *
+ * A record written before the rename (`["Read", "Glob"]`) and one written after
+ * (`["read", "glob"]`) produce the same draft: the read boundary normalizes
+ * (D621), so the picker ticks the grant that was actually saved.
+ */
 export function splitSubagentToolGrant(tools: readonly string[]): {
   inheritTools: boolean;
   tools: string[];
 } {
   const inheritTools = tools.some((name) => name === SUBAGENT_INHERIT_TOKEN);
-  const assignable = tools.filter((name) => isSubagentAssignableTool(name));
+  const assignable = tools.flatMap((name) => {
+    const canonical = canonicalToolName(name);
+    return isSubagentAssignableTool(canonical) ? [canonical] : [];
+  });
   return {
     inheritTools,
     tools:
       assignable.length > 0 || inheritTools
-        ? assignable
+        ? [...new Set(assignable)]
         : [...DEFAULT_SUBAGENT_TOOLS],
   };
 }
@@ -207,7 +217,7 @@ export function subagentSlug(value: string): string {
 
 /**
  * Apply a built-in preset to a draft. Tool grants are replaced wholesale so a
- * preset that drops `Bash` truly drops it. Body and description are
+ * preset that drops `bash` truly drops it. Body and description are
  * overwritten — these are the values that make the preset worth picking.
  * Inherit is cleared: presets are the built-in delegates, not parent-catalog
  * workers.
@@ -551,7 +561,7 @@ function AdvancedFields({
  * Create/edit sheet for one subagent definition.
  *
  * The tool grant sits above the prompt because it is the only field with a
- * safety consequence: a delegate that declares `Bash`, `Edit` or `Write` can
+ * safety consequence: a delegate that declares `bash`, `edit` or `write` can
  * change the workspace on its own (ADR 0062), and a checkbox group makes that
  * choice explicit instead of hiding it in frontmatter the user has to remember
  * to write.

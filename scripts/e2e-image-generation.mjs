@@ -39,7 +39,7 @@ sidecar.setHost({
   onNotification: () => () => {},
   onExit: () => () => {},
 });
-sidecar.setLocalTool("GenerateImages", createImageGenerationTool({ dataDir, getHost: () => host }));
+sidecar.setLocalTool("generate_images", createImageGenerationTool({ dataDir, getHost: () => host }));
 try {
   await host.start();
   const project = join(dataDir, "project");
@@ -73,7 +73,7 @@ try {
       params: {
         sessionId: id,
         toolCallId: randomUUID(),
-        toolName: "GenerateImages",
+        toolName: "generate_images",
         mode: "agent",
         args: { items },
       },
@@ -91,7 +91,7 @@ try {
       id: randomUUID(),
       role: "tool",
       content: "",
-      toolName: "GenerateImages",
+      toolName: "generate_images",
       toolResult: { details: generated.content },
       createdAt: new Date().toISOString(),
       status: "complete",

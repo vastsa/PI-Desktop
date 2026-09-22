@@ -27,7 +27,7 @@ The first step has three entry points, all calling the same
   the active project so the sources are already in the workspace the agent and
   the file panel read. If the folder cannot be opened as a project the plugin
   still stays loaded, and the toast says only that it was created and loaded.
-- **Agent** — `PluginScaffold`, in a conversation ("write me a plugin that …").
+- **Agent** — `scaffold_plugin`, in a conversation ("write me a plugin that …").
   It writes inside the current workspace, which is already open.
 - **CLI** — `pnpm pi-plugin init <template> <dir>`.
 
@@ -132,9 +132,9 @@ refusing to escape it:
 
 | Tool | Modes | Effect |
 |---|---|---|
-| `PluginCheck` | all | Validates a plugin directory; read-only |
-| `PluginScaffold` | agent | Writes a template, then loads it as a development plugin |
-| `PluginPack` | agent | Validates, then writes `dist/<id>-<version>.piplug` |
+| `check_plugin` | all | Validates a plugin directory; read-only |
+| `scaffold_plugin` | agent | Writes a template, then loads it as a development plugin |
+| `pack_plugin` | agent | Validates, then writes `dist/<id>-<version>.piplug` |
 
 A built-in skill, `apps/desktop/resources/skills/plugin-development.md`,
 documents the manifest schema, the permission tiers, the host API surface, and

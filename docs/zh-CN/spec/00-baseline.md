@@ -51,7 +51,7 @@
 > `0.4.13` 将聊天操作配置文件替换为 Plan 操作状态
 > 通过 D188 / ADR 0052。Plan 与计划状态下的 pi Agent 相同，保持
 > 权限模式选择，将 Bash 暴露于该策略，否认
-> Write/Edit/plugin 工具，并通过单独的提交结构化计划
+> write/edit/plugin 工具，并通过单独的提交结构化计划
 > 主机拥有的批准过渡。主机协议为v7，存储架构
 > v8；保留的聊天值会迁移到 Plan，而 Agent 仍保留默认值。
 > `0.4.14` 用不可变的主机编写的 Markdown 替换该提案
@@ -110,7 +110,7 @@
 15. 产品操作选择器：**Agent | Plan**；内部 `page = "chat"`
     值仍然是对话表面的实现细节，而不是
     操作模式
-16.Agent 工具：**读取/Glob/Grep/写入/编辑/Bash**
+16.Agent 工具：**读取/glob/grep/写入/编辑/Bash**
 17、权限超时：**120s→拒绝**
 18. 会话授予范围：**按工具名称**
 19. `~/.pi` 自动导入：**不在 MVP 中**
@@ -152,11 +152,11 @@
      一次溢出重试。该模型可以通过请求一个新窗口
      `new_context`；每次压缩都会添加一行记录和一个警告。
      没有面向用户的设置**
-44. Plan 工具和策略：**Read / Glob / Grep / BrowserPreview / Bash plus
-    `EnterPlanMode` 和 `SubmitPlan`； Write/Edit/plugin 和
+44. Plan 工具和策略：**read / glob / grep / browser_preview / bash plus
+    `enter_plan_mode` 和 `submit_plan`； write/edit/plugin 和
     未知工具被拒绝。 Bash 遵循 `ask`、`accept-edits` 或 `auto`，因此
     Plan 是计划意图，而不是严格的只读安全配置文件。**
-45. Plan 检查点：**`SubmitPlan(title, markdown, question)` 导致 host-core
+45. Plan 检查点：**`submit_plan(title, markdown, question)` 导致 host-core
     将确切的 Markdown 字节保留在新的唯一文件中
     `<workspaceRoot>/.pi/plan/*.md` 工件，而 title/question 仍然存在
     现有 `plan_approvals` 行中的结构化字段。该行记录了

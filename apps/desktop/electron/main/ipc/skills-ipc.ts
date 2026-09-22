@@ -288,7 +288,7 @@ export function registerSkillsIpc({
   });
 
   /**
-   * The effective catalog: what `Task` would actually offer right now, merged
+   * The effective catalog: what `task` would actually offer right now, merged
    * across builtin and registry documents. The renderer needs this to list the
    * shipped defaults and to name the definition that wins each handle.
    *

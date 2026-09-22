@@ -1,6 +1,6 @@
 # 23. Tool Name Contract
 
-> Decisions applied: D618
+> Decisions applied: D618, D621
 
 ## 0. Frozen policy summary
 
@@ -124,3 +124,21 @@ Until the first host-core caller lands (D619), the Rust module carries a
 `#![allow(dead_code)]` and the re-export carries `#[allow(unused_imports)]`,
 because this binary crate has no reference to either yet. That change removes
 both.
+
+## 5. The display layer
+
+Identity is the canonical name; a label is only how a reader sees it. The
+desktop owns that translation in one place and nothing else does, so moving the
+wire name to lowercase changed no visible label (D621).
+
+| Where | What it does |
+|---|---|
+| `apps/desktop/src/lib/tool-display.ts` | Resolves every name it is handed to its canonical identity first (`canonicalToolName`), then answers from it: `getToolAction` picks the row's verb, `isDelegationStartTool` and `delegationLifecycleKind` decide the delegation presentation, `getToolDisplayName` builds the capitalized label |
+| `getToolPromptName` | The variant the surfaces outside a transcript row use (the permission prompt). Our tools show their capitalized label; a third-party name (`plugin_*`, `mcp_*`) is left exactly as the server reported it, because a prompt the user is asked to approve must not hide which tool is asking |
+| Equality checks elsewhere | Normalize first: the review change tools (`write` / `edit`), the generated-image row (`generate_images`), the context-inspector grouping key, the desktop RPC timeout budgets (`bash`, `generate_images`), and the local tools Electron main registers (`skill`, `browser_preview`, `generate_images`, `check_plugin`, `scaffold_plugin`, `pack_plugin`) |
+
+The labels themselves are unchanged by the rename: `read` renders as `Read`,
+`task_wait` as `Task Wait`, and the legacy `Read` / `TaskWait` spellings still
+render exactly the same, because the label is derived from the canonical name
+rather than from the spelling that happened to reach the transcript. A
+third-party tool keeps its own words everywhere.

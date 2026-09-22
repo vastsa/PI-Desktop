@@ -27,7 +27,7 @@ function task(id, toolStatus, resultStatus, timing = {}) {
     role: "tool",
     content: "",
     createdAt: "2026-08-10T00:00:00.000Z",
-    toolName: "Task",
+    toolName: "task",
     toolCallId: id,
     toolStatus,
     toolArgs: { agent: "reviewer", description: `Task ${id}` },
@@ -67,13 +67,13 @@ test("detects exact delegation activities without absorbing ordinary tools", () 
   assert.equal(
     isDelegationActivityItem({
       kind: "tool",
-      message: { ...task("read", "success").message, toolName: "Read" },
+      message: { ...task("read", "success").message, toolName: "read" },
     }),
     false,
   );
   // The lifecycle tools of ADR 0087 drive an existing delegation and must not
   // inflate the topology's subagent counts.
-  for (const toolName of ["TaskWait", "TaskList", "TaskStop"]) {
+  for (const toolName of ["task_wait", "task_list", "task_stop"]) {
     assert.equal(
       isDelegationActivityItem({
         kind: "tool",
@@ -127,7 +127,7 @@ test("rejects the legacy `truncated` status instead of mapping it to an outcome"
     "completed",
   );
   const statuses = collectDelegationStatuses([
-    lifecycle("TaskWait", {
+    lifecycle("task_wait", {
       delegations: [
         { delegationId: "legacy", agent: "reviewer", status: "truncated" },
       ],
@@ -161,7 +161,7 @@ test("running Task without a result handle is still being created", () => {
 test("uses delegation lifecycle timestamps instead of the immediate Task duration", () => {
   const timings = collectDelegationTimings([
     task("running", "success", "running", { startedAt: 1_000 }),
-    lifecycle("TaskWait", {
+    lifecycle("task_wait", {
       status: "completed",
       delegations: [
         {
@@ -184,7 +184,7 @@ test("uses delegation lifecycle timestamps instead of the immediate Task duratio
 test("reads settled delegation status from a persisted TaskWait result", () => {
   const statuses = collectDelegationStatuses([
     task("running", "success", "running"),
-    lifecycle("TaskWait", {
+    lifecycle("task_wait", {
       delegations: [
         {
           delegationId: "running",
@@ -204,7 +204,7 @@ test("reads settled delegation status from a persisted TaskWait result", () => {
 });
 test("preserves denied lifecycle outcomes", () => {
   const statuses = collectDelegationStatuses([
-    lifecycle("TaskWait", {
+    lifecycle("task_wait", {
       delegations: [
         { delegationId: "denied", agent: "reviewer", status: "denied" },
       ],
@@ -213,7 +213,7 @@ test("preserves denied lifecycle outcomes", () => {
   assert.equal(statuses.get("denied"), "denied");
   assert.equal(
     delegationRosterOutcome(delegationRoster({
-      toolName: "TaskWait",
+      toolName: "task_wait",
       toolResult: {
         details: {
           delegations: [{ delegationId: "denied", agent: "reviewer", status: "denied" }],
@@ -227,7 +227,7 @@ test("preserves denied lifecycle outcomes", () => {
 test("reads stopped status from TaskStop, including a running snapshot", () => {
   const statuses = collectDelegationStatuses([
     task("d1", "success", "running"),
-    lifecycle("TaskStop", {
+    lifecycle("task_stop", {
       stopped: [
         { delegationId: "d1", agent: "explorer", status: "running" },
       ],
@@ -246,7 +246,7 @@ test("reads stopped status from TaskStop, including a running snapshot", () => {
 test("reads a failed delegation's error from a TaskWait roster entry", () => {
   const failures = collectDelegationFailures([
     task("d1", "success", "running"),
-    lifecycle("TaskWait", {
+    lifecycle("task_wait", {
       delegations: [
         {
           delegationId: "d1",
@@ -265,7 +265,7 @@ test("reads a failed delegation's error from a TaskWait roster entry", () => {
 
 test("reads a failed delegation's error from TaskStop's `stopped` list", () => {
   const failures = collectDelegationFailures([
-    lifecycle("TaskStop", {
+    lifecycle("task_stop", {
       stopped: [
         {
           delegationId: "d9",
@@ -287,7 +287,7 @@ test("reads a failed delegation's error from TaskStop's `stopped` list", () => {
 
 test("a later lifecycle row replaces an earlier failure for the same delegate", () => {
   const failures = collectDelegationFailures([
-    lifecycle("TaskWait", {
+    lifecycle("task_wait", {
       delegations: [
         {
           delegationId: "d1",
@@ -296,7 +296,7 @@ test("a later lifecycle row replaces an earlier failure for the same delegate", 
         },
       ],
     }),
-    lifecycle("TaskList", {
+    lifecycle("task_list", {
       delegations: [
         {
           delegationId: "d1",
@@ -312,7 +312,7 @@ test("a later lifecycle row replaces an earlier failure for the same delegate", 
 
 test("ignores roster entries that report no error at all", () => {
   const failures = collectDelegationFailures([
-    lifecycle("TaskWait", {
+    lifecycle("task_wait", {
       delegations: [
         { delegationId: "ok", status: "completed" },
         { delegationId: "empty", status: "failed", error: {} },
@@ -398,7 +398,7 @@ test("a lifecycle row names the subagents it reports on (D268)", () => {
   // Presentation parity with the Task card: the row was called with bare
   // delegation ids, so its own arguments say nothing a reader can use. The
   // roster the runtime returned is what names the subagents.
-  const wait = lifecycle("TaskWait", {
+  const wait = lifecycle("task_wait", {
     delegations: [
       {
         delegationId: "d1",
@@ -427,7 +427,7 @@ test("a lifecycle row names the subagents it reports on (D268)", () => {
 });
 
 test("a repeated agent is counted, not listed twice", () => {
-  const list = lifecycle("TaskList", {
+  const list = lifecycle("task_list", {
     delegations: [
       { delegationId: "a", agent: "explorer", status: "completed" },
       { delegationId: "b", agent: "explorer", status: "completed" },
@@ -441,13 +441,13 @@ test("a repeated agent is counted, not listed twice", () => {
 });
 
 test("TaskStop reads its roster from `stopped`, and Task has none", () => {
-  const stop = lifecycle("TaskStop", {
+  const stop = lifecycle("task_stop", {
     stopped: [{ delegationId: "s1", agent: "test-runner", status: "stopped" }],
   });
   assert.equal(lifecycleKindOf(stop.message), "stop");
   assert.equal(delegationRosterSummary(delegationRoster(stop.message)), "test-runner");
   assert.equal(delegationRosterOutcome(delegationRoster(stop.message)), "stopped");
-  const stale = lifecycle("TaskStop", {
+  const stale = lifecycle("task_stop", {
     stopped: [{ delegationId: "s2", agent: "explorer", status: "running" }],
   });
   assert.equal(delegationRosterOutcome(delegationRoster(stale.message)), "stopped");
@@ -498,7 +498,7 @@ test("topology elapsed bounds follow this card's Task ids, not a later fan-out",
 test("settled Task snapshots outrank stale lifecycle polling during a parallel fan-out", () => {
   const first = task("first", "success", "completed", { startedAt: 1000, completedAt: 5000 });
   const second = task("second", "success", "running", { startedAt: 1100 });
-  const stalePoll = lifecycle("TaskList", { delegations: [
+  const stalePoll = lifecycle("task_list", { delegations: [
     { delegationId: "first", status: "running", startedAt: 1000 },
     { delegationId: "second", status: "running", startedAt: 1100 },
   ] });

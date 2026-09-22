@@ -21,7 +21,7 @@ const server = createServer(async (req, res) => {
     const user = payload.messages.findLast((m) => m.role === "user");
     const userText = typeof user?.content === "string" ? user.content : JSON.stringify(user?.content);
     const scenario = [...scenarios.values()].find((s) => userText.includes(s.marker));
-    const isParent = payload.tools?.some((t) => t.function?.name === "Task");
+    const isParent = payload.tools?.some((t) => t.function?.name === "task");
     if (!isParent && payload.model.startsWith("unavailable-")) {
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: { message: "model not found" } }));
@@ -30,7 +30,7 @@ const server = createServer(async (req, res) => {
     const first = scenario && isParent && !scenario.called;
     if (first) scenario.called = true;
     const delta = first
-      ? { role: "assistant", tool_calls: [{ index: 0, id: `call_${++sequence}`, type: "function", function: { name: "Task", arguments: JSON.stringify(scenario.args) } }] }
+      ? { role: "assistant", tool_calls: [{ index: 0, id: `call_${++sequence}`, type: "function", function: { name: "task", arguments: JSON.stringify(scenario.args) } }] }
       : { role: "assistant", content: "Fixture finished." };
     const base = { id: `chatcmpl-${++sequence}`, object: "chat.completion.chunk", created: 1, model: payload.model };
     res.writeHead(200, { "content-type": "text/event-stream" });
@@ -50,15 +50,15 @@ const model = (modelId) => ({
 });
 const bindings = { "fixture/private": model("private"), "fixture/allowed": model("allowed") };
 const INHERIT_DENY_TOOLS = [
-  "Task",
-  "TaskWait",
-  "TaskList",
-  "TaskStop",
-  "EnterPlanMode",
-  "EnterGoalMode",
+  "task",
+  "task_wait",
+  "task_list",
+  "task_stop",
+  "enter_plan_mode",
+  "enter_goal_mode",
   "asktool",
   "new_context",
-  "ToolSearch",
+  "tool_search",
 ];
 const fixturePluginTools = [
   { name: "plugin_fixture_echo", description: "Deterministic fixture plugin tool." },
@@ -71,28 +71,28 @@ const fixtureSkills = [
   },
 ];
 const EXPECTED_INHERITED_PARENT_TOOLS = [
-  "Read",
-  "Bash",
-  "Edit",
-  "Write",
-  "Glob",
-  "Grep",
-  "BrowserPreview",
-  "PluginCheck",
-  "PluginScaffold",
-  "PluginPack",
+  "read",
+  "bash",
+  "edit",
+  "write",
+  "glob",
+  "grep",
+  "browser_preview",
+  "check_plugin",
+  "scaffold_plugin",
+  "pack_plugin",
   "plugin_fixture_echo",
-  "Skill",
+  "skill",
 ];
 const builtinExplorerDefinition = {
   name: "explorer",
   description: "Built-in codebase explorer.",
-  tools: ["Read", "Glob", "Grep", "Bash"],
+  tools: ["read", "glob", "grep", "bash"],
   prompt: "Search the requested files and report exact paths.",
   source: "builtin",
 };
 const definition = (name, pin, options = {}) => ({
-  name, description: "Read-only fixture", tools: options.tools ?? ["Read"], prompt: "Return Fixture finished without using tools.",
+  name, description: "Read-only fixture", tools: options.tools ?? ["read"], prompt: "Return Fixture finished without using tools.",
   source: "user",
   ...(options.inheritTools ? { inheritTools: true } : {}),
   ...(pin ? { model: { providerId: "fixture", modelId: pin } } : {}),
@@ -164,12 +164,12 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
   });
   await until(() => events.some((e) => e.sessionId === sessionId && e.turnId === id && e.event.type === "agent_end" && !e.parentToolCallId));
   const captured = requests.slice(before);
-  const parent = captured.find((p) => p.tools?.some((t) => t.function?.name === "Task"));
+  const parent = captured.find((p) => p.tools?.some((t) => t.function?.name === "task"));
   assert.ok(parent, "parent provider request reached local transport");
   const system = parent.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
   assert.ok(!system.includes("`fixture/private`"), "private pin must not enter override catalog");
-  assert.ok(parent.tools.find((t) => t.function?.name === "Task").function.description.includes(`Default model: fixture/${primaryModel}`));
-  const delegates = captured.filter((p) => !p.tools?.some((t) => t.function?.name === "Task"));
+  assert.ok(parent.tools.find((t) => t.function?.name === "task").function.description.includes(`Default model: fixture/${primaryModel}`));
+  const delegates = captured.filter((p) => !p.tools?.some((t) => t.function?.name === "task"));
   if (expectedModel) assert.deepEqual(delegates.map((p) => p.model), options.expectedAttempts ?? [expectedModel]);
   else {
     assert.equal(delegates.length, 0, "forbidden override must not issue a provider request");
@@ -180,7 +180,7 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
       assert.ok(!system.includes(`\`fixture/${pin}\``), "fallback pin stays out of the override catalog");
     }
     const taskMessages = events.filter((e) => e.sessionId === sessionId && e.turnId === id && e.event.type === "message_end")
-      .map((e) => e.event.message).filter((m) => m.role === "tool" && m.toolName === "Task");
+      .map((e) => e.event.message).filter((m) => m.role === "tool" && m.toolName === "task");
     const settled = taskMessages.at(-1)?.toolResult?.details;
     const expectedStatus = options.expectedStatus ?? "completed";
     const failures = options.expectedAttempts.filter((name) => name.startsWith("unavailable-"));
@@ -221,12 +221,12 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
       .join("\n");
     if (args.agent === "worker") {
       assert.match(
-        parent.tools.find((tool) => tool.function?.name === "Task").function.description,
+        parent.tools.find((tool) => tool.function?.name === "task").function.description,
         /worker \(tools: inherit\)/,
       );
       assert.match(system, /# Skills/);
       assert.match(system, /fixture\.skills\/release-notes/);
-      assert.ok(delegatedToolNames.includes("Skill"), "inherit worker receives Skill");
+      assert.ok(delegatedToolNames.includes("skill"), "inherit worker receives Skill");
       assert.ok(
         delegatedToolNames.includes("plugin_fixture_echo"),
         "inherit worker receives the fixture plugin tool",
@@ -244,8 +244,8 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
         assert.ok(!delegatedToolNames.includes(denied), `${denied} must not be inherited`);
       }
     } else {
-      assert.deepEqual(delegatedToolNames, ["Read", "Glob", "Grep", "Bash"]);
-      assert.ok(!delegatedToolNames.includes("Skill"), "builtin explorer must not inherit Skill");
+      assert.deepEqual(delegatedToolNames, ["read", "glob", "grep", "bash"]);
+      assert.ok(!delegatedToolNames.includes("skill"), "builtin explorer must not inherit Skill");
       assert.ok(!delegatedSystem.includes("# Skills"), "builtin explorer must not receive Skill guidance");
     }
   }

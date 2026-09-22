@@ -2,7 +2,7 @@
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/23-tool-names) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
-> 已应用的决策：D618
+> 已应用的决策：D618、D621
 
 ## 0. 冻结政策总结
 
@@ -110,3 +110,18 @@ export function normalizeToolName(name: string): string;
 
 在宿主侧第一个调用点落地（D619）之前，Rust 模块带有 `#![allow(dead_code)]`、再导出带有
 `#[allow(unused_imports)]`，因为该二进制 crate 目前还没有任何引用；那一次改动会同时删除两者。
+
+## 5. 展示层
+
+身份是规范名；标签只是读者看到它的方式。这层翻译只由桌面端的**一处**代码拥有，其它地方都不负责，
+因此把线上名改成小写没有改变任何可见标签（D621）。
+
+| 位置 | 做什么 |
+|---|---|
+| `apps/desktop/src/lib/tool-display.ts` | 先把交给它的每个名字解析成规范身份（`canonicalToolName`），再据此作答：`getToolAction` 决定该行的动词，`isDelegationStartTool` 与 `delegationLifecycleKind` 决定委派呈现，`getToolDisplayName` 推导首字母大写标签 |
+| `getToolPromptName` | transcript 行之外的界面（权限确认卡）用的变体。我们自己的工具显示首字母大写标签；第三方名字（`plugin_*`、`mcp_*`）完全按服务端上报的样子显示，因为一张要用户批准的卡片不能隐藏究竟是哪个工具在请求 |
+| 其它按相等判定的地方 | 先归一化：review 变更工具（`write` / `edit`）、生成图片行（`generate_images`）、上下文检查器的分组键、桌面 RPC 超时预算（`bash`、`generate_images`），以及 Electron 主进程注册的本地工具（`skill`、`browser_preview`、`generate_images`、`check_plugin`、`scaffold_plugin`、`pack_plugin`） |
+
+标签本身不因本次改名而改变：`read` 显示为 `Read`，`task_wait` 显示为 `Task Wait`，旧的
+`Read` / `TaskWait` 拼写渲染结果完全相同——因为标签由规范名推导，而不是由碰巧落到 transcript 里的
+那个拼写决定。第三方工具在任何地方都保留自己的用词。

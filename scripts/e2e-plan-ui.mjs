@@ -1025,11 +1025,11 @@ function assertLiveTranscriptEvidence(session) {
   const toolMessages = messages.filter((message) => message?.role === "tool");
   const toolNames = toolMessages.map(toolNameOf).filter(Boolean);
   assert(
-    toolNames.join(",") === "EnterPlanMode,SubmitPlan",
+    toolNames.join(",") === "enter_plan_mode,submit_plan",
     `live Plan tool sequence was not deterministic: ${jsonText(toolNames)}`,
   );
   const submitIndex = messages.findIndex(
-    (message) => message?.role === "tool" && toolNameOf(message) === "SubmitPlan",
+    (message) => message?.role === "tool" && toolNameOf(message) === "submit_plan",
   );
   assert(submitIndex >= 0, "durable SubmitPlan activity is missing");
   const priorAssistantText = messages
@@ -1419,7 +1419,7 @@ async function runLiveAcceptance(state) {
     "exact live execution marker is not durable",
   );
   const submitIndex = finalSession.messages.findIndex(
-    (message) => message?.role === "tool" && toolNameOf(message) === "SubmitPlan",
+    (message) => message?.role === "tool" && toolNameOf(message) === "submit_plan",
   );
   const postApprovalAssistantText = finalSession.messages
     .slice(submitIndex + 1)

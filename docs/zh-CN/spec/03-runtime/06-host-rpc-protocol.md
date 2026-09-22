@@ -42,7 +42,7 @@ RPC 调度程序将活动请求上限限制为 32。然后，`tools.execute` 输
 有界执行预算：
 
 - 总共 16 次工具执行
-- 全局 4 个并发 `Bash` 进程，每个会话 2 个
+- 全局 4 个并发 `bash` 进程，每个会话 2 个
 - 全球 8 个 read/search 工具
 - 2 个全局变异工具，每个会话 1 个
 - 全球4个插件工具
@@ -54,7 +54,7 @@ RPC 调度程序将活动请求上限限制为 32。然后，`tools.execute` 输
 无限期地等待或产生更多工作。限制是主机拥有的，所以
 Electron 和 sidecar 不能独立过度接纳相同的资源。
 每会话突变许可是在全局突变槽之前获取的；
-因此，排队的 `Bash`/read/search 调用在等待时不会保留全局容量
+因此，排队的 `bash`/read/search 调用在等待时不会保留全局容量
 对于同一会话中的较早突变。
 
 ### 请求
@@ -573,7 +573,7 @@ type ToolsExecuteParams = {
 7、database/session-resolution错误返回`INTERNAL`，关闭失败；
    只有已确认的丢失会话才可以使用旧后备。
 
-对于`Read`/`Glob`/`Grep`/`Write`/`Edit`，主机分类显式路径
+对于`read`/`glob`/`grep`/`write`/`edit`，主机分类显式路径
 在工作区之外并在低风险自动允许规则之前从头开始。
 `auto` 执行它，而 `ask` 和 `accept-edits` 发出
 `permissions.request`；拒绝、超时或取消返回 `TOOL_DENIED`
@@ -583,14 +583,14 @@ type ToolsExecuteParams = {
 
 在通用权限评估之前，host-core 应用模式策略：
 
-- Plan 和 Goal 允许 `Read`、`Glob`、`Grep`、`BrowserPreview`、`Bash` 和
-  适用于实时的种类提交工具（`SubmitPlan` / `SubmitGoal`）
+- Plan 和 Goal 允许 `read`、`glob`、`grep`、`browser_preview`、`bash` 和
+  适用于实时的种类提交工具（`submit_plan` / `submit_goal`）
   规划状态。
-- Plan 和 Goal 拒绝 `Write`、`Edit`、每个插件工具以及以下未知工具
+- Plan 和 Goal 拒绝 `write`、`edit`、每个插件工具以及以下未知工具
   所有权限模式和授予。主机读取会话的**持久**模式
   对于此检查，因此在 `tools.execute` 中声明 `agent` 的 sidecar 无法扩大
   它和 `*_IN_PLAN` 错误代码是两种类型共享的。
-- Plan 和 Goal `Bash` 遵循已解析的权限模式：`ask` 和
+- Plan 和 Goal `bash` 遵循已解析的权限模式：`ask` 和
   `accept-edits`
   发出 `permissions.request`； `auto` 无需确认即可执行，并且可能
   变异。主机重新解析有效 shell ID/dialect 并要求
@@ -615,7 +615,7 @@ type ToolsExecuteResult = {
   durationMs: number
   denied?: boolean
   errorCode?: string
-  // Workspace Write/Edit results may include content.details.review. The
+  // Workspace write/edit results may include content.details.review. The
   // record is persisted with the tool message and is independent of Git.
   // Bash command failures preserve content.exitCode/stdout/stderr while
   // setting ok=false, isError=true, and errorCode=TOOL_FAILED.
@@ -626,7 +626,7 @@ type ToolsExecuteResult = {
 
 ### 5. 1 Plan 和 Goal 提交和批准合约
 
-`SubmitPlan` 和 `SubmitGoal` 在通用之前作为主机转换进行处理
+`submit_plan` 和 `submit_goal` 在通用之前作为主机转换进行处理
 工具执行。主机将准确的 Markdown 字节保留在新的唯一的
 在发布提案之前，先将工件放在种类的目录下。
 
@@ -911,7 +911,7 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
 ## 8. 并发/排序
 
 1. 请求可以在调度程序上限内并发。 Read/search 工具可能
-   并行运行；每个会话的 Read/search/`Write` 都是有界的并且按 FIFO 顺序排列，
+   并行运行；每个会话的 Read/search/`write` 都是有界的并且按 FIFO 顺序排列，
    一次会话中最多有一个突变。
 2. 不同的会话可以在保留的项目选项卡上同时继续；
    每个都解析自己的项目根并授予
@@ -962,8 +962,8 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
 9. 分叉消息会排除后面的所有源行并拒绝
    未创建子项的未知消息
 10. 伪造的 `requestedMode` 无法授权工具进入持久模式；
-    Plan 和 Goal 拒绝 Write/Edit/plugin/unknown 工具并申请权限
-    根据 `requestedMode`/Write/Edit/plugin/unknown/Plan 提示 Bash
+    Plan 和 Goal 拒绝 write/edit/plugin/unknown 工具并申请权限
+    根据 `requestedMode`/write/edit/plugin/unknown/Plan 提示 Bash
 11. SubmitPlan 和 SubmitGoal 将精确的 Markdown 字节写入唯一的
     `.pi/plan/*.md` 或 `.pi/goal/*.md` 文件
     hash/size 和结构化 title/question 字段；仅匹配

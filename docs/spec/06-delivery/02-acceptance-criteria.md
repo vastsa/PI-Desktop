@@ -43,14 +43,14 @@ MVP passes when:
 - [x] Tool paths resolve against the project root — auto:host-core tests (`workspace::tests`)
 
 ### E. Tools and permissions
-- [x] Plan and Goal deny Write/Edit/plugin tools under every permission mode —
+- [x] Plan and Goal deny write/edit/plugin tools under every permission mode —
   auto:`test:e2e:plan` E2E-105 + host-core permission tests
 - [x] Plan and Goal Bash prompt under Ask/Accept edits and run without confirmation
   under explicit Auto — auto:`test:e2e:plan` E2E-105 + host-core permission tests
-- [x] Agent mode uses permission policy for Write/Edit/Bash — manual:M3
+- [x] Agent mode uses permission policy for write/edit/bash — manual:M3
 - [x] Permission timeout (120s) becomes deny — manual:M3 (D005)
-- [x] Read/Glob/Grep work inside the project — auto:`test:e2e` (glob tool)
-- [x] Write/Edit/Bash trigger an inline, session-scoped confirmation card — manual:M3
+- [x] read/glob/grep work inside the project — auto:`test:e2e` (glob tool)
+- [x] write/edit/bash trigger an inline, session-scoped confirmation card — manual:M3
 - [x] Background events and permission requests never activate or cover another
   session — unit:desktop permission contracts; full UI manual:M5
 - [x] Deny prevents execution — manual:M3
@@ -64,9 +64,9 @@ MVP passes when:
 - [x] Goal reuses the same host-owned approval pipeline, writes a distinct
   `.pi/goal/*.md` artifact, and resumes in Agent mode to verify acceptance
   criteria — auto:agent-runtime + desktop/runtime contract coverage
-- [x] `EnterPlanMode` and UI/session Plan selection converge on the same state —
+- [x] `enter_plan_mode` and UI/session Plan selection converge on the same state —
   auto:host-core CAS tests + `test:e2e:plan-ui`
-- [x] `SubmitPlan(title, markdown, question)` preserves exact Markdown bytes in
+- [x] `submit_plan(title, markdown, question)` preserves exact Markdown bytes in
   a unique `.pi/plan/*.md` artifact, keeps title/question structured in
   `plan_approvals`, and records path/hash/size — auto:`test:e2e:plan` E2E-106
 - [x] Approval offers only Approve/Reject; Approve requires an explicit

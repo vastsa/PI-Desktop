@@ -15,6 +15,7 @@
  *   `tools: inherit` (nested Task / mode-switch tools stay denied).
  */
 
+import { normalizeToolName } from "./tool-names.js";
 import {
   SUBAGENT_THINKING_LEVELS,
   type SubagentThinkingLevel,
@@ -81,17 +82,23 @@ export type SubagentDefinition = {
   filePath?: string;
 };
 
-/** Tools a definition may declare by name. Plugin, skill, mode and meta tools
+/**
+ * Tools a definition may declare by name. Plugin, skill, mode and meta tools
  * are not on this list; a document opts into the parent's live catalog with
- * `tools: inherit` instead (ADR 0246). */
+ * `tools: inherit` instead (ADR 0246).
+ *
+ * These are canonical wire names (D621). A document written before the rename
+ * (`tools: [Read, Glob]`) is normalized as it is parsed, so a saved grant keeps
+ * meaning what it meant.
+ */
 export const SUBAGENT_ASSIGNABLE_TOOLS = [
-  "Read",
-  "Glob",
-  "Grep",
-  "BrowserPreview",
-  "Bash",
-  "Edit",
-  "Write",
+  "read",
+  "glob",
+  "grep",
+  "browser_preview",
+  "bash",
+  "edit",
+  "write",
 ] as const;
 
 export type SubagentAssignableTool = (typeof SUBAGENT_ASSIGNABLE_TOOLS)[number];
@@ -102,20 +109,20 @@ export const SUBAGENT_INHERIT_TOKEN = "inherit";
 /**
  * Tools that are never inherited, even with `tools: inherit`. Nested fan-out
  * and mode switches stay with the parent; the user-facing ask tool is out of
- * reach because a delegate has no user. `ToolSearch` and `new_context` mutate
+ * reach because a delegate has no user. `tool_search` and `new_context` mutate
  * the parent runtime's deferred-tool set and compaction flag, so they stay
  * denied even though the child receives the full catalog without searching.
  */
 export const SUBAGENT_INHERIT_DENY_TOOLS: readonly string[] = [
-  "Task",
-  "TaskWait",
-  "TaskList",
-  "TaskStop",
-  "EnterPlanMode",
-  "EnterGoalMode",
+  "task",
+  "task_wait",
+  "task_list",
+  "task_stop",
+  "enter_plan_mode",
+  "enter_goal_mode",
   "asktool",
   "new_context",
-  "ToolSearch",
+  "tool_search",
 ];
 
 /**
@@ -124,19 +131,26 @@ export const SUBAGENT_INHERIT_DENY_TOOLS: readonly string[] = [
  * - Without `inheritTools`, this is the declared list only (today's behavior).
  * - With `inheritTools`, the parent's live tool catalog is unioned in after
  *   dropping {@link SUBAGENT_INHERIT_DENY_TOOLS}. Explicit assignable extras
- *   are still included so a definition can add Bash on top of inherit.
+ *   are still included so a definition can add `bash` on top of inherit.
+ *
+ * Both sides are normalized to canonical names (D621) before they are compared,
+ * so a stored definition and a live catalog written on either side of the
+ * rename still resolve to the same set.
  */
 export function resolveSubagentToolNames(
   definition: Pick<SubagentDefinition, "tools" | "inheritTools">,
   parentToolNames: readonly string[],
 ): string[] {
-  const declared = definition.tools.filter(
-    (name) => name !== SUBAGENT_INHERIT_TOKEN,
-  );
+  const declared = definition.tools
+    .filter((name) => name !== SUBAGENT_INHERIT_TOKEN)
+    .map((name) => normalizeToolName(name));
   if (!definition.inheritTools) return [...declared];
   const deny = new Set(SUBAGENT_INHERIT_DENY_TOOLS);
   const resolved: string[] = [];
-  for (const name of [...parentToolNames, ...declared]) {
+  for (const name of [
+    ...parentToolNames.map((parentName) => normalizeToolName(parentName)),
+    ...declared,
+  ]) {
     if (deny.has(name)) continue;
     if (resolved.includes(name)) continue;
     resolved.push(name);
@@ -146,13 +160,13 @@ export function resolveSubagentToolNames(
 
 /** Tools that can change the workspace; declaring one makes a delegate
  * write-capable, which drives the write lock and permission attribution. */
-export const SUBAGENT_MUTATING_TOOLS = ["Bash", "Edit", "Write"] as const;
+export const SUBAGENT_MUTATING_TOOLS = ["bash", "edit", "write"] as const;
 
 /** What a definition gets when it stays silent about tools. */
 export const DEFAULT_SUBAGENT_TOOLS: readonly SubagentAssignableTool[] = [
-  "Read",
-  "Glob",
-  "Grep",
+  "read",
+  "glob",
+  "grep",
 ];
 
 /**
@@ -229,7 +243,9 @@ export function isSubagentAssignableTool(
 }
 
 export function isSubagentMutatingTool(value: string): boolean {
-  return (SUBAGENT_MUTATING_TOOLS as readonly string[]).includes(value);
+  return (SUBAGENT_MUTATING_TOOLS as readonly string[]).includes(
+    normalizeToolName(value),
+  );
 }
 
 /** Whether this delegate can change the workspace. */
@@ -389,15 +405,19 @@ export function parseSubagentDefinition(
     tools = [...SUBAGENT_ASSIGNABLE_TOOLS];
   } else {
     const accepted: string[] = [];
-    for (const tool of declaredTools) {
-      if (tool === SUBAGENT_INHERIT_TOKEN) {
+    for (const declared of declaredTools) {
+      if (declared === SUBAGENT_INHERIT_TOKEN) {
         inheritTools = true;
         continue;
       }
+      // The document may have been written before the wire names moved to
+      // lowercase (`tools: [Read, Glob]`); the read boundary normalizes, so an
+      // already-saved grant keeps working without the user editing anything.
+      const tool = normalizeToolName(declared);
       if (isSubagentAssignableTool(tool)) {
         if (!accepted.includes(tool)) accepted.push(tool);
       } else {
-        warnings.push(`ignoring unknown tool "${tool}"`);
+        warnings.push(`ignoring unknown tool "${declared}"`);
       }
     }
     if (inheritTools) {

@@ -203,7 +203,7 @@ export function fixtureHost({ history = [], instructions = false } = {}) {
         }] : [],
       };
       case "tools.execute":
-        assert.equal(params.toolName, "Read", "Task must execute inside the real runtime, never fake host");
+        assert.equal(params.toolName, "read", "Task must execute inside the real runtime, never fake host");
         assert.equal(params.args.path, "nested/fixture.txt");
         return { ok: true, content: "OFFLINE_READ_RESULT: synthetic local file contents" };
       default: throw new Error(`Unsupported fake-host RPC: ${method}`);

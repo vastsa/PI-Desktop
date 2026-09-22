@@ -12,7 +12,7 @@ export type AssistantActivityItem =
   | {
       kind: "tool";
       message: UiMessage;
-      /** Present on a `Task` call: what the delegate it spawned did. */
+      /** Present on a `task` call: what the delegate it spawned did. */
       delegate?: SubagentRun;
     }
   | {
@@ -29,10 +29,10 @@ export type SubagentRunItem =
   | { kind: "answer"; message: UiMessage };
 
 /**
- * Everything one delegate did inside a single `Task` call (ADR 0062).
+ * Everything one delegate did inside a single `task` call (ADR 0062).
  *
  * Delegate rows arrive on the session stream interleaved with the parent's —
- * parallel delegates guarantee it — so they are collected by the `Task` call
+ * parallel delegates guarantee it — so they are collected by the `task` call
  * that spawned them and rendered under it. That mirrors the model's view: the
  * parent only ever sees the report, never these rows.
  */
@@ -77,13 +77,13 @@ function isVisibleMessage(message: UiMessage): boolean {
   );
 }
 
-/** A `Task` start call belongs on the delegation card; parent thinking, workspace
+/** A `task` start call belongs on the delegation card; parent thinking, workspace
  * tools, and lifecycle rows (TaskWait/TaskList/TaskStop) do not (D319). */
 function isDelegationStartActivity(item: AssistantActivityItem): boolean {
   return item.kind === "tool" && isDelegationStartTool(item.message.toolName);
 }
 
-/** Delegate rows grouped by the `Task` call that produced them, chains merged. */
+/** Delegate rows grouped by the `task` call that produced them, chains merged. */
 function collectSubagentRuns(
   messages: readonly UiMessage[],
 ): Map<string, SubagentRun> {
@@ -188,7 +188,7 @@ export function buildTranscriptEntries(
 } {
   const runs = collectSubagentRuns(messages);
   // Delegate rows are not transcript rows of their own: they hang off their
-  // `Task` call, so they stay out of the turn stream and the minimap.
+  // `task` call, so they stay out of the turn stream and the minimap.
   const visible = messages.filter(
     (message) => !message.parentToolCallId && isVisibleMessage(message),
   );

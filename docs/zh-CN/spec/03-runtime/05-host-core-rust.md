@@ -17,7 +17,7 @@
 
 1. 工作空间路径规范化、边界检查和权限控制
    显式外部路径
-2. 内置工具执行（Read/Glob/Grep/Write/Edit/Bash）
+2. 内置工具执行（read/glob/grep/write/edit/bash）
 3. 权威的持久会话模式和工具策略评估
 4. 权限策略评估，包括Plan/Goal Bash提示
 5. 不可变的 `.pi/plan/*.md` 和 `.pi/goal/*.md` 工件编写器，
@@ -113,7 +113,7 @@ notification.list
    仅在主机权限评估后才能解析显式外部路径
 2、Host解析持久会话模式；请求提供模式永远不会
    权威的
-3. Plan 和 Goal 在权限评估之前拒绝 Write/Edit/plugin/unknown 工具
+3. Plan 和 Goal 在权限评估之前拒绝 write/edit/plugin/unknown 工具
 4. Plan 和 Goal Bash 遵循持久权限模式，在 Auto 下可能会发生变异
 5. Plan 和 Goal 工件字节、路径、散列、大小和 approval/execution 标识为
    主机验证
@@ -140,7 +140,7 @@ notification.list
 5. 未见的 completed/failed 轮流恰好创建一个持久通知
    通过 `session.endTurn` 交易；结果已经可见
    集中当前的聊天和中止的回合不会创建任何内容
-6. 持久 Plan 或 Goal 会话无法通过以下方式授权 Write/Edit/plugin 工具：
+6. 持久 Plan 或 Goal 会话无法通过以下方式授权 write/edit/plugin 工具：
    冲突的请求模式，并且 Plan/Goal Bash 遵循已解析的权限
    模式
 7. SubmitPlan 将精确的 Markdown 字节写入新的 `.pi/plan/*.md` 工件并

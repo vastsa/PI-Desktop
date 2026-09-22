@@ -12,7 +12,7 @@ export const MCP_CONNECT_TIMEOUT_MS = 10_000;
 export const MCP_CALL_TIMEOUT_MS = 100_000;
 /**
  * Protocol bound, not a prompt budget: MCP tools reach the model as on-demand
- * entries behind `ToolSearch` rather than as an always-present list, so the
+ * entries behind `tool_search` rather than as an always-present list, so the
  * only thing that needs a ceiling is a server streaming forever. Sized like
  * Codex's per-server MCP catalog bound; a real catalog never approaches it.
  */
@@ -577,7 +577,7 @@ export class McpServerClient {
    *
    * The tool count is bounded only by the protocol guards below, because the
    * model never receives this as a list: MCP tools land in the on-demand
-   * catalog behind `ToolSearch`, and the prompt block that advertises them is
+   * catalog behind `tool_search`, and the prompt block that advertises them is
    * what truncates. What has to stay bounded is the traversal itself — pages,
    * items, cursors, and total time — and a server that exceeds any of those is
    * refused rather than silently contributing a prefix of its catalog.

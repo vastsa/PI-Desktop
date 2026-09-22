@@ -896,7 +896,7 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
 ## 5A. Plan and Goal workflow
 
 1. The user selects Plan or Goal while the session is idle, or the same Agent
-   calls `EnterPlanMode` / `EnterGoalMode`; the host persists/validates the
+   calls `enter_plan_mode` / `enter_goal_mode`; the host persists/validates the
    matching contract mode and the renderer projects `planning`.
 2. The Agent investigates with the selected contract tool set. Read/Glob/Grep and
    BrowserPreview are allowed; Bash follows the visible permission mode. A
@@ -905,7 +905,7 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    Planning row occupies the same reserved tail slot as Working until completion
    or pending user interaction. A known runtime phase takes precedence; tool
    and answer output do not hide the running status.
-3. The Agent calls `SubmitPlan` or `SubmitGoal` alone in its tool batch.
+3. The Agent calls `submit_plan` or `submit_goal` alone in its tool batch.
    Host-core preserves the exact Markdown bytes in a new immutable
    `.pi/plan/*.md` or `.pi/goal/*.md` artifact, records its path/hash/size and structured
    title/question, and the renderer displays the shared contract approval card with
@@ -920,7 +920,7 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    Agent tools.
 5. Reject stops the pending run and keeps the durable session in its contract
    mode. The live state returns to editable planning; revisions are new-turn
-   `SubmitPlan`/`SubmitGoal` calls with a new complete Markdown snapshot and new artifact. Earlier snapshots
+   `submit_plan`/`submit_goal` calls with a new complete Markdown snapshot and new artifact. Earlier snapshots
    remain immutable; there is no request-changes action.
 6. Expiry, abort, persistence failure, renderer/host/sidecar crash, or stale
    response renders a failed-closed state. A host restart interrupts pending,

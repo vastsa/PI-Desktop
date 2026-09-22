@@ -624,9 +624,9 @@ projection is shared, `planning` and `awaiting_approval` are always read togethe
 with the kind to know which durable mode a session is in.
 
 `Agent / inactive` enters `Plan / planning` either when the user selects Plan
-while idle or when the Agent calls `EnterPlanMode`. In Plan, the Agent can
+while idle or when the Agent calls `enter_plan_mode`. In Plan, the Agent can
 inspect, use context controls, run Bash through the selected permission mode,
-and call `SubmitPlan(title, markdown, question)`. Host-core preserves the
+and call `submit_plan(title, markdown, question)`. Host-core preserves the
 submitted Markdown bytes in a new immutable
 `.pi/plan/<unique-name>.md` artifact, records its relative path/hash/size and
 structured title/question in `plan_approvals`, and moves the live state to
@@ -639,8 +639,8 @@ same Agent then receives a fresh model turn with the Agent tool set. Reject,
 absolute expiry, a pending interruption, stale response, or persistence
 failure closes the approval row and returns the live state to editable
 `Plan / planning` without granting execution tools. A later accepted Plan prompt
-is a new turn: earlier `SubmitPlan` calls remain historical immutable
-checkpoints, and the Agent must call `SubmitPlan`
+is a new turn: earlier `submit_plan` calls remain historical immutable
+checkpoints, and the Agent must call `submit_plan`
 once with a new complete Markdown snapshot to create a new artifact. If approval
 already committed and a queued/running execution is interrupted, durable mode
 remains Agent and the execution is not replayed.
@@ -653,9 +653,9 @@ execution; a second prompt or execution is rejected, while staged
 configuration is submitted only after the session is idle.
 
 `Agent / inactive` enters `Goal / planning` the same two ways, by user selection
-while idle or by the Agent calling `EnterGoalMode`. Goal has the identical tool
+while idle or by the Agent calling `enter_goal_mode`. Goal has the identical tool
 surface as Plan, except that its submit tool is
-`SubmitGoal(title, markdown, question)` and its artifact is written to
+`submit_goal(title, markdown, question)` and its artifact is written to
 `.pi/goal/<unique-name>.md`. The submitted Markdown is a **goal contract** — the
 outcome to reach, the acceptance criteria that prove it was reached, and the
 boundaries that must not be crossed — not a list of implementation steps. A
@@ -785,14 +785,14 @@ intentional override.
 mode and only when the catalog is non-empty, and all four belong to the Agent
 core set rather than the on-demand catalog of §7.1:
 
-- `Task(agent, task, description?, model?, resume?)` — validates its arguments (an
+- `task(agent, task, description?, model?, resume?)` — validates its arguments (an
   unknown `agent`, an empty `task`, an unresolvable model pin and a definition
   whose tools are all unavailable each return a tool error explaining the
   failure rather than throwing), starts the delegate **in the background**, and
   returns immediately with a `delegationId`. Starting fails with a tool error
   when the session already runs `MAX_SUBAGENT_CONCURRENCY` (10) delegates.
 
-  The `Task` tool accepts an optional `model` parameter
+  The `task` tool accepts an optional `model` parameter
   (`"provider/modelId"`) that overrides the delegate's model for that run.
   Resolution priority: Task.model parameter → definition frontmatter pin →
   session model. The parent agent sees a model summary in the system prompt
@@ -808,18 +808,18 @@ core set rather than the on-demand catalog of §7.1:
   does not rewrite definition pins or runtime reuse matching. On-demand
   provider matching uses the same unique id/vendor/name rule as pin resolution.
   A changed opt-in list retires the idle runtime on the next launch. Pins remain usable
-  by their own definitions when `model` is omitted or when `Task.model` repeats
+  by their own definitions when `model` is omitted or when `task.model` repeats
   that definition's own pin key, even without an opt-in.
   The Task definition catalog displays each default model and treats omitting
   or repeating that key as keeping the default. See
   [ADR subagent-model-opt-in](../../adr/subagent-model-opt-in.md).
   When a model key is not pre-resolved, the runtime asks Electron main to resolve it
-  on-demand via the `provider.resolveSubagentModel` RPC. The started `Task`
+  on-demand via the `provider.resolveSubagentModel` RPC. The started `task`
   result details record the effective `modelId` and resolved `thinkingLevel`
   used for that run. The level is resolved after inheritance and target-model
   capability clamping; `omit` records that no provider thinking override was
   sent.
-- `TaskWait(delegationIds?, mode?, minCompleted?, timeoutSeconds?)` — converges
+- `task_wait(delegationIds?, mode?, minCompleted?, timeoutSeconds?)` — converges
   on running delegations (defaults to all of them) and returns their reports;
   `mode: "any"` with `minCompleted` converges as soon as the first N settle.
   Settled delegations return immediately, so re-reading a report by id is
@@ -832,18 +832,18 @@ core set rather than the on-demand catalog of §7.1:
   heartbeat (agent, status, elapsed, turns, last tool) plus any finished
   reports. The runtime keeps the parent turn open and delivers remaining
   reports when they finish, even if the parent already stopped calling tools.
-  Only `TaskStop` or user Stop aborts a delegate.
-- `TaskList()` — reports every delegation of the session with status and a
+  Only `task_stop` or user Stop aborts a delegate.
+- `task_list()` — reports every delegation of the session with status and a
   running heartbeat.
-- `TaskStop(delegationIds?)` — stops running delegations (defaults to all);
+- `task_stop(delegationIds?)` — stops running delegations (defaults to all);
   waits for each abort to settle, then persists `status: "stopped"` with
   `completedAt` on `details.stopped[]`. Stopped delegations read as `stopped`.
 
 **Live settlement.** When a delegate settles, the runtime refreshes its original
-`Task` transcript row with the terminal delegation summary (`status`,
+`task` transcript row with the terminal delegation summary (`status`,
 `completedAt`, counters, and failure details when present), using the existing
 full `message_end` snapshot. This does not depend on the parent calling
-`TaskWait` / `TaskList` / `TaskStop` or on other delegates finishing. The
+`task_wait` / `task_list` / `task_stop` or on other delegates finishing. The
 snapshot retains the Task call's identity, arguments, tool timing, and token
 usage; it does not execute the tool again or add usage to the parent turn.
 The initial Task result is emitted first even if the delegate settles before
@@ -860,7 +860,7 @@ explicitly selected delegation model uses the exact provider/model binding
 saved in Settings for its effective thinking capability; models.dev supplies
 the baseline only. It runs under
 the same bounded provider retry policy as the parent. A delegate has no turn
-limit: it ends when it finishes, when the parent calls `TaskStop`, when the user
+limit: it ends when it finishes, when the parent calls `task_stop`, when the user
 Stops, or when a terminal parent error aborts it (ADR 0253). A document that
 still declares `maxTurns` loads normally and the key is ignored like any other
 unrecognized frontmatter key. `maxTokens` is an optional per-definition
@@ -870,31 +870,31 @@ so the adapter's derived `max_tokens` / `max_completion_tokens` /
 `max_output_tokens` carry it, and it binds that delegate's own responses only —
 the session's requests keep the model binding. A value past the ceiling is a
 typo and is clamped rather than forwarded to the provider.
-The built-in `explorer` declares `Read`,
-`Glob`, `Grep`, and `Bash`, while `code-reviewer` remains read-only;
+The built-in `explorer` declares `read`,
+`glob`, `grep`, and `bash`, while `code-reviewer` remains read-only;
 `fixer` and `ui-designer` write inside the workspace, and `ui-designer` adds
-`BrowserPreview` so it can open and inspect its rendered result before reporting.
-`BrowserPreview` only opens a live-reloading workspace HTML page; responsive,
+`browser_preview` so it can open and inspect its rendered result before reporting.
+`browser_preview` only opens a live-reloading workspace HTML page; responsive,
 keyboard-focus, and reduced-motion checks require project-provided browser
 tests or other tooling. Its statuses are `completed`, `failed`,
 `aborted`, `timed_out` and the registry-only `stopped`;
-the terminal ones surface through `TaskWait`, whose text is
+the terminal ones surface through `task_wait`, whose text is
 the report (bounded to `MAX_SUBAGENT_REPORT_CHARS`, 12k) and whose details
 carry `delegationId`, `agent`, `modelId`, `thinkingLevel`, `status`, `startedAt`,
 `completedAt` when settled, `turns`, `toolCalls` and, on failure or timeout,
 `error`. The same effective model and thinking fields are included in the
-immediate `Task` result and in lifecycle snapshots so live and restored
+immediate `task` result and in lifecycle snapshots so live and restored
 delegation views do not re-derive them from definitions or parent settings.
 `startedAt` and `completedAt` are runtime timestamps in milliseconds and are the source of
-truth for renderer delegation duration; the immediate `Task` tool-call
+truth for renderer delegation duration; the immediate `task` tool-call
 duration only covers starting the background work.
 
 **Delegate lifetime (D328).** The runtime does not idle-timeout or
 duration-timeout a delegate. `idle-timeout` / `max-duration` frontmatter still
 parses so old documents load, but those values are not armed. A delegate runs
-until it finishes, fails, is `TaskStop`'d, or the user Stops / the runtime is
+until it finishes, fails, is `task_stop`'d, or the user Stops / the runtime is
 disposed. The parent agent judges whether to
-cancel via `TaskStop`; a one-line heartbeat (who, status, elapsed, turns, last
+cancel via `task_stop`; a one-line heartbeat (who, status, elapsed, turns, last
 tool) is what it has to go on while the delegate is running.
 
 When the parent stops calling tools while delegates are still running, the
@@ -908,22 +908,22 @@ also aborts leftover delegates,
 skips the resume prompt, and returns the session to idle so Continue is not
 `AGENT_BUSY` (D352).
 
-**Resumable delegations (ADR 0279).** `Task` accepts an optional `resume`
+**Resumable delegations (ADR 0279).** `task` accepts an optional `resume`
 parameter carrying the `delegationId` of a settled delegation in the same
 conversation. The resumed delegate is a new `SubagentRun` seeded with the
 chain's prior messages — the original `task` brief plus every row the chain
 produced — and then prompted with the new `task`, so a delegate that already
 read or changed a file continues from that context instead of starting cold.
 Seeding is transcript-backed: the chain's rows are exactly those carrying
-`parentToolCallId` for one of the chain's `Task` calls, and they are converted
+`parentToolCallId` for one of the chain's `task` calls, and they are converted
 into provider messages with the delegate's own binding (a pinned delegation
 model is not the session model). Nothing is kept warm in memory and no new
 event type, storage schema, or tool parameter is introduced.
 
-A chain is the sequence of `Task` calls that share one delegate session: the
+A chain is the sequence of `task` calls that share one delegate session: the
 first call, plus every later call that passed the earlier `delegationId` as
 `resume`. The runtime rebuilds the chain index from the persisted transcript at
-launch — each `Task` row carries its own `delegationId` and settled status in
+launch — each `task` row carries its own `delegationId` and settled status in
 `toolResult.details` and the resumed id in `toolArgs.resume`, with the agent
 name normalized on rebuild — so resumability survives a sidecar restart.
 Chain identity (`delegateSessionId`) stays internal; the parent only
@@ -941,7 +941,7 @@ still working is never evicted, so the bound counts reusable chains and a live
 chain may sit above it until it settles.
 
 Resume is strictly same-session and never queues: resuming a running
-delegation is a tool error telling the parent to converge with `TaskWait`
+delegation is a tool error telling the parent to converge with `task_wait`
 first, and a chain has at most one live record at a time. `model` and `resume`
 together are rejected, and a resumed run keeps the chain's recorded binding:
 the `providerId/modelId` key it resolved is preferred, a chain rebuilt from the
@@ -958,10 +958,10 @@ each chain's latest `delegationId`, its objective, and up to
 `MAX_RESUMABLE_LISTED_FILES` (8) of the files it read (with a `(+N more)`
 suffix past that). The list is recomposed when a delegation settles, around the
 existing prompt sections. A resumed run is an ordinary delegation for
-`MAX_SUBAGENT_CONCURRENCY`, `TaskWait`, `TaskList`, `TaskStop`, and lifecycle
-snapshots. The immediate `Task` result and the lifecycle details add
+`MAX_SUBAGENT_CONCURRENCY`, `task_wait`, `task_list`, `task_stop`, and lifecycle
+snapshots. The immediate `task` result and the lifecycle details add
 `resumedFrom` for audit; the transcript renders a chain as one continuous
-multi-turn conversation under its latest `Task` card, with no separate
+multi-turn conversation under its latest `task` card, with no separate
 "resumed" marker.
 
 **Model pins.** `model: <provider>/<model>` in the frontmatter is resolved once
@@ -989,7 +989,7 @@ clears it. Existing `model` pins and Task override priority remain unchanged.
 A missing primary pin still fails before launch. Alternatives are resolved in
 Electron with the definition pins and count toward the existing eight-provider
 ceiling. They authorize only that definition, including when Task overrides
-its primary, and do not enter the independent `Task.model` opt-in catalog.
+its primary, and do not enter the independent `task.model` opt-in catalog.
 
 After a provider failure exhausts that model's retries, or is non-retryable,
 the same child Agent advances through these alternatives in order. Actual
@@ -1012,7 +1012,7 @@ See [ADR subagent-model-fallback](../../adr/subagent-model-fallback.md).
 
 **Context budget and compaction (ADR 0299).** A delegate has the same
 window protection the session has, derived the same way. The budget comes
-from the model the run actually resolved — a `Task.model` override, a
+from the model the run actually resolved — a `task.model` override, a
 definition pin, or the inherited session model — through the shared
 derivation of §5.1, so `hardLimit` is that window minus the same request
 headroom and a per-definition `maxTokens` cap participates as the output
@@ -1053,14 +1053,14 @@ executing it would set the parent runtime's pending-compaction flag.
 `parentToolCallId` and `agentName` on its envelope, and Electron main copies both
 onto the persisted row. When the runtime rebuilds model context it skips every
 row with `parentToolCallId`: the parent only ever saw reports through
-`TaskWait` or the runtime's completion prompt (D328), and replaying delegate
+`task_wait` or the runtime's completion prompt (D328), and replaying delegate
 rows would both contradict that and reintroduce the context cost delegation
 exists to avoid.
 
 **Turn ownership.** A delegate's lifecycle never reaches Electron main's turn
-handling. The parent may keep working or talk to the user after `Task`. If it
+handling. The parent may keep working or talk to the user after `task`. If it
 stops calling tools while delegates still run, the runtime keeps the durable
-turn open and delivers the reports when they finish. User Stop, `TaskStop`,
+turn open and delivers the reports when they finish. User Stop, `task_stop`,
 runtime dispose, or a parent fatal error (D352) abort a still-running
 delegate.
 
@@ -1078,7 +1078,7 @@ time with a warning, so opening an untrusted repository cannot escalate its
 own delegates past the session mode. Two gates stay above any explicit scope,
 exactly as they stay above the session mode: the contract modes' hard deny
 (delegation only exists in Agent mode) and the external-path gate. An explicit
-`accept-edits` still means "Write/Edit inside the workspace resolve without a
+`accept-edits` still means "write/edit inside the workspace resolve without a
 prompt; external paths and other tools keep their normal approval behavior";
 an explicit scope remains an intentional override.
 
@@ -1089,15 +1089,15 @@ delegate may call), `04-data-storage.md` §4.7a (persisted attribution),
 
 ### 5f.2 No in-process sibling or parent-to-parent Task channel (D326, ADR 0165)
 
-Concurrent `Task` delegates do not message each other, and the parent Task
+Concurrent `task` delegates do not message each other, and the parent Task
 runtime does not address other conversations. The in-process `Peer` mailbox
 (ADR 0138 / ADR 0140) and the host-core A2A broker (ADR 0147 / ADR 0162 /
 ADR 0164) are withdrawn.
 
 Coordination stays on the existing delegation contract: the parent writes
-independent briefs, starts `Task`s, and collects self-contained reports through
-`TaskWait` / `TaskList` / `TaskStop`. A later round of work, if needed, is a
-new `Task` whose brief includes earlier reports. `A2A` and `Peer` are not
+independent briefs, starts `task`s, and collects self-contained reports through
+`task_wait` / `task_list` / `task_stop`. A later round of work, if needed, is a
+new `task` whose brief includes earlier reports. `A2A` and `Peer` are not
 assignable tools; a definition that names either is treated as an unknown
 tool name and dropped with a parse warning.
 
@@ -1105,7 +1105,7 @@ tool name and dropped with a parse warning.
 
 The official `pi.session-orchestrator` plugin is the reviewed exception for
 durable cross-session communication. Its `desktop.control` calls are composed
-outside the `Task` runtime and are admitted only from the plugin's active
+outside the `task` runtime and are admitted only from the plugin's active
 Agent tool invocation. Host-core owns the source/target Session IDs, durable
 delivery ledger, permission ceiling, actual target turn, completion callback,
 cancellation, restart fence, and transcript provenance. Existing sessions keep
@@ -1116,8 +1116,8 @@ ceiling.
 Session messages are framed as agent-provided task data and never become new
 human authorization. A completion callback is durable and at-most-once, and
 does not automatically trigger another callback. This path does not restore
-the withdrawn `A2A` or `Peer` tools and does not change `Task`, `TaskWait`,
-`TaskList`, or `TaskStop` semantics.
+the withdrawn `A2A` or `Peer` tools and does not change `task`, `task_wait`,
+`task_list`, or `task_stop` semantics.
 
 ## 6. Providers & models
 
@@ -1244,14 +1244,14 @@ Required behaviours, each one an observed failure inverted:
   the runtime logs it when a model emits one
 
 It also states a search preference that matches the host-side budgets in
-[16-tool-result-limits](16-tool-result-limits.md): scope `Read`, `Grep`, and
-`Glob` with their own parameters instead of hand-rolling `cat`/`sed`/`grep`/
-`find`. `Read` accepts only an existing regular text file. When a file name is
-uncertain or a directory must be listed, an Agent activates `Glob` for the
-current prompt through `ToolSearch` instead of guessing a name or reading the
-directory. `Glob.path` is a directory, while `Grep.path` may be one file or a
-directory tree. Calls use `Read.offset/limit`, `Glob.path/limit`, and
-`Grep.path/include/outputMode/headLimit`; `filesWithMatches` or `count` avoids
+[16-tool-result-limits](16-tool-result-limits.md): scope `read`, `grep`, and
+`glob` with their own parameters instead of hand-rolling `cat`/`sed`/`grep`/
+`find`. `read` accepts only an existing regular text file. When a file name is
+uncertain or a directory must be listed, an Agent activates `glob` for the
+current prompt through `tool_search` instead of guessing a name or reading the
+directory. `glob.path` is a directory, while `grep.path` may be one file or a
+directory tree. Calls use `read.offset/limit`, `glob.path/limit`, and
+`grep.path/include/outputMode/headLimit`; `filesWithMatches` or `count` avoids
 unneeded content. Workspace-relative paths remain the portable default, with a
 bounded command in the active shell only when native tools are insufficient.
 Grep uses a system `rg` when one is installed and an in-process searcher
@@ -1259,11 +1259,11 @@ otherwise; the agent calls Grep rather than shelling out to `rg`. Bash must
 still not assume `rg` is present. The agent must not repeat a search whose
 answer is already in context.
 
-The edit-discipline block carries the line-anchored `Edit` contract of
+The edit-discipline block carries the line-anchored `edit` contract of
 [18-line-anchored-edit-contract](18-line-anchored-edit-contract.md): the op
 table, the `+`-only body rule, "ranges name changed lines only", "re-ground on
 the tag returned by every successful write", and the worked anti-patterns. The
-sidecar's `Edit` schema is `{ path, tag, ops }`; `old_string` and `new_string` no
+sidecar's `edit` schema is `{ path, tag, ops }`; `old_string` and `new_string` no
 longer exist, and the sidecar's tool description must stay byte-identical in
 substance to host-core's `builtin_tool_defs()` entry, because a model taught one
 grammar and validated against another fails every call.
@@ -1275,27 +1275,27 @@ registered schema into every provider request. Each new user prompt starts with
 the mode's core set plus any deferred tools that can be restored from successful
 activation evidence still present in the effective session context:
 
-- Agent: `Read`, `Bash`, `Edit`, and `Write` (matching pi's coding-agent core)
-- Agent: `Skill` whenever the skill catalog is non-empty (D404, ADR 0230) — the
+- Agent: `read`, `bash`, `edit`, and `write` (matching pi's coding-agent core)
+- Agent: `skill` whenever the skill catalog is non-empty (D404, ADR 0230) — the
   `# Skills` section and a user-typed `/skill-id` both ask the model to call
   it, and a tool that is missing from the schema cannot be called at all
-- Agent: `Task`, `TaskWait`, `TaskList`, and `TaskStop` as well, whenever the
+- Agent: `task`, `task_wait`, `task_list`, and `task_stop` as well, whenever the
   subagent catalog is non-empty (§5f) — a capability the model has to go
   looking for is one it will not use, and the delegation lifecycle is worth
   the extra schemas per request
-- Plan: `Read`, `Glob`, `Grep`, `BrowserPreview`, and `Bash`
-- both modes: `ToolSearch` when at least one deferred capability exists
+- Plan: `read`, `glob`, `grep`, `browser_preview`, and `bash`
+- both modes: `tool_search` when at least one deferred capability exists
 
-In Agent mode, `Glob` and `Grep` join `BrowserPreview`, plugin tools,
+In Agent mode, `glob` and `grep` join `browser_preview`, plugin tools,
 and plugin-development helpers in the deferred set. Both contract modes keep
 their read/inspection core available, while the kind's submit tool
-(`SubmitPlan` or `SubmitGoal`) is exposed only during the planning state, and
+(`submit_plan` or `submit_goal`) is exposed only during the planning state, and
 only for the active kind. Deferred tools are registered but their names and
 compact
 one-line descriptions appear in an `# On-demand tools` catalog; parameter
 schemas do not. The catalog is bounded so a plugin with many tools cannot
 recreate the original prompt bloat.
-The model calls `ToolSearch` with an exact name or a short capability query.
+The model calls `tool_search` with an exact name or a short capability query.
 The sidecar activates up to four matches, returns their names through
 pi-agent-core's `addedToolNames`, and rebuilds the next-turn context with those
 schemas. Providers with native deferred-tool search receive the definitions at
@@ -1303,30 +1303,30 @@ that load point; other providers receive the active definitions normally.
 
 At the start of each new user prompt, the sidecar clears the in-memory deferred
 activation set and rebuilds it from the effective context. Successful
-`ToolSearch` results contribute their `addedToolNames`; successful results from
+`tool_search` results contribute their `addedToolNames`; successful results from
 deferred tools contribute that tool's name. Only names still present in the
 current mode's deferred catalog are restored. Failed rows, interrupted or
 missing-result placeholders, and assistant/user prose never activate a tool.
 The tool registry, host permission path, tool timeout, and workspace containment
-rules remain unchanged. `ToolSearch` is local to the sidecar and does not cross
+rules remain unchanged. `tool_search` is local to the sidecar and does not cross
 the host RPC boundary. Its activation marker is retained in the persisted tool
 result, so a runtime restart or a new prompt can reuse an eligible capability
 while that evidence remains in the effective context; a fresh search is still
 required after the evidence is compacted away or otherwise absent.
 
 For user-visible HTML deliverables, the default system prompt asks the agent to
-activate `BrowserPreview` once after creating the page or making its first
+activate `browser_preview` once after creating the page or making its first
 meaningful visual edit, using a workspace-relative path. The agent reuses the
 live-reloading preview while iterating instead of issuing repeated preview
 calls. Generated, test-only, and non-visual HTML files are excluded. When the
-tool is deferred, `ToolSearch` must activate it before the preview call.
+tool is deferred, `tool_search` must activate it before the preview call.
 ### 7.2 Plan prompt requirements
 
 The Plan prompt tells the same Agent to understand the request, inspect the
 relevant repository/specification/test context, identify impacted files and
 risks, include focused validation and migration/recovery implications, surface
 open questions. When any initial or revised plan is ready, it must call
-`SubmitPlan` immediately exactly once in the current turn with one complete
+`submit_plan` immediately exactly once in the current turn with one complete
 Markdown snapshot. An accepted new Plan prompt has no prior pending approval;
 earlier submissions in the transcript are historical immutable checkpoints.
 After reject, expiry, or interruption, the Agent may revise in the new turn and
@@ -1345,12 +1345,12 @@ acceptance criteria, and the boundaries. It must not enumerate implementation
 steps, because the Agent decides those itself after approval. Every acceptance
 criterion must be objectively checkable by the Agent after execution — a command
 that must pass, or an observable behavior. The Agent inspects the workspace and
-asks about anything ambiguous first, then calls `SubmitGoal` immediately exactly
+asks about anything ambiguous first, then calls `submit_goal` immediately exactly
 once in the current turn with one complete Markdown snapshot.
 
 The one-submit rule, the historical-checkpoint rule, the revise-after-close rule,
 the no-chat-confirmation rule, and the host-writes-the-artifact rule are the same
-as Plan's, with `SubmitGoal` and `.pi/goal/*.md` in place of their Plan
+as Plan's, with `submit_goal` and `.pi/goal/*.md` in place of their Plan
 equivalents. The prompt additionally states that once approved, the contract is
 the standard the Agent works against: it pursues the goal autonomously, chooses
 its own approach, and stops only when every acceptance criterion is verified or a
@@ -1374,8 +1374,8 @@ Mutation framing uses the resolved set, not the raw frontmatter extras.
 
 Guidance blocks are the same text the session prompt uses, included only when
 the resolved tools include the matching name: search/read scoping for
-Read/Grep/Glob, edit discipline for Edit/Write, the command shell contract for
-Bash, the `# Skills` catalog when `Skill` is present, and the scratch-directory
+read/grep/glob, edit discipline for edit/write, the command shell contract for
+Bash, the `# Skills` catalog when `skill` is present, and the scratch-directory
 rule when the session has a scratch directory and the delegate can write. The
 project instruction chain (§7.3) is appended last, so a delegate follows the
 same project rules as its session.
@@ -1388,8 +1388,8 @@ session-bound project root when a runtime starts. For each project directory it
 uses at most one non-empty file in this order: `AGENTS.override.md`, `AGENTS.md`,
 `CLAUDE.md`, then `.claude/CLAUDE.md`. Entries are concatenated from project
 root to the target directory, so the closest file appears last and takes
-precedence. The initial chain targets the project root. Before a `Read`,
-`Write`, `Edit`, or `BrowserPreview` call, the sidecar asks Electron main to
+precedence. The initial chain targets the project root. Before a `read`,
+`write`, `edit`, or `browser_preview` call, the sidecar asks Electron main to
 resolve the target path and replaces the active instruction section with that
 path's complete chain before the tool executes. This keeps rules lazy and
 prevents sibling-directory rules from persisting after the agent moves to a
@@ -1429,15 +1429,15 @@ Saves affect the next prompt without restarting the application.
 | same session | single turn serial |
 | different sessions | limited parallel |
 | tools | sequential by default |
-| `Task` calls in one assistant message | parallel; 10 running delegates per session (ADR 0089) |
+| `task` calls in one assistant message | parallel; 10 running delegates per session (ADR 0089) |
 
 Tool concurrency is expressed through pi execution modes: every catalog tool is
-`sequential` and `Task` alone is `parallel`, and pi runs a batch sequentially as
-soon as it contains one sequential tool. So an all-`Task` batch is the only batch
+`sequential` and `task` alone is `parallel`, and pi runs a batch sequentially as
+soon as it contains one sequential tool. So an all-`task` batch is the only batch
 that fans out, and every other ordering guarantee is unchanged. Delegates issue
 host calls independently, and host-core's one-mutation-per-session admission
 keeps writes from tearing but leaves two same-path mutations unordered, so the
-sidecar serializes `Write`/`Edit` calls that target the same normalized path
+sidecar serializes `write`/`edit` calls that target the same normalized path
 before they reach the host; calls on different paths never wait on each other.
 This is what keeps the per-path edit-recovery rules of
 `03-tools-and-permissions.md` §4d meaningful under fan-out.

@@ -1,4 +1,5 @@
 import { IMAGE_BATCH_TIMEOUT_MS } from "./image-generation.js";
+import { normalizeToolName } from "./tool-names.js";
 
 export const DEFAULT_RPC_TIMEOUT_MS = 130_000;
 export const PERMISSION_TIMEOUT_MS = 120_000;
@@ -105,15 +106,22 @@ export function rpcTimeoutMs(
   if (method !== "tools.execute") return DEFAULT_RPC_TIMEOUT_MS;
 
   const input = isRecord(params) ? params : undefined;
-  if (input?.toolName === "GenerateImages") return IMAGE_BATCH_TIMEOUT_MS + PERMISSION_TIMEOUT_MS + TOOL_QUEUE_WAIT_MS + COMMAND_RPC_BUFFER_MS;
-  if (isDesktopDispatchedTool(input?.toolName)) {
+  // Identity, not spelling (D621): a stored name from either side of the rename
+  // has to pick the same budget, or the image batch and the shell silently fall
+  // back to the generic deadline.
+  const toolName =
+    typeof input?.toolName === "string"
+      ? normalizeToolName(input.toolName)
+      : undefined;
+  if (toolName === "generate_images") return IMAGE_BATCH_TIMEOUT_MS + PERMISSION_TIMEOUT_MS + TOOL_QUEUE_WAIT_MS + COMMAND_RPC_BUFFER_MS;
+  if (isDesktopDispatchedTool(toolName)) {
     return executionRpcTimeoutMs(
       input?.timeoutMs,
       DEFAULT_DESKTOP_TOOL_RPC_TIMEOUT_MS,
       TOOL_QUEUE_WAIT_MS,
     );
   }
-  if (input?.toolName !== "Bash") return DEFAULT_RPC_TIMEOUT_MS;
+  if (toolName !== "bash") return DEFAULT_RPC_TIMEOUT_MS;
   if (input?.timeoutMs === undefined) return DEFAULT_BASH_RPC_TIMEOUT_MS;
   // Bash keeps the arithmetic it shipped with (permission + command + slack):
   // the admission queue wait is deliberately not added to that path here, so

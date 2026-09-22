@@ -96,7 +96,7 @@ test("latest turn inspector ignores later subagent usage", () => {
         responseOutputTokens: 20,
       }),
       message("task", "tool", "spawned", {
-        toolName: "Task",
+        toolName: "task",
         toolCallId: "task-1",
       }),
       message("delegate", "assistant", "done", {
@@ -114,7 +114,7 @@ test("latest turn inspector ignores later subagent usage", () => {
 
   assert.equal(inspector?.usage.totalTokens, 100);
   assert.equal(inspector?.responseDurationMs, 2000);
-  assert.equal(inspector?.tools.map((tool) => tool.toolName).join(","), "Task");
+  assert.equal(inspector?.tools.map((tool) => tool.toolName).join(","), "task");
 });
 
 test("latest turn inspector keeps the usage-bearing turn's tools over a later stream", () => {
@@ -128,11 +128,11 @@ test("latest turn inspector keeps the usage-bearing turn's tools over a later st
         responseDurationMs: 1000,
         responseOutputTokens: 5,
       }),
-      message("read", "tool", "ok", { toolName: "Read", toolCallId: "read-1" }),
+      message("read", "tool", "ok", { toolName: "read", toolCallId: "read-1" }),
       message("u2", "user", "again"),
       message("a2", "assistant", "partial", { status: "streaming" }),
       message("bash", "tool", "", {
-        toolName: "Bash",
+        toolName: "bash",
         toolCallId: "bash-1",
         toolStatus: "running",
       }),
@@ -142,7 +142,7 @@ test("latest turn inspector keeps the usage-bearing turn's tools over a later st
   );
 
   assert.equal(inspector?.usage.totalTokens, 15);
-  assert.equal(inspector?.tools.map((tool) => tool.toolName).join(","), "Read");
+  assert.equal(inspector?.tools.map((tool) => tool.toolName).join(","), "read");
   assert.equal(inspector?.responseDurationMs, 1000);
 });
 
@@ -195,7 +195,7 @@ test("latest turn inspector keeps last-request usage beside the turn sum", () =>
           totalTokens: 52_500,
         },
       }),
-      message("read", "tool", "ok", { toolName: "Read", toolCallId: "read-1" }),
+      message("read", "tool", "ok", { toolName: "read", toolCallId: "read-1" }),
       message("a2", "assistant", "done", {
         providerId: "provider",
         modelId: "catalog-model",

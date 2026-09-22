@@ -79,7 +79,7 @@ function MoreNote({ hidden }: { hidden: number }) {
   );
 }
 
-/** A workspace path list (Glob results, plugin string arrays). */
+/** A workspace path list (glob results, plugin string arrays). */
 function FileList({ paths }: { paths: string[] }) {
   const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);
@@ -111,7 +111,7 @@ function FileList({ paths }: { paths: string[] }) {
   );
 }
 
-/** Grep hits grouped by file: the path opens, each line keeps its number. */
+/** grep hits grouped by file: the path opens, each line keeps its number. */
 function MatchList({ block }: { block: Extract<ToolBlock, { kind: "matches" }> }) {
   const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);

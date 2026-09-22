@@ -734,13 +734,13 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
 ## 5A。 Plan 和 Goal 工作流程
 
 1. 用户在会话空闲时选择 Plan 或 Goal，或相同的 Agent
-   调用 `EnterPlanMode` / `EnterGoalMode`；主机 persists/validates
+   调用 `enter_plan_mode` / `enter_goal_mode`；主机 persists/validates
    匹配合约模式和渲染器项目 `planning`。
 2. Agent 使用选定的合约工具集进行调查。 Read/Glob/Grep 和
    允许使用 BrowserPreview； Bash 遵循可见权限模式。一个
    Contract-mode Bash 命令可能会在 Auto 下发生变化，因此模式芯片仍然可见。
    该回合处于实时 `planning` 时，Composer 模式芯片脉冲，紧凑的规划行占用与 Working 相同的预留底部位置，直到回合结束或等待用户操作。具体运行时阶段优先，工具和回答不会隐藏运行提示。
-3. Agent 在其工具批次中单独调用 `SubmitPlan` 或 `SubmitGoal`。
+3. Agent 在其工具批次中单独调用 `submit_plan` 或 `submit_goal`。
    Host-core 将准确的 Markdown 字节保留在新的不可变中
    `.pi/plan/*.md` 或 `.pi/goal/*.md` 工件，记录其 path/hash/size 并结构化
    title/question，渲染器显示共享合同审批卡
@@ -754,7 +754,7 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    Agent 工具。
 5.拒绝停止挂起的运行并将持久会话保留在其合同中
    模式。实时状态恢复为可编辑规划；修订是新的
-   `SubmitPlan`/`SubmitGoal` 使用新的完整 Markdown 快照和新工件进行调用。早期快照
+   `submit_plan`/`submit_goal` 使用新的完整 Markdown 快照和新工件进行调用。早期快照
    保持不变；没有请求更改操作。
 6. 过期、中止、持久性失败、renderer/host/sidecar 崩溃或过时
    响应呈现失败关闭状态。主机重启中断挂起，

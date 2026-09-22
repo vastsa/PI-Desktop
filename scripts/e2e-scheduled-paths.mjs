@@ -17,15 +17,15 @@ try {
     const {session:owner}=await host.call("session.create",{mode:"agent",projectPath:a});
     const {session:foreign}=await host.call("session.create",{mode:"agent",projectPath:b});
     await host.restart();await host.call("workspace.set",{path:b});
-    const listed=await tool(owner.id,"ScheduledTaskList",{});
+    const listed=await tool(owner.id,"scheduled_task_list",{});
     assert.ok(listed.content.tasks.some(item=>item.id===task.id));
-    const hidden=await tool(foreign.id,"ScheduledTaskList",{});assert.ok(!hidden.content.tasks.some(item=>item.id===task.id));
-    assert.equal((await tool(foreign.id,"ScheduledTaskDelete",{id:task.id})).errorCode,"NOT_FOUND");
-    const updated=await tool(owner.id,"ScheduledTaskUpdate",{id:task.id,title:"Renamed"});assert.equal(updated.ok,true);
+    const hidden=await tool(foreign.id,"scheduled_task_list",{});assert.ok(!hidden.content.tasks.some(item=>item.id===task.id));
+    assert.equal((await tool(foreign.id,"scheduled_task_delete",{id:task.id})).errorCode,"NOT_FOUND");
+    const updated=await tool(owner.id,"scheduled_task_update",{id:task.id,title:"Renamed"});assert.equal(updated.ok,true);
     const run=await host.call("scheduled.run",{id:task.id});const {session}=await host.call("session.get",{id:run.sessionId});
     assert.equal(session.projectPath,task.workspacePath);
     await host.call("scheduled.finishRun",{runId:run.runId,status:"completed"});
-    assert.equal((await tool(owner.id,"ScheduledTaskDelete",{id:task.id})).ok,true);
+    assert.equal((await tool(owner.id,"scheduled_task_delete",{id:task.id})).ok,true);
     console.log(`PASS ${cadence}: UI create, restart, same-project AI CRUD, foreign rejection and Run now`);
   }
 } finally {await host.stop();}

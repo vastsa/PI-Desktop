@@ -68,7 +68,7 @@ function message(overrides = {}) {
     role: "tool",
     content: "",
     createdAt: new Date().toISOString(),
-    toolName: "Edit",
+    toolName: "edit",
     toolStatus: "success",
     toolArgs: { path: "src/a.ts" },
     toolResult: { details: { root: "workspace", review: baseReview } },
@@ -88,7 +88,7 @@ test("review evidence is read from the successful message, not Git", () => {
     message(),
     message({
       id: "tool-2",
-      toolName: "Write",
+      toolName: "write",
       toolResult: {
         details: {
           root: "workspace",

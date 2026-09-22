@@ -52,7 +52,8 @@ Review the diff and report only defects you can point at a line for.
     expect(result.definition).toEqual({
       name: "code-reviewer",
       description: "Reviews changed files for correctness bugs.",
-      tools: ["Read", "Grep", "Glob"],
+      // Written with the pre-rename spellings: the parser normalizes (D621).
+      tools: ["read", "grep", "glob"],
       model: { providerId: "anthropic", modelId: "claude-opus-5" },
       thinkingLevel: "high",
       idleTimeoutSeconds: DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
@@ -173,8 +174,35 @@ Rename it.`);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.definition.tools).toEqual(["Read", "Edit", "Write"]);
+    expect(result.definition.tools).toEqual(["read", "edit", "write"]);
     expect(subagentCanMutate(result.definition)).toBe(true);
+  });
+
+  // Backward compatibility is part of the contract (D621): a document saved
+  // before the wire names moved to lowercase keeps granting exactly what it
+  // granted, without the user editing the file.
+  it("accepts a document written with the pre-rename tool names", () => {
+    const legacy = parse(`---
+description: Reviews a diff.
+tools: [Read, Glob, Grep]
+---
+Review it.`);
+
+    expect(legacy.ok).toBe(true);
+    if (!legacy.ok) return;
+    expect(legacy.definition.tools).toEqual(["read", "glob", "grep"]);
+    expect(legacy.warnings).toEqual([]);
+
+    const legacyMutating = parse(`---
+description: Applies a rename.
+tools: [Read, Bash]
+---
+Rename it.`);
+
+    expect(legacyMutating.ok).toBe(true);
+    if (!legacyMutating.ok) return;
+    expect(legacyMutating.definition.tools).toEqual(["read", "bash"]);
+    expect(subagentCanMutate(legacyMutating.definition)).toBe(true);
   });
 
   it("expands `*` to every assignable tool", () => {
@@ -186,11 +214,11 @@ Go.`);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.definition.tools).toContain("Bash");
-    expect(result.definition.tools).toContain("Write");
+    expect(result.definition.tools).toContain("bash");
+    expect(result.definition.tools).toContain("write");
     // Plugin, skill and mode tools stay out of a delegate's reach.
-    expect(result.definition.tools).not.toContain("Task");
-    expect(result.definition.tools).not.toContain("ToolSearch");
+    expect(result.definition.tools).not.toContain("task");
+    expect(result.definition.tools).not.toContain("tool_search");
     expect(result.definition.tools).not.toContain("A2A");
     expect(result.definition.tools).not.toContain("Peer");
   });
@@ -204,7 +232,7 @@ Read it.`);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.definition.tools).toEqual(["Read"]);
+    expect(result.definition.tools).toEqual(["read"]);
     expect(result.warnings).toEqual([
       'ignoring unknown tool "Teleport"',
       'ignoring unknown tool "A2A"',
@@ -470,8 +498,8 @@ Do the job.`);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.definition.inheritTools).toBe(true);
-    expect(result.definition.tools).toEqual(["Bash"]);
-    expect(subagentToolsLabel(result.definition)).toBe("inherit + Bash");
+    expect(result.definition.tools).toEqual(["bash"]);
+    expect(subagentToolsLabel(result.definition)).toBe("inherit + bash");
   });
 
   it("does not treat inherit as a bare unknown tool", () => {
@@ -484,7 +512,7 @@ Do the job.`);
     if (!result.ok) return;
     expect(result.warnings).toEqual([]);
     expect(result.definition.inheritTools).toBe(true);
-    expect(result.definition.tools).toEqual(["Grep"]);
+    expect(result.definition.tools).toEqual(["grep"]);
   });
 });
 
@@ -507,7 +535,7 @@ describe("resolveSubagentToolNames", () => {
   it("returns only the declared list when inherit is off", () => {
     expect(
       resolveSubagentToolNames({ tools: ["Read", "Bash"] }, parent),
-    ).toEqual(["Read", "Bash"]);
+    ).toEqual(["read", "bash"]);
   });
 
   it("unions parent tools minus the deny list", () => {
@@ -515,10 +543,10 @@ describe("resolveSubagentToolNames", () => {
       { tools: [], inheritTools: true },
       parent,
     );
-    expect(resolved).toContain("Read");
-    expect(resolved).toContain("Skill");
+    expect(resolved).toContain("read");
+    expect(resolved).toContain("skill");
     expect(resolved).toContain("mcp-foo");
-    expect(resolved).not.toContain("ToolSearch");
+    expect(resolved).not.toContain("tool_search");
     expect(resolved).not.toContain("new_context");
     for (const denied of SUBAGENT_INHERIT_DENY_TOOLS) {
       expect(resolved).not.toContain(denied);
@@ -530,9 +558,9 @@ describe("resolveSubagentToolNames", () => {
       { tools: ["Edit", "Read"], inheritTools: true },
       parent,
     );
-    expect(resolved).toContain("Edit");
-    expect(resolved).toContain("Read");
-    expect(resolved.filter((n) => n === "Read")).toHaveLength(1);
+    expect(resolved).toContain("edit");
+    expect(resolved).toContain("read");
+    expect(resolved.filter((n) => n === "read")).toHaveLength(1);
   });
 
   it("does not hand a delegate nested Task tools", () => {
@@ -540,9 +568,9 @@ describe("resolveSubagentToolNames", () => {
       { tools: [...SUBAGENT_ASSIGNABLE_TOOLS], inheritTools: true },
       ["Task", "TaskList", "Read"],
     );
-    expect(resolved).toEqual([...SUBAGENT_ASSIGNABLE_TOOLS, "Read"].filter(
-      (name, index, all) => all.indexOf(name) === index,
-    ));
+    // The parent's legacy "Read" normalizes onto the canonical "read" that the
+    // declared list already carries, so nothing is duplicated.
+    expect(resolved).toEqual([...SUBAGENT_ASSIGNABLE_TOOLS]);
   });
 
   it("uses a resolved list to decide mutation, not the inherit token", () => {

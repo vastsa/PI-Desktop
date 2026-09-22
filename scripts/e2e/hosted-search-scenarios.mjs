@@ -92,13 +92,13 @@ export async function runScenarios(bundle, root, timeoutMs, report) {
   for (const instructions of [false, true]) {
     await run(instructions ? "search-read-instruction-change" : "search-read", (body, requests) => {
       if (requests.length === 1) {
-        assertTool(body, "Read");
+        assertTool(body, "read");
         assert.doesNotMatch(JSON.stringify(body.input), /OFFLINE_NESTED_RULE/);
-        return { search: true, tool: { name: "Read", args: { path: "nested/fixture.txt" } } };
+        return { search: true, tool: { name: "read", args: { path: "nested/fixture.txt" } } };
       }
       assert.equal(requests.length, 2, "Read continuation must not retry");
       assertReplay(body);
-      assert.match(functionResult(body, "Read"), /OFFLINE_READ_RESULT/);
+      assert.match(functionResult(body, "read"), /OFFLINE_READ_RESULT/);
       if (instructions) assert.match(JSON.stringify(body.input), /OFFLINE_NESTED_RULE/,
         "path instruction resolution must actually change the next provider request");
       return { text: "READ_CONTINUED" };
@@ -120,35 +120,35 @@ export async function runScenarios(bundle, root, timeoutMs, report) {
       delegateRequests++;
       assert.equal(delegateRequests, 1);
       assert.match(JSON.stringify(body.input), /OFFLINE_DELEGATE_BRIEF/);
-      assertTool(body, "Read");
-      assert.equal(body.tools.some((tool) => tool.name === "Task"), false, "delegate must use its own tool scope");
+      assertTool(body, "read");
+      assert.equal(body.tools.some((tool) => tool.name === "task"), false, "delegate must use its own tool scope");
       return { text: "EXPLORER_REAL_RUNTIME_REPORT" };
     }
     assert.equal(body.model, "offline-parent");
     parentRequests++;
     if (parentRequests === 1) {
-      assertTool(body, "Task");
+      assertTool(body, "task");
       return {
         search: true,
-        tool: { name: "Task", args: { agent: "explorer", task: "OFFLINE_DELEGATE_BRIEF: report the fixture finding.", description: "Offline fixture exploration" } },
+        tool: { name: "task", args: { agent: "explorer", task: "OFFLINE_DELEGATE_BRIEF: report the fixture finding.", description: "Offline fixture exploration" } },
       };
     }
     assertReplay(body);
     if (parentRequests === 2) {
-      assertTool(body, "TaskWait");
-      const result = functionResult(body, "Task");
+      assertTool(body, "task_wait");
+      const result = functionResult(body, "task");
       const id = result.match(/Delegation (\S+) started:/)?.[1];
       assert.ok(id, `Task must start a real delegate: ${result}`);
-      return { tool: { name: "TaskWait", args: { delegationIds: [id], timeoutSeconds: 5 } } };
+      return { tool: { name: "task_wait", args: { delegationIds: [id], timeoutSeconds: 5 } } };
     }
     assert.equal(parentRequests, 3, "parent should converge without retry or duplicate idle-resume");
-    assert.match(functionResult(body, "TaskWait"), /EXPLORER_REAL_RUNTIME_REPORT/);
+    assert.match(functionResult(body, "task_wait"), /EXPLORER_REAL_RUNTIME_REPORT/);
     return { text: "PARENT_DELEGATION_CONVERGED" };
   }, async ({ provider, start, dir }) => {
     const sidecar = await start();
     const params = parameters(provider.baseUrl, dir, "task");
     params.subagents = [{
-      name: "explorer", description: "Inspect the offline fixture", tools: ["Read"],
+      name: "explorer", description: "Inspect the offline fixture", tools: ["read"],
       prompt: "You are the offline explorer. Return the fixture report.", source: "builtin",
       model: { providerId: "offline-provider", modelId: "offline-explorer" },
       thinkingLevel: "off", permission: "inherit", idleTimeoutSeconds: 10, maxDurationSeconds: 15,

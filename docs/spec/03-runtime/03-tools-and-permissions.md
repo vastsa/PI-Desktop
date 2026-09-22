@@ -1,23 +1,47 @@
 # 03. Tools and Permissions
 
 > Decisions applied: D003, D004, D005, D006, D013, D015, D093, D114, D115, D181, D186,
-> D189, D190, D195 (ADR 0057), D315, D384 (ADR 0211), ADR 0087
+> D189, D190, D195 (ADR 0057), D315, D384 (ADR 0211), D618, D621, ADR 0087
 
 ## 0. Frozen policy summary
 
 | Topic | Decision |
 |---|---|
 | Default mode | Agent |
-| Agent tools | Read / Glob / Grep / Write / Edit / Bash + registered plugin tools |
-| Plan tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitPlan + plugin tools that declare plan-safe actions |
-| Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions |
-| Plan and Goal hard deny | Write / Edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
+| Agent tools | read / glob / grep / write / edit / bash + registered plugin tools |
+| Plan tools | read / glob / grep / browser_preview / bash / submit_plan + plugin tools that declare plan-safe actions |
+| Goal tools | read / glob / grep / browser_preview / bash / submit_goal + plugin tools that declare plan-safe actions |
+| Plan and Goal hard deny | write / edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
 | Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan/Goal, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
 | Permission timeout | 120s → deny |
 | allow-session scope | toolName |
-| Bash style | non-interactive; selected host catalog shell with streamed output |
-| Edit contract | line-anchored ops + whole-file `tag`; no `old_string`/`new_string` (ADR 0087) |
+| bash style | non-interactive; selected host catalog shell with streamed output |
+| edit contract | line-anchored ops + whole-file `tag`; no `old_string`/`new_string` (ADR 0087) |
 | asktool | interactive multi-question tool; no validity deadline; skipped answers become empty output fields |
+
+## 0.1 Tool names: one canonical spelling (D618)
+
+A tool name is the wire identity of the tool, not its label, and every identity
+listed on this page is lowercase `snake_case`. [23-tool-names.md](23-tool-names.md)
+owns the full contract and the legacy-to-canonical mapping; this section states
+only what a reader of this page has to know.
+
+1. **Model-visible and protocol-visible tool names are lowercase `snake_case`**
+   (`read`, `bash`, `task_wait`). That is the spelling the model emits, the
+   spelling a permission rule matches, the spelling a subagent tool set
+   declares, and the spelling a transcript stores.
+2. **The UI keeps the capitalized display name** (`Read`, `Bash`). It is a label
+   derived from the canonical name — `read` renders as `Read` — and never a
+   second identity: no wire field, permission rule, or tool schema carries it.
+3. **The pre-rename capitalized names are still accepted.** A transcript on
+   disk, a saved `deny` / `allow` rule, a subagent tool whitelist, and an
+   imported archive may still spell a tool the old way; the name is normalized
+   to its canonical form on the way in, so a user has nothing to migrate and
+   stored bytes are never rewritten. An unknown name — a third-party one
+   included — is returned unchanged rather than guessed at.
+4. **Third-party names are not ours to rewrite.** `plugin_*`, `mcp_*`, and any
+   name an MCP server reports keep their own spelling, and such a tool still
+   takes part in the built-in-versus-contributed check under its own identity.
 
 ## 1. Goal
 
@@ -27,18 +51,18 @@ Let the agent get things done, but stay under control by default.
 
 | Tool | Risk | Description |
 |---|---|---|
-| `Read` | low | Read files within the workspace; returns line-numbered content and a `[path#TAG]` header |
+| `read` | low | Read files within the workspace; returns line-numbered content and a `[path#TAG]` header |
 | `new_context` | low | Start a new context window at the next turn boundary; takes no parameters and changes no environment state |
-| `Glob` | low | List files by pattern |
-| `Grep` | low | Content search; uses system `rg` when installed, else in-process; mints a per-file `tag` |
-| `BrowserPreview` | low | Open a workspace-relative preview in the bundled Browser plugin (fails if `pi.browser` is disabled) |
-| `EnterPlanMode` | low | Move the same Agent from Agent to Plan after host validation |
-| `SubmitPlan` | low | Preserve exact Markdown bytes in a new `.pi/plan/*.md` artifact and request approval |
-| `EnterGoalMode` | low | Move the same Agent from Agent to Goal after host validation |
-| `SubmitGoal` | low | Preserve exact Markdown bytes in a new `.pi/goal/*.md` artifact and request approval |
-| `Write` | high | Create/overwrite files; returns the post-write `tag` |
-| `Edit` | high | Modify files through line-anchored ops against a verified `tag` ([18](18-line-anchored-edit-contract.md)) |
-| `Bash` | high | Execute commands |
+| `glob` | low | List files by pattern |
+| `grep` | low | Content search; uses system `rg` when installed, else in-process; mints a per-file `tag` |
+| `browser_preview` | low | Open a workspace-relative preview in the bundled Browser plugin (fails if `pi.browser` is disabled) |
+| `enter_plan_mode` | low | Move the same Agent from Agent to Plan after host validation |
+| `submit_plan` | low | Preserve exact Markdown bytes in a new `.pi/plan/*.md` artifact and request approval |
+| `enter_goal_mode` | low | Move the same Agent from Agent to Goal after host validation |
+| `submit_goal` | low | Preserve exact Markdown bytes in a new `.pi/goal/*.md` artifact and request approval |
+| `write` | high | Create/overwrite files; returns the post-write `tag` |
+| `edit` | high | Modify files through line-anchored ops against a verified `tag` ([18](18-line-anchored-edit-contract.md)) |
+| `bash` | high | Execute commands |
 | `asktool` | low | Ask one or more user questions and return the submitted answers as tool output |
 
 > Names may be fine-tuned during implementation, but semantics stay consistent.
@@ -46,29 +70,29 @@ Let the agent get things done, but stay under control by default.
 ### 2.1 Deferred ancillary tools (D185, ADR 0048)
 
 Following pi's coding-agent default, the first Agent request activates only
-`Read`, `Bash`, `Edit`, and `Write`; `Glob` and `Grep` are loaded on demand.
-Plan and Goal keep their read/inspection core. `Skill` is deliberately not
+`read`, `bash`, `edit`, and `write`; `glob` and `grep` are loaded on demand.
+Plan and Goal keep their read/inspection core. `skill` is deliberately not
 deferred: a `/skill-id` invocation instructs the model to call it, and a tool
 absent from the schema cannot be called at all, so it ships with the first
 request whenever the skill catalog is non-empty (D404, ADR 0230). The runtime
 also registers capabilities without sending their full schemas up front:
 
-- `Glob` and `Grep` in Agent mode
-- `BrowserPreview`
-- `PluginCheck`, `PluginScaffold`, and `PluginPack`
+- `glob` and `grep` in Agent mode
+- `browser_preview`
+- `check_plugin`, `scaffold_plugin`, and `pack_plugin`
 - plugin-declared agent tools
 
 These tools appear in a bounded `# On-demand tools` catalog with compact
-descriptions. The model calls the local `ToolSearch` tool with an exact name or
+descriptions. The model calls the local `tool_search` tool with an exact name or
 capability query; the matching schemas become available on the next model turn.
 At the beginning of every new user prompt, the sidecar clears the in-memory
 deferred set and restores only successful activation evidence from the effective
-session context: `addedToolNames` on successful `ToolSearch` results and the
+session context: `addedToolNames` on successful `tool_search` results and the
 names of successful deferred-tool results. Failed rows, interrupted or missing
 result placeholders, and assistant/user prose are ignored. Restored names must
 still be in the current mode's deferred catalog. The host permission,
 workspace/scratch containment, timeout, and audit rules do not change when a
-tool is loaded. `ToolSearch` itself never executes a workspace operation and
+tool is loaded. `tool_search` itself never executes a workspace operation and
 never bypasses host-core policy.
 
 ## 3. Common Tool Constraints
@@ -90,11 +114,11 @@ result. Stopping the turn resolves outstanding questions as skipped.
 
 Native file and search tools enforce distinct path shapes (D208, ADR 0069):
 
-- `Read.path` is an existing regular file. A directory returns
-  `INVALID_ARGUMENT` with a structured `Glob` suggestion rather than a generic
+- `read.path` is an existing regular file. A directory returns
+  `INVALID_ARGUMENT` with a structured `glob` suggestion rather than a generic
   execution failure.
-- `Glob.path` is a directory search root.
-- `Grep.path` may be one file or a directory tree. A directly named file is
+- `glob.path` is a directory search root.
+- `grep.path` may be one file or a directory tree. A directly named file is
   searched without walking siblings, while `include` still filters its base
   name and every output budget remains unchanged. Grep prefers a user-installed
   `rg` on PATH (and the Unix login PATH) and falls back to the in-process
@@ -103,26 +127,26 @@ Native file and search tools enforce distinct path shapes (D208, ADR 0069):
 
 Workspace-relative paths in tool results use `/` for platform separators.
 On POSIX, a literal backslash in a filename remains a backslash so the result
-can be passed back to `Read` or `Edit`; Windows path separators are normalized
+can be passed back to `read` or `edit`; Windows path separators are normalized
 to `/`.
 
-Agent mode keeps `Glob`/`Grep` deferred under D185. Each new user prompt clears
+Agent mode keeps `glob`/`grep` deferred under D185. Each new user prompt clears
 their live activation and restores only eligible successful markers still in
-context; when no such marker exists, directory discovery activates `Glob`
-through `ToolSearch` for that prompt instead of guessing a file name or calling
-`Read` on a directory.
+context; when no such marker exists, directory discovery activates `glob`
+through `tool_search` for that prompt instead of guessing a file name or calling
+`read` on a directory.
 
 The runtime accepts one alias per canonical argument name and folds it away
 before the host sees the call (D273):
 
 | Tool | Canonical | Accepted alias |
 |---|---|---|
-| `Read` / `Write` / `Edit` / `BrowserPreview` | `path` | `file_path` |
-| `Glob` / `Grep` | `pattern` | `query` |
+| `read` / `write` / `edit` / `browser_preview` | `path` | `file_path` |
+| `glob` / `grep` | `pattern` | `query` |
 
 Both spellings are optional in the schema and the runtime requires exactly one;
 a call naming neither fails with `INVALID_ARGUMENT`. When a call carries both,
-the canonical name wins. `Bash.timeout` accepts up to 100000000 in the schema so a
+the canonical name wins. `bash.timeout` accepts up to 100000000 in the schema so a
 millisecond value validates: a value above the honoured 21,600-second ceiling
 is read as milliseconds and converted to seconds, then clamped to 21,600
 seconds (D273 / D329). In-range values, including 600 and 1800, are seconds.
@@ -139,8 +163,8 @@ seconds (D273 / D329). In-range values, including 600 and 1800, are seconds.
 - Symlinks are resolved again immediately before execution, after permission
   approval, so approval cannot skip the canonicalization step
 - Exception (D114): absolute paths inside the session scratch directory are a
-  second legal root for `Read`/`Write`/`Edit` — see §4b. Both roots run the
-  same lexical + symlink containment defense. `Read`/`Glob`/`Grep`/`Write`/`Edit`
+  second legal root for `read`/`write`/`edit` — see §4b. Both roots run the
+  same lexical + symlink containment defense. `read`/`glob`/`grep`/`write`/`edit`
   may address an explicit path outside both roots only through the permission
   policy below; a denied or unapproved request returns `TOOL_DENIED`.
 
@@ -157,8 +181,8 @@ low-risk auto-allow decision:
 - denial, timeout, or cancellation never executes the operation;
 - relative `..` escapes and symlink escapes use the same rule as absolute
   paths;
-- successful external `Read`/`Write`/`Edit` results carry `root: "external"`
-  and an absolute canonical path; external `Glob`/`Grep` matches are absolute
+- successful external `read`/`write`/`edit` results carry `root: "external"`
+  and an absolute canonical path; external `glob`/`grep` matches are absolute
   so the access remains visible in the transcript.
 
 The exception applies only to the explicit path argument. It does not expand
@@ -189,19 +213,19 @@ as binary content.
 
 - **Addressing.** In a project session, the model addresses scratch by absolute
   path only; the path is advertised in the system prompt, relative tool paths
-  resolve against the project workspace, and `Bash` exports
+  resolve against the project workspace, and `bash` exports
   `PI_SCRATCH_DIR`. In a temporary session, that same scratch directory is the
-  session workspace root, so relative Read/Glob/Grep/Write/Edit/Bash paths work
+  session workspace root, so relative read/glob/grep/write/edit/bash paths work
   there without inheriting a project.
 - **Containment.** `resolve_tool_path` tries the workspace root first, then
   the scratch root, applying the identical two-layer defense (lexical `..`
   normalization + canonicalized-ancestor symlink check) to each. A symlink
   planted inside scratch cannot reach the workspace or anywhere else.
-- **Permissions.** `Write`/`Edit` whose `path` is lexically inside the
+- **Permissions.** `write`/`edit` whose `path` is lexically inside the
   session's scratch root auto-allow without a permission card — they cannot
   touch the project. The lexical check only skips the prompt; execution still
   goes through the full resolver, so it is not an escape vector. Plan and Goal do
-  not expose Write/Edit, so the scratch auto-allow rule cannot make those tools
+  not expose write/edit, so the scratch auto-allow rule cannot make those tools
   available in either. A contract-mode Bash call may still create or mutate
   scratch data when its permission mode allows it.
 - **Artifacts.** Successful scratch writes are not recorded in the
@@ -209,16 +233,16 @@ as binary content.
   deliverables only, while the Files surface may still browse the active
   workspace. Tool results carry `root: "workspace" | "scratch"` to make this
   decision and the UI rendering explicit.
-- **Tool coverage.** `Read`/`Write`/`Edit` use the workspace and scratch roots;
-  `Glob`/`Grep` use the workspace root by default and may search an explicitly
+- **Tool coverage.** `read`/`write`/`edit` use the workspace and scratch roots;
+  `glob`/`grep` use the workspace root by default and may search an explicitly
   scoped scratch directory or an explicitly approved external directory. The
   model should use bounded native search tools instead of shell directory
   walks.
-  `BrowserPreview` remains workspace-relative in v1. Its Main-process handler
+  `browser_preview` remains workspace-relative in v1. Its Main-process handler
   resolves the root from the originating durable session, and the renderer
   event carries `sessionId`; the selected foreground workspace is never used
   for a background preview.
-- **Lifecycle.** Created lazily on the first `Write`/`Edit`/`Bash` or
+- **Lifecycle.** Created lazily on the first `write`/`edit`/`bash` or
   composer clipboard paste of a session. Deleted with `session.delete`. A
   startup sweep removes scratch dirs whose session no longer exists and dirs
   untouched for over 7 days (crash/force-quit fallback; no scheduled job
@@ -237,7 +261,7 @@ as binary content.
 
 ## 4c. Message-owned review snapshots and rollback
 
-`Write` and `Edit` are the structured review boundary. For a successful
+`write` and `edit` are the structured review boundary. For a successful
 workspace-root mutation, host-core captures the previous file before execution
 and adds bounded review evidence to the tool result:
 
@@ -269,7 +293,7 @@ type ReviewChange = {
   the file. A completed rollback invalidates the session's snapshot entries for
   that path, so the model cannot keep editing against a tag the rollback
   replaced.
-- An `Edit` carrying `MV DEST` records two entries under one tool call — a
+- An `edit` carrying `MV DEST` records two entries under one tool call — a
   source deletion and a destination creation — and rollback restores both or
   neither. `REM` records a deletion whose rollback restores the captured bytes.
   The hash guard uses the full digest, not the 16-bit `tag`.
@@ -278,13 +302,13 @@ type ReviewChange = {
 
 ## 4d. Mutation ordering and edit recovery
 
-`Write` and `Edit` are serialized within each session. Read/search tools may
+`write` and `edit` are serialized within each session. Read/search tools may
 continue in parallel, and different sessions may mutate different roots
 concurrently, but a session never has two in-flight mutations. The host holds
 the per-session mutation permit before consuming a global mutation slot, so a
 queued mutation cannot reserve capacity while it waits for an earlier edit.
 
-`Edit` names positions and supplies new content only; it never matches existing
+`edit` names positions and supplies new content only; it never matches existing
 text. Every call carries the whole-file `tag` minted by whichever tool last
 displayed the content, and the host rejects a call whose tag does not hash the
 live file or whose anchors reference lines this session never displayed. The full
@@ -293,18 +317,18 @@ resolution, registers, and drift recovery — is
 [18-line-anchored-edit-contract](18-line-anchored-edit-contract.md); this section
 keeps only the ordering and loop-guard rules. The agent mutation workflow is:
 
-1. Edit the deliverable directly with `Edit` or `Write` when it is inside the
+1. Edit the deliverable directly with `edit` or `write` when it is inside the
    advertised workspace.
 2. If a dedicated worktree is outside that root, perform one guarded edit in
    that worktree with Bash and verify the resulting diff.
 3. Classify a failed edit before recovering. For a stale tag or unseen lines,
-   perform one fresh `Read` of the current target and regenerate the change once
+   perform one fresh `read` of the current target and regenerate the change once
    (a complete `EDIT_LINES_UNSEEN` reveal may be retried unchanged). For a
    deterministic syntax or range error such as `EDIT_PARSE_FAILED`, correct the
-   operation payload directly; another `Read` does not repair malformed syntax.
+   operation payload directly; another `read` does not repair malformed syntax.
    A body-bearing replacement must use a header such as `PUT 48.=48:`. After three
    counted failures on one path in a prompt (18-line-anchored-edit-contract §9.3),
-   the third counted failed `Edit` for that path — or the third failed shell patch
+   the third counted failed `edit` for that path — or the third failed shell patch
    command (`apply_patch`, `git apply`, or `patch`) — returns a terminating tool
    result with an error-specific recovery hint, so the agent stops after reporting
    the exact mismatch. Do not hand-edit old unified-diff hunk headers or continue a
@@ -318,7 +342,7 @@ the session's provenance, so the same `tag` retried unchanged applies. That
 retry is also the one grace `EDIT_LINES_UNSEEN` gets on the path, so a second
 one does count toward the guard.
 
-Serialization also protects the snapshot store, which both producers and `Edit`
+Serialization also protects the snapshot store, which both producers and `edit`
 mutate: without the per-session permit, a concurrent record could land between a
 validation and its write.
 
@@ -341,8 +365,9 @@ Shell catalog (D190) exposes the stable IDs `windows-powershell`, `windows-pwsh`
 `cmd`, `git-bash`, and `bash` where supported by the platform. The host persists
 `defaultCommandShell`; if that persisted choice later becomes unavailable, the
 effective catalog selection intentionally falls back to the first available
-platform shell. A turn pins the effective shell ID and dialect. `Bash` remains
-the tool/protocol name, and the request carries the pinned shell ID separately.
+platform shell. A turn pins the effective shell ID and dialect. The tool's
+canonical name stays `bash` and its display label stays `Bash`; the request
+carries the pinned shell ID separately.
 Host-core resolves the entry again before spawn and rejects a changed ID/dialect
 with `COMMAND_SHELL_CHANGED`; settings writes reject unavailable or
 wrong-platform IDs with `COMMAND_SHELL_INVALID`. No arbitrary executable path
@@ -391,9 +416,9 @@ Initial denylist (extensible):
 
 | risk | Example | Default policy |
 |---|---|---|
-| low | Read/Glob/Grep inside the session roots | Auto-allow |
+| low | read/glob/grep inside the session roots | Auto-allow |
 | medium | low-risk network/metadata | Confirm or allow by policy |
-| high | Write/Edit/Bash | Confirm by default |
+| high | write/edit/bash | Confirm by default |
 
 ### Decision Types
 
@@ -409,7 +434,7 @@ May be added later:
 
 How high-risk tool calls get approved is governed by a **permission mode**:
 
-| Mode | Write/Edit | Bash / plugin tools |
+| Mode | write/edit | bash / plugin tools |
 |---|---|---|
 | `ask` (default) | confirm | confirm |
 | `accept-edits` | auto-allow | confirm |
@@ -429,11 +454,11 @@ Rules:
 - The session value is stored in `sessions.permission_mode`
   (`inherit | ask | accept-edits | auto`, default `inherit`, schema v5) and
   set via `session.configure` `permissionMode`.
-- Plan's hard deny wins over every permission mode for Write/Edit and plugin
+- Plan's hard deny wins over every permission mode for write/edit and plugin
   tools that lack `planSafeActions`. `auto` cannot re-enable a hidden or denied tool.
-- Low-risk tools (`Read`/`Glob`/`Grep`) inside the session roots auto-allow in
+- Low-risk tools (`read`/`glob`/`grep`) inside the session roots auto-allow in
   every mode, as before.
-- `BrowserPreview` is an explicit read-only UI inspection capability and is
+- `browser_preview` is an explicit read-only UI inspection capability and is
   available in both operating modes.
 - Plan retains the permission-mode selector. Bash is confirmed under `ask` and
   `accept-edits`, and is auto-allowed under `auto`; therefore Plan is planning
@@ -496,17 +521,17 @@ for the current key-log policy.
 
 ## 10. Operating-mode matrix
 
-| Mode | Read/Glob/Grep | BrowserPreview | Write/Edit | Bash | Plugins |
+| Mode | read/glob/grep | browser_preview | write/edit | bash | Plugins |
 |---|---|---|---|---|---|
 | Agent | allow | allow | permission policy | permission policy | registered risk policy |
 | Plan | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
 | Goal | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
 
 ### Notes
-- Plan and Goal hard-deny Write/Edit and plugin tools without `planSafeActions` before permission UI; a direct host
+- Plan and Goal hard-deny write/edit and plugin tools without `planSafeActions` before permission UI; a direct host
   call cannot bypass the matrix. Plugin tools that declare a non-empty list are admitted; the runner still rejects any action outside that list (ADR 0211).
 - Agent mode uses permission cards or the selected automatic policy for
-  Write/Edit/Bash and registered plugin tools.
+  write/edit/bash and registered plugin tools.
 - Plan and Goal Bash may mutate workspace or scratch state when the user selected Auto;
   the UI must make that tradeoff visible.
 - allow-session is remembered per toolName for the active session only
@@ -521,34 +546,34 @@ own once the hard budget is reached (see
 [02-agent-runtime](02-agent-runtime.md) §5.1). A submit
 tool is available only in its own contract mode and must be the only tool call in its assistant batch. It preserves
 the exact Markdown bytes in a new unique artifact under the kind's directory
-(`.pi/plan/*.md` for `SubmitPlan`, `.pi/goal/*.md` for `SubmitGoal`)
-through host-core before creating one pending approval. `EnterPlanMode` and
-`EnterGoalMode` are available only in Agent, and each must be the only tool call
+(`.pi/plan/*.md` for `submit_plan`, `.pi/goal/*.md` for `submit_goal`)
+through host-core before creating one pending approval. `enter_plan_mode` and
+`enter_goal_mode` are available only in Agent, and each must be the only tool call
 in its batch. The host validates the durable mode, the proposal kind, and the
 active-turn/configuration boundary before any transition; the visible tool list
 is guidance, not the security boundary.
 
 ### 10.2 Delegation and subagent tool scope (D201, ADR 0062)
 
-`Task` is available in Agent mode only, and only when the session has at least
+`task` is available in Agent mode only, and only when the session has at least
 one subagent definition. Plan and Goal are read-only contract negotiations, so a
-delegate with `Bash`, `Edit` or `Write` would drive straight through them.
+delegate with `bash`, `edit` or `write` would drive straight through them.
 
 A definition declares the tools its delegate may call. By default those names
-are drawn only from the seven working tools `Read`, `Glob`, `Grep`,
-`BrowserPreview`, `Bash`, `Edit` and `Write`. A definition that declares none
-gets `Read`, `Glob`, `Grep`; `tools: "*"` means all seven working tools. An
+are drawn only from the seven working tools `read`, `glob`, `grep`,
+`browser_preview`, `bash`, `edit` and `write`. A definition that declares none
+gets `read`, `glob`, `grep`; `tools: "*"` means all seven working tools. An
 unrecognized name — including the withdrawn `A2A` and `Peer` tools (D326 /
 ADR 0165) — is dropped with a parse warning.
 
 A document may opt into the parent session's live tool catalog with
-`tools: inherit` or `tools: [inherit, Bash]` (ADR 0246 / D415). At `Task` spawn
+`tools: inherit` or `tools: [inherit, bash]` (ADR 0246 / D415). At `task` spawn
 the runtime unions `toolCatalog` keys (including deferred plugin/MCP tools)
-with any assignable extras, then drops `Task` / `TaskWait` / `TaskList` /
-`TaskStop`, `EnterPlanMode` / `EnterGoalMode`, `asktool`, `new_context`, and
-`ToolSearch`. Builtins do not opt in. `inherit` is visible in the Markdown and
+with any assignable extras, then drops `task` / `task_wait` / `task_list` /
+`task_stop`, `enter_plan_mode` / `enter_goal_mode`, `asktool`, `new_context`, and
+`tool_search`. Builtins do not opt in. `inherit` is visible in the Markdown and
 in Settings; host-core keeps the token so an inherit-only document still
-loads. Plugin tools, `Skill`, and MCP tools are therefore available to a
+loads. Plugin tools, `skill`, and MCP tools are therefore available to a
 delegate only through this opt-in, never by putting those names on the
 assignable whitelist.
 
@@ -574,14 +599,14 @@ delegate's `tools.execute` calls and host-core resolves each call under that
 mode instead of the session's effective permission mode. The scope is a
 permission-mode override only: the contract modes' hard deny and the
 external-path gate (§4.1) stay in force. `accept-edits` therefore auto-allows
-`Write`/`Edit` inside the workspace and scratch roots, while external paths and
+`write`/`edit` inside the workspace and scratch roots, while external paths and
 other tools retain their normal approval behavior.
 
 Permission requests from a delegate carry the asking delegate's name, so the
 card can say which delegate wants the call (see `04-ux/03-permission-ux.md`
 §6a).
 Session-scoped `allow-session` grants are still per `toolName` and per session:
-one delegate's approval of `Bash` applies to the whole session, including the
+one delegate's approval of `bash` applies to the whole session, including the
 parent and other delegates.
 
 ## 11. Plugin Tools
@@ -617,7 +642,7 @@ Naming:
 
 ## Image generation and editing
 
-`GenerateImages` is a high-risk Agent-only capability, authorized by host-core
+`generate_images` is a high-risk Agent-only capability, authorized by host-core
 before the trusted desktop executes the request. Plan/Goal remain denied even
 under Auto. See [image generation](21-image-generation.md) for cancellation,
 limits and result semantics.

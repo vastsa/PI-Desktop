@@ -6,7 +6,7 @@ import type { PluginSkillDef } from "@pi-desktop/agent-runtime";
 /**
  * Skills PI-Desktop ships itself.
  *
- * These ride the same catalog-plus-`Skill`-tool path as plugin-contributed
+ * These ride the same catalog-plus-`skill`-tool path as plugin-contributed
  * skills (D174), so a first-party skill and a third-party one are
  * indistinguishable to the model — but they need no permission grant, because
  * the host is not a plugin.
@@ -100,7 +100,7 @@ export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
 }
 
 /**
- * Load a built-in skill body for the `Skill` tool. Returns null for any id the
+ * Load a built-in skill body for the `skill` tool. Returns null for any id the
  * host does not ship, which is the caller's cue to try the plugin registry.
  */
 export function loadBuiltinSkillBody(

@@ -159,7 +159,7 @@ export function installCaptureRig(): CaptureRig {
     seedReviewChanges: (count = 4) => {
       // Capture-only review fixture (inline change rows + Review tab scenes).
       // The Review tab reads the session transcript, so the fixture is a set
-      // of successful workspace Write/Edit tool messages carrying
+      // of successful workspace write/edit tool messages carrying
       // `details.review`; count 0 restores the empty transcript.
       if (!window.__PI_CAPTURE__) return;
       if (count <= 0) {
@@ -169,7 +169,7 @@ export function installCaptureRig(): CaptureRig {
       const base = Date.parse("2026-08-14T09:00:00Z");
       const samples = [
         {
-          tool: "Edit",
+          tool: "edit",
           path: "apps/desktop/src/components/workpanel/ReviewTab.tsx",
           operation: "edit",
           status: "modified",
@@ -190,7 +190,7 @@ export function installCaptureRig(): CaptureRig {
           ],
         },
         {
-          tool: "Write",
+          tool: "write",
           path: "apps/desktop/src/lib/review-row-metrics.ts",
           operation: "write",
           status: "added",
@@ -208,7 +208,7 @@ export function installCaptureRig(): CaptureRig {
           ],
         },
         {
-          tool: "Edit",
+          tool: "edit",
           path: "apps/desktop/src/styles/work-panel.css",
           operation: "edit",
           status: "deleted",
@@ -227,7 +227,7 @@ export function installCaptureRig(): CaptureRig {
           ],
         },
         {
-          tool: "Edit",
+          tool: "edit",
           path: "apps/desktop/src/styles/messages.css",
           operation: "edit",
           status: "modified",
@@ -288,7 +288,7 @@ export function installCaptureRig(): CaptureRig {
       useAppStore.setState({ messages: messages as any });
     },
     seedRunRows: (count = 3) => {
-      // Capture-only run-row fixture (D226/D227 head scenes). A Bash tool
+      // Capture-only run-row fixture (D226/D227 head scenes). A bash tool
       // message per state: a command that exits 1 while its call reports
       // success — the case the head must not read as done (D227) — a success
       // with output, and one still running; count 0 restores the empty
@@ -345,7 +345,7 @@ export function installCaptureRig(): CaptureRig {
             role: "tool" as const,
             content: "",
             createdAt: new Date(base + i * 120_000 + 30_000).toISOString(),
-            toolName: "Bash",
+            toolName: "bash",
             toolStatus: sample.status,
             toolArgs: { command: sample.command },
             ...(sample.details ? { toolResult: { details: sample.details } } : {}),
@@ -355,7 +355,7 @@ export function installCaptureRig(): CaptureRig {
       useAppStore.setState({ messages: messages as any });
     },
     seedDelegationRows: (count = 3) => {
-      // Capture-only delegation fixture. One `Task` and a two-`Task` fan-out
+      // Capture-only delegation fixture. One `task` and a two-`task` fan-out
       // in the same transcript, so the scene shows that a lone delegation now
       // gets the same card as a fan-out; count 0 restores the empty
       // transcript.
@@ -376,7 +376,7 @@ export function installCaptureRig(): CaptureRig {
         role: "tool" as const,
         content: "",
         createdAt: new Date(base + index * 60_000).toISOString(),
-        toolName: "Task",
+        toolName: "task",
         toolCallId: `capture-call-${index}`,
         toolStatus: status === "running" ? "running" : "success",
         toolArgs: { agent, description, task: description },
@@ -403,7 +403,7 @@ export function installCaptureRig(): CaptureRig {
         role: "tool" as const,
         content: "",
         createdAt: new Date(base + index * 60_000 + 5_000).toISOString(),
-        toolName: "Read",
+        toolName: "read",
         toolCallId: `capture-call-${index}-step`,
         toolStatus: "success" as const,
         toolArgs: { file_path: path },
@@ -811,7 +811,7 @@ export function installCaptureRig(): CaptureRig {
             "Read a build log end to end and report the first real failure with its file and line.",
           enabled: true,
           scope: { mode: "global", projects: [] },
-          tools: ["Read", "Grep", "Bash"],
+          tools: ["read", "grep", "bash"],
           path: "/Users/pi/.agents/subagents/log-reader.md",
           sizeBytes: 1_840,
           createdAt: "2026-08-05T09:00:00.000Z",
@@ -825,7 +825,7 @@ export function installCaptureRig(): CaptureRig {
             "Compare the migration files on a branch against the committed schema and list what drifted.",
           enabled: true,
           scope: { mode: "global", projects: [] },
-          tools: ["Read", "Glob", "Grep"],
+          tools: ["read", "glob", "grep"],
           model: "anthropic/claude-haiku-4-5",
           thinkingLevel: "low",
           path: "/Users/pi/.agents/subagents/schema-diff.md",
@@ -840,7 +840,7 @@ export function installCaptureRig(): CaptureRig {
           description: "My own explorer, with the repository's layout written into the prompt.",
           enabled: true,
           scope: { mode: "global", projects: [] },
-          tools: ["Read", "Glob", "Grep"],
+          tools: ["read", "glob", "grep"],
           path: "/Users/pi/.agents/subagents/explorer.md",
           sizeBytes: 2_260,
           createdAt: "2026-08-01T09:00:00.000Z",
@@ -853,7 +853,7 @@ export function installCaptureRig(): CaptureRig {
           description: "Draft the release notes for a tag range, grouped by user-visible change.",
           enabled: false,
           scope: { mode: "global", projects: [] },
-          tools: ["Read", "Grep"],
+          tools: ["read", "grep"],
           path: "/Users/pi/.agents/subagents/release-drafter.md",
           sizeBytes: 980,
           createdAt: "2026-06-20T09:00:00.000Z",
@@ -867,7 +867,7 @@ export function installCaptureRig(): CaptureRig {
           name: "log-reader",
           description: "A user-owned log reader, tuned for its CI output.",
           prompt: "You are log-reader.\n",
-          tools: ["Read", "Grep"],
+          tools: ["read", "grep"],
           source: "user",
           filePath: "/Users/pi/.agents/subagents/log-reader.md",
         },
@@ -875,7 +875,7 @@ export function installCaptureRig(): CaptureRig {
           name: "explorer",
           description: "My own explorer, with the repository's layout written into the prompt.",
           prompt: "You are explorer.\n",
-          tools: ["Read", "Glob", "Grep"],
+          tools: ["read", "glob", "grep"],
           source: "user",
           filePath: "/Users/pi/.agents/subagents/explorer.md",
         },
@@ -884,14 +884,14 @@ export function installCaptureRig(): CaptureRig {
           description:
             "Review a change for correctness, then report findings ranked by severity.",
           prompt: "You are code-reviewer.\n",
-          tools: ["Read", "Glob", "Grep"],
+          tools: ["read", "glob", "grep"],
           source: "builtin",
         },
         {
           name: "test-runner",
           description: "Run the test suite, then report the first failure that is not flaky.",
           prompt: "You are test-runner.\n",
-          tools: ["Read", "Glob", "Grep", "Bash"],
+          tools: ["read", "glob", "grep", "bash"],
           source: "builtin",
         },
       ];

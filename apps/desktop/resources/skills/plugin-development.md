@@ -3,20 +3,20 @@ name: PI-Desktop plugin development
 description: the user is writing, checking, packaging or debugging a PI-Desktop plugin
 ---
 
-You are working inside a PI-Desktop plugin. Use the `PluginScaffold`, `PluginCheck` and
-`PluginPack` tools instead of hand-rolling files or shell commands — they enforce the same
+You are working inside a PI-Desktop plugin. Use the `scaffold_plugin`, `check_plugin` and
+`pack_plugin` tools instead of hand-rolling files or shell commands — they enforce the same
 rules the installer does, so anything they accept will install.
 
 ## Development loop
 
-1. `PluginScaffold` — create a plugin from a template. It writes the directory and loads the
+1. `scaffold_plugin` — create a plugin from a template. It writes the directory and loads the
    plugin immediately, so it is live before you edit anything.
 2. Edit the source. A plugin loaded from a directory hot-reloads on save: no re-picking the
    folder, no restart. Widening `permissions` — or widening a file scope in `manifest.fs` —
    is the one exception: that needs an explicit re-load, because hot reload must never grant
    reach the user did not approve.
-3. `PluginCheck` — validate the plugin. Fix every error; treat warnings as review notes.
-4. `PluginPack` — produce `dist/<id>-<version>.piplug`, installable from the plugins page.
+3. `check_plugin` — validate the plugin. Fix every error; treat warnings as review notes.
+4. `pack_plugin` — produce `dist/<id>-<version>.piplug`, installable from the plugins page.
 
 Templates: `panel-basic` (a webview panel), `agent-tool-basic` (a tool the agent can call),
 `skill-pack` (instruction documents only), `full-demo` (all three plus a setting).
@@ -182,7 +182,7 @@ sandbox, so only load code from a trusted source.
 
 ## Declarative contributions
 
-A file listed in `contributes.skills` is indexed for the Agent's `Skill` tool, so it needs
+A file listed in `contributes.skills` is indexed for the Agent's `skill` tool, so it needs
 `agent.prompt.inject`. Without that permission the file is simply ignored. Give each skill
 `name` and `description` front matter — the description is what tells the model when to load
 it:
@@ -210,6 +210,6 @@ bus payloads.
 ## Packaging
 
 A `.piplug` is a **store-only (uncompressed) zip** — the installer rejects deflated entries.
-Always produce one with `PluginPack`, never with `zip` or `tar`. `.git`, `node_modules` and
+Always produce one with `pack_plugin`, never with `zip` or `tar`. `.git`, `node_modules` and
 `dist` are excluded automatically; the package must stay under 2000 files and 50 MB, and may
 not contain symlinks.

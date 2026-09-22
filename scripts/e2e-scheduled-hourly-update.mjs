@@ -15,14 +15,14 @@ try {
   const tool = (toolName, args) => host.call("tools.execute", {
     sessionId: session.id, toolCallId: randomUUID(), toolName, args, mode: "agent",
   });
-  const created = await tool("ScheduledTaskCreate", {
+  const created = await tool("scheduled_task_create", {
     title: "Review", prompt: "Reply OK", cadence: "manual", enabled: false,
   });
   assert.equal(created.ok, true);
   const id = created.content.task.id;
   console.log("Created a paused Manual task.");
   const before = Date.now();
-  const updated = await tool("ScheduledTaskUpdate", { id, cadence: "hourly" });
+  const updated = await tool("scheduled_task_update", { id, cadence: "hourly" });
   console.log("Update with only cadence=hourly:", JSON.stringify(updated.content));
   assert.equal(updated.ok, true);
   const task = updated.content.task;
@@ -31,11 +31,11 @@ try {
   assert.equal(task.prompt, "Reply OK");
   assert.ok(Date.parse(task.nextRunAt) >= before + 3_600_000);
   assert.ok(Date.parse(task.nextRunAt) <= Date.now() + 3_600_000);
-  const renamed = await tool("ScheduledTaskUpdate", { id, title: "Renamed" });
+  const renamed = await tool("scheduled_task_update", { id, title: "Renamed" });
   assert.equal(renamed.content.task.nextRunAt, task.nextRunAt);
   await host.stop();
   await host.start();
-  const listed = await tool("ScheduledTaskList", {});
+  const listed = await tool("scheduled_task_list", {});
   const restored = listed.content.tasks.find((item) => item.id === id);
   assert.equal(restored.cadence, "hourly");
   assert.equal(restored.enabled, false);

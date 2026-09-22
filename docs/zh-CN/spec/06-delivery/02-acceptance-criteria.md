@@ -46,14 +46,14 @@ MVP 在以下情况下通过：
 - [x] 工具路径根据项目根解析 - auto:host-core 测试 (`workspace::tests`)
 
 ### E. 工具和权限
-- [x] Plan 和 Goal 在每种权限模式下拒绝 Write/Edit/plugin 工具 —
+- [x] Plan 和 Goal 在每种权限模式下拒绝 write/edit/plugin 工具 —
   auto:`test:e2e:plan` E2E-105 + host-core 权限测试
 - [x] Plan 和 Goal Ask/Accept 下的 Bash 提示编辑并运行而无需确认
   在显式 Auto — auto:`test:e2e:plan` E2E-105 + host-core 权限测试下
-- [x] Agent 模式使用 Write/Edit/Bash 的权限策略 — 手册：M3
+- [x] Agent 模式使用 write/edit/bash 的权限策略 — 手册：M3
 - [x] 权限超时（120s）变为拒绝 — 手动：M3 (D005)
-- [x] Read/Glob/Grep 在项目内部工作 — auto:`test:e2e`（glob 工具）
-- [x] Write/Edit/Bash 触发内联、会话范围的确认卡 — 手册：M3
+- [x] read/glob/grep 在项目内部工作 — auto:`test:e2e`（glob 工具）
+- [x] write/edit/bash 触发内联、会话范围的确认卡 — 手册：M3
 - [x] 后台事件和权限请求永远不会激活或覆盖其他事件
   session — 单位：桌面权限合约；完整的用户界面手册：M5
 - [x] 拒绝阻止执行 — 手册：M3
@@ -67,9 +67,9 @@ MVP 在以下情况下通过：
 - [x] Goal 重用相同的主机拥有的批准管道，写入不同的
   `.pi/goal/*.md` 工件，并在 Agent 模式下恢复以验证接受情况
   标准 — auto:agent-runtime + desktop/runtime 合约覆盖范围
-- [x] `EnterPlanMode` 和 UI/session Plan 选择收敛于同一状态 —
+- [x] `enter_plan_mode` 和 UI/session Plan 选择收敛于同一状态 —
   自动：host-core CAS 测试 + `test:e2e:plan-ui`
-- [x] `SubmitPlan(title, markdown, question)` 保留精确的 Markdown 字节
+- [x] `submit_plan(title, markdown, question)` 保留精确的 Markdown 字节
   独特的 `.pi/plan/*.md` 工件，使 title/question 保持结构化
   `plan_approvals`，并记录 path/hash/size — auto:`test:e2e:plan` E2E-106
 - [x] 批准仅提供 Approve/Reject；批准需要明确
