@@ -141,5 +141,5 @@ the internal `page = "chat"` route value; that value is not an operating mode.
 |---|---|---|
 | macOS Apple Silicon | Published | Primary development and acceptance platform; signing/notarization remains credential-gated |
 | macOS Intel | Published | Native x64 DMG/ZIP release lane; signing/notarization remains credential-gated |
-| Windows x64 | Published | NSIS installer, portable exe, and in-app update lane for NSIS; native qualification continues |
+| Windows x64 | Published | NSIS installer, portable ZIP, and in-app update lane for NSIS; native qualification continues |
 | Linux x64 | Published | AppImage, deb, and rpm packages; AppImage update lane; glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36+); native qualification continues |

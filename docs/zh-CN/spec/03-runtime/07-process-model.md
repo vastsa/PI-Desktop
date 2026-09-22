@@ -216,9 +216,10 @@ sidecar/host 关闭序列在更新程序替换应用程序之前运行。
   它调用的纯 JS 助手无需更改进程或协议所有权
 - 渲染器依赖项通过 Vite 输出传送，而不是重复原始数据
   包树；桌面包不再携带交互式 PTY 原生模块
-- 打包版本使用 Main 拥有的更新控制器。 macOS、非 AppImage
-  Linux 和 Windows 便携版运行为手动交付模式； Windows NSIS 和
-  Linux AppImage 使用 D126 标签发布的应用内提要
+- 打包版本使用 Main 拥有的更新控制器。macOS、非 AppImage Linux 和
+  Windows ZIP 运行为手动交付模式；旧 Windows 便携版 exe 在设置了
+  `PORTABLE_EXECUTABLE_FILE` 时仍保持手动交付。Windows NSIS 和 Linux
+  AppImage 使用 D126 标签发布的应用内提要
 
 ## 7. 远程目标拓扑（MVP 后）
 

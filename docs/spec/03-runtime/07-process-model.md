@@ -284,8 +284,10 @@ sidecar/host shutdown sequence runs before the updater replaces the app.
 - renderer dependencies ship through Vite output rather than duplicate raw
   package trees; no interactive PTY native module is packaged
 - packaged builds use the Main-owned update controller. macOS, non-AppImage
-  Linux, and Windows portable runs are manual-delivery modes; Windows NSIS and
-  Linux AppImage use the in-app feeds published by D126 tag releases
+  Linux, and Windows ZIP runs are manual-delivery modes; legacy Windows
+  portable executables remain manual when `PORTABLE_EXECUTABLE_FILE` is set.
+  Windows NSIS and Linux AppImage use the in-app feeds published by D126 tag
+  releases
 
 ## 7. Remote target topology (post-MVP)
 

@@ -25,9 +25,9 @@
     "build:host-release": "cargo build --release --manifest-path ../../Cargo.toml -p host-core",
     "bundle:runtime": "pnpm -C ../../packages/agent-runtime bundle",
     "pack": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --dir",
-    "dist": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --publish never",
+    "dist": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && node ../../scripts/build-desktop-release.mjs",
     "dist:mac": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --mac --publish never",
-    "dist:win": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --win --publish never",
+    "dist:win": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && node ../../scripts/build-desktop-release.mjs win",
     "dist:linux": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --linux --publish never"
   },
   "dependencies": {
@@ -87,6 +87,9 @@
         "repo": "PI-Desktop"
       }
     ],
+    "extraMetadata": {
+      "piDistribution": "installed"
+    },
     "files": [
       "out/**/*",
       "package.json",
@@ -195,6 +198,7 @@
     },
     "win": {
       "executableName": "PI-Desktop",
+      "artifactName": "PI-Desktop-Portable-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -203,7 +207,7 @@
           ]
         },
         {
-          "target": "portable",
+          "target": "zip",
           "arch": [
             "x64"
           ]
@@ -226,11 +230,6 @@
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "PI-Desktop",
       "artifactName": "PI-Desktop-Setup-${version}.${ext}"
-    },
-    "portable": {
-      "artifactName": "PI-Desktop-Portable-${version}.${ext}",
-      "requestExecutionLevel": "user",
-      "unpackDirName": "PI-Desktop-Portable"
     },
     "deb": {
       "packageName": "pi-desktop",

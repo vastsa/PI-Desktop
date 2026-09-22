@@ -147,8 +147,8 @@ MCP 市场只接受无凭据的公网 HTTPS 源和目录端点。Main 在每一�
   GitHub 的最新稳定版本而不是同通道预发布 pin。
 - Feed 清单将工件与电子构建器哈希绑定。一个错误，
   无法安装提要、哈希不匹配或无效的更新程序状态。
-- 打包的 macOS、Windows NSIS 和 Linux AppImage 从 GitHub Releases 源应用内下载并安装。Linux deb/rpm 和 Windows 便携版只检测新版本并打开固定发布页。
-- D126 标签版本发布 Windows NSIS 和 Linux AppImage 安装程序及其更新清单，以及 Linux deb/rpm 包和 Windows 便携版 exe。NSIS、AppImage 与打包的 macOS 走应用内通道。便携版 exe 使用通知加链接交付，并且不写入 `latest.yml`。macOS 标签工件在上传前完成 Developer ID 签名、公证和装订；回滚和分阶段推出仍是发布后续工作。
+- 打包的 macOS、Windows NSIS 和 Linux AppImage 从 GitHub Releases 源应用内下载并安装。Linux deb/rpm 和 Windows ZIP 只检测新版本并打开固定发布页；旧 Windows 便携版 exe 在存在 `PORTABLE_EXECUTABLE_FILE` 时仍保持手动更新。
+- D126 标签版本发布 Windows NSIS 和 Linux AppImage 安装程序及其更新清单，以及 Linux deb/rpm 包和 Windows 便携版 ZIP。NSIS、AppImage 与打包的 macOS 走应用内通道。便携版 ZIP 使用通知加链接交付，并且不写入 `latest.yml`。macOS 标签工件在上传前完成 Developer ID 签名、公证和装订；回滚和分阶段推出仍是发布后续工作。
 - 客户端不携带 GitHub 令牌。私人或其他无法访问的提要
   关闭失败；自动故障保持在环境状态，显式检查会暴露
   错误。

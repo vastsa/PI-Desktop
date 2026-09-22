@@ -135,5 +135,5 @@ Plan 和 Goal 是合约模式，而不是严格的只读安全配置文件：Bas
 |---|---|---|
 | macOS 苹果芯片 | 已发表 | 初级开发及验收平台； signing/notarization 仍受凭证控制 |
 | macOS 英特尔 | 已发表 | 本机 x64 DMG/ZIP 发布通道；signing/notarization 仍受凭证控制 |
-| Windows x64 | 已发表 | NSIS 安装程序、免安装便携版 exe，以及仅适用于 NSIS 的应用内更新通道；本土资格继续 |
+| Windows x64 | 已发表 | NSIS 安装程序、免安装便携版 ZIP，以及仅适用于 NSIS 的应用内更新通道；本土资格继续 |
 | Linux x64 | 已发表 | AppImage、deb 和 rpm 包；AppImage 更新通道；glibc 2.35+（Ubuntu 22.04、Debian 12、Fedora 36+）；本土资格继续 |

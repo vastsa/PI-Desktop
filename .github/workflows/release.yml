@@ -7,12 +7,12 @@
 #   git push origin <branch> v0.2.0        # push → this workflow builds & publishes
 #
 # Builds installers for every platform defined in the electron-builder config
-# (macOS dmg/zip arm64 and x64, Windows NSIS and portable x64, Linux
+# (macOS dmg/zip arm64 and x64, Windows NSIS and portable ZIP x64, Linux
 # AppImage/deb/rpm x64), each
 # with its native pi-desktop-host-core Rust sidecar. The Linux app.asar is also
 # exported as a system-Electron repackaging asset, and all outputs — with their
 # electron-updater latest*.yml feeds — are published to the GitHub Release
-# (D126/D285/D364). macOS tag artifacts are Developer ID-signed, notarized, and
+# (D126/D285/D364/D603). macOS tag artifacts are Developer ID-signed, notarized, and
 # stapled before upload (D450 / ADR 0289).
 #
 # It also builds the headless `pi-host` bundle for every Linux platform the
@@ -511,11 +511,11 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          # D126/D285/D364: all desktop platforms and both native macOS
+          # D126/D285/D364/D603: all desktop platforms and both native macOS
           # architectures ship from tag builds — installers, the Windows
-          # portable exe, the Linux ASAR, blockmaps, and the latest*.yml
+          # portable ZIP, the Linux ASAR, blockmaps, and the latest*.yml
           # feeds that drive electron-updater on each platform (in-app for
-          # Windows NSIS and Linux AppImage; macOS and Windows portable remain
+          # Windows NSIS and Linux AppImage; macOS and Windows ZIP remain
           # manual-delivery by product policy).
           files: dist/*
           generate_release_notes: true
