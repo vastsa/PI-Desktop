@@ -782,6 +782,15 @@ mod tests {
             ("Edit", "edit", Risk::High),
             ("Bash", "bash", Risk::High),
             ("GenerateImages", "generate_images", Risk::High),
+            // The scheduled tools read their bucket off this table too, and only
+            // the read-only listing is low: `rpc/scheduled_tools.rs` declares
+            // `risk: "low"` for `scheduled_task_list` and `"medium"` for the three
+            // that mutate. Pin both sides of that split, because a bucket that
+            // silently changes here changes what the user is asked to approve.
+            ("ScheduledTaskList", "scheduled_task_list", Risk::Low),
+            ("ScheduledTaskCreate", "scheduled_task_create", Risk::Medium),
+            ("ScheduledTaskUpdate", "scheduled_task_update", Risk::Medium),
+            ("ScheduledTaskDelete", "scheduled_task_delete", Risk::Medium),
         ] {
             assert_eq!(
                 PermissionManager::tool_risk_with_declared(legacy, None),
