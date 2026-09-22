@@ -49,6 +49,10 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "desktop.control": "high",
   "session.read": "high",
   "browser.cdp": "high",
+  // The widest grant on the provider surface: the request carries the user's
+  // stored credential to a path the plugin chooses, including endpoints that
+  // spend money or read account resources.
+  "provider.request": "high",
   // Reading is a tier below writing because what makes a read dangerous is
   // where the data can go, and outbound requests are declared separately.
   "fs.read": "medium",

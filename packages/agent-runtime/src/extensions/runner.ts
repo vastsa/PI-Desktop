@@ -41,6 +41,11 @@ import {
   type TrustedExtensionUiRequest,
   type TrustedExtensionUiResponse,
 } from "./types.js";
+import type { ExtensionModelRegistry } from "./provider-access.js";
+import type {
+  ExtensionProviderAccess,
+  ExtensionProviderRequester,
+} from "./provider-request.js";
 
 import { HandlerLifecycle } from "./handler-lifecycle.js";
 import { waitForOperation } from "./operation.js";
@@ -85,6 +90,42 @@ const INERT_UI_MEMBERS = [
   "getEditorText",
   "addAutocompleteProvider",
 ] as const;
+/**
+ * An ended, empty `AssistantMessageEventStream`. `stream` / `streamSimple`
+ * stay inert, but they must remain shape-preserving: returning `undefined`
+ * makes `for await (const ev of ctx.modelRegistry.stream(...))` throw
+ * `TypeError: not async iterable`, which spec 16 §5 forbids.
+ */
+function emptyAssistantMessageEventStream(): AssistantMessageEventStream {
+  const stream = createAssistantMessageEventStream();
+  stream.end();
+  return stream;
+}
+
+/**
+ * `ModelRegistry` members PI does not implement (spec 16 §5). Each one exists,
+ * returns the upstream neutral value, reports one diagnostic per extension per
+ * member, and never throws. The members the host does provide are never wrapped.
+ */
+const INERT_MODEL_REGISTRY_MEMBERS: ReadonlyArray<{
+  member: string;
+  neutral: () => unknown;
+}> = [
+  { member: "getProvider", neutral: () => undefined },
+  { member: "getError", neutral: () => undefined },
+  { member: "isUsingOAuth", neutral: () => false },
+  { member: "getApiKeyAndHeaders", neutral: () => Promise.resolve(undefined) },
+  { member: "getApiKeyForProvider", neutral: () => Promise.resolve(undefined) },
+  { member: "getProviderAuth", neutral: () => Promise.resolve(undefined) },
+  { member: "complete", neutral: () => Promise.resolve(undefined) },
+  { member: "stream", neutral: () => emptyAssistantMessageEventStream() },
+  { member: "streamSimple", neutral: () => emptyAssistantMessageEventStream() },
+  { member: "registerProvider", neutral: () => undefined },
+  { member: "unregisterProvider", neutral: () => undefined },
+  { member: "getRegisteredProviderConfig", neutral: () => undefined },
+  { member: "getRegisteredNativeProvider", neutral: () => undefined },
+  { member: "getRegisteredProviderIds", neutral: () => [] },
+];
 
 export type ExtensionExecOptions = {
   cwd?: string;
@@ -168,8 +209,21 @@ export interface TrustedExtensionBridge {
   ): Promise<TrustedExtensionUiResponse>;
   publishCommands(commands: TrustedExtensionCommand[]): void;
   publishDiagnostics(diagnostics: TrustedExtensionDiagnostic[]): void;
-  /** Optional read-only registry passed straight through to extensions. */
-  modelRegistry?: unknown;
+  /**
+   * Optional read-only registry the host provides. It carries whichever
+   * members the host implements — normally the supported `ExtensionModelRegistry`
+   * set — and the Runner copies it and adds every missing `ModelRegistry` member
+   * as inert (spec 16 §5), so a host that provides a subset, a test double, or
+   * nothing at all is still a valid bridge. A provided member always wins and is
+   * never wrapped.
+   */
+  modelRegistry?: Partial<ExtensionModelRegistry> & Record<string, unknown>;
+  /**
+   * Session-scoped provider request client. The Runner binds it per extension,
+   * because main takes the *claimed* `extensionId` for audit attribution while
+   * gating on state it owns (plan D7).
+   */
+  providers?: ExtensionProviderRequester;
 }
 
 type ToolDefinitionLike = {
@@ -627,6 +681,49 @@ export class TrustedExtensionRunner {
     };
   }
 
+  /**
+   * Copy the host-provided registry and fill in every unsupported member as
+   * inert, so an extension sees the whole `ModelRegistry` shape instead of a
+   * `TypeError: not a function` (spec 16 §5). A member the host provided — even
+   * an explicitly `undefined` one — always wins and is never wrapped.
+   */
+  private modelRegistryContext(
+    extension: LoadedExtension,
+  ): Record<string, unknown> {
+    const provided = this.bridge.modelRegistry;
+    const registry: Record<string, unknown> = provided ? { ...provided } : {};
+    for (const { member, neutral } of INERT_MODEL_REGISTRY_MEMBERS) {
+      if (Object.prototype.hasOwnProperty.call(registry, member)) continue;
+      registry[member] = this.inert(
+        extension,
+        `modelRegistry.${member}`,
+        neutral(),
+      );
+    }
+    return registry;
+  }
+
+  /**
+   * Bind the session's provider requester to one extension. A host that wires
+   * no requester (a headless host, plan §5.4 `UNSUPPORTED`) answers with a
+   * rejection instead of an absent member, so an extension's `await` fails
+   * with a code rather than `undefined is not a function`.
+   */
+  private providerContext(extension: LoadedExtension): ExtensionProviderAccess {
+    const requester = this.bridge.providers;
+    return {
+      request: async (input) => {
+        if (!requester) {
+          throw Object.assign(
+            new Error("provider requests are not available in this host"),
+            { errorCode: "UNSUPPORTED" },
+          );
+        }
+        return requester.request(extension.spec.id, input);
+      },
+    };
+  }
+
   private exec(
     extension: LoadedExtension,
     command: string,
@@ -713,7 +810,10 @@ export class TrustedExtensionRunner {
         getSessionId: () => bridge.sessionId,
         getCwd: () => bridge.cwd,
       },
-      modelRegistry: bridge.modelRegistry ?? {},
+      modelRegistry: this.modelRegistryContext(extension),
+      // PI-specific sibling of the pi member set (plan §5.1): the execution
+      // surface, protocol-agnostic by design.
+      providers: this.providerContext(extension),
       get model() {
         return bridge.getModel();
       },

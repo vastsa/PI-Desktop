@@ -333,6 +333,8 @@ Each ADR includes:
 | 0301 | [Explicit append-only WebDAV compatibility mode](0301-explicit-append-only-webdav-compatibility-mode.md) | Accepted for implementation |
 | 0302 | [A failed compaction keeps the recent window, and an oversized summary is chunked](0302-compaction-fallback-recent-window-and-chunked-summary.md) | Accepted for implementation (issue #827; amends ADR 0049 / ADR 0282) |
 | 0303 | [A skill package carries resources far above the document cap](0303-skill-package-resource-limits.md) | Accepted for implementation (amends ADR 0300) |
+| 0304 | [Trusted-extension provider and model access](0304-extension-provider-and-model-access.md) | Accepted for implementation (amends ADR 0258 decision 4) |
+| 0305 | [Trusted-extension provider requests](0305-trusted-extension-provider-requests.md) | Accepted for implementation (amends ADR 0304) |
 | turn-process-and-thinking-display | [Turn process and thinking presentation](turn-process-and-thinking-display.md) | Accepted |
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |
 | registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](registry-header-variable-spelling.md) | Proposed |

@@ -52,6 +52,7 @@
 | `usage.read` | 中等 | `pi.usage.listTurns` | 安装时确认 | 已完成 turn 事实行的只读列举（每回合 token 计数与标识符，keyset 分页）；不含消息正文，无写路径 |
 | `agent.complete` | 高 | `pi.agent.complete` | 安装时确认 | 宿主代发一次性补全；消耗用户额度；`includeSessionContext` 还需要 `session.read` |
 | `speech.adapter.register` | 高 | `pi.speech.registerAdapter` / `unregisterAdapter` | 安装时确认 | 注册语音协议。handle 留在插件进程；HTTP 计划由宿主用绑定密钥代发且必须同 origin |
+| `provider.request` | 高 | 在 `contributes.agentExtensions` 模块中调用 `ctx.providers.request`：向调用方点名的 provider 行发出一次带认证的 HTTP 请求，任意路径、任意方法（规格 16 §5.1） | 显式确认，与 `agent.extension` 一致 | 带着用户的凭据触达整个 provider API 面，包括花钱的端点。目标 origin 和凭据请求头始终由宿主掌握（不改 origin、不越出基础路径、不跟随重定向、不覆盖请求头），请求体与响应都有上限，调用与 `agent.complete` 共用同一道刹车（每滚动 60 秒 8 次），在途上限为 4，且每次调用都以 `provider.request` 记入审计，不含路径、请求头值、字段值或凭据（ADR 0305） |
 
 ## 2A. 权限是开关，manifest 承载范围
 
@@ -153,6 +154,7 @@ Agent，在 Plan 中不可见。主机返回 `PLUGIN_DISABLED_IN_PLAN`
 | `audio.playback.background` | Play audio in the background | 后台播放声音 |
 | `keyboard.globalShortcut` | Register system-wide shortcuts | 注册系统级快捷键 |
 | `net.websocket` | Open real-time connections | 建立实时双向连接 |
+| `provider.request` | Send authenticated requests to your providers | 向你配置的服务发送认证请求 |
 
 ## 5. 添加升级权限
 

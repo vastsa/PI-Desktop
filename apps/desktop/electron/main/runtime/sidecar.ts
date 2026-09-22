@@ -22,6 +22,9 @@ import type { PluginRuntime } from "../plugin-runtime";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
 import type { FinishTurn } from "./plans";
+import { createExtensionModelCatalog } from "./extension-model-catalog";
+import { createExtensionProviderAccess } from "./extension-provider-access";
+import { createExtensionProviderRequest } from "./extension-provider-request";
 
 export type SidecarRuntimeDependencies = {
   runtimeState: RuntimeState;
@@ -91,6 +94,38 @@ export function createSidecarRuntime({
   wireSidecar: (sidecar: AgentSidecar) => void;
   startSidecar: () => Promise<void>;
 } {
+  // Trusted-extension provider access (plan S1/S2). Main owns the catalogue and
+  // the credentials; the sidecar only receives the redacted ready-model rows,
+  // and only for a session whose contributing plugins hold the grant the call
+  // needs (D7). The request surface shares the plugin host's spend brake (D8).
+  const extensionProviderAccess = createExtensionProviderAccess({
+    catalog: createExtensionModelCatalog({
+      getHost: () => runtimeState.host,
+      modelsDevCatalog,
+    }),
+    providerRequest: createExtensionProviderRequest({
+      getHost: () => runtimeState.host,
+      dataDir,
+      audit: (entry) => {
+        logger.app("plugin", "info", "plugin.api", entry);
+      },
+    }),
+    getHost: () => runtimeState.host,
+    activeInProject: pluginActiveInProject,
+    // The project each session owns comes from main-owned state, never from the
+    // wire: a caller cannot borrow another session's project grant by naming it.
+    sessionProjects,
+    audit: (entry) => {
+      logger.app("plugin", "info", "plugin.api", entry);
+    },
+    consumeRequestBudget: (pluginId) =>
+      plugins.consumeProviderRequestBudget(pluginId),
+    plugins: {
+      getAgentExtensions: () => plugins.getAgentExtensions(),
+      pluginHasPermission: (pluginId, permission) =>
+        plugins.pluginHasPermission(pluginId, permission),
+    },
+  });
   const emitAgentEvent = (envelope: AgentEventEnvelope) => {
     // A terminal event for a turn that no longer owns its session must not clear
     // the current turn's state in Agent Host or the renderer. Persistence is a
@@ -242,6 +277,10 @@ export function createSidecarRuntime({
     logger.flushChild("agent");
     const interruptedToolCalls = [...activeToolCalls.values()];
     activeToolCalls.clear();
+    // This sidecar's outstanding provider requests died with it: abort them
+    // here, because only the sidecar knew their call ids (plan D8). The check
+    // above keeps a stale sidecar's exit from touching the live one's calls.
+    extensionProviderAccess.abortAllProviderRequests();
     runtimeState.sidecar = null;
     steeringReplies.clear();
     if (intentional || isQuitting()) return;
@@ -393,6 +432,14 @@ export function createSidecarRuntime({
       await runtimeState.agentHostBridge.queue.prioritize(String(params.id ?? ""));
       return { ok: true };
     },
+    // S1: the ready-model catalogue. The grant gate and the audit line live in
+    // the provider-access layer; the wire carries only `sessionId`.
+    listProviderModels: (params) => extensionProviderAccess.listProviderModels(params),
+    // S2: the request surface and its cancellation. The gate resolves the
+    // subject from main-owned state; the claimed `extensionId` is attribution.
+    requestProvider: (params) => extensionProviderAccess.requestProvider(params),
+    abortProviderRequest: (params) =>
+      extensionProviderAccess.abortProviderRequest(params),
   });
   s.setVendorAuthResolver(async ({ providerId }) =>
     vendorOAuth.resolveAuth(providerId),

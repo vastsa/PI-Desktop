@@ -1983,6 +1983,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "agent.complete": "모델로 일회성 완성 실행",
       "agent.extension": "에이전트 안에서 코드 실행",
       "provider.register": "모델 목록에 프로바이더 추가",
+      "provider.request": "프로바이더에 인증된 요청 보내기",
       "desktop.control": "데스크톱 제어",
       "models.list": "인증된 모델 목록 표시",
       "session.read": "모델에 전송되는 현재 대화 읽기",
@@ -2028,6 +2029,8 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "agent.extension": "ExtensionAPI 모듈을 에이전트 프로세스 안에서 에이전트 자체 도구와 같은 권한으로 실행합니다. 신뢰하는 코드만 켜세요.",
       "provider.register":
         "이 플러그인이 정의한 프로바이더를 설정의 프로바이더 목록에 추가합니다. 플러그인은 엔드포인트와 모델을 제공하며, API 키는 PI-Desktop에 남습니다.",
+      "provider.request":
+        "저장된 자격 증명으로 설정한 프로바이더의 임의 경로에 인증된 요청을 보낼 수 있습니다. 비용이 발생하거나 계정 리소스를 읽는 엔드포인트까지 도달할 수 있으며, 키 자체는 플러그인에 전달되지 않습니다.",
       "desktop.control":
         "플러그인이 검토된 PI-Desktop 제어 카탈로그를 호출할 수 있습니다. 파괴적 작업에는 여전히 confirm=true가 필요하며 MCP bearer token은 노출되지 않습니다.",
       "models.list": "로그인한 모델을 볼 수 있지만 키는 받지 않습니다.",

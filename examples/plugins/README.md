@@ -36,6 +36,24 @@ Panel chrome contract:
   `top: var(--pi-plugin-titlebar-height, 46px)`. The plugin owns that UI and
   should add `-webkit-app-region: no-drag` to its interactive controls.
 
+## provider-request
+
+A trusted agent extension (`contributes.agentExtensions`) that reads the ready
+model catalogue and issues one authenticated provider request.
+
+Reference example covering:
+
+- `contributes.agentExtensions`
+- `ctx.modelRegistry` reads (`models.list`)
+- `ctx.providers.request(input)` (`provider.request`)
+- the host-owned credential boundary
+
+Related specs:
+
+- `docs/spec/07-plugins/13-plugin-permissions-matrix.md`
+- `docs/spec/07-plugins/16-trusted-extensions.md` §5, §5.1
+- `docs/spec/03-runtime/08-error-codes.md` §3.6
+
 ## Planned examples
 
 - `panel-basic`

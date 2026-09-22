@@ -18,6 +18,7 @@
 | 面板 | 一个小的独立的 HTML 界面 | `ui.panel`、`ui.panel` 权限、`window.pluginBridge` |
 | 悬浮挂件 | 透明无边框的小挂件窗口——例如一个圆形球体 | `ui.panel` 权限、`"ui": { "shape": "widget" }`、`window.pluginBridge` |
 | Agent 工具 | Agent 可以调用的函数 | `contributes.agentTools`、`pi.agent.registerTool` |
+| Provider 请求 | 向你点名的一条 provider 行发出一次带认证的请求 | `contributes.agentExtensions`、`provider.request` 权限、`ctx.providers.request` |
 | 技能 | Agent 按需加载指令 | `contributes.skills`、`agent.prompt.inject` 权限 |
 | 主题 | 设计令牌覆盖 | `contributes.themes`、`ui.theme` 权限 |
 | MCP 服务器 | 从本地或远程 MCP 服务器发现的工具 | `contributes.mcpServers`，MCP 权限 |
@@ -665,6 +666,94 @@ export default function (pi) {
   Electron 头重建（`npx @electron/rebuild -v <electron 版本>`）即可修复。安装失败会清理
   部分依赖并显示警告 toast，不会阻塞导入；只有扩展实际加载失败时插件行才显示 load error。
 
+### 6.12 扩展中的 Provider 与模型访问
+
+`contributes.agentExtensions` 模块可以读取用户已就绪的模型，并向一条 provider 行
+发出一次带认证的请求。两种能力都由宿主把关，且都不会把凭据交给你的代码。
+
+**就绪模型目录。** 有了 `models.list`，`ctx.modelRegistry` 会从宿主就绪 provider 的
+Runner 作用域快照作答：`getAll()`、`getAvailable()`、`find(providerId, modelId)`、
+`getProviderDisplayName()`、`getProviderAuthStatus()`、`hasConfiguredAuth()` 和
+`refresh()`。读取都从快照同步进行，`refresh()` 重新拉取快照。每条条目携带模型 id、
+provider 行 id、`baseUrl` 和能力元数据 —— 永不包含 API key、token、秘密引用或宿主
+请求头。没有该授权时，注册表只用会话模型和插件注册的 agent 模型作答。本宿主未实现的
+每个 `ModelRegistry` 成员依然存在，返回其文档化的中性值并附带一条诊断，因此同时触碰
+`stream` 或 `complete` 的扩展会降级而不是抛出。
+
+**一次带认证的请求。** 有了 `provider.request`，`ctx.providers.request(input)` 会向
+你点名的一条 provider 行发出一次 HTTP 请求。它刻意不是补全 API：路径由你给出，因此
+同一个成员可以到达 `/chat/completions`、`/images/generations`、`/embeddings`，或该行
+暴露的任何其他路径。宿主只贡献三样东西 —— 目标 origin、凭据请求头，以及传输策略 ——
+且从不解释这个信封。
+
+```json
+{
+  "contributes": { "agentExtensions": ["src/index.ts"] },
+  "permissions": ["agent.extension", "models.list", "provider.request"]
+}
+```
+
+```ts
+// src/index.ts
+export default function (pi) {
+  pi.registerCommand("provider_ping", {
+    description: "Ping the first ready provider row",
+    async handler(_args, ctx) {
+      const ready = ctx.modelRegistry.getAvailable();
+      if (!ready.length) {
+        ctx.ui.notify("No provider is ready. Add one in Settings > Models.");
+        return;
+      }
+      const model = ready[0];
+      const response = await ctx.providers.request({
+        providerId: model.provider, // required, never inferred
+        modelId: model.id, // optional; must be a model of that row
+        path: "/models", // appended to the row's baseUrl
+        method: "GET",
+      });
+      ctx.ui.notify(`${model.provider} answered ${response.status}`);
+    },
+  });
+}
+```
+
+使用前需要知道：
+
+- **`providerId` 必填，永不推断。** 没有默认 provider，也不回退到会话模型：每次调用
+  都点名自己的目标。`path` 追加到该行的 `baseUrl` 之后，没有隐式的 `/v1`，而绝对路径、
+  相对 scheme 的路径，或可能离开基础路径的路径，都会以 `INVALID_ARGUMENT` 被拒绝。
+- **凭据始终归宿主所有。** 宿主从 provider 行解析它，并**最后**设置凭据请求头，因此
+  调用方给出的请求头无法覆盖或伪造它。`authorization`、`cookie`、`host`、
+  `content-type`、`x-api-key` 以及其他保留键会被拒绝，而不是被忽略。
+- **响应是结果，不是宿主错误。** `status`、`ok`、`statusText`、`contentType`、请求头、
+  `location`，以及按形态解码的响应体（`json`、`text` 或 `base64`，并带上字节长度）
+  在 4xx 和 5xx 时同样返回。重定向**不**跟随 —— 3xx 返回它的 `location`，由你的代码
+  决定 —— 也没有自动重试：`Retry-After` 会以 `retryAfterMs` 浮现。
+- **请求体就是你要求的形态。** `body.kind` 为 `json`（由宿主序列化）、`text`、`base64`
+  或 `multipart`。`content-type` 归宿主所有，multipart 边界由宿主生成，且永不嗅探
+  内容；`GET` 上的请求体会被拒绝。`multipart.files` 条目只从会话拥有的根读取 ——
+  项目根、会话的 scratch 目录和附件库 —— 并受单文件与总量上限约束，因此这些根之外的
+  路径会以 `FILE_OUTSIDE_ALLOWED_ROOTS` 失败，而不是把别的东西上传上去。
+- **每次调用都记入审计并有限流刹车。** 请求与插件宿主共用 `agent.complete` 计数器
+  （每个插件每滚动 60 秒 8 次），每个插件最多 4 个在途，且每次调用都有自己的预算
+  （默认 60 秒，最大 300 秒）。审计行记录扩展、插件、provider 与 model、方法、去掉
+  查询字符串的最终路径、状态、耗时，以及字节数 —— 永不含查询字符串、请求头或字段值，
+  也不含凭据。
+- **取消在两侧都被尊重。** 传入 `signal` 可以中止一次调用，包括已经在途的调用；销毁
+  运行时或结束会话会中止所有尚未完成的调用，而被取消的调用方永远不会拿到结果。
+- **失败码是稳定的。** `PERMISSION_DENIED`（没有授权，或该会话未加载此扩展）、
+  `INVALID_ARGUMENT`、`PROVIDER_NOT_FOUND`、`MODEL_NOT_CONFIGURED`、
+  `PROVIDER_AUTH_MISSING`、`PROVIDER_AUTH_UNSUPPORTED`（本版本中由 OAuth 支撑的行）、
+  `NETWORK_ERROR`、`TIMEOUT`、`ABORTED`、`RESPONSE_TOO_LARGE`、`RATE_LIMITED`、
+  `FILE_NOT_FOUND`、`FILE_OUTSIDE_ALLOWED_ROOTS`、`FILE_TOO_LARGE`、`UPLOAD_TOO_LARGE`，
+  以及在没有 provider 传输层的宿主上的 `UNSUPPORTED`。完整表格见
+  [规格 03 §3.6](spec/03-runtime/08-error-codes.md)。
+- **该授权属高风险。** `provider.request` 带着你的凭据触达整个 provider API 面，包括
+  花钱的端点，因此用户在安装时确认它，与 `agent.extension` 完全一致。只有插件确实
+  需要自己调用 provider 时才申请它。
+
+上面这个命令的可运行版本随 `examples/plugins/provider-request` 一起发布。
+
 ## 7.权限设计
 
 权限均在 `manifest.json` 中声明并由用户授予。
@@ -673,8 +762,8 @@ export default function (pi) {
 | 风险 | 权限 |
 |---|---|
 | 低 | `ui.panel`、`ui.theme`、`notify` |
-| 中等 | `clipboard.read`、`clipboard.write`、`fs.read`、`shell.openExternal`、`background.service`、`bus.publish`、`bus.subscribe`、`audio.playback.background`、`keyboard.globalShortcut` |
-| 高 | `fs.write`、`fs.delete`、`agent.tool.register`、`agent.prompt.inject`、`net.fetch`、`mcp.server.local`、`mcp.server.remote`、`audio.capture.background`、`net.websocket` |
+| 中等 | `clipboard.read`、`clipboard.write`、`fs.read`、`shell.openExternal`、`background.service`、`bus.publish`、`bus.subscribe`、`audio.playback.background`、`keyboard.globalShortcut`、`models.list` |
+| 高 | `fs.write`、`fs.delete`、`agent.tool.register`、`agent.prompt.inject`、`net.fetch`、`mcp.server.local`、`mcp.server.remote`、`audio.capture.background`、`net.websocket`、`provider.request` |
 
 `keyboard.globalShortcut` 与 `net.websocket` 已实现。`pi.audio.*` 已经存在并且
 可以调用，其方法仍由权限把关，但当前宿主还没有设备后端：获得授权的调用会以
@@ -850,3 +939,6 @@ commit 并给出警告。插件相对仓库根目录的路径也会被记录，�
 - [开发者体验](/zh-CN/spec/07-plugins/10-plugin-devex)
 - [权限](/zh-CN/spec/07-plugins/13-plugin-permissions-matrix)
 - [Hello 参考插件](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins/hello)
+- [Provider 请求示例](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins/provider-request)
+- [受信任扩展](spec/07-plugins/16-trusted-extensions.md)
+- [Provider 访问错误码](spec/03-runtime/08-error-codes.md)

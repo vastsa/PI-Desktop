@@ -1973,6 +1973,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "agent.complete": "Modellerinizle tek seferlik tamamlatma çalıştır",
       "agent.extension": "Ajanın içinde kod çalıştır",
       "provider.register": "Model listesine servis ekle",
+      "provider.request": "Servislerinize kimliği doğrulanmış istek gönderin",
       "desktop.control": "Masaüstünü kontrol et",
       "models.list": "Kimliği doğrulanmış modelleri listele",
       "session.read": "Modele gönderilen geçerli konuşmayı oku",
@@ -2018,6 +2019,8 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "agent.extension": "ExtensionAPI modüllerini ajan sürecinde, ajanın kendi araçlarıyla aynı erişimle çalıştırır. Yalnızca güvendiğiniz kodu etkinleştirin.",
       "provider.register":
         "Bu eklentinin tanımladığı servisleri Ayarlar’daki servis listesine ekler. Uç noktayı ve modelleri eklenti sağlar; API anahtarınız PI-Desktop’ta kalır.",
+      "provider.request":
+        "Kayıtlı kimlik bilginizle, yapılandırdığınız bir servisin istediğiniz yoluna kimliği doğrulanmış istek gönderebilir. Bu, para harcayan veya hesap kaynaklarını okuyan uç noktalara ulaşır; anahtarın kendisi eklentiye verilmez.",
       "desktop.control":
         "Eklentinin incelenmiş PI-Desktop denetim kataloğunu çağırmasını sağlar. Yıkıcı işlemler yine confirm=true gerektirir; MCP bearer token eklentiye verilmez.",
       "models.list": "Oturum açtığınız modelleri görebilir. Anahtar almaz.",

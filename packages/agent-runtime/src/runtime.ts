@@ -61,6 +61,11 @@ import {
   type RegisteredTrustedExtensionAgent,
   type TrustedExtensionBridge,
 } from "./extensions/runner.js";
+import { createExtensionModelRegistry } from "./extensions/provider-access.js";
+import {
+  createExtensionProviderRequester,
+  type ExtensionProviderRequester,
+} from "./extensions/provider-request.js";
 import type {
   AgentActivity,
   AgentActivityAgent,
@@ -321,6 +326,13 @@ function runtimeAttachmentFromMessage(
 const PROVIDER_REQUEST_MAX_RETRIES = 0;
 const MAX_MUTATION_RECOVERY_FAILURES = 3;
 const BASH_PATCH_FAILURE_KEY = "__bash_patch_command__";
+/**
+ * How long a catalogue priming call may hold session start. The catalogue is a
+ * main-local projection, so a few seconds is generous; the 130 s default
+ * host-proxy deadline would otherwise stall the first turn on an unresponsive
+ * host (`packages/shared/src/rpc-timeouts.ts`).
+ */
+const CATALOGUE_PRIME_TIMEOUT_MS = 5_000;
 /**
  * Edit failures the line-anchored contract expects and already answers: each
  * one hands back the live tag, or the content of the lines it refused to write
@@ -1551,6 +1563,12 @@ export class DesktopAgentRuntime {
   private pluginSkills: PluginSkillDef[];
   private trustedExtensionSpecs: TrustedExtensionSpec[];
   private extensionRunner?: TrustedExtensionRunner;
+  /**
+   * Session-scoped provider request client, kept so `dispose()` can abort the
+   * calls it still has outstanding (plan D8): a request that outlives its
+   * Runner must not keep a socket alive for a session that is gone.
+   */
+  private extensionProviderRequester?: ExtensionProviderRequester;
   private extensionSessionName?: string;
   private extensionTurnIndex = 0;
   /** Headers an extension edited in `before_provider_headers` for the current turn. */
@@ -2416,9 +2434,14 @@ Delegation rules:
    */
   async loadTrustedExtensions(): Promise<void> {
     if (this.disposed || this.extensionRunner || this.trustedExtensionSpecs.length === 0) return;
+    // `createExtensionBridge` suspends on a host round trip, so disposal must be
+    // re-checked before a runner is constructed: otherwise a session torn down
+    // mid-flight leaves a loaded runner (and its modules) alive after teardown.
+    const bridge = await this.createExtensionBridge();
+    if (this.disposed) return;
     const runner = new TrustedExtensionRunner({
       specs: this.trustedExtensionSpecs,
-      bridge: this.createExtensionBridge(),
+      bridge,
       reservedToolNames: () => this.toolCatalog.keys(),
     });
     this.extensionRunner = runner;
@@ -2501,38 +2524,55 @@ Delegation rules:
     return !this.agent.state.isStreaming;
   }
 
-  private extensionModelRegistry(): Record<string, unknown> {
-    const getRunner = () => this.extensionRunner;
-    const models = () => [this.model, ...(getRunner()?.getAgentModels() ?? [])];
-    return {
-      getAll: () => [...new Map(models().map((model) => [`${model.provider}/${model.id}`, model])).values()],
-      getAvailable: () => [...new Map(models().map((model) => [`${model.provider}/${model.id}`, model])).values()],
-      find: (providerId: string, modelId: string) =>
-        models().find((model) => model.provider === providerId && model.id === modelId),
-      getProviderDisplayName: (providerId: string) =>
-        getRunner()?.getAgents().find((agent) => agent.providerId === providerId)?.name ??
-        (providerId === this.provider.id ? this.provider.name : providerId),
-      getProviderAuthStatus: (providerId: string) => ({
-        configured: [this.provider.id, ...(getRunner()?.getAgents().map((agent) => agent.providerId) ?? [])].includes(providerId),
-        source: "plugin",
-      }),
-      hasConfiguredAuth: (model: { provider?: string }) =>
-        typeof model.provider === "string" &&
-        [this.provider.id, ...(getRunner()?.getAgents().map((agent) => agent.providerId) ?? [])].includes(model.provider),
-    };
-  }
-
   getTrustedExtensionReports() {
     return this.extensionRunner?.getLoadReports() ?? [];
   }
-  private createExtensionBridge(): TrustedExtensionBridge {
+  /**
+   * The bridge carries the Runner-scoped catalogue snapshot. Main owns the
+   * catalogue and the credentials, and one Runner serves one session, so the
+   * snapshot is primed here and never kept in module state (plan D2).
+   */
+  private async createExtensionBridge(): Promise<TrustedExtensionBridge> {
     const runtime = this;
+    // The requester is created before the first `await` in this method, because
+    // a disposal that races the bridge setup must still find it: the in-flight
+    // calls it owns have to be abortable when this session's runtime goes away.
+    // The transport deadline stays per call — the caller owns the budget (D8).
+    const providers = createExtensionProviderRequester({
+      callHost: (method, params, timeoutOverrideMs) =>
+        runtime.host.call(method, params, timeoutOverrideMs),
+      sessionId: runtime.sessionId,
+    });
+    runtime.extensionProviderRequester = providers;
+    const modelRegistry = await createExtensionModelRegistry({
+      // A catalogue priming call runs during session start; it must not hold the
+      // first turn for the 130 s default host-proxy deadline, so it gets a short
+      // call-site override and degrades to an empty snapshot instead.
+      callHost: (method, params) =>
+        runtime.host.call(method, params, CATALOGUE_PRIME_TIMEOUT_MS),
+      sessionId: runtime.sessionId,
+      // The session model and the agent models this session's extensions
+      // registered: both postdate the registry and can change mid-session, so
+      // they are read through a closure on every read.
+      extraModels: () => [
+        runtime.model,
+        ...(runtime.extensionRunner?.getAgentModels() ?? []),
+      ],
+      // Plugin agent provider names postdate the registry too (the runner is
+      // built after the bridge), so display names stay lazy as well.
+      extraProviderNames: () =>
+        (runtime.extensionRunner?.getAgents() ?? []).map((agent) => ({
+          providerId: agent.providerId,
+          name: agent.name,
+        })),
+    });
     return {
       sessionId: this.sessionId,
       cwd: this.projectPath ?? process.cwd(),
       getModel: () => runtime.model,
       setModel: (model, signal) => runtime.setExtensionModel(model, signal),
-      modelRegistry: runtime.extensionModelRegistry(),
+      modelRegistry,
+      providers,
       getThinkingLevel: () => agentThinkingLevel(runtime.thinkingLevel),
       setThinkingLevel: (level) => {
         runtime.thinkingLevel = clampThinkingLevel(runtime.provider, level as ThinkingLevel);
@@ -8072,6 +8112,11 @@ Delegation rules:
     const runner = this.extensionRunner;
     this.extensionRunner = undefined;
     const closingExtensions = runner?.dispose();
+    // An outstanding provider request belongs to this session: abort it before
+    // the runtime is gone, so its result is discarded rather than delivered to
+    // a session whose runtime was replaced (plan D8).
+    this.extensionProviderRequester?.dispose();
+    this.extensionProviderRequester = undefined;
     this.streamSink.dispose();
     this.disposed = true;
     this.acceptingSteering = false;

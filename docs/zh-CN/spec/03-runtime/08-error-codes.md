@@ -253,6 +253,33 @@ reveal 不并入任何行，必须重新读取。
 | `PLUGIN_CRASHED` | 是的 | 插件运行时崩溃（保留） |
 | `PLUGIN_CONTRACT_MISMATCH` | 不 | 不支持的 manifest/api 版本（保留） |
 
+
+#### 受信任扩展的 provider 访问（ADR 0305）
+
+由桌面进程为 `ctx.providers.request` 发出（规格 16 §5.1），并经 sidecar 宿主代理原样
+带到扩展。上文已登记的代码保留其既有含义：`INVALID_ARGUMENT`、
+`MODEL_NOT_CONFIGURED`、`NETWORK_ERROR`、`TIMEOUT`、`RATE_LIMITED`、`UNSUPPORTED`
+（宿主没有 provider 传输层，例如无头的 `pi-host`）、`HOST_UNAVAILABLE`（一次
+`providers.get` / `providers.getSecret` 往返失败且没有自己的代码），以及 `INTERNAL`
+（不带任何代码的意外 Host 失败）。
+
+| 代码 | 可重试 | 含义 |
+|---|---|---|
+| `PERMISSION_DENIED` | 否 | 拥有该调用的插件不持有它需要的授权，或声称的 `extensionId` 不在该会话已加载的扩展集合内 |
+| `PROVIDER_NOT_FOUND` | 否 | 点名的 provider 行不存在、已被禁用，或没有可用的 `http(s)` base URL |
+| `PROVIDER_AUTH_MISSING` | 否 | 该 provider 行需要凭据，但没有存储任何凭据 |
+| `PROVIDER_AUTH_UNSUPPORTED` | 否 | v1 在这个面上遇到 `authKind: "oauth"`：厂商账户的端点与模型相关，其令牌也是每次调用一次 |
+| `ABORTED` | 也许 | 调用方的 signal、运行时拆除，或 sidecar 退出取消了该请求 |
+| `RESPONSE_TOO_LARGE` | 否 | 响应超过 4 MiB 读取上限；携带 `status` 与观察到的 `bytes`，且响应体被拒绝而不是被截断 |
+| `FILE_NOT_FOUND` | 否 | `multipart.files` 路径不存在或不是普通文件 |
+| `FILE_OUTSIDE_ALLOWED_ROOTS` | 否 | `multipart.files` 路径解析到会话的项目、scratch 和附件根之外 |
+| `FILE_TOO_LARGE` | 否 | 单个上传文件超过其 32 MiB 单文件上限 |
+| `UPLOAD_TOO_LARGE` | 否 | multipart 载荷超过其 64 MiB 总上限 |
+
+HTTP 状态 —— 包括 3xx、4xx 和 5xx —— 是**结果**，永远不会是这些代码之一：协议由
+调用方拥有。被拒绝的路径、请求头、请求体、分片形态，或 Host 无法读取的上传会抛出
+异常，因为该请求从未离开桌面进程。
+
 ### 3. 7 保留的详细代码（尚未发布）
 
 记录了更细粒度的 provider/tool 区别，以供将来映射。

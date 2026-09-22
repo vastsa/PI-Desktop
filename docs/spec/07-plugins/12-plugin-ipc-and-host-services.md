@@ -177,6 +177,17 @@ audit-operation names for the device service: `audio.input.open` /
 `audio.input.close`, `audio.output.open` / `audio.output.stop` /
 `audio.output.close` (ADR 0257).
 
+Trusted-extension provider access is **not** a `HOST_API_ALLOWLIST` entry: it
+belongs to the sidecar host proxy (spec 16 §10.1) and is reachable only from
+`contributes.agentExtensions` modules, so the sandboxed plugin surface stays
+unable to issue provider requests (ADR 0305). Its audit rows use the same
+`plugin.api` sink and are written for the operation names `models.list` (one row
+per catalogue read or refusal, carrying the row count) and `provider.request`
+(one row per call, carrying the method, status, duration, file count, and byte
+size — never a path, header value, field value, or credential). Both name the
+session and the contributing plugin ids, so a refused call and a failed call are
+comparable.
+
 ## 7. PanelHost interaction
 
 - Create an isolated view when opening a panel
@@ -203,6 +214,17 @@ Panel bridge file channels are permission-gated as follows:
 - Plugin API timeout: return TIMEOUT
 - runtime crash: mark load_error, clean up contributions
 - panel crash: only close the panel, do not unload the plugin (can prompt to reload)
+
+Trusted-extension provider access fails closed at every step: a missing grant, an
+`extensionId` outside the session's loaded set, or a session main does not own is
+refused before any catalogue read or provider lookup; a rejected path, header,
+body, or upload is refused before any request leaves the desktop process; and an
+oversized response is rejected with its status and observed byte count instead of
+being truncated. A call that outlives its Runner — a session that switches,
+reloads, or is torn down — is aborted and its result discarded, so nothing is
+delivered to a session whose runtime was replaced. A sidecar that exits closes
+the provider connections it started, because only that sidecar knew their call
+ids.
 
 **Implemented (2026-07-29, ADR 0008):** the broker lives in
 `electron/main/plugin-runtime.ts` and every plugin call is a request to the

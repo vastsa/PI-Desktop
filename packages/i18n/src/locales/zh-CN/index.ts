@@ -1950,6 +1950,7 @@ sklm: {
       "agent.complete": "用你的模型发起一次补全",
       "agent.extension": "在 agent 内运行代码",
       "provider.register": "将服务添加到模型列表",
+      "provider.request": "向你配置的服务发送认证请求",
       "desktop.control": "控制桌面操作",
       "models.list": "列出已登录的模型",
       "session.read": "读取当前发给模型的对话",
@@ -1988,6 +1989,7 @@ sklm: {
       "agent.complete": "会消耗你的模型额度发起一次补全。插件拿不到 API 密钥。",
       "agent.extension": "在 agent 进程内运行 ExtensionAPI 模块，拥有与 agent 自身工具相同的权限。只启用你信任的代码。",
       "provider.register": "把此插件定义的服务添加到设置的服务列表。接口地址和模型由插件提供，API 密钥则留在 PI-Desktop 中。",
+      "provider.request": "可以用你保存的凭据，向你配置的服务任意路径发送认证请求。这会触达花钱或读取账号资源的接口；插件拿不到密钥本身。",
       "desktop.control":
         "允许插件调用经过审查的 PI-Desktop 操作目录；破坏性操作仍需 confirm=true，插件永远拿不到 MCP bearer token。",
       "models.list": "可以看到你已登录的模型，但拿不到密钥。",

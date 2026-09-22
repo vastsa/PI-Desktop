@@ -127,6 +127,22 @@ export default function (pi: any) {
     const leaks = ["sk-e2e", "secret:provider:", "authorization", "bearer "].filter((k) => raw.includes(k));
     log("agent_model registryLeaks=" + (leaks.length ? leaks.join("|") : "none"));
     log("agent_model authStatus=" + JSON.stringify(ctx.modelRegistry.getProviderAuthStatus(models[0].provider)));
+    // S1 (ADR 0304): the catalogue must carry a model the session does not run
+    // on, with the endpoint that model belongs to.
+    log("agent_model available=" + models.map((m: any) => m.provider + "/" + m.id + "@" + m.baseUrl).sort().join(","));
+    // Every listed model resolves through the synchronous read.
+    log("agent_model findAll=" + models.every((m: any) => { const hit = ctx.modelRegistry.find(m.provider, m.id); return !!hit && hit.id === m.id; }));
+    // Unimplemented members exist, answer their neutral value, and never throw.
+    let inert = "threw";
+    try {
+      inert = [
+        String(ctx.modelRegistry.getProvider("nope") === undefined),
+        String(ctx.modelRegistry.isUsingOAuth({}) === false),
+        String(ctx.modelRegistry.getError() === undefined),
+        String((await ctx.modelRegistry.complete(null, null)) === undefined),
+      ].join(",");
+    } catch { inert = "threw"; }
+    log("agent_model inert=" + inert);
     const wanted = (args ?? "").trim() || "cc-1";
     const target = models.find((m: any) => m.id === wanted);
     const ok = await pi.setModel(target);
@@ -146,7 +162,12 @@ function pluginFor(name) {
   // The agent fixture also declares a provider row (ADR 0259): the declaration
   // materializes in the native provider list, owned by this plugin.
   if (name === "agent") {
-    permissions.push("provider.register");
+    // `models.list` gates the host catalogue (ADR 0304): only this fixture
+    // declares it, so the host catalogue stays out of the other fixtures'
+    // reach. The union-of-grants residual — a contributing sibling's grant
+    // being usable from the same sidecar process — is not asserted here; that
+    // would need a second module reading the registry without the grant.
+    permissions.push("provider.register", "models.list");
     contributes.providers = [{
       id: "declared",
       name: "E2E declared",
@@ -201,6 +222,20 @@ const created = await call("providers.create", {
 });
 const providerId = created.provider?.id ?? created.id;
 await call("settings.set", { defaultProviderId: providerId, defaultModelId: "stub-1", defaultMode: "agent" });
+
+// A second endpoint: a ready provider row the session does not run on, so the
+// catalogue must carry a model the session model cannot explain (ADR 0304).
+const second = await call("providers.create", {
+  name: "E2E stub 2",
+  type: "openai_compatible",
+  baseUrl: `http://127.0.0.1:${stubPort}/v2`,
+  apiStyle: "chat_completions",
+  authKind: "api_key",
+  secretValue: "sk-e2e-2",
+  models: [{ id: "stub-2", contextWindow: 128000, maxTokens: 4096, thinkingLevels: ["off"] }],
+  defaultModelId: "stub-2",
+});
+const secondProviderId = second.provider?.id ?? second.id;
 // Register the fixture plugins as development plugins; dev loads enable them
 // with their declared permissions. `proj` is limited to the fixture project.
 for (const [name, dir] of Object.entries(pluginDirs)) {

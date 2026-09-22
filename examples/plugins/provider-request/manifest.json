@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "demo.provider-request",
+  "name": "Provider Request",
+  "version": "0.1.0",
+  "description": "Trusted extension example: read the ready model catalogue and issue one authenticated provider request",
+  "author": "PI-Desktop",
+  "main": "main.js",
+  "contributes": {
+    "agentExtensions": ["src/index.ts"]
+  },
+  "permissions": ["agent.extension", "models.list", "provider.request"],
+  "engines": {
+    "piDesktop": ">=0.15.0"
+  },
+  "activationEvents": ["onStartup"]
+}

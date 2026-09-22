@@ -12988,6 +12988,76 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Acceptance**: Quality, Release
 - **Milestone**: Post-MVP (R7 v1, delivered first as the bundling spike)
 - **Status**: Unit-covered by `packages/agent-runtime/src/extensions/bundle.test.ts`: an esbuild bundle run from a temp directory, plus a kernel-loader case that loads a `typebox`-importing extension through `@earendil-works/pi-coding-agent`'s own loader from a bundle with no `node_modules` above it; the packaged-app jiti journey remains Draft and is not faked by the headless runner.
+
+#### E2E-260: The ready-model catalogue reaches a granted extension and nothing else does
+
+- **Preconditions**: A plugin package with `contributes.agentExtensions` and
+  the `agent.extension`, `models.list` grants, whose module reads
+  `ctx.modelRegistry` and registers a command that serializes the result; two
+  enabled provider rows with complete auth, the second reachable only through a
+  different path on the same credential; a plugin package holding
+  `agent.extension` without `models.list`.
+- **Steps**: 1) Send a prompt in the fixture project. 2) Run the fixture
+  command and inspect its serialized output. 3) Inspect the sidecar wire payload
+  of `extensions.providers.list`. 4) Load the ungranted plugin in the same
+  project and read the registry. 5) Report a session id the desktop does not
+  own.
+- **Expected**: The catalogue lists every ready row from the first provider and
+  the second provider's models, each with `baseUrl` and capability metadata and
+  no key material, secret reference, or provider headers; `find` resolves the
+  second provider's model; `getProviderAuthStatus` reports `configured` with a
+  source and never a credential; the wire payload and every catalogue row stay
+  free of `sk-e2e`, `secret:provider:`, `authorization`, and `bearer`; the
+  ungranted plugin sees the session model and its own agent models only; an
+  unknown session id is refused before any catalogue read; every
+  `modelRegistry` member PI does not implement exists, returns its neutral
+  value, and reports one diagnostic per extension per member.
+- **Specs linked**: `07-plugins/16-trusted-extensions.md` §5, §10.1; ADR 0304
+- **Acceptance**: Security, Quality
+- **Milestone**: Post-MVP (R7 v1)
+- **Status**: Not automated. `pnpm test:e2e:trusted-extensions` computes the
+  redaction assertion it needs and drives `getAvailable`,
+  `getProviderAuthStatus`, and `setModel`, but the second-endpoint fixture and
+  the `models.list` gate cases are not committed yet; the run waits on the
+  Electron binary, which this workspace does not install.
+
+#### E2E-261: A provider request reaches the named provider row and cannot leave its base URL
+
+- **Preconditions**: The same granted fixture plugin, extended to call
+  `ctx.providers.request`; its own `stub-server.mjs` fixture, which records the
+  method, path, query, headers, and body it received and can answer a redirect,
+  a JSON body, a `Retry-After`, and an oversized body; a local file inside the
+  fixture project's scratch directory and one outside every session root.
+- **Steps**: 1) Issue a `GET` for `/models` through the fixture. 2) Issue a
+  `POST` with a JSON body for `/images/generations`. 3) Issue the same `POST`
+  with a `multipart` body holding one text field and one local file. 4) Repeat
+  with a caller-supplied `authorization` and with a caller-supplied
+  `content-type`. 5) Attempt `/../admin`, `/%2e%2e/admin`, `//evil.example/x`,
+  and an absolute URL. 6) Attempt the file outside the session roots. 7) Issue
+  a request the fixture answers with a 302. 8) Issue a request without the
+  `provider.request` grant, and one with an `extensionId` the session did not
+  load. 9) Abort a slow request through the caller's `signal`.
+- **Expected**: Steps 1-3 arrive at
+  `<provider baseUrl>/<path>` with the provider's credential header applied by
+  the Host, the multipart body carrying a host-generated boundary and both
+  parts, and the provider's own headers present; the caller-supplied
+  `authorization` and `content-type` are refused with `INVALID_ARGUMENT` before
+  any request leaves the Host; every escape in step 5 is `INVALID_ARGUMENT`; the
+  file outside the session roots is `FILE_OUTSIDE_ALLOWED_ROOTS` with no request
+  sent, and a missing, oversized, or over-cap file reports `FILE_NOT_FOUND`,
+  `FILE_TOO_LARGE`, and `UPLOAD_TOO_LARGE`; the 302 is returned as a result with
+  its `location` and is not followed; the ungranted call and the unknown id are
+  `PERMISSION_DENIED` with an audit line and no request; the abort surfaces
+  `ABORTED` and the fixture sees a closed connection; each call writes one
+  audit row carrying the method, status, duration, file count, and byte size,
+  and never a path, header value, field value, or credential.
+- **Specs linked**: `07-plugins/16-trusted-extensions.md` §5.1, §10.1; ADR 0305
+- **Acceptance**: Security, Quality
+- **Milestone**: Post-MVP (R7 v1)
+- **Status**: Not automated. The fixture edits that drive it live in
+  `apps/desktop/test/e2e/trusted-extensions/` and are not committed; the journey
+  also waits on the Electron binary, which this workspace does not install.
+
 #### E2E-PLUGIN-import-extension-installs-dependencies: Importing an extension with npm dependencies installs them before first load
 
 - **Preconditions**: A local pi extension package with `package.json`, `pi.extensions`,

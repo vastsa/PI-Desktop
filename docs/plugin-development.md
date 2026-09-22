@@ -17,6 +17,7 @@ A plugin can contribute one or more of these capabilities:
 | Work panel view | An interface docked in the app's right work panel | `contributes.views`, `ui.view` permission, `window.pluginBridge` |
 | Agent tool | A function the Agent can call | `contributes.agentTools`, `pi.agent.registerTool` |
 | One-shot completion | A host-owned completion against the user's models | `pi.models.list`, `pi.session.getLlmContext`, `pi.agent.complete` |
+| Provider request | One authenticated request to a provider row you name | `contributes.agentExtensions`, `provider.request` permission, `ctx.providers.request` |
 | Skill | Instructions loaded by the Agent on demand | `contributes.skills`, `agent.prompt.inject` permission |
 | Theme | Design-token overrides | `contributes.themes`, `ui.theme` permission |
 | MCP server | Tools discovered from a local or remote MCP server | `contributes.mcpServers`, an MCP permission |
@@ -765,6 +766,114 @@ What to know before you use it:
   warning toast without blocking the import; the row shows a load error only if
   the extension actually fails to load.
 
+### 6.12 Provider and model access from an extension
+
+A `contributes.agentExtensions` module can read the user's ready models and
+issue an authenticated request to one provider row. Both capabilities are
+host-gated, and neither hands your code a credential.
+
+**The ready-model catalogue.** With `models.list`, `ctx.modelRegistry` answers
+from a Runner-scoped snapshot of the host's ready providers: `getAll()`,
+`getAvailable()`, `find(providerId, modelId)`, `getProviderDisplayName()`,
+`getProviderAuthStatus()`, `hasConfiguredAuth()`, and `refresh()`. Reads are
+synchronous from the snapshot and `refresh()` re-fetches it. Each entry carries
+the model id, the provider row id, `baseUrl`, and capability metadata — never an
+API key, a token, a secret reference, or a host header. Without the grant, the
+registry answers with the session model and the plugin-registered agent models
+only. Every `ModelRegistry` member this host does not implement still exists and
+returns its documented neutral value with one diagnostic, so an extension that
+also touches `stream` or `complete` degrades instead of throwing.
+
+**One authenticated request.** With `provider.request`,
+`ctx.providers.request(input)` issues one HTTP request to a provider row you
+name. It is deliberately not a completion API: you supply the path, so the same
+member reaches `/chat/completions`, `/images/generations`, `/embeddings`, or any
+other path the row exposes. The host contributes exactly three things — the
+destination origin, the credential header, and the transport policy — and never
+interprets the envelope.
+
+```json
+{
+  "contributes": { "agentExtensions": ["src/index.ts"] },
+  "permissions": ["agent.extension", "models.list", "provider.request"]
+}
+```
+
+```ts
+// src/index.ts
+export default function (pi) {
+  pi.registerCommand("provider_ping", {
+    description: "Ping the first ready provider row",
+    async handler(_args, ctx) {
+      const ready = ctx.modelRegistry.getAvailable();
+      if (!ready.length) {
+        ctx.ui.notify("No provider is ready. Add one in Settings > Models.");
+        return;
+      }
+      const model = ready[0];
+      const response = await ctx.providers.request({
+        providerId: model.provider, // required, never inferred
+        modelId: model.id, // optional; must be a model of that row
+        path: "/models", // appended to the row's baseUrl
+        method: "GET",
+      });
+      ctx.ui.notify(`${model.provider} answered ${response.status}`);
+    },
+  });
+}
+```
+
+What to know before you use it:
+
+- **`providerId` is required and never inferred.** There is no default provider
+  and no fallback to the session model: every call names its target. `path` is
+  appended to that row's `baseUrl`, there is no implicit `/v1`, and a path that
+  is absolute, scheme-relative, or that could leave the base path is refused
+  with `INVALID_ARGUMENT`.
+- **The credential stays host-owned.** The host resolves it from the provider
+  row and sets the credential header last, so a caller-supplied header cannot
+  override or forge it. `authorization`, `cookie`, `host`, `content-type`,
+  `x-api-key`, and the other reserved keys are refused rather than ignored.
+- **A response is a result, not a host error.** `status`, `ok`, `statusText`,
+  `contentType`, headers, `location`, and a body decoded by shape (`json`,
+  `text`, or `base64`, with its byte length) come back for 4xx and 5xx too.
+  Redirects are **not** followed — a 3xx returns its `location` so your code
+  decides — and there is no automatic retry: `Retry-After` is surfaced as
+  `retryAfterMs`.
+- **Bodies are the shape you asked for.** `body.kind` is `json` (serialized by
+  the host), `text`, `base64`, or `multipart`. The host owns `content-type`,
+  generates the multipart boundary, and never sniffs content; a body on `GET` is
+  refused. `multipart.files` entries are read only from roots the session owns —
+  the project root, the session's scratch directory, and the attachment store —
+  under per-file and total caps, so a path outside them fails with
+  `FILE_OUTSIDE_ALLOWED_ROOTS` instead of uploading something else.
+- **Every call is audited and rate-braked.** Requests share the plugin host's
+  `agent.complete` counter (8 per rolling 60 s per plugin), at most 4 are in
+  flight per plugin, and each has its own budget (60 s by default, 300 s
+  maximum). The audit line records the extension, the plugin, the provider and
+  model, the method, the final path without its query, the status, the duration,
+  and byte counts — never the query string, a header or field value, or a
+  credential.
+- **Cancellation is honored on both sides.** Pass `signal` to abort a call,
+  including one already in flight; disposing the runtime or ending the session
+  aborts every outstanding call, and a cancelled caller is never handed a
+  result.
+- **Failure codes are stable.** `PERMISSION_DENIED` (no grant, or an extension
+  the session did not load), `INVALID_ARGUMENT`, `PROVIDER_NOT_FOUND`,
+  `MODEL_NOT_CONFIGURED`, `PROVIDER_AUTH_MISSING`, `PROVIDER_AUTH_UNSUPPORTED`
+  (an OAuth-backed row in this version), `NETWORK_ERROR`, `TIMEOUT`, `ABORTED`,
+  `RESPONSE_TOO_LARGE`, `RATE_LIMITED`, `FILE_NOT_FOUND`,
+  `FILE_OUTSIDE_ALLOWED_ROOTS`, `FILE_TOO_LARGE`, `UPLOAD_TOO_LARGE`, and
+  `UNSUPPORTED` on a host with no provider transport. The full table is in
+  [spec 03 §3.6](spec/03-runtime/08-error-codes.md).
+- **The grant is high risk.** `provider.request` reaches the whole provider API
+  surface with your credential, including endpoints that spend money, so the
+  user confirms it at install exactly like `agent.extension`. Ask for it only
+  when the plugin really needs to call a provider itself.
+
+A runnable version of the command above ships as
+`examples/plugins/provider-request`.
+
 ## 7. Permission design
 
 Permissions are both declared in `manifest.json` and granted by the user.
@@ -773,8 +882,8 @@ Undeclared or ungranted API calls fail with `PERMISSION_DENIED`.
 | Risk | Permissions |
 |---|---|
 | Low | `ui.panel`, `ui.view`, `ui.theme`, `notify` |
-| Medium | `clipboard.read`, `clipboard.write`, `fs.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe`, `audio.playback.background`, `keyboard.globalShortcut` |
-| High | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `net.fetch`, `mcp.server.local`, `mcp.server.remote`, `audio.capture.background`, `net.websocket` |
+| Medium | `clipboard.read`, `clipboard.write`, `fs.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe`, `audio.playback.background`, `keyboard.globalShortcut`, `models.list` |
+| High | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `net.fetch`, `mcp.server.local`, `mcp.server.remote`, `audio.capture.background`, `net.websocket`, `provider.request` |
 
 `keyboard.globalShortcut` and `net.websocket` are implemented. `pi.audio.*`
 exists and is callable, and its methods keep their permission gate, but this
@@ -959,3 +1068,6 @@ for roadmap details.
 - [Developer experience](spec/07-plugins/10-plugin-devex.md)
 - [Permissions](spec/07-plugins/13-plugin-permissions-matrix.md)
 - [Hello reference plugin](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins/hello)
+- [Provider request example](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins/provider-request)
+- [Trusted extensions](spec/07-plugins/16-trusted-extensions.md)
+- [Provider access error codes](spec/03-runtime/08-error-codes.md)

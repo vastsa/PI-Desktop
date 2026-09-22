@@ -158,6 +158,13 @@ plugin runtime
 抛出它。为设备服务预留的审计操作名：`audio.input.open` / `audio.input.close`、
 `audio.output.open` / `audio.output.stop` / `audio.output.close`（ADR 0257）。
 
+受信任扩展的 provider 访问**不**是 `HOST_API_ALLOWLIST` 条目：它属于 sidecar 宿主代理
+（规格 16 §10.1），且只能从 `contributes.agentExtensions` 模块到达，因此沙箱化的插件面
+仍然无法发出 provider 请求（ADR 0305）。它的审计行走同一个 `plugin.api` 汇聚点，写入的
+操作名是 `models.list`（每次目录读取或拒绝一条，携带行数）和 `provider.request`（每次
+调用一条，携带方法、状态、耗时、文件数和字节大小 —— 永不含路径、请求头值、字段值或
+凭据）。两者都会点出会话和贡献插件的 id，因此被拒绝的调用和失败的调用可以互相比较。
+
 ## 7. PanelHost交互
 
 - 打开面板时创建独立视图
@@ -178,6 +185,14 @@ plugin runtime
 - 插件API超时：返回TIMEOUT
 - 运行时崩溃：标记load_error，清理贡献
 - 面板崩溃：只关闭面板，不卸载插件（可提示重新加载）
+
+受信任扩展的 provider 访问在每一步都 fail closed：缺少授权、`extensionId` 不在会话已加载
+集合内，或 main 不拥有的会话，都会在任何目录读取或 provider 查找之前被拒绝；被拒绝的
+路径、请求头、请求体或上传会在任何请求离开桌面进程之前被拒绝；超限的响应会连同其状态
+与观察到的字节数被拒绝，而不是被截断。活得比其 Runner 更久的调用 —— 会话切换、重新
+加载或被拆除 —— 会被中止并丢弃其结果，因此不会有任何东西被投递给运行时已被替换的
+会话。sidecar 退出时会关闭它启动的 provider 连接，因为只有那个 sidecar 知道它们的
+call id。
 
 **实施（2026-07-29，ADR 0008）：** 经纪人居住在
 `electron/main/plugin-runtime.ts` 和每个插件调用都是对

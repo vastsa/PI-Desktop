@@ -99,16 +99,26 @@ describe("check", () => {
     expect(result.errors.map((e) => e.code)).toContain("manifest.invalid-id");
   });
 
-  it("treats background audio and websocket access as high risk", () => {
+  it("treats request, background audio, and websocket access as high risk", () => {
     for (const permission of [
       "net.fetch",
       "net.websocket",
       "fs.write",
       "fs.delete",
+      "fs.write.workspace",
+      "fs.delete.workspace",
       "agent.prompt.inject",
       "agent.tool.register",
+      "agent.complete",
+      "agent.extension",
+      "desktop.control",
+      "session.read",
       "browser.cdp",
+      "mcp.server.local",
+      "mcp.server.remote",
+      "background.service",
       "audio.capture.background",
+      "provider.request",
     ]) {
       expect(HIGH_RISK_PERMISSIONS).toContain(permission);
     }
@@ -145,5 +155,33 @@ describe("check", () => {
       .map((w) => w.message);
     expect(called.some((m) => m.includes('"audio.capture.background"'))).toBe(false);
     expect(called.some((m) => m.includes('"net.websocket"'))).toBe(true);
+  });
+
+  it("hints the request member when provider.request is declared", async () => {
+    const dir = join(await tempDir(), "provider-request-hint");
+    await scaffold({ dir, template: "panel-basic" });
+    await editManifest(dir, (m) => {
+      m.permissions = [...(m.permissions ?? []), "provider.request"];
+    });
+
+    const declared = (await check(dir)).warnings
+      .filter((w) => w.code === "permission.unused")
+      .map((w) => w.message);
+    expect(
+      declared.some(
+        (m) => m.includes('"provider.request"') && m.includes("providers.request"),
+      ),
+    ).toBe(true);
+
+    // The call is visible in the entry source, so the hint clears.
+    await writeFile(
+      join(dir, "main.js"),
+      "export async function onLoad() { await ctx.providers.request({}); }\n",
+      "utf8",
+    );
+    const called = (await check(dir)).warnings
+      .filter((w) => w.code === "permission.unused")
+      .map((w) => w.message);
+    expect(called.some((m) => m.includes('"provider.request"'))).toBe(false);
   });
 });

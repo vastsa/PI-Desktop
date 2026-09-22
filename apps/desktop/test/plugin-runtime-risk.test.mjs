@@ -111,6 +111,8 @@ test("the plugins page shows the file scope behind a file permission", () => {
     assert.equal(typeof catalog.plugins.permissions["agent.complete"], "string");
     assert.equal(typeof catalog.plugins.permissionHelp["session.read"], "string");
     assert.equal(typeof catalog.plugins.permissions["models.list"], "string");
+    assert.equal(typeof catalog.plugins.permissions["provider.request"], "string");
+    assert.equal(typeof catalog.plugins.permissionHelp["provider.request"], "string");
     assert.equal(typeof catalog.plugins.permissions["ui.microphone"], "string");
     assert.equal(typeof catalog.plugins.permissionHelp["ui.microphone"], "string");
     assert.equal(typeof catalog.plugins.permissions["desktop.control"], "string");

@@ -202,6 +202,21 @@ check(
   registryLine.includes("extension-agent:") && registryLine.includes("/cc-1") && registryLine.includes("/cc-alias-1"),
   registryLine,
 );
+// S1 (ADR 0304): the host-owned catalogue reaches the extension, including a
+// model on a provider the session does not run on, and every unimplemented
+// member answers its neutral value instead of throwing.
+const availableLine = lastLine("agent_model available=");
+check(
+  "modelRegistry lists a model on a second endpoint with its endpoint",
+  availableLine.includes("stub-2@") && availableLine.includes("/v2"),
+  availableLine,
+);
+check("every listed model resolves through find", lastLine("agent_model findAll=").endsWith("=true"), lastLine("agent_model findAll="));
+check(
+  "unimplemented ModelRegistry members exist and answer their neutral value",
+  lastLine("agent_model inert=").endsWith("=true,true,true,true"),
+  lastLine("agent_model inert="),
+);
 // The registry is a redacted projection: models and auth availability only.
 check("modelRegistry exposes no host credential material", lastLine("agent_model registryLeaks=").endsWith("=none"), lastLine("agent_model registryLeaks="));
 check("modelRegistry reports auth availability without a secret", /authStatus=\{.*"configured":true.*\}/.test(lastLine("agent_model authStatus=")) && !lastLine("agent_model authStatus=").includes("sk-"), lastLine("agent_model authStatus="));

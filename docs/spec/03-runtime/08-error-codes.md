@@ -257,6 +257,36 @@ malformed.
 | `PLUGIN_CRASHED` | yes | plugin runtime crashed (reserved) |
 | `PLUGIN_CONTRACT_MISMATCH` | no | unsupported manifest/api version (reserved) |
 
+
+#### Trusted-extension provider access (ADR 0305)
+
+Emitted by the desktop process for `ctx.providers.request` (spec 16 §5.1) and
+carried to the extension unchanged over the sidecar host proxy. Codes already
+registered above keep their existing meaning: `INVALID_ARGUMENT`,
+`MODEL_NOT_CONFIGURED`, `NETWORK_ERROR`, `TIMEOUT`, `RATE_LIMITED`, `UNSUPPORTED`
+(a host with no provider transport, e.g. the headless `pi-host`),
+`HOST_UNAVAILABLE` (a `providers.get` / `providers.getSecret` round trip failed
+without a code of its own), and `INTERNAL` (an unexpected Host failure that
+carries no code at all).
+
+| code | retriable | meaning |
+|---|---|---|
+| `PERMISSION_DENIED` | no | the owning plugin does not hold the grant the call needs, or the claimed `extensionId` is outside the session's loaded extension set |
+| `PROVIDER_NOT_FOUND` | no | the named provider row does not exist, is disabled, or has no usable `http(s)` base URL |
+| `PROVIDER_AUTH_MISSING` | no | the provider row needs a credential and none is stored |
+| `PROVIDER_AUTH_UNSUPPORTED` | no | `authKind: "oauth"` on this surface in v1: a vendor account's endpoint is model-dependent and its token is per-call |
+| `ABORTED` | maybe | the caller's signal, the runtime teardown, or the sidecar exiting cancelled the request |
+| `RESPONSE_TOO_LARGE` | no | the response exceeded the 4 MiB read cap; carries `status` and the observed `bytes`, and the body is rejected rather than truncated |
+| `FILE_NOT_FOUND` | no | a `multipart.files` path does not exist or is not a regular file |
+| `FILE_OUTSIDE_ALLOWED_ROOTS` | no | a `multipart.files` path resolves outside the session's project, scratch, and attachment roots |
+| `FILE_TOO_LARGE` | no | one uploaded file exceeds its 32 MiB per-file cap |
+| `UPLOAD_TOO_LARGE` | no | the multipart payload exceeds its 64 MiB total cap |
+
+An HTTP status — including 3xx, 4xx, and 5xx — is a **result**, never one of
+these codes: the caller owns the protocol. A rejected path, header, body, part
+shape, or an upload the Host cannot read throws, because the request never left
+the desktop process.
+
 ### 3.7 Reserved detail codes (not yet emitted)
 
 Finer-grained provider/tool distinctions documented for future mapping.

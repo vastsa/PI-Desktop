@@ -1273,6 +1273,9 @@ export const PLUGIN_PERMISSIONS = [
   "agent.complete",
   "agent.extension",
   "provider.register",
+  // An authenticated request to a path the plugin chooses on a provider the
+  // user configured; the host supplies the credential.
+  "provider.request",
   "desktop.control",
   "models.list",
   "project.create",

@@ -11,6 +11,8 @@ import type {
   TrustedExtensionUiRequest,
   TrustedExtensionUiResponse,
 } from "./index.js";
+import type { Api, Model } from "@earendil-works/pi-ai";
+import type { ExtensionModelRegistry } from "./provider-access.js";
 
 let root: string;
 
@@ -83,6 +85,75 @@ function fakeBridge(
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
+
+/**
+ * The upstream `ModelRegistry` members PI does not implement, and the neutral
+ * value each reports (mirrors `INERT_MODEL_REGISTRY_MEMBERS` in `runner.ts`).
+ */
+const INERT_REGISTRY_MEMBERS = [
+  "getProvider",
+  "getError",
+  "isUsingOAuth",
+  "getApiKeyAndHeaders",
+  "getApiKeyForProvider",
+  "getProviderAuth",
+  "complete",
+  "stream",
+  "streamSimple",
+  "registerProvider",
+  "unregisterProvider",
+  "getRegisteredProviderConfig",
+  "getRegisteredNativeProvider",
+  "getRegisteredProviderIds",
+] as const;
+
+const INERT_REGISTRY_NEUTRALS: Record<string, unknown> = {
+  getProvider: undefined,
+  getError: undefined,
+  isUsingOAuth: false,
+  getApiKeyAndHeaders: undefined,
+  getApiKeyForProvider: undefined,
+  getProviderAuth: undefined,
+  complete: undefined,
+  // `stream` / `streamSimple` are checked separately: they are shape-preserving
+  // ended async iterables, not a plain neutral value.
+  registerProvider: undefined,
+  unregisterProvider: undefined,
+  getRegisteredProviderConfig: undefined,
+  getRegisteredNativeProvider: undefined,
+  getRegisteredProviderIds: [],
+};
+
+function registryModel(provider: string, id: string, name = id): Model<Api> {
+  return {
+    id,
+    name,
+    api: "openai-completions",
+    provider,
+    baseUrl: "https://host.example/v1",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 32_000,
+    maxTokens: 4_096,
+  };
+}
+
+/** A complete host-provided registry, so a test can override single members. */
+function fakeExtensionRegistry(
+  overrides: Partial<ExtensionModelRegistry> = {},
+): ExtensionModelRegistry {
+  return {
+    getAll: () => [],
+    getAvailable: () => [],
+    find: () => undefined,
+    getProviderDisplayName: () => "provided",
+    getProviderAuthStatus: () => ({ configured: false }),
+    hasConfiguredAuth: () => false,
+    refresh: async () => ({ aborted: false, errors: new Map() }),
+    ...overrides,
+  };
+}
 
 describe("TrustedExtensionRunner", () => {
   it("retires the command when Main cancels a prompt before the runtime abort arrives", async () => {
@@ -647,5 +718,125 @@ export default function (pi: any) {
     ]);
     await runner.dispose();
     expect(await runner.emit("turn_start", { type: "turn_start" })).toBeUndefined();
+  });
+
+  it("exposes every unsupported modelRegistry member as inert with one diagnostic", async () => {
+    const ext = spec(
+      "registry",
+      `export default function (pi: any) {
+  const members = ${JSON.stringify(INERT_REGISTRY_MEMBERS)};
+  pi.on("session_start", async (_e: any, ctx: any) => {
+    const registry = ctx.modelRegistry;
+    const result: Record<string, unknown> = {};
+    for (const member of members) {
+      const row: Record<string, unknown> = { type: typeof registry[member] };
+      try {
+        row.first = await registry[member]("arg");
+        row.second = await registry[member]("arg");
+      } catch (error) {
+        row.threw = String(error);
+      }
+      result[member] = row;
+    }
+    (globalThis as any).__registry = result;
+  });
+}
+`,
+    );
+    const { bridge } = fakeBridge();
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    // load() emits session_start, which is the hook that touches the registry;
+    // a second emit would double every call count.
+    await runner.load();
+    const observed =
+      (globalThis as {
+        __registry?: Record<
+          string,
+          { type: string; first?: unknown; second?: unknown; threw?: string }
+        >;
+      }).__registry ?? {};
+    expect(Object.keys(observed).sort()).toEqual([...INERT_REGISTRY_MEMBERS].sort());
+    for (const member of INERT_REGISTRY_MEMBERS) {
+      const row = observed[member];
+      expect(row, member).toBeDefined();
+      expect(row?.type, member).toBe("function");
+      expect(row?.threw, member).toBeUndefined();
+      if (member === "stream" || member === "streamSimple") {
+        // Shape-preserving: an ended, empty async iterable so `for await`
+        // yields nothing instead of throwing "not async iterable".
+        const iterable = row?.first;
+        expect(
+          typeof (iterable as AsyncIterable<unknown> | undefined)?.[
+            Symbol.asyncIterator
+          ],
+          member,
+        ).toBe("function");
+        const events: unknown[] = [];
+        if (iterable) {
+          for await (const event of iterable as AsyncIterable<unknown>) {
+            events.push(event);
+          }
+        }
+        expect(events, member).toEqual([]);
+        continue;
+      }
+      expect(row?.first, member).toEqual(INERT_REGISTRY_NEUTRALS[member]);
+      expect(row?.second, member).toEqual(INERT_REGISTRY_NEUTRALS[member]);
+    }
+
+    const diagnostics = runner
+      .getDiagnostics()
+      .filter((diagnostic) => diagnostic.member?.startsWith("modelRegistry."));
+    expect(diagnostics.map((diagnostic) => diagnostic.member).sort()).toEqual(
+      INERT_REGISTRY_MEMBERS.map((member) => `modelRegistry.${member}`).sort(),
+    );
+    for (const diagnostic of diagnostics) {
+      expect(diagnostic.kind).toBe("unsupported_api");
+      // report() deduplicates by (extensionId, kind, member): two calls, one row.
+      expect(diagnostic.count).toBe(2);
+    }
+  });
+
+  it("keeps a host-provided modelRegistry member and never wraps it", async () => {
+    const ext = spec(
+      "registry-host",
+      `export default function (pi: any) {
+  pi.on("session_start", (_e: any, ctx: any) => {
+    (globalThis as any).__registryHost = {
+      names: ctx.modelRegistry.getAvailable().map((model: any) => model.name),
+      displayName: ctx.modelRegistry.getProviderDisplayName("host-provider"),
+      inertValue: ctx.modelRegistry.getProvider("host-provider"),
+      inert: typeof ctx.modelRegistry.getProvider,
+    };
+  });
+}
+`,
+    );
+    const { bridge } = fakeBridge();
+    bridge.modelRegistry = fakeExtensionRegistry({
+      getAvailable: () => [registryModel("host-provider", "host-model")],
+      getProviderDisplayName: () => "Host Display Name",
+    });
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    // load() emits session_start, which is the hook that touches the registry.
+    await runner.load();
+    const observed = (
+      globalThis as {
+        __registryHost?: {
+          names: string[];
+          displayName: string;
+          inert: string;
+          inertValue: unknown;
+        };
+      }
+    ).__registryHost;
+    expect(observed?.names).toEqual(["host-model"]);
+    expect(observed?.displayName).toBe("Host Display Name");
+    expect(observed?.inert).toBe("function");
+    expect(observed?.inertValue).toBeUndefined();
+    // Only the members the host left out are reported.
+    expect(runner.getDiagnostics().map((diagnostic) => diagnostic.member)).toEqual([
+      "modelRegistry.getProvider",
+    ]);
   });
 });

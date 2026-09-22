@@ -49,6 +49,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `usage.read` | medium | `pi.usage.listTurns` | Confirm at install | Read-only listing of completed-turn facts (per-turn token counters and identifiers, keyset-paginated); no message body and no write path |
 | `agent.complete` | high | `pi.agent.complete` | Confirm at install | Host-owned one-shot; spends user quota; `includeSessionContext` also needs `session.read` |
 | `speech.adapter.register` | high | `pi.speech.registerAdapter` / `unregisterAdapter` | Confirm at install | Registers a speech protocol. Handles stay in the guest; HTTP plans are executed by the host with the bound provider key and must stay on that origin. Built-in protocol ids are reserved |
+| `provider.request` | high | `ctx.providers.request` from a `contributes.agentExtensions` module: one authenticated HTTP request to a provider row the caller names, any path and any method (spec 16 §5.1) | Explicit confirmation, matching `agent.extension` | Reaches the whole provider API surface with the user's credential, including endpoints that spend money. The destination origin and the credential header stay host-owned (no origin change, no base-path escape, no redirect following, no header override), bodies and responses are capped, calls share the `agent.complete` brake at 8 per rolling 60 s and are capped at 4 in flight, and every call is audited as `provider.request` without a path, header value, field value, or credential (ADR 0305) |
 
 ## 2A. A permission is the switch; the manifest carries the range
 
@@ -156,6 +157,7 @@ so "Modify the files it lists" is followed by the list.
 | `audio.playback.background` | Play audio in the background | 后台播放声音 |
 | `keyboard.globalShortcut` | Register system-wide shortcuts | 注册系统级快捷键 |
 | `net.websocket` | Open real-time connections | 建立实时双向连接 |
+| `provider.request` | Send authenticated requests to your providers | 向你配置的服务发送认证请求 |
 
 ## 5. Adding permissions on upgrade
 

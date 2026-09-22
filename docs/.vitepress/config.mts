@@ -62,8 +62,14 @@ function adrItems(): DefaultTheme.SidebarItem[] {
     }))
 }
 
-function projectItems(): DefaultTheme.SidebarItem[] {
-  const directory = path.join(docsRoot, 'project')
+/**
+ * Project records for one locale. `zh-CN/project` mirrors `project` for the
+ * pages that have a translation; a locale with no directory renders no group.
+ */
+function projectItems(locale: Locale): DefaultTheme.SidebarItem[] {
+  const directory = path.join(docsRoot, locale === 'en' ? 'project' : 'zh-CN/project')
+  const routePrefix = locale === 'en' ? '/project' : '/zh-CN/project'
+  if (!fs.existsSync(directory)) return []
   return fs.readdirSync(directory)
     .filter((file) => file.endsWith('.md'))
     .sort((left, right) => {
@@ -73,7 +79,7 @@ function projectItems(): DefaultTheme.SidebarItem[] {
     })
     .map((file) => ({
       text: titleFromMarkdown(path.join(directory, file)),
-      link: `/project/${file.slice(0, -3)}`,
+      link: `${routePrefix}/${file.slice(0, -3)}`,
     }))
 }
 
@@ -114,7 +120,7 @@ function specSidebar(locale: Locale): DefaultTheme.SidebarItem[] {
 const enSidebar: DefaultTheme.Sidebar = {
   '/guide/': [{ text: 'Guide', items: [{ text: 'Start here', link: '/guide/' }, { text: 'Screens', link: '/guide/screenshots' }, { text: 'MCP market', link: '/guide/mcp-market' }] }],
   '/plugin-development': [{ text: 'Plugin authoring', items: [{ text: 'Zero to one', link: '/plugin-development' }, ...specItems('07-plugins', 'en')] }],
-  '/project/': [{ text: 'Project records', items: projectItems() }],
+  '/project/': [{ text: 'Project records', items: projectItems('en') }],
   '/spec/': specSidebar('en'),
   '/adr/': [
     {
@@ -132,6 +138,7 @@ const enSidebar: DefaultTheme.Sidebar = {
 const zhSidebar: DefaultTheme.Sidebar = {
   '/zh-CN/guide/': [{ text: '指南', items: [{ text: '快速开始', link: '/zh-CN/guide/' }, { text: '界面截图', link: '/zh-CN/guide/screenshots' }, { text: 'MCP 市场', link: '/zh-CN/guide/mcp-market' }] }],
   '/zh-CN/plugin-development': [{ text: '插件开发', items: [{ text: '从零到一', link: '/zh-CN/plugin-development' }, ...specItems('07-plugins', 'zh-CN')] }],
+  '/zh-CN/project/': [{ text: '项目记录', items: projectItems('zh-CN') }],
   '/zh-CN/spec/': specSidebar('zh-CN'),
   '/zh-CN/adr/': [
     {

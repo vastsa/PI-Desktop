@@ -7423,6 +7423,58 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：质量、发布
 - **里程碑**：MVP 后（R7 v1，作为打包 spike 首先交付）
 - **状态**：由 `packages/agent-runtime/src/extensions/bundle.test.ts` 提供单元覆盖（临时目录中运行 esbuild bundle）；打包应用 jiti 旅程仍为草稿，无头 runner 不会伪造该覆盖。
+
+#### E2E-260：就绪模型目录只到达已授权的扩展，别的都拿不到
+
+- **前置条件**：一个带 `contributes.agentExtensions` 以及 `agent.extension`、`models.list`
+  授权的插件包，其模块读取 `ctx.modelRegistry` 并注册一个把结果序列化的命令；两条已启用
+  且认证完整的 provider 行，第二条只能通过同一凭据上的另一条路径到达；一个持有
+  `agent.extension` 但没有 `models.list` 的插件包。
+- **步骤**：1）在夹具项目中发送一条提示。2）运行夹具命令并检查其序列化输出。3）检查
+  `extensions.providers.list` 的 sidecar 线上载荷。4）在同一项目中加载未授权的插件并读取
+  该注册表。5）报告一个桌面并不拥有的会话 id。
+- **预期**：目录列出第一条 provider 的每一条就绪行以及第二条 provider 的模型，每条都带
+  `baseUrl` 和能力元数据，且不含任何密钥材料、密钥引用或 provider 请求头；`find` 能解析出
+  第二条 provider 的模型；`getProviderAuthStatus` 报告 `configured` 并带来源，但永不返回
+  凭据；线上载荷和每一条目录记录都不含 `sk-e2e`、`secret:provider:`、`authorization` 和
+  `bearer`；未授权的插件只能看到会话模型和自己的 agent 模型；未知会话 id 在任何目录读取
+  之前就被拒绝；PI 未实现的每个 `modelRegistry` 成员都存在、返回其中性值，并按扩展、按
+  成员各报告一条诊断。
+- **链接规格**：`07-plugins/16-trusted-extensions.md` §5、§10.1；ADR 0304
+- **验收**：安全、质量
+- **里程碑**：MVP 后（R7 v1）
+- **状态**：未自动化。`pnpm test:e2e:trusted-extensions` 会计算它需要的脱敏断言，并驱动
+  `getAvailable`、`getProviderAuthStatus` 和 `setModel`，但第二个端点夹具和 `models.list`
+  门控用例尚未提交；该运行还在等 Electron 二进制文件，本工作区没有安装它。
+
+#### E2E-261：provider 请求只到达所点名的 provider 行，且无法离开其 base URL
+
+- **前置条件**：同一个已授权夹具插件，扩展为调用 `ctx.providers.request`；它自带的
+  `stub-server.mjs` 夹具，记录收到的 method、path、query、headers 和 body，并能回答一次
+  重定向、一个 JSON 响应体、一个 `Retry-After` 和一个超大响应体；夹具项目 scratch 目录中
+  的一个本地文件，以及一个位于所有会话根之外的本地文件。
+- **步骤**：1）通过夹具对 `/models` 发出一次 `GET`。2）对 `/images/generations` 发出一次带
+  JSON 请求体的 `POST`。3）发出同一个 `POST`，但请求体是 `multipart`，含一个文本字段和一个
+  本地文件。4）分别用调用方提供的 `authorization` 和调用方提供的 `content-type` 重复一次。
+  5）尝试 `/../admin`、`/%2e%2e/admin`、`//evil.example/x` 和一个绝对 URL。6）尝试会话根
+  之外的那个文件。7）发出一次夹具以 302 应答的请求。8）在没有 `provider.request` 授权时
+  发出一次请求，再用一个该会话并未加载的 `extensionId` 发出一次。9）通过调用方的 `signal`
+  中止一次慢请求。
+- **预期**：步骤 1-3 到达 `<provider baseUrl>/<path>`，provider 的凭据请求头由 Host 施加，
+  multipart 请求体携带 Host 生成的 boundary 和两个分片，且 provider 自己的请求头都在；
+  调用方提供的 `authorization` 和 `content-type` 在任何请求离开 Host 之前就以
+  `INVALID_ARGUMENT` 被拒绝；步骤 5 中的每一次逃逸都是 `INVALID_ARGUMENT`；会话根之外的
+  文件是 `FILE_OUTSIDE_ALLOWED_ROOTS` 且不发送任何请求，而缺失、超大或超总上限的文件分别
+  报告 `FILE_NOT_FOUND`、`FILE_TOO_LARGE` 和 `UPLOAD_TOO_LARGE`；302 连同其 `location`
+  作为结果返回且不被跟随；未授权的调用和未知 id 是 `PERMISSION_DENIED`，并记一条审计行且
+  不发出请求；中止浮现为 `ABORTED`，夹具看到连接被关闭；每次调用写一条审计行，携带方法、
+  状态、耗时、文件数和字节大小，且永不含路径、请求头值、字段值或凭据。
+- **链接规格**：`07-plugins/16-trusted-extensions.md` §5.1、§10.1；ADR 0305
+- **验收**：安全、质量
+- **里程碑**：MVP 后（R7 v1）
+- **状态**：未自动化。驱动它的夹具改动位于 `apps/desktop/test/e2e/trusted-extensions/`，
+  尚未提交；该旅程同样在等 Electron 二进制文件，本工作区没有安装它。
+
 #### E2E-PLUGIN-import-extension-installs-dependencies：导入带 npm 依赖的扩展会在首次加载前安装依赖
 
 - **前置条件**：本地 pi 扩展包包含 `package.json`、`pi.extensions`、固定版本的纯 JavaScript 依赖
