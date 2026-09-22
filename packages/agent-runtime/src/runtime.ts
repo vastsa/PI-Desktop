@@ -201,6 +201,10 @@ import {
   reduceSummaryInput,
 } from "./compaction-summary-input.js";
 import {
+  buildTrajectorySummary,
+  TRAJECTORY_MAX_PREVIOUS_CHARS,
+} from "./compaction-trajectory.js";
+import {
   mergeProviderHeaders,
   providerHeadersEqual,
   withProviderHeaders,
@@ -6260,19 +6264,10 @@ Delegation rules:
     // — model switch, restart — the session restores as if it had just started.
     // Fall back to the newest user messages under the same budget so the
     // failure path still restores a bounded, non-empty context (#224).
-    const retainedTail =
-      preparation.retainedTail.length > 0
-        ? preparation.retainedTail
-        : selectRetainedUserMessages(
-            preparation.messagesToSummarize.filter(
-              (message): message is UserMessage => message.role === "user",
-            ),
-            preparation.settings.keepRecentTokens,
-          );
     return this.createCheckpoint(
       {
         ...preparation,
-        retainedTail,
+        retainedTail: this.retainedTailForDegradedCheckpoint(preparation),
       },
       throughMessageId,
       summary,
@@ -6285,6 +6280,89 @@ Delegation rules:
         ...this.retainedReasoningForCheckpoint(preparation),
       },
     );
+  }
+
+  /**
+   * The deterministic layer between a failed model summary and the
+   * retained-tail notice. It costs no request and cannot fail on a provider,
+   * so trying it first is free; when it does not fit the safe budget either,
+   * the notice above still runs and stays the last resort.
+   */
+  private createTrajectoryCheckpoint(
+    preparation: ShapedPreparation,
+    throughMessageId: string,
+    maxSummaryChars: number,
+    retentionMode: CompactionRetentionMode,
+    failureMessage: string,
+  ): ContextCompactionRecord {
+    const trajectory = buildTrajectorySummary({
+      messages: [
+        ...preparation.messagesToSummarize,
+        ...preparation.turnPrefixMessages,
+      ],
+      previousSummary: preparation.previousSummary,
+      maxPreviousChars: Math.min(TRAJECTORY_MAX_PREVIOUS_CHARS, maxSummaryChars),
+    });
+    const continuation =
+      retentionMode === "active_turn"
+        ? "The provider is continuing the active turn. Use the one retained latest user request as the source of truth for that continuation."
+        : "The previous turn is complete. Treat this summary as historical context; the next user message is the only new task to execute.";
+    // Same layout as the retained-tail fallback: the carried summary first, the
+    // marker, then what this layer has to say, so a chained compaction recovers
+    // exactly the carried history and drops this range's description instead of
+    // cementing it (#224).
+    const summary = [
+      trajectory.carried ?? COMPACTION_FALLBACK_NO_SUMMARY,
+      COMPACTION_FALLBACK_MARKER,
+      "The automatic summary request did not complete. Older messages before this checkpoint are omitted from the next model request.",
+      `${continuation} The deterministic record below describes what they contained.`,
+      trajectory.sections,
+    ].join("\n\n");
+    return this.createCheckpoint(
+      {
+        ...preparation,
+        retainedTail: this.retainedTailForDegradedCheckpoint(preparation),
+      },
+      throughMessageId,
+      summary,
+      undefined,
+      {
+        ...this.checkpointDetails(preparation),
+        ...this.retainedReasoningForCheckpoint(preparation),
+        // `trajectory` is an outcome of the degradation chain, not a policy a
+        // user can select, so it stays out of `CompactionStrategy` — the
+        // shared reader already treats anything but `fresh_window` as
+        // summarized, and this is a real summary, just not a model's.
+        strategy: "trajectory",
+        retainedTailMode: retentionMode,
+        failureCode: "CONTEXT_COMPACTION_FAILED",
+        failureMessage: boundedText(
+          failureMessage,
+          COMPACTION_FALLBACK_MAX_SUMMARY_CHARS,
+        ),
+        trajectory: {
+          messages: trajectory.stats.messages,
+          toolCalls: trajectory.stats.toolCalls,
+          failedToolCalls: trajectory.stats.failedToolCalls,
+          openItems: trajectory.openItems.length,
+          nextSteps: trajectory.nextSteps.length,
+          goal: trajectory.goal !== undefined,
+        },
+      },
+    );
+  }
+
+  private retainedTailForDegradedCheckpoint(
+    preparation: ShapedPreparation,
+  ): AgentMessage[] {
+    return preparation.retainedTail.length > 0
+      ? preparation.retainedTail
+      : selectRetainedUserMessages(
+          preparation.messagesToSummarize.filter(
+            (message): message is UserMessage => message.role === "user",
+          ),
+          preparation.settings.keepRecentTokens,
+        );
   }
 
   /**
@@ -6476,17 +6554,39 @@ Delegation rules:
       );
       return false;
     }
+    const maxSummaryChars = Math.max(
+      256,
+      Math.min(
+        COMPACTION_FALLBACK_MAX_SUMMARY_CHARS,
+        Math.floor(budget.hardLimit * 0.75),
+      ),
+    );
+    // The deterministic record gets its turn before the retained-tail notice:
+    // it costs no request, so trying it first is free, and it carries what a
+    // next window cannot reconstruct (the goal verbatim, the failures nothing
+    // repaired, the next step the last assistant message stated) even though
+    // every model attempt failed. When it does not fit the safe budget either,
+    // the notice below still runs and stays the last resort.
+    const degraded = this.createTrajectoryCheckpoint(
+      fallbackPreparation,
+      throughMessageId,
+      maxSummaryChars,
+      retentionMode,
+      failureMessage,
+    );
+    const degradedPersisted = await this.persistCheckpoint(
+      degraded,
+      reason,
+      willRetry,
+      true,
+      "retained_tail",
+    );
+    if (degradedPersisted === "persisted") return true;
 
     const checkpoint = this.createFallbackCheckpoint(
       fallbackPreparation,
       throughMessageId,
-      Math.max(
-        256,
-        Math.min(
-          COMPACTION_FALLBACK_MAX_SUMMARY_CHARS,
-          Math.floor(budget.hardLimit * 0.75),
-        ),
-      ),
+      maxSummaryChars,
       retentionMode,
     );
     const persisted = await this.persistCheckpoint(

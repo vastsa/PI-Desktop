@@ -5340,7 +5340,7 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
-  it("persists a retained-tail fallback when automatic summary generation fails", async () => {
+  it("persists a deterministic record when automatic summary generation fails", async () => {
     const onEvent = vi.fn();
     const host = { call: vi.fn().mockResolvedValue(undefined) };
     const runtime = createRuntime({
@@ -5378,16 +5378,23 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     const checkpoint = host.call.mock.calls[0]?.[0] === "session.appendCompaction"
       ? (host.call.mock.calls[0]?.[1] as any).compaction
       : undefined;
-    expect(checkpoint).toEqual(
+    // The deterministic record is the first rung: the model summary failed, so
+    // the durable checkpoint carries what no later request can reconstruct —
+    // the goal verbatim, the failures nothing repaired, the next step — instead
+    // of only a notice. `strategy` keeps it readable as a real summary.
+    expect(host.call).toHaveBeenCalledTimes(1);
+    expect(checkpoint.throughMessageId).toBe("recent-user");
+    expect(checkpoint.details).toEqual(
       expect.objectContaining({
-        throughMessageId: "recent-user",
-        details: expect.objectContaining({
-          fallback: "retained_tail",
-          failureCode: "CONTEXT_COMPACTION_FAILED",
-          retainedTailMode: "completed_turn",
-        }),
+        strategy: "trajectory",
+        failureCode: "CONTEXT_COMPACTION_FAILED",
+        retainedTailMode: "completed_turn",
+        trajectory: expect.objectContaining({ messages: 2, goal: true }),
       }),
     );
+    expect(checkpoint.summary).toContain("continue the task");
+    expect(checkpoint.summary).toContain("## Goal");
+    expect(checkpoint.summary).toContain(COMPACTION_FALLBACK_MARKER);
     expect((runtime as any).fullEntries).toHaveLength(2);
     expect((runtime as any).agent.state.messages.filter((message: any) => message.role !== "system")[0]).toEqual(
       expect.objectContaining({ role: "compactionSummary" }),
@@ -5404,6 +5411,57 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
         ([envelope]) => (envelope as any).event.type === "error",
       ),
     ).toBe(false);
+    await runtime.dispose();
+  });
+
+  it("still writes the retained-tail notice when the record cannot fit", async () => {
+    // The deterministic record is tried first because it is free, but it is not
+    // the last resort: when it does not fit the safe budget the notice below it
+    // still runs, so a summary failure never ends without a checkpoint.
+    const host = { call: vi.fn().mockResolvedValue(undefined) };
+    const runtime = createRuntime({
+      host,
+      history: [
+        {
+          id: "old-user",
+          role: "user",
+          content: "older task context",
+          createdAt: "2026-07-28T00:00:00Z",
+          status: "complete",
+        },
+        {
+          id: "recent-user",
+          role: "user",
+          content: "continue the task",
+          createdAt: "2026-07-28T00:00:01Z",
+          status: "complete",
+        },
+      ],
+    });
+    vi.spyOn(runtime as any, "generateCompaction").mockResolvedValue({
+      ok: false,
+      error: {
+        code: "summarization_failed",
+        message: "provider terminated the summary request",
+      },
+    });
+    const persist = vi.spyOn(runtime as any, "persistCheckpoint");
+    persist.mockResolvedValueOnce("oversized");
+    persist.mockResolvedValue("persisted");
+
+    await expect(
+      (runtime as any).runCompaction("threshold", false),
+    ).resolves.toBe(true);
+
+    expect(persist).toHaveBeenCalledTimes(2);
+    const first = persist.mock.calls[0]?.[0] as any;
+    const second = persist.mock.calls[1]?.[0] as any;
+    expect(first.details.strategy).toBe("trajectory");
+    // The last resort keeps its own identity rather than being a copy of the
+    // record that could not fit.
+    expect(second.details.fallback).toBe("retained_tail");
+    expect(second.details.strategy).toBeUndefined();
+    expect(second.summary).not.toContain("## Goal");
     await runtime.dispose();
   });
 
@@ -5447,16 +5505,21 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
       true,
     );
 
+    // No new history to summarize, so the carried summary is the only older
+    // context there is: the durable checkpoint must carry it forward intact and
+    // the deterministic record must describe this range on top of it.
     expect(generateCompaction).not.toHaveBeenCalled();
     expect(host.call).toHaveBeenCalledWith(
       "session.appendCompaction",
       expect.objectContaining({
         compaction: expect.objectContaining({
-          details: expect.objectContaining({ fallback: "retained_tail" }),
+          details: expect.objectContaining({ strategy: "trajectory" }),
           summary: expect.stringContaining("The previous task summary."),
         }),
       }),
     );
+    const appended = (host.call.mock.calls[0]?.[1] as any).compaction;
+    expect(appended.summary).toContain("## Goal");
     await runtime.dispose();
   });
 
@@ -5568,11 +5631,15 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
       "session.appendCompaction",
       expect.objectContaining({
         compaction: expect.objectContaining({
-          details: expect.objectContaining({ fallback: "retained_tail" }),
+          details: expect.objectContaining({ strategy: "trajectory" }),
           summary: expect.stringContaining("The earlier task summary."),
         }),
       }),
     );
+    // The carried history is recovered from the notice marker, so a chained
+    // fallback does not cement this range's description as history (#224).
+    const appended = (host.call.mock.calls[0]?.[1] as any).compaction;
+    expect(appended.summary).toContain("## Goal");
     await runtime.dispose();
   });
 
