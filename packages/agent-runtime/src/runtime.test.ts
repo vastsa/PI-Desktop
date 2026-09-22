@@ -8703,3 +8703,103 @@ describe("context estimate calibration", () => {
   });
 });
 });
+
+describe("tool-result tiering under context pressure", () => {
+  /** A stored Read window the way host-core renders one: header, then `N: line`. */
+  const readWindow = (lines: number): string =>
+    `[src/app.ts#a1b2]\n${Array.from(
+      { length: lines },
+      (_value, index) => `${index + 1}:${"x".repeat(200)}`,
+    ).join("\n")}`;
+
+  const readCall = (id: string, path: string) => ({
+    role: "assistant",
+    content: [{ type: "toolCall", id, name: "Read", arguments: { file_path: path } }],
+  });
+  const readResult = (id: string, text: string) => ({
+    role: "toolResult",
+    toolCallId: id,
+    toolName: "Read",
+    content: [{ type: "text", text }],
+  });
+  const budget = (tokens: number) => ({
+    tokens,
+    hardLimit: 224_000,
+    requestHeadroom: 32_000,
+    keepRecentTokens: 44_800,
+  });
+
+  /**
+   * An old row, then nine newer file-touching calls. The working set is the
+   * newest eight paths, so `src/old.ts` is outside it and its row is eligible
+   * while its siblings are not.
+   */
+  const viewWithOldRead = () =>
+    [
+      readCall("call-old", "src/old.ts"),
+      readResult("call-old", readWindow(200)),
+      ...Array.from({ length: 9 }, (_value, index) => [
+        readCall(`call-${index}`, `src/f${index}.ts`),
+        readResult(`call-${index}`, "x".repeat(50)),
+      ]).flat(),
+    ] as never[];
+
+  it("leaves the view untouched below the pressure gate", async () => {
+    const runtime = createRuntime();
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue(budget(10_000));
+    const view = viewWithOldRead();
+
+    expect((runtime as any).narrowToolResultsUnderPressure(view)).toBe(view);
+    await runtime.dispose();
+  });
+
+  it("tiers an old Read result once the context is under pressure", async () => {
+    const runtime = createRuntime();
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue(budget(160_000));
+    const view = viewWithOldRead();
+    const narrowed = (runtime as any).narrowToolResultsUnderPressure(view);
+
+    expect(narrowed).not.toBe(view);
+    const first = (narrowed[1] as any).content[0].text as string;
+    expect(first).toContain("[tool result narrowed:");
+    expect(first).toContain('Continue with Read path="src/old.ts" offset=');
+    // The rows the working set protects keep their identity.
+    expect(narrowed[3]).toBe(view[3]);
+    await runtime.dispose();
+  });
+
+  it("tiers a spilled shell result without consulting the working set", async () => {
+    const runtime = createRuntime();
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue(budget(160_000));
+    const spill =
+      "y".repeat(30_000) +
+      "\n[truncated: kept the first 4000 of 51234 lines; limit 4000 lines / 96KB. " +
+      "Full output saved to C:\\scratch\\s1\\tool-output\\bash-1-1.log — " +
+      "Grep it, or Read it with offset/limit.]";
+    const view = [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call-1", name: "Bash", arguments: { command: "npm test" } }],
+      },
+      {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "Bash",
+        content: [{ type: "text", text: spill }],
+      },
+      ...Array.from({ length: 6 }, () => ({
+        role: "toolResult",
+        toolCallId: "recent",
+        toolName: "Bash",
+        content: [{ type: "text", text: "x".repeat(50) }],
+      })),
+    ] as never[];
+    const narrowed = (runtime as any).narrowToolResultsUnderPressure(view);
+
+    expect(narrowed).not.toBe(view);
+    const first = (narrowed[1] as any).content[0].text as string;
+    expect(first).toContain("tool-output\\bash-1-1.log");
+    expect(first).toContain("Read it with offset/limit, or Grep it");
+    await runtime.dispose();
+  });
+});

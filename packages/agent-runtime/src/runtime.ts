@@ -224,6 +224,11 @@ import {
   ContextEstimateCalibration,
   type ContextCalibration,
 } from "./context-calibration.js";
+import {
+  narrowToolResults,
+  TOOL_RESULT_TIER_PRESSURE,
+  workingSetPathsFrom,
+} from "./tool-result-tier.js";
 
 import { rebuildNodeNetworkTransport } from "./node-proxy.js";
 import {
@@ -1925,9 +1930,12 @@ Delegation rules:
       // The provider's rule that a tool-call id is unique is enforced here, on
       // the last view before the wire: the request is the only place it can be
       // guaranteed for both a rebuilt context and one that grew in this process.
+      // Old tool results are tiered in the same place: that pass is a no-op below
+      // its pressure gate and returns the same array when nothing qualified, so
+      // an ordinary request is byte-identical to what it was before it existed.
       convertToLlm: (messages) =>
         alignRetainedReasoningIdentity(
-          convertToLlm(this.dropDuplicateToolCalls(messages)),
+          convertToLlm(this.narrowToolResultsUnderPressure(this.dropDuplicateToolCalls(messages))),
           this.reasoningReplayIdentity(),
         ),
       prepareNextTurnWithContext: (context, signal) =>
@@ -5828,9 +5836,37 @@ Delegation rules:
     additionalMessages: AgentMessage[] = [],
   ): boolean {
     const context = this.liveSessionContext();
-    const messages = [...context.messages, ...additionalMessages];
+    // Decide on the view the request would actually carry: narrowing old tool
+    // results shrinks it, and reading the un-narrowed projection here would
+    // make the saving invisible to this check, so compaction would fire while
+    // real room remained.
+    const messages = [
+      ...this.narrowToolResultsUnderPressure(context.messages),
+      ...additionalMessages,
+    ];
     const budget = this.contextBudget(messages);
     return this.compactionEnabled && budget.tokens >= budget.hardLimit;
+  }
+
+  /**
+   * Shorten old tool results in an outgoing view, but only once the context is
+   * actually under pressure — below the gate the view comes back untouched, so
+   * the common case pays nothing. The full text of every narrowed result stays
+   * reachable through the pointer the pass embeds (see `tool-result-tier.ts`).
+   */
+  private narrowToolResultsUnderPressure(messages: AgentMessage[]): AgentMessage[] {
+    if (messages.length === 0) return messages;
+    const budget = this.contextBudget(messages);
+    if (budget.tokens < budget.hardLimit * TOOL_RESULT_TIER_PRESSURE) {
+      return messages;
+    }
+    // The newest file-touching calls define what the task is about right now; a
+    // result for a file the session re-opened stays whole even when its row is
+    // old. `[keep]` immunity, the excluded tool families and the clear-at-least
+    // floor come from the module's own defaults.
+    return narrowToolResults(messages, {
+      workingSetPaths: workingSetPathsFrom(messages),
+    }).messages;
   }
 
   private retainedUserMessageBudget(budget: ContextBudget): number {
