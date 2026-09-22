@@ -54,7 +54,7 @@ function toolCallAssistant(
     role: "assistant",
     content: [
       { type: "text", text: body },
-      { type: "toolCall", id, name: "Read", arguments: { path: "a.ts" } },
+      { type: "toolCall", id, name: "read", arguments: { path: "a.ts" } },
     ],
     api: "openai-completions",
     provider: "local",
@@ -69,7 +69,7 @@ function toolResult(id: string, body: string, timestamp = 4): AgentMessage {
   return {
     role: "toolResult",
     toolCallId: id,
-    toolName: "Read",
+    toolName: "read",
     content: [{ type: "text", text: body }],
     isError: false,
     timestamp,

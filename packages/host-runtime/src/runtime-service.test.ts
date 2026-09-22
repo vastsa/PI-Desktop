@@ -299,14 +299,14 @@ describe("RuntimeService prompt lifecycle", () => {
     const { host, sidecar, service } = build();
     await service.prompt({ sessionId: "s1", content: "hello", effectivePermissionMode: "ask", principal: owner });
     const assistant: UiMessage = { id: "a1", role: "assistant", content: "done", createdAt: "2026-09-18T00:00:00.000Z", status: "complete" };
-    sidecar.notify?.("agent.event", { sessionId: "s1", turnId: "turn-1", ts: 1, event: { type: "tool_start", toolCallId: "c1", toolName: "Read", args: { path: "a" } } });
+    sidecar.notify?.("agent.event", { sessionId: "s1", turnId: "turn-1", ts: 1, event: { type: "tool_start", toolCallId: "c1", toolName: "read", args: { path: "a" } } });
     sidecar.notify?.("agent.event", { sessionId: "s1", turnId: "turn-1", ts: 2, event: { type: "tool_end", toolCallId: "c1", result: "ok" } });
     sidecar.notify?.("agent.event", { sessionId: "s1", turnId: "turn-1", ts: 3, event: { type: "message_end", message: assistant } });
     await settle();
     const appended = host.calls.filter((call) => call.method === "session.appendMessage").map((call) => call.params);
     expect(appended.map((params) => (params.message as UiMessage).id)).toEqual([expect.any(String), "c1", "a1"]);
     expect(appended[1]).toMatchObject({ turnId: "turn-1" });
-    expect((appended[1]!.message as UiMessage).toolName).toBe("Read");
+    expect((appended[1]!.message as UiMessage).toolName).toBe("read");
     expect(appended[2]).toMatchObject({ turnId: "turn-1" });
   });
 
@@ -319,14 +319,14 @@ describe("RuntimeService prompt lifecycle", () => {
       ts: 1,
       parentToolCallId: "task-1",
       agentName: "reviewer",
-      event: { type: "tool_start", toolCallId: "c9", toolName: "Bash", args: {} },
+      event: { type: "tool_start", toolCallId: "c9", toolName: "bash", args: {} },
     });
     events.length = 0;
     host.notify?.("permissions.request", {
       requestId: "req-1",
       sessionId: "s1",
       toolCallId: "c9",
-      toolName: "Bash",
+      toolName: "bash",
       argsPreview: "rm",
       risk: "high",
       reason: "shell",

@@ -175,7 +175,7 @@ export type ToolPermissionRequest = {
   reason: string;
   /** Subagent that asked, when the call came from a delegate (ADR 0062). */
   agentName?: string;
-  /** `Task` call that spawned the asking delegate. */
+  /** `task` call that spawned the asking delegate. */
   parentToolCallId?: string;
 };
 
@@ -278,7 +278,7 @@ export type AgentEventEnvelope = {
   ts: number;
   event: AgentEvent;
   /**
-   * Set on every event emitted from inside a subagent (ADR 0062): the `Task`
+   * Set on every event emitted from inside a subagent (ADR 0062): the `task`
    * tool call that owns the delegate. Main tags persisted rows with it and
    * skips the turn-lifecycle handling that belongs to the parent alone.
    */

@@ -127,7 +127,7 @@ describe("RACP schemas", () => {
           summary: "Run the selected shell command",
           expiresAt: "2026-09-10T00:30:00.000Z",
           revision: 22,
-          toolName: "Bash",
+          toolName: "bash",
           risk: "high",
           allowedDecisions: ["allow-once", "allow-session", "deny"],
         },

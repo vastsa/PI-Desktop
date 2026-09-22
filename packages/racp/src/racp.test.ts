@@ -161,7 +161,7 @@ describe("RACP-WS turns, events, and approvals", () => {
     h.host.ingest(
       envelope("s1", "rt_1", {
         type: "tool_permission_request",
-        request: { requestId: "perm-1", sessionId: "s1", toolCallId: "c1", toolName: "Bash", argsPreview: "rm", risk: "high", reason: "shell" },
+        request: { requestId: "perm-1", sessionId: "s1", toolCallId: "c1", toolName: "bash", argsPreview: "rm", risk: "high", reason: "shell" },
       }),
     );
     await flush();

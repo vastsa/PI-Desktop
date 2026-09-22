@@ -178,7 +178,7 @@ describe("AgentHost ingest", () => {
     host.ingest(envelope("s1", "rt_1", { type: "message_start", message: message("m1", "") }));
     host.ingest(envelope("s1", "rt_1", { type: "message_update", message: message("m1", "Hel"), deltaText: "Hel" }));
     host.ingest(envelope("s1", "rt_1", { type: "message_end", message: message("m1", "Hello", "complete") }));
-    host.ingest(envelope("s1", "rt_1", { type: "tool_start", toolCallId: "c1", toolName: "Read", args: { path: "a" } }));
+    host.ingest(envelope("s1", "rt_1", { type: "tool_start", toolCallId: "c1", toolName: "read", args: { path: "a" } }));
     host.ingest(envelope("s1", "rt_1", { type: "tool_update", toolCallId: "c1", partialResult: "..." }));
     host.ingest(envelope("s1", "rt_1", { type: "tool_end", toolCallId: "c1", result: "ok" }));
     host.ingest(envelope("s1", "rt_1", { type: "turn_end" }));
@@ -487,7 +487,7 @@ describe("AgentHost turns", () => {
 describe("AgentHost approvals and inputs", () => {
   const permission = (requestId = "req_1") => ({
     type: "tool_permission_request" as const,
-    request: { requestId, sessionId: "s1", toolCallId: "c1", toolName: "Bash", argsPreview: { command: "ls" }, risk: "high" as const, reason: "high risk" },
+    request: { requestId, sessionId: "s1", toolCallId: "c1", toolName: "bash", argsPreview: { command: "ls" }, risk: "high" as const, reason: "high risk" },
   });
 
   it("raises approvals with the local vocabulary and settles them once", async () => {

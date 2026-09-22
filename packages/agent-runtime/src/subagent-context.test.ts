@@ -76,7 +76,7 @@ function assistantToolCall(id: string, preamble = ""): AssistantMessage {
     ...assistantText(preamble),
     content: [
       ...(preamble ? [{ type: "text" as const, text: preamble }] : []),
-      { type: "toolCall" as const, id, name: "Read", arguments: { path: "a.ts" } },
+      { type: "toolCall" as const, id, name: "read", arguments: { path: "a.ts" } },
     ],
   };
 }
@@ -85,7 +85,7 @@ function toolResult(text: string, toolCallId = "call-1"): ToolResultMessage {
   return {
     role: "toolResult",
     toolCallId,
-    toolName: "Read",
+    toolName: "read",
     content: [{ type: "text", text }],
     isError: false,
     timestamp: 1,

@@ -3,7 +3,7 @@
  * through `contributes.skills`.
  *
  * Only the catalog — id, name, description — travels into the system prompt;
- * the model loads a body on demand with the `Skill` tool (D174). Reading the
+ * the model loads a body on demand with the `skill` tool (D174). Reading the
  * files therefore belongs entirely to Electron main, which owns the plugin
  * registry and the permission grants. This module owns the catalog shape and
  * the reuse digest so the sidecar and main agree on both.
@@ -11,7 +11,7 @@
 
 /** One catalog entry as the model sees it in the system prompt. */
 export type PluginSkillDef = {
-  /** `<pluginId>/<skillId>` — the exact id the `Skill` tool expects. */
+  /** `<pluginId>/<skillId>` — the exact id the `skill` tool expects. */
   id: string;
   name: string;
   description?: string;
@@ -23,7 +23,7 @@ export type PluginSkillDef = {
  * `AgentRuntime.matches()` compares this so enabling a plugin, revoking its
  * prompt permission, or editing a skill's front matter starts a fresh runtime
  * instead of reusing a session whose catalog is already stale. Bodies are not
- * part of it: they never enter the prompt, and the `Skill` tool reads them
+ * part of it: they never enter the prompt, and the `skill` tool reads them
  * fresh from disk on every call.
  */
 export function pluginSkillsDigest(skills?: PluginSkillDef[]): string {

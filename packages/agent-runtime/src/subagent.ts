@@ -1,5 +1,5 @@
 /**
- * Subagents: bounded delegate agent loops spawned by the `Task` tool (ADR 0062).
+ * Subagents: bounded delegate agent loops spawned by the `task` tool (ADR 0062).
  *
  * A delegate is a second pi `Agent` inside the same sidecar process, with its
  * own system prompt, its own (possibly pinned) provider/model, and only the
@@ -14,9 +14,9 @@
  *   runtime filters them out when it rebuilds model context.
  * - A delegate's lifecycle never reaches Electron main's turn handling. It
  *   runs in the background under the session runtime (ADR 0089 / D328):
- *   `Task` starts it and returns, `TaskWait` may converge early, and when it
+ *   `task` starts it and returns, `task_wait` may converge early, and when it
  *   finishes the runtime delivers the report to the parent even if the parent
- *   already stopped calling tools. Only user Stop or `TaskStop` aborts it.
+ *   already stopped calling tools. Only user Stop or `task_stop` aborts it.
  */
 
 import { randomUUID } from "node:crypto";
@@ -77,13 +77,13 @@ import {
   providerSetupRetryDelayMs,
 } from "./provider-retry.js";
 
-export const SUBAGENT_TOOL_NAME = "Task";
+export const SUBAGENT_TOOL_NAME = "task";
 /** Converge on running delegations and read their reports (ADR 0089). */
-export const SUBAGENT_WAIT_TOOL_NAME = "TaskWait";
+export const SUBAGENT_WAIT_TOOL_NAME = "task_wait";
 /** Report on the session's delegations without waiting (ADR 0089). */
-export const SUBAGENT_LIST_TOOL_NAME = "TaskList";
+export const SUBAGENT_LIST_TOOL_NAME = "task_list";
 /** Stop running delegations (ADR 0089). */
-export const SUBAGENT_STOP_TOOL_NAME = "TaskStop";
+export const SUBAGENT_STOP_TOOL_NAME = "task_stop";
 
 /** The report is the only thing that enters the parent's context; keep it
  * from becoming the context problem delegation was supposed to avoid. */
@@ -122,7 +122,7 @@ export type SubagentRunOptions = {
   sessionId: string;
   /** Parent durable turn; child rows are attributed to the same turn. */
   turnId?: string;
-  /** `Task` call that owns this delegate. */
+  /** `task` call that owns this delegate. */
   parentToolCallId: string;
   /** The delegated instruction, written by the parent model. */
   task: string;
@@ -617,7 +617,7 @@ export class SubagentRun {
 
   /**
    * Idle and duration watchdogs are withdrawn (D328). Stopping a delegate is
-   * the parent agent's `TaskStop` or the user's Stop, not a timer, so the
+   * the parent agent's `task_stop` or the user's Stop, not a timer, so the
    * only abort sources are the parent's signal and this run's own controller.
    */
   private runSignal(): AbortSignal {

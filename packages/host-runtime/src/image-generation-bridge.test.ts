@@ -33,7 +33,7 @@ function harness(allowed = true, childSource = child, esm = false) {
         sessionId: "s",
         toolCallId,
         mode,
-        toolName: "GenerateImages",
+        toolName: "generate_images",
         args: { items: [{ prompt: "image" }] },
       },
     });
@@ -42,7 +42,7 @@ function harness(allowed = true, childSource = child, esm = false) {
 
 it("authorizes image calls through the host before executing the local handler", async () => {
   const { sidecar, calls, execute } = harness();
-  sidecar.setLocalTool("GenerateImages", async () => {
+  sidecar.setLocalTool("generate_images", async () => {
     calls.push("generated");
     return { ok: true, content: "image" };
   });
@@ -52,7 +52,7 @@ it("authorizes image calls through the host before executing the local handler",
 
 it("preserves stable local error codes through real reverse RPC", async () => {
   const { sidecar, execute } = harness();
-  sidecar.setLocalTool("GenerateImages", async () => {
+  sidecar.setLocalTool("generate_images", async () => {
     throw Object.assign(new Error("Image request failed"), {
       errorCode: "IMAGE_TIMEOUT", data: { retryable: false }, secret: "must-not-cross",
     });
@@ -80,7 +80,7 @@ it("delivers stable error codes to the production ParentHostProxy in a real chil
       }
     });`;
   const { sidecar, execute } = harness(true, source, true);
-  sidecar.setLocalTool("GenerateImages", async () => {
+  sidecar.setLocalTool("generate_images", async () => {
     throw Object.assign(new Error("limited"), { errorCode: "IMAGE_HTTP_429" });
   });
   expect(await execute()).toEqual({ code: -32000, errorCode: "IMAGE_HTTP_429", data: { errorCode: "IMAGE_HTTP_429" } });
@@ -89,7 +89,7 @@ it("delivers stable error codes to the production ParentHostProxy in a real chil
 it("denied and Plan calls never reach the image service", async () => {
   const { sidecar, execute } = harness(false);
   const generate = vi.fn().mockResolvedValue({ ok: true, content: "image" });
-  sidecar.setLocalTool("GenerateImages", generate);
+  sidecar.setLocalTool("generate_images", generate);
   expect((await execute()).ok).toBe(false);
   expect((await execute("plan")).ok).toBe(false);
   expect(generate).not.toHaveBeenCalled();
@@ -101,7 +101,7 @@ it("tools.abort reaches the in-flight request and still forwards host cancellati
   const ready = new Promise<void>((resolve) => {
     started = resolve;
   });
-  sidecar.setLocalTool("GenerateImages", async ({ signal }) => {
+  sidecar.setLocalTool("generate_images", async ({ signal }) => {
     started();
     await new Promise<void>((resolve) =>
       signal.addEventListener("abort", () => resolve(), { once: true }),

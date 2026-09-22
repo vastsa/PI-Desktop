@@ -23,7 +23,7 @@ describe("isProgressOnlyAssistantTurn", () => {
         role: "assistant",
         content: [
           { type: "text", text: "Reading file" },
-          { type: "toolCall", name: "Read", id: "t1" },
+          { type: "toolCall", name: "read", id: "t1" },
         ],
       }),
     ).toBe(false);

@@ -7,6 +7,8 @@ import {
   MAX_SUBAGENT_MAX_TOKENS,
   SUBAGENT_ASSIGNABLE_TOOLS,
   SUBAGENT_INHERIT_DENY_TOOLS,
+  isSubagentAssignableTool,
+  isSubagentMutatingTool,
   mergeSubagentDefinitions,
   normalizeSubagentName,
   parseSubagentDefinition,
@@ -27,7 +29,7 @@ function definition(
   return {
     name: "reviewer",
     description: "Reviews a diff.",
-    tools: ["Read"],
+    tools: ["read"],
     prompt: "Review it.",
     source: "user",
     ...overrides,
@@ -39,7 +41,7 @@ describe("parseSubagentDefinition", () => {
     const result = parse(`---
 name: code-reviewer
 description: Reviews changed files for correctness bugs.
-tools: Read, Grep, Glob
+tools: read, grep, glob
 model: anthropic/claude-opus-5
 thinkingLevel: high
 ---
@@ -52,7 +54,7 @@ Review the diff and report only defects you can point at a line for.
     expect(result.definition).toEqual({
       name: "code-reviewer",
       description: "Reviews changed files for correctness bugs.",
-      tools: ["Read", "Grep", "Glob"],
+      tools: ["read", "grep", "glob"],
       model: { providerId: "anthropic", modelId: "claude-opus-5" },
       thinkingLevel: "high",
       idleTimeoutSeconds: DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
@@ -101,7 +103,7 @@ Explain it.`);
     const scoped = parseSubagentDefinition(
       `---
 description: Writes a feature.
-tools: [Read, Edit, Write]
+tools: [read, edit, write]
 permission: accept-edits
 ---
 Implement it.`,
@@ -126,7 +128,7 @@ Explain it.`);
     for (const declared of ["auto", "accept-edits", "ask"]) {
       const result = parse(`---
 description: Writes a feature.
-tools: [Read, Edit, Write]
+tools: [read, edit, write]
 permission: ${declared}
 ---
 Implement it.`);
@@ -165,15 +167,15 @@ Explain it.`);
     const result = parse(`---
 description: Applies a mechanical rename.
 tools:
-  - Read
-  - Edit
-  - Write
+  - read
+  - edit
+  - write
 ---
 Rename it.`);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.definition.tools).toEqual(["Read", "Edit", "Write"]);
+    expect(result.definition.tools).toEqual(["read", "edit", "write"]);
     expect(subagentCanMutate(result.definition)).toBe(true);
   });
 
@@ -186,11 +188,11 @@ Go.`);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.definition.tools).toContain("Bash");
-    expect(result.definition.tools).toContain("Write");
+    expect(result.definition.tools).toContain("bash");
+    expect(result.definition.tools).toContain("write");
     // Plugin, skill and mode tools stay out of a delegate's reach.
-    expect(result.definition.tools).not.toContain("Task");
-    expect(result.definition.tools).not.toContain("ToolSearch");
+    expect(result.definition.tools).not.toContain("task");
+    expect(result.definition.tools).not.toContain("tool_search");
     expect(result.definition.tools).not.toContain("A2A");
     expect(result.definition.tools).not.toContain("Peer");
   });
@@ -198,13 +200,13 @@ Go.`);
   it("drops unknown tools with a warning instead of failing", () => {
     const result = parse(`---
 description: Reads code.
-tools: [Read, Teleport, A2A, Peer]
+tools: [read, Teleport, A2A, Peer]
 ---
 Read it.`);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.definition.tools).toEqual(["Read"]);
+    expect(result.definition.tools).toEqual(["read"]);
     expect(result.warnings).toEqual([
       'ignoring unknown tool "Teleport"',
       'ignoring unknown tool "A2A"',
@@ -464,50 +466,50 @@ Do the job.`);
   it("parses tools: inherit with assignable extras", () => {
     const result = parse(`---
 description: Writes with the parent toolset plus Bash.
-tools: [inherit, Bash]
+tools: [inherit, bash]
 ---
 Do the job.`);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.definition.inheritTools).toBe(true);
-    expect(result.definition.tools).toEqual(["Bash"]);
-    expect(subagentToolsLabel(result.definition)).toBe("inherit + Bash");
+    expect(result.definition.tools).toEqual(["bash"]);
+    expect(subagentToolsLabel(result.definition)).toBe("inherit + bash");
   });
 
   it("does not treat inherit as a bare unknown tool", () => {
     const result = parse(`---
 description: Only inherit.
-tools: inherit, Grep
+tools: inherit, grep
 ---
 Do the job.`);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.warnings).toEqual([]);
     expect(result.definition.inheritTools).toBe(true);
-    expect(result.definition.tools).toEqual(["Grep"]);
+    expect(result.definition.tools).toEqual(["grep"]);
   });
 });
 
 describe("resolveSubagentToolNames", () => {
   const parent = [
-    "Read",
-    "Glob",
-    "Grep",
-    "Bash",
-    "Skill",
-    "ToolSearch",
-    "Task",
-    "TaskWait",
+    "read",
+    "glob",
+    "grep",
+    "bash",
+    "skill",
+    "tool_search",
+    "task",
+    "task_wait",
     "asktool",
-    "EnterPlanMode",
+    "enter_plan_mode",
     "new_context",
     "mcp-foo",
   ];
 
   it("returns only the declared list when inherit is off", () => {
     expect(
-      resolveSubagentToolNames({ tools: ["Read", "Bash"] }, parent),
-    ).toEqual(["Read", "Bash"]);
+      resolveSubagentToolNames({ tools: ["read", "bash"] }, parent),
+    ).toEqual(["read", "bash"]);
   });
 
   it("unions parent tools minus the deny list", () => {
@@ -515,10 +517,10 @@ describe("resolveSubagentToolNames", () => {
       { tools: [], inheritTools: true },
       parent,
     );
-    expect(resolved).toContain("Read");
-    expect(resolved).toContain("Skill");
+    expect(resolved).toContain("read");
+    expect(resolved).toContain("skill");
     expect(resolved).toContain("mcp-foo");
-    expect(resolved).not.toContain("ToolSearch");
+    expect(resolved).not.toContain("tool_search");
     expect(resolved).not.toContain("new_context");
     for (const denied of SUBAGENT_INHERIT_DENY_TOOLS) {
       expect(resolved).not.toContain(denied);
@@ -527,20 +529,20 @@ describe("resolveSubagentToolNames", () => {
 
   it("keeps declared extras and does not duplicate parent names", () => {
     const resolved = resolveSubagentToolNames(
-      { tools: ["Edit", "Read"], inheritTools: true },
+      { tools: ["edit", "read"], inheritTools: true },
       parent,
     );
-    expect(resolved).toContain("Edit");
-    expect(resolved).toContain("Read");
-    expect(resolved.filter((n) => n === "Read")).toHaveLength(1);
+    expect(resolved).toContain("edit");
+    expect(resolved).toContain("read");
+    expect(resolved.filter((n) => n === "read")).toHaveLength(1);
   });
 
   it("does not hand a delegate nested Task tools", () => {
     const resolved = resolveSubagentToolNames(
       { tools: [...SUBAGENT_ASSIGNABLE_TOOLS], inheritTools: true },
-      ["Task", "TaskList", "Read"],
+      ["task", "task_list", "read"],
     );
-    expect(resolved).toEqual([...SUBAGENT_ASSIGNABLE_TOOLS, "Read"].filter(
+    expect(resolved).toEqual([...SUBAGENT_ASSIGNABLE_TOOLS, "read"].filter(
       (name, index, all) => all.indexOf(name) === index,
     ));
   });
@@ -548,14 +550,14 @@ describe("resolveSubagentToolNames", () => {
   it("uses a resolved list to decide mutation, not the inherit token", () => {
     expect(
       subagentCanMutate(definition({ tools: [], inheritTools: true }), [
-        "Read",
-        "Glob",
+        "read",
+        "glob",
       ]),
     ).toBe(false);
     expect(
       subagentCanMutate(definition({ tools: [], inheritTools: true }), [
-        "Read",
-        "Edit",
+        "read",
+        "edit",
       ]),
     ).toBe(true);
   });
@@ -645,5 +647,53 @@ describe("definition fallback models", () => {
   it("rejects a malformed fallback rather than silently changing the requested chain", () => {
     const result = parse("---\ndescription: Bad fallback.\nfallbackModels: [vendor/valid, bare-model]\n---\nFinish.");
     expect(result.ok).toBe(false);
+  });
+});
+
+/**
+ * Pre-rename spellings are a read boundary (D620): a definition document, a
+ * permission rule, or a persisted tool list may still say `Read` / `Bash`, and
+ * every entry point resolves those to the canonical lowercase names the runtime
+ * sends to a model.
+ */
+describe("pre-rename tool names at the read boundary (D620)", () => {
+  it("resolves legacy names in a definition document to canonical ones", () => {
+    const result = parse(`---
+description: A definition written before the rename.
+tools: [Read, Bash, BrowserPreview]
+---
+Read it.`);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings).toEqual([]);
+    expect(result.definition.tools).toEqual(["read", "bash", "browser_preview"]);
+  });
+
+  it("accepts a legacy name as assignable and mutating", () => {
+    expect(isSubagentAssignableTool("Read")).toBe(true);
+    expect(isSubagentAssignableTool("BrowserPreview")).toBe(true);
+    expect(isSubagentMutatingTool("Bash")).toBe(true);
+    expect(isSubagentMutatingTool("read")).toBe(false);
+    // A third-party tool name is never rewritten, and never assignable.
+    expect(isSubagentAssignableTool("plugin_demo_echo")).toBe(false);
+    expect(isSubagentMutatingTool("mcp_files_write")).toBe(false);
+  });
+
+  it("normalizes a persisted tool list before the model sees it", () => {
+    expect(subagentToolsLabel(definition({ tools: ["Read", "Glob", "Task"] }))).toBe(
+      "read, glob, task",
+    );
+    expect(
+      resolveSubagentToolNames({ tools: ["Read", "Grep"], inheritTools: false }, []),
+    ).toEqual(["read", "grep"]);
+    // `inherit` drops the denied lifecycle tools even when the parent catalog
+    // still spells them the pre-rename way, and the extras are canonicalized.
+    expect(
+      resolveSubagentToolNames(
+        { tools: ["Read"], inheritTools: true },
+        ["Bash", "Task", "TaskStop", "Read"],
+      ),
+    ).toEqual(["bash", "read"]);
   });
 });

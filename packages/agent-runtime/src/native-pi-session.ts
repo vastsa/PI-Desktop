@@ -30,6 +30,7 @@ import {
   type AgentSessionEvent,
   type SessionMessageEntry,
 } from "@earendil-works/pi-coding-agent";
+import { normalizeToolName } from "@pi-desktop/shared";
 import type {
   AgentEvent,
   AgentEventEnvelope,
@@ -133,7 +134,8 @@ function uiMessage(entry: SessionMessageEntry): UiMessage | undefined {
       createdAt: entry.timestamp,
       status: "complete",
       toolCallId: typeof message.toolCallId === "string" ? message.toolCallId : undefined,
-      toolName: typeof message.toolName === "string" ? message.toolName : undefined,
+      toolName:
+        typeof message.toolName === "string" ? normalizeToolName(message.toolName) : undefined,
       toolResult: message.details ?? message.content,
       toolStatus: message.isError ? "error" : "success",
       isError: message.isError === true,

@@ -104,7 +104,7 @@ type RuntimeParams = {
   pluginSkills?: PluginSkillDef[];
   /** Trusted extensions enabled for this session (D387). */
   trustedExtensions?: TrustedExtensionSpec[];
-  /** Delegates this session may spawn through `Task` (ADR 0062). */
+  /** Delegates this session may spawn through `task` (ADR 0062). */
   subagents?: SubagentDefinition[];
   /** Provider bindings for pinned models, keyed by `subagentModelKey`. */
   subagentProviders?: Record<string, RuntimeProviderConfig>;

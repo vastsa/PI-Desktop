@@ -29,7 +29,7 @@ import { getGlobalDispatcher } from "undici";
 import { describeProviderFetchFailure } from "./provider-transport-recovery.js";
 /**
  * The delegate loop itself is covered in `subagent.test.ts`; here only the
- * `Task` wiring around it is under test, so `SubagentRun` is replaced by a
+ * `task` wiring around it is under test, so `SubagentRun` is replaced by a
  * recorder. Every other export stays real.
  */
 const subagentRuns = vi.hoisted(() => ({
@@ -342,9 +342,9 @@ describe("custom system prompt files (issue #542)", () => {
     expect(prompt).not.toContain("You are PI-Desktop");
     // Operational rules from the default prompt must survive the replacement.
     expect(prompt).toContain("Collaboration: answer in the same language");
-    expect(prompt).toContain("Searching and reading: prefer the Read");
+    expect(prompt).toContain("Searching and reading: prefer the `read`");
     expect(prompt).toContain("multi_tool_use.parallel");
-    expect(prompt).toContain("Editing workflow: use the built-in Edit or Write tool");
+    expect(prompt).toContain("Editing workflow: use the built-in `edit` or `write` tool");
     expect(prompt).toContain("You are operating in Agent mode.");
 
     await runtime.dispose();
@@ -501,11 +501,11 @@ describe("DesktopAgentRuntime configuration matching", () => {
 
     expect(prompt).toContain("do not create or hand-edit unified-diff files");
     expect(prompt).toContain("Do not invoke shell apply_patch, git apply, or patch commands");
-    expect(prompt).toContain("Never issue concurrent Write/Edit calls for the same path");
+    expect(prompt).toContain("Never issue concurrent `write`/`edit` calls for the same path");
     expect(prompt).toContain("A path may have three counted failures per prompt");
 
     const edit = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Edit",
+      (tool: any) => tool.name === "edit",
     );
     expect(edit.description).toContain("never old_string");
     expect(edit.description).toContain("same path concurrently");
@@ -548,7 +548,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     const prompt = (runtime as any).agent.state.systemPrompt as string;
 
     expect(prompt).toContain(
-      "prefer the Read, Grep, and Glob tools over shell",
+      "prefer the `read`, `grep`, and `glob` tools over shell",
     );
     expect(prompt).toContain("`outputMode`");
     expect(prompt).toContain("always reports `totalLines`");
@@ -556,13 +556,13 @@ describe("DesktopAgentRuntime configuration matching", () => {
       "paginates any supported text file however large",
     );
     expect(prompt).toContain(
-      "Read accepts only an existing regular text file, never a directory",
+      "`read` accepts only an existing regular text file, never a directory",
     );
     expect(prompt).toContain(
-      "in Agent mode, activate it with ToolSearch for the current prompt",
+      "in Agent mode, activate it with `tool_search` for the current prompt",
     );
-    expect(prompt).toContain("Grep takes a file-or-directory `path`");
-    expect(prompt).toContain("Grep uses the system's `rg` when it is installed");
+    expect(prompt).toContain("`grep` takes a file-or-directory `path`");
+    expect(prompt).toContain("`grep` uses the system's `rg` when it is installed");
     expect(prompt).toContain("Workspace-relative paths are portable");
     expect(prompt).toContain(
       "an explicit path outside the workspace and session scratch roots asks for permission",
@@ -578,13 +578,13 @@ describe("DesktopAgentRuntime configuration matching", () => {
     const tools = (runtime as any).agent.state.tools as Array<any>;
     const byName = (name: string) => tools.find((tool) => tool.name === name);
 
-    expect(byName("Read").parameters.properties).toEqual(
+    expect(byName("read").parameters.properties).toEqual(
       expect.objectContaining({ offset: expect.any(Object), limit: expect.any(Object) }),
     );
-    expect(byName("Glob").parameters.properties).toEqual(
+    expect(byName("glob").parameters.properties).toEqual(
       expect.objectContaining({ path: expect.any(Object), limit: expect.any(Object) }),
     );
-    expect(byName("Grep").parameters.properties).toEqual(
+    expect(byName("grep").parameters.properties).toEqual(
       expect.objectContaining({
         path: expect.any(Object),
         include: expect.any(Object),
@@ -592,29 +592,29 @@ describe("DesktopAgentRuntime configuration matching", () => {
         headLimit: expect.any(Object),
       }),
     );
-    expect(byName("Grep").parameters.properties.outputMode.anyOf).toEqual(
+    expect(byName("grep").parameters.properties.outputMode.anyOf).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ const: "filesWithMatches" }),
         expect.objectContaining({ const: "count" }),
       ]),
     );
-    expect(byName("Read").description).toContain("never a directory");
-    expect(byName("Read").description).toContain(
+    expect(byName("read").description).toContain("never a directory");
+    expect(byName("read").description).toContain(
       "truncated` is true only when this window was cut short",
     );
-    expect(byName("Read").parameters.properties.limit.description).toContain(
+    expect(byName("read").parameters.properties.limit.description).toContain(
       "defaults to 2000",
     );
-    expect(byName("Read").parameters.properties.path.description).toContain(
+    expect(byName("read").parameters.properties.path.description).toContain(
       "Existing regular file only",
     );
-    expect(byName("Glob").parameters.properties.path.description).toContain(
+    expect(byName("glob").parameters.properties.path.description).toContain(
       "Directory to search",
     );
-    expect(byName("Grep").description).toContain(
+    expect(byName("grep").description).toContain(
       "one file or a directory tree",
     );
-    expect(byName("Grep").parameters.properties.path.description).toContain(
+    expect(byName("grep").parameters.properties.path.description).toContain(
       "File or directory to search",
     );
 
@@ -646,7 +646,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const bash = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Bash",
+      (tool: any) => tool.name === "bash",
     );
 
     const result = await bash.execute("tool-failed", { command: "exit 7" });
@@ -675,7 +675,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const agent = (runtime as any).agent;
-    const edit = agent.state.tools.find((tool: any) => tool.name === "Edit");
+    const edit = agent.state.tools.find((tool: any) => tool.name === "edit");
     const args = {
       path: "src/example.ts",
       tag: "ABCD",
@@ -714,7 +714,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const agent = (runtime as any).agent;
-    const bash = agent.state.tools.find((tool: any) => tool.name === "Bash");
+    const bash = agent.state.tools.find((tool: any) => tool.name === "bash");
     const firstArgs = { command: "apply_patch <<'PATCH'\n*** Begin Patch\nPATCH" };
     const secondArgs = {
       command: "git -C /tmp/project apply --check /tmp/change.patch",
@@ -764,7 +764,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const agent = (runtime as any).agent;
-    const edit = agent.state.tools.find((tool: any) => tool.name === "Edit");
+    const edit = agent.state.tools.find((tool: any) => tool.name === "edit");
     const args = { path: "src/example.ts", tag: "A1B2", ops: "PUT 1.=1:\n+fresh" };
 
     // Each recoverable code answers itself: the error carries the live tag or
@@ -802,7 +802,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const agent = (runtime as any).agent;
-    const edit = agent.state.tools.find((tool: any) => tool.name === "Edit");
+    const edit = agent.state.tools.find((tool: any) => tool.name === "edit");
     const args = { path: "src/example.ts", tag: "A1B2", ops: "PUT 1.=1:\n+fresh" };
 
     const failed = await edit.execute("edit-1", args);
@@ -834,7 +834,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     const runtime = createRuntime({ host, onEvent });
     const agent = (runtime as any).agent;
     const handleAgentEvent = (runtime as any).handleAgentEvent.bind(runtime);
-    const edit = agent.state.tools.find((tool: any) => tool.name === "Edit");
+    const edit = agent.state.tools.find((tool: any) => tool.name === "edit");
     const args = { path: "src/example.ts", tag: "A1B2", ops: "PUT 1.=1:" };
 
     await edit.execute("edit-1", args);
@@ -943,7 +943,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const read = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Read",
+      (tool: any) => tool.name === "read",
     );
 
     await read.execute("tool-1", { path: "packages/api/handler.ts" });
@@ -957,14 +957,14 @@ describe("DesktopAgentRuntime configuration matching", () => {
   });
 
   it.each([
-    ["Read", { path: "packages/api/handler.ts" }],
-    ["Write", { path: "packages/api/handler.ts", content: "export {};" }],
-    ["Edit", {
+    ["read", { path: "packages/api/handler.ts" }],
+    ["write", { path: "packages/api/handler.ts", content: "export {};" }],
+    ["edit", {
       path: "packages/api/handler.ts",
       tag: "ABCD",
       ops: "PUT 1.=1:\n+after\n",
     }],
-    ["BrowserPreview", { path: "packages/api/index.html" }],
+    ["browser_preview", { path: "packages/api/index.html" }],
   ])("resolves path-scoped instructions before %s", async (toolName, params) => {
     const host = {
       call: vi
@@ -980,7 +980,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     );
     if (!tool) {
       const search = (runtime as any).agent.state.tools.find(
-        (candidate: any) => candidate.name === "ToolSearch",
+        (candidate: any) => candidate.name === "tool_search",
       );
       await search.execute("search-1", { query: toolName });
       await (runtime as any).rebuiltAgentContext();
@@ -1017,7 +1017,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const read = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Read",
+      (tool: any) => tool.name === "read",
     );
 
     await read.execute("tool-a", { path: "packages/a/file.ts" });
@@ -1040,7 +1040,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host, projectPath: "/workspace/project" });
     const read = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Read",
+      (tool: any) => tool.name === "read",
     );
 
     await read.execute("tool-a", { path: "packages/api/handler.ts" });
@@ -1075,7 +1075,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
       },
     });
     const read = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Read",
+      (tool: any) => tool.name === "read",
     );
 
     await read.execute("tool-a", { path: "packages/api/handler.ts" });
@@ -1111,7 +1111,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
       },
     });
     const read = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Read",
+      (tool: any) => tool.name === "read",
     );
 
     await read.execute("tool-a", { path: "packages/a/file.ts" });
@@ -1141,7 +1141,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     const runtime = createRuntime({ commandShell: powershell });
     const systemPrompt = (runtime as any).agent.state.systemPrompt as string;
     const bash = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Bash",
+      (tool: any) => tool.name === "bash",
     );
 
     expect(systemPrompt).toContain("Windows PowerShell");
@@ -1166,7 +1166,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const bash = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Bash",
+      (tool: any) => tool.name === "bash",
     );
     expect(bash.description).toContain("60-second timeout");
     expect((bash.parameters as any).properties.timeout.description).toContain(
@@ -1177,7 +1177,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     const defaultCall = host.call.mock.calls.at(-1)!;
     expect(defaultCall[0]).toBe("tools.execute");
     expect(defaultCall[1]).toMatchObject({
-      toolName: "Bash",
+      toolName: "bash",
       expectedCommandShellId: "bash",
       expectedCommandShellDialect: "posix",
       timeoutMs: 60_000,
@@ -1200,7 +1200,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const bash = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Bash",
+      (tool: any) => tool.name === "bash",
     );
 
     await bash.execute("bash-min", { command: "printf min", timeout: 1 });
@@ -1237,7 +1237,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const bash = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Bash",
+      (tool: any) => tool.name === "bash",
     );
 
     await bash.execute("bash-ms", { command: "printf ms", timeout: 120_000 });
@@ -1283,12 +1283,12 @@ describe("DesktopAgentRuntime configuration matching", () => {
     // and are only activated on demand.
     const tool = (name: string) => (runtime as any).toolCatalog.get(name);
 
-    for (const name of ["Read", "Write", "Edit"]) {
+    for (const name of ["read", "write", "edit"]) {
       expect((tool(name).parameters as any).properties.file_path).toMatchObject({
         type: "string",
       });
     }
-    for (const name of ["Glob", "Grep"]) {
+    for (const name of ["glob", "grep"]) {
       expect((tool(name).parameters as any).properties.query).toMatchObject({
         type: "string",
       });
@@ -1299,23 +1299,23 @@ describe("DesktopAgentRuntime configuration matching", () => {
         .filter((call: unknown[]) => call[0] === "tools.execute")
         .at(-1)![1] as Record<string, unknown>;
 
-    await tool("Read").execute("read-alias", {
+    await tool("read").execute("read-alias", {
       file_path: "src/a.ts",
       limit: 10,
     });
     expect(lastExecute()).toMatchObject({
-      toolName: "Read",
+      toolName: "read",
       args: { path: "src/a.ts", limit: 10 },
     });
 
-    await tool("Grep").execute("grep-alias", { query: "foo", path: "src" });
+    await tool("grep").execute("grep-alias", { query: "foo", path: "src" });
     expect(lastExecute()).toMatchObject({
-      toolName: "Grep",
+      toolName: "grep",
       args: { pattern: "foo", path: "src" },
     });
 
     // The canonical name wins when a call somehow carries both.
-    await tool("Read").execute("read-both", {
+    await tool("read").execute("read-both", {
       path: "src/canonical.ts",
       file_path: "src/alias.ts",
     });
@@ -1325,11 +1325,11 @@ describe("DesktopAgentRuntime configuration matching", () => {
     // these folds onto `path` so the model does not silently fall back to Bash
     // when its tokenizer prefers a non-canonical argument name.
     for (const alias of ["filepath", "filePath", "filename", "fileName", "file"]) {
-      await tool("Read").execute(`read-${alias}`, {
+      await tool("read").execute(`read-${alias}`, {
         [alias]: `src/${alias}.ts`,
       });
       expect(lastExecute()).toMatchObject({
-        toolName: "Read",
+        toolName: "read",
         args: { path: `src/${alias}.ts` },
       });
       const seen = lastExecute().args as Record<string, unknown>;
@@ -1340,7 +1340,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     // The message now names the accepted aliases and shows a minimal example
     // so the next call can self-correct instead of falling back to shell.
     await expect(
-      tool("Read").execute("read-missing", { limit: 5 }),
+      tool("read").execute("read-missing", { limit: 5 }),
     ).rejects.toMatchObject({
       errorCode: "INVALID_ARGUMENT",
       message: expect.stringMatching(
@@ -1376,7 +1376,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
       const updates: unknown[] = [];
       const runtime = createRuntime({ host });
       const bash = (runtime as any).agent.state.tools.find(
-        (tool: any) => tool.name === "Bash",
+        (tool: any) => tool.name === "bash",
       );
       const controller = new AbortController();
       const pending = bash.execute(
@@ -1468,7 +1468,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
       const updates: unknown[] = [];
       const runtime = createRuntime({ host });
       const bash = (runtime as any).agent.state.tools.find(
-        (tool: any) => tool.name === "Bash",
+        (tool: any) => tool.name === "bash",
       );
       const pending = bash.execute(
         "bash-host-death",
@@ -1507,7 +1507,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     };
     const runtime = createRuntime({ host });
     const bash = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Bash",
+      (tool: any) => tool.name === "bash",
     );
     const controller = new AbortController();
     const pending = bash.execute(
@@ -1745,7 +1745,7 @@ describe("DesktopAgentRuntime live activity", () => {
       since: 300,
       subagentCount: 2,
       agents: [
-        { name: "explorer", lastPhase: "tool", lastToolName: "Read" },
+        { name: "explorer", lastPhase: "tool", lastToolName: "read" },
         { name: "fixer", lastPhase: "thinking" },
       ],
     });
@@ -1776,7 +1776,7 @@ describe("DesktopAgentRuntime live activity", () => {
         since: 300,
         subagentCount: 2,
         agents: [
-          { name: "explorer", lastPhase: "tool", lastToolName: "Read" },
+          { name: "explorer", lastPhase: "tool", lastToolName: "read" },
           { name: "fixer", lastPhase: "thinking" },
         ],
       },
@@ -1786,7 +1786,7 @@ describe("DesktopAgentRuntime live activity", () => {
       since: 300,
       subagentCount: 2,
       agents: [
-        { name: "explorer", lastPhase: "tool", lastToolName: "Read" },
+        { name: "explorer", lastPhase: "tool", lastToolName: "read" },
         { name: "fixer", lastPhase: "thinking" },
       ],
     });
@@ -1829,7 +1829,7 @@ describe("DesktopAgentRuntime live activity", () => {
       event: {
         type: "tool_start",
         toolCallId: "t1",
-        toolName: "Read",
+        toolName: "read",
         args: { path: "a.ts" },
       },
     });
@@ -1837,7 +1837,7 @@ describe("DesktopAgentRuntime live activity", () => {
       phase: "waiting-subagents",
       subagentCount: 1,
       agents: [
-        { name: "explorer", lastPhase: "tool", lastToolName: "Read" },
+        { name: "explorer", lastPhase: "tool", lastToolName: "read" },
       ],
     });
 
@@ -1859,7 +1859,7 @@ describe("DesktopAgentRuntime live activity", () => {
     });
     expect(runtime.getStatus().activity).toMatchObject({
       agents: [
-        { name: "explorer", lastPhase: "thinking", lastToolName: "Read" },
+        { name: "explorer", lastPhase: "thinking", lastToolName: "read" },
       ],
     });
 
@@ -1914,28 +1914,28 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     const names = tools.map((tool) => tool.name);
 
     expect(names).toEqual([
-      "Read",
-      "Bash",
-      "Edit",
-      "Write",
+      "read",
+      "bash",
+      "edit",
+      "write",
       "asktool",
-      "Skill",
-      "EnterPlanMode",
-      "EnterGoalMode",
+      "skill",
+      "enter_plan_mode",
+      "enter_goal_mode",
       "new_context",
-      "ToolSearch",
+      "tool_search",
     ]);
     expect(names).not.toContain("A2A");
     expect(names).not.toContain("Peer");
-    expect(names).not.toContain("BrowserPreview");
-    expect(names).not.toContain("PluginCheck");
+    expect(names).not.toContain("browser_preview");
+    expect(names).not.toContain("check_plugin");
     expect(names).not.toContain("plugin_demo_validate");
 
     const prompt = (runtime as any).agent.state.systemPrompt as string;
     expect(prompt).toContain("# On-demand tools");
-    expect(prompt).toContain("BrowserPreview");
+    expect(prompt).toContain("browser_preview");
     expect(prompt).toContain("plugin_demo_validate");
-    // The skill catalog ships with the tool, so `Skill` is never a catalog row.
+    // The skill catalog ships with the tool, so `skill` is never a catalog row.
     expect(prompt).toContain("# Skills");
     expect(prompt).not.toMatch(/^- Skill:/m);
 
@@ -1995,21 +1995,21 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
 
     expect(names).toEqual(
       expect.arrayContaining([
-        "Read",
-        "Glob",
-        "Grep",
-        "BrowserPreview",
-        "Bash",
-        "SubmitPlan",
+        "read",
+        "glob",
+        "grep",
+        "browser_preview",
+        "bash",
+        "submit_plan",
       ]),
     );
-    expect(names).not.toContain("Write");
-    expect(names).not.toContain("Edit");
-    expect(names).not.toContain("Skill");
-    expect(names).not.toContain("PluginCheck");
+    expect(names).not.toContain("write");
+    expect(names).not.toContain("edit");
+    expect(names).not.toContain("skill");
+    expect(names).not.toContain("check_plugin");
     expect(names).not.toContain("plugin_demo_run");
-    expect(names).not.toContain("PluginScaffold");
-    expect(names).not.toContain("PluginPack");
+    expect(names).not.toContain("scaffold_plugin");
+    expect(names).not.toContain("pack_plugin");
 
     await runtime.dispose();
   });
@@ -2074,12 +2074,12 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     const runtime = createRuntime();
     const agent = (runtime as any).agent;
     const search = agent.state.tools.find(
-      (tool: any) => tool.name === "ToolSearch",
+      (tool: any) => tool.name === "tool_search",
     );
 
-    const result = await search.execute("search-1", { query: "BrowserPreview" });
-    expect(result.details.activated).toEqual(["BrowserPreview"]);
-    expect(agent.state.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
+    const result = await search.execute("search-1", { query: "browser_preview" });
+    expect(result.details.activated).toEqual(["browser_preview"]);
+    expect(agent.state.tools.some((tool: any) => tool.name === "browser_preview")).toBe(
       false,
     );
 
@@ -2091,7 +2091,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
         {
           role: "toolResult",
           toolCallId: "search-1",
-          toolName: "ToolSearch",
+          toolName: "tool_search",
           content: result.content,
           details: result.details,
           addedToolNames: result.details.activated,
@@ -2100,7 +2100,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
         },
       ],
     });
-    expect(next.context.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
+    expect(next.context.tools.some((tool: any) => tool.name === "browser_preview")).toBe(
       true,
     );
     // Tool deltas append new declarations; catalog order is not semantic.
@@ -2115,21 +2115,21 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     const runtime = createRuntime();
     const agent = (runtime as any).agent;
     const search = agent.state.tools.find(
-      (tool: any) => tool.name === "ToolSearch",
+      (tool: any) => tool.name === "tool_search",
     );
-    await search.execute("search-1", { query: "BrowserPreview" });
+    await search.execute("search-1", { query: "browser_preview" });
     await (runtime as any).prepareNextTurn({
       context: { systemPrompt: "", messages: [], tools: agent.state.tools },
       messages: [],
       newMessages: [],
       toolResults: [],
     });
-    expect(agent.state.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
+    expect(agent.state.tools.some((tool: any) => tool.name === "browser_preview")).toBe(
       true,
     );
 
     (runtime as any).resetDeferredToolsForPrompt();
-    expect(agent.state.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
+    expect(agent.state.tools.some((tool: any) => tool.name === "browser_preview")).toBe(
       false,
     );
     expect(getCurrentTools(agent.state.messages)).toEqual(agent.state.tools.map(toToolDeclaration));
@@ -2152,16 +2152,16 @@ describe("DesktopAgentRuntime mode and tool composition", () => {
     const agentTools = agent.state.tools.map((tool: any) => tool.name);
     expect(agentTools).toEqual(
       expect.arrayContaining([
-        "Read",
-        "Write",
-        "Edit",
-        "Bash",
-        "EnterPlanMode",
-        "ToolSearch",
+        "read",
+        "write",
+        "edit",
+        "bash",
+        "enter_plan_mode",
+        "tool_search",
       ]),
     );
-    expect(agentTools).not.toContain("SubmitPlan");
-    expect(agentTools).not.toContain("SubmitGoal");
+    expect(agentTools).not.toContain("submit_plan");
+    expect(agentTools).not.toContain("submit_goal");
 
     runtime.setMode("plan");
     expect((runtime as any).agent).toBe(initialAgent);
@@ -2169,28 +2169,28 @@ describe("DesktopAgentRuntime mode and tool composition", () => {
     const planTools = agent.state.tools.map((tool: any) => tool.name);
     expect(planTools).toEqual(
       expect.arrayContaining([
-        "Read",
-        "Glob",
-        "Grep",
-        "BrowserPreview",
-        "Bash",
-        "SubmitPlan",
+        "read",
+        "glob",
+        "grep",
+        "browser_preview",
+        "bash",
+        "submit_plan",
       ]),
     );
     expect(planTools).not.toEqual(
-      expect.arrayContaining(["Write", "Edit", "plugin_demo_run"]),
+      expect.arrayContaining(["write", "edit", "plugin_demo_run"]),
     );
-    expect(planTools).not.toContain("EnterPlanMode");
-    expect(planTools).not.toContain("SubmitGoal");
-    expect(agent.state.systemPrompt).toContain("SubmitPlan");
-    expect(agent.state.systemPrompt).toContain("Do not use Write, Edit, or any unknown tool");
+    expect(planTools).not.toContain("enter_plan_mode");
+    expect(planTools).not.toContain("submit_goal");
+    expect(agent.state.systemPrompt).toContain("submit_plan");
+    expect(agent.state.systemPrompt).toContain("Do not use `write`, `edit`, or any unknown tool");
     expect(agent.state.systemPrompt).toContain("plan-safe actions");
     expect(agent.state.systemPrompt).not.toContain("plugin_demo_run");
-    expect(agent.state.systemPrompt).not.toContain("PluginCheck");
+    expect(agent.state.systemPrompt).not.toContain("check_plugin");
 
     runtime.setMode("agent");
     expect((runtime as any).agent).toBe(initialAgent);
-    expect(agent.state.tools.map((tool: any) => tool.name)).toContain("EnterPlanMode");
+    expect(agent.state.tools.map((tool: any) => tool.name)).toContain("enter_plan_mode");
     await runtime.dispose();
   });
 
@@ -2210,21 +2210,21 @@ describe("DesktopAgentRuntime mode and tool composition", () => {
 
     expect(goalTools).toEqual(
       expect.arrayContaining([
-        "Read",
-        "Glob",
-        "Grep",
-        "BrowserPreview",
-        "Bash",
-        "SubmitGoal",
+        "read",
+        "glob",
+        "grep",
+        "browser_preview",
+        "bash",
+        "submit_goal",
       ]),
     );
-    expect(goalTools).not.toContain("Write");
-    expect(goalTools).not.toContain("Edit");
+    expect(goalTools).not.toContain("write");
+    expect(goalTools).not.toContain("edit");
     expect(goalTools).not.toContain("plugin_demo_run");
-    expect(goalTools).not.toContain("SubmitPlan");
-    expect(goalTools).not.toContain("EnterGoalMode");
+    expect(goalTools).not.toContain("submit_plan");
+    expect(goalTools).not.toContain("enter_goal_mode");
     expect(runtime.getStatus().planningState).toBe("planning");
-    expect(agent.state.systemPrompt).toContain("SubmitGoal");
+    expect(agent.state.systemPrompt).toContain("submit_goal");
     expect(agent.state.systemPrompt).toContain("acceptance criteria");
 
     await runtime.dispose();
@@ -2241,22 +2241,22 @@ describe("DesktopAgentRuntime plan transitions", () => {
     const mixedBatch = {
       assistantMessage: {
         content: [
-          { type: "toolCall", id: "enter-call", name: "EnterPlanMode", arguments: {} },
-          { type: "toolCall", id: "read-call", name: "Read", arguments: { path: "a.txt" } },
+          { type: "toolCall", id: "enter-call", name: "enter_plan_mode", arguments: {} },
+          { type: "toolCall", id: "read-call", name: "read", arguments: { path: "a.txt" } },
         ],
       },
-      toolCall: { id: "enter-call", name: "EnterPlanMode", arguments: {} },
+      toolCall: { id: "enter-call", name: "enter_plan_mode", arguments: {} },
       args: {},
       context: {},
     };
     await expect(beforeToolCall(mixedBatch)).resolves.toMatchObject({ block: true });
 
     host.call.mockResolvedValueOnce({ ok: true, state: "planning" });
-    const enterTool = agent.state.tools.find((tool: any) => tool.name === "EnterPlanMode");
+    const enterTool = agent.state.tools.find((tool: any) => tool.name === "enter_plan_mode");
     const enterResult = await enterTool.execute("enter-call", {});
     expect(enterResult.terminate).toBeUndefined();
     expect(runtime.getMode()).toBe("plan");
-    expect(agent.state.tools.map((tool: any) => tool.name)).toContain("SubmitPlan");
+    expect(agent.state.tools.map((tool: any) => tool.name)).toContain("submit_plan");
     expect(host.call).toHaveBeenNthCalledWith(1, "plans.enter", {
       sessionId: "session-1",
       turnId: "turn-1",
@@ -2287,7 +2287,7 @@ describe("DesktopAgentRuntime plan transitions", () => {
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     };
     host.call.mockResolvedValueOnce({ status: "pending", proposal });
-    const submitTool = agent.state.tools.find((tool: any) => tool.name === "SubmitPlan");
+    const submitTool = agent.state.tools.find((tool: any) => tool.name === "submit_plan");
     expect(submitTool.description).toContain("immutable historical checkpoints");
     expect(submitTool.description).toContain("new full snapshot in this turn");
     const submitResult = await submitTool.execute("submit-call-1", {
@@ -2298,7 +2298,7 @@ describe("DesktopAgentRuntime plan transitions", () => {
     expect(submitResult.terminate).toBe(true);
     expect(runtime.getMode()).toBe("plan");
     expect(runtime.getStatus().planningState).toBe("awaiting_approval");
-    expect(agent.state.tools.map((tool: any) => tool.name)).toContain("SubmitPlan");
+    expect(agent.state.tools.map((tool: any) => tool.name)).toContain("submit_plan");
     expect(host.call).toHaveBeenLastCalledWith(
       "plans.submit",
       expect.objectContaining({
@@ -2322,7 +2322,7 @@ describe("DesktopAgentRuntime plan transitions", () => {
 
     host.call.mockResolvedValueOnce({ ok: true, state: "planning" });
     const enterTool = agent.state.tools.find(
-      (tool: any) => tool.name === "EnterGoalMode",
+      (tool: any) => tool.name === "enter_goal_mode",
     );
     await enterTool.execute("enter-goal-call", {});
     expect(runtime.getMode()).toBe("goal");
@@ -2356,7 +2356,7 @@ describe("DesktopAgentRuntime plan transitions", () => {
     };
     host.call.mockResolvedValueOnce({ status: "pending", proposal });
     const submitTool = agent.state.tools.find(
-      (tool: any) => tool.name === "SubmitGoal",
+      (tool: any) => tool.name === "submit_goal",
     );
     expect(submitTool.description).toContain("acceptance criteria");
     const submitResult = await submitTool.execute("submit-goal-call", {
@@ -2389,26 +2389,26 @@ describe("DesktopAgentRuntime plan transitions", () => {
       beforeToolCall({
         assistantMessage: {
           content: [
-            { type: "toolCall", id: "s1", name: "SubmitPlan", arguments: {} },
+            { type: "toolCall", id: "s1", name: "submit_plan", arguments: {} },
           ],
         },
-        toolCall: { id: "s1", name: "SubmitPlan", arguments: {} },
+        toolCall: { id: "s1", name: "submit_plan", arguments: {} },
         args: {},
         context: {},
       }),
     ).resolves.toMatchObject({
       block: true,
-      reason: "SubmitPlan is available only in Plan mode.",
+      reason: "submit_plan is available only in Plan mode.",
     });
 
     await expect(
       beforeToolCall({
         assistantMessage: {
           content: [
-            { type: "toolCall", id: "e1", name: "EnterGoalMode", arguments: {} },
+            { type: "toolCall", id: "e1", name: "enter_goal_mode", arguments: {} },
           ],
         },
-        toolCall: { id: "e1", name: "EnterGoalMode", arguments: {} },
+        toolCall: { id: "e1", name: "enter_goal_mode", arguments: {} },
         args: {},
         context: {},
       }),
@@ -3242,7 +3242,7 @@ describe("DesktopAgentRuntime session collaboration provenance", () => {
     const agent = (runtime as any).agent;
     const handle = (runtime as any).handleAgentEvent.bind(runtime);
     const toolBatch = assistantMessage({
-      content: [{ type: "toolCall", id: "call-1", name: "Read", arguments: {} }],
+      content: [{ type: "toolCall", id: "call-1", name: "read", arguments: {} }],
       stopReason: "toolUse",
     });
     const silent = assistantMessage({ content: [] });
@@ -3391,7 +3391,7 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
     content: "",
     createdAt: new Date().toISOString(),
     status: "complete",
-    toolName: "Grep",
+    toolName: "grep",
     toolCallId: "call-1",
     toolStatus: "success",
     toolArgs: { pattern: "renderFormContent" },
@@ -3443,14 +3443,14 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
       {
         type: "toolCall",
         id: "call-1",
-        name: "Grep",
+        name: "grep",
         arguments: { pattern: "renderFormContent" },
       },
     ]);
     expect(messages[2]).toMatchObject({
       role: "toolResult",
       toolCallId: "call-1",
-      toolName: "Grep",
+      toolName: "grep",
       content: [{ type: "text", text: "index.html:2924 match" }],
       details: { count: 1 },
       isError: false,
@@ -3606,7 +3606,7 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
       {
         type: "toolCall",
         id: "call-1",
-        name: "Grep",
+        name: "grep",
         arguments: { pattern: "renderFormContent" },
       },
     ]);
@@ -3658,11 +3658,11 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
           status: "complete",
         },
         toolRow({
-          toolName: "ToolSearch",
+          toolName: "tool_search",
           toolResult: {
             content: [{ type: "text", text: "Activated BrowserPreview." }],
-            details: { activated: ["BrowserPreview"] },
-            addedToolNames: ["BrowserPreview"],
+            details: { activated: ["browser_preview"] },
+            addedToolNames: ["browser_preview"],
           },
         }),
       ],
@@ -3671,7 +3671,7 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
 
     expect(messages[1]).toMatchObject({
       role: "toolResult",
-      details: { activated: ["BrowserPreview"] },
+      details: { activated: ["browser_preview"] },
     });
 
     await runtime.dispose();
@@ -4001,7 +4001,7 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     };
     const toolUseMessage = {
       role: "assistant",
-      content: [{ type: "toolCall", id: "call-1", name: "Read", arguments: {} }],
+      content: [{ type: "toolCall", id: "call-1", name: "read", arguments: {} }],
       stopReason: "toolUse",
       timestamp: 1,
     };
@@ -4585,7 +4585,7 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     const handleAgentEvent = (runtime as any).handleAgentEvent.bind(runtime);
     const toolTurn = assistantMessage({
       content: [
-        { type: "toolCall", id: "call-1", name: "Read", arguments: {} },
+        { type: "toolCall", id: "call-1", name: "read", arguments: {} },
       ],
       stopReason: "toolUse",
     });
@@ -4883,7 +4883,7 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
   const toolResult = {
     role: "toolResult" as const,
     toolCallId: "tool-call-1",
-    toolName: "Read",
+    toolName: "read",
     content: [{ type: "text" as const, text: "large result" }],
     isError: false,
     timestamp: 2,
@@ -5188,7 +5188,7 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
         {
           type: "toolCall" as const,
           id: "large-tool-call",
-          name: "Read",
+          name: "read",
           arguments: { path: "large.log" },
         },
       ],
@@ -5402,7 +5402,7 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     const toolCalls = resultSizes.map((_, index) => ({
       type: "toolCall" as const,
       id: `parallel-tool-${index}`,
-      name: "Read",
+      name: "read",
       arguments: { path: `large-${index}.txt` },
     }));
     const toolCarrier = {
@@ -6058,7 +6058,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
     await (runtime as any).handleAgentEvent({
       type: "tool_execution_start",
       toolCallId: "call-1",
-      toolName: "Read",
+      toolName: "read",
       args: {},
     });
     expect(generateCompaction).not.toHaveBeenCalled();
@@ -6268,7 +6268,7 @@ describe("DesktopAgentRuntime plugin skills (D174)", () => {
     // Only the catalog line travels up front; the body loads on demand.
     expect(prompt).not.toContain("Skill: Release notes");
     // The catalog is useless behind a search: the tool is callable on turn one.
-    expect(agent.state.tools.some((tool: any) => tool.name === "Skill")).toBe(true);
+    expect(agent.state.tools.some((tool: any) => tool.name === "skill")).toBe(true);
     // The user's own instructions come last, so they keep the final word.
     expect(prompt.indexOf("# Skills")).toBeLessThan(
       prompt.indexOf("# Project instructions"),
@@ -6282,7 +6282,7 @@ describe("DesktopAgentRuntime plugin skills (D174)", () => {
     const agent = (runtime as any).agent;
 
     expect(agent.state.systemPrompt).not.toContain("# Skills");
-    expect(agent.state.tools.some((tool: any) => tool.name === "Skill")).toBe(false);
+    expect(agent.state.tools.some((tool: any) => tool.name === "skill")).toBe(false);
 
     await runtime.dispose();
   });
@@ -6295,7 +6295,7 @@ describe("DesktopAgentRuntime plugin skills (D174)", () => {
     };
     const runtime = createRuntime({ pluginSkills, host });
 
-    await (runtime as any).loadPathInstructions("Read", { path: "src/a.ts" });
+    await (runtime as any).loadPathInstructions("read", { path: "src/a.ts" });
 
     const prompt = (runtime as any).agent.state.systemPrompt;
     expect(prompt).toContain("# Skills");
@@ -6331,7 +6331,7 @@ describe("DesktopAgentRuntime plugin skills (D174)", () => {
     };
     const runtime = createRuntime({ pluginSkills, host });
     const tool = (runtime as any).agent.state.tools.find(
-      (entry: any) => entry.name === "Skill",
+      (entry: any) => entry.name === "skill",
     );
 
     const result = await tool.execute("call-1", { id: "demo.hello/release-notes" });
@@ -6339,7 +6339,7 @@ describe("DesktopAgentRuntime plugin skills (D174)", () => {
     expect(host.call).toHaveBeenCalledWith(
       "tools.execute",
       expect.objectContaining({
-        toolName: "Skill",
+        toolName: "skill",
         args: { id: "demo.hello/release-notes" },
       }),
     );
@@ -6355,14 +6355,14 @@ describe("DesktopAgentRuntime subagents", () => {
   const explorer: SubagentDefinition = {
     name: "explorer",
     description: "Search the workspace and report findings.",
-    tools: ["Read", "Glob", "Grep"],
+    tools: ["read", "glob", "grep"],
     prompt: "Report file paths and line numbers.",
     source: "builtin",
   };
   const pinned: SubagentDefinition = {
     name: "reviewer",
     description: "Review a diff.",
-    tools: ["Read", "Bash"],
+    tools: ["read", "bash"],
     model: { providerId: "remote", modelId: "remote-model" },
     prompt: "Review the change.",
     source: "user",
@@ -6371,7 +6371,7 @@ describe("DesktopAgentRuntime subagents", () => {
 
   function taskTool(runtime: DesktopAgentRuntime) {
     return (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "Task",
+      (tool: any) => tool.name === "task",
     );
   }
 
@@ -6381,11 +6381,11 @@ describe("DesktopAgentRuntime subagents", () => {
 
     // Core, so delegation needs no ToolSearch round trip first.
     expect(tool).toBeDefined();
-    expect((runtime as any).deferredToolNames.has("Task")).toBe(false);
+    expect((runtime as any).deferredToolNames.has("task")).toBe(false);
     expect(tool.description).toContain(
-      "- explorer (tools: Read, Glob, Grep): Search the workspace and report findings.",
+      "- explorer (tools: read, glob, grep): Search the workspace and report findings.",
     );
-    expect(tool.description).toContain("- reviewer (tools: Read, Bash): Review a diff.");
+    expect(tool.description).toContain("- reviewer (tools: read, bash): Review a diff.");
 
     await runtime.dispose();
   });
@@ -6425,15 +6425,15 @@ describe("DesktopAgentRuntime subagents", () => {
 
     expect(subagentRuns.calls).toHaveLength(1);
     const names = subagentRuns.calls[0].tools.map((tool: { name: string }) => tool.name);
-    expect(names).toContain("Skill");
+    expect(names).toContain("skill");
     expect(names).toContain("plugin_demo_ping");
-    expect(names).toContain("Read");
-    expect(names).not.toContain("Task");
-    expect(names).not.toContain("TaskWait");
-    expect(names).not.toContain("ToolSearch");
+    expect(names).toContain("read");
+    expect(names).not.toContain("task");
+    expect(names).not.toContain("task_wait");
+    expect(names).not.toContain("tool_search");
     expect(names).not.toContain("new_context");
     expect(names).not.toContain("asktool");
-    expect(subagentRuns.calls[0].systemPrompt).toContain("Skill");
+    expect(subagentRuns.calls[0].systemPrompt).toContain("skill");
     expect(subagentRuns.calls[0].systemPrompt).toContain("demo.hello/release-notes");
     expect(subagentRuns.calls[0].systemPrompt).toContain("You may change files");
     expect(taskTool(runtime).description).toContain("(tools: inherit)");
@@ -6536,9 +6536,9 @@ describe("DesktopAgentRuntime subagents", () => {
     const runtime = createRuntime({ subagents: [explorer] });
     const catalog = (runtime as any).toolCatalog as Map<string, any>;
 
-    expect(catalog.get("Task").executionMode).toBe("parallel");
+    expect(catalog.get("task").executionMode).toBe("parallel");
     for (const [name, tool] of catalog) {
-      if (name === "Task") continue;
+      if (name === "task") continue;
       expect(tool.executionMode).toBe("sequential");
     }
 
@@ -6555,7 +6555,7 @@ describe("DesktopAgentRuntime subagents", () => {
     for (const mode of ["plan", "goal"] as const) {
       const runtime = createRuntime({ mode, subagents: [explorer] });
       expect(taskTool(runtime)).toBeUndefined();
-      expect((runtime as any).toolCatalog.has("Task")).toBe(false);
+      expect((runtime as any).toolCatalog.has("task")).toBe(false);
       await runtime.dispose();
     }
   });
@@ -6564,7 +6564,7 @@ describe("DesktopAgentRuntime subagents", () => {
     const runtime = createRuntime({ subagents: [explorer] });
 
     runtime.setMode("plan");
-    expect((runtime as any).toolCatalog.has("Task")).toBe(false);
+    expect((runtime as any).toolCatalog.has("task")).toBe(false);
     runtime.setMode("agent");
     expect(taskTool(runtime)).toBeDefined();
 
@@ -6679,12 +6679,12 @@ describe("DesktopAgentRuntime subagents", () => {
     const readOnly = ((runtime as any).subagentGuidance(explorer) as string[]).join(
       "\n\n",
     );
-    expect(readOnly).toContain("prefer Read, Grep, and Glob");
+    expect(readOnly).toContain("prefer `read`, `grep`, and `glob`");
     expect(readOnly).toContain(
-      "Read accepts only an existing regular text file, never a directory",
+      "`read` accepts only an existing regular text file, never a directory",
     );
-    expect(readOnly).toContain("Grep takes a file-or-directory `path`");
-    expect(readOnly).not.toContain("use Edit for one small unique replacement");
+    expect(readOnly).toContain("`grep` takes a file-or-directory `path`");
+    expect(readOnly).not.toContain("use `edit` for one small unique replacement");
     expect(readOnly).toContain("Use project rules.");
 
     const withShell = ((runtime as any).subagentGuidance(pinned) as string[]).join(
@@ -6759,8 +6759,8 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(options.provider.modelId).toBe("remote-model");
     expect(options.task).toBe("Review src/app.ts.");
     expect(options.tools.map((entry: any) => entry.name)).toEqual([
-      "Read",
-      "Bash",
+      "read",
+      "bash",
     ]);
     // The remote provider advertises no reasoning, so the session level is
     // clamped rather than passed through.
@@ -6835,10 +6835,10 @@ describe("DesktopAgentRuntime subagents", () => {
         );
       };
       try {
-        await handle({ type: "tool_execution_start", toolName: "Task", toolCallId: "task-live", args });
+        await handle({ type: "tool_execution_start", toolName: "task", toolCallId: "task-live", args });
         if (settlesEarly) await settle();
         await handle({
-          type: "tool_execution_end", toolName: "Task", toolCallId: "task-live",
+          type: "tool_execution_end", toolName: "task", toolCallId: "task-live",
           result: started, isError: false,
         });
         if (!settlesEarly) await settle();
@@ -6850,7 +6850,7 @@ describe("DesktopAgentRuntime subagents", () => {
         expect(snapshots[0]).toMatchObject({
           turnId: "original-turn",
           event: { message: {
-            id: "task-live", toolName: "Task", toolArgs: args, toolStatus: "success",
+            id: "task-live", toolName: "task", toolArgs: args, toolStatus: "success",
             toolResult: { details: {
               delegationId: started.details.delegationId,
               status: "completed", completedAt: expect.any(Number),
@@ -6888,10 +6888,10 @@ describe("DesktopAgentRuntime subagents", () => {
     };
     const task = taskTool(runtime);
     const wait = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "TaskWait",
+      (tool: any) => tool.name === "task_wait",
     );
     expect(wait).toBeDefined();
-    expect((runtime as any).deferredToolNames.has("TaskWait")).toBe(false);
+    expect((runtime as any).deferredToolNames.has("task_wait")).toBe(false);
 
     const started = await task.execute("task-1", {
       agent: "explorer",
@@ -6988,10 +6988,10 @@ describe("DesktopAgentRuntime subagents", () => {
     subagentRuns.resolveRun = undefined;
     const task = taskTool(runtime);
     const wait = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "TaskWait",
+      (tool: any) => tool.name === "task_wait",
     );
     const stop = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "TaskStop",
+      (tool: any) => tool.name === "task_stop",
     );
     expect(stop).toBeDefined();
 
@@ -7071,7 +7071,7 @@ describe("DesktopAgentRuntime subagents", () => {
 
     // Freeing one slot (via stop) makes room again.
     const stop = (runtime as any).agent.state.tools.find(
-      (tool: any) => tool.name === "TaskStop",
+      (tool: any) => tool.name === "task_stop",
     );
     await stop.execute("stop-1", { delegationIds: [ids[0]] });
     await vi.waitFor(() => {
@@ -7304,7 +7304,7 @@ describe("DesktopAgentRuntime subagents", () => {
     subagentRuns.resolveRun = undefined;
     const tool = taskTool(runtime);
     const wait = (runtime as any).agent.state.tools.find(
-      (entry: any) => entry.name === "TaskWait",
+      (entry: any) => entry.name === "task_wait",
     );
     const prompt = vi.fn(async () => undefined);
     (runtime as any).agent.prompt = prompt;
@@ -7347,7 +7347,7 @@ describe("DesktopAgentRuntime subagents", () => {
     subagentRuns.resolveRun = undefined;
     const task = taskTool(runtime);
     const wait = (runtime as any).agent.state.tools.find(
-      (entry: any) => entry.name === "TaskWait",
+      (entry: any) => entry.name === "task_wait",
     );
     const prompt = vi.fn(async () => undefined);
     (runtime as any).agent.prompt = prompt;
@@ -7404,7 +7404,7 @@ describe("DesktopAgentRuntime subagents", () => {
     subagentRuns.resolveRun = undefined;
     const task = taskTool(runtime);
     const list = (runtime as any).agent.state.tools.find(
-      (candidate: { name: string }) => candidate.name === "TaskList",
+      (candidate: { name: string }) => candidate.name === "task_list",
     );
 
     const started = await task.execute("task-1", {
@@ -7426,7 +7426,7 @@ describe("DesktopAgentRuntime subagents", () => {
     const mutator: SubagentDefinition = {
       name: "fixer",
       description: "Implement a multi-file change.",
-      tools: ["Read", "Edit", "Write"],
+      tools: ["read", "edit", "write"],
       permission: "accept-edits",
       prompt: "Implement it.",
       source: "builtin",
@@ -7454,7 +7454,7 @@ describe("DesktopAgentRuntime subagents", () => {
     const options = subagentRuns.calls[0];
     // The delegate's tools are wrapped; the wrapper forwards the permission
     // scope into the host RPC while the call runs, then clears it.
-    const wrappedRead = options.tools.find((entry: any) => entry.name === "Read");
+    const wrappedRead = options.tools.find((entry: any) => entry.name === "read");
     await wrappedRead.execute("read-1", { path: "src/app.ts" }, undefined, undefined);
     expect(host.call).toHaveBeenCalledWith(
       "tools.execute",
@@ -7472,7 +7472,7 @@ describe("DesktopAgentRuntime subagents", () => {
     });
     const plainOptions = subagentRuns.calls[0];
     expect(
-      plainOptions.tools.some((entry: any) => entry.name === "Read"),
+      plainOptions.tools.some((entry: any) => entry.name === "read"),
     ).toBe(true);
 
     await runtime.dispose();
@@ -7518,7 +7518,7 @@ describe("DesktopAgentRuntime subagents", () => {
   });
 
   describe("resume (ADR 0279)", () => {
-    /** Rows a delegate left in the transcript, tagged with its `Task` call. */
+    /** Rows a delegate left in the transcript, tagged with its `task` call. */
     function delegateRow(
       id: string,
       parentToolCallId: string,
@@ -7553,7 +7553,7 @@ describe("DesktopAgentRuntime subagents", () => {
           content: "",
           createdAt: "2026-08-06T00:00:02.000Z",
           toolCallId: "read-1",
-          toolName: "Read",
+          toolName: "read",
           toolArgs: { path: "src/app.ts" },
           toolResult: {
             content: [{ type: "text", text: "line one\nline two" }],
@@ -7570,7 +7570,7 @@ describe("DesktopAgentRuntime subagents", () => {
         content: "",
         createdAt: "2026-08-06T00:00:00.000Z",
         toolCallId: "task-1",
-        toolName: "Task",
+        toolName: "task",
         toolArgs: { agent: "explorer", task: "Explore the parser." },
         toolResult: { details: { delegationId: "del-1", agent: "explorer" } },
         toolStatus: "success",
@@ -7605,7 +7605,7 @@ describe("DesktopAgentRuntime subagents", () => {
           (message: any) =>
             message.role === "assistant" &&
             message.content.some(
-              (block: any) => block.type === "toolCall" && block.name === "Read",
+              (block: any) => block.type === "toolCall" && block.name === "read",
             ),
         ),
       ).toBe(true);
@@ -7632,7 +7632,7 @@ describe("DesktopAgentRuntime subagents", () => {
         content: "",
         createdAt: "2026-08-06T00:00:00.000Z",
         toolCallId: "task-1",
-        toolName: "Task",
+        toolName: "task",
         toolArgs: { agent: "explorer", task: "Explore." },
         toolResult: { details: { delegationId: "del-1" } },
         toolStatus: "success",
@@ -7750,7 +7750,7 @@ describe("DesktopAgentRuntime subagents", () => {
       await runtime.dispose();
     });
 
-    /** A `Task` row a restart rebuilds its chains from. */
+    /** A `task` row a restart rebuilds its chains from. */
     function restartedTaskRow(
       taskCallId: string,
       delegationId: string,
@@ -7762,7 +7762,7 @@ describe("DesktopAgentRuntime subagents", () => {
         content: "",
         createdAt: "2026-08-06T00:00:00.000Z",
         toolCallId: taskCallId,
-        toolName: "Task",
+        toolName: "task",
         toolArgs: { agent: "explorer", task: "Explore the parser." },
         toolResult: {
           details: { delegationId, agent: "explorer", ...details },
@@ -7808,7 +7808,7 @@ describe("DesktopAgentRuntime subagents", () => {
         delegateEnvelope("task-1", {
           type: "tool_start",
           toolCallId: "read-1",
-          toolName: "Read",
+          toolName: "read",
           args: { path: "src/deep.ts" },
         }),
       );
@@ -7827,7 +7827,7 @@ describe("DesktopAgentRuntime subagents", () => {
       );
       expect(row).toMatchObject({
         role: "tool",
-        toolName: "Read",
+        toolName: "read",
         toolArgs: { path: "src/deep.ts" },
         parentToolCallId: "task-1",
         agentName: "explorer",
@@ -8005,13 +8005,13 @@ describe("DesktopAgentRuntime subagents", () => {
       const handle = internals.handleAgentEvent.bind(runtime);
       await handle({
         type: "tool_execution_start",
-        toolName: "Task",
+        toolName: "task",
         toolCallId: "task-2",
         args,
       });
       await handle({
         type: "tool_execution_end",
-        toolName: "Task",
+        toolName: "task",
         toolCallId: "task-2",
         result,
         isError: false,
@@ -8156,14 +8156,14 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     content: "",
     createdAt: now(),
     status: "complete",
-    toolName: "ToolSearch",
+    toolName: "tool_search",
     toolCallId: "call-search-1",
     toolStatus: "success",
-    toolArgs: { query: "BrowserPreview" },
+    toolArgs: { query: "browser_preview" },
     toolResult: {
       content: [{ type: "text", text: "Activated on-demand tools: BrowserPreview." }],
-      details: { activated: ["BrowserPreview"] },
-      addedToolNames: ["BrowserPreview"],
+      details: { activated: ["browser_preview"] },
+      addedToolNames: ["browser_preview"],
     },
     ...overrides,
   });
@@ -8182,7 +8182,7 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
 
     (runtime as any).resetDeferredToolsForPrompt();
 
-    expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    expect(hasTool(runtime, "browser_preview")).toBe(true);
     await runtime.dispose();
   });
 
@@ -8197,7 +8197,7 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
           content: "",
           createdAt: now(),
           status: "complete",
-          toolName: "BrowserPreview",
+          toolName: "browser_preview",
           toolCallId: "call-preview-empty",
           toolStatus: "success",
           toolArgs: {},
@@ -8206,7 +8206,7 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     });
 
     (runtime as any).resetDeferredToolsForPrompt();
-    expect(hasTool(runtime, "BrowserPreview")).toBe(false);
+    expect(hasTool(runtime, "browser_preview")).toBe(false);
 
     (runtime as any).fullEntries.push(
       ...(createRuntime({
@@ -8218,7 +8218,7 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
             content: "",
             createdAt: now(),
             status: "complete",
-            toolName: "BrowserPreview",
+            toolName: "browser_preview",
             toolCallId: "call-preview-ok",
             toolStatus: "success",
             toolArgs: {},
@@ -8228,19 +8228,19 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
       }) as any).fullEntries,
     );
     (runtime as any).resetDeferredToolsForPrompt();
-    expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    expect(hasTool(runtime, "browser_preview")).toBe(true);
     await runtime.dispose();
   });
 
   it("restores the activation again after a mode round trip", async () => {
     const runtime = createRuntime({ history: [assistantRow, searchRow()] });
     (runtime as any).resetDeferredToolsForPrompt();
-    expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    expect(hasTool(runtime, "browser_preview")).toBe(true);
 
     runtime.setMode("plan");
     runtime.setMode("agent");
 
-    expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    expect(hasTool(runtime, "browser_preview")).toBe(true);
     await runtime.dispose();
   });
 });
@@ -8377,7 +8377,7 @@ describe("DesktopAgentRuntime compaction summary retry and sizing (#543, ADR 028
     return {
       role: "toolResult" as const,
       toolCallId: `tool-${index}`,
-      toolName: "Read",
+      toolName: "read",
       content: [{ type: "text" as const, text }],
       isError: false,
       timestamp: index + 2,
@@ -8559,7 +8559,7 @@ describe("DesktopAgentRuntime compaction summary retry and sizing (#543, ADR 028
     const toolCalls = Array.from({ length: resultCount }, (_, index) => ({
       type: "toolCall" as const,
       id: `tool-${index}`,
-      name: "Read",
+      name: "read",
       arguments: { path: `large-${index}.txt` },
     }));
     const carrier = {
@@ -8911,7 +8911,7 @@ describe("compaction fallback retention (#827)", () => {
    * `toolName` is what pi's file-operation extraction matches on, and it knows
    * the lowercase names: a chunk test that asserts the file list has to use one.
    */
-  function toolStep(ids: string[], timestamp: number, toolName = "Read") {
+  function toolStep(ids: string[], timestamp: number, toolName = "read") {
     return {
       ...assistantMessage({
         content: ids.map((id, index) => ({
@@ -8930,7 +8930,7 @@ describe("compaction fallback retention (#827)", () => {
     return {
       role: "toolResult" as const,
       toolCallId,
-      toolName: "Read",
+      toolName: "read",
       content: [{ type: "text" as const, text }],
       isError: false,
       timestamp,
@@ -9189,6 +9189,102 @@ describe("compaction fallback retention (#827)", () => {
       retainedTailMode: "active_turn",
       retainedTailShape: "recent_window",
     });
+    await runtime.dispose();
+  });
+});
+
+/**
+ * The rename's direct payoff (issue #827): pi's `extractFileOpsFromMessage`
+ * switches on the lowercase names `read` / `write` / `edit` only, so while the
+ * model called `Read` / `Edit` / `Write` the file list pi appends to a summary
+ * (`<read-files>` / `<modified-files>`) and exposes as
+ * `details.readFiles` / `details.modifiedFiles` was always empty. The context
+ * this runtime hands pi now carries the canonical name even when the row was
+ * written before the rename (D620), so the operations are collected again.
+ */
+describe("compaction file operations after the rename (D620, #827)", () => {
+  it("collects read and edit targets from a pre-rename transcript", async () => {
+    const runtime = createRuntime({
+      history: [
+        {
+          id: "old-user",
+          role: "user",
+          content: "Audit the parser.",
+          createdAt: "2026-07-28T00:00:00Z",
+          status: "complete",
+        },
+        {
+          id: "old-assistant",
+          role: "assistant",
+          content: "Reading it now.",
+          createdAt: "2026-07-28T00:00:01Z",
+          status: "complete",
+        },
+        {
+          id: "read-row",
+          role: "tool",
+          content: "file body",
+          createdAt: "2026-07-28T00:00:02Z",
+          status: "complete",
+          toolCallId: "call-read",
+          toolName: "Read",
+          toolArgs: { path: "src/parser.ts" },
+          toolResult: { content: [{ type: "text", text: "file body" }] },
+          toolStatus: "success",
+        },
+        {
+          id: "edit-row",
+          role: "tool",
+          content: "line replaced",
+          createdAt: "2026-07-28T00:00:03Z",
+          status: "complete",
+          toolCallId: "call-edit",
+          toolName: "Edit",
+          toolArgs: { path: "src/parser.ts", tag: "ABCD", ops: [] },
+          toolResult: { content: [{ type: "text", text: "line replaced" }] },
+          toolStatus: "success",
+        },
+        {
+          id: "next-user",
+          role: "user",
+          content: "Now the lexer.",
+          createdAt: "2026-07-28T00:00:04Z",
+          status: "complete",
+        },
+      ],
+    });
+
+    const entries = (runtime as any).entriesWithCompaction();
+    // The rebuilt context is the read boundary: the persisted `Read` / `Edit`
+    // rows reach pi as the canonical `read` / `edit` tool calls.
+    const toolCallNames = entries.flatMap((entry: any) =>
+      Array.isArray(entry.message.content)
+        ? entry.message.content
+            .filter((block: any) => block.type === "toolCall")
+            .map((block: any) => block.name)
+        : [],
+    );
+    expect(toolCallNames).toEqual(["read", "edit"]);
+
+    const budget = {
+      ...(runtime as any).contextBudget(
+        entries.map((entry: any) => entry.message),
+      ),
+      // Force the cut past the fixture so both tool calls land in the range pi
+      // extracts file operations from.
+      keepRecentTokens: 1,
+    };
+    const preparation = (runtime as any).prepareCompactionInput(
+      entries,
+      budget,
+      20_000,
+      "completed_turn",
+    );
+
+    expect(preparation.ok).toBe(true);
+    // pi only recognizes the lowercase names, so these sets used to stay empty.
+    expect([...preparation.value.fileOps.read]).toEqual(["src/parser.ts"]);
+    expect([...preparation.value.fileOps.edited]).toEqual(["src/parser.ts"]);
     await runtime.dispose();
   });
 });

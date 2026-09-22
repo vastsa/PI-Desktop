@@ -224,24 +224,24 @@ describe("Plan protocol contracts", () => {
   });
 
   it("derives transport deadlines from command execution semantics", () => {
-    expect(rpcTimeoutMs("tools.execute", { toolName: "Bash" })).toBe(190_000);
+    expect(rpcTimeoutMs("tools.execute", { toolName: "bash" })).toBe(190_000);
     expect(
-      rpcTimeoutMs("tools.execute", { toolName: "Bash", timeoutMs: 5_000 }),
+      rpcTimeoutMs("tools.execute", { toolName: "bash", timeoutMs: 5_000 }),
     ).toBe(135_000);
     expect(
-      rpcTimeoutMs("tools.execute", { toolName: "Bash", timeoutMs: 60_000 }),
+      rpcTimeoutMs("tools.execute", { toolName: "bash", timeoutMs: 60_000 }),
     ).toBe(190_000);
     expect(
-      rpcTimeoutMs("tools.execute", { toolName: "Bash", timeoutMs: 0 }),
+      rpcTimeoutMs("tools.execute", { toolName: "bash", timeoutMs: 0 }),
     ).toBe(190_000);
     expect(
       rpcTimeoutMs("tools.execute", {
-        toolName: "Bash",
+        toolName: "bash",
         timeoutMs: 2_147_483_647,
       }),
     ).toBe(2_147_483_647);
-    expect(rpcTimeoutMs("tools.execute", { toolName: "Read" })).toBe(130_000);
-    expect(rpcTimeoutMs("tools.execute", { toolName: "BrowserPreview" })).toBe(
+    expect(rpcTimeoutMs("tools.execute", { toolName: "read" })).toBe(130_000);
+    expect(rpcTimeoutMs("tools.execute", { toolName: "browser_preview" })).toBe(
       130_000,
     );
     expect(rpcTimeoutMs("tools.abort", { sessionId: "s", toolCallId: "t" })).toBe(

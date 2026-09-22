@@ -6,7 +6,11 @@
  * replace pre-checkpoint history, and tool results plus total size are capped.
  */
 
-import type { ContextCompactionRecord, UiMessage } from "@pi-desktop/shared";
+import {
+  normalizeToolName,
+  type ContextCompactionRecord,
+  type UiMessage,
+} from "@pi-desktop/shared";
 
 export const PLUGIN_LLM_CONTEXT_MAX_CHARS = 200_000;
 export const PLUGIN_TOOL_RESULT_MAX_CHARS = 8_000;
@@ -91,7 +95,13 @@ export function pluginLlmContextFromTranscript(
   if (options.stripToolName) {
     for (let index = source.length - 1; index >= 0; index--) {
       const row = source[index];
-      if (row?.role !== "tool" || row.toolName !== options.stripToolName) continue;
+      if (
+        row?.role !== "tool" ||
+        normalizeToolName(row.toolName ?? "") !==
+        normalizeToolName(options.stripToolName)
+      ) {
+        continue;
+      }
       if (row.toolStatus === "running" || row.status === "streaming") {
         source = [...source.slice(0, index), ...source.slice(index + 1)];
       }

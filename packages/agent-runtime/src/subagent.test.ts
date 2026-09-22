@@ -40,7 +40,7 @@ function definition(
   return {
     name: "explorer",
     description: "Search the workspace and report findings.",
-    tools: ["Read", "Glob", "Grep"],
+    tools: ["read", "glob", "grep"],
     prompt: "Find the answer and report it.",
     source: "builtin",
     ...overrides,
@@ -98,7 +98,7 @@ describe("composeSubagentSystemPrompt", () => {
     });
 
     expect(prompt).toContain('You are the "explorer" subagent');
-    expect(prompt).toContain("Read, Glob, Grep");
+    expect(prompt).toContain("read, glob, grep");
     expect(prompt).toContain("no tools that change files");
     expect(prompt).toContain("Find the answer and report it.");
     expect(prompt.indexOf("Find the answer and report it.")).toBeLessThan(
@@ -108,7 +108,7 @@ describe("composeSubagentSystemPrompt", () => {
 
   it("tells a mutating delegate to stay inside its task", () => {
     const prompt = composeSubagentSystemPrompt({
-      definition: definition({ tools: ["Read", "Edit"] }),
+      definition: definition({ tools: ["read", "edit"] }),
     });
 
     expect(prompt).toContain("You may change files");
@@ -118,10 +118,10 @@ describe("composeSubagentSystemPrompt", () => {
   it("lists resolved inherit tools and treats them as mutating when they write", () => {
     const prompt = composeSubagentSystemPrompt({
       definition: definition({ tools: [], inheritTools: true }),
-      toolNames: ["Read", "Skill", "Edit"],
+      toolNames: ["read", "skill", "edit"],
     });
 
-    expect(prompt).toContain("Read, Skill, Edit");
+    expect(prompt).toContain("read, skill, edit");
     expect(prompt).toContain("You may change files");
     expect(prompt).not.toContain("no tools that change files");
     expect(prompt).not.toContain("inherit (parent tools)");
@@ -144,26 +144,26 @@ describe("SubagentRun event forwarding", () => {
         initialMessages: [
           assistantMessage({
             content: [
-              { type: "toolCall", id: "child-read", name: "Read", arguments: {} },
+              { type: "toolCall", id: "child-read", name: "read", arguments: {} },
             ],
           }),
           {
             role: "toolResult",
             toolCallId: "child-read",
-            toolName: "Read",
+            toolName: "read",
             content: [{ type: "text", text: "first" }],
             isError: false,
             timestamp: 2,
           },
           assistantMessage({
             content: [
-              { type: "toolCall", id: "child-read", name: "Read", arguments: {} },
+              { type: "toolCall", id: "child-read", name: "read", arguments: {} },
             ],
           }),
           {
             role: "toolResult",
             toolCallId: "child-read",
-            toolName: "Read",
+            toolName: "read",
             content: [{ type: "text", text: "retry" }],
             isError: false,
             timestamp: 3,
@@ -251,7 +251,7 @@ describe("SubagentRun event forwarding", () => {
     run.handleEvent({
       type: "tool_execution_start",
       toolCallId: "child-read",
-      toolName: "Read",
+      toolName: "read",
       args: { path: "a.ts" },
     });
     run.handleEvent({
@@ -305,7 +305,7 @@ describe("SubagentRun reporting", () => {
     run.handleEvent({
       type: "message_end",
       message: assistantMessage({
-        content: [{ type: "toolCall", name: "Read", id: "child-read" }],
+        content: [{ type: "toolCall", name: "read", id: "child-read" }],
       }),
     });
 
@@ -570,7 +570,7 @@ describe("SubagentRun turn accounting", () => {
           run.handleEvent({
             type: "tool_execution_start",
             toolCallId: `child-${turn}`,
-            toolName: "Read",
+            toolName: "read",
             args: { path: "a.ts" },
           });
           run.handleEvent({
@@ -649,7 +649,7 @@ describe("SubagentRun watchdogs", () => {
         run.handleEvent({
           type: "tool_execution_start",
           toolCallId: "long-tool",
-          toolName: "Bash",
+          toolName: "bash",
           args: { command: "long-running" },
         });
       });
@@ -864,7 +864,7 @@ describe("SubagentRun retries before fallback", () => {
     const { run } = createRun();
     const user = { role: "user", content: "task", timestamp: 1 };
     const toolUse = {
-      ...assistantMessage({ content: [{ type: "toolCall", id: "call-1", name: "Read", arguments: {} }], stopReason: "toolUse" }),
+      ...assistantMessage({ content: [{ type: "toolCall", id: "call-1", name: "read", arguments: {} }], stopReason: "toolUse" }),
     };
     const toolResult = {
       role: "toolResult",

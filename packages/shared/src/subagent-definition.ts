@@ -1,6 +1,6 @@
 /**
  * Subagent definitions: the Markdown documents that describe a delegate the
- * main agent can spawn through the `Task` tool.
+ * main agent can spawn through the `task` tool.
  *
  * The format deliberately mirrors `.pi/prompts/*.md` (D123): YAML-ish
  * frontmatter followed by a Markdown body that becomes the delegate's system
@@ -19,6 +19,7 @@ import {
   SUBAGENT_THINKING_LEVELS,
   type SubagentThinkingLevel,
 } from "./types.js";
+import { normalizeToolName } from "./tool-names.js";
 
 /**
  * Where a definition came from. User-owned global documents shadow builtins by
@@ -33,7 +34,7 @@ export type SubagentModelPin = {
 };
 
 export type SubagentDefinition = {
-  /** Delegate id used as the `Task` argument, e.g. "code-reviewer". */
+  /** Delegate id used as the `task` argument, e.g. "code-reviewer". */
   name: string;
   /** One line telling the parent model when to delegate to this agent. */
   description: string;
@@ -85,13 +86,13 @@ export type SubagentDefinition = {
  * are not on this list; a document opts into the parent's live catalog with
  * `tools: inherit` instead (ADR 0246). */
 export const SUBAGENT_ASSIGNABLE_TOOLS = [
-  "Read",
-  "Glob",
-  "Grep",
-  "BrowserPreview",
-  "Bash",
-  "Edit",
-  "Write",
+  "read",
+  "glob",
+  "grep",
+  "browser_preview",
+  "bash",
+  "edit",
+  "write",
 ] as const;
 
 export type SubagentAssignableTool = (typeof SUBAGENT_ASSIGNABLE_TOOLS)[number];
@@ -102,20 +103,20 @@ export const SUBAGENT_INHERIT_TOKEN = "inherit";
 /**
  * Tools that are never inherited, even with `tools: inherit`. Nested fan-out
  * and mode switches stay with the parent; the user-facing ask tool is out of
- * reach because a delegate has no user. `ToolSearch` and `new_context` mutate
+ * reach because a delegate has no user. `tool_search` and `new_context` mutate
  * the parent runtime's deferred-tool set and compaction flag, so they stay
  * denied even though the child receives the full catalog without searching.
  */
 export const SUBAGENT_INHERIT_DENY_TOOLS: readonly string[] = [
-  "Task",
-  "TaskWait",
-  "TaskList",
-  "TaskStop",
-  "EnterPlanMode",
-  "EnterGoalMode",
+  "task",
+  "task_wait",
+  "task_list",
+  "task_stop",
+  "enter_plan_mode",
+  "enter_goal_mode",
   "asktool",
   "new_context",
-  "ToolSearch",
+  "tool_search",
 ];
 
 /**
@@ -130,13 +131,17 @@ export function resolveSubagentToolNames(
   definition: Pick<SubagentDefinition, "tools" | "inheritTools">,
   parentToolNames: readonly string[],
 ): string[] {
-  const declared = definition.tools.filter(
-    (name) => name !== SUBAGENT_INHERIT_TOKEN,
-  );
+  const declared = definition.tools
+    .filter((name) => name !== SUBAGENT_INHERIT_TOKEN)
+    .map(normalizeToolName);
   if (!definition.inheritTools) return [...declared];
-  const deny = new Set(SUBAGENT_INHERIT_DENY_TOOLS);
+  const deny = new Set(SUBAGENT_INHERIT_DENY_TOOLS.map(normalizeToolName));
   const resolved: string[] = [];
-  for (const name of [...parentToolNames, ...declared]) {
+  for (const stored of [...parentToolNames, ...declared]) {
+    // The parent catalog and a persisted definition are read boundaries: a
+    // session or document written before the rename still holds `Read`,
+    // `Bash`, … and only the canonical spelling counts downstream (D620).
+    const name = normalizeToolName(stored);
     if (deny.has(name)) continue;
     if (resolved.includes(name)) continue;
     resolved.push(name);
@@ -146,13 +151,13 @@ export function resolveSubagentToolNames(
 
 /** Tools that can change the workspace; declaring one makes a delegate
  * write-capable, which drives the write lock and permission attribution. */
-export const SUBAGENT_MUTATING_TOOLS = ["Bash", "Edit", "Write"] as const;
+export const SUBAGENT_MUTATING_TOOLS = ["bash", "edit", "write"] as const;
 
 /** What a definition gets when it stays silent about tools. */
 export const DEFAULT_SUBAGENT_TOOLS: readonly SubagentAssignableTool[] = [
-  "Read",
-  "Glob",
-  "Grep",
+  "read",
+  "glob",
+  "grep",
 ];
 
 /**
@@ -219,17 +224,27 @@ export const MAX_RESUMABLE_LISTED_FILES = 8;
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
+/**
+ * Whether a definition may declare this tool by name.
+ *
+ * The name is a read boundary: a document written before the rename (D620)
+ * still says `Read`, and an accepted name is stored in its canonical spelling.
+ */
 export function isSubagentAssignableTool(
   value: unknown,
 ): value is SubagentAssignableTool {
   return (
     typeof value === "string" &&
-    (SUBAGENT_ASSIGNABLE_TOOLS as readonly string[]).includes(value)
+    (SUBAGENT_ASSIGNABLE_TOOLS as readonly string[]).includes(normalizeToolName(value))
   );
 }
 
+/**
+ * Whether this tool can change the workspace. Normalizes first so a stored or
+ * configured `Bash` is still recognized as mutating (D620).
+ */
 export function isSubagentMutatingTool(value: string): boolean {
-  return (SUBAGENT_MUTATING_TOOLS as readonly string[]).includes(value);
+  return (SUBAGENT_MUTATING_TOOLS as readonly string[]).includes(normalizeToolName(value));
 }
 
 /** Whether this delegate can change the workspace. */
@@ -239,21 +254,23 @@ export function subagentCanMutate(
 ): boolean {
   if (resolvedTools) return resolvedTools.some(isSubagentMutatingTool);
   // Inherit is resolved at spawn. Until then, treat it as write-capable:
-  // Agent-mode parents always expose Bash/Edit/Write in the live catalog.
+  // Agent-mode parents always expose `bash`/`edit`/`write` in the live catalog.
   if (definition.inheritTools) return true;
   return definition.tools.some(isSubagentMutatingTool);
 }
 
-/** Compact `tools:` label for the Task catalog and fallback prompt text. */
+/** Compact `tools:` label for the `task` catalog and fallback prompt text. */
 export function subagentToolsLabel(
   definition: Pick<SubagentDefinition, "tools" | "inheritTools">,
 ): string {
+  // The label lands in the `task` catalog and in a delegate's fallback
+  // instructions, both of which the model reads: it names the canonical
+  // spelling even for a definition stored before the rename (D620).
+  const declared = definition.tools.map(normalizeToolName);
   if (definition.inheritTools) {
-    return definition.tools.length > 0
-      ? `inherit + ${definition.tools.join(", ")}`
-      : "inherit";
+    return declared.length > 0 ? `inherit + ${declared.join(", ")}` : "inherit";
   }
-  return definition.tools.join(", ") || "none";
+  return declared.join(", ") || "none";
 }
 
 /** Filename (or frontmatter `name`) to definition id. */
@@ -380,7 +397,9 @@ export function parseSubagentDefinition(
   const description = asScalar(frontmatter.get("description"))?.trim() ?? "";
   if (!description) errors.push("missing `description`");
 
-  const declaredTools = asList(frontmatter.get("tools"));
+  // A document written before the rename declares `Read`, `Bash`, …; every
+  // declared name is resolved at this read boundary (D620).
+  const declaredTools = asList(frontmatter.get("tools")).map(normalizeToolName);
   let tools: string[];
   let inheritTools = false;
   if (declaredTools.length === 0) {

@@ -3,13 +3,13 @@
  * (ADR 0279).
  *
  * Every row a delegate emits lands in the session transcript with
- * `parentToolCallId` (the `Task` call that spawned it) and `agentName`. Those
+ * `parentToolCallId` (the `task` call that spawned it) and `agentName`. Those
  * rows are written for review and never replayed into the parent's context
  * (`runtime.ts` skips them on rebuild) — but they carry everything a resumed
  * delegate needs: tool call/result pairs, thinking blocks, and the original
- * `task` on the first `Task` tool row's arguments.
+ * `task` on the first `task` tool row's arguments.
  *
- * A chain is the sequence of `Task` calls that share one delegate session: the
+ * A chain is the sequence of `task` calls that share one delegate session: the
  * first call plus every `resume`. Rows are keyed by the *call*, so
  * reconstructing the chain means selecting every row whose `parentToolCallId`
  * is one of the chain's calls.
@@ -35,6 +35,7 @@ import {
   MAX_RESUMABLE_LISTED_FILES,
   MAX_RESUMABLE_READ_LINES,
   normalizeSubagentName,
+  normalizeToolName,
   type UiMessage,
 } from "@pi-desktop/shared";
 import { isRecord, timestampMs, toJsonObject, toJsonValue, usageToPi } from "./agent-messages.js";
@@ -44,11 +45,11 @@ import {
   type RuntimeProviderConfig,
 } from "./provider-binding.js";
 
-/** One chain of `Task` calls that share a delegate session. */
+/** One chain of `task` calls that share a delegate session. */
 export type DelegationChain = {
   /** Stable identity across every `resume`; never appears in a tool or prompt. */
   delegateSessionId: string;
-  /** Every `Task` toolCallId on this chain, oldest first. */
+  /** Every `task` toolCallId on this chain, oldest first. */
   toolCallIds: string[];
   /** Every `delegationId` issued on this chain, oldest first. */
   delegationIds: string[];
@@ -80,11 +81,16 @@ export type ResumableChain = DelegationChain & {
   latestObjective: string;
 };
 
-const READ_TOOLS = new Set(["Read", "Glob", "Grep", "BrowserPreview"]);
+const READ_TOOLS = new Set(["read", "glob", "grep", "browser_preview"]);
 const MISSING_TOOL_RESULT_PLACEHOLDER = "[no tool result recorded]";
 
+/** Whether a persisted row's tool name is a read-only tool.
+ *
+ * The row is a read boundary: a transcript written before the rename stores
+ * `Read`/`Glob`/`Grep`, so the name is normalized before it is matched (D620).
+ */
 export function isReadOnlyToolName(name: string): boolean {
-  return READ_TOOLS.has(name);
+  return READ_TOOLS.has(normalizeToolName(name));
 }
 
 /**
@@ -99,7 +105,7 @@ export function extractReadFiles(rows: readonly UiMessage[]): {
   const files: string[] = [];
   let lineCount = 0;
   for (const row of rows) {
-    if (row.role !== "tool" || !row.toolName || !READ_TOOLS.has(row.toolName)) {
+    if (row.role !== "tool" || !row.toolName || !READ_TOOLS.has(normalizeToolName(row.toolName))) {
       continue;
     }
     const target = readToolTarget(row);
@@ -159,7 +165,7 @@ function toolResultText(row: UiMessage): string | undefined {
 /**
  * Select this chain's rows out of a session transcript, in order.
  *
- * `Task` tool rows themselves carry no `parentToolCallId` (they belong to the
+ * `task` tool rows themselves carry no `parentToolCallId` (they belong to the
  * parent), so callers pass the chain's calls in and get back the delegate's own
  * rows only.
  */
@@ -178,7 +184,7 @@ export function selectChainRows(
 
 /**
  * The first user turn of a resumed delegate is the original `task`, recovered
- * from the persisted `Task` tool arguments. Returns `undefined` when the row or
+ * from the persisted `task` tool arguments. Returns `undefined` when the row or
  * its arguments are gone (a truncated branch), in which case the chain is not
  * resumable and the caller reports it as unknown.
  */
@@ -191,7 +197,7 @@ export function originalTaskFromTranscript(
   const row = transcript.find(
     (candidate) =>
       candidate.role === "tool" &&
-      candidate.toolName === "Task" &&
+      normalizeToolName(candidate.toolName ?? "") === "task" &&
       candidate.toolCallId === first,
   );
   if (!row) return undefined;
@@ -294,7 +300,7 @@ export function chainRowsToMessages(
       toolCarrier.content.push({
         type: "toolCall",
         id: row.toolCallId,
-        name: row.toolName,
+        name: normalizeToolName(row.toolName),
         arguments: toJsonObject(row.toolArgs),
       });
       toolCarrier.stopReason = "toolUse";
@@ -489,12 +495,12 @@ export type RebuiltTaskCall = {
   task?: string;
   modelId?: string;
   createdAt: number;
-  /** Settled status this call's `Task` row recorded, when it recorded one. */
+  /** Settled status this call's `task` row recorded, when it recorded one. */
   status?: string;
 };
 /**
  * Status a rebuilt chain carries after a restart (ADR 0279 §12). The settled
- * status is the one the settlement projection wrote onto the `Task` row. A run
+ * status is the one the settlement projection wrote onto the `task` row. A run
  * the app closed while it still worked never settled, and reads as
  * `interrupted` rather than staying open forever. A row that records no status
  * at all — nothing this app writes does — is trusted as settled, because the
@@ -514,9 +520,9 @@ function chainStatusFromDetail(
 }
 
 /**
- * Scan persisted `Task` tool rows and group them into chains by their
+ * Scan persisted `task` tool rows and group them into chains by their
  * `resume` links. Used at session launch so a restart does not lose
- * resumability (ADR 0279 §12). Every call carries the status its own `Task`
+ * resumability (ADR 0279 §12). Every call carries the status its own `task`
  * row recorded, so a chain rebuilt here is resumable exactly when the live
  * registry would consider it resumable.
  */
@@ -526,7 +532,7 @@ export function rebuildChainsFromTranscript(
   const calls: RebuiltTaskCall[] = [];
   const callIndexByToolCallId = new Map<string, number>();
   for (const row of transcript) {
-    if (row.role !== "tool" || row.toolName !== "Task" || !row.toolCallId) {
+    if (row.role !== "tool" || normalizeToolName(row.toolName ?? "") !== "task" || !row.toolCallId) {
       continue;
     }
     const args = isRecord(row.toolArgs) ? row.toolArgs : undefined;
@@ -536,7 +542,7 @@ export function rebuildChainsFromTranscript(
         : undefined;
     const delegationId =
       typeof details?.delegationId === "string" ? details.delegationId : "";
-    // A `Task` row with no delegation id never produced a delegate — the call
+    // A `task` row with no delegation id never produced a delegate — the call
     // was rejected (unknown agent, empty brief) and its "result" is the tool
     // error. Such a row is not a chain and must not become one.
     if (!delegationId) continue;
@@ -566,7 +572,7 @@ export function rebuildChainsFromTranscript(
       status: chainStatusFromDetail(details, row),
       createdAt: timestampMs(row.createdAt) || Date.now(),
     };
-    // Settling a delegation rewrites its `Task` row in place, so a transcript
+    // Settling a delegation rewrites its `task` row in place, so a transcript
     // that briefly holds both the immediate and the settled copy keeps the
     // newer one and the call is never rebuilt twice.
     const seenAt = callIndexByToolCallId.get(row.toolCallId);

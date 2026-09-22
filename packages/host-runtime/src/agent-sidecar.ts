@@ -269,7 +269,7 @@ export class AgentSidecar {
     if (this.localToolControllers.has(key)) throw new Error("duplicate local tool call");
     const controller = new AbortController();
     this.localToolControllers.set(key, controller);
-    const imageGeneration = params.toolName === "GenerateImages";
+    const imageGeneration = params.toolName === "generate_images";
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
@@ -469,16 +469,16 @@ export class AgentSidecar {
         const params = (msg.params?.params ?? {}) as Record<string, unknown>;
         const requestedToolName = String(params.toolName ?? "");
         const planLocalTool =
-          requestedToolName === "Skill" ||
-          requestedToolName === "PluginCheck" ||
-          requestedToolName === "PluginScaffold" ||
-          requestedToolName === "PluginPack" ||
+          requestedToolName === "skill" ||
+          requestedToolName === "check_plugin" ||
+          requestedToolName === "scaffold_plugin" ||
+          requestedToolName === "pack_plugin" ||
           requestedToolName.startsWith("plugin_");
         if (
           method === "tools.execute" &&
           params.mode === "plan" &&
           planLocalTool &&
-          requestedToolName !== "BrowserPreview"
+          requestedToolName !== "browser_preview"
         ) {
           throw Object.assign(
             new Error(`${requestedToolName} is unavailable in Plan mode`),
@@ -545,7 +545,7 @@ export class AgentSidecar {
           // other host-local tool fails closed even if a stale runtime asks for
           // it directly.
           const result =
-            params.mode === "plan" && toolName !== "BrowserPreview"
+            params.mode === "plan" && toolName !== "browser_preview"
               ? {
                   ok: false,
                   isError: true,

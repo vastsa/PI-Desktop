@@ -11,6 +11,7 @@ import {
   extractReadFiles,
   formatResumableList,
   isChainWithinReadBudget,
+  isReadOnlyToolName,
   listedReadFiles,
   originalTaskFromTranscript,
   rebuildChainsFromTranscript,
@@ -119,7 +120,7 @@ function taskRow(
     role: "tool",
     content: "",
     toolCallId: taskCallId,
-    toolName: "Task",
+    toolName: "task",
     toolArgs: {
       agent: "explorer",
       task,
@@ -169,22 +170,22 @@ describe("extractReadFiles", () => {
     const rows: UiMessage[] = [
       delegateTool(
         "t1",
-        "Read",
+        "read",
         { path: "a.ts" },
         { content: [{ type: "text", text: "x\ny" }] },
         "call-1",
       ),
       delegateTool(
         "t2",
-        "Read",
+        "read",
         { path: "a.ts" },
         { content: [{ type: "text", text: "x" }] },
         "call-1",
       ),
-      delegateTool("t3", "Edit", { path: "b.ts" }, { ok: true }, "call-1"),
+      delegateTool("t3", "edit", { path: "b.ts" }, { ok: true }, "call-1"),
       delegateTool(
         "t4",
-        "Grep",
+        "grep",
         { pattern: "foo" },
         { content: [{ type: "text", text: "hit" }] },
         "call-1",
@@ -201,7 +202,7 @@ describe("extractReadFiles", () => {
     const rows: UiMessage[] = [
       delegateTool(
         "t1",
-        "Read",
+        "read",
         { file_path: "c.ts" },
         { content: [{ type: "text", text: "one\ntwo\nthree" }] },
         "call-1",
@@ -246,7 +247,7 @@ describe("seedDelegateMessages", () => {
   it("prepends the original task once and keeps tool pairs ordered", () => {
     const rows: UiMessage[] = [
       delegateAssistant("a1", "looking", "call-1"),
-      delegateTool("t1", "Read", { path: "a.ts" }, { content: "body" }, "call-1"),
+      delegateTool("t1", "read", { path: "a.ts" }, { content: "body" }, "call-1"),
       delegateAssistant("a2", "done", "call-1"),
     ];
     const messages = seedDelegateMessages({
@@ -272,7 +273,7 @@ describe("seedDelegateMessages", () => {
     expect(
       assistantWithCall.role === "assistant" &&
         assistantWithCall.content.some(
-          (block) => block.type === "toolCall" && block.name === "Read",
+          (block) => block.type === "toolCall" && block.name === "read",
         ),
     ).toBe(true);
   });
@@ -302,7 +303,7 @@ describe("seedDelegateMessages", () => {
 
   it("keeps an orphan tool row well-formed with a synthesized carrier", () => {
     const rows: UiMessage[] = [
-      delegateTool("t1", "Read", { path: "a.ts" }, { content: "body" }, "call-1"),
+      delegateTool("t1", "read", { path: "a.ts" }, { content: "body" }, "call-1"),
     ];
     const messages = seedDelegateMessages({
       originalTask: "explore",
@@ -316,7 +317,7 @@ describe("seedDelegateMessages", () => {
     expect(messages[2]).toMatchObject({
       role: "toolResult",
       toolCallId: "t1",
-      toolName: "Read",
+      toolName: "read",
       isError: false,
     });
   });
@@ -328,7 +329,7 @@ describe("seedDelegateMessages", () => {
         status: "error",
         isError: true,
       },
-      delegateTool("t1", "Read", { path: "a.ts" }, { content: "body" }, "call-1"),
+      delegateTool("t1", "read", { path: "a.ts" }, { content: "body" }, "call-1"),
     ];
     const messages = seedDelegateMessages({
       originalTask: "explore",
@@ -355,7 +356,7 @@ describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
   function bigRead(toolCallId: string, text: string): UiMessage {
     return delegateTool(
       toolCallId,
-      "Read",
+      "read",
       { path: `${toolCallId}.ts` },
       { content: [{ type: "text", text }] },
       "call-1",
@@ -379,7 +380,7 @@ describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
   it("leaves a seed that fits entirely alone", () => {
     const rows: UiMessage[] = [
       delegateAssistant("a1", "looking", "call-1"),
-      delegateTool("t1", "Read", { path: "a.ts" }, { content: "body" }, "call-1"),
+      delegateTool("t1", "read", { path: "a.ts" }, { content: "body" }, "call-1"),
       delegateAssistant("a2", "done", "call-1"),
     ];
     const messages = seed(rows, 1_000_000);
@@ -616,7 +617,7 @@ describe("rebuildChainsFromTranscript", () => {
       taskRow("call-1", "d1", "explore"),
       delegateTool(
         "t1",
-        "Read",
+        "read",
         { path: "a.ts" },
         { content: [{ type: "text", text: "x\ny" }] },
         "call-1",
@@ -624,7 +625,7 @@ describe("rebuildChainsFromTranscript", () => {
       taskRow("call-2", "d2", "more", { resume: "d1" }),
       delegateTool(
         "t2",
-        "Read",
+        "read",
         { path: "b.ts" },
         { content: [{ type: "text", text: "z" }] },
         "call-2",
@@ -709,7 +710,7 @@ describe("chain shape", () => {
   });
 });
 
-/** A persisted `Task` row, as the settlement projection rewrites it. */
+/** A persisted `task` row, as the settlement projection rewrites it. */
 function restartedTaskRow(
   toolCallId: string,
   details: Record<string, unknown>,
@@ -723,7 +724,7 @@ function restartedTaskRow(
     role: "tool",
     content: "",
     toolCallId,
-    toolName: "Task",
+    toolName: "task",
     toolArgs: { agent: "explorer", task: "explore the parser", ...options.args },
     toolResult: { details },
     toolStatus: options.toolStatus ?? "success",
@@ -832,7 +833,7 @@ describe("rebuildChainsFromTranscript agent normalization (ADR 0279)", () => {
       );
       const read = delegateTool(
         "t1",
-        "Read",
+        "read",
         { path: "src/app.ts" },
         { content: [{ type: "text", text: "body" }] },
         "call-1",
@@ -923,7 +924,7 @@ describe("rebuildChainsFromTranscript settled copies and replay (ADR 0279)", () 
       }),
       delegateTool(
         "t1",
-        "Read",
+        "read",
         { path: "huge.ts" },
         { content: [{ type: "text", text }] },
         "call-1",
@@ -944,7 +945,7 @@ describe("rebuildChainsFromTranscript settled copies and replay (ADR 0279)", () 
       delegateAssistant("a1", "reading src/app.ts", "call-1"),
       delegateTool(
         "t1",
-        "Read",
+        "read",
         { path: "src/app.ts", offset: 3 },
         { content: [{ type: "text", text: "body" }] },
         "call-1",
@@ -958,12 +959,64 @@ describe("rebuildChainsFromTranscript settled copies and replay (ADR 0279)", () 
     ).toContainEqual({
       type: "toolCall",
       id: "t1",
-      name: "Read",
+      name: "read",
       arguments: { path: "src/app.ts", offset: 3 },
     });
     expect(messages.map((message) => message.role)).toEqual([
       "assistant",
       "toolResult",
     ]);
+  });
+});
+
+/**
+ * A transcript written before the rename stores the model's own uppercase tool
+ * names. Every read of those rows resolves the name first (D620), so a resumed
+ * delegate still gets its read budget, its report and its original brief.
+ */
+describe("pre-rename tool names in a persisted transcript (D620)", () => {
+  it("recognizes read-only rows by their legacy names", () => {
+    expect(isReadOnlyToolName("Read")).toBe(true);
+    expect(isReadOnlyToolName("BrowserPreview")).toBe(true);
+    expect(isReadOnlyToolName("read")).toBe(true);
+    expect(isReadOnlyToolName("Bash")).toBe(false);
+    // A third-party name is left alone and is not read-only.
+    expect(isReadOnlyToolName("plugin_demo_echo")).toBe(false);
+  });
+
+  it("collects read targets from rows written before the rename", () => {
+    const rows: UiMessage[] = [
+      delegateTool(
+        "t1",
+        "Read",
+        { path: "legacy.ts" },
+        { content: [{ type: "text", text: "one\ntwo" }] },
+        "call-1",
+      ),
+      delegateTool(
+        "t2",
+        "Grep",
+        { pattern: "needle" },
+        { content: [{ type: "text", text: "hit" }] },
+        "call-1",
+      ),
+      delegateTool("t3", "Bash", { command: "ls" }, { ok: true }, "call-1"),
+    ];
+
+    const reads = extractReadFiles(rows);
+    // Bash is not a read tool, and a repeated target is listed once.
+    expect(reads.files).toEqual(["legacy.ts", "needle"]);
+    expect(reads.lineCount).toBe(3);
+  });
+
+  it("finds the original brief on a legacy Task row", () => {
+    const transcript: UiMessage[] = [
+      taskRow("call-legacy", "delegation-1", "Fix the failing build."),
+    ];
+    transcript[0] = { ...transcript[0]!, toolName: "Task" };
+
+    expect(
+      originalTaskFromTranscript(transcript, { toolCallIds: ["call-legacy"] }),
+    ).toBe("Fix the failing build.");
   });
 });
