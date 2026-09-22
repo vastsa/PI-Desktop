@@ -196,6 +196,18 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   Detailed. It affects presentation only, not model reasoning configuration,
   and explicit disclosure choices are retained for the mounted session pane.
   Settings search indexes the row and both mode names.
+- **Queued message animation** uses a menu select with Off (default), Bubbles,
+  Glow, and Waterline. The choice is presentation only: it
+  layers motion on the promoted ("send now pending") queue row in the Composer
+  so a pending message stands out, and the row's accent bar itself never
+  moves. The global preference persists as `queuedPromptAnimation` in
+  host-owned settings; missing or unrecognized values use Off, which keeps
+  the static accent bar every existing install already has. The renderer
+  applies the resolved value as the root `data-queue-animation` attribute, so
+  a change takes effect without a reload, and every variant stands down under
+  `prefers-reduced-motion`. Settings search indexes the row, its description,
+  and all four option names. Animated decoration is clipped to the promoted
+  row's rounded bounds; the static accent and row shadow remain visible.
 - The **Command shell** row in Defaults uses the host-discovered catalog of native
   PowerShell 5.1, PowerShell 7, cmd, Git Bash, and Bash with IDs
   `windows-powershell`, `windows-pwsh`, `cmd`, `git-bash`, and

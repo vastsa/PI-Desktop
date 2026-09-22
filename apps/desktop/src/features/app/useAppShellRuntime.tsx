@@ -7,6 +7,7 @@ import {
   keybindingDisplayParts,
   keybindingMatchesEvent,
   resolveFontScale,
+  resolveQueuedPromptAnimation,
   resolveKeybinding,
   type ShortcutPlatform,
 } from "@pi-desktop/shared";
@@ -540,6 +541,14 @@ export function useAppShellRuntime() {
       String(resolveFontScale(settings ?? {})),
     );
   }, [settings?.fontScale, settings?.fontSize]);
+
+  // Motion on the promoted queue row: Settings persists the variant in
+  // `AppSettings.queuedPromptAnimation`; the composer styles read the root
+  // `data-queue-animation` attribute. Absent means off (static accent bar).
+  useEffect(() => {
+    document.documentElement.dataset.queueAnimation =
+      resolveQueuedPromptAnimation(settings ?? {});
+  }, [settings?.queuedPromptAnimation]);
 
   useEffect(() => {
     if (bootstrapStartedRef.current) return;

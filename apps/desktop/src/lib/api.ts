@@ -119,10 +119,12 @@ import {
   defaultCommandShellForPlatform,
   IPC,
   isCommandShellId,
+  isQueuedPromptAnimation,
   normalizeLargePasteThreshold,
   normalizeMode,
   normalizeNetworkProxy,
   resolveFontScale,
+  resolveQueuedPromptAnimation,
   normalizeChatContentMaxWidth,
   validateNetworkProxy,
   validateSpeechSettings,
@@ -343,8 +345,14 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
     defaultMode: normalizeMode((settings as { defaultMode?: unknown }).defaultMode),
-    infiniteProviderRetry:
-      (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,
+    // Only emit the key when it is actually on. Writing `undefined` keeps
+    // the key present, which the write validator below then rejects as
+    // "not a boolean" — that would block every unrelated settings save for
+    // an install that never stored the flag.
+    ...((settings as { infiniteProviderRetry?: unknown })
+      .infiniteProviderRetry === true
+      ? { infiniteProviderRetry: true }
+      : {}),
     defaultCommandShell: isCommandShellId(
       (settings as { defaultCommandShell?: unknown }).defaultCommandShell,
     )
@@ -355,6 +363,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
       (settings as { largePasteThreshold?: unknown }).largePasteThreshold,
     ),
     fontScale: resolveFontScale(settings),
+    queuedPromptAnimation: resolveQueuedPromptAnimation(settings),
     networkProxy: normalizeNetworkProxy(
       (settings as { networkProxy?: unknown }).networkProxy,
     ),
@@ -378,6 +387,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     chatContentMaxWidth?: unknown;
     infiniteProviderRetry?: unknown;
     networkProxy?: unknown;
+    queuedPromptAnimation?: unknown;
   };
   if (
     Object.prototype.hasOwnProperty.call(value, "defaultCommandShell") &&
@@ -412,11 +422,21 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
       });
     }
   }
+  // `undefined` means "not stored" (an older build never wrote the flag), so
+  // it must pass; only a present non-boolean is rejected.
   if (
-    Object.prototype.hasOwnProperty.call(value, "infiniteProviderRetry") &&
+    value.infiniteProviderRetry !== undefined &&
     typeof value.infiniteProviderRetry !== "boolean"
   ) {
     throw Object.assign(new Error("infiniteProviderRetry is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "queuedPromptAnimation") &&
+    !isQueuedPromptAnimation(value.queuedPromptAnimation)
+  ) {
+    throw Object.assign(new Error("queuedPromptAnimation is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }

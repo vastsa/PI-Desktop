@@ -36,6 +36,7 @@ import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../../components/settings/FontFamilyRow";
 import { ThinkingDisplayModeRow } from "../../components/settings/ThinkingDisplayModeRow";
+import { QueuedPromptAnimationRow } from "../../components/settings/QueuedPromptAnimationRow";
 import { FontSizeRow } from "../../components/settings/FontSizeRow";
 import { LanguageRow } from "../../components/settings/LanguageRow";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
@@ -440,6 +441,7 @@ export function SettingsPage() {
                 <CommandShellRow settings={settings} saveSettings={saveSettings} />
                 <LinkOpenTargetRow settings={settings} saveSettings={saveSettings} />
                 <ThinkingDisplayModeRow settings={settings} saveSettings={saveSettings} />
+                <QueuedPromptAnimationRow settings={settings} saveSettings={saveSettings} />
                 <ContextUsageDisplayRow
                   settings={settings}
                   saveSettings={saveSettings}
