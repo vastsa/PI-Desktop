@@ -47,6 +47,7 @@
 - [20-speech.md](/zh-CN/spec/03-runtime/20-speech)
 - [21-image-generation.md](/zh-CN/spec/03-runtime/21-image-generation)
 - [22-config-sync.md](/zh-CN/spec/03-runtime/22-config-sync)
+- [23-tool-names.md](/zh-CN/spec/03-runtime/23-tool-names)
 
 ## 4. 用户体验
 - [README.md](/zh-CN/spec/04-ux/README)

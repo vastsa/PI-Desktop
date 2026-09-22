@@ -25,3 +25,4 @@
 
 - [Image generation and editing](21-image-generation.md)
 - [Portable configuration sync](22-config-sync.md)
+- [Tool name contract](23-tool-names.md)

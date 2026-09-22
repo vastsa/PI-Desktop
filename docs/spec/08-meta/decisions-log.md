@@ -6701,3 +6701,25 @@ that was sitting at the bottom — including after the turn had finished.
   checkpoint reports the summed usage of the requests that produced it. Only an
   empty range, or one past that request bound, still falls back on budget
   grounds. See ADR 0302, `03-runtime/02-agent-runtime.md`, ADR 0049, ADR 0282.
+
+## 2026-09-22 — Tool names get one canonical spelling and one normalization boundary (D618)
+
+- The model-visible tool name was the capitalized spelling the UI shows
+  (`Read`, `Bash`, `TaskWait`), while the pi runtime branches on its own lowercase
+  names inside helpers such as `extractFileOpsFromMessage`. A name pi does not
+  recognize silently produces nothing — which is why `details.readFiles` and
+  `details.modifiedFiles` and the summary's `<read-files>` section stayed empty,
+  the trail that issue #827 followed while fixing the compaction fallback.
+- The host and the shared package now each own one canonical list and one pure
+  normalization function (`crates/host-core/src/tools/names.rs`,
+  `packages/shared/src/tool-names.ts`). A canonical name returns unchanged, so the
+  call is idempotent; a pre-rename spelling resolves in any letter case; and every
+  other name — `plugin_*`, `mcp_*`, an MCP-reported name, a shell id such as
+  `PowerShell` — comes back untouched. A third-party identity is never rewritten,
+  and an unknown name is not an error.
+- Normalization happens on the way in and never in storage: existing transcripts,
+  audit rows, `deny` / `allow` rules, plugin manifests, and subagent tool lists
+  keep the bytes they were written with, so old data stays readable without a
+  migration. This decision records the contract and adds the two modules; the
+  registry, dispatch, permission, prompt, and UI call sites follow in D619 through
+  D621. See `03-runtime/23-tool-names.md`.

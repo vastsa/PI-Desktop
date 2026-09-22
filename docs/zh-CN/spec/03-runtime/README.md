@@ -27,3 +27,4 @@
 | [20-speech.md](/zh-CN/spec/03-runtime/20-speech) | 宿主语音（转写/朗读） |
 
 - [图片生成与编辑](/zh-CN/spec/03-runtime/21-image-generation)
+- [工具名契约](/zh-CN/spec/03-runtime/23-tool-names)
