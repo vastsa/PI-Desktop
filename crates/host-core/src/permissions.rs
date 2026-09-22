@@ -199,6 +199,24 @@ impl PermissionManager {
         self.evaluate_auto_with_permission_mode_and_risk_and_path(params)
     }
 
+    /// Whether the session already granted this tool.
+    ///
+    /// A grant is user configuration, so both sides are normalized before they
+    /// meet: a session that approved `Write` covers a `write` call and the other
+    /// way round, while `plugin_*` / `mcp_*` grants keep the spelling the third
+    /// party declared.
+    fn grant_covers(
+        session_grants: &HashMap<String, Vec<String>>,
+        session_id: &str,
+        tool_name: &str,
+    ) -> bool {
+        session_grants.get(session_id).is_some_and(|grants| {
+            grants
+                .iter()
+                .any(|grant| &*normalize_tool_name(grant) == tool_name)
+        })
+    }
+
     /// Evaluate a tool that explicitly targets a path outside the session's
     /// workspace and scratch roots. Outside-path access is an exception to the
     /// normal low-risk auto-allow rule: `auto` allows it, while every other
@@ -255,14 +273,7 @@ impl PermissionManager {
             if permission_mode == "auto" {
                 return Some(PermissionDecision::AllowOnce);
             }
-            if session_grants
-                .get(session_id)
-                .map(|g| {
-                    g.iter()
-                        .any(|grant| &*normalize_tool_name(grant) == tool_name)
-                })
-                .unwrap_or(false)
-            {
+            if Self::grant_covers(session_grants, session_id, tool_name) {
                 return Some(PermissionDecision::AllowSession);
             }
             return None;
@@ -280,14 +291,7 @@ impl PermissionManager {
         if mode_allows {
             return Some(PermissionDecision::AllowOnce);
         }
-        if session_grants
-            .get(session_id)
-            .map(|g| {
-                g.iter()
-                    .any(|grant| &*normalize_tool_name(grant) == tool_name)
-            })
-            .unwrap_or(false)
-        {
+        if Self::grant_covers(session_grants, session_id, tool_name) {
             return Some(PermissionDecision::AllowSession);
         }
         None
@@ -764,6 +768,130 @@ mod tests {
             "a.txt"
         );
     }
+
+    /// A grant, a risk bucket and the contract-mode allowlist all key off the
+    /// tool name, so each of them has to resolve the spelling a user's earlier
+    /// configuration used to the canonical one (spec 23 §3, invariant 4).
+    #[test]
+    fn legacy_tool_names_match_the_same_permission_rules() {
+        for (legacy, canonical, risk) in [
+            ("Read", "read", Risk::Low),
+            ("Glob", "glob", Risk::Low),
+            ("Grep", "grep", Risk::Low),
+            ("Write", "write", Risk::High),
+            ("Edit", "edit", Risk::High),
+            ("Bash", "bash", Risk::High),
+            ("GenerateImages", "generate_images", Risk::High),
+        ] {
+            assert_eq!(
+                PermissionManager::tool_risk_with_declared(legacy, None),
+                risk,
+                "{legacy}"
+            );
+            assert_eq!(
+                PermissionManager::tool_risk_with_declared(canonical, None),
+                risk,
+                "{canonical}"
+            );
+        }
+        // The contract-mode allowlist is a positive list, so assert membership
+        // itself rather than comparing a predicate with its own normalization: a
+        // predicate that answered the same thing for every name would satisfy a
+        // self-comparison.
+        for admitted in [
+            "read",
+            "Read",
+            "glob",
+            "Glob",
+            "grep",
+            "Grep",
+            "bash",
+            "Bash",
+            "browser_preview",
+            "BrowserPreview",
+        ] {
+            assert!(
+                PermissionManager::plan_mode_allows(admitted),
+                "{admitted} is admitted in contract modes"
+            );
+        }
+        for denied in [
+            "write",
+            "Write",
+            "edit",
+            "Edit",
+            "generate_images",
+            "GenerateImages",
+            "plugin_x_run",
+            "asktool",
+        ] {
+            assert!(
+                !PermissionManager::plan_mode_allows(denied),
+                "{denied} must stay out of contract modes"
+            );
+        }
+        // Names that are not ours keep their own risk path.
+        assert_eq!(
+            PermissionManager::tool_risk_with_declared("plugin_x_run", None),
+            Risk::Medium
+        );
+        assert_eq!(
+            PermissionManager::tool_risk_with_declared("plugin_x_run", Some("low")),
+            Risk::Low
+        );
+        assert_eq!(
+            PermissionManager::tool_risk_with_declared("mcp_server_tool", None),
+            Risk::Low
+        );
+    }
+
+    /// A session grant recorded before the rename, and a replayed call that
+    /// still uses the old spelling, have to keep meeting each other.
+    #[test]
+    fn a_legacy_session_grant_still_covers_its_canonical_call() {
+        let manager = PermissionManager::default();
+        let mut legacy_grant = HashMap::new();
+        legacy_grant.insert("s".to_string(), vec!["Write".to_string()]);
+        let mut canonical_grant = HashMap::new();
+        canonical_grant.insert("s".to_string(), vec!["write".to_string()]);
+
+        for (call, grants, label) in [
+            ("write", &legacy_grant, "legacy grant, canonical call"),
+            ("Write", &legacy_grant, "legacy grant, legacy call"),
+            ("Write", &canonical_grant, "canonical grant, legacy call"),
+        ] {
+            assert_eq!(
+                manager.evaluate_auto_with_permission_mode("s", call, "agent", "ask", grants),
+                Some(PermissionDecision::AllowSession),
+                "{label}"
+            );
+            // The outside-path branch reads the same predicate, and only a grant
+            // can answer it: `ask` needs the card otherwise.
+            assert_eq!(
+                manager.evaluate_auto_with_permission_mode_and_risk_and_path(
+                    PermissionEvaluationParams {
+                        session_id: "s",
+                        tool_name: call,
+                        mode: "agent",
+                        permission_mode: "ask",
+                        session_grants: grants,
+                        declared_risk: None,
+                        requires_external_path_permission: true,
+                        plan_safe_actions: None,
+                    },
+                ),
+                Some(PermissionDecision::AllowSession),
+                "{label}, outside the workspace"
+            );
+        }
+        // A grant for another tool never covers this one.
+        let mut other = HashMap::new();
+        other.insert("s".to_string(), vec!["read".to_string()]);
+        assert_eq!(
+            manager.evaluate_auto_with_permission_mode("s", "write", "agent", "ask", &other),
+            None
+        );
+    }
 }
 
 #[cfg(test)]
@@ -802,80 +930,6 @@ mod image_generation_tests {
                 &grants
             ),
             Some(PermissionDecision::Deny)
-        );
-    }
-    /// A grant, a risk bucket and the contract-mode allowlist all key off the
-    /// tool name, so each of them has to resolve the spelling a user's earlier
-    /// configuration used to the canonical one (spec 23 §3, invariant 4).
-    #[test]
-    fn legacy_tool_names_match_the_same_permission_rules() {
-        for (legacy, canonical, risk) in [
-            ("Read", "read", Risk::Low),
-            ("Glob", "glob", Risk::Low),
-            ("Grep", "grep", Risk::Low),
-            ("Write", "write", Risk::High),
-            ("Edit", "edit", Risk::High),
-            ("Bash", "bash", Risk::High),
-            ("GenerateImages", "generate_images", Risk::High),
-        ] {
-            assert_eq!(
-                PermissionManager::tool_risk_with_declared(legacy, None),
-                risk,
-                "{legacy}"
-            );
-            assert_eq!(
-                PermissionManager::tool_risk_with_declared(canonical, None),
-                risk,
-                "{canonical}"
-            );
-            assert_eq!(
-                PermissionManager::plan_mode_allows(legacy),
-                PermissionManager::plan_mode_allows(canonical),
-                "{legacy} and {canonical} disagree about contract modes"
-            );
-        }
-        // Names that are not ours keep their own risk path.
-        assert_eq!(
-            PermissionManager::tool_risk_with_declared("plugin_x_run", None),
-            Risk::Medium
-        );
-        assert_eq!(
-            PermissionManager::tool_risk_with_declared("plugin_x_run", Some("low")),
-            Risk::Low
-        );
-        assert_eq!(
-            PermissionManager::tool_risk_with_declared("mcp_server_tool", None),
-            Risk::Low
-        );
-    }
-
-    /// A session grant recorded before the rename, and a replayed call that
-    /// still uses the old spelling, have to keep meeting each other.
-    #[test]
-    fn a_legacy_session_grant_still_covers_its_canonical_call() {
-        let manager = PermissionManager::default();
-        let mut legacy_grant = HashMap::new();
-        legacy_grant.insert("s".to_string(), vec!["Write".to_string()]);
-        let mut canonical_grant = HashMap::new();
-        canonical_grant.insert("s".to_string(), vec!["write".to_string()]);
-
-        for (call, grants, label) in [
-            ("write", &legacy_grant, "legacy grant, canonical call"),
-            ("Write", &legacy_grant, "legacy grant, legacy call"),
-            ("Write", &canonical_grant, "canonical grant, legacy call"),
-        ] {
-            assert_eq!(
-                manager.evaluate_auto_with_permission_mode("s", call, "agent", "ask", grants),
-                Some(PermissionDecision::AllowSession),
-                "{label}"
-            );
-        }
-        // A grant for another tool never covers this one.
-        let mut other = HashMap::new();
-        other.insert("s".to_string(), vec!["read".to_string()]);
-        assert_eq!(
-            manager.evaluate_auto_with_permission_mode("s", "write", "agent", "ask", &other),
-            None
         );
     }
 }

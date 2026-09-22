@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::db::{ms_to_ts, now_ms, Database};
 use crate::sessions::{self, UiMessage};
+use crate::tools::normalize_tool_name;
 use crate::transcripts::{self, MessageRecord};
 
 pub const MAX_IMPORT_MESSAGES: usize = 2_000;
@@ -185,6 +186,11 @@ fn parse_message(
             "message.toolName",
             256,
         )?;
+        // A plugin importing an external archive brings the spelling the
+        // exporting model emitted, which may predate the rename. This is a write
+        // path (spec 23 §3), so the row is stored canonical — third-party names
+        // the normalizer does not own keep their own spelling.
+        let tool_name = normalize_tool_name(&tool_name).into_owned();
         let external_call_id = required_text(
             input.tool_call_id.as_deref().unwrap_or_default(),
             "message.toolCallId",
@@ -1430,6 +1436,43 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("INVALID_PARAMS"));
+    }
+
+    /// An imported archive carries whatever the exporting model emitted, which
+    /// may predate the rename. Import is a write path (spec 23 §3), so our own
+    /// names are stored canonical while a third party's name is not ours to
+    /// rewrite.
+    #[test]
+    fn tool_import_stores_the_canonical_tool_name() {
+        let (_dir, db) = db();
+        let mut input = item("tool-legacy", "2026-01-01T00:00:01Z");
+        input["messages"] = json!([
+            {
+                "role": "tool", "content": "done", "createdAt": "2026-01-01T00:00:01Z",
+                "toolName": "TaskWait", "toolCallId": "call-1", "toolStatus": "success"
+            },
+            {
+                "role": "tool", "content": "done", "createdAt": "2026-01-01T00:00:02Z",
+                "toolName": "Read", "toolCallId": "call-2", "toolStatus": "success"
+            },
+            {
+                "role": "tool", "content": "done", "createdAt": "2026-01-01T00:00:03Z",
+                "toolName": "plugin_pi_browser_Browser", "toolCallId": "call-3", "toolStatus": "success"
+            }
+        ]);
+        input["source"] = json!("legacy");
+        let id = import(&db, "plugin.one", &input).unwrap()["sessionId"].clone();
+        let messages = list_messages(&db, "plugin.one", &json!({ "sessionId": id })).unwrap();
+        let names: Vec<&str> = messages["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["tool"]["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["task_wait", "read", "plugin_pi_browser_Browser"]
+        );
     }
 
     #[test]
