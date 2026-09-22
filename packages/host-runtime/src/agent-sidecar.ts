@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { SKILL_TOOL_NAME } from "@pi-desktop/agent-runtime";
 import { DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, normalizeToolName, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
 import type { ProcessExitHandler, StderrHandler } from "./host-process.js";
 
@@ -121,6 +122,22 @@ export type AgentSidecarOptions = {
  * host registers (local tools, project instructions, vendor auth, trusted
  * extensions).
  */
+/**
+ * Host-local tools Plan mode refuses outright, because a host-local handler
+ * runs outside host-core's permission boundary. `browser_preview` is the one
+ * read-only exception and the caller lets it through (D100).
+ *
+ * `skill` comes from the runtime's own constant; the check / scaffold / pack
+ * trio has no shared constant, so it is named here once rather than spelled
+ * out at every comparison.
+ */
+const PLAN_LOCAL_TOOL_NAMES: readonly string[] = [
+  SKILL_TOOL_NAME,
+  "check_plugin",
+  "scaffold_plugin",
+  "pack_plugin",
+];
+
 export class AgentSidecar {
   private child: ChildProcessWithoutNullStreams;
   private pending = new Map<
@@ -476,10 +493,7 @@ export class AgentSidecar {
         const params = (msg.params?.params ?? {}) as Record<string, unknown>;
         const requestedToolName = String(params.toolName ?? "");
         const planLocalTool =
-          requestedToolName === "skill" ||
-          requestedToolName === "check_plugin" ||
-          requestedToolName === "scaffold_plugin" ||
-          requestedToolName === "pack_plugin" ||
+          PLAN_LOCAL_TOOL_NAMES.includes(requestedToolName) ||
           requestedToolName.startsWith("plugin_");
         if (
           method === "tools.execute" &&
