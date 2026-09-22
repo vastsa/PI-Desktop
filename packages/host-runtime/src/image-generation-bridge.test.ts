@@ -117,3 +117,35 @@ it("tools.abort reaches the in-flight request and still forwards host cancellati
   expect((await pending).ok).toBe(false);
   expect(calls).toEqual(["tools.execute", "tools.abort"]);
 });
+
+it("finds bridges registered under their pre-rename names (D620)", async () => {
+  const { sidecar, calls } = harness();
+  // The embedding host registers its host-local bridges by name. A host that
+  // still says `BrowserPreview` / `PluginCheck` must keep serving the canonical
+  // requests the runtime now sends.
+  sidecar.setLocalTool("BrowserPreview", async () => {
+    calls.push("previewed");
+    return { ok: true, content: "preview" };
+  });
+  sidecar.setLocalTool("PluginCheck", async () => {
+    calls.push("checked");
+    return { ok: true, content: "checked" };
+  });
+  const execute = (mode: string, toolName: string) =>
+    sidecar.call<{ ok: boolean; errorCode?: string }>("probe", {
+      method: "tools.execute",
+      params: { sessionId: "s", toolCallId: `${toolName}-${mode}`, mode, toolName, args: {} },
+    });
+
+  expect((await execute("agent", "browser_preview")).ok).toBe(true);
+  // The preview bridge is the one host-local tool Plan mode may run.
+  expect((await execute("plan", "browser_preview")).ok).toBe(true);
+  expect(calls).toEqual(["previewed", "previewed"]);
+  // Every other host-local bridge still fails closed in Plan mode.
+  await expect(execute("plan", "check_plugin")).rejects.toThrow(
+    "check_plugin is unavailable in Plan mode",
+  );
+  expect(calls).not.toContain("checked");
+  expect((await execute("agent", "check_plugin")).ok).toBe(true);
+  expect(calls).toContain("checked");
+});

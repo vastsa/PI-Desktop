@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
+import { DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, normalizeToolName, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
 import type { ProcessExitHandler, StderrHandler } from "./host-process.js";
 
 // stderr lines kept per sidecar so an unexpected exit can be reported with the
@@ -305,8 +305,15 @@ export class AgentSidecar {
   }
 
   /** Register a tool the sidecar can call that the embedding host handles locally. */
+  /**
+   * Register a tool the embedding host serves itself.
+   *
+   * The registry is keyed by the canonical tool name, so a host that still
+   * registers its bridge under the pre-rename spelling (`BrowserPreview`)
+   * keeps working while the runtime asks for `browser_preview` (D620).
+   */
   setLocalTool(name: string, handler: LocalToolHandler): void {
-    this.localTools.set(name, handler);
+    this.localTools.set(normalizeToolName(name), handler);
   }
 
   setProjectInstructionResolver(resolver: ProjectInstructionResolver): void {
