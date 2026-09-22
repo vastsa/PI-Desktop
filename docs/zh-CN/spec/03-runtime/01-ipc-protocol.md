@@ -1804,3 +1804,24 @@ returns `{ ok: true }` and forwards to host `providers.reorder`. The sandboxed
 preload permits this channel through the shared IPC registry. Invalid placement
 or missing providers returns `INVALID_PARAMS`; configuration and defaults are
 unchanged. See [provider configuration](12-provider-config-schema.md).
+
+## 15. 云配置同步
+
+设置 → 云同步页面使用以下 Renderer-to-Main 通道；所有通道都会转发到 Host 所有的 `configSync.*` RPC 方法：
+
+| IPC 通道 | Host 方法 | 契约 |
+|---|---|---|
+| `pi-desktop/configSync/getState` | `configSync.getState` | 脱敏状态、类别选择、预览计数和待审批摘要 |
+| `pi-desktop/configSync/test` | `configSync.test` | 使用临时对象进行 WebDAV 能力探测；不持久化配置 |
+| `pi-desktop/configSync/configure` | `configSync.configure` | 校验 endpoint、保存加密的本地同步元数据并启用 vault |
+| `pi-desktop/configSync/syncNow` | `configSync.syncNow` | 执行一次由 Host 所有的协调周期 |
+| `pi-desktop/configSync/pause` | `configSync.pause` | 仅暂停或恢复本设备 |
+| `pi-desktop/configSync/unlock` | `configSync.unlock` | 为当前进程/设备解锁本地 vault |
+| `pi-desktop/configSync/approve` / `reject` | `configSync.approve` / `configSync.reject` | 记录绑定 digest 的本地激活决定 |
+| `pi-desktop/configSync/mapProject` | `configSync.mapProject` | 将一个不透明项目/组身份绑定到一个或多个明确选择的本地文件夹，并保留 primary-root 顺序 |
+| `pi-desktop/configSync/listHistory` | `configSync.listHistory` | 只列出脱敏的可达 revision 元数据 |
+| `pi-desktop/configSync/restore` | `configSync.restore` | 根据明确确认的历史 revision 创建新的传播 revision，并暂存本地审批/恢复信息 |
+| `pi-desktop/configSync/changePassword` | `configSync.changePassword` | CAS 重新包裹 vault key header，不返回 key 或秘密值 |
+| `pi-desktop/configSync/disconnect` | `configSync.disconnect` | 移除本地同步元数据和 key；不会删除远端 vault 数据 |
+
+输入密码只会被传给需要它的操作。原始秘密、vault key、解密资源或远端 archive 不会返回到 Renderer。`configSync.changed` 事件携带相同的脱敏状态，并由 Host 发起的变更（包括 Host scheduler）触发。Main 只是传输/生命周期协调器，不负责调度、合并、加密或应用配置。

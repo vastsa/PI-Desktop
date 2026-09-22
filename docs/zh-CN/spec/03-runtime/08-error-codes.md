@@ -73,6 +73,14 @@ type AppError = {
 | `HOST_SHUTTING_DOWN` | 是的 | 主机收到 EOF 正在排空；调用被拒绝而不是被启动 |
 | `RATE_LIMITED` | 是的 | 某个按调用方计的主机预算（插件会话导入、批量操作）在其窗口内被超出 |
 | `LIMIT_EXCEEDED` | 不 | 载荷超过了固定的主机上限（条目数、字节数）并被拒绝 |
+| `CONFIG_SYNC_INVALID` | 不 | 同步配置、密码、路径、请求或审批输入无效 |
+| `CONFIG_SYNC_LOCKED` | 不 | 本地加密同步 vault 尚未解锁 |
+| `CONFIG_SYNC_UNSUPPORTED` | 不 | vault 格式或 WebDAV 服务器能力不受支持 |
+| `CONFIG_SYNC_REMOTE` | 也许 | 远端 WebDAV 对象、认证、配额或可用性失败 |
+| `CONFIG_SYNC_CONFLICT` | 也许 | 远端 head、vault 身份或审批 digest 冲突 |
+| `CONFIG_SYNC_CRYPTO` | 不 | 认证加密、对象身份或密文校验失败 |
+| `CONFIG_SYNC_MAPPING_REQUIRED` | 不 | 导入的项目作用域配置需要明确的本地文件夹/项目组映射 |
+| `CONFIG_SYNC_LIMIT_EXCEEDED` | 不 | 加密同步状态超过实体、对象、资源、归档或解压上限 |
 
 `HOST_UNAVAILABLE` 是为丢失或损坏的主机 process/transport 保留的，
 不是普通的入学压力。 RPC 容量返回 `HOST_OVERLOADED`，并且
