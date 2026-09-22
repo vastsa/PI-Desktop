@@ -4,6 +4,7 @@ import type {
   ConfigSyncCategory,
   ConfigSyncCategorySelection,
   ConfigSyncHistoryEntry,
+  ConfigSyncPendingApproval,
   ConfigSyncState,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
@@ -287,10 +288,48 @@ export function ConfigSyncPage() {
     }
   };
 
-  const statusLabel = useMemo(
-    () => t("settings.configSync.status." + (state?.status ?? "notConfigured")),
-    [state?.status, t],
-  );
+  const statusLabel = useMemo(() => {
+    switch (state?.status ?? "notConfigured") {
+      case "locked":
+        return t("settings.configSync.status.locked");
+      case "upToDate":
+        return t("settings.configSync.status.upToDate");
+      case "localChangesPending":
+        return t("settings.configSync.status.localChangesPending");
+      case "syncing":
+        return t("settings.configSync.status.syncing");
+      case "offline":
+        return t("settings.configSync.status.offline");
+      case "unsupportedServer":
+        return t("settings.configSync.status.unsupportedServer");
+      case "conflict":
+        return t("settings.configSync.status.conflict");
+      case "awaitingActivation":
+        return t("settings.configSync.status.awaitingActivation");
+      case "paused":
+        return t("settings.configSync.status.paused");
+      case "error":
+        return t("settings.configSync.status.error");
+      case "notConfigured":
+      default:
+        return t("settings.configSync.status.notConfigured");
+    }
+  }, [state?.status, t]);
+
+  const approvalReasonLabel = (reason: ConfigSyncPendingApproval["reason"]) => {
+    switch (reason) {
+      case "newDevice":
+        return t("settings.configSync.approvalReason.newDevice");
+      case "securityChange":
+        return t("settings.configSync.approvalReason.securityChange");
+      case "dependency":
+        return t("settings.configSync.approvalReason.dependency");
+      case "mapping":
+        return t("settings.configSync.approvalReason.mapping");
+      case "conflict":
+        return t("settings.configSync.approvalReason.conflict");
+    }
+  };
 
   if (loading) {
     return (
@@ -582,10 +621,7 @@ export function ConfigSyncPage() {
                         {approval.label}
                       </div>
                       <div className="settings-config-sync-approval-meta">
-                        {t(
-                          "settings.configSync.approvalReason." + approval.reason,
-                          { defaultValue: approval.reason },
-                        )}
+                        {approvalReasonLabel(approval.reason)}
                       </div>
                     </div>
                     <div className="settings-config-sync-actions">
