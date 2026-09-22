@@ -6742,7 +6742,11 @@ that was sitting at the bottom — including after the turn had finished.
   normalizes its argument, and permission matching normalizes both the incoming
   call and every session grant. A replayed `Read`, a saved `Bash` grant and a
   subagent document that declares `tools: [Read]` therefore keep working, and no
-  stored byte changes.
+  stored byte changes. Two further read-in points joined them: the
+  `permissions.evaluate` preview normalizes before it answers, so it cannot
+  disagree with `tools.execute` about a call whose spelling predates the
+  rename, and a plugin session import stores the canonical name, because
+  importing an archive is a write path.
 - Two names this lane deliberately leaves alone: `PowerShell` is a shell id, not
   a tool, and `plugin_*` / `mcp_*` are third-party identities —
   `is_desktop_dispatched()` keeps its prefix test unchanged.
@@ -6751,5 +6755,8 @@ that was sitting at the bottom — including after the turn had finished.
   `legacy_bash_name_resolves_to_the_bash_timeout`,
   `legacy_tool_names_match_the_same_permission_rules`,
   `legacy_tool_names_map_to_the_same_admission_class`,
-  `legacy_tool_declarations_resolve_to_canonical_names`), plus one replayed RPC
-  request. See `03-runtime/23-tool-names.md` and D618.
+  `legacy_tool_declarations_resolve_to_canonical_names`,
+  `a_legacy_session_grant_still_covers_its_canonical_call`,
+  `tool_import_stores_the_canonical_tool_name`), plus two RPC cases that replay a
+  legacy name: one executes, one previews the permission decision. See
+  `03-runtime/23-tool-names.md` and D618.

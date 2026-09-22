@@ -3884,6 +3884,14 @@ async fn handle_request(
                 .get("toolName")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
+            // The preview has to answer what `tools.execute` would decide for the
+            // same call, and that entry point normalizes the name. A caller that
+            // still spells it the pre-rename way would otherwise get a different
+            // answer here: `Read` is not one of the path-bearing canonical names,
+            // so the external-path gate below would stay silent and a path outside
+            // the workspace would come back as an auto-allow instead of a card.
+            let tool_name = tools::normalize_tool_name(tool_name);
+            let tool_name: &str = &tool_name;
             let declared_risk = params.get("declaredRisk").and_then(|v| v.as_str());
             let plan_safe_actions: Option<Vec<String>> = params
                 .get("planSafeActions")
@@ -7790,6 +7798,67 @@ mod tests {
         assert_eq!(missing.data.unwrap()["errorCode"], "NOT_FOUND");
     }
 
+    /// The permission preview has to answer what `tools.execute` would decide for
+    /// the same call. A name that still carries the pre-rename spelling would
+    /// otherwise miss the outside-workspace gate, which keys off the canonical
+    /// names, and come back as an auto-allow instead of a card.
+    #[tokio::test]
+    async fn permission_preview_normalizes_a_replayed_tool_name() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Preview".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        sessions::configure_session_with_thinking(
+            &app_state.db,
+            &session.id,
+            "agent",
+            None,
+            None,
+            None,
+            Some("ask"),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let outside = data_dir.path().join("outside.txt");
+        fs::write(&outside, "outside").unwrap();
+
+        for tool_name in ["Read", "read"] {
+            let preview = handle_request(
+                state.clone(),
+                "permissions.evaluate",
+                json!({
+                    "sessionId": session.id,
+                    "toolName": tool_name,
+                    "args": { "path": outside.to_string_lossy() }
+                }),
+                tx.clone(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                preview["externalPathPermission"],
+                json!(true),
+                "{tool_name} must be gated on an outside-workspace path"
+            );
+            assert!(
+                preview["decision"].is_null(),
+                "{tool_name} must wait for a card, got {}",
+                preview["decision"]
+            );
+        }
+    }
+
     /// A replayed tool call still carries the spelling the model emitted before
     /// the rename, and stored data is never rewritten (spec 23 §3). The host
     /// normalizes the name once at the RPC boundary, so a legacy spelling takes
@@ -7838,24 +7907,27 @@ mod tests {
                     .contains("hello"),
                 "{tool_name} did not read the file: {result}"
             );
-        }
 
-        let st = state.lock().await;
-        let payload: String = st
-            .db
-            .conn()
-            .query_row(
-                "SELECT payload_json FROM audit_log WHERE kind = 'tool_execute' ORDER BY id DESC LIMIT 1",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        let payload: serde_json::Value = serde_json::from_str(&payload).unwrap();
-        assert_eq!(
-            payload["toolName"],
-            json!("read"),
-            "the audit row carries the canonical name"
-        );
+            // Per call, keyed by its own tool call id: the row written for the
+            // legacy spelling has to carry the canonical name too, which a
+            // "latest row" query cannot prove.
+            let st = state.lock().await;
+            let payload: String = st
+                .db
+                .conn()
+                .query_row(
+                    "SELECT payload_json FROM audit_log WHERE kind = 'tool_execute' AND payload_json LIKE ?1 ORDER BY id DESC LIMIT 1",
+                    [format!("%replayed-{index}%")],
+                    |r| r.get(0),
+                )
+                .unwrap_or_else(|error| panic!("no audit row for replayed-{index}: {error}"));
+            let payload: serde_json::Value = serde_json::from_str(&payload).unwrap();
+            assert_eq!(
+                payload["toolName"],
+                json!("read"),
+                "the audit row for {tool_name} carries the canonical name"
+            );
+        }
     }
 
     /// D137: the audit row for a tool call must carry the three segments
