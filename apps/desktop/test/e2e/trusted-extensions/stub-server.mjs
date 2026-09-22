@@ -66,10 +66,10 @@ createServer((req, res) => {
       return sse(res, text(`Sum is ${content.slice(0, 200)}.`));
     }
     const toolNames = new Set((payload.tools ?? []).map((t) => t.function?.name));
-    if (user.includes("bash")) return sse(res, call("Bash", { command: "echo hi" }));
+    if (user.includes("bash")) return sse(res, call("bash", { command: "echo hi" }));
     if (user.includes("add")) {
       // Extension tools are deferred like plugin tools: activate through ToolSearch first.
-      if (!toolNames.has("fx_add") && toolNames.has("ToolSearch")) return sse(res, call("ToolSearch", { query: "fx_add" }));
+      if (!toolNames.has("fx_add") && toolNames.has("tool_search")) return sse(res, call("tool_search", { query: "fx_add" }));
       return sse(res, call("fx_add", { a: 20, b: 22 }));
     }
     return sse(res, text("Hello from the stub."));

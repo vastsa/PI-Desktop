@@ -44,7 +44,7 @@ export default function (pi: any) {
   pi.on("before_provider_headers", (e: any) => { e.headers["x-e2e-ext"] = "yes"; });
   pi.on("before_provider_request", (e: any) => { log("before_provider_request " + typeof e.payload); });
   pi.on("after_provider_response", (e: any) => log("after_provider_response " + e.response?.status));
-  pi.on("tool_call", (e: any) => { log("tool_call " + e.toolName); if (e.toolName === "Bash") return { block: true, reason: "E2E blocked bash" }; });
+  pi.on("tool_call", (e: any) => { log("tool_call " + e.toolName); if (e.toolName === "bash") return { block: true, reason: "E2E blocked bash" }; });
   pi.on("tool_result", (e: any) => { log("tool_result " + e.toolName + " " + e.isError); if (e.toolName === "fx_add") return { content: [{ type: "text", text: "42 (replaced)" }] }; });
   pi.on("context", (e: any) => { log("context " + e.messages.length); });
   pi.on("turn_start", () => log("turn_start"));
