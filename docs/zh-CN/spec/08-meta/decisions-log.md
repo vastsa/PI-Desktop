@@ -4786,6 +4786,10 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
   都继续有效，且不改变任何已存字节。另有两个读入点一并接入：`permissions.evaluate` 预览在给出
   结论前先归一化，因此不会与 `tools.execute` 对同一调用的判断相反；插件会话导入则以规范名落库，
   因为导入档案属于写路径。
+- 由 host-core 自己定义的四个计划任务工具（`scheduled_task_list` / `_create` / `_update` /
+  `_delete`）连同其 schema、参数白名单、`risk` 分支与派发一并改名，且
+  `scheduled_tools::recognizes` 也对自己收到的名字归一化——它是调用方直接查询的门，而不是派发器内部
+  的形式步骤。
 - 本 lane 有意不动的两个名字：`PowerShell` 是 shell id 而非工具名；`plugin_*` / `mcp_*` 是第三方
   身份，`is_desktop_dispatched()` 的前缀判定保持不变。
 - 回归测试贴在各自边界旁（`legacy_tool_names_dispatch_to_the_same_builtin`、
@@ -4794,5 +4798,7 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
   `legacy_tool_names_map_to_the_same_admission_class`、
   `legacy_tool_declarations_resolve_to_canonical_names`、
   `a_legacy_session_grant_still_covers_its_canonical_call`、
-  `tool_import_stores_the_canonical_tool_name`），另有两例 RPC 用例分别回放旧名执行与预览权限判定。
+  `tool_import_stores_the_canonical_tool_name`、
+  `legacy_scheduled_task_names_dispatch_to_the_same_tools`），另有两例 RPC 用例分别回放旧名执行与
+  预览权限判定。
   见 `docs/zh-CN/spec/03-runtime/23-tool-names.md` 与 D618。

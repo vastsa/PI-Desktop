@@ -6747,6 +6747,11 @@ that was sitting at the bottom — including after the turn had finished.
   disagree with `tools.execute` about a call whose spelling predates the
   rename, and a plugin session import stores the canonical name, because
   importing an archive is a write path.
+- The four scheduled-task tools host-core defines itself
+  (`scheduled_task_list` / `_create` / `_update` / `_delete`) moved with their
+  schema, their argument whitelist, their `risk` branch and their dispatch, and
+  `scheduled_tools::recognizes` normalizes the name it is handed as well — it is
+  the gate the caller consults, not a formality inside the dispatcher.
 - Two names this lane deliberately leaves alone: `PowerShell` is a shell id, not
   a tool, and `plugin_*` / `mcp_*` are third-party identities —
   `is_desktop_dispatched()` keeps its prefix test unchanged.
@@ -6757,6 +6762,7 @@ that was sitting at the bottom — including after the turn had finished.
   `legacy_tool_names_map_to_the_same_admission_class`,
   `legacy_tool_declarations_resolve_to_canonical_names`,
   `a_legacy_session_grant_still_covers_its_canonical_call`,
-  `tool_import_stores_the_canonical_tool_name`), plus two RPC cases that replay a
-  legacy name: one executes, one previews the permission decision. See
+  `tool_import_stores_the_canonical_tool_name`,
+  `legacy_scheduled_task_names_dispatch_to_the_same_tools`), plus two RPC cases that
+  replay a legacy name: one executes, one previews the permission decision. See
   `03-runtime/23-tool-names.md` and D618.

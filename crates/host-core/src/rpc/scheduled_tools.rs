@@ -1,7 +1,7 @@
 use super::{rpc_err, scheduled_rpc, AppState, JsonRpcError};
 use crate::{
     scheduled, sessions,
-    tools::{ToolsExecuteParams, ToolsExecuteResult},
+    tools::{normalize_tool_name, ToolsExecuteParams, ToolsExecuteResult},
 };
 use serde_json::{json, Value};
 
@@ -9,9 +9,14 @@ use serde_json::{json, Value};
 #[path = "scheduled_calendar_tests.rs"]
 mod calendar_tests;
 
+/// Whether a tool name is one of the four scheduled-task tools.
+///
+/// The name is normalized first: the dispatcher already does that for a call it
+/// forwards, but this predicate is the gate the caller consults, and a replayed
+/// transcript still spells `ScheduledTaskList`.
 pub fn recognizes(name: &str) -> bool {
     matches!(
-        name,
+        &*normalize_tool_name(name),
         "scheduled_task_list"
             | "scheduled_task_create"
             | "scheduled_task_update"
@@ -45,6 +50,10 @@ fn invalid(message: &str) -> JsonRpcError {
 }
 
 fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpcError> {
+    // Same read-in boundary as the dispatcher: a replayed `ScheduledTaskCreate`
+    // has to reach the branch `scheduled_task_create` reaches.
+    let tool_name = normalize_tool_name(&p.tool_name);
+    let tool_name: &str = &tool_name;
     let session = sessions::get_session(&st.db, &p.session_id)
         .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
         .ok_or_else(|| rpc_err(1007, "session not found", "SESSION_NOT_FOUND"))?;
@@ -64,7 +73,7 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
         .args
         .as_object()
         .ok_or_else(|| invalid("arguments must be an object"))?;
-    let allowed: &[&str] = match p.tool_name.as_str() {
+    let allowed: &[&str] = match tool_name {
         "scheduled_task_list" => &[],
         "scheduled_task_create" => &["title", "prompt", "cadence", "schedule", "enabled"],
         "scheduled_task_update" => &["id", "title", "prompt", "cadence", "schedule", "enabled"],
@@ -74,14 +83,14 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
     if args.keys().any(|key| !allowed.contains(&key.as_str())) {
         return Err(invalid("unsupported scheduled task field"));
     }
-    if p.tool_name == "scheduled_task_list" {
+    if tool_name == "scheduled_task_list" {
         let tasks =
             scheduled::list_tasks(&st.db).map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
         return Ok(
             json!({"tasks": tasks.into_iter().filter(|task| task.workspace_path == workspace).collect::<Vec<_>>() }),
         );
     }
-    let existing = if p.tool_name != "scheduled_task_create" {
+    let existing = if tool_name != "scheduled_task_create" {
         let id = args
             .get("id")
             .and_then(Value::as_str)
@@ -103,7 +112,7 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
             if value.trim().is_empty() || value.chars().count() > limit {
                 return Err(invalid("invalid title or prompt length"));
             }
-        } else if p.tool_name == "scheduled_task_create" {
+        } else if tool_name == "scheduled_task_create" {
             return Err(invalid("title and prompt required"));
         }
     }
@@ -126,7 +135,7 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
             serde_json::from_value(schedule.clone()).map_err(|e| invalid(&e.to_string()))?;
         parsed.validate().map_err(|e| invalid(&e.to_string()))?;
     }
-    if p.tool_name == "scheduled_task_create" {
+    if tool_name == "scheduled_task_create" {
         if !args.contains_key("cadence") {
             return Err(invalid("cadence required"));
         }
@@ -136,7 +145,7 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
     }
     // An echoed cadence during legacy maintenance is not an arming request.
     if args.get("cadence").and_then(Value::as_str) == Some("hourly")
-        && (p.tool_name == "scheduled_task_create"
+        && (tool_name == "scheduled_task_create"
             || existing
                 .as_ref()
                 .is_some_and(|task| task.cadence != "hourly")
@@ -149,8 +158,8 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
     {
         input["schedule"] = json!({"hour":0,"minute":0,"weekday":0});
     }
-    if p.tool_name != "scheduled_task_delete"
-        && (p.tool_name == "scheduled_task_create"
+    if tool_name != "scheduled_task_delete"
+        && (tool_name == "scheduled_task_create"
             || (args.contains_key("cadence")
                 && existing
                     .as_ref()
@@ -166,7 +175,7 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
     {
         return Err(invalid("a schedule is required for automatic execution"));
     }
-    let method = match p.tool_name.as_str() {
+    let method = match tool_name {
         "scheduled_task_create" => "scheduled.create",
         "scheduled_task_update" => "scheduled.update",
         _ => "scheduled.delete",
@@ -356,6 +365,46 @@ mod tests {
         )
         .await
         .unwrap()
+    }
+
+    /// The four scheduled-task tools answer to their pre-rename spelling too:
+    /// a replayed transcript carries `ScheduledTaskList`, and the dispatcher plus
+    /// this module's own gate both resolve it before any branch is taken.
+    #[tokio::test]
+    async fn legacy_scheduled_task_names_dispatch_to_the_same_tools() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let mut st = AppState::open(dir.path()).unwrap();
+        st.handshook = true;
+        st.db
+            .set_setting("app", &json!({"defaultPermissionMode":"auto"}))
+            .unwrap();
+        let path =
+            crate::db::canonical_project_path(&st.workspace.set(project.path()).path).unwrap();
+        let session =
+            sessions::create_session(&st.db, None, Some("agent".into()), None, None, Some(path))
+                .unwrap();
+        let state = Arc::new(Mutex::new(st));
+
+        for name in ["ScheduledTaskList", "scheduled_task_list"] {
+            assert!(recognizes(name), "{name} must be recognized");
+            let listed = call(&state, &session.id, name, json!({})).await;
+            assert_eq!(listed["ok"], true, "{name}: {listed}");
+            assert!(listed["content"]["tasks"].is_array(), "{name}: {listed}");
+        }
+        for name in ["ScheduledTaskCreate", "scheduled_task_create"] {
+            let created = call(
+                &state,
+                &session.id,
+                name,
+                json!({"title":"Legacy","prompt":"Reply OK","cadence":"manual","enabled":false}),
+            )
+            .await;
+            assert_eq!(created["ok"], true, "{name}: {created}");
+        }
+        // A third-party or unknown name is still not a scheduled tool.
+        assert!(!recognizes("plugin_x_run"));
+        assert!(!recognizes("scheduled_task_archive"));
     }
 
     #[tokio::test]
