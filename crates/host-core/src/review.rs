@@ -14,6 +14,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+use crate::tools::normalize_tool_name;
 use crate::workspace::{self, ToolRoot};
 
 const REVIEW_DIR: &str = "review-changes";
@@ -201,10 +202,15 @@ fn read_meta(data_dir: &Path, session_id: &str, snapshot_id: &str) -> Result<Sna
     Ok(meta)
 }
 
+/// The snapshot operation a tool call records, or `None` when the tool cannot
+/// change a file.
+///
+/// The name is normalized first: a replayed `Write` call must still produce the
+/// same reversible snapshot as `write`.
 fn tool_operation(tool_name: &str) -> Option<ReviewChangeOperation> {
-    match tool_name {
-        "Write" => Some(ReviewChangeOperation::Write),
-        "Edit" => Some(ReviewChangeOperation::Edit),
+    match &*normalize_tool_name(tool_name) {
+        "write" => Some(ReviewChangeOperation::Write),
+        "edit" => Some(ReviewChangeOperation::Edit),
         _ => None,
     }
 }
@@ -615,7 +621,7 @@ mod tests {
             message,
             Some(workspace_root),
             None,
-            "Edit",
+            "edit",
             &json!({ "path": path }),
         )
         .unwrap()
@@ -718,5 +724,17 @@ mod tests {
         .unwrap();
         assert_eq!(result.status, "rolledBack");
         assert_eq!(fs::read_to_string(&target).unwrap(), "keep me\n");
+    }
+    /// Review evidence is prepared from the name the call carries, and a
+    /// replayed call still spells it the pre-rename way (spec 23 §3).
+    #[test]
+    fn legacy_tool_names_record_the_same_review_operation() {
+        assert_eq!(tool_operation("Write"), Some(ReviewChangeOperation::Write));
+        assert_eq!(tool_operation("write"), Some(ReviewChangeOperation::Write));
+        assert_eq!(tool_operation("Edit"), Some(ReviewChangeOperation::Edit));
+        assert_eq!(tool_operation("edit"), Some(ReviewChangeOperation::Edit));
+        // A read cannot change a file, and a third-party name is not ours.
+        assert_eq!(tool_operation("Read"), None);
+        assert_eq!(tool_operation("plugin_x_run"), None);
     }
 }

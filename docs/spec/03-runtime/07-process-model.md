@@ -83,7 +83,7 @@ keep credentials for Node and curl; Chromium is pointed at a loopback SOCKS5
 relay that injects them, because `proxyRules` cannot carry userinfo (issue
 #490).
 host-core marketplace `curl` gets `--proxy` from the stored settings and does
-**not** inherit proxy env, so workspace Bash cannot see proxy credentials.
+**not** inherit proxy env, so workspace bash cannot see proxy credentials.
 Marketplace curl diagnostics prefer UTF-8 and fall back to the active Windows
 ANSI code page before crossing the UTF-8 RPC boundary, so localized Schannel
 errors remain readable instead of becoming replacement characters.
@@ -158,7 +158,7 @@ Supervision parameters (the transports, restart policy, and turn lifecycle are
 renderer-facing status):
 
 - Child exit rejects all in-flight RPCs for that child immediately (no 130s timeout wait).
-- Every RPC carries a finite transport deadline. Bash and desktop-dispatched
+- Every RPC carries a finite transport deadline. bash and desktop-dispatched
   (`plugin_*` / `mcp_*`) tools add the waits host-core can spend before it
   reports an outcome, and `agent.compact` adds the sidecar's own summary budget
   — its stream watchdog per attempt plus its retry backoff (**D614**, issue
@@ -320,7 +320,7 @@ until a post-MVP implementation milestone explicitly amends this section.
    contract mode
 6. A queued/running execution that was already approved is interrupted without
    replay and its durable session remains Agent
-7. Bash timeout/abort shuts down the complete child process tree
+7. bash timeout/abort shuts down the complete child process tree
 
 
 ### Native tray session projection

@@ -247,7 +247,7 @@ Gateway 负责路由已认证客户，但不拥有工作区状态。
    合约模式
 6. 已批准的 queued/running 执行被中断，无需
    重播及其持久会话仍然是 Agent
-7. Bash timeout/abort 关闭完整的子进程树
+7. bash timeout/abort 关闭完整的子进程树
 
 
 ### Native tray session projection

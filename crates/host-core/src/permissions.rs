@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::db::{ms_to_ts, now_ms};
+use crate::tools::normalize_tool_name;
 
 pub const PERMISSION_TIMEOUT_MS: u64 = 120_000;
 
@@ -45,7 +46,7 @@ pub enum PermissionDecision {
     Deny,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Risk {
     Low,
@@ -124,10 +125,16 @@ pub struct PermissionManager {
 }
 
 impl PermissionManager {
+    /// The risk bucket a tool call falls into.
+    ///
+    /// The name is normalized first: a call replayed from a transcript, or a
+    /// rule a user wrote before the rename, may still spell it `Read`, and it
+    /// has to land in the same bucket as `read`.
     pub fn tool_risk_with_declared(tool_name: &str, declared: Option<&str>) -> Risk {
-        match tool_name {
-            "Read" | "Glob" | "Grep" | "ScheduledTaskList" => Risk::Low,
-            "Write" | "Edit" | "Bash" | "GenerateImages" => Risk::High,
+        let tool_name = normalize_tool_name(tool_name);
+        match &*tool_name {
+            "read" | "glob" | "grep" | "scheduled_task_list" => Risk::Low,
+            "write" | "edit" | "bash" | "generate_images" => Risk::High,
             name if name.starts_with("plugin_") => match declared {
                 Some("low") => Risk::Low,
                 Some("high") => Risk::High,
@@ -142,13 +149,17 @@ impl PermissionManager {
     }
 
     /// The shared contract-mode allowlist. Plan and Goal expose the same
-    /// read/inspect core plus Bash; only their submit tool differs, and that one
-    /// is a sidecar-side tool that never reaches this gate. `new_context` is
+    /// read/inspect core plus `bash`; only their submit tool differs, and that
+    /// one is a sidecar-side tool that never reaches this gate. `new_context` is
     /// sidecar-side too, and listed so the two sides of the bridge agree.
+    ///
+    /// Comparison is on canonical names, so a rule or a call written before the
+    /// rename still decides the same way.
     pub fn plan_mode_allows(tool_name: &str) -> bool {
+        let tool_name = normalize_tool_name(tool_name);
         matches!(
-            tool_name,
-            "Read" | "Glob" | "Grep" | "Bash" | "BrowserPreview" | "new_context"
+            &*tool_name,
+            "read" | "glob" | "grep" | "bash" | "browser_preview" | "new_context"
         )
     }
 
@@ -188,6 +199,24 @@ impl PermissionManager {
         self.evaluate_auto_with_permission_mode_and_risk_and_path(params)
     }
 
+    /// Whether the session already granted this tool.
+    ///
+    /// A grant is user configuration, so both sides are normalized before they
+    /// meet: a session that approved `Write` covers a `write` call and the other
+    /// way round, while `plugin_*` / `mcp_*` grants keep the spelling the third
+    /// party declared.
+    fn grant_covers(
+        session_grants: &HashMap<String, Vec<String>>,
+        session_id: &str,
+        tool_name: &str,
+    ) -> bool {
+        session_grants.get(session_id).is_some_and(|grants| {
+            grants
+                .iter()
+                .any(|grant| &*normalize_tool_name(grant) == tool_name)
+        })
+    }
+
     /// Evaluate a tool that explicitly targets a path outside the session's
     /// workspace and scratch roots. Outside-path access is an exception to the
     /// normal low-risk auto-allow rule: `auto` allows it, while every other
@@ -206,6 +235,13 @@ impl PermissionManager {
             requires_external_path_permission,
             plan_safe_actions,
         } = params;
+        // Every comparison below is on the canonical name: a call replayed from
+        // a transcript, an imported session, or a session grant the user's older
+        // configuration recorded may still spell it `Write`. Normalizing here
+        // and at each grant comparison keeps those spellings working without
+        // rewriting anything on disk (spec 23 §3, invariant 4).
+        let tool_name = normalize_tool_name(tool_name);
+        let tool_name: &str = &tool_name;
         // The contract modes' tool allowlist is authoritative. This check
         // intentionally precedes low-risk classification, auto, grants, and
         // scratch paths, and covers Goal as well as Plan (D198).
@@ -237,11 +273,7 @@ impl PermissionManager {
             if permission_mode == "auto" {
                 return Some(PermissionDecision::AllowOnce);
             }
-            if session_grants
-                .get(session_id)
-                .map(|g| g.iter().any(|t| t == tool_name))
-                .unwrap_or(false)
-            {
+            if Self::grant_covers(session_grants, session_id, tool_name) {
                 return Some(PermissionDecision::AllowSession);
             }
             return None;
@@ -253,17 +285,13 @@ impl PermissionManager {
         }
         let mode_allows = match permission_mode {
             "auto" => true,
-            "accept-edits" => matches!(tool_name, "Write" | "Edit"),
+            "accept-edits" => matches!(tool_name, "write" | "edit"),
             _ => false,
         };
         if mode_allows {
             return Some(PermissionDecision::AllowOnce);
         }
-        if session_grants
-            .get(session_id)
-            .map(|g| g.iter().any(|t| t == tool_name))
-            .unwrap_or(false)
-        {
+        if Self::grant_covers(session_grants, session_id, tool_name) {
             return Some(PermissionDecision::AllowSession);
         }
         None
@@ -308,6 +336,11 @@ impl PermissionManager {
             declared_risk,
             command_shell_id,
         } = params;
+        // The card names the tool to the user, so it carries the canonical name
+        // the UI derives its display label from; the normalizer leaves
+        // `plugin_*` / `mcp_*` exactly as the third party spelled them.
+        let tool_name = normalize_tool_name(tool_name);
+        let tool_name: &str = &tool_name;
         let request_id = Uuid::new_v4().to_string();
         let request = PermissionRequest {
             request_id: request_id.clone(),
@@ -439,21 +472,21 @@ mod tests {
         let (first, _rx1) = pm.create_request(
             "session-a",
             "call-1",
-            "Bash",
+            "bash",
             serde_json::json!({ "command": "ls" }),
             "high risk",
         );
         let (second, _rx2) = pm.create_request(
             "session-b",
             "call-2",
-            "Write",
+            "write",
             serde_json::json!({ "path": "x" }),
             "high risk",
         );
         let all = pm.pending_requests(None);
         assert_eq!(all.len(), 2);
         assert_eq!(all[0].request.request_id, first.request_id);
-        assert_eq!(all[0].request.tool_name, "Bash");
+        assert_eq!(all[0].request.tool_name, "bash");
         assert!(all[0].remaining_ms <= PERMISSION_TIMEOUT_MS);
         assert!(all[0].expires_at > all[0].created_at);
         let scoped = pm.pending_requests(Some("session-b"));
@@ -469,7 +502,7 @@ mod tests {
     #[test]
     fn ask_mode_prompts_for_high_risk() {
         let pm = PermissionManager::default();
-        for tool in ["Write", "Edit", "Bash"] {
+        for tool in ["write", "edit", "bash"] {
             let d = pm.evaluate_auto_with_permission_mode("s", tool, "agent", "ask", &no_grants());
             assert!(d.is_none(), "{tool} should prompt under ask");
         }
@@ -478,7 +511,7 @@ mod tests {
     #[test]
     fn accept_edits_allows_file_tools_only() {
         let pm = PermissionManager::default();
-        for tool in ["Write", "Edit"] {
+        for tool in ["write", "edit"] {
             let d = pm.evaluate_auto_with_permission_mode(
                 "s",
                 tool,
@@ -490,7 +523,7 @@ mod tests {
         }
         let bash = pm.evaluate_auto_with_permission_mode(
             "s",
-            "Bash",
+            "bash",
             "agent",
             "accept-edits",
             &no_grants(),
@@ -501,7 +534,7 @@ mod tests {
     #[test]
     fn auto_allows_all_high_risk_in_agent_mode() {
         let pm = PermissionManager::default();
-        for tool in ["Write", "Edit", "Bash", "plugin_x_run"] {
+        for tool in ["write", "edit", "bash", "plugin_x_run"] {
             let d = pm.evaluate_auto_with_permission_mode("s", tool, "agent", "auto", &no_grants());
             assert!(
                 matches!(d, Some(PermissionDecision::AllowOnce)),
@@ -538,7 +571,7 @@ mod tests {
     fn plan_mode_denies_unavailable_tools_regardless_of_permission_mode() {
         let pm = PermissionManager::default();
         for mode in ["ask", "accept-edits", "auto"] {
-            let d = pm.evaluate_auto_with_permission_mode("s", "Write", "plan", mode, &no_grants());
+            let d = pm.evaluate_auto_with_permission_mode("s", "write", "plan", mode, &no_grants());
             assert_eq!(d, Some(PermissionDecision::Deny), "plan + {mode}");
         }
     }
@@ -547,11 +580,11 @@ mod tests {
     fn plan_bash_follows_permission_mode() {
         let pm = PermissionManager::default();
         assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "plan", "ask", &no_grants()),
+            pm.evaluate_auto_with_permission_mode("s", "bash", "plan", "ask", &no_grants()),
             None
         );
         assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "plan", "auto", &no_grants()),
+            pm.evaluate_auto_with_permission_mode("s", "bash", "plan", "auto", &no_grants()),
             Some(PermissionDecision::AllowOnce)
         );
     }
@@ -562,9 +595,9 @@ mod tests {
         let mut grants = HashMap::new();
         grants.insert(
             "s".to_string(),
-            vec!["Write".to_string(), "plugin_x_run".to_string()],
+            vec!["write".to_string(), "plugin_x_run".to_string()],
         );
-        for tool in ["Write", "Edit", "plugin_x_run", "unknown"] {
+        for tool in ["write", "edit", "plugin_x_run", "unknown"] {
             assert_eq!(
                 pm.evaluate_auto_with_permission_mode("s", tool, "plan", "auto", &grants),
                 Some(PermissionDecision::Deny),
@@ -579,9 +612,9 @@ mod tests {
         let mut grants = HashMap::new();
         grants.insert(
             "s".to_string(),
-            vec!["Write".to_string(), "plugin_x_run".to_string()],
+            vec!["write".to_string(), "plugin_x_run".to_string()],
         );
-        for tool in ["Write", "Edit", "plugin_x_run", "unknown"] {
+        for tool in ["write", "edit", "plugin_x_run", "unknown"] {
             for mode in ["ask", "accept-edits", "auto"] {
                 assert_eq!(
                     pm.evaluate_auto_with_permission_mode("s", tool, "goal", mode, &grants),
@@ -591,11 +624,11 @@ mod tests {
             }
         }
         assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "ask", &no_grants()),
+            pm.evaluate_auto_with_permission_mode("s", "bash", "goal", "ask", &no_grants()),
             None
         );
         assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "auto", &no_grants()),
+            pm.evaluate_auto_with_permission_mode("s", "bash", "goal", "auto", &no_grants()),
             Some(PermissionDecision::AllowOnce)
         );
     }
@@ -604,7 +637,7 @@ mod tests {
     fn low_risk_auto_allows_in_every_mode() {
         let pm = PermissionManager::default();
         for mode in ["ask", "accept-edits", "auto"] {
-            let d = pm.evaluate_auto_with_permission_mode("s", "Read", "agent", mode, &no_grants());
+            let d = pm.evaluate_auto_with_permission_mode("s", "read", "agent", mode, &no_grants());
             assert_eq!(d, Some(PermissionDecision::AllowOnce), "Read + {mode}");
         }
     }
@@ -616,7 +649,7 @@ mod tests {
             let decision = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
                 PermissionEvaluationParams {
                     session_id: "s",
-                    tool_name: "Read",
+                    tool_name: "read",
                     mode: "agent",
                     permission_mode: mode,
                     session_grants: &no_grants(),
@@ -633,7 +666,7 @@ mod tests {
         let auto =
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
                 session_id: "s",
-                tool_name: "Read",
+                tool_name: "read",
                 mode: "agent",
                 permission_mode: "auto",
                 session_grants: &no_grants(),
@@ -648,11 +681,11 @@ mod tests {
     fn external_path_session_grant_still_applies() {
         let pm = PermissionManager::default();
         let mut grants = HashMap::new();
-        grants.insert("s".to_string(), vec!["Grep".to_string()]);
+        grants.insert("s".to_string(), vec!["grep".to_string()]);
         let decision =
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
                 session_id: "s",
-                tool_name: "Grep",
+                tool_name: "grep",
                 mode: "plan",
                 permission_mode: "ask",
                 session_grants: &grants,
@@ -667,8 +700,8 @@ mod tests {
     fn session_grants_still_apply_under_ask() {
         let pm = PermissionManager::default();
         let mut grants = HashMap::new();
-        grants.insert("s".to_string(), vec!["Bash".to_string()]);
-        let d = pm.evaluate_auto_with_permission_mode("s", "Bash", "agent", "ask", &grants);
+        grants.insert("s".to_string(), vec!["bash".to_string()]);
+        let d = pm.evaluate_auto_with_permission_mode("s", "bash", "agent", "ask", &grants);
         assert_eq!(d, Some(PermissionDecision::AllowSession));
     }
 
@@ -722,7 +755,7 @@ mod tests {
         let mut pm = PermissionManager::default();
         let content = "x".repeat(50_000);
         let args = serde_json::json!({ "path": "a.txt", "content": content });
-        let (req, _rx) = pm.create_request("s", "tc1", "Write", args, "reason");
+        let (req, _rx) = pm.create_request("s", "tc1", "write", args, "reason");
         let preview = req.args_preview.get("content").unwrap().as_str().unwrap();
         assert!(
             preview.chars().count() < 2_100,
@@ -735,6 +768,130 @@ mod tests {
             "a.txt"
         );
     }
+
+    /// A grant, a risk bucket and the contract-mode allowlist all key off the
+    /// tool name, so each of them has to resolve the spelling a user's earlier
+    /// configuration used to the canonical one (spec 23 §3, invariant 4).
+    #[test]
+    fn legacy_tool_names_match_the_same_permission_rules() {
+        for (legacy, canonical, risk) in [
+            ("Read", "read", Risk::Low),
+            ("Glob", "glob", Risk::Low),
+            ("Grep", "grep", Risk::Low),
+            ("Write", "write", Risk::High),
+            ("Edit", "edit", Risk::High),
+            ("Bash", "bash", Risk::High),
+            ("GenerateImages", "generate_images", Risk::High),
+        ] {
+            assert_eq!(
+                PermissionManager::tool_risk_with_declared(legacy, None),
+                risk,
+                "{legacy}"
+            );
+            assert_eq!(
+                PermissionManager::tool_risk_with_declared(canonical, None),
+                risk,
+                "{canonical}"
+            );
+        }
+        // The contract-mode allowlist is a positive list, so assert membership
+        // itself rather than comparing a predicate with its own normalization: a
+        // predicate that answered the same thing for every name would satisfy a
+        // self-comparison.
+        for admitted in [
+            "read",
+            "Read",
+            "glob",
+            "Glob",
+            "grep",
+            "Grep",
+            "bash",
+            "Bash",
+            "browser_preview",
+            "BrowserPreview",
+        ] {
+            assert!(
+                PermissionManager::plan_mode_allows(admitted),
+                "{admitted} is admitted in contract modes"
+            );
+        }
+        for denied in [
+            "write",
+            "Write",
+            "edit",
+            "Edit",
+            "generate_images",
+            "GenerateImages",
+            "plugin_x_run",
+            "asktool",
+        ] {
+            assert!(
+                !PermissionManager::plan_mode_allows(denied),
+                "{denied} must stay out of contract modes"
+            );
+        }
+        // Names that are not ours keep their own risk path.
+        assert_eq!(
+            PermissionManager::tool_risk_with_declared("plugin_x_run", None),
+            Risk::Medium
+        );
+        assert_eq!(
+            PermissionManager::tool_risk_with_declared("plugin_x_run", Some("low")),
+            Risk::Low
+        );
+        assert_eq!(
+            PermissionManager::tool_risk_with_declared("mcp_server_tool", None),
+            Risk::Low
+        );
+    }
+
+    /// A session grant recorded before the rename, and a replayed call that
+    /// still uses the old spelling, have to keep meeting each other.
+    #[test]
+    fn a_legacy_session_grant_still_covers_its_canonical_call() {
+        let manager = PermissionManager::default();
+        let mut legacy_grant = HashMap::new();
+        legacy_grant.insert("s".to_string(), vec!["Write".to_string()]);
+        let mut canonical_grant = HashMap::new();
+        canonical_grant.insert("s".to_string(), vec!["write".to_string()]);
+
+        for (call, grants, label) in [
+            ("write", &legacy_grant, "legacy grant, canonical call"),
+            ("Write", &legacy_grant, "legacy grant, legacy call"),
+            ("Write", &canonical_grant, "canonical grant, legacy call"),
+        ] {
+            assert_eq!(
+                manager.evaluate_auto_with_permission_mode("s", call, "agent", "ask", grants),
+                Some(PermissionDecision::AllowSession),
+                "{label}"
+            );
+            // The outside-path branch reads the same predicate, and only a grant
+            // can answer it: `ask` needs the card otherwise.
+            assert_eq!(
+                manager.evaluate_auto_with_permission_mode_and_risk_and_path(
+                    PermissionEvaluationParams {
+                        session_id: "s",
+                        tool_name: call,
+                        mode: "agent",
+                        permission_mode: "ask",
+                        session_grants: grants,
+                        declared_risk: None,
+                        requires_external_path_permission: true,
+                        plan_safe_actions: None,
+                    },
+                ),
+                Some(PermissionDecision::AllowSession),
+                "{label}, outside the workspace"
+            );
+        }
+        // A grant for another tool never covers this one.
+        let mut other = HashMap::new();
+        other.insert("s".to_string(), vec!["read".to_string()]);
+        assert_eq!(
+            manager.evaluate_auto_with_permission_mode("s", "write", "agent", "ask", &other),
+            None
+        );
+    }
 }
 
 #[cfg(test)]
@@ -744,20 +901,20 @@ mod image_generation_tests {
     #[test]
     fn image_generation_requires_approval_and_is_not_plan_safe() {
         assert!(matches!(
-            PermissionManager::tool_risk_with_declared("GenerateImages", None),
+            PermissionManager::tool_risk_with_declared("generate_images", None),
             Risk::High
         ));
         let manager = PermissionManager::default();
         let grants = HashMap::new();
         for mode in ["ask", "accept-edits"] {
             assert!(manager
-                .evaluate_auto_with_permission_mode("s", "GenerateImages", "agent", mode, &grants)
+                .evaluate_auto_with_permission_mode("s", "generate_images", "agent", mode, &grants)
                 .is_none());
         }
         assert_eq!(
             manager.evaluate_auto_with_permission_mode(
                 "s",
-                "GenerateImages",
+                "generate_images",
                 "plan",
                 "auto",
                 &grants
@@ -767,7 +924,7 @@ mod image_generation_tests {
         assert_eq!(
             manager.evaluate_auto_with_permission_mode(
                 "s",
-                "GenerateImages",
+                "generate_images",
                 "goal",
                 "auto",
                 &grants

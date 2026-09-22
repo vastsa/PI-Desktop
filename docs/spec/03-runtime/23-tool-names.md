@@ -1,6 +1,6 @@
 # 23. Tool Name Contract
 
-> Decisions applied: D618
+> Decisions applied: D618, D619
 
 ## 0. Frozen policy summary
 
@@ -120,7 +120,9 @@ The sync test reads both sources, so a name added on one side alone fails it. It
 compares the tables, not the behavior: behavior is pinned by the unit test next
 to each implementation.
 
-Until the first host-core caller lands (D619), the Rust module carries a
-`#![allow(dead_code)]` and the re-export carries `#[allow(unused_imports)]`,
-because this binary crate has no reference to either yet. That change removes
-both.
+D619 landed the first host-core callers, so both temporary allows are gone:
+`crates/host-core/src/tools/mod.rs` re-exports the table and the function for
+the dispatch, permission, admission and review paths, and `builtin_tool_defs()`
+asserts that every name it publishes is canonical. `cargo test -p host-core
+legacy` covers the read-in direction, where a pre-rename spelling still has to
+reach the tool it names.

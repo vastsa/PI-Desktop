@@ -201,7 +201,7 @@ pub struct UiMessage {
     pub tool_duration_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_error: Option<bool>,
-    /// Set on rows a subagent produced: the `Task` tool call that spawned it
+    /// Set on rows a subagent produced: the `task` tool call that spawned it
     /// (ADR 0062). The transcript nests these under that call, and the agent
     /// runtime excludes them from the parent's model context.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -221,7 +221,7 @@ pub struct SessionDetail {
     #[serde(flatten)]
     pub summary: SessionSummary,
     pub messages: Vec<UiMessage>,
-    /// Owning Task for a nested messageAround target, outside the page cursors.
+    /// Owning task for a nested messageAround target, outside the page cursors.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub navigation_parent: Option<UiMessage>,
     /// Zero-based offset of the first returned message when the caller asked
@@ -4136,7 +4136,7 @@ mod tests {
 
         let mut tool = user_msg("m2", "ok", "2025-05-01T00:00:01Z");
         tool.role = "tool".into();
-        tool.tool_name = Some("Read".into());
+        tool.tool_name = Some("read".into());
         tool.tool_call_id = Some("child-read".into());
         tool.tool_status = Some("success".into());
         tool.parent_tool_call_id = Some("task-1".into());
@@ -4191,7 +4191,7 @@ mod tests {
             revision_root_id: None,
             revision_count: None,
             active_revision: None,
-            tool_name: Some("Write".into()),
+            tool_name: Some("write".into()),
             tool_call_id: Some("c1".into()),
             tool_status: Some("success".into()),
             tool_args: Some(json!({ "path": "a.txt" })),
@@ -4214,7 +4214,7 @@ mod tests {
         assert_eq!(detail.summary.message_count, 2);
         let m2 = &detail.messages[1];
         assert_eq!(m2.role, "tool");
-        assert_eq!(m2.tool_name.as_deref(), Some("Write"));
+        assert_eq!(m2.tool_name.as_deref(), Some("write"));
         assert_eq!(m2.tool_call_id.as_deref(), Some("c1"));
         assert_eq!(m2.tool_status.as_deref(), Some("success"));
         assert_eq!(m2.tool_args, Some(json!({ "path": "a.txt" })));
@@ -5207,7 +5207,7 @@ mod tests {
         user.active_revision = Some(2);
         let mut tool = user_msg("tool-1", "ok", "2025-05-01T00:00:01Z");
         tool.role = "tool".into();
-        tool.tool_name = Some("Read".into());
+        tool.tool_name = Some("read".into());
         tool.tool_call_id = Some("call-1".into());
         tool.tool_status = Some("success".into());
         append_message(&db, &source.id, &user, None).unwrap();

@@ -2,7 +2,7 @@
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/23-tool-names) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
-> 已应用的决策：D618
+> 已应用的决策：D618、D619
 
 ## 0. 冻结政策总结
 
@@ -108,5 +108,7 @@ export function normalizeToolName(name: string): string;
 同步测试读取两侧源码，因此只在单侧新增名字就会失败。它比较的是表格而不是行为：行为由各自
 实现旁边的单元测试钉住。
 
-在宿主侧第一个调用点落地（D619）之前，Rust 模块带有 `#![allow(dead_code)]`、再导出带有
-`#[allow(unused_imports)]`，因为该二进制 crate 目前还没有任何引用；那一次改动会同时删除两者。
+D619 已落地宿主侧第一批调用点，因此两处临时 allow 都已删除：
+`crates/host-core/src/tools/mod.rs` 为派发、权限、准入与 review 路径再导出这张表与这个函数，
+`builtin_tool_defs()` 则断言它发布出去的每个名字都是规范名。`cargo test -p host-core legacy`
+覆盖读入方向：旧拼写仍必须命中它所指的工具。

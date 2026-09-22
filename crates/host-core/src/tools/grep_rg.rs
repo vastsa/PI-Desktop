@@ -1,6 +1,6 @@
-//! Optional system `rg` backend for the Grep tool.
+//! Optional system `rg` backend for the grep tool.
 //!
-//! Codex prefers `rg` when the machine has it. PI-Desktop keeps Grep as the
+//! Codex prefers `rg` when the machine has it. PI-Desktop keeps grep as the
 //! model-facing contract (budgets, newest-first, scoped ignore) and uses a
 //! direct `rg` exec as the fast path when a binary is on the user PATH.
 //! Spawn failures and `rg` exit 2 fall back to the in-process searcher so a
@@ -16,7 +16,7 @@ use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Cap on `rg --json` stdout so a pathological tree cannot fill host memory
-/// before we apply the Grep result budget.
+/// before we apply the grep result budget.
 const RG_STDOUT_CAP: usize = 8 * 1024 * 1024;
 
 pub struct SystemGrep<'a> {

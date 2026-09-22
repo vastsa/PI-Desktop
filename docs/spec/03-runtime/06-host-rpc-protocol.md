@@ -42,7 +42,7 @@ The RPC dispatcher caps active requests at 32. `tools.execute` then enters a
 bounded execution budget:
 
 - 16 total tool executions
-- 4 concurrent `Bash` processes globally, 2 per session
+- 4 concurrent `bash` processes globally, 2 per session
 - 8 read/search tools globally
 - 2 mutating tools globally, 1 per session
 - 4 plugin tools globally
@@ -54,7 +54,7 @@ Permission prompts do not consume an execution slot. A full queue returns
 waiting indefinitely or spawning more work. The limits are host-owned so
 Electron and the sidecar cannot independently over-admit the same resources.
 The per-session mutation permit is acquired before the global mutation slot;
-queued `Write`/`Edit` calls therefore do not hold global capacity while waiting
+queued `write`/`edit` calls therefore do not hold global capacity while waiting
 for an earlier mutation in the same session.
 
 Electron's `HostProcess` treats an explicit `HOST_OVERLOADED` response as
@@ -312,7 +312,7 @@ to later refresh and inference; the vendor picker does not collect them.
   capped. Bounded reads also return exclusive physical `messageEnd` and
   `hasMoreAfter` to support contiguous forward pages (ADR session-content-search).
   When the selected message has `parentToolCallId`, optional `navigationParent`
-  contains the latest matching Task tool-call projection from the same canonical
+  contains the latest matching task tool-call projection from the same canonical
   transcript. It is capped separately and does not widen the window or alter its
   cursors. Ordinary and uncapped reads omit this navigation-only field.
 - `session.delete`
@@ -761,9 +761,9 @@ type ToolsExecuteParams = {
   /** Diagnostic/request context only; never used for authorization. */
   requestedMode?: "plan" | "goal" | "agent"
   expectedCommandShellId?: CommandShellId
-  /** Bash only: dialect pinned by the same runtime turn. */
+  /** bash only: dialect pinned by the same runtime turn. */
   expectedCommandShellDialect?: "powershell" | "cmd" | "posix"
-  /** Bash only: host default 60000; accepted override 1000..21600000. */
+  /** bash only: host default 60000; accepted override 1000..21600000. */
   timeoutMs?: number
 }
 ```
@@ -790,24 +790,24 @@ Authoritative mode and workspace resolution are session-scoped:
 7. A database/session-resolution error returns `INTERNAL` and fails closed;
    only a confirmed missing session may use the legacy fallback.
 
-For `Read`/`Glob`/`Grep`/`Write`/`Edit`, the host classifies an explicit path
+For `read`/`glob`/`grep`/`write`/`edit`, the host classifies an explicit path
 outside the workspace and scratch roots before the low-risk auto-allow rule.
 `auto` executes it, while `ask` and `accept-edits` emit
 `permissions.request`; denial, timeout, or cancellation returns `TOOL_DENIED`
 without executing the operation. Relative `..` and symlink escapes use the
-same classification. Bash's working directory and implicit recursive walks do
+same classification. bash's working directory and implicit recursive walks do
 not inherit this exception.
 
 Before generic permission evaluation, host-core applies the mode policy:
 
-- Plan and Goal allow `Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, and the
-  kind's submit tool (`SubmitPlan` / `SubmitGoal`) as applicable to the live
+- Plan and Goal allow `read`, `glob`, `grep`, `browser_preview`, `bash`, and the
+  kind's submit tool (`submit_plan` / `submit_goal`) as applicable to the live
   planning state.
-- Plan and Goal deny `Write`, `Edit`, every plugin tool, and unknown tools under
+- Plan and Goal deny `write`, `edit`, every plugin tool, and unknown tools under
   all permission modes and grants. The host reads the session's **durable** mode
   for this check, so a sidecar claiming `agent` in `tools.execute` cannot widen
   it, and the `*_IN_PLAN` error codes are shared by both kinds.
-- Plan and Goal `Bash` follows the resolved permission mode: `ask` and
+- Plan and Goal `bash` follows the resolved permission mode: `ask` and
   `accept-edits`
   emit `permissions.request`; `auto` executes without confirmation and may
   mutate. The host re-resolves the effective shell ID/dialect and requires the
@@ -832,9 +832,9 @@ type ToolsExecuteResult = {
   durationMs: number
   denied?: boolean
   errorCode?: string
-  // Workspace Write/Edit results may include content.details.review. The
+  // Workspace write/edit results may include content.details.review. The
   // record is persisted with the tool message and is independent of Git.
-  // Bash command failures preserve content.exitCode/stdout/stderr while
+  // bash command failures preserve content.exitCode/stdout/stderr while
   // setting ok=false, isError=true, and errorCode=TOOL_FAILED.
   // The agent runtime forwards isError into the tool transcript without
   // dropping the structured content/details needed for recovery.
@@ -843,7 +843,7 @@ type ToolsExecuteResult = {
 
 ### 5.1 Plan and Goal submission and approval contracts
 
-`SubmitPlan` and `SubmitGoal` are handled as host transitions before generic
+`submit_plan` and `submit_goal` are handled as host transitions before generic
 tool execution. The host preserves the exact Markdown bytes in a new unique
 artifact under the kind's directory before publishing the proposal.
 
@@ -1036,7 +1036,7 @@ type CommandShellOutputStream = "stdout" | "stderr";
 only a catalog ID and reject unknown, unavailable, or wrong-platform IDs with
 `COMMAND_SHELL_INVALID`. If a persisted ID later becomes unavailable, the
 catalog selects the first available platform shell and sets `fallback: true`.
-A Bash request includes the pinned effective ID and dialect from the same turn;
+A bash request includes the pinned effective ID and dialect from the same turn;
 host-core rejects a changed ID or dialect with `COMMAND_SHELL_CHANGED` before
 permission evaluation and before spawn. Identity is not an executable path
 hash.
@@ -1129,8 +1129,8 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
 
 ## 8. Concurrency / ordering
 
-1. Requests may be concurrent within the dispatcher cap. Read/search tools may
-   run in parallel; `Write`/`Edit` are bounded and FIFO-ordered per session,
+1. Requests may be concurrent within the dispatcher cap. read/search tools may
+   run in parallel; `write`/`edit` are bounded and FIFO-ordered per session,
    with at most one mutation in flight for a session.
 2. Different sessions may continue concurrently across retained project tabs;
    each resolves its own project root and grants
@@ -1138,7 +1138,7 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
 4. `tools.output` preserves stdout/stderr separation and notification order;
    it is scoped to its session/tool call and has no turn or ordering fields;
    final results remain bounded
-5. Abort is idempotent and shuts down the complete Bash process tree
+5. Abort is idempotent and shuts down the complete bash process tree
 6. Plan and Goal approval requests are proposal/session/turn/tool-call/version
    scoped;
    only one pending approval and one queued/running execution exists per
@@ -1181,9 +1181,9 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
 9. Forking through a message excludes every later source row and rejects an
    unknown message without creating a child
 10. A forged `requestedMode` cannot authorize a tool against the durable mode;
-    Plan and Goal deny Write/Edit/plugin/unknown tools and apply permission
+    Plan and Goal deny write/edit/plugin/unknown tools and apply permission
     prompts to Bash according to `ask`/`accept-edits`/`auto`
-11. SubmitPlan and SubmitGoal write exact Markdown bytes to a unique
+11. submit_plan and submit_goal write exact Markdown bytes to a unique
     `.pi/plan/*.md` or `.pi/goal/*.md` file with
     hash/size and structured title/question fields; only matching
     approve/reject responses can resolve the live `plan_approvals` row, and a
@@ -1191,7 +1191,7 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
     without writing an artifact
 12. Plan and Goal expiry, abort, crash, scheduled rejection, and stale responses
     produce the documented durable statuses and events
-13. Bash validates the pinned shell ID/dialect, streams stdout/stderr, enforces
+13. bash validates the pinned shell ID/dialect, streams stdout/stderr, enforces
     the 60s default/bounded override, and shuts down the complete process tree
 
 ## Scheduled automation tools

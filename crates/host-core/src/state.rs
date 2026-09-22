@@ -59,7 +59,7 @@ pub struct AppState {
     pub plugin_batch_import_rates: HashMap<String, Vec<Instant>>,
     pub plugin_delete_rates: HashMap<String, Vec<Instant>>,
     pub tool_budget: ToolBudget,
-    /// (session_id, tool_call_id) -> cancellation signal for an active Bash
+    /// (session_id, tool_call_id) -> cancellation signal for an active bash
     /// process. The signal is removed by the execution owner in all outcomes.
     pub active_bash_cancellations: HashMap<(String, String), tokio::sync::watch::Sender<bool>>,
     /// request_id -> (session_id, tool_call_id) for permission requests that
@@ -71,7 +71,7 @@ pub struct AppState {
     /// separate tasks. A short-lived tombstone makes the later request start
     /// already cancelled instead of executing after Stop was acknowledged.
     pending_bash_aborts: HashMap<(String, String), Instant>,
-    /// Session-scoped Read/Edit snapshot store (ADR 0087). Interior mutex so
+    /// Session-scoped `read`/`edit` snapshot store (ADR 0087). Interior mutex so
     /// tool execution does not hold the AppState lock.
     pub hashline: crate::tools::HashlineStore,
 }
@@ -319,7 +319,7 @@ mod tests {
         let (request, _receiver) = state.permissions.create_request(
             "session-1",
             "tool-call-1",
-            "Bash",
+            "bash",
             serde_json::json!({ "command": "sleep 30" }),
             "test",
         );

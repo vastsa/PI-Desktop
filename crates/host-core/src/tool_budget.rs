@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 
+use crate::tools::normalize_tool_name;
+
 pub const MAX_IN_FLIGHT_TOOLS: usize = 16;
 pub const MAX_IN_FLIGHT_SHELL: usize = 4;
 pub const MAX_IN_FLIGHT_READS: usize = 8;
@@ -29,11 +31,17 @@ enum ToolClass {
 }
 
 impl ToolClass {
+    /// The admission class a tool call belongs to.
+    ///
+    /// The name is normalized first, so a call replayed from a transcript that
+    /// still spells it `Bash` waits on the shell semaphore rather than on the
+    /// plugin one.
     fn from_name(tool_name: &str) -> Self {
-        match tool_name {
-            "Read" | "Glob" | "Grep" => Self::Read,
-            "Write" | "Edit" => Self::Mutation,
-            "Bash" => Self::Shell,
+        let tool_name = normalize_tool_name(tool_name);
+        match &*tool_name {
+            "read" | "glob" | "grep" => Self::Read,
+            "write" | "edit" => Self::Mutation,
+            "bash" => Self::Shell,
             _ => Self::Plugin,
         }
     }
@@ -197,7 +205,7 @@ impl ToolBudget {
         session_mutation: Option<Arc<Semaphore>>,
     ) -> Option<ToolPermit> {
         // Reserve the narrow per-session mutation slot first. This keeps a
-        // queued second Write/Edit from consuming a global mutation permit
+        // queued second `write`/`edit` from consuming a global mutation permit
         // while it waits for the first mutation in the same session.
         let session_mutation_permit = match session_mutation {
             Some(semaphore) => Some(semaphore.try_acquire_owned().ok()?),
@@ -261,7 +269,7 @@ impl Default for ToolBudget {
 
 #[cfg(test)]
 mod tests {
-    use super::ToolBudget;
+    use super::{ToolBudget, ToolClass};
     use std::time::Duration;
 
     #[tokio::test]
@@ -271,7 +279,7 @@ mod tests {
         for index in 0..4 {
             permits.push(
                 budget
-                    .acquire(&format!("session-{index}"), "Bash")
+                    .acquire(&format!("session-{index}"), "bash")
                     .await
                     .unwrap(),
             );
@@ -284,7 +292,7 @@ mod tests {
 
         let waiting_budget = budget.clone();
         let waiter =
-            tokio::spawn(async move { waiting_budget.acquire("session-waiter", "Bash").await });
+            tokio::spawn(async move { waiting_budget.acquire("session-waiter", "bash").await });
         drop(permits);
         assert!(waiter.await.unwrap().is_ok());
         assert_eq!(budget.snapshot().active, 0);
@@ -295,13 +303,13 @@ mod tests {
         let budget = ToolBudget::new();
         let mut first = Vec::new();
         for _ in 0..4 {
-            first.push(budget.acquire("session-a", "Read").await.unwrap());
+            first.push(budget.acquire("session-a", "read").await.unwrap());
         }
 
-        let second = budget.acquire("session-b", "Read").await;
+        let second = budget.acquire("session-b", "read").await;
         assert!(second.is_ok());
         let waiting_budget = budget.clone();
-        let waiter = tokio::spawn(async move { waiting_budget.acquire("session-a", "Read").await });
+        let waiter = tokio::spawn(async move { waiting_budget.acquire("session-a", "read").await });
         drop(first);
         assert!(waiter.await.unwrap().is_ok());
     }
@@ -309,10 +317,10 @@ mod tests {
     #[tokio::test]
     async fn serializes_mutations_within_a_session() {
         let budget = ToolBudget::new();
-        let first = budget.acquire("session-a", "Edit").await.unwrap();
+        let first = budget.acquire("session-a", "edit").await.unwrap();
         let mut waiter = tokio::spawn({
             let budget = budget.clone();
-            async move { budget.acquire("session-a", "Write").await }
+            async move { budget.acquire("session-a", "write").await }
         });
 
         assert!(tokio::time::timeout(Duration::from_millis(50), &mut waiter)
@@ -326,5 +334,30 @@ mod tests {
             .unwrap()
             .unwrap()
             .is_ok());
+    }
+    /// Admission classes decide which semaphore a call waits on, so a replayed
+    /// spelling has to land in the class its canonical form would.
+    #[test]
+    fn legacy_tool_names_map_to_the_same_admission_class() {
+        for name in ["Read", "read", "READ", "Glob", "glob", "Grep", "grep"] {
+            assert_eq!(ToolClass::from_name(name), ToolClass::Read, "{name}");
+        }
+        for name in ["Write", "write", "Edit", "edit", "WRITE"] {
+            assert_eq!(ToolClass::from_name(name), ToolClass::Mutation, "{name}");
+        }
+        for name in ["Bash", "bash", "BASH"] {
+            assert_eq!(ToolClass::from_name(name), ToolClass::Shell, "{name}");
+        }
+        // Everything else — a plugin, an MCP server's own name, and a sidecar
+        // tool this crate never runs — shares the bounded plugin class.
+        for name in [
+            "plugin_x_run",
+            "mcp_server_tool",
+            "Task",
+            "task_wait",
+            "AskTool",
+        ] {
+            assert_eq!(ToolClass::from_name(name), ToolClass::Plugin, "{name}");
+        }
     }
 }

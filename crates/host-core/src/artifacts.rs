@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::db::{ms_to_ts, now_ms, Database};
 
-/// Files a session produced via Write/Edit tools (04-data-storage §4.9).
+/// Files a session produced via `write`/`edit` tools (04-data-storage §4.9).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Artifact {

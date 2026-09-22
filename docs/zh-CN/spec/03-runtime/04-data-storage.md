@@ -97,7 +97,7 @@ commit 不会删除历史审查证据。
 ```jsonl
 {"type":"session","schema":1,"sessionId":"0b0e…","createdAt":"2026-07-26T09:00:00.000Z"}
 {"type":"message","id":"m1","role":"user","createdAt":"…","blocks":[{"type":"text","text":"…"}]}
-{"type":"message","id":"m2","role":"tool","toolName":"Write","blocks":[{"type":"tool_call","callId":"c1","args":{},"result":{},"status":"success"}]}
+{"type":"message","id":"m2","role":"tool","toolName":"write","blocks":[{"type":"tool_call","callId":"c1","args":{},"result":{},"status":"success"}]}
 {"type":"message","id":"m3","role":"assistant","createdAt":"…","blocks":[{"type":"thinking","text":"…"},{"type":"text","text":"…"}],"meta":{"usage":{},"modelId":"…"}}
 {"type":"compaction","id":"cp1","summary":"…","firstKeptMessageId":"m2","throughMessageId":"m3","tokensBefore":917000,"retainedTail":[…],"providerId":"…","modelId":"…","createdAt":"…"}
 ```
@@ -727,7 +727,7 @@ type Block =
 对象，当 sidecar 发送它们时由 host-core 写入：
 
 ```ts
-meta.parentToolCallId?: string  // the `Task` call that spawned the delegate
+meta.parentToolCallId?: string  // the `task` call that spawned the delegate
 meta.agentName?: string         // the definition name, e.g. "code-reviewer"
 ```
 
@@ -737,11 +737,11 @@ meta.agentName?: string         // the definition name, e.g. "code-reviewer"
 这两个字段都可以在重新加载后保存下来，这就是恢复会话嵌套的原因
 就像现场一样（`04-ux/08-component-spec.md` §9.9）。两位消费者阅读了它们：
 
-- 渲染器将属性行分组到其 `Task` 行下并渲染它们
+- 渲染器将属性行分组到其 `task` 行下并渲染它们
   一级；回合流和小地图永远看不到它们。
 - 会话运行时在重建模型时**排除**属性行
   恢复时的上下文。家长只看过代表的报告，即
-  `Task` 工具结果并按原样存储；重播代表自己的
+  `task` 工具结果并按原样存储；重播代表自己的
   rows 会歪曲对话并重新引入上下文成本
   委托的存在是为了避免。
 
@@ -854,8 +854,8 @@ CREATE INDEX idx_artifacts_time ON artifacts(updated_at DESC);
 ```
 
 由 host-core 在与 `tool_execute` 审计行相同的事务中更新插入
-每当 Write/Edit（或声明文件效果的插件工具）成功时 -
-重复编辑更新 Write/Edit/`op`，每个会话每个文件保留一行。
+每当 write/edit（或声明文件效果的插件工具）成功时 -
+重复编辑更新 write/edit/`op`，每个会话每个文件保留一行。
 写入会话暂存目录 (D114) 被排除：工件列表
 仅工作区可交付成果。
 
@@ -1018,7 +1018,7 @@ CREATE INDEX idx_notifications_unread
 | assistant/tool 消息结束 | 附加消息行；id 匹配时移除进行中检查点 | 索引行+触摸会话 |
 | 流式回复检查点（`session.saveInflightMessage`，D299） | 原子替换 `<id>.inflight.json`；空消息或已索引的 id 为空操作 | — |
 | 上下文检查点（`session.appendCompaction`） | 在其引用的消息边界之后附加类型化检查点行 | —（检查点是不可搜索的转录本内容） |
-| 工具成功（Write/Edit） | — | upsert `artifacts` + `audit_log` 行，与结果持久化相同的 tx |
+| 工具成功（write/edit） | — | upsert `artifacts` + `audit_log` 行，与结果持久化相同的 tx |
 | 通过 `session.endTurn` 打开终端 | `completed`/`error`：仅当该 id 已索引时才移除进行中检查点，否则留给 outbox 或启动恢复（D327）。`recoverInflight`：最终行从未落盘时，回合已 `completed` 则追加为 `complete`，否则为 `aborted` | 更新 `turns`；对于 completed/error，在同一交易中插入一个通知并修剪至 200 个；中止插入 无；被提升的检查点在该回合下获得一个索引行 |
 | plan/goal 提交 | 主机将准确的 Markdown 字节写入新的唯一 `<workspaceRoot>/.pi/<kind>/*.md` 文件 | 在发出批准请求之前插入一个 `plan_approvals(pending)` 行，其中包含类型、结构化 title/question、工件 path/hash/size 和到期时间 |
 | plan/goal 批准 | 验证不可变工件 path/hash/size | 原子地解析 `plan_approvals`，更新 `sessions.mode` 和显式 `permission_mode`，并设置 `execution_state = 'queued'`； reject/expiry 保持合约模式 |
@@ -1279,7 +1279,7 @@ UI投影损失
     默认为 `plan`，并且应用程序 settings/scheduled 配置格式错误，
     无效的模式或无效的默认 shell 无法通过预迁移关闭
     模式完好无损
-17. SubmitPlan 和 SubmitGoal 将精确的 Markdown 字节写入唯一的
+17. submit_plan 和 submit_goal 将精确的 Markdown 字节写入唯一的
     `.pi/plan/*.md` 或 `.pi/goal/*.md` 文件
     具有 SHA-256 和大小； title/question 保持结构化并重新加载渲染器
     仅保留待处理行和原始绝对截止日期

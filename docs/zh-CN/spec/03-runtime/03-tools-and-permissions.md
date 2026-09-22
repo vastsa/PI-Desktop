@@ -4,16 +4,16 @@
 
 
 > 应用的决定：D003、D004、D005、D006、D013、D015、D093、D114、D115、D181、D186、
-> D189、D190、D195（ADR 0057）、D315、D384（ADR 0211）、ADR 0087
+> D189、D190、D195（ADR 0057）、D315、D384（ADR 0211）、D618、D619、ADR 0087
 
 ## 0. 冻结政策总结
 
 | 主题 | 决定 |
 |---|---|
 | 默认模式 | Agent |
-| Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 已注册的插件工具 |
-| Plan 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitPlan + 声明 plan-safe 动作的插件工具 |
-| Goal 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitGoal + 声明 plan-safe 动作的插件工具 |
+| Agent 工具 | 读取 / glob / grep / 写入 / 编辑 / bash + 已注册的插件工具 |
+| Plan 工具 | 读取 / glob / grep / browser_preview / bash / submit_plan + 声明 plan-safe 动作的插件工具 |
+| Goal 工具 | 读取 / glob / grep / browser_preview / bash / submit_goal + 声明 plan-safe 动作的插件工具 |
 | Plan 和 Goal 硬拒绝 | 写入 / 编辑 / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
 | 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时在 Plan/Goal 中隐藏没有该列表的插件工具，host 放行已列出的工具，plugin-runtime 拒绝列表外的任何动作（ADR 0211） |
 | 权限超时 | 120秒→拒绝 |
@@ -30,18 +30,18 @@
 
 | 工具 | 风险 | 描述 |
 |---|---|---|
-| `Read` | 低 | 读取工作区中的文件；返回带行号的内容和 `[path#TAG]` 头 |
+| `read` | 低 | 读取工作区中的文件；返回带行号的内容和 `[path#TAG]` 头 |
 | `new_context` | 低 | 在下一个回合边界处启动一个新的上下文窗口；不接受任何参数并且不改变环境状态 |
-| `Glob` | 低 | 按模式列出文件 |
-| `Grep` | 低 | 内容搜索；本机有 `rg` 时优先用，否则进程内搜索；为每个文件生成 `tag` |
-| `BrowserPreview` | 低 | 在随应用打包的浏览器插件中打开与工作区相关的预览（若 `pi.browser` 被禁用则失败） |
-| `EnterPlanMode` | 低 | 主机验证后，将相同的 Agent 从 Agent 移动到 Plan |
-| `SubmitPlan` | 低 | 在新的 `.pi/plan/*.md` 工件中保留精确的 Markdown 字节并请求批准 |
-| `EnterGoalMode` | 低 | 主机验证后，将相同的 Agent 从 Agent 移动到 Goal |
-| `SubmitGoal` | 低 | 在新的 `.pi/goal/*.md` 工件中保留精确的 Markdown 字节并请求批准 |
-| `Write` | 高 | Create/overwrite 文件；返回写入后的 `tag` |
-| `Edit` | 高 | 通过针对已校验 `tag` 的行锚定操作修改文件（[18](18-line-anchored-edit-contract.md)） |
-| `Bash` | 高 | 执行命令 |
+| `glob` | 低 | 按模式列出文件 |
+| `grep` | 低 | 内容搜索；本机有 `rg` 时优先用，否则进程内搜索；为每个文件生成 `tag` |
+| `browser_preview` | 低 | 在随应用打包的浏览器插件中打开与工作区相关的预览（若 `pi.browser` 被禁用则失败） |
+| `enter_plan_mode` | 低 | 主机验证后，将相同的 Agent 从 Agent 移动到 Plan |
+| `submit_plan` | 低 | 在新的 `.pi/plan/*.md` 工件中保留精确的 Markdown 字节并请求批准 |
+| `enter_goal_mode` | 低 | 主机验证后，将相同的 Agent 从 Agent 移动到 Goal |
+| `submit_goal` | 低 | 在新的 `.pi/goal/*.md` 工件中保留精确的 Markdown 字节并请求批准 |
+| `write` | 高 | Create/overwrite 文件；返回写入后的 `tag` |
+| `edit` | 高 | 通过针对已校验 `tag` 的行锚定操作修改文件（[18](18-line-anchored-edit-contract.md)） |
+| `bash` | 高 | 执行命令 |
 | `asktool` | 低 | 询问一个或多个用户问题并将提交的答案作为工具输出返回 |
 
 > 名称可以在实现过程中进行微调，但语义保持一致。
@@ -49,14 +49,14 @@
 ### 2. 1 延期辅助工具（D185、ADR 0048）
 
 按照 pi 的编码代理默认值，第一个 Agent 请求仅激活
-`Read`、`Bash`、`Edit` 和 `Write`； `Glob` 和 `Grep` 按需加载。
-Plan 和 Goal 保留其 read/inspection 核心。`Skill` 有意不作延迟：`/skill-id`
+`read`、`bash`、`edit` 和 `write`； `glob` 和 `grep` 按需加载。
+Plan 和 Goal 保留其 read/inspection 核心。`skill` 有意不作延迟：`/skill-id`
 调用会指示模型调用它，而模式中不存在的工具根本无法被调用，因此只要技能目录非空，
 它就会随第一个请求一起发送（D404、ADR 0230）。运行时还注册功能
 无需预先发送其完整模式：
 
-- Agent 模式下的 `Glob` 和 `Grep`
-- `BrowserPreview`
+- Agent 模式下的 `glob` 和 `grep`
+- `browser_preview`
 - `PluginCheck`、`PluginScaffold` 和 `PluginPack`
 - 插件声明的代理工具
 
@@ -87,11 +87,11 @@ sidecar 在每个新用户提示开始时重置此延迟集。
 
 本机文件和搜索工具强制执行不同的路径形状（D208、ADR 0069）：
 
-- `Read.path` 是现有的常规文件。返回一个目录
-  `INVALID_ARGUMENT` 具有结构化 `Glob` 建议，而不是通用建议
+- `read.path` 是现有的常规文件。返回一个目录
+  `INVALID_ARGUMENT` 具有结构化 `glob` 建议，而不是通用建议
   执行失败。
-- `Glob.path` 是目录搜索根。
-- `Grep.path` 可以是一个文件或一棵目录树。直接命名的文件是
+- `glob.path` 是目录搜索根。
+- `grep.path` 可以是一个文件或一棵目录树。直接命名的文件是
   在没有步行兄弟姐妹的情况下进行搜索，而 `include` 仍然过滤其基础
   名称和每个产出预算保持不变。本机 PATH（以及 Unix login PATH）上有
   `rg` 时 Grep 优先调用它，缺失或失败则回退到进程内搜索（D315）。
@@ -99,10 +99,10 @@ sidecar 在每个新用户提示开始时重置此延迟集。
 
 工具结果中的工作区相对路径使用 `/` 表示平台分隔符。在 POSIX
 系统中，文件名里的字面量反斜杠保持不变，以确保结果可以回传给
-`Read` 或 `Edit`；Windows 路径分隔符会被规范化为 `/`。
+`read` 或 `edit`；Windows 路径分隔符会被规范化为 `/`。
 
 Agent 模式使 host-core/JSON 在 D185 下保持延迟。每个新用户提示都会重置
-它们的激活，因此目录发现通过 `ToolSearch` 激活 `Glob`
+它们的激活，因此目录发现通过 `ToolSearch` 激活 `glob`
 对于该提示，而不是猜测文件名或在
 目录。
 
@@ -110,11 +110,11 @@ Agent 模式使 host-core/JSON 在 D185 下保持延迟。每个新用户提示�
 
 | 工具 | 规范名 | 接受的别名 |
 |---|---|---|
-| `Read` / `Write` / `Edit` / `BrowserPreview` | `path` | `file_path` |
-| `Glob` / `Grep` | `pattern` | `query` |
+| `read` / `write` / `edit` / `browser_preview` | `path` | `file_path` |
+| `glob` / `grep` | `pattern` | `query` |
 
 两种拼写在 schema 中都是可选的，运行时要求恰好提供其中一个；两个都没给的调用以
-`INVALID_ARGUMENT` 失败。当一次调用同时带上两个时，规范名胜出。`Bash.timeout` 在
+`INVALID_ARGUMENT` 失败。当一次调用同时带上两个时，规范名胜出。`bash.timeout` 在
 schema 中放宽到 100000000，好让毫秒值先通过校验：超过 21,600 秒上限的值按毫秒读取并换算成
 秒，再夹到 21,600 秒（D273 / D329）。范围内的值（包括 600 和 1800）按秒读取。
 
@@ -130,7 +130,7 @@ schema 中放宽到 100000000，好让毫秒值先通过校验：超过 21,600 �
   批准，因此批准不能跳过规范化步骤
 - 例外（D114）：会话临时目录内的绝对路径是
   `sessionId`/`workspaceRoot`/`workspaceRoot` 的第二个合法根 — 请参阅§4b。两个根都运行
-  相同的词汇+符号链接遏制防御。 `sessionId`/`workspaceRoot`/`workspaceRoot`/`..`/`Read`
+  相同的词汇+符号链接遏制防御。 `sessionId`/`workspaceRoot`/`workspaceRoot`/`..`/`read`
   只能通过权限来寻址两个根之外的显式路径
   政策如下；拒绝或未经批准的请求将返回 `TOOL_DENIED`。
 
@@ -147,12 +147,12 @@ schema 中放宽到 100000000，好让毫秒值先通过校验：超过 21,600 �
 - 拒绝、超时或取消永远不会执行该操作；
 - 相对 `..` 转义和符号链接转义使用与绝对相同的规则
   路径；
-- 成功的外部 `..`/`Read`/`Write` 结果携带 `root: "external"`
-  和绝对规范路径；外部 `..`/`Read` 匹配是绝对的
+- 成功的外部 `..`/`read`/`write` 结果携带 `root: "external"`
+  和绝对规范路径；外部 `..`/`read` 匹配是绝对的
   因此访问在记录中仍然可见。
 
 该例外仅适用于显式路径参数。它不扩展
-工作区根目录、Bash 的工作目录或任何隐式目录路径。
+工作区根目录、bash 的工作目录或任何隐式目录路径。
 
 ## 4b.会话临时目录 (D114)
 
@@ -173,33 +173,33 @@ Electron 主要低于 `<data_dir>/scratch/<sessionId>/pasted/` 之前的
 
 - **寻址。** 该模型仅通过绝对路径寻址；路径
   在系统提示中公布。相对刀具路径始终解析
-  反对工作区。 `Bash` 还导出 `PI_SCRATCH_DIR`。
+  反对工作区。 `bash` 还导出 `PI_SCRATCH_DIR`。
 - **遏制。** `resolve_tool_path` 首先尝试工作空间根目录，然后
   暂存根，应用相同的两层防御（词汇 `..`
   规范化+规范化祖先符号链接检查）到每个。符号链接
 植入内部的划痕无法到达工作区或其他任何地方。
-- **权限。** `Write`/`Edit`，其 `path` 在词汇上位于
+- **权限。** `write`/`edit`，其 `path` 在词汇上位于
   会话的临时根自动允许，无需权限卡 - 他们不能
   触摸项目。词法检查仅跳过提示；执行仍在
   经过完整的解析器，因此它不是逃逸向量。 Plan 和 Goal 可以
-  不公开 Write/Edit，因此临时自动允许规则无法使这些工具
-  两者均可使用。契约模式 Bash 调用仍可能创建或变异
+  不公开 write/edit，因此临时自动允许规则无法使这些工具
+  两者均可使用。契约模式 bash 调用仍可能创建或变异
   当其权限模式允许时，擦除数据。
 - **工件。** 成功的暂存写入不会记录在
   `artifacts` 表；工件驱动的文件选项卡代表工作区
   仅可交付成果，而文件界面仍可浏览活动的
   工作区。工具结果携带 `root: "workspace" | "scratch"` 来实现此目的
   决策和 UI 渲染显式。
-- **工具覆盖率。** `Write`/`Edit`/`path` 使用工作区和暂存根；
-  `Write`/`Edit` 默认情况下使用工作空间根目录，并且可以显式搜索
+- **工具覆盖率。** `write`/`edit`/`path` 使用工作区和暂存根；
+  `write`/`edit` 默认情况下使用工作空间根目录，并且可以显式搜索
   范围临时目录或明确批准的外部目录。的
   模型应该使用有界本机搜索工具而不是 shell 目录
   散步。
-  `BrowserPreview` 在 v1 中仍然与工作区相关。它的主进程处理程序
+  `browser_preview` 在 v1 中仍然与工作区相关。它的主进程处理程序
   从原始持久会话中解析根，并且渲染器
   事件携带`sessionId`；选定的前台工作区从未使用过
   用于背景预览。
-- **生命周期。** 在第一个 `Write`/`Edit`/`path` 上延迟创建或
+- **生命周期。** 在第一个 `write`/`edit`/`path` 上延迟创建或
   会话的输入框剪贴板粘贴。使用 `session.delete` 删除。一个
 启动扫描删除会话不再存在的暂存目录和目录
   超过 7 天未受影响（crash/force-quit 后备；没有预定作业
@@ -215,7 +215,7 @@ Electron 主要低于 `<data_dir>/scratch/<sessionId>/pasted/` 之前的
 
 ## 4c。消息拥有的审核快照和回滚
 
-`Write` 和 `Edit` 是结构化审核边界。对于一个成功的
+`write` 和 `edit` 是结构化审核边界。对于一个成功的
 工作区根突变，host-core 在执行前捕获前一个文件
 并向工具结果添加有界审查证据：
 
@@ -246,7 +246,7 @@ type ReviewChange = {
   等于后工具哈希。稍后的编辑将返回 `conflict` 而不进行触摸
   文件。完成的回滚会使该路径的会话快照条目失效，
   因此模型无法继续针对回滚已替换的 tag 进行编辑。
-- 携带 `MV DEST` 的 `Edit` 在一次工具调用下记录两条条目——源删除
+- 携带 `MV DEST` 的 `edit` 在一次工具调用下记录两条条目——源删除
   和目标创建——回滚要么同时恢复两者，要么都不恢复。`REM`
   记录为一次删除，其回滚恢复已捕获的字节。哈希保护使用
   完整摘要，而不是 16 位 `tag`。
@@ -255,13 +255,13 @@ type ReviewChange = {
 
 ## 4d。突变排序和编辑恢复
 
-`Write` 和 `Edit` 在每个会话中序列化。 Read/search 工具可能
+`write` 和 `edit` 在每个会话中序列化。 read/search 工具可能
 并行继续，不同的会话可能会变异不同的根
 同时，但一个会话永远不会有两个正在进行的突变。主持人持有
 在消耗全局突变槽之前每个会话突变允许，所以
 排队的突变在等待早期编辑时无法保留容量。
 
-`Edit` 命名位置并且只提供新内容；它从不匹配已有文本。
+`edit` 命名位置并且只提供新内容；它从不匹配已有文本。
 每次调用都携带由最后显示该内容的工具生成的整文件 `tag`，
 当 tag 无法哈希出实时文件、或锚点引用了本会话从未显示过的
 行时，主机拒绝该调用。完整契约——tag 计算、会话快照存储、
@@ -272,11 +272,11 @@ type ReviewChange = {
 1. 当交付内容位于
    广告中的工作空间。
 2. 如果专用工作树位于该根目录之外，请在以下目录中执行一项受保护的编辑
-   使用 Bash 构建该工作树并验证结果差异。
-3. 编辑或补丁检查失败后，对当前的文件执行一次新的 `Read`
+   使用 bash 构建该工作树并验证结果差异。
+3. 编辑或补丁检查失败后，对当前的文件执行一次新的 `read`
    定位并重新生成一次更改。一旦某条路径用完它的恢复额度
    （18-line-anchored-edit-contract §9.3），该提示符中针对该路径的下一次失败
-   `Edit`——或第二个失败的 shell patch 命令（`apply_patch`、
+   `edit`——或第二个失败的 shell patch 命令（`apply_patch`、
    `git apply` 或 `patch`）——返回终止工具结果，因此代理
    报告确切的不匹配后停止。不要手动编辑旧的统一差异
    大块标头或继续修复循环。
@@ -288,15 +288,15 @@ type ReviewChange = {
 同一个 `tag` 即可应用。那次重试同时也是 `EDIT_LINES_UNSEEN` 在该路径上唯一的
 宽限，因此第二次确实会计入保护限额。
 
-序列化同时保护快照存储，生产者与 `Edit` 都会修改它：没有按会话的
+序列化同时保护快照存储，生产者与 `edit` 都会修改它：没有按会话的
 突变许可，一次并发记录可能落在校验与写入之间。
 
 在一个提示内同一路径累计三次失败后（见 18-line-anchored-edit-contract §9.3），第 3 次
-计数的失败 `Edit`——或第 3 次失败的 shell 修补命令（`apply_patch`、`git apply` 或
+计数的失败 `edit`——或第 3 次失败的 shell 修补命令（`apply_patch`、`git apply` 或
 `patch`）——返回带有错误专属恢复提示的终止工具结果，代理随后停止并报告准确的不匹配。
 不要手动编辑旧的 unified-diff 块头，也不要继续修复循环。
 
-## 5. Bash 规则
+## 5. bash 规则
 
 主机执行基线：
 
@@ -315,7 +315,7 @@ Shell 目录 (D190) 公开稳定 ID `windows-powershell`、`windows-pwsh`、`cmd
 平台支持的 `git-bash` 和 `bash`。楼主坚持
 `defaultCommandShell`；如果那个持续的选择后来变得不可用，
 有效的目录选择有意回退到第一个可用的目录
-平台外壳。一轮固定有效的 shell ID 和方言。 `Bash` 仍然存在
+平台外壳。一轮固定有效的 shell ID 和方言。 `bash` 仍然存在
 tool/protocol 名称，请求中单独携带固定的 shell ID。
 主机核心在生成之前再次解析该条目并拒绝更改的 ID/dialect
 与 `COMMAND_SHELL_CHANGED`；设置写入拒绝不可用或
@@ -327,7 +327,7 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 3. Windows：来自 Git 的 Windows 的 `bash.exe` — 派生自 PATH 上的 `git`，然后是标准安装目录，然后是排除 `System32` 中的 WSL 启动器的 PATH
 
 - Unix 调用 `bash -lc`（登录 shell 为 Finder/Dock 启动保留配置文件路径）； Windows 使用 `CREATE_NO_WINDOW` 调用 `bash -c`
-- 在 Unix 上，Bash 工具另外探测用户的登录 shell 以获取其信息
+- 在 Unix 上，bash 工具另外探测用户的登录 shell 以获取其信息
   路径 — `$SHELL`（回退 `/bin/zsh` → `/bin/bash` → `/bin/sh`）
   `-lic 'printf %s "$PATH"'`，5 秒范围内，每个进程缓存 — 并注入它
   进入每个子流程。 `bash -lc` 仅提供 *bash* 配置文件；上
@@ -358,9 +358,9 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 
 | 风险 | 示例 | 默认政策 |
 |---|---|---|
-| 低 | 会话根目录内的 Read/Glob/Grep | 自动允许 |
+| 低 | 会话根目录内的 read/glob/grep | 自动允许 |
 | 中等 | 低风险 network/metadata | 政策确认或允许 |
-| 高 | Write/Edit/Bash | 默认确认 |
+| 高 | write/edit/bash | 默认确认 |
 
 ### 决策类型
 
@@ -376,7 +376,7 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 
 高风险工具调用如何获得批准由**权限模式**控制：
 
-| 模式 | Write/Edit | Bash / 插件工具 |
+| 模式 | write/edit | bash / 插件工具 |
 |---|---|---|
 | `ask`（默认） | 确认 | 确认 |
 | `accept-edits` | 自动允许 | 确认 |
@@ -396,17 +396,17 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 - 会话值存储在 `sessions.permission_mode` 中
   （`inherit | ask | accept-edits | auto`，默认 `inherit`，架构 v5）和
   通过 `session.configure` `permissionMode` 设置。
-- Plan 的硬拒绝胜过 Write/Edit 以及缺少 `planSafeActions` 的插件
+- Plan 的硬拒绝胜过 write/edit 以及缺少 `planSafeActions` 的插件
   工具的所有权限模式。 `auto` 无法重新启用隐藏或拒绝的工具。
 - 会话根目录内的低风险工具（`allow-once`/`allow-session`/`deny`）自动允许
   每种模式都和以前一样。
-- `BrowserPreview` 是显式只读 UI 检查功能，并且是
+- `browser_preview` 是显式只读 UI 检查功能，并且是
   在两种操作模式下均可用。
 - Plan 保留权限模式选择器。 Bash 在 `ask` 下得到确认并且
   `accept-edits`，并且在 `auto` 下自动允许；因此 Plan 正在规划
   意图，而不是严格的只读安全配置文件。
 - `allow-session` 赠款继续在 `ask` 下运作，范围仅限于
-  会议；在 `BrowserPreview`/`ask` 下，根本不需要它们。
+  会议；在 `browser_preview`/`ask` 下，根本不需要它们。
 - 暂存目录写入 (D114) 在每种模式下都保持无提示。
 - UI：设置→分段全局默认；输入框在中显示每个会话的芯片
   Agent、Plan 和 Goal 的菜单提供了三种有效模式，无需
@@ -462,18 +462,18 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 
 ## 10. 操作模式矩阵
 
-| 模式 | Read/Glob/Grep | BrowserPreview | Write/Edit | 重击 | 插件 |
+| 模式 | read/glob/grep | browser_preview | write/edit | 重击 | 插件 |
 |---|---|---|---|---|---|
 | Agent | 允许 | 允许 | 许可政策 | 许可政策 | 注册风险政策 |
 | Plan | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
 | Goal | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
 
 ### 注释
-- 权限 UI 之前，Plan 和 Goal 硬拒绝 Write/Edit 以及没有 `planSafeActions` 的插件工具；直接主机
+- 权限 UI 之前，Plan 和 Goal 硬拒绝 write/edit 以及没有 `planSafeActions` 的插件工具；直接主机
   调用不能绕过矩阵。声明了非空列表的插件工具会被放行；运行器仍会拒绝列表外的任何动作（ADR 0211）。
 - Agent 模式使用权限卡或选定的自动策略
-  Write/Edit/Bash 和注册的插件工具。
-- 当用户选择“自动”时，Plan 和 Goal Bash 可能会改变工作区或暂存状态；
+  write/edit/bash 和注册的插件工具。
+- 当用户选择“自动”时，Plan 和 Goal bash 可能会改变工作区或暂存状态；
   用户界面必须使这种权衡可见。
 - 仅针对活动会话记住每个 toolName 的允许会话
 - 会话授权遵循 `sessionId` 跨项目选项卡开关，并且永远不会
@@ -487,37 +487,37 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 [02-代理运行时](/zh-CN/spec/03-runtime/02-agent-runtime) §5.1)。提交
 工具仅在其自己的合同模式下可用，并且必须是其辅助批次中唯一的工具调用。它保留了
 类型目录下新的独特工件中的确切 Markdown 字节
-（`.pi/plan/*.md` 为 `SubmitPlan`，`.pi/goal/*.md` 为 `SubmitGoal`）
-在创建一项待批准之前通过 host-core。 `EnterPlanMode` 和
-`EnterGoalMode` 仅在 Agent 中可用，并且每个工具调用必须是唯一的
+（`.pi/plan/*.md` 为 `submit_plan`，`.pi/goal/*.md` 为 `submit_goal`）
+在创建一项待批准之前通过 host-core。 `enter_plan_mode` 和
+`enter_goal_mode` 仅在 Agent 中可用，并且每个工具调用必须是唯一的
 在其批次中。主机验证持久模式、提案类型和
 任何转换之前的 active-turn/configuration 边界；可见的工具列表
 是指导，而不是安全边界。
 
 ### 10. 2 委派和子代理工具范围（D201、ADR 0062）
 
-`Task` 仅在 Agent 模式下可用，并且仅当会话至少有
+`task` 仅在 Agent 模式下可用，并且仅当会话至少有
 一个子代理定义。 Plan 和 Goal 是只读合同协商，因此
-具有 `Bash`、`Edit` 或 `Write` 的代表将直接穿过它们。
+具有 `bash`、`edit` 或 `write` 的代表将直接穿过它们。
 
-定义声明其委托可以调用的工具。默认名称仅来自七个工作工具 `Read`、
-`Glob`、`Grep`、`BrowserPreview`、`Bash`、`Edit` 和 `Write`。未声明
-`tools` 时得到 `Read`、`Glob`、`Grep`；`tools: "*"` 表示全部七个。
+定义声明其委托可以调用的工具。默认名称仅来自七个工作工具 `read`、
+`glob`、`grep`、`browser_preview`、`bash`、`edit` 和 `write`。未声明
+`tools` 时得到 `read`、`glob`、`grep`；`tools: "*"` 表示全部七个。
 无法识别的名称会被删除并带有解析警告。
 
 文档可以用 `tools: inherit` 或 `tools: [inherit, Bash]` 选择继承父会话的
-实时工具目录（ADR 0246 / D415）。`Task` 启动时运行时把 `toolCatalog`
-（含延迟的插件/MCP 工具）与可分配的额外工具取并集，再去掉 `Task` /
-`TaskWait` / `TaskList` / `TaskStop`、`EnterPlanMode` / `EnterGoalMode`、
+实时工具目录（ADR 0246 / D415）。`task` 启动时运行时把 `toolCatalog`
+（含延迟的插件/MCP 工具）与可分配的额外工具取并集，再去掉 `task` /
+`task_wait` / `task_list` / `task_stop`、`enter_plan_mode` / `enter_goal_mode`、
 `asktool`、`new_context` 和 `ToolSearch`。内置定义不默认开启。`inherit`
 写在 Markdown 和设置里；host-core 会保留该标记，因此只有 inherit 的文档
-仍能加载。插件工具、`Skill` 和 MCP 工具只通过这一 opt-in 到达委托，
+仍能加载。插件工具、`skill` 和 MCP 工具只通过这一 opt-in 到达委托，
 不能写进可分配白名单。
 
 没有 `tools: inherit` 时，委托可用的工具来自其定义，而不是其会话：它
 无法因为父级拥有某个工具而获得该工具，会话也不能把修改权限借给只读
 委托。委托调用由会话运行时构建并通过相同的 `tools.execute` 路径，因此
-路径规则（§4）、Bash 规则（§5）、权限模式（§6）、操作模式矩阵（§10）
+路径规则（§4）、bash 规则（§5）、权限模式（§6）、操作模式矩阵（§10）
 和审计（§9）保持不变，并针对拥有该调用的会话评估。
 
 **内置定义与用户定义**还可以声明 `permission: inherit | ask | accept-edits |
@@ -527,14 +527,14 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 并留下警告，克隆仓库永远不会获得权限升级。只有合格的内置或用户定义显式声明非
 `inherit` scope 时，sidecar 才会附加它，并由 host-core 在该模式下裁决。scope 只是
 权限模式覆盖：契约模式的硬拒绝和外部路径门禁（§4.1）仍然生效；显式
-`accept-edits` 仅自动允许工作区和 scratch 根内的 `Write`/`Edit`，外部路径及其他
+`accept-edits` 仅自动允许工作区和 scratch 根内的 `write`/`edit`，外部路径及其他
 工具仍按其正常审批边界处理。
 
 来自代表的权限请求带有提出请求的代表的姓名，因此
 卡可以说明哪位代表想要通话（请参阅 `04-ux/03-permission-ux.md`
 §6a)。
 会话范围的 `allow-session` 拨款仍按 `toolName` 和每个会话进行：
-一名代表对 `Bash` 的批准适用于整个会议，包括
+一名代表对 `bash` 的批准适用于整个会议，包括
 家长和其他代表。
 
 ## 11. 插件工具
@@ -569,4 +569,4 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 
 ## 图片生成与编辑
 
-`GenerateImages` 是仅供 Agent 使用的高风险能力，可信桌面执行请求前必须由 host-core 授权。即使处于 Auto，Plan/Goal 仍被拒绝。取消、限制和结果语义见[图片生成规格](/zh-CN/spec/03-runtime/21-image-generation)。
+`generate_images` 是仅供 Agent 使用的高风险能力，可信桌面执行请求前必须由 host-core 授权。即使处于 Auto，Plan/Goal 仍被拒绝。取消、限制和结果语义见[图片生成规格](/zh-CN/spec/03-runtime/21-image-generation)。

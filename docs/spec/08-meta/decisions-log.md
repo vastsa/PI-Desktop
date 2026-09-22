@@ -6739,3 +6739,38 @@ that was sitting at the bottom — including after the turn had finished.
   migration. This decision records the contract and adds the two modules; the
   registry, dispatch, permission, prompt, and UI call sites follow in D619 through
   D621. See `03-runtime/23-tool-names.md`.
+
+## 2026-09-22 — host-core dispatches one canonical tool name (D619)
+
+- `builtin_tool_defs()` is the single source of the model-visible tool schema, so
+  its six names moved to the canonical spelling — `read`, `glob`, `grep`,
+  `write`, `edit`, `bash` — together with the description text that names those
+  tools, and the structured `Glob` suggestion a directory read returns.
+- The dispatch match, the admission classes, the risk buckets, the contract-mode
+  allowlist, the external-path gate, the review snapshot operation and the
+  subagent tool list all compare canonical names now.
+- Each of those boundaries normalizes the name it reads instead of rewriting
+  what it stores: `tools.execute` normalizes `toolName` once on entry (covering
+  the shell branch, the permission gate, the session grant it records, the
+  admission permit, the review snapshot and the dispatch), `effective_timeout_ms`
+  normalizes its argument, and permission matching normalizes both the incoming
+  call and every session grant. A replayed `Read`, a saved `Bash` grant and a
+  subagent document that declares `tools: [Read]` therefore keep working, and no
+  stored byte changes. Two further read-in points joined them: the
+  `permissions.evaluate` preview normalizes before it answers, so it cannot
+  disagree with `tools.execute` about a call whose spelling predates the
+  rename, and a plugin session import stores the canonical name, because
+  importing an archive is a write path.
+- Two names this lane deliberately leaves alone: `PowerShell` is a shell id, not
+  a tool, and `plugin_*` / `mcp_*` are third-party identities —
+  `is_desktop_dispatched()` keeps its prefix test unchanged.
+- Regression coverage lives next to each boundary
+  (`legacy_tool_names_dispatch_to_the_same_builtin`,
+  `legacy_bash_name_resolves_to_the_bash_timeout`,
+  `legacy_tool_names_match_the_same_permission_rules`,
+  `legacy_tool_names_map_to_the_same_admission_class`,
+  `legacy_tool_declarations_resolve_to_canonical_names`,
+  `a_legacy_session_grant_still_covers_its_canonical_call`,
+  `tool_import_stores_the_canonical_tool_name`), plus two RPC cases that replay a
+  legacy name: one executes, one previews the permission decision. See
+  `03-runtime/23-tool-names.md` and D618.
