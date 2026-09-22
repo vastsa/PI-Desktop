@@ -45,6 +45,15 @@ import {
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import {
+  clampDynamicContextPercent,
+  clampEarlyCompactionDelaySeconds,
+  clampEarlyCompactionPercent,
+  clampSleepTimeRunsPerHour,
+  DYNAMIC_CONTEXT_DEFAULT_PERCENT,
+  EARLY_COMPACTION_DEFAULT_DELAY_SECONDS,
+  EARLY_COMPACTION_DEFAULT_PERCENT,
+  EARLY_COMPACTION_DEFAULT_SILENT,
+  SLEEP_TIME_DEFAULT_RUNS_PER_HOUR,
   DEFAULT_COMMAND_TIMEOUT_MS,
   OAUTH_AUTH_KIND,
   type TrustedExtensionCommand,
@@ -201,6 +210,19 @@ import {
   reduceSummaryInput,
 } from "./compaction-summary-input.js";
 import {
+  buildTrajectorySummary,
+  extractGoal,
+  extractNextSteps,
+  extractOpenItems,
+  TRAJECTORY_MAX_PREVIOUS_CHARS,
+} from "./compaction-trajectory.js";
+import {
+  buildRecallProjectTool,
+  buildRecallTool,
+  RECALL_PROJECT_TOOL_NAME,
+  RECALL_TOOL_NAME,
+} from "./recall-tools.js";
+import {
   mergeProviderHeaders,
   providerHeadersEqual,
   withProviderHeaders,
@@ -224,6 +246,10 @@ import {
   ContextEstimateCalibration,
   type ContextCalibration,
 } from "./context-calibration.js";
+import {
+  narrowToolResults,
+  workingSetPathsFrom,
+} from "./tool-result-tier.js";
 
 import { rebuildNodeNetworkTransport } from "./node-proxy.js";
 import {
@@ -752,7 +778,7 @@ function resolveCompactionStrategy(
  */
 const CONTEXT_ROLLOVER_SUMMARY = [
   "[context rollover: a new context window was started without summarizing conversation history]",
-  "Earlier messages in this session are not part of this request. The complete transcript is still available to the user, and the environment is unchanged.",
+  "Earlier messages in this session are not part of this request. Nothing was deleted: the complete transcript is still in this session, and the recall tool reads any earlier message back verbatim. The environment is unchanged.",
   "Ask before assuming anything about work that is not visible here.",
 ].join("\n\n");
 
@@ -780,16 +806,16 @@ const CONTEXT_COMPACTION_TOOL_REPLY: Record<CompactionStrategy, string> = {
 };
 
 /**
- * Two-tier budget reminder, matching Codex's `TokenBudgetReminder` and
- * `AutoCompactFallbackPrompt`. Codex reads both thresholds and both texts from
- * per-model metadata; we have no such feed, so the thresholds are derived from
- * the same hard limit the compaction guard uses and the texts are ours.
+ * One budget reminder, matching Codex's `TokenBudgetReminder` first tier.
+ * Codex also has an `AutoCompactFallbackPrompt` — a second, sharper reminder
+ * just before the boundary, telling the model that unsummarized detail "will not
+ * be available afterwards". That sentence is no longer true here: compaction
+ * does not delete anything, and `recall` reads any earlier message back
+ * verbatim, so the tier is gone rather than rephrased (ADR 0300).
  */
 const CONTEXT_REMINDER_MIN_TOKENS = 8_000;
 const CONTEXT_REMINDER_MAX_TOKENS = 32_000;
 const CONTEXT_REMINDER_RATIO = 0.15;
-/** Close enough to the boundary that the next turn is likely to cross it. */
-const CONTEXT_FALLBACK_REMINDER_TOKENS = 2_000;
 
 function contextBudgetReminder(remaining: number): string {
   return [
@@ -801,16 +827,10 @@ function contextBudgetReminder(remaining: number): string {
   ].join("\n");
 }
 
-function contextFallbackReminder(): string {
-  return [
-    "<context_budget>",
-    "The working context is at its limit: the next request compacts this conversation automatically.",
-    "Write down now, in this turn, whatever must survive — file paths, decisions, and the exact next step — because unsummarized detail will not be available afterwards.",
-    "</context_budget>",
-  ].join("\n");
-}
 
-
+const IDLE_COMPACTION_DELAY_MS = EARLY_COMPACTION_DEFAULT_DELAY_SECONDS * 1_000;
+const IDLE_COMPACTION_OCCUPANCY_RATIO = EARLY_COMPACTION_DEFAULT_PERCENT / 100;
+const IDLE_COMPACTION_SILENT = EARLY_COMPACTION_DEFAULT_SILENT;
 export type PluginToolDef = {
   /** Full exposed name (`plugin_<pluginIdSafe>_<toolName>`, D015). */
   name: string;
@@ -857,6 +877,25 @@ export type AgentRuntimeOptions = {
    * `PI_DESKTOP_COMPACTION_STRATEGY` and otherwise summarizes.
    */
   compactionStrategy?: CompactionStrategy;
+  /**
+   * Dynamic context gate (D447): the share of the hard limit at which old tool
+   * results start being narrowed. Precedence: this option (tests) beats the
+   * launch payload's provider binding, which beats the default.
+   */
+  dynamicContext?: { enabled: boolean; thresholdPercent: number };
+  /**
+   * Early background compaction (ADR 0301): the share of the hard limit at
+   * which a settled, idle session compacts in the background, how long it waits
+   * and whether a successful pass stays silent. Same precedence as the gate.
+   */
+  earlyCompaction?: {
+    enabled: boolean;
+    thresholdPercent: number;
+    delaySeconds: number;
+    silent: boolean;
+  };
+  /** Sleep-time digest (ADR 0301). Same precedence as the gate; off by default. */
+  sleepTime?: { enabled: boolean; maxRunsPerHour: number };
   /** Plugin agent tools to expose to the model this session. */
   pluginTools?: PluginToolDef[];
   /** Plugin skills advertised in the system prompt and loaded via `Skill`. */
@@ -976,6 +1015,31 @@ function isPatchCommand(command: unknown): boolean {
 type CheckpointPersistResult = "persisted" | "oversized" | "failed";
 
 type CompactionRetentionMode = "active_turn" | "completed_turn";
+
+const LEDGER_MAX_FILES = 40;
+const LEDGER_MAX_COMMANDS = 20;
+const LEDGER_MAX_COMMAND_CHARS = 200;
+
+/** The mechanical record stored on a checkpoint's `details.ledger`. */
+type SessionLedger = {
+  filesRead: string[];
+  filesModified: string[];
+  commands: string[];
+  messages: number;
+  toolCalls: number;
+  /**
+   * I (CONTEXT-V3-PLAN §4.I): the re-anchor half. Files and commands tell a
+   * next window where the work happened; these two tell it what the work
+   * *was* and what is still open, which is what the ledger lacked. Optional
+   * because every checkpoint written before this change has neither.
+   */
+  goal?: string;
+  openItems?: string[];
+};
+
+/** Bounds for the two re-anchor fields the ledger carries. */
+const LEDGER_MAX_GOAL_CHARS = 400;
+const LEDGER_MAX_OPEN_ITEMS = 5;
 
 /**
  * A pi preparation plus the anchor the checkpoint is filed against.
@@ -1669,13 +1733,64 @@ export class DesktopAgentRuntime {
   private compactionInProgress = false;
   /** The in-flight checkpoint was cut short by Stop/dispose, not by a failure. */
   private compactionAborted = false;
+
+  private idleCompaction: {
+    enabled: boolean;
+    delayMs: number;
+    occupancyRatio: number;
+    /** Keep a successful pass out of the routine warning toast. */
+    silent: boolean;
+  } = {
+    enabled: true,
+    delayMs: IDLE_COMPACTION_DELAY_MS,
+    occupancyRatio: IDLE_COMPACTION_OCCUPANCY_RATIO,
+    silent: IDLE_COMPACTION_SILENT,
+  };
+  /**
+   * Sleep-time digest. Off unless the model binding turns it on; it is a
+   * deterministic extraction, so it never spends a provider call, and the quota
+   * bounds how much transcript it may add per hour of session time.
+   */
+  private sleepTime: { enabled: boolean; maxRunsPerHour: number } = {
+    enabled: false,
+    maxRunsPerHour: SLEEP_TIME_DEFAULT_RUNS_PER_HOUR,
+  };
+  /** Timestamps of the digests taken, used for the hourly quota. */
+  private sleepRuns: number[] = [];
+  /**
+   * The newest digest, kept in memory as well as on disk: a summary request
+   * that never returns falls back to the deterministic record, and this is the
+   * same record captured earlier — when the range was smaller, so its goal
+   * lines are less truncated.
+   */
+  private sleepDigest: { digest: string; throughMessageId: string } | undefined;
+  /**
+   * Dynamic context gate (D): the share of the hard limit at which old tool
+   * results start being narrowed. Overridden per session from the model
+   * binding; the defaults reproduce the previous constant behaviour.
+   */
+  private dynamicContext: { enabled: boolean; thresholdPercent: number } = {
+    enabled: true,
+    thresholdPercent: DYNAMIC_CONTEXT_DEFAULT_PERCENT,
+  };
+  /** True while a background idle compaction is running. */
+  private idleCompactionActive = false;
+  /** Pending idle pre-compaction timer; any new activity cancels it. */
+  private idleCompactionTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The in-flight background pass, so a prompt can wait for its unwind. */
+  private idleCompactionRun?: Promise<void>;
+  /**
+   * Set when real work asks a pass to stand down; the pass checks it before
+   * its summary request so a prompt never waits behind a provider call it
+   * did not cause. Cleared when the next pass is armed.
+   */
+  private idleCompactionYielded = false;
   /** Set by the `new_context` tool, consumed at the next turn boundary. */
   private pendingModelCompaction = false;
   /** One-shot request to finish the current turn at the next boundary. */
   private gracefulStopRequested = false;
   /** Codex's `claim_*` flags: one of each reminder per context window. */
   private contextReminderClaimed = false;
-  private contextFallbackReminderClaimed = false;
   private activeToolProgressCleanups = new Set<(flush: boolean) => void>();
   private hostCloseUnsubscribe?: () => void;
   private turnSubagentUsage?: MessageUsage;
@@ -1716,6 +1831,52 @@ export class DesktopAgentRuntime {
     this.projectMemory = opts.projectMemory?.trim() || undefined;
     this.compactionEnabled = compactionEnabled(opts.compactionSettings);
     this.compactionStrategy = resolveCompactionStrategy(opts.compactionStrategy);
+
+    // Precedence: an explicit option (tests) beats the launch payload, which
+    // beats the historical constants.
+    const configuredDynamicContext =
+      opts.dynamicContext ?? opts.provider.dynamicContext;
+    if (configuredDynamicContext) {
+      this.dynamicContext = {
+        enabled: configuredDynamicContext.enabled !== false,
+        thresholdPercent: clampDynamicContextPercent(
+          configuredDynamicContext.thresholdPercent,
+        ),
+      };
+    }
+
+    // Same precedence as the gate: an explicit option (tests) beats the launch
+    // payload, which beats the constants. The threshold is a share of the hard
+    // limit and is clamped by the shared bounds, so the runtime and the
+    // settings pane cannot disagree about what "75 %" means.
+    const configuredEarlyCompaction =
+      opts.earlyCompaction ?? opts.provider.earlyCompaction;
+    if (configuredEarlyCompaction) {
+      this.idleCompaction = {
+        enabled: configuredEarlyCompaction.enabled !== false,
+        delayMs:
+          clampEarlyCompactionDelaySeconds(
+            configuredEarlyCompaction.delaySeconds,
+          ) * 1_000,
+        occupancyRatio:
+          clampEarlyCompactionPercent(
+            configuredEarlyCompaction.thresholdPercent,
+          ) / 100,
+        silent: configuredEarlyCompaction.silent !== false,
+      };
+    }
+
+    // I4's setting rides the same precedence: an explicit option (tests) beats
+    // the launch payload, which beats the default — which is off.
+    const configuredSleepTime = opts.sleepTime ?? opts.provider.sleepTime;
+    if (configuredSleepTime) {
+      this.sleepTime = {
+        enabled: configuredSleepTime.enabled === true,
+        maxRunsPerHour: clampSleepTimeRunsPerHour(
+          configuredSleepTime.maxRunsPerHour,
+        ),
+      };
+    }
 
     this.rebuildToolCatalog();
     const model = buildProviderModel(this.provider);
@@ -1925,9 +2086,12 @@ Delegation rules:
       // The provider's rule that a tool-call id is unique is enforced here, on
       // the last view before the wire: the request is the only place it can be
       // guaranteed for both a rebuilt context and one that grew in this process.
+      // Old tool results are tiered in the same place: that pass is a no-op below
+      // its pressure gate and returns the same array when nothing qualified, so
+      // an ordinary request is byte-identical to what it was before it existed.
       convertToLlm: (messages) =>
         alignRetainedReasoningIdentity(
-          convertToLlm(this.dropDuplicateToolCalls(messages)),
+          convertToLlm(this.narrowToolResultsUnderPressure(this.dropDuplicateToolCalls(messages))),
           this.reasoningReplayIdentity(),
         ),
       prepareNextTurnWithContext: (context, signal) =>
@@ -3388,6 +3552,25 @@ Delegation rules:
     const contextTools = this.compactionEnabled
       ? [this.buildContextCompactionTool()]
       : [];
+    // Recall (ADR 0300): the read side of compaction. Both live beside the
+    // compaction tool because they are what makes its wording truthful — a
+    // message moved out of the window is still readable here. `recall` is the
+    // session's own history; `recall_project` is bounded by the project this
+    // session is bound to, and the host refuses a foreign session id, so the
+    // project scope is enforced where the data lives.
+    const recallTools = [
+      buildRecallTool({
+        sessionId: this.sessionId,
+        call: (method, params) => this.host.call(method, params) as Promise<unknown>,
+      }),
+      buildRecallProjectTool(
+        {
+          sessionId: this.sessionId,
+          call: (method, params) => this.host.call(method, params) as Promise<unknown>,
+        },
+        this.projectPath,
+      ),
+    ];
     // Trusted extension tools are non-core: the per-mode allowlist and
     // ToolSearch deferral treat them like plugin tools (spec 16 §7).
     const extensionTools = this.extensionRunner?.getAgentTools() ?? [];
@@ -3399,6 +3582,7 @@ Delegation rules:
       ...modeTools,
       ...subagentTools,
       ...contextTools,
+      ...recallTools,
       ...extensionTools,
     ];
   }
@@ -3464,6 +3648,10 @@ Delegation rules:
       "Bash",
       ASK_TOOL_NAME,
       CONTEXT_COMPACTION_TOOL_NAME,
+      // Recall is a read of this session's own history, so it is safe in a
+      // contract mode for the same reason Read is.
+      RECALL_TOOL_NAME,
+      RECALL_PROJECT_TOOL_NAME,
       SUBMIT_TOOL_NAMES[kind],
     ]).has(name);
   }
@@ -3471,6 +3659,11 @@ Delegation rules:
   private isCoreTool(name: string): boolean {
     return (
       name === CONTEXT_COMPACTION_TOOL_NAME ||
+      // Recall stays in the core set: it is the read side of compaction, and a
+      // capability the model has to go looking for is one it will not use when
+      // it is trying to recover what a summary left out.
+      name === RECALL_TOOL_NAME ||
+      name === RECALL_PROJECT_TOOL_NAME ||
       MODE_TRANSITION_TOOL_NAMES.has(name) ||
       // The whole delegation lifecycle stays in the core set rather than the
       // on-demand catalog: a capability the model has to go looking for is one
@@ -5828,9 +6021,207 @@ Delegation rules:
     additionalMessages: AgentMessage[] = [],
   ): boolean {
     const context = this.liveSessionContext();
-    const messages = [...context.messages, ...additionalMessages];
+    // Decide on the view the request would actually carry: narrowing old tool
+    // results shrinks it, and reading the un-narrowed projection here would
+    // make the saving invisible to this check, so compaction would fire while
+    // real room remained.
+    const messages = [
+      ...this.narrowToolResultsUnderPressure(context.messages),
+      ...additionalMessages,
+    ];
     const budget = this.contextBudget(messages);
     return this.compactionEnabled && budget.tokens >= budget.hardLimit;
+  }
+
+  /**
+   * Shorten old tool results in an outgoing view, but only once the context is
+   * actually under pressure — below the gate the view comes back untouched, so
+   * the common case pays nothing. The full text of every narrowed result stays
+   * reachable through the pointer the pass embeds (see `tool-result-tier.ts`).
+   */
+  private narrowToolResultsUnderPressure(messages: AgentMessage[]): AgentMessage[] {
+    if (messages.length === 0) return messages;
+    // The gate is the one place that decides this share, so the outgoing request
+    // and every budget decision agree; off means nothing is narrowed.
+    const gate = this.dynamicContextGate();
+    if (!Number.isFinite(gate)) return messages;
+    const budget = this.contextBudget(messages);
+    if (budget.tokens < budget.hardLimit * gate) {
+      return messages;
+    }
+    // The newest file-touching calls define what the task is about right now; a
+    // result for a file the session re-opened stays whole even when its row is
+    // old. `[keep]` immunity, the excluded tool families and the clear-at-least
+    // floor come from the module's own defaults.
+    return narrowToolResults(messages, {
+      workingSetPaths: workingSetPathsFrom(messages),
+    }).messages;
+  }
+
+  /**
+   * The configured share of the hard limit at which narrowing starts, or
+   * `Infinity` when the gate is switched off (D). One place decides it, so the
+   * outgoing request and every budget decision agree.
+   */
+  private dynamicContextGate(): number {
+    if (!this.dynamicContext.enabled) return Number.POSITIVE_INFINITY;
+    return clampDynamicContextPercent(this.dynamicContext.thresholdPercent) / 100;
+  }
+
+  /**
+   * Idle pre-compaction: after a run settles this close to the hard limit,
+   * compact in the background so the next prompt does not wait for the
+   * summary. Best-effort - any new activity cancels the timer or stands a
+   * running pass down, and a failed
+   * idle compaction only reports through the normal compaction_end; the
+   * next prompt's own protection still runs.
+   */
+  private scheduleIdleCompaction(): void {
+    this.cancelIdleCompaction();
+    // Arming is what clears a previous stand-down: the next idle window gets
+    // a fresh decision instead of inheriting the last prompt's veto.
+    this.idleCompactionYielded = false;
+    if (this.disposed) return;
+    if (!this.idleCompaction.enabled) return;
+    if (!this.compactionEnabled) return;
+    // Same view as the next-request check, so narrowing postpones the
+    // idle pass too instead of leaving it to fire on the un-narrowed size.
+    const budget = this.contextBudget(
+      this.narrowToolResultsUnderPressure(this.agent.state.messages),
+    );
+    if (budget.tokens < budget.hardLimit * this.idleCompaction.occupancyRatio) {
+      return;
+    }
+    // I4: the digest is taken here, not on the timer. It spends nothing, and
+    // taking it as soon as the pass is armed means it exists *before* the
+    // summary attempt — which is the whole point, after an incident where that
+    // attempt never came back.
+    void this.takeSleepDigest().catch(() => undefined);
+    const timer = setTimeout(() => {
+      this.idleCompactionTimer = undefined;
+      const run = this.runIdleCompaction().catch(() => undefined);
+      this.idleCompactionRun = run;
+      void run.then(() => {
+        if (this.idleCompactionRun === run) this.idleCompactionRun = undefined;
+      });
+    }, this.idleCompaction.delayMs);
+    timer.unref?.();
+    this.idleCompactionTimer = timer;
+  }
+
+  /**
+   * I4: write the deterministic digest of where the session stands.
+   *
+   * Four gates, in the order that matters. The setting must be on. The session
+   * must not be in a state a digest would misrepresent: streaming, already
+   * compacting, or waiting for the user to approve a plan. The hourly quota must
+   * have room. And the transcript must have a message to point at.
+   *
+   * No provider call is involved, so the only failure left is storage, which
+   * must not fail anything else — the caller ignores it, exactly as it ignores a
+   * failed idle compaction.
+   */
+  private async takeSleepDigest(): Promise<void> {
+    if (!this.sleepTime.enabled) return;
+    if (this.disposed || this.agent.state.isStreaming) return;
+    if (this.compactionInProgress || this.idleCompactionActive) return;
+    if (this.planningState === "awaiting_approval") return;
+    const messages = this.agent.state.messages;
+    // The durable coordinate is the entry id: the compaction path names its
+    // range the same way, and a pi message carries no id of its own.
+    const entries = this.entriesWithCompaction();
+    const throughMessageId = entries[entries.length - 1]?.id;
+    if (typeof throughMessageId !== "string" || throughMessageId.length === 0) {
+      return;
+    }
+    const now = Date.now();
+    this.sleepRuns = this.sleepRuns.filter((at) => now - at < 3_600_000);
+    if (this.sleepRuns.length >= this.sleepTime.maxRunsPerHour) return;
+
+    const goal = extractGoal(messages);
+    const openItems = extractOpenItems(messages);
+    const nextSteps = extractNextSteps(messages);
+    const digest = [
+      "## Goal",
+      goal ?? "(no user request was recorded yet)",
+      "",
+      "## Progress",
+      `${messages.length} messages were in the window when this digest was taken; the session ledger below lists the files and commands for this range.`,
+      "",
+      "## Blocked",
+      openItems.length > 0 ? openItems.map((item) => `- ${item}`).join("\n") : "Nothing was blocked when this was taken.",
+      ...(nextSteps.length > 0
+        ? ["", "## Next", ...nextSteps.map((step) => `- ${step}`)]
+        : []),
+    ].join("\n");
+    // Quota counts the attempt: a digest that was built and rejected by storage
+    // still spent the transcript read, and a retry loop is not wanted here.
+    this.sleepRuns.push(now);
+    this.sleepDigest = { digest, throughMessageId };
+    await this.host.call("session.appendSleep", {
+      sessionId: this.sessionId,
+      record: {
+        id: `sleep-${now}-${throughMessageId.slice(0, 8)}`,
+        digest,
+        throughMessageId,
+        messageCount: entries.length,
+        createdAt: new Date(now).toISOString(),
+      },
+    });
+  }
+
+  private cancelIdleCompaction(): void {
+    if (!this.idleCompactionTimer) return;
+    clearTimeout(this.idleCompactionTimer);
+    this.idleCompactionTimer = undefined;
+  }
+
+  /**
+   * Real work outranks the background pass: a prompt cancels the pending
+   * timer and stands a running pass down. The abort reuses the Stop path, so
+   * the pass reports as an aborted idle pass (`TURN_ABORTED`, still silent)
+   * instead of a failure, and the wait is bounded by the summary request's
+   * own abort handling. The pass is best-effort: the next prompt re-checks
+   * the budget inline, and a later idle window re-arms it.
+   */
+  private async yieldIdleCompaction(): Promise<void> {
+    this.cancelIdleCompaction();
+    const run = this.idleCompactionRun;
+    if (!run) return;
+    this.idleCompactionYielded = true;
+    if (this.compactionInProgress) this.compactionAborted = true;
+    this.compactionAbort?.abort();
+    await run;
+  }
+
+  private async runIdleCompaction(): Promise<void> {
+    if (
+      this.idleCompactionYielded ||
+      this.disposed ||
+      this.agent.state.isStreaming ||
+      this.compactionInProgress
+    ) {
+      return;
+    }
+    const budget = this.contextBudget(
+      this.narrowToolResultsUnderPressure(this.agent.state.messages),
+    );
+    if (budget.tokens < budget.hardLimit * this.idleCompaction.occupancyRatio) {
+      return;
+    }
+    // A prompt that arrived while the budget was being re-checked still gets
+    // the model: the pass stands down before it spends its summary request.
+    if (this.idleCompactionYielded) return;
+    this.idleCompactionActive = true;
+    try {
+      // Reason "threshold" is the truth: the same automatic protection,
+      // moved to a moment the user is not waiting. The idle flag on the
+      // events lets the renderer settle the running state the way a manual
+      // compaction does (clear running, flush queued prompts).
+      await this.runCompaction("threshold", false);
+    } finally {
+      this.idleCompactionActive = false;
+    }
   }
 
   private retainedUserMessageBudget(budget: ContextBudget): number {
@@ -6047,15 +6438,6 @@ Delegation rules:
     remaining: number,
     budget: ContextBudget,
   ): string | undefined {
-    if (
-      remaining <= CONTEXT_FALLBACK_REMINDER_TOKENS &&
-      !this.contextFallbackReminderClaimed
-    ) {
-      this.contextFallbackReminderClaimed = true;
-      // The first tier is pointless once the second has fired.
-      this.contextReminderClaimed = true;
-      return contextFallbackReminder();
-    }
     const threshold = Math.min(
       CONTEXT_REMINDER_MAX_TOKENS,
       Math.max(
@@ -6125,6 +6507,10 @@ Delegation rules:
     this.emit({
       type: "compaction_end",
       reason,
+      ...(this.idleCompactionActive ? { idle: true } : {}),
+      ...(this.idleCompactionActive && this.idleCompaction.silent
+        ? { silent: true }
+        : {}),
       ok: false,
       ...(tokensBefore !== undefined ? { tokensBefore } : {}),
       willRetry: false,
@@ -6178,15 +6564,92 @@ Delegation rules:
     return retainedReasoning.length > 0 ? { retainedReasoning } : {};
   }
 
-  private checkpointDetails(preparation: ShapedPreparation) {
+  /**
+   * The mechanical session ledger: a bounded record of the boundary
+   * range's work, extracted from the preparation without spending model
+   * tokens. Files and commands are scanned from the range's own tool calls:
+   * upstream's fileOps scan only knows lowercase read/write/edit with a
+   * `path` argument, so it never matches this app's Read/Write/Edit tools
+   * (Read takes `file_path`) and seeding from it would persist empty lists
+   * on every checkpoint. Counts cover the summarized range. Stored on the
+   * checkpoint's opaque `details` and projected back into the summary by
+   * session-context, so the next window keeps an account of everything that
+   * is one recall away.
+   */
+  private buildLedger(
+    preparation: ShapedPreparation,
+  ): SessionLedger {
+    const messages = [
+      ...preparation.messagesToSummarize,
+      ...preparation.turnPrefixMessages,
+    ];
+    const commands: string[] = [];
+    const filesRead = new Set<string>();
+    const filesModified = new Set<string>();
+    let toolCalls = 0;
+    for (const message of messages) {
+      if (message.role !== "assistant") continue;
+      const content = message.content;
+      if (!Array.isArray(content)) continue;
+      for (const part of content) {
+        if (!isRecord(part) || part.type !== "toolCall") continue;
+        toolCalls += 1;
+        if (!isRecord(part.arguments)) continue;
+        const args = part.arguments;
+        if (part.name === "Bash" && typeof args.command === "string") {
+          const command = args.command;
+          if (command && commands.length < LEDGER_MAX_COMMANDS) {
+            commands.push(
+              command.length > LEDGER_MAX_COMMAND_CHARS
+                ? `${command.slice(0, LEDGER_MAX_COMMAND_CHARS)}…`
+                : command,
+            );
+          }
+        }
+        const path =
+          typeof args.path === "string"
+            ? args.path
+            : typeof args.file_path === "string"
+              ? args.file_path
+              : undefined;
+        if (!path) continue;
+        if (part.name === "Read") filesRead.add(path);
+        else if (part.name === "Write" || part.name === "Edit")
+          filesModified.add(path);
+      }
+    }
+    // I (§4.I): the two re-anchor facts, extracted from the same range by the
+    // deterministic module the trajectory layer uses, so the ledger and a
+    // recovered checkpoint describe the work the same way.
+    const goal = extractGoal(messages);
+    const openItems = extractOpenItems(messages).slice(0, LEDGER_MAX_OPEN_ITEMS);
     return {
-      readFiles: [...preparation.fileOps.read].sort(),
-      modifiedFiles: [
-        ...new Set([
-          ...preparation.fileOps.written,
-          ...preparation.fileOps.edited,
-        ]),
-      ].sort(),
+      filesRead: [...filesRead].sort().slice(0, LEDGER_MAX_FILES),
+      filesModified: [...filesModified].sort().slice(0, LEDGER_MAX_FILES),
+      commands,
+      messages: messages.length,
+      toolCalls,
+      ...(goal
+        ? {
+            goal:
+              goal.length > LEDGER_MAX_GOAL_CHARS
+                ? `${goal.slice(0, LEDGER_MAX_GOAL_CHARS)}…`
+                : goal,
+          }
+        : {}),
+      ...(openItems.length > 0 ? { openItems } : {}),
+    };
+  }
+
+  private checkpointDetails(preparation: ShapedPreparation) {
+    // The same self-scanned lists the ledger uses: upstream's fileOps scan
+    // never matches this app's tool names, so seeding from it would persist
+    // empty lists on every checkpoint.
+    const ledger = this.buildLedger(preparation);
+    return {
+      readFiles: ledger.filesRead,
+      modifiedFiles: ledger.filesModified,
+      ledger,
     };
   }
 
@@ -6260,19 +6723,10 @@ Delegation rules:
     // — model switch, restart — the session restores as if it had just started.
     // Fall back to the newest user messages under the same budget so the
     // failure path still restores a bounded, non-empty context (#224).
-    const retainedTail =
-      preparation.retainedTail.length > 0
-        ? preparation.retainedTail
-        : selectRetainedUserMessages(
-            preparation.messagesToSummarize.filter(
-              (message): message is UserMessage => message.role === "user",
-            ),
-            preparation.settings.keepRecentTokens,
-          );
     return this.createCheckpoint(
       {
         ...preparation,
-        retainedTail,
+        retainedTail: this.retainedTailForDegradedCheckpoint(preparation),
       },
       throughMessageId,
       summary,
@@ -6285,6 +6739,89 @@ Delegation rules:
         ...this.retainedReasoningForCheckpoint(preparation),
       },
     );
+  }
+
+  /**
+   * The deterministic layer between a failed model summary and the
+   * retained-tail notice. It costs no request and cannot fail on a provider,
+   * so trying it first is free; when it does not fit the safe budget either,
+   * the notice above still runs and stays the last resort.
+   */
+  private createTrajectoryCheckpoint(
+    preparation: ShapedPreparation,
+    throughMessageId: string,
+    maxSummaryChars: number,
+    retentionMode: CompactionRetentionMode,
+    failureMessage: string,
+  ): ContextCompactionRecord {
+    const trajectory = buildTrajectorySummary({
+      messages: [
+        ...preparation.messagesToSummarize,
+        ...preparation.turnPrefixMessages,
+      ],
+      previousSummary: preparation.previousSummary,
+      maxPreviousChars: Math.min(TRAJECTORY_MAX_PREVIOUS_CHARS, maxSummaryChars),
+    });
+    const continuation =
+      retentionMode === "active_turn"
+        ? "The provider is continuing the active turn. Use the one retained latest user request as the source of truth for that continuation."
+        : "The previous turn is complete. Treat this summary as historical context; the next user message is the only new task to execute.";
+    // Same layout as the retained-tail fallback: the carried summary first, the
+    // marker, then what this layer has to say, so a chained compaction recovers
+    // exactly the carried history and drops this range's description instead of
+    // cementing it (#224).
+    const summary = [
+      trajectory.carried ?? COMPACTION_FALLBACK_NO_SUMMARY,
+      COMPACTION_FALLBACK_MARKER,
+      "The automatic summary request did not complete. Older messages before this checkpoint are omitted from the next model request.",
+      `${continuation} The deterministic record below describes what they contained.`,
+      trajectory.sections,
+    ].join("\n\n");
+    return this.createCheckpoint(
+      {
+        ...preparation,
+        retainedTail: this.retainedTailForDegradedCheckpoint(preparation),
+      },
+      throughMessageId,
+      summary,
+      undefined,
+      {
+        ...this.checkpointDetails(preparation),
+        ...this.retainedReasoningForCheckpoint(preparation),
+        // `trajectory` is an outcome of the degradation chain, not a policy a
+        // user can select, so it stays out of `CompactionStrategy` — the
+        // shared reader already treats anything but `fresh_window` as
+        // summarized, and this is a real summary, just not a model's.
+        strategy: "trajectory",
+        retainedTailMode: retentionMode,
+        failureCode: "CONTEXT_COMPACTION_FAILED",
+        failureMessage: boundedText(
+          failureMessage,
+          COMPACTION_FALLBACK_MAX_SUMMARY_CHARS,
+        ),
+        trajectory: {
+          messages: trajectory.stats.messages,
+          toolCalls: trajectory.stats.toolCalls,
+          failedToolCalls: trajectory.stats.failedToolCalls,
+          openItems: trajectory.openItems.length,
+          nextSteps: trajectory.nextSteps.length,
+          goal: trajectory.goal !== undefined,
+        },
+      },
+    );
+  }
+
+  private retainedTailForDegradedCheckpoint(
+    preparation: ShapedPreparation,
+  ): AgentMessage[] {
+    return preparation.retainedTail.length > 0
+      ? preparation.retainedTail
+      : selectRetainedUserMessages(
+          preparation.messagesToSummarize.filter(
+            (message): message is UserMessage => message.role === "user",
+          ),
+          preparation.settings.keepRecentTokens,
+        );
   }
 
   /**
@@ -6373,6 +6910,19 @@ Delegation rules:
     ) {
       return "oversized";
     }
+
+    // The estimate of the compacted projection is smaller than what the next
+    // request will actually carry: it is built from message content alone, while
+    // the request also pays for the system prompt and the tool schemas.
+    // `tokensBefore` is a measured request size, so the gap between it and the
+    // pre-compaction estimate is that overhead — adding it back keeps this
+    // number comparable with the request-based occupancy shown elsewhere.
+    const preCompactionTokens = this.contextBudget(
+      this.liveSessionContext().messages,
+    ).tokens;
+    checkpoint.tokensAfter =
+      compactedBudget.tokens +
+      Math.max(0, checkpoint.tokensBefore - preCompactionTokens);
     try {
       await this.host.call("session.appendCompaction", {
         sessionId: this.sessionId,
@@ -6388,11 +6938,14 @@ Delegation rules:
     // A new window means both reminders are available again, matching Codex
     // resetting its `claim_*` flags when the context window turns over.
     this.contextReminderClaimed = false;
-    this.contextFallbackReminderClaimed = false;
     this.setAgentMessages(this.liveSessionContext().messages);
     this.emit({
       type: "compaction_end",
       reason,
+      ...(this.idleCompactionActive ? { idle: true } : {}),
+      ...(this.idleCompactionActive && this.idleCompaction.silent
+        ? { silent: true }
+        : {}),
       ok: true,
       tokensBefore: checkpoint.tokensBefore,
       firstKeptMessageId: checkpoint.firstKeptMessageId,
@@ -6476,17 +7029,39 @@ Delegation rules:
       );
       return false;
     }
+    const maxSummaryChars = Math.max(
+      256,
+      Math.min(
+        COMPACTION_FALLBACK_MAX_SUMMARY_CHARS,
+        Math.floor(budget.hardLimit * 0.75),
+      ),
+    );
+    // The deterministic record gets its turn before the retained-tail notice:
+    // it costs no request, so trying it first is free, and it carries what a
+    // next window cannot reconstruct (the goal verbatim, the failures nothing
+    // repaired, the next step the last assistant message stated) even though
+    // every model attempt failed. When it does not fit the safe budget either,
+    // the notice below still runs and stays the last resort.
+    const degraded = this.createTrajectoryCheckpoint(
+      fallbackPreparation,
+      throughMessageId,
+      maxSummaryChars,
+      retentionMode,
+      failureMessage,
+    );
+    const degradedPersisted = await this.persistCheckpoint(
+      degraded,
+      reason,
+      willRetry,
+      true,
+      "retained_tail",
+    );
+    if (degradedPersisted === "persisted") return true;
 
     const checkpoint = this.createFallbackCheckpoint(
       fallbackPreparation,
       throughMessageId,
-      Math.max(
-        256,
-        Math.min(
-          COMPACTION_FALLBACK_MAX_SUMMARY_CHARS,
-          Math.floor(budget.hardLimit * 0.75),
-        ),
-      ),
+      maxSummaryChars,
       retentionMode,
     );
     const persisted = await this.persistCheckpoint(
@@ -7326,6 +7901,9 @@ Delegation rules:
           type: "agent_end",
           messageIds: [],
         });
+        // The run has settled: this is the only place an idle pass may arm, so
+        // it can never spend a summary request while the user is waiting.
+        this.scheduleIdleCompaction();
         break;
       default:
         break;
@@ -7536,6 +8114,10 @@ Delegation rules:
     durableTurnId?: string,
   ): Promise<{ turnId: string }> {
     if (this.disposed) throw new Error("runtime disposed");
+    // A pending idle pre-compaction must never race the prompt it was waiting
+    // behind, and a running one must not delay the model: cancel the timer or
+    // stand the pass down, before the busy check.
+    await this.yieldIdleCompaction();
     this.assertNotRunning();
     const modelInput = typeof input !== "string" && input.sessionMessage
       ? { ...input, text: formatSessionMessage(input.text, input.sessionMessage), sessionMessage: undefined }

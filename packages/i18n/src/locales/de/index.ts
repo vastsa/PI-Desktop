@@ -566,6 +566,22 @@ export const de = {
     "configureImageModel": "Bildmodell konfigurieren",
 
 
+dynamicContext: "Dynamic context",
+dynamicContextWindow: "Start narrowing at",
+dynamicContextHint: "When the context reaches this share of the window, older tool results are shortened to a head plus a recall pointer; the full text stays readable with recall. Off means nothing is narrowed.",
+dynamicContextPresets: "Dynamic context presets",
+dynamicContextReadout: "{{percent}}% (about {{tokens}})",
+earlyCompaction: "Frühe Kompaktierung",
+earlyCompactionWindow: "Kompaktieren ab",
+earlyCompactionDelay: "Leerlaufverzögerung",
+earlyCompactionSilent: "Stiller Hintergrundlauf",
+earlyCompactionHint: "Sobald die Sitzung untätig ist und der Kontext diesen Anteil des Fensters erreicht hat, kompaktiert der Durchlauf im Hintergrund. Transkriptzeile, Kontextinspektor und recall zeichnen ihn weiterhin auf; beim Erreichen des harten Limits wird immer gewarnt.",
+earlyCompactionReadout: "{{percent}} % (ca. {{tokens}})",
+earlyCompactionDelayReadout: "nach {{seconds}} s Leerlauf",
+sleepTime: "Ruhephasen-Zusammenfassung",
+sleepTimeRunsPerHour: "Läufe pro Stunde",
+sleepTimeReadout: "bis zu {{runs}} pro Stunde",
+sleepTimeHint: "Solange die Sitzung untätig ist und noch eine Kompaktierung aussteht, fügt die Laufzeit dem Transkript eine kleine deterministische Zusammenfassung des Arbeitsstands hinzu — Ziel, blockierte Punkte, nächster Schritt —, ohne dafür ein Modell aufzurufen. Das Kontingent begrenzt, wie oft eine Zusammenfassung erstellt werden darf.",
 sklm: {
       browse: "Markt",
       back: "Meine Skills",

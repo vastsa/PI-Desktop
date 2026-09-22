@@ -25,6 +25,22 @@ import {
   type ModelBinding,
   type ModelInfo,
   type SessionThinkingLevel,
+  DYNAMIC_CONTEXT_DEFAULT_PERCENT,
+  DYNAMIC_CONTEXT_MAX_PERCENT,
+  DYNAMIC_CONTEXT_MIN_PERCENT,
+  EARLY_COMPACTION_DEFAULT_PERCENT,
+  SLEEP_TIME_MAX_RUNS_PER_HOUR,
+  SLEEP_TIME_MIN_RUNS_PER_HOUR,
+  clampEarlyCompactionDelaySeconds,
+  clampEarlyCompactionPercent,
+  clampSleepTimeRunsPerHour,
+  defaultDynamicContextPercent,
+  defaultEarlyCompaction,
+  defaultSleepTime,
+  EARLY_COMPACTION_MAX_DELAY_SECONDS,
+  EARLY_COMPACTION_MAX_PERCENT,
+  EARLY_COMPACTION_MIN_DELAY_SECONDS,
+  EARLY_COMPACTION_MIN_PERCENT,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import {
@@ -36,6 +52,8 @@ import { api } from "../../lib/api";
 import { Button, Field, HelpIcon, Input, Tooltip, TooltipButton, cx } from "../ui";
 import { IconClose, IconGripVertical, IconHelp, IconPlus, IconRefresh, IconSearch } from "../icons";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
+const DYNAMIC_CONTEXT_PRESETS = [50, 60, 75, 90] as const;
+
 import { filterChosenModels, hidesAddedBinding } from "./model-chosen-filter";
 import {
   applyCustomModelLookup,
@@ -586,6 +604,28 @@ export function ModelSelectionPanes({
               const imageModelSelected = imageModelIds?.some((modelId) =>
                 modelIdsMatch(modelId, binding.id),
               ) ?? false;
+              // A binding written before the gate existed has no object; absent
+              // means the shipped behaviour, so the control opens on the
+              // default gate for this window.
+              const dynamicEnabled = binding.dynamicContext?.enabled ?? true;
+              const dynamicPercent =
+                binding.dynamicContext?.thresholdPercent ??
+                defaultDynamicContextPercent(binding.contextWindow);
+              // A binding written before the background pass existed carries
+              // no object; absent means the shipped defaults, so the controls
+              // open on them (75 % of the window / 120 s / silent).
+              const earlyCompaction =
+                binding.earlyCompaction ?? defaultEarlyCompaction();
+              const earlyEnabled = earlyCompaction.enabled;
+              const earlyPercent = earlyCompaction.thresholdPercent;
+              const earlyDelay = earlyCompaction.delaySeconds;
+              const earlySilent = earlyCompaction.silent;
+              // A binding written before the digest existed carries no object;
+              // absent means the shared default, so the control opens off at
+              // the default quota.
+              const sleepTime = binding.sleepTime ?? defaultSleepTime();
+              const sleepEnabled = sleepTime.enabled;
+              const sleepRuns = sleepTime.maxRunsPerHour;
               const advancedId = `model-advanced-${binding.id}`;
               return (
                 <li
@@ -783,6 +823,274 @@ export function ModelSelectionPanes({
                         />
                       </label>
                     </div>
+                      <div className="provider-chosen-field provider-chosen-dynamic">
+                        <div className="provider-chosen-dynamic-head">
+                          <span className="provider-chosen-field-label">
+                            {t("settings.dynamicContext")}
+                          </span>
+                          {/* A switch states the gate is on; the slider below
+                              keeps the user's last stop while it is off. */}
+                          <button
+                            type="button"
+                            className={cx(
+                              "settings-toggle",
+                              dynamicEnabled && "on",
+                            )}
+                            role="switch"
+                            aria-checked={dynamicEnabled}
+                            aria-label={t("settings.dynamicContext")}
+                            onClick={() =>
+                              updateBinding(binding.id, {
+                                dynamicContext: {
+                                  enabled: !dynamicEnabled,
+                                  thresholdPercent: dynamicPercent,
+                                },
+                              })
+                            }
+                          >
+                            <span className="settings-toggle-thumb" />
+                          </button>
+                          <span className="provider-chosen-dynamic-readout">
+                            {t("settings.dynamicContextReadout", {
+                              percent: dynamicPercent,
+                              tokens: formatTokenCount(
+                                Math.round(
+                                  (binding.contextWindow * dynamicPercent) / 100,
+                                ),
+                              ),
+                            })}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          className="provider-chosen-dynamic-slider"
+                          min={DYNAMIC_CONTEXT_MIN_PERCENT}
+                          max={DYNAMIC_CONTEXT_MAX_PERCENT}
+                          step={1}
+                          value={dynamicPercent}
+                          disabled={!dynamicEnabled}
+                          aria-label={t("settings.dynamicContextWindow")}
+                          onChange={(event) =>
+                            updateBinding(binding.id, {
+                              dynamicContext: {
+                                enabled: dynamicEnabled,
+                                thresholdPercent: Number(event.target.value),
+                              },
+                            })
+                          }
+                        />
+                        <div
+                          className="provider-dynamic-presets"
+                          role="group"
+                          aria-label={t("settings.dynamicContextPresets")}
+                        >
+                          {DYNAMIC_CONTEXT_PRESETS.map((preset) => {
+                            const on = dynamicPercent === preset;
+                            return (
+                              <TooltipButton
+                                key={preset}
+                                type="button"
+                                className={cx(
+                                  "provider-thinking-chip",
+                                  on && "selected",
+                                )}
+                                ariaLabel={`${preset}%`}
+                                tooltip={t("settings.dynamicContextWindow")}
+                                aria-pressed={on}
+                                disabled={!dynamicEnabled}
+                                onClick={() =>
+                                  updateBinding(binding.id, {
+                                    dynamicContext: {
+                                      enabled: dynamicEnabled,
+                                      thresholdPercent: preset,
+                                    },
+                                  })
+                                }
+                              >
+                                {preset}%
+                              </TooltipButton>
+                            );
+                          })}
+                        </div>
+                        <p className="provider-chosen-dynamic-hint">
+                          {t("settings.dynamicContextHint")}
+                        </p>
+                      </div>
+                      <div className="provider-chosen-field provider-chosen-dynamic">
+                        <div className="provider-chosen-dynamic-head">
+                          <span className="provider-chosen-field-label">
+                            {t("settings.earlyCompaction")}
+                          </span>
+                          {/* A switch states the pass is on; the slider, delay
+                              and silent flag keep the user's last stops while
+                              it is off. */}
+                          <button
+                            type="button"
+                            className={cx(
+                              "settings-toggle",
+                              earlyEnabled && "on",
+                            )}
+                            role="switch"
+                            aria-checked={earlyEnabled}
+                            aria-label={t("settings.earlyCompaction")}
+                            onClick={() =>
+                              updateBinding(binding.id, {
+                                earlyCompaction: {
+                                  ...earlyCompaction,
+                                  enabled: !earlyEnabled,
+                                },
+                              })
+                            }
+                          >
+                            <span className="settings-toggle-thumb" />
+                          </button>
+                          <span className="provider-chosen-dynamic-readout">
+                            {t("settings.earlyCompactionReadout", {
+                              percent: earlyPercent,
+                              tokens: formatTokenCount(
+                                Math.round(
+                                  (binding.contextWindow * earlyPercent) / 100,
+                                ),
+                              ),
+                            })}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          className="provider-chosen-dynamic-slider"
+                          min={EARLY_COMPACTION_MIN_PERCENT}
+                          max={EARLY_COMPACTION_MAX_PERCENT}
+                          step={1}
+                          value={earlyPercent}
+                          disabled={!earlyEnabled}
+                          aria-label={t("settings.earlyCompactionWindow")}
+                          onChange={(event) =>
+                            updateBinding(binding.id, {
+                              earlyCompaction: {
+                                ...earlyCompaction,
+                                thresholdPercent: clampEarlyCompactionPercent(
+                                  Number(event.target.value),
+                                ),
+                              },
+                            })
+                          }
+                        />
+                        <div className="provider-chosen-dynamic-head">
+                          <span className="provider-chosen-field-label">
+                            {t("settings.earlyCompactionDelay")}
+                          </span>
+                          <span className="provider-chosen-dynamic-readout">
+                            {t("settings.earlyCompactionDelayReadout", {
+                              seconds: earlyDelay,
+                            })}
+                          </span>
+                        </div>
+                        <Input
+                          type="number"
+                          min={EARLY_COMPACTION_MIN_DELAY_SECONDS}
+                          max={EARLY_COMPACTION_MAX_DELAY_SECONDS}
+                          step={15}
+                          inputMode="numeric"
+                          value={earlyDelay}
+                          disabled={!earlyEnabled}
+                          aria-label={t("settings.earlyCompactionDelay")}
+                          onChange={(event) =>
+                            updateBinding(binding.id, {
+                              earlyCompaction: {
+                                ...earlyCompaction,
+                                delaySeconds: clampEarlyCompactionDelaySeconds(
+                                  Number(event.target.value),
+                                ),
+                              },
+                            })
+                          }
+                        />
+                        <div className="provider-chosen-dynamic-head">
+                          <span className="provider-chosen-field-label">
+                            {t("settings.earlyCompactionSilent")}
+                          </span>
+                          <button
+                            type="button"
+                            className={cx(
+                              "settings-toggle",
+                              earlySilent && "on",
+                            )}
+                            role="switch"
+                            aria-checked={earlySilent}
+                            aria-label={t("settings.earlyCompactionSilent")}
+                            onClick={() =>
+                              updateBinding(binding.id, {
+                                earlyCompaction: {
+                                  ...earlyCompaction,
+                                  silent: !earlySilent,
+                                },
+                              })
+                            }
+                          >
+                            <span className="settings-toggle-thumb" />
+                          </button>
+                        </div>
+                        <p className="provider-chosen-dynamic-hint">
+                          {t("settings.earlyCompactionHint")}
+                        </p>
+                      </div>
+                      <div className="provider-chosen-field provider-chosen-dynamic">
+                        <div className="provider-chosen-dynamic-head">
+                          <span className="provider-chosen-field-label">
+                            {t("settings.sleepTime")}
+                          </span>
+                          {/* A switch states the digest is on; the quota keeps
+                              the user's last stop while it is off. */}
+                          <button
+                            type="button"
+                            className={cx(
+                              "settings-toggle",
+                              sleepEnabled && "on",
+                            )}
+                            role="switch"
+                            aria-checked={sleepEnabled}
+                            aria-label={t("settings.sleepTime")}
+                            onClick={() =>
+                              updateBinding(binding.id, {
+                                sleepTime: {
+                                  ...sleepTime,
+                                  enabled: !sleepEnabled,
+                                },
+                              })
+                            }
+                          >
+                            <span className="settings-toggle-thumb" />
+                          </button>
+                          <span className="provider-chosen-dynamic-readout">
+                            {t("settings.sleepTimeReadout", {
+                              runs: sleepRuns,
+                            })}
+                          </span>
+                        </div>
+                        <Input
+                          type="number"
+                          min={SLEEP_TIME_MIN_RUNS_PER_HOUR}
+                          max={SLEEP_TIME_MAX_RUNS_PER_HOUR}
+                          step={1}
+                          inputMode="numeric"
+                          value={sleepRuns}
+                          disabled={!sleepEnabled}
+                          aria-label={t("settings.sleepTimeRunsPerHour")}
+                          onChange={(event) =>
+                            updateBinding(binding.id, {
+                              sleepTime: {
+                                ...sleepTime,
+                                maxRunsPerHour: clampSleepTimeRunsPerHour(
+                                  Number(event.target.value),
+                                ),
+                              },
+                            })
+                          }
+                        />
+                        <p className="provider-chosen-dynamic-hint">
+                          {t("settings.sleepTimeHint")}
+                        </p>
+                      </div>
                     <div className="provider-chosen-thinking">
                       <div className="provider-chosen-thinking-head">
                         <span className="provider-chosen-thinking-label">

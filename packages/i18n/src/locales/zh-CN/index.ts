@@ -570,6 +570,22 @@ export const zhCN = {
     configureImageModel: "配置生图模型",
 
 
+dynamicContext: "动态上下文",
+dynamicContextWindow: "开始收窄于",
+dynamicContextHint: "上下文达到窗口该比例时，较早的工具结果会收窄为摘要头 + recall 指针，原文仍可用 recall 逐页读回；关闭则不做任何收窄。",
+dynamicContextPresets: "动态上下文预设",
+dynamicContextReadout: "{{percent}}%（约 {{tokens}}）",
+earlyCompaction: "提前压缩",
+earlyCompactionWindow: "开始压缩于",
+earlyCompactionDelay: "空闲延迟",
+earlyCompactionSilent: "静默后台压缩",
+earlyCompactionHint: "会话空闲且上下文达到窗口该比例后，会在后台执行压缩。对话记录行、上下文检查器和 recall 仍会记录这次压缩；触及硬上限时始终会警告。",
+earlyCompactionReadout: "{{percent}}%（约 {{tokens}}）",
+earlyCompactionDelayReadout: "空闲 {{seconds}} 秒后",
+sleepTime: "休眠时段摘要",
+sleepTimeRunsPerHour: "每小时运行次数",
+sleepTimeReadout: "每小时最多 {{runs}} 次",
+sleepTimeHint: "会话空闲且前方仍有压缩待执行时，运行时会向对话记录追加一份简短的确定性摘要，说明工作进展——目标、受阻项、下一步——且不会调用模型。配额限制摘要的生成频率。",
 sklm: {
       browse: "市场",
       back: "我的技能",

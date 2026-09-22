@@ -570,6 +570,22 @@ export const zhTW = {
     configureImageModel: "設定生圖模型",
 
 
+dynamicContext: "動態上下文",
+dynamicContextWindow: "開始收窄於",
+dynamicContextHint: "上下文達到視窗該比例時，較早的工具結果會收窄為摘要頭 + recall 指標，原文仍可用 recall 逐頁讀回；關閉則不做任何收窄。",
+dynamicContextPresets: "動態上下文預設",
+dynamicContextReadout: "{{percent}}%（約 {{tokens}}）",
+earlyCompaction: "提前壓縮",
+earlyCompactionWindow: "開始壓縮於",
+earlyCompactionDelay: "閒置延遲",
+earlyCompactionSilent: "靜默背景壓縮",
+earlyCompactionHint: "工作階段閒置且上下文達到視窗該比例後，會在背景執行壓縮。對話記錄列、上下文檢查器與 recall 仍會記錄這次壓縮；觸及硬上限時一律會警告。",
+earlyCompactionReadout: "{{percent}}%（約 {{tokens}}）",
+earlyCompactionDelayReadout: "閒置 {{seconds}} 秒後",
+sleepTime: "休眠時段摘要",
+sleepTimeRunsPerHour: "每小時執行次數",
+sleepTimeReadout: "每小時最多 {{runs}} 次",
+sleepTimeHint: "工作階段閒置且前方仍有壓縮待執行時，執行階段會將一份簡短的確定性摘要附加到對話記錄，說明工作進度——目標、受阻項目、下一步——且不會呼叫模型。配額限制摘要的產生頻率。",
 sklm: {
       browse: "市場",
       back: "我的技能",
