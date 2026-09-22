@@ -5,6 +5,8 @@
 > Permission UX: [03-permission-ux.md](03-permission-ux.md)  
 > Command palette: [04-builtin-commands.md](04-builtin-commands.md)
 
+> Tool labels shown to the user (`read`, `bash`, `task`) stay capitalized: they are display names derived from the canonical lowercase tool name, never the tool's identity. See [23-tool-names.md](../03-runtime/23-tool-names.md) §0.
+
 ## 1. Keyboard shortcuts baseline
 
 ### 1.1 Global shortcuts
@@ -519,11 +521,11 @@ may be retained while exactly one workspace supplies the visible shell context.
 - No tool result creates or activates a work-panel tab. Review opens only from
   an explicit user action — its `+` launcher row, or the retained context the
   viewport-fixed toggle and `Cmd/Ctrl + J` reveal — so a successful workspace
-  Write/Edit never takes the panel away from what the user was reading. Failed
+  write/edit never takes the panel away from what the user was reading. Failed
   and scratch writes behave the same. Background-session events update only
   their retained context and never open, activate, resize, focus, or change the
   visible panel.
-- Each successful workspace Write/Edit tool result carries one durable review
+- Each successful workspace write/edit tool result carries one durable review
   snapshot. Its compact InlineReviewCard is rendered in the same activity
   disclosure, immediately after its tool row; it is never moved to the
   transcript bottom and never shared with another session. Its status badge
@@ -812,7 +814,7 @@ may be retained while exactly one workspace supplies the visible shell context.
 | Assistant markdown message | Expanded | 50 lines → collapsed to 20 lines visible | Full |
 | Tool activity input | Row collapsed | Always behind disclosure | 220px scroll region |
 | Tool activity output | Row collapsed | Always behind disclosure | 220px scroll region (per D033 host cap) |
-| Bash output | Row collapsed | Always behind disclosure | 220px scroll region |
+| `bash` output | Row collapsed | Always behind disclosure | 220px scroll region |
 | Error messages | Expanded | No collapse | — |
 
 ### 4.2 Collapse indicator
@@ -855,9 +857,9 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 4.3 Tool result truncation
 
-- Per D306 / D194: budgets are per tool class (see [16-tool-result-limits](../03-runtime/16-tool-result-limits.md)). Search/read results cap at 128KB / 4000 lines; Bash stdout/stderr cap at 96KB / 4000 lines with a spill file.
-- Read/Glob/Grep report `truncated: true` only when this result was cut short (budget, a clipped line, or remaining Grep/Glob hits). A filled Read window of a longer file is not truncated; `notice` names the next offset.
-- Bash markers name which end survived and the spill path, for example `[truncated: kept the first 4000 of 51234 lines; limit 4000 lines / 96KB. …]`.
+- Per D306 / D194: budgets are per tool class (see [16-tool-result-limits](../03-runtime/16-tool-result-limits.md)). Search/read results cap at 128KB / 4000 lines; bash stdout/stderr cap at 96KB / 4000 lines with a spill file.
+- read/glob/grep report `truncated: true` only when this result was cut short (budget, a clipped line, or remaining grep/glob hits). A filled read window of a longer file is not truncated; `notice` names the next offset.
+- bash markers name which end survived and the spill path, for example `[truncated: kept the first 4000 of 51234 lines; limit 4000 lines / 96KB. …]`.
 - Truncated content is never silently omitted — always marked
 - Disclosure expansion does not load content beyond the host-enforced cap
 - The collapsed-row `truncated` chip follows `details.truncated`
@@ -867,7 +869,7 @@ may be retained while exactly one workspace supplies the visible shell context.
 ### 5.1 Flow sequence
 
 ```text
-Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accept edits)
+Agent calls a permission-gated tool (including Plan/Goal bash under Ask or Accept edits)
   → PermissionCard inserted inline in transcript
   → Composer disabled (cannot send new prompt)
   → Countdown starts (120s)
@@ -896,16 +898,16 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
 ## 5A. Plan and Goal workflow
 
 1. The user selects Plan or Goal while the session is idle, or the same Agent
-   calls `EnterPlanMode` / `EnterGoalMode`; the host persists/validates the
+   calls `enter_plan_mode` / `enter_goal_mode`; the host persists/validates the
    matching contract mode and the renderer projects `planning`.
-2. The Agent investigates with the selected contract tool set. Read/Glob/Grep and
-   BrowserPreview are allowed; Bash follows the visible permission mode. A
-   contract-mode Bash command may mutate under Auto, so the mode chip remains visible.
+2. The Agent investigates with the selected contract tool set. read/glob/grep and
+   browser_preview are allowed; bash follows the visible permission mode. A
+   contract-mode bash command may mutate under Auto, so the mode chip remains visible.
    While that turn is live `planning`, the Composer mode chip pulses and a compact
    Planning row occupies the same reserved tail slot as Working until completion
    or pending user interaction. A known runtime phase takes precedence; tool
    and answer output do not hide the running status.
-3. The Agent calls `SubmitPlan` or `SubmitGoal` alone in its tool batch.
+3. The Agent calls `submit_plan` or `submit_goal` alone in its tool batch.
    Host-core preserves the exact Markdown bytes in a new immutable
    `.pi/plan/*.md` or `.pi/goal/*.md` artifact, records its path/hash/size and structured
    title/question, and the renderer displays the shared contract approval card with
@@ -920,7 +922,7 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    Agent tools.
 5. Reject stops the pending run and keeps the durable session in its contract
    mode. The live state returns to editable planning; revisions are new-turn
-   `SubmitPlan`/`SubmitGoal` calls with a new complete Markdown snapshot and new artifact. Earlier snapshots
+   `submit_plan`/`submit_goal` calls with a new complete Markdown snapshot and new artifact. Earlier snapshots
    remain immutable; there is no request-changes action.
 6. Expiry, abort, persistence failure, renderer/host/sidecar crash, or stale
    response renders a failed-closed state. A host restart interrupts pending,
@@ -1265,7 +1267,7 @@ Project drag/drop follows these patterns:
   stays reachable from the file view's own context menu.
 - The same destination rule governs every other surface of the transcript that
   names a file, because one opener serves them all: clicking the file path in a
-  tool row's summary (Read, Write, Edit, fetch) and clicking a path in a tool
+  tool row's summary (read, write, edit, fetch) and clicking a path in a tool
   result's file or match list both complete the reference the same way and open
   where it resolved (ADR 0262). A tool surface therefore picks no destination of
   its own, and a reference it cannot resolve reports itself instead of opening a
@@ -1352,7 +1354,7 @@ Project drag/drop follows these patterns:
   selected node again closes the side sheet; selecting another node replaces
   the current detail in place. The dock has
   a sticky identity header (avatar, name, and model caption on the left; status
-  capsule and elapsed time trailing on the same row), the Task call's selectable description as a full-width grouped
+  capsule and elapsed time trailing on the same row), the task call's selectable description as a full-width grouped
   card under a Task section label, capped at four lines with an inline Show
   more / Show less control for longer tasks, and its live process under an
   Activity section on one subtle vertical timeline; it does not render separate
@@ -1533,7 +1535,7 @@ This does not prevent state changes — it makes them instant.
 3a. Send stays enabled while running, queues prompts per session, and Send now
     finishes the current boundary before releasing its prioritized prompt
 4. Long content (>50 lines for messages, >10 for args, >20 for results) is collapsed by default with expand link
-5. Tool results that were cut short show a truncation marker or chip per D306; a filled Read window of a longer file does not
+5. Tool results that were cut short show a truncation marker or chip per D306; a filled read window of a longer file does not
 6. Permission interrupt inserts inline card, disables composer, shows countdown, and re-enables after resolution
 7. Toasts used for transient background operations; inline errors used for context-specific failures
 8. Focus returns to composer after session switch, message send, permission resolution, and abort

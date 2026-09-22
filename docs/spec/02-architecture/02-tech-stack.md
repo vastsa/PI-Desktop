@@ -78,7 +78,7 @@
 - `Resources/agent-runtime/sidecar.js` is the only independent pi sidecar
   bundle. The complete `@pi-desktop/agent-runtime` package tree must not be
   copied into ASAR as a second runtime.
-- The desktop package has no interactive PTY dependency. Agent Bash remains a
+- The desktop package has no interactive PTY dependency. Agent bash remains a
   non-interactive runtime capability owned by the agent sidecar.
 - Dependency source maps, tests, examples, and declarations are build inputs,
   not release assets. License and notice files remain distributable.

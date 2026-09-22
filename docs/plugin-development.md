@@ -17,7 +17,7 @@ A plugin can contribute one or more of these capabilities:
 | Work panel view | An interface docked in the app's right work panel | `contributes.views`, `ui.view` permission, `window.pluginBridge` |
 | Agent tool | A function the Agent can call | `contributes.agentTools`, `pi.agent.registerTool` |
 | One-shot completion | A host-owned completion against the user's models | `pi.models.list`, `pi.session.getLlmContext`, `pi.agent.complete` |
-| Skill | Instructions loaded by the Agent on demand | `contributes.skills`, `agent.prompt.inject` permission |
+| `skill` | Instructions loaded by the Agent on demand | `contributes.skills`, `agent.prompt.inject` permission |
 | Theme | Design-token overrides | `contributes.themes`, `ui.theme` permission |
 | MCP server | Tools discovered from a local or remote MCP server | `contributes.mcpServers`, an MCP permission |
 | Service | Resident work supervised by the host | `contributes.services`, `background.service` permission |
@@ -318,7 +318,7 @@ plugin-namespaced name, applies the normal Agent permission policy, audits
 execution, and enforces a 110-second plugin-side timeout. Plugin tools are not
 available in Plan mode.
 
-### 6.2 Skill
+### 6.2 `skill`
 
 Add a file such as `skills/release-notes.md`:
 
@@ -369,7 +369,7 @@ Declare defaults in the manifest:
 }
 ```
 
-Read and update them from the plugin process:
+read and update them from the plugin process:
 
 ```js
 const settings = await pi.plugin.getSettings();
@@ -718,7 +718,7 @@ export default function (pi) {
     },
   }));
   pi.on("tool_call", (event) =>
-    event.toolName === "Bash" ? { block: true, reason: "not here" } : undefined,
+    event.toolName === "bash" ? { block: true, reason: "not here" } : undefined,
   );
   pi.registerCommand("greet", {
     description: "Say hello",
@@ -742,7 +742,7 @@ What to know before you use it:
   `@earendil-works/pi-tui` resolves to an inert stub, so terminal-UI calls
   do nothing and show up as diagnostics.
 - **Tools are deferred.** Like plugin tools, the model activates them
-  through `ToolSearch` on demand. Names that collide with core or plugin
+  through `tool_search` on demand. Names that collide with core or plugin
   tools are rejected with a diagnostic.
 - **Slash commands** appear in the composer `/` menu and global search and
   take the rest of the line as `args`. `ctx.ui.input` / `select` / `confirm`
@@ -872,8 +872,8 @@ To test the exact artifact users receive:
 6. Disable and re-enable it to verify cleanup and startup behavior.
 7. Uninstall it and confirm its contributions disappear.
 
-The Agent can also run `PluginCheck` in every operating mode. `PluginScaffold`
-and `PluginPack` are Agent-mode tools and are restricted to the current
+The Agent can also run `check_plugin` in every operating mode. `scaffold_plugin`
+and `pack_plugin` are Agent-mode tools and are restricted to the current
 workspace.
 
 ### Prepare a plugin center submission with `pi-plugin publish`
@@ -941,7 +941,7 @@ for roadmap details.
 | View shows a letter tile instead of an icon | Unknown `views[].icon` token | Use a token from the supported list; `pi-plugin check` warns about unknown ones |
 | `pluginBridge` is unavailable | HTML opened in a normal browser | Test bridge calls inside the PI-Desktop panel |
 | Tool never appears | Missing contribution, registration, or grant | Align `agentTools`, `registerTool`, and `agent.tool.register`; use Agent mode |
-| Skill never applies | Missing permission or weak metadata | Add `agent.prompt.inject` and specific `name`/`description` front matter |
+| `skill` never applies | Missing permission or weak metadata | Add `agent.prompt.inject` and specific `name`/`description` front matter |
 | Save reports `PERMISSION_DENIED` | Manifest widened permissions | Load the development folder again and review the new grant |
 | Hot reload stops after a syntax error | Broken plugin is unloaded | Save the corrected file; the watcher remains active |
 | Package install rejects compression | Archive was made with a generic ZIP tool | Rebuild it with `pi-plugin pack` |

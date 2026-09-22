@@ -25,7 +25,7 @@ User-owned definitions are Markdown files in:
 
 There is no project-level subagent directory. The application does not scan or
 write `.pi/agents` for capability management. `id == name` remains the model's
-`Task` handle, duplicate names are rejected, and the runtime's global user
+`task` handle, duplicate names are rejected, and the runtime's global user
 catalog is combined with the builtins without a project capability layer.
 
 ### 2. Activation is app-local

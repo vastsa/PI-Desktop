@@ -19,7 +19,7 @@ scope-cut both. The embedded pi runtime (`@earendil-works/pi-agent-core`
   `substituteArgs`: `$1..$n`, `$@`, `$ARGUMENTS`, `${@:N:L}`) and sent as an
   ordinary user message — the model never sees the slash form.
 - **`@path` references**: literal text in the prompt; the model follows up
-  with its Read tool. No inlining, no attachment conversion.
+  with its read tool. No inlining, no attachment conversion.
 - pi's built-in slash commands (`/new`, `/model`, …) are client-side
   behaviors of its TUI, not runtime features.
 
@@ -49,7 +49,7 @@ exported by the installed package and directly reusable.
    inserts `@dir/` so completion can continue, while completed files become
    renderer-owned compact references under ADR 0070. Before dispatch those
    references serialize to `@relative/path ` (quoted `@"a b.txt"` when the
-   path contains spaces). Plan and Agent carry Read/Glob/Grep, so references
+   path contains spaces). Plan and Agent carry read/glob/grep, so references
    work in both. No content inlining or binary content enters the prompt. OS
    clipboard file/image paste is materialized as a session-scratch file
    reference by ADR 0059; it does not use pi-ai `ImageContent` or change the
@@ -73,7 +73,7 @@ exported by the installed package and directly reusable.
   now; the standalone helpers give identical semantics.
 - **Inline referenced file content into the prompt** (pi CLI argument-mode
   behavior): inflates context, needs truncation rules and an attachment
-  channel for binaries. Rejected — the Read-tool light reference is pi's
+  channel for binaries. Rejected — the read-tool light reference is pi's
   interactive semantic and costs nothing.
 - **Reuse `fs/list` recursively from the renderer**: one IPC round-trip per
   directory level makes fuzzy search sluggish and chatty. Rejected.

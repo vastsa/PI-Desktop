@@ -9,7 +9,7 @@
 
 Lazy tool activation keeps optional schemas out of the first provider request,
 but a new prompt previously cleared the active deferred set while retaining the
-successful `ToolSearch` rows and tool results in the model context. The model
+successful `tool_search` rows and tool results in the model context. The model
 could therefore see evidence that a capability was available while the next
 request omitted its schema. The same mismatch occurred after a mode switch.
 
@@ -17,7 +17,7 @@ request omitted its schema. The same mismatch occurred after a mode switch.
 
 Before each new prompt and after a mode switch, the sidecar clears its in-memory
 deferred activation set and restores it from the effective `buildSessionContext`
-projection. A successful `ToolSearch` result contributes its `addedToolNames`;
+projection. A successful `tool_search` result contributes its `addedToolNames`;
 a successful result from a deferred tool contributes that tool's name. A name
 is restored only when it remains in the current mode's deferred catalog. Failed,
 interrupted, or missing-result placeholder rows are ignored, and assistant/user

@@ -11,9 +11,9 @@
 ## Context
 
 PI-Desktop splits sessions into Agent and Plan (and Goal) operating states.
-ADR 0052 and ADR 0053 lock the contract: Plan exposes `Read`, `Glob`,
-`Grep`, `BrowserPreview` (workspace HTML preview), `Bash`, `EnterPlanMode`,
-and `SubmitPlan`, and denies every plugin tool, `Write`, `Edit`, and unknown
+ADR 0052 and ADR 0053 lock the contract: Plan exposes `read`, `glob`,
+`grep`, `browser_preview` (workspace HTML preview), `bash`, `enter_plan_mode`,
+and `submit_plan`, and denies every plugin tool, `write`, `edit`, and unknown
 tools. Plugin agent tools are Agent-only contributions; their mutating
 actions (click, fill, evaluate, raw CDP, etc.) are exactly what the contract
 is meant to keep Plan mode from doing.
@@ -70,7 +70,7 @@ in the `plugins.execute` notification alongside the session mode.
 ### 4. Host-core admits plan-safe plugin tools in contract modes
 
 `crates/host-core/src/permissions.rs` retains the existing contract-mode
-hard deny (`plan_mode_allows`) for `Write`, `Edit`, unknown tools, and
+hard deny (`plan_mode_allows`) for `write`, `edit`, unknown tools, and
 plugin tools that arrive without `planSafeActions`. A plugin tool that
 arrives with a non-empty `planSafeActions` list now passes the contract
 gate. The list does not change any other rule: low-risk auto-allow, the
@@ -124,7 +124,7 @@ process-wide and macOS spends `Cmd+W` on its own close-window command.)*
 - Plugin authors remain responsible for declaring exactly which actions
   are read-only. A wrong declaration fails at plugin registration, not
   at the user's prompt.
-- The contract modes' hard deny for `Write`, `Edit`, and unknown tools
+- The contract modes' hard deny for `write`, `edit`, and unknown tools
   is unchanged. A plugin that does not declare `planSafeActions` keeps
   the ADR 0052 / ADR 0053 behavior.
 - The defense-in-depth check in the plugin-runtime means a bug in the
@@ -160,7 +160,7 @@ safe, `click + fill` is not. A per-tool boolean would either under-grant
 
 ### Auto-detect safe actions from the schema
 
-Rejected because "no `Write` argument" is not the same as "no
+Rejected because "no `write` argument" is not the same as "no
 side-effect". The schema cannot tell that a navigation will trigger a
 login flow, that an `evaluate` will post a comment, or that a snapshot
 will sign the user in. The plugin author owns that knowledge.

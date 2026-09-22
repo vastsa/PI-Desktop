@@ -9,7 +9,7 @@ Until now the only way to add an MCP server or a skill to PI-Desktop was to
 write a plugin. ADR 0038 gave plugins an `mcp` contribution point that Electron
 main bridges over stdio or HTTP; ADR 0039 (as revised by D174) gave them a
 `skills` contribution point that publishes model-invoked catalog entries behind
-the `Skill` tool. Both work, and both are the wrong shape for what users
+the `skill` tool. Both work, and both are the wrong shape for what users
 actually want to do:
 
 - Every MCP server in the wild is distributed as a JSON snippet — a
@@ -135,7 +135,7 @@ written into a skill document. RPC: `skills.list`, `skills.active`,
 `skills.remove`, and `skills.setEnabled`.
 
 The delivery contract is D174's unchanged: the description is what enters the
-prompt, the body is fetched only when the model invokes `Skill`, and a document
+prompt, the body is fetched only when the model invokes `skill`, and a document
 is capped at 128 KiB. This is why the editor requires a description and places
 it above the body — the description is the part that has to earn its context
 cost, and it is the only part the model sees until it asks.

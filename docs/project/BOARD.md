@@ -51,7 +51,7 @@ Open issue:
 - AGENTS.md agent instruction file
 - M1 App Skeleton (pnpm monorepo, Electron, host-core health, i18n)
 - M2 Pi Chat Runtime (provider/secrets, streaming chat, session persistence)
-- M3 Workspace Tools (Read/Glob/Grep/Write/Edit/Bash, permissions, path sandbox)
+- M3 Workspace Tools (read/glob/grep/write/edit/bash, permissions, path sandbox)
 - M4 Plugin Foundation (dev load, command palette, plugin tool registration)
 - M5 packaging: unsigned DMG builds locally (`PI-Desktop-0.1.0-arm64.dmg`)
   with custom icon, host binary + sidecar resources; signed/notarized lane
@@ -128,7 +128,7 @@ The M6 checkpoint is complete. The current application also includes:
   900×700 with the live case explicitly skipped; the optional env-gated live
   case requires an OpenAI-compatible provider. The authorized run with model
   `gpt-5.6-luna` passed 6/6 with zero console diagnostics: real Composer/Send,
-  live `EnterPlanMode` → `SubmitPlan`, rendered Ask approval through
+  live `enter_plan_mode` → `submit_plan`, rendered Ask approval through
   preload/Main, exact durable marker after approval, private WeakMap proof of
   the same `DesktopAgentRuntime` object before/after approval, and stable
   Main/Host/sidecar PIDs; credentials never entered CDP or output

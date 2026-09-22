@@ -23,7 +23,7 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 - 完整的代理工具管道 ✅
 - 技能贡献被激活：声明的技能作为 `# Skills` 到达模型
   授予 `agent.prompt.inject` 时系统提示中的目录，以及模型
-  通过 `Skill` 工具按需加载主体 ✅ (ADR 0039, D174)
+  通过 `skill` 工具按需加载主体 ✅ (ADR 0039, D174)
 - 统一命名空间和审计 ✅
 - 每个插件设置 API 和生成式设置 UI 已实现。UI 支持字符串、数字、布尔、枚举、JSON
   字段与插件域命令快捷键；操作系统全局插件快捷键暂不在范围内。
@@ -36,7 +36,7 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 - 模板生成✅（`panel-basic`、`agent-tool-basic`、`skill-pack`、
   `full-demo`，来自插件页面、代理或 `pi-plugin init`）
 - `pi-plugin check/pack` ✅（`@pi-desktop/plugin-devkit`，也暴露为
-  `PluginCheck` / `PluginScaffold` / `PluginPack` 代理工具）
+  `check_plugin` / `scaffold_plugin` / `pack_plugin` 代理工具）
 - `.piplug` 安装 ✅
 - 开发热重载✅（监视+反跳，并且重载永远不会扩大权限）
 

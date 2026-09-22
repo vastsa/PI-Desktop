@@ -29,7 +29,7 @@ the renderer, prompt, or host protocol.
    project, revalidates its active scope and permissions at send time, and
    keeps the typed slash form for the transcript chip.
 3. Main persists a model-facing instruction asking the model to call the local
-   `Skill` tool with the validated id, followed by any user body text. The Skill
+   `skill` tool with the validated id, followed by any user body text. The Skill
    body is still loaded on demand by that tool; it is not sent to the renderer
    or injected directly into the prompt. `agent.prompt.inject` and existing
    user-Skill activation rules remain authoritative.
@@ -51,7 +51,7 @@ the renderer, prompt, or host protocol.
 ## Alternatives considered
 
 - **Inject the Skill body directly into the prompt:** rejected because it
-  bypasses the local `Skill` tool's scope checks, on-demand loading, and
+  bypasses the local `skill` tool's scope checks, on-demand loading, and
   runtime reload semantics.
 - **Auto-trigger a Skill from the renderer:** rejected because invocation and
   active-scope validation belong in Electron main, not in a renderer hint.

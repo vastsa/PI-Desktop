@@ -1,4 +1,4 @@
-# ADR 0167: Agent-chosen Bash timeout
+# ADR 0167: Agent-chosen `bash` timeout
 
 - Status: Accepted for implementation
 - Date: 2026-09-06
@@ -7,7 +7,7 @@
 
 ## Context
 
-ADR 0054 / D190 required a 60-second default Bash timeout and rejected any
+ADR 0054 / D190 required a 60-second default bash timeout and rejected any
 override outside 1–300 seconds. That 5-minute ceiling killed legitimate
 builds, tests, and audits, and `timeout: 600` / `1800` failed immediately
 with `INVALID_ARGUMENT`.

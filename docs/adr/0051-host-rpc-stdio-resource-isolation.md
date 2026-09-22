@@ -6,7 +6,7 @@
 ## Context
 
 The host already bounds RPC tasks, tool classes, shell processes, and queued
-work. A parallel Bash burst could nevertheless end the host with
+work. A parallel bash burst could nevertheless end the host with
 `Resource temporarily unavailable (os error 35)`. Electron correctly mapped
 that child exit to `HOST_UNAVAILABLE`, but the mapping hid the process-level
 failure from the session.
@@ -34,7 +34,7 @@ shell PATH probe had a second version of the same problem because an ordinary
    visible to Electron's generation-aware supervision; it is never converted
    into an unhandled Rust thread-spawn panic.
 4. The login-shell PATH probe also uses `thread::Builder`; if that optional
-   helper cannot start, Bash falls back to the inherited host PATH. Existing
+   helper cannot start, bash falls back to the inherited host PATH. Existing
    RPC and tool admission limits are unchanged.
 
 ## Consequences

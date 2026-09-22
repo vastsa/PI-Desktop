@@ -83,11 +83,11 @@
 Plan 本身并不是工作区安全边界。主机核解决了
 每个 `tools.execute` 调用的持久会话模式并应用 Plan 矩阵
 在权限模式、授予、插件风险或 renderer/sidecar 状态之前。 Plan
-拒绝 Write/Edit/plugin/unknown 工具，而 BrowserPreview 是显式的
+拒绝 write/edit/plugin/unknown 工具，而 browser_preview 是显式的
 只读 UI 检查异常（它打开随应用打包的 `pi.browser` chrome；原始
-CDP 插件工具在 Plan 中仍被拒绝）。 Bash 在 Plan 中仍然可用：询问并
+CDP 插件工具在 Plan 中仍被拒绝）。 bash 在 Plan 中仍然可用：询问并
 接受编辑提示，自动运行而无需确认，并且可能会改变
-工作区或临时目录。用户界面必须说明这种权衡。 `SubmitPlan`
+工作区或临时目录。用户界面必须说明这种权衡。 `submit_plan`
 在新的唯一 `<workspaceRoot>/.pi/plan/*.md` 中保留精确的 Markdown 字节
 通过 host-core 文件，验证根内工件路径，计算 SHA-256
 和字节大小，然后才创建 `plan_approvals` 记录
@@ -106,7 +106,7 @@ MCP 市场只接受无凭据的公网 HTTPS 源和目录端点。Main 在每一�
 
 - Bash默认需要确认（风险分级权限卡）；在
   Agent 或 Plan，显式 Auto 可以在不确认的情况下运行它
-- Bash 协议名称保持稳定，但 host-core 选择目录 shell
+- bash 协议名称保持稳定，但 host-core 选择目录 shell
 （`windows-powershell`、`windows-pwsh`、`cmd`、`git-bash` 或 `bash`）来自持久化
   `defaultCommandShell` 受平台支持。设置写入拒绝
   unavailable/wrong-platform ID。如果一个坚持的选择后来变成
@@ -215,7 +215,7 @@ MCP 市场只接受无凭据的公网 HTTPS 源和目录端点。Main 在每一�
 ## 11. 安检门
 
 1. Renderer 不能 `require('fs')`（沙箱 + 无节点集成） — 已验证
-2. Plan Write/Edit/plugin 调用不能在任何权限模式下运行；重击是
+2. Plan write/edit/plugin 调用不能在任何权限模式下运行；`bash` 是
    在 Ask/Accept 编辑下确认，并且只能在不确认的情况下运行
    显式自动
 3.在工作区外写入失败——已验证（主机测试）
@@ -226,7 +226,7 @@ MCP 市场只接受无凭据的公网 HTTPS 源和目录端点。Main 在每一�
 approve/reject-only 和计划的 Plan 在 artifact/queue 工作之前被拒绝
 8. Plan 过期、拒绝、主机重启和过时响应永远不会重播
    pending/queued/running 工作；经批准的中断会离开会话 Agent
-9. 无效的设置和过时的 shell ID/dialect 无法关闭； Bash 输出流
+9. 无效的设置和过时的 shell ID/dialect 无法关闭； bash 输出流
    单独和 timeout/abort 杀死完整的进程树
 10. 本地 MCP 控制只允许回环、经过 bearer 认证、默认关闭且有界，不能暴露密钥写入
     或原生选择器，并且更改会话权限模式需要确认

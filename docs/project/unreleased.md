@@ -5,7 +5,7 @@
   so histories written before the contract change stay usable.
 
 - Hosted web search now has a complete replay and estimation contract, including
-  tool/Task continuation and restart recovery. Context rebuilding preserves
+  tool/task continuation and restart recovery. Context rebuilding preserves
   system-prefix semantics, and structured local preparation failures no longer
   masquerade as retryable provider failures. Existing search histories need no migration.
 

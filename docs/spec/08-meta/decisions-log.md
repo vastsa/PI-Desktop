@@ -6725,3 +6725,32 @@ that was sitting at the bottom — including after the turn had finished.
   migration. This decision records the contract and adds the two modules; the
   registry, dispatch, permission, prompt, and UI call sites follow in D619 through
   D621. See `03-runtime/23-tool-names.md`.
+
+## 2026-09-22 — The agent runtime speaks the canonical tool names (D620, issue #827)
+
+- Every tool name the agent runtime puts in front of a model — the registry entries
+  it advertises, the schemas it sends, the names it uses in permission prompts, and
+  the names inside the system prompt and the tool descriptions — is now the canonical
+  lowercase name (D618). A prompt that still says `Read` while the registry advertises
+  `read` is not a wording mismatch: it sends the model after a tool that does not
+  exist. The runtime's own prompt text, the mode prompts, the skill and plugin
+  listings, and the subagent fallback catalogs were renamed in the same change, so the
+  name that is advertised and the name that is described always agree.
+- The read boundaries normalize instead of trusting what they read, so a name written
+  before the rename keeps working: session history and transcript reads, the
+  compaction file-operation collection, delegation history, tool-result tiering, the
+  system transcript, session import, and the plan / goal mode-transition tool sets all
+  pass a stored or imported name through `normalizeToolName()` first. Storage is not
+  rewritten — the bytes in the transcripts, the SQLite audit rows, the `deny` /
+  `allow` rules, the plugin manifests, and the subagent tool lists are unchanged — and
+  an unknown name (`plugin_*`, `mcp_*`, an MCP-reported name, a shell id such as
+  `PowerShell`) is returned untouched.
+- The direct payoff is the trail issue #827 followed while fixing the compaction
+  fallback: pi's `extractFileOpsFromMessage` matches its own lowercase names, so a
+  capitalized tool call in the transcript produced no entry at all. With the runtime
+  emitting `read` and `write`, `details.readFiles` / `details.modifiedFiles` and the
+  summary's `<read-files>` section carry the real files again instead of staying
+  empty.
+- Labels shown to the user keep their capitalized form (`Read`, `Bash`, `Task`) and
+  are derived from the canonical name; a display name is never the identity. See
+  `03-runtime/23-tool-names.md` and `03-runtime/02-agent-runtime.md`.

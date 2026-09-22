@@ -281,7 +281,7 @@ Catalog and custom model entry must support common capability classes:
 - Rebuilding an unchanged context must preserve system-prefix semantics.
   Actual instruction or tool-declaration changes remain visible to usage
   validation. System sections and tool additions/removals cannot be discarded.
-- Search followed by a local tool, Task, a new user prompt, or restart recovery
+- Search followed by a local tool, task, a new user prompt, or restart recovery
   must exercise the same contract. Dependency upgrades must run the offline
   adapter and bundled-sidecar continuation regressions, not only UI tests.
 
@@ -387,16 +387,16 @@ the next provider write.
 `ModelBinding.availableForSubagents` (boolean, default false): opt-in flag that
 makes the model available for AI-driven subagent delegation. When enabled, the
 model appears in the delegation catalog injected into the parent agent's system
-prompt. The parent agent can then select it via the Task tool's `model`
+prompt. The parent agent can then select it via the task tool's `model`
 parameter. Resolving a model for a definition pin does not imply this opt-in.
 The launch payload carries the permitted override keys separately as
 `subagentModelKeys`; definition-only bindings remain available solely through
-normal pin resolution, including when `Task.model` repeats that definition's
+normal pin resolution, including when `task.model` repeats that definition's
 own pin key. On-demand matching uses unique provider id/vendor/name lookup and
 must not overwrite a pin with another account's credentials. If vendor/model aliases collide across accounts, the
-opted-in account uses its exact provider ID as the override key. Selection priority remains Task.model → definition pin
+opted-in account uses its exact provider ID as the override key. Selection priority remains task.model → definition pin
 → session model (D278; ADR subagent-model-opt-in). The opt-in governs every entry point that lets the AI pick a model
-for delegated work, not only `Task.model`: a `session/collaboration/spawn` `modelKey` naming a model without it is
+for delegated work, not only `task.model`: a `session/collaboration/spawn` `modelKey` naming a model without it is
 refused with `PERMISSION_DENIED`, while omitting the key, or naming the default model's own key, still inherits.
 
 ## 8. Secrets
@@ -593,7 +593,7 @@ When starting a turn with `(providerId, modelId)`:
    that URL before passing it to pi-ai because the Anthropic SDK appends `/v1`
    itself; configured roots with or without `/v1` therefore both reach the
    same `/v1/messages` route. Subagent providers resolved from a definition pin,
-   the delegation model catalog, or `Task.model` use this same binding-aware
+   the delegation model catalog, or `task.model` use this same binding-aware
    model configuration before their thinking level is clamped; models.dev is
    only the baseline and cannot erase explicit binding levels.
 8. execute stream with abort handle and separate answer/thinking events

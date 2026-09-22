@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The ten approved acceptance criteria are met for the isolated, offline Desktop/sidecar scope. The original hosted-search tool-continuation failure is reproduced on the task baseline and prevented by formal content contracts, shared replay-aware estimates, semantically stable system reconstruction, and explicit local-error provenance. No fake tool fields, exception-to-zero fallback, history migration, timestamp forgery, or disabled search/Task path is used.
+The ten approved acceptance criteria are met for the isolated, offline Desktop/sidecar scope. The original hosted-search tool-continuation failure is reproduced on the task baseline and prevented by formal content contracts, shared replay-aware estimates, semantically stable system reconstruction, and explicit local-error provenance. No fake tool fields, exception-to-zero fallback, history migration, timestamp forgery, or disabled search/task path is used.
 
 Implementation qualification was completed on the uncommitted `fix/hosted-search-contract` candidate. The user subsequently authorized committing, pushing this task branch and opening a PR on 2026-09-22. The evidence below records the pre-commit candidate; PR delivery does not install, merge or release the application, or qualify a live provider.
 
@@ -102,9 +102,9 @@ Final evidence directory: `$PI_SCRATCH_DIR/hosted-search-e2e-CS9uZW`. The bundle
 | Scenario | Result | Provider requests |
 | --- | --- | --- |
 | `search-next-prompt` | PASS | 2 |
-| `search-read` | PASS; ordinary real Read tool | 2 |
+| `search-read` | PASS; ordinary real `read` tool | 2 |
 | `search-read-instruction-change` | PASS; real changed prefix after nonzero usage (1,000 input / 1,030 total tokens) | 2 |
-| `search-task-delegation` | PASS; real Task/TaskWait and parent continuation | 4 |
+| `search-task-delegation` | PASS; real `task`/`task_wait` and parent continuation | 4 |
 | `search-persist-restore` | PASS; disk JSON boundary and a new sidecar process | 2 |
 | `invalid-search-container` | PASS; safe local validation error, no persistence call/runtime leak | 0 |
 | `invalid-search-phase` | PASS; the turn continued without the stored replay and the unreplayable block never reached the provider (behavior changed after this run — see the note below) | 1 |
@@ -121,7 +121,7 @@ expectations.
 
 ## Independent review and disposition
 
-The complete change was partitioned for independent read-only review; failed model-quota review attempts are not counted as completed reviews. A local receipt summary is retained in `hosted-independent-review-summary.md`; the full reports are in this conversation's Task results.
+The complete change was partitioned for independent read-only review; failed model-quota review attempts are not counted as completed reviews. A local receipt summary is retained in `hosted-independent-review-summary.md`; the full reports are in this conversation's task results.
 
 - Runtime source/system/budget/history/error/subagent partition: reviewer `e29420d1...`; cancellation and both RPC halves re-reviewed by `5f8dfc53...` — accepted, no blocker. The initial producer-test gap was corrected after reading the real bundled sender tests.
 - Dependency types/adapters/estimators/frames/compaction and final patch/lock/install partition: reviewer `a4695593...`, final `74371a0b...` — no blocker. Final review explicitly includes the latest core `isError` optional-field fix and hash `62947f96...`; prior OAuth/provider modifications confirmed retained.
@@ -139,7 +139,7 @@ The complete change was partitioned for independent read-only review; failed mod
 | 5 | Correct system reconstruction | MET | Stable unchanged prefix, actual instruction/tool changes invalidate usage, sections/tool deltas retained, restore/compaction runtime tests and changed-prefix artifact pass. |
 | 6 | History and request compatibility | MET | Nameless legacy replay without migration, real disk/process restore, Responses/Azure/Anthropic request contracts, no internal fields in payloads, preserved model/opt-in policy. |
 | 7 | Correct errors and retry | MET | Three local phases terminal with safe provenance and no invalid model request; stale 429, transient HTTP/TypeError retry, main/subagent cancellation and both RPC halves covered. |
-| 8 | Complete user paths | MET | Baseline Read/Task/changed-prefix red; final fresh sidecar next-prompt/Read/Task+TaskWait/changed-prefix/restore green using real internal request preparation. |
+| 8 | Complete user paths | MET | Baseline `read`/`task`/changed-prefix red; final fresh sidecar next-prompt/`read`/`task`+`task_wait`/changed-prefix/restore green using real internal request preparation. |
 | 9 | Built artifact qualification | MET | 916 runtime, 464 shared-source, 38 Host and 20 desktop contract tests; 11-package JS build, 10-package typecheck, applicable lint and fresh 7-case sidecar pass. |
 | 10 | Review and documentation | MET | Independent full partitioned review, substantive findings resolved, EN/ZH specs/ADR/release note and this command/hash/manifest report synchronized. |
 

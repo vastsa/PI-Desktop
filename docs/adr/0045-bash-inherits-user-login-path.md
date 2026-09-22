@@ -1,4 +1,4 @@
-# ADR 0045: Bash tool inherits the user's login-shell PATH
+# ADR 0045: `bash` tool inherits the user's login-shell PATH
 
 - Status: Accepted (amended 2026-09-20, D600 / issue #571)
 - Date: 2026-08-02
@@ -7,7 +7,7 @@
   [Tools and permissions](../spec/03-runtime/03-tools-and-permissions.md)
 ## Context
 
-The Bash tool runs agent commands through `bash -lc` (D084). A login bash
+The bash tool runs agent commands through `bash -lc` (D084). A login bash
 sources only the bash profile, so on macOS — where the default shell is zsh and
 toolchains like nvm, pnpm, and Homebrew are initialized in `~/.zshrc` /
 `~/.zprofile` — commands cannot resolve `node`, `npm`, `pnpm`, or anything else
@@ -16,14 +16,14 @@ further shrinks the environment to a minimal GUI PATH.
 
 ## Decision
 
-1. On Unix, the first Bash call probes the user's login shell for its PATH:
+1. On Unix, the first bash call probes the user's login shell for its PATH:
    `$SHELL` (fallback `/bin/zsh` → `/bin/bash` → `/bin/sh`) runs
    `-lic 'printf %s "$PATH"'` — `-l` sources login files, `-i` sources the
    interactive rc — with a 5s bound so a wedged rc cannot stall the tool.
    Only the last stdout line is kept, so rc banners cannot contaminate it;
    stderr is discarded (missing-tty/job-control noise).
 2. The probed PATH is cached per process (`OnceLock`) and injected into every
-   Bash subprocess via `cmd.env("PATH", ...)`.
+   bash subprocess via `cmd.env("PATH", ...)`.
 3. The probe is strictly best-effort: on failure (no `$SHELL`, non-executable,
    non-zero exit, timeout) the host PATH is used unchanged. Windows keeps
    `bash -c` with the host environment (no change).
@@ -33,12 +33,12 @@ further shrinks the environment to a minimal GUI PATH.
 ## Consequences
 
 - `node`/`npm`/`pnpm`, Homebrew tooling, and other login-shell exports resolve
-  inside Bash tool calls, matching what a fresh terminal offers.
+  inside bash tool calls, matching what a fresh terminal offers.
 - `bash -lc` still re-runs the bash profile at startup; conda/brew hooks may
   prepend, dedupe, or reorder entries — the injected login PATH remains the
   base the user's bash profile builds on.
 - One bounded subprocess per process lifetime (the probe) is the entire
-  overhead; every later Bash call is cache-only.
+  overhead; every later bash call is cache-only.
 - A slow or interactive-only user rc degrades gracefully to the previous
   behavior instead of failing the tool.
 - Stdio MCP servers spawned from Electron main use the same login-shell PATH

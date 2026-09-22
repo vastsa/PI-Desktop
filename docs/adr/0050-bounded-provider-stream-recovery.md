@@ -34,7 +34,7 @@ and reseed the transcript. This made transient stream failures expensive and
 made a long provider wait difficult to attribute from logs.
 
 Repeated mutation failures had a related cost: the model could keep repairing
-an obsolete patch or retrying an `Edit` with stale context instead of taking a
+an obsolete patch or retrying an `edit` with stale context instead of taking a
 fresh snapshot of the target file.
 
 ## Decision
@@ -56,14 +56,14 @@ PI-Desktop applies the following bounded recovery strategy:
    `retryAttempt` when available. These fields are diagnostic only; messages
    remain redacted and bounded and never contain credentials or raw provider
    bodies beyond the existing capped summary.
-5. Mutation instructions select `Edit` for one small unique replacement and
-   `Write` for a coherent whole-file rewrite. After an edit mismatch, the agent
+5. Mutation instructions select `edit` for one small unique replacement and
+   `write` for a coherent whole-file rewrite. After an edit mismatch, the agent
    follows the line-anchored contract's fresh-read or complete-reveal recovery
    and may have three counted failures per path in one prompt. The third counted
-   failed `Edit`, or the third failed shell patch command, returns pi-agent-core's
+   failed `edit`, or the third failed shell patch command, returns pi-agent-core's
    terminating tool hint, so the agent stops with the exact mismatch. Shell
    `apply_patch`, `git apply`, and `patch` are explicitly treated as patch
-   commands; the prompt directs the agent to use `Edit` or `Write` instead. It
+   commands; the prompt directs the agent to use `edit` or `write` instead. It
    must not hand-edit unified-diff artifacts or issue concurrent mutations for
    one path.
 
@@ -104,7 +104,7 @@ and would complicate durable transcript reconciliation.
 Rejected because wording alone does not reliably bound a model's retry loop.
 The host's unique-context checks and per-session mutation serialization remain
 the execution boundary, while the runtime's terminating tool hint enforces the
-second Edit or shell-patch failure stop in pi-agent-core.
+second edit or shell-patch failure stop in pi-agent-core.
 
 ## References
 

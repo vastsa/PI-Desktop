@@ -101,7 +101,7 @@ objects and do not change the SQLite schema or transcript retention.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 
-Successful workspace `Write`/`Edit` tool results carry the bounded
+Successful workspace `write`/`edit` tool results carry the bounded
 `details.review` record described in [03-tools-and-permissions](03-tools-and-permissions.md).
 The transcript JSONL is the durable index for the visible card; the previous
 bytes and hashes live outside the workspace in
@@ -118,7 +118,7 @@ per message; `seq` is implied by line order:
 ```jsonl
 {"type":"session","schema":1,"sessionId":"0b0e…","createdAt":"2026-07-26T09:00:00.000Z"}
 {"type":"message","id":"m1","role":"user","createdAt":"…","blocks":[{"type":"text","text":"…"}]}
-{"type":"message","id":"m2","role":"tool","toolName":"Write","blocks":[{"type":"tool_call","callId":"c1","args":{},"result":{},"status":"success"}]}
+{"type":"message","id":"m2","role":"tool","toolName":"write","blocks":[{"type":"tool_call","callId":"c1","args":{},"result":{},"status":"success"}]}
 {"type":"message","id":"m3","role":"assistant","createdAt":"…","blocks":[{"type":"thinking","text":"…"},{"type":"text","text":"…"}],"meta":{"usage":{},"modelId":"…"}}
 {"type":"compaction","id":"cp1","summary":"…","firstKeptMessageId":"m2","throughMessageId":"m3","tokensBefore":917000,"retainedTail":[…],"providerId":"…","modelId":"…","createdAt":"…"}
 ```
@@ -855,7 +855,7 @@ index as the parent's; what marks them is two fields in the file line's `meta`
 object, written by host-core when the sidecar sends them:
 
 ```ts
-meta.parentToolCallId?: string  // the `Task` call that spawned the delegate
+meta.parentToolCallId?: string  // the `task` call that spawned the delegate
 meta.agentName?: string         // the definition name, e.g. "code-reviewer"
 ```
 
@@ -865,11 +865,11 @@ promoting it would buy a query nobody makes.
 Both fields survive reload, which is what makes a restored session nest exactly
 like a live one (`04-ux/08-component-spec.md` §9.9). Two consumers read them:
 
-- The renderer groups attributed rows under their `Task` row and renders them
+- The renderer groups attributed rows under their `task` row and renders them
   one level in; the turn stream and the minimap never see them.
 - The session runtime **excludes** attributed rows when it rebuilds model
   context on restore. The parent only ever saw the delegate's report, which is
-  the `Task` tool result and is stored as such; replaying the delegate's own
+  the `task` tool result and is stored as such; replaying the delegate's own
   rows would both misrepresent the conversation and reintroduce the context cost
   delegation exists to avoid.
 
@@ -1002,7 +1002,7 @@ CREATE INDEX idx_artifacts_time ON artifacts(updated_at DESC);
 ```
 
 Upserted by host-core in the same transaction as the `tool_execute` audit row
-whenever Write/Edit (or a plugin tool declaring file effects) succeeds —
+whenever write/edit (or a plugin tool declaring file effects) succeeds —
 repeat edits update `op`/`updated_at`, keeping one row per file per session.
 Writes into the session scratch directory (D114) are excluded: artifacts list
 workspace deliverables only.
@@ -1047,7 +1047,7 @@ behavior. Invalid or empty selections are rejected before mutation. No table
 migration is needed. Daily/weekly schedules use the host local timezone; hourly
 schedules compute `nextRunAt = now + 3_600_000`, ignoring calendar fields. Absence
 of `schedule` leaves legacy tasks unarmed. No physical schema change is made.
-Task wire fields project `schedule`, RFC3339 `nextRunAt` and `workspacePath`.
+task wire fields project `schedule`, RFC3339 `nextRunAt` and `workspacePath`.
 See [the automation ADR](../../adr/scheduled-desktop-automations.md).
 
 Scheduled task `config_json.mode` is a durable operating-mode value. There is
@@ -1174,7 +1174,7 @@ is the source of truth, the index is derived and self-healing.
 | assistant/tool message end | append message line; remove the in-flight checkpoint when its id matches | index row + touch session |
 | streaming reply checkpoint (`session.saveInflightMessage`, D299) | atomically replace `<id>.inflight.json`; no-op for an empty message or an id already indexed | — |
 | context checkpoint (`session.appendCompaction`) | append typed checkpoint line after its referenced message boundary | — (checkpoint is not searchable transcript content) |
-| tool succeeded (Write/Edit) | — | upsert `artifacts` + `audit_log` row, same tx as result persistence |
+| tool succeeded (`write`/`edit`) | — | upsert `artifacts` + `audit_log` row, same tx as result persistence |
 | turn terminal via `session.endTurn` | `completed`/`error`: remove the in-flight checkpoint only when its id is already indexed; otherwise leave it for the outbox or boot (D327). `recoverInflight`: append the leftover as `complete` when the turn is `completed`, otherwise as `aborted`, when its final row never landed | update `turns`; for completed/error insert one notification and prune to 200 in the same tx; aborted inserts none; a promoted checkpoint gets an index row under the turn |
 | plan/goal submission | host writes the exact Markdown bytes to a new unique `<workspaceRoot>/.pi/<kind>/*.md` file | insert one `plan_approvals(pending)` row with the kind, structured title/question, artifact path/hash/size, and expiry before emitting the approval request |
 | plan/goal approval | verify the immutable artifact path/hash/size | atomically resolve `plan_approvals`, update `sessions.mode` and explicit `permission_mode`, and set `execution_state = 'queued'`; reject/expiry stay in the contract mode |
@@ -1226,7 +1226,7 @@ plus exclusive physical `messageEnd` and `hasMoreAfter` for forward paging. Only
 the explicitly selected user/assistant text bypasses the display cap. The
 retained pane owns that reading window separately from live/model caches;
 missing targets never fall back to a different message (ADR session-content-search).
-A nested target additionally resolves its owning Task by tool-call ID and returns
+A nested target additionally resolves its owning task by tool-call ID and returns
 that latest capped projection as `navigationParent`, without adding a physical
 line to the bounded page. This is derived read-only context, not a new persisted
 relationship or index. The renderer's unified reading view is shared by ordinary
@@ -1471,7 +1471,7 @@ columns for anything the host filters, joins, sums, or indexes.
     defaulting to `plan`, and malformed app settings/scheduled config,
     invalid modes, or invalid default shells fail closed with the pre-migration
     schema intact
-17. SubmitPlan and SubmitGoal write exact Markdown bytes to a unique
+17. submit_plan and submit_goal write exact Markdown bytes to a unique
     `.pi/plan/*.md` or `.pi/goal/*.md` file
     with SHA-256 and size; title/question stay structured and renderer reload
     retains only the pending row and original absolute deadline

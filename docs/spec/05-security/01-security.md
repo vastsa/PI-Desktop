@@ -85,11 +85,11 @@ Required (all **implemented**):
 Plan is not itself the workspace security boundary. Host-core resolves the
 durable session mode for every `tools.execute` call and applies the Plan matrix
 before permission modes, grants, plugin risk, or renderer/sidecar state. Plan
-denies Write/Edit/plugin/unknown tools, while BrowserPreview is the explicit
+denies write/edit/plugin/unknown tools, while browser_preview is the explicit
 read-only UI inspection exception (it reveals bundled `pi.browser` chrome; raw
-CDP plugin tools stay denied in Plan). Bash remains available in Plan: Ask and
+CDP plugin tools stay denied in Plan). bash remains available in Plan: Ask and
 Accept edits prompt, and Auto runs without confirmation and may mutate the
-workspace or scratch directory. The UI must state this tradeoff. `SubmitPlan`
+workspace or scratch directory. The UI must state this tradeoff. `submit_plan`
 preserves exact Markdown bytes in a new unique `<workspaceRoot>/.pi/plan/*.md`
 file through host-core, validates the in-root artifact path, computes SHA-256
 and byte size, and only then creates the `plan_approvals` record with
@@ -166,9 +166,9 @@ claim availability or freshness against a malicious server.
 
 ## 5. Command execution
 
-- Bash requires confirmation by default (risk-tiered permission cards); in
+- bash requires confirmation by default (risk-tiered permission cards); in
   either Agent or Plan, explicit Auto may run it without confirmation
-- The Bash protocol name remains stable, but host-core selects a catalog shell
+- The bash protocol name remains stable, but host-core selects a catalog shell
   (`windows-powershell`, `windows-pwsh`, `cmd`, `git-bash`, or `bash`) from persisted
   `defaultCommandShell` where supported by the platform. Settings writes reject
   unavailable/wrong-platform IDs. If a persisted choice later becomes
@@ -290,7 +290,7 @@ host-core. They do not change the loopback-only rule above.
   (`tools.execute`, `tools.list`, `session.get`, `session.appendMessage`,
   `workspace.get`, `app.health`) — the sidecar cannot pull secrets or
   mutate providers/settings/plugins through the proxy
-- host-core child processes (Bash tool) run with the user's privileges;
+- host-core child processes (bash tool) run with the user's privileges;
   containment relies on the permission layer, catalog identity, process-group/
   job-tree shutdown, and workspace sandbox rather than OS sandboxing
 
@@ -307,7 +307,7 @@ host-core. They do not change the loopback-only rule above.
 ## 11. Security acceptance gates
 
 1. Renderer cannot `require('fs')` (sandbox + no nodeIntegration) — verified
-2. Plan Write/Edit/plugin calls cannot run under any permission mode; Bash is
+2. Plan write/edit/plugin calls cannot run under any permission mode; bash is
    confirmed under Ask/Accept edits and may run without confirmation only under
    explicit Auto
 3. Writing outside the workspace fails — verified (host tests)
@@ -318,7 +318,7 @@ host-core. They do not change the loopback-only rule above.
    approve/reject-only and scheduled Plan is rejected before artifact/queue work
 8. Plan expiry, rejection, host restart, and stale responses never replay
    pending/queued/running work; an approved interruption leaves the session Agent
-9. Invalid settings and stale shell ID/dialect fail closed; Bash output streams
+9. Invalid settings and stale shell ID/dialect fail closed; bash output streams
    separately and timeout/abort kills the complete process tree
 10. Local MCP control is loopback-only, bearer-authenticated, opt-in, bounded,
     excludes secret writes and native pickers, and requires confirmation for

@@ -25,7 +25,7 @@ the sidecar map after the first prompt. The missing piece is that the parent
 never registers as an A2A client.
 
 The remaining hazard is the original one: if the parent can address its own
-subagents, `Task`'s brief and report boundary collapses.
+subagents, `task`'s brief and report boundary collapses.
 
 ## Decision
 
@@ -52,7 +52,7 @@ subagents, `Task`'s brief and report boundary collapses.
    in the registry.
 
 Unchanged: capability tokens, counterpart event routing,
-`recipientContextId` delivery, parent still uses `Task*` for its own
+`recipientContextId` delivery, parent still uses `task*` for its own
 delegates, no remote A2A, no nested delegation.
 
 ## Consequences

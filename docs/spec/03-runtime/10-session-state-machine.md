@@ -8,14 +8,14 @@ pi Agent. Live planning state and execution status are host/runtime projections.
 Plan and Goal are **contract modes**: both negotiate a proposal before executing
 and share one projection, one approval row, and one hard deny (**D198**). `kind`
 (`plan | goal`) is what distinguishes them, and the diagram below reads the same
-with Goal/`SubmitGoal` substituted for Plan/`SubmitPlan`:
+with Goal/`submit_goal` substituted for Plan/`submit_plan`:
 
 ```text
 Agent / inactive
-  -- user selects Plan while idle OR Agent calls EnterPlanMode --> Plan / planning
-  -- user selects Goal while idle OR Agent calls EnterGoalMode --> Goal / planning
+  -- user selects Plan while idle OR Agent calls enter_plan_mode --> Plan / planning
+  -- user selects Goal while idle OR Agent calls enter_goal_mode --> Goal / planning
 Plan | Goal / planning
-  -- SubmitPlan | SubmitGoal (title, markdown, question) --> awaiting_approval
+  -- submit_plan | submit_goal (title, markdown, question) --> awaiting_approval
 Plan | Goal / awaiting_approval
   -- approve(permission mode) --> Agent / queued, same Agent continues
   -- reject | expiry | abort | crash | persistence failure
@@ -26,11 +26,11 @@ Agent / running
   -- complete | fail | abort --> Agent / inactive
 ```
 
-Both contract modes retain the permission-mode selector. Their `Bash` policy is
+Both contract modes retain the permission-mode selector. Their `bash` policy is
 `ask` or
 `accept-edits` = confirmation and `auto` = no confirmation, so a contract mode
 expresses negotiating intent but is not a strict read-only security profile.
-Write/Edit and
+write/edit and
 plugin tools remain denied by host policy in every Plan or Goal permission mode.
 
 The kinds differ only in what the contract says and what the queued execution
@@ -129,7 +129,7 @@ turn that has ended.
 11. Supplying `throughMessageId` changes only the snapshot boundary. Assistant
     Fork/Edit still creates a new idle session id with no shared turn,
     permission wait, runtime, or provider-cache state (D134).
-12. `EnterPlanMode`, `EnterGoalMode`, `SubmitPlan`, and `SubmitGoal` must be the
+12. `enter_plan_mode`, `enter_goal_mode`, `submit_plan`, and `submit_goal` must be the
     only tool call in their
     assistant batch. A submit tool preserves exact Markdown bytes in a new
     host-owned `.pi/<kind>/*.md` artifact and creates one pending
@@ -171,7 +171,7 @@ transcript-file line first, index transaction second.
 - assistant/tool messages: on message_end/tool_end. Electron retains each
   in-flight tool's metadata with its owning turn until the terminal event is
   persisted; delayed cleanup is scoped to that turn so a later turn's long
-  `TaskWait` cannot lose its name, args, or duration. A completed tool row is
+  `task_wait` cannot lose its name, args, or duration. A completed tool row is
   replayed through `message_end` as a renderer recovery path, allowing a
   reload that dropped the running row to append the terminal message.
   The finished assistant snapshot is checkpointed before the outbox append;
@@ -226,14 +226,14 @@ transcript-file line first, index transaction second.
    leaves the queue intact
 9. Plan, Goal, and Agent use one pi Agent; the Composer-left mode chip, UI
    entry, and
-   `EnterPlanMode`/`EnterGoalMode` converge on the same planning state, and
+   `enter_plan_mode`/`enter_goal_mode` converge on the same planning state, and
    approval resumes
    that Agent in Agent mode
-10. Contract-mode policy permits Bash only through the selected permission mode
+10. Contract-mode policy permits bash only through the selected permission mode
    and
-   denies Write/Edit/plugins regardless of `auto` or session grants, in Goal
+   denies write/edit/plugins regardless of `auto` or session grants, in Goal
    exactly as in Plan
-11. SubmitPlan/SubmitGoal writes an exact unique `.pi/<kind>/*.md` artifact with
+11. submit_plan/submit_goal writes an exact unique `.pi/<kind>/*.md` artifact with
     hash/size,
     keeps title/question structured, and only approve/reject can resolve its
     `plan_approvals` row

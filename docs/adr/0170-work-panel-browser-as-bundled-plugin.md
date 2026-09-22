@@ -35,7 +35,7 @@ guest.
    clamped to the calling plugin view so a guest cannot cover chat/composer.
 4. **Raw CDP is allowlisted and deny-by-default.** Cookie, storage, target, and
    network-interception methods are refused. No DevTools websocket is exposed.
-5. **Host `BrowserPreview` remains a thin facade** (Plan/subagent name
+5. **Host `browser_preview` remains a thin facade** (Plan/subagent name
    stability). It errors if `pi.browser` is disabled; otherwise it loads the
    workspace file into the guest when that session's chrome is visible and
    reveals the plugin view. Plugin CDP stays Agent-only (`plugin_*`).
@@ -51,10 +51,10 @@ superseded: the panel's launchable surfaces are plugin views.
 ## Consequences
 
 - Disabling `pi.browser` removes the launcher row, agent CDP, and guest. URL
-  chips fall back to `openExternal`. `BrowserPreview` fails closed.
+  chips fall back to `openExternal`. `browser_preview` fails closed.
 - Third-party plugins with `browser.cdp` share the same guest; last chrome
   `setBounds` wins.
-- Plan still sees `BrowserPreview`. The Browser plugin tool is also visible in Plan/Goal for the four `planSafeActions` (`navigate`, `snapshot`, `screenshot`, `console`); click/fill/evaluate/cdp stay Agent-only (ADR 0211).
+- Plan still sees `browser_preview`. The Browser plugin tool is also visible in Plan/Goal for the four `planSafeActions` (`navigate`, `snapshot`, `screenshot`, `console`); click/fill/evaluate/cdp stay Agent-only (ADR 0211).
 
 ## Alternatives considered
 

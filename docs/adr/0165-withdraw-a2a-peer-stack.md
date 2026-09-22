@@ -21,7 +21,7 @@ ADR 0162 then lifted same-session-only addressing; ADR 0164 / D325 gave
 Agent-mode parents a core `A2A` tool so conversations could coordinate.
 
 That stack is no longer wanted. Sibling and parent-to-parent channels sat
-beside the existing `Task` / `TaskWait` / `TaskList` / `TaskStop` contract,
+beside the existing `task` / `task_wait` / `task_list` / `task_stop` contract,
 added a protocol capability the rest of the app did not use, and were easy
 for the model to miss or misuse. Concurrent delegates already report through
 the parent; that is enough.
@@ -31,14 +31,14 @@ the parent; that is enough.
 Remove the A2A / Peer coordination stack from the product:
 
 1. **No A2A or Peer tool.** Neither name is a core Agent tool, an assignable
-   subagent tool, or a `ToolSearch` result. A definition that lists `A2A` or
+   subagent tool, or a `tool_search` result. A definition that lists `A2A` or
    `Peer` is treated like any other unknown tool name: dropped with a parse
    warning.
 2. **No broker.** Delete the host-core `a2a` module, the in-memory registry,
    the leftover in-process `SubagentMailbox`, and every `a2a.*` RPC method
    and `a2a.task.event` / `a2a.push` notification.
 3. **No parent or sibling channel.** Concurrent delegates coordinate only by
-   writing self-contained reports the parent collects through `Task*`.
+   writing self-contained reports the parent collects through `task*`.
    Parents do not discover, message, or wait on other conversations.
 4. **Protocol v11.** Handshake `PROTOCOL_VERSION` moves from 10 to 11. The
    `capabilities` array no longer advertises `"a2a"`. A v10 host or client is
@@ -50,16 +50,16 @@ Remove the A2A / Peer coordination stack from the product:
    backups and chained migrations keep working; it no longer creates tables
    that v13 would immediately drop.
 
-Delegation itself (ADR 0062 / ADR 0089) is unchanged: `Task` still fans out
+Delegation itself (ADR 0062 / ADR 0089) is unchanged: `task` still fans out
 bounded workers, reports still stay out of the parent model context until
-`TaskWait`, and builtins stay read-only by default.
+`task_wait`, and builtins stay read-only by default.
 
 ## Consequences
 
 - Cross-conversation and sibling messaging are gone. Users who want two
   sessions to share facts do so in the prompt, not through a tool.
 - The roundtable example plugin no longer tells delegates to call `Peer` or
-  `A2A`. It runs independent concurrent `Task`s and has the parent synthesize
+  `A2A`. It runs independent concurrent `task`s and has the parent synthesize
   the reports, optionally feeding earlier reports into a later round's brief.
 - Historical changelog entries for 0.11.3 (peer messaging) and 0.12.0 (A2A)
   stay as shipped history. Product READMEs drop current A2A claims.

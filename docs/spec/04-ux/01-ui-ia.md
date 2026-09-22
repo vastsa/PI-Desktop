@@ -116,7 +116,7 @@ destination, chat as the home surface, tools and permissions inline.
   closed. Closing the final tab keeps the panel open and shows the New launcher.
   No agent or tool result opens, activates, or resizes the panel: Review is
   reached only through an explicit user action, so a successful workspace
-  Write/Edit leaves the panel exactly as the user left it and shows its
+  write/edit leaves the panel exactly as the user left it and shows its
   evidence as a transcript card instead. The inner
   divider resizes the panel through the shared three-column budget; moving it
   left takes space until MainChat reaches 450px, at which point the expanded
@@ -177,7 +177,7 @@ destination, chat as the home surface, tools and permissions inline.
   quick-action row is rendered (D204/D206).
 - With transcript: message stream + tool disclosure rows (D071), a contextual
   message-scoped review card immediately after each successful workspace
-  Write/Edit row, docked composer, and a session-scoped permission card inline.
+  write/edit row, docked composer, and a session-scoped permission card inline.
   The card reads the message's durable review snapshot rather than the current
   Git diff, so it stays visible after commit. It shows the file status and
   addition/deletion counts, expands the exact message hunks in place, and

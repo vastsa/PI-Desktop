@@ -67,7 +67,7 @@ Each ADR includes:
 | 0042 | Message-scoped inline review cards | Superseded by 0043 |
 | 0043 | Message-owned review snapshots and guarded rollback | Accepted |
 | 0044 | Session-bound project instruction preflight | Accepted |
-| 0045 | Bash tool inherits the user's login-shell PATH | Accepted (amended D600 / issue #571) |
+| 0045 | `bash` tool inherits the user's login-shell PATH | Accepted (amended D600 / issue #571) |
 | 0046 | Categorized process log files | Accepted |
 | 0047 | Context usage inspector with exact and estimated token sources | Accepted |
 | 0048 | Lazy per-turn tool activation | Accepted |
@@ -84,7 +84,7 @@ Each ADR includes:
 | 0059 | Persist Composer Clipboard Files in Session Scratch | Accepted (amended 2026-09-14 for #138: prefer editable clipboard text over generated image copies) |
 | 0060 | Archive the Regenerate Branch Under the RPC Lock | Accepted |
 | 0061 | Imperceptible background context compaction | Accepted (amends 0030 / 0049; clauses 2/4/6/7/8 amended by 0064) |
-| 0062 | Bounded Subagents Behind a Task Tool | Accepted for implementation (`maxTurns` clause withdrawn by 0253) |
+| 0062 | Bounded Subagents Behind a `task` Tool | Accepted for implementation (`maxTurns` clause withdrawn by 0253) |
 | 0063 | A Managed Surface for Global Subagent Definitions | Accepted for implementation (`maxTurns` field withdrawn by 0253) |
 | 0064 | Codex-parity context compaction | Accepted (amends 0061 / 0030) |
 | 0065 | Smooth shell layout and stream feedback | Accepted for implementation |
@@ -109,7 +109,7 @@ Each ADR includes:
 | 0084 | Defer new-task session creation until the first message | Accepted |
 | 0085 | Make the work panel shortcut a toggle | Accepted (amends 0068) |
 | 0086 | Keep macOS on the regular activation policy | Accepted |
-| 0087 | Replace textual Edit matching with a line-anchored, tag-verified contract | Accepted for implementation (amends 0043 / 0069) |
+| 0087 | Replace textual `edit` matching with a line-anchored, tag-verified contract | Accepted for implementation (amends 0043 / 0069) |
 | 0088 | Plugin file access is declared per mode, and deletion is recoverable | Accepted (continues 0008 D009) |
 | 0089 | Proactive Background Subagent Delegation | Accepted for implementation |
 | 0090 | User-Configurable Close Behavior with Close-to-Tray | Accepted for implementation |
@@ -188,7 +188,7 @@ Each ADR includes:
 | 0164 | Parent agents collaborate across conversations | Superseded by 0165 |
 | 0165 | Withdraw the A2A / Peer coordination stack | Accepted (supersedes 0147 / 0162 / 0164) |
 | 0166 | Parent-judged subagent lifetime | Accepted (amends 0089 / 0119 / 0129; fatal-error path amended by 0189; `maxTurns` backstop withdrawn by 0253) |
-| 0167 | Agent-chosen Bash timeout | Accepted (amends 0054 / D190 / D273) |
+| 0167 | Agent-chosen `bash` timeout | Accepted (amends 0054 / D190 / D273) |
 | 0168 | Main-owned http(s)/mailto allowlist for `openExternal` | Accepted (amends 0109) |
 | 0169 | Classified file preview and live workspace events for plugin views | Accepted (amends 0104 / 0105 / 0109 / 0111) |
 | 0170 | Ship the work-panel browser as a bundled plugin over public CDP | Accepted (amends 0019 / 0104 / 0105) |
@@ -253,7 +253,7 @@ Each ADR includes:
 | 0227 | Project group manual ordering | Accepted (amended by 0228) |
 | 0228 | Long-press the project title to reorder | Accepted (amended by 0229) |
 | 0229 | Press-and-move project title reorder | Accepted (amends 0228) |
-| 0230 | Skill ships with the Agent core tool set | Accepted (amends D174 / ADR 0048 / ADR 0219; issue #204) |
+| 0230 | `skill` ships with the Agent core tool set | Accepted (amends D174 / ADR 0048 / ADR 0219; issue #204) |
 | 0231 | Ideographic comma opens the composer slash menu | Accepted (amends D123 / D139 / ADR 0024; issue #65) |
 | 0232 | Keep macOS DMG opening guidance text-only | Accepted (amended by 0296; amends D371 / ADR 0204) |
 | 0233 | Renderer-owned multi-folder project creation | Accepted (amends ADR 0011 / ADR 0016) |

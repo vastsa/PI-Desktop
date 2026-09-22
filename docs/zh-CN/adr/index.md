@@ -18,11 +18,11 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | [ADR 0053：Plan checkpoint](/adr/0053-plan-checkpoint-artifact-and-execution-epoch) | 计划审批、artifact 和执行 epoch |
 | [ADR 0079：VitePress 文档站](/adr/0079-vitepress-documentation-site) | 双语文档站的结构与部署方式 |
 | [ADR 0083：自定义全局界面字体](/adr/0083-custom-global-ui-font) | 设置字体选择器与系统字体枚举（内置字体已由 ADR 0298 移除） |
-| [ADR 0089：主动后台子代理委托](/adr/0089-proactive-background-subagent-delegation) | 非阻塞 Task、TaskWait/TaskList/TaskStop 生命周期与权限作用域 |
+| [ADR 0089：主动后台子代理委托](/adr/0089-proactive-background-subagent-delegation) | 非阻塞 `task`、`task_wait`/`task_list`/`task_stop` 生命周期与权限作用域 |
 | [ADR 0090：用户可配置的关闭行为](/adr/0090-user-configurable-close-behavior-close-to-tray) | 首次关闭只问一次，关闭到托盘或退出，设置里可改 |
 | [ADR 0095：用厂商账户登录](/adr/0095-vendor-account-oauth-login) | 用订阅账户代替 API 密钥，凭据留在主进程，sidecar 按请求取短时令牌 |
 | [ADR 0106：核心五条内置命令](/adr/0106-core-five-builtin-commands) | 将命令面板和输入框 `/` 菜单冻结为五条第一方命令 |
-| [ADR 0108：移除内置交互式终端](/adr/0108-remove-built-in-interactive-terminal) | 工作面板不再承载 PTY；交互式 shell 由外部终端承担，Agent Bash 保持非交互式 |
+| [ADR 0108：移除内置交互式终端](/adr/0108-remove-built-in-interactive-terminal) | 工作面板不再承载 PTY；交互式 shell 由外部终端承担，Agent `bash` 保持非交互式 |
 | [ADR 0128：瞬时 provider 故障的有界重试](/adr/0128-bounded-transient-provider-retry) | 为瞬时 provider 故障共享一个有界重试预算，跨请求设置和流式传输阶段共用四次重试 |
 | [ADR 0131：大段 Composer 粘贴写入会话临时目录](/adr/0131-large-text-paste-session-reference) | 超过可配置阈值的纯文本粘贴保存为会话临时文件，并在原位置插入内联 `@` 引用 |
 | [ADR 0137：保留的会话面板](/adr/0137-retained-session-panes) | 最近访问的会话各自保留一个已挂载的面板（上限三个），切换是可见性交换而不是重建转录 |
@@ -112,7 +112,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0042 | [消息级内联审阅卡片](/adr/0042-message-scoped-inline-review-cards) | 已被 ADR 0043 取代 |
 | 0043 | [消息拥有的审阅快照与受保护回滚](/adr/0043-message-owned-review-snapshots-and-rollback) | 已接受 |
 | 0044 | [会话绑定的项目指令预检](/adr/0044-session-bound-project-instruction-preflight) | 已接受 |
-| 0045 | [Bash 工具继承用户登录 shell 的 PATH](/adr/0045-bash-inherits-user-login-path) | 已接受 |
+| 0045 | [`bash` 工具继承用户登录 shell 的 PATH](/adr/0045-bash-inherits-user-login-path) | 已接受 |
 | 0046 | [按类别拆分的进程日志文件](/adr/0046-categorized-process-logs) | 已接受 |
 | 0047 | [带精确与估算 token 来源的上下文用量检查器](/adr/0047-context-usage-inspector) | 已接受 |
 | 0048 | [按回合惰性激活工具](/adr/0048-lazy-per-turn-tool-activation) | 已接受 |
@@ -129,7 +129,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0059 | [将输入框剪贴板文件持久化到会话临时目录](/adr/0059-composer-clipboard-files-in-session-scratch) | 已接受 |
 | 0060 | [在 RPC 锁下归档重新生成分支](/adr/0060-regenerate-branch-archive-under-the-rpc-lock) | 已接受 |
 | 0061 | [无感知的后台上下文压缩](/adr/0061-imperceptible-background-context-compaction) | 已接受（修订 ADR 0030 / ADR 0049；第 2/4/6/7/8 条由 ADR 0064 修订） |
-| 0062 | [Task 工具背后的有界子智能体](/adr/0062-bounded-subagents-behind-a-task-tool) | 已接受待实现 |
+| 0062 | [`task` 工具背后的有界子智能体](/adr/0062-bounded-subagents-behind-a-task-tool) | 已接受待实现 |
 | 0063 | [全局子智能体定义的托管界面](/adr/0063-subagent-management-ui) | 已接受待实现 |
 | 0064 | [与 Codex 对齐的上下文压缩](/adr/0064-codex-parity-context-compaction) | 已接受（修订 ADR 0061 / ADR 0030） |
 | 0065 | [平滑的外壳布局与流式反馈](/adr/0065-smooth-shell-layout-and-stream-feedback) | 已接受待实现 |
@@ -154,7 +154,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0084 | [推迟新任务会话创建直到首条消息](/adr/0084-deferred-new-task-session-creation) | 已接受 |
 | 0085 | [让工作面板快捷键成为开关](/adr/0085-work-panel-shortcut-toggle) | 已接受（修订 ADR 0068） |
 | 0086 | [macOS 保持常规激活策略](/adr/0086-macos-regular-activation-policy) | 已接受 |
-| 0087 | [用行锚定、标签校验的契约取代文本匹配 Edit](/adr/0087-line-anchored-edit-contract) | 已接受待实现（修订 ADR 0043 / ADR 0069） |
+| 0087 | [用行锚定、标签校验的契约取代文本匹配 `edit`](/adr/0087-line-anchored-edit-contract) | 已接受待实现（修订 ADR 0043 / ADR 0069） |
 | 0088 | [插件文件访问按模式声明，删除可恢复](/adr/0088-declared-file-scope-for-plugins) | 已接受（延续 ADR 0008 D009） |
 | 0089 | [主动后台子代理委托](/adr/0089-proactive-background-subagent-delegation) | 已接受待实现 |
 | 0090 | [用户可配置的关闭行为](/adr/0090-user-configurable-close-behavior-close-to-tray) | 已接受待实现 |
@@ -233,7 +233,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0164 | [父级 agent 跨对话协作](/adr/0164-parent-cross-conversation-a2a) | 已被 ADR 0165 取代 |
 | 0165 | [撤回 A2A / Peer 协调栈](/adr/0165-withdraw-a2a-peer-stack) | 已接受（取代 ADR 0147 / ADR 0162 / ADR 0164） |
 | 0166 | [由父级判断的子智能体生命周期](/adr/0166-parent-judged-subagent-lifetime) | 已接受（修订 ADR 0089 / ADR 0119 / ADR 0129；致命错误路径由 ADR 0189 修订） |
-| 0167 | [由 Agent 选择的 Bash 超时](/adr/0167-agent-chosen-bash-timeout) | 已接受（修订 ADR 0054 / D190 / D273） |
+| 0167 | [由 Agent 选择的 `bash` 超时](/adr/0167-agent-chosen-bash-timeout) | 已接受（修订 ADR 0054 / D190 / D273） |
 | 0168 | [主进程拥有的 `openExternal` http(s)/mailto 白名单](/adr/0168-main-owned-open-external-allowlist) | 已接受（修订 ADR 0109） |
 | 0169 | [插件视图的分类文件预览与实时工作区事件](/adr/0169-classified-file-preview-and-live-workspace-events) | 已接受（修订 ADR 0104 / ADR 0105 / ADR 0109 / ADR 0111） |
 | 0170 | [将工作面板浏览器作为捆绑插件通过公开 CDP 交付](/adr/0170-work-panel-browser-as-bundled-plugin) | 已接受（修订 ADR 0019 / ADR 0104 / ADR 0105） |

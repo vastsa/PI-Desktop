@@ -28,7 +28,7 @@ each other. The only thing they share is mutual exclusion — `PathMutex` in the
 sidecar and host-core's one-in-flight-mutation-per-session rule — and both are
 locks with no payload.
 
-For the fan-out pattern the `Task` description recommends (one delegate per
+For the fan-out pattern the `task` description recommends (one delegate per
 independent direction, in one assistant message), that isolation is correct: the
 parent asked for independent answers and gets them. It stops being correct as
 soon as the directions turn out not to be independent, which the parent cannot
@@ -40,14 +40,14 @@ always know when it writes the briefs:
   lock prevents a torn write, not a stale premise.
 - One delegate disproves an assumption every brief was written against. It has
   no way to say so. It reports the correction, the parent reads it after
-  `TaskWait`, and by then the other delegates have finished spending their turns
+  `task_wait`, and by then the other delegates have finished spending their turns
   on the wrong premise.
 - One delegate has already found the fact another is about to spend fifteen tool
   calls searching for. Both searches are paid in full, in separate contexts, and
   the duplication is invisible until the reports land.
 
 Routing these through the parent does not work. The parent is blocked in
-`TaskWait` while its delegates run, `task` is write-once so a running brief
+`task_wait` while its delegates run, `task` is write-once so a running brief
 cannot be corrected, and adding a parent-mediated relay would mean every
 coordination note enters the parent's context — which is the exact cost
 delegation exists to avoid.
@@ -82,7 +82,7 @@ definition.
    ADR 0062 isolation exactly. None of the builtins declare one.
 6. **Peer tools are absent from `toolCatalog`.** They are constructed per
    delegate at spawn. The parent already owns the delegation lifecycle through
-   the four `Task*` tools and must not gain a second, weaker channel to its
+   the four `task*` tools and must not gain a second, weaker channel to its
    delegates.
 7. **A peer tool is not a host tool call.** Messages are in-process, so they
    bypass `scopeDelegateTools`, carry no `permissionScope`, never reach
@@ -92,7 +92,7 @@ definition.
    learns only what a report says. A delegate is told, in its prompt, that
    anything mattering to the parent must also be in its report.
 9. **Messaging alone is not a delegate.** A definition declaring only peer tools
-   is refused at `Task` time with a tool error: it could talk but not work.
+   is refused at `task` time with a tool error: it could talk but not work.
 10. Every dimension is bounded, because a mailbox is shared mutable state
     between agents that are each trying to fill their own context:
     2,000 characters per message, 32 messages per inbox (oldest dropped first,
@@ -122,7 +122,7 @@ so they already appear in the transcript attributed by `parentToolCallId` and
 - Two write-capable delegates can claim files before editing them, turning the
   path lock from the only coordination primitive into the backstop it should be.
 - A delegate that disproves a shared assumption can say so while its peers can
-  still act on it, instead of after `TaskWait` when their turns are spent.
+  still act on it, instead of after `task_wait` when their turns are spent.
 - The parent's context cost is unchanged. Coordination that used to be
   impossible does not become parent context; it stays between the delegates.
 - Peer messages are visible in the transcript as ordinary delegate tool calls,
@@ -131,7 +131,7 @@ so they already appear in the transcript attributed by `parentToolCallId` and
 - Four invariants callers must keep:
   - **A peer tool must never be added to `toolCatalog`.** That would give the
     parent `PeerSend` and, with it, a way to inject messages that bypasses
-    `Task`'s brief and the report boundary.
+    `task`'s brief and the report boundary.
   - **`from` must stay runtime-supplied.** The moment a sender name becomes a
     tool parameter, attribution in the transcript becomes a model claim.
   - **A settled delegate must leave the mailbox.** A stale participant makes
@@ -150,11 +150,11 @@ so they already appear in the transcript attributed by `parentToolCallId` and
 ## Alternatives considered
 
 - **Route peer messages through the parent:** rejected. The parent is blocked in
-  `TaskWait` while delegates run, so it cannot relay in time, and every note
+  `task_wait` while delegates run, so it cannot relay in time, and every note
   would land in the context delegation exists to protect. It also makes the
   parent's model responsible for correctly forwarding messages it has no
   interest in.
-- **Give delegates `TaskList`/`TaskWait` over their siblings:** rejected. Those
+- **Give delegates `task_list`/`task_wait` over their siblings:** rejected. Those
   are lifecycle tools over the delegation registry. A delegate waiting on a
   sibling's *completion* rather than a message reintroduces deadlock (two
   delegates each waiting for the other) and hands a worker control over work it

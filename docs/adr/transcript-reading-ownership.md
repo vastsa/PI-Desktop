@@ -28,9 +28,9 @@ canonical input when history is partial or display-limited, then rechecks the
 session, run, navigation, and message-snapshot ownership before publishing it.
 
 The additive `SessionDetail.navigationParent` field carries a nested target's
-latest owning Task as capped display context. It does not widen the physical
+latest owning task as capped display context. It does not widen the physical
 page or change its cursors. Existing uncapped and ordinary reads omit it. The
-renderer reveals the Task and locates the answer in the existing details dock;
+renderer reveals the task and locates the answer in the existing details dock;
 missing parent context is an explicit navigation failure.
 
 Parser-owned source offsets map hidden Markdown syntax and destinations to

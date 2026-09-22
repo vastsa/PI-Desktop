@@ -8,6 +8,8 @@
 > 权限UX：[03-permission-ux.md](/zh-CN/spec/04-ux/03-permission-ux)
 > 命令面板：[04-builtin-commands.md](/zh-CN/spec/04-ux/04-builtin-commands)
 
+> 展示给用户的工具标签（`read`、`bash`、`task`）保留首字母大写：它们是由规范小写名映射得到的展示名，不是工具的身份。见 [23-tool-names.md](/zh-CN/spec/03-runtime/23-tool-names) §0。
+
 ## 1. 键盘快捷键基线
 
 ### 1. 1 全局快捷键
@@ -417,11 +419,11 @@
   仅 MainChat，从不面板宽度（D163，ADR 0032）。
 - 任何工具结果都不会创建或激活工作面板标签页。Review 只由用户的
   主动操作打开——`+` 启动器的 Review 行，或视口固定开关与
-  `Cmd/Ctrl + J` 显示的会话保留上下文——因此成功的工作区 Write/Edit
+  `Cmd/Ctrl + J` 显示的会话保留上下文——因此成功的工作区 write/edit
   永远不会抢走用户正在阅读的面板。失败和临时写入同样如此。后台会话
   事件仅更新其保留的上下文，并且从不打开、激活、调整大小、聚焦，
   或更改可见面板。
-- 每个成功的工作区 Write/Edit 工具结果都会进行一次持久审查
+- 每个成功的工作区 write/edit 工具结果都会进行一次持久审查
   快照。其紧凑的 InlineReviewCard 在同一个 Activity 中呈现
   披露，紧随其工具行之后；它永远不会移动到
   转录底部并且从未与其他会话共享。它的状态徽章
@@ -494,8 +496,8 @@
 - 成绩单核对将完整的历史记录保留在记忆的历史边界中；
   令牌更新不会协调 React 中的每个历史行，同时保留
   选择、复制、小地图锚点和可访问性的完整历史记录。
-- 在当前助手回合内，不含 Task 委派且内容未变化的活动组，也应在文本更新时
-  保持其记忆化渲染边界。工具消息发生变化时仍须渲染；Task 组仍须接收同一
+- 在当前助手回合内，不含 task 委派且内容未变化的活动组，也应在文本更新时
+  保持其记忆化渲染边界。工具消息发生变化时仍须渲染；task 组仍须接收同一
   回合后续生命周期消息带来的状态和完成耗时更新。
 - 未完成的 `mermaid` 栅栏仍然是源代码块。其关闭后
   栅栏到达，回答散文加载并仅在它出现时渲染图表
@@ -693,9 +695,9 @@
 
 ### 4. 3 工具结果截断
 
-- 根据 D306 / D194：预算按工具类别计算（见 [16-tool-result-limits](/zh-CN/spec/03-runtime/16-tool-result-limits)）。搜索/读取结果上限为 128KB / 4000 行；Bash stdout/stderr 上限为 96KB / 4000 行并带溢出文件。
-- Read/Glob/Grep 仅在本次结果被切断时报告 `truncated: true`（预算、被剪行，或 Grep/Glob 还有剩余命中）。填满的 Read 窗口即使文件更长也不算截断；`notice` 写出下一个偏移。
-- Bash 标记标明哪一端幸存以及溢出路径，例如 `[truncated: kept the first 4000 of 51234 lines; limit 4000 lines / 96KB. …]`。
+- 根据 D306 / D194：预算按工具类别计算（见 [16-tool-result-limits](/zh-CN/spec/03-runtime/16-tool-result-limits)）。搜索/读取结果上限为 128KB / 4000 行；bash stdout/stderr 上限为 96KB / 4000 行并带溢出文件。
+- read/glob/grep 仅在本次结果被切断时报告 `truncated: true`（预算、被剪行，或 grep/glob 还有剩余命中）。填满的 read 窗口即使文件更长也不算截断；`notice` 写出下一个偏移。
+- bash 标记标明哪一端幸存以及溢出路径，例如 `[truncated: kept the first 4000 of 51234 lines; limit 4000 lines / 96KB. …]`。
 - 截断的内容永远不会被默默地省略——总是被标记
 - 披露扩展不会加载超出主机强制上限的内容
 - 折叠行的 `truncated` 芯片跟随 `details.truncated`
@@ -705,7 +707,7 @@
 ### 5. 1 流程顺序
 
 ```text
-Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accept edits)
+Agent calls a permission-gated tool (including Plan/Goal bash under Ask or Accept edits)
   → PermissionCard inserted inline in transcript
   → Composer disabled (cannot send new prompt)
   → Countdown starts (120s)
@@ -734,13 +736,13 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
 ## 5A。 Plan 和 Goal 工作流程
 
 1. 用户在会话空闲时选择 Plan 或 Goal，或相同的 Agent
-   调用 `EnterPlanMode` / `EnterGoalMode`；主机 persists/validates
+   调用 `enter_plan_mode` / `enter_goal_mode`；主机 persists/validates
    匹配合约模式和渲染器项目 `planning`。
-2. Agent 使用选定的合约工具集进行调查。 Read/Glob/Grep 和
-   允许使用 BrowserPreview； Bash 遵循可见权限模式。一个
-   Contract-mode Bash 命令可能会在 Auto 下发生变化，因此模式芯片仍然可见。
+2. Agent 使用选定的合约工具集进行调查。 read/glob/grep 和
+   允许使用 browser_preview； bash 遵循可见权限模式。一个
+   Contract-mode bash 命令可能会在 Auto 下发生变化，因此模式芯片仍然可见。
    该回合处于实时 `planning` 时，Composer 模式芯片脉冲，紧凑的规划行占用与 Working 相同的预留底部位置，直到回合结束或等待用户操作。具体运行时阶段优先，工具和回答不会隐藏运行提示。
-3. Agent 在其工具批次中单独调用 `SubmitPlan` 或 `SubmitGoal`。
+3. Agent 在其工具批次中单独调用 `submit_plan` 或 `submit_goal`。
    Host-core 将准确的 Markdown 字节保留在新的不可变中
    `.pi/plan/*.md` 或 `.pi/goal/*.md` 工件，记录其 path/hash/size 并结构化
    title/question，渲染器显示共享合同审批卡
@@ -754,7 +756,7 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    Agent 工具。
 5.拒绝停止挂起的运行并将持久会话保留在其合同中
    模式。实时状态恢复为可编辑规划；修订是新的
-   `SubmitPlan`/`SubmitGoal` 使用新的完整 Markdown 快照和新工件进行调用。早期快照
+   `submit_plan`/`submit_goal` 使用新的完整 Markdown 快照和新工件进行调用。早期快照
    保持不变；没有请求更改操作。
 6. 过期、中止、持久性失败、renderer/host/sidecar 崩溃或过时
    响应呈现失败关闭状态。主机重启中断挂起，
@@ -1153,7 +1155,7 @@ Mode/provider/model/permission/shell 配置和新提示仍然存在
 2. 开启回车发送时 Enter 发送；关闭后 Cmd/Ctrl+Enter 发送，Enter/Shift+Enter 在输入框中插入换行符
 3. Abort 立即取消正在运行的回合和挂起的权限，无需确认对话框
 4.长内容（>50行消息，>10行参数，>20行结果）默认通过展开链接折叠
-5. 被切断的工具结果按 D306 显示截断标记或芯片；更长文件上已填满的 Read 窗口不显示
+5. 被切断的工具结果按 D306 显示截断标记或芯片；更长文件上已填满的 read 窗口不显示
 6.权限中断插入内联卡，禁用composer，显示倒计时，解决后重新启用
 7. 用于短暂后台操作的Toast；用于特定于上下文的失败的内联错误
 8. 会话切换、消息发送、权限解析、中止后焦点返回到composer

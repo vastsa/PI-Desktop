@@ -629,7 +629,7 @@ export default function (pi) {
     },
   }));
   pi.on("tool_call", (event) =>
-    event.toolName === "Bash" ? { block: true, reason: "这里不允许" } : undefined,
+    event.toolName === "bash" ? { block: true, reason: "这里不允许" } : undefined,
   );
   pi.registerCommand("greet", {
     description: "打个招呼",
@@ -650,7 +650,7 @@ export default function (pi) {
   `@earendil-works/pi-agent-core`、`@earendil-works/pi-ai` 和
   `@earendil-works/pi-coding-agent` 解析到应用自带的副本；`@earendil-works/pi-tui`
   解析到空实现桩，终端 UI 调用不做任何事，只在诊断里出现。
-- **工具是延迟激活的。** 与插件工具一样，模型按需通过 `ToolSearch` 激活。与核心工具
+- **工具是延迟激活的。** 与插件工具一样，模型按需通过 `tool_search` 激活。与核心工具
   或插件工具同名的注册会被拒绝并记诊断。
 - **斜杠命令**出现在 composer 的 `/` 菜单和全局搜索里，行的其余部分作为 `args`。
   `ctx.ui.input` / `select` / `confirm` 打开原生对话框；`ui.notify` 是 toast。
@@ -770,8 +770,8 @@ pnpm pi-plugin pack ../my-first-plugin
 6. 禁用并重新启用它以验证清理和启动行为。
 7.卸载并确认其贡献消失。
 
-Agent 还可以在每种操作模式下运行 `PluginCheck`。 `PluginScaffold`
-和 `PluginPack` 是代理模式工具，仅限于当前
+Agent 还可以在每种操作模式下运行 `check_plugin`。 `scaffold_plugin`
+和 `pack_plugin` 是代理模式工具，仅限于当前
 工作区。
 
 ### 用 `pi-plugin publish` 准备插件中心提交

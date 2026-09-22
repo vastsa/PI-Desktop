@@ -14,9 +14,9 @@ It does **not** replace pi. It provides safe host capabilities to:
 
 1. Workspace path canonicalization, boundary checks, and permission-gated
    explicit outside paths
-2. Builtin tool execution (Read/Glob/Grep/Write/Edit/Bash)
+2. Builtin tool execution (read/glob/grep/write/edit/bash)
 3. Authoritative durable session-mode and tool-policy evaluation
-4. Permission policy evaluation, including Plan/Goal Bash prompts
+4. Permission policy evaluation, including Plan/Goal bash prompts
 5. Immutable `.pi/plan/*.md` and `.pi/goal/*.md` artifact writer,
    `plan_approvals` broker, and
    startup interruption fence
@@ -72,7 +72,7 @@ on EOF or an unrecoverable pipe error. Failure to create either control thread
 is a startup error rather than an unhandled panic.
 
 The best-effort login-shell PATH probe follows the same rule: a failed probe
-thread creation returns `None`, so Bash falls back to the host environment.
+thread creation returns `None`, so bash falls back to the host environment.
 
 ## 5b. RPC surface (logical)
 
@@ -112,8 +112,8 @@ notification.list
    explicit outside path is resolved only after host permission evaluation
 2. Host resolves the durable session mode; request-supplied mode is never
    authoritative
-3. Plan and Goal deny Write/Edit/plugin/unknown tools before permission evaluation
-4. Plan and Goal Bash follow the durable permission mode and may mutate under Auto
+3. Plan and Goal deny write/edit/plugin/unknown tools before permission evaluation
+4. Plan and Goal bash follow the durable permission mode and may mutate under Auto
 5. Plan and Goal artifact bytes, path, hash, size, and approval/execution identity are
    host-authenticated
 6. Plan/Goal approval is host-authenticated, durable, and atomic before Agent entry
@@ -143,10 +143,10 @@ notification.list
 5. unseen completed/failed turns create exactly one durable notification
    through the `session.endTurn` transaction; results already visible in the
    focused current chat and aborted turns create none
-6. a durable Plan or Goal session cannot authorize Write/Edit/plugin tools through
-   a conflicting request mode, and Plan/Goal Bash follows the resolved permission
+6. a durable Plan or Goal session cannot authorize write/edit/plugin tools through
+   a conflicting request mode, and Plan/Goal bash follows the resolved permission
    mode
-7. SubmitPlan writes exact Markdown bytes to a new `.pi/plan/*.md` artifact and
+7. submit_plan writes exact Markdown bytes to a new `.pi/plan/*.md` artifact and
    stores durable path/hash/size plus structured title/question in
    `plan_approvals`; approval is approve/reject-only, session/turn/version
    scoped, and expires at 30 absolute minutes with
@@ -158,5 +158,5 @@ notification.list
    host-enforced
 10. Session collaboration delivery, provenance, idempotency, callback
     settlement, cancellation, permission ceilings, hop limits, and schema v16
-    recovery are durable and test-covered without changing the core `Task`
+    recovery are durable and test-covered without changing the core `task`
     family

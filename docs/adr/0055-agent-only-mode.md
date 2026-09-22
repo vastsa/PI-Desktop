@@ -14,8 +14,8 @@
 ## Context
 
 Since D003/D004 a session carried one of two tool profiles. `agent` got the
-full coding surface (`Read`/`Bash`/`Edit`/`Write`/`Glob`/`Grep`/`BrowserPreview`
-plus plugin tools); `chat` got a read-only subset (`Read`/`Glob`/`Grep`) that
+full coding surface (`read`/`bash`/`edit`/`write`/`glob`/`grep`/`browser_preview`
+plus plugin tools); `chat` got a read-only subset (`read`/`glob`/`grep`) that
 host-core hard-denies past every permission mode (D115).
 
 The product is an agent desktop. `chat` was never a destination: it existed as
@@ -51,9 +51,9 @@ anything that is not explicitly `agent`.
    store the normalized value, never the raw input.
 3. **The permission gate is negative.** `PermissionManager` denies when
    `mode != "agent"` and the tool is outside `read_only_mode_allows`
-   (`Read`/`Glob`/`Grep` plus `plugin_*`). An unknown or legacy `mode` string
+   (`read`/`glob`/`grep` plus `plugin_*`). An unknown or legacy `mode` string
    therefore fails closed into the read-only surface instead of silently
-   gaining Write/Edit/Bash. The hard deny continues to outrank every D115
+   gaining write/edit/bash. The hard deny continues to outrank every D115
    permission mode, including `auto`.
 4. **The error codes are renamed** to `BASH_DISABLED_IN_READ_ONLY` and
    `WRITE_DISABLED_IN_READ_ONLY`. Neither had a localized message, so the

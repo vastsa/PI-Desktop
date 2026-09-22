@@ -51,19 +51,19 @@
 > elsewhere.
 > `0.4.13` replaces the Chat operating profile with the Plan operating state
 > through D188 / ADR 0052. Plan is the same pi Agent in planning state, keeps
-> permission-mode selection, exposes Bash subject to that policy, denies
-> Write/Edit/plugin tools, and submits structured plans through a separate
+> permission-mode selection, exposes bash subject to that policy, denies
+> write/edit/plugin tools, and submits structured plans through a separate
 > host-owned approval transition. The host protocol is v7 and storage schema
 > v8; persisted Chat values migrate to Plan while Agent remains the default.
 > `0.4.14` replaces that proposal with immutable host-written Markdown
 > checkpoints under `<workspaceRoot>/.pi/plan/*.md` through D189 / ADR 0053.
-> SubmitPlan accepts title, Markdown, and question; the Markdown bytes are
+> submit_plan accepts title, Markdown, and question; the Markdown bytes are
 > preserved exactly while title/question remain structured approval fields.
 > Approval is approve/reject only with explicit permission selection defaulting
 > to Ask, and opens the artifact for review. Pending, queued, and running work
 > is interrupted by the startup process fence without replay, while an
 > already-approved session remains Agent. ADR 0054 adds the selectable shell
-> catalog while retaining the Bash protocol name. The host protocol is v9 and
+> catalog while retaining the bash protocol name. The host protocol is v9 and
 > storage schema is v10.
 > `0.4.15` amends the D169 Extensions presentation through D196 / ADR 0058:
 > the four-card numeric overview band is removed, and shared button surfaces
@@ -127,7 +127,7 @@
 15. Product operating selector: **Agent | Plan**; the internal `page = "chat"`
     value remains a conversation-surface implementation detail, not an
     operating mode
-16. Agent tools: **Read / Glob / Grep / Write / Edit / Bash**
+16. Agent tools: **read / glob / grep / write / edit / bash**
 17. Permission timeout: **120s → deny**
 18. Session grant scope: **by toolName**
 19. `~/.pi` one-shot auto-import: **not in MVP**. ADR 0254 adds read-only
@@ -146,7 +146,7 @@
     Linux x64 AppImage, deb, and rpm artifacts
 28. TS schema library: **typebox**
 29. i18n library: **i18next**
-30. Bash: **non-interactive, streamed, and resolved from the selectable shell
+30. bash: **non-interactive, streamed, and resolved from the selectable shell
     catalog; default timeout 60s with a bounded override**
 31. Onboarding: **inline checklist**
 32. Observability MVP: **local logs only**
@@ -175,11 +175,11 @@
      checkpoints, and one overflow retry. The model can request a new window through
      `new_context`; every compaction adds a transcript row and one warning.
      No user-facing settings**
-44. Plan tools and policy: **Read / Glob / Grep / BrowserPreview / Bash plus
-    `EnterPlanMode` and `SubmitPlan`; Write/Edit/plugin and
-    unknown tools are denied. Bash follows `ask`, `accept-edits`, or `auto`, so
+44. Plan tools and policy: **read / glob / grep / browser_preview / bash plus
+    `enter_plan_mode` and `submit_plan`; write/edit/plugin and
+    unknown tools are denied. bash follows `ask`, `accept-edits`, or `auto`, so
     Plan is planning intent, not a strict read-only security profile.**
-45. Plan checkpoint: **`SubmitPlan(title, markdown, question)` causes host-core
+45. Plan checkpoint: **`submit_plan(title, markdown, question)` causes host-core
     to preserve the exact Markdown bytes in a new unique
     `<workspaceRoot>/.pi/plan/*.md` artifact, while title/question remain
     structured fields in the existing `plan_approvals` row. The row records the
@@ -215,7 +215,7 @@ details:
 2. schema v10 migration, immutable plan artifacts, and the `plan_approvals`
    execution fields/startup fence
 3. Rust-authoritative Plan policy, shell identity, and process cancellation
-4. one-Agent SubmitPlan/approval/execution state transitions
+4. one-Agent submit_plan/approval/execution state transitions
 5. renderer artifact approval, shell selection, and EN/zh-CN UX
 6. focused migration, policy, streaming, timeout, recovery, and rendered
    EN/zh-CN verification

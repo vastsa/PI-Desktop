@@ -22,19 +22,19 @@ for native deferred-tool search when the provider supports it.
 PI-Desktop keeps a complete sidecar-local tool registry but sends an active
 subset to the provider:
 
-- Agent starts with `Read`, `Bash`, `Edit`, and `Write`, matching pi's
+- Agent starts with `read`, `bash`, `edit`, and `write`, matching pi's
   coding-agent core.
-- Chat starts with `Read`, `Glob`, and `Grep`.
-- A local `ToolSearch` tool remains active when deferred capabilities exist.
+- Chat starts with `read`, `glob`, and `grep`.
+- A local `tool_search` tool remains active when deferred capabilities exist.
   *(ADR 0061 removed the `CompactContext` tool that this list also kept
   always-active; ADR 0064 restores it as `new_context`, again always-active in
   every mode.)*
-- Agent-mode `Glob` and `Grep`, `BrowserPreview`, plugin tools, `Skill`, and
+- Agent-mode `glob` and `grep`, `browser_preview`, plugin tools, `skill`, and
   plugin-development helpers are deferred until requested.
 
 The base prompt contains a bounded `# On-demand tools` catalog with names and
 compact one-line descriptions, never the deferred JSON parameter schemas. The
-model calls `ToolSearch` with an exact name or a short capability query. The
+model calls `tool_search` with an exact name or a short capability query. The
 sidecar ranks matches, activates at most four, returns their names in
 `addedToolNames`, and rebuilds the context before the next provider request.
 Providers with native deferred-tool search can serialize the newly activated
@@ -43,25 +43,25 @@ through the ordinary tool list.
 
 The in-memory deferred set is cleared at the start of every new user prompt and
 then rebuilt from successful activation evidence in the effective session
-context. A successful `ToolSearch` result contributes its `addedToolNames`, and
+context. A successful `tool_search` result contributes its `addedToolNames`, and
 a successful result from a deferred tool contributes that tool's name. Only
 names still present in the current mode's deferred catalog are restored; failed,
 interrupted, and missing-result rows are ignored, as is assistant/user prose.
-ToolSearch does not call host-core and does not bypass permissions, workspace
+tool_search does not call host-core and does not bypass permissions, workspace
 containment, timeouts, or audit behavior. The activation marker is retained
 inside the persisted tool result so transcript reconstruction preserves provider
 message semantics. A restarted runtime can reuse an eligible deferred
 capability while its successful marker remains in effective context; a fresh
-ToolSearch call is required when no such marker is present.
+tool_search call is required when no such marker is present.
 
 ## Consequences
 
 - Simple first turns no longer pay for every optional tool schema.
-- Core coding workflows keep pi's Read/Bash/Edit/Write set without an extra
-  discovery call; file enumeration and search remain one ToolSearch away.
-- A task that needs an ancillary capability incurs one explicit ToolSearch turn
+- Core coding workflows keep pi's read/bash/edit/write set without an extra
+  discovery call; file enumeration and search remain one tool_search away.
+- A task that needs an ancillary capability incurs one explicit tool_search turn
   before that capability is available.
-- ToolSearch is a normal model tool activity row, so the discovery step is
+- tool_search is a normal model tool activity row, so the discovery step is
   visible and durable rather than an opaque side effect.
 - Provider compatibility remains centralized in pi-ai: native deferred search
   is an optimization, while the active-context fallback works for every

@@ -37,7 +37,7 @@
 - Produces `pluginSettingsUrl(pluginId, destinationId): string` used by renderer after host validation.
 - Produces IPC `pluginSettingsBridgeInvoke({ pluginId, destinationId, requestId, channel, payload })` that verifies active contribution and delegates to `PluginRuntime.invokePanelBridge`.
 
-- [ ] **Step 1: Write a failing contract test**
+- [ ] **Step 1: write a failing contract test**
 
 ```js
 test("Settings destinations use a host-owned sandbox resource protocol instead of a native view", () => {
@@ -233,7 +233,7 @@ Run: `node --test apps/desktop/test/plugin-settings-renderer-surface.test.mjs`
 
 Expected: FAIL because the ADR/spec scenarios do not yet exist.
 
-- [ ] **Step 3: Write the ADR and update specifications**
+- [ ] **Step 3: write the ADR and update specifications**
 
 Record that a Settings extension is renderer-composited while panels/work views remain native, enumerate the protocol’s asset and CSP policy, preserve the fixed bridge and permission boundary, and add manual E2E scenarios for scenic backdrops, core navigation, native title controls, reduced transparency, and plugin disable/uninstall.
 

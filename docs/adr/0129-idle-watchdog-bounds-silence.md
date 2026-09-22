@@ -22,7 +22,7 @@ reference to what it measures. Because the timer is re-armed by streaming and
 paused across tool execution, the only interval it actually bounds is the wait
 between a delegate's last streamed token and its next response. In this project
 that wait measures 5.6s at p50, 13.4s at p90, 55s at p99, and 174s at p99.9 —
-an order of magnitude below 600s. Meanwhile 600s equals the `TaskWait` default,
+an order of magnitude below 600s. Meanwhile 600s equals the `task_wait` default,
 so a hung delegate could not settle inside a single wait, and the parent read an
 ordinary unfinished wait as if the delegation had failed.
 
@@ -39,10 +39,10 @@ looped without converging ran to the 6-hour duration ceiling.
 2. The default idle timeout is 300 seconds, sized from the measured 174-second
    p99.9 pre-token wait plus margin for the delegate's own provider retry
    backoff, which is silent by design. It must stay below the 600-second
-   `TaskWait` default so a genuinely stuck delegate settles as `timed_out`
+   `task_wait` default so a genuinely stuck delegate settles as `timed_out`
    inside one wait. The 21,600-second duration ceiling and the 10–21,600
    override bounds are unchanged.
-3. `TaskWait` expiry reports "Still running after Ns" and states that this is
+3. `task_wait` expiry reports "Still running after Ns" and states that this is
    not a failure and the unfinished delegates keep working.
 4. The built-ins carry a turn backstop sized to their job: `explorer` 60,
    `code-reviewer` 50, `test-runner` 40, `fixer` 80. A non-converging delegate
@@ -59,7 +59,7 @@ looped without converging ran to the 6-hour duration ceiling.
   to wait, but it makes the watchdog blind to a provider that fails and backs
   off forever. Sizing the window above the retry envelope keeps one source of
   truth for liveness. Revisit if retry budgets grow.
-- **Raise the idle default to 900s and lengthen `TaskWait`:** rejected because
+- **Raise the idle default to 900s and lengthen `task_wait`:** rejected because
   it inverts the relationship that matters — the idle window must be shorter
   than a wait, or a hang cannot surface inside one.
 - **Leave the built-ins unlimited:** rejected because the duration ceiling is a
@@ -73,6 +73,6 @@ looped without converging ran to the 6-hour duration ceiling.
 - Two previously-survivable classes now expire at 300s instead of 600s: extreme
   provider latency outliers and a long chain of rate-limit backoff. Both return
   `timed_out` with the latest partial report rather than being lost.
-- A hung delegate surfaces within a single `TaskWait` instead of holding the
+- A hung delegate surfaces within a single `task_wait` instead of holding the
   parent for a full window and beyond.
 - Adding an `AgentEvent` variant no longer requires touching the watchdog.

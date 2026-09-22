@@ -127,7 +127,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     default and lets Chromium follow the OS proxy; Direct disables the proxy;
     Custom applies one HTTP, HTTPS, or SOCKS5 URL to app-owned outbound
     traffic (model calls, marketplace, updates, model catalog, plugin
-    `net.fetch`, and the in-app browser). Workspace Bash and the system
+    `net.fetch`, and the in-app browser). Workspace bash and the system
     browser used for OAuth are not rewritten.
   - Custom shows a Proxy URL field (`socks5://127.0.0.1:1080` /
     `http://127.0.0.1:7890`, including `user:pass@` userinfo), a Bypass
@@ -190,7 +190,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   browser when set to Default OS browser. Plugin/settings clicks that want
   the work panel return to chat first so the dock is visible, without
   recording a navigation hop; a missing session falls back to the OS
-  browser. Workspace HTML preview, BrowserPreview, OAuth, and Feedback
+  browser. Workspace HTML preview, browser_preview, OAuth, and Feedback
   keep their existing destinations. Context
   usage display controls whether the composer toolbar context ring and its
   popover lead with the remaining or the used capacity figure; the default
@@ -226,14 +226,14 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   and explicit disclosure choices are retained for the mounted session pane.
   Settings search indexes the row and both mode names.
 - The **Command shell** row in Defaults uses the host-discovered catalog of native
-  PowerShell 5.1, PowerShell 7, cmd, Git Bash, and Bash with IDs
+  PowerShell 5.1, PowerShell 7, cmd, Git Bash, and bash with IDs
   `windows-powershell`, `windows-pwsh`, `cmd`, `git-bash`, and
   `bash` where supported. The selected `defaultCommandShell` persists across
   restart; writes reject unavailable or wrong-platform IDs. If a persisted
   choice later becomes unavailable, the first available platform shell is used
   and the fallback state is shown. When the selected shell is available, the
   selector is the only configured-state indicator; status text is reserved for
-  the default, fallback, and no-effective-shell cases. A Bash turn verifies its
+  the default, fallback, and no-effective-shell cases. A bash turn verifies its
   pinned ID/dialect before execution. The row renders the same menu select as
   the Permissions card and the Appearance pickers.
 - Context management has **no card and no controls** (D200 / ADR 0061, kept by
@@ -430,9 +430,9 @@ a usage tab.
     Vendor accounts card
 
 The permission-mode selector remains available in the composer while the
-session is in Agent, Plan, or Goal. In Plan and Goal it controls Bash
+session is in Agent, Plan, or Goal. In Plan and Goal it controls bash
 confirmation only: Ask and Accept edits prompt, while Auto may run a mutating
-Bash command without confirmation. The AI Defaults card must describe that both
+bash command without confirmation. The AI Defaults card must describe that both
 contract modes are intent boundaries, not strict read-only security profiles.
 
 ### Agent capability destinations (Skills / MCP / Subagents)
@@ -455,16 +455,16 @@ system while preserving their different data ownership:
   The panel still uses two in-panel groups: **Built-in** (the five shipped
   definitions `explorer`, `code-reviewer`, `test-runner`, `fixer`, and
   `ui-designer`) and **Global** (`~/.agents/subagents`, user-owned). An enabled
-  user document of the same name shadows that builtin in the Task catalog, so
+  user document of the same name shadows that builtin in the task catalog, so
   the Built-in row is omitted while the user row remains. A disabled user
   document of the same name leaves the builtin in the catalog (and on the
-  Built-in list) because Task uses the shipped definition again. Built-in rows
+  Built-in list) because task uses the shipped definition again. Built-in rows
   carry a source badge, **Copy as mine** (opens the create sheet pre-filled from
   that definition, with the matching template chip selected), and the same
   enablement switch a user row has (D202 activation, ADR 0270): turning one off
   writes app-local state rather than a document, the row stays listed and dimmed
   so the switch is still the way back on, and the next catalog load stops
-  offering it to `Task`. Reveal and delete remain absent because a builtin is
+  offering it to `task`. Reveal and delete remain absent because a builtin is
   not a file.
 - The level filter narrows which groups the panel renders; it never hides the
   toolbar or moves the actions. New capabilities are created at the level the

@@ -15,12 +15,12 @@ PI-Desktop continues to run one pi Agent. The selector is `Agent | Plan`, with
 Agent as the default. Plan is the same Agent in planning state, not a second
 planner, model, service, permission mode, or security sandbox.
 
-Plan exposes Read, Glob, Grep, BrowserPreview, Bash, CompactContext,
-EnterPlanMode, and SubmitPlan. Write, Edit, plugin tools, and unknown tools are
-denied by Rust host-core. Bash follows the selected permission mode, so Plan is
+Plan exposes read, glob, grep, browser_preview, bash, CompactContext,
+enter_plan_mode, and submit_plan. write, edit, plugin tools, and unknown tools are
+denied by Rust host-core. bash follows the selected permission mode, so Plan is
 planning intent rather than strict read-only security.
 
-`SubmitPlan(title, markdown, question)` is the only tool in its assistant batch.
+`submit_plan(title, markdown, question)` is the only tool in its assistant batch.
 Host-core writes the submitted Markdown bytes unchanged to one new immutable
 file under `<workspaceRoot>/.pi/plan/*.md`. It records the unique relative
 path, SHA-256, and byte size, plus the structured title and question, in the
@@ -35,7 +35,7 @@ uses one absolute 30-minute deadline and reports expiry as
 host restart with no replay. A pending interruption leaves the session Plan;
 an already-approved queued or running interruption leaves it Agent.
 
-The Bash tool retains its protocol name while using a host shell catalog. The
+The bash tool retains its protocol name while using a host shell catalog. The
 catalog IDs are `windows-powershell`, `windows-pwsh`, `cmd`, `git-bash`, and
 `bash`. The
 effective shell ID and dialect are pinned for each turn, stdout/stderr stream
@@ -66,9 +66,9 @@ choose an executable path, or revive an interrupted approval or execution.
 
 ```text
 Agent / inactive
-  -> user selects Plan or Agent calls EnterPlanMode
+  -> user selects Plan or Agent calls enter_plan_mode
 Plan / planning
-  -> SubmitPlan(title, markdown, question)
+  -> submit_plan(title, markdown, question)
 Plan / awaiting_approval
   -> approve(permission mode) -> Agent / queued -> Agent / running
   -> reject | expiry | abort | persistence failure -> Plan / stopped
@@ -80,7 +80,7 @@ host restart
 Rules:
 
 1. One pi Agent exists for the session before, during, and after planning.
-2. `EnterPlanMode` and `SubmitPlan` are each the only tool call in their
+2. `enter_plan_mode` and `submit_plan` are each the only tool call in their
    assistant batch.
 3. Approval resolution matches proposal, session, turn, tool-call, and version
    identity. There is no serialized process-epoch field.
@@ -104,7 +104,7 @@ sessions retain existing independent turn and workspace-root behavior.
 Scheduled or unattended Plan is rejected before provider work, artifact write,
 approval, or queue insertion with `PLAN_REQUIRES_INTERACTIVE_SESSION`.
 
-## 5. SubmitPlan and artifact contract
+## 5. `submit_plan` and artifact contract
 
 ```ts
 type SubmitPlanInput = {
@@ -219,16 +219,16 @@ default marker. Settings writes reject unknown, unavailable, and
 wrong-platform IDs with `COMMAND_SHELL_INVALID`. If a persisted configured ID
 later becomes unavailable, the effective selection intentionally falls back to
 the first available shell for that platform and marks `fallback: true`. If no
-shell is available, Bash returns `SHELL_NOT_FOUND`.
+shell is available, bash returns `SHELL_NOT_FOUND`.
 
-The runtime pins the effective ID and dialect at turn launch. The Bash request
+The runtime pins the effective ID and dialect at turn launch. The bash request
 includes the expected ID; host-core resolves the current catalog immediately
 before spawn and rejects a stale ID/dialect with `COMMAND_SHELL_CHANGED`. This
 is a catalog identity check, not executable path hashing. A fallback may select
 the effective shell before the turn is pinned, but execution never changes
 shell after the pin.
 
-`Bash` and `tools.execute` remain the protocol/tool names. Host streams
+`bash` and `tools.execute` remain the protocol/tool names. Host streams
 stdout/stderr independently and returns a bounded final result. Missing
 `timeoutMs` means exactly 60,000 ms; an explicit value is accepted only in
 1,000..300,000 ms. Timeout and user abort terminate the complete Unix process
@@ -241,7 +241,7 @@ group or Windows process/job tree before streams close.
 2. **Storage/host boundary**: immutable artifact writer, `plan_approvals`
    fields/indexes, startup interruption transaction, queue transitions,
    scheduled rejection, and error mapping.
-3. **Agent/RPC vertical slice**: SubmitPlan, same-Agent approval, reject/expiry,
+3. **Agent/RPC vertical slice**: submit_plan, same-Agent approval, reject/expiry,
    idle/configuration guards, and no-replay restart recovery.
 4. **Shell execution slice**: catalog/default persistence, platform validation,
    effective fallback, turn pinning, stale-ID rejection, streamed output,
@@ -274,7 +274,7 @@ group or Windows process/job tree before streams close.
 - exact platform catalog IDs and settings validation;
 - persisted unavailable ID falls back to the first available platform shell;
 - turn pins effective ID/dialect and stale identity fails closed;
-- Bash protocol name remains stable;
+- bash protocol name remains stable;
 - separate ordered stdout/stderr events and bounded final result;
 - exact 60-second default and 1-300 second override bounds;
 - timeout and user abort terminate the complete process tree.
@@ -310,4 +310,4 @@ interruption, stale-response rejection, and no replay.
 - arbitrary executable paths outside the host shell catalog;
 - separate PowerShell/cmd/Git Bash protocol tools;
 - executable path hashing as shell identity;
-- interactive PTY behavior for the Agent Bash tool.
+- interactive PTY behavior for the Agent bash tool.

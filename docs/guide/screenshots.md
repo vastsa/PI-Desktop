@@ -5,6 +5,8 @@ description: Every PI-Desktop surface, captured from the running app.
 
 # Screens
 
+> Tool labels shown to the user (`read`, `bash`, `task`) stay capitalized: they are display names derived from the canonical lowercase tool name, never the tool's identity. See [23-tool-names.md](../spec/03-runtime/23-tool-names.md) §0.
+
 Every frame below comes from the capture rig that backs the
 [E2E test plan](/spec/06-delivery/04-e2e-test-plan): the app runs with
 `PI_DESKTOP_CAPTURE=1` against a throwaway data directory, drives itself through
@@ -46,7 +48,7 @@ composer, `/` opens the command menu and `@` opens the file reference menu.
 
 ## Work panels
 
-An agent Write/Edit never opens the panel. The panel appears when the user opens
+An agent write/edit never opens the panel. The panel appears when the user opens
 it, or when a file, URL, browser-preview, or plan-approval artifact opens its
 tab. The frames below are the panels without an active workspace, which is the
 state a conversation starts in.

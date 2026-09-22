@@ -9,7 +9,7 @@ All marked provider/model pairs are excluded from the default conversation picke
 
 ## Agent contract
 
-`GenerateImages({items: [{prompt, count?, images?}]})` is an Agent-mode tool.
+`generate_images({items: [{prompt, count?, images?}]})` is an Agent-mode tool.
 `count` defaults to 1. Both distinct prompts and same-prompt variants are supported,
 with 1–10 output images total. An optional `images` array supplies 1–4 local source
 files per item for editing; a previous generated path supports iterative edits.
@@ -17,7 +17,7 @@ Prompt length is bounded at 32,000 characters. Unsupported or excessive input is
 rejected rather than truncated. Plan and Goal cannot execute the tool.
 
 The bundled `pi-desktop/imagegen` skill is discoverable in ordinary sessions and
-loads through the existing Skill tool. It teaches prompting, batches, reference
+loads through the existing skill tool. It teaches prompting, batches, reference
 edits, preserving originals, partial-failure handling and project asset delivery.
 It does not grant permission or carry credentials.
 

@@ -47,7 +47,7 @@ A single Settings control should apply one proxy to app-owned traffic.
    `localhost,127.0.0.1,::1,<local>` so loopback MCP and local models stay
    direct.
 
-5. **Not rewritten**: workspace Bash (host-core spawn env strips proxy
+5. **Not rewritten**: workspace bash (host-core spawn env strips proxy
    keys so credentials cannot leak into `env`), and the system browser used
    for OAuth (`shell.openExternal`). Plugin utility processes keep their
    stripped env; `pi.net.fetch` still goes through main.
@@ -78,6 +78,6 @@ A single Settings control should apply one proxy to app-owned traffic.
 ## Alternatives
 
 - Env-only (`HTTP_PROXY`): Node `fetch` ignores it without a dispatcher;
-  SOCKS5 is incomplete; host-core Bash would inherit credentials.
+  SOCKS5 is incomplete; host-core bash would inherit credentials.
 - `app.commandLine.appendSwitch('proxy-server')`: cannot change at runtime.
 - Per-provider proxy: does not cover marketplace, updates, or the browser.

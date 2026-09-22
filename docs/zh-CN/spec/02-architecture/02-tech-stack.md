@@ -78,7 +78,7 @@
 - `Resources/agent-runtime/sidecar.js`是唯一独立的pi sidecar
   捆绑。完整的 `@pi-desktop/agent-runtime` 包树不能是
   复制到 ASAR 作为第二个运行时。
-- 桌面包不再包含交互式 PTY 依赖；Agent Bash 仍是由 agent sidecar
+- 桌面包不再包含交互式 PTY 依赖；Agent bash 仍是由 agent sidecar
   所有的非交互式运行时能力。
 - 依赖源映射、测试、示例和声明是构建输入，
   不释放资产。许可证和通知文件仍然可分发。

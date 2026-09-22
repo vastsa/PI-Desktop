@@ -141,7 +141,7 @@ type AgentPromptResponse = {
 
 提示执行解析 `mode`、`providerId`、`modelId` 和 `thinkingLevel`
 从持久会话记录和快照中获取有效的命令 shell ID 和
-Bash 的方言。
+bash 的方言。
 渲染器通过以下方式更改这些值
 会话空闲时的 `pi-desktop/session/configure`：
 
@@ -306,7 +306,7 @@ type PlanProposalStatus =
 type PlanExecutionState =
   | "queued" | "running" | "completed" | "interrupted";
 
-// Same shape for SubmitPlan and SubmitGoal; the tool name selects the kind.
+// Same shape for submit_plan and submit_goal; the tool name selects the kind.
 type SubmitPlanInput = {
   title: string;
   markdown: string;
@@ -556,7 +556,7 @@ type AgentEventEnvelope = {
  turnId?: string;
  ts: number;
  event: AgentEvent;
- /** Set on events emitted inside a subagent (D201, ADR 0062): the `Task` call
+ /** Set on events emitted inside a subagent (D201, ADR 0062): the `task` call
   * that spawned it, and the definition name. */
  parentToolCallId?: string;
  agentName?: string;
@@ -602,7 +602,7 @@ type AgentEvent =
 权威主机 approval/queue 转换是单独的 `plans.changed`
 通过 `IPC.event.plansChanged` 转发的通知。
 `tools.output` 是 `packages/agent-runtime` 使用的主机通知
-当 Bash 工具运行时；它不是代理事件。
+当 bash 工具运行时；它不是代理事件。
 
 `turn_end` 关闭 model/tool 一轮但不是终端桌面运行事件：
 可能会立即提出另一个提供商的请求。 Renderer 繁忙状态和
@@ -774,7 +774,7 @@ type UiMessage = {
  error?: AppError;  // structured failure owned by this assistant turn
  createdAt: string;
  // Rows produced inside a subagent (D201, ADR 0062); absent on the session's own
- parentToolCallId?: string;   // `Task` call that spawned the delegate
+ parentToolCallId?: string;   // `task` call that spawned the delegate
  agentName?: string;          // delegate definition name
  // status/tool fields omitted here
 };
@@ -878,7 +878,7 @@ Electron拥有本地化并提供面向用户的分支名称；主机
 新的会话 ID，因此无法重用或改变源 pi 运行时或
 它的提供商缓存。
 
-协议版本 9 添加检查点 Plan 合约：`SubmitPlan`，唯一
+协议版本 9 添加检查点 Plan 合约：`submit_plan`，唯一
 `.pi/plan/*.md` 工件元数据、approve/reject-only 响应、绝对
 到期、`plan_approvals` 执行字段、shell catalog/identity 字段以及
 直播 stdout/stderr 事件。 v7 或更旧的主机，以及任何不兼容的 v8
@@ -977,7 +977,7 @@ type CommandShellCatalog = {
 拒绝未知、不可用或错误的平台 ID。真正有效的外壳
 仅当所有会话和 Plan/Goal 工作空闲时才接受更改。如果一个
 持久化 ID 稍后变得不可用，目录选择第一个可用的
-平台外壳并设置 `fallback: true`；如果没有可用的选择，则 Bash
+平台外壳并设置 `fallback: true`；如果没有可用的选择，则 bash
 返回 `SHELL_NOT_FOUND`。
 每回合固定有效 ID 和方言。运行时传输这两个值；
 主机在权限评估之前和生成之前拒绝更改的引脚
@@ -1088,7 +1088,7 @@ type ToolPermissionRequest = {
  risk: "low" | "medium" | "high";
  reason: string;
  /** Definition name when a subagent asked (D201, ADR 0062); absent for the
-  * session's own calls, together with the `Task` call that spawned it. */
+  * session's own calls, together with the `task` call that spawned it. */
  agentName?: string;
  parentToolCallId?: string;
 };
@@ -1104,7 +1104,7 @@ type ToolPermissionResolution = {
 合约未更改，因为它已由 `requestId` 键入
 （`04-ux/03-permission-ux.md` §6a）。
 
-Plan 不会取代此通用许可合同。 Plan `Bash` 调用
+Plan 不会取代此通用许可合同。 Plan `bash` 调用
 使用正常的会话范围权限流：`ask` 和 `accept-edits` 发出
 工具权限请求，而 `auto` 执行时无需确认。 Plan
 批准是一个单独的状态转换，并且始终使用 `plan` 方法
@@ -1127,12 +1127,12 @@ Plan 不会取代此通用许可合同。 Plan `Bash` 调用
 - 协议 v6 添加了持久上下文检查点以及 manual/lifecycle
   渠道。 v5 对等点被拒绝，因为默默地忽略检查点可能会导致
   使下一个提供商请求不安全（ADR 0030）。
-- 协议 v9 取代了早期的 v7 Plan 合约。它添加了 `SubmitPlan`，
+- 协议 v9 取代了早期的 v7 Plan 合约。它添加了 `submit_plan`，
   精确独特的工件元数据，approve/reject-only 分辨率，30 分钟
   绝对到期、`plan_approvals` 执行状态、shell 选择和
   固定 ID/dialect，并流式传输命令输出。 v7/v8 对等点被拒绝
   在 UI 变得交互式之前，因为它无法强制或表示这一点
-  边界（ADR 0053/0054）。 `SubmitGoal` 和可选的 `kind` 鉴别器
+  边界（ADR 0053/0054）。 `submit_goal` 和可选的 `kind` 鉴别器
   在 v9 中运行，不需要版本冲突，因为缺少 `kind` 是
   正是目标前的行为。
 
@@ -1221,7 +1221,7 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 - `skills.setEnabled({ id, enabled, level, projectPath? })`
 
 列表包含由 frontmatter 得出的 `name` 和 `description`，不包含正文。只有描述
-进入提示，模型调用 `Skill` 时才读取正文 (D174)。缺失文件会在下一次扫描时
+进入提示，模型调用 `skill` 时才读取正文 (D174)。缺失文件会在下一次扫描时
 从列表移除，并清理其本地状态。
 
 桌面专用技能市场通道（不是 host RPC）走 Electron IPC：
@@ -1303,7 +1303,7 @@ type McpOAuthLoginEvent = {
 host-core 不携带内置清单。
 
 Electron 的 `subagent/list` IPC 通道向设置 > 智能体 > 子代理暴露同一份全局
-列表。`subagent/catalog` 返回当前 `Task` 目录（已启用的用户文档与五个内置定义
+列表。`subagent/catalog` 返回当前 `task` 目录（已启用的用户文档与五个内置定义
 合并后，再减去被用户关闭的内置项），并额外返回 `builtins`：每个仍然赢得自己句柄的
 内置定义，各自带 `enabled`，供设置页把关闭的默认项渲染成带自己开关的行。运行时
 目录使用同一套来源并应用同样的排除；不会扫描 `.pi/agents` 或任何项目能力目录。
@@ -1336,7 +1336,7 @@ type AgentCapabilityQuery = {
 
 工作面板通道是 Electron 主要的实现。用户驱动的工作区
 操作从 `workspace.get` 解析可见根并失败关闭
-没有一个。代理驱动的 BrowserPreview 路由解析原始
+没有一个。代理驱动的 browser_preview 路由解析原始
 通过 `session.get` 进行对话，因此后台预览永远不会继承
 可见会话的工作区。
 

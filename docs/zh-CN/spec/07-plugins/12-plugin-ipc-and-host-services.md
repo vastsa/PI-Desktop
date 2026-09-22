@@ -223,7 +223,7 @@ toast 加上 `pluginChanged` 到渲染器。
 defs（`fullName`、描述、JSON 架构参数）到 `agent.prompt`，以及
 运行时将它们保存在延迟目录中，而不是序列化每个
 架构到第一个请求中。该模型通过加载匹配的插件工具
-本地 `ToolSearch` 工具；下一轮接收选定的模式并
+本地 `tool_search` 工具；下一轮接收选定的模式并
 然后使用上面相同的主机 permission/dispatch 路径。协议涵盖
 烟雾场景 E2E-024 和运行时加载场景 E2E-008a。
 
@@ -232,7 +232,7 @@ defs（`fullName`、描述、JSON 架构参数）到 `agent.prompt`，以及
 只有步骤 3 内部有所不同，转发到 MCP 客户端而不是插件 JS。
 
 技能使用单独的、更简单的路径。目录（id、名称、描述）是一部分
-在基本系统提示符中，`Skill` 模式本身被推迟到后面
-`ToolSearch`，其主体由 Electron main 的本地 `Skill` 工具获取
+在基本系统提示符中，`skill` 模式本身被推迟到后面
+`tool_search`，其主体由 Electron main 的本地 `skill` 工具获取
 直接服务——sidecar从不保存技能文本和技能文档
 仅当模型需要时才到达模型 (D174/D185)。

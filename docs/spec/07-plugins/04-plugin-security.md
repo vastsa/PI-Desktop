@@ -261,7 +261,7 @@ bounded before they reach the model:
 
 **Skills** (`agent.prompt.inject`) — the system prompt carries only the catalog
 (id, name, one-line description, capped at 240 chars); a body is read on demand
-through the built-in `Skill` tool. A plugin may teach at most 32 skills, each
+through the built-in `skill` tool. A plugin may teach at most 32 skills, each
 document at most 128KB. Without the permission the skills are simply skipped:
 the manifest still validates, nothing reaches the prompt.
 
@@ -368,7 +368,7 @@ manifest did not name:
   guards of §8.1 — 2048 tools, 100 pages, a cursor that repeats or is malformed,
   and 30s for the whole traversal — and a server that breaks one is refused
   rather than contributing a prefix of its catalog, because MCP tools reach the
-  deferred on-demand entries behind `ToolSearch`, not as an always-present list.
+  deferred on-demand entries behind `tool_search`, not as an always-present list.
   Servers are connected lazily and torn down when the plugin unloads or is
   disabled.
 

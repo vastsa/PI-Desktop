@@ -328,7 +328,7 @@ abandoned with a diagnostic and the turn proceeds with the unmodified value.
    name. A name that collides with a core tool, a plugin tool, or a user MCP
    tool is rejected with a diagnostic; the earlier registration wins.
 2. Extension tools are non-core: they follow the same mode gating and
-   ToolSearch deferral as plugin tools. They are available in Agent mode and
+   tool_search deferral as plugin tools. They are available in Agent mode and
    follow the existing per-mode allowlist elsewhere.
 3. Execution happens in the sidecar with the `ExtensionAPI` `execute` signature.
    No host permission prompt is raised; the trust decision was made at

@@ -34,7 +34,7 @@ There is no project-level subagent directory. `.pi/agents`, `.pi/skills`, and
 unchanged.
 
 Skills are Markdown documents. Their `name` and `description` frontmatter are
-scanned into the catalog while the body remains on disk until the `Skill` tool
+scanned into the catalog while the body remains on disk until the `skill` tool
 needs it. MCP servers are one JSON file per id. Subagents are Markdown
 Documents with the frontmatter consumed by the runtime.
 

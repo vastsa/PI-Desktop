@@ -63,7 +63,7 @@ complete transcripts or add a read for every sidebar row.
 ## Compatibility and validation
 
 The storage migration is additive. Existing conversations, plugin settings, and
-the core Task family remain intact. This is a deliberate plugin-mediated
+the core task family remain intact. This is a deliberate plugin-mediated
 exception to ADR 0165's withdrawn cross-session coordination feature; the old
 A2A broker, tools, and protocol are not restored. ADR 0237's parent-only messaging
 restriction and polling-based result inference are superseded.

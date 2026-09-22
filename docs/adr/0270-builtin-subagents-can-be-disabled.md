@@ -24,7 +24,7 @@ that may run commands) had no supported path at all.
 
 1. **Activation for a handle with no document lives in its own app-local file.**
    host-core stores switched-off builtin handles in
-   `<data>/agent-capabilities/subagent-builtins.json`, keyed by `Task` handle at
+   `<data>/agent-capabilities/subagent-builtins.json`, keyed by `task` handle at
    the global level. It is deliberately not `subagents.json`: the user-document
    scan prunes state for ids it can no longer see, a builtin is never scanned, so
    a shared file would drop every builtin exclusion on the next scan.
@@ -35,7 +35,7 @@ that may run commands) had no supported path at all.
    stale entry costs nothing.
 3. **The catalog carries the switch, not the document.** Electron main supplies
    the disabled handles to `loadSubagentDefinitions`, which drops them from
-   `definitions` — what `Task` may offer — and returns every builtin that still
+   `definitions` — what `task` may offer — and returns every builtin that still
    wins its handle in a sibling `builtins` field, switched off ones included, so
    Settings can render that row and its switch. `subagent/catalog` answers with
    both lists.
@@ -50,7 +50,7 @@ that may run commands) had no supported path at all.
   is still no file.
 - A switched-off builtin stays listed and dimmed, which is the only way back on.
 - Session launch and the Settings catalog read the same state, so the page shows
-  what `Task` offers — the property E2E-SUBAGENT-settings-lists-builtin-defaults
+  what `task` offers — the property E2E-SUBAGENT-settings-lists-builtin-defaults
   asserts.
 - A host that is unavailable contributes no exclusions: an unreadable state file
   offers a delegate the user had turned off rather than removing one they kept.

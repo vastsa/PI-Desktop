@@ -4771,3 +4771,20 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
   与 subagent 工具白名单保持原有字节，旧数据无需迁移即可继续可用。本决策记录契约并新增这两个
   模块；注册表、派发、权限、提示词与界面调用点由 D619 至 D621 跟进。见
   `docs/zh-CN/spec/03-runtime/23-tool-names.md`。
+
+## 2026-09-22 —— 代理运行时改说规范工具名（D620，issue #827）
+
+- 代理运行时摆到模型面前的每一个工具名——它公布的工具、它发送的 schema、它在权限卡上用的名字，
+  以及系统提示词与工具描述里的名字——现在都是规范的**小写名**（D618）。提示词还写着 `Read`、注册表
+  却公布 `read`，不是措辞问题：这会让模型去找一个不存在的工具。运行时的提示词正文、各模式提示词、
+  skill 与插件清单、subagent 回退目录都在同一次改动里改名，因此"公布的名字"与"描述的名字"始终一致。
+- 读入边界改为归一化，而不是相信读到的字节，因此重命名之前写入的名字继续可用：会话历史与转录本读取、
+  压缩的文件操作收集、delegation 历史、工具结果分层、系统转录本、会话导入，以及计划 / 目标模式切换的
+  工具集合，都先把已存储或已导入的名字交给 `normalizeToolName()`。存储不被改写——转录本、SQLite
+  审计行、`deny` / `allow` 规则、插件清单与 subagent 工具白名单的字节都不变——未知名（`plugin_*`、
+  `mcp_*`、MCP 自报名、`PowerShell` 这类 shell id）原样返回。
+- 直接收益正是 issue #827 在修复压缩回退时追的那条线索：pi 的 `extractFileOpsFromMessage` 只认自己的
+  小写名，转录本里一个大写的工具调用因此完全不产出条目。运行时改发 `read` 与 `write` 之后，
+  `details.readFiles` / `details.modifiedFiles` 与摘要的 `<read-files>` 段重新带上真实文件，不再恒为空。
+- 展示给用户的标签保留首字母大写（`Read`、`Bash`、`Task`），并由规范名映射得到；展示名永远不是身份。
+  见 `docs/zh-CN/spec/03-runtime/23-tool-names.md` 与 `docs/zh-CN/spec/03-runtime/02-agent-runtime.md`。

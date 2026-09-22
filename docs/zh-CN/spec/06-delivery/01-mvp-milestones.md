@@ -57,7 +57,7 @@ Goal：受控的当地机构。
 
 可交付成果：
 - 项目开放
-- Read/Glob/Grep/Write/Edit/Bash 通过 Rust 主机
+- read/glob/grep/write/edit/bash 通过 Rust 主机
 - 许可卡
 - 工具痕迹
 
@@ -122,8 +122,8 @@ Goal：用主机权威 Plan 替换以前的聊天操作配置文件
 `plan_approvals` artifact/execution 字段
 - Rust 拥有的模式解析、Plan 工具策略、可选择的 shell 目录
   后备和固定身份，
-  流式 Bash 输出、有限超时和进程树取消
-- 单代理 `EnterPlanMode` / `SubmitPlan` 和 `EnterGoalMode` / `SubmitGoal`
+  流式 bash 输出、有限超时和进程树取消
+- 单代理 `enter_plan_mode` / `submit_plan` 和 `enter_goal_mode` / `submit_goal`
   具有 approve/reject-only 解决方案和故障关闭恢复的生命周期
 - Plan 工件批准 IPC/RPC/events，当前生命周期渲染器投影，
   仅待处理的重新加载水合、外壳选择、批准 UX 和 EN/zh-CN 副本
@@ -133,7 +133,7 @@ Goal：用主机权威 Plan 替换以前的聊天操作配置文件
 
 退出标准：
 - 在规划之前、期间和之后仅使用一个 pi Agent
-- Plan 拒绝 Write/Edit/plugin 工具，但在选定的情况下公开 Bash
+- Plan 拒绝 write/edit/plugin 工具，但在选定的情况下公开 bash
   权限模式，包括 Auto 的显式突变权衡
 - 批准与通用工具权限分开，自动选择
   Agent 权限模式，默认 UI 选择为 Ask

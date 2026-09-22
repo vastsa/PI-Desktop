@@ -883,7 +883,7 @@ The Host sends:
       "turnId": "turn_01J...",
       "kind": "tool",
       "summary": "Run the selected shell command",
-      "toolName": "Bash",
+      "toolName": "bash",
       "risk": "medium",
       "expiresAt": "2026-09-09T12:00:00.000Z",
       "revision": 22,
@@ -1127,7 +1127,7 @@ The initial target limits are:
 | Concurrent subscriptions per connection | 8 |
 | Connected clients per Agent Host | 16 |
 | `connection/initialize` deadline | 10 seconds |
-| Read/metadata operation deadline | 15 seconds |
+| `read`/metadata operation deadline | 15 seconds |
 | `turn/start` admission deadline | 5 seconds |
 | Approval lifetime, local default | 120 seconds, then deny |
 | Approval lifetime, remote policy | 30 minutes by default while a remote subscriber is attached; Host-configured, bounded, advertised as `approvalLifetimeMs` |
