@@ -9,13 +9,13 @@
 
 ## 2. 模式矩阵
 
-| 模式 | Read/Glob/Grep | BrowserPreview | Write/Edit | 重击 | 插件 |
+| 模式 | `read`/`glob`/`grep` | `browser_preview` | `write`/`edit` | `bash` | 插件 |
 |---|---|---|---|---|---|
 | Agent | 允许 | 允许 | 许可政策 | 许可政策 | 注册风险政策 |
-| Plan | 允许 | 允许 | 否认 | Read/Glob/Grep/BrowserPreview：确认； `auto`：允许 | 否认 |
-| Goal | 允许 | 允许 | 否认 | Read/Glob/Grep/BrowserPreview：确认； `auto`：允许 | 否认 |
+| Plan | 允许 | 允许 | 否认 | `read`/`glob`/`grep`/`browser_preview`：确认； `auto`：允许 | 否认 |
+| Goal | 允许 | 允许 | 否认 | `read`/`glob`/`grep`/`browser_preview`：确认； `auto`：允许 | 否认 |
 
-Read/Glob/Grep `allow` 单元格应用于会话工作空间内的路径
+read/glob/grep `allow` 单元格应用于会话工作空间内的路径
 并抓根。两个根之外的显式路径是一个例外：
 `auto` 允许这样做，而 `ask` 和 `accept-edits` 显示与以下相同的内联卡
 其他权限控制工具。该卡的参数预览包括
@@ -24,8 +24,8 @@ Read/Glob/Grep `allow` 单元格应用于会话工作空间内的路径
 决策来源：**D003/D189/D190/D195 (ADR 0057)**。
 
 Plan 和 Goal 使该权限模式控件保持可见。他们是契约者
-意图，而不是严格的只读安全配置文件：Bash 命令可能会发生变化
-当用户选择“自动”时，工作区或暂存状态。 Write/Edit/plugin 工具
+意图，而不是严格的只读安全配置文件：bash 命令可能会发生变化
+当用户选择“自动”时，工作区或暂存状态。 write/edit/plugin 工具
 在权限卡之前被主机拒绝，无论是授予还是自动。
 
 ## 3. 决策类型
@@ -142,7 +142,7 @@ open/close 循环介入对话。
 ## 9. Plan 和 Goal 合同审批卡
 
 Plan 和 Goal 批准不是通用工具许可卡。它们被渲染
-在 `SubmitPlan(...)` 或 `SubmitGoal(...)` 之后的原始会话中内联
+在 `submit_plan(...)` 或 `submit_goal(...)` 之后的原始会话中内联
 导致 host-core 在新的不可变中保留确切的 Markdown 字节
 `.pi/plan/*.md` 或 `.pi/goal/*.md` 工件。卡片位于透明的
 Composer 停靠栏上，因此使用 `--ds-bg-composer` 加 `--ds-shadow-composer`，
@@ -176,8 +176,8 @@ approved/completed，或中断的终端卡。这样的卡可能会保留
 
 ## 10. 验收
 
-1. Plan 和 Goal 在每种权限模式下均拒绝 Write/Edit/plugins
-2.“Ask”和“Accept”编辑下的 Plan 和 Goal Bash 提示，无需确认即可运行
+1. Plan 和 Goal 在每种权限模式下均拒绝 write/edit/plugins
+2.“Ask”和“Accept”编辑下的 Plan 和 Goal bash 提示，无需确认即可运行
    在自动下，突变权衡可见
 3、Agent模式使用普通高危权限策略
 4. UI + 工具结果中的超时变为拒绝

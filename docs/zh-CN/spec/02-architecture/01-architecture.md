@@ -121,14 +121,14 @@ MVP 对远程 Gateway 的排除。首个实现把该模块放在 Electron Main �
   5.2 Rust resolves the durable session mode and evaluates the authoritative
       Plan/Goal/Agent tool policy before permission modes
   5.3 UI confirms if required, including a separate Plan/Goal approval request and
-      the selected shell identity for Bash
+      the selected shell identity for bash
  5.4 Rust resolves the durable session's project and executes the tool in that
      workspace sandbox (never whichever sidebar tab is currently active)
  5.5 result returns to pi runtime
 6. turn ends; session persistence updates
 ```
 
-当同一个 Agent 调用 `SubmitPlan` 时，host-core 会保留确切的 Markdown
+当同一个 Agent 调用 `submit_plan` 时，host-core 会保留确切的 Markdown
 新的不可变 `<workspaceRoot>/.pi/plan/*.md` 工件中的字节，记录其
 `plan_approvals` 中的相对 path/hash/size 和结构化 title/question，以及
 等待 `plans.resolve`。批准卡打开该工件。批准

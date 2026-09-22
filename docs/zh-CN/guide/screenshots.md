@@ -5,6 +5,8 @@ description: PI-Desktop 的每个界面，全部取自运行中的应用。
 
 # 界面截图
 
+> 展示给用户的工具标签（`read`、`bash`、`task`）保留首字母大写：它们是由规范小写名映射得到的展示名，不是工具的身份。见 [23-tool-names.md](/zh-CN/spec/03-runtime/23-tool-names) §0。
+
 下面每一张都来自支撑 [E2E 测试计划](/zh-CN/spec/06-delivery/04-e2e-test-plan)
 的截图装置：应用以 `PI_DESKTOP_CAPTURE=1` 在一个临时数据目录上启动，自行走过每个
 界面并写出 PNG，再由 `scripts/publish-screenshots.py` 转换成本页的图片。因此这些
@@ -40,7 +42,7 @@ Composer 的模型 × 推理芯片切换当前会话使用的模型。在输入�
 
 ## 工作面板
 
-成功的工作区 Write/Edit 永远不会打开工作面板。面板在用户主动打开时出现，或在文件、
+成功的工作区 write/edit 永远不会打开工作面板。面板在用户主动打开时出现，或在文件、
 URL、浏览器预览或计划审批工件打开自己的选项卡时出现。下面几张是尚未打开工作区时的面板
 状态，也就是一次新对话的起点。
 

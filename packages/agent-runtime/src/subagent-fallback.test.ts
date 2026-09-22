@@ -14,7 +14,7 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(
 
 function answer(res: ServerResponse, model: string, tool = false) {
   const delta = tool
-    ? { role: "assistant", tool_calls: [{ index: 0, id: "once", type: "function", function: { name: "Edit", arguments: "{}" } }] }
+    ? { role: "assistant", tool_calls: [{ index: 0, id: "once", type: "function", function: { name: "edit", arguments: "{}" } }] }
     : { role: "assistant", content: "Completed with retained work." };
   const base = { id: "fixture", object: "chat.completion.chunk", created: 1, model };
   res.writeHead(200, { "content-type": "text/event-stream" });
@@ -65,11 +65,11 @@ async function fixture(options: {
   });
   const events: AgentEventEnvelope[] = [];
   const tool: AgentTool = {
-    name: "Edit", label: "Edit", description: "Record a mutation once.", parameters: Type.Object({}),
+    name: "edit", label: "Edit", description: "Record a mutation once.", parameters: Type.Object({}),
     execute: async () => { edits++; return { content: [{ type: "text", text: "Saved exactly once" }], details: {} }; },
   };
   const run = (overrides: Partial<SubagentRunOptions> = {}) => new SubagentRun({
-    definition: { name: "worker", description: "Fixture", tools: ["Edit"], prompt: "Finish.", source: "user" },
+    definition: { name: "worker", description: "Fixture", tools: ["edit"], prompt: "Finish.", source: "user" },
     sessionId: "s", parentToolCallId: "task", task: "Finish the work.", systemPrompt: "Finish the work.",
     provider: provider("primary"), thinkingLevel: "off", tools: [tool],
     fallbackModels: [{ key: "secondary/secondary", provider: provider("secondary") }],

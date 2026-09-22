@@ -66,7 +66,7 @@ differently.
   and executable is declared text, not a runtime decision.
 - Catalog size is a protocol guard, not a prompt budget: a server with 300 tools
   contributes all 300, because MCP tools reach the model as deferred on-demand
-  entries behind `ToolSearch` and only the prompt block that advertises them is
+  entries behind `tool_search` and only the prompt block that advertises them is
   capped. A server that breaks a guard (count, pages, cursor, time) is refused
   and contributes nothing, rather than flooding the prompt with a prefix of its
   catalog.

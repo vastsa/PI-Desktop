@@ -326,12 +326,12 @@ type ThinkingLevel =
 
 `ModelBinding.availableForSubagents`（布尔值，默认 false）：这是一个选择加入
 的标志，让该模型可用于 AI 驱动的子代理委托。启用后，该模型会出现在注入父
-agent 系统提示的委托目录中。父 agent 随后就能通过 Task 工具的 `model` 参数
+agent 系统提示的委托目录中。父 agent 随后就能通过 task 工具的 `model` 参数
 选中它。为某个定义解析固定模型不代表授予此许可。启动载荷通过独立的
 `subagentModelKeys` 传递允许覆盖的模型键；仅供定义固定使用的绑定仍只通过
 正常的固定模型解析生效，包括 `task.model` 重复该定义自己的固定键。按需匹配使用唯一
 provider id/vendor/name 查找，不得用另一账号凭据覆盖固定模型。多个账号的 vendor/model 别名冲突时，已勾选账号改用
-确切的提供商 ID 作为覆盖键。优先级保持 Task.model → 定义固定模型 → 会话模型
+确切的提供商 ID 作为覆盖键。优先级保持 task.model → 定义固定模型 → 会话模型
 （D278；ADR subagent-model-opt-in）。该许可约束所有让 AI 为委派工作挑选模型的入口，
 而不只是 `task.model`：`session/collaboration/spawn` 的 `modelKey` 指向未勾选的模型时
 以 `PERMISSION_DENIED` 拒绝，省略该键或写出默认模型自己的键仍按继承处理。
@@ -659,7 +659,7 @@ OpenAI Responses 适配器必须把 `response.completed`（以及
   估算不是服务端计费保证。
 - 相同上下文重建保留系统前缀语义；真实指令或工具声明变化仍影响 usage 有效性。
   系统分段、工具增加和移除不能在重建时丢弃。
-- 搜索后本地工具续跑、Task、普通续聊和重启恢复均须验证；依赖升级必须运行
+- 搜索后本地工具续跑、task、普通续聊和重启恢复均须验证；依赖升级必须运行
   离线适配器与打包 sidecar 回归，不能只验证界面。
 
 同一搜索投影适用于主代理与原生 pi 会话的上下文/压缩估算及输出预算。

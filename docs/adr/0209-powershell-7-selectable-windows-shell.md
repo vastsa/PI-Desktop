@@ -22,7 +22,7 @@ The `windows-powershell` entry resolves the in-box Windows PowerShell 5.1
 
 PowerShell 7 (`pwsh.exe`) is a separate product that installs side by side with
 5.1 and never replaces it. A user who wants PowerShell 7 therefore had no way to
-select it: the catalog exposed no entry, and `Bash` kept launching 5.1 even after
+select it: the catalog exposed no entry, and `bash` kept launching 5.1 even after
 the user installed 7. Issue #151 reports exactly that, and the codebase confirms
 the gap — `crates/host-core/src/tools/shell.rs` contains no `pwsh.exe`
 resolution path, and `packages/shared/src/command-shells.ts` lists four stable
@@ -112,6 +112,6 @@ change.
 
 ### Add a `PowerShell7` tool name
 
-Rejected: ADR 0054 §3 keeps `Bash` as the tool and protocol name and treats shell
+Rejected: ADR 0054 §3 keeps `bash` as the tool and protocol name and treats shell
 choice as request data. A second tool name would multiply permission and audit
 surfaces without adding authority.

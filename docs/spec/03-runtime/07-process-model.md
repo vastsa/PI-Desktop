@@ -328,7 +328,7 @@ until a post-MVP implementation milestone explicitly amends this section.
 The tray service keeps Running, Unread, and Pinned groups current independently
 of renderer visibility or lifetime. Host remains authoritative for sessions and
 notifications; root agent events describe running state. Renderer mirrors only
-organization preferences through a main-window-only IPC. Read requests are
+organization preferences through a main-window-only IPC. read requests are
 coalesced; obsolete Host results cannot repopulate the menu, failures clear
 shortcuts, and quitting prevents further publication. A closed window retains
 only the last organization copy, which is replaced after renderer bootstrap.

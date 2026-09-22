@@ -1047,7 +1047,7 @@ behavior. Invalid or empty selections are rejected before mutation. No table
 migration is needed. Daily/weekly schedules use the host local timezone; hourly
 schedules compute `nextRunAt = now + 3_600_000`, ignoring calendar fields. Absence
 of `schedule` leaves legacy tasks unarmed. No physical schema change is made.
-Task wire fields project `schedule`, RFC3339 `nextRunAt` and `workspacePath`.
+task wire fields project `schedule`, RFC3339 `nextRunAt` and `workspacePath`.
 See [the automation ADR](../../adr/scheduled-desktop-automations.md).
 
 Scheduled task `config_json.mode` is a durable operating-mode value. There is
@@ -1174,7 +1174,7 @@ is the source of truth, the index is derived and self-healing.
 | assistant/tool message end | append message line; remove the in-flight checkpoint when its id matches | index row + touch session |
 | streaming reply checkpoint (`session.saveInflightMessage`, D299) | atomically replace `<id>.inflight.json`; no-op for an empty message or an id already indexed | — |
 | context checkpoint (`session.appendCompaction`) | append typed checkpoint line after its referenced message boundary | — (checkpoint is not searchable transcript content) |
-| tool succeeded (write/edit) | — | upsert `artifacts` + `audit_log` row, same tx as result persistence |
+| tool succeeded (`write`/`edit`) | — | upsert `artifacts` + `audit_log` row, same tx as result persistence |
 | turn terminal via `session.endTurn` | `completed`/`error`: remove the in-flight checkpoint only when its id is already indexed; otherwise leave it for the outbox or boot (D327). `recoverInflight`: append the leftover as `complete` when the turn is `completed`, otherwise as `aborted`, when its final row never landed | update `turns`; for completed/error insert one notification and prune to 200 in the same tx; aborted inserts none; a promoted checkpoint gets an index row under the turn |
 | plan/goal submission | host writes the exact Markdown bytes to a new unique `<workspaceRoot>/.pi/<kind>/*.md` file | insert one `plan_approvals(pending)` row with the kind, structured title/question, artifact path/hash/size, and expiry before emitting the approval request |
 | plan/goal approval | verify the immutable artifact path/hash/size | atomically resolve `plan_approvals`, update `sessions.mode` and explicit `permission_mode`, and set `execution_state = 'queued'`; reject/expiry stay in the contract mode |

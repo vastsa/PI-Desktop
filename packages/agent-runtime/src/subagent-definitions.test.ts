@@ -52,21 +52,21 @@ describe("builtin subagent documents", () => {
     // scope.
     const mutating = definitions.filter(
       (definition) =>
-        definition.tools.includes("Write") || definition.tools.includes("Edit"),
+        definition.tools.includes("write") || definition.tools.includes("edit"),
     );
     expect(mutating.map((d) => d.name)).toEqual(["fixer", "ui-designer"]);
     expect(mutating[0]?.permission ?? "inherit").toBe("inherit");
     const explorer = definitions.find((definition) => definition.name === "explorer")!;
-    expect(explorer.tools).toEqual(["Read", "Glob", "Grep", "Bash"]);
+    expect(explorer.tools).toEqual(["read", "glob", "grep", "bash"]);
     expect(subagentCanMutate(explorer)).toBe(true);
     expect("maxTurns" in explorer).toBe(false);
     expect(explorer.idleTimeoutSeconds).toBe(
       DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
     );
     expect(explorer.maxDurationSeconds).toBe(21_600);
-    expect(definitions[2].tools).toContain("Bash");
+    expect(definitions[2].tools).toContain("bash");
     const designer = definitions.find((definition) => definition.name === "ui-designer")!;
-    expect(designer.tools).toContain("BrowserPreview");
+    expect(designer.tools).toContain("browser_preview");
     expect("maxTurns" in designer).toBe(false);
     expect(designer.description).toBe(findSubagentPreset("ui-designer")?.description);
     expect(designer.prompt).toBe(findSubagentPreset("ui-designer")?.body.trim());
@@ -87,12 +87,12 @@ describe("loadSubagentDefinitions", () => {
   it("loads global definitions and lets them shadow a builtin", async () => {
     await writeFile(
       join(dir, "explorer.md"),
-      "---\ndescription: Global explorer.\ntools: [Read]\n---\nSearch our way.\n",
+      "---\ndescription: Global explorer.\ntools: [read]\n---\nSearch our way.\n",
       "utf8",
     );
     await writeFile(
       join(dir, "migrator.md"),
-      "---\ndescription: Apply a migration.\ntools: [Read, Edit]\n---\nMigrate.\n",
+      "---\ndescription: Apply a migration.\ntools: [read, edit]\n---\nMigrate.\n",
       "utf8",
     );
 
@@ -105,7 +105,7 @@ describe("loadSubagentDefinitions", () => {
     ]);
     const explorer = definitions.find((d) => d.name === "explorer")!;
     expect(explorer.source).toBe("user");
-    expect(explorer.tools).toEqual(["Read"]);
+    expect(explorer.tools).toEqual(["read"]);
     expect(definitions.filter((d) => d.name === "explorer")).toHaveLength(1);
     // The shadowed builtin is gone, the other builtins stay.
     expect(definitions.map((d) => d.name)).toContain("code-reviewer");
@@ -130,7 +130,7 @@ describe("loadSubagentDefinitions", () => {
       userDocuments: [
         {
           id: "fixer",
-          document: "---\nname: fixer\ndescription: Mine.\ntools: [Read]\n---\nMine.\n",
+          document: "---\nname: fixer\ndescription: Mine.\ntools: [read]\n---\nMine.\n",
           filePath: "/home/.agents/subagents/fixer.md",
         },
       ],
@@ -142,10 +142,10 @@ describe("loadSubagentDefinitions", () => {
   });
 
   it("reports a malformed document without losing the others", async () => {
-    await writeFile(join(dir, "broken.md"), "---\ntools: [Read]\n---\n\n", "utf8");
+    await writeFile(join(dir, "broken.md"), "---\ntools: [read]\n---\n\n", "utf8");
     await writeFile(
       join(dir, "good.md"),
-      "---\ndescription: Fine.\ntools: [Read, Nope]\n---\nWork.\n",
+      "---\ndescription: Fine.\ntools: [read, Nope]\n---\nWork.\n",
       "utf8",
     );
 
@@ -160,7 +160,7 @@ describe("loadSubagentDefinitions", () => {
   it("does not read project directories and falls back to builtins", async () => {
     await writeFile(
       join(dir, "project-only.md"),
-      "---\ndescription: Must not load.\ntools: [Read]\n---\nIgnore me.\n",
+      "---\ndescription: Must not load.\ntools: [read]\n---\nIgnore me.\n",
       "utf8",
     );
     const { definitions, diagnostics } = await loadSubagentDefinitions(null);
@@ -177,19 +177,19 @@ describe("loadSubagentDefinitions", () => {
         {
           id: "explorer",
           document:
-            "---\nname: explorer\ndescription: My explorer.\ntools: [Read, Grep]\n---\nMine.\n",
+            "---\nname: explorer\ndescription: My explorer.\ntools: [read, grep]\n---\nMine.\n",
           filePath: "/home/.agents/subagents/explorer.md",
         },
         {
           id: "test-runner",
           document:
-            "---\nname: test-runner\ndescription: My runner.\ntools: [Bash]\n---\nRun it.\n",
+            "---\nname: test-runner\ndescription: My runner.\ntools: [bash]\n---\nRun it.\n",
           filePath: "/home/.agents/subagents/test-runner.md",
         },
         {
           id: "note-taker",
           document:
-            "---\nname: note-taker\ndescription: Take notes.\ntools: [Read, Write]\n---\nWrite notes.\n",
+            "---\nname: note-taker\ndescription: Take notes.\ntools: [read, write]\n---\nWrite notes.\n",
           filePath: "/home/.agents/subagents/note-taker.md",
         },
       ],
@@ -200,7 +200,7 @@ describe("loadSubagentDefinitions", () => {
     expect(byName.get("explorer")!.source).toBe("user");
     expect(byName.get("test-runner")!.source).toBe("user");
     expect(byName.get("test-runner")!.filePath).toBe("/home/.agents/subagents/test-runner.md");
-    expect(byName.get("note-taker")!.tools).toEqual(["Read", "Write"]);
+    expect(byName.get("note-taker")!.tools).toEqual(["read", "write"]);
     expect(byName.get("code-reviewer")!.source).toBe("builtin");
     expect(definitions.filter((d) => d.name === "explorer")).toHaveLength(1);
   });
@@ -208,10 +208,10 @@ describe("loadSubagentDefinitions", () => {
   it("reports a malformed user document without losing the others", async () => {
     const { definitions, diagnostics } = await loadSubagentDefinitions(null, {
       userDocuments: [
-        { id: "broken", document: "---\ntools: [Read]\n---\n\n" },
+        { id: "broken", document: "---\ntools: [read]\n---\n\n" },
         {
           id: "fine",
-          document: "---\ndescription: Fine.\ntools: [Read]\n---\nWork.\n",
+          document: "---\ndescription: Fine.\ntools: [read]\n---\nWork.\n",
         },
       ],
     });
@@ -251,7 +251,7 @@ describe("resolveSubagentProviders", () => {
     return {
       name,
       description: `Delegate ${name}.`,
-      tools: ["Read"],
+      tools: ["read"],
       ...(pin ? { model: pin } : {}),
       prompt: "Do the thing.",
       source: "user",
@@ -414,7 +414,7 @@ describe("resolveSubagentProviders", () => {
 
 it("resolves definition-scoped fallback pins with their own credentials", async () => {
   const { providers, diagnostics } = await resolveSubagentProviders({
-    definitions: [{ name: "worker", description: "Fixture", tools: ["Read"], prompt: "Finish", source: "user",
+    definitions: [{ name: "worker", description: "Fixture", tools: ["read"], prompt: "Finish", source: "user",
       model: { providerId: "primary", modelId: "one" },
       fallbackModels: [{ providerId: "other", modelId: "two" }, { providerId: "missing", modelId: "three" }],
     }],
@@ -431,7 +431,7 @@ it("resolves definition-scoped fallback pins with their own credentials", async 
 
 it("never resolves a disabled fallback provider", async () => {
   const resolved = await resolveSubagentProviders({
-    definitions: [{ name: "worker", description: "Fixture", tools: ["Read"], prompt: "Finish", source: "user",
+    definitions: [{ name: "worker", description: "Fixture", tools: ["read"], prompt: "Finish", source: "user",
       fallbackModels: [{ providerId: "disabled", modelId: "private" }],
     }],
     providers: [{ id: "disabled", name: "Disabled", enabled: false, authKind: "none" }],

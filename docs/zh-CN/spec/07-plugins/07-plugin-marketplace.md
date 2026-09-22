@@ -369,7 +369,7 @@ URL 描述的是一个受发布者影响的 release，所以宿主还必须约�
 错误信息会指出被拒绝的主机，便于运维区分配置错误的私有源和恶意目录条目。
 
 `.piplug` 软件包现在可以在本地生产：`pnpm pi-plugin pack <dir>`
-（同样，`PluginPack` 代理工具）写入 `dist/<id>-<version>.piplug` 和
+（同样，`pack_plugin` 代理工具）写入 `dist/<id>-<version>.piplug` 和
 打印其 sha256，插件页面通过相同的方式安装该文件
 作为市场下载的验证和权限审查。分布通过
 因此，市场是可选的——为个人使用而编写的插件永远不会

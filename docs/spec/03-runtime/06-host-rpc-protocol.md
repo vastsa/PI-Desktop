@@ -1182,7 +1182,7 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
    unknown message without creating a child
 10. A forged `requestedMode` cannot authorize a tool against the durable mode;
     Plan and Goal deny write/edit/plugin/unknown tools and apply permission
-    prompts to Bash according to `ask`/`accept-edits`/`auto`
+    prompts to bash according to `ask`/`accept-edits`/`auto`
 11. submit_plan and submit_goal write exact Markdown bytes to a unique
     `.pi/plan/*.md` or `.pi/goal/*.md` file with
     hash/size and structured title/question fields; only matching
@@ -1196,8 +1196,8 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
 
 ## Scheduled automation tools
 
-Agent mode advertises on-demand ScheduledTaskList, ScheduledTaskCreate,
-ScheduledTaskUpdate and ScheduledTaskDelete tools. They run through
+Agent mode advertises on-demand scheduled_task_list, scheduled_task_create,
+scheduled_task_update and scheduled_task_delete tools. They run through
 `tools.execute`, including existing permissions and audit records, and reuse
 the scheduled RPC domain handlers. List is low risk; mutations require normal
 approval in Ask/Accept Edits. Plan/Goal deny all four even under Auto.

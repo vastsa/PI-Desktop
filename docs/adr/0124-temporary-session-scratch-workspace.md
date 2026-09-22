@@ -18,7 +18,7 @@ hero copy for a temporary chat and for having no active session.
    `<data_dir>/scratch/<sessionId>` directory and creates that directory when
    the binding is first resolved. The session schema remains unchanged and
    `projectPath` stays absent.
-2. Read, Glob, Grep, Write, Edit, and Bash use that scratch directory as the
+2. read, glob, grep, write, edit, and bash use that scratch directory as the
    temporary session's workspace root. The root is never taken from the
    mutable global workspace, and the existing containment and permission
    checks still apply. A missing-session compatibility call may retain the

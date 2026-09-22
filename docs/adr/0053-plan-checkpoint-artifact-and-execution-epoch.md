@@ -22,10 +22,10 @@ host process.
 
 The product selector remains `Agent | Plan`, with Agent as the default and one
 pi Agent per session. Plan is the same Agent in planning state. Plan exposes
-`Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, `EnterPlanMode`, and
-`SubmitPlan` (it also exposed `CompactContext` until ADR 0061 removed that
-tool, which ADR 0064 restores as `new_context`); Write, Edit, plugin tools, and
-unknown tools remain host-denied. `SubmitPlan` is the only assistant tool call in its batch
+`read`, `glob`, `grep`, `browser_preview`, `bash`, `enter_plan_mode`, and
+`submit_plan` (it also exposed `CompactContext` until ADR 0061 removed that
+tool, which ADR 0064 restores as `new_context`); write, edit, plugin tools, and
+unknown tools remain host-denied. `submit_plan` is the only assistant tool call in its batch
 and is valid only for the active Plan turn.
 
 The input is exactly:
@@ -39,7 +39,7 @@ type SubmitPlanInput = {
 ```
 
 There is no `ExitPlanMode`, structured step schema, `proposedCommands` field,
-or `request_changes` action. A revision is a new `SubmitPlan` after the
+or `request_changes` action. A revision is a new `submit_plan` after the
 current proposal is rejected or expires.
 
 ### 2. Immutable host-written plan artifacts
@@ -121,7 +121,7 @@ changed to Agent before it can run unattended.
 
 ### 7. Versioned contracts
 
-Protocol v9 carries `SubmitPlan`, the unique artifact path and metadata,
+Protocol v9 carries `submit_plan`, the unique artifact path and metadata,
 approve/reject responses, absolute expiry, execution state, shell selection,
 and streamed command output. Storage schema v10 continues the single
 `plan_approvals` checkpoint table with structured title/question, artifact

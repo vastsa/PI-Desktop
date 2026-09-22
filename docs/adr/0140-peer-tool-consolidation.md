@@ -26,7 +26,7 @@ and its spawner materialises three separate tools.
 That split has a counting problem. Peer messaging is one capability: it carries
 bounded text between running delegates. Listing three machine tool names
 for it inflates a definition's declared tool count, forces a roundtable brief
-to spell out three names at every use site, and makes the parent's `Task` tool
+to spell out three names at every use site, and makes the parent's `task` tool
 catalog read as if peer messaging were three unrelated capabilities. The
 operations are also mutually exclusive per call — a delegate either sends, or
 reads, or waits — so they never compose in one call, which is exactly the shape

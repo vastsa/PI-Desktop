@@ -63,7 +63,7 @@ MCP 服务器、常驻服务和消息总线集成。
 - 安全的 API 密钥存储
 - 流输出+中止
 - 工作区绑定
-- 内置工具：读/写/编辑/Glob/Bash (+ Grep)
+- 内置工具：`read` / `write` / `edit` / `glob` / `bash` (+ `grep`)
 - 工具调用可视化
 - 权限确认
 - 具有 SQLite 索引的 JSONL 转录持久性
@@ -92,11 +92,11 @@ MCP 服务器、常驻服务和消息总线集成。
 | 产品选择器 | 行为 |
 |---|---|
 | Agent | pi Agent 在选定的权限策略下使用完整的执行工具集运行。 |
-| Plan | 相同的 pi Agent 在计划状态下运行。它可以使用 Read/Glob/Grep/BrowserPreview 进行检查，在选定的权限策略下运行 Bash，使用 plan/context 控件，并调用 `SubmitPlan(title, markdown, question)`。在单独批准之前，主机核心在新的不可变 `<workspaceRoot>/.pi/plan/*.md` 工件中保留确切的 Markdown 字节； title/question 保留结构化审批字段，并且卡打开工件。 Write/Edit/plugin 工具被拒绝。 |
-| Goal | 同一个 pi Agent 通过 `SubmitGoal(title, markdown, question)` 协商结果合约，在单独批准之前保留不可变的 `<workspaceRoot>/.pi/goal/*.md` 工件。批准后，它返回到 Agent 模式，并朝着规定的验收标准努力，报告其验证的标准或停止它的边界。 |
+| Plan | 相同的 pi Agent 在计划状态下运行。它可以使用 `read`/`glob`/`grep`/`browser_preview` 进行检查，在选定的权限策略下运行 `bash`，使用 plan/context 控件，并调用 `submit_plan(title, markdown, question)`。在单独批准之前，主机核心在新的不可变 `<workspaceRoot>/.pi/plan/*.md` 工件中保留确切的 Markdown 字节； title/question 保留结构化审批字段，并且卡打开工件。 `write`/`edit`/plugin 工具被拒绝。 |
+| Goal | 同一个 pi Agent 通过 `submit_goal(title, markdown, question)` 协商结果合约，在单独批准之前保留不可变的 `<workspaceRoot>/.pi/goal/*.md` 工件。批准后，它返回到 Agent 模式，并朝着规定的验收标准努力，报告其验证的标准或停止它的边界。 |
 
-Plan 和 Goal 是合约模式，而不是严格的只读安全配置文件：Bash
-在 `ask` 或 `accept-edits` 提示下运行，而 Bash 在 `auto` 下运行则无需
+Plan 和 Goal 是合约模式，而不是严格的只读安全配置文件：bash
+在 `ask` 或 `accept-edits` 提示下运行，而 bash 在 `auto` 下运行则无需
 确认并可能会改变工作区或临时目录。模式
 选择器和 SQLite/Agent 都寻址相同的 Agent；
 批准将 Agent 转换为 Agent 执行，而无需创建第二个

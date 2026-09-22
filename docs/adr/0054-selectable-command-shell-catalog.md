@@ -8,7 +8,7 @@
 
 ## Context
 
-The Bash tool currently resolves one Bash implementation per process. That
+The bash tool currently resolves one bash implementation per process. That
 prevents users from choosing the command language that matches their project
 and makes a changed executable hard to detect. The protocol name and Agent
 tool vocabulary must remain stable while shell selection becomes explicit and
@@ -38,7 +38,7 @@ Settings writes accept only an available ID for the current platform. Unknown,
 unavailable, and wrong-platform IDs are rejected. If a persisted ID later
 becomes unavailable, host-core intentionally selects the first available shell
 in the platform catalog and reports `fallback: true`; if none is available,
-Bash fails with `SHELL_NOT_FOUND`.
+bash fails with `SHELL_NOT_FOUND`.
 
 ### 2. Persisted default and stable identity
 
@@ -51,9 +51,9 @@ before spawn and rejects a changed effective ID or dialect with
 not executable path hashing. A runtime fallback is selected before the turn is
 pinned; execution never silently changes shell after that point.
 
-### 3. Stable Bash protocol contract
+### 3. Stable `bash` protocol contract
 
-The Agent tool and host method remain `Bash` and `tools.execute`; shell choice
+The Agent tool and host method remain `bash` and `tools.execute`; shell choice
 is data on the request, not a new `PowerShell`, `Cmd`, or `GitBash` tool name.
 The command runs non-interactively in the originating session workspace with
 the selected shell's documented invocation form.
@@ -65,7 +65,7 @@ session/turn.
 
 ### 4. Timeout and cancellation
 
-Every Bash execution has a mandatory 60-second default timeout. A caller may
+Every bash execution has a mandatory 60-second default timeout. A caller may
 request a host-validated override only from 1 second through 300 seconds;
 missing values use exactly 60 seconds, and out-of-range values are rejected.
 Timeout and user abort terminate the complete process tree, not only the shell
@@ -82,12 +82,12 @@ and returns `TOOL_TIMEOUT` or `TURN_ABORTED` without leaving an orphan.
   intentional catalog fallback.
 - Streaming makes long commands observable without weakening final result
   limits.
-- The stable Bash protocol avoids multiplying tool schemas and compatibility
+- The stable bash protocol avoids multiplying tool schemas and compatibility
   paths.
 
 ## Alternatives rejected
 
-### Always use Bash
+### Always use `bash`
 
 Rejected because it excludes native Windows command workflows and makes the
 user's shell preference invisible.
@@ -99,7 +99,7 @@ security review unreliable.
 
 ### Create one protocol tool per shell
 
-Rejected because it breaks existing Bash skills and expands the permission and
+Rejected because it breaks existing bash skills and expands the permission and
 audit matrix without adding authority.
 
 ## Related docs

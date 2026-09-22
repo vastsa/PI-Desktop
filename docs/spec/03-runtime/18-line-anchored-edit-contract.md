@@ -1,4 +1,4 @@
-# 18. Line-Anchored Edit Contract
+# 18. Line-Anchored `edit` Contract
 
 > Decisions applied: ADR 0087. Amends D186, ADR 0069 §2, ADR 0043 §1.
 > Source of truth for implementation: `crates/host-core/src/tools/hashline/`
@@ -116,7 +116,7 @@ degrades to version checking only.
   in. The tag is reused.
 - Otherwise a new version is unshifted onto the front of the path's history.
 
-Read fusion is what makes paginated reading work: reading lines 1–2000 and then
+read fusion is what makes paginated reading work: reading lines 1–2000 and then
 1800–3600 of an unchanged file produces one tag whose `seen_lines` covers
 1–3600, so a later `edit` anywhere in that range validates without a third read.
 
@@ -590,7 +590,7 @@ existing per-session mutation permit already excludes that.
 
 ### 13.4 Renderer
 
-The Edit row renders from the review record's hunks — which ADR 0043 already
+The edit row renders from the review record's hunks — which ADR 0043 already
 produces — and shows the op headers verbatim as the model's stated intent.
 Resolved block spans and every warning from §8.4, §9.2, and §10 are surfaced on
 the row, not swallowed.

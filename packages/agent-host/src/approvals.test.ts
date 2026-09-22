@@ -30,7 +30,7 @@ const toolRequest: ToolPermissionRequest = {
   requestId: "req_1",
   sessionId: "s1",
   toolCallId: "call_1",
-  toolName: "Bash",
+  toolName: "bash",
   argsPreview: { command: "ls" },
   risk: "high",
   reason: "high risk",
@@ -45,7 +45,9 @@ describe("ApprovalBroker", () => {
     const broker = new ApprovalBroker(port, clock);
     const request = broker.fromToolPermission(toolRequest, { turnId: "t1", revision: 3, lifetimeMs: 1_000, allowSession: false });
     expect(request.allowedDecisions).toEqual(["allow-once", "deny"]);
-    expect(request.summary).toBe("Bash: high risk");
+    // The summary echoes the wire tool name, which is the canonical lowercase
+    // spelling after the rename (D620); the display-name mapping is the UI layer.
+    expect(request.summary).toBe("bash: high risk");
     expect(request.expiresAt).toBe(new Date(1_001_000).toISOString());
     const withSession = new ApprovalBroker(port, clock).fromToolPermission(toolRequest, {
       turnId: "t1",

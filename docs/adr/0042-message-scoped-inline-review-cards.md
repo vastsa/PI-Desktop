@@ -12,7 +12,7 @@
 
 The transcript previously rendered one session-owned Review changes command at
 the bottom of the chat. That command summarized the whole dirty working tree,
-so it was visually detached from the Write/Edit row that caused the change and
+so it was visually detached from the write/edit row that caused the change and
 did not tell the user which file to inspect. It also required a panel tab just
 to answer a local question about one tool result.
 
@@ -22,7 +22,7 @@ second renderer-owned diff or durable ownership map.
 
 ## Decision
 
-1. A successful workspace Write/Edit row may render one compact
+1. A successful workspace write/edit row may render one compact
    `InlineReviewCard` immediately after the row inside the same activity
    disclosure. The card is scoped by the workspace path returned in that tool
    result, so unrelated files and other sessions cannot appear beside it.

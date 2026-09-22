@@ -73,7 +73,7 @@ ownership rules.
 - File and image paste works from both home and docked composers without a
   project file mutation.
 - The visible draft gains compact leaf-name references; the dispatched prompt
-  gains the same normal `@absolute/path` references, so existing Read/Glob/Grep
+  gains the same normal `@absolute/path` references, so existing read/glob/grep
   behavior handles the materialized files.
 - Large or malformed clipboard payloads fail visibly in the composer and do
   not partially write because bytes are validated before the first write.

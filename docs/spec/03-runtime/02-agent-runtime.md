@@ -785,7 +785,7 @@ intentional override.
 mode and only when the catalog is non-empty, and all four belong to the Agent
 core set rather than the on-demand catalog of §7.1:
 
-- `Task(agent, task, description?, model?, resume?)` — validates its arguments (an
+- `task(agent, task, description?, model?, resume?)` — validates its arguments (an
   unknown `agent`, an empty `task`, an unresolvable model pin and a definition
   whose tools are all unavailable each return a tool error explaining the
   failure rather than throwing), starts the delegate **in the background**, and
@@ -794,7 +794,7 @@ core set rather than the on-demand catalog of §7.1:
 
   The `task` tool accepts an optional `model` parameter
   (`"provider/modelId"`) that overrides the delegate's model for that run.
-  Resolution priority: Task.model parameter → definition frontmatter pin →
+  Resolution priority: task.model parameter → definition frontmatter pin →
   session model. The parent agent sees a model summary in the system prompt
   listing all models marked `availableForSubagents` in provider settings. If
   the delegation catalog is empty, the prompt tells the model to omit `model`
@@ -810,7 +810,7 @@ core set rather than the on-demand catalog of §7.1:
   A changed opt-in list retires the idle runtime on the next launch. Pins remain usable
   by their own definitions when `model` is omitted or when `task.model` repeats
   that definition's own pin key, even without an opt-in.
-  The Task definition catalog displays each default model and treats omitting
+  The task definition catalog displays each default model and treats omitting
   or repeating that key as keeping the default. See
   [ADR subagent-model-opt-in](../../adr/subagent-model-opt-in.md).
   When a model key is not pre-resolved, the runtime asks Electron main to resolve it
@@ -844,9 +844,9 @@ core set rather than the on-demand catalog of §7.1:
 `completedAt`, counters, and failure details when present), using the existing
 full `message_end` snapshot. This does not depend on the parent calling
 `task_wait` / `task_list` / `task_stop` or on other delegates finishing. The
-snapshot retains the Task call's identity, arguments, tool timing, and token
+snapshot retains the task call's identity, arguments, tool timing, and token
 usage; it does not execute the tool again or add usage to the parent turn.
-The initial Task result is emitted first even if the delegate settles before
+The initial task result is emitted first even if the delegate settles before
 that result arrives. Electron persists the refreshed row through the normal
 message outbox so session switching and history reload preserve the outcome.
 An outbox write acknowledges only the snapshot sent to the host; a newer
@@ -985,10 +985,10 @@ alias, so a display name containing spaces is valid.
 inline list (`fallbackModels: [provider/model, other/model]`) or a block list.
 The managed host `agents.create` / `agents.update` inputs and records expose
 `fallbackModels?: string[]`; omission preserves a list on update and `[]`
-clears it. Existing `model` pins and Task override priority remain unchanged.
+clears it. Existing `model` pins and task override priority remain unchanged.
 A missing primary pin still fails before launch. Alternatives are resolved in
 Electron with the definition pins and count toward the existing eight-provider
-ceiling. They authorize only that definition, including when Task overrides
+ceiling. They authorize only that definition, including when task overrides
 its primary, and do not enter the independent `task.model` opt-in catalog.
 
 After a provider failure exhausts that model's retries, or is non-retryable,
@@ -1087,9 +1087,9 @@ delegate may call), `04-data-storage.md` §4.7a (persisted attribution),
 `04-ux/03-permission-ux.md` §6a (more than one pending request) and
 `04-ux/08-component-spec.md` §9.9 (how a delegation reads).
 
-### 5f.2 No in-process sibling or parent-to-parent Task channel (D326, ADR 0165)
+### 5f.2 No in-process sibling or parent-to-parent `task` channel (D326, ADR 0165)
 
-Concurrent `task` delegates do not message each other, and the parent Task
+Concurrent `task` delegates do not message each other, and the parent task
 runtime does not address other conversations. The in-process `Peer` mailbox
 (ADR 0138 / ADR 0140) and the host-core A2A broker (ADR 0147 / ADR 0162 /
 ADR 0164) are withdrawn.
@@ -1248,14 +1248,14 @@ It also states a search preference that matches the host-side budgets in
 `glob` with their own parameters instead of hand-rolling `cat`/`sed`/`grep`/
 `find`. `read` accepts only an existing regular text file. When a file name is
 uncertain or a directory must be listed, an Agent activates `glob` for the
-current prompt through `ToolSearch` instead of guessing a name or reading the
+current prompt through `tool_search` instead of guessing a name or reading the
 directory. `glob.path` is a directory, while `grep.path` may be one file or a
 directory tree. Calls use `read.offset/limit`, `glob.path/limit`, and
 `grep.path/include/outputMode/headLimit`; `filesWithMatches` or `count` avoids
 unneeded content. Workspace-relative paths remain the portable default, with a
 bounded command in the active shell only when native tools are insufficient.
-Grep uses a system `rg` when one is installed and an in-process searcher
-otherwise; the agent calls Grep rather than shelling out to `rg`. Bash must
+grep uses a system `rg` when one is installed and an in-process searcher
+otherwise; the agent calls grep rather than shelling out to `rg`. bash must
 still not assume `rg` is present. The agent must not repeat a search whose
 answer is already in context.
 
@@ -1284,7 +1284,7 @@ activation evidence still present in the effective session context:
   looking for is one it will not use, and the delegation lifecycle is worth
   the extra schemas per request
 - Plan: `read`, `glob`, `grep`, `browser_preview`, and `bash`
-- both modes: `ToolSearch` when at least one deferred capability exists
+- both modes: `tool_search` when at least one deferred capability exists
 
 In Agent mode, `glob` and `grep` join `browser_preview`, plugin tools,
 and plugin-development helpers in the deferred set. Both contract modes keep
@@ -1295,7 +1295,7 @@ compact
 one-line descriptions appear in an `# On-demand tools` catalog; parameter
 schemas do not. The catalog is bounded so a plugin with many tools cannot
 recreate the original prompt bloat.
-The model calls `ToolSearch` with an exact name or a short capability query.
+The model calls `tool_search` with an exact name or a short capability query.
 The sidecar activates up to four matches, returns their names through
 pi-agent-core's `addedToolNames`, and rebuilds the next-turn context with those
 schemas. Providers with native deferred-tool search receive the definitions at
@@ -1303,12 +1303,12 @@ that load point; other providers receive the active definitions normally.
 
 At the start of each new user prompt, the sidecar clears the in-memory deferred
 activation set and rebuilds it from the effective context. Successful
-`ToolSearch` results contribute their `addedToolNames`; successful results from
+`tool_search` results contribute their `addedToolNames`; successful results from
 deferred tools contribute that tool's name. Only names still present in the
 current mode's deferred catalog are restored. Failed rows, interrupted or
 missing-result placeholders, and assistant/user prose never activate a tool.
 The tool registry, host permission path, tool timeout, and workspace containment
-rules remain unchanged. `ToolSearch` is local to the sidecar and does not cross
+rules remain unchanged. `tool_search` is local to the sidecar and does not cross
 the host RPC boundary. Its activation marker is retained in the persisted tool
 result, so a runtime restart or a new prompt can reuse an eligible capability
 while that evidence remains in the effective context; a fresh search is still
@@ -1319,7 +1319,7 @@ activate `browser_preview` once after creating the page or making its first
 meaningful visual edit, using a workspace-relative path. The agent reuses the
 live-reloading preview while iterating instead of issuing repeated preview
 calls. Generated, test-only, and non-visual HTML files are excluded. When the
-tool is deferred, `ToolSearch` must activate it before the preview call.
+tool is deferred, `tool_search` must activate it before the preview call.
 ### 7.2 Plan prompt requirements
 
 The Plan prompt tells the same Agent to understand the request, inspect the
@@ -1375,7 +1375,7 @@ Mutation framing uses the resolved set, not the raw frontmatter extras.
 Guidance blocks are the same text the session prompt uses, included only when
 the resolved tools include the matching name: search/read scoping for
 read/grep/glob, edit discipline for edit/write, the command shell contract for
-Bash, the `# Skills` catalog when `skill` is present, and the scratch-directory
+bash, the `# Skills` catalog when `skill` is present, and the scratch-directory
 rule when the session has a scratch directory and the delegate can write. The
 project instruction chain (§7.3) is appended last, so a delegate follows the
 same project rules as its session.

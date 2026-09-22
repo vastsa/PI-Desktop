@@ -87,8 +87,8 @@ docs/spec/
 6. SQLite owned by Rust only
 7. Default mode = Agent; operating selector = Agent | Plan | Goal. Plan and Goal
    are contract states of the same Agent and are not strict read-only security
-   profiles because Bash follows the selected permission mode
-8. SubmitPlan writes exact Markdown bytes to a new host-owned
+   profiles because bash follows the selected permission mode
+8. submit_plan writes exact Markdown bytes to a new host-owned
    `.pi/plan/*.md` artifact; title/question stay structured in
    `plan_approvals`, approval opens the artifact, is approve/reject only, and
    expires after 30 absolute minutes with `PLAN_APPROVAL_TIMEOUT`
@@ -96,7 +96,7 @@ docs/spec/
    checkpoints, `plan_approvals` execution fields, startup interruption, shell
    identity, and host-owned session collaboration. v11 withdraws the A2A method
    domain added in v10.
-10. Permission timeout 120s deny; Bash timeout 60s by default
+10. Permission timeout 120s deny; bash timeout 60s by default
 11. Local user-installable plugins (market later)
 12. Tag releases = macOS arm64 and Intel x64, Windows x64, and Linux x64 (D126/D285)
 13. Universal provider/model coverage (native + OpenAI-compatible + custom)

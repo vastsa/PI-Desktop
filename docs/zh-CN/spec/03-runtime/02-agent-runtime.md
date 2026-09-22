@@ -611,14 +611,14 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 **工具（ADR 0089）。** 委托是四个工具的生命周期，仅在 Agent 模式下且目录
 非空时构建，四个工具都属于 Agent 核心集而不是第 7.1 节的按需目录：
 
-- `Task(agent, task, description?, model?)` — 验证其参数（未知的 `agent`、空的
+- `task(agent, task, description?, model?)` — 验证其参数（未知的 `agent`、空的
   `task`、无法解析的模型引脚以及工具全部不可用的定义，各自返回一个工具
   错误解释失败而不是抛出），**在后台**启动委托，并立即返回一个
   `delegationId`。当会话已经在运行 `MAX_SUBAGENT_CONCURRENCY`（10）个
   委托时，启动会以工具错误失败。
 
   `task` 工具接受一个可选的 `model` 参数（`"provider/modelId"`），用于在本次
-  运行中覆盖该委托的模型。解析优先级：Task.model 参数 → 定义 frontmatter 的
+  运行中覆盖该委托的模型。解析优先级：task.model 参数 → 定义 frontmatter 的
   引脚 → 会话模型。父 agent 会在系统提示中看到一份模型摘要，列出提供商设置里
   所有标记为 `availableForSubagents` 的模型。若委托目录为空，提示会告诉模型
   省略 `model`，使用定义的固定模型，无固定模型时继承会话模型；显式给出的键如果正好就是当前会话的
@@ -627,7 +627,7 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   固定使用的模型，只有前者授权缓存覆盖并生成模型摘要。缺省列表为空；按需解析成功
   写入独立覆盖缓存，不得覆盖定义固定模型或改变运行时复用判断。按需匹配使用与
   固定模型相同的唯一 id/vendor/name 规则。许可列表变化会在下一次启动时替换空闲运行时。
-  省略 `model`，或 `task.model` 重复该定义自己的固定模型键时，定义仍可使用未勾选自动调度的固定模型。Task 的定义目录展示
+  省略 `model`，或 `task.model` 重复该定义自己的固定模型键时，定义仍可使用未勾选自动调度的固定模型。task 的定义目录展示
   每项默认模型，并提示省略或重复该键以保留默认值。参见
   [ADR subagent-model-opt-in](/adr/subagent-model-opt-in)。
   当某个模型键没有被预先解析时，运行时会请求 Electron main 通过
@@ -896,13 +896,13 @@ agent 运行时的职责，与官方 Pi 编码 agent 的归属层保持一致；
 `glob` 用自己的参数代替手卷 `read`/`grep`/16-tool-result-limits.md/
 `find`。 `read` 仅接受现有的常规文本文件。当文件名是
 不确定或必须列出目录时，Agent 会激活 `glob`
-通过 `ToolSearch` 获取当前提示，而不是猜测名称或阅读
+通过 `tool_search` 获取当前提示，而不是猜测名称或阅读
 目录。 `glob.path` 是一个目录，而 `grep.path` 可能是一个文件或一个
 目录树。调用使用 `read.offset/limit`、`glob.path/limit` 和
 `grep.path/include/outputMode/headLimit`； `filesWithMatches` 或 `count` 避免
 不需要的内容。工作区相对路径仍然是可移植的默认路径，带有
 仅当本机工具不足时才在活动 shell 中使用有界命令。
-Grep 在本机装有 `rg` 时使用它，否则使用进程内搜索器；代理应调用 Grep 而不是在 Bash 里跑 `rg`。Bash 仍不得假定 `rg` 存在。代理不得重复已经在上下文中的搜索。
+grep 在本机装有 `rg` 时使用它，否则使用进程内搜索器；代理应调用 grep 而不是在 bash 里跑 `rg`。bash 仍不得假定 `rg` 存在。代理不得重复已经在上下文中的搜索。
 
 编辑规范块携带
 [18-line-anchored-edit-contract](/zh-CN/spec/03-runtime/18-line-anchored-edit-contract)
@@ -925,7 +925,7 @@ sidecar 构建了一个完整的工具注册表，但它不会序列化每个工
   `task_stop` 也是如此 (§5f) — 模型必须寻找的能力是它不会使用的能力，
   委托生命周期值得每个请求的额外模式
 - Plan：`read`、`glob`、`grep`、`browser_preview` 和 `bash`
-- 两种模式：`ToolSearch`（当至少存在一种延迟功能时）
+- 两种模式：`tool_search`（当至少存在一种延迟功能时）
 
 在Agent模式下，`glob`和`grep`加入`browser_preview`、插件工具，
 以及延迟集中的插件开发助手。两种合约模式均保留
@@ -936,7 +936,7 @@ sidecar 构建了一个完整的工具注册表，但它不会序列化每个工
 一行描述出现在 `# On-demand tools` 目录中；参数
 模式则不然。目录是有限的，因此具有许多工具的插件无法
 重新创建原来的提示膨胀。
-该模型使用确切的名称或简短的功能查询调用 `ToolSearch`。
+该模型使用确切的名称或简短的功能查询调用 `tool_search`。
 sidecar 激活最多四场比赛，通过返回他们的名字
 pi-agent-core 的 `addedToolNames`，并用这些重建下一轮上下文
 模式。具有本机延迟工具搜索的提供商可在以下位置接收定义：
@@ -945,7 +945,7 @@ pi-agent-core 的 `addedToolNames`，并用这些重建下一轮上下文
 延迟激活会在每个新用户提示之前重置，因此之前的任务
 无法使不相关的第一个请求携带不断增长的工具集。工具
 注册表、主机权限路径、工具超时和工作区包含规则
-保持不变。 `ToolSearch` 是 sidecar 的本地变量，不跨越
+保持不变。 `tool_search` 是 sidecar 的本地变量，不跨越
 主机 RPC 边界。其激活标记保留在持久化工具中
 结果，尽管重新启动，恢复的转录仍然是提供商有效的
 在重用延迟功能之前，运行时仍然需要重新搜索。
@@ -955,7 +955,7 @@ pi-agent-core 的 `addedToolNames`，并用这些重建下一轮上下文
 使用工作区相对路径进行有意义的可视化编辑。代理重用
 迭代时实时重新加载预览，而不是发出重复预览
 来电。生成的、仅供测试的和非可视的 HTML 文件被排除在外。当
-工具被延迟，`ToolSearch` 必须在预览调用之前激活它。
+工具被延迟，`tool_search` 必须在预览调用之前激活它。
 ### 7. 2 Plan 提示要求
 
 Plan 提示告诉相同的 Agent 了解请求，检查

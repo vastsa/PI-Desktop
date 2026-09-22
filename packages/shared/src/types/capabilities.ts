@@ -121,7 +121,7 @@ export type McpOAuthLoginEvent = {
  * A skill document the user owns, stored under `~/.agents/skills` or a
  * project's `.agents/skills` directory.
  *
- * Reaches the model through the same catalog-plus-`Skill`-tool path as built-in
+ * Reaches the model through the same catalog-plus-`skill`-tool path as built-in
  * and plugin skills (D174), so the three are indistinguishable once loaded.
  */
 export type UserSkillRecord = {
@@ -161,7 +161,7 @@ export type UserSkillInput = {
  * (D202, ADR 0063). Project roots do not provide subagent definitions.
  *
  * `id` and `name` are deliberately the same string: the name
- * is the handle the model passes to `Task`, and keeping the document named after
+ * is the handle the model passes to `task`, and keeping the document named after
  * it is what lets the UI tell which source won a name.
  */
 export type UserSubagentRecord = {

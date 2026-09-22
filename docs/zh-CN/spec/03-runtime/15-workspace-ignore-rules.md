@@ -79,11 +79,11 @@ coverage/
 
 | 工具 | 忽略应用程序 |
 |---|---|
-| Glob | 无范围遍历：第 1–4 层过滤结果；显式 `path`：仅第 1 层 |
-| Grep | 无范围遍历：第 1–4 层过滤文件集（进程内遍历器与系统 `rg` 快速路径一致）；显式 `path`：仅第 1 层 |
-| Read | 命中拒绝名单的文件返回 `WORKSPACE_PATH_DENIED`；否则当显式路径在外部时权限门控；拒绝后 `TOOL_DENIED` |
-| write/edit | 命中拒绝名单的文件或移动目标返回 `WORKSPACE_PATH_DENIED`；否则当显式路径在外部时权限门控；拒绝后 `TOOL_DENIED` |
-| bash | 路径沙箱仍然由主机强制执行；忽略文件不会扩展 bash 权限 |
+| `glob` | 无范围遍历：第 1–4 层过滤结果；显式 `path`：仅第 1 层 |
+| `grep` | 无范围遍历：第 1–4 层过滤文件集（进程内遍历器与系统 `rg` 快速路径一致）；显式 `path`：仅第 1 层 |
+| `read` | 命中拒绝名单的文件返回 `WORKSPACE_PATH_DENIED`；否则当显式路径在外部时权限门控；拒绝后 `TOOL_DENIED` |
+| `write`/`edit` | 命中拒绝名单的文件或移动目标返回 `WORKSPACE_PATH_DENIED`；否则当显式路径在外部时权限门控；拒绝后 `TOOL_DENIED` |
+| `bash` | 路径沙箱仍然由主机强制执行；忽略文件不会扩展 bash 权限 |
 
 ## 7. 诊断
 

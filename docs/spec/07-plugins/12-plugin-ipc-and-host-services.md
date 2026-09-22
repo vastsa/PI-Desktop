@@ -250,7 +250,7 @@ The model-facing registry gains plugin tools per prompt: main passes registered
 defs (`fullName`, description, JSON-schema parameters) to `agent.prompt`, and
 the runtime keeps them in a deferred catalog instead of serializing every
 schema into the first request. The model loads a matching plugin tool through
-the local `ToolSearch` tool; the next turn receives the selected schema and
+the local `tool_search` tool; the next turn receives the selected schema and
 then uses the same host permission/dispatch path above. Covered by protocol
 smoke scenario E2E-024 and the runtime-loading scenario E2E-008a.
 
@@ -259,7 +259,7 @@ Tools discovered from a plugin's MCP servers enter the same registry under
 only step 3 differs internally, forwarding to the MCP client instead of plugin JS.
 
 Skills use a separate, simpler path. The catalog (id, name, description) is part
-of the base system prompt, the `Skill` schema is itself deferred behind
-`ToolSearch`, and its body is fetched by a local `Skill` tool that Electron main
+of the base system prompt, the `skill` schema is itself deferred behind
+`tool_search`, and its body is fetched by a local `skill` tool that Electron main
 serves directly — the sidecar never holds skill text, and a skill document
 reaches the model only when it asks for it (D174/D185).

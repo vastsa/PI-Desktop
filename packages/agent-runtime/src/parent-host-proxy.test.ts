@@ -18,7 +18,7 @@ describe("ParentHostProxy RPC deadlines", () => {
     const stdout = stubStdout();
     const proxy = new ParentHostProxy();
     try {
-      const pending = proxy.call("tools.execute", { toolName: "GenerateImages" });
+      const pending = proxy.call("tools.execute", { toolName: "generate_images" });
       const request = JSON.parse(String(stdout.mock.calls.at(-1)?.[0]));
       proxy.handleParentMessage({ id: request.id, error: {
         code: -32000, message: "Denied", data: { errorCode: "PERMISSION_DENIED" },
@@ -52,7 +52,7 @@ describe("ParentHostProxy RPC deadlines", () => {
     const stdout = stubStdout();
     try {
       const proxy = new ParentHostProxy();
-      const pending = proxy.call("tools.execute", { toolName: "Bash" });
+      const pending = proxy.call("tools.execute", { toolName: "bash" });
       const request = JSON.parse(String(stdout.mock.calls[0][0]));
       let settled = false;
       void pending.then(
@@ -80,7 +80,7 @@ describe("ParentHostProxy RPC deadlines", () => {
     try {
       const proxy = new ParentHostProxy();
       const pending = proxy.call("tools.execute", {
-        toolName: "Bash",
+        toolName: "bash",
         timeoutMs: 1_000,
       });
       const request = JSON.parse(String(stdout.mock.calls[0][0]));
@@ -121,7 +121,7 @@ describe("ParentHostProxy RPC deadlines", () => {
       const proxy = new ParentHostProxy();
       const closed = vi.fn();
       proxy.onClose(closed);
-      const pending = proxy.call("tools.execute", { toolName: "Bash" });
+      const pending = proxy.call("tools.execute", { toolName: "bash" });
       (proxy as any).handleParentClose(new Error("parent host died"));
       await expect(pending).rejects.toThrow("parent host died");
       expect(closed).toHaveBeenCalledOnce();
@@ -136,7 +136,7 @@ describe("ParentHostProxy RPC deadlines", () => {
     try {
       for (let index = 0; index < 3; index += 1) {
         const proxy = new ParentHostProxy();
-        const pending = proxy.call("tools.execute", { toolName: "Bash" });
+        const pending = proxy.call("tools.execute", { toolName: "bash" });
         const request = JSON.parse(String(stdout.mock.calls.at(-1)?.[0]));
         proxy.handleParentMessage({ id: request.id, result: { ok: true } });
         await expect(pending).resolves.toEqual({ ok: true });

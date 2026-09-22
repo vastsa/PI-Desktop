@@ -132,13 +132,13 @@ does not turn temporary thread pressure into a host process exit.
 | `COMMAND_SHELL_INVALID` | no | settings supplied an unknown, unavailable, or wrong-platform shell ID |
 | `PERMISSION_TIMEOUT` | no | permission prompt timed out (mapped to deny) |
 | `PERMISSION_REQUIRED` | no | waiting for user decision |
-| `WRITE_DISABLED_IN_PLAN` | no | contract-mode hard-deny for Write |
-| `EDIT_DISABLED_IN_PLAN` | no | contract-mode hard-deny for Edit |
+| `WRITE_DISABLED_IN_PLAN` | no | contract-mode hard-deny for `write` |
+| `EDIT_DISABLED_IN_PLAN` | no | contract-mode hard-deny for `edit` |
 | `PLUGIN_DISABLED_IN_PLAN` | no | contract-mode hard-deny for every plugin tool |
 | `TOOL_DISABLED_IN_PLAN` | no | contract-mode hard-deny for an unknown/unlisted tool |
 | `PLAN_NOT_ACTIVE` | no | a submit tool ran while no contract was being negotiated |
 | `PLAN_KIND_MISMATCH` | no | `submit_plan` in Goal mode, or `submit_goal` in Plan mode |
-| `PLAN_APPROVAL_REQUIRED` | no | submit_plan/submit_goal is waiting for a separate approval |
+| `PLAN_APPROVAL_REQUIRED` | no | `submit_plan`/`submit_goal` is waiting for a separate approval |
 | `PLAN_APPROVAL_TIMEOUT` | no | absolute 30-minute plan approval deadline expired |
 | `PLAN_APPROVAL_STALE` | no | response does not match the live proposal/session/turn/tool-call/version |
 | `PLAN_APPROVAL_INTERRUPTED` | no | pending approval closed during abort, crash, or persistence failure |
@@ -181,7 +181,7 @@ The `_IN_PLAN` suffix and the `PLAN_` prefix are historical: both contract modes
 (**D198**). The renderer picks its wording from the proposal's `kind`, so one
 code can surface as either "Plan" or "Goal" copy.
 
-### 3.4 Edit contract (ADR 0087)
+### 3.4 `edit` contract (ADR 0087)
 
 Emitted only by `edit`. Version and provenance failures have their own codes
 because each names a different next action; reporting them as `TOOL_FAILED`

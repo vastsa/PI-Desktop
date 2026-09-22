@@ -911,7 +911,7 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
 ## 8. 并发/排序
 
 1. 请求可以在调度程序上限内并发。 read/search 工具可能
-   并行运行；每个会话的 Read/search/`write` 都是有界的并且按 FIFO 顺序排列，
+   并行运行；每个会话的 read/search/`write` 都是有界的并且按 FIFO 顺序排列，
    一次会话中最多有一个突变。
 2. 不同的会话可以在保留的项目选项卡上同时继续；
    每个都解析自己的项目根并授予
@@ -919,7 +919,7 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
 4. `tools.output` 保留 stdout/stderr 分离和通知顺序；
    它的作用域为 session/tool 调用，并且没有回合或排序字段；
    最终结果仍然有限
-5. Abort是幂等的，关闭整个bash进程树
+5. Abort是幂等的，关闭整个Bash进程树
 6. Plan 和 Goal 批准请求为 proposal/session/turn/tool-call/version
    范围；
    每个项目仅存在一项待批准和一项 queued/running 执行
@@ -963,7 +963,7 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
    未创建子项的未知消息
 10. 伪造的 `requestedMode` 无法授权工具进入持久模式；
     Plan 和 Goal 拒绝 write/edit/plugin/unknown 工具并申请权限
-    根据 `requestedMode`/write/edit/plugin/unknown/Plan 提示 Bash
+    根据 `requestedMode`/write/edit/plugin/unknown/Plan 提示 bash
 11. submit_plan 和 submit_goal 将精确的 Markdown 字节写入唯一的
     `.pi/plan/*.md` 或 `.pi/goal/*.md` 文件
     hash/size 和结构化 title/question 字段；仅匹配
@@ -977,8 +977,8 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
 
 ## 定时任务工具
 
-Agent 模式按需提供 ScheduledTaskList、ScheduledTaskCreate、ScheduledTaskUpdate、
-ScheduledTaskDelete。通过 tools.execute 复用现有授权、审计和定时任务领域处理器。
+Agent 模式按需提供 scheduled_task_list、scheduled_task_create、scheduled_task_update、
+scheduled_task_delete。通过 tools.execute 复用现有授权、审计和定时任务领域处理器。
 查询为低风险；Ask／Accept Edits 下修改需授权。Plan／Goal 即使在 Auto 下也拒绝。
 
 Host 重新检查会话的持久化模式，按调用会话的项目限制访问，不使用前台项目或模型传入路径。

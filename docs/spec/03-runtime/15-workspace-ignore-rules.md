@@ -81,11 +81,11 @@ Syntax: gitignore-compatible subset.
 
 | tool | ignore application |
 |---|---|
-| Glob | unscoped walk: layers 1–4 filter results; explicit `path`: layer 1 only |
-| Grep | unscoped walk: layers 1–4 filter the file set (in-process walker and the system `rg` fast path alike); explicit `path`: layer 1 only |
-| Read | `WORKSPACE_PATH_DENIED` on a denylisted file; otherwise permission-gated when the explicit path is outside; `TOOL_DENIED` after denial |
-| write/edit | `WORKSPACE_PATH_DENIED` on a denylisted file or move destination; otherwise permission-gated when the explicit path is outside; `TOOL_DENIED` after denial |
-| bash | path sandbox still enforced by host; ignore file does not expand bash powers |
+| `glob` | unscoped walk: layers 1–4 filter results; explicit `path`: layer 1 only |
+| `grep` | unscoped walk: layers 1–4 filter the file set (in-process walker and the system `rg` fast path alike); explicit `path`: layer 1 only |
+| `read` | `WORKSPACE_PATH_DENIED` on a denylisted file; otherwise permission-gated when the explicit path is outside; `TOOL_DENIED` after denial |
+| `write`/`edit` | `WORKSPACE_PATH_DENIED` on a denylisted file or move destination; otherwise permission-gated when the explicit path is outside; `TOOL_DENIED` after denial |
+| `bash` | path sandbox still enforced by host; ignore file does not expand bash powers |
 
 ## 7. Diagnostics
 

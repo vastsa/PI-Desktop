@@ -56,7 +56,7 @@ and was absent from the sidebar until a manual refresh.
    scan normally stops at the first key, while lines written under the previous
    ordering carry it after their payload and are read by the same scan, so no
    migration is required.
-3. **One coordinate space.** Read-window offsets are physical message-line
+3. **One coordinate space.** read-window offsets are physical message-line
    positions, clamped against the layout. `last_seq` is never used for this
    purpose. The compaction chain is still returned whole with any window,
    because the newest checkpoint drives model context.

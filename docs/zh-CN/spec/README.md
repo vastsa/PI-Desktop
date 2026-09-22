@@ -87,15 +87,15 @@ docs/spec/
 6. SQLite 仅由 Rust 拥有
 7. 默认模式=Agent；操作选择器 = Agent | Plan | Goal。 Plan 和 Goal
    是相同 Agent 的合约状态，并且不是严格的只读安全性
-   配置文件，因为 Bash 遵循所选的权限模式
-8. SubmitPlan 将精确的 Markdown 字节写入新的主机拥有的
+   配置文件，因为 bash 遵循所选的权限模式
+8. submit_plan 将精确的 Markdown 字节写入新的主机拥有的
    `.pi/plan/*.md`神器； title/question 保持结构化
    `plan_approvals`，批准打开工件，仅限 approve/reject，并且
    `PLAN_APPROVAL_TIMEOUT` 在 30 绝对分钟后过期
 9. 协议 v11 和存储架构 v15 对 Plan/Goal 检查点、
    `plan_approvals` 执行字段、启动中断和外壳身份具有权威性。
    v11 撤回 v10 添加的 A2A 方法域。
-10、权限超时120s拒绝； Bash 超时默认 60 秒
+10、权限超时120s拒绝； bash 超时默认 60 秒
 11.本地用户可安装的插件（稍后上市）
 12. 标签版本 = macOS arm64、Intel x64、Windows x64 和 Linux x64 (D126/D285)
 13. 通用 provider/model 覆盖范围（原生 + OpenAI 兼容 + 定制）

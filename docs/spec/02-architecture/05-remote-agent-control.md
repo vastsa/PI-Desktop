@@ -98,7 +98,7 @@ model: the server side is bootstrapped over the user's own SSH session and
 the client reaches it through a forwarded loopback port.
 
 PI-Desktop does not revive the withdrawn subagent A2A/Peer channel. ADR 0165
-continues to govern `Task` subagent coordination. The separate official
+continues to govern `task` subagent coordination. The separate official
 Session Orchestrator plugin may use the host-owned, local-only collaboration
 ledger defined by ADR 0239; that reviewed path is not a remote Gateway or A2A
 transport and does not change the remote-control target.

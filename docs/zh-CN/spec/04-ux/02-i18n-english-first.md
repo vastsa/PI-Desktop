@@ -105,7 +105,7 @@ domain.section.item
    已经说了项目）。状态、空状态、错误和设置提示说明
     发生了什么以及下一步该做什么 (D149)
 10. Agent/Plan/Goal 选择器、合约状态、title/artifact-opener/
-    记住批准模式操作、Bash/Auto 突变警告、
+    记住批准模式操作、bash/Auto 突变警告、
     shell catalog/unavailable 状态、故障关闭恢复和共享
 Plan/Goal 错误代码
     在每个已发布语言中都有匹配的键；无聊天操作模式键或命令

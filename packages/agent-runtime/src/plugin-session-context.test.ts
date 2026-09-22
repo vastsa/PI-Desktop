@@ -22,7 +22,7 @@ describe("pluginLlmContextFromTranscript", () => {
       msg({
         id: "t1",
         role: "tool",
-        toolName: "Read",
+        toolName: "read",
         toolResult: "file contents",
         parentToolCallId: "task-1",
       }),
@@ -96,10 +96,10 @@ describe("serializePluginLlmContext", () => {
   it("flattens roles into a tools-less transcript", () => {
     const text = serializePluginLlmContext([
       { role: "user", content: "Do the thing" },
-      { role: "tool", toolName: "Read", content: "src/a.ts" },
+      { role: "tool", toolName: "read", content: "src/a.ts" },
     ]);
     expect(text).toContain("### User\nDo the thing");
-    expect(text).toContain("### Tool Read\nsrc/a.ts");
+    expect(text).toContain("### Tool read\nsrc/a.ts");
     expect(PLUGIN_COMPLETE_DEFAULT_TAIL).toMatch(/respond/);
   });
 });

@@ -48,7 +48,8 @@ Existing data stays readable; old cadence-only records do not start automaticall
 
 In Agent mode, ask to create, list, update or delete scheduled tasks in the
 conversation's project. For example: “Change the project review to 15:30.”
-The AI uses ScheduledTaskList/Create/Update/Delete through the normal tool
+The AI uses `scheduled_task_list`, `scheduled_task_create`,
+`scheduled_task_update`, and `scheduled_task_delete` through the normal tool
 permission pipeline; Ask mode requests approval for mutations. Plan/Goal
 cannot use these tools. Tasks from another project are not visible or writable.
 

@@ -1002,7 +1002,7 @@ Minimal interface:
   Bounded responses also include exclusive `messageEnd` and `hasMoreAfter` for
   forward paging; reading windows never replace the live transcript cache.
   A nested target may also return `navigationParent`, the latest capped owning
-  Task `UiMessage`. It is display context outside the physical page, not an
+  task `UiMessage`. It is display context outside the physical page, not an
   extra history line. The renderer shares one reading view between ordinary
   paging, search navigation, and subagent details.
 - `session/search({ query, offset? }) -> SessionSearchPage` forwards to
@@ -1201,7 +1201,7 @@ Settings shell writes accept only an available ID for the current platform and
 reject unknown, unavailable, or wrong-platform IDs. A genuine effective shell
 change is accepted only while all sessions and Plan/Goal work are idle. If a
 persisted ID later becomes unavailable, the catalog selects the first available
-platform shell and sets `fallback: true`; if no choice is available, Bash
+platform shell and sets `fallback: true`; if no choice is available, bash
 returns `SHELL_NOT_FOUND`.
 Each turn pins the effective ID and dialect. The runtime transports both values;
 host rejects a changed pin before permission evaluation and before spawn with
@@ -1636,7 +1636,7 @@ is valid.
 
 The `tools` array may include the token `inherit` (ADR 0246). `inherit` alone
 is a valid grant; host-core must not drop the document. Settings round-trips
-the token as `tools: inherit` or `tools: [inherit, Bash]`.
+the token as `tools: inherit` or `tools: [inherit, bash]`.
 
 `agents.disabledBuiltins` and `agents.setBuiltinEnabled` carry activation for the
 shipped builtins, which have no document to switch (ADR 0270). Handles are stored
@@ -1649,7 +1649,7 @@ current builtin uses is stored inertly rather than refused, because host-core
 does not ship the builtin list.
 
 Electron's `subagent/list` IPC channel exposes the same global-only list to
-Settings > Agent > Subagents. `subagent/catalog` returns the effective Task
+Settings > Agent > Subagents. `subagent/catalog` returns the effective task
 catalog — enabled user documents merged with the five shipped builtins, minus the
 builtins the user switched off — together with `builtins`: every shipped
 definition that still wins its handle, each carrying `enabled`, so the page can

@@ -14,7 +14,7 @@ mistake harder to recover from than necessary.
 
 ## Decision
 
-Amend D186 and ADR 0087: a prompt may make three counted failed `Edit` calls on
+Amend D186 and ADR 0087: a prompt may make three counted failed `edit` calls on
 one path before the repeat guard terminates the turn. A recognized shell patch
 command uses the same three-failure limit under its patch-command key. The
 first and second counted failures return their normal error-specific recovery
@@ -28,7 +28,7 @@ tool concurrency limits are unaffected.
 
 ## Consequences
 
-- The model gets one additional bounded opportunity to correct an Edit or
+- The model gets one additional bounded opportunity to correct an edit or
   recognized shell patch failure.
 - Persistent or guessing mutation loops still terminate deterministically.
 - The runtime error message and every shipped locale must say three failures.
@@ -43,6 +43,6 @@ tool concurrency limits are unaffected.
 
 ## Verification
 
-- Runtime unit tests cover Edit, shell patch, per-code grace, reset after a
+- Runtime unit tests cover edit, shell patch, per-code grace, reset after a
   successful mutation, and the visible terminating error row.
 - E2E-140 and E2E-141 document the third-failure boundary.

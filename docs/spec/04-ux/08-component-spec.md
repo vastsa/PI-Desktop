@@ -4,6 +4,8 @@
 > Design tokens and foundations: [07-ui-design-system.md](07-ui-design-system.md)  
 > Interaction behavior: [09-interaction-patterns.md](09-interaction-patterns.md)
 
+> Tool labels shown to the user (`read`, `bash`, `task`) stay capitalized: they are display names derived from the canonical lowercase tool name, never the tool's identity. See [23-tool-names.md](../03-runtime/23-tool-names.md) §0.
+
 
 > Shell layout is Codex-aligned: left thread sidebar (240–520px, default 275px), main transcript, floating bottom composer with runtime mode/permission/model controls, and a compact action-only top bar. Prefer neutral charcoal surfaces over blue-slate chrome.
 >
@@ -140,7 +142,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 
 | Platform | Top-level chrome | Application menu |
 |---|---|---|
-| macOS | Native inset traffic lights at `{x:16,y:16}`; expanded sidebar Collapse control at right, with no logo/title; work-panel toggle is viewport-fixed at the window's top-right | System menu: PI-Desktop, File, Edit, View, Window, Help |
+| macOS | Native inset traffic lights at `{x:16,y:16}`; expanded sidebar Collapse control at right, with no logo/title; work-panel toggle is viewport-fixed at the window's top-right | System menu: PI-Desktop, File, `edit`, View, Window, Help |
 | Windows | Frameless 46px titlebar; sidebar actions at left; work-panel toggle then minimize/maximize/close stay viewport-fixed at the window's top-right | None inside the window |
 | Linux | Frameless 46px titlebar; sidebar actions at left; work-panel toggle then minimize/maximize/close stay viewport-fixed at the window's top-right | None inside the window |
 
@@ -707,7 +709,7 @@ controls.
 | Project memory | row-menu editor reads and saves a compact list of titled or untitled memory cards for the exact project path; cards can be added, edited, and removed, the context is available in later chats, and it is never a higher-priority instruction |
 | Session list | exact-path matches only; no basename grouping |
 | Active group | exactly one group reflects the selected host workspace |
-| Task state | In-progress, selected, completed, and failed indicators update by session without replacing the visible transcript; precedence is in-progress, selected, then terminal outcome |
+| `task` state | In-progress, selected, completed, and failed indicators update by session without replacing the visible transcript; precedence is in-progress, selected, then terminal outcome |
 
 ### 3.10 Local profile footer contract
 
@@ -867,7 +869,7 @@ pending action cards remain reachable outside a hidden process. See
 | Session switch | A first-opened session paints at its latest record; a revisited pane paints at its own retained position. Bounded first commit and full-history expansion show the same position: no post-paint height correction may shift the visible rows, in either direction |
 | Turn start (send / retry / regenerate) | Re-pins and positions the latest content before paint, even if the user had scrolled up; the later persisted user-message event does not flash the transcript at its top, and the composer collapse / indicator layout clamps during the send never release follow mode |
 | Idle (after stream) | Auto-scroll unlocked; user can scroll freely |
-| Message-scoped review snapshot | Each successful workspace Write/Edit tool row is followed by one compact InlineReviewCard carrying that message's added/modified/deleted status and explicit addition/deletion totals. It renders as a single flat list row on the tool-row rhythm — disclosure caret, Git-style status letter (`A`/`M`/`D`), path, addition/deletion counts — with no card border, status rail, icon plate, or status pill; hover fill is the only row chrome, and a rolled-back change is struck through. Its hunks sit behind an expandable disclosure: every review card (inline and in the Review tab) is collapsed by default, and the user expands it on demand. The card remains after a Git commit, never becomes a bottom/global entry, and offers hash-guarded rollback without leaking into another session's transcript. |
+| Message-scoped review snapshot | Each successful workspace `write`/`edit` tool row is followed by one compact InlineReviewCard carrying that message's added/modified/deleted status and explicit addition/deletion totals. It renders as a single flat list row on the tool-row rhythm — disclosure caret, Git-style status letter (`A`/`M`/`D`), path, addition/deletion counts — with no card border, status rail, icon plate, or status pill; hover fill is the only row chrome, and a rolled-back change is struck through. Its hunks sit behind an expandable disclosure: every review card (inline and in the Review tab) is collapsed by default, and the user expands it on demand. The card remains after a Git commit, never becomes a bottom/global entry, and offers hash-guarded rollback without leaking into another session's transcript. |
 
 ### 4.5 Accessibility
 
@@ -909,7 +911,7 @@ editing) and bundled `pi.browser`
 (work-panel browser chrome; the guest page stays host-owned, ADR 0170). File
 resources are *artifact* surfaces: the host renders them, but the conversation
 opens them, so they are absent from the launcher. There is no interactive
-terminal surface; agent Bash output remains in the transcript.
+terminal surface; agent bash output remains in the transcript.
 
 ### 5.2 Anatomy
 
@@ -1069,13 +1071,13 @@ entirely inside the plugin's isolated page:
 
 ### 5.4 Interactions
 
-- Trigger: file/URL references and BrowserPreview create/activate their
-  resource tab in the originating session's runtime context. BrowserPreview
+- Trigger: file/URL references and browser_preview create/activate their
+  resource tab in the originating session's runtime context. browser_preview
   events carry `sessionId`, and the renderer retains that session's preview
   path/URL as its Browser resource. Review is never triggered by a tool
   result: it opens only from the `+` launcher row or from the retained panel
   context the viewport-fixed toggle and `Cmd/Ctrl + J` reveal, so a successful
-  workspace Write/Edit cannot open, activate, or resize the panel in any
+  workspace write/edit cannot open, activate, or resize the panel in any
   session.
   The plan/goal approval artifact still creates or activates a tab in its
   originating session, but the host picks its surface: the bundled file view when
@@ -1088,11 +1090,11 @@ entirely inside the plugin's isolated page:
   Background artifacts may update that retained context but never reveal it,
   resize the window, or change visible selection/focus. The transcript does
   not create a global Review changes launcher: each successful workspace
-  Write/Edit row owns only its adjacent InlineReviewCard, and another session
+  write/edit row owns only its adjacent InlineReviewCard, and another session
   cannot render that card in its transcript. Repeated resources deduplicate
   within the originating session.
 - Review truth: host-core adds one bounded `details.review` record to each
-  successful workspace Write/Edit result. The renderer reads that record from
+  successful workspace write/edit result. The renderer reads that record from
   the owning transcript message, so status, counts, and hunks describe exactly
   what that row changed and remain available after a commit, restart, or
   workspace switch. The Review tab is the same session's chronological change
@@ -1189,11 +1191,11 @@ the task description as a full-width card, and the delegate's live process.
 It does not render separate Details or Output tabs.
 
 - The selection is renderer-local and session-scoped: it stores only the
-  `sessionId` and delegation id, then re-finds the current Task and its
+  `sessionId` and delegation id, then re-finds the current task and its
   `parentToolCallId` rows from the live/retained transcript. The header and
   process therefore update as thinking, tool calls, and answer fragments stream
   in.
-- The task description is the Task call's `task` argument, rendered as one
+- The task description is the task call's `task` argument, rendered as one
   selectable inset grouped card. The delegate's thinking, tool rows,
   and answer fragments reuse the same components and styling as the main
   conversation. Reports and counters remain omitted from this compact surface.
@@ -1546,7 +1548,7 @@ storage but compose into one assistant turn until the next user message.
   latest-message control and a new turn return to live output. Actions on an
   old message prepare canonical input before editing, retrying, or branching.
 - Ordinary history and search use one retained-session reading view, shared
-  with subagent details. A nested answer reveals its owning Task and opens the
+  with subagent details. A nested answer reveals its owning task and opens the
   existing details dock at the answer, even when the parent is outside the page.
   Do not silently ignore targets that have no top-level transcript row.
 - Hidden Markdown URLs, syntax, and file-chip paths map to their visible source
@@ -1742,7 +1744,7 @@ Single message render — either user (plaintext) or assistant (markdown streami
   Fork creates and activates an independent session whose snapshot ends at the
   selected assistant response, requires an idle source, and leaves that
   source's transcript, live runtime, and provider cache state untouched (D134).
-  Edit belongs to the user turn: it swaps the prompt bubble for a focused
+  edit belongs to the user turn: it swaps the prompt bubble for a focused
   composer-radius editor filled with `--ds-tile-deep` (the same 8% mix as a
   user bubble) so it stays distinct from the pane without an outer shadow.
   Transcript rows paint-contain and the scroller clips overflow, so a
@@ -2057,18 +2059,18 @@ seconds when non-zero) from one hour onward. Zero-value units are omitted, so
   Live thinking follows its own disclosure policy and never opens sibling payloads.
 - The processing group spans the full available assistant column, so expanded
   result details keep a usable width even when the header or payload is short.
-- The visible label is a natural-language action (`Read`, `Ran`, `Searched`),
+- The visible label is a natural-language action (`read`, `Ran`, `Searched`),
   not the raw function name. Running actions use the progressive form.
 - The primary argument is a clamped single-line monospace hint.
 - Result chips follow the hint: exit code (error hue), match/file counts,
-  replacement count, Write byte size, Read line count plus its 1-based closed
+  replacement count, write byte size, read line count plus its 1-based closed
   line range (`{lineCount},L{offset+1}-L{offset+lineCount}`), `truncated`, and
-  `scratch`. Read uses `offset` and `lineCount` from the returned window rather
+  `scratch`. read uses `offset` and `lineCount` from the returned window rather
   than `fileBytes`; if those fields are unavailable, it omits the read-size
   chip instead of presenting the whole-file size as the amount read. A
   successful exit earns no chip — the row status already says so. The
   `truncated` chip follows `details.truncated` and therefore appears only when
-  this result was cut short, not when a Read window of a longer file was filled
+  this result was cut short, not when a read window of a longer file was filled
   (D306).
 - Live activity remains in the processing group, its latest row, or the
   dedicated runtime indicator; no additional status capsule is rendered.
@@ -2088,13 +2090,13 @@ twice.
 
 | Tool | Blocks |
 |---|---|
-| Read | `File content` — syntax highlighted from the file extension |
-| Write | `Written content` — highlighted from the target extension |
-| Edit | `Changes` — compact diff, only when no ReviewChangeCard owns one |
-| Bash | `Output`, `Errors` (error hue), unframed and unlabelled (D227, §9.10); empty channels omitted. The command stays in the head; a PermissionCard, which has no head, still shows it as `Command` (shell) |
-| Glob | `Files` — clickable workspace paths |
-| Grep | `Matches` — grouped by file with a `line` gutter and clickable path headings for `outputMode: content`; a clickable path list for `filesWithMatches`; `path` → hit count fields for `count` |
-| any host `notice` | `Note` — neutral, after the blocks it qualifies (search scoping, clipped long lines, Read window) |
+| `read` | `File content` — syntax highlighted from the file extension |
+| `write` | `Written content` — highlighted from the target extension |
+| `edit` | `Changes` — compact diff, only when no ReviewChangeCard owns one |
+| `bash` | `Output`, `Errors` (error hue), unframed and unlabelled (D227, §9.10); empty channels omitted. The command stays in the head; a PermissionCard, which has no head, still shows it as `Command` (shell) |
+| `glob` | `Files` — clickable workspace paths |
+| `grep` | `Matches` — grouped by file with a `line` gutter and clickable path headings for `outputMode: content`; a clickable path list for `filesWithMatches`; `path` → hit count fields for `count` |
+| any host `notice` | `Note` — neutral, after the blocks it qualifies (search scoping, clipped long lines, `read` window) |
 | any failure | `Error` — message plus code, listed first |
 | unmapped payload | scalar entries as label/value fields; long or multi-line strings as their own labeled block; nested objects as JSON |
 
@@ -2117,7 +2119,7 @@ twice.
 - Chips: monospace `--text-2xs`, `--ds-tile-deep` fill (no border, D297), error hue for exit codes
 - Code, file list, match list and field blocks: `font-mono text-sm`,
   independently copyable, capped at 260px with internal scrolling
-- File-list paths are block-level, start-aligned rows (same box as Grep path
+- File-list paths are block-level, start-aligned rows (same box as grep path
   headings). A full-width `<button>` must not justify the path's characters
   across the block.
 - Diff blocks reuse the review card's `.diff-line` rails
@@ -2139,7 +2141,7 @@ twice.
   final item of the last activity group; earlier, failed and denied rows remain
   closed until the user opens them.
 - A file path that a row or its result names is a link, not decoration: clicking
-  the summary path of a `Read`, `Write`, `Edit`, or `fetch` row, or a path in a
+  the summary path of a `read`, `write`, `edit`, or `fetch` row, or a path in a
   result's file list or match groups, completes the reference through the same
   opener a chat chip uses (`pi-desktop/fs/resolveRef`) and opens where it
   resolved — a project file in the bundled `pi.file-manager` view, a
@@ -2161,14 +2163,14 @@ twice.
   but its payload is not auto-expanded. The containing group settles as
   `Processed for {elapsed}` with an issue count even when a later tool recovered.
   Expansion uses a short height/opacity transition and keeps collapsed content inert.
-- Running updates replace the latest partial output in place. Bash's cumulative
+- Running updates replace the latest partial output in place. bash's cumulative
   `details.output` partial result is rendered through the stdout channel, while
   the completed `details.stdout` value wins when both are present. Blocks are
   built on expansion only and unchanged rows are memoized, so collapsed rows do
   not parse or rerender on streaming ticks.
 - Results are presented before arguments so the primary result has higher
   information priority.
-- File paths and Grep hit headings open in the work panel when they resolve
+- File paths and grep hit headings open in the work panel when they resolve
   under the workspace root; paths outside it stay plain text.
 - Host truncation markers remain visible and cannot be bypassed by expansion.
   Rendered lists and diffs are capped and report the hidden remainder.
@@ -2186,20 +2188,20 @@ twice.
 
 ### 9.8 MVP constraints
 
-- No word-level diff refinement; the Edit diff is line-based
+- No word-level diff refinement; the edit diff is line-based
 - No cross-row activity grouping until turn boundaries are available to the
   transcript component
 
 ### 9.9 Delegation cards and fan-out topology (D201, D265, D268, D271, D302, D319, D323, ADR 0062)
 
-A `Task` call is presented as a node of a delegation card, not as a compact tool
+A `task` call is presented as a node of a delegation card, not as a compact tool
 row — one delegation reads the same as a fan-out (D265). The node names the
 delegate it ran, taken from the rows it produced or, before any arrived, from
 the call's own `agent` argument, and carries the call's short `description`. The
 resolved model id is shown immediately after the delegate name, from the
-structured `Task` result details.
+structured `task` result details.
 
-The lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`) stay compact tool rows —
+The lifecycle rows (`task_wait`/`task_list`/`task_stop`) stay compact tool rows —
 they are not topology nodes and must not inflate the subagent counts — but they
 are presented as subagent rows rather than as generic tool calls (D269). A
 lifecycle row is called with delegation ids, which read as bare UUIDs, so it
@@ -2215,15 +2217,15 @@ never summarizes from its own arguments:
 ```
 
 - **Its summary is the roster it reports on**, by agent name, read from
-  `details.delegations[]` (`TaskWait`/`TaskList`) or `details.stopped[]`
-  (`TaskStop`). A repeated agent is counted (`explorer ×2`) rather than listed
+  `details.delegations[]` (`task_wait`/`task_list`) or `details.stopped[]`
+  (`task_stop`). A repeated agent is counted (`explorer ×2`) rather than listed
   twice, and a subagent count chip sits beside the label.
 - **Its status badge rolls up that roster** using the same
   `chat.subagentStatus.*` vocabulary as a topology node: anything still running
   keeps the row running, a `failed`/`denied` member outranks a completed
   sibling, and otherwise a non-completed member (truncated, timed out, stopped)
   is surfaced ahead of `completed`.
-- **Its label names the action on subagents**, not "Delegated": only `Task`
+- **Its label names the action on subagents**, not "Delegated": only `task`
   delegates. The row carries the `delegate` bot icon in the subagent accent so
   it scans as belonging with the card it reports on.
 - **Its body is the roster as a named table**, one line per subagent with status,
@@ -2264,7 +2266,7 @@ in place:
 
 - The dock renders a sticky identity header with the delegate name and model
   on the left and the status capsule plus elapsed time trailing on the same
-  row, followed by the Task call's `task` argument as a selectable inset
+  row, followed by the task call's `task` argument as a selectable inset
   grouped card and the live process timeline.
 - Reports and counters remain omitted from this surface. The live thinking,
   tool, and answer process is shown on the dock timeline. The topology card
@@ -2278,15 +2280,15 @@ in place:
 - Runs are rebuilt from the message list on every render, so group memoization
   compares them by row identity and length rather than by object identity —
   otherwise a streaming delegate would freeze at its first row.
-- Every `Task` call in an activity group becomes one full-width delegation card
+- Every `task` call in an activity group becomes one full-width delegation card
   rather than a compact tool row, a lone delegation included (D265). Its header
   presents aggregate state, the number of subagents, the settled/total count and
   elapsed time; it keeps the standard disclosure caret. The aggregate state is
   count-aware, so a single delegation is not announced in the plural.
-- **The card contains only those `Task` calls** (D319). Consecutive `Task`
+- **The card contains only those `task` calls** (D319). Consecutive `task`
   starts stay in one topology group so a fan-out still reads as one card.
-  Parent thinking, workspace tools (`Read`/`Grep`/`Bash`/…), and lifecycle rows
-  (`TaskWait`/`TaskList`/`TaskStop`) are a separate processing group — before
+  Parent thinking, workspace tools (`read`/`grep`/`bash`/…), and lifecycle rows
+  (`task_wait`/`task_list`/`task_stop`) are a separate processing group — before
   the card, after it, or both — so the parent's own work is not painted as
   subagent work. The tile, the “Subagent working” header, and the topology
   canvas belong only to that Task group. The parent turn itself stays
@@ -2295,15 +2297,15 @@ in place:
   tile edge so the graph and any leftover rows do not sit on the border.- Runs are rebuilt from the message list on every render, so group memoization
   compares them by row identity and length rather than by object identity —
   otherwise a streaming delegate would freeze at its first row.
-- Every `Task` call in an activity group becomes one full-width delegation card
+- Every `task` call in an activity group becomes one full-width delegation card
   rather than a compact tool row, a lone delegation included (D265). Its header
   presents aggregate state, the number of subagents, the settled/total count and
   elapsed time; it keeps the standard disclosure caret. The aggregate state is
   count-aware, so a single delegation is not announced in the plural.
-- **The card contains only those `Task` calls** (D319). Consecutive `Task`
+- **The card contains only those `task` calls** (D319). Consecutive `task`
   starts stay in one topology group so a fan-out still reads as one card.
-  Parent thinking, workspace tools (`Read`/`Grep`/`Bash`/…), and lifecycle rows
-  (`TaskWait`/`TaskList`/`TaskStop`) are a separate processing group — before
+  Parent thinking, workspace tools (`read`/`grep`/`bash`/…), and lifecycle rows
+  (`task_wait`/`task_list`/`task_stop`) are a separate processing group — before
   the card, after it, or both — so the parent's own work is not painted as
   subagent work. The tile, the “Subagent working” header, and the topology
   canvas belong only to that Task group. The parent turn itself stays
@@ -2313,23 +2315,23 @@ in place:
 - A delegate's terminal Task snapshot updates its topology node, settled count,
   elapsed time, and open detail dock immediately, even while siblings or the
   parent remain active. A completed delegate is green and stops spinning.
-  Terminal Task state takes precedence over older lifecycle polling snapshots
+  Terminal task state takes precedence over older lifecycle polling snapshots
   that still say `running`; the same outcome survives transcript reload.
 - A topology group stays live — open once, ticking elapsed, labelled working —
   while any of *its* delegates is still running, even when the parent has
   already moved on to a later processing group in the same turn. Elapsed time
   uses that card's own delegation `startedAt`/`completedAt`, not the immediate
-  `Task` tool-call duration and not a later fan-out in the same turn. After
+  `task` tool-call duration and not a later fan-out in the same turn. After
   the parent turn has ended, leftover `running` nodes reconstruct as
-  `aborted` (the runtime aborts them at run end) unless a `TaskStop` row
-  already marked them `stopped`. `TaskStop`'s `details.stopped[]` is a
-  lifecycle status source, same as `TaskWait`/`TaskList` `delegations[]`; a
+  `aborted` (the runtime aborts them at run end) unless a `task_stop` row
+  already marked them `stopped`. `task_stop`'s `details.stopped[]` is a
+  lifecycle status source, same as `task_wait`/`task_list` `delegations[]`; a
   snapshot that still says `running` is presented as `stopped`. A finished
   session therefore never keeps a live “Subagent working” card.
 - The brief spawn window before a delegate settles is presented as a creating
-  state rather than a generic running one. Because the parent `Task` returns
+  state rather than a generic running one. Because the parent `task` returns
   its structured handle (`delegationId`, `startedAt`) only at its own
-  `tool_end` (ADR 0089), a `Task` row that is `running` with no delegation
+  `tool_end` (ADR 0089), a `task` row that is `running` with no delegation
   payload is identified as still being created: its node and dock badge read
   `chat.subagentCreating` (“Starting subagent…”), the status icon pulses in
   the subagent accent, and the elapsed clock ticks from the call's own
@@ -2337,17 +2339,17 @@ in place:
   reads as stalled. Once the result arrives the node transitions to the normal
   `running` presentation and continues from its real `startedAt`.
 - The expanded card renders a low-noise dotted canvas with one main-agent root
-  connected to the `Task` nodes in parent-row order. The runtime exposes no
-  delegate dependencies and forbids nested `Task`, so the renderer must not
+  connected to the `task` nodes in parent-row order. The runtime exposes no
+  delegate dependencies and forbids nested `task`, so the renderer must not
   invent delegate-to-delegate edges or a downstream summary node.
 - Each node shows the definition name, effective model id, short description,
   explicit outcome, runtime duration and step count. The duration uses the
   delegation registry's
   `startedAt`/`completedAt` timestamps (and ticks live while the node is
-  running), not the immediate `Task` tool-call duration, and uses the same
+  running), not the immediate `task` tool-call duration, and uses the same
   automatically carried `h`/`m`/`s` format as the processing-group header.
   Outcome prefers the
-  structured `Task` result
+  structured `task` result
   (`completed`, `truncated`, `timed_out`, `aborted`, `stopped`, `failed`) and falls back to transport
   state (`running`, `error`, `denied`, `success`). Clicking the node expands the
   existing brief/report/counters and nested rows; the report remains printed
@@ -2386,7 +2388,7 @@ things the body no longer offers move up into the head.
   and its scroll stay: a long build must not bury the transcript. `Errors` keeps
   its tint, and each channel's name is carried for assistive technology in place
   of the heading that used to name it.
-- **Streaming keeps one stdout channel.** While Bash is running, the renderer
+- **Streaming keeps one stdout channel.** While bash is running, the renderer
   accepts the runtime's cumulative `details.output` partial result and presents
   it as stdout. The completed `details.stdout` value takes precedence when both
   fields are present, so the final result cannot regress to an older progress
@@ -2543,7 +2545,7 @@ present the interrupted terminal snapshot after restart.
 - The card is a session-scoped `region` with a localized plan title.
 - Approval, reject, and abort controls have explicit labels and
   keyboard focus.
-- The selected permission mode exposes radio semantics and its Plan/Goal Bash
+- The selected permission mode exposes radio semantics and its Plan/Goal bash
   consequence is available in the accessible description.
 - Resolution does not navigate to another session or take focus from a
   different session.
@@ -2731,7 +2733,7 @@ reasoning-level control.
 - Queued row: the text, then move up, move down, Send now, edit, and remove.
   Move up/down swaps the row with its adjacent waiting neighbour and mirrors the
   Host's durable `position`; at the waiting-block boundary it is a no-op and
-  never crosses into the promoted block. Edit removes the row and returns its
+  never crosses into the promoted block. edit removes the row and returns its
   captured draft — text plus inline file-reference chips — to the composer;
   while the input is non-empty (or holds attachments) the action is refused with
   a toast and nothing changes. Remove drops the row immediately.
@@ -2902,7 +2904,7 @@ reasoning-level control.
   show the effective Ask / Accept edits / Auto posture. Goal keeps the same
   geometry but is fixed to the localized Auto label and cannot open a menu;
   its approval card remains the separate place for choosing execution policy.
-  The control does not imply that Write/Edit/plugin tools are available.
+  The control does not imply that write/edit/plugin tools are available.
 - Goal shares the Plan approval surface (D198). The bar reads its copy from the
   proposal's `kind`, so a goal contract shows the matching approval label and
   artifact opener while the layout and remembered permission split-button stay
@@ -3555,7 +3557,7 @@ default nor provider configuration. OAuth accounts remain in their separate sect
    AI destination
 2. **Vendor accounts** — section title + primary Add account action and one
    single-level list panel using the same row surface as AI services; one row
-   per OAuth account, including duplicate vendors, with account label, Edit,
+   per OAuth account, including duplicate vendors, with account label, edit,
    Test connection, and Remove actions; the default model is edited in the
    account dialog and selected from Defaults
 3. **Providers head** — section title + primary Add provider action; its

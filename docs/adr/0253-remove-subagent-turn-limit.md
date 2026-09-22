@@ -32,13 +32,13 @@ mid-task and surfaced as `truncated` with a partial report — a state that read
 as a failure to the user and to the parent model, and that neither can resume.
 
 The kill paths that remain are all explicit and observable: the parent agent's
-`TaskStop`, the user's Stop, and a terminal parent error aborting leftovers
+`task_stop`, the user's Stop, and a terminal parent error aborting leftovers
 (ADR 0189). A turn count is none of those.
 
 ## Decision
 
 1. **Delete the mechanism.** A delegate has no turn limit. It ends when it
-   finishes, when the parent calls `TaskStop`, when the user Stops, or when a
+   finishes, when the parent calls `task_stop`, when the user Stops, or when a
    terminal parent error aborts it. There is no `truncated` outcome and no
    turn-related termination path.
 
@@ -75,12 +75,12 @@ The kill paths that remain are all explicit and observable: the parent agent's
 ## Consequences
 
 - A looping delegate now runs until the user Stops it, or the parent calls
-  `TaskStop`. That exposure already existed for every definition that omitted
+  `task_stop`. That exposure already existed for every definition that omitted
   `maxTurns`, which was the default and the editor's own starting state, and
   D328 shipped with it.
 - Existing user documents that relied on the cap lose it without a prompt. The
   migration path is the one this ADR documents: stop the delegate with Stop or
-  `TaskStop`, and put the stopping condition in the prompt body, where a
+  `task_stop`, and put the stopping condition in the prompt body, where a
   delegate is already told when its work is done.
 - Settings no longer offers a "no limit" spelling for turns because there is no
   limit left to express. The Advanced disclosure keeps the model, thinking,

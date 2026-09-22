@@ -8,23 +8,23 @@
 
 ## Context
 
-Read/search tools were classified as low risk before their path resolver ran.
+read/search tools were classified as low risk before their path resolver ran.
 An absolute path outside the session workspace therefore bypassed the normal
 permission card and failed later as `PATH_OUTSIDE_WORKSPACE`. That made a
 legitimate inspection request look like a broken Plan turn and gave the agent
 an incentive to retry or replace the native tools with shell commands.
 
 The host already had bounded, cross-platform Rust implementations for
-`Read`/`Glob`/`Grep`, but the sidecar schemas exposed only a subset of their
+`read`/`glob`/`grep`, but the sidecar schemas exposed only a subset of their
 scoping controls. Models could not reliably provide `path`, `include`,
-`outputMode`, `headLimit`, `offset`, `limit`, or `Glob.limit`; some providers
+`outputMode`, `headLimit`, `offset`, `limit`, or `glob.limit`; some providers
 also emitted a shell-style `files_with_matches` value that the host rejected.
 
 ## Decision
 
 ### 1. Explicit outside paths are permission-gated
 
-For `Read`, `Glob`, `Grep`, `Write`, and `Edit`, the host classifies an explicit
+For `read`, `glob`, `grep`, `write`, and `edit`, the host classifies an explicit
 path against the session workspace and scratch roots before applying the normal
 risk matrix:
 
@@ -38,34 +38,34 @@ risk matrix:
 
 After approval, host-core resolves the path with the same canonicalized-ancestor
 logic used for contained paths. It never turns the external location into a
-new workspace root, and implicit Bash cwd or recursive walks do not gain this
+new workspace root, and implicit bash cwd or recursive walks do not gain this
 exception. Successful external results report `root: "external"` where a root
 field exists and keep absolute canonical paths visible to the model.
 
-Plan's existing hard deny for Write/Edit/plugin/unknown tools remains above this
+Plan's existing hard deny for write/edit/plugin/unknown tools remains above this
 path rule.
 
 ### 2. Native search is the portable default
 
 The runtime exposes the host's complete bounded search contract:
 
-- `Read`: `offset` and `limit`;
-- `Glob`: `path` and `limit`;
-- `Grep`: `path`, `include`, `outputMode`, `headLimit`, and
+- `read`: `offset` and `limit`;
+- `glob`: `path` and `limit`;
+- `grep`: `path`, `include`, `outputMode`, `headLimit`, and
   `caseInsensitive`.
 
 `outputMode` exposes exactly `content`, `filesWithMatches`, and `count` in the
 schema. The host also normalizes `files_with_matches` and
 `files-with-matches` as compatibility aliases before execution.
 Search guidance prefers workspace-relative paths and the native tools on every
-platform. Grep may exec a user-installed `rg` when one is on the process PATH
+platform. grep may exec a user-installed `rg` when one is on the process PATH
 or the Unix login PATH (D181 / D315). That is an implementation backend, not a
 shell search: stdin is null, arguments are not quoted through a shell, and the
 host still applies budgets, newest-first order, scoped ignore (`--no-ignore-parent`
 when `path` is explicit), and the same JSON shape. A missing, overridden-invalid,
 or failing `rg` (spawn error or exit 2) falls back to the in-process `ignore` +
 `regex` searcher. `PI_DESKTOP_RG` selects a binary; `PI_DESKTOP_DISABLE_RG`
-forces the fallback. Bash search remains a bounded last resort and still does
+forces the fallback. bash search remains a bounded last resort and still does
 not assume POSIX utilities, PowerShell, or `rg` availability.
 
 ## Consequences
@@ -79,7 +79,7 @@ not assume POSIX utilities, PowerShell, or `rg` availability.
 - External reads and searches are visible through absolute paths; external
   mutations do not create workspace Review or artifact records.
 - The security denylist remains the default. This ADR changes the decision
-  point for explicit paths, not the authority of host-core or the Bash cwd.
+  point for explicit paths, not the authority of host-core or the bash cwd.
 
 ## Alternatives rejected
 
@@ -97,8 +97,8 @@ directory. Scope and user consent must be evaluated separately.
 
 Rejected because command availability and quoting differ across macOS, Linux,
 and Windows, and unbounded shell output was a measured source of context
-exhaustion. Execing `rg` from Grep is not this alternative: the model still
-calls Grep, and host-core owns the result budget.
+exhaustion. Execing `rg` from grep is not this alternative: the model still
+calls grep, and host-core owns the result budget.
 
 ## Related docs
 

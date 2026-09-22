@@ -46,7 +46,7 @@ Agent / inactive
 ```
 
 The user may select Plan while idle. The same Agent may also call
-`EnterPlanMode` while executing. Both paths converge on the same host-validated
+`enter_plan_mode` while executing. Both paths converge on the same host-validated
 Plan state. `ExitPlanMode` submits a structured plan and is the only assistant
 tool call allowed in its batch.
 
@@ -73,19 +73,19 @@ tool. A stale renderer cannot clear Plan or grant execution.
 
 Plan exposes:
 
-- `Read`, `Glob`, `Grep`, and `BrowserPreview`;
-- `Bash`, governed by the durable permission mode;
+- `read`, `glob`, `grep`, and `browser_preview`;
+- `bash`, governed by the durable permission mode;
 - `ExitPlanMode` (this list also carried `CompactContext`, removed by
   ADR 0061 and restored by ADR 0064 as `new_context`).
 
-Plan denies `Write`, `Edit`, every plugin tool, and unknown tools, regardless of
+Plan denies `write`, `edit`, every plugin tool, and unknown tools, regardless of
 permission mode, session grant, manifest risk, or stale IPC state. Agent keeps
-the existing `Read`, `Glob`, `Grep`, `Write`, `Edit`, `Bash`, and registered
+the existing `read`, `glob`, `grep`, `write`, `edit`, `bash`, and registered
 plugin policy.
 
-Plan retains permission-mode selection. Bash prompts under `ask` and
-`accept-edits`; Bash under `auto` runs without confirmation and may mutate the
-workspace or scratch directory. BrowserPreview is the explicit read-only UI
+Plan retains permission-mode selection. bash prompts under `ask` and
+`accept-edits`; bash under `auto` runs without confirmation and may mutate the
+workspace or scratch directory. browser_preview is the explicit read-only UI
 inspection exception. Plan therefore expresses planning intent, not a strict
 read-only security profile. The UI must state this tradeoff.
 
@@ -155,7 +155,7 @@ cannot become model-callable Plan tools.
 
 ### Tradeoffs
 
-- Plan is not a strict mutation-free mode because Auto Bash can mutate. This is
+- Plan is not a strict mutation-free mode because Auto bash can mutate. This is
   intentional and must be visible in the product copy and approval UX.
 - A full process crash discards an in-flight Agent wait; the proposal is kept
   as an interrupted record, but the user must submit a new plan.
@@ -173,7 +173,7 @@ to the same Agent.
 ### Plan as a permission mode or strict read-only profile
 
 Rejected because planning intent and authorization posture are distinct. Plan
-must retain permission selection and Bash behavior, including Auto's explicit
+must retain permission selection and bash behavior, including Auto's explicit
 mutation tradeoff.
 
 ### Renderer-owned mode or approval state
@@ -182,10 +182,10 @@ Rejected because stale or forged IPC could grant execution and renderer reload
 would lose the authoritative transition. Rust owns durable mode, policy, and
 approval identity.
 
-### Command-text classification to permit Bash in Plan
+### Command-text classification to permit `bash` in Plan
 
 Rejected because a general shell command cannot be proven read-only reliably.
-The existing permission mode is the explicit control; Plan's Write/Edit/plugin
+The existing permission mode is the explicit control; Plan's write/edit/plugin
 denials remain exact tool policy.
 
 ## Related docs

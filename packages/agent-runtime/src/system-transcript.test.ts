@@ -20,8 +20,8 @@ import {
   systemPromptContent,
 } from "./system-transcript.js";
 
-const read: Tool = { name: "Read", description: "Read text", parameters: Type.Object({ path: Type.String() }) };
-const edit: Tool = { ...read, name: "Edit", description: "Edit text" };
+const read: Tool = { name: "read", description: "Read text", parameters: Type.Object({ path: Type.String() }) };
+const edit: Tool = { ...read, name: "edit", description: "Edit text" };
 const initial: SystemMessage = {
   role: "system", content: "Base instructions", timestamp: 1_000,
   sections: { rules: "Keep these rules", obsolete: "Remove these rules" },
@@ -30,7 +30,7 @@ const initial: SystemMessage = {
 const delta: SystemMessage = {
   role: "system", content: "Additional instructions", timestamp: 1_500,
   sections: { rules: "Updated rules", obsolete: null },
-  toolsRemoved: [{ name: "Edit" }],
+  toolsRemoved: [{ name: "edit" }],
 };
 const assistant: AssistantMessage = {
   role: "assistant", content: [{ type: "text", text: "done" }],
@@ -120,7 +120,7 @@ describe("system transcript helpers", () => {
     const replacement = { ...read, parameters: Type.Object({ file: Type.String() }) };
     const messages = [initial, assistant];
     const changed = syncSystemTools(messages, [replacement]);
-    expect(changed[1]).toMatchObject({ timestamp: 5_000, toolsAdded: [replacement], toolsRemoved: [{ name: "Read" }, { name: "Edit" }] });
+    expect(changed[1]).toMatchObject({ timestamp: 5_000, toolsAdded: [replacement], toolsRemoved: [{ name: "read" }, { name: "edit" }] });
     expect(getCurrentTools(changed)).toEqual([replacement]);
     expect(estimateContextTokens(changed).usageTokens).toBe(0);
     expect(syncSystemTools(changed, [replacement])).toBe(changed);

@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { SKILL_TOOL_NAME } from "@pi-desktop/agent-runtime";
 import { AgentHost, type ApprovalPort } from "@pi-desktop/agent-host";
 import {
   AgentSidecar,
@@ -163,13 +164,23 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
       const { loadInstructionChain } = await import("@pi-desktop/agent-runtime");
       return loadInstructionChain(projectPath, path);
     });
-    sidecar.setLocalTool("Skill", async ({ args, sessionId }) => {
+    sidecar.setLocalTool(SKILL_TOOL_NAME, async ({ args, sessionId }) => {
       const id = String((args as { id?: unknown })?.id ?? "").trim();
       const host = getHost();
-      if (!id || !host) return { ok: false, isError: true, content: "Skill: `id` is required." };
+      if (!id || !host) {
+        return {
+          ok: false,
+          isError: true,
+          content: `${SKILL_TOOL_NAME}: \`id\` is required.`,
+        };
+      }
       const session = await host.call<{ session?: { projectPath?: string } | null }>("session.get", { id: sessionId, messageLimit: 1 }).catch(() => null);
       const result = await host.call<{ skill: { id: string; name: string } | null; body: string | null }>("skills.read", { id, projectPath: session?.session?.projectPath ?? null }).catch(() => null);
-      if (!result?.skill || typeof result.body !== "string") return { ok: false, isError: true, content: `Skill: "${id}" is not available on this Host.` };
+      if (!result?.skill || typeof result.body !== "string") {
+        return { ok: false, isError: true, content: `${SKILL_TOOL_NAME}: "${id}" is not available on this Host.` };
+      }
+      // The heading is the skill document's own section label, identical to
+      // the desktop host's payload; only the error copy names the tool (D620).
       return { ok: true, content: `# Skill: ${result.skill.name} (${result.skill.id})\n\n${result.body}` };
     });
     sidecar.setTrustedExtensionBridge({

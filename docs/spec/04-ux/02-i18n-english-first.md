@@ -114,7 +114,7 @@ required for flat identity fields.
    already says project). Status, empty states, errors, and setup hints explain
     what happened and what to do next (D149)
 10. Agent/Plan/Goal selector, contract states, title/artifact-opener/
-    remembered approval-mode actions, Bash/Auto mutation warning,
+    remembered approval-mode actions, bash/Auto mutation warning,
     shell catalog/unavailable state, fail-closed recovery, and shared
     Plan/Goal error codes
     have matching keys in every shipped locale; no Chat operating-mode key or

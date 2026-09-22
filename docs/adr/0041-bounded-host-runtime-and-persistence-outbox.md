@@ -49,7 +49,7 @@ fill the 1024-entry cap and discard every later row (D597).
 
 - Raising the restart count: masks the resource leak and amplifies the crash
   loop.
-- A semaphore only around `Bash`: leaves RPC, plugin, read, and persistence
+- A semaphore only around `bash`: leaves RPC, plugin, read, and persistence
   fan-out unbounded.
 - In-memory-only persistence buffering: loses messages if Electron exits before
   host recovery.

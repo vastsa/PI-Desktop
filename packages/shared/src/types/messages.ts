@@ -113,9 +113,9 @@ export type UiMessage = {
   toolDurationMs?: number;
   isError?: boolean;
   /**
-   * Set on rows produced inside a subagent: the `Task` tool call that spawned
+   * Set on rows produced inside a subagent: the `task` tool call that spawned
    * the delegate. Two consequences (ADR 0062): the transcript nests these rows
-   * under that call, and the parent model never sees them — only the `Task`
+   * under that call, and the parent model never sees them — only the `task`
    * report enters its context.
    */
   parentToolCallId?: string;

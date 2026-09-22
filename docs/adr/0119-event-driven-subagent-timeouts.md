@@ -25,7 +25,7 @@ from one waiting on a long-running tool.
    21,600 seconds of total runtime. The total timer includes tool execution.
 2. Activity is any delegate turn, message, or tool lifecycle event. The idle
    timer is paused between `tool_execution_start` and its matching
-   `tool_execution_end`, so a long Bash call is governed by the tool timeout,
+   `tool_execution_end`, so a long bash call is governed by the tool timeout,
    not by delegate idleness.
 3. A watchdog terminates the delegate with `timed_out` and one of
    `SUBAGENT_IDLE_TIMEOUT` or `SUBAGENT_DURATION_TIMEOUT`. The report carries
@@ -36,8 +36,8 @@ from one waiting on a long-running tool.
 5. Definitions may override `idle-timeout` and `max-duration`. Idle values are
    clamped to 10–21,600 seconds and duration values to 60–21,600 seconds;
    non-numeric values warn and use the defaults.
-6. The built-in `explorer` gains `Bash` for bounded read-only inspection such
-   as `git log`; `code-reviewer` remains read-only. Because Bash can mutate,
+6. The built-in `explorer` gains `bash` for bounded read-only inspection such
+   as `git log`; `code-reviewer` remains read-only. Because bash can mutate,
    Explorer continues to use the existing mutation/permission classification.
 7. The shared status contract and desktop topology expose `timed_out`; the
    renderer labels it in English and Simplified Chinese and presents it as a
@@ -51,15 +51,15 @@ from one waiting on a long-running tool.
   remain stuck indefinitely while still below the overall ceiling.
 - **Use only idle time:** rejected because continuous model/tool activity could
   otherwise run without a hard resource ceiling.
-- **Keep Explorer read-only without Bash:** rejected because it prevents
+- **Keep Explorer read-only without bash:** rejected because it prevents
   harmless repository inspection commands that the native search tools cannot
-  express; the existing permission path remains authoritative for Bash.
+  express; the existing permission path remains authoritative for bash.
 
 ## Consequences
 
 - Delegates can run past the previous 20–24 turn behavior when they remain
   active, while idle and total-runtime failures remain bounded and diagnosable.
-- Timeout reports are visible to `TaskWait`, `TaskList`, and the delegation
+- Timeout reports are visible to `task_wait`, `task_list`, and the delegation
   topology, including their structured error codes and timing log entries.
 - A definition that explicitly sets `maxTurns` retains a deterministic hard
   stop for specialized or untrusted workloads.

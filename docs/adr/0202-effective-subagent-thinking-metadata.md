@@ -7,7 +7,7 @@
 
 ## Context
 
-Delegation cards already receive the provider/model selected for each `Task`
+Delegation cards already receive the provider/model selected for each `task`
 run, but they do not receive the thinking level that the runtime actually
 passed to that delegate. The selected level can differ from the definition or
 parent setting after inheritance and target-model capability clamping. Making
@@ -19,9 +19,9 @@ inconsistent.
 - Resolve the delegate's effective thinking selection once, immediately before
   constructing `SubagentRun`, using the same provider binding and clamping path
   that controls the request.
-- Include `modelId` and `thinkingLevel` in the immediate `Task` result, the
-  `SubagentRunResult`, and lifecycle snapshots (`TaskWait`, `TaskList`, and
-  `TaskStop`). `omit` remains an explicit no-provider-override value.
+- Include `modelId` and `thinkingLevel` in the immediate `task` result, the
+  `SubagentRunResult`, and lifecycle snapshots (`task_wait`, `task_list`, and
+  `task_stop`). `omit` remains an explicit no-provider-override value.
 - Render the result's model and a localized thinking label together on each
   delegation node and in the side-dock identity header. Omit the label for
   `off`, `omit`, or any unrecognized value; never derive a replacement from

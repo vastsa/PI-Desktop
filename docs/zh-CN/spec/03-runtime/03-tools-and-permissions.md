@@ -11,15 +11,15 @@
 | 主题 | 决定 |
 |---|---|
 | 默认模式 | Agent |
-| Agent 工具 | 读取 / glob / grep / 写入 / 编辑 / bash + 已注册的插件工具 |
-| Plan 工具 | 读取 / glob / grep / browser_preview / bash / submit_plan + 声明 plan-safe 动作的插件工具 |
-| Goal 工具 | 读取 / glob / grep / browser_preview / bash / submit_goal + 声明 plan-safe 动作的插件工具 |
+| Agent 工具 | `read` / `glob` / `grep` / `write` / `edit` / `bash` + 已注册的插件工具 |
+| Plan 工具 | `read` / `glob` / `grep` / `browser_preview` / `bash` / `submit_plan` + 声明 plan-safe 动作的插件工具 |
+| Goal 工具 | `read` / `glob` / `grep` / `browser_preview` / `bash` / `submit_goal` + 声明 plan-safe 动作的插件工具 |
 | Plan 和 Goal 硬拒绝 | 写入 / 编辑 / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
 | 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时在 Plan/Goal 中隐藏没有该列表的插件工具，host 放行已列出的工具，plugin-runtime 拒绝列表外的任何动作（ADR 0211） |
 | 权限超时 | 120秒→拒绝 |
 | 允许会话范围 | 工具名称 |
-| 重击风格 | 非交互式；具有流输出的选定主机目录外壳 |
-| Edit 契约 | 行锚定操作 + 整文件 `tag`；不再有 `old_string`/`new_string`（ADR 0087） |
+| `bash` 风格 | 非交互式；具有流输出的选定主机目录外壳 |
+| `edit` 契约 | 行锚定操作 + 整文件 `tag`；不再有 `old_string`/`new_string`（ADR 0087） |
 | 询问工具 | 交互式多问题工具；无有效期期限；跳过的答案变成空输出字段 |
 
 ## 1. Goal
@@ -57,15 +57,15 @@ Plan 和 Goal 保留其 read/inspection 核心。`skill` 有意不作延迟：`/
 
 - Agent 模式下的 `glob` 和 `grep`
 - `browser_preview`
-- `PluginCheck`、`PluginScaffold` 和 `PluginPack`
+- `check_plugin`、`scaffold_plugin` 和 `pack_plugin`
 - 插件声明的代理工具
 
 这些工具出现在有界的 `# On-demand tools` 目录中，具有紧凑的结构
-描述。该模型使用确切的名称调用本地 `ToolSearch` 工具或
+描述。该模型使用确切的名称调用本地 `tool_search` 工具或
 能力查询；匹配的模式在下一个模型回合中可用。
 sidecar 在每个新用户提示开始时重置此延迟集。
 主机权限、workspace/scratch 遏制、超时和审核规则
-加载工具时不会改变。 `ToolSearch` 本身从不执行工作区
+加载工具时不会改变。 `tool_search` 本身从不执行工作区
 操作并且永远不会绕过 host-core 策略。
 
 ## 3. 常用工具约束
@@ -94,7 +94,7 @@ sidecar 在每个新用户提示开始时重置此延迟集。
 - `grep.path` 可以是一个文件或一棵目录树。直接命名的文件是
   在没有步行兄弟姐妹的情况下进行搜索，而 `include` 仍然过滤其基础
   名称和每个产出预算保持不变。本机 PATH（以及 Unix login PATH）上有
-  `rg` 时 Grep 优先调用它，缺失或失败则回退到进程内搜索（D315）。
+  `rg` 时 grep 优先调用它，缺失或失败则回退到进程内搜索（D315）。
   面向模型的结果契约不变。
 
 工具结果中的工作区相对路径使用 `/` 表示平台分隔符。在 POSIX
@@ -102,7 +102,7 @@ sidecar 在每个新用户提示开始时重置此延迟集。
 `read` 或 `edit`；Windows 路径分隔符会被规范化为 `/`。
 
 Agent 模式使 host-core/JSON 在 D185 下保持延迟。每个新用户提示都会重置
-它们的激活，因此目录发现通过 `ToolSearch` 激活 `glob`
+它们的激活，因此目录发现通过 `tool_search` 激活 `glob`
 对于该提示，而不是猜测文件名或在
 目录。
 
@@ -296,7 +296,7 @@ type ReviewChange = {
 `patch`）——返回带有错误专属恢复提示的终止工具结果，代理随后停止并报告准确的不匹配。
 不要手动编辑旧的 unified-diff 块头，也不要继续修复循环。
 
-## 5. bash 规则
+## 5. `bash` 规则
 
 主机执行基线：
 
@@ -358,9 +358,9 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 
 | 风险 | 示例 | 默认政策 |
 |---|---|---|
-| 低 | 会话根目录内的 read/glob/grep | 自动允许 |
+| 低 | 会话根目录内的 `read`/`glob`/`grep` | 自动允许 |
 | 中等 | 低风险 network/metadata | 政策确认或允许 |
-| 高 | write/edit/bash | 默认确认 |
+| 高 | `write`/`edit`/`bash` | 默认确认 |
 
 ### 决策类型
 
@@ -376,7 +376,7 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 
 高风险工具调用如何获得批准由**权限模式**控制：
 
-| 模式 | write/edit | bash / 插件工具 |
+| 模式 | `write`/`edit` | `bash` / 插件工具 |
 |---|---|---|
 | `ask`（默认） | 确认 | 确认 |
 | `accept-edits` | 自动允许 | 确认 |
@@ -402,7 +402,7 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
   每种模式都和以前一样。
 - `browser_preview` 是显式只读 UI 检查功能，并且是
   在两种操作模式下均可用。
-- Plan 保留权限模式选择器。 Bash 在 `ask` 下得到确认并且
+- Plan 保留权限模式选择器。 bash 在 `ask` 下得到确认并且
   `accept-edits`，并且在 `auto` 下自动允许；因此 Plan 正在规划
   意图，而不是严格的只读安全配置文件。
 - `allow-session` 赠款继续在 `ask` 下运作，范围仅限于
@@ -462,7 +462,7 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 
 ## 10. 操作模式矩阵
 
-| 模式 | read/glob/grep | browser_preview | write/edit | 重击 | 插件 |
+| 模式 | `read`/`glob`/`grep` | `browser_preview` | `write`/`edit` | `bash` | 插件 |
 |---|---|---|---|---|---|
 | Agent | 允许 | 允许 | 许可政策 | 许可政策 | 注册风险政策 |
 | Plan | 允许 | 允许 | 否认 | Plan/`ask`：确认； `auto`：允许 | 仅 plan-safe 动作 |
@@ -505,11 +505,11 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 `tools` 时得到 `read`、`glob`、`grep`；`tools: "*"` 表示全部七个。
 无法识别的名称会被删除并带有解析警告。
 
-文档可以用 `tools: inherit` 或 `tools: [inherit, Bash]` 选择继承父会话的
+文档可以用 `tools: inherit` 或 `tools: [inherit, bash]` 选择继承父会话的
 实时工具目录（ADR 0246 / D415）。`task` 启动时运行时把 `toolCatalog`
 （含延迟的插件/MCP 工具）与可分配的额外工具取并集，再去掉 `task` /
 `task_wait` / `task_list` / `task_stop`、`enter_plan_mode` / `enter_goal_mode`、
-`asktool`、`new_context` 和 `ToolSearch`。内置定义不默认开启。`inherit`
+`asktool`、`new_context` 和 `tool_search`。内置定义不默认开启。`inherit`
 写在 Markdown 和设置里；host-core 会保留该标记，因此只有 inherit 的文档
 仍能加载。插件工具、`skill` 和 MCP 工具只通过这一 opt-in 到达委托，
 不能写进可分配白名单。

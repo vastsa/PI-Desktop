@@ -207,7 +207,7 @@ the candidate.
 
 ### E2E environment reuse
 
-Task-candidate E2E runs from the request worktree after the candidate is
+task-candidate E2E runs from the request worktree after the candidate is
 prepared, but uses the host development environment already provisioned in the
 primary checkout. Reuse the compatible Node/pnpm toolchain, `node_modules`,
 Electron, Rust/Cargo targets, package-manager stores, build caches, and ignored
@@ -374,7 +374,7 @@ identify the platform validation still needed.
   DMG has no command helper and no `If app won't open, read this.txt`. 4) Inspect
   the ZIP root without extracting the application contents and confirm it has
   both `PI-Desktop-macOS-opening-help.txt` and the executable
-  `PI-Desktop-macOS-open.command`. 5) Read the note, move the app to
+  `PI-Desktop-macOS-open.command`. 5) read the note, move the app to
   `/Applications`, and double-click the ZIP helper.
 - **Expected**: The DMG contains the branded 720×440 background, the app, and
   the Applications link only; it does not contain or expose the command helper
@@ -749,7 +749,7 @@ identify the platform validation still needed.
   turn, a follow-up, prompt enhancement, and a plugin one-shot. 3) Refresh
   `/models` from the form before saving a second change and confirm the
   unsaved headers are sent. 4) Clear the rows and save; confirm adapter
-  defaults return. 5) Edit the OAuth account Advanced headers, save, then
+  defaults return. 5) edit the OAuth account Advanced headers, save, then
   run a turn that refreshes the access token. 6) Repeat against OpenCode Go
   and confirm `x-opencode-session` is still present. 7) Repeat against
   Codex/Anthropic OAuth inference. 8) Attempt `Authorization` and CR/LF
@@ -1004,7 +1004,7 @@ identify the platform validation still needed.
 
 #### E2E-008a: First-turn tools load on demand
 
-- **Preconditions**: Agent mode; provider configured; `BrowserPreview` or an
+- **Preconditions**: Agent mode; provider configured; `browser_preview` or an
   enabled plugin tool is available; request capture can inspect the first and
   subsequent provider payloads.
 - **Steps**: 1) Create a fresh session and send a simple prompt. 2) Inspect
@@ -1012,12 +1012,12 @@ identify the platform validation still needed.
   HTML page and observe the tool activity. 4) Start a second user prompt after
   the preview task completes.
 - **Expected**: The first request contains only the mode core tools (Agent:
-  `Read`/`Bash`/`Edit`/`Write`; Chat: `Read`/`Glob`/`Grep`)
-  and local `ToolSearch`; deferred schemas are
+  `read`/`bash`/`edit`/`write`; Chat: `read`/`glob`/`grep`)
+  and local `tool_search`; deferred schemas are
   represented only by a bounded `# On-demand tools` catalog. The agent calls
-  `ToolSearch` before `BrowserPreview` (or the selected plugin/`Skill` tool)
+  `tool_search` before `browser_preview` (or the selected plugin/`skill` tool)
   when the capability is needed, and the matching schema is available on the
-  next model turn. For a user-visible HTML deliverable, `BrowserPreview` is
+  next model turn. For a user-visible HTML deliverable, `browser_preview` is
   called once after creation or the first meaningful visual edit, then reused
   through live reload while the page is refined. Generated, test-only, and
   non-visual HTML files do not trigger a preview call. At the second prompt,
@@ -1039,16 +1039,16 @@ identify the platform validation still needed.
   session with a workspace HTML file; Plan session available.
 - **Steps**: 1) Confirm Plugins lists `pi.browser`, enabled, not uninstallable.
   2) Open the work panel and launch Browser from plugin views. 3) Ask the
-  agent to preview a workspace HTML file (`BrowserPreview`) then snapshot via
-  ToolSearch `cdp` / `Browser`. 4) Switch to Plan and call the plugin Browser
-  tool. 5) Disable `pi.browser`. 6) Call `BrowserPreview` and click an http(s)
+  agent to preview a workspace HTML file (`browser_preview`) then snapshot via
+  tool_search `cdp` / `Browser`. 4) Switch to Plan and call the plugin Browser
+  tool. 5) Disable `pi.browser`. 6) Call `browser_preview` and click an http(s)
   transcript link. 7) From a third-party or test caller, send
   `Network.getAllCookies` through `pi.browser.cdp`.
 - **Expected**: The launcher has no host Browser row. Preview opens the plugin
   view and live-reloads the file. Plugin tool `plugin_pi_browser_Browser` can
-  snapshot after ToolSearch. Plan denies the plugin tool
-  (`PLUGIN_DISABLED_IN_PLAN`) while `BrowserPreview` remains callable. Disable
-  hides the view and tools; `BrowserPreview` errors; http(s) chips use
+  snapshot after tool_search. Plan denies the plugin tool
+  (`PLUGIN_DISABLED_IN_PLAN`) while `browser_preview` remains callable. Disable
+  hides the view and tools; `browser_preview` errors; http(s) chips use
   `openExternal`. Cookie CDP is denied. Guest bounds stay inside the plugin
   view.
 - **Specs linked**: ADR 0170, D333, `07-plugins/03-plugin-api.md`,
@@ -1425,7 +1425,7 @@ identify the platform validation still needed.
   until after `agent_end` is delivered. Release finalization and observe both
   follow-ups through their turn boundaries. Repeat with a provider error and an
   immediate abort. 9) With waiting rows, use move up and move down and confirm
-  the persisted order follows. 10) Edit a waiting row while the composer holds
+  the persisted order follows. 10) edit a waiting row while the composer holds
   text, then with an empty composer. 11) Delay Host queue admission. Attempt to
   edit/remove the pending row, release admission, then edit/remove the durable
   row. Repeat with a captured file-reference draft. 12) Withhold a local Host
@@ -1625,11 +1625,11 @@ identify the platform validation still needed.
 
 - **Preconditions**: Chat route active; a session selected.
 - **Steps**: 1) Click the left-of-input Composer mode chip to enter Plan. 2)
-  Send a prompt that would normally require Write/Edit and observe behavior. 3)
+  Send a prompt that would normally require write/edit and observe behavior. 3)
   Click the same Composer chip to return to Agent. 4) Begin a turn and try to
   toggle mode mid-run or while a pending Plan approval is visible.
 - **Expected**: The Composer chip updates the active session `mode` (Plan and
-  Goal hard-deny Write/Edit and plugin tools while Bash follows the selected
+  Goal hard-deny write/edit and plugin tools while bash follows the selected
   permission mode; Agent allows its normal tools per permission settings). The
   chip is disabled while a turn or active pending approval exists and re-enables
   after the session returns idle/planning. No top-bar mode control is rendered.
@@ -1691,7 +1691,7 @@ identify the platform validation still needed.
   command/file hint includes `/` and `@`. The slash menu still contains `/new`,
   `/compact`, `/agent-mode`, `/plan-mode`, and `/goal-mode`, followed by a
   Skills group at the bottom. Selecting the Skill inserts its slash id; sending
-  it keeps the typed command chip visible and the model calls `Skill` with that
+  it keeps the typed command chip visible and the model calls `skill` with that
   id before answering. zh-CN shows the matching localized copy, including
   `Shift+Enter for newline · Use Send to submit`.
   Long descriptions use only the space remaining after command names and
@@ -1845,8 +1845,8 @@ identify the platform validation still needed.
   logical project group receives the entered display name; its primary folder
   becomes the active workspace and every selected folder is retained as a group
   root. The Project archive shows one group row, and its sessions, shared
-  instructions, and shared memory use the group identity. Read/Glob/Grep/
-  Write/Edit can use an explicitly addressed additional root only after host
+  instructions, and shared memory use the group identity. read/glob/grep/
+  write/edit can use an explicitly addressed additional root only after host
   canonical containment; an unrelated outside path still follows the normal
   permission flow. The
   dialog is unavailable while creation is in flight and returns focus to the
@@ -1880,18 +1880,18 @@ identify the platform validation still needed.
 
 - **Preconditions**: Project directory open.
 - **Steps**: 1) Ask agent to read a file in the project. 2) Observe result.
-- **Expected**: `Read` returns immediately within project scope. In Agent mode,
-  the agent activates `Glob` or `Grep` through `ToolSearch` before using it;
+- **Expected**: `read` returns immediately within project scope. In Agent mode,
+  the agent activates `glob` or `grep` through `tool_search` before using it;
   Plan keeps its read/search core available from the first request. All results
   remain within project scope.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`
-- **Acceptance**: E (Read/Glob/Grep work), D (tools based on project)
+- **Acceptance**: E (read/glob/grep work), D (tools based on project)
 - **Milestone**: M3
-- **Status**: Automated (protocol smoke: Read + Glob in sample project)
+- **Status**: Automated (protocol smoke: read + glob in sample project)
 
 ### Permission Allow / Deny / Timeout
 
-#### E2E-014: Write/Edit/Bash triggers permission card
+#### E2E-014: `write`/`edit`/`bash` triggers permission card
 
 - **Preconditions**: Agent mode; project open.
 - **Steps**: 1) Ask agent to write a file. 2) Observe permission card.
@@ -1899,7 +1899,7 @@ identify the platform validation still needed.
   with tool name, workspace, arguments preview, countdown, and allow/deny
   options. It creates no backdrop or modal and does not cover another session.
 - **Specs linked**: `04-ux/03-permission-ux.md`, `03-runtime/03-tools-and-permissions.md`
-- **Acceptance**: E (Write/Edit/Bash trigger confirmation)
+- **Acceptance**: E (write/edit/bash trigger confirmation)
 - **Milestone**: M3
 - **Status**: Draft
 
@@ -1936,12 +1936,12 @@ identify the platform validation still needed.
 #### E2E-018: Plan denies workspace mutation and plugin tools
 
 - **Preconditions**: Plan mode active with Auto selected and a plugin agent tool registered.
-- **Steps**: 1) Ask the Agent to call Write, Edit, and the plugin tool. 2) Ask it
-  to run a Bash command that creates a marker file. 3) Repeat the Bash call
+- **Steps**: 1) Ask the Agent to call write, edit, and the plugin tool. 2) Ask it
+  to run a bash command that creates a marker file. 3) Repeat the bash call
   with Ask selected and inspect the permission card.
-- **Expected**: Write, Edit, and the plugin tool are not visible and direct
+- **Expected**: write, edit, and the plugin tool are not visible and direct
   attempts return `WRITE_DISABLED_IN_PLAN`, `EDIT_DISABLED_IN_PLAN`, or
-  `PLUGIN_DISABLED_IN_PLAN`; no file is changed by those tools. Bash runs
+  `PLUGIN_DISABLED_IN_PLAN`; no file is changed by those tools. bash runs
   without a confirmation under Auto and may mutate; under Ask it waits for the
   ordinary permission card. No Chat-mode error or command exists.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`
@@ -1953,11 +1953,11 @@ identify the platform validation still needed.
 
 - **Preconditions**: Agent or Plan mode; project open; a readable file exists
   outside both the session project and scratch roots.
-- **Steps**: 1) With Ask selected, ask the agent to `Read` the external file and
+- **Steps**: 1) With Ask selected, ask the agent to `read` the external file and
   observe the inline permission card. 2) Deny once and verify no content is
   returned. 3) Repeat and allow once; verify the tool result carries
   `root: "external"` and the canonical absolute path. 4) Switch to Auto and
-  repeat with `Grep` or `Glob`; verify no card appears and the bounded result
+  repeat with `grep` or `glob`; verify no card appears and the bounded result
   returns. 5) Repeat with Accept edits; verify the external read/search still
   asks for permission.
 - **Expected**: An explicit outside path never hard-fails before the user can
@@ -1973,17 +1973,17 @@ identify the platform validation still needed.
 
 - **Preconditions**: Agent or Plan mode; project open; the host tool catalog is
   available on macOS, Linux, or Windows.
-- **Steps**: 1) Activate `Glob`/`Grep` when deferred and inspect their schemas.
+- **Steps**: 1) Activate `glob`/`grep` when deferred and inspect their schemas.
   2) Search with workspace-relative `path`, `include`, `headLimit`, and
   `outputMode: "filesWithMatches"` or `"count"`, first with a directory and
-  then one explicit file. 3) Call `Read` with a directory and follow its
-  structured Glob suggestion. 4) Repeat with the platform's native shell
+  then one explicit file. 3) Call `read` with a directory and follow its
+  structured glob suggestion. 4) Repeat with the platform's native shell
   selected, without changing the tool arguments.
 - **Expected**: The schemas expose the same bounded search controls on every
-  platform; `Read` declares file-only input, `Glob` declares directory input,
-  and `Grep` accepts a file or directory. `filesWithMatches` is accepted as the
-  canonical output mode. A directory Read returns `INVALID_ARGUMENT` with
-  `suggestedTool=Glob` and bounded args; the corrected call succeeds. Search
+  platform; `read` declares file-only input, `glob` declares directory input,
+  and `grep` accepts a file or directory. `filesWithMatches` is accepted as the
+  canonical output mode. A directory read returns `INVALID_ARGUMENT` with
+  `suggestedTool=glob` and bounded args; the corrected call succeeds. Search
   results use workspace-relative paths inside the project and absolute paths
   only for approved external locations. No shell-specific path syntax is
   required, workspace-relative paths use `/` for platform separators while
@@ -2013,9 +2013,9 @@ identify the platform validation still needed.
 #### E2E-019b: Scratch containment matches workspace defenses (D114)
 
 - **Preconditions**: Agent mode; project open.
-- **Steps**: 1) Attempt Write with `..` traversal from the scratch root. 2) Attempt Write through a symlink planted inside scratch pointing outside. 3) Attempt the same Write calls in Plan.
+- **Steps**: 1) Attempt write with `..` traversal from the scratch root. 2) Attempt write through a symlink planted inside scratch pointing outside. 3) Attempt the same write calls in Plan.
 - **Expected**: Both escapes return `PATH_OUTSIDE_WORKSPACE`; Plan returns
-  `WRITE_DISABLED_IN_PLAN` before any scratch path can make Write available.
+  `WRITE_DISABLED_IN_PLAN` before any scratch path can make write available.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md §4b`
 - **Acceptance**: E (scratch root cannot be escaped)
 - **Milestone**: M5
@@ -2024,8 +2024,8 @@ identify the platform validation still needed.
 #### E2E-019c: Permission modes govern high-risk approval (D115/D132)
 
 - **Preconditions**: Agent mode; project open; global default `ask`.
-- **Steps**: 1) With a newly inherited session and global default Ask every time, open the composer menu — expect Ask every time to be selected with no global-default/inherit label — then ask the Agent to write a workspace file and expect a permission card. 2) Switch the session chip to Accept edits; repeat — expect no card for Write/Edit but still a card for Bash. 3) Switch to Auto — expect no card for Bash either. 4) Create another inherited session after setting the global default to Accept edits in Settings — expect the composer chip and menu selection to display Accept edits directly and Write/Edit to be auto-allowed. 5) Switch the session to Plan, then Goal, with Auto set — expect Write/Edit/plugin denied but Bash allowed without confirmation.
-- **Expected**: Effective mode = session override → global default → ask; Plan and Goal Write/Edit/plugin hard denies outrank every mode while their Bash follows the selected mode; the composer chip and menu always display the effective mode without default/inherit provenance.
+- **Steps**: 1) With a newly inherited session and global default Ask every time, open the composer menu — expect Ask every time to be selected with no global-default/inherit label — then ask the Agent to write a workspace file and expect a permission card. 2) Switch the session chip to Accept edits; repeat — expect no card for write/edit but still a card for bash. 3) Switch to Auto — expect no card for bash either. 4) Create another inherited session after setting the global default to Accept edits in Settings — expect the composer chip and menu selection to display Accept edits directly and write/edit to be auto-allowed. 5) Switch the session to Plan, then Goal, with Auto set — expect write/edit/plugin denied but bash allowed without confirmation.
+- **Expected**: Effective mode = session override → global default → ask; Plan and Goal write/edit/plugin hard denies outrank every mode while their bash follows the selected mode; the composer chip and menu always display the effective mode without default/inherit provenance.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md §6`, `03-runtime/04-data-storage.md`, `08-meta/decisions-log.md` (D115/D132)
 - **Acceptance**: E (permission modes resolve and enforce host-side)
 - **Milestone**: M5
@@ -2040,13 +2040,13 @@ identify the platform validation still needed.
   as `command -v node && node -v`. 2) Compare with the PATH a fresh terminal
   shows for the same user. 3) Optionally remove `~/.bash_profile` temporarily
   and repeat on a machine where only `.zshrc` initializes the toolchain.
-- **Expected**: The Bash tool resolves tools the user's own login shell
+- **Expected**: The bash tool resolves tools the user's own login shell
   exports (nvm, pnpm, Homebrew) even though commands run through bash; the
   probed login PATH is a subset of the effective child PATH (bash profile may
   prepend/dedupe). A missing or wedged user shell degrades to the host PATH
   without failing the tool.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md §5`, `08-meta/decisions-log.md` (D181), ADR 0045
-- **Acceptance**: E (user toolchain visible in Bash tool)
+- **Acceptance**: E (user toolchain visible in bash tool)
 - **Milestone**: M5
 - **Status**: Automated (host-core unit tests: login-PATH probe + child-PATH injection)
 
@@ -2391,7 +2391,7 @@ identify the platform validation still needed.
 #### E2E-022B: Development plugin hot reload
 
 - **Preconditions**: A plugin loaded from a local folder and enabled.
-- **Steps**: 1) Edit `main.js` to change a command title and save. 2) Save several files at once. 3) Introduce a syntax error and save. 4) Fix the error and save. 5) Add a new permission to `manifest.json` and save. 6) Open the development-plugin card's More actions menu and choose Reload. 7) Edit again and restart the app.
+- **Steps**: 1) edit `main.js` to change a command title and save. 2) Save several files at once. 3) Introduce a syntax error and save. 4) Fix the error and save. 5) Add a new permission to `manifest.json` and save. 6) Open the development-plugin card's More actions menu and choose Reload. 7) edit again and restart the app.
 - **Expected**: The single edit reloads the plugin without re-picking the folder and the command palette shows the new title; a save burst produces one reload, and writes under `dist/` or `node_modules/` produce none; the syntax error reports a reload failure without crashing the app, and the fixing save recovers the plugin; the added permission refuses automatic reload with `PERMISSION_DENIED`, while the explicit Reload action loads the registered folder, refreshes the permission ceiling, and reports success; a later edit uses the refreshed ceiling, and after a restart the folder is still watched.
 - **Specs linked**: `07-plugins/10-plugin-devex.md` §7, `07-plugins/13-plugin-permissions-matrix.md`, ADR 0039, ADR 0075
 - **Acceptance**: G (hot reload), D (permissions cannot widen without review)
@@ -2401,7 +2401,7 @@ identify the platform validation still needed.
 #### E2E-022C: Check, pack, install round-trip
 
 - **Preconditions**: A scaffolded plugin directory.
-- **Steps**: 1) `pnpm pi-plugin check <dir>`. 2) Delete the file named by `main` and run `check` again. 3) Restore it, declare `contributes.skills` without `agent.prompt.inject`, and run `check` again. 4) `pnpm pi-plugin pack <dir>`. 5) Install the resulting `.piplug` from the plugins page. 6) Ask the agent to run `PluginCheck` and `PluginPack` on the same directory.
+- **Steps**: 1) `pnpm pi-plugin check <dir>`. 2) Delete the file named by `main` and run `check` again. 3) Restore it, declare `contributes.skills` without `agent.prompt.inject`, and run `check` again. 4) `pnpm pi-plugin pack <dir>`. 5) Install the resulting `.piplug` from the plugins page. 6) Ask the agent to run `check_plugin` and `pack_plugin` on the same directory.
 - **Expected**: A scaffolded plugin checks clean and reports its file count and size; the missing `main` is an error that blocks `pack`; the inert-skills case is a warning that does not block; `pack` writes `dist/<id>-<version>.piplug` with store-only entries and prints its sha256; the package installs through the normal permission review and appears under Active; the agent tools produce the same verdicts and refuse any directory outside the session workspace.
 - **Specs linked**: `07-plugins/10-plugin-devex.md` §5–§6, `07-plugins/06-plugin-packaging.md`, ADR 0039
 - **Acceptance**: G (local packaging round-trip)
@@ -2476,7 +2476,7 @@ identify the platform validation still needed.
 #### E2E-024B: Marketplace install with permission review
 
 - **Preconditions**: App running; official market catalog available.
-- **Steps**: 1) Open Extensions → Marketplace. 2) Install `demo.workspace-notes`. 3) Read the risk-tiered permission dialog. 4) Accept high-risk permissions.
+- **Steps**: 1) Open Extensions → Marketplace. 2) Install `demo.workspace-notes`. 3) read the risk-tiered permission dialog. 4) Accept high-risk permissions.
 - **Expected**: Permissions are grouped High / Medium / Low with plain-language explanations before any download; the host refreshes marketplace metadata immediately before download so a stale UI cache cannot pair an old checksum with a current package; plugin installed from the marketplace package, checksum verified, permissions granted, panel/tools available; the installed tab and risk-grouped rows reflect the new plugin without a separate overview card row.
 - **Specs linked**: `07-plugins/07-plugin-marketplace.md`, `07-plugins/13-plugin-permissions-matrix.md`
 - **Acceptance**: G (marketplace install + permission review)
@@ -2485,7 +2485,7 @@ identify the platform validation still needed.
 #### E2E-024R: Install a center-published plugin from the unchanged distribution source
 
 - **Preconditions**: A `schemaVersion: 2` catalog served from the distribution repository, with one plugin carrying provenance and an approved review verdict, its package under `packages/`. A second fixture declares `artifactBaseUrl` for the mirror/enterprise case.
-- **Steps**: 1) Keep the marketplace source at its default. 2) Open a plugin's detail sheet. 3) Read the Source section. 4) Install the selected version. 5) Switch to the CNB mirror and repeat the install. 6) Repeat against the fixture that declares a base.
+- **Steps**: 1) Keep the marketplace source at its default. 2) Open a plugin's detail sheet. 3) read the Source section. 4) Install the selected version. 5) Switch to the CNB mirror and repeat the install. 6) Repeat against the fixture that declares a base.
 - **Expected**: No settings change or client update is needed to see center-published plugins, because the catalog URL is unchanged; the relative package URL resolves against the catalog directory, so GitHub serves it from `raw.githubusercontent.com` and the mirror from `cnb.cool` with an identical checksum; a declared `artifactBaseUrl` takes precedence when present; the detail sheet shows the source repository, commit, and builder before install; the installed record keeps publisher, trust tier, and source pin.
 - **Specs linked**: `07-plugins/07-plugin-marketplace.md`, `07-plugins/15-plugin-center.md`
 - **Acceptance**: G (publisher-owned source distribution)
@@ -2561,7 +2561,7 @@ identify the platform validation still needed.
 #### E2E-024H: Installed plugins surface state, risk, and failures
 
 - **Preconditions**: At least one enabled plugin, one disabled plugin, and one plugin whose load failed.
-- **Steps**: 1) Open Extensions → Installed while plugin changed events are arriving in a burst. 2) Read the tab and group counts. 3) Confirm the failed plugin sits under Needs attention with its error message. 4) Search by author and by permission. 5) Clear the search.
+- **Steps**: 1) Open Extensions → Installed while plugin changed events are arriving in a burst. 2) read the tab and group counts. 3) Confirm the failed plugin sits under Needs attention with its error message. 4) Search by author and by permission. 5) Clear the search.
 - **Expected**: The page remains usable during transient host backpressure: identical plugin and extension registry refreshes coalesce, and renderer-facing RPC calls retry explicit `HOST_OVERLOADED` responses with bounded backoff before surfacing an error. Rows group as Needs attention / Updates available / Active / Turned off with counts; `status: "error" | "load_error"` renders the error message inline instead of being silent; each row defaults to a two-line name/id/version summary, while a Details disclosure reveals risk-tinted permission chips, capabilities, and resident service status; the single scope trigger opens explained Off / This project / Everywhere choices and the project picker; row icon actions expose hover/focus labels; the result count reflects the filtered subset and clearing restores every group.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `07-plugins/13-plugin-permissions-matrix.md`
 - **Acceptance**: G (installed plugin management)
@@ -2646,8 +2646,8 @@ identify the platform validation still needed.
 #### E2E-024I: Plugin skills reach the agent and load on demand
 
 - **Preconditions**: `examples/plugins/hello` enabled with `agent.prompt.inject` granted; a second copy of the manifest without that permission available; one workspace that is a plugin directory and one that is not.
-- **Steps**: 1) Start a session and ask the agent what skills it has. 2) Ask it to follow the Hello demo skill so it calls the `Skill` tool. 3) Edit the skill document and repeat step 2. 4) Disable the plugin and start a new turn. 5) Load the variant without `agent.prompt.inject` and repeat step 1. 6) Declare a document larger than the per-skill cap. 7) Open each of the two workspaces in turn.
-- **Expected**: The catalog lists the skill id, name, and trimmed description but no body, after the built-in skills and before the project instruction chain; the `Skill` schema is loaded through `ToolSearch` only when requested and reads the edited file without a restart; disabling the plugin rebuilds the runtime so the skill disappears from the next turn; the variant without the permission loads normally and contributes no skills; the oversized document is skipped with an audit line rather than clamped into the prompt; the built-in `plugin-development` skill is catalogued in the plugin workspace and absent in the other, while `PluginCheck` is listed in the bounded on-demand tool catalog in both.
+- **Steps**: 1) Start a session and ask the agent what skills it has. 2) Ask it to follow the Hello demo skill so it calls the `skill` tool. 3) edit the skill document and repeat step 2. 4) Disable the plugin and start a new turn. 5) Load the variant without `agent.prompt.inject` and repeat step 1. 6) Declare a document larger than the per-skill cap. 7) Open each of the two workspaces in turn.
+- **Expected**: The catalog lists the skill id, name, and trimmed description but no body, after the built-in skills and before the project instruction chain; the `skill` schema is loaded through `tool_search` only when requested and reads the edited file without a restart; disabling the plugin rebuilds the runtime so the skill disappears from the next turn; the variant without the permission loads normally and contributes no skills; the oversized document is skipped with an audit line rather than clamped into the prompt; the built-in `plugin-development` skill is catalogued in the plugin workspace and absent in the other, while `check_plugin` is listed in the bounded on-demand tool catalog in both.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/04-plugin-security.md` §7.1, `07-plugins/10-plugin-devex.md`, ADR 0039, ADR 0037, D174
 - **Acceptance**: G (skill activation) + E (tools & permissions) + D (high-risk permission gating)
 - **Status**: Unit-covered (`plugin-skills.test.mjs`, agent-runtime prompt/digest tests); agent-facing scenario Draft
@@ -2948,8 +2948,8 @@ identify the platform validation still needed.
 #### E2E-035: Bash tool uses the effective catalog shell
 
 - **Preconditions**: Workspace open; agent mode.
-- **Steps**: 1) Select an available catalog shell and run `Bash` (e.g. `echo ok`). 2) Make the persisted selection unavailable and inspect the effective catalog before running the next turn. 3) Run with the previous turn snapshot.
-- **Expected**: The unchanged `Bash` protocol call uses the selected catalog entry. A later unavailable persisted choice falls back to the first available platform shell and marks the catalog fallback; the previous turn snapshot is rejected as stale by `COMMAND_SHELL_CHANGED` rather than silently changing shell. No partial execution occurs; E2E-113 covers the stale identity path.
+- **Steps**: 1) Select an available catalog shell and run `bash` (e.g. `echo ok`). 2) Make the persisted selection unavailable and inspect the effective catalog before running the next turn. 3) Run with the previous turn snapshot.
+- **Expected**: The unchanged `bash` protocol call uses the selected catalog entry. A later unavailable persisted choice falls back to the first available platform shell and marks the catalog fallback; the previous turn snapshot is rejected as stale by `COMMAND_SHELL_CHANGED` rather than silently changing shell. No partial execution occurs; E2E-113 covers the stale identity path.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`, `03-runtime/06-host-rpc-protocol.md`, `03-runtime/08-error-codes.md`, ADR 0054
 - **Acceptance**: H (errors expose stable codes)
 - **Milestone**: M5
@@ -3182,7 +3182,7 @@ identify the platform validation still needed.
   relative name.
 - **Steps**: 1) In session A, start a turn that reads the marker and performs a
   permission-gated long-running tool. 2) While A is running, activate project
-  B and open session B. 3) Read B's marker and allow a tool only in B. 4) Wait
+  B and open session B. 3) read B's marker and allow a tool only in B. 4) Wait
   for both turns to complete. 5) Open a Temporary session and attempt a
   workspace-required tool.
 - **Expected**: Switching tabs aborts neither turn; A's tool cwd/path sandbox
@@ -3371,7 +3371,7 @@ identify the platform validation still needed.
   collapses the
   panel and no tab is created or deleted; a third press must restore the same
   context. 2) Open two distinct file artifacts, the same first file again,
-  a URL preview, and a completed Bash row. 3) Verify the header is a tablist:
+  a URL preview, and a completed bash row. 3) Verify the header is a tablist:
   open enough tabs to overflow it, confirm only the strip scrolls and the `+`
   trigger stays visible, activate the scrolled-away tab, and close tabs with
   hover/focus `×` and middle-click. 4) Click `+` twice and verify each click
@@ -3471,11 +3471,11 @@ identify the platform validation still needed.
   4) Verify the same cards
   and counts remain because they come from the transcript messages. 5) Use a
   card's rollback action and verify the created file is removed or the previous
-  file bytes are restored. 6) Edit that file again outside the app and retry
+  file bytes are restored. 6) edit that file again outside the app and retry
   rollback; inspect the conflict result and verify the later bytes remain. 7)
   Switch to session B and a background project session, then return to A. 8)
   Repeat with failed, denied, and scratch writes.
-- **Expected**: Each successful workspace Write/Edit creates one message-owned
+- **Expected**: Each successful workspace write/Edit creates one message-owned
   review record and one adjacent keyboard-accessible card; the card is never a
   bottom/global entry. The completion opens nothing: the panel keeps whatever
   the user left it showing, and Review appears only after the user opens it.
@@ -3499,12 +3499,12 @@ identify the platform validation still needed.
 
 #### E2E-058: Built-in interactive terminal is absent
 
-- **Preconditions**: A workspace is open and the Agent has completed a Bash
+- **Preconditions**: A workspace is open and the Agent has completed a bash
   tool call.
 - **Steps**: 1) Open the work panel with Cmd/Ctrl+J and inspect the empty
   state and context menu. 2) Confirm there is no Terminal tab, launcher row,
   terminal-specific panel copy, or terminal IPC surface. 3) Confirm the
-  completed Bash row still shows its command, output, status, and copy action,
+  completed bash row still shows its command, output, status, and copy action,
   and that its `IconTerminal` presentation remains available. 4) Verify an
   interactive shell is opened in the user's external terminal instead of the
   work panel. 5) Build/package the desktop app and inspect the dependency and
@@ -3512,7 +3512,7 @@ identify the platform validation still needed.
 - **Expected**: The work panel offers the Review launcher row plus Browser and
   in-scope plugin views; Review opens on explicit user action and file resources
   are transcript-opened; no PTY is created and no terminal tab can be opened.
-  Agent Bash remains non-interactive and fully visible in the transcript.
+  Agent bash remains non-interactive and fully visible in the transcript.
   Interactive shell work is performed by the external terminal. Desktop
   packaging has no PTY/xterm dependency, terminal-specific
   IPC, or native terminal payload, while generic lifecycle `terminal` values
@@ -3527,7 +3527,7 @@ identify the platform validation still needed.
 
 #### E2E-059: Embedded browser preview isolation and overlays
 
-- **Preconditions**: A local dev server is running; a URL or BrowserPreview artifact exists.
+- **Preconditions**: A local dev server is running; a URL or browser_preview artifact exists.
 - **Steps**: 1) Activate the artifact, enter `localhost:<port>` without a scheme, and submit.
   2) Navigate site links; use back/forward/reload/stop. 3) Trigger a
   `window.open` popup and a permission-requesting page (e.g. notification
@@ -3882,9 +3882,9 @@ identify the platform validation still needed.
 #### E2E-095: Terminal failures expose recovery without a success card
 
 - **Preconditions**: A deterministic provider can recover from a failed
-  directory `Read` with `Glob`, complete a turn with a workspace edit, and fail
+  directory `read` with `glob`, complete a turn with a workspace edit, and fail
   another turn with a retriable error; the session has a visible composer.
-- **Steps**: 1) Run the failed-Read then successful-Glob recovery turn and
+- **Steps**: 1) Run the failed-read then successful-glob recovery turn and
   inspect its activity group. 2) Complete the workspace-edit turn. 3) Confirm
   that no success outcome card appears and inspect the inline review card
   immediately after the change tool row. 4) Expand the inline card and verify
@@ -3892,7 +3892,7 @@ identify the platform validation still needed.
   the edited file and confirm the recorded card remains, then use rollback
   once. 6) Trigger the retriable failure. 7) Inspect the failure card, then
   choose Retry. 8) Start another new prompt and inspect the old card.
-- **Expected**: The recovered turn keeps the failed Read visible on its own row,
+- **Expected**: The recovered turn keeps the failed read visible on its own row,
   labels the containing group as processed, completes its session outcome, and
   shows no failure card. Completion uses the transcript and inline review card
   as its evidence without adding a "Task complete" card. File status, counts,
@@ -3929,7 +3929,7 @@ identify the platform validation still needed.
   Abort/repeated terminal calls create no row. The former footer Help shortcut
   is absent; the 32px footer bell and its upward-opening popover replace it.
   Badge and Unread show the exact unread count without opening implicitly
-  reading rows. Read state and both
+  reading rows. read state and both
   records survive restart. Row selection marks it read and activates its bound
   project/session. The fixture retains exactly the newest 200 rows. Mark all
   preserves rows with zero unread. Selecting the other session clears its
@@ -4554,7 +4554,7 @@ identify the platform validation still needed.
   answer whether or not the text changed, leaving a `current / total` pager on
   the user turn that restores the original prompt with its full answer tail in
   place — surviving reload. The slash turn seeds the typed `/command` form and
-  re-expands the template on retry. Edit is disabled while a turn is running.
+  re-expands the template on retry. edit is disabled while a turn is running.
 - **Specs linked**: `04-ux/08-component-spec.md`,
   `03-runtime/01-ipc-protocol.md`, `03-runtime/04-data-storage.md`,
   `08-meta/decisions-log.md` (D137, D274)
@@ -4870,9 +4870,9 @@ identify the platform validation still needed.
   request in A as well. 5) Open B explicitly, resolve only B's request, then
   return to A and resolve A's request. 6) Rapidly select A then B while session
   details load in opposite completion order. 7) While B is loading, resolve A's
-  Write/Edit request so its tool completion records an inline review card, then
+  write/edit request so its tool completion records an inline review card, then
   let B emit a
-  BrowserPreview artifact while A is visible. Switch back to each session.
+  browser_preview artifact while A is visible. Switch back to each session.
 - **Expected**: B's background events update only B's row and retained state;
   they do not change A's active session/project/page, transcript, draft, scroll,
   or keyboard focus, and no global modal appears. Opening B reveals only B's
@@ -4880,7 +4880,7 @@ identify the platform validation still needed.
   actionable, and resolving B does not clear A. The final rapid selection stays
   on B even when A's older load finishes later. Only explicit notification or
   session activation may navigate. A's post-approval review card is retained only in
-  A without a transient open/close flash in B; B's BrowserPreview carries B's
+  A without a transient open/close flash in B; B's browser_preview carries B's
   session identity, updates only B's retained Browser resource, and never opens,
   navigates, focuses, or resizes A's panel. Explicitly returning to either
   session restores its own open state, tabs, active tab, and Browser resource.
@@ -5141,7 +5141,7 @@ identify the platform validation still needed.
     minimap without being rebuilt as a React subtree for every token.
   - Within that same active turn, unchanged non-delegation activity groups do
     not render again just because text updates rebuild turn-wide delegation
-    maps. Tool content changes still render; later TaskWait results update
+    maps. Tool content changes still render; later task_wait results update
     the original Task group's terminal status and completion duration.
   - Pressing and releasing standard, icon, sidebar, send, stop, and message
     action controls uses one eased transform rather than a snapped scale;
@@ -5165,7 +5165,7 @@ identify the platform validation still needed.
   credentials; requires installed Electron and a graphical session, or Xvfb on
   Linux). It mounts production transcript components, counts ActivityGroup
   renders across 20 text updates with 100 completed groups, checks changed tool
-  content, and checks cross-part Task terminal status/timing updates. The page
+  content, and checks cross-part task terminal status/timing updates. The page
   links the app's built stylesheet, which the runtime-status scenario below
   measures real geometry against; full provider streaming and shell
   responsiveness remain Draft.
@@ -5488,7 +5488,7 @@ identify the platform validation still needed.
   profile;
   English and zh-CN available; external network access can be disabled while
   loopback remains available; a deterministic loopback OpenAI-compatible
-  fixture provider returns code, KaTeX, Mermaid, and a Bash command.
+  fixture provider returns code, KaTeX, Mermaid, and a bash command.
 - **Steps**:
   1. Record every compressed artifact format plus the unpacked application,
      ASAR, Electron runtime, locale, and unpacked-native sizes on each native
@@ -5515,7 +5515,7 @@ identify the platform validation still needed.
      launch from a clean profile. Switch between English and Simplified
      Chinese, request the deterministic response, render common
      JavaScript/TypeScript, Python, Rust, shell, Mermaid, and unknown-language
-     fences plus KaTeX and a Mermaid diagram, run the Bash fixture, and verify
+     fences plus KaTeX and a Mermaid diagram, run the bash fixture, and verify
      host and agent-sidecar health.
   6. Confirm typography and branding survive the stripped font fallbacks: KaTeX
      math renders with its own faces, Chinese text in both the UI chrome and
@@ -5553,30 +5553,30 @@ identify the platform validation still needed.
 #### E2E-093: Mutating tools serialize and recover from stale edit context
 
 - **Preconditions**: A project-bound Agent session has a writable workspace;
-  the provider fixture can emit two same-session `Write`/`Edit` calls in one
-  tool batch; a second edit can be given a stale `tag`; a Bash command can
+  the provider fixture can emit two same-session `write`/`edit` calls in one
+  tool batch; a second edit can be given a stale `tag`; a bash command can
   return a non-zero exit code with diagnostics.
 - **Steps**:
   1. Start a task that emits two mutations for the same session while also
      emitting independent read/search calls.
   2. Inspect the key tool result and transcript while the first mutation runs.
-  3. Force the second `Edit` to carry a `tag` that no longer hashes the file,
+  3. Force the second `edit` to carry a `tag` that no longer hashes the file,
      with anchors that recovery cannot remap, then allow the agent to re-read
      the file and retry from the current contents.
-  4. Run a Bash command that exits non-zero and inspect its tool result and
+  4. Run a bash command that exits non-zero and inspect its tool result and
      inline state.
   5. Repeat with an `ops` payload whose ranges overlap.
   6. If the task uses a dedicated worktree outside the advertised workspace,
-     verify its guarded Bash edit and resulting `git diff`.
+     verify its guarded bash edit and resulting `git diff`.
 - **Expected**:
-  - Read/search calls may overlap, but only one `Write`/`Edit` executes for a
+  - read/search calls may overlap, but only one `write`/`edit` executes for a
     session at a time; queued mutations do not consume another global
     mutation slot while waiting.
   - The stale-tag edit fails without changing the file and returns
     `EDIT_TAG_MISMATCH` carrying the live tag and current content at the
     anchors; the overlapping-range payload fails with `EDIT_RANGE_INVALID`
     before any write.
-  - The non-zero Bash command is marked failed while retaining its exit code,
+  - The non-zero bash command is marked failed while retaining its exit code,
     stdout, and stderr for the agent and diagnostics.
   - The retry performs one fresh read and operates on the current file; once
     that path has spent its recovery graces, the third counted same-path failure
@@ -5626,7 +5626,7 @@ identify the platform validation still needed.
       turn during backoff and verify no later request starts; disable the setting
       and verify a fresh persistent outage stops after ten retries.
   11. Alternate one socket failure and one successful tool-call response for
-      eleven actual Read calls, then fail once and return a final answer.
+      eleven actual read calls, then fail once and return a final answer.
       Verify all twelve independent failures recover in the same user turn,
       each beginning at retry 1, with no repeated tool execution.
   12. After a recovered tool response, keep the next response failing. Verify
@@ -5791,14 +5791,14 @@ identify the platform validation still needed.
 
 #### E2E-105: Plan policy remains host-authoritative
 
-- **Preconditions**: A project-bound session is idle in Plan with BrowserPreview,
+- **Preconditions**: A project-bound session is idle in Plan with browser_preview,
   a plugin tool, and a forged `requestedMode = "agent"` fixture.
-- **Steps**: 1) Inspect visible Plan tools. 2) Use Read/Glob/Grep and
-  BrowserPreview. 3) Attempt Write, Edit, plugin, and
-  unknown tools through the host with every permission mode. 4) Run Bash under
+- **Steps**: 1) Inspect visible Plan tools. 2) Use read/glob/grep and
+  browser_preview. 3) Attempt write, edit, plugin, and
+  unknown tools through the host with every permission mode. 4) Run bash under
   Ask, Accept edits, and Auto.
-- **Expected**: Plan denies Write/Edit/plugin/unknown tools regardless of the
-  forged mode, grants, or Auto; Bash follows the selected permission mode. The
+- **Expected**: Plan denies write/edit/plugin/unknown tools regardless of the
+  forged mode, grants, or Auto; bash follows the selected permission mode. The
   runtime remains one pi Agent and all denials are audited.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `03-runtime/03-tools-and-permissions.md`, `03-runtime/05-host-core-rust.md`,
@@ -5813,7 +5813,7 @@ identify the platform validation still needed.
 - **Preconditions**: A project-bound session is idle in Plan with a provider;
   `.pi/plan/` is absent or empty and the workspace permits host artifact
   creation.
-- **Steps**: 1) Let the Agent call `SubmitPlan` with fixed title, Markdown, and
+- **Steps**: 1) Let the Agent call `submit_plan` with fixed title, Markdown, and
   question. 2) Inspect the new `.pi/plan/*.md` file byte-for-byte and the
   `plan_approvals` row. 3) Inspect the card's title and artifact opener; confirm
   the opener uses the bundled file view when it is launchable and the host
@@ -5823,7 +5823,7 @@ identify the platform validation still needed.
   and verify the next approval defaults to Auto. 5) Reject the
   proposal. 6) Confirm durable mode is Plan, live state is editable `planning`,
   the approval gate is cleared, and a later prompt is accepted. 7) Let the
-  Agent revise and call `SubmitPlan` once in that new turn with a complete
+  Agent revise and call `submit_plan` once in that new turn with a complete
   snapshot. 8) Approve the second proposal with the remembered Auto mode.
 - **Expected**: Host preserves the exact submitted Markdown bytes in a new
   unique artifact, records its relative path/hash/size with structured
@@ -5850,8 +5850,8 @@ identify the platform validation still needed.
   artifact/approval lifecycle. The optional live `test:e2e:plan-ui` case
   requires an env-provided OpenAI-compatible provider; the authorized run with
   model `gpt-5.6-luna` passed 6/6 with zero console diagnostics. It used the
-  real controlled Composer and Send, the live Agent called `EnterPlanMode` then
-  `SubmitPlan`, normal rendered Ask approval resolved through preload/Main,
+  real controlled Composer and Send, the live Agent called `enter_plan_mode` then
+  `submit_plan`, normal rendered Ask approval resolved through preload/Main,
   approved execution emitted the exact durable marker, and a private
   env-gated WeakMap check proved the same `DesktopAgentRuntime` object before
   and after approval. Main/Host/sidecar PIDs remained stable; credentials never
@@ -6030,11 +6030,11 @@ identify the platform validation still needed.
   rejects an unavailable or wrong-platform ID. 3) Select an available shell
   and persist `defaultCommandShell`. 4) Make that persisted choice unavailable,
   restart, and verify the catalog selects the first available platform shell
-  with `fallback: true`. 5) Execute the unchanged `Bash` tool.
+  with `fallback: true`. 5) Execute the unchanged `bash` tool.
 - **Expected**: Settings persists only a valid stable shell ID; unavailable
   entries remain unavailable with guidance and a later unavailable persisted
   choice uses the intentional first-available fallback. The host invokes the
-  effective shell while the tool/protocol name stays `Bash`, and shell
+  effective shell while the tool/protocol name stays `bash`, and shell
   selection follows the idle configuration boundary.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `03-runtime/03-tools-and-permissions.md`, `03-runtime/06-host-rpc-protocol.md`,
@@ -6053,9 +6053,9 @@ identify the platform validation still needed.
   (`IO_REPARSE_TAG_APPEXECLINK`).
 - **Steps**: 1) Open Settings → command shell. 2) Inspect `windows-pwsh`
   availability. 3) Select PowerShell 7 and persist `defaultCommandShell`.
-  4) Run `Bash`.
+  4) Run `bash`.
 - **Expected**: `windows-pwsh` is available and selectable. The host resolves
-  the Store alias without treating it as missing. `Bash` launches PowerShell 7.
+  the Store alias without treating it as missing. `bash` launches PowerShell 7.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`,
   `04-ux/06-settings-ia.md`, ADR 0054, ADR 0209
 - **Acceptance**: B (model/config), E (tools/permissions)
@@ -6066,9 +6066,9 @@ identify the platform validation still needed.
 
 #### E2E-113: Stale shell identity fails closed
 
-- **Preconditions**: A Bash turn has a pinned effective shell ID/dialect; the
+- **Preconditions**: A bash turn has a pinned effective shell ID/dialect; the
   fixture can change the effective catalog selection before spawn.
-- **Steps**: 1) Change the effective shell ID or dialect. 2) Execute Bash with
+- **Steps**: 1) Change the effective shell ID or dialect. 2) Execute bash with
   the old expected ID. 3) Inspect process creation, fallback attempts, audit,
   and UI error. 4) launch a fresh turn and retry.
 - **Expected**: The first call returns `COMMAND_SHELL_CHANGED`, starts no
@@ -6086,11 +6086,11 @@ identify the platform validation still needed.
 
 - **Preconditions**: A selected shell is available and a deterministic command
   writes interleaved stdout and stderr chunks.
-- **Steps**: 1) Execute the command through `Bash`. 2) Observe host/RPC/UI
+- **Steps**: 1) Execute the command through `bash`. 2) Observe host/RPC/UI
   output events. 3) Inspect the final bounded result and transcript row.
 - **Expected**: stdout and stderr remain separate, ordered per tool call, and
   visible while the process runs. Final output preserves truncation metadata;
-  no chunks cross sessions or turns and the Bash protocol name is unchanged.
+  no chunks cross sessions or turns and the bash protocol name is unchanged.
 - **Specs linked**: `03-runtime/06-host-rpc-protocol.md`,
   `03-runtime/09-logging-and-observability.md`,
   `03-runtime/16-tool-result-limits.md`, `04-ux/09-interaction-patterns.md`, ADR 0054
@@ -6122,7 +6122,7 @@ identify the platform validation still needed.
 
 #### E2E-116: Bash abort shuts down the complete process tree
 
-- **Preconditions**: A Bash command starts a child and grandchild that emit
+- **Preconditions**: A bash command starts a child and grandchild that emit
   delayed output; the originating session is running.
 - **Steps**: 1) Start the command. 2) Abort the active turn. 3) Inspect process
   descendants, output events, audit, and turn state after the shutdown grace.
@@ -6276,16 +6276,16 @@ identify the platform validation still needed.
 
 - **Preconditions**: A project-bound Agent session with the user home containing
   `~/.agents/subagents/scout.md` (read-only, no `tools` key), `~/.agents/subagents/fixer.md`
-  (`tools: Read, Edit`), `~/.agents/subagents/pinned.md` (`model:` naming a second
+  (`tools: read, edit`), `~/.agents/subagents/pinned.md` (`model:` naming a second
   configured provider) and `~/.agents/subagents/broken.md` (missing `name`); a provider
-  whose stream can be driven to emit two `Task` calls in one assistant message;
-  permission mode `ask` so a delegate's `Edit` is gated; read access to
+  whose stream can be driven to emit two `task` calls in one assistant message;
+  permission mode `ask` so a delegate's `edit` is gated; read access to
   `<data_dir>/sessions/<id>.jsonl` and the `messages` index.
 - **Steps**:
-  1. Prompt a turn in which the assistant emits two `Task` calls — `scout` and
+  1. Prompt a turn in which the assistant emits two `task` calls — `scout` and
      `pinned` — in one message. Observe the delegation card while both run and
      after each one settles; collapse it, then expand each node.
-  2. Prompt a turn whose assistant message emits a single `Task` call — `scout`
+  2. Prompt a turn whose assistant message emits a single `task` call — `scout`
      — and compare its presentation with step 1's.
   3. Prompt a turn in which two `fixer` delegates each edit a different file, and
      answer only the first permission card.
@@ -6293,19 +6293,19 @@ identify the platform validation still needed.
      delegates edit the **same** file.
   5. Start a fan-out and press Stop while one card is on screen and another is
      queued.
-  6. Prompt a `Task` call naming `broken`, then one naming an agent that does not
+  6. Prompt a `task` call naming `broken`, then one naming an agent that does not
      exist, then one whose definition pins an unconfigured provider.
   7. Switch the session to Plan, then to Goal, and inspect the tool catalog.
-  8. Reload the session and re-expand the delegation card and every `Task`
+  8. Reload the session and re-expand the delegation card and every `task`
      node.
 - **Expected**:
   - Both delegates in step 1 run concurrently, and `pinned` streams on its own
     provider/model while the parent keeps the session's.
-  - The two `Task` calls in step 1 form one full-width delegation card. While
+  - The two `task` calls in step 1 form one full-width delegation card. While
     active it opens once and its header updates the subagent and settled counts;
     after settlement it keeps the user's expansion choice and reports aggregate
     success, warning, or issue state plus elapsed time.
-  - The lone `Task` in step 2 draws the same card with a single delegate node —
+  - The lone `task` in step 2 draws the same card with a single delegate node —
     same root, connector, outcome, runtime and step count — and never the
     compact one-line tool row (D265). Its aggregate line is worded for one
     subagent, so no locale reads "1 个 Subagents" or "Subagents working".
@@ -6315,26 +6315,26 @@ identify the platform validation still needed.
     count. Expanding a node shows the brief, report exactly once, and
     `status`/`turns`/`toolCalls`. Delegate rows appear only inside that node,
     never in the turn stream or the minimap.
-  - If the parent keeps working after those `Task` calls — thinking, `Read`,
-    `Grep`, or a lifecycle row — that work is a separate processing group, not
+  - If the parent keeps working after those `task` calls — thinking, `read`,
+    `grep`, or a lifecycle row — that work is a separate processing group, not
     rows inside the delegation card (D319). The card's tile, “Subagent working”
-    header, and topology canvas contain only the `Task` nodes.
+    header, and topology canvas contain only the `task` nodes.
   - The parent's next request contains the reports and **no** delegate message or
     tool row; the rows are nonetheless present in the transcript file and the
     index with `meta.parentToolCallId` and `meta.agentName`.
   - Only the head permission card is rendered; it names the asking delegate and
     the number waiting behind it. Answering it reveals the next card, and neither
     answer resolves the other request.
-  - `scout` cannot call `Edit` or `Write` at all; `fixer` can. Same-file edits in
+  - `scout` cannot call `edit` or `write` at all; `fixer` can. Same-file edits in
     step 4 apply in a defined order and neither loses the other's write.
   - Stop denies both the shown and the queued request, and both delegates end
-    `aborted` in text and icon inside their own `Task` nodes — the parent turn
+    `aborted` in text and icon inside their own `task` nodes — the parent turn
     ends once and the aggregate card settles with a warning.
   - `broken` is absent from the catalog with a launch diagnostic and the session
     keeps its other three delegates; an unknown agent and an unresolvable model
-    pin each fail as a `Task` tool error naming the cause, with no fallback to
+    pin each fail as a `task` tool error naming the cause, with no fallback to
     the session provider and no turn failure.
-  - `Task` is absent from the catalog in Plan and Goal.
+  - `task` is absent from the catalog in Plan and Goal.
   - After reload the card is collapsed by default; re-expanding preserves node
     order, attribution, outcome and nested content exactly as they appeared
     live.
@@ -6371,14 +6371,14 @@ identify the platform validation still needed.
   Built-in and Global groups renders with its tool grant and that no
   turn-limit field exists anywhere in the page or the editor's Advanced
   disclosure. 2) Delegate to `legacy-worker` and let it make more than two
-  tool-calling turns. 3) Read the document back through the settings API and
+  tool-calling turns. 3) read the document back through the settings API and
   again as a raw file. 4) Open the editor on that row, save it without
   changing anything, and re-read the file.
 - **Expected**: Both spellings load as valid definitions. The declared key is
   ignored exactly like any other unrecognized frontmatter key: no parse error,
   no warning or diagnostic naming it, the definition still resolves, and the
   file is not rewritten. The delegate is never stopped at two turns and never
-  reports `truncated`; it ends only when it finishes or is `TaskStop`'d. No
+  reports `truncated`; it ends only when it finishes or is `task_stop`'d. No
   surface in the app, and no locale's `chat.subagentStatus` copy, reports a
   turn limit or a “Turn limit reached” status.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
@@ -6396,27 +6396,27 @@ identify the platform validation still needed.
   at least one plugin or MCP tool in the parent catalog, and a non-empty Skill
   catalog. Built-in `explorer` remains on its whitelist.
 - **Steps**:
-  1. Confirm Settings → Agent → Subagents lists `worker` and that Edit shows
+  1. Confirm Settings → Agent → Subagents lists `worker` and that edit shows
      Inherit parent tools on. Save without changing tools and reopen the file.
-  2. Delegate `Task` to `worker` with a brief that needs a Skill id and a plugin
+  2. Delegate `task` to `worker` with a brief that needs a Skill id and a plugin
      tool the parent already had.
-  3. Delegate `Task` to builtin `explorer` in the same session.
-  4. Confirm `worker` cannot call `Task`, `ToolSearch`, `asktool`, or
+  3. Delegate `task` to builtin `explorer` in the same session.
+  4. Confirm `worker` cannot call `task`, `tool_search`, `asktool`, or
      `new_context`.
 - **Expected**:
   - Step 1 round-trips `tools: inherit`; the document does not disappear from
-    `agents.active` and save does not rewrite it to `Read, Glob, Grep`.
-  - `worker` receives Skill, the plugin/MCP tool, and the parent builtins minus
+    `agents.active` and save does not rewrite it to `read, glob, grep`.
+  - `worker` receives skill, the plugin/MCP tool, and the parent builtins minus
     the deny list. Its system prompt lists those names, includes the `# Skills`
     catalog, and says it may change files when the parent catalog includes
-    Bash/Edit/Write.
-  - `explorer` still has only `Read, Glob, Grep, Bash` and cannot call Skill.
-  - The Task catalog line for `worker` reads `(tools: inherit)`.
+    bash/edit/write.
+  - `explorer` still has only `read, glob, grep, bash` and cannot call skill.
+  - The task catalog line for `worker` reads `(tools: inherit)`.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` §10.2,
   `03-runtime/02-agent-runtime.md` §5f/§7.2b, ADR 0246, issue #215
 - **Acceptance**: E (tools & permissions), Security
 - **Milestone**: M6+
-- **Status**: Automated by `test:e2e:subagents` (host-core create/read/on-disk/active/loader inherit round-trip) and `test:e2e:subagent-models` (real sidecar/local transport Task spawn, inherited Skill/plugin catalog minus the deny list, and builtin explorer isolation). Unit coverage remains in `packages/shared`, `packages/agent-runtime`, and host-core `user_subagents`; the UI inherit-checkbox journey remains Draft. Required suites: `test:e2e`, `test:e2e:subagents`, `test:e2e:subagent-models`.
+- **Status**: Automated by `test:e2e:subagents` (host-core create/read/on-disk/active/loader inherit round-trip) and `test:e2e:subagent-models` (real sidecar/local transport task spawn, inherited Skill/plugin catalog minus the deny list, and builtin explorer isolation). Unit coverage remains in `packages/shared`, `packages/agent-runtime`, and host-core `user_subagents`; the UI inherit-checkbox journey remains Draft. Required suites: `test:e2e`, `test:e2e:subagents`, `test:e2e:subagent-models`.
 
 #### E2E-145: Tool results read as structured blocks, never JSON
 
@@ -6430,21 +6430,21 @@ identify the platform validation still needed.
      and calls the plugin tool.
   2. Inspect each collapsed activity row, then expand every row in light and
      dark.
-  3. Click a Glob path and a Grep hit heading.
+  3. Click a glob path and a grep hit heading.
   4. Trigger a high-risk tool so the inline permission card appears.
   5. Read a truncated file and copy each block.
 - **Expected**:
   - No expanded row shows escaped JSON, and no payload appears twice.
-  - Read/Write show highlighted content; Bash shows command, output, and
-    error-hued stderr as separate blocks with empty channels omitted; Glob shows
-    a path list; Grep shows hits grouped per file with line numbers in `content`
+  - read/write show highlighted content; bash shows command, output, and
+    error-hued stderr as separate blocks with empty channels omitted; glob shows
+    a path list; grep shows hits grouped per file with line numbers in `content`
     mode, a path list in `filesWithMatches`, and per-file totals in `count`; the
     failing command carries an `exit 1` chip.
-  - A Read row's collapsed chip shows the returned window as
+  - A read row's collapsed chip shows the returned window as
     `{lineCount},L{offset+1}-L{offset+lineCount}` (for example,
-    `50,L16-L65`), never `fileBytes`; a Read result without valid window
-    metadata has no size chip. Write continues to show its byte-size chip.
-  - Each Glob/Grep path-list row is start-aligned with natural character
+    `50,L16-L65`), never `fileBytes`; a read result without valid window
+    metadata has no size chip. write continues to show its byte-size chip.
+  - Each glob/grep path-list row is start-aligned with natural character
     spacing; glyphs are not distributed across the block width.
   - The workspace edit shows no inline diff (its ReviewChangeCard owns it); the
     scratch edit shows a compact diff and a `scratch` chip.
@@ -6537,7 +6537,7 @@ identify the platform validation still needed.
   multi-megabyte source file, a minified bundle with a `.map` sibling (one line,
   megabytes long), a binary file, and a dependency tree excluded by `.gitignore`.
 - **Steps**:
-  1. Inspect `tools.list` for `Read`, `Glob`, and `Grep`.
+  1. Inspect `tools.list` for `read`, `glob`, and `grep`.
   2. Read the multi-megabyte file, then read it again from the reported next
      offset.
   3. Grep a token that hits the minified bundle and its `.map`.
@@ -6553,8 +6553,8 @@ identify the platform validation still needed.
      between batches.
 - **Expected**:
   - Every description carries its parameters and the real limit numbers.
-  - No single tool result exceeds its budget: 128 KB for Read/Glob/Grep, 96 KB
-    for Bash. Read reports `offset`, `lineCount`, `fileBytes`, and a next-offset
+  - No single tool result exceeds its budget: 128 KB for read/glob/grep, 96 KB
+    for bash. read reports `offset`, `lineCount`, `fileBytes`, and a next-offset
     `notice`; the second read continues without overlap; `totalLines` is always
     reported from the first read so the model knows the file scale upfront. A
     filled default or requested window reports `truncated: false` even when the
@@ -6565,11 +6565,11 @@ identify the platform validation still needed.
   - An explicit `path` reaches into the ignored tree; without it the same search
     returns nothing from there. `include`, `outputMode`, and `headLimit` each
     shrink the payload, and results order newest-modified first. When `rg` is
-    on PATH, Grep uses it and still matches that contract; when it is missing
-    or exits 2, Grep falls back in-process (D315).
+    on PATH, grep uses it and still matches that contract; when it is missing
+    or exits 2, grep falls back in-process (D315).
   - The binary read fails with `TOOL_BINARY_CONTENT` and no binary reaches the
-    model; Grep skips it silently.
-  - Bash stdout keeps its head, stderr keeps its tail, both markers name which
+    model; grep skips it silently.
+  - bash stdout keeps its head, stderr keeps its tail, both markers name which
     end survived and the spill path, and each spill file opens with the fuller
     output.
   - The agent answers in the language the user wrote in, precedes each tool
@@ -6604,7 +6604,7 @@ identify the platform validation still needed.
   9. Point the server's command at a binary that does not exist, save, and open
      a new session.
   10. Restore the valid command and Test connection. Activate a tool through
-      `ToolSearch`, then terminate the stub server process between calls. Call
+      `tool_search`, then terminate the stub server process between calls. Call
       the same tool in the existing session without searching again.
   11. Repeat with the restarted stub omitting that tool, and with the server
       disabled or scoped away before recovery. Also try concurrent calls after
@@ -6675,7 +6675,7 @@ identify the platform validation still needed.
   - Saving without a description is refused with a message naming the field:
     the description is the only part that enters the prompt.
   - The base prompt carries the skill's id, name and trimmed description and
-    not its body; the body arrives only through the `Skill` tool.
+    not its body; the body arrives only through the `skill` tool.
   - Toggling Off and back restores the picked project without re-picking it.
   - After narrowing, only the scoped project's session can invoke it; the other
     gets "not enabled for this project".
@@ -6802,7 +6802,7 @@ identify the platform validation still needed.
   classifies each selected item from its MIME/extension metadata, so the same
   picker handles both regular files and images. Chips show sanitized leaf names
   while prompt attachments reference only the copied paths; the workspace is
-  unchanged. The agent can call `Read` on the text fixture, and a
+  unchanged. The agent can call `read` on the text fixture, and a
   vision-capable model receives the image as an image block. Durable messages
   retain metadata and refs only, never the source absolute path or binary bytes.
   The file picker does not offer directory selection; missing files,
@@ -7117,7 +7117,7 @@ identify the platform validation still needed.
      action names the global destination and the new document lands in
      `~/.agents/skills`; with the filter on Project confirm it names the project
      and lands in project A. With Project selected and no project chosen,
-     confirm the attempt reports it instead of failing silently. Edit the new
+     confirm the attempt reports it instead of failing silently. edit the new
      skill, save, and confirm the body round-trips.
   6. From a project skill's overflow menu choose Reveal and confirm the project
      file is revealed, not a global file of the same id. Choose Remove and
@@ -7239,7 +7239,7 @@ identify the platform validation still needed.
      `echo` row, then choose Move into A. Confirm the row leaves the global
      group, appears under project A, and stays disabled there.
   2. Confirm `~/.agents/servers/echo.json` no longer exists and
-     `<project A>/.agents/servers/echo.json` does, byte-identical. Read
+     `<project A>/.agents/servers/echo.json` does, byte-identical. read
      `<data>/agent-capabilities/mcp.json` and confirm it holds no global `echo`
      entry and no project-A override for the old id, and that project A's entry
      carries the disabled value.
@@ -7258,7 +7258,7 @@ identify the platform validation still needed.
   6. Move project A's `with-resources` skill to Global. Confirm
      `<project A>/.agents/skills/with-resources/` is gone and
      `~/.agents/skills/with-resources/` holds `SKILL.md`, `scripts/run.sh`, and
-     `templates/report.md` with identical bytes, and that the Skill tool still
+     `templates/report.md` with identical bytes, and that the skill tool still
      resolves the document's resources.
   7. Reload the global and project pages. Confirm the moved rows keep the
      enablement they had across the reload, that project B lists none of the
@@ -7367,10 +7367,10 @@ identify the platform validation still needed.
   idle in Agent mode; the workspace permits host artifact creation and has no
   prior test goal artifact.
 - **Steps**: 1) Switch the session to Goal and let the Agent call
-  `EnterGoalMode`, then `SubmitGoal(title, markdown, question)`. 2) Inspect the
+  `enter_goal_mode`, then `submit_goal(title, markdown, question)`. 2) Inspect the
   exact Markdown bytes in the new `.pi/goal/*.md` artifact and the matching
   `plan_approvals` row. 3) Confirm the shared approval card exposes only
-  Approve/Reject and that Goal denies Write/Edit/plugin tools while Bash follows
+  Approve/Reject and that Goal denies write/edit/plugin tools while bash follows
   the selected permission mode. 4) Approve with Ask and observe the same Agent
   resume in Agent mode. 5) Inspect the final response for criterion-by-criterion
   verification or an explicit boundary, then reload the session.
@@ -7477,7 +7477,7 @@ identify the platform validation still needed.
   the browser login;
   confirm one connected account row and one OAuth provider row appear. 3) Use
   Add account again, pick Anthropic again, and complete a second login with a
-  different account; confirm two account rows and two provider ids. 4) Edit
+  different account; confirm two account rows and two provider ids. 4) edit
   the first account, change its display name, select multiple catalog/custom
   models, configure context window, max output tokens, and thinking levels for
   one model, then save; confirm the row shows the account label once while the
@@ -7498,7 +7498,7 @@ identify the platform validation still needed.
   confirm no row or credential is left. 7) Remove the first Anthropic account,
   then confirm its provider row and OAuth secret are gone while the second
   Anthropic account remains usable. 8) If the removed account was default,
-  confirm Defaults points to another ready provider or shows no default. 9) Grep
+  confirm Defaults points to another ready provider or shows no default. 9) grep
   sidecar and renderer logs for token material.
 - **Expected**: Each successful login creates a distinct row with
   `authKind: "oauth"`, `hasSecret` and `hasOauth` both true, a non-secret
@@ -7836,7 +7836,7 @@ identify the platform validation still needed.
 - **Preconditions**: Isolated profile, English and Simplified Chinese. Seed
   non-OAuth legacy rows using Codex and Pi account formats, including an OpenAI
   preset URL; use synthetic models and no real credentials.
-- **Steps**: 1) Add a Custom service and inspect its format choices. 2) Edit each
+- **Steps**: 1) Add a Custom service and inspect its format choices. 2) edit each
   legacy row and save unchanged, then explicitly select Responses and save.
   3) Copy each original legacy row, inspect the current format and explanatory
   hint, wait past discovery debounce, and cancel. 4) Copy again, choose Anthropic
@@ -8250,7 +8250,7 @@ This test plan spec is accepted when:
 - With a git workspace open, composer does not show project, Local, or branch
   labels above the prompt surface.
 - Operating-mode selector switches between Agent, Plan, and Goal; both contract
-  modes keep the permission-mode chip and explain their Bash tradeoff.
+  modes keep the permission-mode chip and explain their bash tradeoff.
 
 ### US-UI-05 Locale chrome
 - On a zh-CN system locale, sidebar labels render in Chinese (项目 / 临时会话),
@@ -9004,7 +9004,7 @@ This test plan spec is accepted when:
   controls. Switching away and back preserves the absolute deadline.
 - Make A and B pending together, resolve each independently, and confirm neither
   action removes or changes the other card.
-- Resolve A's Write/Edit permission and switch to B before completion. Expect no
+- Resolve A's write/edit permission and switch to B before completion. Expect no
   transient Review panel in B and no panel/window flash; returning to A restores
   A's prior panel selection with the inline review card in its transcript — the
   edit opened no tab — while B's tabs and Browser resource remain unchanged.
@@ -9457,19 +9457,19 @@ This test plan spec is accepted when:
 - **Milestone**: M5+
 - **Status**: Documented
 
-#### E2E-130: Read mints a tag that an Edit consumes without re-reading
+#### E2E-130: Read mints a tag that an `edit` consumes without re-reading
 
 - **Preconditions**: A project-bound Agent session with a writable workspace and
   a source file of at least 300 lines. The provider fixture can emit an exact
-  `Edit` payload.
+  `edit` payload.
 - **Steps**:
-  1. `Read` the file with no `offset` and record the `[path#TAG]` header, the
+  1. `read` the file with no `offset` and record the `[path#TAG]` header, the
      `tag` field, and the `N:` prefixes on the returned lines.
-  2. Emit `Edit` with that `tag` and a single `PUT N.=M:` whose body replaces two
+  2. Emit `edit` with that `tag` and a single `PUT N.=M:` whose body replaces two
      lines inside the read window.
-  3. Confirm the successful result reports a new `tag`, then emit a second `Edit`
-     with the returned tag and a `PUT >$:` append, with no intervening `Read`.
-  4. `Read` a 200-line window at an `offset`, then `Edit` a line inside that
+  3. Confirm the successful result reports a new `tag`, then emit a second `edit`
+     with the returned tag and a `PUT >$:` append, with no intervening `read`.
+  4. `read` a 200-line window at an `offset`, then `edit` a line inside that
      window using the tag from the windowed read.
   5. Reopen the file on disk and compare it to the intended content byte for
      byte.
@@ -9489,15 +9489,15 @@ This test plan spec is accepted when:
 - **Preconditions**: A session that has read only lines 1–50 of a 400-line file.
   A second fixture file has one line longer than 16,384 characters.
 - **Steps**:
-  1. Emit `Edit` with the correct `tag` and a `PUT 300.=301:` op.
+  1. Emit `edit` with the correct `tag` and a `PUT 300.=301:` op.
   2. Inspect the error code and confirm the message inlines the current content
      of lines 300 and 301.
-  3. Retry the identical `Edit` payload, unchanged, including the same `tag`.
-  4. Emit `Edit` with the correct tag and a `PUT 5.=60:` op spanning 56 unseen
+  3. Retry the identical `edit` payload, unchanged, including the same `tag`.
+  4. Emit `edit` with the correct tag and a `PUT 5.=60:` op spanning 56 unseen
      lines, and inspect the reveal.
   5. Retry that identical payload unchanged.
-  6. `Read` the second fixture, confirm the long line is clipped and counted in
-     `notice`, then `Edit` that clipped line.
+  6. `read` the second fixture, confirm the long line is clipped and counted in
+     `notice`, then `edit` that clipped line.
 - **Expected**: Step 1 fails with `EDIT_LINES_UNSEEN` and the file is unchanged.
   Step 3 applies, because the complete reveal merged those lines into the
   session's provenance. Step 4 fails with a reveal truncated at 40 lines that
@@ -9514,7 +9514,7 @@ This test plan spec is accepted when:
 
 - **Preconditions**: A read file whose content is known line by line.
 - **Steps**:
-  1. Emit one `Edit` combining `PUT <1:`, `PUT >40:`, `CUT 12.=14`, and
+  1. Emit one `edit` combining `PUT <1:`, `PUT >40:`, `CUT 12.=14`, and
      `PUT 80.=80:` in a single `ops` payload.
   2. Compare the result against the same four changes computed against the
      original line numbering.
@@ -9522,7 +9522,7 @@ This test plan spec is accepted when:
      line with exactly one terminating newline.
   4. Emit an `ops` payload whose body row starts with a literal `-` written as
      `+- item`, and one with a literal `+` written as `++ item`.
-  5. Emit an `Edit` whose `PUT` body exactly reproduces the range's current
+  5. Emit an `edit` whose `PUT` body exactly reproduces the range's current
      content.
 - **Expected**: Every anchor indexes the tagged snapshot, so no op shifts
   another and the combined result equals the four independent changes. `+-` and
@@ -9536,7 +9536,7 @@ This test plan spec is accepted when:
 
 #### E2E-133: Block ops resolve, echo their span, and decline instead of guessing
 
-- **Preconditions**: Read fixtures in a supported grammar (a Rust file with a
+- **Preconditions**: read fixtures in a supported grammar (a Rust file with a
   decorated/attributed function), a Markdown file with nested headings, and a
   file in a language outside the supported grammar list.
 - **Steps**:
@@ -9568,15 +9568,15 @@ This test plan spec is accepted when:
 
 - **Preconditions**: Two read files in the same session.
 - **Steps**:
-  1. In one `Edit`, emit `CUT 20.=30` followed by `PUT <5 ` with no register
+  1. In one `edit`, emit `CUT 20.=30` followed by `PUT <5 ` with no register
      label, and confirm the lines moved within the file.
-  2. In one `Edit`, emit two `CUT` ops with no labels followed by one unlabeled
+  2. In one `edit`, emit two `CUT` ops with no labels followed by one unlabeled
      paste.
-  3. Emit `CUT 40* @fn` on the first file, then in a separate `Edit` call emit
+  3. Emit `CUT 40* @fn` on the first file, then in a separate `edit` call emit
      `PUT <10 @fn` on the second file.
   4. Emit `PUT <10 @missing` for a register that was never set.
   5. Emit `PUT 10.=12 @fn` with a body row attached.
-  6. Emit `PUT <1 ` with no label in a fresh `Edit` call that performed no
+  6. Emit `PUT <1 ` with no label in a fresh `edit` call that performed no
      capture.
   7. Delete the source file, then paste `@fn` again in a later call.
 - **Expected**: Step 1 applies as one move with no duplicated or orphaned lines.
@@ -9598,7 +9598,7 @@ This test plan spec is accepted when:
   modify the file between the read and the edit.
 - **Steps**:
   1. Insert 10 unrelated lines above the edit target from outside the session,
-     then emit the original `Edit` with the stale `tag`.
+     then emit the original `edit` with the stale `tag`.
   2. Inspect the warning on the successful result and confirm the change landed
      at the shifted location, not at the original line numbers.
   3. Repeat with a change that modifies one of the anchor lines themselves.
@@ -9628,9 +9628,9 @@ This test plan spec is accepted when:
      tag.
   2. Repeat with `PUT <1:` and the same stale tag.
   3. Repeat with a payload that mixes `PUT >$:` and an anchored `PUT 50.=50:`.
-  4. Emit an `Edit` whose `tag` is well formed but was never recorded for that
+  4. Emit an `edit` whose `tag` is well formed but was never recorded for that
      path in this session.
-  5. Emit an `Edit` with a `tag` that is not four hex digits.
+  5. Emit an `edit` with a `tag` that is not four hex digits.
 - **Expected**: Steps 1 and 2 apply with a drift warning, because neither anchor
   can be moved by content drift. Step 3 does not take the position-stable path:
   it goes to recovery and, failing that, to `EDIT_TAG_MISMATCH`. Step 4 returns
@@ -9670,14 +9670,14 @@ This test plan spec is accepted when:
 - **Preconditions**: A project-bound session with Review visible and a read file
   inside the workspace root.
 - **Steps**:
-  1. Emit `Edit` with a `PUT` op plus `MV DEST` in the same `ops` payload.
+  1. Emit `edit` with a `PUT` op plus `MV DEST` in the same `ops` payload.
   2. Inspect the review records for the tool call and the Review panel rows.
   3. Roll the change back and confirm both the source and the destination
      return to their pre-call state.
-  4. Emit `Edit` with `REM`, then roll it back.
-  5. After a rollback, emit an `Edit` using the tag the session held before the
+  4. Emit `edit` with `REM`, then roll it back.
+  5. After a rollback, emit an `edit` using the tag the session held before the
      rollback.
-  6. Emit `Edit` on a path that does not exist but whose basename and tag match
+  6. Emit `edit` on a path that does not exist but whose basename and tag match
      exactly one file this session recorded, and inspect the warning.
   7. Repeat step 6 with two recorded candidates sharing that basename and tag.
 - **Expected**: Step 1 records a source deletion and a destination creation under
@@ -9698,17 +9698,17 @@ This test plan spec is accepted when:
   same workspace, and a fixture with more files than the snapshot store's path
   bound.
 - **Steps**:
-  1. Read a file in the parent session, then have a delegate `Edit` that file
+  1. Read a file in the parent session, then have a delegate `edit` that file
      using the parent's tag without reading it first.
-  2. Read a file in session A and emit the same `Edit` payload from session B.
+  2. Read a file in session A and emit the same `edit` payload from session B.
   3. Read more distinct paths than the store retains, then edit the
      first-read path with its original tag.
   4. Read one path five times with changing content between reads, then edit
      using the tag from the first read.
   5. Read a file, then read the identical unchanged file twice more at
      different offsets, and confirm one tag covers all three windows.
-  6. Restart the app, then emit an `Edit` with a tag from before the restart.
-  7. Write a file through a path that a save hook reformats, then `Edit` using
+  6. Restart the app, then emit an `edit` with a tag from before the restart.
+  7. Write a file through a path that a save hook reformats, then `edit` using
      the tag the write returned.
 - **Expected**: Steps 1 and 2 fail — provenance is per reader, and no session
   hands another its tags. Steps 3, 4, and 6 fail with `EDIT_TAG_UNKNOWN` and an
@@ -9727,18 +9727,18 @@ This test plan spec is accepted when:
 - **Preconditions**: A session with one file read, and a way to make the file
   drift on disk between calls.
 - **Steps**:
-  1. Let the file drift, then emit an `Edit` with the now-stale tag whose anchors
+  1. Let the file drift, then emit an `edit` with the now-stale tag whose anchors
      cannot be remapped, so it fails with `EDIT_TAG_MISMATCH`.
-  2. Re-read, then emit an `Edit` anchored on lines the session never displayed,
+  2. Re-read, then emit an `edit` anchored on lines the session never displayed,
      so it fails with `EDIT_LINES_UNSEEN` and a truncated reveal.
-  3. Emit an `Edit` on that same path with a malformed op header.
-  4. Emit a second `Edit` with a malformed op header.
-  5. Emit a third `Edit` with a malformed op header.
+  3. Emit an `edit` on that same path with a malformed op header.
+  4. Emit a second `edit` with a malformed op header.
+  5. Emit a third `edit` with a malformed op header.
 - **Expected**: Steps 1 and 2 return their own codes with no `terminate` hint —
   each recoverable code spends its single grace on that path, and the turn keeps
   going, so the agent can act on what the error handed it. Steps 3 and 4 count as
   attempts 1 and 2 and still do not terminate. Step 5 terminates. A successful
-  `Edit` inserted anywhere before step 5 resets the count, so the following
+  `edit` inserted anywhere before step 5 resets the count, so the following
   failure is attempt 1 again.
 - **Specs linked**: `03-runtime/18-line-anchored-edit-contract.md` §9.3, §11,
   `03-runtime/03-tools-and-permissions.md` §4d, ADR 0087, ADR 0207
@@ -9748,13 +9748,13 @@ This test plan spec is accepted when:
 
 #### E2E-141: An exhausted retry budget ends the turn with a visible, retriable row
 
-- **Preconditions**: A session where `Edit` on one path fails with a
+- **Preconditions**: A session where `edit` on one path fails with a
   non-recoverable code every time.
 - **Steps**:
-  1. Emit three failing `Edit` calls on the same path within one prompt.
+  1. Emit three failing `edit` calls on the same path within one prompt.
   2. Observe the transcript after the agent loop stops.
   3. Send a follow-up prompt in the same session.
-  4. Repeat with three failing `apply_patch` shell commands instead of `Edit`.
+  4. Repeat with three failing `apply_patch` shell commands instead of `edit`.
 - **Expected**: The third call carries the termination hint and the loop stops,
   but the turn does not merely complete: the transcript ends on an assistant
   error row with `MUTATION_RETRY_BUDGET_EXHAUSTED`, marked retriable, naming the
@@ -9776,11 +9776,11 @@ This test plan spec is accepted when:
 - **Preconditions**: A workspace containing a file with Windows-style CRLF
   (`\r\n`) line endings.
 - **Steps**:
-  1. Use Read to display the file content and record the whole-file `tag`.
-  2. Issue an Edit with that `tag` and a `PUT N.=N:` whose body uses LF-only
-     endings (as the model always produces from Read output).
+  1. Use read to display the file content and record the whole-file `tag`.
+  2. Issue an edit with that `tag` and a `PUT N.=N:` whose body uses LF-only
+     endings (as the model always produces from read output).
   3. Inspect the file on disk after the edit.
-- **Expected**: The Edit succeeds and returns a new `tag`. The written file
+- **Expected**: The edit succeeds and returns a new `tag`. The written file
   preserves CRLF line endings throughout — both in modified and unmodified
   lines. No `MUTATION_RETRY_BUDGET_EXHAUSTED` error occurs.
 - **Specs linked**: `03-runtime/18-line-anchored-edit-contract.md` §3.1,
@@ -9789,7 +9789,7 @@ This test plan spec is accepted when:
 - **Milestone**: M5
 - **Status**: Documented
 
-#### E2E-142: Background delegation converges through TaskWait and honors permission scopes
+#### E2E-142: Background delegation converges through `task_wait` and honors permission scopes
 
 - **Preconditions**: A project-bound Agent session whose permission mode can be
   switched between `ask`, `accept-edits`, and `auto`, with a provider whose
@@ -9798,51 +9798,51 @@ This test plan spec is accepted when:
   `~/.agents/subagents/readonly.md` definition. Builtins use the default
   `permission: inherit` behavior.
 - **Steps**:
-  1. Prompt a turn in which the assistant emits two `Task` calls — `explorer`
+  1. Prompt a turn in which the assistant emits two `task` calls — `explorer`
      on one direction and a second `explorer` on another — in one assistant
      message, then, without ending the turn, continues its own tool calls and
-     converges with `TaskWait`.
-  2. Confirm the parent's visible text keeps streaming between `Task` and
-     `TaskWait` (no dead turn), that the two `Task` rows form one delegation
-     card that opens once, and that `TaskWait`'s row shows both reports.
+     converges with `task_wait`.
+  2. Confirm the parent's visible text keeps streaming between `task` and
+     `task_wait` (no dead turn), that the two `task` rows form one delegation
+     card that opens once, and that `task_wait`'s row shows both reports.
   3. With the session in `ask`, prompt a turn that delegates to `fixer` with a
-     multi-file spec. Confirm its `Write`/`Edit`, `Bash`, and external-path
+     multi-file spec. Confirm its `write`/`edit`, `bash`, and external-path
      calls each render a card naming `fixer`. Switch the session to
-     `accept-edits` and confirm only `Write`/`Edit` inside the workspace are
+     `accept-edits` and confirm only `write`/`edit` inside the workspace are
      auto-allowed. Switch it to `auto` and confirm the same delegate's
-     `Write`/`Edit`, `Bash`, and external `Glob`/`Write` calls all resolve
+     `write`/`edit`, `bash`, and external `glob`/`write` calls all resolve
      without a second authorization card.
-  4. Prompt a turn that starts three delegates and then calls `TaskWait` with
+  4. Prompt a turn that starts three delegates and then calls `task_wait` with
      `mode: "any"`, `minCompleted: 1`; confirm it returns as soon as the first
      settles and that the still-running delegates keep running.
   5. Prompt a turn that starts a delegate and then ends the turn without
-     `TaskWait`/`TaskStop`; confirm the delegate is stopped at run end and its
+     `task_wait`/`task_stop`; confirm the delegate is stopped at run end and its
      node reads `aborted`, and that the next turn's model context contains no
      delegate rows.
-  6. Prompt ten `Task` calls in one turn and one more; confirm the eleventh
-     fails as a tool error naming the 10-delegate cap, and that `TaskStop`
+  6. Prompt ten `task` calls in one turn and one more; confirm the eleventh
+     fails as a tool error naming the 10-delegate cap, and that `task_stop`
      frees a slot so an eleventh delegation can start.
   7. Reload the session; confirm the delegation card, its nodes, and the
-     `TaskWait` rows persist and re-render collapsed, and that `TaskWait`
+     `task_wait` rows persist and re-render collapsed, and that `task_wait`
      re-reads a settled delegation's report by id without re-running it.
-  8. Prompt a turn where the agent starts two Task calls and then emits visible
-     text before calling TaskWait (so Task and TaskWait land in different
+  8. Prompt a turn where the agent starts two task calls and then emits visible
+     text before calling task_wait (so task and task_wait land in different
      activity parts); confirm the topology card shows "completed" status on
-     both nodes once TaskWait returns, not stuck at "running", and that each
+     both nodes once task_wait returns, not stuck at "running", and that each
      node shows a non-zero runtime duration derived from the delegation
-     lifecycle timestamps rather than the immediate `Task` start call.
+     lifecycle timestamps rather than the immediate `task` start call.
   9. Edit `~/.agents/subagents/readonly.md` to declare `permission: auto` and reload the
      catalog; confirm the definition still loads but carries a warning, and
      that its delegate still resolves under the session's effective mode (a
-     `Write` inside the workspace still raises a permission card).
-  10. Prompt a turn that starts a delegate, lets `TaskWait` time out so the
-      node still says running, then calls `TaskStop`; confirm the topology
-      node and the `TaskStop` row both read `stopped` (not `running`). End the
+     `write` inside the workspace still raises a permission card).
+  10. Prompt a turn that starts a delegate, lets `task_wait` time out so the
+      node still says running, then calls `task_stop`; confirm the topology
+      node and the `task_stop` row both read `stopped` (not `running`). End the
       turn and reload the session; confirm the card is not labelled working
       and does not keep ticking elapsed.
-- **Expected**: `Task` returns immediately with a `delegationId` and the parent
-  keeps working; `TaskWait` converges with per-delegation reports and statuses;
-  `TaskList`/`TaskStop` drive the lifecycle; a `TaskStop` result and a finished
+- **Expected**: `task` returns immediately with a `delegationId` and the parent
+  keeps working; `task_wait` converges with per-delegation reports and statuses;
+  `task_list`/`task_stop` drive the lifecycle; a `task_stop` result and a finished
   turn never leave a live “Subagent working” card; builtin `fixer` inherits the
   selected session permission mode, so `auto` also covers explicit external
   paths without a duplicate authorization prompt while `ask` and
@@ -9885,11 +9885,11 @@ This test plan spec is accepted when:
      ring remains visible without a permanent divider.
   2. Click the **Explorer** chip without touching any field. Confirm the
      form is pre-filled: name `Explorer`, the description from the
-     builtin, the `Read / Glob / Grep / Bash` tool grant, and the full
+     builtin, the `read / glob / grep / bash` tool grant, and the full
      Explorer system prompt. Expand Advanced and confirm the model field is
      unchanged (still inherit).
   3. Reopen the sheet, click **Fixer**, and confirm the grant expands to
-     `Read / Glob / Grep / Edit / Write / Bash` and the Fixer body. The
+     `read / glob / grep / edit / write / bash` and the Fixer body. The
      mutating-hint line appears under the tools row. Expand Advanced and
      confirm the output limit starts empty.
   4. Expand Advanced. Open the model picker. Confirm the picker lists every
@@ -9947,7 +9947,7 @@ This test plan spec is accepted when:
 - **Steps**:
   1. Open Settings → Agent → Subagents. Confirm a Built-in group lists
      `explorer`, `code-reviewer`, `test-runner`, `fixer`, and `ui-designer`
-     with localized names, `Task(<handle>)` copy, tool grants, a Built-in
+     with localized names, `task(<handle>)` copy, tool grants, a Built-in
      badge, **Copy as mine**, and an enablement switch in the on position.
      Confirm none of those rows has Reveal or Delete.
   2. Confirm the Global group still shows localized `settings.subagentsEmpty`
@@ -9955,14 +9955,14 @@ This test plan spec is accepted when:
   3. Switch `fixer` off from its Built-in row. Confirm the row dims with its
      switch off, the toast names it, nothing appears in `~/.agents/subagents`,
      and the row stays listed, because that switch is the way back on.
-  4. Send a prompt with `fixer` switched off. Confirm the Task catalog does not
+  4. Send a prompt with `fixer` switched off. Confirm the task catalog does not
      offer it while the other four remain, then switch it back on and confirm
      the next prompt offers it again.
   5. Choose **Copy as mine** on explorer. Confirm the create sheet opens
      pre-filled from that definition (name, description, tools, body) with
      the Explorer template chip selected, not Blank. Save. Confirm
      explorer now appears only as a user-owned Global row and is omitted from
-     Built-in, and the next prompt's Task catalog uses the user document.
+     Built-in, and the next prompt's task catalog uses the user document.
   6. Disable the user explorer and reload the page. Confirm the user row is
      off and explorer reappears under Built-in (disabled user documents do
      not reach the loader, so the shipped definition wins again).
@@ -9984,7 +9984,7 @@ This test plan spec is accepted when:
 #### E2E-198: A subagent task opens with a live conversation process
 
 - **Preconditions**: A project-bound Agent session with a mocked provider stream
-  where one `explorer` delegate has a Task description and emits thinking,
+  where one `explorer` delegate has a task description and emits thinking,
   tool, and answer rows over time. The work panel is initially closed.
 - **Steps**: 1) Expand the activity group if needed and click the `explorer`
   topology node. 2) Click the selected `explorer` node again and confirm the
@@ -9996,7 +9996,7 @@ This test plan spec is accepted when:
   completes and one that is still running.
 - **Expected**: The right dock shows a sticky identity header (avatar, name,
   and model caption on the left; status capsule and elapsed time trailing on
-  the same row without wrapping), the Task call's description
+  the same row without wrapping), the task call's description
   as a full-width inset grouped card under a Task section label, capped at four
   lines with an inline Show more / Show less control for longer tasks, and
   the delegate's live thinking/tool/answer process under an Activity section
@@ -10026,7 +10026,7 @@ This test plan spec is accepted when:
 - **Milestone**: M6+
 - **Status**: Documented; desktop journey pending. The failure card's data
   source is unit-tested in `subagent-topology.test.mjs`: a settled delegation's
-  `error: { code, message }` read from `TaskWait` `delegations[]` and `TaskStop`
+  `error: { code, message }` read from `task_wait` `delegations[]` and `task_stop`
   `stopped[]`, lifecycle row ordering, entries without an error, and the
   terminal Task snapshot that carries a failure before parent polling.
 
@@ -10035,16 +10035,16 @@ This test plan spec is accepted when:
 - **Preconditions**: An Agent session with two parallel delegates; one can
   finish while the other continues and the parent does not poll lifecycle tools.
 - **Steps**: 1) Start both delegates and open the first delegate's detail dock.
-  2) Optionally let TaskList report both as running. 3) Complete only the first
+  2) Optionally let task_list report both as running. 3) Complete only the first
   delegate while the parent turn remains live. 4) Switch sessions and return,
   then reload history after the turn finishes. 5) Repeat with failed and stopped
-  delegates, and with a delegate finishing before its Task result arrives.
+  delegates, and with a delegate finishing before its task result arrives.
 - **Expected**: The settled node stops spinning immediately, its status is
   completed (green) or the actual failure/stop outcome, and its elapsed time
   stops increasing. The sibling remains running; the aggregate reads one of
   two settled. The open dock updates with the same status and failure details.
-  A stale running TaskList snapshot cannot undo settlement. Reload preserves
-  the actual terminal outcome and original Task identity, arguments, and usage.
+  A stale running task_list snapshot cannot undo settlement. Reload preserves
+  the actual terminal outcome and original task identity, arguments, and usage.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §Subagents,
   `04-ux/08-component-spec.md` delegation topology
 - **Acceptance criterion**: C, Quality
@@ -10059,51 +10059,51 @@ This test plan spec is accepted when:
   definitions, `~/.agents/subagents/scout.md` (read-only) and
   `~/.agents/subagents/fixer.md`; a workspace file `src/report.ts` whose
   conclusion is easy to locate by file and line; and a definition model binding
-  that can be removed from the configuration. The parent catalog offers `Task`,
-  `TaskWait`, `TaskList`, and `TaskStop`.
+  that can be removed from the configuration. The parent catalog offers `task`,
+  `task_wait`, `task_list`, and `task_stop`.
 - **Steps**:
   1. Delegate `scout` a brief that must end by naming one conclusion with its
      file and line number, and let it settle `completed`. Note the
-     `delegationId` the Task result returns.
-  2. Send a turn that passes that id as `Task.resume` and asks for the same
+     `delegationId` the task result returns.
+  2. Send a turn that passes that id as `task.resume` and asks for the same
      conclusion plus a second occurrence the first run never reached. Expand the
      delegation card, then inspect what the parent itself received.
   3. Send a turn that only says "reuse what the scout already found", with no
      `resume` value.
-  4. Start a long-running `scout` delegation and call `Task.resume` for it while
+  4. Start a long-running `scout` delegation and call `task.resume` for it while
      it works; then, while a resumed run of another chain is still working, call
-     `Task.resume` for that chain again.
-  5. `TaskStop` one delegation, abort a second, and close the app while a third
-     is still working. After relaunch, call `Task.resume` for each of those three
-     ids as reported by `TaskWait`.
-  6. Let a delegation fail after one successful read, then call `Task.resume`
+     `task.resume` for that chain again.
+  5. `task_stop` one delegation, abort a second, and close the app while a third
+     is still working. After relaunch, call `task.resume` for each of those three
+     ids as reported by `task_wait`.
+  6. Let a delegation fail after one successful read, then call `task.resume`
      for it.
-  7. Send one `Task` call that carries both `resume` and `model`.
-  8. Remove the chain's recorded model from the configuration, then `Task.resume`
+  7. Send one `task` call that carries both `resume` and `model`.
+  8. Remove the chain's recorded model from the configuration, then `task.resume`
      the chain and read its delegation lifecycle details and card.
   9. Settle two `scout` chains, `resume` the older one, settle a third chain for
      the same definition, and read the reusable list the next prompt offers; then
      keep one chain running while two others settle for that definition.
   10. Accumulate more than 50,000 lines of read-only tool output in one chain,
-      then call `Task.resume` with its id.
-  11. Resume a `scout` chain while spelling `Task.agent` as `Explorer`, then as
+      then call `task.resume` with its id.
+  11. Resume a `scout` chain while spelling `task.agent` as `Explorer`, then as
       `explorer.md`, then as another definition's name.
   12. Let one chain read more than eight files and send two further prompts in
       the same session, comparing the reusable list each prompt composes.
-  13. Relaunch the app and, without changing anything else, `Task.resume` a
+  13. Relaunch the app and, without changing anything else, `task.resume` a
       `completed` chain from before the restart.
   14. From a fixture session that resolves a chain but no longer holds any of its
-      delegate rows, call `Task.resume` with that id.
+      delegate rows, call `task.resume` with that id.
 - **Expected**:
   - Step 2 resumes from the chain: the new run answers with the earlier
     conclusion's exact file and line, and its rows contain no fresh full read of
-    that file. `Task` returns a new `delegationId`, and the parent's own context
+    that file. `task` returns a new `delegationId`, and the parent's own context
     still holds one final report for that delegation and no delegate tool rows.
   - Step 3 is a cold start: a brand-new delegate with no earlier conclusion in
     its rows, a fresh `delegationId`, and no link to the earlier chain. Leaving
     the id out never inherits context, whatever the prompt says.
   - Step 4 fails twice as tool errors. The running delegation is reported as
-    still running, with the instruction to converge through `TaskWait` first;
+    still running, with the instruction to converge through `task_wait` first;
     nothing is started, nothing is queued, and the running delegate keeps
     working.
   - Step 5 refuses `stopped`, `aborted`, and the run the app closed while it was
@@ -10165,7 +10165,7 @@ This test plan spec is accepted when:
   and whose replies are scripted. The small window is injected through that
   fake provider, never a real one: real providers and paid APIs are not
   default test environments in this repository. A user definition
-  `~/.agents/subagents/reader.md` declares `Read`, `Glob`, and `Grep`, and the
+  `~/.agents/subagents/reader.md` declares `read`, `glob`, and `grep`, and the
   workspace holds files large enough that two or three reads cross the
   delegate's hard limit.
 - **Steps**:
@@ -10236,9 +10236,9 @@ This test plan spec is accepted when:
   under `MAX_RESUMABLE_READ_LINES`; a second settled chain fits well inside
   the budget.
 - **Steps**:
-  1. `Task.resume` the over-budget chain and capture its first provider
+  1. `task.resume` the over-budget chain and capture its first provider
      request in full.
-  2. `Task.resume` the chain that fits and capture the same request.
+  2. `task.resume` the chain that fits and capture the same request.
   3. Ask the resumed run for a conclusion the chain reached in its most recent
      round, and for one it reached in its first round.
   4. Relaunch the app, rebuild the chain index from the transcript, and resume
@@ -10263,13 +10263,13 @@ This test plan spec is accepted when:
 #### E2E-161: A delegation lifecycle row reads as a subagent row
 
 - **Preconditions**: A project-bound Agent session with a mocked provider stream
-  that starts two delegates (`explorer`, `fixer`) with `Task`, then calls
-  `TaskList`, `TaskWait` and `TaskStop`.
-- **Steps**: 1) Start both delegates and inspect the collapsed `TaskList` row
+  that starts two delegates (`explorer`, `fixer`) with `task`, then calls
+  `task_list`, `task_wait` and `task_stop`.
+- **Steps**: 1) Start both delegates and inspect the collapsed `task_list` row
   while both are running. 2) Let `explorer` complete and `fixer` fail, then
-  inspect the `TaskWait` row's summary, badge and expanded body. 3) Start a
-  third delegate reusing the `explorer` definition, call `TaskList`, and read
-  the summary. 4) Stop a running delegate and inspect the `TaskStop` row.
+  inspect the `task_wait` row's summary, badge and expanded body. 3) Start a
+  third delegate reusing the `explorer` definition, call `task_list`, and read
+  the summary. 4) Stop a running delegate and inspect the `task_stop` row.
   5) Confirm the delegation card's own subagent count is unchanged by all three
   lifecycle rows. 6) Repeat in Chinese.
 - **Expected**: Every lifecycle row summarizes by agent name — never by its
@@ -10277,13 +10277,13 @@ This test plan spec is accepted when:
   badge uses the shared subagent status vocabulary: running while any member
   runs, `Failed` / “失败” once a member failed even though a sibling completed,
   and `Stopped by request` / “已按请求停止” for the stopped delegate — including
-  when the persisted `TaskStop` snapshot still says `running`. The topology
+  when the persisted `task_stop` snapshot still says `running`. The topology
   card's node matches that stopped outcome and is not labelled working after
   the turn ends. A repeated
   definition is counted (`explorer ×2`) rather than listed twice. The expanded
   body shows the joined reports as a notice followed by one named row per
   subagent with status, runtime and turns, and contains no pretty-printed
-  `delegations[]` JSON. The delegation card still reports the number of `Task`
+  `delegations[]` JSON. The delegation card still reports the number of `task`
   calls only, so lifecycle rows never inflate the topology counts.
 - **Specs linked**: `04-ux/08-component-spec.md` §9.9,
   `03-runtime/02-agent-runtime.md` §5f, ADR 0062, ADR 0089, decisions-log D269
@@ -10291,15 +10291,15 @@ This test plan spec is accepted when:
 
 #### E2E-155: Subagent lifetime is parent-judged; runtime delivers reports
 
-- **Preconditions**: A project-bound Agent session with a Bash-capable
+- **Preconditions**: A project-bound Agent session with a bash-capable
   `explorer` definition and a mocked provider stream.
 - **Steps**: 1) Start a delegate and let the parent stop calling tools while
   it still runs; confirm the durable turn stays open and the delegate is not
   aborted. 2) Let the delegate finish and confirm the parent is prompted with
-  its report without the user sending “continue”. 3) Let a `TaskWait` expire
+  its report without the user sending “continue”. 3) Let a `task_wait` expire
   while the delegate is still running and read the heartbeat the parent
-  receives. 4) `TaskList` a running delegate and confirm elapsed / last-tool
-  fields. 5) `TaskStop` and user Stop still abort. 6) Run a delegate whose
+  receives. 4) `task_list` a running delegate and confirm elapsed / last-tool
+  fields. 5) `task_stop` and user Stop still abort. 6) Run a delegate whose
   document declares `maxTurns: 2` and let it pass two tool-calling turns;
   confirm the key is ignored and the delegate keeps running. 7) Start a
   delegate on another model, exhaust the parent HTTP 429 budget, and click
@@ -10307,20 +10307,20 @@ This test plan spec is accepted when:
   is accepted, and the failed assistant error surface stays visible. 8) Define
   a delegate with an explicit `maxTokens` and one without, run both, and read
   the two outgoing provider requests. 9) Start enough delegates for their
-  combined reports to exceed the bounded `TaskWait` result, then let the parent
+  combined reports to exceed the bounded `task_wait` result, then let the parent
   idle.
 - **Expected**: Idle and duration watchdogs never fire. Parent idle does not
   abort delegates. Completion reports are delivered into the same durable
-  turn. `TaskWait` expiry reports “Still running after Ns”, includes a
+  turn. `task_wait` expiry reports “Still running after Ns”, includes a
   heartbeat, and states that this is not a failure. No turn count ends a
   delegate, and no status reports one. Explorer's catalog includes
-  `Bash` while code-reviewer remains read-only. A terminal parent 429 aborts
+  `bash` while code-reviewer remains read-only. A terminal parent 429 aborts
   leftover delegates and Continue is not `AGENT_BUSY` (D352). In step 8 the
   capped delegate's request carries the declared output limit and the uncapped
   one carries the model's published limit, so the cap overrides the derived
   `max_tokens` / `max_completion_tokens` / `max_output_tokens` without
   disturbing the session's own requests (D383). In step 9, the reports omitted
-  from the bounded `TaskWait` content are delivered once by the idle resume and
+  from the bounded `task_wait` content are delivered once by the idle resume and
   are not replayed after they reach the parent.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
   `03-runtime/08-error-codes.md`, `03-runtime/09-logging-and-observability.md`,
@@ -10372,9 +10372,9 @@ This test plan spec is accepted when:
      2. Confirm the hero uses the temporary-session copy and has no project
      underline or project switcher; confirm a project session and no active
      session still use their own hero states.
-  3. In the temporary session, use Read/Glob/Grep on a file under its
-     `<data_dir>/scratch/<sessionId>` root, then Write/Edit a file with a
-     workspace-relative path and run a bounded Bash command.
+  3. In the temporary session, use read/glob/grep on a file under its
+     `<data_dir>/scratch/<sessionId>` root, then write/edit a file with a
+     workspace-relative path and run a bounded bash command.
   4. Inspect the tool results and filesystem, then switch back to the project
      and confirm the project root and git status are unchanged.
   5. Enter Plan or Goal in the temporary session and confirm submission still
@@ -10566,9 +10566,9 @@ This test plan spec is accepted when:
 - **Preconditions**: One signed-in vendor (OAuth) account and one API-key AI
   service, both with discoverable models, and at least one of them exposing a
   reasoning-capable model.
-- **Steps**: 1) Open Settings → Model configuration. 2) Edit the AI service,
+- **Steps**: 1) Open Settings → Model configuration. 2) edit the AI service,
   expand a chosen model's Advanced disclosure, and note its context window, max
-  output and thinking chips; cancel. 3) Edit the vendor account and do the same
+  output and thinking chips; cancel. 3) edit the vendor account and do the same
   on one of its chosen models. 4) Toggle a thinking level on a reasoning-capable
   account model and save. 5) Reopen the account editor and read that model's
   chips. 6) For an OpenAI Codex account, inspect `gpt-6-astra` (or another
@@ -10682,14 +10682,14 @@ This test plan spec is accepted when:
 - **Preconditions**: Agent mode; protocol v11 host. A user subagent definition
   lists `A2A` (or `Peer`) among its tools. Two Agent-mode sessions are open.
 - **Steps**: 1) Handshake and inspect host capabilities. 2) Inspect the parent
-  Agent tool list and `ToolSearch` results. 3) Load the definition that names
+  Agent tool list and `tool_search` results. 3) Load the definition that names
   `A2A`/`Peer`. 4) Start two concurrent working-tool delegates. 5) Ask whether
   one conversation can see the other.
 - **Expected**: Handshake succeeds at protocol v11 and does not advertise
   `"a2a"`. `A2A` and `Peer` are absent from the parent catalog, deferred tools,
-  and `ToolSearch`. The unknown tool names are dropped with a parse warning;
+  and `tool_search`. The unknown tool names are dropped with a parse warning;
   remaining working tools still spawn. Concurrent delegates report only through
-  `Task*` — there is no sibling or parent-to-parent channel. `a2a.*` RPC
+  `task*` — there is no sibling or parent-to-parent channel. `a2a.*` RPC
   methods return method-not-found. Schema v14 databases have no `a2a_*`
   tables.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f.2,
@@ -10711,13 +10711,13 @@ are withdrawn with ADR 0165.
   provider, reopen it, and confirm the checkbox remains enabled; restart the
   app, reopen the provider again, and confirm it is still enabled. 2) Start a
   session and inspect the parent agent's system prompt for the delegation model
-  summary. 3) Delegate a Task with `model: "provider/modelId"` pointing to the
-  enabled binding. 4) Delegate a Task with `model:` pointing to a binding that
-  is not enabled for subagents. 5) Delegate a Task with `model:` pointing to a
-  model that is not configured at all. 6) Delegate a Task with no `model:`
+  summary. 3) Delegate a task with `model: "provider/modelId"` pointing to the
+  enabled binding. 4) Delegate a task with `model:` pointing to a binding that
+  is not enabled for subagents. 5) Delegate a task with `model:` pointing to a
+  model that is not configured at all. 6) Delegate a task with no `model:`
   parameter and a definition that has a frontmatter model pin. 7) Delegate a
-  Task with no `model:` parameter and a definition that has no frontmatter
-  model pin. 8) With no enabled delegation models, delegate a Task once with
+  task with no `model:` parameter and a definition that has no frontmatter
+  model pin. 8) With no enabled delegation models, delegate a task once with
   no `model:` and once with `model:` repeating the current session's
   `provider/modelId`. 9) Pin an unselected model to one definition; attempt to
   use it as another definition's explicit override, then invoke its owner with
@@ -10728,14 +10728,14 @@ are withdrawn with ADR 0165.
      `availableForSubagents` opt-in, including after an application restart.
   2. The delegation model summary appears in the parent's system prompt listing
      every successfully resolved model marked `availableForSubagents`, with
-     no definition-only pins. The Task definition catalog displays each default
+     no definition-only pins. The task definition catalog displays each default
      model and recommends omitting `model` to preserve it.
-  3. The Task tool accepts the `model` parameter and the delegate runs on the
+  3. The task tool accepts the `model` parameter and the delegate runs on the
      specified model, not the session model; its delegation node shows the
      effective model id immediately after the subagent name.
-  4. If the model is not configured or not enabled for delegation, the Task
+  4. If the model is not configured or not enabled for delegation, the task
      returns a tool error listing available models.
-  5. Resolution priority is Task.model parameter → definition frontmatter pin →
+  5. Resolution priority is task.model parameter → definition frontmatter pin →
      session model.
   6. On-demand resolution succeeds for models enabled in provider settings via
      the `provider.resolveSubagentModel` RPC.
@@ -10743,7 +10743,7 @@ are withdrawn with ADR 0165.
      repeating the current session `provider/modelId` both start the delegate
      on the session model; the latter is not reported as an unavailable model.
   8. A private pin remains usable by its definition when `model` is omitted
-     or when `Task.model` repeats that definition's own pin key, but cannot be
+     or when `task.model` repeats that definition's own pin key, but cannot be
      selected for another definition without opt-in. Rejection issues no child
      provider request. On-demand authorization does not retire an idle runtime;
      changed launch opt-in does, so a stale cached binding grants no selection
@@ -10833,21 +10833,21 @@ are withdrawn with ADR 0165.
 - **Status**: Unit/source-contract covered (`thinking-levels.test.ts`,
   `thinking-ui.test.mjs`); rendered desktop journey remains pending
 
-#### E2E-175: A paged Read is not shown as truncated
+#### E2E-175: A paged `read` is not shown as truncated
 
 - **Preconditions**: A project-bound Agent session; the workspace contains a
   text file of at least 3000 lines whose lines are shorter than 16,384
   characters, plus a fixture whose first line exceeds that cap.
 - **Steps**:
-  1. `Read` the long file with no `offset`/`limit`.
-  2. `Read` the same file with `offset` equal to the reported next offset and
+  1. `read` the long file with no `offset`/`limit`.
+  2. `read` the same file with `offset` equal to the reported next offset and
      a modest `limit`.
-  3. `Read` the over-long-line fixture.
+  3. `read` the over-long-line fixture.
   4. Grep a token that matches more than the default `headLimit`.
 - **Expected**:
   - Step 1 returns the default 2000-line window, `truncated: false`, no
     truncated chip, `totalLines` of the whole file, and a `notice` naming the
-    next offset. It does not tell the model to Grep.
+    next offset. It does not tell the model to grep.
   - Step 2 continues without overlap and stays `truncated: false`.
   - Step 3 sets `truncated: true`, counts the clipped line in `notice`, and
     shows the truncated chip.
@@ -10974,18 +10974,18 @@ are withdrawn with ADR 0165.
 - **Status**: Unit-covered (host-core orphaned-session restore tests,
   `persistence-outbox.test.mjs`); full desktop journey Draft (run only in a capable environment when this surface changes)
 
-#### E2E-179: Parent tools after a Task fan-out stay outside the delegation card
+#### E2E-179: Parent tools after a `task` fan-out stay outside the delegation card
 
 - **Preconditions**: A project-bound Agent session whose provider stream can
-  emit two `Task` calls in one assistant message and then keep working — think,
-  `Read`, `Grep` — before a `TaskWait`.
+  emit two `task` calls in one assistant message and then keep working — think,
+  `read`, `grep` — before a `task_wait`.
 - **Steps**: 1) Prompt a turn that fans out two delegates, then continues with
   parent thinking and workspace reads while at least one delegate is still
   running. 2) Inspect the expanded delegation card and the rows below it.
   3) Let the delegates settle and inspect elapsed time on the card versus the
   parent processing group. 4) Reload the session and re-expand the card.
 - **Expected**: The delegation card contains only the main-agent root and the
-  two `Task` nodes. Parent thinking, `Read`, `Grep`, and `TaskWait` render in a
+  two `task` nodes. Parent thinking, `read`, `grep`, and `task_wait` render in a
   separate processing group, not flush against the subagent tile and not under
   a “Subagent working” header. The card keeps inset from its tile edge. While a
   delegate is still running the card stays labelled working, remains open, and
@@ -11091,16 +11091,16 @@ are withdrawn with ADR 0165.
   the work panel is closed. The open session's scratch store holds one file and
   the attachment store one blob. The project is a group whose primary folder
   contains an `.html` page and a text file, and whose second folder holds a text
-  file of its own. The same session's transcript carries a `Read` row whose
-  summary names a project file, a `Glob` result listing project paths, and a
-  `Grep` result grouping its hits by file.
+  file of its own. The same session's transcript carries a `read` row whose
+  summary names a project file, a `glob` result listing project paths, and a
+  `grep` result grouping its hits by file.
 - **Steps**: 1) Click a project file reference in an assistant reply. 2) Type an
   unsaved edit into that view and click the same reference again. 3) Click a
   reference that resolves into the session scratch store, then the
   `attachments/<sha256>` reference. 4) Click a workspace `.html` reference in an
   assistant reply and the same reference as a sent user chip. 5) Click the file
-  path in the tool row's summary, then a path in the `Glob` result's file list
-  and a path heading of the `Grep` result. 6) Disable the File Manager plugin,
+  path in the tool row's summary, then a path in the `glob` result's file list
+  and a path heading of the `grep` result. 6) Disable the File Manager plugin,
   click a project file reference and the tool row summary again, then re-enable
   it and click both once more. 7) Click a reference that resolves in the
   project's second folder, then one that resolves in its primary folder.
@@ -11118,8 +11118,8 @@ are withdrawn with ADR 0165.
     File Manager view, because the side browser is rooted at the primary folder
     (ADR 0263).
   - A tool surface reaches the destination of the file it names, not one of its
-    own: the tool row's summary path and the paths of the `Glob` file list and
-    the `Grep` path headings open the same project file in the File Manager view.
+    own: the tool row's summary path and the paths of the `glob` file list and
+    the `grep` path headings open the same project file in the File Manager view.
     A summary path that is a link opens the file without expanding the row, and
     only a summary without a resolvable target falls through to the row's own
     disclosure.
@@ -11159,8 +11159,8 @@ are withdrawn with ADR 0165.
 - **Expected**:
   - Import succeeds. The catalog lists both skills with distinct ids.
   - The next session's system prompt includes each skill's id, name, and
-    flattened description. The `Skill` tool loads the body by that id.
-  - A misspelled `Skill` id lists user skill ids among the available skills,
+    flattened description. The `skill` tool loads the body by that id.
+  - A misspelled `skill` id lists user skill ids among the available skills,
     not only plugin ids.
   - Neither document is dropped because its title is non-ASCII or because both
     files are named `SKILL.md`.
@@ -11376,7 +11376,7 @@ are withdrawn with ADR 0165.
      `mode: "direct"` then `mode: "system"`, and the sidecar is reconfigured
      without an app restart.
 - **Expected**: Custom covers model calls, marketplace, updates, plugin
-  `net.fetch`, and the in-app browser. Workspace Bash `env` does not show
+  `net.fetch`, and the in-app browser. Workspace bash `env` does not show
   `HTTP_PROXY` / `ALL_PROXY` from the setting. OAuth still opens the system
   browser. Invalid schemes (`file:`, `ftp:`, and SOCKS4) and malformed
   percent-encoded credentials are rejected. Authenticated HTTP and SOCKS5
@@ -11397,9 +11397,9 @@ are withdrawn with ADR 0165.
 - **Preconditions**: The shared package test suite is available.
 - **Steps**:
   1. Run the shared error helper tests.
-  2. Inspect the newly emitted runtime and Edit code list used by the test.
+  2. Inspect the newly emitted runtime and edit code list used by the test.
 - **Expected**: Every code introduced by this update, including
-  context-compaction, empty-response, and Edit recovery failures, exists in
+  context-compaction, empty-response, and edit recovery failures, exists in
   `packages/shared/src/errors.ts` with an identical key and value. Reserved
   codes remain excluded until they are emitted.
 - **Specs linked**: `03-runtime/08-error-codes.md`
@@ -11500,7 +11500,7 @@ are withdrawn with ADR 0165.
   - Plugin/settings clicks that want the work panel return to chat so the
     dock is visible, without recording a navigation hop. A missing session
     falls back to the OS browser.
-  - Workspace HTML preview, BrowserPreview, OAuth, and Feedback keep their
+  - Workspace HTML preview, browser_preview, OAuth, and Feedback keep their
     existing destinations.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
   `04-ux/08-component-spec.md` §8.3, `03-runtime/01-ipc-protocol.md`,
@@ -11598,12 +11598,12 @@ are withdrawn with ADR 0165.
 - **Preconditions**: A configured provider has a model binding marked
   `availableForSubagents`. The catalog either reports that model as
   non-reasoning or omits one of the levels the binding explicitly enables. A
-  user subagent definition and the builtin `Task` catalog are available.
+  user subagent definition and the builtin `task` catalog are available.
 - **Steps**: 1) In Settings → Model configuration, enable `medium` and `high`
   for the delegation model and mark it available for subagents. 2) Set the
   subagent definition's thinking level to `high`, save, and restart the app.
   3) Run the definition with its frontmatter model pin. 4) Run a builtin with
-  `Task.model` selecting the same binding, including the on-demand resolution
+  `task.model` selecting the same binding, including the on-demand resolution
   path. 5) Run a definition with no model pin while the parent session is set
   to `medium`.
 - **Expected**: The pinned and explicitly selected delegates retain the
@@ -11907,7 +11907,7 @@ are withdrawn with ADR 0165.
   `PI_DESKTOP_MCP_CONTROL=1` and a clean profile. A local project directory is
   available, the Electron user-data directory is writable, and the desktop
   has completed backend boot.
-- **Steps**: 1) Read `mcp-control.json` and use its URL and bearer token. 2)
+- **Steps**: 1) read `mcp-control.json` and use its URL and bearer token. 2)
   Call `initialize`, `tools/list`, and `pi_control_describe`. 3) Call
   `pi_project_open` with the fixture project. 4) Call `pi_session_create`,
   `pi_session_get`, and `pi_agent_status`. 5) Call `pi_agent_prompt` and
@@ -11942,9 +11942,9 @@ are withdrawn with ADR 0165.
   `generated/out.txt`, `debug.log`, and a root `.pi-desktopignore` with
   `generated/`. Every file contains the word `needle`. The session is Agent
   in `auto` permission mode.
-- **Steps**: 1) Ask for `Read` of `.env`, then of `.env.example`. 2) Ask for
-  `Write` to `keys/id_rsa`. 3) Run an unscoped `Grep` and `Glob` for `needle`.
-  4) Run `Grep` with `path: node_modules/pkg` and with `path: generated`.
+- **Steps**: 1) Ask for `read` of `.env`, then of `.env.example`. 2) Ask for
+  `write` to `keys/id_rsa`. 3) Run an unscoped `grep` and `glob` for `needle`.
+  4) Run `grep` with `path: node_modules/pkg` and with `path: generated`.
   5) Repeat step 1 with a system `rg` installed and with
   `PI_DESKTOP_DISABLE_RG=1`.
 - **Expected**: Steps 1 and 2 fail with `WORKSPACE_PATH_DENIED`, the
@@ -11968,9 +11968,9 @@ are withdrawn with ADR 0165.
 - **Preconditions**: A project containing `dangling -> /tmp/outside/planted.txt`
   where the target does not exist, and `inner -> ./not-yet.txt`. Agent mode,
   `auto` permission.
-- **Steps**: 1) Ask for `Write` to `dangling`. 2) Ask for `Write` to
+- **Steps**: 1) Ask for `write` to `dangling`. 2) Ask for `write` to
   `dangling-dir/new.txt` where `dangling-dir -> /tmp/outside/dir`. 3) Ask for
-  `Write` to `inner`.
+  `write` to `inner`.
 - **Expected**: Steps 1 and 2 fail with `PATH_OUTSIDE_WORKSPACE` and nothing
   appears under `/tmp/outside`. Step 3 creates `not-yet.txt` inside the
   project. A symlink loop fails with a canonicalize error rather than hanging.
@@ -12053,7 +12053,7 @@ are withdrawn with ADR 0165.
   has not enabled for AI delegation is refused with `PERMISSION_DENIED` before
   a worker exists, while omitting `modelKey` — or naming the default model's
   own key — still inherits. Unrelated sessions and the
-  existing Task family are unchanged, and no localhost MCP call or token
+  existing task family are unchanged, and no localhost MCP call or token
   access occurs. Bursts of worker notifications serialize and coalesce
   session-list refreshes while preserving the final worker list and the
   foreground session.
@@ -12191,7 +12191,7 @@ are withdrawn with ADR 0165.
 
 - **Preconditions**: host-core running; a JSON-RPC probe attached to its
   stdio.
-- **Steps**: 1) Send `tools.execute` with `sessionId: "missing"` and a `Read`
+- **Steps**: 1) Send `tools.execute` with `sessionId: "missing"` and a `read`
   of `README.md`. 2) Send `plans.enter` with the same id.
 - **Expected**: Both fail with `SESSION_NOT_FOUND` (numeric `1007` and
   `PLAN_SESSION_NOT_FOUND` respectively); no file under the last-opened
@@ -12223,7 +12223,7 @@ are withdrawn with ADR 0165.
 
 - **Preconditions**: Apple Silicon Mac; the x64 macOS package installed and
   running under Rosetta 2.
-- **Steps**: 1) Launch the app. 2) Read the banner under the title bar.
+- **Steps**: 1) Launch the app. 2) read the banner under the title bar.
   3) Click its dismiss action.
 - **Expected**: The app boots normally. A dismissible hint says this is the
   Intel build on an Apple Silicon machine and asks the user to install the
@@ -12770,7 +12770,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Specs linked**: `07-plugins/16-trusted-extensions.md` §6, §7; ADR 0214
 - **Acceptance**: B (agent), Security, Quality
 - **Milestone**: Post-MVP (R7 v1)
-- **Status**: Partially automated (`pnpm test:e2e:trusted-extensions`); Agent-mode tool dispatch, ToolSearch deferral, hooks, blocking, and result replacement pass, while Plan-mode gating and core-tool collision remain additional validation.
+- **Status**: Partially automated (`pnpm test:e2e:trusted-extensions`); Agent-mode tool dispatch, tool_search deferral, hooks, blocking, and result replacement pass, while Plan-mode gating and core-tool collision remain additional validation.
 
 #### E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding: Plugin-owned agent streams and session binding
 
@@ -13090,22 +13090,22 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 - **Preconditions**: At least one Skill is active for the current project, a
   provider is configured, and the session runs in Agent mode with another
-  on-demand capability present (for example `BrowserPreview` or a plugin tool).
+  on-demand capability present (for example `browser_preview` or a plugin tool).
 - **Steps**:
   1. Open a new Agent conversation and send a prompt that matches the active
      Skill's description.
   2. Inspect the first provider request and its tool list.
-  3. Confirm the model calls `Skill` with the exact id without calling
-     `ToolSearch` first, and that the returned document is the skill body.
+  3. Confirm the model calls `skill` with the exact id without calling
+     `tool_search` first, and that the returned document is the skill body.
   4. Send `/<skill-id>` from the composer and inspect the following turn.
   5. Switch the session to Plan mode and inspect the tool list again.
   6. Disable or remove every Skill and start another Agent turn.
-- **Expected**: Whenever the skill catalog is non-empty, `Skill` ships with the
+- **Expected**: Whenever the skill catalog is non-empty, `skill` ships with the
   first request and never appears under `# On-demand tools`, so both a matching
   task and a `/skill-id` invocation load the body without a discovery round
-  trip. `ToolSearch` still exists for the other on-demand capabilities and
-  never returns `Skill`. Plan mode omits the tool and the `# Skills` section,
-  and an empty catalog registers no `Skill` tool at all.
+  trip. `tool_search` still exists for the other on-demand capabilities and
+  never returns `skill`. Plan mode omits the tool and the `# Skills` section,
+  and an empty catalog registers no `skill` tool at all.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` (§7.1),
   `03-runtime/03-tools-and-permissions.md` (§2.1),
   `04-ux/04-builtin-commands.md` (§8), `08-meta/decisions-log.md` (D404),
@@ -13551,8 +13551,8 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   long session with a match beyond the latest 100 messages and a message whose
   matching text follows 100,000 characters. Include an actively streaming
   conversation and a fixture with repeated physical message lines.
-  Include a nested assistant answer whose Task is outside its 60-line page, a
-  later terminal copy of that Task, collapsed activity, hidden Markdown link
+  Include a nested assistant answer whose task is outside its 60-line page, a
+  later terminal copy of that task, collapsed activity, hidden Markdown link
   destinations, emphasis delimiters, and file-chip directories.
   Add short matching sentences surrounded by unrelated Chinese/English
   sentences, multiple short lines before a match, a quoted sentence, a file
@@ -13565,16 +13565,16 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   Check normal Markdown, message actions, and composer. Repeat with two assistant
   fragments in one turn, an old target outside the latest page, and a match after
   100,000 characters. Verify a visible highlight and that layout settling does
-  not pull the target away. Read upward and load later messages without gaps.
+  not pull the target away. read upward and load later messages without gaps.
   Use the latest-message control to resume the live transcript. Scroll within
   the active conversation, reopen search, and select its own result; locate the
-  target inside the same pane. Edit, retry, branch, and delete an old message. Reopen search and check the retained query.
+  target inside the same pane. edit, retry, branch, and delete an old message. Reopen search and check the retained query.
   Repeat with CJK and symbols. Verify that a contiguous Chinese phrase matches,
   while inserting a space between its words only matches text with that space.
   Change queries rapidly while delayed first-page
   and later-page requests resolve out of order. Close/reopen during loading.
   Retry after a transient search error.
-  Open the nested answer and verify that the owning Task is revealed and its
+  Open the nested answer and verify that the owning task is revealed and its
   existing dock scrolls to the answer. Search the hidden URL, delimiters, and
   chip directory after a long prefix; verify the corresponding visible element
   is highlighted. Interrupt layout correction with a wheel/key gesture.
@@ -13839,7 +13839,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Preconditions**: A configured primary and at least three alternatives use
   deterministic local transports; one definition declares the ordered
   alternatives. A second definition has no alternatives, and none are opted
-  in for Task overrides.
+  in for task overrides.
 - **Steps**: Add two alternatives in Settings, reorder them, save and reopen;
   change another field without changing the list. Run the child, complete one
   tool call, then fail the primary request. Fail the first alternative and
@@ -13847,7 +13847,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   models before a successful model, leaving an unused model after success.
   Repeat with all four models unavailable, mixed 401/403/404 failures,
   exhausted transient/429 retries on two consecutive models,
-  unavailable/duplicate pins, an explicit authorized Task primary,
+  unavailable/duplicate pins, an explicit authorized task primary,
   and Stop during recovery. Remove all alternatives, save, and reopen.
 - **Expected**: List order and clear/preserve semantics round-trip. Provider
   retry budgets precede fallback; each distinct configured binding is used
@@ -13856,7 +13856,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   each selected model. Failure diagnostics and total usage survive settlement;
   effective model/thinking survive reload. Stop cancels the chain; host/tool
   errors do not switch models. Exhaustion fails explicitly. Alternatives never
-  authorize a Task override for the second definition. No alternatives retains
+  authorize a task override for the second definition. No alternatives retains
   the existing single-model behavior.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
   `03-runtime/13-model-catalog-and-selection.md` §Subagent editor,
@@ -13867,7 +13867,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Status**: Automated registry and runtime coverage through shared/runtime
   regression tests and `test:e2e:subagents` / `test:e2e:subagent-models`. The
   sidecar suite checks the zero-to-three failure matrix and four-model
-  exhaustion against actual HTTP request order, live/settled Task metadata,
+  exhaustion against actual HTTP request order, live/settled task metadata,
   ordered failure diagnostics, and the successful child report. Completed-tool
   preservation and independent retry budgets use real-transport runtime tests.
   The configuration-editor journey passed under WSL; task-transcript reload
@@ -14116,7 +14116,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 #### E2E-PLUGIN-failed-install-lists-tried-mirrors: A failed install keeps the dialog open and lists the mirrors it tried with a copy action
 
 - **Preconditions**: An official-channel install whose every mirror fails — for example a digest mismatch on the first and a network error on the second — with a renderer subscribed to `plugin.installProgress` and a clipboard readback.
-- **Steps**: 1) Start the install. 2) Let every mirror fail. 3) Read the terminal report and the dialog. 4) Use the copy action, then the retry action once the mirrors serve valid bytes again.
+- **Steps**: 1) Start the install. 2) Let every mirror fail. 3) read the terminal report and the dialog. 4) Use the copy action, then the retry action once the mirrors serve valid bytes again.
 - **Expected**: The terminal report carries `error` and a `tried[]` entry per mirror in the order they were tried, each naming its `source`, `url`, and the error that mirror answered; the dialog stays open and shows the readable error plus that list; the copy action puts the tried mirrors on the clipboard; the retry action starts a new install of the same version and completes it when the mirrors answer, without reusing the failed attempt's partial state; nothing was installed by the failed attempt.
 - **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2, ADR 0276 §7
 - **Acceptance**: G (remote marketplace source)
@@ -14258,7 +14258,7 @@ the latest destination. These assertions measure work counts, not device FPS.
   `process.exit(7)` after writing one line to stderr is the fixture — with a
   resident service so the supervisor path is exercised too. Isolated desktop
   profile; no marketplace or network access.
-- **Steps:** Load the plugin and let the host process die. Read the load error,
+- **Steps:** Load the plugin and let the host process die. read the load error,
   the `failed` service state, the `plugin.crash` audit record and the `plugin`
   log channel. Repeat with a hard fault (a Windows `0xC0000005`-class exit) if
   one is available, and then quit the app while a plugin host is alive.
@@ -14348,7 +14348,7 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Preconditions:** A throwaway data directory and the host-core binary; a
   provider created through `providers.create` with at least three complete
   bindings; no real provider or credentials.
-- **Steps:** Call `providers.list` and confirm every binding returns. Edit the
+- **Steps:** Call `providers.list` and confirm every binding returns. edit the
   stored `config_json` to delete one binding's `maxTokens` and list again.
   Restore the field and list again. Then set one binding's `contextWindow` to a
   string and list once more. Attempt `providers.update` with the readable
@@ -14394,7 +14394,7 @@ the latest destination. These assertions measure work counts, not device FPS.
   (a retried append leaves the call under a second row id), loaded into a
   recreated runtime against a deterministic provider fixture. No real provider
   credentials.
-- **Steps:** Send one prompt so the runtime assembles and issues a request. Read
+- **Steps:** Send one prompt so the runtime assembles and issues a request. read
   the outgoing request the fixture received, and the `agent` log channel. Repeat
   with a transcript whose calls are already unique.
 - **Expected:** The outgoing request carries exactly one `toolCall` for that id
@@ -14543,7 +14543,7 @@ the latest destination. These assertions measure work counts, not device FPS.
 ## Hosted-search continuation contract (offline sidecar)
 
 **Scope:** ADR 0297; provider-hosted search content, estimation, local tools,
-Task delegation, and saved-history recovery. No real model or search service.
+task delegation, and saved-history recovery. No real model or search service.
 
 **Entry:** `pnpm test:e2e:hosted-search`, which rebuilds the shared
 package and `@pi-desktop/agent-runtime` sidecar bundle. The test starts that
@@ -14555,9 +14555,9 @@ or an already installed desktop application do not satisfy this test.
 | --- | --- |
 | Search then new user prompt | Valid search item is replayed and the second turn completes. |
 | Search then ordinary local tool | A real tool round completes and the next provider request is prepared without type/estimation failure. |
-| Search then Task | Actual delegation orchestration runs against a synthetic provider; parent continuation finishes without repeated local errors. |
+| Search then `task` | Actual delegation orchestration runs against a synthetic provider; parent continuation finishes without repeated local errors. |
 | Saved search history restored | A fresh runtime preserves search replay without adding fake tool fields or rewriting the original record. |
-| Usage invalidated by a real prefix change | The isolated sidecar changes instructions during a real Read round; the prior nonzero usage no longer covers that prefix, and continuation succeeds. |
+| Usage invalidated by a real prefix change | The isolated sidecar changes instructions during a real `read` round; the prior nonzero usage no longer covers that prefix, and continuation succeeds. |
 | Invalid saved replay container | Restore returns safe INTERNAL/context-validation, sends no provider request or persistence Host RPC, and keeps the process healthy. In-memory immutability is checked by the replay unit tests. |
 | Unknown saved search phase | The same explicit rejection is observed without silently discarding the search record. |
 

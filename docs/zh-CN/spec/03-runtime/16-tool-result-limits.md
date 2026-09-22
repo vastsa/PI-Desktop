@@ -14,7 +14,7 @@
 `read` 并将整个上下文的 56% 花在 read/search 结果上，其中
 强制压实并使代理重新搜索已经发现的内容。
 
-read/glob/grep 的预算仍比 shell 更紧，因为结果可以按需再取（缩小模式、推进偏移）。48KB 过紧：普通源码的默认窗口就会溢出，于是几乎每次 Read 都报 `truncated`，智能体只好重新搜索已经读过的内容。
+read/glob/grep 的预算仍比 shell 更紧，因为结果可以按需再取（缩小模式、推进偏移）。48KB 过紧：普通源码的默认窗口就会溢出，于是几乎每次 read 都报 `truncated`，智能体只好重新搜索已经读过的内容。
 
 bash 输出通过了两个独立的上限。 **捕获**层限制了什么
 主机在进程流式传输时保留在内存中，这就是溢出文件
@@ -24,18 +24,18 @@ bash 输出通过了两个独立的上限。 **捕获**层限制了什么
 
 | 频道 | 限制 | 超过时采取行动 |
 |---|---|---|
-| 读取/glob/grep 结果 (`BUDGET_SEARCH`) | 128 KB，4000 行 | 绑定窗口 + `notice` 命名下一步 |
-| bash 标准输出 (`BUDGET_SHELL`) | 96 KB，4000 行，头 | 截断+标记+溢出 |
-| bash stderr (`BUDGET_SHELL_ERR`) | 96 KB，4000 行，**尾部** | 截断+标记+溢出 |
+| `read` / `glob` / `grep` 结果 (`BUDGET_SEARCH`) | 128 KB，4000 行 | 绑定窗口 + `notice` 命名下一步 |
+| `bash` 标准输出 (`BUDGET_SHELL`) | 96 KB，4000 行，头 | 截断+标记+溢出 |
+| `bash` stderr (`BUDGET_SHELL_ERR`) | 96 KB，4000 行，**尾部** | 截断+标记+溢出 |
 | 任何单行 (`MAX_LINE_CHARS`) | 16,384 个字符 | 剪辑，在 `notice` 中计数 |
 | 阅读窗口 | 默认 2000 行（最大 4000），`offset`/`limit`；始终报告 `totalLines` | 分页；仅在本窗口被切断时 `truncated` |
-| Grep 匹配 (`headLimit`) | 默认200 | 以 `truncated: true` 停止 |
+| `grep` 匹配 (`headLimit`) | 默认200 | 以 `truncated: true` 停止 |
 | 全局条目 (`limit`) | 默认 100 个，最大 1000 个 | 以 `truncated: true` 停止 |
-| bash 捕获保留 (`CAPTURE_MAX_BYTES` / `CAPTURE_MAX_LINES`) | 512 KB，200000 行 | 停止保留；报告遗漏的字节和行 |
+| `bash` 捕获保留 (`CAPTURE_MAX_BYTES` / `CAPTURE_MAX_LINES`) | 512 KB，200000 行 | 停止保留；报告遗漏的字节和行 |
 | 溢出的完整输出（`SPILL_MAX_BYTES`） | 512 KB | 停止保留；标记仍然命名该文件 |
-| bash 输出流 | 每个流序列 | 保留 stdout/stderr 分离 |
-| bash 超时 | 默认 60 秒；1–21,600 秒覆盖 | 杀死进程树+错误 |
-| `edit.ops` 负载 | 256 KB，200 个操作 | `INVALID_ARGUMENT`；更多 Edit 上限见 [18](/zh-CN/spec/03-runtime/18-line-anchored-edit-contract) §12 |
+| `bash` 输出流 | 每个流序列 | 保留 stdout/stderr 分离 |
+| `bash` 超时 | 默认 60 秒；1–21,600 秒覆盖 | 杀死进程树+错误 |
+| `edit.ops` 负载 | 256 KB，200 个操作 | `INVALID_ARGUMENT`；更多 `edit` 上限见 [18](/zh-CN/spec/03-runtime/18-line-anchored-edit-contract) §12 |
 
 被剪辑的行不是已显示的行。`read` 会把每一条在 `MAX_LINE_CHARS` 处剪断的行
 从 `edit` 契约校验所用的来源集中排除
@@ -78,7 +78,7 @@ read/glob/grep 不在其有效负载中嵌入标记：窗口元数据
 
 ## 3a。泄漏文件
 
-当 Bash 输出超出其预算时，更完整的副本（最多 `SPILL_MAX_BYTES`）
+当 bash 输出超出其预算时，更完整的副本（最多 `SPILL_MAX_BYTES`）
 写入 `<data_dir>/scratch/<session_id>/tool-output/<label>-<ms>-<seq>.log`
 并在标记中命名。重用每个会话的临时生命周期
 (`scratch::remove_session_dir` / `sweep`)，因此溢出会随着会话而消失，并且
@@ -88,14 +88,14 @@ read/glob/grep 不在其有效负载中嵌入标记：窗口元数据
 保持在预算之内，什么都没有留下。一次失败的泄漏只需要付出暗示，
 从来不是工具的结果。
 
-Grep 可以读取溢出文件，因为显式 `path` 参数会停止父级
+grep 可以读取溢出文件，因为显式 `path` 参数会停止父级
 忽略应用中的文件 — 同样的规则可以让 `path` 进入
 `node_modules` 或 `dist`。
 
 ## 4. 面向模型与面向 UI
 
 - 模型接收带有标记的截断有效负载
-- Renderer 在 Bash 运行时接收有序的 `stdout` 和 `stderr` 块；的
+- Renderer 在 bash 运行时接收有序的 `stdout` 和 `stderr` 块；的
   最终 model/UI 结果仍然是有界组合有效负载。
 - UI 可能会为 bash/read 提供“在查看器中打开完整输出”（后 MVP 可选）
 - 完整的原始输出不需要永久保留；会话可能会在 MVP 中存储截断的形式
@@ -118,11 +118,11 @@ Grep 可以读取溢出文件，因为显式 `path` 参数会停止父级
 
 ## 5. 部分结果标志
 
-每个有界工具都会报告 `truncated: boolean`。对 Read 来说，该标志仅在本窗口
+每个有界工具都会报告 `truncated: boolean`。对 read 来说，该标志仅在本窗口
 比调用方请求的更短时为真（字节预算打断扫描，或某行被剪辑）。一次返回了
-请求窗口或默认窗口的 Read，即使文件更长也报告 `truncated: false`；
+请求窗口或默认窗口的 read，即使文件更长也报告 `truncated: false`；
 `totalLines`、`offset`、`lineCount` 和下一个偏移的 `notice` 描述剩余部分。
-Grep 与 Glob 在匹配/条目上限挡住了剩余命中时设 `truncated: true`。
+grep 与 glob 在匹配/条目上限挡住了剩余命中时设 `truncated: true`。
 
 read/glob/grep 另外报告什么被限制以及如何继续：
 
@@ -172,7 +172,7 @@ type GlobResult = { matches: string[]; count: number; truncated: boolean; notice
    （或后缀，用于尾部切割），绝不是空的有效负载
 5. 聚合检查点截断必须保留每个提供商有效的助手
    tool-call/result 配对并在持久化之前重新估计结果尾部
-6.glob和grep的相关顺序是文件修改时间，最新的在前，
+6.Glob和Grep的相关顺序是文件修改时间，最新的在前，
    因此，有上限的结果使一半更有可能被询问
 7. 超时和中止仅在完成过程后关闭两个输出流
    树已被关闭；没有孤儿进程可以继续写入输出
@@ -181,9 +181,9 @@ type GlobResult = { matches: string[]; count: number; truncated: boolean; notice
 
 - [x] 超大 bash 输出用标记截断并溢出更完整的副本
 - [x] bash stderr 在截断时保留其最后几行
-- [x] Grep 在 `headLimit` 和 `truncated: true` 处停止
-- [x] Grep 和 Read 在 16,384 个字符处剪辑行，且被剪辑的行被排除在 `edit` 来源集之外
-- [x] Read 对多兆字节文件进行分页而不是拒绝它，报告下一个偏移量，并在填满请求窗口时不设 `truncated`
+- [x] grep 在 `headLimit` 和 `truncated: true` 处停止
+- [x] grep 和 read 在 16,384 个字符处剪辑行，且被剪辑的行被排除在 `edit` 来源集之外
+- [x] read 对多兆字节文件进行分页而不是拒绝它，报告下一个偏移量，并在填满请求窗口时不设 `truncated`
 - [x] 读取拒绝带有 `TOOL_BINARY_CONTENT` 的二进制内容
 - [x] 显式 `path` 到达被忽略的树（`node_modules`，溢出目录）
 - [x] glob 和 grep 按修改时间对结果进行排序，最新的在前

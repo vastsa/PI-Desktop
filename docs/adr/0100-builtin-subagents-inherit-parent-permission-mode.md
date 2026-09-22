@@ -8,10 +8,10 @@
 ## Context
 
 The proactive delegation decision gave the builtin `fixer` an explicit
-`permission: accept-edits` scope. That made workspace `Write` and `Edit` calls
+`permission: accept-edits` scope. That made workspace `write` and `edit` calls
 convenient when the parent session was in `ask`, but it also replaced the
 parent's effective permission mode for every other call. In a parent session
-set to `auto`, a `fixer` call to `Glob` or `Write` an explicit path outside the
+set to `auto`, a `fixer` call to `glob` or `write` an explicit path outside the
 session workspace therefore opened a permission card even though `auto` is
 supposed to allow that path. The card correctly identified the request as
 coming from `fixer`; the incorrect part was the builtin's unexpected narrower
@@ -25,14 +25,14 @@ explicit scope on a user-owned definition must remain meaningful.
 
 Builtin subagent definitions use the default `permission: inherit` behavior.
 The builtin `fixer` no longer declares `permission: accept-edits`; its
-available tools remain `[Read, Glob, Grep, Edit, Write, Bash]` and its
+available tools remain `[read, glob, grep, edit, write, bash]` and its
 workspace/path containment rules do not change.
 
 With no scope attached to a delegate `tools.execute` call, host-core resolves
 the call under the parent session's effective permission mode:
 
 - `ask` keeps approval for high-risk and explicit external-path calls;
-- `accept-edits` auto-allows only in-root `Write`/`Edit` and keeps the other
+- `accept-edits` auto-allows only in-root `write`/`edit` and keeps the other
   approval boundaries;
 - `auto` auto-allows the same calls the parent could make, including explicit
   external paths.

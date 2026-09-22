@@ -37,7 +37,7 @@ the only file.
 The move is one unit per capability: `McpServerRegistry::transfer` relocates the
 server's JSON file, and `UserSkillRegistry::transfer` relocates either the single
 Markdown document or, for the conventional `<skill>/SKILL.md` shape, the whole
-skill directory with the sibling resources a `Skill` invocation resolves
+Skill directory with the sibling resources a `skill` invocation resolves
 (`directory_skill_root`, `copy_directory_contents`). `move_capability_file`
 tries `fs::rename` first so a same-filesystem move is atomic and cheap, and
 falls back to copy-then-remove for a project on another mount. When the document

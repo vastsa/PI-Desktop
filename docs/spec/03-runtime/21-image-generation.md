@@ -17,7 +17,7 @@ Prompt length is bounded at 32,000 characters. Unsupported or excessive input is
 rejected rather than truncated. Plan and Goal cannot execute the tool.
 
 The bundled `pi-desktop/imagegen` skill is discoverable in ordinary sessions and
-loads through the existing Skill tool. It teaches prompting, batches, reference
+loads through the existing skill tool. It teaches prompting, batches, reference
 edits, preserving originals, partial-failure handling and project asset delivery.
 It does not grant permission or carry credentials.
 

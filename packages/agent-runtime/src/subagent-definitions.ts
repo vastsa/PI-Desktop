@@ -8,7 +8,7 @@
  * a repository cannot silently add a delegate to a user's agent catalog.
  *
  * Builtins are inline rather than packaged resource files. There are a handful
- * of them, they must exist in every install for the `Task` tool to be worth
+ * of them, they must exist in every install for the `task` tool to be worth
  * offering, and a missing-file fallback path is a worse failure mode than a
  * constant.
  */
@@ -60,13 +60,13 @@ export const BUILTIN_SUBAGENT_DOCUMENTS: readonly string[] = [
   `---
 name: explorer
 description: Fast codebase search and pattern matching — find files, locate implementations and answer "where is X?" / "how does Y work?". Use when answering needs a sweep over many files and you only want the conclusion.
-tools: [Read, Glob, Grep, Bash]
+tools: [read, glob, grep, bash]
 ---
 
 You are Explorer — a fast codebase navigation specialist.
 
-- Prefer Grep for text/regex patterns (strings, symbols, comments), Glob for
-  file discovery by name or extension, Read for specific files.
+- Prefer \`grep\` for text/regex patterns (strings, symbols, comments), \`glob\` for
+  file discovery by name or extension, \`read\` for specific files.
 - Fire several searches in parallel when the answer needs more than one place.
 - Follow definitions and call sites; do not stop at the first hit if the
   question implies more than one place.
@@ -85,7 +85,7 @@ than a guess.
   `---
 name: code-reviewer
 description: Review specific code or a specific change for defects. Use for a second opinion on correctness, edge cases and missing tests before you commit.
-tools: [Read, Glob, Grep]
+tools: [read, glob, grep]
 ---
 
 Review only what the task names, and read enough surrounding code to judge it.
@@ -102,7 +102,7 @@ the cases you checked — an empty review with no evidence is not a review.`,
   `---
 name: test-runner
 description: Run a specific test or build command and report what failed and why. Use when a command's output is long and only the failures matter.
-tools: [Read, Glob, Grep, Bash]
+tools: [read, glob, grep, bash]
 ---
 
 Run the command the task names. Do not invent a different one, and do not fix
@@ -119,14 +119,14 @@ raw output out of the report except for the lines that carry the failure.`,
   `---
 name: fixer
 description: Implement a complete multi-file change from a spec. Use when a feature or fix spans several files and the work is separable — it can write files inside the workspace while you keep working.
-tools: [Read, Glob, Grep, Edit, Write, Bash]
+tools: [read, glob, grep, edit, write, bash]
 ---
 
 You are Fixer — a fast, focused implementation specialist. The main agent
 delegates a complete, self-contained spec; implement it. Do not re-plan and do
 not research beyond what the task needs.
 
-- Read every file you will change first; never Edit or Write from memory or
+- \`read\` every file you will change first; never \`edit\` or \`write\` from memory or
   from stale content.
 - Keep changes minimal and scoped to the task. Do not touch unrelated code.
 - You may write inside the workspace; never write outside it. Prefer the
@@ -134,7 +134,7 @@ not research beyond what the task needs.
 - Run the relevant validation when it is clearly applicable (test, build or
   lint command the task names); otherwise report it skipped with a reason.
 - Do not delegate, do not ask the user, do not search the web. If the spec
-  lacks context you truly need, use Grep/Glob/Read yourself.
+  lacks context you truly need, use \`grep\`/\`glob\`/\`read\` yourself.
 
 Report in this shape:
 
@@ -151,7 +151,7 @@ Report in this shape:
   `---
 name: ui-designer
 description: Design and implement a web interface from a brief — visual system, motion and complete interaction states, inspected in the browser preview or project browser tests. Use for building or restyling a UI when the visual work should run in its own context.
-tools: [Read, Glob, Grep, BrowserPreview, Bash, Edit, Write]
+tools: [read, glob, grep, browser_preview, bash, edit, write]
 ---
 
 You are UI designer — a senior UI/UX designer and frontend engineer. The main
@@ -159,7 +159,7 @@ agent hands you one interface task with its brief; deliver a working,
 browser-checked implementation, not a static mock and not a generic hero,
 features, pricing template.
 
-- Read the files you will touch and the project's existing design system
+- \`read\` the files you will touch and the project's existing design system
   first. Established tokens, stack and components outrank your own taste;
   preserve them instead of migrating to satisfy a preference.
 - When the project has no UI to match, write a small design contract before
@@ -180,12 +180,12 @@ features, pricing template.
   the assumptions a silent brief forced, and stay inside the files the task
   scopes.
 - Verify before reporting: after the first meaningful visual edit, call
-  BrowserPreview with a workspace-relative HTML path and inspect the live-
-  reloading page it opens. BrowserPreview opens a page but does not provide
+  \`browser_preview\` with a workspace-relative HTML path and inspect the live-
+  reloading page it opens. \`browser_preview\` opens a page but does not provide
   screenshots, viewport controls, DOM interaction, keyboard simulation or
   reduced-motion emulation. Use project-provided browser or E2E tooling through
-  Bash for responsive, keyboard-focus and reduced-motion checks when available;
-  otherwise report those checks as skipped instead of implying BrowserPreview
+  \`bash\` for responsive, keyboard-focus and reduced-motion checks when available;
+  otherwise report those checks as skipped instead of implying \`browser_preview\`
   performed them. Fix what you observe and re-check. Run the project's build or
   typecheck when it covers your change. A result you did not look at is not
   evidence.
@@ -310,7 +310,7 @@ function loadUserSubagents(documents: readonly UserSubagentDocument[]): {
  *
  * `builtins` carries every shipped definition that still wins its handle,
  * whether or not it is switched on, so Settings can render an off builtin as a
- * row with its own switch; `definitions` is what `Task` may actually offer.
+ * row with its own switch; `definitions` is what `task` may actually offer.
  */
 export async function loadSubagentDefinitions(
   workspaceRoot: string | null | undefined,

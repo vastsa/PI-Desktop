@@ -122,7 +122,7 @@ Windows 安装包目标为 x64。Windows host-core 使用
 监管参数（传输、重启策略与回合生命周期位于 `packages/host-runtime`，ADR 0284；Electron main 适配它们并负责面向渲染层的状态）：
 
 - 子进程退出立即拒绝该子进程的所有正在进行的 RPC（无 130 秒超时等待）。
-- 每个 RPC 都带有有限的传输超时。Bash 与桌面分发的（`plugin_*` / `mcp_*`）工具会
+- 每个 RPC 都带有有限的传输超时。bash 与桌面分发的（`plugin_*` / `mcp_*`）工具会
   叠加 host-core 在报告结果前可能消耗的等待，`agent.compact` 则叠加 sidecar 自身的摘要
   预算——每次尝试的流空转看门狗加上重试退避（**D614**，issue #795）；其余调用使用 130
   秒默认值。绝不要为了迁就某个慢方法而放宽默认值：那会同时掩盖其他调用上真正丢失的回复。
@@ -255,7 +255,7 @@ Gateway 负责路由已认证客户，但不拥有工作区状态。
 The tray service keeps Running, Unread, and Pinned groups current independently
 of renderer visibility or lifetime. Host remains authoritative for sessions and
 notifications; root agent events describe running state. Renderer mirrors only
-organization preferences through a main-window-only IPC. Read requests are
+organization preferences through a main-window-only IPC. read requests are
 coalesced; obsolete Host results cannot repopulate the menu, failures clear
 shortcuts, and quitting prevents further publication. A closed window retains
 only the last organization copy, which is replaced after renderer bootstrap.

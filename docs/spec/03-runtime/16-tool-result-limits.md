@@ -14,7 +14,7 @@ forced compaction and made the agent re-search what it had already found.
 read/glob/grep get a tighter budget than shell because their results are
 re-fetchable on demand (narrow the pattern, advance the offset). 48KB was too
 tight: a default window of ordinary source already overflowed, so almost every
-Read reported `truncated` and the agent re-searched what it had.
+read reported `truncated` and the agent re-searched what it had.
 
 bash output passes two independent ceilings. The **capture** layer bounds what
 the host retains in memory while the process streams, and is what the spill file
@@ -24,18 +24,18 @@ copy could never be fuller than the excerpt it exists to back.
 
 | channel | limit | action when exceeded |
 |---|---|---|
-| read / glob / grep result (`BUDGET_SEARCH`) | 128 KB, 4000 lines | bound the window + `notice` naming the next step |
-| bash stdout (`BUDGET_SHELL`) | 96 KB, 4000 lines, head | truncate + marker + spill |
-| bash stderr (`BUDGET_SHELL_ERR`) | 96 KB, 4000 lines, **tail** | truncate + marker + spill |
+| `read` / `glob` / `grep` result (`BUDGET_SEARCH`) | 128 KB, 4000 lines | bound the window + `notice` naming the next step |
+| `bash` stdout (`BUDGET_SHELL`) | 96 KB, 4000 lines, head | truncate + marker + spill |
+| `bash` stderr (`BUDGET_SHELL_ERR`) | 96 KB, 4000 lines, **tail** | truncate + marker + spill |
 | any single line (`MAX_LINE_CHARS`) | 16,384 chars | clip, count it in `notice` |
-| Read window | 2000 lines default (max 4000), `offset`/`limit`; `totalLines` always reported | paginate; `truncated` only when this window was cut |
-| Grep matches (`headLimit`) | 200 default | stop with `truncated: true` |
-| Glob entries (`limit`) | 100 default, 1000 max | stop with `truncated: true` |
-| bash capture retention (`CAPTURE_MAX_BYTES` / `CAPTURE_MAX_LINES`) | 512 KB, 200000 lines | stop retaining; report omitted bytes and lines |
+| `read` window | 2000 lines default (max 4000), `offset`/`limit`; `totalLines` always reported | paginate; `truncated` only when this window was cut |
+| `grep` matches (`headLimit`) | 200 default | stop with `truncated: true` |
+| `glob` entries (`limit`) | 100 default, 1000 max | stop with `truncated: true` |
+| `bash` capture retention (`CAPTURE_MAX_BYTES` / `CAPTURE_MAX_LINES`) | 512 KB, 200000 lines | stop retaining; report omitted bytes and lines |
 | spilled full output (`SPILL_MAX_BYTES`) | 512 KB | stop retaining; marker still names the file |
-| bash output stream | per-stream sequence | preserve stdout/stderr separation |
-| bash timeout | 60s default; 1–21,600s override | kill process tree + error |
-| `edit.ops` payload | 256 KB, 200 ops | `INVALID_ARGUMENT`; further Edit caps in [18](18-line-anchored-edit-contract.md) §12 |
+| `bash` output stream | per-stream sequence | preserve stdout/stderr separation |
+| `bash` timeout | 60s default; 1–21,600s override | kill process tree + error |
+| `edit.ops` payload | 256 KB, 200 ops | `INVALID_ARGUMENT`; further `edit` caps in [18](18-line-anchored-edit-contract.md) §12 |
 
 A clipped line is not a displayed line. `read` excludes every line it cut at
 `MAX_LINE_CHARS` from the provenance set the `edit` contract validates against
@@ -91,14 +91,14 @@ The directory is created on first spill, not on session start, so sessions that
 stayed under budget leave nothing behind. A failed spill costs the hint only,
 never the tool result.
 
-Grep can read spill files, because an explicit `path` argument stops parent
+grep can read spill files, because an explicit `path` argument stops parent
 ignore files from applying — the same rule that lets `path` reach into
 `node_modules` or `dist`.
 
 ## 4. Model-facing vs UI-facing
 
 - model receives truncated payload with marker
-- Renderer receives ordered `stdout` and `stderr` chunks while Bash runs; the
+- Renderer receives ordered `stdout` and `stderr` chunks while bash runs; the
   final model/UI result remains the bounded combined payload.
 - UI may offer “open full output in viewer” for bash/read later (post-MVP optional)
 - full raw output is not required to persist forever; session may store truncated form in MVP
@@ -123,12 +123,12 @@ ignore files from applying — the same rule that lets `path` reach into
 
 ## 5. Partial result flags
 
-Every bounded tool reports `truncated: boolean`. For Read, that flag is true
+Every bounded tool reports `truncated: boolean`. For read, that flag is true
 only when this window was cut short of what the caller asked for (the byte
 budget stopped the scan, or a line was clipped). A read that returned the
 requested or default window of a longer file reports `truncated: false`;
 `totalLines`, `offset`, `lineCount`, and a next-offset `notice` describe the
-remainder. Grep and Glob set `truncated: true` when the match/entry cap hid
+remainder. grep and glob set `truncated: true` when the match/entry cap hid
 remaining hits.
 
 read/glob/grep additionally report what was bounded and how to continue:
@@ -163,7 +163,7 @@ common `files_with_matches` and `files-with-matches` provider spellings.
 
 `notice` is model-facing prose, not a stable contract: it names the next offset,
 the budget that stopped the scan, or how many lines were clipped. It does not
-tell the model to Grep after a successful paged Read. `truncated` and the
+tell the model to grep after a successful paged read. `truncated` and the
 counts are the stable signals. The UI truncated chip follows `truncated`.
 
 ## 6. Priority rules
@@ -189,12 +189,12 @@ counts are the stable signals. The UI truncated chip follows `truncated`.
 
 - [x] oversize bash output truncates with marker and spills the fuller copy
 - [x] bash stderr retains its final lines when truncated
-- [x] Grep stops at `headLimit` with `truncated: true`
+- [x] grep stops at `headLimit` with `truncated: true`
 - [x] grep and read clip lines at 16,384 chars, and a clipped line is excluded
   from the `edit` provenance set
 - [x] read paginates a multi-megabyte file instead of refusing it, reports the
   next offset, and does not set `truncated` when the requested window was filled
-- [x] Read refuses binary content with `TOOL_BINARY_CONTENT`
+- [x] read refuses binary content with `TOOL_BINARY_CONTENT`
 - [x] an explicit `path` reaches into an ignored tree (`node_modules`, spill dir)
 - [x] glob and grep order results by modification time, newest first
 - [x] truncated results still valid UTF-8 text

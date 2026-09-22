@@ -15,7 +15,7 @@ Permission-gated tools exposed a race in that model. A tool could finish after
 approval while another conversation was loading. If completion arrived before
 the selection committed, its artifact briefly opened the global panel and was
 then cleared, causing a visible resize flash. If it arrived afterward, the
-background-session guard dropped the artifact entirely. BrowserPreview also
+background-session guard dropped the artifact entirely. browser_preview also
 lost its originating session identity before reaching the renderer and could
 resolve a relative path against the visible workspace.
 
@@ -28,11 +28,11 @@ state, ordered tabs, active tab, file request, and Browser resource.
   the destination context. Switching away never deletes either context.
 - New and forked conversations begin with an empty context. Deleting a
   conversation removes its retained context.
-- Review and BrowserPreview artifacts are recorded against their originating
+- Review and browser_preview artifacts are recorded against their originating
   `sessionId`, including while that conversation is in the background.
 - Background artifacts update retained state only. They do not open, activate,
   navigate, resize, or focus the visible panel.
-- BrowserPreview events carry `sessionId`. Electron Main resolves local preview
+- browser_preview events carry `sessionId`. Electron Main resolves local preview
   paths from that durable session's `projectPath`, and navigation occurs only
   when the originating conversation's Browser tab is visible.
 - Selecting a workspace without an active conversation hides the current panel
@@ -76,7 +76,7 @@ improving the reported in-process workflow.
 ### Key every backend panel subsystem by conversation
 
 Rejected for this change. Conversation ownership is required for the visible
-tab context and BrowserPreview routing; it does not make every backend resource
+tab context and browser_preview routing; it does not make every backend resource
 durable.
 
 ## References

@@ -8,15 +8,15 @@
 | Topic | Decision |
 |---|---|
 | Default mode | Agent |
-| Agent tools | read / glob / grep / write / edit / bash + registered plugin tools |
-| Plan tools | read / glob / grep / browser_preview / bash / submit_plan + plugin tools that declare plan-safe actions |
-| Goal tools | read / glob / grep / browser_preview / bash / submit_goal + plugin tools that declare plan-safe actions |
-| Plan and Goal hard deny | write / edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
+| Agent tools | `read` / `glob` / `grep` / `write` / `edit` / `bash` + registered plugin tools |
+| Plan tools | `read` / `glob` / `grep` / `browser_preview` / `bash` / `submit_plan` + plugin tools that declare plan-safe actions |
+| Goal tools | `read` / `glob` / `grep` / `browser_preview` / `bash` / `submit_goal` + plugin tools that declare plan-safe actions |
+| Plan and Goal hard deny | `write` / `edit` / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
 | Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan/Goal, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
 | Permission timeout | 120s → deny |
 | allow-session scope | toolName |
-| bash style | non-interactive; selected host catalog shell with streamed output |
-| Edit contract | line-anchored ops + whole-file `tag`; no `old_string`/`new_string` (ADR 0087) |
+| `bash` style | non-interactive; selected host catalog shell with streamed output |
+| `edit` contract | line-anchored ops + whole-file `tag`; no `old_string`/`new_string` (ADR 0087) |
 | asktool | interactive multi-question tool; no validity deadline; skipped answers become empty output fields |
 
 ## 1. Goal
@@ -27,7 +27,7 @@ Let the agent get things done, but stay under control by default.
 
 | Tool | Risk | Description |
 |---|---|---|
-| `read` | low | Read files within the workspace; returns line-numbered content and a `[path#TAG]` header |
+| `Read` | low | Read files within the workspace; returns line-numbered content and a `[path#TAG]` header |
 | `new_context` | low | Start a new context window at the next turn boundary; takes no parameters and changes no environment state |
 | `glob` | low | List files by pattern |
 | `grep` | low | Content search; uses system `rg` when installed, else in-process; mints a per-file `tag` |
@@ -55,20 +55,20 @@ also registers capabilities without sending their full schemas up front:
 
 - `glob` and `grep` in Agent mode
 - `browser_preview`
-- `PluginCheck`, `PluginScaffold`, and `PluginPack`
+- `check_plugin`, `scaffold_plugin`, and `pack_plugin`
 - plugin-declared agent tools
 
 These tools appear in a bounded `# On-demand tools` catalog with compact
-descriptions. The model calls the local `ToolSearch` tool with an exact name or
+descriptions. The model calls the local `tool_search` tool with an exact name or
 capability query; the matching schemas become available on the next model turn.
 At the beginning of every new user prompt, the sidecar clears the in-memory
 deferred set and restores only successful activation evidence from the effective
-session context: `addedToolNames` on successful `ToolSearch` results and the
+session context: `addedToolNames` on successful `tool_search` results and the
 names of successful deferred-tool results. Failed rows, interrupted or missing
 result placeholders, and assistant/user prose are ignored. Restored names must
 still be in the current mode's deferred catalog. The host permission,
 workspace/scratch containment, timeout, and audit rules do not change when a
-tool is loaded. `ToolSearch` itself never executes a workspace operation and
+tool is loaded. `tool_search` itself never executes a workspace operation and
 never bypasses host-core policy.
 
 ## 3. Common Tool Constraints
@@ -109,7 +109,7 @@ to `/`.
 Agent mode keeps `glob`/`grep` deferred under D185. Each new user prompt clears
 their live activation and restores only eligible successful markers still in
 context; when no such marker exists, directory discovery activates `glob`
-through `ToolSearch` for that prompt instead of guessing a file name or calling
+through `tool_search` for that prompt instead of guessing a file name or calling
 `read` on a directory.
 
 The runtime accepts one alias per canonical argument name and folds it away
@@ -322,7 +322,7 @@ Serialization also protects the snapshot store, which both producers and `edit`
 mutate: without the per-session permit, a concurrent record could land between a
 validation and its write.
 
-## 5. Bash Rules
+## 5. `bash` Rules
 
 Host execution baseline:
 
@@ -391,9 +391,9 @@ Initial denylist (extensible):
 
 | risk | Example | Default policy |
 |---|---|---|
-| low | read/glob/grep inside the session roots | Auto-allow |
+| low | `read`/`glob`/`grep` inside the session roots | Auto-allow |
 | medium | low-risk network/metadata | Confirm or allow by policy |
-| high | write/edit/bash | Confirm by default |
+| high | `write`/`edit`/`bash` | Confirm by default |
 
 ### Decision Types
 
@@ -409,7 +409,7 @@ May be added later:
 
 How high-risk tool calls get approved is governed by a **permission mode**:
 
-| Mode | write/edit | bash / plugin tools |
+| Mode | `write`/`edit` | `bash` / plugin tools |
 |---|---|---|
 | `ask` (default) | confirm | confirm |
 | `accept-edits` | auto-allow | confirm |
@@ -435,7 +435,7 @@ Rules:
   every mode, as before.
 - `browser_preview` is an explicit read-only UI inspection capability and is
   available in both operating modes.
-- Plan retains the permission-mode selector. Bash is confirmed under `ask` and
+- Plan retains the permission-mode selector. bash is confirmed under `ask` and
   `accept-edits`, and is auto-allowed under `auto`; therefore Plan is planning
   intent, not a strict read-only security profile.
 - `allow-session` grants continue to work under `ask` and stay scoped to the
@@ -496,7 +496,7 @@ for the current key-log policy.
 
 ## 10. Operating-mode matrix
 
-| Mode | read/glob/grep | browser_preview | write/edit | bash | Plugins |
+| Mode | `read`/`glob`/`grep` | `browser_preview` | `write`/`edit` | `bash` | Plugins |
 |---|---|---|---|---|---|
 | Agent | allow | allow | permission policy | permission policy | registered risk policy |
 | Plan | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
@@ -542,11 +542,11 @@ unrecognized name — including the withdrawn `A2A` and `Peer` tools (D326 /
 ADR 0165) — is dropped with a parse warning.
 
 A document may opt into the parent session's live tool catalog with
-`tools: inherit` or `tools: [inherit, Bash]` (ADR 0246 / D415). At `task` spawn
+`tools: inherit` or `tools: [inherit, bash]` (ADR 0246 / D415). At `task` spawn
 the runtime unions `toolCatalog` keys (including deferred plugin/MCP tools)
 with any assignable extras, then drops `task` / `task_wait` / `task_list` /
 `task_stop`, `enter_plan_mode` / `enter_goal_mode`, `asktool`, `new_context`, and
-`ToolSearch`. Builtins do not opt in. `inherit` is visible in the Markdown and
+`tool_search`. Builtins do not opt in. `inherit` is visible in the Markdown and
 in Settings; host-core keeps the token so an inherit-only document still
 loads. Plugin tools, `skill`, and MCP tools are therefore available to a
 delegate only through this opt-in, never by putting those names on the

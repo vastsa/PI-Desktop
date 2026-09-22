@@ -134,13 +134,13 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `COMMAND_SHELL_INVALID` | 不 | 设置提供了未知、不可用或错误的平台 shell ID |
 | `PERMISSION_TIMEOUT` | 不 | 权限提示超时（映射为拒绝） |
 | `PERMISSION_REQUIRED` | 不 | 等待用户决定 |
-| `WRITE_DISABLED_IN_PLAN` | 不 | Write 的契约模式硬拒绝 |
+| `WRITE_DISABLED_IN_PLAN` | 不 | `write` 的契约模式硬拒绝 |
 | `EDIT_DISABLED_IN_PLAN` | 不 | 编辑的契约模式硬拒绝 |
 | `PLUGIN_DISABLED_IN_PLAN` | 不 | 每个插件工具的契约模式硬拒绝 |
 | `TOOL_DISABLED_IN_PLAN` | 不 | unknown/unlisted 工具的契约模式硬拒绝 |
 | `PLAN_NOT_ACTIVE` | 不 | 在没有协商合同的情况下运行了提交工具 |
 | `PLAN_KIND_MISMATCH` | 不 | Goal 模式下的 `submit_plan`，或 Plan 模式下的 `submit_goal` |
-| `PLAN_APPROVAL_REQUIRED` | 不 | submit_plan/submit_goal 正在等待单独的批准 |
+| `PLAN_APPROVAL_REQUIRED` | 不 | `submit_plan`/`submit_goal` 正在等待单独的批准 |
 | `PLAN_APPROVAL_TIMEOUT` | 不 | 绝对 30 分钟计划批准期限已过 |
 | `PLAN_APPROVAL_STALE` | 不 | 响应与实时 proposal/session/turn/tool-call/version 不匹配 |
 | `PLAN_APPROVAL_INTERRUPTED` | 不 | 待批准在中止、崩溃或持久性失败期间关闭 |
@@ -183,7 +183,7 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 (**D198**)。渲染器从提案的 `kind` 中选择其措辞，因此
 代码可以显示为“Plan”或“Goal”副本。
 
-### 3. 4 Edit 契约（ADR 0087）
+### 3. 4 `edit` 契约（ADR 0087）
 
 仅由 `edit` 发出。版本与来源失败拥有各自的代码，因为每一个都指向不同的
 下一步动作；把它们报告为 `TOOL_FAILED` 会丢失这一信息。见

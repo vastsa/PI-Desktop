@@ -41,7 +41,7 @@ describe("createStreamCoalescer", () => {
         deltaText: "lo",
       }),
     );
-    coalescer.push(envelope({ type: "tool_start", toolCallId: "t1", toolName: "Read", args: {} }));
+    coalescer.push(envelope({ type: "tool_start", toolCallId: "t1", toolName: "read", args: {} }));
 
     expect(emitted.map((item) => item.event.type)).toEqual(["message_update", "tool_start"]);
     const update = emitted[0]!.event;

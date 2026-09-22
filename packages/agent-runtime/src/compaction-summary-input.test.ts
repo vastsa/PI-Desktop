@@ -53,7 +53,7 @@ function toolResult(text: string, id = "tool-1"): AgentMessage {
   return {
     role: "toolResult",
     toolCallId: id,
-    toolName: "Read",
+    toolName: "read",
     content: [{ type: "text", text }],
     isError: false,
     timestamp: 3,
@@ -150,7 +150,7 @@ describe("reduceSummaryInput", () => {
         assistant([
           { type: "thinking", thinking: "long private reasoning" },
           { type: "text", text: "visible answer" },
-          { type: "toolCall", id: "t1", name: "Read", arguments: { path: "a.txt" } },
+          { type: "toolCall", id: "t1", name: "read", arguments: { path: "a.txt" } },
         ]),
       ]),
     );

@@ -34,7 +34,7 @@ The retained work-panel subsystems are:
 
 The former interactive-terminal subsystem is not part of the current product.
 Its removal, including the desktop IPC and packaging cleanup, is defined by
-ADR 0108. Agent Bash is an independent non-interactive agent tool and is not a
+ADR 0108. Agent bash is an independent non-interactive agent tool and is not a
 work-panel subsystem.
 
 ## Consequences

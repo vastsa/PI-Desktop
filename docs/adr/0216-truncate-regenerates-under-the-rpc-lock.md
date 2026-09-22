@@ -12,7 +12,7 @@ main: `session.get` of the whole history, `session.saveRevision` of the
 discarded tail, then `session.replaceMessages` with the kept prefix.
 
 That round trip ships the kept transcript as one NDJSON JSON-RPC line. Host
-stdin rejects a line over 64 MiB by ending the reader, and every non-Bash RPC
+stdin rejects a line over 64 MiB by ending the reader, and every non-bash RPC
 waits only 130 s. A session of a few thousand messages (tens of megabytes on
 disk) therefore fails with `host RPC timeout: session.replaceMessages` while
 host-core may still be rewriting. The client timeout does not cancel the host

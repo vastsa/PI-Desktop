@@ -12,7 +12,7 @@
 ## Context
 
 Every context protection the session Agent has is wired for the session Agent
-only. A delegate (`Task`, ADR 0062) runs the same pi `Agent` class with none of
+only. A delegate (`task`, ADR 0062) runs the same pi `Agent` class with none of
 it:
 
 - `SubagentRun`'s constructor (`packages/agent-runtime/src/subagent.ts:214`)
@@ -69,7 +69,7 @@ protection at all.
    runtime state, so the two callers cannot drift.
 
 2. **A delegate budget derives from the delegate's own model.** The window and
-   output cap come from the model the run actually resolved — a `Task.model`
+   output cap come from the model the run actually resolved — a `task.model`
    override, a definition pin, or the inherited session model (§5f) — not from
    the session model and not from the definition. A per-definition `maxTokens`
    cap (ADR 0210) participates as the output budget it already is.

@@ -149,7 +149,7 @@ writes results to workspace memory/config — a form disguised as a chat.
 Sessions produce files the user later can't find without scrolling the
 transcript. **Adopted first step in D128**: clicking a file artifact creates a
 path-keyed, closeable work-panel tab; its second half — a successful workspace
-Write/Edit opening Review by itself — was withdrawn in D451, and Review now
+write/edit opening Review by itself — was withdrawn in D451, and Review now
 opens only from an explicit user action. **Adopted in D179**: the transcript
 also places a
 message-scoped review card directly after each successful file mutation; its

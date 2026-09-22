@@ -9,7 +9,7 @@
 ## Context
 
 Some tasks benefit from several independent Agents working at the same time,
-but the existing `Task` family is intentionally a bounded in-process
+but the existing `task` family is intentionally a bounded in-process
 subagent system. A new orchestration feature must not create a second session
 store, bypass plugin permissions, or make the renderer an Agent runtime.
 
@@ -63,7 +63,7 @@ Two additive host primitives support these boundaries:
    `session/open` is the only navigation action.
 
 No Rust schema migration, MCP self-call, MCP token access, A2A channel, message
-bus, DAG, or change to `Task`, `TaskWait`, `TaskList`, or `TaskStop` is added.
+bus, DAG, or change to `task`, `task_wait`, `task_list`, or `task_stop` is added.
 
 ## Consequences
 

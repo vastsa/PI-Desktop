@@ -72,7 +72,7 @@ on EOF or an unrecoverable pipe error. Failure to create either control thread
 is a startup error rather than an unhandled panic.
 
 The best-effort login-shell PATH probe follows the same rule: a failed probe
-thread creation returns `None`, so Bash falls back to the host environment.
+thread creation returns `None`, so bash falls back to the host environment.
 
 ## 5b. RPC surface (logical)
 

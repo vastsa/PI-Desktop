@@ -54,7 +54,7 @@ Goal: controlled local agency.
 
 Deliverables:
 - project open
-- Read/Glob/Grep/Write/Edit/Bash via Rust host
+- read/glob/grep/write/edit/bash via Rust host
 - permission cards
 - tool traces
 
@@ -120,8 +120,8 @@ Deliverables:
   `plan_approvals` artifact/execution fields
 - Rust-owned mode resolution, Plan tool policy, selectable shell catalog with
   fallback and turn-pinned identity,
-  streamed Bash output, bounded timeout, and process-tree cancellation
-- one-Agent `EnterPlanMode` / `SubmitPlan` and `EnterGoalMode` / `SubmitGoal`
+  streamed bash output, bounded timeout, and process-tree cancellation
+- one-Agent `enter_plan_mode` / `submit_plan` and `enter_goal_mode` / `submit_goal`
   lifecycles with approve/reject-only resolution and fail-closed recovery
 - Plan artifact approval IPC/RPC/events, current-lifetime renderer projection,
   pending-only reload hydration, shell selection, approval UX, and EN/zh-CN copy
@@ -131,7 +131,7 @@ Deliverables:
 
 Exit criteria:
 - only one pi Agent is used before, during, and after planning
-- Plan denies Write/Edit/plugin tools but exposes Bash under the selected
+- Plan denies write/edit/plugin tools but exposes bash under the selected
   permission mode, including Auto's explicit mutation tradeoff
 - approval is separate from generic tool permission, atomically selects the
   Agent permission mode, and defaults the UI selection to Ask

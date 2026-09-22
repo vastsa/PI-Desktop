@@ -26,7 +26,7 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
   0239)
 - Skills contribution is activated: declared skills reach the model as a `# Skills`
   catalog in the system prompt when `agent.prompt.inject` is granted, and the model
-  loads a body on demand through the `Skill` tool ✅ (ADR 0039, D174)
+  loads a body on demand through the `skill` tool ✅ (ADR 0039, D174)
 - Unified namespace and audit ✅
 - Per-plugin settings API and generated settings UI are implemented. The UI
   supports string/number/boolean/select/json fields and plugin-local command
@@ -39,7 +39,7 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 - Template generation ✅ (`panel-basic`, `agent-tool-basic`, `skill-pack`,
   `full-demo`, from the plugins page, the agent, or `pi-plugin init`)
 - `pi-plugin check/pack` ✅ (`@pi-desktop/plugin-devkit`, also exposed as the
-  `PluginCheck` / `PluginScaffold` / `PluginPack` agent tools)
+  `check_plugin` / `scaffold_plugin` / `pack_plugin` agent tools)
 - `.piplug` install ✅
 - dev hot reload ✅ (watch + debounce, and a reload can never widen permissions)
 

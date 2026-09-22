@@ -50,19 +50,19 @@
 > 其他地方。
 > `0.4.13` 将聊天操作配置文件替换为 Plan 操作状态
 > 通过 D188 / ADR 0052。Plan 与计划状态下的 pi Agent 相同，保持
-> 权限模式选择，将 Bash 暴露于该策略，否认
-> Write/Edit/plugin 工具，并通过单独的提交结构化计划
+> 权限模式选择，将 bash 暴露于该策略，否认
+> write/edit/plugin 工具，并通过单独的提交结构化计划
 > 主机拥有的批准过渡。主机协议为v7，存储架构
 > v8；保留的聊天值会迁移到 Plan，而 Agent 仍保留默认值。
 > `0.4.14` 用不可变的主机编写的 Markdown 替换该提案
 > `<workspaceRoot>/.pi/plan/*.md` 至 D189 / ADR 0053 下的检查点。
-> SubmitPlan 接受标题、Markdown 和问题； Markdown 字节是
+> submit_plan 接受标题、Markdown 和问题； Markdown 字节是
 > 完全保留，而 title/question 仍保留结构化审批字段。
 > 仅在默认显式权限选择的情况下才批准 approve/reject
 > 询问，然后打开工件进行审查。待处理、排队和正在运行的工作
 > 被启动进程栅栏中断而不重放，而
 > 已批准的会话仍为 Agent。 ADR 0054 添加可选择的 shell
-> 目录，同时保留 Bash 协议名称。主机协议是 v9 并且
+> 目录，同时保留 bash 协议名称。主机协议是 v9 并且
 > 存储架构是 v10。
 > `0.4.15` 通过 D196 / ADR 0058 修改了 D169 扩展演示：
 > 删除了四张数字概览带，并共享按钮表面
@@ -110,7 +110,7 @@
 15. 产品操作选择器：**Agent | Plan**；内部 `page = "chat"`
     值仍然是对话表面的实现细节，而不是
     操作模式
-16.Agent 工具：**读取/Glob/Grep/写入/编辑/Bash**
+16.Agent 工具：**`read`/`glob`/`grep`/`write`/`edit`/`bash`**
 17、权限超时：**120s→拒绝**
 18. 会话授予范围：**按工具名称**
 19. `~/.pi` 自动导入：**不在 MVP 中**
@@ -127,7 +127,7 @@
     Linux x64 AppImage、deb 和 rpm 工件
 28. TS模式库：**typebox**
 29. i18n 库：**i18next**
-30. Bash：**非交互式、流式传输并从可选择的 shell 解析
+30. bash：**非交互式、流式传输并从可选择的 shell 解析
 目录;默认超时 60 秒，具有有限覆盖**
 31. 新手引导：**内联检查表**
 32. 可观测性 MVP：**仅限本地日志**
@@ -152,11 +152,11 @@
      一次溢出重试。该模型可以通过请求一个新窗口
      `new_context`；每次压缩都会添加一行记录和一个警告。
      没有面向用户的设置**
-44. Plan 工具和策略：**Read / Glob / Grep / BrowserPreview / Bash plus
-    `EnterPlanMode` 和 `SubmitPlan`； Write/Edit/plugin 和
-    未知工具被拒绝。 Bash 遵循 `ask`、`accept-edits` 或 `auto`，因此
+44. Plan 工具和策略：**read / glob / grep / browser_preview / bash plus
+    `enter_plan_mode` 和 `submit_plan`； write/edit/plugin 和
+    未知工具被拒绝。 bash 遵循 `ask`、`accept-edits` 或 `auto`，因此
     Plan 是计划意图，而不是严格的只读安全配置文件。**
-45. Plan 检查点：**`SubmitPlan(title, markdown, question)` 导致 host-core
+45. Plan 检查点：**`submit_plan(title, markdown, question)` 导致 host-core
     将确切的 Markdown 字节保留在新的唯一文件中
     `<workspaceRoot>/.pi/plan/*.md` 工件，而 title/question 仍然存在
     现有 `plan_approvals` 行中的结构化字段。该行记录了
@@ -192,7 +192,7 @@
 2. schema v10 迁移、不可变计划工件和 `plan_approvals`
    执行 fields/startup 栅栏
 3. Rust 权威的 Plan 策略、shell 身份和进程取消
-4. 单代理 SubmitPlan/approval/execution 状态转换
+4. 单代理 submit_plan/approval/execution 状态转换
 5. 渲染器工件批准、shell 选择和 EN/zh-CN UX
 6. 重点迁移、策略、流式传输、超时、恢复和渲染
    EN/zh-CN验证

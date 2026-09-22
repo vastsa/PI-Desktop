@@ -31,7 +31,7 @@ giving them the loop — scaffold, run, inspect, package.
    plugins granted `agent.prompt.inject`, and only through the same containment
    guard as the gated `fs` APIs. The system prompt carries a `# Skills` section
    of one line per skill — id, name, applicability — and the model pulls a body
-   on demand with the `Skill` tool, served from Electron main because the plugin
+   on demand with the `skill` tool, served from Electron main because the plugin
    directories live there. A skill document may be 128 KiB and a plugin may
    teach 32 of them, because an unread document costs nothing (D174, which
    supersedes this ADR's original 16 KiB whole-body prompt injection).
@@ -42,12 +42,12 @@ giving them the loop — scaffold, run, inspect, package.
 3. **Runtime reuse keys on the catalog digest, not on bodies.** Enabling a
    plugin, revoking `agent.prompt.inject` or renaming a skill changes the text
    the model reads, so it retires the idle runtime rather than reusing a stale
-   prompt. An edit to a body needs no retirement: the `Skill` tool reads the file
+   prompt. An edit to a body needs no retirement: the `skill` tool reads the file
    at call time.
 4. **Plugin authoring ships as a first-party devkit, not as a plugin.**
    `@pi-desktop/plugin-devkit` owns scaffold, check and pack; three surfaces
-   share that one implementation — the `pi-plugin` CLI, the `PluginScaffold` /
-   `PluginCheck` / `PluginPack` agent tools served from Electron main, and the
+   share that one implementation — the `pi-plugin` CLI, the `scaffold_plugin` /
+   `check_plugin` / `pack_plugin` agent tools served from Electron main, and the
    plugins-page template action.
 5. **The built-in plugin-development skill activates only for plugin
    workspaces** — a `manifest.json` at the workspace root, or a loaded plugin
@@ -70,7 +70,7 @@ giving them the loop — scaffold, run, inspect, package.
   no `.git`/`node_modules`). Those limits are duplicated in TypeScript and Rust
   and must move together.
 - Skill files are read when the model asks for one rather than every prompt, so
-  an edit takes effect on the next `Skill` call and a session that needs no skill
+  an edit takes effect on the next `skill` call and a session that needs no skill
   reads nothing. The catalog metadata is indexed at load time, so renaming a
   skill still needs a reload — which a watched development plugin does on save.
 - A failed hot reload leaves the plugin unloaded but still watched, so the next

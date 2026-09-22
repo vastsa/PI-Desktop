@@ -305,7 +305,7 @@ Namespace: `pi.plugin.*`
 
 Skills are contributed declaratively (`contributes.skills` + `agent.prompt.inject`),
 not invoked by the plugin: the host puts the catalog in the system prompt and the
-model loads a body through the built-in `Skill` tool (D174). Planned, not
+model loads a body through the built-in `skill` tool (D174). Planned, not
 currently exposed: `pi.agent.appendSystemHint(text)`.
 
 ### Background services (requires `background.service`)
@@ -509,7 +509,7 @@ Rules the control encodes:
 - A previously advertised user MCP tool remains routable after transport loss
   or a saved connection edit. The next call re-handshakes the current saved
   server and validates the tool against its fresh list before dispatch; no
-  additional `ToolSearch` is required. Unknown names cannot trigger discovery.
+  additional `tool_search` is required. Unknown names cannot trigger discovery.
 - Enablement and project scope are checked before and after recovery. Removing
   a server or disposing the runtime discards its remembered names; an obsolete
   in-flight handshake cannot restore them. Concurrent calls share a handshake.
@@ -539,7 +539,7 @@ Rules the control encodes:
   enter the catalog. A readable document is never dropped because its title is
   non-ASCII.
 - The description is the catalog summary and the body is fetched only when the
-  model invokes `Skill` (D174, D194).
+  model invokes `skill` (D174, D194).
 
 ## 13. Developer experience
 

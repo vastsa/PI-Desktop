@@ -42,7 +42,7 @@ function fixture(steps: Step[]) {
                 index: 0,
                 id: `call_${requests}`,
                 type: "function",
-                function: { name: "Read", arguments: '{"path":"fixture.txt"}' },
+                function: { name: "read", arguments: '{"path":"fixture.txt"}' },
               },
             ],
           }
@@ -99,7 +99,7 @@ function fixture(steps: Step[]) {
       description: "Read fixture",
       prompt: "Read fixture",
       source: "builtin",
-      tools: ["Read"],
+      tools: ["read"],
     },
     sessionId: "fixture-session",
     parentToolCallId: "task",
@@ -109,7 +109,7 @@ function fixture(steps: Step[]) {
     systemPrompt: "Read and report",
     tools: [
       {
-        name: "Read",
+        name: "read",
         label: "Read",
         description: "Read fixture",
         parameters: Type.Object({ path: Type.String() }),

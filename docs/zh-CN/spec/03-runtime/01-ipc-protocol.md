@@ -977,7 +977,7 @@ type CommandShellCatalog = {
 拒绝未知、不可用或错误的平台 ID。真正有效的外壳
 仅当所有会话和 Plan/Goal 工作空闲时才接受更改。如果一个
 持久化 ID 稍后变得不可用，目录选择第一个可用的
-平台外壳并设置 `fallback: true`；如果没有可用的选择，则 Bash
+平台外壳并设置 `fallback: true`；如果没有可用的选择，则 bash
 返回 `SHELL_NOT_FOUND`。
 每回合固定有效 ID 和方言。运行时传输这两个值；
 主机在权限评估之前和生成之前拒绝更改的引脚

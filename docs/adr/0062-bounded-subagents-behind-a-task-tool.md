@@ -1,4 +1,4 @@
-# ADR 0062: Bounded Subagents Behind a Task Tool
+# ADR 0062: Bounded Subagents Behind a `task` Tool
 
 
 - Status: Accepted for implementation (definition roots amended by ADR 0112;
@@ -58,17 +58,17 @@ bounds are defined by ADR 0119.
 ### 2. A definition declares its tools, and is read-only when it does not
 
 `tools` may only name file, search and shell tools
-(`SUBAGENT_ASSIGNABLE_TOOLS`: Read, Glob, Grep, BrowserPreview, Bash, Edit,
-Write). Plugin, skill, mode and meta tools are out of reach: a delegate is a
+(`SUBAGENT_ASSIGNABLE_TOOLS`: read, glob, grep, browser_preview, bash, edit,
+write). Plugin, skill, mode and meta tools are out of reach: a delegate is a
 bounded worker, not a second full session. A definition that omits `tools` gets
-`Read, Glob, Grep`, and `tools: "*"` expands to the assignable set rather than to
+`read, glob, grep`, and `tools: "*"` expands to the assignable set rather than to
 everything the session has. A delegate never inherits mutation rights from the
 parent session — write capability comes only from its own declaration.
 
 Every delegate tool call goes through the same `tools.execute` host path as the
 parent's, so containment, permission modes and hard denies are unchanged. A
 delegate cannot ask the model-facing questions the parent can: no plan or goal
-submission, no mode transition, no nested `Task`.
+submission, no mode transition, no nested `task`.
 
 ### 3. A definition may pin its own provider and model
 
@@ -79,25 +79,25 @@ credentials and the pi model catalog live, and are capped at
 UUIDs, a pin matches on id, vendor key or display name.
 
 An unresolvable pin (no matching provider, no API key) is left out of the
-binding map instead of falling back to the session provider, and the `Task` call
+binding map instead of falling back to the session provider, and the `task` call
 fails with a tool error naming the pin. A definition that asks for a cheap model
 must never silently spend the expensive one.
 
 ### 4. Delegation is one Agent-mode tool, and parallel by construction
 
-The `Task` tool takes `agent`, `task` and an optional short `description`. The
+The `task` tool takes `agent`, `task` and an optional short `description`. The
 catalog of available delegates rides in the tool description rather than the
 system prompt, because the two change together.
 
-`Task` is offered only in Agent mode. Plan and Goal are read-only contract
-negotiations (D198), and a delegate with Bash or Edit would drive straight
+`task` is offered only in Agent mode. Plan and Goal are read-only contract
+negotiations (D198), and a delegate with bash or edit would drive straight
 through one.
 
 Concurrency is expressed through pi's execution modes: the session Agent runs
 with `toolExecution: "parallel"`, every catalog tool carries
-`executionMode: "sequential"`, and `Task` alone carries `"parallel"`. pi runs a
+`executionMode: "sequential"`, and `task` alone carries `"parallel"`. pi runs a
 batch sequentially as soon as it contains one sequential tool, so the only batch
-that fans out is a batch of nothing but `Task` calls. Existing tool ordering
+that fans out is a batch of nothing but `task` calls. Existing tool ordering
 guarantees are untouched. Fan-out is capped at `MAX_SUBAGENT_CONCURRENCY` (4)
 by a semaphore. Delegate runtime bounds are the event-driven idle and
 total-duration watchdogs in ADR 0119; an explicit per-definition `maxTurns`
@@ -117,7 +117,7 @@ retry storm.
 ### 5. The parent's context gains the report, and only the report
 
 A `SubagentRun` is a second pi `Agent` in the same sidecar process. Its final
-message, bounded to `MAX_SUBAGENT_REPORT_CHARS` (12k), becomes the `Task` tool
+message, bounded to `MAX_SUBAGENT_REPORT_CHARS` (12k), becomes the `task` tool
 result, with `agent`, `status`, `turns`, `toolCalls` and `usage` as structured
 details.
 
@@ -136,13 +136,13 @@ timeout policy and `timed_out` outcome.
 
 host-core stores `parentToolCallId` and `agentName` in the message `meta`
 object, so a reloaded session nests identically to a live one. The renderer
-groups every attributed row under the `Task` row that spawned it and renders
+groups every attributed row under the `task` row that spawned it and renders
 them one level in; the turn stream and the minimap see only the parent's rows.
-The report is printed once: in the `Task` body when the delegate produced no
+The report is printed once: in the `task` body when the delegate produced no
 answer row, as the nested answer row otherwise.
 
-Every `Task` call in an activity group is drawn as a delegation summary, a lone
-one included (D265). Consecutive `Task` starts are the only rows in that group
+Every `task` call in an activity group is drawn as a delegation summary, a lone
+one included (D265). Consecutive `task` starts are the only rows in that group
 (D319): parent thinking, workspace tools, and lifecycle rows stay in ordinary
 processing groups around the card. Its header derives agent count, settled count, elapsed time
 and aggregate status from those same tool messages; its expanded body renders a
@@ -157,7 +157,7 @@ parent summary it does not own.
 ### 7. Permission requests queue per session
 
 The renderer used to hold one pending permission per session. Parallel delegates
-break that: two delegates can each be waiting on a `Bash` call. Pending requests
+break that: two delegates can each be waiting on a `bash` call. Pending requests
 become a per-session queue, oldest first. Only the head is answerable, answers
 are matched by request id so a late answer cannot clear a successor, a
 host-expired request is removed by tool call id from anywhere in the queue, and

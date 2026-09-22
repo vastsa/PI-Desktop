@@ -2,7 +2,7 @@
  * In-memory chain registry for resumable delegations (ADR 0279).
  *
  * The registry is rebuilt from the session transcript at launch, then updated
- * as `Task` calls settle. It never appears in a tool parameter: the parent
+ * as `task` calls settle. It never appears in a tool parameter: the parent
  * only ever passes a `delegationId`, and the reverse map finds the chain.
  */
 

@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
+import { SKILL_TOOL_NAME } from "@pi-desktop/agent-runtime";
+import { DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, normalizeToolName, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
 import type { ProcessExitHandler, StderrHandler } from "./host-process.js";
 
 // stderr lines kept per sidecar so an unexpected exit can be reported with the
@@ -121,6 +122,22 @@ export type AgentSidecarOptions = {
  * host registers (local tools, project instructions, vendor auth, trusted
  * extensions).
  */
+/**
+ * Host-local tools Plan mode refuses outright, because a host-local handler
+ * runs outside host-core's permission boundary. `browser_preview` is the one
+ * read-only exception and the caller lets it through (D100).
+ *
+ * `skill` comes from the runtime's own constant; the check / scaffold / pack
+ * trio has no shared constant, so it is named here once rather than spelled
+ * out at every comparison.
+ */
+const PLAN_LOCAL_TOOL_NAMES: readonly string[] = [
+  SKILL_TOOL_NAME,
+  "check_plugin",
+  "scaffold_plugin",
+  "pack_plugin",
+];
+
 export class AgentSidecar {
   private child: ChildProcessWithoutNullStreams;
   private pending = new Map<
@@ -269,7 +286,7 @@ export class AgentSidecar {
     if (this.localToolControllers.has(key)) throw new Error("duplicate local tool call");
     const controller = new AbortController();
     this.localToolControllers.set(key, controller);
-    const imageGeneration = params.toolName === "GenerateImages";
+    const imageGeneration = params.toolName === "generate_images";
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
@@ -305,8 +322,15 @@ export class AgentSidecar {
   }
 
   /** Register a tool the sidecar can call that the embedding host handles locally. */
+  /**
+   * Register a tool the embedding host serves itself.
+   *
+   * The registry is keyed by the canonical tool name, so a host that still
+   * registers its bridge under the pre-rename spelling (`BrowserPreview`)
+   * keeps working while the runtime asks for `browser_preview` (D620).
+   */
   setLocalTool(name: string, handler: LocalToolHandler): void {
-    this.localTools.set(name, handler);
+    this.localTools.set(normalizeToolName(name), handler);
   }
 
   setProjectInstructionResolver(resolver: ProjectInstructionResolver): void {
@@ -469,16 +493,13 @@ export class AgentSidecar {
         const params = (msg.params?.params ?? {}) as Record<string, unknown>;
         const requestedToolName = String(params.toolName ?? "");
         const planLocalTool =
-          requestedToolName === "Skill" ||
-          requestedToolName === "PluginCheck" ||
-          requestedToolName === "PluginScaffold" ||
-          requestedToolName === "PluginPack" ||
+          PLAN_LOCAL_TOOL_NAMES.includes(requestedToolName) ||
           requestedToolName.startsWith("plugin_");
         if (
           method === "tools.execute" &&
           params.mode === "plan" &&
           planLocalTool &&
-          requestedToolName !== "BrowserPreview"
+          requestedToolName !== "browser_preview"
         ) {
           throw Object.assign(
             new Error(`${requestedToolName} is unavailable in Plan mode`),
@@ -545,7 +566,7 @@ export class AgentSidecar {
           // other host-local tool fails closed even if a stale runtime asks for
           // it directly.
           const result =
-            params.mode === "plan" && toolName !== "BrowserPreview"
+            params.mode === "plan" && toolName !== "browser_preview"
               ? {
                   ok: false,
                   isError: true,

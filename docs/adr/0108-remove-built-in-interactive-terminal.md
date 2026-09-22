@@ -16,11 +16,11 @@
 
 The work panel previously included an interactive shell backed by a PTY in
 Electron Main and a terminal renderer in the work-panel UI. That surface was
-separate from the agent's non-interactive `Bash` tool, but it added a native
+separate from the agent's non-interactive `bash` tool, but it added a native
 module, renderer dependencies, terminal-specific IPC, packaging rules, and a
 second shell lifecycle to the desktop application.
 
-The product does not need to own an interactive shell to keep Agent Bash
+The product does not need to own an interactive shell to keep Agent bash
 useful. Users who need an interactive shell can use the external terminal
 provided by their operating system or development environment, while command
 invocations and bounded output remain visible in the conversation.
@@ -31,7 +31,7 @@ invocations and bounded output remain visible in the conversation.
    plugin-contributed views including the bundled Files and Browser views
    (ADR 0170), file tabs opened by conversation artifacts, and the Review tab
    the user opens themselves (D451).
-2. Keep Agent Bash unchanged. It remains a permission-aware, non-interactive
+2. Keep Agent bash unchanged. It remains a permission-aware, non-interactive
    agent tool whose command, output, status, copy behavior, and `IconTerminal`
    presentation stay in the transcript. Generic lifecycle values such as
    `"terminal"` in plan refresh state are unrelated and remain valid.
@@ -43,7 +43,7 @@ invocations and bounded output remain visible in the conversation.
    access is intentionally delegated to an external terminal, and no new
    plugin permission or private bundled-plugin channel is introduced.
 5. Do not increment the frozen desktop protocol version. The removed channels
-   were desktop IPC additions; Agent Bash, host RPC, and the shared lifecycle
+   were desktop IPC additions; Agent bash, host RPC, and the shared lifecycle
    protocol remain unchanged.
 
 ## Consequences
@@ -52,7 +52,7 @@ invocations and bounded output remain visible in the conversation.
   empty state lists the Review row, Browser, and in-scope plugin views.
 - Desktop packaging no longer carries the PTY native module or terminal
   renderer dependencies, reducing native build and release surface.
-- Interactive shell workflows require an external terminal. Agent Bash remains
+- Interactive shell workflows require an external terminal. Agent bash remains
   the in-app path for bounded, model-directed command execution.
 - Historical D099/D249 records remain useful as history, but their terminal
   implementation and retention clauses are superseded by this decision.
@@ -69,8 +69,8 @@ surface the product no longer needs to own.
 Rejected: a plugin PTY permission would grant arbitrary execution as the user,
 and a bundled-only channel would create a private trust-boundary exception.
 
-### Turn Agent Bash into an interactive terminal
+### Turn Agent `bash` into an interactive terminal
 
-Rejected: Bash is intentionally bounded, permission-aware, and transcript-
+Rejected: bash is intentionally bounded, permission-aware, and transcript-
 owned. Changing it into a long-lived interactive session would alter the agent
 protocol and security model rather than simply removing the work-panel surface.

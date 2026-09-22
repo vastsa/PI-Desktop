@@ -6,13 +6,13 @@ Make high-risk local actions visible, interruptible, and predictable.
 
 ## 2. Mode matrix
 
-| Mode | Read/Glob/Grep | BrowserPreview | Write/Edit | Bash | Plugins |
+| Mode | `read`/`glob`/`grep` | `browser_preview` | `write`/`edit` | `bash` | Plugins |
 |---|---|---|---|---|---|
 | Agent | allow | allow | permission policy | permission policy | registered risk policy |
 | Plan | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | deny |
 | Goal | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | deny |
 
-The Read/Glob/Grep `allow` cells apply to paths inside the session workspace
+The read/glob/grep `allow` cells apply to paths inside the session workspace
 and scratch roots. An explicit path outside both roots is an exception:
 `auto` allows it, while `ask` and `accept-edits` show the same inline card as
 other permission-gated tools. The card's argument preview includes the
@@ -24,8 +24,8 @@ Plan and Goal keep this permission-mode control visible. Plan exposes the
 effective permission choice; Goal shows the same chip geometry with a fixed
 Auto label in the Composer and does not open a menu. Goal's approval card is
 the separate place to choose the execution permission for the approved run.
-They are contract intents, not strict read-only security profiles: a Bash
-command can mutate workspace or scratch state under Auto. Write/Edit/plugin
+They are contract intents, not strict read-only security profiles: a bash
+command can mutate workspace or scratch state under Auto. write/edit/plugin
 tools are denied by the host before a permission card, regardless of grants or
 Auto.
 
@@ -144,7 +144,7 @@ the permission runtime.
 ## 9. Plan and Goal contract approval card
 
 Plan and Goal approval are not generic tool permission cards. They are rendered
-inline in the originating session after `SubmitPlan(...)` or `SubmitGoal(...)`
+inline in the originating session after `submit_plan(...)` or `submit_goal(...)`
 causes host-core to preserve the exact Markdown bytes in a new immutable
 `.pi/plan/*.md` or `.pi/goal/*.md` artifact. The card sits in the transparent
 composer dock, so it paints `--ds-bg-composer` with `--ds-shadow-composer`
@@ -178,8 +178,8 @@ after a full Host/app restart.
 
 ## 10. Acceptance
 
-1. Plan and Goal deny Write/Edit/plugins in every permission mode
-2. Plan and Goal Bash prompt under Ask and Accept edits and run without confirmation
+1. Plan and Goal deny write/edit/plugins in every permission mode
+2. Plan and Goal bash prompt under Ask and Accept edits and run without confirmation
    under Auto, with the mutation tradeoff visible
 3. Agent mode uses the normal high-risk permission policy
 4. timeout becomes deny in UI + tool result
