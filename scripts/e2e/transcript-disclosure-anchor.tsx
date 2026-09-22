@@ -33,7 +33,7 @@ function message(
 /** A tool row whose opened body is far taller than its own header. */
 function toolRowMessage(id: string): UiMessage {
   return message(id, "tool", "done", {
-    toolName: "Bash",
+    toolName: "bash",
     toolCallId: `call-${id}`,
     toolStatus: "success",
     toolArgs: { command: "printf 'step'" },

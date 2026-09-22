@@ -90,14 +90,14 @@ export async function turnProcessProbe() {
     status: "complete",
   });
   const read = message("read", "tool", "read output", {
-    toolName: "Read",
+    toolName: "read",
     toolCallId: "read-call",
     toolStatus: "success",
     toolArgs: { path: "src/example.ts" },
   });
   const progress = message("progress", "assistant", "Found the problem");
   const edit = message("edit", "tool", "edit output", {
-    toolName: "Edit",
+    toolName: "edit",
     toolCallId: "edit-call",
     toolStatus: "success",
     toolArgs: { path: "src/example.ts" },

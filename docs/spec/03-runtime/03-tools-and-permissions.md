@@ -1,7 +1,7 @@
 # 03. Tools and Permissions
 
 > Decisions applied: D003, D004, D005, D006, D013, D015, D093, D114, D115, D181, D186,
-> D189, D190, D195 (ADR 0057), D315, D384 (ADR 0211), D618, D619, ADR 0087
+> D189, D190, D195 (ADR 0057), D315, D384 (ADR 0211), D618, D619, D620, D621, ADR 0087
 
 ## 0. Frozen policy summary
 
@@ -18,6 +18,31 @@
 | `bash` style | non-interactive; selected host catalog shell with streamed output |
 | `edit` contract | line-anchored ops + whole-file `tag`; no `old_string`/`new_string` (ADR 0087) |
 | asktool | interactive multi-question tool; no validity deadline; skipped answers become empty output fields |
+
+## 0.1 Tool names: one canonical spelling (D618)
+
+A tool name is the wire identity of the tool, not its label, and every identity
+listed on this page is lowercase `snake_case`. [23-tool-names.md](23-tool-names.md)
+owns the full contract and the legacy-to-canonical mapping; this section states
+only what a reader of this page has to know.
+
+1. **Model-visible and protocol-visible tool names are lowercase `snake_case`**
+   (`read`, `bash`, `task_wait`). That is the spelling the model emits, the
+   spelling a permission rule matches, the spelling a subagent tool set
+   declares, and the spelling a transcript stores.
+2. **The UI keeps the capitalized display name** (`Read`, `Bash`). It is a label
+   derived from the canonical name — `read` renders as `Read` — and never a
+   second identity: no wire field, permission rule, or tool schema carries it.
+3. **The pre-rename capitalized names are still accepted.** A transcript on
+   disk, a saved `deny` / `allow` rule, a subagent tool whitelist, and an
+   imported archive may still spell a tool the old way; the name is normalized
+   to its canonical form on the way in, so a user has nothing to migrate and
+   stored bytes are never rewritten. An unknown name — a third-party one
+   included — is returned unchanged rather than guessed at.
+4. **Third-party names are not ours to rewrite.** `plugin_*`, `mcp_*`, and any
+   name an MCP server reports keep their own spelling, and such a tool still
+   takes part in the built-in-versus-contributed check under its own identity.
+
 
 ## 1. Goal
 

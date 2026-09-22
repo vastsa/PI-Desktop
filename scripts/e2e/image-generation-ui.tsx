@@ -287,7 +287,7 @@ globalThis.imageGenerationProbe = async () => {
       role: "tool",
       content: "",
       createdAt: "",
-      toolName: "GenerateImages",
+      toolName: "generate_images",
       toolResult: {
         details: {
           kind: "generated-images",

@@ -577,7 +577,7 @@ export function useAppShellRuntime() {
     // Host-pushed toasts (plugin runtime etc.) are informational.
     const offToast = api.onToast((message) => showToast(message));
     // Agent-driven HTML preview: surface the browser tab when the agent
-    // opens a workspace file in the embedded browser (BrowserPreview tool).
+    // opens a workspace file in the embedded browser (browser_preview tool).
     const offBrowserPreview = api.onBrowserPreview((event) => {
       useAppStore
         .getState()

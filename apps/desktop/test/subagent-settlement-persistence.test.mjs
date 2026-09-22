@@ -34,7 +34,7 @@ test("a settled Task snapshot survives outbox recovery with its original turn an
       logger: { app: silent },
     });
     const message = {
-      id: "task-call", role: "tool", toolName: "Task", toolCallId: "task-call",
+      id: "task-call", role: "tool", toolName: "task", toolCallId: "task-call",
       toolArgs: { agent: "explorer", task: "Inspect the code" },
       toolStatus: "success", status: "complete", content: "completed",
       createdAt: "2026-09-13T00:00:00.000Z", toolDurationMs: 5,

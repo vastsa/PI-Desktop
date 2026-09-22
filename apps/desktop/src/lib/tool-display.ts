@@ -1,3 +1,5 @@
+import { CANONICAL_TOOL_NAMES, normalizeToolName } from "@pi-desktop/shared";
+
 export type ToolAction =
   | "read"
   | "list"
@@ -53,6 +55,7 @@ export function formatToolValue(value: unknown): string {
   }
 }
 
+/** The bare tool name: any provider namespace dropped, matched loosely. */
 function bareToolName(toolName?: string): string {
   return (toolName || "")
     .split(".")
@@ -61,16 +64,37 @@ function bareToolName(toolName?: string): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+/**
+ * The canonical identity of a tool call: the provider namespace and surrounding
+ * whitespace dropped, then resolved through the one normalizer
+ * `@pi-desktop/shared` owns (D621).
+ *
+ * `Read`, `READ` and `read` are one tool and all three answer `read`. A name
+ * that is not ours — `plugin_*`, `mcp_*`, an MCP-reported name, a
+ * provider-namespaced `functions.exec_command` — has no canonical spelling to
+ * map to and comes back unchanged. Everything below keys on this value rather
+ * than on whatever spelling happened to reach the transcript.
+ */
+export function canonicalToolName(toolName?: string): string {
+  return normalizeToolName(
+    (toolName || "")
+      .split(".")
+      .pop()!
+      .trim(),
+  );
+}
+
 /** The tool that STARTS a subagent (ADR 0062). The lifecycle tools of ADR 0089
- * (TaskWait/TaskList/TaskStop) drive an existing delegation and are not
+ * (`task_wait`/`task_list`/`task_stop`) drive an existing delegation and are not
  * delegation activity items themselves. */
 export function isDelegationStartTool(toolName?: string): boolean {
-  const bare = bareToolName(toolName);
-  return bare === "task" || bare === "subagent";
+  if (canonicalToolName(toolName) === "task") return true;
+  // A host that namespaces its own delegation tool is matched loosely.
+  return bareToolName(toolName) === "subagent";
 }
 
 /**
- * Which lifecycle tool this row is (ADR 0089), or `null` for the `Task` start
+ * Which lifecycle tool this row is (ADR 0089), or `null` for the `task` start
  * call and every non-delegation tool. The three lifecycle rows report on
  * subagents rather than doing workspace work, so the transcript presents them
  * as subagent rows rather than as generic tool calls (D268).
@@ -80,12 +104,12 @@ export type DelegationLifecycleKind = "wait" | "list" | "stop";
 export function delegationLifecycleKind(
   toolName?: string,
 ): DelegationLifecycleKind | null {
-  switch (bareToolName(toolName)) {
-    case "taskwait":
+  switch (canonicalToolName(toolName)) {
+    case "task_wait":
       return "wait";
-    case "tasklist":
+    case "task_list":
       return "list";
-    case "taskstop":
+    case "task_stop":
       return "stop";
     default:
       return null;
@@ -93,7 +117,13 @@ export function delegationLifecycleKind(
 }
 
 export function getToolAction(toolName?: string): ToolAction {
-  const normalized = (toolName || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  // Identity first (D621): one of our tools is answered from its canonical name,
+  // so `Read`, `read` and `READ` are one row. Anything else keeps the loose
+  // suffix matching below, which is how a plugin or MCP tool that borrows a
+  // familiar verb still gets a sensible presentation.
+  const normalized = canonicalToolName(toolName)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
   const matches = (aliases: string[]) =>
     aliases.some(
       (alias) => normalized === alias || normalized.endsWith(alias),
@@ -123,8 +153,17 @@ export function getToolAction(toolName?: string): ToolAction {
   return "use";
 }
 
+/**
+ * The label the transcript row, the permission card and the tooltip show for a
+ * tool call. Identity is the canonical name; this is only how it is spelled for
+ * a reader, so moving the wire name to lowercase (`read`, `task_wait`) changes
+ * no label at all (D621): `read` → `Read`, `task_wait` → `Task Wait`, and the
+ * legacy `Read` / `TaskWait` spellings render exactly the same.
+ *
+ * A third-party tool keeps its own words (`plugin_tasks_list` → `Tasks List`).
+ */
 export function getToolDisplayName(toolName?: string) {
-  const raw = (toolName || "").replace(/^plugin[_-]/i, "");
+  const raw = canonicalToolName(toolName).replace(/^plugin[_-]/i, "");
   const spaced = raw
     .replace(/[_-]+/g, " ")
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -134,8 +173,26 @@ export function getToolDisplayName(toolName?: string) {
 }
 
 /**
+ * The name to show a user for a tool that is not a transcript row — the
+ * permission prompt, a tooltip, a settings chip. Ours reads as its capitalized
+ * label (`read` → `Read`, `task_wait` → `Task Wait`), which is what the prompt
+ * showed before the wire name moved to lowercase.
+ *
+ * A third-party name is left exactly as the server reported it: rewriting
+ * someone else's identity in a prompt the user is asked to approve would hide
+ * which tool is actually asking.
+ */
+export function getToolPromptName(toolName?: string): string {
+  const raw = (toolName || "").trim();
+  const canonical = canonicalToolName(raw);
+  return CANONICAL_TOOL_NAMES.includes(canonical)
+    ? getToolDisplayName(canonical)
+    : raw;
+}
+
+/**
  * Renders a summarizable argument. A plain string is itself; a list of strings
- * is joined, because `TaskWait`/`TaskStop` summarize by their `delegationIds`
+ * is joined, because `task_wait`/`task_stop` summarize by their `delegationIds`
  * list (ADR 0089) and everything else summarizes by a scalar.
  */
 function summaryText(value: unknown): string {

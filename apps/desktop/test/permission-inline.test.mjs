@@ -54,7 +54,7 @@ function permission(sessionId, requestId, extra = {}) {
     sessionId,
     requestId,
     toolCallId: `tool-${requestId}`,
-    toolName: "Write",
+    toolName: "write",
     argsPreview: { path: `${sessionId}.txt` },
     risk: "high",
     reason: "Modify a workspace file",

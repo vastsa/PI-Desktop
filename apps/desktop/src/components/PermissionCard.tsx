@@ -4,6 +4,7 @@ import {
   permissionSecondsLeft,
   type PendingPermission,
 } from "../lib/pending-permissions";
+import { getToolPromptName } from "../lib/tool-display";
 import { useAppStore } from "../stores/app-store";
 import { buildToolPresentation } from "../lib/tool-presentation";
 import { ToolDetailBlocks } from "./ToolDetails";
@@ -105,7 +106,7 @@ export function PermissionCard({
       <div className="permission-card-prompt">
         <Trans
           i18nKey="permission.allowPrompt"
-          values={{ tool: permission.toolName }}
+          values={{ tool: getToolPromptName(permission.toolName) }}
           components={{ highlight: <span className="text-text-primary" /> }}
         />
       </div>

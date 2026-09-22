@@ -50,7 +50,7 @@ describe("SUBAGENT_PRESETS", () => {
     }
   });
 
-  it("grants Edit/Write only to roles that need them", () => {
+  it("grants edit/write only to roles that need them", () => {
     const fixer = findSubagentPreset("fixer");
     const explorer = findSubagentPreset("explorer");
     const reviewer = findSubagentPreset("code-reviewer");

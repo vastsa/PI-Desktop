@@ -470,14 +470,14 @@ export function createSidecarRuntime({
   });
   // Agent-driven work panel preview (D100): open a workspace HTML file in
   // the embedded browser; live reload keeps it current through later edits.
-  s.setLocalTool("GenerateImages", createImageGenerationTool({ dataDir, getHost: () => runtimeState.host }));
-  s.setLocalTool("BrowserPreview", async ({ args, sessionId }) => {
+  s.setLocalTool("generate_images", createImageGenerationTool({ dataDir, getHost: () => runtimeState.host }));
+  s.setLocalTool("browser_preview", async ({ args, sessionId }) => {
     const raw = String((args as { path?: unknown })?.path ?? "").trim();
     if (!raw) {
       return {
         ok: false,
         isError: true,
-        content: "BrowserPreview: `path` is required.",
+        content: "browser_preview: `path` is required.",
       };
     }
     let root: string | null = null;
@@ -493,14 +493,14 @@ export function createSidecarRuntime({
       return {
         ok: false,
         isError: true,
-        content: "BrowserPreview: no workspace is open.",
+        content: "browser_preview: no workspace is open.",
       };
     }
     if (!resolveLocalFile(raw, root)) {
       return {
         ok: false,
         isError: true,
-        content: `BrowserPreview: "${raw}" does not resolve to an existing file inside the workspace.`,
+        content: `browser_preview: "${raw}" does not resolve to an existing file inside the workspace.`,
       };
     }
     const preview = await browserHost.previewWorkspaceFile(sessionId, raw, root);
@@ -523,13 +523,13 @@ export function createSidecarRuntime({
   // Plugin skills (D174): the model loads a declared skill document by id.
   // Served in main because the plugin runtime — and the plugin directories —
   // live here, not in host-core.
-  s.setLocalTool("Skill", async ({ args, sessionId }) => {
+  s.setLocalTool("skill", async ({ args, sessionId }) => {
     const id = String((args as { id?: unknown })?.id ?? "").trim();
     if (!id) {
       return {
         ok: false,
         isError: true,
-        content: "Skill: `id` is required. Use an id from the Skills section.",
+        content: "skill: `id` is required. Use an id from the Skills section.",
       };
     }
     const projectPath = sessionProjects.get(sessionId) ?? null;
@@ -557,7 +557,7 @@ export function createSidecarRuntime({
       return {
         ok: false,
         isError: true,
-        content: `Skill: ${error instanceof Error ? error.message : String(error)}.${
+        content: `skill: ${error instanceof Error ? error.message : String(error)}.${
           available ? ` Available skills: ${available}.` : ""
         }`,
       };

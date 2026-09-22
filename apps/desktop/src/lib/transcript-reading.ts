@@ -56,7 +56,7 @@ export function transcriptViewMessages(live: UiMessage[], view?: TranscriptView)
   const index = messages.findIndex((message) => message.id === parent.id);
   if (index < 0) return [parent, ...messages];
   if (messages[index] === parent) return messages;
-  // A neighboring page may contain an earlier physical copy of the Task.
+  // A neighboring page may contain an earlier physical copy of the task.
   return messages.map((message) => (message.id === parent.id ? parent : message));
 }
 

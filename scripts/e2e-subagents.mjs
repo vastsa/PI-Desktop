@@ -21,6 +21,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 import { PROTOCOL_VERSION } from "../packages/shared/dist/protocol.js";
+import { normalizeToolName } from "../packages/shared/dist/tool-names.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -135,7 +136,7 @@ try {
   const created = await call("agents.create", {
     name: "Log Reader",
     description: "Read build logs and report the first real failure.",
-    tools: ["Read", "Grep", "Bash"],
+    tools: ["read", "grep", "bash"],
     body: "You are log-reader. Read the log and report the first real failure.\n",
   });
   const record = created.result?.subagent;
@@ -147,7 +148,7 @@ try {
   );
   check(
     "the tool grant round-trips",
-    JSON.stringify(record?.tools) === JSON.stringify(["Read", "Grep", "Bash"]),
+    JSON.stringify(record?.tools) === JSON.stringify(["read", "grep", "bash"]),
     JSON.stringify(record?.tools),
   );
 
@@ -162,7 +163,7 @@ try {
     "the document carries the frontmatter the loader reads",
     /^---\n/.test(document) &&
       /name: log-reader/.test(document) &&
-      /tools: \[Read, Grep, Bash\]/.test(document),
+      /tools: \[read, grep, bash\]/.test(document),
     JSON.stringify(document.split("\n").slice(0, 6).join(" | ")),
   );
 
@@ -353,7 +354,7 @@ try {
   check(
     "builtin explorer keeps its whitelist and does not inherit",
     builtinExplorer?.source === "builtin" &&
-      JSON.stringify(builtinExplorer.tools) === JSON.stringify(["Read", "Glob", "Grep", "Bash"]) &&
+      JSON.stringify(builtinExplorer.tools) === JSON.stringify(["read", "glob", "grep", "bash"]) &&
       builtinExplorer.inheritTools !== true,
     JSON.stringify({ source: builtinExplorer?.source, tools: builtinExplorer?.tools, inheritTools: builtinExplorer?.inheritTools }),
   );
@@ -361,7 +362,7 @@ try {
   check(
     "the UI designer grants preview and editing and inherits permissions",
     JSON.stringify(designer?.tools) ===
-      JSON.stringify(["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Edit", "Write"]) &&
+      JSON.stringify(["read", "glob", "grep", "browser_preview", "bash", "edit", "write"]) &&
       (designer?.permission ?? "inherit") === "inherit",
     JSON.stringify({
       tools: designer?.tools,
@@ -371,14 +372,14 @@ try {
   check(
     "the declared tools survive the round trip to the loader",
     JSON.stringify(byName.get("log-reader")?.tools) ===
-      JSON.stringify(["Read", "Grep", "Bash"]),
+      JSON.stringify(["read", "grep", "bash"]),
     JSON.stringify(byName.get("log-reader")?.tools),
   );
 
   await call("agents.create", {
     name: "explorer",
     description: "My own explorer.",
-    tools: ["Read", "Glob"],
+    tools: ["read", "glob"],
     body: "You are my explorer.\n",
   });
   const merged2 = await loadSubagentDefinitions(projectB, {
@@ -434,6 +435,17 @@ try {
       !("maxTurns" in (legacyDefinition ?? {})) &&
       legacy.diagnostics.length === 0,
     `${legacy.diagnostics.length} diagnostic(s): ${legacy.diagnostics.join(" / ") || "none"}`,
+  );
+
+  // Backward compatibility (D618, D621): a document written before the rename keeps
+  // its stored bytes and still grants the same tools. `Read`/`Glob` resolve
+  // through the one normalizer, so an old whitelist loses no permission to the
+  // rename and never has to be rewritten.
+  const legacyTools = legacyDefinition?.tools ?? [];
+  check(
+    "a pre-rename tool whitelist still resolves to the same grants",
+    legacyTools.map(normalizeToolName).join(",") === "read,glob",
+    JSON.stringify(legacyTools),
   );
   rmSync(legacyDir, { recursive: true, force: true });
 } catch (error) {

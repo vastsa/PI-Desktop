@@ -1480,7 +1480,7 @@ export class PluginRuntime {
 
   /**
    * Read one skill document on demand (the model asks for it by id through the
-   * `Skill` tool). Front matter is stripped so the model sees instructions
+   * `skill` tool). Front matter is stripped so the model sees instructions
    * only, and the size cap is re-checked because the file may have changed
    * since load.
    */

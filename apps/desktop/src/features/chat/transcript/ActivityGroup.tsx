@@ -203,7 +203,7 @@ function activityGroupPropsEqual(
   ) {
     return false;
   }
-  // Text updates rebuild the turn's delegation maps. Only Task groups consume
+  // Text updates rebuild the turn's delegation maps. Only task groups consume
   // those maps; ordinary completed work must retain its render boundary.
   return (
     !previous.items.some(isDelegationActivityItem) ||
@@ -229,14 +229,14 @@ export const ActivityGroup = memo(function ActivityGroup({
   const detailsId = useId();
   const delegateItems = items.filter(isDelegationActivityItem);
   // One delegation reads the same as five: the card is how a delegation is
-  // presented, not a treatment reserved for fan-out. A lone `Task` rendered as
+  // presented, not a treatment reserved for fan-out. A lone `task` rendered as
   // an ordinary tool row hid the outcome, runtime and step count that the card
   // states outright, and made the same work look like two different features.
   const hasSubagentTopology = delegateItems.length > 0;
-  // `Task` rows only ever say "running"; the turn's TaskWait/TaskList/TaskStop
+  // `task` rows only ever say "running"; the turn's task_wait/task_list/task_stop
   // rows carry how each delegate actually ended (ADR 0089). When the lifecycle
-  // tool is in a different activity part (the agent emitted text between Task
-  // and TaskWait), the turn-level statuses computed by the parent give us the
+  // tool is in a different activity part (the agent emitted text between task
+  // and task_wait), the turn-level statuses computed by the parent give us the
   // cross-part view we need.
   const delegationStatuses = turnDelegationStatuses ?? collectDelegationStatuses(items);
   const delegationTimings =
@@ -245,7 +245,7 @@ export const ActivityGroup = memo(function ActivityGroup({
     delegateItems,
     delegationStatuses,
   );
-  // Parent tools after a Task fan-out live in a later activity part (D319), so
+  // Parent tools after a task fan-out live in a later activity part (D319), so
   // this card is not the turn's live tail while its delegates are still running.
   const topologyLive = hasSubagentTopology && subagentSummary.running > 0;
   const live = isActive || topologyLive;

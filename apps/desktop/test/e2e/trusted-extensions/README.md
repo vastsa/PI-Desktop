@@ -25,7 +25,7 @@ What the automated run proves:
 - plugin registration/discovery, capability and permission projection, project
   scope, loaded/error state, and diagnostics (the runtime portion of
   E2E-241/E2E-244);
-- `registerTool` through ToolSearch activation, `tool_call` blocking,
+- `registerTool` through `tool_search` activation, `tool_call` blocking,
   `tool_result` replacement, `before_agent_start`, provider header and request
   hooks, and lifecycle hooks (E2E-242);
 - slash commands in the composer menu and global search, a command with

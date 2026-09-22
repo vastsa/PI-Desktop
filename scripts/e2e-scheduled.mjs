@@ -362,7 +362,7 @@ try {
       assert.equal((await invoke('scheduledList')).tasks[0].enabled,false);
     }
   }
-  assert.ok(model.results.some(result => result.name === 'ScheduledTaskDelete' && result.value.ok));
+  assert.ok(model.results.some(result => result.name === 'scheduled_task_delete' && result.value.ok));
   if (evidence) writeFileSync(join(evidence,'ai-crud.json'),JSON.stringify(model.results,null,2));
   console.log('PASS normal conversation AI tools: discover, create, list, update exact time, preserve UI custom time, delete');
   console.log(

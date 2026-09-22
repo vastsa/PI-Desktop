@@ -76,7 +76,7 @@ test("main forwards the skill catalog and serves the Skill tool locally", () => 
   assert.match(mainSrc, /const pluginSkills = \[/);
   assert.match(mainSrc, /\.\.\.plugins\s*\n?\s*\.getSkills\(\)/);
   assert.match(mainSrc, /\n\s+pluginSkills,\n/);
-  assert.match(mainSrc, /setLocalTool\("Skill"/);
+  assert.match(mainSrc, /setLocalTool\("skill"/);
   assert.match(mainSrc, /loadSkillBody\(id\)/);
 });
 
@@ -132,9 +132,9 @@ test("the built-in skill documents the constraints a plugin author will hit", ()
   assert.match(skillDoc, /^---\n/);
   assert.match(skillDoc, /description: /);
   for (const token of [
-    "PluginScaffold",
-    "PluginCheck",
-    "PluginPack",
+    "scaffold_plugin",
+    "check_plugin",
+    "pack_plugin",
     "agent.prompt.inject",
     "store-only",
     "schemaVersion",
@@ -175,7 +175,7 @@ test("only PluginCheck is available outside agent mode", () => {
 
 test("main registers the three plugin dev tools as local tools", () => {
   assert.match(mainSrc, /registerPluginDevTools\(s, \{/);
-  for (const name of ["PluginScaffold", "PluginCheck", "PluginPack"]) {
+  for (const name of ["scaffold_plugin", "check_plugin", "pack_plugin"]) {
     assert.ok(
       devToolsSrc.includes(`setLocalTool("${name}"`),
       `${name} must be served by main, not host-core`,

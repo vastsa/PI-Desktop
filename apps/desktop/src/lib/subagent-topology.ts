@@ -56,7 +56,7 @@ function asDelegationStatus(value: unknown): SubagentOutcome | null {
     : null;
 }
 
-/** TaskStop listed this row, so a `running` snapshot still means stopped. */
+/** task_stop listed this row, so a `running` snapshot still means stopped. */
 function stoppedEntryStatus(value: unknown): SubagentOutcome {
   const status = asDelegationStatus(value);
   return !status || status === "running" ? "stopped" : status;
@@ -114,10 +114,10 @@ function addTiming(
 }
 
 /**
- * Runtime timing for each delegation, including the initial `Task` start and
+ * Runtime timing for each delegation, including the initial `task` start and
  * the later lifecycle snapshot that carries `completedAt`.
  *
- * A `Task` tool call ends as soon as the background delegate starts, so its
+ * A `task` tool call ends as soon as the background delegate starts, so its
  * `toolDurationMs` is not the delegate's runtime. TaskList/TaskWait/TaskStop
  * repeat the registry timing and are the source of truth for settled nodes.
  */
@@ -177,7 +177,7 @@ export function delegationTimingBounds(
 /**
  * Latest status per delegation id, from Task snapshots and lifecycle results.
  *
- * `Task` returns the moment the delegate starts (ADR 0089), so its own result
+ * `task` returns the moment the delegate starts (ADR 0089), so its own result
  * initially says `running`. The runtime later refreshes that Task row with
  * its terminal status, independently of parent lifecycle polling.
  * TaskWait/TaskList report `details.delegations[]`; TaskStop reports
@@ -186,7 +186,7 @@ export function delegationTimingBounds(
  *
  * When `turnLive` is false the parent turn has ended, so any leftover
  * `running` node is reconstructed as `aborted` (the runtime aborts them at
- * run end). A `TaskStop` snapshot that still says `running` is `stopped`.
+ * run end). A `task_stop` snapshot that still says `running` is `stopped`.
  */
 export function collectDelegationStatuses(
   items: readonly AssistantActivityItem[],
@@ -232,10 +232,10 @@ export function collectDelegationStatuses(
 /**
  * A settled subagent's failure as the runtime reported it.
  *
- * `Task` initially returns when a delegate starts (ADR 0089); its refreshed
+ * `task` initially returns when a delegate starts (ADR 0089); its refreshed
  * terminal snapshot can carry a failure even before the parent polls.
- * `TaskWait`/`TaskList` report `details.delegations[]` and
- * `TaskStop` reports `details.stopped[]`, and those entries do carry
+ * `task_wait`/`task_list` report `details.delegations[]` and
+ * `task_stop` reports `details.stopped[]`, and those entries do carry
  * `error: { code, message }` from `SubagentRunResult.error`.
  */
 export type DelegationFailure = {
@@ -307,7 +307,7 @@ export type DelegationRosterEntry = {
  * The subagents a lifecycle row reports on, in the order the runtime listed
  * them.
  *
- * `TaskWait`/`TaskList` report `details.delegations[]` and `TaskStop` reports
+ * `task_wait`/`task_list` report `details.delegations[]` and `task_stop` reports
  * `details.stopped[]`; both carry the agent name and status, which is what a
  * reader needs. Without this the row could only show its `delegationIds`
  * argument, which is a list of bare UUIDs (D268).
@@ -407,7 +407,7 @@ export function subagentOutcome(
  * Whether a running delegation is still being created rather than already
  * executing.
  *
- * The parent `Task` call returns its structured handle (`delegationId`,
+ * The parent `task` call returns its structured handle (`delegationId`,
  * `startedAt`) only at its own `tool_end` (ADR 0089). Until that result
  * arrives the row is `toolStatus: "running"` with no delegation payload: the
  * delegate runtime is still spawning and the UI cannot resolve a stable

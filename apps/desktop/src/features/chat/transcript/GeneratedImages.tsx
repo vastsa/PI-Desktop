@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import type { UiMessage } from "@pi-desktop/shared";
 import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-data-url";
 import { toolResultPayload } from "../../../lib/tool-presentation";
+import { canonicalToolName } from "../../../lib/tool-display";
 import { useOpenChatFileRef } from "../../../hooks/use-preview-target";
 import { useAppStore } from "../../../stores/app-store";
 import { Button } from "../../../components/ui";
@@ -38,7 +39,7 @@ function ImageResult({
 
 export function GeneratedImages({ message }: { message: UiMessage }) {
   const { t } = useTranslation();
-  if (message.toolName !== "GenerateImages") return null;
+  if (canonicalToolName(message.toolName) !== "generate_images") return null;
   const payload = toolResultPayload(message);
   const record =
     payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;

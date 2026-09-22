@@ -99,7 +99,7 @@ export type ToolPresentationOptions = {
   /** Drop the argument the collapsed row already shows as its summary. */
   hideSummaryArg?: boolean;
   /**
-   * Drop a delegate's report from a `Task` body. The transcript nests the
+   * Drop a delegate's report from a `task` body. The transcript nests the
    * delegate's own rows under the call, and its last answer row already is the
    * report, so showing both would print it twice (ADR 0062).
    */
@@ -165,7 +165,7 @@ export function toolResultPayload(message: ToolPresentationMessage): unknown {
 
 /**
  * A delegate's report. `toolResultPayload` prefers the `details` object, which
- * for `Task` holds only counters, so the report has to be read from the text
+ * for `task` holds only counters, so the report has to be read from the text
  * blocks of the raw envelope.
  */
 function delegateReport(message: ToolPresentationMessage): string | null {
@@ -360,7 +360,7 @@ function filesBlock(paths: string[], label?: string): ToolBlock | null {
   };
 }
 
-/** Group Grep hits by file so repeated paths collapse into one heading. */
+/** Group grep hits by file so repeated paths collapse into one heading. */
 function matchesBlock(hits: unknown[]): ToolBlock | null {
   const groups: ToolMatchGroup[] = [];
   let total = 0;
@@ -391,7 +391,7 @@ function stringArray(value: unknown): string[] | null {
     : null;
 }
 
-/** Grep's `count` output mode: one row per file, `path` → number of hits. */
+/** grep's `count` output mode: one row per file, `path` → number of hits. */
 function countsBlock(value: unknown): ToolBlock | null {
   if (!Array.isArray(value)) return null;
   const rows: ToolFieldRow[] = [];

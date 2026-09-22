@@ -77,7 +77,7 @@ await tool("pi_agent_prompt", { sessionId, content: "run bash please" });
 await waitForTurn(sessionId);
 detail = await tool("pi_session_get", { id: sessionId });
 messages = detail?.session?.messages ?? [];
-const bashRow = messages.find((m) => m.role === "tool" && m.toolName === "Bash");
+const bashRow = messages.find((m) => m.role === "tool" && m.toolName === "bash");
 check("Bash blocked by extension", JSON.stringify(bashRow ?? {}).includes("E2E blocked bash"), JSON.stringify(bashRow?.content ?? bashRow).slice(0, 160));
 
 // 3) plugin rows carry the agent-extension state and diagnostics (E2E-241 / 244)

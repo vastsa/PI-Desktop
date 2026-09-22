@@ -1,12 +1,14 @@
-import type {
-  DiffHunk,
-  ReviewChange,
-  ReviewChangeState,
-  ReviewChangeStatus,
-  UiMessage,
+import {
+  normalizeToolName,
+  type DiffHunk,
+  type ReviewChange,
+  type ReviewChangeState,
+  type ReviewChangeStatus,
+  type UiMessage,
 } from "@pi-desktop/shared";
 
-const REVIEW_CHANGE_TOOLS = new Set(["Write", "Edit"]);
+
+const REVIEW_CHANGE_TOOLS = new Set(["write", "edit"]);
 const REVIEW_CHANGE_STATUSES = new Set<ReviewChangeStatus>([
   "added",
   "modified",
@@ -83,7 +85,7 @@ export function reviewChangeFromMessage(message: UiMessage): ReviewChange | null
   if (
     message.role !== "tool" ||
     message.toolStatus !== "success" ||
-    !REVIEW_CHANGE_TOOLS.has(message.toolName || "")
+    !REVIEW_CHANGE_TOOLS.has(normalizeToolName(message.toolName ?? ""))
   ) {
     return null;
   }

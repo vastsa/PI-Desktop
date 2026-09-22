@@ -6789,3 +6789,48 @@ that was sitting at the bottom — including after the turn had finished.
 - Labels shown to the user keep their capitalized form (`Read`, `Bash`, `Task`) and
   are derived from the canonical name; a display name is never the identity. See
   `03-runtime/23-tool-names.md` and `03-runtime/02-agent-runtime.md`.
+
+## 2026-09-22 — The desktop keeps the label and drops the capitalized identity (D621)
+
+- D618 gave the tool name one canonical spelling and one normalization function.
+  This decision is the desktop half of that contract: the UI stops treating the
+  capitalized spelling as an identity while continuing to show it as a label.
+  `apps/desktop/src/lib/tool-display.ts` resolves every name it is handed to its
+  canonical form first (`canonicalToolName`), so `getToolAction`,
+  `isDelegationStartTool`, `delegationLifecycleKind` and `getToolDisplayName` all
+  answer from the canonical name. The label is built from it — `read` → `Read`,
+  `task_wait` → `Task Wait` — so the rename changed no visible string, and the
+  legacy `Read` / `TaskWait` spellings render exactly the same. A capitalized
+  spelling survives only as input, never as identity.
+- Every place that compared a tool name by equality normalized first, because a
+  comparison that reads the name as a string is a defect the UI would not show:
+  the review change tools (`write` / `edit`), the generated-image row
+  (`generate_images`), the context-inspector grouping key, the desktop RPC
+  timeout budgets (`bash`, `generate_images` in
+  `packages/shared/src/rpc-timeouts.ts` — leaving these would have silently
+  dropped the shell and image-batch deadlines to the generic one), the subagent
+  whitelists and presets in `packages/shared`, and the local tools Electron main
+  registers (`skill`, `browser_preview`, `generate_images`, `check_plugin`,
+  `scaffold_plugin`, `pack_plugin`).
+- A local tool is registered under the name the model calls, so
+  `sidecar.setLocalTool(...)` and `registerPluginDevTools` use the canonical
+  names, and their model-facing error text leads with that same name
+  (`browser_preview: \`path\` is required.`) instead of a name no tool answers to.
+  The permission prompt is the one surface that must not rename anybody:
+  `getToolPromptName` shows our own tools under their capitalized label and
+  leaves a third-party `plugin_*` / `mcp_*` name exactly as the server reported
+  it.
+- Backward compatibility is proven rather than asserted: `packages/shared`'s
+  subagent parser keeps a document written as `tools: [Read, Glob]` (and a
+  `resolveSubagentToolNames` case where a legacy parent `Read` dedupes onto the
+  canonical `read`), `apps/desktop/test/tool-name-compat.test.mjs` pins that each
+  legacy spelling and its canonical form produce the same action, the same
+  label, and the same review recognition, and `scripts/e2e-subagents.mjs` checks
+  that a pre-rename whitelist still resolves to the same grants.
+- i18n needed no change: its tool strings are keyed by the row's action
+  (`chat.toolRead` → "Read" / "读取"), not by a tool name, so the English labels
+  that look like tool names are copies of the display label and stay capitalized.
+  The docs keep the same split — wire identities are lowercase on the spec pages,
+  while the transcript and permission-card labels stay capitalized and are
+  described as labels. See ADR 0304, `03-runtime/23-tool-names.md` section 5, and
+  `03-runtime/03-tools-and-permissions.md` section 0.1.

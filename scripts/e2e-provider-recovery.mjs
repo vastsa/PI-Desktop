@@ -109,7 +109,7 @@ const server = createServer(async (req, res) => {
           id: `call_${toolResults}`,
           type: "function",
           function: {
-            name: "Read",
+            name: "read",
             arguments: JSON.stringify({
               path: join(artifacts, "workspace", "fixture.txt"),
             }),

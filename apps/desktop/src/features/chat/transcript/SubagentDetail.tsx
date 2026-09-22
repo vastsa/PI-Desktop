@@ -154,7 +154,7 @@ export function SubagentDetail({
   const thinkingLabel = thinkingLevel ?? "";
   const modelLabel = [modelId, thinkingLabel].filter(Boolean).join(" ");
   const outcome = subagentOutcome(message, delegationStatuses);
-  // A bare `running` Task row (no delegation handle yet) is still being
+  // A bare `running` task row (no delegation handle yet) is still being
   // created: the delegate runtime is spawning. Name that phase explicitly
   // instead of a generic running state, and keep the badge class distinct.
   const creating = outcome === "running" && delegationIsCreating(message);
@@ -328,7 +328,7 @@ export function SubagentDetail({
  * A truthful one-level graph of one parent fan-out (ADR 0062).
  *
  * The runtime has no delegate-to-delegate edges, so this deliberately stops at
- * main agent -> Task nodes instead of implying dependencies that do not exist.
+ * main agent -> task nodes instead of implying dependencies that do not exist.
  */
 export function SubagentTopology({
   items,

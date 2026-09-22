@@ -48,7 +48,7 @@ test("unwraps the pi-ai envelope exactly once", () => {
 test("Read renders file content as code with a path-derived language", () => {
   const blocks = buildToolPresentation(
     {
-      toolName: "Read",
+      toolName: "read",
       toolArgs: { path: "src/App.tsx" },
       toolResult: envelope({
         path: "src/App.tsx",
@@ -69,7 +69,7 @@ test("Read renders file content as code with a path-derived language", () => {
 
 test("Write shows the written content and a size chip", () => {
   const message = {
-    toolName: "Write",
+    toolName: "write",
     toolArgs: { path: "notes.md", content: "# Title\n" },
     toolResult: envelope({ path: "notes.md", root: "workspace", bytes: 2048 }),
   };
@@ -88,7 +88,7 @@ test("Edit shows the stated ops when no review card owns the diff", () => {
     ops: "PUT 2.=2:\n+const b = 3;\n",
   };
   const scratch = buildToolPresentation({
-    toolName: "Edit",
+    toolName: "edit",
     toolArgs: args,
     toolResult: envelope({ path: "src/main.ts", root: "scratch", tag: "C3D4" }),
   });
@@ -99,7 +99,7 @@ test("Edit shows the stated ops when no review card owns the diff", () => {
   // A workspace edit with a review snapshot: ReviewChangeCard owns the diff.
   const reviewed = buildToolPresentation({
     role: "tool",
-    toolName: "Edit",
+    toolName: "edit",
     toolStatus: "success",
     toolArgs: args,
     toolResult: envelope({
@@ -125,7 +125,7 @@ test("Edit shows the stated ops when no review card owns the diff", () => {
 
 test("Bash keeps its channels apart and leaves the command to the head", () => {
   const message = {
-    toolName: "Bash",
+    toolName: "bash",
     toolArgs: { command: "pnpm test" },
     toolResult: envelope({
       exitCode: 1,
@@ -153,7 +153,7 @@ test("Bash keeps its channels apart and leaves the command to the head", () => {
 test("Bash progress output renders in the stdout channel before completion", () => {
   const progress = buildToolPresentation(
     {
-      toolName: "Bash",
+      toolName: "bash",
       toolStatus: "running",
       toolArgs: { command: "for i in 1 2 3; do echo $i; done" },
       toolResult: envelope({ output: "1\n2\n" }),
@@ -167,7 +167,7 @@ test("Bash progress output renders in the stdout channel before completion", () 
   // this prevents a stale progress snapshot from winning after tool_end.
   const completed = buildToolPresentation(
     {
-      toolName: "Bash",
+      toolName: "bash",
       toolStatus: "success",
       toolArgs: { command: "echo done" },
       toolResult: envelope({ output: "stale\n", stdout: "done\n" }),
@@ -178,7 +178,7 @@ test("Bash progress output renders in the stdout channel before completion", () 
 
   const completedEmpty = buildToolPresentation(
     {
-      toolName: "Bash",
+      toolName: "bash",
       toolStatus: "success",
       toolArgs: { command: ":" },
       toolResult: envelope({ output: "stale\n", stdout: "" }),
@@ -191,7 +191,7 @@ test("Bash progress output renders in the stdout channel before completion", () 
 test("the run outcome comes from the exit code, not from the call's status", () => {
   const run = (details, toolStatus) =>
     runOutcome({
-      toolName: "Bash",
+      toolName: "bash",
       toolArgs: { command: "pnpm test" },
       ...(details === null ? {} : { toolResult: envelope(details) }),
       ...(toolStatus ? { toolStatus } : {}),
@@ -212,7 +212,7 @@ test("the run outcome comes from the exit code, not from the call's status", () 
 
 test("a command that prints nothing does not fall back to its arguments", () => {
   const message = {
-    toolName: "Bash",
+    toolName: "bash",
     toolArgs: { command: "true", description: "check the exit code" },
     toolResult: envelope({ exitCode: 0, stdout: "", stderr: "" }),
   };
@@ -224,7 +224,7 @@ test("a command that prints nothing does not fall back to its arguments", () => 
 
 test("a clean run omits empty channels and the exit chip", () => {
   const message = {
-    toolName: "Bash",
+    toolName: "bash",
     toolArgs: { command: "true" },
     toolResult: envelope({ exitCode: 0, stdout: "", stderr: "" }),
   };
@@ -234,7 +234,7 @@ test("a clean run omits empty channels and the exit chip", () => {
 
 test("Glob lists files and Grep groups hits by path", () => {
   const glob = {
-    toolName: "Glob",
+    toolName: "glob",
     toolArgs: { pattern: "src/**/*.ts" },
     toolResult: envelope({ matches: ["src/a.ts", "src/b.ts"], count: 2 }),
   };
@@ -244,7 +244,7 @@ test("Glob lists files and Grep groups hits by path", () => {
   assert.deepEqual(toolResultChips(glob), [{ role: "files", count: 2 }]);
 
   const grep = {
-    toolName: "Grep",
+    toolName: "grep",
     toolArgs: { pattern: "TODO" },
     toolResult: envelope({
       matches: [
@@ -270,7 +270,7 @@ test("Glob lists files and Grep groups hits by path", () => {
 test("Grep's other output modes and host notices stay readable", () => {
   // outputMode: "filesWithMatches" answers with paths, not hits.
   const paths = {
-    toolName: "Grep",
+    toolName: "grep",
     toolArgs: { pattern: "TODO", outputMode: "filesWithMatches" },
     toolResult: envelope({
       files: ["src/a.ts", "src/b.ts"],
@@ -285,7 +285,7 @@ test("Grep's other output modes and host notices stay readable", () => {
 
   // outputMode: "count" answers with per-file totals.
   const counted = {
-    toolName: "Grep",
+    toolName: "grep",
     toolArgs: { pattern: "TODO", outputMode: "count" },
     toolResult: envelope({
       counts: [
@@ -306,7 +306,7 @@ test("Grep's other output modes and host notices stay readable", () => {
   // A scoping notice qualifies the block it follows and is not error-hued.
   const noticed = buildToolPresentation(
     {
-      toolName: "Glob",
+      toolName: "glob",
       toolArgs: { pattern: "src/**" },
       toolResult: envelope({
         matches: ["src/a.ts"],
@@ -324,7 +324,7 @@ test("Grep's other output modes and host notices stay readable", () => {
 
 test("a paginated Read window shows its line range and notice", () => {
   const message = {
-    toolName: "Read",
+    toolName: "read",
     toolArgs: { path: "big.txt", offset: 200, limit: 2 },
     toolResult: envelope({
       path: "big.txt",
@@ -349,7 +349,7 @@ test("a paginated Read window shows its line range and notice", () => {
 
 test("a complete Read window uses its returned line count, not file size", () => {
   const message = {
-    toolName: "Read",
+    toolName: "read",
     toolArgs: { path: "small.txt" },
     toolResult: envelope({
       path: "small.txt",
@@ -371,7 +371,7 @@ test("a complete Read window uses its returned line count, not file size", () =>
 test("a historical Read without line metadata does not fake a size chip", () => {
   assert.deepEqual(
     toolResultChips({
-      toolName: "Read",
+      toolName: "read",
       toolResult: envelope({
         path: "legacy.txt",
         content: "1: legacy line",
@@ -385,7 +385,7 @@ test("a historical Read without line metadata does not fake a size chip", () => 
 test("a failed tool leads with the error note and keeps the arguments", () => {
   const blocks = buildToolPresentation(
     {
-      toolName: "Read",
+      toolName: "read",
       toolStatus: "error",
       toolArgs: { path: "missing.ts", limit: 20 },
       toolResult: envelope({ error: "no such file", code: "ENOENT" }),
@@ -438,7 +438,7 @@ test("unknown plugin payloads degrade to fields and labeled blocks, not a blob",
 
 test("a string result becomes a single output block", () => {
   const blocks = buildToolPresentation({
-    toolName: "Skill",
+    toolName: "skill",
     toolArgs: { skill: "review" },
     toolResult: "loaded review skill",
   });
@@ -451,17 +451,17 @@ test("a string result becomes a single output block", () => {
 test("no known-tool block ever contains pretty-printed JSON of its payload", () => {
   const messages = [
     {
-      toolName: "Read",
+      toolName: "read",
       toolArgs: { path: "a.ts" },
       toolResult: envelope({ path: "a.ts", content: "x\n", root: "workspace" }),
     },
     {
-      toolName: "Bash",
+      toolName: "bash",
       toolArgs: { command: "ls" },
       toolResult: envelope({ exitCode: 0, stdout: "a\nb\n", stderr: "" }),
     },
     {
-      toolName: "Grep",
+      toolName: "grep",
       toolArgs: { pattern: "x" },
       toolResult: envelope({ matches: [{ path: "a.ts", line: 1, text: "x" }], count: 1 }),
     },
@@ -481,7 +481,7 @@ test("no known-tool block ever contains pretty-printed JSON of its payload", () 
 test("lists and diffs report what they hid instead of dropping it", () => {
   const paths = Array.from({ length: 250 }, (_, i) => `src/f${i}.ts`);
   const blocks = buildToolPresentation({
-    toolName: "Glob",
+    toolName: "glob",
     toolArgs: { pattern: "src/**" },
     toolResult: envelope({ matches: paths, count: paths.length }),
   });
@@ -501,7 +501,7 @@ test("lists and diffs report what they hid instead of dropping it", () => {
 
 test("huge payloads skip syntax highlighting", () => {
   const blocks = buildToolPresentation({
-    toolName: "Read",
+    toolName: "read",
     toolArgs: { path: "huge.ts" },
     toolResult: envelope({
       path: "huge.ts",
@@ -515,7 +515,7 @@ test("huge payloads skip syntax highlighting", () => {
 test("scratch root is badged so the sandboxed target is visible", () => {
   assert.deepEqual(
     toolResultChips({
-      toolName: "Edit",
+      toolName: "edit",
       toolResult: envelope({ path: "t.txt", root: "scratch", tag: "A1B2" }),
     }),
     [{ role: "scratch" }],
@@ -551,7 +551,7 @@ test("diff trims shared context down to the replacement", () => {
   );
   assert.equal(
     buildToolPresentation({
-      toolName: "Edit",
+      toolName: "edit",
       toolArgs: { path: "a.ts", tag: "AAAA", ops: "PUT 1.=1:\n+same\n" },
       toolResult: envelope({ path: "a.ts", root: "scratch", replacements: 0 }),
     }).some((block) => block.kind === "diff"),
@@ -562,7 +562,7 @@ test("diff trims shared context down to the replacement", () => {
 test("a delegation reads as brief in, report out, counters last", () => {
   const blocks = buildToolPresentation(
     {
-      toolName: "Task",
+      toolName: "task",
       toolArgs: {
         agent: "code-reviewer",
         description: "Review the store",
@@ -602,7 +602,7 @@ test("a delegation reads as brief in, report out, counters last", () => {
 
 test("a delegation whose rows are nested does not print the report twice", () => {
   const message = {
-    toolName: "Task",
+    toolName: "task",
     toolArgs: { agent: "code-reviewer", task: "Review the store" },
     toolResult: {
       content: [{ type: "text", text: "Two dead branches." }],
@@ -623,7 +623,7 @@ test("a delegation whose rows are nested does not print the report twice", () =>
 
 test("a failed delegation shows the error, not an empty report", () => {
   const blocks = buildToolPresentation({
-    toolName: "Task",
+    toolName: "task",
     toolArgs: { agent: "ghost", task: "Do the thing" },
     toolStatus: "error",
     toolResult: {
@@ -639,7 +639,7 @@ test("a failed delegation shows the error, not an empty report", () => {
 
 test("a lifecycle row's body is a named roster, not raw JSON (D268)", () => {
   const blocks = buildToolPresentation({
-    toolName: "TaskWait",
+    toolName: "task_wait",
     toolArgs: { delegationIds: ["d1", "d2"] },
     toolResult: {
       content: [{ type: "text", text: "## explorer (d1) — completed\nFound it." }],
@@ -676,7 +676,7 @@ test("a lifecycle row's body is a named roster, not raw JSON (D268)", () => {
 
 test("TaskStop renders its `stopped` roster the same way", () => {
   const blocks = buildToolPresentation({
-    toolName: "TaskStop",
+    toolName: "task_stop",
     toolArgs: {},
     toolResult: {
       content: [{ type: "text", text: "Stopped 1 subagent." }],
@@ -696,7 +696,7 @@ test("a malformed roster degrades instead of rendering blank rows", () => {
   // A partial or hand-written payload must not crash the row or print a table
   // row with no label and no value, which reads as a rendering fault.
   const blocks = buildToolPresentation({
-    toolName: "TaskWait",
+    toolName: "task_wait",
     toolArgs: { delegationIds: ["x"] },
     toolResult: {
       details: {
@@ -711,7 +711,7 @@ test("a malformed roster degrades instead of rendering blank rows", () => {
   // and must not fall back to printing the ids it was called with.
   assert.deepEqual(
     buildToolPresentation({
-      toolName: "TaskWait",
+      toolName: "task_wait",
       toolArgs: { delegationIds: ["x"] },
     }),
     [],

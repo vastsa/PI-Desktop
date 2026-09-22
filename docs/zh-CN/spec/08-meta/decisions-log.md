@@ -4813,3 +4813,33 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
   `details.readFiles` / `details.modifiedFiles` 与摘要的 `<read-files>` 段重新带上真实文件，不再恒为空。
 - 展示给用户的标签保留首字母大写（`Read`、`Bash`、`Task`），并由规范名映射得到；展示名永远不是身份。
   见 `docs/zh-CN/spec/03-runtime/23-tool-names.md` 与 `docs/zh-CN/spec/03-runtime/02-agent-runtime.md`。
+
+## 2026-09-22 —— 桌面端保留标签、不再把大写拼写当身份（D621）
+
+- D618 给了工具名一个规范拼写与一个归一化函数；本决策是这份契约的桌面端一半：UI 不再把大写拼写
+  当作身份，同时继续把它当标签显示。`apps/desktop/src/lib/tool-display.ts` 先把交给它的每个名字
+  解析成规范名（`canonicalToolName`），因此 `getToolAction`、`isDelegationStartTool`、
+  `delegationLifecycleKind` 与 `getToolDisplayName` 全部据规范名作答。标签由规范名推导——`read`
+  显示为 `Read`、`task_wait` 显示为 `Task Wait`——所以本次改名没有改变任何可见字符串，旧的
+  `Read` / `TaskWait` 拼写渲染结果完全相同。大写拼写只作为**输入**存在，不再作为身份。
+- 所有按相等判定工具名的地方都先归一化，因为把名字当字符串比较的写法是 UI 看不出来的缺陷：review
+  变更工具（`write` / `edit`）、生成图片行（`generate_images`）、上下文检查器的分组键、桌面 RPC 超时
+  预算（`packages/shared/src/rpc-timeouts.ts` 里的 `bash` 与 `generate_images`——不改会让 shell 与
+  图片批次的截止时间静默退化成通用值）、`packages/shared` 里的 subagent 白名单与预设，以及 Electron
+  主进程注册的本地工具（`skill`、`browser_preview`、`generate_images`、`check_plugin`、
+  `scaffold_plugin`、`pack_plugin`）。
+- 本地工具以**模型实际调用的名字**注册，因此 `sidecar.setLocalTool(...)` 与
+  `registerPluginDevTools` 使用规范名，它们面向模型的错误文案也以同一个名字开头
+  （`browser_preview: \`path\` is required.`），而不是一个无人应答的旧名。权限确认卡是唯一一个
+  不得改写任何第三方身份的界面：`getToolPromptName` 让我们自己的工具显示首字母大写标签，而把
+  第三方的 `plugin_*` / `mcp_*` 名字完全按服务端上报的样子保留。
+- 向后兼容是被证明的，不是被宣称的：`packages/shared` 的 subagent 解析器保留了一份写成
+  `tools: [Read, Glob]` 的文档用例（以及一个 `resolveSubagentToolNames` 用例：父侧传来的旧名
+  `Read` 会归并到规范名 `read`）；`apps/desktop/test/tool-name-compat.test.mjs` 钉住每个旧拼写与
+  其规范名产生相同的动作、相同的标签与相同的 review 识别；`scripts/e2e-subagents.mjs` 断言一份
+  改名前写下的白名单仍解析出同一组授权。
+- i18n 不需要改动：它的工具文案以该行的**动作**为键（`chat.toolRead` → "Read" / "读取"），不以
+  工具名为键，所以那些看起来像工具名的英文值其实是展示标签的副本，保持首字母大写。文档保持同一条
+  分界——规格页上的线上身份用小写，而 transcript 与权限卡上的标签保持首字母大写并被明确描述为
+  标签。见 ADR 0304、`docs/zh-CN/spec/03-runtime/23-tool-names.md` 第 5 节，以及
+  `docs/zh-CN/spec/03-runtime/03-tools-and-permissions.md` 第 0.1 节。

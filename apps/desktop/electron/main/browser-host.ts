@@ -219,7 +219,7 @@ export class BrowserHost {
   }
 
   /**
-   * Host `BrowserPreview` facade: plugin must be enabled; the guest loads the
+   * Host `browser_preview` facade: plugin must be enabled; the guest loads the
    * workspace file only when that session's chrome is visible (D142).
    */
   async previewWorkspaceFile(

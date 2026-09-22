@@ -33,6 +33,7 @@ import {
   shouldGroupTurnProcess,
 } from "../../../lib/turn-process";
 import { useAppStore } from "../../../stores/app-store";
+import { canonicalToolName } from "../../../lib/tool-display";
 import { Markdown } from "../../../components/Markdown";
 import { IconBranch, IconReview } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
@@ -286,7 +287,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   };
 
   // Collect delegation statuses across ALL activity parts of this turn so that
-  // a TaskWait in one part can inform the Task cards in a different part.
+  // a task_wait in one part can inform the task cards in a different part.
   const turnAllActivityItems = useMemo(
     () =>
       entry.parts.flatMap((part) =>
@@ -379,7 +380,7 @@ export const AssistantTurn = memo(function AssistantTurn({
         ) : (
           entry.parts.map(renderPart)
         )}
-        {turnAllActivityItems.filter((item) => item.kind === "tool" && item.message.toolName === "GenerateImages").map((item) => (
+        {turnAllActivityItems.filter((item) => item.kind === "tool" && canonicalToolName(item.message.toolName) === "generate_images").map((item) => (
           <GeneratedImages key={item.message.id} message={item.message} />
         ))}
         {!isActive && metaMessage ? (

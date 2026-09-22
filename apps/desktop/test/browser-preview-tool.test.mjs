@@ -40,12 +40,12 @@ test("sidecar routes main-local tools before the host-core proxy", () => {
   );
 });
 
-test("main serves BrowserPreview from its originating session workspace", () => {
-  assert.match(mainSource, /s\.setLocalTool\("BrowserPreview"/);
+test("main serves browser_preview from its originating session workspace", () => {
+  assert.match(mainSource, /s\.setLocalTool\("browser_preview"/);
   // The local tool receives session identity from the sidecar and resolves the
   // workspace from that durable session, never from the visible shell project.
   const handler = mainSource.slice(
-    mainSource.indexOf('s.setLocalTool("BrowserPreview"'),
+    mainSource.indexOf('s.setLocalTool("browser_preview"'),
     mainSource.indexOf("sidecar = s;"),
   );
   assert.match(handler, /async \(\{ args, sessionId \}\)/);

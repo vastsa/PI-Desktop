@@ -28,7 +28,7 @@ test("Plan and Goal artifact runtime uses the terminating submit contract", asyn
   assert.match(main, /plans\.claimExecution/);
   assert.match(main, /plans\.finishExecution/);
   assert.match(main, /createNotification/);
-  assert.match(main, /event\.toolName === "SubmitGoal"/);
+  assert.match(main, /planTool === "submit_goal"/);
 
   const resolveStart = main.indexOf("handle(IPC.invoke.plansResolve");
   const resolveSource = main.slice(resolveStart, main.indexOf("handle(IPC.invoke.pluginList", resolveStart));

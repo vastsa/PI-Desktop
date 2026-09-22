@@ -16,7 +16,7 @@ export function delegateAgentName(
   return "";
 }
 
-/** Effective model resolved for this delegation, recorded by the Task result. */
+/** Effective model resolved for this delegation, recorded by the task result. */
 export function delegateModelId(message: UiMessage): string {
   const payload = toolResultPayload(message);
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -26,7 +26,7 @@ export function delegateModelId(message: UiMessage): string {
   return typeof modelId === "string" ? modelId.trim() : "";
 }
 
-/** Effective thinking level resolved for this delegation, from the Task result.
+/** Effective thinking level resolved for this delegation, from the task result.
  * `off` and `omit` deliberately have no visible suffix. */
 export function delegateThinkingLevel(message: UiMessage): ThinkingLevel | undefined {
   const payload = toolResultPayload(message);
