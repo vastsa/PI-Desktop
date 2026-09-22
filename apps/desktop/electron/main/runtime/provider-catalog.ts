@@ -180,8 +180,14 @@ export function createProviderCatalogRuntime({
     ) as T & { defaultCommandShell?: unknown };
     return {
       ...(value as T),
-      infiniteProviderRetry: (value as T & { infiniteProviderRetry?: unknown })
-        .infiniteProviderRetry === true,
+      // Only emit the key when it is actually on. Writing `undefined` would
+      // leave the key present, which the write validator below then rejects
+      // as "not a boolean" — that would block every unrelated settings save
+      // for an install that never stored the flag.
+      ...((value as T & { infiniteProviderRetry?: unknown })
+        .infiniteProviderRetry === true
+        ? { infiniteProviderRetry: true }
+        : {}),
       defaultCommandShell: isCommandShellId(value.defaultCommandShell)
         ? value.defaultCommandShell
         : defaultCommandShellForPlatform(process.platform),
@@ -205,8 +211,10 @@ export function createProviderCatalogRuntime({
         errorCode: ErrorCodes.COMMAND_SHELL_INVALID,
       });
     }
+    // `undefined` means "not stored" (an older build never wrote the flag), so
+    // it must pass; only a present non-boolean is rejected.
     if (
-      Object.prototype.hasOwnProperty.call(value, "infiniteProviderRetry") &&
+      value.infiniteProviderRetry !== undefined &&
       typeof value.infiniteProviderRetry !== "boolean"
     ) {
       throw Object.assign(new Error("infiniteProviderRetry is invalid"), {

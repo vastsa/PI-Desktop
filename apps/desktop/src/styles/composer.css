@@ -130,18 +130,145 @@
 }
 
 /* A promoted row ("Send now") starts next: it reads as the head of the queue
-   and locks its own actions until the Host delivers it. */
+   and locks its own actions until the Host delivers it. The accent bar is an
+   inset shadow so it follows the row's rounded corner. */
 .composer-queued-prompt[data-priority="true"] {
   background: var(--ds-bg-elevated);
   box-shadow:
     var(--ds-shadow-composer),
-    inset 2px 0 0 0 var(--ds-accent);
+    inset 3px 0 0 0 var(--ds-accent);
   color: var(--ds-text-primary);
 }
 
 .composer-queued-prompt[data-priority="true"] .composer-queued-prompt-send-now:disabled {
   cursor: default;
   opacity: 0.75;
+}
+
+/* Motion layered on the promoted row, chosen by the queued-prompt animation
+   setting (Settings → appearance). The accent bar itself never moves; each
+   variant only adds decoration on top of it, and every animation stands down
+   under prefers-reduced-motion. */
+[data-queue-animation="bubbles"] .composer-queued-prompt[data-priority="true"],
+[data-queue-animation="glow"] .composer-queued-prompt[data-priority="true"],
+[data-queue-animation="wave"] .composer-queued-prompt[data-priority="true"] {
+  position: relative;
+  overflow: hidden;
+}
+
+[data-queue-animation="bubbles"] .composer-queued-prompt[data-priority="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  background-image:
+    radial-gradient(circle at 3px 12px, var(--ds-accent) 1.6px, transparent 2px),
+    radial-gradient(circle at 9px 24px, var(--ds-accent) 1.1px, transparent 1.6px),
+    radial-gradient(circle at 5px 34px, var(--ds-accent) 1.3px, transparent 1.8px);
+  background-repeat: repeat-y;
+  background-size: 14px 42px;
+  animation: queue-bubbles-rise 3.2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes queue-bubbles-rise {
+  from {
+    background-position:
+      0 0,
+      0 0,
+      0 0;
+  }
+  to {
+    background-position:
+      0 -42px,
+      0 -42px,
+      0 -42px;
+  }
+}
+
+[data-queue-animation="glow"] .composer-queued-prompt[data-priority="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 45%;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--ds-accent) 14%, transparent) 0%,
+    color-mix(in oklab, var(--ds-accent) 5%, transparent) 35%,
+    transparent 75%
+  );
+  animation: queue-glow-sweep 2.2s var(--motion-ease-out) infinite;
+  pointer-events: none;
+}
+
+@keyframes queue-glow-sweep {
+  0% {
+    transform: translateX(-40%);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(240%);
+    opacity: 0;
+  }
+}
+
+[data-queue-animation="wave"] .composer-queued-prompt[data-priority="true"]::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 0;
+  bottom: 0;
+  height: 12px;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='12' viewBox='0 0 96 12' preserveAspectRatio='none'><path d='M0 6 Q 12 -2 24 6 T 48 6 T 72 6 T 96 6' fill='none' stroke='white' stroke-opacity='0.5' stroke-width='1.2'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='72' height='12' viewBox='0 0 72 12' preserveAspectRatio='none'><path d='M0 7 Q 9 1 18 7 T 36 7 T 54 7 T 72 7' fill='none' stroke='white' stroke-opacity='0.32' stroke-width='0.9'/></svg>");
+  background-repeat: repeat-x;
+  background-position:
+    0 bottom,
+    0 bottom;
+  background-size:
+    96px 100%,
+    72px 100%;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 88%, transparent 100%);
+  animation: queue-wave-flow 7s linear infinite;
+  pointer-events: none;
+}
+
+/* The light theme inverts the accent to dark ink; the wave tiles carry a
+   fixed stroke color, so they follow the theme explicitly. */
+:root[data-theme="light"] [data-queue-animation="wave"] .composer-queued-prompt[data-priority="true"]::after {
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='12' viewBox='0 0 96 12' preserveAspectRatio='none'><path d='M0 6 Q 12 -2 24 6 T 48 6 T 72 6 T 96 6' fill='none' stroke='%231a1c1f' stroke-opacity='0.5' stroke-width='1.2'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='72' height='12' viewBox='0 0 72 12' preserveAspectRatio='none'><path d='M0 7 Q 9 1 18 7 T 36 7 T 54 7 T 72 7' fill='none' stroke='%231a1c1f' stroke-opacity='0.32' stroke-width='0.9'/></svg>");
+}
+
+@keyframes queue-wave-flow {
+  from {
+    background-position:
+      0 bottom,
+      0 bottom;
+  }
+  to {
+    background-position:
+      96px bottom,
+      -72px bottom;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-queue-animation="bubbles"] .composer-queued-prompt[data-priority="true"]::after,
+  [data-queue-animation="glow"] .composer-queued-prompt[data-priority="true"]::after,
+  [data-queue-animation="wave"] .composer-queued-prompt[data-priority="true"]::after {
+    display: none;
+  }
 }
 
 /* A locked row action stays visible and explains the state instead of going

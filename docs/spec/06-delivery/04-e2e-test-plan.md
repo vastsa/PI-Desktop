@@ -272,6 +272,17 @@ assertions, or add retries that hide a deterministic failure. When a scenario
 is not automated on the required platform, keep its status documented and
 identify the platform validation still needed.
 
+## Local queued-animation regression (2026-09-22)
+
+- Start with settings that omit `infiniteProviderRetry`; save each
+  `queuedPromptAnimation` option through the renderer bridge and verify host
+  persistence after reload.
+- For `bubbles`, `glow`, and `wave`, the promoted row clips
+  decoration to its rounded bounds; `off` preserves the original static row.
+- With reduced motion enabled, decorative animation is disabled.
+- Restart the local packaged build repeatedly and verify version `0.15.3`
+  stays installed without applying the cached `0.15.2` update.
+
 ## 7. MVP Scenario Catalog
 
 ### Runtime Resource Governance

@@ -192,3 +192,52 @@ test("settings writes validate the mode without changing other preferences", asy
     /thinkingDisplayMode is invalid/,
   );
 });
+
+test("settings writes validate the queued prompt animation", async () => {
+  const { validateSettingsWrite } = await import("../src/lib/api.ts");
+  const settings = { theme: "dark" };
+  for (const queuedPromptAnimation of [
+    "off",
+    "bubbles",
+    "glow",
+    "wave",
+  ]) {
+    const next = { ...settings, queuedPromptAnimation };
+    assert.equal(validateSettingsWrite(next), next);
+  }
+  assert.throws(
+    () => validateSettingsWrite({ ...settings, queuedPromptAnimation: "sparkle" }),
+    /queuedPromptAnimation is invalid/,
+  );
+});
+
+test("the shared resolver defaults the queued prompt animation to off", async () => {
+  const { resolveQueuedPromptAnimation, isQueuedPromptAnimation } = await import(
+    "@pi-desktop/shared"
+  );
+  // Absent or unrecognized means off: the static accent bar alone, which is
+  // the behavior every existing install already has.
+  assert.equal(resolveQueuedPromptAnimation({}), "off");
+  assert.equal(
+    resolveQueuedPromptAnimation({ queuedPromptAnimation: undefined }),
+    "off",
+  );
+  assert.equal(
+    resolveQueuedPromptAnimation({ queuedPromptAnimation: "sparkle" }),
+    "off",
+  );
+  for (const queuedPromptAnimation of [
+    "off",
+    "bubbles",
+    "glow",
+    "wave",
+  ]) {
+    assert.equal(isQueuedPromptAnimation(queuedPromptAnimation), true);
+    assert.equal(
+      resolveQueuedPromptAnimation({ queuedPromptAnimation }),
+      queuedPromptAnimation,
+    );
+  }
+  assert.equal(isQueuedPromptAnimation("sparkle"), false);
+  assert.equal(isQueuedPromptAnimation(42), false);
+});

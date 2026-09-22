@@ -6,6 +6,7 @@ import type { ContextCompactionSettings } from "./sessions.js";
 import type { Mode } from "./common.js";
 import type { GlobalPermissionMode } from "./permissions.js";
 import type { PluginMarketSource } from "./plugins.js";
+import type { QueuedPromptAnimation } from "../queue-animation.js";
 import type { SpeechSettings } from "./speech.js";
 import type { ThinkingLevel } from "./models.js";
 
@@ -85,6 +86,11 @@ export type AppSettings = {
   fontScale?: number;
   /** Transcript presentation only; absent means detailed. Reasoning is retained. */
   thinkingDisplayMode?: "detailed" | "compact";
+  /**
+   * Motion layered on the promoted ("send now pending") queue row. Absent
+   * means `off` — the static accent bar alone.
+   */
+  queuedPromptAnimation?: QueuedPromptAnimation;
   /**
    * @deprecated Unreleased D343 px field. Reads migrate into `fontScale`
    * as `px / 14`; new writes persist `fontScale` instead.
