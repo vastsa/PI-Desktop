@@ -4619,6 +4619,16 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 一旦发生丢弃，会在 `agent` 日志通道上报告一次，带上会话与 id，使下一次同类报障能指向写入方而不只是提供商那句话。
   见 `03-runtime/02-agent-runtime §5`。
 - 守卫刻意放在请求边界而不是历史重建处：这样也能覆盖**会话运行期间**产生的重复，而重建期的过滤看不到它。
+## 2026-09-21 —— `Read` 返回模型可查看的图片（D609，issue #711）
+
+- 扩展名为图片类型（`.png`、`.jpg`、`.jpeg`、`.gif`、`.webp`）的文件不再被当作二进制内容拒绝。`Read` 返回
+  `{path, root, text, images: [{data, mimeType}], fileBytes}`——这正是运行时能转成模型可见图片块的形状，此前却没有
+  任何工具产出它；图片块只在当前模型接受图片时附带，文本两种情况都保留，因此看不到图片的模型会如实说明，而不是编造内容。
+- 由幻数决定类型并必须与扩展名一致：把文本文件改名为 `.png` 仍按 `TOOL_BINARY_CONTENT` 拒绝，因为带着坏图片的请求会整体
+  失败。原始大小超过 3 MB 的图片（base64 膨胀 4/3，最严格的单图上限是编码后 5 MB）以新增的 `TOOL_IMAGE_TOO_LARGE` 拒绝，
+  消息带上大小与替代做法。
+- base64 载荷绝不进入持久化的 UI 消息或转录记录；落库的细节只保留 `imageCount`，与既有附件规则一致。
+  见 `03-runtime/16-tool-result-limits.md` §4 与 `03-runtime/08-error-codes.md`。
 
 ## 2026-09-21 —— 插件崩溃上报带上退出码但不复制原始输出（D607，issue #747）
 

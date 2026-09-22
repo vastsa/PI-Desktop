@@ -166,8 +166,21 @@ type GlobResult = { matches: string[]; count: number; truncated: boolean; notice
    96KB 的进度噪声导致模型盲目重试
 3. 二进制文件：不要将原始二进制文件转储到模型中；返回元数据错误
    `TOOL_BINARY_CONTENT`。通过扩展黑名单加上嗅探来检测
-   第一个 4KB（任何 NUL 字节，或 >30% 不可打印）。 Grep 跳过二进制文件
+   第一个 4KB（任何 NUL 字节，或 >30% 不可打印）。图片类型是例外，会以内联图片块返回（§4a）；
+   扩展名声称是图片但字节并不是图片的文件仍被拒绝。 Grep 跳过二进制文件
    静默地而不是匹配有损解码的字节
+
+**图片读取（issue #711）。** 扩展名为图片类型（`.png`、`.jpg`、`.jpeg`、`.gif`、`.webp`）的文件并不是模型读不了的
+二进制：`Read` 以运行时能转成模型可见图片块的形状返回——`{path, root, text, images: [{data, mimeType}], fileBytes}`，
+其中 `data` 是标准 base64。运行时只在当前模型接受图片（`input`/`modalities` 含 `image`）时附带图片，文本两种情况都保留，
+因此看不到图片的模型也会知道「这里有一张图」，而不是凭空编造内容；base64 载荷绝不进入持久化的 UI 消息或转录记录，只记录
+`imageCount`。
+
+- 由幻数决定类型，且必须与扩展名一致：把文本文件改名为 `.png` 会按 `TOOL_BINARY_CONTENT` 拒绝，而不是当作坏图片发出去
+  （那会让整个请求失败）；
+- 原始大小超过 3 MB 的图片（base64 会膨胀 4/3，而最严格的单图上限是编码后 5 MB）会以 `TOOL_IMAGE_TOO_LARGE` 拒绝，
+  消息带上大小与可执行的替代做法，而不是截成无法阅读的碎片；
+- 其它二进制扩展名保持原有 `TOOL_BINARY_CONTENT` 结果，此后的文本字节嗅探不变。
 4. 比整个预算长的单行会产生字符边界安全前缀
    （或后缀，用于尾部切割），绝不是空的有效负载
 5. 聚合检查点截断必须保留每个提供商有效的助手
@@ -184,7 +197,8 @@ type GlobResult = { matches: string[]; count: number; truncated: boolean; notice
 - [x] Grep 在 `headLimit` 和 `truncated: true` 处停止
 - [x] Grep 和 Read 在 16,384 个字符处剪辑行，且被剪辑的行被排除在 `Edit` 来源集之外
 - [x] Read 对多兆字节文件进行分页而不是拒绝它，报告下一个偏移量，并在填满请求窗口时不设 `truncated`
-- [x] 读取拒绝带有 `TOOL_BINARY_CONTENT` 的二进制内容
+- [x] 读取拒绝带有 `TOOL_BINARY_CONTENT` 的二进制内容；图片类型除外，会为接受图片的模型返回 `{text, images}`
+- [x] 超过内联上限的图片以 `TOOL_IMAGE_TOO_LARGE` 拒绝，扩展名是 `.png` 而字节不是 PNG 时按二进制拒绝
 - [x] 显式 `path` 到达被忽略的树（`node_modules`，溢出目录）
 - [x] Glob 和 Grep 按修改时间对结果进行排序，最新的在前
 - [x] 截断结果仍然有效 UTF-8 文本

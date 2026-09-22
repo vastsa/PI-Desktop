@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use ignore::WalkBuilder;
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
@@ -548,6 +549,50 @@ const BINARY_EXTENSIONS: &[&str] = &[
     "lib", "o", "obj", "odp", "ods", "odt", "pdf", "png", "ppt", "pptx", "pyc", "pyo", "so", "tar",
     "wasm", "war", "webp", "xls", "xlsx", "zip",
 ];
+
+/// Image types this build will inline for a model that can view images. Both
+/// Anthropic-family and OpenAI-family endpoints accept these four.
+const IMAGE_EXTENSION_MIME: &[(&str, &str)] = &[
+    ("png", "image/png"),
+    ("jpg", "image/jpeg"),
+    ("jpeg", "image/jpeg"),
+    ("gif", "image/gif"),
+    ("webp", "image/webp"),
+];
+
+/// Raw bytes above this are not inlined. Base64 inflates by four thirds, and
+/// the strictest per-image ceiling this build talks to is 5 MB encoded, so the
+/// bound has to leave room for the encoding.
+const MAX_INLINE_IMAGE_BYTES: usize = 3 * 1024 * 1024;
+
+/// Public code for an image that is real but too large to inline.
+const TOOL_IMAGE_TOO_LARGE: &str = "TOOL_IMAGE_TOO_LARGE";
+
+fn image_mime_for_extension(extension: &str) -> Option<&'static str> {
+    IMAGE_EXTENSION_MIME
+        .iter()
+        .find(|(ext, _)| *ext == extension)
+        .map(|(_, mime)| *mime)
+}
+
+/// The declared type has to agree with the bytes. A text file renamed `.png`
+/// is not an image, and a request carrying one fails as a whole, so the magic
+/// number decides and the extension is only a hint.
+fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return Some("image/png");
+    }
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    None
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1209,6 +1254,48 @@ fn root_label(root_kind: ToolRoot) -> &'static str {
     }
 }
 
+/// One image, in the shape the runtime turns into a model-visible image block:
+/// `{text, images: [{data, mimeType}]}`. The runtime attaches the image only
+/// when the active model accepts images, and keeps the text either way, so the
+/// text has to stand on its own for a model that cannot see it.
+fn read_image(
+    resolved: &Path,
+    display: &str,
+    root_kind: ToolRoot,
+    size: u64,
+) -> Result<Value, (String, String)> {
+    if size > MAX_INLINE_IMAGE_BYTES as u64 {
+        return Err((
+            TOOL_IMAGE_TOO_LARGE.into(),
+            format!(
+                "{display} is {:.1} MB, above the {} MB bound for reading an image into the model context; ask the user to attach it to the prompt instead, or shrink it first",
+                size as f64 / (1024.0 * 1024.0),
+                MAX_INLINE_IMAGE_BYTES / (1024 * 1024)
+            ),
+        ));
+    }
+    let bytes =
+        std::fs::read(resolved).map_err(|e| ("TOOL_FAILED".into(), format!("read failed: {e}")))?;
+    let Some(mime) = sniff_image_mime(&bytes) else {
+        return Err((
+            "TOOL_BINARY_CONTENT".into(),
+            format!(
+                "{display} has an image extension but its bytes are not a PNG, JPEG, GIF or WebP image"
+            ),
+        ));
+    };
+    Ok(json!({
+        "path": display,
+        "root": root_label(root_kind),
+        "text": format!(
+            "{display} is a {mime} image ({} bytes). It is attached for models that can view images; if you cannot see it, say so rather than guessing at its contents.",
+            bytes.len()
+        ),
+        "images": [{ "data": B64.encode(&bytes), "mimeType": mime }],
+        "fileBytes": bytes.len(),
+    }))
+}
+
 fn tool_read(
     workspace: Option<&Path>,
     scratch: Option<&Path>,
@@ -1261,6 +1348,13 @@ fn tool_read(
         .extension()
         .map(|ext| ext.to_string_lossy().to_lowercase());
     if let Some(ext) = &extension {
+        // An image the model may be shown is a different outcome from a binary
+        // it cannot read: the file has no text, but it does have content, and
+        // the runtime turns this shape into an image block for a model that
+        // accepts one (issue #711).
+        if image_mime_for_extension(ext).is_some() {
+            return read_image(&resolved, &display, root_kind, meta.len());
+        }
         if BINARY_EXTENSIONS.contains(&ext.as_str()) {
             return Err((
                 "TOOL_BINARY_CONTENT".into(),
@@ -3247,6 +3341,91 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    /// A 1x1 PNG, so the fixture is a real image and not a renamed text file.
+    fn tiny_png() -> Vec<u8> {
+        const B64_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AL+2w0AAAAASUVORK5CYII=";
+        B64.decode(B64_PNG).expect("fixture decodes")
+    }
+
+    #[tokio::test]
+    async fn read_returns_an_image_for_the_model_to_view() {
+        let dir = tempfile::tempdir().unwrap();
+        let png = tiny_png();
+        std::fs::write(dir.path().join("shot.png"), &png).unwrap();
+
+        let result = execute_tool(
+            Some(dir.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "shot.png" }),
+            5_000,
+        )
+        .await;
+
+        assert!(
+            result.ok,
+            "an image read is not a failure: {:?}",
+            result.error_code
+        );
+        // The shape the runtime turns into a model-visible image block.
+        let images = result.content["images"]
+            .as_array()
+            .expect("images array is present");
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0]["mimeType"], "image/png");
+        assert_eq!(
+            images[0]["data"].as_str().expect("base64 payload"),
+            B64.encode(&png)
+        );
+        assert_eq!(result.content["fileBytes"], png.len());
+        // The text stands on its own for a model that cannot see images.
+        let text = result.content["text"].as_str().expect("text is present");
+        assert!(text.contains("shot.png"), "{text}");
+        assert!(text.contains("image/png"), "{text}");
+        assert!(text.contains("cannot see it"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn read_refuses_an_image_extension_whose_bytes_are_not_an_image() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("notes.png"), "just text, renamed\n").unwrap();
+
+        let result = execute_tool(
+            Some(dir.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "notes.png" }),
+            5_000,
+        )
+        .await;
+
+        assert!(!result.ok);
+        assert_eq!(result.error_code.as_deref(), Some("TOOL_BINARY_CONTENT"));
+    }
+
+    #[tokio::test]
+    async fn read_refuses_an_image_too_large_to_inline() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut big = tiny_png();
+        big.resize(MAX_INLINE_IMAGE_BYTES + 1, 0);
+        std::fs::write(dir.path().join("huge.png"), &big).unwrap();
+
+        let result = execute_tool(
+            Some(dir.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "huge.png" }),
+            5_000,
+        )
+        .await;
+
+        assert!(!result.ok);
+        assert_eq!(result.error_code.as_deref(), Some("TOOL_IMAGE_TOO_LARGE"));
+        let error = result.content["error"].as_str().expect("error text");
+        assert!(error.contains("attach it to the prompt"), "{error}");
+        assert!(error.contains("3 MB"), "{error}");
     }
 
     #[tokio::test]

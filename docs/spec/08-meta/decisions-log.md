@@ -6514,6 +6514,25 @@ that was sitting at the bottom — including after the turn had finished.
 - The guard is deliberately the request boundary rather than the history
   rebuild: it also covers a duplicate that appears while the session runs, which
   a rebuild-time filter cannot see.
+## 2026-09-21 — `Read` returns an image the model can be shown (D609, issue #711)
+
+- A file whose extension is an image type (`.png`, `.jpg`, `.jpeg`, `.gif`,
+  `.webp`) is no longer refused as binary content. `Read` returns
+  `{path, root, text, images: [{data, mimeType}], fileBytes}`, the shape the
+  runtime already turned into a model-visible image block but which no tool
+  produced until now; the block is attached only when the active model accepts
+  images, and the text is kept either way so a model that cannot see images
+  says so instead of inventing contents.
+- The magic number decides the type and has to agree with the extension: a text
+  file renamed `.png` is still refused with `TOOL_BINARY_CONTENT`, because a
+  request carrying a broken image fails as a whole. An image above 3 MB raw
+  (base64 inflates by four thirds; the strictest per-image ceiling in use is
+  5 MB encoded) is refused with the new `TOOL_IMAGE_TOO_LARGE`, carrying the
+  size and the alternative.
+- The base64 payload never enters a persisted UI message or transcript record;
+  the stored detail keeps `imageCount` only, which is what the existing
+  attachment rule already required. See `03-runtime/16-tool-result-limits.md`
+  §4 and `03-runtime/08-error-codes.md`.
 
 ## 2026-09-21 — A plugin crash reports its exit code without copying raw output (D607, issue #747)
 
