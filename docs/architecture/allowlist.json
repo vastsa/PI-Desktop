@@ -13,6 +13,7 @@
     "crates/host-core/src/plugins/tests.rs": "Existing plugin-domain test module retained while production plugin code is split.",
     "crates/host-core/src/db/tests.rs": "Existing database-domain test module retained while production database code is split.",
     "crates/host-core/src/providers/tests.rs": "Existing provider-domain test module retained while production provider code is split.",
-    "crates/host-core/src/user_skills.rs": "User-skill catalog crossed the Rust 1000-LOC limit when the scan-and-batch-import path landed (PR #515); the file still holds one cohesive discovery/import lifecycle and is exempted until the batch-import surface is separated."
+    "crates/host-core/src/user_skills.rs": "User-skill catalog crossed the Rust 1000-LOC limit when the scan-and-batch-import path landed (PR #515); the file still holds one cohesive discovery/import lifecycle and is exempted until the batch-import surface is separated.",
+    "crates/host-core/src/config_sync/engine.rs": "Configuration-sync orchestration keeps capture, reconciliation, approval gating, journal recovery, and public state projection in one lifecycle; transport, domain capture, remote history, and apply responsibilities are already separated, and the remaining orchestration will be split after the sync lifecycle stabilises."
   }
 }
