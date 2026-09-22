@@ -133,7 +133,7 @@ impl PermissionManager {
     pub fn tool_risk_with_declared(tool_name: &str, declared: Option<&str>) -> Risk {
         let tool_name = normalize_tool_name(tool_name);
         match &*tool_name {
-            "read" | "glob" | "grep" | "ScheduledTaskList" => Risk::Low,
+            "read" | "glob" | "grep" | "scheduled_task_list" => Risk::Low,
             "write" | "edit" | "bash" | "generate_images" => Risk::High,
             name if name.starts_with("plugin_") => match declared {
                 Some("low") => Risk::Low,

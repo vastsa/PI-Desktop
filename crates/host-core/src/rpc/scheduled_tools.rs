@@ -12,7 +12,10 @@ mod calendar_tests;
 pub fn recognizes(name: &str) -> bool {
     matches!(
         name,
-        "ScheduledTaskList" | "ScheduledTaskCreate" | "ScheduledTaskUpdate" | "ScheduledTaskDelete"
+        "scheduled_task_list"
+            | "scheduled_task_create"
+            | "scheduled_task_update"
+            | "scheduled_task_delete"
     )
 }
 
@@ -29,11 +32,11 @@ pub fn definitions() -> Vec<Value> {
             "weekdays":{"type":"array","minItems":1,"maxItems":7,"uniqueItems":true,"items":{"type":"integer","minimum":0,"maximum":6}}
         }}
     });
-    ["ScheduledTaskList", "ScheduledTaskCreate", "ScheduledTaskUpdate", "ScheduledTaskDelete"].into_iter().map(|name| {
-        let mut properties = if matches!(name, "ScheduledTaskCreate" | "ScheduledTaskUpdate") { fields.clone() } else { json!({}) };
-        if matches!(name, "ScheduledTaskUpdate" | "ScheduledTaskDelete") { properties["id"] = json!({"type":"string"}); }
-        let required = match name { "ScheduledTaskCreate" => json!(["title","prompt","cadence"]), "ScheduledTaskList" => json!([]), _ => json!(["id"]) };
-        json!({"name":name,"description":"Manage scheduled tasks in the calling session's project.","risk":if name == "ScheduledTaskList" {"low"} else {"medium"},"parameters":{"type":"object","additionalProperties":false,"properties":properties,"required":required}})
+    ["scheduled_task_list", "scheduled_task_create", "scheduled_task_update", "scheduled_task_delete"].into_iter().map(|name| {
+        let mut properties = if matches!(name, "scheduled_task_create" | "scheduled_task_update") { fields.clone() } else { json!({}) };
+        if matches!(name, "scheduled_task_update" | "scheduled_task_delete") { properties["id"] = json!({"type":"string"}); }
+        let required = match name { "scheduled_task_create" => json!(["title","prompt","cadence"]), "scheduled_task_list" => json!([]), _ => json!(["id"]) };
+        json!({"name":name,"description":"Manage scheduled tasks in the calling session's project.","risk":if name == "scheduled_task_list" {"low"} else {"medium"},"parameters":{"type":"object","additionalProperties":false,"properties":properties,"required":required}})
     }).collect()
 }
 
@@ -62,23 +65,23 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
         .as_object()
         .ok_or_else(|| invalid("arguments must be an object"))?;
     let allowed: &[&str] = match p.tool_name.as_str() {
-        "ScheduledTaskList" => &[],
-        "ScheduledTaskCreate" => &["title", "prompt", "cadence", "schedule", "enabled"],
-        "ScheduledTaskUpdate" => &["id", "title", "prompt", "cadence", "schedule", "enabled"],
-        "ScheduledTaskDelete" => &["id"],
+        "scheduled_task_list" => &[],
+        "scheduled_task_create" => &["title", "prompt", "cadence", "schedule", "enabled"],
+        "scheduled_task_update" => &["id", "title", "prompt", "cadence", "schedule", "enabled"],
+        "scheduled_task_delete" => &["id"],
         _ => return Err(invalid("unknown scheduled tool")),
     };
     if args.keys().any(|key| !allowed.contains(&key.as_str())) {
         return Err(invalid("unsupported scheduled task field"));
     }
-    if p.tool_name == "ScheduledTaskList" {
+    if p.tool_name == "scheduled_task_list" {
         let tasks =
             scheduled::list_tasks(&st.db).map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
         return Ok(
             json!({"tasks": tasks.into_iter().filter(|task| task.workspace_path == workspace).collect::<Vec<_>>() }),
         );
     }
-    let existing = if p.tool_name != "ScheduledTaskCreate" {
+    let existing = if p.tool_name != "scheduled_task_create" {
         let id = args
             .get("id")
             .and_then(Value::as_str)
@@ -100,7 +103,7 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
             if value.trim().is_empty() || value.chars().count() > limit {
                 return Err(invalid("invalid title or prompt length"));
             }
-        } else if p.tool_name == "ScheduledTaskCreate" {
+        } else if p.tool_name == "scheduled_task_create" {
             return Err(invalid("title and prompt required"));
         }
     }
@@ -123,7 +126,7 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
             serde_json::from_value(schedule.clone()).map_err(|e| invalid(&e.to_string()))?;
         parsed.validate().map_err(|e| invalid(&e.to_string()))?;
     }
-    if p.tool_name == "ScheduledTaskCreate" {
+    if p.tool_name == "scheduled_task_create" {
         if !args.contains_key("cadence") {
             return Err(invalid("cadence required"));
         }
@@ -133,7 +136,7 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
     }
     // An echoed cadence during legacy maintenance is not an arming request.
     if args.get("cadence").and_then(Value::as_str) == Some("hourly")
-        && (p.tool_name == "ScheduledTaskCreate"
+        && (p.tool_name == "scheduled_task_create"
             || existing
                 .as_ref()
                 .is_some_and(|task| task.cadence != "hourly")
@@ -146,8 +149,8 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
     {
         input["schedule"] = json!({"hour":0,"minute":0,"weekday":0});
     }
-    if p.tool_name != "ScheduledTaskDelete"
-        && (p.tool_name == "ScheduledTaskCreate"
+    if p.tool_name != "scheduled_task_delete"
+        && (p.tool_name == "scheduled_task_create"
             || (args.contains_key("cadence")
                 && existing
                     .as_ref()
@@ -164,8 +167,8 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
         return Err(invalid("a schedule is required for automatic execution"));
     }
     let method = match p.tool_name.as_str() {
-        "ScheduledTaskCreate" => "scheduled.create",
-        "ScheduledTaskUpdate" => "scheduled.update",
+        "scheduled_task_create" => "scheduled.create",
+        "scheduled_task_update" => "scheduled.update",
         _ => "scheduled.delete",
     };
     scheduled_rpc::handle_in_workspace(st, method, input, workspace)
@@ -233,12 +236,12 @@ mod tests {
             sessions::create_session(&st.db, None, Some("agent".into()), None, None, Some(path))
                 .unwrap();
         let state = Arc::new(Mutex::new(st));
-        let listed = call(&state, &session.id, "ScheduledTaskList", json!({})).await;
+        let listed = call(&state, &session.id, "scheduled_task_list", json!({})).await;
         assert_eq!(listed["ok"], true, "{listed}");
         let edited = call(
             &state,
             &session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":task["id"],"title":"Renamed"}),
         )
         .await;
@@ -301,10 +304,10 @@ mod tests {
             .set_setting("app", &json!({"defaultPermissionMode":"auto"}))
             .unwrap();
         let state = Arc::new(Mutex::new(st));
-        let own = call(&state, &same, "ScheduledTaskList", json!({})).await;
+        let own = call(&state, &same, "scheduled_task_list", json!({})).await;
         assert_eq!(own["content"]["tasks"].as_array().unwrap().len(), 5);
         assert!(
-            call(&state, &foreign, "ScheduledTaskList", json!({})).await["content"]["tasks"]
+            call(&state, &foreign, "scheduled_task_list", json!({})).await["content"]["tasks"]
                 .as_array()
                 .unwrap()
                 .is_empty()
@@ -313,7 +316,7 @@ mod tests {
             call(
                 &state,
                 &foreign,
-                "ScheduledTaskUpdate",
+                "scheduled_task_update",
                 json!({"id":"alias-0","title":"Wrong"})
             )
             .await["errorCode"],
@@ -323,7 +326,7 @@ mod tests {
             call(
                 &state,
                 &foreign,
-                "ScheduledTaskDelete",
+                "scheduled_task_delete",
                 json!({"id":"alias-0"})
             )
             .await["errorCode"],
@@ -333,7 +336,7 @@ mod tests {
             call(
                 &state,
                 &same,
-                "ScheduledTaskDelete",
+                "scheduled_task_delete",
                 json!({"id":"alias-0"})
             )
             .await["ok"],
@@ -399,7 +402,7 @@ mod tests {
         let created = call(
             &state,
             &session.id,
-            "ScheduledTaskCreate",
+            "scheduled_task_create",
             json!({
                 "title":"Review", "prompt":"Review project", "cadence":"daily", "enabled":false,
                 "schedule":{"hour":14,"minute":0,"weekday":0}
@@ -410,24 +413,24 @@ mod tests {
         assert_eq!(created["content"]["task"]["enabled"], false);
         let id = created["content"]["task"]["id"].as_str().unwrap();
         assert_eq!(created["content"]["task"]["workspacePath"], path);
-        let listed = call(&state, &session.id, "ScheduledTaskList", json!({})).await;
+        let listed = call(&state, &session.id, "scheduled_task_list", json!({})).await;
         assert_eq!(listed["content"]["tasks"][0]["id"], id);
-        let hidden = call(&state, &other_session.id, "ScheduledTaskList", json!({})).await;
+        let hidden = call(&state, &other_session.id, "scheduled_task_list", json!({})).await;
         assert_eq!(hidden["content"]["tasks"], json!([]));
         let forbidden = call(
             &state,
             &other_session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":id,"title":"Wrong project"}),
         )
         .await;
         assert_eq!(forbidden["errorCode"], "NOT_FOUND");
-        let denied = call(&state, &plan.id, "ScheduledTaskDelete", json!({"id":id})).await;
+        let denied = call(&state, &plan.id, "scheduled_task_delete", json!({"id":id})).await;
         assert_eq!(denied["errorCode"], "TOOL_DISABLED_IN_PLAN");
         let update = call(
             &state,
             &session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":id,"schedule":{"hour":15,"minute":30,"weekday":0},"enabled":false}),
         )
         .await;
@@ -437,7 +440,7 @@ mod tests {
         let invalid = call(
             &state,
             &session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":id,"schedule":{"hour":25,"minute":0,"weekday":0}}),
         )
         .await;
@@ -445,7 +448,7 @@ mod tests {
         let injected = call(
             &state,
             &session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":id,"workspacePath":"elsewhere"}),
         )
         .await;
@@ -453,16 +456,22 @@ mod tests {
         let title = call(
             &state,
             &session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":id,"title":"Updated"}),
         )
         .await;
         assert_eq!(title["content"]["task"]["schedule"]["hour"], 15);
         assert_eq!(title["content"]["task"]["schedule"]["minute"], 30);
-        let deleted = call(&state, &session.id, "ScheduledTaskDelete", json!({"id":id})).await;
+        let deleted = call(
+            &state,
+            &session.id,
+            "scheduled_task_delete",
+            json!({"id":id}),
+        )
+        .await;
         assert_eq!(deleted["ok"], true, "{deleted}");
         assert_eq!(
-            call(&state, &session.id, "ScheduledTaskList", json!({})).await["content"]["tasks"],
+            call(&state, &session.id, "scheduled_task_list", json!({})).await["content"]["tasks"],
             json!([])
         );
     }
@@ -481,7 +490,7 @@ mod tests {
         let created = call(
             &state,
             &session.id,
-            "ScheduledTaskCreate",
+            "scheduled_task_create",
             json!({
                 "title":"Review", "prompt":"Review project", "cadence":"manual", "enabled":false
             }),
@@ -493,7 +502,7 @@ mod tests {
             let rejected = call(
                 &state,
                 &session.id,
-                "ScheduledTaskUpdate",
+                "scheduled_task_update",
                 json!({"id":id,"cadence":cadence}),
             )
             .await;
@@ -503,7 +512,7 @@ mod tests {
         let updated = call(
             &state,
             &session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":id,"cadence":"hourly"}),
         )
         .await;
@@ -518,7 +527,7 @@ mod tests {
         let renamed = call(
             &state,
             &session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":id,"title":"Renamed"}),
         )
         .await;
@@ -527,7 +536,7 @@ mod tests {
         let configured = call(
             &state,
             &session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":id,"cadence":"weekly","schedule":custom}),
         )
         .await;
@@ -535,7 +544,7 @@ mod tests {
         let hourly = call(
             &state,
             &session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":id,"cadence":"hourly"}),
         )
         .await;
@@ -548,9 +557,9 @@ mod tests {
         let permissions = PermissionManager::default();
         let grants = std::collections::HashMap::new();
         for tool in [
-            "ScheduledTaskCreate",
-            "ScheduledTaskUpdate",
-            "ScheduledTaskDelete",
+            "scheduled_task_create",
+            "scheduled_task_update",
+            "scheduled_task_delete",
         ] {
             assert!(permissions
                 .evaluate_auto_with_permission_mode("session", tool, "agent", "ask", &grants)
@@ -573,7 +582,7 @@ mod tests {
         assert!(matches!(
             permissions.evaluate_auto_with_permission_mode(
                 "session",
-                "ScheduledTaskList",
+                "scheduled_task_list",
                 "agent",
                 "ask",
                 &grants
@@ -598,12 +607,12 @@ mod tests {
         let session =
             sessions::create_session(&st.db, None, Some("agent".into()), None, None, None).unwrap();
         let state = Arc::new(Mutex::new(st));
-        let listed = call(&state, &session.id, "ScheduledTaskList", json!({})).await;
+        let listed = call(&state, &session.id, "scheduled_task_list", json!({})).await;
         assert_eq!(listed["content"]["tasks"][0]["id"], "legacy");
         let paused = call(
             &state,
             &session.id,
-            "ScheduledTaskUpdate",
+            "scheduled_task_update",
             json!({"id":"legacy","enabled":false}),
         )
         .await;
@@ -637,7 +646,7 @@ mod tests {
                     json!({"id":"old","enabled":false}),
                     json!({"id":"old","cadence":cadence,"enabled":false}),
                 ] {
-                    let result = call(&state, &sid, "ScheduledTaskUpdate", args).await;
+                    let result = call(&state, &sid, "scheduled_task_update", args).await;
                     assert_eq!(result["ok"], true, "{result}");
                     assert!(result["content"]["task"].get("schedule").is_none());
                     assert!(result["content"]["task"].get("nextRunAt").is_none());
@@ -645,7 +654,7 @@ mod tests {
                 let refused = call(
                     &state,
                     &sid,
-                    "ScheduledTaskUpdate",
+                    "scheduled_task_update",
                     json!({"id":"old","enabled":true}),
                 )
                 .await;
@@ -660,10 +669,10 @@ mod tests {
                 assert!(saved.schedule.is_none());
                 assert!(!saved.workspace_bound);
                 let state = Arc::new(Mutex::new(st));
-                let configured=call(&state,&sid,"ScheduledTaskUpdate",json!({"id":"old","cadence":cadence,"schedule":{"hour":9,"minute":30,"weekday":0},"enabled":true})).await;
+                let configured=call(&state,&sid,"scheduled_task_update",json!({"id":"old","cadence":cadence,"schedule":{"hour":9,"minute":30,"weekday":0},"enabled":true})).await;
                 assert_eq!(configured["ok"], true, "{configured}");
                 assert_eq!(
-                    call(&state, &sid, "ScheduledTaskDelete", json!({"id":"old"})).await["ok"],
+                    call(&state, &sid, "scheduled_task_delete", json!({"id":"old"})).await["ok"],
                     true
                 );
             }

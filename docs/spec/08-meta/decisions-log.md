@@ -6716,7 +6716,9 @@ that was sitting at the bottom — including after the turn had finished.
   call is idempotent; a pre-rename spelling resolves in any letter case; and every
   other name — `plugin_*`, `mcp_*`, an MCP-reported name, a shell id such as
   `PowerShell` — comes back untouched. A third-party identity is never rewritten,
-  and an unknown name is not an error.
+  and an unknown name is not an error. The host's own plugin-development tools
+  are named verb-first (`check_plugin`, `scaffold_plugin`, `pack_plugin`) because
+  `plugin_` stays reserved for a tool a third-party plugin contributes.
 - Normalization happens on the way in and never in storage: existing transcripts,
   audit rows, `deny` / `allow` rules, plugin manifests, and subagent tool lists
   keep the bytes they were written with, so old data stays readable without a

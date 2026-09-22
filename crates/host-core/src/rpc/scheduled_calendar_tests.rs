@@ -19,7 +19,7 @@ fn hourly_calendar_conversion_requires_calendar_intent_after_restart() {
             let st = AppState::open(dir.path()).unwrap();
             let sid = session(&st);
             let created = match creator {
-                "tool" => invoke(&st, &sid, "ScheduledTaskCreate", json!({"title":"Review","prompt":"Reply OK","cadence":"hourly","enabled":false}))["content"].clone(),
+                "tool" => invoke(&st, &sid, "scheduled_task_create", json!({"title":"Review","prompt":"Reply OK","cadence":"hourly","enabled":false}))["content"].clone(),
                 "ui" => scheduled_rpc::handle(&st,"scheduled.create",json!({"title":"Review","prompt":"Reply OK","cadence":"hourly","enabled":false,"schedule":{"hour":0,"minute":0,"weekday":0}})).unwrap(),
                 _ => {
                     scheduled::import_tasks(&st.db, &[json!({"id":"legacy","title":"Review","prompt":"Reply OK","cadence":"hourly","enabled":false,"configJson":{"schedule":{"hour":0,"minute":0,"weekday":0}}})]).unwrap();
@@ -34,7 +34,7 @@ fn hourly_calendar_conversion_requires_calendar_intent_after_restart() {
             let rejected = invoke(
                 &st,
                 &sid,
-                "ScheduledTaskUpdate",
+                "scheduled_task_update",
                 json!({"id":id,"cadence":target}),
             );
             assert_eq!(
@@ -49,7 +49,7 @@ fn hourly_calendar_conversion_requires_calendar_intent_after_restart() {
             let accepted = invoke(
                 &st,
                 &sid,
-                "ScheduledTaskUpdate",
+                "scheduled_task_update",
                 json!({"id":id,"cadence":target,"schedule":schedule}),
             );
             assert_eq!(accepted["ok"], true, "{accepted}");
@@ -74,7 +74,7 @@ fn saved_calendar_survives_hourly_and_restart_including_midnight() {
                 invoke(
                     &st,
                     &sid,
-                    "ScheduledTaskCreate",
+                    "scheduled_task_create",
                     json!({"title":"Review","prompt":"Review","cadence":"weekly","enabled":false,"schedule":schedule}),
                 )
             };
@@ -83,7 +83,7 @@ fn saved_calendar_survives_hourly_and_restart_including_midnight() {
                 invoke(
                     &st,
                     &sid,
-                    "ScheduledTaskUpdate",
+                    "scheduled_task_update",
                     json!({"id":id,"cadence":"hourly"})
                 )["ok"],
                 true
@@ -93,7 +93,7 @@ fn saved_calendar_survives_hourly_and_restart_including_midnight() {
             let restored = invoke(
                 &st,
                 &sid,
-                "ScheduledTaskUpdate",
+                "scheduled_task_update",
                 json!({"id":id,"cadence":"weekly"}),
             );
             assert_eq!(restored["ok"], true, "{restored}");

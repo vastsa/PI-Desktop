@@ -2,7 +2,7 @@
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/23-tool-names) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
-> 已应用的决策：D618
+> 已应用的决策：D618、D619
 
 ## 0. 冻结政策总结
 
@@ -36,16 +36,27 @@ subagent 工具集用它声明，转录本用它存储。pi 运行时在 `extrac
 | `Skill` | `skill` | |
 | `BrowserPreview` | `browser_preview` | |
 | `GenerateImages` | `generate_images` | |
-| `Review` | `review` | |
+| `asktool` | `asktool` | 已是小写；本次决策不改动 |
+| `new_context` | `new_context` | 已是小写；本次决策不改动 |
+| `ToolSearch` | `tool_search` | |
+| `PluginCheck` | `check_plugin` | 动词在前，见表下说明 |
+| `PluginScaffold` | `scaffold_plugin` | |
+| `PluginPack` | `pack_plugin` | |
 | `EnterPlanMode` | `enter_plan_mode` | |
 | `EnterGoalMode` | `enter_goal_mode` | |
 | `SubmitPlan` | `submit_plan` | |
 | `SubmitGoal` | `submit_goal` | |
-| `asktool` | `asktool` | 已是小写；本次决策不改动 |
-| `new_context` | `new_context` | 已是小写；本次决策不改动 |
+| `ScheduledTaskList` | `scheduled_task_list` | |
+| `ScheduledTaskCreate` | `scheduled_task_create` | |
+| `ScheduledTaskUpdate` | `scheduled_task_update` | |
+| `ScheduledTaskDelete` | `scheduled_task_delete` | |
 
-该表是迁移范围，而不是"今天已经在发出"的清单。表外的工具名——`PluginCheck`、
-`PluginScaffold`、`PluginPack`，以及 MCP 服务自报的名字——在进入该表之前保持现有拼写。
+
+该表是迁移范围，而不是"今天已经在发出"的清单。表外的工具名——MCP 服务自报的名字、
+`PowerShell` 这类 shell id、任何第三方 `plugin_*` / `mcp_*` 工具——保持自己的拼写。
+
+三个插件开发工具刻意采用动词在前的命名（`check_plugin`）：`plugin_` 是"第三方插件贡献的
+工具"的保留前缀，宿主按该前缀分支，因此给宿主自己的插件开发工具加上它会让二者无法区分。
 
 ## 2. 归一化边界
 
@@ -96,3 +107,8 @@ export function normalizeToolName(name: string): string;
 
 同步测试读取两侧源码，因此只在单侧新增名字就会失败。它比较的是表格而不是行为：行为由各自
 实现旁边的单元测试钉住。
+
+D619 已落地宿主侧第一批调用点，因此两处临时 allow 都已删除：
+`crates/host-core/src/tools/mod.rs` 为派发、权限、准入与 review 路径再导出这张表与这个函数，
+`builtin_tool_defs()` 则断言它发布出去的每个名字都是规范名。`cargo test -p host-core legacy`
+覆盖读入方向：旧拼写仍必须命中它所指的工具。

@@ -1,6 +1,6 @@
 # 23. Tool Name Contract
 
-> Decisions applied: D618
+> Decisions applied: D618, D619
 
 ## 0. Frozen policy summary
 
@@ -36,17 +36,30 @@ spelled differently is a name pi does not recognize.
 | `Skill` | `skill` | |
 | `BrowserPreview` | `browser_preview` | |
 | `GenerateImages` | `generate_images` | |
-| `Review` | `review` | |
+| `asktool` | `asktool` | already lowercase; unchanged by this decision |
+| `new_context` | `new_context` | already lowercase; unchanged by this decision |
+| `ToolSearch` | `tool_search` | |
+| `PluginCheck` | `check_plugin` | verb-first, see the note below the table |
+| `PluginScaffold` | `scaffold_plugin` | |
+| `PluginPack` | `pack_plugin` | |
 | `EnterPlanMode` | `enter_plan_mode` | |
 | `EnterGoalMode` | `enter_goal_mode` | |
 | `SubmitPlan` | `submit_plan` | |
 | `SubmitGoal` | `submit_goal` | |
-| `asktool` | `asktool` | already lowercase; unchanged by this decision |
-| `new_context` | `new_context` | already lowercase; unchanged by this decision |
+| `ScheduledTaskList` | `scheduled_task_list` | |
+| `ScheduledTaskCreate` | `scheduled_task_create` | |
+| `ScheduledTaskUpdate` | `scheduled_task_update` | |
+| `ScheduledTaskDelete` | `scheduled_task_delete` | |
+
 
 The table is the migration surface, not a statement that every entry is emitted
-today. A tool name outside it — `PluginCheck`, `PluginScaffold`, `PluginPack`,
-an MCP server's own name — keeps its current spelling until the table covers it.
+today. A tool name outside it — an MCP server's own name, a shell id such as
+`PowerShell`, any third-party `plugin_*` / `mcp_*` tool — keeps its own spelling.
+
+The three plugin-development tools are named verb-first (`check_plugin`) on
+purpose. `plugin_` is the reserved marker for a tool a third-party plugin
+contributes, and the host branches on that prefix, so prefixing the host's own
+plugin-development tools with it would make the two indistinguishable.
 
 ## 2. The normalization boundary
 
@@ -106,3 +119,10 @@ normalization.
 The sync test reads both sources, so a name added on one side alone fails it. It
 compares the tables, not the behavior: behavior is pinned by the unit test next
 to each implementation.
+
+D619 landed the first host-core callers, so both temporary allows are gone:
+`crates/host-core/src/tools/mod.rs` re-exports the table and the function for
+the dispatch, permission, admission and review paths, and `builtin_tool_defs()`
+asserts that every name it publishes is canonical. `cargo test -p host-core
+legacy` covers the read-in direction, where a pre-rename spelling still has to
+reach the tool it names.
