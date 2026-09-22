@@ -5337,6 +5337,8 @@ eleven-tool-round desktop paths are verified by
 | C / F / 品质 —— 上下文估算保持安全（校准） | E2E-CONTEXT-estimate-calibration-stays-safe |
 | C — 对话与流式（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | 品质（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
+| E — 工具与权限（图片读取） | E2E-TOOL-read-returns-an-image-the-model-can-see |
+| C — 对话与流式（图片读取） | E2E-TOOL-read-returns-an-image-the-model-can-see |
 | G — 插件宿主生命周期（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
 | 品质（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
 | F — 持久化（存储的模型绑定数组） | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
@@ -8447,6 +8449,19 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **自动化：** `packages/agent-runtime/src/runtime.test.ts` 用真实的运行时覆盖两半：重复历史（丢弃 + 一行日志）与唯一历史
   （同一对象、无日志）。
 - **状态：** 单元测试覆盖；没有端到端驱动对重复转录发出真实提供商请求。
+### E2E-TOOL-read-returns-an-image-the-model-can-see
+
+- **先决条件：** 工作区里有一张真实 PNG、一个改名为 `.png` 的文本文件、一张超过内联上限的图片；配置一个声明图片输入的模型，
+  以及一个不声明图片输入的模型。确定性提供商夹具。
+- **步骤：** 让 agent 依次读 PNG、改名文件、超限图片。切到不支持图片输入的模型后重复第一步。
+- **预期：** 读 PNG 成功，请求带上 `mimeType` 匹配的 `image` 块；改名文件以 `TOOL_BINARY_CONTENT` 失败；超限图片以
+  `TOOL_IMAGE_TOO_LARGE` 失败并给出大小与替代做法；不支持图片时请求只带文本，模型如实说明看不到图片。转录或持久化的 UI 消息
+  中不出现任何 base64 载荷。
+- **规格：** 03-runtime/16-tool-result-limits §4/§6、03-runtime/08-error-codes、08-meta/decisions-log D609。
+  **验收：** E（工具）、C（对话与流）、品质。**里程碑：** Post-MVP 回归覆盖。
+- **自动化：** host-core `read_returns_an_image_for_the_model_to_view`、`read_refuses_an_image_extension_whose_bytes_are_not_an_image`、
+  `read_refuses_an_image_too_large_to_inline`；agent-runtime `runtime.test.ts` 覆盖模型侧桥接的两半（有视觉则附带、无视觉则丢弃）。
+- **状态：** 映射链路单元测试端到端覆盖；没有桌面 E2E 驱动把真实图片读进实况提供商请求。
 
 ### E2E-MCP-HTTP-ACK — HTTP acknowledgement and authorization status
 

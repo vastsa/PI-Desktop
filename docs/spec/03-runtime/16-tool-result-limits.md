@@ -121,6 +121,26 @@ ignore files from applying — the same rule that lets `path` reach into
   or its UI/diagnostic result; it changes only future reconstructed model
   context
 
+**Image reads (issue #711).** A file whose extension is an image type
+(`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`) is not a binary the model cannot
+read: `Read` returns it in the shape the runtime turns into a model-visible
+image block — `{path, root, text, images: [{data, mimeType}], fileBytes}` —
+where `data` is standard base64. The runtime attaches the image only when the
+active model accepts images (`input`/`modalities` includes `image`) and keeps
+the text either way, so a model that cannot see images still learns that an
+image is there instead of inventing its contents; the base64 payload never
+enters a persisted UI message or transcript record, only `imageCount` does.
+
+- the magic number decides the type, and it has to agree with the extension: a
+  text file renamed `.png` is refused as `TOOL_BINARY_CONTENT` rather than sent
+  as a broken image, which would fail the whole request;
+- an image above 3 MB raw (base64 inflates by four thirds, and the strictest
+  per-image ceiling in use is 5 MB encoded) is refused as
+  `TOOL_IMAGE_TOO_LARGE` with the size and the actionable alternative, instead
+  of being truncated into an unreadable fragment;
+- every other binary extension keeps the existing `TOOL_BINARY_CONTENT`
+  outcome, and the byte sniff after this point is unchanged for text.
+
 ## 5. Partial result flags
 
 Every bounded tool reports `truncated: boolean`. For Read, that flag is true
@@ -174,8 +194,10 @@ counts are the stable signals. The UI truncated chip follows `truncated`.
    96KB of progress noise is what makes the model retry blindly
 3. binary files: do not dump raw binary into model; return metadata error
    `TOOL_BINARY_CONTENT`. Detected by extension blacklist plus a sniff of the
-   first 4KB (any NUL byte, or >30% non-printable). Grep skips binary files
-   silently rather than matching lossily-decoded bytes
+   first 4KB (any NUL byte, or >30% non-printable). An image type is the
+   exception and is inlined as an image block (§4a); a file whose bytes are
+   not the image its extension claims is still refused. Grep skips binary
+   files silently rather than matching lossily-decoded bytes
 4. a single line longer than the whole budget yields a char-boundary-safe prefix
    (or suffix, for a tail cut), never an empty payload
 5. aggregate checkpoint truncation must preserve every provider-valid assistant
@@ -194,7 +216,10 @@ counts are the stable signals. The UI truncated chip follows `truncated`.
   from the `Edit` provenance set
 - [x] Read paginates a multi-megabyte file instead of refusing it, reports the
   next offset, and does not set `truncated` when the requested window was filled
-- [x] Read refuses binary content with `TOOL_BINARY_CONTENT`
+- [x] Read refuses binary content with `TOOL_BINARY_CONTENT`, except an image
+  type, which returns `{text, images}` for a model that accepts images
+- [x] an image above the inline bound is refused with `TOOL_IMAGE_TOO_LARGE`,
+  and an `.png` that is not a PNG is refused as binary
 - [x] an explicit `path` reaches into an ignored tree (`node_modules`, spill dir)
 - [x] Glob and Grep order results by modification time, newest first
 - [x] truncated results still valid UTF-8 text

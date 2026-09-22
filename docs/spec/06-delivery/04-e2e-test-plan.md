@@ -8112,6 +8112,8 @@ identify the platform validation still needed.
 | F — Persistence (stored model binding array) | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
 | Quality (stored model binding array) | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
 | Quality (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
+| E — Tools & permissions (image read) | E2E-TOOL-read-returns-an-image-the-model-can-see |
+| C — Conversation & stream (image read) | E2E-TOOL-read-returns-an-image-the-model-can-see |
 | G — Plugin host lifecycle (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 | Quality (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 
@@ -14351,6 +14353,31 @@ the latest destination. These assertions measure work counts, not device FPS.
   and a unique one (identity, no log line).
 - **Status:** Unit-covered; no end-to-end driver issues a real provider request
   against a duplicated transcript.
+### E2E-TOOL-read-returns-an-image-the-model-can-see
+
+- **Preconditions:** A workspace containing a real PNG, a text file renamed
+  `.png`, and an image above the inline bound; a configured model that declares
+  image input, plus one that does not. Deterministic provider fixture.
+- **Steps:** Ask the agent to read the PNG, then the renamed file, then the
+  oversized image. Repeat the first step after switching to the model without
+  image input.
+- **Expected:** The PNG read succeeds and the request carries an `image` block
+  with the matching `mimeType`; the renamed file fails with
+  `TOOL_BINARY_CONTENT`; the oversized image fails with `TOOL_IMAGE_TOO_LARGE`
+  naming its size and the alternative; with the non-vision model the request
+  carries the text alone and the model reports it cannot see the image. No
+  base64 payload appears in the transcript or in a persisted UI message.
+- **Specs:** `03-runtime/16-tool-result-limits.md` §4/§6,
+  `03-runtime/08-error-codes.md`, `08-meta/decisions-log.md` D609.
+- **Acceptance:** E (tools), C (conversation and stream), Quality.
+- **Milestone:** Post-MVP regression coverage.
+- **Automation:** host-core `tools::tests::read_returns_an_image_for_the_model_to_view`,
+  `read_refuses_an_image_extension_whose_bytes_are_not_an_image` and
+  `read_refuses_an_image_too_large_to_inline`; agent-runtime
+  `runtime.test.ts` covers both halves of the model-side bridge (attached with
+  vision, dropped without).
+- **Status:** Unit-covered end to end for the mapping; no desktop E2E driver
+  reads a real image into a live provider request.
 
 ### E2E-MCP-HTTP-ACK — HTTP acknowledgement and authorization status
 

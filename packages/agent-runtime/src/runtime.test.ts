@@ -568,6 +568,85 @@ describe("DesktopAgentRuntime configuration matching", () => {
 
     await runtime.dispose();
   });
+  it("turns a host image read into an image block for a model that can see", async () => {
+
+    const host = {
+      call: vi.fn(async (method: string) =>
+        method === "tools.execute"
+          ? {
+              ok: true,
+              content: {
+                path: "shot.png",
+                root: "workspace",
+                text: "shot.png is a image/png image (68 bytes).",
+                images: [{ data: "iVBORw0KGgo=", mimeType: "image/png" }],
+                fileBytes: 68,
+              },
+            }
+          : undefined,
+      ),
+    };
+    // The default fixture model declares `input: ["text", "image"]`.
+    const runtime = createRuntime({ host });
+    const read = (runtime as any).agent.state.tools.find(
+      (tool: any) => tool.name === "Read",
+    );
+
+    const result = await read.execute("read-image", { path: "shot.png" });
+
+    expect(result.content[0]).toMatchObject({ type: "text" });
+    expect(result.content[0].text).toContain("image/png");
+    // The base64 payload crosses as an image block, which is what pi-ai sends.
+    expect(result.content[1]).toEqual({
+      type: "image",
+      data: "iVBORw0KGgo=",
+      mimeType: "image/png",
+    });
+    // The ref stays out of the persisted detail; only its count is recorded.
+    expect(result.details).toMatchObject({ path: "shot.png", imageCount: 1 });
+    expect(result.details).not.toHaveProperty("images");
+
+    await runtime.dispose();
+  });
+
+  it("keeps only the text when the model cannot see images", async () => {
+    const host = {
+      call: vi.fn(async (method: string) =>
+        method === "tools.execute"
+          ? {
+              ok: true,
+              content: {
+                path: "shot.png",
+                root: "workspace",
+                text: "shot.png is a image/png image (68 bytes).",
+                images: [{ data: "iVBORw0KGgo=", mimeType: "image/png" }],
+                fileBytes: 68,
+              },
+            }
+          : undefined,
+      ),
+    };
+    const runtime = createRuntime({
+      host,
+      provider: {
+        ...provider,
+        modelConfig: { ...provider.modelConfig!, input: ["text"] },
+      },
+    });
+    const read = (runtime as any).agent.state.tools.find(
+      (tool: any) => tool.name === "Read",
+    );
+
+    const result = await read.execute("read-image", { path: "shot.png" });
+
+    // The text says an image is there, so the model can tell the user it cannot
+    // see it instead of inventing its contents.
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0].text).toContain("image/png");
+    expect(result.details).toMatchObject({ imageCount: 0 });
+
+    await runtime.dispose();
+  });
 
   it("terminates a repeated Edit mismatch on the third failed attempt", async () => {
     const host = {

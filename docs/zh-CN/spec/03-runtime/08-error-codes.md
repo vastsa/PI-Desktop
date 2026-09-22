@@ -113,7 +113,8 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `PATH_OUTSIDE_WORKSPACE` | 不 | 在显式外部路径权限决策之前路径逃逸沙箱，或提示词附件位于其会话 scratch/project/attachment 根目录之外 |
 | `WORKSPACE_PATH_DENIED` | 不 | 显式的 `Read`/`Write`/`Edit` 路径命中了始终开启的安全拒绝名单（私钥、`.env` 文件、凭证包、`.git/objects`）；外部路径授权不会解除它（规格 15 §3） |
 | `READ_PATH_IS_DIRECTORY` | 不 | `Read` 拿到的是目录；结果附带一条 `Glob` 建议 |
-| `TOOL_BINARY_CONTENT` | 不 | `Read` 拒绝把二进制文件倾倒进模型上下文 |
+| `TOOL_BINARY_CONTENT` | 不 | `Read` 拒绝把二进制文件倾倒进模型上下文，或图片扩展名与实际字节不符 |
+| `TOOL_IMAGE_TOO_LARGE` | 不 | `Read` 读到真实图片但超过内联上限（原始 3 MB）；消息带上大小与替代做法 |
 | `TOOL_NOT_FOUND` | 不 | 未知工具 |
 | `TOOL_DENIED` | 不 | 权限被拒绝/模式被禁止 |
 | `TOOL_TIMEOUT` | 是的 | 工具执行超时 |
