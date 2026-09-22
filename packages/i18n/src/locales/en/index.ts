@@ -573,6 +573,22 @@ export const en = {
     configureImageModel: "Configure image model",
 
 
+dynamicContext: "Dynamic context",
+dynamicContextWindow: "Start narrowing at",
+dynamicContextHint: "When the context reaches this share of the window, older tool results are shortened to a head plus a recall pointer; the full text stays readable with recall. Off means nothing is narrowed.",
+dynamicContextPresets: "Dynamic context presets",
+dynamicContextReadout: "{{percent}}% (about {{tokens}})",
+earlyCompaction: "Early compaction",
+earlyCompactionWindow: "Start compacting at",
+earlyCompactionDelay: "Idle delay",
+earlyCompactionSilent: "Silent background pass",
+earlyCompactionHint: "Once the session has been idle and the context has used that share of the window, the pass compacts in the background. The transcript row, the context inspector and recall still record it; reaching the hard limit always warns.",
+earlyCompactionReadout: "{{percent}}% (about {{tokens}})",
+earlyCompactionDelayReadout: "after {{seconds}}s idle",
+sleepTime: "Sleep-time digest",
+sleepTimeRunsPerHour: "Runs per hour",
+sleepTimeReadout: "up to {{runs}} per hour",
+sleepTimeHint: "While the session is idle and a compaction is still ahead of it, the runtime appends a small deterministic summary of where the work stands — goal, blocked items, next step — to the transcript without calling a model; the quota bounds how often a digest may be taken.",
 sklm: {
       browse: "Market",
       back: "My skills",

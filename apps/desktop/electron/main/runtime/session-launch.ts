@@ -645,6 +645,16 @@ export function createSessionLaunchRuntime({
           supportsVision: visionFromModelConfig(modelConfig),
           supportedThinkingLevels: [...thinkingCapabilities.supportedThinkingLevels],
           ...(modelConfig ? { modelConfig } : {}),
+          // Per-model context/compaction settings ride the launch payload, so a
+          // settings change applies to the next prompt without a restart (ADR 0301
+          // / D447). Absent keeps the runtime's own defaults.
+          ...(storedModel?.dynamicContext
+            ? { dynamicContext: storedModel.dynamicContext }
+            : {}),
+          ...(storedModel?.earlyCompaction
+            ? { earlyCompaction: storedModel.earlyCompaction }
+            : {}),
+          ...(storedModel?.sleepTime ? { sleepTime: storedModel.sleepTime } : {}),
         },
         pluginTools: [
           ...plugins

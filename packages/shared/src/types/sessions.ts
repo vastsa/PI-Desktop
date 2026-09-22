@@ -86,6 +86,14 @@ export type ContextCompactionRecord = {
   firstKeptMessageId?: string;
   throughMessageId: string;
   tokensBefore: number;
+  /**
+   * Occupancy the checkpoint itself believes the next request will carry,
+   * stamped when the checkpoint is installed. A compaction leaves the message
+   * transcript untouched, so without this the context ring keeps showing the
+   * pre-compaction request until the next provider response lands. Optional:
+   * a checkpoint written before the field existed has none.
+   */
+  tokensAfter?: number;
   usage?: unknown;
   retainedTail?: unknown[];
   details?: unknown;
@@ -122,6 +130,8 @@ export type ContextCompactionMark = ContextCompactionStatus & {
    * notice as a summary.
    */
   fallback?: ContextCompactionFallback;
+  /** Carried from the record so the ring can lead with it (see above). */
+  tokensAfter?: number;
 };
 
 export type ContextCompactionReason = "manual" | "threshold" | "overflow";

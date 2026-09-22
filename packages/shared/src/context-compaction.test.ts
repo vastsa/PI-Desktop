@@ -56,6 +56,16 @@ describe("contextCompactionMark", () => {
     });
   });
 
+  it("carries the post-compaction estimate when the record has one", () => {
+    // The ring leads with this number until a real request reports usage, so it
+    // has to survive the record → mark hop the event is built from.
+    expect(contextCompactionMark(record({ tokensAfter: 21_000 }))).toMatchObject({
+      tokensAfter: 21_000,
+    });
+    // A checkpoint written before the field existed must not invent one.
+    expect(contextCompactionMark(record())).not.toHaveProperty("tokensAfter");
+  });
+
   it("marks a rollover checkpoint as carrying no real summary", () => {
     expect(
       contextCompactionMark(record({ details: { strategy: "fresh_window" } }))

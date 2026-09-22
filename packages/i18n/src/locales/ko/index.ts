@@ -575,6 +575,22 @@ export const ko = {
     "configureImageModel": "이미지 모델 설정",
 
 
+dynamicContext: "Dynamic context",
+dynamicContextWindow: "Start narrowing at",
+dynamicContextHint: "When the context reaches this share of the window, older tool results are shortened to a head plus a recall pointer; the full text stays readable with recall. Off means nothing is narrowed.",
+dynamicContextPresets: "Dynamic context presets",
+dynamicContextReadout: "{{percent}}% (about {{tokens}})",
+earlyCompaction: "조기 압축",
+earlyCompactionWindow: "압축 시작 시점",
+earlyCompactionDelay: "유휴 지연",
+earlyCompactionSilent: "조용한 백그라운드 실행",
+earlyCompactionHint: "세션이 유휴 상태이고 컨텍스트가 창의 해당 비율을 사용하면 백그라운드에서 압축합니다. 대화 기록 행, 컨텍스트 검사기와 recall에는 계속 기록되며, 하드 한도에 도달하면 항상 경고합니다.",
+earlyCompactionReadout: "{{percent}}% (약 {{tokens}})",
+earlyCompactionDelayReadout: "{{seconds}}초 유휴 후",
+sleepTime: "휴면 시간 요약",
+sleepTimeRunsPerHour: "시간당 실행 횟수",
+sleepTimeReadout: "시간당 최대 {{runs}}회",
+sleepTimeHint: "세션이 유휴 상태이고 아직 압축이 남아 있으면 런타임은 모델을 호출하지 않고 작업 현황(목표, 막힌 항목, 다음 단계)을 담은 작은 결정적 요약을 대화 기록에 추가합니다. 할당량은 요약을 만들 수 있는 빈도를 제한합니다.",
 sklm: {
       browse: "마켓",
       back: "내 스킬",

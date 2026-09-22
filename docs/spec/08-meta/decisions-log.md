@@ -6514,6 +6514,45 @@ that was sitting at the bottom — including after the turn had finished.
 - The guard is deliberately the request boundary rather than the history
   rebuild: it also covers a duplicate that appears while the session runs, which
   a rebuild-time filter cannot see.
+## 2026-09-21 — A compaction boundary is reversible and one reminder tier remains (D604)
+
+- `recall` and `recall_project` join the **core** tool set. They read the stored
+  transcript back through `session.recall`, `session.readMessage`,
+  `search.query` and `session.readProject`, so a message a checkpoint moved out
+  of model context — or one a narrowed tool result replaced with a pointer — is
+  readable verbatim. Search requires every query word to appear and ranks by
+  match strength; a read pages one message by character offset; a query is
+  matched literally for non-ASCII text. These are host reads: no provider request
+  is made.
+- The second budget reminder is deleted rather than rephrased. Its sentence
+  ("unsummarized detail will not be available afterwards") is false while recall
+  exists. One reminder remains, at `clamp(hardLimit * 0.15, 8k, 32k)`, and the
+  hard boundary always warns.
+- A checkpoint's opaque `details` gains a mechanical ledger (`buildLedger`):
+  files read and modified, commands, message and tool-call counts, the goal and
+  the unresolved items, projected as a bounded block after the summary. A
+  checkpoint written before the ledger existed projects the recall pointer alone,
+  and `tokensAfter` stays optional so an older record loads unchanged.
+- See ADR 0300 and `03-runtime/02-agent-runtime.md` §5.1.
+
+## 2026-09-21 — Context pressure settings live on the model binding (D605)
+
+- `dynamicContext` defaults to `100% − max(100k, 15% × window) / window`, clamped
+  to 40–95 (a flat 60 when the window is unknown); `earlyCompaction` defaults to
+  75 % of the hard limit after 120 s of idleness, silent; `sleepTime` is off with
+  a quota of 2 runs per hour. A binding without these fields keeps the previous
+  behavior, and the settings controls clamp against the same bounds the runtime
+  uses.
+- One gate decides the pressure point for the outgoing request, the
+  hard-boundary check and the idle pass, so what narrowing saves is visible to
+  compaction instead of compaction firing while real room remained. Old tool
+  results are shortened to a head plus a recovery pointer, and a re-opened file's
+  result stays whole.
+- The hard boundary itself stays fixed and unconfigurable; these settings move
+  when optional work happens, never when a request is refused. A successful idle
+  pass carries `idle`/`silent` on `compaction_end` and only the routine toast is
+  suppressed — the transcript row, the inspector and the record remain. See
+  ADR 0301, `03-runtime/16-tool-result-limits.md` §6a, `04-ux/06-settings-ia.md`.
 
 ## 2026-09-21 — A plugin crash reports its exit code without copying raw output (D607, issue #747)
 

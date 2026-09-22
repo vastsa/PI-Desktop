@@ -5337,6 +5337,10 @@ eleven-tool-round desktop paths are verified by
 | C / F / 品质 —— 上下文估算保持安全（校准） | E2E-CONTEXT-estimate-calibration-stays-safe |
 | C — 对话与流式（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | 品质（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
+| C / F / 品质 —— 召回读回被压缩掉的上下文 | E2E-CONTEXT-recall-reads-a-compacted-away-message |
+| C / 品质 —— 空闲压缩静默且会让位给提示 | E2E-CONTEXT-idle-compaction-is-silent-and-yields |
+| C / 品质 —— 旧工具结果在压力下降级 | E2E-CONTEXT-tool-results-tier-under-pressure |
+| B / 品质 —— 每模型上下文阈值 | E2E-SETTINGS-per-model-context-thresholds |
 | G — 插件宿主生命周期（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
 | 品质（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
 | F — 持久化（存储的模型绑定数组） | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
@@ -8447,6 +8451,43 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **自动化：** `packages/agent-runtime/src/runtime.test.ts` 用真实的运行时覆盖两半：重复历史（丢弃 + 一行日志）与唯一历史
   （同一对象、无日志）。
 - **状态：** 单元测试覆盖；没有端到端驱动对重复转录发出真实提供商请求。
+### E2E-CONTEXT-recall-reads-a-compacted-away-message
+
+- **先决条件：** 用确定性提供商夹具把会话推过其上下文边界，使带摘要与 ledger 的检查点被安装；不使用真实凭据或付费 API。
+- **步骤：** 索要一个只存在于被移出模型上下文的消息中的 token。让模型用这些词调用 `recall`，再对返回的 id 用较小页大小调用
+  `session.readMessage`；随后用 CJK 查询重复，并从同项目的第二个会话用 `recall_project`。
+- **预期：** 召回文本逐字返回；分页报告 `hasMore` 与下一页偏移；非 ASCII 查询不做 ASCII 折叠即可命中；绑定在其它项目的会话
+  读作不存在；投影摘要带 recall 指针与 ledger 区块；转录行不变。
+- **规格：** 03-runtime/02-agent-runtime §5.1、03-runtime/06-host-rpc-protocol §4 会话；ADR 0300。
+- **验收：** C（对话与流）、F（持久化）、品质。**状态：** 主机与单元测试已覆盖读路径；桌面 E2E 待确定性边界夹具。
+
+### E2E-CONTEXT-idle-compaction-is-silent-and-yields
+
+- **先决条件：** 绑定启用 `earlyCompaction` 且 `delaySeconds` 较短；确定性摘要夹具；一次已结束且高于早期阈值的 run。
+- **步骤：** 让会话空闲超过延迟。重复一次，但在延迟窗口内发送提示。再用 `silent: false` 跑一次，并用会失败的摘要夹具跑一次。
+- **预期：** 第一次以 `compaction_end.idle` 与 `.silent` 压缩，不出现例行 toast，转录行与上下文检查器仍记录检查点；窗口内的
+  提示取消本次压缩且不发出摘要请求；`silent: false` 恢复 toast；降级与硬边界始终告警。
+- **规格：** 03-runtime/02-agent-runtime §5.1；ADR 0301。**验收：** C（对话与流）、品质。**状态：** 单元测试覆盖计时器与
+  预算接口；桌面 E2E 待补。
+
+### E2E-CONTEXT-tool-results-tier-under-pressure
+
+- **先决条件：** 会话尺寸使出站视图越过 `dynamicContext` 闸门，其中包含一条稍后会被重新打开的文件的结果。
+- **步骤：** 用旧工具结果填满上下文，再发一条会重新打开其中一个文件的提示；分别在闸门开与关时比较出站请求。
+- **预期：** 闸门开时旧结果缩成头部 + 恢复指针，重新打开的文件结果保持完整，全文仍可经 recall 读回；闸门关时不窄化；单条工具
+  限制与已存行不变。
+- **规格：** 03-runtime/16-tool-result-limits §6a；ADR 0301。**验收：** C（对话与流）、品质。**状态：** 单元测试覆盖
+  （`tool-result-tier.test.ts`）；桌面 E2E 待补。
+
+### E2E-SETTINGS-per-model-context-thresholds
+
+- **先决条件：** 模型目的地至少有一个已配置绑定；隔离的桌面配置。
+- **步骤：** 打开该绑定的“高级”。把动态上下文阈值调到边界以下与以上；切换早期压缩并把延迟改到接受范围之外；切换睡眠摘要并把
+  配额推到上限之上；保存并重新打开面板。随后在不重启的情况下发送一条提示。
+- **预期：** 取值按共享边界钳制；读数给出占硬限制的份额与约等 token 数；设置随绑定持久化并在下一次提示生效；未设置过的绑定
+  显示默认值。
+- **规格：** 04-ux/06-settings-ia §2 模型配置；ADR 0301。**验收：** B（模型配置）、品质。**状态：** 桌面契约测试覆盖面板
+  默认值；交互式 E2E 待补。
 
 ### E2E-MCP-HTTP-ACK — HTTP acknowledgement and authorization status
 

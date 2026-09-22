@@ -575,6 +575,22 @@ export const tr = {
     "configureImageModel": "Görsel modelini yapılandır",
 
 
+dynamicContext: "Dynamic context",
+dynamicContextWindow: "Start narrowing at",
+dynamicContextHint: "When the context reaches this share of the window, older tool results are shortened to a head plus a recall pointer; the full text stays readable with recall. Off means nothing is narrowed.",
+dynamicContextPresets: "Dynamic context presets",
+dynamicContextReadout: "{{percent}}% (about {{tokens}})",
+earlyCompaction: "Erken sıkıştırma",
+earlyCompactionWindow: "Sıkıştırmaya başla",
+earlyCompactionDelay: "Boşta bekleme",
+earlyCompactionSilent: "Sessiz arka plan geçişi",
+earlyCompactionHint: "Oturum boştayken ve bağlam pencerenin bu oranını kullandığında geçiş arka planda sıkıştırır. Transkript satırı, bağlam denetçisi ve recall bunu yine de kaydeder; sabit sınıra ulaşıldığında her zaman uyarılır.",
+earlyCompactionReadout: "{{percent}}% (yaklaşık {{tokens}})",
+earlyCompactionDelayReadout: "{{seconds}} sn boşta kaldıktan sonra",
+sleepTime: "Uyku zamanı özeti",
+sleepTimeRunsPerHour: "Saat başına çalışma",
+sleepTimeReadout: "saatte en fazla {{runs}} kez",
+sleepTimeHint: "Oturum boştayken ve önünde hâlâ bir sıkıştırma varken çalışma zamanı, bir model çağırmadan işin durumunu (hedef, engellenen maddeler, sonraki adım) anlatan küçük ve belirlenimci bir özeti transkripte ekler. Kota, özetin ne sıklıkla alınabileceğini sınırlar.",
 sklm: {
       browse: "Market",
       back: "Skill'lerim",

@@ -162,4 +162,47 @@ describe("buildSessionContext", () => {
     expect(JSON.stringify(messages)).not.toContain("prior DeepSeek plan");
   });
 
+
+  it("carries the recall pointer and the session ledger into the summary", () => {
+    // Both halves of ADR 0300 ride on the projected summary: the pointer says
+    // pre-boundary messages are still readable, and the ledger says what the
+    // boundary covered. The pointer is a promise, so it is asserted together
+    // with the ledger that makes it useful.
+    const entry = {
+      ...compaction("c1", 5),
+      details: {
+        ledger: {
+          filesRead: ["src/app.ts"],
+          filesModified: ["src/app.ts"],
+          commands: ["pnpm test"],
+          messages: 12,
+          toolCalls: 4,
+          goal: "keep the retry budget honest",
+          openItems: ["the flaky test"],
+        },
+      },
+    } as CompactionEntry;
+    const { messages } = buildSessionContext([user("u1", "hi", 1), entry]);
+    const flat = JSON.stringify(messages);
+
+    expect(flat).toContain("retrievable verbatim via the recall tool");
+    expect(flat).toContain("session ledger");
+    expect(flat).toContain("goal: keep the retry budget honest");
+    expect(flat).toContain("files read: src/app.ts");
+    expect(flat).toContain("commands: `pnpm test`");
+    expect(flat).toContain("unresolved: the flaky test");
+    expect(flat).toContain("12 messages, 4 tool calls");
+  });
+
+  it("projects the pointer alone for a checkpoint that carries no ledger", () => {
+    // A checkpoint written before the ledger existed must not grow an empty
+    // block: the pointer alone is what it always projected.
+    const { messages } = buildSessionContext([
+      user("u1", "hi", 1),
+      compaction("c1", 5),
+    ]);
+    const flat = JSON.stringify(messages);
+    expect(flat).toContain("retrievable verbatim via the recall tool");
+    expect(flat).not.toContain("session ledger");
+  });
 });

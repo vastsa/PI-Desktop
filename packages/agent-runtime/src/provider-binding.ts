@@ -54,7 +54,33 @@ export type RuntimeProviderConfig = {
   supportsReasoning: boolean;
   supportedThinkingLevels: ThinkingLevel[];
   /** Complete model metadata resolved from models.dev by Electron main. */
+  /** Complete model metadata resolved from models.dev by Electron main. */
   modelConfig?: ModelConfig;
+  /**
+   * Dynamic context gate from the model binding (D447): the share of the hard
+   * limit at which old tool results start being narrowed. Absent keeps the
+   * runtime default; the desktop sends it per launch, so a settings change
+   * applies to the next prompt.
+   */
+  dynamicContext?: { enabled: boolean; thresholdPercent: number };
+  /**
+   * Early background compaction for this model
+   * (`ModelBinding.earlyCompaction`): the share of the hard limit at which a
+   * settled, idle session compacts itself in the background, how long it waits,
+   * and whether a successful pass stays out of the toast channel. Absent keeps
+   * the runtime defaults; the inline hard-limit path ignores all of it.
+   */
+  earlyCompaction?: {
+    enabled: boolean;
+    thresholdPercent: number;
+    delaySeconds: number;
+    silent: boolean;
+  };
+  /**
+   * Sleep-time digest for this model (ADR 0301). Absent keeps it off; the
+   * runtime clamps the quota through the shared helper the settings pane uses.
+   */
+  sleepTime?: { enabled: boolean; maxRunsPerHour: number };
   /**
    * Optional outbound HTTP headers. Empty/absent keeps adapter defaults.
    * Injected last via a fetch wrapper so Codex/Anthropic cannot overwrite them.

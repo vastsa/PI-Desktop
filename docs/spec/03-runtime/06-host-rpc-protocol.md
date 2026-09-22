@@ -487,6 +487,32 @@ oversized/deep payloads. Tool values are sanitized for host-reserved keys. The
 per-plugin rolling limits are 10 single imports, 5 batch imports, and 20
 deletes per 60 seconds. P2/P3 methods are not present in protocol v11.
 
+- `session.recall` — searches one session's complete transcript. The query is
+  split into words and every word must appear; matches are ranked by how many
+  query words matched and how often they did. Matching is literal for non-ASCII
+  text (a CJK query matches the CJK string with no ASCII folding). Returns
+  excerpted matches with their message ids and accepts a positive `limit`. An
+  unknown session is `NOT_FOUND`. Additive RPC; no protocol version bump.
+- `session.readMessage` — reads one message's text back in character windows:
+  `offset` is a zero-based character offset and `limit` the page size in
+  characters. Returns the page, `hasMore`, and the next offset; offsets are
+  characters, never bytes, so a page boundary cannot split a code point. An
+  unknown message id returns no page. This is the read path for a tool result,
+  which the word index does not cover.
+- `search.query` — searches across the sessions of one project, resolved from
+  the calling session's stored project binding. A session bound to another
+  project reads as not found, so session existence never leaks across projects.
+  Returns at most one hit per session, ranked by its best match.
+- `session.readProject` — the project-scoped counterpart of
+  `session.readMessage`: the same character-window read for a message in any
+  session of one project, behind the same project-binding check.
+- `session.appendSleep` — appends one `sleep` transcript line (`SleepRecord`): a
+  deterministic, model-free digest of where a session stands. The layout scan
+  ignores the line and it never counts as a message, so message counts,
+  pagination and the transcript projection are unchanged. The runtime writes it
+  when the model binding enables the sleep digest (ADR 0301); the renderer does
+  not show it as a message.
+
 ### Stats
 
 - `stats.getTokenUsageHistory` — roll up completed `turns` token columns and

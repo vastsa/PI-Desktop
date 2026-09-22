@@ -2126,6 +2126,24 @@ pub fn append_compaction(
     transcripts::append_compaction(db.data_dir(), session_id, &session_created, compaction)
 }
 
+pub fn append_sleep(
+    db: &Database,
+    session_id: &str,
+    record: &crate::transcripts::SleepRecord,
+) -> Result<()> {
+    if record.id.trim().is_empty()
+        || record.digest.trim().is_empty()
+        || record.through_message_id.trim().is_empty()
+    {
+        return Err(anyhow!("invalid sleep record"));
+    }
+    // Same guard order as `append_compaction`: the session row must exist before
+    // any file is touched. The digest never becomes recovery state, so no stamp
+    // is kept.
+    session_created_at(db, session_id)?;
+    crate::transcripts::append_sleep(db.data_dir(), session_id, record)
+}
+
 fn compaction_valid_for_records(compaction: &CompactionRecord, records: &[MessageRecord]) -> bool {
     let Some(through_index) = records
         .iter()
@@ -3650,6 +3668,299 @@ pub fn get_token_usage_history(
     }))
 }
 
+/// Characters of tool-result text the read window treats as the stored head
+/// (ADR 0300): a tool row longer than this reads back flagged `truncated`, so
+/// the page must not present a cut as the whole message.
+const TOOL_INDEX_TEXT_MAX_CHARS: usize = 2_000;
+
+pub fn project_id_for_path(db: &Database, path: &str) -> Result<Option<i64>> {
+    let Some(normalized) = crate::db::canonical_project_path(path) else {
+        return Ok(None);
+    };
+    let id: Option<i64> = db
+        .conn()
+        .prepare_cached("SELECT id FROM projects WHERE path = ?1")?
+        .query_row(params![normalized], |row| row.get(0))
+        .optional()?;
+    Ok(id)
+}
+
+// ---- search -----------------------------------------------------------------
+
+/// Search message text across sessions.
+///
+/// `project_id` narrows the hits to one project's sessions; `None` keeps the
+/// unscoped search the renderer's global search uses. A caller that hands the
+/// search to a model must always pass an explicit project (spec
+/// 03-runtime/02 §recall).
+/// Recency blend for one session's best rank.
+///
+/// BM25 is negative and sorts ascending, so a recent session has to be made
+/// *more* negative to move up: multiplying by `1 + 0.2 * recency` does that and
+/// leaves an old session's rank essentially unscaled. `0.693` is `ln 2`, so the
+/// half-life is 30 days.
+fn blended_rank(rank: f64, newest_ms: i64, now_ms: i64) -> f64 {
+    let age_days = ((now_ms - newest_ms).max(0) as f64) / 86_400_000.0;
+    let recency = (-0.693 * age_days / 30.0).exp();
+    rank * (1.0 + 0.2 * recency)
+}
+
+/// Search message text across sessions; the model reaches it through
+/// `recall_project` (D424).
+///
+/// Ranking follows the community `recall` implementation: the best BM25 rank
+/// per session wins, a 30-day half-life recency blend promotes recent work, and
+/// candidates are over-fetched 3× so the blend can lift a session that ranked
+/// below the cut. The result is **one hit per session**, with the snippet taken
+/// from that session's best-matching row. The tool's next step is to read one
+/// session in full, so a session that matches in twenty places is one result
+/// with a way in, not twenty rows that bury the other sessions.
+pub fn search_project_messages(
+    db: &Database,
+    query: &str,
+    limit: i64,
+    project_id: Option<i64>,
+) -> Result<Vec<SearchHit>> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+    let limit = limit.clamp(1, 100);
+    // Over-fetch so the recency blend can promote a recent session that ranked
+    // below the requested cut.
+    let candidate_limit = limit.saturating_mul(3);
+    // FTS5 reads a bare hyphen as the NOT operator, so every query goes in as
+    // one quoted phrase: `ask-codex` stays a phrase instead of becoming
+    // `ask NOT codex`. Trigram FTS needs >= 3 chars; shorter queries use LIKE.
+    let use_fts = query.chars().count() >= 3;
+    let fts_query = format!("\"{}\"", query.replace('"', "\"\""));
+    let like_query = query
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+
+    let map_rank = |row: &rusqlite::Row<'_>| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, f64>(1)?,
+            row.get::<_, i64>(2)?,
+        ))
+    };
+    let ranked: Vec<(String, f64, i64)> = if use_fts {
+        let mut stmt = db.conn().prepare_cached(
+            // `MIN(rank)` — not `MIN(bm25(...))`: the FTS5 auxiliary function
+            // fails at row-fetch time inside an aggregate ("unable to use
+            // function bm25 in the requested context"), while the special
+            // `rank` column aggregates fine and is the same number.
+            "SELECT m.session_id, MIN(rank) AS best_rank,
+                    MAX(m.created_at) AS newest
+             FROM messages_fts
+             JOIN messages m ON m.mid = messages_fts.rowid
+             JOIN sessions s ON s.id = m.session_id
+             WHERE messages_fts MATCH ?1
+             AND (?3 IS NULL OR s.project_id = ?3)
+             GROUP BY m.session_id
+             ORDER BY best_rank
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![fts_query, candidate_limit, project_id], map_rank)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    } else {
+        // LIKE ranks nothing, so a flat rank leaves the recency blend as the
+        // only ordering: newest session first, which is what this branch is for.
+        let mut stmt = db.conn().prepare_cached(
+            "SELECT m.session_id, -1.0 AS best_rank, MAX(m.created_at) AS newest
+             FROM messages m
+             JOIN sessions s ON s.id = m.session_id
+             WHERE m.text LIKE '%' || ?1 || '%' ESCAPE '\\'
+             AND (?3 IS NULL OR s.project_id = ?3)
+             GROUP BY m.session_id
+             ORDER BY newest DESC
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![like_query, candidate_limit, project_id], map_rank)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as i64)
+        .unwrap_or(0);
+    let mut blended: Vec<(String, f64)> = ranked
+        .into_iter()
+        .map(|(session_id, rank, newest)| (session_id, blended_rank(rank, newest, now_ms)))
+        .collect();
+    blended.sort_by(|left, right| left.1.total_cmp(&right.1));
+    blended.truncate(limit as usize);
+
+    let map_hit = |row: &rusqlite::Row<'_>| {
+        Ok(SearchHit {
+            message_id: row.get(0)?,
+            session_id: row.get(1)?,
+            session_title: row.get(2)?,
+            role: row.get(3)?,
+            created_at: ms_to_ts(row.get(4)?),
+            snippet: row.get(5)?,
+        })
+    };
+    let mut hits = Vec::with_capacity(blended.len());
+    for (session_id, _) in blended {
+        // The representative row: this session's best-ranked match, so the
+        // snippet is the one that explains why the session surfaced at all.
+        let hit = if use_fts {
+            let mut stmt = db.conn().prepare_cached(
+                "SELECT m.id, m.session_id, s.title, m.role, m.created_at,
+                        snippet(messages_fts, 0, '', '', '…', 16)
+                 FROM messages_fts
+                 JOIN messages m ON m.mid = messages_fts.rowid
+                 JOIN sessions s ON s.id = m.session_id
+                 WHERE messages_fts MATCH ?1 AND m.session_id = ?2
+                 ORDER BY rank
+                 LIMIT 1",
+            )?;
+            let mut rows = stmt.query_map(params![fts_query, session_id], map_hit)?;
+            rows.next().transpose()?
+        } else {
+            let mut stmt = db.conn().prepare_cached(
+                "SELECT m.id, m.session_id, s.title, m.role, m.created_at,
+                        substr(m.text, 1, 160)
+                 FROM messages m
+                 JOIN sessions s ON s.id = m.session_id
+                 WHERE m.text LIKE '%' || ?1 || '%' ESCAPE '\\'
+                 AND m.session_id = ?2
+                 ORDER BY m.created_at DESC
+                 LIMIT 1",
+            )?;
+            let mut rows = stmt.query_map(params![like_query, session_id], map_hit)?;
+            rows.next().transpose()?
+        };
+        if let Some(hit) = hit {
+            hits.push(hit);
+        }
+    }
+    Ok(hits)
+}
+
+/// One message row inside a project-scoped read window (D424).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMessageRow {
+    pub id: String,
+    pub seq: i64,
+    pub role: String,
+    pub text: String,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    /// The text below is **not the whole message** (ADR 0300). Two independent
+    /// cuts can make that true: the window's own 4,000-character body cap, and
+    /// — for a tool row — the stored text being the 2,000-character index head.
+    /// Either way the rest is readable through `session.readMessage` by id, so
+    /// one flag is enough: a browse page has to say when what it shows is not
+    /// everything, and it must not claim more than it can verify.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub truncated: bool,
+}
+
+/// A bounded window over one session's transcript, readable only through the
+/// project the session is bound to.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMessageWindow {
+    pub session_id: String,
+    pub session_title: String,
+    pub total: i64,
+    pub has_more: bool,
+    /// Oldest → newest inside the page, even though pages walk newest-first.
+    pub messages: Vec<ProjectMessageRow>,
+}
+
+/// Read a bounded window of one session's messages, scoped to a project.
+///
+/// Whether `session_id` is bound to `project_id`.
+///
+/// The project-scoped message read (ADR 0300) uses this so a caller that
+/// supplies both a project path and a foreign session id gets the same
+/// "not found" it would get for a session that does not exist — session
+/// existence never leaks across projects, exactly like the read window below.
+pub fn session_bound_to_project(db: &Database, session_id: &str, project_id: i64) -> Result<bool> {
+    let found: Option<i64> = db
+        .conn()
+        .prepare_cached("SELECT 1 FROM sessions WHERE id = ?1 AND project_id = ?2")?
+        .query_row(params![session_id, project_id], |row| row.get(0))
+        .optional()?;
+    Ok(found.is_some())
+}
+
+/// The model-facing sibling of [`search_messages`] (D424): a session is only
+/// readable when it is bound to `project_id`, so the sidecar's read tool can
+/// never reach another project's history even though the caller supplies the
+/// session id. Pages walk backwards through `before_seq` (exclusive) and
+/// `has_more` reports whether older messages remain. `None` means the session
+/// does not exist or belongs to a different project — callers map that to an
+/// empty window so session existence never leaks.
+pub fn read_project_messages(
+    db: &Database,
+    session_id: &str,
+    project_id: i64,
+    limit: i64,
+    before_seq: Option<i64>,
+) -> Result<Option<ProjectMessageWindow>> {
+    let limit = limit.clamp(1, 50);
+    let session_title: Option<String> = db
+        .conn()
+        .prepare_cached("SELECT title FROM sessions WHERE id = ?1 AND project_id = ?2")?
+        .query_row(params![session_id, project_id], |row| row.get(0))
+        .optional()?;
+    let Some(session_title) = session_title else {
+        return Ok(None);
+    };
+    let total: i64 = db
+        .conn()
+        .prepare_cached("SELECT COUNT(*) FROM messages WHERE session_id = ?1")?
+        .query_row(params![session_id], |row| row.get(0))?;
+    let mut stmt = db.conn().prepare_cached(
+        "SELECT id, seq, role, COALESCE(substr(text, 1, 4000), ''), created_at, tool_name,
+                COALESCE(LENGTH(text), 0)
+         FROM messages
+         WHERE session_id = ?1 AND (?2 IS NULL OR seq < ?2)
+         ORDER BY seq DESC LIMIT ?3",
+    )?;
+    let rows = stmt.query_map(params![session_id, before_seq, limit + 1], |row| {
+        let role: String = row.get(2)?;
+        let stored_chars: i64 = row.get(6)?;
+        let text: String = row.get(3)?;
+        // A tool row's stored text is the index head by construction, so "may
+        // have been cut on the way in" is "is at the cap"; the window's own cap
+        // is the other cut, and it shows up as the returned text being shorter
+        // than the stored one. Counted here, in characters, because JavaScript
+        // string lengths would disagree on astral characters.
+        let head_only = role == "tool" && stored_chars >= TOOL_INDEX_TEXT_MAX_CHARS as i64;
+        let truncated = head_only || stored_chars > text.chars().count() as i64;
+        Ok(ProjectMessageRow {
+            id: row.get(0)?,
+            seq: row.get(1)?,
+            role,
+            text,
+            created_at: ms_to_ts(row.get(4)?),
+            tool_name: row.get(5)?,
+            truncated,
+        })
+    })?;
+    let mut messages = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    let has_more = messages.len() as i64 > limit;
+    messages.truncate(limit as usize);
+    // Rows arrive newest-first for the LIMIT; a page reads oldest-first.
+    messages.reverse();
+    Ok(Some(ProjectMessageWindow {
+        session_id: session_id.to_string(),
+        session_title,
+        total,
+        has_more,
+        messages,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3702,6 +4013,7 @@ mod tests {
             first_kept_message_id: Some(first.into()),
             through_message_id: through.into(),
             tokens_before: 120_000,
+            tokens_after: None,
             usage: None,
             retained_tail: Some(json!([{
                 "role": "user",
@@ -3715,6 +4027,79 @@ mod tests {
         }
     }
 
+    #[test]
+    fn project_search_reports_one_hit_per_session_ranked_by_best_match() {
+        let db = test_db();
+        let session =
+            create_session(&db, None, None, None, None, Some("C:/work/alpha".into())).unwrap();
+        let other =
+            create_session(&db, None, None, None, None, Some("C:/work/alpha".into())).unwrap();
+        let foreign =
+            create_session(&db, None, None, None, None, Some("C:/work/beta".into())).unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("m1", "the spinner plan", "2026-09-16T15:42:41Z"),
+            None,
+        )
+        .unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("m2", "spinner spinner spinner", "2026-09-16T15:42:42Z"),
+            None,
+        )
+        .unwrap();
+        append_message(
+            &db,
+            &other.id,
+            &user_msg("m3", "spinner once", "2026-09-16T15:42:43Z"),
+            None,
+        )
+        .unwrap();
+        append_message(
+            &db,
+            &foreign.id,
+            &user_msg("m4", "spinner elsewhere", "2026-09-16T15:42:44Z"),
+            None,
+        )
+        .unwrap();
+
+        let project_id = project_id_for_path(&db, "C:/work/alpha").unwrap().unwrap();
+        let hits = search_project_messages(&db, "spinner", 10, Some(project_id)).unwrap();
+        assert_eq!(
+            hits.len(),
+            2,
+            "one hit per matching session of this project"
+        );
+        // The session whose best row carries the term most often ranks first.
+        assert_eq!(hits[0].session_id, session.id);
+        assert!(hits.iter().all(|hit| hit.session_id != foreign.id));
+    }
+
+    #[test]
+    fn project_read_never_leaks_a_foreign_session() {
+        let db = test_db();
+        let session =
+            create_session(&db, None, None, None, None, Some("C:/work/alpha".into())).unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("m1", "alpha work", "2026-09-16T15:42:41Z"),
+            None,
+        )
+        .unwrap();
+        let alpha = project_id_for_path(&db, "C:/work/alpha").unwrap().unwrap();
+        create_session(&db, None, None, None, None, Some("C:/work/beta".into())).unwrap();
+        let beta = project_id_for_path(&db, "C:/work/beta").unwrap().unwrap();
+
+        let same = read_project_messages(&db, &session.id, alpha, 50, None).unwrap();
+        assert!(same.is_some());
+        assert_eq!(same.unwrap().messages.len(), 1);
+        // A foreign project reads the session as absent, never as an error.
+        let cross = read_project_messages(&db, &session.id, beta, 50, None).unwrap();
+        assert!(cross.is_none());
+    }
     #[test]
     fn compaction_survives_restart_and_late_truncation_but_not_early_truncation() {
         let db = test_db();

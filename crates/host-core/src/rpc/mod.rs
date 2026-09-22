@@ -2339,6 +2339,150 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": true }))
         }
+        "session.appendSleep" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let record: crate::transcripts::SleepRecord = serde_json::from_value(
+                params
+                    .get("record")
+                    .cloned()
+                    .ok_or_else(|| rpc_err(1002, "record required", "INVALID_PARAMS"))?,
+            )
+            .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            sessions::append_sleep(&st.db, session_id, &record)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "ok": true }))
+        }
+        "session.recall" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let query = params.get("query").and_then(|v| v.as_str());
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10)
+                .clamp(1, 100) as usize;
+            let st = state.lock().await;
+            let result =
+                crate::transcripts::recall_transcript(st.db.data_dir(), session_id, query, limit)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            serde_json::to_value(result).map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))
+        }
+        "session.readMessage" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let message_id = params
+                .get("messageId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "messageId required", "INVALID_PARAMS"))?;
+            let offset = params.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let max_chars = (params
+                .get("maxChars")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(8_000))
+            .clamp(1, crate::transcripts::MESSAGE_TEXT_MAX_CHARS as u64)
+                as usize;
+            // With a project path, the message is only readable through the
+            // project the session is bound to (ADR 0300): a foreign pair reads
+            // as not found, so session existence never leaks across projects.
+            if let Some(project_path) = params.get("projectPath").and_then(|v| v.as_str()) {
+                let st = state.lock().await;
+                let project_id = sessions::project_id_for_path(&st.db, project_path)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                    .ok_or_else(|| rpc_err(1002, "unknown project", "INVALID_PARAMS"))?;
+                let bound = sessions::session_bound_to_project(&st.db, session_id, project_id)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                if !bound {
+                    return Err(rpc_err(
+                        1002,
+                        "session is not bound to this project",
+                        "INVALID_PARAMS",
+                    ));
+                }
+            }
+            let st = state.lock().await;
+            match crate::transcripts::read_message_text(
+                st.db.data_dir(),
+                session_id,
+                message_id,
+                offset,
+                max_chars,
+            )
+            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+            {
+                Some(window) => serde_json::to_value(window)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL")),
+                None => Err(rpc_err(1002, "message not found", "INVALID_PARAMS")),
+            }
+        }
+        "search.query" => {
+            let query = params
+                .get("query")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "query required", "INVALID_PARAMS"))?;
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10)
+                .clamp(1, 100);
+            let project_path = params.get("projectPath").and_then(|v| v.as_str());
+            let st = state.lock().await;
+            let project_id = match project_path {
+                Some(path) => sessions::project_id_for_path(&st.db, path)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?,
+                None => None,
+            };
+            let hits = sessions::search_project_messages(&st.db, query, limit as i64, project_id)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "hits": serde_json::to_value(hits).unwrap_or_default() }))
+        }
+        "session.readProject" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let project_path = params
+                .get("projectPath")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_err(1002, "projectPath required", "INVALID_PARAMS"))?;
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(20)
+                .clamp(1, 50);
+            let before_seq = params.get("beforeSeq").and_then(|v| v.as_i64());
+            let st = state.lock().await;
+            let project_id = sessions::project_id_for_path(&st.db, project_path)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                .ok_or_else(|| rpc_err(1002, "unknown project", "INVALID_PARAMS"))?;
+            match sessions::read_project_messages(
+                &st.db,
+                session_id,
+                project_id,
+                limit as i64,
+                before_seq,
+            )
+            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+            {
+                Some(window) => serde_json::to_value(window)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL")),
+                None => Ok(json!({
+                    "sessionId": session_id,
+                    "sessionTitle": "",
+                    "total": 0,
+                    "hasMore": false,
+                    "messages": []
+                })),
+            }
+        }
+
         "session.replaceMessages" => {
             let session_id = params
                 .get("sessionId")

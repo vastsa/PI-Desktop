@@ -566,6 +566,22 @@ export const fr = {
     "configureImageModel": "Configurer le modèle d’images",
 
 
+dynamicContext: "Dynamic context",
+dynamicContextWindow: "Start narrowing at",
+dynamicContextHint: "When the context reaches this share of the window, older tool results are shortened to a head plus a recall pointer; the full text stays readable with recall. Off means nothing is narrowed.",
+dynamicContextPresets: "Dynamic context presets",
+dynamicContextReadout: "{{percent}}% (about {{tokens}})",
+earlyCompaction: "Compactage anticipé",
+earlyCompactionWindow: "Compacter à partir de",
+earlyCompactionDelay: "Délai d'inactivité",
+earlyCompactionSilent: "Passe en arrière-plan silencieuse",
+earlyCompactionHint: "Une fois la session inactive et le contexte ayant utilisé cette part de la fenêtre, la passe compacte en arrière-plan. La ligne de transcription, l'inspecteur de contexte et recall l'enregistrent toujours ; atteindre la limite stricte avertit toujours.",
+earlyCompactionReadout: "{{percent}} % (environ {{tokens}})",
+earlyCompactionDelayReadout: "après {{seconds}} s d'inactivité",
+sleepTime: "Résumé en veille",
+sleepTimeRunsPerHour: "Exécutions par heure",
+sleepTimeReadout: "jusqu'à {{runs}} par heure",
+sleepTimeHint: "Pendant que la session est inactive et qu'une compaction reste à venir, le runtime ajoute au transcript un petit résumé déterministe de l'état du travail — objectif, éléments bloqués, prochaine étape — sans jamais appeler de modèle. Le quota limite la fréquence à laquelle un résumé peut être produit.",
 sklm: {
       browse: "Marché",
       back: "Mes skills",

@@ -65,6 +65,15 @@ pub struct CompactionRecord {
     pub first_kept_message_id: Option<String>,
     pub through_message_id: String,
     pub tokens_before: i64,
+    /// Occupancy the checkpoint itself believes the next request will carry,
+    /// stamped when the checkpoint is installed (`persistCheckpoint`). The
+    /// visible transcript is untouched by a compaction, so nothing else on disk
+    /// records what the model context shrank to — without this the context ring
+    /// keeps showing the pre-compaction request until the next one lands.
+    /// Optional: a transcript written before this field existed loads with
+    /// `None`, and a line carrying it stays readable by older readers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_after: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -75,6 +84,27 @@ pub struct CompactionRecord {
     pub provider_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
+    pub created_at: String,
+}
+
+/// A deterministic sleep-time digest of where the session stood when a
+/// background compaction armed (ADR 0301). Deterministic means no model call is
+/// involved: the runtime extracts it from the transcript.
+///
+/// The line is informational. Nothing reads it as recovery state, and a layout
+/// scan never counts it as a message or a checkpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SleepRecord {
+    /// `sleep-<millis>-<short>` — unique per write.
+    pub id: String,
+    /// The deterministic goal/unresolved/progress text.
+    pub digest: String,
+    /// Newest message the digest covers.
+    pub through_message_id: String,
+    /// Message lines in the transcript when it was taken.
+    pub message_count: usize,
+    /// ISO-8601, same shape as other records.
     pub created_at: String,
 }
 
@@ -312,6 +342,8 @@ fn sniff_line_kind(line: &str) -> Option<&'static str> {
                 return match value {
                     b"message" => Some("message"),
                     b"compaction" => Some("compaction"),
+
+                    b"sleep" => Some("sleep"),
                     b"session" => Some("session"),
                     b"revision" => Some("revision"),
                     b"revision_live" => Some("revision_live"),
@@ -677,6 +709,19 @@ pub fn append_compaction(
         tagged("compaction", record)?,
     )
     .with_context(|| format!("append compaction {}", path.display()))
+}
+
+/// Append a sleep-time digest without rewriting visible messages. It is
+/// informational only: the layout skips it, and no reader treats it as recovery
+/// state (ADR 0301).
+pub fn append_sleep(data_dir: &Path, session_id: &str, record: &SleepRecord) -> Result<()> {
+    let path = transcript_path(data_dir, session_id)?;
+    append_line(
+        &path,
+        Some(header_line(session_id, "1970-01-01T00:00:00Z")?),
+        tagged("sleep", record)?,
+    )
+    .with_context(|| format!("append sleep {}", path.display()))
 }
 
 /// Load the live transcript. A missing file is an empty transcript; unknown
@@ -1198,12 +1243,606 @@ pub fn remove_session_files(data_dir: &Path, session_id: &str) {
     }
 }
 
+/// One recall hit: a message whose text matched the query.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecallHit {
+    pub id: String,
+    pub role: String,
+    pub created_at: String,
+    /// Zero-based position of the message in transcript file order.
+    pub index: usize,
+    /// Bounded window around the first match (search), or leading text (tail).
+    pub snippet: String,
+}
+
+/// Recall result plus the session's total message count, so a model can
+/// tell when it has seen the whole history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecallResult {
+    pub hits: Vec<RecallHit>,
+    pub total_messages: usize,
+}
+
+/// A message's searchable text: the top-level `text` fields of its canonical
+/// blocks. Thinking and tool payloads are out of scope for P1 recall.
+fn recall_text(blocks: &Value) -> String {
+    let mut out = String::new();
+    if let Some(items) = blocks.as_array() {
+        for block in items {
+            if let Some(text) = block.get("text").and_then(Value::as_str) {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                out.push_str(text);
+            }
+        }
+    }
+    out
+}
+
+/// Query words: whitespace-separated, case-folded (ASCII bytes for ASCII words,
+/// Unicode for the rest), de-duplicated in the order written. Empty input means
+/// "no query", which reads the tail.
+fn recall_terms(query: &str) -> Vec<String> {
+    let mut terms: Vec<String> = Vec::new();
+    for word in query.split_whitespace() {
+        // ASCII words keep the byte-level fold they always had; a non-ASCII
+        // word folds through Unicode, because ASCII folding cannot see that
+        // `ПРИВЕТ` and `привет` are the same word.
+        let term = if word.is_ascii() {
+            word.to_ascii_lowercase()
+        } else {
+            word.to_lowercase()
+        };
+        if !terms.contains(&term) {
+            terms.push(term);
+        }
+    }
+    terms
+}
+
+/// ASCII case-insensitive substring search that copies nothing.
+///
+/// The previous path lowercased the whole message before searching, which
+/// allocated a copy of every message examined on every query — transcripts are
+/// dominated by tool output and reach tens of megabytes. Folding case per
+/// candidate byte is the same comparison (ASCII-only, exactly as before)
+/// without the copy: case never folds across a multi-byte character, so a
+/// byte-wise scan is equivalent for ASCII and non-ASCII needles alike.
+fn find_ignore_ascii_case(haystack: &str, needle: &str) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    let hay = haystack.as_bytes();
+    let nee = needle.as_bytes();
+    if nee.len() > hay.len() {
+        return None;
+    }
+    (0..=hay.len() - nee.len())
+        .find(|start| hay[*start..*start + nee.len()].eq_ignore_ascii_case(nee))
+}
+
+/// One query word against one line of text: the ASCII path stays the byte scan
+/// every ASCII query already took; a non-ASCII word folds per character on both
+/// sides, because ASCII folding cannot see a Cyrillic or accented case pair.
+fn find_ignore_case(haystack: &str, needle: &str) -> Option<usize> {
+    if needle.is_ascii() {
+        find_ignore_ascii_case(haystack, needle)
+    } else {
+        find_ignore_case_unicode(haystack, needle)
+    }
+}
+
+/// Char-wise case-insensitive search for non-ASCII needles, returning the byte
+/// offset of the first matched character.
+///
+/// Folding is per `char`, not per byte: `to_lowercase` can map one character to
+/// several (`İ` → `i̇`) or to a different byte length, so the folded streams are
+/// compared character by character. This path allocates the folded needle and
+/// re-slices the haystack per start position — the price of correct folding for
+/// the non-ASCII queries that need it, which ASCII queries never take.
+fn find_ignore_case_unicode(haystack: &str, needle: &str) -> Option<usize> {
+    let folded_needle: Vec<char> = needle.chars().flat_map(char::to_lowercase).collect();
+    if folded_needle.is_empty() {
+        return Some(0);
+    }
+    for (start, _) in haystack.char_indices() {
+        let mut matched = 0usize;
+        let mut mismatched = false;
+        for character in haystack[start..].chars() {
+            for folded in character.to_lowercase() {
+                if matched >= folded_needle.len() || folded_needle[matched] != folded {
+                    mismatched = true;
+                    break;
+                }
+                matched += 1;
+            }
+            if mismatched || matched == folded_needle.len() {
+                break;
+            }
+        }
+        if !mismatched && matched == folded_needle.len() {
+            return Some(start);
+        }
+    }
+    None
+}
+
+/// True when a term must appear literally in the raw JSON line, so a line that
+/// does not contain it can be skipped without parsing (and without a copy).
+///
+/// A term carrying a JSON escape (`"`, `\`) or a control character is written
+/// into the line in its escaped form, where the raw bytes differ from the term
+/// itself; the pre-filter would then report a false negative, so it is disabled
+/// for the whole query when any term is like that.
+fn raw_scan_is_conclusive(terms: &[String]) -> bool {
+    terms.iter().all(|term| {
+        // Raw-byte matching is ASCII-only: a non-ASCII term folds in a way the
+        // bytes do not show, so the whole query gives up the pre-filter instead
+        // of reporting a false negative.
+        term.is_ascii()
+            && !term.is_empty()
+            && !term.contains(['"', '\\'])
+            && !term.chars().any(char::is_control)
+    })
+}
+
+/// Case-insensitive search over a session's full transcript.
+///
+/// Session isolation is host-enforced: the transcript path derives from
+/// `session_id` alone, so a caller can only recall its own session. An empty or
+/// blank query reads the tail: the newest `limit` messages, oldest-first, with
+/// leading-text snippets. A query returns the newest `limit` hits first, each
+/// with a bounded snippet around its first match.
+///
+/// A query is read as **words**: a message matches when every word appears in
+/// it, so `retry budget` finds a message that says "the retry spent its budget"
+/// even though the phrase never appears. A single word behaves exactly as the
+/// old substring search did, and hit order stays newest-first either way.
+///
+/// Two costs were paid on every call before and are not any more: the tail read
+/// now seeks to the newest messages through the layout instead of parsing the
+/// whole file, and a query skips JSON parsing for any line whose raw bytes
+/// cannot contain the words.
+pub fn recall_transcript(
+    data_dir: &Path,
+    session_id: &str,
+    query: Option<&str>,
+    limit: usize,
+) -> Result<RecallResult> {
+    let terms = query.map(recall_terms).unwrap_or_default();
+    if terms.is_empty() {
+        return recall_tail(data_dir, session_id, limit);
+    }
+    recall_matches(data_dir, session_id, &terms, limit)
+}
+
+/// Read the trimmed line at a known message offset, or `None` at end of file.
+///
+/// Shared by the two recall walks so both report the same coordinate space:
+/// an index is a position among message *lines*, and a line that cannot be
+/// parsed drops out of the hits without shifting the indexes around it.
+fn read_message_line_at<'a>(
+    reader: &mut BufReader<File>,
+    offset: u64,
+    line: &'a mut String,
+    path: &Path,
+) -> Result<Option<&'a str>> {
+    reader
+        .seek(SeekFrom::Start(offset))
+        .with_context(|| format!("seek {}", path.display()))?;
+    line.clear();
+    if reader
+        .read_line(line)
+        .with_context(|| format!("read {}", path.display()))?
+        == 0
+    {
+        return Ok(None);
+    }
+    let trimmed = line.trim();
+    Ok(if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    })
+}
+
+/// Tail read: the newest `limit` messages, oldest-first, by seeking to their
+/// offsets instead of parsing the whole file.
+fn recall_tail(data_dir: &Path, session_id: &str, limit: usize) -> Result<RecallResult> {
+    let layout = refresh_layout(data_dir, session_id, TranscriptLayout::default())?;
+    let total = layout.message_count();
+    if total == 0 || limit == 0 {
+        return Ok(RecallResult {
+            hits: Vec::new(),
+            total_messages: total,
+        });
+    }
+    let path = transcript_path(data_dir, session_id)?;
+    let file = match File::open(&path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(RecallResult {
+                hits: Vec::new(),
+                total_messages: 0,
+            })
+        }
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+    };
+    let mut reader = BufReader::new(file);
+    let mut line = String::new();
+    let mut hits: Vec<RecallHit> = Vec::new();
+    for index in total.saturating_sub(limit)..total {
+        if line.capacity() > 1024 * 1024 {
+            line = String::new();
+        }
+        let Some(trimmed) =
+            read_message_line_at(&mut reader, layout.message_offsets[index], &mut line, &path)?
+        else {
+            continue;
+        };
+        let Ok(record) = serde_json::from_str::<MessageRecord>(trimmed) else {
+            tracing::warn!(path = %path.display(), index, "skipping invalid message line");
+            continue;
+        };
+        hits.push(RecallHit {
+            id: record.id.clone(),
+            role: record.role.clone(),
+            created_at: record.created_at.clone(),
+            index,
+            snippet: recall_text(&record.blocks).chars().take(400).collect(),
+        });
+    }
+    Ok(RecallResult {
+        hits,
+        total_messages: total,
+    })
+}
+
+/// How many candidate messages the ranked walk collects before ordering: a
+/// small multiple of `limit` with a floor and a ceiling, so a broad query pays
+/// a bounded amount of extra parsing and a narrow one pays almost nothing.
+const RECALL_RANK_WINDOW_PER_HIT: usize = 6;
+const RECALL_RANK_WINDOW_MIN: usize = 40;
+const RECALL_RANK_WINDOW_MAX: usize = 200;
+/// Occurrences counted per query word; a message repeating one word forever
+/// must not outrank one that covers the whole query.
+const RECALL_RANK_MAX_TERM_HITS: u32 = 8;
+
+/// Match strength of one message: how many occurrences of how many query words
+/// it carries, counted with the same case folding the match itself uses. The
+/// score ranks candidates against each other; it is never returned to the
+/// model, so its scale is private.
+fn match_score(text: &str, terms: &[String]) -> u32 {
+    let mut score = 0u32;
+    for term in terms {
+        let mut from = 0usize;
+        let mut seen = 0u32;
+        while seen < RECALL_RANK_MAX_TERM_HITS {
+            let Some(at) = text
+                .get(from..)
+                .and_then(|rest| find_ignore_case(rest, term))
+            else {
+                break;
+            };
+            seen += 1;
+            // Advance past the first character of the match: a folded match can
+            // differ from the term in bytes, but it always starts on a
+            // character boundary.
+            let step = text[from + at..]
+                .chars()
+                .next()
+                .map(char::len_utf8)
+                .unwrap_or(1);
+            from += at + step;
+        }
+        score += seen;
+    }
+    score
+}
+
+/// Message-line search: every match inside the ranking window, best first.
+///
+/// The reverse walk goes through the layout's offsets, so the peak cost is the
+/// snippets it returns plus the layout — not a vector of every hit. Candidates
+/// are collected newest-first up to `window`, then ordered by match strength
+/// with recency as the tie-break, so the model reads the most relevant message
+/// first without the walk having to scan the whole transcript. One deliberate
+/// difference from the old path: `total_messages` and every hit's `index` count
+/// message *lines* (the layout's coordinate space) rather than successfully
+/// parsed records, so a corrupt line is counted, keeps its slot, and never
+/// matches where it used to shift everything after it.
+fn recall_matches(
+    data_dir: &Path,
+    session_id: &str,
+    terms: &[String],
+    limit: usize,
+) -> Result<RecallResult> {
+    let layout = refresh_layout(data_dir, session_id, TranscriptLayout::default())?;
+    let total = layout.message_count();
+    let path = transcript_path(data_dir, session_id)?;
+    let file = match File::open(&path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(RecallResult {
+                hits: Vec::new(),
+                total_messages: 0,
+            })
+        }
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+    };
+    let conclusive = raw_scan_is_conclusive(terms);
+    let mut reader = BufReader::new(file);
+    let mut line = String::new();
+    let window = limit
+        .saturating_mul(RECALL_RANK_WINDOW_PER_HIT)
+        .max(RECALL_RANK_WINDOW_MIN)
+        .min(RECALL_RANK_WINDOW_MAX);
+    let mut hits: Vec<RecallHit> = Vec::new();
+    let mut scores: Vec<u32> = Vec::new();
+    for index in (0..total).rev() {
+        if line.capacity() > 1024 * 1024 {
+            line = String::new();
+        }
+        let Some(trimmed) =
+            read_message_line_at(&mut reader, layout.message_offsets[index], &mut line, &path)?
+        else {
+            continue;
+        };
+        if conclusive
+            && !terms
+                .iter()
+                .all(|term| find_ignore_case(trimmed, term).is_some())
+        {
+            continue;
+        }
+        let Ok(record) = serde_json::from_str::<MessageRecord>(trimmed) else {
+            tracing::warn!(path = %path.display(), index, "skipping invalid message line");
+            continue;
+        };
+        let text = recall_text(&record.blocks);
+        // The pre-filter above is an optimization on the raw line; the
+        // authoritative check runs on the parsed text, because a term carrying
+        // a non-ASCII character (or one JSON escapes) cannot be matched
+        // against raw bytes — and a query means every word, not any word.
+        if !terms
+            .iter()
+            .all(|term| find_ignore_case(&text, term).is_some())
+        {
+            continue;
+        }
+        let Some((pos, len)) = terms
+            .iter()
+            .filter_map(|term| find_ignore_case(&text, term).map(|at| (at, term.len())))
+            .min_by_key(|(at, _)| *at)
+        else {
+            continue;
+        };
+        let start = text.floor_char_boundary(pos.saturating_sub(120));
+        let end = text.ceil_char_boundary((pos + len).saturating_add(280).min(text.len()));
+        hits.push(RecallHit {
+            id: record.id.clone(),
+            role: record.role.clone(),
+            created_at: record.created_at.clone(),
+            index,
+            snippet: text[start..end].to_string(),
+        });
+        scores.push(match_score(&text, terms));
+        if hits.len() >= window {
+            break;
+        }
+    }
+    // Order without cloning: take the collected hits, then move each one out of
+    // its slot in ranked order (match strength first, then recency).
+    if hits.len() > 1 {
+        let mut order: Vec<usize> = (0..hits.len()).collect();
+        order.sort_by(|left, right| {
+            scores[*right]
+                .cmp(&scores[*left])
+                .then(hits[*right].index.cmp(&hits[*left].index))
+        });
+        let mut slots: Vec<Option<RecallHit>> =
+            std::mem::take(&mut hits).into_iter().map(Some).collect();
+        hits = order
+            .into_iter()
+            .map(|slot| slots[slot].take().expect("each ordered index appears once"))
+            .collect();
+    }
+    hits.truncate(limit);
+    Ok(RecallResult {
+        hits,
+        total_messages: total,
+    })
+}
+
+/// Default and maximum size of one [`read_message_text`] page.
+pub const MESSAGE_TEXT_DEFAULT_CHARS: usize = 8_000;
+pub const MESSAGE_TEXT_MAX_CHARS: usize = 20_000;
+
+/// One bounded page of a single message's text, read from the transcript.
+///
+/// `recall` answers "where does this string appear"; this answers "what does
+/// this message say". Both read the append-only transcript — the only place
+/// tool text lives, since the index row deliberately stores none for tool rows
+/// — so a message the working window narrowed away stays readable page by page
+/// (ADR 0300). Offsets are in characters, never bytes, so a page boundary can
+/// never split a multi-byte character.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageTextWindow {
+    pub message_id: String,
+    pub role: String,
+    pub created_at: String,
+    /// Zero-based position of the message in transcript file order.
+    pub index: usize,
+    /// Characters in the whole message, so a caller can page until it has all.
+    pub total_chars: usize,
+    /// Character offset this page starts at (clamped to `total_chars`).
+    pub offset: usize,
+    pub text: String,
+    pub has_more: bool,
+    /// Where the next page starts, in characters. Returned rather than derived
+    /// by the caller: the host counts characters while JavaScript string
+    /// lengths count UTF-16 units, and the two disagree on astral characters.
+    pub next_offset: usize,
+}
+
+/// Read one page of one message's text. `None` means the session or the
+/// message id is not in this transcript (a missing session reads as empty,
+/// exactly like `recall_transcript`).
+pub fn read_message_text(
+    data_dir: &Path,
+    session_id: &str,
+    message_id: &str,
+    offset: usize,
+    max_chars: usize,
+) -> Result<Option<MessageTextWindow>> {
+    let read = read_transcript_window(data_dir, session_id, 0, None)?;
+    let Some((index, record)) = read
+        .messages
+        .iter()
+        .enumerate()
+        .find(|(_, record)| record.id == message_id)
+    else {
+        return Ok(None);
+    };
+    let text = recall_text(&record.blocks);
+    let total_chars = text.chars().count();
+    let offset = offset.min(total_chars);
+    let page: String = text.chars().skip(offset).take(max_chars).collect();
+    let page_chars = page.chars().count();
+    Ok(Some(MessageTextWindow {
+        message_id: record.id.clone(),
+        role: record.role.clone(),
+        created_at: record.created_at.clone(),
+        index,
+        total_chars,
+        offset,
+        text: page,
+        has_more: offset + page_chars < total_chars,
+        next_offset: offset + page_chars,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
     use tempfile::tempdir;
 
+    #[test]
+    fn sleep_append_is_append_only_and_never_counts_as_a_message() {
+        let dir = tempdir().unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", "one"),
+        )
+        .unwrap();
+        let record = SleepRecord {
+            id: "sleep-1".into(),
+            digest: "## Goal\nthe ask".into(),
+            through_message_id: "m1".into(),
+            message_count: 1,
+            created_at: "2026-07-26T00:00:02Z".into(),
+        };
+        append_sleep(dir.path(), "s1", &record).unwrap();
+
+        // A digest append must not rewrite earlier lines...
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+        assert_eq!(layout.message_count(), 1, "a sleep line is not a message");
+        // ...and the line classifies as its own kind, not as unknown noise.
+        let path = transcript_path(dir.path(), "s1").unwrap();
+        let last = std::fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .last()
+            .unwrap()
+            .to_string();
+        assert_eq!(sniff_line_kind(&last), Some("sleep"));
+        assert_eq!(read_transcript(dir.path(), "s1").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn recall_matches_every_word_and_ranks_by_strength() {
+        let dir = tempdir().unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", "the retry spent its budget"),
+        )
+        .unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:01Z",
+            &record("m2", "unrelated talk"),
+        )
+        .unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:02Z",
+            &record("m3", "retry budget retry budget retry"),
+        )
+        .unwrap();
+
+        let result = recall_transcript(dir.path(), "s1", Some("retry budget"), 10).unwrap();
+        assert_eq!(result.total_messages, 3);
+        // m3 carries the query words most often, so it ranks first despite being newest-tied.
+        assert_eq!(result.hits[0].id, "m3");
+        assert_eq!(result.hits.len(), 2, "m2 matches neither word");
+    }
+
+    #[test]
+    fn recall_reads_a_non_ascii_word_without_ascii_folding() {
+        let dir = tempdir().unwrap();
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", "код вернулся"),
+        )
+        .unwrap();
+        let upper = recall_transcript(dir.path(), "s1", Some("КОД"), 10).unwrap();
+        assert_eq!(
+            upper.hits.len(),
+            1,
+            "a Cyrillic case pair must fold through Unicode"
+        );
+    }
+
+    #[test]
+    fn read_message_text_pages_forward_in_characters() {
+        let dir = tempdir().unwrap();
+        let long = "д".repeat(50);
+        append_message(
+            dir.path(),
+            "s1",
+            "2026-07-26T00:00:00Z",
+            &record("m1", &long),
+        )
+        .unwrap();
+        let page = read_message_text(dir.path(), "s1", "m1", 10, 20)
+            .unwrap()
+            .expect("found");
+        assert_eq!(page.offset, 10);
+        assert_eq!(page.text.chars().count(), 20);
+        assert!(page.has_more);
+        assert_eq!(page.next_offset, 30);
+        let rest = read_message_text(dir.path(), "s1", "m1", 30, 100)
+            .unwrap()
+            .expect("found");
+        assert_eq!(rest.text.chars().count(), 20);
+        assert!(!rest.has_more);
+        assert!(read_message_text(dir.path(), "s1", "nope", 0, 10)
+            .unwrap()
+            .is_none());
+    }
     #[test]
     fn append_after_torn_tail_terminates_the_torn_line_first() {
         let dir = tempdir().unwrap();
@@ -1255,6 +1894,7 @@ mod tests {
             first_kept_message_id: Some("m1".into()),
             through_message_id: "m2".into(),
             tokens_before: 42_000,
+            tokens_after: Some(21_000),
             usage: Some(json!({ "input": 100, "output": 20 })),
             retained_tail: Some(json!([{ "role": "user", "content": "again", "timestamp": 1 }])),
             details: None,
@@ -1607,6 +2247,36 @@ mod tests {
         assert_eq!(restored[0].id, "compact-1");
         assert_eq!(restored[0].through_message_id, "m2");
         assert_eq!(restored[0].tokens_before, 42_000);
+        // The post-compaction estimate rides the record so the context ring can
+        // report the new window without waiting for the next provider request.
+        assert_eq!(restored[0].tokens_after, Some(21_000));
+    }
+
+    /// A checkpoint written before the post-compaction estimate existed must
+    /// keep loading. The field is optional on the wire, so an old line has no
+    /// `tokensAfter` and readers that predate it ignore the new one.
+    #[test]
+    fn a_checkpoint_without_a_post_compaction_estimate_still_loads() {
+        let dir = tempdir().unwrap();
+        let path = transcript_path(dir.path(), "s1").unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let header = header_line("s1", "2026-07-26T00:00:00Z").unwrap();
+        let legacy = json!({
+            "type": "compaction",
+            "id": "legacy-1",
+            "summary": "summary",
+            "throughMessageId": "m1",
+            "tokensBefore": 42_000,
+            "createdAt": "2026-07-26T00:00:02Z"
+        })
+        .to_string();
+        std::fs::write(&path, format!("{header}\n{legacy}\n")).unwrap();
+
+        let restored = read_compactions(dir.path(), "s1").unwrap();
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].id, "legacy-1");
+        assert_eq!(restored[0].tokens_before, 42_000);
+        assert_eq!(restored[0].tokens_after, None);
     }
 
     #[test]

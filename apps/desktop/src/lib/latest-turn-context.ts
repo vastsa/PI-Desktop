@@ -24,6 +24,12 @@ export type LatestTurnContextInspector = {
   responseDurationMs?: number;
   responseOutputTokens?: number;
   responseOutputEstimated: boolean;
+  /**
+   * Post-compaction occupancy estimate: present only while the newest
+   * checkpoint is newer than the latest usage-bearing message, because a
+   * freshly compacted window has no request of its own yet.
+   */
+  estimatedOccupancyTokens?: number;
 };
 
 /**
@@ -53,6 +59,24 @@ export function latestTurnContextInspector(
     .reverse()
     .find((message) => message.usage);
 
+  // A freshly installed checkpoint knows its post-compaction occupancy; the
+  // ring leads with that estimate until a newer request reports usage.
+  const latestMark = compactions.at(-1);
+  const boundaryIndex = latestMark
+    ? parentMessages.findIndex(
+        (message) => message.id === latestMark.throughMessageId,
+      )
+    : -1;
+  const usageIndex = latestUsageMessage
+    ? parentMessages.indexOf(latestUsageMessage)
+    : -1;
+  const estimatedOccupancyTokens =
+    latestMark?.tokensAfter !== undefined &&
+    boundaryIndex >= 0 &&
+    boundaryIndex >= usageIndex
+      ? Math.max(0, Math.round(latestMark.tokensAfter))
+      : undefined;
+
   return {
     // Occupancy and provider cache/input/output use this last request.
     // turnUsage remains the visual-turn sum for completed-turn speed.
@@ -75,5 +99,8 @@ export function latestTurnContextInspector(
     responseOutputEstimated: latestTurn
       ? assistantTurnResponseOutputIsEstimated(latestTurn)
       : false,
+    ...(estimatedOccupancyTokens !== undefined
+      ? { estimatedOccupancyTokens }
+      : {}),
   };
 }

@@ -185,6 +185,23 @@ counts are the stable signals. The UI truncated chip follows `truncated`.
 7. Timeout and abort close both output streams only after the complete process
    tree has been shut down; no orphan process may continue writing output
 
+## 6a. Pressure gate and tiering
+
+Per-result limits bound one result; the pressure gate bounds the set. When the
+model binding enables `dynamicContext` (ADR 0301) and the outgoing view reaches
+its threshold share of the hard limit, old tool results are shortened to a head
+plus a pointer that says how to read the full text back — the dropped text stays
+recoverable through `recall`, so narrowing does not destroy it.
+
+- the gate measures the same view the outgoing request, the hard-boundary check
+  and the idle compaction pass see, so what narrowing saves is visible to
+  compaction;
+- results for files the session re-opened stay whole (working-set immunity), as
+  do the excluded tool families and the module's clear-at-least floor;
+- below the threshold, or with the gate off, the view is returned untouched;
+- the stored transcript rows are never rewritten, and a truncated result still
+  carries its marker.
+
 ## 7. Acceptance criteria
 
 - [x] oversize Bash output truncates with marker and spills the fuller copy
@@ -205,3 +222,6 @@ counts are the stable signals. The UI truncated chip follows `truncated`.
 - [ ] timeout/abort stops the complete process tree and emits no later chunks
 - [ ] an oversized parallel result batch compacts to a bounded marked tail,
   survives restart, and leaves the original transcript results unchanged
+- [ ] the pressure gate narrows old tool results only above its threshold, keeps
+  a re-opened file's result whole, and leaves the full text reachable through the
+  pointer

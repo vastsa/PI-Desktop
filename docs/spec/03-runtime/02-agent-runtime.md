@@ -366,7 +366,7 @@ final report from being misclassified as progress.
 
 See E2E-146a.
 
-### 5.1 Context checkpoint protection (D158/D203, ADR 0030/0049/0061/0064)
+### 5.1 Context checkpoint protection (D158/D203, ADR 0030/0049/0061/0064/0300/0301)
 
 The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
@@ -385,8 +385,11 @@ not a linked or copied dependency.
 
 Compaction follows Codex's mechanism (ADR 0064): it always happens inline at a
 turn boundary, the model can request it through `new_context`, every compaction
-adds a transcript row and raises one warning toast, and there is no
-pre-computation anywhere.
+adds a transcript row and raises one warning toast, and no summary is
+pre-computed ahead of the boundary. The boundary is reversible (ADR 0300), and
+an idle pass the model binding enables may run the same compaction off the
+critical path (ADR 0301); that pass is not pre-computation of a future boundary
+because it re-checks the budget before it spends its summary request.
 
 pi 0.84.4+ invokes `prepareNextTurn` only when the loop will start another
 assistant turn in the same run — including between a completed tool batch and
@@ -467,12 +470,14 @@ and testable.
 
 **Model-facing surface.** `new_context` takes no parameters and starts a new
 context window at the next turn boundary; it never clears or resets environment
-state. Two budget reminders are appended to the current turn's system prompt,
-each at most once per checkpoint window and reset when a checkpoint is
-installed: one when the remaining budget falls to
-`clamp(hardLimit * 0.15, 8k, 32k)`, asking the model to start closing out, and
-one at 2,000 tokens remaining, telling it to write down whatever must survive.
-Neither reminder is persisted or shown in the transcript.
+state. `recall` and `recall_project` are registered in the core tool set and read
+stored transcript back: a message this boundary moved out of model context, or
+one a narrowed result replaced with a pointer, stays readable verbatim
+(ADR 0300). One budget reminder is appended to the current turn's system prompt,
+at most once per checkpoint window and reset when a checkpoint is installed:
+when the remaining budget falls to `clamp(hardLimit * 0.15, 8k, 32k)`, asking the
+model to start closing out and to write durable state down. It is not persisted
+and not shown in the transcript.
 
 The hard boundary is the model context window minus request headroom.
 Headroom is the maximum of a 16,384-token reserve floor, model maximum output
@@ -545,6 +550,40 @@ counts as running state until durable persistence completes.
 A delegate (§5f) runs the same derivation against its own resolved model and
 compacts at its own turn boundaries, without a durable checkpoint chain of
 its own (ADR 0299).
+
+**Reversible boundary.** The complete transcript and the model context are
+separate views, and only the second one is compacted: no checkpoint rewrites,
+deletes or hides a stored row. The projection therefore states what the model
+can still reach. `RECALL_POINTER` (`session-context.ts:39`) names the two
+recall tools, and the checkpoint's `details.ledger` (built by `buildLedger`)
+carries the mechanical record of the range — files read and modified, commands,
+message and tool-call counts, the goal and the unresolved items — rendered as a
+bounded block after the summary. A checkpoint written before the ledger existed
+projects the pointer and nothing else. When summary generation fails, the
+degraded checkpoint describes its own range through one shared helper and never
+persists an empty tail for a completed turn.
+
+**Idle pre-compaction.** When the model binding enables `earlyCompaction`
+(ADR 0301), the runtime arms a pass after a run settles. It fires only after
+`delaySeconds` of no new activity; any new prompt clears the timer or sets the
+stand-down flag, and the pass re-checks the budget before it spends a summary
+request, so narrowing enough room cancels it. It emits the same `compaction_end`
+as the inline path with `idle: true`, plus `silent: true` when the pass
+succeeded and the setting is on; the renderer then skips the routine toast. The
+transcript row, the inspector and the checkpoint record are written either way,
+and a degraded or failed pass and the hard boundary always warn. The inline path
+is not configurable and does not change.
+
+**Configurable pressure gate and tool-result tiering.** `dynamicContext` on the
+binding decides the share of the hard limit at which old tool results are
+shortened to a head plus a recovery pointer (`narrowToolResults`,
+`tool-result-tier.ts`); the outgoing request, the hard-boundary check and the
+idle pass all measure that same view, so what narrowing saves is visible to
+compaction. Results for files the session re-opened stay whole, per-tool limits
+(spec 16) are unchanged, and with the gate off no result is narrowed. The sleep
+digest (`sleepTime`) writes a deterministic `sleep` transcript line before a
+summary attempt, so a request that never returns still leaves the next window
+with the goal and the open items; it calls no provider and is off by default.
 
 ## 5b. Operating mode and planning state
 
