@@ -7997,6 +7997,36 @@ identify the platform validation still needed.
   because the host has no device backend yet, so this scenario stays Draft until
   audio lands.
 
+### E2E-CONFIG-SYNC-webdav-portable-configuration
+
+- **Preconditions:** A built task candidate, isolated host profile, and a local
+  WebDAV fixture that supports strong ETags and conditional PUT. No real
+  WebDAV account, provider, or production desktop.
+- **Steps:** 1) Open Settings → Cloud sync and enter the fixture URL, device
+  label, directory, and backup password. 2) Run the capability test and
+  confirm it uses temporary objects. 3) Select provider/MCP/skill categories
+  while leaving credentials and memory off; enable credentials in a second
+  preview and verify only redacted counts are shown. 4) Configure device A,
+  create a user provider and MCP definition, and sync. 5) Configure device B
+  against the same vault, sync, inspect pending activation/mapping, and verify
+  no command or task runs before approval. 6) Approve a changed safe entity,
+  reject one staged entity, edit disjoint settings on both devices, and sync
+  again. 7) Exercise a concurrent head writer, wrong password, weak ETag,
+  ciphertext corruption, redirect, archive traversal, and network interruption.
+- **Expected:** The test refuses unreliable conditional writes. WebDAV sees
+  only authenticated ciphertext and opaque object names; raw secrets never
+  appear in renderer state or logs. Identical and disjoint edits converge,
+  conflicts remain reviewable, explicit deletions use tombstones, category
+  opt-out is not deletion, and executable imports remain inactive until local
+  approval and mapping. Recovery never exposes a partial local apply.
+- **Specs:** `03-runtime/22-config-sync.md`, `03-runtime/14-secrets-storage.md`,
+  `05-security/01-security.md`, ADR 0300.
+- **Acceptance:** F (persistence), Security, Quality.
+- **Milestone:** M6+.
+- **Status:** Draft; merge/crypto and in-process WebDAV conditional-write
+  coverage exists. The remaining automation is the full two-device process
+  path and checkpoint-level local recovery fault injection.
+
 ## 8. Traceability Matrix
 
 | Acceptance | Scenarios |
@@ -8004,6 +8034,7 @@ identify the platform validation still needed.
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
 | C / F / Quality — Saved project isolation | E2E-SCHEDULED-manual-workspace-binding |
 | C / F / Quality — Desktop automations | E2E-SCHEDULED-desktop-automation-lifecycle |
+| F / Security / Quality — Portable configuration sync | E2E-CONFIG-SYNC-webdav-portable-configuration |
 | A / C — Unicode stdio framing | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — Sidebar row states | E2E-LAYOUT-sidebar-row-states |

@@ -36,6 +36,8 @@ PI-Desktop =
    acceptance criteria autonomously in Agent mode
 9. Make project sessions, imports, extensions, and scheduled prompts practical
    for daily local work
+10. Synchronize explicitly selected portable configuration through a
+    host-owned encrypted WebDAV vault without exporting conversation history
 
 ## Non-goals (MVP)
 

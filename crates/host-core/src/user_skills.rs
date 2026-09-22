@@ -10,9 +10,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
 const MAX_SKILLS: usize = 128;
 pub const MAX_SKILL_BYTES: usize = 128 * 1024;
+pub const MAX_SKILL_PACKAGE_FILES: usize = 64;
+pub const MAX_SKILL_PACKAGE_BYTES: usize = 512 * 1024;
 const MAX_NAME_CHARS: usize = 120;
 const MAX_DESCRIPTION_CHARS: usize = 400;
 const SKILL_KIND: &str = "skills";
@@ -443,6 +446,152 @@ fn same_document(record_path: &str, planned: &Path) -> bool {
         .eq_ignore_ascii_case(&normalize_project_path(&planned.to_string_lossy()))
 }
 
+fn package_root(
+    record: &UserSkillRecord,
+    level: CapabilityLevel,
+    project_path: Option<&str>,
+) -> Result<Option<PathBuf>> {
+    let skills_dir = capability_dir(level, project_path, SKILL_KIND)?;
+    let path = PathBuf::from(&record.path);
+    if !path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("SKILL.md"))
+    {
+        return Ok(None);
+    }
+    let Some(root) = path.parent() else {
+        return Ok(None);
+    };
+    if root == skills_dir {
+        return Ok(None);
+    }
+    let metadata = fs::symlink_metadata(root)
+        .with_context(|| format!("inspect skill package {}", root.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        bail!("SKILL_INVALID: skill package root must be a real directory");
+    }
+    Ok(Some(root.to_path_buf()))
+}
+
+fn package_relative_path(root: &Path, path: &Path) -> Result<String> {
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|_| anyhow::anyhow!("SKILL_INVALID: package path escapes its root"))?;
+    let mut components = Vec::new();
+    for component in relative.components() {
+        let std::path::Component::Normal(value) = component else {
+            bail!("SKILL_INVALID: package path contains traversal");
+        };
+        let value = value
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("SKILL_INVALID: package path is not UTF-8"))?;
+        if value.is_empty() || value.contains(['/', '\\']) {
+            bail!("SKILL_INVALID: package path contains an unsafe name");
+        }
+        components.push(value.to_string());
+    }
+    if components.is_empty() {
+        bail!("SKILL_INVALID: package path is empty");
+    }
+    Ok(components.join("/"))
+}
+
+fn collect_package_files(
+    root: &Path,
+    current: &Path,
+    result: &mut Vec<(String, Vec<u8>)>,
+    total: &mut usize,
+) -> Result<()> {
+    if result.len() > MAX_SKILL_PACKAGE_FILES {
+        bail!("SKILL_LIMIT_EXCEEDED: skill package contains too many files");
+    }
+    for entry in fs::read_dir(current)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() {
+            bail!("SKILL_INVALID: skill packages cannot contain symbolic links");
+        }
+        if metadata.is_dir() {
+            collect_package_files(root, &path, result, total)?;
+            continue;
+        }
+        if !metadata.is_file() {
+            bail!("SKILL_INVALID: skill package contains a non-file entry");
+        }
+        if path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("SKILL.md"))
+        {
+            continue;
+        }
+        let relative = package_relative_path(root, &path)?;
+        let bytes = fs::read(&path)?;
+        if bytes.len() > MAX_SKILL_BYTES {
+            bail!("SKILL_LIMIT_EXCEEDED: skill package resource is too large");
+        }
+        *total = total.saturating_add(bytes.len());
+        if *total > MAX_SKILL_PACKAGE_BYTES {
+            bail!("SKILL_LIMIT_EXCEEDED: skill package is too large");
+        }
+        result.push((relative, bytes));
+        if result.len() > MAX_SKILL_PACKAGE_FILES {
+            bail!("SKILL_LIMIT_EXCEEDED: skill package contains too many files");
+        }
+    }
+    Ok(())
+}
+
+fn package_destination(root: &Path, relative: &str) -> Result<PathBuf> {
+    if relative.is_empty()
+        || relative.starts_with('/')
+        || relative.starts_with('\\')
+        || relative.contains('\\')
+    {
+        bail!("SKILL_INVALID: package path is unsafe");
+    }
+    let mut target = root.to_path_buf();
+    let mut count = 0usize;
+    for component in relative.split('/') {
+        if component.is_empty() || component == "." || component == ".." {
+            bail!("SKILL_INVALID: package path contains traversal");
+        }
+        count += 1;
+        target.push(component);
+    }
+    if count == 0
+        || target
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("SKILL.md"))
+    {
+        bail!("SKILL_INVALID: package path targets the skill document");
+    }
+    Ok(target)
+}
+
+fn ensure_no_symlink_path(root: &Path, target: &Path) -> Result<()> {
+    let relative = target
+        .strip_prefix(root)
+        .map_err(|_| anyhow::anyhow!("SKILL_INVALID: package path escapes its root"))?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        let std::path::Component::Normal(value) = component else {
+            bail!("SKILL_INVALID: package path contains traversal");
+        };
+        current.push(value);
+        if current.exists() {
+            let metadata = fs::symlink_metadata(&current)?;
+            if metadata.file_type().is_symlink() {
+                bail!("SKILL_INVALID: skill package path cannot traverse a symbolic link");
+            }
+        }
+    }
+    Ok(())
+}
+
 impl UserSkillRegistry {
     /// Move one skill between the global directory and a project's.
     ///
@@ -757,7 +906,17 @@ impl UserSkillRegistry {
             bail!("SKILL_INVALID: document exceeds {MAX_SKILL_BYTES} bytes");
         }
         fs::create_dir_all(&directory)?;
-        let path = directory.join(format!("{id}.md"));
+        let path = if input
+            .shape
+            .as_deref()
+            .is_some_and(|shape| matches!(shape, "dir" | "directory"))
+        {
+            let package = directory.join(&id);
+            fs::create_dir_all(&package)?;
+            package.join("SKILL.md")
+        } else {
+            directory.join(format!("{id}.md"))
+        };
         fs::write(&path, &document).with_context(|| format!("write {}", path.display()))?;
         if input.enabled == Some(false) {
             self.state
@@ -1020,6 +1179,101 @@ impl UserSkillRegistry {
         }
         let (_, body) = parse_front_matter(&raw);
         Ok(Some((record, body)))
+    }
+
+    /// Read bounded sibling resources from a directory-shaped skill. The
+    /// skill document itself is captured separately so its body can retain the
+    /// existing update/import semantics.
+    pub fn package_files(
+        &mut self,
+        id: &str,
+        level: CapabilityLevel,
+        project_path: Option<&str>,
+    ) -> Result<Vec<(String, Vec<u8>)>> {
+        let Some(record) = self.find(id, Some(level), project_path)? else {
+            return Ok(Vec::new());
+        };
+        let Some(root) = package_root(&record, level, project_path)? else {
+            return Ok(Vec::new());
+        };
+        let mut result = Vec::new();
+        let mut total = 0usize;
+        collect_package_files(&root, &root, &mut result, &mut total)?;
+        result.sort_by(|left, right| left.0.cmp(&right.0));
+        Ok(result)
+    }
+
+    /// Apply approved, bounded package resources inside the Host-owned skill
+    /// directory. Existing files with different bytes are treated as an
+    /// external edit instead of being overwritten blindly; omitted files are
+    /// retained for the same reason.
+    pub fn write_package_files(
+        &mut self,
+        id: &str,
+        level: CapabilityLevel,
+        project_path: Option<&str>,
+        files: &[(String, Vec<u8>)],
+    ) -> Result<()> {
+        if files.len() > MAX_SKILL_PACKAGE_FILES {
+            bail!("SKILL_LIMIT_EXCEEDED: skill package contains too many files");
+        }
+        let total = files.iter().try_fold(0usize, |total, (_, bytes)| {
+            total
+                .checked_add(bytes.len())
+                .ok_or_else(|| anyhow::anyhow!("SKILL_LIMIT_EXCEEDED: skill package is too large"))
+        })?;
+        if total > MAX_SKILL_PACKAGE_BYTES {
+            bail!("SKILL_LIMIT_EXCEEDED: skill package is too large");
+        }
+        if files.is_empty() {
+            return Ok(());
+        }
+        let Some(record) = self.find(id, Some(level), project_path)? else {
+            bail!("SKILL_INVALID: skill package target was not found");
+        };
+        let Some(root) = package_root(&record, level, project_path)? else {
+            bail!("SKILL_INVALID: package resources require a directory-shaped skill");
+        };
+        let root_metadata = fs::symlink_metadata(&root)?;
+        if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+            bail!("SKILL_INVALID: skill package root is unsafe");
+        }
+        let mut seen = HashSet::new();
+        for (relative, bytes) in files {
+            let target = package_destination(&root, relative)?;
+            if !seen.insert(relative.clone()) {
+                bail!("SKILL_INVALID: skill package contains duplicate paths");
+            }
+            if bytes.len() > MAX_SKILL_BYTES {
+                bail!("SKILL_LIMIT_EXCEEDED: skill package resource is too large");
+            }
+            ensure_no_symlink_path(&root, &target)?;
+            if target.exists() {
+                let metadata = fs::symlink_metadata(&target)?;
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    bail!("SKILL_INVALID: skill package destination is unsafe");
+                }
+                if fs::read(&target)? == *bytes {
+                    continue;
+                }
+                bail!("CONFIG_SYNC_CONFLICT: skill package resource was edited locally");
+            }
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+                ensure_no_symlink_path(&root, parent)?;
+            }
+            let temporary = target.with_file_name(format!(
+                ".{}.{}.tmp",
+                target
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("resource"),
+                Uuid::new_v4()
+            ));
+            fs::write(&temporary, bytes)?;
+            fs::rename(&temporary, &target)?;
+        }
+        Ok(())
     }
 
     pub fn remove(

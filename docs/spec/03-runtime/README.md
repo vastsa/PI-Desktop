@@ -24,3 +24,4 @@
 | [20-speech.md](20-speech.md) | Host speech (ASR/TTS) |
 
 - [Image generation and editing](21-image-generation.md)
+- [Portable configuration sync](22-config-sync.md)

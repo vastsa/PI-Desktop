@@ -1,3 +1,4 @@
+mod config_sync_rpc;
 mod scheduled_rpc;
 mod scheduled_tools;
 
@@ -312,6 +313,23 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
             return Err(anyhow!("host stdin reader unavailable: {error}"));
         }
     };
+    let config_sync_scheduler = tokio::spawn({
+        let state = state.clone();
+        let tx = tx.clone();
+        async move {
+            // The host owns a short local debounce clock; remote polling is
+            // gated inside the engine to five minutes when no local change is
+            // pending. This lets a quiet app settle filesystem edits without
+            // turning every tick into a WebDAV request.
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                let _ =
+                    crate::config_sync::engine::sync_if_enabled(state.clone(), tx.clone()).await;
+            }
+        }
+    });
 
     let mut input_error = None;
     let mut writer_done = false;
@@ -435,6 +453,8 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
         }
     }
 
+    config_sync_scheduler.abort();
+    let _ = config_sync_scheduler.await;
     {
         let mut st = state.lock().await;
         st.shutdown();
@@ -469,6 +489,26 @@ fn rpc_err(code: i64, message: impl Into<String>, error_code: &str) -> JsonRpcEr
         message: message.into(),
         data: Some(json!({ "errorCode": error_code })),
     }
+}
+
+fn config_sync_rpc_err(error: impl ToString) -> JsonRpcError {
+    let message = error.to_string();
+    let error_code = message
+        .split_once(':')
+        .map(|(code, _)| code.trim())
+        .unwrap_or("INTERNAL")
+        .to_string();
+    let code = match error_code.as_str() {
+        "CONFIG_SYNC_INVALID" | "CONFIG_SYNC_LIMIT_EXCEEDED" => 1002,
+        "CONFIG_SYNC_LOCKED" => 1001,
+        "CONFIG_SYNC_CONFLICT" => 1008,
+        "CONFIG_SYNC_UNSUPPORTED" => 1002,
+        "CONFIG_SYNC_SECURITY" => 1003,
+        "CONFIG_SYNC_CRYPTO" | "CONFIG_SYNC_MAPPING_REQUIRED" => 1002,
+        "CONFIG_SYNC_REMOTE" => 1000,
+        _ => 1000,
+    };
+    rpc_err(code, message, &error_code)
 }
 
 fn provider_rpc_err(error: impl ToString) -> JsonRpcError {
@@ -1419,6 +1459,12 @@ async fn handle_request(
         if st.shutting_down {
             return Err(rpc_err(1001, "host is shutting down", "HOST_SHUTTING_DOWN"));
         }
+    }
+
+    if method.starts_with("configSync.") {
+        return config_sync_rpc::handle(state, method, params, tx)
+            .await
+            .map_err(config_sync_rpc_err);
     }
 
     match method {

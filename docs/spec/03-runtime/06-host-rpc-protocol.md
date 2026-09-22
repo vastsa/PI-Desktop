@@ -1227,3 +1227,37 @@ The optional config_json.calendarConfigured boolean distinguishes an explicitly 
 ### Scheduled tasks: workspace identity
 
 Stored workspace bindings use the existing project canonicalization contract on both write and read. On Windows, slash direction, case, trailing separators and extended path prefixes do not hide a task from its own project's conversation. The distinction between missing legacy bindings and explicit null remains unchanged. Foreign-project tools cannot list or mutate bound tasks.
+
+### Cloud configuration sync
+
+The Host exposes the `configSync.getState`, `configSync.test`,
+`configSync.configure`, `configSync.syncNow`, `configSync.pause`,
+`configSync.unlock`, `configSync.approve`, `configSync.reject`,
+`configSync.mapProject`, `configSync.listHistory`, `configSync.restore`,
+`configSync.changePassword`, and
+`configSync.disconnect` methods through the existing Electron Host bridge.
+These methods operate on the Host-owned encrypted vault and the explicit
+portable-domain adapter registry. They do not expose raw secrets or local
+filesystem bindings to the Renderer.
+
+`configSync.test` performs a capability probe against a temporary remote
+object and reports whether reliable strong conditional writes are available.
+`configSync.syncNow` and the five-minute automatic poll serialize per vault,
+reconcile against the last acknowledged base, publish immutable encrypted
+objects followed by a conditional head update, and retain unresolved
+conflicts/security-sensitive imports as pending state. A failed head
+precondition restarts from the newly read head; it never overwrites blindly.
+
+`configSync.listHistory` returns revision IDs, creation timestamps, parent IDs,
+and counts without decrypting data in the Renderer. `configSync.restore` requires
+an explicit propagation acknowledgement, writes an encrypted local recovery
+point, publishes a new head with a CAS, and keeps executable/security-sensitive
+entities pending until local approval. `configSync.changePassword` updates the
+wrapped-key header with a strong-ETag CAS; it does not revoke copied old vault
+keys.
+
+The public result is a redacted state snapshot. `configSync.changed` is a Host
+notification carrying that same snapshot. Approval and rejection require the
+current entity digest, so a security-relevant edit cannot reuse an older local
+decision. Disconnect deletes only local credentials, vault keys, metadata and
+staging files; remote objects remain intact.

@@ -71,6 +71,14 @@ registered; reserved codes in §3.7 remain intentionally absent from
 | `HOST_SHUTTING_DOWN` | yes | the host received EOF and is draining; the call was refused rather than started |
 | `RATE_LIMITED` | yes | a per-caller host budget (plugin session import, batch operations) was exceeded inside its window |
 | `LIMIT_EXCEEDED` | no | a payload exceeded a fixed host bound (item count, byte size, or a 64 MiB NDJSON request line) and was refused |
+| `CONFIG_SYNC_INVALID` | no | invalid sync configuration, password, path, request, or approval input |
+| `CONFIG_SYNC_LOCKED` | no | the local encrypted sync vault is not unlocked |
+| `CONFIG_SYNC_UNSUPPORTED` | no | the vault format or WebDAV server capability is unsupported |
+| `CONFIG_SYNC_REMOTE` | maybe | remote WebDAV object, authentication, quota, or availability failure |
+| `CONFIG_SYNC_CONFLICT` | maybe | remote head, vault identity, or approval digest conflict |
+| `CONFIG_SYNC_CRYPTO` | no | authenticated encryption, object identity, or ciphertext validation failed |
+| `CONFIG_SYNC_MAPPING_REQUIRED` | no | imported project-scoped configuration needs an explicit local folder/group mapping |
+| `CONFIG_SYNC_LIMIT_EXCEEDED` | no | encrypted sync state exceeded an entity, object, resource, archive, or decompression bound |
 
 
 `HOST_UNAVAILABLE` is reserved for a missing or broken host process/transport,

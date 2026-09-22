@@ -65,6 +65,7 @@ to an absolute path before it reaches host-core as a child-process variable.
  │    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
  │    └── <sessionId>.inflight.json   # streaming reply checkpoint (D299), transient
  ├── secrets/             # encrypted secret blobs + .machine-key (unchanged)
+ ├── config-sync/         # encrypted sync base/pending bundles — host-core only
  ├── attachments/         # content-addressed blobs (sha256 name), refs from messages
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
  ├── logs/                # NDJSON app/<category>, host/<category>, agent/<category> logs
@@ -88,6 +89,15 @@ turn + artifact in one commit). The DB stores **no large payloads**: message
 content lives in `sessions/`, attachments and tool outputs beyond the limits
 of [16-tool-result-limits](16-tool-result-limits.md) live on disk, referenced
 by path/hash.
+
+### 1.3 Portable configuration sync
+
+Host-core stores sync configuration in the `configSync` key-value namespace.
+The vault key reference and WebDAV password use the existing encrypted secret
+store. `config-sync/base.bin` and `config-sync/pending.bin` are authenticated
+encrypted bundles replaced with temp-file rename; they are not renderer- or
+sidecar-readable files. Sync revisions and resources remain remote immutable
+objects and do not change the SQLite schema or transcript retention.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 

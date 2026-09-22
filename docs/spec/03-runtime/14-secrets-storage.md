@@ -91,6 +91,11 @@ Renderer uses provider methods that accept optional `secretValue` on create/upda
 5. Uninstall/reset app deletes secrets unless future explicit migrate tool says otherwise
 6. Provider delete defaults to deleting linked secret — both the API key and the OAuth credential
 7. An OAuth refresh token never crosses a process boundary: only Electron main reads it, and only to mint request auth
+8. Portable configuration sync exports provider API keys or MCP
+   environment/header values only after explicit credential opt-in. Values
+   remain inside host-owned encrypted staging and are restored through the
+   receiving device's local secret store. WebDAV credentials, machine
+   encryption keys, OAuth sessions, and cookies are never portable.
 
 ## 7. Redaction policy
 

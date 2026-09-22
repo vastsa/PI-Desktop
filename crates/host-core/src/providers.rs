@@ -25,6 +25,7 @@ pub use model::{
     ProviderUpdateInput,
 };
 pub use order::{reorder_providers, ProviderReorderInput};
+pub(crate) use repository::create_provider_with_id;
 pub use repository::{
     create_provider, delete_provider, get_provider, list_providers, set_provider_secret,
     update_provider,
