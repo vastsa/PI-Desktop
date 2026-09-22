@@ -292,13 +292,22 @@ test("every compaction announces itself once, on top of the specific toasts", ()
 });
 
 test("a failed compaction checkpoint still restores a non-empty context", () => {
-  // A retained-tail fallback must not persist an empty tail on a completed
-  // turn: with no real summary to carry the boundary, an empty tail restores
-  // as an empty context after a runtime rebuild (model switch / restart) —
-  // the session reads as if it had just started (#224).
+  // A degraded checkpoint must not persist an empty tail on a completed turn:
+  // with no real summary to carry the boundary, an empty tail restores as an
+  // empty context after a runtime rebuild (model switch / restart) — the
+  // session reads as if it had just started (#224).
+  //
+  // Both degraded layers (the deterministic record and the retained-tail
+  // notice) share one selection, so the rule cannot hold in one path and be
+  // forgotten in the other.
   assert.match(
     runtime,
-    /const retainedTail =\s*preparation\.retainedTail\.length > 0\s*\? preparation\.retainedTail\s*: selectRetainedUserMessages\(/,
+    /private retainedTailForDegradedCheckpoint\(\s*preparation: ShapedPreparation,\s*\): AgentMessage\[\] \{\s*return preparation\.retainedTail\.length > 0\s*\? preparation\.retainedTail\s*: selectRetainedUserMessages\(/,
+  );
+  assert.equal(
+    (runtime.match(/retainedTailForDegradedCheckpoint\(preparation\)/g) ?? [])
+      .length,
+    2,
   );
   assert.match(
     runtime,
