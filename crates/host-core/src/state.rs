@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::{atomic::AtomicBool, Arc};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -38,6 +39,12 @@ pub struct AppState {
     /// Subagent definitions the user owns, alongside the builtin and per-project
     /// ones the runtime discovers itself (D202).
     pub user_subagents: UserSubagentRegistry,
+    /// One reconciliation worker per local vault. The lock is separate from
+    /// the AppState mutex so WebDAV I/O never monopolizes the host state lock.
+    pub config_sync_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Process-local status for the single active sync worker. It is never
+    /// persisted and only drives the renderer's transient "syncing" state.
+    pub config_sync_in_progress: Arc<AtomicBool>,
     pub started_at: Instant,
     pub handshook: bool,
     pub shutting_down: bool,
@@ -125,6 +132,8 @@ impl AppState {
             mcp_servers,
             user_skills,
             user_subagents,
+            config_sync_lock: Arc::new(tokio::sync::Mutex::new(())),
+            config_sync_in_progress: Arc::new(AtomicBool::new(false)),
             started_at: Instant::now(),
             handshook: false,
             shutting_down: false,

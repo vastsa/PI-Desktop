@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { estimateTokens, type Agent } from "@earendil-works/pi-agent-core";
+import { estimateContextTokens as estimateAgentContextTokens, estimateTokens, type Agent } from "@earendil-works/pi-agent-core";
+import {
+  getCurrentTools,
+  getCurrentSystemMessage,
+  toToolDeclaration,
+} from "@earendil-works/pi-ai";
 import { formatSessionMessage, type SessionMessageOrigin } from "@pi-desktop/shared";
+import { estimateContextTokens as estimateTranscriptTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { buildSessionContext } from "./session-context.js";
 import {
   COMPACTION_FALLBACK_MARKER,
@@ -231,6 +237,92 @@ function runtimeMatches(
     ...overrides,
   });
 }
+
+describe("system transcript reconstruction", () => {
+  it("keeps provider usage valid when rebuilding an unchanged prefix", async () => {
+    const runtime = createRuntime();
+    const internals = runtime as any;
+    const agent = internals.agent as Agent;
+    const system = { ...agent.state.messages[0], timestamp: 1_000 };
+    const assistant = { ...assistantMessage({ content: [{ type: "text", text: "done" }] }), timestamp: 2_000 };
+    agent.state.messages = [system, assistant] as any;
+    vi.spyOn(internals, "liveSessionContext").mockReturnValue({ messages: [assistant] });
+
+    const rebuilt = internals.rebuiltAgentContext();
+
+    expect(estimateTranscriptTokens(rebuilt.messages).usageTokens).toBe(2);
+    expect(rebuilt.messages[0]).toBe(system);
+    expect(getCurrentTools(rebuilt.messages)).toEqual(agent.state.tools.map(toToolDeclaration));
+    expect(internals.rebuiltAgentContext().messages[0]).toBe(system);
+    await runtime.dispose();
+  });
+
+  it("does not flatten sections or erase tool deltas when the prompt is unchanged", async () => {
+    const runtime = createRuntime();
+    const internals = runtime as any;
+    const agent = internals.agent as Agent;
+    const messages = [
+      { ...agent.state.messages[0], timestamp: 1_000, sections: { rules: "Keep these rules." } },
+      { role: "system", content: "", timestamp: 1_500, toolsRemoved: [{ name: agent.state.tools[0]!.name }] },
+    ];
+    agent.state.messages = messages as any;
+
+    internals.setAgentSystemPrompt(agent.state.systemPrompt);
+
+    expect(agent.state.messages).toEqual(messages);
+    expect(agent.state.messages[0]).toBe(messages[0]);
+    await runtime.dispose();
+  });
+
+  it("keeps a fresh restore prefix stable without claiming it predates history", async () => {
+    const before = Date.now();
+    const runtime = createRuntime({ history: [
+      { id: "old-user", role: "user", content: "Earlier task", createdAt: new Date(before - 2_000).toISOString(), status: "complete" },
+      { id: "old-assistant", role: "assistant", content: "Earlier answer", createdAt: new Date(before - 1_000).toISOString(), status: "complete" },
+    ] });
+    const internals = runtime as any;
+    const prefix = internals.agent.state.messages[0];
+    expect(prefix.timestamp).toBeGreaterThanOrEqual(before);
+    const rebuilt = internals.rebuiltAgentContext();
+    expect(rebuilt.messages[0]).toBe(prefix);
+    expect(getCurrentTools(rebuilt.messages)).toEqual(rebuilt.tools.map(toToolDeclaration));
+    await runtime.dispose();
+  });
+
+  it.each([
+    ["pendingSilentTurnRerun", "rerunSilentTurn", "no_output_recovery"],
+    ["pendingProgressTurnRerun", "rerunProgressOnlyTurn", "progress_only_recovery"],
+  ])("preserves structured system state through %s and its cleanup", async (pending, method, marker) => {
+    const runtime = createRuntime();
+    const internals = runtime as any;
+    const agent = internals.agent as Agent;
+    agent.state.messages[0] = { ...agent.state.messages[0], sections: { rules: "SECTION_MARKER" } } as any;
+    const before = agent.state.systemPrompt;
+    const tools = getCurrentTools(agent.state.messages);
+    agent.state.messages.push({ role: "user", content: "question", timestamp: Date.now() });
+    agent.state.messages.push(assistantMessage({ content: [] }) as any);
+    vi.spyOn(internals, "waitForIdleAndSteering").mockResolvedValue(undefined);
+    const response = assistantMessage({ content: [{ type: "text", text: "Recovered answer" }] });
+    vi.spyOn(agent, "continue").mockImplementation(async () => {
+      expect(agent.state.systemPrompt).toContain(marker);
+      expect(agent.state.systemPrompt.split("SECTION_MARKER")).toHaveLength(2);
+      expect(getCurrentSystemMessage(agent.state.messages)?.sections).toEqual({ rules: "SECTION_MARKER" });
+      expect(getCurrentTools(agent.state.messages)).toEqual(tools);
+      response.timestamp = agent.state.messages[0]!.timestamp + 10;
+      agent.state.messages.push(response as any);
+    });
+    internals[pending] = true;
+
+    await internals[method]();
+
+    expect(agent.continue).toHaveBeenCalledOnce();
+    expect(agent.state.systemPrompt).toBe(before);
+    expect(getCurrentSystemMessage(agent.state.messages)?.sections).toEqual({ rules: "SECTION_MARKER" });
+    expect(getCurrentTools(agent.state.messages)).toEqual(tools);
+    expect(estimateTranscriptTokens(agent.state.messages as any).usageTokens).toBe(0);
+    await runtime.dispose();
+  });
+});
 
 describe("custom system prompt files (issue #542)", () => {
   const persona = "You are Custom, a specialized assistant.";
@@ -2011,6 +2103,10 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     expect(next.context.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
       true,
     );
+    // Tool deltas append new declarations; catalog order is not semantic.
+    expect([...getCurrentTools(next.context.messages)].sort((a, b) => a.name.localeCompare(b.name))).toEqual(
+      next.context.tools.map(toToolDeclaration).sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name)),
+    );
 
     await runtime.dispose();
   });
@@ -2036,6 +2132,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     expect(agent.state.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
       false,
     );
+    expect(getCurrentTools(agent.state.messages)).toEqual(agent.state.tools.map(toToolDeclaration));
   });
 });
 
@@ -3765,6 +3862,70 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     await runtime.dispose();
   });
 
+  it.each(["context-validation", "context-estimation", "request-preparation"])(
+    "terminates a local %s failure without retry or overflow recovery",
+    async (phase) => {
+      const onEvent = vi.fn();
+      const runtime = createRuntime({ onEvent });
+      const internal = runtime as any;
+      internal.providerResponseStatus = 429;
+      internal.infiniteProviderRetry = true;
+      const claim = vi.spyOn(internal, "claimProviderRetry");
+      const message = {
+        ...assistantMessage({ content: [], stopReason: "error" }),
+        errorMessage: "context length exceeded; fetch failed; private request body",
+        errorDetails: {
+          code: "LOCAL_REQUEST_ERROR",
+          phase,
+          message: "private request body",
+          causeName: "TypeError",
+        },
+      };
+      await internal.handleAgentEvent({ type: "message_start", message });
+      await internal.handleAgentEvent({ type: "message_end", message });
+      const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+      const failure = events.find((event) => event.type === "error");
+      expect(failure?.error).toMatchObject({
+        code: "INTERNAL",
+        retriable: false,
+        details: { origin: "local", phase, causeName: "TypeError" },
+      });
+      expect(failure?.error.details).not.toHaveProperty("providerStatus");
+      expect(JSON.stringify(events)).not.toContain("private request body");
+      expect(events.filter((event) => event.type === "error")).toHaveLength(1);
+      expect(events.find((event) => event.type === "message_end")?.message.status).toBe("error");
+      expect(claim).not.toHaveBeenCalled();
+      expect(internal.pendingProviderRetry).toBeUndefined();
+      expect(internal.pendingOverflow).toBe(false);
+      expect(internal.providerTransientRetryAttempt).toBe(0);
+      expect(internal.providerRateLimitRetryAttempt).toBe(0);
+      await runtime.dispose();
+    },
+  );
+
+  it("preserves cancellation carried by a local preparation error", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as any;
+    const message = {
+      ...assistantMessage({ content: [], stopReason: "error" }),
+      errorMessage: "local preparation cancelled",
+      errorDetails: {
+        code: "LOCAL_REQUEST_ERROR",
+        phase: "request-preparation",
+        message: "cancelled",
+        causeName: "AbortError",
+      },
+    };
+    await internal.handleAgentEvent({ type: "message_start", message });
+    await internal.handleAgentEvent({ type: "message_end", message });
+    const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+    expect(events.find((event) => event.type === "message_end")?.message.status).toBe("aborted");
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    expect(internal.pendingProviderRetry).toBeUndefined();
+    await runtime.dispose();
+  });
+
   it("turns a provider model failure into an error message and event", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
@@ -4706,8 +4867,14 @@ describe("DesktopAgentRuntime compaction restore", () => {
     const budget = (runtime as any).contextBudget(
       (runtime as any).agent.state.messages,
     );
-    expect(budget.tokens).toBeLessThan(1_000);
-    expect(budget.tokens).not.toBe(250_000);
+    // System sections and tool declarations now participate in the estimate;
+    // the invariant is that the old response's 250k usage is not reused.
+    const estimate = estimateAgentContextTokens((runtime as any).agent.state.messages);
+    expect(estimate.usageTokens).toBe(0);
+    expect(estimate.lastUsageIndex).toBeNull();
+    expect(budget.tokens).toBe(estimate.tokens);
+    expect(budget.tokens).toBeGreaterThan(0);
+    expect(budget.tokens).toBeLessThan(250_000);
     await runtime.dispose();
   });
 });
@@ -6017,11 +6184,18 @@ describe("DesktopAgentRuntime inline context compaction", () => {
           : overBudget()) as never,
     );
     const generateCompaction = vi.spyOn(runtime as any, "generateCompaction");
+    const agent = (runtime as any).agent as Agent;
+    const prefix = { ...agent.state.messages[0], sections: { rules: "Keep checkpoint rules" } };
+    agent.state.messages[0] = prefix as any;
 
     await (runtime as any).prepareNextTurn(nextTurn);
 
     // The point of this family: the window is bought back without paying for a
     // summary, so no provider request is made at all.
+    expect(agent.state.messages[0]).toBe(prefix);
+    expect(getCurrentTools(agent.state.messages)).toEqual(agent.state.tools.map(toToolDeclaration));
+    expect(getCurrentSystemMessage(agent.state.messages)?.sections).toEqual({ rules: "Keep checkpoint rules" });
+    expect((runtime as any).rebuiltAgentContext().messages[0]).toBe(prefix);
     expect(generateCompaction).not.toHaveBeenCalled();
     const compaction = host.call.mock.calls.find(
       ([method]) => method === "session.appendCompaction",
@@ -8621,7 +8795,7 @@ describe("DesktopAgentRuntime hosted web search rounds (ADR 0297)", () => {
                 blockId: "srvtoolu_01",
                 wire: {
                   type: "web_search_tool_result",
-                  encrypted_content: "enc-1",
+                  content: [{ type: "web_search_result", encrypted_content: "enc-1", title: "News", url: "https://example.test/news" }],
                 },
               },
             ],
@@ -8644,7 +8818,11 @@ describe("DesktopAgentRuntime hosted web search rounds (ADR 0297)", () => {
         type: "hostedSearch",
         phase: "web_search_tool_result",
         blockId: "srvtoolu_01",
-        wire: { type: "web_search_tool_result", encrypted_content: "enc-1" },
+        isError: false,
+        wire: {
+          type: "web_search_tool_result",
+          content: [{ type: "web_search_result", encrypted_content: "enc-1", title: "News", url: "https://example.test/news" }],
+        },
       },
       { type: "text", text: "here is the news" },
     ]);

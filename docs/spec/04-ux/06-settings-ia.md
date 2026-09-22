@@ -49,15 +49,16 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   8. **Subagents / 子智能体** — Lucide `Bot` (built-in and personal parallel agents)
   9. **Import / 导入** — Lucide `Download` (bring sessions and model configuration in from other tools)
   10. **Projects / 项目** — Lucide `Archive` (durable project index)
-  11. **Remote Hosts / 远程主机** — Lucide `Globe` (SSH bootstrap and pairing inventory; developer mode only)
-  12. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
+  11. **Cloud sync / 云同步** — Lucide `CloudDownload` (encrypted portable configuration backup and bidirectional sync)
+  12. **Remote Hosts / 远程主机** — Lucide `Globe` (SSH bootstrap and pairing inventory; developer mode only)
+  13. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
   with the rail label; do not reuse refresh/rotate glyphs here.
 - The directory remains a flat searchable list in the same exact order. For
   scanability, the destinations are shown in four titled visual clusters:
   `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
-  (Import, Projects), and `System` / `系统` (Remote Hosts, Info). Headings are
+  (Import, Projects), and `System` / `系统` (Cloud sync, Remote Hosts, Info). Headings are
   muted, non-interactive labels and use whitespace for separation; no divider
   lines are rendered. These are visual landmarks only, not a second navigation
   level.
@@ -142,6 +143,25 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   application-window behavior rather than agent behavior.
 - File-open target, menu-bar behavior, and bottom-panel behavior are not
   rendered until their host-backed settings schemas and runtime effects exist.
+
+### Cloud sync
+
+- **Connection**: WebDAV URL, username, app password, remote directory, device
+  label, and a separate backup/vault password. The test action uses only a
+  temporary remote object and must prove conditional creation and readback.
+- **Portable configuration**: supported categories are selected by default;
+  credentials and project memory are explicit opt-ins. The preview reports
+  supported, excluded, secret-bearing, mapping-required, and pending-approval
+  counts.
+- **Safety**: the page never renders raw credentials or vault keys. Imported
+  MCP, skills, subagents, plugins, automations, and project-scoped data remain
+  pending until local activation approval and any required folder mapping are
+  complete. Disconnect preserves local and remote data.
+- **State and recovery**: show distinct configured, locked, syncing, offline,
+  unsupported-server, conflict, awaiting-activation, paused, and error states.
+  Users can sync now, unlock, pause this device, approve/reject staged items,
+  and disconnect. The page does not imply convergence from an old successful
+  run while a pending state remains.
 
 ### 全局 AI (`ai` tab)
 - **Permissions** card: the global permission-mode control
@@ -240,7 +260,8 @@ a usage tab.
     are rejected with an inline error; an unbound action never participates in
     conflict checks
   - each override can be restored independently and all overrides can be
-    restored together
+    restored together; an individual reset rejects a default already used by
+    another action, preserving both mappings and showing the same conflict error
   - overrides persist in optional `AppSettings.keybindings`; a missing entry
     uses the platform default, a valid string uses the custom binding, and
     `null` disables the action. macOS native-menu accelerators and
@@ -708,9 +729,9 @@ system while preserving their different data ownership:
 2. Rail shows the search pill at the top, the back-to-app action pinned at the
    foot on the main sidebar's footer icon line, and exactly General / 常规, AI,
    Shortcuts / 快捷键, Instructions / 指令, Models / 模型, Skills / 技能, MCP,
-   Subagents / 子智能体, Import / 导入, Projects / 项目, and Info / 信息 in
-   that order, with Remote Hosts / 远程主机 between Projects and Info only
-   while developer mode is on. The rows are grouped under Preferences / 偏好,
+   Subagents / 子智能体, Import / 导入, Projects / 项目, Cloud sync / 云同步,
+   Remote Hosts / 远程主机, and Info / 信息 in that order, with Remote Hosts /
+   远程主机 present only while developer mode is on. The rows are grouped under Preferences / 偏好,
    Agent / 智能体, Workspace / 工作区, and System / 系统. There is no
    Usage / 用量 destination.
 3. Appearance is part of General and has no standalone rail destination

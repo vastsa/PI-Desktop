@@ -83,7 +83,7 @@ function assistantThinkingText(message: AssistantMessage): {
   const text: string[] = [];
   let thinkingSignature: string | undefined;
   for (const block of message.content) {
-    if (!isRecord(block)) continue;
+    if (block === null || typeof block !== "object") continue;
     if (block.type === "thinking" && typeof block.thinking === "string") {
       const value = block.thinking.trim();
       if (value) {

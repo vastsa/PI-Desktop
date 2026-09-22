@@ -102,8 +102,12 @@ Two upstream facts forced the design:
 - `pause_turn` keeps pi-ai's existing mapping to `stop`; a long searching
   turn may end early on the official Anthropic wire. This is a known
   limitation to revisit with the upstream patch.
-- Compaction rewrites history and drops search blocks; later turns lose old
-  grounding and the model searches again as needed. Documented behavior.
+- The original implementation omitted search from compaction serialization.
+  The 2026-09-22 contract repair supplies actual search replay projections to
+  the summary request instead. Prefix/tail retention is unchanged: compacted
+  content becomes a model-generated text summary (not lossless raw replay),
+  and retained-tail search follows the existing adapter replay policy. The
+  model can search again when the summary lacks sufficient grounding.
 - Search executes on the provider. There is no local fetch, no ask/allow
   prompt, and billing is the provider's. The model-level opt-in (default
   off) is the user consent surface.

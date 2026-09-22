@@ -12,6 +12,7 @@ const electron = `data:text/javascript,${encodeURIComponent(`
     constructor() {
       this.webContents = Object.assign(new EventEmitter(), {
         url: "https://fixture.invalid/previous",
+        mainFrame: { processId: 7, routingId: 11 },
         pendingLoads: [],
         loadURL(url) {
           return new Promise((resolve, reject) => {
@@ -99,4 +100,49 @@ test("late native navigation events cannot publish after the session is invalida
   wc.emit("did-navigate", {}, "https://fixture.invalid/second");
   assert.equal(published.length, 1);
   assert.equal(published[0].url, "https://fixture.invalid/second");
+});
+
+
+async function loadedPage() {
+  const published = [];
+  const pane = new BrowserPane((state) => published.push(state));
+  const request = pane.navigateAndWait("https://fixture.invalid/page");
+  const wc = WebContentsView.instances.at(-1).webContents;
+  wc.url = "https://fixture.invalid/page";
+  wc.pendingLoads.shift().resolve();
+  await request;
+  return { pane, wc, published };
+}
+
+for (const suffix of ["#details", "?route=settings"]) {
+  test(`same-document navigation publishes ${suffix} and settles loading`, async () => {
+    const { wc, published } = await loadedPage();
+    wc.isLoading = () => true;
+    wc.emit("did-start-loading");
+    wc.url += suffix;
+    wc.emit("did-navigate-in-page", {}, wc.url, true, 7, 11);
+    wc.isLoading = () => false;
+    wc.emit("did-stop-loading");
+    assert.equal(published.at(-1).url, wc.url);
+    assert.equal(published.at(-1).isLoading, false);
+  });
+}
+
+test("in-page events from subframes, replaced frames, or old URLs are ignored", async () => {
+  const { wc, published } = await loadedPage();
+  const currentUrl = wc.url;
+  wc.emit("did-navigate-in-page", {}, currentUrl, false, 7, 11);
+  wc.emit("did-navigate-in-page", {}, currentUrl, true, 8, 11);
+  wc.emit("did-navigate-in-page", {}, currentUrl, true, 7, 12);
+  wc.emit("did-navigate-in-page", {}, currentUrl + "#old", true, 7, 11);
+  assert.deepEqual(published, []);
+});
+
+test("in-page completion cannot republish an invalidated session", async () => {
+  const { pane, wc, published } = await loadedPage();
+  pane.invalidateNavigation();
+  wc.url += "#late";
+  wc.emit("did-navigate-in-page", {}, wc.url, true, 7, 11);
+  wc.emit("did-stop-loading");
+  assert.deepEqual(published, []);
 });

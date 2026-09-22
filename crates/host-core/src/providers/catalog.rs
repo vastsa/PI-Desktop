@@ -97,22 +97,151 @@ fn legacy_model_binding(model_id: Option<String>) -> Vec<ModelBinding> {
         .unwrap_or_default()
 }
 
+/// What `config_json.models` holds.
+enum StoredModels {
+    /// The key is absent — a record written before bindings existed.
+    Absent,
+    /// The stored config is not valid JSON or is not an object.
+    InvalidConfig {
+        /// A safe, non-secret description suitable for the RPC error/log.
+        reason: String,
+    },
+    /// The key is present but is not an array, so there is nothing to decode.
+    NotAnArray,
+    /// The array, decoded one entry at a time.
+    Entries {
+        /// Entries that decoded, in stored order.
+        bindings: Vec<ModelBinding>,
+        /// `(index, reason)` for every entry that did not, so a reader can
+        /// name the exact entry instead of only counting the loss.
+        unreadable: Vec<(usize, String)>,
+    },
+}
+
+/// Decode `config_json.models` one entry at a time.
+///
+/// The array is the only place a provider's model list lives and it is written
+/// by more than one hand — a settings save, a plugin declaration, and an
+/// external edit of the stored row. Decoding it as a single `Vec<ModelBinding>`
+/// let one entry that no longer matched the schema discard every sibling, after
+/// which the provider read back as one legacy default model with nothing said
+/// about why (issue #784). Each entry is therefore decoded on its own and the
+/// ones that fail are collected for the caller to report.
+fn decode_stored_models(raw: &str) -> StoredModels {
+    let value = match serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(value) if value.is_object() => value,
+        Ok(_) => {
+            return StoredModels::InvalidConfig {
+                reason: "config_json root must be an object".to_string(),
+            };
+        }
+        Err(error) => {
+            return StoredModels::InvalidConfig {
+                reason: format!("config_json is not valid JSON: {error}"),
+            };
+        }
+    };
+    let Some(models) = value.get("models").cloned() else {
+        return StoredModels::Absent;
+    };
+    let Some(entries) = models.as_array() else {
+        return StoredModels::NotAnArray;
+    };
+    let mut bindings = Vec::with_capacity(entries.len());
+    let mut unreadable = Vec::new();
+    for (index, entry) in entries.iter().enumerate() {
+        match serde_json::from_value::<ModelBinding>(entry.clone()) {
+            Ok(binding) if binding.id.trim().is_empty() => unreadable.push((
+                index,
+                "model binding id must be a non-empty string".to_string(),
+            )),
+            Ok(binding) => bindings.push(binding),
+            Err(error) => unreadable.push((index, error.to_string())),
+        }
+    }
+    StoredModels::Entries {
+        bindings,
+        unreadable,
+    }
+}
+
+/// Read the provider's model bindings out of `config_json`.
+///
+/// An absent array and an empty one leave the single legacy binding without a
+/// warning. Invalid config shapes and unreadable entries are reported. An array
+/// whose every entry is unreadable still falls back to the legacy binding, so a
+/// provider stays selectable while the loss remains diagnosable.
 pub(crate) fn config_model_bindings(
     raw: &str,
     legacy_model_id: Option<String>,
+    provider_id: &str,
 ) -> Vec<ModelBinding> {
     let legacy_model_id = legacy_model_id.or_else(|| {
         config_value(raw).and_then(|value| value.get("modelId")?.as_str().map(str::to_string))
     });
-    let parsed = config_value(raw)
-        .and_then(|value| value.get("models").cloned())
-        .and_then(|value| serde_json::from_value::<Vec<ModelBinding>>(value).ok())
-        .map(|bindings| normalize_model_bindings(&bindings))
-        .unwrap_or_default();
-    if parsed.is_empty() {
-        legacy_model_binding(legacy_model_id)
-    } else {
-        parsed
+    match decode_stored_models(raw) {
+        StoredModels::Entries {
+            bindings,
+            unreadable,
+        } => {
+            for (index, reason) in &unreadable {
+                tracing::warn!(
+                    %provider_id,
+                    index,
+                    %reason,
+                    "skipping an unreadable model binding"
+                );
+            }
+            let bindings = normalize_model_bindings(&bindings);
+            if bindings.is_empty() {
+                legacy_model_binding(legacy_model_id)
+            } else {
+                bindings
+            }
+        }
+        StoredModels::InvalidConfig { reason } => {
+            tracing::warn!(
+                %provider_id,
+                %reason,
+                "invalid provider config_json; reading the legacy binding"
+            );
+            legacy_model_binding(legacy_model_id)
+        }
+        StoredModels::NotAnArray => {
+            tracing::warn!(
+                %provider_id,
+                "config_json.models is not an array; reading the legacy binding"
+            );
+            legacy_model_binding(legacy_model_id)
+        }
+        StoredModels::Absent => legacy_model_binding(legacy_model_id),
+    }
+}
+
+/// Reject a full model-array replacement while the stored array is degraded.
+///
+/// Returning the readable subset from a degraded read keeps providers usable,
+/// but accepting that subset back through `providers.update` would permanently
+/// erase unreadable entries. Callers may still update unrelated provider fields;
+/// only an explicit `models` replacement is blocked.
+pub(crate) fn ensure_model_bindings_update_safe(raw: &str) -> Result<()> {
+    match decode_stored_models(raw) {
+        StoredModels::Absent => Ok(()),
+        StoredModels::Entries { unreadable, .. } if unreadable.is_empty() => Ok(()),
+        StoredModels::Entries { unreadable, .. } => {
+            let details = unreadable
+                .into_iter()
+                .map(|(index, reason)| format!("index {index}: {reason}"))
+                .collect::<Vec<_>>()
+                .join("; ");
+            bail!("MODEL_BINDINGS_DEGRADED: {details}");
+        }
+        StoredModels::InvalidConfig { reason } => {
+            bail!("MODEL_BINDINGS_DEGRADED: {reason}");
+        }
+        StoredModels::NotAnArray => {
+            bail!("MODEL_BINDINGS_DEGRADED: config_json.models is not an array");
+        }
     }
 }
 
@@ -249,6 +378,12 @@ mod tests {
         }
     }
 
+    /// Every read names the provider it came from: a warning that does not is
+    /// not locatable, which is half of what issue #784 reports.
+    fn read(raw: &str) -> Vec<ModelBinding> {
+        config_model_bindings(raw, None, "provider-under-test")
+    }
+
     /// The settings surface round-trips a provider through `config_json`, so a
     /// marker the store drops would silently turn an inherited catalog value
     /// into a frozen snapshot of its own.
@@ -256,13 +391,11 @@ mod tests {
     fn a_catalog_sourced_binding_survives_the_config_round_trip() {
         let raw = r#"{"models":[{"id":"terra","contextWindow":1048576,"maxTokens":64000,
             "contextWindowSource":"catalog"}]}"#;
-        let saved = config_with_model_bindings("{}", &config_model_bindings(raw, None)).unwrap();
+        let saved = config_with_model_bindings("{}", &read(raw)).unwrap();
         let value: serde_json::Value = serde_json::from_str(&saved).unwrap();
         assert_eq!(value["models"][0]["contextWindowSource"], "catalog");
         assert_eq!(
-            config_model_bindings(&saved, None)[0]
-                .context_window_source
-                .as_deref(),
+            read(&saved)[0].context_window_source.as_deref(),
             Some("catalog")
         );
 
@@ -270,9 +403,7 @@ mod tests {
         user_binding.context_window_source = Some("user".to_string());
         let saved = config_with_model_bindings("{}", &[user_binding]).unwrap();
         assert_eq!(
-            config_model_bindings(&saved, None)[0]
-                .context_window_source
-                .as_deref(),
+            read(&saved)[0].context_window_source.as_deref(),
             Some("user")
         );
     }
@@ -281,10 +412,8 @@ mod tests {
     /// every reader applies one documented rule instead of guessing.
     #[test]
     fn a_binding_without_a_source_stays_unmarked() {
-        let bindings = config_model_bindings(
-            r#"{"models":[{"id":"legacy","contextWindow":128000,"maxTokens":8192}]}"#,
-            None,
-        );
+        let bindings =
+            read(r#"{"models":[{"id":"legacy","contextWindow":128000,"maxTokens":8192}]}"#);
         assert_eq!(bindings[0].context_window_source, None);
         let saved = config_with_model_bindings("{}", &bindings).unwrap();
         let value: serde_json::Value = serde_json::from_str(&saved).unwrap();
@@ -295,10 +424,9 @@ mod tests {
     /// historical rule keeps applying to that row.
     #[test]
     fn an_unknown_source_is_dropped_instead_of_persisted() {
-        let bindings = config_model_bindings(
+        let bindings = read(
             r#"{"models":[{"id":"odd","contextWindow":256000,"maxTokens":8192,
                 "contextWindowSource":"derived"}]}"#,
-            None,
         );
         assert_eq!(bindings[0].context_window_source, None);
     }
@@ -326,5 +454,120 @@ mod tests {
             Some("omit")
         );
         assert_eq!(normalized[1].default_thinking_level.as_deref(), Some("off"));
+    }
+
+    /// A binding that omits its limits is one binding, not a broken array: the
+    /// absent key reads as zero and the zero normalisation already in place
+    /// seeds the generic default. This is the reported failure — a stored array
+    /// whose second entry lost `maxTokens` used to read back as one legacy
+    /// default model (issue #784).
+    #[test]
+    fn a_binding_without_limits_keeps_its_siblings() {
+        let bindings = read(
+            r#"{"models":[
+                {"id":"no-limits"},
+                {"id":"explicit","contextWindow":200000,"maxTokens":4096}
+            ]}"#,
+        );
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings[0].id, "no-limits");
+        assert_eq!(bindings[0].context_window, DEFAULT_CONTEXT_WINDOW);
+        assert_eq!(bindings[0].max_tokens, DEFAULT_MAX_TOKENS);
+        assert_eq!(bindings[1].id, "explicit");
+        assert_eq!(bindings[1].context_window, 200_000);
+        assert_eq!(bindings[1].max_tokens, 4_096);
+    }
+
+    /// An entry that no longer matches the schema costs itself, not the array:
+    /// the readable entries survive in their stored order.
+    #[test]
+    fn an_unreadable_binding_costs_only_itself() {
+        let bindings = read(
+            r#"{"models":[
+                {"id":"first","contextWindow":1000,"maxTokens":100},
+                {"id":"second","maxTokens":"not-a-number"},
+                {"id":"third","contextWindow":3000,"maxTokens":300}
+            ]}"#,
+        );
+        assert_eq!(
+            bindings
+                .iter()
+                .map(|binding| binding.id.as_str())
+                .collect::<Vec<_>>(),
+            ["first", "third"]
+        );
+    }
+
+    /// Every entry unreadable still leaves the legacy binding, so the provider
+    /// stays selectable; the loss is reported per entry rather than being
+    /// silent.
+    #[test]
+    fn an_all_unreadable_array_still_reads_the_legacy_binding() {
+        let bindings = config_model_bindings(
+            r#"{"models":[{"id":"a","maxTokens":"x"},{"id":"b","contextWindow":"y"}]}"#,
+            Some("fallback".into()),
+            "provider-under-test",
+        );
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].id, "fallback");
+    }
+
+    /// An empty array is a legal state, not a damaged one, so it reads the
+    /// legacy binding without being reported as corruption.
+    #[test]
+    fn an_empty_models_array_reads_the_legacy_binding() {
+        let bindings = config_model_bindings(
+            r#"{"models":[],"modelId":"config-legacy"}"#,
+            None,
+            "provider-under-test",
+        );
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].id, "config-legacy");
+    }
+
+    /// A `models` value that is not an array is reported rather than silently
+    /// read as the legacy binding.
+    #[test]
+    fn a_non_array_models_value_reads_the_legacy_binding() {
+        let bindings = config_model_bindings(
+            r#"{"models":{"id":"wrapped"},"modelId":"config-legacy"}"#,
+            None,
+            "provider-under-test",
+        );
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].id, "config-legacy");
+    }
+    #[test]
+    fn malformed_model_storage_is_explicitly_degraded() {
+        let invalid_json = ensure_model_bindings_update_safe("not-json").unwrap_err();
+        assert!(invalid_json
+            .to_string()
+            .starts_with("MODEL_BINDINGS_DEGRADED: config_json is not valid JSON"));
+
+        let non_object = ensure_model_bindings_update_safe("[]").unwrap_err();
+        assert!(non_object
+            .to_string()
+            .contains("config_json root must be an object"));
+
+        let non_array =
+            ensure_model_bindings_update_safe(r#"{"models":{"id":"wrapped"}}"#).unwrap_err();
+        assert!(non_array
+            .to_string()
+            .contains("config_json.models is not an array"));
+
+        let empty_id = read(r#"{"models":[{"id":"  "},{"id":"readable"}]}"#);
+        assert_eq!(
+            empty_id
+                .iter()
+                .map(|binding| binding.id.as_str())
+                .collect::<Vec<_>>(),
+            ["readable"]
+        );
+        let empty_id_error =
+            ensure_model_bindings_update_safe(r#"{"models":[{"id":"  "},{"id":"readable"}]}"#)
+                .unwrap_err();
+        assert!(empty_id_error.to_string().contains("index 0"));
+
+        assert!(ensure_model_bindings_update_safe(r#"{"models":[]}"#).is_ok());
     }
 }

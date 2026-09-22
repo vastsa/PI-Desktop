@@ -399,7 +399,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | ID | Topic | Decision | Rationale |
 |---|---|---|---|
 | D119 | Transcript file store; SQLite index-only | **Schema v7: message content moves out of SQLite into per-session JSONL files under `~/.pi-desktop/sessions/` — `<id>.jsonl` (a session-header line, then one canonical block-array message line per message, RFC3339 stamps) plus an append-only `<id>.revisions.jsonl` for regenerate branches. `messages` drops `content_json`/`meta_json` and becomes a pure index (ordering, promoted filter columns, extracted `text` feeding FTS); `message_revisions` swaps `messages_json` for `message_count`, with `is_active` tracked in the DB only. Writes are file-first then index transaction; reads skip unknown/torn lines and dedupe repeated message ids keep-last; full rewrites are temp-file + atomic rename; session files are deleted only with their session and never age/orphan-swept. Opening a pre-v7 database archives it as `pi.sqlite.v6.bak` and bootstraps fresh — an explicit breaking reset, with all v1–v6 migration code removed. RPC wire format is unchanged, so Electron/renderer/importers need no changes.** | The database grew without bound carrying tool args/results and thinking payloads; codex/claude-code-style per-session files keep transcripts human-readable, greppable, and portable while SQLite stays a small, fast index (list, search, badges). A dev-phase breaking reset was chosen over migration machinery. |
-| D122 | Independent conversation session fork | **Protocol v5 adds host-owned `session.fork`: an idle source's complete active canonical transcript is copied into a new independent session with remapped message/tool-call ids and inherited project/provider/model/mode/thinking/permission configuration. Turns, regenerate revisions, notifications, artifacts, session grants, scratch/runtime state, pin state, and parent-child lineage are not copied. Create branch activates the child; D109 remains unchanged because no message-level branch tree is introduced.** | A single host-owned snapshot preserves canonical blocks and persistence consistency while giving users a Codex-style divergence workflow without conflating independent conversations with regenerate variants. |
+| D122 | Independent conversation session fork | **Protocol v5 adds host-owned `session.fork`: an idle source's complete active canonical transcript is copied into a new independent session with remapped message/tool-call ids and inherited project/provider/model/mode/thinking/permission configuration. Turns, regenerate revisions, notifications, artifacts, session grants, arbitrary scratch outputs, runtime state, pin state, and parent-child lineage are not copied. Referenced existing pasted/imported inputs are copied into child-owned scratch files and their transcript/checkpoint paths are remapped (ADR 0023). Create branch activates the child; D109 remains unchanged because no message-level branch tree is introduced.** | A single host-owned snapshot preserves canonical blocks and persistence consistency while giving users a Codex-style divergence workflow without conflating independent conversations with regenerate variants. |
 | D134 | Assistant response fork and reversible edit | *(edit clause superseded by D137)* **The completed-assistant toolbar exposes Copy, Fork, Edit, and Regenerate but no Delete. Fork calls the existing host-owned `session.fork` with optional `throughMessageId`, producing an independent session whose canonical transcript ends at that response. Edit uses the same isolated child, replaces only the selected assistant text there, and stores original/edited tails as a two-entry D109 revision family so the existing pager can restore either. Both require an idle source, remap message/tool-call ids, and never share the source session id, runtime, transcript, revisions, or provider cache state.** | Response-level divergence and correction should remain reversible without mutating the source or letting an edited history reuse cached runtime state built from different assistant content. |
 | D199 | Regenerate branch archived under the host RPC lock | **`session.saveActiveRevision` performs the read, the branch archive, and the `revisionCount` / `activeRevision` stamp in one host call under the state lock, replacing Electron main's `session.get` + `session.replaceMessages` read-modify-write. The stamp rewrites only the root user's transcript line and re-reads the file at write time, so a line appended meanwhile survives; Electron main drains the persistence outbox first and skips the archive with a warning rather than archiving an incomplete branch. `session.replaceMessages` carries each surviving message's owning `turn_id` across a rewrite and is documented as safe only for a caller that owns the whole transcript for the call's duration (ADR 0060).** | Assistant and tool messages reach SQLite asynchronously through the ADR 0041 outbox, so the renderer-side snapshot could predate the turn's final message — and the whole-transcript rewrite then deleted it from both the transcript file and the index, along with every row's `turn_id`. Only the host can read and write the transcript atomically. |
 
@@ -6577,3 +6577,48 @@ that was sitting at the bottom — including after the turn had finished.
 - Renderer only: no protocol, storage, host, permission, or migration change,
   and no new default. See `04-ux/08-component-spec.md`, ADR 0233, ADR 0273, and
   E2E-012a / E2E-256.
+## 2026-09-21 — A stored model binding array is read entry by entry (D610, issue #784)
+
+- `config_json.models` is the only place a provider's model list lives, and it has more than one writer: a settings save, a plugin declaration, and an external edit of the stored row. It was decoded as a single `Vec<ModelBinding>`, so one entry that no longer matched the schema discarded every sibling — after which the provider read back as the single legacy default model derived from `defaultModelId`, every other configured model gone, and nothing said about why. The report reproduced it by deleting one binding's `maxTokens`: 12 stored bindings read back as 1.
+- `contextWindow` and `maxTokens` are therefore optional on the wire, and each entry of the array is decoded on its own. An absent key, or an explicit `0`, reads as zero and is seeded with the generic default (128,000 / 8,192) by the normalisation that already existed for the explicit zero — the same value a record carrying only `defaultModelId` is materialized with, and the same value a plugin manifest that declares no limits already produces. The two paths now agree instead of one rejecting what the other accepts.
+- An entry that still fails to decode costs itself, not the array: the readable entries survive in their stored order, and the failure is reported on the host log with the provider id, the entry's index and the reason, so it is locatable rather than silent. An absent `models` key, an empty array, and an array whose every entry was unreadable all still read as the legacy binding, so a provider stays selectable whatever its stored shape; only the third is reported, because an empty array is a legal state and an absent one predates bindings.
+- Nothing is rewritten on disk and the write path remains explicit: `providers.update` still persists exactly the bindings the client sends. Before accepting an explicit model-array replacement, the host checks the stored value and rejects it with `MODEL_BINDINGS_DEGRADED` when the value is degraded, so a partial settings view cannot erase unreadable entries; unrelated provider fields remain updatable. See `03-runtime/12-provider-config-schema.md` §2.
+
+## 2026-09-21 — A hand-typed custom model id is seeded from the model library (D611)
+
+- Adding a custom model by id gave every binding the generic 128,000 / 8,192
+  seed and no thinking levels, even when the model library already published
+  that id, so the user had to retype limits the app could have known.
+- The settings picker now matches the typed id against models.dev through a new
+  snapshot-only renderer channel, `providers.lookupModel`, and seeds the binding
+  the way a picked model is seeded — published context window, max output
+  tokens, and thinking levels — while the stored id stays exactly what the user
+  typed. The row is written first with the generic seed and upgraded in place
+  when the answer arrives, so a slow, failed, or unpublished lookup still leaves
+  exactly one usable row, and an edit or delete made meanwhile is never
+  overwritten.
+- No provider network request, host call, schema, or persisted-data change; a
+  miss behaves exactly as before. See `03-runtime/12-provider-config-schema.md`
+  §2 and §9.
+
+## 2026-09-21 — Adding a provider never takes over an app default (D612)
+
+- The provider add flow wrote `defaultProviderId`/`defaultModelId`, and the
+  image flow wrote `imageGeneration`, whether or not the app already had one, so
+  configuring a second service silently moved the default away from the model
+  the user was running.
+- The add flow now follows the rule editing already followed: a stored default
+  survives while it still resolves, and only an unresolvable one is replaced.
+  For the model default that means the default provider row still exists and
+  still offers the model — the same resolution the settings summary renders
+  through — so an id left behind by a deleted provider is not a default and a
+  newly added provider may fill what would otherwise render as unset. The image
+  default uses the mirrored rule against its stored binding, and its candidate
+  list still accumulates the new provider's image models, so nothing vanishes
+  from the picker.
+- Settings are written only when no default resolves; the explicit "make
+  default" action, the edit path, and the fallback to the first remaining
+  binding after removing the selected model are unchanged. Behaviour is pinned
+  by `apps/desktop/test/default-model-display.test.mjs` and
+  `apps/desktop/test/image-generation-default.test.mjs`, with
+  `provider-model-config.test.mjs` asserting the add branch consults them.

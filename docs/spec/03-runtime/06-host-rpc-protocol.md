@@ -1092,6 +1092,7 @@ numeric slot; the string is the contract, the number is transport detail.
 | 1001 | HOST_SHUTTING_DOWN | the host is draining after EOF and refused the call |
 | 1002 | INVALID_PARAMS | schema validation failed |
 | 1002 | MODEL_ALIAS_TOO_LONG | provider row alias exceeds 60 code points |
+| 1002 | MODEL_BINDINGS_DEGRADED | stored model bindings are unreadable; explicit model-array replacement is refused |
 | 1003 | NOT_FOUND | entity missing (legacy slot, kept for old callers) |
 | 1006 | RATE_LIMITED | a per-caller budget window was exhausted |
 | 1007 | NOT_FOUND | entity missing |
@@ -1210,3 +1211,53 @@ Create requires title, prompt and cadence; automatic daily/weekly tasks require
 a schedule. Update takes an existing ID and partial fields, preserving all
 unspecified configuration. Exact local times remain supported despite the
 UI's four period presets. No new DB schema or transport is introduced.
+
+### Scheduled tasks: independent task dispatch
+
+The Electron runner admits independent due tasks without awaiting another task's prompt setup. Local in-flight ownership is keyed by task ID and Host instance until setup settles; Host remains authoritative for enabled, due and overlap checks. A replaced Host's completion cannot clear its successor's local ownership. Stop prevents new polls; admitted work keeps the existing execution/failure lifecycle. Failures remain observable and the 90-second late policy is unchanged.
+### Scheduled tasks: project removal and automations
+
+Removing a project pauses its bound scheduled tasks without deleting their definitions, schedule, workspace binding or run history. Session references in history may become null when the project's conversations are removed. Already admitted task runs block removal even before a conversation turn starts. Tasks belonging to other projects and unbound legacy tasks are unaffected. Explicit resume or Run now may recreate a project from the preserved path; automatic polling cannot do so while paused.
+### Scheduled tasks: legacy task maintenance
+
+Agent tools allow title, prompt and pause updates on legacy automatic tasks without a schedule, including an echoed unchanged cadence. These edits do not arm the task or capture the foreground workspace. Explicit enabling, a cadence change or a supplied schedule still follows schedule validation. Resume requires an explicit valid schedule; Manual-to-Hourly retains its existing default interval behavior.
+### Scheduled tasks: calendar intent
+
+The optional config_json.calendarConfigured boolean distinguishes an explicitly configured Daily/Weekly calendar from Hourly's internal schedule placeholder. Without the key, legacy Daily/Weekly schedules are treated as configured; legacy Hourly schedules retain their values but require an explicit schedule when converting to Daily/Weekly. Known calendar intent survives Hourly and restart, including midnight. Clearing or replacing the calendar with a different non-calendar placeholder clears intent. This additive extension needs no table/schema migration; older versions ignore it and cannot enforce the new conversion guard. Metadata-only edits and Manual-to-Hourly remain unchanged.
+### Scheduled tasks: workspace identity
+
+Stored workspace bindings use the existing project canonicalization contract on both write and read. On Windows, slash direction, case, trailing separators and extended path prefixes do not hide a task from its own project's conversation. The distinction between missing legacy bindings and explicit null remains unchanged. Foreign-project tools cannot list or mutate bound tasks.
+
+### Cloud configuration sync
+
+The Host exposes the `configSync.getState`, `configSync.test`,
+`configSync.configure`, `configSync.syncNow`, `configSync.pause`,
+`configSync.unlock`, `configSync.approve`, `configSync.reject`,
+`configSync.mapProject`, `configSync.listHistory`, `configSync.restore`,
+`configSync.changePassword`, and
+`configSync.disconnect` methods through the existing Electron Host bridge.
+These methods operate on the Host-owned encrypted vault and the explicit
+portable-domain adapter registry. They do not expose raw secrets or local
+filesystem bindings to the Renderer.
+
+`configSync.test` performs a capability probe against a temporary remote
+object and reports whether reliable strong conditional writes are available.
+`configSync.syncNow` and the five-minute automatic poll serialize per vault,
+reconcile against the last acknowledged base, publish immutable encrypted
+objects followed by a conditional head update, and retain unresolved
+conflicts/security-sensitive imports as pending state. A failed head
+precondition restarts from the newly read head; it never overwrites blindly.
+
+`configSync.listHistory` returns revision IDs, creation timestamps, parent IDs,
+and counts without decrypting data in the Renderer. `configSync.restore` requires
+an explicit propagation acknowledgement, writes an encrypted local recovery
+point, publishes a new head with a CAS, and keeps executable/security-sensitive
+entities pending until local approval. `configSync.changePassword` updates the
+wrapped-key header with a strong-ETag CAS; it does not revoke copied old vault
+keys.
+
+The public result is a redacted state snapshot. `configSync.changed` is a Host
+notification carrying that same snapshot. Approval and rejection require the
+current entity digest, so a security-relevant edit cannot reuse an older local
+decision. Disconnect deletes only local credentials, vault keys, metadata and
+staging files; remote objects remain intact.

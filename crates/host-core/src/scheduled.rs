@@ -8,6 +8,7 @@ use crate::db::{ms_to_ts, now_ms, ts_to_ms, Database};
 use crate::sessions;
 
 pub mod automation;
+pub mod project;
 pub mod timing;
 
 /// Wire format matches the legacy Electron `scheduled-tasks.json` records so
@@ -31,6 +32,12 @@ pub struct ScheduledTask {
     pub next_run_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_path: Option<String>,
+    /// Presence distinguishes a saved project (including null) from legacy tasks.
+    #[serde(skip)]
+    pub(crate) workspace_bound: bool,
+    /// Calendar intent is independent from Hourly's compatibility schedule.
+    #[serde(skip)]
+    pub(crate) calendar_configured: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -152,11 +159,16 @@ fn updated_config_json(db: &Database, id: &str, params_json: &Value) -> Result<O
 
 fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScheduledTask> {
     let config = config_json_value(&row.get::<_, String>(4)?);
+    let cadence: String = row.get(3)?;
+    let calendar_configured = config
+        .get("calendarConfigured")
+        .and_then(Value::as_bool)
+        .unwrap_or(matches!(cadence.as_str(), "daily" | "weekly"));
     Ok(ScheduledTask {
         id: row.get(0)?,
         title: row.get(1)?,
         prompt: row.get(2)?,
-        cadence: row.get(3)?,
+        cadence,
         mode: mode_from_config(&config_json_value(&row.get::<_, String>(4)?)),
         enabled: row.get::<_, i64>(5)? != 0,
         created_at: ms_to_ts(row.get(6)?),
@@ -169,10 +181,12 @@ fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScheduledTask> {
             .get("nextRunAt")
             .and_then(Value::as_i64)
             .map(ms_to_ts),
+        workspace_bound: config.get("workspacePath").is_some(),
+        calendar_configured,
         workspace_path: config
             .get("workspacePath")
             .and_then(Value::as_str)
-            .map(str::to_string),
+            .and_then(crate::db::canonical_project_path),
     })
 }
 
@@ -256,6 +270,11 @@ pub fn update_task(db: &Database, params_json: &Value) -> Result<Option<Schedule
     };
     let mut config = config_json_value(&config_json);
     let existing = get_task(db, id)?;
+    if config.get("calendarConfigured").is_none() {
+        config["calendarConfigured"] = json!(existing
+            .as_ref()
+            .is_some_and(|task| task.calendar_configured));
+    }
     let effective_cadence = cadence
         .as_deref()
         .or_else(|| existing.as_ref().map(|task| task.cadence.as_str()))

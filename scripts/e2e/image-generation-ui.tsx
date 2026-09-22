@@ -106,16 +106,25 @@ globalThis.imageGenerationProbe = async () => {
     [...document.querySelectorAll<HTMLButtonElement>("button")].find(
       (element) => element.textContent?.trim() === text,
     );
+  const imageModelToggle = (label: string) =>
+    [...document.querySelectorAll<HTMLInputElement>(
+      ".provider-chosen-capability input[type=\"checkbox\"]",
+    )].find((element) => element.getAttribute("aria-label") === label);
   try {
     for (const locale of ["en", "zh-CN"]) {
       await i18n.changeLanguage(locale);
+      // The scenario precondition is "no image model configured", so each locale
+      // pass starts unmarked instead of inheriting the candidates the previous
+      // pass saved: a marked model's checkbox reads as selected, not "Set as
+      // image model", which is what this pass looks for.
+      settings = { ...settings, imageGeneration: null, imageGenerationModels: null };
+      flushSync(() => useAppStore.setState({ settings }));
       render();
       const defaultRow = container.querySelector<HTMLElement>(".model-default-row")!;
-      const imageRow = [...container.querySelectorAll<HTMLElement>(".settings-row")].find(
+      const initialImageRow = [...container.querySelectorAll<HTMLElement>(".settings-row")].find(
         (element) => element.textContent?.includes(i18n.t("settings.imageModel")),
-      )!;
-      const gap = imageRow.getBoundingClientRect().top - defaultRow.getBoundingClientRect().bottom;
-      assert(gap >= 11 && gap <= 13, `model defaults should be adjacent rows, got ${gap}px`);
+      );
+      assert(!initialImageRow, "unconfigured image model row should be hidden");
       const edit =
         container.querySelector<HTMLButtonElement>(
           'button[aria-label="' + i18n.t("settings.editProvider") + '"]',
@@ -126,10 +135,10 @@ globalThis.imageGenerationProbe = async () => {
       // Enter from the real model settings page, not the advanced pane alone.
       click(edit);
       await until(
-        () => !!button(i18n.t("settings.setImageModel")),
-        "advanced image-model action missing",
+        () => !!imageModelToggle(i18n.t("settings.setImageModel")),
+        "advanced image-model capability missing",
       );
-      click(button(i18n.t("settings.setImageModel")));
+      click(imageModelToggle(i18n.t("settings.setImageModel")));
       assert(!settings.imageGeneration, "draft selection persisted before Save");
       click(button(i18n.t("settings.cancel")));
       assert(!settings.imageGeneration, "cancel changed binding");
@@ -138,26 +147,50 @@ globalThis.imageGenerationProbe = async () => {
           'button[aria-label="' + i18n.t("settings.editProvider") + '"]',
         ),
       );
-      await until(() => !!button(i18n.t("settings.setImageModel")), "second edit did not mount");
-      click(button(i18n.t("settings.setImageModel")));
+      await until(
+        () => !!imageModelToggle(i18n.t("settings.setImageModel")),
+        "second edit did not mount",
+      );
+      click(imageModelToggle(i18n.t("settings.setImageModel")));
+      click(imageModelToggle(i18n.t("settings.setImageModel")));
       click(button(i18n.t("settings.saveProvider")));
       await until(
         () =>
           settings.imageGeneration?.modelId === "image-one" &&
+          settings.imageGenerationModels?.length === 2 &&
           !document.querySelector(".provider-setup"),
-        "saved image model missing",
+        "saved image model candidates missing",
       );
+      const imageRow = [...container.querySelectorAll<HTMLElement>(".settings-row")].find(
+        (element) => element.textContent?.includes(i18n.t("settings.imageModel")),
+      )!;
+      assert(imageRow, "saved image model summary missing");
+      const gap = imageRow.getBoundingClientRect().top - defaultRow.getBoundingClientRect().bottom;
+      assert(gap >= 11 && gap <= 13, `model defaults should be adjacent rows, got ${gap}px`);
       assert(settings.defaultModelId === "chat-model", "image model changed default chat model");
       click(container.querySelector<HTMLButtonElement>(".model-default-trigger"));
       await until(() => !!document.querySelector(".model-default-list"), "default picker missing");
       assert(!document.querySelector('[aria-label="Images · image-one"]'), "image binding leaked into chat defaults");
-      assert(document.querySelector('[aria-label="Images · image-two"]'), "other configured chat model disappeared");
       assert(document.querySelector('[aria-label="Images B · image-one"]'), "same model on another provider disappeared");
+      assert(!document.querySelector('[aria-label="Images · image-two"]'), "second image binding leaked into chat defaults");
       click(container.querySelector<HTMLButtonElement>(".model-default-trigger"));
       const row = [...container.querySelectorAll<HTMLElement>(".settings-row")].find((element) =>
         element.textContent?.includes(i18n.t("settings.imageModel")),
       )!;
-      assert(row.querySelectorAll("button").length === 0, "image summary still offers change or clear");
+      assert(row.querySelector('button[aria-haspopup="listbox"]'), "image summary selector missing");
+      click(row.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]'));
+      await until(
+        () => !!document.querySelector('[role="option"]'),
+        "image model candidate picker missing",
+      );
+      const secondImageOption = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+        (element) => element.textContent?.includes("image-two"),
+      );
+      click(secondImageOption);
+      await until(
+        () => settings.imageGeneration?.modelId === "image-two",
+        "image default model did not switch",
+      );
       const textStyle = (element: Element | null) => {
         assert(element, "missing model text");
         const style = getComputedStyle(element!);
@@ -167,10 +200,29 @@ globalThis.imageGenerationProbe = async () => {
       assert(textStyle(row.querySelector(".model-default-model")) === textStyle(defaultRow.querySelector(".model-default-model")), "model typography differs from default model");
       const alternateRow = [...container.querySelectorAll<HTMLElement>(".model-provider-row")].find((element) => element.textContent?.includes("Images B"));
       click(alternateRow?.querySelector<HTMLButtonElement>('button[aria-label="' + i18n.t("settings.editProvider") + '"]'));
-      await until(() => !!button(i18n.t("settings.setImageModel")), "alternate provider edit missing");
-      click(button(i18n.t("settings.setImageModel")));
+      await until(
+        () => !!imageModelToggle(i18n.t("settings.setImageModel")),
+        "alternate provider edit missing",
+      );
+      click(imageModelToggle(i18n.t("settings.setImageModel")));
       click(button(i18n.t("settings.saveProvider")));
-      await until(() => settings.imageGeneration?.providerId === "q" && !document.querySelector(".provider-setup"), "advanced provider switch did not persist");
+      await until(
+        () =>
+          settings.imageGeneration?.modelId === "image-two" &&
+          settings.imageGenerationModels?.length === 3 &&
+          !document.querySelector(".provider-setup"),
+        "additional image model candidate did not persist",
+      );
+      click(row.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]'));
+      await until(() => !!document.querySelector('[role="option"]'), "image candidate picker did not reopen");
+      const alternateImageOption = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+        (element) => element.textContent?.includes("Images B") && element.textContent?.includes("image-one"),
+      );
+      click(alternateImageOption);
+      await until(
+        () => settings.imageGeneration?.providerId === "q",
+        "image default provider did not switch",
+      );
       assert(settings.defaultProviderId === "chat" && settings.defaultModelId === "chat-model", "image switch changed chat default");
       assert(row.textContent?.includes("Images B"), "new provider name missing");
       for (const invalid of [
@@ -184,7 +236,50 @@ globalThis.imageGenerationProbe = async () => {
       }
       settings = { ...settings, imageGeneration: null };
       flushSync(() => useAppStore.setState({ settings, providers }));
-      assert(row.querySelector('[role="status"]')?.textContent === i18n.t("settings.imageModelUnavailable"), "unset state missing");
+      const unsetImageRow = [...container.querySelectorAll<HTMLElement>(".settings-row")].find(
+        (element) => element.textContent?.includes(i18n.t("settings.imageModel")),
+      );
+      assert(!unsetImageRow, "unset image model row should be hidden");
+
+      // Issue #826: release the only chat model through the real edit/save path.
+      providers.splice(0, providers.length, chatProvider);
+      settings = {
+        ...settings,
+        imageGeneration: { providerId: "chat", modelId: "chat-model" },
+        imageGenerationModels: [{ providerId: "chat", modelId: "chat-model" }],
+      };
+      flushSync(() => useAppStore.setState({ settings, providers: [...providers] }));
+      const editOnlyProvider = () => click(container.querySelector<HTMLButtonElement>(
+        'button[aria-label="' + i18n.t("settings.editProvider") + '"]',
+      ));
+      editOnlyProvider();
+      await until(() => !!imageModelToggle(i18n.t("settings.imageModelSelected")), "selected image checkbox missing");
+      click(imageModelToggle(i18n.t("settings.imageModelSelected")));
+      click(button(i18n.t("settings.cancel")));
+      assert(settings.imageGeneration?.modelId === "chat-model", "cancel cleared the image default");
+      editOnlyProvider();
+      await until(() => !!imageModelToggle(i18n.t("settings.imageModelSelected")), "selected checkbox did not reopen");
+      click(imageModelToggle(i18n.t("settings.imageModelSelected")));
+      click(button(i18n.t("settings.saveProvider")));
+      await until(() => !document.querySelector(".provider-setup-dialog"), "unmark save did not finish");
+      assert(settings.imageGeneration === null, "unmark kept the old image default");
+      assert(settings.imageGenerationModels?.length === 0, "unmark kept image candidates");
+      // Remount settings from the saved API value, then reopen the provider.
+      flushSync(() => root.render(null));
+      flushSync(() => useAppStore.setState({ settings: structuredClone(settings) }));
+      render();
+      assert(!container.querySelector(".model-image-row"), "image summary returned after reopen");
+      editOnlyProvider();
+      await until(() => !!imageModelToggle(i18n.t("settings.setImageModel")), "unmarked checkbox did not persist");
+      assert(!imageModelToggle(i18n.t("settings.setImageModel"))?.checked, "reopened model is still marked");
+      click(button(i18n.t("settings.cancel")));
+      click(container.querySelector<HTMLButtonElement>(".model-default-trigger"));
+      await until(() => !!document.querySelector('[aria-label="Chat · chat-model"]'), "released chat model is missing");
+      click(document.querySelector<HTMLButtonElement>('[aria-label="Chat · chat-model"]'));
+      await until(() => !document.querySelector(".model-default-list"), "chat selection did not finish");
+      assert(settings.defaultProviderId === "chat" && settings.defaultModelId === "chat-model", "released model cannot be the chat default");
+      providers.splice(0, providers.length, provider, alternate, chatProvider);
+      flushSync(() => useAppStore.setState({ providers: [...providers] }));
 
     }
     const message = {
@@ -235,8 +330,10 @@ globalThis.imageGenerationProbe = async () => {
       locales: ["en", "zh-CN"],
       scenarios: [
         "advanced-save-cancel",
+        "unmark-only-image-model-save-reopen-chat-selection",
         "advanced-provider-switch",
         "read-only-summary-typography",
+        "unconfigured-summary-hidden",
         "unavailable-summary",
         "chat-default-preserved",
         "image-excluded-from-chat-defaults",

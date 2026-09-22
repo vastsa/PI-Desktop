@@ -111,6 +111,13 @@ import type {
   UpdateState,
   WindowControlAction,
   CloseBehavior,
+  ConfigSyncApprovalInput,
+  ConfigSyncChangePasswordInput,
+  ConfigSyncHistoryEntry,
+  ConfigSyncMapProjectInput,
+  ConfigSyncConfigureInput,
+  ConfigSyncRestoreInput,
+  ConfigSyncState,
   TrustedExtensionStatusEvent,
   TrustedExtensionUiPrompt,
   TrustedExtensionUiPromptResponse,
@@ -583,6 +590,32 @@ export const api = {
   getSettings: () => invoke<AppSettings>(IPC.invoke.settingsGet).then(normalizeSettings),
   setSettings: (settings: AppSettings) =>
     invoke(IPC.invoke.settingsSet, validateSettingsWrite(settings)),
+  configSyncGetState: () => invoke<ConfigSyncState>(IPC.invoke.configSyncGetState),
+  configSyncConfigure: (input: ConfigSyncConfigureInput) =>
+    invoke<ConfigSyncState>(IPC.invoke.configSyncConfigure, input),
+  configSyncTest: (input: Omit<ConfigSyncConfigureInput, "backupPassword"> & { backupPassword?: string }) =>
+    invoke<{ ok: boolean; conditionalWrites: boolean; message?: string }>(
+      IPC.invoke.configSyncTest,
+      input,
+    ),
+  configSyncSyncNow: () => invoke<ConfigSyncState>(IPC.invoke.configSyncSyncNow),
+  configSyncPause: (paused: boolean) =>
+    invoke<ConfigSyncState>(IPC.invoke.configSyncPause, { paused }),
+  configSyncUnlock: (backupPassword: string) =>
+    invoke<ConfigSyncState>(IPC.invoke.configSyncUnlock, { backupPassword }),
+  configSyncApprove: (input: ConfigSyncApprovalInput) =>
+    invoke<ConfigSyncState>(IPC.invoke.configSyncApprove, input),
+  configSyncReject: (input: ConfigSyncApprovalInput) =>
+    invoke<ConfigSyncState>(IPC.invoke.configSyncReject, input),
+  configSyncMapProject: (input: ConfigSyncMapProjectInput) =>
+    invoke<ConfigSyncState>(IPC.invoke.configSyncMapProject, input),
+  configSyncListHistory: () =>
+    invoke<ConfigSyncHistoryEntry[]>(IPC.invoke.configSyncListHistory),
+  configSyncRestore: (input: ConfigSyncRestoreInput) =>
+    invoke<ConfigSyncState>(IPC.invoke.configSyncRestore, input),
+  configSyncChangePassword: (input: ConfigSyncChangePasswordInput) =>
+    invoke<ConfigSyncState>(IPC.invoke.configSyncChangePassword, input),
+  configSyncDisconnect: () => invoke<ConfigSyncState>(IPC.invoke.configSyncDisconnect),
   testNetworkProxy: (settings: unknown) =>
     invoke<{ ok: boolean; error?: string }>(IPC.invoke.networkProxyTest, settings),
   /** Installed system font families (Electron main, cached briefly). */
@@ -634,6 +667,21 @@ export const api = {
       source: "cache" | "remote" | "catalog" | "fallback";
       error?: string;
     }>(IPC.invoke.providersListModels, input),
+  /**
+   * Look one hand-typed model id up in the local models.dev snapshot.
+   *
+   * The discovered list only describes ids a service already serves, so this is
+   * the only way a custom id reaches its published limits before the provider
+   * is saved. Snapshot read only: no provider network access and no host call.
+   * `info` is null when the catalog does not publish the id.
+   */
+  lookupProviderModel: (input: {
+    modelId: string;
+    baseUrl?: string;
+    providerId?: string;
+    vendorKey?: string;
+  }) =>
+    invoke<{ info: ModelInfo | null }>(IPC.invoke.providersLookupModel, input),
   /** Force-refresh models.dev for the running process; release snapshots are bundled. */
   refreshModelCatalog: () =>
     invoke<{
@@ -1472,6 +1520,12 @@ export const api = {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.settingsChanged, (payload) =>
       listener((payload ?? {}) as Record<string, unknown>),
+    );
+  },
+  onConfigSyncChanged: (listener: (state: ConfigSyncState) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.configSyncChanged, (payload) =>
+      listener(payload as ConfigSyncState),
     );
   },
   onPluginLauncherShown: (listener: () => void) => {

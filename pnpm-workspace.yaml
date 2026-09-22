@@ -2,44 +2,13 @@ packages:
   - apps/*
   - packages/*
   - docs
-# pnpm defaults to `lowest-direct`, which makes a plain `pnpm update` resolve
-# every range to its floor — silently downgrading dependencies instead of
-# refreshing them. Pin the intent: `pnpm update` means "newest within range".
-resolutionMode: highest
 allowBuilds:
-  electron: true
-  esbuild: true
   '@google/genai': true
-  protobufjs: true
+  electron: true
   electron-winstaller: true
+  esbuild: true
   node-pty: true
-# Advisory fixes for transitives whose parents still resolve the vulnerable
-# version. Drop each one once its parent ships a release that resolves the
-# patched version on its own.
-overrides:
-  # Tailwind's CSS optimizer in 4.3.3 emits a false warning for the valid
-  # Custom Highlight API selector `::highlight()`. The parser fix ships in
-  # lightningcss 1.33.0.
-  '@tailwindcss/node>lightningcss': 1.33.0
-  # Ships in the app. mermaid allows ^3.3.3 but resolves its own copy, so the
-  # renderer would load an unpatched sanitizer next to our patched one.
-  dompurify@3: '>=3.4.13 <4' # detached-subtree XSS, via mermaid
-  # Build toolchain only (electron-builder, node-gyp) — never reaches users.
-  # Kept current so `pnpm audit` stays quiet and a finding that *does* reach
-  # users stands out.
-  brace-expansion@1: '>=1.1.17 <2' # GHSA via minimatch@3
-  brace-expansion@2: '>=2.1.4 <3' # GHSA via @electron/universal, jake
-  brace-expansion@5: '>=5.0.9 <6' # GHSA via app-builder-lib
-  fast-uri@3: '>=3.1.5 <4' # GHSA via ajv@8
-  undici@6: '>=6.28.0 <7' # GHSA via node-gyp@12
-  js-yaml@4: '>=4.3.1 <5' # CVE-2026-59870 via app-builder-lib
-  # Docs site only. vitepress 1.6.4 asks for vite ^5.4.14 and no vite 5 is
-  # patched — the fixes for all four advisories (server.fs.deny bypass, esbuild
-  # dev-server CORS, optimized-deps `.map` traversal, launch-editor UNC) land in
-  # 6.4.3. vitepress 2, which uses vite 6 itself, is still alpha, so this crosses
-  # a major its parent has not declared. Verified against `docs:build` and
-  # `docs:dev` (serves 200); drop it for vitepress 2 once that ships stable.
-  vite@5: '>=6.4.3 <7'
+  protobufjs: true
 # Drop this list once the pinned @earendil-works packages are older than
 # pnpm's supply-chain age gate (packages published within the last day).
 minimumReleaseAgeExclude:
@@ -49,6 +18,38 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-telemetry@0.86.1'
   - '@earendil-works/pi-coding-agent@0.86.1'
   - '@earendil-works/pi-tui@0.86.1'
+# Advisory fixes for transitives whose parents still resolve the vulnerable
+# version. Drop each one once its parent ships a release that resolves the
+# patched version on its own.
+overrides:
+  # Tailwind's CSS optimizer in 4.3.3 emits a false warning for the valid
+  # Custom Highlight API selector `::highlight()`. The parser fix ships in
+  # lightningcss 1.33.0.
+  '@tailwindcss/node>lightningcss': 1.33.0
+  # Build toolchain only (electron-builder, node-gyp) — never reaches users.
+  # Kept current so `pnpm audit` stays quiet and a finding that *does* reach
+  # users stands out.
+  brace-expansion@1: '>=1.1.17 <2' # GHSA via minimatch@3
+  brace-expansion@2: '>=2.1.4 <3' # GHSA via @electron/universal, jake
+  brace-expansion@5: '>=5.0.9 <6' # GHSA via app-builder-lib
+  # Ships in the app. mermaid allows ^3.3.3 but resolves its own copy, so the
+  # renderer would load an unpatched sanitizer next to our patched one.
+  dompurify@3: '>=3.4.13 <4' # detached-subtree XSS, via mermaid
+  fast-uri@3: '>=3.1.5 <4' # GHSA via ajv@8
+  js-yaml@4: '>=4.3.1 <5' # CVE-2026-59870 via app-builder-lib
+  undici@6: '>=6.28.0 <7' # GHSA via node-gyp@12
+  # Docs site only. vitepress 1.6.4 asks for vite ^5.4.14 and no vite 5 is
+  # patched — the fixes for all four advisories (server.fs.deny bypass, esbuild
+  # dev-server CORS, optimized-deps `.map` traversal, launch-editor UNC) land in
+  # 6.4.3. vitepress 2, which uses vite 6 itself, is still alpha, so this crosses
+  # a major its parent has not declared. Verified against `docs:build` and
+  # `docs:dev` (serves 200); drop it for vitepress 2 once that ships stable.
+  vite@5: '>=6.4.3 <7'
 patchedDependencies:
   '@earendil-works/pi-agent-core@0.86.1': patches/@earendil-works__pi-agent-core@0.86.1.patch
   '@earendil-works/pi-ai@0.86.1': patches/@earendil-works__pi-ai@0.86.1.patch
+  '@earendil-works/pi-coding-agent@0.86.1': patches/@earendil-works__pi-coding-agent@0.86.1.patch
+# pnpm defaults to `lowest-direct`, which makes a plain `pnpm update` resolve
+# every range to its floor — silently downgrading dependencies instead of
+# refreshing them. Pin the intent: `pnpm update` means "newest within range".
+resolutionMode: highest

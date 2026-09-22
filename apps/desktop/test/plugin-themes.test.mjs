@@ -94,7 +94,10 @@ test("scenic plugins use the normal full-window shell for compositing", () => {
   const settingsSrc = readFileSync(join(desktopRoot, "src/styles/settings.css"), "utf8");
   assert.match(baseSrc, /\.app-shell\s*\{[^}]*position:\s*relative;[^}]*isolation:\s*isolate/s);
   assert.match(baseSrc, /\.app-scenic-backdrop\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0/s);
-  assert.match(baseSrc, /\.app-shell\s*>\s*:not\(\.app-scenic-backdrop\)[^}]*z-index:\s*1/s);
+  // The backdrop is the shell's first child with `position: fixed`, so it needs
+  // no z-index sibling rule; such a rule would turn `.main-pane` into a stacking
+  // context and pin route overlays underneath the window chrome.
+  assert.doesNotMatch(baseSrc, /\.app-shell\s*>\s*:not\(\.app-scenic-backdrop\)/);
   assert.match(settingsSrc, /data-plugin-theme\^="plugin:io\.github\.akshayxkill\.nexus-scenic-themes:/);
   assert.match(settingsSrc, /\.app-shell\.settings-mode[^}]*background:\s*transparent\s*!important/s);
   assert.match(settingsSrc, /\.settings-content[^}]*background:\s*transparent\s*!important/s);
@@ -112,7 +115,10 @@ test("scenic plugin themes expose a full-window settings compositing hook", () =
 test("scenic background is a host root layer, not an app-shell pseudo-element", () => {
   assert.match(appSrc, /className=\"app-scenic-backdrop\"/);
   assert.match(readFileSync(join(desktopRoot, "src/styles/base.css"), "utf8"), /\.app-scenic-backdrop\s*\{[^}]*position:\s*fixed/s);
-  assert.match(readFileSync(join(desktopRoot, "src/styles/base.css"), "utf8"), /\.app-shell\s*>\s*:\s*not\(\.app-scenic-backdrop\)/);
+  assert.doesNotMatch(
+    readFileSync(join(desktopRoot, "src/styles/base.css"), "utf8"),
+    /\.app-shell\s*>\s*:\s*not\(/,
+  );
 });
 
 test("core Settings navigation dismisses an active plugin destination", () => {

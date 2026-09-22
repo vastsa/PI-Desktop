@@ -3,6 +3,7 @@ import {
   ErrorCodes as SharedErrorCodes,
   isActiveInProject,
   isCommandShellCatalog,
+  imageGenerationBindings,
   isImageGenerationModel,
   normalizeMode,
   resolveBindingContextWindow,
@@ -327,7 +328,11 @@ export function createSessionLaunchRuntime({
         errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
       });
     }
-    if (isImageGenerationModel(settings.imageGeneration, provider.id, modelId)) {
+    if (isImageGenerationModel(
+      imageGenerationBindings(settings.imageGenerationModels, settings.imageGeneration),
+      provider.id,
+      modelId,
+    )) {
       throw Object.assign(new Error("The image model cannot be used for conversation; select a chat model"), {
         errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
       });

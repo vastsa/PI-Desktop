@@ -96,6 +96,23 @@ export function KeyboardShortcutsSection({ settings, platform, saveSettings }: P
     } else {
       next[shortcut.id] = binding;
     }
+    const conflict = KEYBOARD_SHORTCUTS.find(
+      (candidate) =>
+        candidate.id !== shortcut.id &&
+        keybindingsConflict(
+          resolveKeybinding(candidate, settings.keybindings, platform),
+          resolveKeybinding(shortcut, next, platform),
+        ),
+    );
+    if (conflict) {
+      setError({
+        id: shortcut.id,
+        message: t("settings.shortcutConflict", {
+          action: t(shortcutLabelKey(conflict.id)),
+        }),
+      });
+      return;
+    }
     setSavingId(shortcut.id);
     setError(null);
     try {
@@ -130,23 +147,6 @@ export function KeyboardShortcutsSection({ settings, platform, saveSettings }: P
     }
     if (isReservedKeybinding(binding, platform)) {
       setError({ id: shortcut.id, message: t("settings.shortcutReserved") });
-      return;
-    }
-    const conflict = KEYBOARD_SHORTCUTS.find(
-      (candidate) =>
-        candidate.id !== shortcut.id &&
-        keybindingsConflict(
-          resolveKeybinding(candidate, settings.keybindings, platform),
-          binding,
-        ),
-    );
-    if (conflict) {
-      setError({
-        id: shortcut.id,
-        message: t("settings.shortcutConflict", {
-          action: t(shortcutLabelKey(conflict.id)),
-        }),
-      });
       return;
     }
     void storeBinding(shortcut, binding);

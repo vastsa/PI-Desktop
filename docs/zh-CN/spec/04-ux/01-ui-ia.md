@@ -32,6 +32,9 @@
 +------------------+--------------------------------+------------------+
 ```
 
+- **临时任务附件**：即使没有打开项目，选择已保存的附件也应打开文件预览；
+  返回后恢复无项目的文件浏览空状态。分支保留被引用的粘贴或导入文件的独立副本，
+  删除原任务不会破坏分支的附件预览。
 - **侧边栏**：主要导航 - 紧凑的无路径对话
   **会话** 包含新会话和排序操作的部分，保留开放项目
   具有持久性新项目的以下 **Projects** 部分下的组
@@ -217,13 +220,22 @@
 
 应用必须保持运行。每 30 秒检查一次，超过 90 秒的错过时段与重叠运行被跳过；
 重启只安排未来时段。旧任务需明确保存周期后才自动执行。首次设置时保存当前项目，
-前台项目切换不会改变绑定。自动执行使用 Ask 权限模式，不自动授权或抢占当前页面。
+前台项目切换不会改变绑定。
+Manual tasks, including tasks saved without a project, retain that binding across
+Run now, renaming, cadence changes, and restart. Only legacy tasks without a
+saved binding capture the current project on their first explicit configuration.
+自动执行使用 Ask 权限模式，不自动授权或抢占当前页面。
 新任务默认为 Agent。允许保留已迁移的 Plan 或 Goal 任务
 已存储，但在提供商、工件之前明确拒绝无人值守的运行，
 或使用 `PLAN_REQUIRES_INTERACTIVE_SESSION` 排队工作；它无法显示或
 自动批准合同。
 用户必须在启用无人值守之前显式将其切换到 Agent
 执行。
+
+Agent tools can change a Manual task to Hourly by supplying only its id and
+`cadence: "hourly"`; no calendar time is required. Preserve existing schedule
+fields and paused state. Daily and Weekly still require a valid saved or supplied
+schedule. Renaming an Hourly task does not restart its interval.
 
 ### 3. 5 扩展
 

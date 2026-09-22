@@ -85,13 +85,13 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "contextWindow", "maxTokens", "thinkingLevels", "defaultThinkingLevel"],
+        "required": ["id"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "alias": { "type": "string", "maxLength": 60 },
-          "contextWindow": { "type": "integer", "minimum": 1 },
+          "contextWindow": { "type": "integer", "minimum": 0 },
           "contextWindowSource": { "enum": ["catalog", "user"] },
-          "maxTokens": { "type": "integer", "minimum": 1 },
+          "maxTokens": { "type": "integer", "minimum": 0 },
           "thinkingLevels": {
             "type": "array",
             "items": { "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"] },
@@ -136,6 +136,11 @@ models.dev snapshot. Unknown free-form models initially expose
 `supportsReasoning=false` and `supportedThinkingLevels=["off"]`; Settings may
 still persist an explicit thinking-level binding for an endpoint that supports
 it. The raw secret and internal compatibility JSON remain hidden.
+A hand-typed custom model id is matched against that snapshot before its
+binding is seeded (`providers.lookupModel`, §9), so a published record supplies
+the binding's context window, max output tokens, and thinking levels even
+though the id is absent from every discovered list; an unpublished id keeps the
+generic seed.
 
 Anthropic Messages providers may store either the service root or a URL ending
 in `/v1`. Model discovery preserves that configured path and requests
@@ -191,6 +196,25 @@ materializes one binding on read with a 128,000 context window, 8,192 max
 output, no enabled thinking levels, and a null default. The settings editor
 still renders all canonical choices for that legacy binding, and the next write
 stores the explicit binding array in `config_json.models`.
+
+`models[].contextWindow` and `models[].maxTokens` are optional on the wire. An
+absent key, or an explicit `0`, is not a per-model choice: the host reads it as
+zero and seeds the generic default (128,000 / 8,192) — the same value the
+legacy binding above is materialized with, and the same value a plugin
+manifest that declares no limits already produces. The stored array and the
+manifest therefore agree on what a model without limits means (D610).
+
+Each entry of a stored `models` array is decoded on its own. An entry that no
+longer matches the schema is skipped and reported on the host log with the
+provider id, its index and the reason, instead of discarding the whole array.
+The read remains usable, but it is marked degraded: invalid JSON, a non-object
+config, a non-array `models` value, or any unreadable entry is reported. An
+absent `models` key and an empty array remain legal legacy states; an array
+whose entries are all unreadable still falls back to the legacy binding and is
+reported. To prevent a partial settings view from erasing stored data,
+`providers.update` rejects an explicit model-array replacement with
+`MODEL_BINDINGS_DEGRADED` while the stored value is degraded. Updates to
+unrelated provider fields remain allowed.
 
 For context resolution, that 128,000 value is a backward-compatible generic
 seed, not a reason to hide a published long-context limit. If models.dev now
@@ -413,6 +437,7 @@ change for the raw snapshot.
 - `providers.delete`
 - `providers.testConnection`
 - `providers.listModels`
+- `providers.lookupModel`
 - `providers.cacheModels` (internal Electron-main to host persistence bridge)
 - `providers.refreshModels`
 - `providers.upsertUserModel`
@@ -523,6 +548,26 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
   models.dev metadata including `reasoning`, `supportedThinkingLevels`, limits,
   modalities, output types, and capability tags. Cached/provider claims cannot
   override the local catalog record.
+
+### `providers.lookupModel`
+- renderer IPC in: `{ modelId, baseUrl?, providerId?, vendorKey? }`
+- out: `{ info: ModelInfo | null }`
+- reads only the local models.dev snapshot: `ensureLoaded` then `findModel`,
+  with no provider network access and no host RPC. `vendorKey` and `baseUrl`
+  only disambiguate which published provider owns a duplicate id; `providerId`
+  is echoed back on the returned record for the settings surface.
+- exists because `providers.listModels` only describes a saved or reached
+  provider's catalogue: a hand-typed custom id has no other channel to its
+  published limits before the provider is saved.
+- a hit seeds the new binding exactly like a picked model
+  (`bindingFromModelInfo`): published context window, max output tokens, and
+  thinking levels, with `contextWindowSource: "catalog"`, while the stored id
+  stays exactly what the user typed (`bindingForCustomModelInfo`). A miss
+  (`null`) keeps today's behavior: the picker seeds the custom binding with the
+  generic 128,000 / 8,192 defaults and no thinking levels
+  (`bindingForCustomModel`). The row is written first and upgraded in place, so
+  a slow, failed, or unpublished lookup still leaves exactly one usable row and
+  never overwrites an edit or delete made while it was in flight.
 
 ### `providers.cacheModels` (internal host RPC)
 - in: `{ providerId, models: DiscoveredModelInput[] }`

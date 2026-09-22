@@ -46,6 +46,7 @@ import {
   type UiMessage,
 } from "@pi-desktop/shared";
 import { classifyAgentError } from "./agent-errors.js";
+import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import { withProviderFetchFailure } from "./provider-transport-recovery.js";
 import {
   assistantContent,
@@ -218,6 +219,11 @@ export class SubagentRun {
   private toolCalls = 0;
   private usage?: MessageUsage;
   private streamError?: { code: string; message: string };
+  /** Set when a settled message reads as a cancel — `stopReason: "aborted"`, or
+   * a local marker whose preserved cause name is `AbortError`. pi-ai can wrap
+   * an abort that fired before the parent signal flipped, so this is the only
+   * trace of the Stop and the run has to report `aborted` from it. */
+  private turnAborted = false;
   private contextCompactions = 0;
   private contextDegraded = false;
   /** Set when the turn-boundary guard throws because even the degraded
@@ -298,6 +304,14 @@ export class SubagentRun {
     }
 
     if (signal?.aborted) {
+      return this.result("aborted", "The delegated task was aborted.");
+    }
+
+    // A cancel the settled message itself reported outranks any failure text:
+    // pi-ai can wrap an AbortError that fired before the parent signal flipped,
+    // and the marker's preserved cause name is the only trace of the Stop. The
+    // session runtime reads that same marker as an aborted turn.
+    if (this.turnAborted) {
       return this.result("aborted", "The delegated task was aborted.");
     }
     if (caughtError) {
@@ -397,12 +411,15 @@ export class SubagentRun {
 
   /** Continue the same agent at the failed request; never replay completed tools. */
   private useNextModel(): boolean {
-    if (this.runSignal().aborted || !this.streamError || this.streamError.code === "TURN_ABORTED") return false;
+    // An aborted turn never continues, whether the signal flipped yet or the
+    // cancel was only visible on the settled message.
+    if (this.runSignal().aborted || this.turnAborted || !this.streamError || this.streamError.code === "TURN_ABORTED") return false;
     if (!this.opts.fallbackModels?.length) return false;
     const failed = this.agent.state.messages.at(-1);
     // Only a provider's terminal assistant error permits fallback. Host/tool
     // failures, cancellation, and unexpected internal exceptions do not.
     if (failed?.role !== "assistant" || failed.stopReason !== "error") return false;
+    if (readLocalRequestErrorDetails(failed)) return false;
     this.recordModelFailure(`${this.provider.id}/${this.provider.modelId}`, this.streamError);
     // What an alternative would actually carry: the current context minus the
     // failed assistant row (ADR 0299 decision 6 re-evaluates it against each
@@ -702,7 +719,16 @@ export class SubagentRun {
         const message = event.message as AssistantMessage;
         const content = assistantContent(message.content);
         const stopReason = message.stopReason as string | undefined;
-        const failed = stopReason === "error";
+        // Read the cancel off the settled message, the same way the session
+        // runtime does: pi-ai wraps an AbortError that fired before the signal
+        // flipped in a local marker whose preserved cause name is the only
+        // trace of the Stop. An abort is not a failure, so it neither retries
+        // nor produces an error row; other local errors stay terminal below.
+        const localError = readLocalRequestErrorDetails(message);
+        const aborted =
+          stopReason === "aborted" || localError?.causeName === "AbortError";
+        if (aborted) this.turnAborted = true;
+        const failed = !aborted && stopReason === "error";
         let classifiedError: ReturnType<typeof classifyAgentError> | undefined;
         let retryAttempt: number | undefined;
         if (failed) {
@@ -714,26 +740,22 @@ export class SubagentRun {
             // actionable code instead of classifying it as a provider error.
             this.streamError = overflow;
           } else {
-            const raw =
-              typeof (message as { errorMessage?: unknown }).errorMessage === "string"
-                ? ((message as { errorMessage?: string }).errorMessage as string)
-                : "provider stream failed";
             classifiedError = withProviderFetchFailure(
-              classifyProviderError(raw, this.retryState.status),
+              classifyProviderError(message, this.retryState.status),
               this.retryState.failure,
             );
-            retryAttempt = this.claimProviderRetry(classifiedError, "stream");
+            retryAttempt = classifiedError.details?.origin === "local"
+              ? undefined : this.claimProviderRetry(classifiedError, "stream");
             if (retryAttempt !== undefined) {
               this.pendingProviderRetry = classifiedError;
             } else {
-              this.streamError = {
-                code: classifiedError.code,
-                message: classifiedError.message,
-              };
+              this.streamError = classifiedError.details?.origin === "local"
+                ? classifiedError
+                : { code: classifiedError.code, message: classifiedError.message };
             }
           }
         }
-        if (!failed && stopReason !== "aborted") {
+        if (!failed && !aborted) {
           this.providerTransientRetryAttempt = 0;
           this.providerRateLimitRetryAttempt = 0;
         }
@@ -767,10 +789,11 @@ export class SubagentRun {
           ...(content.hasThinking && content.thinking
             ? { thinking: content.thinking }
             : {}),
-          status: failed ? "error" : stopReason === "aborted" ? "aborted" : "complete",
+          status: failed ? "error" : aborted ? "aborted" : "complete",
           ...(messageUsage ? { usage: messageUsage } : {}),
           ...(failed ? { isError: true } : {}),
-          ...(isCertificateVerificationError(classifiedError?.details?.networkCode)
+          ...(classifiedError?.details?.origin === "local" ||
+              isCertificateVerificationError(classifiedError?.details?.networkCode)
             ? { error: classifiedError } : {}),
         };
         this.currentAssistant = undefined;

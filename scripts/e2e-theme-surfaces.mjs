@@ -43,6 +43,11 @@ app.whenReady().then(async () => {
     window.show();
     window.focus();
     window.webContents.focus();
+    // Chromium only matches :focus-visible while it believes the page owns focus.
+    // This window cannot be relied on to keep macOS foreground focus across the
+    // probe loop, so emulate it (three-column-layout uses the same command).
+    window.webContents.debugger.attach("1.3");
+    await window.webContents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
     window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
     const checks = [];

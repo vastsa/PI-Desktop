@@ -297,3 +297,45 @@ test("selected models reorder from a dedicated handle, not the copyable id", () 
   assert.match(styles, /\.provider-chosen-row\.is-dragging\s*\{/);
   assert.match(styles, /\.provider-chosen-row\[data-drop-placement\]::after/);
 });
+
+test("adding a service only claims the app default while none resolves", () => {
+  // The add branch used to write defaultProviderId/defaultModelId
+  // unconditionally, so configuring a second service silently moved the app
+  // default away from the one the user was already running.
+  const branch = pageSource.match(
+    /\} else if \(!editingProvider\) \{([\s\S]*?)\n      \} else \{/,
+  );
+  assert.ok(branch, "the add-provider branch moved");
+  const guard = branch[1].indexOf("keepsAppDefaultModel(");
+  const write = branch[1].indexOf("api.setSettings(");
+  assert.ok(guard >= 0, "the add branch must ask whether a default already resolves");
+  assert.ok(write > guard, "the default write must sit inside that guard");
+  // Which provider wins is decided by the shared resolver, whose behaviour is
+  // pinned by default-model-display.test.mjs. That resolver also requires the
+  // default provider to be runnable (enabled, credentialed, a chat model
+  // configured), so a keyless default row cannot block the new provider.
+  assert.match(pageSource, /keepsAppDefaultModel,[\s\S]{0,80}\} from "\.\/default-model"/);
+  // Provider readiness is one rule for the picker and the add guard.
+  assert.match(pageSource, /const providerReady = \(provider: ProviderPublic\) =>\n\s+providerServesChatModels\(provider, imageGenerationCandidates\)/);
+  assert.doesNotMatch(pageSource, /provider\.hasOauth \|\|/);
+});
+
+test("a saved image selection never takes the app's image default", () => {
+  // The image default follows the same rule: the candidate list grows, the
+  // default moves only when the stored binding stops resolving. The decision
+  // itself is pinned by image-generation-default.test.mjs.
+  assert.match(pageSource, /planImageGenerationDefaults\(\n\s+current,\n\s+saved\.id,/);
+  assert.doesNotMatch(pageSource, /nextActive/);
+});
+
+test("a hand-typed id is seeded from the model library, not only from generic defaults", () => {
+  // The row is inserted immediately and upgraded in place when the snapshot
+  // answers, so a slow or offline catalog never leaves the list without it. The
+  // rule itself is pinned by model-custom-lookup.test.mjs, and the channel
+  // contract by provider-lookup-model-handler.test.mjs.
+  assert.match(pickerSource, /customModelSeedBinding\(id, discovered\?\.info\)/);
+  assert.match(pickerSource, /applyCustomModelLookup\(current, seed, info\)/);
+  assert.match(pickerSource, /api\.lookupProviderModel\(/);
+  // An id the current discovery already described needs no round trip.
+  assert.match(pickerSource, /if \(!discovered\?\.info\) void enrichCustomModel\(binding\)/);
+});

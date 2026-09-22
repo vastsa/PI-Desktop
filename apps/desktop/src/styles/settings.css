@@ -457,6 +457,203 @@
   padding: 12px 14px 14px;
 }
 
+.settings-config-sync-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.settings-config-sync-form .field-input,
+.settings-config-sync-form .password-input {
+  width: 100%;
+}
+
+.settings-config-sync-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-config-sync > .settings-card-block:first-child .settings-config-sync-actions {
+  padding: 0 16px 14px;
+}
+
+.settings-config-sync-message {
+  margin: 0 16px 14px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.settings-config-sync-message.error,
+.settings-config-sync-error {
+  color: var(--ds-danger);
+}
+
+.settings-config-sync-categories {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+  padding: 14px 16px;
+}
+
+.settings-config-sync-category {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.settings-config-sync-category input {
+  accent-color: var(--ds-accent);
+}
+
+.settings-config-sync-sensitive {
+  color: var(--ds-warning);
+}
+
+.settings-config-sync-warning {
+  margin: 0 16px 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ds-warning) 12%, transparent);
+  color: var(--ds-warning);
+  font-size: var(--text-sm);
+}
+
+.settings-config-sync-approvals {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-config-sync-approval {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+}
+
+.settings-config-sync-approval-title {
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.settings-config-sync-approval-meta,
+.settings-config-sync-preview {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+.settings-config-sync-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 14px 16px;
+}
+
+.settings-config-sync-mappings {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-config-sync-mapping {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+.settings-config-sync-mapping-id,
+.settings-config-sync-mapping code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-config-sync-password-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 640px;
+}
+
+.settings-config-sync-password-actions .password-input {
+  width: 180px;
+}
+
+.settings-config-sync-history-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 16px 10px;
+}
+
+.settings-config-sync-history {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-config-sync-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+}
+
+.settings-config-sync-history-empty {
+  padding: 4px 16px 14px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 700px) {
+  .settings-config-sync-form,
+  .settings-config-sync-categories {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-config-sync-approval {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-config-sync-mapping {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-config-sync-password-actions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .settings-config-sync-password-actions .password-input {
+    width: 100%;
+  }
+
+  .settings-config-sync-history-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 /*
   Remote hosts: inventory tiles, one Add form with SSH/Pair tabs, and
   Experimental rows. The form keeps a two-column grid; host cards are

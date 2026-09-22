@@ -2,7 +2,9 @@ use super::*;
 use rusqlite::{params, OptionalExtension};
 
 use crate::db::{now_ms, Database};
-use crate::providers::{self, delete_provider_row, provider_owner_plugin, ModelBinding};
+use crate::providers::{
+    self, delete_provider_row, normalize_thinking_levels, provider_owner_plugin, ModelBinding,
+};
 use crate::secrets::SecretStore;
 
 /// Upper bound on `contributes.providers` entries. Matches the SDK constant.
@@ -69,6 +71,45 @@ pub(crate) struct DeclaredPluginProvider {
 pub(crate) fn plugin_provider_row_id(plugin_id: &str, declared_id: &str) -> String {
     format!("{PLUGIN_PROVIDER_ID_PREFIX}{plugin_id}:{declared_id}")
 }
+
+/// Thinking levels a declared model offers, as stated by the plugin.
+///
+/// Only canonical names survive, and each appears once, so a declaration cannot
+/// publish a menu entry the runtime would refuse to send. An absent or unusable
+/// list stays empty, which readers already treat as "no menu to offer".
+fn declared_thinking_levels(model: &serde_json::Map<String, Value>) -> Vec<String> {
+    let Some(levels) = model.get("thinkingLevels").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let declared: Vec<String> = levels
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    normalize_thinking_levels(&declared)
+}
+
+/// The level a declared model opens on, when the plugin names one that exists.
+///
+/// A name outside the model's own list is dropped rather than stored: the
+/// runtime selects a default by matching it against the available levels, and a
+/// value that matches nothing would silently fall back to the first entry while
+/// the row claimed otherwise.
+fn declared_default_thinking_level(model: &serde_json::Map<String, Value>) -> Option<String> {
+    let named = model
+        .get("defaultThinkingLevel")
+        .and_then(Value::as_str)?
+        .trim();
+    if named.is_empty() {
+        return None;
+    }
+    let levels = declared_thinking_levels(model);
+    levels
+        .iter()
+        .any(|level| level == named)
+        .then(|| named.to_string())
+}
+
 /// Read `contributes.providers` off a manifest that has already passed
 /// `validate_contributions`. Shapes that validation rejects are skipped here
 /// rather than re-reported: this function runs on every load and must not be
@@ -138,8 +179,8 @@ pub(crate) fn declared_providers(manifest: &PluginManifest) -> Vec<DeclaredPlugi
                                     .and_then(Value::as_u64)
                                     .and_then(|value| u32::try_from(value).ok())
                                     .unwrap_or(0),
-                                thinking_levels: Vec::new(),
-                                default_thinking_level: None,
+                                thinking_levels: declared_thinking_levels(model),
+                                default_thinking_level: declared_default_thinking_level(model),
                                 supports_images: model
                                     .get("supportsImages")
                                     .and_then(Value::as_bool),

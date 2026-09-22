@@ -1,0 +1,279 @@
+diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+index 638646dacdbcb9c00bbc0de14f28abb700c8dc3f..8e8d0643d6e341a17243adae220bc9658a1eecb5 100644
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -62,10 +62,10 @@ function withoutDeletedHeaders(headers) {
+         ? Object.fromEntries(Object.entries(headers).filter((entry) => entry[1] !== null))
+         : undefined;
+ }
+-function estimateMessagesTokens(messages) {
++function estimateMessagesTokens(messages, model) {
+     let tokens = 0;
+     for (const message of messages) {
+-        tokens += estimateTokens(message);
++        tokens += estimateTokens(message, model);
+     }
+     return tokens;
+ }
+@@ -284,7 +284,7 @@ export class AgentSession {
+         const settings = this.settingsManager.getCompactionSettings(model);
+         if (!model ||
+             model.contextWindow <= 0 ||
+-            !shouldCompact(estimateContextTokens(context.messages).tokens, model.contextWindow, settings)) {
++            !shouldCompact(estimateContextTokens(context.messages, model).tokens, model.contextWindow, settings)) {
+             return context;
+         }
+         await this._runAutoCompaction("threshold", false);
+@@ -1658,7 +1658,7 @@ export class AgentSession {
+             const newEntries = this.sessionManager.getEntries();
+             const sessionContext = this.sessionManager.buildSessionContext();
+             this.agent.state.messages = sessionContext.messages;
+-            const estimatedTokensAfter = estimateMessagesTokens(sessionContext.messages);
++            const estimatedTokensAfter = estimateMessagesTokens(sessionContext.messages, requestModel);
+             // Get the saved compaction entry for the extension event
+             const savedCompactionEntry = newEntries.find((e) => e.type === "compaction" && e.summary === summary);
+             if (this._extensionRunner && savedCompactionEntry) {
+@@ -1820,7 +1820,7 @@ export class AgentSession {
+         const directContextTokens = assistantMessage.usage ? calculateContextTokens(assistantMessage.usage) : 0;
+         if (assistantMessage.stopReason === "error" || directContextTokens === 0) {
+             const messages = this.agent.state.messages;
+-            const estimate = estimateContextTokens(messages);
++            const estimate = estimateContextTokens(messages, this.model ?? undefined);
+             // Without provider usage, estimate.tokens is the pure message-size estimate.
+             // Only usage-backed estimates need the stale pre-compaction check.
+             if (estimate.lastUsageIndex !== null) {
+@@ -1925,7 +1925,7 @@ export class AgentSession {
+             const newEntries = this.sessionManager.getEntries();
+             const sessionContext = this.sessionManager.buildSessionContext();
+             this.agent.state.messages = sessionContext.messages;
+-            const estimatedTokensAfter = estimateMessagesTokens(sessionContext.messages);
++            const estimatedTokensAfter = estimateMessagesTokens(sessionContext.messages, requestModel);
+             // Get the saved compaction entry for the extension event
+             const savedCompactionEntry = newEntries.find((e) => e.type === "compaction" && e.summary === summary);
+             if (this._extensionRunner && savedCompactionEntry) {
+@@ -2852,7 +2852,7 @@ export class AgentSession {
+                 return { tokens: null, contextWindow, percent: null };
+             }
+         }
+-        const estimate = estimateContextTokens(this.messages);
++        const estimate = estimateContextTokens(this.messages, model);
+         const percent = (estimate.tokens / contextWindow) * 100;
+         return {
+             tokens: estimate.tokens,
+diff --git a/dist/core/bug-report.js b/dist/core/bug-report.js
+index bf7729fffd57d7168ae03945ea07631f76cc7325..794ec01736eec36bdb3141a223bcac7e05fad11c 100644
+--- a/dist/core/bug-report.js
++++ b/dist/core/bug-report.js
+@@ -232,12 +232,12 @@ Numbered list, as specific as the transcript allows.
+ Tool calls involved, files touched, model behavior, anything else that helps a developer reproduce or locate the problem.
+ 
+ Do not include file contents, secrets, or credentials from the transcript; refer to files by path only. Keep the report factual and concise.`;
+-function selectMessages(messages, tokenBudget) {
++function selectMessages(messages, tokenBudget, model) {
+     const selected = [];
+     let tokens = 0;
+     for (let index = messages.length - 1; index >= 0; index--) {
+         const message = messages[index];
+-        const next = estimateTokens(message);
++        const next = estimateTokens(message, model);
+         if (selected.length > 0 && tokens + next > tokenBudget)
+             break;
+         selected.push(message);
+@@ -249,7 +249,7 @@ function selectMessages(messages, tokenBudget) {
+ export async function generateBugReportSummary(options) {
+     const { model } = options;
+     const contextWindow = model.contextWindow > 0 ? model.contextWindow : 128_000;
+-    const messages = selectMessages(options.messages, Math.floor(contextWindow * 0.6));
++    const messages = selectMessages(options.messages, Math.floor(contextWindow * 0.6), model);
+     const hint = options.hint?.trim();
+     const prompt = [
+         messages.length < options.messages.length
+diff --git a/dist/core/compaction/compaction.d.ts b/dist/core/compaction/compaction.d.ts
+index e6bfb766ea2659180c7182ee0307d0a015dd7e0b..a9a814d8701eb2ab0f535aa187923f87975a3c28 100644
+--- a/dist/core/compaction/compaction.d.ts
++++ b/dist/core/compaction/compaction.d.ts
+@@ -6,7 +6,7 @@
+  */
+ import type { AgentMessage, StreamFn, ThinkingLevel } from "@earendil-works/pi-agent-core";
+ import { type RetryCallbacks, type RetryPolicy } from "@earendil-works/pi-ai";
+-import type { AssistantMessage, Model, SimpleStreamOptions, TranscriptContext, Usage } from "@earendil-works/pi-ai/compat";
++import type { Api, AssistantMessage, Model, SimpleStreamOptions, TranscriptContext, Usage } from "@earendil-works/pi-ai/compat";
+ import { type SessionEntry } from "../session-manager.ts";
+ import { type FileOperations } from "./utils.ts";
+ /** Details stored in CompactionEntry.details for file tracking */
+@@ -49,8 +49,9 @@ export interface ContextUsageEstimate {
+ /**
+  * Estimate context tokens from messages, using the last assistant usage when available.
+  * If there are messages after the last usage, estimate their tokens with estimateTokens.
++ * Pass `model` to scope hosted search replay projections to the estimation target.
+  */
+-export declare function estimateContextTokens(messages: AgentMessage[]): ContextUsageEstimate;
++export declare function estimateContextTokens(messages: AgentMessage[], model?: Model<Api>): ContextUsageEstimate;
+ /**
+  * Check if compaction should trigger based on context usage.
+  */
+@@ -58,8 +59,10 @@ export declare function shouldCompact(contextTokens: number, contextWindow: numb
+ /**
+  * Estimate token count for a message using chars/4 heuristic.
+  * This is conservative (overestimates tokens).
++ * Standard provider roles delegate to the pi-ai estimator; pass `model` to scope
++ * hosted search replay projections to the estimation target.
+  */
+-export declare function estimateTokens(message: AgentMessage): number;
++export declare function estimateTokens(message: AgentMessage, model?: Model<Api>): number;
+ /**
+  * Find the context-visible user-role message that starts the turn containing the given entry index.
+  * Returns -1 if no turn start found before the index.
+diff --git a/dist/core/compaction/compaction.js b/dist/core/compaction/compaction.js
+index 3141f9416d52f49cc1dac0ef94deb53a28db0173..cd8009dd728b6a916703caef2a8d886f4eb9cf60 100644
+--- a/dist/core/compaction/compaction.js
++++ b/dist/core/compaction/compaction.js
+@@ -4,8 +4,10 @@
+  * Pure functions for compaction logic. The session manager handles I/O,
+  * and after compaction the session is reloaded.
+  */
+-import { contentText, normalizeContext, retryAssistantCall, uuidv7, } from "@earendil-works/pi-ai";
++import { contentText, LocalRequestError, normalizeContext, retryAssistantCall, uuidv7, } from "@earendil-works/pi-ai";
+ import { completeSimple } from "@earendil-works/pi-ai/compat";
++import { estimateMessageTokens, getLastAssistantUsageInfo } from "@earendil-works/pi-ai/utils/estimate";
++import { validateHostedSearchMessages } from "@earendil-works/pi-ai/utils/hosted-search";
+ import { convertToLlm } from "../messages.js";
+ import { buildSessionContext, sessionEntryToContextMessages, } from "../session-manager.js";
+ import { computeFileLists, createFileOps, extractFileOpsFromMessage, formatFileOperations, SUMMARIZATION_SYSTEM_PROMPT, serializeConversation, } from "./utils.js";
+@@ -118,24 +120,19 @@ export function getLastAssistantUsage(entries) {
+     }
+     return undefined;
+ }
+-function getLastAssistantUsageInfo(messages) {
+-    for (let i = messages.length - 1; i >= 0; i--) {
+-        const usage = getAssistantUsage(messages[i]);
+-        if (usage)
+-            return { usage, index: i };
+-    }
+-    return undefined;
+-}
+ /**
+  * Estimate context tokens from messages, using the last assistant usage when available.
+  * If there are messages after the last usage, estimate their tokens with estimateTokens.
++ * Provider-role estimation is delegated to pi-ai so hosted search replay projections and
++ * the prefix-timestamp usage anchor stay consistent with the provider request path.
+  */
+-export function estimateContextTokens(messages) {
++export function estimateContextTokens(messages, model) {
++    validateHostedSearchMessages(messages);
+     const usageInfo = getLastAssistantUsageInfo(messages);
+     if (!usageInfo) {
+         let estimated = 0;
+         for (const message of messages) {
+-            estimated += estimateTokens(message);
++            estimated += estimateTokens(message, model);
+         }
+         return {
+             tokens: estimated,
+@@ -147,7 +144,7 @@ export function estimateContextTokens(messages) {
+     const usageTokens = calculateContextTokens(usageInfo.usage);
+     let trailingTokens = 0;
+     for (let i = usageInfo.index + 1; i < messages.length; i++) {
+-        trailingTokens += estimateTokens(messages[i]);
++        trailingTokens += estimateTokens(messages[i], model);
+     }
+     return {
+         tokens: usageTokens + trailingTokens,
+@@ -186,31 +183,22 @@ function estimateTextAndImageContentChars(content) {
+ /**
+  * Estimate token count for a message using chars/4 heuristic.
+  * This is conservative (overestimates tokens).
++ *
++ * Standard provider roles (system/user/assistant/toolResult) delegate to the pi-ai
++ * estimator so hosted search replay projections stay identical to the provider
++ * request path; custom session roles keep their local adapters below. `model`
++ * optionally scopes hosted search projection to the target model so a model
++ * switch cannot overcount replay blocks the target would drop.
+  */
+-export function estimateTokens(message) {
++export function estimateTokens(message, model) {
+     let chars = 0;
+     switch (message.role) {
+-        case "user": {
+-            chars = estimateTextAndImageContentChars(message.content);
+-            return Math.ceil(chars / 4);
+-        }
+-        case "assistant": {
+-            const assistant = message;
+-            for (const block of assistant.content) {
+-                if (block.type === "text") {
+-                    chars += block.text.length;
+-                }
+-                else if (block.type === "thinking") {
+-                    chars += block.thinking.length;
+-                }
+-                else if (block.type === "toolCall") {
+-                    chars += block.name.length + JSON.stringify(block.arguments).length;
+-                }
+-            }
+-            return Math.ceil(chars / 4);
+-        }
+-        case "custom":
+-        case "toolResult": {
++        case "system":
++        case "user":
++        case "assistant":
++        case "toolResult":
++            return estimateMessageTokens(message, model);
++        case "custom": {
+             chars = estimateTextAndImageContentChars(message.content);
+             return Math.ceil(chars / 4);
+         }
+@@ -224,7 +212,7 @@ export function estimateTokens(message) {
+             return Math.ceil(chars / 4);
+         }
+     }
+-    return 0;
++    throw new LocalRequestError("context-validation");
+ }
+ function isCutPointMessage(message) {
+     switch (message.role) {
+diff --git a/dist/core/compaction/utils.js b/dist/core/compaction/utils.js
+index bbbb6d1c80d66e2f4f539aed8dc263f30307b113..7d71b571f787d27d0d78b471a79ead7a7028f473 100644
+--- a/dist/core/compaction/utils.js
++++ b/dist/core/compaction/utils.js
+@@ -2,6 +2,7 @@
+  * Shared utilities for compaction and branch summarization.
+  */
+ import { contentText } from "@earendil-works/pi-ai";
++import { hostedSearchReplayProjection } from "@earendil-works/pi-ai/utils/hosted-search";
+ export function createFileOps() {
+     return {
+         read: new Set(),
+@@ -102,6 +103,7 @@ export function serializeConversation(messages) {
+         else if (msg.role === "assistant") {
+             const thinkingParts = [];
+             const toolCalls = [];
++            const hostedSearchParts = [];
+             for (const block of msg.content) {
+                 if (block.type === "thinking") {
+                     thinkingParts.push(block.thinking);
+@@ -113,6 +115,13 @@ export function serializeConversation(messages) {
+                         .join(", ");
+                     toolCalls.push(`${block.name}(${argsStr})`);
+                 }
++                else if (block.type === "hostedSearch") {
++                    // Keep the hosted search replay buffer explicit: the projection is the raw wire block, never a toolCall.
++                    const projection = hostedSearchReplayProjection(block);
++                    if (projection !== undefined) {
++                        hostedSearchParts.push(JSON.stringify(projection));
++                    }
++                }
+             }
+             if (thinkingParts.length > 0) {
+                 parts.push(`[Assistant thinking]: ${thinkingParts.join("\n")}`);
+@@ -123,6 +132,9 @@ export function serializeConversation(messages) {
+             if (toolCalls.length > 0) {
+                 parts.push(`[Assistant tool calls]: ${toolCalls.join("; ")}`);
+             }
++            if (hostedSearchParts.length > 0) {
++                parts.push(`[Assistant hosted search]: ${hostedSearchParts.join("\n")}`);
++            }
+         }
+         else if (msg.role === "toolResult") {
+             const content = contentText(msg.content, "");

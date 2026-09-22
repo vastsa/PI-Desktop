@@ -30,6 +30,7 @@ import {
   IconServer,
   IconSliders,
   IconSparkles,
+  IconCloudDown,
 } from "../../components/icons";
 import { Badge, Button, cx } from "../../components/ui";
 import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
@@ -59,6 +60,7 @@ import { ImportSection } from "./import-page";
 import { PromptEnhancementCard } from "./prompt-enhancement-card";
 import { CloseBehaviorSection, DeveloperSection } from "./developer-sections";
 import { PluginScenicThemesDestination } from "../../components/settings/PluginScenicThemesDestination";
+import { ConfigSyncPage } from "../../components/settings/ConfigSyncPage";
 
 type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
 
@@ -204,6 +206,7 @@ export function SettingsPage() {
       subagents: <IconBot size={14} />,
       import: <IconDownload size={14} />,
       projects: <IconArchive size={14} />,
+      sync: <IconCloudDown size={14} />,
       remoteHosts: <IconGlobe size={14} />,
       about: <IconInfo size={14} />,
     };
@@ -519,6 +522,8 @@ export function SettingsPage() {
           {tab === "import" && <ImportSection />}
 
           {tab === "projects" && <ProjectsPage />}
+
+          {tab === "sync" && <ConfigSyncPage />}
 
           {tab === "remoteHosts" && !tabHidden && <RemoteHostsPage />}
 

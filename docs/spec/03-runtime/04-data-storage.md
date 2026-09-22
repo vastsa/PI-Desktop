@@ -65,6 +65,7 @@ to an absolute path before it reaches host-core as a child-process variable.
  │    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
  │    └── <sessionId>.inflight.json   # streaming reply checkpoint (D299), transient
  ├── secrets/             # encrypted secret blobs + .machine-key (unchanged)
+ ├── config-sync/         # encrypted sync base/pending bundles — host-core only
  ├── attachments/         # content-addressed blobs (sha256 name), refs from messages
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
  ├── logs/                # NDJSON app/<category>, host/<category>, agent/<category> logs
@@ -88,6 +89,15 @@ turn + artifact in one commit). The DB stores **no large payloads**: message
 content lives in `sessions/`, attachments and tool outputs beyond the limits
 of [16-tool-result-limits](16-tool-result-limits.md) live on disk, referenced
 by path/hash.
+
+### 1.3 Portable configuration sync
+
+Host-core stores sync configuration in the `configSync` key-value namespace.
+The vault key reference and WebDAV password use the existing encrypted secret
+store. `config-sync/base.bin` and `config-sync/pending.bin` are authenticated
+encrypted bundles replaced with temp-file rename; they are not renderer- or
+sidecar-readable files. Sync revisions and resources remain remote immutable
+objects and do not change the SQLite schema or transcript retention.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 
@@ -532,6 +542,12 @@ CREATE INDEX idx_session_import_origins_plugin
   message. Assistant Edit uses that child and records the original/edited
   response tails in the child's existing `message_revisions` store; the source
   transcript and source revisions are never rewritten.
+- Forks copy existing referenced files from `scratch/<sourceId>/pasted/` to
+  `scratch/<childId>/pasted/` and rewrite message/checkpoint paths before
+  indexing. Source deletion cannot remove the child copies. Unreferenced files,
+  later-message inputs outside a bounded fork, and other scratch outputs are
+  excluded. Missing expired inputs stay missing; no cross-session read grant
+  is added. Handled fork failures remove copied inputs and child transcripts.
 
 ### 4.6 turns — one row per agent run
 
@@ -1564,3 +1580,13 @@ omit it; no schema migration is required. See ADR `first-output-latency.md`.
 Host-core owns updates through `providers.reorder`; missing metadata preserves
 creation order, new IDs follow saved IDs, and deleted IDs are ignored. This
 preference does not rewrite provider configuration or require a schema migration.
+
+### Scheduled calendar provenance
+
+The optional `config_json.calendarConfigured` boolean records explicit calendar
+intent separately from the schedule object required by Hourly intervals.
+Legacy Daily/Weekly rows with a saved schedule infer calendar intent; legacy
+Hourly rows retain their fields but require explicit calendar confirmation
+when converted. Known intent survives cadence changes and database reopen.
+This additive JSON key needs no table or schema-version migration. Older
+versions ignore the key and cannot enforce the new conversion guard.

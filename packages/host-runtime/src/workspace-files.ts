@@ -114,40 +114,63 @@ export function resolveOpenablePath(
   return allowed.some((root) => pathIsWithin(root, candidate)) ? candidate : null;
 }
 
+/** `realpath(root)`, or null when it cannot be resolved (missing/denied). */
+async function realRootOrNull(root: string): Promise<string | null> {
+  try {
+    return await realpath(root);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Same containment as `resolveOpenablePath`, then `realpath` so a symlink
  * inside an allowed root cannot be used to read a file outside it.
+ *
+ * Both the written spelling and the canonical spelling of every root are
+ * accepted, because writers may canonicalize: `image-generation-service`
+ * stores `realpath`d output paths, while the allowed roots here can still be
+ * aliases (`/var` vs `/private/var` on macOS). The `realpath` comparison
+ * against the canonical roots below stays the security gate, so accepting a
+ * canonical candidate cannot widen what is readable.
  */
 export async function resolveRealOpenablePath(
   path: string,
   workspaceRoot: string | null | undefined,
   extraRoots: readonly string[] = [],
 ): Promise<string | null> {
-  const lexical = resolveOpenablePath(path, workspaceRoot, extraRoots);
-  if (!lexical) return null;
+  const extra = extraRoots.filter(
+    (root) => typeof root === "string" && root.trim(),
+  );
   const allowed = [
     ...(workspaceRoot ? [resolve(workspaceRoot)] : []),
-    ...extraRoots
-      .filter((root) => typeof root === "string" && root.trim())
-      .map((root) => resolve(root)),
+    ...extra.map((root) => resolve(root)),
   ];
-  try {
-    const targetReal = await realpath(lexical);
-    const realRoots = await Promise.all(
-      allowed.map(async (root) => {
-        try {
-          return await realpath(root);
-        } catch {
-          return null;
-        }
-      }),
-    );
-    return realRoots.some((root) => root && pathIsWithin(root, targetReal))
-      ? targetReal
-      : null;
-  } catch {
-    return null;
+  if (allowed.length === 0) return null;
+
+  const [realWorkspaceRoot, ...realExtraRoots] = await Promise.all([
+    workspaceRoot ? realRootOrNull(resolve(workspaceRoot)) : Promise.resolve(null),
+    ...extra.map((root) => realRootOrNull(resolve(root))),
+  ]);
+  const realExtras = realExtraRoots.filter(
+    (root): root is string => Boolean(root),
+  );
+  const realRoots = [...(realWorkspaceRoot ? [realWorkspaceRoot] : []), ...realExtras];
+
+  const candidates = [
+    resolveOpenablePath(path, workspaceRoot, extraRoots),
+    resolveOpenablePath(path, realWorkspaceRoot, realExtras),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const targetReal = await realpath(candidate);
+      if (realRoots.some((root) => pathIsWithin(root, targetReal))) return targetReal;
+    } catch {
+      // Missing target: try the other spelling before giving up.
+    }
   }
+  return null;
 }
 
 /** Resolve an existing path and its root through links before containment. */

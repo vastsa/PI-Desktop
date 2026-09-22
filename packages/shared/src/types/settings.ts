@@ -23,6 +23,8 @@ export type CloseBehavior = "ask" | "tray" | "quit";
 
 export type AppSettings = {
   imageGeneration?: import("../image-generation.js").ImageGenerationBinding | null;
+  /** All models marked for image generation; absent falls back to imageGeneration. */
+  imageGenerationModels?: import("../image-generation.js").ImageGenerationBinding[] | null;
   defaultProviderId?: string;
   defaultModelId?: string;
   /** Host speech bindings. Absent means voice actions stay disabled. */

@@ -11,6 +11,7 @@ import type { ModelAuth } from "@earendil-works/pi-ai";
 import { ParentHostProxy } from "./parent-host-proxy.js";
 import { visionFromModelConfig } from "./model-capabilities.js";
 import { classifyAgentError } from "./agent-errors.js";
+import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import {
   DesktopAgentRuntime,
   type PluginToolDef,
@@ -695,10 +696,15 @@ readNdjsonLines(process.stdin, async (line) => {
     const result = await handle(msg.method, msg.params ?? {});
     respond(msg.id, result);
   } catch (err: any) {
+    // Restore validation can fail before a runtime/stream exists. Preserve its
+    // safe provenance in the existing RPC error data instead of flattening it.
+    const local = readLocalRequestErrorDetails(err) ? classifyAgentError(err) : undefined;
     respond(msg.id, undefined, {
       code: err.rpcCode ?? -32000,
-      message: err instanceof Error ? err.message : String(err),
-      data: { errorCode: err.errorCode ?? "INTERNAL" },
+      message: local?.message ?? (err instanceof Error ? err.message : String(err)),
+      data: local
+        ? { errorCode: local.code, retriable: local.retriable, details: local.details }
+        : { errorCode: err.errorCode ?? "INTERNAL" },
     });
   }
 });

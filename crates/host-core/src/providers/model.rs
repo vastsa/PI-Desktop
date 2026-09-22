@@ -134,7 +134,16 @@ pub struct ModelBinding {
     /// seed is inherited).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window_source: Option<String>,
+    /// Context window in tokens. Optional on the wire: an absent key reads as
+    /// `0`, which `normalize_model_bindings` replaces with the generic default,
+    /// so a stored record that omits it still loads as one binding instead of
+    /// failing the whole array. A plugin manifest already declares a model
+    /// without either limit, and this is what makes the two paths agree.
+    #[serde(default)]
     pub context_window: u32,
+    /// Max output tokens. Optional on the wire for the same reason as
+    /// `context_window`.
+    #[serde(default)]
     pub max_tokens: u32,
     #[serde(default)]
     pub thinking_levels: Vec<String>,

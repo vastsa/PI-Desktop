@@ -237,7 +237,9 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
     when the provider's API style is neither of those two. Gateways that do
     not support the tool surface the provider error; the remedy is unchecking.
     Search runs on the provider: there is no local fetch and no permission
-    prompt. Compaction still drops search blocks.
+    prompt. Compaction keeps its existing prefix/tail retention strategy. The
+    summary request includes search replay data from the compacted prefix; the
+    generated text summary is not a lossless copy of raw provider search blocks.
 11. `ModelInfo` is the published record the settings surface compares against,
     so a stored binding must not shape its capabilities or reasoning fields.
     Effective limits, reasoning and thinking levels are resolved through the
@@ -258,6 +260,30 @@ Catalog and custom model entry must support common capability classes:
 - vision / multimodal input models
 - tool-calling capable models
 - JSON/structured output capable models (where provider supports)
+
+### Hosted-search message and budget contract
+
+- Search content and progress events are declared adapter types, not disguised
+  client tool calls. A search result or Responses search item does not require
+  `name` or `arguments`. Existing replay records remain compatible: a stored
+  record this app wrote without replay ids degrades to "no replay" for that
+  message instead of failing the turn, so pre-upgrade history stays usable.
+- Replay and token estimation share the search-phase interpretation. Valid
+  usage covers its prefix once; zero or invalidated usage triggers a complete
+  estimate which includes search replay data. Display rounds and streaming
+  scratch must not duplicate that data. Estimates are not billing guarantees.
+  This applies to main-agent and native pi-session compaction as well as output
+  budgets. When a target model is known, estimates follow that adapter's existing
+  model-switch replay boundary. Compaction serialization includes search replay
+  projections in the summary request, without treating them as client tool calls.
+  The compacted prefix becomes a generated text summary; raw search in the
+  retained tail follows the existing replay policy. No lossless summary is promised.
+- Rebuilding an unchanged context must preserve system-prefix semantics.
+  Actual instruction or tool-declaration changes remain visible to usage
+  validation. System sections and tool additions/removals cannot be discarded.
+- Search followed by a local tool, Task, a new user prompt, or restart recovery
+  must exercise the same contract. Dependency upgrades must run the offline
+  adapter and bundled-sidecar continuation regressions, not only UI tests.
 
 ## 7. Configuration schema
 

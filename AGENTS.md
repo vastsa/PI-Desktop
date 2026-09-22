@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Policy-Sync: 2026-09-21.1
+Policy-Sync: 2026-09-21.2
 
 Mandatory rules for AI coding agents working in PI-Desktop.
 
@@ -234,6 +234,21 @@ cd <worktree-path>
 
 All implementation, targeted validation, conflict resolution, and
 task-candidate E2E happen inside the task's dedicated worktree.
+
+### E2E environment reuse
+
+Task-candidate E2E runs from the dedicated request worktree but reuses the
+host development environment already provisioned in the primary checkout.
+Reuse the host Node/pnpm toolchain, compatible `node_modules`, Electron,
+Rust/Cargo targets, package-manager stores, build caches, and ignored local
+configuration by reference or link when needed.
+
+Do not run `pnpm install`, `npm install`, or create a second dependency or
+runtime environment solely to execute E2E. Keep only mutable test state
+(temporary profiles, data directories, sockets, ports, logs, and artifacts)
+isolated to the request worktree or its scratch directory. Install or rebuild
+dependencies only when the host environment is missing or incompatible, and
+record that reason. Clean CI and release runners may install from lockfiles.
 
 ### Before candidate validation
 

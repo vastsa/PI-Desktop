@@ -84,7 +84,14 @@ function rgba(color) {
 async function settle() {
   await document.fonts.ready;
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  await Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => {})));
+  // A running transition can be retargeted when the next state lands, which
+  // rejects its `finished` promise, so poll for a page without animations rather
+  // than trusting them to settle. Sampling mid-transition used to report a
+  // half-way paint as a theme failure.
+  const deadline = performance.now() + 2000;
+  while (document.getAnimations().length > 0 && performance.now() < deadline) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 function sample(selector) {
@@ -144,9 +151,9 @@ globalThis.themeSurfacesProbe = async (theme, custom) => {
     elevatedRgba: rgba(getComputedStyle(document.documentElement).getPropertyValue("--ds-bg-elevated-primary").trim()) };
 };
 
-// The Composer occlusion regression is intentionally independent from the
-// fixture's keyboard-focus checks, whose :focus-visible state depends on the
-// test window owning macOS foreground focus.
+// This mode still isolates the Composer occlusion regression from the keyboard
+// checks: the driver enables Chromium focus emulation for :focus-visible, and
+// this probe only needs the token-driven paint of the dock mask.
 globalThis.themeDockMaskProbe = async (theme, custom) => {
   const result = await globalThis.themeSurfacesProbe(theme, custom);
   const dock = result.values.dockMask;

@@ -71,6 +71,14 @@ registered; reserved codes in §3.7 remain intentionally absent from
 | `HOST_SHUTTING_DOWN` | yes | the host received EOF and is draining; the call was refused rather than started |
 | `RATE_LIMITED` | yes | a per-caller host budget (plugin session import, batch operations) was exceeded inside its window |
 | `LIMIT_EXCEEDED` | no | a payload exceeded a fixed host bound (item count, byte size, or a 64 MiB NDJSON request line) and was refused |
+| `CONFIG_SYNC_INVALID` | no | invalid sync configuration, password, path, request, or approval input |
+| `CONFIG_SYNC_LOCKED` | no | the local encrypted sync vault is not unlocked |
+| `CONFIG_SYNC_UNSUPPORTED` | no | the vault format or WebDAV server capability is unsupported |
+| `CONFIG_SYNC_REMOTE` | maybe | remote WebDAV object, authentication, quota, or availability failure |
+| `CONFIG_SYNC_CONFLICT` | maybe | remote head, vault identity, or approval digest conflict |
+| `CONFIG_SYNC_CRYPTO` | no | authenticated encryption, object identity, or ciphertext validation failed |
+| `CONFIG_SYNC_MAPPING_REQUIRED` | no | imported project-scoped configuration needs an explicit local folder/group mapping |
+| `CONFIG_SYNC_LIMIT_EXCEEDED` | no | encrypted sync state exceeded an entity, object, resource, archive, or decompression bound |
 
 
 `HOST_UNAVAILABLE` is reserved for a missing or broken host process/transport,
@@ -216,6 +224,7 @@ malformed.
 |---|---|---|
 | `PROVIDER_SECRET_MISSING` | no | enabled provider requires an API key |
 | `MODEL_ALIAS_TOO_LONG` | no | configured model alias exceeds 60 Unicode characters |
+| `MODEL_BINDINGS_DEGRADED` | no | stored model bindings are unreadable; explicit model-array replacement is blocked to prevent data loss |
 | `SECRET_STORE_UNAVAILABLE` | maybe | OS secure storage unavailable (reserved) |
 | `SETTINGS_INVALID` | no | settings payload invalid (reserved) |
 
@@ -385,6 +394,29 @@ absolute pending deadline;
 execution interrupted by abort or host recovery. `PLAN_KIND_MISMATCH` is a
 terminating tool error like `PLAN_NOT_ACTIVE`: the submit tool ran against the
 wrong contract, so no artifact is written and no approval row is created.
+
+### Local request preparation failures
+
+A structured `LOCAL_REQUEST_ERROR` from context validation, context estimation,
+or request preparation maps to the existing `INTERNAL` code with
+`retriable: false`. Preserve its local origin and phase before adapter errors
+are flattened to text. Diagnostics may retain the cause type, but must not
+copy request content, search results, credentials or arbitrary cause messages
+into the UI. Do not identify these failures by matching an exception sentence
+or by treating all JavaScript `TypeError`s alike: fetch transport failures
+retain the existing network/retry and cancellation behavior.
+
+Restored-history validation may fail before a runtime stream exists. In that case
+the existing RPC error `data` carries `errorCode`, `retriable: false`, and safe
+`details` (`origin`, `phase`, optional cause type). No provider request is made,
+the sidecar stays available, and a stored record is never rewritten. A container
+that is not a stored block list still fails this way.
+
+A single stored block that cannot be replayed is a different case: this app itself
+stores display-only blocks when a gateway drops ids, so the whole stored replay for
+that message degrades to "no replay" instead of failing every later turn. The turn
+continues, display rounds are unchanged, and the diagnostic records the block count
+and phases without copying search content, results or credentials.
 
 ## 5. UI handling guidelines
 

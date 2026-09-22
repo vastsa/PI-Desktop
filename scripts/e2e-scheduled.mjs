@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -16,6 +16,9 @@ const root = mkdtempSync(join(tmpdir(), "pi-scheduled-e2e-"));
 const dataDir = join(root, "data"),
   project = join(root, "project");
 mkdirSync(project);
+// The Host canonicalizes the workspace path it is given, and macOS hands out
+// `TMPDIR` under the `/var` symlink, so compare resolved paths on both sides.
+const canonical = (value) => realpathSync(value).replaceAll("\\", "/").toLowerCase();
 const evidence = process.env.PI_SCHEDULED_EVIDENCE_DIR;
 if (evidence) mkdirSync(evidence, { recursive: true });
 const model = scheduledModelFixture();
@@ -230,10 +233,7 @@ try {
   assert.equal(task.schedule.minute, 0);
   assert.equal(task.schedule.hour, 9);
   assert.ok(task.nextRunAt);
-  assert.equal(
-    task.workspacePath.replaceAll("\\", "/").toLowerCase(),
-    project.replaceAll("\\", "/").toLowerCase(),
-  );
+  assert.equal(canonical(task.workspacePath), canonical(project));
   await click("Edit task");
   await choose("Cadence", "Weekly");
   await openSelect("Day of the week");

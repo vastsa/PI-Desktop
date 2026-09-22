@@ -8,7 +8,7 @@ pub(crate) fn provider_from_row(
     let id: String = row.get(0)?;
     let legacy_model_id: Option<String> = row.get(9)?;
     let config_raw: String = row.get(11).unwrap_or_else(|_| "{}".to_string());
-    let models = config_model_bindings(&config_raw, legacy_model_id.clone());
+    let models = config_model_bindings(&config_raw, legacy_model_id.clone(), &id);
     let has_api_key = secret_ref.as_ref().map(|r| secrets.has(r)).unwrap_or(false);
     let has_oauth = secrets.has(&secret_ref_for_provider_oauth(&id));
     Ok(ProviderPublic {
@@ -160,6 +160,99 @@ pub fn create_provider(
     get_provider(db, secrets, &id)?.ok_or_else(|| anyhow::anyhow!("provider missing after create"))
 }
 
+/// Import a user-owned provider while preserving its stable id. Ordinary
+/// settings flows continue to use `create_provider` and receive a fresh UUID;
+/// configuration sync is the only caller allowed to restore an existing id so
+/// repeated imports do not create duplicate provider identities.
+pub(crate) fn create_provider_with_id(
+    db: &Database,
+    secrets: &SecretStore,
+    id: &str,
+    input: ProviderCreateInput,
+) -> Result<ProviderPublic> {
+    if id.trim().is_empty() || id.len() > 128 {
+        bail!("PROVIDER_INVALID: provider id is invalid");
+    }
+    if db
+        .conn()
+        .query_row("SELECT 1 FROM providers WHERE id = ?1", params![id], |_| {
+            Ok(())
+        })
+        .optional()?
+        .is_some()
+    {
+        bail!("PROVIDER_INVALID: provider already exists");
+    }
+    if let Some(models) = input.models.as_deref() {
+        validate_model_aliases(models)?;
+    }
+    let now = now_ms();
+    let secret_ref = secret_ref_for_provider(id);
+    let mut backend = None;
+    if let Some(secret) = input.secret_value.as_ref().filter(|s| !s.is_empty()) {
+        let value = secrets.set(&secret_ref, secret)?;
+        upsert_secret_meta(db, &secret_ref, id, &value)?;
+        backend = Some(value);
+    }
+    let vendor_key = input.vendor_key.unwrap_or_else(|| "custom".into());
+    let provider_type = input
+        .provider_type
+        .unwrap_or_else(|| "openai_compatible".into());
+    let protocol = input.protocol.unwrap_or_else(|| "openai_compatible".into());
+    let auth_kind = input
+        .auth_kind
+        .unwrap_or_else(|| "api_key_and_base_url".into());
+    let config_json = build_provider_config_json(
+        input.supports_reasoning,
+        input.supported_thinking_levels.as_deref(),
+        input.models.as_deref(),
+        &LimitOverrides {
+            context_window: input.context_window,
+            max_output_tokens: input.max_output_tokens,
+            temperature: input.temperature,
+        },
+    )?;
+    let config_json = match input.oauth_account_label.as_deref() {
+        Some(label) => config_with_oauth_account_label(&config_json, label)?,
+        None => config_json,
+    };
+    let config_json = match input.headers.as_ref() {
+        Some(headers) => config_with_headers(&config_json, headers)?,
+        None => config_json,
+    };
+    db.conn()
+        .prepare_cached(
+            "INSERT INTO providers (
+                id, name, vendor_key, type, protocol, enabled, base_url, auth_kind, secret_ref,
+                api_style, default_model_id, config_json, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)",
+        )?
+        .execute(params![
+            id,
+            input.name,
+            vendor_key,
+            provider_type,
+            protocol,
+            input.base_url,
+            auth_kind,
+            if backend.is_some() {
+                Some(secret_ref)
+            } else {
+                None
+            },
+            input.api_style,
+            input.default_model_id.or_else(|| {
+                input
+                    .models
+                    .as_ref()
+                    .and_then(|models| models.first().map(|model| model.id.clone()))
+            }),
+            config_json,
+            now,
+        ])?;
+    get_provider(db, secrets, id)?.ok_or_else(|| anyhow::anyhow!("provider missing after import"))
+}
+
 pub fn update_provider(
     db: &Database,
     secrets: &SecretStore,
@@ -181,6 +274,15 @@ pub fn update_provider(
     if let Some(models) = input.models.as_deref() {
         validate_model_aliases(models)?;
     }
+    let raw_config: String = db.conn().query_row(
+        "SELECT config_json FROM providers WHERE id = ?1",
+        params![input.id],
+        |row| row.get(0),
+    )?;
+    // Do not let a partial read silently replace unreadable stored bindings.
+    if input.models.is_some() {
+        ensure_model_bindings_update_safe(&raw_config)?;
+    }
     // Derive from the API key ref directly: `has_secret` now also covers an
     // OAuth credential, so reusing it here would stamp an api_key ref onto a
     // provider that only ever signed in with a vendor account.
@@ -192,11 +294,6 @@ pub fn update_provider(
         upsert_secret_meta(db, &api_key_ref, &input.id, &backend)?;
         secret_ref = Some(api_key_ref);
     }
-    let raw_config: String = db.conn().query_row(
-        "SELECT config_json FROM providers WHERE id = ?1",
-        params![input.id],
-        |row| row.get(0),
-    )?;
     // `Some(None)` clears an explicit levels override; plain `None` leaves it.
     let levels_update = if input.supported_thinking_levels.is_some() {
         Some(input.supported_thinking_levels.clone())

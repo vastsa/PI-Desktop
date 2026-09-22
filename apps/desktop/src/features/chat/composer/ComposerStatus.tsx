@@ -61,12 +61,17 @@ export function ComposerStatus({
               item.draft.fileReferences.map((reference) => reference.name).join(", ") ||
               t("chat.queuedPromptEmpty");
             const promoted = isPromotedQueuedPrompt(item);
-            const sendNowLocked =
-              approvalPending || promoted || isPendingQueuedPrompt(item);
-            // A promoted row is already the next turn: every edit action is
-            // locked, and the disabled controls say why instead of going quiet.
+            const pending = isPendingQueuedPrompt(item);
+            const actionsLocked = promoted || pending;
+            const sendNowLocked = approvalPending || actionsLocked;
+            // Pending rows have no actionable Host id; promoted rows already
+            // belong to the next turn. Explain both locked states.
             const actionLabel = (action: string) =>
-              promoted ? `${action} · ${t("chat.sendNowPending")}` : action;
+              promoted
+                ? `${action} · ${t("chat.sendNowPending")}`
+                : pending
+                  ? `${action} · ${t("common.saving")}`
+                  : action;
             return (
               <div
                 key={item.id}
@@ -83,8 +88,8 @@ export function ComposerStatus({
                   className="composer-queued-prompt-action composer-queued-prompt-move-up"
                   tooltip={actionLabel(t("chat.moveQueuedPromptUp"))}
                   ariaLabel={actionLabel(t("chat.moveQueuedPromptUp"))}
-                  disabled={promoted}
-                  aria-disabled={promoted}
+                  disabled={actionsLocked}
+                  aria-disabled={actionsLocked}
                   onClick={() => void moveQueuedPrompt(item.id, "up")}
                 >
                   <IconArrowUp size={13} aria-hidden />
@@ -94,28 +99,34 @@ export function ComposerStatus({
                   className="composer-queued-prompt-action composer-queued-prompt-move-down"
                   tooltip={actionLabel(t("chat.moveQueuedPromptDown"))}
                   ariaLabel={actionLabel(t("chat.moveQueuedPromptDown"))}
-                  disabled={promoted}
-                  aria-disabled={promoted}
+                  disabled={actionsLocked}
+                  aria-disabled={actionsLocked}
                   onClick={() => void moveQueuedPrompt(item.id, "down")}
                 >
                   <IconArrowDown size={13} aria-hidden />
                 </TooltipButton>
-                <button
+                <TooltipButton
                   type="button"
                   className="composer-queued-prompt-send-now"
+                  tooltip={actionLabel(t("chat.sendNow"))}
+                  ariaLabel={actionLabel(t("chat.sendNow"))}
                   disabled={sendNowLocked}
                   aria-disabled={sendNowLocked}
                   onClick={() => void sendQueuedNow(item.id)}
                 >
-                  {promoted ? t("chat.sendNowPending") : t("chat.sendNow")}
-                </button>
+                  {promoted
+                    ? t("chat.sendNowPending")
+                    : pending
+                      ? t("common.saving")
+                      : t("chat.sendNow")}
+                </TooltipButton>
                 <TooltipButton
                   type="button"
                   className="composer-queued-prompt-action composer-queued-prompt-edit"
                   tooltip={actionLabel(t("chat.editQueuedPrompt"))}
                   ariaLabel={actionLabel(t("chat.editQueuedPrompt"))}
-                  disabled={promoted}
-                  aria-disabled={promoted}
+                  disabled={actionsLocked}
+                  aria-disabled={actionsLocked}
                   onClick={() => editQueuedPrompt(item.id)}
                 >
                   <IconPencil size={13} aria-hidden />
@@ -125,8 +136,8 @@ export function ComposerStatus({
                   className="composer-queued-prompt-action composer-queued-prompt-remove"
                   tooltip={actionLabel(t("chat.removeQueuedPrompt"))}
                   ariaLabel={actionLabel(t("chat.removeQueuedPrompt"))}
-                  disabled={promoted}
-                  aria-disabled={promoted}
+                  disabled={actionsLocked}
+                  aria-disabled={actionsLocked}
                   onClick={() => removeQueuedPrompt(item.id)}
                 >
                   <IconX size={13} aria-hidden />

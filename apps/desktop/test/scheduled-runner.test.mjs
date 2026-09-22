@@ -6,6 +6,57 @@ const { createScheduledRunner, executeScheduledTask } = await import(
   "../electron/main/runtime/scheduled-runner.ts"
 );
 
+test("slow dispatch does not hold later tasks or subsequent polls", async () => {
+  let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  let enter;
+  const entered = new Promise((resolve) => { enter = resolve; });
+  const launched = [];
+  let ids = ["slow", "other"];
+  const host = { async call() { return { ids }; } };
+  const runner = createScheduledRunner({getHost:()=>host, report:(error)=>{throw error;},
+    execute:async(id)=>{launched.push(id);if(id==="slow"){enter();await blocked;}}});
+  const first = runner.tick();
+  await entered;
+  // Drain the promise continuations, without releasing the slow preparation.
+  await new Promise((resolve)=>setImmediate(resolve));
+  const beforeRelease = [...launched];
+  ids = ["slow", "third"];
+  await runner.tick();
+  await new Promise((resolve)=>setImmediate(resolve));
+  const afterPoll = [...launched];
+  runner.stop(); release(); await first;
+  assert.deepEqual(beforeRelease,["slow","other"]);
+  assert.deepEqual(afterPoll,["slow","other","third"]);
+});
+
+test("a replacement host owns its dispatch even when an old setup settles", async () => {
+  const firstHost={async call(){return {ids:["task","task"]};}};
+  const secondHost={async call(){return {ids:["task","task"]};}};
+  let host=firstHost;
+  const releases=[];const starts=[];
+  const runner=createScheduledRunner({getHost:()=>host,report:()=>{},execute:(id)=>{
+    starts.push({host,id});return new Promise(resolve=>releases.push(resolve));
+  }});
+  await runner.tick();assert.equal(starts.length,1);
+  host=secondHost;await runner.tick();assert.equal(starts.length,2);
+  releases[0]();await new Promise(resolve=>setImmediate(resolve));
+  await runner.tick();assert.equal(starts.length,2,"old cleanup must not clear replacement owner");
+  runner.stop();releases[1]();await new Promise(resolve=>setImmediate(resolve));
+  await runner.tick();assert.equal(starts.length,2);
+});
+
+test("a rejected startup remains observable and releases its local owner", async () => {
+  const host={async call(){return {ids:["task"]};}};
+  let attempts=0;const errors=[];
+  const runner=createScheduledRunner({getHost:()=>host,report:error=>errors.push(error.message),execute:async()=>{
+    attempts++;throw new Error("setup failed");
+  }});
+  await runner.tick();await new Promise(resolve=>setImmediate(resolve));
+  await runner.tick();await new Promise(resolve=>setImmediate(resolve));runner.stop();
+  assert.equal(attempts,2);assert.deepEqual(errors,["setup failed","setup failed"]);
+});
+
 test("scheduled execution launches the durable session through the prompt boundary", async () => {
   const calls = [];
   const runs = new Map();

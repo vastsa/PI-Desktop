@@ -268,7 +268,12 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
     assert!(legacy.models[0].thinking_levels.is_empty());
     assert_eq!(legacy.models[0].default_thinking_level, None);
     assert_eq!(
-        config_model_bindings(r#"{"modelId":"config-legacy"}"#, None)[0].id,
+        config_model_bindings(
+            r#"{"modelId":"config-legacy"}"#,
+            None,
+            "provider-under-test"
+        )[0]
+        .id,
         "config-legacy"
     );
 }
@@ -1167,4 +1172,195 @@ fn headers_roundtrip_migrate_user_agent_clear_and_reject() {
     );
     assert!(reserved.is_err());
     assert!(reserved.unwrap_err().to_string().contains("reserved"));
+}
+
+fn binding_with_limits(id: &str, context_window: u32, max_tokens: u32) -> ModelBinding {
+    ModelBinding {
+        id: id.into(),
+        alias: None,
+        context_window_source: None,
+        context_window,
+        max_tokens,
+        thinking_levels: Vec::new(),
+        default_thinking_level: None,
+        supports_images: None,
+        supports_documents: None,
+        available_for_subagents: None,
+        native_web_search: None,
+    }
+}
+
+/// The stored array is the only place a provider's model list lives, and an
+/// external edit of the row is one of its writers. Reading it must cost the
+/// entry that no longer parses, never its siblings: the reported failure was a
+/// record whose second binding had lost `maxTokens`, after which the whole
+/// array was discarded and the provider read back as one legacy default model
+/// (issue #784).
+#[test]
+fn a_stored_array_survives_an_entry_that_lost_a_field() {
+    let (_dir, db, secrets) = test_context();
+    let provider = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Stored array".into(),
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: None,
+            auth_kind: Some("none".into()),
+            models: Some(vec![
+                binding_with_limits("alpha", 128_000, 8_192),
+                binding_with_limits("beta", 256_000, 16_000),
+                binding_with_limits("gamma", 64_000, 4_096),
+            ]),
+            default_model_id: Some("alpha".into()),
+            secret_value: None,
+            api_style: None,
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(provider.models.len(), 3);
+
+    let stored_config = |db: &Database, id: &str| -> serde_json::Value {
+        let raw: String = db
+            .conn()
+            .query_row(
+                "SELECT config_json FROM providers WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        serde_json::from_str(&raw).unwrap()
+    };
+    let write_config = |db: &Database, id: &str, config: &serde_json::Value| {
+        db.conn()
+            .execute(
+                "UPDATE providers SET config_json = ?1 WHERE id = ?2",
+                params![config.to_string(), id],
+            )
+            .unwrap();
+    };
+    let model_ids = |provider: &ProviderPublic| -> Vec<String> {
+        provider.models.iter().map(|m| m.id.clone()).collect()
+    };
+
+    // The report's own step: delete one binding's `maxTokens` and read again.
+    let mut config = stored_config(&db, &provider.id);
+    config["models"][1]
+        .as_object_mut()
+        .unwrap()
+        .remove("maxTokens");
+    write_config(&db, &provider.id, &config);
+    let read_back = get_provider(&db, &secrets, &provider.id).unwrap().unwrap();
+    assert_eq!(model_ids(&read_back), ["alpha", "beta", "gamma"]);
+    // The absent key reads as zero, which the existing normalisation seeds.
+    assert_eq!(read_back.models[1].max_tokens, DEFAULT_MAX_TOKENS);
+    assert_eq!(read_back.models[1].context_window, 256_000);
+
+    // Restoring the field restores the value, as the report's last row says.
+    config["models"][1]["maxTokens"] = json!(16_000);
+    write_config(&db, &provider.id, &config);
+    let restored = get_provider(&db, &secrets, &provider.id).unwrap().unwrap();
+    assert_eq!(model_ids(&restored), ["alpha", "beta", "gamma"]);
+    assert_eq!(restored.models[1].max_tokens, 16_000);
+
+    // An entry that no longer matches the schema costs itself, not the array.
+    config["models"][2] = json!({
+        "id": "gamma",
+        "contextWindow": "not-a-number",
+        "maxTokens": 4_096,
+    });
+    write_config(&db, &provider.id, &config);
+    let damaged = get_provider(&db, &secrets, &provider.id).unwrap().unwrap();
+    assert_eq!(model_ids(&damaged), ["alpha", "beta"]);
+}
+#[test]
+fn degraded_model_array_cannot_be_overwritten_by_update() {
+    let (_dir, db, secrets) = test_context();
+    let provider = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Protected array".into(),
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: Some("https://example.test/v1".into()),
+            auth_kind: Some("api_key_and_base_url".into()),
+            models: Some(vec![binding_with_limits("alpha", 128_000, 8_192)]),
+            default_model_id: Some("alpha".into()),
+            secret_value: Some("old-secret".into()),
+            api_style: None,
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap();
+    let mut config: serde_json::Value = db
+        .conn()
+        .query_row(
+            "SELECT config_json FROM providers WHERE id = ?1",
+            params![provider.id],
+            |row| row.get::<_, String>(0),
+        )
+        .map(|raw| serde_json::from_str(&raw).unwrap())
+        .unwrap();
+    config["models"][0]["contextWindow"] = json!("not-a-number");
+    db.conn()
+        .execute(
+            "UPDATE providers SET config_json = ?1 WHERE id = ?2",
+            params![config.to_string(), provider.id],
+        )
+        .unwrap();
+    let before: String = db
+        .conn()
+        .query_row(
+            "SELECT config_json FROM providers WHERE id = ?1",
+            params![provider.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    let error = update_provider(
+        &db,
+        &secrets,
+        ProviderUpdateInput {
+            models: Some(vec![binding_with_limits("alpha", 128_000, 8_192)]),
+            secret_value: Some("new-secret".into()),
+            ..blank_update(provider.id.clone())
+        },
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.starts_with("MODEL_BINDINGS_DEGRADED:"), "{error}");
+
+    let after: String = db
+        .conn()
+        .query_row(
+            "SELECT config_json FROM providers WHERE id = ?1",
+            params![provider.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(after, before);
+    assert_eq!(
+        secrets
+            .get(&secret_ref_for_provider(&provider.id))
+            .unwrap()
+            .as_deref(),
+        Some("old-secret")
+    );
 }

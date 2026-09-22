@@ -760,6 +760,40 @@ describe("contributes.providers", () => {
     ).toMatch(/without a valid id/);
   });
 
+  it("rejects malformed thinking-level field shapes", () => {
+    const perm = { ...base, permissions: ["provider.register"] };
+    expect(
+      validateManifest({
+        ...perm,
+        contributes: {
+          providers: [
+            { ...provider, models: [{ ...provider.models[0], thinkingLevels: "high" as never }] },
+          ],
+        },
+      }).error,
+    ).toMatch(/thinkingLevels must be an array of strings/);
+    expect(
+      validateManifest({
+        ...perm,
+        contributes: {
+          providers: [
+            { ...provider, models: [{ ...provider.models[0], thinkingLevels: ["high", 7] as never }] },
+          ],
+        },
+      }).error,
+    ).toMatch(/thinkingLevels must be an array of strings/);
+    expect(
+      validateManifest({
+        ...perm,
+        contributes: {
+          providers: [
+            { ...provider, models: [{ ...provider.models[0], defaultThinkingLevel: 7 as never }] },
+          ],
+        },
+      }).error,
+    ).toMatch(/defaultThinkingLevel must be a string/);
+  });
+
   it("rejects oauth, which needs a Host-owned login flow", () => {
     expect(
       validateContributions({ providers: [{ ...provider, authKind: "oauth" as never }] }),

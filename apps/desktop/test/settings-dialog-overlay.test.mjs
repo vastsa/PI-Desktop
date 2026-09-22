@@ -93,3 +93,20 @@ test("leaf popups and toasts keep painting above the route overlays", async () =
   assert.ok(selectMenu > veil && selectMenu > sheet && selectMenu > notes);
   assert.ok(toast > veil && toast > sheet && toast > notes);
 });
+
+// The scenic backdrop stays the app shell's only layered child. A z-index on
+// any shell sibling that contains a route overlay (`.main-pane`, `.sidebar`)
+// re-creates the stacking context the entrance rule above exists to avoid, and
+// the overlay sinks below the window chrome again.
+test("app shell children never trap a route overlay in a stacking context", async () => {
+  const baseSrc = await read("../src/styles/base.css");
+  assert.doesNotMatch(baseSrc, /\.app-shell\s*>\s*:\s*not\(/);
+  for (const selector of [".main-pane", ".sidebar", ".work-panel"]) {
+    const escaped = selector.replace(".", "\\.");
+    const block = baseSrc.match(new RegExp(`(?:^|\\n)${escaped} \\{[^}]*\\}`));
+    assert.ok(
+      !block || !/z-index:/.test(block[0]),
+      `${selector} must not state a z-index in base.css`,
+    );
+  }
+});
