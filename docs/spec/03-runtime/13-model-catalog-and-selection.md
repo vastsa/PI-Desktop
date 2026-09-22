@@ -98,7 +98,12 @@ default. When the edited service or account is the app's default provider,
 saving also synchronizes the app-level default model to that first binding,
 as the existing save flow does. The app default is unchanged when editing
 another provider, and an explicitly bound session keeps its stored model
-choice. No storage schema or IPC contract changes are required.
+choice. Adding a provider is not a way to change either app default: the
+default model, and the default image model when the new service brings image
+models, move to it only while nothing resolves for the app — an empty
+selection, or one whose provider or model is gone. A default the user can
+still run stays where it is until they repoint it. No storage schema or IPC
+contract changes are required.
 
 ### Discovery precedence
 

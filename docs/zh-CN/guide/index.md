@@ -13,6 +13,7 @@ PI-Desktop 是一个本地优先的 AI 编程代理桌面客户端。它让工�
 |---|---|
 | 应用界面长什么样 | [界面截图](/zh-CN/guide/screenshots) |
 | 如何运行周期任务 | [定时任务](/zh-CN/guide/automations) |
+| 如何添加 MCP 目录并填写密钥 | [MCP 市场](/zh-CN/guide/mcp-market) |
 | 当前交付了什么 | [产品范围](/zh-CN/spec/01-product/01-product-scope) |
 | 系统如何协作 | [系统架构](/zh-CN/spec/02-architecture/01-architecture) |
 | 协议和存储边界 | [运行时规格](/zh-CN/spec/03-runtime/01-ipc-protocol) |

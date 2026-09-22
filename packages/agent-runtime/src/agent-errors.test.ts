@@ -5,6 +5,186 @@ import {
 } from "./agent-errors.js";
 
 describe("classifyAgentError", () => {
+  it.each(["context-validation", "context-estimation", "request-preparation"])(
+    "keeps explicitly local %s failures terminal, safe and diagnosable", (phase) => {
+      const cause = new TypeError("private prompt api_key=test-secret\nprivate stack");
+      const error = Object.assign(new Error("502: fetch failed; prompt is too long", { cause }), {
+        code: "LOCAL_REQUEST_ERROR", phase,
+      });
+      const classified = classifyAgentError(error);
+      expect(classified).toMatchObject({
+        code: "INTERNAL", retriable: false,
+        details: { origin: "local", phase, causeName: "TypeError" },
+      });
+      expect(classified).toHaveProperty("cause", error);
+      expect(error.cause).toBe(cause);
+      expect(Object.keys(classified)).not.toContain("cause");
+      const serialized = JSON.stringify(classified);
+      for (const text of ["private prompt", "test-secret", "private stack", "502", "fetch failed"]) {
+        expect(serialized).not.toContain(text);
+      }
+    },
+  );
+
+  it.each(["fetch failed", "429: overloaded", "503: unavailable", "aborted field", "prompt is too long"])(
+    "classifies local message metadata before provider wording: %s", (errorMessage) => {
+      expect(classifyAgentError({
+        role: "assistant", stopReason: "error", errorMessage,
+        errorDetails: {
+          code: "LOCAL_REQUEST_ERROR", phase: "context-estimation",
+          message: "private prompt", causeName: "TypeError", stack: "private stack",
+        },
+      })).toMatchObject({
+        code: "INTERNAL", retriable: false,
+        details: { origin: "local", phase: "context-estimation", causeName: "TypeError" },
+      });
+    },
+  );
+
+  it("requires the complete local marker, never error names or wording", () => {
+    for (const error of [
+      new TypeError("fetch failed"),
+      "LOCAL_REQUEST_ERROR context-validation fetch failed",
+      Object.assign(new Error("fetch failed"), { name: "LocalRequestError" }),
+      { errorMessage: "fetch failed", errorDetails: { code: "LOCAL_REQUEST_ERROR", phase: "remote" } },
+      { errorMessage: "fetch failed", errorDetails: { phase: "context-validation", message: "failed" } },
+      { errorMessage: "fetch failed", errorDetails: { code: "local_request_error", phase: "context-validation" } },
+    ]) {
+      expect(classifyAgentError(error)).toMatchObject({ code: "NETWORK_ERROR", retriable: true });
+    }
+  });
+
+  it("takes pi-ai's code+phase marker as provenance even without a message", () => {
+    // Upstream's own reader accepts `code` plus a known `phase`; details that lost
+    // their message in transit are still explicit provenance and must not fall
+    // through to the transport bucket, which would be retried.
+    for (const errorDetails of [
+      { code: "LOCAL_REQUEST_ERROR", phase: "context-validation" },
+      { code: "LOCAL_REQUEST_ERROR", phase: "request-preparation", causeName: "TypeError" },
+    ]) {
+      const classified = classifyAgentError({
+        role: "assistant", stopReason: "error", errorMessage: "fetch failed", errorDetails,
+      });
+      expect(classified).toMatchObject({
+        code: "INTERNAL", retriable: false,
+        details: { origin: "local", phase: errorDetails.phase },
+      });
+      expect(classified.message).toMatch(/^Local request .* failed\.$/);
+      expect(JSON.stringify(classified)).not.toContain("fetch failed");
+    }
+    // The marker is the whole contract: a message alone is not provenance.
+    expect(classifyAgentError({
+      errorMessage: "fetch failed",
+      errorDetails: { code: "LOCAL_REQUEST_ERROR", phase: "network", message: "fetch failed" },
+    })).toMatchObject({ code: "NETWORK_ERROR", retriable: true });
+  });
+
+  it("does not expose an arbitrary cause name from local metadata", () => {
+    const classified = classifyAgentError({
+      errorDetails: {
+        code: "LOCAL_REQUEST_ERROR", phase: "request-preparation",
+        message: "private prompt", causeName: "api_key=test-secret\nprivate stack",
+      },
+    });
+    expect(classified.details).toEqual({ origin: "local", phase: "request-preparation" });
+    expect(JSON.stringify(classified)).not.toMatch(/private|test-secret|stack/);
+  });
+
+  it("keeps explicit cancellation ahead of local metadata", () => {
+    const errorDetails = { code: "LOCAL_REQUEST_ERROR", phase: "context-validation", message: "failed" };
+    expect(classifyAgentError({ stopReason: "aborted", errorDetails })).toMatchObject({
+      code: "TURN_ABORTED", retriable: false,
+    });
+    expect(classifyAgentError(Object.assign(new Error("Request aborted"), {
+      name: "AbortError", ...errorDetails,
+    }))).toMatchObject({ code: "TURN_ABORTED", retriable: false });
+  });
+
+  it("keeps a cancelled local cause cancelled however the outer error is named", () => {
+    // pi-ai wraps a synchronous AbortError in LocalRequestError before
+    // `signal.aborted` flips, so the outer name is not "AbortError": the cause
+    // name the marker preserved is the only evidence of the user's Stop.
+    const cause = Object.assign(new Error("The operation was aborted"), {
+      name: "AbortError",
+    });
+    const wrapped = Object.assign(new Error("Local request preparation failed."), {
+      name: "LocalRequestError", code: "LOCAL_REQUEST_ERROR",
+      phase: "request-preparation", cause,
+    });
+    const classified = classifyAgentError(wrapped);
+    expect(classified).toMatchObject({ code: "TURN_ABORTED", retriable: false });
+    expect(classified.message).toBe("Request aborted");
+    // A cancelled turn is not reported as a local request failure.
+    expect(classified.details?.origin).toBeUndefined();
+    expect(classified.details?.phase).toBeUndefined();
+
+    // The same cancellation on the wire shape the adapters emit.
+    expect(classifyAgentError({
+      role: "assistant", stopReason: "error",
+      errorMessage: "Local request preparation failed",
+      errorDetails: {
+        code: "LOCAL_REQUEST_ERROR", phase: "request-preparation",
+        message: "Local request preparation failed", causeName: "AbortError",
+      },
+    })).toMatchObject({ code: "TURN_ABORTED", retriable: false });
+
+    // A wrapped, non-abort local failure stays a terminal local failure.
+    expect(classifyAgentError(Object.assign(new Error("wrapped setup failure"), {
+      name: "LocalRequestError", code: "LOCAL_REQUEST_ERROR",
+      phase: "request-preparation", cause: new TypeError("private prompt"),
+    }))).toMatchObject({
+      code: "INTERNAL", retriable: false,
+      details: { origin: "local", phase: "request-preparation", causeName: "TypeError" },
+    });
+  });
+
+  it("reads the marker through a bounded, cycle-safe cause chain", () => {
+    const marker = Object.assign(new Error("Local request context estimation failed."), {
+      name: "LocalRequestError", code: "LOCAL_REQUEST_ERROR",
+      phase: "context-estimation", cause: new TypeError("private prompt"),
+    });
+    expect(classifyAgentError(Object.assign(new TypeError("fetch failed"), {
+      cause: marker,
+    }))).toMatchObject({
+      code: "INTERNAL", retriable: false,
+      details: { origin: "local", phase: "context-estimation", causeName: "TypeError" },
+    });
+
+    // A cycle without the marker stays a transport failure, and it has to
+    // terminate instead of being walked forever.
+    const first = new TypeError("fetch failed");
+    const second = Object.assign(new Error("socket hang up"), { cause: first });
+    (first as any).cause = second;
+    expect(classifyAgentError(first)).toMatchObject({ code: "NETWORK_ERROR", retriable: true });
+
+    // The same cycle with the marker on the second node is explicit provenance.
+    Object.assign(second, { code: "LOCAL_REQUEST_ERROR", phase: "request-preparation" });
+    expect(classifyAgentError(first)).toMatchObject({
+      code: "INTERNAL", retriable: false,
+      details: { origin: "local", phase: "request-preparation" },
+    });
+
+    // A self-referencing marker terminates as well.
+    const self = Object.assign(new Error("Local request preparation failed."), {
+      code: "LOCAL_REQUEST_ERROR", phase: "request-preparation",
+    });
+    (self as any).cause = self;
+    expect(classifyAgentError(self)).toMatchObject({
+      code: "INTERNAL", retriable: false,
+      details: { origin: "local", phase: "request-preparation" },
+    });
+
+    // Past the traversal bound the marker is out of reach, so the failure keeps
+    // its transport classification rather than claiming local provenance.
+    let deep: unknown = Object.assign(new Error("Local request preparation failed."), {
+      code: "LOCAL_REQUEST_ERROR", phase: "request-preparation",
+    });
+    for (let depth = 0; depth < 6; depth += 1) {
+      deep = Object.assign(new TypeError("fetch failed"), { cause: deep });
+    }
+    expect(classifyAgentError(deep)).toMatchObject({ code: "NETWORK_ERROR", retriable: true });
+  });
+
   it.each([
     "SELF_SIGNED_CERT_IN_CHAIN",
     "DEPTH_ZERO_SELF_SIGNED_CERT",

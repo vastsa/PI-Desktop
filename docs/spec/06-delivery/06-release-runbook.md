@@ -279,7 +279,22 @@ assembles the GitHub Release. The Linux runner also copies
 exact archive used by the Linux installers for downstream repackaging with a
 system Electron.
 
-### 4.4 CNB mirror trigger
+### 4.4 Documentation site deployment
+
+The `pi-desktop-docs` Vercel project is published only from a published GitHub
+Release ref.
+`docs/vercel.json` disables Vercel Git auto-deployments, so pushes to `main`,
+release branches, and pull requests do not create documentation deployments or
+Vercel bot comments. The `docs-deploy` job in `.github/workflows/release.yml`
+runs after the release workflow's `publish` job succeeds, checks out the exact
+release tag, and deploys the production site with the Vercel CLI. Keeping this
+job in the same workflow avoids relying on a second workflow being triggered by
+`GITHUB_TOKEN`.
+
+The workflow requires the repository secrets `VERCEL_ORG_ID`,
+`VERCEL_PROJECT_ID`, and `VERCEL_TOKEN`.
+
+### 4.5 CNB mirror trigger
 
 After `softprops/action-gh-release` publishes or updates a GitHub Release,
 `.github/workflows/mirror-to-cnb.yml` starts the CNB pipeline at
@@ -302,7 +317,7 @@ Re-running the workflow for the same tag is safe if the CNB pipeline is
 idempotent. It does not rebuild desktop artifacts and does not change
 electron-updater feeds.
 
-### 4.5 GitHub Actions secrets for macOS signing
+### 4.6 GitHub Actions secrets for macOS signing
 
 Create these under GitHub → repository `vastsa/PI-Desktop` → Settings →
 Secrets and variables → Actions. Never commit the p12, password, Apple ID, or
@@ -325,7 +340,7 @@ base64 -i developer-id-application.p12 | pbcopy
 On Linux use `base64 -w0 developer-id-application.p12`. Files that must never
 enter git: `*.p12`, `*.cer`, `*.p8`, `*.mobileprovision`.
 
-### 4.6 macOS signing observability and timeouts
+### 4.7 macOS signing observability and timeouts
 
 `electron-builder` prints one line before signing — `signing
 file=release/mac-arm64/PI-Desktop.app platform=darwin type=distribution

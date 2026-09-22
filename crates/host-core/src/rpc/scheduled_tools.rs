@@ -5,6 +5,10 @@ use crate::{
 };
 use serde_json::{json, Value};
 
+#[cfg(test)]
+#[path = "scheduled_calendar_tests.rs"]
+mod calendar_tests;
+
 pub fn recognizes(name: &str) -> bool {
     matches!(
         name,
@@ -123,13 +127,33 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
         if !args.contains_key("cadence") {
             return Err(invalid("cadence required"));
         }
-        if cadence == "hourly" && !args.contains_key("schedule") {
-            input["schedule"] = json!({"hour":0,"minute":0,"weekday":0});
-        } else if cadence == "manual" {
+        if cadence == "manual" {
             input["schedule"] = Value::Null;
         }
     }
+    // An echoed cadence during legacy maintenance is not an arming request.
+    if args.get("cadence").and_then(Value::as_str) == Some("hourly")
+        && (p.tool_name == "ScheduledTaskCreate"
+            || existing
+                .as_ref()
+                .is_some_and(|task| task.cadence != "hourly")
+            || args.get("enabled").and_then(Value::as_bool) == Some(true))
+        && !args.contains_key("schedule")
+        && existing
+            .as_ref()
+            .and_then(|task| task.schedule.as_ref())
+            .is_none()
+    {
+        input["schedule"] = json!({"hour":0,"minute":0,"weekday":0});
+    }
     if p.tool_name != "ScheduledTaskDelete"
+        && (p.tool_name == "ScheduledTaskCreate"
+            || (args.contains_key("cadence")
+                && existing
+                    .as_ref()
+                    .is_some_and(|task| task.cadence != cadence))
+            || args.contains_key("schedule")
+            || args.get("enabled").and_then(Value::as_bool) == Some(true))
         && cadence != "manual"
         && input.get("schedule").is_none()
         && existing
@@ -184,6 +208,139 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::{mpsc, Mutex};
 
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn review_ui_task_is_visible_to_same_project_conversation() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let mut st = AppState::open(dir.path()).unwrap();
+        st.handshook = true;
+        st.db
+            .set_setting("app", &json!({"defaultPermissionMode":"auto"}))
+            .unwrap();
+        let path = st.workspace.set(project.path()).path;
+        let task = scheduled_rpc::handle(
+            &st,
+            "scheduled.create",
+            json!({
+                "title":"UI task", "prompt":"Review", "cadence":"hourly",
+                "schedule":{"hour":0,"minute":0,"weekday":0}
+            }),
+        )
+        .unwrap()["task"]
+            .clone();
+        let session =
+            sessions::create_session(&st.db, None, Some("agent".into()), None, None, Some(path))
+                .unwrap();
+        let state = Arc::new(Mutex::new(st));
+        let listed = call(&state, &session.id, "ScheduledTaskList", json!({})).await;
+        assert_eq!(listed["ok"], true, "{listed}");
+        let edited = call(
+            &state,
+            &session.id,
+            "ScheduledTaskUpdate",
+            json!({"id":task["id"],"title":"Renamed"}),
+        )
+        .await;
+        assert!(listed["content"]["tasks"].as_array().unwrap().iter().any(|item| item["id"] == task["id"]),
+            "UI-created task must be visible in the same project: task={task}, list={listed}, update={edited}");
+        assert_eq!(edited["ok"], true, "{edited}");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn stored_windows_aliases_remain_visible_after_restart_and_isolated() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let st = AppState::open(dir.path()).unwrap();
+        let path = crate::workspace::simple_canonicalize(project.path())
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let same = sessions::create_session(
+            &st.db,
+            None,
+            Some("agent".into()),
+            None,
+            None,
+            Some(path.clone()),
+        )
+        .unwrap()
+        .id;
+        let foreign = sessions::create_session(
+            &st.db,
+            None,
+            Some("agent".into()),
+            None,
+            None,
+            Some(other.path().to_string_lossy().into_owned()),
+        )
+        .unwrap()
+        .id;
+        for (i, alias) in [
+            path.clone(),
+            path.replace('\\', "/"),
+            path.to_lowercase(),
+            format!("{path}\\"),
+            format!("\\\\?\\{path}"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            assert_eq!(
+                std::fs::canonicalize(alias).unwrap(),
+                std::fs::canonicalize(&path).unwrap()
+            );
+            scheduled::import_tasks(&st.db,&[json!({"id":format!("alias-{i}"),"title":"Legacy","prompt":"Review","cadence":"manual","configJson":{"workspacePath":alias}})]).unwrap();
+        }
+        drop(st);
+        let mut st = AppState::open(dir.path()).unwrap();
+        st.handshook = true;
+        st.db
+            .set_setting("app", &json!({"defaultPermissionMode":"auto"}))
+            .unwrap();
+        let state = Arc::new(Mutex::new(st));
+        let own = call(&state, &same, "ScheduledTaskList", json!({})).await;
+        assert_eq!(own["content"]["tasks"].as_array().unwrap().len(), 5);
+        assert!(
+            call(&state, &foreign, "ScheduledTaskList", json!({})).await["content"]["tasks"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            call(
+                &state,
+                &foreign,
+                "ScheduledTaskUpdate",
+                json!({"id":"alias-0","title":"Wrong"})
+            )
+            .await["errorCode"],
+            "NOT_FOUND"
+        );
+        assert_eq!(
+            call(
+                &state,
+                &foreign,
+                "ScheduledTaskDelete",
+                json!({"id":"alias-0"})
+            )
+            .await["errorCode"],
+            "NOT_FOUND"
+        );
+        assert_eq!(
+            call(
+                &state,
+                &same,
+                "ScheduledTaskDelete",
+                json!({"id":"alias-0"})
+            )
+            .await["ok"],
+            true
+        );
+    }
+
     async fn call(state: &Arc<Mutex<AppState>>, session: &str, name: &str, args: Value) -> Value {
         super::super::handle_request(
             state.clone(),
@@ -208,7 +365,8 @@ mod tests {
         st.db
             .set_setting("app", &json!({"defaultPermissionMode":"auto"}))
             .unwrap();
-        let path = st.workspace.set(project.path()).path;
+        let path =
+            crate::db::canonical_project_path(&st.workspace.set(project.path()).path).unwrap();
         let session = sessions::create_session(
             &st.db,
             None,
@@ -309,6 +467,81 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn manual_to_hourly_update_needs_no_calendar_schedule() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut st = AppState::open(dir.path()).unwrap();
+        st.handshook = true;
+        st.db
+            .set_setting("app", &json!({"defaultPermissionMode":"auto"}))
+            .unwrap();
+        let session =
+            sessions::create_session(&st.db, None, Some("agent".into()), None, None, None).unwrap();
+        let state = Arc::new(Mutex::new(st));
+        let created = call(
+            &state,
+            &session.id,
+            "ScheduledTaskCreate",
+            json!({
+                "title":"Review", "prompt":"Review project", "cadence":"manual", "enabled":false
+            }),
+        )
+        .await;
+        assert_eq!(created["ok"], true, "{created}");
+        let id = created["content"]["task"]["id"].as_str().unwrap();
+        for cadence in ["daily", "weekly"] {
+            let rejected = call(
+                &state,
+                &session.id,
+                "ScheduledTaskUpdate",
+                json!({"id":id,"cadence":cadence}),
+            )
+            .await;
+            assert_eq!(rejected["errorCode"], "INVALID_PARAMS");
+        }
+        let before = crate::db::now_ms();
+        let updated = call(
+            &state,
+            &session.id,
+            "ScheduledTaskUpdate",
+            json!({"id":id,"cadence":"hourly"}),
+        )
+        .await;
+        let after = crate::db::now_ms();
+        assert_eq!(updated["ok"], true, "{updated}");
+        let task = &updated["content"]["task"];
+        assert_eq!(task["cadence"], "hourly");
+        assert_eq!(task["enabled"], false);
+        assert_eq!(task["prompt"], "Review project");
+        let next = crate::db::ts_to_ms(task["nextRunAt"].as_str().unwrap());
+        assert!((before + 3_600_000..=after + 3_600_000).contains(&next));
+        let renamed = call(
+            &state,
+            &session.id,
+            "ScheduledTaskUpdate",
+            json!({"id":id,"title":"Renamed"}),
+        )
+        .await;
+        assert_eq!(renamed["content"]["task"]["nextRunAt"], task["nextRunAt"]);
+        let custom = json!({"hour":15,"minute":30,"weekday":2,"weekdays":[2,4]});
+        let configured = call(
+            &state,
+            &session.id,
+            "ScheduledTaskUpdate",
+            json!({"id":id,"cadence":"weekly","schedule":custom}),
+        )
+        .await;
+        assert_eq!(configured["ok"], true, "{configured}");
+        let hourly = call(
+            &state,
+            &session.id,
+            "ScheduledTaskUpdate",
+            json!({"id":id,"cadence":"hourly"}),
+        )
+        .await;
+        assert_eq!(hourly["content"]["task"]["schedule"], custom);
+    }
+
     #[test]
     fn scheduled_mutations_require_approval_outside_auto_mode() {
         use crate::permissions::{PermissionDecision, PermissionManager};
@@ -347,5 +580,93 @@ mod tests {
             ),
             Some(PermissionDecision::AllowOnce)
         ));
+    }
+
+    #[tokio::test]
+    async fn review_legacy_task_can_be_paused_without_arming_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut st = AppState::open(dir.path()).unwrap();
+        st.handshook = true;
+        st.db
+            .set_setting("app", &json!({"defaultPermissionMode":"auto"}))
+            .unwrap();
+        scheduled::import_tasks(
+            &st.db,
+            &[json!({"id":"legacy", "prompt":"Review", "cadence":"daily"})],
+        )
+        .unwrap();
+        let session =
+            sessions::create_session(&st.db, None, Some("agent".into()), None, None, None).unwrap();
+        let state = Arc::new(Mutex::new(st));
+        let listed = call(&state, &session.id, "ScheduledTaskList", json!({})).await;
+        assert_eq!(listed["content"]["tasks"][0]["id"], "legacy");
+        let paused = call(
+            &state,
+            &session.id,
+            "ScheduledTaskUpdate",
+            json!({"id":"legacy","enabled":false}),
+        )
+        .await;
+        assert_eq!(
+            paused["ok"], true,
+            "Pausing must not require an automatic schedule: {paused}"
+        );
+        assert_eq!(paused["content"]["task"]["enabled"], false);
+        assert!(paused["content"]["task"].get("nextRunAt").is_none());
+    }
+
+    #[tokio::test]
+    async fn legacy_maintenance_preserves_data_but_does_not_silently_enable() {
+        for cadence in ["hourly", "daily", "weekly"] {
+            for enabled in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let mut st = AppState::open(dir.path()).unwrap();
+                st.handshook = true;
+                st.db
+                    .set_setting("app", &json!({"defaultPermissionMode":"auto"}))
+                    .unwrap();
+                scheduled::import_tasks(&st.db,&[json!({"id":"old","title":"Old","prompt":"Review","cadence":cadence,"enabled":enabled})]).unwrap();
+                let sid =
+                    sessions::create_session(&st.db, None, Some("agent".into()), None, None, None)
+                        .unwrap()
+                        .id;
+                let state = Arc::new(Mutex::new(st));
+                for args in [
+                    json!({"id":"old","title":"Renamed"}),
+                    json!({"id":"old","prompt":"Updated"}),
+                    json!({"id":"old","enabled":false}),
+                    json!({"id":"old","cadence":cadence,"enabled":false}),
+                ] {
+                    let result = call(&state, &sid, "ScheduledTaskUpdate", args).await;
+                    assert_eq!(result["ok"], true, "{result}");
+                    assert!(result["content"]["task"].get("schedule").is_none());
+                    assert!(result["content"]["task"].get("nextRunAt").is_none());
+                }
+                let refused = call(
+                    &state,
+                    &sid,
+                    "ScheduledTaskUpdate",
+                    json!({"id":"old","enabled":true}),
+                )
+                .await;
+                assert_eq!(refused["errorCode"], "INVALID_PARAMS");
+                drop(state);
+                let mut st = AppState::open(dir.path()).unwrap();
+                st.handshook = true;
+                let saved = scheduled::get_task(&st.db, "old").unwrap().unwrap();
+                assert_eq!(saved.title, "Renamed");
+                assert_eq!(saved.prompt, "Updated");
+                assert!(!saved.enabled);
+                assert!(saved.schedule.is_none());
+                assert!(!saved.workspace_bound);
+                let state = Arc::new(Mutex::new(st));
+                let configured=call(&state,&sid,"ScheduledTaskUpdate",json!({"id":"old","cadence":cadence,"schedule":{"hour":9,"minute":30,"weekday":0},"enabled":true})).await;
+                assert_eq!(configured["ok"], true, "{configured}");
+                assert_eq!(
+                    call(&state, &sid, "ScheduledTaskDelete", json!({"id":"old"})).await["ok"],
+                    true
+                );
+            }
+        }
     }
 }

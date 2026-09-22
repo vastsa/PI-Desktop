@@ -42,6 +42,7 @@ import {
   retainedUserMessageBudget,
   type ContextBudget,
   type ContextBudgetModel,
+  type ContextBudgetModelInput,
 } from "./context-budget.js";
 import {
   COMPACTION_SUMMARY_RETRY_POLICY,
@@ -281,7 +282,7 @@ async function compactDelegateContext(
 export function degradedDelegateMessages(
   messages: AgentMessage[],
   taskBrief: string,
-  model: ContextBudgetModel,
+  model: ContextBudgetModelInput,
 ): AgentMessage[] | undefined {
   const limits = contextBudgetLimitsFor(model);
   const briefIndex = messages.findIndex((message) => message.role === "user");
@@ -289,7 +290,8 @@ export function degradedDelegateMessages(
     briefIndex >= 0
       ? (messages[briefIndex] as UserMessage)
       : { role: "user", content: taskBrief, timestamp: Date.now() };
-  const briefTokens = estimateTokens(brief);
+  const target = "api" in model ? model : undefined;
+  const briefTokens = estimateTokens(brief, target);
   if (briefTokens >= limits.hardLimit) return undefined;
 
   const pool = messages.slice(briefIndex + 1);
@@ -298,7 +300,7 @@ export function degradedDelegateMessages(
   for (let index = pool.length - 1; index >= 0; index -= 1) {
     const message = pool[index];
     if (!isDelegateContextMessage(message)) continue;
-    const cost = estimateTokens(message);
+    const cost = estimateTokens(message, target);
     if (tokens + cost >= limits.hardLimit) break;
     suffix.unshift(message);
     tokens += cost;

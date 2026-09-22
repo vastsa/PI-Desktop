@@ -64,6 +64,193 @@ describe("estimateOutputCapInputTokens", () => {
   });
 });
 
+describe("hosted search output budget", () => {
+  const context = (text: string): OutputCapContext => ({
+    messages: [{
+      role: "assistant",
+      content: [{
+        type: "hostedSearch",
+        phase: "web_search_tool_result",
+        blockId: "search_fixture",
+        wire: {
+          type: "web_search_tool_result",
+          tool_use_id: "search_fixture",
+          content: [{ type: "web_search_result", title: text }],
+        },
+      }],
+    }],
+  });
+
+  it("scales with hosted search replay rather than charging a fixed image budget", () => {
+    const small = estimateOutputCapInputTokens(context("a".repeat(100)));
+    const large = estimateOutputCapInputTokens(context("a".repeat(10_100)));
+    expect(small).toBeGreaterThan(0);
+    expect(large - small).toBe(2500);
+  });
+
+  it("applies CJK correction to hosted search replay", () => {
+    const ascii = estimateOutputCapInputTokens(context("a".repeat(1000)));
+    const cjk = estimateOutputCapInputTokens(context("中".repeat(1000)));
+    expect(cjk - ascii).toBe(750);
+  });
+});
+
+describe("hosted search target model threading", () => {
+  /** A Responses target model, identity included as the adapters stamp it. */
+  const RESPONSES_MODEL = {
+    contextWindow: 262_144,
+    maxTokens: 32_768,
+    api: "openai-responses",
+    provider: "openai",
+    id: "gpt-test",
+  };
+
+  const searchCall = (size: number) => ({
+    type: "hostedSearch",
+    phase: "web_search_call",
+    blockId: "search_fixture",
+    wire: {
+      type: "web_search_call",
+      id: "search_fixture",
+      status: "completed",
+      action: { type: "search", query: "a".repeat(size) },
+    },
+  });
+
+  const responsesContext = (
+    model: string,
+    size: number,
+  ): OutputCapContext => ({
+    messages: [
+      {
+        role: "assistant",
+        api: "openai-responses",
+        provider: "openai",
+        model,
+        content: [searchCall(size)],
+      },
+    ],
+  });
+
+  it("charges same-model Responses search and grows with the payload", () => {
+    const small = estimateOutputCapInputTokens(
+      responsesContext("gpt-test", 100),
+      RESPONSES_MODEL,
+    );
+    const large = estimateOutputCapInputTokens(
+      responsesContext("gpt-test", 10_100),
+      RESPONSES_MODEL,
+    );
+    expect(small).toBeGreaterThan(0);
+    expect(large - small).toBe(2_500);
+  });
+
+  it("charges nothing for Responses search the target model discards", () => {
+    // The Responses adapter replays a `web_search_call` only when the
+    // assistant message came from the target model; the wire request carries
+    // nothing for any other id, so the estimate must not either.
+    expect(
+      estimateOutputCapInputTokens(
+        responsesContext("other-model", 10_000),
+        RESPONSES_MODEL,
+      ),
+    ).toBe(0);
+  });
+
+  it("keeps the conservative estimate when no target identity is known", () => {
+    // A caller holding window facts only (no `api`) cannot know which search
+    // items the provider replays; charging them keeps the clamp safe.
+    expect(
+      estimateOutputCapInputTokens(
+        responsesContext("other-model", 400),
+        LARGE_WINDOW_MODEL,
+      ),
+    ).toBeGreaterThan(0);
+  });
+
+  it("keeps Anthropic search replay across models", () => {
+    const target = {
+      contextWindow: 200_000,
+      maxTokens: 8_192,
+      api: "anthropic-messages",
+      provider: "anthropic",
+      id: "claude-test",
+    };
+    const estimate = estimateOutputCapInputTokens(
+      {
+        messages: [
+          {
+            role: "assistant",
+            api: "anthropic-messages",
+            provider: "anthropic",
+            model: "claude-other",
+            content: [
+              {
+                type: "hostedSearch",
+                phase: "web_search_tool_result",
+                blockId: "search_fixture",
+                wire: {
+                  type: "web_search_tool_result",
+                  tool_use_id: "search_fixture",
+                  content: [
+                    { type: "web_search_result", title: "a".repeat(400) },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      },
+      target,
+    );
+    // The encrypted Anthropic results replay regardless of the message's model
+    // id, so they stay in the estimate.
+    expect(estimate).toBeGreaterThan(0);
+  });
+
+  it("leaves text, thinking and tool blocks unaffected by the target", () => {
+    const context: OutputCapContext = {
+      messages: [
+        {
+          role: "assistant",
+          api: "openai-responses",
+          provider: "openai",
+          model: "gpt-test",
+          content: [
+            { type: "text", text: "a".repeat(400) },
+            { type: "thinking", thinking: "中".repeat(100) },
+            { type: "toolCall", name: "run", arguments: { a: 1 } },
+          ],
+        },
+      ],
+    };
+    // 400 text chars (/4 = 100) + 100 CJK thinking chars (baseline 25, CJK
+    // correction 75) + the serialized tool call (10 chars).
+    expect(estimateOutputCapInputTokens(context, RESPONSES_MODEL)).toBe(203);
+    expect(estimateOutputCapInputTokens(context)).toBe(203);
+  });
+
+  it("stops charging cross-model search against the output budget", () => {
+    const requested = 32_768;
+    // 2M chars of same-model search dwarfs the window and collapses the
+    // budget; the same payload from another model never reaches the wire.
+    expect(
+      clampOutputToContext(
+        RESPONSES_MODEL,
+        responsesContext("gpt-test", 2_000_000),
+        requested,
+      ),
+    ).toBe(1);
+    expect(
+      clampOutputToContext(
+        RESPONSES_MODEL,
+        responsesContext("other-model", 2_000_000),
+        requested,
+      ),
+    ).toBe(requested);
+  });
+});
+
 describe("clampOutputToContext", () => {
   it("keeps the requested budget when the input leaves enough room", () => {
     expect(

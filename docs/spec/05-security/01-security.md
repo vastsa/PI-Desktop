@@ -134,6 +134,30 @@ redirects do not forward caller headers.
 Manual user-owned MCP configuration remains covered by ADR 0142 and may use
 explicit local/LAN endpoints; the market path does not widen that policy.
 
+## 4.3 Portable configuration sync
+
+WebDAV sync is a host-core network boundary. The renderer and Agent Runtime
+cannot access the endpoint, WebDAV password, backup password, vault key, or
+portable secret values. Host-core validates the selected HTTPS endpoint,
+rejects userinfo and redirects, constrains relative paths, bounds remote object
+size and KDF parameters, and requires strong conditional-write behavior before
+publishing a head.
+
+Every remote payload is authenticated ciphertext. The WebDAV server receives
+neither the vault password nor the local machine encryption key. Credentials
+are exported only after explicit category opt-in and are never included in
+status, preview, conflict labels, or logs. Restored provider/MCP secrets are
+written through the host secret store; OAuth sessions and cookies are never
+portable.
+
+Imported commands, endpoints, scripts, skills, plugins, and automations are
+staged behind a digest-bound local approval. Local paths and approvals are
+overlays, not shared entities. A new device therefore cannot execute a
+synchronized capability merely because its desired enabled flag was imported.
+The server can still deny availability or replay a valid old head to a fresh
+device that has no trusted history; sync does not claim availability or
+freshness against a malicious server.
+
 ## 5. Command execution
 
 - Bash requires confirmation by default (risk-tiered permission cards); in

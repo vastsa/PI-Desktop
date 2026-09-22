@@ -40,6 +40,7 @@ export function createScheduledRunner(options: {
   let stopped = false;
   let polling = false;
   let timer: ReturnType<typeof setInterval> | undefined;
+  const dispatches = new Map<string, { host: Host }>();
   const tick = async () => {
     if (stopped || polling) return;
     const host = options.getHost();
@@ -49,11 +50,22 @@ export function createScheduledRunner(options: {
       const { ids } = await host.call<{ ids: string[] }>("scheduled.due");
       for (const id of ids) {
         if (stopped || options.getHost() !== host) break;
-        try {
-          await options.execute(id);
-        } catch (error) {
-          options.report(error);
-        }
+        if (dispatches.get(id)?.host === host) continue;
+        const owner = { host };
+        dispatches.set(id, owner);
+        // Polling owns admission requests, not the duration of prompt setup.
+        // Host remains authoritative for enabled/due/overlap checks. Keep a
+        // local owner until setup settles so another poll cannot dispatch the
+        // same task while its admission request is still in flight.
+        void (async () => {
+          try {
+            await options.execute(id);
+          } catch (error) {
+            options.report(error);
+          } finally {
+            if (dispatches.get(id) === owner) dispatches.delete(id);
+          }
+        })();
       }
     } catch (error) {
       options.report(error);

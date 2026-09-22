@@ -1,3 +1,4 @@
+mod config_sync_rpc;
 mod scheduled_rpc;
 mod scheduled_tools;
 
@@ -312,6 +313,23 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
             return Err(anyhow!("host stdin reader unavailable: {error}"));
         }
     };
+    let config_sync_scheduler = tokio::spawn({
+        let state = state.clone();
+        let tx = tx.clone();
+        async move {
+            // The host owns a short local debounce clock; remote polling is
+            // gated inside the engine to five minutes when no local change is
+            // pending. This lets a quiet app settle filesystem edits without
+            // turning every tick into a WebDAV request.
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                let _ =
+                    crate::config_sync::engine::sync_if_enabled(state.clone(), tx.clone()).await;
+            }
+        }
+    });
 
     let mut input_error = None;
     let mut writer_done = false;
@@ -435,6 +453,8 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
         }
     }
 
+    config_sync_scheduler.abort();
+    let _ = config_sync_scheduler.await;
     {
         let mut st = state.lock().await;
         st.shutdown();
@@ -471,10 +491,32 @@ fn rpc_err(code: i64, message: impl Into<String>, error_code: &str) -> JsonRpcEr
     }
 }
 
+fn config_sync_rpc_err(error: impl ToString) -> JsonRpcError {
+    let message = error.to_string();
+    let error_code = message
+        .split_once(':')
+        .map(|(code, _)| code.trim())
+        .unwrap_or("INTERNAL")
+        .to_string();
+    let code = match error_code.as_str() {
+        "CONFIG_SYNC_INVALID" | "CONFIG_SYNC_LIMIT_EXCEEDED" => 1002,
+        "CONFIG_SYNC_LOCKED" => 1001,
+        "CONFIG_SYNC_CONFLICT" => 1008,
+        "CONFIG_SYNC_UNSUPPORTED" => 1002,
+        "CONFIG_SYNC_SECURITY" => 1003,
+        "CONFIG_SYNC_CRYPTO" | "CONFIG_SYNC_MAPPING_REQUIRED" => 1002,
+        "CONFIG_SYNC_REMOTE" => 1000,
+        _ => 1000,
+    };
+    rpc_err(code, message, &error_code)
+}
+
 fn provider_rpc_err(error: impl ToString) -> JsonRpcError {
     let message = error.to_string();
-    if message.starts_with("MODEL_ALIAS_TOO_LONG:") {
-        return rpc_err(1002, message, "MODEL_ALIAS_TOO_LONG");
+    for error_code in ["MODEL_ALIAS_TOO_LONG", "MODEL_BINDINGS_DEGRADED"] {
+        if message.starts_with(&format!("{error_code}:")) {
+            return rpc_err(1002, message, error_code);
+        }
     }
     rpc_err(1000, message, "INTERNAL")
 }
@@ -697,6 +739,37 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
                     "invalid image generation binding",
                     "INVALID_PARAMS",
                 ));
+            }
+        }
+    }
+    if let Some(candidates) = object.get("imageGenerationModels").filter(|v| !v.is_null()) {
+        let Some(candidates) = candidates.as_array() else {
+            return Err(rpc_err(
+                1002,
+                "imageGenerationModels must be an array",
+                "INVALID_PARAMS",
+            ));
+        };
+        if candidates.len() > 128 {
+            return Err(rpc_err(
+                1002,
+                "imageGenerationModels contains too many models",
+                "INVALID_PARAMS",
+            ));
+        }
+        for binding in candidates {
+            for (key, max) in [("providerId", 128), ("modelId", 256)] {
+                if !binding
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.trim().is_empty() && s.len() <= max)
+                {
+                    return Err(rpc_err(
+                        1002,
+                        "invalid image generation candidate",
+                        "INVALID_PARAMS",
+                    ));
+                }
             }
         }
     }
@@ -1388,6 +1461,12 @@ async fn handle_request(
         }
     }
 
+    if method.starts_with("configSync.") {
+        return config_sync_rpc::handle(state, method, params, tx)
+            .await
+            .map_err(config_sync_rpc_err);
+    }
+
     match method {
         method if method.starts_with("session.collaboration.") => {
             let st = state.lock().await;
@@ -1637,6 +1716,15 @@ async fn handle_request(
             let path = crate::db::canonical_project_path(path)
                 .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
             let st = state.lock().await;
+            if crate::scheduled::project::has_running_tasks(&st.db, &path)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+            {
+                return Err(rpc_err(
+                    1008,
+                    "project has running scheduled tasks",
+                    "CONFLICT",
+                ));
+            }
             // A path that belongs to a multi-folder project group must stay put:
             // deleting one root would orphan the rest of the group, so callers
             // remove the folder from the group first. A single-folder stored
@@ -1672,6 +1760,8 @@ async fn handle_request(
                     return Err(rpc_err(1008, "project has running sessions", "CONFLICT"));
                 }
             }
+            crate::scheduled::project::pause(&st.db, &path)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             let mut sessions_removed = 0;
             for id in &session_ids {
                 if sessions::delete_session(&st.db, id)
@@ -8632,6 +8722,12 @@ mod image_generation_settings_tests {
             json!({}),
             json!({"imageGeneration": null}),
             json!({"imageGeneration": {"providerId": "p", "modelId": "image"}}),
+            json!({"imageGenerationModels": null}),
+            json!({"imageGenerationModels": []}),
+            json!({"imageGenerationModels": [
+                {"providerId": "p", "modelId": "image-one"},
+                {"providerId": "q", "modelId": "image-two"}
+            ]}),
         ] {
             assert!(validate_settings_value(&value).is_ok());
         }
@@ -8641,6 +8737,13 @@ mod image_generation_settings_tests {
             json!({"providerId": "p", "modelId": " "}),
         ] {
             assert!(validate_settings_value(&json!({"imageGeneration": value})).is_err());
+        }
+        for value in [
+            json!(false),
+            json!({}),
+            json!([{"providerId": "p", "modelId": " "}]),
+        ] {
+            assert!(validate_settings_value(&json!({"imageGenerationModels": value})).is_err());
         }
     }
 }

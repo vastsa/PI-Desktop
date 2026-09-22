@@ -301,6 +301,25 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
                     .ok_or_else(|| {
                         anyhow!("PLUGIN_INVALID: provider {id} has a model without a valid id")
                     })?;
+                if let Some(levels) = model.get("thinkingLevels") {
+                    let levels = levels.as_array().ok_or_else(|| {
+                        anyhow!(
+                            "PLUGIN_INVALID: provider {id} model {model_id} thinkingLevels must be an array of strings"
+                        )
+                    })?;
+                    if levels.iter().any(|level| !level.is_string()) {
+                        bail!(
+                            "PLUGIN_INVALID: provider {id} model {model_id} thinkingLevels must be an array of strings"
+                        );
+                    }
+                }
+                if let Some(default_level) = model.get("defaultThinkingLevel") {
+                    if !default_level.is_string() {
+                        bail!(
+                            "PLUGIN_INVALID: provider {id} model {model_id} defaultThinkingLevel must be a string"
+                        );
+                    }
+                }
                 if seen_models.contains(&model_id) {
                     bail!("PLUGIN_INVALID: provider {id} declares model {model_id} twice");
                 }

@@ -1,26 +1,11 @@
 # Image generation and editing
 
-The desktop exposes one optional `AppSettings.imageGeneration` binding with
-`providerId` and `modelId`. `null` clears it; absent means unconfigured. Host-core
-validates and persists it through the existing settings store. No schema bump
-is needed. The binding is independent of the conversation default and references
-an existing enabled API-key or no-auth provider and one of its configured models.
+The desktop exposes `AppSettings.imageGeneration` as the current default image-generation binding and `AppSettings.imageGenerationModels` as the optional list of models marked for image generation. The legacy single binding remains supported: when the list is absent, it is treated as the only candidate. A null or empty current binding means no default; host-core validates and persists both fields through the existing settings store. No schema bump is needed. Each candidate is independent of the conversation default and references an existing enabled API-key or no-auth provider and one of its configured models.
 
 ## Configuration
 
-Model Advanced offers **Set as image model**. A draft selection only takes effect
-when the provider form saves; Cancel leaves settings unchanged. Saving a provider
-as an image model does not replace the default conversation model. Below the
-default model row in the same defaults panel, **Image generation model** is a
-read-only summary with the same provider/model typography and a 12px row gap.
-It has no Change or Clear actions; replacement uses the provider's Advanced
-settings. Missing, disabled, credential-less or removed bindings display only
-**Currently unavailable**. OAuth accounts are not eligible; there is no fallback.
-The selected provider/model pair is excluded from the default conversation picker,
-provider quick-default action, and Composer model menu. Other providers with the
-same model ID remain independent. Existing conversation bindings and history are
-preserved; a conversation still pinned to the image binding must select a chat
-model before sending. Runtime launch also rejects that binding before inference.
+Model Advanced exposes **Set as image model** alongside the image and document attachment capabilities in the model capability group, not as a separate control row. The checkbox is multi-select: saving a provider persists every checked model in `imageGenerationModels`; Cancel leaves settings unchanged. Saving candidates does not replace the default conversation model. Unchecking the current image model and saving removes its default binding: the first remaining runnable candidate becomes the default, or the default becomes null if none remains. The unmarked model is available for chat again after saving and reopening settings. Saving another provider preserves a still-runnable image default. Below the default model row in the same defaults panel, **Image generation model** shows the current default and offers a menu to choose one from all marked candidates. When no candidate is configured, the summary row is hidden. An existing candidate that is missing, disabled, credential-less or removed displays only **Currently unavailable**. OAuth accounts are not eligible; there is no fallback.
+All marked provider/model pairs are excluded from the default conversation picker, provider quick-default action, and Composer model menu. Other providers with the same model ID remain independent. Existing conversation bindings and history are preserved; a conversation still pinned to any image candidate must select a chat model before sending. Runtime launch rejects every marked image model before inference.
 
 ## Agent contract
 

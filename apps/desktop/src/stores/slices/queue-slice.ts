@@ -118,13 +118,13 @@ export function createQueueSlice({
     });
   }
 
-  /** Drop one row locally and, unless it is still optimistic, at the Host. */
+  /** Only acknowledged rows have a Host id that can actually be removed. */
   function detachQueuedPrompt(sessionId: string, promptId: string): void {
+    if (promptId.startsWith("pending:")) return;
     set((state) => ({
       queuedPrompts: removeQueuedPrompt(state.queuedPrompts, sessionId, promptId),
     }));
     queuedDrafts.delete(promptId);
-    if (promptId.startsWith("pending:")) return;
     void api.removeQueuedPrompt(promptId).catch((error) => {
       get().showToast(
         error instanceof Error ? error.message : String(error),
@@ -206,7 +206,9 @@ export function createQueueSlice({
         sessionId,
         promptId,
       );
-      if (!item || isPromotedQueuedPrompt(item)) return;
+      if (!item || isPendingQueuedPrompt(item) || isPromotedQueuedPrompt(item)) {
+        return;
+      }
       // `item.content` is token-stripped; the row's captured draft is the text
       // and the inline file references the user actually wrote.
       const restored: ComposerPrefill = {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { ProjectGroupRecord, ProjectGroupRoot } from "@pi-desktop/shared";
@@ -66,6 +66,7 @@ export function ProjectEditDialog({
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const busyRef = useRef(false);
   const folderPickerInFlightRef = useRef(false);
+  const reportLoadError = useEffectEvent((error: unknown) => onError(error));
 
   useEffect(() => {
     let cancelled = false;
@@ -97,13 +98,13 @@ export function ProjectEditDialog({
       .catch((error) => {
         if (!cancelled) {
           setLoading(false);
-          onError(error);
+          reportLoadError(error);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [onError, project.groupId, project.path, t]);
+  }, [project.groupId, project.path, t]);
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;

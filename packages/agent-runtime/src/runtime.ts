@@ -1,3 +1,5 @@
+import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
+import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { scheduledToolParameters, scheduledToolDescriptions } from "./scheduled-tools.js";
 import { randomUUID } from "node:crypto";
@@ -124,6 +126,13 @@ import {
   usageToPi,
 } from "./agent-messages.js";
 import { buildSessionContext } from "./session-context.js";
+import {
+  initialSystemTranscript,
+  rebuildSystemTranscript,
+  replaceSystemPrompt,
+  syncSystemTools,
+  systemPromptContent,
+} from "./system-transcript.js";
 import {
   dedupeToolCallMessages,
   reportDuplicateToolCallDrop,
@@ -1816,8 +1825,11 @@ Delegation rules:
         // Park what this request is expected to cost, so the usage report that
         // settles it can be measured against it (`contextBudget` corrects the
         // same shape).
+        // The target model travels with the estimate: hosted search only
+        // costs what this model's adapter will actually replay.
         this.inFlightContextEstimate = estimateContextTokens(
           context.messages ?? [],
+          m,
         );
         // A new model request starts a new transport streak: the evidence that
         // justified a rebuild does not carry into the next request (issue #234).
@@ -1934,11 +1946,10 @@ Delegation rules:
         this.prepareNextTurn(context, signal),
       afterToolCall: async (context) => this.afterToolCall(context),
       initialState: {
-        systemPrompt: this.composeSystemPrompt(),
         model,
         tools,
         thinkingLevel: agentThinkingLevel(this.thinkingLevel),
-        messages: this.liveSessionContext().messages,
+        messages: initialSystemTranscript(this.composeSystemPrompt(), tools, this.liveSessionContext().messages),
       },
       // Plan transitions must be the only tool call in an assistant batch.
       // Sequential execution also makes the host-confirmed mode change visible
@@ -2006,7 +2017,7 @@ Delegation rules:
     this.rebuildToolCatalog();
     this.restoreDeferredToolsFromContext();
     this.setAgentSystemPrompt(this.composeSystemPrompt());
-    this.agent.state.tools = this.activeTools();
+    this.setAgentTools(this.activeTools());
     this.setPlanningState(planningState, details);
   }
 
@@ -2029,11 +2040,7 @@ Delegation rules:
       (this.agent.state as unknown as { systemPrompt: string }).systemPrompt = prompt;
       return;
     }
-    const messages = this.agent.state.messages.filter((message) => message.role !== "system");
-    this.agent.state.messages = [
-      { role: "system", content: prompt, timestamp: Date.now() },
-      ...messages,
-    ];
+    this.agent.state.messages = replaceSystemPrompt(this.agent.state.messages, prompt);
   }
 
   private setAgentMessages(messages: AgentMessage[]): void {
@@ -2041,11 +2048,23 @@ Delegation rules:
       this.agent.state.messages = messages;
       return;
     }
-    const systemPrompt = this.agent.state.systemPrompt;
-    this.agent.state.messages = [
-      { role: "system", content: systemPrompt, timestamp: Date.now() },
-      ...messages.filter((message) => message.role !== "system"),
-    ];
+    this.agent.state.messages = syncSystemTools(
+      rebuildSystemTranscript(this.agent.state.messages, messages),
+      this.agent.state.tools,
+    );
+  }
+
+  private setAgentTools(tools: AgentTool[]): void {
+    this.agent.state.tools = tools;
+    if (this.agentUsesTranscriptSystemMessages()) {
+      this.agent.state.messages = syncSystemTools(this.agent.state.messages, tools);
+    }
+  }
+
+  private agentSystemPromptContent(): string {
+    return this.agentUsesTranscriptSystemMessages()
+      ? systemPromptContent(this.agent.state.messages)
+      : this.agent.state.systemPrompt;
   }
 
   private composeSystemPrompt(): string {
@@ -2084,7 +2103,7 @@ Delegation rules:
     if (this.subagents.length === 0) return;
     if (!this.agent) return;
     if (this.composedSystemPrompt === undefined) return;
-    if (this.agent.state.systemPrompt !== this.composedSystemPrompt) {
+    if (this.agentSystemPromptContent() !== this.composedSystemPrompt) {
       // A transient variant (the delegation nudge) owns the live prompt. Its
       // own cleanup restores the composed text, and applies this refresh then,
       // so a chain that settled mid-nudge is still listed on the next turn.
@@ -2355,7 +2374,7 @@ Delegation rules:
     await runner.load();
     if (this.disposed) return;
     this.rebuildToolCatalog();
-    this.agent.state.tools = this.activeTools();
+    this.setAgentTools(this.activeTools());
   }
 
   /** Run a registered extension slash command in this session (spec 16 §8). */
@@ -2499,7 +2518,7 @@ Delegation rules:
           if (wanted.has(name)) runtime.activeDeferredToolNames.add(name);
           else runtime.activeDeferredToolNames.delete(name);
         }
-        runtime.agent.state.tools = runtime.activeTools();
+        runtime.setAgentTools(runtime.activeTools());
       },
       getSessionName: () => runtime.extensionSessionName,
       setSessionName: async (name) => {
@@ -2659,15 +2678,7 @@ Delegation rules:
               : {}),
           });
         }
-        const replay = m.hostedSearch?.replay;
-        if (Array.isArray(replay)) {
-          for (const block of replay) {
-            if (!block || typeof block !== "object" || block.type !== "hostedSearch") {
-              continue;
-            }
-            content.push(block as unknown as AssistantMessage["content"][number]);
-          }
-        }
+        content.push(...restoreHostedSearchReplay(m.hostedSearch));
         if (m.content?.trim()) {
           content.push({ type: "text" as const, text: m.content });
         }
@@ -5003,7 +5014,7 @@ Delegation rules:
   private resetDeferredToolsForPrompt(): void {
     this.activeDeferredToolNames.clear();
     this.restoreDeferredToolsFromContext();
-    this.agent.state.tools = this.activeTools();
+    this.setAgentTools(this.activeTools());
   }
 
   /**
@@ -5398,7 +5409,7 @@ Delegation rules:
     error: ReturnType<typeof classifyAgentError>,
     phase: "request" | "stream",
   ): number | undefined {
-    if (!error.retriable) return undefined;
+    if (!error.retriable || error.details?.origin === "local") return undefined;
     const infinite = this.infiniteProviderRetry;
     if (error.code === "PROVIDER_RATE_LIMITED") {
       if (
@@ -5435,6 +5446,9 @@ Delegation rules:
     providerWaitMs?: number,
     streamMs?: number,
   ): ReturnType<typeof classifyAgentError> {
+    // Local preparation never reached the provider: keep its phase and cause
+    // instead of attaching stale HTTP status or a synthetic stream phase.
+    if (error.details?.origin === "local") return error;
     const explained = withProviderFetchFailure(error, this.providerFetchFailure);
     const existingDetails = explained.details ?? {};
     const retryAttempt = error.code === "PROVIDER_RATE_LIMITED"
@@ -5630,7 +5644,7 @@ Delegation rules:
     while (messages.at(-1)?.role === "assistant") messages.pop();
     this.setAgentMessages(messages);
 
-    const promptBefore = this.agent.state.systemPrompt;
+    const promptBefore = this.agentSystemPromptContent();
     const promptWithNudge = `${promptBefore}\n\n${SILENT_TURN_NUDGE}`;
     this.setAgentSystemPrompt(promptWithNudge);
     this.silentTurnRerunInProgress = true;
@@ -5641,7 +5655,7 @@ Delegation rules:
       await this.agent.continue();
       await this.waitForIdleAndSteering();
     } finally {
-      if (this.agent.state.systemPrompt === promptWithNudge) {
+      if (this.agentSystemPromptContent() === promptWithNudge) {
         this.setAgentSystemPrompt(promptBefore);
       }
       this.applyPendingResumablePrompt();
@@ -5738,7 +5752,7 @@ Delegation rules:
     while (messages.at(-1)?.role === "assistant") messages.pop();
     this.setAgentMessages(messages);
 
-    const promptBefore = this.agent.state.systemPrompt;
+    const promptBefore = this.agentSystemPromptContent();
     const promptWithNudge = `${promptBefore}\n\n${PROGRESS_TURN_NUDGE}`;
     this.setAgentSystemPrompt(promptWithNudge);
     this.progressTurnRerunInProgress = true;
@@ -5750,7 +5764,7 @@ Delegation rules:
       await this.agent.continue();
       await this.waitForIdleAndSteering();
     } finally {
-      if (this.agent.state.systemPrompt === promptWithNudge) {
+      if (this.agentSystemPromptContent() === promptWithNudge) {
         this.setAgentSystemPrompt(promptBefore);
       }
       this.applyPendingResumablePrompt();
@@ -5768,7 +5782,7 @@ Delegation rules:
     this.compactionEnabled = compactionEnabled(settings);
     this.pendingModelCompaction = false;
     this.rebuildToolCatalog();
-    this.agent.state.tools = this.activeTools();
+    this.setAgentTools(this.activeTools());
   }
 
   private contextBudget(messages: AgentMessage[]): ContextBudget {
@@ -5780,7 +5794,11 @@ Delegation rules:
     // is bounded by `CONTEXT_CALIBRATION_FACTOR_MIN`.
     return {
       ...budget,
-      tokens: this.contextCalibration.correct(estimateContextTokens(messages)),
+      // Same target model as `contextBudgetFor` above: the calibration input
+      // must describe the request this runtime will actually send.
+      tokens: this.contextCalibration.correct(
+        estimateContextTokens(messages, this.model),
+      ),
     };
   }
 
@@ -5937,7 +5955,7 @@ Delegation rules:
     const messages = this.liveSessionContext().messages;
     const tools = this.activeTools();
     this.setAgentMessages(messages);
-    this.agent.state.tools = tools;
+    this.setAgentTools(tools);
     return {
       messages: this.agent.state.messages,
       tools,
@@ -6772,15 +6790,11 @@ Delegation rules:
    * Search state transitions are low frequency, so a full frame costs less
    * than teaching every delta path about the field.
    */
-  private applyHostedSearch(message: unknown): void {
+  private applyHostedSearch(message: AssistantMessage): void {
     if (!this.currentAssistant) return;
-    const record = message as {
-      content?: unknown;
-      hostedSearchCitations?: unknown;
-    };
     const next = hostedSearchFromMessage({
-      content: record?.content,
-      citations: record?.hostedSearchCitations,
+      content: message.content,
+      citations: message.hostedSearchCitations,
     });
     if (!next) return;
     const previous = this.currentAssistant.hostedSearch;
@@ -6934,15 +6948,14 @@ Delegation rules:
           // pi-agent-core encodes stream failures in the final message
           // (stopReason "error"/"aborted" + errorMessage) and resolves the
           // prompt normally, so this is where provider/model errors surface.
-          const stopReason = (event.message as any).stopReason as
-            | string
-            | undefined;
-          const overflow = isContextOverflow(
-            event.message as AssistantMessage,
+          const stopReason = event.message.stopReason;
+          const localError = readLocalRequestErrorDetails(event.message);
+          const overflow = !localError && isContextOverflow(
+            event.message,
             effectiveModelContextWindow(this.model) || DEFAULT_CONTEXT_WINDOW,
           );
-          const failed = stopReason === "error" || overflow;
-          const aborted = stopReason === "aborted";
+          const aborted = stopReason === "aborted" || localError?.causeName === "AbortError";
+          const failed = !aborted && (stopReason === "error" || overflow);
           const errorMessage =
             failed &&
             typeof (event.message as any).errorMessage === "string" &&
@@ -6961,7 +6974,7 @@ Delegation rules:
                   retriable: false,
                 }
             : errorMessage
-              ? classifyProviderError(errorMessage, this.providerResponseStatus)
+              ? classifyProviderError(event.message, this.providerResponseStatus)
               : undefined;
           const nextText = content.hasText
             ? content.text
@@ -6989,8 +7002,8 @@ Delegation rules:
           // failed attempt cannot pair with a later usage report.
           this.recordContextCalibration(usage, failed || aborted);
           const hostedSearch = hostedSearchFromMessage({
-            content: (event.message as any).content,
-            citations: (event.message as any).hostedSearchCitations,
+            content: event.message.content,
+            citations: event.message.hostedSearchCitations,
           });
           if (hostedSearch) {
             const terminal = failed || aborted ? "failed" : "completed";
@@ -7117,7 +7130,8 @@ Delegation rules:
           const diagnosticError = classifiedError;
           const retryProviderAttempt =
             !overflow &&
-            diagnosticError !== undefined
+            diagnosticError !== undefined &&
+            diagnosticError.details?.origin !== "local"
               ? this.claimProviderRetry(diagnosticError, "stream")
               : undefined;
           if (

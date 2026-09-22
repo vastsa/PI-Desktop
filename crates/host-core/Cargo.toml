@@ -27,7 +27,9 @@ tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 walkdir = "2"
 aes-gcm = "0.11"
+argon2 = "0.5"
 rand = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

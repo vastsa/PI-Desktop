@@ -82,13 +82,13 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "contextWindow", "maxTokens", "thinkingLevels", "defaultThinkingLevel"],
+        "required": ["id"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "alias": { "type": "string", "maxLength": 60 },
-          "contextWindow": { "type": "integer", "minimum": 1 },
+          "contextWindow": { "type": "integer", "minimum": 0 },
           "contextWindowSource": { "enum": ["catalog", "user"] },
-          "maxTokens": { "type": "integer", "minimum": 1 },
+          "maxTokens": { "type": "integer", "minimum": 0 },
           "thinkingLevels": {
             "type": "array",
             "items": { "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"] },
@@ -124,6 +124,18 @@
 身份，别名从不用于提供商或模型解析。host-core 会修剪别名、丢弃空白值，
 并在超过 60 个 Unicode 字符时以 `MODEL_ALIAS_TOO_LONG` 拒绝。
 
+`models[].contextWindow` 与 `models[].maxTokens` 在线为可选。缺失的键、或显式的 `0`，
+都不是按模型的选择：host 把它读作 0 并补上通用默认值（128,000 / 8,192）——这与上面
+legacy 绑定被物化时用的是同一个值，也与未声明限额的插件 manifest 已经产生的值相同。
+存储数组与 manifest 由此对“没有限额的模型”取得一致（D610）。
+
+存储的 `models` 数组逐条解码。不再符合 schema 的条目会被跳过，并在宿主日志里带上
+提供商 id、条目下标与原因上报，而不是丢弃整个数组。读取仍可用，但会标记为降级：非法
+JSON、根节点非对象、`models` 非数组，或任一条目不可读，都会被上报。缺失的 `models`
+键和空数组仍是合法的 legacy 状态；所有条目都不可读的数组仍回退到 legacy 绑定并上报。
+为防止设置页的部分视图覆盖并丢失存储数据，当存储值降级时，`providers.update` 会以
+`MODEL_BINDINGS_DEGRADED` 拒绝显式替换模型数组；不涉及模型数组的提供商字段仍可更新。
+
 `models[].contextWindowSource` 记录存储的 `contextWindow` 来自哪里：`catalog` 表示
 models.dev 快照，之后的目录修正可以替换它；`user` 表示用户在设置中手改的值，永不被
 替换。该字段可选，因此早于该标记写出的配置仍可读，旧客户端会忽略它。host-core 只
@@ -137,6 +149,9 @@ models.dev 快照，之后的目录修正可以替换它；`user` 表示用户�
 代替模型记录。未知的自由形式模型暴露了 `supportsReasoning=false`
 和 `supportedThinkingLevels=["off"]`。原始秘密和内部兼容性
 JSON 保持隐藏状态。
+手输的自定义模型 id 会在写入绑定前先与该快照匹配（`providers.lookupModel`，§9）：
+即使该 id 不在任何已发现的列表中，已发布的记录也会提供绑定的上下文窗口、最大输出
+token 与思考等级；未发布的 id 仍沿用通用种子值。
 
 `authKind: "oauth"` 标记厂商账户行（ADR 0095、D237）：其凭据是保存在
 `secret:provider:<id>:oauth` 下的 OAuth 授权，而不是粘贴的密钥，因此该行
@@ -287,6 +302,7 @@ Copilot 的上下文相关请求标头；已保存的同名自定义 header 会�
 - `providers.delete`
 - `providers.testConnection`
 - `providers.listModels`
+- `providers.lookupModel`
 - `providers.cacheModels`（内部 Electron-main 到主机持久桥）
 - `providers.refreshModels`
 - `providers.upsertUserModel`
@@ -382,6 +398,20 @@ Copilot 的上下文相关请求标头；已保存的同名自定义 header 会�
 - 输出：`{ models: ModelCatalogItem[] }`；每个模型都带有 pi-resolved
   `reasoning` 功能和 `supportedThinkingLevels`。缓存的功能标签
   旧提供程序字段无法覆盖 pi 模型记录。
+
+### `providers.lookupModel`
+- 渲染器 IPC 入参：`{ modelId, baseUrl?, providerId?, vendorKey? }`
+- 输出：`{ info: ModelInfo | null }`
+- 只读取本地 models.dev 快照：先 `ensureLoaded` 再 `findModel`，不访问提供商网络，
+  也不调用主机 RPC。`vendorKey` 与 `baseUrl` 仅用于在重复 id 之间消歧归属的发布提供
+  商；`providerId` 会回显在返回记录上供设置界面使用。
+- 需要它是因为 `providers.listModels` 只描述已保存或已探测提供商的目录：手输的自定义
+  id 在提供商保存前没有别的通道取得其已发布限额。
+- 命中时按拾取模型的口径（`bindingFromModelInfo`）为这条绑定播种：已发布的上下文窗口、
+  最大输出 token 与思考等级，并标记 `contextWindowSource: "catalog"`；存储的 id 仍是
+  用户输入的那个（`bindingForCustomModelInfo`）。未命中（`null`）保持今天的行为：按
+  通用 128,000 / 8,192 与空思考等级播种（`bindingForCustomModel`）。行先落下再原地升级，
+  因此查询慢、失败或未发布时仍然只留一行可用记录，且不会覆盖期间发生的编辑或删除。
 
 ### `providers.cacheModels`（内部主机 RPC）
 - 在：`{ providerId, models: DiscoveredModelInput[] }`

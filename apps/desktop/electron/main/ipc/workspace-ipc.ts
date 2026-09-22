@@ -2,6 +2,7 @@ import { BrowserWindow, dialog, shell, type OpenDialogOptions } from "electron";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, statSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import {
   ErrorCodes,
@@ -737,12 +738,36 @@ export function registerWorkspaceIpc({
    * registered group root a valid containment base, so a chat reference that
    * resolves in a sibling folder still opens instead of failing containment —
    * which is what a user without the file view would otherwise see.
+   *
+   * Both the spelling of the root and its `realpath` are returned: a producer
+   * that canonicalizes what it records (image generation realpaths its output
+   * directory) would otherwise write a path that no listed root contains when
+   * `dataDir` or a project folder sits behind a link (`/var` on macOS, a linked
+   * or synced folder). The two entries name the same directory, and every
+   * candidate is still re-checked through `realpath` before a read is allowed.
    */
-  const fsExtraRoots = async (workspaceRoot: string | null): Promise<string[]> => [
-    join(dataDir, "scratch"),
-    join(dataDir, "attachments"),
-    ...projectFolderPaths(workspaceRoot).filter((path) => path !== workspaceRoot),
-  ];
+  const fsExtraRoots = async (workspaceRoot: string | null): Promise<string[]> => {
+    const roots = [
+      join(dataDir, "scratch"),
+      join(dataDir, "attachments"),
+      ...projectFolderPaths(workspaceRoot).filter((path) => path !== workspaceRoot),
+    ];
+    const canonical = await Promise.all(
+      roots.map(async (root) => {
+        try {
+          return await realpath(root);
+        } catch {
+          return null;
+        }
+      }),
+    );
+    return [
+      ...new Set([
+        ...roots,
+        ...canonical.filter((root): root is string => typeof root === "string"),
+      ]),
+    ];
+  };
 
   /**
    * The session's own scratch directory (ADR 0124), or null when the session

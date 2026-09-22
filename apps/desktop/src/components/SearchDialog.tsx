@@ -321,6 +321,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
         aria-label={t("nav.search")}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
           // Escape must close even when focus left the input (e.g. tabbing).
           if (event.key === "Escape") {
             event.preventDefault();

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bindingForCustomModel,
+  bindingForCustomModelInfo,
   bindingFromModelInfo,
   bindingSupportsDocuments,
   effectiveContextWindow,
@@ -141,6 +142,30 @@ describe("effective binding attachment capabilities", () => {
     expect(bindingSupportsImages(custom, null)).toBe(false);
     expect(bindingSupportsImages({ supportsImages: true }, null)).toBe(true);
   });
+
+describe("a hand-typed id the catalog publishes", () => {
+  it("adopts the published limits and thinking levels", () => {
+    // The user typed a custom id; models.dev knows it, so the row is seeded
+    // like a picked model instead of the generic 128k / 8k seed.
+    const published: ModelInfo = {
+      ...textModel(),
+      reasoning: true,
+      supportedThinkingLevels: ["low", "high"],
+      limit: { context: 1_048_576, output: 64_000 },
+    };
+    const binding = bindingForCustomModelInfo("My-Proxy/Model", published);
+    expect(binding.contextWindow).toBe(1_048_576);
+    expect(binding.contextWindowSource).toBe("catalog");
+    expect(binding.maxTokens).toBe(64_000);
+    expect(binding.thinkingLevels).toEqual(["low", "high"]);
+  });
+
+  it("keeps the id the user typed, not the catalog spelling", () => {
+    const binding = bindingForCustomModelInfo("My-Proxy/Model", textModel());
+    expect(binding.id).toBe("My-Proxy/Model");
+    expect(bindingForCustomModelInfo("  spaced-id  ", textModel()).id).toBe("spaced-id");
+  });
+});
 });
 
 describe("compact token counts", () => {

@@ -28,7 +28,14 @@ pass startup handshake and fail only when the new command is invoked.
   `NOT_FOUND`.
 - The child inherits project, provider, model, mode, thinking, and permission
   mode. It does not inherit turns, regenerate revisions, notifications,
-  artifacts, session grants, scratch data, pin state, or live runtime state.
+  artifacts, session grants, arbitrary scratch outputs, pin state, or live
+  runtime state.
+- Referenced existing files under the source session's `scratch/<id>/pasted/`
+  directory are copied into the child's own input directory. Canonical message
+  and retained compaction references are rewritten before indexing. This keeps
+  pasted/imported inputs usable after source deletion without granting access
+  to another session's scratch directory. Already-expired inputs remain missing;
+  unrelated scratch outputs and unreferenced files are not inherited.
 - No parent/child lineage is stored. This is an independent conversation copy,
   not a message tree and not a replacement for linear regenerate history.
 - Assistant response Fork uses the bounded snapshot directly. Assistant Edit
@@ -39,8 +46,8 @@ pass startup handshake and fail only when the new command is invoked.
 - Fork is available only while the source is idle. Electron exposes
   `AGENT_BUSY`; the host retains a persisted running-turn `CONFLICT` guard that
   Electron normalizes at the IPC boundary.
-- A handled file or index failure removes the child transcript and leaves no
-  visible child. Process crashes continue to follow the transcript store's
+- A handled file or index failure removes the child transcript and copied
+  inputs and leaves no visible child. Process crashes continue to follow the transcript store's
   existing orphan-file recovery policy.
 
 ## Consequences
@@ -48,7 +55,8 @@ pass startup handshake and fail only when the new command is invoked.
 - Renderer and host binaries from protocol v4 are rejected during startup
   instead of failing lazily when Create branch is selected.
 - Source and child can evolve, reconfigure, persist, and delete independently.
-- Fork storage cost is proportional to the active transcript size.
+- Fork storage cost is proportional to the active transcript and its referenced
+  pasted inputs.
 - Message-scoped Fork/Edit storage cost is proportional to the canonical
   prefix through the selected response plus any child-only revision payloads.
 - Every child has a new session id and first creates/reseeds its own pi runtime;

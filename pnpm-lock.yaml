@@ -6,22 +6,25 @@ settings:
 
 overrides:
   '@tailwindcss/node>lightningcss': 1.33.0
-  dompurify@3: '>=3.4.13 <4'
   brace-expansion@1: '>=1.1.17 <2'
   brace-expansion@2: '>=2.1.4 <3'
   brace-expansion@5: '>=5.0.9 <6'
+  dompurify@3: '>=3.4.13 <4'
   fast-uri@3: '>=3.1.5 <4'
-  undici@6: '>=6.28.0 <7'
   js-yaml@4: '>=4.3.1 <5'
+  undici@6: '>=6.28.0 <7'
   vite@5: '>=6.4.3 <7'
 
 patchedDependencies:
   '@earendil-works/pi-agent-core@0.86.1':
-    hash: d02b52788e66e62012d5b9d24599bfc5cb82e0cf0c8afee2b208eb5c0ff7cecb
+    hash: 62947f964f4c6270c68576ce7aa748a00bd20bca9c96e0dc49a4c17b0b283be1
     path: patches/@earendil-works__pi-agent-core@0.86.1.patch
   '@earendil-works/pi-ai@0.86.1':
-    hash: 1b38ecb724d9d9ff4135d8ec6dc92e3ba704c06baad8d221ca6191471875b825
+    hash: db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe
     path: patches/@earendil-works__pi-ai@0.86.1.patch
+  '@earendil-works/pi-coding-agent@0.86.1':
+    hash: 60323335b0bd5cdbd857e5b9cf24bb794766f85bf3682694b9a43694bb435227
+    path: patches/@earendil-works__pi-coding-agent@0.86.1.patch
 
 importers:
 
@@ -42,7 +45,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 0.86.1
-        version: 0.86.1(patch_hash=1b38ecb724d9d9ff4135d8ec6dc92e3ba704c06baad8d221ca6191471875b825)(ws@8.21.1)(zod@4.4.3)
+        version: 0.86.1(patch_hash=db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe)(ws@8.21.1)(zod@4.4.3)
       '@pi-desktop/agent-host':
         specifier: workspace:*
         version: link:../../packages/agent-host
@@ -225,13 +228,13 @@ importers:
     dependencies:
       '@earendil-works/pi-agent-core':
         specifier: 0.86.1
-        version: 0.86.1(patch_hash=d02b52788e66e62012d5b9d24599bfc5cb82e0cf0c8afee2b208eb5c0ff7cecb)(ws@8.21.1)(zod@4.4.3)
+        version: 0.86.1(patch_hash=62947f964f4c6270c68576ce7aa748a00bd20bca9c96e0dc49a4c17b0b283be1)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-ai':
         specifier: 0.86.1
-        version: 0.86.1(patch_hash=1b38ecb724d9d9ff4135d8ec6dc92e3ba704c06baad8d221ca6191471875b825)(ws@8.21.1)(zod@4.4.3)
+        version: 0.86.1(patch_hash=db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
         specifier: 0.86.1
-        version: 0.86.1(ws@8.21.1)(zod@4.4.3)
+        version: 0.86.1(patch_hash=60323335b0bd5cdbd857e5b9cf24bb794766f85bf3682694b9a43694bb435227)(ws@8.21.1)(zod@4.4.3)
       '@pi-desktop/shared':
         specifier: workspace:*
         version: link:../shared
@@ -4819,10 +4822,10 @@ snapshots:
     dependencies:
       esbuild: 0.28.2
 
-  '@earendil-works/pi-agent-core@0.86.1(patch_hash=d02b52788e66e62012d5b9d24599bfc5cb82e0cf0c8afee2b208eb5c0ff7cecb)(ws@8.21.1)(zod@4.4.3)':
+  '@earendil-works/pi-agent-core@0.86.1(patch_hash=62947f964f4c6270c68576ce7aa748a00bd20bca9c96e0dc49a4c17b0b283be1)(ws@8.21.1)(zod@4.4.3)':
     dependencies:
       '@earendil-works/chord': 0.86.1
-      '@earendil-works/pi-ai': 0.86.1(patch_hash=1b38ecb724d9d9ff4135d8ec6dc92e3ba704c06baad8d221ca6191471875b825)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-ai': 0.86.1(patch_hash=db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-telemetry': 0.86.1
       diff: 8.0.4
       ignore: 7.0.8
@@ -4837,7 +4840,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.86.1(patch_hash=1b38ecb724d9d9ff4135d8ec6dc92e3ba704c06baad8d221ca6191471875b825)(ws@8.21.1)(zod@4.4.3)':
+  '@earendil-works/pi-ai@0.86.1(patch_hash=db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe)(ws@8.21.1)(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.124.0(zod@4.4.3)
       '@aws-sdk/client-bedrock-runtime': 3.1127.0
@@ -4858,11 +4861,11 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-coding-agent@0.86.1(ws@8.21.1)(zod@4.4.3)':
+  '@earendil-works/pi-coding-agent@0.86.1(patch_hash=60323335b0bd5cdbd857e5b9cf24bb794766f85bf3682694b9a43694bb435227)(ws@8.21.1)(zod@4.4.3)':
     dependencies:
       '@earendil-works/chord': 0.86.1
-      '@earendil-works/pi-agent-core': 0.86.1(patch_hash=d02b52788e66e62012d5b9d24599bfc5cb82e0cf0c8afee2b208eb5c0ff7cecb)(ws@8.21.1)(zod@4.4.3)
-      '@earendil-works/pi-ai': 0.86.1(patch_hash=1b38ecb724d9d9ff4135d8ec6dc92e3ba704c06baad8d221ca6191471875b825)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-agent-core': 0.86.1(patch_hash=62947f964f4c6270c68576ce7aa748a00bd20bca9c96e0dc49a4c17b0b283be1)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-ai': 0.86.1(patch_hash=db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-tui': 0.86.1
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 6.0.0

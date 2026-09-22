@@ -724,7 +724,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   append to that session's Host-owned, persisted FIFO queue; session switching
   never moves or clears another session's queue.
 - The queue renders above the composer. Each row has an independently
-  keyboard-reachable Remove action and a Send now action.
+  keyboard-reachable Remove action and a Send now action once Host admission
+  returns a durable id. While admission is pending, row actions are disabled
+  with Saving tooltips and a Saving label on Send now; edit/remove leave both
+  the queue and composer draft unchanged.
 - Send now moves its row to the head and requests the new `agent/stop` channel.
   The current assistant response and completed tool batch finish normally;
   after `agent_end` and durable turn finalization, the promoted row is

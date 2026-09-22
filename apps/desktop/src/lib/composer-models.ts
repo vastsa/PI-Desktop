@@ -1,7 +1,7 @@
 import {
   bindingSupportsImages,
   isImageGenerationModel,
-  type ImageGenerationBinding,
+  type ImageGenerationBindings,
   modelIdsMatch,
   modelMatchesFilter,
   type ModelBinding,
@@ -53,7 +53,7 @@ function configuredModelIds(provider: ConfiguredProvider): string[] {
 export function composerModelsForProvider(
   provider: ConfiguredProvider,
   discovered: readonly ModelInfo[] | undefined,
-  imageGeneration?: ImageGenerationBinding | null,
+  imageGeneration?: ImageGenerationBindings | null,
 ): ModelInfo[] {
   return configuredModelIds(provider).filter((modelId) =>
     !isImageGenerationModel(imageGeneration, provider.id, modelId),

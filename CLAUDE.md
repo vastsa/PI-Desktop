@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Policy-Sync: 2026-09-21.1
+Policy-Sync: 2026-09-21.2
 
 Instructions for Claude Code CLI and Claude Cowork on PI-Desktop.
 
@@ -91,6 +91,19 @@ Environment:
 ```
 
 If a required suite cannot run, report `NOT RUN` with reason, alternative validation, and remaining risk. Never report a skipped command as passing.
+
+### E2E environment reuse
+
+Task-candidate E2E uses the host development environment already provisioned
+in the primary checkout. Reuse its Node/pnpm toolchain, compatible
+`node_modules`, Electron, Rust/Cargo targets, stores, caches, and ignored
+configuration by reference or link when needed.
+
+Never run `pnpm install` or `npm install`, or create a second dependency or
+runtime environment, solely for E2E. Keep temporary profiles, data, sockets,
+ports, logs, and artifacts isolated. Install or rebuild only for missing or
+incompatible host dependencies, and record the reason; clean CI/release
+runners may install from lockfiles.
 
 ### Architecture (frozen)
 

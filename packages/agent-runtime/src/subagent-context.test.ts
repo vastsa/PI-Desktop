@@ -353,6 +353,24 @@ describe("prepareDelegateTurnContext", () => {
 });
 
 describe("degradedDelegateMessages", () => {
+  it("charges retained search only when the target adapter replays it", () => {
+    const target: Model<Api> = { ...smallModel(), api: "openai-responses" };
+    const brief = userMessage("Keep the useful answer.");
+    const search: AssistantMessage = {
+      ...assistantText("useful answer"), api: target.api,
+      content: [
+        { type: "hostedSearch", phase: "web_search_call", blockId: "ws", wire: {
+          type: "web_search_call", id: "ws", status: "completed", action: { type: "search", query: "x".repeat(20_000) },
+        } },
+        { type: "text", text: "useful answer" },
+      ],
+    };
+    const messages = [brief, search];
+    expect(degradedDelegateMessages(messages, "brief", target)).toEqual([brief]);
+    expect(degradedDelegateMessages(messages, "brief", { ...target, id: "other-model" })).toEqual(messages);
+    expect(degradedDelegateMessages(messages, "brief", { contextWindow: target.contextWindow, maxTokens: target.maxTokens })).toEqual([brief]);
+  });
+
   it("keeps the brief plus the most recent complete exchanges that still fit", () => {
     const brief = userMessage("Survey the module.");
     const exchange = (id: string, text: string): AgentMessage[] => [

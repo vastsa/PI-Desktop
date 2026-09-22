@@ -50,6 +50,17 @@ for a fixed interval while preserving calendar semantics for daily/weekly tasks.
 No cloud execution, OS service, arbitrary cron or sub-hourly interval is added.
 Downgrading keeps the existing records readable but removes automatic execution.
 
+## Calendar provenance compatibility
+
+The optional `calendarConfigured` configuration key records explicit Daily or
+Weekly calendar intent separately from Hourly's required internal placeholder.
+Legacy Daily/Weekly rows infer intent from their saved cadence. Legacy Hourly
+rows preserve saved fields but require an explicit schedule on calendar
+conversion, because their origin cannot be recovered reliably. Known calendar
+intent survives an Hourly round trip and restart. This uses the existing JSON
+extension boundary with no physical schema migration or new wire field.
+Downgrades retain readable task data but cannot enforce the conversion guard.
+
 ## Alternatives
 
 A plugin would duplicate lifecycle/storage ownership and make baseline

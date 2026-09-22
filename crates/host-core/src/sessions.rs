@@ -11,6 +11,8 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
+mod fork_files;
+
 pub const MODES: [&str; 3] = ["plan", "goal", "agent"];
 
 /// Maximum number of Unicode scalar values accepted for a user-defined title.
@@ -1481,8 +1483,9 @@ pub fn get_session_with_options(
 }
 
 /// Create an independent session from the source session's current canonical
-/// transcript. Regenerate revisions, turns, artifacts, notifications, scratch
-/// data, and live runtime state are intentionally not copied.
+/// transcript and referenced pasted inputs. Regenerate revisions, turns,
+/// artifacts, notifications, other scratch data, and live runtime state are
+/// intentionally not copied.
 pub enum ForkSessionResult {
     Created(Box<SessionDetail>),
     NotFound,
@@ -1536,15 +1539,22 @@ pub fn fork_session_through(
         source_records.truncate(position + 1);
     }
     let source_compactions = transcripts::read_compactions(db.data_dir(), source_id)?;
-    let (records, message_ids, tool_call_ids) = clone_records_for_fork(source_records);
+    let (mut records, message_ids, tool_call_ids) = clone_records_for_fork(source_records);
     // Each checkpoint is remapped on its own: a message-scoped fork can cut the
     // anchor of a later checkpoint while the earlier ones stay intact.
-    let compactions: Vec<CompactionRecord> = source_compactions
+    let mut compactions: Vec<CompactionRecord> = source_compactions
         .into_iter()
         .filter_map(|record| clone_compaction_for_fork(record, &message_ids, &tool_call_ids))
         .collect();
-    let texts = records.iter().map(record_index_text).collect::<Vec<_>>();
     let id = Uuid::new_v4().to_string();
+    let files = fork_files::preserve(
+        db.data_dir(),
+        source_id,
+        &id,
+        &mut records,
+        &mut compactions,
+    )?;
+    let texts = records.iter().map(record_index_text).collect::<Vec<_>>();
     let now = now_ms();
     let created_at = ms_to_ts(now);
     let requested_title = title.map(str::trim).filter(|value| !value.is_empty());
@@ -1553,13 +1563,16 @@ pub fn fork_session_through(
         .unwrap_or_else(|| format!("{} (branch)", source.summary.title));
 
     invalidate_transcript_layout(&id);
-    transcripts::write_transcript_with_compactions(
+    if let Err(error) = transcripts::write_transcript_with_compactions(
         db.data_dir(),
         &id,
         &created_at,
         &records,
         &compactions,
-    )?;
+    ) {
+        transcripts::remove_session_files(db.data_dir(), &id);
+        return Err(error);
+    }
     let indexed = (|| -> Result<()> {
         let tx = db.conn().unchecked_transaction()?;
         let inserted = tx
@@ -1587,6 +1600,7 @@ pub fn fork_session_through(
         transcripts::remove_session_files(db.data_dir(), &id);
         return Err(error);
     }
+    files.commit();
 
     let summary = SessionSummary {
         id,
@@ -5032,6 +5046,133 @@ mod tests {
         let detail = get_session(&db, &session.id).unwrap().unwrap();
         assert_eq!(detail.messages.len(), 2);
         assert_eq!(detail.messages[1].content, "next");
+    }
+
+    #[test]
+    fn fork_index_failure_removes_copied_inputs_and_transcript() {
+        let db = test_db();
+        let source = create_session(&db, None, None, None, None, None).unwrap();
+        let pasted = crate::scratch::session_dir(db.data_dir(), &source.id)
+            .unwrap()
+            .join("pasted");
+        std::fs::create_dir_all(&pasted).unwrap();
+        let file = pasted.join("note.txt");
+        std::fs::write(&file, "keep source").unwrap();
+        append_message(
+            &db,
+            &source.id,
+            &user_msg(
+                "input",
+                &format!("@{}", file.display()),
+                "2025-05-01T00:00:00Z",
+            ),
+            None,
+        )
+        .unwrap();
+        let files_before = std::fs::read_dir(db.data_dir().join("sessions"))
+            .unwrap()
+            .count();
+        db.conn().execute_batch("CREATE TRIGGER fail_fork BEFORE INSERT ON sessions BEGIN SELECT RAISE(ABORT, 'injected index failure'); END;").unwrap();
+        let result = fork_session_through(&db, &source.id, None, None);
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read_dir(db.data_dir().join("sessions"))
+                .unwrap()
+                .count(),
+            files_before
+        );
+        assert_eq!(
+            std::fs::read_dir(crate::scratch::base_dir(db.data_dir()))
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(std::fs::read_to_string(file).unwrap(), "keep source");
+    }
+
+    #[test]
+    fn fork_preserves_referenced_pasted_files_independently() {
+        let db = test_db();
+        let source =
+            create_session(&db, Some("Attachments".into()), None, None, None, None).unwrap();
+        let scratch = crate::scratch::session_dir(db.data_dir(), &source.id).unwrap();
+        let pasted = scratch.join("pasted");
+        std::fs::create_dir_all(&pasted).unwrap();
+        let first = pasted.join("first note.txt");
+        let later = pasted.join("later.png");
+        std::fs::write(&first, "original reference bytes").unwrap();
+        std::fs::write(&later, b"image bytes").unwrap();
+        std::fs::write(pasted.join("unused.txt"), "do not copy").unwrap();
+        let first_text = format!("Read @\"{}\"", first.display());
+        append_message(
+            &db,
+            &source.id,
+            &user_msg("paste-1", &first_text, "2025-05-01T00:00:00Z"),
+            None,
+        )
+        .unwrap();
+        append_message(
+            &db,
+            &source.id,
+            &user_msg(
+                "paste-2",
+                &format!("@{}", later.display()),
+                "2025-05-01T00:00:01Z",
+            ),
+            None,
+        )
+        .unwrap();
+        let ForkSessionResult::Created(child) =
+            fork_session_through(&db, &source.id, None, Some("paste-1")).unwrap()
+        else {
+            panic!("expected child")
+        };
+        let child_scratch = crate::scratch::session_dir(db.data_dir(), &child.summary.id).unwrap();
+        let child_file = child_scratch.join("pasted/first note.txt");
+        assert_eq!(
+            std::fs::read_to_string(&child_file).unwrap(),
+            "original reference bytes"
+        );
+        assert_eq!(
+            child.messages[0].content,
+            format!("Read @\"{}\"", child_file.display())
+        );
+        assert!(!child_scratch.join("pasted/later.png").exists());
+        assert!(!child_scratch.join("pasted/unused.txt").exists());
+        assert_eq!(
+            get_session(&db, &source.id).unwrap().unwrap().messages[0].content,
+            first_text
+        );
+        delete_session(&db, &source.id).unwrap();
+        crate::scratch::remove_session_dir(db.data_dir(), &source.id);
+        assert_eq!(
+            std::fs::read_to_string(&child_file).unwrap(),
+            "original reference bytes"
+        );
+        assert_eq!(
+            get_session(&db, &child.summary.id)
+                .unwrap()
+                .unwrap()
+                .messages[0]
+                .content,
+            child.messages[0].content
+        );
+        let ForkSessionResult::Created(grandchild) =
+            fork_session_through(&db, &child.summary.id, None, None).unwrap()
+        else {
+            panic!("expected grandchild")
+        };
+        let grandchild_file = crate::scratch::session_dir(db.data_dir(), &grandchild.summary.id)
+            .unwrap()
+            .join("pasted/first note.txt");
+        assert_eq!(
+            std::fs::read_to_string(&grandchild_file).unwrap(),
+            "original reference bytes"
+        );
+        assert_eq!(
+            grandchild.messages[0].content,
+            format!("Read @\"{}\"", grandchild_file.display())
+        );
     }
 
     #[test]

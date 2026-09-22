@@ -2,13 +2,44 @@ import { modelIdsMatch } from "./types/models.js";
 
 /** A single host-owned binding, independent of the default conversation model. */
 export type ImageGenerationBinding = { providerId: string; modelId: string };
+export type ImageGenerationBindings =
+  | ImageGenerationBinding
+  | readonly ImageGenerationBinding[];
+
+function sameImageGenerationBinding(
+  left: ImageGenerationBinding,
+  right: ImageGenerationBinding,
+): boolean {
+  return left.providerId === right.providerId && modelIdsMatch(left.modelId, right.modelId);
+}
+
+/** Resolve the multi-select candidates, with legacy single-binding fallback. */
+export function imageGenerationBindings(
+  candidates: readonly ImageGenerationBinding[] | null | undefined,
+  active: ImageGenerationBinding | null | undefined,
+): ImageGenerationBinding[] {
+  const source = candidates === undefined ? (active ? [active] : []) : candidates ?? [];
+  const result: ImageGenerationBinding[] = [];
+  for (const candidate of source) {
+    if (!result.some((entry) => sameImageGenerationBinding(entry, candidate))) {
+      result.push(candidate);
+    }
+  }
+  if (active && !result.some((entry) => sameImageGenerationBinding(entry, active))) {
+    result.push(active);
+  }
+  return result;
+}
+
 export function isImageGenerationModel(
-  binding: ImageGenerationBinding | null | undefined,
+  binding: ImageGenerationBindings | null | undefined,
   providerId: string | undefined,
   modelId: string | undefined,
 ): boolean {
-  return !!binding && binding.providerId === providerId && !!modelId &&
-    modelIdsMatch(binding.modelId, modelId);
+  const bindings = Array.isArray(binding) ? binding : binding ? [binding] : [];
+  return !!providerId && !!modelId && bindings.some((entry) =>
+    entry.providerId === providerId && modelIdsMatch(entry.modelId, modelId),
+  );
 }
 export const MAX_GENERATED_IMAGES = 10;
 export const IMAGE_GENERATION_TIMEOUT_MS = 180_000;
@@ -39,6 +70,23 @@ export function parseImageGenerationBinding(value: unknown): ImageGenerationBind
     return raw.trim();
   };
   return { providerId: field("providerId", 128), modelId: field("modelId", 256) };
+}
+
+export const MAX_IMAGE_GENERATION_MODELS = 128;
+
+export function parseImageGenerationBindings(
+  value: unknown,
+): ImageGenerationBinding[] | null {
+  if (value == null) return null;
+  if (!Array.isArray(value)) invalid("imageGenerationModels must be an array");
+  if (value.length > MAX_IMAGE_GENERATION_MODELS) {
+    invalid(`imageGenerationModels must contain at most ${MAX_IMAGE_GENERATION_MODELS} models`);
+  }
+  return value.map((entry) => {
+    const binding = parseImageGenerationBinding(entry);
+    if (!binding) invalid("imageGenerationModels contains an invalid binding");
+    return binding;
+  });
 }
 
 /** Expand variants into individually accountable requests; never silently truncate. */

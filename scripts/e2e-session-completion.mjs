@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { Host, resolveHostBinary } from "./e2e/host.mjs";
 
 register(new URL("../apps/desktop/test/helpers/ts-import-hooks.mjs", import.meta.url));
-const { resolveSessionMessageInput } = await import("../apps/desktop/electron/main/session-message-input.ts");
+const { resolveSessionMessageInput } = await import("../packages/host-runtime/src/session-message-input.ts");
 const { formatSessionMessage } = await import("../packages/shared/dist/index.js");
 const scenario = "E2E-SESSION-completion-notice-allows-silence";
 const dataDir = mkdtempSync(join(tmpdir(), "pi-completion-e2e-"));

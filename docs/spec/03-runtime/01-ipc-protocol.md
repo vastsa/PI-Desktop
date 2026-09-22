@@ -2253,3 +2253,30 @@ returns `{ ok: true }` and forwards to host `providers.reorder`. The sandboxed
 preload permits this channel through the shared IPC registry. Invalid placement
 or missing providers returns `INVALID_PARAMS`; configuration and defaults are
 unchanged. See [provider configuration](12-provider-config-schema.md).
+
+## 15. Cloud configuration sync
+
+The Settings → Cloud sync page uses the following renderer-to-Main channels;
+all are forwarded to the Host-owned `configSync.*` RPC methods:
+
+| IPC channel | Host method | contract |
+|---|---|---|
+| `pi-desktop/configSync/getState` | `configSync.getState` | redacted status, category selections, preview counts, and pending approval summaries |
+| `pi-desktop/configSync/test` | `configSync.test` | WebDAV capability probe using a temporary object; no configuration is persisted |
+| `pi-desktop/configSync/configure` | `configSync.configure` | validates the endpoint, stores encrypted local sync metadata, and enables the vault |
+| `pi-desktop/configSync/syncNow` | `configSync.syncNow` | runs one Host-owned reconciliation cycle |
+| `pi-desktop/configSync/pause` | `configSync.pause` | pauses or resumes this device only |
+| `pi-desktop/configSync/unlock` | `configSync.unlock` | unlocks the local vault for the current process/device |
+| `pi-desktop/configSync/approve` / `reject` | `configSync.approve` / `configSync.reject` | records a digest-bound local activation decision |
+| `pi-desktop/configSync/mapProject` | `configSync.mapProject` | binds one opaque project/group identity to one or more explicitly selected local folders, preserving primary-root order |
+| `pi-desktop/configSync/listHistory` | `configSync.listHistory` | lists redacted reachable revision metadata only |
+| `pi-desktop/configSync/restore` | `configSync.restore` | creates a new propagated revision from an explicitly acknowledged historical revision and stages local approvals/recovery |
+| `pi-desktop/configSync/changePassword` | `configSync.changePassword` | CAS-rewraps the vault key header without returning keys or secret values |
+| `pi-desktop/configSync/disconnect` | `configSync.disconnect` | removes local sync metadata and keys; it does not delete remote vault data |
+
+Input passwords are accepted only for the operation that needs them. No raw
+secret, vault key, decrypted resource, or remote archive crosses back to the
+renderer. The `configSync.changed` event carries the same redacted state and
+is emitted by Host-originated changes, including the Host scheduler. Main is a
+transport/lifecycle coordinator and does not schedule, merge, encrypt, or
+apply configuration.

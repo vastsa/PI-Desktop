@@ -154,6 +154,7 @@ export const MessageRow = memo(function MessageRow({
                   disabled={retryingEdit}
                   onChange={(event) => setEditValue(event.target.value)}
                   onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
                     if (event.key === "Escape") {
                       cancelEdit();
                     } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {

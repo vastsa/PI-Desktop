@@ -33,7 +33,9 @@
     "test:e2e:transcript-disclosure": "node scripts/e2e-transcript-disclosure-anchor.mjs",
     "test:e2e:images": "node scripts/e2e-image-generation.mjs && node scripts/e2e-image-generation-ui.mjs && node scripts/e2e-image-chat.mjs",
     "test:e2e:provider-order": "node scripts/e2e-provider-order.mjs",
+    "test:e2e:project-edit": "node scripts/e2e-project-edit.mjs",
     "test:e2e:provider-api-style": "node scripts/e2e-provider-api-style.mjs",
+    "test:e2e:hosted-search": "node scripts/e2e-hosted-search.mjs",
     "test:e2e:oauth-retry": "node --test apps/desktop/test/anthropic-oauth-retry.test.mjs",
     "test:e2e:boot": "node scripts/e2e-electron-boot.mjs",
     "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
@@ -61,6 +63,7 @@
     "test:e2e:collaboration": "node scripts/e2e-session-collaboration.mjs",
     "test:e2e:session-completion": "node scripts/e2e-session-completion.mjs",
     "test:e2e:remote-host": "node scripts/e2e-remote-host.mjs",
+    "test:e2e:shortcut-settings": "node scripts/test-shortcut-settings.mjs",
     "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs"
   },
   "devDependencies": {

@@ -7,10 +7,12 @@
  * formula from here instead of each owning a copy that can drift.
  *
  * Deliberately dependency-light — token estimation is delegated to
- * pi-agent-core and nothing else is imported, so this module stays usable from
- * any runtime context and can never form a cycle with `runtime.ts`.
+ * pi-agent-core, and pi-ai only contributes the erased `Model`/`Api` *types*,
+ * so this module stays usable from any runtime context and can never form a
+ * cycle with `runtime.ts`.
  */
 
+import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   estimateContextTokens,
   type AgentMessage,
@@ -70,6 +72,13 @@ export type ContextBudgetModel = {
   maxTokens?: number;
 };
 
+/**
+ * Estimation input. A full pi-ai `Model` additionally carries the replay
+ * identity (`api`/`provider`/`id`) that hosted-search token estimation needs,
+ * which is why it is named on its own next to the partial window facts above.
+ */
+export type ContextBudgetModelInput = ContextBudgetModel | Model<Api>;
+
 /** Thresholds only, for callers that already know their own token count. */
 export type ContextBudgetLimits = Omit<ContextBudget, "tokens">;
 
@@ -117,13 +126,32 @@ export function contextBudgetLimitsFor(
   return { hardLimit, requestHeadroom, keepRecentTokens };
 }
 
+/**
+ * Token estimate of `messages` as the target model will carry them.
+ *
+ * Hosted search is model-dependent: the Responses adapter replays a
+ * `web_search_call` only for the model that produced it, so `api` is the
+ * discriminant that says whether a target model is known at all. A caller with
+ * partial model facts (a catalog entry, a caller test) has no target and keeps
+ * the conservative estimate — every search block is charged rather than
+ * assumed away.
+ */
+function estimateContextTokensFor(
+  model: ContextBudgetModelInput,
+  messages: AgentMessage[],
+): ReturnType<typeof estimateContextTokens> {
+  return "api" in model
+    ? estimateContextTokens(messages, model)
+    : estimateContextTokens(messages);
+}
+
 /** Thresholds for a model window, plus the estimated size of `messages`. */
 export function contextBudgetFor(
-  model: ContextBudgetModel,
+  model: ContextBudgetModelInput,
   messages: AgentMessage[],
 ): ContextBudget {
   return {
-    tokens: estimateContextTokens(messages).tokens,
+    tokens: estimateContextTokensFor(model, messages).tokens,
     ...contextBudgetLimitsFor(model),
   };
 }

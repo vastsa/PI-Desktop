@@ -443,6 +443,11 @@ CREATE INDEX idx_session_import_origins_plugin
   消息。 Assistant Edit 使用该子项并记录 original/edited
   子级现有 `message_revisions` 存储中的响应尾部；来源
   抄本和源版本的修订永远不会被重写。
+- 分支将已有且被引用的 `scratch/<sourceId>/pasted/` 文件复制到
+  `scratch/<childId>/pasted/`，在建立索引前更新消息和检查点中的路径。
+  删除原任务不会删除子任务的副本。未引用文件、截断点之后独有的输入和其他
+  scratch 输出不复制；已过期的文件仍不可用，不新增跨任务读取授权。
+  分支失败时清理已复制的输入及子任务转录本。
 
 ### 4.6 turns — 每次 agent 运行一行
 
@@ -1318,3 +1323,11 @@ UI投影损失
 Host-core owns updates through `providers.reorder`; missing metadata preserves
 creation order, new IDs follow saved IDs, and deleted IDs are ignored. This
 preference does not rewrite provider configuration or require a schema migration.
+
+### 定时任务日历配置来源
+
+可选的 `config_json.calendarConfigured` 布尔值独立记录明确的日历配置意图，
+不与 Hourly 间隔内部需要的 schedule 对象混用。旧版 Daily／Weekly 行只要保存了
+schedule 就推断为日历配置；旧版 Hourly 行保留字段，但转换时需要明确确认日历时间。
+已知意图在周期切换和数据库重开后仍然保留。该新增 JSON 字段不需要表或 schema
+版本迁移；旧版本会忽略它，也无法执行新的转换保护。

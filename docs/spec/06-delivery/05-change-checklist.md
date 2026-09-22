@@ -68,10 +68,11 @@ Before editing any file for a new request:
   worktree is clean.
 - [ ] A dedicated `<type>/<short-description>` request branch and worktree are
   created from that updated `main` commit.
-- [ ] The request worktree reuses the primary checkout's toolchains, package
-  stores, caches, and ignored local configuration where safe.
-- [ ] Mutable, incompatible, or concurrency-sensitive environment state stays
-  worktree-local and ignored.
+- [ ] The request worktree reuses the primary checkout's host toolchains,
+  compatible dependency tree, package stores, caches, and ignored local
+  configuration where safe; no separate environment is installed for E2E.
+- [ ] Only mutable, incompatible, or concurrency-sensitive environment state
+  stays worktree-local and ignored.
 - [ ] The current branch is not `main` before implementation begins.
 - [ ] Delivery scope is recorded: a commit request stays on the request
   branch; a push request includes PR-based remote `main` integration after
@@ -126,6 +127,10 @@ After implementation (or alongside it):
   opened, or before a commit-only delivery was declared complete; required
   validation needs no separate user request. Documentation-only changes retain
   their existing exemption.
+- [ ] Task-candidate E2E used the host development environment already
+  provisioned in the primary checkout; no `pnpm install`/`npm install` or
+  second dependency/runtime environment was created solely for E2E. Any
+  missing/incompatible-host exception is recorded with its reason.
 - [ ] Results apply to the commit the gate ran on, and the affected suites were
   rerun when the landed executable content changed. Any required suite not run
   is recorded with its reason, alternative validation, and remaining risk;

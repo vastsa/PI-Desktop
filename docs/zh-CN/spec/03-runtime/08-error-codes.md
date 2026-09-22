@@ -73,6 +73,14 @@ type AppError = {
 | `HOST_SHUTTING_DOWN` | 是的 | 主机收到 EOF 正在排空；调用被拒绝而不是被启动 |
 | `RATE_LIMITED` | 是的 | 某个按调用方计的主机预算（插件会话导入、批量操作）在其窗口内被超出 |
 | `LIMIT_EXCEEDED` | 不 | 载荷超过了固定的主机上限（条目数、字节数）并被拒绝 |
+| `CONFIG_SYNC_INVALID` | 不 | 同步配置、密码、路径、请求或审批输入无效 |
+| `CONFIG_SYNC_LOCKED` | 不 | 本地加密同步 vault 尚未解锁 |
+| `CONFIG_SYNC_UNSUPPORTED` | 不 | vault 格式或 WebDAV 服务器能力不受支持 |
+| `CONFIG_SYNC_REMOTE` | 也许 | 远端 WebDAV 对象、认证、配额或可用性失败 |
+| `CONFIG_SYNC_CONFLICT` | 也许 | 远端 head、vault 身份或审批 digest 冲突 |
+| `CONFIG_SYNC_CRYPTO` | 不 | 认证加密、对象身份或密文校验失败 |
+| `CONFIG_SYNC_MAPPING_REQUIRED` | 不 | 导入的项目作用域配置需要明确的本地文件夹/项目组映射 |
+| `CONFIG_SYNC_LIMIT_EXCEEDED` | 不 | 加密同步状态超过实体、对象、资源、归档或解压上限 |
 
 `HOST_UNAVAILABLE` 是为丢失或损坏的主机 process/transport 保留的，
 不是普通的入学压力。 RPC 容量返回 `HOST_OVERLOADED`，并且
@@ -212,6 +220,7 @@ reveal 不并入任何行，必须重新读取。
 |---|---|---|
 | `PROVIDER_SECRET_MISSING` | 不 | 启用的提供程序需要 API 密钥 |
 | `MODEL_ALIAS_TOO_LONG` | 不 | 已配置模型别名超过 60 个 Unicode 字符 |
+| `MODEL_BINDINGS_DEGRADED` | 不 | 存储模型绑定已降级；为防止数据丢失，拒绝显式替换模型数组 |
 | `SECRET_STORE_UNAVAILABLE` | 也许 | 操作系统安全存储不可用（保留） |
 | `SETTINGS_INVALID` | 不 | 设置有效负载无效（保留） |
 
@@ -432,3 +441,18 @@ transcript 保留稳定错误码、传输 errno 和原始 details，但使用本
 而不是通用连接错误摘要。它会提示用户检查证书、系统时间以及安全软件或代理使用的
 信任根，并在修改信任设置后重启。文案不会断言一定是流量拦截，也不会提供关闭 TLS
 校验的绕过方式。修复原因后，用户仍可手动继续。
+
+## 本地请求准备错误
+
+上下文校验、估算或请求准备阶段产生的结构化 `LOCAL_REQUEST_ERROR`，映射为既有
+`INTERNAL` 且 `retriable: false`。在适配器把异常压成文字前保留本地来源与阶段；
+诊断可以保留原因类型，不向界面复制请求正文、搜索结果、凭据或任意底层异常文字。
+不能靠匹配异常句子或统一禁用所有 `TypeError` 重试来分类；网络故障和取消维持原有策略。
+
+历史恢复校验可能在运行时流创建前失败。此时使用既有 RPC 错误 `data`，携带
+`errorCode`、`retriable: false` 及安全的 `details`（来源、阶段、可选原因类型）。
+不得发出模型请求，sidecar 保持可用，也不改写存储记录；容器不是存储块列表时仍按此失败。
+
+单个存储块无法回放属于另一种情况：网关丢弃 id 时本应用本身就会存下仅供展示的块，
+因此该消息的整条 replay 降级为“没有 replay”，而不是让之后每一轮请求都失败。
+回合继续执行，展示轮次不变；诊断只记录块数与阶段，不复制搜索内容、结果或凭据。

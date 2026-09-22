@@ -378,8 +378,18 @@ export class BrowserPane {
     wc.on("did-navigate", (_event, url) => {
       if (this.acceptNativeNavigation(url)) push();
     });
-    wc.on("did-navigate-in-page", (_event, url) => {
-      if (this.acceptNativeNavigation(url)) push();
+    wc.on("did-navigate-in-page", (_event, url, isMainFrame, processId, routingId) => {
+      // Same-document navigation has no will-navigate event. Accept only the
+      // active main frame's current URL, without reopening invalidated sessions.
+      if (
+        !isMainFrame ||
+        !this.hasCurrentStateEventScope() ||
+        url !== wc.getURL() ||
+        processId !== wc.mainFrame.processId ||
+        routingId !== wc.mainFrame.routingId
+      ) return;
+      this.enableStateEvents(this.navigationEpoch, url);
+      push();
     });
     wc.on("page-title-updated", push);
     wc.on(
