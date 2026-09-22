@@ -93,7 +93,7 @@ test("agent runtime exposes BrowserPreview in every mode and prompts for it", ()
     builderStart,
   );
   assert.ok(builderStart >= 0 && builderEnd > builderStart);
-  assert.match(runtimeSource.slice(builderStart, builderEnd), /"BrowserPreview"/);
+  assert.match(runtimeSource.slice(builderStart, builderEnd), /"browser_preview"/);
   // `path` carries an alias alongside it (D273), so assert the entry and its
   // canonical argument rather than one exact line of source.
   assert.match(

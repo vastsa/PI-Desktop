@@ -155,7 +155,7 @@ test("plugin dev tools resolve paths inside the workspace and report failures", 
   assert.match(devToolsSrc, /loadPlugin\(target\.path, permissions\)/);
 });
 
-test("only PluginCheck is available outside agent mode", () => {
+test("only check_plugin is available outside agent mode", () => {
   const builderEnd = agentRuntimeSrc.indexOf(
     "const builtins = tools.map(exec)",
   );
@@ -165,11 +165,11 @@ test("only PluginCheck is available outside agent mode", () => {
   const agentBranchStart = builder.indexOf('if (this.mode === "agent")');
   assert.ok(agentBranchStart >= 0);
   const nonAgentBranch = builder.slice(0, agentBranchStart);
-  assert.match(nonAgentBranch, /"PluginCheck"/);
-  assert.doesNotMatch(nonAgentBranch, /PluginScaffold|PluginPack/);
+  assert.match(nonAgentBranch, /"check_plugin"/);
+  assert.doesNotMatch(nonAgentBranch, /scaffold_plugin|pack_plugin/);
   assert.match(
     builder.slice(agentBranchStart),
-    /tools\.push\("PluginScaffold", "PluginPack"/,
+    /tools\.push\("scaffold_plugin", "pack_plugin"/,
   );
 });
 

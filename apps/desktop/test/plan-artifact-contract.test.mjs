@@ -16,7 +16,7 @@ test("Plan and Goal artifact runtime uses the terminating submit contract", asyn
   ]);
 
   // One kind-keyed table names both submit tools, so Plan and Goal cannot drift.
-  assert.match(runtime, /SUBMIT_TOOL_NAMES: Record<ProposalKind, string> = \{\s*plan: "SubmitPlan",\s*goal: "SubmitGoal",/);
+  assert.match(runtime, /SUBMIT_TOOL_NAMES: Record<ProposalKind, string> = \{\s*plan: "submit_plan",\s*goal: "submit_goal",/);
   assert.match(runtime, /const name = SUBMIT_TOOL_NAMES\[kind\]/);
   assert.match(runtime, /title: Type\.String/);
   assert.match(runtime, /markdown: Type\.String/);
