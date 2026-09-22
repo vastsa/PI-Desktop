@@ -64,3 +64,4 @@ export * from "./tray-sessions.js";
 export * from "./window-chrome.js";
 export * from "./prompt-enhancement.js";
 export * from "./native-web-search.js";
+export * from "./tool-names.js";

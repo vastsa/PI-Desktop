@@ -4765,3 +4765,20 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 单次缩减后仍过大的摘要提示不再被跳过：范围会被切成每片都能放下的连续分片，最多 16 次
   请求，每次携带上一片的摘要，检查点报告这些请求的用量总和。只有空范围或超过该请求上限
   的范围才因预算原因回退。见 ADR 0302、`03-runtime/02-agent-runtime.md`、ADR 0049、ADR 0282。
+
+## 2026-09-22 —— 工具名只有一个规范拼写与一个归一化边界（D618）
+
+- 模型可见的工具名此前是界面展示的大写拼写（`Read`、`Bash`、`TaskWait`），而 pi 运行时在
+  `extractFileOpsFromMessage` 这类辅助函数里按自己的小写名分支。pi 不认识的名字会静默地什么
+  都不产出——这正是 `details.readFiles`、`details.modifiedFiles` 以及摘要的 `<read-files>`
+  段恒为空的成因，也是 issue #827 在修复压缩回退时踩到的线索。
+- 宿主与 shared 包现在各自持有一份规范名清单和一个纯归一化函数
+  （`crates/host-core/src/tools/names.rs`、`packages/shared/src/tool-names.ts`）。规范名原样
+  返回，因此调用幂等；旧拼写在任意大小写变体下都能解析；其它所有名字——`plugin_*`、`mcp_*`、
+  MCP 自报名、`PowerShell` 这类 shell id——原样返回。第三方身份绝不被改写，未知名也不是错误。
+  宿主自己的插件开发工具采用动词在前的命名（`check_plugin`、`scaffold_plugin`、
+  `pack_plugin`），因为 `plugin_` 仍保留给第三方插件贡献的工具。
+- 归一化只发生在读入方向，绝不写回存储：已有转录本、审计行、`deny` / `allow` 规则、插件清单
+  与 subagent 工具白名单保持原有字节，旧数据无需迁移即可继续可用。本决策记录契约并新增这两个
+  模块；注册表、派发、权限、提示词与界面调用点由 D619 至 D621 跟进。见
+  `docs/zh-CN/spec/03-runtime/23-tool-names.md`。

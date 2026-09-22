@@ -21,9 +21,17 @@ use crate::workspace::{resolve_tool_path_with_external, simple_canonicalize, Too
 mod grep_rg;
 pub mod hashline;
 pub mod ignore_rules;
+pub mod names;
 pub mod shell;
 
 pub use hashline::{HashlineContext, HashlineStore};
+
+// Both are re-exported for the dispatch and permission call sites this series
+// wires up next (D619); there is no caller inside this commit yet, so rustc
+// would otherwise report the re-export as unused. The host-core lane (D619)
+// removes it together with its first caller.
+#[allow(unused_imports)]
+pub use names::{normalize_tool_name, CANONICAL_TOOL_NAMES};
 
 /// Ceiling on what the streaming capture retains per stream.
 ///
