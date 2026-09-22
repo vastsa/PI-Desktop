@@ -45,6 +45,9 @@ export const CANONICAL_TOOL_NAMES: readonly string[] = [
   "skill",
   "browser_preview",
   "generate_images",
+  "asktool",
+  "new_context",
+  "tool_search",
   "check_plugin",
   "scaffold_plugin",
   "pack_plugin",
@@ -52,8 +55,10 @@ export const CANONICAL_TOOL_NAMES: readonly string[] = [
   "enter_goal_mode",
   "submit_plan",
   "submit_goal",
-  "asktool",
-  "new_context",
+  "scheduled_task_list",
+  "scheduled_task_create",
+  "scheduled_task_update",
+  "scheduled_task_delete",
 ];
 
 /**
@@ -79,6 +84,9 @@ export const LEGACY_TOOL_NAME_ALIASES: ReadonlyArray<readonly [string, string]> 
   ["Skill", "skill"],
   ["BrowserPreview", "browser_preview"],
   ["GenerateImages", "generate_images"],
+  ["asktool", "asktool"],
+  ["new_context", "new_context"],
+  ["ToolSearch", "tool_search"],
   ["PluginCheck", "check_plugin"],
   ["PluginScaffold", "scaffold_plugin"],
   ["PluginPack", "pack_plugin"],
@@ -86,8 +94,10 @@ export const LEGACY_TOOL_NAME_ALIASES: ReadonlyArray<readonly [string, string]> 
   ["EnterGoalMode", "enter_goal_mode"],
   ["SubmitPlan", "submit_plan"],
   ["SubmitGoal", "submit_goal"],
-  ["asktool", "asktool"],
-  ["new_context", "new_context"],
+  ["ScheduledTaskList", "scheduled_task_list"],
+  ["ScheduledTaskCreate", "scheduled_task_create"],
+  ["ScheduledTaskUpdate", "scheduled_task_update"],
+  ["ScheduledTaskDelete", "scheduled_task_delete"],
 ];
 
 const ASCII_UPPERCASE = /[A-Z]/g;

@@ -36,6 +36,9 @@ spelled differently is a name pi does not recognize.
 | `Skill` | `skill` | |
 | `BrowserPreview` | `browser_preview` | |
 | `GenerateImages` | `generate_images` | |
+| `asktool` | `asktool` | already lowercase; unchanged by this decision |
+| `new_context` | `new_context` | already lowercase; unchanged by this decision |
+| `ToolSearch` | `tool_search` | |
 | `PluginCheck` | `check_plugin` | verb-first, see the note below the table |
 | `PluginScaffold` | `scaffold_plugin` | |
 | `PluginPack` | `pack_plugin` | |
@@ -43,8 +46,11 @@ spelled differently is a name pi does not recognize.
 | `EnterGoalMode` | `enter_goal_mode` | |
 | `SubmitPlan` | `submit_plan` | |
 | `SubmitGoal` | `submit_goal` | |
-| `asktool` | `asktool` | already lowercase; unchanged by this decision |
-| `new_context` | `new_context` | already lowercase; unchanged by this decision |
+| `ScheduledTaskList` | `scheduled_task_list` | |
+| `ScheduledTaskCreate` | `scheduled_task_create` | |
+| `ScheduledTaskUpdate` | `scheduled_task_update` | |
+| `ScheduledTaskDelete` | `scheduled_task_delete` | |
+
 
 The table is the migration surface, not a statement that every entry is emitted
 today. A tool name outside it — an MCP server's own name, a shell id such as

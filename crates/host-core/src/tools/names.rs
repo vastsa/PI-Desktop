@@ -51,6 +51,9 @@ pub const CANONICAL_TOOL_NAMES: &[&str] = &[
     "skill",
     "browser_preview",
     "generate_images",
+    "asktool",
+    "new_context",
+    "tool_search",
     "check_plugin",
     "scaffold_plugin",
     "pack_plugin",
@@ -58,8 +61,10 @@ pub const CANONICAL_TOOL_NAMES: &[&str] = &[
     "enter_goal_mode",
     "submit_plan",
     "submit_goal",
-    "asktool",
-    "new_context",
+    "scheduled_task_list",
+    "scheduled_task_create",
+    "scheduled_task_update",
+    "scheduled_task_delete",
 ];
 
 /// The spelling each canonical name had before the rename, paired with the
@@ -83,6 +88,9 @@ pub const LEGACY_TOOL_NAME_ALIASES: &[(&str, &str)] = &[
     ("Skill", "skill"),
     ("BrowserPreview", "browser_preview"),
     ("GenerateImages", "generate_images"),
+    ("asktool", "asktool"),
+    ("new_context", "new_context"),
+    ("ToolSearch", "tool_search"),
     ("PluginCheck", "check_plugin"),
     ("PluginScaffold", "scaffold_plugin"),
     ("PluginPack", "pack_plugin"),
@@ -90,8 +98,10 @@ pub const LEGACY_TOOL_NAME_ALIASES: &[(&str, &str)] = &[
     ("EnterGoalMode", "enter_goal_mode"),
     ("SubmitPlan", "submit_plan"),
     ("SubmitGoal", "submit_goal"),
-    ("asktool", "asktool"),
-    ("new_context", "new_context"),
+    ("ScheduledTaskList", "scheduled_task_list"),
+    ("ScheduledTaskCreate", "scheduled_task_create"),
+    ("ScheduledTaskUpdate", "scheduled_task_update"),
+    ("ScheduledTaskDelete", "scheduled_task_delete"),
 ];
 
 /// Resolve a stored, configured, or imported tool name to its canonical name.
@@ -163,6 +173,9 @@ mod tests {
         ("Skill", "skill"),
         ("BrowserPreview", "browser_preview"),
         ("GenerateImages", "generate_images"),
+        ("asktool", "asktool"),
+        ("new_context", "new_context"),
+        ("ToolSearch", "tool_search"),
         ("PluginCheck", "check_plugin"),
         ("PluginScaffold", "scaffold_plugin"),
         ("PluginPack", "pack_plugin"),
@@ -170,8 +183,10 @@ mod tests {
         ("EnterGoalMode", "enter_goal_mode"),
         ("SubmitPlan", "submit_plan"),
         ("SubmitGoal", "submit_goal"),
-        ("asktool", "asktool"),
-        ("new_context", "new_context"),
+        ("ScheduledTaskList", "scheduled_task_list"),
+        ("ScheduledTaskCreate", "scheduled_task_create"),
+        ("ScheduledTaskUpdate", "scheduled_task_update"),
+        ("ScheduledTaskDelete", "scheduled_task_delete"),
         // Case variants of the same names.
         ("READ", "read"),
         ("read", "read"),
@@ -180,6 +195,8 @@ mod tests {
         ("browserPREVIEW", "browser_preview"),
         ("New_Context", "new_context"),
         ("ASKTOOL", "asktool"),
+        ("TOOLSEARCH", "tool_search"),
+        ("SCHEDULEDTASKCREATE", "scheduled_task_create"),
         ("PLUGINCHECK", "check_plugin"),
         // Names that are not ours to rewrite.
         ("PowerShell", "PowerShell"),

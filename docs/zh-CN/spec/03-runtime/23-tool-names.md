@@ -36,6 +36,9 @@ subagent 工具集用它声明，转录本用它存储。pi 运行时在 `extrac
 | `Skill` | `skill` | |
 | `BrowserPreview` | `browser_preview` | |
 | `GenerateImages` | `generate_images` | |
+| `asktool` | `asktool` | 已是小写；本次决策不改动 |
+| `new_context` | `new_context` | 已是小写；本次决策不改动 |
+| `ToolSearch` | `tool_search` | |
 | `PluginCheck` | `check_plugin` | 动词在前，见表下说明 |
 | `PluginScaffold` | `scaffold_plugin` | |
 | `PluginPack` | `pack_plugin` | |
@@ -43,8 +46,11 @@ subagent 工具集用它声明，转录本用它存储。pi 运行时在 `extrac
 | `EnterGoalMode` | `enter_goal_mode` | |
 | `SubmitPlan` | `submit_plan` | |
 | `SubmitGoal` | `submit_goal` | |
-| `asktool` | `asktool` | 已是小写；本次决策不改动 |
-| `new_context` | `new_context` | 已是小写；本次决策不改动 |
+| `ScheduledTaskList` | `scheduled_task_list` | |
+| `ScheduledTaskCreate` | `scheduled_task_create` | |
+| `ScheduledTaskUpdate` | `scheduled_task_update` | |
+| `ScheduledTaskDelete` | `scheduled_task_delete` | |
+
 
 该表是迁移范围，而不是"今天已经在发出"的清单。表外的工具名——MCP 服务自报的名字、
 `PowerShell` 这类 shell id、任何第三方 `plugin_*` / `mcp_*` 工具——保持自己的拼写。
