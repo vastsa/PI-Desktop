@@ -668,10 +668,11 @@ type AgentEvent =
  | { type: "compaction_end";
      reason: "manual" | "threshold" | "overflow";
      ok: boolean; tokensBefore?: number; firstKeptMessageId?: string;
-     willRetry: boolean; fallback?: "retained_tail";
+    willRetry: boolean; fallback?: "retained_tail";
+    idle?: boolean; silent?: boolean;
      mark?: { id: string; throughMessageId: string;
               generation: number; summaryTokens: number;
-              summarized: boolean;
+             summarized: boolean; tokensAfter?: number;
               fallback?: "retained_tail" };
      error?: { code: string; message: string } }
  | { type: "error"; error: AppError }

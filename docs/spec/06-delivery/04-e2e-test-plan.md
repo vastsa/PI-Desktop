@@ -8112,6 +8112,10 @@ identify the platform validation still needed.
 | F — Persistence (stored model binding array) | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
 | Quality (stored model binding array) | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
 | Quality (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
+| C / F / Quality — Recall reads the compacted-away context back | E2E-CONTEXT-recall-reads-a-compacted-away-message |
+| C / Quality — Idle compaction is silent and yields to a prompt | E2E-CONTEXT-idle-compaction-is-silent-and-yields |
+| C / Quality — Old tool results tier under pressure | E2E-CONTEXT-tool-results-tier-under-pressure |
+| B / Quality — Per-model context thresholds | E2E-SETTINGS-per-model-context-thresholds |
 | G — Plugin host lifecycle (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 | Quality (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 
@@ -14351,6 +14355,76 @@ the latest destination. These assertions measure work counts, not device FPS.
   and a unique one (identity, no log line).
 - **Status:** Unit-covered; no end-to-end driver issues a real provider request
   against a duplicated transcript.
+### E2E-CONTEXT-recall-reads-a-compacted-away-message
+
+- **Preconditions:** A session driven past its context boundary with a
+  deterministic provider fixture, so a checkpoint with a summary and a ledger is
+  installed. No real provider credentials or paid API.
+- **Steps:** Ask for a token that existed only in a message the checkpoint moved
+  out of model context. Let the model call `recall` with those words, then
+  `session.readMessage` for the returned id with a small page size, then repeat
+  with a CJK query and, from a second session of the same project, with
+  `recall_project`.
+- **Expected:** The recalled text comes back verbatim; paging reports `hasMore`
+  and the next offset; a non-ASCII query matches without ASCII folding; a session
+  bound to another project reads as not found; the projected summary carries the
+  recall pointer and the ledger block; transcript rows are unchanged.
+- **Specs linked:** `03-runtime/02-agent-runtime.md` §5.1,
+  `03-runtime/06-host-rpc-protocol.md` §4 Sessions, ADR 0300
+- **Acceptance:** C (chat and stream), F (persistence), Quality
+- **Status:** Host and unit tests cover the read paths; desktop E2E pending a
+  deterministic boundary fixture
+
+### E2E-CONTEXT-idle-compaction-is-silent-and-yields
+
+- **Preconditions:** A binding with `earlyCompaction.enabled` and a short
+  `delaySeconds`, a deterministic summary fixture, and a settled run above the
+  early threshold.
+- **Steps:** Let the session go idle past the delay. Repeat, but send a prompt
+  inside the delay window. Re-run once with `silent: false`, and once with a
+  summary fixture that fails.
+- **Expected:** The first run compacts with `compaction_end.idle` and `.silent`,
+  no routine toast appears, and the transcript row plus the context inspector
+  still record the checkpoint. A prompt inside the window cancels the pass and no
+  summary request is issued. `silent: false` restores the toast; a degraded pass
+  and the hard boundary always warn.
+- **Specs linked:** `03-runtime/02-agent-runtime.md` §5.1, ADR 0301
+- **Acceptance:** C (chat and stream), Quality
+- **Status:** Unit-covered through the runtime's timer and budget seams; desktop
+  E2E pending
+
+### E2E-CONTEXT-tool-results-tier-under-pressure
+
+- **Preconditions:** A session sized so the outgoing view crosses the
+  `dynamicContext` gate, including a tool result for a file the session later
+  re-opens.
+- **Steps:** Fill the context with old tool results, then issue a prompt that
+  re-opens one of those files. Compare the outgoing request with the gate on and
+  with the gate off.
+- **Expected:** With the gate on, old results are shortened to a head plus the
+  recovery pointer, the re-opened file's result stays whole, and the full text is
+  still readable through the recall path. With the gate off nothing is narrowed.
+  Per-tool limits and stored rows are unchanged.
+- **Specs linked:** `03-runtime/16-tool-result-limits.md` §6a, ADR 0301
+- **Acceptance:** C (chat and stream), Quality
+- **Status:** Unit-covered (`tool-result-tier.test.ts`); desktop E2E pending
+
+### E2E-SETTINGS-per-model-context-thresholds
+
+- **Preconditions:** Models destination with one configured binding, isolated
+  desktop profile.
+- **Steps:** Open Advanced for the binding. Move the dynamic-context threshold
+  below and above its bounds; toggle early compaction and change its delay
+  outside the accepted range; toggle the sleep digest and push its quota past the
+  ceiling; save and reopen the pane. Then send a prompt without restarting.
+- **Expected:** Values clamp to the shared bounds; the read-out prints the share
+  of the hard limit with its approximate token count; the settings persist with
+  the binding and reach the next prompt without a restart; a binding without the
+  settings shows the defaults.
+- **Specs linked:** `04-ux/06-settings-ia.md` §2 Model configuration, ADR 0301
+- **Acceptance:** B (model config), Quality
+- **Status:** Desktop contract tests cover the pane's defaults; interactive E2E
+  pending
 
 ### E2E-MCP-HTTP-ACK — HTTP acknowledgement and authorization status
 

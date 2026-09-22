@@ -334,6 +334,17 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
 工具值会清理主机保留键。每个插件每 60 秒最多 10 次单条导入、5 次批量导入和
 20 次删除。P2/P3 方法不在协议 v11 中。
 
+- `session.recall` — 检索单个会话的完整转录：查询按词拆分，每个词都必须出现；命中按匹配词数与频次排序。非 ASCII 文本按字面
+  匹配（CJK 不做 ASCII 折叠）。返回带消息 id 的摘录，接受正数 `limit`；会话不存在为 `NOT_FOUND`。新增 RPC，协议版本不升。
+- `session.readMessage` — 以字符窗口读回单条消息正文：`offset` 为从 0 开始的字符偏移，`limit` 为字符页大小。返回该页、
+  `hasMore` 与下一页偏移；偏移是字符而非字节，页边界不会切断码点。消息 id 未知时返回空页。这是工具结果的读回路径。
+- `search.query` — 按调用会话已存的项目绑定，在一个项目的多个会话中检索。绑定在其它项目的会话读作不存在，会话存在性不跨项目
+  泄漏。每个会话最多返回一条最佳命中。
+- `session.readProject` — `session.readMessage` 的项目级对应：同样的字符窗口读法，同样的项目绑定检查。
+- `session.appendSleep` — 追加一条 `sleep` 转录行（`SleepRecord`）：对会话当前状态的确定性、无模型调用的摘要。布局扫描忽略
+  该行，它永不计数为消息，因此消息数、分页与转录投影不变。运行时在绑定启用睡眠摘要（ADR 0301）时写入；渲染层不显示为消息。
+- `compaction_end` 事件新增可选 `idle` / `silent`（成功且静默的空闲压缩），其 `mark` 新增可选 `tokensAfter`。
+
 ### Plan 和 Goal 状态和批准
 
 两种合约类型共享这些方法；可选的 `kind`

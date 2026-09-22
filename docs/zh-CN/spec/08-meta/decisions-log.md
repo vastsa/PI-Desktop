@@ -4619,6 +4619,27 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 一旦发生丢弃，会在 `agent` 日志通道上报告一次，带上会话与 id，使下一次同类报障能指向写入方而不只是提供商那句话。
   见 `03-runtime/02-agent-runtime §5`。
 - 守卫刻意放在请求边界而不是历史重建处：这样也能覆盖**会话运行期间**产生的重复，而重建期的过滤看不到它。
+## 2026-09-21 —— 压缩边界可回溯，提示条只剩一层（D604）
+
+- `recall` 与 `recall_project` 进入**核心工具集**：通过 `session.recall`、`session.readMessage`、`search.query` 与
+  `session.readProject` 读回已存转录，被检查点移出模型上下文的消息、或被窄化结果替换为指针的内容都能逐字读回。检索要求每个
+  查询词都出现并按匹配强度排序；读取按字符分页；非 ASCII 文本按字面匹配。这些都是主机侧读取，不产生提供商请求。
+- 第二层预算提示条被删除而非改写：在 recall 存在的前提下「未摘要的细节之后将不可用」是假话。保留的一层在
+  `clamp(hardLimit * 0.15, 8k, 32k)` 提醒写出持久状态，硬边界始终告警。
+- 检查点的 `details` 新增机械 ledger（`buildLedger`）：读过与改过的文件、命令、消息与工具调用计数、目标与未解决项，作为有界
+  区块投影在摘要之后；早于 ledger 的检查点只投影 recall 指针，`tokensAfter` 保持可选、旧记录照常加载。见 ADR 0300 与
+  `03-runtime/02-agent-runtime.md` §5.1。
+
+## 2026-09-21 —— 上下文压力设置挂在模型绑定上（D605）
+
+- `dynamicContext` 默认 `100% − max(100k, 15% × window) / window`，钳制 40–95（窗口未知时扁平 60）；`earlyCompaction`
+  默认硬限制的 75 %、空闲 120 s 后执行且静默；`sleepTime` 默认关闭、每小时配额 2 次。缺少这些字段的绑定行为不变，控件与运行时
+  按同一组边界钳制。
+- 唯一闸门同时决定出站请求、硬边界判定与空闲压缩的压力点，因此窄化省下的量对压缩可见；旧工具结果缩成头部 + 恢复指针，重新打开
+  过的文件保持完整。
+- 硬边界本身固定且不可配置；这些设置改变的是“可选工作何时发生”，而不是“请求何时被拒绝”。成功且静默的空闲压缩在
+  `compaction_end` 上带 `idle`/`silent`，只跳过例行 toast——转录行、检查器与记录照常。见 ADR 0301、
+  `03-runtime/16-tool-result-limits.md` §6a、`04-ux/06-settings-ia.md`。
 
 ## 2026-09-21 —— 插件崩溃上报带上退出码但不复制原始输出（D607，issue #747）
 

@@ -294,6 +294,14 @@ a usage tab.
     remain user-owned. The account has no API key field and discovery
     resolves the stored OAuth login instead. Saving updates the OAuth provider
     row and keeps the global default model in sync when that account is selected
+  - the same Advanced disclosure carries the model's context-pressure settings:
+    a Dynamic context switch with a threshold slider (40–95 %, reading out the
+    share of the hard limit with its approximate token count), an Early
+    compaction switch with its threshold, idle delay and silent toggle, and a
+    Sleep-time digest switch with its hourly quota. Each control writes the
+    binding and applies to the next prompt without a restart; a binding written
+    before the settings existed shows the shipped defaults, and the values are
+    clamped to the same bounds the runtime uses (ADR 0301).
   - Test connection resolves the account's OAuth authorization and reports a
     transient success or failure without probing the provider with an API key
 - **Providers** studio:
