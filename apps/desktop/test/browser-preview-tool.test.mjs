@@ -98,7 +98,7 @@ test("agent runtime exposes BrowserPreview in every mode and prompts for it", ()
   // canonical argument rather than one exact line of source.
   assert.match(
     runtimeSource,
-    /BrowserPreview: \{\s*path: pathParam\([^)]*\),\s*file_path: aliasParam\("path"\),\s*\}/,
+    /browser_preview: \{\s*path: pathParam\([^)]*\),\s*file_path: aliasParam\("path"\),\s*\}/,
   );
   // Default system prompt limits preview calls to user-visible HTML work and
   // reuses the live-reloading surface while the page is being refined.

@@ -90,7 +90,7 @@ test("preset bodies mirror the runtime markdown frontmatter bodies", () => {
   // so the editor pre-fills the same system prompt the sidecar will run. We
   // spot-check the leading sentence of each prompt rather than full text so a
   // typo in the prose still fails.
-  const bodies = [...presetSource.matchAll(/body:\s*\n?\s*`([^`]+)`/g)].map(
+  const bodies = [...presetSource.matchAll(/body:\s*\n?\s*`((?:[^`\\]|\\.)*)`/g)].map(
     (m) => m[1],
   );
   // explorer
@@ -102,9 +102,8 @@ test("preset bodies mirror the runtime markdown frontmatter bodies", () => {
   assert.match(bodies[2], /Run the command the task names/);
   // fixer
   assert.match(bodies[3], /fast, focused implementation specialist/);
-  // ui-designer (the extraction stops at the body's first escaped backtick,
-  // so only the leading bullets are visible here; the BrowserPreview grant is
-  // asserted by the tools test above)
+  // ui-designer (the body now carries `browser_preview` in backticks, so the
+  // extractor reads escaped backticks instead of stopping at the first one)
   assert.match(bodies[4], /UI designer/);
   assert.match(bodies[4], /design contract/);
 });
