@@ -3702,6 +3702,7 @@ mod tests {
             first_kept_message_id: Some(first.into()),
             through_message_id: through.into(),
             tokens_before: 120_000,
+            tokens_after: None,
             usage: None,
             retained_tail: Some(json!([{
                 "role": "user",

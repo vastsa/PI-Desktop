@@ -53,7 +53,10 @@ export function contextCompactionMark(
     throughMessageId: record.throughMessageId,
     generation: checkpointGeneration(record.details),
     summaryTokens: estimateSummaryTokens(record.summary ?? ""),
-    summarized: checkpointSummarized(record.details),
+    ...(record.tokensAfter !== undefined
+      ? { tokensAfter: record.tokensAfter }
+      : {}),
     ...(fallback ? { fallback } : {}),
+    summarized: checkpointSummarized(record.details),
   };
 }
