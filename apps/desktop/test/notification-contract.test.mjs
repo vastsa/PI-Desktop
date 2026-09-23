@@ -220,6 +220,11 @@ test("notification list refreshes cannot resurrect cleared rows", () => {
     refreshBlock,
     /result\.notifications[\s\S]{0,800}\.filter\(/,
   );
+  assert.match(refreshBlock, /result\.unreadCount/);
+  assert.match(refreshBlock, /rawUnreadCount/);
+  assert.match(refreshBlock, /effectiveUnreadCount/);
+  assert.match(refreshBlock, /touchedSessionIds/);
+  assert.match(refreshBlock, /delete sessionOutcomes\[sessionId\]/);
   assert.match(refreshBlock, /notificationClearedAt\(\)/);
 });
 

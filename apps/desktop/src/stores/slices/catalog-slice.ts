@@ -181,6 +181,9 @@ export function createCatalogSlice({
       const clearedAt = catalogRuntime.notificationClearedAt();
       const readBefore = catalogRuntime.notificationReadBefore();
       const readIds = catalogRuntime.notificationReadIds;
+      const touchedSessionIds = new Set(
+        result.notifications.map((notification) => notification.sessionId),
+      );
       const notifications = result.notifications
         .filter((notification) => {
           const createdAt = Date.parse(notification.createdAt);
@@ -212,13 +215,30 @@ export function createCatalogSlice({
           }
           return notification;
         });
-      set({
-        notifications,
-        unreadNotificationCount: notifications.reduce(
-          (count, notification) => count + (notification.readAt ? 0 : 1),
-          0,
-        ),
-        sessionOutcomes: latestSessionOutcomes(notifications),
+      const rawUnreadCount = result.notifications.reduce(
+        (count, notification) => count + (notification.readAt ? 0 : 1),
+        0,
+      );
+      const effectiveUnreadCount = notifications.reduce(
+        (count, notification) => count + (notification.readAt ? 0 : 1),
+        0,
+      );
+      set((state) => {
+        const sessionOutcomes = { ...state.sessionOutcomes };
+        for (const sessionId of touchedSessionIds) {
+          delete sessionOutcomes[sessionId];
+        }
+        Object.assign(sessionOutcomes, latestSessionOutcomes(notifications));
+        return {
+          notifications,
+          // Host count includes rows hidden by a local acknowledgement
+          // watermark; adjust only for rows present in this response.
+          unreadNotificationCount: Math.max(
+            0,
+            result.unreadCount - rawUnreadCount + effectiveUnreadCount,
+          ),
+          sessionOutcomes,
+        };
       });
     },
 
@@ -275,12 +295,28 @@ export function createCatalogSlice({
         const notifications = state.notifications.map((notification) =>
           notification.id === id ? { ...notification, readAt } : notification,
         );
+        const sessionId = state.notifications.find(
+          (notification) => notification.id === id,
+        )?.sessionId;
+        const sessionOutcomes = { ...state.sessionOutcomes };
+        if (sessionId) {
+          delete sessionOutcomes[sessionId];
+          Object.assign(
+            sessionOutcomes,
+            latestSessionOutcomes(
+              notifications.filter(
+                (notification) => notification.sessionId === sessionId,
+              ),
+            ),
+          );
+        }
         return {
           notifications,
           unreadNotificationCount: notifications.reduce(
             (count, notification) => count + (notification.readAt ? 0 : 1),
             0,
           ),
+          sessionOutcomes,
         };
       });
     },
@@ -308,21 +344,38 @@ export function createCatalogSlice({
         catalogRuntime.rememberNotificationRead(id);
       }
       catalogRuntime.setNotificationReadBefore(readAtMs);
-      set((state) => ({
-        notifications: state.notifications.map((notification) =>
+      set((state) => {
+        const notifications = state.notifications.map((notification) =>
           notification.readAt || !acknowledgedIds.has(notification.id)
             ? notification
             : { ...notification, readAt },
-        ),
-        unreadNotificationCount: state.notifications.reduce(
-          (count, notification) =>
-            count +
-            (notification.readAt || acknowledgedIds.has(notification.id)
-              ? 0
-              : 1),
-          0,
-        ),
-      }));
+        );
+        const acknowledgedSessionIds = new Set(
+          state.notifications
+            .filter((notification) => acknowledgedIds.has(notification.id))
+            .map((notification) => notification.sessionId),
+        );
+        const sessionOutcomes = { ...state.sessionOutcomes };
+        for (const sessionId of acknowledgedSessionIds) {
+          delete sessionOutcomes[sessionId];
+        }
+        Object.assign(
+          sessionOutcomes,
+          latestSessionOutcomes(
+            notifications.filter((notification) =>
+              acknowledgedSessionIds.has(notification.sessionId),
+            ),
+          ),
+        );
+        return {
+          notifications,
+          unreadNotificationCount: notifications.reduce(
+            (count, notification) => count + (notification.readAt ? 0 : 1),
+            0,
+          ),
+          sessionOutcomes,
+        };
+      });
     },
 
     clearNotifications: async () => {
