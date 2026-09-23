@@ -226,6 +226,18 @@ test("notification list refreshes cannot resurrect cleared rows", () => {
   assert.match(refreshBlock, /touchedSessionIds/);
   assert.match(refreshBlock, /delete sessionOutcomes\[sessionId\]/);
   assert.match(refreshBlock, /notificationClearedAt\(\)/);
+
+  const receiveBlock = catalogSource.slice(
+    receiveStart,
+    catalogSource.indexOf("markNotificationRead:", receiveStart),
+  );
+  assert.match(receiveBlock, /state\.unreadNotificationCount \+ /);
+
+  const readBlock = catalogSource.slice(
+    catalogSource.indexOf("markNotificationRead:"),
+    catalogSource.indexOf("markAllNotificationsRead:", refreshStart),
+  );
+  assert.match(readBlock, /state\.unreadNotificationCount\s*-\s*1/);
 });
 
 test("plugins can request and send native notifications behind notify permission", () => {

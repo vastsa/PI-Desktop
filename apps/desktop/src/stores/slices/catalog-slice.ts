@@ -268,10 +268,8 @@ export function createCatalogSlice({
             [notification.sessionId]:
               notification.kind === "task.failed" ? "failed" : "completed",
           },
-          unreadNotificationCount: notifications.reduce(
-            (count, item) => count + (item.readAt ? 0 : 1),
-            0,
-          ),
+          unreadNotificationCount:
+            state.unreadNotificationCount + (notification.readAt ? 0 : 1),
         };
       });
       return true;
@@ -312,9 +310,9 @@ export function createCatalogSlice({
         }
         return {
           notifications,
-          unreadNotificationCount: notifications.reduce(
-            (count, notification) => count + (notification.readAt ? 0 : 1),
+          unreadNotificationCount: Math.max(
             0,
+            state.unreadNotificationCount - 1,
           ),
           sessionOutcomes,
         };
