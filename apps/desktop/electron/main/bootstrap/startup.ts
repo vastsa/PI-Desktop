@@ -11,14 +11,9 @@ import {
   type NativeMenuAction,
 } from "@pi-desktop/shared";
 import { installApplicationMenu } from "../application-menu";
-import {
-  installPluginAssetProtocol,
-  registerPluginAssetScheme,
-} from "../plugin-asset-protocol";
-import {
-  installPluginRendererProtocol,
-  registerPluginRendererScheme,
-} from "../plugin-renderer-protocol";
+import { installPluginAssetProtocol } from "../plugin-asset-protocol";
+import { installPluginRendererProtocol } from "../plugin-renderer-protocol";
+import { registerPluginSchemes } from "../plugin-schemes";
 import { applyNetworkProxyFromAppSettings } from "../network-proxy";
 import { readCloseBehavior } from "../window-preferences";
 import { createAgentHostBridge, type AgentHostBridge } from "../agent-host-bridge";
@@ -122,9 +117,9 @@ export type StartupDependencies = {
  * composition root through `StartupState` and dependency callbacks.
  */
 export function registerApplicationStartup(deps: StartupDependencies): void {
-  registerPluginRendererScheme();
+  // Electron only accepts scheme privileges before the app is ready, and this
   // runs from the composition root, before the `whenReady` promise can settle.
-  registerPluginAssetScheme();
+  registerPluginSchemes();
   // Crashpad ships with Electron, so the reporter needs no native dependency.
   // Dumps stay local (`uploadToServer: false`) under the installation data
   // directory so a `PI_DESKTOP_DATA_DIR` profile does not share them. Started
@@ -188,8 +183,6 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       logger,
     });
 
-    // Serve declared theme assets before the renderer can ask for one; the
-    // scheme itself was reserved in `registerApplicationStartup`.
     // Serve declared theme assets before the renderer can ask for one; the
     // scheme itself was reserved in `registerApplicationStartup`.
     installPluginAssetProtocol((pluginId, assetPath) =>

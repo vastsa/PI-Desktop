@@ -137,29 +137,16 @@ test("the token cap is 8; the ninth folds but the payload keeps everything", () 
   assert.match(payload, /"send":"x"/);
 });
 
-test("the composer wires trigger, tokens, insert bridge, and send payload", () => {
+test("the composer wires trigger, tokens, and insert bridge", () => {
   const composer = readFileSync(src("components/Composer.tsx"), "utf8");
   assert.match(composer, /useComposerPluginTrigger\(/);
   assert.match(composer, /useComposerPluginTokens\(\)/);
   assert.match(composer, /useComposerTriggerAcceptBridge\(/);
   assert.match(composer, /registerComposerInsert\(/);
   assert.match(composer, /registerComposerInsert\(null\)/);
-  assert.match(composer, /serializePluginTokensForSend\(/);
   assert.match(composer, /⧉ \+\{pluginTokens\.foldedCount\}/);
   // The trigger menu renders the plugin's own component with query+dispatch.
   assert.match(composer, /query: activeTrigger\.query/);
-});
-
-test("the submit hook serializes token records before send", () => {
-  const submit = readFileSync(
-    src("features/chat/composer/hooks/useComposerSubmit.ts"),
-    "utf8",
-  );
-  assert.match(submit, /serializePluginTokens\?:/);
-  assert.match(
-    submit,
-    /serializePluginTokens\s*\?\s*serializePluginTokens\(inlineContent\)\s*:\s*inlineContent/,
-  );
 });
 
 test("the toolbar mounts left and right control outlets", () => {

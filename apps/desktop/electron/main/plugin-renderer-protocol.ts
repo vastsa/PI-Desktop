@@ -1,4 +1,4 @@
-import { protocol } from "electron";
+import { protocol, type CustomScheme } from "electron";
 import { readFileSync } from "node:fs";
 import { PLUGIN_RENDERER_SCHEME } from "@pi-desktop/plugin-sdk";
 
@@ -48,27 +48,23 @@ function notFound(): Response {
 }
 
 /**
- * Reserve the scheme before the app is ready — Electron refuses to register
- * privileges afterwards.
+ * Privileges the scheme is reserved with, before the app is ready, by
+ * `registerPluginSchemes`.
  *
  * `standard` gives the URL a host (the plugin id) and a path, `secure` keeps a
  * `https:` shell from treating the reference as mixed content, and fetch/CORS
  * are what a renderer-side module import from a `file://` origin needs.
  */
-export function registerPluginRendererScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: PLUGIN_RENDERER_SCHEME,
-      privileges: {
-        standard: true,
-        secure: true,
-        supportFetchAPI: true,
-        corsEnabled: true,
-        stream: true,
-      },
-    },
-  ]);
-}
+export const PLUGIN_RENDERER_SCHEME_PRIVILEGES: CustomScheme = {
+  scheme: PLUGIN_RENDERER_SCHEME,
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    corsEnabled: true,
+    stream: true,
+  },
+};
 
 /** Install the request handler. Call once, after the app is ready. */
 export function installPluginRendererProtocol(resolve: PluginRendererSourceResolver): void {

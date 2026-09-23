@@ -144,6 +144,7 @@ export function formatFileInsert(path: string, kind: "dir" | "file"): string {
   }
   return needsQuote ? `@"${path}" ` : `@${path} `;
 }
+
 /** Full-width forms normalized to their ASCII trigger symbols (全角归一化). */
 const FULLWIDTH_TRIGGERS: Record<string, string> = {
   "＠": "@",

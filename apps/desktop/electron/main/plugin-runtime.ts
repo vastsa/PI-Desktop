@@ -1550,7 +1550,6 @@ export class PluginRuntime {
     return { id: skill.id, name: skill.name, body: parsed.body };
   }
 
-
   /**
    * Source resolver behind the `plugin-renderer://` scheme: a loaded,
    * permission-granted plugin may serve module files from inside its own

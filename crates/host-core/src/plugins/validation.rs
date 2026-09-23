@@ -699,46 +699,6 @@ fn array_of<'a>(value: &'a Value, field: &str) -> Result<&'a [Value]> {
         .ok_or_else(|| anyhow!("PLUGIN_INVALID: {field} must be an array"))
 }
 
-
-/// `manifest.renderer` gate: the entry, its permission coupling, and the
-/// whitelist shapes (`docs/plugin-plan/slot-contract.html`).
-pub(crate) fn validate_renderer(root: &Path, manifest: &PluginManifest) -> Result<()> {
-    let has_surface = manifest.renderer.is_some()
-        || !manifest.renderer_actions.is_empty()
-        || !manifest.renderer_call_methods.is_empty();
-    if !has_surface {
-        return Ok(());
-    }
-    require_permission(manifest, "renderer.extension", "renderer modules")?;
-    for (field, values) in [
-        ("rendererActions", &manifest.renderer_actions),
-        ("rendererCallMethods", &manifest.renderer_call_methods),
-    ] {
-        if values.iter().any(|entry| entry.trim().is_empty()) {
-            bail!("PLUGIN_INVALID: manifest.{field} entries must be non-empty strings");
-        }
-    }
-    if manifest.renderer_actions.len() > 16 {
-        bail!("PLUGIN_INVALID: manifest.rendererActions allows at most 16 entries");
-    }
-    if manifest.renderer_call_methods.len() > 32 {
-        bail!("PLUGIN_INVALID: manifest.rendererCallMethods allows at most 32 entries");
-    }
-    if let Some(entry) = &manifest.renderer {
-        if entry.trim().is_empty() {
-            bail!("PLUGIN_INVALID: manifest.renderer must be a non-empty string");
-        }
-        if !(entry.ends_with(".js") || entry.ends_with(".mjs")) {
-            bail!("PLUGIN_INVALID: manifest.renderer entry must be a .js or .mjs module");
-        }
-        let resolved = safe_join(root, entry)?;
-        if !resolved.exists() {
-            bail!("PLUGIN_INVALID: renderer entry missing: {entry}");
-        }
-    }
-    Ok(())
-}
-
 fn require_permission(manifest: &PluginManifest, permission: &str, what: &str) -> Result<()> {
     if manifest.permissions.iter().any(|p| p == permission) {
         return Ok(());

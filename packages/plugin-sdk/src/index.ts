@@ -60,6 +60,7 @@ export type PluginManifest = {
   i18n?: PluginI18nMap;
   author?: PluginManifestAuthor;
   homepage?: string;
+  repository?: string;
   /**
    * Renderer entry (ES module path relative to the plugin root). Declaring it
    * requires the `renderer.extension` permission; the module loads into the
@@ -1346,6 +1347,7 @@ export function validateManifest(raw: unknown): {
     return { ok: false, error: "manifest.main is required" };
   }
   const mainError = relativePathError(m.main, "manifest.main");
+  if (mainError) return { ok: false, error: mainError };
   const rendererError = manifestRendererError(m);
   if (rendererError) return { ok: false, error: rendererError };
   if (typeof m.schemaVersion !== "number") {
@@ -1974,6 +1976,45 @@ function manifestI18nError(value: unknown): string | undefined {
   }
   return undefined;
 }
+
+/** Upper bounds for the renderer-slot declarations one plugin may carry. */
+export const MAX_RENDERER_ACTIONS_PER_PLUGIN = 16;
+export const MAX_RENDERER_CALL_METHODS_PER_PLUGIN = 32;
+
+/**
+ * `manifest.renderer` and its two whitelists. The entry is a relative
+ * `.js`/`.mjs` module, the whitelists are bounded arrays of non-empty strings
+ * that mean nothing without the entry, and any of it requires the
+ * `renderer.extension` permission. Unknown action words are accepted here so a
+ * manifest written for a newer host still loads; dispatch refuses them.
+ */
+function manifestRendererError(m: Partial<PluginManifest>): string | undefined {
+  for (const [field, max] of [
+    ["rendererActions", MAX_RENDERER_ACTIONS_PER_PLUGIN],
+    ["rendererCallMethods", MAX_RENDERER_CALL_METHODS_PER_PLUGIN],
+  ] as const) {
+    const value: unknown = m[field];
+    if (value === undefined) continue;
+    if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || !entry.trim())) {
+      return `manifest.${field} must be an array of non-empty strings`;
+    }
+    if (value.length > max) return `manifest.${field} allows at most ${max} entries`;
+  }
+  const declaresWhitelist = Boolean(m.rendererActions?.length || m.rendererCallMethods?.length);
+  if (m.renderer === undefined && !declaresWhitelist) return undefined;
+  if (!m.permissions?.includes("renderer.extension")) {
+    return "renderer modules require the renderer.extension permission";
+  }
+  if (m.renderer === undefined) return "renderer whitelists require manifest.renderer";
+  if (typeof m.renderer !== "string" || !m.renderer.trim()) {
+    return "manifest.renderer must be a non-empty string";
+  }
+  const pathError = relativePathError(m.renderer, "manifest.renderer");
+  if (pathError) return pathError;
+  if (!/\.m?js$/.test(m.renderer)) return "manifest.renderer must be a .js or .mjs module";
+  return undefined;
+}
+
 function relativePathError(value: string, field: string): string | undefined {
   if (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("/") || value.startsWith("\\")) {
     return `${field} must not be an absolute path`;
@@ -2095,50 +2136,6 @@ export {
   type PluginFsRule,
   type ResolvedFsAccess,
 } from "./fs-policy.js";
-
-/** Upper bounds for the renderer-slot declarations one plugin may carry. */
-export const MAX_RENDERER_ACTIONS_PER_PLUGIN = 16;
-export const MAX_RENDERER_CALL_METHODS_PER_PLUGIN = 32;
-
-/**
- * Renderer-slot declaration check: the entry path, the outbound action
- * whitelist, and the `plugin.call` method whitelist must all be well-formed,
- * and any of them requires the `renderer.extension` permission.
- */
-function manifestRendererError(m: Partial<PluginManifest>): string | undefined {
-  const hasRendererSurface =
-    m.renderer !== undefined ||
-    m.rendererActions !== undefined ||
-    m.rendererCallMethods !== undefined;
-  if (!hasRendererSurface) return undefined;
-  if (!m.permissions?.includes("renderer.extension")) {
-    return "manifest.renderer requires the renderer.extension permission";
-  }
-  if (m.renderer !== undefined) {
-    if (typeof m.renderer !== "string" || !m.renderer.trim()) {
-      return "manifest.renderer must be a non-empty string";
-    }
-    const pathError = relativePathError(m.renderer, "manifest.renderer");
-    if (pathError) return pathError;
-    if (!/\.(mjs|js)$/.test(m.renderer)) {
-      return "manifest.renderer must be a .js or .mjs module";
-    }
-  }
-  for (const [field, max] of [
-    ["rendererActions", MAX_RENDERER_ACTIONS_PER_PLUGIN],
-    ["rendererCallMethods", MAX_RENDERER_CALL_METHODS_PER_PLUGIN],
-  ] as const) {
-    const value = (m as Record<string, unknown>)[field];
-    if (value === undefined) continue;
-    if (!Array.isArray(value) || value.some((e) => typeof e !== "string" || !e.trim())) {
-      return `manifest.${field} must be an array of non-empty strings`;
-    }
-    if (value.length > max) {
-      return `manifest.${field} is limited to ${max} entries`;
-    }
-  }
-  return undefined;
-}
 
 export {
   PLUGIN_RENDERER_SCHEME,

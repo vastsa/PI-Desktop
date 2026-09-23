@@ -16,7 +16,6 @@ import {
   useRef,
   useState,
   type ComponentType,
-  type ReactNode,
 } from "react";
 import type { UiMessage } from "@pi-desktop/shared";
 import type { PluginToolCardSlotProps } from "@pi-desktop/plugin-sdk";

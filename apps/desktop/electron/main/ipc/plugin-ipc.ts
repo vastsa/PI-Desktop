@@ -144,7 +144,6 @@ export function registerPluginIpc({
     return plugins.callRenderer(id, name, args);
   });
 
-
   handle(IPC.invoke.pluginSettingsGet, async (id: string) => {
     const settings = await plugins.getPluginSettings(String(id ?? ""));
     return { settings };

@@ -284,6 +284,8 @@ export type PluginSummary = {
   status: "ready" | "error" | "disabled" | "load_error";
   errorMessage?: string;
   permissions: string[];
+  path?: string;
+  /** Derived from the manifest by the host: which contribution kinds exist. */
   capabilities?: PluginCapability[];
   /**
    * Present when the plugin declares `manifest.renderer`: the renderer entry

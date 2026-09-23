@@ -1,4 +1,4 @@
-import { protocol } from "electron";
+import { protocol, type CustomScheme } from "electron";
 import { THEME_ASSET_SCHEME } from "@pi-desktop/plugin-sdk";
 
 /**
@@ -40,27 +40,23 @@ function notFound(): Response {
 }
 
 /**
- * Reserve the scheme before the app is ready — Electron refuses to register
- * privileges afterwards.
+ * Privileges the scheme is reserved with, before the app is ready, by
+ * `registerPluginSchemes`.
  *
  * `standard` gives the URL a host and a path, `secure` keeps a `https:` shell
  * from treating the reference as mixed content, and the fetch/CORS pair is what
  * a stylesheet `url()` and a cross-origin webfont need.
  */
-export function registerPluginAssetScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: THEME_ASSET_SCHEME,
-      privileges: {
-        standard: true,
-        secure: true,
-        supportFetchAPI: true,
-        corsEnabled: true,
-        stream: true,
-      },
-    },
-  ]);
-}
+export const PLUGIN_ASSET_SCHEME_PRIVILEGES: CustomScheme = {
+  scheme: THEME_ASSET_SCHEME,
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    corsEnabled: true,
+    stream: true,
+  },
+};
 
 /** Install the request handler. Call once, after the app is ready. */
 export function installPluginAssetProtocol(resolve: PluginAssetResolver): void {
