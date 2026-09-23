@@ -140,6 +140,9 @@ export function useComposerAutocomplete({
   composing: boolean;
   enabled: boolean;
 }) {
+  const sessionId = useAppStore((s) => s.activeSessionId);
+  const live = useRef({ value, cursor, composing, enabled, sessionId });
+  live.current = { value, cursor, composing, enabled, sessionId };
   const workspaceKey = useAppStore((s) => s.workspace?.path ?? "");
   const hasWorkspace = workspaceKey !== "";
   const [commands, setCommands] = useState<ComposerCommand[] | null>(null);
@@ -283,7 +286,18 @@ export function useComposerAutocomplete({
     [trigger, items, value],
   );
 
+  const acceptText = (text: string) => {
+    const current = live.current;
+    if (!open || !trigger || current.composing || !current.enabled ||
+        current.value !== value || current.cursor !== cursor ||
+        current.sessionId !== sessionId || typeof text !== "string" ||
+        !text || text.length > 4096) return null;
+    return applyCompletion(value, trigger, text);
+  };
+
   return {
+    sessionId,
+    acceptText,
     open,
     mode: open && trigger ? trigger.mode : null,
     query: open && trigger ? trigger.query : "",

@@ -300,7 +300,7 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
   );
   assert.match(
     submit,
-    /const submittedDraft = draft\.draftSnapshot\(text\);\s*draft\.clearDraftForKey\(submittedDraftKey\);\s*const accepted = steering[\s\S]*?await steerPrompt\(inlineContent, submittedDraft\)[\s\S]*?await sendPrompt\(inlineContent, submittedDraft\);\s*if \(!accepted\) draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\);/,
+    /const submittedDraft = draft\.draftSnapshot\(text\);[\s\S]*?await validateReferenceSend\([\s\S]*?controller\.signal\.throwIfAborted\(\);[\s\S]*?draft\.clearDraftForKey\(submittedDraftKey\);\s*const accepted = steering[\s\S]*?await steerPrompt\(inlineContent, submittedDraft\)[\s\S]*?await sendPrompt\(inlineContent, submittedDraft\);\s*if \(!accepted\) draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\);/,
   );
   assert.match(store, /draft\?: ComposerDraftSnapshot/);
   const sendPrompt = queueSlice.slice(

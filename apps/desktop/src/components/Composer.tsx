@@ -33,6 +33,7 @@ import {
   useComposerAutocomplete,
 } from "../hooks/use-composer-autocomplete";
 import { ComposerAutocomplete } from "./ComposerAutocomplete";
+import { contextOccupancyTokens, resolveContextWindow } from "../lib/context-usage";
 import { AskToolCard } from "./AskToolCard";
 import { PlanApprovalBar } from "./PlanApprovalBar";
 import {
@@ -408,6 +409,10 @@ export function Composer({
     providerId: provider?.id,
     modelId,
     thinkingLevel,
+    referenceContext: {
+      contextWindow: resolveContextWindow(provider?.id, modelId, providerModels, providers),
+      usedTokens: composerContextUsage ? contextOccupancyTokens(composerContextUsage.usage) : 0,
+    },
     modelReady,
     sendBlocked,
     pasting,
@@ -548,6 +553,14 @@ export function Composer({
               anchorRef={composerShellRef}
               ac={composerAc}
               onAccept={acceptCompletion}
+              onAcceptText={(text) => {
+                const result = composerAc.acceptText(text);
+                if (!result) return false;
+                invalidatePromptEnhancement();
+                applyEditorDraft(result.value, fileReferencesRef.current, result.cursor);
+                composerAc.close();
+                return true;
+              }}
             />
           ) : null}
           <ComposerInput
@@ -599,7 +612,7 @@ export function Composer({
             enhancementDraft={enhancementDraft}
             value={value}
             modelReady={modelReady}
-            sendBlocked={sendBlocked}
+            sendBlocked={sendBlocked || submitController.preparingReferences}
             enhancingPrompt={enhancingPrompt}
             enhancementUndoText={enhancementUndoText}
             enhancePrompt={enhancePrompt}

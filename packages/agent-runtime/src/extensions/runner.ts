@@ -278,9 +278,12 @@ export interface TrustedExtensionBridge {
    * host (`session.get`), never by this process. `limit` is a positive window
    * size; `truncated` says older rows exist outside it.
    */
-  recapSession(input: { limit: number }): Promise<{
+  recapSession(input: { limit: number; sessionId?: string; before?: number }): Promise<{
     messages: ReadonlyArray<unknown>;
     truncated: boolean;
+    title?: string;
+    messageStart?: number;
+    messageEnd?: number;
   }>;
   /**
    * Slot 10: queue a real, durable turn for this plugin's continuation (ADR
@@ -855,7 +858,7 @@ export class TrustedExtensionRunner {
    */
   private async extensionRecap(
     extension: LoadedExtension,
-    input?: { scope?: "turn" | "session"; turnId?: string; limit?: number },
+    input?: { scope?: "turn" | "session"; turnId?: string; limit?: number; sessionId?: string; before?: number },
   ): Promise<TrustedExtensionTurnRecap | undefined> {
     const scope = input?.scope === "session" ? "session" : "turn";
     if (this.refuseApi(extension, "recap", "recap")) return undefined;
@@ -863,12 +866,26 @@ export class TrustedExtensionRunner {
     const limit = recapLimit(input?.limit);
     try {
       if (scope === "session") {
-        const read = await this.bridge.recapSession({ limit });
+        const target = input?.sessionId;
+        if (target !== undefined && (typeof target !== "string" || !target.trim() || target.length > 256)) {
+          throw new Error("Session recap needs a valid session identity");
+        }
+        if (input?.before !== undefined && (!Number.isSafeInteger(input.before) || input.before < 0)) {
+          throw new Error("Session recap needs a non-negative physical cursor");
+        }
+        const read = await this.bridge.recapSession({
+          limit,
+          ...(target === undefined ? {} : { sessionId: target.trim() }),
+          ...(input?.before === undefined ? {} : { before: input.before }),
+        });
         return {
           scope: "session" as const,
-          sessionId: this.bridge.sessionId,
+          sessionId: target?.trim() ?? this.bridge.sessionId,
           messages: read.messages,
           truncated: read.truncated,
+          ...(read.title === undefined ? {} : { title: read.title }),
+          ...(read.messageStart === undefined ? {} : { messageStart: read.messageStart }),
+          ...(read.messageEnd === undefined ? {} : { messageEnd: read.messageEnd }),
         };
       }
       const turnId = typeof input?.turnId === "string" ? input.turnId.trim() : "";
@@ -1404,7 +1421,8 @@ export class TrustedExtensionRunner {
        * needs `runtime.session.read` as well (ADR 0295 rule 7). Reads are not
        * logged one by one.
        */
-      recap: (input?: { scope?: "turn" | "session"; turnId?: string; limit?: number }) =>
+      getPluginSettings: () => structuredClone(extension.spec.settings ?? {}),
+      recap: (input?: { scope?: "turn" | "session"; turnId?: string; limit?: number; sessionId?: string; before?: number }) =>
         this.extensionRecap(extension, input),
       /**
        * Slot 10: start another turn after this one ends

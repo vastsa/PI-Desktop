@@ -905,6 +905,10 @@ export type PluginTurnRecap =
       sessionId: string;
       /** Newest last, in the host's transcript shape. */
       messages: ReadonlyArray<unknown>;
+      /** Physical transcript bounds, when a host supplies paged reads. */
+      title?: string;
+      messageStart?: number;
+      messageEnd?: number;
       /** True when older rows exist outside the returned window. */
       truncated: boolean;
     };
@@ -945,6 +949,8 @@ export type PluginTurnContinueInput = string | { message?: string };
  * never silent.
  */
 export type PluginTurnApi = {
+  /** Own non-secret settings snapshot. Refreshed when the host relaunches the runtime. */
+  getPluginSettings(): Readonly<Record<string, unknown>>;
   /**
    * Slot 9 facts about one turn — status, provider and model, tokens, the
    * turn's own plugin-tool spend, duration, executed tool calls with their
@@ -982,6 +988,10 @@ export type PluginTurnApi = {
    */
   recap(input?: {
     scope?: "turn" | "session";
+    /** Session scope only; omitted reads the current session. Same read grant. */
+    sessionId?: string;
+    /** Exclusive physical line cursor from the previous messageStart. */
+    before?: number;
     turnId?: string;
     limit?: number;
   }): Promise<PluginTurnRecap | undefined>;
@@ -2785,6 +2795,7 @@ export {
   type PiRendererInlineConfirmRequest,
   type PiRendererModule,
   type PiRendererNode,
+  type PiRendererReferenceSendInput,
   type PiRendererRegistration,
   type PiRendererSlotOptions,
   type PiRendererStyleHandle,

@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "id": "inorilzy.session-mentions",
+  "name": "Session Mentions",
+  "version": "0.1.0",
+  "description": "Reference complete Q&A from other local sessions using composer slots.",
+  "main": "main.mjs",
+  "renderer": "renderer/index.mjs",
+  "rendererData": [
+    "locale"
+  ],
+  "rendererActions": [
+    "plugin.call",
+    "ui.toast"
+  ],
+  "contributes": {
+    "agentExtensions": [
+      "extension.mjs"
+    ],
+    "settings": [
+      {
+        "key": "budgetPercent",
+        "title": "Reference context budget (%)",
+        "description": "Share of remaining context used for referenced complete Q&A.",
+        "type": "select",
+        "default": 25,
+        "enum": [
+          {
+            "label": "10%",
+            "value": 10
+          },
+          {
+            "label": "25%",
+            "value": 25
+          },
+          {
+            "label": "50%",
+            "value": 50
+          },
+          {
+            "label": "100%",
+            "value": 100
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": [
+    "renderer.extension",
+    "agent.extension",
+    "desktop.control",
+    "runtime.turn.recap",
+    "runtime.session.read",
+    "runtime.send.before"
+  ],
+  "activationEvents": [
+    "onStartup"
+  ],
+  "i18n": {
+    "zh-CN": {
+      "name": "会话引用",
+      "description": "在 @ 菜单引用其他本地会话的完整问答。"
+    }
+  }
+}

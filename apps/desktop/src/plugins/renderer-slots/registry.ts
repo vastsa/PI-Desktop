@@ -67,6 +67,7 @@ export type PluginSlotRegistration = {
    * refuses a bad list, so a mount can compare against it directly.
    */
   positions?: readonly PiRendererComposerControlPosition[];
+  validateSend?: PiRendererSlotOptions["validateSend"];
 };
 
 /**
@@ -175,6 +176,12 @@ class PluginSlotRegistry {
       });
       return null;
     }
+    if (options?.validateSend !== undefined &&
+        (slot !== "composerReference" || typeof options.validateSend !== "function")) {
+      this.report({ pluginId, slot, code: "PLUGIN_SLOT_INVALID_COMPONENT",
+        detail: "validateSend must be a function on composerReference" });
+      return null;
+    }
     let language: string | undefined;
     let positions: readonly PiRendererComposerControlPosition[] | undefined;
     if (slot === "codeBlock") {
@@ -239,6 +246,7 @@ class PluginSlotRegistry {
       component: component as PluginSlotComponent,
       ...(language === undefined ? {} : { language }),
       ...(positions === undefined ? {} : { positions }),
+      ...(options?.validateSend === undefined ? {} : { validateSend: options.validateSend }),
     };
     list.push(entry);
     this.registrations.set(key, list);

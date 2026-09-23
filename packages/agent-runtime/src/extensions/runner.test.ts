@@ -1098,6 +1098,33 @@ export default function (pi: any) {
     ]);
   });
 
+  it("refuses malformed explicit recap cursors before host I/O", async () => {
+    const ext = spec("invalid-cursor", `export default function(pi: any) {
+      pi.on("session_start", async () => {
+        await pi.recap({ scope: "session", sessionId: "other", before: -1 });
+      });
+    }`, ["agent.extension", "runtime.turn.recap", "runtime.session.read"]);
+    const { bridge, log } = fakeBridge();
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    await runner.load();
+    expect(log.sessionRecaps).toEqual([]);
+    expect(runner.getDiagnostics()[0]?.kind).toBe("handler_error");
+  });
+
+  it("gives extensions only their own settings snapshot, copied on every read", async () => {
+    const ext = spec("own-settings", `export default function(pi: any) {
+      const first = pi.getPluginSettings();
+      first.budgetPercent = 100;
+      pi.on("session_start", () => { (globalThis as any).__settings = pi.getPluginSettings(); });
+    }`);
+    ext.settings = { budgetPercent: 25 };
+    const { bridge } = fakeBridge();
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    await runner.load();
+    expect((globalThis as any).__settings).toEqual({ budgetPercent: 25 });
+    delete (globalThis as any).__settings;
+  });
+
   it("reads the session transcript once both recap grants are held", async () => {
     const session = {
       messages: [{ id: "u1", role: "user", content: "hello" }],

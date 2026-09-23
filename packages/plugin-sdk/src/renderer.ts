@@ -642,7 +642,24 @@ function escapeRegExp(value: string): string {
  * declare the composer positions it wants to be asked for (spec 07-plugins/16
  * §2A.5).
  */
+export type PiRendererReferenceSendInput = {
+  text: string;
+  sessionId?: string;
+  contextWindow: number;
+  usedTokens: number;
+  maxOutputTokens?: number;
+  hasAttachments: boolean;
+  steering: boolean;
+  signal: AbortSignal;
+  dispatch: PiRendererDispatch;
+};
+
 export type PiRendererSlotOptions = {
+  /** composerReference only. Validate before clearing/enqueuing; never rewrite the draft.
+   * Throwing, timing out, or unloading refuses this send. Actual rewrites use input.
+   */
+  validateSend?: (input: PiRendererReferenceSendInput) =>
+    Promise<{ ok: true } | { ok: false; reason: string }> | { ok: true } | { ok: false; reason: string };
   /** `codeBlock` only: the fenced language this component renders. */
   language?: string;
   /**
@@ -968,6 +985,10 @@ export type PiRendererComposerEnhancement = {
  * the host's rows; a plugin's own row carries its own activation.
  */
 export type PiRendererCompletionSourceProps = {
+  /** Draft session identity, absent until the first send materializes a session. */
+  sessionId?: string;
+  /** Replace this trigger with literal text. False means the draft/selection changed. */
+  acceptText?: (text: string) => boolean;
   /** Which trigger opened the popover: `/` commands, or `@` file paths. */
   mode: "slash" | "file";
   /**

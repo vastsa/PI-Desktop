@@ -565,7 +565,11 @@ async function handle(method: string, params: any): Promise<unknown> {
         attachments,
         ...(params.sessionMessage ? { sessionMessage: params.sessionMessage as SessionMessageOrigin } : {}),
       };
-      void runtime.prompt(prompt, userMessageId, turnId).catch((err) => {
+      // Await only admission. A handled input rejects the RPC so the existing
+      // composer restores its draft and a queued entry retains its failure.
+      // Provider execution stays asynchronous; the input hook is not run twice.
+      const admitted = await runtime.preparePromptInput(prompt, turnId, userMessageId);
+      void runtime.prompt(admitted, userMessageId, turnId).catch((err) => {
         // Rejected-prompt path (pre-flight/transport failures). Streamed
         // provider errors surface via stopReason "error" and are classified
         // and emitted by the runtime itself.
@@ -589,11 +593,11 @@ async function handle(method: string, params: any): Promise<unknown> {
       }
       const expectedTurnId = String(params.expectedTurnId ?? "");
       if (method === "agent.steeringContext") return runtime.steeringContext(expectedTurnId);
-      return runtime.steer(
+      const prepared = await runtime.prepareSteering(
         { text: String(params.content ?? ""), attachments: params.attachments },
-        expectedTurnId,
-        params.message,
+        expectedTurnId, String(params.message?.id ?? ""),
       );
+      return runtime.steer(prepared, expectedTurnId, params.message);
     }
     case "agent.executeApprovedPlan": {
       const sessionId = String(params.sessionId ?? "");

@@ -1636,6 +1636,9 @@ export class DesktopAgentRuntime {
   private turnId?: string;
   private hostTurnId?: string;
   private disposed = false;
+  private promptPreparation: AbortController | null = null;
+  /** Unforgeable, one-use marker for inputs admitted before the sidecar acknowledges. */
+  private readonly preparedPromptInputs = new WeakSet<RuntimePrompt>();
   readonly sessionId: string;
   private mode: Mode;
   private provider: RuntimeProviderConfig;
@@ -2658,7 +2661,7 @@ Delegation rules:
        * live run's token, so plugin work that keeps it stops exactly when the
        * turn is stopped — by the user, by `abort()`, or by another plugin.
        */
-      getAbortSignal: () => runtime.agent.signal,
+      getAbortSignal: () => runtime.promptPreparation?.signal ?? runtime.agent.signal,
       abort: () => {
         void runtime.abort();
         // Plugin tool work runs in the plugin process; Electron main cancels
@@ -2777,12 +2780,21 @@ Delegation rules:
        * of the transcript and flags with `hasMoreBefore`). This is the sidecar's
        * established session read, not a second conversation store.
        */
-      recapSession: async ({ limit }) => {
+      recapSession: async ({ limit, sessionId, before }) => {
+        const id = sessionId ?? runtime.sessionId;
         const detail = await runtime.host.call<{
-          session?: { messages?: unknown[]; hasMoreBefore?: boolean } | null;
-        }>("session.get", { id: runtime.sessionId, messageLimit: Math.max(1, limit) });
-        const messages = Array.isArray(detail?.session?.messages) ? detail.session.messages : [];
-        return { messages, truncated: detail?.session?.hasMoreBefore === true };
+          session?: { id?: string; title?: string; messages?: unknown[]; hasMoreBefore?: boolean;
+            messageStart?: number; messageEnd?: number } | null;
+        }>("session.get", { id, messageLimit: Math.max(1, limit),
+          ...(before === undefined ? {} : { messageBefore: before }) });
+        const session = detail?.session;
+        if (!session || (session.id !== undefined && session.id !== id) || !Array.isArray(session.messages)) {
+          throw new Error("Session recap source is unavailable");
+        }
+        return { messages: session.messages, truncated: session.hasMoreBefore === true,
+          ...(session.title === undefined ? {} : { title: session.title }),
+          ...(session.messageStart === undefined ? {} : { messageStart: session.messageStart }),
+          ...(session.messageEnd === undefined ? {} : { messageEnd: session.messageEnd }) };
       },
       /**
        * Slot 10: a plugin's continuation takes the host-owned queue, the same
@@ -7810,6 +7822,30 @@ Delegation rules:
     return { turnId: this.turnId };
   }
 
+  /** Consult Before Send before the sidecar acknowledges. No provider work starts here. */
+  async preparePromptInput(input: RuntimePrompt, turnId: string, userMessageId?: string): Promise<RuntimePrompt> {
+    if (this.disposed) throw new Error("runtime disposed");
+    this.assertNotRunning();
+    if (this.promptPreparation) throw Object.assign(new Error("Prompt preparation is already running"), {
+      errorCode: "AGENT_BUSY",
+    });
+    const controller = new AbortController();
+    this.promptPreparation = controller;
+    try {
+      const normalized = input.sessionMessage
+        ? { ...input, text: formatSessionMessage(input.text, input.sessionMessage) }
+        : input;
+      const outgoing = await this.extensionBeforeSend(normalized, turnId, userMessageId);
+      if (controller.signal.aborted) throw turnAbortedError("Prompt preparation was cancelled");
+      if (outgoing.handled) throw pluginHandledPromptError(outgoing.handled);
+      const prepared = { ...normalized, text: outgoing.text ?? normalized.text };
+      this.preparedPromptInputs.add(prepared);
+      return prepared;
+    } finally {
+      if (this.promptPreparation === controller) this.promptPreparation = null;
+    }
+  }
+
   async prompt(
     input: string | RuntimePrompt,
     userMessageId?: string,
@@ -7817,7 +7853,8 @@ Delegation rules:
   ): Promise<{ turnId: string }> {
     if (this.disposed) throw new Error("runtime disposed");
     this.assertNotRunning();
-    const modelInput = typeof input !== "string" && input.sessionMessage
+    const prepared = typeof input !== "string" && this.preparedPromptInputs.delete(input);
+    const modelInput = !prepared && typeof input !== "string" && input.sessionMessage
       ? { ...input, text: formatSessionMessage(input.text, input.sessionMessage), sessionMessage: undefined }
       : input;
     this.retainPendingSteering();
@@ -7853,7 +7890,8 @@ Delegation rules:
       // extension context — and it is late enough that the user's own row
       // already exists, so a rewrite changes what the model reads while the text
       // the user typed stays on that row.
-      const outgoing = await this.extensionBeforeSend(modelInput, nextTurnId, userMessageId);
+      const outgoing: BeforeSendOutcome = prepared ? { rewrites: [] }
+        : await this.extensionBeforeSend(modelInput, nextTurnId, userMessageId);
       if (outgoing.handled) throw pluginHandledPromptError(outgoing.handled);
       // A rewrite applies to the model's copy only: everything below (the
       // pre-flight checkpoint and the prompt itself) sees the text the plugin
@@ -8154,6 +8192,14 @@ Delegation rules:
     return { projectPath: this.projectPath, supportsVision: this.model.input.includes("image") };
   }
 
+  async prepareSteering(input: RuntimePrompt, expectedTurnId: string, messageId: string): Promise<RuntimePrompt> {
+    this.steeringContext(expectedTurnId);
+    const outgoing = await this.extensionBeforeSend(input, expectedTurnId, messageId);
+    this.steeringContext(expectedTurnId);
+    if (outgoing.handled) throw pluginHandledPromptError(outgoing.handled);
+    return outgoing.text === undefined ? input : { ...input, text: outgoing.text };
+  }
+
   steer(input: RuntimePrompt, expectedTurnId: string, message: UiMessage): { accepted: boolean; turnId: string } {
     this.steeringContext(expectedTurnId);
     const queued: AgentMessage = { role: "user", content: promptContent(input), timestamp: Date.now() };
@@ -8201,6 +8247,7 @@ Delegation rules:
   }
 
   async abort(): Promise<void> {
+    this.promptPreparation?.abort();
     this.acceptingSteering = false;
     this.gracefulStopRequested = false;
     this.runCancelled = true;
@@ -8246,6 +8293,7 @@ Delegation rules:
     if (runner) await runner.dispose().catch(() => undefined);
     this.streamSink.dispose();
     this.disposed = true;
+    this.promptPreparation?.abort();
     this.acceptingSteering = false;
     this.runCancelled = true;
     this.resolvePendingAskTools();

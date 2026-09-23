@@ -8914,7 +8914,7 @@ describe("DesktopAgentRuntime send-before and session-lifecycle slots (#561 item
   }
 
   async function startRuntime(specs: TrustedExtensionSpec[]) {
-    const host = { call: vi.fn(async () => undefined), onNotification: vi.fn(() => () => {}) };
+    const host = { call: vi.fn(async (_method: string, _params?: unknown): Promise<unknown> => undefined), onNotification: vi.fn(() => () => {}) };
     const runtime = createRuntime({ host, trustedExtensions: specs });
     await runtime.loadTrustedExtensions();
     const models = {
@@ -8935,6 +8935,48 @@ describe("DesktopAgentRuntime send-before and session-lifecycle slots (#561 item
     };
     return { runtime, models, host, lastUserText };
   }
+
+  it("rejects plugin-handled input before sidecar acknowledgement or provider work", async () => {
+    const ext = spec("admission-block", `export default function(pi: any) {
+      pi.on("input", () => ({ action: "handled", reason: "reference budget exceeded" }));
+    }`);
+    const { runtime, models } = await startRuntime([ext]);
+    await expect(runtime.preparePromptInput({ text: "draft" }, "turn-1", "user-1"))
+      .rejects.toThrow("reference budget exceeded");
+    expect(models.streamSimple).not.toHaveBeenCalled();
+    await runtime.dispose();
+  });
+
+  it("runs input once across admission and subsequent provider execution", async () => {
+    const ext = spec("admission-once", `export default function(pi: any) {
+      pi.on("input", (e: any) => ({ action: "transform", text: e.text + " [once]" }));
+    }`);
+    const { runtime, lastUserText, models } = await startRuntime([ext]);
+    const admitted = await runtime.preparePromptInput({ text: "draft" }, "turn-1", "user-1");
+    expect(admitted.text).toBe("draft [once]");
+    expect(models.streamSimple).not.toHaveBeenCalled();
+    await runtime.prompt(admitted, "user-1", "turn-1");
+    expect(lastUserText()).toBe("draft [once]");
+    await runtime.dispose();
+  });
+
+  it("serves an explicitly targeted physical transcript page through the existing host read", async () => {
+    const ext = spec("targeted-page", `export default function(pi: any) {
+      pi.on("input", async () => {
+        const page = await pi.recap({ scope: "session", sessionId: "other-session", before: 400, limit: 400 });
+        return { action: "transform", text: JSON.stringify(page) };
+      });
+    }`, ["agent.extension", "runtime.send.before", "runtime.turn.recap", "runtime.session.read"]);
+    const { runtime, host } = await startRuntime([ext]);
+    host.call.mockImplementation(async (method: string) => method === "session.get" ? { session: {
+      id: "other-session", title: "Other", messages: [{ role: "user", content: "hello" }],
+      messageStart: 0, messageEnd: 400, hasMoreBefore: false,
+    } } : undefined);
+    const prepared = await runtime.preparePromptInput({ text: "draft" }, "turn-1", "user-1");
+    expect(host.call).toHaveBeenCalledWith("session.get", { id: "other-session", messageLimit: 400, messageBefore: 400 });
+    expect(JSON.parse(prepared.text)).toMatchObject({ sessionId: "other-session", title: "Other", messageStart: 0, messageEnd: 400 });
+    await runtime.dispose();
+  });
 
   it("lets a plugin rewrite what the model receives and records the rewrite", async () => {
     const ext = spec(

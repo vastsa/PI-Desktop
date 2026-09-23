@@ -1,0 +1,10 @@
+{
+  "name": "pi-session-mentions",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node test/run.mjs"
+  }
+}

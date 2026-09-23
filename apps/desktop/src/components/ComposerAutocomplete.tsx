@@ -61,10 +61,12 @@ export function ComposerAutocomplete({
   anchorRef,
   ac,
   onAccept,
+  onAcceptText,
 }: {
   anchorRef: React.RefObject<HTMLElement | null>;
   ac: ReturnType<typeof useComposerAutocomplete>;
   onAccept: (index: number) => void;
+  onAcceptText?: (text: string) => boolean;
 }) {
   const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement>(null);
@@ -184,7 +186,7 @@ export function ComposerAutocomplete({
           * keep their order and their keyboard acceptance; a plugin adds
           * candidates for the same query after them. `ac.mode` is null only
           * while the popover is closed, which this render has already left. */}
-        <CompletionSourceSlot mode={ac.mode === "file" ? "file" : "slash"} query={ac.query} />
+        <CompletionSourceSlot mode={ac.mode === "file" ? "file" : "slash"} query={ac.query} sessionId={ac.sessionId ?? undefined} acceptText={onAcceptText} />
       </div>
       <div className="composer-ac-footer">
         <span>{t("chat.acHint")}</span>

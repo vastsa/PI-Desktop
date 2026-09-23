@@ -593,12 +593,14 @@ const commandItem = {
   match: { score: 10, ranges: [[0, 2]] },
 };
 
-function renderPopover({ mode = "slash", query = "he", items = [commandItem], open = true } = {}) {
+function renderPopover({ mode = "slash", query = "he", items = [commandItem], open = true,
+  sessionId = "session-1", acceptText = () => true } = {}) {
   return renderToStaticMarkup(
     React.createElement(ComposerAutocomplete, {
       anchorRef: { current: null },
       ac: {
         open,
+        sessionId,
         mode: open ? mode : null,
         query: open ? query : "",
         items: open ? items : [],
@@ -611,6 +613,7 @@ function renderPopover({ mode = "slash", query = "he", items = [commandItem], op
         accept: () => null,
       },
       onAccept: () => {},
+      onAcceptText: acceptText,
     }),
   );
 }
@@ -625,7 +628,9 @@ test("a completionSource plugin adds candidates for the current query after the 
     return React.createElement("button", { className: "acme-candidate" }, "acme: help");
   });
 
-  const markup = renderPopover({ mode: "slash", query: "he" });
+  const accepted = [];
+  const acceptText = (text) => { accepted.push(text); return true; };
+  const markup = renderPopover({ mode: "slash", query: "he", acceptText });
   const [container] = containers(markup);
   assert.ok(container, "the plugin drew a candidate inside the popover");
   assert.match(container, /data-pi-plugin-slot="completionSource"/);
@@ -636,15 +641,17 @@ test("a completionSource plugin adds candidates for the current query after the 
   );
   assert.match(markup, /acme-candidate/);
 
-  // The query the popover is open for, and only that host data.
+  // The host owns the query, session identity and acceptance callback.
   assert.deepEqual(
     completionProps.map((props) => ({ mode: props.mode, query: props.query })),
     [{ mode: "slash", query: "he" }],
   );
-  assert.deepEqual(Object.keys(completionProps[0]).sort(), ["dispatch", "mode", "query"]);
+  assert.deepEqual(Object.keys(completionProps[0]).sort(), ["acceptText", "dispatch", "mode", "query", "sessionId"]);
   assert.equal(typeof completionProps[0].dispatch, "function");
-  assert.deepEqual(Object.keys(completionProps[0]).sort(), ["dispatch", "mode", "query"]);
-  assert.equal(typeof completionProps[0].dispatch, "function");
+  assert.equal(completionProps[0].sessionId, "session-1");
+  assert.equal(completionProps[0].acceptText, acceptText);
+  assert.equal(completionProps[0].acceptText("@session:chosen "), true);
+  assert.deepEqual(accepted, ["@session:chosen "]);
 });
 
 test("the file trigger is reported as its own mode, and the popover is only asked while open", () => {

@@ -57,3 +57,9 @@ Prefer the official warehouse template:
 
 - https://github.com/vastsa/pi-desktop-plugins/tree/main/plugins/demo.workspace-summary
 - Contribution guide: https://github.com/vastsa/pi-desktop-plugins/blob/main/CONTRIBUTING.md
+
+## session-mentions
+
+[Session Mentions](session-mentions/README.md) demonstrates completion and
+reference components together with the permissioned Before Send runtime hook.
+It requires the plugin-slot branch and the lifecycle contracts from PR #447.

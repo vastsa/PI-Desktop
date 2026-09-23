@@ -15,14 +15,18 @@ import { useRendererCandidates } from "../../../plugins/renderer-slots/use-rende
 export function CompletionSourceSlot({
   mode,
   query,
+  sessionId,
+  acceptText,
 }: {
   /** The trigger the popover is open for. */
   mode: "slash" | "file";
   /** What the user has typed after that trigger. */
   query: string;
+  sessionId?: string;
+  acceptText?: (text: string) => boolean;
 }) {
   const candidates = useRendererCandidates();
-  const slotProps = useMemo(() => ({ mode, query }), [mode, query]);
+  const slotProps = useMemo(() => ({ mode, query, sessionId, acceptText }), [mode, query, sessionId, acceptText]);
   return (
     <PluginSlot
       slot="completionSource"

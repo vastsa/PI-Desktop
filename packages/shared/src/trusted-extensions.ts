@@ -24,6 +24,8 @@ export type TrustedExtensionSpec = {
    * none, because a tier permission must never imply a slot permission.
    */
   permissions?: readonly string[];
+  /** This plugin's non-secret settings at runtime launch; part of runtime identity. */
+  settings?: Readonly<Record<string, unknown>>;
 };
 
 export type TrustedExtensionDiagnosticKind =
@@ -723,6 +725,10 @@ export type TrustedExtensionTurnRecap =
       sessionId: string;
       /** Newest rows last, as host-core returns them. */
       messages: ReadonlyArray<unknown>;
+      /** Physical transcript bounds, when a host supplies paged reads. */
+      title?: string;
+      messageStart?: number;
+      messageEnd?: number;
       /** Older rows exist outside the returned window. */
       truncated: boolean;
     };

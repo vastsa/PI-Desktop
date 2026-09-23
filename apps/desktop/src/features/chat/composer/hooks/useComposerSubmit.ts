@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { validateReferenceSend } from "../../../../plugins/renderer-slots/reference-preflight";
 import type { TFunction } from "i18next";
 import {
   restoreInlineComposerFileReferenceTokens,
@@ -23,6 +24,7 @@ type UseComposerSubmitOptions = {
   providerId?: string;
   modelId?: string;
   thinkingLevel: Parameters<AppState["configureActiveSession"]>[0]["thinkingLevel"];
+  referenceContext?: { contextWindow: number; usedTokens: number; maxOutputTokens?: number };
   modelReady: boolean;
   sendBlocked: boolean;
   pasting: boolean;
@@ -43,6 +45,7 @@ type UseComposerSubmitOptions = {
 };
 
 export type ComposerSubmitController = {
+  preparingReferences: boolean;
   enhancingPrompt: boolean;
   enhancementUndoText: string | null;
   enhancementError: { message: string; code: string } | null;
@@ -66,6 +69,7 @@ export function useComposerSubmit({
   modelId,
   thinkingLevel,
   modelReady,
+  referenceContext,
   sendBlocked,
   pasting,
   activeFileReferences,
@@ -75,6 +79,9 @@ export function useComposerSubmit({
   showToast,
   draft,
 }: UseComposerSubmitOptions): ComposerSubmitController {
+  const [preparingReferences, setPreparingReferences] = useState(false);
+  const preflight = useRef<AbortController | null>(null);
+  useEffect(() => () => preflight.current?.abort(), [draftKey]);
   const [enhancingPrompt, setEnhancingPrompt] = useState(false);
   const [enhancementUndoText, setEnhancementUndoText] = useState<string | null>(null);
   const [enhancementError, setEnhancementError] = useState<{
@@ -189,6 +196,7 @@ export function useComposerSubmit({
   };
 
   const submit = async (steering = false) => {
+    if (preflight.current) return;
     const text = draft.ref.current ? readEditorValue(draft.ref.current) : value;
     const inlineContent = serializeInlineComposerFileReferences(
       text,
@@ -272,6 +280,29 @@ export function useComposerSubmit({
       return;
     }
     const submittedDraft = draft.draftSnapshot(text);
+    const controller = new AbortController();
+    preflight.current = controller;
+    setPreparingReferences(true);
+    try {
+      await validateReferenceSend({ text: inlineContent, sessionId: activeSessionId ?? undefined,
+        contextWindow: referenceContext?.contextWindow ?? 0,
+        usedTokens: referenceContext?.usedTokens ?? 0,
+        maxOutputTokens: referenceContext?.maxOutputTokens,
+        hasAttachments: activeFileReferences.length > 0, steering }, controller.signal);
+      controller.signal.throwIfAborted();
+      const liveText = draft.ref.current ? readEditorValue(draft.ref.current) : value;
+      if (liveText !== text || JSON.stringify(draft.draftSnapshot(liveText).fileReferences) !==
+          JSON.stringify(submittedDraft.fileReferences) ||
+          draftKeyForSession(useAppStore.getState().activeSessionId) !== submittedDraftKey) {
+        return;
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+      return;
+    } finally {
+      if (preflight.current === controller) preflight.current = null;
+      setPreparingReferences(false);
+    }
     draft.clearDraftForKey(submittedDraftKey);
     const accepted = steering
       ? await steerPrompt(inlineContent, submittedDraft)
@@ -280,6 +311,7 @@ export function useComposerSubmit({
   };
 
   return {
+    preparingReferences,
     enhancingPrompt,
     enhancementUndoText,
     enhancementError,
