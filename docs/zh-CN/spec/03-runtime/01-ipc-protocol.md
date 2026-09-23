@@ -655,10 +655,13 @@ type AgentEvent =
 避免快速完成先于查看上下文更新。Electron 将此提示与 Main 拥有的窗口
 visibility/focus 结合起来，在终态事件边界进行判断。缺失、null 或不匹配的
 上下文都会安全地创建公告。它还调用
-`pi-desktop/notification/showNative({ id, sessionId, title, body, source? })` 之后
+`pi-desktop/notification/showNative({ id, sessionId, title, body, source?, createdAt? })` 之后
 本地化新记录。可选的 `source` 对终端任务结果使用 `"task"`，对 asktool、
 工具权限和 Plan 审批询问使用 `"interactive"`；省略或未知值默认为
-`"task"`。这个仅限 Electron 的请求永远不会进入主机 RPC 域。
+`"task"`。任务通知带有持久记录的 `createdAt` 时，Main 会在成功的“全部已读”
+或清空操作后使用 `dismissedBefore` 水位拒绝迟到的旧事件，单条已读则使用
+持久 ID tombstone；这样渲染器或主机重放不会再次弹出已处理的通知。这个仅限
+Electron 的请求永远不会进入主机 RPC 域。
 
 ```ts
 type AppNotification = {

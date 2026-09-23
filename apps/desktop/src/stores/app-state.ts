@@ -312,7 +312,8 @@ export type AppState = {
   /** Reload contributed work panel views. */
   refreshPluginViews: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
-  receiveNotification: (notification: AppNotification) => void;
+  /** Returns true only when this event was accepted as a new durable row. */
+  receiveNotification: (notification: AppNotification) => boolean;
   markNotificationRead: (id: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
   clearNotifications: () => Promise<void>;

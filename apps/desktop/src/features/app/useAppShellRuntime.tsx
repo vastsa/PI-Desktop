@@ -626,7 +626,11 @@ export function useAppShellRuntime() {
       }
     });
     const offNotificationChanged = api.onNotificationChanged((notification) => {
-      useAppStore.getState().receiveNotification(notification);
+      const accepted = useAppStore.getState().receiveNotification(notification);
+      // A host replay, renderer reload, or post-clear delayed event may refer
+      // to a row that is already present/acknowledged. Do not surface a native
+      // banner for an event the store intentionally rejected.
+      if (!accepted) return;
       const failed = notification.kind === "task.failed";
       const title = t(
         failed ? "notifications.failedTitle" : "notifications.completedTitle",
@@ -644,6 +648,7 @@ export function useAppShellRuntime() {
           kind: "task",
           title,
           body,
+          createdAt: notification.createdAt,
         })
         .catch(() => undefined);
     });

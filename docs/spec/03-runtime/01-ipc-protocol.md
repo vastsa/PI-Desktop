@@ -781,9 +781,14 @@ setup so a fast completion cannot beat the viewing-context update. Electron
 combines this hint with Main-owned window visibility/focus at the terminal event
 boundary. Missing, null, or mismatched context fails safe to notification. It
 also invokes
-`pi-desktop/notification/showNative({ id, sessionId, kind, title, body })` after
-localizing a new record, where `kind` is `"task" | "interactive"`. This
-Electron-only request never crosses into the host RPC domain.
+`pi-desktop/notification/showNative({ id, sessionId, kind, title, body, createdAt? })`
+after localizing a new record, where `kind` is `"task" | "interactive"` and
+`createdAt` is the durable task timestamp when available. Main keeps a
+`dismissedBefore` watermark for successful mark-all-read/clear actions and
+rejects task deliveries at or before that timestamp; individual acknowledgements
+use the durable id as a tombstone. This prevents a delayed renderer or host
+replay from resurfacing an already acknowledged banner. This Electron-only
+request never crosses into the host RPC domain.
 
 ```ts
 type AppNotification = {

@@ -527,6 +527,8 @@ export const api = {
     kind: "task" | "interactive";
     title: string;
     body: string;
+    /** Durable task timestamp used by Main to reject pre-dismissal replays. */
+    createdAt?: string;
   }) => invoke<{ shown: boolean }>(IPC.invoke.notificationShowNative, input),
   setNotificationViewingSession: (sessionId: string | null) =>
     invoke<{ ok: boolean }>(IPC.invoke.notificationSetViewingSession, {
