@@ -39,7 +39,7 @@ const COPILOT_HEADERS = {
 } as const;
 
 const COPILOT_INDIVIDUAL_BASE = "https://api.individual.githubcopilot.com";
-const XAI_SIBLING_ORDER = ["grok-4.6", "grok-4.5", "grok-4.3"] as const;
+const XAI_SIBLING_ORDER = ["grok-4.7", "grok-4.6", "grok-4.5", "grok-4.3"] as const;
 const TIER_TOKENS = new Set([
   "astra",
   "fable",

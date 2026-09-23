@@ -6988,3 +6988,21 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   (a query parameter, a SigV4 signature). A key that is still not Latin-1 keeps
   failing at request time; refusing it would block a save this writer cannot
   judge.
+
+## 2026-09-22 — Catalog aliases enrich metadata without changing model identity (D622)
+
+- Keep `modelIdsMatch` strict for configured bindings: exact IDs, full path
+  suffixes, known vendor `-`/`.` prefixes and one-sided `@region` aliases;
+  distinct regions, arbitrary proxy prefixes and thinking/endpoint suffixes do
+  not merge bindings. PR #870 was closed because the frozen spec promised only
+  exact IDs/vendor prefixes, without a recorded decision to widen lookup.
+- For models.dev metadata only, `catalogModelIdsMatch` also accepts a complete
+  bare leaf through a full route (e.g. `proxy/` or `custom/`) without known-vendor
+  conflict; two distinct full routes do not match solely by leaf. It also strips
+  trailing `thinking`/`think`/`agent`/`latest` tokens separated by `-` or `:`.
+  No arbitrary dash proxy prefix or effort `low`/`high`/`max` stripping.
+  Indexed candidate keys still require a matcher hit; a known provider/API
+  scopes matches to its own catalog. No suffix alone grants reasoning:
+  unmatched free-form IDs stay generic unknown, while published capabilities
+  and explicit binding overrides retain their existing precedence. See
+  `03-runtime/13-model-catalog-and-selection.md` §11.3.

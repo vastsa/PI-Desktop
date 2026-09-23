@@ -1559,7 +1559,7 @@ revision, Plan/Goal, collaboration, and queue operations remain unsupported
 for native sessions in this slice. Forking is supported as described here and in
 the runtime spec.
 
-The 0.87.0 `context_edit` entry is part of the native v3 JSONL branch. It changes
+The 0.87.1 `context_edit` entry is part of the native v3 JSONL branch. It changes
 only the SDK-built model projection by omitting or replacing a target message;
 the original line and renderer history remain intact. It is not copied into the
 Desktop transcript or SQLite, and needs no Desktop schema migration. The lease

@@ -4943,3 +4943,18 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   得知结果。一份规则、两处实现：`packages/shared/src/header-value.ts` 与
   `crates/host-core/src/providers/validation.rs`。参见
   `03-runtime/12-provider-config-schema.md`、ADR 0178、E2E-005G。
+
+## 2026-09-22 —— 目录别名只补全元数据，不更改模型身份（D622）
+
+- 已配置绑定继续使用严格的 `modelIdsMatch`：完整 ID、完整路径后缀、已知厂商的
+  `-`/`.` 前缀和仅单侧带 `@region` 的别名；不同地区、任意代理前缀及思考/端点
+  后缀都不合并绑定。PR #870 因冻结规格仅承诺精确 ID 和厂商前缀、且无决策记录
+  支持扩大匹配范围而关闭。
+- 仅 models.dev 元数据使用 `catalogModelIdsMatch`：还可匹配无已知厂商冲突的
+  裸叶子 ID 与 `proxy/` 或 `custom/` 等完整路由路径，但不同完整路径不会仅凭
+  相同叶子互认；另可剥离由 `-` 或 `:` 分隔的末尾
+  `thinking`/`think`/`agent`/`latest`。不剥离任意短横线代理前缀或
+  `low`/`high`/`max` effort 后缀。索引候选键仍须经匹配器核实；已知厂商/API
+  只查自身目录。后缀本身不赋予推理能力：未命中的自由格式 ID 仍是未知通用
+  模型，已发布能力和显式绑定覆盖沿用既有优先级。见
+  `03-runtime/13-model-catalog-and-selection.md` §11.2。

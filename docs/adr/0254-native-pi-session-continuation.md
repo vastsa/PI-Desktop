@@ -22,7 +22,7 @@ PI-Desktop historically imports Pi sessions by flattening them into Desktop-owne
 
 - Desktop sessions and their host-owned persistence are unchanged.
 - Native branches, compaction data (including unknown fields such as `retainedTail`), custom/context messages, and future unknown entries remain untouched because reads are in-memory and writes are SDK append-only.
-- With the 0.87.0 coding-agent pin, `context_edit` entries are append-only and
+- With the 0.87.1 coding-agent pin, `context_edit` entries are append-only and
   affect only the SDK's future model-context projection. Raw source entries
   and the visible native transcript remain unchanged. `appendContextEdit` is
   covered by the same lease and parent-chain guard as every other SDK append.

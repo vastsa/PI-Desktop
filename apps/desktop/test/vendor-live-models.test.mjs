@@ -73,6 +73,10 @@ test("a new Grok inherits the newest explicit sibling, not pin order", () => {
     pinnedSiblingId("xai", "grok-4.7", ["grok-4.3", "grok-4.5", "grok-4.6"]),
     "grok-4.6",
   );
+  assert.equal(
+    pinnedSiblingId("xai", "grok-4.8", ["grok-4.3", "grok-4.7", "grok-4.6"]),
+    "grok-4.7",
+  );
 });
 
 test("an unknown Claude does not inherit a different tier", () => {

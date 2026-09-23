@@ -282,6 +282,11 @@ test("packaging publishes an electron-updater feed for GitHub Releases", () => {
   assert.match(buildReleaseSource, /"--publish",\s*"never"/);
   assert.match(buildReleaseSource, /piDistribution=installed/);
   assert.match(buildReleaseSource, /piDistribution=zip/);
+  assert.match(
+    buildReleaseSource,
+    /shell:\s*process\.platform === "win32"/,
+    "Windows must launch the pnpm.cmd shim through a shell",
+  );
   // The upload step must carry every updater feed, and the release publishes
   // all platforms unfiltered (D126/D285).
   assert.match(releaseWorkflowSource, /release\/\*\.zip/);

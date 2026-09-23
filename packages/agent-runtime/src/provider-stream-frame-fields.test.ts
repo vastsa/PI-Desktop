@@ -17,7 +17,7 @@ import { stream as streamOpenAIResponses } from "@earendil-works/pi-ai/api/opena
 //
 // These tests drive the real stream decoders with a stubbed transport and feed
 // every event through the real frame encoder, because that pair is where the
-// failure lived. They guard `patches/@earendil-works__pi-ai@0.87.0.patch`; if
+// failure lived. They guard `patches/@earendil-works__pi-ai@0.87.1.patch`; if
 // the patch is dropped, they fail again.
 
 const context = {

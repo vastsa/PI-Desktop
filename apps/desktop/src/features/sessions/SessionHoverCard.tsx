@@ -12,17 +12,22 @@ import {
   positionSessionHoverCard,
   sessionPreview,
   sessionReferenceAvailable,
+  sessionReferenceIsRunning,
 } from "./session-collaboration-view";
 import type { SessionHoverCardData } from "./useSessionHoverCard";
 
 export function SessionHoverCard({
   card,
+  runningSessions,
+  pendingPermissions,
   refreshProject,
   onOpenSession,
   keepVisible,
   scheduleHide,
 }: {
   card: SessionHoverCardData;
+  runningSessions: Readonly<Record<string, boolean>>;
+  pendingPermissions: Readonly<Record<string, readonly unknown[]>>;
   refreshProject: (path: string) => Promise<ProjectWorkspace | null>;
   onOpenSession: (sessionId: string) => Promise<void>;
   keepVisible: () => void;
@@ -98,6 +103,22 @@ export function SessionHoverCard({
   const openSessionReference = (reference: SessionReference) => {
     void onOpenSession(reference.sessionId);
   };
+  const runningLabel = t("nav.sessionRunning");
+  const referenceOpenLabel = (reference: SessionReference) => {
+    const label = t("sessionCollaboration.openSession", { name: reference.title || reference.sessionId });
+    return sessionReferenceIsRunning(reference, runningSessions, pendingPermissions) ? `${label} (${runningLabel})` : label;
+  };
+  const renderRunningReferenceStatus = (reference: SessionReference) => (
+    sessionReferenceIsRunning(reference, runningSessions, pendingPermissions) ? (
+      <span
+        className="sidebar-session-hover-card-session-link-status"
+        data-session-running="true"
+        title={runningLabel}
+      >
+        {runningLabel}
+      </span>
+    ) : null
+  );
 
   return portalToBody(
     <div
@@ -138,11 +159,14 @@ export function SessionHoverCard({
               className="sidebar-session-hover-card-session-link"
               data-session-link={summary.createdBySession.sessionId}
               title={summary.createdBySession.sessionId}
-              aria-label={t("sessionCollaboration.openSession", { name: summary.createdBySession.title || summary.createdBySession.sessionId })}
+              aria-label={referenceOpenLabel(summary.createdBySession)}
               onClick={() => openSessionReference(summary.createdBySession!)}
             >
               <span className="sidebar-session-hover-card-session-link-title">{summary.createdBySession.title || summary.createdBySession.sessionId}</span>
-              <IconArrowUpRight size={12} aria-hidden />
+              <span className="sidebar-session-hover-card-session-link-trailing">
+                {renderRunningReferenceStatus(summary.createdBySession)}
+                <IconArrowUpRight size={12} aria-hidden />
+              </span>
             </button>
           ) : (
             <span
@@ -169,11 +193,14 @@ export function SessionHoverCard({
                     className="sidebar-session-hover-card-session-link"
                     data-session-link={reference.sessionId}
                     title={reference.sessionId}
-                    aria-label={t("sessionCollaboration.openSession", { name: reference.title || reference.sessionId })}
+                    aria-label={referenceOpenLabel(reference)}
                     onClick={() => openSessionReference(reference)}
                   >
                     <span className="sidebar-session-hover-card-session-link-title">{reference.title || reference.sessionId}</span>
-                    <IconArrowUpRight size={12} aria-hidden />
+                    <span className="sidebar-session-hover-card-session-link-trailing">
+                      {renderRunningReferenceStatus(reference)}
+                      <IconArrowUpRight size={12} aria-hidden />
+                    </span>
                   </button>
                 ) : (
                   <span

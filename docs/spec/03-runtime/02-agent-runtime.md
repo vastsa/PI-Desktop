@@ -1332,16 +1332,18 @@ one-line descriptions appear in an `# On-demand tools` catalog; parameter
 schemas do not. The catalog is bounded so a plugin with many tools cannot
 recreate the original prompt bloat.
 The model calls `ToolSearch` with an exact name or a short capability query.
-The sidecar activates up to four matches, returns their names through
-pi-agent-core's `addedToolNames`, and rebuilds the next-turn context with those
+The sidecar activates up to four matches, records their names in the canonical
+`details.addedToolNames` field, and rebuilds the next-turn context with those
 schemas. Providers with native deferred-tool search receive the definitions at
 that load point; other providers receive the active definitions normally.
 
 At the start of each new user prompt, the sidecar clears the in-memory deferred
 activation set and rebuilds it from the effective context. Successful
-`ToolSearch` results contribute their `addedToolNames`; successful results from
-deferred tools contribute that tool's name. Only names still present in the
-current mode's deferred catalog are restored. Failed rows, interrupted or
+`ToolSearch` results contribute their canonical `details.addedToolNames`.
+For compatibility, historical `details.activated` and top-level
+`addedToolNames` markers are also accepted. Successful results from deferred
+tools contribute that tool's name. Only names still present in the current
+mode's deferred catalog are restored. Failed rows, interrupted or
 missing-result placeholders, and assistant/user prose never activate a tool.
 The tool registry, host permission path, tool timeout, and workspace containment
 rules remain unchanged. `ToolSearch` is local to the sidecar and does not cross
@@ -1525,7 +1527,7 @@ with the original v3 `SessionManager`, Pi `ModelRuntime`, `SettingsManager`, and
 leaf, compaction, model/thinking changes, and context-bearing custom messages;
 it is never reconstructed from renderer `UiMessage` rows.
 
-The 0.87.0 SDK also applies append-only `context_edit` entries to this model
+The 0.87.1 SDK also applies append-only `context_edit` entries to this model
 projection. An edit can omit or replace an earlier message for later provider
 requests without rewriting its raw JSONL entry or the visible native history.
 Native Pi extensions use the SDK's boundary hooks; all entries they append,

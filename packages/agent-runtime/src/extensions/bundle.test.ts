@@ -51,6 +51,7 @@ process.stdout.write(JSON.stringify({ state: report.state, diagnostics: runner.g
       bundle: true,
       platform: "node",
       format: "esm",
+      minify: true,
       outfile: join(work, "bundle.mjs"),
       logLevel: "silent",
       banner: {
@@ -149,6 +150,7 @@ process.stdout.write(JSON.stringify({ resolvesTypebox, loaded: loaded.extensions
       bundle: true,
       platform: "node",
       format: "esm",
+      minify: true,
       outfile: join(work, "sidecar.js"),
       logLevel: "silent",
       define: bundleDefines(),

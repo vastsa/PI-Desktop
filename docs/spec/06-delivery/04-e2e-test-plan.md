@@ -1075,8 +1075,11 @@ identify the platform validation still needed.
   through live reload while the page is refined. Generated, test-only, and
   non-visual HTML files do not trigger a preview call. At the second prompt,
   successful activation markers still in the effective context may restore the
-  matching deferred schemas in the first request; failed, interrupted, and
-  missing-result rows do not. Catalog and mode changes also prevent restoration.
+  matching deferred schemas in the first request, including tools that were
+  activated but not yet called. New results use `details.addedToolNames`; the
+  legacy `details.activated` and top-level `addedToolNames` markers remain
+  readable. Failed, interrupted, and missing-result rows do not restore tools.
+  Catalog and mode changes also prevent restoration.
   No host permission or workspace escape is granted by restoration.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §7.1,
   `03-runtime/03-tools-and-permissions.md` §2.1, ADR 0048, ADR 0225,
@@ -1386,6 +1389,24 @@ identify the platform validation still needed.
   (`composer-draft-cache.test.mjs`); real React remount and workspace-change
   coverage in `scripts/e2e/composer-paste.tsx` (`pnpm test:e2e:composer-paste`);
   full UI scenario Draft
+
+#### E2E-011c-1: Preserve newer drafts after command completion
+
+- **Preconditions**: Sessions A and B exist; the `/compact` API response can be held pending.
+- **Steps**: In A, submit `/compact` and hold its response. Replace the command
+  text with a new draft, then release the response. Repeat with an image added
+  to the unchanged command text, and with navigation to B before completion.
+  For the `reentered` variant, while compact is pending replace the editor text
+  with temporary text and dispatch `input`, then type the exact `/compact`
+  again and dispatch `input` before releasing the response. Finally run the
+  command without editing its draft.
+- **Expected**: Completion preserves newer text and image attachments in A;
+  B's draft is untouched, and returning to A restores its newer draft. The
+  `reentered` case still displays `/compact` after success even though its final
+  text equals the submitted value. An unchanged submitted command draft clears.
+- **Coverage**: `scripts/e2e/composer-submission.tsx`, executed by
+  `pnpm test:e2e:composer-paste`; real desktop recording uses isolated data and
+  a local model with a controlled response delay.
 
 #### E2E-011d: New task creates an immediate durable empty slot
 
@@ -4180,8 +4201,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   provider-discovered or explicitly configured ID absent from models.dev remains
   runnable with the generic text-only, non-reasoning shape; pi-ai supplies only
   the selected wire adapter, OAuth flow, and account model availability. A
-  ChatGPT Plus/Pro or GitHub Copilot account lists `gpt-6-astra` from the
-  pinned pi-ai 0.87.0 catalog; models.dev then supplies its published metadata.
+  ChatGPT Plus/Pro or GitHub Copilot account lists `gpt-6-sol`, `gpt-6-luna`,
+  and `grok-4.7` from the pinned pi-ai 0.87.1 catalog; models.dev then
+  supplies their published metadata.
 - **Specs linked**: `02-architecture/02-tech-stack.md`,
   `03-runtime/11-provider-model-system.md`,
   `03-runtime/13-model-catalog-and-selection.md`, ADR 0134
@@ -8236,6 +8258,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | A / C / F / Quality — Tray session navigation | E2E-TRAY-bounded-session-navigation |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
 | C — Conversation & stream | E2E-CHAT-running-status-survives-output-pauses, E2E-008, E2E-008d, E2E-008e, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-259, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-SUBAGENT-resume-a-settled-delegation |
+| C — Conversation & stream (composer drafts) | E2E-011c, E2E-011c-1 |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
 | D — Workspace (project ordering) | E2E-253 |
 | E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166, E2E-181, E2E-PLUGIN-imported-pi-package-skills |
@@ -12197,7 +12220,9 @@ are withdrawn with ADR 0165.
   While a worker is busy, send a follow-up to that exact Session ID and verify
   it is queued against the target inbox rather than starting a second turn. 5)
   Inspect status from the Agents panel and a sidebar hover card; confirm both
-  use bounded host projections and do not fetch a complete worker transcript.
+  use bounded host projections, the hover card marks currently running
+  created-session links, and neither surface fetches a complete worker
+  transcript.
   6) Wait for one worker, query `result` by its exact `messageId` and `turnId`,
   and inspect the parent transcript for one host-generated completion message.
   7) Re-read the result and repeat the settlement notification path; confirm

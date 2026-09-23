@@ -565,6 +565,47 @@ test("the ChatGPT OAuth catalog includes GPT-6 Astra", async () => {
   assert.equal(model.api, "openai-codex-responses");
 });
 
+test("the pi-ai 0.87.1 OAuth catalogs include the latest model wires", async () => {
+  const { OPENAI_CODEX_MODELS } = await import(
+    "@earendil-works/pi-ai/providers/openai-codex.models"
+  );
+  for (const modelId of ["gpt-6-sol", "gpt-6-luna"]) {
+    const model = OPENAI_CODEX_MODELS[modelId];
+    assert.ok(model, `openai-codex catalog must include ${modelId}`);
+    assert.equal(model.api, "openai-codex-responses");
+    assert.equal(model.reasoning, true);
+    assert.equal(model.contextWindow, 272_000);
+    assert.equal(model.maxTokens, 128_000);
+    assert.ok(model.input.includes("image"));
+  }
+
+  const { GITHUB_COPILOT_MODELS } = await import(
+    "@earendil-works/pi-ai/providers/github-copilot.models"
+  );
+  assert.equal(GITHUB_COPILOT_MODELS["claude-opus-5.5"]?.api, "anthropic-messages");
+  for (const modelId of ["gpt-6-sol", "gpt-6-luna", "grok-4.7"]) {
+    const model = GITHUB_COPILOT_MODELS[modelId];
+    assert.ok(model, `github-copilot catalog must include ${modelId}`);
+    assert.equal(model.api, "openai-responses");
+    assert.ok(model.input.includes("image"));
+  }
+
+  const { ANTHROPIC_MODELS } = await import(
+    "@earendil-works/pi-ai/providers/anthropic.models"
+  );
+  assert.equal(ANTHROPIC_MODELS["claude-opus-5-5"]?.api, "anthropic-messages");
+  assert.equal(ANTHROPIC_MODELS["claude-opus-5-5"]?.contextWindow, 1_000_000);
+
+  const { XAI_MODELS } = await import("@earendil-works/pi-ai/providers/xai.models");
+  assert.equal(XAI_MODELS["grok-4.7"]?.api, "openai-responses");
+  assert.deepEqual(
+    Object.entries(XAI_MODELS["grok-4.7"]?.thinkingLevelMap ?? {})
+      .filter(([, value]) => typeof value === "string")
+      .map(([level]) => level),
+    ["low", "medium", "high", "xhigh"],
+  );
+});
+
 test("credential writes for one account run one at a time", async () => {
   const { host, events, oauth, store } = harness();
   const { loginId } = await oauth.start("anthropic");

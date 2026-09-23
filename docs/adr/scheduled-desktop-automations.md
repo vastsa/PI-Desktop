@@ -7,7 +7,7 @@
 
 The shipped Scheduled page stores a cadence but never dispatches work when
 that cadence becomes due. The pinned pi-ai, pi-agent-core and pi-coding-agent
-0.87.0 packages supply agent execution, not a persistent desktop wall-clock
+0.87.1 packages supply agent execution, not a persistent desktop wall-clock
 scheduler. The existing Host-owned task and run tables already provide the
 appropriate storage boundary.
 

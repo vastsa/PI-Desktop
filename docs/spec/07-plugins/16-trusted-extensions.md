@@ -19,7 +19,7 @@ registry into this contribution; the engine below is unchanged.
 This contract describes extensions attached to Desktop Agent sessions. The
 Desktop adapter implements the explicit subset in §5–6; new upstream events do
 not become actionable here automatically. Native Pi continuation runs the
-coding-agent SDK's own extension lifecycle and can use its 0.87.0 boundary
+coding-agent SDK's own extension lifecycle and can use its 0.87.1 boundary
 hooks, subject to the separate native-session lease and trust rules in
 [ADR 0254](../../adr/0254-native-pi-session-continuation.md).
 

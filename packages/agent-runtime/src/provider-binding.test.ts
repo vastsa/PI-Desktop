@@ -678,7 +678,7 @@ describe("DeepSeek-family relay reasoning replay (#296)", () => {
    * compat from an explicit allowlist in `getCompat`. Only a request that goes
    * through the adapter can prove the placeholder survives that rebuild and
    * reaches the wire, so this asserts the captured body rather than the compat
-   * object. Guards patches/@earendil-works__pi-ai@0.87.0.patch.
+   * object. Guards patches/@earendil-works__pi-ai@0.87.1.patch.
    */
   it("fills a thinking-less assistant turn with the documented placeholder", async () => {
     const provider: RuntimeProviderConfig = {

@@ -5,7 +5,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 /**
  * Contract tests for the pi-ai hosted web search patch.
  *
- * The patch (patches/@earendil-works__pi-ai@0.87.0.patch) teaches the
+ * The patch (patches/@earendil-works__pi-ai@0.87.1.patch) teaches the
  * anthropic-messages and openai-responses adapters to attach the provider
  * hosted web search tool when the model record opts in, to extract the search
  * blocks and citations from the stream, and to replay the search items on
@@ -414,7 +414,7 @@ describe("pi-ai hosted web search: streaming progress events", () => {
 
 describe("pi-agent-core hosted web search forwarding", () => {
   it("forwards hosted_search_update as message_update", async () => {
-    // Locks the agent-loop patch (patches/@earendil-works__pi-agent-core@0.87.0.patch):
+    // Locks the agent-loop patch (patches/@earendil-works__pi-agent-core@0.87.1.patch):
     // without it the loop's switch drops the event and search rounds render only
     // after the whole turn finishes.
     const { agentLoop } = await import("@earendil-works/pi-agent-core");

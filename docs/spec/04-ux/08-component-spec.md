@@ -589,6 +589,9 @@ visually distinct from list content.
   externally changed Git branch is current. This refresh does not activate a
   project or change the selected conversation; if the read is unavailable, the
   last cached branch remains usable.
+- Collaboration creator and created-session links in the hover card show a
+  localized running indicator only while the referenced session has an active
+  runtime; non-running related sessions remain title-only.
 - Project groups use compact vertical spacing so adjacent directories and
   conversation rows read as one dense navigation list rather than detached
   cards. Directory `+` and overflow actions remain hidden until hover or
