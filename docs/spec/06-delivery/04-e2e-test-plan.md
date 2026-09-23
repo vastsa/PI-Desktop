@@ -7152,6 +7152,30 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Status**: Unit-covered (`model-capabilities.test.ts`, host-core attachment
   roundtrip); provider/UI journey Draft (run only in a capable environment when this surface changes)
 
+#### E2E-ATTACHMENTS-svg-file-fallback: SVG inputs are sent as files, not model images
+
+- **Preconditions**: A vision-capable model; an Agent session; one SVG file
+  (clipboard paste or native file picker) and one PNG.
+- **Steps**:
+  1. Paste or attach an SVG file into Composer alongside a PNG.
+  2. Send a prompt asking the model about both attachments.
+  3. Inspect the provider request body.
+  4. Reload the session and inspect restored attachments.
+- **Expected**:
+  - The SVG appears as a file chip, not an image chip. It is classified as
+    `kind: "file"` with `.svg` extension (even if the original had none).
+  - The PNG still appears as an image chip and is sent as a model image block.
+  - The provider request contains no `inlineData` for the SVG; it uses a safe
+    `@path` file reference.
+  - Legacy content-addressed SVG attachments from older sessions are restored
+    as files, not images; stale temporary image data is cleared.
+  - Non-SVG image attachments and vision capability detection are unaffected.
+- **Specs linked**: `03-runtime/svg-attachment-input.md`,
+  `03-runtime/01-ipc-protocol.md` §5.1, `04-ux/08-component-spec.md` §11.7
+- **Acceptance**: C (conversation & stream), F (persistence), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`svg-attachments.test.mjs`); Desktop E2E Draft
+
 #### E2E-102d: Non-vision and oversized images use the path fallback
 
 - **Preconditions**: One known non-vision model and one known vision-capable
