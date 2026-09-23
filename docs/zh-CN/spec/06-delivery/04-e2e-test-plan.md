@@ -1376,12 +1376,12 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 #### E2E-024J：插件主题适用并在撤回时回退
 
-- **先决条件**：在授予 `ui.theme` 的情况下启用 `examples/plugins/hello`； CSS 使用 `@import` 或远程 `url()` 可用于拒绝情况的插件，以及只在注释里提到这些关键字的同一插件变体；第三个变体的主题声明了图片资源与 `windowAppearance` 背景，并提供有/无 `ui.window.appearance` 两种版本。
-- **步骤**： 1) 打开设置 → 常规 → 主题并选择 `Hello Midnight`。 2）重新启动应用程序。 3) 禁用提供的插件。 4）重新启用它，然后卸载它。 5) 使用不安全的 CSS 加载插件。 6) 加载只在注释里提到关键字的变体。 7) 在 Windows/Linux 与 macOS 上分别选中资源变体的主题，并检查该插件打开的面板。 8) 去掉 `ui.window.appearance` 后取消选中该主题。
-- **预期**：插件主题与内置插件一起出现在选择器中并立即应用；该选择在重新启动后仍保留为 `plugin:demo.hello:midnight`；禁用或卸载提供程序会退回到 `system` 而不是无样式的 shell；不安全的 CSS 在加载时被拒绝，并记录了原因，并且没有注入 `<style>` 元素；只在注释里提到关键字的样式表正常加载并提供其主题，因为消毒器只检查浏览器实际生效的 CSS；声明的资源在宿主外壳与该插件自己的面板中都经 `plugin-asset:` 渲染，未声明的引用被拒绝并记录原因，声明的背景在 Windows/Linux 上给原生窗口着色、在 macOS 上不下发，取消选中该主题或收回该权限后窗口回到宿主背景；整个外壳都跟随主题，包括工作面板列、其标题栏以及浏览器/文件查看器条目栏 —— 它们的表面色读 `--ds-bg-dock` / `--ds-bg-dock-raised`，而不是字面量。
-- **链接规格**：`07-plugins/04-plugin-security.md` §3.1、`04-ux/07-ui-design-system.md`、D175
+- **先决条件**：可从市场或 `.piplug` 包安装的 `examples/plugins/hello` 变体（`demo.hello`），其 `midnight` 主题 CSS 引用已声明的包内相对图片 `art/preview.png`；CSS 使用 `@import` 或远程 `url()` 的拒绝用插件及仅在注释中出现这些关键字的变体；另有声明图片资源和 `windowAppearance` 背景、分别带/不带 `ui.window.appearance` 权限的主题变体。
+- **步骤**：1) 从市场安装 Hello 包变体或导入其 `.piplug` 包，在设置 → 常规 → 主题中选择 `Hello Midnight`。2) 重启应用。3) 禁用提供主题的插件。4) 重新启用后卸载。5) 加载不安全 CSS 插件。6) 加载仅在注释中提到关键字的变体。7) 在 Windows/Linux 与 macOS 上选中资源变体主题，验证包内相对图片通过 `plugin-asset:` 在外壳和插件面板中渲染，并加载引用未声明相对资源的样式表以验证其被拒绝。8) 去掉 `ui.window.appearance` 后取消选中该主题。
+- **预期**：带包内相对图片的插件包成功安装，图片在插件根目录内解析；插件主题出现在选择器中并立即应用，图片通过 `plugin-asset:` 提供；选择在重启后仍保留为 `plugin:demo.hello:midnight`；禁用或卸载提供程序会退回到 `system` 而不是无样式的 shell；不安全 CSS 在加载时被拒绝并记录原因，且不注入 `<style>` 元素；仅在注释中提到关键字的样式表正常加载并提供主题，因为消毒器只检查浏览器实际生效的 CSS；声明的资源在宿主外壳与插件自己的面板中都经 `plugin-asset:` 渲染，未声明引用被拒绝并记录原因，声明的背景在 Windows/Linux 上给原生窗口着色、在 macOS 上不下发；取消选中主题或收回权限后窗口回到宿主背景；整个外壳都跟随主题，包括工作面板列、标题栏以及浏览器/文件查看器条目栏，其表面色读取 `--ds-bg-dock` / `--ds-bg-dock-raised` 而不是字面量。
+- **链接规格**：`07-plugins/02-plugin-manifest-schema.md`、`07-plugins/04-plugin-security.md` §3.1、`04-ux/07-ui-design-system.md`、D175
 - **接受**：G（主题贡献）+安全
-- **状态**：单位覆盖（`plugin-themes.test.mjs`、`theme-css` SDK 测试）；视觉场景草稿
+- **状态**：单元覆盖（`plugin-themes.test.mjs`、`theme-css` SDK 测试、host-core 包内相对资源/安装测试）；视觉场景草稿
 
 #### E2E-024K：插件 MCP 服务器工具到达代理
 

@@ -44,12 +44,16 @@ const THEME_ASSET_EXTENSION_PATTERN = new RegExp(
 /**
  * `plugin-asset://<pluginId>/<assetPath>` — how a theme reaches its bytes.
  *
- * Package-relative keys are written directly. Absolute filesystem keys are
- * percent-encoded so drive colons and URL delimiters cannot change the lookup.
+ * Package-relative path segments are encoded independently so `/` stays a
+ * separator and URL delimiters such as `?` and `#` remain part of the filename.
+ * Absolute filesystem keys are encoded as a whole so drive colons cannot alter
+ * lookup.
  */
 export function themeAssetUrl(pluginId: string, assetPath: string): string {
   const normalized = normalizeThemeAssetPath(assetPath);
-  const key = isExternalThemeAssetPath(normalized) ? encodeURIComponent(normalized) : normalized;
+  const key = isExternalThemeAssetPath(normalized)
+    ? encodeURIComponent(normalized)
+    : normalized.split("/").map(encodeURIComponent).join("/");
   return `${THEME_ASSET_SCHEME}://${pluginId}/${key}`;
 }
 

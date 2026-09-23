@@ -194,6 +194,31 @@ test("assistant turns stay transparent full-width prose", () => {
     /\.tool-activity-group\.has-subagents\s*\{[^}]*background:\s*var\(--ds-tile\)/,
   );
 });
+test("assistant error cards follow the responsive transcript column", () => {
+  const errorCard = stylesSource.match(/\n\.message-error \{([^}]*)\}/)?.[1];
+  assert.ok(errorCard);
+  assert.match(errorCard, /width:\s*100%;/);
+  assert.doesNotMatch(errorCard, /max-width\s*:/);
+  assert.match(
+    stylesSource,
+    /\.message-row\.assistant \.message-col,\s*\.message-row\.system \.message-col,\s*\.message-row\.tool \.message-col \{\s*width:\s*min\(100%,\s*var\(--chat-prose-max-width,\s*720px\)\);/,
+  );
+});
+
+test("decision and outcome cards follow the responsive transcript band", () => {
+  const cardRules = [
+    stylesSource.match(/\n\.permission-card \{([^}]*)\}/)?.[1],
+    stylesSource.match(/\n\.asktool-card \{([^}]*)\}/)?.[1],
+    stylesSource.match(/\n\.turn-outcome-card \{([^}]*)\}/)?.[1],
+  ];
+  for (const rule of cardRules) {
+    assert.ok(rule);
+    assert.match(
+      rule,
+      /width:\s*min\(100%,\s*var\(--chat-prose-max-width,\s*720px\)\);/,
+    );
+  }
+});
 
 test("transcript density and hover actions are quiet", () => {
   assert.match(stylesSource, /\.message-row \{[\s\S]*?padding:\s*12px 0;/);
