@@ -111,8 +111,9 @@ export function registerNotificationIpc({
   handle(IPC.invoke.notificationMarkAllRead, async () => {
     const host = getHost();
     if (!host) throw new Error("host unavailable");
+    const requestedAt = Date.now();
     const result = await host.call("notification.markAllRead");
-    dismissedBefore = Math.max(dismissedBefore, Date.now());
+    dismissedBefore = Math.max(dismissedBefore, requestedAt);
     dismissAllTaskNativeNotifications();
     return result;
   });
@@ -120,8 +121,9 @@ export function registerNotificationIpc({
   handle(IPC.invoke.notificationClear, async () => {
     const host = getHost();
     if (!host) throw new Error("host unavailable");
+    const requestedAt = Date.now();
     const result = await host.call("notification.clear");
-    dismissedBefore = Math.max(dismissedBefore, Date.now());
+    dismissedBefore = Math.max(dismissedBefore, requestedAt);
     dismissAllTaskNativeNotifications();
     return result;
   });

@@ -318,6 +318,7 @@ export function createCatalogSlice({
     },
 
     clearNotifications: async () => {
+      const requestedAt = Date.now();
       const generation = catalogRuntime.invalidateNotificationRefresh();
       try {
         await api.clearNotifications();
@@ -330,9 +331,8 @@ export function createCatalogSlice({
         }
         throw error;
       }
-      const dismissedBefore = Date.now();
-      catalogRuntime.setNotificationClearedAt(dismissedBefore);
-      catalogRuntime.setNotificationReadBefore(dismissedBefore);
+      catalogRuntime.setNotificationClearedAt(requestedAt);
+      catalogRuntime.setNotificationReadBefore(requestedAt);
       set({ notifications: [], unreadNotificationCount: 0, sessionOutcomes: {} });
       // A turn that completed after the clear began is a legitimate new result.
       // Reconcile once so it is not lost if its event raced the clear request.
