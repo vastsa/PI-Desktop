@@ -165,6 +165,39 @@ test("clear and mark-all-read close every task object, while interactive prompts
   ]);
 });
 
+test("acknowledgement watermarks reject old task events but allow a later turn", async () => {
+  const h = harness();
+  const now = Date.now();
+  const task = (id, createdAt) => ({
+    id,
+    sessionId: "session-1",
+    kind: "task",
+    title: "Task finished",
+    body: "Done",
+    createdAt,
+  });
+
+  await h.markAllRead();
+  assert.deepEqual(
+    await h.show(task("before-mark-all", new Date(now - 60_000).toISOString())),
+    { shown: false },
+  );
+  assert.deepEqual(
+    await h.show(task("after-mark-all", new Date(now + 60_000).toISOString())),
+    { shown: true },
+  );
+
+  await h.clear();
+  assert.deepEqual(
+    await h.show(task("before-clear", new Date(now - 30_000).toISOString())),
+    { shown: false },
+  );
+  assert.deepEqual(
+    await h.show(task("after-clear", new Date(now + 120_000).toISOString())),
+    { shown: true },
+  );
+});
+
 test("a failed host acknowledgement does not dismiss a task banner prematurely", async () => {
   const h = harness({
     hostCall: async (method) => {
