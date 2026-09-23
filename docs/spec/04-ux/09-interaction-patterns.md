@@ -822,11 +822,19 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Both modes give each loaded assistant turn one whole-process disclosure. It
   contains thinking, tools, hosted searches and intermediate progress text; the
   trailing answer, assistant errors and stopped trailing text remain outside it.
+  While the turn runs and the process already holds an earlier tool call or
+  hosted-search round, that trailing text presents as interim narration at the
+  process indentation and in the secondary tone, outside the collapsible body; the
+  presentation derives from turn state alone and is removed when the text settles.
 - A contiguous activity segment receives a group disclosure only when it has at
   least two mode-visible items. Progress text ends the segment, a singleton uses
   its item disclosure directly, and compact-hidden thinking does not create a
   redundant group. Existing Task topology remains separate.
-- Detailed starts active and completed whole processes open. Its active ordinary
+- Detailed starts an active whole process open, keeps a running turn's process
+  open, and folds the process when the turn completes while untouched. Completion
+  requires the turn-level running state to have ended and the trailing answer to be
+  a recorded success, because a message that stopped on a tool call also reports
+  `complete`; a manual or revealed open survives the fold. Its active ordinary
   group starts open and closes when it completes only if untouched; completed
   groups otherwise start closed. Compact starts the process and groups closed,
   except an untouched active process with any recorded failed/denied tool remains
@@ -841,8 +849,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   independent. Opening a parent is never an expand-all action.
 - A manual item action claims its group and process as user-owned without toggling
   them. Streaming and completion cannot reopen a manual close or close around
-  content the user opened, focused or selected. Choices survive mode changes,
-  singleton-to-group growth and remounts while the retained session pane lives.
+  content the user opened, focused or selected. A completion fold nobody asked for
+  hands its header to the scroller: the header is held for a reader who left the
+  tail, while a reader still following the tail is exempt because holding the
+  collapsed header there would drag the answer out of view. Choices survive mode
+  changes, singleton-to-group growth and remounts while the retained session pane
+  lives.
 - Search/navigation opens the process and activity group that own the named
   message, once per reveal request. Item-level targeting is not part of this
   change. Compact reasoning requires an explicit switch to Detailed. Closing
@@ -1317,14 +1329,17 @@ Project drag/drop follows these patterns:
   a multi-line draft: the bottom reserve is padding on the transcript content, so
   the content is observed on its border box and the newest turn moves up with
   the composer instead of sliding behind it (D287).
-- A manual disclosure — whole process, activity group, tool/search/thinking item,
-  delegate brief, or error detail — holds the reading position of the scroller
-  that owns it (issue #324). Only the initiating level claims the anchor; marking
-  ancestors user-owned does not claim their scroll positions. The title is handed
-  to the scroller before the state changes, follow mode is left, and the scroller
-  restores the title's viewport offset for every frame of the height change. A
-  nested scroller (the delegate run dock, D302) holds its own position and passes
-  the hold outward because growing it also grows the outer content.
+- A disclosure the reader toggles — whole process, activity group,
+  tool/search/thinking item, delegate brief, or error detail — holds the reading
+  position of the scroller that owns it (issue #324). Only the initiating level
+  claims the anchor; marking ancestors user-owned does not claim their scroll
+  positions. The title is handed to the scroller before the state changes, follow
+  mode is left, and the scroller restores the title's viewport offset for every
+  frame of the height change. The completion fold is the one automatic close and
+  takes the same hold, except for a reader still following the tail, who stays
+  pinned to the answer instead. A nested scroller (the delegate run dock, D302)
+  holds its own position and passes the hold outward because growing it also grows
+  the outer content.
   Search reveal opens the required ancestors at message precision and uses the
   Search reveal opens the required ancestors and uses the precise target as the
   final anchor. Leaving follow for any disclosure is not a re-pin: the transcript

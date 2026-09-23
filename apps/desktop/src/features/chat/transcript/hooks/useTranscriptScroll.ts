@@ -43,6 +43,7 @@ import {
 } from "../../../../lib/transcript-scroll";
 import { readScrollInputContext } from "../../../../lib/scroll-input";
 import { useDisclosureAnchor } from "../../../../hooks/use-disclosure-anchor";
+import type { DisclosureAnchorNotifier } from "../../../../lib/disclosure-anchor-context";
 import type { TranscriptSearchTarget } from "../../../../lib/transcript-reading";
 import { useTranscriptSearchFocus } from "../../../../hooks/use-transcript-search-focus";
 
@@ -141,7 +142,7 @@ export function useTranscriptScroll({
     lastLaidOutScrollTopRef.current = top;
   }, []);
   const {
-    notifier: disclosureAnchorNotifier,
+    notifier: holdDisclosureAnchor,
     restore: restoreDisclosureAnchor,
     release: releaseDisclosureAnchor,
     isHeld: isDisclosureAnchorHeld,
@@ -149,6 +150,19 @@ export function useTranscriptScroll({
     scrollRef,
     enterDisclosureReading,
     recordScrollPosition,
+  );
+  /**
+   * A fold nobody asked for — the completion fold — holds only a reader who is
+   * *not* following the tail. A pinned reader is meant to follow the answer
+   * down; holding the collapsed header instead would drag that answer out of
+   * view, which is the opposite of the reading position to keep.
+   */
+  const notifyDisclosureAnchor = useCallback<DisclosureAnchorNotifier>(
+    (title, reason = "manual") => {
+      if (!title || (reason === "automatic" && pinnedRef.current)) return;
+      holdDisclosureAnchor(title);
+    },
+    [holdDisclosureAnchor],
   );
 
   // A user scroll-up gesture always emits input before its scroll events;
@@ -764,6 +778,6 @@ export function useTranscriptScroll({
     revealEarlierHistory,
     scrollToBottom,
     jumpToLatest,
-    disclosureAnchorNotifier,
+    disclosureAnchorNotifier: notifyDisclosureAnchor,
   };
 }

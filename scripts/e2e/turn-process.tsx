@@ -60,6 +60,7 @@ export async function turnProcessProbe() {
     active = false,
     search: TranscriptSearchTarget | null = null,
     key = "turn",
+    turnRunning = false,
   ) => {
     const entry = buildTranscriptEntries(messages).entries.find(
       (item) => item.kind === "assistant-turn",
@@ -69,7 +70,12 @@ export async function turnProcessProbe() {
       root.render(
         <I18nextProvider i18n={i18n}>
           <TranscriptSearchContext.Provider value={search}>
-            <AssistantTurn key={key} entry={entry} isActive={active} />
+            <AssistantTurn
+              key={key}
+              entry={entry}
+              isActive={active}
+              turnRunning={turnRunning}
+            />
           </TranscriptSearchContext.Provider>
         </I18nextProvider>,
       ),
@@ -84,6 +90,18 @@ export async function turnProcessProbe() {
   const click = (element: HTMLElement | null) => {
     assert(element, "missing click target");
     flushSync(() => element.click());
+  };
+  /**
+   * A computed colour for a design token, so the tone assertions describe the
+   * token instead of a literal value taken from one theme.
+   */
+  const tokenColor = (token: string) => {
+    const probe = document.createElement("span");
+    probe.style.color = `var(${token})`;
+    document.body.append(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
   };
   const intro = message("intro", "assistant", "Inspecting the files", {
     thinking: "reasoning detail",
@@ -115,12 +133,29 @@ export async function turnProcessProbe() {
       "detailed wraps one process per turn",
     );
     check(
-      header()?.getAttribute("aria-expanded") === "true" && visible(process()),
-      "detailed starts the process open",
+      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
+      "a completed turn folds its process",
     );
     check(
       visible(container.querySelector('[data-message-id="answer"]')),
       "final answer stays visible",
+    );
+    // A running turn never folds, even though its last message already reads
+    // `complete`: the runtime records that for a message that stopped on a tool.
+    render(messages, true, null, "running", true);
+    check(
+      header()?.getAttribute("aria-expanded") === "true" && visible(process()),
+      "a running turn keeps its process open",
+    );
+    render(messages);
+    check(
+      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
+      "the fold returns once the turn is out of flight",
+    );
+    click(header());
+    check(
+      header()?.getAttribute("aria-expanded") === "true" && visible(process()),
+      "opening the folded process reveals it",
     );
     check(
       visible(container.querySelector('[data-message-id="progress"]')),
@@ -137,6 +172,29 @@ export async function turnProcessProbe() {
     check(
       container.querySelectorAll(".tool-row").length === 3,
       "detailed shows thinking and both tools in place",
+    );
+    // The untouched fold must not override a reader who opened it by hand.
+    render(messages, true, null, "turn", true);
+    render(messages);
+    check(
+      header()?.getAttribute("aria-expanded") === "true",
+      "a manual open survives the completion fold",
+    );
+    render(messages, false, null, "reveal-folded");
+    check(
+      header()?.getAttribute("aria-expanded") === "false",
+      "the next turn's process starts folded",
+    );
+    render(
+      messages,
+      false,
+      { sessionId: "s", messageId: "progress", query: "problem", requestId: 2 },
+      "reveal-folded",
+    );
+    check(
+      header()?.getAttribute("aria-expanded") === "true" &&
+        visible(container.querySelector('[data-message-id="progress"]')),
+      "a search reveal opens the folded process",
     );
     render(
       [intro, { ...read, toolStatus: "error", isError: true }, answer],
@@ -185,6 +243,58 @@ export async function turnProcessProbe() {
       "failure remains visible",
     );
 
+    /*
+      Interim narration: a trailing candidate that is still streaming while the
+      turn already shows earlier work reads at the process indentation and in
+      the process tone, and drops that presentation once it settles. Both tones
+      are read from the design tokens rather than from literal colours.
+    */
+    const processTone = tokenColor("--ds-text-secondary");
+    const answerTone = tokenColor("--ds-text-primary");
+    const narration = message("narration", "assistant", "Checking the log", {
+      status: "streaming",
+    });
+    render([intro, read, narration], true, null, "interim", true);
+    const narrationBubble = container.querySelector<HTMLElement>(
+      '[data-message-id="narration"]',
+    );
+    const narrationProse = narrationBubble?.querySelector<HTMLElement>(".prose-chat");
+    const processProse = container.querySelector<HTMLElement>(
+      ".turn-process-body .assistant-turn-fragment .prose-chat",
+    );
+    assert(narrationBubble && narrationProse && processProse, "the narration did not render");
+    check(
+      narrationBubble.classList.contains("interim"),
+      "a running turn presents its streaming candidate as interim narration",
+    );
+    check(
+      getComputedStyle(narrationProse).color === processTone,
+      "interim narration reads in the process tone",
+    );
+    check(
+      getComputedStyle(processProse).color === processTone,
+      "process narration reads in the process tone",
+    );
+    render(
+      [intro, read, { ...narration, status: "complete" as const }],
+      false,
+      null,
+      "interim-done",
+    );
+    const settledBubble = container.querySelector<HTMLElement>(
+      '[data-message-id="narration"]',
+    );
+    const settledProse = settledBubble?.querySelector<HTMLElement>(".prose-chat");
+    assert(settledBubble && settledProse, "the settled answer did not render");
+    check(
+      !settledBubble.classList.contains("interim"),
+      "the interim presentation is dropped once the message settles",
+    );
+    check(
+      getComputedStyle(settledProse).color === answerTone,
+      "a settled answer keeps the answer tone",
+    );
+
     flushSync(() =>
       useAppStore.setState({
         settings: { ...settings, thinkingDisplayMode: "compact" },
@@ -204,8 +314,8 @@ export async function turnProcessProbe() {
       "compact keeps tool payloads collapsed",
     );
     check(
-      header()?.textContent?.includes("2 tools"),
-      "process counts tools and progress once",
+      header()?.textContent?.includes("2 tool calls"),
+      "the header breaks the count into categories",
     );
     click(header());
     check(

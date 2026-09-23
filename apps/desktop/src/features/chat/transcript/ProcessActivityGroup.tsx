@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { AssistantActivityItem } from "../../../lib/assistant-turns";
 import { activitySummary } from "../../../lib/activity-summary";
 import { IconChevronRight, IconCircleAlert, IconSparkles } from "../../../components/icons";
-import { DisclosureCollapseRail } from "./shared";
+import { DisclosureCollapseRail, useActivityBreakdown } from "./shared";
 import { DisclosureScope, type useAutomaticDisclosure } from "./disclosure";
 
 /** Keep the body identity stable when a singleton grows into a group. */
@@ -23,6 +23,7 @@ export function ProcessActivityGroup({
   const grouped = items.length > 1;
   const open = !grouped || disclosure.open;
   const summary = activitySummary(items);
+  const breakdown = useActivityBreakdown(summary);
   if (items.length === 0) return null;
   return (
     <div className={`process-activity-group${grouped ? " grouped" : " singleton"}${open ? " open" : ""}`}>
@@ -37,11 +38,8 @@ export function ProcessActivityGroup({
         >
           <span className="tool-activity-icon" aria-hidden><IconSparkles size={14} /></span>
           <span className={`tool-activity-label${active ? " running" : ""}`}>
-            {t(summary.label, { count: summary.count })}
+            {breakdown}
           </span>
-          {summary.thinking > 0 && summary.tools > 0 ? (
-            <span className="tool-activity-count">{t("chat.activityIncludesThinking")}</span>
-          ) : null}
           {active ? <span className="tool-activity-count">{t("chat.running")}</span> : null}
           {summary.issues > 0 ? (
             <span className="turn-process-error">

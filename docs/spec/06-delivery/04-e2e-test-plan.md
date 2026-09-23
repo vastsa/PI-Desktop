@@ -2333,8 +2333,11 @@ identify the platform validation still needed.
   inspect the active-thinking, failure/recovery and completed states. 7) Remount
   rows within the retained pane, then reload the renderer and reopen the session.
 - **Expected**: Both modes use one whole-process disclosure and keep the trailing
-  answer outside it. Detailed keeps active and completed processes open; the
-  active multi-item group opens, then closes on completion only if untouched.
+  answer outside it. Detailed keeps a running whole-turn process open and folds an
+  untouched one automatically once the turn ends (out of flight, non-empty
+  trailing answer with `status: complete` and no error or abort); the active
+  multi-item group opens, then closes on completion only if untouched, and the
+  literal-final-item leaf default is unchanged.
   Compact starts processes/groups and all payloads closed, hides reasoning text,
   and keeps an untouched active process open after a failed/denied tool through
   later recovery. A singleton has no group wrapper. Detailed auto-opens a payload
@@ -2354,6 +2357,10 @@ identify the platform validation still needed.
 - **Status**: Draft. For the 2026-09-20 nested-disclosure change, this scenario is
   intended behavior for static source/design review only; no unit, component,
   integration, browser, Electron or E2E test is added or run by that scoped task.
+  The 2026-09-23 thinking-process display design supersedes the "completed process
+  stays open" default that the 2026-09-20 change assumed: an untouched whole-turn
+  process now folds automatically once the turn ends with a confirmed complete,
+  non-empty answer, and the aggregate count becomes a four-category breakdown.
 
 #### E2E-041: Conversation minimap navigates long transcripts
 
@@ -14370,27 +14377,52 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   search targets.
 - **Steps:** Review the nested disclosure path in Detailed, including independent
   group/item toggles, parent close/reopen, a singleton segment, literal-final-item
-  leaf selection, failure/denial/recovery, retained-pane remounts and a legacy
-  search reveal. Repeat in Compact and with permission/question/plan/goal action
-  cards, a stopped partial answer, an assistant error and delegated child work.
+  leaf selection, failure/denial/recovery, retained-pane remounts, a legacy search
+  reveal, automatic folding at turn end and interim narration while the turn
+  streams. Repeat in Compact and with permission/question/plan/goal action cards, a
+  stopped partial answer, an assistant error and delegated child work.
 - **Expected:** Both modes use one whole-process disclosure and leave the final
   answer, assistant errors, stopped trailing text and pending actions outside it.
-  Detailed starts active/completed processes open; the active multi-item group is
-  open and an untouched group closes on completion. Compact starts processes and
-  groups closed, hides reasoning, and keeps payloads closed; an untouched active
-  process with a recorded failed/denied tool stays open through recovery and closes
-  on completion. Singletons have no group. Detailed auto-opens only an eligible
-  literal final tool/search item of the last activity group; it does not scan past
-  thinking, and failed/denied leaves stay closed. Parent/child/sibling states remain
-  independent, pane-owned user choices survive updates, mode changes and remounts,
-  and renderer restart reapplies defaults. Search reveals the process and activity
-  group that own the named message once per request; item-level targeting is not
-  part of this change, and Compact reasoning requires an
-  explicit switch to Detailed. Saved mode survives restart and a missing/unknown
-  setting resolves to Detailed.
+  Detailed keeps a running whole-turn process open and folds an untouched one
+  automatically once the turn ends; the fold applies only when the turn is out of
+  flight and the trailing answer is non-empty, carries `status: "complete"` and has
+  no error or abort, so a running turn, a missing status, an error, an abort or a
+  tool-only completion stays open. A manual toggle or a search reveal stays
+  authoritative and is never folded away. The active multi-item group is open and
+  an untouched group closes on completion. Both the whole-turn header and the
+  ordinary activity-group header show the same complete breakdown — tool calls,
+  command executions, hosted-search rounds and thinking steps — as separate
+  non-overlapping counts with zero categories omitted, replacing the aggregate
+  "N tool operations" label. Interim narration renders a still-streaming trailing
+  answer candidate with process indentation and the secondary tone while the turn
+  is running and the process already holds an earlier tool call or hosted-search
+  round; once the message settles it reverts to normal answer prose without moving
+  the reader's viewport. Automatic folding notifies the owning scroller through the
+  existing anchor path: a reader still pinned to the bottom follows the latest
+  answer and is not hijacked, while a reader who scrolled away keeps the process
+  header at the same viewport position. Compact starts processes and groups closed,
+  hides reasoning, and keeps payloads closed; an untouched active process with a
+  recorded failed/denied tool stays open through recovery and closes on completion.
+  Singletons have no group. Detailed auto-opens only an eligible literal final
+  tool/search item of the last activity group; it does not scan past thinking, and
+  failed/denied leaves stay closed. Parent/child/sibling states remain independent,
+  pane-owned user choices survive updates, mode changes and remounts, and renderer
+  restart reapplies defaults. Search reveals the process and activity group that own
+  the named message once per request; item-level targeting is not part of this
+  change, and Compact reasoning requires an explicit switch to Detailed. Saved mode
+  survives restart and a missing/unknown setting resolves to Detailed.
 - **Validation scope for the 2026-09-20 change:** Nested disclosure and activity
   group presentation only; precise item-level transcript search targeting is out
   of scope and keeps the existing message-level search behavior.
+- **Validation scope for the 2026-09-23 change:** Implemented, with focused unit
+  coverage in `apps/desktop/test/activity-summary.test.mjs` for the category
+  breakdown, `apps/desktop/test/turn-process.test.mjs` for the folding predicate
+  and `apps/desktop/test/transcript-style.test.mjs` for the narration tone, plus
+  the two transcript E2E runs `pnpm test:e2e:transcript` and
+  `pnpm test:e2e:transcript-disclosure` for interim narration, folding at turn end
+  and folding while pinned to the bottom or reading above the tail. That scope
+  changes the Detailed whole-process default, the header breakdown, interim
+  narration and the folding anchor; `verify:ui:*` is not run for it.
 - **Specs:** 04-ux/06-settings-ia, 04-ux/08-component-spec,
   04-ux/09-interaction-patterns; ADR turn-process-and-thinking-display.
 

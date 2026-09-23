@@ -3028,9 +3028,31 @@
   display: none;
 }
 
-.turn-process-body > .assistant-turn-fragment {
+/*
+  Interim narration: a trailing answer that is still streaming while the turn
+  already shows earlier work reads at the process indentation and in the process
+  tone. It stays outside the collapsible body, so folding the process never
+  hides text that is still streaming, and the presentation is dropped as soon as
+  the message settles.
+*/
+.turn-process-body > .assistant-turn-fragment,
+.assistant-turn-fragment.interim {
   color: var(--ds-text-secondary);
   margin-block: 8px;
+}
+
+.assistant-turn-fragment.interim {
+  /* The line measure of a progress paragraph inside the process body. */
+  padding-left: 18px;
+}
+
+/*
+  `.prose-chat` re-asserts the primary tone, so narration has to set the tone on
+  the prose itself — inside the process body and on the interim candidate alike.
+*/
+.turn-process-body > .assistant-turn-fragment > .prose-chat,
+.assistant-turn-fragment.interim > .prose-chat {
+  color: var(--ds-text-secondary);
 }
 
 .process-activity-group {

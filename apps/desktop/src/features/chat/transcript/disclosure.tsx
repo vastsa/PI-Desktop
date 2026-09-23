@@ -104,13 +104,22 @@ export function useAutomaticDisclosure(
 
   const previousOpen = useRef(open);
   useLayoutEffect(() => {
-    // Completion must not hide keyboard focus or an active text selection.
-    if (previousOpen.current && !open && !choice && ownsReadingPosition(bodyRef.current)) {
+    const closing = previousOpen.current && !open;
+    previousOpen.current = open;
+    if (!closing || choice) return;
+    /*
+      A close nobody asked for is the completion fold. Focus and an active
+      selection win over it, and a reader who scrolled away keeps the header
+      where it is: the transcript turns native scroll anchoring off, so the
+      scroller has to hold the position explicitly (#324).
+    */
+    if (ownsReadingPosition(bodyRef.current)) {
       choices.set(key, { open: true });
       parent.claim();
+      return;
     }
-    previousOpen.current = open;
-  }, [choice, choices, key, open, parent.claim]);
+    notifyAnchor?.(titleRef.current, "automatic");
+  }, [choice, choices, key, notifyAnchor, open, parent.claim]);
 
   const setManualOpen = useCallback((next: boolean) => {
     parent.claim();

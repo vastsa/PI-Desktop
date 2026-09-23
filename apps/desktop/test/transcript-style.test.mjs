@@ -564,3 +564,43 @@ test("regenerate history pager and stable revision family are wired", async () =
   assert.match(sharedSource, /revisionRootId\?: string/);
   assert.match(sharedSource, /MessageRevisionSummary/);
 });
+
+/*
+ * Interim narration is presentation only: the trailing candidate keeps its
+ * projection, but while the turn runs over earlier work it reads at the process
+ * indentation and in the process tone. `.prose-chat` re-asserts the primary
+ * tone, so a rule that only set the tone on the fragment would have no visible
+ * effect — that is the regression this guards.
+ */
+test("interim narration carries the process tone and indentation", () => {
+  const narration = stylesSource.match(
+    /\.turn-process-body > \.assistant-turn-fragment,\s*\.assistant-turn-fragment\.interim \{([^}]*)\}/,
+  )?.[1];
+  assert.ok(narration);
+  assert.match(narration, /color:\s*var\(--ds-text-secondary\);/);
+  assert.match(narration, /margin-block:\s*8px;/);
+
+  // The same indent the process body adds, so the candidate keeps the line
+  // measure of a progress paragraph.
+  assert.match(stylesSource, /\.turn-process-body \{[^}]*padding-left:\s*18px;/);
+  assert.match(
+    stylesSource,
+    /\.assistant-turn-fragment\.interim \{[^}]*padding-left:\s*18px;/,
+  );
+
+  const prose = stylesSource.match(
+    /\.turn-process-body > \.assistant-turn-fragment > \.prose-chat,\s*\.assistant-turn-fragment\.interim > \.prose-chat \{([^}]*)\}/,
+  )?.[1];
+  assert.ok(prose);
+  assert.match(prose, /color:\s*var\(--ds-text-secondary\);/);
+  // Answer prose outside the process keeps the primary tone.
+  assert.match(stylesSource, /\.prose-chat \{\s*color:\s*var\(--ds-text-primary\);/);
+
+  // The class is derived once, from the projection gate, rather than restated
+  // as markup conditions.
+  assert.match(transcriptSource, /const interimAnswerId = isInterimNarration\(\{/);
+  assert.match(
+    transcriptSource,
+    /part\.message\.id === interimAnswerId \? " interim" : ""/,
+  );
+});

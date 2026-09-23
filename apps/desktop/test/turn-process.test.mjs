@@ -4,6 +4,8 @@ import test from "node:test";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { buildTranscriptEntries } = await import("../src/lib/assistant-turns.ts");
 const {
+  isInterimNarration,
+  isTurnComplete,
   projectTurnProcess,
   visibleProcessSteps,
   resolveThinkingDisplayMode,
@@ -99,16 +101,184 @@ test("missing and unknown display settings retain detailed mode", () => {
   assert.equal(resolveThinkingDisplayMode("compact"), "compact");
 });
 
-test("both display modes group a turn and only compact auto-opens active failures", () => {
+test("a completed turn folds, and only compact auto-opens active failures", () => {
   assert.equal(shouldGroupTurnProcess("detailed"), true);
   assert.equal(shouldGroupTurnProcess("compact"), true);
-  assert.equal(shouldAutoOpenTurnProcess("detailed", false, false), true);
-  assert.equal(shouldAutoOpenTurnProcess("detailed", true, false), true);
-  assert.equal(shouldAutoOpenTurnProcess("detailed", true, true), true);
-  assert.equal(shouldAutoOpenTurnProcess("compact", false, false), false);
-  assert.equal(shouldAutoOpenTurnProcess("compact", true, false), false);
-  assert.equal(shouldAutoOpenTurnProcess("compact", true, true), true);
-  assert.equal(shouldAutoOpenTurnProcess("compact", false, true), false);
+  const detailed = (turnComplete) =>
+    shouldAutoOpenTurnProcess("detailed", {
+      isActive: false,
+      hasToolFailure: false,
+      turnComplete,
+    });
+  assert.equal(detailed(false), true);
+  assert.equal(detailed(true), false);
+  // A failure keeps the fallback too, so the issue count stays reachable.
+  assert.equal(
+    shouldAutoOpenTurnProcess("detailed", {
+      isActive: false,
+      hasToolFailure: true,
+      turnComplete: true,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldAutoOpenTurnProcess("compact", {
+      isActive: false,
+      hasToolFailure: false,
+      turnComplete: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldAutoOpenTurnProcess("compact", {
+      isActive: true,
+      hasToolFailure: false,
+      turnComplete: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldAutoOpenTurnProcess("compact", {
+      isActive: true,
+      hasToolFailure: true,
+      turnComplete: false,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldAutoOpenTurnProcess("compact", {
+      isActive: false,
+      hasToolFailure: true,
+      turnComplete: true,
+    }),
+    false,
+  );
+});
+
+test("only a turn that left flight with a recorded success counts as complete", () => {
+  const answer = (extra) => message("final", "assistant", "Done", extra);
+  assert.equal(isTurnComplete({ isRunning: false, answer: answer({ status: "complete" }) }), true);
+  // A running turn never folds, however complete its last message looks: the
+  // runtime records `complete` for a message that stopped on a tool call too.
+  assert.equal(isTurnComplete({ isRunning: true, answer: answer({ status: "complete" }) }), false);
+  assert.equal(isTurnComplete({ isRunning: false, answer: answer({}) }), false);
+  assert.equal(isTurnComplete({ isRunning: false, answer: undefined }), false);
+  assert.equal(
+    isTurnComplete({ isRunning: false, answer: answer({ status: "aborted" }) }),
+    false,
+  );
+  assert.equal(
+    isTurnComplete({
+      isRunning: false,
+      answer: answer({ status: "error", error: { code: "INTERNAL", message: "failed" } }),
+    }),
+    false,
+  );
+  assert.equal(
+    isTurnComplete({
+      isRunning: false,
+      answer: message("final", "assistant", "", { status: "complete" }),
+    }),
+    false,
+  );
+});
+
+/*
+ * Interim narration is presentation, not projection: the trailing candidate is
+ * still the answer candidate either way, but while the turn is running and
+ * earlier work exists it reads as work in progress rather than as the answer.
+ */
+test("only a running turn's streaming candidate over earlier work is interim narration", () => {
+  const live = (extra = {}) =>
+    message("live", "assistant", "Reading the log", {
+      status: "streaming",
+      ...extra,
+    });
+  const interim = (messages, options = {}) => {
+    const projected = projectTurnProcess(turn(messages));
+    return isInterimNarration({
+      isRunning: options.isRunning ?? true,
+      answer: projected.responses.at(-1)?.message,
+      processParts: projected.process,
+      mode: options.mode ?? "detailed",
+      isActive: options.isActive ?? true,
+    });
+  };
+  const prompt = message("user", "user", "Inspect");
+  const read = message("read", "tool", "result", { toolName: "Read" });
+  assert.equal(interim([prompt, read, live()]), true);
+  // The turn-level running state decides: a reader inside the reading window
+  // does not strip the presentation from a turn that is still working.
+  assert.equal(interim([prompt, read, live()], { isActive: false }), true);
+  // Compact hides the reasoning it keeps, not the work the narration follows:
+  // the same gate that decides whether the process group renders at all.
+  assert.equal(
+    interim([prompt, read, live()], { mode: "compact", isActive: false }),
+    true,
+  );
+  // Once the turn is out of flight, the same text is the answer.
+  assert.equal(interim([prompt, read, live()], { isRunning: false }), false);
+  // Reasoning alone is the ordinary path, not work between narration and answer.
+  assert.equal(
+    interim([
+      prompt,
+      message("think", "assistant", "", { thinking: "Weighing options" }),
+      live(),
+    ]),
+    false,
+  );
+  // A hosted-search round is work of the same kind as a tool call.
+  assert.equal(
+    interim([
+      prompt,
+      message("search", "assistant", "", {
+        hostedSearch: {
+          status: "completed",
+          rounds: [
+            { id: "round-1", status: "completed", query: "pi", sources: [] },
+          ],
+        },
+      }),
+      live(),
+    ]),
+    true,
+  );
+  // A settled, aborted, failed or still-empty candidate is not narration.
+  assert.equal(
+    interim([
+      prompt,
+      read,
+      message("live", "assistant", "Done", { status: "complete" }),
+    ]),
+    false,
+  );
+  assert.equal(
+    interim([
+      prompt,
+      read,
+      message("live", "assistant", "Half", { status: "aborted" }),
+    ]),
+    false,
+  );
+  assert.equal(
+    interim([
+      prompt,
+      read,
+      message("live", "assistant", "Half", {
+        status: "streaming",
+        error: { code: "INTERNAL", message: "failed" },
+      }),
+    ]),
+    false,
+  );
+  assert.equal(
+    interim([
+      prompt,
+      read,
+      message("live", "assistant", "   ", { status: "streaming" }),
+    ]),
+    false,
+  );
 });
 
 test("the last activity part owns detailed-mode's default-open tool", () => {

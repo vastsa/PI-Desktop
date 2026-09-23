@@ -21,6 +21,7 @@ import {
 import { useOpenChatFileRef, useOpenPreviewTarget } from "../../../hooks/use-preview-target";
 import { useDisclosureAnchorNotifier } from "../../../lib/disclosure-anchor-context";
 import { isThinkingActive, resolveThinkingDisplayMode } from "../../../lib/turn-process";
+import { activityCountParts, type ActivitySummary } from "../../../lib/activity-summary";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { disclosureKey, useAutomaticDisclosure } from "./disclosure";
 export { useAutomaticDisclosure } from "./disclosure";
@@ -67,6 +68,18 @@ export function useMessageRevealRequest(messageId: string) {
   return target && target.messageId === messageId
     ? target.requestId
     : undefined;
+}
+
+/**
+ * A disclosure header's category breakdown: one independently pluralized count
+ * per non-empty category, joined by punctuation so two numbers never read as
+ * one figure. The category wording itself stays in the locale catalogs.
+ */
+export function useActivityBreakdown(summary: ActivitySummary): string {
+  const { t } = useTranslation();
+  return activityCountParts(summary)
+    .map((part) => t(part.key, { count: part.count }))
+    .join(" · ");
 }
 
 export function CopyButton({

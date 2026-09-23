@@ -3,7 +3,7 @@ import { useContext, useEffect, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { AssistantTurnPart } from "../../../lib/assistant-turns";
 import { formatToolDuration } from "../../../lib/tool-display";
-import { activitySummary } from "../../../lib/activity-summary";
+import { activitySummary, visibleActivityItems } from "../../../lib/activity-summary";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import {
   isTurnThinking,
@@ -19,7 +19,7 @@ import {
   IconCircleAlert,
   IconSparkles,
 } from "../../../components/icons";
-import { DisclosureCollapseRail } from "./shared";
+import { DisclosureCollapseRail, useActivityBreakdown } from "./shared";
 import { DisclosureScope, disclosureKey, useAutomaticDisclosure } from "./disclosure";
 
 export function TurnProcess({
@@ -28,12 +28,15 @@ export function TurnProcess({
   turnParts,
   delegationStatuses,
   isActive,
+  turnComplete,
   children,
 }: {
   turnId: string;
   processParts: readonly AssistantTurnPart[];
   turnParts: readonly AssistantTurnPart[];
   isActive: boolean;
+  /** Turns out of flight with a confirmed answer fold while untouched. */
+  turnComplete: boolean;
   delegationStatuses?: ReadonlyMap<string, SubagentOutcome>;
   children: ReactNode;
 }) {
@@ -42,10 +45,24 @@ export function TurnProcess({
   const search = useContext(TranscriptSearchContext);
   const revealRequest = search && processContainsMessage(processParts, search.messageId)
     ? search.requestId : undefined;
-  const summary = activitySummary(processParts.flatMap((part) => part.kind === "activity" ? part.items : []), delegationStatuses);
+  const summary = activitySummary(
+    // The header and the group report the same visible items: Compact must not
+    // count the reasoning it hides.
+    visibleActivityItems(
+      processParts.flatMap((part) => (part.kind === "activity" ? part.items : [])),
+      mode === "compact",
+      isActive,
+    ),
+    delegationStatuses,
+  );
+  const breakdown = useActivityBreakdown(summary);
   const thinkingNow = isTurnThinking(turnParts, isActive);
   const disclosure = useAutomaticDisclosure(
-    shouldAutoOpenTurnProcess(mode, isActive, summary.issues > 0),
+    shouldAutoOpenTurnProcess(mode, {
+      isActive,
+      hasToolFailure: summary.issues > 0,
+      turnComplete,
+    }),
     revealRequest,
     disclosureKey("turn", turnId),
   );
@@ -84,8 +101,8 @@ export function TurnProcess({
             {t("chat.activityFailures", { count: summary.issues })}
           </span>
         ) : null}
-        {summary.tools > 0 ? (
-          <span className="tool-activity-count">{t("chat.processTools", { count: summary.tools })}</span>
+        {breakdown ? (
+          <span className="tool-activity-count">{breakdown}</span>
         ) : null}
         <span className="tool-activity-caret" aria-hidden><IconChevronRight size={12} /></span>
       </button>

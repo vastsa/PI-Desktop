@@ -27,7 +27,9 @@ import {
   collectDelegationTimings,
 } from "../../../lib/subagent-topology";
 import {
+  isInterimNarration,
   isLastActivityPart,
+  isTurnComplete,
   projectTurnProcess,
   resolveThinkingDisplayMode,
   shouldGroupTurnProcess,
@@ -54,6 +56,11 @@ import { TurnProcess } from "./TurnProcess";
 type AssistantTurnProps = {
   entry: AssistantTurnEntry;
   isActive: boolean;
+  /**
+   * Turn-level running state, without the reading-window subtraction: the
+   * completion fold must not depend on where the reader is scrolled.
+   */
+  turnRunning?: boolean;
   runtimeActivity?: AgentActivity;
 };
 
@@ -63,6 +70,7 @@ function assistantTurnPropsEqual(
 ) {
   if (
     previous.isActive !== next.isActive ||
+    previous.turnRunning !== next.turnRunning ||
     previous.runtimeActivity !== next.runtimeActivity ||
     previous.entry.anchorId !== next.entry.anchorId ||
     previous.entry.parts.length !== next.entry.parts.length
@@ -128,11 +136,14 @@ export function TranscriptEntryView({
   entry,
   isRunning,
   isActive,
+  turnRunning = false,
   runtimeActivity,
 }: {
   entry: TranscriptEntry;
   isRunning: boolean;
   isActive: boolean;
+  /** Only the transcript tail can belong to a turn that is still running. */
+  turnRunning?: boolean;
   runtimeActivity?: AgentActivity;
 }) {
   if (entry.kind === "assistant-turn") {
@@ -140,6 +151,7 @@ export function TranscriptEntryView({
       <AssistantTurn
         entry={entry}
         isActive={isActive}
+        turnRunning={turnRunning}
         runtimeActivity={runtimeActivity}
       />
     );
@@ -198,11 +210,13 @@ export const TranscriptTail = memo(function TranscriptTail({
   entry,
   isRunning,
   isActive,
+  turnRunning,
   runtimeActivity,
 }: {
   entry: TranscriptEntry;
   isRunning: boolean;
   isActive: boolean;
+  turnRunning: boolean;
   runtimeActivity?: AgentActivity;
 }) {
   return (
@@ -210,12 +224,14 @@ export const TranscriptTail = memo(function TranscriptTail({
       entry={entry}
       isRunning={isRunning}
       isActive={isActive}
+      turnRunning={turnRunning}
       runtimeActivity={runtimeActivity}
     />
   );
 }, (previous, next) =>
   previous.isRunning === next.isRunning &&
   previous.isActive === next.isActive &&
+  previous.turnRunning === next.turnRunning &&
   previous.runtimeActivity === next.runtimeActivity &&
   transcriptEntryEqual(previous.entry, next.entry)
 );
@@ -223,6 +239,7 @@ export const TranscriptTail = memo(function TranscriptTail({
 export const AssistantTurn = memo(function AssistantTurn({
   entry,
   isActive,
+  turnRunning = false,
   runtimeActivity,
 }: AssistantTurnProps) {
   const { t } = useTranslation();
@@ -317,13 +334,32 @@ export const AssistantTurn = memo(function AssistantTurn({
   );
   statusesRef.current = turnDelegationStatuses;
   timingsRef.current = turnDelegationTimings;
-  const groupProcess = useAppStore((state) =>
-    shouldGroupTurnProcess(
-      resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode),
-    ),
+  const thinkingMode = useAppStore((state) =>
+    resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode),
   );
+  const groupProcess = shouldGroupTurnProcess(thinkingMode);
   const { process, responses } = projectTurnProcess(entry);
   const activePart = isActive ? entry.parts.at(-1) : undefined;
+  const answerMessage = responses.at(-1)?.message;
+  const turnComplete = isTurnComplete({
+    isRunning: turnRunning,
+    answer: answerMessage,
+  });
+  /*
+    Interim narration: the trailing answer streams at the process indentation
+    and tone while earlier work is still what the turn has produced. It stays
+    outside the collapsible body, so folding the process never hides text that
+    is still streaming.
+  */
+  const interimAnswerId = isInterimNarration({
+    isRunning: turnRunning,
+    answer: answerMessage,
+    processParts: process,
+    mode: thinkingMode,
+    isActive,
+  })
+    ? answerMessage?.id
+    : undefined;
 
   const renderPart = (part: AssistantTurnPart) =>
     part.kind === "activity" ? (
@@ -341,10 +377,8 @@ export const AssistantTurn = memo(function AssistantTurn({
     ) : (
       <div
         className={`message-bubble assistant-turn-fragment${
-          isActive && part.message.status === "streaming"
-            ? " streaming"
-            : ""
-        }`}
+          part.message.id === interimAnswerId ? " interim" : ""
+        }${isActive && part.message.status === "streaming" ? " streaming" : ""}`}
         data-message-id={part.message.id}
         key={part.message.id}
       >
@@ -371,7 +405,14 @@ export const AssistantTurn = memo(function AssistantTurn({
       <div className="message-col">
         {groupProcess ? (
           <>
-            <TurnProcess turnId={entry.id} processParts={process} turnParts={entry.parts} isActive={isActive} delegationStatuses={turnDelegationStatuses}>
+            <TurnProcess
+              turnId={entry.id}
+              processParts={process}
+              turnParts={entry.parts}
+              isActive={isActive}
+              turnComplete={turnComplete}
+              delegationStatuses={turnDelegationStatuses}
+            >
               {process.map(renderPart)}
             </TurnProcess>
             {responses.map(renderPart)}

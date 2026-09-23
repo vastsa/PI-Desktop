@@ -821,8 +821,14 @@ Both Detailed and Compact project each loaded assistant turn into one whole-proc
 disclosure containing reasoning, tools, hosted searches and intermediate assistant
 text in transcript order. The trailing answer streams outside that disclosure;
 later activity can reclassify provisional answer text into the process without
-changing the stored message. Assistant errors and stopped trailing partial answers
-also stay outside it. User/system messages and compaction boundaries are unchanged.
+changing the stored message. While the turn is running and the process already
+holds an earlier tool call or hosted-search round, that trailing text presents as
+interim narration: it renders at the process indentation, in the secondary tone,
+and outside the collapsible body, so folding never hides text that is still
+streaming. The presentation derives from turn and message state only, never from
+wording, and is removed when the message stops streaming. Assistant errors and
+stopped trailing partial answers also stay outside it. User/system messages and
+compaction boundaries are unchanged.
 
 Within the process, an ordinary activity group represents one contiguous
 tool/search/thinking segment between progress paragraphs. It renders a group header
@@ -830,13 +836,19 @@ only when the current mode has two or more visible items. A singleton uses its i
 disclosure directly, compact-hidden thinking never creates an empty wrapper, and
 the existing Task topology remains the container for delegated work.
 
-Detailed starts active and completed whole-process disclosures open. The ordinary
-group owning the active execution segment starts open, then closes on completion
-only if untouched; other completed groups start closed. Compact starts the process
-and ordinary groups closed. Its untouched active process remains open when any
-failed or denied tool has been recorded, through later successful recovery, and
-closes on completion if still untouched. Group headers summarize count, running
-state and issue count without treating a failed child as a failed turn.
+Detailed starts an active whole-process disclosure open, keeps a running turn's
+process open, and folds the process on completion while untouched. Completion
+requires the turn-level running state to have ended and the trailing answer to be a
+recorded success, because a message that stopped on a tool call also reports
+`complete`. A manual or revealed open survives the fold. The ordinary group owning
+the active execution segment starts open, then closes on completion only if
+untouched; other completed groups start closed. Compact starts the process and
+ordinary groups closed. Its untouched active process remains open when any failed
+or denied tool has been recorded, through later successful recovery, and closes on
+completion if still untouched. Whole-turn and group headers report the visible work
+as non-overlapping categories — tool calls, command executions, hosted-search
+rounds and thinking steps — with empty categories omitted, without treating a
+failed child as a failed turn.
 
 In Detailed, only the literal final item of the last activity group receives the
 leaf auto-open default when it is an eligible tool-call or hosted-search row.
@@ -847,10 +859,14 @@ suppresses reasoning text and excerpts; only its active thinking indicator remai
 Whole process, group and item are independent controls. Closing an ancestor keeps
 descendant choices and reopening restores them; opening a parent never expands all
 children. User interaction with a child claims its ancestors without toggling them,
-so completion cannot close around opened, focused or selected content. Choices use
-stable turn/group/item identities and remain while the retained session pane lives,
-including mode changes and row remounts; pane eviction, deletion or renderer restart
-reapplies defaults rather than persisting disclosure state to messages or settings.
+so completion cannot close around opened, focused or selected content. An
+automatic completion fold hands its header to the scroll owner: the owner holds
+that header for a reader who left the tail, and exempts a reader still following
+the tail, where holding the collapsed header would drag the answer out of view.
+Choices use stable turn/group/item identities and remain while the retained
+session pane lives, including mode changes and row remounts; pane eviction,
+deletion or renderer restart reapplies defaults rather than persisting disclosure
+state to messages or settings.
 
 Search/navigation reveals the process and the activity group that own the named
 message, and applies each reveal request once. Item-level targeting is not part
@@ -2072,7 +2088,9 @@ failed and denied rows remain closed, and a final thinking item does not select 
 earlier tool. Compact keeps every tool/search payload closed.
 
 The group header shows `Processing · 12s` while active or `Processed for 12s`
-after completion, plus bounded item and issue counts. Expanding it reveals the
+after completion, plus the visible work counts — tool calls, command executions,
+hosted-search rounds and thinking steps, with empty categories omitted — and the
+issue count. Expanding it reveals the
 ordered activity rows and their independent result disclosures. A failed child
 remains an error on its own ToolCallRow but does not make the group or whole turn
 terminally failed; terminal agent errors remain owned by the assistant error or
@@ -2087,7 +2105,7 @@ seconds when non-zero) from one hour onward. Zero-value units are omitted, so
 ### 9.2 Anatomy
 
 ```text
-[sparkle] Processing · 12s  3 steps                 [›]
+[sparkle] Processing · 12s  2 tool calls · 1 command execution   [›]
           ├─ [file] Read /src/foo.ts        [›]
           ├─ [search] Searched TODO  24 matches   [›]
           └─ [terminal] Ran pnpm test  exit 1  • Failed  [copy] [›]
@@ -2097,7 +2115,9 @@ seconds when non-zero) from one hour onward. Zero-value units are omitted, so
 
 - The leading Lucide icon reflects the action type: file, folder, search,
   edit, terminal, web, or generic tool.
-- A multi-item group header owns elapsed time plus item and issue counts and stays
+- A multi-item group header owns elapsed time, the visible work counts — tool
+  calls, command executions, hosted-search rounds and thinking steps, with empty
+  categories omitted — and the issue count, and stays
   in the transcript after completion. In Detailed the active group starts open and
   closes on completion only if untouched; completed groups otherwise start closed.
   Compact groups start closed. A singleton has no group header.

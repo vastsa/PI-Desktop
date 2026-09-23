@@ -66,13 +66,88 @@ export function isLastActivityPart(
   return false;
 }
 
-/** Detailed keeps narration visible; compact reveals active failures only. */
+/**
+ * A turn is finished only when it left flight and its trailing answer is a
+ * recorded success.
+ *
+ * Message status alone cannot prove that: the runtime records `complete` for
+ * any message whose stop reason is not an error or an abort — `toolUse`
+ * included — and every appended assistant message emits `message_end`. Folding
+ * on status alone would hide a turn's progress while it is still working.
+ *
+ * `isRunning` is the turn-level running state, not the transcript's tail-active
+ * flag: the latter is also false while a reader is inside the reading window.
+ */
+export function isTurnComplete({
+  isRunning,
+  answer,
+}: {
+  isRunning: boolean;
+  answer?: UiMessage;
+}): boolean {
+  if (isRunning || !answer) return false;
+  if (
+    answer.error ||
+    answer.status === "error" ||
+    answer.status === "aborted"
+  ) {
+    return false;
+  }
+  return Boolean(answer.content.trim()) && answer.status === "complete";
+}
+
+/**
+ * Detailed keeps narration visible until the turn is finished for good;
+ * compact reveals active failures only.
+ */
 export function shouldAutoOpenTurnProcess(
   mode: ThinkingDisplayMode,
-  isActive: boolean,
-  hasToolFailure: boolean,
+  state: { isActive: boolean; hasToolFailure: boolean; turnComplete: boolean },
 ): boolean {
-  return mode === "detailed" || (isActive && hasToolFailure);
+  return mode === "compact"
+    ? state.isActive && state.hasToolFailure
+    : !state.turnComplete;
+}
+
+/**
+ * Interim narration: a trailing answer that is still streaming while the turn
+ * already shows earlier tool or search work reads as work in progress rather
+ * than as the answer.
+ *
+ * The turn's running state decides, not `isActive`: a reader inside the reading
+ * window must not strip presentation from a turn that is still working. A
+ * reasoning step alone does not qualify — reasoning followed by an answer is the
+ * ordinary path — and neither does a candidate that carries an error, which is
+ * an outcome rather than interim text.
+ */
+export function isInterimNarration({
+  isRunning,
+  answer,
+  processParts,
+  mode,
+  isActive,
+}: {
+  /** Turn-level running state, without the reading-window subtraction. */
+  isRunning: boolean;
+  /** The trailing non-empty response candidate, absent when the turn has none. */
+  answer?: UiMessage;
+  processParts: readonly AssistantTurnPart[];
+  mode: ThinkingDisplayMode;
+  isActive: boolean;
+}): boolean {
+  if (!isRunning || !answer || answer.error) return false;
+  // An abort never streams, so requiring `streaming` rules it out as well.
+  if (answer.status !== "streaming" || !answer.content.trim()) return false;
+  const worked = processParts.some(
+    (part) =>
+      part.kind === "activity" &&
+      part.items.some(
+        (item) => item.kind === "tool" || item.kind === "hostedSearch",
+      ),
+  );
+  // The same gate that decides whether the process group renders at all: the
+  // narration must not claim an indentation that is not on screen.
+  return worked && visibleProcessSteps(processParts, mode, isActive) > 0;
 }
 
 /**

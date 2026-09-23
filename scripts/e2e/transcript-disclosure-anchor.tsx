@@ -80,9 +80,22 @@ async function settle() {
  * The transcript scroller's own DOM, with the real hook driving it: the real
  * ResizeObserver, follow mode and disclosure hold, in a real 600 CSS px
  * viewport. Only the app's stylesheet is left out, so the geometry comes from
- * inline sizes and the real components' intrinsic height.
+ * inline sizes and the real components' intrinsic height. The one declaration
+ * that cannot be left out is `overflow-anchor: none`, which the product sets on
+ * `.thread-scroll` (and `.subagent-run-rows` for the dock): without it the
+ * browser's own scroll anchoring competes with the held position and the
+ * asserted geometry turns flaky.
  */
-function TranscriptFixture({ messages, process = false }: { messages: UiMessage[]; process?: boolean }) {
+function TranscriptFixture({
+  messages,
+  process = false,
+  turnRunning = false,
+}: {
+  messages: UiMessage[];
+  process?: boolean;
+  /** Turn-level running state, so the fold only applies out of flight. */
+  turnRunning?: boolean;
+}) {
   const entry = process ? buildTranscriptEntries(messages).entries.find((item) => item.kind === "assistant-turn") : undefined;
   const {
     scrollRef,
@@ -113,13 +126,15 @@ function TranscriptFixture({ messages, process = false }: { messages: UiMessage[
           className="thread-scroll"
           data-scroll-owner="transcript"
           onScroll={handleScroll}
-          style={{ height: "100%", overflowY: "auto" }}
+          style={{ height: "100%", overflowY: "auto", overflowAnchor: "none" }}
         >
           <div ref={contentRef} className="thread-content">
             <div style={{ height: 700 }} />
-            {entry?.kind === "assistant-turn"
-              ? <AssistantTurn entry={entry} isActive={false} />
-              : <ToolRow message={messages[1]} />}
+            {entry?.kind === "assistant-turn" ? (
+              <AssistantTurn entry={entry} isActive={false} turnRunning={turnRunning} />
+            ) : (
+              <ToolRow message={messages[1]} />
+            )}
             <div style={{ height: 300 }} />
           </div>
         </div>
@@ -139,7 +154,7 @@ function FollowFixture({ tool }: { tool: UiMessage }) {
         className="subagent-run-rows"
         data-scroll-owner="follow"
         onScroll={handleScroll}
-        style={{ height: "300px", overflowY: "auto" }}
+        style={{ height: "300px", overflowY: "auto", overflowAnchor: "none" }}
       >
         <div ref={contentRef}>
           <div style={{ height: 320 }} />
@@ -164,6 +179,7 @@ globalThis.transcriptDisclosureProbe = async () => {
   const renderErrors: unknown[] = [];
   const roots: Array<{ unmount: () => void }> = [];
 
+  /** Mounts a fixture and returns its container plus a re-render for props. */
   const mount = (node: Parameters<typeof I18nextProvider>[0]["children"]) => {
     const container = document.createElement("div");
     container.style.height = "600px";
@@ -174,16 +190,18 @@ globalThis.transcriptDisclosureProbe = async () => {
         renderErrors.push(error);
       },
     });
-    flushSync(() =>
-      root.render(<I18nextProvider i18n={i18n}>{node}</I18nextProvider>),
-    );
+    const render = (next: Parameters<typeof I18nextProvider>[0]["children"]) =>
+      flushSync(() =>
+        root.render(<I18nextProvider i18n={i18n}>{next}</I18nextProvider>),
+      );
+    render(node);
     roots.push(root);
-    return container;
+    return { container, render };
   };
 
   try {
     const tool = toolRowMessage("tool");
-    const container = mount(
+    const { container } = mount(
       <TranscriptFixture
         messages={[
           message("user", "user", "Inspect the workspace"),
@@ -236,7 +254,9 @@ globalThis.transcriptDisclosureProbe = async () => {
       `collapsing the tool moved the transcript by ${collapsed.scrollTop - before.scrollTop}px: ${JSON.stringify({ before, collapsed })}`,
     );
 
-    const dockContainer = mount(<FollowFixture tool={toolRowMessage("dock")} />);
+    const { container: dockContainer } = mount(
+      <FollowFixture tool={toolRowMessage("dock")} />,
+    );
     const dockScroller = dockContainer.querySelector<HTMLElement>(
       ".subagent-run-rows",
     );
@@ -266,20 +286,52 @@ globalThis.transcriptDisclosureProbe = async () => {
       dockExpanded.scrollTop <= dockBefore.scrollTop + 2,
       "expanding the dock re-bottomed the dock scroller",
     );
-    const processContainer = mount(<TranscriptFixture process messages={[
+    const processMessages = [
       message("process-user", "user", "Inspect"),
       message("progress", "assistant", Array.from({ length: 50 }, (_, i) => `Progress paragraph ${i}.`).join("\n\n")),
       toolRowMessage("process-tool"),
-      message("final", "assistant", "Finished."),
-    ]} />);
+      message("final", "assistant", "Finished.", { status: "complete" as const }),
+    ];
+    const { container: processContainer, render: renderProcess } = mount(
+      <TranscriptFixture process turnRunning messages={processMessages} />,
+    );
     const processScroller = processContainer.querySelector<HTMLElement>(".thread-scroll");
     const processTitle = processContainer.querySelector<HTMLElement>(".turn-process > button");
-    assert(processScroller && processTitle, "process fixture did not render");
-    await settle();
     const processBefore = geometry(processScroller, processTitle);
     assert(
       processTitle.getAttribute("aria-expanded") === "true",
-      "detailed should start the process open",
+      "a running turn keeps the process open",
+    );
+    assert(
+      Math.abs(processBefore.distanceFromBottom) < 1,
+      `the process fixture did not start pinned to the bottom: ${JSON.stringify(processBefore)}`,
+    );
+    /*
+      The completion fold: same fixture, turn now out of flight. Nobody asked
+      for this layout change, so the scroller holds the header — except for a
+      reader who is following the tail, who must stay pinned to the answer
+      instead of being dragged up to the folded header.
+    */
+    renderProcess(<TranscriptFixture process messages={processMessages} />);
+    await settle();
+    const processFolded = geometry(processScroller, processTitle);
+    assert(
+      processTitle.getAttribute("aria-expanded") === "false",
+      "the finished turn did not fold its process",
+    );
+    assert(
+      processFolded.scrollHeight < processBefore.scrollHeight - 100,
+      "the folded process did not change the height",
+    );
+    assert(
+      Math.abs(processFolded.distanceFromBottom) < 1,
+      `the completion fold dragged a following reader off the bottom: ${JSON.stringify({ processBefore, processFolded })}`,
+    );
+    renderProcess(<TranscriptFixture process turnRunning messages={processMessages} />);
+    await settle();
+    assert(
+      processTitle.getAttribute("aria-expanded") === "true",
+      "a running turn reopened the folded process",
     );
     processTitle.click();
     await settle();
@@ -299,7 +351,7 @@ globalThis.transcriptDisclosureProbe = async () => {
     // anchor has to compensate; the collapse above may legitimately clamp.
     assert(
       Math.abs(processExpanded.titleTop - processCollapsed.titleTop) < 2,
-      "process expansion moved its title",
+      `process expansion moved its title: ${JSON.stringify({ processCollapsed, processExpanded })}`,
     );
     assert(renderErrors.length === 0, `React render errors: ${renderErrors.map(String).join("; ")}`);
     return {

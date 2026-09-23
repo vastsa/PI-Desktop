@@ -24,10 +24,17 @@ test("a manual disclosure hands over its title before the state changes", () => 
   assert.match(disclosure, /const collapse = useCallback\(\(\) => setManualOpen\(false\)/);
 });
 
-test("automatic disclosure does not claim a reading position", () => {
-  // Automatic reveal/collapse may claim the parent hierarchy, but never calls
-  // the scroll anchor notifier reserved for direct user interaction.
-  assert.match(disclosure, /if \(previousOpen\.current && !open && !choice && ownsReadingPosition/);
+test("the completion fold holds the header, but never over focus or selection", () => {
+  // Automatic reveal still never claims a reading position: a reader who asked
+  // for the row gets it open. The completion fold is different — nobody asked
+  // for that layout change — so it hands the header to the scroller, which
+  // holds it only for a reader who is not following the tail.
+  assert.match(
+    disclosure,
+    /const closing = previousOpen\.current && !open;[\s\S]*?if \(!closing \|\| choice\) return;/,
+  );
+  assert.match(disclosure, /if \(ownsReadingPosition\(bodyRef\.current\)\) \{/);
+  assert.match(disclosure, /notifyAnchor\?\.\(titleRef\.current, "automatic"\);/);
   const revealEffect = disclosure.match(
     /useLayoutEffect\(\(\) => \{\s*if \(revealRequest === undefined[\s\S]*?\n  \}, \[choices, key, parent\.claim, revealRequest\]\);/,
   )?.[0];

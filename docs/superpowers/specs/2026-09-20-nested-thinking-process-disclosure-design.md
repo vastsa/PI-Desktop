@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-- Status: Proposed for review; implementation is not authorized by this document.
+- Status: Superseded by `2026-09-23-thinking-process-display-optimization.md`; kept as the historical design record for the 2026-09-20 proposal and no longer a current recommendation.
 - Date: 2026-09-20.
 - Branch: `feat/thinking-process-collapse`, directly in the project checkout as requested.
 - Inspected baseline: `aad46adb` (local `main` and cached `origin/main` at intake). Fetching remote `main` failed with SSH `Permission denied (publickey)`; this proposal does not claim verification against the latest remote revision.
@@ -108,6 +108,8 @@ The table describes untouched controls. Explicit user choices override these def
 | Reasoning item | Keep existing live reasoning behavior | Closed | No reasoning text or excerpt; active thinking indicator only |
 | Task topology | Retain current live/manual policy | Retain current policy | Retain current policy |
 
+Note (2026-09-23): the “Detailed: completed/history = Open” value for the whole process above is superseded by `2026-09-23-thinking-process-display-optimization.md`; folding now applies once the turn is out of flight and a non-empty trailing answer carries `status: complete` with no error or abort. The active value, the Compact exception and the leaf defaults still stand.
+
 Detailed mode keeps completed progress narration visible by default, preserving its purpose. It gains a whole-process collapse control while completed execution groups become easier to scan. Adopting Codex-like nesting does not require silently changing detailed mode into compact mode.
 
 The preserved leaf default applies only when the literal final item of the last activity group is a tool or hosted-search row, with that row's existing failure/denial guards. It does not scan backward past a thinking item to find a tool. Opening an untouched completed group exposes its precomputed leaf defaults; it does not reset them closed. Thus a group ending in an eligible tool can reveal that tool's output immediately, while the screenshot example ending in thinking reveals only headers until an item is explicitly opened.
@@ -121,7 +123,7 @@ The preserved leaf default applies only when the literal final item of the last 
 - Automatic completion may close an untouched active group. It must not close a group whose output is being selected, whose body holds keyboard focus, or whose body was explicitly interacted with. Those actions establish user ownership.
 - A tool error does not imply that the assistant turn failed. A later successful recovery does not erase the earlier tool's failure marker.
 - Show a collapsed group's running or failure summary even when its payload is hidden. If the whole process is closed, propagate the aggregate to its visible header. Do not reopen manually closed ancestors to show an error. Preserve the compact outer exception: while the turn is active, any recorded failed/denied tool keeps an untouched outer process open through later progress or successful recovery. It closes automatically on turn completion only if still untouched. Inner groups remain closed with issue counts visible; raw error output requires explicit opening. The design must account for failure -> progress -> successful tool -> turn completion, both untouched and manually closed; review this path statically.
-- No timer-based auto-collapse and no automatic “collapse everything when the answer arrives.” The default detailed process remains open unless the user closes it.
+- No timer-based auto-collapse and no automatic “collapse everything when the answer arrives.” The default detailed process remains open unless the user closes it. Superseded on 2026-09-23: `2026-09-23-thinking-process-display-optimization.md` folds an untouched whole-turn process automatically once the turn is out of flight with a confirmed complete, non-empty answer. The no-timer rule and user ownership still hold.
 
 ### State lifetime
 
@@ -153,6 +155,8 @@ Suggested localized labels:
 | Mixed group | Tool activity · {count} tools | 工具操作 · {count} 项 |
 | Mixed group with reasoning | Includes thinking | 含思考 |
 | Group contains failure | {count} failed | {count} 项失败 |
+
+Note (2026-09-23): the mixed-group “Tool activity · {count} tools” label and the “Includes thinking” note above are superseded by `2026-09-23-thinking-process-display-optimization.md`, which reports tool calls, command executions, hosted-search rounds and thinking steps as four separate counts at both header levels and drops zero categories.
 
 Final wording goes through existing i18n/pluralization conventions. The process count should name what it counts: tools/search rounds rather than silently including progress paragraphs under a “tools” label. Count each direct tool invocation and hosted search round once; do not double-count delegated child work. If there are no tools, omit the tool count. Detailed thinking-only processes remain collapsible; completed compact thinking-only processes leave no empty header.
 
@@ -304,11 +308,13 @@ For this document-only change, check local references, encoding, whitespace and 
 | --- | --- |
 | Only expose ordinary activity-group headers | Fixes the red-box symptom, but leaves detailed mode without the requested whole-process collapse |
 | Add only a whole-process wrapper | Lets users hide everything, but cannot retain progress narration while hiding one execution block |
-| Collapse completed whole processes by default in detailed mode | Reduces height further, but hides progress narration and makes Detailed/Compact less distinct; not recommended for the initial change |
+| Collapse completed whole processes by default in detailed mode | Reduces height further, but hides progress narration and makes Detailed/Compact less distinct; not recommended for the initial change. Superseded on 2026-09-23: `2026-09-23-thinking-process-display-optimization.md` adopts this folding for an untouched whole-turn process once the turn ends with a confirmed complete, non-empty answer |
 | Always add all three levels, even for one item | Creates redundant clicks and repeated labels; use singleton elision with retained item state |
 | Persist every disclosure to the host | Adds storage and lifecycle complexity without a requirement; retain pane-lifetime state only |
 
 Recommended review baseline: adopt all three independent levels, keep detailed process narration open by default, fold completed ordinary groups, and retain the current leaf-detail defaults. Do not add expand-all actions or new preferences until actual use demonstrates a need.
+
+Note (2026-09-23): “keep detailed process narration open by default” is superseded by `2026-09-23-thinking-process-display-optimization.md`, which keeps a running turn open but folds an untouched whole-turn process automatically once the turn ends with a confirmed complete, non-empty answer. The three-level structure, the completed-group fold and the leaf defaults still stand.
 
 ## 10. Inspected source and existing contracts
 

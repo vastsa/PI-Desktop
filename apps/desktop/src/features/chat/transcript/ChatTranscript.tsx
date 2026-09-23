@@ -273,6 +273,7 @@ function TranscriptBody({
               entry={tailEntry}
               isRunning={isRunning}
               isActive={transcriptRunning && tailEntry.kind === "assistant-turn"}
+              turnRunning={isRunning && tailEntry.kind === "assistant-turn"}
               runtimeActivity={specializedActivity}
             />
           ) : null}
