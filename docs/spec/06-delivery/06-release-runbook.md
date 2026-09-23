@@ -287,8 +287,11 @@ Release ref.
 release branches, and pull requests do not create documentation deployments or
 Vercel bot comments. The `docs-deploy` job in `.github/workflows/release.yml`
 runs after the release workflow's `publish` job succeeds, checks out the exact
-release tag, and deploys the production site with the Vercel CLI. Keeping this
-job in the same workflow avoids relying on a second workflow being triggered by
+release tag, writes `docs/.vercel/project.json` from the configured org and
+project IDs before pulling production settings, and deploys the production site
+with the Vercel CLI. This explicit project link avoids Vercel CLI account/team
+auto-discovery, which can fail with project-scoped tokens. Keeping this job in
+the same workflow avoids relying on a second workflow being triggered by
 `GITHUB_TOKEN`.
 
 The workflow requires the repository secrets `VERCEL_ORG_ID`,

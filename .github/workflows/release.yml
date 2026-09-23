@@ -540,6 +540,23 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@59.23.2
 
+      # Avoid Vercel CLI account/team auto-discovery with project-scoped tokens.
+      - name: Link Vercel project
+        working-directory: docs
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { VERCEL_ORG_ID, VERCEL_PROJECT_ID } = process.env;
+          if (!VERCEL_ORG_ID || !VERCEL_PROJECT_ID) {
+            throw new Error('VERCEL_ORG_ID and VERCEL_PROJECT_ID are required.');
+          }
+          fs.mkdirSync('.vercel', { recursive: true });
+          fs.writeFileSync(
+            '.vercel/project.json',
+            `${JSON.stringify({ orgId: VERCEL_ORG_ID, projectId: VERCEL_PROJECT_ID })}\n`,
+          );
+          NODE
+
       - name: Pull Vercel production configuration
         working-directory: docs
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
