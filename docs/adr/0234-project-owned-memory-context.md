@@ -41,3 +41,7 @@ application does not implement.
 - ADR 0249 adds an explicit host-owned logical project-group identity and root
   membership model. Path-scoped records remain the compatibility behavior for
   legacy single-root projects.
+- [Unified project memory](project-auto-memory.md) adds opt-in agent writes to
+  the same host-owned collection, with concurrent-edit checks. The recording
+  switch does not disable recall, and the existing context-priority boundaries
+  continue to apply.

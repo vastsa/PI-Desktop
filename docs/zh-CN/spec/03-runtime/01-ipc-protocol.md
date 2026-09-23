@@ -1843,3 +1843,18 @@ unchanged. See [provider configuration](12-provider-config-schema.md).
 输入密码只会被传给需要它的操作。原始秘密、vault key、解密资源或远端 archive 不会返回到 Renderer。`configSync.changed` 事件携带相同的脱敏状态，并由 Host 发起的变更（包括 Host scheduler）触发。Main 只是传输/生命周期协调器，不负责调度、合并、加密或应用配置。
 
 手动同步会在运行期间报告 `configSync.progress`：当前阶段（`capture`、`download`、`merge`、`upload`、`apply` 或 `cleanup`）、该阶段已完成与总量，以及已知时的字节数。因此上传大量资源对象时，界面不会无内容可显示。后台轮询不报告进度，因为只有手动路径有调用方在等待。
+
+## Project memory and automatic recording
+
+- `project/memory/editor/get({ projectPath })`: return `{ editor }` containing
+  `owner`, `memory: ProjectMemory`, and `autoRecordEnabled: boolean`. All entries
+  belong to one project memory; neither display nor permissions depend on origin.
+- `project/memory/editor/save({ projectPath, expectedOwner, expectedMemory,
+  entries })`: replace the unified entries atomically after checking ownership
+  and the entire last-read memory snapshot. A conflict rejects the whole save
+  and preserves the user's draft. Return the fresh `{ editor }` snapshot.
+- `project/auto-memory/set-enabled({ projectPath, expectedOwner, enabled })`:
+  immediately allow or deny agent writes after validating ownership; return
+  `{ autoRecordEnabled }`. This defaults to false and does not change drafts,
+  delete memory, or disable reading and using existing memory. Editor management
+  capabilities are not exposed to the model's parent proxy.

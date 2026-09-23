@@ -24,6 +24,29 @@ PI-Desktop 是一个本地优先的 AI 编程代理桌面客户端。它让工�
 这张表与英文快速开始页保持相同顺序；如果你需要完整英文技术正文，
 可以直接打开 [English guide](/guide/)。
 
+## Project memory
+
+Open **Settings → Projects**, select a project, and choose **Project memory**
+from its detail menu. All notes form one collection: notes entered by you and
+notes recorded during chat use the same list, editing controls, and permissions.
+There are no source labels or separate memory categories.
+
+Enable **Automatically record memories** to let the agent record clearly
+expressed durable preferences and corrections during a chat, or respond to
+remember/forget requests. This defaults to off. Disabling recording only prevents
+agent additions, updates, and deletions; all saved memory continues to be used
+in later chats. Delete an unwanted note yourself to stop using it. Deletion does
+not retract context already sent to a provider or erase past chat messages.
+
+Edit, add, or remove notes, then choose Save to apply the complete draft
+atomically. Concurrent edits reject a stale save without overwriting saved data.
+Cancel discards the draft; it does not undo an immediate recording-switch change.
+Projects stay isolated unless their folders belong to the same logical project.
+All notes follow the existing project-memory configuration-sync rules regardless
+of who wrote them. Recording permission stays a local opt-in. No background
+memory-extraction model is started.
+
+
 ## 系统心智模型
 
 ```text

@@ -143,6 +143,189 @@ const commandShell: CommandShellOption = {
   isDefault: true,
 };
 
+type AutoMemoryRuntimeProbe = {
+  agent: { prompt: ReturnType<typeof vi.fn>; waitForIdle: ReturnType<typeof vi.fn>;
+    state: { tools: Array<{ name: string }> } };
+  agentSystemPromptContent: () => string;
+  fullEntries: Array<{ message?: { content?: string } }>;
+  handleAgentEvent: (event: { type: string; messages?: [] }) => Promise<void>;
+  toolCatalog: { has: (name: string) => boolean };
+};
+
+function autoMemoryRuntimeProbe(runtime: DesktopAgentRuntime): AutoMemoryRuntimeProbe {
+  return runtime as unknown as AutoMemoryRuntimeProbe;
+}
+
+async function completeMemoryTurn(probe: AutoMemoryRuntimeProbe): Promise<void> {
+  probe.agent.prompt = vi.fn(async () => {
+    await probe.handleAgentEvent({ type: "agent_start" });
+    await probe.handleAgentEvent({ type: "turn_start" });
+    await probe.handleAgentEvent({ type: "turn_end" });
+    await probe.handleAgentEvent({ type: "agent_end", messages: [] });
+  });
+  probe.agent.waitForIdle = vi.fn(async () => undefined);
+}
+describe("automatic project memory per-turn refresh", () => {
+  it("stops a delayed memory lookup before model preparation and retains the user message", async () => {
+    let resolveLoad: ((result: unknown) => void) | undefined;
+    const host = {
+      call: vi.fn(() => new Promise((resolve) => { resolveLoad = resolve; })),
+      onNotification: vi.fn(() => () => {}),
+    };
+    const runtime = createRuntime({ host, projectPath: "/workspace/project" });
+    const probe = autoMemoryRuntimeProbe(runtime);
+    const agent = probe.agent;
+    agent.prompt = vi.fn(async () => undefined);
+    const pending = runtime.prompt("Remember this note", "user-1");
+    expect(resolveLoad).toBeTypeOf("function");
+    await runtime.abort();
+    resolveLoad?.({ memory: { content: "Never sent", entries: [{ id: "a", title: "Note", content: "Never sent" }] }, autoRecordEnabled: true });
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(agent.prompt).not.toHaveBeenCalled();
+    expect(probe.agentSystemPromptContent()).not.toContain("Never sent");
+    expect(probe.fullEntries.some((entry: { message?: { content?: string } }) =>
+      entry.message?.content === "Remember this note")).toBe(true);
+    await runtime.dispose();
+  });
+
+  it("ignores a memory response that arrives after disposal", async () => {
+    let resolveLoad: ((result: unknown) => void) | undefined;
+    const host = {
+      call: vi.fn(() => new Promise((resolve) => { resolveLoad = resolve; })),
+      onNotification: vi.fn(() => () => {}),
+    };
+    const runtime = createRuntime({ host, projectPath: "/workspace/project" });
+    const probe = autoMemoryRuntimeProbe(runtime);
+    const prompt = vi.fn(async () => undefined);
+    probe.agent.prompt = prompt;
+    const pending = runtime.prompt("continue", "user-disposed");
+    await runtime.dispose();
+    resolveLoad?.({ memory: { content: "Do not inject after disposal", entries: [] }, autoRecordEnabled: true });
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(prompt).not.toHaveBeenCalled();
+    expect(probe.agentSystemPromptContent()).not.toContain("Do not inject after disposal");
+    expect(probe.toolCatalog.has("ProjectMemory")).toBe(false);
+  });
+  it("reads one shared memory on each turn, even after disabling AI writes", async () => {
+    let enabled = true;
+    const host = {
+      call: vi.fn(async (method: string) => {
+        if (method !== "project.autoMemory.agentList") throw new Error(`unexpected ${method}`);
+        return { memory: {
+          content: "Previously saved note.\n\n## Stack\n\nUse pnpm.",
+          entries: [{ id: "a", title: "Stack", content: "Use pnpm." }],
+        }, autoRecordEnabled: enabled };
+      }),
+      onNotification: vi.fn(() => () => {}),
+    };
+    const runtime = createRuntime({ host, projectPath: "/workspace/project", projectMemory: "Previously saved note." });
+    const probe = autoMemoryRuntimeProbe(runtime);
+    const agent = probe.agent;
+    agent.prompt = vi.fn(async () => {
+      await probe.handleAgentEvent({ type: "agent_start" });
+      await probe.handleAgentEvent({ type: "turn_start" });
+      await probe.handleAgentEvent({ type: "turn_end" });
+      await probe.handleAgentEvent({ type: "agent_end", messages: [] });
+    });
+    agent.waitForIdle = vi.fn(async () => undefined);
+    await runtime.prompt("remember this");
+    expect(probe.agentSystemPromptContent()).toContain("Use pnpm.");
+    expect(probe.toolCatalog.has("ProjectMemory")).toBe(true);
+    enabled = false;
+    await runtime.prompt("next question");
+    expect(probe.agentSystemPromptContent()).toContain("Use pnpm.");
+    expect(probe.agentSystemPromptContent()).toContain("Previously saved note.");
+    expect(probe.toolCatalog.has("ProjectMemory")).toBe(false);
+    expect(probe.agent.state.tools.some(({ name }) => name === "ProjectMemory")).toBe(false);
+    expect(probe.agentSystemPromptContent()).not.toContain("When the user asks you to remember or forget");
+    expect(host.call).toHaveBeenCalledTimes(2);
+    await runtime.dispose();
+  });
+  it("clears stale project context and tool guidance when a later refresh fails", async () => {
+    let reads = 0;
+    const host = {
+      call: vi.fn(async (method: string) => {
+        expect(method).toBe("project.autoMemory.agentList");
+        if (++reads === 2) throw new Error("host unavailable");
+        return { memory: { content: "Remember stable preference", entries: [
+          { id: "old", title: "Preference", content: "Remember stable preference" },
+        ] }, autoRecordEnabled: true };
+      }),
+      onNotification: vi.fn(() => () => {}),
+    };
+    const runtime = createRuntime({ host, projectPath: "/workspace/project", projectMemory: "Stale launch memory" });
+    const probe = autoMemoryRuntimeProbe(runtime);
+    await completeMemoryTurn(probe);
+    await runtime.prompt("first question");
+    expect(probe.agentSystemPromptContent()).toContain("Remember stable preference");
+    expect(probe.agentSystemPromptContent()).not.toContain("Stale launch memory");
+    expect(probe.toolCatalog.has("ProjectMemory")).toBe(true);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await runtime.prompt("second question");
+    } finally {
+      warning.mockRestore();
+    }
+    expect(probe.agentSystemPromptContent()).not.toContain("Remember stable preference");
+    expect(probe.agentSystemPromptContent()).not.toContain("Stale launch memory");
+    expect(probe.agentSystemPromptContent()).not.toContain("# Updating project memory");
+    expect(probe.toolCatalog.has("ProjectMemory")).toBe(false);
+    expect(probe.agent.state.tools.some(({ name }) => name === "ProjectMemory")).toBe(false);
+    expect(host.call).toHaveBeenCalledTimes(2);
+    await runtime.dispose();
+  });
+
+  it("reads the same saved collection once per runtime instance without duplicating old launch memory", async () => {
+    const host = {
+      call: vi.fn(async () => ({ memory: { content: "Prefer concise replies.", entries: [
+        { id: "user-entry", title: "Style", content: "Prefer concise replies." },
+      ] }, autoRecordEnabled: false })),
+      onNotification: vi.fn(() => () => {}),
+    };
+    for (let index = 0; index < 2; index++) {
+      const runtime = createRuntime({ host, projectPath: "/workspace/project", projectMemory: "Prefer concise replies." });
+      const probe = autoMemoryRuntimeProbe(runtime);
+      expect(probe.agentSystemPromptContent().split("Prefer concise replies.")).toHaveLength(2);
+      await completeMemoryTurn(probe);
+      await runtime.prompt("next question");
+      expect(probe.agentSystemPromptContent().split("Prefer concise replies.")).toHaveLength(2);
+      expect(probe.toolCatalog.has("ProjectMemory")).toBe(false);
+      await runtime.dispose();
+    }
+    expect(host.call).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps memory in Plan without exposing the write tool or write guidance", async () => {
+    const host = {
+      call: vi.fn(async () => ({ memory: { content: "Project convention", entries: [
+        { id: "plan-note", title: "Convention", content: "Project convention" },
+      ] }, autoRecordEnabled: true })),
+      onNotification: vi.fn(() => () => {}),
+    };
+    const runtime = createRuntime({ host, projectPath: "/workspace/project", mode: "plan" });
+    const probe = autoMemoryRuntimeProbe(runtime);
+    await completeMemoryTurn(probe);
+    await runtime.prompt("plan the changes");
+    expect(probe.agentSystemPromptContent()).toContain("Project convention");
+    expect(probe.agentSystemPromptContent()).not.toContain("# Updating project memory");
+    expect(probe.toolCatalog.has("ProjectMemory")).toBe(false);
+    expect(probe.agent.state.tools.some(({ name }) => name === "ProjectMemory")).toBe(false);
+    await runtime.dispose();
+  });
+
+  it("preserves projectless launch memory without making a host memory request", async () => {
+    const host = { call: vi.fn(), onNotification: vi.fn(() => () => {}) };
+    const runtime = createRuntime({ host, projectMemory: "Legacy launch note" });
+    const probe = autoMemoryRuntimeProbe(runtime);
+    await completeMemoryTurn(probe);
+    await runtime.prompt("legacy question");
+    expect(probe.agentSystemPromptContent()).toContain("Legacy launch note");
+    expect(probe.agentSystemPromptContent()).not.toContain("# Updating project memory");
+    expect(host.call).not.toHaveBeenCalled();
+    await runtime.dispose();
+  });
+});
+
 function createRuntime(
   overrides: Partial<{
     provider: RuntimeProviderConfig;

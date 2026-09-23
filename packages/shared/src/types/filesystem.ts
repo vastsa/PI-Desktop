@@ -41,6 +41,15 @@ export type ProjectMemoryEntry = {
   content: string;
 };
 
+export type ProjectMemoryRuntimeState = {
+  memory: ProjectMemory;
+  autoRecordEnabled: boolean;
+};
+
+export type ProjectMemoryEditor = ProjectMemoryRuntimeState & {
+  owner: string;
+};
+
 /** Workspace-relative entry of the `fs/index` snapshot for the "@" menu (D124). */
 export type FsIndexEntry = {
   path: string;

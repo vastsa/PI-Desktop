@@ -62,6 +62,9 @@ const HOST_PROXY_ALLOWED = new Set([
   "plans.pending",
   "plans.abort",
   "project.instructions.resolve",
+  "project.autoMemory.agentList",
+  "project.autoMemory.agentUpsert",
+  "project.autoMemory.agentDelete",
   "provider.resolveAuth",
   "provider.resolveSubagentModel",
   "app.health",
@@ -501,6 +504,23 @@ export class AgentSidecar {
           this.writeToChild(
             JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n",
           );
+          return;
+        }
+        if (method.startsWith("project.autoMemory.agent")) {
+          if (!this.host) throw new Error("host unavailable");
+          const sessionId = String(params.sessionId ?? "").trim();
+          const boundPath = this.projectInstructionRoots.get(sessionId);
+          if (!boundPath) throw new Error("automatic memory requires a bound project session");
+          const result = await this.host.call(method, {
+            sessionId,
+            boundPath,
+            ...(method === "project.autoMemory.agentUpsert"
+              ? { id: params.id, title: params.title, content: params.content,
+                expectedTitle: params.expectedTitle, expectedContent: params.expectedContent }
+              : method === "project.autoMemory.agentDelete"
+                ? { id: params.id, expectedTitle: params.expectedTitle, expectedContent: params.expectedContent } : {}),
+          });
+          this.writeToChild(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n");
           return;
         }
         if (method === "provider.resolveAuth") {

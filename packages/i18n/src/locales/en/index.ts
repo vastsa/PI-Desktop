@@ -1544,6 +1544,8 @@ sklm: {
     memoryEntryContent: "What should this project remember?",
     memoryRemove: "Remove memory",
     memoryHint: "Used in chats in this project. Keep it concise and factual.",
+    autoMemoryToggle: "Automatically record memories",
+    autoMemoryDescription: "When on, the assistant can automatically record durable project preferences you clearly express. Turning it off only stops automatic recording and updates; saved memories remain available in project chats until you edit or remove them. The switch takes effect immediately; edits wait for Save.",
     memorySave: "Save memory",
     memorySaving: "Saving…",
     noSearchResults: "No projects match your search",

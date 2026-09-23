@@ -1525,6 +1525,8 @@ sklm: {
     "memoryEntryContent": "¿Qué debería recordar este proyecto?",
     "memoryRemove": "Eliminar memoria",
     "memoryHint": "Se usa en los chats de este proyecto. Manténgalo breve y factual.",
+    "autoMemoryToggle": "Guardar recuerdos automáticamente",
+    "autoMemoryDescription": "Al activarlo, el asistente puede guardar automáticamente las preferencias duraderas del proyecto que expresas claramente. Desactivarlo solo detiene el guardado y las actualizaciones automáticas; los recuerdos guardados siguen usándose en los chats del proyecto hasta que los edites o elimines. El interruptor se aplica al instante; los cambios esperan a Guardar.",
     "memorySave": "Guardar memoria",
     "memorySaving": "Guardando…",
     "noSearchResults": "Ningún proyecto coincide con su búsqueda",

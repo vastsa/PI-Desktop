@@ -415,3 +415,13 @@ Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历�
 | 卡半径 | ~14px 升高行程 |
 | 切换 | **32×20** 拇指 16，中性重音（非绿色） |
 | 开放靶点药丸 | 前导 VS Code 字形 |
+
+## Project memory and automatic recording
+
+The editor has one collection with shared card controls and no source labels
+or author-based permissions. One Save atomically commits the full draft after
+an ownership/snapshot check. Conflicts preserve current memory and keep the
+draft. Cancel discards note edits without reverting the immediate recording
+switch. Recording defaults to off and only controls agent writes; existing
+notes stay visible and continue to be used in chats when it is off. Users decide
+what to edit or delete. All entries follow existing project-memory sync rules.

@@ -19,13 +19,12 @@ const [dialog, page, api, protocol, main, runtime, sidecar, db, groups, rpc] = a
 ]);
 
 test("project memory has a host-backed editor and project menu entry", () => {
-  assert.match(dialog, /api\.getProjectMemory\(project\.path\)/);
-  assert.match(dialog, /api\.getProjectGroupMemory\(project\.groupId\)/);
-  assert.match(dialog, /project\.legacy/);
-  assert.match(dialog, /api\.saveProjectMemory\(project\.path, normalized\)/);
+  assert.match(dialog, /useProjectMemoryEditor/);
+  assert.match(api, /getProjectMemoryEditor/);
+  assert.match(api, /saveProjectMemoryEditor/);
   assert.match(dialog, /project\.memoryAdd/);
   assert.match(dialog, /project\.memoryRemove/);
-  assert.match(dialog, /entriesFromMemory/);
+  assert.doesNotMatch(dialog, /project\.memorySourceManual|project\.autoMemorySource|project-memory-source/);
   assert.match(dialog, /project\.memoryDescription/);
   assert.match(page, /ProjectMemoryDialog/);
   assert.match(page, /project\.editMemory/);
@@ -34,6 +33,8 @@ test("project memory has a host-backed editor and project menu entry", () => {
 test("project memory crosses the IPC and runtime boundary", () => {
   assert.match(protocol, /projectMemoryGet/);
   assert.match(protocol, /projectMemorySave/);
+  assert.match(protocol, /projectMemoryEditorGet/);
+  assert.match(protocol, /projectMemoryEditorSave/);
   assert.match(protocol, /projectGroupMemorySave/);
   assert.match(api, /getProjectGroupMemory/);
   assert.match(api, /saveProjectGroupMemory/);

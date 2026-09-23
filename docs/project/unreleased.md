@@ -31,3 +31,18 @@
 - Hovering a reasoning stop or its label highlights the corresponding label.
   Only unfilled dots brighten and enlarge; filled dots and the current thumb
   keep their appearance.
+
+## Project memory
+
+- Enable automatic recording per project to let the agent remember durable
+  preferences or corrections during chat, with no background extraction model.
+- Manage all saved notes in one list without source categories. The user and
+  agent work on the same project memory, protected against stale writes.
+- Turning recording off stops agent writes but keeps existing memory available
+  in chats. Users decide what to edit or delete. Cancel discards note drafts;
+  the recording switch takes effect immediately.
+- All notes follow the existing project-memory configuration-sync rules,
+  including notes recorded by the agent. Recording permission is local opt-in.
+
+These changes are not part of a released version yet. The in-app changelog
+continues to list only shipped releases.

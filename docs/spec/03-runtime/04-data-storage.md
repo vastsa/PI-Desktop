@@ -376,6 +376,30 @@ CREATE TABLE projects (
   user-provided context so it cannot become a replacement for safety, tool, or
   collaboration rules.
 
+#### Unified project memory
+
+There is one host-owned memory collection per logical project, using the existing
+`projectMemory` legacy-path and `projectGroupMemory` group records. Entries have
+no author/source distinction. Existing plain-text and `entries-v1` records stay
+readable; updating a plain-text record can convert it to the existing structured
+format without discarding content. The existing 32 KiB rendered-content limit
+applies to writes. No separate AI-only count or per-entry capacity is imposed.
+
+Automatic recording is separate permission metadata, default false, scoped to
+the same canonical path or logical group. Disabling it stops agent additions,
+updates, and deletions, while existing memory remains readable and usable in
+chat. Users can edit and delete any entry regardless of the switch. Agent writes
+check session scope, mode and entry title/content preconditions; editor saves
+check the current owner and complete memory snapshot. Both avoid lost updates.
+Grouping roots preserves memory transactionally; deletion removes owned memory
+and recording metadata.
+
+All notes follow the existing project-memory configuration-sync eligibility and
+conflict rules, including notes written by the agent. The recording permission
+remains a local opt-in. There is no Markdown index, background extraction job,
+or additional model call. Memory is context, not an overriding instruction layer.
+See [the decision](../../adr/project-auto-memory.md).
+
 ### 4.3 providers
 
 Same role as v1; `headers_json` + `compatibility_json` collapse into one

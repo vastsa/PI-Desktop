@@ -1511,6 +1511,8 @@ sklm: {
     memoryEntryContent: "這個專案應該記住什麼？",
     memoryRemove: "刪除記憶",
     memoryHint: "會用於此專案的聊天。請保持簡潔、客觀。",
+    autoMemoryToggle: "自動記錄記憶",
+    autoMemoryDescription: "啟用後，助理可自動記錄你明確表達的長期專案偏好。關閉後只停止自動記錄和更新；已儲存的記憶仍會用於專案聊天，直到你自行編輯或刪除。開關立即生效，記憶修改需點擊儲存。",
     memorySave: "保存記憶",
     memorySaving: "保存中…",
     noSearchResults: "沒有匹配的專案",

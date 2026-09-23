@@ -1,6 +1,740 @@
 use super::*;
 
 #[test]
+fn automatic_memory_is_opt_in_scoped_and_preserves_shared_notes() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("first");
+    let second = dir.path().join("second");
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    let first = first.to_string_lossy().into_owned();
+    let second = second.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&first, false).unwrap();
+    db.ensure_project(&second, false).unwrap();
+    db.set_project_memory(&first, "Keep existing instructions.")
+        .unwrap();
+    assert!(!db.get_auto_record_enabled(&first).unwrap());
+    assert!(db
+        .agent_upsert_project_memory(&first, None, "Stack", "Use pnpm.", None, None)
+        .is_err());
+    db.set_auto_memory_enabled(&first, true).unwrap();
+    let saved = db
+        .agent_upsert_project_memory(&first, None, "Stack", "Use pnpm.", None, None)
+        .unwrap();
+    let entry = &saved.memory.entries.as_ref().unwrap()[1];
+    assert!(db.get_project_memory(&second).unwrap().content.is_empty());
+    assert_eq!(
+        saved.memory.entries.as_ref().unwrap()[0].content,
+        "Keep existing instructions."
+    );
+    assert!(db
+        .agent_upsert_project_memory(
+            &first,
+            Some(&entry.id),
+            "Stack",
+            "Use yarn.",
+            Some("Stack"),
+            Some("old"),
+        )
+        .is_err());
+    assert!(db
+        .agent_upsert_project_memory(
+            &first,
+            Some(&entry.id),
+            "Stack",
+            "Use yarn.",
+            Some("old title"),
+            Some("Use pnpm."),
+        )
+        .is_err());
+    assert_eq!(
+        db.get_project_memory_editor(&first)
+            .unwrap()
+            .memory
+            .entries
+            .as_ref()
+            .unwrap()[1]
+            .content,
+        "Use pnpm."
+    );
+    db.set_auto_memory_enabled(&first, false).unwrap();
+    assert!(db
+        .agent_delete_project_memory(&first, &entry.id, Some("Stack"), Some("Use pnpm."))
+        .is_err());
+    assert!(!db.get_auto_record_enabled(&first).unwrap());
+    assert_eq!(
+        db.get_project_memory_editor(&first)
+            .unwrap()
+            .memory
+            .entries
+            .as_ref()
+            .unwrap()
+            .len(),
+        2
+    );
+    db.set_auto_memory_enabled(&first, true).unwrap();
+    db.agent_delete_project_memory(&first, &entry.id, Some("Stack"), Some("Use pnpm."))
+        .unwrap();
+    assert_eq!(
+        db.get_project_memory_editor(&first)
+            .unwrap()
+            .memory
+            .entries
+            .as_ref()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn memory_editor_rejects_concurrent_writes_then_saves_all_shared_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root, false).unwrap();
+    db.set_project_memory(&root, "Manual original").unwrap();
+    db.set_auto_memory_enabled(&root, true).unwrap();
+    let initial = db
+        .agent_upsert_project_memory(&root, None, "AI", "Original", None, None)
+        .unwrap();
+    let entry = &initial.memory.entries.as_ref().unwrap()[1];
+    let editor = db.get_project_memory_editor(&root).unwrap();
+    let concurrent = db
+        .agent_upsert_project_memory(&root, None, "Concurrent", "Preserve me", None, None)
+        .unwrap();
+    let new_entry = &concurrent.memory.entries.as_ref().unwrap()[2];
+    assert!(db
+        .save_project_memory_editor(
+            &root,
+            &editor.owner,
+            &serde_json::to_value(&editor.memory).unwrap(),
+            &serde_json::json!([{ "id":"manual", "title":"Context", "content":"Manual updated" }]),
+        )
+        .is_err());
+    let saved = db
+        .save_project_memory_editor(
+            &root,
+            &editor.owner,
+            &serde_json::to_value(&concurrent.memory).unwrap(),
+            &serde_json::json!([
+                { "id":"manual", "title":"Context", "content":"Manual updated" },
+                { "id": entry.id, "title":"AI", "content":"Updated" },
+                { "id": new_entry.id, "title":"Concurrent", "content":"Preserve me" },
+            ]),
+        )
+        .unwrap();
+    assert_eq!(
+        saved.memory.entries.as_ref().unwrap()[0].content,
+        "Manual updated"
+    );
+    assert_eq!(saved.memory.entries.as_ref().unwrap().len(), 3);
+    assert!(saved
+        .memory
+        .entries
+        .as_ref()
+        .unwrap()
+        .iter()
+        .any(|entry| entry.content == "Updated"));
+    assert!(saved
+        .memory
+        .entries
+        .as_ref()
+        .unwrap()
+        .iter()
+        .any(|entry| entry.content == "Preserve me"));
+    assert!(saved.auto_record_enabled);
+}
+
+#[test]
+fn memory_editor_deletes_before_expanding_entries_near_capacity() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root, false).unwrap();
+    let original_content = "x".repeat(2040);
+    let entries = (0..16)
+        .map(|id| {
+            serde_json::json!({
+                "id": format!("note-{id}"), "title": "", "content": original_content,
+            })
+        })
+        .collect::<Vec<_>>();
+    db.set_project_memory_entries(&root, &serde_json::json!(entries))
+        .unwrap();
+    let expanded_title = "F".repeat(160);
+    let expanded_content = "y".repeat(2048);
+    let editor = db.get_project_memory_editor(&root).unwrap();
+    assert!(editor.memory.content.len() > 32 * 1024 - 200);
+    let mut replacement = serde_json::to_value(editor.memory.entries.as_ref().unwrap()).unwrap();
+    replacement[0]["title"] = serde_json::json!(expanded_title);
+    replacement[0]["content"] = serde_json::json!(expanded_content);
+    replacement.as_array_mut().unwrap().pop();
+    let saved = db
+        .save_project_memory_editor(
+            &root,
+            &editor.owner,
+            &serde_json::to_value(&editor.memory).unwrap(),
+            &replacement,
+        )
+        .unwrap();
+    assert_eq!(saved.memory.entries.as_ref().unwrap().len(), 15);
+    assert_eq!(
+        saved.memory.entries.as_ref().unwrap()[0].title,
+        expanded_title
+    );
+    assert_eq!(
+        saved.memory.entries.as_ref().unwrap()[0].content,
+        expanded_content
+    );
+    assert!(saved.memory.content.len() <= 32 * 1024);
+}
+
+#[test]
+fn memory_editor_swaps_long_and_short_entries_near_capacity() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root, false).unwrap();
+    db.set_project_memory_entries(
+        &root,
+        &serde_json::json!([
+            { "id":"short", "title":"", "content":"x".repeat(1_000) },
+            { "id":"long", "title":"", "content":"y".repeat(31_000) },
+        ]),
+    )
+    .unwrap();
+    let editor = db.get_project_memory_editor(&root).unwrap();
+    let replacement = serde_json::json!([
+        { "id":"short", "title":"", "content":"z".repeat(31_000) },
+        { "id":"long", "title":"", "content":"q".repeat(1_000) },
+    ]);
+    let saved = db
+        .save_project_memory_editor(
+            &root,
+            &editor.owner,
+            &serde_json::to_value(&editor.memory).unwrap(),
+            &replacement,
+        )
+        .unwrap();
+    assert_eq!(saved.memory.entries.as_ref().unwrap().len(), 2);
+    assert_eq!(
+        saved.memory.entries.as_ref().unwrap()[0].content.len(),
+        31_000
+    );
+    assert_eq!(
+        saved.memory.entries.as_ref().unwrap()[1].content.len(),
+        1_000
+    );
+    assert!(saved.memory.content.len() <= 32 * 1024);
+}
+
+#[test]
+fn memory_editor_rolls_back_on_stale_snapshot_or_total_size_overflow() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root, false).unwrap();
+    db.set_project_memory(&root, "Original manual").unwrap();
+    db.set_auto_memory_enabled(&root, true).unwrap();
+    let entry = db
+        .agent_upsert_project_memory(&root, None, "AI", "Original AI", None, None)
+        .unwrap()
+        .memory
+        .entries
+        .unwrap()
+        .remove(1);
+    let editor = db.get_project_memory_editor(&root).unwrap();
+    db.agent_upsert_project_memory(
+        &root,
+        Some(&entry.id),
+        "AI",
+        "Changed elsewhere",
+        Some("AI"),
+        Some("Original AI"),
+    )
+    .unwrap();
+    let manual_entries = serde_json::json!([{ "id":"manual", "title":"New", "content":"Unsaved" }]);
+    let previous = serde_json::to_value(db.get_project_memory_editor(&root).unwrap()).unwrap();
+    let stale = db.save_project_memory_editor(
+        &root,
+        &editor.owner,
+        &serde_json::to_value(&editor.memory).unwrap(),
+        &manual_entries,
+    );
+    assert!(stale.is_err());
+    assert_eq!(
+        serde_json::to_value(db.get_project_memory_editor(&root).unwrap()).unwrap(),
+        previous
+    );
+    let current = db.get_project_memory_editor(&root).unwrap();
+    let invalid = db.save_project_memory_editor(
+        &root,
+        &current.owner,
+        &serde_json::to_value(&current.memory).unwrap(),
+        &serde_json::json!([{ "id":entry.id, "title":"AI", "content":"x".repeat(32 * 1024 + 1) }]),
+    );
+    assert!(invalid.is_err());
+    assert_eq!(
+        serde_json::to_value(db.get_project_memory_editor(&root).unwrap()).unwrap(),
+        previous
+    );
+}
+
+#[test]
+fn memory_editor_rejects_stale_snapshot_and_group_reassignment() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root, false).unwrap();
+    db.set_auto_memory_enabled(&root, true).unwrap();
+    db.agent_upsert_project_memory(&root, None, "AI", "Original", None, None)
+        .unwrap();
+    let editor = db.get_project_memory_editor(&root).unwrap();
+    db.set_project_memory(&root, "Changed elsewhere").unwrap();
+    let changes = serde_json::json!([{ "id":"new", "title":"", "content":"Should not save" }]);
+    assert!(db
+        .save_project_memory_editor(
+            &root,
+            &editor.owner,
+            &serde_json::to_value(&editor.memory).unwrap(),
+            &changes
+        )
+        .is_err());
+    assert_eq!(
+        db.get_project_memory_editor(&root).unwrap().memory.content,
+        "Changed elsewhere"
+    );
+    let current = db.get_project_memory_editor(&root).unwrap();
+    db.create_project_group("New group", &[root.clone()])
+        .unwrap();
+    assert!(db
+        .save_project_memory_editor(
+            &root,
+            &current.owner,
+            &serde_json::to_value(&current.memory).unwrap(),
+            &changes
+        )
+        .is_err());
+    assert!(db
+        .get_project_memory_editor(&root)
+        .unwrap()
+        .memory
+        .content
+        .contains("Changed elsewhere"));
+}
+#[test]
+fn automatic_memory_accepts_long_utf8_entries_within_shared_total_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root, false).unwrap();
+    db.set_auto_memory_enabled(&root, true).unwrap();
+    let saved = db
+        .agent_upsert_project_memory(&root, None, "Original", "Keep this", None, None)
+        .unwrap();
+    let entry = &saved.memory.entries.as_ref().unwrap()[0];
+    let title = "界".repeat(54); // Over the removed per-title limit.
+    let content = "界".repeat(683); // Over the removed per-entry limit.
+    let accepted = db
+        .agent_upsert_project_memory(
+            &root,
+            Some(&entry.id),
+            &title,
+            &content,
+            Some("Original"),
+            Some("Keep this"),
+        )
+        .unwrap();
+    assert_eq!(
+        accepted.memory.entries.as_ref().unwrap()[0].title.len(),
+        162
+    );
+    assert_eq!(
+        accepted.memory.entries.as_ref().unwrap()[0].content.len(),
+        2049
+    );
+    let original = serde_json::to_value(&accepted.memory).unwrap();
+    let error = db
+        .agent_upsert_project_memory(
+            &root,
+            Some(&entry.id),
+            &title,
+            &"界".repeat(11_000),
+            Some(&title),
+            Some(&content),
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("project memory exceeds"));
+    assert_eq!(
+        serde_json::to_value(&db.get_project_memory_editor(&root).unwrap().memory).unwrap(),
+        original
+    );
+}
+
+#[test]
+fn automatic_memory_accepts_more_than_fifty_entries_until_shared_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root, false).unwrap();
+    db.set_auto_memory_enabled(&root, true).unwrap();
+    for index in 0..51 {
+        db.agent_upsert_project_memory(&root, None, "Note", &format!("value {index}"), None, None)
+            .unwrap();
+    }
+    let saved = db.get_project_memory_editor(&root).unwrap();
+    assert_eq!(saved.memory.entries.as_ref().unwrap().len(), 51);
+    let error = db
+        .agent_upsert_project_memory(&root, None, "Extra", &"x".repeat(32 * 1024), None, None)
+        .unwrap_err();
+    assert!(error.to_string().contains("project memory exceeds"));
+    assert_eq!(
+        serde_json::to_value(&db.get_project_memory_editor(&root).unwrap().memory).unwrap(),
+        serde_json::to_value(&saved.memory).unwrap()
+    );
+}
+
+#[test]
+fn automatic_memory_rejects_shared_total_size_without_mutating_saved_notes() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root, false).unwrap();
+    db.set_auto_memory_enabled(&root, true).unwrap();
+    let mut saved = db.get_project_memory_editor(&root).unwrap();
+    let large_content = "x".repeat(1400);
+    loop {
+        let previous = serde_json::to_value(&saved.memory).unwrap();
+        match db.agent_upsert_project_memory(&root, None, "Note", &large_content, None, None) {
+            Ok(next) => saved = next,
+            Err(error) => {
+                assert!(error.to_string().contains("project memory exceeds"));
+                assert!(saved.memory.entries.as_ref().unwrap().len() < 50);
+                assert_eq!(
+                    serde_json::to_value(&db.get_project_memory_editor(&root).unwrap().memory)
+                        .unwrap(),
+                    previous
+                );
+                break;
+            }
+        }
+    }
+    // Fill most of the remaining space so an otherwise valid update hits the
+    // aggregate bound after mutating its in-memory copy.
+    let remaining = 32 * 1024 - saved.memory.content.len();
+    if remaining > 200 {
+        saved = db
+            .agent_upsert_project_memory(
+                &root,
+                None,
+                "Pad",
+                &"p".repeat(remaining - 150),
+                None,
+                None,
+            )
+            .unwrap();
+    }
+    assert!(32 * 1024 - saved.memory.content.len() < 648);
+    let previous = serde_json::to_value(&saved.memory).unwrap();
+    let first = &saved.memory.entries.as_ref().unwrap()[0];
+    let error = db
+        .agent_upsert_project_memory(
+            &root,
+            Some(&first.id),
+            &first.title,
+            &"x".repeat(2048),
+            Some(&first.title),
+            Some(&first.content),
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("project memory exceeds"));
+    assert_eq!(
+        serde_json::to_value(&db.get_project_memory_editor(&root).unwrap().memory).unwrap(),
+        previous
+    );
+}
+#[test]
+fn upgrading_legacy_projects_merges_shared_notes_without_loss() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("first");
+    let second = dir.path().join("second");
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    let first = first.to_string_lossy().into_owned();
+    let second = second.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&first, false).unwrap();
+    db.ensure_project(&second, false).unwrap();
+    db.set_auto_memory_enabled(&first, true).unwrap();
+    db.agent_upsert_project_memory(&first, None, "First", "Use pnpm.", None, None)
+        .unwrap();
+    db.set_auto_memory_enabled(&second, true).unwrap();
+    db.agent_upsert_project_memory(&second, None, "Second", "Use Rust.", None, None)
+        .unwrap();
+    let legacy = db.project_group_for_path(&first).unwrap().unwrap();
+    let group = db
+        .update_project_group(&legacy.id, "Combined", &[first.clone(), second.clone()])
+        .unwrap();
+    let state = db.get_project_memory_editor(&first).unwrap();
+    assert!(state.auto_record_enabled);
+    assert_eq!(state.memory.entries.as_ref().unwrap().len(), 2);
+    assert_eq!(
+        db.get_project_memory_editor(&second)
+            .unwrap()
+            .memory
+            .entries
+            .as_ref()
+            .unwrap()
+            .len(),
+        2
+    );
+    db.delete_project_group_record(&group.id).unwrap();
+    assert_eq!(
+        db.get_project_memory(&first)
+            .unwrap()
+            .entries
+            .as_ref()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn creating_group_preserves_path_notes_and_migrates_old_preview_records_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("first");
+    let second = dir.path().join("second");
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    let first = first.to_string_lossy().into_owned();
+    let second = second.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    for path in [&first, &second] {
+        db.ensure_project(path, false).unwrap();
+        db.set_auto_memory_enabled(path, true).unwrap();
+        db.agent_upsert_project_memory(path, None, "Note", path, None, None)
+            .unwrap();
+    }
+    let original_id = db
+        .get_project_memory(&first)
+        .unwrap()
+        .entries
+        .as_ref()
+        .unwrap()[0]
+        .id
+        .clone();
+    let preview_key = format!("path:{}", canonical_project_path(&first).unwrap());
+    db.kv_set("projectAutoMemory", &preview_key, &serde_json::json!({
+        "enabled": true,
+        "entries": [{ "id": format!("root-0-{original_id}"), "title": "Preview", "content": "Keep preview" }],
+    })).unwrap();
+    assert_eq!(
+        db.kv_get("projectAutoMemory", &preview_key)
+            .unwrap()
+            .unwrap()["entries"][0]["content"],
+        "Keep preview"
+    );
+    db.create_project_group("Shared", &[first.clone(), second.clone()])
+        .unwrap();
+    let state = db.get_project_memory_editor(&first).unwrap();
+    let entries = state.memory.entries.as_ref().unwrap();
+    assert_eq!(entries.len(), 3);
+    assert!(entries.iter().any(|entry| entry.content == first));
+    assert!(entries.iter().any(|entry| entry.content == second));
+    assert_eq!(
+        entries
+            .iter()
+            .filter(|entry| entry.content == "Keep preview")
+            .count(),
+        1
+    );
+    let ids = entries
+        .iter()
+        .map(|entry| &entry.id)
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(ids.len(), entries.len());
+    assert_eq!(
+        serde_json::to_value(&state.memory).unwrap(),
+        serde_json::to_value(&db.get_project_memory_editor(&first).unwrap().memory).unwrap()
+    );
+}
+
+#[test]
+fn agent_rejects_ambiguous_legacy_ids_and_editor_rejects_new_duplicates() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root, false).unwrap();
+    let duplicate = serde_json::json!([
+        { "id": "same", "title": "First", "content": "keep first" },
+        { "id": "same", "title": "Second", "content": "keep second" },
+    ]);
+    // The older manual API accepted this shape. Reading must remain possible.
+    db.set_project_memory_entries(&root, &duplicate).unwrap();
+    db.set_auto_memory_enabled(&root, true).unwrap();
+    let before = db.get_project_memory_editor(&root).unwrap();
+    assert!(db
+        .agent_upsert_project_memory(
+            &root,
+            Some("same"),
+            "First",
+            "rewrite",
+            Some("First"),
+            Some("keep first")
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("duplicate"));
+    assert!(db
+        .save_project_memory_editor(
+            &root,
+            &before.owner,
+            &serde_json::to_value(&before.memory).unwrap(),
+            &duplicate
+        )
+        .is_err());
+    assert_eq!(
+        db.get_project_memory_editor(&root).unwrap().memory.content,
+        before.memory.content
+    );
+}
+
+#[test]
+fn preview_memory_migration_keeps_old_record_until_the_shared_write_fits() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    db.ensure_project(&root, false).unwrap();
+    let existing = "m".repeat(MAX_PROJECT_MEMORY_BYTES - 8);
+    db.set_project_memory(&root, &existing).unwrap();
+    let key = format!("path:{}", canonical_project_path(&root).unwrap());
+    db.kv_set(
+        "projectAutoMemory",
+        &key,
+        &serde_json::json!({
+            "enabled": true,
+            "entries": [{ "id": "preview", "title": "Old", "content": "Keep preview" }],
+        }),
+    )
+    .unwrap();
+    assert!(db
+        .get_project_memory_editor(&root)
+        .unwrap_err()
+        .to_string()
+        .contains("project memory exceeds"));
+    assert_eq!(db.get_project_memory(&root).unwrap().content, existing);
+    assert_eq!(
+        db.kv_get("projectAutoMemory", &key).unwrap().unwrap()["entries"][0]["content"],
+        "Keep preview"
+    );
+    db.set_project_memory(&root, "manual").unwrap();
+    let migrated = db.get_project_memory_editor(&root).unwrap();
+    assert!(migrated.auto_record_enabled);
+    assert_eq!(migrated.memory.entries.as_ref().unwrap().len(), 2);
+    assert_eq!(
+        migrated.memory.entries.as_ref().unwrap()[1].content,
+        "Keep preview"
+    );
+    assert!(db
+        .kv_get("projectAutoMemory", &key)
+        .unwrap()
+        .unwrap()
+        .get("entries")
+        .is_none());
+}
+
+#[test]
+fn failed_group_upgrade_rolls_back_shared_memory_migration() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("first");
+    let second = dir.path().join("second");
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    let first = first.to_string_lossy().into_owned();
+    let second = second.to_string_lossy().into_owned();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    for path in [&first, &second] {
+        db.ensure_project(path, false).unwrap();
+        db.set_project_memory(path, &"m".repeat(20_000)).unwrap();
+        db.set_auto_memory_enabled(path, true).unwrap();
+        db.agent_upsert_project_memory(path, None, "Note", path, None, None)
+            .unwrap();
+    }
+    db.conn
+        .execute_batch(
+            "CREATE TRIGGER reject_project_group_write
+             BEFORE INSERT ON kv WHEN NEW.ns = 'projectGroups'
+             BEGIN SELECT RAISE(ABORT, 'simulated project group write failure'); END;",
+        )
+        .unwrap();
+    let legacy = db.project_group_for_path(&first).unwrap().unwrap();
+    let error = db
+        .update_project_group(&legacy.id, "Combined", &[first.clone(), second.clone()])
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("simulated project group write failure"));
+    assert!(db.project_group_for_path(&first).unwrap().unwrap().legacy);
+    for path in [&first, &second] {
+        let memory = db.get_project_memory_editor(path).unwrap();
+        assert!(memory.auto_record_enabled);
+        assert_eq!(memory.memory.entries.as_ref().unwrap().len(), 2);
+        assert_eq!(memory.memory.entries.as_ref().unwrap()[1].content, *path);
+    }
+    let orphaned_groups: i64 = db.conn.query_row(
+        "SELECT COUNT(*) FROM kv WHERE ns = 'projectGroups' OR (ns = 'projectAutoMemory' AND key LIKE 'group:%')",
+        [], |row| row.get(0),
+    ).unwrap();
+    assert_eq!(orphaned_groups, 0);
+    db.conn
+        .execute_batch("DROP TRIGGER reject_project_group_write;")
+        .unwrap();
+    let upgraded = db
+        .update_project_group(&legacy.id, "Combined", &[first.clone(), second.clone()])
+        .unwrap();
+    assert_eq!(
+        db.get_project_memory_editor(&first)
+            .unwrap()
+            .memory
+            .entries
+            .as_ref()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert!(
+        db.get_project_group_memory(&upgraded.id)
+            .unwrap()
+            .content
+            .len()
+            > MAX_PROJECT_MEMORY_BYTES
+    );
+}
+
+#[test]
 fn project_memory_is_path_scoped_and_bounded() {
     let dir = tempfile::tempdir().unwrap();
     let first = dir.path().join("first");

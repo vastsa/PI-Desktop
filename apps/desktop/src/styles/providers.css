@@ -1097,6 +1097,13 @@
   line-height: var(--leading-body);
 }
 
+.project-auto-memory-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}
+
 .project-memory-dialog-hint {
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);

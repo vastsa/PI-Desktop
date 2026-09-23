@@ -506,6 +506,33 @@ export function registerWorkspaceIpc({
     },
   );
 
+  handle(IPC.invoke.projectMemoryEditorGet, async (input: { projectPath?: unknown } = {}) => {
+    const path = await managedProjectPath(input.projectPath);
+    if (!host) throw new Error("host unavailable");
+    return host.call("project.memory.editor.get", { path });
+  });
+  handle(IPC.invoke.projectMemoryEditorSave, async (input: {
+    projectPath?: unknown;
+    expectedOwner?: unknown;
+    expectedMemory?: unknown;
+    entries?: unknown;
+  } = {}) => {
+    const path = await managedProjectPath(input.projectPath);
+    if (!host) throw new Error("host unavailable");
+    if (typeof input.expectedOwner !== "string" || !input.expectedMemory ||
+      typeof input.expectedMemory !== "object" || Array.isArray(input.expectedMemory) ||
+      !Array.isArray(input.entries)) throw new Error("invalid project memory editor request");
+    return host.call("project.memory.editor.save", {
+      path, expectedOwner: input.expectedOwner, expectedMemory: input.expectedMemory,
+      entries: input.entries,
+    });
+  });
+  handle(IPC.invoke.projectAutoMemorySetEnabled, async (input: { projectPath?: unknown; enabled?: unknown; expectedOwner?: unknown } = {}) => {
+    const path = await managedProjectPath(input.projectPath);
+    if (typeof input.enabled !== "boolean" || typeof input.expectedOwner !== "string") throw new Error("enabled and expectedOwner required");
+    if (!host) throw new Error("host unavailable");
+    return host.call("project.autoMemory.setEnabled", { path, enabled: input.enabled, expectedOwner: input.expectedOwner });
+  });
   handle(
     IPC.invoke.projectMemorySave,
     async (input: {

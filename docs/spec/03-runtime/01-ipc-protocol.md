@@ -1290,6 +1290,18 @@ authorization code. `accountLabel` is a display string.
 - `project/list()`: durable project records, including import-created entries
 - `project/memory/get(path)`: read the host-owned memory for a canonical project
   path
+- `project/memory/editor/get({ projectPath })`: return `{ editor }` containing
+  `owner`, `memory: ProjectMemory`, and `autoRecordEnabled: boolean`. All entries
+  belong to one project memory; neither display nor permissions depend on origin.
+- `project/memory/editor/save({ projectPath, expectedOwner, expectedMemory,
+  entries })`: replace the unified entries atomically after checking ownership
+  and the entire last-read memory snapshot. A conflict rejects the whole save
+  and preserves the user's draft. Return the fresh `{ editor }` snapshot.
+- `project/auto-memory/set-enabled({ projectPath, expectedOwner, enabled })`:
+  immediately allow or deny agent writes after validating ownership; return
+  `{ autoRecordEnabled }`. This defaults to false and does not change drafts,
+  delete memory, or disable reading and using existing memory. Editor management
+  capabilities are not exposed to the model's parent proxy.
 - `project/memory/save(path, entries)`: replace that project's durable memory
   entries; the host derives a readable `content` value, caps it at 32 KiB, and
   uses it as context in the next session launch. Legacy callers may still save

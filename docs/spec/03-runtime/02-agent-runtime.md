@@ -22,6 +22,28 @@ apps/desktop/electron/* (supervisor)
 crates/host-core (tool execution + permissions)
 ```
 
+### Project memory and automatic recording
+
+At the start of each user turn, the runtime refreshes the single project memory
+through a session-bound parent-proxy call, replacing its previously loaded
+memory context rather than injecting a second collection. Saved context is used
+regardless of whether automatic recording is enabled. It remains untrusted
+context and cannot override safety or tool rules.
+
+The default-off recording switch only controls agent writes. When enabled in
+Agent mode, the `ProjectMemory` tool can list, add, update, or delete entries in
+the same collection as the user editor. No entry has manual/automatic ownership.
+The agent may record clearly expressed durable preferences or corrections and
+honor remember/forget requests; it must avoid credentials, transient task facts,
+and preferences inferred from untrusted tool output. Disabled recording removes
+the write tool and writing guidance, while Host checks reject writes even from
+an already-running tool. Existing notes continue to appear on subsequent turns.
+
+A failed refresh clears the current turn's memory and write capability, logs a
+sanitized diagnostic, and leaves ordinary chat available. Cancellation, disposal
+and stale turns cannot inject late results. There is no background extraction
+agent or additional model request. See [the decision](../../adr/project-auto-memory.md).
+
 ## 3. Core objects
 
 ### 3.1 PiRuntime (Node)

@@ -195,6 +195,7 @@ import type { ProjectInstructions } from "./project-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
 import type { CustomSystemPrompt } from "./custom-system-prompt.js";
 import { projectMemoryPrompt } from "./project-memory-prompt.js";
+import { autoMemoryPrompt, createAutoMemoryTool, loadAutoMemory } from "./project-auto-memory.js";
 import {
   pluginSkillsPrompt,
   SKILL_TOOL_NAME,
@@ -1636,6 +1637,8 @@ export class DesktopAgentRuntime {
   private baseProjectInstructions?: ProjectInstructions;
   private projectInstructions?: ProjectInstructions;
   private projectMemory?: string;
+  private turnProjectMemory?: string;
+  private autoMemoryEnabled = false;
   /** Per-prompt claims prevent repeated path-resolution RPCs for one directory. */
   private pathInstructionClaims = new Map<
     string,
@@ -1802,6 +1805,8 @@ export class DesktopAgentRuntime {
     this.baseProjectInstructions = opts.projectInstructions;
     this.projectInstructions = opts.projectInstructions;
     this.projectMemory = opts.projectMemory?.trim() || undefined;
+    // Keep the launch snapshot in the initial prompt until the first host refresh.
+    this.turnProjectMemory = this.projectPath ? this.projectMemory : undefined;
     this.compactionEnabled = compactionEnabled(opts.compactionSettings);
     this.compactionStrategy = resolveCompactionStrategy(opts.compactionStrategy);
 
@@ -2148,7 +2153,8 @@ Delegation rules:
 
   private composeSystemPrompt(): string {
     const projectPrompt = projectInstructionsPrompt(this.projectInstructions);
-    const memoryPrompt = projectMemoryPrompt(this.projectMemory);
+    const memoryPrompt = projectMemoryPrompt(this.projectPath ? this.turnProjectMemory : this.projectMemory);
+    const automaticPrompt = this.autoMemoryEnabled && this.mode === "agent" ? autoMemoryPrompt() : undefined;
     const optionalToolsPrompt = this.optionalToolsPrompt();
     const resumablePrompt =
       this.subagents.length > 0
@@ -2164,11 +2170,36 @@ Delegation rules:
         ...(optionalToolsPrompt ? [optionalToolsPrompt] : []),
         ...(projectPrompt ? [projectPrompt] : []),
         ...(memoryPrompt ? [memoryPrompt] : []),
+        ...(automaticPrompt ? [automaticPrompt] : []),
         ...(resumablePrompt ? [resumablePrompt] : []),
       ].join("\n\n"),
     );
     this.composedSystemPrompt = composed;
     return composed;
+  }
+
+  private async refreshAutoMemoryForTurn(): Promise<void> {
+    const epoch = this.turnEpoch;
+    let enabled = false;
+    let content: string | undefined;
+    if (this.projectPath) {
+      try {
+        const state = await loadAutoMemory(this.host, this.sessionId);
+        enabled = state.autoRecordEnabled;
+        content = state.memory.content;
+      } catch (error) {
+        console.warn("automatic project memory unavailable for this turn", {
+          kind: error instanceof Error ? error.name : typeof error,
+        });
+      }
+    }
+    if (this.runCancelled || this.disposed || this.turnEpoch !== epoch) return;
+    this.autoMemoryEnabled = enabled;
+    // A failed refresh must not inject the last successful turn's context.
+    this.turnProjectMemory = content;
+    this.rebuildToolCatalog();
+    this.setAgentTools(this.activeTools());
+    this.setAgentSystemPrompt(this.composeSystemPrompt());
   }
 
   /**
@@ -3479,6 +3510,7 @@ Delegation rules:
     const extensionTools = this.extensionRunner?.getAgentTools() ?? [];
     return [
       ...builtins,
+      ...(this.autoMemoryEnabled && this.mode === "agent" ? [createAutoMemoryTool(this.host, this.sessionId)] : []),
       askTool,
       ...pluginTools,
       ...skillTools,
@@ -7755,6 +7787,12 @@ Delegation rules:
     this.requestStartedAt = Date.now();
     this.setMode("agent");
     this.autonomousExecution = true;
+    const executionEpoch = this.turnEpoch;
+    await this.refreshAutoMemoryForTurn();
+    if (this.runCancelled || this.disposed || this.turnEpoch !== executionEpoch) {
+      this.terminateParentTurn();
+      throw turnAbortedError("Approved execution aborted while loading project memory");
+    }
 
     const kind = execution.kind === "goal" ? "goal" : "plan";
     const instruction =
@@ -7842,13 +7880,18 @@ Delegation rules:
     this.abortDelegationsFromPreviousTurns();
     this.requestStartedAt = Date.now();
     this.setAgentActivity({ phase: "starting", since: Date.now() });
+    const incomingUserMessage: AgentMessage = {
+      role: "user",
+      content: promptContent(modelInput),
+      timestamp: Date.now(),
+    };
+    const promptEpoch = this.turnEpoch;
     try {
-      const content = promptContent(modelInput);
-      const incomingUserMessage: AgentMessage = {
-        role: "user",
-        content,
-        timestamp: Date.now(),
-      };
+      await this.refreshAutoMemoryForTurn();
+      if (this.runCancelled || this.disposed || this.turnEpoch !== promptEpoch) {
+        this.keepPreflightUserMessage(incomingUserMessage);
+        throw turnAbortedError("Turn aborted while loading project memory");
+      }
       if (this.automaticCompactionNeeded([incomingUserMessage])) {
         const compacted = await this.runCompaction("threshold", false);
         if (!compacted) {

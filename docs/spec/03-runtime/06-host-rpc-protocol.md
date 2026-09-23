@@ -223,6 +223,24 @@ type ToolBudgetHealth = {
   running turn, so a live turn never loses the transcript it is writing.
 - `project.memory.get({ path })` — returns the durable memory for the canonical
   project path, or an empty record when no memory has been saved
+- `project.memory.editor.get({ path })` — returns `{ editor }` with `owner`,
+  `memory`, and `autoRecordEnabled` under the Host state lock.
+- `project.memory.editor.save({ path, expectedOwner, expectedMemory, entries })`
+  — atomically replace the unified entries after verifying the authoritative
+  owner and full memory snapshot. A stale snapshot or invalid replacement fails
+  without partial changes. Return `{ editor }`.
+- `project.autoMemory.setEnabled({ path, expectedOwner, enabled })` — immediately
+  changes permission for agent writes, default false; return `{ autoRecordEnabled }`.
+  It does not delete notes, disable reads, or save draft edits.
+- `project.autoMemory.agentList/agentUpsert/agentDelete` — session-bound operations
+  on the same project memory as the editor and existing memory APIs. The parent
+  supplies the launch-bound session and project path; the Host validates current
+  scope. Reads return `{ memory: ProjectMemory, autoRecordEnabled }` even when
+  recording is disabled. Writes return the same shape and require opt-in and
+  Agent execution mode. Upserts/deletions use the entry ID and last-read title
+  and content, preserving unrelated entries. There is no author-based permission
+  split. The model cannot choose another project or change the recording switch.
+  Existing project and project-group memory APIs remain compatible.
 - `project.memory.set({ path, entries })` — normalizes and stores visual memory
   entries, derives readable `content`, and validates the 32 KiB limit. The
   derived value is injected into that project's next runtime context as
@@ -1276,4 +1294,3 @@ notification carrying that same snapshot. Approval and rejection require the
 current entity digest, so a security-relevant edit cannot reuse an older local
 decision. Disconnect deletes only local credentials, vault keys, metadata and
 staging files; remote objects remain intact.
-

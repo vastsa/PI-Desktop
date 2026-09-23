@@ -1511,6 +1511,8 @@ sklm: {
     memoryEntryContent: "这个项目应该记住什么？",
     memoryRemove: "删除记忆",
     memoryHint: "会用于此项目的聊天。请保持简洁、客观。",
+    autoMemoryToggle: "自动记录记忆",
+    autoMemoryDescription: "开启后，助手可自动记录你明确表达的长期项目偏好。关闭后只停止自动记录和更新；已保存的记忆仍会用于项目聊天，直到你自行编辑或删除。开关立即生效，记忆修改需点击保存。",
     memorySave: "保存记忆",
     memorySaving: "保存中…",
     noSearchResults: "没有匹配的项目",

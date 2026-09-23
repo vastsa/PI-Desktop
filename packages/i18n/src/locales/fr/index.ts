@@ -1525,6 +1525,8 @@ sklm: {
     "memoryEntryContent": "Que doit retenir ce projet ?",
     "memoryRemove": "Supprimer la mémoire",
     "memoryHint": "Utilisée dans les chats de ce projet. Restez concis et factuel.",
+    "autoMemoryToggle": "Enregistrer les souvenirs automatiquement",
+    "autoMemoryDescription": "Après activation, le logiciel peut enregistrer automatiquement les préférences durables du projet clairement exprimées. Désactiver ce réglage arrête seulement enregistrement et mises à jour automatiques ; les souvenirs enregistrés restent utilisés dans les chats du projet avant modification ou suppression par vos soins. Le réglage prend effet immédiatement ; les modifications attendent Enregistrer.",
     "memorySave": "Enregistrer la mémoire",
     "memorySaving": "Enregistrement…",
     "noSearchResults": "Aucun projet ne correspond à votre recherche",

@@ -31,9 +31,14 @@ test("sidecar routes main-local tools before the host-core proxy", () => {
   );
   // Host availability is only required on the proxy path, after local
   // dispatch — a local tool must work even if host-core is restarting.
-  const proxyBranch = sidecarSource.slice(
+  const hostProxy = sidecarSource.slice(
     sidecarSource.indexOf('msg.method === "host.proxy"'),
   );
+  // Method-specific memory/auth handlers may require a Host earlier. Check the
+  // tools.execute dispatch itself, whose local branch must stay independent.
+  const localDispatch = hostProxy.indexOf("const localTool =");
+  assert.ok(localDispatch >= 0);
+  const proxyBranch = hostProxy.slice(localDispatch);
   assert.ok(
     proxyBranch.indexOf("this.localTools.get") <
       proxyBranch.indexOf('throw new Error("host unavailable")'),

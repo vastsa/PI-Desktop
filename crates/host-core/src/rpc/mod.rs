@@ -1,4 +1,5 @@
 mod config_sync_rpc;
+mod project_auto_memory;
 mod scheduled_rpc;
 mod scheduled_tools;
 
@@ -1838,7 +1839,18 @@ async fn handle_request(
             st.db
                 .delete_project_memory(&path)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            st.db
+                .delete_path_auto_memory(&path)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "removed": removed, "sessionsRemoved": sessions_removed }))
+        }
+        "project.memory.editor.get"
+        | "project.memory.editor.save"
+        | "project.autoMemory.setEnabled"
+        | "project.autoMemory.agentList"
+        | "project.autoMemory.agentUpsert"
+        | "project.autoMemory.agentDelete" => {
+            project_auto_memory::handle(state, method, params).await
         }
         "project.memory.get" => {
             let path = params

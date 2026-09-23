@@ -1541,6 +1541,8 @@ sklm: {
     memoryEntryContent: "이 프로젝트가 기억해야 할 내용은 무엇인가요?",
     memoryRemove: "메모리 삭제",
     memoryHint: "이 프로젝트의 채팅에 사용됩니다. 간결하고 사실적으로 작성하세요.",
+    autoMemoryToggle: "기억 자동 기록",
+    autoMemoryDescription: "켜면 명확히 표현한 장기 프로젝트 선호 사항을 도우미가 자동으로 기록할 수 있습니다. 끄면 자동 기록과 업데이트만 중지되며, 저장된 기억은 직접 수정하거나 삭제할 때까지 프로젝트 채팅에서 계속 사용됩니다. 스위치는 즉시 적용되고 기억 수정은 저장할 때 적용됩니다.",
     memorySave: "메모리 저장",
     memorySaving: "저장 중…",
     noSearchResults: "검색과 일치하는 프로젝트 없음",

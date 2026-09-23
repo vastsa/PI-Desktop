@@ -1031,3 +1031,23 @@ schedule，Manual 转 Hourly 继续使用现有默认间隔行为。
 斜杠方向、大小写、末尾分隔符和扩展路径前缀的差异不会再让同项目会话看不到任务。
 缺失的旧版绑定与显式 null 仍保持不同语义；其他项目的工具不能查询或修改绑定任务。
 
+## Project memory and automatic recording
+
+- `project.memory.editor.get({ path })` — returns `{ editor }` with `owner`,
+  `memory`, and `autoRecordEnabled` under the Host state lock.
+- `project.memory.editor.save({ path, expectedOwner, expectedMemory, entries })`
+  — atomically replace the unified entries after verifying the authoritative
+  owner and full memory snapshot. A stale snapshot or invalid replacement fails
+  without partial changes. Return `{ editor }`.
+- `project.autoMemory.setEnabled({ path, expectedOwner, enabled })` — immediately
+  changes permission for agent writes, default false; return `{ autoRecordEnabled }`.
+  It does not delete notes, disable reads, or save draft edits.
+- `project.autoMemory.agentList/agentUpsert/agentDelete` — session-bound operations
+  on the same project memory as the editor and existing memory APIs. The parent
+  supplies the launch-bound session and project path; the Host validates current
+  scope. Reads return `{ memory: ProjectMemory, autoRecordEnabled }` even when
+  recording is disabled. Writes return the same shape and require opt-in and
+  Agent execution mode. Upserts/deletions use the entry ID and last-read title
+  and content, preserving unrelated entries. There is no author-based permission
+  split. The model cannot choose another project or change the recording switch.
+  Existing project and project-group memory APIs remain compatible.

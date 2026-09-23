@@ -26,6 +26,28 @@ inspectable while still making everyday coding work feel direct.
 The Chinese entry follows this same path: [open the bilingual guide](/zh-CN/guide/)
 to read the localized orientation and jump into the matching topic map.
 
+## Project memory
+
+Open **Settings → Projects**, select a project, and choose **Project memory**
+from its detail menu. All notes form one collection: notes entered by you and
+notes recorded during chat use the same list, editing controls, and permissions.
+There are no source labels or separate memory categories.
+
+Enable **Automatically record memories** to let the agent record clearly
+expressed durable preferences and corrections during a chat, or respond to
+remember/forget requests. This defaults to off. Disabling recording only prevents
+agent additions, updates, and deletions; all saved memory continues to be used
+in later chats. Delete an unwanted note yourself to stop using it. Deletion does
+not retract context already sent to a provider or erase past chat messages.
+
+Edit, add, or remove notes, then choose Save to apply the complete draft
+atomically. Concurrent edits reject a stale save without overwriting saved data.
+Cancel discards the draft; it does not undo an immediate recording-switch change.
+Projects stay isolated unless their folders belong to the same logical project.
+All notes follow the existing project-memory configuration-sync rules regardless
+of who wrote them. Recording permission stays a local opt-in. No background
+memory-extraction model is started.
+
 ## The mental model
 
 ```text

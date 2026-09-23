@@ -1525,6 +1525,8 @@ sklm: {
     "memoryEntryContent": "Was soll sich dieses Projekt merken?",
     "memoryRemove": "Speicher entfernen",
     "memoryHint": "Wird in Chats dieses Projekts verwendet. Halten Sie ihn kurz und sachlich.",
+    "autoMemoryToggle": "Erinnerungen automatisch speichern",
+    "autoMemoryDescription": "Wenn aktiviert, kann der Assistent klar geäußerte dauerhafte Projektpräferenzen automatisch speichern. Das Ausschalten stoppt nur das automatische Speichern und Aktualisieren; gespeicherte Erinnerungen werden weiterhin in Projektchats verwendet, bis Sie sie bearbeiten oder löschen. Der Schalter gilt sofort; Änderungen an Erinnerungen erst nach Speichern.",
     "memorySave": "Speicher sichern",
     "memorySaving": "Wird gespeichert…",
     "noSearchResults": "Keine Projekte entsprechen Ihrer Suche",

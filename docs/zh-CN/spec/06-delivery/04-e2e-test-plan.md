@@ -8826,3 +8826,40 @@ the latest destination. These assertions measure work counts, not device FPS.
 `node --test apps/desktop/test/session-transcript-empty-read.test.mjs`、
 `node --test apps/desktop/test/plugin-timeout-budgets.test.mjs`、
 `pnpm --filter @pi-desktop/shared test`、`pnpm --filter @pi-desktop/host-runtime test`。
+
+#### E2E-012c: Unified project memory with opt-in recording
+
+- **Preconditions**: Isolated profile, two projects and an existing user-created
+  note. Use a controlled runtime tool driver; real providers require authorization.
+- **Steps**: Open Settings → Projects → Project memory. Verify a single list
+  without source labels and automatic recording off by default. Enable recording.
+  Ask the agent to remember a stable preference and update the existing note.
+  Start another chat and verify both notes are available once in project context.
+  Edit/add/delete entries through the same editor controls and Save. Reopen to
+  verify persistence. Disable recording, start another turn/chat and restart the
+  runtime: saved context must remain available, but agent writes must fail.
+  Remove an unwanted note in the editor and verify later context omits it. Repeat
+  across unrelated projects and during legacy-to-group transitions.
+- **Expected**: There is one collection and no author-based permission split.
+  The recording flag only gates agent writes; the Host validates session scope,
+  mode, owner, capacity and stale-entry preconditions. Per-entry agent operations
+  preserve unrelated notes. Editor Save is atomic and rejects stale snapshots
+  without overwriting concurrent additions or edits. Existing plain-text and
+  structured notes survive grouping and restart. All entries follow existing
+  project-memory configuration-sync rules; local recording opt-in is not exported.
+  No background extraction model or extra provider call is started.
+- **Recovery and UI**: Cancel restores staged edits/deletions but does not undo an
+  immediate recording toggle. Pending saves block dialog dismissal. Late loads,
+  saves and toggles cannot contaminate another project or a later A→B→A load.
+  Exercise load/save errors, stale owners, StrictMode and narrow windows. A failed
+  runtime refresh clears stale memory for that turn and leaves chat usable.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md`,
+  `03-runtime/04-data-storage.md`, `03-runtime/06-host-rpc-protocol.md`,
+  `04-ux/06-settings-ia.md`, `../../adr/project-auto-memory.md`.
+- **Automation**: `node scripts/e2e-project-auto-memory.mjs` exercises the actual
+  component with controlled IPC and compiled production CSS. Runtime, Host and
+  storage tests cover scope, disabled writes with continuing recall, persistence,
+  concurrency and compatibility. Candidate-specific real Host-process evidence
+  is retained in the local review packet.
+- **Status**: Component and Host/runtime contracts automated; no full-app
+  real-provider journey is claimed by isolated fixtures.

@@ -71,6 +71,7 @@ import type {
   ProjectGroupRecord,
   ProjectMemory,
   ProjectMemoryEntry,
+  ProjectMemoryEditor,
   ProjectWorkspace,
   PullRequestSummary,
   ScheduledTask,
@@ -780,6 +781,15 @@ export const api = {
       projectPath,
       entries,
     }),
+  getProjectMemoryEditor: (projectPath: string) =>
+    invoke<{ editor: ProjectMemoryEditor }>(IPC.invoke.projectMemoryEditorGet, { projectPath }),
+  saveProjectMemoryEditor: (projectPath: string, input: {
+    expectedOwner: string;
+    expectedMemory: ProjectMemory;
+    entries: ProjectMemoryEntry[];
+  }) => invoke<{ editor: ProjectMemoryEditor }>(IPC.invoke.projectMemoryEditorSave, { projectPath, ...input }),
+  setProjectAutoMemoryEnabled: (projectPath: string, expectedOwner: string, enabled: boolean) =>
+    invoke<{ autoRecordEnabled: boolean }>(IPC.invoke.projectAutoMemorySetEnabled, { projectPath, expectedOwner, enabled }),
   cloneProject: (url: string) =>
     invoke<{ workspace: ProjectWorkspace | null; canceled?: boolean }>(
       IPC.invoke.projectClone,

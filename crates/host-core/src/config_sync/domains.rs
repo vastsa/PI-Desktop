@@ -685,6 +685,61 @@ mod tests {
     }
 
     #[test]
+    fn captures_shared_memory_after_agent_writes_and_recording_is_disabled() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        let path = project.to_string_lossy().into_owned();
+        let mut state = AppState::open(data_dir.path()).unwrap();
+        let group = state
+            .db
+            .create_project_group("Workspace", std::slice::from_ref(&path))
+            .unwrap();
+        state
+            .db
+            .set_project_group_memory(
+                &group.id,
+                &json!([
+                    { "id": "existing", "title": "Stack", "content": "Use npm" }
+                ]),
+            )
+            .unwrap();
+        state.db.set_auto_memory_enabled(&path, true).unwrap();
+        state
+            .db
+            .agent_upsert_project_memory(
+                &path,
+                Some("existing"),
+                "Stack",
+                "Use pnpm",
+                Some("Stack"),
+                Some("Use npm"),
+            )
+            .unwrap();
+        state
+            .db
+            .agent_upsert_project_memory(&path, None, "Review", "Keep changes focused", None, None)
+            .unwrap();
+        state.db.set_auto_memory_enabled(&path, false).unwrap();
+
+        let entities = capture_memory(&mut state, &ProjectIdentityOverrides::default()).unwrap();
+        let memory_entities = entities
+            .iter()
+            .filter(|entity| entity.payload["projectGroupLogicalId"].is_string())
+            .collect::<Vec<_>>();
+        assert_eq!(memory_entities.len(), 1);
+        let payload = &memory_entities[0].payload;
+        let entries = payload["memory"]["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["id"], "existing");
+        assert_eq!(entries[0]["content"], "Use pnpm");
+        assert_eq!(entries[1]["content"], "Keep changes focused");
+        assert!(payload.get("autoRecordEnabled").is_none());
+        assert!(payload["memory"].get("autoRecordEnabled").is_none());
+        assert!(!state.db.get_auto_record_enabled(&path).unwrap());
+    }
+
+    #[test]
     fn captures_only_the_app_managed_project_instruction_file() {
         let data_dir = tempfile::tempdir().unwrap();
         let project = data_dir.path().join("project");

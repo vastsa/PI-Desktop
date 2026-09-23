@@ -1531,6 +1531,8 @@ sklm: {
     memoryEntryContent: "Bu proje neyi hatırlamalı?",
     memoryRemove: "Belleği kaldır",
     memoryHint: "Bu projedeki sohbetlerde kullanılır. Kısa ve gerçeğe dayalı tutun.",
+    autoMemoryToggle: "Anıları otomatik kaydet",
+    autoMemoryDescription: "Açıldığında asistan, açıkça belirttiğiniz kalıcı proje tercihlerini otomatik olarak kaydedebilir. Kapatmak yalnızca otomatik kaydetmeyi ve güncellemeyi durdurur; kayıtlı anılar siz düzenleyene veya silene kadar proje sohbetlerinde kullanılmaya devam eder. Anahtar hemen uygulanır, değişiklikler Kaydet ile uygulanır.",
     memorySave: "Belleği kaydet",
     memorySaving: "Kaydediliyor…",
     noSearchResults: "Aramanızla eşleşen proje yok",

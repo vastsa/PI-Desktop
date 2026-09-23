@@ -700,7 +700,14 @@ system while preserving their different data ownership:
   supports an optional title, multiline content, and removal; the dialog also
   supports adding entries, shows an empty state, and keeps Cancel/Save
   actions. Saved entries are scoped to that project's path and are available
-  in later chats for the project.
+  in later chats for the project. All entries share one collection and the same
+  card controls, without source labels or author-based permissions. A single
+  Save commits the full draft atomically after an ownership/snapshot check;
+  conflicts keep the draft and do not overwrite current memory. The default-off
+  automatic-recording switch takes effect immediately and only controls agent
+  writes. Turning it off does not hide notes or stop their use in chat. Users
+  decide which notes to edit or delete. Cancel discards draft edits without
+  reverting the switch. All entries follow existing project-memory sync rules.
 - Project search also matches session titles. Matching a session keeps its
   owning project in the index; opening that project lists the matching sessions
   ordered by latest activity, shows a count and relative update time, and reveals
