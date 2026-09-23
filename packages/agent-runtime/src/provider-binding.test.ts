@@ -558,6 +558,44 @@ describe("buildProviderModel model-level wire API", () => {
   });
 });
 
+describe("buildProviderModel native web search capability", () => {
+  const catalogModel: ModelConfig = {
+    source: "generic",
+    name: "Configured web search model",
+    baseUrl: "https://chatgpt.com/backend-api",
+    reasoning: false,
+    input: ["text"],
+    contextWindow: 128_000,
+    maxTokens: 8_192,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  };
+  const configuredModel = modelConfigWithBinding(catalogModel, {
+    contextWindow: 128_000,
+    maxTokens: 8_192,
+    thinkingLevels: ["off"],
+    nativeWebSearch: true,
+  });
+
+  it("forwards an opt-in only when the resolved wire supports it", () => {
+    const codex = buildProviderModel({
+      ...keyedProvider,
+      vendorKey: "openai-codex",
+      apiStyle: "openai_codex_responses",
+      modelConfig: configuredModel,
+    });
+    expect(codex.api).toBe("openai-codex-responses");
+    expect(codex.webSearch).toBe(true);
+
+    const completions = buildProviderModel({
+      ...keyedProvider,
+      apiStyle: "chat_completions",
+      modelConfig: configuredModel,
+    });
+    expect(completions.api).toBe("openai-completions");
+    expect(completions.webSearch).toBeUndefined();
+  });
+});
+
 describe("GitHub Copilot transport identity", () => {
   const provider: RuntimeProviderConfig = {
     id: "copilot-account-row",

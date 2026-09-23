@@ -5229,24 +5229,28 @@ eleven-tool-round desktop paths are verified by
 #### E2E-PROVIDER-custom-form-excludes-account-formats：新建自定义服务不提供账户专用格式
 
 - **先决条件**：隔离配置，英文及简体中文；构造使用 Codex、Pi 账户格式的
-  历史非 OAuth 行，其中包含 OpenAI 预设 URL，使用合成模型，不使用真实凭据。
-- **步骤**：1) 新建自定义服务，检查接口格式选项。2) 编辑两种历史行并原样
-  保存，再明确选择 Responses 保存。3) 复制原历史行，检查当前格式及说明，
-  等待超过发现防抖时间后取消。4) 再次复制，选择 Anthropic Messages 后保存。
-  5) 检查保存请求及原行未被改变。
+  历史非 OAuth 行，其中包含 OpenAI 预设 URL；另有一个带模型绑定的合成 OpenAI
+  Codex OAuth 账户。使用合成模型，不使用真实凭据。
+- **步骤**：1) 新建自定义服务，检查接口格式选项。2) 编辑两种历史行并原样保存，
+  再明确选择 Responses 保存。3) 复制原历史行，检查当前格式及说明，等待超过
+  发现防抖时间后取消。4) 再次复制，选择 Anthropic Messages 后保存。5) 检查
+  保存请求及原行未被改变。6) 编辑合成 Codex OAuth 账户，确认原生联网搜索
+  可用但默认未选中，勾选并保存，检查模型绑定载荷。
 - **预期**：新建只提供四种通用协议；Codex 与 Pi 通过厂商账户使用，不能作为
-  新 API key 服务格式。历史行在未主动修改时保留协议、名称、URL 和认证。
-  复制时显示原账户格式但不可重新选择；必须主动选支持的格式后才能保存和
-  发现模型，并提供本地化说明。取消不创建行；有效副本不复用原行 ID 或凭据。
-  具名 OpenCode Go 与 OAuth 账户流程保持不变。
+  新 API key 服务格式。历史行在未主动修改时保留协议、名称、URL 和认证。复制时
+  显示原账户格式但不可重新选择；必须主动选支持的格式后才能保存和发现模型，
+  并提供本地化说明。取消不创建行；有效副本不复用原行 ID 或凭据。对于 Codex
+  OAuth，原生联网搜索仅对支持的 Responses wire 启用、默认关闭，且只写入该模型
+  的 `nativeWebSearch: true`。具名 OpenCode Go 与 OAuth 账户流程保持不变。
 - **自动化**：`pnpm test:e2e:provider-api-style` 在 Electron/Chromium 中渲染
-  实际 React 表单，以模拟 API 边界检查创建、更新及发现请求的准确内容。
-  不验证 Host 存储或真实 OAuth。
-- **链接规格**：`03-runtime/12-provider-config-schema.md`、ADR 0095。
+  实际 React 表单和 `VendorAccountDialog`，以模拟 API 边界检查创建、更新、发现请求
+  及 Codex 模型绑定保存。不验证 Host 存储或真实 OAuth/模型请求。
+- **链接规格**：`03-runtime/11-provider-model-system.md`、
+  `03-runtime/12-provider-config-schema.md`、ADR 0095、ADR 0297。
 - **验收**：B（模型配置）、Security。
-- **状态**：helper/复制回归已通过。分支 Electron/React 场景在英文、简体中文
-  下通过：六组场景，经模拟 API 发出四次创建、八次更新。未验证 Host 持久化、
-  真实 OAuth/模型请求和视觉布局。主线合并后 E2E 尚未运行。
+- **状态**：Electron/React 场景在英文、简体中文下均通过，共八组；模拟 API 收到
+  四次创建、八次更新，两种语言均验证 Codex OAuth 搜索 opt-in 保存。未验证 Host
+  持久化、真实 OAuth/模型请求和视觉布局。主线合并后 E2E 尚未运行。
 
 #### E2E-PROVIDER-copy-config-without-credentials：复制配置为独立提供商
 
@@ -6888,15 +6892,15 @@ eleven-tool-round desktop paths are verified by
 
 #### E2E-178：缺失的 sessions 行被恢复，outbox 才能排空
 
-- **前提条件**：会话仍有活的 `sessions/<id>.jsonl`，以及 `session-message-outbox.json` 里排队的回合，但 `pi.sqlite` 的 `sessions` 行已不在（WAL/索引丢失）。
-- **步骤**：1）确认侧边栏不再列出该会话，且 `session.appendMessage` 会因 `session not found` 失败。2）重启应用（或完成一次会刷新 outbox 的主机握手）。3）可选：删除该会话，确认其 outbox 条目被丢掉而不是被救回。
-- **预期**：主机启动从 JSONL 重新插入 sessions 行并重建搜索索引。outbox 不会卡在队头，能够排空。对话回到侧边栏且消息还在。用户删除的会话不会被残留 outbox 条目重建。
+- **前提条件**：会话仍有 `sessions/<id>.jsonl` 和 `session-message-outbox.json` 中的待追加消息，但 `pi.sqlite` 中的 `sessions` 行已丢失（WAL/索引丢失）。队首可能带有缺失或属于另一会话的 turn id；旧版重放时 JSONL 也可能已有该消息 id 的重复行。
+- **步骤**：1）确认侧边栏不再列出该会话，且 `session.appendMessage` 会因 `session not found` 失败。2）重启应用（或完成一次刷新 outbox 的主机握手）。3）在索引缺失、JSONL 已重复写入同一消息且后面还有已索引消息时，用过期 turn id 重放该条消息。4）可选：删除会话，并确认其 outbox 条目被丢弃而非复活。
+- **预期**：主机从 JSONL 重新插入 sessions 行并重建索引。失效 turn 关联会被省略，但消息内容保留；outbox 不会卡在队首，后续消息顺序不变。重放会原位更新现有行，不再追加副本；`last_seq` 和搜索索引与去重后的转录顺序一致。用户删除的会话不会被残留 outbox 重建。
 - **链接规格**：`03-runtime/04-data-storage.md`、
   `03-runtime/06-host-rpc-protocol.md`、`03-runtime/07-process-model.md`、
   ADR 0041、`08-meta/decisions-log.md`（D318）
 - **验收**：C（对话和直播）、F（持久化）
 - **里程碑**：M5
-- **状态**：单元已覆盖（host-core 孤儿会话恢复测试、`persistence-outbox.test.mjs`）；完整桌面旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
+- **状态**：单元已覆盖（`sessions.rs` stale-turn/replay 测试、`persistence-outbox.test.mjs` 满载拒绝与排空测试）；完整桌面旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
 
 #### E2E-180：已发送的文件引用保持芯片并可点击打开
 
@@ -8013,9 +8017,12 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   2. 清空输入框，再次点击编辑。
   3. 确认队列中不再有该行，且输入框持有该行的文本与其文件引用芯片。
   4. 发送它，并与原本排队时的提示对比转录。
+  5. 将图片和文件加入队列，正常退出并重新打开应用，再编辑恢复的队列行。
+     同时覆盖仅图片和仅文字的消息，并分别重新发送。
 - **预期**：输入框非空（或带有附件芯片）时编辑被拒绝并给出可见提示，该行仍留在队列中。
   输入框为空时该行离开队列、Host 也不再列出它，输入框得到完全相同的文本与原始文件引用
-  芯片——而不是被剥离标注的内联内容。重新发送产生的提示与排队时一致。
+  芯片——而不是被剥离标注的内联内容。重新发送产生的提示与排队时一致。重启后即使内存
+  草稿已不存在，Host 保存的正文及全部附件也应在编辑和重新发送后保持完整。
 - **链接规格**：`04-ux/08-component-spec.md`（§11）、ADR 0265
 - **验收**：C（对话与流）
 - **里程碑**：M6+

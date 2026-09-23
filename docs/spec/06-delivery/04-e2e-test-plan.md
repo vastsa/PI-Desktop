@@ -1592,13 +1592,16 @@ identify the platform validation still needed.
 - **Steps**: 1) Type a draft, then choose edit on the queued row. 2) Clear the
   composer and choose edit again. 3) Confirm the queue no longer lists the row
   and the composer holds the row's text and its file-reference chip. 4) Send it
-  and compare the transcript with the original queued prompt.
+  and compare the transcript with the original queued prompt. 5) Queue an image
+  with a file, quit the app normally, reopen it, and edit the restored row.
+  Repeat with an image-only row and a text-only row; resend each edited draft.
 - **Expected**: With a non-empty input (or an attachment chip) the edit is
   refused with a visible message and the row stays queued. With an empty input
   the row leaves the queue, the Host no longer lists it, and the composer holds
   the exact text plus the original file-reference chip — not the
   serialized prompt the Host received. Re-sending produces the same prompt as the
-  queued row would have.
+  queued row would have. After restart, Host-stored content and all attachments
+  survive editing and resubmission even though the in-memory draft is gone.
 - **Specs linked**: `04-ux/08-component-spec.md` (§11), ADR 0265
 - **Acceptance**: C (chat, stream)
 - **Milestone**: M6+
@@ -8011,29 +8014,37 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 - **Preconditions**: Isolated profile, English and Simplified Chinese. Seed
   non-OAuth legacy rows using Codex and Pi account formats, including an OpenAI
-  preset URL; use synthetic models and no real credentials.
+  preset URL; use synthetic models and no real credentials. Include a synthetic
+  OpenAI Codex OAuth account with one configured model binding.
 - **Steps**: 1) Add a Custom service and inspect its format choices. 2) Edit each
   legacy row and save unchanged, then explicitly select Responses and save.
   3) Copy each original legacy row, inspect the current format and explanatory
   hint, wait past discovery debounce, and cancel. 4) Copy again, choose Anthropic
   Messages and save. 5) Check saved payloads and the unchanged source row.
+  6) Edit the synthetic Codex OAuth account; confirm Native web search is
+  enabled but unchecked, check it, save, and inspect the model binding payload.
 - **Expected**: New custom choices are the four general protocols; Codex and Pi
   are available through vendor accounts, not as new API-key choices. Legacy
   editing preserves format, name, URL and authentication unless explicitly
   changed. A copied account format is visible but cannot be newly selected;
   saving and discovery are blocked until an explicit supported choice. The
   explanation is localized. Cancel performs no create; a valid copy never uses
-  the source id or credentials. Named OpenCode Go and OAuth account flows remain
-  unchanged.
+  the source id or credentials. For Codex OAuth, Native web search is enabled
+  for the supported Responses wire, defaults off, and saves as
+  `nativeWebSearch: true` on that model only. Named OpenCode Go and OAuth account
+  flows remain unchanged.
 - **Automation**: `pnpm test:e2e:provider-api-style` renders the production React
-  form in Electron/Chromium with a stubbed API boundary and checks exact create,
-  update and discovery payloads. This does not verify Host storage or live OAuth.
-- **Specs linked**: `03-runtime/12-provider-config-schema.md`, ADR 0095.
+  form and `VendorAccountDialog` in Electron/Chromium with a stubbed API boundary;
+  it checks create/update/discovery payloads and the Codex model binding save.
+  This does not verify Host storage, live OAuth or live model/search calls.
+- **Specs linked**: `03-runtime/11-provider-model-system.md`,
+  `03-runtime/12-provider-config-schema.md`, ADR 0095, ADR 0297.
 - **Acceptance**: B (model configuration), Security.
-- **Status**: Helper/copy regressions passed. The branch Electron/React scenario
-  passed in English and Simplified Chinese: six scenario groups, four creates
-  and eight updates through the stubbed API. Host persistence, live OAuth/model
-  calls and visual layout were not exercised. Post-integration main E2E is NOT RUN.
+- **Status**: The Electron/React scenario passed in English and Simplified
+  Chinese: eight scenario groups, four creates and eight provider updates through
+  the stubbed API; both locales also verify the Codex OAuth search opt-in save.
+  Host persistence, live OAuth/model calls and visual layout were not exercised.
+  Post-integration main E2E is NOT RUN.
 
 #### E2E-PROVIDER-copy-config-without-credentials: Copy configuration into an independent provider
 
@@ -11154,24 +11165,30 @@ are withdrawn with ADR 0165.
 #### E2E-178: A missing sessions row is restored so the outbox can drain
 
 - **Preconditions**: A session has a live `sessions/<id>.jsonl` and queued
-  turns in `session-message-outbox.json`, but its row is gone from
-  `pi.sqlite` `sessions` (WAL/index loss).
+  appends in `session-message-outbox.json`, but its row is gone from
+  `pi.sqlite` `sessions` (WAL/index loss). The queued head may carry a turn
+  id whose row is missing or belongs to another session. For legacy replay,
+  the JSONL may already contain repeated copies of that message id.
 - **Steps**: 1) Confirm the sidebar no longer lists the session and
   `session.appendMessage` would fail `session not found`. 2) Restart the
   app (or otherwise complete a host handshake that flushes the outbox).
-  3) Optional: delete the session and confirm its outbox entries are
+  3) Replay an unindexed message with a stale turn id after writing its
+  transcript line more than once, with a later indexed message behind it.
+  4) Optional: delete the session and confirm its outbox entries are
   dropped rather than resurrected.
-- **Expected**: Host boot reinserts the sessions row from the JSONL and
-  rebuilds the search index. The outbox drains without pausing at the
-  head. The conversation returns to the sidebar with its messages. A
-  user-deleted session is not recreated from leftover outbox entries.
+- **Expected**: Host boot reinserts the sessions row from JSONL and rebuilds
+  its index. The stale turn link is omitted without losing the message; the
+  outbox drains and later messages keep transcript order. Replayed copies are
+  updated in place and do not add another line; `last_seq` and search index
+  match the deduplicated transcript. A user-deleted session is not recreated.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
   `03-runtime/06-host-rpc-protocol.md`, `03-runtime/07-process-model.md`,
   ADR 0041, `08-meta/decisions-log.md` (D318)
 - **Acceptance**: C (conversation & stream), F (persistence)
 - **Milestone**: M5
-- **Status**: Unit-covered (host-core orphaned-session restore tests,
-  `persistence-outbox.test.mjs`); full desktop journey Draft (run only in a capable environment when this surface changes)
+- **Status**: Unit-covered (`sessions.rs` stale-turn/replay tests,
+  `persistence-outbox.test.mjs` full-cap rejection and drain tests); full
+  desktop journey Draft (run only in a capable environment when this surface changes).
 
 #### E2E-179: Parent tools after a Task fan-out stay outside the delegation card
 
@@ -14848,11 +14865,14 @@ or an already installed desktop application do not satisfy this test.
 | Invalid saved replay container | Restore returns safe INTERNAL/context-validation, sends no provider request or persistence Host RPC, and keeps the process healthy. In-memory immutability is checked by the replay unit tests. |
 | Unknown saved search phase | The same explicit rejection is observed without silently discarding the search record. |
 
-**Companion gates:** Responses/Azure/Anthropic adapter contracts; typed search
-phases; zero/valid/stale usage; changed/unchanged system prefix and tool ledger;
-search content growth and CJK output budgets; structured local preparation
-failures without retry/fetch, ordinary transport retry and cancellation. Dependency upgrades must run
-these gates against the locked dependency version and record the tested bundle.
+**Companion gates:** Responses/Azure/Anthropic/Codex adapter contracts; typed
+search phases; zero/valid/stale usage; changed/unchanged system prefix and tool
+ledger; search content growth and CJK output budgets; structured local
+preparation failures without retry/fetch, ordinary transport retry and
+cancellation. The Codex contract uses a synthetic JWT payload, captures the
+request before fetch, proves opt-out omits the tool, and never contacts a
+provider. Dependency upgrades must run these gates against the locked version
+and record the tested bundle.
 
 **Evidence:** record build and test exit codes, baseline SHA, dependency versions,
 artifact identity and independent review in

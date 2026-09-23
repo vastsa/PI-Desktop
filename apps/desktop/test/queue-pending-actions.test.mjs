@@ -119,3 +119,64 @@ test("pending queue actions stay locked until admission succeeds", async (t) => 
     await server.close();
   }
 });
+
+test("editing a restored queue preserves attachments when resubmitted", async (t) => {
+  const server = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    configFile: false,
+    server: { middlewareMode: true, hmr: false, ws: false },
+    appType: "custom",
+    optimizeDeps: { noDiscovery: true, include: [] },
+  });
+  const previousWindow = globalThis.window;
+  try {
+    const { createQueueSlice } = await server.ssrLoadModule("/src/stores/slices/queue-slice.ts");
+    const image = { path: "/scratch/icon.png", name: "icon.png", kind: "image", mimeType: "image/png" };
+    const file = { path: "/scratch/notes.txt", name: "notes.txt", kind: "file", mimeType: "text/plain" };
+    for (const [name, content, attachments] of [
+      ["image and file", "Review @/scratch/notes.txt with the image", [image, file]],
+      ["image only", "", [image]],
+      ["text only", "Review the plan", undefined],
+    ]) {
+      await t.test(name, async () => {
+        let entries = [{ id: "restored-turn", sessionId: "session-a", content, attachments,
+          position: 1, createdAt: "2026-09-23T00:00:00Z" }];
+        let submitted;
+        globalThis.window = { piDesktop: { invoke: async (channel, payload) => {
+          if (channel === IPC.invoke.agentQueueList) return { ok: true, data: { entries } };
+          if (channel === IPC.invoke.agentQueueRemove) {
+            entries = entries.filter((entry) => entry.id !== payload.turnId);
+            return { ok: true, data: {} };
+          }
+          if (channel === IPC.invoke.agentQueuePush) {
+            submitted = payload;
+            const entry = { ...payload, id: "resubmitted-turn", position: 1, createdAt: "2026-09-23T00:00:01Z" };
+            entries = [entry];
+            return { ok: true, data: entry };
+          }
+          throw new Error(`Unexpected IPC: ${channel}`);
+        } } };
+        let state = { activeSessionId: "session-a", queuedPrompts: {}, showToast: assert.fail };
+        const slice = createQueueSlice({
+          get: () => state,
+          set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
+          promptAttachmentsFromDraft: (references) => references.map(({ path, name, kind, mimeType }) => ({ path, name, kind, mimeType })),
+        });
+        Object.assign(state, slice);
+        await slice.refreshQueuedPrompts("session-a");
+        slice.editQueuedPrompt("restored-turn");
+        assert.deepEqual(entries, [], "editing removes the original queued entry");
+        assert.deepEqual(state.composerPrefill, {
+          sessionId: "session-a", text: content, fileReferences: (attachments ?? []).map((attachment) =>
+            attachment.kind === "file" ? { ...attachment, token: "@/scratch/notes.txt" } : attachment),
+        }, "restored draft retains the Host's text and attachments");
+        assert.equal(await slice.enqueuePrompt(state.composerPrefill.text, state.composerPrefill), true);
+        assert.equal(submitted.content, content, "resubmitting must not rewrite serialized file references");
+        assert.deepEqual(submitted.attachments ?? [], attachments ?? [], "resubmitting must keep the same attachments");
+      });
+    }
+  } finally {
+    globalThis.window = previousWindow;
+    await server.close();
+  }
+});

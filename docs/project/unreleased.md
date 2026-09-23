@@ -31,3 +31,6 @@
 - Hovering a reasoning stop or its label highlights the corresponding label.
   Only unfilled dots brighten and enlarge; filled dots and the current thumb
   keep their appearance.
+- OpenAI Codex OAuth models can now opt into provider-hosted native web search.
+  The feature remains off by default and search history is replayed only for
+  the same Codex model.

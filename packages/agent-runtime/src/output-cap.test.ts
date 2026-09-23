@@ -208,6 +208,28 @@ describe("hosted search target model threading", () => {
     expect(estimate).toBeGreaterThan(0);
   });
 
+  it("charges Codex Responses search replay only to its source model", () => {
+    const codexModel = {
+      ...RESPONSES_MODEL,
+      api: "openai-codex-responses",
+      provider: "openai-codex",
+      id: "gpt-codex-test",
+    };
+    const codexContext = (model: string, size: number): OutputCapContext => ({
+      messages: [{
+        role: "assistant",
+        api: "openai-codex-responses",
+        provider: "openai-codex",
+        model,
+        content: [searchCall(size)],
+      }],
+    });
+    const same = estimateOutputCapInputTokens(codexContext("gpt-codex-test", 100), codexModel);
+    const other = estimateOutputCapInputTokens(codexContext("other-model", 100), codexModel);
+    expect(same).toBeGreaterThan(0);
+    expect(other).toBe(0);
+  });
+
   it("leaves text, thinking and tool blocks unaffected by the target", () => {
     const context: OutputCapContext = {
       messages: [

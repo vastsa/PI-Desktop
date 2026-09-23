@@ -74,6 +74,37 @@ export async function verifyComposerSubmission(imagePath: string, i18n: i18n) {
     flushSync(() => last.querySelector<HTMLButtonElement>(".composer-image-attachment-remove")!.click());
     assert(tray.children.length === 19 && !sendButton().disabled, "scrolled attachment removal must preserve other images");
 
+    // A restarted renderer has only the Host queue entry, not the cached draft.
+    const originalRemoveQueuedPrompt = api.removeQueuedPrompt;
+    api.removeQueuedPrompt = async () => undefined;
+    try {
+      prefill("", []);
+      await painted();
+      flushSync(() => useAppStore.getState().applyQueueChanged({
+        sessionId,
+        entries: [{
+          id: "restored-attachment-entry", sessionId,
+          content: "Review @/scratch/notes.txt",
+          attachments: [attachment, { path: "/scratch/notes.txt", name: "notes.txt", kind: "file", mimeType: "text/plain" }],
+          position: 1, createdAt: "2026-01-01T00:00:00Z",
+        }],
+      }));
+      host.querySelector<HTMLButtonElement>(".composer-queued-prompt-edit")!.click();
+      await painted();
+      assert(editor().textContent === "Review @/scratch/notes.txt" && host.querySelectorAll(".composer-image-attachment").length === 1,
+        "editing a restored queue entry must recover text and image attachments");
+      editor().textContent = "Review";
+      flushSync(() => editor().dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" })));
+      await painted();
+      sendButton().click();
+      await painted();
+      const restoredSubmission = sent.at(-1);
+      assert(restoredSubmission?.content === "Review" && restoredSubmission.draft?.fileReferences.length === 1 && restoredSubmission.draft.fileReferences[0].path === imagePath,
+        "deleting a restored inline file must remove that attachment while preserving the image");
+    } finally {
+      api.removeQueuedPrompt = originalRemoveQueuedPrompt;
+    }
+
     // Issue #795: a command source that cannot be read must refuse the
     // submission, instead of handing `/compact` to the model as prompt text.
     const toasts: string[] = [];

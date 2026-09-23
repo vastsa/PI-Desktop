@@ -201,17 +201,19 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
 10. 设置里的复选框展示的是相对于已发布基线的有效答案；把某一项设回已发布的
     值，存下来的是"跟随目录"，而不是一个取值相同的覆盖。因此与 models.dev
     保持一致本身就是重置，不需要另外的重置控件，也不需要逐项能力的解释文案。
-10a. `nativeWebSearch` 是两态的主动开启（缺省即关闭；没有目录基线，因为
-    models.dev 不发布托管工具能力）。启用且模型解析后的线路 API 是
-    `anthropic-messages`、`openai-responses` 或 `azure-openai-responses`
-    （存储的 apiStyle 为 `anthropic_messages` / `responses`）时，适配器会
-    附加提供商托管的联网搜索工具（`web_search_20250305` / `web_search`），
-    把搜索活动提取为 `UiMessage.hostedSearch`（`rounds` 用于展示，`replay`
-    用于 convertMessages），并在后续回合——包括重启之后——回放这些原始
-    搜索块（ADR 0297）。提供商接口风格不属于这两种时复选框禁用。不支持
-    该工具的网关会把提供商错误暴露出来；处理方式是取消勾选。搜索在提供商
-    侧执行：没有本地抓取，也没有权限询问。压缩保持既有的前缀/尾部保留策略；
-    摘要请求包含被压缩前缀中的搜索回放数据，但生成的文本摘要不是原始搜索块的无损副本。
+10a. `nativeWebSearch` 是两态主动开启（缺省即关闭；models.dev 不发布托管工具能力，
+    因此没有目录默认值）。启用后，当模型解析到 `anthropic-messages`、
+    `openai-responses`、`azure-openai-responses` 或 `openai-codex-responses`
+    （存储的 apiStyle 为 `anthropic_messages`、`responses` 或
+    `openai_codex_responses`）时，适配器附加提供商托管搜索工具
+    （`web_search_20250305` / `web_search`），将活动写入
+    `UiMessage.hostedSearch`，并在后续回合（含重启后）回放原始数据（ADR 0297）。
+    OpenAI OAuth 使用独立的 Codex Responses 适配器和 ChatGPT 订阅端点，不是公开的
+    `/v1/responses`；搜索工具写入 Codex 请求体顶层 `tools`。设置仍需用户逐模型
+    勾选；运行时还会按最终解析的 wire API 校验，旧配置不会把工具带给不支持的适配器。
+    不支持工具的网关会显示提供商错误，用户可取消勾选。搜索由提供商执行，没有
+    本地抓取或权限询问。压缩仍按既有前缀/尾部策略保留；摘要请求含被压缩前缀的
+    搜索回放，但生成的文本摘要不是原始搜索块的无损副本。
 11. `ModelInfo` 是设置界面用来对照的已发布记录，因此已存储的 binding 不得
     塑造它的能力或推理字段。有效上限、推理与思考级别都通过那个确切的 binding
     解析；有效的传输模态数组还会额外套用显式的附件覆盖。

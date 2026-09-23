@@ -1182,7 +1182,8 @@ is the source of truth, the index is derived and self-healing.
 | event | file step | index/DB transaction |
 |---|---|---|
 | prompt accepted | append user message line | `last_seq` alloc (RETURNING) + index row + touch `sessions.updated_at`; then insert `turns(running)` |
-| assistant/tool message end | append message line; remove the in-flight checkpoint when its id matches | index row + touch session |
+| assistant/tool message end | append message line; remove the in-flight checkpoint when its id matches | validate optional `turnId` belongs to this session; if stale/missing, keep the message with a null turn link and emit a warning; otherwise insert the index row and touch session |
+| stale-turn outbox replay after an index failure | update all existing transcript lines for the message id to the latest snapshot; do not append another line | rebuild deduplicated message rows and `last_seq` from transcript order in one transaction, preserving only valid same-session turn links; FTS triggers stay synchronized |
 | streaming reply checkpoint (`session.saveInflightMessage`, D299) | atomically replace `<id>.inflight.json`; no-op for an empty message or an id already indexed | — |
 | context checkpoint (`session.appendCompaction`) | append typed checkpoint line after its referenced message boundary | — (checkpoint is not searchable transcript content) |
 | tool succeeded (Write/Edit) | — | upsert `artifacts` + `audit_log` row, same tx as result persistence |
@@ -1219,9 +1220,9 @@ prompt, computed from the full durable transcript merged with the live rows.
 A checkpoint is installed into the live runtime only after its append succeeds;
 therefore a failed/crashed checkpoint write leaves the previous full context or
 previous checkpoint authoritative rather than creating a memory-only state.
-A crash between file append and index commit leaves the message readable
-(transcript loads from the file) with only its search row missing until the
-next rewrite; transcript reads dedupe repeated ids keep-last.
+An append failure after the file write leaves the transcript authoritative while
+its derived index is repaired by the next rewrite or by replaying an unindexed
+outbox message with a stale turn reference; repeated ids are deduped keep-last.
 
 The renderer never needs the whole JSONL file to open a session. Its
 `session.get` request may specify a zero-based exclusive `messageBefore`, a
@@ -1523,18 +1524,25 @@ line and search text, retaining sequence, owning turn and every other row.
 Late partial snapshots and duplicate terminal snapshots cannot overwrite the
 settled result. Recovery promotes the latest checkpoint in that same position.
 The outbox likewise keeps a newer snapshot that replaces an append while its
-host call is still pending. If `messages.id` already belongs to another
-session, the host remaps to `{sessionId}:{id}` before any JSONL write; a
-replay of the original id is a no-op against that remapped row. The outbox
-treats `UNIQUE constraint failed: messages.id` as an ack and keeps draining
-(D444). A permanently rejected append whose host error carries a
-`PERMISSION_DENIED:` prefix is likewise dropped so the FIFO can continue;
-`PLUGIN_PERMISSION_DENIED` and other host failures still pause (D597).
-Steering into a claimed collaboration delivery turn is extra human input: it
-must target that delivery's session, is exempt from the delivery
-content/attachment contract, does not inherit the delivery origin, and has
-any client-supplied `session_message` stripped. No schema migration is
-required.
+host call is still pending. An optional `turnId` is retained only when the turn
+exists and belongs to the target session; a missing or cross-session turn is
+logged and omitted without rejecting or losing the message. If an older failed
+append already wrote that message to JSONL, replay updates those lines and
+rebuilds the deduplicated index in transcript order rather than appending again.
+If `messages.id` already belongs to another session, the host remaps to
+`{sessionId}:{id}` before any JSONL write; a replay of the original id is a
+no-op against that remapped row. The outbox treats
+`UNIQUE constraint failed: messages.id` as an ack and keeps draining (D444).
+A permanently rejected append whose host error carries a `PERMISSION_DENIED:`
+prefix is likewise dropped so the FIFO can continue; `PLUGIN_PERMISSION_DENIED`
+and other host failures still pause (D597). When the 1024-entry cap remains
+full after a flush attempt, enqueue logs the rejected key/session and rejects;
+it does not report that entry as queued. Generic foreign-key errors are not
+treated as acknowledgements. Steering into a claimed collaboration delivery
+turn is extra human input: it must target that delivery's session, is exempt
+from the delivery content/attachment contract, does not inherit the delivery
+origin, and has any client-supplied `session_message` stripped. No schema
+migration is required.
 
 ## 12. Native Pi session authority (ADR 0254)
 

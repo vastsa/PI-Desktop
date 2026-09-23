@@ -227,16 +227,20 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
     explanatory copy is required.
 10a. `nativeWebSearch` is a two-state opt-in (absent means off; there is no
     catalog baseline because models.dev publishes no hosted-tool capability).
-    When enabled and the model's resolved wire API is `anthropic-messages`,
-    `openai-responses`, or `azure-openai-responses` (stored apiStyle
-    `anthropic_messages` / `responses`), the adapter attaches the provider's
-    hosted web search tool (`web_search_20250305` / `web_search`), extracts
-    the search activity into `UiMessage.hostedSearch` (`rounds` for display,
-    `replay` for convertMessages), and restores those raw blocks on later
-    turns including after a restart (ADR 0297). The checkbox is disabled
-    when the provider's API style is neither of those two. Gateways that do
-    not support the tool surface the provider error; the remedy is unchecking.
-    Search runs on the provider: there is no local fetch and no permission
+    When enabled and the model resolves to `anthropic-messages`,
+    `openai-responses`, `azure-openai-responses`, or
+    `openai-codex-responses` (stored apiStyle `anthropic_messages`, `responses`,
+    or `openai_codex_responses`), the adapter attaches the provider's hosted
+    search tool (`web_search_20250305` / `web_search`), extracts activity into
+    `UiMessage.hostedSearch` (`rounds` for display, `replay` for convertMessages),
+    and restores raw blocks on later turns including after restart (ADR 0297).
+    OpenAI OAuth uses the separate Codex Responses adapter and its ChatGPT
+    subscription endpoint, not the public `/v1/responses` transport; it sends
+    the hosted tool in the Codex request body's top-level `tools` list. The
+    settings checkbox remains opt-in and the runtime checks support against the
+    final resolved wire API, so stale flags cannot leak to unsupported adapters.
+    Gateways that reject the tool surface the provider error; the remedy is
+    unchecking. Search runs on the provider: there is no local fetch or permission
     prompt. Compaction keeps its existing prefix/tail retention strategy. The
     summary request includes search replay data from the compacted prefix; the
     generated text summary is not a lossless copy of raw provider search blocks.

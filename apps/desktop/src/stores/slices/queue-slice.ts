@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { formatFileInsert } from "@pi-desktop/shared";
 import type {
   AgentQueueChangedEvent,
   AgentPromptAttachment,
@@ -86,7 +87,14 @@ export function createQueueSlice({
       content: entry.content,
       draft: queuedDrafts.get(entry.id) ?? {
         text: entry.content,
-        fileReferences: [],
+        fileReferences: (entry.attachments ?? []).map((attachment) => {
+          const token = formatFileInsert(attachment.path, "file").trim();
+          return {
+            ...attachment,
+            // Keep restored inline files removable with their visible @path.
+            ...(attachment.kind === "file" && entry.content.includes(token) ? { token } : {}),
+          };
+        }),
       },
       createdAt: Date.parse(entry.createdAt) || Date.now(),
       // The Host owns ordering and priority: entries arrive in delivery order.

@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -551,4 +552,61 @@ describe("pi-ai hosted web search: request params", () => {
     expect((params.reasoning as AnyRecord)?.effort).toBe("high");
   });
 
+});
+
+describe("pi-ai Codex hosted web search: request params", () => {
+  async function captureCodexParams(webSearch: boolean): Promise<AnyRecord> {
+    const { stream: streamCodex } = await import("@earendil-works/pi-ai/api/openai-codex-responses");
+    let payload: AnyRecord | undefined;
+    let fetches = 0;
+    const authPayload = Buffer.from(JSON.stringify({
+      "https://api.openai.com/auth": { chatgpt_account_id: "offline-test-account" },
+    })).toString("base64");
+    const stream = streamCodex(
+      {
+        id: "gpt-codex-test",
+        api: "openai-codex-responses",
+        provider: "openai-codex",
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128_000,
+        maxTokens: 8_192,
+        baseUrl: "http://127.0.0.1:43123",
+        webSearch,
+      } as never,
+      { messages: [] } as never,
+      {
+        apiKey: `e30.${authPayload}.offline-signature`,
+        transport: "sse",
+        onPayload: (body: AnyRecord) => {
+          payload = body;
+          throw new Error("stop after offline payload capture");
+        },
+        fetch: async () => {
+          fetches++;
+          throw new Error("the payload test must not make a request");
+        },
+      } as never,
+    );
+    expect((await stream.result()).stopReason).toBe("error");
+    expect(fetches).toBe(0);
+    expect(payload).toBeDefined();
+    return payload!;
+  }
+
+
+  it("attaches hosted search to Codex Responses only when enabled", async () => {
+    const enabled = await captureCodexParams(true);
+    expect(enabled.tools).toEqual([{ type: "web_search" }]);
+    expect(enabled.include).toEqual([
+      "reasoning.encrypted_content",
+      "web_search_call.action.sources",
+    ]);
+    expect(enabled.tool_choice).toBe("auto");
+
+    const disabled = await captureCodexParams(false);
+    expect(disabled.tools).toBeUndefined();
+    expect(disabled.include).toEqual(["reasoning.encrypted_content"]);
+  });
 });

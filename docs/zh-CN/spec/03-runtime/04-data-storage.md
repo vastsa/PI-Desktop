@@ -1021,7 +1021,8 @@ CREATE INDEX idx_notifications_unread
 | 事件 | 文件步骤 | index/DB 交易 |
 |---|---|---|
 | 接受提示 | 附加用户消息行 | `last_seq` 分配（返回）+索引行+触摸 `sessions.updated_at`；然后插入 `turns(running)` |
-| assistant/tool 消息结束 | 附加消息行；id 匹配时移除进行中检查点 | 索引行+触摸会话 |
+| assistant/tool 消息结束 | 附加消息行；id 匹配时移除进行中检查点 | 校验可选 `turnId` 属于本会话；过期/缺失时记录警告并置空关联，仍写入索引并更新时间 |
+| 过期 turn 下的 outbox 重放 | 将同一消息 id 的现有转录行更新为最新快照，不再追加新行 | 在单个事务中按转录顺序重建去重后的消息索引和 `last_seq`，仅保留有效的本会话 turn 关联；FTS 触发器保持同步 |
 | 流式回复检查点（`session.saveInflightMessage`，D299） | 原子替换 `<id>.inflight.json`；空消息或已索引的 id 为空操作 | — |
 | 上下文检查点（`session.appendCompaction`） | 在其引用的消息边界之后附加类型化检查点行 | —（检查点是不可搜索的转录本内容） |
 | 工具成功（Write/Edit） | — | upsert `artifacts` + `audit_log` 行，与结果持久化相同的 tx |
@@ -1054,9 +1055,8 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 只有在追加成功后，检查点才会安装到实时运行时中；
 因此 failed/crashed 检查点写入会留下先前的完整上下文或
 先前的检查点具有权威性，而不是创建仅内存状态。
-文件追加和索引提交之间的崩溃使消息可读
-（从文件加载脚本）只有其搜索行丢失，直到
-下一步重写；转录读取重复数据删除重复的 id keep-last。
+文件追加后索引提交失败时，转录文件仍是权威来源；后续重写，或携带过期 turn 引用的
+未索引 outbox 消息重放，会修复其派生索引。重复 id 按 keep-last 规则去重。
 
 渲染器打开一个会话时并不需要整个 JSONL 文件。它的 `session.get` 请求可以
 指定一个从零开始、不含上界的 `messageBefore`，一个正数 `messageLimit`，以及
@@ -1315,10 +1315,14 @@ UI投影损失
 终态助手替换索引中的流式助手。更新仅涉及该转录行和搜索文本，保留顺序、所属回合及
 其他所有行。迟到的部分快照和重复终态快照不能覆盖已落定结果。恢复时在原位置应用
 最新检查点。如果主机调用尚未完成时出现更新的追加快照，outbox 同样保留该快照。
-若 `messages.id` 已属于另一会话，主机在写 JSONL 之前改写为 `{sessionId}:{id}`；
-重放原始 id 对该改写行无操作。outbox 把 `UNIQUE constraint failed: messages.id`
-当作确认并继续排空（D444）。带 `PERMISSION_DENIED:` 前缀的永久拒绝同样丢弃该行
-以便 FIFO 继续；`PLUGIN_PERMISSION_DENIED` 和其他宿主失败仍暂停（D597）。
+可选 `turnId` 仅在对应 turn 存在且属于目标会话时保留；缺失或跨会话时记录警告并省略，
+不因此拒绝消息。旧版失败追加若已写入 JSONL，重放会更新同 id 行，并按去重后的转录顺序
+重建索引，不再追加副本。若 `messages.id` 已属于另一会话，主机在写 JSONL 前改写为
+`{sessionId}:{id}`；重放原始 id 对该改写行无操作。outbox 将
+`UNIQUE constraint failed: messages.id` 当作确认并继续排空（D444）。带
+`PERMISSION_DENIED:` 前缀的永久拒绝同样丢弃该行以便 FIFO 继续；
+`PLUGIN_PERMISSION_DENIED` 和其他宿主失败仍暂停（D597）。1024 条上限在尝试 flush 后仍满时，
+enqueue 会记录被拒 key/session 并 reject，不会谎报已入队；通用外键错误不会被当作确认。
 向已认领的协作投递回合做 steering 是额外的人类输入：必须指向该投递的会话，
 不受投递内容/附件契约约束，不继承投递来源，并清掉客户端带来的
 `session_message`。无需存储架构迁移。

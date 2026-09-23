@@ -1,5 +1,5 @@
 diff --git a/dist/api/anthropic-messages.js b/dist/api/anthropic-messages.js
-index d462f30..3d3dab1 100644
+index 5dd85f19db51b73dcd0c5c4cd8c28ad99e09ee6f..b7a8cfcac811512c1007c88f7e9d51e10c564a96 100644
 --- a/dist/api/anthropic-messages.js
 +++ b/dist/api/anthropic-messages.js
 @@ -1,3 +1,6 @@
@@ -238,7 +238,7 @@ index d462f30..3d3dab1 100644
              if (blocks.length === 0)
                  continue;
 diff --git a/dist/api/azure-openai-responses.js b/dist/api/azure-openai-responses.js
-index ec1e206..572dce7 100644
+index ec1e2069102ed3165b2d702b9fc4105d5cf8f4e1..572dce7f2c1775a48bea869fcc0df7d09ef5644b 100644
 --- a/dist/api/azure-openai-responses.js
 +++ b/dist/api/azure-openai-responses.js
 @@ -1,3 +1,5 @@
@@ -343,7 +343,7 @@ index ec1e206..572dce7 100644
      if (options?.samplingParams) {
          Object.assign(params, options.samplingParams);
 diff --git a/dist/api/mistral-conversations.js b/dist/api/mistral-conversations.js
-index 3106c5d..8b209bb 100644
+index 3106c5d470dc3610c05d8ee153026df20f86f66e..8b209bb46809c394ffebfd11d5dfd2731c204310 100644
 --- a/dist/api/mistral-conversations.js
 +++ b/dist/api/mistral-conversations.js
 @@ -645,6 +645,9 @@ function toChatMessages(messages, supportsImages) {
@@ -356,11 +356,28 @@ index 3106c5d..8b209bb 100644
                  toolCalls.push({
                      id: block.id,
                      type: "function",
+diff --git a/dist/api/openai-codex-responses.js b/dist/api/openai-codex-responses.js
+index dfdb6ec3651febbba6b8788f16118ecbf4b38fa8..9a3ad78a58359e8669d8a42a3f9264942044c5fd 100644
+--- a/dist/api/openai-codex-responses.js
++++ b/dist/api/openai-codex-responses.js
+@@ -411,6 +411,12 @@ function buildRequestBody(model, context, options, cacheSessionId, grammarToolIn
+             supportsOpenAIGrammarTools,
+         });
+     }
++    // Hosted web search (PI-Desktop): attach the server-side Responses tool only when opted in.
++    if (model.webSearch === true) {
++        body.tools = [...(body.tools ?? []), { type: "web_search" }];
++        body.include = [...new Set([...body.include, "web_search_call.action.sources"])];
++    }
++
+     if (options?.reasoningEffort !== undefined) {
+         const effort = options.reasoningEffort === "none"
+             ? model.thinkingLevelMap?.off === undefined
 diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
-index 80720d0..68d3a57 100644
+index fc8e89382b75f259eb4f041b522840b0d603c033..ff54f13831eb17711b95c1984ad1b31c2d866ef8 100644
 --- a/dist/api/openai-completions.js
 +++ b/dist/api/openai-completions.js
-@@ -1039,21 +1039,27 @@ export function convertMessages(model, context, compat, options) {
+@@ -1041,21 +1041,27 @@ export function convertMessages(model, context, compat, options) {
              if (preservedReasoningDetails) {
                  assistantMsg.reasoning_details = preservedReasoningDetails;
              }
@@ -394,7 +411,7 @@ index 80720d0..68d3a57 100644
              }
              params.push(assistantMsg);
          }
-@@ -1121,6 +1127,41 @@ export function convertMessages(model, context, compat, options) {
+@@ -1123,6 +1129,41 @@ export function convertMessages(model, context, compat, options) {
          }
          lastRole = msg.role;
      }
@@ -436,7 +453,7 @@ index 80720d0..68d3a57 100644
      return params;
  }
  function convertTools(tools, compat) {
-@@ -1265,6 +1306,9 @@ function detectCompat(model) {
+@@ -1267,6 +1308,9 @@ function detectCompat(model) {
          requiresAssistantAfterToolResult: false,
          requiresThinkingAsText: false,
          requiresReasoningContentOnAssistantMessages: isDeepSeek,
@@ -446,7 +463,7 @@ index 80720d0..68d3a57 100644
          thinkingFormat: isDeepSeek
              ? "deepseek"
              : isZai
-@@ -1318,6 +1362,8 @@ function getCompat(model) {
+@@ -1320,6 +1364,8 @@ function getCompat(model) {
          requiresThinkingAsText: model.compat.requiresThinkingAsText ?? detected.requiresThinkingAsText,
          requiresReasoningContentOnAssistantMessages: model.compat.requiresReasoningContentOnAssistantMessages ??
              detected.requiresReasoningContentOnAssistantMessages,
@@ -455,15 +472,8 @@ index 80720d0..68d3a57 100644
          thinkingFormat: model.compat.thinkingFormat ?? detected.thinkingFormat,
          openRouterRouting: model.compat.openRouterRouting ?? {},
          vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
-@@ -1337,4 +1383,4 @@ function getCompat(model) {
-         vllmPriority: model.compat.vllmPriority,
-     };
- }
--//# sourceMappingURL=openai-completions.js.map
-\ No newline at end of file
-+//# sourceMappingURL=openai-completions.js.map
 diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
-index 53597d2..763f99a 100644
+index 53597d2c3becdd2c03d4fd265c213a36b403f26b..763f99a6e7d726ff9fc1ed59a45f6c8173ad108a 100644
 --- a/dist/api/openai-responses-shared.js
 +++ b/dist/api/openai-responses-shared.js
 @@ -1,3 +1,4 @@
@@ -638,7 +648,7 @@ index 53597d2..763f99a 100644
          else if (event.type === "error") {
              throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
 diff --git a/dist/api/openai-responses.js b/dist/api/openai-responses.js
-index 1396c8d..39d201f 100644
+index 1396c8d57ffb0e300382281a026d878e6a96b43a..39d201fc29deaa3cf19a8aaafe57ff15bc29cdf4 100644
 --- a/dist/api/openai-responses.js
 +++ b/dist/api/openai-responses.js
 @@ -1,3 +1,5 @@
@@ -740,7 +750,7 @@ index 1396c8d..39d201f 100644
      if (options?.samplingParams) {
          Object.assign(params, options.samplingParams);
 diff --git a/dist/api/simple-options.js b/dist/api/simple-options.js
-index 216a45f..23528b8 100644
+index 216a45feebc02acef047d1ff133729fb0751b76c..23528b801d65e33d22eb1d63ea49945d24a5e658 100644
 --- a/dist/api/simple-options.js
 +++ b/dist/api/simple-options.js
 @@ -4,7 +4,7 @@ const MIN_MAX_TOKENS = 1;
@@ -753,7 +763,7 @@ index 216a45f..23528b8 100644
  }
  export function buildBaseOptions(model, context, options, apiKey) {
 diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
-index 8692e90..0291387 100644
+index 8692e906caa2609396bdccae98d4d593e024ecf6..029138715f58dbb2e5825f9a2d0c182ed7e81f2a 100644
 --- a/dist/auth/oauth/anthropic.js
 +++ b/dist/auth/oauth/anthropic.js
 @@ -140,21 +140,90 @@ async function startCallbackServer(expectedState) {
@@ -897,7 +907,7 @@ index 8692e90..0291387 100644
      return {
          type: "oauth",
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 5e8403d..50f728e 100644
+index 5e8403dd62895d30eb7d8e3f95b87d6535221839..50f728e4427e1cadb9aded7e35f3e44611eefc85 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -34,4 +34,7 @@ export * from "./utils/transcript.ts";
@@ -910,7 +920,7 @@ index 5e8403d..50f728e 100644
  //# sourceMappingURL=index.d.ts.map
 \ No newline at end of file
 diff --git a/dist/index.js b/dist/index.js
-index cf46c04..0fe0023 100644
+index cf46c043b854412d56c5d65230a509165229806e..0fe002385c3d9906709be1cce6867d0c30a3a151 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -21,4 +21,6 @@ export * from "./utils/transcript.js";
@@ -922,7 +932,7 @@ index cf46c04..0fe0023 100644
  //# sourceMappingURL=index.js.map
 \ No newline at end of file
 diff --git a/dist/types.d.ts b/dist/types.d.ts
-index 5915ca6..f5d4114 100644
+index 5915ca64b161bc7bcebdb14d2ad1a2c18cde942e..f5d4114e94a27d72b33ba83cc45f1d09274c271c 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
 @@ -267,6 +267,30 @@ export interface ToolCall {
@@ -1007,15 +1017,8 @@ index 5915ca6..f5d4114 100644
      /**
       * Maps pi thinking levels to provider/model-specific values.
       * Missing keys use provider defaults. null marks a level as unsupported.
-@@ -833,4 +871,4 @@ export interface ImagesModel<TApi extends ImagesApi> extends Omit<Model<Api>, "a
-     provider: ImagesProviderId;
-     output: ("text" | "image")[];
- }
--//# sourceMappingURL=types.d.ts.map
-\ No newline at end of file
-+//# sourceMappingURL=types.d.ts.map
 diff --git a/dist/utils/assistant-message-frame.d.ts b/dist/utils/assistant-message-frame.d.ts
-index 0820719..0584f68 100644
+index 08207197acab532d0f5f596363700a2d15a687d8..0584f6898e1d842c4414869b9080505b63c3a7b7 100644
 --- a/dist/utils/assistant-message-frame.d.ts
 +++ b/dist/utils/assistant-message-frame.d.ts
 @@ -1,4 +1,4 @@
@@ -1037,7 +1040,7 @@ index 0820719..0584f68 100644
  /**
   * Encodes one assistant stream. `partial` remains a shared live accumulator;
 diff --git a/dist/utils/assistant-message-frame.js b/dist/utils/assistant-message-frame.js
-index c0e0019..a86f593 100644
+index c0e00197b2bdd4c815106daa036d844c07aca800..a86f5939accd25110d7a4d1e0d268646691d321d 100644
 --- a/dist/utils/assistant-message-frame.js
 +++ b/dist/utils/assistant-message-frame.js
 @@ -1,15 +1,30 @@
@@ -1192,7 +1195,7 @@ index c0e0019..a86f593 100644
                  if (frame.content.type !== "text") {
                      throw new Error(`text_start frame contains ${frame.content.type} content`);
 diff --git a/dist/utils/estimate.d.ts b/dist/utils/estimate.d.ts
-index 6dcca6e..5ccaaf2 100644
+index 6dcca6eff16b95b83e047a6e27b65d9d7694bf2c..5ccaaf2358a0afeea3ce354e5799255ae8508f3d 100644
 --- a/dist/utils/estimate.d.ts
 +++ b/dist/utils/estimate.d.ts
 @@ -1,4 +1,4 @@
@@ -1213,7 +1216,7 @@ index 6dcca6e..5ccaaf2 100644
  //# sourceMappingURL=estimate.d.ts.map
 \ No newline at end of file
 diff --git a/dist/utils/estimate.js b/dist/utils/estimate.js
-index d04ff22..28564cc 100644
+index d04ff22cbe8d7357404b938e228b8e3a2dbdcb1d..28564cc73798163f7590290123b7476573d5bee5 100644
 --- a/dist/utils/estimate.js
 +++ b/dist/utils/estimate.js
 @@ -1,95 +1,114 @@
@@ -1388,7 +1391,7 @@ index d04ff22..28564cc 100644
 \ No newline at end of file
 diff --git a/dist/utils/hosted-search.d.ts b/dist/utils/hosted-search.d.ts
 new file mode 100644
-index 0000000..a76ae52
+index 0000000000000000000000000000000000000000..a76ae5269313931b8476e1f153e76792875ad54c
 --- /dev/null
 +++ b/dist/utils/hosted-search.d.ts
 @@ -0,0 +1,10 @@
@@ -1404,7 +1407,7 @@ index 0000000..a76ae52
 +export declare function validateHostedSearchMessages(messages: readonly Message[]): void;
 diff --git a/dist/utils/hosted-search.js b/dist/utils/hosted-search.js
 new file mode 100644
-index 0000000..b177a26
+index 0000000000000000000000000000000000000000..b98cb8d128310273014e4490e9c26144f45b56af
 --- /dev/null
 +++ b/dist/utils/hosted-search.js
 @@ -0,0 +1,97 @@
@@ -1470,7 +1473,7 @@ index 0000000..b177a26
 +    // Without a target, estimate conservatively; with one, preserve the adapter's model boundary.
 +    const api = options?.api ?? (block.phase === "web_search_call" ? "openai-responses" : "anthropic-messages");
 +    if (block.phase === "web_search_call") {
-+        if ((api !== "openai-responses" && api !== "azure-openai-responses") || options?.isSameModel === false)
++        if ((api !== "openai-responses" && api !== "azure-openai-responses" && api !== "openai-codex-responses") || options?.isSameModel === false)
 +            return undefined;
 +        return { ...(block.wire ?? { type: "web_search_call", id: block.blockId, status: "completed" }) };
 +    }
@@ -1507,7 +1510,7 @@ index 0000000..b177a26
 +}
 diff --git a/dist/utils/local-request-error.d.ts b/dist/utils/local-request-error.d.ts
 new file mode 100644
-index 0000000..a72f65b
+index 0000000000000000000000000000000000000000..a72f65b33c64b89f118a59bd286e62624711fd90
 --- /dev/null
 +++ b/dist/utils/local-request-error.d.ts
 @@ -0,0 +1,15 @@
@@ -1528,7 +1531,7 @@ index 0000000..a72f65b
 +export declare function prepareLocalRequest<T>(phase: LocalRequestErrorPhase, prepare: () => T): T;
 diff --git a/dist/utils/local-request-error.js b/dist/utils/local-request-error.js
 new file mode 100644
-index 0000000..4d276dd
+index 0000000000000000000000000000000000000000..4d276ddc8caee98dfeeeeaa9bcd234ad63dc414b
 --- /dev/null
 +++ b/dist/utils/local-request-error.js
 @@ -0,0 +1,38 @@
@@ -1572,7 +1575,7 @@ index 0000000..4d276dd
 +}
 diff --git a/dist/utils/local-request-stream.d.ts b/dist/utils/local-request-stream.d.ts
 new file mode 100644
-index 0000000..879b78c
+index 0000000000000000000000000000000000000000..879b78cbecb0cc2c4322049ed2c7d61f77be9375
 --- /dev/null
 +++ b/dist/utils/local-request-stream.d.ts
 @@ -0,0 +1,3 @@
@@ -1581,7 +1584,7 @@ index 0000000..879b78c
 +export declare function withLocalRequestErrors(model: Model<Api>, options: { signal?: AbortSignal } | undefined, prepare: () => AssistantMessageEventStream): AssistantMessageEventStream;
 diff --git a/dist/utils/local-request-stream.js b/dist/utils/local-request-stream.js
 new file mode 100644
-index 0000000..5c63b88
+index 0000000000000000000000000000000000000000..5c63b882ae4cb618e964c5d2ce8d3c18e0fe4688
 --- /dev/null
 +++ b/dist/utils/local-request-stream.js
 @@ -0,0 +1,24 @@
