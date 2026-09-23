@@ -184,6 +184,7 @@ export function Composer({
     applyEditorDraft,
     snapshotReferences,
     draftSnapshot,
+    draftRevision,
     clearDraftForKey,
     restoreDraftForKey,
     persistDraft,
@@ -426,6 +427,7 @@ export function Composer({
     draft: {
       ref,
       draftSnapshot,
+      draftRevision,
       clearDraftForKey,
       restoreDraftForKey,
       setValue,
