@@ -45,10 +45,12 @@ export class PersistenceOutbox {
       if (this.entries.length >= MAX_ENTRIES) await this.flush(getHost);
       if (this.entries.length >= MAX_ENTRIES) {
         this.logger("error", "session persistence outbox is full", {
+          key: entry.key,
+          sessionId: entry.sessionId,
           size: this.entries.length,
           max: MAX_ENTRIES,
         });
-        return;
+        throw new Error("session persistence outbox is full");
       }
       this.entries.push(entry);
     }

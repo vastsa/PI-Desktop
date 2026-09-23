@@ -6889,15 +6889,15 @@ eleven-tool-round desktop paths are verified by
 
 #### E2E-178：缺失的 sessions 行被恢复，outbox 才能排空
 
-- **前提条件**：会话仍有活的 `sessions/<id>.jsonl`，以及 `session-message-outbox.json` 里排队的回合，但 `pi.sqlite` 的 `sessions` 行已不在（WAL/索引丢失）。
-- **步骤**：1）确认侧边栏不再列出该会话，且 `session.appendMessage` 会因 `session not found` 失败。2）重启应用（或完成一次会刷新 outbox 的主机握手）。3）可选：删除该会话，确认其 outbox 条目被丢掉而不是被救回。
-- **预期**：主机启动从 JSONL 重新插入 sessions 行并重建搜索索引。outbox 不会卡在队头，能够排空。对话回到侧边栏且消息还在。用户删除的会话不会被残留 outbox 条目重建。
+- **前提条件**：会话仍有 `sessions/<id>.jsonl` 和 `session-message-outbox.json` 中的待追加消息，但 `pi.sqlite` 中的 `sessions` 行已丢失（WAL/索引丢失）。队首可能带有缺失或属于另一会话的 turn id；旧版重放时 JSONL 也可能已有该消息 id 的重复行。
+- **步骤**：1）确认侧边栏不再列出该会话，且 `session.appendMessage` 会因 `session not found` 失败。2）重启应用（或完成一次刷新 outbox 的主机握手）。3）在索引缺失、JSONL 已重复写入同一消息且后面还有已索引消息时，用过期 turn id 重放该条消息。4）可选：删除会话，并确认其 outbox 条目被丢弃而非复活。
+- **预期**：主机从 JSONL 重新插入 sessions 行并重建索引。失效 turn 关联会被省略，但消息内容保留；outbox 不会卡在队首，后续消息顺序不变。重放会原位更新现有行，不再追加副本；`last_seq` 和搜索索引与去重后的转录顺序一致。用户删除的会话不会被残留 outbox 重建。
 - **链接规格**：`03-runtime/04-data-storage.md`、
   `03-runtime/06-host-rpc-protocol.md`、`03-runtime/07-process-model.md`、
   ADR 0041、`08-meta/decisions-log.md`（D318）
 - **验收**：C（对话和直播）、F（持久化）
 - **里程碑**：M5
-- **状态**：单元已覆盖（host-core 孤儿会话恢复测试、`persistence-outbox.test.mjs`）；完整桌面旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
+- **状态**：单元已覆盖（`sessions.rs` stale-turn/replay 测试、`persistence-outbox.test.mjs` 满载拒绝与排空测试）；完整桌面旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
 
 #### E2E-180：已发送的文件引用保持芯片并可点击打开
 

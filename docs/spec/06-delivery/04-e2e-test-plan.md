@@ -11167,24 +11167,30 @@ are withdrawn with ADR 0165.
 #### E2E-178: A missing sessions row is restored so the outbox can drain
 
 - **Preconditions**: A session has a live `sessions/<id>.jsonl` and queued
-  turns in `session-message-outbox.json`, but its row is gone from
-  `pi.sqlite` `sessions` (WAL/index loss).
+  appends in `session-message-outbox.json`, but its row is gone from
+  `pi.sqlite` `sessions` (WAL/index loss). The queued head may carry a turn
+  id whose row is missing or belongs to another session. For legacy replay,
+  the JSONL may already contain repeated copies of that message id.
 - **Steps**: 1) Confirm the sidebar no longer lists the session and
   `session.appendMessage` would fail `session not found`. 2) Restart the
   app (or otherwise complete a host handshake that flushes the outbox).
-  3) Optional: delete the session and confirm its outbox entries are
+  3) Replay an unindexed message with a stale turn id after writing its
+  transcript line more than once, with a later indexed message behind it.
+  4) Optional: delete the session and confirm its outbox entries are
   dropped rather than resurrected.
-- **Expected**: Host boot reinserts the sessions row from the JSONL and
-  rebuilds the search index. The outbox drains without pausing at the
-  head. The conversation returns to the sidebar with its messages. A
-  user-deleted session is not recreated from leftover outbox entries.
+- **Expected**: Host boot reinserts the sessions row from JSONL and rebuilds
+  its index. The stale turn link is omitted without losing the message; the
+  outbox drains and later messages keep transcript order. Replayed copies are
+  updated in place and do not add another line; `last_seq` and search index
+  match the deduplicated transcript. A user-deleted session is not recreated.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
   `03-runtime/06-host-rpc-protocol.md`, `03-runtime/07-process-model.md`,
   ADR 0041, `08-meta/decisions-log.md` (D318)
 - **Acceptance**: C (conversation & stream), F (persistence)
 - **Milestone**: M5
-- **Status**: Unit-covered (host-core orphaned-session restore tests,
-  `persistence-outbox.test.mjs`); full desktop journey Draft (run only in a capable environment when this surface changes)
+- **Status**: Unit-covered (`sessions.rs` stale-turn/replay tests,
+  `persistence-outbox.test.mjs` full-cap rejection and drain tests); full
+  desktop journey Draft (run only in a capable environment when this surface changes).
 
 #### E2E-179: Parent tools after a Task fan-out stay outside the delegation card
 
