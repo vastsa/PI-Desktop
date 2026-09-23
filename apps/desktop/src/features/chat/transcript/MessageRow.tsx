@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import type { UiMessage } from "@pi-desktop/shared";
 import { useOpenChatFileRef } from "../../../hooks/use-preview-target";
 import { splitChatText } from "../../../lib/chat-links";
+import { formatMessageTimestamp } from "../../../lib/message-timestamp";
 import { useAppStore } from "../../../stores/app-store";
 import { Markdown } from "../../../components/Markdown";
 import {
@@ -33,11 +34,13 @@ import {
 export const MessageRow = memo(function MessageRow({
   message,
   isRunning,
+  embedded = false,
 }: {
   message: UiMessage;
   isRunning: boolean;
+  embedded?: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const openTranscriptMenu = useTranscriptMenu();
   const { copyText, selectText } = useChatTextActions();
   const editUserMessage = useAppStore((s) => s.editUserMessage);
@@ -47,6 +50,16 @@ export const MessageRow = memo(function MessageRow({
   const isSessionMessage = Boolean(message.sessionMessage);
   const editableUserMessage = isUser && !isSessionMessage;
   const workspaceRoot = useAppStore((s) => s.workspace?.path);
+  const userTimestamp = useMemo(
+    () =>
+      isUser && !isSessionMessage
+        ? formatMessageTimestamp(
+            message.createdAt,
+            i18n.resolvedLanguage ?? i18n.language,
+          )
+        : undefined,
+    [i18n.language, i18n.resolvedLanguage, isSessionMessage, isUser, message.createdAt],
+  );
   const openFileRef = useOpenChatFileRef();
   // Slash prompts are stored expanded; editing works on the typed form so the
   // resent turn re-expands the template (D123).
@@ -95,6 +108,7 @@ export const MessageRow = memo(function MessageRow({
   */
   const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!isUser) return;
+    if (embedded) event.stopPropagation();
     openTranscriptMenu(event, {
       label: t("chat.messageMenu"),
       items: userMessageMenuItems({
@@ -121,8 +135,8 @@ export const MessageRow = memo(function MessageRow({
   };
   return (
     <div
-      className={`message-row ${isSessionMessage ? "session-message" : isUser ? "user" : message.role}`}
-      data-minimap-id={message.id}
+      className={`message-row ${isSessionMessage ? "session-message" : isUser ? "user" : message.role}${embedded ? " embedded" : ""}`}
+      data-minimap-id={embedded ? undefined : message.id}
       data-message-id={message.id}
       data-row-role={isSessionMessage ? undefined : "user"}
       onContextMenu={onContextMenu}
@@ -239,8 +253,13 @@ export const MessageRow = memo(function MessageRow({
             )}
           </div>
         ) : null}
-        {!editing && (hasAnswer || showRevisionPager) ? (
+        {!editing && (hasAnswer || showRevisionPager || userTimestamp) ? (
           <div className="message-actions">
+            {userTimestamp ? (
+              <time className="message-timestamp" dateTime={userTimestamp.dateTime}>
+                {userTimestamp.label}
+              </time>
+            ) : null}
             {showRevisionPager ? (
               <div className="message-revision-pager" role="group" aria-label={t("chat.revisions")}>
                 <TooltipButton

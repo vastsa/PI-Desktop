@@ -110,6 +110,15 @@ snapshot directory with `session.delete` and sweeps directories whose session
 no longer exists at startup. A snapshot is never inferred from Git, so a later
 commit does not remove historical review evidence.
 
+Captured Bash mutations use an additive `details.reviews` array and explicit
+`details.reviewCapture` coverage status. Every record owns an independent
+snapshot directory even when several files belong to one tool message. Failed
+or interrupted shell execution can retain evidence of completed mutations.
+Rollback rewrites only the matching snapshot id in the canonical transcript;
+forking marks all inherited array records non-reversible, as for legacy singular
+records. These details require no database or transcript schema migration.
+See [Shell workspace review evidence](../../adr/shell-workspace-review-evidence.md).
+
 ### 2.1 Transcript files (D119)
 
 `sessions/<sessionId>.jsonl` — first line is a session header, then one line
@@ -1243,6 +1252,15 @@ that latest capped projection as `navigationParent`, without adding a physical
 line to the bounded page. This is derived read-only context, not a new persisted
 relationship or index. The renderer's unified reading view is shared by ordinary
 history and search; it never becomes canonical mutation or model input.
+
+Display-limited tool results preserve bounded workspace review metadata
+independently of output text and diff bodies. `details.root`, capture status,
+and valid `review`/`reviews` identities, paths, counts, and rollback state must
+survive large output strings or hunks. Shortened hunks remain structurally
+valid and carry `truncated: true`. This applies to reopening sessions, session
+switches, and older-page reads; it never mutates the canonical transcript or
+snapshot files. Malformed and oversized evidence remains subject to explicit
+metadata limits.
 
 A bounded window is served through a per-session **transcript layout**: the byte
 offset of every message and compaction line, plus the file length those offsets

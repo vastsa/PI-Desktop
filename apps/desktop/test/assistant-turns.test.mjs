@@ -8,12 +8,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const {
   assistantTurnContent,
+  assistantTurnMessages,
+  assistantTurnTools,
   assistantTurnResponseOutputTokens,
   assistantTurnResponseOutputIsEstimated,
   assistantTurnUsage,
   buildTranscriptEntries,
   reuseTranscriptEntries,
   subagentRunsEqual,
+  transcriptEntryMessages,
 } = await import("../src/lib/assistant-turns.ts");
 
 function message(id, role, content, extra = {}) {
@@ -50,6 +53,7 @@ test("groups assistant fragments and tools into one conversational turn", () => 
     ["message", "activity", "message", "activity", "message"],
   );
   assert.equal(entries[1].anchorId, "intro");
+  assert.equal(entries[1].startedAt, entries[0].message.createdAt);
   assert.equal(
     assistantTurnContent(entries[1]),
     "I will inspect the code.\n\nThe problem is in the renderer.\n\nFixed and verified.",
@@ -114,6 +118,194 @@ test("starts a new assistant turn only after the next user message", () => {
     entries.map((entry) => entry.kind),
     ["message", "assistant-turn", "message", "assistant-turn"],
   );
+});
+
+test("marked steering stays ordered inside one assistant turn", () => {
+  const attachment = { kind: "file", name: "notes.txt", ref: "notes.txt" };
+  const root = message("root", "user", "Fix it", {
+    createdAt: "2026-07-28T00:00:00.000Z",
+  });
+  const steering = message("steer", "user", "Also cover attachments", {
+    steering: true,
+    attachments: [attachment],
+    createdAt: "2026-07-28T00:00:03.000Z",
+    usage: { inputTokens: 99, outputTokens: 99, totalTokens: 198 },
+  });
+  const { entries } = buildTranscriptEntries([
+    root,
+    message("intro", "assistant", "Inspecting", {
+      usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
+    }),
+    message("read", "tool", "result", { toolName: "Read" }),
+    steering,
+    message("continue", "assistant", "Continuing with the new constraint"),
+    message("edit", "tool", "done", { toolName: "Edit" }),
+    message("final", "assistant", "Fixed", {
+      usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+    }),
+  ]);
+
+  assert.equal(entries.length, 2);
+  const turn = entries[1];
+  assert.equal(turn.kind, "assistant-turn");
+  assert.equal(turn.id, "intro");
+  assert.equal(turn.startedAt, root.createdAt);
+  assert.deepEqual(
+    turn.parts.map((part) => part.kind),
+    ["message", "activity", "steering", "message", "activity", "message"],
+  );
+  assert.equal(turn.parts[2].message, steering);
+  assert.equal(turn.parts[2].message.attachments[0], attachment);
+  assert.deepEqual(
+    assistantTurnMessages(turn).map((item) => item.id),
+    ["intro", "continue", "final"],
+  );
+  assert.equal(
+    assistantTurnContent(turn),
+    "Inspecting\n\nContinuing with the new constraint\n\nFixed",
+  );
+  assert.deepEqual(assistantTurnUsage(turn), {
+    inputTokens: 5,
+    outputTokens: 3,
+    totalTokens: 8,
+  });
+  assert.deepEqual(
+    transcriptEntryMessages(entries).map((item) => item.id),
+    ["root", "intro", "continue", "final"],
+  );
+  assert.deepEqual(
+    assistantTurnTools(turn).map((item) => item.id),
+    ["read", "edit"],
+  );
+});
+
+test("steering before first assistant output starts the same stable turn", () => {
+  const root = message("root", "user", "Start", {
+    createdAt: "2026-07-28T00:00:00.000Z",
+  });
+  const steering = message("steer", "user", "Use the narrow path", {
+    steering: true,
+    createdAt: "2026-07-28T00:00:01.000Z",
+  });
+  const records = [
+    root,
+    steering,
+    message("read", "tool", "result", { toolName: "Read" }),
+    message("final", "assistant", "Done"),
+  ];
+  const first = buildTranscriptEntries(records).entries;
+  const reloaded = buildTranscriptEntries(
+    records.map((record) => ({
+      ...record,
+      ...(record.attachments
+        ? { attachments: record.attachments.map((attachment) => ({ ...attachment })) }
+        : {}),
+    })),
+  ).entries;
+
+  assert.deepEqual(first, reloaded);
+  assert.equal(first.length, 2);
+  assert.equal(first[1].kind, "assistant-turn");
+  assert.equal(first[1].id, "steer");
+  assert.equal(first[1].startedAt, root.createdAt);
+  assert.deepEqual(
+    first[1].parts.map((part) => part.kind),
+    ["steering", "activity", "message"],
+  );
+});
+
+test("orphaned steering stays visible and ordinary users keep hard boundaries", () => {
+  const leading = message("leading", "user", "Supplement from unloaded history", {
+    steering: true,
+  });
+  const { entries } = buildTranscriptEntries([
+    leading,
+    message("partial", "assistant", "Stopped", { status: "aborted" }),
+    message("queued", "user", "A new task"),
+    message("next", "assistant", "New answer"),
+  ]);
+
+  assert.deepEqual(
+    entries.map((entry) => entry.kind),
+    ["message", "assistant-turn", "message", "assistant-turn"],
+  );
+  assert.equal(entries[0].message, leading);
+  assert.equal(entries[1].id, "partial");
+  assert.equal(entries[3].id, "next");
+  assert.deepEqual(
+    transcriptEntryMessages(entries).map((message) => message.id),
+    ["leading", "partial", "queued", "next"],
+  );
+});
+
+test("steering-only start can abort before a later ordinary task", () => {
+  const { entries } = buildTranscriptEntries([
+    message("root", "user", "Start"),
+    message("steer", "user", "Use the fallback", { steering: true }),
+    message("aborted", "assistant", "Stopped", { status: "aborted" }),
+    message("queued", "user", "New task"),
+    message("next", "assistant", "New answer"),
+  ]);
+
+  assert.deepEqual(
+    entries.map((entry) => entry.kind),
+    ["message", "assistant-turn", "message", "assistant-turn"],
+  );
+  assert.equal(entries[1].id, "steer");
+  assert.deepEqual(
+    entries[1].parts.map((part) => part.kind),
+    ["steering", "message"],
+  );
+  assert.equal(entries[3].id, "next");
+});
+
+test("compaction prevents marked steering from merging backward", () => {
+  const { entries } = buildTranscriptEntries(
+    [
+      message("before", "assistant", "Before"),
+      message("steer", "user", "After compact", { steering: true }),
+      message("after", "assistant", "After"),
+    ],
+    [mark("cp", "before")],
+  );
+
+  assert.deepEqual(
+    entries.map((entry) => entry.kind),
+    ["assistant-turn", "compaction", "message", "assistant-turn"],
+  );
+  assert.equal(entries[2].message.id, "steer");
+});
+
+test("assistant turns retain the initiating user timestamp when it is loaded", () => {
+  const user = message("user", "user", "Start");
+  const first = buildTranscriptEntries([
+    user,
+    message("assistant", "assistant", "Working"),
+  ]).entries[1];
+  const paged = buildTranscriptEntries([
+    message("assistant", "assistant", "Working"),
+  ]).entries[0];
+
+  assert.equal(first.kind, "assistant-turn");
+  assert.equal(first.startedAt, user.createdAt);
+  assert.equal(paged.kind, "assistant-turn");
+  assert.equal(paged.startedAt, undefined);
+});
+
+test("started-at metadata participates in transcript entry reuse", () => {
+  const original = buildTranscriptEntries([
+    message("user", "user", "Start"),
+    message("assistant", "assistant", "Done"),
+  ]).entries;
+  const changed = original.map((entry) =>
+    entry.kind === "assistant-turn"
+      ? { ...entry, startedAt: "2026-07-28T00:00:00.000Z" }
+      : entry,
+  );
+  const reused = reuseTranscriptEntries(original, changed);
+
+  assert.notEqual(reused[1], original[1]);
+  assert.equal(reused[1].startedAt, "2026-07-28T00:00:00.000Z");
 });
 
 test("keeps thinking and tool-only activity in the assistant turn", () => {
@@ -302,6 +494,113 @@ test("a resumed delegation continues in the latest Task card (ADR 0279)", () => 
   assert.deepEqual(
     activity.items[1].delegate.items.map((item) => item.message.id),
     ["delegate-1", "delegate-2"],
+  );
+  assert.deepEqual(
+    turn.ownedToolMessages.map((item) => item.id),
+    ["task-1", "task-2"],
+  );
+});
+
+test("resumed delegates keep raw tool ownership on each original Task turn", () => {
+  const task1 = message("task-1", "tool", "report", {
+    toolName: "Task",
+    toolCallId: "task-1",
+    toolResult: { details: { delegationId: "del-1" } },
+  });
+  const edit1 = message("edit-1", "tool", "done", {
+    toolName: "Edit",
+    parentToolCallId: "task-1",
+  });
+  const task2 = message("task-2", "tool", "report", {
+    toolName: "Task",
+    toolCallId: "task-2",
+    toolArgs: { resume: "del-1" },
+    toolResult: { details: { delegationId: "del-2" } },
+  });
+  const edit2 = message("edit-2", "tool", "done", {
+    toolName: "Edit",
+    parentToolCallId: "task-2",
+  });
+  const { entries } = buildTranscriptEntries([
+    message("user-1", "user", "First"),
+    task1,
+    edit1,
+    message("answer-1", "assistant", "First done"),
+    message("user-2", "user", "Second"),
+    task2,
+    edit2,
+    message("answer-2", "assistant", "Second done"),
+  ]);
+  const first = entries[1];
+  const second = entries[3];
+
+  assert.equal(first.kind, "assistant-turn");
+  assert.equal(second.kind, "assistant-turn");
+  assert.deepEqual(
+    first.ownedToolMessages.map((item) => item.id),
+    ["task-1", "edit-1"],
+  );
+  assert.deepEqual(
+    second.ownedToolMessages.map((item) => item.id),
+    ["task-2", "edit-2"],
+  );
+  assert.equal(first.parts[0].items[0].delegate, undefined);
+  assert.deepEqual(
+    second.parts[0].items[0].delegate.items.map((item) => item.message.id),
+    ["edit-1", "edit-2"],
+  );
+});
+
+test("delayed delegate and rollback updates invalidate only the owning turn", () => {
+  const task = message("task", "tool", "report", {
+    toolName: "Task",
+    toolCallId: "task-call",
+  });
+  const base = [
+    message("user-1", "user", "First"),
+    task,
+    message("answer-1", "assistant", "First done"),
+    message("user-2", "user", "Second"),
+    message("answer-2", "assistant", "Second done"),
+  ];
+  const initial = buildTranscriptEntries(base).entries;
+  const delayedEdit = message("delayed-edit", "tool", "done", {
+    toolName: "Edit",
+    parentToolCallId: "task-call",
+    toolResult: { details: { review: { state: "active" } } },
+  });
+  const delayed = buildTranscriptEntries([...base, delayedEdit]).entries;
+  const reusedDelayed = reuseTranscriptEntries(initial, delayed);
+
+  assert.notEqual(reusedDelayed[1], initial[1]);
+  assert.equal(reusedDelayed[3], initial[3]);
+  assert.deepEqual(
+    reusedDelayed[1].ownedToolMessages.map((item) => item.id),
+    ["task", "delayed-edit"],
+  );
+
+  const rolledBackEdit = {
+    ...delayedEdit,
+    toolResult: { details: { review: { state: "rolledBack" } } },
+  };
+  const rolledBack = buildTranscriptEntries([...base, rolledBackEdit]).entries;
+  const reusedRollback = reuseTranscriptEntries(delayed, rolledBack);
+
+  assert.notEqual(reusedRollback[1], delayed[1]);
+  assert.equal(reusedRollback[3], delayed[3]);
+  assert.equal(
+    reusedRollback[1].ownedToolMessages.at(-1),
+    rolledBackEdit,
+  );
+
+  const stable = reuseTranscriptEntries(
+    rolledBack,
+    buildTranscriptEntries([...base, rolledBackEdit]).entries,
+  );
+  assert.equal(stable[1], rolledBack[1]);
+  assert.equal(
+    stable[1].ownedToolMessages,
+    rolledBack[1].ownedToolMessages,
   );
 });
 

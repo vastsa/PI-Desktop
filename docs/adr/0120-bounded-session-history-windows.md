@@ -32,6 +32,13 @@ the full payload had already crossed the process boundary.
    renderer window cannot delete older messages.
 4. The uncapped default remains available to non-renderer callers, so model
    reconstruction and persistence semantics do not depend on UI pagination.
+5. Structured workspace review evidence has its own bounded display projection.
+   A large output string or diff hunk must not consume the identities, paths,
+   counts, states, or capture status needed to render recorded file changes.
+   Both singular `review` and plural `reviews` remain parseable after capped
+   reloads. Diff bodies may be shortened with an explicit truncation flag;
+   malformed or oversized metadata does not bypass the display bounds. The
+   original transcript and rollback snapshots are never rewritten by this read.
 
 ## Alternatives considered
 

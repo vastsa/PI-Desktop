@@ -103,9 +103,16 @@ export function useAutomaticDisclosure(
   }, [choices, key, parent.claim, revealRequest]);
 
   const previousOpen = useRef(open);
+  const previousKey = useRef(key);
   useLayoutEffect(() => {
-    // Completion must not hide keyboard focus or an active text selection.
-    if (previousOpen.current && !open && !choice && ownsReadingPosition(bodyRef.current)) {
+    // Same-identity updates preserve reading ownership. A new process phase
+    // still closes, but returns nested keyboard focus to its visible header.
+    const identityChanged = previousKey.current !== key;
+    previousKey.current = key;
+    if (identityChanged && previousOpen.current && !open && bodyRef.current?.contains(document.activeElement)) {
+      titleRef.current?.focus({ preventScroll: true });
+    }
+    if (previousOpen.current && !open && !choice && ownsReadingPosition(bodyRef.current) && !identityChanged) {
       choices.set(key, { open: true });
       parent.claim();
     }

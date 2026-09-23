@@ -28,6 +28,7 @@ test("automatic disclosure does not claim a reading position", () => {
   // Automatic reveal/collapse may claim the parent hierarchy, but never calls
   // the scroll anchor notifier reserved for direct user interaction.
   assert.match(disclosure, /if \(previousOpen\.current && !open && !choice && ownsReadingPosition/);
+  assert.match(disclosure, /const identityChanged = previousKey\.current !== key;/);
   const revealEffect = disclosure.match(
     /useLayoutEffect\(\(\) => \{\s*if \(revealRequest === undefined[\s\S]*?\n  \}, \[choices, key, parent\.claim, revealRequest\]\);/,
   )?.[0];
@@ -79,7 +80,7 @@ test("the transcript restores the held title inside its resize observer", () => 
   // so the correction has to run from the observer, before follow.
   assert.match(
     transcript,
-    /const followScrollNow = useCallback\(\(\) => \{\s*if \(paneVisibleRef\.current && restoreDisclosureAnchor\(\)\) return;\s*if \(!paneVisibleRef\.current \|\| !pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
+    /const followScrollNow = useCallback\(\(\) => \{\s*if \(paneVisibleRef\.current && restoreHeldDisclosure\(\)\) return;\s*if \(!paneVisibleRef\.current \|\| !pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
   );
   assert.match(transcript, /new ResizeObserver\(followScrollNow\)/);
   assert.match(transcript, /ro\.observe\(content, \{ box: "border-box" \}\)/);
@@ -88,7 +89,7 @@ test("the transcript restores the held title inside its resize observer", () => 
 test("holding a disclosure leaves follow without a delayed grab-back", () => {
   assert.match(
     transcript,
-    /const enterDisclosureReading = useCallback\(\(\) => \{\s*cancelFollowScroll\(\);\s*pinnedRef\.current = false;\s*setShowJump\(true\);/,
+    /const enterDisclosureReading = useCallback\(\(\) => \{\s*cancelFollowScroll\(\);\s*setPinned\(false\);\s*setShowJump\(true\);/,
   );
   assert.match(
     transcript,
@@ -102,20 +103,37 @@ test("holding a disclosure leaves follow without a delayed grab-back", () => {
 test("real input, a new turn and every navigation drop the held position", () => {
   assert.match(
     transcript,
-    /lastScrollGestureAtRef\.current = performance\.now\(\);\s*\/\/ Real input takes the viewport back from a held disclosure position\.\s*releaseDisclosureAnchor\(\);/,
+    /lastScrollGestureAtRef\.current = performance\.now\(\);\s*if \(isDisclosureAnchorHeld\(\)\) reanchorPrepend\(\);\s*releaseDisclosureAnchor\(\);/,
   );
   assert.match(
     transcript,
-    /releaseDisclosureAnchor\(\);\s*cancelFollowScroll\(\);\s*pinnedRef\.current = true;\s*setShowJump\(false\);\s*scrollToBottom\(\);/,
+    /releaseDisclosureAnchor\(\);\s*cancelFollowScroll\(\);\s*setPinned\(true\);\s*setShowJump\(false\);\s*scrollToBottom\(\);/,
   );
   assert.match(
     transcript,
-    /const jumpToLatest = useCallback\(\(\) => \{\s*releaseDisclosureAnchor\(\);\s*pinnedRef\.current = true;/,
+    /const jumpToLatest = useCallback\(\(\) => \{\s*invalidatePrepend\(\);\s*releaseDisclosureAnchor\(\);\s*setPinned\(true\);/,
   );
   assert.match(
     transcript,
     /if \(becameHidden\) \{\s*releaseDisclosureAnchor\(\);/,
   );
+});
+
+test("visible scrolling records retained offsets before paging or follow transitions", () => {
+  assert.match(transcript,
+    /const handleScroll = useCallback\(\(\) => \{\s*const el = scrollRef\.current;\s*if \(!el \|\| !paneVisibleRef\.current \|\| !transcriptHasLayout\(el\)\) return;\s*lastLaidOutScrollTopRef\.current = el\.scrollTop;/);
+  assert.match(transcript, /el\.scrollTop = retained;\s*recordScrollPosition\(el\.scrollTop\)/);
+  assert.doesNotMatch(transcript, /last(?:LaidOut)?ScrollTopRef\.current = retained/);
+});
+
+test("prepend invalidation is wired to navigation, new turns and unmount", () => {
+  assert.match(transcript, /useLayoutEffect\(invalidate, \[invalidate, readingWindow, searchRequestId, sessionId\]\)/);
+  assert.doesNotMatch(transcript, /useLayoutEffect\(invalidate, \[[^\]]*paneVisible/);
+  assert.match(transcript, /useLayoutEffect\(\(\) => \(\) => \{ controller\.cancel\(\); \}, \[controller\]\)/);
+  assert.match(transcript, /if \(turnStarted\) invalidatePrepend\(\)/);
+  assert.match(transcript, /if \(fresh\) invalidatePrepend\(\)/);
+  assert.match(transcript, /const recordSearchPosition = useCallback\([\s\S]*?invalidatePrepend\(\);\s*recordScrollPosition\(top\)/);
+  assert.match(transcript, /onPosition: recordSearchPosition,/);
 });
 
 test("follow records the position the scroller actually reached", () => {

@@ -14,6 +14,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+pub mod shell;
+
 use crate::workspace::{self, ToolRoot};
 
 const REVIEW_DIR: &str = "review-changes";
@@ -112,6 +114,7 @@ struct SnapshotMeta {
 pub struct PendingChange {
     snapshot_dir: PathBuf,
     before_path: PathBuf,
+    workspace_root: PathBuf,
     resolved: PathBuf,
     session_id: String,
     message_id: String,
@@ -257,6 +260,7 @@ pub fn prepare_change(
 
     Ok(Some(PendingChange {
         snapshot_dir,
+        workspace_root: root.to_path_buf(),
         before_path,
         resolved,
         session_id: session_id.to_string(),
@@ -401,25 +405,35 @@ fn make_hunks(ops: &[DiffOp]) -> Vec<ReviewDiffHunk> {
     hunks
 }
 
-fn make_preview(
-    before_path: Option<&Path>,
+fn make_preview_bytes(
+    before: Option<&[u8]>,
     before_exists: bool,
-    after_path: Option<&Path>,
+    after: Option<&[u8]>,
     after_exists: bool,
 ) -> (bool, bool, usize, usize, Vec<ReviewDiffHunk>) {
-    let Ok(Some(before)) = read_preview(before_path, before_exists) else {
-        return (false, true, 0, 0, Vec::new());
+    let before = if before_exists {
+        let Some(bytes) = before else {
+            return (false, true, 0, 0, Vec::new());
+        };
+        bytes
+    } else {
+        &[]
     };
-    let Ok(Some(after)) = read_preview(after_path, after_exists) else {
-        return (false, true, 0, 0, Vec::new());
+    let after = if after_exists {
+        let Some(bytes) = after else {
+            return (false, true, 0, 0, Vec::new());
+        };
+        bytes
+    } else {
+        &[]
     };
     if before.contains(&0) || after.contains(&0) {
         return (true, false, 0, 0, Vec::new());
     }
-    let Ok(before) = String::from_utf8(before) else {
+    let Ok(before) = std::str::from_utf8(before) else {
         return (true, false, 0, 0, Vec::new());
     };
-    let Ok(after) = String::from_utf8(after) else {
+    let Ok(after) = std::str::from_utf8(after) else {
         return (true, false, 0, 0, Vec::new());
     };
     let before_lines: Vec<String> = before.lines().map(str::to_string).collect();
@@ -435,13 +449,47 @@ fn make_preview(
     (false, false, additions, deletions, hunks)
 }
 
+fn make_preview(
+    before_path: Option<&Path>,
+    before_exists: bool,
+    after_path: Option<&Path>,
+    after_exists: bool,
+) -> (bool, bool, usize, usize, Vec<ReviewDiffHunk>) {
+    let Ok(Some(before)) = read_preview(before_path, before_exists) else {
+        return (false, true, 0, 0, Vec::new());
+    };
+    let Ok(Some(after)) = read_preview(after_path, after_exists) else {
+        return (false, true, 0, 0, Vec::new());
+    };
+    make_preview_bytes(Some(&before), before_exists, Some(&after), after_exists)
+}
+
 pub fn finalize_change(pending: &PendingChange) -> Result<ReviewChange> {
-    let after_exists = pending.resolved.is_file();
+    let after_metadata = fs::symlink_metadata(&pending.resolved).ok();
+    if after_metadata
+        .as_ref()
+        .is_some_and(|metadata| metadata.file_type().is_symlink())
+    {
+        return Err(anyhow!("review target became a symlink"));
+    }
+    let after_exists = after_metadata
+        .as_ref()
+        .is_some_and(|metadata| metadata.file_type().is_file());
+    if after_exists {
+        let guarded = workspace::resolve_in_workspace(&pending.workspace_root, &pending.path)
+            .map_err(|error| anyhow!(error))?;
+        if guarded != pending.resolved {
+            return Err(anyhow!("review target escaped workspace containment"));
+        }
+    }
     let after_hash = if after_exists {
         Some(hash_file(&pending.resolved)?)
     } else {
         None
     };
+    if pending.before_exists == after_exists && pending.before_hash == after_hash {
+        return Err(anyhow!("review target did not change"));
+    }
     let (binary, truncated, additions, deletions, hunks) = make_preview(
         pending
             .before_copied
@@ -455,8 +503,11 @@ pub fn finalize_change(pending: &PendingChange) -> Result<ReviewChange> {
         (true, false) => ReviewChangeStatus::Deleted,
         _ => ReviewChangeStatus::Modified,
     };
-    // Existing files remain reversible even when the tool deleted them; new
-    // files need to exist after the tool so rollback can remove them.
+    let operation = match status {
+        ReviewChangeStatus::Added => ReviewChangeOperation::Write,
+        ReviewChangeStatus::Deleted => ReviewChangeOperation::Delete,
+        ReviewChangeStatus::Modified => pending.operation,
+    };
     let reversible = if pending.before_exists {
         pending.before_copied
     } else {
@@ -467,7 +518,7 @@ pub fn finalize_change(pending: &PendingChange) -> Result<ReviewChange> {
         session_id: pending.session_id.clone(),
         message_id: pending.message_id.clone(),
         path: pending.path.clone(),
-        operation: pending.operation,
+        operation,
         before_exists: pending.before_exists,
         before_hash: pending.before_hash.clone(),
         after_exists,
@@ -481,7 +532,7 @@ pub fn finalize_change(pending: &PendingChange) -> Result<ReviewChange> {
         snapshot_id: pending.snapshot_id.clone(),
         message_id: pending.message_id.clone(),
         path: pending.path.clone(),
-        operation: pending.operation,
+        operation,
         status,
         state: ReviewChangeState::Active,
         additions,
@@ -491,6 +542,82 @@ pub fn finalize_change(pending: &PendingChange) -> Result<ReviewChange> {
         truncated,
         reversible,
     })
+}
+
+pub(crate) fn finalize_shell_change(
+    data_dir: &Path,
+    session_id: &str,
+    message_id: &str,
+    path: &str,
+    before: Option<&[u8]>,
+    after: Option<&[u8]>,
+) -> Result<ReviewChange> {
+    let snapshot_id = Uuid::new_v4().to_string();
+    let snapshot_dir = snapshot_dir(data_dir, session_id, &snapshot_id)?;
+    fs::create_dir_all(&snapshot_dir)?;
+    let before_exists = before.is_some();
+    let after_exists = after.is_some();
+    let before_hash = before.map(|bytes| hex::encode(Sha256::digest(bytes)));
+    let after_hash = after.map(|bytes| hex::encode(Sha256::digest(bytes)));
+    if before_exists == after_exists && before_hash == after_hash {
+        let _ = fs::remove_dir_all(&snapshot_dir);
+        return Err(anyhow!("review target did not change"));
+    }
+    let before_copied = match before {
+        Some(bytes) => fs::write(before_path(&snapshot_dir), bytes).is_ok(),
+        None => false,
+    };
+    let (binary, truncated, additions, deletions, hunks) =
+        make_preview_bytes(before, before_exists, after, after_exists);
+    let status = match (before_exists, after_exists) {
+        (false, true) => ReviewChangeStatus::Added,
+        (true, false) => ReviewChangeStatus::Deleted,
+        _ => ReviewChangeStatus::Modified,
+    };
+    let operation = match status {
+        ReviewChangeStatus::Added => ReviewChangeOperation::Write,
+        ReviewChangeStatus::Deleted => ReviewChangeOperation::Delete,
+        ReviewChangeStatus::Modified => ReviewChangeOperation::Edit,
+    };
+    let reversible = !before_exists || before_copied;
+    let meta = SnapshotMeta {
+        version: 1,
+        session_id: session_id.to_string(),
+        message_id: message_id.to_string(),
+        path: path.to_string(),
+        operation,
+        before_exists,
+        before_hash,
+        after_exists,
+        after_hash,
+        reversible,
+        state: ReviewChangeState::Active,
+    };
+    if let Err(error) = write_meta(&metadata_path(&snapshot_dir), &meta) {
+        let _ = fs::remove_dir_all(&snapshot_dir);
+        return Err(error);
+    }
+    Ok(ReviewChange {
+        version: 1,
+        snapshot_id,
+        message_id: message_id.to_string(),
+        path: path.to_string(),
+        operation,
+        status,
+        state: ReviewChangeState::Active,
+        additions,
+        deletions,
+        hunks,
+        binary,
+        truncated,
+        reversible,
+    })
+}
+
+pub(crate) fn discard_snapshot(data_dir: &Path, session_id: &str, snapshot_id: &str) {
+    if let Ok(dir) = snapshot_dir(data_dir, session_id, snapshot_id) {
+        let _ = fs::remove_dir_all(dir);
+    }
 }
 
 fn restore_before(target: &Path, before: &Path) -> Result<()> {

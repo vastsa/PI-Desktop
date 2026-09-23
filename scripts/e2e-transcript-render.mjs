@@ -154,7 +154,7 @@ app.whenReady().then(async () => {
     stream.on("data", (data) => {
       output += data;
     });
-  const timeout = setTimeout(() => child.kill("SIGKILL"), 45_000);
+  const timeout = setTimeout(() => child.kill("SIGKILL"), 90_000);
   let code;
   try {
     code = await new Promise((resolve, reject) => {

@@ -151,6 +151,17 @@ Extend the runtime
 **Resident Services**
 **Plugin Message Bus**
 
+Chat messages show their local date and time. A task's process expands while it
+runs and folds after completion, leaving the final answer visible; expand the
+elapsed-time row to revisit the work. Supplemental input sent with Alt+Enter
+(steering) stays inside the same process. The queue's **Send now** action instead
+ends the active turn at its next boundary and starts a new one; those turns stay
+separate. Recorded workspace Write/Edit and captured shell changes appear below
+the answer with a separate count/totals header and a spaced file list.
+Click a file to review its expanded diffs and guarded rollback in the right
+sidebar. Counts remain cumulative edits from loaded parent-session evidence,
+not a net Git diff.
+
 </td>
 
 </tr>

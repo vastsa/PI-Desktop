@@ -78,6 +78,44 @@ test("uses one assistant marker for all response fragments in a user turn", () =
   assert.equal(markers[1].preview, "First sentence.\n\nSecond sentence.");
 });
 
+test("projected grouped steering does not create a hidden marker or split the assistant marker", () => {
+  const markers = buildConversationMinimapMarkers([
+    message("user", "user", "Initial task"),
+    message("assistant-before", "assistant", "First work segment."),
+    message("assistant-after", "assistant", "Second work segment."),
+  ]);
+
+  assert.deepEqual(
+    markers.map(({ id, role }) => ({ id, role })),
+    [
+      { id: "user", role: "user" },
+      { id: "assistant-before", role: "assistant" },
+    ],
+  );
+  assert.equal(
+    markers[1].preview,
+    "First work segment.\n\nSecond work segment.",
+  );
+});
+
+test("projected steering before output keeps ordinary user and assistant markers", () => {
+  const markers = buildConversationMinimapMarkers([
+    message("user", "user", "Initial task"),
+    message("assistant", "assistant", "Answer"),
+  ]);
+
+  assert.deepEqual(markers.map((marker) => marker.id), ["user", "assistant"]);
+});
+
+test("standalone leading steering retains a navigable user marker", () => {
+  const markers = buildConversationMinimapMarkers([
+    { ...message("steer", "user", "Supplement from unloaded history"), steering: true },
+    message("assistant", "assistant", "Answer"),
+  ]);
+
+  assert.deepEqual(markers.map((marker) => marker.id), ["steer", "assistant"]);
+});
+
 test("starts the assistant marker at the first contentful response fragment", () => {
   const markers = buildConversationMinimapMarkers([
     message("user-1", "user", "Question"),

@@ -213,23 +213,24 @@ test("the transcript bounds mounted history and escalates at the top", () => {
     /isHistoryRevealPosition\(el, pinnedRef\.current && !gesturing\)/,
   );
   const reachTop = transcript.match(
-    /const reachTop = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[loadOlder, windowSize\]\);/,
+    /const reachTop = useCallback\(\(retry = false\) => \{([\s\S]*?)\n  \}, \[controller,[^\]]*windowSize\]\);/,
   )?.[1];
   assert.ok(reachTop, "reachTop must exist with a stable identity");
-  assert.match(reachTop, /growTranscriptWindow\(windowSize, historyLengthRef\.current\)/);
-  assert.match(reachTop, /prependHeightRef\.current = el\.scrollHeight/);
+  assert.match(reachTop, /growTranscriptWindow\(windowSize, frame\.historyLength\)/);
+  assert.match(reachTop, /controller\.begin\("window", el\)/);
   assert.match(reachTop, /setWindowSize\(grown\)/);
-  assert.match(reachTop, /loadOlder\(\)/);
+  assert.match(reachTop, /controller\.begin\("page", el, retry\)/);
+  assert.match(reachTop, /await onLoadOlder\(\)/);
 });
 
-test("mounting rows above the viewport is anchored like a fetched page", () => {
-  // Both add height above the reading position, so both take the same
-  // pre-paint correction; without `windowSize` here, growing the window would
-  // shove the rows the user is reading down the screen.
+test("prepend restoration follows the actual mounted projection in layout", () => {
+  // Runtime geometry/lifecycle cases live in transcript-scroll.test.mjs. This
+  // wiring guard ensures the controller is fed the deferred DOM, not raw count.
   assert.match(
     transcript,
-    /const delta = el\.scrollHeight - previousHeight;[\s\S]*?\}, \[messages\.length, windowSize\]\)/,
+    /useLayoutEffect\(\(\) => \{\s*if \(paneVisibleRef\.current\) restoreHeldDisclosure\(\);\s*commitPrepend\(\{\s*messages, renderedMessages, windowSize,[\s\S]*?mountedCount: historyEntries\.length,[\s\S]*?renderedMessages, restoreHeldDisclosure, windowSize\]\)/,
   );
+  assert.doesNotMatch(transcript, /\[messages\.length, windowSize\]/);
 });
 
 test("the window is owned per session pane, so no switch can inherit a budget", () => {
@@ -246,16 +247,16 @@ test("the window is owned per session pane, so no switch can inherit a budget", 
 });
 
 test("the minimap keeps message dashes reachable and represents withheld history explicitly", () => {
-  // Message dashes still resolve to mounted DOM nodes. Older loaded/unloaded
-  // history is one honest continuation control, never a phantom message dash.
+  // Message dashes still resolve to mounted DOM nodes. Both bounded and fully
+  // mounted transcripts use entry projection, so grouped steering cannot create
+  // a marker whose only anchor is hidden inside a collapsed process.
   assert.match(minimap, /querySelectorAll<HTMLElement>\("\[data-minimap-id\]"\)/);
   assert.match(transcript, /messages=\{minimapMessages\}/);
   assert.match(transcript, /hasEarlier=\{hasEarlierHistory\}/);
   assert.match(transcript, /onRevealEarlier=\{revealEarlierHistory\}/);
-  assert.match(
-    transcript,
-    /transcriptWindow\.bounded\s*\?\s*transcriptEntryMessages\(/,
-  );
+  assert.match(transcript, /const minimapMessages = useMemo\([\s\S]*?transcriptEntryMessages\(/);
+  assert.doesNotMatch(transcript, /transcriptWindow\.bounded\s*\?\s*transcriptEntryMessages\(/);
+  assert.doesNotMatch(transcript, /:\s*visible,/);
   assert.match(
     transcript,
     /const hasEarlierHistory = transcriptWindow\.hiddenAbove > 0 \|\| hasMoreBefore/,
@@ -272,7 +273,7 @@ test("a visible history boundary advances without waiting for a scroll event", (
   // stalls with loaded rows unmounted.
   assert.match(
     transcript,
-    /hasEarlierHistory,[\s\S]*?hydrationTick,[\s\S]*?loadingOlder,[\s\S]*?messages\.length,[\s\S]*?reachTop,[\s\S]*?sessionId,[\s\S]*?transcriptWindow\.hiddenAbove,/,
+    /hasEarlierHistory,[\s\S]*?hydrationTick,[\s\S]*?loadingOlder,[\s\S]*?renderedMessages,[\s\S]*?reachTop,[\s\S]*?sessionId,[\s\S]*?transcriptWindow\.hiddenAbove,/,
   );
   // Escalation is bounded per run: one growth step or one page request, and the
   // effect only re-runs when that step actually changed the projection.

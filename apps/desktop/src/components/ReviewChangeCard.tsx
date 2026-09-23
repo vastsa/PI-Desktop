@@ -1,11 +1,12 @@
-import { memo, useId, useState } from "react";
+import { memo, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
+  ReviewChange,
   ReviewChangeStatus,
   ReviewRollbackStatus,
   UiMessage,
 } from "@pi-desktop/shared";
-import { reviewChangeFromMessage } from "../lib/workspace-review";
+import { reviewChangesFromMessage } from "../lib/workspace-review";
 import { useAppStore } from "../stores/app-store";
 import { cx } from "./ui";
 import { IconCheck, IconChevronRight, IconSnapshot } from "./icons";
@@ -18,16 +19,31 @@ const STATUS_MARKS: Record<ReviewChangeStatus, string> = {
   deleted: "D",
 };
 
-function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }) {
+function changeForSnapshot(
+  message: UiMessage,
+  snapshotId?: string,
+): ReviewChange | null {
+  const changes = reviewChangesFromMessage(message);
+  return snapshotId
+    ? changes.find((change) => change.snapshotId === snapshotId) ?? null
+    : changes[0] ?? null;
+}
+
+function DiffBody({
+  message,
+  change,
+  compact,
+}: {
+  message: UiMessage;
+  change: ReviewChange;
+  compact: boolean;
+}) {
   const { t } = useTranslation();
-  const change = reviewChangeFromMessage(message);
   const rollback = useAppStore((state) => state.rollbackWorkspaceChange);
   const [rollingBack, setRollingBack] = useState(false);
   const [rollbackStatus, setRollbackStatus] = useState<ReviewRollbackStatus | null>(
     null,
   );
-
-  if (!change) return null;
 
   const runRollback = async () => {
     if (!change.reversible || change.state === "rolledBack" || rollingBack) return;
@@ -105,15 +121,22 @@ function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }
 
 export const ReviewChangeCard = memo(function ReviewChangeCard({
   message,
+  snapshotId,
   compact = false,
+  revealToken,
 }: {
   message: UiMessage;
+  snapshotId?: string;
   compact?: boolean;
+  revealToken?: number;
 }) {
   const { t } = useTranslation();
-  const change = reviewChangeFromMessage(message);
+  const change = changeForSnapshot(message, snapshotId);
   const detailsId = useId();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(revealToken !== undefined);
+  useEffect(() => {
+    if (revealToken !== undefined) setOpen(true);
+  }, [revealToken]);
 
   if (!change) return null;
 
@@ -172,9 +195,26 @@ export const ReviewChangeCard = memo(function ReviewChangeCard({
       </button>
       {open ? (
         <div className="review-change-card-body" id={detailsId}>
-          <DiffBody message={message} compact={compact} />
+          <DiffBody message={message} change={change} compact={compact} />
         </div>
       ) : null}
     </section>
   );
+});
+
+export const ReviewChangeCards = memo(function ReviewChangeCards({
+  message,
+  compact = false,
+}: {
+  message: UiMessage;
+  compact?: boolean;
+}) {
+  return reviewChangesFromMessage(message).map((change) => (
+    <ReviewChangeCard
+      key={change.snapshotId}
+      message={message}
+      snapshotId={change.snapshotId}
+      compact={compact}
+    />
+  ));
 });

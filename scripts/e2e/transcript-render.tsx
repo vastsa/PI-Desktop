@@ -1,3 +1,4 @@
+import { runTurnFileSummaryProbe } from "./turn-file-summary";
 import { turnProcessProbe } from "./turn-process";
 import { transcriptStatusProbe } from "./transcript-status";
 import { createRoot } from "react-dom/client";
@@ -8,6 +9,7 @@ import { en } from "@pi-desktop/i18n";
 import type { AgentActivity, UiMessage } from "@pi-desktop/shared";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { ChatTranscript } from "../../apps/desktop/src/features/chat/transcript/ChatTranscript";
+import { TranscriptDisclosureProvider } from "../../apps/desktop/src/features/chat/transcript/disclosure";
 import { buildTranscriptEntries } from "../../apps/desktop/src/lib/assistant-turns";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 
@@ -53,7 +55,7 @@ globalThis.transcriptRenderProbe = async () => {
     flushSync(() =>
       root.render(
         <I18nextProvider i18n={i18n}>
-          <AssistantTurn entry={entry} isActive />
+          <AssistantTurn entry={entry} sessionId={undefined} isActive />
         </I18nextProvider>,
       ),
     );
@@ -230,6 +232,7 @@ globalThis.transcriptRenderProbe = async () => {
       taskLifecycleUpdated: true,
       taskTimingUpdated: true,
       turnProcess: await turnProcessProbe(),
+      turnFiles: await runTurnFileSummaryProbe(),
       textUpdateDurationMs,
     };
   } finally {
@@ -272,24 +275,21 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
     if (!passed) failures.push(message);
   };
   const sessionId = "runtime-slot";
-  const messages: UiMessage[] = [message("user", "user", "Inspect the workspace")];
+  const messages: UiMessage[] = [];
   for (let index = 0; index < 8; index++) {
     messages.push(
-      message(`tool-${index}`, "tool", "done", {
-        toolName: "Bash",
-        toolCallId: `call-${index}`,
-        toolStatus: "success",
-        toolArgs: { command: `printf step-${index}` },
-        toolResult: { details: { stdout: "done", exitCode: 0 } },
-      }),
-    );
-    messages.push(
-      message(`answer-${index}`, "assistant", `Finished step ${index}.`),
+      message(`user-${index}`, "user", `Inspect step ${index}`),
+      message(
+        `answer-${index}`,
+        "assistant",
+        `Finished step ${index}. This completed answer stays outside any live process.`,
+      ),
     );
   }
   // A completed tool row does not finish the turn: the fallback remains until
   // the runtime reports the next phase or the turn reaches a terminal state.
   messages.push(
+    message("user-tail", "user", "Continue"),
     message("tool-tail", "tool", "done", {
       toolName: "Bash",
       toolCallId: "call-tail",
@@ -369,11 +369,13 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
   const paint = () =>
     root.render(
       <I18nextProvider i18n={i18n}>
-        <ChatTranscript
-          sessionId={sessionId}
-          messages={messages}
-          isRunning={running}
-        />
+        <TranscriptDisclosureProvider>
+          <ChatTranscript
+            sessionId={sessionId}
+            messages={messages}
+            isRunning={running}
+          />
+        </TranscriptDisclosureProvider>
       </I18nextProvider>,
     );
   const update = (activity: AgentActivity | undefined) =>

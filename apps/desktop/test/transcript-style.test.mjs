@@ -126,8 +126,9 @@ test("tool details do not add a second visual indent", () => {
  * The width regression this guards: a content-sized `inline-flex` disclosure
  * header stopped at its own label, so a tool call never used the conversation
  * width — it stayed narrower than the prose, ignored the dragged band width,
- * and let a long label overrun the chip. The header row now claims the band at
- * every level, the label ellipsizes, and the caret trails the row.
+ * and let a long label overrun the chip. Tool headers claim the band; the
+ * whole-turn summary is content-sized independently of its detail rows.
+ * Labels ellipsize and the caret trails the header.
  */
 test("tool-call disclosure headers span the conversation band", () => {
   const header = stylesSource.match(/\n\.tool-activity-header \{([^}]*)\}/)?.[1];
@@ -148,11 +149,10 @@ test("tool-call disclosure headers span the conversation band", () => {
   assert.ok(caret);
   assert.match(caret, /margin-inline-start:\s*auto;/);
 
-  // No level keeps its own width or label override: every disclosure header
-  // resolves through the single base row.
+  // Nested activity headers retain the base width; turn summaries may shrink.
   assert.doesNotMatch(
     stylesSource,
-    /\.(process-activity-group|turn-process) > \.tool-activity-header[^{]*\{[^}]*width:/,
+    /\.process-activity-group > \.tool-activity-header[^{]*\{[^}]*width:/,
   );
   assert.doesNotMatch(
     stylesSource,
@@ -229,6 +229,10 @@ test("transcript density and hover actions are quiet", () => {
   assert.match(
     stylesSource,
     /\.message-actions \{[\s\S]*?opacity:\s*0;[\s\S]*?\.message-row:hover \.message-actions/,
+  );
+  assert.match(
+    stylesSource,
+    /html\.pointer-outside \.message-row:hover \.message-actions:not\(:focus-within\),\s*html\.pointer-outside \.message-actions:not\(:focus-within\)/,
   );
   assert.match(stylesSource, /\.message-row\.user \.message-actions \{[\s\S]*?justify-content:\s*flex-end;/);
 });
@@ -588,4 +592,25 @@ test("regenerate history pager and stable revision family are wired", async () =
   );
   assert.match(sharedSource, /revisionRootId\?: string/);
   assert.match(sharedSource, /MessageRevisionSummary/);
+});
+
+test("turn headers stay short in both states without narrowing detail rows", () => {
+  assert.match(stylesSource, /\.turn-process > \.tool-activity-header\s*\{\s*width: fit-content;\s*max-width: 100%;/);
+  assert.doesNotMatch(stylesSource, /\.turn-process:not\(\.open\) > \.tool-activity-header/);
+  assert.match(stylesSource, /\.tool-activity-header\s*\{\s*display: flex;\s*width: 100%;/);
+});
+
+test("partial tail pages absorb underfilled space above their content without a scroll spacer", () => {
+  const scroller = stylesSource.match(/\.thread-scroll\[data-tail-aligned="true"\]\s*\{([^}]*)\}/)?.[1];
+  const content = stylesSource.match(/\.thread-scroll\[data-tail-aligned="true"\] > \.thread-content\s*\{([^}]*)\}/)?.[1];
+  assert.ok(scroller);
+  assert.ok(content);
+  assert.match(scroller, /display:\s*flex;/);
+  assert.match(scroller, /flex-direction:\s*column;/);
+  assert.match(content, /flex:\s*0 0 auto;/);
+  assert.match(content, /margin-top:\s*auto;/);
+  assert.doesNotMatch(scroller + content, /min-height|padding|justify-content:\s*flex-end/);
+  assert.match(transcriptSource, /data-tail-aligned=\{alignHistoryTail \|\| undefined\}/);
+  assert.match(transcriptSource, /const alignHistoryTail = !readingWindow && hasMoreBefore/);
+  assert.doesNotMatch(transcriptSource, /tailAlignedRef/);
 });

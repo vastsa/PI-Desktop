@@ -118,7 +118,7 @@ function TranscriptFixture({ messages, process = false }: { messages: UiMessage[
           <div ref={contentRef} className="thread-content">
             <div style={{ height: 700 }} />
             {entry?.kind === "assistant-turn"
-              ? <AssistantTurn entry={entry} isActive={false} />
+              ? <AssistantTurn entry={entry} sessionId={undefined} isActive={false} />
               : <ToolRow message={messages[1]} />}
             <div style={{ height: 300 }} />
           </div>
@@ -276,10 +276,16 @@ globalThis.transcriptDisclosureProbe = async () => {
     const processTitle = processContainer.querySelector<HTMLElement>(".turn-process > button");
     assert(processScroller && processTitle, "process fixture did not render");
     await settle();
+    assert(
+      processTitle.getAttribute("aria-expanded") === "false",
+      "detailed completed process starts collapsed",
+    );
+    processTitle.click();
+    await settle();
     const processBefore = geometry(processScroller, processTitle);
     assert(
       processTitle.getAttribute("aria-expanded") === "true",
-      "detailed should start the process open",
+      "detailed process can be opened",
     );
     processTitle.click();
     await settle();

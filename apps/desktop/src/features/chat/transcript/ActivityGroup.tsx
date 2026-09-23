@@ -45,7 +45,7 @@ import {
   getToolAction,
   getToolSummary,
 } from "../../../lib/tool-display";
-import { ReviewChangeCard } from "../../../components/ReviewChangeCard";
+import { ReviewChangeCards } from "../../../components/ReviewChangeCard";
 import { IconChevronRight, IconCircleAlert, IconSparkles, IconWorkflow } from "../../../components/icons";
 import {
   DisclosureCollapseRail,
@@ -365,7 +365,7 @@ export const ActivityGroup = memo(function ActivityGroup({
               onUserInteraction={claimDisclosure}
               {...(item.delegate ? { delegate: item.delegate } : {})}
             />
-            <ReviewChangeCard message={item.message} />
+            <ReviewChangeCards message={item.message} />
           </Fragment>
         );
       }

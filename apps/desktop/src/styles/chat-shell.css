@@ -203,8 +203,40 @@
   /* Keep the content axis stable when the scrollbar appears, but do not reserve
    * a second empty gutter on the left of the conversation. */
   scrollbar-gutter: stable;
-  /* Pinned-follow drives the scroll position; native anchoring fights it. */
+  /* Explicit follow and reading anchors own this scroll offset. Opting this
+     container out also excludes its descendants as native anchor candidates. */
   overflow-anchor: none;
+}
+
+/* A partial latest page may fold to less than one viewport. Its scrollTop is
+ * already zero/max, but block layout would leave the answer above empty space.
+ * Auto margin absorbs only the unused space; overflowing history has no spacer
+ * and remains reachable from its first row. Keep full short chats top-aligned. */
+.thread-scroll[data-tail-aligned="true"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.thread-scroll[data-tail-aligned="true"] > .thread-content {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+.thread-scroll.transcript-measure-folded {
+  overflow-anchor: none;
+}
+
+.thread-scroll.transcript-measure-folded .message-row,
+.thread-scroll.transcript-measure-folded .tool-activity-group {
+  content-visibility: visible;
+}
+
+/* The mounted window already bounds how many rows exist. Skipping their
+   layout leaves the 140px estimate, which collapses when a folded row reaches
+   the viewport and shifts entry, jump-to-latest, and a long upward scroll. */
+.thread-scroll .message-row,
+.thread-scroll .tool-activity-group {
+  content-visibility: visible;
 }
 
 /* Floats above the docked composer fade when the user scrolls away from latest */
@@ -357,6 +389,12 @@
   font-size: var(--text-sm);
   text-align: center;
   padding: 2px 0 12px;
+}
+
+/* Keep translated/wrapped status text in layout, including while idle. Toggling
+   an empty 26px box to a taller text line shifts every reading row below it. */
+.transcript-history-loading[aria-hidden="true"] {
+  visibility: hidden;
 }
 
 /* The tail runtime status (working / planning / run activity) mounts and clears

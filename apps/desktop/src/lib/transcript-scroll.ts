@@ -201,3 +201,157 @@ export function isScrollGestureInput(
   }
   return true;
 }
+
+export type PrependAnchor = {
+  node: Element;
+  messageId: string | null;
+  /** Row offset inside the viewport, not the browser window. */
+  top: number;
+  scrollTop: number;
+};
+
+export function capturePrependAnchor(scroller: HTMLElement): PrependAnchor | null {
+  const viewportTop = scroller.getBoundingClientRect().top;
+  const viewportBottom = viewportTop + scroller.clientHeight;
+  // Prefer message content over a grouped turn wrapper: loading the earlier
+  // half of a turn can re-key that wrapper while retaining the message identity.
+  for (const selector of ["[data-message-id]", ".message-row, .tool-activity-group"]) {
+    for (const row of scroller.querySelectorAll(selector)) {
+      const owner = row.closest(`[${SCROLL_OWNER_ATTRIBUTE}]`);
+      if (owner && owner !== scroller) continue;
+      const rect = row.getBoundingClientRect();
+      if (rect.bottom > viewportTop + 1 && rect.top < viewportBottom) {
+        return {
+          node: row, messageId: row.getAttribute("data-message-id"),
+          top: rect.top - viewportTop, scrollTop: scroller.scrollTop,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/** Correct insertion in content coordinates, preserving scrolling during the read. */
+export function prependAnchorShift(
+  anchor: Pick<PrependAnchor, "top" | "scrollTop">,
+  actualTop: number,
+  scrollTop: number,
+): number {
+  return actualTop + scrollTop - (anchor.top + anchor.scrollTop);
+}
+
+type MessageIdentity = { id: string };
+export type TranscriptPrependFrame = {
+  messages: readonly MessageIdentity[];
+  renderedMessages: readonly MessageIdentity[];
+  windowSize: number;
+  historyLength: number;
+  mountedCount: number;
+};
+type PrependRequest = {
+  kind: "page" | "window";
+  before: TranscriptPrependFrame;
+  anchor: PrependAnchor | null;
+  applied: boolean;
+  settled: boolean;
+};
+
+function hasPrepended(before: readonly MessageIdentity[], after: readonly MessageIdentity[]) {
+  if (after.length <= before.length) return false;
+  return before.length === 0 || after.findIndex((message) => message.id === before[0].id) > 0;
+}
+
+/** One prepend owns one capture, its async completion, and its actual DOM commit. */
+export function createTranscriptPrependController() {
+  let frame: TranscriptPrependFrame | null = null;
+  let request: PrependRequest | null = null;
+  // Avoid an observer retry loop after an empty/failed read at the same edge.
+  let blockedBefore: string | null | undefined;
+  return {
+    get frame() { return frame; },
+    get loading() { return request?.kind === "page" && !request.settled; },
+    begin(kind: PrependRequest["kind"], scroller: HTMLElement, retry = false): PrependRequest | null {
+      if (request || !frame || !transcriptHasLayout(scroller)) return null;
+      // Do not attribute a previously loaded, still-deferred prefix to a new read.
+      if (frame.messages[0]?.id !== frame.renderedMessages[0]?.id) return null;
+      if (kind === "page" && !retry && blockedBefore === (frame.messages[0]?.id ?? null)) return null;
+      request = {
+        kind, before: frame, anchor: capturePrependAnchor(scroller),
+        applied: false, settled: kind === "window",
+      };
+      return request;
+    },
+    settle(token: PrependRequest, failed = false): boolean {
+      if (request !== token) return false;
+      token.settled = true;
+      if (failed) blockedBefore = token.before.messages[0]?.id ?? null;
+      if (failed || token.applied) request = null;
+      return true;
+    },
+    cancel() {
+      const pending = request !== null;
+      request = null;
+      blockedBefore = undefined;
+      return pending;
+    },
+    /** Adopt another reading owner's achieved geometry without replacing its RPC. */
+    reanchor(scroller: HTMLElement) {
+      if (!request || request.applied || !transcriptHasLayout(scroller)) return;
+      const anchor = request.anchor;
+      // ResizeObserver handoffs normally update one existing node, not every
+      // mounted row. Only a removed anchor needs a new visible-row search.
+      request.anchor = anchor?.node.isConnected && scroller.contains(anchor.node)
+        ? {
+            ...anchor,
+            top: anchor.node.getBoundingClientRect().top - scroller.getBoundingClientRect().top,
+            scrollTop: scroller.scrollTop,
+          }
+        : capturePrependAnchor(scroller);
+    },
+    /** Called only in layout, with the projection that just mounted. */
+    commit(next: TranscriptPrependFrame, scroller: HTMLElement | null, pinned: boolean): number | null {
+      frame = next;
+      const pending = request;
+      if (!pending || pending.applied) return null;
+      const ready = pending.kind === "window"
+        ? next.windowSize !== pending.before.windowSize
+        : hasPrepended(pending.before.messages, next.renderedMessages);
+      if (!ready) {
+        // A completed no-op (including a store-handled failure) cannot leave a
+        // capture for an unrelated tail append or a later read to consume.
+        if (pending.settled && pending.kind === "page" && !hasPrepended(pending.before.messages, next.messages)) {
+          request = null;
+          blockedBefore = pending.before.messages[0]?.id ?? null;
+        }
+        return null;
+      }
+      // Hidden panes may commit the loaded page without a measurable viewport.
+      // Keep ownership until reveal restores the last visible scroll offset.
+      if (!scroller || !transcriptHasLayout(scroller)) return null;
+      pending.applied = true;
+      if (pending.settled) request = null;
+      const anchor = pending.anchor;
+      pending.anchor = null;
+      if (pending.kind === "window" && next.mountedCount <= pending.before.mountedCount) return null;
+      if (pinned) {
+        // An underfilled entry may page automatically without surrendering follow.
+        scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      } else if (anchor) {
+        const node = anchor.node.isConnected && scroller.contains(anchor.node)
+          ? anchor.node
+          : anchor.messageId === null ? undefined
+            : [...scroller.querySelectorAll("[data-message-id]")].find(
+                (row) => row.getAttribute("data-message-id") === anchor.messageId,
+              );
+        if (node) {
+          const top = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+          const shift = prependAnchorShift(anchor, top, scroller.scrollTop);
+          if (shift !== 0) scroller.scrollTop += shift;
+        }
+      }
+      // Never infer insertion from total scrollHeight: a concurrent tail can grow
+      // while the loaded page is still outside the mounted window.
+      return scroller.scrollTop;
+    },
+  };
+}

@@ -46,7 +46,11 @@ import type {
   ComposerPrefill,
 } from "../lib/composer-smart-stop";
 import type { SidebarSessionOutcome } from "../lib/sidebar-session-status";
-import type { WorkPanelContext, WorkPanelTab } from "../lib/work-panel-tabs";
+import type {
+  WorkPanelContext,
+  WorkPanelReviewSelection,
+  WorkPanelTab,
+} from "../lib/work-panel-tabs";
 
 export type { WorkPanelTab } from "../lib/work-panel-tabs";
 
@@ -375,6 +379,9 @@ export type AppState = {
   setWorkPanelWidth: (width: number) => void;
   openFileInWorkPanel: (path: string, mimeType?: string) => void;
   openUrlInWorkPanel: (url: string) => void;
+  openTurnFileReview: (
+    selection: Omit<WorkPanelReviewSelection, "revision">,
+  ) => void;
 };
 
 export type AppStateData = {

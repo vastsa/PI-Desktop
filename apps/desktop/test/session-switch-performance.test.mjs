@@ -28,6 +28,7 @@ const [sessionRuntime, sessionSlice, sessionCoordination, events, sidebar, chatS
 const store = [sessionRuntime, sessionSlice, sessionCoordination, events].join("\n");
 const readingRuntime = await readStoreModule("runtime/transcript-reading-runtime.ts");
 const readingView = await read("../src/hooks/use-transcript-view.ts");
+const prepend = await read("../src/features/chat/transcript/hooks/useTranscriptPrepend.ts");
 
 test("session reads use a bounded tail and load older pages on demand", () => {
   assert.match(store, /SESSION_TRANSCRIPT_PAGE_SIZE = 100/);
@@ -161,8 +162,8 @@ test("a hidden pane does no reading work off screen", () => {
   // and measure row positions against a subtree the engine is not laying out.
   assert.match(transcript, /if \(!paneVisible\) return;\n\s*let frame = 0;/);
   assert.match(
-    transcript,
-    /const loadOlder = useCallback\(\(\) => \{[\s\S]*?if \(!paneVisibleRef\.current\) return;/,
+    prepend,
+    /const reachTop = useCallback[\s\S]*?if \(!paneVisible \|\| !el \|\| !frame\) return;/,
   );
   assert.match(transcript, /\{paneVisible && !veilCovering \? \(\s*<ConversationMinimap/);
 });
@@ -178,7 +179,9 @@ test("reopening a running session never lets durable detail erase its live tail"
   // A warm pane must not reveal one deferred frame from before the stream was
   // captured; its first visible render uses the selected live snapshot.
   assert.match(transcript, /const paneRevealed = paneVisible && !wasPaneVisibleRef\.current/);
-  assert.match(transcript, /firstCommit \|\| paneRevealed \? messages : deferredMessages/);
+  assert.match(transcript, /firstCommit \|\| paneRevealed \|\| pendingLatestRef\.current/);
+  assert.match(transcript, /const \[renderedMessages, renderedCompactions\] = current \? snapshot : deferred/);
+  assert.match(transcript, /awaitingDeferredRef\.current = current &&/);
 });
 
 test("reopening an idle session keeps a completed live tail until the durable page has it (D324)", () => {

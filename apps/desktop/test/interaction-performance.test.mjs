@@ -71,9 +71,10 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
   // commit that reveals it, or the reveal shows one empty frame (ADR 0137).
   assert.match(
     transcript,
-    /const renderedMessages =\s*readingWindow \|\| firstCommit \|\| paneRevealed \? messages : deferredMessages/,
+    /const \[renderedMessages, renderedCompactions\] = current \? snapshot : deferred/,
   );
-  assert.match(transcript, /const \{ entries, visible \} = useMemo/);
+  assert.match(transcript, /!isRunning \|\| readingWindow \|\| firstCommit \|\| paneRevealed \|\| pendingLatestRef\.current/);
+  assert.match(transcript, /const entries = useMemo/);
   assert.match(
     transcript,
     /buildTranscriptEntries\(renderedMessages, renderedCompactions\)/,
@@ -88,7 +89,7 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
     transcript,
     /const allHistoryEntries = useMemo\(\(\) => entries\.slice\(0, -1\), \[entries\]\)/,
   );
-  assert.match(transcript, /<TranscriptHistory entries=\{historyEntries\}/);
+  assert.match(transcript, /<TranscriptHistory\s+entries=\{historyEntries\}/);
   assert.match(transcript, /<TranscriptTail[\s\S]*?entry=\{tailEntry\}/);
   assert.match(transcript, /activityGroupPropsEqual/);
   assert.match(transcript, /assistantTurnPropsEqual/);
@@ -130,7 +131,7 @@ test("manual upward scrolling cancels pending transcript follow work", () => {
     transcript,
     /if \(transition\.releasedFollow\) cancelFollowScroll\(\)/,
   );
-  assert.match(transcript, /pinnedRef\.current = transition\.pinned/);
+  assert.match(transcript, /setPinned\(transition\.pinned\)/);
   assert.match(transcript, /setShowJump\(transition\.showJump\)/);
 });
 
@@ -140,7 +141,7 @@ test("send re-pins before paint instead of flashing the old transcript position"
   )?.[1] ?? "";
   assert.match(turnStartEffect, /const turnStarted = isRunning && !wasRunningRef\.current/);
   assert.match(turnStartEffect, /cancelFollowScroll\(\)/);
-  assert.match(turnStartEffect, /pinnedRef\.current = true/);
+  assert.match(turnStartEffect, /setPinned\(true\)/);
   assert.match(turnStartEffect, /scrollToBottom\(\)/);
   assert.match(transcript, /const targetTop = Math\.max\(0, el\.scrollHeight - el\.clientHeight\)/);
 });
@@ -180,13 +181,13 @@ test("session activation pins the latest record before the first paint", () => {
   // first layout: settle at the newest turn with no cross-session state to
   // unwind, before the first paint.
   const activationEffect = transcript.match(
-    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, releaseDisclosureAnchor, scrollToBottom\]\);/,
+    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, positionAtFoldedBottom, releaseDisclosureAnchor\]\);/,
   )?.[1];
   assert.ok(activationEffect);
   assert.match(activationEffect, /cancelFollowScroll\(\)/);
-  assert.match(activationEffect, /pinnedRef\.current = true/);
+  assert.match(activationEffect, /setPinned\(true\)/);
   assert.match(activationEffect, /setShowJump\(false\)/);
-  assert.match(activationEffect, /scrollToBottom\(\)/);
+  assert.match(activationEffect, /positionAtFoldedBottom\(\)/);
   assert.doesNotMatch(activationEffect, /smooth/);
 });
 
@@ -195,13 +196,13 @@ test("a revealed pane restores its own scroll position in the layout phase", () 
   // scroller can be clamped while its content grows off screen, and a passive
   // effect would leave one visible frame at the wrong offset (ADR 0137).
   const revealEffect = transcript.match(
-    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, paneVisible, releaseDisclosureAnchor, scrollToBottom\]\);/,
+    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, paneVisible, positionAtFoldedBottom, recordScrollPosition, releaseDisclosureAnchor\]\);/,
   )?.[1];
   assert.ok(revealEffect, "the reveal must restore position in a layout effect");
   assert.match(revealEffect, /retainedScrollTopRef\.current = lastLaidOutScrollTopRef\.current/);
-  assert.match(revealEffect, /if \(pinnedRef\.current\) \{\s*scrollToBottom\(\);/);
+  assert.match(revealEffect, /if \(pinnedRef\.current\) \{\s*positionAtFoldedBottom\(\);/);
   assert.match(revealEffect, /el\.scrollTop = retained/);
-  assert.match(revealEffect, /lastScrollTopRef\.current = retained/);
+  assert.match(revealEffect, /recordScrollPosition\(el\.scrollTop\)/);
 });
 
 test("a pane bounds its own first commit instead of rebuilding it", () => {
@@ -274,7 +275,7 @@ test("first-commit hydration expands without moving the transcript", () => {
   )?.[1];
   assert.ok(rebottom, "the hydration expansion must re-anchor in a layout effect");
   assert.match(rebottom, /boundedFirstCommitRef\.current = false/);
-  assert.match(rebottom, /scrollToBottom\(\)/);
+  assert.match(rebottom, /positionAtFoldedBottom\(\)/);
   // A user who scrolled up during the bounded frame keeps their position.
   assert.match(rebottom, /if \(!pinnedRef\.current\) return/);
 

@@ -176,3 +176,10 @@ test("composer handles home drafts, deleted sessions, and async sends by key", (
   assert.match(composer, /readComposerDraftRevision\(key\) !== expectedRevision/);
   assert.doesNotMatch(composer, /if \(accepted\) clearDraft\(\);/);
 });
+
+test("session draft restoration runs during layout before the destination paints", () => {
+  assert.ok(
+    /useLayoutEffect\(\(\) => \{\s*const previousKey = draftKeyRef\.current;/.test(draftHook),
+    "restore the cached destination draft before the dock is measured for paint",
+  );
+});

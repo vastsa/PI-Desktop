@@ -42,6 +42,17 @@
   align-items: flex-end;
 }
 
+.message-timestamp {
+  color: var(--ds-text-faint);
+  font-size: var(--text-xs);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
+}
+
+.message-actions .message-timestamp {
+  padding-inline: 6px;
+}
+
 /* Composer chips use `max-width: min(100%, 240px)` so they shrink in a
    definite composer. Inside this shrink-to-fit plate the percentage
    containing block is the available thread width, which stretches the
@@ -1001,9 +1012,13 @@
 }
 
 .message-row:hover .message-actions,
-.message-row:focus-within .message-actions,
 .message-actions:focus-within {
   opacity: 1;
+}
+
+html.pointer-outside .message-row:hover .message-actions:not(:focus-within),
+html.pointer-outside .message-actions:not(:focus-within) {
+  opacity: 0;
 }
 
 .icon-btn:active:not(:disabled),
@@ -3012,6 +3027,12 @@
   width: 100%;
   margin: 0 0 8px;
   min-width: 0;
+}
+
+/* Turn headers stay content-sized in both states; details retain the band. */
+.turn-process > .tool-activity-header {
+  width: fit-content;
+  max-width: 100%;
 }
 
 .turn-process.open > .tool-activity-header > .tool-activity-caret,

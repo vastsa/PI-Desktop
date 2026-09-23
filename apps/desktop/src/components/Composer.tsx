@@ -57,6 +57,7 @@ import {
 } from "../features/chat/composer/editor";
 import { useComposerAttachments } from "../features/chat/composer/hooks/useComposerAttachments";
 import { useComposerDraft } from "../features/chat/composer/hooks/useComposerDraft";
+import { useComposerDockHeight } from "../features/chat/composer/hooks/useComposerDockHeight";
 import { useComposerSubmit } from "../features/chat/composer/hooks/useComposerSubmit";
 import { ComposerImageAttachments } from "../features/chat/composer/ComposerImageAttachments";
 import { ComposerInput } from "../features/chat/composer/ComposerInput";
@@ -146,8 +147,6 @@ export function Composer({
   const [permissionOpen, setPermissionOpen] = useState(false);
   const enhancementInvalidateRef = useRef<() => void>(() => {});
   const composerShellRef = useRef<HTMLDivElement>(null);
-  const dockRef = useRef<HTMLDivElement>(null);
-  const publishedDockHeightRef = useRef(-1);
 
   const invalidatePromptEnhancement = () => {
     enhancementInvalidateRef.current();
@@ -485,29 +484,7 @@ export function Composer({
     );
   };
 
-  // Keep the transcript's bottom reserve in sync with the composer's real
-  // height (it grows with multi-line input) so the last message sits just
-  // above the box instead of far below it.
-  useEffect(() => {
-    const el = dockRef.current;
-    if (!el) return;
-    // Setting a custom property on documentElement invalidates style for the
-    // whole document, so an unchanged dock height must not be republished.
-    const publish = () => {
-      const h = Math.round(el.getBoundingClientRect().height);
-      if (h === publishedDockHeightRef.current) return;
-      publishedDockHeightRef.current = h;
-      document.documentElement.style.setProperty(
-        "--composer-dock-height",
-        `${h}px`,
-      );
-    };
-    publish();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(publish);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [variant]);
+  const dockRef = useComposerDockHeight(variant);
 
   return (
     <div

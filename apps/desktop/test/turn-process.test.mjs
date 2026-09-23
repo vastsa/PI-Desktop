@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { register } from "node:module";
 import test from "node:test";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { buildTranscriptEntries } = await import("../src/lib/assistant-turns.ts");
+const { formatMessageTimestamp } = await import("../src/lib/message-timestamp.ts");
 const {
+  processContainsMessage,
   projectTurnProcess,
   visibleProcessSteps,
   resolveThinkingDisplayMode,
@@ -41,6 +44,64 @@ test("one turn groups thinking, tools and progress while retaining only the trai
   );
   assert.equal(visibleProcessSteps(projected.process, "detailed", false), 5);
   assert.equal(visibleProcessSteps(projected.process, "compact", false), 4);
+});
+
+test("steering is always process content and the trailing assistant answer stays outside", () => {
+  const entry = turn([
+    message("root", "user", "Inspect", {
+      createdAt: "2026-09-17T00:00:00.000Z",
+    }),
+    message("intro", "assistant", "Starting", {
+      createdAt: "2026-09-17T00:00:01.000Z",
+    }),
+    message("read", "tool", "result", {
+      toolName: "Read",
+      createdAt: "2026-09-17T00:00:02.000Z",
+    }),
+    message("steer", "user", "Also inspect tests", {
+      steering: true,
+      createdAt: "2026-09-17T00:00:03.000Z",
+    }),
+    message("edit", "tool", "updated", {
+      toolName: "Edit",
+      createdAt: "2026-09-17T00:00:04.000Z",
+    }),
+    message("final", "assistant", "Fixed", {
+      createdAt: "2026-09-17T00:00:05.000Z",
+      responseDurationMs: 1000,
+    }),
+  ]);
+  const projected = projectTurnProcess(entry);
+
+  assert.deepEqual(
+    projected.process.map((part) => part.kind),
+    ["message", "activity", "steering", "activity"],
+  );
+  assert.deepEqual(
+    projected.responses.map((part) => part.message.id),
+    ["final"],
+  );
+  assert.equal(visibleProcessSteps(projected.process, "detailed", false), 4);
+  assert.equal(processContainsMessage(projected.process, "steer"), true);
+  assert.deepEqual(turnProcessTiming(entry.parts, entry.startedAt), {
+    startedAt: Date.parse("2026-09-17T00:00:00.000Z"),
+    endedAt: Date.parse("2026-09-17T00:00:06.000Z"),
+  });
+});
+
+test("a trailing steering bubble cannot be projected as an assistant response", () => {
+  const entry = turn([
+    message("root", "user", "Inspect"),
+    message("progress", "assistant", "Working"),
+    message("steer", "user", "One more constraint", { steering: true }),
+  ]);
+  const projected = projectTurnProcess(entry);
+
+  assert.equal(projected.responses.length, 0);
+  assert.deepEqual(
+    projected.process.map((part) => part.kind),
+    ["message", "steering"],
+  );
 });
 
 test("streamed text stays readable until later work establishes it as progress", () => {
@@ -92,6 +153,20 @@ test("compact thinking disappears after reasoning ends without removing stored d
   assert.equal(thinking.thinking, "Private reasoning");
 });
 
+test("compact completed hosted search remains a visible process step", () => {
+  const search = {
+    kind: "hostedSearch",
+    message: message("search", "assistant", "", { status: "complete" }),
+  };
+  const parts = [{ kind: "activity", items: [search] }];
+  assert.equal(visibleProcessSteps(parts, "compact", false), 1);
+  parts[0].items.push({
+    kind: "tool",
+    message: message("read", "tool", "result", { toolName: "Read" }),
+  });
+  assert.equal(visibleProcessSteps(parts, "compact", false), 2);
+});
+
 test("missing and unknown display settings retain detailed mode", () => {
   for (const value of [undefined, null, "hidden", false, "detailed"]) {
     assert.equal(resolveThinkingDisplayMode(value), "detailed");
@@ -99,16 +174,15 @@ test("missing and unknown display settings retain detailed mode", () => {
   assert.equal(resolveThinkingDisplayMode("compact"), "compact");
 });
 
-test("both display modes group a turn and only compact auto-opens active failures", () => {
+test("both modes group turns and only automatically show active work", () => {
   assert.equal(shouldGroupTurnProcess("detailed"), true);
   assert.equal(shouldGroupTurnProcess("compact"), true);
-  assert.equal(shouldAutoOpenTurnProcess("detailed", false, false), true);
-  assert.equal(shouldAutoOpenTurnProcess("detailed", true, false), true);
-  assert.equal(shouldAutoOpenTurnProcess("detailed", true, true), true);
-  assert.equal(shouldAutoOpenTurnProcess("compact", false, false), false);
-  assert.equal(shouldAutoOpenTurnProcess("compact", true, false), false);
-  assert.equal(shouldAutoOpenTurnProcess("compact", true, true), true);
-  assert.equal(shouldAutoOpenTurnProcess("compact", false, true), false);
+  for (const mode of ["detailed", "compact"]) {
+    assert.equal(shouldAutoOpenTurnProcess(mode, false, false), false);
+    assert.equal(shouldAutoOpenTurnProcess(mode, true, false), true);
+    assert.equal(shouldAutoOpenTurnProcess(mode, true, true), true);
+    assert.equal(shouldAutoOpenTurnProcess(mode, false, true), false);
+  }
 });
 
 test("the last activity part owns detailed-mode's default-open tool", () => {
@@ -132,25 +206,72 @@ test("the last activity part owns detailed-mode's default-open tool", () => {
   );
 });
 
-test("history timing uses recorded ends and rejects invalid timestamps and durations", () => {
+test("turn timing starts at the user request and falls back to loaded process rows", () => {
   const entry = turn([
-    message("read", "tool", "", { toolCompletedAt: "2026-09-17T00:00:02.000Z" }),
+    message("user", "user", "Inspect", {
+      createdAt: "2026-09-17T00:00:00.000Z",
+    }),
+    message("read", "tool", "", {
+      createdAt: "2026-09-17T00:00:01.000Z",
+      toolCompletedAt: "2026-09-17T00:00:02.000Z",
+    }),
     message("answer", "assistant", "Done", {
       createdAt: "2026-09-17T00:00:03.000Z",
       responseDurationMs: 1000,
     }),
   ]);
-  const timing = turnProcessTiming(entry.parts);
+  const timing = turnProcessTiming(entry.parts, entry.startedAt);
   assert.equal(timing.endedAt - timing.startedAt, 4000);
+
+  const paged = turn([
+    message("answer", "assistant", "Done", {
+      createdAt: "2026-09-17T00:00:03.000Z",
+      responseDurationMs: 1000,
+    }),
+  ]);
+  assert.deepEqual(turnProcessTiming(paged.parts, paged.startedAt), {
+    startedAt: Date.parse("2026-09-17T00:00:03.000Z"),
+    endedAt: Date.parse("2026-09-17T00:00:04.000Z"),
+  });
+
+  const invalidUser = turn([
+    message("user", "user", "Inspect", { createdAt: "bad" }),
+    message("answer", "assistant", "Done", {
+      createdAt: "2026-09-17T00:00:03.000Z",
+    }),
+  ]);
+  assert.equal(
+    turnProcessTiming(invalidUser.parts, invalidUser.startedAt).startedAt,
+    Date.parse("2026-09-17T00:00:03.000Z"),
+  );
   assert.deepEqual(
     turnProcessTiming(
       turn([message("bad", "assistant", "x", { createdAt: "bad" })]).parts,
+      "bad",
     ),
-    {
-      startedAt: undefined,
-      endedAt: undefined,
-    },
+    { startedAt: undefined, endedAt: undefined },
   );
+});
+
+test("message timestamps use locale formatting and reject invalid dates", () => {
+  const value = "2026-09-17T13:45:00.000Z";
+  assert.deepEqual(formatMessageTimestamp(value, "en-US"), {
+    dateTime: value,
+    label: new Intl.DateTimeFormat("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value)),
+  });
+  assert.notEqual(
+    formatMessageTimestamp(value, "en-US").label,
+    formatMessageTimestamp(value, "de-DE").label,
+  );
+  assert.equal(formatMessageTimestamp("not-a-date", "en-US"), undefined);
+  assert.deepEqual(formatMessageTimestamp(Date.parse(value), "en-US"), {
+    dateTime: value,
+    label: formatMessageTimestamp(value, "en-US").label,
+  });
+  assert.equal(formatMessageTimestamp(undefined, "en-US"), undefined);
 });
 
 test("user boundaries retain independent processes and delegation details stay attached", () => {
@@ -191,4 +312,15 @@ test("settings writes validate the mode without changing other preferences", asy
     () => validateSettingsWrite({ ...settings, thinkingDisplayMode: "unknown" }),
     /thinkingDisplayMode is invalid/,
   );
+});
+
+test("settling the process changes identity without remounting the subtree", async () => {
+  const source = await readFile(
+    new URL("../src/features/chat/transcript/TurnProcess.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /key=\{phase\}/);
+  assert.match(source, /identity=\{disclosureKey\("turn", turnId, phase\)\}/);
+  assert.match(source, /timing=\{processTiming\}|timing: TurnProcessTiming/);
+  assert.match(source, /const summary = useMemo\(/);
 });

@@ -16,6 +16,7 @@ import {
   assistantTurnResponseDuration,
   assistantTurnResponseOutputTokens,
   assistantTurnUsage,
+  assistantTurnOwnedToolsEqual,
   reuseReadonlyMap,
   subagentRunsEqual,
   type AssistantTurnEntry,
@@ -31,7 +32,9 @@ import {
   projectTurnProcess,
   resolveThinkingDisplayMode,
   shouldGroupTurnProcess,
+  turnProcessTiming,
 } from "../../../lib/turn-process";
+import { formatMessageTimestamp } from "../../../lib/message-timestamp";
 import { useAppStore } from "../../../stores/app-store";
 import { Markdown } from "../../../components/Markdown";
 import { IconBranch, IconReview } from "../../../components/icons";
@@ -49,10 +52,12 @@ import {
   useChatTextActions,
   useTranscriptMenu,
 } from "./TranscriptMenu";
+import { TurnFileSummary } from "./TurnFileSummary";
 import { TurnProcess } from "./TurnProcess";
 
 type AssistantTurnProps = {
   entry: AssistantTurnEntry;
+  sessionId: string | undefined;
   isActive: boolean;
   runtimeActivity?: AgentActivity;
 };
@@ -62,9 +67,15 @@ function assistantTurnPropsEqual(
   next: AssistantTurnProps,
 ) {
   if (
+    previous.sessionId !== next.sessionId ||
     previous.isActive !== next.isActive ||
     previous.runtimeActivity !== next.runtimeActivity ||
+    previous.entry.startedAt !== next.entry.startedAt ||
     previous.entry.anchorId !== next.entry.anchorId ||
+    !assistantTurnOwnedToolsEqual(
+      previous.entry.ownedToolMessages,
+      next.entry.ownedToolMessages,
+    ) ||
     previous.entry.parts.length !== next.entry.parts.length
   ) {
     return false;
@@ -73,6 +84,9 @@ function assistantTurnPropsEqual(
     const nextPart = next.entry.parts[index];
     if (part.kind !== nextPart.kind) return false;
     if (part.kind === "message" && nextPart.kind === "message") {
+      return part.message === nextPart.message;
+    }
+    if (part.kind === "steering" && nextPart.kind === "steering") {
       return part.message === nextPart.message;
     }
     if (part.kind === "activity" && nextPart.kind === "activity") {
@@ -117,8 +131,8 @@ export function transcriptEntryEqual(
   }
   if (previous.kind === "assistant-turn" && next.kind === "assistant-turn") {
     return assistantTurnPropsEqual(
-      { entry: previous, isActive: false },
-      { entry: next, isActive: false },
+      { entry: previous, sessionId: undefined, isActive: false },
+      { entry: next, sessionId: undefined, isActive: false },
     );
   }
   return false;
@@ -126,11 +140,13 @@ export function transcriptEntryEqual(
 
 export function TranscriptEntryView({
   entry,
+  sessionId,
   isRunning,
   isActive,
   runtimeActivity,
 }: {
   entry: TranscriptEntry;
+  sessionId: string | undefined;
   isRunning: boolean;
   isActive: boolean;
   runtimeActivity?: AgentActivity;
@@ -139,6 +155,7 @@ export function TranscriptEntryView({
     return (
       <AssistantTurn
         entry={entry}
+        sessionId={sessionId}
         isActive={isActive}
         runtimeActivity={runtimeActivity}
       />
@@ -158,6 +175,7 @@ function transcriptEntryKey(entry: TranscriptEntry): string {
 
 type TranscriptHistoryProps = {
   entries: TranscriptEntry[];
+  sessionId: string | undefined;
   isRunning: boolean;
 };
 
@@ -168,6 +186,7 @@ type TranscriptHistoryProps = {
  */
 export const TranscriptHistory = memo(function TranscriptHistory({
   entries,
+  sessionId,
   isRunning,
 }: TranscriptHistoryProps) {
   return (
@@ -175,6 +194,7 @@ export const TranscriptHistory = memo(function TranscriptHistory({
       {entries.map((entry) => (
         <TranscriptEntryView
           key={transcriptEntryKey(entry)}
+          sessionId={sessionId}
           entry={entry}
           isRunning={isRunning}
           isActive={false}
@@ -184,6 +204,7 @@ export const TranscriptHistory = memo(function TranscriptHistory({
   );
 }, (previous, next) => {
   if (
+    previous.sessionId !== next.sessionId ||
     previous.isRunning !== next.isRunning ||
     previous.entries.length !== next.entries.length
   ) {
@@ -196,17 +217,20 @@ export const TranscriptHistory = memo(function TranscriptHistory({
 
 export const TranscriptTail = memo(function TranscriptTail({
   entry,
+  sessionId,
   isRunning,
   isActive,
   runtimeActivity,
 }: {
   entry: TranscriptEntry;
+  sessionId: string | undefined;
   isRunning: boolean;
   isActive: boolean;
   runtimeActivity?: AgentActivity;
 }) {
   return (
     <TranscriptEntryView
+      sessionId={sessionId}
       entry={entry}
       isRunning={isRunning}
       isActive={isActive}
@@ -214,6 +238,7 @@ export const TranscriptTail = memo(function TranscriptTail({
     />
   );
 }, (previous, next) =>
+  previous.sessionId === next.sessionId &&
   previous.isRunning === next.isRunning &&
   previous.isActive === next.isActive &&
   previous.runtimeActivity === next.runtimeActivity &&
@@ -222,10 +247,11 @@ export const TranscriptTail = memo(function TranscriptTail({
 
 export const AssistantTurn = memo(function AssistantTurn({
   entry,
+  sessionId,
   isActive,
   runtimeActivity,
 }: AssistantTurnProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const openTranscriptMenu = useTranscriptMenu();
   const { copyText, selectText } = useChatTextActions();
   const retryAssistantMessage = useAppStore((s) => s.retryAssistantMessage);
@@ -256,6 +282,16 @@ export const AssistantTurn = memo(function AssistantTurn({
     !isActive && !hasError && Boolean(content) && Boolean(actionMessage);
   const streaming =
     isActive && messages.some((message) => message.status === "streaming");
+  const processTiming = useMemo(
+    () => turnProcessTiming(entry.parts, entry.startedAt),
+    [entry.parts, entry.startedAt],
+  );
+  const completedTimestamp = isActive
+    ? undefined
+    : formatMessageTimestamp(
+        processTiming.endedAt,
+        i18n.resolvedLanguage ?? i18n.language,
+      );
   /*
     The turn owns the menu for its whole subtree, the answer rows it renders
     included: Regenerate and Branch act on the turn's answer message, so a menu
@@ -325,25 +361,36 @@ export const AssistantTurn = memo(function AssistantTurn({
   const { process, responses } = projectTurnProcess(entry);
   const activePart = isActive ? entry.parts.at(-1) : undefined;
 
-  const renderPart = (part: AssistantTurnPart) =>
-    part.kind === "activity" ? (
-      <ActivityGroup
-        embedded
-        key={`activity-${part.items[0].message.id}-${part.items[0].kind}${part.items[0].kind === "hostedSearch" ? `-${part.items[0].round.id}` : ""}`}
-        items={part.items}
-        endedAt={part.endedAt}
-        isActive={part === activePart}
-        isLast={isLastActivityPart(entry.parts, part)}
-        runtimeActivity={part === activePart ? runtimeActivity : undefined}
-        turnDelegationStatuses={turnDelegationStatuses}
-        turnDelegationTimings={turnDelegationTimings}
-      />
-    ) : (
+  const renderPart = (part: AssistantTurnPart) => {
+    if (part.kind === "activity") {
+      return (
+        <ActivityGroup
+          embedded
+          key={`activity-${part.items[0].message.id}-${part.items[0].kind}${part.items[0].kind === "hostedSearch" ? `-${part.items[0].round.id}` : ""}`}
+          items={part.items}
+          endedAt={part.endedAt}
+          isActive={part === activePart}
+          isLast={isLastActivityPart(entry.parts, part)}
+          runtimeActivity={part === activePart ? runtimeActivity : undefined}
+          turnDelegationStatuses={turnDelegationStatuses}
+          turnDelegationTimings={turnDelegationTimings}
+        />
+      );
+    }
+    if (part.kind === "steering") {
+      return (
+        <MessageRow
+          embedded
+          key={part.message.id}
+          message={part.message}
+          isRunning={isActive}
+        />
+      );
+    }
+    return (
       <div
         className={`message-bubble assistant-turn-fragment${
-          isActive && part.message.status === "streaming"
-            ? " streaming"
-            : ""
+          isActive && part.message.status === "streaming" ? " streaming" : ""
         }`}
         data-message-id={part.message.id}
         key={part.message.id}
@@ -358,6 +405,7 @@ export const AssistantTurn = memo(function AssistantTurn({
         ) : null}
       </div>
     );
+  };
 
   return (
     <div
@@ -371,7 +419,14 @@ export const AssistantTurn = memo(function AssistantTurn({
       <div className="message-col">
         {groupProcess ? (
           <>
-            <TurnProcess turnId={entry.id} processParts={process} turnParts={entry.parts} isActive={isActive} delegationStatuses={turnDelegationStatuses}>
+            <TurnProcess
+              turnId={entry.id}
+              processParts={process}
+              turnParts={entry.parts}
+              timing={processTiming}
+              isActive={isActive}
+              delegationStatuses={turnDelegationStatuses}
+            >
               {process.map(renderPart)}
             </TurnProcess>
             {responses.map(renderPart)}
@@ -379,9 +434,15 @@ export const AssistantTurn = memo(function AssistantTurn({
         ) : (
           entry.parts.map(renderPart)
         )}
-        {turnAllActivityItems.filter((item) => item.kind === "tool" && item.message.toolName === "GenerateImages").map((item) => (
-          <GeneratedImages key={item.message.id} message={item.message} />
-        ))}
+        {turnAllActivityItems
+          .filter(
+            (item) =>
+              item.kind === "tool" && item.message.toolName === "GenerateImages",
+          )
+          .map((item) => (
+            <GeneratedImages key={item.message.id} message={item.message} />
+          ))}
+        {!isActive ? <TurnFileSummary entry={entry} sessionId={sessionId} /> : null}
         {!isActive && metaMessage ? (
           <MessageMeta
             modelId={modelId}
@@ -392,6 +453,11 @@ export const AssistantTurn = memo(function AssistantTurn({
         ) : null}
         {complete && actionMessage ? (
           <div className="message-actions">
+            {completedTimestamp ? (
+              <time className="message-timestamp" dateTime={completedTimestamp.dateTime}>
+                {completedTimestamp.label}
+              </time>
+            ) : null}
             <CopyButton text={content} label={t("chat.copy")} />
             <TooltipButton
               className="copy-btn icon"

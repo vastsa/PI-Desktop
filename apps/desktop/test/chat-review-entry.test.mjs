@@ -158,12 +158,12 @@ test("failed and scratch tool rows cannot manufacture review evidence", () => {
   );
 });
 
-test("chat renders one message-owned card immediately after its tool row", () => {
+test("chat renders message-owned review records immediately after their tool row", () => {
   assert.equal(transcriptSource.includes("<WorkspaceChangesEntry />"), false);
   assert.equal(transcriptSource.includes("review-changes-entry"), false);
   assert.match(
     transcriptSource,
-    /<ToolRow message=\{item\.message\} \/>[\s\S]*<ReviewChangeCard message=\{item\.message\} \/>/,
+    /<ToolRow\b[^>]*\bmessage=\{item\.message\}[\s\S]*?\/>\s*<ReviewChangeCards message=\{item\.message\} \/>/,
   );
   assert.doesNotMatch(transcriptSource, /workspaceDiff|findWorkspaceChange/);
   assert.match(cardSource, /aria-expanded=\{open\}/);

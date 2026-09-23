@@ -61,10 +61,12 @@ test("no partial sets scrollbar-width or scrollbar-color (they disable the pseud
   assert.doesNotMatch(declarations, /scrollbar-color\s*:/);
 });
 
-test("the renderer entry installs the scroll-reveal mark", async () => {
+test("the renderer entry installs scroll-reveal and pointer-outside guards", async () => {
   const main = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
   assert.match(main, /import \{ installScrollbarReveal \} from "\.\/lib\/scrollbar-reveal";/);
   assert.match(main, /installScrollbarReveal\(document\);/);
+  assert.match(main, /import \{ installPointerOutside \} from "\.\/lib\/pointer-outside";/);
+  assert.match(main, /installPointerOutside\(document\);/);
 });
 
 test("all renderer scrollbars share the compact reveal contract", () => {

@@ -822,27 +822,35 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Both modes give each loaded assistant turn one whole-process disclosure. It
   contains thinking, tools, hosted searches and intermediate progress text; the
   trailing answer, assistant errors and stopped trailing text remain outside it.
+  A marked `steering: true` supplement stays inside the same process. Unmarked
+  queued **Send now** prompts remain new turns.
 - A contiguous activity segment receives a group disclosure only when it has at
   least two mode-visible items. Progress text ends the segment, a singleton uses
   its item disclosure directly, and compact-hidden thinking does not create a
   redundant group. Existing Task topology remains separate.
-- Detailed starts active and completed whole processes open. Its active ordinary
-  group starts open and closes when it completes only if untouched; completed
-  groups otherwise start closed. Compact starts the process and groups closed,
-  except an untouched active process with any recorded failed/denied tool remains
-  open through recovery and closes on completion.
-- In Detailed, leaf auto-open applies only when the literal final item of the last
-  activity group is an eligible tool-call or hosted-search row. Failed/denied
-  items stay closed, and a final thinking item never causes a backward scan.
-  Compact keeps every item payload closed and hides reasoning text/excerpts while
-  retaining its active thinking indicator.
-- Activating a process, group or item header toggles only that level. Closing a
+- Processes start expanded while active. Completion resets them to collapsed,
+  including after active nested clicks, keyboard interaction or failed/denied
+  calls, by using a new process identity. The header shows an icon-only
+  failure/issue marker whenever the process has issues, including while folded.
+  Reopening a completed process and new search reveals remain effective. The header updates
+  elapsed time once per second while active and shows the tool count. The loaded
+  initiating user's timestamp supplies the start when available; user bubbles
+  and completed assistant turns show that wall-clock time in the hover action
+  chrome, in the current locale. The chrome hides at rest and when the pointer
+  leaves the window.
+- Detailed starts the active ordinary group open and closes it when it completes
+  only if untouched; completed groups otherwise start closed. Compact starts
+  nested groups closed. In Detailed, leaf auto-open applies only when the
+  literal final item of the last activity group is an eligible tool-call or
+  hosted-search row. Failed/denied items stay closed, and a final thinking item
+  never causes a backward scan. Compact keeps every item payload closed and
+  hides reasoning text/excerpts while retaining its active thinking indicator.
+- Activating a nested group or item header toggles only that level. Closing a
   parent preserves child state, reopening restores it, and sibling groups remain
   independent. Opening a parent is never an expand-all action.
-- A manual item action claims its group and process as user-owned without toggling
-  them. Streaming and completion cannot reopen a manual close or close around
-  content the user opened, focused or selected. Choices survive mode changes,
-  singleton-to-group growth and remounts while the retained session pane lives.
+- A manual item action claims its group as user-owned without toggling it.
+  Nested choices survive mode changes, singleton-to-group growth and remounts
+  while the retained session pane lives. Whole-process completion still folds.
 - Search/navigation opens the process and activity group that own the named
   message, once per reveal request. Item-level targeting is not part of this
   change. Compact reasoning requires an explicit switch to Detailed. Closing
@@ -1505,10 +1513,57 @@ This does not prevent state changes — it makes them instant.
 
 ### 10.4 Programmatic scrolling
 
-- Session activation uses an immediate layout-phase bottom position so the
-  first visible frame is already stable at the latest record.
-- Jump-to-latest and minimap navigation use smooth scrolling only when the OS
-  has not requested reduced motion.
+- Session activation measures folded row height in the same layout phase as
+  its immediate bottom pin, so the first frame is already at the real bottom.
+  It does not defer that pin to a later frame or traverse the history.
+  Once a first/reveal commit selects the current snapshot, urgent updates keep
+  that projection until deferred rendering catches up; an older deferred snapshot
+  must not temporarily replace it and clamp the restored scroll position.
+  Completed-session hydration and revalidation select the current snapshot too;
+  only streaming work may use a deferred projection. A visible pinned pane is
+  positioned in the layout commit of its rendered messages, not against raw
+  messages whose DOM has not mounted yet.
+  A partial latest page can fold below one viewport even when many physical
+  records were loaded. Its unused space belongs above the content, keeping the
+  last row at the composer reserve from the first commit and while older pages
+  load. `scrollTop === max === 0` alone does not prove visual bottom alignment.
+  Once a retained pane has a partial live history, keep this alignment after its
+  final page too; explicit search windows and initially complete short chats
+  retain their ordinary layout. Overflowing history has no permanent spacer.
+- The main transcript jump-to-latest commits the canonical live projection and
+  positions its folded thinking/process height before paint, including return
+  from a search window or ordinary paged history. It cannot consume navigation
+  against the obsolete reading-window DOM, even when that old window is already
+  at its own bottom. Same-message jumps still receive a layout commit. Minimap
+  navigation alone may use smooth scrolling when reduced motion is not requested.
+- Mounted transcript rows are laid out. Skipping them leaves the 140px
+  estimate, which collapses when a folded row reaches the viewport and shifts
+  entry, jump-to-latest, and a long upward scroll. The bounded window, not
+  that skip, limits how many rows stay mounted.
+- `.thread-scroll` keeps native anchoring disabled: pinned follow, explicit
+  reading anchors, and history insertion must have one scroll-position owner.
+- Upward input releases follow without writing a new scroll offset. The
+  history-loading boundary reserves the same translated text geometry while
+  idle and loading, including wrapped labels.
+- A history insertion restores its reading anchor only when the corresponding
+  rendered window commits, not when raw message count changes ahead of deferred
+  rendering. The anchor compensates layout displacement, never wheel movement
+  made while the page was pending. No-op, failed, or superseded page requests
+  cannot leave an anchor for an unrelated later update.
+- A manual disclosure temporarily owns reading geometry without cancelling a
+  pending page read. Its title restores before prepend correction; continued
+  user scrolling hands the achieved geometry back to the original page anchor.
+  Neither transition starts a replacement read or applies insertion twice.
+- Retained panes save the latest laid-out user scroll position, ignore hidden
+  zero-offset events, and restore it before revealing the pane. Hiding suspends
+  an in-flight history anchor rather than cancelling the still-running page read.
+  A page committed while hidden applies its insertion correction once the pane
+  has layout again, after restoring the retained offset and before paint.
+- Session draft replacement and composer-height publication finish in the
+  layout phase. A newly revealed short transcript must not reserve the previous
+  session's composer height for its first visible frame.
+  Settings-hidden retained chat keeps its last positive measured reserve; a
+  hidden zero-height measurement cannot overwrite it before chat is revealed.
 - Turn-start following uses an immediate layout-phase update and then a
   frame-coalesced instant follow; it does not start overlapping smooth-scroll
   animations for token groups.
@@ -1521,11 +1576,11 @@ This does not prevent state changes — it makes them instant.
   layout changes (composer height, indicator rows) arrive after the fact and
   look like an upward gesture; because they have no preceding input they are
   ignored and follow mode is preserved.
-- Resize observers never synchronously measure every transcript row from their
-  callback. The one synchronous action they may take is the bottom re-pin of a
-  pinned, visible transcript (a single `scrollTo`), because a frame requested
-  from inside the callback lands after the current frame has already painted
-  the grown content unpinned (D287).
+- Resize observers do not repeatedly measure all mounted rows. A visible pinned
+  transcript may synchronously re-pin its bottom; a held disclosure may restore
+  its title and refresh the existing pending anchor's geometry. These corrections
+  run before paint: a frame requested inside the callback would paint the grown
+  content uncorrected first and snap it back in the following frame (D287).
 
 ## 11. Acceptance criteria
 

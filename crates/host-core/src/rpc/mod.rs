@@ -1910,16 +1910,32 @@ async fn handle_request(
                 .get("snapshotId")
                 .and_then(|value| value.as_str())
                 .ok_or_else(|| rpc_err(1002, "snapshotId required", "INVALID_PARAMS"))?;
-            let st = state.lock().await;
-            let workspace_root = resolve_tool_workspace(&st, session_id)?;
+            let (workspace_root, data_dir, workspace_mutation_locks) = {
+                let st = state.lock().await;
+                (
+                    resolve_tool_workspace(&st, session_id)?,
+                    st.data_dir.clone(),
+                    st.workspace_mutation_locks.clone(),
+                )
+            };
+            let _workspace_guard = match workspace_root.as_deref() {
+                Some(root) => Some(
+                    workspace_mutation_locks
+                        .acquire(std::path::Path::new(root))
+                        .await
+                        .map_err(|error| rpc_err(1000, error.message(), error.code()))?,
+                ),
+                None => None,
+            };
             let outcome = review::rollback_change(
-                &st.data_dir,
+                &data_dir,
                 session_id,
                 snapshot_id,
                 workspace_root.as_deref().map(std::path::Path::new),
             )
             .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
             if matches!(outcome.status, "rolledBack" | "alreadyRolledBack") {
+                let st = state.lock().await;
                 if let Some(root) = workspace_root.as_deref() {
                     let resolved = std::path::Path::new(root).join(&outcome.path);
                     st.hashline.invalidate_path(
@@ -3675,11 +3691,20 @@ async fn handle_request(
                 // Admission follows permission so approval waits do not occupy
                 // execution capacity. Keep this permit through review, the
                 // runner, and bookkeeping so every accepted call is bounded.
-                let tool_budget = {
+                let (tool_budget, workspace_mutation_locks) = {
                     let st = state.lock().await;
-                    st.tool_budget.clone()
+                    (st.tool_budget.clone(), st.workspace_mutation_locks.clone())
                 };
-                let _tool_permit = match tool_budget.acquire(&p.session_id, &p.tool_name).await {
+                let workspace_lock_root = workspace_path.as_deref().map(std::path::Path::new);
+                let _tool_permit = match tool_budget
+                    .acquire(
+                        &p.session_id,
+                        &p.tool_name,
+                        workspace_lock_root,
+                        &workspace_mutation_locks,
+                    )
+                    .await
+                {
                     Ok(permit) => permit,
                     Err(error) => {
                         tracing::warn!(
@@ -3734,6 +3759,28 @@ async fn handle_request(
                     );
                     None
                 });
+                let shell_review = if p.tool_name == "Bash" {
+                    match review::shell::prepare(
+                        &data_dir,
+                        &p.session_id,
+                        &p.tool_call_id,
+                        ws_path.as_deref(),
+                        scratch_path.as_deref(),
+                    ) {
+                        Ok(capture) => capture,
+                        Err(error) => {
+                            tracing::warn!(
+                                session_id = %p.session_id,
+                                tool_call_id = %p.tool_call_id,
+                                error = %error,
+                                "shell review capture unavailable"
+                            );
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
                 let mut bash_options = None;
                 if p.tool_name == "Bash" {
                     let (shell_id, cancellation) = {
@@ -3819,6 +3866,36 @@ async fn handle_request(
                     .await
                 };
                 result.tool_call_id = p.tool_call_id.clone();
+                if p.tool_name == "Bash" {
+                    let captured = shell_review.map(|capture| {
+                        let process_complete = !matches!(
+                            result.error_code.as_deref(),
+                            Some("TOOL_ABORTED" | "TOOL_TIMEOUT")
+                        );
+                        capture.finish(process_complete)
+                    });
+                    let reviews = captured
+                        .as_ref()
+                        .map(|capture| serde_json::to_value(&capture.reviews))
+                        .transpose()
+                        .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?
+                        .unwrap_or_else(|| json!([]));
+                    let status = captured
+                        .as_ref()
+                        .map(|capture| json!(capture.status))
+                        .unwrap_or_else(|| json!("unavailable"));
+                    if !result.content.is_object() {
+                        result.content = json!({
+                            "error": result.content,
+                            "code": result.error_code.clone().unwrap_or_else(|| "TOOL_FAILED".into())
+                        });
+                    }
+                    if let Some(object) = result.content.as_object_mut() {
+                        object.insert("root".to_string(), json!("workspace"));
+                        object.insert("reviews".to_string(), reviews);
+                        object.insert("reviewCapture".to_string(), json!({ "status": status }));
+                    }
+                }
 
                 if let Some(pending) = pending_review {
                     if result.ok {

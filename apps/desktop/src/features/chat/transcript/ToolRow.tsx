@@ -47,7 +47,6 @@ import {
 } from "../../../lib/subagent-topology";
 import { useAppStore } from "../../../stores/app-store";
 import { Markdown } from "../../../components/Markdown";
-import { ReviewChangeCard } from "../../../components/ReviewChangeCard";
 import { ToolChips, ToolDetailBlocks } from "../../../components/ToolDetails";
 import {
   IconArrowDown,
@@ -651,7 +650,6 @@ function SubagentRunFollow({
               item.kind === "tool" ? (
                 <Fragment key={item.message.id}>
                   <ToolRow message={item.message} />
-                  <ReviewChangeCard message={item.message} />
                 </Fragment>
               ) : item.kind === "thinking" ? (
                 <ThinkingRow

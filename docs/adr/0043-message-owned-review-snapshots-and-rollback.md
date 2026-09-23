@@ -11,6 +11,8 @@
 - Amended by: [ADR 0087](0087-line-anchored-edit-contract.md) (`Edit` may now
   record a move as two entries, and a rollback invalidates session edit
   snapshots for the path)
+- Amended by: [Shell workspace review evidence](shell-workspace-review-evidence.md)
+  (bounded Bash interval capture and multiple snapshots per message).
 
 ## Context
 
@@ -45,10 +47,19 @@ that produced it rather than to a mutable repository snapshot.
    Session deletion removes it; startup removes directories for missing
    sessions. Forked transcripts retain visible diff evidence but mark rollback
    unavailable because the source snapshot belongs to another session.
-5. Scratch-root writes, failed tools, and tools without a structured workspace
-   path do not create review records. Large or binary files may still show
-   status/count metadata while omitting hunks and rollback when the bounded
-   previous content cannot be retained.
+5. Scratch-root writes and denied tools do not create review records. Failed
+   Write/Edit tools retain their existing behavior. Bash can produce records
+   after a nonzero exit or interruption when its execution already changed
+   files; bounded capture explicitly reports incomplete coverage. Large or binary
+   files retain their existing diff and rollback limits.
+6. A completed visual assistant turn may also project its loaded top-level
+   review records into a file summary below the answer. This is a second view
+   of the same evidence, not a new snapshot or rollback boundary. It groups
+   paths, deduplicates snapshot ids and labels counts as cumulative edit totals
+   rather than a net turn diff. Individual records retain their existing guarded
+   rollback. Bash records come from bounded host capture rather than command
+   parsing. Nested delegate records are not attributed to the parent summary,
+   and a bounded transcript does not claim complete turn coverage.
 
 ## Consequences
 
@@ -56,8 +67,8 @@ that produced it rather than to a mutable repository snapshot.
 - Every visible diff is tied to the exact message that produced it, including
   additions, deletions, and modifications.
 - Rollback is explicit, idempotent, and refuses to overwrite later work.
-- Review no longer promises to describe unrelated shell mutations; structured
-  Write/Edit results are the durable review boundary.
+- Bash captures workspace changes during its execution interval; external shell
+  history and legacy messages without evidence cannot be reconstructed.
 - Snapshot bytes add host-owned local storage, bounded by file and diff caps.
 
 ## Alternatives rejected

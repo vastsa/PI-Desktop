@@ -10,7 +10,7 @@ use crate::permissions::PermissionManager;
 use crate::plans::PlanManager;
 use crate::plugins::PluginManager;
 use crate::secrets::SecretStore;
-use crate::tool_budget::ToolBudget;
+use crate::tool_budget::{ToolBudget, WorkspaceMutationLocks};
 use crate::user_skills::UserSkillRegistry;
 use crate::user_subagents::UserSubagentRegistry;
 use crate::workspace::WorkspaceState;
@@ -59,6 +59,7 @@ pub struct AppState {
     pub plugin_batch_import_rates: HashMap<String, Vec<Instant>>,
     pub plugin_delete_rates: HashMap<String, Vec<Instant>>,
     pub tool_budget: ToolBudget,
+    pub workspace_mutation_locks: WorkspaceMutationLocks,
     /// (session_id, tool_call_id) -> cancellation signal for an active Bash
     /// process. The signal is removed by the execution owner in all outcomes.
     pub active_bash_cancellations: HashMap<(String, String), tokio::sync::watch::Sender<bool>>,
@@ -146,6 +147,7 @@ impl AppState {
             plugin_batch_import_rates: HashMap::new(),
             plugin_delete_rates: HashMap::new(),
             tool_budget: ToolBudget::new(),
+            workspace_mutation_locks: WorkspaceMutationLocks::default(),
             active_bash_cancellations: HashMap::new(),
             pending_permissions: HashMap::new(),
             pending_bash_aborts: HashMap::new(),

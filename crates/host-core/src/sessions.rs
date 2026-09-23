@@ -11,7 +11,10 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
+mod display;
 mod fork_files;
+
+use display::record_to_ui_for_display;
 
 pub const MODES: [&str; 3] = ["plan", "goal", "agent"];
 
@@ -612,145 +615,6 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     }
 }
 
-const DISPLAY_TRUNCATION_MARKER: &str =
-    "\n\n[truncated for display; the full content remains in the transcript]";
-
-fn truncate_display_text(text: String, limit: usize) -> (String, bool) {
-    if text.chars().count() <= limit {
-        return (text, false);
-    }
-    let marker_len = DISPLAY_TRUNCATION_MARKER.chars().count();
-    if limit <= marker_len {
-        return (
-            DISPLAY_TRUNCATION_MARKER.chars().take(limit).collect(),
-            true,
-        );
-    }
-    let head = limit - marker_len;
-    (
-        format!(
-            "{}{}",
-            text.chars().take(head).collect::<String>(),
-            DISPLAY_TRUNCATION_MARKER
-        ),
-        true,
-    )
-}
-
-fn preview_value(value: Value, limit: usize) -> Value {
-    fn walk(value: Value, budget: &mut usize) -> Value {
-        if *budget == 0 {
-            return Value::String("[truncated for display]".into());
-        }
-        match value {
-            Value::String(text) => {
-                let (clipped, _) = truncate_display_text(text, *budget);
-                *budget = (*budget).saturating_sub(clipped.chars().count());
-                Value::String(clipped)
-            }
-            Value::Array(items) => {
-                let mut output = Vec::with_capacity(items.len().min(32));
-                for item in items {
-                    if *budget == 0 || output.len() >= 256 {
-                        output.push(Value::String("[truncated for display]".into()));
-                        break;
-                    }
-                    output.push(walk(item, budget));
-                }
-                Value::Array(output)
-            }
-            Value::Object(object) => {
-                let mut output = serde_json::Map::new();
-                for (key, item) in object {
-                    if *budget == 0 || output.len() >= 256 {
-                        output.insert("_truncated".into(), Value::Bool(true));
-                        break;
-                    }
-                    output.insert(key, walk(item, budget));
-                }
-                Value::Object(output)
-            }
-            other => other,
-        }
-    }
-
-    let mut budget = limit.max(1);
-    walk(value, &mut budget)
-}
-
-fn cap_record_block_value(value: &mut Value, budget: &mut usize) {
-    let original = std::mem::take(value);
-    *value = match original {
-        Value::String(text) if *budget > 0 => {
-            let (clipped, _) = truncate_display_text(text, *budget);
-            *budget = budget.saturating_sub(clipped.chars().count());
-            Value::String(clipped)
-        }
-        Value::String(_) => Value::String(String::new()),
-        other => other,
-    };
-}
-
-fn cap_record_blocks_for_display(record: &mut MessageRecord, limit: usize) {
-    let Some(blocks) = record.blocks.as_array_mut() else {
-        return;
-    };
-    let mut text_budget = limit.max(1);
-    let mut thinking_budget = limit.max(1);
-    for block in blocks {
-        let Some(object) = block.as_object_mut() else {
-            continue;
-        };
-        match object.get("type").and_then(Value::as_str) {
-            Some("text") => {
-                if let Some(text) = object.get_mut("text") {
-                    cap_record_block_value(text, &mut text_budget);
-                }
-            }
-            Some("thinking") => {
-                if let Some(text) = object.get_mut("text") {
-                    cap_record_block_value(text, &mut thinking_budget);
-                }
-            }
-            Some("tool_call") => {
-                for key in ["args", "result"] {
-                    if let Some(value) = object.get_mut(key) {
-                        *value = preview_value(std::mem::take(value), limit);
-                    }
-                }
-                if let Some(text) = object.get_mut("text") {
-                    cap_record_block_value(text, &mut text_budget);
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-fn record_to_ui_for_display(mut record: MessageRecord, limit: usize) -> UiMessage {
-    // Bound the canonical block values before record_to_ui concatenates text
-    // blocks or clones tool payloads. This keeps a 50 MB selected line from
-    // producing another 50 MB temporary UI string on the host.
-    cap_record_blocks_for_display(&mut record, limit);
-    let mut message = record_to_ui(record);
-    let (content, _) = truncate_display_text(message.content, limit);
-    message.content = content;
-    if let Some(thinking) = message.thinking.take() {
-        let (thinking, _) = truncate_display_text(thinking, limit);
-        message.thinking = Some(thinking);
-    }
-    if let Some(args) = message.tool_args.take() {
-        message.tool_args = Some(preview_value(args, limit));
-    }
-    if let Some(result) = message.tool_result.take() {
-        message.tool_result = Some(preview_value(result, limit));
-    }
-    if let Some(error) = message.error.take() {
-        message.error = Some(preview_value(error, limit));
-    }
-    message
-}
-
 pub(crate) fn dedupe_records(records: Vec<MessageRecord>) -> Vec<MessageRecord> {
     let mut ordered: Vec<MessageRecord> = Vec::with_capacity(records.len());
     let mut by_id: std::collections::HashMap<String, usize> =
@@ -848,19 +712,29 @@ fn clone_records_for_fork(
                         }
                     }
                     // Review snapshots are owned by the source session's
-                    // workspace. Keep the copied diff evidence visible, but
-                    // prevent a fork from offering a rollback against a
-                    // snapshot it does not own.
+                    // workspace. Keep copied diff evidence visible, but make
+                    // every legacy or shell-array record non-reversible.
                     if object.get("type").and_then(Value::as_str) == Some("tool_call") {
-                        if let Some(review) = object
+                        if let Some(details) = object
                             .get_mut("result")
                             .and_then(Value::as_object_mut)
                             .and_then(|result| result.get_mut("details"))
                             .and_then(Value::as_object_mut)
-                            .and_then(|details| details.get_mut("review"))
-                            .and_then(Value::as_object_mut)
                         {
-                            review.insert("reversible".into(), Value::Bool(false));
+                            if let Some(review) =
+                                details.get_mut("review").and_then(Value::as_object_mut)
+                            {
+                                review.insert("reversible".into(), Value::Bool(false));
+                            }
+                            if let Some(reviews) =
+                                details.get_mut("reviews").and_then(Value::as_array_mut)
+                            {
+                                for review in reviews {
+                                    if let Some(review) = review.as_object_mut() {
+                                        review.insert("reversible".into(), Value::Bool(false));
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2594,15 +2468,31 @@ pub fn update_tool_review_state(
         else {
             continue;
         };
-        let Some(review) = details.get_mut("review").and_then(Value::as_object_mut) else {
-            continue;
+        let mut update = |review: &mut serde_json::Map<String, Value>| {
+            if review.get("snapshotId").and_then(Value::as_str) != Some(snapshot_id) {
+                return false;
+            }
+            review.insert("state".into(), Value::String(state.to_string()));
+            true
         };
-        if review.get("snapshotId").and_then(Value::as_str) != Some(snapshot_id) {
-            continue;
+        if details
+            .get_mut("review")
+            .and_then(Value::as_object_mut)
+            .is_some_and(&mut update)
+        {
+            changed = true;
+            break;
         }
-        review.insert("state".into(), Value::String(state.to_string()));
-        changed = true;
-        break;
+        if let Some(reviews) = details.get_mut("reviews").and_then(Value::as_array_mut) {
+            if reviews
+                .iter_mut()
+                .filter_map(Value::as_object_mut)
+                .any(&mut update)
+            {
+                changed = true;
+                break;
+            }
+        }
     }
     if changed {
         replace_messages(db, session_id, &messages)?;
@@ -4038,6 +3928,42 @@ mod tests {
     }
 
     #[test]
+    fn fork_keeps_review_evidence_but_marks_every_snapshot_irreversible() {
+        let record = MessageRecord {
+            id: "tool-message".into(),
+            role: "tool".into(),
+            tool_name: Some("Bash".into()),
+            is_error: false,
+            blocks: json!([{
+                "type": "tool_call",
+                "callId": "call-1",
+                "result": {
+                    "details": {
+                        "review": {
+                            "snapshotId": "legacy-snapshot",
+                            "reversible": true
+                        },
+                        "reviews": [
+                            { "snapshotId": "snapshot-a", "reversible": true },
+                            { "snapshotId": "snapshot-b", "reversible": true }
+                        ]
+                    }
+                }
+            }]),
+            meta: None,
+            created_at: "2026-09-20T00:00:00Z".into(),
+        };
+        let (cloned, _, _) = clone_records_for_fork(vec![record]);
+        let details = &cloned[0].blocks[0]["result"]["details"];
+        assert_eq!(details["review"]["snapshotId"], "legacy-snapshot");
+        assert_eq!(details["review"]["reversible"], false);
+        assert_eq!(details["reviews"][0]["snapshotId"], "snapshot-a");
+        assert_eq!(details["reviews"][0]["reversible"], false);
+        assert_eq!(details["reviews"][1]["snapshotId"], "snapshot-b");
+        assert_eq!(details["reviews"][1]["reversible"], false);
+    }
+
+    #[test]
     fn fork_remaps_each_checkpoint_in_the_chain_on_its_own() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
@@ -4516,6 +4442,33 @@ mod tests {
             }))
         );
 
+        let mut array_tool = updated.messages[1].clone();
+        array_tool.tool_result = Some(json!({
+            "ok": true,
+            "details": {
+                "root": "workspace",
+                "reviews": [
+                    { "snapshotId": "snapshot-a", "state": "active" },
+                    { "snapshotId": "snapshot-b", "state": "active" }
+                ]
+            }
+        }));
+        replace_messages(
+            &db,
+            &session.id,
+            &[user_msg("m1", "shell", "2025-05-01T00:00:00Z"), array_tool],
+        )
+        .unwrap();
+        assert!(
+            update_tool_review_state(&db, &session.id, "m2", "snapshot-b", "rolledBack",).unwrap()
+        );
+        let array_updated = get_session(&db, &session.id).unwrap().unwrap();
+        let reviews = array_updated.messages[1].tool_result.as_ref().unwrap()["details"]["reviews"]
+            .as_array()
+            .unwrap();
+        assert_eq!(reviews[0]["state"], "active");
+        assert_eq!(reviews[1]["state"], "rolledBack");
+
         // seq allocation is monotonic per session.
         let last_seq: i64 = db
             .conn()
@@ -4846,6 +4799,108 @@ mod tests {
 
         let full = get_session(&db, &session.id).unwrap().unwrap();
         assert_eq!(full.messages[1].content.len(), 80_000);
+    }
+
+    #[test]
+    fn display_limited_reload_preserves_structural_review_metadata() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let stdout = "stdout line\n".repeat(8_000);
+        let reviews = (0..300)
+            .map(|index| {
+                json!({
+                    "version": 1,
+                    "snapshotId": format!("snapshot-{index}"),
+                    "messageId": "tool-review",
+                    "path": format!("src/generated/file-{index}.txt"),
+                    "operation": "edit",
+                    "status": "modified",
+                    "state": if index == 299 { "rolledBack" } else { "active" },
+                    "additions": index + 1,
+                    "deletions": index,
+                    "hunks": [{
+                        "header": "@@ -1,1 +1,1 @@",
+                        "lines": [{ "type": "add", "text": "x".repeat(1_024) }]
+                    }],
+                    "binary": index == 7,
+                    "reversible": index != 299
+                })
+            })
+            .collect::<Vec<_>>();
+        let tool = UiMessage {
+            id: "tool-review".into(),
+            role: "tool".into(),
+            content: stdout.clone(),
+            attachments: None,
+            steering: None,
+            created_at: "2026-09-20T00:00:00Z".into(),
+            thinking: None,
+            status: Some("complete".into()),
+            model_id: None,
+            provider_id: None,
+            usage: None,
+            response_duration_ms: None,
+            response_output_tokens: None,
+            error: None,
+            revision_root_id: None,
+            revision_count: None,
+            active_revision: None,
+            tool_name: Some("Bash".into()),
+            tool_call_id: Some("call-review".into()),
+            tool_status: Some("success".into()),
+            tool_args: Some(json!({ "command": "generate files" })),
+            tool_result: Some(json!({
+                "content": [{ "type": "text", "text": stdout }],
+                "details": {
+                    "root": "workspace",
+                    "reviewCapture": { "status": "partial" },
+                    "reviews": reviews
+                }
+            })),
+            tool_completed_at: Some("2026-09-20T00:00:01Z".into()),
+            tool_duration_ms: Some(1_000),
+            is_error: None,
+            parent_tool_call_id: None,
+            agent_name: None,
+            hosted_search: None,
+            session_message: None,
+        };
+        append_message(&db, &session.id, &tool, None).unwrap();
+
+        let full = get_session(&db, &session.id).unwrap().unwrap();
+        let full_result = full.messages[0].tool_result.as_ref().unwrap();
+        assert_eq!(full.messages[0].content, tool.content);
+        assert_eq!(
+            full_result["details"]["reviews"].as_array().unwrap().len(),
+            300
+        );
+
+        let limited = get_session_with_options(
+            &db,
+            &session.id,
+            SessionReadOptions {
+                message_around: None,
+                message_before: None,
+                message_limit: Some(1),
+                content_limit: Some(64 * 1_024),
+            },
+        )
+        .unwrap()
+        .unwrap();
+        let result = limited.messages[0].tool_result.as_ref().unwrap();
+        let details = &result["details"];
+        assert_eq!(details["root"], "workspace");
+        assert_eq!(details["reviewCapture"]["status"], "partial");
+        let reviews = details["reviews"].as_array().unwrap();
+        assert_eq!(reviews.len(), 300);
+        assert_eq!(reviews[0]["snapshotId"], "snapshot-0");
+        assert_eq!(reviews[0]["version"], 1);
+        assert_eq!(reviews[0]["path"], "src/generated/file-0.txt");
+        assert_eq!(reviews[0]["additions"], 1);
+        assert_eq!(reviews[7]["binary"], true);
+        assert_eq!(reviews[299]["snapshotId"], "snapshot-299");
+        assert_eq!(reviews[299]["state"], "rolledBack");
+        assert_eq!(reviews[299]["reversible"], false);
     }
 
     #[test]

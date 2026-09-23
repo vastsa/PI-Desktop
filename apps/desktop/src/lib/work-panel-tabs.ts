@@ -13,6 +13,13 @@ export type WorkPanelTab = {
   /** Stored attachment mimeType for extension-less `attachments/<sha256>` images. */
   mimeType?: string;
 };
+export type WorkPanelReviewSelection = {
+  sessionId: string;
+  turnId: string;
+  selectedPath: string;
+  snapshotIds: string[];
+  revision: number;
+};
 
 export type WorkPanelTabsState = {
   tabs: WorkPanelTab[];
@@ -22,6 +29,7 @@ export type WorkPanelTabsState = {
 export type WorkPanelContext = WorkPanelTabsState & {
   open: boolean;
   fileRequest: { path: string; seq: number; mimeType?: string } | null;
+  reviewSelection?: WorkPanelReviewSelection;
 };
 
 let newWorkPanelTabSequence = 0;

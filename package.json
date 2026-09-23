@@ -30,6 +30,7 @@
     "test:e2e:composer-autocomplete": "node scripts/e2e-composer-autocomplete.mjs",
     "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
     "test:e2e:transcript": "node scripts/e2e-transcript-render.mjs",
+    "test:e2e:transcript-scroll": "node scripts/e2e-transcript-scroll.mjs",
     "test:e2e:copy-tex": "node scripts/e2e-copy-tex.mjs",
     "test:e2e:transcript-disclosure": "node scripts/e2e-transcript-disclosure-anchor.mjs",
     "test:e2e:images": "node scripts/e2e-image-generation.mjs && node scripts/e2e-image-generation-ui.mjs && node scripts/e2e-image-chat.mjs",
@@ -66,7 +67,8 @@
     "test:e2e:session-completion": "node scripts/e2e-session-completion.mjs",
     "test:e2e:remote-host": "node scripts/e2e-remote-host.mjs",
     "test:e2e:shortcut-settings": "node scripts/test-shortcut-settings.mjs",
-    "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs"
+    "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs",
+    "test:e2e:shell-review": "node scripts/e2e-shell-review.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",

@@ -5741,10 +5741,19 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   5. Repeat with an `ops` payload whose ranges overlap.
   6. If the task uses a dedicated worktree outside the advertised workspace,
      verify its guarded Bash edit and resulting `git diff`.
+  7. Hold a workspace mutation guard, queue another mutation, then release the
+     workspace while class capacity remains occupied. Repeat with 64 mixed
+     workspace/permit waiters, attempt another waiting call, and drop waiters
+     during workspace and permit acquisition.
 - **Expected**:
   - Read/search calls may overlap, but only one `Write`/`Edit` executes for a
     session at a time; queued mutations do not consume another global
     mutation slot while waiting.
+  - Workspace and permit waits share one 30-second admission deadline and one
+    64-call queue. Excess waiting calls return `HOST_OVERLOADED`; immediately
+    available calls still run. Workspace waiters do not reserve global tool
+    capacity. Dropped or timed-out admission futures release queue slots,
+    partial permits, and workspace guards; subsequent calls can run normally.
   - The stale-tag edit fails without changing the file and returns
     `EDIT_TAG_MISMATCH` carrying the live tag and current content at the
     anchors; the overlapping-range payload fails with `EDIT_RANGE_INVALID`
@@ -10625,6 +10634,48 @@ This test plan spec is accepted when:
      history is loaded and mounted.
   8. Confirm the continuation disappears once nothing earlier remains, and that a
      short completed conversation that fits one viewport still shows no rail.
+  9. Use native wheel input for the first small upward movement in a barely
+     overflowing folded conversation. Hold the older-page read open, continue
+     scrolling, then complete it. Repeat with a no-op page and a failed page.
+     Loading status must not add height; insertion must preserve the movement
+     made while waiting rather than restore the request-time screen position.
+  10. Switch away after manual scrolling and reveal the retained pane. Switch
+      between short sessions with empty and multiline composer drafts; measure
+      the first committed composer reserve and the visible answer across frames.
+      The reserve must match the destination composer, and the reading offset
+      must be the latest user position rather than the last programmatic pin.
+  11. Start an older-page read, keep scrolling, then hide and reveal the same
+      retained pane while the read is pending. Complete it after reveal, then
+      repeat with completion while hidden. The original read must retain its
+      anchor without duplicate reads; inspect the first reveal commit and every
+      subsequent frame for reading-row displacement.
+  12. Load a tail beginning partway through a turn, then prepend its missing user
+      and earlier process content. The answer keeps its viewport position even
+      when page settlement triggers an urgent render before deferred rendering
+      catches up. Do not transiently restore the shorter, old projection.
+  13. Expand a process while its older-page read is pending. Complete the page
+      once with the title still held and once after further native scrolling.
+      Preserve the title/reading row before paint, with one original read and
+      no second insertion correction after the ownership handoff.
+  14. Hydrate an initially empty pane and revalidate a short cached completed
+      conversation with a longer snapshot. Inspect the first synchronous commit,
+      not only settled frames: the selected newest message must be present and
+      bottom-aligned immediately.
+  15. Navigate to an older search range using the reading runtime, then click the
+      actual return-to-latest control. Repeat with shorter and longer canonical
+      live tails, idle and running sessions, and ordinary wheel-triggered paging.
+      Assert message identity and bottom alignment on the first commit and every
+      following frame; the bottom of an obsolete range is not a valid latest view.
+  16. Open a partial tail whose folded tool-heavy turns underfill a tall
+      858-by-1166 conversation pane. Hold older-page reads pending, then resolve
+      a still-underfilled page and an overflowing page. Measure the last row's
+      bottom relative to the real composer dock's top from the first commit:
+      an idle transcript without trailing cards keeps the existing 16px gap
+      (within pixel rounding), not a large blank area below the answer.
+      Repeat with another page still available, on retained hide/reveal, and
+      across composer draft heights. No hidden or duplicate reads may start.
+      A complete short conversation remains top-aligned. This test must fail
+      even when a misplaced underfilled pane reports scrollTop == max == 0.
 - **Expected**: Mounted transcript rows stay bounded by the window rather than
   growing with how far back the user scrolled, so the recorded row count and heap
   usage after paging far back stay close to the values recorded before it.
@@ -10643,8 +10694,16 @@ This test plan spec is accepted when:
 - **Acceptance**: C (conversation), H (diagnostics), Quality
 - **Milestone**: M6+
 - **Status**: Unit-covered (`transcript-window.test.mjs`,
-  `conversation-minimap.test.mjs`, `interaction-performance.test.mjs`); rendered
-  desktop journey and the low-memory Windows measurement pending
+  `conversation-minimap.test.mjs`, `interaction-performance.test.mjs`). Isolated
+  renderer coverage: `node scripts/e2e-transcript-scroll.mjs` uses the built app
+  CSS, native Chromium wheel input, gated page responses, retained `SessionPane`
+  components, and the real docked `Composer`. It does not launch the production
+  app, call a provider, or access user sessions. The installed desktop journey
+  and low-memory Windows measurement remain manual acceptance.
+  The underfilled-entry fixture also runs with `PI_SCROLL_PROBE_SCENARIO=underfilled`,
+  `PI_SCROLL_PROBE_WIDTH=858`, and `PI_SCROLL_PROBE_HEIGHT=1166` at DPR 1 and 1.25.
+  It verifies actual browser viewport dimensions and the first-commit composer
+  gap; the full native-wheel suite retains its default viewport.
 
 #### E2E-160: Dragging the window across displays keeps the dropped position
 
@@ -14384,32 +14443,144 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Preconditions:** A turn with progress paragraph A, multiple searches plus
   thinking, progress paragraph B, multiple commands plus thinking, and a final
   answer; Detailed and Compact display modes; legacy message-level transcript
-  search targets.
-- **Steps:** Review the nested disclosure path in Detailed, including independent
-  group/item toggles, parent close/reopen, a singleton segment, literal-final-item
-  leaf selection, failure/denial/recovery, retained-pane remounts and a legacy
-  search reveal. Repeat in Compact and with permission/question/plan/goal action
-  cards, a stopped partial answer, an assistant error and delegated child work.
+  search targets; a marked steering supplement and an unmarked queued Send now
+  prompt.
+- **Steps:** Stream the turn; finish it; expand/collapse its process; review the
+  nested disclosure path in Detailed, including independent group/item toggles,
+  parent close/reopen, a singleton segment, literal-final-item leaf selection,
+  failure/denial/recovery, retained-pane remounts and a legacy search reveal.
+  Repeat in Compact and with permission/question/plan/goal action cards, a
+  stopped partial answer, an assistant error and delegated child work. During an
+  active task, deliver one or multiple marked steering messages, then continue
+  tools and finish. Repeat before the first assistant output, after history
+  reload, with an attachment, and with a separate unmarked queued task.
 - **Expected:** Both modes use one whole-process disclosure and leave the final
   answer, assistant errors, stopped trailing text and pending actions outside it.
-  Detailed starts active/completed processes open; the active multi-item group is
-  open and an untouched group closes on completion. Compact starts processes and
-  groups closed, hides reasoning, and keeps payloads closed; an untouched active
-  process with a recorded failed/denied tool stays open through recovery and closes
-  on completion. Singletons have no group. Detailed auto-opens only an eligible
-  literal final tool/search item of the last activity group; it does not scan past
-  thinking, and failed/denied leaves stay closed. Parent/child/sibling states remain
-  independent, pane-owned user choices survive updates, mode changes and remounts,
-  and renderer restart reapplies defaults. Search reveals the process and activity
-  group that own the named message once per request; item-level targeting is not
-  part of this change, and Compact reasoning requires an
-  explicit switch to Detailed. Saved mode survives restart and a missing/unknown
-  setting resolves to Detailed.
-- **Validation scope for the 2026-09-20 change:** Nested disclosure and activity
-  group presentation only; precise item-level transcript search targeting is out
-  of scope and keeps the existing message-level search behavior.
+  Both modes expand the active process and reset it to collapsed at completion,
+  including after active nested interaction or failed/denied calls. Completed
+  manual reopening survives updates; search reveals the process and activity
+  group that own the named message once per request. The header's failure/issue
+  marker remains icon-only while folded or open, with its count in the accessible
+  name. The header stays content-sized in both states while details use the band.
+  Detailed auto-opens only an eligible
+  literal final tool/search item of the last activity group; it does not scan
+  past thinking, and failed/denied leaves stay closed. The active multi-item
+  group is open and an untouched group closes on completion. Compact starts
+  nested groups closed, hides reasoning, and keeps payloads closed. Singletons
+  have no group. Parent/child/sibling nested states remain independent, and
+  pane-owned nested choices survive updates, mode changes and remounts.
+  Renderer restart reapplies defaults. Item-level targeting is not part of this
+  change, and Compact reasoning requires an explicit switch to Detailed. Saved
+  mode survives restart and a missing/unknown setting resolves to Detailed.
+  User and completed assistant messages display a localized time in the hover
+  action chrome; process elapsed time includes the loaded initiating user's
+  timestamp and falls back safely when the user row or a valid timestamp is
+  unavailable. Marked supplements remain ordered inside one active process and
+  do not fold preceding work on arrival. Task completion folds the supplemental
+  bubbles and both work segments together.
+  Completion preserves the mounted process children while resetting only the
+  parent disclosure choice. Reopening retains the nested user choices.
+  Reopening/search reveals their text and files; final response and file summary
+  stay singular. Unmarked new tasks, including queued **Send now** prompts, and
+  missing legacy markers do not merge; unloaded task history is not guessed.
+- **Automation:** `test:e2e:transcript` covers the mounted renderer interactions,
+  settings control and unchanged-group performance. `test:e2e:transcript-disclosure`
+  covers scroll anchoring; `test:e2e:theme-surfaces` covers the shared theme
+  controls. Isolated Host `settings.set/get` checks verify both modes across
+  process restart and preservation during unrelated partial settings writes.
+  Renderer fixtures alone do not prove settings persistence.
+- **Validation scope for the 2026-09-20 nested-disclosure change:** Nested
+  disclosure and activity group presentation only; precise item-level transcript
+  search targeting is out of scope and keeps the existing message-level search
+  behavior.
 - **Specs:** 04-ux/06-settings-ia, 04-ux/08-component-spec,
   04-ux/09-interaction-patterns; ADR turn-process-and-thinking-display.
+
+### E2E-CHAT-task-recorded-files
+
+- **Preconditions:** A loaded assistant turn with successful Write/Edit review
+  snapshots, repeated edits to a path, and a final reply. Exercise 3, 4, 5, 6,
+  and 21 unique paths. Verify the summary at normal and 320px width: a rounded
+  outer border encloses the padded header and separated file list; file names
+  remain vertically centered in their hover rows without horizontal overflow.
+- **Steps:** Complete the task, inspect its count heading and file list, reveal
+  more paths and click one file. Verify the right Review panel opens its expanded
+  diffs, then request guarded rollback there. Repeat
+  with a conflict, rolled-back evidence, failed/scratch tools, a shell-only turn,
+  binary/oversized evidence and another user round. Re-render saved messages and
+  restart the host after a native Bash output and Write/Edit diff each exceed
+  64KiB. Read with `contentLimit: 64 * 1024`, as the desktop does, and compare
+  the real frontend turn-file projection with its pre-restart result. Verify
+  that full uncapped evidence is unchanged and capped rollback states update.
+  Include a Task whose delegate performs native Write/Edit, followed by parent
+  Bash writes to source and `.gradle` caches. Resume the delegate in a later
+  user turn and deliver a late record for the original Task.
+  Switch between sessions and inspect a bounded transcript window. Repeat file
+  clicks on either side of a compaction checkpoint, in ordinary loaded history
+  and a search reading range, with a subagent detail currently foregrounded.
+  Include a 15-file summary, a +0/-0 record, conflict and successful rollback,
+  and a delayed rollback response after switching sessions. Also hold an older
+  page or search read pending during successful rollback, release its stale
+  response, then retry: loading must clear, rolled-back evidence must remain,
+  and the newer read must complete without being overwritten by the old one.
+  Open a history or search range that cuts a completed turn. On the first
+  synchronous commit, assert that the file frame, known paths, numeric file
+  count, cumulative line totals, and accessible labels reflect the loaded records.
+  Files can open their exact persisted Review records without another page.
+  Process content stays expandable with its current duration and tool count.
+  As more pages arrive, counts and duration may update to include the new records;
+  remounting or revisiting must show the currently loaded values immediately.
+- **Expected:** The final answer and recorded-file summary remain outside the
+  process disclosure. The summary deduplicates snapshots and counts paths;
+  Up to five files are fully visible with no expansion control. Above five,
+  exactly three are initially visible; show-more reports the remaining count,
+  expansion shows all files, and collapse restores the first three.
+  edit totals are cumulative operation totals, not a net Git diff. Rolled-back
+  records remain inspectable and do not contribute to active totals. Existing
+  review controls retain conflict protection and disabled/unavailable states.
+  Other rounds, scratch writes and unsuccessful Write/Edit add no records.
+  Captured Bash changes are included even after a nonzero exit; complete no-op
+  shell activity has no empty file card. The chat has no scope/disclaimer subtitle;
+  zero-record turns show no summary. Historical snapshots stay independent of
+  workspace/Git state. Clicking another file changes the sidebar selection;
+  repeated clicks reopen its details. Selection stays within the originating
+  session and turn, including when another turn edited the same path. The chat
+  itself never expands nested diff cards from the file summary.
+  Store admission and Review resolution use the same visual turn boundaries and
+  loaded range as the summary; valid historical clicks open Review instead of
+  silently failing or leaving a subagent detail on top. Confirmed rollback updates
+  the historical record and summary without replacing the canonical live tail.
+  Pending session changes reject navigation; stale rollback results cannot update
+  a different session or redirect the work panel.
+  Delegate source edits remain in their original Task turn, even when resumed
+  process cards combine history. Review opens their original snapshots and
+  persists guarded rollback after restart. Bash `.gradle` records are excluded
+  from both new captures and old display records; explicit Edit/Write and
+  unrelated binary assets remain. Orphan delegate messages do not acquire a
+  turn through adjacency, and changed evidence invalidates memoized summaries.
+- **Automation:** `apps/desktop/test/turn-file-summary.test.mjs` covers projection;
+  the mounted transcript fixture covers expansion, rollback state, and the
+  failed-Write/scratch-Write/Bash-copy/final-answer user path. `test:e2e:shell-review`
+  runs an isolated native host and real shell to copy three scratch files,
+  verify pre-existing unchanged files are excluded, capture a write followed by
+  nonzero exit, reload persisted multi-file evidence, roll back a single snapshot
+  without changing siblings, and reject a conflict after a later external edit.
+  Rust tests cover bounds, links, ignore rules and same-workspace serialization.
+  The native scenario also executes delegated Write/Edit, captures a real source
+  write alongside root and nested `.gradle` mutations, reloads parent links,
+  and verifies delegated rollback persistence and conflict protection. A Rust
+  fixture fills `.gradle` beyond the scan's file budget and verifies that the
+  source mutation remains completely captured and independently reversible.
+  Performance regressions also cover unchanged post-scan file bodies not being
+  retained and metadata-only file summaries not reading diff hunks.
+  `scripts/e2e/turn-file-review-navigation.tsx` mounts the production transcript,
+  store action, work panel, and Review tab together for checkpoint/history/search
+  selection and rollback; only external snapshot/rollback RPCs are mocked.
+  The navigation fixture also covers first-commit numeric file totals, duration,
+  and tool counts in partial history and search ranges. Existing mounted process
+  tests continue to cover disclosure, search, and active progress behavior.
+- **Specs:** 04-ux/08-component-spec; ADR 0043.
+- **Status:** Task-candidate validation; no live provider or user data required.
 
 ### E2E-RPC-unicode-separators
 

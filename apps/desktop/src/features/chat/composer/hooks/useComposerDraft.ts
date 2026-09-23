@@ -380,7 +380,9 @@ export function useComposerDraft({
     commitEditorDom();
   };
 
-  useEffect(() => {
+  // Restore the destination before paint so editor sizing and the dock reserve
+  // settle in the same layout phase instead of correcting the transcript later.
+  useLayoutEffect(() => {
     const previousKey = draftKeyRef.current;
     if (previousKey !== draftKey) {
       invalidatePromptEnhancement();

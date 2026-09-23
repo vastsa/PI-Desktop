@@ -239,9 +239,9 @@ as binary content.
 
 ## 4c. Message-owned review snapshots and rollback
 
-`Write` and `Edit` are the structured review boundary. For a successful
-workspace-root mutation, host-core captures the previous file before execution
-and adds bounded review evidence to the tool result:
+`Write` and `Edit` capture the previous workspace file before execution and
+attach a singular `review` to successful results. Bash additionally captures a
+bounded workspace interval and attaches multiple records in `reviews`:
 
 ```ts
 type ReviewChange = {
@@ -277,6 +277,20 @@ type ReviewChange = {
   The hash guard uses the full digest, not the 16-bit `tag`.
 - Review snapshot files live outside the workspace and are removed with their
   session; orphaned session directories are swept on host startup.
+- Admitted Bash execution compares bounded pre/post workspace snapshots using
+  the existing ignore rules, excluding scratch/host data, links, and root or
+  nested `.gradle` cache directories before traversal consumes scan budgets.
+  This extra exclusion is limited to automatic Bash review capture; explicit
+  Read/Write/Edit and search scopes are unchanged. Its details
+  contain `root: "workspace"`, `reviews: ReviewChange[]`, and `reviewCapture`
+  with status `complete`, `partial`, or `unavailable`. Unknown/unvisited files
+  are not assumed absent. No-op complete captures have an empty array.
+- Bash records survive nonzero exit and interruption if files were changed.
+  Denied commands are not scanned. Each file has an independent snapshot id;
+  rollback updates only that record, and forks mark every inherited record
+  non-reversible. Legacy singular records remain supported. Capture bounds and
+  external-writer limitations are described in
+  [Shell workspace review evidence](../../adr/shell-workspace-review-evidence.md).
 
 ## 4d. Mutation ordering and edit recovery
 
@@ -285,6 +299,20 @@ continue in parallel, and different sessions may mutate different roots
 concurrently, but a session never has two in-flight mutations. The host holds
 the per-session mutation permit before consuming a global mutation slot, so a
 queued mutation cannot reserve capacity while it waits for an earlier edit.
+
+Host-owned Write/Edit/Bash execution also takes a canonical workspace mutation
+guard across sessions. It spans review preparation, execution and finalization
+to prevent another host mutation contaminating a shell capture. Acquisition is
+cancellable; different workspace roots remain independent. External programs
+are outside this lock, so rollback still requires the post-content hash.
+
+Tool admission has one 30-second deadline shared by workspace, total, class,
+and session waits. Workspace waiters count toward the same 64-call bounded
+queue as permit waiters; a full queue rejects additional waiting calls with
+`HOST_OVERLOADED`, while immediately available calls still run. Waiting for a
+workspace never reserves total or class permits. Timeout or dropping an
+admission future releases its queue slot, partial permits, and workspace guard.
+Standalone workspace acquisition for rollback retains its 30-second bound.
 
 `Edit` names positions and supplies new content only; it never matches existing
 text. Every call carries the whole-file `tag` minted by whichever tool last

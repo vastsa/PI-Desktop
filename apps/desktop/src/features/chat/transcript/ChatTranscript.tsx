@@ -127,6 +127,7 @@ function TranscriptBody({
     tailEntry,
     minimapMessages,
     hasEarlierHistory,
+    alignHistoryTail,
     hydrationBounded,
     veilCovering,
     veilPhase,
@@ -245,6 +246,7 @@ function TranscriptBody({
         className="thread-scroll"
         ref={scrollRef}
         data-scroll-owner="transcript"
+        data-tail-aligned={alignHistoryTail || undefined}
         onContextMenu={onContextMenu}
         onScroll={handleScroll}
         role="log"
@@ -258,7 +260,7 @@ function TranscriptBody({
             aria-live="polite"
             aria-hidden={!loadingOlder}
           >
-            {loadingOlder ? t("chat.loadingEarlierMessages") : null}
+            {t("chat.loadingEarlierMessages")}
           </div>
           {hydrationBounded ? (
             // One viewport of slack, not a per-entry estimate. The spacer exists
@@ -267,10 +269,15 @@ function TranscriptBody({
             // view, which is exactly the jitter this avoids.
             <div className="transcript-hydration-spacer" aria-hidden />
           ) : null}
-          <TranscriptHistory entries={historyEntries} isRunning={isRunning} />
+          <TranscriptHistory
+            entries={historyEntries}
+            sessionId={sessionId}
+            isRunning={isRunning}
+          />
           {tailEntry ? (
             <TranscriptTail
               entry={tailEntry}
+              sessionId={sessionId}
               isRunning={isRunning}
               isActive={transcriptRunning && tailEntry.kind === "assistant-turn"}
               runtimeActivity={specializedActivity}

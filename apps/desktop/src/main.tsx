@@ -7,6 +7,7 @@ import { MAC_TRAFFIC_LIGHT_EDGE_DIP } from "@pi-desktop/shared";
 import App from "./App";
 import { PluginLauncher } from "./components/PluginLauncher";
 import { initLanguageSync, resolveOsLocale } from "./lib/app-language";
+import { installPointerOutside } from "./lib/pointer-outside";
 import { installScrollbarReveal } from "./lib/scrollbar-reveal";
 import "./styles/globals.css";
 
@@ -30,6 +31,7 @@ if (document.documentElement.dataset.platform === "darwin") {
 // Scrollbars are transparent at rest (base.css); this marks the scrolling
 // element so the thumb shows while it moves, not only under the pointer.
 installScrollbarReveal(document);
+installPointerOutside(document);
 
 const locale = resolveLocale(resolveOsLocale());
 const resources = Object.fromEntries(

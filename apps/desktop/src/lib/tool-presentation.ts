@@ -30,8 +30,8 @@ const MAX_DIFF_LINES = 400;
 const DIFF_CONTEXT_LINES = 2;
 /** Longer single-line strings become their own block instead of a field row. */
 const MAX_FIELD_VALUE = 120;
-/** Internal review snapshots are rendered by ReviewChangeCard, not as fields. */
-const HIDDEN_KEYS = new Set(["review"]);
+/** Internal review evidence is rendered by ReviewChangeCard, not as fields. */
+const HIDDEN_KEYS = new Set(["review", "reviews", "reviewCapture"]);
 
 export type ToolPresentationMessage = {
   role?: string;

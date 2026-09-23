@@ -30,7 +30,9 @@ export function processContainsMessage(
   messageId: string,
 ): boolean {
   return parts.some((part) => {
-    if (part.kind === "message") return part.message.id === messageId;
+    if (part.kind === "message" || part.kind === "steering") {
+      return part.message.id === messageId;
+    }
     return part.items.some((item) => {
       if (item.message.id === messageId) return true;
       return (
@@ -49,9 +51,9 @@ export function hasFailedProcessTool(parts: readonly AssistantTurnPart[]): boole
   );
 }
 
-/** Both presentation modes expose the same process hierarchy. */
-export function shouldGroupTurnProcess(mode: ThinkingDisplayMode): boolean {
-  return mode === "detailed" || mode === "compact";
+/** Every turn uses one process disclosure; the mode only filters its steps. */
+export function shouldGroupTurnProcess(_mode: ThinkingDisplayMode): boolean {
+  return true;
 }
 
 /** The last activity chunk of a turn owns detailed-mode's default-open tool. */
@@ -66,13 +68,13 @@ export function isLastActivityPart(
   return false;
 }
 
-/** Detailed keeps narration visible; compact reveals active failures only. */
+/** Active work stays visible; every completed process defaults to collapsed. */
 export function shouldAutoOpenTurnProcess(
-  mode: ThinkingDisplayMode,
+  _mode: ThinkingDisplayMode,
   isActive: boolean,
-  hasToolFailure: boolean,
+  _hasToolFailure: boolean,
 ): boolean {
-  return mode === "detailed" || (isActive && hasToolFailure);
+  return isActive;
 }
 
 /**
@@ -90,9 +92,9 @@ export function projectTurnProcess(entry: AssistantTurnEntry) {
   for (const part of entry.parts) {
     if (part.kind === "message" && (part === answer || part.message.error)) {
       responses.push(part);
-    } else {
-      process.push(part);
+      continue;
     }
+    process.push(part);
   }
   return { process, responses };
 }
@@ -108,6 +110,10 @@ export function visibleProcessSteps(
       if (part.message.content.trim()) count += 1;
       continue;
     }
+    if (part.kind === "steering") {
+      count += 1;
+      continue;
+    }
     for (const item of part.items) {
       if (
         item.kind !== "thinking" ||
@@ -121,16 +127,27 @@ export function visibleProcessSteps(
   return count;
 }
 
-/** Use recorded message/tool timing for history; elapsed live time is UI-only. */
-export function turnProcessTiming(parts: readonly AssistantTurnPart[]) {
-  const messages = parts.flatMap((part) =>
-    part.kind === "message" ? [part.message] : part.items.map((item) => item.message),
-  );
-  const starts = messages
+/** Use the initiating user time when loaded, otherwise the first process row. */
+export function turnProcessTiming(
+  parts: readonly AssistantTurnPart[],
+  turnStartedAt?: string,
+) {
+  const messages = parts.flatMap((part) => {
+    if (part.kind === "message" || part.kind === "steering") {
+      return [part.message];
+    }
+    return part.items.map((item) => item.message);
+  });
+  const messageStarts = messages
     .map((message) => Date.parse(message.createdAt))
     .filter(Number.isFinite);
-  if (starts.length === 0) return { startedAt: undefined, endedAt: undefined };
-  const startedAt = Math.min(...starts);
+  const userStart = Date.parse(turnStartedAt ?? "");
+  const startedAt = Number.isFinite(userStart)
+    ? userStart
+    : messageStarts.length > 0
+      ? Math.min(...messageStarts)
+      : undefined;
+  if (startedAt === undefined) return { startedAt: undefined, endedAt: undefined };
   const endedAt = Math.max(
     startedAt,
     ...messages.map((message) => {
@@ -149,3 +166,5 @@ export function turnProcessTiming(parts: readonly AssistantTurnPart[]) {
   );
   return { startedAt, endedAt };
 }
+
+export type TurnProcessTiming = ReturnType<typeof turnProcessTiming>;
