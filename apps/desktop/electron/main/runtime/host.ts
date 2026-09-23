@@ -302,6 +302,13 @@ export function createHostRuntime({
       );
     } else if (method === "plans.changed") {
       sendToRenderer(IPC.event.plansChanged, params);
+    } else if (method === "configSync.changed") {
+      sendToRenderer(IPC.event.configSyncChanged, params);
+    } else if (method === "configSync.progress") {
+      // A sync is one request that answers only when it is over, so these
+      // reports are the only thing the page has to show while it runs. The
+      // request's own answer is still the outcome.
+      sendToRenderer(IPC.event.configSyncProgress, params);
     }
   });
   h.onExit(({ code, signal, intentional }) => {

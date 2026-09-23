@@ -14,6 +14,7 @@ import {
   classifyAgentError,
   type ClassifiedAgentError,
 } from "./agent-errors.js";
+import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import {
   describeProviderFetchFailure,
   type ProviderFetchFailure,
@@ -367,6 +368,8 @@ export function captureProviderResponse(
 }
 
 function normalizeRateLimitMessage(message: AssistantMessage): AssistantMessage {
+  // A previous HTTP response is not evidence about a later local failure.
+  if (readLocalRequestErrorDetails(message)) return message;
   const errorMessage = message.errorMessage ?? "";
   if (/^\s*429\b/.test(errorMessage)) return message;
   return {
@@ -380,7 +383,8 @@ function setupErrorMessage(
   error: unknown,
   aborted: boolean,
 ): AssistantMessage {
-  return {
+  const local = readLocalRequestErrorDetails(error);
+  const message: AssistantMessage = {
     role: "assistant",
     content: [],
     api: model.api,
@@ -395,9 +399,14 @@ function setupErrorMessage(
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
     stopReason: aborted ? "aborted" : "error",
-    errorMessage: error instanceof Error ? error.message : String(error),
+    errorMessage: local
+      ? (aborted ? "Request aborted" : local.message)
+      : error instanceof Error ? error.message : String(error),
+    ...(!aborted && local ? { errorDetails: local } : {}),
     timestamp: Date.now(),
   };
+  // Preserve the original exception for local diagnostics, not JSON/UI events.
+  return local ? Object.defineProperty(message, "cause", { value: error }) : message;
 }
 
 type StreamFactory = (
@@ -447,23 +456,20 @@ export function createProviderRetryStream(
           event.type === "error" &&
           event.reason === "error"
         ) {
-          const errorMessage =
-            typeof event.error.errorMessage === "string"
-              ? event.error.errorMessage
-              : event.error;
           // Fold in the cause the fetch wrapper captured for this attempt: the
           // message pi-ai hands over is already flattened, so without it the
           // retry indicator and the terminal error read `fetch failed` with no
           // errno (issue #234).
           const error = withProviderFetchFailure(
-            classifyProviderError(errorMessage, controller.status?.()),
+            classifyProviderError(event.error, controller.status?.()),
             controller.failure?.(),
           );
           if (!limitRepairTried && isOpaqueBadRequest(error)) {
             opaqueLimitRejection = error;
             break;
           }
-          const attempt = controller.claim(error, "request");
+          const attempt = error.details?.origin === "local"
+            ? undefined : controller.claim(error, "request");
           if (attempt !== undefined) {
             retry = { error, attempt };
             break;

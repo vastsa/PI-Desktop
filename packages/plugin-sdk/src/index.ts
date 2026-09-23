@@ -476,6 +476,17 @@ export type PluginProviderModelContrib = {
   maxTokens?: number;
   /** Whether the model accepts image input. */
   supportsImages?: boolean;
+  /**
+   * Thinking levels the picker may offer for this model, most restrictive
+   * first (e.g. `["off", "low", "high"]`). Names outside the canonical set are
+   * dropped. Omit for a model that exposes no reasoning control.
+   */
+  thinkingLevels?: string[];
+  /**
+   * Which of `thinkingLevels` a new session opens on. Ignored unless it names
+   * one of them. Omit to let the runtime pick the first available level.
+   */
+  defaultThinkingLevel?: string;
 };
 
 /**
@@ -1677,6 +1688,15 @@ export function validateContributions(
       }
       if (model.supportsImages !== undefined && typeof model.supportsImages !== "boolean") {
         return `provider "${provider.id}" model ${modelId} supportsImages must be a boolean`;
+      }
+      if (
+        model.thinkingLevels !== undefined &&
+        (!Array.isArray(model.thinkingLevels) || model.thinkingLevels.some((level) => typeof level !== "string"))
+      ) {
+        return `provider "${provider.id}" model ${modelId} thinkingLevels must be an array of strings`;
+      }
+      if (model.defaultThinkingLevel !== undefined && typeof model.defaultThinkingLevel !== "string") {
+        return `provider "${provider.id}" model ${modelId} defaultThinkingLevel must be a string`;
       }
     }
   }

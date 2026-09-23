@@ -82,13 +82,13 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "contextWindow", "maxTokens", "thinkingLevels", "defaultThinkingLevel"],
+        "required": ["id"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "alias": { "type": "string", "maxLength": 60 },
-          "contextWindow": { "type": "integer", "minimum": 1 },
+          "contextWindow": { "type": "integer", "minimum": 0 },
           "contextWindowSource": { "enum": ["catalog", "user"] },
-          "maxTokens": { "type": "integer", "minimum": 1 },
+          "maxTokens": { "type": "integer", "minimum": 0 },
           "thinkingLevels": {
             "type": "array",
             "items": { "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"] },
@@ -124,6 +124,18 @@
 身份，别名从不用于提供商或模型解析。host-core 会修剪别名、丢弃空白值，
 并在超过 60 个 Unicode 字符时以 `MODEL_ALIAS_TOO_LONG` 拒绝。
 
+`models[].contextWindow` 与 `models[].maxTokens` 在线为可选。缺失的键、或显式的 `0`，
+都不是按模型的选择：host 把它读作 0 并补上通用默认值（128,000 / 8,192）——这与上面
+legacy 绑定被物化时用的是同一个值，也与未声明限额的插件 manifest 已经产生的值相同。
+存储数组与 manifest 由此对“没有限额的模型”取得一致（D610）。
+
+存储的 `models` 数组逐条解码。不再符合 schema 的条目会被跳过，并在宿主日志里带上
+提供商 id、条目下标与原因上报，而不是丢弃整个数组。读取仍可用，但会标记为降级：非法
+JSON、根节点非对象、`models` 非数组，或任一条目不可读，都会被上报。缺失的 `models`
+键和空数组仍是合法的 legacy 状态；所有条目都不可读的数组仍回退到 legacy 绑定并上报。
+为防止设置页的部分视图覆盖并丢失存储数据，当存储值降级时，`providers.update` 会以
+`MODEL_BINDINGS_DEGRADED` 拒绝显式替换模型数组；不涉及模型数组的提供商字段仍可更新。
+
 `models[].contextWindowSource` 记录存储的 `contextWindow` 来自哪里：`catalog` 表示
 models.dev 快照，之后的目录修正可以替换它；`user` 表示用户在设置中手改的值，永不被
 替换。该字段可选，因此早于该标记写出的配置仍可读，旧客户端会忽略它。host-core 只
@@ -137,6 +149,9 @@ models.dev 快照，之后的目录修正可以替换它；`user` 表示用户�
 代替模型记录。未知的自由形式模型暴露了 `supportsReasoning=false`
 和 `supportedThinkingLevels=["off"]`。原始秘密和内部兼容性
 JSON 保持隐藏状态。
+手输的自定义模型 id 会在写入绑定前先与该快照匹配（`providers.lookupModel`，§9）：
+即使该 id 不在任何已发现的列表中，已发布的记录也会提供绑定的上下文窗口、最大输出
+token 与思考等级；未发布的 id 仍沿用通用种子值。
 
 `authKind: "oauth"` 标记厂商账户行（ADR 0095、D237）：其凭据是保存在
 `secret:provider:<id>:oauth` 下的 OAuth 授权，而不是粘贴的密钥，因此该行
@@ -216,6 +231,10 @@ OpenCode Go（以及任何 `opencode.ai` 主机）的 LLM 请求必须带稳定�
 
 每行（AI 服务或 OAuth 账户）可在高级选项中用键值行编辑自定义请求头。空映射保持 pi-ai / `claude-cli` / OpenCode 默认。fetch 包装器是最后写入者，因此 Codex 与 Anthropic SDK 无法覆盖。禁止 `Authorization` / `Host` / `Content-Type` 等保留头。遗留的 `userAgent` 读取时迁入 `headers["User-Agent"]`。首次 OAuth 登录不收集请求头，登录后再编辑。覆盖 Anthropic OAuth 的 `claude-cli/…` 可能导致 Claude Pro/Max 拒绝请求。
 
+键不区分大小写且唯一，最多 32 条，名称 ≤ 256 字节，值 ≤ 4096 字节，名称只允许字母数字与连字符，且不得含 CR/LF。值先做半角化——全角块（U+FF01–U+FF5E）与表意空格（U+3000）换成对应 ASCII——再修剪，再校验：HTAB、可打印 ASCII 与 Latin-1 补充区可以随请求发出，汉字、emoji、弯引号、NUL 及其它控制字符则以 `HEADERS_INVALID` 拒绝，并指出具体字符与字符下标。半角化覆盖的正是用户真正会撞上的情况：全角字符来自输入法或全角排版的网页，若不处理，`Headers.set` 会在回合中途抛 `Cannot convert argument to a ByteString`。这里刻意不做完整 NFKC：它会把半角片假名改写成 U+00FF 以上的码位并产生组合字符。高级编辑器也会在行旁提示哪些值会被半角化、哪些会被拒绝。
+
+同一条规则在三个边界上以三种**有意不同**的失败方式生效：**编辑器保存**时对无法发送的行报 `HEADERS_INVALID` 并指出字符与下标，因为此时有用户在场可以改；**读取已存映射**时做半角化并丢弃无法发送的行，规则生效前写入的数据不会让回合失败；**收到同步 bundle** 时在反序列化成写入输入之前先做半角化与丢弃，因此旧版本对端（或规则前的备份）仍带着的某一行不会让整个 revision 失败。也就是说读取路径与同步路径一致，只有交互式写入会报错。
+
 ### 命名端点预设
 
 这些行由添加提供商对话框的**服务**下拉框创建。命名服务的常见路径是服务 +
@@ -287,6 +306,7 @@ Copilot 的上下文相关请求标头；已保存的同名自定义 header 会�
 - `providers.delete`
 - `providers.testConnection`
 - `providers.listModels`
+- `providers.lookupModel`
 - `providers.cacheModels`（内部 Electron-main 到主机持久桥）
 - `providers.refreshModels`
 - `providers.upsertUserModel`
@@ -374,14 +394,29 @@ Copilot 的上下文相关请求标头；已保存的同名自定义 header 会�
   在 Electron main 中运行发现
 - 将 RPC 托管在：`{ providerId?: string }` 中；只读取 Rust 拥有的 `models`
   表
-- 对 `authKind: "oauth"` 行，Electron 主进程读取已认证的目录
-  （`models.getAvailable`，它已应用厂商自己的 `filterModels`，因此 Copilot
-  账户列出的是其订阅包含的模型），而不是调用 `/models`；返回的每个模型都
-  带着其线路 API 所隐含的 apiStyle。`openai-codex` 这类静态厂商使用已固定
-  的 pi-ai 目录（0.86.1 包含 `gpt-6-astra`）；models.dev 不会发明这些 ID。
+- 对 `authKind: "oauth"` 行，Electron 主进程读取已登录账户自己的模型列表
+  （见 `03-runtime/11-provider-model-system.md`），请求失败才回退到 pi-ai
+  的 `models.getAvailable`。返回的每个模型都带着其线路 API 所隐含的
+  apiStyle。`openai-codex` 调用 `GET {base}/codex/models`，因此 `gpt-6-luna`
+  这类账户 id 不需要等 pin 更新；models.dev 不会发明这些 ID。Copilot 仍只列出
+  账户已启用的模型。
 - 输出：`{ models: ModelCatalogItem[] }`；每个模型都带有 pi-resolved
   `reasoning` 功能和 `supportedThinkingLevels`。缓存的功能标签
   旧提供程序字段无法覆盖 pi 模型记录。
+
+### `providers.lookupModel`
+- 渲染器 IPC 入参：`{ modelId, baseUrl?, providerId?, vendorKey? }`
+- 输出：`{ info: ModelInfo | null }`
+- 只读取本地 models.dev 快照：先 `ensureLoaded` 再 `findModel`，不访问提供商网络，
+  也不调用主机 RPC。`vendorKey` 与 `baseUrl` 仅用于在重复 id 之间消歧归属的发布提供
+  商；`providerId` 会回显在返回记录上供设置界面使用。
+- 需要它是因为 `providers.listModels` 只描述已保存或已探测提供商的目录：手输的自定义
+  id 在提供商保存前没有别的通道取得其已发布限额。
+- 命中时按拾取模型的口径（`bindingFromModelInfo`）为这条绑定播种：已发布的上下文窗口、
+  最大输出 token 与思考等级，并标记 `contextWindowSource: "catalog"`；存储的 id 仍是
+  用户输入的那个（`bindingForCustomModelInfo`）。未命中（`null`）保持今天的行为：按
+  通用 128,000 / 8,192 与空思考等级播种（`bindingForCustomModel`）。行先落下再原地升级，
+  因此查询慢、失败或未发布时仍然只留一行可用记录，且不会覆盖期间发生的编辑或删除。
 
 ### `providers.cacheModels`（内部主机 RPC）
 - 在：`{ providerId, models: DiscoveredModelInput[] }`
@@ -404,8 +439,13 @@ Copilot 的上下文相关请求标头；已保存的同名自定义 header 会�
 2. `openai_compatible` / 本地网关需要绝对 `baseUrl`，除非预设表示可选
 3. `authKind=none` 禁止用于需要密钥的云预设
 4. headers key 不区分大小写，唯一
-5. headers key 不区分大小写且唯一，最多 32 条；禁止保留头与 CR/LF
-6. 强制实施 SecretValue 最大长度（例如 8KB）
+5. headers key 不区分大小写且唯一，最多 32 条；名称只允许字母数字与连字符；
+   值先由全角折成半角再修剪，最多 4096 字节，不得含 CR/LF，只能是可打印
+   Latin-1——U+00FF 以上的字符或控制字符会被拒绝，并指出该字符与字符下标
+6. 强制实施 SecretValue 最大长度（例如 8KB）；全角的值在写入与读取时都折成
+   半角，因为密钥最终会签进 HTTP 头。仍然不是 Latin-1 的密钥**不会**被拒绝：
+   有些认证方式并不把密钥放进请求头（查询参数、SigV4 签名），写入侧无从判断，
+   这类密钥仍在发请求时报错
 6. modelId 必须是非空的修剪字符串；允许 `/`、`.`、`:`、`-`
 7.旧客户端上的未知协议 => 提供程序显示为禁用并带有警告，而不是崩溃
 8. 旧版 `supportsReasoning`（如果存在）仍必须验证为布尔值，但

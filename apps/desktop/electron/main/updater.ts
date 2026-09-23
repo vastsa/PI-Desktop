@@ -7,11 +7,14 @@
  * stables. Delivery mode per install:
  *  - Windows NSIS / Linux AppImage / packaged macOS → full in-app flow: silent
  *    background download, "restart to update" prompt, install-on-quit fallback.
- *  - Windows portable (`PORTABLE_EXECUTABLE_FILE`) → notify + link. The
+ *  - Windows ZIP / legacy portable (`piDistribution = "zip"` or
+ *    `PORTABLE_EXECUTABLE_FILE`) → notify + link. The
  *    NSIS installer must not replace a no-install run.
  *  - Linux deb (no $APPIMAGE in env) → notify + link.
  *  - Unpackaged dev runs → disabled (no app-update.yml in resources).
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { app, shell } from "electron";
 import electronUpdaterPkg from "electron-updater";
 import type { UpdateInfo, ProgressInfo } from "electron-updater";
@@ -51,16 +54,22 @@ export type UpdaterOptions = {
   /** Overrides for tests. */
   platform?: NodeJS.Platform;
   isPackaged?: boolean;
+  distribution?: WindowsDistribution;
 };
+
+export type WindowsDistribution = "installed" | "zip";
 
 export function resolveUpdateMode(
   platform: NodeJS.Platform,
   isPackaged: boolean,
   env: NodeJS.ProcessEnv = process.env,
+  distribution?: WindowsDistribution,
 ): UpdateMode {
   if (!isPackaged) return "disabled";
   if (platform === "win32") {
-    return env.PORTABLE_EXECUTABLE_FILE ? "manual" : "in-app";
+    return env.PORTABLE_EXECUTABLE_FILE || distribution === "zip"
+      ? "manual"
+      : "in-app";
   }
   if (platform === "darwin") return "in-app";
   if (platform === "linux" && env.APPIMAGE) return "in-app";
@@ -86,13 +95,49 @@ export class AppUpdaterController {
    */
   private installRequested = false;
 
+  private readPackagedDistribution(
+    isPackaged: boolean,
+  ): WindowsDistribution | undefined {
+    if (!isPackaged) return undefined;
+    try {
+      const packageJson = JSON.parse(
+        readFileSync(join(app.getAppPath(), "package.json"), "utf8"),
+      ) as unknown;
+      if (typeof packageJson !== "object" || packageJson === null) {
+        return undefined;
+      }
+      const distribution = (packageJson as Record<string, unknown>)
+        .piDistribution;
+      return distribution === "installed" || distribution === "zip"
+        ? distribution
+        : undefined;
+    } catch (error) {
+      this.logger.app(
+        "updater",
+        "warn",
+        "packaged distribution metadata unavailable",
+        { data: { detail: String(error) } },
+      );
+      return undefined;
+    }
+  }
+
   constructor(options: UpdaterOptions) {
     this.logger = options.logger;
     this.send = options.send;
     this.getLocale = options.getLocale ?? (() => "en");
+    const platform = options.platform ?? process.platform;
+    const isPackaged = options.isPackaged ?? app.isPackaged;
+    const distribution =
+      options.distribution ??
+      (platform === "win32"
+        ? this.readPackagedDistribution(isPackaged)
+        : undefined);
     const mode = resolveUpdateMode(
-      options.platform ?? process.platform,
-      options.isPackaged ?? app.isPackaged,
+      platform,
+      isPackaged,
+      process.env,
+      distribution,
     );
     this.state = {
       mode,

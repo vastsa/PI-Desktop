@@ -5,6 +5,21 @@ import type {
 } from "./types.js";
 
 /**
+ * Identity of the checkpoint governing a session's next model request, or
+ * `null` when the session has never compacted. A host that lost the reply to a
+ * manual compaction compares it before and after the call: the sidecar persists
+ * its checkpoint through host-core regardless, so a missing reply is not
+ * evidence that the compaction failed (issue #795).
+ */
+export function compactionRecordId(session: unknown): string | null {
+  if (typeof session !== "object" || session === null) return null;
+  const compaction = (session as { compaction?: unknown }).compaction;
+  if (typeof compaction !== "object" || compaction === null) return null;
+  const id = (compaction as { id?: unknown }).id;
+  return typeof id === "string" ? id : null;
+}
+
+/**
  * The generation counter rides inside the checkpoint's opaque `details` value:
  * the host persists that field verbatim, so it survives the transcript round
  * trip without a record schema change.

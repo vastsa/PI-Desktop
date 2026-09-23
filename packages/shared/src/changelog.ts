@@ -29,9 +29,26 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.15.6",
+    date: "2026-09-23",
+    highlights: [
+      "Support GPT-6 Astra, Sol, and Luna across the OpenAI and ChatGPT/Codex model catalogs.",
+    ],
+  },
+
+  {
+    version: "0.15.5",
+    date: "2026-09-23",
+    highlights: [
+      "Support GPT-6 Astra, Sol, and Luna across the OpenAI and ChatGPT/Codex model catalogs.",
+    ],
+  },
+
+  {
     version: "0.15.2",
     date: "2026-09-21",
     highlights: [
+      "Generate and edit images in chat, choose one image model, and create batches with the built-in imagegen skill.",
       "Keep tool activity aligned with the conversation width and contain long activity labels cleanly.",
       "Preserve pasted file attachments when a paste finishes after switching sessions.",
       "Keep the selected default model when editing providers, and fall back safely when it is removed.",
@@ -824,9 +841,26 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.15.6",
+    date: "2026-09-23",
+    highlights: [
+      "支持 OpenAI 与 ChatGPT/Codex 模型目录中的 GPT-6 Astra、Sol 和 Luna。",
+    ],
+  },
+
+  {
+    version: "0.15.5",
+    date: "2026-09-23",
+    highlights: [
+      "支持 OpenAI 与 ChatGPT/Codex 模型目录中的 GPT-6 Astra、Sol 和 Luna。",
+    ],
+  },
+
+  {
     version: "0.15.2",
     date: "2026-09-21",
     highlights: [
+      "支持聊天生图与图片编辑，可设置唯一生图模型，并通过内置 imagegen 技能批量生成。",
       "让工具活动跟随对话宽度排列，并妥善收纳过长的活动名称。",
       "切换会话后，如果粘贴操作稍后完成，文件附件也会保留。",
       "编辑提供商时保留已选的默认模型；模型被移除后安全回退。",
@@ -1619,9 +1653,26 @@ const zhCNEntries: ChangelogEntry[] = [
 
 const zhTWEntries: ChangelogEntry[] = [
   {
+    version: "0.15.6",
+    date: "2026-09-23",
+    highlights: [
+      "支援 OpenAI 與 ChatGPT/Codex 模型目錄中的 GPT-6 Astra、Sol 與 Luna。",
+    ],
+  },
+
+  {
+    version: "0.15.5",
+    date: "2026-09-23",
+    highlights: [
+      "支援 OpenAI 與 ChatGPT/Codex 模型目錄中的 GPT-6 Astra、Sol 與 Luna。",
+    ],
+  },
+
+  {
     version: "0.15.2",
     date: "2026-09-21",
     highlights: [
+      "支援聊天生圖與圖片編輯，可設定唯一生圖模型，並透過內建 imagegen 技能批次生成。",
       "讓工具活動跟隨對話寬度排列，並妥善收納過長的活動名稱。",
       "切換工作階段後，即使貼上操作稍後完成，檔案附件也會保留。",
       "編輯提供商時保留已選的預設模型；模型被移除後安全回退。",

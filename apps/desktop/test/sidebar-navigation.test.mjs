@@ -303,6 +303,15 @@ test("session hover cards expose readable models and keyboard-navigable session 
   assert.match(globalStyles, /\.sidebar-session-hover-card-session-link:focus-visible\s*\{[\s\S]*?outline:/);
 });
 
+test("related session links show only active running state", () => {
+  assert.match(sidebarSource, /<SessionHoverCard[\s\S]*?runningSessions=\{runningSessions\}/);
+  assert.match(sidebarSource, /<SessionHoverCard[\s\S]*?pendingPermissions=\{pendingPermissions\}/);
+  assert.match(hoverSource, /sessionReferenceIsRunning\(reference, runningSessions, pendingPermissions\)/);
+  assert.match(hoverSource, /data-session-running="true"/);
+  assert.match(globalStyles, /\.sidebar-session-hover-card-session-link-status\s*\{[\s\S]*?--ds-warning/);
+  assert.match(globalStyles, /\.sidebar-session-hover-card-session-link-status::before\s*\{[\s\S]*?sidebar-status-breathe/);
+});
+
 test("hidden row actions stay out of the row's click path", () => {
   // Resting state: the invisible control is not a pointer target at all.
   assert.match(

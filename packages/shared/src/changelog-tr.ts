@@ -2,9 +2,26 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.6",
+    "date": "2026-09-23",
+    "highlights": [
+      "OpenAI ve ChatGPT/Codex model kataloglarında GPT-6 Astra, Sol ve Luna desteği eklenir.",
+    ],
+  },
+
+  {
+    "version": "0.15.5",
+    "date": "2026-09-23",
+    "highlights": [
+      "OpenAI ve ChatGPT/Codex model kataloglarında GPT-6 Astra, Sol ve Luna desteği eklenir.",
+    ],
+  },
+
+  {
     "version": "0.15.2",
     "date": "2026-09-21",
     "highlights": [
+      "Sohbette görsel oluşturun ve düzenleyin; tek bir görsel modeli ve yerleşik imagegen becerisiyle toplu üretim yapın.",
       "Araç etkinlikleri konuşma genişliğini izler ve uzun etkinlik etiketleri düzgünce sığdırılır.",
       "Oturum değiştirdikten sonra yapıştırma tamamlansa bile yapıştırılan dosya ekleri korunur.",
       "Sağlayıcıları düzenlerken seçili varsayılan model korunur; model kaldırılırsa güvenli bir yedek kullanılır.",

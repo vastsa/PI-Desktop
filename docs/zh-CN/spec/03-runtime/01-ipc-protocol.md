@@ -271,6 +271,15 @@ type AgentCompactResponse = { accepted: boolean };
 缺少 provider/session 配置无法通过正常的 `AppError`
 信封；主动转向或压实返回 `AGENT_BUSY`。
 
+`agent.compact` 是阻塞式摘要请求，而不是状态轮询：sidecar 会把会话序列化成一个
+提示词、流式生成一次模型摘要，并且可能重试瞬时失败。因此它的传输超时由这份预算推导
+—— `(1 + 3) × 180 秒` 流空转看门狗 `+ 14 秒` 重试退避 `+ 10 秒` 余量 —— 而不是沿用
+扁平的 130 秒默认值；后者会在 sidecar 仍在总结大上下文时到期（**D614**，issue #795）。
+宿主也把传输超时视为“结果未知”而不是“失败”：调用超时后，它会重新读取该会话的持久化
+记录，若发现新检查点已落盘就报告成功，因为无论 Electron 是否收到回复，sidecar 都会
+通过 host-core 持久化。sidecar 自己给出的判定（例如 `CONTEXT_COMPACTION_FAILED`）
+绝不会用这种方式被改写。
+
 ### 5.5 Plan 和 Goal 检查点批准
 
 合同批准与工具许可是分开的。 Plan 和 Goal 分享此内容
@@ -1220,7 +1229,7 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 - `pi-desktop/skill/market/search` — `{ query, sources[] }` →
   `{ entries, failedSources, failureKinds, failureDetails }`。
   主进程聚合目录 JSON 与 GitHub 仓库 SKILL.md 扫描。源 URL 必须通过公网 HTTPS 策略（ADR 0243）。单源失败只丢掉该源。
-  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（守卫判定了目标自身的非公网地址并拒绝）、`fake-ip`（判定的是本地代理伪造的 fake-IP 占位地址,如 Clash 默认的 `198.18.0.0/15`；在直连或读不出线路时仍被拒绝,因为守卫在那里失败关闭、这个应用会自己去连该地址,但这是本地网络的状况而不是源的问题）、`unresolved`（本地 DNS 解析没有返回答案,因此没有判定任何地址）或 `network`。`failureDetails` 以同样的键携带真正失败的主机、解析到的地址、守卫自己的 `reason`、地址类别以及判定该地址的线路（`proxied`、`direct`,或传输层读不出线路时的 `unknown`,ADR 0272）；面板据此说明**被拒的是什么**（例如「代理把 github.com 应答为 198.18.0.1」）,而不只是哪个源没出结果。
+  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（守卫判定了目标自身的非公网地址并拒绝）、`fake-ip`（判定的是本地代理伪造的 fake-IP 占位地址，如 Clash 默认的 `198.18.0.0/15`；在直连或读不出线路时默认仍被拒绝，显式 `allowFakeIp` 只可为透明路由器/TUN 部署放行 benchmark 占位地址）、`unresolved`（本地 DNS 解析没有返回答案，因此没有判定任何地址）或 `network`。`failureDetails` 以同样的键携带真正失败的主机、解析到的地址、守卫自己的 `reason`、地址类别以及判定该地址的线路（`proxied`、`direct` 或传输层读不出线路时的 `unknown`，ADR 0272）；面板据此说明**被拒的是什么**，而不只是哪个源没出结果。
   判定型拒绝与 fake-IP 拒绝都以 `NETWORK_POLICY_BLOCKED` 暴露（两者都是守卫作出的拒绝）,解析器无应答以 `NETWORK_RESOLVE_FAILED` 暴露（spec 08 §3.1）；安装面板正是按这些错误码与结构化 `reason` 分类。
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`。
   主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。该策略即主进程公网网络客户端：语法 URL 防护、按承载 `net.fetch` 的会话线路判定的逐跳 DNS 分类（ADR 0272）、逐跳重定向复核与响应上限——渲染层绝不直接触网。目录 id 会净化为 host `valid_capability_id`。
@@ -1229,7 +1238,7 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 桌面专用 MCP 市场通道（不是 host RPC）走 Electron IPC：
 
 - `pi-desktop/mcp/market/search` — `{ query?, sources[], more? }` →
-  `{ entries, failedSources, exhausted }`。Main 校验源 URL，固定每个解析出的公网地址，只跟随有界的 HTTPS 重定向，并为 browse 与服务端搜索保留 cursor 状态。单个源失败不会丢弃成功源；响应和缓存均有界。
+  `{ entries, failedSources, exhausted }`。Main 校验源 URL，并在每一跳向 Electron session 询问线路。完整代理线路使用 session 传输；直连和未知线路默认固定解析出的公网地址，显式 `allowFakeIp` 仅限 benchmark 占位地址。重定向仍是有界 HTTPS，browse 与服务端搜索保留 cursor 状态；单个源失败不会丢弃成功源，响应和缓存均有界。
 
 ### MCP OAuth（ADR 0283）
 
@@ -1563,6 +1572,13 @@ type ComposerCommand = {
 没有工作区，只有用户全局模板、内置函数和插件
 命令返回。
 
+读取失败的指令源不等于“指令列表为空”（**D613**，issue #795）。发送时的解析区分三种
+结果：已解析的内置 / 插件 / 扩展指令在本地分发；提示词模板、未知别名，以及没有可分发
+id 的指令条目仍走普通提示词路径；**无法读取指令源时则拒绝这次提交**。拒绝是刻意的
+——指令源不可用时，Composer 无法证明 `/compact` 不是内置指令，而把控制指令当作字面
+文本交给模型会被执行。拒绝会保留草稿、显示 `chat.slashCommandSourceUnavailable`，并且
+不写 TTL 缓存，因此下一次发送会重试该读取；缓存仍热时，一次数据源抖动不会影响解析。
+
 ### fs/index
 
 ```ts
@@ -1804,3 +1820,26 @@ returns `{ ok: true }` and forwards to host `providers.reorder`. The sandboxed
 preload permits this channel through the shared IPC registry. Invalid placement
 or missing providers returns `INVALID_PARAMS`; configuration and defaults are
 unchanged. See [provider configuration](12-provider-config-schema.md).
+
+## 15. 云配置同步
+
+设置 → 云同步页面使用以下 Renderer-to-Main 通道；所有通道都会转发到 Host 所有的 `configSync.*` RPC 方法：
+
+| IPC 通道 | Host 方法 | 契约 |
+|---|---|---|
+| `pi-desktop/configSync/getState` | `configSync.getState` | 脱敏状态、类别选择、预览计数和待审批摘要 |
+| `pi-desktop/configSync/test` | `configSync.test` | 使用临时对象进行 WebDAV 能力探测；不持久化配置 |
+| `pi-desktop/configSync/configure` | `configSync.configure` | 校验 endpoint、保存加密的本地同步元数据并启用 vault |
+| `pi-desktop/configSync/syncNow` | `configSync.syncNow` | 执行一次由 Host 所有的协调周期 |
+| `pi-desktop/configSync/pause` | `configSync.pause` | 仅暂停或恢复本设备 |
+| `pi-desktop/configSync/unlock` | `configSync.unlock` | 为当前进程/设备解锁本地 vault |
+| `pi-desktop/configSync/approve` / `reject` | `configSync.approve` / `configSync.reject` | 记录绑定 digest 的本地激活决定 |
+| `pi-desktop/configSync/mapProject` | `configSync.mapProject` | 将一个不透明项目/组身份绑定到一个或多个明确选择的本地文件夹，并保留 primary-root 顺序 |
+| `pi-desktop/configSync/listHistory` | `configSync.listHistory` | 只列出脱敏的可达 revision 元数据 |
+| `pi-desktop/configSync/restore` | `configSync.restore` | 根据明确确认的历史 revision 创建新的传播 revision，并暂存本地审批/恢复信息 |
+| `pi-desktop/configSync/changePassword` | `configSync.changePassword` | CAS 重新包裹 vault key header，不返回 key 或秘密值 |
+| `pi-desktop/configSync/disconnect` | `configSync.disconnect` | 移除本地同步元数据和 key；不会删除远端 vault 数据 |
+
+输入密码只会被传给需要它的操作。原始秘密、vault key、解密资源或远端 archive 不会返回到 Renderer。`configSync.changed` 事件携带相同的脱敏状态，并由 Host 发起的变更（包括 Host scheduler）触发。Main 只是传输/生命周期协调器，不负责调度、合并、加密或应用配置。
+
+手动同步会在运行期间报告 `configSync.progress`：当前阶段（`capture`、`download`、`merge`、`upload`、`apply` 或 `cleanup`）、该阶段已完成与总量，以及已知时的字节数。因此上传大量资源对象时，界面不会无内容可显示。后台轮询不报告进度，因为只有手动路径有调用方在等待。

@@ -1,4 +1,4 @@
-import type { SessionCollaborationSummary } from "@pi-desktop/shared";
+import type { SessionCollaborationSummary, SessionReference } from "@pi-desktop/shared";
 
 const STATUS_KEYS = {
   idle: "sessionCollaboration.statusIdle",
@@ -22,6 +22,14 @@ export function collaborationStatusKey(status: SessionCollaborationSummary["stat
  */
 export function sessionReferenceAvailable(reference: { available?: boolean }): boolean {
   return reference.available !== false;
+}
+
+export function sessionReferenceIsRunning(
+  reference: Pick<SessionReference, "sessionId">,
+  runningSessions: Readonly<Record<string, boolean>>,
+  pendingPermissions: Readonly<Record<string, readonly unknown[]>> = {},
+): boolean {
+  return runningSessions[reference.sessionId] === true && !pendingPermissions[reference.sessionId]?.length;
 }
 
 export function sessionPreview(value: string | undefined, limit = 300): string {

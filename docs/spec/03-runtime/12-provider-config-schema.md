@@ -85,13 +85,13 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "contextWindow", "maxTokens", "thinkingLevels", "defaultThinkingLevel"],
+        "required": ["id"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "alias": { "type": "string", "maxLength": 60 },
-          "contextWindow": { "type": "integer", "minimum": 1 },
+          "contextWindow": { "type": "integer", "minimum": 0 },
           "contextWindowSource": { "enum": ["catalog", "user"] },
-          "maxTokens": { "type": "integer", "minimum": 1 },
+          "maxTokens": { "type": "integer", "minimum": 0 },
           "thinkingLevels": {
             "type": "array",
             "items": { "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"] },
@@ -136,6 +136,11 @@ models.dev snapshot. Unknown free-form models initially expose
 `supportsReasoning=false` and `supportedThinkingLevels=["off"]`; Settings may
 still persist an explicit thinking-level binding for an endpoint that supports
 it. The raw secret and internal compatibility JSON remain hidden.
+A hand-typed custom model id is matched against that snapshot before its
+binding is seeded (`providers.lookupModel`, §9), so a published record supplies
+the binding's context window, max output tokens, and thinking levels even
+though the id is absent from every discovered list; an unpublished id keeps the
+generic seed.
 
 Anthropic Messages providers may store either the service root or a URL ending
 in `/v1`. Model discovery preserves that configured path and requests
@@ -192,6 +197,25 @@ output, no enabled thinking levels, and a null default. The settings editor
 still renders all canonical choices for that legacy binding, and the next write
 stores the explicit binding array in `config_json.models`.
 
+`models[].contextWindow` and `models[].maxTokens` are optional on the wire. An
+absent key, or an explicit `0`, is not a per-model choice: the host reads it as
+zero and seeds the generic default (128,000 / 8,192) — the same value the
+legacy binding above is materialized with, and the same value a plugin
+manifest that declares no limits already produces. The stored array and the
+manifest therefore agree on what a model without limits means (D610).
+
+Each entry of a stored `models` array is decoded on its own. An entry that no
+longer matches the schema is skipped and reported on the host log with the
+provider id, its index and the reason, instead of discarding the whole array.
+The read remains usable, but it is marked degraded: invalid JSON, a non-object
+config, a non-array `models` value, or any unreadable entry is reported. An
+absent `models` key and an empty array remain legal legacy states; an array
+whose entries are all unreadable still falls back to the legacy binding and is
+reported. To prevent a partial settings view from erasing stored data,
+`providers.update` rejects an explicit model-array replacement with
+`MODEL_BINDINGS_DEGRADED` while the stored value is degraded. Updates to
+unrelated provider fields remain allowed.
+
 For context resolution, that 128,000 value is a backward-compatible generic
 seed, not a reason to hide a published long-context limit. If models.dev now
 publishes a positive `limit.context`, the effective runtime and inspector window
@@ -231,7 +255,28 @@ OAuth token refresh. A fetch wrapper is the last writer so Codex and the
 Anthropic SDK cannot overwrite it. The same values are also placed on stream-
 option headers so OpenCode's caller-wins rule stays true. Keys are
 case-insensitive unique, at most 32 entries, name ≤ 256 bytes, value ≤ 4096
-bytes, no CR/LF, names alphanumeric plus hyphen. Reserved keys
+bytes, no CR/LF, names alphanumeric plus hyphen. Values are folded to
+half-width first — the fullwidth block (U+FF01–U+FF5E) and the ideographic
+space (U+3000) become their ASCII counterparts — then trimmed, then checked:
+HTAB, printable ASCII and the Latin-1 supplement may travel, while Han, emoji,
+curly quotes, NUL and every other control character are refused with
+`HEADERS_INVALID` naming the character and its index. Folding is what covers
+the case users actually hit: a fullwidth character is what an IME or a
+fullwidth-formatted page produces, and an unfixed value makes `Headers.set`
+throw `Cannot convert argument to a ByteString` mid-turn. A full NFKC pass is
+deliberately not used — it would rewrite halfwidth katakana into code points
+above U+00FF and produce combining marks. The Advanced editor also says, next
+to the rows, when a value will be folded and when it will be refused.
+
+The same rule is applied at three boundaries with three different failure
+modes, deliberately: **the editor's save** refuses an unusable row with the
+character and its index (`HEADERS_INVALID`), because a user is there to fix it;
+**a stored map** is folded on read and the unusable rows dropped, so a store
+written before the rule cannot fail a turn; and **a sync bundle** is folded and
+dropped before it is deserialized into a write input, so a row a peer on an
+older build (or a pre-rule backup) still carries cannot fail a whole revision.
+The read path and the sync path therefore agree, and only the interactive write
+reports an error. Reserved keys
 (`authorization`, `proxy-authorization`, `host`, `content-type`,
 `content-length`, `cookie`, `set-cookie`, `connection`, `transfer-encoding`,
 `te`, `trailer`, `upgrade`, `keep-alive`, `x-api-key`, `api-key`,
@@ -413,6 +458,7 @@ change for the raw snapshot.
 - `providers.delete`
 - `providers.testConnection`
 - `providers.listModels`
+- `providers.lookupModel`
 - `providers.cacheModels` (internal Electron-main to host persistence bridge)
 - `providers.refreshModels`
 - `providers.upsertUserModel`
@@ -513,16 +559,37 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
   reads the local models.dev snapshot and runs provider endpoint discovery only for IDs absent from it
 - host RPC in: `{ providerId?: string }`; reads only the Rust-owned `models`
   table
-- for an `authKind: "oauth"` row Electron main reads the authenticated catalog
-  (`models.getAvailable`, which applies the vendor's own `filterModels`, so a
-  Copilot account lists what its subscription includes) instead of calling
-  `/models`; each returned model carries the apiStyle its wire API implies.
-  Static vendors such as `openai-codex` use the pinned pi-ai catalog (0.86.1
-  includes `gpt-6-astra`); models.dev does not invent those IDs.
+- for an `authKind: "oauth"` row Electron main reads the signed-in account's
+  model list (see `03-runtime/11-provider-model-system.md`) instead of the
+  pinned catalog. pi-ai `models.getAvailable` is used only when that request
+  fails. Each returned model carries the apiStyle its wire API implies.
+  `openai-codex` calls `GET {base}/codex/models`, so an account id such as
+  `gpt-6-luna` appears without a pin update; models.dev does not invent those
+  IDs. Copilot still hides models the account did not enable.
 - out: `{ models: ModelCatalogItem[] }`; each known model carries the complete
   models.dev metadata including `reasoning`, `supportedThinkingLevels`, limits,
   modalities, output types, and capability tags. Cached/provider claims cannot
   override the local catalog record.
+
+### `providers.lookupModel`
+- renderer IPC in: `{ modelId, baseUrl?, providerId?, vendorKey? }`
+- out: `{ info: ModelInfo | null }`
+- reads only the local models.dev snapshot: `ensureLoaded` then `findModel`,
+  with no provider network access and no host RPC. `vendorKey` and `baseUrl`
+  only disambiguate which published provider owns a duplicate id; `providerId`
+  is echoed back on the returned record for the settings surface.
+- exists because `providers.listModels` only describes a saved or reached
+  provider's catalogue: a hand-typed custom id has no other channel to its
+  published limits before the provider is saved.
+- a hit seeds the new binding exactly like a picked model
+  (`bindingFromModelInfo`): published context window, max output tokens, and
+  thinking levels, with `contextWindowSource: "catalog"`, while the stored id
+  stays exactly what the user typed (`bindingForCustomModelInfo`). A miss
+  (`null`) keeps today's behavior: the picker seeds the custom binding with the
+  generic 128,000 / 8,192 defaults and no thinking levels
+  (`bindingForCustomModel`). The row is written first and upgraded in place, so
+  a slow, failed, or unpublished lookup still leaves exactly one usable row and
+  never overwrites an edit or delete made while it was in flight.
 
 ### `providers.cacheModels` (internal host RPC)
 - in: `{ providerId, models: DiscoveredModelInput[] }`
@@ -548,10 +615,17 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
 3. `apiStyle=opencode_go` requires the fixed OpenCode Go name and endpoint; clients must not accept overrides
 4. `authKind=none` forbidden for cloud presets that require keys
 5. headers keys are case-insensitive unique, at most 32 entries; names
-   alphanumeric plus hyphen; values trimmed, at most 4096 bytes, no CR/LF
+   alphanumeric plus hyphen; values folded from fullwidth to half-width, then
+   trimmed, at most 4096 bytes, no CR/LF, printable Latin-1 only — a character
+   above U+00FF or a control character is refused with the character and its
+   index named
 6. reserved header names (`authorization`, `host`, `content-type`,
    `x-api-key`, `x-opencode-session`, and the rest listed above) are rejected
-7. secretValue max length enforced (e.g. 8KB)
+7. secretValue max length enforced (e.g. 8KB); a fullwidth value folds to
+   half-width on write and on read, because the key is signed into an HTTP
+   header. A key that is still not Latin-1 is **not** refused: some auth kinds
+   do not put the key in a header (a query parameter, a SigV4 signature), so
+   the writer cannot know. Such a key keeps failing at request time.
 8. modelId must be non-empty trimmed string; allow `/`, `.`, `:`, `-`
 9. unknown protocol on older clients => provider shown disabled with warning, not crash
 10. Legacy `supportsReasoning`, when present, must still validate as boolean but

@@ -356,3 +356,22 @@ test("the vendor account dialog hosts the same panes in the same shell", () => {
   assert.doesNotMatch(styles, /\.vendor-account-chosen/);
   assert.doesNotMatch(styles, /\.vendor-account-custom-model/);
 });
+
+test("Advanced says a fullwidth value folds and a non-Latin-1 value is refused", () => {
+  // The rule itself lives in @pi-desktop/shared (unit-tested there) and is
+  // mirrored in host-core; this pins that the editor asks it and renders both
+  assert.match(headerEditorSource, /import \{ APP_VERSION, inspectHeaderValue \}/);
+  assert.match(headerEditorSource, /inspectHeaderValue\(pair\.value\)/);
+  // Only a row that will be persisted may claim it folds: the hint has to
+  // agree with what the host and the runtime do with the row.
+  assert.match(headerEditorSource, /pair\.key\.trim\(\) !== ""/);
+  assert.match(headerEditorSource, /header\.value !== ""/);
+  assert.match(headerEditorSource, /header\.fault === null/);
+  assert.match(headerEditorSource, /row\.storable && row\.header\.folded/);
+  assert.match(headerEditorSource, /provider-setup-header-note/);
+  assert.match(headerEditorSource, /role="status"/);
+  assert.match(headerEditorSource, /role="alert"/);
+  assert.match(headerEditorSource, /settings\.headersFullwidthFolded/);
+  assert.match(headerEditorSource, /settings\.headersValueNotLatin1/);
+  assert.match(block(".provider-setup-header-note"), /color: var\(--ds-text-muted\)/);
+});

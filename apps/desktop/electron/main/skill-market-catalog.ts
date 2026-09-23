@@ -10,6 +10,11 @@ import { net, session } from "electron";
 import type { SkillCatalogEntry, SkillMarketSource } from "@pi-desktop/shared";
 import { createPublicHttpsClient } from "./public-https-fetch";
 import {
+  allowInsecureUserEndpointsEnabled,
+  noteInsecureUserEndpoint,
+  relaxedNetworkPolicyEnabled,
+} from "./endpoint-policy";
+import {
   createSkillMarketAggregator,
   type SkillMarketDocument,
   type SkillMarketSearchResult,
@@ -27,8 +32,19 @@ export { guessSkillCategories } from "./skill-market-scan";
 const client = createPublicHttpsClient({
   fetchImpl: (url, init) => net.fetch(url, init),
   routeImpl: (url) => session.defaultSession.resolveProxy(url),
+  // Fake-IP answers come from the network policy, not from the proxy switch:
+  // the relaxed mode is what tolerates a transparent router's placeholder
+  // addresses for content the app fetched from a public HTTPS source.
+  allowFakeIp: () => relaxedNetworkPolicyEnabled(),
+  // A source URL the user typed may be a LAN or loopback catalog; the opt-in
+  // for a plaintext hop to it is the stored `networkPolicy`.
+  allowInsecureUserEndpoints: () => allowInsecureUserEndpointsEnabled(),
+  // A plaintext hop to the user's own LAN catalogue is worth one notice.
+  onInsecureUserEndpoint: (host) => noteInsecureUserEndpoint(host),
 });
-const aggregator = createSkillMarketAggregator(client.request);
+const aggregator = createSkillMarketAggregator(client.request, {
+  allowInsecureUserEndpoints: () => allowInsecureUserEndpointsEnabled(),
+});
 
 export function searchSkillMarket(
   query: string,

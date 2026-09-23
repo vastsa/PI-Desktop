@@ -82,6 +82,39 @@ export function registerProviderIpc({
     await modelsDevCatalog.ensureLoaded();
     return { status: modelsDevCatalog.getStatus() };
   });
+  /**
+   * Look one model id up in the local models.dev snapshot.
+   *
+   * A hand-typed custom id is not in any provider's model list yet, so the
+   * settings picker has no other channel for its published limits. This is a
+   * snapshot read: it loads the bundled catalog, performs no network request,
+   * and never asks the host, so a slow or offline catalog cannot block the
+   * picker. `providerId` is echoed back on the record; `vendorKey` / `baseUrl`
+   * only disambiguate which published provider a duplicate id belongs to.
+   */
+  handle(
+    IPC.invoke.providersLookupModel,
+    async (input: {
+      modelId?: string;
+      baseUrl?: string;
+      providerId?: string;
+      vendorKey?: string;
+    }) => {
+      const modelId = (input?.modelId ?? "").trim();
+      if (!modelId) return { info: null };
+      await modelsDevCatalog.ensureLoaded();
+      const model = modelsDevCatalog.findModel({
+        vendorKey: input?.vendorKey,
+        baseUrl: input?.baseUrl,
+        modelId,
+      });
+      return {
+        info: model
+          ? modelInfoFromModelsDev(model, input?.providerId ?? "")
+          : null,
+      };
+    },
+  );
   handle(IPC.invoke.providersCreate, async (input: unknown) => {
     if (!host) throw new Error("host unavailable");
     const result = await host.call<{ provider: RuntimeProvider }>(
@@ -365,9 +398,8 @@ export function registerProviderIpc({
         }
       };
 
-      // A signed-in vendor account has no key to probe /models with, and pi-ai
-      // already knows which models the account may use (Copilot narrows the
-      // list to the subscription).
+      // A signed-in vendor account has no API key. VendorOAuth.listModels
+      // reads that account's model endpoint; pi-ai is only the fallback.
       if (req.source !== "cache" && provider?.authKind === OAUTH_AUTH_KIND) {
         try {
           const options = await vendorOAuth.listModels(provider.id);

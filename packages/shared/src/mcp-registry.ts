@@ -14,7 +14,7 @@ import {
   type McpCatalogHeaderBinding,
   type McpCatalogRequiredEnv,
 } from "./mcp-catalog.js";
-import { isPublicHttpsUrl } from "./public-network.js";
+import { isPublicHttpsUrl, isSafeUserEndpointUrl } from "./public-network.js";
 export { isPublicHostname, isPublicIpLiteral } from "./public-network.js";
 
 export type RegistryEnvVar = {
@@ -352,18 +352,29 @@ export const DEFAULT_MARKET_SOURCE: MarketSource = {
 
 const MAX_MARKET_SOURCES = 16;
 /**
- * Guard for user-entered source URLs. The same credentials-free public HTTPS
- * policy is used by renderer validation and by main-process requests.
+ * Guard for a source URL the user entered.
+ *
+ * The user typed this address, so it may be a LAN or loopback catalog under the
+ * stored `networkPolicy`; plain `http` needs the explicit opt-in. Everything a
+ * source *returns* — a registry record, a catalog body, a redirect target — is
+ * judged by the third-party policy instead, so loosening this guard never
+ * widens the boundary for content the app did not receive from the user.
  */
-export function isSafeMarketSourceUrl(url: string): boolean {
-  return isPublicHttpsUrl(url);
+export function isSafeMarketSourceUrl(
+  url: string,
+  options: { allowInsecureHttp?: boolean } = {},
+): boolean {
+  return isSafeUserEndpointUrl(url, options);
 }
 
 /** A catalog entry tagged with the source that produced it. */
 export type SourcedCatalogEntry = McpCatalogEntry & { sourceId: string };
 
 /** Repair whatever the renderer persisted into a usable source list. */
-export function sanitizeMarketSources(value: unknown): MarketSource[] {
+export function sanitizeMarketSources(
+  value: unknown,
+  options: { allowInsecureHttp?: boolean } = {},
+): MarketSource[] {
   const raw = Array.isArray(value) ? value : [];
   const seen = new Set<string>();
   const sources: MarketSource[] = [];
@@ -376,7 +387,7 @@ export function sanitizeMarketSources(value: unknown): MarketSource[] {
       typeof candidate.name !== "string" ||
       typeof candidate.url !== "string" ||
       (candidate.kind !== "registry" && candidate.kind !== "catalog") ||
-      !isSafeMarketSourceUrl(candidate.url) ||
+      !isSafeMarketSourceUrl(candidate.url, options) ||
       seen.has(candidate.id)
     ) {
       continue;

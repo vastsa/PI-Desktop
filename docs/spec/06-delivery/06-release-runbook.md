@@ -1,6 +1,6 @@
 # 06. Desktop Release Runbook
 
-> Scope: D126/D285 tag artifacts for macOS arm64 and Intel x64, Windows x64,
+> Scope: D126/D285/D603 tag artifacts for macOS arm64 and Intel x64, Windows x64,
 > and Linux x64, including the Linux system-Electron ASAR asset;
 > macOS signing/notarization remains the detailed qualification lane below.
 > Cross-references: [milestones](01-mvp-milestones.md) · [process model](../03-runtime/07-process-model.md) · [security](../05-security/01-security.md)
@@ -279,7 +279,14 @@ assembles the GitHub Release. The Linux runner also copies
 exact archive used by the Linux installers for downstream repackaging with a
 system Electron.
 
-### 4.4 CNB mirror trigger
+### 4.4 Documentation site deployment
+
+The release workflow does not deploy the documentation site. Vercel Git
+Deployments are disabled in `docs/vercel.json`, so changes to documentation
+sources do not automatically update the production site. Deployments must be
+initiated manually in Vercel when required.
+
+### 4.5 CNB mirror trigger
 
 After `softprops/action-gh-release` publishes or updates a GitHub Release,
 `.github/workflows/mirror-to-cnb.yml` starts the CNB pipeline at
@@ -302,7 +309,7 @@ Re-running the workflow for the same tag is safe if the CNB pipeline is
 idempotent. It does not rebuild desktop artifacts and does not change
 electron-updater feeds.
 
-### 4.5 GitHub Actions secrets for macOS signing
+### 4.6 GitHub Actions secrets for macOS signing
 
 Create these under GitHub → repository `vastsa/PI-Desktop` → Settings →
 Secrets and variables → Actions. Never commit the p12, password, Apple ID, or
@@ -325,7 +332,7 @@ base64 -i developer-id-application.p12 | pbcopy
 On Linux use `base64 -w0 developer-id-application.p12`. Files that must never
 enter git: `*.p12`, `*.cer`, `*.p8`, `*.mobileprovision`.
 
-### 4.6 macOS signing observability and timeouts
+### 4.7 macOS signing observability and timeouts
 
 `electron-builder` prints one line before signing — `signing
 file=release/mac-arm64/PI-Desktop.app platform=darwin type=distribution
@@ -563,7 +570,7 @@ Manual smoke on a clean profile (`PI_DESKTOP_DATA_DIR=$(mktemp -d)`):
 
 The repository exposes native-runner commands for every release target. Each
 packaging command first runs `build:host-release`, then bundles the agent
-runtime and Electron app. D126/D285 tag workflows publish these outputs and
+runtime and Electron app. D126/D285/D603 tag workflows publish these outputs and
 their electron-updater manifests. Run a target command on that target OS:
 
 ```text
@@ -573,11 +580,15 @@ Windows: pnpm --filter @pi-desktop/desktop dist:win
 Linux:   pnpm --filter @pi-desktop/desktop dist:linux
 ```
 
+The Windows `dist:win` command runs `scripts/build-desktop-release.mjs`,
+which invokes electron-builder once for NSIS and once for ZIP so each package
+gets the correct updater distribution marker.
+
 The macOS packages include `bin/pi-desktop-host-core` built for their runner
 architecture; Windows includes `bin/pi-desktop-host-core.exe`; Linux includes
 `bin/pi-desktop-host-core`. Signing, rollback, and installer upgrade
 qualification remain release hardening work; publication is active under
-D126/D285.
+D126/D285/D603.
 
 Native-runner output matrix:
 
@@ -586,15 +597,18 @@ Native-runner output matrix:
 - macOS Intel x64: `PI-Desktop-<version>-x64.dmg` and
   `PI-Desktop-<version>-x64-mac.zip`
 - Windows x64: NSIS installer `PI-Desktop-Setup-<version>.exe` and portable
-  exe `PI-Desktop-Portable-<version>.exe`
+  ZIP `PI-Desktop-Portable-<version>.zip`
 - Linux x64: AppImage, deb, and rpm
 - Linux x64 system Electron asset: `PI-Desktop-<version>-linux-x64.asar`
 
-The portable Windows target does not write `latest.yml`. Packaged portable
-runs use notify-and-link delivery (`PORTABLE_EXECUTABLE_FILE`); NSIS keeps
-the in-app download and quit-and-install lane. Data stays in the existing
-application data directory. Portable requests user execution level, so launch
-does not require administrator rights.
+The portable Windows ZIP target does not write `latest.yml`. The Windows
+release helper builds NSIS and ZIP separately and stamps the ZIP app metadata
+with `piDistribution = "zip"`; packaged ZIP runs use notify-and-link delivery.
+Legacy portable executables remain manual when `PORTABLE_EXECUTABLE_FILE` is
+present. NSIS keeps the in-app download and quit-and-install lane. Data stays
+in the existing application data directory. Users extract the ZIP and launch
+`PI-Desktop.exe` directly, so the package does not run a self-extracting
+wrapper or request administrator execution.
 
 RPM targets pass `_build_id_links none` to FPM. Bundled Electron binaries live
 under `/opt/PI-Desktop`; omitting global `/usr/lib/.build-id` links prevents
@@ -621,7 +635,7 @@ Shell smoke on each native runner:
 
 ## 7. Known limitations
 
-- Linux deb/rpm and the Windows portable exe remain notify-and-link update
+- Linux deb/rpm and the Windows portable ZIP remain notify-and-link update
   modes. Packaged macOS, Windows NSIS, and Linux AppImage use in-app
   `electron-updater`.
 - Linux x64 packages are built on Ubuntu 22.04 so host-core needs glibc 2.35

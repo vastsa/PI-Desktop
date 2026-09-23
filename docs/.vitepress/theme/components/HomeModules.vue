@@ -1,175 +1,196 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-type Locale = 'root' | 'zh-CN' | string
-
-const props = defineProps<{ locale: Locale }>()
+const props = defineProps<{ locale: string }>()
 const isZh = computed(() => props.locale === 'zh-CN')
+const shot = (name: string) => `/readme/${name}`
 
-const copy = computed(() => isZh.value ? {
-  eyebrow: 'PI-DESKTOP / DOCUMENTATION SYSTEM',
-  title: '从意图进入，从边界深入。',
-  intro: '这不是一份按文件堆叠的目录，而是一张能帮助你定位、理解、修改和验证系统的地图。',
-  journeyLabel: '按意图阅读',
-  journeyTitle: '先回答你正在解决的问题。',
-  journeys: [
-    { index: '01', label: 'ORIENT', title: '建立产品模型', text: '先知道当前交付了什么、明确不做什么。', link: '/zh-CN/guide/' },
-    { index: '02', label: 'TRACE', title: '追踪一次请求', text: '从 Renderer 走到 Electron、pi、Rust host 和 SQLite。', link: '/zh-CN/spec/02-architecture/01-architecture' },
-    { index: '03', label: 'EXTEND', title: '开发一个插件', text: '从包格式、API、权限到生命周期逐步展开。', link: '/zh-CN/plugin-development' },
-    { index: '04', label: 'SHIP', title: '验证一次变化', text: '把规格、实现、E2E 场景和交付记录连起来。', link: '/zh-CN/spec/06-delivery/README' },
-  ],
-  mapLabel: '系统地图',
-  mapTitle: '四层边界，保持一条阅读主线。',
-  layers: [
-    { name: 'Shell', detail: 'Electron', text: '桌面窗口、preload IPC、生命周期和平台能力。' },
-    { name: 'Agent', detail: 'pi sidecar', text: '代理循环、工具调用、上下文与 provider-facing model work。' },
-    { name: 'Host', detail: 'Rust core', text: '权限、进程、文件系统、RPC 和可取消的运行时边界。' },
-    { name: 'State', detail: 'SQLite', text: '会话、配置、检查点、插件状态和持久化所有权。' },
-  ],
-  shelfLabel: '参考书架',
-  shelfTitle: '按主题深入，而不是在文件树里迷路。',
-  shelves: [
-    { title: '产品', text: '范围、操作模式和非目标。', link: '/zh-CN/spec/01-product/README' },
-    { title: '架构', text: '进程、数据和工程结构。', link: '/zh-CN/spec/02-architecture/README' },
-    { title: '运行时', text: '协议、工具、host 和模型。', link: '/zh-CN/spec/03-runtime/README' },
-    { title: '体验', text: '信息架构、国际化和交互。', link: '/zh-CN/spec/04-ux/README' },
-    { title: '安全', text: '权限、路径和隔离边界。', link: '/zh-CN/spec/05-security/README' },
-    { title: '交付', text: '验收、E2E 和发布。', link: '/zh-CN/spec/06-delivery/README' },
-    { title: '插件', text: '扩展包、API 和生命周期。', link: '/zh-CN/spec/07-plugins/README' },
-    { title: '决策', text: 'ADR、决策日志和开放问题。', link: '/zh-CN/spec/08-meta/README' },
-  ],
-  snapshotLabel: '实现快照',
-  snapshotTitle: '当前文档描述的版本线。',
-  snapshot: [['应用版本线', '0.5.8'], ['Host wire protocol', 'v9'], ['Storage schema', 'v11'], ['文档源语言', 'EN / 中文']],
-  footerTitle: '准备好进入代码库了吗？',
-  footerText: '从快速开始建立上下文，或者直接打开规格索引。',
-  footerPrimary: '开始阅读',
-  footerSecondary: '查看规格索引',
-  footerPrimaryLink: '/zh-CN/guide/',
-  footerSecondaryLink: '/zh-CN/spec/README',
-} : {
-  eyebrow: 'PI-DESKTOP / DOCUMENTATION SYSTEM',
-  title: 'Enter by intent. Go deeper by boundary.',
-  intro: 'This is not a file dump. It is a map for locating, understanding, changing, and validating the system.',
-  journeyLabel: 'Read by intent',
-  journeyTitle: 'Start with the question you are solving.',
-  journeys: [
-    { index: '01', label: 'ORIENT', title: 'Build the product model', text: 'Know what is shipped and what is deliberately out of scope.', link: '/guide/' },
-    { index: '02', label: 'TRACE', title: 'Trace one request', text: 'Follow the path through Renderer, Electron, pi, Rust host, and SQLite.', link: '/spec/02-architecture/01-architecture' },
-    { index: '03', label: 'EXTEND', title: 'Build a plugin', text: 'Move from package format to API, permissions, and lifecycle.', link: '/plugin-development' },
-    { index: '04', label: 'SHIP', title: 'Validate a change', text: 'Connect the spec, implementation, E2E scenario, and delivery record.', link: '/spec/06-delivery/README' },
-  ],
-  mapLabel: 'System map',
-  mapTitle: 'Four boundaries. One readable thread.',
-  layers: [
-    { name: 'Shell', detail: 'Electron', text: 'Windows, preload IPC, lifecycle, and platform capabilities.' },
-    { name: 'Agent', detail: 'pi sidecar', text: 'Agent loop, tools, context, and provider-facing model work.' },
-    { name: 'Host', detail: 'Rust core', text: 'Permissions, processes, filesystem, RPC, and cancellation.' },
-    { name: 'State', detail: 'SQLite', text: 'Sessions, configuration, checkpoints, plugins, and ownership.' },
-  ],
-  shelfLabel: 'Reference shelf',
-  shelfTitle: 'Go deep by topic, not by getting lost in the file tree.',
-  shelves: [
-    { title: 'Product', text: 'Scope, modes, and non-goals.', link: '/spec/01-product/README' },
-    { title: 'Architecture', text: 'Processes, data, and structure.', link: '/spec/02-architecture/README' },
-    { title: 'Runtime', text: 'Protocols, tools, host, and models.', link: '/spec/03-runtime/README' },
-    { title: 'Experience', text: 'IA, internationalization, and interaction.', link: '/spec/04-ux/README' },
-    { title: 'Security', text: 'Permissions, paths, and isolation.', link: '/spec/05-security/README' },
-    { title: 'Delivery', text: 'Acceptance, E2E, and release.', link: '/spec/06-delivery/README' },
-    { title: 'Plugins', text: 'Packages, APIs, and lifecycle.', link: '/spec/07-plugins/README' },
-    { title: 'Decisions', text: 'ADRs, decisions, and open questions.', link: '/spec/08-meta/README' },
-  ],
-  snapshotLabel: 'Implementation snapshot',
-  snapshotTitle: 'The line this documentation describes.',
-  snapshot: [['Application line', '0.5.8'], ['Host wire protocol', 'v9'], ['Storage schema', 'v11'], ['Source languages', 'EN / 中文']],
-  footerTitle: 'Ready to enter the codebase?',
-  footerText: 'Build context with the guide, or open the full specification index.',
-  footerPrimary: 'Start reading',
-  footerSecondary: 'Open spec index',
-  footerPrimaryLink: '/guide/',
-  footerSecondaryLink: '/spec/README',
-})
+const copy = computed(() =>
+  isZh.value
+    ? {
+        stories: [
+          {
+            eyebrow: '独立工作台',
+            title: '不依附 IDE，\n也不挤在终端里。',
+            body: '项目、会话、评审、预览和 Agent 都在同一个桌面空间里长期存在。',
+            image: shot('chat_zh.webp'),
+            alt: '持久会话',
+          },
+          {
+            eyebrow: '插件驱动',
+            title: 'Core 只是底座。\n工作台由你组装。',
+            body: '面板、视图、Widget、Tool、MCP、主题与后台服务，都可以插件化。',
+            image: shot('plugins_zh.webp'),
+            alt: '插件市场',
+          },
+          {
+            eyebrow: 'Agent 编排',
+            title: '一个 Agent 不够，\n就拆开做。',
+            body: 'Subagent 处理独立任务，Worker Session 承接更长的工作流，并行推进。',
+            image: shot('session-orchestrator-overview.webp'),
+            alt: '多智能体编排',
+          },
+          {
+            eyebrow: '模型自由',
+            title: '模型是零件。\n工作流是你的。',
+            body: '云端、本地、自建网关、兼容 API。随时切换，不必重搭流程。',
+            image: shot('model_zh.webp'),
+            alt: '模型切换',
+          },
+        ],
+        modes: [
+          { label: 'Agent', text: '直接执行。适合日常开发。' },
+          { label: 'Plan', text: '先审方案。适合重构与高风险变更。' },
+          { label: 'Goal', text: '锁定结果。适合复杂长任务。' },
+        ],
+        modesTitle: '三种节奏，\n同一种工作台。',
+        galleryTitle: '看见它如何工作。',
+        gallery: [
+          { src: shot('session-orchestrator-overview.webp'), alt: 'Session Orchestrator' },
+          { src: shot('session-orchestrator-worker.webp'), alt: 'Worker Session' },
+          { src: shot('addmodel_zh.webp'), alt: '自定义供应商' },
+          { src: shot('chat_zh.webp'), alt: '持久会话' },
+        ],
+        localTitle: '本地优先。',
+        localBody: '项目、会话、设置默认留在本地。无强制账号，无强制中转。凭据进系统钥匙串，模型请求直达你的供应商。',
+        stepsTitle: '四步开始。',
+        steps: ['下载安装', '连接模型', '打开项目', '开始工作'],
+        ctaTitle: '把 Agent\n放进工作台。',
+        ctaBody: 'macOS · Windows · Linux',
+        download: '立即下载',
+        docs: '使用文档',
+        downloadHref: 'https://github.com/vastsa/PI-Desktop/releases/latest',
+        docsHref: '/zh-CN/guide/',
+      }
+    : {
+        stories: [
+          {
+            eyebrow: 'Independent workspace',
+            title: 'Not another tab.\nNot another IDE plugin.',
+            body: 'Projects, sessions, reviews, previews, and agents live in one persistent desktop space.',
+            image: shot('chat_en.webp'),
+            alt: 'Persistent sessions',
+          },
+          {
+            eyebrow: 'Plugin-powered',
+            title: 'The Core is the base.\nYou assemble the rest.',
+            body: 'Panels, views, widgets, tools, MCP servers, themes, and services — all pluggable.',
+            image: shot('plugins_en.webp'),
+            alt: 'Plugin market',
+          },
+          {
+            eyebrow: 'Agent orchestration',
+            title: 'One agent\nis not enough.',
+            body: 'Subagents take independent work. Worker Sessions carry longer flows in parallel.',
+            image: shot('session-orchestrator-overview.webp'),
+            alt: 'Multi-agent orchestration',
+          },
+          {
+            eyebrow: 'Model freedom',
+            title: 'Models are parts.\nThe workflow is yours.',
+            body: 'Cloud, local, custom gateways, compatible APIs. Swap models without rebuilding.',
+            image: shot('model_en.webp'),
+            alt: 'Model switching',
+          },
+        ],
+        modes: [
+          { label: 'Agent', text: 'Just execute. For everyday development.' },
+          { label: 'Plan', text: 'Review first. For refactors and high-risk changes.' },
+          { label: 'Goal', text: 'Lock the outcome. For complex, long-running work.' },
+        ],
+        modesTitle: 'Three rhythms.\nOne workspace.',
+        galleryTitle: 'See it work.',
+        gallery: [
+          { src: shot('session-orchestrator-overview.webp'), alt: 'Session Orchestrator' },
+          { src: shot('session-orchestrator-worker.webp'), alt: 'Worker Session' },
+          { src: shot('addmodel_en.webp'), alt: 'Custom providers' },
+          { src: shot('chat_en.webp'), alt: 'Persistent sessions' },
+        ],
+        localTitle: 'Local-first.',
+        localBody:
+          'Projects, sessions, and settings stay local by default. No mandatory account. No mandatory relay. Credentials live in the OS keychain. Model requests go straight to your provider.',
+        stepsTitle: 'Four steps.',
+        steps: ['Download', 'Connect a model', 'Open a project', 'Start working'],
+        ctaTitle: 'Put agents\nin a workspace.',
+        ctaBody: 'macOS · Windows · Linux',
+        download: 'Download',
+        docs: 'Documentation',
+        downloadHref: 'https://github.com/vastsa/PI-Desktop/releases/latest',
+        docsHref: '/guide/',
+      }
+)
 </script>
 
 <template>
-  <div class="home-modules">
-    <section class="home-block home-block--journeys" aria-labelledby="home-journeys-title">
-      <div class="home-block__heading">
-        <div>
-          <p class="home-kicker">{{ copy.journeyLabel }}</p>
-          <h2 id="home-journeys-title">{{ copy.journeyTitle }}</h2>
-        </div>
-        <p class="home-block__intro">{{ copy.intro }}</p>
+  <div class="launch">
+    <section
+      v-for="(story, index) in copy.stories"
+      :key="story.eyebrow"
+      class="story"
+      :class="index % 2 === 1 ? 'story--flip' : ''"
+    >
+      <div class="story__copy">
+        <p class="story__eyebrow">{{ story.eyebrow }}</p>
+        <h2 class="story__title">
+          <template v-for="(line, i) in story.title.split('\n')" :key="i">
+            <span>{{ line }}</span>
+          </template>
+        </h2>
+        <p class="story__body">{{ story.body }}</p>
       </div>
-      <div class="home-journeys">
-        <a v-for="journey in copy.journeys" :key="journey.index" class="home-journey" :href="journey.link">
-          <span class="home-journey__index">{{ journey.index }}</span>
-          <span class="home-journey__content">
-            <span class="home-journey__label">{{ journey.label }}</span>
-            <strong>{{ journey.title }}</strong>
-            <span>{{ journey.text }}</span>
-          </span>
-          <span class="home-link-arrow" aria-hidden="true">↗</span>
-        </a>
-      </div>
-    </section>
-
-    <section class="home-block home-block--map" aria-labelledby="home-map-title">
-      <div class="home-block__heading home-block__heading--compact">
-        <div>
-          <p class="home-kicker">{{ copy.mapLabel }}</p>
-          <h2 id="home-map-title">{{ copy.mapTitle }}</h2>
-        </div>
-      </div>
-      <div class="home-layers" role="list">
-        <div v-for="(layer, index) in copy.layers" :key="layer.name" class="home-layer" role="listitem">
-          <span class="home-layer__number">0{{ index + 1 }}</span>
-          <span class="home-layer__name">{{ layer.name }}</span>
-          <span class="home-layer__detail">{{ layer.detail }}</span>
-          <span class="home-layer__text">{{ layer.text }}</span>
-        </div>
+      <div class="story__visual">
+        <img :src="story.image" :alt="story.alt" loading="lazy" decoding="async" />
       </div>
     </section>
 
-    <section class="home-block home-block--shelf" aria-labelledby="home-shelf-title">
-      <div class="home-block__heading">
-        <div>
-          <p class="home-kicker">{{ copy.shelfLabel }}</p>
-          <h2 id="home-shelf-title">{{ copy.shelfTitle }}</h2>
-        </div>
-      </div>
-      <div class="home-shelf">
-        <a v-for="(shelf, index) in copy.shelves" :key="shelf.title" class="home-shelf__item" :href="shelf.link">
-          <span class="home-shelf__number">{{ String(index + 1).padStart(2, '0') }}</span>
-          <strong>{{ shelf.title }}</strong>
-          <span>{{ shelf.text }}</span>
-          <span class="home-link-arrow" aria-hidden="true">→</span>
-        </a>
+    <section class="modes">
+      <h2 class="modes__title">
+        <template v-for="(line, i) in copy.modesTitle.split('\n')" :key="i">
+          <span>{{ line }}</span>
+        </template>
+      </h2>
+      <div class="modes__list">
+        <article v-for="mode in copy.modes" :key="mode.label" class="mode">
+          <h3>{{ mode.label }}</h3>
+          <p>{{ mode.text }}</p>
+        </article>
       </div>
     </section>
 
-    <section class="home-snapshot" aria-labelledby="home-snapshot-title">
-      <div>
-        <p class="home-kicker">{{ copy.snapshotLabel }}</p>
-        <h2 id="home-snapshot-title">{{ copy.snapshotTitle }}</h2>
-      </div>
-      <div class="home-snapshot__grid" role="list">
-        <div v-for="item in copy.snapshot" :key="item[0]" role="listitem">
-          <span>{{ item[0] }}</span>
-          <strong>{{ item[1] }}</strong>
-        </div>
+    <section class="gallery">
+      <h2 class="gallery__title">{{ copy.galleryTitle }}</h2>
+      <div class="gallery__rail">
+        <figure v-for="item in copy.gallery" :key="item.src" class="gallery__item">
+          <img :src="item.src" :alt="item.alt" loading="lazy" decoding="async" />
+        </figure>
       </div>
     </section>
 
-    <section class="home-cta" aria-labelledby="home-cta-title">
-      <div>
-        <p class="home-kicker">{{ copy.eyebrow }}</p>
-        <h2 id="home-cta-title">{{ copy.footerTitle }}</h2>
-        <p>{{ copy.footerText }}</p>
-      </div>
-      <div class="home-cta__actions">
-        <a class="home-button home-button--primary" :href="copy.footerPrimaryLink">{{ copy.footerPrimary }}</a>
-        <a class="home-button home-button--secondary" :href="copy.footerSecondaryLink">{{ copy.footerSecondary }}</a>
+    <section class="local">
+      <h2 class="local__title">{{ copy.localTitle }}</h2>
+      <p class="local__body">{{ copy.localBody }}</p>
+    </section>
+
+    <section class="steps">
+      <h2 class="steps__title">{{ copy.stepsTitle }}</h2>
+      <ol class="steps__list">
+        <li v-for="(step, index) in copy.steps" :key="step">
+          <span class="steps__index">{{ String(index + 1).padStart(2, '0') }}</span>
+          <span class="steps__label">{{ step }}</span>
+        </li>
+      </ol>
+    </section>
+
+    <section class="finale">
+      <h2 class="finale__title">
+        <template v-for="(line, i) in copy.ctaTitle.split('\n')" :key="i">
+          <span>{{ line }}</span>
+        </template>
+      </h2>
+      <p class="finale__body">{{ copy.ctaBody }}</p>
+      <div class="finale__actions">
+        <a class="pill pill--solid" :href="copy.downloadHref">{{ copy.download }}</a>
+        <a class="pill pill--ghost" :href="copy.docsHref">{{ copy.docs }}</a>
       </div>
     </section>
   </div>

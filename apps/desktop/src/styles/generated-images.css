@@ -1,0 +1,23 @@
+.generated-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  max-width: 100%;
+}
+.generated-images figure { margin: 0; max-width: 100%; }
+.generated-image-preview {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.generated-image-preview img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, 320px);
+  max-height: 320px;
+  object-fit: contain;
+}

@@ -2,9 +2,26 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const koEntries: ChangelogEntry[] = [
   {
+    version: "0.15.6",
+    date: "2026-09-23",
+    highlights: [
+      "OpenAI 및 ChatGPT/Codex 모델 카탈로그에서 GPT-6 Astra, Sol, Luna를 지원합니다.",
+    ],
+  },
+
+  {
+    version: "0.15.5",
+    date: "2026-09-23",
+    highlights: [
+      "OpenAI 및 ChatGPT/Codex 모델 카탈로그에서 GPT-6 Astra, Sol, Luna를 지원합니다.",
+    ],
+  },
+
+  {
     version: "0.15.2",
     date: "2026-09-21",
     highlights: [
+      "채팅에서 이미지를 생성하고 편집하며, 이미지 모델과 내장 imagegen 스킬로 일괄 생성할 수 있습니다.",
       "도구 활동이 대화 너비를 따라 정렬되고 긴 활동 이름도 깔끔하게 표시됩니다.",
       "세션을 전환한 뒤 붙여넣기가 완료되어도 붙여넣은 파일 첨부가 유지됩니다.",
       "제공자를 편집할 때 선택한 기본 모델을 유지하며, 모델이 삭제되면 안전하게 대체 모델로 전환합니다.",

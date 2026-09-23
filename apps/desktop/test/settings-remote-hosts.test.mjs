@@ -15,6 +15,10 @@ const page = readFileSync(
   new URL("../src/components/settings/RemoteHostsPage.tsx", import.meta.url),
   "utf8",
 );
+const settingsNav = readFileSync(
+  new URL("../src/lib/settings-search.ts", import.meta.url),
+  "utf8",
+);
 const settings = readSettingsSourceSync();
 const styles = loadStylesSync();
 
@@ -49,8 +53,12 @@ test("remote hosts omits instructional copy", () => {
 });
 
 test("the remote-hosts destination is marked experimental", () => {
-  assert.match(settings, /item\.id === "remoteHosts"/);
-  assert.match(settings, /settings\.remoteHosts\.experimental/);
+  assert.match(
+    settingsNav,
+    /\{\s*id: "remoteHosts",[\s\S]*?experimentalBadgeKey: "settings\.remoteHosts\.experimental",/,
+  );
+  assert.match(settings, /item\.experimentalBadgeKey \? \(/);
+  assert.match(settings, /activeNavItem\?\.experimentalBadgeKey \? \(/);
   assert.match(settings, /className="settings-nav-experimental"/);
   assert.match(cssRule(".settings-nav-experimental"), /font-size:\s*var\(--text-2xs\)/);
   assert.doesNotMatch(page, /EXPERIMENTAL_FEATURES/);

@@ -252,6 +252,21 @@ export function bindingFromModelInfo(model: ModelInfo): ModelBinding {
   };
 }
 
+/**
+ * Binding for a hand-typed id the catalog does publish.
+ *
+ * The published record seeds limits and thinking levels exactly like a picked
+ * model, but the stored id stays what the user typed: the id is the string a
+ * request is addressed with, and a catalog spelling that differs in case or
+ * separators must not silently retarget it.
+ */
+export function bindingForCustomModelInfo(
+  id: string,
+  info: ModelInfo,
+): ModelBinding {
+  return { ...bindingFromModelInfo(info), id: id.trim() };
+}
+
 /** Binding for a model id the catalog does not publish. */
 export function bindingForCustomModel(id: string): ModelBinding {
   return {

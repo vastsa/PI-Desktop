@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { DEEPSEEK_REASONING_REPLAY_PLACEHOLDER } from "@pi-desktop/shared";
 import type { ModelAuth } from "@earendil-works/pi-ai";
 import { convertMessages } from "@earendil-works/pi-ai/api/openai-completions";
 import { modelConfigWithBinding } from "./model-capabilities.js";
@@ -557,6 +558,44 @@ describe("buildProviderModel model-level wire API", () => {
   });
 });
 
+describe("buildProviderModel native web search capability", () => {
+  const catalogModel: ModelConfig = {
+    source: "generic",
+    name: "Configured web search model",
+    baseUrl: "https://chatgpt.com/backend-api",
+    reasoning: false,
+    input: ["text"],
+    contextWindow: 128_000,
+    maxTokens: 8_192,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  };
+  const configuredModel = modelConfigWithBinding(catalogModel, {
+    contextWindow: 128_000,
+    maxTokens: 8_192,
+    thinkingLevels: ["off"],
+    nativeWebSearch: true,
+  });
+
+  it("forwards an opt-in only when the resolved wire supports it", () => {
+    const codex = buildProviderModel({
+      ...keyedProvider,
+      vendorKey: "openai-codex",
+      apiStyle: "openai_codex_responses",
+      modelConfig: configuredModel,
+    });
+    expect(codex.api).toBe("openai-codex-responses");
+    expect(codex.webSearch).toBe(true);
+
+    const completions = buildProviderModel({
+      ...keyedProvider,
+      apiStyle: "chat_completions",
+      modelConfig: configuredModel,
+    });
+    expect(completions.api).toBe("openai-completions");
+    expect(completions.webSearch).toBeUndefined();
+  });
+});
+
 describe("GitHub Copilot transport identity", () => {
   const provider: RuntimeProviderConfig = {
     id: "copilot-account-row",
@@ -668,5 +707,87 @@ describe("GitHub Copilot transport identity", () => {
     expect(request?.headers.get("Copilot-Integration-Id")).toBe("vscode-chat");
     expect(request?.headers.get("X-Initiator")).toBe("user");
     expect(request?.headers.get("Openai-Intent")).toBe("conversation-edits");
+  });
+});
+
+describe("DeepSeek-family relay reasoning replay (#296)", () => {
+  /**
+   * The non-empty-replay opt-in lives in `model.compat`, but pi-ai rebuilds
+   * compat from an explicit allowlist in `getCompat`. Only a request that goes
+   * through the adapter can prove the placeholder survives that rebuild and
+   * reaches the wire, so this asserts the captured body rather than the compat
+   * object. Guards patches/@earendil-works__pi-ai@0.87.1.patch.
+   */
+  it("fills a thinking-less assistant turn with the documented placeholder", async () => {
+    const provider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "air-outer",
+      name: "Air Outer",
+      // A relay, not deepseek.com, so the strict non-empty replay applies.
+      baseUrl: "https://ps.air-outer.com/v1",
+      modelId: "deepseek-v4-flash",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["off", "high"],
+    };
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    const model = buildProviderModel(provider);
+    const usage = {
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 2,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    };
+    const context = {
+      systemPrompt: "system",
+      tools: [],
+      messages: [
+        { role: "user", content: "hello", timestamp: 1 },
+        {
+          role: "assistant",
+          api: "openai-completions",
+          provider: provider.id,
+          model: provider.modelId,
+          content: [
+            { type: "thinking", thinking: "let me look", thinkingSignature: "reasoning_content" },
+            { type: "text", text: "looking" },
+          ],
+          usage,
+          stopReason: "stop",
+          timestamp: 2,
+        },
+        { role: "user", content: "again", timestamp: 3 },
+        {
+          role: "assistant",
+          api: "openai-completions",
+          provider: provider.id,
+          model: provider.modelId,
+          content: [{ type: "text", text: "done" }],
+          usage,
+          stopReason: "stop",
+          timestamp: 4,
+        },
+      ],
+    };
+
+    await createProviderModels(provider, model)
+      .streamSimple(model, context as never, { reasoning: "high", fetch })
+      .result();
+
+    const assistants = (
+      requests[0].messages as Array<Record<string, unknown>>
+    ).filter((message) => message.role === "assistant");
+    expect(assistants[0].reasoning_content).toBe("let me look");
+    expect(assistants[1].reasoning_content).toBe(
+      DEEPSEEK_REASONING_REPLAY_PLACEHOLDER,
+    );
   });
 });

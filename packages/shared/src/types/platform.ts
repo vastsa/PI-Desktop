@@ -1,5 +1,7 @@
 /** Shared public types grouped by the owning application domain. */
 import type { Mode } from "./common.js";
+import type { GlobalPermissionMode } from "./permissions.js";
+import type { SessionThinkingLevel } from "./models.js";
 
 export type AppVersionInfo = {
   name: string;
@@ -38,7 +40,7 @@ export type HostStatusEvent = {
  *  - in-app: electron-updater downloads and installs (Windows NSIS, Linux
  *    AppImage, packaged macOS)
  *  - manual: we only detect new versions and link to the releases page
- *    (Linux deb/rpm, Windows portable)
+ *    (Linux deb/rpm, Windows ZIP)
  *  - disabled: development / unpackaged build
  */
 export type UpdateMode = "in-app" | "manual" | "disabled";
@@ -112,4 +114,9 @@ export type ScheduledTask = {
   schedule?: ScheduledTaskSchedule | null;
   nextRunAt?: string;
   workspacePath?: string;
+  /** Explicit task-owned execution settings. Missing fields preserve legacy behavior. */
+  permissionMode?: GlobalPermissionMode;
+  thinkingLevel?: SessionThinkingLevel;
+  providerId?: string;
+  modelId?: string;
 };

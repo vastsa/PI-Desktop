@@ -12,6 +12,10 @@ const pickerSource = await readFile(
   new URL("../src/components/settings/ModelSelectionPanes.tsx", import.meta.url),
   "utf8",
 );
+const imageModelRowSource = await readFile(
+  new URL("../src/components/settings/ImageGenerationModelRow.tsx", import.meta.url),
+  "utf8",
+);
 const composerSource = await readComposerSource();
 const capabilitiesSource = await readFile(
   new URL(
@@ -72,6 +76,24 @@ test("the capability row carries no explanatory copy or extra controls", () => {
   assert.doesNotMatch(pickerSource, /followPublished/);
   assert.doesNotMatch(pickerSource, /capabilityPublished|capabilityUnknown/);
   assert.doesNotMatch(styles, /provider-chosen-capability-(reset|state|hint)/);
+});
+
+
+test("image generation selection hides the summary when nothing can be chosen", () => {
+  assert.match(
+    pickerSource,
+    /className="provider-chosen-capability-rows">[\s\S]*?settings\.setImageModel/,
+  );
+  assert.doesNotMatch(
+    pickerSource,
+    /className="provider-chosen-advanced-toggle"[^\n]*settings\.setImageModel/,
+  );
+  assert.match(pickerSource, /imageModelIds\?\.some\([\s\S]*?modelIdsMatch/);
+  assert.match(pickerSource, /onImageModelChange\(binding\.id, event\.target\.checked\)/);
+  assert.match(imageModelRowSource, /imageGenerationBindings\(settings\.imageGenerationModels, null\)/);
+  assert.match(imageModelRowSource, /if \(!options\.some\(\(option\) => !option\.disabled\)\) return null;/);
+  assert.match(imageModelRowSource, /if \(candidates\.length === 0\) return null;/);
+  assert.match(imageModelRowSource, /imageModelUnavailable/);
 });
 
 test("the Composer model rows use the provider binding for vision badges", () => {

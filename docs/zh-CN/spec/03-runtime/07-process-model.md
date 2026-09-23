@@ -57,6 +57,15 @@ queued/running `plan_approvals` 执行状态已中断并中止它们
 跑步轮流。此内部进程纪元栅栏未序列化或发送
 协议。
 
+渲染器的 bootstrap 本身没有超时，因此由渲染器自己监视对首个状态的等待。到达
+`STARTUP_SLOW_HINT_MS`（30 秒）时，启动表面在不判定启动失败的前提下加上日志、
+诊断与退出；到达 `STARTUP_STALLED_MS`（180 秒）时它变成恢复表面，并额外提供
+重试。两个界限都高于 main↔host 的 RPC 上限（`DEFAULT_RPC_TIMEOUT_MS`，130 秒），
+因此慢但成功的启动永远不会被报告为失败。看门狗从不取消它所监视的启动：成功完成
+的启动会用 shell 替换该表面，恢复表面则替换启动画面。渲染器绘制的窗口控制按钮
+保持在该表面之上，因此无边框的 Windows/Linux 窗口始终可以关闭；从该表面退出走
+渲染器退出通道（`pi-desktop/app/quit`），它与“退出”菜单项执行同一套有序关停。
+
 ## 4. 崩溃策略
 
 | 崩溃 | 政策 |
@@ -113,6 +122,10 @@ Windows 安装包目标为 x64。Windows host-core 使用
 监管参数（传输、重启策略与回合生命周期位于 `packages/host-runtime`，ADR 0284；Electron main 适配它们并负责面向渲染层的状态）：
 
 - 子进程退出立即拒绝该子进程的所有正在进行的 RPC（无 130 秒超时等待）。
+- 每个 RPC 都带有有限的传输超时。Bash 与桌面分发的（`plugin_*` / `mcp_*`）工具会
+  叠加 host-core 在报告结果前可能消耗的等待，`agent.compact` 则叠加 sidecar 自身的摘要
+  预算——每次尝试的流空转看门狗加上重试退避（**D614**，issue #795）；其余调用使用 130
+  秒默认值。绝不要为了迁就某个慢方法而放宽默认值：那会同时掩盖其他调用上真正丢失的回复。
 - 超过 64 MiB 的 NDJSON 请求行以 `LIMIT_EXCEEDED` 应答，不结束 stdin 读取器（ADR 0216）。Electron 在写入 stdin 前拒绝同样大小的载荷（ADR 0217）。
 - Windows Alt+Space 钩子只保留 stdout 发送端的弱引用。stdin EOF 后 serve 丢弃最后一个强引用，host-core 退出；泄漏的发送端不能把关闭卡住超过 5 秒（ADR 0217）。
 - 使用指数退避 `0.5s → 1s → 2s` 自动重启（上限 4 秒）。
@@ -203,9 +216,10 @@ sidecar/host 关闭序列在更新程序替换应用程序之前运行。
   它调用的纯 JS 助手无需更改进程或协议所有权
 - 渲染器依赖项通过 Vite 输出传送，而不是重复原始数据
   包树；桌面包不再携带交互式 PTY 原生模块
-- 打包版本使用 Main 拥有的更新控制器。 macOS、非 AppImage
-  Linux 和 Windows 便携版运行为手动交付模式； Windows NSIS 和
-  Linux AppImage 使用 D126 标签发布的应用内提要
+- 打包版本使用 Main 拥有的更新控制器。macOS、非 AppImage Linux 和
+  Windows ZIP 运行为手动交付模式；旧 Windows 便携版 exe 在设置了
+  `PORTABLE_EXECUTABLE_FILE` 时仍保持手动交付。Windows NSIS 和 Linux
+  AppImage 使用 D126 标签发布的应用内提要
 
 ## 7. 远程目标拓扑（MVP 后）
 

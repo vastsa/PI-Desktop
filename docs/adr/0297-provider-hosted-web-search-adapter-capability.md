@@ -35,33 +35,33 @@ Two upstream facts forced the design:
 
 ## Decision
 
-1. **Capability is declared data, evaluated in one place.** The per-model
-   opt-in is `ModelBinding.nativeWebSearch` (settings UI: a checkbox in the
-   model's advanced sheet, disabled unless the provider's API style is
-   `responses` or `anthropic_messages`). models.dev publishes no hosted-tool
-   capability, so there is no catalog default; absent means off. The single
-   evaluation point is `resolveNativeWebSearch` in
-   `packages/shared/src/native-web-search.ts`, keyed on the resolved wire
-   API — never vendor names, base URL hostnames, or model-id substrings.
+1. **Capability is declared data and gated by the resolved wire API.** The
+   per-model opt-in is `ModelBinding.nativeWebSearch` (settings UI: a checkbox
+   in the model's advanced sheet, disabled unless the provider style is
+   `responses`, `openai_codex_responses`, or `anthropic_messages`). models.dev
+   publishes no hosted-tool capability, so there is no catalog default; absent
+   means off. Runtime `resolveNativeWebSearch` keys on the final adapter API —
+   never vendor names, base URL hostnames, or model-id substrings.
 
-2. **Attachment and extraction live in the pi-ai adapters**, delivered by
-   extending `patches/@earendil-works__pi-ai@0.86.1.patch`:
-   - `anthropic-messages.js` appends the `web_search_20250305` tool when
-     `model.webSearch === true`, captures search blocks as `hostedSearch`
-     content parts (raw wire block kept whole, streamed `input_json_delta`
-     accumulated so the query is available live), collects `citations_delta`,
-     and replays both halves of each pair in order on later turns.
-   - `openai-responses(-shared).js` (and the Azure variant's own
-     `buildParams`) appends the `web_search` tool, asks for
-     `web_search_call.action.sources` via the opt-in `include` channel,
-     creates a `hostedSearch` slot for `web_search_call` items, collects
-     `url_citation` annotations, and replays the item for the same model.
-   Both adapters push a `hosted_search_update` stream event per block
-   transition; `patches/@earendil-works__pi-agent-core@0.86.1.patch` teaches
-   the agent loop to forward it as `message_update` — without that second
-   patch the events die in the loop's switch and search activity renders only
-   when the whole turn finishes. The patches are a stopgap; the same changes
-   should be proposed upstream and dropped once released.
+2. **Attachment and extraction live in pi-ai adapters**, delivered by
+   extending `patches/@earendil-works__pi-ai@0.87.1.patch`:
+   - `anthropic-messages.js` appends `web_search_20250305` when opted in,
+     captures search blocks as `hostedSearch`, collects citations, and replays
+     both halves of each pair on later turns.
+   - `openai-responses(-shared).js` and Azure's `buildParams` append `web_search`,
+     request `web_search_call.action.sources`, capture search items/citations,
+     and replay the item for the same model.
+   - `openai-codex-responses.js` uses a separate Codex request builder and
+     ChatGPT subscription endpoint. It appends the same top-level Responses
+     `web_search` tool and source include only when opted in; it reuses the
+     shared Responses stream parser and model-scoped replay projection. This
+     is the classic Codex Responses request shape; the backend is not the
+     public `/v1/responses` API.
+   All three adapter paths push `hosted_search_update` transitions. The
+   `pi-agent-core` patch forwards them as `message_update`, so activity renders
+   while a search is in flight instead of only at turn completion. These
+   patches are a stopgap; propose the changes upstream and remove them once
+   released.
 
 3. **The flag travels the existing model-config channel.**
    `ModelConfigWithBinding` copies `nativeWebSearch` into
@@ -102,8 +102,12 @@ Two upstream facts forced the design:
 - `pause_turn` keeps pi-ai's existing mapping to `stop`; a long searching
   turn may end early on the official Anthropic wire. This is a known
   limitation to revisit with the upstream patch.
-- Compaction rewrites history and drops search blocks; later turns lose old
-  grounding and the model searches again as needed. Documented behavior.
+- The original implementation omitted search from compaction serialization.
+  The 2026-09-22 contract repair supplies actual search replay projections to
+  the summary request instead. Prefix/tail retention is unchanged: compacted
+  content becomes a model-generated text summary (not lossless raw replay),
+  and retained-tail search follows the existing adapter replay policy. The
+  model can search again when the summary lacks sufficient grounding.
 - Search executes on the provider. There is no local fetch, no ask/allow
   prompt, and billing is the provider's. The model-level opt-in (default
   off) is the user consent surface.

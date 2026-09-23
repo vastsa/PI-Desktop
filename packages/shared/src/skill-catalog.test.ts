@@ -3,8 +3,10 @@ import { BUILTIN_SKILL_CATALOG } from "./skill-catalog-builtin.js";
 import {
   assembleSkillInstall,
   expandSkillResources,
+  isSafeSkillSourceUrl,
   MAX_SKILL_DOCUMENT_BYTES,
   sanitizeSkillCatalogId,
+  sanitizeSkillSources,
   skillEntryError,
   splitSkillDocument,
   toSkillInput,
@@ -148,5 +150,67 @@ describe("assembleSkillInstall", () => {
     );
     expect(assembled.tooLarge).toBe(true);
     expect(assembled.bytes).toBeGreaterThan(MAX_SKILL_DOCUMENT_BYTES);
+  });
+});
+
+/**
+ * A skill market source URL is an address the user typed into a settings field,
+ * so their own machine and their own LAN are reachable. A document URL that
+ * arrives *inside* a catalog is content the app did not receive from them and
+ * keeps the public-only policy in `skill-market-scan.ts` instead.
+ */
+describe("skill market source URLs", () => {
+  it("accepts a source the user runs on loopback or the LAN", () => {
+    expect(isSafeSkillSourceUrl("https://127.0.0.1/catalog.json")).toBe(true);
+    expect(isSafeSkillSourceUrl("https://192.168.1.5:8443/catalog.json")).toBe(true);
+    expect(isSafeSkillSourceUrl("https://nas.local/catalog.json")).toBe(true);
+    expect(isSafeSkillSourceUrl("https://[fd00::1]/catalog.json")).toBe(true);
+    expect(isSafeSkillSourceUrl("https://cdn.jsdelivr.net/gh/x/SKILL.md")).toBe(true);
+  });
+
+  it("keeps the classes that name no service, and cloud metadata, refused", () => {
+    expect(isSafeSkillSourceUrl("https://169.254.169.254/catalog.json")).toBe(false);
+    expect(isSafeSkillSourceUrl("https://100.100.100.200/catalog.json")).toBe(false);
+    expect(isSafeSkillSourceUrl("https://metadata.google.internal/catalog.json")).toBe(false);
+    expect(isSafeSkillSourceUrl("https://[2001:db8::1]/catalog.json")).toBe(false);
+    expect(isSafeSkillSourceUrl("https://user:pass@example.com/catalog.json")).toBe(false);
+    expect(isSafeSkillSourceUrl("file:///etc/passwd")).toBe(false);
+  });
+
+  it("wants the stored opt-in before a plaintext source is accepted", () => {
+    expect(isSafeSkillSourceUrl("http://10.0.0.7:8080/catalog.json")).toBe(false);
+    expect(
+      isSafeSkillSourceUrl("http://10.0.0.7:8080/catalog.json", { allowInsecureHttp: true }),
+    ).toBe(true);
+    // The opt-in is the only thing the flag buys: it never admits a class the
+    // user could not have meant.
+    expect(
+      isSafeSkillSourceUrl("http://169.254.169.254/catalog.json", { allowInsecureHttp: true }),
+    ).toBe(false);
+  });
+
+  it("repairs a persisted source list under the same policy", () => {
+    const ids = (list: ReturnType<typeof sanitizeSkillSources>) =>
+      list.map((source) => source.id);
+    expect(
+      ids(
+        sanitizeSkillSources([
+          { id: "lan", name: "LAN", url: "https://192.168.1.5:8443/catalog.json" },
+          { id: "meta", name: "Meta", url: "https://169.254.169.254/catalog.json" },
+          { id: "plain", name: "Plain", url: "http://10.0.0.7:8080/catalog.json" },
+        ]),
+      ),
+    ).toEqual(["lan"]);
+    expect(
+      ids(
+        sanitizeSkillSources(
+          [
+            { id: "lan", name: "LAN", url: "https://192.168.1.5:8443/catalog.json" },
+            { id: "plain", name: "Plain", url: "http://10.0.0.7:8080/catalog.json" },
+          ],
+          { allowInsecureHttp: true },
+        ),
+      ),
+    ).toEqual(["lan", "plain"]);
   });
 });

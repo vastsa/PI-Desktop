@@ -11,6 +11,31 @@ test("market source requests pin the checked DNS address", () => {
   assert.match(source, /servername: isIP\(host\) \? undefined : host/);
   assert.match(source, /if \(response\.status >= 300 && response\.status < 400\)/);
 });
+test("fake-IP proxy routes use the session transport without weakening direct pinning", () => {
+  assert.match(source, /resolveProxy\(url\)/);
+  assert.match(source, /classifyProxyRoute/);
+  assert.match(source, /isAcceptableResolvedAddress\(addressKind, route\)/);
+  assert.match(source, /resolved\.route === "proxied"/);
+  assert.match(source, /requestProxiedHttps/);
+  assert.match(source, /net\.fetch\(url/);
+  assert.match(source, /requestPinnedHttps\(current, resolved/);
+  assert.match(source, /MAX_SOURCE_RESPONSE_BYTES/);
+  // The fake-IP tolerance is the network policy's, not the proxy's.
+  assert.match(source, /const allowFakeIp = relaxedNetworkPolicyEnabled\(\)/);
+  assert.match(source, /allowFakeIp && addressKind === "benchmark"/);
+  // The source URL is an address the user typed, so only the first hop is judged
+  // for a user-supplied endpoint; every redirect target is third-party content
+  // and keeps the public-only rule.
+  assert.match(source, /hop === 0 \? "user" : "third-party"/);
+  assert.match(source, /const userSupplied = origin === "user"/);
+  assert.match(
+    source,
+    /isSafeMarketSourceUrl\(url, \{ allowInsecureHttp: allowInsecureUserEndpointsEnabled\(\) \}\)/,
+  );
+  assert.match(source, /: isSafePublicHttpsUrl\(url\)/);
+  assert.match(source, /isAcceptableUserEndpointAddress\(address\.address, addressKind, route\)/);
+  assert.match(source, /: isAcceptableResolvedAddress\(addressKind, route\)/);
+});
 
 test("market source responses and caches are bounded", () => {
   assert.match(source, /MAX_SOURCE_RESPONSE_BYTES = 4 \* 1024 \* 1024/);

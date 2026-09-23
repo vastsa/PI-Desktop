@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { APP_VERSION } from "@pi-desktop/shared";
+import { APP_VERSION, inspectHeaderValue } from "@pi-desktop/shared";
 import {
   KeyValueRows,
   pairsToRecord,
@@ -67,6 +67,22 @@ export function ProviderHeadersEditor({
   const copyTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => () => window.clearTimeout(copyTimer.current), []);
+
+  // A value the host folds on save, and one it will refuse, are both said next
+  // to the rows — a fullwidth character is an IME slip, not a mystery. Only
+  // rows that will actually be persisted count: an unnamed, empty or already
+  // refused row has nothing to fold, and saying otherwise would read as if the
+  // whole row were fine.
+  const headerRows = pairs.map((pair) => {
+    const header = inspectHeaderValue(pair.value);
+    const storable =
+      pair.key.trim() !== "" && header.value !== "" && header.fault === null;
+    return { header, storable };
+  });
+  const foldedHeaderValue = headerRows.some(
+    (row) => row.storable && row.header.folded,
+  );
+  const faultyHeaderValue = headerRows.some((row) => row.header.fault !== null);
 
   const addPreset = (key: string) => {
     const preset = HEADER_PRESETS.find((item) => item.key === key);
@@ -155,6 +171,16 @@ export function ProviderHeadersEditor({
       {importError ? (
         <div className="provider-setup-header-error" role="alert">
           {t("settings.headersImportError")}
+        </div>
+      ) : null}
+      {foldedHeaderValue ? (
+        <div className="provider-setup-header-note" role="status">
+          {t("settings.headersFullwidthFolded")}
+        </div>
+      ) : null}
+      {faultyHeaderValue ? (
+        <div className="provider-setup-header-error" role="alert">
+          {t("settings.headersValueNotLatin1")}
         </div>
       ) : null}
       <div className="provider-setup-header-list">

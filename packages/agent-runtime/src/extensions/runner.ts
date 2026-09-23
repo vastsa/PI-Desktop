@@ -9,7 +9,7 @@
  * handlers. Every unsupported member is inert and reports a diagnostic; it
  * never throws into extension code.
  */
-import { spawn } from "node:child_process";
+import { managedExec } from "./managed-exec.js";
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
@@ -42,67 +42,14 @@ import {
   type TrustedExtensionUiResponse,
 } from "./types.js";
 
-/** Events the desktop runtime emits in v1 (spec §6). */
-export const TRUSTED_EXTENSION_EVENTS = [
-  "session_start",
-  "session_shutdown",
-  "session_info_changed",
-  "project_trust",
-  "resources_discover",
-  "before_agent_start",
-  "context",
-  "before_provider_request",
-  "before_provider_headers",
-  "after_provider_response",
-  "agent_start",
-  "agent_end",
-  "agent_settled",
-  "turn_start",
-  "turn_end",
-  "message_start",
-  "message_update",
-  "message_end",
-  "tool_call",
-  "tool_execution_start",
-  "tool_execution_update",
-  "tool_execution_end",
-  "tool_result",
-  "model_select",
-  "thinking_level_select",
-  "session_before_compact",
-  "session_compact",
-  "session_compact_failed",
-  "session_before_fork",
-  "input",
-] as const;
-
-export type TrustedExtensionEventName = (typeof TRUSTED_EXTENSION_EVENTS)[number];
-
-/** Upstream events the runtime never emits in v1; handlers register silently. */
-const NOT_EMITTED_EVENTS = new Set([
-  "user_bash",
-  "session_before_switch",
-  "session_before_tree",
-  "session_tree",
-  "ui_prompt_start",
-  "ui_prompt_end",
-]);
-
-/** Events whose handler result is honored, and therefore time-limited. */
-const RESULT_EVENTS = new Set<string>([
-  "resources_discover",
-  "before_agent_start",
-  "context",
-  "before_provider_request",
-  "before_provider_headers",
-  "message_end",
-  "tool_call",
-  "tool_result",
-  "session_before_compact",
-  "session_before_fork",
-  "input",
-  "project_trust",
-]);
+import { HandlerLifecycle } from "./handler-lifecycle.js";
+import { waitForOperation } from "./operation.js";
+import {
+  isKnownExtensionEvent,
+  TRUSTED_EXTENSION_EVENT_CAPABILITIES,
+  type TrustedExtensionEventName,
+} from "./event-capabilities.js";
+export { TRUSTED_EXTENSION_EVENTS, type TrustedExtensionEventName } from "./event-capabilities.js";
 
 /** ExtensionAPI members deferred to v2 or unsupported in v1. */
 const INERT_API_MEMBERS = [
@@ -192,7 +139,7 @@ export interface TrustedExtensionBridge {
   sessionId: string;
   cwd: string;
   getModel(): unknown;
-  setModel(model: unknown): Promise<boolean>;
+  setModel(model: unknown, signal?: AbortSignal): Promise<boolean>;
   getThinkingLevel(): string;
   setThinkingLevel(level: string): void;
   isIdle(): boolean;
@@ -205,10 +152,11 @@ export interface TrustedExtensionBridge {
   getAllTools(): ExtensionToolInfo[];
   setActiveTools(names: string[]): void;
   getSessionName(): string | undefined;
-  setSessionName(name: string): void | Promise<void>;
+  setSessionName(name: string, signal?: AbortSignal): void | Promise<void>;
   sendUserMessage(
     content: string | unknown[],
     options?: { deliverAs?: "steer" | "followUp" },
+    signal?: AbortSignal,
   ): void | Promise<void>;
   waitForIdle(): Promise<void>;
   newSession(): Promise<{ cancelled: boolean }>;
@@ -216,6 +164,7 @@ export interface TrustedExtensionBridge {
   requestUi(
     extension: TrustedExtensionSpec,
     request: TrustedExtensionUiRequest,
+    signal?: AbortSignal,
   ): Promise<TrustedExtensionUiResponse>;
   publishCommands(commands: TrustedExtensionCommand[]): void;
   publishDiagnostics(diagnostics: TrustedExtensionDiagnostic[]): void;
@@ -345,22 +294,6 @@ function errorStack(err: unknown): string | undefined {
   return err instanceof Error ? err.stack : undefined;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`handler exceeded ${ms}ms`)), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      },
-    );
-  });
-}
-
 export type TrustedExtensionRunnerOptions = {
   specs: TrustedExtensionSpec[];
   bridge: TrustedExtensionBridge;
@@ -377,6 +310,10 @@ export class TrustedExtensionRunner {
   private readonly reports = new Map<string, TrustedExtensionLoadReport>();
   private publishScheduled = false;
   private disposed = false;
+  private closing = false;
+  private disposal?: Promise<void>;
+  private readonly lifecycle = new HandlerLifecycle();
+  private readonly processes = new Set<Promise<ExtensionExecResult>>();
 
   constructor(options: TrustedExtensionRunnerOptions) {
     this.bridge = options.bridge;
@@ -390,7 +327,9 @@ export class TrustedExtensionRunner {
 
   /** Load every entry. A failing entry is reported and skipped (spec §4.4). */
   async load(): Promise<TrustedExtensionLoadReport[]> {
+    const signal = this.lifecycle.signal;
     for (const spec of this.specs) {
+      if (this.closing || signal.aborted) break;
       const extension: LoadedExtension = {
         spec,
         tools: new Map(),
@@ -413,8 +352,11 @@ export class TrustedExtensionRunner {
       if (factory) for (const symbol of knownStubSymbols(spec.id)) reportStub(symbol);
       if (!factory) {
         try {
-          factory = await loadExtensionFactory(spec.entry, virtualModules);
+          factory = await this.lifecycle.run(
+            () => loadExtensionFactory(spec.entry, virtualModules), signal, TRUSTED_EXTENSION_HANDLER_TIMEOUT_MS,
+          );
         } catch (err) {
+          if (signal.aborted) break;
           this.report(spec.id, "load_error", errorMessage(err), undefined, errorStack(err));
           this.reports.set(spec.id, this.errorReport(spec.id));
           continue;
@@ -427,12 +369,17 @@ export class TrustedExtensionRunner {
         factoryCache.set(spec.id, factory);
       }
       try {
-        await factory(this.createApi(extension));
+        const loadedFactory = factory;
+        await this.lifecycle.run(
+          () => loadedFactory(this.createApi(extension)), signal, TRUSTED_EXTENSION_HANDLER_TIMEOUT_MS,
+        );
       } catch (err) {
+        if (signal.aborted) break;
         this.report(spec.id, "factory_error", errorMessage(err), undefined, errorStack(err));
         this.reports.set(spec.id, this.errorReport(spec.id));
         continue;
       }
+      if (this.closing || signal.aborted) break;
       this.loaded.set(spec.id, extension);
       this.reports.set(spec.id, {
         extensionId: spec.id,
@@ -443,17 +390,33 @@ export class TrustedExtensionRunner {
         eventNames: [...extension.handlers.keys()],
       });
     }
+    if (this.closing || signal.aborted) return this.getLoadReports();
     this.bridge.publishCommands(this.getCommands());
     this.flushDiagnostics();
     await this.emit("session_start", { type: "session_start", reason: "startup" });
     return this.getLoadReports();
   }
 
-  async dispose(): Promise<void> {
-    if (this.disposed) return;
-    await this.emit("session_shutdown", { type: "session_shutdown", reason: "quit" });
-    this.disposed = true;
-    this.bridge.publishCommands([]);
+  /** Retire current dispatches; subsequent turns use a fresh generation. */
+  cancelPending(): void {
+    if (!this.closing) this.lifecycle.cancel();
+  }
+
+  dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
+    this.closing = true;
+    this.lifecycle.cancel();
+    this.disposal = Promise.resolve().then(async () => {
+      try {
+        await this.dispatch("session_shutdown", { type: "session_shutdown", reason: "quit" });
+      } finally {
+        this.disposed = true;
+        this.lifecycle.cancel();
+        await Promise.allSettled([...this.processes]);
+        this.bridge.publishCommands([]);
+      }
+    });
+    return this.disposal;
   }
 
   getLoadReports(): TrustedExtensionLoadReport[] {
@@ -505,8 +468,17 @@ export class TrustedExtensionRunner {
           parameters: def.parameters as AgentTool["parameters"],
           executionMode: def.executionMode ?? "sequential",
           ...(def.prepareArguments ? { prepareArguments: def.prepareArguments } : {}),
-          execute: (toolCallId, params, signal, onUpdate) =>
-            def.execute(toolCallId, params, signal, onUpdate, this.createContext(extension)),
+          execute: (toolCallId, params, signal, onUpdate) => {
+            if (this.closing) throw new DOMException("Extension disposed", "AbortError");
+            const parent = signal ? AbortSignal.any([signal, this.lifecycle.signal]) : this.lifecycle.signal;
+            return this.lifecycle.run(async () => {
+              const operation = this.lifecycle.operationSignal;
+              const result = await def.execute(toolCallId, structuredClone(params), operation,
+                onUpdate ? (partial) => { if (!operation.aborted) onUpdate(structuredClone(partial)); } : undefined,
+                this.createContext(extension));
+              return structuredClone(result);
+            }, parent);
+          },
         } as AgentTool);
       }
     }
@@ -530,13 +502,17 @@ export class TrustedExtensionRunner {
 
   /** Run `/<name> <args>` in this session (spec §8). Returns false when unknown. */
   async runCommand(name: string, args: string): Promise<boolean> {
+    if (this.closing) return false;
     for (const extension of this.loaded.values()) {
       const command = extension.commands.get(name);
       if (!command) continue;
+      const signal = this.lifecycle.signal;
       try {
-        await command.handler(args, this.createCommandContext(extension));
+        await this.lifecycle.run(() => command.handler(args, this.createCommandContext(extension)), signal);
       } catch (err) {
-        this.report(extension.spec.id, "handler_error", errorMessage(err), `command:${name}`, errorStack(err));
+        if (!signal.aborted && !(err instanceof Error && err.name === "AbortError")) {
+          this.report(extension.spec.id, "handler_error", errorMessage(err), `command:${name}`, errorStack(err));
+        }
       }
       return true;
     }
@@ -553,23 +529,42 @@ export class TrustedExtensionRunner {
     payload: Record<string, unknown>,
     fold?: (acc: R | undefined, next: R) => R,
   ): Promise<R | undefined> {
-    if (this.disposed) return undefined;
+    if (this.closing) return undefined;
+    return this.dispatch(event, payload, fold);
+  }
+
+  private async dispatch<R>(
+    event: TrustedExtensionEventName,
+    payload: Record<string, unknown>,
+    fold?: (acc: R | undefined, next: R) => R,
+  ): Promise<R | undefined> {
+    const signal = this.lifecycle.signal;
     let acc: R | undefined;
-    const timed = RESULT_EVENTS.has(event);
     for (const extension of this.loaded.values()) {
       const handlers = extension.handlers.get(event);
       if (!handlers?.length) continue;
-      const ctx = this.createContext(extension);
       for (const handler of handlers) {
+        if (signal.aborted || this.disposed) return undefined;
         try {
-          const run = Promise.resolve(handler(payload, ctx));
-          const result = (await (timed
-            ? withTimeout(run, TRUSTED_EXTENSION_HANDLER_TIMEOUT_MS)
-            : run)) as R | undefined;
+          // Result/mutation events operate on detached data. Only a timely
+          // headers mutation is committed; late handlers retain their own copy.
+          const isolate = TRUSTED_EXTENSION_EVENT_CAPABILITIES[event] === "result" ||
+            TRUSTED_EXTENSION_EVENT_CAPABILITIES[event] === "mutation";
+          const input = isolate ? structuredClone(payload) : payload;
+          const result = await this.lifecycle.run(
+            () => handler(input, this.createContext(extension)), signal, TRUSTED_EXTENSION_HANDLER_TIMEOUT_MS,
+          ) as R | undefined;
+          if (signal.aborted || this.disposed) return undefined;
+          if (event === "before_provider_headers" && payload.headers && typeof payload.headers === "object") {
+            for (const key of Object.keys(payload.headers)) Reflect.deleteProperty(payload.headers, key);
+            Object.assign(payload.headers, structuredClone(input.headers));
+          }
           if (result !== undefined && result !== null) {
-            acc = fold ? fold(acc, result) : result;
+            const detached = isolate ? structuredClone(result) : result;
+            acc = fold ? fold(acc, detached) : detached;
           }
         } catch (err) {
+          if (signal.aborted || this.disposed) return undefined;
           const kind: TrustedExtensionDiagnosticKind = /exceeded \d+ms/.test(errorMessage(err))
             ? "handler_timeout"
             : "handler_error";
@@ -633,49 +628,38 @@ export class TrustedExtensionRunner {
   }
 
   private exec(
+    extension: LoadedExtension,
     command: string,
     args: string[],
     options?: ExtensionExecOptions,
   ): Promise<ExtensionExecResult> {
-    return new Promise((resolve, reject) => {
-      const child = spawn(command, args, {
-        cwd: options?.cwd ?? this.bridge.cwd,
-        env: options?.env ? { ...process.env, ...options.env } : process.env,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      const maxBuffer = options?.maxBuffer ?? 10 * 1024 * 1024;
-      let stdout = "";
-      let stderr = "";
-      let killed = false;
-      const kill = () => {
-        killed = true;
-        child.kill("SIGTERM");
-      };
-      const timer = options?.timeout ? setTimeout(kill, options.timeout) : undefined;
-      options?.signal?.addEventListener("abort", kill, { once: true });
-      child.stdout?.on("data", (chunk: Buffer) => {
-        if (stdout.length < maxBuffer) stdout += chunk.toString("utf8");
-      });
-      child.stderr?.on("data", (chunk: Buffer) => {
-        if (stderr.length < maxBuffer) stderr += chunk.toString("utf8");
-      });
-      child.on("error", (err) => {
-        if (timer) clearTimeout(timer);
-        reject(err);
-      });
-      child.on("close", (code) => {
-        if (timer) clearTimeout(timer);
-        resolve({ stdout, stderr, code: code ?? (killed ? 143 : 0), killed });
-      });
+    if (this.disposed) return Promise.reject(new DOMException("Extension disposed", "AbortError"));
+    const pending = managedExec(command, args, this.bridge.cwd, this.lifecycle.operationSignal, options);
+    this.processes.add(pending);
+    void pending.then(() => this.processes.delete(pending), (error: unknown) => {
+      this.processes.delete(pending);
+      this.report(extension.spec.id, "handler_error", errorMessage(error), "exec");
     });
+    return pending;
   }
 
   private createUi(extension: LoadedExtension): Record<string, unknown> {
-    const request = (req: TrustedExtensionUiRequest) =>
-      this.bridge.requestUi(extension.spec, req);
+    const signal = this.lifecycle.operationSignal;
+    const request = (req: TrustedExtensionUiRequest) => {
+      signal.throwIfAborted();
+      return waitForOperation(this.bridge.requestUi(extension.spec, req, signal), signal).then((response) => {
+        if ("cancelled" in response && response.cancelled) {
+          this.lifecycle.cancelOperation();
+          signal.throwIfAborted();
+        }
+        return response;
+      });
+    };
     const ui: Record<string, unknown> = {
       notify: (message: string, level: "info" | "warning" | "error" = "info") => {
-        void request({ kind: "notify", message: String(message), level });
+        void request({ kind: "notify", message: String(message), level }).catch((error: unknown) => {
+          if (!signal.aborted) this.report(extension.spec.id, "handler_error", errorMessage(error), "ui.notify");
+        });
       },
       confirm: async (title: string, message: string) => {
         const res = await request({ kind: "confirm", title: String(title), message: String(message ?? "") });
@@ -698,10 +682,14 @@ export class TrustedExtensionRunner {
         return res.kind === "input" ? res.value : undefined;
       },
       setStatus: (key: string, text: string | undefined) => {
-        void request({ kind: "setStatus", key: String(key), text: text ?? undefined });
+        void request({ kind: "setStatus", key: String(key), text: text ?? undefined }).catch((error: unknown) => {
+          if (!signal.aborted) this.report(extension.spec.id, "handler_error", errorMessage(error), "ui.setStatus");
+        });
       },
       setWorkingMessage: (text?: string) => {
-        void request({ kind: "setWorkingMessage", text: text ?? undefined });
+        void request({ kind: "setWorkingMessage", text: text ?? undefined }).catch((error: unknown) => {
+          if (!signal.aborted) this.report(extension.spec.id, "handler_error", errorMessage(error), "ui.setWorkingMessage");
+        });
       },
     };
     for (const member of INERT_UI_MEMBERS) {
@@ -711,8 +699,9 @@ export class TrustedExtensionRunner {
   }
 
   private createContext(extension: LoadedExtension): Record<string, unknown> {
-    const bridge = this.bridge;
+    const bridge = this.operationBridge(this.lifecycle.operationSignal);
     return {
+      signal: this.lifecycle.operationSignal,
       ui: this.createUi(extension),
       hasUI: true,
       cwd: bridge.cwd,
@@ -739,7 +728,7 @@ export class TrustedExtensionRunner {
   }
 
   private createCommandContext(extension: LoadedExtension): Record<string, unknown> {
-    const bridge = this.bridge;
+    const bridge = this.operationBridge(this.lifecycle.operationSignal);
     return {
       ...this.createContext(extension),
       getSystemPromptOptions: () => ({}),
@@ -806,16 +795,16 @@ export class TrustedExtensionRunner {
   }
 
   private createApi(extension: LoadedExtension): Record<string, unknown> {
-    const bridge = this.bridge;
+    const bridge = this.operationBridge();
     const api: Record<string, unknown> = {
       on: (event: string, handler: Handler) => {
         if (typeof handler !== "function") return;
-        if (
-          !NOT_EMITTED_EVENTS.has(event) &&
-          !(TRUSTED_EXTENSION_EVENTS as readonly string[]).includes(event)
-        ) {
+        if (!isKnownExtensionEvent(event)) {
           this.report(extension.spec.id, "unsupported_api", `unknown event "${event}"`, `on:${event}`);
           return;
+        }
+        if (TRUSTED_EXTENSION_EVENT_CAPABILITIES[event] === "deferred") {
+          this.report(extension.spec.id, "unsupported_api", `event "${event}" is not emitted by Desktop`, `on:${event}`);
         }
         const list = extension.handlers.get(event) ?? [];
         list.push(handler);
@@ -921,7 +910,7 @@ export class TrustedExtensionRunner {
       },
       getFlag: (name: string) => extension.flags.get(String(name))?.default,
       exec: (command: string, args: string[], options?: ExtensionExecOptions) =>
-        this.exec(command, Array.isArray(args) ? args.map(String) : [], options),
+        this.exec(extension, command, Array.isArray(args) ? args.map(String) : [], options),
       getActiveTools: () => bridge.getActiveTools(),
       getAllTools: () => bridge.getAllTools(),
       setActiveTools: (names: string[]) => bridge.setActiveTools(Array.isArray(names) ? names.map(String) : []),
@@ -936,7 +925,10 @@ export class TrustedExtensionRunner {
       getThinkingLevel: () => bridge.getThinkingLevel(),
       setThinkingLevel: (level: string) => bridge.setThinkingLevel(String(level)),
       setSessionName: (name: string) => {
-        void bridge.setSessionName(String(name));
+        const signal = this.lifecycle.operationSignal;
+        void Promise.resolve(bridge.setSessionName(String(name))).catch((error: unknown) => {
+          if (!signal.aborted) this.report(extension.spec.id, "handler_error", errorMessage(error), "setSessionName");
+        });
       },
       getSessionName: () => bridge.getSessionName(),
       sendUserMessage: (content: string | unknown[], options?: { deliverAs?: "steer" | "followUp" }) =>
@@ -949,6 +941,42 @@ export class TrustedExtensionRunner {
     for (const member of INERT_API_MEMBERS) {
       api[member] = this.inert(extension, member);
     }
-    return api;
+    return new Proxy(api, {
+      get: (target, key) => {
+        const member: unknown = Reflect.get(target, key);
+        if (typeof member !== "function") return member;
+        return (...args: unknown[]) => {
+          this.lifecycle.operationSignal.throwIfAborted();
+          if (this.disposed) throw new DOMException("Extension disposed", "AbortError");
+          return Reflect.apply(member, target, args);
+        };
+      },
+    });
+  }
+
+  /** AsyncLocalStorage preserves the original invocation even in late callbacks. */
+  private operationBridge(boundSignal?: AbortSignal): TrustedExtensionBridge {
+    return new Proxy(this.bridge, {
+      get: (target, key, receiver) => {
+        const value: unknown = Reflect.get(target, key, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          const signal = boundSignal ?? this.lifecycle.operationSignal;
+          signal.throwIfAborted();
+          if (this.disposed) throw new DOMException("Extension disposed", "AbortError");
+          const callArgs = key === "sendUserMessage" ? [args[0], args[1], signal]
+            : key === "setModel" || key === "setSessionName" ? [args[0], signal] : args;
+          const result: unknown = Reflect.apply(value, target, callArgs);
+          if (!(result instanceof Promise)) return result;
+          const waiting = waitForOperation(result, signal);
+          // Some upstream SDK setters are fire-and-forget. Observe rejection
+          // without changing the promise seen by an awaiting extension.
+          void waiting.catch(() => {
+            if (!signal.aborted) console.error(`[extensions] SDK operation failed: ${String(key)}`);
+          });
+          return waiting;
+        };
+      },
+    });
   }
 }

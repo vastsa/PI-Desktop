@@ -22,6 +22,10 @@ PI-Desktop historically imports Pi sessions by flattening them into Desktop-owne
 
 - Desktop sessions and their host-owned persistence are unchanged.
 - Native branches, compaction data (including unknown fields such as `retainedTail`), custom/context messages, and future unknown entries remain untouched because reads are in-memory and writes are SDK append-only.
+- With the 0.87.1 coding-agent pin, `context_edit` entries are append-only and
+  affect only the SDK's future model-context projection. Raw source entries
+  and the visible native transcript remain unchanged. `appendContextEdit` is
+  covered by the same lease and parent-chain guard as every other SDK append.
 - An uncooperative writer can still race within the OS append operation. The adapter detects prefix/suffix divergence after the append, preserves bytes, disposes the runtime, and requires reload; full mutual exclusion requires Pi clients to adopt a shared lease protocol.
 - `@earendil-works/pi-coding-agent` is a runtime dependency of the bundled sidecar and its session format behavior is version-pinned.
 - `bindExtensions` runs native startup/resource discovery with the SDK headless UI (`mode: "print"`, `hasUI: false`), error ownership, and explicit unsupported session controls. Guards and listeners precede startup; failure disposes the session and lease. Native extensions are trusted local code, not Desktop plugins or sandboxed tools.

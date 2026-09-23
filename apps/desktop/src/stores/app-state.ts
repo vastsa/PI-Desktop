@@ -175,6 +175,8 @@ export type AppState = {
   settingsTab: SettingsTabId;
   /** Pending row anchor (i18n key) to flash after landing on a settings tab. */
   settingsAnchor: string | null;
+  /** Bumped by every setSettingsTab so a same-tab navigation is observable. */
+  settingsTabNonce: number;
   navStack: Array<{ page: AppState["page"]; sessionId?: string }>;
   navIndex: number;
   error?: string | null;

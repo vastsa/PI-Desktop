@@ -30,7 +30,11 @@ test("create project dialog supports named multi-folder setup", () => {
   assert.match(dialog, /project-create-dialog-content/);
   assert.match(dialog, /project-create-dialog-section/);
   assert.match(dialog, /project-create-dialog-field-label/);
-  assert.match(dialog, /!name\.trim\(\) \|\| folders\.length === 0 \|\| busy/);
+  // The name field is optional: the dialog derives a default from the source.
+  assert.match(dialog, /defaultProjectName\(\{/);
+  assert.match(dialog, /resolveProjectName\(name, defaultName\)/);
+  assert.match(dialog, /setName\(defaultName\)/);
+  assert.match(dialog, /: !projectName \|\| folders\.length === 0 \|\| busy/);
   assert.match(dialog, /querySelectorAll<HTMLElement>\(/);
 });
 
@@ -48,7 +52,7 @@ test("create project dialog can create the project from a git checkout", () => {
   assert.match(dialog, /createProjectFromGit\(\{/);
   assert.match(dialog, /url: cloneTarget\.url/);
   assert.match(dialog, /parentPath: cloneParent/);
-  assert.match(dialog, /!name\.trim\(\) \|\| !cloneTarget \|\| !cloneParent \|\| busy/);
+  assert.match(dialog, /!projectName \|\| !cloneTarget \|\| !cloneParent \|\| busy/);
   assert.match(dialog, /project\.cloning/);
   assert.match(store, /createProjectFromGit: async \(\{ name, url, parentPath \}\)/);
   assert.match(store, /api\.cloneProjectInto\(url, parentPath\)/);

@@ -2,9 +2,16 @@ import { readAppSourceSync, readSettingsSourceSync, readStoreSourceSync, readMai
 import { sanitizeThemeCss } from "@pi-desktop/plugin-sdk";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import {
+  readThemeAssetBytes,
+  resolvePackageThemeAssetPath,
+  themeAssetGroupWithinBudget,
+} from "../electron/main/plugin-theme-assets.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = join(here, "..");
@@ -94,7 +101,10 @@ test("scenic plugins use the normal full-window shell for compositing", () => {
   const settingsSrc = readFileSync(join(desktopRoot, "src/styles/settings.css"), "utf8");
   assert.match(baseSrc, /\.app-shell\s*\{[^}]*position:\s*relative;[^}]*isolation:\s*isolate/s);
   assert.match(baseSrc, /\.app-scenic-backdrop\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0/s);
-  assert.match(baseSrc, /\.app-shell\s*>\s*:not\(\.app-scenic-backdrop\)[^}]*z-index:\s*1/s);
+  // The backdrop is the shell's first child with `position: fixed`, so it needs
+  // no z-index sibling rule; such a rule would turn `.main-pane` into a stacking
+  // context and pin route overlays underneath the window chrome.
+  assert.doesNotMatch(baseSrc, /\.app-shell\s*>\s*:not\(\.app-scenic-backdrop\)/);
   assert.match(settingsSrc, /data-plugin-theme\^="plugin:io\.github\.akshayxkill\.nexus-scenic-themes:/);
   assert.match(settingsSrc, /\.app-shell\.settings-mode[^}]*background:\s*transparent\s*!important/s);
   assert.match(settingsSrc, /\.settings-content[^}]*background:\s*transparent\s*!important/s);
@@ -112,7 +122,10 @@ test("scenic plugin themes expose a full-window settings compositing hook", () =
 test("scenic background is a host root layer, not an app-shell pseudo-element", () => {
   assert.match(appSrc, /className=\"app-scenic-backdrop\"/);
   assert.match(readFileSync(join(desktopRoot, "src/styles/base.css"), "utf8"), /\.app-scenic-backdrop\s*\{[^}]*position:\s*fixed/s);
-  assert.match(readFileSync(join(desktopRoot, "src/styles/base.css"), "utf8"), /\.app-shell\s*>\s*:\s*not\(\.app-scenic-backdrop\)/);
+  assert.doesNotMatch(
+    readFileSync(join(desktopRoot, "src/styles/base.css"), "utf8"),
+    /\.app-shell\s*>\s*:\s*not\(/,
+  );
 });
 
 test("core Settings navigation dismisses an active plugin destination", () => {
@@ -233,4 +246,59 @@ test("the shipped example theme survives sanitation", () => {
   // The file only *names* the banned token, inside its header comment.
   assert.match(css, /@import/);
   assert.equal(sanitizeThemeCss(css).ok, true);
+});
+
+test("package-relative theme assets stay canonicalized inside their plugin", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "pi-plugin-theme-assets-"));
+  const plugin = join(parent, "plugin");
+  const asset = join(plugin, "art/bg.png");
+  const secondAsset = join(plugin, "art/second.png");
+  try {
+    await mkdir(dirname(asset), { recursive: true });
+    await writeFile(asset, "image");
+    await writeFile(secondAsset, "image");
+    const registered = resolvePackageThemeAssetPath(plugin, "art/bg.png");
+    const secondRegistered = resolvePackageThemeAssetPath(plugin, "art/second.png");
+    assert.ok(registered);
+    assert.ok(secondRegistered);
+    assert.equal(registered, realpathSync(asset));
+    const initialBytes = readThemeAssetBytes(registered);
+    assert.equal(Buffer.from(initialBytes ?? []).toString("utf8"), "image");
+    assert.equal(
+      resolvePackageThemeAssetPath(plugin, "../outside.png"),
+      null,
+    );
+
+    const group = new Map([
+      ["art/bg.png", registered],
+      ["art/second.png", secondRegistered],
+    ]);
+    assert.equal(themeAssetGroupWithinBudget(plugin, group), true);
+    const twoMiBPlusOne = Buffer.alloc(2 * 1024 * 1024 + 1);
+    await writeFile(asset, twoMiBPlusOne);
+    await writeFile(secondAsset, twoMiBPlusOne);
+    assert.equal(themeAssetGroupWithinBudget(plugin, group), false);
+
+    await writeFile(asset, Buffer.alloc(4 * 1024 * 1024 + 1));
+    assert.equal(readThemeAssetBytes(registered), null);
+    await writeFile(asset, "image");
+
+    if (process.platform !== "win32") {
+      const outside = join(parent, "outside.png");
+      await writeFile(outside, "outside");
+      await rm(asset);
+      await symlink(outside, asset);
+      assert.equal(resolvePackageThemeAssetPath(plugin, "art/bg.png"), null);
+      assert.equal(readThemeAssetBytes(registered), null);
+    }
+
+    assert.match(runtimeSrc, /resolvePackageThemeAssetPath\(pluginPath,\s*normalized\)/);
+    assert.match(runtimeSrc, /resolvePackageThemeAssetPath\(loaded\.path,\s*normalized\)/);
+    assert.match(runtimeSrc, /themeAssetGroupWithinBudget\(loaded\.path, group\)/);
+    const assetProtocolSrc = readFileSync(join(desktopRoot, "electron/main/plugin-asset-protocol.ts"), "utf8");
+    assert.match(assetProtocolSrc, /PluginAssetResolver = .*Uint8Array \| null/);
+    assert.doesNotMatch(assetProtocolSrc, /readFileSync/);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 });

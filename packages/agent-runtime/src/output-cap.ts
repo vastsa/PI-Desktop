@@ -16,22 +16,69 @@
  * that scales with the window instead of pi-ai's fixed 4096. It is applied
  * in `runtime.ts` and `subagent-model-binding.ts` before either adapter
  * branch runs, so the clamp holds for `streamSimple` and `stream` alike.
+ *
+ * Hosted search is charged through the adapter's own replay projection for the
+ * target model, so a search item the provider discards (a Responses
+ * `web_search_call` from another model) no longer inflates the estimate while
+ * same-model search history keeps counting. A caller that has no target model
+ * passes none and keeps the conservative block-protocol estimate.
  */
+
+import type { Api } from "@earendil-works/pi-ai";
+import {
+  hostedSearchReplayProjection,
+  type HostedSearchReplayOptions,
+} from "@earendil-works/pi-ai/utils/hosted-search";
 
 /** Structural view of the request context; assignable from pi-ai's `Context`. */
 export type OutputCapContext = {
   systemPrompt?: string;
-  messages: Array<{ role: string; content: unknown }>;
+  messages: OutputCapMessage[];
   tools?: Array<unknown>;
 };
 
+/**
+ * Structural view of one context message. The replay identity (`api`,
+ * `provider`, `model`) is what pi-ai's adapters stamp on assistant messages;
+ * it is absent on every other role and on records written before hosted
+ * search existed.
+ */
+export type OutputCapMessage = {
+  role: string;
+  content: unknown;
+  api?: Api;
+  provider?: string;
+  model?: string;
+};
+
+/**
+ * The target-model facts the hosted-search replay projection needs: `api`
+ * selects the projection, `provider`/`id` decide whether a Responses
+ * `web_search_call` belongs to the model being asked (the provider discards a
+ * cross-model search item). These are exactly the fields the adapter compares,
+ * so the estimate charges the items the request really carries.
+ */
+export type OutputCapReplayTarget = {
+  api?: Api;
+  provider?: string;
+  id?: string;
+};
+
 /** Structural view of the active model. */
-export type OutputCapModel = {
+export type OutputCapModel = OutputCapReplayTarget & {
   contextWindow: number;
   /** Published limit, when a user override may have enlarged contextWindow. */
   catalogContextWindow?: number;
   maxTokens: number;
 };
+
+/**
+ * Accepted target argument for the estimator. A caller may hold the full
+ * model or only its window facts (a catalog entry, a caller test); only the
+ * replay identity is read, and a window-only model keeps the conservative
+ * estimate instead of being rejected.
+ */
+export type OutputCapEstimateModel = OutputCapReplayTarget | OutputCapModel;
 
 function positiveWindow(value: number | undefined): number | undefined {
   if (!Number.isFinite(value) || (value ?? 0) <= 0) return undefined;
@@ -83,7 +130,10 @@ function stringifyForEstimate(value: unknown): string {
 }
 
 /** Token estimate for one message's content (text/thinking/tool/image). */
-function estimateMessageTokens(content: unknown): {
+function estimateMessageTokens(
+  content: unknown,
+  replayOptions: HostedSearchReplayOptions | undefined,
+): {
   baseline: number;
   cjkChars: number;
 } {
@@ -112,6 +162,17 @@ function estimateMessageTokens(content: unknown): {
       const payload = stringifyForEstimate(b.arguments ?? b.input);
       chars += b.name.length + payload.length;
       cjkChars += countCjkChars(b.name);
+    } else if (b.type === "hostedSearch") {
+      // 与适配器共用回放投影；搜索结果不是图片，也不是普通工具参数。
+      // 投影会校验结构，失败必须保留为本地错误，不能按零成本继续请求。
+      // 只有目标模型不会回放的条目（跨模型的 Responses 搜索）才计零成本，
+      // 判据来自适配器本身，不是这里的猜测。
+      const replay = hostedSearchReplayProjection(b, replayOptions);
+      const payload = JSON.stringify(replay);
+      if (payload !== undefined) {
+        chars += payload.length;
+        cjkChars += countCjkChars(payload);
+      }
     } else {
       chars += ESTIMATED_CHARS_PER_IMAGE;
     }
@@ -120,18 +181,49 @@ function estimateMessageTokens(content: unknown): {
 }
 
 /**
+ * Replay options for one message, mirroring the adapter exactly: with a known
+ * target `api` a Responses `web_search_call` is replayed only for the model
+ * that produced it, while Anthropic search blocks keep their existing
+ * cross-model semantics (the projection ignores `isSameModel` there).
+ *
+ * Without a target `api` there is no adapter behaviour to mirror, so a caller
+ * holding only window facts keeps the conservative block-protocol estimate:
+ * every search block is charged instead of silently dropped.
+ */
+function replayOptionsFor(
+  message: OutputCapMessage,
+  target: OutputCapReplayTarget | undefined,
+): HostedSearchReplayOptions | undefined {
+  if (target?.api === undefined) return undefined;
+  return {
+    api: target.api,
+    isSameModel:
+      message.api === target.api &&
+      message.provider === target.provider &&
+      message.model === target.id,
+  };
+}
+
+/**
  * Estimate the input tokens of a request. Mirrors pi-ai's internal estimator
  * (chars/4, 1200 tokens per image, serialized tool schemas) and adds the
  * missing CJK correction: a CJK char costs ~1 token while the baseline
  * charges 0.25, so the shortfall is added back.
+ *
+ * `model` is the request's target model; pass it whenever it is known so
+ * hosted-search history is charged the way the adapter replays it.
  */
 export function estimateOutputCapInputTokens(
   context: OutputCapContext,
+  model?: OutputCapEstimateModel,
 ): number {
   let baseline = 0;
   let cjkChars = 0;
   for (const message of context.messages) {
-    const estimated = estimateMessageTokens(message.content);
+    const estimated = estimateMessageTokens(
+      message.content,
+      replayOptionsFor(message, model),
+    );
     baseline += estimated.baseline;
     cjkChars += estimated.cjkChars;
   }
@@ -169,7 +261,7 @@ export function clampOutputToContext(
   // Unknown window: there is nothing context-based to clamp against; keep the
   // configured budget (mirrors pi-ai's `contextWindow <= 0` behavior).
   if (contextWindow <= 0) return desired;
-  const inputTokens = estimateOutputCapInputTokens(context);
+  const inputTokens = estimateOutputCapInputTokens(context, model);
   const reserve = Math.max(
     OUTPUT_SAFETY_FLOOR_TOKENS,
     Math.ceil(contextWindow * OUTPUT_SAFETY_WINDOW_RATIO),

@@ -12,64 +12,39 @@ import {
 
 describe("resolveNativeWebSearch", () => {
   it("turns on only for wires that define a hosted search tool", () => {
-    expect(
-      resolveNativeWebSearch({ wireApi: "anthropic-messages", modelWebSearch: true }),
-    ).toBe("on");
-    expect(
-      resolveNativeWebSearch({ wireApi: "openai-responses", modelWebSearch: true }),
-    ).toBe("on");
-    expect(
-      resolveNativeWebSearch({ wireApi: "azure-openai-responses", modelWebSearch: true }),
-    ).toBe("on");
+    expect(resolveNativeWebSearch({ wireApi: "anthropic-messages", modelWebSearch: true })).toBe("on");
+    expect(resolveNativeWebSearch({ wireApi: "openai-responses", modelWebSearch: true })).toBe("on");
+    expect(resolveNativeWebSearch({ wireApi: "azure-openai-responses", modelWebSearch: true })).toBe("on");
+    expect(resolveNativeWebSearch({ wireApi: "openai-codex-responses", modelWebSearch: true })).toBe("on");
   });
 
   it("stays off for wires without a hosted search tool", () => {
-    for (const wire of [
-      "openai-completions",
-      "openai-codex-responses",
-      "google-generative-ai",
-      "pi-messages",
-      "",
-    ]) {
+    for (const wire of ["openai-completions", "google-generative-ai", "pi-messages", ""]) {
       expect(resolveNativeWebSearch({ wireApi: wire, modelWebSearch: true })).toBe("off");
     }
   });
 
   it("requires the explicit binding opt-in; absence is off", () => {
     expect(resolveNativeWebSearch({ wireApi: "openai-responses" })).toBe("off");
-    expect(
-      resolveNativeWebSearch({ wireApi: "openai-responses", modelWebSearch: false }),
-    ).toBe("off");
-    expect(
-      resolveNativeWebSearch({ wireApi: "openai-responses", modelWebSearch: undefined }),
-    ).toBe("off");
+    expect(resolveNativeWebSearch({ wireApi: "openai-responses", modelWebSearch: false })).toBe("off");
+    expect(resolveNativeWebSearch({ wireApi: "openai-responses", modelWebSearch: undefined })).toBe("off");
   });
 
   it("normalizes wire spelling before matching", () => {
-    expect(
-      resolveNativeWebSearch({ wireApi: " Anthropic-Messages ", modelWebSearch: true }),
-    ).toBe("on");
+    expect(resolveNativeWebSearch({ wireApi: " Anthropic-Messages ", modelWebSearch: true })).toBe("on");
   });
 
   it("never infers support from unrelated inputs", () => {
-    // A gateway on a chat-completions wire stays off no matter what the
-    // binding says: the wire cannot carry the tool.
-    expect(
-      resolveNativeWebSearch({ wireApi: "openai-completions", modelWebSearch: true }),
-    ).toBe("off");
+    expect(resolveNativeWebSearch({ wireApi: "openai-completions", modelWebSearch: true })).toBe("off");
   });
 });
 
 describe("nativeWebSearchToolFor", () => {
   it("maps each supported wire to its vendor tool shape", () => {
-    expect(nativeWebSearchToolFor("anthropic-messages")).toEqual({
-      type: "web_search_20250305",
-      name: "web_search",
-    });
+    expect(nativeWebSearchToolFor("anthropic-messages")).toEqual({ type: "web_search_20250305", name: "web_search" });
     expect(nativeWebSearchToolFor("openai-responses")).toEqual({ type: "web_search" });
-    expect(nativeWebSearchToolFor("azure-openai-responses")).toEqual({
-      type: "web_search",
-    });
+    expect(nativeWebSearchToolFor("azure-openai-responses")).toEqual({ type: "web_search" });
+    expect(nativeWebSearchToolFor("openai-codex-responses")).toEqual({ type: "web_search" });
   });
 
   it("returns undefined for wires without a tool shape", () => {
@@ -474,12 +449,13 @@ describe("nativeWebSearchSupportedOn", () => {
     expect(nativeWebSearchSupportedOn("openai-responses")).toBe(true);
     expect(nativeWebSearchSupportedOn("azure-openai-responses")).toBe(true);
     expect(nativeWebSearchSupportedOn("anthropic-messages")).toBe(true);
+    expect(nativeWebSearchSupportedOn("openai_codex_responses")).toBe(true);
+    expect(nativeWebSearchSupportedOn("openai-codex-responses")).toBe(true);
   });
 
   it("rejects wires without a hosted search tool", () => {
     expect(nativeWebSearchSupportedOn("chat_completions")).toBe(false);
     expect(nativeWebSearchSupportedOn("openai-completions")).toBe(false);
-    expect(nativeWebSearchSupportedOn("openai_codex_responses")).toBe(false);
     expect(nativeWebSearchSupportedOn(undefined)).toBe(false);
     expect(nativeWebSearchSupportedOn("")).toBe(false);
   });

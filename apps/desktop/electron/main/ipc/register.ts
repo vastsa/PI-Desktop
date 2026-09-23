@@ -22,6 +22,7 @@ import { registerPullsIpc } from "./pulls-ipc";
 import { registerScheduledIpc } from "./scheduled-ipc";
 import { registerSessionIpc } from "./session-ipc";
 import { registerSettingsIpc } from "./settings-ipc";
+import { registerConfigSyncIpc } from "./config-sync-ipc";
 import { registerSkillsIpc } from "./skills-ipc";
 import { registerAgentImportIpc } from "./agent-import-ipc";
 import { registerRemoteHostIpc } from "./remote-host-ipc";
@@ -258,6 +259,11 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     applyApplicationMenuSettings,
     applyDeveloperMode,
     resolveEffectiveCommandShell,
+  });
+  registerConfigSyncIpc({
+    registrar,
+    getHost,
+    sendToRenderer,
   });
   registerProviderIpc({
     registrar,

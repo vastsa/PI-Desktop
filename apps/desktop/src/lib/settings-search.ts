@@ -16,6 +16,7 @@ export type SettingsTabId =
   | "subagents"
   | "import"
   | "projects"
+  | "sync"
   | "remoteHosts"
   | "about";
 
@@ -47,6 +48,8 @@ export type SettingsNavEntry = {
    * rail, the page, and settings search drop it together.
    */
   developerOnly?: true;
+  /** Localized Experimental badge shown beside the rail row and page title. */
+  experimentalBadgeKey?: string;
 };
 
 export const SETTINGS_NAV: SettingsNavEntry[] = [
@@ -71,6 +74,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.proxyDirect",
       "settings.proxyCustom",
       "settings.proxyUrl",
+      "settings.networkRelaxedMode",
+      "settings.networkRelaxedModeDesc",
+      "settings.networkRelaxedModeStrictDesc",
     ],
   },
   {
@@ -85,6 +91,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.permissionModeAcceptEdits",
       "settings.permissionModeAuto",
       "settings.defaultsTitle",
+      "settings.imageModel",
       "settings.mode",
       "settings.commandShell",
       "settings.linkOpenTarget",
@@ -236,11 +243,28 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     ],
   },
   {
+    id: "sync",
+    labelKey: "settings.nav.sync",
+    titleKey: "settings.configSync.title",
+    group: "system",
+    developerOnly: true,
+    experimentalBadgeKey: "settings.configSync.experimental",
+    keywordKeys: [
+      "settings.configSync.connectionTitle",
+      "settings.configSync.endpoint",
+      "settings.configSync.statusTitle",
+      "settings.configSync.categoriesTitle",
+      "settings.configSync.approvalsTitle",
+      "settings.configSync.syncNow",
+    ],
+  },
+  {
     id: "remoteHosts",
     labelKey: "settings.nav.remoteHosts",
     titleKey: "settings.remoteHosts.title",
     group: "system",
     developerOnly: true,
+    experimentalBadgeKey: "settings.remoteHosts.experimental",
     keywordKeys: [
       "settings.remoteHosts.title",
       "settings.remoteHosts.addTitle",

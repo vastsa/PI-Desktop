@@ -1,6 +1,7 @@
 import { restoreComposerReferenceDraft } from "../../features/plugins/renderer/restore-composer-reference-draft";
 import { resolveComposerReferences } from "../../features/plugins/renderer/resolve-composer-references";
 import i18n from "i18next";
+import { formatFileInsert } from "@pi-desktop/shared";
 import type {
   AgentQueueChangedEvent,
   AgentPromptAttachment,
@@ -82,11 +83,24 @@ export function createQueueSlice({
   const pendingSubmissions = new Set<string>();
 
   function toQueuedPrompt(entry: QueuedTurnSummary): QueuedPrompt {
+    let draft = queuedDrafts.get(entry.id);
+    if (!draft) {
+      draft = restoreComposerReferenceDraft(entry.content, entry.composerDisplay);
+      const restoredText = draft.text;
+      draft.fileReferences.push(...(entry.attachments ?? []).map((attachment) => {
+        const token = formatFileInsert(attachment.path, "file").trim();
+        return {
+          ...attachment,
+          // Keep restored inline files removable alongside plugin references.
+          ...(attachment.kind === "file" && restoredText.includes(token) ? { token } : {}),
+        };
+      }));
+    }
     return {
       id: entry.id,
       sessionId: entry.sessionId,
       content: entry.composerDisplay?.content ?? entry.content,
-      draft: queuedDrafts.get(entry.id) ?? restoreComposerReferenceDraft(entry.content, entry.composerDisplay),
+      draft,
       createdAt: Date.parse(entry.createdAt) || Date.now(),
       // The Host owns ordering and priority: entries arrive in delivery order.
       ...(entry.priority === undefined ? {} : { priority: entry.priority }),
@@ -117,13 +131,13 @@ export function createQueueSlice({
     });
   }
 
-  /** Drop one row locally and, unless it is still optimistic, at the Host. */
+  /** Only acknowledged rows have a Host id that can actually be removed. */
   function detachQueuedPrompt(sessionId: string, promptId: string): void {
+    if (promptId.startsWith("pending:")) return;
     set((state) => ({
       queuedPrompts: removeQueuedPrompt(state.queuedPrompts, sessionId, promptId),
     }));
     queuedDrafts.delete(promptId);
-    if (promptId.startsWith("pending:")) return;
     void api.removeQueuedPrompt(promptId).catch((error) => {
       get().showToast(
         error instanceof Error ? error.message : String(error),
@@ -145,7 +159,6 @@ export function createQueueSlice({
             })),
           }
         : { text: content, fileReferences: [] };
-      const resolved = await resolveComposerReferences(content, queuedDraft);
       const item: QueuedPrompt = {
         id: `pending:${crypto.randomUUID()}`,
         sessionId,
@@ -157,13 +170,13 @@ export function createQueueSlice({
         queuedPrompts: enqueueQueuedPrompt(state.queuedPrompts, item),
       }));
       const attachments = promptAttachmentsFromDraft(queuedDraft.fileReferences);
-      return api
-        .queuePrompt({
+      return resolveComposerReferences(content, queuedDraft)
+        .then((resolved) => api.queuePrompt({
           sessionId,
           content: resolved.content,
           composerDisplay: resolved.composerDisplay,
           attachments: [...attachments, ...resolved.attachments],
-        })
+        }))
         .then((entry) => {
           queuedDrafts.set(entry.id, queuedDraft);
           set((state) => ({
@@ -207,7 +220,9 @@ export function createQueueSlice({
         sessionId,
         promptId,
       );
-      if (!item || isPromotedQueuedPrompt(item)) return;
+      if (!item || isPendingQueuedPrompt(item) || isPromotedQueuedPrompt(item)) {
+        return;
+      }
       // `item.content` is token-stripped; the row's captured draft is the text
       // and the inline file references the user actually wrote.
       const restored: ComposerPrefill = {

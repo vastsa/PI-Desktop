@@ -256,6 +256,7 @@ export function guardNativePiSessionManager(
     "appendCustomEntry",
     "appendSessionInfo",
     "appendCustomMessageEntry",
+    "appendContextEdit",
     "appendLabelChange",
     "branchWithSummary",
   ] as const;

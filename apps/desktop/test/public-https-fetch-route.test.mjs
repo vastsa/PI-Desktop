@@ -40,11 +40,12 @@ function response(status, body, location) {
 }
 
 /** A client whose session reports `route` and whose resolver answers `address`. */
-function clientFor({ route, address, fetchImpl }) {
+function clientFor({ route, address, fetchImpl, allowFakeIp }) {
   return createPublicHttpsClient({
     fetchImpl: fetchImpl ?? (async () => response(200, "# skill\n")),
     lookupImpl: async () => (address ? [{ address }] : []),
     ...(route === undefined ? {} : { routeImpl: async () => route }),
+    ...(allowFakeIp === undefined ? {} : { allowFakeIp }),
   });
 }
 
@@ -124,6 +125,26 @@ test("a direct route keeps the strict verdict for fake-IP and private answers al
       `expected ${address} to stay refused on a direct route`,
     );
   }
+});
+test("an explicit fake-IP opt-in permits only the benchmark class on a direct route", async () => {
+  const client = clientFor({ route: "DIRECT", address: FAKE_IP, allowFakeIp: true });
+  assert.equal(
+    await client.request("https://cdn.jsdelivr.net/gh/x/SKILL.md", "text"),
+    "# skill\n",
+  );
+
+  const privateClient = clientFor({
+    route: "DIRECT",
+    address: "10.0.0.8",
+    allowFakeIp: true,
+    fetchImpl: async () => {
+      throw new Error("a refused request must never reach the network");
+    },
+  });
+  await assert.rejects(
+    () => privateClient.assertPublicUrl("https://cdn.jsdelivr.net/gh/x/SKILL.md"),
+    (error) => error instanceof PublicNetworkPolicyError && error.addressKind === "private",
+  );
 });
 
 test("a route the transport cannot name falls back to the strict verdict", async () => {
@@ -229,4 +250,55 @@ test("the market catalog client asks the session that carries its fetch", async 
   assert.match(source, /import \{ net, session \} from "electron"/);
   assert.match(source, /fetchImpl: \(url, init\) => net\.fetch\(url, init\)/);
   assert.match(source, /routeImpl: \(url\) => session\.defaultSession\.resolveProxy\(url\)/);
+});
+
+test("a user-supplied endpoint reaches its own LAN on any route", async () => {
+  // `benchmark` is the only class the route decides for a third-party hop, and
+  // it stays that way. A user-supplied endpoint is a different trust input: the
+  // address is theirs, so a private one is dialed whether the session goes
+  // direct or through a proxy.
+  for (const route of ["DIRECT", PROXIED]) {
+    const client = clientFor({ route, address: "10.0.0.8" });
+    assert.equal(
+      await client.request("https://nas.local/catalog.json", "text", "user"),
+      "# skill\n",
+    );
+  }
+
+  // The same address on the default origin keeps the strict verdict, whichever
+  // route carries it.
+  for (const route of ["DIRECT", PROXIED]) {
+    const client = clientFor({
+      route,
+      address: "10.0.0.8",
+      fetchImpl: async () => {
+        throw new Error("a refused request must never reach the network");
+      },
+    });
+    await assert.rejects(
+      () => client.assertPublicUrl("https://nas.example/catalog.json"),
+      (error) =>
+        error instanceof PublicNetworkPolicyError &&
+        error.reason === "non-public-address" &&
+        error.addressKind === "private",
+    );
+  }
+
+  // A fake-IP answer is the proxy's own placeholder rather than a service the
+  // user runs, so it is refused on the user's own endpoint too unless the route
+  // says this app dials a proxy — the same rule the third-party hop has.
+  const fakeIp = clientFor({
+    route: "DIRECT",
+    address: FAKE_IP,
+    fetchImpl: async () => {
+      throw new Error("a refused request must never reach the network");
+    },
+  });
+  await assert.rejects(
+    () => fakeIp.assertPublicUrl("https://nas.local/catalog.json", "user"),
+    (error) =>
+      error instanceof PublicNetworkPolicyError &&
+      error.reason === "non-public-address" &&
+      error.addressKind === "benchmark",
+  );
 });

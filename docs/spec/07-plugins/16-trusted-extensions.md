@@ -16,6 +16,13 @@ which PI-Desktop adopts alongside the `pi-ai` and `pi-agent-core` kernel
 contributes. D388 folded the earlier standalone "trusted extensions"
 registry into this contribution; the engine below is unchanged.
 
+This contract describes extensions attached to Desktop Agent sessions. The
+Desktop adapter implements the explicit subset in §5–6; new upstream events do
+not become actionable here automatically. Native Pi continuation runs the
+coding-agent SDK's own extension lifecycle and can use its 0.87.1 boundary
+hooks, subject to the separate native-session lease and trust rules in
+[ADR 0254](../../adr/0254-native-pi-session-continuation.md).
+
 Provider declarations are a separate manifest surface rather than part of this
 contract: `contributes.providers` materializes Host-owned provider rows
 ([02-plugin-manifest-schema.md](02-plugin-manifest-schema.md) §5.4, ADR 0259),
@@ -303,9 +310,9 @@ are honored where the event type defines a result.
 | `session_info_changed` | Session rename through `setSessionName` | No |
 | `project_trust` | v1 note: not emitted; enablement per project is the trust decision | No |
 | `resources_discover` | v1 note: not emitted; skills and prompt discovery stay in Electron main | n/a |
-| `before_agent_start` | Before the first provider request of a turn | Yes, system prompt and message edits |
+| `before_agent_start` | Before the first provider request of a turn | Yes, system prompt replacement only |
 | `context` | `prepareNextTurn` | Yes, replacement message list |
-| `before_provider_request`, `before_provider_headers`, `after_provider_response` | Provider call wrapper | Yes for request and headers |
+| `before_provider_request`, `before_provider_headers`, `after_provider_response` | Provider call wrapper | Request return value; headers mutate the payload in place |
 | `agent_start`, `agent_end`, `agent_settled` | Agent loop boundaries | No |
 | `turn_start`, `turn_end` | Turn boundaries | No |
 | `message_start`, `message_update`, `message_end` | Agent message events | v1 note: no, pi-agent-core offers no post-hoc replacement |
@@ -318,9 +325,54 @@ are honored where the event type defines a result.
 | `input` | v1 note: not emitted; Host queue admission is not wired yet | n/a |
 | `user_bash`, `session_before_switch`, `session_before_tree`, `session_tree`, `ui_prompt_start`, `ui_prompt_end` | Not emitted in v1 | n/a |
 
-A handler that throws is logged as a diagnostic and treated as returning
-`undefined`. A handler that exceeds 30 s for a result-bearing event is
-abandoned with a diagnostic and the turn proceeds with the unmodified value.
+Desktop event capabilities are maintained in
+`packages/agent-runtime/src/extensions/event-capabilities.ts`: result,
+mutation, notification, or deferred. Registering a deferred event remains
+accepted but emits an `unsupported_api` diagnostic in the existing plugin
+diagnostics; it does not prevent supported handlers from loading.
+
+Every event handler, including startup, shutdown, and notifications, has a
+30-second **per-handler** wait budget. Module loading and factory initialization
+also have separate 30-second wait budgets, reported as load/factory errors.
+A handler that throws or times out produces a diagnostic and counts as
+`undefined`; subsequent handlers still run in registration order. Existing
+result folding and fail-open semantics are unchanged. This is not a mandatory
+security-check mechanism. Multiple stalled handlers can each consume their budget.
+
+Abort retires pending event dispatches. Disposal first rejects new dispatches
+and cancels existing waits, then runs shutdown once even under concurrent
+disposal. Old dispatches return no result and never invoke their remaining
+handlers; late settlements do not add diagnostics or overwrite results. A
+factory finishing after disposal cannot publish tools or commands. Runtime
+shutdown cancels agent work before waiting for extension shutdown. Stopping
+during preflight hooks prevents the provider request and retains the user
+message; a later prompt can run normally.
+
+Each invocation now owns an abort signal exposed as `ctx.signal`. Finishing,
+timing out, stopping or disposing retires that invocation. SDK calls from its
+late callbacks are rejected, including commands waiting for idle, session creation,
+fork or queue admission. An already admitted Host transaction is not rolled back;
+late completion cannot start a subsequent queue-priority update or mutate runtime
+model state. Commands and tool executions have no event-style 30-second limit:
+they may run until completion, their supplied signal aborts, Stop, or disposal.
+Tool updates/results after retirement are discarded; accepted updates and results
+are detached before publication so later extension mutations cannot rewrite them.
+SDK `exec` owns its process group/tree and terminates it on scope retirement or
+its explicit timeout;
+disposal waits for tracked process cleanup, with cleanup failures diagnosed.
+Processes deliberately escaping the group and direct Node API spawns are outside
+this ownership contract.
+
+Result-bearing hook inputs and outputs are detached copies. Header mutations
+are committed only after a handler succeeds within its budget. Late in-place
+mutations cannot alter the caller's payload or another handler's input.
+
+These are cooperative lifecycle boundaries, not forced execution isolation:
+trusted code may still block the JS thread or use direct Node APIs for external
+side effects. Native Pi sessions use the upstream SDK lifecycle and are outside
+this Desktop change. See ADR `trusted-extension-operation-ownership`.
+The 30-second event budget also applies when a handler waits for a UI prompt;
+the UI broker's own prompt timeout does not extend that budget.
 
 ## 7. Tools
 
@@ -370,6 +422,11 @@ Rules:
 - One pending interactive prompt per session. A second call queues behind
   the first.
 - Aborting the turn cancels pending prompts with the abort values above.
+- Every new sidecar UI request has an invocation-owned request ID. Cancellation
+  targets that ID plus the session/extension identity, drops queued requests,
+  and sends retirement for the exact visible prompt to the renderer. Stale
+  cancellation cannot close a later request. Legacy requests without IDs retain
+  session-wide cancellation. Settled queue tails are released.
 - Under remote control (Post-MVP) the prompt fails immediately with
   `UNSUPPORTED` until the remote protocol routes it; that routing is v3.
 - Prompts show the extension label and source path so the user knows who is

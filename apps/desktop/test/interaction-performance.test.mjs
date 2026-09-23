@@ -28,11 +28,12 @@ const [app, appShell, chatSurface, pane, transcript, toolRow, transcriptShared, 
   ]);
 
 test("streaming state stays inside the chat render boundary", () => {
-  assert.match(app, /<ChatSurface \/>/);
+  assert.match(app, /<ChatSurface visible=\{page === "chat"\} \/>/);
   assert.doesNotMatch(app, /useAppStore\(\(s\) => s\.messages\)/);
   assert.doesNotMatch(app, /<ChatTranscript/);
   assert.match(chatSurface, /export const ChatSurface = memo/);
   assert.match(chatSurface, /const messages = useAppStore/);
+  assert.match(chatSurface, /visible=\{visible && id === visibleSessionId\}/);
   assert.match(chatSurface, /const StableComposer = memo\(Composer\)/);
 });
 

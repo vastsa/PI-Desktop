@@ -293,6 +293,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   pointer hover or keyboard focus may prefetch its transcript; duplicate reads
   share one in-flight request and the renderer retains at most five recent
   transcript snapshots.
+- A transcript window that reports no messages for a session the sidebar counts
+  as having history is read as unreadable, not as empty (**D615**, issue #795):
+  the selection asks once more, then keeps the snapshot the user already has,
+  and otherwise reports `chat.sessionTranscriptEmpty` instead of committing an
+  empty transcript. Such a page is never cached, so a hover prefetch cannot
+  re-serve emptiness on every later open.
 - Transcript loading starts without waiting for an older superseded selection.
   When session summary metadata is available, project activation/clearing and
   transcript IO run in parallel. A monotonic navigation generation permits only
@@ -555,8 +561,8 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Settings → Info and application-menu checks share one typed update state.
   Manual checks expose up-to-date or error feedback; automatic failures do not
   open a toast or ambient banner.
-- Manual delivery (non-AppImage Linux and Windows portable runs
-  with `PORTABLE_EXECUTABLE_FILE`) stops at `available` and
+- Manual delivery (non-AppImage Linux and Windows ZIP runs, or legacy Windows
+  portable runs with `PORTABLE_EXECUTABLE_FILE`) stops at `available` and
   offers the fixed GitHub Releases page. In-app delivery (packaged macOS,
   Windows NSIS, and Linux AppImage) automatically advances through
   `downloading` to the stable `downloaded` state.
@@ -583,7 +589,7 @@ may be retained while exactly one workspace supplies the visible shell context.
   Escape, or the backdrop, and restores focus to the invoking control.
 - D126 tag releases publish all platform manifests and installers. Packaged
   macOS, Windows NSIS, and Linux AppImage use the in-app lane; Linux deb/rpm
-  and Windows portable remain notify-and-link delivery modes.
+  and Windows ZIP remain notify-and-link delivery modes.
 
 ## 2. Streaming message behavior
 
@@ -724,7 +730,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   append to that session's Host-owned, persisted FIFO queue; session switching
   never moves or clears another session's queue.
 - The queue renders above the composer. Each row has an independently
-  keyboard-reachable Remove action and a Send now action.
+  keyboard-reachable Remove action and a Send now action once Host admission
+  returns a durable id. While admission is pending, row actions are disabled
+  with Saving tooltips and a Saving label on Send now; edit/remove leave both
+  the queue and composer draft unchanged.
 - Send now moves its row to the head and requests the new `agent/stop` channel.
   The current assistant response and completed tool batch finish normally;
   after `agent_end` and durable turn finalization, the promoted row is
@@ -1384,11 +1393,13 @@ Project drag/drop follows these patterns:
   bounded collaboration section after the chips: creator/source session
   when present (title, not UUID), current task preview, up to two recent
   exchanges with direction, and terminal result. Created-session
-  references remain keyboard-navigable buttons (at most eight). It may
-  show a live `running` or `waiting_permission` state, but never loads the
-  complete transcript or exposes message content beyond the host's bounded
-  preview. Completion and failure results are derived from the durable target
-  turn and remain visible after reload.
+  references remain keyboard-navigable buttons (at most eight), and show a
+  localized running indicator only while the referenced session has an active
+  runtime; idle, queued, permission, and terminal states add no label. It may
+  show a live `running` or `waiting_permission` state for the hovered session,
+  but never loads the complete transcript or exposes message content beyond
+  the host's bounded preview. Completion and failure results are derived from
+  the durable target turn and remain visible after reload.
 - Before showing a project session card, the renderer re-reads the active
   workspace through the existing project-read operation. This keeps the Git
   branch current after an external checkout without activating a project or

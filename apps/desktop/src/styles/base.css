@@ -170,8 +170,14 @@ html {
   color: var(--ds-text-primary);
 }
 
-.app-shell > :not(.app-scenic-backdrop) {
-  z-index: 1;
+/* Keep the chat tree mounted while Settings is open without changing the
+   shell's flex layout or exposing the hidden tree to focus and accessibility. */
+.app-chat-shell {
+  display: contents;
+}
+
+.app-chat-shell[hidden] {
+  display: none;
 }
 
 .app-scenic-backdrop {

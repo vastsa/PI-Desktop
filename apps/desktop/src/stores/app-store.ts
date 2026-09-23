@@ -442,6 +442,16 @@ const {
 
 const transcriptReading = createTranscriptReadingRuntime(runtimeStoreAccess, api.getSession);
 
+/**
+ * Which `bootstrap` attempt owns the state it publishes.
+ *
+ * The renderer's startup is retryable now (issue #831), and the attempt it
+ * retries is usually one that never settled: without this, that older attempt
+ * could land after the retry already published the shell and reset the view the
+ * user is working in (`activeSessionId`, `messages`, `page`, panes).
+ */
+let bootstrapGeneration = 0;
+
 export const useAppStore = create<AppState>((set, get) => {
   storeAccess = { get, set };
   return {
@@ -529,6 +539,9 @@ export const useAppStore = create<AppState>((set, get) => {
   }),
 
   bootstrap: async () => {
+    // Only the newest attempt may publish; an older in-flight one returns
+    // without touching the store.
+    const generation = ++bootstrapGeneration;
     let recoveredSettings: AppSettings | undefined;
     try {
       const settingsRequest = api.getSettings().then(async (settingsRaw) => {
@@ -652,6 +665,7 @@ export const useAppStore = create<AppState>((set, get) => {
       for (const proposal of activePendingPlans) {
         planningStates[proposal.sessionId] = "awaiting_approval";
       }
+      if (generation !== bootstrapGeneration) return;
       set({
         ready: true,
         version,
@@ -722,6 +736,9 @@ export const useAppStore = create<AppState>((set, get) => {
         });
       }
     } catch (e) {
+      // A superseded attempt reports nothing: its failure belongs to a wait the
+      // user already left behind.
+      if (generation !== bootstrapGeneration) return;
       set({
         ready: true,
         healthOk: false,

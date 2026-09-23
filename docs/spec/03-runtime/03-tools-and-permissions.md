@@ -63,10 +63,12 @@ descriptions. The model calls the local `ToolSearch` tool with an exact name or
 capability query; the matching schemas become available on the next model turn.
 At the beginning of every new user prompt, the sidecar clears the in-memory
 deferred set and restores only successful activation evidence from the effective
-session context: `addedToolNames` on successful `ToolSearch` results and the
-names of successful deferred-tool results. Failed rows, interrupted or missing
-result placeholders, and assistant/user prose are ignored. Restored names must
-still be in the current mode's deferred catalog. The host permission,
+session context: canonical `details.addedToolNames` on successful `ToolSearch`
+results and the names of successful deferred-tool results. For compatibility,
+historical `details.activated` and top-level `addedToolNames` markers are
+accepted as well. Failed rows, interrupted or missing-result placeholders, and
+assistant/user prose are ignored. Restored names must still be in the current
+mode's deferred catalog. The host permission,
 workspace/scratch containment, timeout, and audit rules do not change when a
 tool is loaded. `ToolSearch` itself never executes a workspace operation and
 never bypasses host-core policy.
@@ -614,3 +616,10 @@ Naming:
 - command allowlist / denylist
 - dry-run mode
 - apply patches after preview
+
+## Image generation and editing
+
+`GenerateImages` is a high-risk Agent-only capability, authorized by host-core
+before the trusted desktop executes the request. Plan/Goal remain denied even
+under Auto. See [image generation](21-image-generation.md) for cancellation,
+limits and result semantics.

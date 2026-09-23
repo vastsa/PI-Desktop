@@ -166,7 +166,12 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   assert.match(controlsSource, /ariaLabel=\{t\("window\.minimize"/);
   assert.match(controlsSource, /ariaLabel=\{t\("window\.close"/);
   assert.equal((appSource.match(/<WindowControls\s*\/>/g) ?? []).length, 1);
-  assert.match(appSource, /\{shell\}[\s\S]*?\{ready && !showSplash && <WindowControls \/>\}/);
+  // The controls are rendered under the recovery surface too, so a window that
+  // never reaches the shell is still closable (issue #831).
+  assert.match(
+    appSource,
+    /\{shell\}[\s\S]*?\{\(ready && !showSplash\) \|\| startupPhase !== "starting" \?/,
+  );
   assert.match(
     stylesSource,
     /\.window-control-btn\s*\{[^}]*-webkit-app-region:\s*no-drag;[^}]*pointer-events:\s*auto;/s,
@@ -355,9 +360,12 @@ test("desktop packaging builds the native host before every local target", () =>
   for (const name of ["pack", "dist", "dist:mac", "dist:win", "dist:linux"]) {
     const script = packageJson.scripts[name];
     assert.match(script, /pnpm run build:host-release/);
+    const packagingCommand = script.includes("build-desktop-release.mjs")
+      ? "build-desktop-release.mjs"
+      : "electron-builder";
     assert.ok(
-      script.indexOf("pnpm run build:host-release") < script.indexOf("electron-builder"),
-      `${name} must build the native host before electron-builder packages it`,
+      script.indexOf("pnpm run build:host-release") < script.indexOf(packagingCommand),
+      `${name} must build the native host before the packaging command`,
     );
   }
   assert.equal(packageJson.build.win.extraResources[0].to, "bin/pi-desktop-host-core.exe");

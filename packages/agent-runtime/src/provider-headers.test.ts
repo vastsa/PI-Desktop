@@ -32,6 +32,20 @@ describe("normalizeProviderHeaders", () => {
     expect(normalizeProviderHeaders({ "X_Nope": "1" })).toBeUndefined();
   });
 
+  it("folds fullwidth values and drops what still cannot be a ByteString", () => {
+    expect(
+      normalizeProviderHeaders({
+        "X-Title": "PI\u3000Desktop",
+        "X-Key": "1234567\uFF10",
+        "X-CJK": "星",
+        "X-Control": "ab\u0000cd",
+      }),
+    ).toEqual({
+      "X-Title": "PI Desktop",
+      "X-Key": "12345670",
+    });
+  });
+
   it("collapses duplicate keys case-insensitively, last write winning", () => {
     expect(
       normalizeProviderHeaders({

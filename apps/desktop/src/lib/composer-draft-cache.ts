@@ -28,6 +28,8 @@ export type ComposerDraftFileInput = {
 };
 
 const cache = new Map<string, CachedComposerDraft>();
+const revisions = new Map<string, number>();
+let revisionCounter = 0;
 
 export function draftKeyForSession(sessionId: string | null | undefined): string {
   return sessionId ?? HOME_DRAFT_KEY;
@@ -64,6 +66,23 @@ export function snapshotComposerDraft(
 
 export function readComposerDraft(key: string): CachedComposerDraft | undefined {
   return cache.get(key);
+}
+
+/** Read a stable per-key version, assigning a unique baseline when first seen. */
+export function readComposerDraftRevision(key: string): number {
+  let revision = revisions.get(key);
+  if (revision === undefined) {
+    revision = ++revisionCounter;
+    revisions.set(key, revision);
+  }
+  return revision;
+}
+
+/** Mark a real draft edit with a globally unique, monotonically increasing version. */
+export function markComposerDraftEdited(key: string): number {
+  const revision = ++revisionCounter;
+  revisions.set(key, revision);
+  return revision;
 }
 
 export function writeComposerDraft(
@@ -143,10 +162,14 @@ export function pruneComposerDrafts(keep: Iterable<string>): void {
   for (const key of cache.keys()) {
     if (!retain.has(key)) cache.delete(key);
   }
+  for (const key of revisions.keys()) {
+    if (!retain.has(key)) revisions.delete(key);
+  }
 }
 
 /** Test-only: drop every slot so cases cannot leak into one another. */
 export function resetComposerDraftCache(): void {
   cache.clear();
+  revisions.clear();
   scheduledHomeAdoptSessionId = null;
 }

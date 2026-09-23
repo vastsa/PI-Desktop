@@ -40,6 +40,16 @@ optional `headers` map in `config_json.headers`.
   `host`, `content-type`, `content-length`, `cookie`, `set-cookie`,
   `connection`, `transfer-encoding`, `te`, `trailer`, `upgrade`, `keep-alive`,
   `x-api-key`, `api-key`, `chatgpt-account-id`, `x-opencode-session`.
+- Values are folded to half-width before that validation, and again on read:
+  the fullwidth block (U+FF01–U+FF5E) and the ideographic space (U+3000) become
+  their ASCII counterparts, because that is what an IME or a fullwidth-formatted
+  page produces for plain ASCII. What remains must be HTAB, printable ASCII or
+  the Latin-1 supplement — a header value is a ByteString, and Han text, emoji or
+  a control character makes `Headers.set` throw `Cannot convert argument to a
+  ByteString` mid-turn. The interactive write refuses those with the character
+  and its index named; the read path and an incoming sync bundle fold and drop
+  them, so a store or a peer that predates the rule cannot fail a turn or a
+  whole revision. See D621.
 - Not a secret. No SQLite or host-protocol version bump.
 - UI is an explicit Advanced settings button in the upper-right dialog actions
   (named, custom, and vendor account) that opens a separate compact modal. The

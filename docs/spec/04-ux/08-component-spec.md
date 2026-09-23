@@ -501,17 +501,19 @@ visually distinct from list content.
   without deleting tabs; the work-panel header keeps its tab strip and fixed `+`
   menu, while each tab owns resource closing
 - Click the `Projects` heading folder-plus action: open the Create project
-  dialog. The dialog accepts a project name and one or more local folders,
-  lists every selected folder with a remove action, and marks the first folder
-  as Primary. Creation makes one logical project group: the primary folder is
-  activated and names the group, while every other selected folder is retained
-  as a group root and is shown in Project archive details, not as an open
-  project tab. Group chats, instructions, and memory use the same group
-  identity. A source selector offers This computer and Git repository: the git
-  source swaps the folder list for a repository URL field plus a clone
-  destination row, seeds the project name from the repository name until the
-  user types their own, and creates the project by cloning into the chosen
-  folder first. The dialog follows
+  dialog. The dialog accepts an optional project name and one or more local
+  folders, lists every selected folder with a remove action, and marks the
+  first folder as Primary. The name field seeds from the picked source until
+  the user types their own name: the first selected folder names a local pick
+  and the repository name names a git checkout. Create falls back to the same
+  derived name, so an empty name field never blocks creation. Creation makes
+  one logical project group: the primary folder is activated and names the
+  group, while every other selected folder is retained as a group root and is
+  shown in Project archive details, not as an open project tab. Group chats,
+  instructions, and memory use the same group identity. A source selector
+  offers This computer and Git repository: the git source swaps the folder
+  list for a repository URL field plus a clone destination row and creates
+  the project by cloning into the chosen folder first. The dialog follows
   the shell's neutral gray surfaces, with a 480px maximum width,
   `--radius-lg-plus` (18px) corners, and the shared `--ds-shadow-dialog`
   elevation. Its compact type hierarchy uses `--text-lg` for the title,
@@ -524,7 +526,8 @@ visually distinct from list content.
   accent-tinted focus ring, not an outline stroke. Edit project reuses the same
   surface, loads the host-owned group, allows the name and non-primary folders
   to be adjusted, keeps Primary first and non-removable, and rejects removal of
-  a folder that still owns chats. The source selector offers This computer and
+  a folder that still owns chats. Background session or run-status updates
+  must preserve unsaved name and folder edits in the open editor. The source selector offers This computer and
   Git repository as equal filled tiles without strokes (D297); the active source
   uses a deeper tile, not a selected border. A repository URL reuses the clone
   rules of ADR 0247 and its checkout becomes the primary root of the same group.
@@ -586,6 +589,9 @@ visually distinct from list content.
   externally changed Git branch is current. This refresh does not activate a
   project or change the selected conversation; if the read is unavailable, the
   last cached branch remains usable.
+- Collaboration creator and created-session links in the hover card show a
+  localized running indicator only while the referenced session has an active
+  runtime; non-running related sessions remain title-only.
 - Project groups use compact vertical spacing so adjacent directories and
   conversation rows read as one dense navigation list rather than detached
   cards. Directory `+` and overflow actions remain hidden until hover or
@@ -1041,6 +1047,11 @@ entirely inside the plugin's isolated page:
   navigation within the same session retains that session's visible content.
   A failed switch or one exceeding the existing 15-second load wait remains
   hidden until retried; a late network completion does not automatically reveal it.
+
+- Main-frame same-document navigation (fragment links and History API routes) updates
+  the browser address, history controls, and loading state without requiring a
+  full document load. Subframe events and events from an invalidated session or
+  replaced main frame must not publish browser state.
 
 ### 5.3 States
 
@@ -1556,7 +1567,8 @@ storage but compose into one assistant turn until the next user message.
   Loading and failure states must not masquerade as an empty result.
 - Keep page, settings, and command results available. Arrow keys and Enter
   navigate session headings, snippets, Load more, and the existing result
-  types. IME composition Enter must not activate a result.
+  types. IME composition Enter must not activate a result; Escape during
+  composition must not close search, including events bubbling from its input.
 
 ### 7.6 MVP constraints
 
@@ -1615,8 +1627,9 @@ Single message render — either user (plaintext) or assistant (markdown streami
 ### 8.3 Layout
 
 - Max content band: 760px default, user-resizable via dual edge handles
-  (D439 / ADR 0277). Assistant, tool, and decision rows follow the band.
-  User plates stay `min(82%, 600px)`.
+  (D439 / ADR 0277). Assistant, tool, decision, and structured assistant-error
+  rows follow the band; error cards fill their message column without a second
+  fixed width cap. User plates stay `min(82%, 600px)`.
 - The live band is `min(available pane, preferred)`. Collapsing the sidebar
   no longer tightens a 640px ceiling; the outer pane stays fluid and the
   width transition follows the sidebar dock.
@@ -1740,7 +1753,8 @@ Single message render — either user (plaintext) or assistant (markdown streami
   composer lift would be cut off at the plate edges (D297: in-flow surfaces
   use tone, not stroke). Focus paints an inset 2px accent ring. The textarea
   is unboxed inside that plate; localized Retry and Cancel sit in a 28px footer
-  (Escape cancels, Cmd/Ctrl+Enter retries; slash turns seed the typed
+  (Escape cancels, Cmd/Ctrl+Enter retries; both shortcuts are ignored during
+  IME composition, preserving the draft; slash turns seed the typed
   `command` form so retrying re-expands the template). Opening it widens the
   user column to the assistant reading width and hides the action toolbar.
   Retry runs the Regenerate path with the current text in the same session,
@@ -1875,12 +1889,17 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
 
 - **Streaming without jank**: runtime content chunks render directly, without a
   second renderer-side typewriter or animation-frame state loop. Source splits
-  into top-level blocks via `marked`'s lexer; each block renders through a
+  into top-level blocks via the same remark/GFM/math grammar used for rendering;
+  raw source slices preserve CRLF and offsets. Each block renders through a
   memoized `<ReactMarkdown>`. While streaming only the tail block re-parses
-  (incremental re-lex from the last block boundary), so cost stays linear in
-  message length. A Mermaid fence stays in the normal source-code presentation
+  (incremental parsing from the last block boundary); an unclosed math fence
+  retains its entire body in that tail, including blank lines. A Mermaid fence stays in the normal source-code presentation
   until its matching closing fence arrives; partial streamed diagrams never
-  enter the diagram parser.
+  enter the diagram parser. Splitting is skipped entirely for a message that
+  declares a link or footnote definition, wherever it sits: definitions resolve
+  across the whole message, and footnotes also number, reuse and back-link
+  across it, so the message renders as one parse context and gives up per-block
+  memoization for as long as it streams.
 - **Plugins**: `remark-gfm` (tables, task lists, strikethrough, autolinks),
   `remark-math` + `rehype-katex` (inline `$…$` or `\(…\)`, display `$$…$$`
   or `\[…\]`). Raw HTML is
@@ -1889,6 +1908,48 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   additions and the `math-inline`/`math-display` classes on `code` (which keep
   TeX `\[…\]` in display layout) are admitted. KaTeX's Vite-inlined WOFF2 fonts
   are allowed by the renderer's `font-src 'self' data:` CSP directive.
+- **Copying a formula (D619)**: a selection that covers rendered math reaches
+  the clipboard as the TeX it was written in — `$…$` inline, `$$…$$` on its own
+  lines, each run widened past any run inside the formula the way a code span's
+  fence is, so a formula carrying a literal `$` still reads whole. Inline stays
+  the narrow run because an inline formula's TeX can carry a newline, and a
+  `$$` run at the start of a line opens a flow block and swallows the
+  paragraph. KaTeX paints every formula twice (a MathML tree and a visual one), so
+  the platform's own copy wrote both renderings and never the source
+  (issue #414). `lib/selection-tex.ts` reads the TeX back out of the MathML
+  `annotation` and grows a cut that lands inside a formula to the whole formula;
+  `hooks/use-copy-tex.ts` is the single document `copy` listener the shell owns,
+  and the transcript's right-click Copy reads the same selection through the
+  same module. Only the formulas are rewritten: the reduced clone is read back
+  through `Selection.toString()`, the serializer a copy itself runs, and read
+  inside the element the selection came from, so the cascade deciding that
+  reading is the live one. The prose, lists, tables and code blocks that share
+  the selection therefore read exactly as the platform already read them — the
+  chrome a copy leaves behind included, whether `base.css` marks it
+  `user-select: none` by selector or it is inert only by inheriting the shell's
+  default. A selection with no formula in it is left to the platform entirely;
+  nothing else is tested, because Chromium raises a copy inside the selection
+  it derived the event from, so a whole selection reaches the clipboard as its
+  source however deep in it the event was raised. The copy writes one flavour,
+  `text/plain`: taking
+  the event over drops the platform's `text/html` too, and none is written back
+  — the reduced clone is app markup, so it would carry the `user-select: none`
+  chrome the text reading drops, and carrying the rendering instead would paste
+  every formula twice, KaTeX's stylesheet being the only thing that hides the
+  MathML tree. A rich paste target falls back to the plain text.
+
+  Math boundaries remain parseable after copying: touching inline fences get
+  one separator, and every prose dollar in the copied text is escaped, together
+  with backslash runs that would otherwise escape a fence.
+  Annotation whitespace is preserved; widened multiline inline math uses a
+  literal `<span>` wrapper to prevent a flow opener when pasted at column zero.
+  TeX newlines are not flattened because they can terminate `%` comments.
+  The wrapper is Markdown source in `text/plain`, not a `text/html` payload;
+  compatibility with external editors that disallow inline HTML is not promised.
+  Regression coverage checks both copy entry points and Markdown round trips
+  for adjacent formulas, prose dollars on either side, formatting wrappers,
+  line/block boundaries, padding, and multiline math including TeX comments.
+
 - **Mermaid diagrams (D165)**: a completed `mermaid` fenced block in assistant
   answer prose renders through the official Mermaid package. The dependency is
   dynamically imported only when a diagram approaches the viewport; Mermaid's
@@ -2723,6 +2784,8 @@ reasoning-level control.
   Host's durable `position`; at the waiting-block boundary it is a no-op and
   never crosses into the promoted block. Edit removes the row and returns its
   captured draft — text plus inline file-reference chips — to the composer;
+  after an app restart, when that in-memory draft is unavailable, restore the
+  Host-stored content and image/file attachments without rewriting the content;
   while the input is non-empty (or holds attachments) the action is refused with
   a toast and nothing changes. Remove drops the row immediately.
 - Send now: promotes the row to the end of the session's priority block, so a
@@ -2731,6 +2794,10 @@ reasoning-level control.
   current reply/tool batch completes normally, before every waiting row. The
   first promoted row starts the turn and the rest join it as adjacent user
   messages, so the block is answered once. When idle it starts immediately.
+- A pending queue row is locked until Host admission returns its durable id: move
+  up/down, Send now, edit, and remove are disabled. All five tooltips explain
+  that it is saving; Send now also displays the localized Saving label. Direct edit/remove actions leave the pending row and draft
+  unchanged; after admission, ordinary waiting-row actions become available.
 - A promoted row is locked: move up/down, edit, and remove are disabled with
   their tooltip and `aria-disabled` state intact, and the Send now button reads
   as already decided (`chat.sendNowPending`). The row carries a distinct
@@ -3536,8 +3603,12 @@ default nor provider configuration. OAuth accounts remain in their separate sect
    groups model-level options by provider, marks the exact current entry, bounds
    its own height so many configured models scroll instead of stretching the
    card, flips above the trigger when there is no room below, and closes on
-   Escape, an outside press, or the trigger scrolling out of view;
-   global operating mode, command shell, and Enter-to-send live in the Settings
+   Escape, an outside press, or the trigger scrolling out of view.
+   A provider is named here the way the Composer model menu names it: an OAuth
+   row uses its non-secret account label when present, so two accounts of one
+   vendor do not collapse into identical group headings, summary lines, or
+   option names; the search matches the account label and the vendor name.
+   Global operating mode, command shell, and Enter-to-send live in the Settings
    AI destination
 2. **Vendor accounts** — section title + primary Add account action and one
    single-level list panel using the same row surface as AI services; one row

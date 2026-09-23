@@ -32,20 +32,10 @@ pub(crate) fn config_headers(raw: &str) -> Option<BTreeMap<String, String>> {
             collected.insert("User-Agent".into(), user_agent.to_string());
         }
     }
-    let mut by_lower: BTreeMap<String, (String, String)> = BTreeMap::new();
-    for (key, value) in collected {
-        if let Ok(Some((normalized_key, normalized_value))) = normalize_one_header(&key, &value) {
-            by_lower.insert(
-                normalized_key.to_ascii_lowercase(),
-                (normalized_key, normalized_value),
-            );
-        }
-    }
-    let out: BTreeMap<_, _> = by_lower
-        .into_iter()
-        .take(MAX_HEADERS)
-        .map(|(_, pair)| pair)
-        .collect();
+    // A stored map is read, not written: rows this build refuses (a value with
+    // a character no header can carry, a reserved name) are dropped rather than
+    // reported, so an older store cannot fail a turn.
+    let out = storable_headers(&collected);
     if out.is_empty() {
         None
     } else {
@@ -53,6 +43,36 @@ pub(crate) fn config_headers(raw: &str) -> Option<BTreeMap<String, String>> {
     }
 }
 
+/// Fold and drop the `headers` object of a provider payload before it is
+/// deserialized into a write input. A bundle from a peer on an older build, or
+/// a backup taken before the header rule was tightened, can carry a value this
+/// build refuses; failing the whole sync revision over one stale row is worse
+/// than dropping it, and the row is already invisible on read (`config_headers`
+/// drops the same cases).
+pub(crate) fn retain_storable_headers(payload: &mut serde_json::Value) {
+    let Some(object) = payload.as_object_mut() else {
+        return;
+    };
+    let Some(headers) = object.get("headers").and_then(serde_json::Value::as_object) else {
+        return;
+    };
+    let raw: BTreeMap<String, String> = headers
+        .iter()
+        .filter_map(|(key, value)| Some((key.clone(), value.as_str()?.to_string())))
+        .collect();
+    if raw.is_empty() {
+        return;
+    }
+    let storable = storable_headers(&raw);
+    if storable.is_empty() {
+        object.remove("headers");
+    } else {
+        object.insert(
+            "headers".into(),
+            serde_json::to_value(storable).unwrap_or_default(),
+        );
+    }
+}
 /// Set or clear optional headers. An empty map clears them and drops leftover `userAgent`.
 pub(crate) fn config_with_headers(raw: &str, headers: &BTreeMap<String, String>) -> Result<String> {
     let mut config = ensure_config_object(raw)?;
@@ -292,6 +312,11 @@ pub(crate) fn upsert_secret_meta(
     Ok(())
 }
 
+/// Read a provider's API key, folding fullwidth IME input the same way header
+/// values are folded. The key is signed into `Authorization` (or `x-api-key`)
+/// headers, where a fullwidth character can never be valid, so a key stored
+/// before this rule existed still authenticates after an upgrade. Applied on
+/// read as well as on write because only this accessor feeds outbound requests.
 pub fn get_secret_for_provider(
     db: &Database,
     secrets: &SecretStore,
@@ -304,7 +329,7 @@ pub fn get_secret_for_provider(
         .optional()?
         .flatten();
     if let Some(sref) = secret_ref {
-        secrets.get(&sref)
+        Ok(secrets.get(&sref)?.map(|value| fold_fullwidth(&value)))
     } else {
         Ok(None)
     }

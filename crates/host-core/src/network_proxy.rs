@@ -16,7 +16,11 @@ pub enum ProxyMode {
 
 static MARKET_PROXY: RwLock<ProxyMode> = RwLock::new(ProxyMode::System);
 
-const DEFAULT_BYPASS: &str = "localhost,127.0.0.1,::1,<local>";
+/// Mirrors `DEFAULT_NETWORK_PROXY_BYPASS` in `packages/shared`: loopback plus
+/// the private ranges a user's own LAN devices live in, so a custom proxy never
+/// swallows a local model server, NAS or MCP endpoint.
+const DEFAULT_BYPASS: &str =
+    "localhost,127.0.0.1,::1,<local>,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16";
 
 pub fn apply_from_settings(value: Option<&Value>) {
     let next = proxy_from_settings(value);

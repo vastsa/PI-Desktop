@@ -32,7 +32,13 @@ reuse matching and must not overwrite a definition pin with a different
 provider id. On-demand provider matching uses the same unique id / vendor /
 name rule as pin resolution; ambiguous vendor aliases fail closed unless the
 caller uses the exact provider id. A changed launch list retires an idle
-runtime on the next prompt, including after opt-in is revoked.
+runtime on the next prompt, including after opt-in is revoked. On-demand grants
+expire at every new parent prompt or approved plan/goal execution, even when the
+launch list is unchanged. Late responses from an expired turn are discarded.
+Resume uses the same authorization boundary: only the current definition's
+pin/fallbacks, session inheritance, and current override grants may be selected;
+a remembered key is reauthorized when necessary. Other definitions' pins do not
+authorize a model-id match (#841).
 
 The opt-in belongs to the decision, not to the Task tool: it governs every
 entry point through which the AI picks a model for work it delegates.

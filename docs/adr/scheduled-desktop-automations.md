@@ -1,13 +1,13 @@
 # ADR: Desktop-owned automation dispatch with Host-owned schedules
 
-- Status: Accepted for implementation
+- Status: Accepted for implementation; amended by ADR 0305
 - Date: 2026-09-20
 
 ## Context
 
 The shipped Scheduled page stores a cadence but never dispatches work when
 that cadence becomes due. The pinned pi-ai, pi-agent-core and pi-coding-agent
-0.86.1 packages supply agent execution, not a persistent desktop wall-clock
+0.87.1 packages supply agent execution, not a persistent desktop wall-clock
 scheduler. The existing Host-owned task and run tables already provide the
 appropriate storage boundary.
 
@@ -27,10 +27,12 @@ Old cadence-only records remain unarmed until explicitly configured. Existing
 scheduled.run retains its prepare-only response; additive scheduledExecute IPC
 dispatches a turn, and scheduledListRuns exposes the existing run ledger.
 
-Automatic runs use Ask permission mode. They may wait for a user in their result
-conversation; this feature never grants approval. Plan/Goal rejection remains.
-The default provider/model are resolved at execution time. Retain the task's
-project even when the foreground workspace changes.
+Automatic runs use the task's saved permission mode and default to Ask when the
+field is absent. Ask runs may wait for a user in their result conversation;
+selecting Auto is an explicit per-task choice under ADR 0305. Plan/Goal rejection
+remains. A saved provider/model pair is used when present; otherwise the app
+defaults are resolved at execution time. Retain the task's project even when the
+foreground workspace changes.
 
 Expose Scheduled through a footer clock action as well as global search.
 The page has task and run-history views, editing, pause/resume, Run now and
@@ -49,6 +51,17 @@ enabling, startup or the preceding admission. This avoids a minute selector
 for a fixed interval while preserving calendar semantics for daily/weekly tasks.
 No cloud execution, OS service, arbitrary cron or sub-hourly interval is added.
 Downgrading keeps the existing records readable but removes automatic execution.
+
+## Calendar provenance compatibility
+
+The optional `calendarConfigured` configuration key records explicit Daily or
+Weekly calendar intent separately from Hourly's required internal placeholder.
+Legacy Daily/Weekly rows infer intent from their saved cadence. Legacy Hourly
+rows preserve saved fields but require an explicit schedule on calendar
+conversion, because their origin cannot be recovered reliably. Known calendar
+intent survives an Hourly round trip and restart. This uses the existing JSON
+extension boundary with no physical schema migration or new wire field.
+Downgrades retain readable task data but cannot enforce the conversion guard.
 
 ## Alternatives
 

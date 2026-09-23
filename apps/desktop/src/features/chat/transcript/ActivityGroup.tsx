@@ -359,6 +359,7 @@ export const ActivityGroup = memo(function ActivityGroup({
         return (
           <Fragment key={item.message.id}>
             <ToolRow
+              imagesInTurn
               message={item.message}
               autoOpen={autoOpenLatest}
               onUserInteraction={claimDisclosure}

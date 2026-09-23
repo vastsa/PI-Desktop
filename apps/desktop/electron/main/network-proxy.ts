@@ -25,6 +25,7 @@ import {
   startAuthenticatedProxyRelay,
   type AuthenticatedProxyRelay,
 } from "@pi-desktop/agent-runtime";
+import { applyUserEndpointPolicyFromAppSettings } from "./endpoint-policy";
 
 const originalEnv = snapshotProxyEnv(process.env);
 let applied: NetworkProxySettings = { mode: "system" };
@@ -78,6 +79,9 @@ export async function applyNetworkProxy(
 export async function applyNetworkProxyFromAppSettings(
   settings: unknown,
 ): Promise<NetworkProxySettings> {
+  // The network policy and the proxy ride the same settings write, so one call
+  // site mirrors both.
+  applyUserEndpointPolicyFromAppSettings(settings);
   const record =
     settings && typeof settings === "object"
       ? (settings as { networkProxy?: unknown })

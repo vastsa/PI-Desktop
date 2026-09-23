@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import {
   NAMED_ENDPOINT_PRESETS,
   OPENCODE_GO_API_STYLE,
+  modelIdsMatch,
   normalizeApiStyle,
   type CatalogApiStyle,
   type ModelBinding,
@@ -23,17 +24,7 @@ import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
 import { CUSTOM_SERVICE, ServicePicker } from "./ServicePicker";
 import type { ProviderCopyDraft } from "./provider-copy";
-import { CUSTOM_PROVIDER_API_STYLES, isAccountOnlyApiStyle, needsCustomApiStyleChoice, providerSetupPreset } from "./provider-api-style";
-
-const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
-  chat_completions: "settings.apiStyleChatCompletions",
-  responses: "settings.apiStyleResponses",
-  anthropic_messages: "settings.apiStyleAnthropic",
-  google_generative_ai: "settings.apiStyleGoogle",
-  openai_codex_responses: "settings.apiStyleCodexResponses",
-  pi_messages: "settings.apiStylePiMessages",
-  opencode_go: "settings.apiStyleOpenCodeGo",
-};
+import { API_STYLE_LABEL_KEYS, CUSTOM_PROVIDER_API_STYLES, isAccountOnlyApiStyle, needsCustomApiStyleChoice, providerSetupPreset } from "./provider-api-style";
 
 type BaseUrlIssue = "invalid";
 
@@ -120,7 +111,8 @@ export type ProviderSetupDialogProps = {
   provider?: ProviderPublic | null;
   initialDraft?: ProviderCopyDraft | null;
   onClose: () => void;
-  onSaved: (provider: ProviderPublic, models: ModelBinding[]) => void;
+  imageModelIds?: string[];
+  onSaved: (provider: ProviderPublic, models: ModelBinding[], imageModelIds?: string[]) => void | Promise<void>;
 };
 
 export function ProviderSetupDialog({
@@ -128,8 +120,10 @@ export function ProviderSetupDialog({
   initialDraft,
   onClose,
   onSaved,
+  imageModelIds,
 }: ProviderSetupDialogProps) {
   const { t } = useTranslation();
+  const [imageModelDraft, setImageModelDraft] = useState<string[] | undefined>();
   const editing = !!provider;
   const apiKeyRef = useRef<HTMLInputElement>(null);
   const [service, setService] = useState(() => initialDraft
@@ -269,6 +263,17 @@ export function ProviderSetupDialog({
       return;
     }
     const persisted = selection.bindingsToPersist;
+    // Removing a configured model releases its image binding even when the
+    // capability checkbox was untouched. Ordinary provider edits keep their
+    // existing save path when the image selection did not change.
+    const imageSelection = imageModelDraft ?? imageModelIds;
+    const remainingImageModels = imageSelection?.filter((imageModelId) =>
+      persisted.some((model) => modelIdsMatch(model.id, imageModelId)),
+    );
+    const imageModelIdsToSave = imageModelDraft !== undefined ||
+      remainingImageModels?.length !== imageSelection?.length
+      ? remainingImageModels
+      : undefined;
     setSaving(true);
     setError("");
     try {
@@ -284,7 +289,7 @@ export function ProviderSetupDialog({
           headers,
           ...(apiKey ? { secretValue: apiKey } : {}),
         });
-        onSaved(result.provider ?? provider, persisted);
+        await onSaved(result.provider ?? provider, persisted, imageModelIdsToSave);
       } else {
         const result = await api.createProvider({
           name: providerName,
@@ -299,13 +304,23 @@ export function ProviderSetupDialog({
           apiStyle: resolvedApiStyle,
           headers,
         });
-        onSaved(result.provider, persisted);
+        await onSaved(result.provider, persisted, imageModelIdsToSave);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setSaving(false);
     }
+  };
+
+  const updateImageModelDraft = (id: string, selected: boolean) => {
+    setImageModelDraft((current) => {
+      const next = current ?? imageModelIds ?? [];
+      if (selected) {
+        return next.some((entry) => modelIdsMatch(entry, id)) ? next : [...next, id];
+      }
+      return next.filter((entry) => !modelIdsMatch(entry, id));
+    });
   };
 
   const canSave =
@@ -529,6 +544,13 @@ export function ProviderSetupDialog({
             busy={saving}
             onReload={discovery.reload}
             apiStyle={resolvedApiStyle}
+            imageModelIds={imageModelDraft ?? imageModelIds}
+            onImageModelChange={updateImageModelDraft}
+            lookupContext={{
+              baseUrl: requestBaseUrl,
+              vendorKey: namedPreset?.vendorKey ?? "custom",
+              providerId: provider?.id,
+            }}
           />
         </div>
       </div>

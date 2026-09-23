@@ -220,7 +220,7 @@ export function FilesTab() {
   // so "back" lands on a tree that reveals it. Attachment blobs and absolute
   // scratch paths live outside the workspace tree.
   useEffect(() => {
-    if (!fileRequest || !root) return;
+    if (!fileRequest) return;
     if (fileRequest.seq === handledFileRequestSeq) return;
     handledFileRequestSeq = fileRequest.seq;
     const path = fileRequest.path;
@@ -229,7 +229,7 @@ export function FilesTab() {
       path.startsWith("/") ||
       /^[A-Za-z]:[\\/]/.test(path) ||
       path.startsWith("\\\\");
-    if (!isExternal) {
+    if (root && !isExternal) {
       const parts = path.split("/").slice(0, -1);
       const ancestors: string[] = [];
       let acc = "";
@@ -305,16 +305,6 @@ export function FilesTab() {
     });
   };
 
-  if (!root) {
-    return (
-      <WorkTabEmpty
-        icon={IconFolder}
-        title={t("panel.files.noWorkspace")}
-        body={t("panel.files.noWorkspaceHint")}
-      />
-    );
-  }
-
   if (selected !== null) {
     return (
       <div className="file-viewer">
@@ -372,6 +362,16 @@ export function FilesTab() {
           )}
         </div>
       </div>
+    );
+  }
+
+  if (!root) {
+    return (
+      <WorkTabEmpty
+        icon={IconFolder}
+        title={t("panel.files.noWorkspace")}
+        body={t("panel.files.noWorkspaceHint")}
+      />
     );
   }
 

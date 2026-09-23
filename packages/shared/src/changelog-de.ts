@@ -2,9 +2,26 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.6",
+    "date": "2026-09-23",
+    "highlights": [
+      "Unterstützung für GPT-6 Astra, Sol und Luna in den OpenAI- und ChatGPT/Codex-Modellkatalogen.",
+    ],
+  },
+
+  {
+    "version": "0.15.5",
+    "date": "2026-09-23",
+    "highlights": [
+      "Unterstützung für GPT-6 Astra, Sol und Luna in den OpenAI- und ChatGPT/Codex-Modellkatalogen.",
+    ],
+  },
+
+  {
     "version": "0.15.2",
     "date": "2026-09-21",
     "highlights": [
+      "Bilder im Chat generieren und bearbeiten, ein Bildmodell wählen und mit dem integrierten imagegen-Skill Stapel erstellen.",
       "Werkzeugaktivitäten folgen der Gesprächsbreite; lange Aktivitätsnamen werden sauber begrenzt.",
       "Dateianhänge aus dem Einfügen bleiben erhalten, auch wenn der Vorgang nach einem Sitzungswechsel endet.",
       "Das ausgewählte Standardmodell bleibt beim Bearbeiten von Anbietern erhalten und fällt sicher zurück, wenn es entfernt wird.",

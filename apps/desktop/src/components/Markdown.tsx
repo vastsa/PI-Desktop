@@ -17,12 +17,14 @@ import {
   type ReactNode,
 } from "react";
 import ReactMarkdown, { type Components, type Options } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import { lexer } from "marked";
+import {
+  advanceMarkdownBlocks,
+  emptyMarkdownBlockCache,
+  markdownRemarkPlugins,
+} from "../lib/markdown-blocks";
 import { useTranslation } from "react-i18next";
 import type { ThemedToken } from "shiki";
 import "katex/dist/katex.min.css";
@@ -51,6 +53,7 @@ import {
 } from "../lib/latex-math";
 import { useAppStore } from "../stores/app-store";
 import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
+import { absoluteImagePath, remarkLocalImagePaths } from "../lib/markdown-image-paths";
 import { useOpenChatFileRef } from "../hooks/use-preview-target";
 import {
   remarkChatFileLinks,
@@ -78,10 +81,12 @@ import {
 /*
  * Streaming-optimized chat markdown renderer.
  *
- * The source is split into top-level markdown blocks with marked's lexer and
- * each block renders through a memoized <ReactMarkdown>. While streaming only
- * the tail block's raw text changes, so every settled block skips re-parsing
- * entirely — total work stays linear in message length instead of quadratic.
+ * The source is split with the rendering grammar, and each block renders
+ * through a memoized <ReactMarkdown>. Streaming re-parses the growing tail
+ * while retaining the completed prefix; a long unclosed block still has to
+ * be parsed in full until its boundary is known. A source carrying link or
+ * footnote definitions opts out of splitting altogether — `markdown-blocks`
+ * states why, and why that trade is the right one.
  */
 
 export function useCopy() {
@@ -621,7 +626,7 @@ function MarkdownImage({
     !isRemote && /^attachments\/[0-9a-f]{64}$/i.test(decoded.replace(/\\/g, "/"))
       ? decoded.replace(/\\/g, "/")
       : null;
-  const localRef = rel ?? attachmentRef;
+  const localRef = (isRemote ? null : absoluteImagePath(source)) ?? rel ?? attachmentRef;
   // Always run the hook before any branch so hook order stays stable when a
   // streaming src flips between remote and local. Remote images pass null.
   const dataUrl = useReferencedImageDataUrl(isRemote ? null : localRef);
@@ -716,7 +721,10 @@ const markdownComponents: Components = {
   table: Table,
 };
 
-const staticRemarkPlugins = [remarkGfm, remarkMath];
+// The grammar the block splitter parses with, plus the renderer-only rewrite
+// of local image paths. `remarkLocalImagePaths` transforms URLs and moves no
+// block boundary, so the splitter has no reason to run it.
+const staticRemarkPlugins = [...markdownRemarkPlugins, remarkLocalImagePaths];
 
 // Extend the default schema only for the media elements rendered above, plus
 // `remark-math`'s math classes on `<code>`: the default `language-*` allow list
@@ -744,58 +752,15 @@ const rehypePlugins = [rehypeRaw, [rehypeSanitize, sanitizeSchema], rehypeKatex]
 
 /* ---------- block splitting ---------- */
 
-function parseBlocks(source: string): string[] {
-  const blocks: string[] = [];
-  let sourceOffset = 0;
-  const hasWindowsLines = source.includes("\r\n");
-  for (const token of lexer(source)) {
-    if (!token.raw) continue;
-    const start = sourceOffset;
-    // Marked normalizes CRLF before tokenizing. Preserve original slices so
-    // parser offsets and incremental block lengths still refer to stored text.
-    if (hasWindowsLines) {
-      for (let i = 0; i < token.raw.length; i++, sourceOffset++) {
-        if (source[sourceOffset] === "\r" && source[sourceOffset + 1] === "\n") sourceOffset++;
-      }
-    } else {
-      sourceOffset += token.raw.length;
-    }
-    const raw = source.slice(start, sourceOffset);
-    // Fold blank-line runs into the previous block so joining blocks
-    // reconstructs the source and block boundaries stay append-stable.
-    if (token.type === "space" && blocks.length > 0) {
-      blocks[blocks.length - 1] += raw;
-    } else {
-      blocks.push(raw);
-    }
-  }
-  return blocks;
-}
-
 /*
- * Incremental re-lex: while streaming appends text, all blocks before the
- * last are settled (markdown blocks never merge backwards across a completed
- * boundary), so only the tail block is re-lexed each frame.
+ * Splitting and its streaming reuse live in `markdown-blocks`, which owns the
+ * rules a slice has to satisfy before it can be parsed on its own.
  */
 function useBlocks(source: string): string[] {
-  const cacheRef = useRef({ consumed: "", blocks: [] as string[] });
+  const cacheRef = useRef(emptyMarkdownBlockCache);
   return useMemo(() => {
-    const cache = cacheRef.current;
-    let stable: string[] = [];
-    let tail = source;
-    if (
-      cache.blocks.length > 0 &&
-      source.length >= cache.consumed.length &&
-      source.startsWith(cache.consumed)
-    ) {
-      stable = cache.blocks.slice(0, -1);
-      const lastStart =
-        cache.consumed.length - cache.blocks[cache.blocks.length - 1].length;
-      tail = source.slice(lastStart);
-    }
-    const blocks = tail ? [...stable, ...parseBlocks(tail)] : stable;
-    cacheRef.current = { consumed: source, blocks };
-    return blocks;
+    cacheRef.current = advanceMarkdownBlocks(cacheRef.current, source);
+    return cacheRef.current.blocks;
   }, [source]);
 }
 
@@ -860,15 +825,9 @@ export const Markdown = memo(function Markdown({
   baseDir?: string;
 }) {
   const workspaceRoot = useAppStore((s) => s.workspace?.path);
-  // Normalize once at the source level: marked's block lexer runs on the raw
-  // text and would otherwise split `\[ … \]` display math whose body puts a
-  // lone `=`/`-` (setext underline) or `+`/`*` (list marker) on its own line,
-  // stranding `\[` and `\]` in different blocks so the delimiters escape as
-  // literal `[`/`]`. The normalizer both rewrites the delimiters to `$$` and
-  // flattens newlines inside every paired region, keeping the whole formula
-  // inside a single markdown block. The rewrite is length-preserving, so we
-  // can still slice the original text at the same offsets for downstream
-  // plugins that need the pre-normalized delimiters.
+  // Keep normalization length-preserving so source anchors and the bracket
+  // display plugin still address the original text. Block splitting uses the
+  // same math grammar as rendering, including unclosed streaming math blocks.
   const normalizedSource = useMemo(
     () => normalizeLatexMathDelimiters(source),
     [source],

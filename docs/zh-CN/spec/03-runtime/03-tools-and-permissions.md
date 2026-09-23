@@ -63,10 +63,14 @@ Plan 和 Goal 保留其 read/inspection 核心。`Skill` 有意不作延迟：`/
 这些工具出现在有界的 `# On-demand tools` 目录中，具有紧凑的结构
 描述。该模型使用确切的名称调用本地 `ToolSearch` 工具或
 能力查询；匹配的模式在下一个模型回合中可用。
-sidecar 在每个新用户提示开始时重置此延迟集。
-主机权限、workspace/scratch 遏制、超时和审核规则
-加载工具时不会改变。 `ToolSearch` 本身从不执行工作区
-操作并且永远不会绕过 host-core 策略。
+sidecar 在每个新用户提示开始时重置此延迟集，并从有效会话上下文中的
+成功证据重建：成功 `ToolSearch` 结果使用 canonical
+`details.addedToolNames`，成功的延迟工具结果使用其工具名。为兼容历史
+数据，也接受 `details.activated` 和顶层 `addedToolNames`。失败、中断或
+缺少结果的占位行以及助手/用户文本都会被忽略；恢复的名称必须仍在当前
+模式的延迟目录中。主机权限、workspace/scratch 遏制、超时和审核规则
+加载工具时不会改变。`ToolSearch` 本身从不执行工作区操作并且永远不会
+绕过 host-core 策略。
 
 ## 3. 常用工具约束
 
@@ -566,3 +570,7 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 - 命令允许列表/拒绝列表
 - 空运行模式
 - 预览后应用补丁
+
+## 图片生成与编辑
+
+`GenerateImages` 是仅供 Agent 使用的高风险能力，可信桌面执行请求前必须由 host-core 授权。即使处于 Auto，Plan/Goal 仍被拒绝。取消、限制和结果语义见[图片生成规格](/zh-CN/spec/03-runtime/21-image-generation)。

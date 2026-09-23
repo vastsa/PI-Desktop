@@ -215,7 +215,8 @@ type PluginThemeContrib = {
  label: string;
  path: string; // relative `.css` file
  base?: "light" | "dark"; // palette the overrides layer on, default `dark`
- assets?: string[]; // absolute png/jpg/jpeg/webp/avif/svg/woff2, 4 MB summed;
+ assets?: string[]; // package-relative or absolute png/jpg/jpeg/webp/avif/svg/woff2, 4 MB summed;
+                    // relative paths resolve inside plugin root; traversal/node_modules are rejected;
                     // each matching `url()` is rewritten to `plugin-asset://`
 };
 
@@ -293,8 +294,20 @@ type PluginProviderModelContrib = {
  contextWindow?: number;
  maxTokens?: number;
  supportsImages?: boolean;
+ /** Canonical thinking levels offered by this model, in declaration order. */
+ thinkingLevels?: string[];
+ /** New sessions use this level when it is present in `thinkingLevels`. */
+ defaultThinkingLevel?: string;
 };
 ```
+To materialize these fields, the Host trims entries, drops unknown canonical
+names, removes duplicates, and preserves the remaining declaration order. An
+absent or unusable list becomes an empty binding. `defaultThinkingLevel` is kept
+only when it names a normalized level in that model's list; otherwise it is
+dropped and normal binding normalization selects the first available level.
+Manifest validation rejects a non-array `thinkingLevels`, any non-string entry, or
+an explicitly non-string `defaultThinkingLevel`; unknown string names are
+accepted and dropped during normalization.
 
 ## 5. permissions enum
 
@@ -427,6 +440,12 @@ as rows in the native provider list, owned by the plugin ([ADR 0259](../../adr/0
   are the provider-config styles except `auto`
 - `authKind` is optional, either `api_key` (default) or `none`
 - `models` requires 1..64 entries with unique ids of 1..256 characters
+
+`thinkingLevels` is optional. The Host trims entries, drops unknown canonical
+names, removes duplicates, and preserves the remaining declaration order. An
+absent or unusable list becomes an empty binding. `defaultThinkingLevel` is kept
+only when it names a normalized level in that model's list; otherwise it is
+dropped and normal binding normalization selects the first available level.
 
 A non-empty `contributes.providers` needs the high-risk `provider.register`
 permission ([13-plugin-permissions-matrix.md](13-plugin-permissions-matrix.md)).

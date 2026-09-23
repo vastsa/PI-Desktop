@@ -51,6 +51,12 @@ Import sessions from other local agents, prepare file references in the
 composer, use the work panel for review/browser/files, manage
 notifications, and run scheduled prompts manually or on a remembered cadence.
 
+### H. Portable configuration sync
+
+Configure an encrypted WebDAV vault for portable preferences and user-owned
+capabilities, review category and credential inclusion, and reconcile changes
+across devices without synchronizing conversation history or source files.
+
 ## 4. Current shipped scope
 
 - Electron desktop app for macOS arm64 and Intel x64, Windows x64, and Linux x64 release lanes
@@ -72,13 +78,14 @@ notifications, and run scheduled prompts manually or on a remembered cadence.
 - Extensions page: local plugins, marketplace packages, MCP, Skills, and
   Subagents with activation scopes
 - Scheduled task records with manual execution and cadence metadata
+- Host-owned encrypted WebDAV configuration sync with category selection,
+  conditional-write probing, three-way merge, and local activation review
 - Rust host core skeleton for privileged operations
 
 ## 5. Out of scope (current phase)
 
 - Remote Gateway / browser remote control; local loopback MCP control is the
   explicitly bounded exception described by ADR 0203
-- Cloud account sync
 - Full IDE experience
 - Trusted plugin provenance/signatures and a capability sandbox for raw plugin
   Node APIs
@@ -134,5 +141,5 @@ the internal `page = "chat"` route value; that value is not an operating mode.
 |---|---|---|
 | macOS Apple Silicon | Published | Primary development and acceptance platform; signing/notarization remains credential-gated |
 | macOS Intel | Published | Native x64 DMG/ZIP release lane; signing/notarization remains credential-gated |
-| Windows x64 | Published | NSIS installer, portable exe, and in-app update lane for NSIS; native qualification continues |
+| Windows x64 | Published | NSIS installer, portable ZIP, and in-app update lane for NSIS; native qualification continues |
 | Linux x64 | Published | AppImage, deb, and rpm packages; AppImage update lane; glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36+); native qualification continues |

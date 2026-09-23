@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AppSettings, NetworkProxyMode, NetworkProxySettings } from "@pi-desktop/shared";
+import type {
+  AppSettings,
+  NetworkPolicyMode,
+  NetworkPolicySettings,
+  NetworkProxyMode,
+  NetworkProxySettings,
+} from "@pi-desktop/shared";
 import {
   DEFAULT_NETWORK_PROXY_BYPASS,
+  isRelaxedNetworkPolicy,
   parseProxyUrl,
   validateNetworkProxy,
 } from "@pi-desktop/shared";
@@ -133,6 +140,27 @@ export function NetworkProxySection({
     }
   };
 
+  const relaxed = isRelaxedNetworkPolicy(settings);
+
+  /**
+   * Only the `networkPolicy` field is written: the settings write merges this
+   * patch into the stored settings, so every other preference is carried over
+   * untouched. A notice the user already acknowledged stays acknowledged: the
+   * mode is the only thing this switch changes.
+   */
+  const persistNetworkPolicy = async (mode: NetworkPolicyMode) => {
+    setSaveError(false);
+    const next: NetworkPolicySettings = { mode };
+    if (settings.networkPolicy?.insecureNoticeAcknowledged === true) {
+      next.insecureNoticeAcknowledged = true;
+    }
+    try {
+      await saveSettings({ networkPolicy: next });
+    } catch {
+      setSaveError(true);
+    }
+  };
+
   return (
     <section className="settings-card-block">
       <h3 className="settings-card-heading">{t("settings.network")}</h3>
@@ -162,6 +190,27 @@ export function NetworkProxySection({
               </button>
             ))}
           </div>
+        </SettingsRow>
+        <SettingsRow
+          title={t("settings.networkRelaxedMode")}
+          description={
+            relaxed
+              ? t("settings.networkRelaxedModeDesc")
+              : t("settings.networkRelaxedModeStrictDesc")
+          }
+        >
+          <button
+            type="button"
+            className={cx("settings-toggle", relaxed && "on")}
+            role="switch"
+            aria-checked={relaxed}
+            aria-label={t("settings.networkRelaxedMode")}
+            onClick={() =>
+              void persistNetworkPolicy(relaxed ? "strict" : "relaxed")
+            }
+          >
+            <span className="settings-toggle-thumb" />
+          </button>
         </SettingsRow>
 
         {saved.mode === "custom" ? (

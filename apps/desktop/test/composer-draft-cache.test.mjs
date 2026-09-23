@@ -11,12 +11,14 @@ import {
   captureComposerDraft,
   deleteComposerDraft,
   draftKeyForSession,
-  flushScheduledHomeDraftAdopt,
-  scheduleHomeDraftAdopt,
   draftOwnerSessionId,
+  flushScheduledHomeDraftAdopt,
+  markComposerDraftEdited,
   pruneComposerDrafts,
   readComposerDraft,
+  readComposerDraftRevision,
   resetComposerDraftCache,
+  scheduleHomeDraftAdopt,
   snapshotComposerDraft,
   writeComposerDraft,
 } from "../src/lib/composer-draft-cache.ts";
@@ -34,6 +36,26 @@ test("draft keys isolate the home slot from a session id", () => {
   assert.equal(draftKeyForSession("sess-1"), "sess-1");
   assert.equal(draftOwnerSessionId(HOME_DRAFT_KEY), "");
   assert.equal(draftOwnerSessionId("sess-1"), "sess-1");
+});
+
+test("draft revisions distinguish edit-and-restore and remain isolated by key", () => {
+  const submitted = readComposerDraftRevision("session-a");
+  const edited = markComposerDraftEdited("session-a");
+  const restored = markComposerDraftEdited("session-a");
+  const otherSession = readComposerDraftRevision("session-b");
+  assert.notEqual(edited, submitted);
+  assert.notEqual(restored, edited);
+  assert.notEqual(otherSession, restored);
+  assert.equal(readComposerDraftRevision("session-a"), restored);
+});
+
+test("prune and reset discard revision entries without reusing old versions", () => {
+  const pruned = markComposerDraftEdited("pruned");
+  pruneComposerDrafts([]);
+  assert.notEqual(readComposerDraftRevision("pruned"), pruned);
+  const reset = markComposerDraftEdited("reset");
+  resetComposerDraftCache();
+  assert.notEqual(readComposerDraftRevision("reset"), reset);
 });
 
 test("home snapshots keep file references owned by the empty session id", () => {
@@ -146,10 +168,11 @@ test("composer hydrates from the shared cache and persists across unmount and hi
 test("composer handles home drafts, deleted sessions, and async sends by key", () => {
   assert.match(composer, /pruneComposerDrafts\(\[/);
   assert.match(composer, /HOME_DRAFT_KEY,/);
-  assert.match(composer, /const clearDraftForKey = \(key: string\)/);
+  assert.match(composer, /const clearDraftForKey = \(\s*key: string,\s*expectedRevision\?: number,\s*submitted\?: ComposerDraftSnapshot/);
   assert.match(composer, /deleteComposerDraft\(key\)/);
   assert.match(composer, /draftKeyForSession\(useAppStore\.getState\(\)\.activeSessionId\)/);
   assert.match(composer, /const submittedDraftKey = draftKey/);
-  assert.match(composer, /clearDraftForKey\(submittedDraftKey\)/);
+  assert.match(composer, /clearDraftForKey\(submittedDraftKey, submittedDraftRevision, submittedDraft\)/);
+  assert.match(composer, /readComposerDraftRevision\(key\) !== expectedRevision/);
   assert.doesNotMatch(composer, /if \(accepted\) clearDraft\(\);/);
 });

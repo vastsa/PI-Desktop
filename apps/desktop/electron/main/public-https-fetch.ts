@@ -5,9 +5,12 @@ import {
   classifyIpLiteral,
   classifyProxyRoute,
   isAcceptableResolvedAddress,
+  isAcceptableUserEndpointAddress,
   isPublicNetworkPolicyFailure,
   isSafePublicHttpsUrl,
+  isSafeUserEndpointUrl,
   publicNetworkRefusalReason,
+  type EndpointOrigin,
   type PublicNetworkAddressKind,
   type PublicNetworkRefusalDetail,
   type PublicNetworkRefusalReason,
@@ -108,9 +111,16 @@ export function isPublicNetworkPolicyError(error: unknown): boolean {
   return error instanceof PublicNetworkPolicyError || isPublicNetworkPolicyFailure(error);
 }
 
+/** The shared origin type, under the name this module's callers already use. */
+export type PublicHttpsEndpointOrigin = EndpointOrigin;
+
 export type PublicHttpsClient = {
-  assertPublicUrl: (url: string) => Promise<void>;
-  request: (url: string, kind: "json" | "text") => Promise<unknown>;
+  assertPublicUrl: (url: string, origin?: PublicHttpsEndpointOrigin) => Promise<void>;
+  request: (
+    url: string,
+    kind: "json" | "text",
+    origin?: PublicHttpsEndpointOrigin,
+  ) => Promise<unknown>;
 };
 
 /**
@@ -129,14 +139,31 @@ export type PublicHttpsClient = {
  * the resolver-artifact class is tolerated there, and every class that names a
  * real internal target still refuses. A route the transport cannot name keeps
  * the strict verdict (ADR 0272).
+ *
+ * A hop is judged for the origin that chose its address: a user-supplied
+ * endpoint may resolve to the user's own loopback or LAN, while every hop the
+ * app learned from someone else — a redirect in particular — keeps the strict
+ * public-only rule.
  */
 export function createPublicHttpsClient(options: {
   fetchImpl: PublicHttpsFetch;
   lookupImpl?: PublicHttpsLookup;
   /** Must be the session that carries `fetchImpl`; absent stays strict. */
   routeImpl?: PublicHttpsRouteLookup;
+  /** Permit only benchmark fake-IP answers when the user explicitly opts in. */
+  allowFakeIp?: boolean | (() => boolean);
+  /**
+   * Permit plain `http` for a user-supplied endpoint, per the stored
+   * `networkPolicy`. Never widens the third-party policy.
+   */
+  allowInsecureUserEndpoints?: boolean | (() => boolean);
+  /**
+   * Called when a hop is about to travel as plain `http` to an endpoint the user
+   * typed. Informational: the caller tells the shell, and the request proceeds.
+   */
+  onInsecureUserEndpoint?: (host: string) => void;
   timeoutMs?: number;
-} ): PublicHttpsClient {
+}): PublicHttpsClient {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const lookupImpl =
     options.lookupImpl ??
@@ -156,14 +183,37 @@ export function createPublicHttpsClient(options: {
     }
   }
 
-  async function assertPublicUrl(url: string): Promise<void> {
-    if (!isSafePublicHttpsUrl(url)) {
+  function insecureUserEndpointsAllowed(): boolean {
+    return typeof options.allowInsecureUserEndpoints === "function"
+      ? options.allowInsecureUserEndpoints()
+      : options.allowInsecureUserEndpoints === true;
+  }
+
+  /**
+   * Judge one hop for the origin that chose it. `user` is an endpoint the person
+   * typed into a settings field — their own machine, their own LAN service —
+   * and reaches loopback and private addresses under the stored policy.
+   * `third-party` is every hop this app learned from someone else and keeps the
+   * public-only rule.
+   */
+  async function assertPublicUrl(
+    url: string,
+    origin: PublicHttpsEndpointOrigin = "third-party",
+  ): Promise<void> {
+    const userSupplied = origin === "user";
+    const accepted = userSupplied
+      ? isSafeUserEndpointUrl(url, { allowInsecureHttp: insecureUserEndpointsAllowed() })
+      : isSafePublicHttpsUrl(url);
+    if (!accepted) {
       throw new PublicNetworkPolicyError(`url rejected by the public-network policy: ${url}`, {
         reason: "url-syntax",
       });
     }
-    const host = new URL(url).hostname.toLowerCase().replace(/\.+$/, "");
-    if (host.startsWith("[") || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return;
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase().replace(/\.+$/, "");
+    if (userSupplied && parsed.protocol === "http:") {
+      options.onInsecureUserEndpoint?.(host);
+    }
     const route = await hopRoute(url);
     let addresses: Array<{ address: string }>;
     try {
@@ -188,13 +238,21 @@ export function createPublicHttpsClient(options: {
     }
     for (const address of addresses) {
       const addressKind = classifyIpLiteral(address.address);
-      if (!isAcceptableResolvedAddress(addressKind, route)) {
+      const allowFakeIp =
+        typeof options.allowFakeIp === "function"
+          ? options.allowFakeIp()
+          : options.allowFakeIp === true;
+      // A user-supplied endpoint reaches the user's own loopback and LAN; a
+      // third-party hop keeps the public-only rule. Neither tolerates cloud
+      // metadata, and neither tolerates a fake-IP answer on a direct route.
+      const acceptable = userSupplied
+        ? isAcceptableUserEndpointAddress(address.address, addressKind, route)
+        : isAcceptableResolvedAddress(addressKind, route);
+      if (!acceptable && !(allowFakeIp && addressKind === "benchmark")) {
         // The class travels with the refusal: `benchmark` is a TUN fake-IP
-        // (198.18.0.0/15) and `private` is a real RFC1918 target, and only the
-        // class tells those apart in the log and in the panel. The route travels
-        // with it too: a fake-IP answer is tolerated on a proxied route because
-        // this app never dials it, and refused on a direct or unreadable route
-        // because this app would (ADR 0272).
+        // (198.18.0.0/15) and `private` is a real RFC1918 target. The explicit
+        // fake-IP opt-in never changes the verdict for any other non-public
+        // class (ADR 0272).
         throw new PublicNetworkPolicyError(
           `hostname resolves to a non-public address: ${host} -> ${address.address} (${addressKind}, ${route} route)`,
           { reason: "non-public-address", host, address: address.address, addressKind, route },
@@ -203,10 +261,17 @@ export function createPublicHttpsClient(options: {
     }
   }
 
-  async function requestOnce(url: string, kind: "json" | "text"): Promise<unknown> {
+  async function requestOnce(
+    url: string,
+    kind: "json" | "text",
+    origin: PublicHttpsEndpointOrigin,
+  ): Promise<unknown> {
     let current = url;
     for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
-      await assertPublicUrl(current);
+      // Only the first hop is the address the user chose. Every redirect is a
+      // destination this app learned from someone else, so it is judged by the
+      // third-party policy without exception.
+      await assertPublicUrl(current, hop === 0 ? origin : "third-party");
       const response = await options.fetchImpl(current, {
         redirect: "manual",
         signal: AbortSignal.timeout(timeoutMs),
@@ -223,11 +288,15 @@ export function createPublicHttpsClient(options: {
     throw new PublicNetworkPolicyError("too many redirects", { reason: "redirect-limit" });
   }
 
-  async function request(url: string, kind: "json" | "text"): Promise<unknown> {
+  async function request(
+    url: string,
+    kind: "json" | "text",
+    origin: PublicHttpsEndpointOrigin = "third-party",
+  ): Promise<unknown> {
     let lastError: unknown;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       try {
-        return await requestOnce(url, kind);
+        return await requestOnce(url, kind, origin);
       } catch (error) {
         lastError = error;
         // A refusal the guard decided is final: a syntax rejection, a

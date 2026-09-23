@@ -11,6 +11,8 @@ const resolutions = [];
 const scenarios = new Map();
 const events = [];
 const pending = new Map();
+const histories = new Map();
+let dynamicEnabled = true;
 let sequence = 0;
 const server = createServer(async (req, res) => {
   try {
@@ -18,6 +20,7 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     const payload = JSON.parse(body);
     requests.push(payload);
+    payload.fixtureAccount = req.headers["x-fixture-account"];
     const user = payload.messages.findLast((m) => m.role === "user");
     const userText = typeof user?.content === "string" ? user.content : JSON.stringify(user?.content);
     const scenario = [...scenarios.values()].find((s) => userText.includes(s.marker));
@@ -110,11 +113,11 @@ const lines = readNdjsonLines(child.stdout, (line) => {
     const { method, params } = message.params;
     if (method === "provider.resolveSubagentModel") {
       resolutions.push(params.key);
-      send(params.key === "fixture/dynamic"
+      send(params.key === "fixture/dynamic" && dynamicEnabled
         ? { id: message.id, result: model("dynamic") }
         : { id: message.id, error: { code: -32000, message: "model is not enabled for delegation" } });
     } else {
-      send({ id: message.id, result: method === "session.get" ? { session: { messages: [] } } : {} });
+      send({ id: message.id, result: method === "session.get" ? { session: { messages: histories.get(params.id) ?? [] } } : {} });
     }
   } else if (message.id != null) {
     const entry = pending.get(message.id);
@@ -152,6 +155,7 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
     ...(inheritCatalog ? [definition("worker", undefined, { inheritTools: true, tools: [] })] : []),
   ];
   const marker = `scenario-${id}`;
+  if (options.history) histories.set(sessionId, options.history);
   const before = requests.length;
   scenarios.set(id, { marker, args: { ...args, task: `Complete fixture ${id}.` } });
   await rpc("agent.prompt", {
@@ -170,6 +174,7 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
   assert.ok(!system.includes("`fixture/private`"), "private pin must not enter override catalog");
   assert.ok(parent.tools.find((t) => t.function?.name === "Task").function.description.includes(`Default model: fixture/${primaryModel}`));
   const delegates = captured.filter((p) => !p.tools?.some((t) => t.function?.name === "Task"));
+  assert.ok(delegates.every((p) => p.fixtureAccount !== "private-account"), "resume must not send a request using another definition's private binding");
   if (expectedModel) assert.deepEqual(delegates.map((p) => p.model), options.expectedAttempts ?? [expectedModel]);
   else {
     assert.equal(delegates.length, 0, "forbidden override must not issue a provider request");
@@ -262,6 +267,22 @@ try {
   const demand = await run("on-demand-opt-in", { agent: "explorer", model: "fixture/dynamic" }, "dynamic", ["fixture/allowed"], "demand");
   const demandAgain = await run("on-demand-reuse", { agent: "explorer", model: "fixture/dynamic" }, "dynamic", ["fixture/allowed"], "demand");
   assert.equal(demand.runtimeId, demandAgain.runtimeId, "on-demand grants must not retire an idle runtime");
+  assert.equal(resolutions.filter((key) => key === "fixture/dynamic").length, 2, "each new prompt reauthorizes an on-demand grant");
+  dynamicEnabled = false;
+  const revoked = await run("on-demand-revoked", { agent: "explorer", model: "fixture/dynamic" }, undefined, ["fixture/allowed"], "demand");
+  assert.equal(revoked.runtimeId, demand.runtimeId, "revocation must work even when the launch catalog is unchanged");
+  dynamicEnabled = true;
+  const restartedHistory = [
+    { id: "old-task", role: "tool", content: "", createdAt: "2026-09-21T00:00:00.000Z", toolName: "Task", toolCallId: "old-task",
+      toolArgs: { agent: "explorer", task: "Inspect the fixture." }, toolStatus: "success",
+      toolResult: { details: { delegationId: "old-delegation", status: "completed", modelId: "parent" } } },
+    { id: "old-child", role: "assistant", content: "Fixture inspected.", status: "complete", createdAt: "2026-09-21T00:00:01.000Z",
+      parentToolCallId: "old-task", agentName: "explorer", providerId: "fixture", modelId: "parent" },
+  ];
+  await run("resume-private-collision", { agent: "explorer", resume: "old-delegation" }, "parent", [], "resume-restarted", {
+    history: restartedHistory,
+    bindings: { "fixture/private": { ...model("parent"), id: "private-account", headers: { "x-fixture-account": "private-account" } } },
+  });
   await run("session-inheritance", { agent: "explorer", model: "fixture/parent" }, "parent", []);
   const first = await run("before-revocation", { agent: "explorer", model: "fixture/allowed" }, "allowed", ["fixture/allowed"], "reload");
   const second = await run("after-revocation", { agent: "explorer", model: "fixture/allowed" }, undefined, [], "reload");

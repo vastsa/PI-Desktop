@@ -594,3 +594,84 @@ fn dropping_the_api_key_auth_kind_clears_the_stored_key() {
         .unwrap()
         .is_none());
 }
+
+/// A manifest whose first model declares a reasoning menu.
+fn manifest_with_thinking_levels() -> PluginManifest {
+    let mut value = serde_json::to_value(manifest()).unwrap();
+    value["contributes"]["providers"][0]["models"][0]["thinkingLevels"] =
+        json!(["off", "low", "high"]);
+    value["contributes"]["providers"][0]["models"][0]["defaultThinkingLevel"] = json!("high");
+    serde_json::from_value(value).unwrap()
+}
+
+#[test]
+fn declared_thinking_levels_survive_into_the_row() {
+    let (_dir, db, secrets) = test_context();
+    let declared = declared_providers(&manifest_with_thinking_levels());
+    assert_eq!(
+        declared[0].models[0].thinking_levels,
+        ["off", "low", "high"]
+    );
+    assert_eq!(
+        declared[0].models[0].default_thinking_level.as_deref(),
+        Some("high")
+    );
+    // The second model declares nothing, so it keeps offering no menu.
+    assert!(declared[0].models[1].thinking_levels.is_empty());
+    assert!(declared[0].models[1].default_thinking_level.is_none());
+
+    sync_plugin_providers(&db, &secrets, "demo.provider", &declared, true).unwrap();
+    let row = &providers::list_providers(&db, &secrets, true).unwrap()[0];
+    assert_eq!(row.models[0].thinking_levels, ["off", "low", "high"]);
+    assert_eq!(
+        row.models[0].default_thinking_level.as_deref(),
+        Some("high")
+    );
+}
+
+#[test]
+fn declared_thinking_levels_are_normalized() {
+    let mut value = serde_json::to_value(manifest()).unwrap();
+    // "ultra" is not a canonical level and "low" repeats, so the stored list
+    // must come back canonical and deduplicated rather than as declared.
+    value["contributes"]["providers"][0]["models"][0]["thinkingLevels"] =
+        json!(["low", "ultra", "low", "  high  ", 7]);
+    let manifest: PluginManifest = serde_json::from_value(value).unwrap();
+    let declared = declared_providers(&manifest);
+    assert_eq!(declared[0].models[0].thinking_levels, ["low", "high"]);
+}
+
+#[test]
+fn a_default_outside_the_declared_list_is_dropped() {
+    let mut value = serde_json::to_value(manifest_with_thinking_levels()).unwrap();
+    // Naming a level the model does not offer must not be stored: the runtime
+    // would silently open on a different one while the row claimed otherwise.
+    value["contributes"]["providers"][0]["models"][0]["defaultThinkingLevel"] = json!("max");
+    let manifest: PluginManifest = serde_json::from_value(value).unwrap();
+    let declared = declared_providers(&manifest);
+    assert_eq!(
+        declared[0].models[0].thinking_levels,
+        ["off", "low", "high"]
+    );
+    assert!(declared[0].models[0].default_thinking_level.is_none());
+}
+
+#[test]
+fn malformed_thinking_level_fields_are_rejected_by_manifest_validation() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    let mut value = serde_json::to_value(manifest()).unwrap();
+
+    value["contributes"]["providers"][0]["models"][0]["thinkingLevels"] = json!("high");
+    write_plugin(&root, value.clone());
+    assert!(read_manifest_err(&root).contains("thinkingLevels must be an array of strings"));
+
+    value["contributes"]["providers"][0]["models"][0]["thinkingLevels"] = json!(["high", 7]);
+    write_plugin(&root, value.clone());
+    assert!(read_manifest_err(&root).contains("thinkingLevels must be an array of strings"));
+
+    value["contributes"]["providers"][0]["models"][0]["thinkingLevels"] = json!(["high"]);
+    value["contributes"]["providers"][0]["models"][0]["defaultThinkingLevel"] = json!(7);
+    write_plugin(&root, value);
+    assert!(read_manifest_err(&root).contains("defaultThinkingLevel must be a string"));
+}

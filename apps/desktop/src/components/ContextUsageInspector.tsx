@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import {
   formatCompactTokenCount,
@@ -404,7 +404,7 @@ export function ContextUsageInspector({
         </span>
       </TooltipButton>
       {popover && typeof document !== "undefined"
-        ? createPortal(popover, document.body)
+        ? portalToBody(popover)
         : null}
     </div>
   );

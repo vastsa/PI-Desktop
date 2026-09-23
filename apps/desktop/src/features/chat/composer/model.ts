@@ -39,12 +39,7 @@ export const MODE_LABEL_KEYS: Record<Mode, string> = {
   goal: "settings.modeGoal",
 };
 
-export const PERMISSION_MODE_I18N_KEYS: Record<PermissionMode, string> = {
-  inherit: "chat.permissionInherit",
-  ask: "chat.permissionAsk",
-  "accept-edits": "chat.permissionAcceptEdits",
-  auto: "chat.permissionAuto",
-};
+export { PERMISSION_MODE_I18N_KEYS } from "../../../lib/permission-mode-labels";
 
 export const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "off",

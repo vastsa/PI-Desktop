@@ -119,3 +119,125 @@ test("a syntactic URL refusal carries the same code", async () => {
     (error) => error.errorCode === ErrorCodes.NETWORK_POLICY_BLOCKED,
   );
 });
+
+test("a user-supplied endpoint may resolve to the machine or the LAN", async () => {
+  // The address belongs to whoever typed the endpoint in, so loopback, RFC1918
+  // and link-local are reachable there. The same address on the default
+  // (third-party) origin stays refused, which is the behaviour nothing here
+  // changes.
+  const client = createPublicHttpsClient({
+    fetchImpl: async () => jsonResponse(200, { ok: true }),
+    lookupImpl: async () => [{ address: "10.0.0.8" }],
+  });
+  await assert.rejects(
+    () => client.request("https://nas.example/catalog.json", "json"),
+    (error) =>
+      error instanceof PublicNetworkPolicyError &&
+      error.reason === "non-public-address" &&
+      error.addressKind === "private",
+  );
+  assert.deepEqual(await client.request("https://nas.example/catalog.json", "json", "user"), {
+    ok: true,
+  });
+  await client.assertPublicUrl("https://nas.local:8443/catalog.json", "user");
+
+  const loopback = createPublicHttpsClient({
+    fetchImpl: async () => jsonResponse(200, { ok: true }),
+    lookupImpl: async () => [{ address: "127.0.0.1" }],
+  });
+  await loopback.assertPublicUrl("https://local.example/catalog.json", "user");
+});
+
+test("a user-supplied endpoint still may not name cloud metadata", async () => {
+  // A metadata service answers with the host's own credentials, so no settings
+  // field may spell one — not even the field the user fills in themselves.
+  const byHost = createPublicHttpsClient({
+    fetchImpl: async () => {
+      throw new Error("a refused request must never reach the network");
+    },
+    lookupImpl: async () => [{ address: "10.0.0.8" }],
+  });
+  await assert.rejects(
+    () => byHost.assertPublicUrl("https://169.254.169.254/latest/meta-data", "user"),
+    (error) =>
+      error instanceof PublicNetworkPolicyError && error.reason === "url-syntax",
+  );
+  await assert.rejects(
+    () => byHost.assertPublicUrl("https://metadata.google.internal/computeMetadata", "user"),
+    (error) =>
+      error instanceof PublicNetworkPolicyError && error.reason === "url-syntax",
+  );
+
+  // …and not by resolution either: the address the user's own hostname answers
+  // with is still judged, and a metadata address fails that judgement.
+  const byAddress = createPublicHttpsClient({
+    fetchImpl: async () => {
+      throw new Error("a refused request must never reach the network");
+    },
+    lookupImpl: async () => [{ address: "169.254.169.254" }],
+  });
+  await assert.rejects(
+    () => byAddress.assertPublicUrl("https://internal.example/catalog.json", "user"),
+    (error) =>
+      error instanceof PublicNetworkPolicyError &&
+      error.reason === "non-public-address" &&
+      error.address === "169.254.169.254" &&
+      error.addressKind === "link-local",
+  );
+});
+
+test("plaintext needs the stored opt-in, and only for a user-supplied endpoint", async () => {
+  const strict = createPublicHttpsClient({
+    fetchImpl: async () => jsonResponse(200, "catalog"),
+    lookupImpl: async () => [{ address: "192.168.1.5" }],
+  });
+  await assert.rejects(
+    () => strict.request("http://192.168.1.5:8080/catalog.json", "text", "user"),
+    (error) =>
+      error instanceof PublicNetworkPolicyError &&
+      error.reason === "url-syntax" &&
+      error.errorCode === ErrorCodes.NETWORK_POLICY_BLOCKED,
+  );
+
+  const permissive = createPublicHttpsClient({
+    fetchImpl: async () => jsonResponse(200, "catalog"),
+    lookupImpl: async () => [{ address: "192.168.1.5" }],
+    allowInsecureUserEndpoints: true,
+  });
+  assert.equal(
+    await permissive.request("http://192.168.1.5:8080/catalog.json", "text", "user"),
+    "catalog",
+  );
+  // The opt-in is exactly that: it buys the plaintext hop to the user's own
+  // endpoint, and nothing on the third-party origin.
+  await assert.rejects(
+    () => permissive.request("http://192.168.1.5:8080/catalog.json", "text"),
+    (error) => error instanceof PublicNetworkPolicyError && error.reason === "url-syntax",
+  );
+});
+
+test("only the first hop is the user's: a redirect is judged as third-party", async () => {
+  const seen = [];
+  const client = createPublicHttpsClient({
+    fetchImpl: async (url) => {
+      seen.push(url);
+      if (url === "https://start.example/start.json") {
+        return jsonResponse(302, "", "https://internal.example/next.json");
+      }
+      return jsonResponse(200, { ok: true });
+    },
+    lookupImpl: async () => [{ address: "127.0.0.1" }],
+  });
+  // The first hop is the endpoint the user typed, so its loopback answer is
+  // theirs; the redirect target is an address the app learned from that
+  // endpoint's answer, so the same answer is a refusal there.
+  await assert.rejects(
+    () => client.request("https://start.example/start.json", "json", "user"),
+    (error) =>
+      error instanceof PublicNetworkPolicyError &&
+      error.reason === "non-public-address" &&
+      error.host === "internal.example" &&
+      error.addressKind === "loopback",
+  );
+  assert.deepEqual(seen, ["https://start.example/start.json"]);
+});

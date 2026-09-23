@@ -239,6 +239,10 @@
   指针悬停或键盘焦点可以预取其记录；重复读取
   共享一个正在进行的请求，渲染器最多保留五个最近的请求
   转录快照。
+- 若一次记录窗口读取对侧边栏计为有历史的会话返回零条消息，该结果按“无法读取”
+  而不是“空会话”处理（**D615**，issue #795）：选择流程会再读一次，随后保留用户已有的
+  快照，否则显示 `chat.sessionTranscriptEmpty`，而不是提交一份空记录。这类空页绝不会
+  写入缓存，因此悬停预取不会在之后每次打开时反复提供空内容。
 - 脚本加载开始，无需等待旧的被取代的选择。
   当会话摘要元数据可用时，项目 activation/clearing 和
   转录IO并行运行。单调导航生成仅允许
@@ -455,7 +459,7 @@
 - 设置 → 信息和应用程序菜单检查共享一种类型的更新状态。
   手动检查公开最新或错误反馈；自动故障不会
   打开 Toast 或环境横幅。
-- 手动交付（非 AppImage Linux，以及带有 `PORTABLE_EXECUTABLE_FILE` 的 Windows 便携版运行）在 `available` 停止，并提供固定的 GitHub 发布页面。应用内交付（打包的 macOS、Windows NSIS 和 Linux AppImage）自动推进 `downloading` 到稳定的 `downloaded` 状态。
+- 手动交付（非 AppImage Linux、Windows ZIP，以及带有 `PORTABLE_EXECUTABLE_FILE` 的旧 Windows 便携版运行）在 `available` 停止，并提供固定的 GitHub 发布页面。应用内交付（打包的 macOS、Windows NSIS 和 Linux AppImage）自动推进 `downloading` 到稳定的 `downloaded` 状态。
 - `downloaded` 保持可操作状态，直至重新启动更新或正常应用退出；
   稍后的 scheduled/manual 检查不会将其替换为 `checking`。
 - 紧凑的更新通知仅出现在主窗格的右上角安全区域中
@@ -477,7 +481,7 @@
   当前版本和发现的可用版本标识为
   紧凑的徽章。列表独立滚动，通过其关闭控制关闭，
   转义或背景，并将焦点恢复到调用控件。
-- D126 标签版本发布所有平台清单和安装程序。打包的 macOS、Windows NSIS 和 Linux AppImage 使用应用内通道；Linux deb/rpm 和 Windows 便携版保持通知和链接传递模式。
+- D126 标签版本发布所有平台清单和安装程序。打包的 macOS、Windows NSIS 和 Linux AppImage 使用应用内通道；Linux deb/rpm 和 Windows ZIP 保持通知和链接传递模式。
 
 ## 2. 流消息行为
 
@@ -601,6 +605,9 @@
 
 ### 3.5 向当前回合补充指令
 
+- Host 入队尚未返回持久化 id 时，排队行操作保持禁用，五个操作均提示正在保存，
+  立即发送按钮也显示正在保存；编辑和删除不会改变条目或
+  输入框草稿，确认完成后恢复普通等待行的操作。
 - 运行中普通发送和回车发送仍将 follow-up 加入 Host 持久 FIFO。`Alt+Enter` 将可见
   草稿立即提交到当前回合，macOS 对应 `Option+Enter`。开启或关闭回车发送均可使用，
   且优先于已打开的自动完成菜单；空闲时正常发送。

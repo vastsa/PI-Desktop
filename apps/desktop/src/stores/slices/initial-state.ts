@@ -75,6 +75,7 @@ export function createInitialState(): AppStateData {
     page: "chat",
     settingsTab: "general",
     settingsAnchor: null,
+    settingsTabNonce: 0,
     navStack: [{ page: "chat" }],
     navIndex: 0,
     toasts: [],

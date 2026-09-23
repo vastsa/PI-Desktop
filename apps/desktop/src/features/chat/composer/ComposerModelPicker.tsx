@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
-import { formatTokenCount, modelIdsMatch } from "@pi-desktop/shared";
+import type { ReactNode } from "react";
+import { ComposerModelList } from "./ComposerModelList";
 import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
 import {
   IconBot,
@@ -7,11 +8,9 @@ import {
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
-  IconSearch,
   IconSparkles,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
-import { composerModelBadges } from "../../../lib/composer-models";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
 import { ThinkingLevelSlider } from "./ThinkingLevelSlider";
 
@@ -27,6 +26,7 @@ export type ComposerModelPickerProps = {
   selectedModelId?: string;
   controlsBlocked: boolean;
   onCloseOtherMenus: () => void;
+  rootActions?: ReactNode;
 };
 
 /** Model/reasoning picker with its keyboard and focus contract intact. */
@@ -40,6 +40,7 @@ export function ComposerModelPicker({
   selectedModelId,
   controlsBlocked,
   onCloseOtherMenus,
+  rootActions,
 }: ComposerModelPickerProps) {
   const {
     open,
@@ -56,7 +57,6 @@ export function ComposerModelPicker({
     modelListRef,
     thinkingListRef,
     modelGroups,
-    flatModels,
     thinkingMenuLevels,
     showView,
     selectModel,
@@ -114,6 +114,7 @@ export function ComposerModelPicker({
     >
       {view === "root" ? (
         <div className="composer-menu-root" ref={rootMenuRef}>
+          {rootActions}
           <button
             type="button"
             className="composer-menu-entry"
@@ -165,80 +166,13 @@ export function ComposerModelPicker({
           <div className="composer-menu-separator" />
           {view === "model" ? (
             <>
-              <label className="composer-model-search">
-                <IconSearch size={13} aria-hidden="true" />
-                <span className="sr-only">{t("chat.searchModels")}</span>
-                <input
-                  ref={modelSearchRef}
-                  type="text"
-                  value={query}
-                  placeholder={t("chat.searchModels")}
-                  aria-label={t("chat.searchModels")}
-                  spellCheck={false}
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </label>
-              <div className="composer-model-list" ref={modelListRef}>
-                {(() => {
-                  let flatIndex = 0;
-                  return modelGroups.map((group) => (
-                    <div
-                      key={group.provider.id}
-                      className="composer-model-group"
-                      role="group"
-                      aria-label={group.providerDisplayName}
-                    >
-                      <div className="composer-model-group-label">{group.providerDisplayName}</div>
-                      {group.models.map((model) => {
-                        const index = flatIndex++;
-                        const active =
-                          selectedProviderId === group.provider.id &&
-                          modelIdsMatch(selectedModelId ?? "", model.modelId);
-                        const optionTitle = model.displayName || model.modelId;
-                        return (
-                          <button
-                            key={`${group.provider.id}:${model.modelId}`}
-                            type="button"
-                            data-model-index={index}
-                            title={optionTitle}
-                            className={`composer-plus-item composer-model-option ${active ? "active" : ""} ${modelHighlight === index ? "kb-active" : ""}`}
-                            role="menuitemradio"
-                            aria-checked={active}
-                            onMouseMove={() => setModelHighlight(index)}
-                            onClick={() => void selectModel(group.provider, model.modelId)}
-                          >
-                            <span className="composer-model-option-main">
-                              <span className="truncate">{optionTitle}</span>
-                              <span className="composer-model-option-meta">
-                                {composerModelBadges(model, group.provider).map((badge) => (
-                                  <span
-                                    key={badge}
-                                    className="composer-model-option-badge"
-                                    title={t(badge === "reasoning" ? "chat.modelBadgeReasoning" : "chat.modelBadgeVision")}
-                                  >
-                                    {t(badge === "reasoning" ? "chat.modelBadgeReasoning" : "chat.modelBadgeVision")}
-                                  </span>
-                                ))}
-                                {model.contextWindow ? (
-                                  <span className="composer-model-option-ctx">
-                                    {formatTokenCount(model.contextWindow)}
-                                  </span>
-                                ) : null}
-                              </span>
-                            </span>
-                            {active ? <IconCheck size={14} className="composer-model-check" aria-hidden="true" /> : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ));
-                })()}
-                {flatModels.length === 0 ? (
-                  <div className="composer-model-empty">{t("chat.noModelResults")}</div>
-                ) : null}
-              </div>
+              <ComposerModelList
+                t={t} query={query} setQuery={setQuery}
+                modelSearchRef={modelSearchRef} modelListRef={modelListRef}
+                modelGroups={modelGroups} modelHighlight={modelHighlight}
+                setModelHighlight={setModelHighlight} selectModel={selectModel}
+                selectedProviderId={selectedProviderId} selectedModelId={selectedModelId}
+              />
             </>
           ) : (
             <>

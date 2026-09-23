@@ -63,6 +63,10 @@ class FakeSidecar implements RuntimeSidecarLink {
   roots = new Map<string, string | undefined>();
   rejectPrompt = false;
   running = false;
+  /** Error `agent.compact` answers with; `null` accepts the compaction. */
+  compactError: Error | null = null;
+  /** Runs inside a failing `agent.compact`, e.g. to persist a checkpoint. */
+  beforeCompact: (() => void) | null = null;
 
   async call<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     this.calls.push({ method, params });
@@ -75,6 +79,10 @@ class FakeSidecar implements RuntimeSidecarLink {
         return { supportsVision: false } as T;
       case "agent.steer":
         return { accepted: true, turnId: params.expectedTurnId } as T;
+      case "agent.compact":
+        this.beforeCompact?.();
+        if (this.compactError) throw this.compactError;
+        return { accepted: true } as T;
       case "agent.abort":
         return { ok: true } as T;
       case "agent.stop":
@@ -140,6 +148,57 @@ function build() {
   service.onTurnEnded((info) => ended.push(info));
   return { host, sidecar, service, events, ended, logs };
 }
+
+describe("RuntimeService manual compaction against a lost reply (#795)", () => {
+  const timeout = () => new Error("sidecar RPC timeout: agent.compact");
+  const record = (id: string) => ({ id, summary: "s", throughMessageId: "m1", tokensBefore: 1, createdAt: "2026-09-18T00:00:00.000Z" });
+
+  it("reports the durable outcome when the checkpoint landed after a transport timeout", async () => {
+    const { host, sidecar, service, logs } = build();
+    host.session = { ...host.session, compaction: record("c-old") };
+    sidecar.compactError = timeout();
+    // The sidecar keeps summarizing and persists through host-core, so the
+    // host's own deadline is not evidence that the compaction failed.
+    sidecar.beforeCompact = () => {
+      host.session = { ...host.session, compaction: record("c-new") };
+    };
+    await expect(service.compact("s1")).resolves.toEqual({ accepted: true });
+    expect(host.calls.filter((call) => call.method === "session.get")).toHaveLength(2);
+    expect(logs).toContainEqual({
+      level: "warn",
+      message: "manual compaction outlived its transport deadline; the checkpoint landed",
+    });
+  });
+
+  it("keeps reporting a timeout when no checkpoint landed", async () => {
+    const { host, sidecar, service } = build();
+    host.session = { ...host.session, compaction: record("c-old") };
+    sidecar.compactError = timeout();
+    await expect(service.compact("s1")).rejects.toThrow("sidecar RPC timeout: agent.compact");
+    expect(host.calls.filter((call) => call.method === "session.get")).toHaveLength(2);
+  });
+
+  it("does not reconcile a sidecar verdict with a checkpoint from another attempt", async () => {
+    const { host, sidecar, service } = build();
+    host.session = { ...host.session, compaction: record("c-old") };
+    // A real compaction failure is the sidecar's own verdict: an older or
+    // unrelated durable checkpoint must not turn it into a success.
+    sidecar.beforeCompact = () => {
+      host.session = { ...host.session, compaction: record("c-new") };
+    };
+    sidecar.compactError = Object.assign(new Error("context compaction failed"), {
+      errorCode: "CONTEXT_COMPACTION_FAILED",
+    });
+    await expect(service.compact("s1")).rejects.toThrow("context compaction failed");
+    expect(host.calls.filter((call) => call.method === "session.get")).toHaveLength(1);
+  });
+
+  it("accepts an acknowledged compaction and never re-reads the session", async () => {
+    const { host, service } = build();
+    await expect(service.compact("s1")).resolves.toEqual({ accepted: true });
+    expect(host.calls.filter((call) => call.method === "session.get")).toHaveLength(1);
+  });
+});
 
 const owner = { subject: "desktop", roles: ["owner" as const], pairedDevice: true };
 

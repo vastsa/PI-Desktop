@@ -183,8 +183,9 @@ type PluginThemeContrib = {
  label: string;
  path: string; // relative `.css` file
  base?: "light" | "dark"; // palette the overrides layer on, default `dark`
- assets?: string[]; // 绝对路径的 png/jpg/jpeg/webp/avif/svg/woff2，总和上限 4 MB；
-                    // 命中的 `url()` 会被改写为 `plugin-asset://`
+ assets?: string[]; // 插件包内相对路径或绝对路径；png/jpg/jpeg/webp/avif/svg/woff2 白名单，总和上限 4 MB；
+                    // 相对路径在插件根目录内解析，拒绝路径穿越和 `node_modules`；
+                    // 命中的 `url()` 改写为 `plugin-asset://`
 };
 
 type PluginWindowAppearanceContrib = {
@@ -247,8 +248,17 @@ type PluginProviderModelContrib = {
  contextWindow?: number;
  maxTokens?: number;
  supportsImages?: boolean;
+ /** 模型可提供的规范思考档位，按声明顺序保留。 */
+ thinkingLevels?: string[];
+ /** 当该值存在于 `thinkingLevels` 时，新会话使用它。 */
+ defaultThinkingLevel?: string;
 };
 ```
+`thinkingLevels` 可选。宿主会裁剪条目、丢弃未知规范档位、去重，并保留剩余的声明顺序。
+缺失或不可用的列表会变成空绑定。只有当 `defaultThinkingLevel` 命中该模型列表中的归一化档位
+时才会保留；否则会被丢弃，普通绑定归一化会选择第一个可用档位。
+清单校验会拒绝非数组的 `thinkingLevels`、其中任何非字符串条目，或非字符串的
+`defaultThinkingLevel`；未知的字符串档位则会被接受并在归一化时丢弃。
 
 ## 5. 权限枚举
 

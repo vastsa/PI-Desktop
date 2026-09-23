@@ -829,3 +829,58 @@ fn shape_dir_requires_a_directory_source() {
         "err = {err}"
     );
 }
+
+#[test]
+fn directory_skill_package_resources_round_trip_without_execution() {
+    let app = tempdir().unwrap();
+    let project = app.path().join("project");
+    fs::create_dir_all(&project).unwrap();
+    let mut registry = UserSkillRegistry::new(app.path());
+    let mut payload = input("Packaged", "project", Some(project.to_str().unwrap()));
+    payload.id = Some("packaged".into());
+    payload.shape = Some("dir".into());
+    let record = registry.create(payload).unwrap();
+    registry
+        .write_package_files(
+            &record.id,
+            CapabilityLevel::Project,
+            Some(project.to_str().unwrap()),
+            &[("scripts/check.txt".into(), b"safe bytes".to_vec())],
+        )
+        .unwrap();
+    let files = registry
+        .package_files(
+            &record.id,
+            CapabilityLevel::Project,
+            Some(project.to_str().unwrap()),
+        )
+        .unwrap();
+    assert_eq!(
+        files,
+        vec![("scripts/check.txt".into(), b"safe bytes".to_vec())]
+    );
+    assert!(record.path.ends_with("SKILL.md"));
+}
+
+#[test]
+fn directory_skill_package_rejects_traversal() {
+    let app = tempdir().unwrap();
+    let project = app.path().join("project");
+    fs::create_dir_all(&project).unwrap();
+    let mut registry = UserSkillRegistry::new(app.path());
+    let mut payload = input("Packaged", "project", Some(project.to_str().unwrap()));
+    payload.id = Some("packaged".into());
+    payload.shape = Some("dir".into());
+    let record = registry.create(payload).unwrap();
+    let error = registry
+        .write_package_files(
+            &record.id,
+            CapabilityLevel::Project,
+            Some(project.to_str().unwrap()),
+            &[("../outside.txt".into(), b"unsafe".to_vec())],
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("SKILL_INVALID"));
+    assert!(!app.path().join("outside.txt").exists());
+}

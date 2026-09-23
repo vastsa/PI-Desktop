@@ -9,8 +9,10 @@
  *   E2E-MCP-MARKET-HEADER-SCOPE   header credential stays out of the URL
  *                                 through mapping, resolution and persistence; unbound
  *                                 headers stay literal with a partial binding map
- *   E2E-MCP-MARKET-NET-BOUNDARY   the URL guard rejects loopback/private/
- *                                 mapped/ULA/link-local bypass forms
+ *   E2E-MCP-MARKET-NET-BOUNDARY   a user source may be loopback/private (and
+ *                                 plaintext under the stored opt-in), while a
+ *                                 registry remote, a catalog body endpoint and
+ *                                 any cloud metadata host stay public-only
  *
  * Env: PI_DESKTOP_HOST_BIN (optional), DEBUG_HOST for tracing.
  * Deterministic: no live network access.
@@ -26,6 +28,7 @@ import { PROTOCOL_VERSION } from "../packages/shared/dist/protocol.js";
 import {
   BUILTIN_MCP_CATALOG,
   GLOBAL_SCOPE,
+  isPublicHttpsUrl,
   isPublicIpLiteral,
   isSafeMarketSourceUrl,
   mapRegistryServer,
@@ -113,33 +116,98 @@ class Host {
 
 // ── E2E-MCP-MARKET-NET-BOUNDARY ──────────────────────────────────────────
 {
-  const bypass = [
+  // A market source URL is an address the user typed into a settings field, so
+  // their own machine and their own LAN are reachable there, and a plaintext
+  // source is reachable once the stored `networkPolicy` accepts it. Everything
+  // the source *returns* — a registry record, a catalog body, a redirect target
+  // — keeps the public-only rule, because that is the input an attacker holds.
+  const userAccepted = [
+    "https://127.0.0.1/x",
+    "https://10.1.2.3/x",
+    "https://192.168.1.5:8443/x",
     "https://localhost./x",
+    "https://nas.local/x",
     "https://[::1]/x",
     "https://[::ffff:127.0.0.1]/x",
     "https://[fd00::1]/x",
     "https://[fe80::1]/x",
     "https://[fec0::1]/x",
+  ];
+  const userRefused = [
+    "https://169.254.169.254/x",
+    "https://169.254.169.254./x",
+    "https://100.100.100.200/x",
+    "https://[fd00:ec2::254]/x",
+    "https://metadata.google.internal/x",
+    "https://metadata./x",
+    "https://instance-data/x",
+    "https://0.0.0.0/x",
+    "https://[::]/x",
+    "https://239.1.2.3/x",
+    "https://240.0.0.1/x",
+    "https://192.0.2.1/x",
+    "https://[2001:db8::1]/x",
+    "https://user:pass@example.com/x",
+    "file:///etc/passwd",
+    "not a url",
+  ];
+  const userPlaintext = [
+    "http://registry.example/x",
+    "http://10.0.0.7:8080/x",
+    "http://nas.local/x",
+  ];
+  const userGateOk =
+    userAccepted.every((url) => isSafeMarketSourceUrl(url) === true) &&
+    userRefused.every((url) => isSafeMarketSourceUrl(url) === false) &&
+    userPlaintext.every((url) => isSafeMarketSourceUrl(url) === false) &&
+    userPlaintext.every((url) => isSafeMarketSourceUrl(url, { allowInsecureHttp: true }) === true) &&
+    isSafeMarketSourceUrl("http://169.254.169.254/x", { allowInsecureHttp: true }) === false;
+
+  // The third-party positions: a registry record's remote URL and a catalog
+  // body's endpoint, neither of which the user typed.
+  const thirdPartyRefused = [
     "https://127.0.0.1/x",
     "https://10.1.2.3/x",
-    "https://192.0.0.1/x",
-    "https://198.18.0.1/x",
-    "https://240.0.0.1/x",
-    "https://192.168.1.1/x",
-    "https://[2001:2::1]/x",
-    "https://user:pass@example.com/x",
+    "https://192.168.1.5/x",
+    "https://[fd00::1]/x",
+    "https://[fe80::1]/x",
+    "https://169.254.169.254/x",
+    "https://nas.local/x",
     "http://registry.example/x",
   ];
   const accepted = "https://registry.modelcontextprotocol.io/v0/servers";
-  const rejectedAll = bypass.every((url) => isSafeMarketSourceUrl(url) === false);
   const publicOk =
     isSafeMarketSourceUrl(accepted) &&
     isSafeMarketSourceUrl("https://[2606:4700::1]/x") &&
-    isPublicIpLiteral("2606:4700:4700::1111");
+    isPublicIpLiteral("2606:4700:4700::1111") &&
+    isPublicHttpsUrl(accepted);
+  const thirdPartyOk =
+    thirdPartyRefused.every((url) => isPublicHttpsUrl(url) === false) &&
+    mapRegistryServer({
+      server: {
+        name: "io.example/private-remote",
+        remotes: [{ type: "streamable-http", url: "https://192.168.1.5/mcp" }],
+      },
+    }) === null;
+  // A catalog body that names an internal endpoint is dropped, not installed.
+  const body = validateMcpCatalogFile({
+    schemaVersion: 1,
+    servers: [
+      { id: "body-private", name: "Body private", transport: "http", url: "https://10.0.0.8/mcp" },
+      { id: "body-public", name: "Body public", transport: "http", url: "https://mcp.example/mcp" },
+    ],
+  });
+  const bodyOk =
+    body.catalog.servers.map((server) => server.id).join(",") === "body-public" &&
+    body.warnings.some((warning) => warning.includes("public https address"));
+
+  const ok = userGateOk && publicOk && thirdPartyOk && bodyOk;
   record(
     "E2E-MCP-MARKET-NET-BOUNDARY",
-    rejectedAll && publicOk,
-    rejectedAll && publicOk ? "15 bypass forms rejected, public accepted" : "guard misclassification"
+    ok,
+    ok
+      ? `${userAccepted.length} user forms accepted (${userRefused.length} refused, ${userPlaintext.length} plaintext gated), ${thirdPartyRefused.length} third-party forms rejected`
+      : "guard misclassification"
   );
 }
 

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { modelIdsMatch } from "@pi-desktop/shared";
+import { MODEL_VENDOR_PREFIXES, catalogModelIdsMatch, stripVariantSuffix } from "@pi-desktop/shared";
 import type {
   ModelCost,
   ModelCostTier,
@@ -501,28 +501,6 @@ function normalizedModelId(value: string): string {
   return value.trim().toLowerCase();
 }
 
-const MODEL_VENDOR_PREFIXES = new Set([
-  "anthropic",
-  "amazon",
-  "aws",
-  "cohere",
-  "deepseek",
-  "deepseek-ai",
-  "gemini",
-  "google",
-  "meta",
-  "minimax",
-  "mistral",
-  "moonshot",
-  "moonshotai",
-  "openai",
-  "qwen",
-  "z-ai",
-  "zai",
-  "zhipuai",
-  "x-ai",
-  "xai",
-]);
 
 function modelVendorPrefixes(model: ModelsDevModel): string[] {
   const prefixes = new Set<string>();
@@ -813,28 +791,68 @@ class ModelsDevLookupIndex {
   }
 
   candidates(requested: string): readonly IndexedModel[] {
-    return this.byModelId.get(requested) ?? EMPTY_CANDIDATES;
+    const keys = lookupCandidateKeys(requested);
+    if (keys.length === 0) return EMPTY_CANDIDATES;
+    if (keys.length === 1) {
+      return this.byModelId.get(keys[0]) ?? EMPTY_CANDIDATES;
+    }
+    const result: IndexedModel[] = [];
+    const seen = new Set<IndexedModel>();
+    for (const key of keys) {
+      const bucket = this.byModelId.get(key);
+      if (!bucket) continue;
+      for (const entry of bucket) {
+        if (!seen.has(entry)) {
+          seen.add(entry);
+          result.push(entry);
+        }
+      }
+    }
+    return result;
   }
 }
 
-/** The normalized id, the `@region`-less base, and every vendor-prefixed form
- * `modelIdsMatch` treats as equivalent, so a query finds all matching catalog
- * models through the index without a full scan. */
-function registrationKeys(modelId: string): string[] {
+/** Index only aliases the matcher can accept: exact IDs, full slash-path
+ * leaves, known-vendor dash/dot prefixes, and the supported suffix variants.
+ * The matcher remains the final authority (including known-vendor conflicts). */
+function candidateKeys(modelId: string): string[] {
+  const normalized = normalizedModelId(modelId);
+  if (!normalized) return [];
   const keys = new Set<string>();
-  const raw = modelId.trim();
-  keys.add(normalizedModelId(raw));
-  const at = raw.indexOf("@");
-  if (at > 0) keys.add(normalizedModelId(raw.slice(0, at)));
-  for (const separator of ["/", "-", "."] as const) {
-    for (const prefix of MODEL_VENDOR_PREFIXES) {
-      const head = `${prefix}${separator}`;
-      if (raw.startsWith(head) && raw.length > head.length) {
-        keys.add(normalizedModelId(raw.slice(head.length)));
+  const at = normalized.indexOf("@");
+  const base = at > 0 ? normalized.slice(0, at) : normalized;
+
+  const add = (value: string) => {
+    if (!value) return;
+    keys.add(value);
+    const slash = value.lastIndexOf("/");
+    if (slash >= 0 && slash < value.length - 1) keys.add(value.slice(slash + 1));
+    for (const separator of ["-", "."] as const) {
+      for (const vendor of MODEL_VENDOR_PREFIXES) {
+        const head = `${vendor}${separator}`;
+        if (value.startsWith(head) && value.length > head.length) {
+          keys.add(value.slice(head.length));
+        }
       }
     }
+  };
+
+  // Strip a suffix only after the region, just as catalogModelIdsMatch does. Add
+  // aliases from both sides so a suffixed catalog ID or request can find its peer.
+  for (const value of new Set([normalized, base, stripVariantSuffix(base)])) {
+    add(value);
+    const slash = value.lastIndexOf("/");
+    if (slash >= 0 && slash < value.length - 1) add(value.slice(slash + 1));
   }
   return [...keys];
+}
+
+function registrationKeys(modelId: string): string[] {
+  return candidateKeys(modelId);
+}
+
+function lookupCandidateKeys(requested: string): string[] {
+  return candidateKeys(requested);
 }
 
 const EMPTY_CANDIDATES: readonly IndexedModel[] = [];
@@ -951,21 +969,27 @@ export class ModelsDevCatalog {
   }
 
   private providerFor(input: { vendorKey?: string; baseUrl?: string }): ModelsDevProvider | undefined {
-    const byApi = [...this.providers.values()].find((provider) =>
+    const candidates = new Set(providerKeyCandidates(input.vendorKey));
+    const apiProviders = [...this.providers.values()].filter((provider) =>
       apiMatches(input.baseUrl, provider.api),
     );
-    if (byApi) return byApi;
-    const candidates = new Set(providerKeyCandidates(input.vendorKey));
-    for (const provider of this.providers.values()) {
-      if (candidates.has(normalizedProviderKey(provider.providerKey))) return provider;
+    if (apiProviders.length > 0) {
+      return apiProviders.find((provider) =>
+        candidates.has(normalizedProviderKey(provider.providerKey)),
+      ) ?? apiProviders[0];
     }
     const knownKey = Object.entries(KNOWN_PROVIDER_BASE_URLS).find(([, urls]) =>
       urls.some((url) => apiMatches(input.baseUrl, url)),
     )?.[0];
-    if (!knownKey) return undefined;
-    const knownCandidates = new Set(providerKeyCandidates(knownKey));
+    if (knownKey) {
+      const knownCandidates = new Set(providerKeyCandidates(knownKey));
+      const knownProvider = [...this.providers.values()].find((provider) =>
+        knownCandidates.has(normalizedProviderKey(provider.providerKey)),
+      );
+      if (knownProvider) return knownProvider;
+    }
     return [...this.providers.values()].find((provider) =>
-      knownCandidates.has(normalizedProviderKey(provider.providerKey)),
+      candidates.has(normalizedProviderKey(provider.providerKey)),
     );
   }
 
@@ -992,7 +1016,9 @@ export class ModelsDevCatalog {
     }
     const candidates: Array<{ model: ModelsDevModel; score: number }> = [];
     for (const { model, provider } of [...preferred, ...rest]) {
-      if (!modelIdsMatch(model.modelId, requested)) continue;
+      // A known endpoint must not inherit another provider's capabilities.
+      if (preferredProvider && provider !== preferredProvider) continue;
+      if (!catalogModelIdsMatch(model.modelId, requested)) continue;
       let score = model.modelId.toLowerCase() === requested ? 20 : 10;
       if (provider === preferredProvider) score += 100;
       if (apiMatches(input.baseUrl, provider.api)) score += 80;

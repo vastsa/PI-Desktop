@@ -15,20 +15,33 @@
  * whole catalog regardless of what is cached. One failing source only costs
  * itself, and a total outage degrades to the built-in catalog.
  */
+import { net, session } from "electron";
 import { lookup } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
+import { request as httpRequest } from "node:http";
 import type { IncomingHttpHeaders } from "node:http";
 import { isIP } from "node:net";
 import {
-  isPublicIpLiteral,
+  classifyIpLiteral,
+  classifyProxyRoute,
+  isAcceptableResolvedAddress,
+  isAcceptableUserEndpointAddress,
   isSafeMarketSourceUrl,
+  isSafePublicHttpsUrl,
   mapRegistryServer,
   sanitizeMarketSources,
   validateMcpCatalogFile,
+  type EndpointOrigin,
   type MarketSource,
+  type PublicNetworkRoute,
   type RegistryRecord,
   type SourcedCatalogEntry,
 } from "@pi-desktop/shared";
+import {
+  allowInsecureUserEndpointsEnabled,
+  noteInsecureUserEndpoint,
+  relaxedNetworkPolicyEnabled,
+} from "./endpoint-policy";
 
 const PAGE_SIZE = 100;
 /** First browse paints two pages; every "load more" appends this many. */
@@ -43,7 +56,7 @@ const MAX_CACHE_ENTRIES = 128;
 const MAX_MARKET_SOURCES = 16;
 const MAX_CACHED_ENTRIES = 2_000;
 
-type ResolvedAddress = { address: string; family: 4 | 6 };
+type ResolvedAddress = { address: string; family: 4 | 6; route: PublicNetworkRoute };
 type PolicyResponse = {
   status: number;
   headers: { get: (name: string) => string | null };
@@ -80,34 +93,74 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   ]);
 }
 
+async function resolveProxyRoute(url: string, timeoutMs: number): Promise<PublicNetworkRoute> {
+  try {
+    return classifyProxyRoute(
+      await withTimeout(session.defaultSession.resolveProxy(url), timeoutMs),
+    );
+  } catch {
+    return "unknown";
+  }
+}
+
 /**
  * Resolve a public hostname once and return the address that must be used for
  * the connection. The caller must not resolve the hostname again: doing so
  * would reopen a DNS-rebinding race between the policy check and the socket.
  */
-async function resolvePublicUrl(url: string, timeoutMs: number): Promise<ResolvedAddress> {
-  if (!isSafeMarketSourceUrl(url)) {
+async function resolvePublicUrl(
+  url: string,
+  timeoutMs: number,
+  origin: EndpointOrigin,
+): Promise<ResolvedAddress> {
+  const userSupplied = origin === "user";
+  // A source URL the user typed may be a LAN or loopback catalog; plain http
+  // needs the stored opt-in. Every redirect target is judged by the public-only
+  // policy instead, so a source cannot hand the app an internal address to dial.
+  const accepted = userSupplied
+    ? isSafeMarketSourceUrl(url, { allowInsecureHttp: allowInsecureUserEndpointsEnabled() })
+    : isSafePublicHttpsUrl(url);
+  if (!accepted) {
     throw new Error("url rejected by the public-network policy");
   }
+  const deadline = Date.now() + timeoutMs;
   const parsed = new URL(url);
   const host = parsed.hostname.toLowerCase().replace(/\.+$/, "");
+  if (userSupplied && parsed.protocol === "http:") {
+    noteInsecureUserEndpoint(host);
+  }
   const literal = host.startsWith("[") ? host.slice(1, -1) : host;
+  const route = await resolveProxyRoute(url, timeoutMs);
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error("market source request timed out");
   const literalFamily = isIP(literal);
   if (literalFamily === 4 || literalFamily === 6) {
-    return { address: literal, family: literalFamily };
+    return { address: literal, family: literalFamily, route };
   }
-  const addresses = await withTimeout(lookup(host, { all: true, verbatim: true }), timeoutMs);
+  const addresses = await withTimeout(
+    lookup(host, { all: true, verbatim: true }),
+    remaining,
+  );
   if (!addresses.length) throw new Error(`hostname does not resolve: ${host}`);
+  // Fake-IP answers are a property of the network policy, not of the proxy
+  // switch: the relaxed mode tolerates a transparent router's placeholders.
+  const allowFakeIp = relaxedNetworkPolicyEnabled();
   for (const address of addresses) {
-    if (!isPublicIpLiteral(address.address)) {
-      throw new Error(`hostname resolves to a non-public address: ${host}`);
+    const addressKind = classifyIpLiteral(address.address);
+    const acceptable = userSupplied
+      ? isAcceptableUserEndpointAddress(address.address, addressKind, route)
+      : isAcceptableResolvedAddress(addressKind, route);
+    if (!acceptable && !(allowFakeIp && addressKind === "benchmark")) {
+      throw new Error(
+        `hostname resolves to a non-public address: ${host} -> ${address.address} (${addressKind}, ${route} route)`,
+      );
     }
   }
   const first = addresses[0];
   if (first.family !== 4 && first.family !== 6) {
     throw new Error(`hostname resolved with an unsupported address family: ${host}`);
   }
-  return { address: first.address, family: first.family };
+  return { address: first.address, family: first.family, route };
 }
 
 /**
@@ -120,6 +173,9 @@ function requestPinnedHttps(
   resolved: ResolvedAddress,
   timeoutMs: number,
 ): Promise<PolicyResponse> {
+  // The name keeps its history: for a source URL that is `https` this is the
+  // SSL-pinning path, and for one the user typed as `http` it is the same path
+  // with the plaintext module and the same pinned address.
   const parsed = new URL(url);
   const host = parsed.hostname.startsWith("[")
     ? parsed.hostname.slice(1, -1)
@@ -137,15 +193,21 @@ function requestPinnedHttps(
       clearDeadline();
       reject(error);
     };
-    const req = httpsRequest(
+    const secure = parsed.protocol === "https:";
+    // A plaintext LAN source is a user endpoint under the stored opt-in, so the
+    // pinned path speaks http for it too. The address pinned to the socket is
+    // still the one the guard checked, and the Host header is still the original
+    // host (there is no SNI on a plaintext connection).
+    const send = (secure ? httpsRequest : httpRequest) as typeof httpsRequest;
+    const req = send(
       {
-        protocol: "https:",
+        protocol: parsed.protocol,
         hostname: resolved.address,
         family: resolved.family,
         ...(parsed.port ? { port: parsed.port } : {}),
         path: `${parsed.pathname}${parsed.search}`,
         method: "GET",
-        servername: isIP(host) ? undefined : host,
+        ...(secure ? { servername: isIP(host) ? undefined : host } : {}),
         headers: {
           Host: parsed.host,
           Accept: "application/json, text/plain;q=0.9",
@@ -202,10 +264,55 @@ function requestPinnedHttps(
     req.end();
   });
 }
+async function readProxiedResponseBody(response: Response): Promise<string> {
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_SOURCE_RESPONSE_BYTES) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error("market source response is too large");
+  }
+  if (!response.body) {
+    const body = await response.text();
+    if (Buffer.byteLength(body, "utf8") > MAX_SOURCE_RESPONSE_BYTES) {
+      throw new Error("market source response is too large");
+    }
+    return body;
+  }
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value);
+      bytes += chunk.byteLength;
+      if (bytes > MAX_SOURCE_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("market source response is too large");
+      }
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  } finally {
+    reader.releaseLock();
+  }
+}
+// Fetch through the session's proxy stack; the session owns DNS resolution.
+async function requestProxiedHttps(url: string, timeoutMs: number): Promise<PolicyResponse> {
+  const response = await net.fetch(url, {
+    redirect: "manual",
+    signal: AbortSignal.timeout(Math.max(1, timeoutMs)),
+  });
+  return {
+    status: response.status,
+    headers: { get: (name) => response.headers.get(name) },
+    body: await readProxiedResponseBody(response),
+  };
+}
 
 /**
- * Fetch with the public-network policy applied per hop. Manual redirects and
- * pinned addresses ensure every request goes only to an approved public IP.
+ * pinned addresses ensure direct requests go only to an approved public IP;
+ * proxied requests stay inside the session's configured proxy stack.
  */
 async function fetchPolicy<T>(url: string, kind: "json" | "text"): Promise<T> {
   let current = url;
@@ -213,8 +320,15 @@ async function fetchPolicy<T>(url: string, kind: "json" | "text"): Promise<T> {
   for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Error("market source request timed out");
-    const resolved = await resolvePublicUrl(current, remaining);
-    const response = await requestPinnedHttps(current, resolved, deadline - Date.now());
+    const resolved = await resolvePublicUrl(
+      current,
+      remaining,
+      hop === 0 ? "user" : "third-party",
+    );
+    const response =
+      resolved.route === "proxied"
+        ? await requestProxiedHttps(current, deadline - Date.now())
+        : await requestPinnedHttps(current, resolved, deadline - Date.now());
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (!location) throw new Error("redirect without a location header");
@@ -388,10 +502,15 @@ export function createMcpMarketAggregator() {
     options: { more?: boolean } = {},
   ): Promise<McpRegistrySearchResult> {
     const trimmed = String(query ?? "").trim().toLowerCase().slice(0, MAX_QUERY_LENGTH);
-    const configured = sanitizeMarketSources(sources).slice(0, MAX_MARKET_SOURCES);
-    const safe = configured.filter((source) => isSafeMarketSourceUrl(source.url));
+    const insecure = allowInsecureUserEndpointsEnabled();
+    const configured = sanitizeMarketSources(sources, {
+      allowInsecureHttp: insecure,
+    }).slice(0, MAX_MARKET_SOURCES);
+    const safe = configured.filter((source) =>
+      isSafeMarketSourceUrl(source.url, { allowInsecureHttp: insecure }),
+    );
     const failedSources = configured
-      .filter((source) => !isSafeMarketSourceUrl(source.url))
+      .filter((source) => !isSafeMarketSourceUrl(source.url, { allowInsecureHttp: insecure }))
       .map((source) => source.name);
 
     if (trimmed) {

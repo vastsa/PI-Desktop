@@ -25,6 +25,7 @@ import {
   setEditorCaret,
 } from "../../apps/desktop/src/features/chat/composer/editor";
 import { api } from "../../apps/desktop/src/lib/api";
+import { FilesTab } from "../../apps/desktop/src/components/workpanel/FilesTab";
 import {
   readComposerDraft,
   resetComposerDraftCache,
@@ -388,6 +389,38 @@ globalThis.composerPasteProbe = async () => {
         `prefix ${controller.fileReferences[0].token} suffix`,
       "large text chip lost the selection boundary",
     );
+
+    // Preview the persisted long-text attachment through the public work-panel
+    // entry point, with no project open (the temporary-task user path).
+    const previewHost = document.createElement("div");
+    document.body.append(previewHost);
+    const previewRoot = createRoot(previewHost);
+    try {
+      flushSync(() => previewRoot.render(
+        <I18nextProvider i18n={i18n}><FilesTab /></I18nextProvider>,
+      ));
+      assert(previewHost.textContent?.includes(i18n.t("panel.files.noWorkspace")),
+        "file browsing without a project should show the empty state");
+      flushSync(() => useAppStore.getState().openFileInWorkPanel(
+        controller.fileReferences[0].path, "text/plain",
+      ));
+      const deadline = performance.now() + 3000;
+      while (!previewHost.querySelector(".file-viewer-code") && performance.now() < deadline) {
+        await new Promise(requestAnimationFrame);
+      }
+      assert(previewHost.querySelector(".file-viewer-code")?.textContent === longText,
+        "temporary-task attachment did not display its saved text in the file preview");
+      const back = previewHost.querySelector<HTMLButtonElement>(
+        `[aria-label="${i18n.t("panel.files.back")}"]`,
+      );
+      assert(back, "file preview must provide back navigation");
+      flushSync(() => back!.click());
+      assert(previewHost.textContent?.includes(i18n.t("panel.files.noWorkspace")),
+        "back from a temporary attachment should restore the no-project empty state");
+    } finally {
+      flushSync(() => previewRoot.unmount());
+      previewHost.remove();
+    }
 
     await paste("", [image]);
     assert(
@@ -774,6 +807,7 @@ globalThis.composerPasteProbe = async () => {
       fileReferenceUndoRedo: true,
       crossBreakAndChipSelection: true,
       mixedLongText: true,
+      temporaryTaskTextPreview: true,
       imageOnly: true,
       nativeImageFile: true,
       imagePreviewAndKeyboard: true,

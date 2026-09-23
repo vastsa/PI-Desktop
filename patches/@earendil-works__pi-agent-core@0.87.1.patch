@@ -1,0 +1,392 @@
+diff --git a/dist/agent-loop.js b/dist/agent-loop.js
+index 4bbd0ce..5bf74e7 100644
+--- a/dist/agent-loop.js
++++ b/dist/agent-loop.js
+@@ -292,6 +292,12 @@ async function streamAssistantResponse(context, config, signal, emit, streamFunc
+             case "toolcall_start":
+             case "toolcall_delta":
+             case "toolcall_end":
++            // Hosted web search (PI-Desktop): the pi-ai adapters push
++            // `hosted_search_update` when a provider-side search block starts
++            // or completes. Forward it like any other progress event so the
++            // application renders each search round as it happens instead of
++            // only learning about searches from the final message.
++            case "hosted_search_update":
+                 if (partialMessage) {
+                     partialMessage = event.partial;
+                     context.messages[context.messages.length - 1] = partialMessage;
+diff --git a/dist/agent.js b/dist/agent.js
+index a2f462f..a3b8a7f 100644
+--- a/dist/agent.js
++++ b/dist/agent.js
+@@ -1,3 +1,4 @@
++import { localRequestErrorDetails } from "@earendil-works/pi-ai";
+ import { createInitialSystemMessage, getCurrentSystemMessage, getCurrentSystemPrompt, toToolDeclaration, } from "@earendil-works/pi-ai";
+ import { runAgentLoop, runAgentLoopContinue } from "./agent-loop.js";
+ import { getDefaultStreamFn } from "./stream-fn.js";
+@@ -359,6 +360,7 @@ export class Agent {
+         }
+     }
+     async handleRunFailure(error, aborted) {
++        const errorDetails = aborted ? undefined : localRequestErrorDetails(error);
+         const failureMessage = {
+             role: "assistant",
+             content: [{ type: "text", text: "" }],
+@@ -367,7 +369,8 @@ export class Agent {
+             model: this._state.model.id,
+             usage: EMPTY_USAGE,
+             stopReason: aborted ? "aborted" : "error",
+-            errorMessage: error instanceof Error ? error.message : String(error),
++            errorMessage: errorDetails?.message ?? (error instanceof Error ? error.message : String(error)),
++            ...(errorDetails ? { errorDetails } : {}),
+             timestamp: Date.now(),
+         };
+         await this.processEvents({ type: "message_start", message: failureMessage });
+diff --git a/dist/harness/compaction/compaction.d.ts b/dist/harness/compaction/compaction.d.ts
+index 85c89e8..995a28d 100644
+--- a/dist/harness/compaction/compaction.d.ts
++++ b/dist/harness/compaction/compaction.d.ts
+@@ -53,12 +53,12 @@ export interface ContextUsageEstimate {
+     /** Index of the message that provided usage, or null when none exists. */
+     lastUsageIndex: number | null;
+ }
+-/** Estimate context tokens for messages using provider usage when available. */
+-export declare function estimateContextTokens(messages: AgentMessage[]): ContextUsageEstimate;
++/** Estimate context tokens for messages using provider usage when available. Pass `model` to scope hosted search replay projections to the estimation target. */
++export declare function estimateContextTokens(messages: AgentMessage[], model?: Model<Api>): ContextUsageEstimate;
+ /** Return whether context usage exceeds the configured compaction threshold. */
+ export declare function shouldCompact(contextTokens: number, contextWindow: number, settings: CompactionSettings): boolean;
+-/** Estimate token count for one message using a conservative character heuristic. */
+-export declare function estimateTokens(message: AgentMessage): number;
++/** Estimate token count for one message using a conservative character heuristic. Pass `model` to scope hosted search replay projections to the estimation target. */
++export declare function estimateTokens(message: AgentMessage, model?: Model<Api>): number;
+ /** Find the user-visible message that starts the turn containing an entry. */
+ export declare function findTurnStartIndex(entries: Entry[], entryIndex: number, startIndex: number): number;
+ /** Cut point selected for compaction. */
+diff --git a/dist/harness/compaction/compaction.js b/dist/harness/compaction/compaction.js
+index d430a3f..1682577 100644
+--- a/dist/harness/compaction/compaction.js
++++ b/dist/harness/compaction/compaction.js
+@@ -1,18 +1,12 @@
+-import { contentText, retryAssistantCall, uuidv7, } from "@earendil-works/pi-ai";
++import { contentText, retryAssistantCall, uuidv7, LocalRequestError, } from "@earendil-works/pi-ai";
++import { estimateMessageTokens, getLastAssistantUsageInfo } from "@earendil-works/pi-ai/utils/estimate";
++import { validateHostedSearchMessages } from "@earendil-works/pi-ai/utils/hosted-search";
+ import { getTelemetryContext } from "../context.js";
+ import { convertToLlm, createBranchSummaryMessage, createCompactionSummaryMessage } from "../messages.js";
+ import { buildContextEntries, sessionEntryToContextMessages } from "../session/context.js";
+ import { CompactionError, err, ok } from "../types.js";
+ import { addUsage } from "../utils/usage.js";
+ import { computeFileLists, createFileOps, extractFileOpsFromMessage, formatFileOperations, serializeConversation, } from "./utils.js";
+-function safeJsonStringify(value) {
+-    try {
+-        return JSON.stringify(value) ?? "undefined";
+-    }
+-    catch {
+-        return "[unserializable]";
+-    }
+-}
+ function extractFileOperations(messages, entries, prevCompactionIndex) {
+     const fileOps = createFileOps();
+     if (prevCompactionIndex >= 0) {
+@@ -105,21 +99,14 @@ export function getLastAssistantUsage(entries) {
+     }
+     return undefined;
+ }
+-function getLastAssistantUsageInfo(messages) {
+-    for (let i = messages.length - 1; i >= 0; i--) {
+-        const usage = getAssistantUsage(messages[i]);
+-        if (usage)
+-            return { usage, index: i };
+-    }
+-    return undefined;
+-}
+ /** Estimate context tokens for messages using provider usage when available. */
+-export function estimateContextTokens(messages) {
++export function estimateContextTokens(messages, model) {
++    validateHostedSearchMessages(messages);
+     const usageInfo = getLastAssistantUsageInfo(messages);
+     if (!usageInfo) {
+         let estimated = 0;
+         for (const message of messages) {
+-            estimated += estimateTokens(message);
++            estimated += estimateTokens(message, model);
+         }
+         return {
+             tokens: estimated,
+@@ -131,7 +118,7 @@ export function estimateContextTokens(messages) {
+     const usageTokens = calculateContextTokens(usageInfo.usage);
+     let trailingTokens = 0;
+     for (let i = usageInfo.index + 1; i < messages.length; i++) {
+-        trailingTokens += estimateTokens(messages[i]);
++        trailingTokens += estimateTokens(messages[i], model);
+     }
+     return {
+         tokens: usageTokens + trailingTokens,
+@@ -163,30 +150,15 @@ function estimateTextAndImageContentChars(content) {
+     return chars;
+ }
+ /** Estimate token count for one message using a conservative character heuristic. */
+-export function estimateTokens(message) {
++export function estimateTokens(message, model) {
+     let chars = 0;
+     switch (message.role) {
+-        case "user": {
+-            chars = estimateTextAndImageContentChars(message.content);
+-            return Math.ceil(chars / 4);
+-        }
+-        case "assistant": {
+-            const assistant = message;
+-            for (const block of assistant.content) {
+-                if (block.type === "text") {
+-                    chars += block.text.length;
+-                }
+-                else if (block.type === "thinking") {
+-                    chars += block.thinking.length;
+-                }
+-                else if (block.type === "toolCall") {
+-                    chars += block.name.length + safeJsonStringify(block.arguments).length;
+-                }
+-            }
+-            return Math.ceil(chars / 4);
+-        }
+-        case "custom":
+-        case "toolResult": {
++        case "system":
++        case "user":
++        case "assistant":
++        case "toolResult":
++            return estimateMessageTokens(message, model);
++        case "custom": {
+             chars = estimateTextAndImageContentChars(message.content);
+             return Math.ceil(chars / 4);
+         }
+@@ -200,7 +172,7 @@ export function estimateTokens(message) {
+             return Math.ceil(chars / 4);
+         }
+     }
+-    return 0;
++    throw new LocalRequestError("context-validation");
+ }
+ function findValidCutPoints(entries, startIndex, endIndex) {
+     const cutPoints = [];
+diff --git a/dist/harness/compaction/utils.js b/dist/harness/compaction/utils.js
+index f7c6a26..a5de558 100644
+--- a/dist/harness/compaction/utils.js
++++ b/dist/harness/compaction/utils.js
+@@ -1,4 +1,5 @@
+ import { contentText } from "@earendil-works/pi-ai";
++import { hostedSearchReplayProjection } from "@earendil-works/pi-ai/utils/hosted-search";
+ /** Create an empty file-operation accumulator. */
+ export function createFileOps() {
+     return {
+@@ -86,6 +87,7 @@ export function serializeConversation(messages) {
+         else if (msg.role === "assistant") {
+             const thinkingParts = [];
+             const toolCalls = [];
++            const hostedSearchParts = [];
+             for (const block of msg.content) {
+                 if (block.type === "thinking") {
+                     thinkingParts.push(block.thinking);
+@@ -97,6 +99,13 @@ export function serializeConversation(messages) {
+                         .join(", ");
+                     toolCalls.push(`${block.name}(${argsStr})`);
+                 }
++                else if (block.type === "hostedSearch") {
++                    // Keep the hosted search replay buffer explicit: the projection is the raw wire block, never a toolCall.
++                    const projection = hostedSearchReplayProjection(block);
++                    if (projection !== undefined) {
++                        hostedSearchParts.push(safeJsonStringify(projection));
++                    }
++                }
+             }
+             if (thinkingParts.length > 0) {
+                 parts.push(`[Assistant thinking]: ${thinkingParts.join("\n")}`);
+@@ -107,6 +116,9 @@ export function serializeConversation(messages) {
+             if (toolCalls.length > 0) {
+                 parts.push(`[Assistant tool calls]: ${toolCalls.join("; ")}`);
+             }
++            if (hostedSearchParts.length > 0) {
++                parts.push(`[Assistant hosted search]: ${hostedSearchParts.join("\n")}`);
++            }
+         }
+         else if (msg.role === "toolResult") {
+             const content = contentText(msg.content, "");
+diff --git a/dist/harness/pico3/kinds/collapse.d.ts b/dist/harness/pico3/kinds/collapse.d.ts
+index 736c315..4517456 100644
+--- a/dist/harness/pico3/kinds/collapse.d.ts
++++ b/dist/harness/pico3/kinds/collapse.d.ts
+@@ -1,5 +1,5 @@
+ import type { Context } from "@earendil-works/chord";
+-import { type CoreKind, type Entry, type HookInfo, type HookResult, type Id, type ModelRef, type RetryPolicy, type ThinkingLevel } from "../types.ts";
++import { type CoreKind, type Entry, type HookInfo, type HookResult, type Id, type Model, type ModelRef, type RetryPolicy, type ThinkingLevel } from "../types.ts";
+ export type CollapseInput = {
+     reason: "threshold" | "manual" | "overflow";
+     through: Id;
+@@ -44,6 +44,7 @@ export declare const collapseConfig: {
+ export declare const collapse: CoreKind<CollapseInput, CollapseCheckpoint, {
+     summary: Id;
+ }, CollapseFailure, null, CollapseHooks, typeof collapseConfig>;
+-export declare function chooseThrough(entries: Entry[], keepRecent: number): Id | undefined;
++/** Select the collapse cutoff. Pass `model` to scope hosted search replay projections to the target model. */
++export declare function chooseThrough(entries: Entry[], keepRecent: number, model?: Model): Id | undefined;
+ export {};
+ //# sourceMappingURL=collapse.d.ts.map
+\ No newline at end of file
+diff --git a/dist/harness/pico3/kinds/collapse.js b/dist/harness/pico3/kinds/collapse.js
+index 2fa0e35..1a22a7d 100644
+--- a/dist/harness/pico3/kinds/collapse.js
++++ b/dist/harness/pico3/kinds/collapse.js
+@@ -2,7 +2,7 @@ import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
+ import { effectiveTools } from "../system.js";
+ import { toStored, } from "../types.js";
+ import { retryDecision } from "./generation.js";
+-const estimate = (messages) => estimateContextTokens(messages.filter((message) => message.role !== "system")).tokens;
++const estimate = (messages, model) => estimateContextTokens(messages.filter((message) => message.role !== "system"), model).tokens;
+ export const collapseConfig = { rewindable: { threshold: 0, keepRecent: 20_000 } };
+ const failed = (reason, detail) => ({
+     status: "failed",
+@@ -159,12 +159,12 @@ function afterFailure(base, message, detail, runtime) {
+         },
+     };
+ }
+-export function chooseThrough(entries, keepRecent) {
++export function chooseThrough(entries, keepRecent, model) {
+     const exchanges = [];
+     let open;
+     for (const entry of entries) {
+         const role = entry.model?.[0]?.role;
+-        const tokens = estimate((entry.model ?? []));
++        const tokens = estimate((entry.model ?? []), model);
+         if (role === "assistant") {
+             open = { last: entry.id, tokens };
+             exchanges.push(open);
+diff --git a/dist/harness/pico3/kinds/frames.js b/dist/harness/pico3/kinds/frames.js
+index f34eede..fc0191d 100644
+--- a/dist/harness/pico3/kinds/frames.js
++++ b/dist/harness/pico3/kinds/frames.js
+@@ -1,3 +1,4 @@
++import { normalizeHostedSearchContent } from "@earendil-works/pi-ai";
+ /**
+  * Apply one encoded frame to the tracked output. Same switch as pi-ai's
+  * reduceAssistantMessageFrames (the test oracle); no buffering, no second copy.
+@@ -12,6 +13,21 @@ export function applyFrame(o, frame) {
+         throw new Error(`${frame.type} before start`);
+     const c = m.content;
+     switch (frame.type) {
++        case "hosted_search_update": {
++            // Search snapshots are not tool calls: preserve indices and detach mutable encoder objects.
++            const index = frame.contentIndex;
++            if (!Number.isInteger(index) || index < 0 || index > c.length)
++                throw new Error("Invalid hosted search frame content index or gap");
++            const content = normalizeHostedSearchContent(structuredClone(frame.content));
++            // Match the encoder's optional-field snapshot rather than materializing a default.
++            if (content.phase === "web_search_tool_result" && frame.content.isError === undefined)
++                delete content.isError;
++            const previous = c[index];
++            if (previous && (previous.type !== "hostedSearch" || previous.phase !== content.phase || previous.blockId !== content.blockId))
++                throw new Error("Hosted search frame changed block identity");
++            c[index] = content;
++            return;
++        }
+         case "text_start":
+             c[frame.contentIndex] = { ...frame.content };
+             return;
+diff --git a/dist/harness/pico3/kinds/generation.js b/dist/harness/pico3/kinds/generation.js
+index 01ffaa5..73970f3 100644
+--- a/dist/harness/pico3/kinds/generation.js
++++ b/dist/harness/pico3/kinds/generation.js
+@@ -1,3 +1,4 @@
++import { localRequestErrorDetails } from "@earendil-works/pi-ai";
+ import { AssistantMessageFrameEncoder, isRetryableAssistantError } from "@earendil-works/pi-ai";
+ import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
+ import { planManagedEntry, prepareDraft, sameSnapshot, takeSnapshot } from "../system.js";
+@@ -28,8 +29,8 @@ const failStep = (task, reason, detail) => ({
+     },
+ });
+ /** pi-ai drops system messages and aborted/error assistant messages before sending; estimate what is sent. */
+-const estimate = (messages) => estimateContextTokens(messages.filter((m) => m.role !== "system" &&
+-    !(m.role === "assistant" && (m.stopReason === "aborted" || m.stopReason === "error")))).tokens;
++const estimate = (messages, model) => estimateContextTokens(messages.filter((m) => m.role !== "system" &&
++    !(m.role === "assistant" && (m.stopReason === "aborted" || m.stopReason === "error"))), model).tokens;
+ const emptyUsage = () => ({
+     input: 0,
+     output: 0,
+@@ -93,8 +94,8 @@ export const generation = {
+             if (model === undefined)
+                 return failStep(task, "no_model", `model ${cp.model.provider}/${cp.model.modelId} unavailable`);
+             const derived = await derive(task, cp, rt, ctx);
+-            if (estimate(derived.messages) > model.contextWindow - model.maxTokens)
+-                return overflow(task, rt);
++            if (estimate(derived.messages, model) > model.contextWindow - model.maxTokens)
++                return overflow(task, rt, model);
+             const attempt = cp.attempt + 1;
+             await rt.commit((tx) => {
+                 tx.checkpoint({ ...cp, phase: "requesting", attempt });
+@@ -280,6 +281,7 @@ async function stream(cp, model, messages, rt, ctx) {
+     catch (error) {
+         if (ctx.abortSignal?.aborted)
+             throw error;
++        const errorDetails = localRequestErrorDetails(error);
+         terminal = {
+             role: "assistant",
+             content: [],
+@@ -288,7 +290,8 @@ async function stream(cp, model, messages, rt, ctx) {
+             model: model.id,
+             usage: emptyUsage(),
+             stopReason: "error",
+-            errorMessage: String(error),
++            errorMessage: errorDetails?.message ?? String(error),
++            ...(errorDetails ? { errorDetails } : {}),
+             timestamp: rt.now(),
+         };
+     }
+@@ -342,7 +345,7 @@ async function classify(task, cp, message, rt, ctx) {
+         return {
+             done: async (tx, current) => {
+                 const c = current.conversationId;
+-                const collapseThrough = await thresholdCollapseThrough(tx, c, message); // read BEFORE the append
++                const collapseThrough = await thresholdCollapseThrough(tx, c, message, rt.models.resolve(cp.model)); // read BEFORE the append
+                 const assistant = tx.appendEntry(c, {
+                     kind: "pi.assistant",
+                     model: [stored],
+@@ -379,7 +382,7 @@ async function classify(task, cp, message, rt, ctx) {
+     return {
+         done: async (tx, current) => {
+             const c = current.conversationId;
+-            const collapseThrough = await thresholdCollapseThrough(tx, c, message); // read BEFORE the append
++            const collapseThrough = await thresholdCollapseThrough(tx, c, message, rt.models.resolve(cp.model)); // read BEFORE the append
+             const head = await tx.newestEntry(c, { withHead: true });
+             const assistant = tx.appendEntry(c, { kind: "pi.assistant", model: [stored], data: { attempt: cp.attempt } });
+             tx.emit({ type: "generation.completed", taskId: current.id, entry: assistant, toolCalls: 0 });
+@@ -455,25 +458,25 @@ export function retryDecision(cp, message, now) {
+ // Collapse triggers
+ // ---------------------------------------------------------------------------
+ /** Read-side of threshold collapse: computed before the assistant is appended, applied after. */
+-async function thresholdCollapseThrough(tx, conversationId, message) {
++async function thresholdCollapseThrough(tx, conversationId, message, model) {
+     if ((await tx.tasks({ conversationId, kind: "pi.collapse", status: ["pending", "running"] })).length > 0)
+         return undefined;
+     const state = tx.rewindable(conversationId);
+     if (state.threshold <= 0)
+         return undefined;
+     const { entries, messages } = await tx.context(conversationId);
+-    const used = Math.max((message.usage?.input ?? 0) + (message.usage?.output ?? 0), estimate([...messages, toStored(message)]));
++    const used = Math.max((message.usage?.input ?? 0) + (message.usage?.output ?? 0), estimate([...messages, toStored(message)], model));
+     if (used <= state.threshold)
+         return undefined;
+-    return chooseThrough(entries, state.keepRecent);
++    return chooseThrough(entries, state.keepRecent, model);
+ }
+-function overflow(task, rt) {
++function overflow(task, rt, model) {
+     return {
+         done: async (tx, current) => {
+             const c = current.conversationId;
+             const state = tx.rewindable(c);
+             const { entries, head } = await tx.context(c);
+-            const through = chooseThrough(entries, state.keepRecent);
++            const through = chooseThrough(entries, state.keepRecent, model);
+             tx.sticky(c).turn = { tools: [] };
+             if (through === undefined) {
+                 await tx.write(c, {

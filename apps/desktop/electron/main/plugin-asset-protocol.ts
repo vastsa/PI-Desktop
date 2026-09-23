@@ -1,5 +1,4 @@
 import { protocol } from "electron";
-import { readFileSync } from "node:fs";
 import { THEME_ASSET_SCHEME } from "@pi-desktop/plugin-sdk";
 
 /**
@@ -11,12 +10,12 @@ import { THEME_ASSET_SCHEME } from "@pi-desktop/plugin-sdk";
  * `url()` references to `plugin-asset://<pluginId>/<path>`, and this handler
  * hands back the bytes (ADR 0248).
  *
- * The allowlist is not computed here. `resolve` answers only for paths a loaded
- * plugin actually declared, already resolved inside that plugin's package, so a
- * path that was never declared — or that escapes the package — has no URL to
- * begin with. Nothing on disk outside a plugin package is reachable.
+ * The resolver returns bytes only for an asset the loaded plugin declared.
+ * Package-relative assets are realpath-confined to the plugin root; explicitly
+ * declared absolute assets retain their existing support. No file path reaches
+ * the renderer.
  */
-export type PluginAssetResolver = (pluginId: string, assetPath: string) => string | null;
+export type PluginAssetResolver = (pluginId: string, assetPath: string) => Uint8Array | null;
 
 const MIME_TYPES: Record<string, string> = {
   png: "image/png",
@@ -84,22 +83,19 @@ export function installPluginAssetProtocol(resolve: PluginAssetResolver): void {
     if (!pluginId || !assetPath) return notFound();
     const mime = mimeTypeFor(assetPath);
     if (!mime) return notFound();
-    const absolute = resolve(pluginId, assetPath);
-    if (!absolute) return notFound();
-    let body: Buffer;
+    let body: Uint8Array | null;
     try {
-      body = readFileSync(absolute);
+      body = resolve(pluginId, assetPath);
     } catch {
       return notFound();
     }
-    // Copy into a plain view: `Buffer` is a `Uint8Array` subtype that the DOM
-    // `BodyInit` union does not accept, and this tsconfig loads both libs.
+    if (!body) return notFound();
     const bytes = new Uint8Array(body);
     return new Response(bytes, {
       status: 200,
       headers: {
         "content-type": mime,
-        "content-length": String(body.byteLength),
+        "content-length": String(bytes.byteLength),
         // A theme asset is replaced when the plugin changes, so caching it
         // would outlive the plugin that owns it.
         "cache-control": "no-store",

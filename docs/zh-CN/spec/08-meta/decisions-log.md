@@ -31,7 +31,7 @@
 | D452 | 计划与目标工件在内置文件视图中打开 | **审批卡的工件打开器把不可变的 `.pi/plan/*.md` 或 `.pi/goal/*.md` 路径交给内置 `pi.file-manager` 视图（该视图可启动时），否则交给宿主机文件标签——与对话文件引用已有的偏好与回退一致（ADR 0241）。工件仍会在其来源会话中创建或激活标签，因此审批揭示本身不变，只有承载界面改变。仅渲染进程；不改协议、宿主、存储、工件内容或权限。见 D189、ADR 0043、`04-ux/08-component-spec.md` §5.4 与 §10A.2、`04-ux/09-interaction-patterns.md` §5A、E2E-106。** | 审批打开器原先使用宿主机文件标签，而对话提到的其它项目文件都已进入用户自己的文件视图，于是计划或目标落在了用户唯一不浏览项目文件的界面上。 |
 | D459 | 恢复可拖拽侧边栏宽度，过窄时收起 | **修订 D408 / ADR 0238 并恢复 ADR 0141（ADR 0290）：展开侧边栏重新成为渲染层拥有的 `240px..520px` 列（默认 `275px`），右缘手柄在指针按下时预览、释放时持久，并支持左右方向键（16px）、Home 与 End。指针宽度低于 `160px` 时以用户操作收起，不覆盖首选展开宽度；键盘调整永不收起。实时上限为扣除 MainChat 450px 下限后的三栏余量。仅渲染进程；沿用 `pi.desktop.sidebarWidth` 偏好。见 E2E-168。** | 长标签需要可回收宽度；ADR 0238 固定 275px 会挡住这一点，而三栏实时预算本就可以限制用户选定的宽度。该决策曾被误记为 D451（已由「审阅面板只在用户主动操作时打开」占用）；按 issue #620 改号。 |
 | D457 | 已签名 macOS DMG 改为双图标安装 | **修订 D406 / ADR 0232 / ADR 0204：正式与本地 DMG 只包含 PI-Desktop.app 和 Applications 链接，使用 720×440 品牌背景。不再放入 `If app won't open, read this.txt` 或 command 助手。macOS ZIP 仍附带打开说明和 `PI-Desktop-macOS-open.command`，供可信未签名工件使用。见 ADR 0296 与 E2E-196b。** | 标签 DMG 已签名公证（D450）；安装盘上的未签名打开说明读起来像报错。 |
-| D450 | 签名的 macOS GitHub Release | **修订 D078 / ADR 0022：GitHub tag 发布使用身份 `Developer ID Application: XingYu Liu (DUV63RKYTW)` / 团队 `DUV63RKYTW`，通过 Actions 密钥（`CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`）对 macOS DMG/ZIP 做 Developer ID 签名、`notarytool` 公证、装订和 Gatekeeper 校验；缺少密钥则失败。无证书的本地未签名打包仍可用。`workflow_dispatch` 仅可把 `sign_macos: false` 用于未签名调试产物。打包的 macOS 走应用内 `electron-updater`（ZIP + 合并后的 `latest-mac.yml`）；Linux deb/rpm 与 Windows portable 仍为通知并打开发布页。禁止 afterPack/afterSign adhoc 签名（ADR 0278）。** | 正式 DMG 应无需 Gatekeeper 警告即可打开，已签名 macOS 安装可下载并重启到新 tag。见 ADR 0289、E2E-196c、E2E-067A。 |
+| D450 | 签名的 macOS GitHub Release | **修订 D078 / ADR 0022：GitHub tag 发布使用身份 `Developer ID Application: XingYu Liu (DUV63RKYTW)` / 团队 `DUV63RKYTW`，通过 Actions 密钥（`CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`）对 macOS DMG/ZIP 做 Developer ID 签名、`notarytool` 公证、装订和 Gatekeeper 校验；缺少密钥则失败。无证书的本地未签名打包仍可用。`workflow_dispatch` 仅可把 `sign_macos: false` 用于未签名调试产物。打包的 macOS 走应用内 `electron-updater`（ZIP + 合并后的 `latest-mac.yml`）；Linux deb/rpm 与 Windows 便携版 ZIP 仍为通知并打开发布页。禁止 afterPack/afterSign adhoc 签名（ADR 0278）。** | 正式 DMG 应无需 Gatekeeper 警告即可打开，已签名 macOS 安装可下载并重启到新 tag。见 ADR 0289、E2E-196c、E2E-067A。 |
 
 ## B. 辅助实现默认值
 
@@ -308,7 +308,7 @@
 | D365 | 为实时活动行的每个安静间隔命名 | **修订 D338 / ADR 0175：`AgentActivity` 增加 `preparing`、`compacting`、`recovering`；`starting` 显示独立标签；`waiting-subagents` 携带实时运行快照（`name`、`lastPhase`、`lastToolName`），随子级工具/思考变化更新而非逐 token 更新。该行保持为一条紧凑的内联状态，不恢复活动分组胶囊。** | 压缩、静默回合恢复、工具后间隙与启动都像卡住的通用等待，父级等待也隐藏了委托在做什么（ADR 0198，E2E-008c / E2E-094） |
 | D599 | 开发构建是一个独立安装 | **收窄 D236 / 修订 ADR 0094：开发构建（未打包，或 `PI_DESKTOP_DEV=1`）以 `PI-Desktop Dev` 作为 Electron `userData`（随之独立的单实例锁、渲染层 `localStorage`、插件面板 partition 与浏览器面板 Cookie），数据目录为 `~/.pi-desktop-dev`。显式 `--user-data-dir` 仍然优先，E2E 装置正是用它把构建指向临时 profile。正式安装仍保持 `PI-Desktop` 与 `~/.pi-desktop`，既有 profile 不会被搬迁。`PI_DESKTOP_DATA_DIR` 仍优先于两种 profile，并在作为子进程环境变量传给 host-core 之前被绝对化；Electron 主进程把解析结果回写到该变量，使插件运行时读到同一个根目录。不改 IPC、协议、schema 或正式安装路径。见 `03-runtime/07-process-model.md` 与 E2E-150。** | 已在运行的正式版持有锁，`pnpm dev` 一启动就退出；而抢到锁的开发 host 会把第二个 host-core 压到同一个单写者 `pi.sqlite`、outbox 与日志树上。 |
 | D602 | 崩溃转储留在数据目录 | **Electron 的 Crashpad 报告器在 `ready` 之前以本地模式启动（`uploadToServer: false`）。转储放在 `<data_dir>/crash-dumps`，而不是 Electron 默认的 `userData` crashDumps 路径，因此 `PI_DESKTOP_DATA_DIR` profile 不会与其它安装共用转储。下一次持有单实例锁的启动会为新于 `crash-dumps.json` 的转储写一条 `diagnostics` 记录，按 Crashpad `ptype` 分类：任一新转储属于 browser/main 进程则为 `error`，已恢复的 renderer/GPU/utility 崩溃为 `warn`。host-core 与 sidecar 崩溃仍走监督器路径。不上传，不改 IPC，不改 schema。** | 崩溃留下的 minidump 无人读取。Crashpad 也会记录已恢复的渲染进程崩溃，因此下次启动用 `error` 声称上次运行已死是错的；而数据目录之外的转储会逃出 `PI_DESKTOP_DATA_DIR` 隔离。 |
-
+| D619 | 复制公式得到的是它的 TeX 源码 | **仅渲染层：当选区覆盖到渲染出来的公式时，`text/plain` 从 MathML `annotation` 写出——行内 `$…$`，块级 `$$…$$` 独占行，也就是 `lib/latex-math.ts` 把 `\(…\)` 和 `\[…\]` 归一到的那组定界符，且每组定界符都像代码段的围栏那样加长到盖过公式内部出现的最长同字符串——而不是 KaTeX 画的那两棵树。落在公式内部的切口会扩展成整个公式。只有公式被改写：归约后的克隆经由 `Selection.toString()`——复制自己跑的那个序列化器——读回，因此同处一个选区的正文、列表、表格和代码块保留平台自己的读法，包括 `innerText` 会写出、而复制本就会略过的 `user-select: none` 界面零件。不含公式的选区，以及在选区所在位置之外触发的复制，整份交回平台。只写一种 flavour：`text/plain`。接管事件同时丢掉了平台的 `text/html`，且不再写回——归约后的克隆是应用自己的标记，写回去会带上文本读法已略过的 `user-select: none` 界面零件；而改为携带渲染结果则会把每个公式粘贴两遍，因为隐藏 MathML 树的只有 KaTeX 自己的样式表，样式表不会随剪贴板一起走。只有一个由外壳持有的文档级 `copy` 监听器，记录区的右键复制经由同一个模块读取同一个选区。** | 公式粘出来是它的字形，而且每棵渲染树各一份，无法带进 LaTeX 文档或别的 Markdown 编辑器（issue #414）。ADR 0268 当年移除「引用」的理由正是 OS 剪贴板可以替代，那剪贴板就得真的装着源码。 |
 
 ## M0. 模型目录决策
 
@@ -352,7 +352,7 @@
 | 身份证号 | 主题 | 决定 | 基本原理 |
 |---|---|---|---|
 | D118 | 平台应用程序菜单和窗口镶边 | **macOS 安装传统的系统应用程序菜单并保留隐藏式交通信号灯。 Windows/Linux 使用共享的 46px 无框架外壳以及本地化的 File/Edit/View/Window/Help 菜单和渲染器绘制的 minimize/maximize-or-restore/close 控件。两个菜单表面都通过固定的 `AppMenuCommand` 允许列表路由渲染器拥有的操作；渲染器菜单通过单独的固定允许列表路由本机 editing/window 操作。目标打包在 Electron 打包之前构建本地发布主机。这增加了平台就绪的 shell 行为，但不会逆转 D010：Windows/Linux 发布资格在 MVP 后仍然有效。** | 默认的 Electron 菜单会使 macOS shell 命令不完整，而无框 Windows/Linux 窗口会丢失应用程序菜单和窗口控件。共享允许列表可以保持行为一致，而不会暴露任意特权命令桥。 |
-| D120 | 应用程序更新交付 | *(amended by D364)* **Electron Main 独家拥有固定的 GitHub 发布源、更新轮询、类型化状态和安装生命周期。开发被禁用；打包的 macOS 和非 AppImage Linux 使用通知和链接传递，而 Windows NSIS 和 Linux AppImage 在应用程序内下载并在退出时安装。 Renderer IPC 无法提供 Feed URL。自动故障保持环境状态，显式检查表面状态，下载状态保持可操作。更新程序始终强制使用 `allowPrerelease = false`，因此预发布安装（例如 `0.2.0-rc.6`）会跟踪 GitHub 的最新稳定版本，而不是 electro-updater 的默认同通道引脚。 D126 随后发布由标签矩阵生成的每个平台提要，而 macOS 仍保持手动状态，直到签名通道合格为止。** | 将软件包安装保持在沙盒渲染器之外，匹配每种安装程序格式的交付，并在菜单、设置和更新横幅之间提供一种一致的状态 (ADR 0022)。如果没有稳定通道引脚，RC 不会构建更新的稳定通道，因为电子更新程序将 `rc` 视为自定义通道。 |
+| D120 | 应用程序更新交付 | *(amended by D364 / D603)* **Electron Main 独家拥有固定的 GitHub 发布源、更新轮询、类型化状态和安装生命周期。开发被禁用；打包的 macOS 和非 AppImage Linux 使用通知和链接传递，而 Windows NSIS 和 Linux AppImage 在应用程序内下载并在退出时安装。 Renderer IPC 无法提供 Feed URL。自动故障保持环境状态，显式检查表面状态，下载状态保持可操作。更新程序始终强制使用 `allowPrerelease = false`，因此预发布安装（例如 `0.2.0-rc.6`）会跟踪 GitHub 的最新稳定版本，而不是 electro-updater 的默认同通道引脚。 D126 随后发布由标签矩阵生成的每个平台提要，而 macOS 仍保持手动状态，直到签名通道合格为止。** | 将软件包安装保持在沙盒渲染器之外，匹配每种安装程序格式的交付，并在菜单、设置和更新横幅之间提供一种一致的状态 (ADR 0022)。如果没有稳定通道引脚，RC 不会构建更新的稳定通道，因为电子更新程序将 `rc` 视为自定义通道。 |
 | D313 | 主进程拥有的 GitHub 问题反馈 | **GitHub issue 表单是唯一入口。Bug 表单必填描述、复现步骤、预期/实际行为、应用版本和操作系统；功能表单必填问题和期望改动。设置 → 信息提供一条「问题反馈」，走 `pi-desktop/app/openFeedback`。Electron Main 构造固定的 `bug_report.yml` URL，用主进程版本信息预填 `app-version` / `os` / `environment`，再以 `shell.openExternal` 打开。渲染器不能提供 URL。功能请求仍从 GitHub 模板选择器进入。不改 host 协议、存储或更新源（ADR 0157）。** | 缺少版本或复现步骤的报告无法排查；由渲染器选择目标会削弱 D120 同样的「GitHub URL 归主进程」规则。 |
 | D330 | 由主进程拥有的 openExternal 协议白名单 | **每次 `shell.openExternal` 先解析 URL。只有 `http:`、`https:`（含主机名和写出的 `//`）以及 `mailto:`（非空地址）会以规范化 href 到达操作系统。`file:`、`javascript:`、`data:` 和自定义方案被拒绝。见 ADR 0168。** | 任意协议的 openExternal 会把沙箱渲染器变成打开本地文件或执行脚本的入口。 |
 | D332 | 分类的插件文件预览与实时工作区事件 | **修订 ADR 0104 / 0105 / 0109 / 0111：在 `fs.read` 下增加 `fs.readPreview`（文本 / 图片 data URL / 二进制 / tooLarge，上限与宿主 Files 页相同）。工作区事件同时广播给停靠视图和独立面板。** | 插件需要与 Files 页同类的预览，以及工作区变更的实时信号。 |
@@ -401,7 +401,7 @@
 | 身份证号 | 主题 | 决定 | 基本原理 |
 |---|---|---|---|
 | D119 | 成绩单文件存储； SQLite 仅索引 | **架构 v7：消息内容从 SQLite 移入 `~/.pi-desktop/sessions/` 下的每个会话 JSONL 文件 — `<id>.jsonl`（会话标头行，然后每条消息一个规范的块数组消息行，RFC3339 标记）加上用于重新生成分支的仅附加 `<id>.revisions.jsonl`。 `messages` 删除 `messages`/`content_json` 并成为纯索引（排序、提升过滤列、提取 `text` 馈送 FTS）； `message_revisions` 将 `messages_json` 替换为 `message_count`，并且仅在数据库中跟踪 `is_active`。写入首先是文件，然后是索引事务；读取时跳过 unknown/torn 行并删除重复消息 ID keep-last；完全重写是临时文件+原子重命名；会话文件仅与其会话一起删除，而绝不会删除 age/orphan-swept。打开 v7 之前的数据库会将其存档为 `pi.sqlite.v6.bak` 并进行全新引导 — 显式中断重置，删除所有 v1-v6 迁移代码。 RPC 线路格式未更改，因此 Electron/renderer/importers 无需更改。** | 数据库的增长不受携带工具args/results和思考有效负载的限制； codex/claude-code-style 每个会话文件使记录保持人类可读、可 grep 和可移植的状态，而 SQLite 则保持小型、快速的索引（列表、搜索、徽章）。选择了开发阶段中断重置而不是迁移机制。 |
-| D122 | 独立对话会话分叉 | **协议 v5 添加了主机拥有的 `session.fork`：将空闲源的完整活动规范转录复制到具有重新映射的 message/tool-call id 和继承的 project/provider/model/mode/thinking/permission 配置的新独立会话中。不会复制轮转、重新生成修订、通知、工件、会话授权、scratch/runtime 状态、引脚状态和父子沿袭。创建分支激活子分支； D109 保持不变，因为没有引入消息级分支树。** | 单个主机拥有的快照保留了规范块和持久性一致性，同时为用户提供了 Codex 风格的发散工作流程，而无需将独立对话与重新生成变体混为一谈。 |
+| D122 | 独立对话会话分叉 | **协议 v5 添加了主机拥有的 `session.fork`：将空闲源的完整活动规范转录复制到具有重新映射的 message/tool-call id 和继承的 project/provider/model/mode/thinking/permission 配置的新独立会话中。不会复制轮转、重新生成修订、通知、工件、会话授权、任意 scratch 输出、运行时状态、引脚状态和父子沿袭。被引用且仍存在的粘贴或导入输入会复制到子任务自己的 scratch 文件，并重写转录本及检查点中的路径（ADR 0023）。创建分支激活子分支； D109 保持不变，因为没有引入消息级分支树。** | 单个主机拥有的快照保留了规范块和持久性一致性，同时为用户提供了 Codex 风格的发散工作流程，而无需将独立对话与重新生成变体混为一谈。 |
 | D134 | 助理响应叉和可逆编辑 | *（由 D137 取代的编辑子句）* **完成的辅助工具栏显示“复制”、“分叉”、“编辑”和“重新生成”，但没有“删除”。 Fork 使用可选的 `throughMessageId` 调用现有主机拥有的 `session.fork`，生成一个独立会话，其规范记录以该响应结束。编辑使用相同的隔离子项，仅替换其中选定的辅助文本，并将 original/edited 尾部存储为两个条目的 D109 修订系列，以便现有寻呼机可以恢复其中之一。两者都需要空闲源、重新映射 message/tool-call id，并且从不共享源会话 id、运行时、转录本、修订版或提供程序缓存状态。** | 响应级别的分歧和纠正应该保持可逆，而不改变源或让编辑的历史重用从不同助手内容构建的缓存运行时状态。 |
 | D199 | 重新生成主机 RPC 锁下存档的分支 | **`session.saveActiveRevision` 在状态锁下的一次主机调用中执行读取、分支存档和 `revisionCount` / `activeRevision` 标记，替换 Electron 主程序的 `session.get` + `session.replaceMessages` 读取-修改-写入。标记仅重写 root 用户的转录行并在写入时重新读取文件，因此同时附加的行会保留下来； Electron main 首先排空持久性发件箱，并跳过存档并发出警告，而不是存档不完整的分支。 `session.replaceMessages` 在重写过程中携带每条幸存消息所属的 `turn_id`，并且仅对于在呼叫持续时间内拥有整个记录的呼叫者而言才被记录为安全 (ADR 0060)。** | 助手和工具消息通过 ADR 0041 发件箱异步到达 SQLite，因此渲染器端快照可以早于回合的最终消息 - 然后整个转录文本重写从转录文件和索引中将其连同每行的 `turn_id` 一起删除。只有主机可以原子地读取和写入转录本。 |
 
@@ -464,8 +464,9 @@
 
 | 身份证号 | 主题 | 决定 | 基本原理 |
 |---|---|---|---|
-| D126 | 三平台发布交付（电梯D010） | *(amended by D364)* **标签构建将矩阵生成的每个工件发布到 GitHub 版本：macOS dmg/zip (arm64)、Windows NSIS x64、Linux AppImage + deb (x64)，每个都有块图和平台的 `latest*.yml` 电子更新器提要。发布提要会激活 D120 的 Windows NSIS 和 Linux AppImage 的应用内更新通道； macOS 保持通知和链接模式，直到签名通道合格为止。 NSIS 工件名称固定为无空格 (`PI-Desktop-Setup-${version}.${ext}`)，因为 GitHub 资产 URL 会损坏空格。根据基线凹凸规则（基线 `0.4.7`），D010 的仅限 macOS 范围被提升；发布管道本身在 v0.1.1-rc.1/v0.1.1 上通过了端到端合格。** | 无论如何，管道都会在每个标签上构建并验证所有三个平台；将安装程序保留为过期的 Actions 工件（保留 90 天）会阻止用户安装它们，而不会增加安全性。发布更新源是交付的重点：具有应用程序内通道的平台会静默更新，并且未来的平台回归会通过实际安装而不是未使用的工件来呈现。 |
-| D364 | Windows portable exe without installer | **Amend D120 / D126 / ADR 0022: tag builds publish a Windows x64 portable exe `PI-Desktop-Portable-${version}.exe` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The portable target does not write `latest.yml`. Packaged portable runs (`PORTABLE_EXECUTABLE_FILE`) use notify-and-link delivery. NSIS installs keep in-app download and quit-and-install. Data stays in the existing application data directory. Portable requests user execution level.** | Company environments that whitelist a single executable cannot run the NSIS installer. Applying the NSIS updater to a portable run would install the app, so portable stays manual (ADR 0197, E2E-211). |
+| D126 | 三平台发布交付（电梯D010） | *(amended by D364 / D603)* **标签构建将矩阵生成的每个工件发布到 GitHub 版本：macOS dmg/zip (arm64)、Windows NSIS x64、Linux AppImage + deb (x64)，每个都有块图和平台的 `latest*.yml` 电子更新器提要。发布提要会激活 D120 的 Windows NSIS 和 Linux AppImage 的应用内更新通道； macOS 保持通知和链接模式，直到签名通道合格为止。 NSIS 工件名称固定为无空格 (`PI-Desktop-Setup-${version}.${ext}`)，因为 GitHub 资产 URL 会损坏空格。根据基线凹凸规则（基线 `0.4.7`），D010 的仅限 macOS 范围被提升；发布管道本身在 v0.1.1-rc.1/v0.1.1 上通过了端到端合格。** | 无论如何，管道都会在每个标签上构建并验证所有三个平台；将安装程序保留为过期的 Actions 工件（保留 90 天）会阻止用户安装它们，而不会增加安全性。发布更新源是交付的重点：具有应用程序内通道的平台会静默更新，并且未来的平台回归会通过实际安装而不是未使用的工件来呈现。 |
+| D364 | Windows portable exe without installer | *(superseded by D603)* **Amend D120 / D126 / ADR 0022: tag builds publish a Windows x64 portable exe `PI-Desktop-Portable-${version}.exe` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The portable target does not write `latest.yml`. Packaged portable runs (`PORTABLE_EXECUTABLE_FILE`) use notify-and-link delivery. NSIS installs keep in-app download and quit-and-install. Data stays in the existing application data directory. Portable requests user execution level.** | Company environments that whitelist a single executable cannot run the NSIS installer. Applying the NSIS updater to a portable run would install the app, so portable stays manual (ADR 0197, E2E-211). |
+| D603 | Windows portable delivery uses a normal ZIP | **Amend D364 / ADR 0022 / ADR 0197: tag builds publish a Windows x64 portable ZIP `PI-Desktop-Portable-${version}.zip` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The Windows release helper builds NSIS and ZIP separately, stamps ZIP app metadata with `piDistribution = "zip"`, and keeps the ZIP target out of `latest.yml`. Extracted ZIP runs use notify-and-link delivery; the updater still recognizes `PORTABLE_EXECUTABLE_FILE` for older portable executables. Data stays in the existing application data directory.** | The self-extracting portable wrapper could trigger administrator prompts and did not provide a reliable normal executable identity for the taskbar. A user-extracted ZIP launches `PI-Desktop.exe` directly and preserves the manual-update boundary. |
 | D260 | 发布文档是一个版本载体 | **稳定版本号提升必须在打标签之前更新每一处带版本号的载体：双语言的应用内变更日志及其测试清单、每个工作区的 `package.json`（包括之前被第三个工作区根 `scripts/release.mjs` 跳过的 `docs/package.json`）、Cargo 工作区版本与 `host-core` 的锁文件条目、`APP_VERSION`，以及 `README.md` 和 `README.zh-CN.md` 中声明的 `<major>.<minor>.x` 发布线。`scripts/check-release-docs.mjs` 校验全部这些；`scripts/release.mjs` 在提升版本号之后运行它，只要任一载体不一致就拒绝提交或打标签，`--skip-docs-check` 仅保留给刻意的非发布性版本提升。扩展 D164。** | 仅有应用内变更日志这道闸门，导致已发布的文档落后：版本已到 `0.10.8`，两个 README 仍在宣传 `0.5.x` 线，而 `docs/package.json` 停在 `0.5.8`。标签是不可逆的，所以这项检查在标签存在之前运行，而不是作为评审礼节。 |
 | D371 | 显式的未签名 macOS 首次启动助手 | *（由 D406 和 D443 修订）* **每个 macOS 分发都附带可执行的 `PI-Desktop-macOS-open.command`，放在 DMG 上拖入 Applications 手势下方的可见首启行。它只查找 `/Applications/PI-Desktop.app` 与 `~/Applications/PI-Desktop.app`，校验 `CFBundleIdentifier` 为 `net.aiuo.pi-desktop`，仅在存在时移除 `com.apple.quarantine`，然后打开应用。永不使用 `sudo`，不接受任意路径，也不替代 Developer ID 签名或公证。** | 未签名的 macOS 通道可能被 quarantine 拦截并显示误导性的\"已损坏\"提示，而仅限终端的 `xattr -cr` 说明比启动失败所需的范围更宽（ADR 0204，E2E-196b） |
 | D443 | 规范应用 ID 与 macOS 代码签名标识 | **修订 D141 / D371 / ADR 0204：应用 ID 为 `net.aiuo.pi-desktop`（`APP_ID`、electron-builder `appId`、macOS `CFBundleIdentifier`、Windows AppUserModelID）。开发用 macOS 宿主为 `net.aiuo.pi-desktop.dev`。不要在 `afterPack`/`afterSign` 对未签名包做 adhoc 签名：嵌套 Electron helper 此时尚未签名，`codesign` 会报 `code object is not signed at all`。见 ADR 0278、issue #524。** | 所有者域名为 `net.aiuo.pi-desktop`。未签名包的 Identifier 绑定推迟到有安全的 helper 签名路径之后。 |
@@ -1172,6 +1173,7 @@ D193 和 D194。
 | D188 | 将聊天配置文件替换为 Plan 状态 | *（被 D189 取代）* **PI-Desktop 有 1 个 pi Agent 和 1 个产品选择器：`Agent | 计划`. Plan is that Agent after entering planning state, never a second Agent, planner model, planner service, or permission mode. Agent remains the default. Persisted sessions, app defaults, and scheduled values stored as `聊天` migrate to `计划`; the internal `页面 = “聊天”` route may remain as a conversation-surface detail. Plan exposes `读取`, `Glob`, `Grep`, `浏览器预览`, `Bash`, `CompactCon text`, and `ExitPlanMode`; it denies `Write`, `编辑`, plugin tools, and unknown tools. Plan retains permission-mode selection: Bash prompts under `ask` and `accept-edits`, and runs without confirmation under `auto`,因此 Plan 是计划意图而不是严格的只读安全配置文件。** | 历史预检查点Plan合约；保留解释取代链 |
 | D189 | Plan 检查点工件、批准和执行纪元 | **相同的 pi Agent 使用 `Agent | Plan`, with Agent default. Plan calls `SubmitPlan(标题, markdown, 问题)` as the only tool in its assistant batch. Rust host-core writes the submitted Markdown bytes unchanged to a new immutable unique file under `<workspaceRoot>/.pi/plan/*.md`; it stores the relative artifact path, SHA-256, and byte size together with structured title/question fields in the existing `plan_approvals` row. No title/question wrapper is added and no prior artifact is replaced. The approval surface displays title, question, an artifact opener, absolute expiry, and status, and offers only Approve or Reject. Approve requires an explicit `ask`, `accept-edits`, or `auto` permission mode, with Ask selected by default; Reject carries no mode. The approval expires at one absolute 30-minute deadline and uses `PLAN_APPROVAL_TIMEOUT`. The same `plan_approvals` row carries `execution_id` and `execution_state` through `queued → 运行 → 已完成 | 中断了`. A startup transaction marks prior pending approvals and queued/running execution states interrupted before serving RPC; no work is replayed. Pending interruption/rejection/expiry leaves the session Plan; an already-approved queued/running interruption leaves the session Agent. One active turn, idle-only configuration, and one pending approval/queued-or-running execution per session are enforced. Scheduled Plan is rejected before provider, artifact, or queue work with `PLAN_REQUIRES_INTERACTIVE_SESSION`。协议 v9 和存储模式 v10 携带的合约没有序列化的 process-epoch 字段。** | 不可变的主机工件保留提交的检查点，同时一个 approval/execution 行和启动进程栅栏可防止重新启动重播，而不会丢失已批准的 Agent 状态 |
 | D190 | 可选择的命令 shell 目录和执行标识 | **主机核心公开稳定的平台感知目录 ID：`windows-powershell`、`cmd`、`git-bash` 和 `bash`；平台目录仅包含该平台支持的 ID。 `defaultCommandShell` 保留在主机设置中，并且设置写入拒绝不可用或错误的平台 ID。如果持久选择稍后变得不可用，则有效 shell 会有意回退到第一个可用的平台 shell。 `Bash` 工具和 `tools.execute` 协议名称保持不变；每个回合都会固定有效的 shell ID 和方言，并且主机在使用 `COMMAND_SHELL_CHANGED` 生成之前拒绝过时的 ID/dialect。 Shell 标识是目录选择，而不是可执行路径哈希。 Bash 分别流式传输 stdout 和 stderr，使用强制的 60 秒默认超时和 1-300 秒覆盖，并且 cancellation/timeout 关闭完整的进程树。** | 用户可以选择命令语言，而无需增加协议工具，而平台验证、显式回退和转固定目录身份可保持执行的可预测性 |
+| D604 | 信任用户自己填写的网络端点 | **对用户填写的 URL 修订 ADR 0243 / 0245 / 0247；沿用 ADR 0142 / 0257 / 0300。用户自己在设置里填写的 URL——市场源、git 远端、MCP OAuth 端点、生成图片 URL——改按"用户端点"策略判定：回环、RFC1918、CGNAT、link-local、ULA、site-local 与 `.local` 都可达，明文 `http` 也可用。这一切由**一个**开关决定：`networkPolicy.mode`（`relaxed` / `strict`），**默认 `relaxed`**，并取代此前按界面分散的确认（明文开关、WebDAV 的 `allowInsecureHttp`、`networkProxy.allowFakeIp`），旧的 `allowInsecureUserEndpoints: false` 迁移为 `strict`；首次明文访问会弹一次告知（`insecureNoticeAcknowledged`）。第三方内容在任何模式下仍只允许公网并把校验过的地址固定到连接：registry 记录、目录正文、目录内部的文档 URL、以及每一次重定向目标。云元数据、`unspecified`、multicast、reserved、documentation 在任何输入上一律拒绝。默认代理绕过列表增加 `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16`。不改主机协议、不改存储 schema：`networkPolicy` 只是既有 app settings 里的一个字段，写入时校验。** | 拒绝用户自己填写的局域网地址并没有消除那次请求——它只是把同样的工作搬到应用旁边的 shell 或浏览器里，因此这条边界牺牲了功能，却没有阻止用户已经做出的决定。SSRF 风险在第三方内容那一侧，所以边界的那一半保持不变。见 ADR 0304。 |
 
 ## 2026-08-05 — 仅代理模式
 
@@ -2259,7 +2261,7 @@ D193 和 D194。
   空草稿显示「停止」，因此用户清空草稿即可露出立即停止操作。所属会话的
   `agent_end` 之后，渲染器通过既有的 `agent/prompt` 路径排出一项。「立即发送」
   把一项提升到队首并调用增量的 `pi-desktop/agent/stop`；sidecar 设置
-  pi-agent-core 的一次性 `shouldStopAfterTurn` 标志，于是当前的助手回复 / 工具
+  pi-agent-core 的一次性 `finishTurn` 决策，于是当前的助手回复 / 工具
   批次跑完、持久化回合正常关闭之后，优先的提示才开始。立即中止保持现有行为，
   且从不清空队列。
 - 这改变了渲染器状态归属并新增一个公开的 Electron IPC 通道，但不改动 host-core
@@ -3546,6 +3548,38 @@ D193 和 D194。
   user 执行级别。
 - 参见 ADR 0197 与 E2E-211。
 
+## 2026-09-22 —— 信任用户自己填写的网络端点（D604）
+
+- 用户自己填写的端点——模型 base URL、MCP 服务器、市场源、git 远端、
+  生成图片 URL——可以解析到回环、RFC1918、CGNAT、link-local、ULA、
+  site-local 或 `.local`，也可以使用明文 `http`。这一切由**一个**主机侧
+  开关决定：`settings.networkPolicy.mode`（`relaxed` | `strict`），**默认
+  `relaxed`**；它取代了此前的三个确认开关（`networkProxy.allowFakeIp`、
+  `configSync.allowInsecureHttp`、自填明文开关），旧的
+  `allowInsecureUserEndpoints: false` 迁移为 `strict`。首次明文访问会弹一次
+  告知。`https` 访问局域网主机不需要开关。
+- 第三方内容不变。registry 记录、市场目录正文、目录内部的文档 URL、
+  以及每一次 HTTP 重定向目标，仍然只允许公网，并把校验过的地址固定到
+  连接上。共享客户端按每一跳的来源判定，只有用户发起请求的首跳可以是
+  `user`。
+- 云元数据（`169.254.169.254`、`100.100.100.200`、`fd00:ec2::254`、
+  `metadata.google.internal`、`metadata`、`instance-data`）、`unspecified`、
+  multicast、reserved、documentation 地址在任何输入上一律拒绝，包括用户
+  自己填写的字段。
+- 默认代理绕过列表增加私网段，配置了代理之后不再吞掉本机模型服务、NAS
+  或 MCP 端点。见 `05-security/01-security.md` §4.1/§4.2、
+  `04-ux/06-settings-ia.md` 与 ADR 0304。
+
+## 2026-09-22 —— Windows 便携交付改为普通 ZIP（D603）
+
+- 决策 D603 修订 D364 / ADR 0022 / ADR 0197。Windows x64 通道现在在 NSIS 安装程序
+  旁发布 `PI-Desktop-Portable-<version>.zip`。发布脚本分别构建两个目标，并给 ZIP
+  应用元数据写入 `piDistribution = "zip"`；ZIP 目标不写入 `latest.yml`。
+- 用户解压 ZIP 后直接启动 `PI-Desktop.exe`。ZIP 运行使用通知加链接更新交付，更新器
+  仍识别旧便携版 exe 的 `PORTABLE_EXECUTABLE_FILE`。现有数据目录和 NSIS 应用内更新
+  通道保持不变。
+- 参见 ADR 0197 与 E2E-211。
+
 ## 2026-09-09 —— 为每个安静间隔命名活动行（D365）
 
 - ADR 0175 只命名了 `waiting-model`、`retrying` 和 `waiting-subagents`。
@@ -4308,10 +4342,9 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 ## 2026-09-17 —— 按请求实际会走的线路判定公网地址（D436）
 
 - 技能市场的主进程守卫此前用*本地*解析器判定目标主机，而 `net.fetch` 走的是 Chromium 的代理栈（ADR 0177）。在 TUN / fake-IP 解析器下，那个答案是应用永远不会建立的连接的合成地址（`198.18.0.0/15`），于是每个目录源都被判为「被应用的地址校验阻止」（issue #419）。
-- 现在每一跳都向承载 `net.fetch` 的会话询问它自己的判定（`Session.resolveProxy`），共享的 `classifyProxyRoute` 把该答案归为 `proxied` / `direct` / `unknown`。在 `proxied` 线路上，`isAcceptableResolvedAddress` 只容忍解析器自身产物的那一类（`benchmark`）；所有真实内网类别与「解析器没有应答」仍然拒绝。`direct` 线路与改动前逐字一致；列表里任何位置出现 `DIRECT` 都按 `unknown` 处理（Chromium 可能回退到它），而 `unknown` 走严格路径。
+- 现在每一跳都向承载 `net.fetch` 的会话询问它自己的判定（`Session.resolveProxy`），共享的 `classifyProxyRoute` 把该答案归为 `proxied` / `direct` / `unknown`。在 `proxied` 线路上，`isAcceptableResolvedAddress` 只容忍解析器自身产物的那一类（`benchmark`）；所有真实内网类别与「解析器没有应答」仍然拒绝。`direct` 线路默认与改动前逐字一致，但显式 `allowFakeIp` 仅可额外放行 benchmark 占位地址；列表里任何位置出现 `DIRECT` 都按 `unknown` 处理（Chromium 可能回退到它），而 `unknown` 走严格路径。
 - 拒绝与市场的 `failureDetails` 现在都带 `route`，因此「直连线路上的 fake-IP 拒绝」与「读不出线路的拒绝」在诊断里可以区分。
-- MCP 市场仍使用自己的地址钉定 Node HTTPS 守卫（ADR 0245），本次不变；fake-IP 环境下它的源仍会被拒绝。
-- 见 ADR 0272、`05-security/01-security.md` §4.1、`03-runtime/09-logging-and-observability.md` 与 `06-delivery/04-e2e-test-plan.md` 的 E2E-SKILL-MARKET-NET-BOUNDARY。
+- MCP 市场现在也在每一跳向 Electron session 询问线路：完整代理线路使用 `net.fetch`，让 fake-IP 源能够到达已配置的代理；直连和未知线路默认继续使用固定 Node HTTPS 地址的严格公网规则。显式 `allowFakeIp` 选项仅为透明路由器/TUN 部署放行 benchmark 占位地址，真实私网答案在所有线路上仍然拒绝。见 ADR 0245。
 
 ## 2026-09-17 —— dock 内的问题卡是 composer 板（#360，D437）
 
@@ -4600,6 +4633,16 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
   或权限。见 `04-ux/08-component-spec.md` 与
   E2E-CHAT-opaque-floating-decision-and-retry-surfaces。
 
+## 2026-09-21 —— 上下文估算采用保守校准（D606）
+
+- 所有预算阈值读取同一个数字，该数字按请求的真实开销校正。pi 的估算器以最后一条助手用量为锚、其余按 `chars / 4` 估算，
+  这会低估中文文本约 2–4 倍；没有锚点时还会完全漏掉系统提示与工具结构。
+- 两类误差分开应用：逐字符偏差是按比例（与量级无关）作用于猜测尾部；无锚点残差只在量级相当的样本（0.5×–2×）上按比例
+  应用，否则只加观测到的固定开销（上限 32,000 词元）。因此 100k 量级的样本不会作为比例系数套到 1M 的投影上。
+- 校正不对称：向上修正有三个观测即生效；向下修正需要三个方向一致的样本、每次最多 15 %，且不会低于原始估算的 85 %——
+  处在硬限制 1.18× 的投影仍会压缩。偏离预测 0.5×–3× 的报告视为误报，连续两次误报冻结向下修正。
+  见 `03-runtime/02-agent-runtime §5.1`。
+
 ## 2026-09-21 —— 每个请求里的工具调用 id 必须唯一（D608，issue #718）
 
 - Anthropic 系端点（含 DeepSeek）在请求中同一个调用 id 出现两次时，会以 `tool_use ids must be unique` 拒绝整个回合，
@@ -4608,7 +4651,7 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 因此上线前的最后一个视图对每个 `toolCall` id 只保留第一次出现，丢弃其后重复的调用或结果，使提供商校验的「一调用一结果」
   配对保持完整；没有重复的请求原样返回（返回同一对象，而非副本）。磁盘上的内容不会被改写，压缩与保留规则也不变。
 - 一旦发生丢弃，会在 `agent` 日志通道上报告一次，带上会话与 id，使下一次同类报障能指向写入方而不只是提供商那句话。
-  见 `03-runtime/02-agent-runtime.md` §5。
+  见 `03-runtime/02-agent-runtime §5`。
 - 守卫刻意放在请求边界而不是历史重建处：这样也能覆盖**会话运行期间**产生的重复，而重建期的过滤看不到它。
 
 ## 2026-09-21 —— 插件崩溃上报带上退出码但不复制原始输出（D607，issue #747）
@@ -4620,3 +4663,298 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 插件 stdout/stderr 不复制进加载错误、崩溃审计记录或崩溃日志负载，因为其中可能包含工作区数据或敏感信息。不新增任何持久化，权限与 API 面不变；
   既有的 `plugin.stdio` 审计流保持不变。
 - 见 `07-plugins/05-plugin-lifecycle.md` §3.1。
+
+## 2026-09-20 —— 新建项目的名称默认取主要文件夹（D609）
+
+- 新建项目对话框原本要求先填名称才能创建，本地选文件夹时不得不先编一个标题；
+  Git 来源此前已用仓库名预填该字段（D438、ADR 0273）。
+- 名称字段现在对两种来源都可选。它按所选来源预填——本地来源取第一个（主要）
+  文件夹的名称，Git 来源取仓库名——用户一旦自己输入就不再跟随来源。创建按钮
+  只由来源决定是否可用（一个文件夹，或解析成功的地址加保存位置），字段留空时
+  回退为同一个默认名。
+- 派生名称会截断到 `MAX_PROJECT_NAME_CHARS`（80），以保证侧边栏偏好持久化和
+  名称字段都能原样接受。文件夹名解析移到
+  `apps/desktop/src/lib/project-name.ts`，与对话框的文件夹行共用。
+- 仅渲染器改动：不改协议、存储、宿主、权限或迁移，也不新增默认值。见
+  `04-ux/08-component-spec.md`、ADR 0233、ADR 0273、E2E-012a / E2E-256。
+## 2026-09-21 —— 存储的模型绑定数组逐条读取（D610，issue #784）
+
+- `config_json.models` 是提供商模型列表唯一的存放处，而它不止一个写入方：设置保存、插件声明，以及对存储行的外部编辑。此前它被当作单个 `Vec<ModelBinding>` 解码，于是只要有条目不再符合 schema，全部兄弟条目都会被丢弃——之后该提供商读回来只剩由 `defaultModelId` 派生的那一个 legacy 默认模型，其它已配置模型全部消失，且没有任何说明。报告的复现正是删掉某一个绑定的 `maxTokens`：库里 12 条绑定，读回来 1 条。
+- 因此 `contextWindow` 与 `maxTokens` 在线为可选，并且数组逐条解码。缺失的键、或显式的 `0`，都读作 0 并由既有的零值归一化补上通用默认值（128,000 / 8,192）——这与只带 `defaultModelId` 的记录被物化时用的是同一个值，也与未声明限额的插件清单已经产生的值相同。两条路径从此一致，而不是一条拒绝另一条接受的东西。
+- 仍然解码失败的条目只损失自己，不损失整个数组：可读条目按存储顺序保留，失败会在宿主日志里上报，带上提供商 id、条目下标与原因，因此可定位而不是静默。缺失的 `models` 键、空数组、以及所有条目都不可读的数组，都仍旧读作 legacy 绑定，使提供商无论存储形态如何都保持可选；只有第三种会被上报，因为空数组是合法状态，而缺失键则是早于绑定机制的记录。
+- 不改写磁盘上的任何内容，写路径仍是显式的：`providers.update` 依旧只持久化客户端发来的绑定。接受显式模型数组替换前，host 会检查存储值；若已降级则以 `MODEL_BINDINGS_DEGRADED` 拒绝，避免设置页的部分视图擦除不可读条目；不涉及模型数组的提供商字段仍可更新。见 `03-runtime/12-provider-config-schema.md` §2。
+
+## 2026-09-21 —— 手输的自定义模型 id 从模型库播种（D611）
+
+- 通过 id 新增自定义模型时，即便模型库已经发布了该 id，每条绑定仍只得到通用的
+  128,000 / 8,192 种子值与空思考等级，用户不得不重新输入本可以自动获得的限额。
+- 设置选择器现在通过新的只读快照渲染器通道 `providers.lookupModel` 把输入的 id 与
+  models.dev 匹配，并按拾取模型的口径播种绑定——已发布的上下文窗口、最大输出 token
+  与思考等级——同时存储的 id 仍保持用户输入的原文。记录先以通用种子值落下，答案返回
+  后再原地升级；因此查询慢、失败或未发布时仍然只留一行可用记录，期间的编辑或删除也
+  不会被覆盖。
+- 不访问提供商网络、不调用主机、不改 schema、不改持久化数据；未命中时行为与之前完全
+  一致。参见 `03-runtime/12-provider-config-schema.md` §2 与 §9。
+
+## 2026-09-21 —— 新增提供商不再抢走应用默认值（D612）
+
+- 新增提供商的流程无条件写入 `defaultProviderId`/`defaultModelId`，画图流程也无条件
+  写入 `imageGeneration`，于是配置第二个服务会把用户正在使用的默认模型、默认画图模型
+  悄悄换掉。
+- 新增流程改为与编辑一致的规则：已存储的默认值只要能解析就保留，只有无法解析时才被
+  替换。模型默认值的“能解析”指默认提供商行仍存在且仍提供该模型——与设置页摘要行渲染
+  用的是同一套解析——因此提供商被删除后残留的 id 不算默认值，新增的提供商可以填补那
+  个本来显示为未设置的位置。画图默认值用镜像规则判断其存储绑定，候选列表仍会累积新提
+  供商的图片模型，选择器里不会少行。
+- 只有在没有任何默认值可解析时才写设置；显式的“设为默认”操作、编辑路径，以及删除已
+  选模型后回落到首个剩余绑定的行为都不变。行为由
+  `apps/desktop/test/default-model-display.test.mjs` 与
+  `apps/desktop/test/image-generation-default.test.mjs` 固定，
+  `provider-model-config.test.mjs` 断言新增分支会走这两个判断。
+
+## 2026-09-22 — 循环拥有自己的上下文数组（D620）
+
+- 当某个回合的较晚迭代跑了工具后，`state.messages` 会把那些迭代追加的每条消息存两份，而下一回合的首个请求正是用该数组组装的。
+  其中“带文本与工具调用的辅助消息”的重复项在请求守卫（D608）之后残留为只剩文本的克隆，卡在调用与回答它的结果之间；pi-ai 随后会为
+  这个仍处于待配对的调用合成一条 “No result provided” 输出，与真实结果并列，于是同一个 call id 带上了两条输出，端点以
+  `Duplicate tool output for call_id`（HTTP 400，不可重试）拒绝整个回合。该数组会被复用，因此其后每个回合都以同样方式失败，
+  `继续` 也无法让会话恢复。
+- pi-ai 的循环会把每个流式辅助消息与每个工具结果 push 进它拿到的上下文，而它自己的 `message_end` 监听器又把同一个消息对象 push 回
+  `state.messages`。`rebuiltAgentContext()` 返回的正是这个活数组，两次 push 因此落在同一个数组里；现在它返回副本，与 pi 自己的
+  `createContextSnapshot()` 在 `prompt()` 与 `continue()` 里的做法一致。委托侧的回合边界此前交出的也是同一个活数组
+  （`subagent.ts` 的 `prepareNextTurn`），现已同样改为副本。每个消息边界处循环视图与 `state.messages` 携带同样的消息、同样的顺序，
+  只是不再是同一个数组——这正是把重复项挡在下一回合请求之外的原因。
+- `convertToLlm` 处的请求守卫（D608）改为与提供商实际校验的对象一致：调用与结果的 id 按“上线可见”的那一段比较；当结果与调用在 item
+  段上不一致时，结果改挂到调用的 id 上；当一条辅助消息里的工具调用全部已被占用时，整条消息被丢弃，而不再保留那个把调用与结果隔开的克隆。
+  丢弃日志同时给出被移除的消息条数。若一条消息在复写某个已占用调用的同时还带一个新调用，则保留该消息及其新调用——这是守卫接受的唯一一种
+  id 复用；目前没有写入方会产生这种部分复写。
+- 不涉及提供商传输、宿主协议、版本、存储迁移、转录重写，也不改变压缩/保留/预算规则。
+  `03-runtime/02-agent-runtime.md` §5c 与 E2E-RUNTIME-loop-context-ownership 记录了该契约与覆盖情况。
+## 2026-09-21 — 限制 Desktop 可信扩展生命周期等待
+
+- 现有 30 秒处理器预算扩展到通知、启动和关闭事件；模块加载、工厂初始化分别使用
+  同一预算。此前无界的等待变为有界，事件内等待 UI 回答也受此限制。
+- 中止使当前等待失效；销毁拒绝新派发且只执行一次关闭。迟到完成不能向旧派发提供
+  结果。既有失败继续、结果归并、插件归属和权限不变，不强制终止进程内代码。
+- 未接通事件仍可注册，并在现有诊断中显示。参见
+  `07-plugins/16-trusted-extensions.md` §6 与 `E2E-HOOKS-cancel-and-dispose`。
+## 2026-09-22 —— 指令源不可读时拒绝斜杠提交（D613，issue #795）
+
+- Composer 在发送时读取合并后的指令列表，并把失败吞成 `null`，而提交路径无法把它与
+  “没有这个指令”区分开。于是在该 IPC 读取失败时输入的 `/compact` 会作为字面提示词发给
+  模型，模型据此把它当成指令执行。
+- 解析现在返回三种结果，而不再是一个可空值：已解析（内置 / 插件 / 扩展分发）、未知
+  （模板、别名与无 id 条目继续走提示词路径）、不可用。不可用时拒绝提交、保留草稿并显示
+  `chat.slashCommandSourceUnavailable`。失败的读取不写 TTL 缓存，因此下一次发送会重试；
+  缓存仍热时，一次数据源抖动不会影响解析。
+- 拒绝是刻意 fail-closed：只有指令源能判断 `/name` 是否为控制指令，因此读不到时，看起来像
+  普通文本的名称也会被拒绝，而不是靠猜测。模板与确实未知的别名保持原有提示词路径。由
+  `apps/desktop/test/slash-command-source.test.mjs` 与
+  `03-runtime/01-ipc-protocol.md` §13c 固定。
+
+## 2026-09-22 —— 手动压缩有自己的传输超时与持久化判定（D614，issue #795）
+
+- `agent.compact` 是阻塞式 RPC，会在 sidecar 内消耗一次完整的模型摘要请求：pi 序列化会话、
+  流式生成摘要，并重试瞬时失败。它此前沿用扁平的 130 秒传输默认值，因此 888KB 上下文约
+  158 秒的压缩以 `sidecar RPC timeout` 结束，而 sidecar 仍在继续工作并落盘了检查点——用户
+  被告知压缩失败，而下一个回合证明它其实成功了。
+- 超时现在由 sidecar 真正执行的预算推导：每次尝试的流空转看门狗（180 秒）、`1 + 3` 次
+  尝试、2/4/8 秒重试退避，以及传输余量 —— 即 `AGENT_COMPACT_RPC_TIMEOUT_MS`，刻意按方法
+  区分，而不是放宽全局默认值。
+- 两条宿主路径（Electron 的 `agentCompact` IPC 与 `RuntimeService.compact`）也不再把手动
+  压缩的传输超时当作 sidecar 的判定：它们会重新读取持久化的 `session.compaction` 记录，
+  发现新检查点已落盘就报告成功、记录该不一致，否则原样抛出超时。sidecar 自己报告的判定
+  绝不会被这样改写。由 `packages/host-runtime/src/runtime-service.test.ts`、
+  `packages/shared/src/protocol.test.ts`、
+  `apps/desktop/test/plugin-timeout-budgets.test.mjs` 与
+  `03-runtime/01-ipc-protocol.md` §5.4 固定。
+
+## 2026-09-22 —— 空记录读取会重试，且绝不入缓存（D615，issue #795）
+
+- 渲染层把每一次持久化 `session.get` 窗口都当真，并写入缓存。当宿主正在重写记录文件时，
+  对拥有数千条消息的会话返回的空窗口被当成“空快照”存下，侧边栏悬停预取又反复送出它，
+  于是面板一直空白，只有重启应用才能恢复。此前没有任何逻辑区分“读取失败或读到陈旧数据”
+  与“真的空会话”，也没有任何路径重试。
+- 现在的判断依据是会话自己的计数：若侧边栏计为有历史的会话返回零条消息，就再读一次，
+  随后保留用户已有的快照，否则显示 `chat.sessionTranscriptEmpty`。这类空页绝不会写入记录
+  缓存，因此悬停预取不会污染之后每次打开。
+- 这是防御措施，而不是宿主侧根因：记录重写是报告者 0.15.1 的存储布局，而读取侧仍然返回
+  “会话存在但没有消息”，而不是报告记录不可读。见 `04-ux/09-interaction-patterns.md`
+  §跨选项卡的会话隔离。
+
+## 2026-09-22 —— 从未拿到初始状态的渲染器有了有界表面与退出通道（D616）
+
+- 渲染器的启动过程本身没有超时：`bootstrap()` 要么发布初始状态，要么什么都不发布，
+  因此一次始终没有落地的读取会让窗口一直停在启动表面上——没有菜单、没有数据，除了
+  强杀进程无事可做（issue #831）。渲染器现在自己监视这段等待：
+  `STARTUP_SLOW_HINT_MS`（30 秒）在不判定启动失败的前提下为启动表面加上日志、诊断与
+  退出，`STARTUP_STALLED_MS`（180 秒）把它变成恢复表面，后者还提供重跑
+  `bootstrap()` 的重试。
+- 两个界限都高于 main↔host 的 RPC 上限（`DEFAULT_RPC_TIMEOUT_MS`，130 秒），因此慢
+  但成功的启动不会被读成失败；看门狗从不取消它所监视的启动，成功完成的启动会用 shell
+  替换该表面。恢复表面替换启动画面（同一时刻只挂载一个启动表面），渲染器绘制的窗口
+  控制按钮保持在其之上，因此无边框的 Windows/Linux 窗口始终可以关闭。
+- 渲染器新增退出通道 `pi-desktop/app/quit`（`api.quitApp()`），其处理函数与“退出”
+  菜单项一样调用 `app.quit()`，因此有序关停、确认对话框和关闭行为都仍是应用已有的
+  那一套。参见 `03-runtime/07-process-model.md` §3 与 E2E-076。
+
+## 2026-09-22 —— 摘要失败的压缩保留真实近期窗口（D617，issue #827）
+
+- 自动压缩的摘要请求失败时安装的保留尾部检查点最多只带一条最新用户消息，重建存储的
+  检查点也会以同样方式收窄尾部。于是在一条长回合里，下一次模型请求只剩一句用户话：
+  报告中的会话在两次检查点之间丢掉约 168 条消息（3 条用户 / 34 条助手 / 131 条工具），
+  而磁盘上的转录本与界面行看起来完好。
+- 回退现在保留真实的近期窗口——压缩范围内最新的连续消息，包含所有角色，上限为
+  keep-recent 目标，以及携带摘要与恢复提示之后安全预算剩余的空间——并用
+  `details.retainedTailShape` 标记，使重建时回放整窗。没有该标记的检查点（每个成功
+  检查点，以及标记出现之前写入的记录）仍归一化为只保留最新的用户消息。`active_turn`
+  回退还会在窗口装不下时保留当前任务的用户消息；回退会丢弃 pi 本来就会丢的助手消息，
+  以及调用不在窗口内的工具结果；`details.failureReason` 记录 `no_new_history` /
+  `summary_budget` / `summary_provider` / `checkpoint_oversized`，而不是提供商错误文本。
+- 单次缩减后仍过大的摘要提示不再被跳过：范围会被切成每片都能放下的连续分片，最多 16 次
+  请求，每次携带上一片的摘要，检查点报告这些请求的用量总和。只有空范围或超过该请求上限
+  的范围才因预算原因回退。见 ADR 0302、`03-runtime/02-agent-runtime.md`、ADR 0049、ADR 0282。
+
+## 2026-09-20 —— 复制公式得到的是它的 TeX 源码（D619，issue #414）
+
+复制之后公式的边界仍然可解析：相邻的行内围栏之间补一个分隔符；正文里的每个美元
+符号都会被转义，本会把围栏转义掉的反斜杠串同理。annotation 里的空白原样保留；
+加宽过的多行行内公式用一个字面的 `<span>` 包住，以免它粘在行首时开出块级公式。
+TeX 里的换行不做压平，因为它可能用来终止 `%` 注释。这个包裹是 `text/plain` 里的
+Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编辑器不作兼容承诺。
+回归覆盖两个复制入口，以及相邻公式、围栏两侧的正文美元符号、格式化包装、行与块
+的边界、补白，以及含 TeX 注释的多行公式各自的 Markdown 往返。
+含 `- x`、`+ x`、`* x`、`> x` 或内部空行的块级公式，复制之后必须仍是同一个公式
+节点。共享的 remark 语法把尚未闭合的公式留在流式尾块里直到围栏闭合，其后的正文
+及其源码偏移保持不变。脚注定义出现在引用之后——紧随其后，或稍后才流式到达——会
+渲染成真正的引用与脚注区，而不是字面的 `[^1]`；这正是把切片脱离整条消息单独解析
+时，按块切分要付的代价。CRLF、普通列表、引用块、GFM 表格、围栏代码，以及那些
+必须继续切分的源文，由 `markdown-blocks.test.mjs` 覆盖。
+
+
+- KaTeX 每个公式都画两遍：一棵给无障碍技术读的 MathML 树，一棵由定位 span 组成的
+  可视树，两者都是文档里真实的文本。于是平台自带的复制把公式写成了它的字形，而且
+  写了两份，从来不是这条回答被写下时的源码。
+- 现在，当选区覆盖到渲染出来的公式时，复制会从 MathML `annotation` 里把 TeX 读回来：
+  行内 `$…$`，块级 `$$…$$` 独占行。这正是 `lib/latex-math.ts` 在 `remark-math`
+  运行前把 `\(…\)` 和 `\[…\]` 归一到的那组定界符，因此粘回去的公式会渲染回它
+  来处的那个公式。落在公式内部的切口会扩展成整个公式——半个 TeX 表达式不成其为
+  公式，而横在两棵树之间的切口会从一棵里取到源码、从另一棵里取到字形。
+- 每组定界符都像代码段的围栏那样，加长到盖过公式内部出现的最长同字符串，因为
+  `$\$5 + x$` 会在那个转义美元处收口，粘回去变成普通文字。除此之外行内保持窄
+  形式，而理由并不是它乍看上去的那个：单行的 `$$…$$` 永远开不出块级公式，因为
+  math flow 不允许开栅栏之后的 meta 段里出现 `$`。它保持窄形式，是因为行内公式
+  的 TeX 可能带换行——只有 `\(…\)` 那条路径的换行被归一化抹平了——此时 `$$` 会
+  落在行首、公式其余部分跟在它后面，那才是一个 flow 开栅栏，会把整段吞掉。
+- 块级公式在这里并不总是一个块。`normalizeLatexMathDelimiters` 对 `\[ … \]` 是
+  等宽原地改写，因此数学节点仍是行内的，再由 `remarkLatexBracketDisplay` 提升，
+  于是 KaTeX 把 `.katex-display` 画在句子自己的段落里。归约照原样放入段落插槽：
+  `p` 套 `p` 作为标记是非法的，但在这里无害——克隆只会经由文本序列化器读取，
+  而它把嵌套块当成一个边界。`$$` 上方有一个换行就足以让 `remark-math` 开出块级
+  公式，所以粘回去的仍是它来处的那个块级公式。两种 `\[ … \]` 形态都由
+  E2E-CHAT-copy-formula-as-tex 钉住。
+- 表格单元格是唯一一处块级插槽必须实测、而不能靠推理定论的地方；这里记下实测结果，
+  因为推理恰好指向了相反的方向。`remarkLatexBracketDisplay` 会提升任意位置的
+  `\[ … \]` 节点，单元格也不例外，所以 `.katex-display` 确实会落进 `<td>`；
+  而表格序列化器用制表符拼接单元格，于是看上去那里的 `$$` 围栏会被制表符封死、
+  把该行其余内容吞掉（`a\tb\n$$\nE = mc^2\n$$\t2` 是一个值一直延伸到行尾的
+  公式节点）。Chromium 并不会写出这种字符串：块级盒子在单元格里同样是块级边界，
+  因此该行在它周围断开，围栏在自己的行上闭合，相邻单元格也落在自己的行上。这个
+  边界也不是插槽凭空造出来的——平台自己对同一行的读法里同样没有制表符，因为
+  `.katex-display` 对它也会断行——所以在这里保留块级形式，正是这条决策其余部分
+  所依赖的那种一致性，而不是它的例外。「在单元格里收窄成行内形式」被考虑过并否决：
+  那会拿块级语义去修一个序列化器根本不产生的形态，还会把平台自己都不写的制表符
+  塞回去。E2E-CHAT-copy-formula-as-tex 同时钉住了这两半，因此哪天 Chromium 开始对
+  含块级盒子的单元格做制表符拼接，会在那里失败，而不是在用户的剪贴板里。
+- 只有公式被改写。选区里其余的一切——正文、列表、表格、代码块——由平台自己序列化：
+  归约后的克隆被选中，经由 `Selection.toString()`——复制真正跑的那个序列化器——读回。
+  手写一遍树的遍历只能近似那套空白规则，而它每差一点，就会悄悄改写平台本来
+  已经做对的内容：段落里被放回源码的折行、列表项之间多出的空行、代码块里被压掉的
+  空行。
+- 序列化器必须是复制自己那一个，而不是它的近邻。`innerText` 读出来几乎一样，却完全
+  不认识 `user-select`，于是会把 `base.css` 标为惰性的界面零件一起写出去——代码块的
+  语言标签会变成剪贴板里多出来的一行 `js`。把那条规则在归约里重述一遍，正是这条决策
+  所拒绝的手写遍历；跑平台自己的序列化器，让一致性从"近似"变成"精确"。克隆在选区
+  原本所处的那个元素里读，而不是挂到 `body` 上，因此决定这份读法的层叠就是实时
+  文档的层叠；反过来在克隆上重述选择契约（内联一条 `user-select: text`）会把它
+  倒置——外壳默认不可选、由文档型表面 opt-in，于是仅因继承而不可选的界面零件会进
+  入剪贴板。
+- 其余选区一律不碰：不含公式的选区归平台管。除此之外不再判断这次复制"属不属于"
+  该选区，因为 Chromium 的事件目标本就是从选区推导出来的，非塌陷选区必定在自己
+  内部抬起复制；加一道目标检查只会误伤用 `selectNodeContents` 构造的选区，记录区
+  自己的「选中文本」就是其中之一。输入框里抬起的复制也带不走残留的记录区选区——
+  一个 frame 只有一个选区，聚焦任何字段都会让文档选区塌陷，而塌陷的选区本就会被
+  拒绝。
+- 只有一种剪贴板 flavour：`text/plain`。接管复制的同时也丢掉了平台的 `text/html`，
+  而且不再写回。归约后的克隆是应用自己的标记：把它序列化会带上 `base.css` 标为
+  `user-select: none`、文本读法已经略过的界面零件——代码块的 `js` 标签和它的复制
+  按钮——还有 `data-source-*` 记账信息，以及一个嵌在段落里的块级插槽，那是同一个
+  选区的第二份、也更差的读法。改为写回渲染结果同样不行：隐藏 MathML 树的只有
+  KaTeX 自己的样式表，而样式表不会随剪贴板一起走，于是富文本粘贴目标会看到每个
+  公式出现两遍——正是这条决策要消除的那种重复。索性不写这个 flavour，两头都解决：
+  富文本目标回退到纯文本，而那正是源码。代价是含公式的选区粘进富文本目标时，会
+  失去平台 `text/html` 本来会携带的标签级格式；复制要的就是源码。
+- 只有一个文档级 `copy` 监听器，由外壳装上、也由外壳摘掉（`hooks/use-copy-tex.ts`）。
+  因为 `Markdown` 自己不渲染任何包裹元素——回答、工作面板的文件预览、插件 readme
+  通过不同的父节点抵达同一批公式——也因为复制本来就是一个文档级手势。记录区的
+  右键复制经由同一个模块读取同一个选区，两个入口不会把同一个选区的两种读法送进
+  剪贴板。
+- 把消息切成互相独立解析的块——这早于 D619，D619 只是把它换到了渲染语法上——仅当某一片不依赖其他片的解析上下文时才成立。链接与脚注定义恰是反例：它在整条消息范围内解析，脚注还要跨消息编号、复用和回链，于是脱离定义单独解析的引用会以字面 `[^1]` 留在正文里，脚注本身消失。因此只要消息中任意位置声明了定义，该消息就整体不切分。把定义注入每一片的做法被否决：那会让脚注按片各自重新编号，并把回链指向错误的引用。被接受的代价是这类消息在流式期间失去按块记忆——这正是渲染器在引入分块之前一直承担的成本，而它在聊天回答中的罕见程度把这个代价限住了。
+- D619 不新增任何界面、store 状态或操作行条目：它把 ADR 0268 当年据以移除「引用」
+  的那个 OS 剪贴板，变成名副其实的替代品。仅渲染层——未改动任何 IPC 通道、宿主协议、
+  存储 schema、权限、Plugin SDK 或 i18n 键。见 `04-ux/08-component-spec.md` §8.7
+  与 E2E-CHAT-copy-formula-as-tex。
+## 2026-09-22 —— 交给 pi 的文件操作收集器使用它认识的拼写（D618，issue #827）
+
+- 检查点的 `readFiles` / `modifiedFiles` 以及摘要追加的 `<read-files>` 段来自 pi 自己的
+  `extractFileOpsFromMessage`，它只匹配小写名字 `read` / `write` / `edit`——即 pi 自己
+  工具的名字。PI-Desktop 注册的是 `Read` / `Write` / `Edit`，因此该收集器什么都匹配不到，
+  每个检查点都报出空文件清单；issue #827 在排查压缩报告时发现了这一点。
+- 转换只发生在边界这一侧：`withPiFileOpToolNames` 把交给 pi `prepareCompaction` 的条目
+  复制一份，并改写这三个名字的拼写。存储字节不变——transcript、检查点与重建后的上下文都
+  保留我们的拼写——而且当历史里没有这类调用时原样返回入参数组，常见路径不产生任何分配。
+- 只转换这三个名字。pi 的收集器不读其它名字，因此 `Grep`、`Glob`、`Bash`、插件与 MCP 名字
+  保持我们注册的拼写，被摘要的文本只在 pi 真正消费该名字的地方发生变化。
+
+## 2026-09-22 —— 供应商请求头里的全角字符改为折成半角，而不是让回合失败（D621）
+
+- 自定义供应商请求头的值里带一个全角字符——输入法或全角排版的网页会把 `0` 打成 `０`
+  （U+FF10）——这个值进到 `Headers.set` 后让 undici 抛 `TypeError: Cannot convert
+  argument to a ByteString because the character at index N has a value of X which
+  is greater than 255`。请求根本没发出去，报错文本不指向任何用户能改的字段，而且只有
+  在自定义请求头功能上线之后建的行才会出现：同一份配置在旧版本上看起来完全正常。
+- 现在值会先把全角块（U+FF01–U+FF5E）与表意空格（U+3000）折成 ASCII，再修剪，再要求
+  只能是 HTAB、可打印 ASCII 或 Latin-1 补充区。这里刻意不走完整 NFKC：它会把半角片假名
+  改写成 U+30A2 并附带组合字符，照样发不出去。剩余情况由宿主持久化层以
+  `HEADERS_INVALID` 拒绝，并指出具体字符与字符下标；运行时遇到这类行直接丢弃而不是抛错，
+  与它已对 CR/LF 和保留头采取的做法一致。
+- 半角化在写入与读取两侧都做，因此规则生效前存下的值升级后可直接使用，不必等用户重新
+  输入。
+- 这条规则生效的三个边界刻意采用不同的失败方式：编辑器保存时拒绝无法发送的行并指出字符，
+  因为此时有用户在场可以改；读取已存映射时半角化并丢弃；收到同步 bundle 时在反序列化成
+  写入输入之前半角化并丢弃，因此旧版本对端（或规则前的备份）带着的某一行不会让整个
+  revision 失败。少了第三个边界，更严格的写入会把一行陈旧数据变成永久卡住的同步——
+  读取路径把它藏起来，写入路径却在它上面直接报错。
+- 供应商 API 密钥同样两侧折叠——密钥最终签进 `Authorization` 或 `x-api-key`，全角字符
+  在那里永远不可能是对的——但密钥不会在保存时被拒绝，因为有些认证方式并不把密钥放进请求
+  头（查询参数、SigV4 签名）。仍然不是 Latin-1 的密钥继续在发请求时报错；拒绝它会拦住
+  一个写入侧无从判断的保存。
+- 高级请求头编辑器会在行旁说明哪些值会被折成半角、哪些会被拒绝，避免用户只能从报错里
+  得知结果。一份规则、两处实现：`packages/shared/src/header-value.ts` 与
+  `crates/host-core/src/providers/validation.rs`。参见
+  `03-runtime/12-provider-config-schema.md`、ADR 0178、E2E-005G。
+
+## 2026-09-22 —— 目录别名只补全元数据，不更改模型身份（D622）
+
+- 已配置绑定继续使用严格的 `modelIdsMatch`：完整 ID、完整路径后缀、已知厂商的
+  `-`/`.` 前缀和仅单侧带 `@region` 的别名；不同地区、任意代理前缀及思考/端点
+  后缀都不合并绑定。PR #870 因冻结规格仅承诺精确 ID 和厂商前缀、且无决策记录
+  支持扩大匹配范围而关闭。
+- 仅 models.dev 元数据使用 `catalogModelIdsMatch`：还可匹配无已知厂商冲突的
+  裸叶子 ID 与 `proxy/` 或 `custom/` 等完整路由路径，但不同完整路径不会仅凭
+  相同叶子互认；另可剥离由 `-` 或 `:` 分隔的末尾
+  `thinking`/`think`/`agent`/`latest`。不剥离任意短横线代理前缀或
+  `low`/`high`/`max` effort 后缀。索引候选键仍须经匹配器核实；已知厂商/API
+  只查自身目录。后缀本身不赋予推理能力：未命中的自由格式 ID 仍是未知通用
+  模型，已发布能力和显式绑定覆盖沿用既有优先级。见
+  `03-runtime/13-model-catalog-and-selection.md` §11.2。

@@ -27,12 +27,13 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../lib/portal-visibility";
 import {
   placeContextMenu,
   type ContextMenuPlacement,
   type ContextMenuPoint,
 } from "../lib/context-menu";
+import { texClipboardPayload } from "../lib/selection-tex";
 
 export type ContextMenuItem = {
   /** Stable identity for React keys and for tests naming a row. */
@@ -83,6 +84,13 @@ function pointForEvent(event: ReactMouseEvent<HTMLElement>): ContextMenuPoint {
  * A selection in the composer or another row is not "this turn's excerpt".
  * Anchor or focus inside the right-clicked node is enough: a range that
  * starts in this row still belongs to Copy here.
+ *
+ * `useCopyTex` has no counterpart to this check, and the asymmetry is the
+ * point: `root` is where the *user* aimed the pointer, which really can be a
+ * row the selection never entered, while a `copy` event's target is derived
+ * by the platform from the selection itself and so is always inside it. Do
+ * not mirror this gate onto the copy listener — it rejects every range built
+ * with `selectNodeContents`, this row's Copy item included.
  */
 function snapshotSelection(root: EventTarget): string {
   // Textarea ranges are not represented by the document Selection.
@@ -96,16 +104,51 @@ function snapshotSelection(root: EventTarget): string {
   }
   const live = window.getSelection();
   if (!live || live.rangeCount === 0 || live.isCollapsed) return "";
-  const text = live.toString();
-  if (!text || !(root instanceof Node)) return "";
+  if (!(root instanceof Node)) return "";
   const { anchorNode, focusNode } = live;
-  if (
+  const inside =
     (anchorNode && root.contains(anchorNode)) ||
-    (focusNode && root.contains(focusNode))
-  ) {
-    return text;
-  }
-  return "";
+    (focusNode && root.contains(focusNode));
+  if (!inside) return "";
+  /*
+    A formula reads as its TeX source here too: Copy and Ctrl+C must not put
+    two different readings of the same selection on the clipboard (issue #414).
+    Read after the row check, so a selection this row does not own is never
+    serialized at all.
+
+    Read *here*, while the menu is opening, and not from the Copy item's own
+    `onSelect`, even though that would reduce only when the user asks for it.
+    The menu focuses its first item a frame after it opens (the
+    `requestAnimationFrame` in `ContextMenu` below) and that collapses the
+    range, so by the time an item runs there is no selection left to read.
+    Deferring would mean carrying a cloned `Range` across the gap, where it
+    goes stale while a turn is still streaming — a new failure mode traded for
+    one clone. That clone is bounded by `mayContainKatex`, so only a row that
+    actually renders math pays for it, and it is paid inside the frame the
+    menu already spends before it can take focus. Menus whose items ignore the
+    selection (a link's, in `Markdown.tsx`) pay it too; an opt-in flag on
+    `ContextMenuRequest` would spare them and is not worth the public field.
+
+    Read without a `try`/`catch`, deliberately. The only fallback a catch
+    could reach for is the `live.toString()` below, which is the duplicated
+    glyph reading issue #414 exists about — so swallowing here would turn a
+    defect in the reduction into a silently wrong clipboard, the one outcome
+    this module was written to remove. `markdown-blocks.ts` degrades rather
+    than throwing for the opposite reason, not the same one: it runs in a
+    render memo under the app's single root `ErrorBoundary`, where a throw
+    replaces the whole window.
+
+    The price here is smaller but it is not nothing, and naming it is the
+    point: `openContextMenu` has already called `preventDefault` by the time
+    this runs and has not called `setState` yet, so a throw costs the user
+    this one right-click — no menu of ours, and no platform menu behind it
+    either, since nothing registers `webContents.on("context-menu")`. Paid
+    knowingly. A silently wrong clipboard is the failure that outlives the
+    gesture; a menu that has to be opened twice is not. Reordering the
+    snapshot above `preventDefault` would not buy a fallback back, only move
+    which nothing happens.
+  */
+  return texClipboardPayload(live) ?? live.toString();
 }
 
 export function useContextMenu() {
@@ -281,7 +324,7 @@ export function ContextMenu({
 
   if (!state || typeof document === "undefined") return null;
 
-  return createPortal(
+  return portalToBody(
     <div
       ref={menuRef}
       className={`context-menu${placement ? " is-open" : ""}`}
@@ -326,6 +369,5 @@ export function ContextMenu({
         </Fragment>
       ))}
     </div>,
-    document.body,
   );
 }

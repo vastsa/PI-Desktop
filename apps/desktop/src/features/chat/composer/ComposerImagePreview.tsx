@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { IconChevronLeft, IconChevronRight, IconClose, IconDownload, IconMinus, IconPlus } from "../../../components/icons";
 import { useBlockingOverlay } from "../../../lib/blocking-overlay";
-import { useImagePreviewPan } from "./hooks/useImagePreviewPan";
+import { portalToBody } from "../../../lib/portal-visibility";
 import type { ComposerImagePreviewController } from "./hooks/useComposerImagePreview";
+import { useImagePreviewPan } from "./hooks/useImagePreviewPan";
 import "../../../styles/composer-image-preview.css";
 
 export function ComposerImagePreview({ controller }: { controller: ComposerImagePreviewController }) {
@@ -94,7 +94,7 @@ function ImagePreviewDialog({ controller, preview }: {
   const dismissBackground = (event: React.MouseEvent<HTMLElement>) => {
     if (event.target === event.currentTarget) controller.close();
   };
-  return createPortal(
+  return portalToBody(
     <dialog
       ref={dialogRef}
       className="composer-image-preview"
@@ -146,6 +146,6 @@ function ImagePreviewDialog({ controller, preview }: {
         <button type="button" disabled={!natural || failed || zoom >= 8} onClick={() => changeZoom(zoom * 1.25)} aria-label={t("menu.zoomIn")}><IconPlus size={18} /></button>
         <button type="button" disabled={!natural || failed} onClick={() => { setManualZoom(null); pan.reset(); }}>{t("chat.imagePreview.fit")}</button>
       </footer>
-    </dialog>, document.body,
+    </dialog>,
   );
 }
