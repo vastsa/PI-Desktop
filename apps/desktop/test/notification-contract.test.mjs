@@ -227,10 +227,6 @@ test("notification list refreshes cannot resurrect cleared rows", () => {
   assert.match(refreshBlock, /delete sessionOutcomes\[sessionId\]/);
   assert.match(refreshBlock, /notificationClearedAt\(\)/);
 
-  const receiveBlock = catalogSource.slice(
-    receiveStart,
-    catalogSource.indexOf("markNotificationRead:", receiveStart),
-  );
   assert.match(receiveBlock, /state\.unreadNotificationCount \+ /);
 
   const readBlock = catalogSource.slice(
