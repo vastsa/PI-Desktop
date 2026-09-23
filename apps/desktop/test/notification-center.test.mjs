@@ -49,7 +49,7 @@ test("notification popover preserves keyboard and focus behavior", () => {
   assert.match(componentSource, /triggerRef\.current\?\.focus\(\)/);
   assert.match(componentSource, /rootRef\.current\?\.contains/);
   assert.match(componentSource, /popoverRef\.current\?\.contains/);
-  assert.match(componentSource, /createPortal/);
+  assert.match(componentSource, /portalToBody/);
   assert.match(componentSource, /notification-popover-portaled/);
   assert.match(componentSource, /\.notification-item\.unread, \.notification-item/);
   assert.match(componentSource, /\.notification-filter\.active/);

@@ -44,6 +44,15 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
     await delay(180);
   };
   const hover = async (selector) => {
+    if (selector.endsWith(".sidebar-session-group-add")) {
+      const header = selector.replace(/\s+\.sidebar-session-group-add$/, "");
+      const headerTarget = await point(header);
+      await move(headerTarget.x, headerTarget.y);
+      await waitFor(
+        () => cdp.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)})).pointerEvents === 'auto'`),
+        `row-state action is revealed: ${selector}`,
+      );
+    }
     const target = await point(selector);
     await move(target.x, target.y);
   };
@@ -183,9 +192,18 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
       await click('[data-nav="settings"]');
       await waitFor(() => cdp.evaluate("!!document.querySelector('.settings-shell')"), "settings opens");
       await move(600, 120);
+      const hiddenChatState = await cdp.evaluate(`(() => {
+        const chatShell = document.querySelector('.app-chat-shell');
+        const sidebar = chatShell?.querySelector('.sidebar');
+        return {
+          hidden: chatShell?.hidden === true && chatShell.getAttribute('aria-hidden') === 'true' && chatShell.inert,
+          sidebarRetained: sidebar?.isConnected === true,
+        };
+      })()`);
       check(
-        (await selectedIds()).length === 0 && await cdp.evaluate("!document.querySelector('.sidebar')"),
-        `${theme} settings replaces navigation without leaving stale selected rows`,
+        hiddenChatState.hidden && hiddenChatState.sidebarRetained,
+        `${theme} settings hides the mounted chat and sidebar`,
+        JSON.stringify({ hiddenChatState, selectedIds: await selectedIds() }),
       );
       await click('[data-nav="back-to-app"]');
       await waitFor(() => cdp.evaluate("!!document.querySelector('.sidebar')"), "sidebar returns from settings");

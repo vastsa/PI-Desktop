@@ -215,7 +215,8 @@ type PluginThemeContrib = {
  label: string;
  path: string; // relative `.css` file
  base?: "light" | "dark"; // palette the overrides layer on, default `dark`
- assets?: string[]; // absolute png/jpg/jpeg/webp/avif/svg/woff2, 4 MB summed;
+ assets?: string[]; // package-relative or absolute png/jpg/jpeg/webp/avif/svg/woff2, 4 MB summed;
+                    // relative paths resolve inside plugin root; traversal/node_modules are rejected;
                     // each matching `url()` is rewritten to `plugin-asset://`
 };
 

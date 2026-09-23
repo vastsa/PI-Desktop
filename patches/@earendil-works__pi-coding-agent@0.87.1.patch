@@ -1,0 +1,469 @@
+diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+index 36fdb31..322876f 100644
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -64,10 +64,10 @@ function withoutDeletedHeaders(headers) {
+         ? Object.fromEntries(Object.entries(headers).filter((entry) => entry[1] !== null))
+         : undefined;
+ }
+-function estimateMessagesTokens(messages) {
++function estimateMessagesTokens(messages, model) {
+     let tokens = 0;
+     for (const message of messages) {
+-        tokens += estimateTokens(message);
++        tokens += estimateTokens(message, model);
+     }
+     return tokens;
+ }
+@@ -300,7 +300,7 @@ export class AgentSession {
+         const projection = this.sessionManager.buildSessionProjection();
+         if (!model ||
+             model.contextWindow <= 0 ||
+-            !shouldCompact(estimateProjectedContextTokens(projection, this.sessionManager.getBranch()).tokens, model.contextWindow, settings)) {
++            !shouldCompact(estimateProjectedContextTokens(projection, this.sessionManager.getBranch(), model).tokens, model.contextWindow, settings)) {
+             return { ...context, messages: projection.messages };
+         }
+         await this._runAutoCompaction("threshold", false);
+@@ -438,7 +438,7 @@ export class AgentSession {
+                     entryId = manager.appendContextEdit(draft.targetId, draft.replacement);
+                     break;
+                 case "compaction": {
+-                    const tokensBefore = estimateProjectedContextTokens(manager.buildSessionProjection(), manager.getBranch()).tokens;
++                    const tokensBefore = estimateProjectedContextTokens(manager.buildSessionProjection(), manager.getBranch(), this.model ?? undefined).tokens;
+                     entryId = manager.appendCompaction(draft.summary, draft.firstKeptEntryId, tokensBefore, draft.details, true, draft.usage);
+                     break;
+                 }
+@@ -1876,7 +1876,7 @@ export class AgentSession {
+             const settings = this.settingsManager.getCompactionSettings(model);
+             const { model: requestModel, apiKey, headers, env, } = await this._getSummarizationRequestAuth(model, this._compactionAbortController.signal);
+             const pathEntries = this.sessionManager.getBranch();
+-            const preparation = prepareCompaction(pathEntries, settings);
++            const preparation = prepareCompaction(pathEntries, settings, requestModel);
+             if (!preparation) {
+                 // Check why we can't compact
+                 const lastEntry = pathEntries[pathEntries.length - 1];
+@@ -1933,7 +1933,7 @@ export class AgentSession {
+             this.sessionManager.appendCompaction(summary, firstKeptEntryId, tokensBefore, details, fromExtension, usage);
+             const newEntries = this.sessionManager.getEntries();
+             this._refreshFinalizedContext();
+-            const estimatedTokensAfter = estimateMessagesTokens(this.sessionManager.buildSessionProjection().messages);
++            const estimatedTokensAfter = estimateMessagesTokens(this.sessionManager.buildSessionProjection().messages, requestModel);
+             // Get the saved compaction entry for the extension event
+             const savedCompactionEntry = newEntries.find((e) => e.type === "compaction" && e.summary === summary);
+             if (this._extensionRunner && savedCompactionEntry) {
+@@ -2111,11 +2111,11 @@ export class AgentSession {
+         const hasContextEdits = projection.entries.some((entry) => entry.sourceEntry.type === "context_edit");
+         const directContextTokens = assistantMessage.usage ? calculateContextTokens(assistantMessage.usage) : 0;
+         if (hasContextEdits) {
+-            contextTokens = estimateProjectedContextTokens(projection, branch).tokens;
++            contextTokens = estimateProjectedContextTokens(projection, branch, this.model ?? undefined).tokens;
+         }
+         else if (assistantMessage.stopReason === "error" || directContextTokens === 0) {
+             const messages = this.agent.state.messages;
+-            const estimate = estimateContextTokens(messages);
++            const estimate = estimateContextTokens(messages, this.model ?? undefined);
+             // Without provider usage, estimate.tokens is the pure message-size estimate.
+             // Only usage-backed estimates need the stale pre-compaction check.
+             if (estimate.lastUsageIndex !== null) {
+@@ -2161,7 +2161,7 @@ export class AgentSession {
+                 return false;
+             }
+             const pathEntries = this.sessionManager.getBranch();
+-            const preparation = prepareCompaction(pathEntries, settings);
++            const preparation = prepareCompaction(pathEntries, settings, model);
+             if (!preparation) {
+                 return false;
+             }
+@@ -2219,7 +2219,7 @@ export class AgentSession {
+             this.sessionManager.appendCompaction(summary, firstKeptEntryId, tokensBefore, details, fromExtension, usage);
+             const newEntries = this.sessionManager.getEntries();
+             this._refreshFinalizedContext();
+-            const estimatedTokensAfter = estimateMessagesTokens(this.sessionManager.buildSessionProjection().messages);
++            const estimatedTokensAfter = estimateMessagesTokens(this.sessionManager.buildSessionProjection().messages, requestModel);
+             // Get the saved compaction entry for the extension event
+             const savedCompactionEntry = newEntries.find((e) => e.type === "compaction" && e.summary === summary);
+             if (this._extensionRunner && savedCompactionEntry) {
+@@ -3122,7 +3122,7 @@ export class AgentSession {
+             if (!hasPostCompactionUsage)
+                 return { tokens: null, contextWindow, percent: null };
+         }
+-        const estimate = estimateProjectedContextTokens(projection, branch);
++        const estimate = estimateProjectedContextTokens(projection, branch, model);
+         const percent = (estimate.tokens / contextWindow) * 100;
+         return {
+             tokens: estimate.tokens,
+diff --git a/dist/core/bug-report.js b/dist/core/bug-report.js
+index bf7729f..794ec01 100644
+--- a/dist/core/bug-report.js
++++ b/dist/core/bug-report.js
+@@ -232,12 +232,12 @@ Numbered list, as specific as the transcript allows.
+ Tool calls involved, files touched, model behavior, anything else that helps a developer reproduce or locate the problem.
+ 
+ Do not include file contents, secrets, or credentials from the transcript; refer to files by path only. Keep the report factual and concise.`;
+-function selectMessages(messages, tokenBudget) {
++function selectMessages(messages, tokenBudget, model) {
+     const selected = [];
+     let tokens = 0;
+     for (let index = messages.length - 1; index >= 0; index--) {
+         const message = messages[index];
+-        const next = estimateTokens(message);
++        const next = estimateTokens(message, model);
+         if (selected.length > 0 && tokens + next > tokenBudget)
+             break;
+         selected.push(message);
+@@ -249,7 +249,7 @@ function selectMessages(messages, tokenBudget) {
+ export async function generateBugReportSummary(options) {
+     const { model } = options;
+     const contextWindow = model.contextWindow > 0 ? model.contextWindow : 128_000;
+-    const messages = selectMessages(options.messages, Math.floor(contextWindow * 0.6));
++    const messages = selectMessages(options.messages, Math.floor(contextWindow * 0.6), model);
+     const hint = options.hint?.trim();
+     const prompt = [
+         messages.length < options.messages.length
+diff --git a/dist/core/compaction/branch-summarization.d.ts b/dist/core/compaction/branch-summarization.d.ts
+index 12cb88e..6ff7356 100644
+--- a/dist/core/compaction/branch-summarization.d.ts
++++ b/dist/core/compaction/branch-summarization.d.ts
+@@ -6,7 +6,7 @@
+  */
+ import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
+ import type { RetryCallbacks, RetryPolicy } from "@earendil-works/pi-ai";
+-import type { Model, Usage } from "@earendil-works/pi-ai/compat";
++import type { Api, Model, Usage } from "@earendil-works/pi-ai/compat";
+ import type { ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
+ import { type FileOperations } from "./utils.ts";
+ export interface BranchSummaryResult {
+@@ -87,7 +87,7 @@ export declare function collectEntriesForBranchSummary(session: ReadonlySessionM
+  * @param entries - Entries in chronological order
+  * @param tokenBudget - Maximum tokens to include (0 = no limit)
+  */
+-export declare function prepareBranchEntries(entries: SessionEntry[], tokenBudget?: number): BranchPreparation;
++export declare function prepareBranchEntries(entries: SessionEntry[], tokenBudget?: number, model?: Model<Api>): BranchPreparation;
+ /**
+  * Generate a summary of abandoned branch entries.
+  *
+diff --git a/dist/core/compaction/branch-summarization.js b/dist/core/compaction/branch-summarization.js
+index 3f98859..b68f7ad 100644
+--- a/dist/core/compaction/branch-summarization.js
++++ b/dist/core/compaction/branch-summarization.js
+@@ -95,7 +95,7 @@ function getMessageFromEntry(entry) {
+  * @param entries - Entries in chronological order
+  * @param tokenBudget - Maximum tokens to include (0 = no limit)
+  */
+-export function prepareBranchEntries(entries, tokenBudget = 0) {
++export function prepareBranchEntries(entries, tokenBudget = 0, model) {
+     const messages = [];
+     const fileOps = createFileOps();
+     let totalTokens = 0;
+@@ -125,7 +125,7 @@ export function prepareBranchEntries(entries, tokenBudget = 0) {
+             continue;
+         // Extract file ops from assistant messages (tool calls)
+         extractFileOpsFromMessage(message, fileOps);
+-        const tokens = estimateTokens(message);
++        const tokens = estimateTokens(message, model);
+         // Check budget before adding
+         if (tokenBudget > 0 && totalTokens + tokens > tokenBudget) {
+             // If this is a summary entry, try to fit it anyway as it's important context
+@@ -189,7 +189,7 @@ export async function generateBranchSummary(entries, options) {
+     // Token budget = context window minus reserved space for prompt + response
+     const contextWindow = model.contextWindow || 128000;
+     const tokenBudget = contextWindow - reserveTokens;
+-    const { messages, fileOps } = prepareBranchEntries(entries, tokenBudget);
++    const { messages, fileOps } = prepareBranchEntries(entries, tokenBudget, model);
+     if (messages.length === 0) {
+         return { summary: "No content to summarize" };
+     }
+diff --git a/dist/core/compaction/compaction.d.ts b/dist/core/compaction/compaction.d.ts
+index 04416da..fdf79d9 100644
+--- a/dist/core/compaction/compaction.d.ts
++++ b/dist/core/compaction/compaction.d.ts
+@@ -6,7 +6,7 @@
+  */
+ import type { AgentMessage, StreamFn, ThinkingLevel } from "@earendil-works/pi-agent-core";
+ import { type RetryCallbacks, type RetryPolicy } from "@earendil-works/pi-ai";
+-import type { AssistantMessage, Model, SimpleStreamOptions, TranscriptContext, Usage } from "@earendil-works/pi-ai/compat";
++import type { Api, AssistantMessage, Model, SimpleStreamOptions, TranscriptContext, Usage } from "@earendil-works/pi-ai/compat";
+ import { type SessionEntry, type SessionProjection } from "../session-manager.ts";
+ import { type FileOperations } from "./utils.ts";
+ /** Details stored in CompactionEntry.details for file tracking */
+@@ -50,9 +50,9 @@ export interface ContextUsageEstimate {
+  * Estimate context tokens from messages, using the last assistant usage when available.
+  * If there are messages after the last usage, estimate their tokens with estimateTokens.
+  */
+-export declare function estimateContextTokens(messages: AgentMessage[]): ContextUsageEstimate;
++export declare function estimateContextTokens(messages: AgentMessage[], model?: Model<Api>): ContextUsageEstimate;
+ /** Estimate projected context without trusting usage captured before a later edit or compaction. */
+-export declare function estimateProjectedContextTokens(projection: SessionProjection, branchEntries: SessionEntry[]): ContextUsageEstimate;
++export declare function estimateProjectedContextTokens(projection: SessionProjection, branchEntries: SessionEntry[], model?: Model<Api>): ContextUsageEstimate;
+ /**
+  * Check if compaction should trigger based on context usage.
+  */
+@@ -60,8 +60,10 @@ export declare function shouldCompact(contextTokens: number, contextWindow: numb
+ /**
+  * Estimate token count for a message using chars/4 heuristic.
+  * This is conservative (overestimates tokens).
++ * Standard provider roles delegate to the pi-ai estimator; pass `model` to scope
++ * hosted search replay projections to the estimation target.
+  */
+-export declare function estimateTokens(message: AgentMessage): number;
++export declare function estimateTokens(message: AgentMessage, model?: Model<Api>): number;
+ /**
+  * Find the context-visible user-role message that starts the turn containing the given entry index.
+  * Returns -1 if no turn start found before the index.
+@@ -91,7 +93,7 @@ export interface CutPointResult {
+  *
+  * Only considers entries between `startIndex` and `endIndex` (exclusive).
+  */
+-export declare function findCutPoint(entries: SessionEntry[], startIndex: number, endIndex: number, keepRecentTokens: number): CutPointResult;
++export declare function findCutPoint(entries: SessionEntry[], startIndex: number, endIndex: number, keepRecentTokens: number, model?: Model<Api>): CutPointResult;
+ /**
+  * Returns an error message when a summarization response cannot safely be persisted.
+  * A length stop contains partial text and must not become a session checkpoint.
+@@ -132,7 +134,7 @@ export interface CompactionPreparation {
+     /** Compaction settions from settings.jsonl	*/
+     settings: CompactionSettings;
+ }
+-export declare function prepareCompaction(pathEntries: SessionEntry[], settings: CompactionSettings): CompactionPreparation | undefined;
++export declare function prepareCompaction(pathEntries: SessionEntry[], settings: CompactionSettings, model?: Model<Api>): CompactionPreparation | undefined;
+ /**
+  * Generate summaries for compaction using prepared data.
+  * Returns CompactionResult - SessionManager adds uuid/parentUuid when saving.
+diff --git a/dist/core/compaction/compaction.js b/dist/core/compaction/compaction.js
+index b86498c..1034f8a 100644
+--- a/dist/core/compaction/compaction.js
++++ b/dist/core/compaction/compaction.js
+@@ -4,8 +4,10 @@
+  * Pure functions for compaction logic. The session manager handles I/O,
+  * and after compaction the session is reloaded.
+  */
+-import { contentText, getCurrentSystemMessage, normalizeContext, retryAssistantCall, uuidv7, } from "@earendil-works/pi-ai";
++import { contentText, getCurrentSystemMessage, LocalRequestError, normalizeContext, retryAssistantCall, uuidv7, } from "@earendil-works/pi-ai";
+ import { completeSimple } from "@earendil-works/pi-ai/compat";
++import { estimateMessageTokens, getLastAssistantUsageInfo } from "@earendil-works/pi-ai/utils/estimate";
++import { validateHostedSearchMessages } from "@earendil-works/pi-ai/utils/hosted-search";
+ import { convertToLlm } from "../messages.js";
+ import { buildSessionProjection, sessionEntryToContextMessages, } from "../session-manager.js";
+ import { computeFileLists, createFileOps, extractFileOpsFromMessage, formatFileOperations, SUMMARIZATION_SYSTEM_PROMPT, serializeConversation, } from "./utils.js";
+@@ -116,24 +118,19 @@ export function getLastAssistantUsage(entries) {
+     }
+     return undefined;
+ }
+-function getLastAssistantUsageInfo(messages) {
+-    for (let i = messages.length - 1; i >= 0; i--) {
+-        const usage = getAssistantUsage(messages[i]);
+-        if (usage)
+-            return { usage, index: i };
+-    }
+-    return undefined;
+-}
+ /**
+  * Estimate context tokens from messages, using the last assistant usage when available.
+  * If there are messages after the last usage, estimate their tokens with estimateTokens.
++ * Provider-role estimation is delegated to pi-ai so hosted search replay projections and
++ * the prefix-timestamp usage anchor stay consistent with the provider request path.
+  */
+-export function estimateContextTokens(messages) {
++export function estimateContextTokens(messages, model) {
++    validateHostedSearchMessages(messages);
+     const usageInfo = getLastAssistantUsageInfo(messages);
+     if (!usageInfo) {
+         let estimated = 0;
+         for (const message of messages) {
+-            estimated += estimateTokens(message);
++            estimated += estimateTokens(message, model);
+         }
+         return {
+             tokens: estimated,
+@@ -145,7 +142,7 @@ export function estimateContextTokens(messages) {
+     const usageTokens = calculateContextTokens(usageInfo.usage);
+     let trailingTokens = 0;
+     for (let i = usageInfo.index + 1; i < messages.length; i++) {
+-        trailingTokens += estimateTokens(messages[i]);
++        trailingTokens += estimateTokens(messages[i], model);
+     }
+     return {
+         tokens: usageTokens + trailingTokens,
+@@ -155,8 +152,8 @@ export function estimateContextTokens(messages) {
+     };
+ }
+ /** Estimate projected context without trusting usage captured before a later edit or compaction. */
+-export function estimateProjectedContextTokens(projection, branchEntries) {
+-    const estimate = estimateContextTokens(projection.messages);
++export function estimateProjectedContextTokens(projection, branchEntries, model) {
++    const estimate = estimateContextTokens(projection.messages, model);
+     if (estimate.lastUsageIndex !== null) {
+         let projectedMessageIndex = 0;
+         let usageEntryId;
+@@ -181,10 +178,10 @@ export function estimateProjectedContextTokens(projection, branchEntries) {
+             return estimate;
+     }
+     const currentSystem = getCurrentSystemMessage(projection.messages);
+-    let tokens = currentSystem ? estimateTokens(currentSystem) : 0;
++    let tokens = currentSystem ? estimateTokens(currentSystem, model) : 0;
+     for (const message of projection.messages) {
+         if (message.role !== "system")
+-            tokens += estimateTokens(message);
++            tokens += estimateTokens(message, model);
+     }
+     return { tokens, usageTokens: 0, trailingTokens: tokens, lastUsageIndex: null };
+ }
+@@ -219,43 +216,15 @@ function estimateTextAndImageContentChars(content) {
+  * Estimate token count for a message using chars/4 heuristic.
+  * This is conservative (overestimates tokens).
+  */
+-export function estimateTokens(message) {
++export function estimateTokens(message, model) {
+     let chars = 0;
+     switch (message.role) {
+-        case "system": {
+-            const system = message;
+-            chars = estimateTextAndImageContentChars(system.content);
+-            if (system.sections) {
+-                for (const section of Object.values(system.sections)) {
+-                    if (section)
+-                        chars += section.length;
+-                }
+-            }
+-            if (system.toolsAdded)
+-                chars += JSON.stringify(system.toolsAdded).length;
+-            return Math.ceil(chars / 4);
+-        }
+-        case "user": {
+-            chars = estimateTextAndImageContentChars(message.content);
+-            return Math.ceil(chars / 4);
+-        }
+-        case "assistant": {
+-            const assistant = message;
+-            for (const block of assistant.content) {
+-                if (block.type === "text") {
+-                    chars += block.text.length;
+-                }
+-                else if (block.type === "thinking") {
+-                    chars += block.thinking.length;
+-                }
+-                else if (block.type === "toolCall") {
+-                    chars += block.name.length + JSON.stringify(block.arguments).length;
+-                }
+-            }
+-            return Math.ceil(chars / 4);
+-        }
+-        case "custom":
+-        case "toolResult": {
++        case "system":
++        case "user":
++        case "assistant":
++        case "toolResult":
++            return estimateMessageTokens(message, model);
++        case "custom": {
+             chars = estimateTextAndImageContentChars(message.content);
+             return Math.ceil(chars / 4);
+         }
+@@ -269,7 +238,7 @@ export function estimateTokens(message) {
+             return Math.ceil(chars / 4);
+         }
+     }
+-    return 0;
++    throw new LocalRequestError("context-validation");
+ }
+ function isCutPointMessage(message) {
+     switch (message.role) {
+@@ -352,7 +321,7 @@ export function findTurnStartIndex(entries, entryIndex, startIndex) {
+  *
+  * Only considers entries between `startIndex` and `endIndex` (exclusive).
+  */
+-export function findCutPoint(entries, startIndex, endIndex, keepRecentTokens) {
++export function findCutPoint(entries, startIndex, endIndex, keepRecentTokens, model) {
+     const cutPoints = findValidCutPoints(entries, startIndex, endIndex);
+     if (cutPoints.length === 0) {
+         return { firstKeptEntryIndex: startIndex, turnStartIndex: -1, isSplitTurn: false };
+@@ -362,7 +331,7 @@ export function findCutPoint(entries, startIndex, endIndex, keepRecentTokens) {
+     let cutIndex = cutPoints[0]; // Default: keep from first message (not header)
+     for (let i = endIndex - 1; i >= startIndex; i--) {
+         const entry = entries[i];
+-        const messageTokens = sessionEntryToContextMessages(entry).reduce((sum, message) => sum + estimateTokens(message), 0);
++        const messageTokens = sessionEntryToContextMessages(entry).reduce((sum, message) => sum + estimateTokens(message, model), 0);
+         if (messageTokens === 0)
+             continue;
+         accumulatedTokens += messageTokens;
+@@ -570,7 +539,7 @@ function findProjectedTurnStartIndex(entries, entryIndex, startIndex) {
+     }
+     return -1;
+ }
+-function findProjectedCutPoint(entries, startIndex, endIndex, keepRecentTokens) {
++function findProjectedCutPoint(entries, startIndex, endIndex, keepRecentTokens, model) {
+     const cutPoints = [];
+     for (let i = startIndex; i < endIndex; i++) {
+         const entry = entries[i];
+@@ -584,7 +553,7 @@ function findProjectedCutPoint(entries, startIndex, endIndex, keepRecentTokens)
+     let exceededBudget = false;
+     let cutIndex = cutPoints[0];
+     for (let i = endIndex - 1; i >= startIndex; i--) {
+-        const messageTokens = entries[i].messages.reduce((sum, message) => sum + estimateTokens(message), 0);
++        const messageTokens = entries[i].messages.reduce((sum, message) => sum + estimateTokens(message, model), 0);
+         if (messageTokens === 0)
+             continue;
+         accumulatedTokens += messageTokens;
+@@ -624,7 +593,7 @@ function findProjectedCutPoint(entries, startIndex, endIndex, keepRecentTokens)
+         isSplitTurn: !startsTurn && turnStartIndex !== -1,
+     };
+ }
+-export function prepareCompaction(pathEntries, settings) {
++export function prepareCompaction(pathEntries, settings, model) {
+     if (pathEntries.length > 0 && pathEntries[pathEntries.length - 1].type === "compaction") {
+         return undefined;
+     }
+@@ -642,8 +611,8 @@ export function prepareCompaction(pathEntries, settings) {
+         boundaryStart = prevCompactionIndex + 1;
+     }
+     const boundaryEnd = projectedEntries.length;
+-    const tokensBefore = estimateProjectedContextTokens(projection, pathEntries).tokens;
+-    const cutPoint = findProjectedCutPoint(projectedEntries, boundaryStart, boundaryEnd, settings.keepRecentTokens);
++    const tokensBefore = estimateProjectedContextTokens(projection, pathEntries, model).tokens;
++    const cutPoint = findProjectedCutPoint(projectedEntries, boundaryStart, boundaryEnd, settings.keepRecentTokens, model);
+     const firstKeptEntry = projectedEntries[cutPoint.firstKeptEntryIndex]?.sourceEntry;
+     if (!firstKeptEntry?.id)
+         return undefined;
+diff --git a/dist/core/compaction/utils.js b/dist/core/compaction/utils.js
+index bbbb6d1..7d71b57 100644
+--- a/dist/core/compaction/utils.js
++++ b/dist/core/compaction/utils.js
+@@ -2,6 +2,7 @@
+  * Shared utilities for compaction and branch summarization.
+  */
+ import { contentText } from "@earendil-works/pi-ai";
++import { hostedSearchReplayProjection } from "@earendil-works/pi-ai/utils/hosted-search";
+ export function createFileOps() {
+     return {
+         read: new Set(),
+@@ -102,6 +103,7 @@ export function serializeConversation(messages) {
+         else if (msg.role === "assistant") {
+             const thinkingParts = [];
+             const toolCalls = [];
++            const hostedSearchParts = [];
+             for (const block of msg.content) {
+                 if (block.type === "thinking") {
+                     thinkingParts.push(block.thinking);
+@@ -113,6 +115,13 @@ export function serializeConversation(messages) {
+                         .join(", ");
+                     toolCalls.push(`${block.name}(${argsStr})`);
+                 }
++                else if (block.type === "hostedSearch") {
++                    // Keep the hosted search replay buffer explicit: the projection is the raw wire block, never a toolCall.
++                    const projection = hostedSearchReplayProjection(block);
++                    if (projection !== undefined) {
++                        hostedSearchParts.push(JSON.stringify(projection));
++                    }
++                }
+             }
+             if (thinkingParts.length > 0) {
+                 parts.push(`[Assistant thinking]: ${thinkingParts.join("\n")}`);
+@@ -123,6 +132,9 @@ export function serializeConversation(messages) {
+             if (toolCalls.length > 0) {
+                 parts.push(`[Assistant tool calls]: ${toolCalls.join("; ")}`);
+             }
++            if (hostedSearchParts.length > 0) {
++                parts.push(`[Assistant hosted search]: ${hostedSearchParts.join("\n")}`);
++            }
+         }
+         else if (msg.role === "toolResult") {
+             const content = contentText(msg.content, "");

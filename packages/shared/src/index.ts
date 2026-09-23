@@ -32,6 +32,7 @@ export {
   type SourcedCatalogEntry,
 } from "./mcp-registry.js";
 export * from "./public-network.js";
+export * from "./network-policy.js";
 export * from "./skill-catalog.js";
 export * from "./skill-catalog-builtin.js";
 export * from "./model-config-import.js";
@@ -64,3 +65,4 @@ export * from "./tray-sessions.js";
 export * from "./window-chrome.js";
 export * from "./prompt-enhancement.js";
 export * from "./native-web-search.js";
+export * from "./header-value.js";

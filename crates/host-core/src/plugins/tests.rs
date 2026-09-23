@@ -839,80 +839,244 @@ fn theme_contributions_require_permission_and_css() {
 }
 
 #[test]
-fn theme_assets_are_absolute_paths_on_the_whitelist() {
+fn theme_assets_accept_package_relative_and_absolute_whitelisted_paths() {
     let dir = tempdir().unwrap();
 
-    // A theme asset is an absolute path, so the files live outside the plugin package.
-    let art = dir.path().join("shared/art");
-    std::fs::create_dir_all(&art).unwrap();
-    std::fs::write(art.join("bg.png"), "png").unwrap();
-    let font_dir = dir.path().join("shared/font");
-    std::fs::create_dir_all(&font_dir).unwrap();
-    std::fs::write(font_dir.join("ui.woff2"), "woff").unwrap();
-    let bg = art.join("bg.png").to_string_lossy().replace('\\', "/");
-    let font = font_dir
-        .join("ui.woff2")
+    let package = dir.path().join("package");
+    write_plugin(
+        &package,
+        capability_manifest(
+            json!({ "themes": [{
+                "id": "a", "label": "A", "path": "themes/a.css",
+                "assets": ["art/bg.png", "fonts/ui.woff2"]
+            }] }),
+            json!(["ui.theme"]),
+        ),
+        &[
+            ("themes/a.css", ":root {}"),
+            ("art/bg.png", "png"),
+            ("fonts/ui.woff2", "woff"),
+        ],
+    );
+    assert!(PluginManager::read_manifest(&package).is_ok());
+
+    // Prefix and separator normalization produce one package-relative key.
+    let duplicate = dir.path().join("duplicate");
+    write_plugin(
+        &duplicate,
+        capability_manifest(
+            json!({ "themes": [{
+                "id": "a", "label": "A", "path": "themes/a.css",
+                "assets": ["art/bg.png", ".\\art\\bg.png"]
+            }] }),
+            json!(["ui.theme"]),
+        ),
+        &[("themes/a.css", ":root {}"), ("art/bg.png", "png")],
+    );
+    assert!(read_manifest_err(&duplicate).contains("twice"));
+
+    // Absolute filesystem paths and their legacy file: spellings remain valid.
+    let shared = dir.path().join("shared");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(shared.join("outside.png"), "png").unwrap();
+    fs::write(shared.join("font.woff2"), "woff").unwrap();
+    let image = shared
+        .join("outside.png")
         .to_string_lossy()
         .replace('\\', "/");
+    let font = shared
+        .join("font.woff2")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let spaced_font = shared.join("font folder/ui font.woff2");
+    fs::create_dir_all(spaced_font.parent().unwrap()).unwrap();
+    fs::write(&spaced_font, "woff").unwrap();
+    let encoded_font_url = format!(
+        "FILE://{}",
+        spaced_font
+            .to_string_lossy()
+            .replace('\\', "/")
+            .replace(' ', "%20")
+    );
+    let absolute = dir.path().join("absolute");
+    write_plugin(
+        &absolute,
+        capability_manifest(
+            json!({ "themes": [{
+                "id": "a", "label": "A", "path": "themes/a.css",
+                "assets": [image, format!("file://{font}"), encoded_font_url]
+            }] }),
+            json!(["ui.theme"]),
+        ),
+        &[("themes/a.css", ":root {}")],
+    );
+    assert!(PluginManager::read_manifest(&absolute).is_ok());
 
-    // No longer assets: package-relative spellings, escapes, a wrong extension.
-    for (name, asset) in [
-        ("relative", "art/bg.png".to_string()),
-        ("dot-relative", "./art/bg.png".to_string()),
-        ("escape", "../bg.png".to_string()),
-        ("traversal", format!("{bg}/../bg.png")),
-        ("wrong-ext", bg.replace(".png", ".gif")),
+    for (name, asset, expected_error) in [
+        ("missing", "art/missing.png".to_string(), "asset missing"),
+        (
+            "escape",
+            "../outside.png".to_string(),
+            "package-relative or absolute image or font path on the whitelist",
+        ),
+        (
+            "traversal",
+            "art/../outside.png".to_string(),
+            "package-relative or absolute image or font path on the whitelist",
+        ),
+        (
+            "absolute-traversal",
+            format!("{image}/../outside.png"),
+            "package-relative or absolute image or font path on the whitelist",
+        ),
+        (
+            "node-modules",
+            "node_modules/pkg/image.png".to_string(),
+            "package-relative or absolute image or font path on the whitelist",
+        ),
+        (
+            "empty-segment",
+            "art//bg.png".to_string(),
+            "package-relative or absolute image or font path on the whitelist",
+        ),
+        (
+            "dot-segment",
+            "art/./bg.png".to_string(),
+            "package-relative or absolute image or font path on the whitelist",
+        ),
+        (
+            "scheme",
+            "https://example.test/image.png".to_string(),
+            "package-relative or absolute image or font path on the whitelist",
+        ),
+        (
+            "colon",
+            "art:image.png".to_string(),
+            "package-relative or absolute image or font path on the whitelist",
+        ),
+        (
+            "wrong-ext",
+            "art/bg.gif".to_string(),
+            "package-relative or absolute image or font path on the whitelist",
+        ),
     ] {
         let root = dir.path().join(name);
         write_plugin(
             &root,
             capability_manifest(
-                json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": [asset] }] }),
+                json!({ "themes": [{
+                    "id": "a", "label": "A", "path": "themes/a.css", "assets": [asset]
+                }] }),
                 json!(["ui.theme"]),
             ),
             &[("themes/a.css", ":root {}")],
         );
-        assert!(
-            read_manifest_err(&root).contains("absolute image or font path"),
-            "{name} was accepted"
-        );
+        let error = read_manifest_err(&root);
+        assert!(error.contains(expected_error), "{name}: {error}");
     }
+}
 
-    // An absolute path that is simply not there.
-    let missing = dir.path().join("missing");
+#[test]
+fn package_relative_theme_asset_budget_is_enforced_across_files() {
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("budget");
     write_plugin(
-        &missing,
+        &root,
         capability_manifest(
-            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": [format!("{bg}.gone.png")] }] }),
+            json!({ "themes": [{
+                "id": "a", "label": "A", "path": "themes/a.css",
+                "assets": ["art/first.webp", "art/second.webp"]
+            }] }),
             json!(["ui.theme"]),
         ),
         &[("themes/a.css", ":root {}")],
     );
-    assert!(read_manifest_err(&missing).contains("asset missing"));
+    fs::create_dir_all(root.join("art")).unwrap();
+    let first = root.join("art/first.webp");
+    let second = root.join("art/second.webp");
+    fs::write(&first, vec![b'x'; 2 * 1024 * 1024]).unwrap();
+    fs::write(&second, vec![b'x'; 2 * 1024 * 1024]).unwrap();
+    assert!(PluginManager::read_manifest(&root).is_ok());
 
-    // Two spellings of one file are one asset.
-    let duplicated = dir.path().join("duplicated");
+    fs::write(&second, vec![b'x'; 2 * 1024 * 1024 + 1]).unwrap();
+    assert!(read_manifest_err(&root).contains("assets exceed 4194304 bytes"));
+}
+
+#[cfg(unix)]
+#[test]
+fn package_relative_theme_assets_cannot_escape_through_symlinks() {
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
     write_plugin(
-        &duplicated,
+        &root,
         capability_manifest(
-            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": [bg.clone(), format!("file://{bg}")] }] }),
+            json!({ "themes": [{
+                "id": "a", "label": "A", "path": "themes/a.css", "assets": ["art/escape.webp"]
+            }] }),
             json!(["ui.theme"]),
         ),
         &[("themes/a.css", ":root {}")],
     );
-    assert!(read_manifest_err(&duplicated).contains("twice"));
+    let art = root.join("art");
+    fs::create_dir_all(&art).unwrap();
+    let outside = dir.path().join("outside.webp");
+    fs::write(&outside, "image").unwrap();
+    std::os::unix::fs::symlink(&outside, art.join("escape.webp")).unwrap();
 
-    // Absolute paths, including the file: spelling, are accepted.
-    let ok = dir.path().join("ok");
-    write_plugin(
-        &ok,
-        capability_manifest(
-            json!({ "themes": [{ "id": "a", "label": "A", "path": "themes/a.css", "assets": [bg.clone(), format!("file://{font}")] }] }),
-            json!(["ui.theme"]),
-        ),
-        &[("themes/a.css", ":root {}")],
-    );
-    assert!(PluginManager::read_manifest(&ok).is_ok());
+    assert!(read_manifest_err(&root).contains("resolves outside the plugin package"));
+}
+
+#[test]
+fn install_from_package_accepts_a_package_relative_theme_asset() {
+    with_local_market(|| {
+        let dir = tempdir().unwrap();
+        let manifest = json!({
+            "schemaVersion": 1,
+            "id": "demo.theme-pack",
+            "name": "Theme Pack",
+            "version": "0.1.0",
+            "main": "main.js",
+            "contributes": {
+                "themes": [{
+                    "id": "sunset",
+                    "label": "Sunset",
+                    "path": "themes/sunset.css",
+                    "assets": ["art/preview.png"]
+                }]
+            },
+            "permissions": ["ui.theme"]
+        });
+        let package = make_zip(&[
+            (
+                "theme-pack/manifest.json",
+                &serde_json::to_vec(&manifest).unwrap(),
+            ),
+            ("theme-pack/main.js", b"export function onLoad() {}"),
+            ("theme-pack/themes/sunset.css", b":root {}"),
+            ("theme-pack/art/preview.png", b"png"),
+        ]);
+        let package_path = dir.path().join("theme-pack.piplug");
+        fs::write(&package_path, package).unwrap();
+
+        let mut manager = PluginManager::new(dir.path(), MarketChannel::Official, None);
+        let installed = manager
+            .install_from_package(
+                package_path.to_str().unwrap(),
+                InstallOptions {
+                    source: "installed".into(),
+                    enable: true,
+                    marketplace: None,
+                    expected_shasum: None,
+                    auto_update: false,
+                    granted_permissions: None,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(installed.plugin.id, "demo.theme-pack");
+        let install_root = Path::new(installed.plugin.path.as_deref().unwrap());
+        assert!(install_root.join("art/preview.png").is_file());
+    });
 }
 
 #[test]

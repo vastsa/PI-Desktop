@@ -6,6 +6,26 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const idle = (collapsed = false, presented = true) => ({ collapsed, presented, phase: "idle" });
 
+test("Settings hides the mounted chat shell and keeps its portal layers out of view", async () => {
+  const [appShell, styles, portalVisibility] = await Promise.all([
+    readFile(new URL("../src/features/app/AppShell.tsx", import.meta.url), "utf8"),
+    loadStyles(),
+    readFile(new URL("../src/lib/portal-visibility.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(appShell, /<PortalVisibilityProvider visible=\{page !== "settings"\}>/);
+  assert.match(appShell, /className="app-chat-shell"[\s\S]*?hidden=\{page === "settings"\}/);
+  assert.match(appShell, /inert=\{page === "settings" \? true : undefined\}/);
+  assert.match(appShell, /aria-hidden=\{page === "settings" \? true : undefined\}/);
+  assert.match(appShell, /className="app-chat-shell"[\s\S]*?<ChatSurface visible=\{page === "chat"\} \/>/);
+  assert.match(appShell, /\{page === "settings" \? \([\s\S]*?<SettingsPage \/>/);
+  assert.match(appShell, /<ChatSurface visible=\{page === "chat"\} \/>/);
+  assert.match(appShell, /<SearchDialog open=\{searchOpen\}/);
+  assert.match(styles, /\.app-chat-shell\s*\{\s*display:\s*contents;/);
+  assert.match(styles, /\.app-chat-shell\[hidden\]\s*\{\s*display:\s*none;/);
+  assert.match(portalVisibility, /<PortalVisibilityContext\.Consumer>[\s\S]*visible \? node : null/);
+  assert.match(portalVisibility, /createPortal\(visiblePortalContent\(node\), document\.body\)/);
+});
+
 test("initial shell presentation and settings return never play sidebar entrance", () => {
   assert.deepEqual(nextSidebarTransition(idle(false, false), false, true), idle());
   for (const collapsed of [false, true]) {

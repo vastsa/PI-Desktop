@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import type { ProjectGroupRecord, ProjectGroupRoot } from "@pi-desktop/shared";
 import { api } from "../lib/api";
@@ -366,5 +366,5 @@ export function ProjectEditDialog({
     </div>
   );
 
-  return typeof document === "undefined" ? dialog : createPortal(dialog, document.body);
+  return typeof document === "undefined" ? dialog : portalToBody(dialog);
 }

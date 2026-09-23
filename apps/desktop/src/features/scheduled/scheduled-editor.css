@@ -6,9 +6,102 @@
 }
 .scheduled-fields > * { min-width: 0; max-width: 100%; }
 .scheduled-fields .settings-menu-select-trigger {
-  height: 36px;
+  /* The editor is a form: its dropdowns are fields, so they take the shared
+     field metric rather than the compact Settings-row pill size. */
+  height: var(--ds-field-height);
   border-radius: var(--radius-md);
 }
+.scheduled-instruction-shell {
+  isolation: auto;
+  border-radius: var(--radius-lg);
+}
+
+.scheduled-instruction-input.field-textarea {
+  min-height: 104px;
+  max-height: none;
+  display: block;
+  resize: none;
+  overflow-y: auto;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  background: var(--ds-tile-hover);
+  box-shadow: none;
+}
+
+.scheduled-instruction-input.field-textarea:focus {
+  background: var(--ds-tile-hover);
+  box-shadow: none;
+}
+
+.scheduled-instruction-input.field-textarea::placeholder {
+  opacity: 1 !important;
+}
+
+.scheduled-execution-toolbar {
+  container-type: inline-size;
+  padding: 4px 8px 8px;
+}
+
+.scheduled-execution-toolbar .settings-menu-select-trigger-leading {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--ds-text-muted);
+}
+
+.scheduled-execution-toolbar .settings-menu-select-trigger.scheduled-execution-trigger {
+  max-width: 100%;
+  background: transparent;
+  box-shadow: none;
+}
+
+.scheduled-execution-toolbar .settings-menu-select-trigger.scheduled-execution-trigger:hover,
+.scheduled-execution-toolbar .settings-menu-select-trigger.scheduled-execution-trigger[aria-expanded="true"] {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary) !important;
+}
+
+.scheduled-execution-toolbar .settings-menu-select-trigger-label {
+  flex: 0 1 auto;
+  font-size: var(--text-sm);
+}
+
+.scheduled-execution-toolbar .settings-menu-select-trigger > svg {
+  width: 12px;
+  height: 12px;
+}
+
+.scheduled-execution-project {
+  max-width: min(190px, 42cqw);
+}
+
+
+.scheduled-execution-toolbar .settings-menu-select-anchor,
+.scheduled-execution-toolbar .settings-menu-select-trigger {
+  min-width: 0;
+}
+
+@container (max-width: 440px) {
+  .scheduled-execution-project { max-width: 34cqw; }
+}
+
+@container (max-width: 350px) {
+  .scheduled-execution-toolbar .settings-menu-select-trigger-label {
+    display: none;
+  }
+  .scheduled-execution-toolbar .settings-menu-select-trigger.scheduled-execution-trigger {
+    width: 28px;
+    padding: 0 !important;
+  }
+}
+
+.scheduled-instruction-shell,
+.scheduled-execution-toolbar {
+  width: 100%;
+}
+.scheduled-permission-warning { color: var(--ds-warning); }
 .scheduled-weekday-trigger { max-width: min(300px, 100%); }
 .scheduled-weekday-menu { min-width: 132px; }
 .scheduled-weekday-option { min-height: 38px; }

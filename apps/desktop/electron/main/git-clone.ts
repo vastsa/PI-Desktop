@@ -5,6 +5,10 @@ import {
   isGitCloneRepoName,
   parseGitCloneUrl,
 } from "../../src/lib/git-clone-url.ts";
+import {
+  allowInsecureUserEndpointsEnabled,
+  noteInsecureUserEndpoint,
+} from "./endpoint-policy.ts";
 
 export { parseGitCloneUrl } from "../../src/lib/git-clone-url.ts";
 
@@ -70,9 +74,23 @@ export async function cloneGitRepository(input: {
   name?: string;
   run?: typeof runGitClone;
 }): Promise<string> {
-  const target = parseGitCloneUrl(input.url);
+  const target = parseGitCloneUrl(input.url, {
+    allowInsecureHttp: allowInsecureUserEndpointsEnabled(),
+  });
   if (!target) {
     throw codedError("INVALID_ARGUMENT", "Enter a git repository URL");
+  }
+  if (target) {
+    try {
+      const parsed = new URL(input.url);
+      // A plaintext hop to the user's own git host is worth one notice.
+      if (parsed.protocol === "http:" || parsed.protocol === "git:") {
+        noteInsecureUserEndpoint(parsed.hostname.toLowerCase().replace(/\.+$/, ""));
+      }
+    } catch {
+      // An scp-style remote (`git@host:path`) carries no scheme, hence no
+      // plaintext URL to report.
+    }
   }
   const name = input.name ?? target.name;
   if (!isGitCloneRepoName(name)) {

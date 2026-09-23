@@ -11,30 +11,6 @@ import {
 
 type ConfiguredProvider = Pick<ProviderPublic, "id" | "models" | "defaultModelId">;
 
-/**
- * Resolve the provider heading shown in the Composer model menu.
- *
- * OAuth rows keep the vendor name as `provider.name` for runtime identity, but
- * the account-specific display label lives in `oauthAccountLabel`. Prefer that
- * label so duplicate accounts from one vendor remain distinguishable.
- */
-export function composerProviderDisplayName(
-  provider: Pick<ProviderPublic, "name" | "oauthAccountLabel">,
-): string {
-  return provider.oauthAccountLabel?.trim() || provider.name.trim();
-}
-
-/** Keep both the account label and vendor name searchable in the Composer. */
-export function composerProviderSearchText(
-  provider: Pick<ProviderPublic, "name" | "oauthAccountLabel">,
-): string {
-  const displayName = composerProviderDisplayName(provider);
-  const providerName = provider.name.trim();
-  return displayName === providerName
-    ? displayName
-    : `${displayName} ${providerName}`;
-}
-
 function configuredModelIds(provider: ConfiguredProvider): string[] {
   const ids = (provider.models ?? [])
     .map((binding) => binding.id.trim())

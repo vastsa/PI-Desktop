@@ -5,4 +5,7 @@ import './style.css'
 export default {
   extends: DefaultTheme,
   Layout,
+  enhanceApp() {
+    // Theme only. No runtime plugins.
+  },
 }

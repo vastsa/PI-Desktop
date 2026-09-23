@@ -243,19 +243,41 @@ test("ui requests: notify and status pass through; prompts round-trip, queue per
   assert.equal(b.respond(events.prompts[0].promptId, true), true);
   assert.deepEqual(await confirm, { kind: "confirm", value: true });
   await new Promise((r) => setTimeout(r, 0));
-  b.respond(events.prompts[1].promptId, "b");
+  b.respond(events.prompts.filter((prompt) => !prompt.cancelled)[1].promptId, "b");
   assert.deepEqual(await select, { kind: "select", value: "b" });
 
-  assert.deepEqual(await b.requestUi(envelope({ kind: "input", title: "Name" })), { kind: "input", value: undefined });
+  assert.deepEqual(await b.requestUi(envelope({ kind: "input", title: "Name" })), { kind: "input", value: undefined, cancelled: true });
 
   const aborted = b.requestUi(envelope({ kind: "confirm", title: "x", message: "" }, "s9"));
   await new Promise((r) => setTimeout(r, 0));
   b.cancelPrompts("s9");
-  assert.deepEqual(await aborted, { kind: "confirm", value: false });
+  assert.deepEqual(await aborted, { kind: "confirm", value: false, cancelled: true });
   assert.equal(b.pendingPromptCount(), 0);
 
   const { b: headless } = bridge({ hasRenderer: () => false });
   await assert.rejects(headless.requestUi(envelope({ kind: "input", title: "x" })), (err) => err.errorCode === "UNSUPPORTED");
+});
+
+test("cancellation retires only the matching request and drops queued prompts", async () => {
+  const { b, events } = bridge();
+  const envelope = (requestId, extensionId = "one", request = { kind: "confirm", title: requestId, message: "" }) =>
+    ({ sessionId: "session", extensionId, extensionLabel: extensionId, requestId, request });
+  const first = b.requestUi(envelope("first"));
+  const queued = b.requestUi(envelope("queued"));
+  await Promise.resolve();
+  await b.requestUi(envelope(undefined, "two", { kind: "cancel", requestId: "first" }));
+  assert.equal(b.pendingPromptCount(), 1, "another extension cannot cancel this request");
+  await b.requestUi(envelope(undefined, "one", { kind: "cancel", requestId: "queued" }));
+  b.cancelPrompts("session");
+  assert.deepEqual(await first, { kind: "confirm", value: false, cancelled: true });
+  assert.deepEqual(await queued, { kind: "confirm", value: false, cancelled: true });
+  assert.equal(events.prompts.filter((p) => !p.cancelled).length, 1);
+  assert.equal(events.prompts.at(-1).cancelled, true);
+  const fresh = b.requestUi(envelope("fresh"));
+  await Promise.resolve();
+  await b.requestUi(envelope(undefined, "one", { kind: "cancel", requestId: "first" }));
+  assert.equal(b.respond(events.prompts.at(-1).promptId, true), true);
+  assert.deepEqual(await fresh, { kind: "confirm", value: true });
 });
 
 test("importing a pi extension directory or file generates a plugin holding agent.extension", () => {

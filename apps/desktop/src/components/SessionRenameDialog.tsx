@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import { MAX_SESSION_TITLE_LENGTH } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
@@ -179,7 +179,7 @@ function RenameDialog({
 
   return typeof document === "undefined"
     ? dialog
-    : createPortal(dialog, document.body);
+    : portalToBody(dialog);
 }
 
 export function SessionRenameDialog({

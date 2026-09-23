@@ -95,17 +95,20 @@ function cappedImageGenerationCandidates(
  *
  * The saved provider's selection replaces its own earlier candidates, while the
  * candidates of other providers stay listed — minus the rows whose provider no
- * longer exists, which nothing can pick or run. The active default moves only
- * when explicitly deselected or no longer runnable, and then to the first candidate
- * that is, so a newly added provider claims the default exactly when nothing
- * else can hold it. When nothing can, the default stays empty rather than
- * naming a binding that would fail on the next request.
+ * The active default moves only when explicitly deselected or no longer runnable,
+ * and then to the first candidate that is, so a newly added provider claims the
+ * default exactly when nothing else can hold it. Clearing every image model on
+ * the provider that holds the default leaves it unchecked instead: another
+ * provider's candidate stays available, but it is not checked automatically.
+ * When nothing can run, the default stays empty rather than naming a binding
+ * that would fail on the next request.
  */
 export function planImageGenerationDefaults(
   current: ImageGenerationDefaultDraft,
   savedProviderId: string,
   selectedModelIds: readonly string[],
   providers: readonly ProviderPublic[],
+  removedDefaultModel = false,
 ): ImageGenerationDefaultPlan {
   const existing = imageGenerationBindings(
     current.imageGenerationModels,
@@ -130,8 +133,12 @@ export function planImageGenerationDefaults(
   const fallback = imageGenerationModels.find((binding) =>
     resolvesImageGenerationDefault(binding, providers)
   ) ?? null;
+  const clearedActiveProvider =
+    selected.length === 0 && previous?.providerId === savedProviderId;
   return {
     imageGenerationModels,
-    imageGeneration: resolvesImageGenerationDefault(active, providers) ? active : fallback,
+    imageGeneration: removedDefaultModel || clearedActiveProvider
+      ? null
+      : resolvesImageGenerationDefault(active, providers) ? active : fallback,
   };
 }

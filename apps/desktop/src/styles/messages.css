@@ -1646,7 +1646,8 @@
    (D319) and the nested `.subagent-run`. */
 
 .message-error {
-  width: min(100%, 680px);
+  /* The message column owns the dynamic chat width; do not add a second cap. */
+  width: 100%;
   border-radius: var(--radius-md);
   background: color-mix(in oklab, var(--ds-error) 7%, transparent);
   padding: 10px 12px;

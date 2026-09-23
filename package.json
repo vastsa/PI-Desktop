@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.15.2",
+  "version": "0.15.6",
   "description": "Local-first AI coding agent desktop client",
   "packageManager": "pnpm@10.34.5",
   "engines": {
@@ -30,6 +30,7 @@
     "test:e2e:composer-autocomplete": "node scripts/e2e-composer-autocomplete.mjs",
     "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
     "test:e2e:transcript": "node scripts/e2e-transcript-render.mjs",
+    "test:e2e:copy-tex": "node scripts/e2e-copy-tex.mjs",
     "test:e2e:transcript-disclosure": "node scripts/e2e-transcript-disclosure-anchor.mjs",
     "test:e2e:images": "node scripts/e2e-image-generation.mjs && node scripts/e2e-image-generation-ui.mjs && node scripts/e2e-image-chat.mjs",
     "test:e2e:provider-order": "node scripts/e2e-provider-order.mjs",
@@ -38,6 +39,7 @@
     "test:e2e:hosted-search": "node scripts/e2e-hosted-search.mjs",
     "test:e2e:oauth-retry": "node --test apps/desktop/test/anthropic-oauth-retry.test.mjs",
     "test:e2e:boot": "node scripts/e2e-electron-boot.mjs",
+    "test:e2e:settings-scroll": "node scripts/e2e-settings-scroll.mjs",
     "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
     "test:e2e:window-controls": "node scripts/e2e-window-controls.mjs",
     "test:e2e:supervision": "node scripts/e2e-supervision.mjs",

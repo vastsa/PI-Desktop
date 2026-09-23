@@ -240,10 +240,14 @@ describe("theme assets", () => {
     }
   });
 
-  it("builds host urls for package-relative and absolute paths", () => {
+  it("builds host URLs for package-relative and absolute paths", () => {
     expect(themeAssetUrl("demo.hello", ASSET)).toBe(
       `plugin-asset://demo.hello/${ASSET}`,
     );
+    const special = "assets/bg#night?.png";
+    const url = themeAssetUrl("demo.hello", special);
+    expect(url).toBe("plugin-asset://demo.hello/assets/bg%23night%3F.png");
+    expect(decodeURIComponent(new URL(url).pathname.slice(1))).toBe(special);
     expect(themeAssetUrl("demo.hello", "C:/art/bg.png")).toBe(
       `plugin-asset://demo.hello/${encodeURIComponent("C:/art/bg.png")}`,
     );

@@ -87,7 +87,7 @@ when the run ends; any change between the two fails the run.`);
     for (const name of ["pi-ai", "pi-agent-core", "pi-coding-agent"]) {
       const manifest = JSON.parse(await readFile(join(root, "packages/agent-runtime/node_modules/@earendil-works", name, "package.json"), "utf8"));
       evidence.installedDependencies[name] = manifest.version;
-      assert.equal(manifest.version, "0.86.1", `${name} must match the locked pi version`);
+      assert.equal(manifest.version, "0.87.1", `${name} must match the locked pi version`);
     }
     evidence.lockfileSha256 = await hash(join(root, "pnpm-lock.yaml"));
     evidence.head = git("rev-parse", "HEAD");

@@ -9,7 +9,8 @@ const [modelMenuSource, pickerSource, sliderSource] = await Promise.all([
   readComposerModule("ComposerModelPicker.tsx"),
   readComposerModule("ThinkingLevelSlider.tsx"),
 ]);
-const composerSource = `${modelMenuSource}\n${pickerSource}\n${sliderSource}`;
+const listSource = await readComposerModule("ComposerModelList.tsx");
+const composerSource = `${modelMenuSource}\n${pickerSource}\n${sliderSource}\n${listSource}`;
 const stylesSource = await loadStyles();
 
 test("Composer uses one model × reasoning popover with a root and in-place submenus", () => {
@@ -116,8 +117,8 @@ test("model options are visually nested under their provider heading", () => {
 });
 
 test("model groups use the account-aware display name", () => {
-  assert.match(composerSource, /composerProviderDisplayName\(candidate\)/);
-  assert.match(composerSource, /composerProviderSearchText\(candidate\)/);
+  assert.match(composerSource, /providerDisplayName: providerDisplayName\(candidate\)/);
+  assert.match(composerSource, /providerSearchText: providerSearchText\(candidate\)/);
   assert.match(composerSource, /aria-label=\{group\.providerDisplayName\}/);
   assert.match(composerSource, /\{group\.providerDisplayName\}/);
 });

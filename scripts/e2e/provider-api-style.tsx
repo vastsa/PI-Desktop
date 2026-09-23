@@ -5,6 +5,7 @@ import { I18nextProvider } from "react-i18next";
 import { catalogs } from "@pi-desktop/i18n";
 import type { ProviderPublic, ProviderCreateInput, ProviderUpdateInput } from "@pi-desktop/shared";
 import { ProviderSetupDialog, type ProviderSetupDialogProps } from "../../apps/desktop/src/components/settings/ProviderSetupDialog";
+import { VendorAccountDialog, type VendorAccountForm } from "../../apps/desktop/src/components/settings/VendorAccountDialog";
 import { API_STYLE_LABEL_KEYS, CUSTOM_PROVIDER_API_STYLES } from "../../apps/desktop/src/components/settings/provider-api-style";
 import { copyProviderConfiguration } from "../../apps/desktop/src/components/settings/provider-copy";
 import { api } from "../../apps/desktop/src/lib/api";
@@ -221,6 +222,22 @@ globalThis.providerApiStyleProbe = async () => {
         assert(JSON.stringify(original) === before, "edit/copy mutated source object");
         results.push(`${locale}:${style}:edit-change-copy-cancel`);
       }
+      const codexAccount = { ...fixture("openai_codex_responses"), id: "codex-account", name: "OpenAI OAuth", vendorKey: "openai-codex", type: "native", protocol: "openai", authKind: "oauth" } satisfies ProviderPublic;
+      let savedCodexAccount: VendorAccountForm | undefined;
+      flushSync(() => root.render(<I18nextProvider i18n={i18n}><VendorAccountDialog provider={codexAccount} initialName={codexAccount.name} onClose={() => { closes++; }} onSave={(form) => { savedCodexAccount = structuredClone(form); }} saving={false} /></I18nextProvider>));
+      await pause(650);
+      const findWebSearch = () => [...document.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].find((input) => input.closest("label")?.textContent?.trim() === i18n.t("settings.nativeWebSearch"));
+      const searchCheckbox = findWebSearch();
+      assert(searchCheckbox, `${locale}: Codex web search checkbox missing`);
+      assert(!searchCheckbox!.disabled, `${locale}: Codex web search checkbox stayed disabled`);
+      assert(!searchCheckbox!.checked, `${locale}: native search must default off`);
+      click(searchCheckbox);
+      await frame();
+      assert(findWebSearch()?.checked, `${locale}: Codex web search opt-in did not update`);
+      click(control("settings.save"));
+      await pause();
+      assert(savedCodexAccount?.models[0]?.nativeWebSearch === true, `${locale}: Codex web search opt-in was not saved`);
+      results.push(`${locale}:codex-native-search-opt-in`);
     }
     return { ok: true, scenarios: results, creates: creates.length, updates: updates.length,
       apiBoundary: "stubbed", hostPersistence: "not exercised", liveModel: "not exercised" };

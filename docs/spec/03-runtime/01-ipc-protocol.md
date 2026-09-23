@@ -323,6 +323,18 @@ session. It is available even when automatic context protection is disabled.
 Missing provider/session configuration fails through the normal `AppError`
 envelope; an active turn or compaction returns `AGENT_BUSY`.
 
+`agent.compact` is a blocking summary request, not a status poll: the sidecar
+serializes the conversation into one prompt, streams one model summary, and may
+retry a transient failure. Its transport deadline is therefore derived from that
+budget — `(1 + 3) × 180s` stream watchdog `+ 14s` of retry backoff `+ 10s`
+slack — instead of the flat 130s default, which expired while the sidecar was
+still summarizing a large context (**D614**, issue #795). The host also treats a
+transport deadline as "unknown" rather than "failed": when the call times out it
+re-reads the session's durable record, and reports success when a new checkpoint
+landed, because the sidecar persists through host-core whether or not Electron
+received the reply. A verdict the sidecar itself reported (for example
+`CONTEXT_COMPACTION_FAILED`) is never reconciled this way.
+
 ### 5.5 Plan and Goal checkpoint approval
 
 Contract approval is separate from a tool permission. Plan and Goal share this
@@ -1942,6 +1954,17 @@ Templates load from `<workspace>/.pi/prompts/*.md` and
 Without a workspace only user-global templates, builtins, and plugin
 commands return.
 
+A source that fails is not an empty command list (**D613**, issue #795).
+Submit-time resolution distinguishes three outcomes: a resolved
+builtin/plugin/extension command dispatches locally, a template, an unknown
+alias, and a command entry without a dispatchable id stay on the prompt path,
+and an unreadable source refuses the submission. The refusal is deliberate —
+with the source down the composer cannot prove `/compact` is not a builtin, and
+a control command sent to the model as literal text is acted on. The refusal
+keeps the draft, shows `chat.slashCommandSourceUnavailable`, and leaves the TTL
+cache cold so the next submit retries the read; a warm cache keeps resolving
+through a source blip.
+
 ### fs/index
 
 ```ts
@@ -2280,3 +2303,10 @@ renderer. The `configSync.changed` event carries the same redacted state and
 is emitted by Host-originated changes, including the Host scheduler. Main is a
 transport/lifecycle coordinator and does not schedule, merge, encrypt, or
 apply configuration.
+
+A manual sync reports `configSync.progress` while it runs: the phase
+(`capture`, `download`, `merge`, `upload`, `apply`, or `cleanup`), the units
+done and total for that phase, and the bytes when they are known. A long upload
+of many resource objects is therefore not an interface with nothing to show.
+Background polls report nothing, since only the manual path has a caller
+watching.

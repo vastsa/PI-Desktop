@@ -6,6 +6,7 @@ mod config_sync;
 mod db;
 mod keyboard;
 mod mcp_servers;
+mod network_policy;
 mod network_proxy;
 mod notifications;
 mod permissions;

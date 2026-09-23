@@ -235,10 +235,10 @@ current process's in-memory models.dev catalog and never writes user data.
 
 Repeated metadata lookups use a bounded process-local cache keyed by the
 configured vendor key, base URL, and case-insensitive, trimmed model ID. Both
-matches and misses are cached; the original provider preference, alias
-matching, and candidate ranking remain unchanged. Replacing the catalog after
-a successful bundled load or Settings refresh invalidates the cache. A failed
-refresh preserves the previous catalog and its results. Session capability
+matches and misses are cached; provider/API preference and candidate ranking
+still apply. Replacing the catalog after a successful bundled load or Settings
+refresh invalidates the cache. A failed refresh preserves the previous catalog
+and its results. Session capability
 enrichment resolves a matching catalog record once per session and then applies
 the current provider/model binding and session defaults, so user overrides are
 never retained as stale cached capabilities. Refreshing a large session list
@@ -383,6 +383,13 @@ App-level default:
 - the picker supports local search across provider name and model ID; its result list scrolls within the floating surface and shows an explicit empty state when no model matches
 - the picker uses concise settings-specific search copy; each result gives visual priority to the model ID and keeps the provider as secondary metadata
 - results are grouped by provider so a provider name is shown once per group rather than repeated on every model row
+- a provider is named the same way here as in the Composer menu: an OAuth row
+  uses its non-secret account label when present, so two accounts of one vendor
+  stay distinguishable in the group heading, in the summary line that reports
+  the current default, and in each option's accessible name. Search matches the
+  account label and the vendor name, so either spelling reaches the row
+- the Settings prompt-enhancement model picker reuses this menu and resolves its
+  provider names the same way
 - if none configured, onboarding checklist requires provider setup before first agent run
 
 Session-level:
@@ -407,10 +414,9 @@ Warnings are non-blocking unless execution is impossible.
 
 ### 11.1 Reasoning capability resolution
 
-1. Resolve the models.dev metadata for the matching provider/API URL and exact
-   `modelId`. Matching also accepts a catalog vendor prefix when the configured
-   provider uses an unprefixed ID (for example `deepseek-v4` matches
-   `deepseek/deepseek-v4` only under the matching provider identity).
+1. Resolve models.dev metadata under the matching provider/API URL using the
+   metadata-only ID lookup described in §11.3. This lookup does not change
+   configured model binding identity.
 2. The models.dev record is authoritative for published `reasoning` and
    `reasoning_options`; cached/provider capability claims cannot replace it.
 3. The provider's exact `ModelBinding.thinkingLevels` is authoritative for the
@@ -461,6 +467,25 @@ manual token entry. The enrichment lookup is:
    from `bindingForCustomModel`.
 3. The lookup does not send API keys to models.dev. Runtime model resolution
    uses the same models.dev record and the selected pi-ai transport adapter.
+
+Catalog enrichment uses `catalogModelIdsMatch`, not the shared
+`modelIdsMatch` used to resolve an exact configured binding. Binding identity
+accepts case-insensitive exact IDs, full slash-path suffixes, known vendor
+`-`/`.` prefixes and a one-sided `@region` alias; it does not collapse two
+different regions, arbitrary routing prefixes or endpoint/thinking suffixes.
+Metadata lookup additionally accepts a complete bare leaf ID through a generic
+route such as `proxy/` or `custom/`, subject to known-vendor conflicts; two
+different full route paths never match solely because they share a leaf. It
+narrowly strips trailing `-` or `:` `thinking`, `think`, `agent` or `latest`
+tokens (including before `@region`). It does not strip arbitrary
+dash-separated proxy prefixes or effort tokens such as `low`, `high` or `max`.
+The catalog index uses bounded candidate keys for these aliases, then checks
+the matcher; a known catalog provider selected by vendor key or API URL limits
+the lookup to that provider, never borrowing another provider's capabilities.
+These aliases attach published metadata only: they do not alter the configured
+wire model ID or prove that a suffix enables reasoning. An unmatched free-form
+ID remains an unknown generic model with no inferred capabilities; only a
+published record or explicit binding settings can supply them.
 
 ## 12. Refresh strategy
 

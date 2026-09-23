@@ -5,8 +5,6 @@ import {
   composerModelBadges,
   composerModelDisplayName,
   composerModelMatchesQuery,
-  composerProviderDisplayName,
-  composerProviderSearchText,
   composerModelsForProvider,
 } from "../src/lib/composer-models.ts";
 
@@ -117,36 +115,6 @@ test("the selected label keeps its alias across equivalent model ids", () => {
       "GPT-5.3 Codex Spark",
     ),
     "Spark",
-  );
-});
-
-test("the Composer uses a vendor account label for its provider heading", () => {
-  assert.equal(
-    composerProviderDisplayName({
-      name: "Anthropic",
-      oauthAccountLabel: "Work account",
-    }),
-    "Work account",
-  );
-});
-
-test("the Composer falls back to the provider name without an account label", () => {
-  assert.equal(
-    composerProviderDisplayName({
-      name: "Anthropic",
-      oauthAccountLabel: "  ",
-    }),
-    "Anthropic",
-  );
-});
-
-test("the Composer searches both the account label and vendor name", () => {
-  assert.equal(
-    composerProviderSearchText({
-      name: "Anthropic",
-      oauthAccountLabel: "Work account",
-    }),
-    "Work account Anthropic",
   );
 });
 

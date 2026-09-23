@@ -8,7 +8,8 @@
   is no background build left to discard, and the `fresh_window` family issues
   no summary request, so this path cannot trigger there) / ADR 0282 (the
   summary request retries transient failures and the preflight guard sizes
-  the serialized prompt, with one reduced pass, before this fallback runs)
+  the serialized prompt, with one reduced pass, before this fallback runs) /
+  ADR 0302 (the fallback keeps the real recent window rather than one user
 
 ## Context
 

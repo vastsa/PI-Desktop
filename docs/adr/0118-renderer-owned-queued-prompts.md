@@ -26,7 +26,7 @@ queue item. The renderer drains the queue one item at a time after the owning
 session receives `agent_end`; each item uses the existing `agent/prompt` path,
 preserving the host's single-running-turn invariant. Send now moves its item
 to the head and calls the additive `agent/stop` IPC. The sidecar maps that
-request to pi-agent-core's `shouldStopAfterTurn` hook, so the current reply and
+request to pi-agent-core's `finishTurn` hook, so the current reply and
 completed tool batch finish normally and the durable turn closes as
 `completed` before the prioritized item starts.
 

@@ -42,13 +42,13 @@ pub(crate) use credentials::{
     config_reasoning_override, config_value, config_with_headers, config_with_limit,
     config_with_oauth_account_label, config_with_reasoning_override,
     config_with_thinking_levels_override, ensure_config_object, limit_temperature_value,
-    limit_u32_value, limits_object, merge_provider_config_overrides, upsert_secret_meta,
-    LimitOverrides,
+    limit_u32_value, limits_object, merge_provider_config_overrides, retain_storable_headers,
+    upsert_secret_meta, LimitOverrides,
 };
 pub(crate) use validation::{
-    config_limit_f64, config_limit_u32, normalize_headers_input, normalize_one_header,
-    normalize_thinking_levels, valid_header_key, validate_model_aliases, MAX_HEADERS,
-    MAX_MODEL_ALIAS_CHARS,
+    config_limit_f64, config_limit_u32, fold_fullwidth, header_value_fault,
+    normalize_headers_input, normalize_one_header, normalize_thinking_levels, storable_headers,
+    valid_header_key, validate_model_aliases, MAX_HEADERS, MAX_MODEL_ALIAS_CHARS,
 };
 
 #[cfg(test)]

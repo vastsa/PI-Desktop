@@ -424,7 +424,9 @@ pub(crate) fn delete_provider_row(db: &Database, secrets: &SecretStore, id: &str
 /// `api_key` reference and the row's `secret_ref` change; no field the plugin's
 /// manifest owns is touched, so the next load still refreshes the declaration.
 ///
-/// An empty value deletes the stored key and clears `secret_ref`.
+/// An empty value deletes the stored key and clears `secret_ref`. A fullwidth
+/// value is folded to half-width, the same rule header values follow, because
+/// the key is signed into an HTTP header.
 pub fn set_provider_secret(
     db: &Database,
     secrets: &SecretStore,
@@ -435,12 +437,10 @@ pub fn set_provider_secret(
         return Ok(None);
     }
     let api_key_ref = secret_ref_for_provider(id);
-    match secret_value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
+    let secret_value = secret_value.map(str::trim).map(fold_fullwidth);
+    match secret_value.filter(|value| !value.is_empty()) {
         Some(value) => {
-            let backend = secrets.set(&api_key_ref, value)?;
+            let backend = secrets.set(&api_key_ref, &value)?;
             upsert_secret_meta(db, &api_key_ref, id, &backend)?;
             db.conn()
                 .prepare_cached(

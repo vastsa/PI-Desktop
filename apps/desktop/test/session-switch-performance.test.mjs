@@ -119,7 +119,7 @@ test("each retained session keeps its own mounted pane", () => {
   // already-painted pane instead of re-pointing one transcript (ADR 0137).
   assert.match(
     chatSurface,
-    /retainedSessionIds\.map\(\(id\) => \(\s*<SessionPane\s*key=\{id\}\s*sessionId=\{id\}\s*visible=\{id === visibleSessionId\}\s*\/>/,
+    /retainedSessionIds\.map\(\(id\) => \(\s*<SessionPane\s*key=\{id\}\s*sessionId=\{id\}\s*visible=\{visible && id === visibleSessionId\}\s*\/>/,
   );
   assert.match(chatSurface, /const visibleSessionId = retainedSessionIds\[0\]/);
   // The retention bound lives in a pure module, so eviction is unit-testable

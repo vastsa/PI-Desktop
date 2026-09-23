@@ -233,11 +233,49 @@ test("all seven built-in sources stay refused under a TUN resolver, never admitt
  * user their catalog source is bad when the thing to change is their proxy mode.
  */
 
-/** The market's verdict for one literal, through the real client and aggregator. */
+/**
+ * The market's verdict for one literal, through the real client and aggregator.
+ *
+ * The first hop of a scan is the source the user added, so its address is judged
+ * for a user-supplied endpoint: a loopback or RFC1918 answer there is the user's
+ * own service (or their own split-horizon resolver) and the request proceeds.
+ */
 async function marketKindForAddress(address) {
   const client = createPublicHttpsClient({
     fetchImpl: async () => {
-      throw new Error("a refused request must never reach the network");
+      throw new Error("reached the transport");
+    },
+    lookupImpl: async () => [{ address }],
+  });
+  return createSkillMarketAggregator(client.request).search("", [composio]);
+}
+
+/**
+ * The same verdict for an address a hop the app did *not* receive from the user
+ * answers with — here a redirect target.
+ *
+ * Only the first hop is the user's own source; every hop after a redirect keeps
+ * the public-only policy, because that is the address an attacker who controls
+ * the source can aim. Cloud metadata and a fake-IP are refused on both.
+ */
+async function marketKindForRedirectTargetAddress(address) {
+  const client = createPublicHttpsClient({
+    fetchImpl: async (url) => {
+      if (url.startsWith(`https://${SCAN_HOST}/`)) {
+        return {
+          status: 302,
+          ok: false,
+          headers: {
+            get: (name) =>
+              name.toLowerCase() === "location"
+                ? "https://internal.example/catalog.json"
+                : null,
+          },
+          json: async () => ({}),
+          text: async () => "",
+        };
+      }
+      throw new Error("reached the transport");
     },
     lookupImpl: async () => [{ address }],
   });
@@ -252,11 +290,27 @@ test("a proxy fake-IP is its own cause, not the same finding as a private target
     (await marketKindForAddress("198.19.255.254")).failureKinds[composio.name],
     "fake-ip",
   );
-  // A real private or loopback target is a different finding, with different
-  // advice: that one is about the destination, not about the proxy.
-  assert.equal((await marketKindForAddress("127.0.0.1")).failureKinds[composio.name], "policy");
-  assert.equal((await marketKindForAddress("10.1.2.3")).failureKinds[composio.name], "policy");
-  assert.equal((await marketKindForAddress("192.168.1.10")).failureKinds[composio.name], "policy");
+  // A private or loopback answer is no longer a refusal on the source the user
+  // added: the scan's first hop is `api.github.com` for that source, so those
+  // addresses are the user's own service or their own split-horizon resolver and
+  // the request proceeds — the stub transport is what fails it, not the guard.
+  for (const address of ["127.0.0.1", "10.1.2.3", "192.168.1.10"]) {
+    assert.equal(
+      (await marketKindForAddress(address)).failureKinds[composio.name],
+      "network",
+      `expected ${address} to reach the transport on the user's own source`,
+    );
+  }
+  // The same answer on a hop the app learned from someone else — a redirect
+  // target — is a different finding, with different advice: that one is about
+  // the destination, not about the proxy.
+  for (const address of ["127.0.0.1", "10.1.2.3"]) {
+    assert.equal(
+      (await marketKindForRedirectTargetAddress(address)).failureKinds[composio.name],
+      "policy",
+      `expected ${address} to stay refused on a redirect target`,
+    );
+  }
 });
 
 test("the fake-IP cause never admits the request", async () => {
@@ -297,19 +351,28 @@ test("the refusal names the host and the address, not only the source label", as
     addressKind: "benchmark",
     route: "unknown",
   });
-  const privateTarget = await marketKindForAddress("10.1.2.3");
-  assert.equal(privateTarget.failureDetails[composio.name].address, "10.1.2.3");
-  assert.equal(privateTarget.failureDetails[composio.name].addressKind, "private");
+  // A hop that came from someone else carries the same fields, and the class is
+  // what separates a proxy artifact from a target.
+  const redirectedTarget = await marketKindForRedirectTargetAddress("10.1.2.3");
+  assert.equal(redirectedTarget.failureDetails[composio.name].address, "10.1.2.3");
+  assert.equal(redirectedTarget.failureDetails[composio.name].addressKind, "private");
+  assert.equal(redirectedTarget.failureDetails[composio.name].host, "internal.example");
+  assert.equal(
+    redirectedTarget.failureDetails[composio.name].reason,
+    "non-public-address",
+  );
 });
 
 test("a resolver that answered nothing is not a fake-IP and not a verdict", async () => {
   // The three cases the lead asks to keep apart, asserted side by side so a
   // future refactor cannot merge two of them again.
   const judgedFake = await marketKindForAddress("198.18.0.1");
-  assert.equal(judgedFake.failureKinds[composio.name], "fake-ip");
-
-  const judgedPrivate = await marketKindForAddress("10.1.2.3");
+  const judgedPrivate = await marketKindForRedirectTargetAddress("10.1.2.3");
   assert.equal(judgedPrivate.failureKinds[composio.name], "policy");
+  // …and a private answer on the source the user added is not a verdict at all:
+  // that hop is theirs, so the request proceeds (the stub transport fails it).
+  const userSource = await marketKindForAddress("10.1.2.3");
+  assert.equal(userSource.failureKinds[composio.name], "network");
 
   const silent = createPublicHttpsClient({
     fetchImpl: async () => {
@@ -320,12 +383,15 @@ test("a resolver that answered nothing is not a fake-IP and not a verdict", asyn
   const unanswered = await createSkillMarketAggregator(silent.request).search("", [composio]);
   assert.equal(unanswered.failureKinds[composio.name], "unresolved");
 
+  // A source the syntactic guard refuses never reaches the transport at all, and
+  // it is still a verdict about the URL: a cloud metadata host names the
+  // machine's own credentials, not a catalog the user runs.
   const syntactic = createSkillMarketAggregator(async () => {
     throw new Error("a syntactically refused source is never requested");
   });
   const refused = await syntactic.search("", [
-    { id: "x", name: "x/private", url: "https://10.0.0.8/catalog.json" },
+    { id: "x", name: "x/metadata", url: "https://169.254.169.254/catalog.json" },
   ]);
-  assert.equal(refused.failureKinds["x/private"], "policy");
-  assert.equal(refused.failureDetails["x/private"].reason, "url-syntax");
+  assert.equal(refused.failureKinds["x/metadata"], "policy");
+  assert.equal(refused.failureDetails["x/metadata"].reason, "url-syntax");
 });

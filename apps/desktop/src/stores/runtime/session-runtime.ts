@@ -14,6 +14,7 @@ import {
   removeLiveSessionMessage,
   upsertLiveSessionMessage,
 } from "../../lib/session-transcript";
+import { sessionReadLooksEmpty } from "../../lib/session-transcript-read";
 import { sessionIsArchived, type SessionMeta } from "../../lib/sidebar-preferences";
 import {
   normalizeProjectPath,
@@ -170,11 +171,16 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
           liveMessages
             ? mergeLiveSessionMessages(detail.session.messages ?? [], liveMessages)
             : detail.session.messages ?? [];
-        cacheSessionTranscript(id, messages, {
-          messageStart: detail.session.messageStart ?? 0,
-          hasMoreBefore: detail.session.hasMoreBefore === true,
-          contentLimited: options?.contentLimit !== undefined,
-        });
+        // Never cache a suspiciously empty window (issue #795): hover prefetch
+        // would then re-serve that emptiness on every later open, and the
+        // session could not recover without a restart.
+        if (messages.length > 0 || !sessionReadLooksEmpty(detail.session)) {
+          cacheSessionTranscript(id, messages, {
+            messageStart: detail.session.messageStart ?? 0,
+            hasMoreBefore: detail.session.hasMoreBefore === true,
+            contentLimited: options?.contentLimit !== undefined,
+          });
+        }
       }
       return detail;
     });

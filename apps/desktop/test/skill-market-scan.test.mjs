@@ -82,17 +82,49 @@ test("jsDelivr listing inlines adjacent markdown only", async () => {
 });
 
 test("unsafe source URLs fail closed without a request", async () => {
+  // The source URL is an address the user typed, so loopback and the LAN are
+  // reachable now; the classes that name no service at all — and a cloud
+  // metadata host, which answers with the machine's own credentials — are still
+  // refused before anything leaves the process.
   let called = 0;
   const aggregator = createSkillMarketAggregator(async () => {
     called += 1;
     throw new Error("should not fetch");
   });
   const result = await aggregator.search("", [
-    { id: "local", name: "local", url: "https://127.0.0.1/catalog.json" },
+    { id: "metadata", name: "metadata", url: "https://169.254.169.254/catalog.json" },
+    { id: "local-file", name: "local-file", url: "file:///etc/passwd" },
+    { id: "unresolvable", name: "unresolvable", url: "not a url" },
   ]);
   assert.equal(called, 0);
   assert.deepEqual(result.entries, []);
-  assert.deepEqual(result.failedSources, ["local"]);
+  assert.deepEqual(result.failedSources, ["metadata", "local-file", "unresolvable"]);
+  for (const name of result.failedSources) {
+    assert.equal(result.failureKinds[name], "policy");
+    assert.equal(result.failureDetails[name].reason, "url-syntax");
+  }
+});
+
+test("a source the user runs on the LAN is requested instead of refused", async () => {
+  // The user typed this address, so a catalog on their own machine or LAN is
+  // fetched; the public-only policy still governs every URL that arrives on a
+  // redirect hop or inside a catalog body, which the case above does not reach.
+  const seen = [];
+  const aggregator = createSkillMarketAggregator(async (url) => {
+    seen.push(url);
+    return { skills: [] };
+  });
+  const result = await aggregator.search("", [
+    { id: "lan", name: "lan", url: "https://192.168.1.5/catalog.json" },
+    { id: "loopback", name: "loopback", url: "https://127.0.0.1/catalog.json" },
+  ]);
+  assert.deepEqual(seen, [
+    "https://192.168.1.5/catalog.json",
+    "https://127.0.0.1/catalog.json",
+  ]);
+  assert.deepEqual(result.entries, []);
+  assert.deepEqual(result.failedSources, []);
+  assert.deepEqual(result.failureKinds, {});
 });
 
 test("main-process aggregator routes through the public-network client", async () => {
@@ -111,7 +143,14 @@ test("main-process aggregator routes through the public-network client", async (
     src,
     /routeImpl: \(url\) => session\.defaultSession\.resolveProxy\(url\)/,
   );
-  assert.match(src, /createSkillMarketAggregator\(client\.request\)/);
+  // One injected client, and the same policy object that client was built with:
+  // the aggregator's source filter must accept the LAN source the client would
+  // then dial, and both read the opt-in from the stored settings.
+  assert.match(src, /createSkillMarketAggregator\(client\.request, \{/);
+  assert.match(
+    src,
+    /allowInsecureUserEndpoints: \(\) => allowInsecureUserEndpointsEnabled\(\)/,
+  );
   assert.doesNotMatch(src, /node:https|node:http|axios|got\(/);
 });
 
@@ -133,10 +172,18 @@ test("a failed source reports whether the policy or the transport refused it", a
   const result = await aggregator.search("", [
     { id: "blocked", name: "blocked/repo", url: "https://blocked.example/catalog.json" },
     { id: "down", name: "down/repo", url: "https://down.example/catalog.json" },
-    { id: "local", name: "local", url: "https://127.0.0.1/catalog.json" },
+    {
+      id: "metadata",
+      name: "metadata",
+      url: "https://169.254.169.254/catalog.json",
+    },
   ]);
   assert.deepEqual(result.entries, []);
-  assert.deepEqual([...result.failedSources].sort(), ["blocked/repo", "down/repo", "local"]);
+  assert.deepEqual([...result.failedSources].sort(), [
+    "blocked/repo",
+    "down/repo",
+    "metadata",
+  ]);
   // Issue #419: a policy refusal must not be indistinguishable from a dead host,
   // from a source that never left the syntactic guard, or from a fake-IP the
   // local proxy invented. The address here is the proxy's placeholder for
@@ -144,7 +191,7 @@ test("a failed source reports whether the policy or the transport refused it", a
   assert.deepEqual(result.failureKinds, {
     "blocked/repo": "fake-ip",
     "down/repo": "network",
-    local: "policy",
+    metadata: "policy",
   });
   // …and each name carries what it was about, not just which bucket it landed
   // in. A transport failure answers a 502 with a bare host.
@@ -155,9 +202,9 @@ test("a failed source reports whether the policy or the transport refused it", a
     address: "198.18.0.4",
     addressKind: "benchmark",
   });
-  assert.deepEqual(result.failureDetails.local, {
+  assert.deepEqual(result.failureDetails.metadata, {
     kind: "policy",
-    host: "127.0.0.1",
+    host: "169.254.169.254",
     reason: "url-syntax",
   });
   assert.deepEqual(result.failureDetails["down/repo"], { kind: "network", host: "down.example" });
@@ -168,9 +215,9 @@ test("a repeated display name keeps the refusal, and a hostile name stays own", 
     throw new Error("responded 502");
   });
   const result = await aggregator.search("", [
-    { id: "a", name: "same", url: "https://127.0.0.1/catalog.json" },
+    { id: "a", name: "same", url: "https://169.254.169.254/catalog.json" },
     { id: "b", name: "same", url: "https://down.example/catalog.json" },
-    { id: "c", name: "__proto__", url: "https://127.0.0.1/catalog.json" },
+    { id: "c", name: "__proto__", url: "https://169.254.169.254/catalog.json" },
   ]);
   // `failedSources` cannot tell the two "same" sources apart, so the kind that
   // is worth surfacing (the refusal) must survive the merge.

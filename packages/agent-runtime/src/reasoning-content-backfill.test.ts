@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { convertMessages } from "@earendil-works/pi-ai/api/openai-completions";
 import { DEEPSEEK_REASONING_REPLAY_PLACEHOLDER } from "@pi-desktop/shared";
 
-// Guards the pnpm patch on @earendil-works/pi-ai (patches/@earendil-works__pi-ai@0.86.1.patch):
+// Guards the pnpm patch on @earendil-works/pi-ai (patches/@earendil-works__pi-ai@0.87.1.patch):
 // DeepSeek-style endpoints accept a history where either every assistant message
 // carries a reasoning field or none does, and reject a mix. A relayed model that
 // is not in the catalogue has `reasoning: false`, so pi's per-message backfill

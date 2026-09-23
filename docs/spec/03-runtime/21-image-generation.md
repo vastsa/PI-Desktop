@@ -4,8 +4,25 @@ The desktop exposes `AppSettings.imageGeneration` as the current default image-g
 
 ## Configuration
 
-Model Advanced exposes **Set as image model** alongside the image and document attachment capabilities in the model capability group, not as a separate control row. The checkbox is multi-select: saving a provider persists every checked model in `imageGenerationModels`; Cancel leaves settings unchanged. Saving candidates does not replace the default conversation model. Unchecking the current image model and saving removes its default binding: the first remaining runnable candidate becomes the default, or the default becomes null if none remains. The unmarked model is available for chat again after saving and reopening settings. Saving another provider preserves a still-runnable image default. Below the default model row in the same defaults panel, **Image generation model** shows the current default and offers a menu to choose one from all marked candidates. When no candidate is configured, the summary row is hidden. An existing candidate that is missing, disabled, credential-less or removed displays only **Currently unavailable**. OAuth accounts are not eligible; there is no fallback.
+Saving a provider confirms the provider was saved or updated, including when
+image capabilities were marked or unmarked. It must not claim that an image
+model was selected after deselection. Choosing an image default from the
+summary menu retains the image-selection confirmation.
+
+Model Advanced exposes **Set as image model** alongside the image and document attachment capabilities in the model capability group, not as a separate control row. The checkbox is multi-select: saving a provider persists every checked model in `imageGenerationModels`; Cancel leaves settings unchanged. Saving candidates does not replace the default conversation model. Unchecking every image model on the provider that holds the current default clears that default, even when another provider still has a runnable candidate. The Models page drops the check and does not select the other candidate automatically. Unchecking the current model while another model on the same provider stays marked moves the default to the first runnable marked candidate. The unmarked model is available for chat again after saving and reopening settings. Saving another provider preserves a still-runnable image default. Below the default model row in the same defaults panel, **Image generation model** shows the current default and offers a menu to choose one from all marked candidates. When no candidate is configured, or none of them can be selected, the summary row is hidden. An existing candidate that is missing, disabled, credential-less or removed displays only **Currently unavailable** while another marked candidate can still be selected. OAuth accounts are not eligible; there is no fallback.
 All marked provider/model pairs are excluded from the default conversation picker, provider quick-default action, and Composer model menu. Other providers with the same model ID remain independent. Existing conversation bindings and history are preserved; a conversation still pinned to any image candidate must select a chat model before sending. Runtime launch rejects every marked image model before inference.
+
+### Provider model removal
+
+Saving a provider after explicitly removing a configured model also removes
+that model's image candidate, even if the image capability checkbox was not
+touched. If it was the active image default, clear the default, even when another
+runnable candidate remains on this or another provider. Cancel preserves
+both the provider models and the image settings. Legacy single bindings follow
+the same rule. Unchanged image selections retain the ordinary provider-save
+path. External provider changes can still leave an unavailable binding visible.
+The existing chat-default repair still runs if the saved provider no longer
+contains its selected chat model; otherwise the chat default is preserved.
 
 ## Agent contract
 
@@ -51,7 +68,10 @@ upstream provider stopped processing or billing. Completed output files survive.
 Responses accept exactly one Base64 image or HTTPS image URL per request. JSON and
 download bodies are bounded; image files are capped at 16 MiB and restricted to
 PNG, JPEG and WebP signatures. Downloads use checked, pinned public DNS addresses,
-reject redirects and private destinations, and never receive provider headers.
+reject redirects and private destinations, and never receive provider headers. When
+Settings > General > Network explicitly enables proxy fake-IP support, a
+benchmark-range fake-IP answer uses the app's proxy-aware transport; real private,
+loopback, link-local and metadata addresses remain blocked.
 Input edits accept the session project, that session's scratch directory and the
 attachment store after realpath containment. Each edit input set is capped at
 32 MiB, with a 64 MiB input cache budget for the batch. Credentials remain outside the renderer and tool results.

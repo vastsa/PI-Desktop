@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ScheduledTask, ScheduledTaskRun } from "@pi-desktop/shared";
+import type { ProjectRecord, ScheduledTask, ScheduledTaskRun } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
 import { Badge, Button, Panel } from "../components/ui";
@@ -12,8 +12,10 @@ export function ScheduledPage() {
   const showToast = useAppStore((s) => s.showToast);
   const selectSession = useAppStore((s) => s.selectSession);
   const setPage = useAppStore((s) => s.setPage);
+  const currentWorkspacePath = useAppStore((s) => s.workspace?.path ?? "");
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [runs, setRuns] = useState<ScheduledTaskRun[]>([]);
+  const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [tab, setTab] = useState<"tasks" | "runs">("tasks");
   const [editor, setEditor] = useState<ScheduledTask | "new" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -24,13 +26,15 @@ export function ScheduledPage() {
   const refresh = useCallback(async () => {
     const request = ++revision.current;
     try {
-      const [taskResult, runResult] = await Promise.all([
+      const [taskResult, runResult, projectResult] = await Promise.all([
         api.listScheduled(),
         api.listScheduledRuns(),
+        api.listProjects().catch(() => ({ projects: [] as ProjectRecord[] })),
       ]);
       if (!mounted.current || request !== revision.current) return;
       setTasks(taskResult.tasks);
       setRuns(runResult.runs);
+      setProjects(projectResult.projects);
       setError("");
       setLoaded(true);
     } catch (failure) {
@@ -132,6 +136,8 @@ export function ScheduledPage() {
               <ScheduledEditor
                 key={editor === "new" ? "new" : editor.id}
                 task={editor === "new" ? undefined : editor}
+                projects={projects}
+                currentWorkspacePath={currentWorkspacePath}
                 busy={busy}
                 save={save}
                 cancel={() => setEditor(null)}

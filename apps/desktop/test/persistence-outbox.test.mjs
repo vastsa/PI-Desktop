@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -100,6 +100,38 @@ test("duplicate message id does not stall later outbox entries (D444)", async ()
   assert.equal(calls[1].message.id, "assistant-1");
   assert.ok(
     logs.some((row) => row.message === "session persistence flush skipped duplicate message id"),
+  );
+});
+
+test("a full outbox rejects an entry instead of reporting it enqueued", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-outbox-full-"));
+  const path = join(dir, "session-message-outbox.json");
+  const entries = Array.from({ length: 1024 }, (_, index) => ({
+    key: `message:s${index}:m${index}`,
+    sessionId: `s${index}`,
+    message: { id: `m${index}` },
+  }));
+  await writeFile(path, JSON.stringify(entries), "utf8");
+  const logs = [];
+  const outbox = new PersistenceOutbox(dir, (level, message, data) => {
+    logs.push({ level, message, data });
+  });
+
+  await assert.rejects(
+    outbox.enqueue(
+      { key: "message:last:missing", sessionId: "last", message: { id: "missing" } },
+      () => null,
+    ),
+    /outbox is full/i,
+  );
+  assert.equal(outbox.size(), 1024);
+  assert.equal(JSON.parse(await readFile(path, "utf8")).length, 1024);
+  assert.ok(
+    logs.some(
+      (entry) =>
+        entry.message === "session persistence outbox is full" &&
+        entry.data?.key === "message:last:missing",
+    ),
   );
 });
 

@@ -19,6 +19,7 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -174,6 +175,7 @@ async function seedSidebarProjects(hostBinary, dataDir, tempDirs) {
 class CdpClient {
   constructor(ws) {
     this.ws = ws;
+    this.closed = false;
     this.seq = 0;
     this.pending = new Map();
     this.console = [];
@@ -195,6 +197,13 @@ class CdpClient {
       if (message.error) entry.reject(new Error(JSON.stringify(message.error)));
       else entry.resolve(message.result);
     };
+    ws.onclose = () => {
+      this.closed = true;
+      for (const entry of this.pending.values()) {
+        entry.reject(new Error("CDP websocket closed"));
+      }
+      this.pending.clear();
+    };
   }
 
   static connect(url) {
@@ -206,6 +215,7 @@ class CdpClient {
   }
 
   send(method, params = {}) {
+    if (this.closed) return Promise.reject(new Error("CDP websocket closed"));
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
@@ -259,9 +269,12 @@ const MEASURE = `(() => {
   const main = document.querySelector(".main-pane");
   const panel = document.querySelector('[data-testid="work-panel"]');
   const sidebar = document.querySelector(".sidebar, .sidebar-rail");
+  const chatShell = document.querySelector(".app-chat-shell");
   const handle = document.querySelector(".work-panel-resize");
   return {
     windowWidth: window.innerWidth,
+    chatHidden: chatShell?.hidden ?? null,
+    settings: Boolean(document.querySelector(".settings-shell")),
     sidebar: round(sidebar),
     sidebarKind: sidebar ? String(sidebar.className).split(" ")[0] : null,
     main: round(main),
@@ -1734,10 +1747,74 @@ async function main() {
     );
     await cdp.evaluate(`document.documentElement.dataset.theme = ${JSON.stringify(originalTheme)}`);
 
-    await checkSidebarRowStates({ cdp, check, waitFor, seed: sidebarSeed });
     await checkSidebarSettings({
       cdp, check, waitFor, artifactDir: process.env.PI_DESKTOP_LAYOUT_ARTIFACT_DIR,
     });
+
+    const crashSentinel = `renderer-crash-${Date.now()}`;
+    await cdp.evaluate(
+      `window.__PI_E2E_RENDERER_CRASH_SENTINEL = ${JSON.stringify(crashSentinel)}`,
+    );
+    void cdp.send("Page.crash").catch(() => undefined);
+    let recoveryCdp = cdp;
+    const recoveryState = await waitFor(async () => {
+      if (recoveryCdp.closed) {
+        const page = (await listTargets(cdpPort).catch(() => [])).find(
+          (candidate) => candidate.type === "page" && candidate.id === target.id,
+        );
+        if (!page?.webSocketDebuggerUrl) return false;
+        const connected = await CdpClient.connect(page.webSocketDebuggerUrl).catch(
+          () => null,
+        );
+        if (!connected) return false;
+        recoveryCdp = connected;
+        activeCdp = recoveryCdp;
+        await recoveryCdp.send("Runtime.enable").catch(() => undefined);
+      }
+      const state = await recoveryCdp
+        .evaluate(`({
+          sentinel: window.__PI_E2E_RENDERER_CRASH_SENTINEL,
+          chatSurface: Boolean(document.querySelector('.chat-surface')),
+          splash: Boolean(document.querySelector('.startup-splash')),
+        })`)
+        .catch(() => null);
+      return state?.chatSurface && !state.splash && state.sentinel !== crashSentinel
+        ? state
+        : false;
+    }, "the renderer automatically reloads after a crash", 90_000);
+    const recoveredTarget = (await listTargets(cdpPort).catch(() => [])).find(
+      (candidate) => candidate.type === "page" && candidate.id === target.id,
+    );
+    check(
+      recoveryState.chatSurface && recoveredTarget?.id === target.id,
+      "the existing app window restores the chat after a renderer crash",
+      JSON.stringify({ recoveryState, targetId: recoveredTarget?.id }),
+    );
+    const diagnostics = await readFile(
+      join(dataDir, "logs", "app", "diagnostics.log"),
+      "utf8",
+    ).catch(() => "");
+    const rendererRecoveryLog = diagnostics
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .find(
+        (entry) =>
+          entry?.event === "renderer.process.gone" && entry.data?.reloaded === true,
+      );
+    check(
+      Boolean(rendererRecoveryLog?.data?.reason),
+      "renderer crash recovery records the exit reason and reload decision",
+      JSON.stringify(rendererRecoveryLog),
+    );
+
+    await checkSidebarRowStates({ cdp: recoveryCdp, check, waitFor, seed: sidebarSeed });
 
     const failed = results.filter((entry) => !entry.ok);
     console.log(

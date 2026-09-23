@@ -72,7 +72,10 @@ export function createInteractionSlice({
 
     setSettingsTab: (settingsTab) => {
       get().setPage("settings");
-      set({ settingsTab });
+      set((state) => ({
+        settingsTab,
+        settingsTabNonce: state.settingsTabNonce + 1,
+      }));
     },
     setSettingsAnchor: (settingsAnchor) => set({ settingsAnchor }),
     canNavBack: () => get().navIndex > 0,

@@ -5,6 +5,8 @@
 - Deciders: PI-Desktop runtime maintainers
 - Amends: ADR 0049 (decision 1, the preflight guard; the "retry indefinitely"
   rejection stands), D203 / ADR 0064 (the summary family only)
+- Amended by: ADR 0302 (a prompt that still does not fit after the reduced pass
+  is summarized in chunks; only a range the planner cannot split falls back)
 - Related: issue #543 · PR #554 (superseded) ·
   [03-runtime/02-agent-runtime](../spec/03-runtime/02-agent-runtime.md) ·
   [03-runtime/01-ipc-protocol](../spec/03-runtime/01-ipc-protocol.md) ·

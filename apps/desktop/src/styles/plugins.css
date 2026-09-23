@@ -851,9 +851,16 @@
   flex: 1 1 auto;
 }
 
+/* One plugin setting list mixes string/number rows (field-height inputs),
+   switches and enum rows, so an enum dropdown takes the same field metric as
+   the input in the row above it instead of the Settings-row pill size. */
 .plugins-setting-control > .settings-menu-select-anchor {
   min-width: 0;
   max-width: 100%;
+}
+
+.plugins-setting-control .settings-menu-select-trigger {
+  height: var(--ds-field-height);
 }
 
 .plugins-setting-json {
@@ -1194,6 +1201,13 @@
 .plugins-market-settings-control .field-input {
   width: 100%;
   min-width: 0;
+}
+
+/* Same list, same right column: the provider dropdown sits directly above the
+   custom-URL input row, so it takes the shared field metric rather than the
+   compact Settings-row pill size. */
+.plugins-market-settings-control .settings-menu-select-trigger {
+  height: var(--ds-field-height);
 }
 
 @media (max-width: 720px) {

@@ -44,6 +44,7 @@ import {
   durableCoversLiveSessionMessages,
   mergeLiveSessionMessages,
 } from "../../lib/session-transcript";
+import { sessionReadLooksEmpty } from "../../lib/session-transcript-read";
 import type {
   AppState,
   DraftSessionConfiguration,
@@ -361,6 +362,32 @@ export function createSessionSlice({
 
         detail ??= await detailPromise;
         if (!runtime.navigationIntentIsCurrent(intent)) return;
+        if (detail.session && sessionReadLooksEmpty(detail.session)) {
+          // A window read that comes back empty for a session the sidebar
+          // counts as having history is not an empty conversation (#795). Ask
+          // once more, and if the transcript still reads empty keep whatever
+          // the user already has and say so, instead of committing nothing and
+          // leaving a blank pane behind.
+          const reread = await runtime.loadSessionDetail(id, {
+            messageLimit: 100,
+            contentLimit: 64 * 1024,
+          });
+          if (!runtime.navigationIntentIsCurrent(intent)) return;
+          if (reread.session && sessionReadLooksEmpty(reread.session)) {
+            const retained =
+              runtime.sessionTranscriptCache.get(id) ??
+              get().retainedTranscripts[id];
+            if (retained && retained.length > 0) {
+              commitSelection(retained, true);
+            } else {
+              get().showToast(i18n.t("chat.sessionTranscriptEmpty"), {
+                variant: "error",
+              });
+            }
+            return;
+          }
+          detail = reread;
+        }
         const historyWindow = detail.session
           ? {
               messageStart: detail.session.messageStart ?? 0,

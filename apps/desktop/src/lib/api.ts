@@ -117,6 +117,7 @@ import type {
   ConfigSyncMapProjectInput,
   ConfigSyncConfigureInput,
   ConfigSyncRestoreInput,
+  ConfigSyncProgress,
   ConfigSyncState,
   TrustedExtensionStatusEvent,
   TrustedExtensionUiPrompt,
@@ -129,8 +130,10 @@ import {
   normalizeLargePasteThreshold,
   normalizeMode,
   normalizeNetworkProxy,
+  normalizeNetworkPolicy,
   resolveFontScale,
   normalizeChatContentMaxWidth,
+  validateNetworkPolicy,
   validateNetworkProxy,
   validateSpeechSettings,
 } from "@pi-desktop/shared";
@@ -365,6 +368,9 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     networkProxy: normalizeNetworkProxy(
       (settings as { networkProxy?: unknown }).networkProxy,
     ),
+    networkPolicy: normalizeNetworkPolicy(
+      (settings as { networkPolicy?: unknown }).networkPolicy,
+    ),
   };
 }
 
@@ -385,6 +391,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     chatContentMaxWidth?: unknown;
     infiniteProviderRetry?: unknown;
     networkProxy?: unknown;
+    networkPolicy?: unknown;
   };
   if (
     Object.prototype.hasOwnProperty.call(value, "defaultCommandShell") &&
@@ -435,6 +442,15 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
       });
     }
     value.networkProxy = proxy.value;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "networkPolicy")) {
+    const policy = validateNetworkPolicy(value.networkPolicy);
+    if (!policy.ok) {
+      throw Object.assign(new Error(policy.error), {
+        errorCode: "INVALID_ARGUMENT",
+      });
+    }
+    value.networkPolicy = policy.value;
   }
   if (Object.prototype.hasOwnProperty.call(value, "speech")) {
     (value as AppSettings).speech = validateSpeechSettings(
@@ -594,7 +610,12 @@ export const api = {
   configSyncConfigure: (input: ConfigSyncConfigureInput) =>
     invoke<ConfigSyncState>(IPC.invoke.configSyncConfigure, input),
   configSyncTest: (input: Omit<ConfigSyncConfigureInput, "backupPassword"> & { backupPassword?: string }) =>
-    invoke<{ ok: boolean; conditionalWrites: boolean; message?: string }>(
+    invoke<{
+      ok: boolean;
+      conditionalWrites: boolean;
+      appendOnly: boolean;
+      message?: string;
+    }>(
       IPC.invoke.configSyncTest,
       input,
     ),
@@ -805,8 +826,20 @@ export const api = {
     cadence?: ScheduledTask["cadence"];
     enabled?: boolean;
     schedule?: ScheduledTask["schedule"];
+    workspacePath?: string;
+    permissionMode?: ScheduledTask["permissionMode"];
+    thinkingLevel?: ScheduledTask["thinkingLevel"] | null;
+    providerId?: string | null;
+    modelId?: string | null;
   }) => invoke<{ task: ScheduledTask }>(IPC.invoke.scheduledCreate, input),
-  updateScheduled: (input: Partial<ScheduledTask> & { id: string }) =>
+  updateScheduled: (
+    input: Omit<Partial<ScheduledTask>, "providerId" | "modelId" | "thinkingLevel"> & {
+      id: string;
+      thinkingLevel?: ScheduledTask["thinkingLevel"] | null;
+      providerId?: string | null;
+      modelId?: string | null;
+    },
+  ) =>
     invoke<{ task: ScheduledTask }>(IPC.invoke.scheduledUpdate, input),
   deleteScheduled: (id: string) => invoke(IPC.invoke.scheduledDelete, id),
   executeScheduled: (id: string) => invoke<{ sessionId: string }>(IPC.invoke.scheduledExecute, id),
@@ -1242,6 +1275,12 @@ export const api = {
   executeCommand: (commandId: string) =>
     invoke(IPC.invoke.commandPaletteExecute, commandId),
   openLogs: () => invoke(IPC.invoke.logOpenFolder),
+  /**
+   * Quit the application. Used by the surfaces that own the window before the
+   * shell has data; the main process runs the same ordered shutdown as the Quit
+   * menu item, so the answer may never arrive — callers must not depend on it.
+   */
+  quitApp: () => invoke<{ ok: boolean }>(IPC.invoke.appQuit),
   /** Toggles the devtools console; rejects unless developer mode is on. */
   toggleDevTools: (open?: boolean) =>
     invoke<{ open: boolean }>(IPC.invoke.devtoolsToggle, { open }),
@@ -1435,6 +1474,12 @@ export const api = {
       listener((payload as { message: string }).message),
     );
   },
+  onInsecureEndpointNotice: (listener: (payload: { host: string }) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.insecureEndpointNotice, (payload) =>
+      listener(payload as { host: string }),
+    );
+  },
   onHostStatus: (listener: (status: HostStatusEvent) => void) => {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.hostStatus, (payload) =>
@@ -1526,6 +1571,12 @@ export const api = {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.configSyncChanged, (payload) =>
       listener(payload as ConfigSyncState),
+    );
+  },
+  onConfigSyncProgress: (listener: (progress: ConfigSyncProgress) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.configSyncProgress, (payload) =>
+      listener(payload as ConfigSyncProgress),
     );
   },
   onPluginLauncherShown: (listener: () => void) => {

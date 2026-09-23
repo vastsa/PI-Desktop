@@ -321,10 +321,39 @@ test("unchecking the active model selects a remaining runnable candidate", () =>
   assert.deepEqual(plan.imageGenerationModels, [binding("y", "other"), binding("x", "next")]);
 });
 
+test("removing the active provider model clears the image default", () => {
+  const plan = planImageGenerationDefaults(
+    {
+      imageGenerationModels: [binding("x", "old"), binding("y", "other")],
+      imageGeneration: binding("x", "old"),
+    },
+    "x",
+    ["next"],
+    [provider("x", ["next"]), provider("y", ["other"])],
+    true,
+  );
+  assert.equal(plan.imageGeneration, null);
+  assert.deepEqual(plan.imageGenerationModels, [binding("y", "other"), binding("x", "next")]);
+});
+
 test("saving the active provider preserves a still-selected default", () => {
   const plan = planImageGenerationDefaults(
     { imageGeneration: binding("x", "current") },
     "x", ["first", "current"], [provider("x", ["first", "current"])],
   );
   assert.deepEqual(plan.imageGeneration, binding("x", "current"));
+});
+
+test("unchecking every image model on the active provider clears the settings check", () => {
+  const plan = planImageGenerationDefaults(
+    {
+      imageGenerationModels: [binding("x", "img-x"), binding("y", "img-y")],
+      imageGeneration: binding("x", "img-x"),
+    },
+    "x",
+    [],
+    [provider("x", ["img-x"]), provider("y", ["img-y"])],
+  );
+  assert.equal(plan.imageGeneration, null);
+  assert.deepEqual(plan.imageGenerationModels, [binding("y", "img-y")]);
 });

@@ -150,6 +150,12 @@ fn apply_entity(
                 object.insert("secretValue".into(), Value::String(secret.clone()));
             }
         }
+        // A bundle from a peer on an older build, or a backup taken before the
+        // header rule was tightened, can carry a value this build refuses. That
+        // is dropped here — the rule `config_headers` already applies when
+        // reading a store — so one stale row cannot fail the whole revision,
+        // which is what the strict write the editor goes through would do.
+        providers::retain_storable_headers(&mut payload);
         let exists = st
             .db
             .conn()

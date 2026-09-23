@@ -244,6 +244,7 @@ async function main() {
   rmSync(requestLog, { force: true });
   const stubPort = await freePort();
   const mcpPort = await freePort();
+  const cdpPort = await freePort();
   if (stubPort === mcpPort) throw new Error("allocated duplicate E2E ports");
 
   await runCommand(
@@ -273,7 +274,7 @@ async function main() {
   const electron = spawnChild(
     "trusted-extension-electron",
     electronBin,
-    ["."],
+    [`--user-data-dir=${join(runRoot, "profile")}`, `--remote-debugging-port=${cdpPort}`, "."],
     {
       cwd: join(root, "apps", "desktop"),
       env: isolatedEnv({
@@ -305,7 +306,7 @@ async function main() {
     process.execPath,
     [join(harness, "drive.mjs")],
     {
-      env: isolatedEnv({ E2E_ROOT: runRoot, E2E_PROJECT: resolve(project) }),
+      env: isolatedEnv({ E2E_ROOT: runRoot, E2E_PROJECT: resolve(project), E2E_CDP_PORT: String(cdpPort) }),
       timeoutMs,
       forwardStdout: true,
       forwardStderr: true,

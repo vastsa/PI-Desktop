@@ -1,8 +1,13 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { McpOAuthLoginEvent, McpServerRecord, McpServerStatus } from "@pi-desktop/shared";
-
+import {
+  isUserSuppliedHostname,
+  type McpOAuthLoginEvent,
+  type McpServerRecord,
+  type McpServerStatus,
+} from "@pi-desktop/shared";
+import { allowInsecureUserEndpointsEnabled } from "./endpoint-policy.ts";
 export type StoredMcpOAuthToken = {
   clientId: string;
   clientSecret?: string;
@@ -67,8 +72,22 @@ export function isLoopbackHostname(hostname: string): boolean {
   return /^127(?:\.\d{1,3}){3}$/.test(host);
 }
 
-/** OAuth 2.1: authorization-server endpoints must be HTTPS, except loopback. */
-export function assertTlsProtectedUrl(raw: string, label: string): URL {
+/**
+ * OAuth 2.1: authorization-server endpoints must be HTTPS, except on a host the
+ * user runs themselves.
+ *
+ * Loopback over plain `http` is the RFC 8252 shape and always passes. Any other
+ * plaintext URL passes only when the user has enabled insecure user endpoints in
+ * settings **and** it names the same host as the MCP server they typed
+ * (`trustedUrl`). Every other URL this guard sees arrives inside server metadata
+ * — `WWW-Authenticate`, a protected-resource or authorization-server document —
+ * so a server must not be able to send the app to a plaintext internal address
+ * the user never entered. `https` needs no such anchor.
+ *
+ * The refusal names both ways out: switch to HTTPS, or accept plaintext in
+ * settings.
+ */
+export function assertTlsProtectedUrl(raw: string, label: string, trustedUrl?: string): URL {
   let url: URL;
   try {
     url = new URL(raw);
@@ -76,8 +95,35 @@ export function assertTlsProtectedUrl(raw: string, label: string): URL {
     throw new Error(`${label} is not a valid URL`);
   }
   if (url.protocol === "https:") return url;
-  if (url.protocol === "http:" && isLoopbackHostname(url.hostname)) return url;
+  if (url.protocol === "http:") {
+    if (isLoopbackHostname(url.hostname)) return url;
+    if (
+      allowInsecureUserEndpointsEnabled() &&
+      trustedUrl !== undefined &&
+      isUserSuppliedHostname(url.hostname) &&
+      sameHostname(trustedUrl, url.hostname)
+    ) {
+      return url;
+    }
+    throw new Error(
+      `${label} must use HTTPS (got ${url.protocol}//${url.host}); use HTTPS or enable plaintext endpoints for hosts you entered yourself in settings`,
+    );
+  }
   throw new Error(`${label} must use HTTPS (got ${url.protocol}//${url.host})`);
+}
+
+/** Host equality for a URL or a bare host, ignoring brackets, case and a dot. */
+function sameHostname(left: string, right: string): boolean {
+  const host = (value: string): string => {
+    const bare = value.trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
+    try {
+      return new URL(value).hostname.trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
+    } catch {
+      return bare;
+    }
+  };
+  const target = host(left);
+  return target !== "" && target === host(right);
 }
 
 export function loopbackRedirectUri(port: number): string {
@@ -192,7 +238,7 @@ export class McpOAuthManager {
       // Best-effort probe; fallback to standard paths below.
     }
     if (resourceMetadataUrl) {
-      assertTlsProtectedUrl(resourceMetadataUrl, "resource_metadata");
+      assertTlsProtectedUrl(resourceMetadataUrl, "resource_metadata", serverUrl);
     }
 
     // Step 2: Fallback to standard RFC 9728 paths if not in WWW-Authenticate
@@ -227,7 +273,7 @@ export class McpOAuthManager {
       ? (prm.authorization_servers as string[])
       : [];
     const authServer = authServersRaw[0] ?? urlObj.origin;
-    assertTlsProtectedUrl(authServer, "authorization_server");
+    assertTlsProtectedUrl(authServer, "authorization_server", serverUrl);
     const authServerObj = new URL(authServer);
 
     // Step 3: Fetch Authorization Server Metadata (RFC 8414)
@@ -259,12 +305,12 @@ export class McpOAuthManager {
       );
     }
 
-    assertTlsProtectedUrl(authorizationEndpoint, "authorization_endpoint");
-    assertTlsProtectedUrl(tokenEndpoint, "token_endpoint");
+    assertTlsProtectedUrl(authorizationEndpoint, "authorization_endpoint", serverUrl);
+    assertTlsProtectedUrl(tokenEndpoint, "token_endpoint", serverUrl);
     const registrationEndpoint =
       typeof asMeta?.registration_endpoint === "string" ? asMeta.registration_endpoint : undefined;
     if (registrationEndpoint) {
-      assertTlsProtectedUrl(registrationEndpoint, "registration_endpoint");
+      assertTlsProtectedUrl(registrationEndpoint, "registration_endpoint", serverUrl);
     }
     const scopesSupported = Array.isArray(asMeta?.scopes_supported)
       ? (asMeta.scopes_supported as string[])
@@ -288,9 +334,10 @@ export class McpOAuthManager {
   async registerClient(
     registrationEndpoint: string,
     redirectUris: string | string[],
+    trustedUrl?: string,
     clientName = "PI-Desktop",
   ): Promise<{ clientId: string; clientSecret?: string }> {
-    assertTlsProtectedUrl(registrationEndpoint, "registration_endpoint");
+    assertTlsProtectedUrl(registrationEndpoint, "registration_endpoint", trustedUrl);
     const uris = Array.isArray(redirectUris) ? redirectUris : [redirectUris];
     const res = await this.fetch(registrationEndpoint, {
       method: "POST",
@@ -326,16 +373,21 @@ export class McpOAuthManager {
   private async registerLoopbackClient(
     registrationEndpoint: string,
     exactRedirect: string,
+    trustedUrl: string,
   ): Promise<{ clientId: string; clientSecret?: string; redirectUris: string[] }> {
     const portless = [LOOPBACK_REDIRECT_PORTLESS, exactRedirect];
     try {
-      const registered = await this.registerClient(registrationEndpoint, portless);
+      const registered = await this.registerClient(registrationEndpoint, portless, trustedUrl);
       return { ...registered, redirectUris: portless };
     } catch (error) {
       this.deps.log?.("info", "mcp oauth portless DCR rejected, registering exact redirect", {
         message: error instanceof Error ? error.message : String(error),
       });
-      const registered = await this.registerClient(registrationEndpoint, [exactRedirect]);
+      const registered = await this.registerClient(
+        registrationEndpoint,
+        [exactRedirect],
+        trustedUrl,
+      );
       return { ...registered, redirectUris: [exactRedirect] };
     }
   }
@@ -627,6 +679,7 @@ export class McpOAuthManager {
               const registered = await this.registerLoopbackClient(
                 metadata.registrationEndpoint,
                 redirectUri,
+                session.serverUrl,
               );
               clientId = registered.clientId;
               clientSecret = registered.clientSecret;
@@ -848,7 +901,7 @@ export class McpOAuthManager {
     if (!token.refreshToken) {
       throw new Error("Token refresh failed: missing refresh_token");
     }
-    assertTlsProtectedUrl(token.tokenEndpoint, "token_endpoint");
+    assertTlsProtectedUrl(token.tokenEndpoint, "token_endpoint", token.resource);
     const params = new URLSearchParams({
       grant_type: "refresh_token",
       client_id: token.clientId,

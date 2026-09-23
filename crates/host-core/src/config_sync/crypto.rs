@@ -256,7 +256,7 @@ pub fn unlock_vault(header: &VaultHeader, password: &str) -> Result<VaultKey> {
     encrypted.extend_from_slice(&nonce);
     encrypted.extend_from_slice(&ciphertext);
     let plaintext = decrypt_with_key(&wrapping_key, "vault-key", &header.vault_id, &encrypted)
-        .context("unlock vault")?;
+        .map_err(|_| anyhow!("CONFIG_SYNC_CRYPTO: backup password did not open this vault"))?;
     let raw: [u8; KEY_BYTES] = plaintext
         .try_into()
         .map_err(|_| anyhow!("CONFIG_SYNC_CRYPTO: vault key has an invalid length"))?;
@@ -312,7 +312,8 @@ mod tests {
             create_vault("correct horse battery staple", "vault-a").expect("create vault");
         let unlocked = unlock_vault(&header, "correct horse battery staple").expect("unlock");
         assert_eq!(unlocked.as_bytes(), key.as_bytes());
-        assert!(unlock_vault(&header, "wrong password").is_err());
+        let wrong = unlock_vault(&header, "wrong password").expect_err("wrong password");
+        assert!(wrong.to_string().starts_with("CONFIG_SYNC_CRYPTO:"));
 
         let mut ciphertext =
             encrypt_object(&key, "test", "vault-a", b"portable settings").expect("encrypt");

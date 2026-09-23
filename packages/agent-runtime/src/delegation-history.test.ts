@@ -321,6 +321,41 @@ describe("seedDelegateMessages", () => {
     });
   });
 
+  it("keeps legacy ToolSearch activation markers in resumed history", () => {
+    const rows: UiMessage[] = [
+      delegateTool(
+        "search-1",
+        "ToolSearch",
+        { query: "BrowserPreview" },
+        {
+          content: [{ type: "text", text: "Activated on-demand tools: BrowserPreview." }],
+          addedToolNames: ["BrowserPreview"],
+          details: {
+            query: "BrowserPreview",
+            activated: ["BrowserPreview"],
+            addedToolNames: ["Glob"],
+          },
+        },
+        "call-1",
+      ),
+    ];
+    const messages = seedDelegateMessages({
+      originalTask: "explore",
+      rows,
+      provider: provider(),
+      model: buildProviderModel(provider()),
+      budget: generousBudget(),
+    });
+    expect(messages.at(-1)).toMatchObject({
+      role: "toolResult",
+      details: {
+        query: "BrowserPreview",
+        activated: ["BrowserPreview"],
+        addedToolNames: ["Glob"],
+      },
+    });
+  });
+
   it("skips a failed assistant row but still replays its tool pair", () => {
     const rows: UiMessage[] = [
       {

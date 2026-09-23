@@ -116,11 +116,26 @@ describe("NativePiSessionService", () => {
     const lease = acquireNativePiSessionLease(f.file);
     const manager = SessionManager.open(f.file);
     guardNativePiSessionManager(manager, lease);
-    manager.appendMessage({ role: "user", content: [{ type: "text", text: "desktop turn" }], timestamp: Date.now() });
+    const userEntryId = manager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text: "desktop turn" }],
+      timestamp: Date.now(),
+    });
+    manager.appendContextEdit(userEntryId, {
+      content: [{ type: "text", text: "edited model context" }],
+    });
+    expect(manager.buildSessionContext().messages).toContainEqual({
+      role: "user",
+      content: [{ type: "text", text: "edited model context" }],
+      timestamp: expect.any(Number),
+    });
     const afterOwnAppend = readFileSync(f.file, "utf8");
     expect(afterOwnAppend).toContain("desktop turn");
+    expect(afterOwnAppend).toContain('"type":"context_edit"');
     writeFileSync(f.file, `${afterOwnAppend}${JSON.stringify({ type: "custom", id: "foreign", parentId: manager.getLeafId(), timestamp: new Date().toISOString(), customType: "foreign" })}\n`);
-    expect(() => manager.appendMessage({ role: "user", content: [{ type: "text", text: "must not write" }], timestamp: Date.now() })).toThrow(/changed/i);
+    expect(() => manager.appendContextEdit(userEntryId, {
+      content: [{ type: "text", text: "must not write" }],
+    })).toThrow(/changed/i);
     expect(readFileSync(f.file, "utf8")).not.toContain("must not write");
     lease.release();
   });

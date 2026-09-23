@@ -32,6 +32,7 @@ import {
   OPENCODE_GO_API_STYLE,
   OPENCODE_GO_BASE_URL,
   resolveApiStyle,
+  resolveNativeWebSearch,
   deepseekRequestCompat,
   zhipuRequestCompat,
   type ThinkingLevel,
@@ -245,6 +246,13 @@ export function buildProviderModel(
     api: binding.api,
     provider: provider.id,
     baseUrl,
+    webSearch:
+      resolveNativeWebSearch({
+        wireApi: binding.api,
+        modelWebSearch: catalogModel.webSearch,
+      }) === "on"
+        ? true
+        : undefined,
     ...(compat ? { compat } : {}),
     ...(Object.keys(modelHeaders).length > 0 ? { headers: modelHeaders } : {}),
   } as Model<Api>;

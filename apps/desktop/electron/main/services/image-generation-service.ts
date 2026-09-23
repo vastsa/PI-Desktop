@@ -25,6 +25,7 @@ export function createImageGenerationTool(options: {
   dataDir: string;
   getHost: () => Pick<HostProcess, "call"> | null;
   fetchImpl?: typeof fetch;
+  allowFakeIp?: () => boolean;
 }): LocalToolHandler {
   return async ({ sessionId, args, signal }) => {
     imageGenerationPrompts(args);
@@ -88,6 +89,7 @@ export function createImageGenerationTool(options: {
       },
       signal,
       fetchImpl: options.fetchImpl,
+      downloadOptions: { allowFakeIp: options.allowFakeIp?.() === true },
       loadImages: imageInputLoader({
         dataDir: options.dataDir,
         scratchPath: realDir,

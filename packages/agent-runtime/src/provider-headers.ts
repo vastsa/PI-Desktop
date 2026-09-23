@@ -8,14 +8,21 @@
  *
  * Empty / omitted keeps adapter defaults. Authorization, Host, Content-Type,
  * and other hop-by-hop or auth keys are rejected so this cannot smash signing.
+ *
+ * Values are folded to half-width and trimmed before they enter the map (see
+ * `@pi-desktop/shared`'s `header-value.ts`), and a value that still cannot be
+ * a ByteString is dropped here rather than thrown by `Headers.set` at request
+ * time. Host persistence rejects the same rows with a named error, so this
+ * path only sees a stale store, a plugin, or an unsaved form value.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { HEADER_VALUE_MAX_BYTES, inspectHeaderValue } from "@pi-desktop/shared";
 import type { FetchFunction, ProviderHeaders, SimpleStreamOptions } from "@earendil-works/pi-ai";
 
 export const PROVIDER_HEADERS_MAX = 32;
 export const PROVIDER_HEADER_KEY_MAX_BYTES = 256;
-export const PROVIDER_HEADER_VALUE_MAX_BYTES = 4096;
+export const PROVIDER_HEADER_VALUE_MAX_BYTES = HEADER_VALUE_MAX_BYTES;
 
 const FORBIDDEN_HEADER_KEYS = new Set([
   "authorization",
@@ -74,7 +81,13 @@ function overlayHeaders(
   }
 }
 
-/** Drop invalid rows. Host persistence rejects the same cases with an error. */
+/**
+ * Drop invalid rows. Host persistence rejects the same cases with an error.
+ *
+ * Fullwidth values fold to half-width; a value that still holds a character
+ * above U+00FF (or a control character) is dropped instead of reaching
+ * `Headers.set`, which would throw a ByteString TypeError mid-turn.
+ */
 export function normalizeProviderHeaders(
   value: unknown,
 ): Record<string, string> | undefined {
@@ -83,12 +96,13 @@ export function normalizeProviderHeaders(
   for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
     if (typeof rawValue !== "string") continue;
     const key = rawKey.trim();
-    const headerValue = rawValue.trim();
+    const header = inspectHeaderValue(rawValue);
+    const headerValue = header.value;
     if (!key || !headerValue) continue;
+    if (header.fault) continue;
     if (key.length > PROVIDER_HEADER_KEY_MAX_BYTES) continue;
     if (headerValue.length > PROVIDER_HEADER_VALUE_MAX_BYTES) continue;
     if (key.includes("\r") || key.includes("\n")) continue;
-    if (headerValue.includes("\r") || headerValue.includes("\n")) continue;
     if (!validHeaderKey(key)) continue;
     const lower = key.toLowerCase();
     if (FORBIDDEN_HEADER_KEYS.has(lower)) continue;

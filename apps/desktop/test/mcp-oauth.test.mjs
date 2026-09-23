@@ -12,6 +12,12 @@ import {
   LOOPBACK_REDIRECT_PORTLESS,
 } from "../electron/main/mcp-oauth.ts";
 import { UserMcpRuntime } from "../electron/main/user-mcp.ts";
+import { applyUserEndpointPolicyFromAppSettings } from "../electron/main/endpoint-policy.ts";
+
+/** Mirror `settings.networkPolicy` the way the app's settings write does. */
+function setAllowInsecureUserEndpoints(enabled) {
+  applyUserEndpointPolicyFromAppSettings({ networkPolicy: { allowInsecureUserEndpoints: enabled } });
+}
 
 function fakeHost() {
   const secrets = new Map();
@@ -659,16 +665,74 @@ test("HTML escaping helper prevents script and attribute injection", () => {
   assert.equal(escapeHtml("Tom & Jerry 'cat'"), "Tom &amp; Jerry &#39;cat&#39;");
 });
 
-test("TLS helpers allow HTTPS and loopback HTTP only", () => {
+test("TLS helpers allow HTTPS, loopback HTTP, and plaintext behind the opt-in", () => {
   assert.equal(isLoopbackHostname("127.0.0.1"), true);
   assert.equal(isLoopbackHostname("localhost"), true);
   assert.equal(isLoopbackHostname("evil.test"), false);
   assert.equal(assertTlsProtectedUrl("https://auth.example/x", "authorization_endpoint").protocol, "https:");
   assert.equal(assertTlsProtectedUrl("http://127.0.0.1:9/x", "token_endpoint").hostname, "127.0.0.1");
+  assert.equal(assertTlsProtectedUrl("http://[::1]:9/x", "token_endpoint").hostname, "[::1]");
+  // Loopback HTTP passes with the opt-in off; a LAN host does not.
+  assert.throws(
+    () => assertTlsProtectedUrl("http://192.168.1.5:8188/token", "token_endpoint"),
+    /must use HTTPS/,
+  );
   assert.throws(
     () => assertTlsProtectedUrl("http://evil.test/token", "token_endpoint"),
     /must use HTTPS/,
   );
+  assert.throws(
+    () => assertTlsProtectedUrl("ftp://127.0.0.1/token", "token_endpoint"),
+    /must use HTTPS/,
+  );
+  setAllowInsecureUserEndpoints(true);
+  try {
+    // A plaintext host passes only when it is the host the user typed as their
+    // MCP server (`trustedUrl`): every other URL this guard sees arrives inside
+    // server metadata, so a document must not be able to point the app at an
+    // internal address the user never entered.
+    assert.equal(
+      assertTlsProtectedUrl(
+        "http://192.168.1.5:8188/token",
+        "token_endpoint",
+        "http://192.168.1.5:8188/mcp",
+      ).hostname,
+      "192.168.1.5",
+    );
+    assert.throws(
+      () =>
+        assertTlsProtectedUrl(
+          "http://192.168.1.5:8188/token",
+          "token_endpoint",
+          "http://192.168.1.9:8188/mcp",
+        ),
+      /must use HTTPS/,
+    );
+    assert.throws(
+      () => assertTlsProtectedUrl("http://192.168.1.5:8188/token", "token_endpoint"),
+      /must use HTTPS/,
+    );
+    // Loopback is the RFC 8252 shape and needs no anchor.
+    assert.equal(
+      assertTlsProtectedUrl("http://127.0.0.1:9/x", "token_endpoint").hostname,
+      "127.0.0.1",
+    );
+    // HTTPS is unaffected by the opt-in, and cloud metadata stays refused.
+    assert.equal(
+      assertTlsProtectedUrl("https://auth.example/x", "authorization_endpoint").protocol,
+      "https:",
+    );
+    assert.throws(
+      () => assertTlsProtectedUrl("http://169.254.169.254/latest/meta-data", "token_endpoint"),
+      /must use HTTPS/,
+    );
+    assert.throws(
+      () => assertTlsProtectedUrl("http://metadata.google.internal/token", "token_endpoint"),
+      /must use HTTPS/,
+    );
+  } finally {
+    setAllowInsecureUserEndpoints(false);
+  }
   assert.equal(
     canReuseDcrClient(
       {
@@ -722,6 +786,46 @@ test("McpOAuthManager: rejects non-loopback HTTP authorization servers", async (
     /authorization_server must use HTTPS/,
   );
 });
+test("McpOAuthManager: a plaintext LAN authorization server follows the opt-in", async (t) => {
+  const host = fakeHost();
+  const mockFetch = async (input) => {
+    const url = new URL(typeof input === "string" ? input : input.url);
+    if (url.pathname === "/.well-known/oauth-protected-resource") {
+      return new Response(JSON.stringify({
+        resource: "http://192.168.1.5:8188/mcp",
+        authorization_servers: ["http://192.168.1.5:8188"],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.pathname === "/.well-known/oauth-authorization-server") {
+      return new Response(JSON.stringify({
+        issuer: "http://192.168.1.5:8188",
+        authorization_endpoint: "http://192.168.1.5:8188/authorize",
+        token_endpoint: "http://192.168.1.5:8188/token",
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response(null, { status: 404 });
+  };
+  const manager = new McpOAuthManager({
+    call: host.call,
+    fetchImpl: mockFetch,
+    openExternal: async () => {},
+  });
+  t.after(() => {
+    setAllowInsecureUserEndpoints(false);
+    manager.disposeAll();
+  });
+
+  await assert.rejects(
+    () => manager.discoverMetadata("http://192.168.1.5:8188/mcp"),
+    /authorization_server must use HTTPS/,
+  );
+
+  setAllowInsecureUserEndpoints(true);
+  const metadata = await manager.discoverMetadata("http://192.168.1.5:8188/mcp");
+  assert.equal(metadata.authorizationEndpoint, "http://192.168.1.5:8188/authorize");
+  assert.equal(metadata.tokenEndpoint, "http://192.168.1.5:8188/token");
+});
+
 
 test("McpOAuthManager: unmatched state does not abort login; replay is rejected", async (t) => {
   const host = fakeHost();

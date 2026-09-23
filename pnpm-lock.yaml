@@ -16,15 +16,15 @@ overrides:
   vite@5: '>=6.4.3 <7'
 
 patchedDependencies:
-  '@earendil-works/pi-agent-core@0.86.1':
-    hash: 62947f964f4c6270c68576ce7aa748a00bd20bca9c96e0dc49a4c17b0b283be1
-    path: patches/@earendil-works__pi-agent-core@0.86.1.patch
-  '@earendil-works/pi-ai@0.86.1':
-    hash: db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe
-    path: patches/@earendil-works__pi-ai@0.86.1.patch
-  '@earendil-works/pi-coding-agent@0.86.1':
-    hash: 60323335b0bd5cdbd857e5b9cf24bb794766f85bf3682694b9a43694bb435227
-    path: patches/@earendil-works__pi-coding-agent@0.86.1.patch
+  '@earendil-works/pi-agent-core@0.87.1':
+    hash: fd68dba636417b7920f03503bb8148d4f218bf3469babffa9d7c7863f956f344
+    path: patches/@earendil-works__pi-agent-core@0.87.1.patch
+  '@earendil-works/pi-ai@0.87.1':
+    hash: 6cf3998c09e8bba22cd63ceebe74a33332d9fd0c9ef3d5046941cb53513973f8
+    path: patches/@earendil-works__pi-ai@0.87.1.patch
+  '@earendil-works/pi-coding-agent@0.87.1':
+    hash: f343e44e55203618be186df28a5ae64e8d84992452b456169afc57b2eed5310e
+    path: patches/@earendil-works__pi-coding-agent@0.87.1.patch
 
 importers:
 
@@ -44,8 +44,8 @@ importers:
         version: 6.8.9
     devDependencies:
       '@earendil-works/pi-ai':
-        specifier: 0.86.1
-        version: 0.86.1(patch_hash=db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe)(ws@8.21.1)(zod@4.4.3)
+        specifier: 0.87.1
+        version: 0.87.1(patch_hash=6cf3998c09e8bba22cd63ceebe74a33332d9fd0c9ef3d5046941cb53513973f8)(ws@8.21.1)(zod@4.4.3)
       '@pi-desktop/agent-host':
         specifier: workspace:*
         version: link:../../packages/agent-host
@@ -106,9 +106,6 @@ importers:
       lucide-react:
         specifier: ^1.31.0
         version: 1.31.0(react@19.2.8)
-      marked:
-        specifier: ^18.0.9
-        version: 18.0.9
       mermaid:
         specifier: ^11.16.1
         version: 11.16.1
@@ -142,6 +139,9 @@ importers:
       remark-math:
         specifier: ^6.0.0
         version: 6.0.0
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
       shiki:
         specifier: ^4.4.3
         version: 4.4.3
@@ -151,6 +151,9 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
       vite:
         specifier: ^7.3.6
         version: 7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.0)
@@ -227,14 +230,14 @@ importers:
   packages/agent-runtime:
     dependencies:
       '@earendil-works/pi-agent-core':
-        specifier: 0.86.1
-        version: 0.86.1(patch_hash=62947f964f4c6270c68576ce7aa748a00bd20bca9c96e0dc49a4c17b0b283be1)(ws@8.21.1)(zod@4.4.3)
+        specifier: 0.87.1
+        version: 0.87.1(patch_hash=fd68dba636417b7920f03503bb8148d4f218bf3469babffa9d7c7863f956f344)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-ai':
-        specifier: 0.86.1
-        version: 0.86.1(patch_hash=db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe)(ws@8.21.1)(zod@4.4.3)
+        specifier: 0.87.1
+        version: 0.87.1(patch_hash=6cf3998c09e8bba22cd63ceebe74a33332d9fd0c9ef3d5046941cb53513973f8)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
-        specifier: 0.86.1
-        version: 0.86.1(patch_hash=60323335b0bd5cdbd857e5b9cf24bb794766f85bf3682694b9a43694bb435227)(ws@8.21.1)(zod@4.4.3)
+        specifier: 0.87.1
+        version: 0.87.1(patch_hash=f343e44e55203618be186df28a5ae64e8d84992452b456169afc57b2eed5310e)(ws@8.21.1)(zod@4.4.3)
       '@pi-desktop/shared':
         specifier: workspace:*
         version: link:../shared
@@ -242,11 +245,11 @@ importers:
         specifier: 2.7.0
         version: 2.7.0
       typebox:
-        specifier: ^1.3.13
-        version: 1.3.13
+        specifier: 1.3.27
+        version: 1.3.27
       undici:
-        specifier: ^7.16.0
-        version: 7.29.0
+        specifier: 8.10.2
+        version: 8.10.2
     devDependencies:
       '@types/node':
         specifier: ^24.13.3
@@ -720,30 +723,30 @@ packages:
       search-insights:
         optional: true
 
-  '@earendil-works/chord@0.86.1':
-    resolution: {integrity: sha512-GzUr5n4tFBHUYxN9CjcRHK8QWo9tbxNrZu6iWPQ+PFiFrLASvSZOKeAVAgh3gHv/t0X5OvUpFlrMQ/nEFfCYpg==}
+  '@earendil-works/chord@0.87.1':
+    resolution: {integrity: sha512-bg7IkJGFcEaMqqYgOGUiq5Ky9RghpRfrlZ8I/v/1b4bBZ02A7t3E+6uhPRbadwWb/kWsnVFbZsqOKRN4a3LLCg==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-agent-core@0.86.1':
-    resolution: {integrity: sha512-8TbBzhYsDeu5V1Zl2NsyrBqJAzX1EiEL3Np3ZjGpy0pSDdGRVOpcyW1qruLqfWmEqGcnxmvgnTMLS/wJNZO2XQ==}
+  '@earendil-works/pi-agent-core@0.87.1':
+    resolution: {integrity: sha512-Zev3B0HK7YS5A4EZQ2XnEqiJuirx6QBiltJ+LpmjV5a/+2IU0cfKtIfnkNkORK707XOvKBY2WRtk7cAwHpbh2Q==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-ai@0.86.1':
-    resolution: {integrity: sha512-1XHhI6D/fyQdsBieHC/E/4zGKVOoGe4yDyX67VXvzoYkFsX/qE7NpZE7E1RC8e6Bz8B9oG/P+MQFXikv2/BGEg==}
-    engines: {node: '>=22.19.0'}
-    hasBin: true
-
-  '@earendil-works/pi-coding-agent@0.86.1':
-    resolution: {integrity: sha512-vZBuNfJnruxZyemZ3O05V0S/Ylze08ahFTIQ1Mik++gVdOevPl89gt/Uv0U97BPAJaj9cj6Vf9rcIgKtUrd0BA==}
+  '@earendil-works/pi-ai@0.87.1':
+    resolution: {integrity: sha512-X/3PfQBnnoeVdO9Cv8zHghUMglzlgNZYGNzoPnbRoGnHl3Rw3TlA2UKSUB7BRHUOxMryHXYa8dnjWZlbRheDZA==}
     engines: {node: '>=22.19.0'}
     hasBin: true
 
-  '@earendil-works/pi-telemetry@0.86.1':
-    resolution: {integrity: sha512-SOcEqOS3oVGgKeahs2jHB906d8hFjuLP+RBee8xKYMRgw5KAeWHNg+YABfL0ALlp3Bt6tW4b632MLghc3vnTog==}
+  '@earendil-works/pi-coding-agent@0.87.1':
+    resolution: {integrity: sha512-m8ArJUtVcQMSe1lLE/Ei7vX/JV7O39sWmWBsXV2NOU70F0qCp8GubA24pT3LnwTmM6LL2xV80/h6sQg85n69ew==}
+    engines: {node: '>=22.19.0'}
+    hasBin: true
+
+  '@earendil-works/pi-telemetry@0.87.1':
+    resolution: {integrity: sha512-MC6TRQH5lgMXpcN+Vku2WMI2T8BsiUPzMQHGo81uqFZD3/9O79WWJAysEDGuzduP6R4tvtgwMLwmqIxynM10JQ==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-tui@0.86.1':
-    resolution: {integrity: sha512-FU/zU/zG4RWokcZt+BVXXcieWi5ggvYnWP2kkB5XXjMaHRoy5BDhcZJ9JAnLTN9MwrCRoXgPQxOI0bFqwYeZkQ==}
+  '@earendil-works/pi-tui@0.87.1':
+    resolution: {integrity: sha512-YEH2vRyOeiO7hhN6j6AE6YwKSq2Kz2f3XR8bj1TbR+aGE/JsnY1hLPMI2pvaZfRM1n9Y00tejxFQ4zbzvF7nkQ==}
     engines: {node: '>=22.19.0'}
 
   '@electron-internal/extract-zip@1.0.5':
@@ -3210,11 +3213,6 @@ packages:
     engines: {node: '>= 20'}
     hasBin: true
 
-  marked@18.0.9:
-    resolution: {integrity: sha512-/Sa4qiiHZxf0/FQdBBowr9q4r10krCwMvpK48FUBdXdUXScDxiQGR9zCPrFgRVR5LU3iySOiIjy09ZQvADir1w==}
-    engines: {node: '>= 20'}
-    hasBin: true
-
   matcher@3.0.0:
     resolution: {integrity: sha512-OkeDaAZ/bQCxeFAozM55PKcKU0yJMPGifLwV4Qgjitu+5MoAfSQN4lsLJeXZ1b8w0x+/Emda6MZgXS1jvsapng==}
     engines: {node: '>=10'}
@@ -4818,15 +4816,15 @@ snapshots:
     transitivePeerDependencies:
       - '@algolia/client-search'
 
-  '@earendil-works/chord@0.86.1':
+  '@earendil-works/chord@0.87.1':
     dependencies:
       esbuild: 0.28.2
 
-  '@earendil-works/pi-agent-core@0.86.1(patch_hash=62947f964f4c6270c68576ce7aa748a00bd20bca9c96e0dc49a4c17b0b283be1)(ws@8.21.1)(zod@4.4.3)':
+  '@earendil-works/pi-agent-core@0.87.1(patch_hash=fd68dba636417b7920f03503bb8148d4f218bf3469babffa9d7c7863f956f344)(ws@8.21.1)(zod@4.4.3)':
     dependencies:
-      '@earendil-works/chord': 0.86.1
-      '@earendil-works/pi-ai': 0.86.1(patch_hash=db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe)(ws@8.21.1)(zod@4.4.3)
-      '@earendil-works/pi-telemetry': 0.86.1
+      '@earendil-works/chord': 0.87.1
+      '@earendil-works/pi-ai': 0.87.1(patch_hash=6cf3998c09e8bba22cd63ceebe74a33332d9fd0c9ef3d5046941cb53513973f8)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-telemetry': 0.87.1
       diff: 8.0.4
       ignore: 7.0.8
       typebox: 1.3.27
@@ -4840,11 +4838,11 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.86.1(patch_hash=db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe)(ws@8.21.1)(zod@4.4.3)':
+  '@earendil-works/pi-ai@0.87.1(patch_hash=6cf3998c09e8bba22cd63ceebe74a33332d9fd0c9ef3d5046941cb53513973f8)(ws@8.21.1)(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.124.0(zod@4.4.3)
       '@aws-sdk/client-bedrock-runtime': 3.1127.0
-      '@earendil-works/pi-telemetry': 0.86.1
+      '@earendil-works/pi-telemetry': 0.87.1
       '@google/genai': 2.21.0
       '@smithy/node-http-handler': 4.12.1
       http-proxy-agent: 9.1.0
@@ -4861,12 +4859,12 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-coding-agent@0.86.1(patch_hash=60323335b0bd5cdbd857e5b9cf24bb794766f85bf3682694b9a43694bb435227)(ws@8.21.1)(zod@4.4.3)':
+  '@earendil-works/pi-coding-agent@0.87.1(patch_hash=f343e44e55203618be186df28a5ae64e8d84992452b456169afc57b2eed5310e)(ws@8.21.1)(zod@4.4.3)':
     dependencies:
-      '@earendil-works/chord': 0.86.1
-      '@earendil-works/pi-agent-core': 0.86.1(patch_hash=62947f964f4c6270c68576ce7aa748a00bd20bca9c96e0dc49a4c17b0b283be1)(ws@8.21.1)(zod@4.4.3)
-      '@earendil-works/pi-ai': 0.86.1(patch_hash=db5e0b64bd62cea3db7dbf9102f3602a9166aa01f49fd4e5123d57dc1a87f3fe)(ws@8.21.1)(zod@4.4.3)
-      '@earendil-works/pi-tui': 0.86.1
+      '@earendil-works/chord': 0.87.1
+      '@earendil-works/pi-agent-core': 0.87.1(patch_hash=fd68dba636417b7920f03503bb8148d4f218bf3469babffa9d7c7863f956f344)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-ai': 0.87.1(patch_hash=6cf3998c09e8bba22cd63ceebe74a33332d9fd0c9ef3d5046941cb53513973f8)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-tui': 0.87.1
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 6.0.0
       cross-spawn: 7.0.6
@@ -4891,9 +4889,9 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-telemetry@0.86.1': {}
+  '@earendil-works/pi-telemetry@0.87.1': {}
 
-  '@earendil-works/pi-tui@0.86.1':
+  '@earendil-works/pi-tui@0.87.1':
     dependencies:
       get-east-asian-width: 1.6.0
       marked: 18.0.11
@@ -7408,8 +7406,6 @@ snapshots:
 
   marked@18.0.11: {}
 
-  marked@18.0.9: {}
-
   matcher@3.0.0:
     dependencies:
       escape-string-regexp: 4.0.0
@@ -8481,7 +8477,8 @@ snapshots:
 
   undici@6.28.0: {}
 
-  undici@7.29.0: {}
+  undici@7.29.0:
+    optional: true
 
   undici@8.10.2: {}
 

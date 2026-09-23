@@ -403,7 +403,14 @@ export class SubagentRun {
     }
     return {
       context: {
-        messages: this.agent.state.messages,
+        // The loop owns its context array: pi appends every streamed assistant
+        // message and every tool result to the array it was handed, while its
+        // own `message_end` listener appends the same message to
+        // `state.messages`. Handing over the live array stores each message of
+        // the run's later iterations twice, which doubles the estimate at the
+        // next boundary and leaves `useNextModel` a trailing assistant row it
+        // cannot resume from (D620).
+        messages: [...this.agent.state.messages],
         tools: this.agent.state.tools,
       },
     };

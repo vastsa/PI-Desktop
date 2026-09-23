@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
+  allowInsecureUserEndpoints,
   assembleSkillInstall,
   BUILTIN_SKILL_CATALOG,
   GLOBAL_SCOPE,
@@ -105,10 +106,10 @@ const REMOTE_IDLE: RemoteState = {
 
 const SOURCES_STORAGE_KEY = "pi.skill-market.sources.v1";
 
-function loadSources(): SkillMarketSource[] {
+function loadSources(allowInsecureHttp = false): SkillMarketSource[] {
   try {
     const raw = window.localStorage?.getItem(SOURCES_STORAGE_KEY);
-    return raw ? sanitizeSkillSources(JSON.parse(raw)) : [];
+    return raw ? sanitizeSkillSources(JSON.parse(raw), { allowInsecureHttp }) : [];
   } catch {
     return [];
   }
@@ -166,12 +167,32 @@ export function SkillMarketPanel({
   const [installing, setInstalling] = useState(false);
   const previewGate = useRef(new LatestWinsGate());
   const [sources, setSources] = useState<SkillMarketSource[]>(loadSources);
+  // Whether a plaintext hop to a user-supplied source is allowed, from the
+  // stored `networkPolicy`: the panel re-validates its persisted list with the
+  // same rule the main process applies to the request.
+  const [allowInsecureSources, setAllowInsecureSources] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [draftSource, setDraftSource] = useState<{ name: string; url: string }>({
     name: "",
     url: "",
   });
   const [remote, setRemote] = useState<RemoteState>(REMOTE_IDLE);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .getSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        const insecure = allowInsecureUserEndpoints(settings);
+        setAllowInsecureSources(insecure);
+        if (insecure) setSources(loadSources(true));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     saveSources(sources);
@@ -334,7 +355,7 @@ export function SkillMarketPanel({
 
   const addSource = () => {
     const url = draftSource.url.trim();
-    if (!isSafeSkillSourceUrl(url)) {
+    if (!isSafeSkillSourceUrl(url, { allowInsecureHttp: allowInsecureSources })) {
       showToast(t("settings.sklm.sourceUnsafe"), { variant: "error" });
       return;
     }

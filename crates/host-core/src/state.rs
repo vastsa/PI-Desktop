@@ -107,6 +107,9 @@ impl AppState {
         // applies on launch instead of only after a manual refresh.
         let app_settings = db.get_setting("app").unwrap_or_default();
         crate::network_proxy::apply_from_settings(app_settings.as_ref());
+        // The WebDAV transport reads this before it allows a plaintext hop, so
+        // it has to be in place on launch and not only after a settings write.
+        crate::network_policy::apply_from_settings(app_settings.as_ref());
         let (channel, custom_url) =
             crate::plugins::market_channel_from_settings(app_settings.as_ref());
         let plugins = PluginManager::new(data_dir, channel, custom_url);

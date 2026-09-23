@@ -20,6 +20,7 @@ import {
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
+import { providerDisplayName, providerSearchText } from "../../lib/provider-display";
 import { Badge, Button, Field, Input, TooltipButton, cx } from "../ui";
 import {
   IconCheck,
@@ -136,7 +137,7 @@ export function ModelConfigPage() {
     const query = defaultModelQuery.trim().toLowerCase();
     if (!query) return defaultModelOptionsList;
     return defaultModelOptionsList.filter(({ provider, modelId }) =>
-      `${provider.name} ${modelId}`.toLowerCase().includes(query),
+      `${providerSearchText(provider)} ${modelId}`.toLowerCase().includes(query),
     );
   }, [defaultModelOptionsList, defaultModelQuery]);
 
@@ -191,6 +192,11 @@ export function ModelConfigPage() {
     imageModelIds?: string[],
   ) => {
     const firstModelId = models[0]?.id;
+    const replacementChatModelId =
+      settings.defaultProviderId === saved.id && firstModelId &&
+      !models.some((model) => modelIdsMatch(model.id, settings.defaultModelId ?? ""))
+        ? firstModelId
+        : undefined;
     try {
       if (imageModelIds !== undefined) {
         const current = await api.getSettings();
@@ -199,11 +205,19 @@ export function ModelConfigPage() {
           saved.id,
           imageModelIds,
           [...providers.filter((provider) => provider.id !== saved.id), saved],
+          current.imageGeneration?.providerId === saved.id &&
+            !saved.models.some((model) => modelIdsMatch(model.id, current.imageGeneration?.modelId ?? "")),
         );
-        const nextSettings = { ...current, ...plan };
+        const nextSettings = {
+          ...current,
+          ...plan,
+          ...(replacementChatModelId ? { defaultModelId: replacementChatModelId } : {}),
+        };
         await api.setSettings(nextSettings);
         useAppStore.setState({ settings: nextSettings });
-        showToast(t("settings.imageModelSelected"), { variant: "success" });
+        showToast(t(editingProvider ? "settings.providerUpdated" : "settings.providerSaved"), {
+          variant: "success",
+        });
       } else if (copyDraft) {
         showToast(t("settings.providerSaved"), { variant: "success" });
       } else if (!editingProvider) {
@@ -225,11 +239,8 @@ export function ModelConfigPage() {
         }
         showToast(t("settings.providerSaved"), { variant: "success" });
       } else {
-        if (
-          settings.defaultProviderId === saved.id && firstModelId &&
-          !models.some((model) => modelIdsMatch(model.id, settings.defaultModelId ?? ""))
-        ) {
-          await api.setSettings({ ...settings, defaultModelId: firstModelId });
+        if (replacementChatModelId) {
+          await api.setSettings({ ...settings, defaultModelId: replacementChatModelId });
         }
         showToast(t("settings.providerUpdated"), { variant: "success" });
       }
@@ -393,7 +404,9 @@ export function ModelConfigPage() {
               </div>
               {defaultProviderReady ? (
                 <div className="settings-row-detail model-default-value">
-                  <span className="model-default-provider">{defaultProvider.name}</span>
+                  <span className="model-default-provider">
+                    {providerDisplayName(defaultProvider)}
+                  </span>
                   <span className="model-default-sep" aria-hidden>
                     ·
                   </span>
@@ -467,14 +480,14 @@ export function ModelConfigPage() {
                               index > 0 && "has-divider",
                             )}
                           >
-                            {provider.name}
+                            {providerDisplayName(provider)}
                           </div>
                         ) : null}
                         <button
                           type="button"
                           role="option"
                           aria-selected={isCurrent}
-                          aria-label={`${provider.name} · ${modelId}`}
+                          aria-label={`${providerDisplayName(provider)} · ${modelId}`}
                           className={cx("model-default-option", isCurrent && "is-current")}
                           disabled={busyId === provider.id}
                           onClick={() => void setDefaultModel(provider, modelId)}

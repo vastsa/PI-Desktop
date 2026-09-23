@@ -1,8 +1,19 @@
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import {
+  classifyIpLiteral,
+  isAcceptableUserEndpointAddress,
+  isCloudMetadataAddress,
+  isProxyFakeIpAddress,
+} from "@pi-desktop/shared";
 import { Agent, fetch as fetchPinned } from "undici";
 
 export const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
+export type ImageDownloadOptions = {
+  /** Explicitly permits router/TUN benchmark fake-IP answers. */
+  allowFakeIp?: boolean;
+  /** Proxy-aware transport used when a fake-IP answer must be resolved by the proxy. */
+  fetchImpl?: typeof fetch;
+};
 export function imageError(code: string): Error & { errorCode: string } {
   return Object.assign(new Error(code), { errorCode: code });
 }
@@ -34,36 +45,44 @@ export async function boundedBytes(
   }
 }
 
-/** Deny non-public destinations, including mapped IPv6 and cloud metadata. */
+/**
+ * Whether a resolved address may be dialed for a generated image.
+ *
+ * The URL comes from the image provider's own response, but the provider is an
+ * endpoint the user configured, and a self-hosted one (ComfyUI, SD-WebUI) hands
+ * back its own LAN address. Judging it by the third-party rule made those setups
+ * unusable, so loopback, RFC1918, CGNAT, link-local, ULA and site-local are all
+ * reachable here, and the address classes are taken from `@pi-desktop/shared`
+ * rather than re-derived so they cannot drift. Cloud metadata stays refused on
+ * every input, as do the classes that name no destination at all (unspecified,
+ * multicast, reserved, documentation, benchmark — a fake-IP answer is a proxy
+ * placeholder, not a host this process dials).
+ */
 export function publicImageAddress(address: string): boolean {
-  if (isIP(address) === 4) {
-    const [a, b, c] = address.split(".").map(Number);
-    return !(
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      a >= 224 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && (b === 168 || b === 0 || (b === 88 && c === 99))) ||
-      (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
-      (a === 203 && b === 0 && c === 113)
-    );
-  }
-  if (isIP(address) === 6) {
-    const lower = address.toLowerCase();
-    return (
-      /^[23][0-9a-f]{3}:/.test(lower) && !lower.startsWith("2001:") && !lower.startsWith("2002:")
-    );
-  }
-  return false;
+  if (typeof address !== "string" || !address) return false;
+  if (isCloudMetadataAddress(address)) return false;
+  return isAcceptableUserEndpointAddress(address, classifyIpLiteral(address), "direct");
 }
 
-/** Pin the checked DNS answer to the connection; never forward provider headers. */
+/**
+ * Pin the checked DNS answer to the connection; never forward provider headers.
+ *
+ * Plain `http` and any port are accepted because the realistic target is a
+ * self-hosted generator on the user's own machine or LAN, where TLS and port
+ * 443 are the exception. `@pi-desktop/agent-runtime` has no access to the app's
+ * network policy (it must not import Electron main-process modules), so a
+ * plaintext hop to a private address cannot be gated on the user's choice here;
+ * the trade-off is accepted because the endpoint this dials is the one the user
+ * configured, and the response is still size-capped and stripped of
+ * provider-supplied headers.
+ *
+ * An explicitly opted-in fake-IP answer is the one exception: it goes through the
+ * global fetch instead, which resolves the hostname again at connect time.
+ */
 export async function downloadGeneratedImage(
   raw: string,
   signal: AbortSignal,
+  options: ImageDownloadOptions = {},
 ): Promise<Uint8Array> {
   let url: URL;
   try {
@@ -72,18 +91,31 @@ export async function downloadGeneratedImage(
     throw imageError("IMAGE_INVALID_URL");
   }
   if (
-    url.protocol !== "https:" ||
+    (url.protocol !== "https:" && url.protocol !== "http:") ||
     url.username ||
-    url.password ||
-    (url.port && url.port !== "443")
+    url.password
   ) {
     throw imageError("IMAGE_INVALID_URL");
   }
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   const answers = await lookup(hostname, { all: true });
   signal.throwIfAborted();
-  if (!answers.length || answers.some((answer) => !publicImageAddress(answer.address)))
+  const hasUnsafeAddress = answers.some((answer) => !publicImageAddress(answer.address));
+  const hasFakeIp = answers.some((answer) => hasFakeIpAddress(answer.address));
+  const onlyFakeIp = answers.length > 0 && answers.every((answer) => hasFakeIpAddress(answer.address));
+  if (
+    !answers.length ||
+    (hasUnsafeAddress && !(options.allowFakeIp === true && hasFakeIp && onlyFakeIp))
+  )
     throw imageError("IMAGE_UNSAFE_URL");
+  if (options.allowFakeIp === true && hasFakeIp) {
+    const response = await (options.fetchImpl ?? fetch)(url, {
+      signal,
+      redirect: "error",
+    });
+    if (!response.ok) throw imageError("IMAGE_DOWNLOAD_FAILED");
+    return await boundedBytes(response, MAX_IMAGE_BYTES);
+  }
   const address = answers[0];
   const dispatcher = new Agent({
     connect: {
@@ -100,6 +132,10 @@ export async function downloadGeneratedImage(
   } finally {
     await dispatcher.destroy();
   }
+}
+
+function hasFakeIpAddress(address: string): boolean {
+  return isProxyFakeIpAddress(classifyIpLiteral(address));
 }
 
 export function generatedImageType(bytes: Uint8Array): { mimeType: string; extension: string } {

@@ -271,6 +271,15 @@ type AgentCompactResponse = { accepted: boolean };
 缺少 provider/session 配置无法通过正常的 `AppError`
 信封；主动转向或压实返回 `AGENT_BUSY`。
 
+`agent.compact` 是阻塞式摘要请求，而不是状态轮询：sidecar 会把会话序列化成一个
+提示词、流式生成一次模型摘要，并且可能重试瞬时失败。因此它的传输超时由这份预算推导
+—— `(1 + 3) × 180 秒` 流空转看门狗 `+ 14 秒` 重试退避 `+ 10 秒` 余量 —— 而不是沿用
+扁平的 130 秒默认值；后者会在 sidecar 仍在总结大上下文时到期（**D614**，issue #795）。
+宿主也把传输超时视为“结果未知”而不是“失败”：调用超时后，它会重新读取该会话的持久化
+记录，若发现新检查点已落盘就报告成功，因为无论 Electron 是否收到回复，sidecar 都会
+通过 host-core 持久化。sidecar 自己给出的判定（例如 `CONTEXT_COMPACTION_FAILED`）
+绝不会用这种方式被改写。
+
 ### 5.5 Plan 和 Goal 检查点批准
 
 合同批准与工具许可是分开的。 Plan 和 Goal 分享此内容
@@ -1563,6 +1572,13 @@ type ComposerCommand = {
 没有工作区，只有用户全局模板、内置函数和插件
 命令返回。
 
+读取失败的指令源不等于“指令列表为空”（**D613**，issue #795）。发送时的解析区分三种
+结果：已解析的内置 / 插件 / 扩展指令在本地分发；提示词模板、未知别名，以及没有可分发
+id 的指令条目仍走普通提示词路径；**无法读取指令源时则拒绝这次提交**。拒绝是刻意的
+——指令源不可用时，Composer 无法证明 `/compact` 不是内置指令，而把控制指令当作字面
+文本交给模型会被执行。拒绝会保留草稿、显示 `chat.slashCommandSourceUnavailable`，并且
+不写 TTL 缓存，因此下一次发送会重试该读取；缓存仍热时，一次数据源抖动不会影响解析。
+
 ### fs/index
 
 ```ts
@@ -1825,3 +1841,5 @@ unchanged. See [provider configuration](12-provider-config-schema.md).
 | `pi-desktop/configSync/disconnect` | `configSync.disconnect` | 移除本地同步元数据和 key；不会删除远端 vault 数据 |
 
 输入密码只会被传给需要它的操作。原始秘密、vault key、解密资源或远端 archive 不会返回到 Renderer。`configSync.changed` 事件携带相同的脱敏状态，并由 Host 发起的变更（包括 Host scheduler）触发。Main 只是传输/生命周期协调器，不负责调度、合并、加密或应用配置。
+
+手动同步会在运行期间报告 `configSync.progress`：当前阶段（`capture`、`download`、`merge`、`upload`、`apply` 或 `cleanup`）、该阶段已完成与总量，以及已知时的字节数。因此上传大量资源对象时，界面不会无内容可显示。后台轮询不报告进度，因为只有手动路径有调用方在等待。

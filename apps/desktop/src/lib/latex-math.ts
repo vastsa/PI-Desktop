@@ -56,13 +56,10 @@ export function normalizeLatexMathDelimiters(source: string): string {
         if (isDelimiter(index, math.close)) {
           output[math.open] = output[math.open + 1] = "$";
           output[index] = output[index + 1] = "$";
-          // Marked lexes the raw source before remark-math sees it, so any
-          // newline inside a `\[ … \]` block that is followed by a lone `=`,
-          // `-`, `+` or `*` line collapses the display math into a setext
-          // heading or a list item and splits `\[` from `\]` across blocks.
-          // KaTeX treats intra-formula whitespace the same, so replacing the
-          // paired region's newlines with spaces keeps the math in one block
-          // without changing what KaTeX renders.
+          // Retain the historical single-line bracket representation and
+          // source offsets. Dollar-fenced math bypasses this normalization
+          // and preserves its newlines; block splitting must use the math
+          // grammar rather than relying on flattened input.
           for (let j = math.open + 2; j < index; j++) {
             if (output[j] === "\n") output[j] = " ";
           }

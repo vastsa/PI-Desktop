@@ -100,7 +100,10 @@ same unknown-id error, because the model's only correct action is identical.
 
 A resume keeps the chain's own model binding. The `providerId/modelId` key the
 chain recorded is preferred; a chain rebuilt from the transcript only knows the
-model id, which is matched against what the session has configured. Changing the
+model id, which is matched only against the current definition's pin/fallbacks,
+the session binding, and currently authorized overrides. A remembered key whose
+turn grant expired is reauthorized before use; a denied key cannot select another
+account by model id. Other definitions' private pins are never candidates (#841). Changing the
 parent's own session model therefore does not strand a chain, and a delegate never
 swaps models by accident. If nothing resolves the recorded binding any more, the
 run continues on the binding the definition resolves to now and records the

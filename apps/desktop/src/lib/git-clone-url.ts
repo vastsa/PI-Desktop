@@ -1,4 +1,4 @@
-import { isPublicHostname } from "@pi-desktop/shared";
+import { isUserSuppliedHostname } from "@pi-desktop/shared";
 
 export type GitCloneTarget = {
   url: string;
@@ -22,17 +22,25 @@ function repoNameFromPath(path: string): string | null {
   return name;
 }
 
-function isAllowedGitHost(host: string): boolean {
-  return isPublicHostname(host);
-}
-
 /**
- * Accept https/http/ssh/git URLs and `git@host:path` remotes. Reject
- * credentials-in-URL, file URLs, private/loopback/link-local hosts, and
- * names that cannot be a folder. Host checks are syntactic (ADR 0247);
- * git still performs its own DNS/SSH.
+ * A clone remote is an address the user typed, so it may be a LAN or loopback
+ * git host — a self-hosted GitLab on 192.168.x.x, a local `git daemon` — under
+ * the same trust rule as every other user-supplied endpoint. Cloud metadata
+ * hosts stay refused. Host checks are syntactic; git performs its own DNS/SSH.
+ *
+ * Plain `http`/`git` carries whatever credentials the endpoint accepts over a
+ * plaintext hop, so — like every other user-supplied endpoint — it needs the
+ * relaxed `networkPolicy.mode` (`allowInsecureHttp`); `https`, `ssh` and
+ * `git@host:path` need no opt-in and stay allowed by default.
  */
-export function parseGitCloneUrl(raw: string | null | undefined): GitCloneTarget | null {
+function isAllowedGitHost(host: string): boolean {
+  return isUserSuppliedHostname(host);
+}
+export function parseGitCloneUrl(
+  raw: string | null | undefined,
+  options?: { allowInsecureHttp?: boolean },
+): GitCloneTarget | null {
+  const allowInsecureHttp = options?.allowInsecureHttp === true;
   const url = raw?.trim() ?? "";
   if (!url || url.length > 2048 || /\s/.test(url)) return null;
 
@@ -50,6 +58,12 @@ export function parseGitCloneUrl(raw: string | null | undefined): GitCloneTarget
     return null;
   }
   if (!["https:", "http:", "ssh:", "git:"].includes(parsed.protocol)) {
+    return null;
+  }
+  if (
+    (parsed.protocol === "http:" || parsed.protocol === "git:") &&
+    !allowInsecureHttp
+  ) {
     return null;
   }
   if (parsed.password) return null;

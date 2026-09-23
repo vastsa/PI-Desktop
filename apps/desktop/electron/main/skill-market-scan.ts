@@ -7,11 +7,13 @@
 import {
   PUBLIC_NETWORK_POLICY_ERROR,
   isProxyFakeIpAddress,
+  isSafePublicHttpsUrl,
   isSafeSkillSourceUrl,
   publicNetworkRefusalDetail,
   sanitizeSkillCatalogId,
   splitSkillDocument,
   validateSkillCatalogFile,
+  type EndpointOrigin,
   type PublicNetworkAddressKind,
   type PublicNetworkRefusalReason,
   type PublicNetworkRoute,
@@ -21,7 +23,11 @@ import {
   type SourcedSkillEntry,
 } from "@pi-desktop/shared";
 
-export type CatalogRequest = (url: string, kind: "json" | "text") => Promise<unknown>;
+export type CatalogRequest = (
+  url: string,
+  kind: "json" | "text",
+  origin?: EndpointOrigin,
+) => Promise<unknown>;
 
 /**
  * Why a source failed. `policy` means the guard judged an address (or the URL
@@ -190,22 +196,32 @@ export function guessSkillCategories(path: string): SkillCatalogCategory[] {
   return ["workflow"];
 }
 
-export function createSkillMarketAggregator(request: CatalogRequest) {
+export function createSkillMarketAggregator(
+  request: CatalogRequest,
+  policy: { allowInsecureUserEndpoints?: boolean | (() => boolean) } = {},
+) {
   const catalogCache = new Map<string, { at: number; entries: SourcedSkillEntry[] }>();
   const documentCache = new Map<string, { at: number; document: SkillMarketDocument }>();
 
-  async function fetchJson<T>(url: string): Promise<T> {
-    return (await request(url, "json")) as T;
+  async function fetchJson<T>(url: string, origin?: EndpointOrigin): Promise<T> {
+    return (await request(url, "json", origin)) as T;
   }
 
-  async function fetchText(url: string): Promise<string> {
-    return (await request(url, "text")) as string;
+  async function fetchText(url: string, origin?: EndpointOrigin): Promise<string> {
+    return (await request(url, "text", origin)) as string;
+  }
+
+  /** Whether the stored policy accepts a plaintext hop to the user's own host. */
+  function insecureUserEndpointsAllowed(): boolean {
+    return typeof policy.allowInsecureUserEndpoints === "function"
+      ? policy.allowInsecureUserEndpoints()
+      : policy.allowInsecureUserEndpoints === true;
   }
 
   async function loadCatalog(source: SkillMarketSource): Promise<SourcedSkillEntry[]> {
     const hit = catalogCache.get(source.url);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.entries;
-    const body = await fetchJson<unknown>(source.url);
+    const body = await fetchJson<unknown>(source.url, "user");
     const { catalog } = validateSkillCatalogFile(body);
     const entries = catalog.skills.map((entry) => ({
       ...entry,
@@ -224,10 +240,12 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
     const [, owner, repo] = match;
     const repoInfo = await fetchJson<{ default_branch?: string }>(
       `https://api.github.com/repos/${owner}/${repo}`,
+      "user",
     );
     const branch = repoInfo.default_branch || "main";
     const tree = await fetchJson<{ tree?: Array<{ path: string }> }>(
       `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
+      "user",
     );
     const entries: SourcedSkillEntry[] = [];
     const seen = new Set<string>();
@@ -259,7 +277,7 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
   async function fetchDocument(url: string): Promise<SkillMarketDocument> {
     const hit = documentCache.get(url);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.document;
-    const document = splitSkillDocument(await fetchText(url)) as SkillMarketDocument;
+    const document = splitSkillDocument(await fetchText(url, "third-party")) as SkillMarketDocument;
     const match = JSDELIVR_GH.exec(url);
     if (match) {
       const [, owner, repo, ref, path] = match;
@@ -267,6 +285,7 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
       try {
         const listing = (await fetchJson<{ files?: Array<{ name: string }> }>(
           `https://data.jsdelivr.com/v1/packages/gh/${owner}/${repo}@${ref}?structure=flat`,
+          "third-party",
         )) as { files?: Array<{ name: string }> };
         const siblings = (listing.files ?? [])
           .map((file) => file.name)
@@ -275,7 +294,10 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
         for (const name of siblings.slice(0, 20)) {
           resources.push({
             path: name.slice(dir.length),
-            body: await fetchText(`https://cdn.jsdelivr.net/gh/${owner}/${repo}@${ref}/${name}`),
+            body: await fetchText(
+              `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${ref}/${name}`,
+              "third-party",
+            ),
           });
         }
         if (resources.length) document.resources = resources;
@@ -289,10 +311,13 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
 
   async function search(query: string, sources: SkillMarketSource[]): Promise<SkillMarketSearchResult> {
     const trimmed = query.trim().toLocaleLowerCase();
-    const usable = sources.filter((source) => isSafeSkillSourceUrl(source.url));
+    // A source URL the user typed may be a LAN or loopback catalog; plain http
+    // needs the stored opt-in. Plaintext never reaches a document URL.
+    const sourceOptions = { allowInsecureHttp: insecureUserEndpointsAllowed() };
+    const usable = sources.filter((source) => isSafeSkillSourceUrl(source.url, sourceOptions));
     // A source the syntactic guard never let out is a policy refusal, not a
     // transport failure, and it must not be reported as an unreachable host.
-    const refused = sources.filter((source) => !isSafeSkillSourceUrl(source.url));
+    const refused = sources.filter((source) => !isSafeSkillSourceUrl(source.url, sourceOptions));
     const failedSources = refused.map((source) => source.name);
     // Two sources can carry the same display name (a default source and a user
     // source with the same label), and `failedSources` already cannot tell such
@@ -361,7 +386,10 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
   }
 
   async function fetchEntryDocument(entry: SkillCatalogEntry): Promise<SkillMarketDocument> {
-    if (!isSafeSkillSourceUrl(entry.url)) {
+    // A document URL arrives inside a catalog the app did not receive from the
+    // user, so it keeps the public-only policy even when the source itself is a
+    // LAN catalog the user added.
+    if (!isSafePublicHttpsUrl(entry.url)) {
       // A document URL the syntactic guard refuses is a decision about the URL,
       // not a dead host. Carrying the shared name and reason means the one
       // classifier reports it as the policy refusal it is, instead of telling

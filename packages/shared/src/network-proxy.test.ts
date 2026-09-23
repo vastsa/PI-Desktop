@@ -76,10 +76,12 @@ describe("validateNetworkProxy", () => {
       value: { mode: "direct" },
     });
   });
-  it("preserves the explicit fake-IP market opt-in without widening other modes", () => {
+  it("drops the retired fake-IP key from a stored proxy", () => {
+    // The fake-IP tolerance moved to `networkPolicy.mode`; an older stored value
+    // is ignored rather than refused, so an existing profile keeps loading.
     expect(validateNetworkProxy({ mode: "direct", allowFakeIp: true })).toEqual({
       ok: true,
-      value: { mode: "direct", allowFakeIp: true },
+      value: { mode: "direct" },
     });
     expect(validateNetworkProxy({ mode: "system", allowFakeIp: false })).toEqual({
       ok: true,
@@ -154,17 +156,28 @@ describe("chromium and env projections", () => {
     }).HTTP_PROXY).toBe("http://user:s3cret@10.0.0.1:8080");
   });
 
-  it("omits Chromium <local> from NO_PROXY and does not set HTTP_PROXY for SOCKS", () => {
+  it("omits Chromium <local> from NO_PROXY, keeps the LAN ranges, and does not set HTTP_PROXY for SOCKS", () => {
+    // The default bypass is the user's own machine plus the private ranges a
+    // user's LAN devices live in: a proxy is for reaching the public internet,
+    // and sending a local model server, NAS or MCP endpoint through it is how it
+    // stops answering. `<local>` is Chromium's own single-label rule rather than
+    // an env-var wildcard, so NO_PROXY drops it and keeps everything else.
+    const lanRanges = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16";
+    const envBypass = `localhost,127.0.0.1,::1,${lanRanges}`;
+    // Pinned literally: `crates/host-core/src/network_proxy.rs` carries the same
+    // string for the sidecar's own bypass.
+    expect(DEFAULT_NETWORK_PROXY_BYPASS).toBe(
+      `localhost,127.0.0.1,::1,<local>,${lanRanges}`,
+    );
     const socks = proxyEnvAssignments({
       mode: "custom",
       url: "socks5://127.0.0.1:1080",
     });
     expect(socks.ALL_PROXY).toBe("socks5://127.0.0.1:1080");
     expect(socks.HTTP_PROXY).toBeNull();
-    expect(socks.NO_PROXY).toBe("localhost,127.0.0.1,::1");
-    expect(envProxyBypass({ mode: "custom", url: "http://127.0.0.1:7890" })).toBe(
-      "localhost,127.0.0.1,::1",
-    );
+    expect(socks.NO_PROXY).toBe(envBypass);
+    expect(socks.NO_PROXY ?? "").not.toContain("<local>");
+    expect(envProxyBypass({ mode: "custom", url: "http://127.0.0.1:7890" })).toBe(envBypass);
 
     const http = proxyEnvAssignments({
       mode: "custom",

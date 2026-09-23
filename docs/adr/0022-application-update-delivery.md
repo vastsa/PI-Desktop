@@ -1,9 +1,9 @@
 # ADR 0022: Application Update Delivery
 
-- Status: Accepted (amended by D364 / ADR 0197, D450 / ADR 0289)
+- Status: Accepted (amended by D364 / D603 / ADR 0197, D450 / ADR 0289)
 - Date: 2026-07-26
 - Deciders: PI-Desktop core
-- Related: D120, D126, D364, D010, D450, ADR 0021, ADR 0197, ADR 0289
+- Related: D120, D126, D364, D603, D010, D450, ADR 0021, ADR 0197, ADR 0289
 
 ## Context
 
@@ -22,10 +22,11 @@ download-and-install flow.
    cannot supply a feed URL.
 2. Development builds keep updates disabled. Packaged macOS, Windows NSIS, and
    Linux AppImage use in-app download and quit-and-install delivery. Non-AppImage
-   Linux (deb/rpm) and Windows portable builds (`PORTABLE_EXECUTABLE_FILE`) use
+   Linux (deb/rpm) and Windows ZIP builds (`piDistribution = "zip"`) use
    notify-and-link delivery so an NSIS installer cannot replace a no-install
-   run. (Packaged macOS was notify-and-link until D450 / ADR 0289 qualified the
-   signed in-app channel.)
+   run. Legacy portable executables remain manual when
+   `PORTABLE_EXECUTABLE_FILE` is present. (Packaged macOS was notify-and-link
+   until D450 / ADR 0289 qualified the signed in-app channel.)
 3. The updater always sets `allowPrerelease = false`. electron-updater would
    otherwise pin prerelease installs (for example `0.2.0-rc.6`) to the same
    custom channel (`rc`) and never offer a newer stable GitHub latest release.
@@ -54,8 +55,8 @@ download-and-install flow.
 - The sandboxed renderer cannot redirect update traffic or install arbitrary
   packages.
 - Windows NSIS, Linux AppImage, and packaged macOS can update in-app from
-  published tag feeds; Linux deb and Windows portable users install from the
-  release page.
+  published tag feeds; Linux deb and Windows ZIP users install from the
+  release page after extracting the archive.
 - Prerelease installs graduate to newer stable releases through the same
   latest feed; a dedicated RC channel is not active.
 - In-app bilingual release highlights ship with the build and follow the
@@ -78,3 +79,13 @@ Official GitHub tag macOS artifacts are Developer ID-signed, notarized, and
 stapled. Packaged macOS therefore uses the same in-app `electron-updater` lane
 as Windows NSIS and Linux AppImage. Local unsigned packaging without a
 certificate remains available (D078).
+
+## Amendment (D603)
+
+The Windows no-install lane now publishes a normal ZIP archive instead of
+electron-builder's self-extracting `portable` executable. The release helper
+builds NSIS and ZIP separately and stamps the ZIP app metadata with
+`piDistribution = "zip"`; the updater uses that marker to keep the ZIP manual
+even though ordinary ZIP launches do not set `PORTABLE_EXECUTABLE_FILE`. Users
+extract the archive and run `PI-Desktop.exe`; the NSIS lane and existing data
+directory remain unchanged.

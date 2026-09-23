@@ -68,7 +68,7 @@ type AppError = {
 | `APPROVAL_STALE` | 不 | RACP：审批已被处理或属于更早的回合 |
 | `PAYLOAD_TOO_LARGE` | 不 | RACP：帧超过协商的大小上限 |
 | `TIMEOUT` | 是的 | 通用超时 |
-| `NETWORK_POLICY_BLOCKED` | 不 | 主进程公网策略守卫拒绝了一次抓取,因为它**判定了**目标：URL 未通过公网 HTTPS 语法检查,或本地 DNS 解析返回了策略判定为非公网的地址——其中包括本地代理生成的 fake-IP 占位地址（ADR 0243）。仅桌面端使用；拒绝即判定,因此在地址改变前重试不会成功。本地解析完全没有返回答案时改用 `NETWORK_RESOLVE_FAILED`（issue #419）。 |
+| `NETWORK_POLICY_BLOCKED` | 不 | 主进程公网策略守卫拒绝了一次抓取,因为它**判定了**目标：URL 未通过公网 HTTPS 语法检查,或本地 DNS 解析返回了策略判定为非公网的地址——其中包括本地代理生成的 fake-IP 占位地址（ADR 0243）。仅桌面端使用；拒绝即判定,因此在地址改变前重试不会成功。本地解析完全没有返回答案时改用 `NETWORK_RESOLVE_FAILED`（issue #419）。自 ADR 0304 起,用户自己填写的端点可以解析到本机回环或局域网地址,因此该错误码现在只针对两类首跳：命中完全无服务语义的地址类别（云元数据、unspecified、multicast、reserved）,或第三方跳——重定向目标、目录正文、registry 记录。 |
 | `NETWORK_RESOLVE_FAILED` | 是的 | 主进程公网策略守卫无法判定目标主机：本地 DNS 解析没有返回答案,或在返回前抛错。请求仍与策略拒绝一样被拒,但没有判定任何地址,因此任何界面或日志都不得把它描述成地址校验的判定结果。与 `NETWORK_ERROR` 不同,后者是请求本身的失败。可重试：当解析器或代理开始应答同一主机时,同一请求即可成功（ADR 0243,issue #419）。 |
 | `HOST_SHUTTING_DOWN` | 是的 | 主机收到 EOF 正在排空；调用被拒绝而不是被启动 |
 | `RATE_LIMITED` | 是的 | 某个按调用方计的主机预算（插件会话导入、批量操作）在其窗口内被超出 |
