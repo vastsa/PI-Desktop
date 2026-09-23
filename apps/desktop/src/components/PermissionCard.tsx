@@ -8,6 +8,7 @@ import { useAppStore } from "../stores/app-store";
 import { buildToolPresentation } from "../lib/tool-presentation";
 import { ToolDetailBlocks } from "./ToolDetails";
 import { Button } from "./ui";
+import { api } from "../lib/api";
 
 export function PermissionCard({
   permission,
@@ -24,9 +25,11 @@ export function PermissionCard({
     state.sessions.find((session) => session.id === permission.sessionId)?.projectPath,
   );
   const [secondsLeft, setSecondsLeft] = useState(() =>
-    permissionSecondsLeft(permission.receivedAt),
+    permissionSecondsLeft(permission.receivedAt, Date.now(), permission.expiresAt),
   );
   const [resolving, setResolving] = useState(false);
+  const reviewing = permission.reviewState === "reviewing" || permission.reviewState === "awaiting_review";
+  const [takingOver, setTakingOver] = useState(false);
   const timeoutHandled = useRef(false);
 
   const restoreComposerFocus = () => {
@@ -54,17 +57,29 @@ export function PermissionCard({
 
   useEffect(() => {
     timeoutHandled.current = false;
-    const update = () => setSecondsLeft(permissionSecondsLeft(permission.receivedAt));
+    const update = () => setSecondsLeft(permissionSecondsLeft(permission.receivedAt, Date.now(), permission.expiresAt));
     update();
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
-  }, [permission.receivedAt, permission.requestId]);
+  }, [permission.receivedAt, permission.expiresAt, permission.requestId]);
 
   useEffect(() => {
-    if (secondsLeft > 0 || timeoutHandled.current || resolving) return;
+    if (secondsLeft > 0 || timeoutHandled.current || resolving || reviewing) return;
     timeoutHandled.current = true;
     void resolve("deny");
-  }, [resolving, secondsLeft]);
+  }, [resolving, reviewing, secondsLeft]);
+
+  const takeOver = async () => {
+    if (takingOver) return;
+    setTakingOver(true);
+    try {
+      await api.takeoverPermissionReview(permission.requestId);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+    } finally {
+      setTakingOver(false);
+    }
+  };
 
   // Same structured presentation as the transcript tool rows: a command reads
   // as shell, file content as code, everything else as labeled fields.
@@ -86,7 +101,7 @@ export function PermissionCard({
     >
       <div className="permission-card-header">
         <span className="permission-card-title" role="status" aria-live="polite">
-          {t("permission.title")}
+          {reviewing ? t("permission.reviewing") : t("permission.title")}
         </span>
         {queued > 0 ? (
           <span className="permission-card-queued">
@@ -112,6 +127,11 @@ export function PermissionCard({
       {permission.reason ? (
         <div className="permission-card-reason">{permission.reason}</div>
       ) : null}
+      {permission.scopeLabel ? (
+        <div className="permission-card-reason">
+          {t("permission.scope", { scope: permission.scopeLabel })}
+        </div>
+      ) : null}
       {argBlocks.length > 0 ? (
         <div className="permission-card-args">
           <ToolDetailBlocks blocks={argBlocks} />
@@ -128,6 +148,12 @@ export function PermissionCard({
         </span>
       </div>
       <div className="permission-card-actions">
+        {reviewing ? (
+          <Button variant="secondary" disabled={takingOver} onClick={() => void takeOver()}>
+            {t("permission.takeOver")}
+          </Button>
+        ) : (
+          <>
         <Button
           variant="ghost"
           disabled={resolving}
@@ -135,13 +161,13 @@ export function PermissionCard({
         >
           {t("permission.deny")}
         </Button>
-        <Button
+        {permission.scopeLabel ? <Button
           variant="secondary"
           disabled={resolving}
           onClick={() => void resolve("allow-session")}
         >
           {t("permission.allowSession")}
-        </Button>
+        </Button> : null}
         <Button
           variant="primary"
           disabled={resolving}
@@ -149,6 +175,8 @@ export function PermissionCard({
         >
           {t("permission.allowOnce")}
         </Button>
+          </>
+        )}
       </div>
     </section>
   );

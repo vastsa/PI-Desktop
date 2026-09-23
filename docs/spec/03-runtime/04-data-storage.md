@@ -1,4 +1,20 @@
-# 04. Data Storage (Schema v17)
+# 04. Data Storage (Schema v20)
+
+The optional local `autoReview.policyPrompt` setting is stored in the existing
+settings object; it does not add a database column. Missing values select the
+built-in policy, preserving older installations. Saving a policy invalidates
+old in-memory review authorization. Portable configuration sync excludes it.
+
+Schema v20 adds `sessions.approval_reviewer` with the constrained values
+`inherit`, `user`, and `auto_review`, defaulting existing rows to `inherit`.
+The v19-to-v20 migration creates the standard migration backup and adds the
+column transactionally without rewriting transcript files. Missing global
+reviewer settings resolve to User. Session grants and pending review tokens
+remain memory-only; restart never restores executable approval.
+
+The previous page heading lagged the executable v19 schema. The current schema
+and migration chain in host-core are authoritative; do not skip v18/v19 when
+upgrading an older database.
 
 ## 0. Ownership decision
 

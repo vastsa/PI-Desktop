@@ -4,7 +4,18 @@ export const PERMISSION_TIMEOUT_MS = 120_000;
 
 export type PendingPermission = ToolPermissionRequest & {
   receivedAt: number;
+  /** Original Host deadline; present on restored or timestamped requests. */
+  expiresAt?: string;
+  /** Host-derived action scope; absent means a reusable grant cannot be offered. */
+  scopeLabel?: string;
 };
+
+/** A replayed event must not restart the Host-owned permission deadline. */
+export function permissionReceivedAt(request: ToolPermissionRequest, eventAt: number): number {
+  const createdAt = "createdAt" in request ? request.createdAt : undefined;
+  const parsed = typeof createdAt === "string" ? Date.parse(createdAt) : NaN;
+  return Number.isFinite(parsed) ? parsed : eventAt;
+}
 
 /**
  * Per-session queue of permission requests, oldest first.
@@ -37,7 +48,19 @@ export function enqueuePermission(
   permission: PendingPermission,
 ): PermissionQueues {
   const queue = queues[permission.sessionId] ?? [];
-  if (queue.some((entry) => entry.requestId === permission.requestId)) return queues;
+  const existing = queue.findIndex((entry) => entry.requestId === permission.requestId);
+  if (existing >= 0) {
+    const previous = queue[existing]!;
+    if (previous.reviewState === permission.reviewState && previous.reason === permission.reason &&
+        previous.expiresAt === permission.expiresAt) return queues;
+    const updated = [...queue];
+    updated[existing] = {
+      ...previous, ...permission,
+      expiresAt: permission.expiresAt ?? previous.expiresAt,
+      receivedAt: previous.expiresAt ? previous.receivedAt : permission.receivedAt,
+    };
+    return withQueue(queues, permission.sessionId, updated);
+  }
   return withQueue(queues, permission.sessionId, [...queue, permission]);
 }
 
@@ -108,6 +131,8 @@ export function clearSessionPermissions(
   return next;
 }
 
-export function permissionSecondsLeft(receivedAt: number, now = Date.now()): number {
-  return Math.max(0, Math.ceil((receivedAt + PERMISSION_TIMEOUT_MS - now) / 1000));
+export function permissionSecondsLeft(receivedAt: number, now = Date.now(), expiresAt?: string): number {
+  const parsed = expiresAt ? Date.parse(expiresAt) : NaN;
+  const deadline = Number.isFinite(parsed) ? parsed : receivedAt + PERMISSION_TIMEOUT_MS;
+  return Math.max(0, Math.ceil((deadline - now) / 1000));
 }

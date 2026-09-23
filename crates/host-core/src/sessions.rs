@@ -111,6 +111,8 @@ pub struct SessionSummary {
     pub thinking_level: String,
     #[serde(default = "default_permission_mode")]
     pub permission_mode: String,
+    #[serde(default = "default_approval_reviewer")]
+    pub approval_reviewer: String,
     pub updated_at: String,
     pub created_at: String,
 }
@@ -1112,7 +1114,7 @@ fn session_created_at(db: &Database, session_id: &str) -> Result<String> {
 
 const SUMMARY_SELECT: &str =
     "SELECT s.id, s.title, s.last_seq, p.path, s.model_id, s.provider_id, s.mode,
-            s.thinking_level, s.permission_mode, s.updated_at, s.created_at
+            s.thinking_level, s.permission_mode, s.updated_at, s.created_at, s.approval_reviewer
      FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
      WHERE s.deleted_at IS NULL";
 
@@ -1127,6 +1129,7 @@ pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sess
         mode: row.get(6)?,
         thinking_level: row.get(7)?,
         permission_mode: row.get(8)?,
+        approval_reviewer: row.get(11)?,
         updated_at: ms_to_ts(row.get(9)?),
         created_at: ms_to_ts(row.get(10)?),
     })
@@ -1292,6 +1295,7 @@ pub fn create_session_with_options(
         mode,
         thinking_level,
         permission_mode,
+        approval_reviewer: default_approval_reviewer(),
         updated_at: ms_to_ts(now),
         created_at: ms_to_ts(now),
     })
@@ -1302,6 +1306,18 @@ pub fn session_permission_mode(db: &Database, id: &str) -> Result<Option<String>
     Ok(db
         .conn()
         .prepare_cached("SELECT permission_mode FROM sessions WHERE id = ?1")?
+        .query_row(params![id], |row| row.get(0))
+        .optional()?)
+}
+
+fn default_approval_reviewer() -> String {
+    "inherit".to_string()
+}
+
+pub fn session_approval_reviewer(db: &Database, id: &str) -> Result<Option<String>> {
+    Ok(db
+        .conn()
+        .prepare_cached("SELECT approval_reviewer FROM sessions WHERE id = ?1")?
         .query_row(params![id], |row| row.get(0))
         .optional()?)
 }
@@ -1579,10 +1595,10 @@ pub fn fork_session_through(
             .prepare_cached(
                 "INSERT INTO sessions (
                     id, title, project_id, provider_id, model_id, mode, thinking_level,
-                    permission_mode, source, pinned, last_seq, created_at, updated_at
+                    permission_mode, approval_reviewer, source, pinned, last_seq, created_at, updated_at
                  )
                  SELECT ?1, ?2, project_id, provider_id, model_id, mode, thinking_level,
-                        permission_mode, NULL, 0, ?3, ?4, ?4
+                        permission_mode, approval_reviewer, NULL, 0, ?3, ?4, ?4
                  FROM sessions WHERE id = ?5",
             )?
             .execute(params![id, title, records.len() as i64, now, source_id])?;
@@ -1612,6 +1628,7 @@ pub fn fork_session_through(
         mode: source.summary.mode,
         thinking_level: source.summary.thinking_level,
         permission_mode: source.summary.permission_mode,
+        approval_reviewer: source.summary.approval_reviewer,
         updated_at: created_at.clone(),
         created_at,
     };
@@ -1652,6 +1669,29 @@ pub fn configure_session_with_thinking(
     thinking_level: Option<&str>,
     permission_mode: Option<&str>,
 ) -> Result<Option<SessionSummary>> {
+    configure_session_with_reviewer(
+        db,
+        id,
+        mode,
+        provider_id,
+        model_id,
+        thinking_level,
+        permission_mode,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn configure_session_with_reviewer(
+    db: &Database,
+    id: &str,
+    mode: &str,
+    provider_id: Option<&str>,
+    model_id: Option<&str>,
+    thinking_level: Option<&str>,
+    permission_mode: Option<&str>,
+    approval_reviewer: Option<&str>,
+) -> Result<Option<SessionSummary>> {
     if !(is_valid_mode(mode) || mode == "chat") {
         return Err(anyhow!("mode must be plan or agent"));
     }
@@ -1661,6 +1701,13 @@ pub fn configure_session_with_thinking(
     }
     if let Some(mode) = permission_mode {
         validate_permission_mode(mode)?;
+    }
+    if approval_reviewer
+        .is_some_and(|reviewer| !matches!(reviewer, "inherit" | "user" | "auto_review"))
+    {
+        return Err(anyhow!(
+            "approvalReviewer must be inherit, user, or auto_review"
+        ));
     }
     crate::plans::gate_session_configure(
         db,
@@ -1678,7 +1725,8 @@ pub fn configure_session_with_thinking(
              SET mode = ?2, provider_id = COALESCE(?3, provider_id),
                  model_id = COALESCE(?4, model_id),
                  thinking_level = COALESCE(?5, thinking_level),
-                 permission_mode = COALESCE(?6, permission_mode), updated_at = ?7
+                 permission_mode = COALESCE(?6, permission_mode),
+                 approval_reviewer = COALESCE(?8, approval_reviewer), updated_at = ?7
              WHERE id = ?1",
         )?
         .execute(params![
@@ -1688,7 +1736,8 @@ pub fn configure_session_with_thinking(
             model_id,
             thinking_level,
             permission_mode,
-            now_ms()
+            now_ms(),
+            approval_reviewer,
         ])?;
     if changed == 0 {
         return Ok(None);
@@ -4296,6 +4345,7 @@ mod tests {
             mode: "agent".into(),
             thinking_level: "off".into(),
             permission_mode: "inherit".into(),
+            approval_reviewer: "inherit".into(),
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-02T00:00:00Z".into(),
         };
@@ -4346,6 +4396,7 @@ mod tests {
             mode: "agent".into(),
             thinking_level: "off".into(),
             permission_mode: "inherit".into(),
+            approval_reviewer: "inherit".into(),
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
         };
@@ -5085,6 +5136,7 @@ mod tests {
             mode: "agent".into(),
             thinking_level: "medium".into(),
             permission_mode: "inherit".into(),
+            approval_reviewer: "inherit".into(),
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
         };

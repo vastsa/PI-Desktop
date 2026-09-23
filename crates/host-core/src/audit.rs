@@ -139,30 +139,9 @@ fn bounded_payload(value: Value) -> String {
     }
 }
 
-fn redact_string(value: &str) -> String {
-    let mut safe = value.to_owned();
-    safe = regex(r"(?i)(https?://)[^/\s:@]+:[^@\s]+@", "url_credentials")
-        .replace_all(&safe, "$1***:***@")
-        .into_owned();
-    safe = regex(
-        r"(?i)\b(bearer|basic)\s+[A-Za-z0-9+/_=.-]{8,}",
-        "authorization_scheme",
-    )
-    .replace_all(&safe, "$1 ***REDACTED***")
-    .into_owned();
-    safe = regex(
-        r#"(?i)\b((?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|password|api[_-]?key|apikey|authorization|proxy-authorization|cookie|set-cookie|credential|private[_-]?key|client[_-]?secret)\s*[:=]\s*)[^\s,;&}\"']+"#,
-        "secret_assignment",
-    )
-    .replace_all(&safe, "$1***REDACTED***")
-    .into_owned();
-    safe = regex(
-        r"(?i)\b(?:sk|rk|pk)-[A-Za-z0-9_-]{10,}\b|\b(?:gh[pousr]_|github_pat_|glpat-|xox[baprs]-|AIza|ya29\.)[A-Za-z0-9._-]{8,}\b",
-        "provider_token",
-    )
-    .replace_all(&safe, "***REDACTED***")
-    .into_owned();
-    safe = regex(
+pub(crate) fn redact_string(value: &str) -> String {
+    let safe = redact_credentials(value);
+    let safe = regex(
         r#"(^|[\s(\"'=])((?:/|[A-Za-z]:[\\/]|\\\\)[^\s\"'=,;)}]*)"#,
         "absolute_path",
     )
@@ -176,6 +155,35 @@ fn redact_string(value: &str) -> String {
     } else {
         bounded
     }
+}
+
+/// Sensitive credential substitution without audit-only path hiding or the
+/// audit output cap. Review context uses this to recognize credentials while
+/// preserving legitimate absolute tool paths and approved plan references.
+pub(crate) fn redact_credentials(value: &str) -> String {
+    let mut safe = value.to_owned();
+    safe = regex(r"(?i)(https?://)[^/\s:@]+:[^@\s]+@", "url_credentials")
+        .replace_all(&safe, "$1***:***@")
+        .into_owned();
+    safe = regex(
+        r"(?i)\b(bearer|basic)\s+[A-Za-z0-9+/_=.-]{8,}",
+        "authorization_scheme",
+    )
+    .replace_all(&safe, "$1 ***REDACTED***")
+    .into_owned();
+    safe = regex(
+        r#"(?i)\b((?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|password|api[_-]?key|apikey|authorization|proxy-authorization|cookie|set-cookie|credential|private[_-]?key|client[_-]?secret)\s*(?:\\?[\"'])?\s*[:=]\s*(?:\\?[\"'])?)[^\s,;&}\"']+"#,
+        "secret_assignment",
+    )
+    .replace_all(&safe, "$1***REDACTED***")
+    .into_owned();
+    safe = regex(
+        r"(?i)\b(?:sk|rk|pk)-[A-Za-z0-9_-]{10,}\b|\b(?:gh[pousr]_|github_pat_|glpat-|xox[baprs]-|AIza|ya29\.)[A-Za-z0-9._-]{8,}\b",
+        "provider_token",
+    )
+    .replace_all(&safe, "***REDACTED***")
+    .into_owned();
+    safe
 }
 
 fn is_path_key(key: &str) -> bool {
@@ -232,7 +240,7 @@ fn regex(pattern: &str, name: &str) -> &'static Regex {
 
 #[cfg(test)]
 mod tests {
-    use super::redact_value;
+    use super::{redact_credentials, redact_string, redact_value};
     use serde_json::json;
 
     #[test]
@@ -274,5 +282,24 @@ mod tests {
         }));
         assert_eq!(value["projectPath"], "<local-path>");
         assert_eq!(value["detail"], "failed while reading <local-path>");
+    }
+
+    #[test]
+    fn credential_filter_preserves_paths_but_audit_still_hides_them() {
+        let paths = r"Edit C:\Users\win\Desktop\project\file.txt or /tmp/project/file.txt";
+        assert_eq!(redact_credentials(paths), paths);
+        assert!(!redact_string(paths).contains("C:\\Users\\win"));
+        assert!(!redact_string(paths).contains("/tmp/project"));
+        let credentials = "token=abc123 https://reader:pass123@example.com/feed";
+        assert_ne!(redact_credentials(credentials), credentials);
+        assert!(!redact_credentials(credentials).contains("pass123"));
+        for json in [
+            r#"{"token":"abc123"}"#,
+            r#"{"access_token":"abc123"}"#,
+            r#"{"content":"{\"token\":\"abc123\"}"}"#,
+        ] {
+            assert_ne!(redact_credentials(json), json);
+            assert!(!redact_credentials(json).contains("abc123"));
+        }
     }
 }

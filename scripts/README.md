@@ -42,15 +42,17 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 
 ## End-to-end
 
-Do not run these from an agent session, and do not trigger the remote jobs by
-hand, unless the request explicitly asks for it (see `AGENTS.md`). The scenarios
-they cover are specified in
+Run relevant isolated local E2E as required by `AGENTS.md`; do not attach to a
+user's running instance, call paid/live providers, run `verify:ui:*`, or trigger
+remote jobs without the required explicit authorization. The scenarios are in
 [the E2E test plan](../docs/spec/06-delivery/04-e2e-test-plan.md).
 
 | Script | Alias | Purpose |
 |---|---|---|
 | `e2e-smoke.mjs` | `pnpm test:e2e` | Protocol-level E2E against host-core, plus an optional live model |
 | `e2e-plan.mjs` | `pnpm test:e2e:plan` | Plan state, checkpoint artifact, and approval transitions |
+| `e2e-permission-review.mjs`, `e2e-permission-ui.mjs` | `pnpm test:e2e:permissions` | Isolated Rust host + local model review, scoped grants, takeover, and real permission-card interaction; no live credentials |
+| `e2e-permission-desktop.mjs` | `pnpm test:e2e:permissions-desktop` | Windows full desktop Composer → local review model → Host file operation; isolated app and native-Pi profiles. Set `PI_PERMISSION_DESKTOP_SETTINGS_ONLY=1` for model/policy editing and persistence; `PI_PERMISSION_DESKTOP_LANGUAGE=en` or `zh-CN` selects that fixture's locale; `PI_PERMISSION_DESKTOP_ARTIFACTS` retains screenshots |
 | `e2e-plan-ui.mjs` | `pnpm test:e2e:plan-ui` | Plan approval through the rendered UI |
 | `e2e-electron-boot.mjs` | `pnpm test:e2e:boot` | Electron boot probe |
 | `e2e-provider-recovery.mjs` | `node scripts/e2e-provider-recovery.mjs` | Isolated desktop with a localhost fault-injection provider: socket failures, interrupted streams, Responses recovery, exhausted retries, Continue, and recovery across eleven real Read calls. Requires a built desktop/runtime and host binary (`PI_DESKTOP_HOST_BIN` when outside the checkout); retains screenshots and JSON under `.artifacts/issue-699/` |

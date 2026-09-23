@@ -12,9 +12,9 @@
 | Plan tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitPlan + plugin tools that declare plan-safe actions |
 | Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions |
 | Plan and Goal hard deny | Write / Edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
-| Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan/Goal, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
+| Plugin `planSafeActions` | Non-empty array of `action` strings in the installed manifest; Host and plugin-runtime both reject actions outside that list (ADR 0211, amended by ADR 0306) |
 | Permission timeout | 120s → deny |
-| allow-session scope | toolName |
+| allow-session scope | Session + caller + explicit action target; see [permission review](23-permission-auto-review.md) |
 | Bash style | non-interactive; selected host catalog shell with streamed output |
 | Edit contract | line-anchored ops + whole-file `tag`; no `old_string`/`new_string` (ADR 0087) |
 | asktool | interactive multi-question tool; no validity deadline; skipped answers become empty output fields |
@@ -155,7 +155,7 @@ low-risk auto-allow decision:
 - `auto` allows the outside path without a card;
 - `ask` and `accept-edits` emit the ordinary permission card;
 - `allow-once` executes only the current call, while `allow-session` follows
-  the existing per-tool session grant scope;
+  the session/caller/action scope described in [permission review](23-permission-auto-review.md);
 - denial, timeout, or cancellation never executes the operation;
 - relative `..` escapes and symlink escapes use the same rule as absolute
   paths;
@@ -404,7 +404,7 @@ Initial denylist (extensible):
 - `deny`
 
 May be added later:
-- `allow-always-for-tool`
+- persistent user-managed scoped rules
 - `allow-always-for-command-pattern`
 
 ### Permission Modes (D115/D132)
@@ -440,8 +440,9 @@ Rules:
 - Plan retains the permission-mode selector. Bash is confirmed under `ask` and
   `accept-edits`, and is auto-allowed under `auto`; therefore Plan is planning
   intent, not a strict read-only security profile.
-- `allow-session` grants continue to work under `ask` and stay scoped to the
-  session; under `accept-edits`/`auto` they are simply never needed.
+- `allow-session` grants are manual, action-scoped, caller-scoped, and revocable.
+  They do not implicitly cover a different external path or a delegate.
+  Permission-mode and reviewer changes clear them; restart never restores them.
 - Scratch-directory writes (D114) stay prompt-free in every mode.
 - UI: Settings → segmented global default; composer shows a per-session chip in
   Agent, Plan, and Goal whose menu offers the three effective modes without a
@@ -453,6 +454,13 @@ Rules:
   mode and cannot influence it.
 
 ## 7. Permission Flow
+
+The independent User / Auto review selection, model binding, bounded review
+lifecycle, scoped grants, takeover, and audit contract is defined in
+[23. Permission review](23-permission-auto-review.md). Auto retains its existing
+no-approval semantics. MCP tools require approval under Ask / Accept edits
+unless an exact applicable grant exists; names and untrusted annotations do
+not grant low-risk execution.
 
 ```text
 tool call
@@ -506,12 +514,12 @@ for the current key-log policy.
 
 ### Notes
 - Plan and Goal hard-deny Write/Edit and plugin tools without `planSafeActions` before permission UI; a direct host
-  call cannot bypass the matrix. Plugin tools that declare a non-empty list are admitted; the runner still rejects any action outside that list (ADR 0211).
+  call cannot bypass the matrix. Host admits only actions present in the installed manifest's list; the runner independently enforces that list (ADR 0211 / ADR 0306).
 - Agent mode uses permission cards or the selected automatic policy for
   Write/Edit/Bash and registered plugin tools.
 - Plan and Goal Bash may mutate workspace or scratch state when the user selected Auto;
   the UI must make that tradeoff visible.
-- allow-session is remembered per toolName for the active session only
+- allow-session is remembered for the caller and explicit action scope in the active session only
 - Session grants follow `sessionId` across project-tab switches and are never
   inherited by another session or Temporary conversation
 
@@ -582,9 +590,8 @@ other tools retain their normal approval behavior.
 Permission requests from a delegate carry the asking delegate's name, so the
 card can say which delegate wants the call (see `04-ux/03-permission-ux.md`
 §6a).
-Session-scoped `allow-session` grants are still per `toolName` and per session:
-one delegate's approval of `Bash` applies to the whole session, including the
-parent and other delegates.
+Session-scoped `allow-session` grants bind the requesting caller and action.
+One delegate's approval does not authorize the parent or another delegate.
 
 ## 11. Plugin Tools
 
@@ -600,9 +607,10 @@ non-empty (ADR 0211 / D384):
 A plugin tool without `planSafeActions` is hidden from the model in Plan and
 Goal. A direct attempt returns `PLUGIN_DISABLED_IN_PLAN` — the `_IN_PLAN` codes
 are shared by both contract modes rather than duplicated per kind — and is
-audited as a contract-mode policy denial. When the list is present, host-core
-admits the tool and the plugin-runtime rejects any `action` outside the list
-with `PERMISSION_DENIED`. Missing or invalid plugin risk defaults to `medium`
+audited as a contract-mode policy denial. Host also rejects an `action` absent
+from the installed list with `PLUGIN_DISABLED_IN_PLAN`; caller-supplied lists
+cannot expand it. The plugin-runtime independently enforces its registered
+list with `PERMISSION_DENIED`. Missing or invalid plugin risk defaults to `medium`
 for Agent and never grants contract-mode access by itself.
 
 Naming:
@@ -611,7 +619,7 @@ Naming:
 
 ## 12. Future Extensions
 
-- MCP tools
+- persistent per-MCP-tool policies
 - tool group toggles
 - command allowlist / denylist
 - dry-run mode

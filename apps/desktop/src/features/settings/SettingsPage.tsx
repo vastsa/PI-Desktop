@@ -28,6 +28,7 @@ import {
   IconPalette,
   IconSearch,
   IconServer,
+  IconShield,
   IconSliders,
   IconSparkles,
   IconCloudDown,
@@ -61,6 +62,7 @@ import { PromptEnhancementCard } from "./prompt-enhancement-card";
 import { CloseBehaviorSection, DeveloperSection } from "./developer-sections";
 import { PluginScenicThemesDestination } from "../../components/settings/PluginScenicThemesDestination";
 import { ConfigSyncPage } from "../../components/settings/ConfigSyncPage";
+import { PermissionReviewRows } from "./PermissionReviewRows";
 
 type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
 
@@ -84,6 +86,7 @@ export function SettingsPage() {
   const setSettingsAnchor = useAppStore((s) => s.setSettingsAnchor);
   const setPage = useAppStore((s) => s.setPage);
   const settings = useAppStore((s) => s.settings);
+  const reviewProviders = useAppStore((s) => s.providers);
   const version = useAppStore((s) => s.version);
   const refreshProviders = useAppStore((s) => s.refreshProviders);
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
@@ -201,8 +204,9 @@ export function SettingsPage() {
   }, [settingsAnchor, tab, t, setSettingsAnchor]);
 
   const saveSettings = async (patch: Partial<AppSettings>) => {
-    if (!settings) return;
-    const nextSettings = { ...settings, ...patch };
+    const currentSettings = useAppStore.getState().settings;
+    if (!currentSettings) return;
+    const nextSettings = { ...currentSettings, ...patch };
     await api.setSettings(nextSettings);
     useAppStore.setState({ settings: nextSettings });
     await refreshProviders();
@@ -220,6 +224,7 @@ export function SettingsPage() {
       // Semantic Lucide glyphs for the settings destinations.
       general: <IconSliders size={14} />,
       ai: <IconSparkles size={14} />,
+      permissions: <IconShield size={14} />,
       shortcuts: <IconKeyboard size={14} />,
       instructions: <IconFileText size={14} />,
       agent: <IconBot size={14} />,
@@ -270,7 +275,7 @@ export function SettingsPage() {
 
   const activeNavItem = navItems.find((item) => item.id === tab);
   const activeTitleKey = activeNavItem?.titleKey ?? "settings.title";
-  const tabNeedsSettings = ["general", "ai", "shortcuts", "agent"].includes(tab);
+  const tabNeedsSettings = ["general", "ai", "permissions", "shortcuts", "agent"].includes(tab);
 
   return (
     <div className="settings-shell settings-shell-full">
@@ -410,32 +415,6 @@ export function SettingsPage() {
 
           {tab === "ai" && settings && (
             <div className="settings-stack">
-              <SettingsCard title={t("settings.permissions")}>
-                <SettingsRow
-                  title={t("settings.permissionMode")}
-                  description={t("settings.permissionModeDesc")}
-                >
-                  <SettingsMenuSelect
-                    className="settings-permission-select"
-                    label={t("settings.permissionMode")}
-                    value={settings.defaultPermissionMode ?? "ask"}
-                    onChange={(mode) =>
-                      void saveSettings({
-                        defaultPermissionMode: mode as GlobalPermissionMode,
-                      })
-                    }
-                    options={[
-                      { id: "ask", label: t("settings.permissionModeAsk") },
-                      {
-                        id: "accept-edits",
-                        label: t("settings.permissionModeAcceptEdits"),
-                      },
-                      { id: "auto", label: t("settings.permissionModeAuto") },
-                    ]}
-                  />
-                </SettingsRow>
-              </SettingsCard>
-
               <SettingsCard title={t("settings.defaultsTitle")}>
                 <SettingsRow title={t("settings.mode")} description={t("settings.modeDesc")}>
                   <div
@@ -541,6 +520,34 @@ export function SettingsPage() {
                 settings={settings}
                 saveSettings={saveSettings}
               />
+            </div>
+          )}
+
+          {tab === "permissions" && settings && (
+            <div className="settings-stack">
+              <SettingsCard>
+                <SettingsRow
+                  title={t("settings.permissionMode")}
+                  description={t("settings.permissionModeDesc")}
+                >
+                  <SettingsMenuSelect
+                    className="settings-permission-select"
+                    label={t("settings.permissionMode")}
+                    value={settings.defaultPermissionMode ?? "ask"}
+                    onChange={(mode) =>
+                      void saveSettings({
+                        defaultPermissionMode: mode as GlobalPermissionMode,
+                      })
+                    }
+                    options={[
+                      { id: "ask", label: t("settings.permissionModeAsk") },
+                      { id: "accept-edits", label: t("settings.permissionModeAcceptEdits") },
+                      { id: "auto", label: t("settings.permissionModeAuto") },
+                    ]}
+                  />
+                </SettingsRow>
+                <PermissionReviewRows settings={settings} providers={reviewProviders} saveSettings={saveSettings} />
+              </SettingsCard>
             </div>
           )}
 

@@ -243,7 +243,7 @@ user's delivery scope:
 | 3 | All impacted specs updated | [R1 — Spec-sync](03-ai-development-workflow.md#r1--spec-first--spec-sync) |
 | 4 | E2E scenarios documented (or confirmed not needed) | [R3 — E2E coverage doc](03-ai-development-workflow.md#r3--e2e-coverage-doc) |
 | 5 | Targeted local checks follow the existing risk standard; for a code-bearing change the relevant E2E gate passed on a candidate that contains latest `origin/main` (`pnpm check:pr-base`) before the branch push, the PR/MR, or a commit-only completion (or its `NOT RUN` limitation is recorded); after the remote merge the affected suites were rerun when the landed executable content changed; required tests need no separate user request | Steps 7, 10, and 11 of development loop |
-| 6 | Change committed with conventional message | [R2 — Commit-per-change](03-ai-development-workflow.md#r2--commit-per-change) |
+| 6 | Commit only when requested; otherwise retain the validated candidate | [R2 — User-authorized commits](03-ai-development-workflow.md#r2--user-authorized-commits) |
 | 7 | BOARD updated if milestone deliverable completed | Step 9 of development loop |
 | 8 | No secrets or local data in commit | [§4.4 Never commit](03-ai-development-workflow.md#44-never-commit) |
 | 9 | Requested local/remote `main` integration completed under R4; expected commits verified and merged worktree/branch removed; any requested launch uses integrated `main` | [R4 — Request branch + worktree + merge gate](03-ai-development-workflow.md#r4--request-branch--worktree--merge-gate) |

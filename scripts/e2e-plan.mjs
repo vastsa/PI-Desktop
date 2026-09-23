@@ -44,7 +44,7 @@ import {
   resolvePluginExecution,
   waitForPluginExecution,
 } from "./e2e/plugin.mjs";
-const PROTOCOL_VERSION = 11;
+const PROTOCOL_VERSION = 12;
 const PLAN_APPROVAL_TIMEOUT_MS = 30 * 60 * 1000;
 const LONG_TIMEOUT_ENABLED = process.env.PI_DESKTOP_E2E_LONG_TIMEOUT === "1";
 
@@ -390,13 +390,12 @@ async function scenarioPlanSafePlugin(binary, tempRoot) {
         // A forged sidecar mode cannot widen the durable Plan mode.
         mode: "agent",
       });
+      dispatch.catch(() => {}); // Cleanup may reject an outstanding fixture call.
       const notification = await waitForPluginExecution(ctx.host, toolName);
       assert(notification, "Plan-safe plugin call was not dispatched");
       assert(notification.params?.mode === "plan", shortJson(notification));
-      assert(
-        JSON.stringify(notification.params?.planSafeActions) === JSON.stringify(planSafeActions),
-        shortJson(notification),
-      );
+      // Like the actual plugin runner, enforce the installed fixture manifest,
+      // not a sidecar-provided list echoed through the dispatch notification.
       const action = notification.params?.args?.action;
       if (planSafeActions.includes(action)) {
         await resolvePluginExecution(ctx.host, notification, {
@@ -421,28 +420,33 @@ async function scenarioPlanSafePlugin(binary, tempRoot) {
     assert(safe.content?.action === "snapshot", shortJson(safe));
 
     ctx.host.clearNotifications();
-    const mutation = await executeFixture(
-      { action: "click", selector: "#sign-in" },
-      "e2e-plan-safe-click",
-    );
-    assertToolFailure(mutation, "PERMISSION_DENIED");
+    const mutation = await ctx.host.call("tools.execute", {
+      sessionId: session.id, turnId, toolCallId: "e2e-plan-safe-click", toolName,
+      args: { action: "click", selector: "#sign-in" }, mode: "agent",
+      declaredRisk: "low", planSafeActions: ["click"],
+    });
+    assertToolFailure(mutation, "PLUGIN_DISABLED_IN_PLAN");
+    assert(ctx.host.matchingNotifications("plugins.execute").length === 0,
+      "Host dispatched an action absent from the installed Plan-safe declaration");
 
     ctx.host.clearNotifications();
     const undeclared = await ctx.host.call("tools.execute", {
       sessionId: session.id,
       turnId,
       toolCallId: "e2e-plan-safe-undeclared",
-      toolName,
+      toolName: "plugin_e2e_plan_safe_undeclared",
+      declaredRisk: "low",
+      planSafeActions,
       args: { action: "snapshot", url: "https://example.com" },
       mode: "agent",
     });
     assertToolFailure(undeclared, "PLUGIN_DISABLED_IN_PLAN");
     assert(
       ctx.host.matchingNotifications("plugins.execute").length === 0,
-      "host dispatched a plugin call without planSafeActions",
+      "host trusted caller-provided planSafeActions without an installed tool declaration",
     );
     await endTurn(ctx.host, turnId);
-    return "safe=snapshot mutation=PERMISSION_DENIED undeclared=PLUGIN_DISABLED_IN_PLAN";
+    return "safe=snapshot mutation=PLUGIN_DISABLED_IN_PLAN undeclared=PLUGIN_DISABLED_IN_PLAN";
   }, binary, tempRoot);
 }
 

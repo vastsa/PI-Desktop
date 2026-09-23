@@ -82,7 +82,7 @@ pub fn search(db: &Database, query: &str, offset: i64) -> Result<SearchPage> {
            GROUP BY m.session_id
          )
          SELECT s.id, s.title, s.last_seq, p.path, s.model_id, s.provider_id, s.mode,
-                s.thinking_level, s.permission_mode, s.updated_at, s.created_at,
+                s.thinking_level, s.permission_mode, s.updated_at, s.created_at, s.approval_reviewer,
                 p.name, COALESCE(matched.count, 0),
                 (pi_search_contains(s.title, ?1) OR pi_search_contains(p.name, ?1)
                  OR pi_search_contains(p.path, ?1)) AS metadata_match
@@ -97,9 +97,9 @@ pub fn search(db: &Database, query: &str, offset: i64) -> Result<SearchPage> {
         .query_map(params![query, quoted, offset], |row| {
             Ok(SessionMatch {
                 session: sessions::summary_from_row(row)?,
-                project_name: row.get(11)?,
-                message_count: row.get(12)?,
-                metadata_match: row.get(13)?,
+                project_name: row.get(12)?,
+                message_count: row.get(13)?,
+                metadata_match: row.get(14)?,
                 matches: vec![],
             })
         })?
@@ -563,6 +563,7 @@ mod tests {
             for hit in page.hits {
                 assert!(ids.insert(hit.session.id.clone()));
                 if hit.session.id == first.id {
+                    assert_eq!(hit.session.approval_reviewer, first.approval_reviewer);
                     assert_eq!(hit.message_count, 125);
                     assert_eq!(hit.matches.len(), 2);
                 }

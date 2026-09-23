@@ -46,6 +46,13 @@ export type OneShotCompleteStream = (
 
 export type OneShotCompleteOptions = {
   signal?: AbortSignal;
+  /** Opt-in bounds for short, non-retryable requests such as permission reviews. */
+  timeoutMs?: number;
+  maxRetries?: number;
+  maxOutputTokens?: number;
+  maxOutputChars?: number;
+  /** Reject truncated completions and any tool content; used for permission decisions. */
+  requireFinalTextOnly?: boolean;
   stream?: OneShotCompleteStream;
   emptyErrorCode?: string;
   emptyErrorMessage?: string;
@@ -80,6 +87,10 @@ export async function completeOneShot(
   thinkingLevel: ThinkingLevel,
   options: OneShotCompleteOptions = {},
 ): Promise<OneShotCompleteResult> {
+  const deadline = options.timeoutMs === undefined ? undefined : AbortSignal.timeout(options.timeoutMs);
+  const outputAbort = options.maxOutputChars === undefined ? undefined : new AbortController();
+  const signals = [deadline, options.signal, outputAbort?.signal].filter((item): item is AbortSignal => !!item);
+  const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
   const model = buildProviderModel(provider);
   const models = createProviderModels(provider, model);
   const streamSimple =
@@ -95,8 +106,8 @@ export async function completeOneShot(
   const requestOptions: SimpleStreamOptions = withProviderHeaders(
     withOpenCodeSessionHeaders(
       {
-        maxTokens: clampOutputToContext(model, context, undefined),
-        ...(options.signal ? { signal: options.signal } : {}),
+        maxTokens: clampOutputToContext(model, context, options.maxOutputTokens),
+        ...(signal ? { signal } : {}),
         maxRetries: 0,
         ...(thinkingLevel !== "off" ? { reasoning: thinkingLevel } : {}),
         fetch: captureProviderResponse(undefined, (response, _requestBytes, failure) => {
@@ -121,7 +132,9 @@ export async function completeOneShot(
     requestOptions,
     (retryOptions) => streamSimple(model, context, retryOptions),
     {
+      allowOutputLimitRepair: options.maxRetries !== 0,
       claim: (error, phase) => {
+        if (options.maxRetries === 0) return undefined;
         if (phase !== "request" || !error.retriable) return undefined;
         if (error.code === "PROVIDER_RATE_LIMITED") {
           if (rateLimitRetryAttempt >= PROVIDER_RATE_LIMIT_MAX_RETRIES) {
@@ -142,6 +155,29 @@ export async function completeOneShot(
       failure: () => providerFailure,
     },
   );
+  if (options.maxOutputChars !== undefined) {
+    let observedChars = 0;
+    for await (const event of stream) {
+      if (options.requireFinalTextOnly && event.type.startsWith("toolcall_")) {
+        outputAbort?.abort();
+        throw completeError("REVIEW_INCOMPLETE", "The completion attempted a tool call.");
+      }
+      if ("delta" in event && typeof event.delta === "string") {
+        observedChars += event.delta.length;
+        if (observedChars > options.maxOutputChars) {
+          outputAbort?.abort();
+          throw completeError("OUTPUT_TOO_LONG", "The completion exceeds the configured output limit.");
+        }
+      }
+      // Some provider adapters only emit a terminal message rather than text
+      // deltas. Bound that path too before ever accepting the final result.
+      const terminal = event.type === "done" ? event.message : event.type === "error" ? event.error : undefined;
+      if (terminal?.content && JSON.stringify(terminal.content).length > options.maxOutputChars + 256) {
+        outputAbort?.abort();
+        throw completeError("OUTPUT_TOO_LONG", "The completion exceeds the configured output limit.");
+      }
+    }
+  }
   const result = await stream.result();
 
   if (result.stopReason === "aborted") {
@@ -159,8 +195,16 @@ export async function completeOneShot(
       classified.retriable,
     );
   }
+  if (options.requireFinalTextOnly && (
+    result.stopReason !== "stop" || result.content.some((item) => item.type !== "text" && item.type !== "thinking")
+  )) {
+    throw completeError("REVIEW_INCOMPLETE", "The completion did not finish without tool content.");
+  }
 
   const text = assistantContent(result.content).text.trim();
+  if (options.maxOutputChars !== undefined && text.length > options.maxOutputChars) {
+    throw completeError("OUTPUT_TOO_LONG", "The completion exceeds the configured output limit.");
+  }
   if (!text) {
     throw completeError(
       options.emptyErrorCode ?? "EMPTY_COMPLETION",

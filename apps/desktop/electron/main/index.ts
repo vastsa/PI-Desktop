@@ -31,10 +31,7 @@ import {
   type KeybindingOverrides,
   type PlanExecutionFinishStatus,
 } from "@pi-desktop/shared";
-import {
-  genericModelConfig,
-  summarizeSessionTitle,
-} from "@pi-desktop/agent-runtime";
+import { summarizeSessionTitle } from "@pi-desktop/agent-runtime";
 import { AgentExtensionBridge } from "./agent-extensions";
 import { registerAgentExtensionIpc } from "./agent-extensions-ipc";
 import { isTemplateName, scaffold } from "@pi-desktop/plugin-devkit";
@@ -56,11 +53,8 @@ import { installMainProcessErrorHandlers } from "./main-process-errors";
 import {
   isDbSchemaTooNewError,
 } from "./host-boot-diagnostics";
-import {
-  ModelsDevCatalog,
-  modelConfigFromModelsDev,
-} from "./models-dev-catalog";
-import { VendorOAuth } from "./oauth";
+import { ModelsDevCatalog } from "./models-dev-catalog";
+import { createVendorAccounts } from "./runtime/vendor-accounts";
 import { AppUpdaterController } from "./updater";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import {
@@ -120,6 +114,7 @@ import {
 import { registerApplicationActivation } from "./bootstrap/app-activation";
 import type { RuntimeState } from "./runtime/context";
 import { createHostRuntime } from "./runtime/host";
+import { createPermissionReviewResolver } from "./services/permission-review";
 import { createSidecarRuntime } from "./runtime/sidecar";
 import { createEventPersistence } from "./runtime/event-persistence";
 import { createPlanRuntime, type PlanRuntimeState } from "./runtime/plans";
@@ -607,27 +602,8 @@ const modelsDevCatalog = new ModelsDevCatalog({
     : join(app.getAppPath(), "resources", "models.dev", "api.json"),
 });
 
-const vendorOAuth = new VendorOAuth({
-  call: <T,>(method: string, params?: unknown): Promise<T> => {
-    if (!host) throw new Error("host unavailable");
-    return host.call<T>(method, params);
-  },
-  emit: (event) => sendToRenderer(IPC.event.providersOauth, event),
-  openExternal: async (url) => {
-    await safeOpenExternal(url);
-  },
-  log: (level, message, data) => logger.app("provider", level, message, { data }),
-  modelConfigFor: async ({ vendorKey, option }) => {
-    await modelsDevCatalog.ensureLoaded();
-    const model = modelsDevCatalog.findModel({
-      vendorKey,
-      baseUrl: option.baseUrl,
-      modelId: option.modelId,
-    });
-    return model
-      ? modelConfigFromModelsDev(model, option.baseUrl)
-      : genericModelConfig(option.modelId, option.baseUrl);
-  },
+const vendorOAuth = createVendorAccounts({
+  getHost: () => host, sendToRenderer, safeOpenExternal, logger, modelsDevCatalog,
 });
 
 let sessionLaunchRuntime: ReturnType<typeof createSessionLaunchRuntime> | null = null;
@@ -1061,6 +1037,7 @@ const {
   isTurnDispatchable,
   isSessionBusy,
   isStaleTerminalEvent,
+  isStaleRuntimeActivity,
 } = sessionCoordination;
 
 async function withGitBranch<T extends { path?: string; name?: string } | null | undefined>(
@@ -1171,18 +1148,21 @@ const eventPersistence = createEventPersistence({
 });
 const { persistAgentEvent } = eventPersistence;
 
+let cancelReviewForEvent: (envelope: AgentEventEnvelope) => void = () => {};
 const sidecarRuntime = createSidecarRuntime({
   runtimeState,
   steeringReplies,
   logger,
   sendToRenderer,
   persistAgentEvent,
+  onAgentEvent: (envelope) => cancelReviewForEvent(envelope),
   activeTurns,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
   inflightCheckpointer,
   finishTurn,
   isStaleTerminalEvent,
+  isStaleRuntimeActivity,
   finishApprovedExecution,
   superviseRestart,
   isQuitting: () => quitting,
@@ -1203,7 +1183,8 @@ const sidecarRuntime = createSidecarRuntime({
 emitAgentEvent = sidecarRuntime.emitAgentEvent;
 const { wireSidecar, startSidecar } = sidecarRuntime;
 
-const { wireHost, startHost } = createHostRuntime({
+const { wireHost, startHost, cancelReviewForEvent: cancelHostReviewForEvent,
+  cancelReviewForSession, takeOverSessionReviews } = createHostRuntime({
   runtimeState,
   dataDir,
   logger,
@@ -1226,7 +1207,17 @@ const { wireHost, startHost } = createHostRuntime({
   importLegacyScheduled,
   superviseRestart,
   isQuitting: () => quitting,
+  settleExternalApproval: (requestId, decision) => {
+    agentHostBridge?.settleApproval(requestId, { decision });
+  },
+  reviewPermission: createPermissionReviewResolver({
+    getHost: () => runtimeState.host,
+    modelsDevCatalog,
+    vendorOAuth,
+    report: (code) => logger.app("permission", "warn", "review model unavailable", { data: { code } }),
+  }),
 });
+cancelReviewForEvent = cancelHostReviewForEvent;
 
 runtimeLifecycle = createRuntimeLifecycle({
   runtimeState,
@@ -1248,6 +1239,8 @@ const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
 function registerIpc() {
   return registerIpcHandlers({
+    cancelReviewForSession,
+    takeOverSessionReviews,
     traySessions: applicationLifecycle!.traySessions,
     ipcMain,
     getMainWindow: () => mainWindow,

@@ -35,6 +35,8 @@ import type { IpcRegistrar } from "./types";
 import type { createTraySessions } from "../tray-sessions";
 
 export type RegisterIpcDependencies = {
+  cancelReviewForSession?: (sessionId: string) => void;
+  takeOverSessionReviews?: (sessionId: string) => Promise<void>;
   isQuitting: () => boolean;
   ipcMain: IpcMain;
   getMainWindow: () => BrowserWindow | null;
@@ -76,6 +78,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getHost,
     getSidecar,
     getAgentHostBridge,
+    cancelReviewForSession,
+    takeOverSessionReviews,
     getBackendRouter,
     getNotificationViewingSessionId,
     setNotificationViewingSessionId,
@@ -355,10 +359,14 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   });
   registerAgentIpc({
     registrar,
+    takeOverSessionReviews: (sessionId: string) => takeOverSessionReviews?.(sessionId) ?? Promise.resolve(),
     getHost,
     getSidecar,
     getAgentHostBridge,
-    cancelSessionTools: (sessionId: string, reason?: string) => plugins.cancelSessionTools(sessionId, reason),
+    cancelSessionTools: (sessionId: string, reason?: string) => {
+      cancelReviewForSession?.(sessionId);
+      plugins.cancelSessionTools(sessionId, reason);
+    },
     logger,
     vendorOAuth,
     agentExtensions,

@@ -3,6 +3,26 @@
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/06-host-rpc-protocol) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 
+## Permission review amendment (protocol v12)
+
+See [permission review](23-permission-auto-review.md) for the reviewer and
+scoped-grant contract. `permissions.claimReview`, `resolveReview`,
+`takeoverReview`, and `setReviewCapability` are trusted reviewer controls.
+`permissions.revokeSessionGrant` revokes one caller/action-scoped grant.
+`permissions.listReviewHistory` returns up to 100 recent, deduplicated outcomes
+for `sessionId`, with optional reviewer identity, latency, and separate usage.
+`permissions.authorizeLocalTool` admits a registered host-local action and
+returns `executionPermit`; `permissions.consumeLocalPermit` consumes it with
+the original session, turn, caller, tool-call, tool, and arguments immediately
+before effects. Permits are process-local, single-use, expire after 120 seconds,
+and revalidate current policy, scope, turn, and any supporting grant. None of
+these controls is a model tool or an OS sandbox capability.
+
+Plugin/MCP dispatchers similarly consume `permissions.consumeExecutionPermit`
+with the `plugins.execute` notification's `executionId`, `permitToken`, bound
+session, turn, tool-call, tool, and arguments before effects. Installed Host
+manifests, not caller-provided risk or Plan exemption fields, own those policies.
+
 ## 1. Goal
 
 定义以下之间的本地协议：
@@ -115,7 +135,7 @@ Electron 和 sidecar 不能独立过度接纳相同的资源。
 
 ```ts
 type HandshakeParams = {
-  protocolVersion: 11
+  protocolVersion: 12
   client: "electron-main"
   clientVersion: string
   locale: string // default "en"
@@ -126,7 +146,7 @@ type HandshakeParams = {
 
 ```ts
 type HandshakeResult = {
-  protocolVersion: 11
+  protocolVersion: 12
   host: "rust-host-core"
   hostVersion: string
   features: string[]

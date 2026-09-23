@@ -25,3 +25,4 @@
 
 - [Image generation and editing](21-image-generation.md)
 - [Portable configuration sync](22-config-sync.md)
+- [Permission review and scoped grants](23-permission-auto-review.md)

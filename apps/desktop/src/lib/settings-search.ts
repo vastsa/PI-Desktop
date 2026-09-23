@@ -8,6 +8,7 @@
 export type SettingsTabId =
   | "general"
   | "ai"
+  | "permissions"
   | "shortcuts"
   | "instructions"
   | "agent"
@@ -85,11 +86,6 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.ai",
     group: "preferences",
     keywordKeys: [
-      "settings.permissions",
-      "settings.permissionMode",
-      "settings.permissionModeAsk",
-      "settings.permissionModeAcceptEdits",
-      "settings.permissionModeAuto",
       "settings.defaultsTitle",
       "settings.imageModel",
       "settings.mode",
@@ -116,6 +112,22 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.promptEnhancementModelFollow",
       "settings.promptEnhancementThinking",
       "settings.largePasteThreshold",
+    ],
+  },
+  {
+    id: "permissions",
+    labelKey: "settings.permissions",
+    titleKey: "settings.permissions",
+    group: "preferences",
+    keywordKeys: [
+      "settings.permissionMode",
+      "settings.permissionModeAsk",
+      "settings.permissionModeAcceptEdits",
+      "settings.permissionModeAuto",
+      "settings.approvalReviewer",
+      "settings.reviewModel",
+      "settings.reviewThinking",
+      "settings.reviewPolicyTitle",
     ],
   },
   {

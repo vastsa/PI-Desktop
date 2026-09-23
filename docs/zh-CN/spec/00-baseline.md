@@ -1,5 +1,10 @@
 # PI-Desktop 基线冻结
 
+Permission-review amendment: D623 / ADR 0306 introduces protocol v12 and
+schema v20 for independent automatic review and caller/action-scoped grants.
+Process ownership, existing permission modes, and native Pi no-tools remain
+unchanged. See [permission review](03-runtime/23-permission-auto-review.md).
+
 > **翻译说明：** 本页是与 [英文源规格](/spec/00-baseline) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 

@@ -69,6 +69,18 @@ test("settings search mirrors the rail", () => {
   assert.equal(searchSettings("settings", identity, { limit: 2 }).length, 2);
 });
 
+test("permission controls have one searchable destination", () => {
+  const ids = visibleSettingsNav(false).map((entry) => entry.id);
+  assert.equal(ids.filter((id) => id === "permissions").length, 1);
+  assert.ok(ids.indexOf("ai") < ids.indexOf("permissions"));
+  assert.ok(ids.indexOf("permissions") < ids.indexOf("shortcuts"));
+  for (const key of ["permissionMode", "approvalReviewer", "reviewModel", "reviewPolicyTitle"]) {
+    const hits = searchSettings(`settings.${key}`, identity);
+    assert.ok(hits.length > 0, key);
+    assert.ok(hits.every((hit) => hit.tab === "permissions"), key);
+  }
+});
+
 test("a stale developer-only selection is reported as hidden", () => {
   assert.equal(isSettingsDestinationHidden("sync", false), true);
   assert.equal(isSettingsDestinationHidden("sync", true), false);

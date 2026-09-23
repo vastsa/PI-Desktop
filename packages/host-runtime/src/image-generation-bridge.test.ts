@@ -20,21 +20,23 @@ function harness(allowed = true, childSource = child, esm = false) {
   const host: SidecarHostLink = {
     async call<T>(method: string): Promise<T> {
       calls.push(method);
-      return { ok: allowed, content: allowed ? { authorized: true } : "denied" } as T;
+      return (method === "permissions.authorizeLocalTool"
+        ? { ok: allowed, executionPermit: allowed ? "single-use" : undefined, content: allowed ? undefined : "denied" }
+        : { ok: allowed }) as T;
     },
     onNotification: () => () => {},
     onExit: () => () => {},
   };
   sidecar.setHost(host);
-  const execute = (mode = "agent", toolCallId = "i") =>
+  const execute = (mode = "agent", toolCallId = "i", toolName = "GenerateImages") =>
     sidecar.call<{ ok: boolean }>("probe", {
       method: "tools.execute",
       params: {
         sessionId: "s",
         toolCallId,
         mode,
-        toolName: "GenerateImages",
-        args: { items: [{ prompt: "image" }] },
+        toolName,
+        args: toolName === "GenerateImages" ? { items: [{ prompt: "image" }] } : { path: "index.html" },
       },
     });
   return { sidecar, calls, execute };
@@ -47,7 +49,7 @@ it("authorizes image calls through the host before executing the local handler",
     return { ok: true, content: "image" };
   });
   expect((await execute()).ok).toBe(true);
-  expect(calls).toEqual(["tools.execute", "generated"]);
+  expect(calls).toEqual(["permissions.authorizeLocalTool", "permissions.consumeLocalPermit", "generated"]);
 });
 
 it("preserves stable local error codes through real reverse RPC", async () => {
@@ -95,6 +97,28 @@ it("denied and Plan calls never reach the image service", async () => {
   expect(generate).not.toHaveBeenCalled();
 });
 
+it("gates every host-local handler and rejects stale permits before side effects", async () => {
+  const { sidecar, calls, execute } = harness();
+  const preview = vi.fn().mockResolvedValue({ ok: true, content: "preview" });
+  sidecar.setLocalTool("BrowserPreview", preview);
+  expect((await execute("plan", "preview", "BrowserPreview")).ok).toBe(true);
+  expect(calls).toEqual(["permissions.authorizeLocalTool", "permissions.consumeLocalPermit"]);
+  expect(preview).toHaveBeenCalledTimes(1);
+
+  sidecar.setHost({
+    async call<T>(method: string): Promise<T> {
+      calls.push(method);
+      if (method === "permissions.authorizeLocalTool") return { ok: true, executionPermit: "stale" } as T;
+      throw Object.assign(new Error("grant revoked before execution"), { errorCode: "AUTHORIZATION_STALE" });
+    },
+    onNotification: () => () => {}, onExit: () => () => {},
+  });
+  const skill = vi.fn().mockResolvedValue({ ok: true, content: "skill" });
+  sidecar.setLocalTool("Skill", skill);
+  await expect(execute("agent", "skill", "Skill")).rejects.toMatchObject({ errorCode: "AUTHORIZATION_STALE" });
+  expect(skill).not.toHaveBeenCalled();
+});
+
 it("tools.abort reaches the in-flight request and still forwards host cancellation", async () => {
   const { sidecar, calls, execute } = harness();
   let started!: () => void;
@@ -115,5 +139,5 @@ it("tools.abort reaches the in-flight request and still forwards host cancellati
     params: { sessionId: "s", toolCallId: "i" },
   });
   expect((await pending).ok).toBe(false);
-  expect(calls).toEqual(["tools.execute", "tools.abort"]);
+  expect(calls).toEqual(["permissions.authorizeLocalTool", "permissions.consumeLocalPermit", "tools.abort"]);
 });

@@ -2,13 +2,14 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Host } from "./host.mjs";
+import { PROTOCOL_VERSION } from "../../packages/shared/dist/protocol.js";
 
 export async function withScenario(
   id,
   fn,
   binary,
   tempRoot,
-  protocolVersion = 11,
+  protocolVersion = PROTOCOL_VERSION,
 ) {
   const scenarioRoot = await mkdtemp(join(tempRoot, id.toLowerCase() + "-"));
   const dataDir = join(scenarioRoot, "data");

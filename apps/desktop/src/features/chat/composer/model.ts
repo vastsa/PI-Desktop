@@ -2,6 +2,8 @@ import type {
   ModelInfo,
   Mode,
   PermissionMode,
+  ApprovalReviewer,
+  SessionApprovalReviewer,
   ProviderPublic,
   SessionThinkingLevel,
   ThinkingLevel,
@@ -86,6 +88,23 @@ export function isPermissionMode(value: unknown): value is PermissionMode {
     typeof value === "string" &&
     PERMISSION_MODES.includes(value as PermissionMode)
   );
+}
+
+/** One effective permission display state for a live session or draft. */
+export function composerPermissionState(input: {
+  mode: Mode;
+  session?: { permissionMode?: PermissionMode; approvalReviewer?: SessionApprovalReviewer };
+  draft?: { permissionMode?: PermissionMode } | null;
+  globalPermissionMode?: Exclude<PermissionMode, "inherit">;
+  globalReviewer?: ApprovalReviewer;
+}) {
+  const sessionMode = input.session?.permissionMode ?? input.draft?.permissionMode;
+  const selectedMode = isPermissionMode(sessionMode) ? sessionMode : "inherit";
+  const permissionMode = input.mode === "goal" ? "auto"
+    : selectedMode === "inherit" ? (input.globalPermissionMode ?? "ask") : selectedMode;
+  const sessionReviewer = input.session?.approvalReviewer ?? "inherit";
+  const effectiveReviewer = sessionReviewer === "inherit" ? (input.globalReviewer ?? "user") : sessionReviewer;
+  return { permissionMode, sessionReviewer, effectiveReviewer };
 }
 
 /**

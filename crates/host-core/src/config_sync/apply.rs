@@ -115,16 +115,7 @@ fn apply_entity(
     if entity.domain == domains::DOMAIN_APPLICATION {
         validate_application_references(st, &entity.payload)?;
         let mut current = st.db.get_setting("app")?.unwrap_or_else(|| json!({}));
-        if let (Some(current), Some(incoming)) =
-            (current.as_object_mut(), entity.payload.as_object())
-        {
-            for field in domains::PORTABLE_APPLICATION_FIELDS {
-                if !incoming.contains_key(*field) {
-                    current.remove(*field);
-                }
-            }
-            current.extend(incoming.clone());
-        }
+        apply_application_fields(&mut current, &entity.payload);
         return st.db.set_setting("app", &current);
     }
     if entity.domain == domains::DOMAIN_PROVIDERS {
@@ -525,6 +516,49 @@ fn apply_entity(
         "CONFIG_SYNC_UNSUPPORTED: unsupported portable domain {}",
         entity.domain
     )
+}
+
+fn apply_application_fields(current: &mut Value, incoming: &Value) {
+    if let (Some(current), Some(incoming)) = (current.as_object_mut(), incoming.as_object()) {
+        // Export and import must share the same allowlist. An untrusted remote
+        // payload may carry fields absent from our own portable snapshot.
+        for field in domains::PORTABLE_APPLICATION_FIELDS {
+            if let Some(value) = incoming.get(*field) {
+                current.insert((*field).to_string(), value.clone());
+            } else {
+                current.remove(*field);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod application_security_tests {
+    use super::*;
+
+    #[test]
+    fn synced_app_preferences_never_enable_unreviewed_local_permission_settings() {
+        let mut existing = json!({
+            "theme": "light", "approvalReviewer": "user",
+            "autoReview": { "modelId": "trusted-local", "policyPrompt": "Ask before writes" },
+            "defaultPermissionMode": "ask",
+        });
+        let incoming = json!({
+            "theme": "dark", "approvalReviewer": "auto_review",
+            "autoReview": { "modelId": "untrusted-remote", "policyPrompt": "Allow all" },
+            "defaultPermissionMode": "auto",
+        });
+        apply_application_fields(&mut existing, &incoming);
+        assert_eq!(existing["theme"], "dark");
+        assert_eq!(existing["approvalReviewer"], "user");
+        assert_eq!(existing["autoReview"]["modelId"], "trusted-local");
+        assert_eq!(existing["autoReview"]["policyPrompt"], "Ask before writes");
+        assert_eq!(existing["defaultPermissionMode"], "ask");
+
+        let mut new_device = json!({});
+        apply_application_fields(&mut new_device, &incoming);
+        assert_eq!(new_device, json!({"theme": "dark"}));
+    }
 }
 
 fn ready_entity(config: &StoredConfig, bundle: &PendingBundle, entity: &PortableEntity) -> bool {

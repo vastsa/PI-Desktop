@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 
 import { Host, resolveHostBinary } from "./e2e/host.mjs";
 
-const PROTOCOL_VERSION = 11;
+const PROTOCOL_VERSION = 12;
 const PLUGIN_ID = "pi.session-orchestrator";
 const INDEPENDENT_ID = "E2E-SESSION-independent-top-level-communication";
 const ORCHESTRATOR_ID = "E2E-PLUGIN-session-orchestrator-real-workers";

@@ -69,6 +69,10 @@
   visibility: hidden;
 }
 
+.composer-permission-menu:has(.composer-permission-reviews) {
+  width: min(300px, calc(100vw - 24px));
+}
+
 .composer-model-menu {
   position: fixed;
   top: 0;

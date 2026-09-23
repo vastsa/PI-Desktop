@@ -6,6 +6,13 @@
 
 ## 1. Security goals
 
+Automatic permission review and scoped grants follow
+[permission review](../03-runtime/23-permission-auto-review.md). Host-core is
+the final authority; model review cannot override a hard denial, authorize
+another action, or grant session-wide tool access. Review is not an OS sandbox.
+Its model call uses bounded action evidence without execution tools, and
+uncertain or unavailable review returns to human approval without execution.
+
 1. The renderer must never gain unconstrained system access
 2. Protect provider API keys
 3. Bound the blast radius of agent tool execution

@@ -5,6 +5,7 @@ import { imageGenerationDescription, imageGenerationParameters } from "./image-g
 import { scheduledToolParameters, scheduledToolDescriptions } from "./scheduled-tools.js";
 import { withPiFileOpToolNames } from "./pi-file-ops.js";
 import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   settledDelegationMessage,
   taskMessageSnapshot,
@@ -1616,12 +1617,12 @@ export class DesktopAgentRuntime {
   private resumablePromptStale = false;
   /** Set by `abort` / `dispose` so a finishing delegate cannot restart the parent. */
   private runCancelled = false;
-  /**
-   * Permission scope of the delegate currently executing one tool call,
-   * keyed by tool call id (ADR 0089). The host reads it on `tools.execute` and
-   * resolves the delegate's permission under it instead of the session mode.
-   */
-  private delegatePermissionScopes = new Map<string, SubagentPermission>();
+  /** Async execution context, not a model-provided call id: parallel delegates
+   * may use the same id and must never exchange principals or permission scope. */
+  private readonly delegatePrincipal = new AsyncLocalStorage<{
+    actorId: string;
+    permissionScope: SubagentPermission;
+  }>();
   /** Serializes same-path mutations across the parent and its delegates. */
   private writeLocks = new PathMutex();
   /** Complete tool registry; only the active subset is sent to the provider. */
@@ -3145,6 +3146,7 @@ Delegation rules:
               toolCallId,
               toolName,
               args: params,
+              actorId: this.delegatePrincipal.getStore()?.actorId ?? "agent",
               mode: this.mode,
               ...(isBash
                 ? {
@@ -3172,15 +3174,15 @@ Delegation rules:
               // A delegate's tool call carries its definition's permission
               // scope (ADR 0089); the host resolves the call under that scope
               // instead of the session mode. Parent calls never carry it.
-              ...(this.delegatePermissionScopes.has(toolCallId)
-                ? { permissionScope: this.delegatePermissionScopes.get(toolCallId) }
+              ...(this.delegatePrincipal.getStore()?.permissionScope !== undefined &&
+                this.delegatePrincipal.getStore()?.permissionScope !== DEFAULT_SUBAGENT_PERMISSION
+                ? { permissionScope: this.delegatePrincipal.getStore()?.permissionScope }
                 : {}),
             });
         } catch (error) {
           executionFailed = true;
           executionError = error;
         } finally {
-          this.delegatePermissionScopes.delete(toolCallId);
           cleanup(true);
         }
         if (abortPromise) await abortPromise;
@@ -4371,7 +4373,7 @@ Delegation rules:
           ...(modelChangedFrom ? { modelChangedFrom } : {}),
         };
         this.delegations.set(delegationId, record);
-        const scopedTools = this.scopeDelegateTools(tools, definition);
+        const scopedTools = this.scopeDelegateTools(tools, definition, chain.delegateSessionId);
         new SubagentRun({
           definition,
           sessionId: this.sessionId,
@@ -4467,19 +4469,15 @@ Delegation rules:
   private scopeDelegateTools(
     tools: AgentTool[],
     definition: SubagentDefinition,
+    delegateSessionId: string,
   ): AgentTool[] {
     const scope = definition.permission ?? DEFAULT_SUBAGENT_PERMISSION;
-    if (scope === DEFAULT_SUBAGENT_PERMISSION) return tools;
     return tools.map((tool) => ({
       ...tool,
-      execute: async (toolCallId, args, signal, onUpdate) => {
-        this.delegatePermissionScopes.set(toolCallId, scope);
-        try {
-          return await tool.execute(toolCallId, args, signal, onUpdate);
-        } finally {
-          this.delegatePermissionScopes.delete(toolCallId);
-        }
-      },
+      execute: (toolCallId, args, signal, onUpdate) => this.delegatePrincipal.run(
+        { actorId: `delegate:${delegateSessionId}`, permissionScope: scope },
+        () => tool.execute(toolCallId, args, signal, onUpdate),
+      ),
     }));
   }
 

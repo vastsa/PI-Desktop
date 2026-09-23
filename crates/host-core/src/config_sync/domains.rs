@@ -629,6 +629,8 @@ mod tests {
     fn adapter_registry_covers_every_portable_domain() {
         assert_eq!(DOMAIN_ADAPTERS.len(), ALL_DOMAINS.len());
         assert!(!PORTABLE_APPLICATION_FIELDS.contains(&"defaultPermissionMode"));
+        assert!(!PORTABLE_APPLICATION_FIELDS.contains(&"approvalReviewer"));
+        assert!(!PORTABLE_APPLICATION_FIELDS.contains(&"autoReview"));
         for domain in ALL_DOMAINS {
             let adapter = adapter_for(domain).expect("portable domain adapter");
             assert_eq!(adapter.schema_version, 1);

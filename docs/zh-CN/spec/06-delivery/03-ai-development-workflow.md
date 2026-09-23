@@ -19,15 +19,17 @@
 
 - 改变可观察行为的每个代码、配置或 UX 更改都必须在更改之前或同时更新相关的 `docs/spec/` 文档。
 - 架构边界变更（进程模型、IPC 合约、存储所有权、安全边界）也需要 ADR — 请参阅 `docs/adr/README.md`。
-- 保留行为和 API 合约的纯重构不需要规范更新，但仍必须提交（R2）。
+- Behavior-preserving refactors need no product-spec update. Commit authorization follows R2.
 
-### R2 — 每次更改提交
+### R2 — User-authorized commits
 
-> **每个已完成的逻辑更改都必须进行 git 提交。**
+> **Commit only when the user asks, as required by AGENTS.md §17.**
 
-- 没有大量未提交的工作。每个逻辑工作单元——一个功能、一个修复、一个规范更新、一个杂务——都有自己的提交。
-- 会话结束时未提交的工作违反了此规则。
-- 如果更改不完整，请将其作为带有 `WIP:` 前缀的草稿提交或回滚。
+- Keep changes coherent. When authorized, stage explicit task paths and use
+  the required subject-and-body format.
+- Without authorization, preserve the request worktree and report validation
+  and remaining work. Never discard incomplete work to satisfy a commit rule.
+- A review packet or planned split does not authorize commits or publication.
 
 ### R3 — E2E 覆盖文档
 
@@ -158,7 +160,7 @@
 | **5.规格同步** | 根据影响列表更新规格。如果是建筑，请添加 ADR。如果实现默认值发生更改，请更新 `decisions-log.md`。 | 更新了 docs/spec/\* and/or docs/adr/\*。 |
 | **6。 E2E 文档** | 当 R3 应用时，添加或更新 `04-e2e-test-plan.md` 中的场景条目并链接到验收标准 ID (A–H)。否则，确认不需要场景更新。 | 更新了 e2e 测试计划，或确认不适用。 |
 | **7.验证** | 使用变更风险和回归范围选择最小的有用本地检查。每个代码变更的本地或远程 `main` 集成都必须在可合入前运行相关 E2E；无法运行的必需套件必须记录为未运行并阻止合入。 | 有针对性的检查和 E2E 结果，或明确的环境限制。 |
-| **8.提交** | 使用常规消息进行 Git 提交（请参阅第 4 节）。 | 一项或多项提交。 |
+| **8. Commit** | Commit only when requested; otherwise preserve the reviewed request worktree. | Authorized commits or a candidate with validation evidence. |
 | **9.董事会** | 如果更改完成了里程碑交付，请更新 `docs/project/BOARD.md`。 | 更新了董事会。 |
 | **10.远程交付** | 仅在获得远程发布授权时，推送请求分支并创建面向 `main` 的 PR/MR。 | 可审查的远程变更，列出了受影响的规格和验证；或明确的本地交付路径。 |
 | **11.集成** | 完成 R4 要求的集成，满足验证和适用的远程门禁；确认本地 `main`（远程交付时还包括远程 `main`）包含预期提交，并清理工作树和分支。 | 请求已完成集成，或记录明确的阻塞原因/用户限定的交付范围。 |

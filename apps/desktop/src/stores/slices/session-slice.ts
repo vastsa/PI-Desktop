@@ -613,6 +613,8 @@ export function createSessionSlice({
             modelId: config.modelId ?? state.draftConfiguration?.modelId,
             permissionMode:
               config.permissionMode ?? state.draftConfiguration?.permissionMode,
+            approvalReviewer:
+              config.approvalReviewer ?? state.draftConfiguration?.approvalReviewer,
           },
         }));
         return;

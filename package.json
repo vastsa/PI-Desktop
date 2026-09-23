@@ -24,6 +24,8 @@
     "test:e2e:scheduled": "node scripts/e2e-scheduled.mjs",
     "test:e2e:rpc-unicode": "node scripts/e2e-rpc-unicode.mjs",
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
+    "test:e2e:permissions": "node scripts/e2e-permission-review.mjs && node scripts/e2e-permission-ui.mjs",
+    "test:e2e:permissions-desktop": "node scripts/e2e-permission-desktop.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",
     "test:e2e:theme-surfaces": "node scripts/e2e-theme-surfaces.mjs",
     "test:e2e:composer-occlusion": "node scripts/e2e-theme-surfaces.mjs --dock-mask-only",

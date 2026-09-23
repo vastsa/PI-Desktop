@@ -10,9 +10,8 @@
  * list is short still use this control so one Settings window does not mix two
  * popup implementations.
  *
- * Unlike the Appearance pickers this list is not searchable — the longest
- * catalog here is the host command-shell list — so the menu opens on the
- * current option and keyboard users move with arrows alone.
+ * Short lists open on the current option. Model catalogs can opt into search
+ * while retaining the same anchored menu and keyboard behavior.
  */
 import {
   useRef,
@@ -21,7 +20,7 @@ import {
   type ReactNode,
 } from "react";
 import { cx } from "../ui";
-import { IconCheck, IconChevronDown } from "../icons";
+import { IconCheck, IconChevronDown, IconSearch } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
 
 export type MenuSelectOption = {
@@ -42,6 +41,8 @@ export function SettingsMenuSelect({
   className,
   triggerClassName,
   leading,
+  searchPlaceholder,
+  emptyLabel,
 }: {
   value: string;
   options: MenuSelectOption[];
@@ -58,15 +59,25 @@ export function SettingsMenuSelect({
   triggerClassName?: string;
   /** Optional icon or marker shown before the selected value. */
   leading?: ReactNode;
+  /** Enables filtering for longer option lists such as model catalogs. */
+  searchPlaceholder?: string;
+  emptyLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState(value);
+  const [query, setQuery] = useState("");
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const current = options.find((option) => option.id === value);
-  const selectable = options.filter((option) => !option.disabled);
+  const visibleOptions = searchPlaceholder && query.trim()
+    ? options.filter((option) => option.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+    : options;
+  const selectable = visibleOptions.filter((option) => !option.disabled);
 
-  const close = () => setOpen(false);
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+  };
 
   const choose = (option: MenuSelectOption) => {
     close();
@@ -102,9 +113,10 @@ export function SettingsMenuSelect({
       <AnchoredMenu
         open={open}
         onClose={close}
-        menuClassName="settings-menu-select-menu"
+        menuClassName={cx("settings-menu-select-menu", searchPlaceholder && "is-searchable")}
         label={label}
         align="end"
+        initialFocus={searchPlaceholder ? "input" : "selected"}
         onMenuKeyDown={onMenuKeyDown}
         trigger={(ref) => (
           <button
@@ -117,6 +129,7 @@ export function SettingsMenuSelect({
             disabled={disabled || busy}
             onClick={() => {
               setActiveId(value);
+              if (!open) setQuery("");
               setOpen((current) => !current);
             }}
           >
@@ -132,9 +145,23 @@ export function SettingsMenuSelect({
           </button>
         )}
       >
+        {searchPlaceholder ? (
+          <div className="settings-menu-select-search">
+            <IconSearch size={14} aria-hidden />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
+            />
+          </div>
+        ) : null}
         <div className="settings-menu-select-results">
+          {visibleOptions.length === 0 && emptyLabel ? (
+            <div className="settings-menu-select-empty">{emptyLabel}</div>
+          ) : null}
           <ul className="settings-menu-select-list">
-            {options.map((option) => {
+            {visibleOptions.map((option) => {
               const isCurrent = option.id === value;
               return (
                 <li key={option.id}>
@@ -148,6 +175,7 @@ export function SettingsMenuSelect({
                     tabIndex={-1}
                     aria-selected={isCurrent}
                     disabled={option.disabled}
+                    title={option.label}
                     className={cx(
                       "settings-menu-select-option",
                       isCurrent && "is-current",

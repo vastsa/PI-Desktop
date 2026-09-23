@@ -7611,13 +7611,20 @@ describe("DesktopAgentRuntime subagents", () => {
     await wrappedRead.execute("read-1", { path: "src/app.ts" }, undefined, undefined);
     expect(host.call).toHaveBeenCalledWith(
       "tools.execute",
-      expect.objectContaining({ permissionScope: "accept-edits" }),
+      expect.objectContaining({ permissionScope: "accept-edits", actorId: expect.stringMatching(/^delegate:/) }),
     );
-    expect((runtime as any).delegatePermissionScopes.has("read-1")).toBe(false);
+    const toolCalls = () => (host.call.mock.calls as unknown as Array<[string, { actorId?: string }]>)
+      .filter(([method]) => method === "tools.execute");
+    const firstActor = toolCalls()[0]?.[1]?.actorId;
+    await wrappedRead.execute("read-2", { path: "src/other.ts" }, undefined, undefined);
+    expect(toolCalls().at(-1)?.[1]?.actorId).toBe(firstActor);
+    await tool.execute("task-2", { agent: "fixer", task: "Another task." });
+    const secondDelegateRead = subagentRuns.calls[1].tools.find((entry: { name: string }) => entry.name === "Read");
+    await secondDelegateRead.execute("read-3", { path: "src/app.ts" }, undefined, undefined);
+    expect(toolCalls().at(-1)?.[1]?.actorId).not.toBe(firstActor);
 
-    // Definitions without a permission stay unwrapped: the delegate's tools
-    // are the catalog's own tools, so their RPC carries no scope.
-    const plainRuntime = createRuntime({ subagents: [explorer] });
+    // Even a delegate without an override gets its own actor identity.
+    const plainRuntime = createRuntime({ subagents: [explorer], host: host as never });
     subagentRuns.calls.length = 0;
     await taskTool(plainRuntime).execute("task-2", {
       agent: "explorer",
@@ -7627,9 +7634,51 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(
       plainOptions.tools.some((entry: any) => entry.name === "Read"),
     ).toBe(true);
+    const plainRead = plainOptions.tools.find((entry: { name: string }) => entry.name === "Read");
+    await plainRead.execute("plain-read", { path: "src/app.ts" }, undefined, undefined);
+    expect(toolCalls().at(-1)?.[1]).toMatchObject({
+      actorId: expect.stringMatching(/^delegate:/),
+    });
 
     await runtime.dispose();
     await plainRuntime.dispose();
+  });
+
+  it("keeps concurrent delegates with identical model tool ids in their own permission context", async () => {
+    const mutator: SubagentDefinition = {
+      name: "fixer", description: "Change files", tools: ["Read"],
+      permission: "accept-edits", prompt: "Fix", source: "builtin",
+    };
+    const host = {
+      call: vi.fn(async () => ({ ok: true, content: {} })),
+      onNotification: vi.fn(() => () => {}),
+    };
+    const runtime = createRuntime({ subagents: [mutator, explorer], host: host as never });
+    subagentRuns.calls.length = 0;
+    await taskTool(runtime).execute("task-1", { agent: "fixer", task: "Change files." });
+    await taskTool(runtime).execute("task-2", { agent: "explorer", task: "Inspect files." });
+    const firstRead = subagentRuns.calls[0].tools.find((entry: { name: string }) => entry.name === "Read");
+    const secondRead = subagentRuns.calls[1].tools.find((entry: { name: string }) => entry.name === "Read");
+    let releaseFirst!: () => void;
+    const firstHeld = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    (runtime as any).loadPathInstructions = (_name: string, args: { path: string }) =>
+      args.path === "first" ? firstHeld : Promise.resolve();
+    const first = firstRead.execute("same-model-id", { path: "first" }, undefined, undefined);
+    const second = secondRead.execute("same-model-id", { path: "second" }, undefined, undefined);
+    await second;
+    releaseFirst();
+    await first;
+    const calls = (host.call.mock.calls as unknown as Array<[string, {
+      args?: { path: string }; actorId?: string; permissionScope?: string;
+    }]>).filter(([method]) => method === "tools.execute");
+    const byPath = new Map(calls.map(([, params]) => [params.args?.path, params]));
+    expect(byPath.get("first")).toMatchObject({
+      actorId: expect.stringMatching(/^delegate:/), permissionScope: "accept-edits",
+    });
+    expect(byPath.get("second")).toMatchObject({ actorId: expect.stringMatching(/^delegate:/) });
+    expect(byPath.get("second")?.permissionScope).toBeUndefined();
+    expect(byPath.get("first")?.actorId).not.toBe(byPath.get("second")?.actorId);
+    await runtime.dispose();
   });
 
   it("keeps subagent rows out of the parent model context", async () => {

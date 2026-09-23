@@ -34,3 +34,18 @@ test("invalid retry writes stay rejected at both boundaries", () => {
     assert.throws(() => main.validateSettingsWrite(settings), /infiniteProviderRetry is invalid/);
   }
 });
+
+test("a session reviewer can use a pinned review model while the global default remains manual", () => {
+  const original = main.normalizeSettings({
+    approvalReviewer: "user", autoReview: {
+      providerId: "reviewer-provider", modelId: "reviewer-model", thinkingLevel: "low",
+    },
+  });
+  const displayed = renderer.normalizeSettings(structuredClone(original));
+  const outgoing = renderer.validateSettingsWrite({ ...displayed, theme: "dark" });
+  const persisted = main.validateSettingsWrite(structuredClone(outgoing));
+  assert.equal(persisted.approvalReviewer, "user");
+  assert.deepEqual(persisted.autoReview, {
+    providerId: "reviewer-provider", modelId: "reviewer-model", thinkingLevel: "low",
+  });
+});

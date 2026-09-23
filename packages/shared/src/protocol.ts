@@ -1,5 +1,5 @@
-export const PROTOCOL_VERSION = 11 as const;
-export const SCHEMA_VERSION = 16 as const;
+export const PROTOCOL_VERSION = 12 as const;
+export const SCHEMA_VERSION = 20 as const;
 export const APP_ID = "net.aiuo.pi-desktop";
 export const APP_NAME = "PI-Desktop";
 export const APP_VERSION = "0.15.6";
@@ -164,6 +164,11 @@ export const IPC = {
     scheduledExecute: "pi-desktop/scheduled/execute",
     scheduledListRuns: "pi-desktop/scheduled/listRuns",
     toolResolvePermission: "pi-desktop/tool/resolvePermission",
+    permissionTakeoverReview: "pi-desktop/permission/takeoverReview",
+    permissionListSessionGrants: "pi-desktop/permission/listSessionGrants",
+    permissionRevokeSessionGrant: "pi-desktop/permission/revokeSessionGrant",
+    permissionClearSessionGrants: "pi-desktop/permission/clearSessionGrants",
+    permissionListReviewHistory: "pi-desktop/permission/listReviewHistory",
     askToolResolve: "pi-desktop/agent/askTool/resolve",
     plansPending: "pi-desktop/plans/pending",
     plansResolve: "pi-desktop/plans/resolve",

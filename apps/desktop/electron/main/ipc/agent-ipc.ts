@@ -1,4 +1,4 @@
-import { IPC, ErrorCodes, compactionRecordId, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
+import { IPC, ErrorCodes, compactionRecordId, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, type ToolPermissionResolution, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
 import { expandSlashInvocation, enhancePromptDraft, summarizeSessionTitle, visionFromModelConfig, type ComposerTemplate, type RuntimeProviderConfig } from "@pi-desktop/agent-runtime";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
@@ -13,6 +13,7 @@ import type { PersistenceOutbox } from "../persistence-outbox";
 import type { ComposerCommandService } from "./composer-ipc";
 import type { IpcRegistrar } from "./types";
 import { withPromptEnhancementTimeout } from "../prompt-enhancement-timeout";
+import { isRemoteSessionId, parseRemoteApprovalRequestId } from "../remote/backend-router";
 
 export type AgentIpcDependencies = {
   registrar: IpcRegistrar;
@@ -23,6 +24,7 @@ export type AgentIpcDependencies = {
   vendorOAuth: VendorOAuth;
   agentExtensions: AgentExtensionBridge;
   cancelSessionTools: (sessionId: string, reason?: string) => void;
+  takeOverSessionReviews: (sessionId: string) => Promise<void>;
   persistenceOutbox: PersistenceOutbox;
   dataDir: string;
   activeTurns: Map<string, string>;
@@ -56,6 +58,14 @@ function rejectNativeAgentOperation(sessionId: string): void {
   }
 }
 
+function rejectRemotePermissionOperation(sessionId: string): void {
+  if (isRemoteSessionId(sessionId)) {
+    throw Object.assign(new Error("Permission review and grants are unavailable on remote sessions"), {
+      errorCode: ErrorCodes.CAPABILITY_UNAVAILABLE,
+    });
+  }
+}
+
 /** Register prompt, agent lifecycle, queue, approval and plan channels. */
 export function registerAgentIpc({
   registrar,
@@ -66,6 +76,7 @@ export function registerAgentIpc({
   vendorOAuth,
   agentExtensions,
   cancelSessionTools,
+  takeOverSessionReviews,
   persistenceOutbox,
   dataDir,
   activeTurns,
@@ -712,6 +723,7 @@ export function registerAgentIpc({
 
   handle(IPC.invoke.agentStop, async (req: AgentStopRequest) => {
     if (!sidecar) throw new Error("sidecar unavailable");
+    await takeOverSessionReviews(req.sessionId);
     logger.app("session", "info", "prompt graceful stop requested", {
       sessionId: req.sessionId,
     });
@@ -760,10 +772,7 @@ export function registerAgentIpc({
     },
   );
 
-  handle(IPC.invoke.toolResolvePermission, async (resolution: {
-    requestId: string;
-    decision: string;
-  }) => {
+  handle(IPC.invoke.toolResolvePermission, async (resolution: ToolPermissionResolution) => {
     if (!host) throw new Error("host unavailable");
     logger.app("permission", "info", "permission resolved", {
       data: { requestId: resolution.requestId, decision: resolution.decision },
@@ -777,6 +786,42 @@ export function registerAgentIpc({
         : {}),
     });
     return resolved;
+  });
+
+  handle(IPC.invoke.permissionTakeoverReview, async ({ requestId }: { requestId: string }) => {
+    if (!requestId?.trim()) throw new Error("requestId required");
+    const remoteRequest = parseRemoteApprovalRequestId(requestId);
+    if (remoteRequest) rejectRemotePermissionOperation(remoteRequest.remoteSessionId);
+    if (!host) throw new Error("host unavailable");
+    return host.call("permissions.takeoverReview", { requestId });
+  });
+
+  handle(IPC.invoke.permissionListSessionGrants, async ({ sessionId }: { sessionId: string }) => {
+    if (!sessionId?.trim()) throw new Error("sessionId required");
+    rejectRemotePermissionOperation(sessionId);
+    if (!host) throw new Error("host unavailable");
+    return host.call("permissions.listSessionGrants", { sessionId });
+  });
+
+  handle(IPC.invoke.permissionRevokeSessionGrant, async ({ sessionId, grantId }: { sessionId: string; grantId: string }) => {
+    if (!sessionId?.trim() || !grantId?.trim()) throw new Error("sessionId and grantId required");
+    rejectRemotePermissionOperation(sessionId);
+    if (!host) throw new Error("host unavailable");
+    return host.call("permissions.revokeSessionGrant", { sessionId, grantId });
+  });
+
+  handle(IPC.invoke.permissionClearSessionGrants, async ({ sessionId }: { sessionId: string }) => {
+    if (!sessionId?.trim()) throw new Error("sessionId required");
+    rejectRemotePermissionOperation(sessionId);
+    if (!host) throw new Error("host unavailable");
+    return host.call("permissions.clearSessionGrants", { sessionId });
+  });
+
+  handle(IPC.invoke.permissionListReviewHistory, async ({ sessionId }: { sessionId: string }) => {
+    if (!sessionId?.trim()) throw new Error("sessionId required");
+    rejectRemotePermissionOperation(sessionId);
+    if (!host) throw new Error("host unavailable");
+    return host.call("permissions.listReviewHistory", { sessionId });
   });
 
   handle(IPC.invoke.askToolResolve, async (resolution: AskToolResolution) => {

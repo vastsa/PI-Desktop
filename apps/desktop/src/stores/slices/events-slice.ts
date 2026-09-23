@@ -18,6 +18,7 @@ import {
 import {
   clearSessionPermissions,
   enqueuePermission,
+  permissionReceivedAt,
   removePermissionForToolCall,
 } from "../../lib/pending-permissions";
 import {
@@ -401,7 +402,7 @@ export function createEventsSlice({
           set((state) => ({
             pendingPermissions: enqueuePermission(state.pendingPermissions, {
               ...event.request,
-              receivedAt: envelope.ts,
+              receivedAt: permissionReceivedAt(event.request, envelope.ts),
             }),
           }));
           notifyInteractivePrompt(envelope.sessionId, "permission", {
@@ -587,7 +588,7 @@ export function createEventsSlice({
           set((state) => ({
             pendingPermissions: enqueuePermission(state.pendingPermissions, {
               ...event.request,
-              receivedAt: envelope.ts,
+              receivedAt: permissionReceivedAt(event.request, envelope.ts),
             }),
           }));
           notifyInteractivePrompt(envelope.sessionId, "permission", {

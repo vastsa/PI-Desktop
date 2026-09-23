@@ -31,7 +31,7 @@ Plan 和 Goal 使该权限模式控件保持可见。他们是契约者
 ## 3. 决策类型
 
 - `allow-once`
-- `allow-session`（范围按工具名称，**D006**）
+- `allow-session` (caller + action scope; supersedes D006's tool-wide grant)
 - `deny`
 
 MVP 中没有 `allow-always`。
@@ -111,9 +111,8 @@ open/close 循环介入对话。
 - 有多少个等待 - “N 个请求正在等待” - 所以回答确实如此
 看起来它还没有完成会议的问题。
 
-会话授权未更改，并且仍按每个会话的 `toolName`：代表的
-“允许会议”还涵盖家长和其他代表
-（`03-runtime/03-tools-and-permissions.md` §10.2）。
+Session grants bind the requesting caller and action. They never implicitly
+authorize another delegate or the parent; automatic review permits once only.
 
 ## 7. 等待期间的 Composer 交互
 
@@ -134,10 +133,22 @@ open/close 循环介入对话。
 
 ## 8. 会话授予表面
 
-活动会话授权（toolName、grantAt、clear action）仍由运行时拥有。
-持久的赠款管理表面被推迟到主机支持的设置为止
-模式存在；设置不得呈现无法持久或影响的控件
-权限运行时。
+Active grants remain host-owned and memory-only. The session permission
+surface shows caller and scope, with individual/all revocation. Mode/reviewer
+changes clear grants. Revocation does not undo executed effects. See
+[permission review](../03-runtime/23-permission-auto-review.md) for reviewer
+states, takeover, model binding, fallback, and additional usage disclosure.
+
+Permissions settings show a labeled custom-policy input beside model/reasoning
+configuration. The input starts blank with a placeholder saying that leaving it
+empty uses the default policy. Input is auto-saved after a pause or on blur;
+nonempty content replaces the built-in policy and clearing it restores that
+policy. No version/status, character count, Save, or Restore controls accompany
+the field. Show an inline error only for an oversized input or failed save.
+Retain unsaved edits across settings refreshes and failed saves; changing the
+selected model must not reset the policy. Without a fixed model, reasoning
+shows `off` and is disabled. A fixed model offers `off` and its configured
+reasoning levels; changing models falls back to `off` if needed.
 
 ## 9. Plan 和 Goal 合同审批卡
 
@@ -181,7 +192,7 @@ approved/completed，或中断的终端卡。这样的卡可能会保留
    在自动下，突变权衡可见
 3、Agent模式使用普通高危权限策略
 4. UI + 工具结果中的超时变为拒绝
-5.allow-session 仅抑制相同 toolName 的重复提示
+5. Session grants suppress prompts only for the same caller and action scope.
 6.并发会话请求保持隔离，永远不会接管可见的
    对话或其工作小组；批准后工件仍分配给
    请求的发起会话

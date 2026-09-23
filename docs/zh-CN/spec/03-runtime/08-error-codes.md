@@ -124,6 +124,12 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `TOOL_BINARY_CONTENT` | 不 | `Read` 拒绝把二进制文件倾倒进模型上下文 |
 | `TOOL_NOT_FOUND` | 不 | 未知工具 |
 | `TOOL_DENIED` | 不 | 权限被拒绝/模式被禁止 |
+| `AUTHORIZATION_STALE` | no | Action or execution permit changed, expired, or was consumed; obtain fresh authorization |
+| `REVIEW_IN_PROGRESS` | no | Take over automatic review before submitting a human approval |
+| `REVIEW_NOT_AVAILABLE` | no | Request is not eligible for a new automatic review claim |
+| `REVIEW_STALE` | no | Reviewer token, action fingerprint, or policy generation no longer matches |
+| `INVALID_REVIEW_DECISION` | no | Reviewer decision is outside the accepted structured contract |
+| `TOOL_CONFIG_REQUIRED` | no | Authoritative external-tool configuration is unavailable for scoped execution |
 | `TOOL_TIMEOUT` | 是的 | 工具执行超时 |
 | `TOOL_FAILED` | 也许 | 工具已执行但失败 |
 | `TOOL_ABORTED` | 不 | 工具在完成前被用户停止或回合中止取消 |

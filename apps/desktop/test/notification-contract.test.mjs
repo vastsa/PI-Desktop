@@ -37,7 +37,7 @@ const notificationIpcSource = readMainModuleSync("ipc/notification-ipc.ts");
 const desktopServicesSource = readMainModuleSync("services/desktop-services.ts");
 
 test("notification IPC stays behind the shared preload allowlist", () => {
-  assert.match(protocolSource, /PROTOCOL_VERSION = 11/);
+  assert.match(protocolSource, /PROTOCOL_VERSION = 12/);
   for (const channel of [
     "notificationList",
     "notificationMarkRead",

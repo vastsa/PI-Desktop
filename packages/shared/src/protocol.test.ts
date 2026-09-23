@@ -30,14 +30,25 @@ import {
 } from "./index.js";
 
 describe("Plan protocol contracts", () => {
-  it("uses protocol v11/schema v16 and exposes the plan, schedule, and shell channels", () => {
-    expect(PROTOCOL_VERSION).toBe(11);
-    expect(SCHEMA_VERSION).toBe(16);
+  it("uses protocol v12/schema v20 and exposes the plan, schedule, and shell channels", () => {
+    expect(PROTOCOL_VERSION).toBe(12);
+    expect(SCHEMA_VERSION).toBe(20);
     expect(IPC_WHITELIST.has(IPC.invoke.plansPending)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.plansResolve)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.event.plansChanged)).toBe(true);
     expect(IPC.invoke.commandShellList).toBe("pi-desktop/commandShell/list");
     expect(IPC_WHITELIST.has(IPC.invoke.commandShellList)).toBe(true);
+    const permissionChannels = [
+      IPC.invoke.permissionTakeoverReview,
+      IPC.invoke.permissionListSessionGrants,
+      IPC.invoke.permissionRevokeSessionGrant,
+      IPC.invoke.permissionClearSessionGrants,
+      IPC.invoke.permissionListReviewHistory,
+    ];
+    expect(new Set(permissionChannels).size).toBe(5);
+    for (const channel of permissionChannels) {
+      expect(IPC_WHITELIST.has(channel)).toBe(true);
+    }
     expect(IPC_WHITELIST.has(IPC.invoke.scheduledList)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.scheduledCreate)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.scheduledUpdate)).toBe(true);

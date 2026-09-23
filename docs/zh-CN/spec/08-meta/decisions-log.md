@@ -4958,3 +4958,16 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   只查自身目录。后缀本身不赋予推理能力：未命中的自由格式 ID 仍是未知通用
   模型，已发布能力和显式绑定覆盖沿用既有优先级。见
   `03-runtime/13-model-catalog-and-selection.md` §11.2。
+
+## 2026-09-23 — Automatic permission review and scoped grants (D623)
+
+- Keep Ask / Accept edits / Auto, and select User / Auto review independently.
+  Existing settings default to User; Auto explicitly bypasses both reviewers.
+- Host-core remains authoritative. A tool-free, bounded Pi completion can
+  approve only the current request; uncertainty returns to human approval.
+- Replace tool-wide session grants with caller/action-scoped, revocable grants.
+  Untrusted MCP names or annotations do not grant low-risk execution.
+- Keep native Pi no-tools continuation and the SDK pin unchanged. OS shell,
+  plugin capability isolation, and native tool bridging remain separately
+  tracked increments. Review is not an OS sandbox.
+- See ADR 0306 and [permission review](../03-runtime/23-permission-auto-review.md).

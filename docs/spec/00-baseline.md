@@ -1,5 +1,10 @@
 # PI-Desktop Baseline Freeze
 
+Permission-review amendment: D623 / ADR 0306 introduces protocol v12 and
+schema v20 for independent automatic review and caller/action-scoped grants.
+The process ownership model, existing permission modes, and native Pi no-tools
+boundary remain unchanged. See [permission review](03-runtime/23-permission-auto-review.md).
+
 - Baseline Version: `0.4.18`
 - Date: `2026-09-14`
 - Status: `Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v16 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + edge-specific work-panel/chat resize ownership + models.dev model catalog with a bundled release snapshot + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font + ChatGPT-style logical project groups)`

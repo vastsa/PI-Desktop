@@ -8,6 +8,54 @@
 
 ## 1. Goals
 
+### E2E-PERMISSION-edit-review-policy
+
+- **Preconditions:** Isolated desktop profile with a localhost model; default
+  reviewer policy and no real credentials.
+- **Path:** Open Settings → Permissions and verify the visible custom-policy
+  input is blank with a default-policy placeholder and review thinking shows
+  `off` without a fixed model. Select a reviewer model through the searchable
+  menu, verify that `off` and only its configured thinking levels appear, then
+  enter a custom policy. Wait for auto-save, leave and reopen settings, change
+  the reviewer model, and verify the saved policy remains. Clear the input and
+  verify the default policy is restored automatically.
+- **Expected:** Nonempty auto-saved content replaces the built-in policy rather
+  than being appended. Empty content restores the built-in policy; oversized
+  input cannot be saved. A failed auto-save keeps the draft and shows an error.
+  Host persists valid local settings without portable
+  synchronization. Policy changes reject late old-policy approvals and permits.
+- **Coverage:** Settings interaction plus Host/runtime contract tests must show
+  the configured text reaches the actual review prompt, with unchanged
+  tool-free/schema/admission constraints. Capture both the reviewer-model
+  selection and policy editor; a permission-card screenshot is not sufficient.
+
+### E2E-PERMISSION-auto-review-and-scoped-grants
+
+Companion user-path gate: `pnpm test:e2e:permissions-desktop` launches the
+actual built Windows application with isolated app/native-Pi profiles and a
+localhost model. Enter a request in Composer, observe automatic review and
+the resulting file, then return malformed reviewer output and verify that the
+file is absent until Allow once is clicked. Stop a third request while review
+is pending and verify that a late approval cannot create the target file.
+Submit a fresh request afterward and verify that review and execution still work.
+Model routing, preload IPC,
+sidecar calls, Host execution, and visible settlement use real internal wiring.
+Other platforms use the portable Host and component suites; native full-app
+evidence must be recorded separately rather than inferred from this run.
+
+- **Preconditions:** Isolated host/workspace and local model/MCP fixtures;
+  no live credentials; candidate protocol version.
+- **Path:** Enable review under Ask, execute one approved action, fall back to
+  a human on uncertainty or invalid output, create/revoke a scoped grant, then
+  change actor/target/command and race takeover/cancellation with late review.
+- **Expected:** No unrelated grant reuse or late/repeated execution; MCP and
+  local tools use host admission; existing Auto and Plan/Goal semantics remain.
+- **UI:** Actual permission card in isolated Chromium, English and Chinese,
+  covering action delivery, scope, takeover, focus, and geometry. Captures are
+  component-fixture evidence, not full-app acceptance.
+- **Spec:** [Permission review](../03-runtime/23-permission-auto-review.md).
+  Candidate execution results are recorded in the validation ledger.
+
 ### E2E-IMAGES-provider-save-feedback
 
 - **Preconditions:** Image configuration UI fixture; English and Chinese.
@@ -13271,7 +13319,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   confirm the planner can still call `navigate` + `snapshot`.
   6) Ask the planner to "click the sign-in button" through the
   browser plugin and confirm the call is rejected with
-  `PERMISSION_DENIED` (a Plan call can never click). 7) Inspect the
+  `PLUGIN_DISABLED_IN_PLAN` at Host (a Plan call can never click). 7) Inspect the
   active session tool list and confirm it shows the Browser plugin
   with the description suffix `Plan mode: only navigate, snapshot,
   screenshot, console actions`. 8) Switch back to Agent mode and
@@ -13280,7 +13328,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Expected**: Plan mode can drive the Browser plugin for the four
   declared read-only actions, the description tells the model which
   actions are allowed, and any mutating action is denied with a
-  structured `PERMISSION_DENIED` error before the plugin sees the
+  structured `PLUGIN_DISABLED_IN_PLAN` error before the plugin sees the
   call. Agent mode keeps the full plugin surface.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `03-runtime/03-tools-and-permissions.md`, `07-plugins/README.md`,

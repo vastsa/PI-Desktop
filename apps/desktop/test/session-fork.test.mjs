@@ -23,7 +23,7 @@ test("session fork is wired through protocol, main, API, store, and sidebar", ()
     protocol,
     /sessionFork:\s*"pi-desktop\/session\/fork"/,
   );
-  assert.match(protocol, /PROTOCOL_VERSION = 11/);
+  assert.match(protocol, /PROTOCOL_VERSION = 12/);
   assert.match(main, /handle\(\s*IPC\.invoke\.sessionFork,/);
   assert.match(main, /activeTurns\.has\(sessionId\)/);
   assert.match(main, /"session\.fork"/);

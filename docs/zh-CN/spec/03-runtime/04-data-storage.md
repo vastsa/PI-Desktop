@@ -1,4 +1,17 @@
-# 04. 数据存储（架构 v17）
+# 04. Data Storage (Schema v20)
+
+The optional local `autoReview.policyPrompt` setting is stored in the existing
+settings object; it does not add a database column. Missing values select the
+built-in policy, preserving older installations. Saving a policy invalidates
+old in-memory review authorization. Portable configuration sync excludes it.
+
+Schema v20 adds `sessions.approval_reviewer`: `inherit`, `user`, or
+`auto_review`, defaulting existing rows to `inherit`. Migration from v19 makes
+the standard backup and adds the column transactionally without changing
+transcripts. Missing global settings resolve to User. Grants and review tokens
+are memory-only and never restored as executable approvals. The previous v17
+heading lagged executable schema v19; older upgrades must retain the existing
+v18/v19 migration chain.
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/04-data-storage) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
@@ -1341,4 +1354,3 @@ preference does not rewrite provider configuration or require a schema migration
 schedule 就推断为日历配置；旧版 Hourly 行保留字段，但转换时需要明确确认日历时间。
 已知意图在周期切换和数据库重开后仍然保留。该新增 JSON 字段不需要表或 schema
 版本迁移；旧版本会忽略它，也无法执行新的转换保护。
-

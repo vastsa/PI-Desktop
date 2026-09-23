@@ -555,12 +555,15 @@ pub struct ToolsExecuteParams {
     pub session_id: String,
     pub turn_id: Option<String>,
     pub tool_call_id: String,
+    #[serde(default)]
+    pub actor_id: Option<String>,
     pub tool_name: String,
     pub args: Value,
     #[serde(rename = "mode")]
     pub _mode: String,
-    #[serde(default)]
-    pub declared_risk: Option<String>,
+    /// Legacy advisory input; authorization uses the installed Host manifest.
+    #[serde(default, rename = "declaredRisk")]
+    pub _declared_risk: Option<String>,
     /// Permission scope of a subagent's tool call (ADR 0089): when present,
     /// the call resolves under this mode instead of the session's effective
     /// permission mode. `inherit` and absent behave identically.
@@ -571,13 +574,10 @@ pub struct ToolsExecuteParams {
     #[serde(default)]
     pub expected_command_shell_dialect: Option<String>,
     pub timeout_ms: Option<u64>,
-    /// Action names that may run in Plan or Goal mode (ADR 0211). When
-    /// set and non-empty, host-core admits this `plugin_*` tool in
-    /// contract modes even though plugins are otherwise Plan-denied; the
-    /// plugin-runtime still enforces the per-action restriction at
-    /// execute time.
-    #[serde(default)]
-    pub plan_safe_actions: Option<Vec<String>>,
+    /// Legacy advisory input retained for wire compatibility. Only the
+    /// installed Host manifest may grant Plan/Goal action exemptions.
+    #[serde(default, rename = "planSafeActions")]
+    pub _plan_safe_actions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]

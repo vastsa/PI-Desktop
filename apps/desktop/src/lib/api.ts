@@ -87,6 +87,8 @@ import type {
   SessionCollaborationSummary,
   TraySessionPreferences,
   ToolPermissionResolution,
+  SessionPermissionGrant,
+  PermissionReviewHistoryResult,
   UserSkillInput,
   UserSkillRecord,
   UserSubagentInput,
@@ -593,7 +595,7 @@ export const api = {
   configureSession: (
     id: string,
     config: Pick<SessionSummary, "mode" | "providerId" | "modelId"> &
-      Partial<Pick<SessionSummary, "thinkingLevel" | "permissionMode">>,
+      Partial<Pick<SessionSummary, "thinkingLevel" | "permissionMode" | "approvalReviewer">>,
   ) =>
     invoke<{ session: SessionSummary }>(
       IPC.invoke.sessionConfigure,
@@ -927,6 +929,16 @@ export const api = {
     }),
   resolvePermission: (resolution: ToolPermissionResolution) =>
     invoke(IPC.invoke.toolResolvePermission, resolution),
+  takeoverPermissionReview: (requestId: string) =>
+    invoke<{ ok: boolean }>(IPC.invoke.permissionTakeoverReview, { requestId }),
+  listSessionPermissionGrants: (sessionId: string) =>
+    invoke<{ grants: SessionPermissionGrant[] }>(IPC.invoke.permissionListSessionGrants, { sessionId }),
+  revokeSessionPermissionGrant: (sessionId: string, grantId: string) =>
+    invoke<{ revoked: boolean }>(IPC.invoke.permissionRevokeSessionGrant, { sessionId, grantId }),
+  clearSessionPermissionGrants: (sessionId: string) =>
+    invoke<{ ok: boolean }>(IPC.invoke.permissionClearSessionGrants, { sessionId }),
+  listSessionPermissionReviews: (sessionId: string) =>
+    invoke<PermissionReviewHistoryResult>(IPC.invoke.permissionListReviewHistory, { sessionId }),
   resolveAskTool: (resolution: AskToolResolution) =>
     invoke(IPC.invoke.askToolResolve, resolution),
   pendingPlans: (sessionId?: string) =>

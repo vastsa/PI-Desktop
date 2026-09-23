@@ -15,9 +15,9 @@
 | Plan 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitPlan + 声明 plan-safe 动作的插件工具 |
 | Goal 工具 | 读取 / Glob / Grep / BrowserPreview / Bash / SubmitGoal + 声明 plan-safe 动作的插件工具 |
 | Plan 和 Goal 硬拒绝 | 写入 / 编辑 / 没有 `planSafeActions` 的插件工具 / 未知工具 / 另一类的提交工具 |
-| 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时在 Plan/Goal 中隐藏没有该列表的插件工具，host 放行已列出的工具，plugin-runtime 拒绝列表外的任何动作（ADR 0211） |
+| Plugin `planSafeActions` | Non-empty action list in the installed manifest; Host and plugin-runtime both reject actions outside that list (ADR 0211 / ADR 0306) |
 | 权限超时 | 120秒→拒绝 |
-| 允许会话范围 | 工具名称 |
+| Session grant scope | Session + caller + explicit action; see [permission review](23-permission-auto-review.md) |
 | 重击风格 | 非交互式；具有流输出的选定主机目录外壳 |
 | Edit 契约 | 行锚定操作 + 整文件 `tag`；不再有 `old_string`/`new_string`（ADR 0087） |
 | 询问工具 | 交互式多问题工具；无有效期期限；跳过的答案变成空输出字段 |
@@ -146,8 +146,8 @@ schema 中放宽到 100000000，好让毫秒值先通过校验：超过 21,600 �
 
 - `auto` 允许无卡外部路径；
 - `ask`和`accept-edits`发出普通权限卡；
-- `allow-once` 仅执行当前调用，而 `allow-session` 紧随其后
-  现有的每个工具会话授予范围；
+- `allow-once` covers this call; `allow-session` binds session, caller, and
+  explicit action scope, including the canonical external target.
 - 拒绝、超时或取消永远不会执行该操作；
 - 相对 `..` 转义和符号链接转义使用与绝对相同的规则
   路径；
@@ -409,8 +409,8 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 - Plan 保留权限模式选择器。 Bash 在 `ask` 下得到确认并且
   `accept-edits`，并且在 `auto` 下自动允许；因此 Plan 正在规划
   意图，而不是严格的只读安全配置文件。
-- `allow-session` 赠款继续在 `ask` 下运作，范围仅限于
-  会议；在 `BrowserPreview`/`ask` 下，根本不需要它们。
+- Manual `allow-session` grants bind caller and action; mode/reviewer changes
+  clear them. They never implicitly cover another external path or delegate.
 - 暂存目录写入 (D114) 在每种模式下都保持无提示。
 - UI：设置→分段全局默认；输入框在中显示每个会话的芯片
   Agent、Plan 和 Goal 的菜单提供了三种有效模式，无需
@@ -474,12 +474,12 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 
 ### 注释
 - 权限 UI 之前，Plan 和 Goal 硬拒绝 Write/Edit 以及没有 `planSafeActions` 的插件工具；直接主机
-  调用不能绕过矩阵。声明了非空列表的插件工具会被放行；运行器仍会拒绝列表外的任何动作（ADR 0211）。
+  调用不能绕过矩阵。Host admits only actions in the installed manifest; the runner independently enforces that list (ADR 0211 / ADR 0306).
 - Agent 模式使用权限卡或选定的自动策略
   Write/Edit/Bash 和注册的插件工具。
 - 当用户选择“自动”时，Plan 和 Goal Bash 可能会改变工作区或暂存状态；
   用户界面必须使这种权衡可见。
-- 仅针对活动会话记住每个 toolName 的允许会话
+- Session grants cover only the caller and explicit action scope.
 - 会话授权遵循 `sessionId` 跨项目选项卡开关，并且永远不会
   由另一个会话或临时会话继承
 
@@ -537,9 +537,10 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 来自代表的权限请求带有提出请求的代表的姓名，因此
 卡可以说明哪位代表想要通话（请参阅 `04-ux/03-permission-ux.md`
 §6a)。
-会话范围的 `allow-session` 拨款仍按 `toolName` 和每个会话进行：
-一名代表对 `Bash` 的批准适用于整个会议，包括
-家长和其他代表。
+Session grants bind the requesting caller and action. A delegate's grant does
+not authorize the parent or other delegates. See
+[permission review](23-permission-auto-review.md) for the independent reviewer,
+MCP approval, bounded fallback, and execution-admission contract.
 
 ## 11. 插件工具
 
@@ -555,8 +556,10 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 没有 `planSafeActions` 的插件工具在 Plan 和 Goal 中对模型隐藏。
 直接尝试返回 `PLUGIN_DISABLED_IN_PLAN` — `_IN_PLAN` 代码由两个合约共享
 模式而不是每种重复 - 并且作为合同模式政策进行审核
-否认。当列表存在时，host-core 放行该工具，plugin-runtime 拒绝列表外的任何 `action`，
-返回 `PERMISSION_DENIED`。对于 Agent，缺失或无效的插件风险默认为 `medium`，并且从不
+否认。Host rejects an action absent from the installed list with
+`PLUGIN_DISABLED_IN_PLAN`; caller-provided lists cannot expand it. The runner
+independently enforces its registered list with `PERMISSION_DENIED`.
+对于 Agent，缺失或无效的插件风险默认为 `medium`，并且从不
 仅凭风险授予合同模式访问权限。
 
 命名：

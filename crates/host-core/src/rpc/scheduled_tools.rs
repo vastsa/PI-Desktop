@@ -546,27 +546,19 @@ mod tests {
     fn scheduled_mutations_require_approval_outside_auto_mode() {
         use crate::permissions::{PermissionDecision, PermissionManager};
         let permissions = PermissionManager::default();
-        let grants = std::collections::HashMap::new();
         for tool in [
             "ScheduledTaskCreate",
             "ScheduledTaskUpdate",
             "ScheduledTaskDelete",
         ] {
             assert!(permissions
-                .evaluate_auto_with_permission_mode("session", tool, "agent", "ask", &grants)
+                .evaluate_auto_with_permission_mode("session", tool, "agent", "ask")
                 .is_none());
             assert!(permissions
-                .evaluate_auto_with_permission_mode(
-                    "session",
-                    tool,
-                    "agent",
-                    "accept-edits",
-                    &grants
-                )
+                .evaluate_auto_with_permission_mode("session", tool, "agent", "accept-edits")
                 .is_none());
             assert!(matches!(
-                permissions
-                    .evaluate_auto_with_permission_mode("session", tool, "plan", "auto", &grants),
+                permissions.evaluate_auto_with_permission_mode("session", tool, "plan", "auto"),
                 Some(PermissionDecision::Deny)
             ));
         }
@@ -575,8 +567,7 @@ mod tests {
                 "session",
                 "ScheduledTaskList",
                 "agent",
-                "ask",
-                &grants
+                "ask"
             ),
             Some(PermissionDecision::AllowOnce)
         ));

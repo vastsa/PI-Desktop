@@ -99,6 +99,7 @@ export type DraftSessionConfiguration = {
   providerId?: string;
   modelId?: string;
   permissionMode?: PermissionMode;
+  approvalReviewer?: SessionSummary["approvalReviewer"];
 };
 
 
@@ -202,6 +203,7 @@ export type AppState = {
     modelId?: string;
     thinkingLevel: SessionThinkingLevel;
     permissionMode?: PermissionMode;
+    approvalReviewer?: SessionSummary["approvalReviewer"];
   }) => Promise<void>;
   /** Returns true once accepted unless concurrent smart Stop restores it. */
   sendPrompt: (

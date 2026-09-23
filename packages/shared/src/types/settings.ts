@@ -5,7 +5,7 @@ import type { NetworkProxySettings } from "../network-proxy.js";
 import type { NetworkPolicySettings } from "../network-policy.js";
 import type { ContextCompactionSettings } from "./sessions.js";
 import type { Mode } from "./common.js";
-import type { GlobalPermissionMode } from "./permissions.js";
+import type { ApprovalReviewer, AutoReviewBinding, GlobalPermissionMode } from "./permissions.js";
 import type { PluginMarketSource } from "./plugins.js";
 import type { SpeechSettings } from "./speech.js";
 import type { ThinkingLevel } from "./models.js";
@@ -70,6 +70,8 @@ export type AppSettings = {
    */
   promptEnhancementThinkingLevel?: ThinkingLevel;
   defaultPermissionMode?: GlobalPermissionMode;
+  approvalReviewer?: ApprovalReviewer;
+  autoReview?: AutoReviewBinding;
   theme: ThemePreference;
   /** UI language; `auto` (and absent) follows the OS locale. */
   language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko";

@@ -31,6 +31,18 @@ describe("result helpers", () => {
     expect(ErrorCodes.COMMAND_SHELL_INVALID).toBe("COMMAND_SHELL_INVALID");
   });
 
+  it("registers permission review and execution admission failure codes", () => {
+    const codes = [
+      "AUTHORIZATION_STALE",
+      "REVIEW_IN_PROGRESS",
+      "REVIEW_NOT_AVAILABLE",
+      "REVIEW_STALE",
+      "INVALID_REVIEW_DECISION",
+      "TOOL_CONFIG_REQUIRED",
+    ] as const;
+    for (const code of codes) expect(ErrorCodes[code]).toBe(code);
+  });
+
   it("registers newly emitted runtime and Edit error codes", () => {
     const newlyLiveCodes = [
       "CONTEXT_COMPACTION_FAILED",

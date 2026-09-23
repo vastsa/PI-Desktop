@@ -186,7 +186,7 @@
 | 3 | 所有受影响的规格均已更新 | [R1 — 规格同步](/zh-CN/spec/06-delivery/03-ai-development-workflow#r1-—-规格优先-规格同步) |
 | 4 | 记录 E2E 场景（或确认不需要） | [R3 — E2E 覆盖文档](/zh-CN/spec/06-delivery/03-ai-development-workflow#r3-—-e2e-覆盖文档) |
 | 5 | 通过必要的针对性本地验证，或被评估为不必要；自动触发远程闸门通过；仅当明确请求时，代理才会运行或调度 E2E | 开发循环的步骤 7 和 11 |
-| 6 | 通过常规消息提交的更改 | [R2 — 每次更改提交](/zh-CN/spec/06-delivery/03-ai-development-workflow#r2-—-每次更改提交) |
+| 6 | Commit only when requested; otherwise retain the validated candidate | [R2 — User-authorized commits](/zh-CN/spec/06-delivery/03-ai-development-workflow#r2-user-authorized-commits) |
 | 7 | 如果里程碑交付完成，则更新董事会 | 开发循环的第 9 步 |
 | 8 | 提交中没有秘密或本地数据 | [§4.4 永不提交](/zh-CN/spec/06-delivery/03-ai-development-workflow#_4-4-永不提交) |
 | 9 | PR/MR 合并为 `main`；请求删除工作树和分支 | [R4 — 请求分支 + 工作树 + 合并门](/zh-CN/spec/06-delivery/03-ai-development-workflow#r4-—-请求分支-工作树-合并门) |

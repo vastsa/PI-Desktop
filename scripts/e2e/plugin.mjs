@@ -12,6 +12,15 @@ export async function loadDevelopmentPlugin(host, path) {
 
 export async function resolvePluginExecution(host, notification, response) {
   if (!notification) return false;
+  await host.call("permissions.consumeExecutionPermit", {
+    executionId: notification.params.executionId,
+    permitToken: notification.params.permitToken,
+    sessionId: notification.params.sessionId,
+    turnId: notification.params.turnId,
+    toolCallId: notification.params.toolCallId,
+    toolName: notification.params.toolName,
+    args: notification.params.args,
+  });
   await host.call("plugins.resolveExecution", {
     executionId: notification.params.executionId,
     ...response,

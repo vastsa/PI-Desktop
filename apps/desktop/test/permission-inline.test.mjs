@@ -14,6 +14,7 @@ import {
   enqueuePermission,
   headPermission,
   permissionSecondsLeft,
+  permissionReceivedAt,
   queuedPermissionCount,
   removePermission,
   removePermissionForToolCall,
@@ -27,6 +28,20 @@ import {
   removeAskForToolCall,
 } from "../src/lib/pending-asks.ts";
 import { createNavigationIntentController } from "../src/lib/navigation-intent.ts";
+import { register } from "node:module";
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+const { composerPermissionState } = await import("../src/features/chat/composer/model.ts");
+
+test("a session auto reviewer overrides the manual global reviewer without changing permission mode", () => {
+  assert.deepEqual(composerPermissionState({
+    mode: "agent", session: { permissionMode: "inherit", approvalReviewer: "auto_review" },
+    globalPermissionMode: "ask", globalReviewer: "user",
+  }), { permissionMode: "ask", sessionReviewer: "auto_review", effectiveReviewer: "auto_review" });
+  assert.deepEqual(composerPermissionState({
+    mode: "agent", session: { permissionMode: "inherit", approvalReviewer: "inherit" },
+    globalPermissionMode: "ask", globalReviewer: "user",
+  }), { permissionMode: "ask", sessionReviewer: "inherit", effectiveReviewer: "user" });
+});
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 const [appSource, chatSurfaceSource, sessionPaneSource, composerSource, transcriptSource, cardSource, askCardSource, storeSource, browserSource, messageStyleSource, composerStyleSource] =
@@ -46,6 +61,11 @@ const [appSource, chatSurfaceSource, sessionPaneSource, composerSource, transcri
 
 const eventsSource = readStoreModuleSync("slices/events-slice.ts");
 const interactionSource = readStoreModuleSync("slices/interaction-slice.ts");
+
+test("only a Host-labeled grant scope offers persistent approval", () => {
+  assert.match(cardSource, /permission\.scopeLabel\s*\?\s*<Button\s+variant="secondary"[\s\S]*?resolve\("allow-session"\)/);
+  assert.match(cardSource, /resolve\("allow-once"\)/);
+});
 const transcriptSliceSource = readStoreModuleSync("slices/transcript-slice.ts");
 const sessionRuntimeSource = readStoreModuleSync("runtime/session-runtime.ts");
 
@@ -198,6 +218,16 @@ test("permission countdown uses its absolute receipt time", () => {
   assert.equal(permissionSecondsLeft(1_000, 61_001), 60);
   assert.equal(permissionSecondsLeft(1_000, 121_000), 0);
   assert.equal(permissionSecondsLeft(1_000, 180_000), 0);
+  const original = "2026-09-23T00:00:00.000Z";
+  const deadline = "2026-09-23T00:02:00.000Z";
+  assert.equal(permissionReceivedAt({ createdAt: original }, Date.parse(original) + 100_000), Date.parse(original));
+  assert.equal(permissionSecondsLeft(Date.parse(original), Date.parse(original) + 100_000, deadline), 20);
+  const initial = permission("s", "r", { receivedAt: Date.parse(original), expiresAt: deadline, reviewState: "awaiting_review" });
+  const updated = permission("s", "r", { receivedAt: Date.parse(original) + 110_000, reviewState: "reviewing" });
+  const pending = enqueuePermission(enqueuePermission({}, initial), updated)["s"][0];
+  assert.equal(pending.receivedAt, initial.receivedAt);
+  assert.equal(pending.expiresAt, deadline);
+  assert.equal(permissionSecondsLeft(pending.receivedAt, Date.parse(original) + 110_000, pending.expiresAt), 10);
 });
 
 test("permission approval is an inline transcript card, never a global dialog", () => {
@@ -225,7 +255,7 @@ test("permission approval is an inline transcript card, never a global dialog", 
   assert.match(cardSource, /requestAnimationFrame/);
   assert.match(cardSource, /showToast/);
   assert.doesNotMatch(cardSource, /<section[^>]*aria-live=/);
-  assert.match(cardSource, /permissionSecondsLeft\(permission\.receivedAt\)/);
+  assert.match(cardSource, /permissionSecondsLeft\(permission\.receivedAt, Date\.now\(\), permission\.expiresAt\)/);
   assert.match(browserSource, /blocking overlay/);
   assert.doesNotMatch(browserSource, /permission dialog/);
 });

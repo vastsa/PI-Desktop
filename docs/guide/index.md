@@ -52,6 +52,9 @@ number; use the sidebar when you are exploring a domain.
 
 ## Before you change a boundary
 
+For permission modes, automatic review, and revocable session grants, see
+[Permissions and automatic review](permissions.md).
+
 1. Read the relevant spec.
 2. Check the linked ADRs and the decisions log.
 3. Update the E2E scenario when behavior is user-visible or protocol-visible.

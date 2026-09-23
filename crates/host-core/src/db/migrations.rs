@@ -839,3 +839,20 @@ pub(crate) fn migrate_v18_to_v19(conn: &Connection, path: &Path) -> Result<()> {
     let _ = conn.pragma_update(None, "foreign_keys", true);
     result
 }
+
+pub(crate) fn migrate_v19_to_v20(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 19)?;
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(
+        "ALTER TABLE sessions ADD COLUMN approval_reviewer TEXT NOT NULL DEFAULT 'inherit'
+         CHECK (approval_reviewer IN ('inherit', 'user', 'auto_review'));",
+    )?;
+    tx.pragma_update(None, "user_version", 20i64)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v19 to v20 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}

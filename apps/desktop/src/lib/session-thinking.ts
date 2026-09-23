@@ -26,6 +26,7 @@ export type OptimisticSessionConfiguration = {
   thinkingLevel?: SessionThinkingLevel;
   mode?: unknown;
   permissionMode?: unknown;
+  approvalReviewer?: unknown;
 };
 
 export type ThinkingProviderLike = {

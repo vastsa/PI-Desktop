@@ -1,7 +1,7 @@
 /** Shared public types grouped by the owning application domain. */
 import type { Mode } from "./common.js";
 import type { SessionThinkingLevel, ThinkingLevel } from "./models.js";
-import type { PermissionMode } from "./permissions.js";
+import type { PermissionMode, SessionApprovalReviewer } from "./permissions.js";
 import type { UiMessage } from "./messages.js";
 import type { PlanningState } from "./plans.js";
 
@@ -41,6 +41,7 @@ export type SessionSummary = {
   thinkingLevel: SessionThinkingLevel;
   /** Per-session permission mode; `inherit` follows the global default (D115). */
   permissionMode: PermissionMode;
+  approvalReviewer?: SessionApprovalReviewer;
   /** Effective capability for this session's exact provider/model pair. */
   supportsReasoning?: boolean;
   /** Effective image-input capability for this session's exact model. */

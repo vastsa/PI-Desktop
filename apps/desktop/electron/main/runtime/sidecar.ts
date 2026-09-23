@@ -30,6 +30,7 @@ export type SidecarRuntimeDependencies = {
   logger: Logger;
   sendToRenderer: (channel: string, payload: unknown) => void;
   persistAgentEvent: (envelope: AgentEventEnvelope) => UiMessage | undefined;
+  onAgentEvent?: (envelope: AgentEventEnvelope) => void;
   activeTurns: Map<string, string>;
   approvedExecutionIdsBySession: Map<string, string>;
   claimedExecutionSessions: Map<string, string>;
@@ -43,6 +44,7 @@ export type SidecarRuntimeDependencies = {
    * in Agent Host or the renderer.
    */
   isStaleTerminalEvent: (envelope: AgentEventEnvelope) => boolean;
+  isStaleRuntimeActivity: (envelope: AgentEventEnvelope) => boolean;
   isQuitting: () => boolean;
   dataDir: string;
   agentExtensions: AgentExtensionBridge;
@@ -65,12 +67,14 @@ export function createSidecarRuntime({
   logger,
   sendToRenderer,
   persistAgentEvent,
+  onAgentEvent,
   activeTurns,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
   inflightCheckpointer,
   finishTurn,
   isStaleTerminalEvent,
+  isStaleRuntimeActivity,
   finishApprovedExecution,
   superviseRestart,
   isQuitting,
@@ -96,7 +100,8 @@ export function createSidecarRuntime({
     // A terminal event for a turn that no longer owns its session must not clear
     // the current turn's state in Agent Host or the renderer. Persistence is a
     // separate call, so dropping it here still archives it as history.
-    if (isStaleTerminalEvent(envelope)) return;
+    if (isStaleTerminalEvent(envelope) || isStaleRuntimeActivity(envelope)) return;
+    onAgentEvent?.(envelope);
     runtimeState.agentHostBridge?.ingest(envelope);
     sendToRenderer(IPC.event.agentMessage, envelope);
   };

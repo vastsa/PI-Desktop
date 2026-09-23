@@ -121,7 +121,7 @@ Params:
 
 ```ts
 type HandshakeParams = {
-  protocolVersion: 11
+  protocolVersion: 12
   client: "electron-main"
   clientVersion: string
   locale: string // default "en"
@@ -132,7 +132,7 @@ Result:
 
 ```ts
 type HandshakeResult = {
-  protocolVersion: 11
+  protocolVersion: 12
   host: "rust-host-core"
   hostVersion: string
   features: string[]
@@ -166,7 +166,11 @@ Rules:
    advertises `"a2a"`. A v10 host or client is rejected before the UI becomes
    interactive, so a mixed pair cannot call a missing domain.
 
-Protocol v11 is paired with host-core storage schema v16. Schema v12 had added
+10. Version 12 adds host-owned automated review, scoped grants, reviewer
+    configuration, and single-use admission for host-local execution. Mixed
+    v11/v12 host/client pairs fail the handshake before interactive use.
+
+Protocol v12 is paired with host-core storage schema v20. Schema v12 had added
 the A2A tables (`a2a_tasks`, `a2a_messages`, `a2a_artifacts`,
 `a2a_push_configs`) via `migrate_v11_to_v12`; `migrate_v12_to_v13` drops those
 tables, and v14 adds the plugin-session ownership sidecar and soft-delete
@@ -585,6 +589,25 @@ against a live host, and replaying one after the final row would be wrong.
 - `permissions.pending` (D374: open requests as Host state)
 - `permissions.listSessionGrants`
 - `permissions.clearSessionGrants`
+- `permissions.revokeSessionGrant` (one scoped grant)
+- `permissions.listReviewHistory` (`sessionId` → up to 100 recent, deduplicated
+  audit-derived outcomes; optional reviewer identity, latency, and separate usage)
+- `permissions.claimReview` (trusted reviewer only)
+- `permissions.resolveReview` (token/fingerprint-bound reviewer result)
+- `permissions.takeoverReview` (invalidate review and return to human approval)
+- `permissions.setReviewCapability` (trusted host declares reviewer availability;
+  absent capability routes pending requests to human approval)
+- `permissions.authorizeLocalTool` (trusted dispatcher requests admission for a
+  registered host-local action; successful admission returns `executionPermit`)
+- `permissions.consumeLocalPermit` (consume the permit with the original
+  session/turn/caller/tool-call/tool/arguments immediately before side effects)
+- `permissions.consumeExecutionPermit` (plugin/MCP dispatcher consumes the
+  `plugins.execute` notification's `executionId`/`permitToken` with the bound
+  session, turn, tool-call, tool, and arguments before executing the action)
+
+Local permits are process-local, single-use, expire after 120 seconds, and
+revalidate the current policy, scope, turn, and any supporting session grant.
+They are never model-visible permissions or an OS sandbox capability.
 
 ### Plugins
 - `plugins.list`
@@ -1060,6 +1083,8 @@ params: {
   argsPreview: unknown
   reason: string
   timeoutMs: 120000
+  reviewState?: "user" | "awaiting_review" | "reviewing"
+  scopeLabel?: string
 }
 ```
 
@@ -1074,6 +1099,17 @@ params: {
 ```
 
 Timeout behavior (**D005**): after 120s unresolved → deny.
+
+The review protocol is described in [permission review](23-permission-auto-review.md).
+Trusted host-runtime claims a pending review by request ID and receives its
+one-use review token, action fingerprint, and bounded action context. Settlement
+must present the same token/fingerprint and a validated structured result.
+Human takeover invalidates that token. Review fallback preserves the original
+expiry. These control RPCs are not available through the model's host proxy.
+`allow-session` now grants only the displayed caller/action scope, not all
+calls of the tool. Grant listing returns structured records; revocation takes
+the originating session and grant ID. Old clients must not fabricate tool-wide
+grant controls when scope support is unavailable.
 
 `permissions.pending` returns the open requests as Host state (D374/D375):
 `{ requests: PendingPermission[] }`, oldest first, optionally scoped by

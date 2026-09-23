@@ -122,6 +122,61 @@ fn v18_database_migrates_session_thinking_omit() {
     assert!(sql.contains("'omit'"), "{sql}");
 }
 
+#[test]
+fn v19_database_preserves_sessions_and_defaults_to_manual_review() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    {
+        let db = Database::open(&path).unwrap();
+        db.conn()
+            .execute_batch(
+                "INSERT INTO sessions (id, title, mode, permission_mode, created_at, updated_at)
+             VALUES ('existing', 'Retained data', 'agent', 'ask', 1, 1);
+             ALTER TABLE sessions DROP COLUMN approval_reviewer;
+             PRAGMA user_version = 19;",
+            )
+            .unwrap();
+    }
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    let (title, mode, reviewer): (String, String, String) = db
+        .conn()
+        .query_row(
+            "SELECT title, permission_mode, approval_reviewer FROM sessions WHERE id = 'existing'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        (title.as_str(), mode.as_str(), reviewer.as_str()),
+        ("Retained data", "ask", "inherit")
+    );
+    assert!(db
+        .conn()
+        .execute(
+            "UPDATE sessions SET approval_reviewer = 'unknown' WHERE id = 'existing'",
+            []
+        )
+        .is_err());
+    drop(db);
+    assert_readable_migration_backup(&path, 19);
+}
+
+#[test]
+fn newer_schema_is_never_downgraded() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    {
+        let db = Database::open(&path).unwrap();
+        db.conn()
+            .pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+            .unwrap();
+    }
+    assert!(Database::open(&path)
+        .err()
+        .is_some_and(|error| error.to_string().contains("newer than supported")));
+}
+
 fn schema_version(conn: &Connection) -> i64 {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap()

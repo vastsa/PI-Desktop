@@ -62,6 +62,7 @@ const TURN_ID = "turn-1";
 
 const VALUE_BY_FIELD = {
   executionId: "exec-1",
+  permitToken: "permit-1",
   sessionId: SESSION_ID,
   turnId: TURN_ID,
   toolCallId: "call-1",
@@ -80,9 +81,10 @@ const TOOL_NAME = VALUE_BY_FIELD.toolName;
  * decide that question itself. `activeTurn` seeds the session's live turn;
  * leaving it out models a session whose turn has already ended.
  */
-function fixture({ activeTurn } = {}) {
+function fixture({ activeTurn, denyPermit = false } = {}) {
   const calls = [];
   const invocations = [];
+  const mcpInvocations = [];
   let notification = null;
 
   const activeTurns = new Map();
@@ -100,6 +102,9 @@ function fixture({ activeTurn } = {}) {
     onExit() {},
     async call(method, params) {
       calls.push({ method, params });
+      if (method === "permissions.consumeExecutionPermit" && denyPermit) {
+        throw Object.assign(new Error("authorization stale"), { errorCode: "AUTHORIZATION_STALE" });
+      }
       return {};
     },
   };
@@ -127,7 +132,7 @@ function fixture({ activeTurn } = {}) {
       ],
       drainToasts: () => [],
     },
-    userMcp: { callTool: async () => null },
+    userMcp: { callTool: async (...args) => { mcpInvocations.push(args); return null; } },
     pluginActiveInProject: () => true,
     sendToRenderer() {},
     emitAgentEvent() {},
@@ -147,6 +152,7 @@ function fixture({ activeTurn } = {}) {
   return {
     calls,
     invocations,
+    mcpInvocations,
     notify: (method, params) => notification(method, params),
   };
 }
@@ -176,7 +182,7 @@ function assertRefused(resolved, expectedExecutionId) {
 }
 
 test("the host-core notification carries every field the receiver reads", () => {
-  for (const field of ["executionId", "sessionId", "toolCallId", "toolName", "args", "turnId", "mode"]) {
+  for (const field of ["executionId", "permitToken", "sessionId", "toolCallId", "toolName", "args", "turnId", "mode"]) {
     assert.ok(FIELDS.includes(field), `plugins.execute no longer sends ${field}`);
   }
   assert.equal(
@@ -201,6 +207,8 @@ test("the live turn's payload runs the plugin tool and is answered", async () =>
   assert.equal(resolved[0].params.executionId, payload.executionId);
 
   assert.equal(f.invocations.length, 1, "the plugin tool must be executed once");
+  assert.equal(f.calls[0].method, "permissions.consumeExecutionPermit");
+  assert.equal(f.calls[0].params.permitToken, payload.permitToken);
   assert.deepEqual(f.invocations[0].args, payload.args);
   // The turn identity travels with the call, so a plugin can scope the work it
   // started to the turn `session:turnEnded` will name.
@@ -265,5 +273,19 @@ test("an mcprefixed tool keeps its own path", async () => {
 
   assert.equal(resolved.length, 1);
   assert.equal(resolved[0].params.ok, true);
+  assert.equal(f.calls[0].method, "permissions.consumeExecutionPermit");
+  assert.equal(f.mcpInvocations.length, 1);
   assert.equal(f.invocations.length, 0, "an mcp tool never reaches the plugin runtime");
+});
+
+test("stale execution permits prevent plugin and MCP side effects", async () => {
+  for (const toolName of [TOOL_NAME, "mcp_demo"]) {
+    const f = fixture({ activeTurn: TURN_ID, denyPermit: true });
+    const resolved = await dispatch(f, { ...fullPayload(), toolName });
+    assert.equal(f.calls[0].method, "permissions.consumeExecutionPermit");
+    assert.equal(resolved.length, 1);
+    assert.equal(resolved[0].params.ok, false);
+    assert.equal(f.invocations.length, 0);
+    assert.equal(f.mcpInvocations.length, 0);
+  }
 });

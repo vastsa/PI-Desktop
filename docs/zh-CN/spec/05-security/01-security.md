@@ -9,6 +9,12 @@
 
 ## 1. 安全目标
 
+Automatic permission review and scoped grants follow
+[permission review](../03-runtime/23-permission-auto-review.md). Host-core is
+the final authority; review cannot override hard denial or grant unrelated
+actions. Review is not an OS sandbox. Bounded model evidence and tool-free
+review retain human approval whenever automated review is uncertain or fails.
+
 1.渲染器绝不能获得不受限制的系统访问
 2. 保护提供商 API 密钥
 3. 限制代理工具执行的影响范围

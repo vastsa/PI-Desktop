@@ -505,6 +505,9 @@ describe("AgentHost approvals and inputs", () => {
     await expect(
       host.respondApproval(approver, { approvalId: "req_1", decision: "allow-session", context: { requestId: "r" } }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      host.respondApproval(owner, { approvalId: "req_1", decision: "allow-session", context: { requestId: "r-owner" } }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
     const result = await host.respondApproval(approver, { approvalId: "req_1", decision: "allow-once", context: { requestId: "r" } });
     expect(result).toMatchObject({ status: "resolved", decision: "allow-once", alreadyResolved: false });
     expect(approvals.tool).toEqual([{ requestId: "req_1", decision: "allow-once" }]);

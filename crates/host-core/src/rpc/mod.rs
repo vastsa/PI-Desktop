@@ -1,6 +1,12 @@
 mod config_sync_rpc;
+mod permission_local;
+mod permission_policy;
+mod permission_review;
+mod permission_review_history;
 mod scheduled_rpc;
 mod scheduled_tools;
+
+use permission_policy::{tool_grant_scope, trusted_plugin_tool_policy};
 
 use std::io::{self, BufRead, BufReader as StdBufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -9,6 +15,7 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::{mpsc, oneshot, Mutex, Semaphore};
@@ -17,6 +24,8 @@ use crate::agent_capabilities::CapabilityLevel;
 use crate::artifacts;
 use crate::audit;
 use crate::notifications;
+use crate::permissions::grants;
+use crate::permissions::permits::ExecutionPermit;
 use crate::permissions::{PermissionDecision, PermissionEvaluationParams, PermissionManager};
 use crate::plans;
 use crate::plugin_sessions;
@@ -653,6 +662,14 @@ fn prompt_enhancement_template_error(field: &str, value: &Value) -> Option<Strin
 
 fn normalize_settings_value(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {
+        if let Some(binding) = object.get_mut("autoReview").and_then(Value::as_object_mut) {
+            if binding
+                .get("policyPrompt")
+                .is_some_and(|policy| !valid_review_policy(policy))
+            {
+                binding.remove("policyPrompt");
+            }
+        }
         object.remove("planApprovalPermissionMode");
         if object.get("defaultMode").and_then(Value::as_str) == Some("chat") {
             object.insert("defaultMode".into(), Value::String("plan".into()));
@@ -745,6 +762,14 @@ fn merge_settings_value(stored: Option<Value>, incoming: Value) -> Value {
     Value::Object(merged)
 }
 
+const MAX_REVIEW_POLICY_CHARS: usize = 8_000;
+
+fn valid_review_policy(value: &Value) -> bool {
+    value.as_str().is_some_and(|text| {
+        !text.trim().is_empty() && text.chars().count() <= MAX_REVIEW_POLICY_CHARS
+    })
+}
+
 fn effective_command_shell_id(settings: Option<&Value>) -> Option<String> {
     let configured = settings
         .and_then(|value| value.get("defaultCommandShell"))
@@ -758,6 +783,63 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
     let Some(object) = value.as_object() else {
         return Ok(());
     };
+    if object
+        .get("approvalReviewer")
+        .is_some_and(|value| !matches!(value.as_str(), Some("user" | "auto_review")))
+    {
+        return Err(rpc_err(
+            1002,
+            "approvalReviewer must be user or auto_review",
+            "INVALID_PARAMS",
+        ));
+    }
+    if let Some(review) = object.get("autoReview") {
+        let binding = review
+            .as_object()
+            .ok_or_else(|| rpc_err(1002, "autoReview must be an object", "INVALID_PARAMS"))?;
+        if binding
+            .get("policyPrompt")
+            .is_some_and(|policy| !valid_review_policy(policy))
+        {
+            return Err(rpc_err(
+                1002,
+                "autoReview.policyPrompt must be a nonblank string of at most 8000 characters",
+                "INVALID_PARAMS",
+            ));
+        }
+        for key in ["providerId", "modelId"] {
+            if binding.get(key).is_some_and(|value| {
+                !value
+                    .as_str()
+                    .is_some_and(|s| !s.trim().is_empty() && s.len() <= 256)
+            }) {
+                return Err(rpc_err(
+                    1002,
+                    format!("autoReview.{key} must be a nonempty string"),
+                    "INVALID_PARAMS",
+                ));
+            }
+        }
+        if binding.get("providerId").is_some() != binding.get("modelId").is_some() {
+            return Err(rpc_err(
+                1002,
+                "autoReview providerId and modelId must be configured together",
+                "INVALID_PARAMS",
+            ));
+        }
+        if binding.get("thinkingLevel").is_some_and(|value| {
+            !matches!(
+                value.as_str(),
+                Some("off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max")
+            )
+        }) {
+            return Err(rpc_err(
+                1002,
+                "invalid autoReview.thinkingLevel",
+                "INVALID_PARAMS",
+            ));
+        }
+    }
     if let Some(policy) = object.get("networkPolicy").filter(|v| !v.is_null()) {
         let Some(policy) = policy.as_object() else {
             return Err(rpc_err(
@@ -1264,19 +1346,64 @@ async fn execute_plugin_tool(
     p: &ToolsExecuteParams,
     timeout_ms: u64,
     session_mode: &str,
+    authorization_generation: crate::permissions::PermissionGeneration,
+    grant_scope: Option<&(String, String, String)>,
+    actor_id: &str,
+    requires_grant: bool,
 ) -> tools::ToolsExecuteResult {
     let started = std::time::Instant::now();
     let execution_id = uuid::Uuid::new_v4().to_string();
     let (otx, orx) = tokio::sync::oneshot::channel::<Value>();
-    {
+    let permit_token = {
         let mut st = state.lock().await;
+        if st.plugin_execution_permits.len() >= crate::permissions::permits::MAX_OUTSTANDING_PERMITS
+        {
+            return tools::ToolsExecuteResult {
+                tool_call_id: p.tool_call_id.clone(),
+                ok: false,
+                is_error: Some(true),
+                content: json!({"error": "too many outstanding desktop tool permits", "code": "AGENT_BUSY"}),
+                duration_ms: 0,
+                denied: Some(true),
+                error_code: Some("AGENT_BUSY".into()),
+                command_shell_id: None,
+            };
+        }
+        let Some((_, scope_fingerprint, _)) = grant_scope else {
+            return tools::ToolsExecuteResult {
+                tool_call_id: p.tool_call_id.clone(),
+                ok: false,
+                is_error: Some(true),
+                content: json!({"error": "desktop tool configuration is unavailable", "code": "TOOL_CONFIG_REQUIRED"}),
+                duration_ms: 0,
+                denied: Some(true),
+                error_code: Some("TOOL_CONFIG_REQUIRED".into()),
+                command_shell_id: None,
+            };
+        };
+        let permit = ExecutionPermit::new(
+            &p.session_id,
+            p.turn_id.as_deref(),
+            &p.tool_call_id,
+            &p.tool_name,
+            &p.args,
+            authorization_generation,
+            scope_fingerprint,
+            actor_id,
+            requires_grant,
+        );
+        let token = permit.token.clone();
+        st.plugin_execution_permits
+            .insert(execution_id.clone(), permit);
         st.plugin_execs.insert(execution_id.clone(), otx);
-    }
+        token
+    };
     emit_notification(
         tx,
         "plugins.execute",
         json!({
             "executionId": execution_id,
+            "permitToken": permit_token,
             "sessionId": p.session_id,
             "turnId": p.turn_id,
             "toolCallId": p.tool_call_id,
@@ -1286,7 +1413,6 @@ async fn execute_plugin_tool(
             // forbids a conflicting sidecar mode from authorizing a tool
             // (ADR 0211).
             "mode": session_mode,
-            "planSafeActions": p.plan_safe_actions,
         }),
     )
     .await;
@@ -1295,6 +1421,11 @@ async fn execute_plugin_tool(
     let duration_ms = started.elapsed().as_millis() as u64;
     match outcome {
         Ok(Ok(resp)) => {
+            state
+                .lock()
+                .await
+                .plugin_execution_permits
+                .remove(&execution_id);
             let ok = resp.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let content = resp.get("content").cloned().unwrap_or(Value::Null);
             let error_code = resp
@@ -1319,6 +1450,7 @@ async fn execute_plugin_tool(
         _ => {
             let mut st = state.lock().await;
             st.plugin_execs.remove(&execution_id);
+            st.plugin_execution_permits.remove(&execution_id);
             tools::ToolsExecuteResult {
                 tool_call_id: p.tool_call_id.clone(),
                 ok: false,
@@ -1975,10 +2107,68 @@ async fn handle_request(
             {
                 gate_default_command_shell_setting(&st)?;
             }
+            let previous_mode = stored
+                .as_ref()
+                .and_then(|value| value.get("defaultPermissionMode"))
+                .and_then(Value::as_str)
+                .unwrap_or("ask")
+                .to_string();
+            let previous_reviewer = stored
+                .as_ref()
+                .and_then(|value| value.get("approvalReviewer"))
+                .and_then(Value::as_str)
+                .unwrap_or("user")
+                .to_string();
+            let previous_binding = stored
+                .as_ref()
+                .and_then(|value| value.get("autoReview"))
+                .cloned();
             let settings = normalize_settings_value(merge_settings_value(stored, params));
+            let mode_changed = settings
+                .get("defaultPermissionMode")
+                .and_then(Value::as_str)
+                .unwrap_or("ask")
+                != previous_mode;
+            let reviewer_changed = settings
+                .get("approvalReviewer")
+                .and_then(Value::as_str)
+                .unwrap_or("user")
+                != previous_reviewer;
+            let binding_changed = settings.get("autoReview").cloned() != previous_binding;
+            let policy_changed = settings
+                .get("autoReview")
+                .and_then(|binding| binding.get("policyPrompt"))
+                != previous_binding
+                    .as_ref()
+                    .and_then(|binding| binding.get("policyPrompt"));
+            let affected_sessions = if mode_changed || reviewer_changed || binding_changed {
+                sessions::list_sessions(&st.db)
+                    .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?
+                    .into_iter()
+                    .filter(|session| {
+                        policy_changed
+                            || (mode_changed && session.permission_mode == "inherit")
+                            || (reviewer_changed && session.approval_reviewer == "inherit")
+                            || (binding_changed
+                                && (session.approval_reviewer == "auto_review"
+                                    || (session.approval_reviewer == "inherit"
+                                        && settings
+                                            .get("approvalReviewer")
+                                            .and_then(Value::as_str)
+                                            == Some("auto_review"))))
+                    })
+                    .map(|session| session.id)
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
             st.db
                 .set_setting("app", &settings)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            for session_id in affected_sessions {
+                st.session_grants.clear(&session_id);
+                st.permissions.invalidate_session(&session_id);
+            }
             // Re-pin the marketplace channel in memory. Fetching here would hold
             // the state lock behind a remote timeout, so the renderer triggers
             // `market.refresh` after switching channels.
@@ -2330,8 +2520,20 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "mode required", "INVALID_PARAMS"))?;
             let thinking_level = thinking_level_param(&params)?;
-            let st = state.lock().await;
-            let session = sessions::configure_session_with_thinking(
+            let reviewer = params.get("approvalReviewer").and_then(Value::as_str);
+            if params.get("approvalReviewer").is_some()
+                && !matches!(reviewer, Some("inherit" | "user" | "auto_review"))
+            {
+                return Err(rpc_err(1002, "invalid approvalReviewer", "INVALID_PARAMS"));
+            }
+            let mut st = state.lock().await;
+            let previous_permission_mode = sessions::session_permission_mode(&st.db, id)
+                .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
+            let previous_mode = sessions::session_mode(&st.db, id)
+                .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
+            let previous_reviewer = sessions::session_approval_reviewer(&st.db, id)
+                .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
+            sessions::configure_session_with_reviewer(
                 &st.db,
                 id,
                 mode,
@@ -2339,6 +2541,7 @@ async fn handle_request(
                 params.get("modelId").and_then(|v| v.as_str()),
                 thinking_level.as_deref(),
                 params.get("permissionMode").and_then(|v| v.as_str()),
+                reviewer,
             )
             .map_err(|e| {
                 let message = e.to_string();
@@ -2349,17 +2552,40 @@ async fn handle_request(
                 }
             })?
             .ok_or_else(|| rpc_err(1007, "session not found", "NOT_FOUND"))?;
-            Ok(json!({ "session": session }))
+            let reviewer_changed =
+                reviewer.is_some_and(|value| Some(value) != previous_reviewer.as_deref());
+            if reviewer_changed
+                || previous_mode.as_deref() != Some(sessions::normalize_mode(Some(mode)).as_str())
+                || params
+                    .get("permissionMode")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| Some(value) != previous_permission_mode.as_deref())
+            {
+                st.session_grants.clear(id);
+                st.permissions.invalidate_session(id);
+            }
+            let session = sessions::get_session(&st.db, id)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                .ok_or_else(|| rpc_err(1007, "session not found", "NOT_FOUND"))?;
+            Ok(json!({ "session": session.summary }))
         }
         "session.delete" => {
             let id = params
                 .get("id")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
-            let st = state.lock().await;
+            let mut st = state.lock().await;
             let ok = sessions::delete_session(&st.db, id)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             if ok {
+                st.permissions.invalidate_session(id);
+                st.session_grants.clear(id);
+                st.plugin_execution_permits
+                    .retain(|_, permit| permit.session_id != id);
+                st.local_execution_permits
+                    .retain(|_, permit| permit.session_id != id);
+                st.local_permission_calls
+                    .retain(|(session, _), _| session != id);
                 drop_session_side_data(&st, id);
             }
             Ok(json!({ "ok": ok }))
@@ -2741,7 +2967,17 @@ async fn handle_request(
                 .get("status")
                 .and_then(|v| v.as_str())
                 .unwrap_or("completed");
-            let st = state.lock().await;
+            let mut st = state.lock().await;
+            let session_id: Option<String> = st
+                .db
+                .conn()
+                .query_row(
+                    "SELECT session_id FROM turns WHERE id = ?1",
+                    rusqlite::params![turn_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
             let result = sessions::end_turn_settling(
                 &st.db,
                 turn_id,
@@ -2758,6 +2994,17 @@ async fn handle_request(
                     .unwrap_or(false),
             )
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            if result.updated {
+                if let Some(session_id) = session_id.as_deref() {
+                    st.permissions.invalidate_session(session_id);
+                    st.plugin_execution_permits
+                        .retain(|_, permit| permit.session_id != session_id);
+                    st.local_execution_permits
+                        .retain(|_, permit| permit.session_id != session_id);
+                    st.local_permission_calls
+                        .retain(|(session, _), _| session != session_id);
+                }
+            }
             let mut response = json!({ "ok": result.updated });
             if let Some(notification) = result.notification {
                 response["notification"] = json!(notification);
@@ -3157,6 +3404,17 @@ async fn handle_request(
                     )
                     .map_err(plan_rpc_err)?
             };
+            if resolution.status == plans::STATUS_APPROVED {
+                let mut st = state.lock().await;
+                st.session_grants.clear(session_id);
+                st.permissions.invalidate_session(session_id);
+                st.plugin_execution_permits
+                    .retain(|_, permit| permit.session_id != session_id);
+                st.local_execution_permits
+                    .retain(|_, permit| permit.session_id != session_id);
+                st.local_permission_calls
+                    .retain(|(session, _), _| session != session_id);
+            }
             let state_name = if resolution.status == plans::STATUS_APPROVED {
                 "inactive"
             } else {
@@ -3400,6 +3658,10 @@ async fn handle_request(
                     pending_rx,
                     request_opt,
                     permission_shell_id,
+                    grant_scope,
+                    actor_id,
+                    grant_reused,
+                    authorization_generation,
                 ) = {
                     let mut st = state.lock().await;
                     if st.shutting_down {
@@ -3412,32 +3674,8 @@ async fn handle_request(
                     // (ADR 0089), which resolves the call under that mode
                     // instead; external-path gating and the contract modes'
                     // hard deny are untouched by the override.
-                    let session_pm = sessions::session_permission_mode(&st.db, &p.session_id)
-                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
-                        .filter(|m| m != "inherit");
-                    let effective_pm = match session_pm {
-                        Some(m) => m,
-                        None => st
-                            .db
-                            .get_setting("app")
-                            .ok()
-                            .flatten()
-                            .and_then(|s| {
-                                s.get("defaultPermissionMode")
-                                    .and_then(|v| v.as_str())
-                                    .map(str::to_string)
-                            })
-                            .filter(|m| sessions::is_valid_permission_mode(m) && m != "inherit")
-                            .unwrap_or_else(|| "ask".to_string()),
-                    };
-                    let effective_pm = match p.permission_scope.as_deref() {
-                        Some(scope)
-                            if sessions::is_valid_permission_mode(scope) && scope != "inherit" =>
-                        {
-                            scope.to_string()
-                        }
-                        _ => effective_pm,
-                    };
+                    let effective_pm = permission_policy::effective_permission_mode(
+                        &st, &p.session_id, p.permission_scope.as_deref())?;
                     // Resolve the tool root from the persisted session instead of
                     // the mutable global workspace. This keeps background turns
                     // isolated when the renderer switches between project tabs.
@@ -3445,26 +3683,50 @@ async fn handle_request(
                     // known sessions.
                     let ws = resolve_tool_workspace_for_call(&st, &p.session_id, &p.args)?;
                     let scratch = scratch::session_dir(&st.data_dir, &p.session_id);
+                    if permission_review::sensitive_native_target(
+                        &p.tool_name, &p.args, ws.as_deref(), scratch.as_deref(),
+                    ) {
+                        return Ok(json!({
+                            "toolCallId": p.tool_call_id, "ok": false, "isError": true,
+                            "content": { "error": "path is blocked by the workspace security denylist", "code": "WORKSPACE_PATH_DENIED" },
+                            "durationMs": call_started.elapsed().as_millis() as u64,
+                            "denied": true, "errorCode": "WORKSPACE_PATH_DENIED",
+                        }));
+                    }
                     let external_path_permission = requires_external_path_permission(
                         ws.as_deref(),
                         scratch.as_deref(),
                         &p.tool_name,
                         &p.args,
                     );
+                    let actor_id = p.actor_id.as_deref().filter(|id| !id.trim().is_empty()).unwrap_or("agent").to_string();
+                    let (trusted_risk, trusted_plan_actions) = trusted_plugin_tool_policy(&st, &p.tool_name);
+                    let plan_actions = trusted_plan_actions.as_deref().filter(|actions|
+                        p.args.get("action").and_then(Value::as_str)
+                            .is_some_and(|action| actions.iter().any(|allowed| allowed == action)));
+                    let grant_scope = tool_grant_scope(
+                        &mut st, &p.tool_name, &p.args, ws.as_deref(), scratch.as_deref(), command_shell_id.as_deref(),
+                    );
+                    let reviewer = permission_policy::effective_reviewer(&st, &p.session_id)?;
                     let mut auto = st
                         .permissions
                         .evaluate_auto_with_permission_mode_and_risk_and_path(
                             PermissionEvaluationParams {
-                                session_id: &p.session_id,
                                 tool_name: &p.tool_name,
                                 mode: &durable_mode,
                                 permission_mode: &effective_pm,
-                                session_grants: &st.session_grants,
-                                declared_risk: p.declared_risk.as_deref(),
+                                declared_risk: trusted_risk.as_deref(),
                                 requires_external_path_permission: external_path_permission,
-                                plan_safe_actions: p.plan_safe_actions.as_deref(),
+                                plan_safe_actions: plan_actions,
                             },
                         );
+                    let grant_reused = auto.is_none() && grant_scope.as_ref().is_some_and(|(_, fingerprint, _)|
+                        st.session_grants.allows(&p.session_id, &actor_id, &p.tool_name, fingerprint)
+                    );
+                    if grant_reused {
+                        auto = Some(PermissionDecision::AllowOnce);
+                    }
+                    let authorization_generation = st.permissions.generation(&p.session_id);
                     // Write/Edit targeting the session scratch dir never touch
                     // the user's project — skip the prompt (D114). The lexical
                     // pre-check only decides prompting; execution still goes
@@ -3493,6 +3755,10 @@ async fn handle_request(
                             None,
                             None,
                             command_shell_id.clone(),
+                            grant_scope,
+                            actor_id,
+                            grant_reused,
+                            authorization_generation,
                         )
                     } else {
                         let reason = if external_path_permission {
@@ -3510,6 +3776,8 @@ async fn handle_request(
                                 _ => "High-risk tool requires approval",
                             }
                         };
+                        let user_message_id = permission_review::originating_user_message_id(&st, &p.session_id, p.turn_id.as_deref());
+                        let can_review = reviewer == "auto_review" && st.review_executor_available;
                         let (req, rx) = st.permissions.create_request_with_risk_and_shell(
                             crate::permissions::PermissionRequestParams {
                                 session_id: &p.session_id,
@@ -3517,10 +3785,24 @@ async fn handle_request(
                                 tool_name: &p.tool_name,
                                 args_preview: p.args.clone(),
                                 reason,
-                                declared_risk: p.declared_risk.as_deref(),
+                                declared_risk: trusted_risk.as_deref(),
                                 command_shell_id: command_shell_id.as_deref(),
+                                review_state: if can_review { "awaiting_review" } else { "user" },
+                                scope_label: grant_scope.as_ref().map(|(_, _, label)| label.as_str()),
+                                turn_id: p.turn_id.as_deref(),
+                                user_message_id: user_message_id.as_deref(),
+                                permission_mode: &effective_pm,
+                                workspace_path: ws.as_deref(),
                             },
                         );
+                        let action_binding = grants::fingerprint(&json!({
+                            "sessionId": p.session_id, "turnId": p.turn_id,
+                            "actorId": actor_id, "toolCallId": p.tool_call_id,
+                            "toolName": p.tool_name, "args": p.args, "shell": command_shell_id,
+                            "scope": grant_scope.as_ref().map(|(_, fingerprint, _)| fingerprint),
+                        }));
+                        st.permissions.bind_action(&req.request_id, &action_binding);
+                        st.permissions.bind_actor(&req.request_id, &actor_id);
                         st.register_pending_permission(
                             &req.request_id,
                             &req.session_id,
@@ -3534,6 +3816,10 @@ async fn handle_request(
                             Some(rx),
                             Some(req),
                             command_shell_id.clone(),
+                            grant_scope,
+                            actor_id,
+                            grant_reused,
+                            authorization_generation,
                         )
                     }
                 };
@@ -3546,6 +3832,11 @@ async fn handle_request(
                 }
                 if !cancelled {
                     if let Some(req) = request_opt {
+                        let timestamps = {
+                            let st = state.lock().await;
+                            st.permissions.pending_requests(Some(&req.session_id))
+                                .into_iter().find(|pending| pending.request.request_id == req.request_id)
+                        };
                         let mut permission_params = json!({
                             "requestId": req.request_id,
                             "sessionId": req.session_id,
@@ -3556,6 +3847,14 @@ async fn handle_request(
                             "reason": req.reason,
                             "timeoutMs": req.timeout_ms
                         });
+                        if let Some(pending) = timestamps {
+                            permission_params["createdAt"] = json!(pending.created_at);
+                            permission_params["expiresAt"] = json!(pending.expires_at);
+                        }
+                        permission_params["reviewState"] = json!(req.review_state);
+                        if let Some(label) = req.scope_label.as_ref() {
+                            permission_params["scopeLabel"] = json!(label);
+                        }
                         if let Some(shell_id) = req.command_shell_id.as_deref() {
                             permission_params["commandShellId"] = json!(shell_id);
                         }
@@ -3666,10 +3965,9 @@ async fn handle_request(
 
                 if matches!(final_decision, PermissionDecision::AllowSession) {
                     let mut st = state.lock().await;
-                    st.session_grants
-                        .entry(p.session_id.clone())
-                        .or_default()
-                        .push(p.tool_name.clone());
+                    if let Some((scope, fingerprint, label)) = grant_scope.as_ref() {
+                        st.session_grants.grant(&p.session_id, &actor_id, &p.tool_name, scope, fingerprint, label);
+                    }
                 }
 
                 // Admission follows permission so approval waits do not occupy
@@ -3706,6 +4004,36 @@ async fn handle_request(
                         return Ok(result);
                     }
                 };
+
+                let stale_authorization = {
+                    let mut st = state.lock().await;
+                    let current_workspace = resolve_tool_workspace_for_call(&st, &p.session_id, &p.args).ok().flatten();
+                    let current_scratch = scratch::session_dir(&st.data_dir, &p.session_id);
+                    let current_shell = if p.tool_name == "Bash" {
+                        command_shell_catalog(&st).ok().and_then(|catalog| catalog.effective.map(|shell| shell.id))
+                    } else { permission_shell_id.clone() };
+                    let current_scope = tool_grant_scope(&mut st, &p.tool_name, &p.args,
+                        current_workspace.as_deref(), current_scratch.as_deref(), current_shell.as_deref());
+                    st.shutting_down || st.permissions.generation(&p.session_id) != authorization_generation
+                        || p.turn_id.as_deref().is_some_and(|turn| !permission_review::running_turn(&st, &p.session_id, turn))
+                        || (grant_scope.is_some() && current_scope.as_ref().map(|(_, fingerprint, _)| fingerprint)
+                            != grant_scope.as_ref().map(|(_, fingerprint, _)| fingerprint))
+                        || ((grant_reused || matches!(final_decision, PermissionDecision::AllowSession))
+                            && grant_scope.as_ref().is_some_and(|(_, fingerprint, _)|
+                                !st.session_grants.allows(&p.session_id, &actor_id, &p.tool_name, fingerprint)))
+                };
+                if stale_authorization {
+                    let st = state.lock().await;
+                    if let Err(error) = audit::append(&st.db, "tool_denied", Some(&p.session_id), json!({
+                        "toolName": p.tool_name, "toolCallId": p.tool_call_id, "reason": "AUTHORIZATION_STALE",
+                    })) { tracing::warn!(%error, "stale permission audit failed"); }
+                    return Ok(json!({
+                        "toolCallId": p.tool_call_id, "ok": false, "isError": true,
+                        "content": { "error": "authorization changed before execution", "code": "AUTHORIZATION_STALE" },
+                        "durationMs": call_started.elapsed().as_millis() as u64,
+                        "denied": true, "errorCode": "AUTHORIZATION_STALE",
+                    }));
+                }
 
                 let ws_path = workspace_path.map(PathBuf::from);
                 let (data_dir, hashline_store) = {
@@ -3798,6 +4126,10 @@ async fn handle_request(
                         &p,
                         tools::desktop_dispatch_timeout_ms(p.timeout_ms),
                         &durable_mode,
+                        authorization_generation,
+                        grant_scope.as_ref(),
+                        &actor_id,
+                        grant_reused || matches!(final_decision, PermissionDecision::AllowSession),
                     )
                     .await
                 } else if scheduled_tools::recognizes(&p.tool_name) {
@@ -3937,18 +4269,14 @@ async fn handle_request(
                 .get("toolName")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let declared_risk = params.get("declaredRisk").and_then(|v| v.as_str());
-            let plan_safe_actions: Option<Vec<String>> = params
-                .get("planSafeActions")
-                .and_then(|v| v.as_array())
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(|item| item.as_str().map(str::to_string))
-                        .collect()
-                })
-                .filter(|items: &Vec<String>| !items.is_empty());
             let st = state.lock().await;
+            let (trusted_risk, trusted_actions) = trusted_plugin_tool_policy(&st, tool_name);
+            let args = params.get("args").cloned().unwrap_or_else(|| json!({}));
+            let plan_safe_actions = trusted_actions.as_deref().filter(|actions| {
+                args.get("action")
+                    .and_then(Value::as_str)
+                    .is_some_and(|action| actions.iter().any(|allowed| allowed == action))
+            });
             let Some(mode) = sessions::session_mode(&st.db, session_id)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
             else {
@@ -3974,7 +4302,6 @@ async fn handle_request(
                         })
                 })
                 .unwrap_or_else(|| "ask".into());
-            let args = params.get("args").cloned().unwrap_or_else(|| json!({}));
             let workspace_path = resolve_tool_workspace_for_call(&st, session_id, &args)?;
             let scratch_path = scratch::session_dir(&st.data_dir, session_id);
             let external_path_permission = requires_external_path_permission(
@@ -3986,21 +4313,21 @@ async fn handle_request(
             let decision = st
                 .permissions
                 .evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
-                    session_id,
                     tool_name,
                     mode: &mode,
                     permission_mode: &effective_pm,
-                    session_grants: &st.session_grants,
-                    declared_risk,
+                    declared_risk: trusted_risk.as_deref(),
                     requires_external_path_permission: external_path_permission,
-                    plan_safe_actions: plan_safe_actions.as_deref(),
+                    plan_safe_actions,
                 });
             Ok(json!({
                 "decision": decision,
-                "risk": PermissionManager::tool_risk_with_declared(tool_name, declared_risk),
+                "risk": PermissionManager::tool_risk_with_declared(tool_name, trusted_risk.as_deref()),
                 "externalPathPermission": external_path_permission
             }))
         }
+        "permissions.authorizeLocalTool" => permission_local::authorize(&state, &params, &tx).await,
+        "permissions.consumeLocalPermit" => permission_local::consume(&state, &params).await,
         "permissions.resolve" => {
             let request_id = params
                 .get("requestId")
@@ -4016,6 +4343,13 @@ async fn handle_request(
                 _ => PermissionDecision::Deny,
             };
             let mut st = state.lock().await;
+            if matches!(st.permissions.review_state(request_id), Some(state) if state != "user") {
+                return Err(rpc_err(
+                    1008,
+                    "take over review before manual approval",
+                    "REVIEW_IN_PROGRESS",
+                ));
+            }
             st.resolve_permission(request_id, decision)
                 .map_err(|code| {
                     let c = if code == "NOT_FOUND" { 1007 } else { 1000 };
@@ -4023,6 +4357,10 @@ async fn handle_request(
                 })?;
             Ok(json!({ "ok": true }))
         }
+        "permissions.claimReview" => permission_review::claim(&state, &params, &tx).await,
+        "permissions.resolveReview" => permission_review::resolve(&state, &params, &tx).await,
+        "permissions.listReviewHistory" => permission_review_history::list(&state, &params).await,
+        "permissions.takeoverReview" => permission_review::takeover(&state, &params, &tx).await,
         "permissions.listSessionGrants" => {
             let session_id = params
                 .get("sessionId")
@@ -4030,7 +4368,7 @@ async fn handle_request(
                 .unwrap_or("");
             let st = state.lock().await;
             Ok(json!({
-                "grants": st.session_grants.get(session_id).cloned().unwrap_or_default()
+                "grants": st.session_grants.list(session_id)
             }))
         }
         "permissions.clearSessionGrants" => {
@@ -4039,8 +4377,20 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             let mut st = state.lock().await;
-            st.session_grants.remove(session_id);
+            st.session_grants.clear(session_id);
             Ok(json!({ "ok": true }))
+        }
+        "permissions.revokeSessionGrant" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let grant_id = params
+                .get("grantId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "grantId required", "INVALID_PARAMS"))?;
+            let mut st = state.lock().await;
+            Ok(json!({ "revoked": st.session_grants.revoke(session_id, grant_id) }))
         }
         "permissions.pending" => {
             // Pending requests are Host state (D374/D375): a client that
@@ -4049,6 +4399,32 @@ async fn handle_request(
             let session_id = params.get("sessionId").and_then(|v| v.as_str());
             let st = state.lock().await;
             Ok(json!({ "requests": st.permissions.pending_requests(session_id) }))
+        }
+        "permissions.setReviewCapability" => {
+            let available = params
+                .get("available")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| rpc_err(1002, "available required", "INVALID_PARAMS"))?;
+            let mut st = state.lock().await;
+            let mut fallback_ids = Vec::new();
+            if st.review_executor_available != available {
+                st.review_executor_available = available;
+                if !available {
+                    fallback_ids = st.permissions.fallback_reviews();
+                }
+            }
+            for request_id in fallback_ids {
+                emit_notification(
+                    &tx,
+                    "permissions.reviewUpdated",
+                    json!({
+                        "requestId": request_id, "reviewState": "user",
+                        "reason": "Reviewer unavailable",
+                    }),
+                )
+                .await;
+            }
+            Ok(json!({ "ok": true }))
         }
 
         "plugins.setLocale" => {
@@ -4067,18 +4443,103 @@ async fn handle_request(
             let st = state.lock().await;
             Ok(json!({ "plugins": st.plugins.list() }))
         }
+        "permissions.consumeExecutionPermit" => {
+            let execution_id = params
+                .get("executionId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "executionId required", "INVALID_PARAMS"))?;
+            let token = params
+                .get("permitToken")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "permitToken required", "INVALID_PARAMS"))?;
+            let mut st = state.lock().await;
+            let mut permit = st
+                .plugin_execution_permits
+                .remove(execution_id)
+                .ok_or_else(|| {
+                    rpc_err(1008, "execution permit unavailable", "AUTHORIZATION_STALE")
+                })?;
+            let current_workspace =
+                resolve_tool_workspace_for_call(&st, &permit.session_id, &params["args"])
+                    .ok()
+                    .flatten();
+            let current_scratch = scratch::session_dir(&st.data_dir, &permit.session_id);
+            let current_scope = tool_grant_scope(
+                &mut st,
+                &permit.tool_name,
+                &params["args"],
+                current_workspace.as_deref(),
+                current_scratch.as_deref(),
+                None,
+            );
+            let grant_active = current_scope.as_ref().is_some_and(|(_, fingerprint, _)| {
+                st.session_grants.allows(
+                    &permit.session_id,
+                    &permit.actor_id,
+                    &permit.tool_name,
+                    fingerprint,
+                )
+            });
+            let running = permit
+                .turn_id
+                .as_deref()
+                .is_some_and(|turn| permission_review::running_turn(&st, &permit.session_id, turn));
+            let valid = st.plugin_execs.contains_key(execution_id)
+                && !st.shutting_down
+                && permit.matches(
+                    token,
+                    params
+                        .get("sessionId")
+                        .and_then(Value::as_str)
+                        .unwrap_or(""),
+                    params.get("turnId").and_then(Value::as_str),
+                    params
+                        .get("toolCallId")
+                        .and_then(Value::as_str)
+                        .unwrap_or(""),
+                    params.get("toolName").and_then(Value::as_str).unwrap_or(""),
+                    &params["args"],
+                    st.permissions.generation(&permit.session_id),
+                    current_scope
+                        .as_ref()
+                        .map(|(_, fingerprint, _)| fingerprint.as_str()),
+                    grant_active,
+                    running,
+                );
+            if !valid {
+                return Err(rpc_err(
+                    1008,
+                    "execution authorization changed",
+                    "AUTHORIZATION_STALE",
+                ));
+            }
+            permit.consumed = true;
+            st.plugin_execution_permits
+                .insert(execution_id.to_string(), permit);
+            Ok(json!({ "ok": true }))
+        }
         "plugins.resolveExecution" => {
             let execution_id = params
                 .get("executionId")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "executionId required", "INVALID_PARAMS"))?;
-            let sender = {
+            let (sender, consumed) = {
                 let mut st = state.lock().await;
-                st.plugin_execs.remove(execution_id)
+                let consumed = st
+                    .plugin_execution_permits
+                    .remove(execution_id)
+                    .is_some_and(|permit| permit.consumed);
+                (st.plugin_execs.remove(execution_id), consumed)
             };
             match sender {
                 Some(sender) => {
-                    let _ = sender.send(params.clone());
+                    let response = if consumed {
+                        params.clone()
+                    } else {
+                        json!({"ok": false, "errorCode": "AUTHORIZATION_STALE",
+                            "content": {"error": "execution permit was not consumed before dispatch"}})
+                    };
+                    let _ = sender.send(response);
                     Ok(json!({ "ok": true }))
                 }
                 None => Err(rpc_err(1003, "unknown executionId", "NOT_FOUND")),
@@ -6276,6 +6737,147 @@ mod tests {
         );
         assert!(catalog["choices"].is_array());
         assert!(catalog["effective"].is_object() || catalog["effective"].is_null());
+    }
+
+    #[tokio::test]
+    async fn review_policy_round_trips_restores_default_and_rejects_invalid_input() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app = AppState::open(data_dir.path()).unwrap();
+        app.handshook = true;
+        let state = Arc::new(Mutex::new(app));
+        let (tx, _) = mpsc::unbounded_channel();
+        let initial = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert!(initial.get("autoReview").is_none());
+
+        for invalid in [
+            json!(null),
+            json!(false),
+            json!(12),
+            json!("  \n "),
+            json!("x".repeat(8001)),
+        ] {
+            let error = handle_request(
+                state.clone(),
+                "settings.set",
+                json!({ "autoReview": { "policyPrompt": invalid } }),
+                tx.clone(),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
+        let custom_policy = "Ask before reading files. 🔒";
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "autoReview": { "policyPrompt": custom_policy } }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let stored = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(stored["autoReview"]["policyPrompt"], custom_policy);
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "autoReview": {} }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let restored = handle_request(state, "settings.get", json!({}), tx)
+            .await
+            .unwrap();
+        assert!(restored["autoReview"].get("policyPrompt").is_none());
+    }
+
+    #[tokio::test]
+    async fn changing_review_policy_rejects_a_claimed_review_and_advances_generation() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app = AppState::open(data_dir.path()).unwrap();
+        app.handshook = true;
+        let session = sessions::create_session(
+            &app.db,
+            Some("Review".into()),
+            Some("agent".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let (request, _receiver) = app.permissions.create_request_with_risk_and_shell(
+            crate::permissions::PermissionRequestParams {
+                session_id: &session.id,
+                tool_call_id: "review-old-policy",
+                tool_name: "Write",
+                args_preview: json!({"path": "out.txt"}),
+                reason: "writes a file",
+                declared_risk: None,
+                command_shell_id: None,
+                review_state: "awaiting_review",
+                scope_label: None,
+                turn_id: None,
+                user_message_id: None,
+                permission_mode: "ask",
+                workspace_path: None,
+            },
+        );
+        app.permissions
+            .bind_action(&request.request_id, "action-fingerprint");
+        let (old_token, _, fingerprint, _, _, _) =
+            app.permissions.claim_review(&request.request_id).unwrap();
+        let generation = app.permissions.generation(&session.id);
+        let state = Arc::new(Mutex::new(app));
+        let (tx, _) = mpsc::unbounded_channel();
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "autoReview": { "policyPrompt": "Ask me before any write" }
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let mut st = state.lock().await;
+        assert_ne!(st.permissions.generation(&session.id), generation);
+        assert!(st
+            .permissions
+            .resolve_review(&request.request_id, &old_token, &fingerprint, "allow_once")
+            .is_err());
+        let (fresh_request, _receiver) = st.permissions.create_request_with_risk_and_shell(
+            crate::permissions::PermissionRequestParams {
+                session_id: &session.id,
+                tool_call_id: "review-new-policy",
+                tool_name: "Write",
+                args_preview: json!({"path": "out.txt"}),
+                reason: "writes a file",
+                declared_risk: None,
+                command_shell_id: None,
+                review_state: "awaiting_review",
+                scope_label: None,
+                turn_id: None,
+                user_message_id: None,
+                permission_mode: "ask",
+                workspace_path: None,
+            },
+        );
+        st.permissions
+            .bind_action(&fresh_request.request_id, "fresh-fingerprint");
+        drop(st);
+        let claimed = handle_request(
+            state,
+            "permissions.claimReview",
+            json!({"requestId": fresh_request.request_id}),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(claimed["action"]["policyPrompt"], "Ask me before any write");
     }
 
     #[tokio::test]

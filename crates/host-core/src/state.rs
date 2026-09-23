@@ -6,7 +6,7 @@ use anyhow::Result;
 
 use crate::db::Database;
 use crate::mcp_servers::McpServerRegistry;
-use crate::permissions::PermissionManager;
+use crate::permissions::{grants::GrantStore, PermissionManager};
 use crate::plans::PlanManager;
 use crate::plugins::PluginManager;
 use crate::secrets::SecretStore;
@@ -15,7 +15,7 @@ use crate::user_skills::UserSkillRegistry;
 use crate::user_subagents::UserSubagentRegistry;
 use crate::workspace::WorkspaceState;
 
-pub const PROTOCOL_VERSION: u32 = 11;
+pub const PROTOCOL_VERSION: u32 = 12;
 pub const HOST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const BASH_ABORT_TOMBSTONE_TTL: Duration = Duration::from_secs(60);
 const MAX_BASH_ABORT_TOMBSTONES: usize = 1024;
@@ -30,6 +30,7 @@ pub struct AppState {
     pub secrets: SecretStore,
     pub workspace: WorkspaceState,
     pub permissions: PermissionManager,
+    pub review_executor_available: bool,
     pub plans: PlanManager,
     pub plugins: PluginManager,
     /// MCP servers the user configured directly, without a plugin around them.
@@ -48,11 +49,13 @@ pub struct AppState {
     pub started_at: Instant,
     pub handshook: bool,
     pub shutting_down: bool,
-    /// session_id -> toolName grants
-    pub session_grants: HashMap<String, Vec<String>>,
+    pub session_grants: GrantStore,
     /// executionId -> responder for plugin tool dispatches awaiting the
     /// desktop runner (Electron main executes the plugin JS and resolves).
     pub plugin_execs: HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>,
+    pub plugin_execution_permits: HashMap<String, crate::permissions::permits::ExecutionPermit>,
+    pub local_execution_permits: HashMap<String, crate::permissions::permits::ExecutionPermit>,
+    pub local_permission_calls: HashMap<(String, String), Instant>,
     /// Rolling plugin session API brakes. These are intentionally process-local;
     /// a restart is already a natural rate-window boundary.
     pub plugin_import_rates: HashMap<String, Vec<Instant>>,
@@ -130,6 +133,7 @@ impl AppState {
             secrets,
             workspace: WorkspaceState::default(),
             permissions: PermissionManager::default(),
+            review_executor_available: false,
             plans: PlanManager,
             plugins,
             mcp_servers,
@@ -140,8 +144,11 @@ impl AppState {
             started_at: Instant::now(),
             handshook: false,
             shutting_down: false,
-            session_grants: HashMap::new(),
+            session_grants: GrantStore::default(),
             plugin_execs: HashMap::new(),
+            plugin_execution_permits: HashMap::new(),
+            local_execution_permits: HashMap::new(),
+            local_permission_calls: HashMap::new(),
             plugin_import_rates: HashMap::new(),
             plugin_batch_import_rates: HashMap::new(),
             plugin_delete_rates: HashMap::new(),
@@ -304,6 +311,9 @@ impl AppState {
 
         self.pending_bash_aborts.clear();
         self.plugin_execs.clear();
+        self.plugin_execution_permits.clear();
+        self.local_execution_permits.clear();
+        self.local_permission_calls.clear();
     }
 
     pub fn uptime_ms(&self) -> u64 {

@@ -432,6 +432,20 @@ test("settings rail uses short parallel labels and descriptive page titles", () 
   assert.match(settingsPageSource, /titleKey: entry\.titleKey/);
 });
 
+test("permission settings have their own rail destination and search ownership", () => {
+  const aiStart = settingsSearchSource.indexOf('id: "ai"');
+  const permissionsStart = settingsSearchSource.indexOf('id: "permissions"');
+  const shortcutsStart = settingsSearchSource.indexOf('id: "shortcuts"');
+  assert.ok(aiStart < permissionsStart && permissionsStart < shortcutsStart);
+  const aiEntry = settingsSearchSource.slice(aiStart, permissionsStart);
+  const permissionsEntry = settingsSearchSource.slice(permissionsStart, shortcutsStart);
+  assert.doesNotMatch(aiEntry, /settings\.permissionMode|settings\.approvalReviewer/);
+  assert.match(permissionsEntry, /settings\.permissionMode/);
+  assert.match(permissionsEntry, /settings\.approvalReviewer/);
+  assert.match(settingsPageSource, /tab === "permissions" && settings/);
+  assert.match(settingsPageSource, /permissions: <IconShield size=\{14\} \/>/);
+});
+
 test("marketplace source settings live inside the Plugins marketplace surface", () => {
   assert.match(pluginsPageSource, /<MarketplaceSourceSettings/);
   assert.match(marketplaceSettingsSource, /api\.marketRefresh\(true\)/);

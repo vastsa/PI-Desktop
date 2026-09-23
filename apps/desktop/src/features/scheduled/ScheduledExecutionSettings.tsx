@@ -83,9 +83,12 @@ export function ScheduledExecutionSettings({
         />
         <ComposerPermissionPicker t={t} mode="agent"
           composerPermissionMode={permissionMode}
+          effectiveReviewer={useAppStore.getState().settings?.approvalReviewer ?? "user"}
+          sessionReviewer="inherit"
+          hasActiveSession={false}
           permissionOpen={permissionOpen} setPermissionOpen={setPermissionOpen}
           controlsBlocked={busy} onCloseOtherMenus={() => {}}
-          onSelect={onPermissionChange} />
+          onSelect={onPermissionChange} onSelectReviewer={() => {}} />
       </div>
       <div className="composer-right">
         <ScheduledModelPicker value={modelSelection} disabled={busy} onChange={onModelChange} />

@@ -274,13 +274,18 @@ export class AgentSidecar {
     try {
       return await Promise.race([
         (async () => {
-          if (imageGeneration) {
-            imageGenerationPrompts(input.args);
-            if (!this.host) throw new Error("host unavailable");
-            const gate = await this.host.call<LocalToolResult>("tools.execute", params);
-            if (!gate.ok) return gate;
-            controller.signal.throwIfAborted();
-          }
+          if (imageGeneration) imageGenerationPrompts(input.args);
+          if (!this.host) throw new Error("host unavailable");
+          const gate = await this.host.call<LocalToolResult & { executionPermit?: string }>(
+            "permissions.authorizeLocalTool", params,
+          );
+          if (!gate.ok) return gate;
+          if (!gate.executionPermit) throw new Error("host did not issue a local execution permit");
+          controller.signal.throwIfAborted();
+          await this.host.call("permissions.consumeLocalPermit", {
+            ...params, executionPermit: gate.executionPermit,
+          });
+          controller.signal.throwIfAborted();
           return handler({ ...input, signal: controller.signal });
         })(),
         new Promise<LocalToolResult>((_, reject) => {
@@ -532,18 +537,16 @@ export class AgentSidecar {
           );
           return;
         }
-        // Host-local tools short-circuit before host-core (which doesn't
-        // know them); everything else proxies through unchanged.
+        // Host-local handlers run only after host-core authorizes the action
+        // and consumes a one-use permit bound to its exact arguments.
         const localTool =
           method === "tools.execute"
             ? this.localTools.get(requestedToolName)
             : undefined;
         if (localTool) {
           const toolName = requestedToolName;
-          // Local tools can bypass host-core's permission boundary. Plan mode
-          // therefore permits only the read-only BrowserPreview bridge; every
-          // other host-local tool fails closed even if a stale runtime asks for
-          // it directly.
+          // Plan mode permits only BrowserPreview; a stale sidecar must not
+          // invoke another local handler even before Host authorization.
           const result =
             params.mode === "plan" && toolName !== "BrowserPreview"
               ? {

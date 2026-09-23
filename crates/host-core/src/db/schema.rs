@@ -65,6 +65,8 @@ CREATE TABLE sessions (
                                           'high', 'xhigh', 'max', 'omit')),
   permission_mode TEXT NOT NULL DEFAULT 'inherit'
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
+  approval_reviewer TEXT NOT NULL DEFAULT 'inherit'
+                CHECK (approval_reviewer IN ('inherit', 'user', 'auto_review')),
   source      TEXT,
   deleted_at  INTEGER,
   pinned      INTEGER NOT NULL DEFAULT 0,

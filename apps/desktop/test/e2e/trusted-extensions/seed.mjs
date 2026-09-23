@@ -188,7 +188,7 @@ const call = (method, params = {}) => new Promise((resolve, reject) => {
   host.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
 });
 
-await call("app.handshake", { protocolVersion: 11 });
+await call("app.handshake", { protocolVersion: 12 });
 const created = await call("providers.create", {
   name: "E2E stub",
   type: "openai_compatible",

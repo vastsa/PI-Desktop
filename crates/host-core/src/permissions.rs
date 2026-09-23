@@ -4,8 +4,12 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::db::{ms_to_ts, now_ms};
+pub mod grants;
+pub mod permits;
+mod requests;
 
 pub const PERMISSION_TIMEOUT_MS: u64 = 120_000;
+pub const REVIEW_TIMEOUT_MS: u64 = 20_000;
 
 /// Longest string leaf kept in a permission request's args preview. Full args
 /// (e.g. a Write's whole file content) would otherwise cross every stdio/IPC
@@ -66,6 +70,10 @@ pub struct PermissionRequest {
     pub timeout_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command_shell_id: Option<String>,
+    pub review_state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope_label: Option<String>,
+    pub permission_mode: String,
 }
 
 pub struct PermissionRequestParams<'a> {
@@ -76,14 +84,18 @@ pub struct PermissionRequestParams<'a> {
     pub reason: &'a str,
     pub declared_risk: Option<&'a str>,
     pub command_shell_id: Option<&'a str>,
+    pub review_state: &'a str,
+    pub scope_label: Option<&'a str>,
+    pub turn_id: Option<&'a str>,
+    pub user_message_id: Option<&'a str>,
+    pub permission_mode: &'a str,
+    pub workspace_path: Option<&'a str>,
 }
 
 pub struct PermissionEvaluationParams<'a> {
-    pub session_id: &'a str,
     pub tool_name: &'a str,
     pub mode: &'a str,
     pub permission_mode: &'a str,
-    pub session_grants: &'a HashMap<String, Vec<String>>,
     pub declared_risk: Option<&'a str>,
     pub requires_external_path_permission: bool,
     pub plan_safe_actions: Option<&'a [String]>,
@@ -101,7 +113,21 @@ struct Pending {
     /// The request as it was emitted, already preview-bounded, so a client
     /// that attaches after the notification can render the same card.
     request: PermissionRequest,
+    review_token: Option<String>,
+    action_fingerprint: Option<String>,
+    generation: PermissionGeneration,
+    turn_id: Option<String>,
+    user_message_id: Option<String>,
+    workspace_path: Option<String>,
+    actor_id: Option<String>,
+    review_context_complete: bool,
+    review_started_at: Option<Instant>,
     tx: Option<tokio::sync::oneshot::Sender<PermissionDecision>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PermissionGeneration {
+    session: u64,
 }
 
 /// One open permission request as returned by `permissions.pending`
@@ -121,12 +147,15 @@ pub struct PendingPermission {
 pub struct PermissionManager {
     pending: HashMap<String, Pending>,
     next_sequence: u64,
+    session_generations: HashMap<String, u64>,
 }
 
 impl PermissionManager {
     pub fn tool_risk_with_declared(tool_name: &str, declared: Option<&str>) -> Risk {
         match tool_name {
-            "Read" | "Glob" | "Grep" | "ScheduledTaskList" => Risk::Low,
+            "Read" | "Glob" | "Grep" | "ScheduledTaskList" | "Skill" | "BrowserPreview" => {
+                Risk::Low
+            }
             "Write" | "Edit" | "Bash" | "GenerateImages" => Risk::High,
             name if name.starts_with("plugin_") => match declared {
                 Some("low") => Risk::Low,
@@ -136,7 +165,7 @@ impl PermissionManager {
                 // low-risk grant. Medium preserves the normal approval path.
                 _ => Risk::Medium,
             },
-            name if name.starts_with("mcp_") => Risk::Low,
+            name if name.starts_with("mcp_") => Risk::Medium,
             _ => Risk::Medium,
         }
     }
@@ -162,18 +191,15 @@ impl PermissionManager {
     #[cfg(test)]
     pub fn evaluate_auto_with_permission_mode(
         &self,
-        session_id: &str,
+        _session_id: &str,
         tool_name: &str,
         mode: &str,
         permission_mode: &str,
-        session_grants: &HashMap<String, Vec<String>>,
     ) -> Option<PermissionDecision> {
         self.evaluate_auto_with_permission_mode_and_risk(PermissionEvaluationParams {
-            session_id,
             tool_name,
             mode,
             permission_mode,
-            session_grants,
             declared_risk: None,
             requires_external_path_permission: false,
             plan_safe_actions: None,
@@ -197,11 +223,9 @@ impl PermissionManager {
         params: PermissionEvaluationParams<'_>,
     ) -> Option<PermissionDecision> {
         let PermissionEvaluationParams {
-            session_id,
             tool_name,
             mode,
             permission_mode,
-            session_grants,
             declared_risk,
             requires_external_path_permission,
             plan_safe_actions,
@@ -211,8 +235,8 @@ impl PermissionManager {
         // scratch paths, and covers Goal as well as Plan (D198).
         //
         // Plugin tools get a narrow carve-out: a plugin may declare a
-        // non-empty `planSafeActions` list (ADR 0211). When the runtime
-        // forwards that list, host-core admits the plugin tool in
+        // non-empty `planSafeActions` list (ADR 0211). When the host verifies
+        // that declaration, it admits the plugin tool in
         // contract modes and the plugin-runtime enforces the per-action
         // restriction at execute time. Without the list the plugin tool
         // stays Plan-denied, exactly as ADR 0052 / ADR 0053 require.
@@ -237,13 +261,6 @@ impl PermissionManager {
             if permission_mode == "auto" {
                 return Some(PermissionDecision::AllowOnce);
             }
-            if session_grants
-                .get(session_id)
-                .map(|g| g.iter().any(|t| t == tool_name))
-                .unwrap_or(false)
-            {
-                return Some(PermissionDecision::AllowSession);
-            }
             return None;
         }
 
@@ -259,169 +276,7 @@ impl PermissionManager {
         if mode_allows {
             return Some(PermissionDecision::AllowOnce);
         }
-        if session_grants
-            .get(session_id)
-            .map(|g| g.iter().any(|t| t == tool_name))
-            .unwrap_or(false)
-        {
-            return Some(PermissionDecision::AllowSession);
-        }
         None
-    }
-
-    #[cfg(test)]
-    pub fn create_request(
-        &mut self,
-        session_id: &str,
-        tool_call_id: &str,
-        tool_name: &str,
-        args_preview: serde_json::Value,
-        reason: &str,
-    ) -> (
-        PermissionRequest,
-        tokio::sync::oneshot::Receiver<PermissionDecision>,
-    ) {
-        self.create_request_with_risk_and_shell(PermissionRequestParams {
-            session_id,
-            tool_call_id,
-            tool_name,
-            args_preview,
-            reason,
-            declared_risk: None,
-            command_shell_id: None,
-        })
-    }
-
-    pub fn create_request_with_risk_and_shell(
-        &mut self,
-        params: PermissionRequestParams<'_>,
-    ) -> (
-        PermissionRequest,
-        tokio::sync::oneshot::Receiver<PermissionDecision>,
-    ) {
-        let PermissionRequestParams {
-            session_id,
-            tool_call_id,
-            tool_name,
-            args_preview,
-            reason,
-            declared_risk,
-            command_shell_id,
-        } = params;
-        let request_id = Uuid::new_v4().to_string();
-        let request = PermissionRequest {
-            request_id: request_id.clone(),
-            session_id: session_id.to_string(),
-            tool_call_id: tool_call_id.to_string(),
-            tool_name: tool_name.to_string(),
-            risk: Self::tool_risk_with_declared(tool_name, declared_risk),
-            args_preview: preview_value(&args_preview),
-            reason: reason.to_string(),
-            timeout_ms: PERMISSION_TIMEOUT_MS,
-            command_shell_id: command_shell_id.map(str::to_string),
-        };
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.next_sequence += 1;
-        self.pending.insert(
-            request_id,
-            Pending {
-                created_at: Instant::now(),
-                created_at_ms: now_ms(),
-                sequence: self.next_sequence,
-                session_id: session_id.to_string(),
-                tool_call_id: tool_call_id.to_string(),
-                request: request.clone(),
-                tx: Some(tx),
-            },
-        );
-        (request, rx)
-    }
-
-    /// Open requests, oldest first, optionally scoped to one session. Requests
-    /// past the timeout are omitted even before `expire_stale` sweeps them,
-    /// so a reader never sees a request that can no longer be answered.
-    pub fn pending_requests(&self, session_id: Option<&str>) -> Vec<PendingPermission> {
-        let timeout = Duration::from_millis(PERMISSION_TIMEOUT_MS);
-        let mut open: Vec<&Pending> = self
-            .pending
-            .values()
-            .filter(|pending| pending.created_at.elapsed() <= timeout)
-            .filter(|pending| session_id.is_none_or(|id| pending.session_id == id))
-            .collect();
-        open.sort_by_key(|pending| (pending.created_at_ms, pending.sequence));
-        open.into_iter()
-            .map(|pending| {
-                let elapsed = pending.created_at.elapsed();
-                PendingPermission {
-                    request: pending.request.clone(),
-                    created_at: ms_to_ts(pending.created_at_ms),
-                    expires_at: ms_to_ts(pending.created_at_ms + PERMISSION_TIMEOUT_MS as i64),
-                    remaining_ms: timeout.saturating_sub(elapsed).as_millis() as u64,
-                }
-            })
-            .collect()
-    }
-
-    pub fn resolve(
-        &mut self,
-        request_id: &str,
-        decision: PermissionDecision,
-    ) -> Result<(), String> {
-        let Some(mut pending) = self.pending.remove(request_id) else {
-            return Err("NOT_FOUND".into());
-        };
-        if pending.created_at.elapsed() > Duration::from_millis(PERMISSION_TIMEOUT_MS) {
-            let _ = pending
-                .tx
-                .take()
-                .map(|tx| tx.send(PermissionDecision::Deny));
-            return Err("PERMISSION_TIMEOUT".into());
-        }
-        if let Some(tx) = pending.tx.take() {
-            let _ = tx.send(decision);
-        }
-        Ok(())
-    }
-
-    /// Remove a request because its tool call was aborted. Sending deny also
-    /// wakes a waiter that raced the cancellation signal; the caller still
-    /// returns TOOL_ABORTED because cancellation is authoritative.
-    pub fn cancel(&mut self, request_id: &str) -> bool {
-        let Some(mut pending) = self.pending.remove(request_id) else {
-            return false;
-        };
-        if let Some(tx) = pending.tx.take() {
-            let _ = tx.send(PermissionDecision::Deny);
-        }
-        true
-    }
-
-    pub fn cancel_for_tool(&mut self, session_id: &str, tool_call_id: &str) -> bool {
-        let request_id = self
-            .pending
-            .iter()
-            .find(|(_, pending)| {
-                pending.session_id == session_id && pending.tool_call_id == tool_call_id
-            })
-            .map(|(request_id, _)| request_id.clone());
-        request_id.is_some_and(|request_id| self.cancel(&request_id))
-    }
-
-    pub fn expire_stale(&mut self) {
-        let timeout = Duration::from_millis(PERMISSION_TIMEOUT_MS);
-        let stale: Vec<String> = self
-            .pending
-            .iter()
-            .filter(|(_, p)| p.created_at.elapsed() > timeout)
-            .map(|(k, _)| k.clone())
-            .collect();
-        for id in stale {
-            if let Some(mut p) = self.pending.remove(&id) {
-                if let Some(tx) = p.tx.take() {
-                    let _ = tx.send(PermissionDecision::Deny);
-                }
-            }
-        }
     }
 }
 
@@ -429,8 +284,122 @@ impl PermissionManager {
 mod tests {
     use super::*;
 
-    fn no_grants() -> HashMap<String, Vec<String>> {
-        HashMap::new()
+    fn review_request(
+        pm: &mut PermissionManager,
+        session_id: &str,
+    ) -> (
+        PermissionRequest,
+        tokio::sync::oneshot::Receiver<PermissionDecision>,
+    ) {
+        let (request, receiver) = pm.create_request_with_risk_and_shell(PermissionRequestParams {
+            session_id,
+            tool_call_id: "call",
+            tool_name: "Write",
+            args_preview: serde_json::json!({"path": "a.txt"}),
+            reason: "writes a file",
+            declared_risk: None,
+            command_shell_id: None,
+            review_state: "awaiting_review",
+            scope_label: Some("Write: a.txt"),
+            turn_id: Some("turn"),
+            user_message_id: Some("user"),
+            permission_mode: "ask",
+            workspace_path: None,
+        });
+        pm.bind_action(&request.request_id, "bound-action");
+        (request, receiver)
+    }
+
+    #[test]
+    fn executor_loss_falls_back_without_resetting_permission_deadline() {
+        let mut pm = PermissionManager::default();
+        let (request, mut receiver) = review_request(&mut pm, "session");
+        let (token, _, fingerprint, _, _, _) = pm.claim_review(&request.request_id).unwrap();
+        pm.set_review_context_complete(&request.request_id, &token, true);
+        let before = pm.pending_requests(Some("session"))[0].expires_at.clone();
+        assert_eq!(pm.fallback_reviews(), vec![request.request_id.clone()]);
+        assert_eq!(pm.review_state(&request.request_id), Some("user"));
+        assert_eq!(pm.pending_requests(Some("session"))[0].expires_at, before);
+        assert!(pm
+            .resolve_review(&request.request_id, &token, &fingerprint, "allow_once")
+            .is_err());
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
+        assert!(pm.fallback_reviews().is_empty());
+    }
+
+    #[test]
+    fn review_requires_host_complete_context_and_one_matching_token() {
+        let mut pm = PermissionManager::default();
+        let (request, mut receiver) = review_request(&mut pm, "session");
+        let (token, _, fingerprint, _, _, _) = pm.claim_review(&request.request_id).unwrap();
+        assert_eq!(fingerprint, "bound-action");
+        assert!(pm
+            .resolve_review(&request.request_id, &token, "changed", "allow_once")
+            .is_err());
+        assert_eq!(
+            pm.resolve_review(&request.request_id, &token, "bound-action", "allow_once")
+                .unwrap(),
+            "needs_user"
+        );
+        assert!(receiver.try_recv().is_err());
+        assert_eq!(pm.review_state(&request.request_id), Some("user"));
+        assert!(pm
+            .resolve_review(&request.request_id, &token, "bound-action", "allow_once")
+            .is_err());
+        pm.resolve(&request.request_id, PermissionDecision::Deny)
+            .unwrap();
+        assert_eq!(receiver.try_recv().unwrap(), PermissionDecision::Deny);
+    }
+
+    #[test]
+    fn takeover_timeout_and_session_invalidation_reject_late_review() {
+        let mut pm = PermissionManager::default();
+        let (first, mut first_receiver) = review_request(&mut pm, "first");
+        let (second, mut second_receiver) = review_request(&mut pm, "second");
+        let (first_token, _, _, _, _, _) = pm.claim_review(&first.request_id).unwrap();
+        pm.set_review_context_complete(&first.request_id, &first_token, true);
+        pm.invalidate_session("first");
+        assert_eq!(first_receiver.try_recv().unwrap(), PermissionDecision::Deny);
+        assert!(pm
+            .resolve_review(
+                &first.request_id,
+                &first_token,
+                "bound-action",
+                "allow_once"
+            )
+            .is_err());
+        let (second_token, _, _, _, _, _) = pm.claim_review(&second.request_id).unwrap();
+        pm.set_review_context_complete(&second.request_id, &second_token, true);
+        pm.pending
+            .get_mut(&second.request_id)
+            .unwrap()
+            .review_started_at =
+            Some(Instant::now() - Duration::from_millis(REVIEW_TIMEOUT_MS + 1));
+        assert_eq!(
+            pm.resolve_review(
+                &second.request_id,
+                &second_token,
+                "bound-action",
+                "allow_once"
+            )
+            .unwrap(),
+            "needs_user"
+        );
+        assert!(second_receiver.try_recv().is_err());
+        let third = review_request(&mut pm, "second").0;
+        let (third_token, _, _, _, _, _) = pm.claim_review(&third.request_id).unwrap();
+        pm.takeover_review(&third.request_id).unwrap();
+        assert!(pm
+            .resolve_review(
+                &third.request_id,
+                &third_token,
+                "bound-action",
+                "allow_once"
+            )
+            .is_err());
     }
 
     #[test]
@@ -470,7 +439,7 @@ mod tests {
     fn ask_mode_prompts_for_high_risk() {
         let pm = PermissionManager::default();
         for tool in ["Write", "Edit", "Bash"] {
-            let d = pm.evaluate_auto_with_permission_mode("s", tool, "agent", "ask", &no_grants());
+            let d = pm.evaluate_auto_with_permission_mode("s", tool, "agent", "ask");
             assert!(d.is_none(), "{tool} should prompt under ask");
         }
     }
@@ -479,22 +448,10 @@ mod tests {
     fn accept_edits_allows_file_tools_only() {
         let pm = PermissionManager::default();
         for tool in ["Write", "Edit"] {
-            let d = pm.evaluate_auto_with_permission_mode(
-                "s",
-                tool,
-                "agent",
-                "accept-edits",
-                &no_grants(),
-            );
+            let d = pm.evaluate_auto_with_permission_mode("s", tool, "agent", "accept-edits");
             assert_eq!(d, Some(PermissionDecision::AllowOnce), "{tool}");
         }
-        let bash = pm.evaluate_auto_with_permission_mode(
-            "s",
-            "Bash",
-            "agent",
-            "accept-edits",
-            &no_grants(),
-        );
+        let bash = pm.evaluate_auto_with_permission_mode("s", "Bash", "agent", "accept-edits");
         assert!(bash.is_none(), "Bash still prompts under accept-edits");
     }
 
@@ -502,7 +459,7 @@ mod tests {
     fn auto_allows_all_high_risk_in_agent_mode() {
         let pm = PermissionManager::default();
         for tool in ["Write", "Edit", "Bash", "plugin_x_run"] {
-            let d = pm.evaluate_auto_with_permission_mode("s", tool, "agent", "auto", &no_grants());
+            let d = pm.evaluate_auto_with_permission_mode("s", tool, "agent", "auto");
             assert!(
                 matches!(d, Some(PermissionDecision::AllowOnce)),
                 "{tool} should auto-allow"
@@ -538,7 +495,7 @@ mod tests {
     fn plan_mode_denies_unavailable_tools_regardless_of_permission_mode() {
         let pm = PermissionManager::default();
         for mode in ["ask", "accept-edits", "auto"] {
-            let d = pm.evaluate_auto_with_permission_mode("s", "Write", "plan", mode, &no_grants());
+            let d = pm.evaluate_auto_with_permission_mode("s", "Write", "plan", mode);
             assert_eq!(d, Some(PermissionDecision::Deny), "plan + {mode}");
         }
     }
@@ -547,26 +504,21 @@ mod tests {
     fn plan_bash_follows_permission_mode() {
         let pm = PermissionManager::default();
         assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "plan", "ask", &no_grants()),
+            pm.evaluate_auto_with_permission_mode("s", "Bash", "plan", "ask"),
             None
         );
         assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "plan", "auto", &no_grants()),
+            pm.evaluate_auto_with_permission_mode("s", "Bash", "plan", "auto"),
             Some(PermissionDecision::AllowOnce)
         );
     }
 
     #[test]
-    fn plan_denial_wins_over_grants_and_scratch_exceptions() {
+    fn plan_denial_wins_over_auto_and_scratch_exceptions() {
         let pm = PermissionManager::default();
-        let mut grants = HashMap::new();
-        grants.insert(
-            "s".to_string(),
-            vec!["Write".to_string(), "plugin_x_run".to_string()],
-        );
         for tool in ["Write", "Edit", "plugin_x_run", "unknown"] {
             assert_eq!(
-                pm.evaluate_auto_with_permission_mode("s", tool, "plan", "auto", &grants),
+                pm.evaluate_auto_with_permission_mode("s", tool, "plan", "auto"),
                 Some(PermissionDecision::Deny),
                 "{tool} must be denied in plan"
             );
@@ -576,26 +528,21 @@ mod tests {
     #[test]
     fn goal_mode_shares_plans_hard_deny_and_bash_semantics() {
         let pm = PermissionManager::default();
-        let mut grants = HashMap::new();
-        grants.insert(
-            "s".to_string(),
-            vec!["Write".to_string(), "plugin_x_run".to_string()],
-        );
         for tool in ["Write", "Edit", "plugin_x_run", "unknown"] {
             for mode in ["ask", "accept-edits", "auto"] {
                 assert_eq!(
-                    pm.evaluate_auto_with_permission_mode("s", tool, "goal", mode, &grants),
+                    pm.evaluate_auto_with_permission_mode("s", tool, "goal", mode),
                     Some(PermissionDecision::Deny),
                     "{tool} must be denied in goal + {mode}"
                 );
             }
         }
         assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "ask", &no_grants()),
+            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "ask"),
             None
         );
         assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "auto", &no_grants()),
+            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "auto"),
             Some(PermissionDecision::AllowOnce)
         );
     }
@@ -604,7 +551,7 @@ mod tests {
     fn low_risk_auto_allows_in_every_mode() {
         let pm = PermissionManager::default();
         for mode in ["ask", "accept-edits", "auto"] {
-            let d = pm.evaluate_auto_with_permission_mode("s", "Read", "agent", mode, &no_grants());
+            let d = pm.evaluate_auto_with_permission_mode("s", "Read", "agent", mode);
             assert_eq!(d, Some(PermissionDecision::AllowOnce), "Read + {mode}");
         }
     }
@@ -615,11 +562,9 @@ mod tests {
         for mode in ["ask", "accept-edits"] {
             let decision = pm.evaluate_auto_with_permission_mode_and_risk_and_path(
                 PermissionEvaluationParams {
-                    session_id: "s",
                     tool_name: "Read",
                     mode: "agent",
                     permission_mode: mode,
-                    session_grants: &no_grants(),
                     declared_risk: None,
                     requires_external_path_permission: true,
                     plan_safe_actions: None,
@@ -632,11 +577,9 @@ mod tests {
         }
         let auto =
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
-                session_id: "s",
                 tool_name: "Read",
                 mode: "agent",
                 permission_mode: "auto",
-                session_grants: &no_grants(),
                 declared_risk: None,
                 requires_external_path_permission: true,
                 plan_safe_actions: None,
@@ -645,31 +588,32 @@ mod tests {
     }
 
     #[test]
-    fn external_path_session_grant_still_applies() {
+    fn external_path_still_requires_approval_in_plan() {
         let pm = PermissionManager::default();
-        let mut grants = HashMap::new();
-        grants.insert("s".to_string(), vec!["Grep".to_string()]);
         let decision =
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
-                session_id: "s",
                 tool_name: "Grep",
                 mode: "plan",
                 permission_mode: "ask",
-                session_grants: &grants,
                 declared_risk: None,
                 requires_external_path_permission: true,
                 plan_safe_actions: None,
             });
-        assert_eq!(decision, Some(PermissionDecision::AllowSession));
+        assert_eq!(decision, None);
     }
 
     #[test]
-    fn session_grants_still_apply_under_ask() {
+    fn mcp_calls_require_review_in_ask_and_accept_edits() {
         let pm = PermissionManager::default();
-        let mut grants = HashMap::new();
-        grants.insert("s".to_string(), vec!["Bash".to_string()]);
-        let d = pm.evaluate_auto_with_permission_mode("s", "Bash", "agent", "ask", &grants);
-        assert_eq!(d, Some(PermissionDecision::AllowSession));
+        for mode in ["ask", "accept-edits"] {
+            let decision =
+                pm.evaluate_auto_with_permission_mode("s", "mcp_server_delete", "agent", mode);
+            assert_eq!(decision, None);
+        }
+        assert!(matches!(
+            PermissionManager::tool_risk_with_declared("mcp_server_delete", Some("low")),
+            Risk::Medium
+        ));
     }
 
     #[test]
@@ -677,11 +621,9 @@ mod tests {
         let pm = PermissionManager::default();
         let denied =
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
-                session_id: "s",
                 tool_name: "plugin_x_run",
                 mode: "plan",
                 permission_mode: "auto",
-                session_grants: &no_grants(),
                 declared_risk: None,
                 requires_external_path_permission: false,
                 plan_safe_actions: None,
@@ -691,11 +633,9 @@ mod tests {
         let empty: [String; 0] = [];
         let empty_denied =
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
-                session_id: "s",
                 tool_name: "plugin_x_run",
                 mode: "goal",
                 permission_mode: "auto",
-                session_grants: &no_grants(),
                 declared_risk: None,
                 requires_external_path_permission: false,
                 plan_safe_actions: Some(&empty),
@@ -705,11 +645,9 @@ mod tests {
         let actions = ["navigate".to_string()];
         let admitted =
             pm.evaluate_auto_with_permission_mode_and_risk_and_path(PermissionEvaluationParams {
-                session_id: "s",
                 tool_name: "plugin_x_run",
                 mode: "plan",
                 permission_mode: "auto",
-                session_grants: &no_grants(),
                 declared_risk: None,
                 requires_external_path_permission: false,
                 plan_safe_actions: Some(&actions),
@@ -748,30 +686,17 @@ mod image_generation_tests {
             Risk::High
         ));
         let manager = PermissionManager::default();
-        let grants = HashMap::new();
         for mode in ["ask", "accept-edits"] {
             assert!(manager
-                .evaluate_auto_with_permission_mode("s", "GenerateImages", "agent", mode, &grants)
+                .evaluate_auto_with_permission_mode("s", "GenerateImages", "agent", mode)
                 .is_none());
         }
         assert_eq!(
-            manager.evaluate_auto_with_permission_mode(
-                "s",
-                "GenerateImages",
-                "plan",
-                "auto",
-                &grants
-            ),
+            manager.evaluate_auto_with_permission_mode("s", "GenerateImages", "plan", "auto"),
             Some(PermissionDecision::Deny)
         );
         assert_eq!(
-            manager.evaluate_auto_with_permission_mode(
-                "s",
-                "GenerateImages",
-                "goal",
-                "auto",
-                &grants
-            ),
+            manager.evaluate_auto_with_permission_mode("s", "GenerateImages", "goal", "auto"),
             Some(PermissionDecision::Deny)
         );
     }

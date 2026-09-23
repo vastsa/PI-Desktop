@@ -129,6 +129,8 @@ export type ProviderResponseSnapshot = {
 };
 
 export type ProviderRetryController = {
+  /** One-shot security reviews cannot resend a failed request. */
+  allowOutputLimitRepair?: boolean;
   /** Claim one retry across setup/stream failures of the current response. */
   claim: (
     error: ClassifiedAgentError,
@@ -464,7 +466,7 @@ export function createProviderRetryStream(
             classifyProviderError(event.error, controller.status?.()),
             controller.failure?.(),
           );
-          if (!limitRepairTried && isOpaqueBadRequest(error)) {
+          if (controller.allowOutputLimitRepair !== false && !limitRepairTried && isOpaqueBadRequest(error)) {
             opaqueLimitRejection = error;
             break;
           }

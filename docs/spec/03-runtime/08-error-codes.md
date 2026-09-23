@@ -122,6 +122,12 @@ does not turn temporary thread pressure into a host process exit.
 | `TOOL_BINARY_CONTENT` | no | `Read` refused to dump a binary file into the model context |
 | `TOOL_NOT_FOUND` | no | unknown tool |
 | `TOOL_DENIED` | no | permission denied / mode forbidden |
+| `AUTHORIZATION_STALE` | no | action or execution permit changed, expired, or was consumed; obtain fresh authorization |
+| `REVIEW_IN_PROGRESS` | no | take over automatic review before submitting a human approval |
+| `REVIEW_NOT_AVAILABLE` | no | request is not eligible for a new automatic review claim |
+| `REVIEW_STALE` | no | reviewer token, action fingerprint, or policy generation no longer matches |
+| `INVALID_REVIEW_DECISION` | no | reviewer decision is outside the accepted structured contract |
+| `TOOL_CONFIG_REQUIRED` | no | authoritative external-tool configuration is unavailable for scoped execution |
 | `TOOL_TIMEOUT` | yes | tool execution timeout |
 | `TOOL_FAILED` | maybe | tool executed but failed |
 | `TOOL_ABORTED` | no | the tool was cancelled by a user stop or a turn abort before it finished |

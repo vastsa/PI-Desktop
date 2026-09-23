@@ -534,6 +534,7 @@ export function registerSessionIpc({
         modelId?: string;
         thinkingLevel?: SessionThinkingLevel;
         permissionMode?: "inherit" | "ask" | "accept-edits" | "auto";
+        approvalReviewer?: "inherit" | "user" | "auto_review";
       },
     ) => {
       rejectNativeMutation(id, "configuration");

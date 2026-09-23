@@ -233,6 +233,23 @@ export function createSessionCoordination({
     return !isActiveTurn(envelope.sessionId, envelope.turnId);
   }
 
+  /** Only a dispatchable durable turn may re-activate a session in Agent Host
+   * or the renderer. A canceled tool can emit a late turn_start without
+   * agent_end; its historical message/tool events still pass separately.
+   * Manual compaction is admitted by compaction_start (not a turn_start), even
+   * when the runtime still stamps its status with a previous turn identity.
+   */
+  function isStaleRuntimeActivity(envelope: AgentEventEnvelope): boolean {
+    const type = envelope.event.type;
+    if (type === "agent_start" || type === "turn_start") {
+      return !isTurnDispatchable(envelope.sessionId, envelope.turnId);
+    }
+    if (type === "status" && (envelope.turnId || activeTurns.has(envelope.sessionId))) {
+      return !isTurnDispatchable(envelope.sessionId, envelope.turnId);
+    }
+    return false;
+  }
+
   function shouldCreateTaskNotification(sessionId: string): boolean {
     const window = getMainWindow();
     const liveWindow = window !== null && !window.isDestroyed();
@@ -266,5 +283,6 @@ export function createSessionCoordination({
     isTurnDispatchable,
     isSessionBusy,
     isStaleTerminalEvent,
+    isStaleRuntimeActivity,
   };
 }

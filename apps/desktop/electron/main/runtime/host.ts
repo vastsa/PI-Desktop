@@ -1,6 +1,7 @@
 import { ErrorCodes, IPC, type AgentEventEnvelope, type PlanExecutionFinishStatus, type Risk } from "@pi-desktop/shared";
 import { assertLinuxGlibcSupported } from "../linux-glibc";
 import { HostProcess } from "../host-process";
+import { PermissionReviewCoordinator, type ReviewAction, type PermissionReviewResult } from "@pi-desktop/host-runtime";
 import type { Logger } from "../logger";
 import type { PersistenceOutbox } from "../persistence-outbox";
 import type { PluginRuntime } from "../plugin-runtime";
@@ -41,6 +42,8 @@ export type HostRuntimeDependencies = {
   importLegacyScheduled: () => Promise<unknown>;
   superviseRestart: (kind: "host" | "sidecar") => Promise<void>;
   isQuitting: () => boolean;
+  reviewPermission: (action: ReviewAction, signal: AbortSignal, sessionId: string) => Promise<PermissionReviewResult>;
+  settleExternalApproval: (requestId: string, decision: "allow-once" | "deny") => void;
 };
 
 export function createHostRuntime({
@@ -66,12 +69,61 @@ export function createHostRuntime({
   importLegacyScheduled,
   superviseRestart,
   isQuitting,
+  reviewPermission,
+  settleExternalApproval,
 }: HostRuntimeDependencies): {
   wireHost: (host: HostProcess) => void;
   startHost: () => Promise<void>;
+  cancelReviewForEvent: (event: AgentEventEnvelope) => void;
+  cancelReviewForSession: (sessionId: string) => void;
+  takeOverSessionReviews: (sessionId: string) => Promise<void>;
 } {
+  let activeReviewCoordinator: PermissionReviewCoordinator | undefined;
+  const reviewRequests = new Map<string, {
+    sessionId: string;
+    toolCallId: string;
+    toolName: string;
+    argsPreview: unknown;
+    risk: Risk;
+    reason: string;
+    reviewState?: "user" | "awaiting_review" | "reviewing";
+    scopeLabel?: string;
+    createdAt?: string;
+    expiresAt?: string;
+  }>();
   const wireHost = (h: HostProcess) => {
-
+  reviewRequests.clear();
+  const reviewCoordinator = new PermissionReviewCoordinator({
+    claim: async (requestId) => {
+      const claimed = await h.call<{ token: string; fingerprint: string; action: ReviewAction }>(
+        "permissions.claimReview", { requestId },
+      );
+      const previous = reviewRequests.get(requestId);
+      if (previous) {
+        const next = { ...previous, reviewState: "reviewing" as const };
+        reviewRequests.set(requestId, next);
+        emitAgentEvent({ sessionId: previous.sessionId, ts: Date.now(), event: {
+          type: "tool_permission_request", request: { ...next, requestId },
+        } });
+      }
+      return claimed;
+    },
+    settle: async (requestId, token, fingerprint, result) => {
+      const settled = await h.call<{ decision: "allow_once" | "deny" | "needs_user" }>(
+        "permissions.resolveReview", { requestId, token, fingerprint, result },
+      );
+      // Host owns the final decision. It may downgrade a model approval to a
+      // manual request if the turn or evidence became stale while reviewing.
+      if (settled.decision === "needs_user") return;
+      reviewRequests.delete(requestId);
+      settleExternalApproval(requestId, settled.decision === "allow_once" ? "allow-once" : "deny");
+    },
+    fallback: (requestId, token, fingerprint, result) =>
+      h.call("permissions.resolveReview", { requestId, token, fingerprint, result }).then(() => undefined),
+  }, reviewPermission, Date.now, (code) => {
+    logger.app("permission", "warn", "review could not complete", { data: { code } });
+  });
+  activeReviewCoordinator = reviewCoordinator;
   h.onNotification((method, params) => {
     // Notifications from a previous host generation must never reach the
     // current plugin/renderer bridge after a restart.
@@ -83,6 +135,20 @@ export function createHostRuntime({
       sendToRenderer(IPC.event.pluginInstallProgress, params);
       return;
     }
+    if (method === "permissions.reviewUpdated") {
+      const update = params as { requestId: string; reviewState: "user" | "awaiting_review" | "reviewing"; reason?: string };
+      const previous = reviewRequests.get(update.requestId);
+      if (previous) {
+        if (update.reviewState === "user") reviewCoordinator.cancel(update.requestId);
+        const next = { ...previous, reviewState: update.reviewState, reason: update.reason ?? previous.reason };
+        reviewRequests.set(update.requestId, next);
+        emitAgentEvent({ sessionId: previous.sessionId, ts: Date.now(), event: {
+          type: "tool_permission_request", request: { ...next, requestId: update.requestId },
+        } });
+        if (update.reviewState === "user") reviewRequests.delete(update.requestId);
+      }
+      return;
+    }
     if (method === "permissions.request") {
       const permission = params as {
         requestId: string;
@@ -92,7 +158,19 @@ export function createHostRuntime({
         argsPreview: string;
         risk: Risk;
         reason: string;
+        reviewState?: "user" | "awaiting_review" | "reviewing";
+        scopeLabel?: string;
+        createdAt?: string;
+        expiresAt?: string;
       };
+      reviewRequests.set(permission.requestId, permission);
+      if (permission.reviewState === "awaiting_review") {
+        const hostCreatedAt = permission.createdAt ? Date.parse(permission.createdAt) : NaN;
+        reviewCoordinator.enqueue({
+          requestId: permission.requestId, sessionId: permission.sessionId, toolCallId: permission.toolCallId,
+          requestedAt: Number.isFinite(hostCreatedAt) ? hostCreatedAt : Date.now(),
+        });
+      }
       // A delegate's call is already in `activeToolCalls` by the time the host
       // asks: the sidecar forwards `tool_start` before it executes the tool.
       // Without this the dialog would attribute a delegate's write to the main
@@ -129,6 +207,10 @@ export function createHostRuntime({
             argsPreview: permission.argsPreview,
             risk: permission.risk,
             reason: permission.reason,
+            ...(permission.reviewState ? { reviewState: permission.reviewState } : {}),
+            ...(permission.scopeLabel ? { scopeLabel: permission.scopeLabel } : {}),
+            ...(permission.createdAt ? { createdAt: permission.createdAt } : {}),
+            ...(permission.expiresAt ? { expiresAt: permission.expiresAt } : {}),
             ...(asking?.agentName ? { agentName: asking.agentName } : {}),
             ...(asking?.parentToolCallId
               ? { parentToolCallId: asking.parentToolCallId }
@@ -141,6 +223,7 @@ export function createHostRuntime({
       void (async () => {
         const q = params as {
           executionId: string;
+          permitToken?: string;
           sessionId?: string;
           /**
            * Runtime turn identity of the tool call, forwarded unchanged from the
@@ -157,9 +240,24 @@ export function createHostRuntime({
           ? (sessionProjects.get(q.sessionId) ?? null)
           : null;
         const tool = plugins.getTools().find((t) => t.fullName === q.toolName);
+        const consumePermit = async () => {
+          if (!q.permitToken || !q.sessionId || !q.turnId || !q.toolCallId ||
+            !isTurnDispatchable(q.sessionId, q.turnId)) {
+            throw new Error("plugin execution permit or active turn missing");
+          }
+          await h.call("permissions.consumeExecutionPermit", {
+            executionId: q.executionId, permitToken: q.permitToken,
+            sessionId: q.sessionId, turnId: q.turnId,
+            toolCallId: q.toolCallId, toolName: q.toolName, args: q.args,
+          });
+          if (!isTurnDispatchable(q.sessionId, q.turnId)) {
+            throw new Error("plugin turn ended before dispatch");
+          }
+        };
         let payload: Record<string, unknown>;
         if (q.toolName.startsWith("mcp_")) {
           try {
+            await consumePermit();
             const result = await userMcp.callTool(q.toolName, q.args, projectPath);
             payload = { executionId: q.executionId, ok: true, content: result ?? null };
           } catch (e) {
@@ -248,6 +346,7 @@ export function createHostRuntime({
                 },
               };
             } else {
+              await consumePermit();
               const result = await tool.execute(q.args, {
                 sessionId: q.sessionId,
                 turnId: q.turnId,
@@ -312,6 +411,7 @@ export function createHostRuntime({
     }
   });
   h.onExit(({ code, signal, intentional }) => {
+    reviewCoordinator.dispose();
     if (runtimeState.host !== h) return;
     logger.flushChild("host");
     runtimeState.host = null;
@@ -360,6 +460,9 @@ export function createHostRuntime({
   runtimeState.host = h;
   try {
     await h.handshake();
+    // A headless/older host defaults to manual approval until an actual
+    // reviewer executor registers on this host generation.
+    await h.call("permissions.setReviewCapability", { available: true });
     logger.app("runtime", "info", "host-core handshake ok", {
       data: { generation: h.generation },
     });
@@ -384,5 +487,57 @@ export function createHostRuntime({
     throw error;
   }
   };
-  return { wireHost, startHost };
+  return {
+    wireHost, startHost,
+    cancelReviewForEvent: (envelope) => {
+      if (envelope.event.type === "tool_end") {
+        activeReviewCoordinator?.cancelForTool(envelope.sessionId, envelope.event.toolCallId);
+        for (const [id, request] of reviewRequests) {
+          if (request.sessionId === envelope.sessionId && request.toolCallId === envelope.event.toolCallId) {
+            reviewRequests.delete(id);
+          }
+        }
+      } else if (envelope.event.type === "turn_end" || envelope.event.type === "agent_end") {
+        activeReviewCoordinator?.cancelForSession(envelope.sessionId);
+        for (const [id, request] of reviewRequests) {
+          if (request.sessionId === envelope.sessionId) reviewRequests.delete(id);
+        }
+      }
+    },
+    cancelReviewForSession: (sessionId) => {
+      activeReviewCoordinator?.cancelForSession(sessionId);
+      for (const [id, request] of reviewRequests) {
+        if (request.sessionId === sessionId) reviewRequests.delete(id);
+      }
+    },
+    takeOverSessionReviews: async (sessionId) => {
+      activeReviewCoordinator?.cancelForSession(sessionId);
+      const host = runtimeState.host;
+      if (!host) return;
+      // A graceful stop cannot finish while this tool awaits approval. Move
+      // only active auto reviews to the manual state, then deny that pending
+      // tool via Host before the sidecar receives agent.stop.
+      const requests = [...reviewRequests].filter(([, item]) => item.sessionId === sessionId &&
+        (item.reviewState === "awaiting_review" || item.reviewState === "reviewing"));
+      await Promise.all(requests.map(async ([id]) => {
+        try {
+          await host.call("permissions.takeoverReview", { requestId: id });
+          await host.call("permissions.resolve", { requestId: id, decision: "deny" });
+          reviewRequests.delete(id);
+          settleExternalApproval(id, "deny");
+        } catch (error) {
+          const code = (error as { errorCode?: string; data?: { errorCode?: string } })?.data?.errorCode ??
+            (error as { errorCode?: string })?.errorCode;
+          if (code === "NOT_FOUND" || code === "PERMISSION_TIMEOUT") {
+            reviewRequests.delete(id);
+            return;
+          }
+          logger.app("permission", "warn", "review stop denial failed", {
+            sessionId, data: { requestId: id, error: String(error) },
+          });
+          throw error;
+        }
+      }));
+    },
+  };
 }

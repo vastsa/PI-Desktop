@@ -14,10 +14,87 @@ const { createSessionCoordination } = await import(
 const { createEventPersistence } = await import(
   "../electron/main/runtime/event-persistence.ts"
 );
+const { createEventsSlice } = await import("../src/stores/slices/events-slice.ts");
+const { createSessionRuntime } = await import("../src/stores/runtime/session-runtime.ts");
 
 const SESSION = "s1";
 const LIVE_TURN = "turn-b";
 const OLD_TURN = "turn-a";
+
+test("Stop leaves the real store idle through the old turn's late activity and accepts the next turn", () => {
+  const activeTurns = new Map(); // Host has already settled the stopped turn.
+  const coordination = createSessionCoordination({ activeTurns,
+    getMainWindow: () => null, getViewingSessionId: () => null });
+  const state = {
+    activeSessionId: SESSION, messages: [], retainedTranscripts: {}, sessionHistory: {},
+    runningSessions: { [SESSION]: false }, isRunning: false,
+    agentStatuses: {}, sessionOutcomes: {}, latestTurnResults: {}, pendingPermissions: [], pendingAsks: [],
+    showToast() {}, refreshQueuedPrompts: async () => {},
+  };
+  const access = {
+    get: () => state,
+    set: (update) => Object.assign(state, typeof update === "function" ? update(state) : update),
+  };
+  const runtime = createSessionRuntime(access);
+  const events = createEventsSlice({ ...access, runtime,
+    withoutRecordKey: (record, key) => { const next = { ...record }; delete next[key]; return next; },
+    flushPendingSessionConfiguration: async () => {},
+  });
+  state.handleAgentEvent = events.handleAgentEvent;
+  const delivered = [];
+  const agentHostEvents = [];
+  const emit = (turnId, event) => {
+    const envelope = { sessionId: SESSION, turnId, ts: 1, event };
+    if (coordination.isStaleRuntimeActivity(envelope)) return;
+    agentHostEvents.push(envelope);
+    delivered.push(envelope);
+    events.handleAgentEvent(envelope);
+  };
+  // A canceled permission produces a historical tool row, then Pi may begin a
+  // follow-on turn inside the already-aborted run without emitting agent_end.
+  emit(OLD_TURN, { type: "tool_end", toolCallId: "denied", result: "denied", isError: true });
+  emit(OLD_TURN, { type: "message_end", message: {
+    id: "historical-answer", role: "assistant", content: "Earlier output",
+    status: "complete", createdAt: "2026-09-23T00:00:00Z",
+  } });
+  emit(OLD_TURN, { type: "turn_end" });
+  emit(OLD_TURN, { type: "turn_start" });
+  emit(OLD_TURN, { type: "status", status: { sessionId: SESSION, isRunning: true, currentTurnId: OLD_TURN } });
+  emit(OLD_TURN, { type: "turn_end" });
+  assert.equal(state.isRunning, false, "the old turn cannot revive the Stop button");
+  assert.equal(state.runningSessions[SESSION], false);
+  assert.equal(state.agentStatuses[SESSION], undefined, "old running status cannot linger in the UI");
+  assert.equal(state.messages.find((message) => message.toolCallId === "denied")?.toolStatus, "error",
+    "historical tool outcomes must still reach the transcript");
+  assert.equal(state.messages.some((message) => message.id === "historical-answer"), true,
+    "historical message rows must still reach the transcript");
+  assert.equal(delivered.some(({ event }) => event.type === "turn_start"), false);
+  emit(OLD_TURN, { type: "compaction_start", reason: "manual" });
+  assert.equal(state.isRunning, true, "manual compaction without a live turn still shows activity");
+  emit(OLD_TURN, { type: "compaction_end", reason: "manual", ok: false });
+  assert.equal(state.isRunning, false);
+  activeTurns.set(SESSION, LIVE_TURN);
+  emit(LIVE_TURN, { type: "turn_start" });
+  emit(LIVE_TURN, { type: "status", status: { sessionId: SESSION, isRunning: true, currentTurnId: LIVE_TURN } });
+  assert.equal(state.isRunning, true, "a new durable turn is allowed to start");
+  assert.equal(state.runningSessions[SESSION], true);
+  assert.equal(state.agentStatuses[SESSION]?.currentTurnId, LIVE_TURN);
+  assert.equal(agentHostEvents.some(({ turnId, event }) => turnId === OLD_TURN && event.type === "turn_start"), false);
+});
+
+test("abort lock and in-flight finalization block stale activity before ownership is released", () => {
+  const f = fixture();
+  const start = f.envelope({ type: "turn_start" }, LIVE_TURN);
+  const status = f.envelope({ type: "status", status: { sessionId: SESSION, isRunning: true } }, LIVE_TURN);
+  assert.equal(f.coordination.isStaleRuntimeActivity(start), false);
+  f.coordination.lockAbortReason(SESSION, LIVE_TURN);
+  assert.equal(f.coordination.isStaleRuntimeActivity(start), true);
+  assert.equal(f.coordination.isStaleRuntimeActivity(status), true);
+  f.coordination.clearAbortReason(SESSION, LIVE_TURN);
+  f.coordination.turnFinalizations.set(f.coordination.planSubmissionTurnKey(SESSION, LIVE_TURN), Promise.resolve());
+  assert.equal(f.coordination.isStaleRuntimeActivity(start), true);
+  assert.equal(f.coordination.isStaleRuntimeActivity(status), true);
+});
 
 function fixture() {
   const activeTurns = new Map([[SESSION, LIVE_TURN]]);

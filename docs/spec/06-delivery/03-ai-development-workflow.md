@@ -16,15 +16,17 @@ The rules below govern every change to the PI-Desktop codebase and documentation
 
 - Every code, config, or UX change that alters observable behavior must update the relevant `docs/spec/` document before or alongside the change.
 - Architectural boundary changes (process model, IPC contract, storage ownership, security boundary) also require an ADR — see `docs/adr/README.md`.
-- Pure refactor that preserves behavior and API contracts does not require spec updates, but must still be committed (R2).
+- Pure refactor that preserves behavior and API contracts does not require spec updates. Commit authorization follows R2.
 
-### R2 — Commit-per-change
+### R2 — User-authorized commits
 
-> **Every completed logical change must be git committed.**
+> **Commit only when the user asks, as required by AGENTS.md §17.**
 
-- No large uncommitted piles of work. Each logical unit of work — a feature, a fix, a spec update, a chore — gets its own commit.
-- Uncommitted work at session end is a violation of this rule.
-- If a change is incomplete, either commit it as a draft with a `WIP:` prefix or roll it back.
+- Keep each change coherent and reviewable. When commits are authorized, stage
+  explicit task paths and use the repository's subject-and-body format.
+- Without commit authorization, retain the candidate in its request worktree
+  and report its validation and remaining work. Do not discard incomplete work.
+- A review packet or planned commit split does not authorize commits or publication.
 
 ### R3 — E2E coverage doc
 
@@ -253,7 +255,7 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 5. Update specs / ADR / decisions-log if needed
 6. Update or add e2e scenarios when R3 applies
 7. Run targeted local checks necessary for the change's risk
-8. Commit with conventional message
+8. Commit with conventional message only when requested; otherwise retain the candidate
 9. Update BOARD if milestone-related
 10. Refresh against latest `origin/main` (`pnpm check:pr-base`) and run
     task-candidate E2E in the worktree (R7); when remote delivery is authorized,
@@ -276,7 +278,7 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 | **5. Spec-sync** | Update specs per the impact list. Add ADR if architectural. Update `decisions-log.md` if an implementation default changes. | Updated docs/spec/\* and/or docs/adr/\*. |
 | **6. E2E doc** | When R3 applies, add or update scenario entries in `04-e2e-test-plan.md` and link to acceptance criteria IDs (A–H). Otherwise, confirm no scenario update is needed. | Updated e2e test plan, or confirmed not applicable. |
 | **7. Validate** | Use change risk and regression scope to select the smallest useful local checks. The relevant E2E gate for a code-bearing change runs in the request worktree after `origin/main` is incorporated (`pnpm check:pr-base`) and before any branch push or PR/MR; a suite that cannot run is recorded as `NOT RUN` and keeps delivery incomplete. | Targeted check and E2E results, or an explicit environment limitation. |
-| **8. Commit** | Git commit with conventional message (see §4). | One or more commits. |
+| **8. Commit** | Only when requested, commit explicit task paths with the required subject and body (see §4). Otherwise preserve the reviewed worktree. | Authorized commits or an uncommitted candidate with validation evidence. |
 | **9. BOARD** | If the change completes a milestone deliverable, update `docs/project/BOARD.md`. | Updated board. |
 | **10. Refresh + gate** | Refresh against latest `origin/main`, confirm it is an ancestor of HEAD (`pnpm check:pr-base`), then run task-candidate E2E in the worktree. When remote publishing is authorized, push the request branch and open a PR/MR targeting `main` only after that gate. | Verified candidate with the E2E gate result, or a recorded `NOT RUN` limitation; reviewable remote change or a local-only delivery route. |
 | **11. Remote merge + cleanup** | For authorized remote delivery, merge the PR/MR into remote `main` through the required gates (including the PR-base check) and synchronize local `main`; rerun the affected suites when the landed executable content differs from the commit the gate ran on. Verify the expected commits and remove the merged worktree and branch. | Requested integration complete, or an explicit blocker / narrower user-requested handoff. |

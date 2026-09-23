@@ -4,6 +4,8 @@ import {
   keybindingDisplayParts,
   type Mode,
   type PermissionMode,
+  type ApprovalReviewer,
+  type SessionApprovalReviewer,
   type ShortcutPlatform,
   type SessionThinkingLevel,
 } from "@pi-desktop/shared";
@@ -37,6 +39,10 @@ export type ComposerToolbarProps = {
   modelId?: string;
   thinkingLevel: SessionThinkingLevel;
   composerPermissionMode: Exclude<PermissionMode, "inherit">;
+  effectiveReviewer: ApprovalReviewer;
+  sessionReviewer: SessionApprovalReviewer;
+  hasActiveSession: boolean;
+  activeSessionId?: string;
   permissionOpen: boolean;
   setPermissionOpen: Dispatch<SetStateAction<boolean>>;
   controlsBlocked: boolean;
@@ -72,6 +78,10 @@ export function ComposerToolbar({
   modelId,
   thinkingLevel,
   composerPermissionMode,
+  effectiveReviewer,
+  sessionReviewer,
+  hasActiveSession,
+  activeSessionId,
   permissionOpen,
   setPermissionOpen,
   controlsBlocked,
@@ -152,6 +162,10 @@ export function ComposerToolbar({
         </TooltipButton>
         <ComposerPermissionPicker t={t} mode={mode}
           composerPermissionMode={composerPermissionMode}
+          effectiveReviewer={effectiveReviewer}
+          sessionReviewer={sessionReviewer}
+          hasActiveSession={hasActiveSession}
+          sessionId={activeSessionId}
           permissionOpen={permissionOpen} setPermissionOpen={setPermissionOpen}
           controlsBlocked={controlsBlocked} onCloseOtherMenus={() => modelMenu.setOpen(false)}
           onSelect={async (candidate) => {
@@ -168,6 +182,17 @@ export function ComposerToolbar({
                     variant: "error",
                   });
                 }
+          }}
+          onSelectReviewer={async (candidate) => {
+            try {
+              await configureActiveSession({
+                mode, providerId, modelId, thinkingLevel,
+                permissionMode: composerPermissionMode,
+                approvalReviewer: candidate,
+              });
+            } catch (error) {
+              showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+            }
           }} />
       </div>
 
