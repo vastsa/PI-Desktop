@@ -49,6 +49,7 @@ function rememberDismissedTaskNotification(id: string): void {
 function dismissTaskNativeNotification(id: string): void {
   if (!id) return;
   const entry = taskNativeNotifications.get(id);
+  taskNativeNotifications.delete(id);
   rememberDismissedTaskNotification(id);
   if (entry) {
     entry.dismissed = true;
@@ -103,7 +104,7 @@ export function registerNotificationIpc({
     if (!host) throw new Error("host unavailable");
     const id = typeof input.id === "string" ? input.id.trim() : "";
     const result = await host.call("notification.markRead", input);
-    if (id) dismissTaskNativeNotification(id);
+    if (id && result?.ok !== false) dismissTaskNativeNotification(id);
     return result;
   });
 
@@ -162,7 +163,11 @@ export function registerNotificationIpc({
         typeof input.createdAt === "string" ? Date.parse(input.createdAt) : NaN;
       if (!id || !sessionId || !title) return { shown: false };
 
-      if (kind === "task" && Number.isFinite(createdAt) && createdAt <= dismissedBefore) {
+      if (
+        kind === "task" &&
+        Number.isFinite(createdAt) &&
+        createdAt <= dismissedBefore
+      ) {
         return { shown: false };
       }
 
