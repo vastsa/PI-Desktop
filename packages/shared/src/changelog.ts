@@ -29,6 +29,14 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.15.6",
+    date: "2026-09-23",
+    highlights: [
+      "Support GPT-6 Astra, Sol, and Luna across the OpenAI and ChatGPT/Codex model catalogs.",
+    ],
+  },
+
+  {
     version: "0.15.5",
     date: "2026-09-23",
     highlights: [
@@ -833,6 +841,14 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.15.6",
+    date: "2026-09-23",
+    highlights: [
+      "支持 OpenAI 与 ChatGPT/Codex 模型目录中的 GPT-6 Astra、Sol 和 Luna。",
+    ],
+  },
+
+  {
     version: "0.15.5",
     date: "2026-09-23",
     highlights: [
@@ -1636,6 +1652,14 @@ const zhCNEntries: ChangelogEntry[] = [
 ];
 
 const zhTWEntries: ChangelogEntry[] = [
+  {
+    version: "0.15.6",
+    date: "2026-09-23",
+    highlights: [
+      "支援 OpenAI 與 ChatGPT/Codex 模型目錄中的 GPT-6 Astra、Sol 與 Luna。",
+    ],
+  },
+
   {
     version: "0.15.5",
     date: "2026-09-23",

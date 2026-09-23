@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.6",
+    "date": "2026-09-23",
+    "highlights": [
+      "Unterstützung für GPT-6 Astra, Sol und Luna in den OpenAI- und ChatGPT/Codex-Modellkatalogen.",
+    ],
+  },
+
+  {
     "version": "0.15.5",
     "date": "2026-09-23",
     "highlights": [
