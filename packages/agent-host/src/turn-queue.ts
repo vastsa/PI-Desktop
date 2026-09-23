@@ -127,9 +127,9 @@ export class TurnQueue {
     if (!queue) return undefined;
     const index = queue.findIndex((record) => record.id === id);
     if (index === -1) return undefined;
+    await this.store.remove(id);
     const [record] = queue.splice(index, 1);
     if (queue.length === 0) this.bySession.delete(sessionId);
-    await this.store.remove(id);
     return record;
   }
 

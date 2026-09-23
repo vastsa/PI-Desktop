@@ -1513,7 +1513,7 @@ identify the platform validation still needed.
   promoted rows are delivered in the order they were promoted, before any
   waiting row, without `AGENT_BUSY`: the first starts the turn and the rest join
   it as adjacent user messages, so the model answers once for the whole block.
-  remove, and its Send now button reads as already decided; promotion is
+  A promoted row locks move/edit and Send now, but permits removal; promotion is
   one-way. Move up/down swaps only waiting rows, never crosses the promoted
   block, and persists. Edit is refused with a visible message while the input
   is non-empty, and otherwise removes the row and returns its text plus its
@@ -1546,14 +1546,21 @@ identify the platform validation still needed.
 - **Preconditions**: Provider configured; session A is running a turn with at
   least one completed tool batch; three prompts are queued behind it.
   the first queued row. 3) Confirm the promoted block orders third → first, that
-  both rows lock their move/edit/remove actions, and that the remaining row is
+  both rows lock their move/edit actions, and that the remaining row is
   still editable. 4) Let the boundary pass and observe the transcript.
 - **Expected**: The first click is delivered first and the second second — the
   click order is the delivery order, not "last click wins" and not the original
   queue order. Both rows appear as adjacent user messages in one turn and the
   model answers once; the queue no longer lists either promoted row. Both
-  promoted rows show as already decided and cannot be edited, removed, or
-  reordered. The waiting row keeps its actions and is not delivered before
+  promoted rows show as waiting and cannot be edited or reordered. Removal
+  remains available until delivery. A refused or failed graceful stop reports
+  a message and leaves the row cancelable. If cancellation wins admission,
+  the input never executes; if delivery wins, cancellation reports that it
+  already started. The row disappears only after Host acknowledgement.
+  A stalled steering delivery does not block admission or cancellation of other
+  queued inputs. Failed durable removal after acceptance reports an error and
+  rejects cancellation; a subsequent drain retries cleanup without re-executing
+  the accepted input in the live Host. The waiting row keeps its actions and is not delivered before
   either promoted row.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` (§5.6),
   `04-ux/08-component-spec.md` (§11), ADR 0265

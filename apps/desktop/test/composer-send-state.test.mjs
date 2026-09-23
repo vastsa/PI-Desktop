@@ -131,7 +131,7 @@ test("running prompts use a removable per-session queue with priority actions", 
     /\.\.\.promoted,\s*\n\s*\{ \.\.\.item, priority: highest \+ 1 \},\s*\n\s*\.\.\.waiting,/,
   );
   assert.match(queuedPromptsLib, /Math\.max\(max, candidate\.priority\)/);
-  // A promoted row is the next turn: move up/down, edit, and remove all lock.
+  // Promotion fixes ordering and editing; removal remains available until delivery.
   assert.match(composer, /data-priority=\{promoted \? "true" : "false"\}/);
   assert.match(composer, /disabled=\{sendNowLocked\}/);
   assert.match(
@@ -140,12 +140,12 @@ test("running prompts use a removable per-session queue with priority actions", 
   );
   assert.equal(
     (composer.match(/disabled=\{actionsLocked\}/g) ?? []).length,
-    8,
-    "four pending or promoted row actions set disabled and aria-disabled on move up/down, edit, and remove",
+    6,
+    "three pending or promoted row actions lock move up/down and edit",
   );
   assert.equal(
     (composer.match(/aria-disabled=\{actionsLocked\}/g) ?? []).length,
-    4,
+    3,
     "each locked action carries its own aria-disabled state",
   );
   assert.doesNotMatch(composer, /sendNowRequested/);
