@@ -201,11 +201,13 @@ export function createCatalogSlice({
             (acknowledgedById || acknowledgedByTime) &&
             !notification.readAt
           ) {
+            const acknowledgedAt =
+              acknowledgedByTime && readBefore !== null
+                ? readBefore
+                : Date.now();
             return {
               ...notification,
-              readAt: new Date(
-                acknowledgedByTime ? readBefore : Date.now(),
-              ).toISOString(),
+              readAt: new Date(acknowledgedAt).toISOString(),
             };
           }
           return notification;
@@ -269,12 +271,18 @@ export function createCatalogSlice({
       }
       catalogRuntime.rememberNotificationRead(id);
       const readAt = new Date().toISOString();
-      set((state) => ({
-        notifications: state.notifications.map((notification) =>
+      set((state) => {
+        const notifications = state.notifications.map((notification) =>
           notification.id === id ? { ...notification, readAt } : notification,
-        ),
-        unreadNotificationCount: Math.max(0, state.unreadNotificationCount - 1),
-      }));
+        );
+        return {
+          notifications,
+          unreadNotificationCount: notifications.reduce(
+            (count, notification) => count + (notification.readAt ? 0 : 1),
+            0,
+          ),
+        };
+      });
     },
 
     markAllNotificationsRead: async () => {
