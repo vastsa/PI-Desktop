@@ -4070,7 +4070,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   row read and confirm its session has no terminal sidebar mark, then
   close/reopen the popover and restart the app. 8) Select the other session
   from its terminal-marked sidebar row. 9) Generate a host fixture with 205
-  eligible terminal turns. 10) Use Mark all read, then Clear.
+  eligible terminal turns. 10) Use Mark all read, then Clear. 11) While a
+  native task banner and a renderer refresh are still in flight, deliver a
+  delayed `notification.changed` payload for a cleared/read durable id and a
+  duplicate payload for an id that is already present.
 - **Expected**: A's visible-current completion creates no row or terminal sidebar mark. Exactly two rows
   exist, newest first: the unfocused A completion and background B failure,
   with localized labels, snapshotted session titles, and B's stable code.
@@ -4083,7 +4086,11 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   preserves rows with zero unread. Selecting the other session clears its
   terminal sidebar mark and marks its task notification read; neither mark
   returns after refresh or restart. Clear empties only the inbox and leaves
-  sessions, turns, and transcripts intact.
+  sessions, turns, and transcripts intact. Clear/read also dismisses any
+  outstanding task-native object, a repeated durable id produces no second
+  banner or row, and a delayed pre-clear event cannot resurrect the cleared
+  item; a genuinely new post-clear turn still produces exactly one row and
+  banner.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
   `03-runtime/06-host-rpc-protocol.md`, `03-runtime/01-ipc-protocol.md`,
   `04-ux/07-ui-design-system.md`, `04-ux/08-component-spec.md`,
@@ -4105,7 +4112,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   Unfocus the app and abort a turn. 7) Repeat with native delivery suppressed
   by the OS. 8) On Windows, inspect the native notification attribution,
   notification-settings entry, taskbar group, installed executable, and Start
-  menu shortcut.
+  menu shortcut. 9) Deliver the same durable id twice, then mark it read and
+  clear the inbox while its native object is still pending in the OS.
 - **Expected**: Focused-current A creates neither inbox row, terminal sidebar mark, nor native banner.
   Focused-background B creates an inbox row without a native banner. Unfocused
   current A and the minimized failure each create one durable row and one
@@ -4115,7 +4123,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   currently selected session. Abort shows neither surface. OS suppression does
   not lose the durable row or surface a misleading app error. Every inspected
   Windows system surface identifies `PI-Desktop`; no stock Electron application
-  name or identity is exposed.
+  name or identity is exposed. Duplicate delivery is idempotent: one durable
+  id owns at most one live native object, and mark-read/clear closes that
+  object so a late activation or renderer event cannot show the old task again.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/07-ui-design-system.md`, `04-ux/09-interaction-patterns.md`,
   `08-meta/decisions-log.md` (D117/D141)
@@ -9122,6 +9132,9 @@ This test plan spec is accepted when:
 - Mark all read and Clear expose icon tooltips/accessible names, disabled and
   empty states remain understandable, and reduced-motion mode changes the
   popover instantly without suppressing focus or unread state.
+- While a task banner is pending, mark its row read and then clear the inbox;
+  inject a delayed duplicate event afterwards. The old row, sidebar mark, and
+  native banner stay dismissed, while a new post-clear task appears once.
 
 ### US-UI-66 Application update notice layout
 - In a conversation with the docked composer visible, exercise manual
