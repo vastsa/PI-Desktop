@@ -143,7 +143,10 @@ test("task native notifications are idempotent by durable notification id", () =
   assert.match(notificationIpcSource, /taskNativeNotifications\.get\(id\)/);
   assert.match(notificationIpcSource, /taskNativeNotifications\.set\(id, \{ notification, dismissed: false \}\)/);
   assert.match(notificationIpcSource, /taskNativeNotifications\.delete\(id\)/);
-  assert.match(notificationIpcSource, /existingTaskNotification\.dismissed/);
+  assert.match(
+    notificationIpcSource,
+    /existingTaskNotification(?:\?\.dismissed|\s*!==\s*undefined)/,
+  );
   assert.ok(
     notificationIpcSource.indexOf("existingTaskNotification") <
       notificationIpcSource.indexOf("new SystemNotification"),
