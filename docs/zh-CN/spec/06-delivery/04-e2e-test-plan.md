@@ -435,12 +435,14 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
   下一个模型回合。对于用户可见的 HTML 可交付成果，`BrowserPreview` 是
   创建或第一次有意义的视觉编辑后调用一次，然后重复使用
   在页面优化时通过实时重新加载。已生成，仅供测试，并且
-  非可视 HTML 文件不会触发预览调用。加载的集合不
-  泄漏到下一个提示的第一个请求中。工具激活标记幸存
-  在不授予主机权限或工作区逃逸的情况下重新加载脚本。
+  非可视 HTML 文件不会触发预览调用。第二个提示的第一个请求可以恢复
+  有效上下文中仍存在的成功激活标记，包括已激活但尚未调用的工具。新结果
+  使用 `details.addedToolNames`，历史 `details.activated` 和顶层
+  `addedToolNames` 也可读取；失败、中断或缺少结果的行不会恢复工具。目录
+  或模式变化会阻止恢复，且恢复不会授予主机权限或工作区逃逸。
 - **链接规格**：`03-runtime/02-agent-runtime.md` §7.1，
-  `03-runtime/03-tools-and-permissions.md` §2.1、ADR 0048、
-  `08-meta/decisions-log.md` (D185)
+  `03-runtime/03-tools-and-permissions.md` §2.1、ADR 0048、ADR 0225、
+  `08-meta/decisions-log.md` (D185、D400)
 - **验收**：C（第一轮和流）+ E（工具执行）
 - **里程碑**：M5
 - **状态**：单位覆盖（`agent-runtime` 延迟工具测试）；真人模特

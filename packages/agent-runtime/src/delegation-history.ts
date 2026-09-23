@@ -456,7 +456,29 @@ function toolResultFromUi(m: UiMessage, timestamp: number): ToolResultMessage {
           : MISSING_TOOL_RESULT_PLACEHOLDER,
     });
   }
-  const details = toJsonValue(isRecord(raw) ? raw.details : undefined);
+  const rawRecord = isRecord(raw) ? raw : undefined;
+  const rawDetails = toJsonValue(rawRecord?.details);
+  const legacyAddedToolNames =
+    m.toolName === "ToolSearch" && Array.isArray(rawRecord?.addedToolNames)
+      ? rawRecord.addedToolNames.filter(
+          (name: unknown): name is string =>
+            typeof name === "string" && name.length > 0,
+        )
+      : [];
+  const canonicalAddedToolNames =
+    isRecord(rawDetails) && Array.isArray(rawDetails.addedToolNames)
+      ? rawDetails.addedToolNames.filter(
+          (name: unknown): name is string =>
+            typeof name === "string" && name.length > 0,
+        )
+      : [];
+  const details =
+    legacyAddedToolNames.length > 0 && canonicalAddedToolNames.length === 0
+      ? {
+          ...(isRecord(rawDetails) ? rawDetails : {}),
+          addedToolNames: [...new Set(legacyAddedToolNames)],
+        }
+      : rawDetails;
   return {
     role: "toolResult",
     toolCallId: m.toolCallId ?? "",

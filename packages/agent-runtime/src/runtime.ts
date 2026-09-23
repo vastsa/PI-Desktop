@@ -363,6 +363,36 @@ export const TOOL_SEARCH_NAME = "ToolSearch";
 /** Stands in for a persisted tool row that never recorded a result. */
 const MISSING_TOOL_RESULT_PLACEHOLDER = "[no tool result recorded]";
 
+function toolNameList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.filter(
+        (name: unknown): name is string =>
+          typeof name === "string" && name.length > 0,
+      ),
+    ),
+  ];
+}
+
+/** Read canonical and historical activation markers from a ToolSearch row. */
+function toolSearchActivatedNames(
+  details: unknown,
+  legacyAddedToolNames?: unknown,
+): string[] {
+  const record = isRecord(details) ? details : undefined;
+  const candidates = [
+    record?.addedToolNames,
+    record?.activated,
+    legacyAddedToolNames,
+  ];
+  for (const candidate of candidates) {
+    const names = toolNameList(candidate);
+    if (names.length > 0) return names;
+  }
+  return [];
+}
+
 function isMissingToolResultPlaceholder(
   content: ToolResultMessage["content"],
 ): boolean {
@@ -1436,12 +1466,9 @@ function toolResultFromUi(
     : undefined;
   const rawAddedToolNames = rawRecord?.addedToolNames;
   const addedToolNames =
-    Array.isArray(rawAddedToolNames)
-      ? rawAddedToolNames.filter(
-          (name: unknown): name is string =>
-            typeof name === "string" && name.length > 0,
-        )
-      : [];
+    m.toolName === TOOL_SEARCH_NAME
+      ? toolSearchActivatedNames(rawRecord?.details, rawAddedToolNames)
+      : toolNameList(rawAddedToolNames);
   if (blocks.length === 0) {
     blocks.push({
       type: "text",
@@ -3654,7 +3681,12 @@ Delegation rules:
               : `No matching on-demand tool. Available names: ${availablePreview.join(", ")}${remaining > 0 ? `, and ${remaining} more` : ""}.`;
         return {
           content: [{ type: "text", text }],
-          details: { query, matches, activated },
+          details: {
+            query,
+            matches,
+            activated,
+            ...(activated.length > 0 ? { addedToolNames: activated } : {}),
+          },
         };
       },
     };
@@ -5109,9 +5141,10 @@ Delegation rules:
       if (isMissingToolResultPlaceholder(message.content)) continue;
       const names =
         message.toolName === TOOL_SEARCH_NAME
-          ? (isRecord(message.details) && Array.isArray(message.details.addedToolNames)
-              ? message.details.addedToolNames.filter((name): name is string => typeof name === "string")
-              : [])
+          ? toolSearchActivatedNames(
+              message.details,
+              (message as unknown as { addedToolNames?: unknown }).addedToolNames,
+            )
           : [message.toolName];
       for (const name of names) {
         if (this.deferredToolNames.has(name)) {

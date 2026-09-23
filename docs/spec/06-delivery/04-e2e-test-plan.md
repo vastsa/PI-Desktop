@@ -1075,8 +1075,11 @@ identify the platform validation still needed.
   through live reload while the page is refined. Generated, test-only, and
   non-visual HTML files do not trigger a preview call. At the second prompt,
   successful activation markers still in the effective context may restore the
-  matching deferred schemas in the first request; failed, interrupted, and
-  missing-result rows do not. Catalog and mode changes also prevent restoration.
+  matching deferred schemas in the first request, including tools that were
+  activated but not yet called. New results use `details.addedToolNames`; the
+  legacy `details.activated` and top-level `addedToolNames` markers remain
+  readable. Failed, interrupted, and missing-result rows do not restore tools.
+  Catalog and mode changes also prevent restoration.
   No host permission or workspace escape is granted by restoration.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §7.1,
   `03-runtime/03-tools-and-permissions.md` §2.1, ADR 0048, ADR 0225,

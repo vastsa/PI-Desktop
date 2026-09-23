@@ -2083,6 +2083,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
 
     const result = await search.execute("search-1", { query: "BrowserPreview" });
     expect(result.details.activated).toEqual(["BrowserPreview"]);
+    expect(result.details.addedToolNames).toEqual(["BrowserPreview"]);
     expect(agent.state.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
       false,
     );
@@ -2098,7 +2099,6 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
           toolName: "ToolSearch",
           content: result.content,
           details: result.details,
-          addedToolNames: result.details.activated,
           isError: false,
           timestamp: Date.now(),
         },
@@ -8400,8 +8400,9 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     toolArgs: { query: "BrowserPreview" },
     toolResult: {
       content: [{ type: "text", text: "Activated on-demand tools: BrowserPreview." }],
-      details: { activated: ["BrowserPreview"] },
-      addedToolNames: ["BrowserPreview"],
+      details: {
+        addedToolNames: ["BrowserPreview"],
+      },
     },
     ...overrides,
   });
@@ -8421,6 +8422,69 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     (runtime as any).resetDeferredToolsForPrompt();
 
     expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    await runtime.dispose();
+  });
+
+  it("restores legacy activation markers for an unused tool", async () => {
+    const fixtures: Array<{ details: Record<string, unknown>; addedToolNames?: string[] }> = [
+      { details: { activated: ["BrowserPreview"] } },
+      { details: { activated: [] }, addedToolNames: ["BrowserPreview"] },
+    ];
+
+    for (const [index, fixture] of fixtures.entries()) {
+      const runtime = createRuntime({
+        history: [
+          assistantRow,
+          searchRow({
+            id: `tool-search-legacy-${index}`,
+            toolCallId: `call-search-legacy-${index}`,
+            toolResult: {
+              content: [{ type: "text", text: "Activated on-demand tools: BrowserPreview." }],
+              details: fixture.details,
+              ...(fixture.addedToolNames
+                ? { addedToolNames: fixture.addedToolNames }
+                : {}),
+            },
+          }),
+        ],
+      });
+
+      (runtime as any).resetDeferredToolsForPrompt();
+      expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+      await runtime.dispose();
+    }
+  });
+
+  it("restores all activated tools when only some have been called", async () => {
+    const runtime = createRuntime({
+      history: [
+        assistantRow,
+        searchRow({
+          toolResult: {
+            content: [{ type: "text", text: "Activated on-demand tools: BrowserPreview, Glob." }],
+            details: {
+              addedToolNames: ["BrowserPreview", "Glob"],
+            },
+          },
+        }),
+        {
+          id: "tool-preview-ok",
+          role: "tool",
+          content: "",
+          createdAt: now(),
+          status: "complete",
+          toolName: "BrowserPreview",
+          toolCallId: "call-preview-ok",
+          toolStatus: "success",
+          toolArgs: {},
+          toolResult: { content: [{ type: "text", text: "opened" }] },
+        },
+      ],
+    });
+
+    (runtime as any).resetDeferredToolsForPrompt();
+    expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    expect(hasTool(runtime, "Glob")).toBe(true);
     await runtime.dispose();
   });
 

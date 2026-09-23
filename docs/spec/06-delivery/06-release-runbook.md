@@ -281,18 +281,10 @@ system Electron.
 
 ### 4.4 Documentation site deployment
 
-The `pi-desktop-docs` Vercel project is published only from a published GitHub
-Release ref.
-`docs/vercel.json` disables Vercel Git auto-deployments, so pushes to `main`,
-release branches, and pull requests do not create documentation deployments or
-Vercel bot comments. The `docs-deploy` job in `.github/workflows/release.yml`
-runs after the release workflow's `publish` job succeeds, checks out the exact
-release tag, and deploys the production site with the Vercel CLI. Keeping this
-job in the same workflow avoids relying on a second workflow being triggered by
-`GITHUB_TOKEN`.
-
-The workflow requires the repository secrets `VERCEL_ORG_ID`,
-`VERCEL_PROJECT_ID`, and `VERCEL_TOKEN`.
+The release workflow does not deploy the documentation site. Vercel Git
+Deployments are disabled in `docs/vercel.json`, so changes to documentation
+sources do not automatically update the production site. Deployments must be
+initiated manually in Vercel when required.
 
 ### 4.5 CNB mirror trigger
 
