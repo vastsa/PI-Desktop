@@ -830,6 +830,10 @@ Main sends two events:
   and recalculates the exact unread count. A terminal result already visible in
   the focused current chat, repeated terminal updates, and aborted turns emit
   nothing.
+- The durable `id` is the renderer and Electron native-delivery idempotency key.
+  A repeated `notification.changed` payload for an id already present in the
+  local list is a no-op; a delayed payload whose row was acknowledged or
+  cleared is ignored and must not recreate the row or its sidebar outcome.
 - `pi-desktop/notification/event/activated` after the user clicks Electron's
   native system notification. Renderer follows its existing session-selection
   path, including project activation for a project-bound session.
@@ -867,6 +871,14 @@ before readiness and before any window is created. The ID matches the NSIS
 package identity so notification attribution, notification settings, taskbar
 grouping, and installed shortcuts resolve to `PI-Desktop`, never the stock
 Electron host.
+
+Task native objects are retained by durable notification id, with at most one
+live object per id. Replayed `showNative` requests do not create a second
+object. A successful `notification.markRead`, `notification.markAllRead`, or
+`notification.clear` closes matching task objects (and leaves an id tombstone
+long enough to reject late delivery); a failed host mutation does not dismiss
+the object optimistically. Interactive prompt notifications use a separate
+transient registry and are not affected by task inbox mutations.
 
 The viewing-session hint is advisory and fail-safe: missing, stale, hidden, or
 unfocused renderer state creates the durable notification. Suppression occurs

@@ -519,6 +519,9 @@ type NotificationListResult = {
 - `notification.markAllRead({}) -> { ok: true }` 更新中的每个未读行
   一笔交易。
 - `notification.clear({}) -> { ok: true }` 仅删除收件箱行。
+- `id` 是 Renderer 和本机投递的稳定一次性键。客户端必须丢弃已经确认/清除
+  的 id 的重复或延迟记录；清空收件箱不会让旧终端回合再次具备插入资格。
+  后续真正的终端回合会获得新的 id。
 - 不发出 `notification.created` JSON-RPC 服务器通知。 Electron
   直接从 `session.endTurn` 接收插入的记录，避免了
   终端转持久化和UI刷新之间的第二个点餐通道。
@@ -1030,4 +1033,3 @@ schedule，Manual 转 Hourly 继续使用现有默认间隔行为。
 保存和读取工作区绑定时统一使用现有项目路径规范化规则。在 Windows 上，
 斜杠方向、大小写、末尾分隔符和扩展路径前缀的差异不会再让同项目会话看不到任务。
 缺失的旧版绑定与显式 null 仍保持不同语义；其他项目的工具不能查询或修改绑定任务。
-
