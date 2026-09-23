@@ -1,7 +1,9 @@
+import type { ComposerPluginReference as PluginReference } from "@pi-desktop/plugin-sdk";
 export type ComposerDraftFileReference = {
   path: string;
   name: string;
-  kind?: "image" | "file";
+  kind?: "image" | "file" | "reference";
+  pluginReference?: PluginReference;
   mimeType?: string;
   /** Visible inline token for a generated large-text paste reference. */
   token?: string;

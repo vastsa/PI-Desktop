@@ -27,6 +27,7 @@ pub struct QueuedTurnInput {
     pub idempotency_key: Option<String>,
     pub input_hash: String,
     pub content: String,
+    pub composer_display: Option<Value>,
     pub session_message_id: Option<String>,
     pub attachments: Option<Value>,
     pub permission_mode: String,
@@ -42,6 +43,7 @@ pub struct QueuedTurn {
     pub idempotency_key: Option<String>,
     pub input_hash: String,
     pub content: String,
+    pub composer_display: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_message_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -65,6 +67,9 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedTurn> {
         idempotency_key: row.get(3)?,
         input_hash: row.get(4)?,
         content: row.get(5)?,
+        composer_display: row
+            .get::<_, Option<String>>(12)?
+            .and_then(|text| serde_json::from_str(&text).ok()),
         session_message_id: row.get(10)?,
         attachments: attachments.and_then(|text| serde_json::from_str(&text).ok()),
         permission_mode: row.get(7)?,
@@ -75,7 +80,7 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedTurn> {
 }
 
 const SELECT: &str = "SELECT id, session_id, principal, idempotency_key, input_hash, content,
-        attachments_json, permission_mode, position, created_at, session_message_id, priority
+        attachments_json, permission_mode, position, created_at, session_message_id, priority, composer_display_json
  FROM turn_queue";
 
 /// Delivery order: promoted entries first in click order (ascending
@@ -130,12 +135,17 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
         .as_ref()
         .map(serde_json::to_string)
         .transpose()?;
+    let composer_display_json = input
+        .composer_display
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
     let created_at = now_ms();
     tx.execute(
         "INSERT INTO turn_queue (
             id, session_id, principal, idempotency_key, input_hash, content,
-            attachments_json, permission_mode, position, created_at, session_message_id
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            attachments_json, permission_mode, position, created_at, session_message_id, composer_display_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             id,
             input.session_id,
@@ -147,7 +157,8 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
             input.permission_mode,
             max_position + 1,
             created_at,
-            input.session_message_id
+            input.session_message_id,
+            composer_display_json
         ],
     )?;
     tx.commit()?;
@@ -158,6 +169,7 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
         idempotency_key: input.idempotency_key,
         input_hash: input.input_hash,
         content: input.content,
+        composer_display: input.composer_display,
         session_message_id: input.session_message_id,
         attachments: input.attachments,
         permission_mode: input.permission_mode,
@@ -330,6 +342,7 @@ mod tests {
             input_hash: format!("hash:{content}"),
             content: content.to_string(),
             session_message_id: None,
+            composer_display: None,
             attachments: None,
             permission_mode: "ask".into(),
         }

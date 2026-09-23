@@ -4,6 +4,8 @@ import type { ComposerCommand } from "@pi-desktop/shared";
 import type { AutocompleteItem, useComposerAutocomplete } from "../hooks/use-composer-autocomplete";
 import {
   IconBookOpen,
+  IconChevronDown,
+  IconChevronRight,
   IconFileText,
   IconFolder,
   IconPlug,
@@ -82,9 +84,9 @@ export function ComposerAutocomplete({
     const rowClass = `composer-plus-item composer-ac-item ${active ? "kb-active" : ""}`;
     const commonProps = {
       key:
-        item.kind === "command"
+        item.kind === "file-group" ? "g:files" : item.kind === "command"
           ? `c:${item.command.kind}:${item.command.name}`
-          : `p:${item.entry.path}`,
+          : item.kind === "reference" ? `r:${item.reference.pluginId}:${item.reference.providerId}:${item.reference.refId}` : `p:${item.entry.path}`,
       type: "button" as const,
       role: "option" as const,
       "aria-selected": active,
@@ -97,6 +99,12 @@ export function ComposerAutocomplete({
       },
       onMouseMove: () => ac.setHighlight(index),
     };
+    if (item.kind === "file-group") {
+      return <button {...commonProps} aria-expanded={item.expanded}>
+        <span className="composer-ac-icon">{item.expanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}</span>
+        <span className="composer-ac-name">{t("chat.fileGroup")} ({item.count})</span>
+      </button>;
+    }
     if (item.kind === "command") {
       return (
         <button {...commonProps}>
@@ -117,6 +125,13 @@ export function ComposerAutocomplete({
           ) : null}
         </button>
       );
+    }
+    if (item.kind === "reference") {
+      return <button {...commonProps} title={item.description}>
+        <span className="composer-ac-icon"><IconPlug size={14} /></span>
+        <span className="composer-ac-name"><Highlighted text={item.label} ranges={item.match.ranges} /></span>
+        {item.description ? <span className="composer-ac-desc">{item.description}</span> : null}
+      </button>;
     }
     const isDir = item.entry.kind === "dir";
     const name = item.entry.path.split("/").pop() ?? item.entry.path;
@@ -152,7 +167,7 @@ export function ComposerAutocomplete({
     rows.push(renderRow(item, index));
   });
 
-  const emptyKey =
+  const emptyKey = ac.pluginOnly ? "chat.referenceEmpty" :
     ac.mode === "file"
       ? ac.noWorkspace
         ? "chat.fileNoWorkspace"
@@ -166,7 +181,7 @@ export function ComposerAutocomplete({
       onClose={ac.close}
       anchorRef={anchorRef}
       menuClassName="composer-autocomplete"
-      label={t(ac.mode === "file" ? "chat.fileMenu" : "chat.slashMenu")}
+      label={t(ac.pluginOnly ? "chat.referenceMenu" : ac.mode === "file" ? "chat.fileMenu" : "chat.slashMenu")}
       role="listbox"
       side="top"
       matchAnchorWidth

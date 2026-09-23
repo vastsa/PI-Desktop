@@ -1,3 +1,4 @@
+import type { ComposerPromptDisplay } from "@pi-desktop/shared";
 import type {
   AgentPromptAttachment,
   AskToolResolution,
@@ -34,6 +35,7 @@ export interface HostRpcPort {
 export type TurnStartRequest = {
   sessionId: string;
   content: string;
+  composerDisplay?: ComposerPromptDisplay;
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288); the runtime mints one otherwise. */
   userMessageId?: string;
@@ -52,6 +54,7 @@ export type TurnSteerRequest = {
   /** The runtime id of the running turn that must receive the input. */
   turnId: string;
   content: string;
+  composerDisplay?: ComposerPromptDisplay;
   sessionMessageId?: string;
   attachments?: AgentPromptAttachment[];
   principal: Principal;
@@ -77,6 +80,7 @@ export type QueuedTurnRecord = {
   sessionId: string;
   principalSubject: string;
   content: string;
+  composerDisplay?: ComposerPromptDisplay;
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288). */
   userMessageId?: string;

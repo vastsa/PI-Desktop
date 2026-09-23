@@ -503,6 +503,7 @@ function normalizePlansChangedEvent(value: unknown): PlanningStateEvent {
 }
 
 export const api = {
+  pluginRendererEntries: () => invoke<{ entries: Array<{ pluginId: string; source: string }> }>(IPC.invoke.pluginRendererEntries),
   getVersion: () => invoke<AppVersionInfo>(IPC.invoke.appGetVersion),
   health: () => invoke<HostHealth>(IPC.invoke.appHealth),
   getOnboarding: () => invoke<OnboardingState>(IPC.invoke.appGetOnboarding),

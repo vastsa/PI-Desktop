@@ -24,7 +24,7 @@ async function sourceFiles(directory) {
 export async function readComposerSource() {
   const facade = join(desktopSourceRoot, "components/Composer.tsx");
   const autocompleteHook = join(desktopSourceRoot, "hooks/use-composer-autocomplete.ts");
-  const paths = [facade, autocompleteHook, ...(await sourceFiles(composerRoot))];
+  const paths = [facade, autocompleteHook, join(desktopSourceRoot, "lib/composer-chip-token.ts"), ...(await sourceFiles(composerRoot))];
   const chunks = await Promise.all(
     paths.map(async (path) => {
       const source = await readFile(path, "utf8");
@@ -51,7 +51,7 @@ function sourceFilesSync(directory) {
 export function readComposerSourceSync() {
   const facade = join(desktopSourceRoot, "components/Composer.tsx");
   const autocompleteHook = join(desktopSourceRoot, "hooks/use-composer-autocomplete.ts");
-  return [facade, autocompleteHook, ...sourceFilesSync(composerRoot)]
+  return [facade, autocompleteHook, join(desktopSourceRoot, "lib/composer-chip-token.ts"), ...sourceFilesSync(composerRoot)]
     .map((path) => `\n/* ${relative(desktopSourceRoot, path)} */\n${readFileSync(path, "utf8")}`)
     .join("\n");
 }

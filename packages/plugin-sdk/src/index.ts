@@ -1,3 +1,4 @@
+export type { ComposerReference, ComposerPluginReference, ComposerCompletion, ComposerReferenceContent, ComposerCompletionProvider, PiRendererApi, RendererPlugin } from "./renderer.js";
 import { isValidBusTopic, isValidBusTopicPattern } from "./bus-topics.js";
 import {
   parseFsPolicy,
@@ -62,6 +63,8 @@ export type PluginManifest = {
   homepage?: string;
   repository?: string;
   main: string;
+  /** Trusted, bundled ES module executed in the application renderer. */
+  renderer?: string;
   icon?: string;
   /**
    * First-registration default for bundled plugins. Omitted means enabled.
@@ -1272,6 +1275,7 @@ export const PLUGIN_PERMISSIONS = [
   "agent.prompt.inject",
   "agent.complete",
   "agent.extension",
+  "ui.renderer",
   "provider.register",
   "desktop.control",
   "models.list",
@@ -1311,7 +1315,7 @@ export function validateManifest(raw: unknown): {
   if (!raw || typeof raw !== "object") {
     return { ok: false, error: "manifest must be an object" };
   }
-  const m = raw as Partial<PluginManifest>;
+  const m = { ...raw } as Partial<PluginManifest>;
   if (typeof m.id !== "string" || !m.id) {
     return { ok: false, error: "manifest.id is required" };
   }
@@ -1326,6 +1330,13 @@ export function validateManifest(raw: unknown): {
   }
   const mainError = relativePathError(m.main, "manifest.main");
   if (mainError) return { ok: false, error: mainError };
+  if (m.renderer !== undefined) {
+    if (typeof m.renderer !== "string" || !m.renderer) return { ok: false, error: "manifest.renderer must be a non-empty string" };
+    const error = relativePathError(m.renderer, "manifest.renderer");
+    if (error) return { ok: false, error };
+    if (m.permissions !== undefined && (!Array.isArray(m.permissions) || m.permissions.some((permission) => typeof permission !== "string"))) return { ok: false, error: "manifest.permissions must be an array of strings" };
+    m.permissions = [...new Set([...(m.permissions ?? []), "ui.renderer"])];
+  }
   if (typeof m.schemaVersion !== "number") {
     return { ok: false, error: "manifest.schemaVersion is required" };
   }

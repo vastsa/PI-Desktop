@@ -56,7 +56,7 @@ test("accepted files become compact references while directories keep completion
   assert.match(composer, /function isPersistedScratchReference\(path: string\)/);
   assert.match(
     composer,
-    /kept = current\.filter\(\(fileReference\) =>\s*isPersistedScratchReference\(fileReference\.path\)/,
+    /kept = current\.filter\(\(fileReference\) =>\s*\(fileReference\.kind === "reference" \|\| isPersistedScratchReference\(fileReference\.path\)/,
   );
   assert.doesNotMatch(
     composer,
@@ -72,7 +72,7 @@ test("composer renders atomic inline chips and serializes paths on send", () => 
   assert.match(composer, /chip\.dataset\.token = token/);
   assert.match(composer, /composer-chip-name/);
   assert.match(composer, /nameSpan\.textContent = reference\.name/);
-  assert.match(composer, /chip\.title = reference\.path/);
+  assert.match(composer, /chip\.title = reference\.pluginReference\?\.description \?\? reference\.path/);
   assert.match(
     composer,
     /serializeComposerFileReferences\(text, activeFileReferences\)/,

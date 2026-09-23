@@ -1,3 +1,4 @@
+import type { ComposerPluginReference as PluginReference } from "@pi-desktop/plugin-sdk";
 import type { ComposerDraftSnapshot } from "./composer-smart-stop";
 
 type CachedComposerDraft = ComposerDraftSnapshot & {
@@ -20,7 +21,8 @@ export type ComposerDraftFileInput = {
   sessionId?: string;
   path: string;
   name: string;
-  kind?: "image" | "file";
+  kind?: "image" | "file" | "reference";
+  pluginReference?: PluginReference;
   mimeType?: string;
   token?: string;
 };
@@ -49,10 +51,11 @@ export function snapshotComposerDraft(
     text,
     fileReferences: fileReferences
       .filter((fileReference) => (fileReference.sessionId ?? "") === owner)
-      .map(({ path, name, kind, mimeType, token }) => ({
+      .map(({ path, name, kind, mimeType, token, pluginReference }) => ({
         path,
         name,
         kind,
+        ...(pluginReference ? { pluginReference } : {}),
         ...(mimeType ? { mimeType } : {}),
         ...(token ? { token } : {}),
       })),

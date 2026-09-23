@@ -1,3 +1,4 @@
+import type { ComposerPromptDisplay } from "@pi-desktop/shared";
 import type {
   AgentEvent,
   AgentEventEnvelope,
@@ -81,6 +82,7 @@ export type AgentHostOptions = {
 export type QueueEntryView = {
   turn: RacpTurn;
   content: string;
+  composerDisplay?: ComposerPromptDisplay;
   sessionMessageId?: string;
   attachments?: AgentPromptAttachment[];
   /** Set only for promoted entries; entries are already in delivery order. */
@@ -93,6 +95,7 @@ export type StartTurnParams = {
   admission?: RacpTurnAdmission;
   input: {
     text: string;
+    composerDisplay?: ComposerPromptDisplay;
     attachments?: AgentPromptAttachment[];
     sessionMessageId?: string;
     /** Client-chosen id for the durable user row (D288). */
@@ -475,6 +478,7 @@ export class AgentHost {
         sessionId: state.id,
         principalSubject: principal.subject,
         content: params.input.text,
+        ...(params.input.composerDisplay ? { composerDisplay: params.input.composerDisplay } : {}),
         ...(params.input.sessionMessageId ? { sessionMessageId: params.input.sessionMessageId } : {}),
         ...(params.input.userMessageId ? { userMessageId: params.input.userMessageId } : {}),
         ...(params.input.attachments ? { attachments: params.input.attachments } : {}),
@@ -497,6 +501,7 @@ export class AgentHost {
       const started = await this.runtime.prompt({
         sessionId: state.id,
         content: params.input.text,
+        ...(params.input.composerDisplay ? { composerDisplay: params.input.composerDisplay } : {}),
         ...(params.input.sessionMessageId ? { sessionMessageId: params.input.sessionMessageId } : {}),
         ...(params.input.userMessageId ? { userMessageId: params.input.userMessageId } : {}),
         ...(params.input.attachments ? { attachments: params.input.attachments } : {}),
@@ -706,6 +711,7 @@ export class AgentHost {
     return this.queue.list(sessionId).map((record) => ({
       turn: this.toRacpTurn(state, this.ensureTurn(state, record.id)),
       content: record.content,
+      ...(record.composerDisplay ? { composerDisplay: record.composerDisplay } : {}),
       ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
       ...(record.attachments ? { attachments: record.attachments } : {}),
       ...(record.priority !== undefined ? { priority: record.priority } : {}),
@@ -812,6 +818,7 @@ export class AgentHost {
           const started = await this.runtime.prompt({
             sessionId,
             content: record.content,
+            ...(record.composerDisplay ? { composerDisplay: record.composerDisplay } : {}),
             ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
             ...(record.userMessageId ? { userMessageId: record.userMessageId } : {}),
             ...(record.attachments ? { attachments: record.attachments } : {}),
@@ -897,6 +904,7 @@ export class AgentHost {
           sessionId: state.id,
           turnId: runtimeTurnId,
           content: head.content,
+          ...(head.composerDisplay ? { composerDisplay: head.composerDisplay } : {}),
           ...(head.sessionMessageId ? { sessionMessageId: head.sessionMessageId } : {}),
           ...(head.attachments ? { attachments: head.attachments } : {}),
           principal: { subject: head.principalSubject, roles: ["controller"] },
@@ -1302,6 +1310,7 @@ function requireSessionId(sessionId: string | undefined): string {
 export function hashInput(input: StartTurnParams["input"]): string {
   const encoded = JSON.stringify({
     text: input.text,
+    ...(input.composerDisplay ? { composerDisplay: input.composerDisplay } : {}),
     attachments: input.attachments ?? [],
     ...(input.sessionMessageId ? { sessionMessageId: input.sessionMessageId } : {}),
   });

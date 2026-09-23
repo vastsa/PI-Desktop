@@ -1,3 +1,5 @@
+import { ComposerReferenceText } from "./ComposerReferenceText";
+import { parseComposerPromptDisplay } from "@pi-desktop/shared";
 import {
   memo,
   useMemo,
@@ -50,8 +52,9 @@ export const MessageRow = memo(function MessageRow({
   const openFileRef = useOpenChatFileRef();
   // Slash prompts are stored expanded; editing works on the typed form so the
   // resent turn re-expands the template (D123).
+  const referenceDisplay = isUser ? parseComposerPromptDisplay(message.composerDisplay) : undefined;
   const editSeed =
-    (editableUserMessage && message.command) || (message.content || "");
+    referenceDisplay?.content ?? ((editableUserMessage && message.command) || (message.content || ""));
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(editSeed);
   const [retryingEdit, setRetryingEdit] = useState(false);
@@ -60,7 +63,7 @@ export const MessageRow = memo(function MessageRow({
   const deleteLabel = t("chat.deleteMessage");
   // Runtime chunks are already progressive. Rendering that source directly
   // avoids a second per-frame state loop while Markdown memoizes stable blocks.
-  const displayed = message.content || "";
+  const displayed = referenceDisplay?.content ?? message.content ?? "";
   const hasAnswer = Boolean((message.content || "").trim());
   const revisionCount = message.revisionCount ?? 0;
   const activeRevision = message.activeRevision ?? revisionCount;
@@ -69,12 +72,12 @@ export const MessageRow = memo(function MessageRow({
     const attachments = message.attachments;
     if (!attachments?.length) return [];
     const inline = new Set(
-      splitChatText(String(message.content || ""), workspaceRoot)
+      splitChatText(displayed, workspaceRoot)
         .filter((segment): segment is { kind: "target"; text: string; label: string; target: { kind: "file"; path: string } } => segment.kind === "target" && segment.target.kind === "file")
         .map((segment) => segment.target.path),
     );
     return attachments.filter((attachment) => !inline.has(attachment.ref));
-  }, [message.attachments, message.content, workspaceRoot]);
+  }, [message.attachments, displayed, workspaceRoot]);
   const cancelEdit = () => {
     setEditValue(editSeed);
     setEditing(false);
@@ -99,7 +102,7 @@ export const MessageRow = memo(function MessageRow({
       label: t("chat.messageMenu"),
       items: userMessageMenuItems({
         t,
-        text: editing ? editValue : message.content || "",
+        text: editing ? editValue : displayed,
         selectTarget: event.currentTarget.querySelector<HTMLElement>(
           editing ? ".message-edit-input" : ".message-bubble",
         ),
@@ -214,7 +217,9 @@ export const MessageRow = memo(function MessageRow({
                 ) : null}
                 {message.content ? (
                   <div className="message-user-text selectable">
-                    {editableUserMessage && message.command ? (
+                    {referenceDisplay ? (
+                      <ComposerReferenceText display={referenceDisplay} fallback={message.content} />
+                    ) : editableUserMessage && message.command ? (
                       // Slash invocations show the typed form as a chip; the
                       // expanded template body lives in `content` (hover reveals
                       // it) and is what regenerate/reseed replay (D123).
@@ -276,7 +281,7 @@ export const MessageRow = memo(function MessageRow({
                 </TooltipButton>
               </div>
             ) : null}
-            {hasAnswer ? <CopyButton text={message.content} label={copyLabel} /> : null}
+            {hasAnswer ? <CopyButton text={displayed} label={copyLabel} /> : null}
             {editableUserMessage ? (
               <TooltipButton
                 className="copy-btn icon"

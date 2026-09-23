@@ -257,6 +257,7 @@ fn parse_message(
         agent_name: None,
         hosted_search: None,
         session_message: None,
+        composer_display: None,
     })
 }
 

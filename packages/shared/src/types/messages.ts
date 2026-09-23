@@ -1,3 +1,4 @@
+import type { ComposerPromptDisplay } from "../composer-reference.js";
 /** Shared public types grouped by the owning application domain. */
 import type { SessionMessageOrigin } from "../session-collaboration.js";
 import type { AppError } from "../errors.js";
@@ -69,6 +70,7 @@ export type UiMessage = {
   id: string;
   role: UiMessageRole;
   content: string;
+  composerDisplay?: ComposerPromptDisplay;
   /** Authenticated agent-to-agent provenance; never inferred from message text. */
   sessionMessage?: SessionMessageOrigin;
   /** Files or images associated with a user turn, kept separate from text. */

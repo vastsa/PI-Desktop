@@ -1601,6 +1601,10 @@ Host-core owns updates through `providers.reorder`; missing metadata preserves
 creation order, new IDs follow saved IDs, and deleted IDs are ignored. This
 preference does not rewrite provider configuration or require a schema migration.
 
+
+## Composer reference display metadata
+
+Schema v20 adds nullable `turn_queue.composer_display_json`, preserving the visible labels independently of queued model content. The standard backed-up migration leaves existing rows unchanged. Transcript records carry optional `composerDisplay` metadata with text and reference spans; absent metadata retains existing rendering. Model context continues to use the canonical content blocks.
 ### Scheduled calendar provenance
 
 The optional `config_json.calendarConfigured` boolean records explicit calendar

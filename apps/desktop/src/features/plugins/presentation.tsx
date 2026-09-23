@@ -1,3 +1,4 @@
+import { useRendererDiagnostic } from "./renderer/diagnostics";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { TooltipButton, cx } from "../../components/ui";
@@ -207,6 +208,7 @@ export function PluginRowDetails({
   const { t } = useTranslation();
   const hasCapabilities = (plugin.capabilities?.length ?? 0) > 0;
   const hasServices = (services?.length ?? 0) > 0;
+  const rendererDiagnostic = useRendererDiagnostic(plugin.id);
   const hasPermissions = (plugin.permissions?.length ?? 0) > 0;
   const hasAgentExtension = plugin.agentExtension !== undefined;
   const hasFsScope = FS_MODES.some((mode) => plugin.fs?.[mode]);
@@ -226,6 +228,7 @@ export function PluginRowDetails({
         <span>{t("plugins.details")}</span>
       </summary>
       <div className="plugins-row-details-body">
+        {rendererDiagnostic ? <div className="agent-extension-diagnostic is-error" role="status">{rendererDiagnostic}</div> : null}
         {hasCapabilities ? (
           <div className="plugins-row-detail">
             <span className="plugins-row-detail-label">

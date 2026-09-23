@@ -1,3 +1,5 @@
+import { restoreComposerReferenceDraft } from "../../features/plugins/renderer/restore-composer-reference-draft";
+import { resolveComposerReferences } from "../../features/plugins/renderer/resolve-composer-references";
 import i18n from "i18next";
 import { formatFileInsert } from "@pi-desktop/shared";
 import type {
@@ -81,21 +83,24 @@ export function createQueueSlice({
   const pendingSubmissions = new Set<string>();
 
   function toQueuedPrompt(entry: QueuedTurnSummary): QueuedPrompt {
+    let draft = queuedDrafts.get(entry.id);
+    if (!draft) {
+      draft = restoreComposerReferenceDraft(entry.content, entry.composerDisplay);
+      const restoredText = draft.text;
+      draft.fileReferences.push(...(entry.attachments ?? []).map((attachment) => {
+        const token = formatFileInsert(attachment.path, "file").trim();
+        return {
+          ...attachment,
+          // Keep restored inline files removable alongside plugin references.
+          ...(attachment.kind === "file" && restoredText.includes(token) ? { token } : {}),
+        };
+      }));
+    }
     return {
       id: entry.id,
       sessionId: entry.sessionId,
-      content: entry.content,
-      draft: queuedDrafts.get(entry.id) ?? {
-        text: entry.content,
-        fileReferences: (entry.attachments ?? []).map((attachment) => {
-          const token = formatFileInsert(attachment.path, "file").trim();
-          return {
-            ...attachment,
-            // Keep restored inline files removable with their visible @path.
-            ...(attachment.kind === "file" && entry.content.includes(token) ? { token } : {}),
-          };
-        }),
-      },
+      content: entry.composerDisplay?.content ?? entry.content,
+      draft,
       createdAt: Date.parse(entry.createdAt) || Date.now(),
       // The Host owns ordering and priority: entries arrive in delivery order.
       ...(entry.priority === undefined ? {} : { priority: entry.priority }),
@@ -165,12 +170,13 @@ export function createQueueSlice({
         queuedPrompts: enqueueQueuedPrompt(state.queuedPrompts, item),
       }));
       const attachments = promptAttachmentsFromDraft(queuedDraft.fileReferences);
-      return api
-        .queuePrompt({
+      return resolveComposerReferences(content, queuedDraft)
+        .then((resolved) => api.queuePrompt({
           sessionId,
-          content,
-          ...(attachments.length ? { attachments } : {}),
-        })
+          content: resolved.content,
+          composerDisplay: resolved.composerDisplay,
+          attachments: [...attachments, ...resolved.attachments],
+        }))
         .then((entry) => {
           queuedDrafts.set(entry.id, queuedDraft);
           set((state) => ({
@@ -325,9 +331,10 @@ export function createQueueSlice({
       message.steering = true;
       runtime.insertOptimisticUserMessage(sessionId, message);
       try {
+        const resolved = await resolveComposerReferences(content, draft);
         await api.steer({
-          sessionId, expectedTurnId, content, messageId: message.id,
-          attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
+          sessionId, expectedTurnId, content: resolved.content, composerDisplay: resolved.composerDisplay, messageId: message.id,
+          attachments: [...(draft ? promptAttachmentsFromDraft(draft.fileReferences) : []), ...resolved.attachments],
         });
         return true;
       } catch (error) {
@@ -440,12 +447,16 @@ export function createQueueSlice({
             runtime.submittedComposerDrafts.delete(startedIn);
             return false;
           }
+          const resolved = await resolveComposerReferences(content, draft);
+          const liveSubmission = runtime.submittedComposerDrafts.get(startedIn);
+          if (liveSubmission !== submission || (liveSubmission.abortResolution && await liveSubmission.abortResolution)) return false;
           await api.prompt({
             sessionId,
-            content,
+            content: resolved.content,
+            composerDisplay: resolved.composerDisplay,
             messageId: optimisticMessage.id,
             viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
-            attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
+            attachments: [...(draft ? promptAttachmentsFromDraft(draft.fileReferences) : []), ...resolved.attachments],
           });
           const submitted = runtime.submittedComposerDrafts.get(startedIn);
           if (submitted?.abortResolution && (await submitted.abortResolution)) {

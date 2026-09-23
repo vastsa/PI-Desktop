@@ -253,6 +253,9 @@ export const en = {
     slashCommandSourceUnavailable: "Command list unavailable, so nothing was sent. Try again.",
     sessionTranscriptEmpty: "This session's history could not be read. Reopen the session to try again.",
     fileMenu: "File references",
+    fileGroup: "Files",
+    referenceMenu: "References",
+    referenceEmpty: "No matching references",
     removeFileReference: "Remove file reference {{name}}",
     messageAttachments: "Attachments in this message",
     fileEmpty: "No matching files",
@@ -2018,6 +2021,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "agent.prompt.inject": "Adjust agent instructions",
       "agent.complete": "Run a one-shot completion with your models",
       "agent.extension": "Run code inside the agent",
+      "ui.renderer": "Run trusted code inside the app UI",
       "provider.register": "Add providers to the model list",
       "desktop.control": "Control the desktop",
       "models.list": "List authenticated models",
@@ -2063,6 +2067,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "agent.complete":
         "Can spend your model quota on a one-shot completion. The plugin never receives your API keys.",
       "agent.extension": "Runs ExtensionAPI modules inside the agent process with the same access as the agent's own tools. Enable only code you trust.",
+      "ui.renderer": "Runs with access to the application UI and its data. Enable only code you trust; this entry is not sandboxed.",
       "provider.register":
         "Adds the providers this plugin defines to Settings' provider list. The plugin supplies the endpoint and models; your API key stays in PI-Desktop.",
       "desktop.control":

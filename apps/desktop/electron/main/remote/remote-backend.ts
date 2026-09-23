@@ -128,6 +128,7 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
     req: AgentPromptRequest | AgentQueuePushRequest,
     admission: "reject_if_busy" | "queue",
   ): Promise<{ accepted: boolean; turn: RacpTurn }> => {
+    if (req.composerDisplay) throw capabilityUnavailable("this remote host does not accept composer references");
     if ("attachments" in req && req.attachments?.length) {
       throw capabilityUnavailable("this remote host does not accept attachments");
     }

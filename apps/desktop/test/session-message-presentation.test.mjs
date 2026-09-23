@@ -5,6 +5,7 @@ import * as React from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
+import * as sharedContracts from "@pi-desktop/shared";
 
 const t = (key, values) => values?.name ? `${key}: ${values.name}` : key;
 const store = {
@@ -34,6 +35,7 @@ function loadComponent(name, extras = {}) {
   });
   const imports = {
     react: React,
+    "@pi-desktop/shared": sharedContracts,
     "react/jsx-runtime": jsxRuntime,
     "react-i18next": { useTranslation: () => ({ t }) },
     "../../../stores/app-store": { useAppStore },
@@ -59,7 +61,8 @@ function loadComponent(name, extras = {}) {
 }
 
 const origin = loadComponent("SessionMessageOrigin");
-const { MessageRow } = loadComponent("MessageRow", { "./SessionMessageOrigin": origin });
+const references = loadComponent("ComposerReferenceText");
+const { MessageRow } = loadComponent("MessageRow", { "./SessionMessageOrigin": origin, "./ComposerReferenceText": references });
 const userMessage = {
   id: "incoming-row",
   role: "user",

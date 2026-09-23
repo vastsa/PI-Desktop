@@ -1,3 +1,5 @@
+import { parseComposerPromptDisplay } from "@pi-desktop/shared";
+
 /**
  * Text readings of a transcript, for the right-click menu's clipboard actions.
  *
@@ -13,6 +15,7 @@
 export type TranscriptTextMessage = {
   role: string;
   content?: string;
+  composerDisplay?: unknown;
 };
 
 export type TranscriptSpeakerLabels = {
@@ -32,7 +35,8 @@ export function conversationPlainText(
   const blocks: string[] = [];
   for (const message of messages) {
     if (message.role !== "user" && message.role !== "assistant") continue;
-    const text = (message.content ?? "").trim();
+    const display = message.role === "user" ? parseComposerPromptDisplay(message.composerDisplay) : undefined;
+    const text = (display?.content ?? message.content ?? "").trim();
     if (!text) continue;
     const speaker =
       message.role === "user" ? labels.user : labels.assistant;

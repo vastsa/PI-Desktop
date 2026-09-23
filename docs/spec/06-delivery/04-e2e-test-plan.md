@@ -14508,6 +14508,9 @@ the latest destination. These assertions measure work counts, not device FPS.
   default.
 - **Status:** Contract-covered; no end-to-end driver waits out a real 70s call.
 
+## Composer plugin reference acceptance
+
+In an isolated desktop fixture, load a trusted renderer entry, type its trigger, accept a candidate, insert it again, remove it, and switch drafts. Confirm one stable chip, removal notification, draft restoration, independent resolver fallback, and model/display separation for send, steering and queue restart. Existing file and slash autocomplete must still work. With more than five plugin matches, confirm only five are shown, Files starts collapsed, keyboard and pointer activation toggle it without changing the draft, expanded files remain selectable, and filtering searches the full candidate set. Use a temporary Host profile for schema-v19 upgrade and queued-display round trips; no live provider is required.
 ### E2E-PLUGIN-crash-report-names-the-exit-code
 
 - **Preconditions:** A loaded plugin whose host process dies on its own —

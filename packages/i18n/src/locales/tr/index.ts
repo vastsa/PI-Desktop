@@ -252,9 +252,12 @@ export const tr = {
     slashGroupExtensions: "Uzantı komutları",
     slashGroupSkills: "Beceriler",
     slashEmpty: "Eşleşen komut yok",
+    fileGroup: "Dosyalar",
     slashCommandSourceUnavailable: "Komut listesi yüklenemedi, hiçbir şey gönderilmedi. Tekrar deneyin.",
     sessionTranscriptEmpty: "Bu oturumun geçmişi okunamadı. Yeniden denemek için oturumu tekrar açın.",
     fileMenu: "Dosya başvuruları",
+    referenceMenu: "Referanslar",
+    referenceEmpty: "Eşleşen referans yok",
     removeFileReference: "{{name}} dosya başvurusunu kaldır",
     messageAttachments: "Bu iletideki ekler",
     fileEmpty: "Eşleşen dosya yok",
@@ -2005,6 +2008,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "agent.prompt.inject": "Ajan yönergelerini ayarla",
       "agent.complete": "Modellerinizle tek seferlik tamamlatma çalıştır",
       "agent.extension": "Ajanın içinde kod çalıştır",
+      "ui.renderer": "Run trusted code inside the app UI",
       "provider.register": "Model listesine servis ekle",
       "desktop.control": "Masaüstünü kontrol et",
       "models.list": "Kimliği doğrulanmış modelleri listele",
@@ -2049,6 +2053,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "agent.complete":
         "Model kotanızı tek seferlik bir tamamlatma için harcayabilir. Eklenti API anahtarlarınızı almaz.",
       "agent.extension": "ExtensionAPI modüllerini ajan sürecinde, ajanın kendi araçlarıyla aynı erişimle çalıştırır. Yalnızca güvendiğiniz kodu etkinleştirin.",
+      "ui.renderer": "Runs with access to the application UI and its data. Enable only code you trust; this entry is not sandboxed.",
       "provider.register":
         "Bu eklentinin tanımladığı servisleri Ayarlar’daki servis listesine ekler. Uç noktayı ve modelleri eklenti sağlar; API anahtarınız PI-Desktop’ta kalır.",
       "desktop.control":

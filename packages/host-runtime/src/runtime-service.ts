@@ -1,3 +1,4 @@
+import { parseComposerPromptDisplay } from "@pi-desktop/shared";
 import { randomUUID } from "node:crypto";
 
 import type { RuntimePort, TurnStartRequest, TurnSteerRequest } from "@pi-desktop/agent-host";
@@ -333,6 +334,7 @@ export class RuntimeService implements RuntimePort {
       role: "user",
       content,
       ...(sessionMessage ? { sessionMessage: sessionMessage.origin } : {}),
+      composerDisplay: parseComposerPromptDisplay(request.composerDisplay),
       createdAt: new Date(this.now()).toISOString(),
       status: "complete",
       ...(command ? { command } : {}),
@@ -395,6 +397,7 @@ export class RuntimeService implements RuntimePort {
         id: durableUserMessageId(request.sessionMessageId, detail.session?.messages ?? []),
         role: "user",
         content: request.content,
+        composerDisplay: parseComposerPromptDisplay(request.composerDisplay),
         status: "complete",
         createdAt: new Date(this.now()).toISOString(),
         steering: true,

@@ -1,3 +1,4 @@
+import type { ComposerPromptDisplay } from "@pi-desktop/shared";
 import { basename } from "node:path";
 
 import type {
@@ -103,6 +104,7 @@ export type HostQueueEntry = {
   idempotencyKey?: string;
   inputHash: string;
   content: string;
+  composerDisplay?: ComposerPromptDisplay;
   sessionMessageId?: string;
   attachments?: unknown;
   permissionMode: string;
@@ -119,7 +121,8 @@ export function fromHostQueueEntry(entry: HostQueueEntry): QueuedTurnRecord {
     sessionId: entry.sessionId,
     principalSubject: entry.principal,
     content: entry.content,
-    ...(entry.sessionMessageId ? { sessionMessageId: entry.sessionMessageId } : {}),
+    ...(entry.composerDisplay ? { composerDisplay: entry.composerDisplay } : {}),
+      ...(entry.sessionMessageId ? { sessionMessageId: entry.sessionMessageId } : {}),
     ...(Array.isArray(entry.attachments) ? { attachments: entry.attachments as QueuedTurnRecord["attachments"] } : {}),
     effectivePermissionMode: permissionMode,
     ...(entry.idempotencyKey ? { idempotencyKey: entry.idempotencyKey } : {}),
@@ -146,7 +149,8 @@ export function createHostQueueStore(getHost: () => HostRpc | null): QueueStore 
         ...(record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}),
         inputHash: record.inputHash,
         content: record.content,
-        ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
+        ...(record.composerDisplay ? { composerDisplay: record.composerDisplay } : {}),
+      ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
         ...(record.attachments ? { attachments: record.attachments } : {}),
         permissionMode: record.effectivePermissionMode,
       });

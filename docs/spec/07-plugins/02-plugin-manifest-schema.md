@@ -630,3 +630,8 @@ never passed through (D018).
 - A future `schemaVersion: 2` needs a migrator
 - The host should reject a too-high major version
 - Unknown optional fields may be ignored; unknown required permissions must fail
+
+
+## Trusted renderer entry
+
+`renderer?: string` names a package-relative, self-contained ES module. Declaring it derives the reviewed `ui.renderer` trust grant; it is not a per-slot permission. Existing `main`, panels and views retain their contracts. See [Composer references](17-composer-references.md).

@@ -1,3 +1,4 @@
+import { startRendererPlugins } from "./features/plugins/renderer/runtime";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import i18n from "i18next";
@@ -48,6 +49,11 @@ void i18n.use(initReactI18next).init({
 
 // Settings load async after mount; switch i18n when the stored language lands.
 initLanguageSync();
+if (!rendererSurface) {
+  const stopRendererPlugins = startRendererPlugins();
+  window.addEventListener("beforeunload", stopRendererPlugins, { once: true });
+  import.meta.hot?.dispose(stopRendererPlugins);
+}
 
 const rootEl = document.getElementById("root");
 if (!rootEl) {

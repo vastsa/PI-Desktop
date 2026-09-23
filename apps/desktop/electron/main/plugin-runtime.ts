@@ -1049,11 +1049,13 @@ function readDeclaredAccess(pluginPath: string): {
   }
   const raw = JSON.parse(readFileSync(manifestPath, "utf8")) as {
     permissions?: unknown;
+    renderer?: unknown;
     fs?: unknown;
   };
   const declared = Array.isArray(raw.permissions)
     ? raw.permissions.filter((entry): entry is string => typeof entry === "string")
     : [];
+  if (typeof raw.renderer === "string" && raw.renderer) declared.push("ui.renderer");
   const access = resolveFsAccess({ permissions: declared, fs: raw.fs });
   return { permissions: access.permissions, fs: access.policy };
 }

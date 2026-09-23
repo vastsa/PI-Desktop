@@ -91,9 +91,8 @@ fn declaration_manifest(providers: Value, permissions: Value) -> Value {
 #[test]
 fn a_new_database_carries_the_owner_column_at_the_current_schema_version() {
     let (_dir, db, _secrets) = test_context();
-    // v17 added the owner column, v18 the turn-queue priority column, v19 session omit; a fresh
-    // database is stamped with the newest, so the column set is the current one.
-    assert_eq!(SCHEMA_VERSION, 19);
+    // A fresh database includes the provider ownership column at the current schema.
+    assert_eq!(SCHEMA_VERSION, 20);
     let version: i64 = db
         .conn()
         .query_row("PRAGMA user_version", [], |row| row.get(0))

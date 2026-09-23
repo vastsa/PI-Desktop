@@ -172,6 +172,7 @@ impl Database {
             14 => {
                 migrate_v14_to_v15(&conn, path)?;
             }
+            19 => {}
             15 => {}
             16 => {}
             17 => {
@@ -210,6 +211,10 @@ impl Database {
         }
         if migrated_version == 18 {
             migrate_v18_to_v19(&conn, path)?;
+        }
+        let migrated_version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if migrated_version == 19 {
+            super::composer_display_migration::migrate(&conn, path)?;
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;
