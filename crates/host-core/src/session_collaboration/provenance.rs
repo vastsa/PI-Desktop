@@ -13,6 +13,9 @@ pub fn prepare_append(
     input: &UiMessage,
     turn_id: Option<&str>,
 ) -> Result<UiMessage> {
+    if let Some(received) = super::current_turn::prepare_append(db, session_id, input, turn_id)? {
+        return Ok(received);
+    }
     let delivery = match turn_id {
         Some(turn) => db
             .conn()

@@ -98,6 +98,7 @@ type RuntimeParams = {
   turnId?: string;
   thinkingLevel?: SessionThinkingLevel;
   infiniteProviderRetry?: boolean;
+  sessionMessagesInCurrentTurn?: boolean;
   provider: RuntimeProviderConfig;
   commandShell: CommandShellOption;
   pluginTools?: PluginToolDef[];
@@ -352,6 +353,7 @@ async function runtimeFor(
   if (reusable) {
     reusable.setCompactionSettings(params.compactionSettings);
     reusable.setInfiniteProviderRetry(params.infiniteProviderRetry === true);
+    reusable.setSessionMessagesInCurrentTurn(params.sessionMessagesInCurrentTurn === true);
     reusable.setMode(mode);
     return reusable;
   }
@@ -389,6 +391,7 @@ async function runtimeFor(
     commandShell: params.commandShell,
     thinkingLevel,
     infiniteProviderRetry: params.infiniteProviderRetry === true,
+    sessionMessagesInCurrentTurn: params.sessionMessagesInCurrentTurn === true,
     history,
     compaction,
     compactionSettings: params.compactionSettings,
@@ -550,6 +553,9 @@ async function handle(method: string, params: any): Promise<unknown> {
       });
       return { accepted: true, turnId };
     }
+    case "agent.collaborationContext":
+      return { accepting: runtimes.get(String(params.sessionId ?? ""))
+        ?.acceptsSessionMessages(String(params.expectedTurnId ?? "")) ?? false };
     case "agent.steeringContext":
     case "agent.steer": {
       const runtime = runtimes.get(String(params.sessionId ?? ""));

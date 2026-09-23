@@ -135,6 +135,7 @@ impl Database {
                 tx.execute_batch(SCHEMA_LATEST)?;
                 tx.execute_batch(PLAN_APPROVALS_SCHEMA)?;
                 tx.execute_batch(crate::session_collaboration::SCHEMA)?;
+                tx.execute_batch(crate::session_collaboration::CURRENT_TURN_SCHEMA)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
                 tx.commit()?;
             }
@@ -174,6 +175,7 @@ impl Database {
             }
             15 => {}
             16 => {}
+            19 => {}
             17 => {
                 migrate_v17_to_v18(&conn, path)?;
             }
@@ -210,6 +212,9 @@ impl Database {
         }
         if migrated_version == 18 {
             migrate_v18_to_v19(&conn, path)?;
+        }
+        if conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? == 19 {
+            super::current_turn_migration::migrate(&conn, path)?;
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;

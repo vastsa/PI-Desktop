@@ -96,6 +96,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.commandShell",
       "settings.linkOpenTarget",
       "settings.enterToSend",
+      "settings.sessionMessagesInCurrentTurn",
+      "settings.sessionMessagesInCurrentTurnDesc",
       "settings.infiniteProviderRetry",
       "settings.infiniteProviderRetryDesc",
       "settings.thinkingDisplayMode",

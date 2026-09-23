@@ -1149,7 +1149,7 @@ const {
   dispatchExecutionForProposal,
 } = planRuntime;
 
-const eventPersistence = createEventPersistence({
+const { persistAgentEvent } = createEventPersistence({
   runtimeState,
   steeringReplies,
   activeTurns,
@@ -1169,9 +1169,9 @@ const eventPersistence = createEventPersistence({
   finishApprovedExecution,
   emitAgentEvent: (envelope) => emitAgentEvent(envelope),
 });
-const { persistAgentEvent } = eventPersistence;
 
 const sidecarRuntime = createSidecarRuntime({
+  receiveSessionMessages: sessionCollaboration.receive,
   runtimeState,
   steeringReplies,
   logger,

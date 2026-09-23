@@ -36,6 +36,8 @@ export type AppSettings = {
    * Absent and false use the bounded ten-retry policy.
    */
   infiniteProviderRetry?: boolean;
+  /** Opt-in for newly started Desktop turns; existing queued input is unchanged. */
+  sessionMessagesInCurrentTurn?: boolean;
   /** Configured command shell for the agent Bash protocol tool. */
   defaultCommandShell?: CommandShellId;
   /**

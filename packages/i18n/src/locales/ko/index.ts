@@ -1152,6 +1152,8 @@ sklm: {
     noResults: "일치하는 설정 없음",
     enterToSend: "Enter로 보내기",
     enterToSendDesc: "끔: ⌘/Ctrl+Enter를 눌러 보내세요.",
+    sessionMessagesInCurrentTurn: "현재 턴에서 협업 메시지 받기",
+    sessionMessagesInCurrentTurnDesc: "기본값은 꺼짐입니다. 새로 시작한 에이전트 턴에 적용됩니다. 도구를 중단하지 않고 다음 모델 요청 전에 메시지를 받습니다. 기존 대기 메시지는 변경되지 않습니다.",
     infiniteProviderRetry: "성공할 때까지 재시도",
     infiniteProviderRetryDesc: "네트워크 및 일시적인 제공자 오류가 성공할 때까지 계속 재시도됩니다. 언제든 중지할 수 있지만 API 사용량이 계속 발생할 수 있습니다.",
     linkOpenTarget: "링크 열기 위치",

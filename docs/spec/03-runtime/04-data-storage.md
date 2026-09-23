@@ -1602,3 +1602,25 @@ Hourly rows retain their fields but require explicit calendar confirmation
 when converted. Known intent survives cadence changes and database reopen.
 This additive JSON key needs no table or schema-version migration. Older
 versions ignore the key and cannot enforce the new conversion guard.
+
+## Schema 20: current-turn collaboration receipts
+
+Migration 19 -> 20 backs up the prior database and adds
+`session_collaboration_current_turn`; it does not alter old ledger/queue rows.
+The table is keyed by message ID and references an exact target turn. Its
+`state` is `offered`, `accepted` or `fallback`; only an accepted receipt carries
+its receiver `request_id`. Indexed turn/state/request lookup bounds each batch.
+The original collaboration ledger's unique physical turn association remains
+in place. Read projections also expose the turn of an accepted receipt.
+
+The host writes acceptance before returning input, then appends the canonical
+`session-message:<messageId>` transcript ID. Same-key retries repair missing
+transcript/index state without duplicate JSONL records. Terminal parent outcomes
+settle accepted messages; completion callbacks retain their existing idempotence
+and never generate automatic acknowledgement chains.
+
+On restart, known acceptance repairs the same parent's history and is reported
+interrupted, never converted to another prompt. Never-adopted messages restore
+through the held durable Agent Host queue. Queue exhaustion keeps the remaining
+fallback in the ledger for later reconciliation; it is not silently discarded.
+The schema permits neither direct renderer writes nor plugin-selected provenance.

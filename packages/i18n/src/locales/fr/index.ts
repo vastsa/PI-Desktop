@@ -1142,6 +1142,8 @@ sklm: {
     "noResults": "Aucun paramètre correspondant",
     "enterToSend": "Entrez pour envoyer",
     "enterToSendDesc": "Désactivé : appuyez sur ⌘/Ctrl+Entrée pour envoyer.",
+    sessionMessagesInCurrentTurn: "Recevoir les messages de collaboration dans le tour en cours",
+    sessionMessagesInCurrentTurnDesc: "Désactivé par défaut. Pour les nouveaux tours de l’agent : reçoit les messages avant la prochaine requête au modèle, sans interrompre les outils. Les messages déjà en attente restent inchangés.",
     "infiniteProviderRetry": "Réessayer jusqu’à réussite",
     "infiniteProviderRetryDesc": "Réessaie les erreurs réseau et temporaires jusqu’à la réussite. Vous pouvez toujours arrêter le tour ; la consommation d’API peut continuer.",
     "linkOpenTarget": "Destination d'ouverture des liens",

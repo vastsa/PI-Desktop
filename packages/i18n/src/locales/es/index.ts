@@ -1142,6 +1142,8 @@ sklm: {
     "noResults": "No hay configuraciones coincidentes",
     "enterToSend": "Ingresar para enviar",
     "enterToSendDesc": "Desactivado: presione ⌘/Ctrl+Entrar para enviar.",
+    sessionMessagesInCurrentTurn: "Recibir mensajes de colaboración en el turno actual",
+    sessionMessagesInCurrentTurnDesc: "Desactivado de forma predeterminada. Se aplica a nuevos turnos del agente: recibe mensajes antes de la siguiente solicitud al modelo, sin interrumpir herramientas. Los mensajes ya en cola no cambian.",
     "infiniteProviderRetry": "Reintentar hasta tener éxito",
     "infiniteProviderRetryDesc": "Reintenta los errores de red y temporales hasta que la solicitud tenga éxito. Puedes detener el turno; el uso de la API puede continuar.",
     "linkOpenTarget": "Destino al abrir enlaces",

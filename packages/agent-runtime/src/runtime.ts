@@ -1,3 +1,4 @@
+import { receiveCurrentTurnMessages, includeCurrentTurnMessages } from "./current-turn-messages.js";
 import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
@@ -904,6 +905,7 @@ export type AgentRuntimeOptions = {
   thinkingLevel: SessionThinkingLevel;
   /** Persisted opt-in for retrying transient provider failures until success. */
   infiniteProviderRetry?: boolean;
+  sessionMessagesInCurrentTurn?: boolean;
   systemPrompt?: string;
   /** pi-compatible SYSTEM.md / APPEND_SYSTEM.md resolved for the session (issue #542). */
   customSystemPrompt?: CustomSystemPrompt;
@@ -1689,6 +1691,7 @@ export class DesktopAgentRuntime {
   private providerRateLimitRetryAttempt = 0;
   /** Opt-in mode removes only the retry-count ceiling; abort and backoff stay intact. */
   private infiniteProviderRetry = false;
+  private sessionMessagesInCurrentTurn = false;
   private activeProviderRetryAttempt = 0;
   private providerRetryInProgress = false;
   private suppressProviderRetryRunEnd = false;
@@ -1777,6 +1780,7 @@ export class DesktopAgentRuntime {
     this.provider = opts.provider;
     this.thinkingLevel = clampThinkingLevel(opts.provider, opts.thinkingLevel);
     this.infiniteProviderRetry = opts.infiniteProviderRetry === true;
+    this.sessionMessagesInCurrentTurn = opts.sessionMessagesInCurrentTurn === true;
     this.host = opts.host;
     this.hostCloseUnsubscribe = this.host.onClose?.(() => {
       this.cleanupActiveToolProgress();
@@ -6095,7 +6099,43 @@ Delegation rules:
     turn: PrepareNextTurnContext,
     signal?: AbortSignal,
   ): Promise<AgentLoopTurnUpdate> {
-    return this.extensionContext(await this.prepareNextTurnWithoutExtensions(turn, signal));
+    const expectedTurnId = this.turnId;
+    const epoch = this.turnEpoch;
+    const receiving = !!expectedTurnId && this.acceptsSessionMessages(expectedTurnId);
+    const received = receiving ? await receiveCurrentTurnMessages({
+      host: this.host, sessionId: this.sessionId, turnId: expectedTurnId,
+      isCurrent: () => this.turnEpoch === epoch && this.acceptsSessionMessages(expectedTurnId), signal,
+    }) : [];
+    const added: AgentMessage[] = [];
+    for (const message of received) {
+      const agentMessage: AgentMessage = {
+        role: "user", content: formatSessionMessage(message.content, message.sessionMessage),
+        timestamp: timestampMs(message.createdAt),
+      };
+      this.appendLiveEntry(message.id, agentMessage);
+      added.push(agentMessage);
+      this.emit({ type: "message_start", message });
+      this.emit({ type: "message_end", message });
+    }
+    let update = await this.extensionContext(await this.prepareNextTurnWithoutExtensions(turn, signal));
+    if (receiving) {
+      signal?.throwIfAborted();
+      if (this.turnEpoch !== epoch || !this.acceptsSessionMessages(expectedTurnId)) {
+        throw new DOMException("Turn stopped before the next model request", "AbortError");
+      }
+    }
+    if (added.length && update.context) {
+      // Fresh host inputs must survive a checkpoint or an extension's context
+      // rewrite, exactly once. They are not steering and cannot skip tools.
+      const messages = includeCurrentTurnMessages(update.context.messages, added);
+      const budget = this.contextBudget(messages);
+      if (budget.tokens >= budget.hardLimit) {
+        throw new Error("CONTEXT_LIMIT: current-turn session input exceeds the safe request budget");
+      }
+      update = { ...update, context: { ...update.context, messages } };
+      this.setAgentMessages(messages);
+    }
+    return update;
   }
 
   private async prepareNextTurnWithoutExtensions(
@@ -7997,6 +8037,17 @@ Delegation rules:
       rpcCode: -32000,
       errorCode: "AGENT_BUSY",
     });
+  }
+
+  setSessionMessagesInCurrentTurn(enabled: boolean): void {
+    this.sessionMessagesInCurrentTurn = enabled;
+  }
+
+  acceptsSessionMessages(expectedTurnId: string): boolean {
+    return this.sessionMessagesInCurrentTurn && this.mode === "agent" &&
+      !this.disposed && this.acceptingSteering && !this.runCancelled && !this.turnHadError &&
+      !this.gracefulStopRequested && this.getStatus().isRunning &&
+      !!expectedTurnId && this.turnId === expectedTurnId && this.planningState !== "awaiting_approval";
   }
 
   /** Resolve attachments against the configuration of the running turn. */

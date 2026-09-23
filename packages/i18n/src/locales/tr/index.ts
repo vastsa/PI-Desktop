@@ -1142,6 +1142,8 @@ sklm: {
     noResults: "Eşleşen ayar yok",
     enterToSend: "Enter ile gönder",
     enterToSendDesc: "Kapalı: göndermek için ⌘/Ctrl+Enter.",
+    sessionMessagesInCurrentTurn: "İş birliği mesajlarını geçerli turda al",
+    sessionMessagesInCurrentTurnDesc: "Varsayılan olarak kapalıdır. Yeni başlatılan aracı turlarına uygulanır: araçları kesintiye uğratmadan sonraki model isteğinden önce mesajları alır. Kuyruktaki mevcut mesajlar değişmez.",
     infiniteProviderRetry: "Başarılı olana kadar yeniden dene",
     infiniteProviderRetryDesc: "Ağ ve geçici sağlayıcı hataları istek başarılı olana kadar yeniden denenir. Çalışmayı yine durdurabilirsiniz; açıkken API kullanımı sürebilir.",
     linkOpenTarget: "Bağlantı açma hedefi",

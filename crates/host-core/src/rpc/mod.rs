@@ -840,6 +840,16 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             return Err(rpc_err(1002, message, "INVALID_PARAMS"));
         }
     }
+    if object
+        .get("sessionMessagesInCurrentTurn")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        return Err(rpc_err(
+            1002,
+            "sessionMessagesInCurrentTurn must be a boolean",
+            "INVALID_PARAMS",
+        ));
+    }
     if let Some(infinite_retry) = object.get("infiniteProviderRetry") {
         if !infinite_retry.is_boolean() {
             return Err(rpc_err(
@@ -1530,6 +1540,23 @@ async fn handle_request(
     match method {
         method if method.starts_with("session.collaboration.") => {
             let st = state.lock().await;
+            let mut params = params;
+            if method == "session.collaboration.receive" {
+                if !params.is_object() {
+                    return Err(rpc_err(
+                        1002,
+                        "receive parameters must be an object",
+                        "INVALID_ARGUMENT",
+                    ));
+                }
+                params["enabledPluginIds"] = json!(st
+                    .plugins
+                    .list()
+                    .into_iter()
+                    .filter(|plugin| plugin.enabled)
+                    .map(|plugin| plugin.id)
+                    .collect::<Vec<_>>());
+            }
             crate::session_collaboration::handle(&st.db, method, &params)
                 .map_err(session_collaboration_rpc_err)
         }

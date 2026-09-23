@@ -14901,3 +14901,27 @@ renderer's durable transcript reads. No real model or provider is contacted.
 `node --test apps/desktop/test/plugin-timeout-budgets.test.mjs`,
 `pnpm --filter @pi-desktop/shared test`, and
 `pnpm --filter @pi-desktop/host-runtime test`.
+
+### E2E-SESSION-current-turn-collaboration (#914)
+
+**Command:** `pnpm test:e2e:session-current-turn`, after JS and host debug builds.
+Use isolated host storage and a local deterministic SSE provider; no paid model,
+production profile, Electron UI or user's running desktop is involved.
+
+Start a parent and two durable worker turns. The real parent runtime calls a
+controlled wait tool for worker09. While that tool is blocked, send worker08's
+ordinary report through the production Main collaboration service, repeat the
+same send key, and settle worker08's task to create its completion notice.
+Verify no queue submission, extra model request or tool cancellation occurs.
+Release the wait interval without completing worker09. The next actual provider
+request must contain both canonical source IDs once, in the original parent
+turn. Worker09 stays running. Settle the parent and verify neither accepted
+message becomes a later queued prompt.
+
+Companion tests: `current-turn-messages.test.ts` covers bounded same-key retries,
+Stop/epoch changes and context shaping; `session-collaboration-service.test.mjs`
+covers queue/CAS races and the transcript-flush gate; host
+`session_collaboration::current_turn::tests` covers default-off compatibility,
+old queues/tasks, v19 migration, source/permission/approval validation, hop limits,
+receipt replay, JSONL repair and accepted-versus-unclaimed restart reconciliation.
+A successful local transport harness is not evidence of an Electron UI run.

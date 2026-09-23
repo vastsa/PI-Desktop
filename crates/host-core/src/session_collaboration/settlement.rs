@@ -27,7 +27,12 @@ pub fn begin_turn(
             "PERMISSION_DENIED: message belongs to another session"
         ));
     }
-    if message.status != "queued" {
+    if message.status != "queued"
+        || message
+            .current_turn
+            .as_ref()
+            .is_some_and(|c| c.state != "fallback")
+    {
         return Err(anyhow!(
             "CONFLICT: session message already claimed or settled"
         ));
@@ -90,14 +95,17 @@ pub(super) fn callback(db: &Database, message: &Message) -> Result<Option<Messag
         updated_at: at,
         remaining_hops: message.remaining_hops.saturating_sub(1),
         permission_ceiling: message.permission_ceiling.clone(),
+        current_turn: None,
     };
     repository::insert(db, &receipt, &key)?;
-    Ok(Some(receipt))
+    super::current_turn::offer_new(db, &receipt)?;
+    repository::get(db, &receipt.id)
 }
 
 /// Must be called after the transcript outbox and durable turn have settled.
 /// Repeated terminal notifications return the same receipt, never a new one.
 pub fn settle_turn(db: &Database, turn_id: &str) -> Result<Option<Message>> {
+    super::current_turn::settle(db, turn_id)?;
     let original = db
         .conn()
         .prepare_cached(&format!("{} WHERE turn_id=?1", repository::SELECT))?
@@ -172,6 +180,20 @@ pub(super) fn cancel(db: &Database, input: &Value) -> Result<Value> {
             }
             continue;
         }
+        if message
+            .current_turn
+            .as_ref()
+            .is_some_and(|c| c.state == "accepted")
+        {
+            // Accepted context cannot be recalled. In particular, canceling a
+            // message must not abort the recipient's unrelated work/other workers.
+            if selected.is_some() {
+                return Err(anyhow!(
+                    "CONFLICT: current-turn input has already been accepted"
+                ));
+            }
+            continue;
+        }
         if message.status == "running" {
             if let Some(turn) = message.turn_id {
                 turn_ids.push(turn);
@@ -198,9 +220,11 @@ pub(super) fn cancel(db: &Database, input: &Value) -> Result<Value> {
 /// The startup fence keeps received data but never replays an unclaimed or
 /// interrupted operation. Existing turn_queue rows are restored held by Agent Host.
 pub fn recover(db: &Database) -> Result<()> {
+    super::current_turn::recover(db)?;
     db.conn().execute("UPDATE session_collaboration_messages SET status='interrupted',
         error='Execution interrupted by application restart',updated_at=?1 WHERE status='running'
-        OR (status='queued' AND NOT EXISTS(SELECT 1 FROM turn_queue q WHERE q.session_message_id=session_collaboration_messages.id))",
+        OR (status='queued' AND NOT EXISTS(SELECT 1 FROM turn_queue q WHERE q.session_message_id=session_collaboration_messages.id)
+        AND NOT EXISTS(SELECT 1 FROM session_collaboration_current_turn c WHERE c.message_id=session_collaboration_messages.id))",
         params![now_ms()])?;
     Ok(())
 }

@@ -1142,6 +1142,8 @@ sklm: {
     "noResults": "Keine passenden Einstellungen",
     "enterToSend": "Zum Senden eingeben",
     "enterToSendDesc": "Aus: Zum Senden ⌘/Strg+Eingabe drücken.",
+    sessionMessagesInCurrentTurn: "Kooperationsnachrichten im laufenden Durchgang empfangen",
+    sessionMessagesInCurrentTurnDesc: "Standardmäßig aus. Gilt für neu gestartete Agent-Durchgänge: Nachrichten vor der nächsten Modellanfrage empfangen, ohne Werkzeuge zu unterbrechen. Bereits eingereihte Nachrichten bleiben unverändert.",
     "infiniteProviderRetry": "Bis zum Erfolg wiederholen",
     "infiniteProviderRetryDesc": "Netzwerk- und vorübergehende Anbieterfehler werden bis zum Erfolg wiederholt. Du kannst den Lauf weiterhin stoppen; der API-Verbrauch kann fortlaufen.",
     "linkOpenTarget": "Ziel für Link-Öffnung",

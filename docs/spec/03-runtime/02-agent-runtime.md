@@ -1591,3 +1591,26 @@ cause survives adapter message flattening, remains on the final error row,
 and never triggers a provider transport rebuild. Protocol errors such as
 `EPROTO` keep their existing retry behavior. See
 [certificate trust ADR](../../adr/provider-system-certificates.md).
+
+### Opt-in current-turn session collaboration (#914)
+
+Desktop Agent turns may opt into `sessionMessagesInCurrentTurn` (default false).
+The setting is captured at turn start and checked again by the host when input
+is adopted. Existing queued messages and task instructions are never promoted.
+
+At `prepareNextTurnWithContext`, after the current tool batch and only when the
+loop will issue another model request, the runtime may call the internal
+`session.collaboration.receive` channel. The embedding must first fence Stop,
+flush preceding transcript writes, and verify the exact live turn. Plan/Goal
+approval, cancellation, disposal, errors and turn changes reject reception.
+The ordinary model request, not a new `agent.prompt` or user steering, carries
+the host's canonical session-origin inputs. No tool or other worker is aborted.
+Fresh inputs survive context shaping exactly once; the resulting context must
+still fit the model's budget before a provider request can start.
+
+Receiver request IDs are durable replay keys. Retry a missing acknowledgement
+with the same key, never interpret timeout as rejection. A confirmed unclaimed
+offer can fall back through ordinary admission; accepted inputs remain bound
+to the current turn even if Stop prevents the subsequent HTTP request. See
+[the receipt ADR](../../adr/session-collaboration-current-turn.md) for recovery,
+limits and the distinction between input adoption and remote-model execution.

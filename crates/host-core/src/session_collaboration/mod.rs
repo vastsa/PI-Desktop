@@ -9,6 +9,7 @@ use crate::{
     db::{ms_to_ts, now_ms, Database},
     sessions,
 };
+mod current_turn;
 mod permissions;
 mod projections;
 mod provenance;
@@ -18,6 +19,7 @@ pub use provenance::{prepare_append, validate_replacement};
 pub use repository::{get, Message};
 pub use settlement::{begin_turn, recover, settle_turn};
 pub const SCHEMA: &str = include_str!("schema.sql");
+pub const CURRENT_TURN_SCHEMA: &str = include_str!("current_turn.sql");
 
 pub(super) fn string<'a>(input: &'a Value, key: &str, limit: usize) -> Result<&'a str> {
     let value = input
@@ -100,9 +102,11 @@ fn send_record(db: &Database, input: &Value, target: &str, kind: &str) -> Result
             input.get("sourceTurnId").and_then(Value::as_str),
         )?,
         permission_ceiling,
+        current_turn: None,
     };
     repository::insert(db, &message, key)?;
-    Ok(message)
+    current_turn::offer_new(db, &message)?;
+    get(db, &message.id)?.ok_or_else(|| anyhow!("NOT_FOUND: created message"))
 }
 
 fn spawn(db: &Database, input: &Value) -> Result<Value> {
@@ -177,6 +181,8 @@ fn spawn(db: &Database, input: &Value) -> Result<Value> {
 
 pub fn handle(db: &Database, method: &str, input: &Value) -> Result<Value> {
     match method {
+        "session.collaboration.receive" => current_turn::receive(db, input),
+        "session.collaboration.release" => current_turn::release(db, input),
         "session.collaboration.spawn" => spawn(db, input),
         "session.collaboration.send" => {
             let target = string(input, "sessionId", 256)?;

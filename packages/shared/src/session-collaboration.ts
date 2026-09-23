@@ -27,6 +27,8 @@ export type SessionCollaborationMessage = {
   notifyOnCompletion: boolean;
   /** Host snapshot; a later settings change cannot elevate queued work. */
   permissionCeiling: "ask" | "accept-edits" | "auto";
+  /** Host-owned current-turn offer/acceptance; absent for legacy queue deliveries. */
+  currentTurn?: { turnId: string; state: "offered" | "accepted" | "fallback" };
   turnId?: string;
   replyToMessageId?: string;
   result?: string;

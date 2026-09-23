@@ -1128,6 +1128,8 @@ sklm: {
     noResults: "沒有匹配的設定項",
     enterToSend: "回車傳送",
     enterToSendDesc: "關閉後按 ⌘/Ctrl+Enter 傳送。",
+    sessionMessagesInCurrentTurn: "在目前回合接收協作訊息",
+    sessionMessagesInCurrentTurnDesc: "預設關閉。對之後啟動的 Agent 回合生效：在下次模型請求前接收訊息，不中斷工具，也不改變已有佇列訊息。",
     infiniteProviderRetry: "無盡重試",
     infiniteProviderRetryDesc: "網路或暫時性服務故障會持續重試直到成功。仍可隨時停止，但開啟後可能持續消耗 API 用量。",
     linkOpenTarget: "連結開啟位置",

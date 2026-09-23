@@ -331,3 +331,76 @@ test("spawn without a model key still prefers an enabled model over the default 
   assert.equal(spawns.length, 1);
   assert.equal(spawns[0].params.modelId, "delegable-model");
 });
+
+function currentTurnService({ accepting = true, releaseAccepted = false, flush = true } = {}) {
+  let message = sessionMessage({ currentTurn: { turnId: "parent-turn", state: "offered" } });
+  const starts = [];
+  const order = [];
+  const host = createHost("current-turn", (method) => {
+    order.push(method);
+    if (method === "session.collaboration.release") {
+      message = { ...message, ...(releaseAccepted ? { status: "running", turnId: "parent-turn" } : {}),
+        currentTurn: { turnId: "parent-turn", state: releaseAccepted ? "accepted" : "fallback" } };
+    }
+    if (method === "session.collaboration.receive") return { messages: [{ id: "accepted-input" }] };
+    return { message };
+  });
+  const sidecar = { async call(method, args) {
+    assert.equal(method, "agent.collaborationContext");
+    assert.equal(args.expectedTurnId, "parent-turn");
+    order.push("runtime-gate");
+    return { accepting };
+  } };
+  const { service } = createService({ host, sidecar,
+    activeTurns: { "source-session": "turn-1", "target-session": "parent-turn" },
+    flushTranscript: async () => { order.push("flush"); return flush; },
+    bridge: { queue: { list: () => [] }, agentHost: { async startTurn(_principal, params) { starts.push(params); } } },
+  });
+  return { service, host, starts, order };
+}
+
+test("an offered collaboration message stays in the live parent turn, not the prompt FIFO", async () => {
+  const { service, starts, host } = currentTurnService();
+  await invokeSessionSend(service, { sessionId: "target-session", content: "Worker08 result" });
+  assert.deepEqual(starts, []);
+  assert.deepEqual(methodCalls(host, "session.collaboration.release"), []);
+});
+
+test("a confirmed rejection falls back through ordinary Agent Host admission", async () => {
+  const { service, starts } = currentTurnService({ accepting: false });
+  await invokeSessionSend(service, { sessionId: "target-session", content: "Worker08 result" });
+  assert.equal(starts.length, 1);
+  assert.equal(starts[0].admission, "queue");
+  assert.equal(starts[0].input.sessionMessageId, "message-1");
+});
+
+test("concurrent acceptance wins over release and is never queued twice", async () => {
+  const { service, starts } = currentTurnService({ accepting: false, releaseAccepted: true });
+  const result = await invokeSessionSend(service, { sessionId: "target-session", content: "Worker08 result" });
+  assert.equal(result.turnId, "parent-turn");
+  assert.equal(result.status, "running");
+  assert.deepEqual(starts, []);
+});
+
+test("runtime receipt waits for earlier transcript events and strips caller authority fields", async () => {
+  const { service, order, host } = currentTurnService();
+  const result = await service.receive({ sessionId: "target-session", turnId: "parent-turn", requestId: "request", enabledPluginIds: ["forged"], sourceSessionId: "user" });
+  assert.deepEqual(result, { messages: [{ id: "accepted-input" }] });
+  assert.deepEqual(order, ["flush", "runtime-gate", "session.collaboration.receive"]);
+  assert.deepEqual(methodCalls(host, "session.collaboration.receive")[0].params,
+    { sessionId: "target-session", turnId: "parent-turn", requestId: "request" });
+});
+
+test("Stop, stale turns and unflushed transcripts never reach durable acceptance", async () => {
+  for (const options of [{ accepting: false }, { flush: false }]) {
+    const { service, host } = currentTurnService(options);
+    const request = service.receive({ sessionId: "target-session", turnId: "parent-turn", requestId: "request" });
+    if (options.flush === false) await assert.rejects(request, { errorCode: "HOST_UNAVAILABLE" });
+    else assert.deepEqual(await request, { messages: [] });
+    assert.deepEqual(methodCalls(host, "session.collaboration.receive"), []);
+  }
+  const { service, host, order } = currentTurnService();
+  assert.deepEqual(await service.receive({ sessionId: "target-session", turnId: "stale", requestId: "request" }), { messages: [] });
+  assert.deepEqual(order, []);
+  assert.deepEqual(methodCalls(host, "session.collaboration.receive"), []);
+});

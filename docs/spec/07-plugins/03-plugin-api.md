@@ -1162,3 +1162,24 @@ one at runtime.
 
 All high-risk entry points assert declared+granted permissions and emit audit log lines.
 Plugin panels no longer receive the full `pi` object; they use `window.pluginBridge.invoke`.
+
+### Optional current-turn delivery of collaboration messages (#914)
+
+Existing Session Orchestrator send calls remain compatible. With the device-local
+`sessionMessagesInCurrentTurn` setting enabled for a newly started Desktop Agent
+turn, fresh ordinary messages and completion notices may be adopted by its next
+safe model request. Tasks, existing queued messages and the default-off behavior
+continue to use Agent Host's normal turn admission.
+
+A delivery may expose `currentTurn: { turnId, state }` with state `offered`,
+`accepted` or `fallback`. `offered` is not an acknowledgement of reception. After
+acceptance, the delivery's `turnId` identifies the receiving existing turn;
+terminal status derives from that turn. Provenance is resolved from the host
+ledger, not plugin-supplied source text. Received messages do not grant human
+permission or bypass Stop/approval. Cancelling an already adopted message returns
+`CONFLICT` rather than stopping the parent's unrelated ongoing work.
+
+No new public plugin mutation API is introduced. The receive/release methods
+are host-internal. Adoption is not a guarantee that a provider completed an HTTP
+request; interrupted adopted inputs remain inspectable in their original turn
+and are not automatically redelivered as another prompt.
