@@ -24,12 +24,21 @@ import {
   type RemoteHostPairResult,
   type RemoteHostRemoveRequest,
   type RemoteHostSummary,
+  type RemoteProjectBrowseRequest,
+  type RemoteProjectBrowseResult,
+  type RemoteProjectListRequest,
+  type RemoteProjectListResult,
+  type RemoteProjectRegisterRequest,
+  type RemoteProjectRegisterResult,
+  type RemoteSessionCreateRequest,
+  type RemoteSessionCreateResult,
 } from "@pi-desktop/shared";
 import { app } from "electron";
 import {
   getActiveRemoteHostsBoot,
   type RemoteHostsBoot,
 } from "../bootstrap/remote-hosts";
+import { normalizeRemoteError } from "../remote/backend-router";
 import { exchangePairingToken } from "../remote/racp-remote-host-client";
 import type { IpcRegistrar } from "./types";
 
@@ -63,6 +72,36 @@ function invalid(message: string, field?: string): Error {
     errorCode: ErrorCodes.INVALID_ARGUMENT,
     ...(field ? { field } : {}),
   });
+}
+
+/** Longest host path accepted for browse and register. */
+const MAX_REMOTE_PATH = 4096;
+const MAX_REMOTE_ID = 256;
+const MAX_SESSION_TITLE = 200;
+
+/** A routing key of a paired host; the `:` would break remote session ids. */
+function requireHostKey(value: unknown): string {
+  const hostKey = trim(value);
+  if (!hostKey || hostKey.length > MAX_REMOTE_ID || hostKey.includes(":")) {
+    throw invalid("a valid hostKey is required", "hostKey");
+  }
+  return hostKey;
+}
+
+function optionalPath(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const path = trim(value);
+  if (path.length > MAX_REMOTE_PATH || path.includes("\0")) throw invalid("path is invalid", "path");
+  return path || undefined;
+}
+
+/** Run a host request, surfacing the host's error code instead of INTERNAL. */
+async function remote<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    throw normalizeRemoteError(error);
+  }
 }
 
 /**
@@ -158,6 +197,51 @@ export function registerRemoteHostIpc(options: RegisterRemoteHostIpcOptions): vo
       }
       await boot.removeHost(hostKey);
       return { ok: true };
+    },
+  );
+
+  registrar.handle(
+    IPC.invoke.remoteProjectList,
+    async (request: RemoteProjectListRequest): Promise<RemoteProjectListResult> => {
+      const boot = requireBoot(getRemoteHostsBoot());
+      const hostKey = requireHostKey(request?.hostKey);
+      return { projects: await remote(() => boot.listProjects(hostKey)) };
+    },
+  );
+
+  registrar.handle(
+    IPC.invoke.remoteProjectBrowse,
+    async (request: RemoteProjectBrowseRequest): Promise<RemoteProjectBrowseResult> => {
+      const boot = requireBoot(getRemoteHostsBoot());
+      const hostKey = requireHostKey(request?.hostKey);
+      const path = optionalPath(request?.path);
+      // The host bounds the listing to its own browse root.
+      return await remote(() => boot.browseProject(hostKey, path));
+    },
+  );
+
+  registrar.handle(
+    IPC.invoke.remoteProjectRegister,
+    async (request: RemoteProjectRegisterRequest): Promise<RemoteProjectRegisterResult> => {
+      const boot = requireBoot(getRemoteHostsBoot());
+      const hostKey = requireHostKey(request?.hostKey);
+      const path = optionalPath(request?.path);
+      if (!path) throw invalid("path is required", "path");
+      return { project: await remote(() => boot.registerProject(hostKey, path)) };
+    },
+  );
+
+  registrar.handle(
+    IPC.invoke.remoteSessionCreate,
+    async (request: RemoteSessionCreateRequest): Promise<RemoteSessionCreateResult> => {
+      const boot = requireBoot(getRemoteHostsBoot());
+      const hostKey = requireHostKey(request?.hostKey);
+      const projectId = trim(request?.projectId);
+      if (!projectId || projectId.length > MAX_REMOTE_ID) {
+        throw invalid("projectId is required", "projectId");
+      }
+      const title = trim(request?.title).slice(0, MAX_SESSION_TITLE) || undefined;
+      return { session: await remote(() => boot.createSession(hostKey, projectId, title)) };
     },
   );
 }

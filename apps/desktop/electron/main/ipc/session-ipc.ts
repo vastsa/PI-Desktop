@@ -22,6 +22,7 @@ import {
   type ExternalSource,
 } from "../importers";
 import type { AgentSidecar } from "../agent-sidecar";
+import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { PersistenceOutbox } from "../persistence-outbox";
@@ -157,6 +158,8 @@ export function registerSessionIpc({
           source: "desktop",
         })),
         ...native.sessions,
+        // Sessions of connected remote hosts, from the connection cache.
+        ...(getActiveRemoteHostsBoot()?.listRemoteSessions() ?? []),
       ].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))),
     };
   });
