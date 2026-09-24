@@ -425,7 +425,7 @@ export function createRemoteHostsBoot(
       const result = await request<{ projects: RemoteProjectSummary[] }>(hostKey, "project/list");
       return result.projects.map(({ id, label, archived }) => ({ id, label, archived }));
     },
-    browseProject(hostKey, path) {
+    async browseProject(hostKey, path) {
       return request<RemoteProjectBrowseResult>(hostKey, "project/browse", path ? { path } : {});
     },
     async registerProject(hostKey, path) {

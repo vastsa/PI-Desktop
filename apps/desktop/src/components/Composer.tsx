@@ -395,7 +395,8 @@ export function Composer({
     controlsBlocked,
   });
   // Native and remote sessions run their own model; the host decides readiness.
-  const modelReady = nativeSession || gates.remote
+  const hostOwnsModel = nativeSession || gates.remote;
+  const modelReady = hostOwnsModel
     ? activeSessionSummary?.capabilities?.canPrompt === true
     : !!provider &&
       provider.enabled &&
