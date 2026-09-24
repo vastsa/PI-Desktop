@@ -394,9 +394,7 @@ StepFun Plan defaults to `anthropic_messages` at
 `https://api.stepfun.com/step_plan/v1`. Runtime URL normalization removes the
 trailing `/v1` before the Anthropic SDK appends `/v1/messages`, reaching
 `https://api.stepfun.com/step_plan/v1/messages`. The versioned settings URL also
-preserves model discovery and the Step 5 metadata lookup. Existing saved
-`chat_completions` accounts retain their format when edited or copied; users
-can explicitly choose StepFun Plan to switch to the new default.
+preserves model discovery and the Step 5 metadata lookup.
 See the [official Claude Code guide](https://platform.stepfun.com/docs/zh/step-plan/integrations/claude-code).
 
 Zhipu / Z.AI Completions requests still receive `thinkingFormat: "zai"` and
