@@ -1643,6 +1643,19 @@ identify the platform validation still needed.
 - **Milestone**: M6+
 - **Status**: Draft; host-side reorder covered by `turn_queue` unit tests
 
+#### E2E-QUEUE-cancel-next-during-start: The next waiting message stays cancelable
+
+- **Preconditions**: An isolated desktop profile and a local provider that can
+  hold a reply open; one active turn followed by queued messages A and B.
+- **Steps**: Release the active reply. While A is executing, cancel B. Finish
+  A and send another message.
+- **Expected**: A's early runtime events retain A's identity. B remains queued
+  at position 1 until cancellation succeeds, never reaches the provider, and
+  disappears from the durable queue. A and the subsequent message complete.
+- **Specs linked**: `03-runtime/19-remote-agent-control-protocol.md` (turn states)
+- **Acceptance**: C (chat), F (persistence)
+- **Status**: Manual local-provider acceptance scenario
+
 #### E2E-QUEUE-edit-restores-draft-only-when-input-empty: Edit restores the queued draft
 
 - **Preconditions**: Provider configured; a turn is running with a queued prompt
