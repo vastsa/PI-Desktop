@@ -113,6 +113,8 @@ import type {
   RemoteProjectRegisterResult,
   RemoteSessionCreateRequest,
   RemoteSessionCreateResult,
+  RemoteHostSyncProvidersRequest,
+  RemoteHostSyncProvidersResult,
   UpdateState,
   WindowControlAction,
   CloseBehavior,
@@ -1551,6 +1553,9 @@ export const api = {
     invoke<RemoteSessionCreateResult>(IPC.invoke.remoteSessionCreate, request).then(
       (result) => ({ session: normalizeSession(result.session) }),
     ),
+  /** Copy local providers, keys included, to an SSH host over its SSH channel. */
+  syncRemoteHostProviders: (request: RemoteHostSyncProvidersRequest) =>
+    invoke<RemoteHostSyncProvidersResult>(IPC.invoke.remoteHostSyncProviders, request),
   onSessionsChanged: (
     listener: (event: {
       reason?: string;

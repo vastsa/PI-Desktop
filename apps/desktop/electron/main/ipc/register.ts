@@ -470,7 +470,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     registerVoiceIpc({ registrar, voiceService });
   }
 
-  registerRemoteHostIpc({ registrar });
+  registerRemoteHostIpc({ registrar, getHost });
 
   registerMarketIpc({
     registrar,

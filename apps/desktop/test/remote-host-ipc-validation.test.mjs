@@ -12,6 +12,7 @@ register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const shared = await import("@pi-desktop/shared");
 const { IPC } = shared;
 const router = await import("../electron/main/remote/backend-router.ts");
+const providerSync = await import("../electron/main/remote/remote-provider-sync.ts");
 
 /** Load remote-host-ipc.ts with Electron and the boot singleton stubbed out. */
 function loadRemoteHostIpc() {
@@ -25,8 +26,18 @@ function loadRemoteHostIpc() {
     (id) => {
       if (id === "electron") return { app: { getName: () => "test", getVersion: () => "0.0.0" } };
       if (id === "@pi-desktop/shared") return shared;
-      if (id === "../bootstrap/remote-hosts") return { getActiveRemoteHostsBoot: () => null };
+      if (id === "../bootstrap/remote-hosts") {
+        return { getActiveRemoteHostsBoot: () => null, sshMetadataOf: (record) => record.ssh ?? null };
+      }
       if (id === "../remote/backend-router") return router;
+      if (id === "../remote/remote-provider-sync") return providerSync;
+      if (id === "../remote/ssh-transport") {
+        return {
+          createSystemSshTransport: () => {
+            throw new Error("tests never spawn ssh");
+          },
+        };
+      }
       if (id === "../remote/racp-remote-host-client") {
         return { exchangePairingToken: async () => "device-token" };
       }
@@ -40,7 +51,7 @@ function loadRemoteHostIpc() {
 
 const { registerRemoteHostIpc } = loadRemoteHostIpc();
 
-function setup(bootOverrides = {}, { noBoot = false } = {}) {
+function setup(bootOverrides = {}, { noBoot = false, ipcOptions = {} } = {}) {
   const handlers = new Map();
   const calls = [];
   const record =
@@ -60,6 +71,7 @@ function setup(bootOverrides = {}, { noBoot = false } = {}) {
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     getRemoteHostsBoot: () => (noBoot ? null : boot),
     clientInfo: { name: "test", version: "0.0.0" },
+    ...ipcOptions,
   });
   const invoke = (channel, request) => handlers.get(channel)(request);
   return { invoke, calls };
@@ -194,4 +206,119 @@ test("a boot that is not ready refuses with AGENT_UNAVAILABLE", async () => {
       (error) => error.errorCode === "AGENT_UNAVAILABLE",
     );
   }
+});
+
+const SECRET = "sk-sync-secret";
+const SYNC_PROVIDERS = [
+  {
+    id: "local",
+    name: "OpenAI",
+    vendorKey: "openai",
+    type: "native",
+    protocol: "openai-responses",
+    enabled: true,
+    authKind: "api_key",
+    hasSecret: true,
+    models: [{ id: "gpt-x" }],
+    supportedThinkingLevels: ["off"],
+  },
+  {
+    id: "plugin-row",
+    name: "Plugin",
+    vendorKey: "x",
+    type: "custom",
+    protocol: "openai-chat",
+    enabled: true,
+    authKind: "api_key",
+    hasSecret: true,
+    ownerPluginId: "some.plugin",
+    models: [{ id: "m" }],
+    supportedThinkingLevels: [],
+  },
+];
+
+function syncSetup({ ssh = { host: "box", remotePort: 7777, version: "1" }, stdout } = {}) {
+  const sent = [];
+  const hostCalls = [];
+  const summary = { imported: [{ sourceId: "local", providerId: "h1", action: "created" }], skipped: [], defaultSet: true };
+  const { invoke } = setup(
+    { registry: { list: async () => [{ hostKey: "h", label: "box", url: "ws://x", deviceToken: "t", ssh }] } },
+    {
+      ipcOptions: {
+        getHost: () => ({
+          call: async (method, params) => {
+            hostCalls.push(method);
+            if (method === "providers.list") return { providers: SYNC_PROVIDERS };
+            if (method === "providers.getSecret") return { value: params.id === "local" ? SECRET : undefined };
+            throw new Error(`unexpected ${method}`);
+          },
+        }),
+        buildSshTransport: () => ({
+          exec: async () => assert.fail("exec is not used"),
+          execWithInput: async (command, input) => {
+            sent.push({ command, input });
+            return { stdout: stdout ?? `PI_HOST_PROVIDERS ${JSON.stringify(summary)}\n`, stderr: "", code: 0 };
+          },
+          forward: async () => assert.fail("forward is not used"),
+          dispose: () => undefined,
+        }),
+      },
+    },
+  );
+  return { invoke, sent, hostCalls, summary };
+}
+
+test("remoteHostSyncProviders copies a local provider over the host's SSH stdin", async () => {
+  const { invoke, sent, summary } = syncSetup();
+  const result = await invoke(IPC.invoke.remoteHostSyncProviders, {
+    hostKey: "h",
+    providerIds: [" local "],
+    setDefault: true,
+  });
+  assert.deepEqual(result, summary);
+  assert.equal(sent.length, 1);
+  assert.ok(!sent[0].command.includes(SECRET));
+  const payload = JSON.parse(sent[0].input);
+  assert.equal(payload.providers[0].input.secretValue, SECRET);
+  assert.deepEqual(payload.defaultModel, { sourceId: "local", modelId: "gpt-x" });
+  assert.ok(!JSON.stringify(result).includes(SECRET));
+});
+
+test("remoteHostSyncProviders re-checks every id in main", async () => {
+  const { invoke, sent } = syncSetup();
+  for (const providerIds of [undefined, [], ["  "], ["x".repeat(257)]]) {
+    await assert.rejects(
+      invoke(IPC.invoke.remoteHostSyncProviders, { hostKey: "h", providerIds, setDefault: false }),
+      isInvalid("providerIds"),
+    );
+  }
+  for (const providerIds of [["plugin-row"], ["missing"]]) {
+    await assert.rejects(
+      invoke(IPC.invoke.remoteHostSyncProviders, { hostKey: "h", providerIds, setDefault: false }),
+      isInvalid(),
+    );
+  }
+  await assert.rejects(
+    invoke(IPC.invoke.remoteHostSyncProviders, { hostKey: "other", providerIds: ["local"], setDefault: false }),
+    isInvalid("hostKey"),
+  );
+  assert.equal(sent.length, 0);
+});
+
+test("remoteHostSyncProviders refuses a host paired by URL", async () => {
+  const { invoke, sent, hostCalls } = syncSetup({ ssh: null });
+  await assert.rejects(
+    invoke(IPC.invoke.remoteHostSyncProviders, { hostKey: "h", providerIds: ["local"], setDefault: false }),
+    (error) => error.errorCode === "CAPABILITY_UNAVAILABLE",
+  );
+  assert.equal(sent.length, 0);
+  assert.equal(hostCalls.length, 0, "no key is read for a host that cannot receive it");
+});
+
+test("remoteHostSyncProviders surfaces the host's failure code", async () => {
+  const { invoke } = syncSetup({ stdout: 'PI_HOST_FAILED {"code":"ADMIN_UNAVAILABLE"}\n' });
+  await assert.rejects(
+    invoke(IPC.invoke.remoteHostSyncProviders, { hostKey: "h", providerIds: ["local"], setDefault: false }),
+    (error) => error.data?.code === "ADMIN_UNAVAILABLE",
+  );
 });
