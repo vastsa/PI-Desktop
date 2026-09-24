@@ -184,14 +184,15 @@ export async function transcriptStatusProbe() {
       await new Promise<void>((resolve) =>
         requestAnimationFrame(() => resolve()),
       );
-      const fragment = host.querySelector(".assistant-turn-fragment");
+      const answerTail = host.querySelector(".assistant-turn .message-meta") ??
+        host.querySelector(".assistant-turn-fragment");
       const statusLabel = indicator("working-indicator")?.querySelector(
         ".working-indicator-label",
       );
       const gap =
-        fragment && statusLabel
+        answerTail && statusLabel
           ? statusLabel.getBoundingClientRect().top -
-            fragment.getBoundingClientRect().bottom
+            answerTail.getBoundingClientRect().bottom
           : Number.NaN;
       check(
         Math.abs(gap - 24) <= 0.01,

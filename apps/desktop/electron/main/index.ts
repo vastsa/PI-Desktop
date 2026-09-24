@@ -52,7 +52,7 @@ import {
 import { PersistenceOutbox } from "./persistence-outbox";
 import { AgentSidecar } from "./agent-sidecar";
 import { Logger, ignoreBrokenStdio } from "./logger";
-import { installMainProcessErrorHandlers } from "./main-process-errors";
+import { describeError, installMainProcessErrorHandlers } from "./main-process-errors";
 import {
   isDbSchemaTooNewError,
 } from "./host-boot-diagnostics";
@@ -789,12 +789,6 @@ function setCurrentWorkspacePath(path: string | null): void {
       plugins.broadcastEvent("workspace:changed", [enriched]);
     });
   }
-}
-
-/** One-line message for an error of unknown shape, for user-facing lists. */
-function describeError(error: unknown): string {
-  if (error instanceof Error) return error.message.slice(0, 300);
-  return String(error).slice(0, 300);
 }
 
 /**

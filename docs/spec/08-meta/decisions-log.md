@@ -5447,6 +5447,33 @@ It deliberately does not include plugin OAuth: the `provider.oauth` permission
 and a Host-owned plugin login flow are future work, so a declared provider has no
 OAuth login, token refresh, or account label today.
 
+### Live generation throughput (issue #93)
+
+[ADR `live-turn-throughput-estimate`](/adr/live-turn-throughput-estimate) amends ADR 0073: the active
+turn's meta row shows a live tokens-per-second estimate beside the model chip.
+The runtime reports provider usage only at `message_end`, so the figure is
+computed in the renderer from visible thinking plus answer text at four Unicode
+code points per token — ADR 0073 §3's convention — and always uses the
+estimated copy. It is measured across a recent window rather than cumulatively,
+so a long tool call cannot make a running model look slow; silence retains and
+dims the last rate instead of reporting zero. The sample window is a ref inside
+the active turn, so no per-token state reaches the store and ADR 0242's
+memoization boundaries hold. Renderer-only: protocol stays at 11. The completed-turn values and the composer inspector are
+unchanged. Validation contract: E2E-CHAT-live-generation-throughput.
+
+
+### Live generation feedback refinement
+
+ADR `live-turn-throughput-estimate` now specifies explicit generation phases, historical-rate labels,
+time-based smoothing, and per-message sampling baselines. All eight locales
+carry the new labels. E2E-CHAT-live-generation-throughput covers the rendered
+phase transitions; no IPC, persistence, or plugin contract changes.
+
+### Runtime-owned first-output latency
+
+ADR `first-output-latency.md` adds optional per-response timing, measured before
+IPC and retained in existing message metadata. TPS semantics are unchanged.
+
 ## 2026-09-15 — Side chats materialize on first Send (#421)
 
 *(Retired by ADR 0268 on 2026-09-16: the feature and its surfaces were removed, and these IDs stay retired and must not be reused. The record is kept for history.)*

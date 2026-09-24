@@ -1594,6 +1594,12 @@ The first slice has no projection cache or async scan bound; every list still
 reads/parses complete files. Caching by canonical path/file identity/size/mtime
 and bounded asynchronous scanning remain deferred performance work.
 
+### First-output latency
+
+Rust host-core persists optional `UiMessage.timeToFirstTokenMs` in existing
+message JSON metadata and restores nonnegative integer values. Legacy rows
+omit it; no schema migration is required. See ADR `first-output-latency.md`.
+
 ### Provider display order
 
 `kv(ns="app", key="providers.order")` stores an ordered array of provider IDs.

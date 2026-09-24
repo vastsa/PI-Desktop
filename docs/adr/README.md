@@ -340,4 +340,7 @@ Each ADR includes:
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |
 | registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](registry-header-variable-spelling.md) | Proposed |
 | provider-system-certificates | [Desktop sidecar uses OS-trusted certificates](provider-system-certificates.md) | Accepted |
+| live-turn-throughput-estimate | [Live turn throughput is a renderer-side windowed estimate](live-turn-throughput-estimate.md) | Accepted |
+| first-output-latency | [Runtime-owned first-output latency](first-output-latency.md) | Accepted |
+
 | image-generation-capability | [Image generation as a configured Agent capability](image-generation-capability.md) | Accepted |

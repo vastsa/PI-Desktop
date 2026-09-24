@@ -46,6 +46,12 @@ export function isNonAsciiHttpHeaderError(error: unknown): boolean {
   );
 }
 
+/** One-line message for an error of unknown shape, for user-facing lists. */
+export function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message.slice(0, 300);
+  return String(error).slice(0, 300);
+}
+
 export function describeMainProcessError(error: unknown): string {
   if (error instanceof Error) {
     return error.stack ?? `${error.name}: ${error.message}`;

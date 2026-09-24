@@ -1066,6 +1066,78 @@ Linux 保留淡入淡出和滑动退出。
 | 运动 | 进入200ms缓出slide-down/fade，退出150ms缓入淡入淡出；减少运动 → 接近零持续时间（不是 `none`，移除监听 `animationend`） |
 | Z 指数 | z-Toast (50) |
 
+### 11.9 SettingsToggle
+
+实现： `components/ui.tsx → SettingsToggle`.
+
+| 属性 | 值 |
+|---|---|
+| Size | 32×20, thumb 16px |
+| CSS class | `.settings-toggle` / `.settings-toggle.on` |
+| Role | `role="switch"` with `aria-checked` |
+| Variants | default, `busy` (`.is-busy`, `aria-busy`, disabled) |
+| Background | neutral accent when on (not green); theme-specific override in `theme-overrides.css` |
+
+设置页和编辑面板的布尔开关**必须**使用 `SettingsToggle`，禁止手写
+`<button role="switch">` 并手动拼装样式类。
+
+### 11.10 SegmentedControl
+
+实现： `components/ui.tsx → SegmentedControl<T>`.
+
+| 属性 | 值 |
+|---|---|
+| CSS class | `.settings-segment` / `.settings-segment-item.active` |
+| Roles | `radiogroup` (default), `group`, or `tablist` |
+| Item roles | `radio` / none / `tab` — derived from container role |
+| Generic | `<T extends string>` for type-safe value/onChange |
+| Options | `readonly { value: T; label: ReactNode; id?: string; controls?: string }[]` — label accepts JSX (e.g. count badge) |
+
+并排等宽按钮构成的多选项选择器**必须**使用 `SegmentedControl`，
+禁止手写 `<div className="settings-segment">` 及按钮循环。
+
+### 11.11 Checkbox
+
+实现： `components/ui.tsx → Checkbox`.
+
+| 属性 | 值 |
+|---|---|
+| CSS class | `.ui-checkbox` |
+| Anatomy | `<label> → <input type="checkbox"> + <span>{label}</span>` |
+| Props | Extends `InputHTMLAttributes` (minus `type`) + `label: ReactNode` |
+
+独立的带标签复选框**必须**使用 `Checkbox`，禁止手写
+`<label><input type="checkbox"/>…</label>`。
+
+### 11.11b CheckboxGroup
+
+实现： `components/ui.tsx → CheckboxGroup<T>`.
+
+| 属性 | 值 |
+|---|---|
+| CSS class | `.ui-checkbox-group` (container), items use `Checkbox` |
+| Generic | `<T extends string>` for type-safe values/onChange |
+| Props | `values: T[]`, `onChange(values: T[])`, `options: { value: T; label: ReactNode }[]`, `label`, `disabled`, `minSelected` |
+| Minimum selection | `minSelected` (default 0) prevents unchecking below a threshold |
+
+当选项对应已选值数组时（例如语音语言），使用 `CheckboxGroup`。
+状态结构不同的独立布尔字段应分别使用 `Checkbox`。
+
+### 11.12 SettingsMenuSelect
+
+实现： `components/settings/SettingsMenuSelect.tsx`.
+
+| 属性 | 值 |
+|---|---|
+| Trigger | Button showing the current label, `IconChevronDown` trailing |
+| Popup | `AnchoredMenu` — portaled, keyboard-navigable, current-value checkmark |
+| Props | `value`, `options: { id, label, disabled? }[]`, `onChange(id)`, `label`, `disabled`, `busy`, `fullWidth` |
+
+设置页的下拉菜单和选项列表**必须**使用 `SettingsMenuSelect`，
+不使用原生 `Select`（`<select>`）。原生 `Select` 仅适用于允许
+操作系统样式的非设置页面。
+
+
 ## 12. 状态模式
 
 ### 12. 1 交互状态

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   classifyMainProcessError,
   describeMainProcessError,
+  describeError,
   installMainProcessErrorHandlers,
   isNonAsciiHttpHeaderError,
   reportMainProcessError,
@@ -112,4 +113,10 @@ test("Electron main installs handlers and does not use Electron's default dialog
     index,
     /process\.on\("uncaughtException"/,
   );
+});
+
+test("user-facing error descriptions preserve the 300-character limit", () => {
+  assert.equal(describeError(new Error("x".repeat(400))), "x".repeat(300));
+  assert.equal(describeError("y".repeat(400)), "y".repeat(300));
+  assert.equal(describeError(null), "null");
 });

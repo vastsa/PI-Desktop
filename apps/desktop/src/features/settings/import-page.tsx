@@ -61,6 +61,8 @@ export function ImportSection() {
         onChange={(value) => setKind(value)}
         options={IMPORT_KINDS.map((entry) => ({
           value: entry.id,
+          id: `import-tab-${entry.id}`,
+          controls: `import-panel-${entry.id}`,
           label: t(entry.labelKey),
         }))}
         label={t("settings.import")}

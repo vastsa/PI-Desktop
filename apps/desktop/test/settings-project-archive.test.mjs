@@ -104,8 +104,8 @@ test("project archive is a toolbar over a list, with no page-level prose", () =>
   assert.match(projectsPageSource, /project\.clearSearch/);
   assert.match(projectsPageSource, /projects-result-count[^]*aria-live="polite"/);
   assert.match(projectsPageSource, /project\.resultCount/);
-  assert.match(projectsPageSource, /"settings-segment projects-sort"/);
-  assert.match(projectsPageSource, /aria-pressed=\{sort === mode\}/);
+  assert.match(projectsPageSource, /<SegmentedControl\s+value=\{sort\}/);
+  assert.match(projectsPageSource, /role="group"\s+className="projects-sort"/);
   assert.match(projectsPageSource, /project\.sortRecent/);
   assert.match(projectsPageSource, /project\.sortName/);
 

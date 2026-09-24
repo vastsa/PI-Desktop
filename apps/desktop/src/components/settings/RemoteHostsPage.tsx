@@ -245,8 +245,8 @@ export function RemoteHostsPage() {
             value={addMode}
             onChange={(mode) => setAddMode(mode)}
             options={[
-              { value: "ssh", label: t("settings.remoteHosts.addSsh") },
-              { value: "pair", label: t("settings.remoteHosts.addPair") },
+              { value: "ssh", id: "remote-host-add-ssh", controls: "remote-host-add-panel-ssh", label: t("settings.remoteHosts.addSsh") },
+              { value: "pair", id: "remote-host-add-pair", controls: "remote-host-add-panel-pair", label: t("settings.remoteHosts.addPair") },
             ]}
             label={t("settings.remoteHosts.addTitle")}
             role="tablist"

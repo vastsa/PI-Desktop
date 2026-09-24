@@ -1107,6 +1107,24 @@ SESSIONS                                      [msg+][↕]
   保留助手消息原有 14px 底部内边距和运行状态栏完整高度，默认字号下纯文字
   片段到状态文字为 24px。用户消息保留真实的悬停操作栏与原有间距，包括首次
   等待阶段；按钮通过透明度隐藏但保持占位，悬停时不推动内容。
+- 回合仍在流式输出时，该元信息行在模型芯片旁显示一个实时生成速度芯片，单位为
+  tokens/s（ADR `live-turn-throughput-estimate`）。该数值恒为估算形式，因为供应商只在消息结束时上报用量；
+  它按最近的时间窗口测量，而非从回合起点累计。工具执行不产生 token，因此保留
+  上次测得的速率并置灰，而不是清空；只有样本跨度足够长才会出现芯片。回合落定后，
+  元信息行切换为已完成回合的数值。
+- The live meta row labels waiting, thinking, generating, and tool execution.
+  A retained rate is labelled "Last" immediately during tools or waiting, and
+  after 1.5 seconds without output. Rates are approximate whole tokens/s.
+  Sampling runs every 250 ms on a monotonic clock over a three-second window,
+  with a 750 ms exponential smoothing time constant. Each new message resets
+  the window and smoothing baseline while retaining the prior rate for display;
+  thinking-to-answer transitions share one baseline. TPS is renderer-only.
+- First-output latency shows optional runtime-measured `timeToFirstTokenMs` in
+  seconds to one decimal place. It includes request waiting and transport
+  retries, excludes preceding tool time, and survives completion and reload.
+  Stopped thinking-only responses retain this value. During tools and waiting
+  for the next request, the live row hides prior latency. Old messages show no
+  guessed value (ADR `first-output-latency.md`).
 - 切换思考条目只改变该层级，独立于整个过程、活动组和最终回答。流式更新不会重新打开
   用户已手动收起的层级；展开内容旁的左侧栏本身是可用指针和键盘聚焦操作的收起控件。
 - 悬停代码块：出现复制按钮
@@ -1282,7 +1300,8 @@ row 而不是在转录本中添加树镶边。
   一条聚合摘要，展示工具种类、调用次数和带 `~` 的估算令牌数；默认视图
   不再显示逐工具行、占比条、来源徽章或解释性提示。标题下方的行共用
   左标签/右数值节奏，只用留白分隔，弹层保留浮层描边、不画内部分隔线
-  （D297）。生成速度只代表已完成回合，流式响应期间不更新。上下文窗口
+  （D297）。弹层里的生成速度只代表已完成回合，流式响应期间不更新；实时估算
+  由会话记录的元信息行承载（ADR `live-turn-throughput-estimate`）。上下文窗口
   总计使用与 agent sidecar 相同的 effective model window：已发布的
   `models.dev` `limit.context` 会替换遗留的 128k 通用 binding seed，
   非默认的按模型 Advanced 值仍然优先；未知模型回退到提供商目录或默认

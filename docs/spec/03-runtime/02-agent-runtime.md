@@ -1587,6 +1587,14 @@ format, repair-needing newline, unavailable provider/auth, active lease, or
 external byte change makes continuation fail closed while detail remains
 browseable.
 
+### First-output latency
+
+The runtime measures `UiMessage.timeToFirstTokenMs` from logical model request
+start to the first visible text/thinking output using a monotonic clock. The
+value latches once per request, includes transport retries and waiting, and
+excludes preceding tool execution. Tool-only output leaves it absent.
+See ADR `first-output-latency.md`.
+
 ### Provider certificate trust (issue #714)
 
 The desktop sidecar starts with Node's `--use-system-ca`, retaining bundled

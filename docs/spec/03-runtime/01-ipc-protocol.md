@@ -2289,6 +2289,12 @@ semantics are unchanged. Native terminal completion follows SDK settlement,
 not intermediate retry/compaction loop ends. Native abort never invokes
 `replaceSessionMessages` and reloads durable detail after abort returns.
 
+### First-output latency
+
+`UiMessage.timeToFirstTokenMs` is optional runtime-measured milliseconds.
+Stream snapshots and coalesced deltas preserve it; legacy messages omit it.
+See ADR `first-output-latency.md` for measurement semantics.
+
 ### Provider ordering
 
 `pi-desktop/providers/reorder({ id, targetId, placement: "before" | "after" })`

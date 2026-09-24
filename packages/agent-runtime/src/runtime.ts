@@ -1,3 +1,4 @@
+import { FirstOutputTiming } from "./response-timing.js";
 import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
@@ -1650,6 +1651,7 @@ export class DesktopAgentRuntime {
    * which is the correct anchor: the request goes out once all have resolved. */
   private requestStartedAt?: number;
   private streamStartedAt?: number;
+  private readonly firstOutputTiming = new FirstOutputTiming();
   private agentActivity?: AgentActivity;
   /** Targets of the in-flight parent wait; live snapshots refresh this set. */
   private delegationWaitTargets?: DelegationRecord[];
@@ -1898,7 +1900,7 @@ Delegation rules:
     ].join("\n\n");
     this.agent = new Agent({
       streamFn: (m, context, options) => {
-        this.setAgentActivity({ phase: "waiting-model", since: Date.now() });
+        this.setAgentActivity({ phase: "waiting-model", since: this.firstOutputTiming.start() });
         this.providerResponseStatus = undefined;
         this.providerRetryHeaders = undefined;
         this.providerRequestBytes = undefined;
@@ -7204,7 +7206,7 @@ Delegation rules:
               : this.progressTurnRerunInProgress
                 ? retryingAssistant?.content ?? ""
                 : content.text;
-          this.currentAssistant = {
+          this.currentAssistant = this.firstOutputTiming.observe({
             id: retryingAssistant?.id ?? randomUUID(),
             role: "assistant",
             content: initialText,
@@ -7215,7 +7217,7 @@ Delegation rules:
             status: "streaming",
             modelId: this.provider.modelId,
             providerId: this.provider.id,
-          };
+          }, Boolean(content.text || content.thinking));
           if (retryingAssistant) {
             // Keep one visible assistant bubble across the bounded retry. The
             // failed partial response is replaced instead of leaving a
@@ -7251,7 +7253,7 @@ Delegation rules:
           const thinkingDelta = content.hasThinking
             ? cumulativeDelta(previousThinking, content.thinking)
             : { delta: "", reset: false };
-          this.currentAssistant = {
+          this.currentAssistant = this.firstOutputTiming.observe({
             ...this.currentAssistant,
             content: nextText,
             ...(nextThinking
@@ -7260,7 +7262,7 @@ Delegation rules:
                 ? { thinking: undefined }
                 : {}),
             status: "streaming",
-          };
+          }, Boolean(textDelta.delta || thinkingDelta.delta));
           if (
             textDelta.delta ||
             thinkingDelta.delta ||
@@ -7375,14 +7377,12 @@ Delegation rules:
           }
           const endedAt = Date.now();
           const providerWaitMs =
-            this.requestStartedAt !== undefined &&
-            this.streamStartedAt !== undefined
+            this.requestStartedAt !== undefined && this.streamStartedAt !== undefined
               ? this.streamStartedAt - this.requestStartedAt
               : undefined;
-          const streamMs =
-            this.streamStartedAt !== undefined
-              ? Math.max(0, endedAt - this.streamStartedAt)
-              : undefined;
+          const streamMs = this.streamStartedAt !== undefined
+            ? Math.max(0, endedAt - this.streamStartedAt)
+            : undefined;
           if (classifiedError) {
             classifiedError = this.providerErrorWithDiagnostics(
               classifiedError,
@@ -7514,10 +7514,6 @@ Delegation rules:
             this.streamStartedAt = undefined;
             break;
           }
-          const responseDurationMs =
-            this.streamStartedAt !== undefined
-              ? Math.max(0, endedAt - this.streamStartedAt)
-              : undefined;
           const responseOutputTokens =
             aborted && (!usage || usage.outputTokens <= 0)
               ? estimateVisibleResponseOutputTokens({
@@ -7525,7 +7521,7 @@ Delegation rules:
                   thinking: nextThinking,
                 })
               : undefined;
-          this.currentAssistant = {
+          this.currentAssistant = this.firstOutputTiming.observe({
             ...this.currentAssistant,
             content: nextText,
             ...(nextThinking
@@ -7541,7 +7537,7 @@ Delegation rules:
             modelId: this.provider.modelId,
             providerId: this.provider.id,
             ...(usage ? { usage } : {}),
-            ...(responseDurationMs !== undefined ? { responseDurationMs } : {}),
+            ...(streamMs !== undefined ? { responseDurationMs: streamMs } : {}),
             ...(responseOutputTokens !== undefined
               ? { responseOutputTokens }
               : {}),
@@ -7549,7 +7545,7 @@ Delegation rules:
               ? { error: classifiedError, isError: true }
               : {}),
             ...(hostedSearch ? { hostedSearch } : {}),
-          };
+          }, Boolean(content.text || content.thinking));
           this.emit({ type: "message_end", message: this.currentAssistant });
           this.activeProviderRetryAttempt = 0;
           this.streamStartedAt = undefined;

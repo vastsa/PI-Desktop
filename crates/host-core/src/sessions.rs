@@ -170,6 +170,9 @@ pub struct UiMessage {
     /// Elapsed model streaming time for the response throughput statistic.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_duration_ms: Option<i64>,
+    /// Delay until the first visible model output, captured by the runtime.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_to_first_token_ms: Option<i64>,
     /// Partial output estimate used when a user stops before final usage arrives.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_output_tokens: Option<i64>,
@@ -314,6 +317,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     }
     if let Some(duration) = message.response_duration_ms {
         meta_obj.insert("responseDurationMs".into(), json!(duration));
+    }
+    if let Some(latency) = message.time_to_first_token_ms.filter(|value| *value >= 0) {
+        meta_obj.insert("timeToFirstTokenMs".into(), json!(latency));
     }
     if let Some(tokens) = message.response_output_tokens {
         meta_obj.insert("responseOutputTokens".into(), json!(tokens));
@@ -464,6 +470,10 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
     let error = meta.get("error").cloned();
     let response_duration_ms = meta.get("responseDurationMs").and_then(|v| v.as_i64());
     let response_output_tokens = meta.get("responseOutputTokens").and_then(|v| v.as_i64());
+    let time_to_first_token_ms = meta
+        .get("timeToFirstTokenMs")
+        .and_then(|v| v.as_i64())
+        .filter(|value| *value >= 0);
     let revision_root_id = meta
         .get("revisionRootId")
         .and_then(|v| v.as_str())
@@ -543,6 +553,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             provider_id,
             usage,
             response_duration_ms,
+            time_to_first_token_ms,
             response_output_tokens,
             error,
             revision_root_id,
@@ -592,6 +603,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             provider_id,
             usage,
             response_duration_ms,
+            time_to_first_token_ms,
             response_output_tokens,
             error,
             revision_root_id,
@@ -3792,6 +3804,7 @@ mod tests {
             provider_id: None,
             usage: None,
             response_duration_ms: None,
+            time_to_first_token_ms: None,
             response_output_tokens: None,
             error: None,
             revision_root_id: None,
@@ -4436,6 +4449,7 @@ mod tests {
             provider_id: None,
             usage: None,
             response_duration_ms: None,
+            time_to_first_token_ms: None,
             response_output_tokens: None,
             error: None,
             revision_root_id: None,
@@ -4872,6 +4886,7 @@ mod tests {
                 total_tokens: 48,
             }),
             response_duration_ms: Some(2_000),
+            time_to_first_token_ms: Some(1_250),
             response_output_tokens: Some(34),
             error: None,
             revision_root_id: None,
@@ -4928,6 +4943,7 @@ mod tests {
         assert_eq!(usage.reasoning_tokens, Some(5));
         assert_eq!(usage.total_tokens, 48);
         assert_eq!(detail.messages[0].response_duration_ms, Some(2_000));
+        assert_eq!(detail.messages[0].time_to_first_token_ms, Some(1_250));
         assert_eq!(detail.messages[0].response_output_tokens, Some(34));
     }
 
@@ -4937,6 +4953,7 @@ mod tests {
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let assistant = UiMessage {
             id: "assistant-search-1".into(),
+            time_to_first_token_ms: None,
             role: "assistant".into(),
             content: "answer with sources".into(),
             attachments: None,
