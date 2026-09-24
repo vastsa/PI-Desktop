@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactElement } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { IconClose } from "../../components/icons";
 import { portalOverlay } from "../../components/ui";
@@ -23,7 +23,7 @@ export function MidAutumnEggOverlay({
 }: {
   open: boolean;
   onClose: () => void;
-}): ReactElement | null {
+}): ReactNode {
   const { t } = useTranslation();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
