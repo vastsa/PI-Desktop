@@ -39,6 +39,7 @@ import {
   type ProviderPublic,
   type RemoteHostSyncProvidersRequest,
   type RemoteHostSyncProvidersResult,
+  PROVIDER_SYNC_MAX_PROVIDERS,
 } from "@pi-desktop/shared";
 import { app } from "electron";
 import {
@@ -46,11 +47,7 @@ import {
   sshMetadataOf,
   type RemoteHostsBoot,
 } from "../bootstrap/remote-hosts";
-import {
-  buildImportPayload,
-  importProvidersOverSsh,
-  MAX_SYNC_PROVIDERS,
-} from "../remote/remote-provider-sync";
+import { buildImportPayload, importProvidersOverSsh } from "../remote/remote-provider-sync";
 import {
   createSystemSshTransport,
   type SshTarget,
@@ -274,7 +271,7 @@ export function registerRemoteHostIpc(options: RegisterRemoteHostIpcOptions): vo
       const providerIds = Array.isArray(request?.providerIds)
         ? request.providerIds.map(trim).filter((id) => id && id.length <= MAX_REMOTE_ID)
         : [];
-      if (providerIds.length === 0 || providerIds.length > MAX_SYNC_PROVIDERS) {
+      if (providerIds.length === 0 || providerIds.length > PROVIDER_SYNC_MAX_PROVIDERS) {
         throw invalid("providerIds is required", "providerIds");
       }
       const record = (await boot.registry.list()).find((entry) => entry.hostKey === hostKey);

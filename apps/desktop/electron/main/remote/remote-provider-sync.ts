@@ -10,6 +10,8 @@
  */
 import {
   ErrorCodes,
+  isSyncableProvider,
+  PROVIDER_SYNC_MAX_PROVIDERS,
   type ProviderCreateInput,
   type ProviderImportPayload,
   type ProviderImportSummary,
@@ -19,24 +21,11 @@ import {
 import type { SshTarget, SshTransport } from "./ssh-transport.js";
 import { sshTargetOf } from "./ssh-tunnel.js";
 
-/** Most providers one sync may copy; matches the host's own cap. */
-export const MAX_SYNC_PROVIDERS = 64;
 const IMPORT_TIMEOUT_MS = 60_000;
 const IMPORT_COMMAND = 'node "$HOME/.pi-desktop/pi-host/current/pi-host.js" provider-import';
 
 function fail(message: string, errorCode: string, data?: Record<string, unknown>): Error {
   return Object.assign(new Error(message), { errorCode, ...(data ? { data } : {}) });
-}
-
-/**
- * Whether a provider can be copied. OAuth logins are bound to this machine,
- * plugin rows are recreated by their plugin, and a keyless row that needs a
- * key would only move the failure to the host.
- */
-export function isSyncableProvider(provider: ProviderPublic): boolean {
-  if (!provider.enabled || provider.ownerPluginId) return false;
-  if (provider.hasOauth || provider.authKind === "oauth") return false;
-  return provider.hasSecret || provider.authKind === "none";
 }
 
 function createInputOf(provider: ProviderPublic, secretValue: string | undefined): ProviderCreateInput {
@@ -72,8 +61,8 @@ export type BuildImportPayloadInput = {
 export async function buildImportPayload(input: BuildImportPayloadInput): Promise<ProviderImportPayload> {
   const ids = [...new Set(input.providerIds)];
   if (ids.length === 0) throw fail("providerIds is required", ErrorCodes.INVALID_ARGUMENT);
-  if (ids.length > MAX_SYNC_PROVIDERS) {
-    throw fail(`at most ${MAX_SYNC_PROVIDERS} providers can be synced`, ErrorCodes.INVALID_ARGUMENT);
+  if (ids.length > PROVIDER_SYNC_MAX_PROVIDERS) {
+    throw fail(`at most ${PROVIDER_SYNC_MAX_PROVIDERS} providers can be synced`, ErrorCodes.INVALID_ARGUMENT);
   }
   const byId = new Map(input.providers.map((provider) => [provider.id, provider]));
   const entries: ProviderImportPayload["providers"] = [];

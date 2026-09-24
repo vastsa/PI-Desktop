@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, unlink } from "node:fs/promises";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { join } from "node:path";
 
-import type { ProviderCreateInput, ProviderImportEntry, ProviderImportPayload, ProviderImportSummary } from "@pi-desktop/shared";
+import { PROVIDER_SYNC_MAX_PROVIDERS, type ProviderCreateInput, type ProviderImportEntry, type ProviderImportPayload, type ProviderImportSummary } from "@pi-desktop/shared";
 
 import { writeJsonAtomic } from "./credentials.js";
 import type { HostLogger } from "./logger.js";
@@ -15,7 +15,7 @@ import type { HostLogger } from "./logger.js";
  */
 
 export const ADMIN_MAX_BYTES = 1024 * 1024;
-export const ADMIN_MAX_PROVIDERS = 64;
+export const ADMIN_MAX_PROVIDERS = PROVIDER_SYNC_MAX_PROVIDERS;
 
 export type HostCaller = { call<T = unknown>(method: string, params?: unknown): Promise<T> };
 
