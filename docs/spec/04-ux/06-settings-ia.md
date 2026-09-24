@@ -735,6 +735,14 @@ system while preserving their different data ownership:
   - disabling developer mode closes an open console and disables or removes
     every entry point; Settings search indexes the card, switch, and console
     action
+- **Easter eggs** card with one row that replays the Mid-Autumn egg: a
+  full-screen Moon Festival canvas animation (moonrise, a mooncake rain, the
+  mooncakes flying up to assemble 「中秋快乐」, and vertical poem lines drifting
+  behind them). The same animation also plays by itself once, at most one time
+  ever per profile, and only after the startup splash has finished — it must
+  never cover the boot splash or appear while the app is still loading.
+  Closing it (top-right close button or Escape) returns to the app; afterwards
+  it is only reachable from this row
 - The Updates row always exposes a Release notes action. It opens a modal
   containing the complete shipped stable changelog in newest-first order,
   localized to the product language and marking the current and available

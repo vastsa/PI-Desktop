@@ -174,6 +174,22 @@
   General.
 - **Status:** Documented; run after integration into main.
 
+
+### E2E-SHELL-mid-autumn-egg-first-open
+
+- **Preconditions:** A profile whose renderer storage has never recorded the
+  Mid-Autumn egg (`pi.desktop.midAutumnEggSeen` unset).
+- **Steps:** Launch the app and watch the startup splash; after the shell is
+  ready close the egg with its top-right close button, relaunch and confirm no
+  automatic playback, then open Settings → Info and activate the Mid-Autumn
+  egg row.
+- **Expected:** The automatic egg appears only once the startup splash has
+  finished; it never covers or delays the splash and never appears while the
+  app is still loading. It fills the window, exposes an obvious top-right
+  close button, and both that button and Escape dismiss it and restore focus
+  to the app. Settings → Info shows the Easter eggs card, and its row replays
+  the same animation on demand regardless of the seen flag.
+- **Status:** Documented; run after integration into main.
 - Document every user-visible and protocol-visible behavior that MVP must verify.
 - Provide a scenario catalog that maps to acceptance criteria (A–H) and milestones (M1–M6).
 - Serve as the traceability backbone: scenario ID ↔ acceptance criterion ↔ spec.
