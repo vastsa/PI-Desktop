@@ -366,7 +366,9 @@ manifest did not name:
   literal secret in the manifest is a review smell, not a supported pattern
   (D018).
 - Connection budget: 10s to complete `initialize`, 100s per `tools/call`, 4MB
-  per stdio line. `tools/list` is followed to its last page under the per-server
+  per stdio line. Remote HTTP requests use the budget of the operation they
+  carry, so a successful handshake does not impose its 10s limit on a later
+  tool call. `tools/list` is followed to its last page under the per-server
   guards of §8.1 — 2048 tools, 100 pages, a cursor that repeats or is malformed,
   and 30s for the whole traversal — and a server that breaks one is refused
   rather than contributing a prefix of its catalog, because MCP tools reach the

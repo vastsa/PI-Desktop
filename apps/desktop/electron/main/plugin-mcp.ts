@@ -48,7 +48,7 @@ export type JsonRpcMessage = {
  * the client speak the same JSON-RPC dialect over a pipe or over HTTP.
  */
 export type McpTransport = {
-  send: (message: JsonRpcMessage) => Promise<void>;
+  send: (message: JsonRpcMessage, timeoutMs?: number) => Promise<void>;
   close: () => void;
 };
 
@@ -297,11 +297,11 @@ function createHttpTransport(
   const activeControllers = new Set<AbortController>();
 
   return {
-    send: async (message) => {
+    send: async (message, timeoutMs = options.timeoutMs) => {
       if (closed) throw mcpError("UNAVAILABLE", "mcp session is closed");
       const controller = new AbortController();
       activeControllers.add(controller);
-      const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       let url = options.url;
       try {
         for (let hop = 0; ; hop += 1) {
@@ -485,6 +485,11 @@ export class McpServerClient {
     }
   }
 
+  /** Probe a live connection without changing its discovered tool catalog. */
+  async ping(timeoutMs = 5_000): Promise<void> {
+    await this.request("ping", {}, timeoutMs);
+  }
+
   close(): void {
     const transport = this.transport;
     this.transport = null;
@@ -651,7 +656,7 @@ export class McpServerClient {
         rejectPromise(mcpError("TIMEOUT", `mcp ${method} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
       this.pending.set(id, { resolve: resolvePromise, reject: rejectPromise, timer });
-      void transport.send({ jsonrpc: "2.0", id, method, params }).catch((error: Error) => {
+      void transport.send({ jsonrpc: "2.0", id, method, params }, timeoutMs).catch((error: Error) => {
         const entry = this.pending.get(id);
         if (!entry) return;
         this.pending.delete(id);

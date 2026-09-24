@@ -1198,7 +1198,7 @@ type PluginSummary = {
 项目级请求缺少 `projectPath` 时无效。`mcp.active` 会先按 ID 或不区分大小写
 的 label 让项目记录遮蔽全局记录，再过滤关闭项；因此关闭的项目记录仍然会
 遮蔽全局项。仅桌面的 `mcp/test` IPC 操作用于强制连接测试，并把状态返回
-MCP 编辑器。
+MCP 编辑器。设置页的 `mcp.list` 在返回状态前会探测此前就绪的远程连接；服务器失联时，列表显示 `failed`，而不是保留过时的 `ready`。服务器恢复后，“测试连接”会重试。探测失败不会中断正在执行的工具调用；“测试连接”会先关闭旧客户端再重试。
 
 ```ts
 type McpServerStatus = {

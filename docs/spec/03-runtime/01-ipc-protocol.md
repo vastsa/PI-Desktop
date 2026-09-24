@@ -1462,6 +1462,9 @@ project records from the global set by id or case-insensitive label before it
 filters disabled records, so a disabled project record still shadows a global
 one. The desktop-only `mcp/test` IPC action forces one connection test and
 returns its status to the MCP editor.
+The desktop's `mcp.list` IPC response probes previously ready remote connections
+before reporting their status. If a server no longer responds, its row reports
+`failed` instead of retaining a stale `ready` status; Test connection retries it. A failed settings probe does not interrupt an in-flight tool call; Test connection closes the old client before retrying.
 
 Desktop-only channels scan configuration written by other agent tools on the
 same machine — Claude Desktop (`claude_desktop_config.json` on macOS, Windows

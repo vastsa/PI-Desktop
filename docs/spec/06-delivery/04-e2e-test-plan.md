@@ -2769,8 +2769,8 @@ identify the platform validation still needed.
 #### E2E-024K: Plugin MCP server tools reach the agent
 
 - **Preconditions**: A plugin declaring one `stdio` and one non-loopback HTTP MCP server against trusted local-network stubs; `mcp.server.local` and `mcp.server.remote` granted; the HTTP host is listed in `net.domains`; a settings key holding the stub credential.
-- **Steps**: 1) Enable the plugin and confirm no server process starts yet. 2) Ask the agent to call a discovered tool. 3) Inspect the stub's received environment/headers. 4) Make the stub fail a call and time one out. 5) Grow the stdio stub's catalog past the old 64-tool cap and re-discover it. 6) Disable the plugin.
-- **Expected**: Servers connect lazily on first use; tools appear as `plugin_demo_*_<serverId>_<tool>` at `risk: "medium"` with per-call audit; the stdio child receives only the declared `env` values plus PATH/temp/locale, never host provider keys; the non-loopback HTTP endpoint is accepted only because its host is declared, and its unencrypted transport is visible in review; a redirect to an undeclared host is blocked before the second request; failures and timeouts return tool errors without crashing the plugin or the host; a catalog larger than the old 64-tool cap arrives whole, while a server that breaks a per-server guard (count, pages, cursor, traversal time) is refused instead of contributing a prefix of its catalog; disable disconnects both servers.
+- **Steps**: 1) Enable the plugin and confirm no server process starts yet. 2) Ask the agent to call a discovered tool. 3) Inspect the stub's received environment/headers. 4) Make the stub fail a call, then run an HTTP tool that takes longer than the 10s handshake budget but less than the 100s call budget, then time a call out beyond its own budget. 5) Grow the stdio stub's catalog past the old 64-tool cap and re-discover it. 6) Disable the plugin.
+- **Expected**: Servers connect lazily on first use; tools appear as `plugin_demo_*_<serverId>_<tool>` at `risk: "medium"` with per-call audit; the stdio child receives only the declared `env` values plus PATH/temp/locale, never host provider keys; the non-loopback HTTP endpoint is accepted only because its host is declared, and its unencrypted transport is visible in review; a redirect to an undeclared host is blocked before the second request; the HTTP tool can finish after the handshake budget while a call that exceeds its own budget fails; other failures and timeouts return tool errors without crashing the plugin or the host; a catalog larger than the old 64-tool cap arrives whole, while a server that breaks a per-server guard (count, pages, cursor, traversal time) is refused instead of contributing a prefix of its catalog; disable disconnects both servers.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/04-plugin-security.md` §8.1, ADR 0038, ADR 0142, D176, D281, D452
 - **Acceptance**: G (MCP bridge) + E (tools & permissions) + Security
 - **Status**: Unit-covered (`plugin-mcp.test.mjs` stdio + HTTP stubs); agent-facing scenario Draft
@@ -6830,7 +6830,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
       the same tool in the existing session without searching again.
   11. Repeat with the restarted stub omitting that tool, and with the server
       disabled or scoped away before recovery. Also try concurrent calls after
-      a disconnect and a server that fails its recovery handshake.
+       a disconnect and a server that fails its recovery handshake.
+  12. Connect the HTTP server, stop it, and refresh the MCP settings page.
+      Test connection again after restarting the server.
 - **Expected**:
   - The activated tool works after a transport restart without a second search;
     concurrent calls share one handshake. The fresh server list must still
@@ -6854,6 +6856,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   - The broken command records `failed` with a message, contributes no tools,
      and is not re-dialled on the following session assembly; pressing Test
      retries it.
+   - A stopped HTTP server loses its `ready` status on settings refresh and
+     reports `failed`; Test connection restores `ready` after it restarts.
 - **Specs linked**: `07-plugins/01-plugin-system.md` §12,
   `03-runtime/01-ipc-protocol.md` §12a, `08-meta/decisions-log.md` (D192, D193)
 - **Acceptance**: E (tools & permissions), Quality

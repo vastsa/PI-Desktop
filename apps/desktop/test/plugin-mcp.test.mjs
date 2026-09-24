@@ -262,7 +262,7 @@ test("a slow server times out instead of hanging the load", async (t) => {
 });
 
 /** Streamable-HTTP stub: JSON for the handshake, SSE for discovery. */
-async function startHttpServer(t) {
+async function startHttpServer(t, { slowToolDelayMs } = {}) {
   const requests = [];
   const server = createServer((req, res) => {
     const chunks = [];
@@ -285,13 +285,18 @@ async function startHttpServer(t) {
         res.writeHead(202, { "content-type": "text/plain" }).end("Accepted");
         return;
       }
+      if (message.method === "ping") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }));
+        return;
+      }
       if (message.method === "tools/list") {
         res.writeHead(200, { "content-type": "text/event-stream" });
         res.end(
           `event: message\ndata: ${JSON.stringify({
             jsonrpc: "2.0",
             id: message.id,
-            result: { tools: [{ name: "headers" }] },
+            result: { tools: [{ name: "headers" }, ...(slowToolDelayMs ? [{ name: "slow" }] : [])] },
           })}\n\n`,
         );
         return;
@@ -312,6 +317,17 @@ async function startHttpServer(t) {
             },
           }),
         );
+        return;
+      }
+      if (message.params?.name === "slow" && slowToolDelayMs) {
+        setTimeout(() => {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            jsonrpc: "2.0",
+            id: message.id,
+            result: { content: [{ type: "text", text: "finished" }] },
+          }));
+        }, slowToolDelayMs);
         return;
       }
       res.writeHead(503).end("unavailable");
@@ -341,10 +357,28 @@ test("a remote mcp server negotiates over http and keeps its session", async (t)
   );
   const result = await client.callTool("headers", {});
   assert.equal(describeMcpContent(result.content), `sess-42|sk-test|${MCP_PROTOCOL_VERSION}`);
+  await client.ping();
+  assert.equal(requests.at(-1).message.method, "ping");
   // The very first request cannot carry a session id, later ones must.
   assert.equal(requests[0].headers["mcp-session-id"], undefined);
   assert.equal(requests[0].headers["x-api-key"], "sk-test");
   assert.equal(requests.at(-1).headers["mcp-session-id"], "sess-42");
+});
+
+test("a remote MCP tool can run longer than the connection timeout", async (t) => {
+  const { url } = await startHttpServer(t, { slowToolDelayMs: 80 });
+  const client = new McpServerClient({
+    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-http-")),
+    server: { id: "remote", transport: "http", url },
+    values: {},
+    connectTimeoutMs: 20,
+    callTimeoutMs: 500,
+  });
+  t.after(() => client.close());
+
+  assert.deepEqual((await client.connect()).map((tool) => tool.name), ["headers", "slow"]);
+  const result = await client.callTool("slow", {});
+  assert.equal(describeMcpContent(result.content), "finished");
 });
 
 test("an http failure is reported as HTTP_ERROR", async (t) => {

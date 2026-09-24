@@ -29,7 +29,7 @@ export type UserMcpToolDescriptor = {
 /** The slice of {@link McpServerClient} this runtime drives. */
 export type UserMcpClient = Pick<
   McpServerClient,
-  "connect" | "callTool" | "getTools" | "isConnected" | "close"
+  "connect" | "callTool" | "getTools" | "isConnected" | "close" | "ping"
 >;
 
 export type UserMcpClientConfig = ConstructorParameters<typeof McpServerClient>[0];
@@ -77,6 +77,7 @@ const MAX_ACTIVE_SERVERS = 16;
 
 export class UserMcpRuntime {
   private entries = new Map<string, Entry>();
+  private statusRefreshes = new Map<string, Promise<void>>();
   // Routing identity must survive a transport clearing its own tools on close.
   // These names are hints only: dispatch revalidates the fresh handshake list.
   private discoveredTools = new Map<string, McpTool[]>();
@@ -118,6 +119,40 @@ export class UserMcpRuntime {
   /** Per-server connection state for the Extensions page. */
   listStatuses(): McpServerStatus[] {
     return this.records.map((record) => this.statusFor(record.id));
+  }
+
+  /** Confirm ready remote connections when the settings page refreshes. */
+  async refreshStatuses(): Promise<McpServerStatus[]> {
+    await Promise.all([...this.entries].map(async ([id, entry]) => {
+      if (entry.record.transport === "stdio" || entry.status.state !== "ready") return;
+      let pending = this.statusRefreshes.get(id);
+      if (!pending) {
+        pending = (async () => {
+          try {
+            await entry.client.ping();
+          } catch (error) {
+            if (this.entries.get(id) !== entry) return;
+            // A settings probe must not abort a tool call already in flight.
+            // Test connection will close this client before retrying.
+            const message = error instanceof Error ? error.message : "mcp server did not respond";
+            entry.status = {
+              ...entry.status,
+              state: "failed",
+              toolCount: 0,
+              message: message.slice(0, 500),
+              updatedAt: Date.now(),
+            };
+          }
+        })();
+        this.statusRefreshes.set(id, pending);
+      }
+      try {
+        await pending;
+      } finally {
+        if (this.statusRefreshes.get(id) === pending) this.statusRefreshes.delete(id);
+      }
+    }));
+    return this.listStatuses();
   }
 
   statusFor(serverId: string): McpServerStatus {
