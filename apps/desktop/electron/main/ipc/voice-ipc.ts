@@ -22,16 +22,16 @@ export function registerVoiceIpc({
 
   handle(IPC.invoke.voiceStop, () => voiceService.stop());
 
-  handle(IPC.invoke.voiceCancel, () => {
+  handle(IPC.invoke.voiceCancel, async () => {
     voiceService.cancel();
     return { ok: true };
   });
 
-  handle(IPC.invoke.voiceGetState, () => voiceService.getState());
+  handle(IPC.invoke.voiceGetState, async () => voiceService.getState());
 
-  handle(IPC.invoke.voiceGetDevices, () => voiceService.getDevices());
+  handle(IPC.invoke.voiceGetDevices, async () => voiceService.getDevices());
 
-  handle(IPC.invoke.voiceGetModels, () => voiceService.getModels());
+  handle(IPC.invoke.voiceGetModels, async () => voiceService.getModels());
 
   handle(IPC.invoke.voiceDownloadModel, (input: unknown) => {
     const { modelId } = input as { modelId: string };
@@ -43,7 +43,7 @@ export function registerVoiceIpc({
     return voiceService.deleteModel(modelId);
   });
 
-  handle(IPC.invoke.voiceUpdateSettings, (input: unknown) =>
+  handle(IPC.invoke.voiceUpdateSettings, async (input: unknown) =>
     voiceService.updateSettings(input as any),
   );
 

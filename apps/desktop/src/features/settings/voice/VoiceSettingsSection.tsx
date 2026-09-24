@@ -1,10 +1,12 @@
 /**
- * Voice settings panel in the Settings page.
+ * Voice settings panel — matches the project's SettingsRow/SettingsCard pattern.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import type { TFunction } from "i18next";
-import { useAppStore } from "../../../stores/app-store";
+import type { AppSettings } from "@pi-desktop/shared";
+import { cx } from "../../../components/ui";
+import { SettingsRow, SettingsCard } from "../primitives";
 import { voiceIpc } from "../../voice/voice-ipc";
 
 interface AudioInputDevice {
@@ -13,24 +15,31 @@ interface AudioInputDevice {
   isDefault: boolean;
 }
 
+interface ModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  sizeBytes: number;
+  recommended: boolean;
+}
+
 interface ModelState {
-  info: {
-    id: string;
-    name: string;
-    description: string;
-    sizeBytes: number;
-    recommended: boolean;
-  };
+  info: ModelInfo;
   status: string;
   downloadProgress?: number;
   error?: string;
 }
 
-export function VoiceSettingsSection({ t }: { t: TFunction }) {
-  const settings = useAppStore((s) => s.settings);
-  const updateSettings = useAppStore((s) => s.updateSettings);
-
-  const voiceSettings = settings?.voice ?? {
+export function VoiceSettingsSection({
+  t,
+  settings,
+  saveSettings,
+}: {
+  t: TFunction;
+  settings: AppSettings;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+}) {
+  const voice = settings.voice ?? {
     enabled: false,
     deviceId: null,
     languages: ["zh", "en"],
@@ -42,14 +51,12 @@ export function VoiceSettingsSection({ t }: { t: TFunction }) {
   const [models, setModels] = useState<ModelState[]>([]);
   const [permission, setPermission] = useState<string>("undetermined");
 
-  // Load devices and models on mount
   useEffect(() => {
-    voiceIpc.getDevices().then(setDevices).catch(() => {});
-    voiceIpc.getModels().then(setModels).catch(() => {});
-    voiceIpc.checkPermission().then(setPermission).catch(() => {});
+    voiceIpc.getDevices().then((d) => setDevices(Array.isArray(d) ? d as AudioInputDevice[] : [])).catch(() => {});
+    voiceIpc.getModels().then((m) => setModels(Array.isArray(m) ? m as ModelState[] : [])).catch(() => {});
+    voiceIpc.checkPermission().then((p) => setPermission(typeof p === "string" ? p : "undetermined")).catch(() => {});
   }, []);
 
-  // Listen for model progress
   useEffect(() => {
     return voiceIpc.onModelProgress(({ modelId, progress }) => {
       setModels((prev) =>
@@ -62,13 +69,13 @@ export function VoiceSettingsSection({ t }: { t: TFunction }) {
     });
   }, []);
 
-  const update = useCallback(
+  const save = useCallback(
     (patch: Record<string, unknown>) => {
-      const next = { ...voiceSettings, ...patch };
-      void updateSettings({ voice: next as any });
+      const next = { ...voice, ...patch };
+      void saveSettings({ voice: next as any });
       void voiceIpc.updateSettings(next);
     },
-    [voiceSettings, updateSettings],
+    [voice, saveSettings],
   );
 
   const formatSize = (bytes: number) => {
@@ -77,170 +84,147 @@ export function VoiceSettingsSection({ t }: { t: TFunction }) {
   };
 
   return (
-    <div className="settings-section">
+    <div className="settings-stack">
       {/* Enable toggle */}
-      <label className="settings-row settings-row-toggle">
-        <span>{t("settings.voiceEnable")}</span>
-        <input
-          type="checkbox"
-          checked={voiceSettings.enabled}
-          onChange={(e) => update({ enabled: e.target.checked })}
-        />
-      </label>
+      <SettingsCard title={t("settings.voice")}>
+        <SettingsRow title={t("settings.voiceEnable")}>
+          <button
+            type="button"
+            className={cx("settings-toggle", voice.enabled && "on")}
+            role="switch"
+            aria-checked={voice.enabled}
+            aria-label={t("settings.voiceEnable")}
+            onClick={() => save({ enabled: !voice.enabled })}
+          >
+            <span className="settings-toggle-thumb" />
+          </button>
+        </SettingsRow>
+      </SettingsCard>
 
-      {/* Microphone permission warning */}
+      {/* Permission warning */}
       {permission === "denied" && (
-        <div className="settings-row settings-warning">
-          <span>{t("settings.voiceMicDenied")}</span>
-          <p className="text-xs opacity-70">{t("settings.voiceMicDeniedDesc")}</p>
-        </div>
+        <SettingsCard title={t("settings.voiceMicDenied")}>
+          <SettingsRow title={t("settings.voiceMicDeniedDesc")}>
+            <button
+              type="button"
+              className="settings-btn-secondary"
+              onClick={() => voiceIpc.requestPermission()}
+            >
+              {t("settings.voiceOpenSystemSettings")}
+            </button>
+          </SettingsRow>
+        </SettingsCard>
       )}
 
-      {/* Microphone selection */}
-      <div className="settings-row">
-        <label>{t("settings.voiceMicrophone")}</label>
-        <select
-          value={voiceSettings.deviceId ?? ""}
-          onChange={(e) => update({ deviceId: e.target.value || null })}
-          disabled={!voiceSettings.enabled}
-        >
-          <option value="">{t("settings.voiceSystemDefault")}</option>
-          {devices.map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Microphone + Language + Chinese variant */}
+      <SettingsCard title={t("settings.voiceMicrophone")}>
+        <SettingsRow title={t("settings.voiceMicrophone")}>
+          <select
+            className="settings-select"
+            value={voice.deviceId ?? ""}
+            disabled={!voice.enabled}
+            onChange={(e) => save({ deviceId: e.target.value || null })}
+          >
+            <option value="">{t("settings.voiceSystemDefault")}</option>
+            {devices.map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+            ))}
+          </select>
+        </SettingsRow>
 
-      {/* Languages */}
-      <div className="settings-row">
-        <label>{t("settings.voiceLanguages")}</label>
-        <div className="flex gap-3">
-          {[
-            { code: "zh", label: "Chinese" },
-            { code: "en", label: "English" },
-            { code: "ja", label: "Japanese" },
-            { code: "ko", label: "Korean" },
-          ].map(({ code, label }) => (
-            <label key={code} className="flex items-center gap-1 text-sm">
-              <input
-                type="checkbox"
-                checked={voiceSettings.languages.includes(code)}
-                disabled={!voiceSettings.enabled}
-                onChange={(e) => {
-                  const langs = e.target.checked
-                    ? [...voiceSettings.languages, code]
-                    : voiceSettings.languages.filter((l: string) => l !== code);
-                  update({ languages: langs.length > 0 ? langs : [code] });
-                }}
-              />
-              {label}
-            </label>
-          ))}
-        </div>
-      </div>
+        <SettingsRow title={t("settings.voiceLanguages")}>
+          <div className="voice-lang-checks">
+            {(["zh", "en", "ja", "ko"] as const).map((code) => (
+              <label key={code} className="voice-lang-label">
+                <input
+                  type="checkbox"
+                  checked={voice.languages.includes(code)}
+                  disabled={!voice.enabled}
+                  onChange={(e) => {
+                    const langs = e.target.checked
+                      ? [...voice.languages, code]
+                      : voice.languages.filter((l: string) => l !== code);
+                    save({ languages: langs.length > 0 ? langs : [code] });
+                  }}
+                />
+                {code === "zh" ? "中文" : code === "en" ? "English" : code === "ja" ? "日本語" : "한국어"}
+              </label>
+            ))}
+          </div>
+        </SettingsRow>
 
-      {/* Chinese variant */}
-      <div className="settings-row">
-        <label>{t("settings.voiceChineseVariant")}</label>
-        <select
-          value={voiceSettings.chineseVariant}
-          onChange={(e) => update({ chineseVariant: e.target.value })}
-          disabled={!voiceSettings.enabled}
-        >
-          <option value="simplified">{t("settings.voiceSimplified")}</option>
-          <option value="traditional-taiwan">{t("settings.voiceTraditionalTaiwan")}</option>
-          <option value="traditional-hong-kong">{t("settings.voiceTraditionalHK")}</option>
-        </select>
-      </div>
+        <SettingsRow title={t("settings.voiceChineseVariant")}>
+          <select
+            className="settings-select"
+            value={voice.chineseVariant}
+            disabled={!voice.enabled}
+            onChange={(e) => save({ chineseVariant: e.target.value })}
+          >
+            <option value="simplified">{t("settings.voiceSimplified")}</option>
+            <option value="traditional-taiwan">{t("settings.voiceTraditionalTaiwan")}</option>
+            <option value="traditional-hong-kong">{t("settings.voiceTraditionalHK")}</option>
+          </select>
+        </SettingsRow>
+      </SettingsCard>
 
-      {/* Model selection */}
-      <div className="settings-row">
-        <label>{t("settings.voiceModel")}</label>
-        <select
-          value={voiceSettings.modelId}
-          onChange={(e) => update({ modelId: e.target.value })}
-          disabled={!voiceSettings.enabled}
-        >
-          <option value="">{t("settings.voiceNoModelSelected")}</option>
-          {models.map((m) => (
-            <option key={m.info.id} value={m.info.id}>
-              {m.info.name}
-              {m.info.recommended ? " ★" : ""}
-              {m.status === "downloaded" || m.status === "loaded" ? " ✓" : ""}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Model selection + management */}
+      <SettingsCard title={t("settings.voiceModel")}>
+        <SettingsRow title={t("settings.voiceModel")}>
+          <select
+            className="settings-select"
+            value={voice.modelId}
+            disabled={!voice.enabled}
+            onChange={(e) => save({ modelId: e.target.value })}
+          >
+            <option value="">{t("settings.voiceNoModelSelected")}</option>
+            {models.map((m) => (
+              <option key={m.info.id} value={m.info.id}>
+                {m.info.name}{m.info.recommended ? " ★" : ""}
+                {m.status === "downloaded" || m.status === "loaded" ? " ✓" : ""}
+              </option>
+            ))}
+          </select>
+        </SettingsRow>
 
-      {/* Local models management */}
-      <div className="settings-row">
-        <label>{t("settings.voiceLocalModels")}</label>
-      </div>
-      <div className="settings-model-list">
+        {/* Model list */}
         {models.map((m) => (
-          <div key={m.info.id} className="settings-model-item">
-            <div className="settings-model-info">
-              <span className="settings-model-name">
-                {m.info.name}
-                {m.info.recommended && <span className="text-xs opacity-60"> ★</span>}
-              </span>
-              <span className="text-xs opacity-60">
-                {formatSize(m.info.sizeBytes)}
-              </span>
-            </div>
-            <div className="settings-model-status">
-              {m.status === "downloaded" || m.status === "loaded" ? (
-                <>
-                  <span className="text-xs text-green-500">{t("settings.voiceModelDownloaded")}</span>
-                  <button
-                    type="button"
-                    className="text-xs text-red-400 hover:underline"
-                    onClick={() => {
-                      void voiceIpc.deleteModel(m.info.id);
-                      setModels((prev) =>
-                        prev.map((x) =>
-                          x.info.id === m.info.id ? { ...x, status: "not-downloaded" } : x,
-                        ),
-                      );
-                    }}
-                  >
-                    {t("settings.voiceModelDelete")}
-                  </button>
-                </>
-              ) : m.status === "downloading" ? (
-                <div className="flex items-center gap-2">
-                  <div className="voice-volume-bar" style={{ width: 100 }}>
-                    <div
-                      className="voice-volume-fill"
-                      style={{ width: `${(m.downloadProgress ?? 0) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs opacity-60">
-                    {Math.round((m.downloadProgress ?? 0) * 100)}%
-                  </span>
-                </div>
-              ) : (
+          <SettingsRow key={m.info.id} title={m.info.name} description={`${formatSize(m.info.sizeBytes)}${m.info.recommended ? " · Recommended" : ""}`}>
+            {m.status === "downloaded" || m.status === "loaded" ? (
+              <div className="voice-model-actions">
+                <span className="voice-model-badge voice-model-ok">{t("settings.voiceModelDownloaded")}</span>
                 <button
                   type="button"
-                  className="text-xs text-blue-400 hover:underline"
+                  className="voice-model-btn voice-model-btn-danger"
                   onClick={() => {
-                    void voiceIpc.downloadModel(m.info.id);
-                    setModels((prev) =>
-                      prev.map((x) =>
-                        x.info.id === m.info.id ? { ...x, status: "downloading", downloadProgress: 0 } : x,
-                      ),
-                    );
+                    void voiceIpc.deleteModel(m.info.id);
+                    setModels((prev) => prev.map((x) => x.info.id === m.info.id ? { ...x, status: "not-downloaded" } : x));
                   }}
                 >
-                  {t("settings.voiceModelDownload")}
+                  {t("settings.voiceModelDelete")}
                 </button>
-              )}
-            </div>
-          </div>
+              </div>
+            ) : m.status === "downloading" ? (
+              <div className="voice-model-actions">
+                <div className="voice-progress-track">
+                  <div className="voice-progress-fill" style={{ width: `${(m.downloadProgress ?? 0) * 100}%` }} />
+                </div>
+                <span className="voice-model-badge">{Math.round((m.downloadProgress ?? 0) * 100)}%</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="voice-model-btn voice-model-btn-primary"
+                onClick={() => {
+                  void voiceIpc.downloadModel(m.info.id);
+                  setModels((prev) => prev.map((x) => x.info.id === m.info.id ? { ...x, status: "downloading", downloadProgress: 0 } : x));
+                }}
+              >
+                {t("settings.voiceModelDownload")}
+              </button>
+            )}
+          </SettingsRow>
         ))}
-      </div>
+      </SettingsCard>
     </div>
   );
 }
