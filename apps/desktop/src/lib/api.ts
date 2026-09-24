@@ -1259,6 +1259,9 @@ export const api = {
   /** Ask the running install to stop. Only a download can be interrupted. */
   marketCancelInstall: (id: string) =>
     invoke<{ cancelled: boolean; id: string }>(IPC.invoke.marketCancelInstall, { id }),
+  /** Read-only discovery never grants package permissions. */
+  discoverPiSkills: () => invoke<import("@pi-desktop/shared").PiSkillDiscovery>(IPC.invoke.piSkillDiscover),
+  importPiSkills: (id: string) => invoke<{ canceled: boolean; id?: string; dependencies?: { state: string; error?: string } }>(IPC.invoke.piSkillImport, { id }),
   /** Import a pi CLI extension file or directory as a development plugin (spec 16 §3). */
   importPiExtension: () =>
     invoke<

@@ -210,7 +210,7 @@ export function registerSessionIpc({
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
       }
-      if (activeTurns.has(sessionId)) {
+      if (activeTurns.has(sessionId) && !String(input.throughMessageId ?? "").trim()) {
         throw Object.assign(new Error("Cannot fork a running session"), {
           errorCode: ErrorCodes.AGENT_BUSY,
         });

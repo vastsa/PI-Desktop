@@ -135,6 +135,14 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   - native select triggers and their opened option lists use the active theme's
     readable foreground/background pairing on macOS, Windows, and Linux; the
     shared native-select contract applies to every app surface
+- **Power** card: two independent opt-in switches. Keep computer awake uses
+  `prevent-app-suspension` to block idle system sleep for the lifetime of the
+  running desktop app, including between scheduled runs; the display may turn
+  off. Prevent screen sleep uses `prevent-display-sleep` to keep the display on.
+  Both are off when absent, persist separately as
+  `AppSettings.keepAwakeWhileRunning` and `AppSettings.preventScreenSleep`,
+  take effect immediately, restore on startup, and release their own blocker
+  when disabled or during shutdown. Manual sleep and lid close follow the OS.
 - **Network** card:
   - **Proxy**: a segmented control — System, Direct, Custom. System is the
     default and lets Chromium follow the OS proxy; Direct disables the proxy;

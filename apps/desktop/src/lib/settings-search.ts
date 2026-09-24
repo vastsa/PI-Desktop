@@ -69,6 +69,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.closeBehaviorTitle",
       "settings.closeBehaviorTray",
       "settings.closeBehaviorQuit",
+      "settings.power",
+      "settings.keepAwakeWhileRunning",
+      "settings.keepAwakeWhileRunningDesc",
       "settings.network",
       "settings.proxy",
       "settings.proxySystem",
@@ -78,6 +81,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.networkRelaxedMode",
       "settings.networkRelaxedModeDesc",
       "settings.networkRelaxedModeStrictDesc",
+      "settings.preventScreenSleep",
+      "settings.preventScreenSleepDesc",
     ],
   },
   {

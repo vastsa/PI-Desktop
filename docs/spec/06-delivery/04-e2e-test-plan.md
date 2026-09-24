@@ -8,6 +8,41 @@
 
 ## 1. Goals
 
+### E2E-CHAT-fork-completed-reply-while-running
+
+- **Preconditions:** Isolated real desktop profile, configured model, two turns
+  in one Desktop conversation; the first assistant reply has completed.
+- **Steps:** Send the second prompt. While it is still running, click **Branch
+  from this reply** on the first reply. Continue chatting in the child, then
+  return to the parent.
+- **Expected:** The child contains only history through the first reply, can
+  continue independently, and starts with no running turn. The parent keeps
+  running and retains its second prompt and reply. No live tail is overwritten.
+  A whole-session fork and a fork within the active tool loop remain rejected.
+  A navigation during the fork response records the child without stealing focus.
+- **Coverage:** Host fork regression, renderer session-fork-running tests,
+  session IPC contract tests, and real-model desktop acceptance. A local model
+  fixture or mocked component result is not real-model acceptance evidence.
+
+### E2E-POWER-keep-awake-setting
+
+- **Preconditions:** An isolated desktop profile with the setting absent; no
+  live provider is required.
+- **Steps:** Open Settings > General and enable Keep computer awake. Confirm the
+  main process owns one `prevent-app-suspension` blocker while idle. Close and
+  reopen the app using the same profile; confirm it restores one blocker.
+  Enable and disable Prevent screen sleep while Keep computer awake stays on,
+  confirming the independent system request remains. Disable Keep computer awake
+  and confirm its blocker is released; then quit and confirm cleanup.
+- **Expected:** The setting persists, acts immediately, never starts duplicate
+  blockers, and releases on disable or app shutdown. The display switch keeps
+  its own blocker and cannot disable the system blocker. Manual sleep and lid
+  close are outside this contract.
+- **Status:** Automated in `pnpm test:e2e:keep-awake`, with a real isolated
+  Electron/Host profile and a Windows `powercfg /requests` assertion when no
+  other Electron power request is present at baseline. Controller lifecycle
+  and Host settings round-trip also have targeted tests.
+
 ### E2E-IMAGES-provider-save-feedback
 
 - **Preconditions:** Image configuration UI fixture; English and Chinese.
@@ -2150,6 +2185,24 @@ identify the platform validation still needed.
 - **Status**: Automated (`apps/desktop/test/user-login-path.test.mjs`,
   `apps/desktop/test/plugin-mcp.test.mjs`)
 
+#### E2E-MCP-stdio-windows-npx: Official Node and fnm both start `npx` MCP (issue #789)
+
+- **Preconditions**: Windows; Node is either the official `Program Files\nodejs`
+  install (`node.exe` + `npx.cmd` + `npx-cli.js` on PATH) or fnm-managed and
+  not on the GUI PATH.
+- **Steps**: 1) Add Memory from the MCP market (`npx -y @modelcontextprotocol/server-memory`).
+  2) Test connection. 3) Repeat with a user-typed `npx` server.
+- **Expected**: Official Node rewrites to `node.exe` + `npx-cli.js` and
+  handshakes. fnm is discovered from `%LOCALAPPDATA%\fnm\aliases\default` when
+  PATH has no node. Remaining `.cmd` shims start through `cmd.exe /d /s /c`
+  with quoted literal args, never `shell: true`. A Git-Bash extensionless
+  `npx` next to `npx.cmd` is not chosen. Missing binaries still report
+  `command not found: npx`.
+- **Specs linked**: ADR 0038, D624, `07-plugins/04-plugin-security.md`
+- **Acceptance**: Quality
+- **Milestone**: M6+
+- **Status**: Automated (`apps/desktop/test/mcp-stdio-launch.test.mjs`)
+
 ### Session Persistence
 
 #### E2E-020: Session survives restart
@@ -2769,11 +2822,25 @@ identify the platform validation still needed.
 #### E2E-024K: Plugin MCP server tools reach the agent
 
 - **Preconditions**: A plugin declaring one `stdio` and one non-loopback HTTP MCP server against trusted local-network stubs; `mcp.server.local` and `mcp.server.remote` granted; the HTTP host is listed in `net.domains`; a settings key holding the stub credential.
-- **Steps**: 1) Enable the plugin and confirm no server process starts yet. 2) Ask the agent to call a discovered tool. 3) Inspect the stub's received environment/headers. 4) Make the stub fail a call and time one out. 5) Grow the stdio stub's catalog past the old 64-tool cap and re-discover it. 6) Disable the plugin.
-- **Expected**: Servers connect lazily on first use; tools appear as `plugin_demo_*_<serverId>_<tool>` at `risk: "medium"` with per-call audit; the stdio child receives only the declared `env` values plus PATH/temp/locale, never host provider keys; the non-loopback HTTP endpoint is accepted only because its host is declared, and its unencrypted transport is visible in review; a redirect to an undeclared host is blocked before the second request; failures and timeouts return tool errors without crashing the plugin or the host; a catalog larger than the old 64-tool cap arrives whole, while a server that breaks a per-server guard (count, pages, cursor, traversal time) is refused instead of contributing a prefix of its catalog; disable disconnects both servers.
+- **Steps**: 1) Enable the plugin and confirm no server process starts yet. 2) Ask the agent to call a discovered tool. 3) Inspect the stub's received environment/headers. 4) Make the stub fail a call, then run an HTTP tool that takes longer than the 10s handshake budget but less than the 100s call budget, then time a call out beyond its own budget. 5) Grow the stdio stub's catalog past the old 64-tool cap and re-discover it. 6) Disable the plugin.
+- **Expected**: Servers connect lazily on first use; tools appear as `plugin_demo_*_<serverId>_<tool>` at `risk: "medium"` with per-call audit; the stdio child receives only the declared `env` values plus PATH/temp/locale, never host provider keys; the non-loopback HTTP endpoint is accepted only because its host is declared, and its unencrypted transport is visible in review; a redirect to an undeclared host is blocked before the second request; the HTTP tool can finish after the handshake budget while a call that exceeds its own budget fails; other failures and timeouts return tool errors without crashing the plugin or the host; a catalog larger than the old 64-tool cap arrives whole, while a server that breaks a per-server guard (count, pages, cursor, traversal time) is refused instead of contributing a prefix of its catalog; disable disconnects both servers.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/04-plugin-security.md` §8.1, ADR 0038, ADR 0142, D176, D281, D452
 - **Acceptance**: G (MCP bridge) + E (tools & permissions) + Security
 - **Status**: Unit-covered (`plugin-mcp.test.mjs` stdio + HTTP stubs); agent-facing scenario Draft
+
+#### E2E-MCP-CANCEL: Stop interrupts only the calling session's MCP request
+
+- **Preconditions**: Two Agent sessions share one user or plugin MCP server;
+  each has a pending tool call, and the server records cancellation notifications.
+- **Steps**: Stop the first session while both calls are pending, then allow the
+  second call to finish. Repeat with a remote HTTP server and a stdio server.
+- **Expected**: The first request receives `notifications/cancelled` and cannot
+  produce a successful tool result after Stop. The second session's call finishes normally;
+  its server connection remains available. Closing the app cancels remaining
+  requests without retaining listeners.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §12a,
+  `07-plugins/04-plugin-security.md` §8.1
+- **Status**: Client and session-isolation unit-covered; full desktop journey Draft
 
 #### E2E-024L: Resident plugin service is supervised and visible
 
@@ -6865,7 +6932,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
       the same tool in the existing session without searching again.
   11. Repeat with the restarted stub omitting that tool, and with the server
       disabled or scoped away before recovery. Also try concurrent calls after
-      a disconnect and a server that fails its recovery handshake.
+       a disconnect and a server that fails its recovery handshake.
+  12. Connect the HTTP server, stop it, and refresh the MCP settings page.
+      Test connection again after restarting the server.
 - **Expected**:
   - The activated tool works after a transport restart without a second search;
     concurrent calls share one handshake. The fresh server list must still
@@ -6889,6 +6958,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   - The broken command records `failed` with a message, contributes no tools,
      and is not re-dialled on the following session assembly; pressing Test
      retries it.
+   - A stopped HTTP server loses its `ready` status on settings refresh and
+     reports `failed`; Test connection restores `ready` after it restarts.
 - **Specs linked**: `07-plugins/01-plugin-system.md` §12,
   `03-runtime/01-ipc-protocol.md` §12a, `08-meta/decisions-log.md` (D192, D193)
 - **Acceptance**: E (tools & permissions), Quality
@@ -8445,7 +8516,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M5 (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
-| Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
+| Post-MVP | E2E-PLUGIN-pi-npm-skill-discovery, E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
@@ -14927,6 +14998,30 @@ the latest destination. These assertions measure work counts, not device FPS.
   scripts/e2e-scheduled-workspace.mjs`, using production Electron dispatch and
   real Rust/stdio/SQLite. Only external inference is replaced with an observer.
 
+### E2E-PLUGIN-pi-npm-skill-discovery
+
+- **Preconditions:** Isolated npm package directory and plugin import storage;
+  a package declaring `pi.skills`, optionally executable extensions. No provider.
+- **Steps:** Open Skills, discover the candidate, cancel import, confirm import,
+  read the registered skill body and resources, reload, and attempt a duplicate.
+  Change metadata during confirmation; retry discovery after an error; discover
+  with more than 256 hoisted dependencies and an unreadable scope. Simulate a
+  runtime load failure after host registration and inspect the refreshed state.
+- **Expected:** No implicit import/execution, native explicit consent, preserved
+  resources and runtime skill body, stable imported state, no duplicate import,
+  stale consent refusal, and visible/recoverable errors. Unregistered leftover
+  directories do not count as imports; scoped packages are discovered. Unrelated
+  dependencies and unreadable scopes do not hide healthy skills. A registered
+  import remains marked imported after runtime failure while its error stays visible.
+- **Specs:** 07-plugins/16-trusted-extensions; ADR pi-npm-skill-discovery.
+- **Acceptance:** Plugin skill discovery and explicit trust boundary.
+- **Milestone:** Post-MVP compatibility.
+- **Status:** Automated via `apps/desktop/test/pi-skill-discovery.test.mjs` (real
+  import and plugin child process, native dialog boundary controlled) and
+  `node scripts/e2e-pi-skill-discovery-ui.mjs` (real React/Chromium panel with
+  controlled IPC results). Optional `PI_SKILL_PACKAGE_FIXTURE` points to an
+  unpacked published package for the reported planning-with-files path.
+
 ### E2E-SESSION-temporary-attachment-fork: Preview and independent branch inputs
 
 - **Steps**: In a task without a project, paste text above the long-paste
@@ -14989,6 +15084,27 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Scenario:** Workspace identity.
 - **Expected:** Stored workspace bindings use the existing project canonicalization contract on both write and read. On Windows, slash direction, case, trailing separators and extended path prefixes do not hide a task from its own project's conversation. The distinction between missing legacy bindings and explicit null remains unchanged. Foreign-project tools cannot list or mutate bound tasks.
 - **Automation:** `node --experimental-strip-types scripts/e2e-scheduled-paths.mjs` uses an isolated real Host and SQLite profile. Inference is not sent to a live provider.
+
+### E2E-MARKDOWN-table-actions
+
+- **Setup**: Render a conversation containing two Markdown tables, including
+  aligned columns, formatted text, Chinese text, commas, quotes, and `<br>` cells.
+- **Steps**: Copy the first table; download its CSV; expand it; use copy inside
+  the modal; close with Escape and with Close. Append a streamed row while the
+  preview is open. Repeat the preview at a narrow width in light/dark themes
+  and English/Chinese. Deny clipboard writes at the browser boundary.
+- **Expected**: Actions operate only on their own table. Markdown retains inline
+  syntax and alignment. CSV decodes as UTF-8 and preserves fields and line breaks.
+  The modal fits the viewport, traps focus, updates streamed rows, blocks native
+  work-panel surfaces, and returns focus on dismissal. Narrow previews keep short
+  headers on one line and scroll horizontally; sticky headers fully cover the
+  rows behind them. Failed copies report an
+  error, not success. Existing table wrapping remains intact.
+- **Automated coverage**: `node --test apps/desktop/test/markdown-table.test.mjs`
+  and `node scripts/test-markdown-table.mjs` after building the desktop. The
+  latter mounts the production Markdown component in an isolated Electron
+  window and exercises real clipboard/download boundaries. It does not call a
+  model or use the user's app profile.
 
 ## Hosted-search continuation contract (offline sidecar)
 

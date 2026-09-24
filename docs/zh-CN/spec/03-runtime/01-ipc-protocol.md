@@ -879,8 +879,11 @@ ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false`
 `session/fork` 是一个协议 v5 通道，可创建独立的
 来自源会话当前活动记录的会话。当可选时
 `throughMessageId` 存在，复制的快照以该消息结束；一个
-未知 ID 返回 `NOT_FOUND`。 Electron 拒绝
-当该源会话处于活动状态时，使用 `AGENT_BUSY` 发出请求。
+Unknown ids return `NOT_FOUND`. A running Desktop source may fork a completed
+assistant prefix that contains no messages owned by a running turn. The host
+checks this under its RPC lock. Whole-session and active-turn forks remain
+`AGENT_BUSY`; native Pi keeps its idle/ownership guard. The source continues
+running without renderer history hydration replacing its live tail.
 Electron拥有本地化并提供面向用户的分支名称；主机
 后备标题是为非 UI 调用者保留的。
 主机分配新的会话 ID、消息 ID 和工具调用 ID；它复制
@@ -1198,7 +1201,9 @@ type PluginSummary = {
 项目级请求缺少 `projectPath` 时无效。`mcp.active` 会先按 ID 或不区分大小写
 的 label 让项目记录遮蔽全局记录，再过滤关闭项；因此关闭的项目记录仍然会
 遮蔽全局项。仅桌面的 `mcp/test` IPC 操作用于强制连接测试，并把状态返回
+MCP 编辑器。设置页的 `mcp.list` 在返回状态前会探测此前就绪的远程连接；服务器失联时，列表显示 `failed`，而不是保留过时的 `ready`。服务器恢复后，“测试连接”会重试。探测失败不会中断正在执行的工具调用；“测试连接”会先关闭旧客户端再重试。
 MCP 编辑器。
+停止会话会中止该会话正在执行的用户 MCP 工具调用，并向服务器发送 `notifications/cancelled`。其他会话共用的连接保持可用；已取消的调用不会重放。取消会结束本地等待，但服务器可能忽略通知并完成已经开始的副作用。
 
 ```ts
 type McpServerStatus = {

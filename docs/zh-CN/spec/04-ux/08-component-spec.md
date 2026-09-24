@@ -1460,6 +1460,24 @@ Renderer： `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/s
   `content-visibility: auto` 和屏外美人鱼图延迟加载和
   布局，直到它们接近视口。
 
+#### Markdown table actions
+
+Every rendered Markdown table has its own compact toolbar: Copy as Markdown,
+Download as CSV, and Expand table. Copy preserves inline Markdown and column
+alignment and produces a standalone table even inside a quote or list. CSV
+contains the displayed cell text, UTF-8 with BOM, quoted fields, and CRLF rows;
+quotes and cell line breaks are escaped, and formula-leading nonnumeric cells
+are exported as text. Clipboard failures produce an error toast.
+
+The expanded view uses a modal dialog with the existing theme tokens, a scrollable
+table and opaque sticky headers, and copy/download controls. Columns retain
+readable minimum widths; narrow previews scroll horizontally instead of crushing
+short labels. It follows streamed rows,
+contains keyboard focus, closes with Escape or Close, and restores focus to its
+trigger. Native work-panel surfaces remain hidden while the modal is open.
+Tables retain their existing inline layout and link/file actions. No editing,
+sorting, new settings, persistence, or host protocol is introduced.
+
 ---
 
 ## 9. ToolCallRow

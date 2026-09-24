@@ -99,7 +99,7 @@ export function VoiceSettingsSection({
   };
 
   return (
-    <div className="settings-stack">
+    <div className="settings-stack voice-settings">
       {/* ---- Enable ---- */}
       <SettingsCard title={t("settings.voice")}>
         <SettingsRow title={t("settings.voiceEnable")}>

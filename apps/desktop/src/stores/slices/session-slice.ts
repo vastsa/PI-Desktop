@@ -1,5 +1,4 @@
 import i18n from "i18next";
-import { prepareTranscriptAction } from "../runtime/transcript-action";
 import type {
   Mode,
   PlanProposal,
@@ -574,10 +573,11 @@ export function createSessionSlice({
 
     forkAssistantMessage: async (messageId) => {
       const intent = runtime.beginNavigationIntent();
-      const state = await prepareTranscriptAction({ get, set }, runtime, messageId);
-      if (!state || !runtime.navigationIntentIsCurrent(intent)) return;
+      // Fork needs only the anchor id: the host reads the canonical prefix.
+      // Hydrating the source here would overwrite its concurrently streaming tail.
+      const state = get();
       const sessionId = state.activeSessionId;
-      if (!sessionId || state.runningSessions[sessionId]) return;
+      if (!sessionId || state.selectingSessionId) return;
       const message = state.messages.find((candidate) => candidate.id === messageId);
       const source = state.sessions.find((session) => session.id === sessionId);
       if (!message || message.role !== "assistant" || !source) return;

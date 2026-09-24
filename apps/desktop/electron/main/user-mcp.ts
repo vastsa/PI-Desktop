@@ -6,6 +6,7 @@ import {
 } from "@pi-desktop/shared";
 import { userMcpToolName } from "@pi-desktop/plugin-sdk";
 import type { McpServerClient, McpTool } from "./plugin-mcp";
+import { McpCallRegistry } from "./mcp-call-registry.ts";
 
 /**
  * MCP servers the user configured directly, with no plugin around them.
@@ -29,7 +30,7 @@ export type UserMcpToolDescriptor = {
 /** The slice of {@link McpServerClient} this runtime drives. */
 export type UserMcpClient = Pick<
   McpServerClient,
-  "connect" | "callTool" | "getTools" | "isConnected" | "close"
+  "connect" | "callTool" | "getTools" | "isConnected" | "close" | "ping"
 >;
 
 export type UserMcpClientConfig = ConstructorParameters<typeof McpServerClient>[0];
@@ -77,6 +78,8 @@ const MAX_ACTIVE_SERVERS = 16;
 
 export class UserMcpRuntime {
   private entries = new Map<string, Entry>();
+  private statusRefreshes = new Map<string, Promise<void>>();
+  private readonly calls = new McpCallRegistry();
   // Routing identity must survive a transport clearing its own tools on close.
   // These names are hints only: dispatch revalidates the fresh handshake list.
   private discoveredTools = new Map<string, McpTool[]>();
@@ -118,6 +121,40 @@ export class UserMcpRuntime {
   /** Per-server connection state for the Extensions page. */
   listStatuses(): McpServerStatus[] {
     return this.records.map((record) => this.statusFor(record.id));
+  }
+
+  /** Confirm ready remote connections when the settings page refreshes. */
+  async refreshStatuses(): Promise<McpServerStatus[]> {
+    await Promise.all([...this.entries].map(async ([id, entry]) => {
+      if (entry.record.transport === "stdio" || entry.status.state !== "ready") return;
+      let pending = this.statusRefreshes.get(id);
+      if (!pending) {
+        pending = (async () => {
+          try {
+            await entry.client.ping();
+          } catch (error) {
+            if (this.entries.get(id) !== entry) return;
+            // A settings probe must not abort a tool call already in flight.
+            // Test connection will close this client before retrying.
+            const message = error instanceof Error ? error.message : "mcp server did not respond";
+            entry.status = {
+              ...entry.status,
+              state: "failed",
+              toolCount: 0,
+              message: message.slice(0, 500),
+              updatedAt: Date.now(),
+            };
+          }
+        })();
+        this.statusRefreshes.set(id, pending);
+      }
+      try {
+        await pending;
+      } finally {
+        if (this.statusRefreshes.get(id) === pending) this.statusRefreshes.delete(id);
+      }
+    }));
+    return this.listStatuses();
   }
 
   statusFor(serverId: string): McpServerStatus {
@@ -178,6 +215,16 @@ export class UserMcpRuntime {
     fullName: string,
     args: unknown,
     projectPath: string | null | undefined,
+    sessionId?: string,
+  ): Promise<unknown> {
+    return this.calls.run(sessionId, (signal) => this.callToolActive(fullName, args, projectPath, signal));
+  }
+
+  private async callToolActive(
+    fullName: string,
+    args: unknown,
+    projectPath: string | null | undefined,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const found = this.findTool(fullName);
     if (!found) {
@@ -217,7 +264,7 @@ export class UserMcpRuntime {
     }
     // Do not retry tools/call: a failed response may have followed a mutation.
     try {
-      return await entry.client.callTool(found.toolName, args);
+      return await entry.client.callTool(found.toolName, args, signal);
     } catch (error) {
       const msg = (error as Error).message || "";
       if (msg.includes("401") || (error as { status?: number }).status === 401) {
@@ -269,9 +316,14 @@ export class UserMcpRuntime {
 
   /** Drop every connection, e.g. on quit. */
   disposeAll(): void {
+    this.calls.cancelAll();
     for (const entry of this.entries.values()) entry.client.close();
     this.entries.clear();
     this.discoveredTools.clear();
+  }
+
+  cancelSessionCalls(sessionId: string): void {
+    this.calls.cancelSession(sessionId);
   }
 
   private findTool(fullName: string): UserMcpToolDescriptor | undefined {

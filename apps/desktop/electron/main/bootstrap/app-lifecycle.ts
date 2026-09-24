@@ -1,5 +1,5 @@
 import {
-  app, BrowserWindow, Menu, nativeImage, nativeTheme, Tray,
+  app, BrowserWindow, Menu, nativeImage, nativeTheme, powerSaveBlocker, Tray,
   type MenuItemConstructorOptions,
 } from "electron";
 import { existsSync } from "node:fs";
@@ -27,6 +27,7 @@ import type { PluginRuntime } from "../plugin-runtime";
 import type { PluginViewHost } from "../plugin-view-host";
 import type { HostProcess } from "../host-process";
 import { syncPluginDisplayLocale } from "../plugin-display-locale";
+import { createPowerSaveBlockerController } from "../keep-awake";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
 
 export type ApplicationLifecycleState = {
@@ -471,6 +472,35 @@ export function createApplicationLifecycle({
     }
   }
 
+  const powerError = (kind: string, operation: string, error: unknown) => {
+    logger.app("lifecycle", "warn", `power blocker ${kind} ${operation} failed`, {
+      data: String(error),
+    });
+  };
+  const displayBlocker = createPowerSaveBlockerController(
+    powerSaveBlocker,
+    "prevent-display-sleep",
+    (operation, error) => powerError("display", operation, error),
+  );
+  const systemBlocker = createPowerSaveBlockerController(
+    powerSaveBlocker,
+    "prevent-app-suspension",
+    (operation, error) => powerError("system", operation, error),
+  );
+
+  function applyPreventScreenSleep(settings?: { preventScreenSleep?: unknown } | null) {
+    displayBlocker.setEnabled(settings?.preventScreenSleep === true);
+  }
+
+  function applyKeepAwakeWhileRunning(settings?: { keepAwakeWhileRunning?: unknown } | null) {
+    systemBlocker.setEnabled(settings?.keepAwakeWhileRunning === true);
+  }
+
+  function disposePowerSaveBlockers() {
+    displayBlocker.dispose();
+    systemBlocker.dispose();
+  }
+
   /**
    * Drive Chromium and macOS native chrome (menus, vibrancy) from the same
    * theme preference the renderer paints. `system` keeps following the OS;
@@ -647,6 +677,9 @@ export function createApplicationLifecycle({
     executeNativeMenuAction,
     dispatchNativeMenuAction,
     applyDeveloperMode,
+    applyPreventScreenSleep,
+    applyKeepAwakeWhileRunning,
+    disposePowerSaveBlockers,
     applyNativeThemeSource,
     applyAppThemePreference,
     applyApplicationMenuSettings,

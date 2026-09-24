@@ -1092,8 +1092,12 @@ configuration.
 `session/fork` is a protocol-v5 channel that creates an independent
 session from the source session's current active transcript. When optional
 `throughMessageId` is present, the copied snapshot ends at that message; an
-unknown id returns `NOT_FOUND`. Electron rejects
-the request with `AGENT_BUSY` while that source session has an active turn.
+unknown id returns `NOT_FOUND`. While a Desktop source has an active turn,
+`throughMessageId` may select an already-completed assistant prefix containing
+no messages owned by a running turn. The host validates this under its RPC lock;
+whole-session and active-turn forks still return `AGENT_BUSY`. Native Pi forks
+retain their existing idle/ownership guard. The source continues running when
+the child is activated; the renderer never reloads history over its live tail.
 Electron owns localization and supplies the user-facing branch title; the host
 fallback title is reserved for non-UI callers.
 The host assigns a new session id, message ids, and tool-call ids; it copies
@@ -1462,6 +1466,14 @@ project records from the global set by id or case-insensitive label before it
 filters disabled records, so a disabled project record still shadows a global
 one. The desktop-only `mcp/test` IPC action forces one connection test and
 returns its status to the MCP editor.
+The desktop's `mcp.list` IPC response probes previously ready remote connections
+before reporting their status. If a server no longer responds, its row reports
+`failed` instead of retaining a stale `ready` status; Test connection retries it. A failed settings probe does not interrupt an in-flight tool call; Test connection closes the old client before retrying.
+Stopping a session aborts its in-flight user MCP tool calls. The client sends
+`notifications/cancelled` for each active request without closing a connection
+used by other sessions; a completed or canceled tool call is never replayed.
+Cancellation stops the local wait, while a server may ignore the notification
+and finish an already started side effect.
 
 Desktop-only channels scan configuration written by other agent tools on the
 same machine — Claude Desktop (`claude_desktop_config.json` on macOS, Windows

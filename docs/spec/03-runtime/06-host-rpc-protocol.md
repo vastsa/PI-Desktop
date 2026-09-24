@@ -291,10 +291,12 @@ to later refresh and inference; the vendor picker does not collect them.
   The child inherits project/provider/model/mode/thinking and
   permission configuration, receives new message/tool-call ids, and starts
   without turns, revisions, notifications, artifacts, grants, or scratch data.
-  Missing sources return `NOT_FOUND`; Electron rejects active sources with
-  `AGENT_BUSY` before forwarding and normalizes the host's persisted
-  running-turn `CONFLICT` fallback to `AGENT_BUSY`; an unknown source or
-  `throughMessageId` returns `NOT_FOUND`
+  Missing sources or anchors return `NOT_FOUND`. While a Desktop source runs,
+  only a completed assistant prefix containing no indexed messages owned by a
+  running turn is allowed. This check and publication share the host RPC lock.
+  Whole-session, non-assistant, streaming/error, or live-turn anchors return
+  `CONFLICT`, normalized by Electron to `AGENT_BUSY`. The source turn continues
+  without sharing runtime state with the child.
 - `session.get` — accepts an optional renderer read window:
   `messageBefore` is the exclusive zero-based end offset, `messageLimit` is
   the positive page size, and `contentLimit` is the positive character budget

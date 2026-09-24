@@ -42,6 +42,7 @@ import {
   IconPlus,
   IconTrash,
 } from "../icons";
+import { PiSkillDiscoveryPanel } from "./PiSkillDiscoveryPanel";
 import { SkillMarketPanel } from "./SkillMarketPanel";
 
 import { TooltipButton } from "../ui";
@@ -538,6 +539,7 @@ export function AgentSkillsPage() {
         />
       }
     >
+      <PiSkillDiscoveryPanel />
       <CapabilityPanel
         loading={loading}
         refreshing={refreshing}

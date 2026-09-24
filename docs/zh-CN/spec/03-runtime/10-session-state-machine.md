@@ -113,11 +113,11 @@ accept_prompt
    插入 `task.failed`，并且结果已在焦点当前中可见
    聊天或任何 `aborted` 回合不会插入任何通知 (D117)。重复终端
    调用是无操作的。
-9. 仅当源空闲时才允许分叉。孩子开始无所事事
-   没有回合或等待许可状态。 Electron 返回 `AGENT_BUSY` 的
-主动运行时保护并规范主机的持续运行轮流
-   `CONFLICT` 回退到相同的 IPC 错误。两条路径均不产生部分
-   孩子。
+9. Whole-session fork is idle-only. A running Desktop source may fork a
+   completed assistant prefix with no indexed rows owned by a running turn.
+   The parent continues and the child starts idle. Other busy forks return
+   host `CONFLICT` / IPC `AGENT_BUSY`; native Pi keeps its existing idle and
+   ownership guards. Refusal never produces a partial child.
 10. 提供 `throughMessageId` 仅更改快照边界。助理
     Fork/Edit 仍然创建一个新的空闲会话 ID，没有共享轮次，
     权限等待、运行时或提供商缓存状态 (D134)。
@@ -194,8 +194,8 @@ accept_prompt
    转录事件或工作空间根交叉
 5. 每个未见过的 completed/failed 回合恰好产生一条通知记录
    而可见当前结果或中止的回合不会产生任何结果
-6. 空闲分叉作为独立的空闲会话启动；繁忙的信号源无法
-   生一个孩子
+6. A fork starts as an independent idle session; a busy Desktop source may
+   fork only a completed assistant prefix outside its running turn
 7. 消息范围的分叉排除后面的行并且从没有源运行时开始
    或提供商缓存状态
 8. Plan、Goal 和 Agent 使用 1 个 pi Agent； Composer-左模式芯片、UI

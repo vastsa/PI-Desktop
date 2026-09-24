@@ -22,6 +22,7 @@
     "test:host": "cargo test -p host-core",
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:e2e:scheduled": "node scripts/e2e-scheduled.mjs",
+    "test:e2e:keep-awake": "node scripts/e2e-keep-awake.mjs",
     "test:e2e:rpc-unicode": "node scripts/e2e-rpc-unicode.mjs",
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",

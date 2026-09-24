@@ -407,6 +407,31 @@ export function SettingsPage() {
 
               <NetworkProxySection settings={settings} saveSettings={saveSettings} />
 
+              <SettingsCard title={t("settings.power")}>
+                <SettingsRow
+                  title={t("settings.keepAwakeWhileRunning")}
+                  description={t("settings.keepAwakeWhileRunningDesc")}
+                >
+                  <SettingsToggle
+                    checked={settings.keepAwakeWhileRunning === true}
+                    label={t("settings.keepAwakeWhileRunning")}
+                    onChange={() => void saveSettings({
+                      keepAwakeWhileRunning: settings.keepAwakeWhileRunning !== true,
+                    })}
+                  />
+                </SettingsRow>
+                <SettingsRow
+                  title={t("settings.preventScreenSleep")}
+                  description={t("settings.preventScreenSleepDesc")}
+                >
+                  <SettingsToggle
+                    checked={settings.preventScreenSleep === true}
+                    label={t("settings.preventScreenSleep")}
+                    onChange={() => void saveSettings({ preventScreenSleep: !settings.preventScreenSleep })}
+                  />
+                </SettingsRow>
+              </SettingsCard>
+
               {platform !== "darwin" && <CloseBehaviorSection />}
             </div>
           )}

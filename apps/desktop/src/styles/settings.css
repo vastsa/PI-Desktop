@@ -3788,3 +3788,15 @@
 .sklm-page-jump::placeholder {
   color: var(--ds-text-muted);
 }
+
+/* Discovered local package paths remain readable at narrow settings widths. */
+.pi-skill-discovery .settings-row-detail {
+  overflow-wrap: anywhere;
+}
+.pi-skill-discovery .settings-row {
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.pi-skill-discovery .settings-row-copy {
+  flex-basis: 240px;
+}

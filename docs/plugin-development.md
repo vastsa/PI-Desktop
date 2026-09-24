@@ -636,12 +636,13 @@ remote server requires `mcp.server.remote`:
 ```
 
 A stdio command must be a bare command found on `PATH` or a plugin-relative
-executable; absolute paths are rejected. Remote URLs may use HTTP or HTTPS, and
-the host must be listed in `net.domains`; non-loopback HTTP is unencrypted, so
-use it only on a trusted network. Setting references read only this plugin's
-settings—the host environment and provider secrets are never forwarded. MCP
-tools follow the same Agent-only policy and namespacing as hand-written plugin
-tools.
+executable; absolute paths are rejected. `npx` and `uvx` are resolved to the
+real Node.js / uv binaries (PATH, official Node, fnm, nvm, Volta, default uv
+install). Remote URLs may use HTTP or HTTPS, and the host must be listed in
+`net.domains`; non-loopback HTTP is unencrypted, so use it only on a trusted
+network. Setting references read only this plugin's settings—the host
+environment and provider secrets are never forwarded. MCP tools follow the
+same Agent-only policy and namespacing as hand-written plugin tools.
 
 ### 6.10 Resident service and message bus
 

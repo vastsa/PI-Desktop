@@ -110,7 +110,9 @@ which registry served a call.
 
 `commandPolicy` is `trusted` and the child's cwd is the user's home directory:
 no plugin owns the server, so there is no plugin root to sandbox it into, and
-the command the user typed is their own.
+the command the user typed is their own. The editor offers `npx`, `uvx`, and
+Custom; spawn-time resolution of those names is shared with plugin MCP (ADR
+0038, D624).
 
 ### 4. A pasted `mcpServers` block is the primary way to add one
 

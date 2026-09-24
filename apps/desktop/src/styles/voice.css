@@ -107,3 +107,10 @@
 .voice-error {
   color: var(--color-danger, #ef4444);
 }
+
+/* ---- Voice settings: wider control column ---- */
+.voice-settings .settings-row-control {
+  max-width: none;
+}
+
+

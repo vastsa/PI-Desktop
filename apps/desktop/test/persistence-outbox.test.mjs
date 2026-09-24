@@ -213,3 +213,42 @@ test("PLUGIN_PERMISSION_DENIED is not poison and still pauses the outbox (D597)"
   assert.equal(outbox.size(), 2);
 });
 
+
+test("FOREIGN KEY constraint failed drops the orphaned entry and keeps draining (#996)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-outbox-"));
+  const logs = [];
+  const outbox = new PersistenceOutbox(dir, (level, message, data) => {
+    logs.push({ level, message, data });
+  });
+  const calls = [];
+  const host = mockHost(async (_method, params) => {
+    calls.push(params);
+    if (params.message.id === "orphaned-child") {
+      throw new Error("Error: FOREIGN KEY constraint failed");
+    }
+  });
+  const getHost = () => host;
+  await outbox.enqueue(
+    {
+      key: "message:s1:orphaned-child",
+      sessionId: "s1",
+      message: { id: "orphaned-child" },
+    },
+    getHost,
+  );
+  await outbox.enqueue(
+    {
+      key: "message:s2:healthy",
+      sessionId: "s2",
+      message: { id: "healthy" },
+    },
+    getHost,
+  );
+  await outbox.flush(getHost);
+  assert.equal(outbox.size(), 0, "both entries should be drained");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].message.id, "healthy");
+  assert.ok(
+    logs.some((row) => row.message === "session persistence flush dropped orphaned message"),
+  );
+});

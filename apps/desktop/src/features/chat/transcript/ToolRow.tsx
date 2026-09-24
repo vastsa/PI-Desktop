@@ -327,6 +327,27 @@ export const ToolRow = memo(function ToolRow({
     return () => window.clearInterval(id);
   }, [outcome]);
 
+  // Auto-scroll the nested `.tool-row-content` containers to their bottom
+  // while the tool is still running. These elements have `max-height: 260px`
+  // and `overflow: auto`, creating a nested scroll area that the transcript-
+  // level follow scroll cannot reach once the height cap is hit. Only scroll
+  // when the container is already near the bottom so a manual scroll-up by
+  // the user is not overridden.
+  useLayoutEffect(() => {
+    if (status !== "running" || !open) return;
+    const body = disclosure.bodyRef.current;
+    if (!body) return;
+    const containers = body.querySelectorAll<HTMLElement>(".tool-row-content");
+    for (const el of containers) {
+      const nearBottom =
+        el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+      if (nearBottom) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+  }, [status, open, message, disclosure.bodyRef]);
+
+
   const statusTone =
     run === "running" || (!run && status === "running")
       ? "is-running"

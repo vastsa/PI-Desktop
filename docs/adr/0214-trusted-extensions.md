@@ -38,8 +38,10 @@ replace the desktop runtime with `pi-coding-agent`'s `AgentSession`.
    theme and is not reused.)
 2. **Trusted, opt-in, no auto-import.** Extensions are labelled "Trusted
    extension", run with sidecar trust, and are disabled until the user enables
-   each one. D007 is unchanged: `~/.pi` is scanned for candidates, never
-   imported. Project-scoped extensions are enabled per project.
+   each one. D007 forbids silent import. Candidate discovery is limited to
+   installed npm skill packages, with native confirmation before import
+   (ADR pi-npm-skill-discovery); general `~/.pi` discovery is not implemented.
+   Project-scoped extensions are enabled per project.
 3. **Explicit support classes.** Every `ExtensionAPI` member is Supported,
    Deferred, or Unsupported. Unsupported members are inert and produce
    diagnostics; they never throw. Terminal-UI surfaces stay Unsupported.

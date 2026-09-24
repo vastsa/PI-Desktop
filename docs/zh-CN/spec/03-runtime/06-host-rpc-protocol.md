@@ -226,17 +226,19 @@ type ToolBudgetHealth = {
 - `session.list`
 - `session.create` — 接受可选的 `thinkingLevel`； missing/null 默认值
 至 `off`
-- `session.fork` — 接受 `sessionId`，呼叫者提供的可选显示
-  `title`，以及可选的 `throughMessageId`；创造
-  来自源当前活动规范的一个独立会话
-  转录本，在提供时在选定的消息处被截断。
-  孩子继承 project/provider/model/mode/thinking 并且
-  权限配置，接收新的 message/tool-call id，并启动
-  无需轮流、修订、通知、工件、资助或临时数据。
-  缺少源返回 `NOT_FOUND`； Electron 拒绝活动源
-  `AGENT_BUSY` 在转发之前并标准化主机的持久化
-  运行转向 `CONFLICT` 回退到 `AGENT_BUSY`；来源不明或
-  `throughMessageId` 返回 `NOT_FOUND`
+- `session.fork` — accepts `sessionId`, an optional caller-provided display
+  `title`, and optional `throughMessageId`; creates
+  one independent session from the source's current active canonical
+  transcript, truncated inclusively at the selected message when supplied.
+  The child inherits project/provider/model/mode/thinking and
+  permission configuration, receives new message/tool-call ids, and starts
+  without turns, revisions, notifications, artifacts, grants, or scratch data.
+  Missing sources or anchors return `NOT_FOUND`. While a Desktop source runs,
+  only a completed assistant prefix containing no indexed messages owned by a
+  running turn is allowed. This check and publication share the host RPC lock.
+  Whole-session, non-assistant, streaming/error, or live-turn anchors return
+  `CONFLICT`, normalized by Electron to `AGENT_BUSY`. The source turn continues
+  without sharing runtime state with the child.
 - `session.get`
 - `session.delete`
 - `session.getScratchPath` — 会话的 scratch 目录（D114），按需创建

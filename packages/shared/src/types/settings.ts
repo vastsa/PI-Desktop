@@ -36,6 +36,8 @@ export type AppSettings = {
    * Absent and false use the bounded ten-retry policy.
    */
   infiniteProviderRetry?: boolean;
+  /** Prevent idle system sleep while this desktop app runs; off when absent. */
+  keepAwakeWhileRunning?: boolean;
   /** Configured command shell for the agent Bash protocol tool. */
   defaultCommandShell?: CommandShellId;
   /**
@@ -151,6 +153,12 @@ export type AppSettings = {
    * disabled when the system prefers reduced motion.
    */
   smoothStreaming?: boolean;
+  /**
+   * Prevent the display from sleeping while the app is running. Uses
+   * Electron's `powerSaveBlocker` with `prevent-display-sleep` on all
+   * platforms. Absent and false mean the system manages sleep normally.
+   */
+  preventScreenSleep?: boolean;
   /** Voice input settings (D-voice-runtime). */
   voice?: VoiceInputSettings;
   onboardingDismissed: boolean;

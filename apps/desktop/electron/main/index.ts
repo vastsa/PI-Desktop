@@ -17,7 +17,6 @@ import {
   APP_ID,
   APP_NAME,
   APP_VERSION,
-  ErrorCodes,
   IPC,
   IPC_WHITELIST,
   KEYBOARD_SHORTCUTS,
@@ -174,6 +173,15 @@ applyDevelopmentUserData(app, isDevelopmentBuild);
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
 }
+
+// Chromium's accessibility tree serializer has a known CHECK failure in
+// AXBlockFlowData::ComputeNeighborOnLine (chromium #552018997) that kills
+// the renderer when an AT client reads the tree while the DOM is being
+// mutated — exactly what happens during streaming agent responses.
+// The switch prevents Chromium from building the in-renderer accessibility
+// tree unless the user explicitly opts in via --force-renderer-accessibility.
+// This is a workaround until the upstream fix lands.
+app.commandLine.appendSwitch("disable-renderer-accessibility");
 
 // One installation, one process. The lock lives in `userData` (set just
 // above), so it is taken after `setName` and before anything else here
@@ -643,7 +651,6 @@ const pluginServices = createPluginServices({
     return applicationLifecycle.resolveAppearance();
   },
   getWorkspacePath: currentWorkspacePath,
-  isHostUnavailable,
   resolveAgentRuntimeLaunch: (...args) => {
     if (!sessionLaunchRuntime) {
       throw new Error("session launch runtime is not initialized");
@@ -788,19 +795,6 @@ function describeError(error: unknown): string {
   return String(error).slice(0, 300);
 }
 
-/**
- * True when a rejection only says the host transport is gone (D080): the call
- * lost a race with shutdown, a crash, or a supervised restart. Every such
- * rejection carries `HOST_UNAVAILABLE`, whether it was refused before it was
- * sent or was in flight when the transport closed.
- */
-function isHostUnavailable(error: unknown): boolean {
-  return (
-    (error as { errorCode?: string } | null | undefined)?.errorCode ===
-    ErrorCodes.HOST_UNAVAILABLE
-  );
-}
-
 /** Pull the user's MCP server records from host-core into the local runtime. */
 function sendToRenderer(channel: string, payload: unknown) {
   applicationLifecycle?.traySessions.observeEvent(channel, payload);
@@ -938,6 +932,9 @@ const {
   executeNativeMenuAction,
   dispatchNativeMenuAction,
   applyDeveloperMode,
+  applyPreventScreenSleep,
+  applyKeepAwakeWhileRunning,
+  disposePowerSaveBlockers,
   applyNativeThemeSource,
   applyApplicationMenuSettings,
   applyAppThemePreference,
@@ -1275,6 +1272,8 @@ function registerIpc() {
     currentNetworkProxy,
     applyApplicationMenuSettings,
     applyDeveloperMode,
+    applyPreventScreenSleep,
+    applyKeepAwakeWhileRunning,
     resolveEffectiveCommandShell,
     modelsDevCatalog,
     vendorOAuth,
@@ -1402,6 +1401,8 @@ registerApplicationStartup({
   planUiProbe,
   applyApplicationMenuSettings,
   applyDeveloperMode,
+  applyPreventScreenSleep,
+  applyKeepAwakeWhileRunning,
   applyPluginLauncherShortcut,
   applyToggleWindowShortcut,
   ensureWindow,
@@ -1484,6 +1485,7 @@ registerShutdownHandlers({
   updater,
   logger,
   confirmQuitDialog,
+  disposePowerSaveBlockers,
 });
 
 registerApplicationActivation({
