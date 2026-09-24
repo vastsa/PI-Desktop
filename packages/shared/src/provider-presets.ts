@@ -208,7 +208,7 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     vendorKey: "stepfun-plan",
     name: "StepFun Plan",
     baseUrl: "https://api.stepfun.com/step_plan/v1",
-    apiStyle: "chat_completions",
+    apiStyle: "anthropic_messages",
     labelKey: "settings.presetStepfunPlan",
   },
   {

@@ -176,7 +176,7 @@ describe("subagent model fallback over real transport", () => {
     expect(result.modelFailures).toEqual(["primary", "secondary"].map((id) => expect.objectContaining({
       model: `${id}/${id}`, code: status === 429 ? "PROVIDER_RATE_LIMITED" : "PROVIDER_ERROR",
     })));
-  });
+  }, 20_000); // Two real HTTP retry sequences can exceed Vitest's 5s default.
 
   it("tries alternatives in order once, skips unresolved bindings visibly, and reports exhaustion", async () => {
     const f = await fixture({ fail: ["primary", "secondary", "third"] });

@@ -8090,7 +8090,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Expected**: New custom choices are the four general protocols; Codex and Pi
   are available through vendor accounts, not as new API-key choices. Legacy
   editing preserves format, name, URL and authentication unless explicitly
-  changed. A copied account format is visible but cannot be newly selected;
+  changed. This includes existing StepFun Plan `chat_completions` accounts
+  after the named preset defaults to `anthropic_messages`; selecting the
+  preset explicitly uses the new format. A copied account format is visible
+  but cannot be newly selected;
   saving and discovery are blocked until an explicit supported choice. The
   explanation is localized. Cancel performs no create; a valid copy never uses
   the source id or credentials. For Codex OAuth, Native web search is enabled

@@ -38,13 +38,3 @@ declare module "transcribe-cpp" {
   };
   export { TranscribeModel };
 }
-
-declare module "@huggingface/hub" {
-  interface DownloadFileOptions {
-    repo: string;
-    path: string;
-    requestInit?: RequestInit;
-  }
-  function downloadFile(options: DownloadFileOptions): Promise<Response | null>;
-  export { downloadFile };
-}

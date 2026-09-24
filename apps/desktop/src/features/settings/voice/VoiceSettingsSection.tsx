@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import type { AppSettings, VoiceInputSettings } from "@pi-desktop/shared";
 import type { TFunction } from "i18next";
 import { useAppStore } from "../../../stores/app-store";
 import { voiceIpc } from "../../voice/voice-ipc";
@@ -26,9 +27,11 @@ interface ModelState {
   error?: string;
 }
 
-export function VoiceSettingsSection({ t }: { t: TFunction }) {
+export function VoiceSettingsSection({ t, saveSettings }: {
+  t: TFunction;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+}) {
   const settings = useAppStore((s) => s.settings);
-  const updateSettings = useAppStore((s) => s.updateSettings);
 
   const voiceSettings = settings?.voice ?? {
     enabled: false,
@@ -63,12 +66,12 @@ export function VoiceSettingsSection({ t }: { t: TFunction }) {
   }, []);
 
   const update = useCallback(
-    (patch: Record<string, unknown>) => {
+    (patch: Partial<VoiceInputSettings>) => {
       const next = { ...voiceSettings, ...patch };
-      void updateSettings({ voice: next as any });
+      void saveSettings({ voice: next });
       void voiceIpc.updateSettings(next);
     },
-    [voiceSettings, updateSettings],
+    [voiceSettings, saveSettings],
   );
 
   const formatSize = (bytes: number) => {
@@ -146,7 +149,12 @@ export function VoiceSettingsSection({ t }: { t: TFunction }) {
         <label>{t("settings.voiceChineseVariant")}</label>
         <select
           value={voiceSettings.chineseVariant}
-          onChange={(e) => update({ chineseVariant: e.target.value })}
+          onChange={(e) => {
+            const chineseVariant = e.target.value;
+            if (chineseVariant === "simplified" || chineseVariant === "traditional-taiwan" || chineseVariant === "traditional-hong-kong") {
+              update({ chineseVariant });
+            }
+          }}
           disabled={!voiceSettings.enabled}
         >
           <option value="simplified">{t("settings.voiceSimplified")}</option>

@@ -390,6 +390,15 @@ MiniMax (`anthropic_messages` at `https://api.minimaxi.com/anthropic/v1`),
 MiniMax (OpenAI) (`chat_completions` at `https://api.minimaxi.com/v1`, aliases
 `minimax-openai` / `minimax-compatible`), Kimi For Coding (`anthropic_messages`).
 
+StepFun Plan defaults to `anthropic_messages` at
+`https://api.stepfun.com/step_plan/v1`. Runtime URL normalization removes the
+trailing `/v1` before the Anthropic SDK appends `/v1/messages`, reaching
+`https://api.stepfun.com/step_plan/v1/messages`. The versioned settings URL also
+preserves model discovery and the Step 5 metadata lookup. Existing saved
+`chat_completions` accounts retain their format when edited or copied; users
+can explicitly choose StepFun Plan to switch to the new default.
+See the [official Claude Code guide](https://platform.stepfun.com/docs/zh/step-plan/integrations/claude-code).
+
 Zhipu / Z.AI Completions requests still receive `thinkingFormat: "zai"` and
 `zaiToolStream: true`. pi-ai `zai-coding-cn` remains an alias of
 `zhipuai-coding-plan`. DeepSeek-family Completions requests receive

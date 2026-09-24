@@ -21,21 +21,21 @@ export async function* downloadModel(
   const response = await downloadFile({
     repo: info.hfRepo,
     path: info.hfFilename,
-    requestInit: signal ? { signal } : undefined,
+    fetch: (input, init) => fetch(input, { ...init, signal: signal ?? init?.signal }),
   });
 
-  if (!response || !response.body) {
+  if (!response) {
     throw new Error(`Failed to download model: no response body`);
   }
 
-  const contentLength = Number(response.headers.get("content-length") || info.sizeBytes);
+  const contentLength = response.size || info.sizeBytes;
   let received = 0;
 
   const { createWriteStream } = await import("node:fs");
   const writer = createWriteStream(targetPath);
 
   try {
-    const reader = response.body.getReader();
+    const reader = response.stream().getReader();
 
     while (true) {
       if (signal?.aborted) {

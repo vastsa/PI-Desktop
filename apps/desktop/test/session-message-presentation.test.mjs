@@ -23,6 +23,7 @@ const shared = {
   FileRefChip: () => null,
   LinkifiedText: ({ text }) => text,
   MessageAttachmentImage: () => null,
+  MessageTimestamp: () => null,
 };
 
 function loadComponent(name, extras = {}) {
