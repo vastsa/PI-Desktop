@@ -113,6 +113,51 @@ test("a global server contributes mcp_-prefixed tools to any session", async (t)
   assert.equal((await rt.toolsForProject(null)).length, 2);
 });
 
+test("refreshing HTTP MCP status detects a server that went offline", async (t) => {
+  let online = true;
+  let pings = 0;
+  let connected = false;
+  let finishCall;
+  let failCall;
+  let markCallStarted;
+  const callStarted = new Promise((resolve) => { markCallStarted = resolve; });
+  const client = {
+    isConnected: () => connected,
+    getTools: () => [{ name: "lookup" }],
+    connect: async () => { connected = true; return [{ name: "lookup" }]; },
+    callTool: () => new Promise((resolve, reject) => {
+      finishCall = resolve;
+      failCall = reject;
+      markCallStarted();
+    }),
+    ping: async () => {
+      pings += 1;
+      if (!online) throw new Error("server offline");
+    },
+    close: () => {
+      connected = false;
+      failCall?.(new Error("tool call interrupted by close"));
+    },
+  };
+  const rt = new UserMcpRuntime({ createClient: () => client });
+  t.after(() => rt.disposeAll());
+  rt.setRecords([stubRecord("/unused", { transport: "http", command: undefined, args: undefined, url: "http://127.0.0.1:9999/mcp" })]);
+
+  await rt.toolsForProject("/repo");
+  assert.equal(rt.statusFor("stub").state, "ready");
+  assert.equal((await rt.refreshStatuses())[0].state, "ready");
+  const pendingCall = rt.callTool("mcp_stub_lookup", {}, "/repo");
+  await callStarted;
+  online = false;
+  const statuses = await rt.refreshStatuses();
+  assert.equal(statuses[0].state, "failed");
+  assert.equal(rt.statusFor("stub").state, "failed");
+  assert.equal(connected, true, "a settings probe must not close an in-flight call");
+  finishCall({ content: [{ type: "text", text: "completed" }] });
+  assert.deepEqual(await pendingCall, { content: [{ type: "text", text: "completed" }] });
+  assert.equal(pings, 2);
+});
+
 test("a project-scoped server is invisible outside its projects", async (t) => {
   const dir = stubDir();
   const rt = runtime(t);

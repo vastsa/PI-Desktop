@@ -485,6 +485,11 @@ export class McpServerClient {
     }
   }
 
+  /** Probe a live connection without changing its discovered tool catalog. */
+  async ping(timeoutMs = 5_000): Promise<void> {
+    await this.request("ping", {}, timeoutMs);
+  }
+
   close(): void {
     const transport = this.transport;
     this.transport = null;

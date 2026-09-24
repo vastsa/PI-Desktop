@@ -63,7 +63,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     // list itself must include disabled records for the settings page.
     await refreshUserMcp(currentWorkspacePath());
     const statuses = await Promise.all(
-      userMcp.listStatuses().map(async (status) => ({
+      (await userMcp.refreshStatuses()).map(async (status) => ({
         ...status,
         hasOauth: oauth ? await oauth.hasOAuth(status.serverId) : false,
       })),

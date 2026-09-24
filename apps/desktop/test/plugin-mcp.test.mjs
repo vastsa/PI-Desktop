@@ -285,6 +285,11 @@ async function startHttpServer(t, { slowToolDelayMs } = {}) {
         res.writeHead(202, { "content-type": "text/plain" }).end("Accepted");
         return;
       }
+      if (message.method === "ping") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }));
+        return;
+      }
       if (message.method === "tools/list") {
         res.writeHead(200, { "content-type": "text/event-stream" });
         res.end(
@@ -352,6 +357,8 @@ test("a remote mcp server negotiates over http and keeps its session", async (t)
   );
   const result = await client.callTool("headers", {});
   assert.equal(describeMcpContent(result.content), `sess-42|sk-test|${MCP_PROTOCOL_VERSION}`);
+  await client.ping();
+  assert.equal(requests.at(-1).message.method, "ping");
   // The very first request cannot carry a session id, later ones must.
   assert.equal(requests[0].headers["mcp-session-id"], undefined);
   assert.equal(requests[0].headers["x-api-key"], "sk-test");

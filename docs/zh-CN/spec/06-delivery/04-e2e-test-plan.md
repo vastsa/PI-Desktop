@@ -4653,6 +4653,7 @@ eleven-tool-round desktop paths are verified by
       调用之间终止 stub 服务器进程。在同一会话中再次调用该工具，不再搜索。
   11. 用重启后不再提供该工具的 stub 重复；以及在恢复前禁用或改出作用域。
       也试一次断开后的并发调用，以及恢复握手失败的服务器。
+  12. 连接 HTTP 服务器后将其停止，刷新 MCP 设置页；重启服务器后再次测试连接。
 - **预期**：
   - 传输重启后，已激活的工具无需再次搜索即可使用；并发调用共享一次握手。
     新的服务器列表仍须公布该工具。已移除的工具和未激活的服务器在不执行
@@ -4675,6 +4676,7 @@ eleven-tool-round desktop paths are verified by
   - 损坏的命令记录 `failed` 并带有一条消息，不提供任何工具，
      并且不会在下一次会议上重拨；压制测试
 重试。
+  - HTTP 服务器停止后，设置页刷新显示 `failed`；重启后“测试连接”恢复为 `ready`。
 - **链接规格**：`07-plugins/01-plugin-system.md` §12，
   `03-runtime/01-ipc-protocol.md` §12a、`08-meta/decisions-log.md`（D192、D193）
 - **验收**：E（工具和权限）、质量
