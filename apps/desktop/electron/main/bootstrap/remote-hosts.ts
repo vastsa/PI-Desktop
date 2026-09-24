@@ -372,6 +372,9 @@ export function createRemoteHostsBoot(
         error: String(error),
       });
       return { ...summaryOf(record), connected: false };
+    } finally {
+      // The sidebar lists hosts and their sessions from this cue.
+      options.emit(IPC.event.sessionsChanged, { reason: "remote.hosts.changed" });
     }
   };
 
@@ -474,6 +477,7 @@ export function createRemoteHostsBoot(
       // A paired host that never came online still owns a tunnel slot.
       await tunnels.close(hostKey);
       await registry.remove(hostKey);
+      options.emit(IPC.event.sessionsChanged, { reason: "remote.hosts.changed" });
     },
   };
 }
