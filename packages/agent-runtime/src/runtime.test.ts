@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { estimateContextTokens as estimateAgentContextTokens, estimateTokens, type Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import {
@@ -23,7 +26,7 @@ import {
 import { estimateOutputCapInputTokens } from "./output-cap.js";
 
 import { COMPACTION_SUMMARY_MAX_RETRIES } from "./compaction-summary-input.js";
-import type { ProjectInstructions } from "./project-instructions.js";
+import { loadInstructionChain, type ProjectInstructions } from "./project-instructions.js";
 import { classifyAgentError } from "./agent-errors.js";
 import {
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
@@ -938,6 +941,46 @@ describe("DesktopAgentRuntime configuration matching", () => {
     ).toBe(false);
 
     await runtime.dispose();
+  });
+
+  it("keeps the root prompt after reading a file outside the project", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-"));
+    const outside = await mkdtemp(join(tmpdir(), "pi-desktop-attachment-"));
+    try {
+      await mkdir(join(root, "nested"));
+      await writeFile(join(root, "AGENTS.md"), "Use root rules.");
+      await writeFile(join(root, "nested", "AGENTS.md"), "Use nested rules.");
+      const globalPath = join(root, "nonexistent-global-file");
+      const host = {
+        call: vi.fn((method: string, params: { path?: string }) =>
+          method === "project.instructions.resolve"
+            ? loadInstructionChain(root, params.path, globalPath)
+            : Promise.resolve({ ok: true, content: "fixture contents" })),
+      };
+      const runtime = createRuntime({
+        host,
+        projectPath: root,
+        projectInstructions: await loadInstructionChain(root, undefined, globalPath),
+      });
+      try {
+        const read = (runtime as any).agent.state.tools.find(
+          (tool: any) => tool.name === "Read",
+        );
+        await read.execute("tool-in", { path: join(root, "nested", "file.ts") });
+        expect((runtime as any).agent.state.systemPrompt).toContain("Use nested rules.");
+
+        await read.execute("tool-out", { path: join(outside, "attached.txt") });
+        expect((runtime as any).agent.state.systemPrompt).toContain("Use root rules.");
+        expect((runtime as any).agent.state.systemPrompt).not.toContain("Use nested rules.");
+        expect(host.call.mock.calls.filter(([method]) => method === "project.instructions.resolve"))
+          .toHaveLength(2);
+      } finally {
+        await runtime.dispose();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 
   it("loads newly discovered nested instructions before a file tool runs", async () => {

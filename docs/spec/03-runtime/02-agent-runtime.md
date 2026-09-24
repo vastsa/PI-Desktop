@@ -1457,7 +1457,10 @@ tool continues with the runtime's base/root chain rather than waiting for the
 general host RPC timeout. A failed resolution never leaves a previously
 resolved sibling-directory chain active.
 
-All discovery stays within the session project root. Empty, unreadable, and
+All discovery stays within the session project root. A target path outside the
+project root, or the root path itself, resolves to the root's own chain instead
+of an empty result. File tools on attachments or other locations therefore
+keep the root chain (which may itself be empty). Empty, unreadable, and
 out-of-root files are skipped. The combined UTF-8 content is capped at 32 KiB
 and source paths are labelled under `# Project instructions`.
 The sidecar never reads workspace instructions directly. A changed root chain
