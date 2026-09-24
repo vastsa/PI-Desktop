@@ -329,6 +329,7 @@ export const de = {
     "openFile": "Mit Standardanwendung öffnen",
     "retry": "Neu generieren",
     "forkResponse": "Zweig aus dieser Antwort",
+    "remoteHostModel": "Standardmodell des Hosts",
     "editMessage": "Bearbeiten und erneut senden",
     "cancelEdit": "Abbrechen",
     "retryEdit": "Wiederholen",

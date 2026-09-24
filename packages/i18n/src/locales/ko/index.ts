@@ -338,6 +338,7 @@ export const ko = {
     openFile: "기본 애플리케이션으로 열기",
     retry: "다시 생성",
     forkResponse: "이 답변에서 브랜치 만들기",
+    remoteHostModel: "호스트 기본 모델",
     editMessage: "편집 후 다시 보내기",
     cancelEdit: "취소",
     retryEdit: "다시 시도",

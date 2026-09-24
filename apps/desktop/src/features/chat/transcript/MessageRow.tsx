@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { UiMessage } from "@pi-desktop/shared";
+import { useActiveSessionGate } from "../../../hooks/use-session-gates";
 import { useOpenChatFileRef } from "../../../hooks/use-preview-target";
 import { splitChatText } from "../../../lib/chat-links";
 import { useAppStore } from "../../../stores/app-store";
@@ -82,6 +83,9 @@ export const MessageRow = memo(function MessageRow({
   const isUser = message.role === "user";
   const isSessionMessage = Boolean(message.sessionMessage);
   const editableUserMessage = isUser && !isSessionMessage;
+  // A remote host has no edit, delete, or revision operation (D624).
+  const canEditHistory = useActiveSessionGate("canEditHistory");
+  const historyEditable = editableUserMessage && canEditHistory;
   const workspaceRoot = useAppStore((s) => s.workspace?.path);
   const openFileRef = useOpenChatFileRef();
   // Slash prompts are stored expanded; editing works on the typed form so the
@@ -103,7 +107,7 @@ export const MessageRow = memo(function MessageRow({
   const hasAnswer = Boolean((message.content || "").trim());
   const revisionCount = message.revisionCount ?? 0;
   const activeRevision = message.activeRevision ?? revisionCount;
-  const showRevisionPager = editableUserMessage && revisionCount > 1;
+  const showRevisionPager = historyEditable && revisionCount > 1;
   const extraAttachments = useMemo(() => {
     const attachments = message.attachments;
     if (!attachments?.length) return [];
@@ -115,7 +119,7 @@ export const MessageRow = memo(function MessageRow({
     return attachments.filter((attachment) => !inline.has(attachment.ref));
   }, [message.attachments, message.content, workspaceRoot]);
   const beginEdit = async () => {
-    if (!editableUserMessage || isRunning || loadingEdit) return;
+    if (!historyEditable || isRunning || loadingEdit) return;
     const request = new AbortController();
     editRequest.current?.abort();
     editRequest.current = request;
@@ -148,7 +152,7 @@ export const MessageRow = memo(function MessageRow({
   };
   const retryEdit = async () => {
     const next = editValue.trim();
-    if (!editableUserMessage || retryingEdit || (!next && !message.attachments?.length)) return;
+    if (!historyEditable || retryingEdit || (!next && !message.attachments?.length)) return;
     setRetryingEdit(true);
     const saved = await editUserMessage(message.id, next, message.attachments);
     setRetryingEdit(false);
@@ -170,7 +174,7 @@ export const MessageRow = memo(function MessageRow({
         selectTarget: event.currentTarget.querySelector<HTMLElement>(
           editing ? ".message-edit-input" : ".message-bubble",
         ),
-        editable: editableUserMessage && !editing && !loadingEdit,
+        editable: historyEditable && !editing && !loadingEdit,
         running: isRunning,
         revision: !editing && showRevisionPager
           ? { count: revisionCount, active: activeRevision }
@@ -197,7 +201,7 @@ export const MessageRow = memo(function MessageRow({
         {message.sessionMessage ? <SessionMessageOrigin origin={message.sessionMessage} /> : null}
         {isUser || displayed ? (
           <div className="message-bubble">
-            {editing && editableUserMessage ? (
+            {editing && historyEditable ? (
               <form
                 className="message-edit"
                 aria-busy={retryingEdit || undefined}
@@ -344,7 +348,7 @@ export const MessageRow = memo(function MessageRow({
               </div>
             ) : null}
             {hasAnswer ? <CopyButton text={message.content} label={copyLabel} /> : null}
-            {editableUserMessage ? (
+            {historyEditable ? (
               <TooltipButton
                 className="copy-btn icon"
                 tooltip={editLabel}
@@ -355,7 +359,7 @@ export const MessageRow = memo(function MessageRow({
                 <IconPencil size={13} />
               </TooltipButton>
             ) : null}
-            {editableUserMessage ? (
+            {historyEditable ? (
               <TooltipButton
                 className="copy-btn icon danger"
                 tooltip={deleteLabel}

@@ -327,6 +327,7 @@ export const ptBR = {
     openFile: "Abrir no aplicativo padrão",
     retry: "Regenerar",
     forkResponse: "Criar ramificação a partir desta resposta",
+    remoteHostModel: "Modelo padrão do host",
     editMessage: "Editar e reenviar",
     cancelEdit: "Cancelar",
     retryEdit: "Tentar novamente",

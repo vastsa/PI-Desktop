@@ -33,6 +33,7 @@ import {
   resolveThinkingDisplayMode,
   shouldGroupTurnProcess,
 } from "../../../lib/turn-process";
+import { useActiveSessionGate } from "../../../hooks/use-session-gates";
 import { useAppStore } from "../../../stores/app-store";
 import { Markdown } from "../../../components/Markdown";
 import { IconBranch, IconReview } from "../../../components/icons";
@@ -273,6 +274,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   const openTranscriptMenu = useTranscriptMenu();
   const { copyText, selectText } = useChatTextActions();
   const retryAssistantMessage = useAppStore((s) => s.retryAssistantMessage);
+  const canRegenerate = useActiveSessionGate("canEditHistory");
   const forkAssistantMessage = useAppStore((s) => s.forkAssistantMessage);
   const messages = assistantTurnMessages(entry);
   const content = assistantTurnContent(entry);
@@ -318,6 +320,7 @@ export const AssistantTurn = memo(function AssistantTurn({
             ),
           ].at(-1) ?? null,
         complete: complete && Boolean(actionMessage),
+        canRegenerate,
         actions: { copyText, selectText },
         onRegenerate: () => {
           if (actionMessage) void retryAssistantMessage(actionMessage.id);
@@ -433,14 +436,14 @@ export const AssistantTurn = memo(function AssistantTurn({
             >
               <IconBranch size={13} />
             </TooltipButton>
-            <TooltipButton
+            {canRegenerate ? <TooltipButton
               className="copy-btn icon"
               tooltip={t("chat.retry")}
               ariaLabel={t("chat.retry")}
               onClick={() => void retryAssistantMessage(actionMessage.id)}
             >
               <IconReview size={13} />
-            </TooltipButton>
+            </TooltipButton> : null}
           </div>
         ) : null}
       </div>

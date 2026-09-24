@@ -329,6 +329,7 @@ export const es = {
     "openFile": "Abrir con aplicación predeterminada",
     "retry": "Regenerar",
     "forkResponse": "Rama de esta respuesta",
+    "remoteHostModel": "Modelo predeterminado del host",
     "editMessage": "Editar y reenviar",
     "cancelEdit": "Cancelar",
     "retryEdit": "Reintentar",

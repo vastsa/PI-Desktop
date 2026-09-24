@@ -336,6 +336,7 @@ export const en = {
     openFile: "Open with default application",
     retry: "Regenerate",
     forkResponse: "Branch from this reply",
+    remoteHostModel: "Host default model",
     editMessage: "Edit and resend",
     cancelEdit: "Cancel",
     retryEdit: "Retry",

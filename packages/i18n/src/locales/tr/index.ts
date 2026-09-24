@@ -338,6 +338,7 @@ export const tr = {
     openFile: "Varsayılan uygulamayla aç",
     retry: "Yeniden oluştur",
     forkResponse: "Bu yanıttan dal oluştur",
+    remoteHostModel: "Ana makine varsayılan modeli",
     editMessage: "Düzenle ve yeniden gönder",
     cancelEdit: "İptal",
     retryEdit: "Yeniden dene",
