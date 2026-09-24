@@ -308,12 +308,7 @@ export async function turnProcessProbe() {
         </I18nextProvider>,
       ),
     );
-    click(container.querySelector('button[aria-haspopup="listbox"]'));
-    click(
-      Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(
-        (item) => item.textContent === "Compact",
-      ) ?? null,
-    );
+    click(container.querySelector<HTMLElement>('[role="radio"][aria-checked="false"]'));
     check(
       saved?.thinkingDisplayMode === "compact",
       "settings control saves compact mode",
