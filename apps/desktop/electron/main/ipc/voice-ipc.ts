@@ -29,7 +29,7 @@ export function registerVoiceIpc({
 
   handle(IPC.invoke.voiceGetState, async () => voiceService.getState());
 
-  handle(IPC.invoke.voiceGetDevices, () => voiceService.getDevices());
+  handle(IPC.invoke.voiceGetDevices, async () => voiceService.getDevices());
 
   handle(IPC.invoke.voiceGetModels, async () => voiceService.getModels());
 

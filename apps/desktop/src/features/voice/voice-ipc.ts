@@ -1,51 +1,59 @@
 /**
  * Renderer-side IPC wrapper for voice operations.
+ * Uses window.piDesktop bridge exposed by the preload script.
+ * All invoke calls return Result<T>; unwrap extracts .data or throws.
  */
 
-const { ipcRenderer } = window.require("electron");
+import { IPC } from "@pi-desktop/shared";
+
+async function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise<T> {
+  const bridge = window.piDesktop;
+  if (!bridge) throw new Error("piDesktop bridge unavailable");
+  const result = await bridge.invoke<T>(channel, ...args);
+  if (!(result as any).ok) {
+    throw new Error((result as any).message ?? "IPC call failed");
+  }
+  return (result as any).data;
+}
 
 export const voiceIpc = {
   start: (settings?: Record<string, unknown>) =>
-    ipcRenderer.invoke("pi-desktop/voice/start", settings),
+    invoke(IPC.invoke.voiceStart, settings),
 
-  stop: () => ipcRenderer.invoke("pi-desktop/voice/stop"),
+  stop: () => invoke(IPC.invoke.voiceStop),
 
-  cancel: () => ipcRenderer.invoke("pi-desktop/voice/cancel"),
+  cancel: () => invoke(IPC.invoke.voiceCancel),
 
-  getState: () => ipcRenderer.invoke("pi-desktop/voice/getState"),
+  getState: () => invoke(IPC.invoke.voiceGetState),
 
-  getDevices: () => ipcRenderer.invoke("pi-desktop/voice/getDevices"),
+  getDevices: () => invoke<unknown[]>(IPC.invoke.voiceGetDevices),
 
-  getModels: () => ipcRenderer.invoke("pi-desktop/voice/getModels"),
+  getModels: () => invoke<unknown[]>(IPC.invoke.voiceGetModels),
 
   downloadModel: (modelId: string) =>
-    ipcRenderer.invoke("pi-desktop/voice/downloadModel", { modelId }),
+    invoke(IPC.invoke.voiceDownloadModel, { modelId }),
 
   deleteModel: (modelId: string) =>
-    ipcRenderer.invoke("pi-desktop/voice/deleteModel", { modelId }),
+    invoke(IPC.invoke.voiceDeleteModel, { modelId }),
 
   updateSettings: (settings: Record<string, unknown>) =>
-    ipcRenderer.invoke("pi-desktop/voice/updateSettings", settings),
+    invoke(IPC.invoke.voiceUpdateSettings, settings),
 
   checkPermission: () =>
-    ipcRenderer.invoke("pi-desktop/voice/checkPermission"),
+    invoke<string>(IPC.invoke.voiceCheckPermission),
 
   requestPermission: () =>
-    ipcRenderer.invoke("pi-desktop/voice/requestPermission"),
+    invoke<boolean>(IPC.invoke.voiceRequestPermission),
 
   onStateChanged: (callback: (state: unknown) => void) => {
-    const handler = (_event: unknown, state: unknown) => callback(state);
-    ipcRenderer.on("pi-desktop/voice/event/stateChanged", handler);
-    return () => {
-      ipcRenderer.removeListener("pi-desktop/voice/event/stateChanged", handler);
-    };
+    const bridge = window.piDesktop;
+    if (!bridge) return () => {};
+    return bridge.on(IPC.event.voiceStateChanged, callback);
   },
 
   onModelProgress: (callback: (data: { modelId: string; progress: number }) => void) => {
-    const handler = (_event: unknown, data: { modelId: string; progress: number }) => callback(data);
-    ipcRenderer.on("pi-desktop/voice/event/modelProgress", handler);
-    return () => {
-      ipcRenderer.removeListener("pi-desktop/voice/event/modelProgress", handler);
-    };
+    const bridge = window.piDesktop;
+    if (!bridge) return () => {};
+    return bridge.on(IPC.event.voiceModelProgress, callback as (...args: unknown[]) => void);
   },
 };
