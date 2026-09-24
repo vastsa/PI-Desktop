@@ -205,6 +205,26 @@
   scrollbar-gutter: stable;
   /* Pinned-follow drives the scroll position; native anchoring fights it. */
   overflow-anchor: none;
+  /* Hide the transcript across the Composer reserve instead of covering it with
+   * an opaque dock band (issue #728, revised by D624). The gradient resolves
+   * against this scrollport's own box, so it stays anchored to the pane while
+   * the rows move through it. `- 16px` is exactly the trailing reserve
+   * `.thread-content` adds below the Composer's measured height, so a
+   * transcript pinned to its end keeps its last row fully opaque and only the
+   * rows crossing the boundary fade.
+   * The mask belongs here rather than on `.thread-wrap`: its other children -
+   * the minimap rail, the jump-to-latest button, the settle veil, and the
+   * navigation status - must stay fully painted. */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--composer-dock-height, 168px) - 16px),
+    transparent calc(100% - var(--composer-dock-height, 168px) + 2px)
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--composer-dock-height, 168px) - 16px),
+    transparent calc(100% - var(--composer-dock-height, 168px) + 2px)
+  );
 }
 
 /* Floats above the docked composer fade when the user scrolls away from latest */

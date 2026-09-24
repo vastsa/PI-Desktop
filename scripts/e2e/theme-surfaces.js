@@ -34,20 +34,25 @@ const surfaces = {
   kbd: [".prose-chat kbd", "--ds-prose-kbd-fg", "ink"],
   asktoolCard: [".composer-stack > .asktool-card", "--ds-bg-composer"],
   asktoolOption: [".asktool-option", "--ds-tile-deep"],
-  dockMask: [".composer-dock-docked", "--ds-bg-primary"],
+  // D624: the dock paints no backing band at all - the transcript masks its own
+  // paint out across the Composer reserve - so this surface is pinned to
+  // "paints nothing" instead of following a token.
+  dockMask: [".composer-dock-docked", null, "pinned"],
 };
 
 // Issue #360: the dock question card rides the composer plate and its option
-// rows are inlaid on it. Sampled the same way as the table above.
+// rows are inlaid on it. D624: the dock itself paints nothing (see `dockMask`),
+// so its built-in paint is pinned to fully transparent rather than to a token.
+// Sampled the same way as the table above.
 Object.assign(DEFAULT_RGBA.light, {
   asktoolCard: [255, 255, 255, 255],
   asktoolOption: [26, 26, 26, 20],
-  dockMask: [255, 255, 255, 255],
+  dockMask: [0, 0, 0, 0],
 });
 Object.assign(DEFAULT_RGBA.dark, {
   asktoolCard: [33, 33, 33, 245],
   asktoolOption: [255, 255, 255, 20],
-  dockMask: [24, 24, 24, 255],
+  dockMask: [0, 0, 0, 0],
 });
 const COMPOSER_SHADOW = "rgba(0, 0, 0, 0.04) 0px 3px 7.5px 0px, rgba(0, 0, 0, 0.05) 0px 0px 20px 0px";
 Object.assign(DEFAULT_SHADOWS.light, { asktoolCard: COMPOSER_SHADOW });
@@ -151,17 +156,38 @@ globalThis.themeSurfacesProbe = async (theme, custom) => {
     elevatedRgba: rgba(getComputedStyle(document.documentElement).getPropertyValue("--ds-bg-elevated-primary").trim()) };
 };
 
-// This mode still isolates the Composer occlusion regression from the keyboard
-// checks: the driver enables Chromium focus emulation for :focus-visible, and
-// this probe only needs the token-driven paint of the dock mask.
+// D624 replaced the opaque dock band with a mask on the transcript scrollport,
+// so this mode asserts the occlusion regression from both ends and needs
+// neither the theme-surface table nor the keyboard-focus checks: the dock must
+// paint nothing, and `.thread-scroll` must fade its content out across the
+// reserve `.thread-content` holds below the Composer's measured height.
 globalThis.themeDockMaskProbe = async (theme, custom) => {
-  const result = await globalThis.themeSurfacesProbe(theme, custom);
-  const dock = result.values.dockMask;
-  const expected = rgba(
-    getComputedStyle(document.documentElement).getPropertyValue("--ds-bg-primary").trim(),
-  );
   const failures = [];
-  if (String(dock.rgba) !== String(expected)) failures.push("dock mask ignores --ds-bg-primary");
-  if (dock.rgba[3] !== 255) failures.push("dock mask is not opaque");
-  return { ok: failures.length === 0, theme, custom, dock, expected, failures };
+  const root = document.documentElement;
+  const dock = sample(".composer-dock-docked");
+  if (dock.rgba[3] !== 0) failures.push("dock paints a backing band again");
+  const scroller = document.querySelector(".thread-scroll");
+  const previous = root.style.getPropertyValue("--composer-dock-height");
+  const masks = [];
+  for (const height of [120, 200]) {
+    root.style.setProperty("--composer-dock-height", `${height}px`);
+    await settle();
+    const style = getComputedStyle(scroller);
+    const image = style.maskImage !== "none" ? style.maskImage : style.webkitMaskImage;
+    // Stop positions are authored as `calc(100% - <height>px - 16px)`; read how
+    // far each one sits above the scrollport's bottom edge.
+    const offsets = [...image.matchAll(/calc\(100%((?:\s*[+-]\s*[\d.]+px)+)\)/g)].map((match) =>
+      -[...match[1].matchAll(/([+-])\s*([\d.]+)px/g)].reduce(
+        (total, [, sign, value]) => total + (sign === "-" ? -1 : 1) * Number(value),
+        0,
+      ),
+    );
+    masks.push({ height, image, offsets });
+    if (offsets.length !== 2) failures.push(`transcript mask is not a two-stop fade at ${height}px: ${image}`);
+    else if (String(offsets) !== String([height + 16, height - 2]))
+      failures.push(`transcript mask ignores --composer-dock-height at ${height}px: ${offsets}`);
+  }
+  if (previous) root.style.setProperty("--composer-dock-height", previous);
+  else root.style.removeProperty("--composer-dock-height");
+  return { ok: failures.length === 0, theme, custom, dock, masks, failures };
 };

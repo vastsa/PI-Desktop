@@ -12,14 +12,17 @@
 }
 
 /* Thread mode: floating bottom dock. The transcript reserves the composer's
- * measured height for scrolling, while this solid workspace-coloured band
- * clips transcript paint before it can remain visible below the shell. */
+ * measured height for scrolling and fades its own paint out across that
+ * reserve (see `.thread-scroll` in chat-shell.css), so the dock paints no
+ * backing at all. Painting an opaque `--ds-bg-primary` band here did clip that
+ * paint, but it also hid whatever a theme had drawn on the conversation pane
+ * behind it (issue #728, D603, revised by D624). */
 .composer-dock-docked {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
   padding: 0 24px 16px;
-  background: var(--ds-bg-primary);
+  background: transparent;
 }
 
 /* Home mode: the shell is owned by the bottom-reserved home composer region. */

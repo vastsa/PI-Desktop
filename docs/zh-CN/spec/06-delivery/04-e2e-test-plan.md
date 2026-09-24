@@ -3988,14 +3988,17 @@ eleven-tool-round desktop paths are verified by
 - **覆盖**：C、品质 / 浮动 Composer 与重试表面
 - **先决条件**：渲染器 CSS 为 `apps/desktop/src/styles` 下的生产源。
 - **步骤**：
-  1. 在两套内置主题和一套自定义主题中检查 `.composer-dock-docked` 的计算背景。
-  2. 滚动长会话，让一行正文经过悬浮 Composer 下方。
+  1. 用两个不同的 `--composer-dock-height` 值检查 `.composer-dock-docked` 的计算背景（应完全透明）与 `.thread-scroll` 的遮罩，覆盖两套内置主题与一套自定义主题。
+  2. 滚动长会话，让一行正文越过 Composer 边界。
   3. 检查 Composer 停靠栏样式中的 `.plan-approval-bar`。
   4. 检查记录样式中的 `.run-activity-error-popover.message-error`。
   5. 在实时会话中悬停或聚焦正在重试的活动行。
 - **预期**：
-  - 停靠区横跨整个宽度绘制不透明的 `--ds-bg-primary` 工作区表面；正文在
-    Composer 边界处消失，不会留在输入框下方或圆角外侧。
+  - 停靠区不绘制任何底衬。正文在 Composer 边界处经 `.thread-scroll` 的遮罩
+    淡出，不会留在输入框下方或圆角外侧；遮罩的两个色标分别位于滚动容器底边
+    之上 `--composer-dock-height + 16px` 与 `--composer-dock-height - 2px`，
+    因此滚到底时最后一行保持完全不透明，会话面板自己的表面（含主题铺的背景）
+    在停靠区后面保持可见。
   - Plan/Goal 审批条使用 `--ds-bg-composer` 加 `--ds-shadow-composer`，而不是正文流里的 `--ds-tile` 薄洗，因此在透明停靠栏上仍可读。
   - 重试 hover tooltip 把错误色混在 `--ds-bg-elevated-opaque` 上，记录正文不会透出。
   - 重试 tooltip 的高度被限制在尾部状态行上方的可用空间内，其余部分可滚动，

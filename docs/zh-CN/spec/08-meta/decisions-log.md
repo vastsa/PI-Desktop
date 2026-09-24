@@ -4973,3 +4973,27 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   的 Git-Bash `npx` 脚本。
 - 密钥仍不穿越（D018）。命令名保持裸名。见 ADR 0038 与
   `07-plugins/04-plugin-security.md`。
+
+## 2026-09-24 — 由正文自己遮挡，而不是停靠区画一条色带（D624，issue #728）
+
+- 为 issue #728 加在 `.composer-dock-docked` 上的不透明 `--ds-bg-primary`
+  色带确实挡住了正文漏到 Composer 下方，但它同时盖住了主题画在会话面板上的
+  东西：主题填充 `.main-pane` 或 `.thread-scroll`（主题工坊的 `main` /
+  `thread` 区域）时，聊天底部会出现一块内置工作区色的硬边矩形。这条色带不
+  属于任何主题区域，唯一可用的杠杆是 `--ds-bg-primary` 本身，而所有其它主
+  表面都跟着它走。
+- `.composer-dock-docked` 现在不绘制任何底衬，改由 `.thread-scroll` 用
+  `linear-gradient(to bottom, #000 calc(100% - var(--composer-dock-height)
+  - 16px), transparent calc(100% - var(--composer-dock-height) + 2px))`
+  遮掉自身内容。渐变按滚动容器自己的盒子解析，因此正文移动时它仍锚在面板
+  上；`- 16px` 正好是 `.thread-content` 在 Composer 实测高度之下留出的尾部
+  预留，所以滚到底时最后一行保持完全不透明，只有越过边界的行会淡出。
+- 遮罩挂在滚动容器而不是 `.thread-wrap`：缩略导航轨道、跳到最新按钮、骨架
+  遮罩和导航状态都是 `.thread-wrap` 的子节点，必须保持完全绘制。停靠区自己
+  堆叠的面板（`.asktool-card`、`.plan-approval-bar`、排队提示、输入胶囊）
+  本来就是不透明的，且是 `.thread-wrap` 的兄弟节点，因此不受影响。滚动条
+  最后 18px 由「被色带盖住」改为「淡出」。
+- 仅改渲染器 CSS 与主题表面回归用例。主题表面探针把停靠区固定为全透明，并
+  断言遮罩跟随 `--composer-dock-height`。滚动状态、协议、持久化、主题
+  schema、权限都没有变化。见 `04-ux/08-component-spec.md` 与
+  E2E-CHAT-opaque-floating-decision-and-retry-surfaces。
