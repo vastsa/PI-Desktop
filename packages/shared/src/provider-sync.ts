@@ -1,5 +1,5 @@
 /**
- * Which local providers may be copied to a remote host (D625). The renderer
+ * Which local providers may be copied to a remote host (D626). The renderer
  * offers exactly these, and Electron main re-checks the chosen ids with the
  * same rule before a key leaves the machine.
  */

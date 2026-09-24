@@ -1,5 +1,5 @@
 /**
- * The sidebar's remote section (D624): one group per paired host with its
+ * The sidebar's remote section (D625): one group per paired host with its
  * connection state, a new-session button, and the host's sessions. Rows are
  * rendered by the sidebar so they keep the same selection, status, and menu
  * behavior as local rows. The section only appears once a host is paired.

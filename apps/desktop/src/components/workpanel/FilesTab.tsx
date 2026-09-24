@@ -151,7 +151,7 @@ export function FilesTab() {
   const workspace = useAppStore((s) => s.workspace);
   const fileRequest = useAppStore((s) => s.workPanelFileRequest);
   // A remote session browses its host's workspace; the local project is not
-  // the tree its transcript refers to (D624).
+  // the tree its transcript refers to (D625).
   const remoteSessionId = useAppStore((s) => {
     const active = s.sessions.find((session) => session.id === s.activeSessionId);
     return isRemoteSession(active) ? active!.id : null;

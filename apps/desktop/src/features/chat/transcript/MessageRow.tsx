@@ -51,7 +51,7 @@ export const MessageRow = memo(function MessageRow({
   const isUser = message.role === "user";
   const isSessionMessage = Boolean(message.sessionMessage);
   const editableUserMessage = isUser && !isSessionMessage;
-  // A remote host has no edit, delete, or revision operation (D624).
+  // A remote host has no edit, delete, or revision operation (D625).
   const canEditHistory = useActiveSessionGate("canEditHistory");
   const historyEditable = editableUserMessage && canEditHistory;
   const workspaceRoot = useAppStore((s) => s.workspace?.path);
