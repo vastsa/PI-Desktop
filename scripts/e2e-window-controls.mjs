@@ -4,18 +4,20 @@
  * Platform CSS emulation is explicitly not native macOS/Linux qualification.
  */
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFile as nodeExecFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import { assertDesktopBuild, repositoryRoot, resolveElectronBinary } from "./e2e/boot.mjs";
 import { Host, resolveHostBinary } from "./e2e/host.mjs";
 
 const root = repositoryRoot();
 const { appDir } = assertDesktopBuild(root);
 const { electronBinary } = resolveElectronBinary(root);
+const execFile = promisify(nodeExecFile);
 const binary = resolveHostBinary();
 const temp = await mkdtemp(join(tmpdir(), "pi-window-controls-"));
 const port = Number(process.env.PI_DESKTOP_CHROME_CDP_PORT || 9347);
@@ -58,6 +60,25 @@ async function settle() {
     await new Promise(requestAnimationFrame);
   })()`);
 }
+async function hasInteractiveMacSession() {
+  if (process.platform !== "darwin") return true;
+  try {
+    const { stdout } = await execFile(
+      "/usr/bin/osascript",
+      [
+        "-l",
+        "JavaScript",
+        "-e",
+        'ObjC.import("AppKit"); var app=$.NSWorkspace.sharedWorkspace.frontmostApplication; console.log(app ? app.bundleIdentifier.js : "");',
+      ],
+      { timeout: 1000 },
+    );
+    return stdout.trim() !== "" && stdout.trim() !== "com.apple.loginwindow";
+  } catch {
+    return false;
+  }
+}
+
 async function click(selector, waitForPaint = true) {
   const point = await evaluate(`(() => {
     const el = document.querySelector(${JSON.stringify(selector)});
@@ -166,13 +187,21 @@ try {
   await checkControls("sidebar toggled with panel maximized");
   await click(".work-panel-maximize");
   await checkControls("panel restored");
-  await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'toggleFullScreen'})`);
-  await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'restoreMainWindow'}).then(s => s.ok && s.data.fullScreen)`), "native fullscreen");
-  await settle();
-  await checkControls("native fullscreen with panel open");
-  await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'toggleFullScreen'})`);
-  await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'restoreMainWindow'}).then(s => s.ok && !s.data.fullScreen)`), "leave native fullscreen");
-  await settle();
+  const runNativeFullscreen = await hasInteractiveMacSession();
+  if (runNativeFullscreen) {
+    // CDP can keep a macOS Electron page visible without making it the native
+    // key page. Bring it forward before exercising the native fullscreen path.
+    if (process.platform === "darwin") await send("Page.bringToFront");
+    await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'toggleFullScreen'})`);
+    await waitFor(() => evaluate(`document.documentElement.dataset.fullscreen === "true"`), "native fullscreen");
+    await settle();
+    await checkControls("native fullscreen with panel open");
+    await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'toggleFullScreen'})`);
+    await waitFor(() => evaluate(`document.documentElement.dataset.fullscreen === "false"`), "leave native fullscreen");
+    await settle();
+  } else {
+    console.log("SKIP native macOS fullscreen: no interactive Aqua session is available");
+  }
   if (process.platform !== "darwin") {
     await click(".window-control-btn:nth-child(2)");
     await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && s.data.maximized)`), "native window maximized");

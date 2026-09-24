@@ -14712,6 +14712,9 @@ the latest destination. These assertions measure work counts, not device FPS.
 
 - **Preconditions:** A built desktop and matching host-core binary; isolated
   profile and data directory with one local session; no real provider calls.
+  macOS native fullscreen additionally requires an interactive Aqua session;
+  locked or headless runners report that native-only step as skipped and must
+  run it on an interactive macOS runner before release.
 - **Steps:** Open the work panel from the titlebar, toggle the sidebar, maximize
   and restore the panel, maximize and restore the native window, close the panel,
   visit Settings and return, reopen the panel, minimize/restore the window, then
