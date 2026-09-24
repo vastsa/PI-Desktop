@@ -16,6 +16,7 @@ import {
   wsClientTransport,
   type ClientTransportFactory,
   type RacpClientState,
+  type SubscriptionClosedNotice,
 } from "@pi-desktop/racp";
 import { ErrorCodes, type RacpEventEnvelope } from "@pi-desktop/shared";
 import type { RemoteHostClient } from "./remote-host-connection.js";
@@ -99,18 +100,21 @@ export function createRacpRemoteHostClient(
   options: RacpRemoteHostClientOptions,
 ): RacpRemoteHostClient {
   const listeners = new Set<(envelope: RacpEventEnvelope) => void>();
+  const closedListeners = new Set<(notice: SubscriptionClosedNotice) => void>();
+  const fanOut = <T>(targets: Set<(value: T) => void>, value: T) => {
+    for (const listener of targets) {
+      try {
+        listener(value);
+      } catch (error) {
+        options.log?.("warn", "remote event listener threw", { error: String(error) });
+      }
+    }
+  };
   const racp = new RacpClient({
     transport: options.transport,
     client: options.clientInfo,
-    onEvent: (envelope) => {
-      for (const listener of listeners) {
-        try {
-          listener(envelope);
-        } catch (error) {
-          options.log?.("warn", "remote event listener threw", { error: String(error) });
-        }
-      }
-    },
+    onEvent: (envelope) => fanOut(listeners, envelope),
+    onSubscriptionClosed: (notice) => fanOut(closedListeners, notice),
     ...(options.requestTimeoutMs !== undefined ? { requestTimeoutMs: options.requestTimeoutMs } : {}),
     ...(options.reconnect ? { reconnect: options.reconnect } : {}),
     ...(options.log ? { log: options.log } : {}),
@@ -123,6 +127,13 @@ export function createRacpRemoteHostClient(
         listeners.delete(listener);
       };
     },
+    onSubscriptionClosed(listener) {
+      closedListeners.add(listener);
+      return () => {
+        closedListeners.delete(listener);
+      };
+    },
+    limits: () => racp.initialized?.limits,
   };
   return {
     client,
