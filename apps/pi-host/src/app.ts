@@ -16,6 +16,7 @@ import {
 import { DeviceTokenAuthenticator, RacpServer, bindRacpWebSocket, type RacpHostOperations, type WsBinding } from "@pi-desktop/racp";
 import { APP_VERSION, type AgentEventEnvelope } from "@pi-desktop/shared";
 
+import { startAdminSocket } from "./admin-socket.js";
 import type { PiHostConfig } from "./config.js";
 import { FileCredentialStore, loadOrCreateHostId } from "./credentials.js";
 import { createHostOperations } from "./host-operations.js";
@@ -254,6 +255,10 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
     await state.host?.dispose();
     throw error;
   }
+  const admin = await startAdminSocket({ dataDir: config.dataDir, getHost, log }).catch((error: unknown) => {
+    log("warn", "admin socket failed to start; provider import disabled", { error: String(error) });
+    return null;
+  });
   log("info", "pi-host ready", { hostId, host: binding.address.host, port: binding.address.port, version: APP_VERSION, terminal: Boolean(terminal) });
 
   return {
@@ -270,6 +275,7 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
       state.stopping = true;
       log("info", "pi-host stopping");
       server.close();
+      await admin?.close();
       await binding.close();
       await terminal?.closeAll();
       plans.dispose();

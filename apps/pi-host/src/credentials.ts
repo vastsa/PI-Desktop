@@ -18,7 +18,7 @@ async function readJson<T>(path: string): Promise<T | null> {
   }
 }
 
-async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
+export async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temp = `${path}.${process.pid}.tmp`;
   await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: FILE_MODE });

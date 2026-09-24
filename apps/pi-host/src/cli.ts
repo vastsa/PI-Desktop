@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs, resolveConfig } from "./config.js";
 import { startPiHost } from "./app.js";
+import { runProviderImport } from "./provider-import.js";
 
 /**
  * `pi-host [--data-dir <dir>] [--port <n>] [--pair] [--host-core <bin>] [--sidecar <entry>]`
@@ -11,6 +12,10 @@ import { startPiHost } from "./app.js";
  * Everything else is structured stderr.
  */
 async function main(): Promise<void> {
+  if (process.argv[2] === "provider-import") {
+    process.exitCode = await runProviderImport(process.argv.slice(3));
+    return;
+  }
   const args = parseArgs(process.argv.slice(2));
   if (args.help === true) {
     process.stdout.write(
@@ -26,6 +31,10 @@ async function main(): Promise<void> {
         "  --sidecar <path>          agent sidecar entry",
         "  --browse-root <dir>       folder-picker root (default home)",
         "  --log-level <level>       info | warn | error",
+        "",
+        "pi-host provider-import [--data-dir <dir>]",
+        "  read a provider import payload (JSON) from stdin and hand it to the",
+        "  running pi-host over its admin socket; prints PI_HOST_PROVIDERS {...}",
         "",
       ].join("\n"),
     );

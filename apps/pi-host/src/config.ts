@@ -81,8 +81,13 @@ export function parseArgs(argv: string[]): CliArgs {
   return args;
 }
 
+/** The data directory alone; admin subcommands need it without the binaries. */
+export function resolveDataDir(args: CliArgs, env: NodeJS.ProcessEnv = process.env): string {
+  return resolve(String(args["data-dir"] ?? env.PI_DESKTOP_DATA_DIR ?? join(homedir(), ".pi-desktop")));
+}
+
 export function resolveConfig(args: CliArgs, env: NodeJS.ProcessEnv = process.env): PiHostConfig {
-  const dataDir = resolve(String(args["data-dir"] ?? env.PI_DESKTOP_DATA_DIR ?? join(homedir(), ".pi-desktop")));
+  const dataDir = resolveDataDir(args, env);
   const port = Number(args.port ?? env.PI_HOST_PORT ?? DEFAULT_PORT);
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw Object.assign(new Error(`invalid port ${String(args.port ?? env.PI_HOST_PORT)}`), { errorCode: "INVALID_ARGUMENT" });
