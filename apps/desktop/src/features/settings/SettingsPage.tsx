@@ -548,7 +548,11 @@ export function SettingsPage() {
           )}
 
           {tab === "voice" && settings && (
-            <VoiceSettingsSection t={t} />
+            <VoiceSettingsSection
+              t={t}
+              settings={settings}
+              saveSettings={saveSettings}
+            />
           )}
 
           {tab === "shortcuts" && settings && (
