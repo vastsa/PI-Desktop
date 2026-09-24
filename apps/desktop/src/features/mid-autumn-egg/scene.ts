@@ -163,11 +163,12 @@ export function createMidAutumnEggScene(
   options: MidAutumnEggSceneOptions,
 ): MidAutumnEggScene {
   const canvas = options.canvas;
-  const context = canvas.getContext("2d");
-  if (!context) {
+  const maybeContext = canvas.getContext("2d");
+  if (!maybeContext) {
     options.onError?.(new Error("Mid-Autumn easter egg: no 2D canvas context"));
     return { start: () => {}, destroy: () => {} };
   }
+  const context: CanvasRenderingContext2D = maybeContext;
 
   const config: MidAutumnEggConfig = DEFAULT_MID_AUTUMN_EGG_CONFIG;
   const phases: MidAutumnEggPhases = createMidAutumnEggPhases(config);
