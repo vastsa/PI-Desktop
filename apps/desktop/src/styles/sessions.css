@@ -1109,3 +1109,60 @@
   outline: 1px dashed var(--ds-border-strong);
   outline-offset: -2px;
 }
+
+/* New remote session dialog (D624) reuses the rename dialog shell. */
+.remote-session-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.remote-session-dialog-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+
+.remote-session-dialog-path span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-session-dialog-list {
+  max-height: 280px;
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+  list-style: none;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+}
+
+.remote-session-dialog-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ds-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.remote-session-dialog-list button:hover:not(:disabled) {
+  background: var(--ds-raised);
+}
+
+.remote-session-dialog-empty {
+  padding: 8px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
