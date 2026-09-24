@@ -52,6 +52,8 @@ export type BuildImportPayloadInput = {
   providerIds: string[];
   setDefault: boolean;
   getSecret: (providerId: string) => Promise<string | undefined>;
+  /** This machine's default, kept on the host when its provider leads the list. */
+  localDefault?: { providerId?: string; modelId?: string };
 };
 
 /**
@@ -78,7 +80,12 @@ export async function buildImportPayload(input: BuildImportPayloadInput): Promis
     entries.push({ sourceId: id, input: createInputOf(provider, secret) });
   }
   const first = entries[0]!;
-  const modelId = first.input.models?.[0]?.id ?? byId.get(first.sourceId)?.defaultModelId;
+  const models = first.input.models ?? [];
+  const local = input.localDefault;
+  const modelId =
+    local?.providerId === first.sourceId && models.some((model) => model.id === local.modelId)
+      ? local.modelId
+      : (models[0]?.id ?? byId.get(first.sourceId)?.defaultModelId);
   return {
     version: 1,
     providers: entries,

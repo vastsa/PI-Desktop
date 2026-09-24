@@ -48,6 +48,17 @@ test("the payload carries the key and the first provider's model as default", as
   assert.deepEqual(payload.defaultModel, { sourceId: "p1", modelId: "gpt-x" });
 });
 
+test("the local default model is kept when its provider leads the list", async () => {
+  const providers = [provider({ models: [{ id: "gpt-x" }, { id: "gpt-y" }] })];
+  const build = (localDefault) =>
+    buildImportPayload({ providers, providerIds: ["p1"], setDefault: true, getSecret: async () => KEY, localDefault });
+  assert.deepEqual((await build({ providerId: "p1", modelId: "gpt-y" })).defaultModel, { sourceId: "p1", modelId: "gpt-y" });
+  assert.deepEqual((await build({ providerId: "p1", modelId: "gone" })).defaultModel, { sourceId: "p1", modelId: "gpt-x" });
+  assert.deepEqual((await build({ providerId: "other", modelId: "gpt-y" })).defaultModel, { sourceId: "p1", modelId: "gpt-x" });
+  const noDefault = await buildImportPayload({ providers, providerIds: ["p1"], setDefault: false, getSecret: async () => KEY });
+  assert.equal(noDefault.defaultModel, undefined);
+});
+
 test("the payload refuses ids the renderer should not have offered", async () => {
   const base = { providers: [provider({ ownerPluginId: "plug" })], setDefault: false, getSecret: async () => KEY };
   await assert.rejects(buildImportPayload({ ...base, providerIds: ["p1"] }), { errorCode: "INVALID_ARGUMENT" });
