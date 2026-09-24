@@ -223,3 +223,6 @@ details:
 The frozen protocol remains v9 and storage schema remains v10. Future changes
 must preserve the automated M6 scenarios E2E-104 through E2E-117 or update the
 relevant decision record before changing the contract.
+> D623 / ADR 0064 amends the inline automatic compaction trigger to 90% of
+> the derived hard budget. The hard limit remains the final provider-request
+> guard; no background compaction or storage/protocol change is introduced.

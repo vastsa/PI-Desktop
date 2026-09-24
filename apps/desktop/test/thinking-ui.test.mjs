@@ -108,6 +108,10 @@ test("Composer owns the mode and model controls", () => {
   // default thinking level instead of pinning the draft to its current value.
   assert.match(scheduledModelPickerSource, /activeSessionId: null/);
   assert.doesNotMatch(scheduledModelPickerSource, /useId\(/);
+  assert.match(
+    scheduledModelPickerSource,
+    /composerModelDisplayName\(provider, value\.modelId \?\? "", selected\.displayName\)/,
+  );
   assert.doesNotMatch(leftToolbar, /composer-thinking|thinking-chip/);
   assert.doesNotMatch(topbarSource, /ModelSelect|model-chip/);
   assert.doesNotMatch(topbarSource, /ct-mode|ct-mode-btn|configureActiveSession/);

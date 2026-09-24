@@ -394,10 +394,12 @@ function persistCurrentSidebar(getState: () => AppState): void {
 
 /** Append a freshly installed checkpoint, or replace a retried one by id. */
 function withCompactionMark(
-  marks: ContextCompactionMark[] | undefined,
-  mark: ContextCompactionMark,
-): ContextCompactionMark[] {
-  return [...(marks ?? []).filter((existing) => existing.id !== mark.id), mark];
+  marks: AppState["sessionCompactions"][string] | undefined,
+  mark: AppState["sessionCompactions"][string][number],
+): AppState["sessionCompactions"][string] {
+  const existing = marks?.find((m) => m.id === mark.id);
+  const merged = { ...mark, summary: mark.summary ?? existing?.summary };
+  return [...(marks ?? []).filter((m) => m.id !== mark.id), merged];
 }
 
 let storeAccess: StoreAccess | null = null;

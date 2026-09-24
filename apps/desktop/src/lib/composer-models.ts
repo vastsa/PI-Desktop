@@ -2,14 +2,19 @@ import {
   bindingSupportsImages,
   isImageGenerationModel,
   type ImageGenerationBindings,
-  modelIdsMatch,
   modelMatchesFilter,
+  modelWireIdsEqual,
   type ModelBinding,
   type ModelInfo,
   type ProviderPublic,
 } from "@pi-desktop/shared";
 
 type ConfiguredProvider = Pick<ProviderPublic, "id" | "models" | "defaultModelId">;
+
+/** UI identity is the complete wire id, not a catalog alias or a route suffix. */
+export function sameComposerModelId(left: string, right: string): boolean {
+  return modelWireIdsEqual(left, right);
+}
 
 function configuredModelIds(provider: ConfiguredProvider): string[] {
   const ids = (provider.models ?? [])
@@ -23,8 +28,9 @@ function configuredModelIds(provider: ConfiguredProvider): string[] {
 
 /**
  * Build the Composer model list from the models explicitly enabled in
- * provider settings. Discovery only enriches those configured rows; it does
- * not grant every discovered model access to the conversation picker.
+ * provider settings. Discovery only enriches an exact configured id; it does
+ * not grant every discovered model access to the conversation picker or lend
+ * another route's capabilities to this binding.
  */
 export function composerModelsForProvider(
   provider: ConfiguredProvider,
@@ -35,51 +41,38 @@ export function composerModelsForProvider(
     !isImageGenerationModel(imageGeneration, provider.id, modelId),
   ).map((modelId) => {
     const metadata = (discovered ?? []).find((model) =>
-      modelIdsMatch(model.modelId, modelId),
+      sameComposerModelId(model.modelId, modelId),
     );
-    const row: ModelInfo = metadata
-      ? { ...metadata, modelId, providerId: provider.id }
+    const displayName = metadata?.displayName?.trim() || modelId;
+    return metadata
+      ? { ...metadata, modelId, displayName, providerId: provider.id }
       : {
           modelId,
-          displayName: modelId,
+          displayName,
           providerId: provider.id,
           capabilities: ["text"],
           source: "user" as const,
         };
-    const displayName = composerModelDisplayName(provider, modelId, row.displayName);
-    return displayName === row.displayName ? row : { ...row, displayName };
   });
 }
 
-/**
- * Resolve the one visible model name used by the Composer.
- *
- * Bindings and discovery can use equivalent namespaced or regional IDs. Use
- * the same tolerant identity match for aliases so a refresh cannot briefly
- * fall back to the wire ID before the configured label is reapplied.
- */
+/** The Composer uses the configured alias, then published name, then wire id. */
 export function composerModelDisplayName(
-  provider: ConfiguredProvider,
+  provider: ConfiguredProvider | undefined,
   modelId: string,
   fallback?: string,
 ): string {
-  const alias = composerModelBinding(provider, modelId)?.alias?.trim();
+  const alias = provider ? composerModelBinding(provider, modelId)?.alias?.trim() : undefined;
   return alias || fallback?.trim() || modelId;
 }
 
-/**
- * The provider's configured binding for a model, matched the same tolerant way
- * as the display name so a namespaced or regional ID still finds its settings.
- */
+/** Find only the binding for this complete wire id. */
 export function composerModelBinding(
   provider: ConfiguredProvider,
   modelId: string,
 ): ModelBinding | undefined {
-  const normalizedModelId = modelId.trim().toLowerCase();
-  const bindings = provider.models ?? [];
-  return (
-    bindings.find((candidate) => candidate.id.trim().toLowerCase() === normalizedModelId) ??
-    bindings.find((candidate) => modelIdsMatch(candidate.id, modelId))
+  return (provider.models ?? []).find((candidate) =>
+    sameComposerModelId(candidate.id, modelId),
   );
 }
 
@@ -87,11 +80,8 @@ export function composerModelBinding(
 export type ComposerModelBadge = "reasoning" | "vision";
 
 /**
- * Capability markers for one configured model. The composer shows these so a
- * model can be chosen on capability rather than on name alone. Vision follows
- * the effective image input: the binding's Advanced "Image input" override
- * when set, the published capability otherwise, the same answer the transport
- * gate and the settings switch give (#214).
+ * Capability markers for one configured model. Vision follows the binding's
+ * image-input override when set, the published capability otherwise.
  */
 export function composerModelBadges(
   model: ModelInfo,
@@ -104,20 +94,18 @@ export function composerModelBadges(
   return badges;
 }
 
-/**
- * Match a composer model row against the picker query. Model id, display name,
- * published family and the owning provider name are all searchable, so
- * "sonnet", "anthropic" and "claude-3" all reach the same row.
- */
+/** Search the full id, configured alias, published name, family and provider. */
 export function composerModelMatchesQuery(
   model: ModelInfo,
   providerName: string,
   query: string,
+  alias?: string,
 ): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
   const haystacks = [
     model.modelId,
+    alias ?? "",
     model.displayName ?? "",
     model.family ?? "",
     providerName,

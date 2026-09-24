@@ -37,11 +37,12 @@ Two upstream facts forced the design:
 
 1. **Capability is declared data and gated by the resolved wire API.** The
    per-model opt-in is `ModelBinding.nativeWebSearch` (settings UI: a checkbox
-   in the model's advanced sheet, disabled unless the provider style is
+   in the model's advanced sheet, disabled unless its resolved search route is
    `responses`, `openai_codex_responses`, or `anthropic_messages`). models.dev
    publishes no hosted-tool capability, so there is no catalog default; absent
    means off. Runtime `resolveNativeWebSearch` keys on the final adapter API —
-   never vendor names, base URL hostnames, or model-id substrings.
+   never vendor names or model-id substrings. The official-route amendment
+   below resolves an opted-in request before this final wire gate.
 
 2. **Attachment and extraction live in pi-ai adapters**, delivered by
    extending `patches/@earendil-works__pi-ai@0.87.1.patch`:
@@ -111,3 +112,21 @@ Two upstream facts forced the design:
 - Search executes on the provider. There is no local fetch, no ask/allow
   prompt, and billing is the provider's. The model-level opt-in (default
   off) is the user consent surface.
+
+## 2026-09-24 amendment: one service entry for official search
+
+DeepSeek's saved Completions configuration cannot carry the hosted search
+tool available on its published Anthropic interface. Keep the existing
+per-model search opt-in and resolve the request
+through a shared published-route table instead. DeepSeek Completions requests
+use its same-origin Anthropic interface only when search is enabled; xAI and
+legacy OpenAI Completions use same-origin Responses. The existing adapters own
+request construction, search parsing, citations and history replay.
+
+Only exact official HTTPS origins and paths match; vendor/model labels do not.
+Unknown relays and explicit non-Completions protocols stay unchanged. Saved
+provider settings are never rewritten, so turning search off restores the
+original route. The model, registry, history restoration and delegation must
+all use the same effective API. No new engine, tool executor or persistence
+contract is introduced. Distinct vendor formats need their own tested adapter;
+a disabled control describes missing app integration, not vendor inability.

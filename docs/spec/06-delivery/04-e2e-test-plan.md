@@ -582,7 +582,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: App running; no provider configured; the models.dev snapshot ships with the build.
 - **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form with no stepper or Next/Back buttons. The first control is Service — a searchable menu (Choose a service, Custom endpoint, then a flat vendor list from models.dev including Xiaomi), not a native select, region grouping, or vendor-card grid. Open it, type to filter client-side, then choose **Custom endpoint**. Confirm Name and Base URL appear on one row with no helper paragraph under the URL (placeholder only), API Key and API format appear side by side on the next row (not behind Advanced), and that a focused field plus its 2px accent ring stays fully inside the dialog, including on a window narrower than 1040px. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, that its compact text tracks the published value instead of a coarser rounded one (a 1,050,000 window reads `1.05M`, never `1.1M`), and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm each numeric field has a five-chip preset ladder for common values, clicking a chip writes the value, hand editing remains possible, and a non-preset value leaves the ladder unselected. Confirm the label and optional hint sit above one compact grouped control and do not force the options onto a second row at normal dialog width; confirm all seven canonical levels are available, that published levels start selected for a known reasoning model, and that a non-reasoning or unknown row shows the same chips unselected with the manual-override hint; enable one level on that row and confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, then enable a thinking level if the endpoint supports it; confirm re-adding the same ID in different letter case is rejected as already added. 11) Save.
-- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms, does not mark loading until that window elapses, and a slow reply from an earlier keystroke never replaces a newer list; named add-path discovery waits for an API key, while an unsaved custom provider is probed with the typed base URL (and key, if any) before it exists. Preset ladders cover common context/output limits while preserving hand-edited values. Limit text renders through one shared compact formatter, so neighbouring published windows stay distinguishable (`1M` / `1.05M` / `1.1M`) and a compact limit never reads above its published value. Custom endpoint keeps API format beside the key and omits Base URL helper copy; named endpoints do not show format. Point the same custom form at an unreachable or unauthorized URL and confirm the left pane shows a classified error (not a raw JSON/HTML dump and not a second “no models” empty state); with cached rows from a later edit, the same error is a one-line banner above the list. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
+- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. Newly fetched or checked model rows stay collapsed until the user opens Advanced, so every selected model ID remains visible in the right pane after a multi-select. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms, does not mark loading until that window elapses, and a slow reply from an earlier keystroke never replaces a newer list; named add-path discovery waits for an API key, while an unsaved custom provider is probed with the typed base URL (and key, if any) before it exists. Preset ladders cover common context/output limits while preserving hand-edited values. Limit text renders through one shared compact formatter, so neighbouring published windows stay distinguishable (`1M` / `1.05M` / `1.1M`) and a compact limit never reads above its published value. Custom endpoint keeps API format beside the key and omits Base URL helper copy; named endpoints do not show format. Point the same custom form at an unreachable or unauthorized URL and confirm the left pane shows a classified error (not a raw JSON/HTML dump and not a second “no models” empty state); with cached rows from a later edit, the same error is a one-line banner above the list. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, `03-runtime/14-secrets-storage.md`, `04-ux/06-settings-ia.md`
 - **Acceptance**: B (multi-model provider configuration, save key)
 - **Milestone**: M2
@@ -1513,7 +1513,7 @@ identify the platform validation still needed.
   promoted rows are delivered in the order they were promoted, before any
   waiting row, without `AGENT_BUSY`: the first starts the turn and the rest join
   it as adjacent user messages, so the model answers once for the whole block.
-  remove, and its Send now button reads as already decided; promotion is
+  A promoted row locks move/edit and Send now, but permits removal; promotion is
   one-way. Move up/down swaps only waiting rows, never crosses the promoted
   block, and persists. Edit is refused with a visible message while the input
   is non-empty, and otherwise removes the row and returns its text plus its
@@ -1546,14 +1546,21 @@ identify the platform validation still needed.
 - **Preconditions**: Provider configured; session A is running a turn with at
   least one completed tool batch; three prompts are queued behind it.
   the first queued row. 3) Confirm the promoted block orders third → first, that
-  both rows lock their move/edit/remove actions, and that the remaining row is
+  both rows lock their move/edit actions, and that the remaining row is
   still editable. 4) Let the boundary pass and observe the transcript.
 - **Expected**: The first click is delivered first and the second second — the
   click order is the delivery order, not "last click wins" and not the original
   queue order. Both rows appear as adjacent user messages in one turn and the
   model answers once; the queue no longer lists either promoted row. Both
-  promoted rows show as already decided and cannot be edited, removed, or
-  reordered. The waiting row keeps its actions and is not delivered before
+  promoted rows show as waiting and cannot be edited or reordered. Removal
+  remains available until delivery. A refused or failed graceful stop reports
+  a message and leaves the row cancelable. If cancellation wins admission,
+  the input never executes; if delivery wins, cancellation reports that it
+  already started. The row disappears only after Host acknowledgement.
+  A stalled steering delivery does not block admission or cancellation of other
+  queued inputs. Failed durable removal after acceptance reports an error and
+  rejects cancellation; a subsequent drain retries cleanup without re-executing
+  the accepted input in the live Host. The waiting row keeps its actions and is not delivered before
   either promoted row.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` (§5.6),
   `04-ux/08-component-spec.md` (§11), ADR 0265
@@ -2249,7 +2256,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: App running on macOS; the harness can exercise English,
   Simplified Chinese, Traditional Chinese, Turkish, German, Spanish, French,
-  and Korean system locales.
+  Korean, and Brazilian Portuguese system locales.
 - **Steps**:
   1) Open Settings → General.
   2) In the Appearance card, open the Theme picker. Confirm System, Light, and
@@ -2258,13 +2265,16 @@ identify the platform validation still needed.
   3) Select Light and confirm the UI switches to light.
   4) In the Language row, open the searchable picker. Confirm Auto is pinned
      at the top with the detected native name and that English, 简体中文,
-     繁體中文, Türkçe, Deutsch, Español, Français, and 한국어 are listed by native name. With Simplified Chinese
-     selected as the OS locale, selecting Auto applies Simplified Chinese;
-     with Traditional Chinese selected, Auto applies Traditional Chinese.
+     繁體中文, Türkçe, Deutsch, Español, Français, 한국어, and Português (Brasil)
+     are listed by native name. With Simplified Chinese selected as the OS
+     locale, selecting Auto applies Simplified Chinese; with Traditional Chinese
+     selected, Auto applies Traditional Chinese; with Brazilian Portuguese
+     selected, Auto applies pt-BR.
   5) Select English, 简体中文, 繁體中文, Türkçe, Deutsch, Español, Français,
-     and 한국어 in turn and confirm shell chrome switches to each locale without
-     a reload. Confirm `zh-Hant` and `zh-HK` resolve to 繁體中文, `de-DE` to
-     Deutsch, `es-MX` to Español, `fr-CA` to Français, and `ko-KR` to 한국어.
+     한국어, and Português (Brasil) in turn and confirm shell chrome switches
+     to each locale without a reload. Confirm `zh-Hant` and `zh-HK` resolve to
+     繁體中文, `de-DE` to Deutsch, `es-MX` to Español, `fr-CA` to Français,
+     `ko-KR` to 한국어, and `pt`, `pt-BR`, `pt_BR`, and `pt-PT` to pt-BR.
   6) Type a native name or English name into the language search and confirm
      unmatched locales disappear. Type a theme name into the theme search and
      confirm unmatched options disappear.
@@ -2274,13 +2284,13 @@ identify the platform validation still needed.
   then any plugin themes after a divider. Auto resolves the OS locale through
   the main process (`app.getLocale()`), passes it safely through the sandboxed
   preload bridge, and reflects the detected native name inline in the menu;
-  zh-TW, Turkish, German, Spanish, French, and Korean are complete shell
-  catalogs, including release-note copy; switching options updates the live UI
-  without a reload.
+  zh-TW, Turkish, German, Spanish, French, Korean, and Brazilian Portuguese
+  are complete shell catalogs, including release-note copy; switching options
+  updates the live UI without a reload.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/02-i18n-english-first.md`
 - **Acceptance**: A (core shell), H (localization)
 - **Milestone**: M4
-- **Status**: Documented
+- **Status**: Partially automated in `scripts/e2e-settings-scroll.mjs` for pt-BR picker selection and live copy; the full locale list and OS Auto-resolution matrix remain documented.
 
 #### E2E-091a: Theme changes keep the Windows frameless background aligned
 
@@ -3451,7 +3461,11 @@ identify the platform validation still needed.
   a URL preview, and a completed Bash row. 3) Verify the header is a tablist:
   open enough tabs to overflow it, confirm only the strip scrolls and the `+`
   trigger stays visible, activate the scrolled-away tab, and close tabs with
-  hover/focus `×` and middle-click. 4) Click `+` twice and verify each click
+  hover/focus `×` and middle-click. Drag a tab across another tab and verify
+  the before/after drop indicator, resulting order, and unchanged active tab;
+  hold a drag at each strip edge until hidden tabs scroll into view, then verify
+  the indicator follows the newly visible targets. Repeat with
+  `Alt+ArrowLeft`/`Alt+ArrowRight`. 4) Click `+` twice and verify each click
   creates and activates a separate New launcher tab. Confirm the launcher body
   contains Review plus each in-scope plugin view exactly once as clickable rows;
   there is no work-panel dropdown or popup. Click Browser from one New tab and
@@ -3499,9 +3513,13 @@ identify the platform validation still needed.
   fixed `+`; labels stay readable instead of shrinking into one cluster, the
   strip alone scrolls, active tabs scroll into view, and close selects the
   right neighbor then left. New launcher tabs expose Review and in-scope plugin
-  views as body buttons, with no popup to overlap or shift the panel. Clicking a
-  launcher row replaces that New tab with the destination or activates its
-  existing singleton. Closing the last tab leaves the panel open on New. Collapse
+  views as body buttons, with no popup to overlap or shift the panel. Dragging a
+  tab shows a before/after insertion indicator, edge-holding scrolls the strip
+  toward hidden tabs, and reorders only the tab array; the active resource stays
+  active. `Alt+ArrowLeft`/`Alt+ArrowRight` provides the same reorder path from
+  the focused tab. Clicking a launcher row replaces
+  that New tab with the destination or activates its existing singleton.
+  Closing the last tab leaves the panel open on New. Collapse
   retains runtime tabs but hides the panel until another artifact reopens it.
   Width follows the shared three-column budget with no fixed pixel cap and
   previews its current/minimum/maximum values through the panel separator. The
@@ -3608,7 +3626,8 @@ identify the platform validation still needed.
 - **Steps**: 1) Activate the artifact, enter `localhost:<port>` without a scheme, and submit.
   2) Navigate site links; use back/forward/reload/stop. 3) Trigger a
   `window.open` popup and a permission-requesting page (e.g. notification
-  prompt). 4) Open global search, then Settings. Return to chat
+  prompt). 4) Open global search, then rename a session from the left sidebar;
+  close it and open Settings. Return to chat
   and trigger an inline tool permission card. 5) Switch to another panel tab
   and back; close the panel. 6) Use open-external.
 - **Expected**: Scheme-less input normalizes to http; nav state (URL bar,
@@ -3616,7 +3635,8 @@ identify the platform validation still needed.
   the default browser (never in-app) only when the URL parses as http(s) or
   mailto; `file:`, `javascript:`, and custom schemes are denied. Permission
   requests are denied; non-http(s) navigation is blocked except in-root
-  `file:` siblings. The preview hides under every blocking overlay and while
+  `file:` siblings. The preview hides for the whole lifetime of the rename
+  dialog and every other blocking overlay, and while
   unmounted, reappearing with correct bounds afterwards. An inline permission
   card does not hide or remount the preview; resize/drag keeps the native view
   visible and aligned with the placeholder rect without a black flash. Opening
@@ -4094,7 +4114,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   row read and confirm its session has no terminal sidebar mark, then
   close/reopen the popover and restart the app. 8) Select the other session
   from its terminal-marked sidebar row. 9) Generate a host fixture with 205
-  eligible terminal turns. 10) Use Mark all read, then Clear.
+  eligible terminal turns. 10) Use Mark all read, then Clear. 11) While a
+  native task banner and a renderer refresh are still in flight, deliver a
+  delayed `notification.changed` payload for a cleared/read durable id and a
+  duplicate payload for an id that is already present.
 - **Expected**: A's visible-current completion creates no row or terminal sidebar mark. Exactly two rows
   exist, newest first: the unfocused A completion and background B failure,
   with localized labels, snapshotted session titles, and B's stable code.
@@ -4107,7 +4130,11 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   preserves rows with zero unread. Selecting the other session clears its
   terminal sidebar mark and marks its task notification read; neither mark
   returns after refresh or restart. Clear empties only the inbox and leaves
-  sessions, turns, and transcripts intact.
+  sessions, turns, and transcripts intact. Clear/read also dismisses any
+  outstanding task-native object, a repeated durable id produces no second
+  banner or row, and a delayed pre-clear event cannot resurrect the cleared
+  item; a genuinely new post-clear turn still produces exactly one row and
+  banner.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
   `03-runtime/06-host-rpc-protocol.md`, `03-runtime/01-ipc-protocol.md`,
   `04-ux/07-ui-design-system.md`, `04-ux/08-component-spec.md`,
@@ -4129,7 +4156,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   Unfocus the app and abort a turn. 7) Repeat with native delivery suppressed
   by the OS. 8) On Windows, inspect the native notification attribution,
   notification-settings entry, taskbar group, installed executable, and Start
-  menu shortcut.
+  menu shortcut. 9) Deliver the same durable id twice, then mark it read and
+  clear the inbox while its native object is still pending in the OS.
 - **Expected**: Focused-current A creates neither inbox row, terminal sidebar mark, nor native banner.
   Focused-background B creates an inbox row without a native banner. Unfocused
   current A and the minimized failure each create one durable row and one
@@ -4139,7 +4167,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   currently selected session. Abort shows neither surface. OS suppression does
   not lose the durable row or surface a misleading app error. Every inspected
   Windows system surface identifies `PI-Desktop`; no stock Electron application
-  name or identity is exposed.
+  name or identity is exposed. Duplicate delivery is idempotent: one durable
+  id owns at most one live native object, and mark-read/clear closes that
+  object so a late activation or renderer event cannot show the old task again.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/07-ui-design-system.md`, `04-ux/09-interaction-patterns.md`,
   `08-meta/decisions-log.md` (D117/D141)
@@ -4400,8 +4430,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 #### E2E-067B: Shipped-locale update notes and full changelog dialog (D164/D345/D349)
 
 - **Preconditions**: The shipped `packages/shared` CHANGELOG contains aligned
-  `en`, `zh-CN`, `zh-TW`, and `ko` stable history; product language can be
-  switched.
+  `en`, `zh-CN`, `zh-TW`, `ko`, and `pt-BR` stable history; product language
+  can be switched.
   For the compact update path, use a packaged or fixture updater state with a
   catalogued `availableVersion`.
 - **Steps**: 1) With no available update, open Settings → Info and open Release
@@ -4409,9 +4439,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   and close behavior by close control, Escape, and backdrop. 3) Force or wait
   for update discovery so status is manual `available`, in-app `downloading`,
   or `downloaded`; inspect the ambient banner and Settings Updates row, then
-  reopen Release notes. 4) Switch UI language to zh-CN, then zh-TW, then ko and
-  re-inspect without invoking a new check. 5) Repeat the compact update path
-  with a version absent from the catalog.
+  reopen Release notes. 4) Switch UI language to zh-CN, then zh-TW, then ko,
+  then pt-BR and re-inspect without invoking a new check. 5) Repeat the compact
+  update path with a version absent from the catalog.
 - **Expected**: `UpdateState.releaseNotes` is plain multi-line product
   highlights selected by Main from the shipped-locale catalog — never a
   renderer-supplied URL. Both surfaces show a localized "What's new" block
@@ -4734,6 +4764,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Acceptance**: C (chat stream), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`transcript-style.test.mjs`); full UI scenario Draft
+
+- **Long-message regression**: Send a log longer than 65,536 characters as
+  message text, reopen the saved chat, then Edit and resend with a short
+  clarification. The editor and outgoing request must retain the final log
+  lines, without a display truncation marker. A failed full-history read must
+  show an error without opening a clipped editor; switching chats while the
+  read is pending, including A→B→A with the same retained message array, must
+  not open a stale editor or publish stale history. A fresh Edit after returning
+  must still load the complete text and resend successfully. Automated coverage also
+  preserves attachments and the typed slash-command seed.
 
 #### E2E-069: Platform-specific sidebar header behavior
 
@@ -7115,6 +7155,30 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Status**: Unit-covered (`model-capabilities.test.ts`, host-core attachment
   roundtrip); provider/UI journey Draft (run only in a capable environment when this surface changes)
 
+#### E2E-ATTACHMENTS-svg-file-fallback: SVG inputs are sent as files, not model images
+
+- **Preconditions**: A vision-capable model; an Agent session; one SVG file
+  (clipboard paste or native file picker) and one PNG.
+- **Steps**:
+  1. Paste or attach an SVG file into Composer alongside a PNG.
+  2. Send a prompt asking the model about both attachments.
+  3. Inspect the provider request body.
+  4. Reload the session and inspect restored attachments.
+- **Expected**:
+  - The SVG appears as a file chip, not an image chip. It is classified as
+    `kind: "file"` with `.svg` extension (even if the original had none).
+  - The PNG still appears as an image chip and is sent as a model image block.
+  - The provider request contains no `inlineData` for the SVG; it uses a safe
+    `@path` file reference.
+  - Legacy content-addressed SVG attachments from older sessions are restored
+    as files, not images; stale temporary image data is cleared.
+  - Non-SVG image attachments and vision capability detection are unaffected.
+- **Specs linked**: `03-runtime/svg-attachment-input.md`,
+  `03-runtime/01-ipc-protocol.md` §5.1, `04-ux/08-component-spec.md` §11.7
+- **Acceptance**: C (conversation & stream), F (persistence), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`svg-attachments.test.mjs`); Desktop E2E Draft
+
 #### E2E-102d: Non-vision and oversized images use the path fallback
 
 - **Preconditions**: One known non-vision model and one known vision-capable
@@ -9098,6 +9162,10 @@ This test plan spec is accepted when:
 - Click **Continue** and expect the app to append the localized continuation
   prompt (`Continue the user's unfinished task.` / `继续用户未完成的任务`) to the
   same session and start the next turn without truncating the failed turn.
+- Activate the localized **Dismiss** action. Expect the error card to disappear
+  from the current transcript view while its underlying error message and raw
+  diagnostic data remain unchanged; navigating away and back in the same app
+  runtime keeps the dismissal.
 
 
 ### US-UI-61 Assistant context summary + retry (D103, D184, D244, D347)
@@ -9155,6 +9223,9 @@ This test plan spec is accepted when:
 - Mark all read and Clear expose icon tooltips/accessible names, disabled and
   empty states remain understandable, and reduced-motion mode changes the
   popover instantly without suppressing focus or unread state.
+- While a task banner is pending, mark its row read and then clear the inbox;
+  inject a delayed duplicate event afterwards. The old row, sidebar mark, and
+  native banner stay dismissed, while a new post-clear task appears once.
 
 ### US-UI-66 Application update notice layout
 - In a conversation with the docked composer visible, exercise manual
@@ -9343,6 +9414,13 @@ This test plan spec is accepted when:
 - **Acceptance**: E (interactive tool output), C (inline card)
 - **Milestone**: M5
 - **Status**: Draft (unit coverage active; desktop journey pending)
+
+- **Request transition regression**: Keep a one-question request pending in chat
+  B. In chat A, advance a two-question request to question two, then select B.
+  B must show its first question with fresh answer state and a usable composer,
+  without rendering the application error screen. Also queue two requests in
+  one session: submit the first, answer the second differently, and verify both
+  resolutions contain their own request IDs and selected values.
 
 #### E2E-124: Window controls minimize to the taskbar and close to the chosen surface
 
@@ -10041,25 +10119,35 @@ This test plan spec is accepted when:
       node and the `TaskStop` row both read `stopped` (not `running`). End the
       turn and reload the session; confirm the card is not labelled working
       and does not keep ticking elapsed.
+  11. Inject synchronous `SubagentRun` initialization failure; confirm the
+      `Task` result is an error and `TaskList` has no permanently running row.
+  12. In a runtime fixture, make settled-row publication throw and confirm the
+      parent's idle auto-resume still returns the report. Stop a parent blocked
+      in auto-resume while a child ignores abort; confirm the parent ends and
+      reports idle without a timeout loop.
 - **Expected**: `Task` returns immediately with a `delegationId` and the parent
   keeps working; `TaskWait` converges with per-delegation reports and statuses;
-  `TaskList`/`TaskStop` drive the lifecycle; a `TaskStop` result and a finished
-  turn never leave a live “Subagent working” card; builtin `fixer` inherits the
-  selected session permission mode, so `auto` also covers explicit external
-  paths without a duplicate authorization prompt while `ask` and
-  `accept-edits` retain their approval boundaries; a global definition's
-  declared scope is dropped; the per-session running cap of 10 is enforced; no
-  delegate outlives its turn; reloaded transcripts keep their delegation
-  topology.
+  every terminal child state wakes the parent even if transcript publication
+  fails. A synchronous child initialization failure returns a tool error and
+  leaves no `running` delegation. User Stop/Dispose abort the parent wait as
+  well as delegates, and cancelled sessions do not remain `AGENT_BUSY` solely
+  because a child is still settling. `TaskList`/`TaskStop` drive the lifecycle;
+  a `TaskStop` result and a finished turn never leave a live “Subagent working”
+  card; builtin `fixer` inherits the selected session permission mode, so
+  `auto` also covers explicit external paths without a duplicate authorization
+  prompt while `ask` and `accept-edits` retain their approval boundaries; a
+  global definition's declared scope is dropped; the per-session running cap
+  of 10 is enforced; no delegate outlives its turn; reloaded transcripts keep
+  their delegation topology.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f/§5f.1/§7.1,
-  `03-runtime/03-tools-and-permissions.md` §10.2, `08-meta/decisions-log.md`
-  (D242 amends D231), ADR 0089 and ADR 0100
+  `03-runtime/03-tools-and-permissions.md` §10.2,
+  `08-meta/decisions-log.md` (D242 amends D231), ADR 0089 and ADR 0100
 - **Acceptance**: C (conversation), E (tools & permissions), F (persistence),
   Security, Quality
 - **Milestone**: M6+
-- **Status**: Draft (unit coverage in `packages/agent-runtime`
-  `runtime.test.ts` subagent suite and host-core `rpc/mod.rs` delegate-scope
-  tests; desktop journey pending)
+- **Status**: Unit coverage includes synchronous initialization failure,
+  completion-publication failure, and Stop during parent auto-resume in
+  `packages/agent-runtime/src/runtime.test.ts`; desktop journey pending
 
 #### E2E-162 / E2E-173: Delegate workflow scrolling
 
@@ -10852,32 +10940,46 @@ This test plan spec is accepted when:
 #### E2E-164: Context compaction preserves the active task boundary
 
 - **Preconditions**: A provider fixture can complete multiple sequential tasks,
-  trigger an automatic checkpoint at a terminal boundary, trigger an active-turn
-  checkpoint during a tool loop, and restart a session.
+  trigger inline automatic compaction at 90% of `hardLimit` (before the hard
+  boundary), exercise an active-turn checkpoint during a tool loop, and restart
+  a session.
 - **Steps**:
   1. Complete task A and task B in one session with distinct instructions and
      visible completion replies.
-  2. Trigger a checkpoint after a completed turn, then send task C and capture
-     the next provider request context.
-  3. Trigger compaction while task D still has tool results or `toolUse`
-     pending, and capture the next provider request.
-  4. Restart and reopen the session, then send another prompt.
-- **Expected**: A completed-turn checkpoint has an empty retained tail; the next
-  request contains its summary plus task C and no bare A/B prompts. An active
-  checkpoint retains exactly the latest active user prompt, with no older user
-  prompts or pre-boundary assistant/tool messages. Restart honors
-  `retainedTailMode`, and legacy multi-user tails normalize to the latest user
-  message. If automatic summary generation fails, the fallback retains a
-  bounded recent user tail even after a completed turn, and a later retry
-  removes only the synthetic recovery notice while preserving any carried
-  summary. The visible transcript remains complete and checkpoint rows remain.
+  2. Advance the context estimate to 91% of `hardLimit`, send task C, and capture
+     the first provider request; assert that compaction is installed first.
+  3. Trigger compaction during task D after tool results cross the 90% trigger
+     while remaining below the hard limit; capture the follow-up provider
+     request and confirm it uses the checkpoint.
+  4. Force summary plus retained-tail recovery to fail once below `hardLimit`
+     and once at/above it; the soft failure may proceed unchanged, while the
+     hard-boundary failure must not send the provider request.
+  5. Start an approved plan execution with the estimate at 91% of `hardLimit`;
+     capture the first request and confirm preflight compaction runs before
+     `continue()` while retaining the internal approved-plan instruction.
+  6. Restart and reopen the session, then send another prompt.
+- **Expected**: Automatic session compaction starts at
+   `floor(hardLimit * 0.9)` for prompt, approved-plan, and in-run turn
+   preflights; the estimate includes serialized messages, the active system
+   prompt, and tool schemas. A request is never issued at or above `hardLimit`.
+   A failed soft-trigger summary may proceed only while below the hard budget,
+   and hard-limit failure remains fail-closed. A completed-turn checkpoint has
+   an empty retained tail; the next request contains its summary plus task C
+   and no bare A/B prompts. An approved-plan checkpoint uses active-turn
+   retention so the instruction survives before `continue()`. An active
+   checkpoint retains exactly the latest active user prompt, with no older
+   user prompts or pre-boundary assistant/tool messages. Restart honors
+   `retainedTailMode`, and legacy multi-user tails normalize to the latest user
+   message. If automatic summary generation fails at the hard boundary, the
+   fallback retains a bounded recent user tail. The visible transcript remains
+   complete and checkpoint rows remain.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `03-runtime/04-data-storage.md`, `03-runtime/16-tool-result-limits.md`,
-  `08-meta/decisions-log.md` (D275), ADR 0136
+  `08-meta/decisions-log.md` (D623), ADR 0064, ADR 0136
 - **Acceptance**: C (chat/stream), F (persistence), Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`packages/agent-runtime/src/runtime.test.ts`,
-  `context-compaction.test.mjs`); provider/UI journey Draft
+- **Status**: Unit-covered (`packages/agent-runtime/src/context-budget.test.ts`,
+  `runtime.test.ts`, `subagent-context.test.ts`); provider/UI journey Draft
 
 #### E2E-165: A2A and Peer tools are withdrawn
 
@@ -14921,3 +15023,26 @@ renderer's durable transcript reads. No real model or provider is contacted.
 `node --test apps/desktop/test/plugin-timeout-budgets.test.mjs`,
 `pnpm --filter @pi-desktop/shared test`, and
 `pnpm --filter @pi-desktop/host-runtime test`.
+
+## E2E-PROVIDER-endpoint-guidance-and-search
+
+- **Preconditions:** Isolated Electron/Chromium, production provider form,
+  synthetic provider responses; no live keys or services.
+- **Steps:** Open an existing DeepSeek, xAI and legacy OpenAI Completions entry.
+  Check search directly, cancel, reopen, check and save, reopen, uncheck and save.
+  Apply format advice on relay `/responses` and `/messages` operation URLs.
+- **Expected:** One service entry and one checkbox; no separate search preset or
+  interface-switch action. Save changes only the model opt-in, retaining URL,
+  format, name, key and other model settings; Cancel writes nothing. A selected
+  explicit format wins over hostname defaults. Relay advice preserves origin.
+- **Specs:** 03-runtime/12 endpoint guidance; 03-runtime/11 search setup guidance;
+  ADR 0297 official-route amendment.
+- **Acceptance:** English/Chinese interaction flows and the previous custom and
+  Codex account paths pass. Real adapter contracts verify opt-in request routes,
+  credentials and search tools. A DeepSeek conversation continues off/on/off,
+  retains prior text, and does not replay encrypted search blocks to Completions.
+- **Milestone:** Provider configuration maintenance.
+- **Status:** `pnpm test:e2e:provider-api-style` and
+  `official-native-search.test.ts`; shared route tests reject lookalike hosts,
+  unsafe URLs and unknown gateways. The UI fixture does not prove Host/SQLite
+  persistence or live provider availability.

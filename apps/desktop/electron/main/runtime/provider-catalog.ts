@@ -3,7 +3,6 @@ import {
   SESSION_THINKING_LEVELS,
   defaultCommandShellForPlatform,
   isCommandShellId,
-  modelIdsMatch,
   resolveBindingContextWindow,
   validateNetworkProxy,
   validateSpeechSettings,
@@ -74,7 +73,9 @@ export function createProviderCatalogRuntime({
     provider: Pick<RuntimeProvider, "models">,
     modelId: string,
   ): ModelBinding | undefined =>
-    provider.models?.find((binding) => modelIdsMatch(binding.id, modelId));
+    provider.models?.find((binding) =>
+      binding.id.trim().toLowerCase() === modelId.trim().toLowerCase(),
+    );
 
   const modelsDevModelFor = (provider: RuntimeProvider, modelId: string) =>
     modelsDevCatalog.findModel({

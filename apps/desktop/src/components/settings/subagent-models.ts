@@ -5,7 +5,7 @@
  * session). The sheet lists the same configured, runnable models as the
  * Composer rather than asking the user to type that string.
  */
-import { modelIdsMatch, type ProviderPublic } from "@pi-desktop/shared";
+import { modelWireIdsEqual as sameComposerModelId, type ProviderPublic } from "@pi-desktop/shared";
 import { defaultModelOptions } from "./default-model";
 
 export type SubagentModelChoice = {
@@ -79,7 +79,7 @@ export function subagentModelPinParts(
 export function pinMatchesChoice(pin: string, choice: SubagentModelChoice): boolean {
   const parts = subagentModelPinParts(pin);
   if (!parts) return false;
-  if (!modelIdsMatch(parts.modelId, choice.modelId)) return false;
+  if (!sameComposerModelId(parts.modelId, choice.modelId)) return false;
   if (parts.providerPart === choice.providerId) return true;
   const alias = providerAlias(parts.providerPart);
   if (!alias) return false;

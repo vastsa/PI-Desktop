@@ -78,6 +78,10 @@ const koLocaleSource = await readFile(
   new URL("../../../packages/i18n/src/locales/ko/index.ts", import.meta.url),
   "utf8",
 );
+const ptBRLocaleSource = await readFile(
+  new URL("../../../packages/i18n/src/locales/pt-BR/index.ts", import.meta.url),
+  "utf8",
+);
 const mainSource = await readFile(
   new URL("../src/main.tsx", import.meta.url),
   "utf8",

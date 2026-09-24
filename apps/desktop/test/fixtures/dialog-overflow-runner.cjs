@@ -68,12 +68,40 @@ app.whenReady().then(async () => {
     await evaluate('window.dialogFixture.show(' + JSON.stringify(kind) + ')');
     const m = await measure();
     check('audit ' + kind + ' long text stays bounded', m.contained && m.overflow <= 1 && m.closeContained && m.closeHit, m);
+    if (kind === 'rename') {
+      check('rename suppresses native preview while open', await evaluate('window.dialogFixture.isBlockingOverlayActive()'));
+    }
     const dismiss = kind === 'rename' ? '.session-rename-dialog-close'
       : ['instructions','memory','delete'].includes(kind) ? '.project-instructions-dialog-close'
       : kind === 'oauth' ? '.provider-dialog-actions button' : '.plugins-modal-actions button';
     await click(dismiss);
     check('audit ' + kind + ' dismissal remains operable', await evaluate('window.dialogFixture.closed && !document.querySelector("[role=dialog]")'));
+    if (kind === 'rename') {
+      check('rename releases native preview after close', await evaluate('!window.dialogFixture.isBlockingOverlayActive()'));
+    }
   }
+  win.setContentSize(1100, 620);
+  await evaluate('window.dialogFixture.show("models", { theme: "dark", locale: "zh-CN" })');
+  const modelRows = await evaluate(`(() => {
+    const list = document.querySelector('.provider-chosen-list');
+    const bounds = list.getBoundingClientRect();
+    const rows = [...list.querySelectorAll('.provider-chosen-row')];
+    return {
+      ids: rows.map(row => row.querySelector('.provider-chosen-row-id')?.textContent),
+      expanded: rows.filter(row => !row.querySelector('.provider-chosen-row-body')?.hidden).length,
+      allVisible: rows.every(row => {
+        const rect = row.querySelector('.provider-chosen-row-head').getBoundingClientRect();
+        return rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1;
+      }),
+    };
+  })()`);
+  check('chosen model names are visible before Advanced opens',
+    modelRows.ids.length === 4 && modelRows.ids.every(Boolean) && modelRows.expanded === 0 && modelRows.allVisible,
+    modelRows);
+  writeFileSync(join(process.env.PI_DIALOG_ARTIFACT_DIR, 'chosen-models-collapsed.png'), (await win.webContents.capturePage()).toPNG());
+  await click('.provider-chosen-advanced-toggle');
+  check('Advanced still expands one selected model on demand',
+    await evaluate(`document.querySelectorAll('.provider-chosen-row-body:not([hidden])').length === 1 && document.querySelector('.provider-chosen-advanced-toggle').getAttribute('aria-expanded') === 'true'`));
   writeFileSync(join(process.env.PI_DIALOG_ARTIFACT_DIR, 'results.json'), JSON.stringify(results, null, 2));
   const failed = results.filter(r => !r.ok).length;
   console.log('SUMMARY ' + (results.length-failed) + '/' + results.length + ' passed');

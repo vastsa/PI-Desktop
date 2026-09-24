@@ -76,13 +76,16 @@ protection at all.
 
 3. **Turn-boundary compaction for delegates.** `SubagentRun` wires
    `prepareNextTurnWithContext`. At a delegate turn boundary the run
-   re-estimates its own context; at or above `hardLimit` it compacts
-   synchronously before the next provider request, using the `prepareCompaction`
-   and `generateSummary` primitives `@earendil-works/pi-agent-core` 0.85.1
-   already exports. Retention follows the parent's rule (ADR 0136): a boundary
-   with pending tool results retains as an active turn, a completed turn
-   retains as a completed turn. There is no pre-computation and no second
-   threshold, matching ADR 0064 clause 1.
+   re-estimates its own context; automatic compaction starts at
+   `floor(hardLimit * 0.9)` (the shared threshold in ADR 0064) before the next
+   provider request. The hard limit remains a final guard: if compaction is
+   disabled or cannot reduce the context below budget, the next request is
+   rejected rather than sent over budget. Compaction uses the
+   `prepareCompaction` and `generateSummary` primitives
+   `@earendil-works/pi-agent-core` 0.85.1 already exports. Retention follows the
+   parent's rule (ADR 0136): a boundary with pending tool results retains as an
+   active turn, a completed turn retains as a completed turn. There is no
+   pre-computation.
 
 4. **Degradation before failure.** When a summary cannot be generated, or the
    compacted context still exceeds `hardLimit`, the run keeps the original task

@@ -468,3 +468,23 @@ The optional `catalogSource: "provider"` identifies the reviewed first-party
 StepFun Step 5 Preview supplement (ADR `stepfun-first-party-model-metadata`).
 It is additive metadata, not a new persisted model availability source;
 `source: bundled | discovered | user` and credential ownership are unchanged.
+
+### 接口格式引导与原生搜索
+
+每个提供商保留一个服务入口。开启模型的 `nativeWebSearch` 不改写服务地址、
+接口格式、名称、凭据引用或其他模型。界面与运行时共用 `nativeWebSearchTransport`：
+仅匹配已确认的官方 HTTPS 来源和路径，且用户开启搜索时，才在请求阶段选择已有适配器。
+DeepSeek 官方根地址或 `/v1` 通过 `/anthropic/v1/messages` 搜索；xAI 和旧 OpenAI
+Chat Completions 配置使用同源 Responses。关闭搜索后恢复原配置的请求方式。
+原有 Responses、Codex、Anthropic 及其他明确选择的协议不变。
+不依据厂商名或模型名跳转；中转站、自定义端口、其他路径、含凭据或查询片段的地址不匹配。
+
+不增加 DeepSeek 搜索预设、第二个服务、切换接口操作、迁移或 IPC 字段。
+其他尚未集成的搜索格式会说明应用未适配，不代表厂商官网或其他 API 不支持。
+部分官方搜索需要独立的协议适配，详见搜索服务核查记录。
+
+自定义服务粘贴 `/chat/completions`、`/responses` 或 `/messages` 完整请求地址时，
+可显式应用格式建议并移除请求后缀，服务来源不变。这不是联网能力验证；普通基础地址
+不触发猜测，无效及带凭据地址不给建议。OpenCode Go 对应 `/chat/completions` 后缀。
+已保存的明确格式优先于域名预设，服务备注保留，取消不写入草稿。
+#907 的完整探测和错误驱动自动切换仍是独立工作。

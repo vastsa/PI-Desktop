@@ -41,7 +41,9 @@ packages/i18n/src/locales/
 ├── tr/index.ts
 ├── de/index.ts
 ├── es/index.ts
-└── fr/index.ts
+├── fr/index.ts
+├── ko/index.ts
+└── pt-BR/index.ts
 ```
 
 英文目录是翻译目录的源类型。`packages/i18n` 中的注册表列出每个已发布语言（id、本地名称、英文名称）。自动化测试会校验每个已发布语言的目录键和插值变量。新增语言只需加一份目录和一行注册表；语言选择器读取该注册表。

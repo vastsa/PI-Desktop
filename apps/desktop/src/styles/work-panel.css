@@ -200,6 +200,7 @@
 }
 
 .work-panel-tab {
+  position: relative;
   display: inline-flex;
   min-width: 92px;
   max-width: 180px;
@@ -211,6 +212,35 @@
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.work-panel-tab.is-dragging {
+  opacity: 0.5;
+}
+
+.work-panel-tab.is-dragging .work-panel-tab-button {
+  cursor: grabbing;
+}
+
+.work-panel-tab.is-drop-before::before,
+.work-panel-tab.is-drop-after::after {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  z-index: 1;
+  width: 2px;
+  border-radius: var(--radius-round);
+  background: var(--ds-accent);
+  content: "";
+  pointer-events: none;
+}
+
+.work-panel-tab.is-drop-before::before {
+  left: -4px;
+}
+
+.work-panel-tab.is-drop-after::after {
+  right: -4px;
 }
 
 .work-panel-tab:hover,
@@ -227,6 +257,7 @@
   align-items: center;
   gap: 6px;
   padding: 0 2px 0 10px;
+  cursor: grab;
   color: inherit;
   text-align: left;
 }
@@ -276,6 +307,12 @@
 .work-panel-tab-close:hover {
   background: var(--ds-bg-active);
   color: var(--ds-text-primary);
+}
+
+:root[data-work-panel-tab-reordering="true"],
+:root[data-work-panel-tab-reordering="true"] * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 /* One button group with the viewport-fixed collapse toggle: the same control

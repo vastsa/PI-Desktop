@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [
+      "Native Suche direkt in bestehenden DeepSeek-, xAI- und OpenAI-Diensten aktivieren, ohne gespeicherte Verbindungen zu ändern.",
       "Unterstützung für GPT-6 Astra, Sol und Luna in den OpenAI- und ChatGPT/Codex-Modellkatalogen.",
     ],
   },

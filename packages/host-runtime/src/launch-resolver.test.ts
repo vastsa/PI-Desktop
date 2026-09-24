@@ -77,6 +77,34 @@ describe("createHeadlessLaunchResolver", () => {
     expect(calls.some((call) => call.method === "providers.getSecret")).toBe(true);
   });
 
+  it("uses only the full wire ID binding for a routed model, retaining its request ID", async () => {
+    const routedId = "proxy/model";
+    const row: HostProviderRecord = {
+      ...provider,
+      models: [
+        { id: "model", contextWindow: 16_000, contextWindowSource: "user", maxTokens: 2_048, thinkingLevels: ["off"], defaultThinkingLevel: "off" },
+        { id: " PROXY/MODEL ", contextWindow: 32_000, contextWindowSource: "user", maxTokens: 4_096, thinkingLevels: ["high"], defaultThinkingLevel: "high" },
+      ],
+    };
+    const { host } = hostWith([row], { p1: "sk-test" });
+    const resolver = createHeadlessLaunchResolver({ getHost: () => host, dataDir: "/data", log: () => undefined });
+    const routed = await resolver.resolve("s1", { providerId: "p1", modelId: routedId }, {});
+    expect(routed.modelId).toBe(routedId);
+    expect(routed.sidecarParams.provider.modelId).toBe(routedId);
+    expect(routed.sidecarParams.provider.modelConfig).toMatchObject({ name: routedId, contextWindow: 32_000, maxTokens: 4_096 });
+    expect(routed.sidecarParams.thinkingLevel).toBe("high");
+
+    const plain = await resolver.resolve("s1", { providerId: "p1", modelId: "model" }, {});
+    expect(plain.sidecarParams.provider.modelConfig).toMatchObject({ name: "model", contextWindow: 16_000, maxTokens: 2_048 });
+    expect(plain.sidecarParams.thinkingLevel).toBe("off");
+
+    row.models = [row.models![0]];
+    const unbound = await resolver.resolve("s1", { providerId: "p1", modelId: routedId }, {});
+    expect(unbound.sidecarParams.provider.modelConfig).toMatchObject({ name: routedId, contextWindow: 128_000, maxTokens: 8_192 });
+    expect(unbound.sidecarParams.thinkingLevel).toBe("off");
+    expect(unbound.sidecarParams.provider.modelId).toBe(routedId);
+  });
+
   it("forwards the opt-in infinite provider retry setting", async () => {
     const { host } = hostWith([provider], { p1: "sk-test" });
     const resolver = createHeadlessLaunchResolver({ getHost: () => host, dataDir: "/data", log: () => undefined });

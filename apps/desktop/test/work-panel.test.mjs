@@ -295,6 +295,22 @@ test("plus creates a blank page and launcher rows open tools in that page", () =
   assert.doesNotMatch(panelSource, /setMenuOpen|menuOpen|newTabMenuRef|createPortal/);
 });
 
+test("work panel tabs support pointer and keyboard reordering", () => {
+  assert.match(panelSource, /beginTabReorder/);
+  assert.match(panelSource, /data-work-panel-tab-id/);
+  assert.match(panelSource, /workPanelTabReorderShouldArm/);
+  assert.match(panelSource, /workPanelTabReorderInsertAfter/);
+  assert.match(panelSource, /workPanelTabReorderScrollDelta/);
+  assert.match(panelSource, /autoScrollFrame/);
+  assert.match(panelSource, /requestAnimationFrame\(tick\)/);
+  assert.match(panelSource, /data-work-panel-tab-reordering/);
+  assert.match(panelSource, /event\.altKey/);
+  assert.match(panelSource, /reorderWorkPanelTabs/);
+  assert.match(storeSource, /reorderWorkPanelTabs: \(sourceTabId, targetTabId, insertAfter\)/);
+  assert.match(storeSource, /reorderWorkPanelTabsState/);
+  assert.match(globalStyles, /\.work-panel-tab\.is-drop-before::before/);
+});
+
 test("work panel starts closed with no tabs and persists width only", () => {
   assert.match(storeSource, /workPanelOpen:\s*false/);
   assert.match(storeSource, /workPanelTabs:\s*\[\]/);

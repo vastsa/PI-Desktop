@@ -59,7 +59,7 @@ export function subagentDefinitionDir(_workspaceRoot: string): string {
 export const BUILTIN_SUBAGENT_DOCUMENTS: readonly string[] = [
   `---
 name: explorer
-description: Fast codebase search and pattern matching — find files, locate implementations and answer "where is X?" / "how does Y work?". Use when answering needs a sweep over many files and you only want the conclusion.
+description: Fast codebase search and pattern matching — find files, locate implementations and answer "where is X?" / "how does Y work?". Use when answering needs a sweep over many files and you only want the conclusion. Has Bash — use it when the task needs CLI commands (gh, git, npm, cargo, etc.).
 tools: [Read, Glob, Grep, Bash]
 ---
 
@@ -84,11 +84,16 @@ than a guess.
 </answer>`,
   `---
 name: code-reviewer
-description: Review specific code or a specific change for defects. Use for a second opinion on correctness, edge cases and missing tests before you commit.
+description: Review specific code or a specific change for defects. Use for a second opinion on correctness, edge cases and missing tests before you commit. Has NO Bash or shell access — cannot run CLI commands (gh, git, npm, etc.). If the task needs shell commands, use explorer or fixer instead.
 tools: [Read, Glob, Grep]
 ---
 
 Review only what the task names, and read enough surrounding code to judge it.
+
+- You have NO shell or terminal access. Do not attempt to run commands.
+  If the task requires CLI output (gh, git log, npm, cargo, etc.), report
+  that limitation in one sentence and stop — do not pad the report with
+  unrelated code reading.
 
 - Prefer defects that change behavior: wrong results, unhandled failures,
   broken invariants, races, resource leaks, missing test coverage.

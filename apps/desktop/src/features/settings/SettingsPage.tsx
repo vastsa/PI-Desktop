@@ -509,6 +509,28 @@ export function SettingsPage() {
                     <span className="settings-toggle-thumb" />
                   </button>
                 </SettingsRow>
+                <SettingsRow
+                  title={t("settings.smoothStreaming")}
+                  description={t("settings.smoothStreamingDesc")}
+                >
+                  <button
+                    type="button"
+                    className={cx(
+                      "settings-toggle",
+                      settings.smoothStreaming !== false && "on",
+                    )}
+                    role="switch"
+                    aria-checked={settings.smoothStreaming !== false}
+                    aria-label={t("settings.smoothStreaming")}
+                    onClick={() =>
+                      void saveSettings({
+                        smoothStreaming: !(settings.smoothStreaming !== false),
+                      })
+                    }
+                  >
+                    <span className="settings-toggle-thumb" />
+                  </button>
+                </SettingsRow>
                 <LargePasteThresholdRow
                   settings={settings}
                   saveSettings={saveSettings}

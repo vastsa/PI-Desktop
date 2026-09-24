@@ -383,15 +383,16 @@ entries. The desktop runtime owns when they run and how the result crosses the
 Rust storage boundary; OpenCode DCP is an AGPL-3.0 behavioral reference only,
 not a linked or copied dependency.
 
-Compaction follows Codex's mechanism (ADR 0064): it always happens inline at a
-turn boundary, the model can request it through `new_context`, every compaction
-adds a transcript row and raises one warning toast, and there is no
-pre-computation anywhere.
+Compaction follows Codex's mechanism (ADR 0064, amended by D623): it remains
+inline at turn boundaries, and the model can request it through `new_context`.
+Automatic compaction starts at 90% of the derived `hardLimit`; there is no
+background pre-computation.
 
 pi 0.84.4+ invokes `prepareNextTurn` only when the loop will start another
 assistant turn in the same run — including between a completed tool batch and
-the follow-up model request. A new user prompt still compacts before its first
-provider request through `automaticCompactionNeeded` in `prompt()`.
+the follow-up model request. A new user prompt is checked before its first
+provider request through `automaticCompactionNeeded` in `prompt()`, including
+the pending user message.
 
 For every pi loop turn:
 
@@ -399,22 +400,22 @@ For every pi loop turn:
    results for that turn are complete
 2. PI-Desktop rebuilds the context from the full transcript plus the newest
    valid checkpoint and estimates the next request budget
-3. below the hard boundary, and with no pending model request, the next turn
-   proceeds unchanged
-4. at or above the hard boundary, or when the model called `new_context`,
+3. below 90% of `hardLimit`, and with no pending model request, the next turn
+   proceeds unchanged (a budget reminder may be added to that request)
+4. at or above the 90% trigger, or when the model called `new_context`,
    compaction runs synchronously before the next provider request. In the
    summary family, generation is mandatory; the runtime preflights the summary
    input against the model window, reduces it once, and then splits a range that
    still does not fit into chunks that each do, so a prompt too large for one
    request is summarized by several (ADR 0302). An automatic summary failure
-   first attempts a deterministic retained-tail checkpoint, while manual
-   compaction still reports `CONTEXT_COMPACTION_FAILED`
+   first attempts a deterministic retained-tail checkpoint. If a soft-trigger
+   compaction fails but the request remains below `hardLimit`, the unchanged
+   context may proceed; once the hard boundary is reached, failure is terminal.
 5. successful generation or deterministic recovery first appends the
    checkpoint through host-core, then installs its summary plus the applicable
-   retained tail as the runtime context for the next provider request; a
-   hard-boundary checkpoint is re-estimated before it is persisted and again
-   before continuation, and cannot authorize the next request unless it is
-   below the hard budget
+   retained tail as the runtime context for the next provider request; every
+   checkpoint is re-estimated before persistence and continuation, and cannot
+   authorize a request at or above the hard budget
 
 Checkpoint generation and installation are separate operations.
 `buildCheckpoint` runs the preparation, budget preflight, and summary request
@@ -498,29 +499,37 @@ installed: one when the remaining budget falls to
 one at 2,000 tokens remaining, telling it to write down whatever must survive.
 Neither reminder is persisted or shown in the transcript.
 
-The hard boundary is the model context window minus request headroom.
-Headroom is the maximum of a 16,384-token reserve floor, model maximum output
-capped at 25% of the context window, and a 5% safety margin. The reserve floor
-is itself capped at half the window. The cut-point target passed to pi is
-derived from the model window as 20% of the hard budget clamped to
+The hard boundary is the model context window minus request headroom. Automatic
+compaction starts at 90% of `hardLimit`; this deterministic margin is not
+configurable. Headroom is the maximum of a 16,384-token reserve floor, model
+maximum output capped at 25% of the context window, and a 5% safety margin. The
+reserve floor is itself capped at half the window. The cut-point target passed
+to pi is derived from the model window as 20% of the hard budget clamped to
 8,000–64,000 tokens, then capped at half the hard budget; it decides where the
-boundary falls, not what survives it. The active-user retention limit is 20,000
-tokens, capped at half the hard budget so retention alone cannot fill a small
-window and leave the summary no room. A fallback's window is capped by 25% of
-the hard budget and by the room the carried-forward summary and the recovery
-notice leave, so recovery cannot install a checkpoint the guard rejects. None of
-these values are configurable.
+boundary falls, not what survives it. The active-user retention limit is
+20,000 tokens, capped at half the hard budget so retention alone cannot fill a
+small window and leave the summary no room. A fallback's window is capped by
+25% of the hard budget and by the room the carried-forward summary and the
+recovery notice leave, so recovery cannot install a checkpoint the guard
+rejects. None of these values are configurable.
 
 **Estimate calibration (D606).** Every threshold above is compared against one
-number, and that number is corrected against what requests actually cost. pi's
-`estimateContextTokens` anchors on the last assistant usage and estimates
-everything after it as `chars / 4`: that constant under-counts CJK text, and
-with no anchor left it omits the system prompt and the tool schemas, which the
-next request still pays for. The two errors are measured and applied
-separately — the per-character bias as a scale-free ratio over the guessed
-tail, and an unanchored residual as a ratio only for observations taken at a
-comparable scale (0.5×–2× of the estimate), otherwise as the observed overhead
-capped at 32,000 tokens.
+number, corrected against observed request usage. pi's `estimateContextTokens`
+anchors on the last assistant usage and estimates everything after it as
+`chars / 4`: that constant under-counts CJK text, and with no anchor left it
+omits system/tool overhead. The budget also computes the output-cap estimator
+over non-system conversation messages plus the current system prompt and active
+tool schemas. System-transcript rows are metadata snapshots of that same prompt
+and are excluded from this component, so the request estimate counts the prompt
+and schemas exactly once. The budget uses the larger of this full-request
+estimate and the calibrated message estimate. This is a hard floor before the
+first calibration sample and prevents counting overhead twice after an
+unanchored residual has learned it.
+
+The calibration still measures the two errors separately — per-character bias
+as a scale-free ratio over the guessed tail, and an unanchored residual as a
+ratio only for observations taken at a comparable scale (0.5×–2× of the
+message estimate), otherwise as the observed overhead capped at 32,000 tokens.
 
 The correction is asymmetric because this number gates compaction: upward
 applies once three observations exist, downward needs three agreeing samples,
@@ -925,20 +934,23 @@ duration only covers starting the background work.
 duration-timeout a delegate. `idle-timeout` / `max-duration` frontmatter still
 parses so old documents load, but those values are not armed. A delegate runs
 until it finishes, fails, is `TaskStop`'d, or the user Stops / the runtime is
-disposed. The parent agent judges whether to
-cancel via `TaskStop`; a one-line heartbeat (who, status, elapsed, turns, last
-tool) is what it has to go on while the delegate is running.
+disposed. The parent agent judges whether to cancel via `TaskStop`; a one-line
+heartbeat (who, status, elapsed, turns, last tool) is what it has to go on while
+the delegate is running.
 
 When the parent stops calling tools while delegates are still running, the
 runtime swallows that `agent_end`, keeps the durable turn open, waits for the
-delegates, and prompts the parent with their reports. Ending the parent loop
-does not abort them.
+delegates, and prompts the parent with their reports. Every terminal result
+resolves the parent wait before best-effort transcript publication; a failed
+`SubagentRun` initialization returns a tool error and never leaves a running
+record. User Stop and runtime disposal also abort the parent wait signal, so
+they can end the parent turn even if a delegate ignores its abort. Ending the
+parent loop does not otherwise abort delegates.
 
 Fatal provider/stream errors (including exhausted HTTP 429) and parent aborts
 retain their existing `failed` and `aborted` outcomes. A terminal parent error
-also aborts leftover delegates,
-skips the resume prompt, and returns the session to idle so Continue is not
-`AGENT_BUSY` (D352).
+also aborts leftover delegates, skips the resume prompt, and returns the
+session to idle so Continue is not `AGENT_BUSY` (D352).
 
 **Resumable delegations (ADR 0279).** `Task` accepts an optional `resume`
 parameter carrying the `delegationId` of a settled delegation in the same
@@ -1046,28 +1058,26 @@ track the effective alternative, including after settlement and reload. If all
 alternatives fail, the result remains `failed` with the final provider error.
 See [ADR subagent-model-fallback](../../adr/subagent-model-fallback.md).
 
-**Context budget and compaction (ADR 0299).** A delegate has the same
+**Context budget and compaction (ADR 0299, D623).** A delegate has the same
 window protection the session has, derived the same way. The budget comes
 from the model the run actually resolved — a `Task.model` override, a
 definition pin, or the inherited session model — through the shared
 derivation of §5.1, so `hardLimit` is that window minus the same request
 headroom and a per-definition `maxTokens` cap participates as the output
-budget. At a delegate turn boundary the run re-estimates its own context and,
-at or above `hardLimit`, compacts synchronously before the next provider
-request, with the retention mode chosen from the same lifecycle rule as the
-session: a boundary that still has pending tool results retains as an active
-turn, a completed one as a completed turn. There is no pre-computation and no
-second threshold.
+budget. At a delegate turn boundary the run re-estimates its own context and
+starts compaction at `floor(hardLimit * 0.9)`, before the next provider
+request. A compaction result must still fit below `hardLimit`; that remains
+the non-negotiable provider-request guard. The retention mode follows the
+same lifecycle rule as the session, and there is no pre-computation.
 
-When a summary cannot be generated, or the compacted context still exceeds
-the budget, the run degrades: it keeps the original task brief plus the most
-recent message(s), discards the rest of its history, continues, and records
-that it was degraded, so the report and the lifecycle details say the
-delegate lost history rather than presenting a complete answer. When even
-that does not fit, the run fails with `SUBAGENT_CONTEXT_OVERFLOW`
-(not retriable) naming what the parent can change — narrow the task,
-delegate to a model with a larger window, read less at once — instead of
-forwarding the provider's overflow text.
+When a summary cannot be generated or installed below the hard limit, the run
+degrades: it keeps the original task brief plus the most recent message(s),
+discards the rest of its history, continues, and records that it was degraded,
+so the report and lifecycle details say the delegate lost history rather than
+presenting a complete answer. When even that does not fit, the run fails with
+`SUBAGENT_CONTEXT_OVERFLOW` (not retriable) naming what the parent can change —
+narrow the task, delegate to a model with a larger window, read less at once —
+instead of forwarding the provider's overflow text.
 
 An ordered alternative (**Ordered model fallback**, above) is re-evaluated
 against its own window before it is attempted: an alternative whose budget

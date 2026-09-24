@@ -21,6 +21,7 @@ describe("changelog catalog", () => {
       CHANGELOG.es,
       CHANGELOG.fr,
       CHANGELOG.ko,
+      CHANGELOG["pt-BR"],
     ]) {
       expect(catalog.map((e) => e.version)).toEqual(en.map((e) => e.version));
       for (let i = 0; i < en.length; i += 1) {
@@ -133,6 +134,9 @@ describe("changelog catalog", () => {
   expect(resolveChangelogLocale("fr-CA")).toBe("fr");
   expect(resolveChangelogLocale("ko-KR")).toBe("ko");
   expect(resolveChangelogLocale("ko_KR")).toBe("ko");
+  expect(resolveChangelogLocale("pt")).toBe("pt-BR");
+  expect(resolveChangelogLocale("pt-BR")).toBe("pt-BR");
+  expect(resolveChangelogLocale("pt_BR")).toBe("pt-BR");
     expect(resolveChangelogLocale("en-US")).toBe("en");
     expect(resolveChangelogLocale()).toBe("en");
   });

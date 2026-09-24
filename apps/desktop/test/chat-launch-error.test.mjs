@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { register } from "node:module";
 import test from "node:test";
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 
-import {
+const {
   messageHasTranscriptContent,
   vendorAccountOmitsSessionModel,
-} from "../src/lib/chat-launch-error.ts";
+} = await import("../src/lib/chat-launch-error.ts");
 
 const oauth = (models) => [{ id: "chatgpt", authKind: "oauth", models }];
 
@@ -35,9 +37,15 @@ test("an empty vendor chat names a model the account did not return", () => {
   );
   assert.equal(
     vendorAccountOmitsSessionModel(session, oauth([{ id: "openai/gpt-6-luna" }])),
-    false,
+    true,
   );
   assert.equal(vendorAccountOmitsSessionModel(session, oauth([])), false);
+  assert.equal(vendorAccountOmitsSessionModel(
+    { providerId: "chatgpt", modelId: "model" }, oauth([{ id: "generic/model" }]),
+  ), true);
+  assert.equal(vendorAccountOmitsSessionModel(
+    { providerId: "chatgpt", modelId: "GENERIC/MODEL" }, oauth([{ id: "generic/model" }]),
+  ), false);
   assert.equal(
     vendorAccountOmitsSessionModel(session, [
       { id: "chatgpt", authKind: "api_key", models: [{ id: "gpt-5.6-luna" }] },

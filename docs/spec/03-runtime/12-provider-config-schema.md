@@ -648,3 +648,31 @@ The optional `catalogSource: "provider"` identifies the reviewed first-party
 StepFun Step 5 Preview supplement (ADR `stepfun-first-party-model-metadata`).
 It is additive metadata, not a new persisted model availability source;
 `source: bundled | discovered | user` and credential ownership are unchanged.
+
+### Endpoint format guidance and native search
+
+A provider keeps one saved service entry. Enabling `ModelBinding.nativeWebSearch`
+does not rewrite its URL, API style, name, credential reference, or other models.
+The UI and runtime share `nativeWebSearchTransport`: for exact published HTTPS
+origins and paths, an opted-in Chat Completions request uses an existing search
+adapter. DeepSeek (`api.deepseek.com`, root or `/v1`) uses `/anthropic/v1/messages`;
+xAI and OpenAI (`api.x.ai/v1`, `api.openai.com/v1`) use Responses at the same
+origin. Turning search off uses the original configured transport again.
+Existing Responses, Codex, Anthropic and explicitly selected other protocols
+retain their behavior. Vendor/model names never cause routing; proxies, custom
+ports, unrelated paths, userinfo, queries and fragments do not match.
+
+No extra DeepSeek preset, search service, interface-switch action, migration or
+new IPC field is introduced. Unknown connection formats stay unavailable in
+this app; that is not a claim about a vendor website or other API. Some official
+search APIs require distinct adapters; see the native search provider audit.
+
+For custom endpoints, an explicit `/chat/completions`, `/responses`, or
+`/messages` URL can suggest the matching format. Applying that suggestion only
+changes the draft format and strips the operation suffix, preserving the
+origin. It is not a successful connection/capability probe. A plain base URL
+does not prove the protocol. Invalid/credential-bearing URLs give no advice.
+OpenCode Go normalizes `/chat/completions`, not `/responses`. Saved explicit
+formats take precedence over hostname presets; service names survive edits.
+Cancel does not persist draft changes. Full probing and automatic error-driven
+fallback from #907 remain separate work.

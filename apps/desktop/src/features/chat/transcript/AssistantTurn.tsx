@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import type {
   AgentActivity,
   ContextCompactionMark,
+  UiMessage,
 } from "@pi-desktop/shared";
 import { formatCompactTokenCount } from "@pi-desktop/shared";
 import {
@@ -40,6 +41,7 @@ import {
   AssistantErrorMessage,
   CopyButton,
   MessageMeta,
+  MessageTimestamp,
 } from "./shared";
 import { activityItemsEqual, ActivityGroup } from "./ActivityGroup";
 import { GeneratedImages } from "./GeneratedImages";
@@ -49,6 +51,7 @@ import {
   useChatTextActions,
   useTranscriptMenu,
 } from "./TranscriptMenu";
+import { useSmoothText } from "../../../hooks/useSmoothText";
 import { TurnProcess } from "./TurnProcess";
 
 type AssistantTurnProps = {
@@ -220,6 +223,47 @@ export const TranscriptTail = memo(function TranscriptTail({
   transcriptEntryEqual(previous.entry, next.entry)
 );
 
+/** Message bubble that optionally applies smooth text release. */
+const SmoothMessageBubble = memo(function SmoothMessageBubble({
+  message,
+  streaming,
+}: {
+  message: UiMessage;
+  streaming: boolean;
+}) {
+  const smoothStreaming = useAppStore(
+    (s) => s.settings?.smoothStreaming !== false,
+  );
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const enabled = smoothStreaming && !prefersReducedMotion;
+  const displayContent = useSmoothText(
+    message.content || "",
+    streaming,
+    enabled,
+  );
+  const showCursor = streaming && enabled && (displayContent.length < (message.content || "").length);
+
+  return (
+    <div
+      className={`message-bubble assistant-turn-fragment${
+        streaming ? " streaming" : ""
+      }${showCursor ? " smooth-cursor" : ""}`}
+      data-message-id={message.id}
+    >
+      {displayContent ? (
+        <div className="prose-chat">
+          <Markdown source={displayContent} />
+        </div>
+      ) : null}
+      {message.error ? (
+        <AssistantErrorMessage message={message} />
+      ) : null}
+    </div>
+  );
+});
+
 export const AssistantTurn = memo(function AssistantTurn({
   entry,
   isActive,
@@ -339,24 +383,11 @@ export const AssistantTurn = memo(function AssistantTurn({
         turnDelegationTimings={turnDelegationTimings}
       />
     ) : (
-      <div
-        className={`message-bubble assistant-turn-fragment${
-          isActive && part.message.status === "streaming"
-            ? " streaming"
-            : ""
-        }`}
-        data-message-id={part.message.id}
+      <SmoothMessageBubble
         key={part.message.id}
-      >
-        {part.message.content ? (
-          <div className="prose-chat">
-            <Markdown source={part.message.content} />
-          </div>
-        ) : null}
-        {part.message.error ? (
-          <AssistantErrorMessage message={part.message} />
-        ) : null}
-      </div>
+        message={part.message}
+        streaming={isActive && part.message.status === "streaming"}
+      />
     );
 
   return (
@@ -392,6 +423,7 @@ export const AssistantTurn = memo(function AssistantTurn({
         ) : null}
         {complete && actionMessage ? (
           <div className="message-actions">
+            <MessageTimestamp createdAt={actionMessage.createdAt} />
             <CopyButton text={content} label={t("chat.copy")} />
             <TooltipButton
               className="copy-btn icon"
@@ -421,14 +453,14 @@ export const AssistantTurn = memo(function AssistantTurn({
  * turn item: a divider that says the earlier turns above it are now a summary.
  * It carries no actions — nothing about a persisted checkpoint is undoable.
  */
-export function CompactionRow({ mark }: { mark: ContextCompactionMark }) {
+export function CompactionRow({ mark }: { mark: ContextCompactionMark & { summary?: string } }) {
   const { t } = useTranslation();
   return (
     <div className="transcript-compaction-row" role="separator">
       <span className="transcript-compaction-label">
         {t("chat.compactionRow", { times: mark.generation })}
       </span>
-      <span className="transcript-compaction-detail">
+      <span className="transcript-compaction-detail" title={mark.summarized && !mark.fallback && mark.summary?.trim() ? mark.summary : undefined}>
         {mark.fallback
           ? t("chat.compactionRowSummaryFailed")
           : mark.summarized

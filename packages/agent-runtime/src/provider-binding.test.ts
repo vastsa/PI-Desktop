@@ -96,6 +96,93 @@ describe("Anthropic runtime endpoint", () => {
   });
 });
 
+describe("Anthropic adaptive thinking from models.dev reasoning options", () => {
+  function anthropicProvider(
+    modelId: string,
+    reasoningOptions: ModelConfig["reasoningOptions"],
+  ): RuntimeProviderConfig {
+    return {
+      ...keyedProvider,
+      id: "anthropic",
+      name: "Anthropic",
+      baseUrl: "https://api.anthropic.com",
+      modelId,
+      apiStyle: "anthropic_messages",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["low", "medium", "high"],
+      modelConfig: {
+        source: "models.dev",
+        name: modelId,
+        baseUrl: "https://api.anthropic.com",
+        reasoning: true,
+        reasoningOptions,
+        supportedThinkingLevels: ["low", "medium", "high"],
+        input: ["text"],
+        contextWindow: 1_000_000,
+        maxTokens: 128_000,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      },
+    };
+  }
+
+  async function thinkingRequest(provider: RuntimeProviderConfig) {
+    const model = buildProviderModel(provider);
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response("bad gateway", { status: 502 });
+    });
+    await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "system",
+          messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
+          tools: [],
+        },
+        { reasoning: "medium", fetch, maxRetries: 0 },
+      )
+      .result();
+    return requests[0];
+  }
+
+  it("sends adaptive thinking to effort-only Claude models such as Opus 5.5", async () => {
+    const request = await thinkingRequest(
+      anthropicProvider("claude-opus-5-5", [
+        { type: "effort", values: ["low", "medium", "high", "xhigh", "max"] },
+      ]),
+    );
+
+    expect(request?.thinking).toMatchObject({ type: "adaptive" });
+    expect(request?.thinking).not.toHaveProperty("budget_tokens");
+    expect(request?.output_config).toEqual({ effort: "medium" });
+  });
+
+  it("keeps budget thinking for models that publish budget_tokens", async () => {
+    const request = await thinkingRequest(
+      anthropicProvider("claude-sonnet-4-5", [{ type: "budget_tokens", min: 1024 }]),
+    );
+
+    expect(request?.thinking).toMatchObject({ type: "enabled" });
+    expect(request?.thinking).toHaveProperty("budget_tokens");
+  });
+
+  it("preserves an explicit catalog adaptive override", () => {
+    const provider = anthropicProvider("claude-opus-4-6", [
+      { type: "effort", values: ["low", "medium", "high", "max"] },
+      { type: "budget_tokens", min: 1024 },
+    ]);
+    provider.modelConfig = {
+      ...provider.modelConfig!,
+      compat: { forceAdaptiveThinking: true },
+    };
+
+    expect(buildProviderModel(provider).compat).toMatchObject({
+      forceAdaptiveThinking: true,
+    });
+  });
+});
+
 describe("buildProviderModel OpenAI-compatible role compatibility", () => {
   const reasoningProvider: RuntimeProviderConfig = {
     ...keyedProvider,

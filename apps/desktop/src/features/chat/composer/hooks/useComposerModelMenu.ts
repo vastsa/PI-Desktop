@@ -8,12 +8,13 @@ import {
   initialThinkingLevelForBinding,
   imageGenerationBindings,
   isImageGenerationModel,
-  modelIdsMatch,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../../../stores/app-store";
 import {
+  composerModelBinding,
   composerModelMatchesQuery,
   composerModelsForProvider,
+  sameComposerModelId,
 } from "../../../../lib/composer-models";
 import {
   providerDisplayName,
@@ -152,6 +153,7 @@ export function useComposerModelMenu({
                   model,
                   group.providerSearchText,
                   queryNeedle,
+                  composerModelBinding(group.provider, model.modelId)?.alias,
                 ),
               ),
             }))
@@ -175,7 +177,7 @@ export function useComposerModelMenu({
       flatModels.findIndex(
         (entry) =>
           entry.provider.id === provider?.id &&
-          entry.model.modelId === modelId,
+          sameComposerModelId(entry.model.modelId, modelId ?? ""),
       ),
     [flatModels, provider?.id, modelId],
   );
@@ -276,7 +278,7 @@ export function useComposerModelMenu({
         providerModels[candidate.id],
       );
       const nextBinding = candidate.models.find((entry) =>
-        modelIdsMatch(entry.id, nextModelId),
+        sameComposerModelId(entry.id, nextModelId),
       );
       const nextThinkingLevel = activeSessionId
         ? thinkingLevelForProvider(nextModelProvider, thinkingLevel)

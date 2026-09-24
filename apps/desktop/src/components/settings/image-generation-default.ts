@@ -20,9 +20,9 @@
 import {
   MAX_IMAGE_GENERATION_MODELS,
   imageGenerationBindings,
-  modelIdsMatch,
   type ImageGenerationBinding,
   type ProviderPublic,
+  modelWireIdsEqual as sameComposerModelId,
 } from "@pi-desktop/shared";
 
 /**
@@ -41,6 +41,8 @@ export function imageGenerationBindingAvailable(
     provider.authKind !== "oauth" &&
     !!provider.baseUrl &&
     (provider.hasSecret || provider.authKind === "none") &&
+    // Mirror image-generation-service's exact availability guard. A different
+    // case is a different outbound wire ID for a case-sensitive endpoint.
     provider.models.some((model) => model.id === modelId)
   );
 }
@@ -78,7 +80,7 @@ function cappedImageGenerationCandidates(
   const activeIndex = active
     ? candidates.findIndex((candidate) =>
         candidate.providerId === active.providerId &&
-        modelIdsMatch(candidate.modelId, active.modelId),
+        sameComposerModelId(candidate.modelId, active.modelId),
       )
     : -1;
   if (activeIndex < MAX_IMAGE_GENERATION_MODELS - 1) {
@@ -120,7 +122,7 @@ export function planImageGenerationDefaults(
   }));
   const previous = current.imageGeneration ?? null;
   const active = previous?.providerId === savedProviderId &&
-    !selected.some((binding) => modelIdsMatch(binding.modelId, previous.modelId))
+    !selected.some((binding) => sameComposerModelId(binding.modelId, previous.modelId))
     ? null
     : previous;
   const imageGenerationModels = cappedImageGenerationCandidates(

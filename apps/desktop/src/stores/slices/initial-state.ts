@@ -51,6 +51,7 @@ export function createInitialState(): AppStateData {
     projectSort: initialSidebarPreferences.projectSort,
     messages: [],
     retainedSessionIds: [],
+    dismissedAssistantErrorMessages: {},
     retainedTranscripts: {},
     transcriptViews: {},
     sessionHistory: {},

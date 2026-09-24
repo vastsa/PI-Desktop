@@ -64,6 +64,8 @@ globalThis.providerApiStyleProbe = async () => {
     flushSync(() => root.render(<I18nextProvider i18n={i18n}>
       <ProviderSetupDialog key={++key} onClose={() => { closes++; }} onSaved={() => {}} {...props} />
     </I18nextProvider>));
+    const advanced = document.querySelector<HTMLButtonElement>(".provider-chosen-advanced-toggle");
+    if (advanced?.getAttribute("aria-expanded") === "false") flushSync(() => advanced.click());
   };
   const click = (element: HTMLElement | null | undefined) => {
     assert(element, "missing click target");
@@ -152,6 +154,15 @@ globalThis.providerApiStyleProbe = async () => {
   };
 
   const results: string[] = [];
+  const until = async (condition: () => boolean, label: string) => {
+    const deadline = performance.now() + 5000;
+    while (!condition()) {
+      assert(performance.now() < deadline, `timed out: ${label}`);
+      await frame();
+    }
+  };
+  const searchInput = () => [...document.querySelectorAll<HTMLInputElement>("input[type=checkbox]")]
+    .find((input) => input.closest("label")?.textContent?.trim() === i18n.t("settings.nativeWebSearch"));
   try {
     for (const locale of ["en", "zh-CN"]) {
       await i18n.changeLanguage(locale);
@@ -222,9 +233,85 @@ globalThis.providerApiStyleProbe = async () => {
         assert(JSON.stringify(original) === before, "edit/copy mutated source object");
         results.push(`${locale}:${style}:edit-change-copy-cancel`);
       }
+      for (const [vendorKey, baseUrl, modelId] of [
+        ["deepseek", "https://api.deepseek.com", "deepseek-v4-flash"],
+        ["xai", "https://api.x.ai/v1", "grok-4.7"],
+        ["openai", "https://api.openai.com/v1", "gpt-6-sol"],
+      ]) {
+        const original = { ...fixture("chat_completions"), name: "My service", vendorKey, baseUrl,
+          models: [{ ...fixture("chat_completions").models[0], id: modelId }] };
+        render({ provider: original });
+        await until(() => Boolean(searchInput()), "official model settings");
+        assert(!searchInput()?.disabled && !searchInput()?.checked, `${vendorKey}: search must be directly selectable and default off`);
+        assert(!document.querySelector(".provider-endpoint-guidance"), "official search requires an extra interface action");
+        const count = updates.length;
+        click(searchInput());
+        click(control("settings.cancel"));
+        assert(updates.length === count, "cancel persisted the search opt-in");
+        render({ provider: original });
+        click(searchInput());
+        click(control("settings.saveProvider"));
+        await until(() => updates.length === count + 1, "save search opt-in");
+        const update = updates.at(-1)!;
+        assert(update.apiStyle === original.apiStyle && update.baseUrl === original.baseUrl,
+          "search opt-in rewrote the saved service transport");
+        assert(update.name === original.name && !("secretValue" in update), "search opt-in replaced name or key");
+        assert(update.models?.[0].nativeWebSearch === true && update.models[0].alias === "Fixture alias", "model settings lost");
+        render({ provider: { ...original, ...update } });
+        assert(searchInput()?.checked && !searchInput()?.disabled, "search opt-in was lost on reopen");
+        click(searchInput());
+        click(control("settings.saveProvider"));
+        await until(() => updates.length === count + 2, "save search off");
+        assert(!updates.at(-1)?.models?.[0].nativeWebSearch, "search opt-out was not saved");
+        assert(updates.at(-1)?.apiStyle === original.apiStyle && updates.at(-1)?.baseUrl === original.baseUrl,
+          "search opt-out changed the stored route");
+        results.push(`${locale}:${vendorKey}:single-entry-search-cancel-save-reopen-off`);
+      }
+
+      for (const [operation, style] of [["responses", "responses"], ["messages", "anthropic_messages"]] as const) {
+        const relay = { ...fixture("chat_completions"), baseUrl: `https://relay.example/v1/${operation}` };
+        render({ provider: relay });
+        assert(apiStyleTrigger()?.textContent?.includes(apiStyleLabel("chat_completions")), "URL advice silently changed protocol");
+        click(control("settings.applyEndpointFormat"));
+        assert(apiStyleTrigger()?.textContent?.includes(apiStyleLabel(style)), "suggested format not applied");
+        const count = updates.length;
+        click(control("settings.saveProvider"));
+        await until(() => updates.length === count + 1, "save suggested format");
+        assert(updates.at(-1)?.baseUrl === "https://relay.example/v1" && updates.at(-1)?.apiStyle === style,
+          "suggestion changed destination or retained the operation suffix");
+        render({ provider: { ...relay, ...updates.at(-1)! } });
+        assert(!button("settings.applyEndpointFormat"), "suggestion reappeared after save");
+      }
+      results.push(`${locale}:relay-explicit-format-suggestion-save-reopen`);
+
+      const manual = { ...fixture("chat_completions"), vendorKey: "openai" };
+      render({ provider: manual });
+      assert(apiStyleTrigger()?.textContent?.includes(apiStyleLabel("chat_completions")), "named host overwrote manual format");
+      const beforeManualSave = updates.length;
+      click(control("settings.saveProvider"));
+      await until(() => updates.length === beforeManualSave + 1, "save manual format provider");
+      assert(updates.at(-1)?.vendorKey === manual.vendorKey,
+        "a stored format differing from the preset dropped the row's vendor identity");
+      results.push(`${locale}:saved-protocol-wins-over-preset`);
+
+      const legacyUnknown = { ...fixture("future_api_format"),
+        baseUrl: "https://relay.example/v1/chat/completions" };
+      render({ provider: legacyUnknown });
+      assert(apiStyleTrigger()?.textContent?.includes(apiStyleLabel("chat_completions")),
+        "unknown stored API format did not render with the compatible fallback");
+      const beforeUnknownSave = updates.length;
+      click(control("settings.saveProvider"));
+      await until(() => updates.length === beforeUnknownSave + 1, "save legacy unknown API format");
+      assert(updates.at(-1)?.apiStyle === "chat_completions" &&
+        updates.at(-1)?.baseUrl === "https://relay.example/v1",
+        "unknown stored format did not save the normalized compatible endpoint");
+      results.push(`${locale}:unknown-stored-api-format-open-save`);
+
       const codexAccount = { ...fixture("openai_codex_responses"), id: "codex-account", name: "OpenAI OAuth", vendorKey: "openai-codex", type: "native", protocol: "openai", authKind: "oauth" } satisfies ProviderPublic;
       let savedCodexAccount: VendorAccountForm | undefined;
       flushSync(() => root.render(<I18nextProvider i18n={i18n}><VendorAccountDialog provider={codexAccount} initialName={codexAccount.name} onClose={() => { closes++; }} onSave={(form) => { savedCodexAccount = structuredClone(form); }} saving={false} /></I18nextProvider>));
+      const accountAdvanced = document.querySelector<HTMLButtonElement>(".provider-chosen-advanced-toggle");
+      if (accountAdvanced?.getAttribute("aria-expanded") === "false") click(accountAdvanced);
       await pause(650);
       const findWebSearch = () => [...document.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].find((input) => input.closest("label")?.textContent?.trim() === i18n.t("settings.nativeWebSearch"));
       const searchCheckbox = findWebSearch();

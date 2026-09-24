@@ -7,7 +7,7 @@
  * is not configured, so these helpers keep the two notions apart: what a
  * provider itself offers, and what is safe to display for it.
  */
-import { isImageGenerationModel, modelIdsMatch, type ImageGenerationBindings, type ProviderPublic } from "@pi-desktop/shared";
+import { isImageGenerationModel, modelWireIdsEqual as sameComposerModelId, type ImageGenerationBindings, type ProviderPublic } from "@pi-desktop/shared";
 
 export type DefaultModelOption = {
   provider: ProviderPublic;
@@ -46,12 +46,12 @@ export function providerOffersModel(
 ): boolean {
   if (!modelId) return false;
   const bindings = provider.models ?? [];
-  if (bindings.some((binding) => modelIdsMatch(binding.id, modelId))) return true;
+  if (bindings.some((binding) => sameComposerModelId(binding.id, modelId))) return true;
   // A legacy/OAuth row may carry only `defaultModelId` with no bindings yet.
   return (
     bindings.length === 0 &&
     !!provider.defaultModelId &&
-    modelIdsMatch(provider.defaultModelId, modelId)
+    sameComposerModelId(provider.defaultModelId, modelId)
   );
 }
 

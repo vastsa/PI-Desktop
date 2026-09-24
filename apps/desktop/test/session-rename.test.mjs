@@ -49,6 +49,7 @@ test("rename dialog is modal, localized, and caps input by Unicode code points",
   assert.match(dialogSource, /Array\.from\(event\.target\.value\)/);
   assert.match(dialogSource, /MAX_SESSION_TITLE_LENGTH/);
   assert.match(dialogSource, /t\("session\.renameSave"\)/);
+  assert.match(dialogSource, /useBlockingOverlay\(\)/);
   assert.match(styles, /\.session-rename-dialog-overlay\s*\{[^}]*z-index:\s*65;/s);
 });
 

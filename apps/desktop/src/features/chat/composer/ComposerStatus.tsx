@@ -64,8 +64,8 @@ export function ComposerStatus({
             const pending = isPendingQueuedPrompt(item);
             const actionsLocked = promoted || pending;
             const sendNowLocked = approvalPending || actionsLocked;
-            // Pending rows have no actionable Host id; promoted rows already
-            // belong to the next turn. Explain both locked states.
+            // Pending rows have no Host id. Promoted rows keep their order,
+            // but remain cancellable until the Host starts delivery.
             const actionLabel = (action: string) =>
               promoted
                 ? `${action} · ${t("chat.sendNowPending")}`
@@ -134,10 +134,10 @@ export function ComposerStatus({
                 <TooltipButton
                   type="button"
                   className="composer-queued-prompt-action composer-queued-prompt-remove"
-                  tooltip={actionLabel(t("chat.removeQueuedPrompt"))}
-                  ariaLabel={actionLabel(t("chat.removeQueuedPrompt"))}
-                  disabled={actionsLocked}
-                  aria-disabled={actionsLocked}
+                  tooltip={pending ? actionLabel(t("chat.removeQueuedPrompt")) : t("chat.removeQueuedPrompt")}
+                  ariaLabel={pending ? actionLabel(t("chat.removeQueuedPrompt")) : t("chat.removeQueuedPrompt")}
+                  disabled={pending}
+                  aria-disabled={pending}
                   onClick={() => removeQueuedPrompt(item.id)}
                 >
                   <IconX size={13} aria-hidden />

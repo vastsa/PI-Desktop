@@ -143,6 +143,12 @@ function normalizedMatch(left: string, right: string, allowPathLeaf = false): bo
   return allowPathLeaf && exactPathAliasMatch(left, right);
 }
 
+/** Configured-model identity: compare the complete wire ID, not catalog aliases. */
+export function modelWireIdsEqual(left: string, right: string): boolean {
+  const requested = right.trim().toLowerCase();
+  return requested.length > 0 && left.trim().toLowerCase() === requested;
+}
+
 /** Compare configured binding IDs without collapsing distinct route paths or variants. */
 export function modelIdsMatch(candidate: string, requested: string): boolean {
   const left = candidate.trim().toLowerCase();

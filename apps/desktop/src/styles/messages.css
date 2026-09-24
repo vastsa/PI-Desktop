@@ -1006,6 +1006,16 @@
   opacity: 1;
 }
 
+.message-timestamp {
+  font-size: var(--text-xs);
+  color: var(--ds-text-muted);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
+  user-select: none;
+  padding: 0 4px;
+  align-self: center;
+}
+
 .icon-btn:active:not(:disabled),
 .title-nav-btn:active:not(:disabled),
 .nav-item:active:not(:disabled),
@@ -1698,6 +1708,27 @@
 .message-error-actions {
   flex: 0 0 auto;
   justify-content: flex-end;
+}
+
+.message-error-dismiss {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--ds-text-muted);
+}
+
+.message-error-dismiss:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.message-error-dismiss:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 2px;
 }
 
 .message-error-toggle {
@@ -3123,4 +3154,29 @@
   margin-top: 4px;
   color: var(--ds-text-tertiary);
   font-size: var(--text-sm);
+}
+
+/* ── Smooth streaming cursor ── */
+
+@keyframes smooth-stream-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.assistant-turn-fragment.smooth-cursor .prose-chat > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--ds-text-primary);
+  animation: smooth-stream-blink 1s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-turn-fragment.smooth-cursor .prose-chat > :last-child::after {
+    animation: none;
+    opacity: 0.7;
+  }
 }

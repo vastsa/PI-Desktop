@@ -6,10 +6,11 @@ export async function prepareTranscriptAction(
   { get, set }: StoreAccess,
   runtime: Pick<SessionRuntime, "loadFullSessionMessages" | "cacheSessionTranscript">,
   messageId: string,
+  signal?: AbortSignal,
 ) {
   const state = get();
   const id = state.activeSessionId;
-  if (!id || state.isRunning) return null;
+  if (signal?.aborted || !id || state.isRunning) return null;
   const history = state.sessionHistory[id];
   if (!history?.hasMoreBefore && !history?.contentLimited &&
     state.messages.some((message) => message.id === messageId)) return state;
@@ -19,12 +20,12 @@ export async function prepareTranscriptAction(
     // turn may have already appended a live tail while the read was pending.
     messages = await runtime.loadFullSessionMessages(id, false);
   } catch (error) {
-    if (get().activeSessionId === id)
+    if (!signal?.aborted && get().activeSessionId === id)
       get().showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     return null;
   }
   const current = get();
-  if (!messages || current.activeSessionId !== id || current.isRunning || current.selectingSessionId ||
+  if (signal?.aborted || !messages || current.activeSessionId !== id || current.isRunning || current.selectingSessionId ||
     current.messages !== state.messages) return null;
   if (!messages.some((message) => message.id === messageId)) return null;
   runtime.cacheSessionTranscript(id, messages, { messageStart: 0, hasMoreBefore: false });

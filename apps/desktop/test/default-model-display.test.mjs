@@ -8,15 +8,17 @@
  * that adding a provider only claims the default while none resolves.
  */
 import assert from "node:assert/strict";
+import { register } from "node:module";
 import test from "node:test";
-import {
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+const {
   defaultModelIdOf,
   displayedDefaultModelId,
   keepsAppDefaultModel,
   providerOffersModel,
   providerServesChatModels,
   hasResolvedDefaultModel,
-} from "../src/components/settings/default-model.ts";
+} = await import("../src/components/settings/default-model.ts");
 
 /** Minimal provider row; only the fields these resolvers read. */
 const provider = (over = {}) => ({
@@ -73,16 +75,14 @@ test("a global default the provider does serve is displayed as-is", () => {
   assert.equal(displayedDefaultModelId(p, "gpt-5-mini"), "gpt-5-mini");
 });
 
-test("model ids are matched tolerantly, not by raw equality", () => {
-  // modelIdsMatch accepts the vendor-prefixed and region-suffixed spellings of
-  // the same published model, so these must not be treated as a mismatch.
-  const prefixed = provider({ models: [binding("openai/gpt-5")] });
-  assert.equal(displayedDefaultModelId(prefixed, "gpt-5"), "gpt-5");
-  const regional = provider({ models: [binding("claude-opus-4.6")] });
-  assert.equal(
-    displayedDefaultModelId(regional, "claude-opus-4.6@us-east"),
-    "claude-opus-4.6@us-east",
-  );
+test("configured default identity uses the full wire id, not a route suffix", () => {
+  const p = provider({ models: [binding("generic/model"), binding("model")] });
+  assert.equal(providerOffersModel(p, "MODEL"), true);
+  assert.equal(displayedDefaultModelId(p, "model"), "model");
+  assert.equal(providerOffersModel(provider({ models: [binding("generic/model")] }), "model"), false);
+  assert.equal(displayedDefaultModelId(provider({ models: [binding("generic/model")] }), "model"), "generic/model");
+  assert.equal(providerOffersModel(p, "generic/MODEL"), true);
+  assert.equal(providerOffersModel(p, "generic/model@region"), false);
 });
 
 test("an empty or missing global default falls back to the provider", () => {

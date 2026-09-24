@@ -1,4 +1,5 @@
-import { modelIdsMatch, OAUTH_AUTH_KIND } from "@pi-desktop/shared";
+import { OAUTH_AUTH_KIND } from "@pi-desktop/shared";
+import { sameComposerModelId } from "./composer-models";
 
 type TranscriptMessage = {
   role: string;
@@ -45,5 +46,5 @@ export function vendorAccountOmitsSessionModel(
   if (!provider || provider.authKind !== OAUTH_AUTH_KIND) return false;
   const models = provider.models ?? [];
   if (models.length === 0) return false;
-  return !models.some((model) => modelIdsMatch(model.id, modelId));
+  return !models.some((model) => sameComposerModelId(model.id, modelId));
 }

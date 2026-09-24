@@ -8,9 +8,11 @@ import {
 } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import { basename, extname, isAbsolute, join } from "node:path";
-import type {
-  ComposerPasteFile,
-  ComposerPastedFile,
+import {
+  isSvgAttachment,
+  SVG_MIME_TYPE,
+  type ComposerPasteFile,
+  type ComposerPastedFile,
 } from "@pi-desktop/shared";
 
 const SAFE_SESSION_ID = /^[A-Za-z0-9_-]+$/;
@@ -31,6 +33,7 @@ const IMAGE_EXTENSIONS = new Set([
 ]);
 
 const MIME_EXTENSIONS: Record<string, string> = {
+  [SVG_MIME_TYPE]: ".svg",
   "image/gif": ".gif",
   "image/jpeg": ".jpg",
   "image/png": ".png",
@@ -62,6 +65,7 @@ function isImageMimeType(mimeType: string): boolean {
 }
 
 function isImageFile(name: string, mimeType: string): boolean {
+  if (isSvgAttachment(mimeType, name)) return false;
   if (isImageMimeType(mimeType)) return true;
   return IMAGE_EXTENSIONS.has(extname(name).toLowerCase());
 }
@@ -126,10 +130,13 @@ export async function saveComposerPasteFiles(
     if (totalBytes > MAX_TOTAL_BYTES) {
       throw new Error(`pasted files are too large (maximum ${MAX_TOTAL_BYTES} bytes)`);
     }
-    const mimeType =
+    const suppliedMimeType =
       typeof file.mimeType === "string" && file.mimeType.trim()
         ? file.mimeType.trim().toLowerCase()
         : "application/octet-stream";
+    const mimeType = isSvgAttachment(suppliedMimeType, file.name)
+      ? SVG_MIME_TYPE
+      : suppliedMimeType;
     return {
       bytes,
       mimeType,

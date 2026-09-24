@@ -1,8 +1,8 @@
-import type { RefObject } from "react";
+import { formatTokenCount, type ModelInfo, type ProviderPublic } from "@pi-desktop/shared";
 import type { TFunction } from "i18next";
-import { formatTokenCount, modelIdsMatch, type ModelInfo, type ProviderPublic } from "@pi-desktop/shared";
+import type { RefObject } from "react";
 import { IconCheck, IconSearch } from "../../../components/icons";
-import { composerModelBadges } from "../../../lib/composer-models";
+import { composerModelBadges, composerModelDisplayName, sameComposerModelId } from "../../../lib/composer-models";
 
 export type ComposerModelGroup = {
   provider: ProviderPublic;
@@ -59,8 +59,13 @@ export function ComposerModelList({
                         const index = flatIndex++;
                         const active =
                           selectedProviderId === group.provider.id &&
-                          modelIdsMatch(selectedModelId ?? "", model.modelId);
-                        const optionTitle = model.displayName || model.modelId;
+                          sameComposerModelId(selectedModelId ?? "", model.modelId);
+                        const optionTitle = model.modelId;
+                        const optionDisplayName = composerModelDisplayName(
+                          group.provider,
+                          model.modelId,
+                          model.displayName,
+                        );
                         return (
                           <button
                             key={`${group.provider.id}:${model.modelId}`}
@@ -74,7 +79,10 @@ export function ComposerModelList({
                             onClick={() => void selectModel(group.provider, model.modelId)}
                           >
                             <span className="composer-model-option-main">
-                              <span className="truncate">{optionTitle}</span>
+                              <span className="composer-model-full-id">{optionTitle}</span>
+                              {optionDisplayName !== optionTitle ? (
+                                <span className="composer-model-display-name">{optionDisplayName}</span>
+                              ) : null}
                               <span className="composer-model-option-meta">
                                 {composerModelBadges(model, group.provider).map((badge) => (
                                   <span

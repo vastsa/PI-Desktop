@@ -146,4 +146,42 @@ describe("check", () => {
     expect(called.some((m) => m.includes('"audio.capture.background"'))).toBe(false);
     expect(called.some((m) => m.includes('"net.websocket"'))).toBe(true);
   });
+
+  it("fails theme assets the installer rejects: package-relative paths (ADR 0255)", async () => {
+    const dir = join(await tempDir(), "theme-assets");
+    await scaffold({ dir, template: "panel-basic" });
+    await editManifest(dir, (m) => {
+      m.permissions = [...(m.permissions ?? []), "ui.theme"];
+      m.contributes = {
+        ...(m.contributes ?? {}),
+        themes: [
+          {
+            id: "midnight",
+            label: "Midnight",
+            path: "themes/midnight.css",
+            assets: ["themes/assets/wallpaper-dark.webp"],
+          },
+        ],
+      };
+    });
+    await mkdir(join(dir, "themes"), { recursive: true });
+    await writeFile(join(dir, "themes/midnight.css"), ":root {}\n", "utf8");
+
+    const result = await check(dir);
+    expect(result.ok).toBe(false);
+    const error = result.errors.find((e) => e.code === "theme.asset-package-relative");
+    expect(error?.message).toContain("themes/assets/wallpaper-dark.webp");
+    expect(error?.message).toContain("absolute image or font path");
+    expect(error?.message).toContain("pi.themes.upsert");
+
+    // The absolute spelling the installer accepts passes the check untouched.
+    await editManifest(dir, (m) => {
+      m.contributes.themes[0].assets = [
+        `${dir.replaceAll("\\\\", "/")}/themes/assets/wallpaper-dark.webp`,
+      ];
+    });
+    const absolute = await check(dir);
+    expect(absolute.ok).toBe(true);
+    expect(absolute.errors.some((e) => e.code === "theme.asset-package-relative")).toBe(false);
+  });
 });

@@ -42,6 +42,7 @@
     "test:e2e:settings-scroll": "node scripts/e2e-settings-scroll.mjs",
     "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
     "test:e2e:window-controls": "node scripts/e2e-window-controls.mjs",
+    "test:e2e:work-panel-reorder": "node scripts/e2e-work-panel-reorder.mjs",
     "test:e2e:supervision": "node scripts/e2e-supervision.mjs",
     "test:e2e:subagents": "node scripts/e2e-subagents.mjs",
     "test:e2e:subagent-models": "node scripts/e2e-subagent-models.mjs",

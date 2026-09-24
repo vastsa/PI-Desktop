@@ -159,6 +159,46 @@ test("cached matches remain scoped to the requested provider and endpoint", asyn
   }
 });
 
+test("unknown endpoints do not inherit ambiguous cross-provider metadata", async (t) => {
+  for (const order of [["alpha", "beta"], ["beta", "alpha"]]) {
+    const fixture = Object.fromEntries(order.map((key) => [key, {
+      api: `https://${key}.example/v1`,
+      models: {
+        "shared-model": {
+          id: "shared-model",
+          reasoning: key === "alpha",
+          limit: { context: key === "alpha" ? 128_000 : 32_000, output: 8_192 },
+        },
+      },
+    }]));
+    const catalog = await loadFixtureCatalog(t, fixture);
+    for (const modelId of ["shared-model", "proxy/shared-model"]) {
+      const unknown = { vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId };
+      assert.equal(catalog.findModel(unknown), undefined, `ambiguous ${modelId} must miss`);
+      assert.equal(catalog.findModel(unknown), undefined, "ambiguous misses are cached");
+    }
+    const alpha = catalog.findModel({
+      vendorKey: "custom", baseUrl: "https://alpha.example/v1", modelId: "shared-model",
+    });
+    assert.equal(alpha?.providerKey, "alpha", "an exact endpoint scopes the lookup");
+    assert.equal(alpha?.reasoning, true);
+    assert.equal(alpha?.limit.context, 128_000);
+    const beta = catalog.findModel({ vendorKey: "beta", modelId: "shared-model" });
+    assert.equal(beta?.providerKey, "beta", "a known provider key scopes the lookup");
+    assert.equal(beta?.reasoning, false);
+    assert.equal(beta?.limit.context, 32_000);
+  }
+});
+
+test("an unknown endpoint can use a unique supported proxy alias", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    alpha: { models: { "shared-model": { id: "shared-model", reasoning: true } } },
+  });
+  assert.equal(catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "proxy/shared-model-thinking",
+  })?.providerKey, "alpha");
+});
+
 test("a known endpoint cannot borrow another provider's catalog model", async (t) => {
   const catalog = await loadFixtureCatalog(t, {
     alpha: { api: "https://alpha.example/v1", models: { "alpha-only": { id: "alpha-only" } } },
@@ -176,6 +216,19 @@ test("a shared catalog API prefers the explicitly selected vendor", async (t) =>
   const input = { vendorKey: "beta", baseUrl: "https://gateway.example/v1" };
   assert.equal(catalog.findModel({ ...input, modelId: "beta-only" })?.providerKey, "beta");
   assert.equal(catalog.findModel({ ...input, modelId: "alpha-only" }), undefined);
+});
+
+test("a shared catalog API with no vendor key cannot select the first publisher", async (t) => {
+  for (const order of [["alpha", "beta"], ["beta", "alpha"]]) {
+    const catalog = await loadFixtureCatalog(t, Object.fromEntries(order.map((key) => [key, {
+      api: "https://gateway.example/v1",
+      models: { "shared-model": { id: "shared-model", reasoning: key === "alpha",
+        limit: { context: key === "alpha" ? 128_000 : 32_000, output: 8_192 } } },
+    }])));
+    assert.equal(catalog.providerKeyForRow({ vendorKey: "custom", baseUrl: "https://gateway.example/v1" }), undefined);
+    assert.equal(catalog.findModel({ vendorKey: "custom", baseUrl: "https://gateway.example/v1", modelId: "shared-model" }), undefined);
+    assert.equal(catalog.findModel({ vendorKey: "beta", baseUrl: "https://gateway.example/v1", modelId: "shared-model" })?.providerKey, "beta");
+  }
 });
 
 test("a recognized endpoint takes priority over an unrelated vendor fallback", async (t) => {

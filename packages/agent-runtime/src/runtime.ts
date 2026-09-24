@@ -152,6 +152,7 @@ import {
 } from "./provider-binding.js";
 import {
   contextBudgetFor,
+  automaticCompactionThresholdFor,
   contextBudgetLimitsFor,
   retainedUserMessageBudget,
   type ContextBudget,
@@ -170,6 +171,7 @@ import {
 import {
   clampOutputToContext,
   effectiveModelContextWindow,
+  estimateOutputCapInputTokens,
 } from "./output-cap.js";
 import {
   composeSubagentSystemPrompt,
@@ -4371,70 +4373,97 @@ Delegation rules:
           ...(modelChangedFrom ? { modelChangedFrom } : {}),
         };
         this.delegations.set(delegationId, record);
-        const scopedTools = this.scopeDelegateTools(tools, definition);
-        new SubagentRun({
-          definition,
-          sessionId: this.sessionId,
-          turnId: this.turnId,
-          parentToolCallId: toolCallId,
-          task,
-          provider,
-          infiniteProviderRetry: this.infiniteProviderRetry,
-          thinkingLevel,
-          fallbackModels: (definition.fallbackModels ?? []).map((pin) => ({
-            key: subagentModelKey(pin),
-            provider: this.subagentProviders[subagentModelKey(pin)],
-          })),
-          inheritedThinkingLevel: this.thinkingLevel,
-          onModelChange: (next, level) => {
-            record.modelId = next.modelId;
-            record.thinkingLevel = level;
-            this.delegationChains.retarget(record.delegateSessionId, {
-              modelKey: this.delegationModelKeyFor(next),
-              modelId: next.modelId,
-            });
-            this.publishDelegationSettlement(record);
-          },
-          systemPrompt: composeSubagentSystemPrompt({
+        let subagentRun: SubagentRun;
+        try {
+          const scopedTools = this.scopeDelegateTools(tools, definition);
+          subagentRun = new SubagentRun({
             definition,
-            guidance: this.subagentGuidance(definition),
-            toolNames: declaredToolNames,
-          }),
-          tools: scopedTools,
-          onEvent: (envelope) => {
-            this.noteDelegationActivity(record, envelope);
-            this.onEvent(envelope);
-          },
-          // A host failure inside a delegate reaches its tool-error channel
-          // through the same bookkeeping the parent uses.
-          resolveToolOutcome: (context) => this.resolveOwnToolOutcome(context),
-          signal: abortSignal,
-          // A resumed run replays its chain before this turn's `task` (ADR 0276).
-          ...(initialMessages ? { initialMessages } : {}),
-        })
-          .run()
-          .then(
-            (result) => this.settleDelegation(record, result),
-            // SubagentRun.run() settles its own errors into results; this
-            // guard only keeps an unexpected rejection from leaving the
-            // delegation stuck in "running" forever.
-            (error: unknown) => {
-              this.settleDelegation(record, {
-                agentName: definition.name,
-                modelId: provider.modelId,
-                thinkingLevel,
-                status: "failed",
-                report: "",
-                turns: 0,
-                toolCalls: 0,
-                error: {
-                  code: "UNEXPECTED_DELEGATION_REJECTION",
-                  message:
-                    error instanceof Error ? error.message : "unknown error",
-                },
+            sessionId: this.sessionId,
+            turnId: this.turnId,
+            parentToolCallId: toolCallId,
+            task,
+            provider,
+            infiniteProviderRetry: this.infiniteProviderRetry,
+            thinkingLevel,
+            fallbackModels: (definition.fallbackModels ?? []).map((pin) => ({
+              key: subagentModelKey(pin),
+              provider: this.subagentProviders[subagentModelKey(pin)],
+            })),
+            inheritedThinkingLevel: this.thinkingLevel,
+            onModelChange: (next, level) => {
+              record.modelId = next.modelId;
+              record.thinkingLevel = level;
+              this.delegationChains.retarget(record.delegateSessionId, {
+                modelKey: this.delegationModelKeyFor(next),
+                modelId: next.modelId,
               });
+              this.publishDelegationSettlement(record);
             },
+            systemPrompt: composeSubagentSystemPrompt({
+              definition,
+              guidance: this.subagentGuidance(definition),
+              toolNames: declaredToolNames,
+            }),
+            tools: scopedTools,
+            onEvent: (envelope) => {
+              this.noteDelegationActivity(record, envelope);
+              this.onEvent(envelope);
+            },
+            // A host failure inside a delegate reaches its tool-error channel
+            // through the same bookkeeping the parent uses.
+            resolveToolOutcome: (context) => this.resolveOwnToolOutcome(context),
+            signal: abortSignal,
+            // A resumed run replays its chain before this turn's `task` (ADR 0276).
+            ...(initialMessages ? { initialMessages } : {}),
+          });
+        } catch {
+          // A constructor/scope failure happens after registry allocation. Make
+          // it terminal before returning or idle auto-resume will await a
+          // completion promise for a worker that never existed.
+          record.reportDelivered = true;
+          this.settleDelegation(record, {
+            agentName: definition.name,
+            modelId: provider.modelId,
+            thinkingLevel,
+            status: "failed",
+            report: "",
+            turns: 0,
+            toolCalls: 0,
+            error: {
+              code: "SUBAGENT_INITIALIZATION_FAILED",
+              message: "The subagent runtime could not be initialized.",
+            },
+          });
+          return this.subagentToolError(
+            toolCallId,
+            `Could not initialize the ${definition.name} subagent. No work was started.`,
           );
+        }
+
+        let runPromise: Promise<SubagentRunResult>;
+        try {
+          runPromise = subagentRun.run();
+        } catch (error) {
+          runPromise = Promise.reject(error);
+        }
+        void runPromise
+          .then((result) => this.settleDelegation(record, result))
+          .catch((error: unknown) => {
+            this.settleDelegation(record, {
+              agentName: definition.name,
+              modelId: provider.modelId,
+              thinkingLevel,
+              status: "failed",
+              report: "",
+              turns: 0,
+              toolCalls: 0,
+              error: {
+                code: "UNEXPECTED_DELEGATION_REJECTION",
+                message:
+                  error instanceof Error ? error.message : "unknown error",
+              },
+            });
+          });
 
         const label =
           isRecord(params) && typeof params.description === "string"
@@ -4495,21 +4524,30 @@ Delegation rules:
         : result.status;
     record.result = result;
     record.completedAt = Date.now();
-    if (result.usage) {
-      this.turnSubagentUsage = addUsage(this.turnSubagentUsage, result.usage);
-    }
-    this.delegationChains.settle(record.delegateSessionId, record.status);
-    // An aborted call never sends `tool_end`, so a settled run drops whatever
-    // its calls left behind rather than pinning those arguments for the session.
-    for (const toolCallId of record.pendingToolCallIds ?? []) {
-      this.delegateToolCalls.delete(toolCallId);
-    }
-    record.pendingToolCallIds = undefined;
-    this.publishDelegationSettlement(record);
+    // Resolve before event publication or bookkeeping: none of those side
+    // effects may strand TaskWait or the parent's idle auto-resume.
     record.resolveCompletion();
-    this.refreshDelegationWait();
-    this.refreshResumablePrompt();
-    this.pruneFinishedDelegations();
+    try {
+      if (result.usage) {
+        this.turnSubagentUsage = addUsage(this.turnSubagentUsage, result.usage);
+      }
+      this.delegationChains.settle(record.delegateSessionId, record.status);
+      // An aborted call never sends `tool_end`, so a settled run drops whatever
+      // its calls left behind rather than pinning those arguments for the session.
+      for (const toolCallId of record.pendingToolCallIds ?? []) {
+        this.delegateToolCalls.delete(toolCallId);
+      }
+      record.pendingToolCallIds = undefined;
+      this.publishDelegationSettlement(record);
+    } catch {
+      process.stderr.write(
+        `[agent-runtime] delegation settlement side effect failed (session=${this.sessionId} delegation=${record.delegationId})\n`,
+      );
+    } finally {
+      this.refreshDelegationWait();
+      this.refreshResumablePrompt();
+      this.pruneFinishedDelegations();
+    }
   }
 
   private publishDelegationSettlement(record: DelegationRecord): void {
@@ -4588,6 +4626,7 @@ Delegation rules:
   private terminateParentTurn(): void {
     this.turnHadError = true;
     this.acceptingSteering = false;
+    this.steeringWaitAbort?.abort();
     this.retainPendingSteering();
     this.abortRunningDelegations();
     this.delegationWaitTargets = undefined;
@@ -5055,7 +5094,7 @@ Delegation rules:
       name: SUBAGENT_STOP_TOOL_NAME,
       label: "Task Stop",
       description:
-        "Stop one or more running subagents. `delegationIds` defaults to every running subagent. Stopped subagents report as stopped; their partial work is lost.",
+        "Request cancellation for one or more running subagents. `delegationIds` defaults to every running subagent. A subagent is reported as stopped only after it confirms termination; an unresponsive subagent remains running.",
       parameters: Type.Object({
         delegationIds: Type.Optional(
           Type.Array(
@@ -5073,22 +5112,50 @@ Delegation rules:
         const targets = ids.length
           ? ids
               .map((id) => this.delegations.get(id))
-              .filter((record): record is DelegationRecord => record !== undefined)
+              .filter(
+                (record): record is DelegationRecord =>
+                  record !== undefined && record.status === "running",
+              )
           : this.runningDelegations();
         for (const record of targets) {
           record.stopRequested = true;
           record.abort();
         }
-        // Persist the settled snapshot: aborting is async, and a `running`
-        // `details.stopped[]` made finished sessions keep a live topology card.
-        await Promise.all(targets.map((record) => record.completion));
+        // Cancellation is cooperative: bound the wait so a worker that ignores
+        // abort cannot wedge the parent tool call. Still-running workers are
+        // explicitly returned as pending, never mislabeled as stopped.
+        let stopTimeout: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          Promise.all(targets.map((record) => record.completion)),
+          new Promise<void>((resolve) => {
+            stopTimeout = setTimeout(resolve, 5_000);
+          }),
+        ]);
+        if (stopTimeout !== undefined) clearTimeout(stopTimeout);
+        const pending = targets.filter((record) => record.status === "running");
+        const stopped = targets.filter((record) => record.status === "stopped");
+        const settled = targets.filter(
+          (record) => record.status !== "running" && record.status !== "stopped",
+        );
         const text =
           targets.length === 0
             ? "No matching running subagents to stop."
-            : `Stopped ${targets.length} subagent${targets.length === 1 ? "" : "s"}.`;
+            : pending.length > 0
+              ? `Cancellation requested for ${targets.length} subagent${targets.length === 1 ? "" : "s"}; ${pending.length} have not confirmed termination and remain running.`
+              : settled.length > 0
+                ? `Cancellation settled for ${targets.length} subagent${targets.length === 1 ? "" : "s"}: ${stopped.length} stopped and ${settled.length} had already finished.`
+                : `Stopped ${stopped.length} subagent${stopped.length === 1 ? "" : "s"}.`;
         return {
           content: [{ type: "text", text }],
-          details: { stopped: targets.map(delegationSummary) },
+          details: {
+            stopped: stopped.map(delegationSummary),
+            ...(pending.length > 0
+              ? { stopPending: pending.map(delegationSummary) }
+              : {}),
+            ...(settled.length > 0
+              ? { settled: settled.map(delegationSummary) }
+              : {}),
+          },
         };
       },
     };
@@ -5895,18 +5962,30 @@ Delegation rules:
 
   private contextBudget(messages: AgentMessage[]): ContextBudget {
     const budget = contextBudgetFor(this.model, messages);
-    // Correct the raw estimate with what past requests actually cost. The
-    // `chars / 4` tail is biased on CJK text, and a projection with no usage
-    // anchor is missing the system/tool overhead; below the sample threshold
-    // `correct()` returns the raw value unchanged, and the downward direction
-    // is bounded by `CONTEXT_CALIBRATION_FACTOR_MIN`.
+    // Calibration learns from message usage; the output-cap estimator adds the
+    // active system prompt and tool schemas that the provider also receives.
+    // Taking the larger full-request estimate avoids double-counting overhead
+    // once unanchored calibration has learned it, while keeping that overhead as
+    // a hard floor before the first usable sample.
+    const calibratedMessageTokens = this.contextCalibration.correct(
+      estimateContextTokens(messages, this.model),
+    );
+    const requestTokens = estimateOutputCapInputTokens(
+      {
+        messages: messages.filter(
+          (message): message is Extract<AgentMessage, { content: unknown }> =>
+            message.role !== "system" && "content" in message,
+        ),
+        ...(typeof this.agent.state.systemPrompt === "string"
+          ? { systemPrompt: this.agent.state.systemPrompt }
+          : {}),
+        tools: this.activeTools(),
+      },
+      this.model,
+    );
     return {
       ...budget,
-      // Same target model as `contextBudgetFor` above: the calibration input
-      // must describe the request this runtime will actually send.
-      tokens: this.contextCalibration.correct(
-        estimateContextTokens(messages, this.model),
-      ),
+      tokens: Math.max(calibratedMessageTokens, requestTokens),
     };
   }
 
@@ -5956,7 +6035,19 @@ Delegation rules:
     const context = this.liveSessionContext();
     const messages = [...context.messages, ...additionalMessages];
     const budget = this.contextBudget(messages);
-    return this.compactionEnabled && budget.tokens >= budget.hardLimit;
+    return (
+      this.compactionEnabled &&
+      budget.tokens >= automaticCompactionThresholdFor(budget)
+    );
+  }
+
+  private automaticCompactionWouldExceedHardLimit(
+    additionalMessages: AgentMessage[] = [],
+  ): boolean {
+    const context = this.liveSessionContext();
+    const messages = [...context.messages, ...additionalMessages];
+    const budget = this.contextBudget(messages);
+    return budget.tokens >= budget.hardLimit;
   }
 
   private retainedUserMessageBudget(budget: ContextBudget): number {
@@ -6103,19 +6194,25 @@ Delegation rules:
     _signal?: AbortSignal,
   ): Promise<AgentLoopTurnUpdate> {
     let context = this.rebuiltAgentContext();
+    const budget = this.contextBudget(context.messages);
+    const hardLimitReached = budget.tokens >= budget.hardLimit;
     if (!this.compactionEnabled) {
       this.pendingModelCompaction = false;
+      if (hardLimitReached) {
+        throw new Error(
+          "CONTEXT_TOO_LARGE: context exceeds the safe model budget while automatic compaction is disabled",
+        );
+      }
       return { context };
     }
 
-    const budget = this.contextBudget(context.messages);
-    const hardLimitReached = budget.tokens >= budget.hardLimit;
-    // Codex's `should_roll_over`: either the model asked for a new window or
-    // the limit forces one. A model request that fails to compact is not fatal
-    // — nothing is over the boundary yet — so only the limit throws.
+    const automaticThresholdReached =
+      budget.tokens >= automaticCompactionThresholdFor(budget);
+    // Compact deterministically before the request approaches the hard limit.
+    // `new_context` remains an optional earlier model request.
     const modelRequested = this.pendingModelCompaction;
     this.pendingModelCompaction = false;
-    if (!hardLimitReached && !modelRequested) {
+    if (!automaticThresholdReached && !modelRequested) {
       return { context: this.withContextBudgetReminder(context, budget) };
     }
 
@@ -7699,14 +7796,20 @@ Delegation rules:
     this.appendLiveEntry(userMessageId, incomingUserMessage);
     this.setAgentMessages(this.liveSessionContext().messages);
   }
+  private failCurrentPreflight(
+    error: ReturnType<typeof classifyAgentError>,
+  ): void {
+    this.terminateParentTurn();
+    this.finalizeCurrentAssistant("error", error);
+    this.emit({ type: "error", error });
+  }
+
   private failBeforeProviderRequest(
     incomingUserMessage: AgentMessage,
     error: ReturnType<typeof classifyAgentError>,
   ): void {
     this.keepPreflightUserMessage(incomingUserMessage);
-    this.terminateParentTurn();
-    this.finalizeCurrentAssistant("error", error);
-    this.emit({ type: "error", error });
+    this.failCurrentPreflight(error);
   }
 
   /**
@@ -7792,6 +7895,38 @@ Delegation rules:
     this.appendLiveEntry(internalId, internalMessage);
     this.setAgentActivity({ phase: "starting", since: Date.now() });
     this.setAgentMessages(this.liveSessionContext().messages);
+    if (this.automaticCompactionNeeded()) {
+      const compacted = await this.runCompaction(
+        "threshold",
+        false,
+        "active_turn",
+      );
+      if (!compacted) {
+        if (this.compactionAborted) {
+          this.terminateParentTurn();
+          this.finalizeCurrentAssistant("aborted");
+          return { turnId: this.turnId };
+        }
+        if (this.automaticCompactionWouldExceedHardLimit()) {
+          this.failCurrentPreflight({
+            code: "CONTEXT_COMPACTION_FAILED",
+            message:
+              "Automatic context compaction failed before approved plan execution",
+            retriable: false,
+          });
+          return { turnId: this.turnId };
+        }
+      }
+    }
+    if (this.automaticCompactionWouldExceedHardLimit()) {
+      this.failCurrentPreflight({
+        code: "CONTEXT_TOO_LARGE",
+        message:
+          "The approved plan still exceeds the safe model context budget after compaction",
+        retriable: false,
+      });
+      return { turnId: this.turnId };
+    }
     await this.agent.continue();
     await this.waitForIdleAndSteering();
     // Same recovery contract as a user prompt: a plan execution that overflows,
@@ -7859,14 +7994,17 @@ Delegation rules:
             this.keepPreflightUserMessage(incomingUserMessage);
             throw turnAbortedError("Turn aborted while compacting context");
           }
-          this.failBeforeProviderRequest(incomingUserMessage, {
-            code: "CONTEXT_COMPACTION_FAILED",
-            message: "Automatic context compaction failed before the model request",
-            retriable: false,
-          });
-          return { turnId: this.turnId };
-        }
-        if (this.automaticCompactionNeeded([incomingUserMessage])) {
+          // A soft-trigger summary failure is recoverable while the hard
+          // provider budget still has room; retain the hard guard below.
+          if (this.automaticCompactionWouldExceedHardLimit([incomingUserMessage])) {
+            this.failBeforeProviderRequest(incomingUserMessage, {
+              code: "CONTEXT_COMPACTION_FAILED",
+              message: "Automatic context compaction failed before the model request",
+              retriable: false,
+            });
+            return { turnId: this.turnId };
+          }
+        } else if (this.automaticCompactionWouldExceedHardLimit([incomingUserMessage])) {
           this.failBeforeProviderRequest(incomingUserMessage, {
             code: "CONTEXT_TOO_LARGE",
             message:
@@ -7875,6 +8013,18 @@ Delegation rules:
           });
           return { turnId: this.turnId };
         }
+      }
+      if (
+        !this.compactionEnabled &&
+        this.automaticCompactionWouldExceedHardLimit([incomingUserMessage])
+      ) {
+        this.failBeforeProviderRequest(incomingUserMessage, {
+          code: "CONTEXT_TOO_LARGE",
+          message:
+            "The pending prompt exceeds the safe model context budget while automatic compaction is disabled",
+          retriable: false,
+        });
+        return { turnId: this.turnId };
       }
       await this.extensionBeforeAgentStart(modelInput);
       if (this.runCancelled || this.disposed) {
@@ -8073,6 +8223,7 @@ Delegation rules:
     this.acceptingSteering = false;
     this.gracefulStopRequested = false;
     this.runCancelled = true;
+    this.steeringWaitAbort?.abort();
     this.extensionRunner?.cancelPending();
     this.resolvePendingAskTools();
     this.abortRunningDelegations();
@@ -8100,7 +8251,7 @@ Delegation rules:
         this.agent.state.isStreaming ||
         this.compactionInProgress ||
         this.agentActivity !== undefined ||
-        (!this.turnHadError && this.runningDelegations().length > 0),
+        (!this.turnHadError && !this.runCancelled && this.runningDelegations().length > 0),
       currentTurnId: this.turnId,
       modelId: this.provider.modelId,
       pendingToolConfirmations: 0,
@@ -8119,6 +8270,7 @@ Delegation rules:
     this.disposed = true;
     this.acceptingSteering = false;
     this.runCancelled = true;
+    this.steeringWaitAbort?.abort();
     this.resolvePendingAskTools();
     this.abortRunningDelegations();
     this.delegationWaitTargets = undefined;

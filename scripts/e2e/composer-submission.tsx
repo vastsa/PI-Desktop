@@ -43,6 +43,58 @@ export async function verifyComposerSubmission(imagePath: string, i18n: i18n) {
     flushSync(() => root.render(<I18nextProvider i18n={i18n}><Composer /></I18nextProvider>));
     await painted();
     assert(errors.length === 0, `composer render failed: ${errors.map(String)}`);
+    // Each queued request and each chat must own a fresh question-card state.
+    const originalResolveAskTool = api.resolveAskTool;
+    const resolutions: Parameters<typeof api.resolveAskTool>[] = [];
+    api.resolveAskTool = async (...args) => { resolutions.push(args); };
+    try {
+      const asks = ["first", "second"].map((id) => ({
+        requestId: id, sessionId, toolCallId: id,
+        questions: [{ question: id + " question", options: ["Yes", "No"], multiSelect: false }],
+      }));
+      flushSync(() => useAppStore.setState({ pendingAsks: { [sessionId]: asks } }));
+      await painted();
+      host.querySelector<HTMLButtonElement>(".asktool-option")!.click();
+      await painted();
+      host.querySelector<HTMLButtonElement>(".asktool-card-actions button:last-child")!.click();
+      await painted();
+      await painted();
+      const nextSubmit = host.querySelector<HTMLButtonElement>(".asktool-card-actions button:last-child");
+      assert(nextSubmit && !nextSubmit.disabled, "next request must be answerable");
+      assert(host.querySelector(".asktool-question")?.textContent === "second question",
+        "submitting the first request must display the next queued question");
+      assert(!host.querySelector(".asktool-option.selected"), "next request must not inherit selected answers");
+      host.querySelectorAll<HTMLButtonElement>(".asktool-option")[1].click();
+      await painted();
+      nextSubmit.click();
+      await painted();
+      await painted();
+      assert(resolutions.length === 2 && resolutions[1][0].requestId === "second"
+        && JSON.stringify(resolutions[1][0].answers) === '[["No"]]',
+        "the second answer must resolve the second request with its own selection");
+      flushSync(() => useAppStore.setState({ pendingAsks: {} }));
+      await painted();
+      flushSync(() => useAppStore.setState({ pendingAsks: {
+        [sessionId]: [{...asks[0], questions:[...asks[0].questions,{question:"A second question",options:["Choice"]}]}],
+        "other-session": [{...asks[1],sessionId:"other-session"}],
+      } }));
+      await painted();
+      host.querySelector<HTMLButtonElement>(".asktool-card-actions button:last-child")!.click();
+      await painted();
+      flushSync(() => useAppStore.setState({ activeSessionId:"other-session" }));
+      await painted();
+      assert(errors.length === 0 && host.querySelector(".composer-input"),
+        "switching from question 2 to another chat with one question must keep Composer mounted");
+      assert(host.querySelector(".asktool-question")?.textContent === "second question",
+        "switching chats must display the destination question");
+      assert(host.querySelectorAll(".asktool-indicator").length === 1,
+        "destination request must not inherit the previous question count");
+    } finally {
+      api.resolveAskTool = originalResolveAskTool;
+      flushSync(() => useAppStore.setState({ pendingAsks: {}, activeSessionId:sessionId }));
+    }
+    prefill("retry draft", [attachment]);
+    await painted();
     // Do not flush the click: an immediate rejection must beat React's next render.
     sendButton().click();
     await painted();
