@@ -433,7 +433,12 @@ try {
         });
         killer.on("exit", r);
       });
-    else child.kill("SIGTERM");
+    else {
+      // On macOS the Electron app can outlive the launcher after SIGTERM and
+      // keep the isolated profile lock held. This process belongs to the
+      // fixture, so force cleanup after the recovery assertions finish.
+      child.kill(process.platform === "darwin" ? "SIGKILL" : "SIGTERM");
+    }
   }
   server.closeAllConnections();
   await new Promise((r) => server.close(r));

@@ -248,7 +248,11 @@ globalThis.imageGenerationProbe = async () => {
       const unsetImageRow = [...container.querySelectorAll<HTMLElement>(".settings-row")].find(
         (element) => element.textContent?.includes(i18n.t("settings.imageModel")),
       );
-      assert(!unsetImageRow, "unset image model row should be hidden");
+      assert(unsetImageRow, "candidate image model row missing after clearing the default");
+      assert(
+        unsetImageRow.querySelector('[role="status"]')?.textContent === i18n.t("settings.imageModelUnset"),
+        "cleared image default should expose the unset state",
+      );
 
       // Issue #826: release the only chat model through the real edit/save path.
       providers.splice(0, providers.length, chatProvider);

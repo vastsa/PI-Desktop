@@ -19,6 +19,7 @@ const read = (path) => readFileSync(join(here, path), "utf8");
 const settingsPage = readSettingsSourceSync();
 const pluginsPage = readPluginsSourceSync();
 const layout = read("../src/components/settings/AgentCapabilityLayout.tsx");
+const ui = read("../src/components/ui.tsx");
 const skills = read("../src/components/settings/AgentSkillsPage.tsx");
 const mcp = read("../src/components/settings/AgentMcpPage.tsx");
 const subagents = read("../src/components/settings/AgentSubagentsPage.tsx");
@@ -56,6 +57,9 @@ test("skills and MCP filter one list by level instead of stacking two sections",
   assert.doesNotMatch(layout, /AgentCapabilitySection|AgentCapabilityColumn/);
   assert.match(layout, /agent-capability-list/);
   assert.match(layout, /<SegmentedControl[\s\S]*?value=\{filter\}/);
+  assert.match(layout, /className="agent-capability-segment"/);
+  assert.match(layout, /itemClassName="agent-capability-segment-btn"/);
+  assert.match(ui, /role = "radiogroup"/);
   assert.match(layout, /settings\.capabilityFilterAll/);
   // Subagents are global-only, so they get no level filter and no project.
   assert.doesNotMatch(subagents, /AgentProjectPicker|projectPath|CapabilityFilter/);
@@ -119,6 +123,8 @@ test("the workbench reuses the shared segmented control instead of a third copy"
   assert.match(layout, /<SegmentedControl/);
   assert.match(layout, /className="agent-capability-segment"/);
   assert.match(layout, /itemClassName="agent-capability-segment-btn"/);
+  assert.match(ui, /className=\{cx\("settings-segment", className\)\}/);
+  assert.match(ui, /className=\{cx\(\s*"settings-segment-item"/);
   // providers.css defines the shared segment and imports after settings.css, so
   // a bare local class would silently lose. Every local override must compound.
   for (const decl of [

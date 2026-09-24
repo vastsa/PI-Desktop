@@ -5,32 +5,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { TFunction } from "i18next";
-import type { AppSettings } from "@pi-desktop/shared";
+import type { AppSettings, VoiceInputSettings } from "@pi-desktop/shared";
+import type { AudioInputDevice, ModelState } from "@pi-desktop/voice-runtime";
 import { Button, Badge, CheckboxGroup, SettingsToggle } from "../../../components/ui";
 import { SettingsMenuSelect } from "../../../components/settings/SettingsMenuSelect";
 import { SettingsRow, SettingsCard } from "../primitives";
 import { voiceIpc } from "../../voice/voice-ipc";
-
-interface AudioInputDevice {
-  deviceId: string;
-  label: string;
-  isDefault: boolean;
-}
-
-interface ModelInfo {
-  id: string;
-  name: string;
-  description: string;
-  sizeBytes: number;
-  recommended: boolean;
-}
-
-interface ModelState {
-  info: ModelInfo;
-  status: string;
-  downloadProgress?: number;
-  error?: string;
-}
 
 export function VoiceSettingsSection({
   t,
@@ -41,7 +21,7 @@ export function VoiceSettingsSection({
   settings: AppSettings;
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
 }) {
-  const voice = settings.voice ?? {
+  const voice: VoiceInputSettings = settings.voice ?? {
     enabled: false,
     deviceId: null,
     languages: ["zh", "en"],
@@ -56,11 +36,11 @@ export function VoiceSettingsSection({
   useEffect(() => {
     voiceIpc
       .getDevices()
-      .then((d) => setDevices(Array.isArray(d) ? d as AudioInputDevice[] : []))
+      .then(setDevices)
       .catch(() => {});
     voiceIpc
       .getModels()
-      .then((m) => setModels(Array.isArray(m) ? m as ModelState[] : []))
+      .then(setModels)
       .catch(() => {});
     voiceIpc
       .checkPermission()
@@ -85,9 +65,9 @@ export function VoiceSettingsSection({
   }, []);
 
   const save = useCallback(
-    (patch: Record<string, unknown>) => {
+    (patch: Partial<VoiceInputSettings>) => {
       const next = { ...voice, ...patch };
-      void saveSettings({ voice: next as any });
+      void saveSettings({ voice: next });
       void voiceIpc.updateSettings(next);
     },
     [voice, saveSettings],
@@ -146,10 +126,10 @@ export function VoiceSettingsSection({
             values={voice.languages}
             onChange={(langs) => save({ languages: langs })}
             options={[
-              { value: "zh", label: "中文" },
-              { value: "en", label: "English" },
-              { value: "ja", label: "日本語" },
-              { value: "ko", label: "한국어" },
+              { value: "zh", label: t("settings.voiceLanguageChinese") },
+              { value: "en", label: t("settings.voiceLanguageEnglish") },
+              { value: "ja", label: t("settings.voiceLanguageJapanese") },
+              { value: "ko", label: t("settings.voiceLanguageKorean") },
             ]}
             label={t("settings.voiceLanguages")}
             disabled={!voice.enabled}
@@ -167,7 +147,15 @@ export function VoiceSettingsSection({
               { id: "traditional-taiwan", label: t("settings.voiceTraditionalTaiwan") },
               { id: "traditional-hong-kong", label: t("settings.voiceTraditionalHK") },
             ]}
-            onChange={(id) => save({ chineseVariant: id })}
+            onChange={(id) => {
+              if (
+                id === "simplified" ||
+                id === "traditional-taiwan" ||
+                id === "traditional-hong-kong"
+              ) {
+                save({ chineseVariant: id });
+              }
+            }}
           />
         </SettingsRow>
       </SettingsCard>
@@ -199,9 +187,10 @@ export function VoiceSettingsSection({
                 {formatSize(m.info.sizeBytes)}
                 {m.info.recommended ? (
                   <Badge tone="success" style={{ marginLeft: 6 }}>
-                    Recommended
+                    {t("settings.voiceRecommended")}
                   </Badge>
                 ) : null}
+                {m.error ? <span className="voice-model-error">{m.error}</span> : null}
               </>
             }
           >
@@ -214,14 +203,25 @@ export function VoiceSettingsSection({
                   size="sm"
                   variant="ghost"
                   onClick={() => {
-                    void voiceIpc.deleteModel(m.info.id);
-                    setModels((prev) =>
-                      prev.map((x) =>
-                        x.info.id === m.info.id
-                          ? { ...x, status: "not-downloaded" }
-                          : x,
-                      ),
-                    );
+                    void voiceIpc
+                      .deleteModel(m.info.id)
+                      .then(() => {
+                        setModels((prev) =>
+                          prev.map((x) =>
+                            x.info.id === m.info.id
+                              ? { ...x, status: "not-downloaded", error: undefined }
+                              : x,
+                          ),
+                        );
+                      })
+                      .catch((error: unknown) => {
+                        const message = error instanceof Error ? error.message : String(error);
+                        setModels((prev) =>
+                          prev.map((x) =>
+                            x.info.id === m.info.id ? { ...x, status: "error", error: message } : x,
+                          ),
+                        );
+                      });
                   }}
                 >
                   {t("settings.voiceModelDelete")}
@@ -246,11 +246,20 @@ export function VoiceSettingsSection({
                 size="sm"
                 variant="secondary"
                 onClick={() => {
-                  void voiceIpc.downloadModel(m.info.id);
+                  void voiceIpc
+                    .downloadModel(m.info.id)
+                    .catch((error: unknown) => {
+                      const message = error instanceof Error ? error.message : String(error);
+                      setModels((prev) =>
+                        prev.map((x) =>
+                          x.info.id === m.info.id ? { ...x, status: "error", error: message } : x,
+                        ),
+                      );
+                    });
                   setModels((prev) =>
                     prev.map((x) =>
                       x.info.id === m.info.id
-                        ? { ...x, status: "downloading", downloadProgress: 0 }
+                        ? { ...x, status: "downloading", downloadProgress: 0, error: undefined }
                         : x,
                     ),
                   );

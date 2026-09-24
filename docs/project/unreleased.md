@@ -46,3 +46,20 @@
 - OpenAI Codex OAuth models can now opt into provider-hosted native web search.
   The feature remains off by default and search history is replayed only for
   the same Codex model.
+
+- Optional local voice input is now available from the Composer and Settings.
+  It records through the main process, transcribes with a locally managed
+  Whisper/SenseVoice model, and inserts the result into the current draft
+  without provider credentials or raw audio in the renderer.
+
+- Voice model downloads use verified partial files: pinned repository revisions,
+  file sizes, and SHA-256 checksums are validated before an artifact becomes
+  installable; cancellation and stale transcription results are discarded.
+
+- Keep-awake and prevent-screen-sleep controls persist independently, sidebar
+  multi-select supports batch actions, and the work panel supports reorderable
+  and closable transcript tabs.
+
+- Conversation timestamps, compaction inspection, smoother streamed output,
+  pt-BR localization, MCP cancellation/status handling, and Windows command
+  resolution have received their current UI and lifecycle updates.

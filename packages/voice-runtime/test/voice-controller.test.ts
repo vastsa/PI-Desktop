@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { VoiceController } from "../src/voice-controller.js";
-import type { AudioCapture, AudioCaptureFactory, VoiceSettings } from "../src/types.js";
+import type {
+  AudioCapture,
+  AudioCaptureFactory,
+  VoiceSettings,
+} from "../src/types.js";
+import type { TranscriptionEngine } from "../src/transcription-engine.js";
 
 // Mock TranscriptionEngine
 function createMockEngine() {
@@ -57,7 +62,11 @@ describe("VoiceController", () => {
     engine = createMockEngine();
     factory = createMockCaptureFactory();
     settings = defaultSettings();
-    controller = new VoiceController(engine as any, factory, () => settings);
+    controller = new VoiceController(
+      engine as unknown as TranscriptionEngine,
+      factory,
+      () => settings,
+    );
   });
 
   it("starts in idle state", () => {
@@ -88,6 +97,45 @@ describe("VoiceController", () => {
     await controller.start();
     controller.cancel();
     expect(controller.state.phase).toBe("idle");
+  });
+
+  it("cancelling while preparing does not enter ready or start capture", async () => {
+    let resolveLoaded!: () => void;
+    engine.modelManager.ensureLoaded.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveLoaded = resolve;
+      }),
+    );
+
+    const starting = controller.start();
+    await Promise.resolve();
+    controller.cancel();
+    resolveLoaded();
+
+    await expect(starting).rejects.toMatchObject({ name: "AbortError" });
+    expect(controller.state.phase).toBe("idle");
+    expect(factory.create).not.toHaveBeenCalled();
+  });
+
+  it("cancelling during transcription suppresses the late result", async () => {
+    let resolveTranscript!: (text: string) => void;
+    engine.transcribe.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveTranscript = resolve;
+      }),
+    );
+    const phases: string[] = [];
+    controller.on("stateChange", (state) => phases.push(state.phase));
+
+    await controller.start();
+    const stopping = controller.stop();
+    await Promise.resolve();
+    controller.cancel();
+    resolveTranscript("late result");
+
+    await expect(stopping).rejects.toMatchObject({ name: "AbortError" });
+    expect(controller.state.phase).toBe("idle");
+    expect(phases).not.toContain("done");
   });
 
   it("cannot start from non-idle/ready phase", async () => {

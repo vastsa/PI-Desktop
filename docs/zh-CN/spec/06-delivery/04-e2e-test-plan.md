@@ -430,6 +430,38 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **状态**：源级回归（`composer-ime.test.mjs`）；完整 UI 键盘旅程仍为 Draft。
   协议冒烟不会派发按键事件。
 
+#### E2E-008e：宿主语音转写与朗读
+
+- **先决条件**：已打开会话；没有绑定 `AppSettings.speech` 角色。
+- **步骤**：1) 在未绑定时使用临时 wav 调用 `speech/transcribe`。2) 通过主机设置写入
+  ASR（`openai_audio` / whisper）和 TTS 绑定。3) 转写 wav，并把返回文本插入草稿。
+  4) 合成该草稿。
+- **预期**：未绑定角色返回 `SPEECH_NOT_CONFIGURED` 且不会调用 provider；转写返回文本；
+  合成把音频写入会话临时目录并返回有限大小的 data URL，音频字节不会进入渲染器；
+  Whisper/TTS 不出现在聊天模型选择器中。
+- **链接规格**：`03-runtime/20-speech.md`、`04-ux/06-settings-ia.md`
+- **验收**：C（语音）
+- **里程碑**：M2
+- **状态**：源级回归（`speech-capability.test.mjs`、`plugin-speech-adapter.test.mjs`）；
+  没有渲染器入口，实时 provider 旅程仍为 Draft。
+
+#### E2E-008f：本地语音输入设置与草稿插入
+
+- **先决条件**：隔离的 Electron 配置、夹具音频后端，以及已下载/缓存的小型本地语音模型
+  （或确定性的运行时 seam）；不需要 provider 凭据或真实麦克风。
+- **步骤**：1) 打开设置→语音输入，确认默认关闭。2) 检查/请求麦克风权限，启用语音，
+  列出并选择设备，选择语言、中文变体和模型。3) 从 Composer 启动麦克风，观察准备、监听
+  音量与时长，停止并确认转写文本插入当前草稿。4) 使用取消重复流程，确认迟到结果不会修改草稿。
+  5) 保存、重载并确认设置持久化。6) 覆盖模型进度、校验失败和取消，确认失败下载不会留下最终工件。
+- **预期**：只有启用后才显示麦克风；设置可持久化；生命周期和错误可观察；取消会抑制旧结果；
+  原始音频和凭据不会进入渲染器；模型安装前必须通过固定元数据校验。
+- **链接规格**：`03-runtime/23-voice-input.md`、`04-ux/06-settings-ia.md`、
+  `04-ux/08-component-spec.md`
+- **验收**：C（Composer 输入）、F（设置持久化）、安全性、品质
+- **里程碑**：M6+
+- **状态**：源/集成覆盖（`voice-controller.test.ts`、`voice-ipc.test.mjs`、
+  `model-catalog.test.ts`）；真实麦克风和数百 MB 模型下载依赖运行环境。
+
 
 #### E2E-008a：首轮工具按需加载
 
@@ -5369,6 +5401,7 @@ eleven-tool-round desktop paths are verified by
 | E——工具和权限（Skill 常驻） | E2E-254 |
 | 品质（Skill 常驻与输入法斜杠别名） | E2E-254、E2E-255 |
 | C — 对话和直播（导入可见性） | E2E-257 |
+| C / F / 安全性 / 品质 —— 本地语音输入 | E2E-008f |
 | F——持久化（导入可见性） | E2E-257 |
 | C — 对话和直播（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | G——插件（聊天文件引用） | E2E-CHAT-file-ref-opens-the-surface-that-owns-it、E2E-PLUGIN-file-view-collapse-persists |
@@ -5416,6 +5449,7 @@ eleven-tool-round desktop paths are verified by
 | M6 | E2E-104、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、E2E-110、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、E2E-117、 E2E-118、E2E-119、E2E-120、E2E-103 |
 | M6+ | E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217、E2E-257、E2E-166、E2E-SUBAGENT-resume-a-settled-delegation |
 | M6+（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
+| M6+（本地语音输入） | E2E-008f |
 | M6+（已选模型顺序） | E2E-MODEL-selected-order-persists |
 | M6+（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+（独立会话通信） | E2E-SESSION-independent-top-level-communication、E2E-SESSION-hover-card-model-and-links |
@@ -8397,6 +8431,9 @@ the latest destination. These assertions measure work counts, not device FPS.
 
 - **Preconditions:** A built desktop and matching host-core binary; isolated
   profile and data directory with one local session; no real provider calls.
+  macOS native fullscreen additionally requires an interactive Aqua session;
+  locked or headless runners report that native-only step as skipped and must
+  run it on an interactive macOS runner before release.
 - **Steps:** Open the work panel from the titlebar, toggle the sidebar, maximize
   and restore the panel, maximize and restore the native window, close the panel,
   visit Settings and return, reopen the panel, minimize/restore the window, then

@@ -19,17 +19,28 @@ const key = (node: Element, init: KeyboardEventInit) => {
 Object.assign(globalThis, { imeEscapeProbe: async () => {
   await i18n.init({ lng: "en", resources: { en: { translation: en } } });
   const sent: string[] = [];
-  useAppStore.setState({ refreshSessions: async () => {}, editUserMessage: async (_id, text) => { sent.push(text); return true; } });
+  const message = { id: "ime-test", role: "user" as const, content: "Original message", createdAt: "2026-09-21T00:00:00Z", status: "complete" as const };
+  useAppStore.setState({
+    refreshSessions: async () => {},
+    prepareUserMessageEdit: async () => message,
+    editUserMessage: async (_id, text) => { sent.push(text); return true; },
+  });
   Object.assign(api, { searchSessions: async () => ({ hits: [] }), searchCommands: async () => ({ commands: [] }) });
   const container = document.createElement("div"); document.body.append(container);
   const root = createRoot(container);
   const render = (child: React.ReactNode) => flushSync(() => root.render(<I18nextProvider i18n={i18n}>{child}</I18nextProvider>));
-  render(<MessageRow message={{ id: "ime-test", role: "user", content: "Original message", createdAt: "2026-09-21T00:00:00Z", status: "complete" }} isRunning={false} />);
-  const edit = () => flushSync(() => container.querySelector<HTMLButtonElement>(`button[aria-label="${i18n.t("chat.editMessage")}"]`)!.click());
-  edit();
+  render(<MessageRow message={message} isRunning={false} />);
+  const edit = async () => {
+    flushSync(() => container.querySelector<HTMLButtonElement>(`button[aria-label="${i18n.t("chat.editMessage")}"]`)!.click());
+    for (let frame = 0; frame < 120 && !container.querySelector("textarea"); frame++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    check(container.querySelector("textarea"), "Message edit did not open");
+  };
+  await edit();
   const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
   flushSync(() => {
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Edited draft ni");
+    input.value = "Edited draft ni";
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   for (const composing of [{ isComposing: true }, { keyCode: 229 }]) {
@@ -43,7 +54,7 @@ Object.assign(globalThis, { imeEscapeProbe: async () => {
   key(input, { key: "Escape" });
   check(!container.querySelector("textarea"), "Normal Escape did not cancel editing");
   for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {
-    edit();
+    await edit();
     key(container.querySelector("textarea")!, { key: "Enter", ...modifier });
     for (let frame = 0; frame < 120 && container.querySelector("textarea"); frame++) {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));

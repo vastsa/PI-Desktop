@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import type { TranscribeModel } from "transcribe-cpp";
 import type { ModelInfo, ModelState, ModelStatus } from "./types.js";
 import { findModel, getCatalog } from "./model-catalog.js";
 
@@ -14,7 +15,7 @@ import { findModel, getCatalog } from "./model-catalog.js";
 export class ModelManager extends EventEmitter {
   private states = new Map<string, ModelState>();
   private loadedModelId: string | null = null;
-  private loadedModel: unknown = null; // TranscribeModel instance (lazy typed)
+  private loadedModel: TranscribeModel | null = null;
 
   constructor(private readonly cacheDir: string) {
     super();
@@ -140,25 +141,29 @@ export class ModelManager extends EventEmitter {
   }
 
   /** Get the loaded transcribe-cpp model instance. */
-  getLoadedModel(): unknown {
+  getLoadedModel(): TranscribeModel | null {
     return this.loadedModel;
   }
 
   /** Unload the currently loaded model to free memory. */
   unload(): void {
-    if (this.loadedModel && typeof (this.loadedModel as any).dispose === "function") {
+    const model = this.loadedModel;
+    const modelId = this.loadedModelId;
+
+    if (model) {
       try {
-        (this.loadedModel as any).dispose();
+        model.dispose();
       } catch {
         // Best-effort cleanup
       }
     }
-    if (this.loadedModelId) {
-      const state = this.states.get(this.loadedModelId);
+    if (modelId) {
+      const state = this.states.get(modelId);
       if (state && state.status === "loaded") {
-        this.updateState(this.loadedModelId, { status: "downloaded" });
+        this.updateState(modelId, { status: "downloaded" });
       }
     }
+
     this.loadedModel = null;
     this.loadedModelId = null;
   }

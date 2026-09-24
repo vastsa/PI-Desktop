@@ -32,6 +32,8 @@ test("import is one workbench per kind instead of four stacked scan cards", () =
   assert.match(page, /role="tablist"/);
   assert.match(page, /id: `import-tab-\$\{entry\.id\}`/);
   assert.match(page, /controls: `import-panel-\$\{entry\.id\}`/);
+  assert.match(page, /itemIdPrefix="import"/);
+  assert.match(page, /itemAriaControls=\{\(value\) => `import-panel-\$\{value\}`\}/);
   assert.match(page, /aria-labelledby={`import-tab-\$\{entry\.id\}`}/);
 
   // One toolbar and one idle state per kind — not per section or per step.

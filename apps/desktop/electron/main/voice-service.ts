@@ -57,6 +57,7 @@ export class VoiceService {
   // ---- Lazy initialization ----
 
   private async ensureRuntime(): Promise<void> {
+    if (this.disposed) throw new Error("VoiceService is disposed");
     if (this.controller) return;
 
     const {
@@ -119,8 +120,9 @@ export class VoiceService {
 
   // ---- Models ----
 
-  getModels(): ModelState[] {
-    return this.modelManager?.getAllStates() ?? [];
+  async getModels(): Promise<ModelState[]> {
+    await this.ensureRuntime();
+    return this.modelManager!.getAllStates();
   }
 
   async downloadModel(modelId: string): Promise<void> {

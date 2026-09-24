@@ -57,12 +57,13 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   10. **Projects / 项目** — Lucide `Archive` (durable project index)
   11. **Cloud sync / 云同步** — Lucide `CloudDownload` (encrypted portable configuration backup and bidirectional sync; developer mode only)
   12. **Remote Hosts / 远程主机** — Lucide `Globe` (SSH bootstrap and pairing inventory; developer mode only)
-  13. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
+  13. **Voice / 语音输入** — Lucide `Mic` (local offline transcription)
+  14. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
   with the rail label; do not reuse refresh/rotate glyphs here.
 - The directory remains a flat searchable list in the same exact order. For
   scanability, the destinations are shown in four titled visual clusters:
-  `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
+  `Preferences` / `偏好` (General, AI, Shortcuts, Voice), `Agent` / `智能体`
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
   (Import, Projects), and `System` / `系统` (Cloud sync, Remote Hosts, Info;
   Cloud sync and Remote Hosts are developer-only). Headings are
@@ -280,6 +281,17 @@ Speech bindings (`AppSettings.speech`) are **not a Settings surface** (ADR
 and for bindings that are already stored, but nothing here picks a
 transcription or speech provider, protocol, model, or voice, and search indexes
 no speech keys.
+
+### Voice (`voice` tab)
+
+Local voice input is a separate, optional Settings destination backed by
+`AppSettings.voice`. It is disabled by default and uses the desktop main
+process plus a locally downloaded Whisper/SenseVoice model; it does not select
+or configure the host speech provider. The page exposes microphone permission,
+input device, language list, Chinese output variant, and model download/delete
+actions. The Composer microphone appears only while `voice.enabled` is true;
+recording and transcription status are shown in the overlay, and successful
+text is inserted into the active draft.
 
 Token usage is **not a Settings destination** (D335 / ADR 0173). Completed-turn
 history stays host-owned (`session.endTurn.usage`, `stats.getTokenUsageHistory`).
@@ -778,7 +790,7 @@ system while preserving their different data ownership:
    foot on the main sidebar's footer icon line, and exactly General / 常规, AI,
    Shortcuts / 快捷键, Instructions / 指令, Models / 模型, Skills / 技能, MCP,
    Subagents / 子智能体, Import / 导入, Projects / 项目, Cloud sync / 云同步,
-   Remote Hosts / 远程主机, and Info / 信息 in that order. Cloud sync / 云同步
+   Remote Hosts / 远程主机, Voice / 语音输入, and Info / 信息 in that order. Cloud sync / 云同步
    and Remote Hosts / 远程主机 appear only while developer mode is on. The rows are grouped under Preferences / 偏好,
    Agent / 智能体, Workspace / 工作区, and System / 系统. There is no
    Usage / 用量 destination.
@@ -788,7 +800,8 @@ system while preserving their different data ownership:
    load, enable, disable, and uninstall
 6. General shows the host-backed Appearance card; the AI destination shows
    Permissions and Defaults, including the Command shell row; the
-   Shortcuts destination shows the Keyboard shortcuts card; Info shows the
+   Shortcuts destination shows the Keyboard shortcuts card; Voice shows the
+   local microphone and model controls; Info shows the
    Developer card. Plugin-contributed destinations, when present, appear after
    every core group under Extensions. Each destination is a renderer-composited
    sandboxed surface: it preserves the existing Settings rail, titlebar,

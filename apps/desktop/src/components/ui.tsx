@@ -691,6 +691,8 @@ export function SegmentedControl<T extends string>({
   role = "radiogroup",
   className,
   itemClassName,
+  itemIdPrefix,
+  itemAriaControls,
   disabled,
 }: {
   value: T;
@@ -705,6 +707,10 @@ export function SegmentedControl<T extends string>({
   role?: "group" | "radiogroup" | "tablist";
   className?: string;
   itemClassName?: string;
+  /** Stable prefix for tab item ids when the control owns tab panels. */
+  itemIdPrefix?: string;
+  /** Optional panel relationship for tab items. */
+  itemAriaControls?: (value: T) => string | undefined;
   disabled?: boolean;
 }) {
   const itemRole = role === "tablist" ? "tab" : role === "radiogroup" ? "radio" : undefined;
@@ -719,7 +725,12 @@ export function SegmentedControl<T extends string>({
           key={option.value}
           type="button"
           {...(itemRole === "tab"
-            ? { role: "tab", id: option.id ?? `${label}-tab-${option.value}`, "aria-controls": option.controls, "aria-selected": value === option.value }
+            ? {
+                role: "tab",
+                id: option.id ?? `${itemIdPrefix ?? label}-tab-${option.value}`,
+                "aria-selected": value === option.value,
+                "aria-controls": option.controls ?? itemAriaControls?.(option.value),
+              }
             : itemRole === "radio"
               ? { role: "radio", "aria-checked": value === option.value }
               : { "aria-pressed": value === option.value })}

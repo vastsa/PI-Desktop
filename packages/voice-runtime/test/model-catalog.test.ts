@@ -14,7 +14,9 @@ describe("getCatalog", () => {
       expect(model.languages.length).toBeGreaterThan(0);
       expect(model.sizeBytes).toBeGreaterThan(0);
       expect(model.hfRepo).toBeTruthy();
+      expect(model.hfRevision).toMatch(/^[a-f0-9]{40}$/);
       expect(model.hfFilename).toBeTruthy();
+      expect(model.sha256).toMatch(/^[a-f0-9]{64}$/);
     }
   });
 });

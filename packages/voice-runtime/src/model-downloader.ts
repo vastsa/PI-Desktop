@@ -1,4 +1,5 @@
-import { mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { ModelInfo } from "./types.js";
 
@@ -14,30 +15,68 @@ export async function* downloadModel(
   await mkdir(targetDir, { recursive: true });
 
   const targetPath = path.join(targetDir, info.hfFilename);
+  const partialPath = `${targetPath}.partial`;
 
   // Dynamic import of @huggingface/hub
   const { downloadFile } = await import("@huggingface/hub");
 
-  const blob = await downloadFile({
+  const response = await downloadFile({
     repo: info.hfRepo,
     path: info.hfFilename,
+    revision: info.hfRevision,
   });
 
-  // In Node the hub SDK returns a Response-like object, not a Blob.
-  const response = blob as unknown as Response;
-
-  if (!response || !response.body) {
-    throw new Error(`Failed to download model: no response body`);
+  if (!response) {
+    throw new Error(`Failed to download model: file not found`);
   }
 
-  const contentLength = Number(response.headers.get("content-length") || info.sizeBytes);
+  const contentLength = response.size || info.sizeBytes;
   let received = 0;
 
   const { createWriteStream } = await import("node:fs");
-  const writer = createWriteStream(targetPath);
+  const writer = createWriteStream(partialPath);
+  const hash = createHash("sha256");
+  let writerError: Error | undefined;
+  writer.on("error", (error) => {
+    writerError = error instanceof Error ? error : new Error(String(error));
+  });
+
+  const waitForDrain = async (): Promise<void> => {
+    if (writerError) throw writerError;
+    await new Promise<void>((resolve, reject) => {
+      const onDrain = () => {
+        writer.off("error", onError);
+        resolve();
+      };
+      const onError = (error: Error) => {
+        writer.off("drain", onDrain);
+        reject(error);
+      };
+      writer.once("drain", onDrain);
+      writer.once("error", onError);
+    });
+  };
+
+  const finishWriter = async (): Promise<void> => {
+    if (writerError) throw writerError;
+    await new Promise<void>((resolve, reject) => {
+      const onFinish = () => {
+        writer.off("error", onError);
+        resolve();
+      };
+      const onError = (error: Error) => {
+        writer.off("finish", onFinish);
+        reject(error);
+      };
+      writer.once("finish", onFinish);
+      writer.once("error", onError);
+      writer.end();
+    });
+    if (writerError) throw writerError;
+  };
 
   try {
-    const reader = response.body.getReader();
+    const reader = response.stream().getReader();
 
     while (true) {
       if (signal?.aborted) {
@@ -48,22 +87,32 @@ export async function* downloadModel(
       const { done, value } = await reader.read();
       if (done) break;
 
-      writer.write(Buffer.from(value));
+      const buffer = Buffer.from(value);
+      hash.update(buffer);
+      if (!writer.write(buffer)) await waitForDrain();
       received += value.byteLength;
       yield contentLength > 0 ? received / contentLength : 0;
     }
 
-    await new Promise<void>((resolve, reject) => {
-      writer.end(() => resolve());
-      writer.on("error", reject);
-    });
+    await finishWriter();
+
+    const actualSha256 = hash.digest("hex");
+    if (!/^[a-f0-9]{64}$/i.test(info.sha256)) {
+      throw new Error(`Model ${info.id} has no valid pinned SHA-256 checksum`);
+    }
+    if (actualSha256 !== info.sha256.toLowerCase()) {
+      throw new Error(
+        `Model checksum mismatch: expected ${info.sha256}, got ${actualSha256}`,
+      );
+    }
+
+    await rename(partialPath, targetPath);
 
     yield 1;
   } catch (error) {
     writer.destroy();
     // Clean up partial file
-    const { unlink } = await import("node:fs/promises");
-    await unlink(targetPath).catch(() => {});
+    await unlink(partialPath).catch(() => {});
     throw error;
   }
 }

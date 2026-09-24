@@ -21,16 +21,17 @@ declare module "transcribe-cpp" {
       pcm: Float32Array,
       options?: { language?: string },
     ): Promise<{ text: string }>;
-    createSession(): TranscribeSession | null;
+    createSession(): TranscribeSession;
     readonly capabilities: { languages: string[]; supportsStreaming: boolean };
     dispose(): void;
   }
   interface TranscribeSession {
-    stream(options?: { language?: string }): TranscribeStream;
+    stream(options?: { language?: string }): Promise<TranscribeStream>;
   }
   interface TranscribeStream {
-    feed(chunk: Float32Array): void;
-    finalize(): Promise<string>;
+    feed(chunk: Float32Array): Promise<unknown>;
+    finalize(): Promise<unknown>;
+    readonly text: { full: string };
     reset(): void;
   }
   const TranscribeModel: {
@@ -43,8 +44,9 @@ declare module "@huggingface/hub" {
   interface DownloadFileOptions {
     repo: string;
     path: string;
+    revision?: string;
     requestInit?: RequestInit;
   }
-  function downloadFile(options: DownloadFileOptions): Promise<Response | null>;
+  function downloadFile(options: DownloadFileOptions): Promise<Blob | null>;
   export { downloadFile };
 }

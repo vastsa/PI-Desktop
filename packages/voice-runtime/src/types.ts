@@ -61,6 +61,8 @@ export interface ModelInfo {
   languages: string[];
   sizeBytes: number;
   hfRepo: string;
+  /** Immutable Hugging Face commit used for the download. */
+  hfRevision: string;
   hfFilename: string;
   sha256: string;
   supportsStreaming: boolean;

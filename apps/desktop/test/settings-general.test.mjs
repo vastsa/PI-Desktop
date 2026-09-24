@@ -93,6 +93,18 @@ const preloadSource = await readFile(
 );
 const sharedTypesSource = await readSharedTypesSource();
 const stylesSource = await loadStyles();
+const developerSource = await readFile(
+  new URL("../src/features/settings/developer-sections.tsx", import.meta.url),
+  "utf8",
+);
+const uiSource = await readFile(
+  new URL("../src/components/ui.tsx", import.meta.url),
+  "utf8",
+);
+const voiceStylesSource = await readFile(
+  new URL("../src/styles/voice.css", import.meta.url),
+  "utf8",
+);
 const networkProxySource = await readFile(
   new URL("../src/components/settings/NetworkProxySection.tsx", import.meta.url),
   "utf8",
@@ -160,9 +172,17 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   // Voice owns a separate destination; the AI tab does not duplicate it.
   assert.doesNotMatch(aiSource, /VoiceSettingsCard|VoiceSettingsSection|voice-settings/);
   assert.match(settingsPageSource, /tab === "voice" && settings && [\s\S]*?<VoiceSettingsSection/);
+  // Host speech bindings remain an IPC capability, while local voice input is
+  // now an explicit Settings destination with its own persisted settings.
+  assert.match(settingsPageSource, /<VoiceSettingsSection/);
+  assert.match(settingsPageSource, /tab === "voice"/);
+  assert.match(settingsSearchSource, /settings\.voiceEnable/);
+  assert.match(voiceStylesSource, /\.voice-settings/);
   assert.doesNotMatch(settingsSearchSource, /settings\.speech/);
   assert.doesNotMatch(stylesSource, /\.settings-speech/);
   assert.doesNotMatch(enLocaleSource, /speechTitle:|speechVoicePlaceholder:/);
+  assert.match(enLocaleSource, /voiceLanguageChinese:/);
+  assert.match(zhLocaleSource, /voiceLanguageChinese:/);
   assert.match(protocolSource, /speechTranscribe: "pi-desktop\/speech\/transcribe"/);
 });
 
@@ -206,6 +226,9 @@ test("basics gates developer tools behind a persisted developer mode", () => {
   assert.match(settingsPageSource, /function DeveloperSection/);
   assert.match(settingsPageSource, /<SettingsToggle\s+checked=\{enabled\}/);
   assert.match(settingsPageSource, /saveSettings\(\{ developerMode: !enabled \}\)/);
+  assert.match(developerSource, /SettingsToggle/);
+  assert.match(developerSource, /saveSettings\(\{ developerMode: !enabled \}\)/);
+  assert.match(uiSource, /role="switch"/);
   assert.match(settingsPageSource, /api\.toggleDevTools\(true\)/);
   assert.match(settingsPageSource, /disabled=\{!enabled\}/);
   for (const key of [
