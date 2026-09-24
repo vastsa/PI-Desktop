@@ -1422,6 +1422,7 @@ export const ptBR = {
     promptEnhancementCustomTemplate: "Usar um modelo personalizado",
     promptEnhancementCustomTemplateDesc: "Personalize o template do prompt de sistema para o aprimoramento de prompts.",
     promptEnhancementCustomTemplateActive: "Modelo personalizado ativo",
+    promptEnhancementCustomTemplateNeedsTemplate: "Um template personalizado é obrigatório quando este modo está ativo.",
     promptEnhancementEdit: "Editar",
     promptEnhancementModelTitle: "Prompt de aprimoramento",
     promptEnhancementModel: "Modelo padrão",

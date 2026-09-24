@@ -1449,6 +1449,8 @@ sklm: {
     promptEnhancementCustomTemplateDesc:
       "用你自己的用户模板替换内置模板。系统提示词保持内置。",
     promptEnhancementCustomTemplateActive: "自定义模板已启用",
+    promptEnhancementCustomTemplateNeedsTemplate:
+      "请先保存自定义模板；保存后即可用开关在内置模板与自定义模板之间切换。",
     promptEnhancementEdit: "编辑",
     promptEnhancementModelTitle: "增强提示词",
     promptEnhancementModel: "默认模型",

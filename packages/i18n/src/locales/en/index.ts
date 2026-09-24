@@ -1481,6 +1481,8 @@ sklm: {
     promptEnhancementCustomTemplateDesc:
       "Replaces the built-in user template with your own. The system prompt stays built in.",
     promptEnhancementCustomTemplateActive: "Custom template active",
+    promptEnhancementCustomTemplateNeedsTemplate:
+      "Save a custom template first; the switch then chooses between it and the built-in template.",
     promptEnhancementEdit: "Edit",
     promptEnhancementModelTitle: "Enhancement prompt",
     promptEnhancementModel: "Default model",
