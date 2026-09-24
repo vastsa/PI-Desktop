@@ -859,6 +859,85 @@ const EMPTY_CANDIDATES: readonly IndexedModel[] = [];
 
 
 
+/**
+ * Middle value of the numbers the publishers state. Even counts take the lower
+ * of the two middles, so a borrow never rounds a window up on its own.
+ */
+function medianOf(values: readonly (number | undefined)[]): number | undefined {
+  const present = values.filter((value): value is number => value !== undefined);
+  if (present.length === 0) return undefined;
+  const sorted = [...present].sort((left, right) => left - right);
+  const middle = sorted.length >> 1;
+  return sorted.length % 2 === 1
+    ? sorted[middle]
+    : sorted[middle - 1];
+}
+
+/**
+ * Record to borrow for an id the row's own catalog provider does not publish.
+ *
+ * models.dev indexes a gateway's copy of a model under the vendor that owns
+ * the weights, so an endpoint serving `Vendor/Model` ids can have no record of
+ * its own while several other publishers state the identical id. Borrowing
+ * that record is what keeps such a model's context window, tool support and
+ * vision visible instead of dropping the row to the generic 128k text-only
+ * shape.
+ *
+ * Two rules keep the result honest about what the endpoint will accept:
+ *
+ * - Tool support is the gate. Every publisher of the id must agree, because a
+ *   wrong `true` puts tool declarations on the wire that the endpoint may
+ *   reject and break the turn. Publishers that split on this id are describing
+ *   different deployments, so nothing is borrowed.
+ * - Every other capability is the *intersection*, so the borrow may only
+ *   under-claim. Reasoning, image input and image/PDF attachment are reported
+ *   only when every publisher states them, and a user who knows the endpoint
+ *   does more can still turn them on in Advanced. Limits are the medians the
+ *   publishers state, so neither one host's cap nor one host's round-up
+ *   decides them.
+ */
+function borrowedModel(entries: readonly ModelsDevModel[]): ModelsDevModel | undefined {
+  if (entries.length === 0) return undefined;
+  const toolCall = entries[0].toolCall;
+  if (entries.some((model) => model.toolCall !== toolCall)) return undefined;
+  const every = (pick: (model: ModelsDevModel) => boolean | undefined): boolean | undefined =>
+    entries.every((model) => pick(model) === true) ? true
+      : entries.every((model) => pick(model) === false) ? false
+      : undefined;
+  const base = entries[0];
+  const keptModality = (modality: ModelModality): boolean =>
+    entries.every((model) => model.modalities.input.includes(modality));
+  const inputModalities = base.modalities.input.filter(keptModality);
+  const outputModalities = base.modalities.output.filter((modality) =>
+    entries.every((model) => model.modalities.output.includes(modality)),
+  );
+  const context = medianOf(entries.map((model) => model.limit.context));
+  const output = medianOf(entries.map((model) => model.limit.output));
+  const source = entries.find(
+    (model) =>
+      (context === undefined || model.limit.context === context) &&
+      (output === undefined || model.limit.output === output),
+  ) ?? base;
+  const reasoning = every((model) => model.reasoning) === true;
+  return {
+    ...source,
+    // Capabilities that must never be asserted on one publisher's word alone.
+    toolCall,
+    reasoning,
+    thinkingLevels: reasoning ? source.thinkingLevels : [],
+    structuredOutput: every((model) => model.structuredOutput),
+    attachment: every((model) => model.attachment),
+    modalities: {
+      input: inputModalities.length > 0 ? inputModalities : ["text"],
+      output: outputModalities.length > 0 ? outputModalities : ["text"],
+    },
+    limit: {
+      ...(context !== undefined ? { context } : {}),
+      ...(output !== undefined ? { output } : {}),
+    },
+  };
+}
+
 export class ModelsDevCatalog {
   private providers = new Map<string, ModelsDevProvider>();
   private lookupIndex: ModelsDevLookupIndex | undefined;
@@ -1030,17 +1109,74 @@ export class ModelsDevCatalog {
     candidates.sort((left, right) =>
       right.score - left.score || left.model.modelId.length - right.model.modelId.length,
     );
-    // An unknown endpoint can use a unique catalog match (including supported
-    // proxy aliases), but scores are not proof of provider identity. If two
-    // providers publish the same ID, do not borrow either one's metadata.
-    const result = preferredProvider || candidates.length === 1
-      ? candidates[0]?.model
-      : undefined;
+    /* Within the row's own catalog provider this is an exact-provider lookup:
+       the provider identity is known, so its record for the id — a direct hit
+       or a supported alias — is authoritative.
+
+       With no provider identity the scores prove nothing about identity, so a
+       catalog answer is only usable when it is unambiguous. Two providers
+       publishing the same id must not have one of them chosen for the other. */
+    const resolved = candidates[0]?.model;
+    const result = preferredProvider
+      ? resolved
+      : candidates.length === 1 ? resolved : undefined;
+    /* The row's own catalog provider did not publish this id. Borrowing needs a
+       known provider identity to anchor on: the row resolved to a catalog
+       provider whose own records are authoritative, so anything missing from it
+       can be checked against the other publishers of the exact id instead of
+       dropping the model to the generic shape.
+
+       This only fills a miss the lookup already had — a record the preferred
+       provider does publish stays authoritative. Without that anchor the scores
+       prove nothing about identity, and an unknown endpoint keeps the existing
+       behaviour: a unique unambiguous match, or nothing. */
+    const borrowed = result ??
+      (preferredProvider ? this.borrowedAcrossProviders(input) : undefined);
     // Cache the result (a miss included) so a repeated miss is also O(1) and
     // cannot grow the candidate index with query-dependent keys.
-    this.lookupMemo.set(memoKey, result);
+    this.lookupMemo.set(memoKey, borrowed);
     if (this.lookupMemo.size > LOOKUP_MEMO_LIMIT) this.lookupMemo.clear();
-    return result;
+    return borrowed;
+  }
+
+  /**
+   * Exact-id fallback across catalog providers, used only when the row resolved
+   * to a catalog provider that published nothing for the id.
+   *
+   * A gateway's copy of a model is indexed under the vendor that owns the
+   * weights, so an endpoint serving `Vendor/Model` ids routinely has no record
+   * of its own while other publishers state the identical id. Their record is
+   * what keeps that model's window, tool support and vision visible.
+   *
+   * Two exclusions keep this from borrowing anything identity-sensitive:
+   *
+   * - A provider sharing the row's own endpoint is an alias for the row, not an
+   *   independent source. Its failure to publish the id is an answer about this
+   *   deployment, so nothing is borrowed past it.
+   * - Only an exactly-identical id transfers. The index also reaches a record
+   *   through aliases — a bare route leaf behind a prefix, a vendor-prefixed
+   *   variant — and those describe a *different* id, whose limits and
+   *   capabilities are not this model's.
+   */
+  private borrowedAcrossProviders(
+    input: { vendorKey?: string; baseUrl?: string; modelId: string },
+  ): ModelsDevModel | undefined {
+    // `findModel` already rejected an empty id; normalize here so the compare
+    // below is case-insensitive against the catalog's own normalization.
+    const requested = normalizedModelId(input.modelId);
+    const matches: ModelsDevModel[] = [];
+    const seen = new Set<string>();
+    for (const candidate of this.lookupIndex?.candidates(requested) ?? []) {
+      const { model, provider } = candidate;
+      // The row's endpoint owns its own answers, including a negative one.
+      if (apiMatches(input.baseUrl, provider.api)) continue;
+      if (normalizedModelId(model.modelId) !== requested) continue;
+      const key = `${provider.providerKey}\u0000${model.modelId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      matches.push(model);
+    }
+    return borrowedModel(matches);
   }
 
   modelsForProvider(input: { vendorKey?: string; baseUrl?: string; providerId: string }): ModelInfo[] {
