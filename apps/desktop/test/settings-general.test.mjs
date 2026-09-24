@@ -93,6 +93,18 @@ const preloadSource = await readFile(
 );
 const sharedTypesSource = await readSharedTypesSource();
 const stylesSource = await loadStyles();
+const developerSource = await readFile(
+  new URL("../src/features/settings/developer-sections.tsx", import.meta.url),
+  "utf8",
+);
+const uiSource = await readFile(
+  new URL("../src/components/ui.tsx", import.meta.url),
+  "utf8",
+);
+const voiceStylesSource = await readFile(
+  new URL("../src/styles/voice.css", import.meta.url),
+  "utf8",
+);
 const networkProxySource = await readFile(
   new URL("../src/components/settings/NetworkProxySection.tsx", import.meta.url),
   "utf8",
@@ -157,13 +169,17 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   // The AI tab keeps the Settings picker control: a native <select> popup is
   // platform-drawn and cannot carry the shared menu surface or its check mark.
   assert.doesNotMatch(aiSource, /<select/);
-  // Speech is not a Settings surface: the AI tab renders no voice card, search
-  // indexes no speech keys, its styles are gone, and the host capability keeps
-  // its IPC contract (ADR 0291).
-  assert.doesNotMatch(settingsPageSource, /VoiceSettingsCard|voice-settings/);
+  // Host speech bindings remain an IPC capability, while local voice input is
+  // now an explicit Settings destination with its own persisted settings.
+  assert.match(settingsPageSource, /<VoiceSettingsSection/);
+  assert.match(settingsPageSource, /tab === "voice"/);
+  assert.match(settingsSearchSource, /settings\.voiceEnable/);
+  assert.match(voiceStylesSource, /\.voice-settings/);
   assert.doesNotMatch(settingsSearchSource, /settings\.speech/);
   assert.doesNotMatch(stylesSource, /\.settings-speech/);
   assert.doesNotMatch(enLocaleSource, /speechTitle:|speechVoicePlaceholder:/);
+  assert.match(enLocaleSource, /voiceLanguageChinese:/);
+  assert.match(zhLocaleSource, /voiceLanguageChinese:/);
   assert.match(protocolSource, /speechTranscribe: "pi-desktop\/speech\/transcribe"/);
 });
 
@@ -205,8 +221,9 @@ test("General Network card persists a custom HTTP or SOCKS5 proxy and the relaxe
 test("basics gates developer tools behind a persisted developer mode", () => {
   assert.match(sharedTypesSource, /developerMode\?: boolean/);
   assert.match(settingsPageSource, /function DeveloperSection/);
-  assert.match(settingsPageSource, /role="switch"/);
-  assert.match(settingsPageSource, /saveSettings\(\{ developerMode: !enabled \}\)/);
+  assert.match(developerSource, /SettingsToggle/);
+  assert.match(developerSource, /saveSettings\(\{ developerMode: !enabled \}\)/);
+  assert.match(uiSource, /role="switch"/);
   assert.match(settingsPageSource, /api\.toggleDevTools\(true\)/);
   assert.match(settingsPageSource, /disabled=\{!enabled\}/);
   for (const key of [

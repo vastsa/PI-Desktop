@@ -65,6 +65,8 @@ export function ImportSection() {
         }))}
         label={t("settings.import")}
         role="tablist"
+        itemIdPrefix="import"
+        itemAriaControls={(value) => `import-panel-${value}`}
         className="import-segment"
         itemClassName="import-segment-btn"
       />

@@ -96,7 +96,10 @@ async function launch() {
 async function close() {
   if (!session) return;
   session.ws.close();
-  session.child.kill();
+  // On macOS the Electron app process can outlive the launcher child after a
+  // normal SIGTERM, leaving the isolated profile single-instance lock held for
+  // the restart leg. This is a fixture-owned process, so force its cleanup.
+  session.child.kill("SIGKILL");
   if (session.child.exitCode === null) {
     await Promise.race([once(session.child, "exit"), delay(5_000)]);
   }

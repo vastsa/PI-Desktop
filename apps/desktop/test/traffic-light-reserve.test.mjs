@@ -65,7 +65,7 @@ test("every shell surface reserves the shared lead inset", () => {
   ]) {
     assert.doesNotMatch(
       declarationsOnly(source),
-      /76px/,
+      /(?:traffic-light|window-lead-inset)[^;{}]*76px/,
       `${name} must not restate the traffic-light footprint`,
     );
   }

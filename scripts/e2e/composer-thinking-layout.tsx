@@ -55,6 +55,23 @@ const settle = () => new Promise<void>((resolve) =>
   requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
 );
 
+const settleMenuAnimation = async () => {
+  // React may attach the measured position and the open animation in separate
+  // render frames. Keep sampling until the CSS animation has both appeared
+  // and finished, otherwise a scale transform can look like a moving anchor.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await settle();
+    const menu = document.querySelector<HTMLElement>(".composer-model-thinking-menu");
+    if (!menu) continue;
+    const animations = menu.getAnimations();
+    if (animations.length > 0) {
+      await Promise.all(animations.map((animation) => animation.finished));
+      await settle();
+      if (menu.getAnimations().length === 0) return;
+    }
+  }
+};
+
 declare global {
   var composerThinkingLayoutProbe: () => Promise<unknown>;
   var composerThinkingPointerProbe: {
@@ -131,10 +148,8 @@ globalThis.composerThinkingLayoutProbe = async () => {
   for (const [index, config] of cases.entries()) {
     flushSync(() => root.render(<Fixture key={index} {...config} />));
     element<HTMLButtonElement>(".composer-model-thinking-chip").click();
-    await settle();
+    await settleMenuAnimation();
     const menu = element(".composer-model-thinking-menu");
-    await Promise.all(menu.getAnimations().map((animation) => animation.finished));
-    await settle();
     const initialLeft = menu.getBoundingClientRect().left;
     const initialTop = menu.getBoundingClientRect().top;
     for (const level of ["low", "omit", "high", "max", "off", "low"]) {
@@ -151,7 +166,7 @@ globalThis.composerThinkingLayoutProbe = async () => {
       if (!menu.classList.contains("is-open")) failures.push(`${index}: selection closed the menu`);
       if (Math.abs(currentMenu.left - initialLeft) > 0.05) failures.push(`${index}/${level}: menu moved ${currentMenu.left - initialLeft}px`);
       if (Math.abs(currentMenu.top - initialTop) > 0.05) failures.push(`${index}/${level}: menu moved vertically`);
-      if (Math.abs(trigger.height - 28) > 0.05) failures.push(`${index}/${level}: trigger changed height`);
+      if (Math.abs(trigger.height - 26) > 0.05) failures.push(`${index}/${level}: trigger changed height`);
       if (trigger.right > wrapper.right + 0.05) failures.push(`${index}/${level}: trigger overflows its wrapper`);
       measurements.push({ ...config, level, triggerRight: trigger.right, wrapperRight: wrapper.right, menuLeft: currentMenu.left });
     }

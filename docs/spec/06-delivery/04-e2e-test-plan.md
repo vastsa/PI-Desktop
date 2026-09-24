@@ -1090,6 +1090,32 @@ identify the platform validation still needed.
   `plugin-speech-adapter.test.mjs`); no renderer entry point exists, and the live
   provider journey remains Draft.
 
+#### E2E-008f: Local voice input settings and draft insertion
+
+- **Preconditions**: An isolated Electron profile, a fixture audio backend, and
+  a downloaded or cached small local voice model (or a deterministic runtime
+  seam); no provider credentials or live microphone are required.
+- **Steps**: 1) Open Settings > Voice and verify the default-disabled state.
+  2) Inspect/request microphone permission, enable voice input, list/select a
+  device, choose languages, Chinese variant, and a catalog model. 3) Start the
+  Composer microphone, observe preparation/listening volume and duration, stop,
+  and verify the transcribed text is inserted into the active draft. 4) Repeat
+  the flow with Cancel and verify that no late result changes the draft. 5)
+  Save, reload, and verify settings persistence. 6) Exercise model progress,
+  checksum failure, and cancellation; verify no final artifact remains after a
+  failed download.
+- **Expected**: The microphone is visible only when enabled; settings persist;
+  lifecycle and errors are observable; cancellation suppresses stale results;
+  raw audio and credentials never reach the renderer; pinned model metadata is
+  enforced before installation.
+- **Specs linked**: `03-runtime/23-voice-input.md`, `04-ux/06-settings-ia.md`,
+  `04-ux/08-component-spec.md`
+- **Acceptance**: C (composer input), F (settings persistence), Security, Quality
+- **Milestone**: M6+
+- **Status**: Source/integration coverage (`voice-controller.test.ts`,
+  `voice-ipc.test.mjs`, `model-catalog.test.ts`); real microphone capture and
+  multi-hundred-megabyte model download remain environment-dependent.
+
 #### E2E-008a: First-turn tools load on demand
 
 - **Preconditions**: Agent mode; provider configured; `BrowserPreview` or an
@@ -8455,6 +8481,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
 | C — Conversation & stream | E2E-CHAT-running-status-survives-output-pauses, E2E-008, E2E-008d, E2E-008e, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-259, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-SUBAGENT-resume-a-settled-delegation |
 | C — Conversation & stream (composer drafts) | E2E-011c, E2E-011c-1 |
+| C / F / Security / Quality — Local voice input | E2E-008f |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
 | D — Workspace (project ordering) | E2E-253 |
 | E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166, E2E-181, E2E-PLUGIN-imported-pi-package-skills |
@@ -8516,6 +8543,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6 | E2E-104, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-103, E2E-172 |
 | M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-259, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
 | M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
+| M6+ (local voice input) | E2E-008f |
 | M6+ (Selected model order) | E2E-MODEL-selected-order-persists |
 | M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+ (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |

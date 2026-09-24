@@ -42,6 +42,7 @@
 - [18-line-anchored-edit-contract.md](03-runtime/18-line-anchored-edit-contract.md)
 - [19-remote-agent-control-protocol.md](03-runtime/19-remote-agent-control-protocol.md)
 - [20-speech.md](03-runtime/20-speech.md)
+- [23-voice-input.md](03-runtime/23-voice-input.md)
 - [21-image-generation.md](03-runtime/21-image-generation.md)
 - [22-config-sync.md](03-runtime/22-config-sync.md)
 - [svg-attachment-input.md](03-runtime/svg-attachment-input.md)

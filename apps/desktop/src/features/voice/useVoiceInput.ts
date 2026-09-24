@@ -52,24 +52,32 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
   useEffect(() => {
     if (!enabled) return;
 
-    const unsubscribe = voiceIpc.onStateChanged((newState) => {
-      const s = newState as VoiceState;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const schedule = (callback: () => void, delay: number) => {
+      const timer = setTimeout(callback, delay);
+      timers.push(timer);
+    };
+
+    const unsubscribe = voiceIpc.onStateChanged((s) => {
       setState(s);
 
       // When transcription completes, call the callback
       if (s.phase === "done" && s.result?.text) {
         onCompleteRef.current?.(s.result.text);
         // Reset to idle after a short delay
-        setTimeout(() => setState(IDLE_STATE), 100);
+        schedule(() => setState(IDLE_STATE), 100);
       }
 
       // Auto-reset error after 3 seconds
       if (s.phase === "error") {
-        setTimeout(() => setState(IDLE_STATE), 3000);
+        schedule(() => setState(IDLE_STATE), 3000);
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      timers.forEach((timer) => clearTimeout(timer));
+    };
   }, [enabled]);
 
   const toggle = useCallback(async () => {
@@ -82,6 +90,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
         await voiceIpc.stop();
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       setState({
         phase: "error",
         durationSeconds: 0,

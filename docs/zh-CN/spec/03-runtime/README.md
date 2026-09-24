@@ -25,5 +25,6 @@
 | [18-line-anchored-edit-contract.md](/zh-CN/spec/03-runtime/18-line-anchored-edit-contract) | 按行锚定的 Edit 合约 |
 | [19-remote-agent-control-protocol.md](/zh-CN/spec/03-runtime/19-remote-agent-control-protocol) | 远程 Agent 控制协议 |
 | [20-speech.md](/zh-CN/spec/03-runtime/20-speech) | 宿主语音（转写/朗读） |
+| [23-voice-input.md](/zh-CN/spec/03-runtime/23-voice-input) | 本地语音输入 |
 
 - [图片生成与编辑](/zh-CN/spec/03-runtime/21-image-generation)

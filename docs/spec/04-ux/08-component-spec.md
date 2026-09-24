@@ -330,8 +330,10 @@ combined model × reasoning selection (§11).
 
 - Every control is keyboard-reachable with Tab
 - Composer stop control has `aria-label="Stop generating"`
-- The Composer renders no transcription or speech control; the host speech
-  capability is reachable only from IPC and plugins (ADR 0291).
+- When `AppSettings.voice.enabled` is true, the Composer renders the optional
+  local voice-input microphone and its recording/transcription overlay. A
+  successful local result is inserted into the active draft; the host speech
+  capability remains reachable only from IPC and plugins (ADR 0291).
 - The topbar does not render a separate running-state indicator; the Composer
   submit control and transcript working feedback remain the running-state cues.
 
@@ -3070,7 +3072,11 @@ reasoning-level control.
   unknown/custom models without an explicit override, disabled image input, and
   oversized images use the existing canonical `@<path>` file-tool fallback.
   There are no visual previews in MVP.
-- No voice input
+- Local voice input is optional and disabled by default. When enabled, the
+  Composer microphone starts the main-process recording lifecycle, exposes
+  cancellation and bounded recording/transcription feedback, and inserts the
+  final text into the draft. This is separate from host `speech/*` bindings;
+  see `03-runtime/23-voice-input.md`.
 
 ### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
 

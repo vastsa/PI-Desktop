@@ -216,7 +216,10 @@ try {
   for (const entry of pending.values()) clearTimeout(entry.timer);
   if (child && child.exitCode === null) {
     const exited = once(child, "exit");
-    child.kill();
+    // macOS can keep the Electron app process alive after SIGTERM while the
+    // test window owns native resources. The profile is fixture-owned, so
+    // force cleanup after the assertions finish or time out.
+    child.kill(process.platform === "darwin" ? "SIGKILL" : "SIGTERM");
     await exited;
   }
   await rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

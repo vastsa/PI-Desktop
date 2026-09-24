@@ -36,6 +36,7 @@ export class VoiceController extends EventEmitter {
   private abort: AbortController | null = null;
   private startedAt = 0;
   private disposed = false;
+  private operation = 0;
 
   constructor(
     private readonly engine: TranscriptionEngine,
@@ -52,6 +53,7 @@ export class VoiceController extends EventEmitter {
   /** Pre-load the model for faster first recording. */
   async prepare(): Promise<void> {
     if (this.disposed) return;
+    const operation = this.operation;
 
     const settings = this.getSettings();
     if (!settings.modelId) {
@@ -62,10 +64,13 @@ export class VoiceController extends EventEmitter {
 
     try {
       await this.engine.modelManager.ensureLoaded(settings.modelId);
+      if (!this.isCurrent(operation)) throw this.cancelledError();
       this.setState({ phase: "ready", durationSeconds: 0, volumeLevel: 0 });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.setState({ phase: "error", durationSeconds: 0, volumeLevel: 0, error: message });
+      if (this.isCurrent(operation)) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.setState({ phase: "error", durationSeconds: 0, volumeLevel: 0, error: message });
+      }
       throw error;
     }
   }
@@ -82,12 +87,20 @@ export class VoiceController extends EventEmitter {
     const settings = this.getSettings();
     if (!settings.modelId) throw new Error("No model selected");
 
+    const operation = ++this.operation;
     this.abort = new AbortController();
 
     // Prepare model if not ready
     if (phase !== "ready") {
-      await this.prepare();
+      try {
+        await this.prepare();
+      } catch (error) {
+        if (this.isCurrent(operation)) this.cleanup();
+        throw error;
+      }
     }
+
+    if (!this.isCurrent(operation)) throw this.cancelledError();
 
     this.setState({ phase: "starting", durationSeconds: 0, volumeLevel: 0 });
 
@@ -108,8 +121,9 @@ export class VoiceController extends EventEmitter {
       this.allFrames = [];
 
       // Create and start capture
-      this.capture = this.captureFactory.create(settings.deviceId);
-      this.capture.onFrame((frame) => {
+      const capture = this.captureFactory.create(settings.deviceId);
+      this.capture = capture;
+      capture.onFrame((frame) => {
         if (this._state.phase !== "listening") return;
 
         // Collect Int16 frame for batch fallback
@@ -137,10 +151,15 @@ export class VoiceController extends EventEmitter {
         this.emit("volumeLevel", rms);
       });
 
-      await this.capture.start();
+      await capture.start();
+      if (!this.isCurrent(operation)) {
+        capture.cancel();
+        throw this.cancelledError();
+      }
       this.startedAt = performance.now();
       this.setState({ phase: "listening", durationSeconds: 0, volumeLevel: 0 });
     } catch (error) {
+      if (!this.isCurrent(operation)) throw this.cancelledError();
       this.cleanup();
       const message = error instanceof Error ? error.message : String(error);
       this.setState({ phase: "error", durationSeconds: 0, volumeLevel: 0, error: message });
@@ -156,6 +175,7 @@ export class VoiceController extends EventEmitter {
 
     const settings = this.getSettings();
     const speechSeconds = (performance.now() - this.startedAt) / 1000;
+    const operation = this.operation;
 
     this.setState({ ...this._state, phase: "transcribing" });
 
@@ -164,6 +184,8 @@ export class VoiceController extends EventEmitter {
       if (this.capture) {
         await this.capture.stop();
       }
+
+      if (!this.isCurrent(operation)) throw this.cancelledError();
 
       // Flush remaining chunks
       this.chunker?.flush();
@@ -175,7 +197,8 @@ export class VoiceController extends EventEmitter {
         // Streaming path: finalize the stream
         try {
           text = await this.stream.finalize();
-        } catch {
+        } catch (error) {
+          if (!this.isCurrent(operation)) throw this.cancelledError();
           // Streaming failed, fall back to batch
           text = await this.batchTranscribe(settings);
         }
@@ -183,6 +206,8 @@ export class VoiceController extends EventEmitter {
         // Batch path
         text = await this.batchTranscribe(settings);
       }
+
+      if (!this.isCurrent(operation)) throw this.cancelledError();
 
       const transcribeSeconds = (performance.now() - transcribeStart) / 1000;
 
@@ -203,6 +228,7 @@ export class VoiceController extends EventEmitter {
       this.cleanup();
       return result;
     } catch (error) {
+      if (!this.isCurrent(operation)) throw this.cancelledError();
       this.cleanup();
       const message = error instanceof Error ? error.message : String(error);
       this.setState({
@@ -217,7 +243,16 @@ export class VoiceController extends EventEmitter {
 
   /** Cancel recording without transcribing. */
   cancel(): void {
-    if (this._state.phase === "idle") return;
+    if (
+      this._state.phase === "idle" &&
+      !this.abort &&
+      !this.capture &&
+      !this.stream
+    ) {
+      return;
+    }
+
+    this.operation += 1;
 
     this.setState({ phase: "cancelling", durationSeconds: 0, volumeLevel: 0 });
     this.abort?.abort();
@@ -262,5 +297,13 @@ export class VoiceController extends EventEmitter {
   private setState(state: VoiceState): void {
     this._state = state;
     this.emit("stateChange", state);
+  }
+
+  private isCurrent(operation: number): boolean {
+    return !this.disposed && this.operation === operation;
+  }
+
+  private cancelledError(): DOMException {
+    return new DOMException("Voice operation cancelled", "AbortError");
   }
 }
