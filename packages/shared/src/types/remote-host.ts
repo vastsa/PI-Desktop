@@ -8,6 +8,8 @@
  * `deviceToken`). See ADR 0286 §Registry and R2b pairing UX.
  */
 
+import type { SessionSummary } from "./sessions.js";
+
 /**
  * How the desktop reaches a paired host.
  *
@@ -135,4 +137,68 @@ export type RemoteHostBootstrapResult = {
   ssh: RemoteHostSshMetadata;
   /** Ordered bootstrap steps that completed, for a Settings progress line. */
   steps: string[];
+};
+
+/**
+ * A project the paired host has registered. Only the label crosses RACP — the
+ * host never echoes its absolute path back through `project/list`.
+ */
+export type RemoteProjectSummary = {
+  id: string;
+  label: string;
+  archived: boolean;
+};
+
+export type RemoteProjectListRequest = {
+  hostKey: string;
+};
+
+export type RemoteProjectListResult = {
+  projects: RemoteProjectSummary[];
+};
+
+/**
+ * Input for `remoteProjectBrowse`. The host bounds the listing to its own
+ * browse root and answers only with directories; absent `path` means that root.
+ */
+export type RemoteProjectBrowseRequest = {
+  hostKey: string;
+  path?: string;
+};
+
+export type RemoteProjectBrowseEntry = {
+  name: string;
+  /** Absolute path on the host; pass it back as `path` to descend. */
+  path: string;
+};
+
+export type RemoteProjectBrowseResult = {
+  path: string;
+  /** Absent at the browse root. */
+  parent?: string;
+  entries: RemoteProjectBrowseEntry[];
+};
+
+export type RemoteProjectRegisterRequest = {
+  hostKey: string;
+  /** Absolute directory on the host, usually picked through `remoteProjectBrowse`. */
+  path: string;
+};
+
+export type RemoteProjectRegisterResult = {
+  project: RemoteProjectSummary;
+};
+
+/**
+ * Input for `remoteSessionCreate`. The session runs on the host's default
+ * model; the desktop does not pick a provider for a remote session.
+ */
+export type RemoteSessionCreateRequest = {
+  hostKey: string;
+  projectId: string;
+  title?: string;
+};
+
+export type RemoteSessionCreateResult = {
+  session: SessionSummary;
 };
