@@ -93,6 +93,12 @@ globalThis.transcriptRenderProbe = async () => {
       };
       render(messages);
     }
+    // Smooth streaming reveals text on animation frames, after the React commit.
+    // Wait for the visible result instead of assuming source and display coincide.
+    const revealDeadline = performance.now() + 5000;
+    while (!container.textContent?.includes("Streaming fragment 19") && performance.now() < revealDeadline) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
     const textUpdateRenders = globalThis.__activityGroupRenders.length;
     const textUpdateDurationMs = performance.now() - startedAt;
     assert(

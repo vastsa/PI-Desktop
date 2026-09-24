@@ -17,7 +17,7 @@ import {
   APP_ID,
   APP_NAME,
   APP_VERSION,
-  ErrorCodes as SharedErrorCodes,
+  ErrorCodes,
   IPC,
   IPC_WHITELIST,
   KEYBOARD_SHORTCUTS,
@@ -158,16 +158,6 @@ import { registerPluginIpc } from "./ipc/plugin-ipc";
 import { registerPluginUiIpc } from "./ipc/plugin-ui-ipc";
 import { registerSkillsIpc } from "./ipc/skills-ipc";
 import { stripWinLongPrefix } from "./path-utils";
-
-// The shared error-code union is reconciled in the shared lane. Keep desktop
-// source type-safe while that lane is temporarily staged at main.
-const ErrorCodes = {
-  ...SharedErrorCodes,
-  COMMAND_SHELL_INVALID: "COMMAND_SHELL_INVALID",
-  SHELL_NOT_FOUND: "SHELL_NOT_FOUND",
-  PLAN_EXECUTION_INTERRUPTED: "PLAN_EXECUTION_INTERRUPTED",
-  PLAN_PERMISSION_MODE_REQUIRED: "PLAN_PERMISSION_MODE_REQUIRED",
-} as const;
 
 // A closed stdout/stderr (Linux AppImage, GUI launch without a TTY) must not
 // surface as Electron's "Uncaught Exception: write EPIPE" dialog. The same

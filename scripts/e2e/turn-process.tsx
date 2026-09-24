@@ -308,10 +308,9 @@ export async function turnProcessProbe() {
         </I18nextProvider>,
       ),
     );
-    click(container.querySelector('button[aria-haspopup="listbox"]'));
     click(
-      Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(
-        (item) => item.textContent === "Compact",
+      Array.from(container.querySelectorAll<HTMLElement>('[role="radiogroup"] [role="radio"]')).find(
+        (item) => item.textContent === i18n.t("settings.thinkingDisplayCompact"),
       ) ?? null,
     );
     check(

@@ -29,10 +29,10 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   background: var(--color-surface-elevated, #1e1e2e);
   border: 1px solid var(--color-border, #333);
-  font-size: 13px;
+  font-size: var(--text-md);
   gap: 12px;
 }
 
@@ -51,7 +51,7 @@
 .voice-recording-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-round);
   background: var(--color-danger, #ef4444);
   animation: voice-pulse 1.2s ease-in-out infinite;
 }
@@ -66,7 +66,7 @@
   height: 14px;
   border: 2px solid var(--color-border, #555);
   border-top-color: var(--color-primary, #3b82f6);
-  border-radius: 50%;
+  border-radius: var(--radius-round);
   animation: voice-spin 0.8s linear infinite;
 }
 
@@ -77,7 +77,7 @@
 .voice-volume-bar {
   width: 80px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--radius-4xs);
   background: var(--color-border, #333);
   overflow: hidden;
 }
@@ -85,14 +85,14 @@
 .voice-volume-fill {
   height: 100%;
   background: var(--color-primary, #3b82f6);
-  border-radius: 2px;
+  border-radius: var(--radius-4xs);
   transition: width 100ms ease-out;
 }
 
 .voice-cancel-btn {
   padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--radius-3xs);
+  font-size: var(--text-sm);
   background: transparent;
   color: var(--color-text-secondary, #999);
   border: 1px solid var(--color-border, #444);

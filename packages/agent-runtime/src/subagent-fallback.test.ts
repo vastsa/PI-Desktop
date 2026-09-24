@@ -162,6 +162,9 @@ describe("subagent model fallback over real transport", () => {
     ]);
   });
 
+  // Two exhausted retry budgets use real HTTP transport. They take about six
+  // seconds locally even with Retry-After: 0; keep every request-count assertion
+  // while allowing transport overhead beyond Vitest's five-second default.
   it.each([429, 503])("exhausts HTTP %i retries separately for two models before the third succeeds", async (status) => {
     const f = await fixture({ failureStatus: { primary: status, secondary: status } });
     const result = await f.run({
@@ -176,7 +179,7 @@ describe("subagent model fallback over real transport", () => {
     expect(result.modelFailures).toEqual(["primary", "secondary"].map((id) => expect.objectContaining({
       model: `${id}/${id}`, code: status === 429 ? "PROVIDER_RATE_LIMITED" : "PROVIDER_ERROR",
     })));
-  });
+  }, 15_000);
 
   it("tries alternatives in order once, skips unresolved bindings visibly, and reports exhaustion", async () => {
     const f = await fixture({ fail: ["primary", "secondary", "third"] });

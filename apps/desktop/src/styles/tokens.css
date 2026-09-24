@@ -326,6 +326,7 @@
     tokens below. The regular two-pixel rhythm keeps adjacent levels legible
     and makes concentric nesting predictable.
   */
+  --radius-4xs: 2px;
   --radius-3xs: 4px;
   --radius-2xs: 6px;
   --radius-xs: 8px;
