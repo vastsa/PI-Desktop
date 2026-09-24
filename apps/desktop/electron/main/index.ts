@@ -114,7 +114,6 @@ import { registerWindowIpc } from "./ipc/window-ipc";
 import { registerPullsIpc } from "./ipc/pulls-ipc";
 import { registerAgentIpc } from "./ipc/agent-ipc";
 import { registerIpcHandlers } from "./ipc/register";
-import { VoiceService } from "./voice-service";
 import {
   type WindowLifecycleState,
 } from "./bootstrap/window";
@@ -1247,13 +1246,6 @@ runtimeLifecycle = createRuntimeLifecycle({
 });
 const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
-// Voice service — created lazily on first use, disposed on quit.
-const voiceService = new VoiceService(
-  dataDir + "/voice-models",
-  () => mainWindow,
-);
-app.once("before-quit", () => voiceService.dispose());
-
 function registerIpc() {
   return registerIpcHandlers({
     traySessions: applicationLifecycle!.traySessions,
@@ -1345,7 +1337,6 @@ function registerIpc() {
     getPluginPanelTheme: () => pluginPanelTheme,
     isDeveloperMode: () => developerMode,
     sendToRenderer,
-    voiceService,
   });
 }
 

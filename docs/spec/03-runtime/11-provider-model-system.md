@@ -793,6 +793,14 @@ fix.
 - Proprietary non-HTTP SDKs without pi-ai support
 - Cloud-synced provider profiles
 
+### First-party StepFun metadata exception
+
+ADR `stepfun-first-party-model-metadata` narrowly amends the sole-source rule
+above: official StepFun Step 5 Preview uses a source-labelled, reviewed
+supplement until models.dev publishes its first-party record. The exception
+is confined to the exact official HTTPS endpoint/model pair and preserves
+user overrides. Other models retain the existing catalog behavior.
+
 ### Search setup guidance
 
 The search checkbox uses the same request-only transport resolver as the

@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { TFunction } from "i18next";
-import type { AppSettings } from "@pi-desktop/shared";
+import type { AppSettings, VoiceInputSettings } from "@pi-desktop/shared";
 import { cx } from "../../../components/ui";
 import { SettingsRow, SettingsCard } from "../primitives";
 import { voiceIpc } from "../../voice/voice-ipc";
@@ -70,9 +70,9 @@ export function VoiceSettingsSection({
   }, []);
 
   const save = useCallback(
-    (patch: Record<string, unknown>) => {
+    (patch: Partial<VoiceInputSettings>) => {
       const next = { ...voice, ...patch };
-      void saveSettings({ voice: next as any });
+      void saveSettings({ voice: next });
       void voiceIpc.updateSettings(next);
     },
     [voice, saveSettings],
@@ -158,7 +158,12 @@ export function VoiceSettingsSection({
             className="settings-select"
             value={voice.chineseVariant}
             disabled={!voice.enabled}
-            onChange={(e) => save({ chineseVariant: e.target.value })}
+            onChange={(e) => {
+              const chineseVariant = e.target.value;
+              if (chineseVariant === "simplified" || chineseVariant === "traditional-taiwan" || chineseVariant === "traditional-hong-kong") {
+                save({ chineseVariant });
+              }
+            }}
           >
             <option value="simplified">{t("settings.voiceSimplified")}</option>
             <option value="traditional-taiwan">{t("settings.voiceTraditionalTaiwan")}</option>

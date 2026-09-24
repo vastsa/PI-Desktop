@@ -32,6 +32,7 @@ import { createComposerTemplateLoader, registerWorkspaceIpc } from "./workspace-
 import { registerComposerIpc } from "./composer-ipc";
 import { registerSpeechIpc } from "./speech-ipc";
 import { registerVoiceIpc } from "./voice-ipc";
+import { createVoiceService } from "../voice-service";
 import type { IpcRegistrar } from "./types";
 import type { createTraySessions } from "../tray-sessions";
 
@@ -154,7 +155,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getPluginPanelTheme,
     isDeveloperMode,
     sendToRenderer,
-    voiceService,
+    voiceService = createVoiceService(dataDir, getMainWindow),
   } = dependencies;
 
 

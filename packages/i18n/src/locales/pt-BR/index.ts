@@ -1245,6 +1245,7 @@ export const ptBR = {
     presetAlibabaCn: "Qwen (DashScope)",
     presetMoonshotCn: "Moonshot / Kimi",
     presetZhipuApi: "Zhipu AI",
+    presetStepfunPlan: "StepFun Plan",
     presetZhipuCodingPlan: "Zhipu AI Coding Plan",
     presetZaiApi: "Z.AI",
     presetZaiCodingPlan: "Z.AI Coding Plan",

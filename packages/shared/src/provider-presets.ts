@@ -204,6 +204,14 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     aliases: ["minimax-openai", "minimax-compatible"],
   },
   {
+    id: "stepfun-plan",
+    vendorKey: "stepfun-plan",
+    name: "StepFun Plan",
+    baseUrl: "https://api.stepfun.com/step_plan/v1",
+    apiStyle: "anthropic_messages",
+    labelKey: "settings.presetStepfunPlan",
+  },
+  {
     id: "xiaomi",
     vendorKey: "xiaomi",
     name: "Xiaomi",

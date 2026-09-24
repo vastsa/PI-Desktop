@@ -103,7 +103,7 @@ export function modelConfigWithBinding(
     model.contextWindow;
   const catalogContextWindow =
     model.catalogContextWindow ??
-    (model.source === "models.dev" && model.contextWindow > 0
+    ((model.source === "models.dev" || model.source === "provider") && model.contextWindow > 0
       ? model.contextWindow
       : undefined);
   return {

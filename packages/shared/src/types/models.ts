@@ -317,7 +317,7 @@ export type ModelInfo = {
   supportedThinkingLevels?: ThinkingLevel[];
   source: "bundled" | "discovered" | "user";
   /** Metadata catalog that supplied this row, when it is a known model. */
-  catalogSource?: "models.dev";
+  catalogSource?: "models.dev" | "provider";
 };
 
 /**

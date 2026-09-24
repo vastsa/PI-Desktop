@@ -1278,6 +1278,7 @@ sklm: {
     presetMinimaxCn: "MiniMax",
     presetMinimaxCnOpenai: "MiniMax（OpenAI）",
     presetKimiCoding: "Kimi 编程",
+    presetStepfunPlan: "StepFun Plan（订阅）",
     presetXiaomi: "小米",
     apiStyleResponses: "OpenAI Responses",
     apiStyleAnthropic: "Anthropic Messages",
@@ -1448,8 +1449,8 @@ sklm: {
     promptEnhancementCustomTemplate: "使用自定义提示词",
     promptEnhancementCustomTemplateDesc:
       "用你自己的用户模板替换内置模板。系统提示词保持内置。",
-    promptEnhancementCustomTemplateNeedsTemplate:
     promptEnhancementCustomTemplateActive: "自定义模板已启用",
+    promptEnhancementCustomTemplateNeedsTemplate:
       "请先保存自定义模板；保存后即可用开关在内置模板与自定义模板之间切换。",
     promptEnhancementEdit: "编辑",
     promptEnhancementModelTitle: "增强提示词",

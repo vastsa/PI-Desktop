@@ -390,6 +390,13 @@ MiniMax (`anthropic_messages` at `https://api.minimaxi.com/anthropic/v1`),
 MiniMax (OpenAI) (`chat_completions` at `https://api.minimaxi.com/v1`, aliases
 `minimax-openai` / `minimax-compatible`), Kimi For Coding (`anthropic_messages`).
 
+StepFun Plan defaults to `anthropic_messages` at
+`https://api.stepfun.com/step_plan/v1`. Runtime URL normalization removes the
+trailing `/v1` before the Anthropic SDK appends `/v1/messages`, reaching
+`https://api.stepfun.com/step_plan/v1/messages`. The versioned settings URL also
+preserves model discovery and the Step 5 metadata lookup.
+See the [official Claude Code guide](https://platform.stepfun.com/docs/zh/step-plan/integrations/claude-code).
+
 Zhipu / Z.AI Completions requests still receive `thinkingFormat: "zai"` and
 `zaiToolStream: true`. pi-ai `zai-coding-cn` remains an alias of
 `zhipuai-coding-plan`. DeepSeek-family Completions requests receive
@@ -428,7 +435,7 @@ type ModelCatalogCacheRecord = {
   contextWindow?: number
   source: "bundled" | "discovered" | "user"
   /** Renderer annotation for a row resolved from the bundled models.dev snapshot. */
-  catalogSource?: "models.dev"
+  catalogSource?: "models.dev" | "provider"
   updatedAt: string
   raw?: unknown
 }
@@ -643,6 +650,11 @@ secret:provider:<providerId>:oauth
 The two refs are independent, so one row may hold a key, a vendor account, or
 both; see [14-secrets-storage](14-secrets-storage.md) §10. Future multi-secret
 providers may add further suffixes (`:client_secret`, etc.).
+
+The optional `catalogSource: "provider"` identifies the reviewed first-party
+StepFun Step 5 Preview supplement (ADR `stepfun-first-party-model-metadata`).
+It is additive metadata, not a new persisted model availability source;
+`source: bundled | discovered | user` and credential ownership are unchanged.
 
 ### Endpoint format guidance and native search
 

@@ -284,7 +284,7 @@ test("macOS DMG is a two-icon install; ZIP keeps the unsigned helper", () => {
 
 test("packaging does not include removed PTY native payload configuration", () => {
   assert.deepEqual(packageJson.build.asar, { smartUnpack: false });
-  assert.equal(packageJson.build.asarUnpack, undefined);
+  assert.doesNotMatch(JSON.stringify(packageJson.build.asarUnpack ?? []), /node-pty/);
   assert.doesNotMatch(JSON.stringify(packageJson.build.files), /node-pty/);
   assert.doesNotMatch(JSON.stringify(packageJson.build.extraResources), /node-pty/);
 });

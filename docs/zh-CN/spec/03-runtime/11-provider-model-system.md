@@ -663,6 +663,14 @@ OpenAI Responses 适配器必须把 `response.completed`（以及
 - 不支持 pi-ai 的专有非 HTTP SDK
 - 云同步的提供商配置文件
 
+### First-party StepFun metadata exception
+
+ADR `stepfun-first-party-model-metadata` narrowly amends the sole-source rule
+above: official StepFun Step 5 Preview uses a source-labelled, reviewed
+supplement until models.dev publishes its first-party record. The exception
+is confined to the exact official HTTPS endpoint/model pair and preserves
+user overrides. Other models retain the existing catalog behavior.
+
 ## 托管搜索消息与预算契约
 
 - 搜索内容和进度事件必须拥有正式适配器类型，不能伪装成客户端工具调用。

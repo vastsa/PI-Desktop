@@ -1291,6 +1291,7 @@ sklm: {
     "presetMinimaxCn": "MiniMax",
     "presetMinimaxCnOpenai": "MiniMax (OpenAI)",
     "presetKimiCoding": "Kimi para codificación",
+    presetStepfunPlan: "StepFun Plan",
     "presetXiaomi": "Xiaomi",
     "apiStyleResponses": "Respuestas de OpenAI",
     "apiStyleAnthropic": "Mensajes antrópicos",
@@ -1461,8 +1462,8 @@ sklm: {
     "promptEnhancementCustomTemplate": "Usar una plantilla propia",
     "promptEnhancementCustomTemplateDesc":
       "Reemplaza la plantilla de usuario integrada por la suya. El prompt del sistema sigue integrado.",
-    "promptEnhancementCustomTemplateNeedsTemplate":
     "promptEnhancementCustomTemplateActive": "Plantilla personalizada activa",
+    "promptEnhancementCustomTemplateNeedsTemplate":
       "Guarde primero una plantilla propia; el interruptor elegirá entonces entre ella y la plantilla integrada.",
     "promptEnhancementEdit": "Editar",
     "promptEnhancementModelTitle": "Mejora de prompts",

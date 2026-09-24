@@ -18,26 +18,24 @@ export async function* downloadModel(
   // Dynamic import of @huggingface/hub
   const { downloadFile } = await import("@huggingface/hub");
 
-  const blob = await downloadFile({
+  const response = await downloadFile({
     repo: info.hfRepo,
     path: info.hfFilename,
+    fetch: (input, init) => fetch(input, { ...init, signal: signal ?? init?.signal }),
   });
 
-  // In Node the hub SDK returns a Response-like object, not a Blob.
-  const response = blob as unknown as Response;
-
-  if (!response || !response.body) {
+  if (!response) {
     throw new Error(`Failed to download model: no response body`);
   }
 
-  const contentLength = Number(response.headers.get("content-length") || info.sizeBytes);
+  const contentLength = response.size || info.sizeBytes;
   let received = 0;
 
   const { createWriteStream } = await import("node:fs");
   const writer = createWriteStream(targetPath);
 
   try {
-    const reader = response.body.getReader();
+    const reader = response.stream().getReader();
 
     while (true) {
       if (signal?.aborted) {

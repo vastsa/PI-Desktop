@@ -1291,6 +1291,7 @@ sklm: {
     "presetMinimaxCn": "MiniMax",
     "presetMinimaxCnOpenai": "MiniMax (OpenAI)",
     "presetKimiCoding": "Kimi für Codierung",
+    presetStepfunPlan: "StepFun Plan",
     "presetXiaomi": "Xiaomi",
     "apiStyleResponses": "OpenAI-Antworten",
     "apiStyleAnthropic": "Anthropic Messages",
@@ -1461,8 +1462,8 @@ sklm: {
     "promptEnhancementCustomTemplate": "Eigene Vorlage verwenden",
     "promptEnhancementCustomTemplateDesc":
       "Ersetzt die eingebaute Nutzervorlage durch Ihre eigene. Der System-Prompt bleibt eingebaut.",
-    "promptEnhancementCustomTemplateNeedsTemplate":
     "promptEnhancementCustomTemplateActive": "Eigene Vorlage aktiv",
+    "promptEnhancementCustomTemplateNeedsTemplate":
       "Speichern Sie zuerst eine eigene Vorlage; der Schalter wählt dann zwischen ihr und der eingebauten Vorlage.",
     "promptEnhancementEdit": "Bearbeiten",
     "promptEnhancementModelTitle": "Prompt-Verbesserung",

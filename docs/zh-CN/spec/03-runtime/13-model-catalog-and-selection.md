@@ -349,6 +349,24 @@ Electron 使用本地 `models.dev` 记录装饰缓存和新发现的模型行。
 - [ ] 紧凑上限文本不会高于已发布值，1M 附近的相邻窗口保持可区分
       （`1M` / `1.05M` / `1.1M`），且永远不会渲染出大于等于 1000 的 `K` 尾数
 
+### StepFun Step 5 Preview
+
+The service picker exposes only StepFun Plan for StepFun, selecting
+`https://api.stepfun.com/step_plan/v1` and Chat Completions. Ordinary API
+services remain usable as custom configurations; existing saved endpoints
+are never rewritten or relabelled as subscription services.
+Discovery still determines which models the key can use. For exactly
+`step-5-preview` at the plan endpoint or a saved ordinary API endpoint, a reviewed first-party metadata supplement
+provides a 1,024,000-token context/input window, a conservative 64,000-token
+output cap, image and tool support, and low/medium/high reasoning when the
+first-party models.dev record is absent. Third-party catalog records do not
+override that supplement. A first-party record supersedes it after refresh.
+
+The metadata source is `provider`, distinct from `models.dev`; user binding
+overrides keep their existing precedence. Other endpoints and model IDs are
+unchanged. The desktop does not add video attachment transport. See ADR
+`stepfun-first-party-model-metadata` and the StepFun setup guide.
+
 ## 生图模型绑定
 
 默认对话模型下方有独立的生图模型行。模型高级设置可指定唯一绑定；保存服务商表单才生效，取消丢弃选择，替换不会改变对话默认值。工具和批量合约见[图片生成与编辑](/zh-CN/spec/03-runtime/21-image-generation)。

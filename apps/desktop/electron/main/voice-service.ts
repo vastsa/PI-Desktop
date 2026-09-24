@@ -5,7 +5,8 @@
  * means zero import overhead at startup.
  */
 
-import { BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
+import { join } from "node:path";
 import { PvRecorderBackend, checkMicrophonePermission, requestMicrophonePermission } from "./audio-backend";
 import type {
   AudioCaptureFactory,
@@ -170,4 +171,11 @@ export class VoiceService {
       // Window may be closing
     }
   }
+}
+
+/** Create the IPC-owned service and release it when Electron quits. */
+export function createVoiceService(dataDir: string, getWindow: () => BrowserWindow | null): VoiceService {
+  const service = new VoiceService(join(dataDir, "voice-models"), getWindow);
+  app.once("before-quit", () => service.dispose());
+  return service;
 }

@@ -1601,3 +1601,9 @@ cause survives adapter message flattening, remains on the final error row,
 and never triggers a provider transport rebuild. Protocol errors such as
 `EPROTO` keep their existing retry behavior. See
 [certificate trust ADR](../../adr/provider-system-certificates.md).
+
+### Retry preference read/write compatibility
+
+Settings reads normalize missing or disabled `infiniteProviderRetry` to the
+boolean `false`. A loaded settings object remains valid when another preference
+is changed and saved. Explicit invalid non-boolean writes remain rejected.
