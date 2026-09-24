@@ -1469,8 +1469,8 @@ sklm: {
     promptEnhancementCustomTemplate: "Özel şablon kullan",
     promptEnhancementCustomTemplateDesc:
       "Yerleşik kullanıcı şablonunu kendi şablonunuzla değiştirir. Sistem promptu yerleşik kalır.",
-    promptEnhancementCustomTemplateNeedsTemplate:
     promptEnhancementCustomTemplateActive: "Özel şablon etkin",
+    promptEnhancementCustomTemplateNeedsTemplate:
       "Önce özel bir şablon kaydedin; ardından anahtar yerleşik şablon ile kendi şablonunuz arasında geçiş yapar.",
     promptEnhancementEdit: "Düzenle",
     promptEnhancementModelTitle: "Prompt iyileştirme",
