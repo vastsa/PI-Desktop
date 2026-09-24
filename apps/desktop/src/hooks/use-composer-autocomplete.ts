@@ -153,11 +153,14 @@ export function useComposerAutocomplete({
   cursor,
   composing,
   enabled,
+  fileMentions = true,
 }: {
   value: string;
   cursor: number;
   composing: boolean;
   enabled: boolean;
+  /** `@` paths index the local workspace; off for a session whose files are elsewhere. */
+  fileMentions?: boolean;
 }) {
   const workspaceKey = useAppStore((s) => s.workspace?.path ?? "");
   const hasWorkspace = workspaceKey !== "";
@@ -171,8 +174,11 @@ export function useComposerAutocomplete({
   const frozenRef = useRef<ComposerTrigger | null>(null);
 
   const liveTrigger = useMemo(
-    () => (enabled ? detectTrigger(value, cursor) : null),
-    [enabled, value, cursor],
+    () => {
+      const detected = enabled ? detectTrigger(value, cursor) : null;
+      return detected && (fileMentions || detected.mode === "slash") ? detected : null;
+    },
+    [enabled, fileMentions, value, cursor],
   );
   // During IME composition the menu freezes: no opening, closing, or
   // re-filtering until compositionend re-evaluates (D125).

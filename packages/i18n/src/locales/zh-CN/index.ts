@@ -325,6 +325,7 @@ export const zhCN = {
     openFile: "用系统默认应用打开",
     retry: "重新生成",
     forkResponse: "从此回复创建分支",
+    remoteHostModel: "主机默认模型",
     editMessage: "编辑并重新发送",
     cancelEdit: "取消",
     retryEdit: "重试",

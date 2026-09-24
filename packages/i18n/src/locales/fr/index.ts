@@ -324,6 +324,7 @@ export const fr = {
     "openFile": "Ouvrir avec l'application par défaut",
     "retry": "Régénérer la branche",
     "forkResponse": "à partir de cette réponse",
+    "remoteHostModel": "Modèle par défaut de l’hôte",
     "editMessage": "Modifier et renvoyer",
     "cancelEdit": "Annuler",
     "retryEdit": "Réessayer",

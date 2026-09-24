@@ -325,6 +325,7 @@ export const zhTW = {
     openFile: "用系統預設應用開啟",
     retry: "重新生成",
     forkResponse: "從此回覆建立分支",
+    remoteHostModel: "主機預設模型",
     editMessage: "編輯並重新發送",
     cancelEdit: "取消",
     retryEdit: "重試",
