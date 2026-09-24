@@ -1110,7 +1110,7 @@
   outline-offset: -2px;
 }
 
-/* New remote session dialog (D624) reuses the rename dialog shell. */
+/* New remote session dialog (D625) reuses the rename dialog shell. */
 .remote-session-dialog-body {
   display: flex;
   flex-direction: column;

@@ -1,5 +1,5 @@
 /**
- * Copy local providers to a paired SSH host (D625). A freshly installed host
+ * Copy local providers to a paired SSH host (D626). A freshly installed host
  * has no models, so this is how the user makes its sessions answer. The
  * dialog offers only the rows main will accept (`isSyncableProvider`) and
  * says plainly that their API keys travel with them. Nothing syncs until the
