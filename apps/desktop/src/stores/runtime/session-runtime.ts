@@ -22,6 +22,7 @@ import {
 } from "../../lib/sidebar-session-groups";
 import type { ComposerDraftSnapshot } from "../../lib/composer-smart-stop";
 import { formatToolValue } from "../../lib/tool-display";
+import { isRemoteSession } from "../../lib/session-capabilities";
 import { recordPaneTranscript } from "../../lib/session-panes";
 import type { AppState, SessionHistoryWindow } from "../app-state";
 import type { StoreAccess } from "../slices/types";
@@ -402,7 +403,10 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
       normalizeProjectPath(projectPath) ?? "<temporary>",
     latestSessionInScope: (sessions, projectPath, sessionMeta) =>
       sessions
-        .filter((session) => sessionMatchesProject(session, projectPath))
+        .filter(
+          (session) =>
+            !isRemoteSession(session) && sessionMatchesProject(session, projectPath),
+        )
         .sort((a, b) => {
           const aUpdated = Date.parse(a.updatedAt);
           const bUpdated = Date.parse(b.updatedAt);

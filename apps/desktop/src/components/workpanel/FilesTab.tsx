@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { FsEntry, FsReadResult } from "@pi-desktop/shared";
+import { isRemoteSession } from "../../lib/session-capabilities";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import { Markdown } from "../Markdown";
@@ -149,7 +150,14 @@ export function FilesTab() {
   const { t } = useTranslation();
   const workspace = useAppStore((s) => s.workspace);
   const fileRequest = useAppStore((s) => s.workPanelFileRequest);
-  const root = workspace?.path ?? null;
+  // A remote session browses its host's workspace; the local project is not
+  // the tree its transcript refers to (D624).
+  const remoteSessionId = useAppStore((s) => {
+    const active = s.sessions.find((session) => session.id === s.activeSessionId);
+    return isRemoteSession(active) ? active!.id : null;
+  });
+  const root = remoteSessionId ?? workspace?.path ?? null;
+  const sessionArg = remoteSessionId ?? undefined;
 
   const [dirs, setDirs] = useState<Record<string, DirState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -176,13 +184,13 @@ export function FilesTab() {
     async (rel: string) => {
       if (!root) return;
       try {
-        const res = await api.fsList(rel);
+        const res = await api.fsList(rel, sessionArg);
         setDirs((prev) => ({ ...prev, [rel]: { entries: res.entries } }));
       } catch {
         setDirs((prev) => ({ ...prev, [rel]: { entries: [], error: true } }));
       }
     },
-    [root],
+    [root, sessionArg],
   );
 
   useEffect(() => {
@@ -210,11 +218,11 @@ export function FilesTab() {
     setFile(null);
     setFileError(false);
     try {
-      setFile(await api.fsRead(rel, mimeType));
+      setFile(await api.fsRead(rel, mimeType, sessionArg));
     } catch {
       setFileError(true);
     }
-  }, []);
+  }, [sessionArg]);
 
   // Chat-initiated previews: open the file and expand its ancestor folders
   // so "back" lands on a tree that reveals it. Attachment blobs and absolute
@@ -325,15 +333,17 @@ export function FilesTab() {
             {selected}
           </span>
           {file && <span className="file-viewer-size">{formatSize(file.size)}</span>}
-          <TooltipButton
-            type="button"
-            className="icon-btn icon-btn-square"
-            tooltip={t("panel.files.reveal")}
-            ariaLabel={t("panel.files.reveal")}
-            onClick={() => void api.fsReveal(selected)}
-          >
-            <IconExternal size={14} />
-          </TooltipButton>
+          {remoteSessionId ? null : (
+            <TooltipButton
+              type="button"
+              className="icon-btn icon-btn-square"
+              tooltip={t("panel.files.reveal")}
+              ariaLabel={t("panel.files.reveal")}
+              onClick={() => void api.fsReveal(selected)}
+            >
+              <IconExternal size={14} />
+            </TooltipButton>
+          )}
         </div>
         <div className="file-viewer-body">
           {fileError ? (
