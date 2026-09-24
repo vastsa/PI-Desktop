@@ -36,6 +36,7 @@ import {
 } from "../../lib/sidebar-preferences";
 import { api } from "../../lib/api";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
+import { isRemoteSession } from "../../lib/session-capabilities";
 import {
   applyOptimisticSessionConfiguration,
 } from "../../lib/session-thinking";
@@ -325,7 +326,10 @@ export function createSessionSlice({
           runtime.cacheSessionTranscript(id, [], EMPTY_SESSION_WINDOW);
           commitSelection([], true, EMPTY_SESSION_WINDOW);
         }
-        if (summary) {
+        if (isRemoteSession(summary)) {
+          // A remote session's workspace lives on its host; the local project
+          // stays as the user left it (D624).
+        } else if (summary) {
           if (
             !(await runtime.queueWorkspaceAlignment(() =>
               alignWorkspace(summary.projectPath),
@@ -337,6 +341,7 @@ export function createSessionSlice({
           detail = await detailPromise;
           if (!runtime.navigationIntentIsCurrent(intent)) return;
           if (
+            !isRemoteSession(detail?.session) &&
             !(await runtime.queueWorkspaceAlignment(() =>
               alignWorkspace(detail?.session?.projectPath),
             ))
