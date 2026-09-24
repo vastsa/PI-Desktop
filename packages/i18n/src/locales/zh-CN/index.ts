@@ -1695,7 +1695,7 @@ sklm: {
     subagent: "子智能体",
     subagentTask: "任务",
     subagentTaskEmpty: "暂无任务描述。",
-    subagentClose: "关闭子智能体详情",
+    subagentReadOnly: "子智能体由主智能体驱动，无法在此输入。",
     subagentEmpty: "子智能体详情已不可用。",
     resize: "调整工作面板宽度",
     maximize: "放大",
@@ -1712,6 +1712,7 @@ sklm: {
       browser: "浏览器",
       file: "文件",
       plugin: "插件视图",
+      subagent: "子智能体",
     },
     pluginView: {
       failed: "无法加载该视图。请重新加载插件后重试。",

@@ -1709,7 +1709,7 @@ sklm: {
     "subagent": "Subagente",
     "subagentTask": "Tarea",
     "subagentTaskEmpty": "No hay descripción de la tarea.",
-    "subagentClose": "Cerrar detalles del subagente",
+    "subagentReadOnly": "Los subagentes son dirigidos por el agente principal; no se puede escribir aquí.",
     "subagentEmpty": "Los detalles del subagente ya no están disponibles.",
     "resize": "Cambiar tamaño del panel de trabajo",
     "maximize": "Expand work panel",
@@ -1725,7 +1725,8 @@ sklm: {
       "review": "Revisar",
       "browser": "Navegador",
       "file": "Archivos",
-      "plugin": "Vista de complemento"
+      "plugin": "Vista de complemento",
+      "subagent": "Subagente"
     },
     "pluginView": {
       "failed": "Esta vista no se pudo cargar. Vuelva a cargar el complemento e inténtelo de nuevo."

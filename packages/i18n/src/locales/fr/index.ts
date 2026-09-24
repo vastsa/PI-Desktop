@@ -1709,7 +1709,7 @@ sklm: {
     "subagent": "Sous-agent",
     "subagentTask": "Tâche",
     "subagentTaskEmpty": "Aucune description de tâche.",
-    "subagentClose": "Fermer les détails du sous-agent",
+    "subagentReadOnly": "Les sous-agents sont pilotés par l'agent principal — la saisie est indisponible.",
     "subagentEmpty": "Les détails du sous-agent ne sont plus disponibles.",
     "resize": "Redimensionner le panneau de travail",
     "maximize": "Expand work panel",
@@ -1725,7 +1725,8 @@ sklm: {
       "review": "Réviser",
       "browser": "Navigateur",
       "file": "Fichiers",
-      "plugin": "Vue du plugin"
+      "plugin": "Vue du plugin",
+      "subagent": "Sous-agent"
     },
     "pluginView": {
       "failed": "Cette vue n'a pas pu être chargée. Rechargez le plugin et réessayez."

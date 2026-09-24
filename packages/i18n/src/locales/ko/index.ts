@@ -1725,7 +1725,7 @@ sklm: {
     subagent: "서브에이전트",
     subagentTask: "작업",
     subagentTaskEmpty: "작업 설명이 없습니다.",
-    subagentClose: "서브에이전트 세부 정보 닫기",
+    subagentReadOnly: "서브에이전트는 메인 에이전트가 구동하므로 입력할 수 없습니다.",
     subagentEmpty: "서브에이전트 세부 정보를 더 이상 사용할 수 없습니다.",
     resize: "작업 패널 크기 조절",
     maximize: "Expand work panel",
@@ -1742,6 +1742,7 @@ sklm: {
       browser: "브라우저",
       file: "파일",
       plugin: "플러그인 화면",
+      subagent: "서브에이전트",
     },
     pluginView: {
       failed: "이 화면을 불러올 수 없습니다. 플러그인을 새로 고친 후 다시 시도하세요.",

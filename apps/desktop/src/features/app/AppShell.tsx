@@ -49,9 +49,6 @@ export function AppShell() {
     ready,
     page,
     activeSessionId,
-    subagentPanel,
-    subagentPanelOpen,
-    closeSubagentPanel,
     workPanelOpen,
     searchOpen,
     setSearchOpen,
@@ -274,8 +271,6 @@ export function AppShell() {
                 onExitAnimationEnd={() =>
                   finishWorkPanelExit(workPanelExitGeneration.current)
                 }
-                subagentPanel={subagentPanelOpen ? subagentPanel : null}
-                onCloseSubagentPanel={closeSubagentPanel}
                 containerWidth={shellWidth}
                 sidebarWidth={sidebarWidth}
                 sidebarCollapsed={sidebarCollapsed}

@@ -1695,7 +1695,7 @@ sklm: {
     subagent: "子智慧體",
     subagentTask: "任務",
     subagentTaskEmpty: "暫無任務描述。",
-    subagentClose: "關閉子智慧體詳情",
+    subagentReadOnly: "子智慧體由主智慧體驅動，無法在此輸入。",
     subagentEmpty: "子智慧體詳情已不可用。",
     resize: "調整工作面板寬度",
     maximize: "放大",
@@ -1712,6 +1712,7 @@ sklm: {
       browser: "瀏覽器",
       file: "檔案",
       plugin: "外掛檢視",
+      subagent: "子智慧體",
     },
     pluginView: {
       failed: "無法載入該檢視。請重新載入外掛後重試。",

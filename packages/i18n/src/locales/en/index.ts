@@ -1728,7 +1728,7 @@ sklm: {
     subagent: "Subagent",
     subagentTask: "Task",
     subagentTaskEmpty: "No task description.",
-    subagentClose: "Close subagent details",
+    subagentReadOnly: "Subagents are driven by the main agent — input is unavailable.",
     subagentEmpty: "Subagent details are no longer available.",
     resize: "Resize work panel",
     maximize: "Expand work panel",
@@ -1745,6 +1745,7 @@ sklm: {
       browser: "Browser",
       file: "Files",
       plugin: "Plugin view",
+      subagent: "Subagent",
     },
     pluginView: {
       failed: "This view could not be loaded. Reload the plugin and try again.",

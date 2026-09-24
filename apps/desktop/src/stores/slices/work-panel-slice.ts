@@ -10,6 +10,7 @@ import {
   reorderWorkPanelTabsState,
   replaceWorkPanelTabState,
   sanitizeWorkPanelTabsState,
+  subagentWorkPanelTab,
   switchWorkPanelContextState,
   type WorkPanelContext,
   type WorkPanelTab,
@@ -97,8 +98,7 @@ export function createWorkPanelSlice({
   isSessionSelectionPending,
 }: WorkPanelSliceDependencies): Pick<
   AppState,
-  "toggleSubagentPanel"
-  | "closeSubagentPanel"
+  "openSubagentTab"
   | "openWorkPanel"
   | "toggleWorkPanel"
   | "openWorkPanelTab"
@@ -117,21 +117,11 @@ export function createWorkPanelSlice({
   let workPanelFileRequestSeq = 0;
 
   return {
-  toggleSubagentPanel: (delegationId) => {
-    const state = get();
-    const sessionId = state.activeSessionId;
+  openSubagentTab: (delegationId, agentName) => {
     const id = delegationId.trim();
-    if (!sessionId || !id) return;
-    if (
-      state.subagentPanel?.sessionId === sessionId &&
-      state.subagentPanel.delegationId === id
-    ) {
-      set({ subagentPanel: null });
-      return;
-    }
-    set({ subagentPanel: { sessionId, delegationId: id } });
+    if (!id) return;
+    get().openWorkPanelTab(subagentWorkPanelTab(id, agentName || undefined));
   },
-  closeSubagentPanel: () => set({ subagentPanel: null }),
 
   openWorkPanel: () => {
     const state = get();
@@ -149,11 +139,6 @@ export function createWorkPanelSlice({
 
   toggleWorkPanel: () => {
     const state = get();
-    if (state.subagentPanel) {
-      state.closeSubagentPanel();
-      if (get().workPanelOpen) get().collapseWorkPanel();
-      return;
-    }
     if (state.workPanelOpen) {
       state.collapseWorkPanel();
       return;

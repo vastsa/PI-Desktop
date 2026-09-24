@@ -1709,7 +1709,7 @@ sklm: {
     "subagent": "Unteragent",
     "subagentTask": "Aufgabe",
     "subagentTaskEmpty": "Keine Aufgabenbeschreibung.",
-    "subagentClose": "Unteragent-Details schließen",
+    "subagentReadOnly": "Unteragenten werden vom Haupt-Agenten gesteuert — eine Eingabe ist nicht möglich.",
     "subagentEmpty": "Die Unteragent-Details sind nicht mehr verfügbar.",
     "resize": "Größe des Arbeitsfensters ändern",
     "maximize": "Expand work panel",
@@ -1725,7 +1725,8 @@ sklm: {
       "review": "Überprüfen",
       "browser": "Browser",
       "file": "Dateien",
-      "plugin": "Plugin-Ansicht"
+      "plugin": "Plugin-Ansicht",
+      "subagent": "Subagent"
     },
     "pluginView": {
       "failed": "Diese Ansicht konnte nicht geladen werden. Laden Sie das Plugin neu und versuchen Sie es erneut."

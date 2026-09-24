@@ -154,8 +154,8 @@ export const ToolRow = memo(function ToolRow({
   const detailsId = useId();
   const root = useAppStore((s) => s.workspace?.path);
   const openTarget = useOpenPreviewTarget();
-  const toggleSubagentPanel = useAppStore((s) => s.toggleSubagentPanel);
-  const subagentPanel = useAppStore((s) => s.subagentPanel);
+  const openSubagentTab = useAppStore((s) => s.openSubagentTab);
+  const activeWorkPanelTabId = useAppStore((s) => s.activeWorkPanelTabId);
   const status = message.toolStatus;
   const action = getToolAction(message.toolName);
   // A run row states what the command did, not what the call around it did: an
@@ -289,7 +289,7 @@ export const ToolRow = memo(function ToolRow({
       : message.toolCallId || message.id;
   const panelOpen =
     variant === "topology" &&
-    subagentPanel?.delegationId === panelSelectionId;
+    activeWorkPanelTabId === `subagent:${panelSelectionId}`;
   const renderedOpen = variant === "topology" ? panelOpen : open;
   const inlineOpen = variant !== "topology" && open;
   const delegationTiming =
@@ -349,15 +349,14 @@ export const ToolRow = memo(function ToolRow({
       {variant === "topology" ? (
         <button
           className="subagent-topology-node-header"
-          data-subagent-trigger={panelSelectionId}
           aria-expanded={panelOpen}
-          aria-controls={panelOpen ? "subagent-panel" : undefined}
+          aria-controls={panelOpen ? `work-panel-surface-subagent:${panelSelectionId}` : undefined}
           disabled={!hasDetails}
           title={[agentName || rawName, modelLabel, summary].filter(Boolean).join(" · ")}
           onClick={() => {
             if (!hasDetails) return;
             onUserInteraction?.();
-            toggleSubagentPanel(panelSelectionId);
+            openSubagentTab(panelSelectionId, agentName || undefined);
           }}
         >
           <span className="subagent-topology-avatar" aria-hidden>

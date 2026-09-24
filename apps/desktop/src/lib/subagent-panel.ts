@@ -1,15 +1,11 @@
 import type { UiMessage } from "@pi-desktop/shared";
 import { toolResultPayload } from "./tool-presentation";
 
-/** The renderer-local subagent detail currently shown in the work-panel dock. */
-export type SubagentPanelSelection = {
-  sessionId: string;
-  /** Stable delegation id from the Task result, used to re-find live rows. */
-  delegationId: string;
-  /** Connect an explicit search to the shared transcript reading view. */
-  searchRequestId?: number;
-};
-
+/**
+ * The stable delegation id a transcript row is keyed by: the Task result's
+ * `delegationId` when the runtime recorded one, else the call's own identity.
+ * Shared by the delegation topology and the subagent transcript tab.
+ */
 export function delegationIdForMessage(message: UiMessage): string {
   const payload = toolResultPayload(message);
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {

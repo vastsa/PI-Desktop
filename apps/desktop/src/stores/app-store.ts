@@ -145,7 +145,6 @@ import {
 } from "../lib/queued-prompts";
 import type { AgentQueueChangedEvent, QueuedTurnSummary } from "@pi-desktop/shared";
 import { settleBootstrapRequests } from "../lib/bootstrap-result";
-import type { SubagentPanelSelection } from "../lib/subagent-panel";
 import {
   createSessionRuntime,
   type SessionRuntime,

@@ -41,7 +41,6 @@ export function createInitialState(): AppStateData {
         .filter(([, meta]) => meta.collapsed === true)
         .map(([path]) => [path, true]),
     ),
-    subagentPanel: null,
     workPanelOpen: false,
     workPanelTabs: [],
     activeWorkPanelTabId: null,

@@ -6485,6 +6485,41 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `apps/desktop/test/rpc-lifecycle-contract.test.mjs` (client precheck),
   `packages/shared/src/rpc-limits.test.ts`. Desktop journey remains Draft.
 
+#### E2E-248: Subagent details open as closable work-panel tabs with a read-only composer
+
+- **Preconditions**: A project-bound Agent session whose assistant emits at
+  least two `Task` calls — one named `explorer` and one resumed `explorer`
+  follow-up — plus one `Task` that ends in failure; the work panel closed.
+- **Steps**:
+  1. Run the turn. Without clicking anything, verify the panel stays closed
+     while the delegates run (no tab is opened automatically).
+  2. Click the `explorer` topology node. Verify a `subagent` tab opens in the
+     work panel's normal tab strip (labeled `explorer`, bot icon) and the
+     tab strip keeps its other tabs.
+  3. Click the second (resumed) `explorer` node. Verify a second tab opens
+     labeled `explorer#2`, both tabs coexist, and each can be activated,
+     drag-reordered, and closed via ×, middle-click, or Delete.
+  4. In the resumed tab, verify the conversation reads `user: first prompt`,
+     delegate rows, `user: follow-up prompt`, delegate rows — the same
+     message-list language as the main transcript (user bubbles, tool rows,
+     thinking rows, markdown answers).
+  5. Verify the composer at the foot is a disabled two-row textarea whose
+     placeholder reads the read-only hint, in every supported locale.
+  6. Wait for the failed delegate to settle, open its tab, and verify the
+     ended tab persists until manually closed.
+  7. Switch to another session and back. Verify the tabs are restored per
+     session and closed tabs stay closed.
+- **Expected**: No auto-open on delegate start; N subagents = N coexisting
+  closable tabs with deduplicated `name#n` labels; the tab body is the
+  delegation's user/assistant message stream with follow-up prompts as user
+  turns; the composer is disabled with the in-field hint and has no send
+  path; ended delegates' tabs persist until closed; tabs are session-scoped.
+- **Specs linked**: `04-ux/08-component-spec.md` (delegation tab),
+  `04-ux/09-interaction-patterns.md` (work panel tabs)
+- **Acceptance**: Quality
+- **Milestone**: M6
+- **Status**: Draft
+
 #### E2E-119: Parallel subagents report back without entering the parent's context
 
 - **Preconditions**: A project-bound Agent session with the user home containing
@@ -6511,10 +6546,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   7. Switch the session to Plan, then to Goal, and inspect the tool catalog.
   8. Reload the session and re-expand the delegation card and every `Task`
      node.
-  9. Open a node with a long description and long tool paths, then resize the
-     work-panel dock to its minimum, default, and a wider width. Inspect the
-     topology card and live process at each width without repeatedly dragging
-     the divider to read a complete line.
+  9. Open a node with a long description and long tool paths. Resize the work
+     panel to its minimum, default, and a wider width and inspect the topology
+     card and the delegation tab at each width. Long content wraps inside the
+     committed width without dragging the divider to read a complete line.
 - **Expected**:
   - Both delegates in step 1 run concurrently, and `pinned` streams on its own
     provider/model while the parent keeps the session's.
@@ -6532,11 +6567,11 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     count. Expanding a node shows the brief, report exactly once, and
     `status`/`turns`/`toolCalls`. Delegate rows appear only inside that node,
     never in the turn stream or the minimap.
-  - At narrow, default, and wide dock widths, topology titles, descriptions,
+  - At narrow, default, and wide panel widths, topology titles, descriptions,
     and step summaries reflow within the card instead of using a fixed
     one-line ellipsis. Long tool paths, commands, and answer fragments in the
-    dock wrap inside the committed width, produce no horizontal overflow, and
-    retain the panel body as the only scroll owner.
+    delegation tab wrap inside the committed width, produce no horizontal
+    overflow, and retain the tab as the only scroll owner.
   - If the parent keeps working after those `Task` calls — thinking, `Read`,
     `Grep`, or a lifecycle row — that work is a separate processing group, not
     rows inside the delegation card (D319). The card's tile, “Subagent working”

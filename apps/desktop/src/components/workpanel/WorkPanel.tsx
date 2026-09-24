@@ -15,13 +15,14 @@ import {
   workPanelTabReorderInsertAfter,
   workPanelTabReorderShouldArm,
 } from "../../lib/work-panel-tab-reorder";
-import type { PluginViewMeta } from "@pi-desktop/shared";
 import {
   isKnownWorkPanelTab,
   parsePluginViewRef,
   pluginWorkPanelTab,
+  subagentTabDisplayLabels,
   toolWorkPanelTab,
 } from "../../lib/work-panel-tabs";
+import type { PluginViewMeta } from "@pi-desktop/shared";
 import { pluginViewIcon, pluginViewInitial } from "../../lib/plugin-view-icons";
 import { useAppStore } from "../../stores/app-store";
 import type { WorkPanelTab } from "../../stores/app-store";
@@ -30,7 +31,6 @@ import { TooltipButton } from "../ui";
 import type { IconProps } from "../icons";
 import {
   IconBot,
-  IconChevronLeft,
   IconClose,
   IconDiff,
   IconFileText,
@@ -42,8 +42,7 @@ import {
 import { ReviewTab } from "./ReviewTab";
 import { FilesTab } from "./FilesTab";
 import { PluginViewTab } from "./PluginViewTab";
-import { SubagentPanel } from "./SubagentPanel";
-import type { SubagentPanelSelection } from "../../lib/subagent-panel";
+import { SubagentTranscriptTab } from "./SubagentTranscriptTab";
 import {
   MAIN_PANE_MIN_WIDTH,
   WORK_PANEL_COMPACT_MIN_WIDTH,
@@ -59,6 +58,7 @@ const TAB_ICONS = {
   review: IconDiff,
   file: IconFileText,
   plugin: IconPlug,
+  subagent: IconBot,
 } as const;
 
 type WorkPanelResizeState = {
@@ -111,6 +111,7 @@ function tabLabel(
     return view?.title ?? tab.resource ?? t("panel.tabs.plugin");
   }
   if (tab.kind === "new") return t("panel.new.title");
+  if (tab.kind === "subagent") return tab.label ?? t("panel.tabs.subagent");
   if (tab.kind !== "file") return t(`panel.tabs.${tab.kind}`);
   const path = tab.resource ?? "";
   return path.split("/").filter(Boolean).pop() || t("panel.tabs.file");
@@ -156,8 +157,6 @@ export function WorkPanel({
   panelBlocked = false,
   exiting = false,
   onExitAnimationEnd,
-  subagentPanel = null,
-  onCloseSubagentPanel,
   containerWidth = 0,
   sidebarCollapsed = false,
   sidebarExiting = false,
@@ -175,9 +174,6 @@ export function WorkPanel({
   /** Plays work-panel-out; parent unmounts after animationend. */
   exiting?: boolean;
   onExitAnimationEnd?: () => void;
-  /** Temporarily replaces the resource body with the selected subagent detail. */
-  subagentPanel?: SubagentPanelSelection | null;
-  onCloseSubagentPanel?: () => void;
   /** Current renderer shell width used for the three-column budget. */
   containerWidth?: number;
   /** Sidebar state is part of the shared shell budget. */
@@ -211,6 +207,18 @@ export function WorkPanel({
   const tools = workPanelTools(t, pluginViews);
   const tabSignature = JSON.stringify(
     tabs.map(({ id, kind, resource, location }) => [id, kind, resource, location]),
+  );
+  // Subagent tabs may share an agent name; repeats gain a 1-based `#n`
+  // suffix in strip order so the row stays unambiguous. The base label
+  // already falls back to panel.tabs.subagent when no name was captured.
+  const subagentTabsInOrder = tabs.filter((tab) => tab.kind === "subagent");
+  const subagentDisplayLabels = subagentTabDisplayLabels(
+    subagentTabsInOrder.map((tab) => tabLabel(tab, t, pluginViews)),
+  );
+  const subagentLabelById = new Map(
+    subagentTabsInOrder.map(
+      (tab, index) => [tab.id, subagentDisplayLabels[index]] as const,
+    ),
   );
 
   const [panelDragWidth, setPanelDragWidth] = useState<number | null>(null);
@@ -567,18 +575,6 @@ export function WorkPanel({
     },
     [closeTab, tabs],
   );
-  const closeSubagentPanelAndFocus = useCallback(() => {
-    const delegationId = subagentPanel?.delegationId;
-    onCloseSubagentPanel?.();
-    if (!delegationId) return;
-    requestAnimationFrame(() => {
-      const trigger = [...document.querySelectorAll<HTMLElement>("[data-subagent-trigger]")].find(
-        (candidate) => candidate.dataset.subagentTrigger === delegationId,
-      );
-      trigger?.focus({ preventScroll: true });
-    });
-  }, [onCloseSubagentPanel, subagentPanel?.delegationId]);
-
   const onTabKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLButtonElement>, tabId: string) => {
       const index = tabs.findIndex((tab) => tab.id === tabId);
@@ -805,12 +801,6 @@ export function WorkPanel({
       <div className="work-panel-main">
         <header className="work-panel-header">
           <div className="work-panel-tab-strip-wrap no-drag">
-            {subagentPanel ? (
-              <div className="work-panel-subagent-heading" aria-label={t("panel.subagent")}>
-                <IconBot size={15} />
-                <span>{t("panel.subagent")}</span>
-              </div>
-            ) : (
               <div
                 ref={tabStripRef}
                 className="work-panel-tab-strip"
@@ -819,7 +809,10 @@ export function WorkPanel({
                 onWheel={onTabStripWheel}
               >
                 {tabs.map((tab) => {
-                  const label = tabLabel(tab, t, pluginViews);
+                  const label =
+                    tab.kind === "subagent"
+                      ? (subagentLabelById.get(tab.id) ?? t("panel.tabs.subagent"))
+                      : tabLabel(tab, t, pluginViews);
                   const selected = tab.id === activeTabId;
                   const Icon =
                     tab.kind === "plugin"
@@ -852,7 +845,7 @@ export function WorkPanel({
                         aria-grabbed={draggingTabId === tab.id}
                         aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
                         className="work-panel-tab-button"
-                        title={tab.resource ?? label}
+                        title={tab.kind === "subagent" ? label : tab.resource ?? label}
                         onPointerDown={(event) => beginTabReorder(event, tab.id)}
                         onDragStart={(event) => event.preventDefault()}
                         onClick={() => activateTab(tab.id)}
@@ -880,20 +873,8 @@ export function WorkPanel({
                   );
                 })}
               </div>
-            )}
           </div>
           <div className="work-panel-actions no-drag">
-            {subagentPanel && onCloseSubagentPanel ? (
-              <TooltipButton
-                type="button"
-                className="work-panel-subagent-back"
-                tooltip={t("panel.subagentClose")}
-                ariaLabel={t("panel.subagentClose")}
-                onClick={closeSubagentPanelAndFocus}
-              >
-                <IconChevronLeft size={15} />
-              </TooltipButton>
-            ) : (
               <TooltipButton
                 ref={newTabButtonRef}
                 type="button"
@@ -904,7 +885,6 @@ export function WorkPanel({
               >
                 <IconPlus size={16} />
               </TooltipButton>
-            )}
             <TooltipButton
               type="button"
               className="work-panel-maximize"
@@ -922,8 +902,18 @@ export function WorkPanel({
           </div>
         </header>
         <div className="work-panel-body">
-          {subagentPanel ? <SubagentPanel selection={subagentPanel} /> : null}
-          {!subagentPanel && activeTab?.kind === "review" && (
+          {activeTab?.kind === "subagent" && (
+            <div
+              key={activeTab.id}
+              id={`work-panel-surface-${activeTab.id}`}
+              className="work-panel-tabpane"
+              role="tabpanel"
+              aria-labelledby={`work-panel-tab-${activeTab.id}`}
+            >
+              <SubagentTranscriptTab delegationId={activeTab.resource ?? ""} />
+            </div>
+          )}
+          {activeTab?.kind === "review" && (
             <div
               id={`work-panel-surface-${activeTab.id}`}
               className="work-panel-tabpane"
@@ -933,7 +923,7 @@ export function WorkPanel({
               <ReviewTab />
             </div>
           )}
-          {!subagentPanel && activeTab?.kind === "file" && (
+          {activeTab?.kind === "file" && (
             <div
               key={activeTab.id}
               id={`work-panel-surface-${activeTab.id}`}
@@ -944,8 +934,7 @@ export function WorkPanel({
               <FilesTab />
             </div>
           )}
-          {!subagentPanel &&
-            activeTab?.kind === "plugin" &&
+          {activeTab?.kind === "plugin" &&
             (() => {
               const ref = parsePluginViewRef(activeTab.resource);
               if (!ref) return null;
@@ -970,7 +959,7 @@ export function WorkPanel({
                 </div>
               );
             })()}
-          {!subagentPanel && (!activeTab || activeTab.kind === "new") && (
+          {(!activeTab || activeTab.kind === "new") && (
             <div
               className="work-panel-tabpane"
               data-testid="work-panel-empty"

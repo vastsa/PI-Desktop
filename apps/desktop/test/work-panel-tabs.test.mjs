@@ -19,6 +19,8 @@ const {
   replaceWorkPanelTabState,
   reorderWorkPanelTabsState,
   sanitizeWorkPanelTabsState,
+  subagentTabDisplayLabels,
+  subagentWorkPanelTab,
   switchWorkPanelContextState,
   toolWorkPanelTab,
 } = await import("../src/lib/work-panel-tabs.ts");
@@ -281,4 +283,59 @@ test("a newer retained artifact is not overwritten by a stale visible projection
 
   assert.deepEqual(switched.contexts["session-a"], retained);
   assert.deepEqual(switched.visible, emptyWorkPanelContext());
+});
+
+test("subagent tabs key by delegation and carry the captured agent name", () => {
+  const tab = subagentWorkPanelTab("del-1", "explorer");
+  assert.equal(tab.id, "subagent:del-1");
+  assert.equal(tab.kind, "subagent");
+  assert.equal(tab.resource, "del-1");
+  assert.equal(tab.label, "explorer");
+  const unnamed = subagentWorkPanelTab("del-2");
+  assert.equal(unnamed.label, undefined);
+});
+
+test("subagent tabs reopen in place and close like any resource tab", () => {
+  const empty = { tabs: [], activeTabId: null };
+  const first = openWorkPanelTabState(empty, subagentWorkPanelTab("del-1", "explorer"));
+  const second = openWorkPanelTabState(
+    first,
+    subagentWorkPanelTab("del-2", "explorer"),
+  );
+  assert.equal(second.tabs.length, 2);
+  assert.equal(second.activeTabId, "subagent:del-2");
+  // Re-opening the same delegation reuses its tab instead of stacking one.
+  const reopened = openWorkPanelTabState(second, subagentWorkPanelTab("del-1"));
+  assert.equal(reopened.tabs.length, 2);
+  assert.equal(reopened.activeTabId, "subagent:del-1");
+  const closed = closeWorkPanelTabState(reopened, "subagent:del-1");
+  assert.deepEqual(
+    closed.tabs.map((tab) => tab.id),
+    ["subagent:del-2"],
+  );
+  assert.equal(closed.activeTabId, "subagent:del-2");
+});
+
+test("the sanitizer keeps subagent tabs across session switches", () => {
+  const state = {
+    tabs: [subagentWorkPanelTab("del-1", "explorer"), toolWorkPanelTab("review")],
+    activeTabId: "subagent:del-1",
+  };
+  assert.equal(isKnownWorkPanelTab({ id: "x", kind: "subagent" }), true);
+  assert.deepEqual(sanitizeWorkPanelTabsState(state), state);
+  const switched = switchWorkPanelContextState(
+    {},
+    undefined,
+    { ...state, open: true, fileRequest: null },
+    "session-b",
+  );
+  assert.deepEqual(switched.visible.tabs, []);
+});
+
+test("repeated subagent labels gain a strip-order suffix, singletons stay bare", () => {
+  assert.deepEqual(
+    subagentTabDisplayLabels(["explorer", "reviewer", "explorer", "explorer"]),
+    ["explorer#1", "reviewer", "explorer#2", "explorer#3"],
+  );
+  assert.deepEqual(subagentTabDisplayLabels(["explorer"]), ["explorer"]);
 });

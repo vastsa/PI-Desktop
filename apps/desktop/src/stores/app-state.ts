@@ -40,7 +40,6 @@ import type {
   QueuedPromptDirection,
   QueuedPrompts,
 } from "../lib/queued-prompts";
-import type { SubagentPanelSelection } from "../lib/subagent-panel";
 import type {
   ComposerDraftSnapshot,
   ComposerPrefill,
@@ -350,8 +349,6 @@ export type AppState = {
   dismissToast: (id: number) => void;
   composerPrefill: ComposerPrefill | null;
   clearComposerPrefill: () => void;
-  /** Renderer-only subagent details selected from the transcript. */
-  subagentPanel: SubagentPanelSelection | null;
   workPanelOpen: boolean;
   workPanelTabs: WorkPanelTab[];
   activeWorkPanelTabId: string | null;
@@ -360,9 +357,8 @@ export type AppState = {
   workPanelWidth: number;
   /** Chat-initiated "preview this file" request consumed by the files viewer. */
   workPanelFileRequest: { path: string; seq: number; mimeType?: string } | null;
-  /** Toggle the selected subagent detail. */
-  toggleSubagentPanel: (delegationId: string) => void;
-  closeSubagentPanel: () => void;
+  /** Open (or activate) the transcript tab of one delegated subagent. */
+  openSubagentTab: (delegationId: string, agentName?: string) => void;
   /** Abort one session's running turn, visible or not. */
   abortSession: (sessionId: string) => Promise<void>;
   openWorkPanel: () => void;

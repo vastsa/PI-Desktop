@@ -2313,40 +2313,51 @@ never summarizes from its own arguments:
   └────────────────┘    └───────────────────────────────────────────┘
 ```
 
-Clicking a topology node toggles an inset grouped side sheet in the right-side
-work-panel dock rather than expanding the transcript. Clicking the selected node
-again closes the side sheet; selecting another node replaces the current detail
-in place:
+Clicking a topology node opens a dedicated `subagent` tab in the work panel —
+the same tab strip that hosts Review, files, and plugin views — instead of
+expanding the transcript. Re-opening the same delegation activates its tab;
+parallel delegates coexist as independent tabs. The tab renders the delegation
+as a conversation:
 
 ```text
 ┌──────────────────────────────────────────────┐
-│ [bot] code-reviewer         [Completed]  32s │
-│       claude-sonnet-4-5                      │
-│                                              │
-│ TASK                                         │
-│ ┌──────────────────────────────────────────┐ │
-│ │ Review the changes in src/stores for …   │ │
-│ │                               Show more  │ │
-│ └──────────────────────────────────────────┘ │
-│                                              │
-│ ACTIVITY                            3 steps  │
-│ ● Thinking …                                 │
-│ ● Read store.ts                              │
+│ [bot] [code-reviewer] [✕]  [bot] [explorer#2] [✕]   [+] ⤢ │
+├──────────────────────────────────────────────┤
+│                    ┌──────────────────────┐ │
+│                    │ Review the changes   │ │
+│                    │ in src/stores.       │ │
+│                    └──────────────────────┘ │
+│ ● Thinking …                                │
+│ ● Read store.ts                             │
+│ The store diff looks consistent. …          │
+│                    ┌──────────────────────┐ │
+│                    │ Now check the tests. │ │
+│                    └──────────────────────┘ │
+│ ● Edit composer.tsx                         │
+├──────────────────────────────────────────────┤
+│ [ Subagents are driven by the main agent… ] │
 └──────────────────────────────────────────────┘
 ```
 
-- The dock renders a sticky identity header with the delegate name and model
-  on the left and the status capsule plus elapsed time trailing on the same
-  row, followed by the Task call's `task` argument as a selectable inset
-  grouped card and the live process timeline.
-- Reports and counters remain omitted from this surface. The live thinking,
-  tool, and answer process is shown on the dock timeline. The topology card
-  remains a compact summary in the transcript and does not gain height when
-  the dock opens.
-- The selected task is re-found from the session's live/retained messages, so
-  the header status and elapsed time stay current while the delegate runs.
-- A missing or deleted task renders a localized unavailable state. Delegation
-  rows remain excluded from the parent turn stream and minimap.
+- The tab is a message list, not a card: every `Task` call of the resume
+  chain renders its `task` argument as a user row (the main transcript's user
+  bubble), and the delegate's thinking, tool, and answer rows under that call
+  render with the same message-list language, so a follow-up prompt reads as
+  the next user turn.
+- The composer at the foot is a disabled two-row textarea whose placeholder
+  says subagents are driven by the main agent and cannot take input; the tab
+  is display-only and has no send path.
+- Tab labels carry the agent name captured when the tab opened, with a
+  strip-order `#n` suffix when the same name occurs more than once; a
+  localization fallback covers a delegate with no name.
+- Tabs are never opened automatically when a delegate starts. They persist
+  after the delegate settles until the user closes them and are scoped to
+  their session like every other tab.
+- The conversation is re-found from the session's live/retained messages, so
+  streaming rows keep arriving in the open tab while the delegate runs.
+- A delegation whose Task calls are missing renders a localized unavailable
+  state. Delegation rows remain excluded from the parent turn stream and
+  minimap.
 
 - Runs are rebuilt from the message list on every render, so group memoization
   compares them by row identity and length rather than by object identity —
