@@ -18,19 +18,18 @@ import type {
   RacpApprovalRequest,
   RacpEventEnvelope,
   RacpInputRequest,
+  RacpSession,
   ToolPermissionRequest,
 } from "@pi-desktop/shared";
 import { makeRemoteApprovalRequestId, makeRemoteSessionId } from "./backend-router.js";
 
-/** A minimal shape of the session field carried by host-scope session events.
- * Both the RACP `RacpSession` and the host's smaller `SessionSummary` extend
- * this — no field beyond these five is read by lifecycle handlers. */
-export type RemoteEventSessionRef = {
-  id: string;
-  title?: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
+/**
+ * The session carried by a host-scope session event. The host publishes either
+ * its `SessionSummary` (`{ session }`) or a status-only change (`{ sessionId,
+ * status, planningState }`); both are folded into this partial `RacpSession`,
+ * so a lifecycle handler merges whatever fields arrived.
+ */
+export type RemoteEventSessionRef = Partial<RacpSession> & { id: string };
 
 export type RemoteLifecycleEvent =
   | { readonly kind: "session.created"; readonly hostSessionId: string; readonly remoteSessionId: string; readonly session: RemoteEventSessionRef }
@@ -62,12 +61,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function extractSessionRef(payload: unknown): RemoteEventSessionRef | undefined {
   if (!isRecord(payload)) return undefined;
   const session = payload.session;
-  if (!isRecord(session) || typeof session.id !== "string") return undefined;
+  if (isRecord(session) && typeof session.id === "string") {
+    return session as unknown as RemoteEventSessionRef;
+  }
+  if (typeof payload.sessionId !== "string") return undefined;
   return {
-    id: session.id,
-    ...(typeof session.title === "string" ? { title: session.title } : {}),
-    ...(typeof session.createdAt === "string" ? { createdAt: session.createdAt } : {}),
-    ...(typeof session.updatedAt === "string" ? { updatedAt: session.updatedAt } : {}),
+    id: payload.sessionId,
+    ...(typeof payload.status === "string"
+      ? { status: payload.status as RacpSession["status"] }
+      : {}),
+    ...(isRecord(payload.planningState)
+      ? { planningState: payload.planningState as unknown as RacpSession["planningState"] }
+      : {}),
   };
 }
 
@@ -169,10 +174,9 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
     const remoteSessionId = remoteIdOf(session.id);
     if (envelope.kind === "session.created") {
       onLifecycle?.({ kind: "session.created", hostSessionId: session.id, remoteSessionId, session });
-      emit(IPC.event.sessionsChanged, {
-        reason: "remote.session.created",
-        selectSessionId: remoteSessionId,
-      });
+      // No `selectSessionId`: a session another client created must not take
+      // this window's focus. The desktop's own create selects its result.
+      emit(IPC.event.sessionsChanged, { reason: "remote.session.created" });
       return;
     }
     if (envelope.kind === "session.changed") {
