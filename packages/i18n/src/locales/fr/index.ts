@@ -570,6 +570,9 @@ export const fr = {
     "dismiss": "Ignorer"
   },
   "settings": {
+    "mcpControlTitle": "Contrôle local de Pi",
+    "mcpControlEnabled": "Activer le contrôle MCP au démarrage",
+    "mcpControlDesc": "Autoriser les autres programmes de cet ordinateur à contrôler Pi avec son jeton d’accès local. Ce réglage est indépendant des serveurs MCP auxquels Pi se connecte ci-dessous. Les modifications prennent effet après avoir quitté puis rouvert Pi.",
     "imageModel": "Modèle de génération d’images",
     "imageModelUnset": "Non configuré",
     "imageModelUnavailable": "Indisponible pour le moment",

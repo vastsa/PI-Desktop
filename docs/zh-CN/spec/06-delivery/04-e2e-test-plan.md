@@ -5386,7 +5386,7 @@ eleven-tool-round desktop paths are verified by
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
-| 基线后本地自动化 | E2E-220 |
+| 基线后本地自动化 | E2E-220, E2E-MCP-control-setting-survives-restart |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
 | 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | 受信任扩展（R7 v1 npm 恢复） | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -7325,7 +7325,27 @@ eleven-tool-round desktop paths are verified by
 - **验收**：A（应用控制）、C（会话）、安全、质量
 - **里程碑**：M6+
 - **状态**：由 `apps/desktop/test/mcp-control.test.mjs` 覆盖 MCP 协议/单元；完整 Electron
-  旅程已记录，仍按策略延后
+  Agent 操作旅程已记录；相关候选版本 E2E 遵循 `AGENTS.md`。持久化启用由下述场景覆盖。
+
+#### E2E-MCP-control-setting-survives-restart：普通启动保留本机控制偏好
+
+- **前提条件**：已构建桌面和 host-core，使用隔离的可写配置和临时 MCP 端口，
+  不继承 `PI_DESKTOP_MCP_CONTROL`。
+- **步骤**：1）无保存偏好启动，确认没有活动端点。2）在设置 → MCP 开启本机
+  控制，确认 host 保存 `true` 且当前进程尚未监听。3）退出后不带控制环境变量
+  重启，通过私有清单认证；环境变量为 `0` 时重启仍遵循保存的 `true`。
+  4）关闭开关，确认当前端点仍可用直到退出。
+  5）重启后确认端点未启用。6）保存值为 `false` 时使用环境变量 `1` 启动，
+  确认端点可用且偏好未被改写。7）通过 host 保存非布尔值，不带环境变量重启，
+  确认服务不会启动。
+- **预期**：开关跨重启保存，其他设置不变；说明区分入站控制和出站服务器，并
+  解释重启要求。无令牌请求返回 401，认证初始化成功；MCP 目录仍排除设置写入。
+  正常退出将清单标记为非活动。无效值不会启用服务，环境变量用法兼容旧版。
+- **链接规格**：`04-ux/06-settings-ia.md`、`03-runtime/01-ipc-protocol.md`、
+  `05-security/01-security.md`、ADR 0203
+- **验收**：A（应用控制）、安全、质量
+- **里程碑**：M6+
+- **状态**：由 `scripts/e2e-mcp-control-settings.mjs` 自动化
 
 ## 受信任扩展场景（R7 v1）
 

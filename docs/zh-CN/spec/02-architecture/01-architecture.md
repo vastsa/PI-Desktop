@@ -88,7 +88,8 @@ Electron Main 独家拥有更新客户端和修复的 GitHub 版本
 
 ### 3. 6 本地 MCP 控制面
 
-设置 `PI_DESKTOP_MCP_CONTROL=1` 时，Electron Main 会在 `127.0.0.1` 启动可选的
+保存的 `AppSettings.mcpControlEnabled` 严格为 `true`，或设置了
+`PI_DESKTOP_MCP_CONTROL=1` 时，Electron Main 会在 `127.0.0.1` 启动可选的
 Streamable HTTP MCP 服务。服务提供项目/会话/Agent/工作区常用命名工具，以及经过
 审查的通用桌面操作目录。每次调用都委托给渲染器使用的同一主进程 IPC 处理器，不会
 创建第二套权限或持久化实现。

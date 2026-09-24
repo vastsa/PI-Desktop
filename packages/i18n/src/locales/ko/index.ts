@@ -579,6 +579,9 @@ export const ko = {
     dismiss: "닫기",
   },
   settings: {
+    mcpControlTitle: "Pi 로컬 제어",
+    mcpControlEnabled: "시작 시 MCP 제어 활성화",
+    mcpControlDesc: "이 컴퓨터의 다른 프로그램이 로컬 액세스 토큰으로 Pi를 제어하도록 허용합니다. 아래에서 Pi가 연결하는 MCP 서버와는 별개의 설정입니다. 변경 사항은 Pi를 종료한 후 다시 열면 적용됩니다.",
     "imageModel": "이미지 생성 모델",
     "imageModelUnset": "설정되지 않음",
     "imageModelUnavailable": "현재 사용 불가",

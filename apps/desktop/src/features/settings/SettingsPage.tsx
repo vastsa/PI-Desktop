@@ -45,6 +45,7 @@ import { ThemeRow } from "../../components/settings/ThemeRow";
 import { NetworkProxySection } from "../../components/settings/NetworkProxySection";
 import { ProjectsPage } from "../../pages/ProjectsPage";
 import { AgentSkillsPage } from "../../components/settings/AgentSkillsPage";
+import { McpControlSection } from "./mcp-control-section";
 import { AgentMcpPage } from "../../components/settings/AgentMcpPage";
 import { AgentSubagentsPage } from "../../components/settings/AgentSubagentsPage";
 import { RemoteHostsPage } from "../../components/settings/RemoteHostsPage";
@@ -538,7 +539,14 @@ export function SettingsPage() {
 
           {tab === "skills" && <AgentSkillsPage />}
 
-          {tab === "mcp" && <AgentMcpPage />}
+          {tab === "mcp" && (
+            <div className="settings-stack">
+              {settings && (
+                <McpControlSection settings={settings} saveSettings={saveSettings} />
+              )}
+              <AgentMcpPage />
+            </div>
+          )}
 
           {tab === "subagents" && <AgentSubagentsPage />}
 

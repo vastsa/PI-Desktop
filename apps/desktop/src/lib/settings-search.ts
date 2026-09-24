@@ -197,6 +197,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.mcp",
     group: "agent",
     keywordKeys: [
+      "settings.mcpControlTitle",
+      "settings.mcpControlEnabled",
+      "settings.mcpControlDesc",
       "settings.mcpGlobalPath",
       "settings.mcpProjectPath",
       "settings.globalScopeDescription",

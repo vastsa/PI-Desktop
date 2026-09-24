@@ -574,6 +574,9 @@ export const zhCN = {
     dismiss: "关闭",
   },
   settings: {
+    mcpControlTitle: "本机控制 Pi",
+    mcpControlEnabled: "启动时开启 MCP 控制",
+    mcpControlDesc: "允许本机其他程序使用本地访问令牌控制 Pi。此设置与下方 Pi 连接的 MCP 服务器独立。修改后需退出并重新打开 Pi 才会生效。",
     imageModel: "生图模型",
     imageModelUnset: "未配置",
     imageModelUnavailable: "暂不可用",

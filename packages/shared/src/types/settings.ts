@@ -104,6 +104,8 @@ export type AppSettings = {
   keybindings?: KeybindingOverrides;
   /** Unlocks the devtools console (settings button, F12, macOS View menu). */
   developerMode?: boolean;
+  /** Local MCP control on next startup; defaults off. PI_DESKTOP_MCP_CONTROL=1 still enables it. */
+  mcpControlEnabled?: boolean;
   /**
    * Extension marketplace provider. `mirror` targets the cnb.cool copy for
    * networks that cannot reach `raw.githubusercontent.com`; both serve the

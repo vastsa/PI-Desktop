@@ -458,6 +458,19 @@ confirmation only: Ask and Accept edits prompt, while Auto may run a mutating
 Bash command without confirmation. The AI Defaults card must describe that both
 contract modes are intent boundaries, not strict read-only security profiles.
 
+### Local MCP control
+
+Settings → MCP places a separate **Local control of Pi** card above the outbound
+MCP workbench. **Enable MCP control at startup** is off unless the saved optional
+`AppSettings.mcpControlEnabled` is exactly `true`. The description explains that
+other programs on this computer can control Pi with its local access token,
+separates this from the servers Pi connects to, and requires quitting and
+reopening Pi after changes. This switch edits the next-start preference, not
+live server status. A launch with `PI_DESKTOP_MCP_CONTROL=1` still forces startup
+regardless of the saved switch. Saving disables the switch until completion;
+failures retain the previous value and show an error toast. Settings search
+indexes the card title, switch label, and description.
+
 ### Agent capability destinations (Skills / MCP / Subagents)
 
 Skills, MCP servers, and user-owned Subagents remain three independent

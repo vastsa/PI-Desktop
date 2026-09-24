@@ -574,6 +574,9 @@ export const zhTW = {
     dismiss: "關閉",
   },
   settings: {
+    mcpControlTitle: "本機控制 Pi",
+    mcpControlEnabled: "啟動時開啟 MCP 控制",
+    mcpControlDesc: "允許本機其他程式使用本機存取權杖控制 Pi。此設定與下方 Pi 連線的 MCP 伺服器獨立。變更後需結束並重新開啟 Pi 才會生效。",
     imageModel: "生圖模型",
     imageModelUnset: "未設定",
     imageModelUnavailable: "暫不可用",

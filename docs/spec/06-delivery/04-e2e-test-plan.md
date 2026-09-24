@@ -8429,7 +8429,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
-| Post-baseline local automation | E2E-220 |
+| Post-baseline local automation | E2E-220, E2E-MCP-control-setting-survives-restart |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -12277,8 +12277,34 @@ are withdrawn with ADR 0165.
 - **Acceptance**: A (app control), C (sessions), Security, Quality
 - **Milestone**: M6+
 - **Status**: MCP protocol/unit-covered by `apps/desktop/test/mcp-control.test.mjs`;
-  full Electron journey documented and remains deferred by the no-local-E2E
-  policy
+  full Agent-operation journey documented; relevant task-candidate E2E follows
+  `AGENTS.md`. Persistent activation is covered by the scenario below.
+
+#### E2E-MCP-control-setting-survives-restart: Saved local control works without a launcher
+
+- **Preconditions**: Built desktop and host-core, an isolated writable profile,
+  and no inherited `PI_DESKTOP_MCP_CONTROL`. Use an ephemeral MCP port.
+- **Steps**: 1) Launch with no saved opt-in and verify no active endpoint.
+  2) Open Settings → MCP and enable local control; verify the host saved `true`
+  without starting a listener in the current process. 3) Quit and reopen with
+  no control environment variable; authenticate using the private manifest.
+  Repeat with environment value `0`: the saved `true` still enables control.
+  4) Disable the switch; verify the current endpoint remains available until
+  quit. 5) Reopen and verify no active endpoint. 6) Launch with environment
+  opt-in `1` and saved `false`; verify the endpoint starts without rewriting
+  the preference. 7) Store a non-boolean value through the host and relaunch
+  without the environment opt-in; verify it cannot enable the server.
+- **Expected**: The saved switch survives restart and keeps unrelated settings;
+  its description distinguishes inbound control from outbound servers and
+  explains restart. Requests without a bearer token receive 401, authenticated
+  initialize succeeds, settings writes remain excluded from the MCP catalog,
+  and clean shutdown marks the manifest inactive. Invalid saved values fail
+  closed. Environment opt-in remains backward compatible.
+- **Specs linked**: `04-ux/06-settings-ia.md`, `03-runtime/01-ipc-protocol.md`,
+  `05-security/01-security.md`, ADR 0203
+- **Acceptance**: A (app control), Security, Quality
+- **Milestone**: M6+
+- **Status**: Automated by `scripts/e2e-mcp-control-settings.mjs`
 
 #### E2E-234: Workspace security denylist and ignore layers
 

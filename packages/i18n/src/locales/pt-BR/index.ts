@@ -568,6 +568,9 @@ export const ptBR = {
     dismiss: "Dispensar"
   },
   settings: {
+    mcpControlTitle: "Controle local do Pi",
+    mcpControlEnabled: "Ativar o controle MCP ao iniciar",
+    mcpControlDesc: "Permitir que outros programas neste computador controlem o Pi usando seu token de acesso local. Esta opção é independente dos servidores MCP aos quais o Pi se conecta abaixo. As alterações entram em vigor após encerrar e reabrir o Pi.",
     imageModel: "Modelo de imagens",
     imageModelUnset: "Sem configurar",
     imageModelUnavailable: "Atualmente indisponível",

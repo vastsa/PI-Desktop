@@ -1718,7 +1718,11 @@ Electron Main 构造固定的 GitHub bug 表单 URL
 ## 13d. 本地 MCP 控制 API（D370）
 
 PI-Desktop 可以为外部 Agent 暴露本地自动化接口，而不改变渲染器 preload
-契约或 host RPC 协议。服务默认关闭，只有 Electron 进程收到以下配置时才启动：
+契约或 host RPC 协议。服务默认关闭。启动时通过现有 `settings.get` 读取
+`AppSettings.mcpControlEnabled`，仅布尔值 `true` 启用服务。设置 → MCP 使用
+现有设置 IPC 保存此可选字段，退出并重新打开 Pi 后生效，无需数据库迁移。
+以下环境变量仍可启用服务；`1` 优先于保存的 `false` 或设置读取失败，其他值
+不覆盖保存的偏好：
 
 ```text
 PI_DESKTOP_MCP_CONTROL=1

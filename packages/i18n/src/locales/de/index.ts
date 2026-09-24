@@ -570,6 +570,9 @@ export const de = {
     "dismiss": "Verwerfen"
   },
   "settings": {
+    "mcpControlTitle": "Lokale Steuerung von Pi",
+    "mcpControlEnabled": "MCP-Steuerung beim Start aktivieren",
+    "mcpControlDesc": "Anderen Programmen auf diesem Computer erlauben, Pi mit seinem lokalen Zugriffstoken zu steuern. Unabhängig von den unten aufgeführten MCP-Servern, mit denen Pi sich verbindet. Änderungen werden nach dem Beenden und erneuten Öffnen von Pi wirksam.",
     "imageModel": "Bildgenerierungsmodell",
     "imageModelUnset": "Nicht konfiguriert",
     "imageModelUnavailable": "Derzeit nicht verfügbar",

@@ -304,6 +304,7 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
         });
       });
     }
+    let mcpControlEnabled = process.env.PI_DESKTOP_MCP_CONTROL === "1";
     const host = getHost();
     if (host) {
       try {
@@ -312,8 +313,10 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
           theme?: unknown;
           keybindings?: unknown;
           developerMode?: unknown;
+          mcpControlEnabled?: unknown;
           preventScreenSleep?: unknown;
         } | null;
+        mcpControlEnabled ||= stored?.mcpControlEnabled === true;
         applyApplicationMenuSettings(stored);
         applyDeveloperMode(stored);
         applyPreventScreenSleep(stored);
@@ -331,7 +334,7 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       applyToggleWindowShortcut();
     }
     await ensureWindow();
-    if (process.env.PI_DESKTOP_MCP_CONTROL === "1") {
+    if (mcpControlEnabled) {
       try {
         state.mcpControl = new McpControlServer({
           dataDir,

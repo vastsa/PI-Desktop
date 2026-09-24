@@ -257,8 +257,12 @@ claim availability or freshness against a malicious server.
 The local MCP control server is an explicit automation boundary, not a general
 remote-control listener:
 
-- It is disabled by default and only starts with
-  `PI_DESKTOP_MCP_CONTROL=1`.
+- It is disabled by default. Startup requires saved
+  `AppSettings.mcpControlEnabled === true` or `PI_DESKTOP_MCP_CONTROL=1`.
+  Settings → MCP exposes an explicit local-control opt-in, separate from
+  outbound MCP clients, with a quit-and-reopen requirement. Missing, unreadable,
+  or non-boolean saved values cannot enable it. The environment value `1`
+  forces startup; other values leave the saved preference in effect.
 - It binds `127.0.0.1` only and refuses to start if the listen address is not
   loopback. There is no configuration path for a LAN or public interface, and
   the feature does not revive the deferred remote Gateway / WebUI scope.

@@ -579,6 +579,9 @@ export const tr = {
     dismiss: "Kapat",
   },
   settings: {
+    mcpControlTitle: "Pi yerel denetimi",
+    mcpControlEnabled: "Başlangıçta MCP denetimini etkinleştir",
+    mcpControlDesc: "Bu bilgisayardaki diğer programların yerel erişim belirteciyle Pi’yi denetlemesine izin verin. Pi’nin aşağıda bağlandığı MCP sunucularından bağımsızdır. Değişiklikler Pi kapatılıp yeniden açıldığında uygulanır.",
     "imageModel": "Görsel oluşturma modeli",
     "imageModelUnset": "Yapılandırılmadı",
     "imageModelUnavailable": "Şu anda kullanılamıyor",

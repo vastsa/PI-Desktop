@@ -86,7 +86,8 @@ not pass through Rust host-core or the agent sidecar (D120 / ADR 0022).
 
 ### 3.6 Local MCP control plane
 
-When `PI_DESKTOP_MCP_CONTROL=1` is set, Electron Main starts an optional
+When saved `AppSettings.mcpControlEnabled` is exactly `true` or
+`PI_DESKTOP_MCP_CONTROL=1` is set, Electron Main starts an optional
 Streamable HTTP MCP server on `127.0.0.1`. The server exposes named tools for
 the common project/session/Agent/workspace flows and a reviewed catalog of
 generic desktop operations. Each call delegates to the same registered main

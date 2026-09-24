@@ -16,7 +16,8 @@ Gateway / WebUI control boundary remains out of scope under baseline decision
 ## Decision
 
 - Add an optional Streamable HTTP MCP server inside Electron Main. It starts
-  only when `PI_DESKTOP_MCP_CONTROL=1` is set and binds to `127.0.0.1`; an
+  when the saved `AppSettings.mcpControlEnabled` is exactly `true` or
+  `PI_DESKTOP_MCP_CONTROL=1` is set, and binds to `127.0.0.1`; an
   optional `PI_DESKTOP_MCP_PORT` selects the local port and defaults to 37123.
 - Validate any supplied `Origin` against loopback hostnames to prevent DNS
   rebinding from remote web content. Non-browser MCP clients may omit `Origin`.
@@ -44,6 +45,18 @@ Gateway / WebUI control boundary remains out of scope under baseline decision
   `pi-desktop/session/event/changed` renderer event with additive project and
   selection fields. Reads such as `session/get` do not refresh the visible
   desktop.
+
+### Persistent opt-in amendment
+
+Ordinary icon launches cannot inherit a one-off terminal environment. Settings →
+MCP therefore offers a separate local-control switch, saved through the existing
+settings IPC/Rust-owned JSON storage. Missing or non-boolean values remain off;
+no schema migration is required. Changes apply after quitting and reopening Pi.
+The UI describes inbound control separately from Pi's outbound MCP clients.
+`PI_DESKTOP_MCP_CONTROL=1` forces startup even with a saved `false` or an
+unavailable settings store. Other environment values do not override the saved
+preference. This retains the existing opt-in launcher contract without adding
+live server lifecycle or exposing settings writes to MCP clients.
 
 ## Consequences
 
@@ -76,4 +89,7 @@ protocol negotiation, tool discovery, project/session dispatch,
 dangerous-operation confirmation (including session configure), secret
 stripping, catalog exclusions, loopback bind refusal, mutation-only renderer
 refresh, and inactive shutdown manifests. E2E-220 records the full Electron
-journey; full local desktop E2E remains deferred by repository policy.
+journey. `scripts/e2e-mcp-control-settings.mjs` covers the persistent opt-in
+through the real settings UI, host storage, Electron restart, and HTTP endpoint
+(E2E-MCP-control-setting-survives-restart). Relevant candidate E2E follows
+`AGENTS.md`; the broader Agent-operation journey remains separately documented.

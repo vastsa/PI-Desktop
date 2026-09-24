@@ -2130,7 +2130,12 @@ protocol version.
 
 PI-Desktop can expose a local automation surface for an external Agent without
 changing the renderer preload contract or host RPC protocol. The server is
-disabled by default and starts only when the Electron process receives:
+disabled by default. At startup, Electron reads `AppSettings.mcpControlEnabled`
+from the existing host `settings.get` RPC: only boolean `true` enables it.
+Settings → MCP writes this optional field via the existing settings IPC; changes
+apply after quitting and reopening Pi. No new RPC or storage migration is needed.
+The environment opt-in also remains available (and wins over saved `false` or a
+failed settings read); values other than `1` leave the saved preference in effect:
 
 ```text
 PI_DESKTOP_MCP_CONTROL=1
