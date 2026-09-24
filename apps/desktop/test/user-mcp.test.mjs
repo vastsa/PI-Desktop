@@ -157,6 +157,37 @@ test("refreshing HTTP MCP status detects a server that went offline", async (t) 
   assert.deepEqual(await pendingCall, { content: [{ type: "text", text: "completed" }] });
   assert.equal(pings, 2);
 });
+test("stopping one session cancels only its active MCP call", async (t) => {
+  const started = new Map();
+  const finish = new Map();
+  const client = {
+    isConnected: () => true,
+    getTools: () => [{ name: "lookup" }],
+    close: () => {},
+    connect: async () => [{ name: "lookup" }],
+    callTool: async (_name, args, signal) => new Promise((resolve, reject) => {
+      finish.set(args.id, resolve);
+      signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      started.get(args.id)();
+    }),
+  };
+  const rt = new UserMcpRuntime({ createClient: () => client });
+  t.after(() => rt.disposeAll());
+  rt.setRecords([stubRecord("/unused")]);
+  await rt.toolsForProject("/repo");
+
+  const firstStarted = new Promise((resolve) => started.set("first", resolve));
+  const first = rt.callTool("mcp_stub_lookup", { id: "first" }, "/repo", "session-a");
+  await firstStarted;
+  const secondStarted = new Promise((resolve) => started.set("second", resolve));
+  const second = rt.callTool("mcp_stub_lookup", { id: "second" }, "/repo", "session-b");
+  await secondStarted;
+
+  rt.cancelSessionCalls("session-a");
+  await assert.rejects(first, /aborted/);
+  finish.get("second")("finished");
+  assert.equal(await second, "finished");
+});
 
 test("a project-scoped server is invisible outside its projects", async (t) => {
   const dir = stubDir();

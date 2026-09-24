@@ -1392,6 +1392,14 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **接受**：G（MCP 桥）+ E（工具和权限）+ 安全
 - **状态**：单位覆盖（`plugin-mcp.test.mjs` stdio + HTTP 存根）；面向代理的场景草稿
 
+#### E2E-MCP-CANCEL：停止操作只中断调用方会话的 MCP 请求
+
+- **先决条件**：两个 Agent 会话共用用户或插件 MCP 服务器，均有待处理工具调用，服务器记录取消通知。
+- **步骤**：两项调用待处理时停止第一个会话，再让第二项调用完成；分别对远程 HTTP 和 stdio 服务器重复。
+- **预期**：第一个请求收到 `notifications/cancelled`，停止后不会产生成功的工具结果；第二个会话的调用正常完成且连接可继续使用。关闭应用会取消其余请求并清理监听器。
+- **关联规格**：`03-runtime/01-ipc-protocol.md` §12a、`07-plugins/04-plugin-security.md` §8.1
+- **状态**：客户端及会话隔离已有单元测试；完整桌面流程待验证
+
 #### E2E-024L：常驻插件服务受监督且可见
 
 - **先决条件**：在授予 `background.service` 的情况下启用 `examples/plugins/hello`。

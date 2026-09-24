@@ -380,6 +380,86 @@ test("a remote MCP tool can run longer than the connection timeout", async (t) =
   const result = await client.callTool("slow", {});
   assert.equal(describeMcpContent(result.content), "finished");
 });
+test("aborting one HTTP MCP call cancels its request", async (t) => {
+  let callStarted;
+  let cancellationReceived;
+  const started = new Promise((resolve) => { callStarted = resolve; });
+  const canceled = new Promise((resolve) => { cancellationReceived = resolve; });
+  let callId;
+  const fetchImpl = async (_url, options) => {
+    const message = JSON.parse(options.body);
+    if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
+    if (message.method === "notifications/cancelled") {
+      cancellationReceived(message.params.requestId);
+      return new Response(null, { status: 202 });
+    }
+    if (message.method === "tools/call") {
+      callId = message.id;
+      callStarted();
+      return new Promise((_, reject) => {
+        options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      });
+    }
+    const result = message.method === "initialize"
+      ? { protocolVersion: message.params.protocolVersion, capabilities: {} }
+      : { tools: [{ name: "slow" }] };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new McpServerClient({
+    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-cancel-")),
+    server: { id: "remote", transport: "http", url: "https://mcp.example.com/mcp" },
+    values: {},
+    fetchImpl,
+  });
+  t.after(() => client.close());
+  await client.connect();
+
+  const controller = new AbortController();
+  const call = client.callTool("slow", {}, controller.signal);
+  await started;
+  controller.abort();
+  await assert.rejects(call, { code: "TOOL_ABORTED" });
+  assert.equal(await canceled, callId);
+});
+
+test("aborting a tool waiting for a shared handshake does not send tools/call", async (t) => {
+  let finishInitialize;
+  let initializeStarted;
+  const started = new Promise((resolve) => { initializeStarted = resolve; });
+  const methods = [];
+  const fetchImpl = async (_url, options) => {
+    const message = JSON.parse(options.body);
+    methods.push(message.method);
+    if (message.method === "initialize") {
+      initializeStarted();
+      return new Promise((resolve) => { finishInitialize = () => resolve(new Response(JSON.stringify({
+        jsonrpc: "2.0", id: message.id,
+        result: { protocolVersion: message.params.protocolVersion, capabilities: {} },
+      }), { status: 200, headers: { "content-type": "application/json" } })); });
+    }
+    if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { tools: [{ name: "echo" }] } }), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new McpServerClient({
+    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-cancel-")),
+    server: { id: "remote", transport: "http", url: "https://mcp.example.com/mcp" },
+    values: {}, fetchImpl,
+  });
+  t.after(() => client.close());
+  const controller = new AbortController();
+  const call = client.callTool("echo", {}, controller.signal);
+  await started;
+  controller.abort();
+  await assert.rejects(call, { code: "TOOL_ABORTED" });
+  finishInitialize();
+  await client.connect();
+  assert.ok(!methods.includes("tools/call"));
+});
 
 test("an http failure is reported as HTTP_ERROR", async (t) => {
   const { url } = await startHttpServer(t);
@@ -556,7 +636,8 @@ test("discovered mcp tools ride the existing plugin tool path", () => {
   assert.match(register, /this\.tools\.set\(fullName/);
   // Remote code the desktop cannot inspect never auto-approves.
   assert.match(register, /risk: "medium"/);
-  assert.match(register, /client\.callTool\(tool\.name, toolArgs\)/);
+  assert.match(register, /this\.mcpCalls\.run\(/);
+  assert.match(register, /client\.callTool\(tool\.name, toolArgs, signal\)/);
   // A server that fails to answer must not fail the plugin load.
   assert.match(register, /await client\.connect\(\);\s*\n\s*\} catch \{/);
 });

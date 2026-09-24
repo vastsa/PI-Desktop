@@ -375,6 +375,9 @@ manifest did not name:
   deferred on-demand entries behind `ToolSearch`, not as an always-present list.
   Servers are connected lazily and torn down when the plugin unloads or is
   disabled.
+  Stopping the calling session cancels that session's in-flight MCP request and
+  sends `notifications/cancelled` to the server. A shared server connection and
+  calls owned by other sessions remain active.
 
 ## 8.2 Desktop control and device access
 

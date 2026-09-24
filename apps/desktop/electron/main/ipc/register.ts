@@ -362,7 +362,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getHost,
     getSidecar,
     getAgentHostBridge,
-    cancelSessionTools: (sessionId: string, reason?: string) => plugins.cancelSessionTools(sessionId, reason),
+    cancelSessionTools: (sessionId: string, reason?: string) => {
+      plugins.cancelSessionTools(sessionId, reason);
+      userMcp.cancelSessionCalls(sessionId);
+    },
     logger,
     vendorOAuth,
     agentExtensions,
