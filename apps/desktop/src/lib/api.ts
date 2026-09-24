@@ -108,6 +108,11 @@ import type {
   RemoteHostPairRequest,
   RemoteHostPairResult,
   RemoteHostSummary,
+  RemoteProjectBrowseResult,
+  RemoteProjectListResult,
+  RemoteProjectRegisterResult,
+  RemoteSessionCreateRequest,
+  RemoteSessionCreateResult,
   UpdateState,
   WindowControlAction,
   CloseBehavior,
@@ -1327,12 +1332,16 @@ export const api = {
     invoke(IPC.invoke.browserOpenExternal, url ? { url } : {}),
   browserGetState: () =>
     invoke<BrowserState | null>(IPC.invoke.browserGetState),
-  fsList: (path?: string) =>
-    invoke<{ entries: FsEntry[] }>(IPC.invoke.fsList, { path: path ?? "" }),
-  fsRead: (path: string, mimeType?: string) =>
+  fsList: (path?: string, sessionId?: string) =>
+    invoke<{ entries: FsEntry[] }>(IPC.invoke.fsList, {
+      path: path ?? "",
+      ...(sessionId ? { sessionId } : {}),
+    }),
+  fsRead: (path: string, mimeType?: string, sessionId?: string) =>
     invoke<FsReadResult>(IPC.invoke.fsRead, {
       path,
       ...(mimeType ? { mimeType } : {}),
+      ...(sessionId ? { sessionId } : {}),
     }),
   fsReadImageDataUrl: (ref: string, mimeType?: string) =>
     invoke<FsImageDataUrlResult>(IPC.invoke.fsReadImageDataUrl, {
@@ -1534,6 +1543,22 @@ export const api = {
   /** Close and drop a paired host by its stable routing key. */
   removeRemoteHost: (hostKey: string) =>
     invoke<{ ok: true }>(IPC.invoke.remoteHostRemove, { hostKey }),
+  /** Projects a connected host has registered. */
+  listRemoteProjects: (hostKey: string) =>
+    invoke<RemoteProjectListResult>(IPC.invoke.remoteProjectList, { hostKey }),
+  /** Directories under the host's browse root; absent `path` is the root. */
+  browseRemoteProject: (hostKey: string, path?: string) =>
+    invoke<RemoteProjectBrowseResult>(IPC.invoke.remoteProjectBrowse, {
+      hostKey,
+      ...(path ? { path } : {}),
+    }),
+  registerRemoteProject: (hostKey: string, path: string) =>
+    invoke<RemoteProjectRegisterResult>(IPC.invoke.remoteProjectRegister, { hostKey, path }),
+  /** Create a session on a connected host; it runs on the host's default model. */
+  createRemoteSession: (request: RemoteSessionCreateRequest) =>
+    invoke<RemoteSessionCreateResult>(IPC.invoke.remoteSessionCreate, request).then(
+      (result) => ({ session: normalizeSession(result.session) }),
+    ),
   onSessionsChanged: (
     listener: (event: {
       reason?: string;

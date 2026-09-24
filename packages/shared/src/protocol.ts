@@ -198,6 +198,21 @@ export const IPC = {
      * crosses this channel.
      */
     remoteHostBootstrap: "pi-desktop/remoteHost/bootstrap",
+    /** Projects a connected host has registered (RACP `project/list`). */
+    remoteProjectList: "pi-desktop/remoteProject/list",
+    /**
+     * Directories under the host's browse root (RACP `project/browse`), so a
+     * remote project can be picked without typing an absolute host path.
+     */
+    remoteProjectBrowse: "pi-desktop/remoteProject/browse",
+    /** Register a host directory as a project (RACP `project/register`). */
+    remoteProjectRegister: "pi-desktop/remoteProject/register",
+    /**
+     * Create a session on a connected host in one of its projects. The
+     * result is the `remote:` summary the sidebar lists; later calls for it
+     * route to the host through the backend router.
+     */
+    remoteSessionCreate: "pi-desktop/remoteSession/create",
     providersList: "pi-desktop/providers/list",
     providersReorder: "pi-desktop/providers/reorder",
     providersCreate: "pi-desktop/providers/create",
