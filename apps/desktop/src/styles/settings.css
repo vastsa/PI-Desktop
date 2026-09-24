@@ -910,6 +910,15 @@
 }
 
 /*
+  A toggle is 20 px tall, while the field metric (select triggers, text inputs)
+  resolves to ~38 px. Give the control column a matching minimum so toggle rows
+  are the same height as select rows; the switch stays centred via align-items.
+*/
+.settings-row-control:has(> .settings-toggle) {
+  min-height: var(--ds-field-height);
+}
+
+/*
   A toggle paired with an icon action (prompt enhancement). The control column
   has no gap of its own, so the two would otherwise touch.
 */

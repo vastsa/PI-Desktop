@@ -151,7 +151,23 @@ export type AppSettings = {
    * disabled when the system prefers reduced motion.
    */
   smoothStreaming?: boolean;
+  /** Voice input settings (D-voice-runtime). */
+  voice?: VoiceInputSettings;
   onboardingDismissed: boolean;
+};
+
+export type ChineseVariant = "simplified" | "traditional-taiwan" | "traditional-hong-kong";
+
+export type VoiceInputSettings = {
+  enabled: boolean;
+  /** Microphone device ID; null means system default. */
+  deviceId: string | null;
+  /** Language codes for recognition, e.g. ["zh", "en"]. */
+  languages: string[];
+  /** Chinese output variant. */
+  chineseVariant: ChineseVariant;
+  /** Catalog model ID. Empty string means no model selected yet. */
+  modelId: string;
 };
 
 export type LinkOpenTarget = "workpanel" | "external";

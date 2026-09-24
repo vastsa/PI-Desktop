@@ -1,0 +1,29 @@
+{
+  "name": "@pi-desktop/voice-runtime",
+  "version": "0.15.6",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "opencc-js": "^1.4.1"
+  },
+  "optionalDependencies": {
+    "transcribe-cpp": "0.2.2",
+    "@picovoice/pvrecorder-node": "1.2.9",
+    "@huggingface/hub": "2.15.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.1",
+    "typescript": "~5.9.3"
+  }
+}

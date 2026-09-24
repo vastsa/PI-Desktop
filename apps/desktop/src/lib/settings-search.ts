@@ -18,6 +18,7 @@ export type SettingsTabId =
   | "projects"
   | "sync"
   | "remoteHosts"
+  | "voice"
   | "about";
 
 export type SettingsNavGroupId =
@@ -116,6 +117,20 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.promptEnhancementModelFollow",
       "settings.promptEnhancementThinking",
       "settings.largePasteThreshold",
+    ],
+  },
+  {
+    id: "voice",
+    labelKey: "settings.nav.voice",
+    titleKey: "settings.voice",
+    group: "preferences",
+    keywordKeys: [
+      "settings.voiceEnable",
+      "settings.voiceMicrophone",
+      "settings.voiceLanguages",
+      "settings.voiceChineseVariant",
+      "settings.voiceModel",
+      "settings.voiceLocalModels",
     ],
   },
   {

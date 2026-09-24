@@ -58,6 +58,9 @@ import { ComposerImageAttachments } from "../features/chat/composer/ComposerImag
 import { ComposerInput } from "../features/chat/composer/ComposerInput";
 import { useComposerModelMenu } from "../features/chat/composer/hooks/useComposerModelMenu";
 import { ComposerToolbar } from "../features/chat/composer/ComposerToolbar";
+import { useVoiceInput } from "../features/voice/useVoiceInput";
+import { VoiceOverlay } from "../features/voice/VoiceOverlay";
+import "../styles/voice.css";
 import { ComposerStatus } from "../features/chat/composer/ComposerStatus";
 
 const EMPTY_QUEUED_PROMPTS: QueuedPrompt[] = [];
@@ -438,6 +441,21 @@ export function Composer({
     submit,
   } = submitController;
 
+  const voiceEnabled = !!settings?.voice?.enabled;
+  const voice = useVoiceInput({
+    enabled: voiceEnabled,
+    onTranscriptionComplete: (text) => {
+      // Insert transcribed text into Composer
+      const current = readLiveDraft();
+      if (!current.trim()) {
+        applyEditorDraft(text, fileReferencesRef.current, text.length);
+      } else {
+        const next = current + " " + text;
+        applyEditorDraft(next, fileReferencesRef.current, next.length);
+      }
+    },
+  });
+
   const composerAc = useComposerAutocomplete({
     value,
     cursor,
@@ -580,6 +598,7 @@ export function Composer({
               persistDraft();
             }}
           />
+          <VoiceOverlay t={t} state={voice.state} onCancel={voice.cancel} />
           <ComposerToolbar
             t={t}
             mode={mode}
@@ -612,6 +631,10 @@ export function Composer({
             hasDraftContent={hasDraftContent}
             abort={abort}
             submit={submit}
+            voicePhase={voice.state.phase}
+            voiceEnabled={voiceEnabled}
+            onVoiceToggle={voice.toggle}
+            onVoiceCancel={voice.cancel}
           />
         </div>
       </div>
