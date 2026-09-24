@@ -18,12 +18,17 @@
  * (`remote/ssh-tunnel.ts`) — the URL is derived from that forward on every
  * launch, so a restart re-establishes the tunnel before connecting.
  */
+import { ErrorCodes, IPC } from "@pi-desktop/shared";
 import type {
+  RacpSession,
   RemoteHostBootstrapRequest,
   RemoteHostBootstrapResult,
   RemoteHostSshMetadata,
   RemoteHostSummary,
   RemoteHostTransport,
+  RemoteProjectBrowseResult,
+  RemoteProjectSummary,
+  SessionSummary,
 } from "@pi-desktop/shared";
 import { assertSshArgument } from "../remote/ssh-transport.js";
 import { wsClientTransport } from "@pi-desktop/racp";
@@ -83,6 +88,16 @@ export interface RemoteHostsBoot {
   bootstrapHost(request: RemoteHostBootstrapRequest): Promise<RemoteHostBootstrapResult>;
   /** Close and unregister the host, then remove it from the registry. */
   removeHost(hostKey: string): Promise<void>;
+  /** The sessions of every connected host, for the renderer's session list. */
+  listRemoteSessions(): SessionSummary[];
+  /** The projects a connected host has registered. */
+  listProjects(hostKey: string): Promise<RemoteProjectSummary[]>;
+  /** Directories under a connected host's browse root. */
+  browseProject(hostKey: string, path?: string): Promise<RemoteProjectBrowseResult>;
+  /** Register a host directory as a project. */
+  registerProject(hostKey: string, path: string): Promise<RemoteProjectSummary>;
+  /** Create a session on a connected host, running its default model. */
+  createSession(hostKey: string, projectId: string, title?: string): Promise<SessionSummary>;
   /** The underlying registry, exposed for pairing flows that write directly. */
   readonly registry: RemoteHostRegistry;
 }
@@ -262,6 +277,7 @@ export function createRemoteHostsBoot(
       await adapter.connect();
       const connection = createRemoteHostConnection({
         hostKey: record.hostKey,
+        hostLabel: record.label,
         client: adapter.client,
         router: options.router,
         emit: options.emit,
@@ -314,8 +330,20 @@ export function createRemoteHostsBoot(
     if (host) await closeHost(host);
   };
 
-  const isConnected = (hostKey: string): boolean =>
-    opened.some((host) => host.hostKey === hostKey);
+  /** The live host for `hostKey`; a host that is not connected fails closed. */
+  const liveHost = (hostKey: string): OpenHost => {
+    const host = opened.find((candidate) => candidate.hostKey === hostKey);
+    if (!host) {
+      throw Object.assign(new Error("the remote host is not connected"), {
+        errorCode: ErrorCodes.HOST_UNAVAILABLE,
+        data: { errorCode: ErrorCodes.HOST_UNAVAILABLE, retriable: true },
+      });
+    }
+    return host;
+  };
+
+  const request = <T>(hostKey: string, method: string, params?: unknown): Promise<T> =>
+    liveHost(hostKey).adapter.client.request<T>(method, params);
 
   const summaryOf = (record: RemoteHostRecord): RemoteHostSummary => {
     const live = opened.find((host) => host.hostKey === record.hostKey);
@@ -376,6 +404,7 @@ export function createRemoteHostsBoot(
           });
         }
       }
+      if (successes > 0) options.emit(IPC.event.sessionsChanged, { reason: "remote.hosts.opened" });
       return successes;
     },
     async closeAll() {
@@ -388,6 +417,34 @@ export function createRemoteHostsBoot(
     async list() {
       const records = await registry.list();
       return records.map(summaryOf);
+    },
+    listRemoteSessions() {
+      return opened.flatMap((host) => host.connection.listSessions());
+    },
+    async listProjects(hostKey) {
+      const result = await request<{ projects: RemoteProjectSummary[] }>(hostKey, "project/list");
+      return result.projects.map(({ id, label, archived }) => ({ id, label, archived }));
+    },
+    browseProject(hostKey, path) {
+      return request<RemoteProjectBrowseResult>(hostKey, "project/browse", path ? { path } : {});
+    },
+    async registerProject(hostKey, path) {
+      const { project } = await request<{ project: RemoteProjectSummary }>(
+        hostKey,
+        "project/register",
+        { path },
+      );
+      return { id: project.id, label: project.label, archived: project.archived };
+    },
+    async createSession(hostKey, projectId, title) {
+      const host = liveHost(hostKey);
+      const { session } = await host.adapter.client.request<{ session: RacpSession }>(
+        "session/create",
+        { projectId, ...(title ? { title } : {}) },
+      );
+      const summary = host.connection.noteSession(session);
+      options.emit(IPC.event.sessionsChanged, { reason: "remote.session.created" });
+      return summary;
     },
     addHost,
     async bootstrapHost(request) {
