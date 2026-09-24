@@ -1478,9 +1478,7 @@ sklm: {
     promptEnhancementCustomTemplate: "사용자 템플릿 사용",
     promptEnhancementCustomTemplateDesc:
       "내장 사용자 템플릿을 직접 만든 템플릿으로 교체합니다. 시스템 프롬프트는 내장으로 유지됩니다.",
-    promptEnhancementCustomTemplateNeedsTemplate:
     promptEnhancementCustomTemplateActive: "사용자 템플릿 활성",
-      "먼저 사용자 템플릿을 저장하세요. 저장한 뒤에는 스위치로 내장 템플릿과 사용자 템플릿을 전환할 수 있습니다.",
     promptEnhancementEdit: "편집",
     promptEnhancementModelTitle: "프롬프트 향상",
     promptEnhancementModel: "기본 모델",
