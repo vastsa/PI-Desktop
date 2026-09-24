@@ -120,7 +120,7 @@
   border-radius: var(--radius-full) !important;
   color: var(--ds-text-secondary) !important;
   font-size: var(--text-sm);
-  line-height: 1;
+  line-height: var(--leading-none);
   overflow: hidden;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
@@ -493,10 +493,7 @@
   background: var(--ds-bg-elevated-opaque);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  box-shadow:
-    0 0 0 0.5px color-mix(in oklab, #1a1c1f 10%, transparent),
-    0 8px 32px rgba(0, 0, 0, 0.1),
-    0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--ds-shadow-model-menu);
 }
 
 :root[data-theme="light"] .composer-model-group-label {
