@@ -291,10 +291,17 @@ export function registerRemoteHostIpc(options: RegisterRemoteHostIpcOptions): vo
       const { providers } = await host.call<{ providers: ProviderPublic[] }>("providers.list", {
         includeDisabled: false,
       });
+      const setDefault = request?.setDefault === true;
+      const localDefault = setDefault
+        ? await host.call<{ defaultProviderId?: string; defaultModelId?: string }>("settings.get")
+        : undefined;
       const payload = await buildImportPayload({
         providers,
         providerIds,
-        setDefault: request?.setDefault === true,
+        setDefault,
+        ...(localDefault
+          ? { localDefault: { providerId: localDefault.defaultProviderId, modelId: localDefault.defaultModelId } }
+          : {}),
         getSecret: async (id) =>
           (await host.call<{ value?: string }>("providers.getSecret", { id })).value,
       });

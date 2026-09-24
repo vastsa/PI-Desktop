@@ -250,6 +250,7 @@ function syncSetup({ ssh = { host: "box", remotePort: 7777, version: "1" }, stdo
             hostCalls.push(method);
             if (method === "providers.list") return { providers: SYNC_PROVIDERS };
             if (method === "providers.getSecret") return { value: params.id === "local" ? SECRET : undefined };
+            if (method === "settings.get") return { defaultProviderId: "local", defaultModelId: "gpt-x" };
             throw new Error(`unexpected ${method}`);
           },
         }),
