@@ -7,7 +7,7 @@ import {
   type AgentCapabilityLevel,
   type UserSkillRecord,
 } from "@pi-desktop/shared";
-import { Button, Field, HelpIcon, Input, Textarea, TooltipButton, cx, portalOverlay } from "../ui";
+import { Button, Field, HelpIcon, Input, SettingsToggle, Textarea, TooltipButton, portalOverlay } from "../ui";
 import { IconFolderOpen, IconX } from "../icons";
 
 /** Hard cap host-core enforces on a skill document. */
@@ -130,16 +130,11 @@ function ManagementScope({
           />
         </span>
       </div>
-      <button
-        type="button"
-        className={cx("settings-toggle", draft.enabled && "on")}
-        role="switch"
-        aria-checked={draft.enabled}
-        aria-label={t("settings.enableCapability", { name: draft.name || draft.id })}
-        onClick={() => setDraft({ ...draft, enabled: !draft.enabled })}
-      >
-        <span className="settings-toggle-thumb" />
-      </button>
+      <SettingsToggle
+        checked={draft.enabled}
+        label={t("settings.enableCapability", { name: draft.name || draft.id })}
+        onChange={() => setDraft({ ...draft, enabled: !draft.enabled })}
+      />
     </div>
   );
 }

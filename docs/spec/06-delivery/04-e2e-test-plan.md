@@ -6511,6 +6511,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   7. Switch the session to Plan, then to Goal, and inspect the tool catalog.
   8. Reload the session and re-expand the delegation card and every `Task`
      node.
+  9. Open a node with a long description and long tool paths, then resize the
+     work-panel dock to its minimum, default, and a wider width. Inspect the
+     topology card and live process at each width without repeatedly dragging
+     the divider to read a complete line.
 - **Expected**:
   - Both delegates in step 1 run concurrently, and `pinned` streams on its own
     provider/model while the parent keeps the session's.
@@ -6528,6 +6532,11 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     count. Expanding a node shows the brief, report exactly once, and
     `status`/`turns`/`toolCalls`. Delegate rows appear only inside that node,
     never in the turn stream or the minimap.
+  - At narrow, default, and wide dock widths, topology titles, descriptions,
+    and step summaries reflow within the card instead of using a fixed
+    one-line ellipsis. Long tool paths, commands, and answer fragments in the
+    dock wrap inside the committed width, produce no horizontal overflow, and
+    retain the panel body as the only scroll owner.
   - If the parent keeps working after those `Task` calls — thinking, `Read`,
     `Grep`, or a lifecycle row — that work is a separate processing group, not
     rows inside the delegation card (D319). The card's tile, “Subagent working”

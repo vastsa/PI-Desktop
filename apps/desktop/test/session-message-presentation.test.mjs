@@ -19,11 +19,11 @@ const Icon = () => React.createElement("svg", { "aria-hidden": true });
 const TooltipButton = ({ children, ariaLabel, tooltip, ...props }) =>
   React.createElement("button", { ...props, "aria-label": ariaLabel ?? tooltip }, children);
 const shared = {
-  MessageTimestamp: ({ createdAt }) => React.createElement("time", { dateTime: createdAt }, createdAt),
   CopyButton: ({ label }) => React.createElement("button", { "aria-label": label }),
   FileRefChip: () => null,
   LinkifiedText: ({ text }) => text,
   MessageAttachmentImage: () => null,
+  MessageTimestamp: () => null,
 };
 
 function loadComponent(name, extras = {}) {

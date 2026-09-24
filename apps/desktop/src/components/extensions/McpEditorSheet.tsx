@@ -12,7 +12,7 @@ import {
   type McpTransport,
   type ProjectRecord,
 } from "@pi-desktop/shared";
-import { Button, Field, HelpIcon, Input, TooltipButton, cx, portalOverlay } from "../ui";
+import { Button, Field, HelpIcon, Input, SettingsToggle, TooltipButton, cx, portalOverlay } from "../ui";
 import { IconPlay, IconServer, IconTerminal, IconX } from "../icons";
 import { ScopeControl } from "./ScopeControl";
 import { KeyValueRows, pairsToRecord, recordToPairs, type KeyValuePair } from "./KeyValueRows";
@@ -186,16 +186,11 @@ function ManagementScope({
           />
         </span>
       </div>
-      <button
-        type="button"
-        className={cx("settings-toggle", draft.enabled && "on")}
-        role="switch"
-        aria-checked={draft.enabled}
-        aria-label={t("settings.enableCapability", { name: draft.label || draft.id })}
-        onClick={() => setDraft({ ...draft, enabled: !draft.enabled })}
-      >
-        <span className="settings-toggle-thumb" />
-      </button>
+      <SettingsToggle
+        checked={draft.enabled}
+        label={t("settings.enableCapability", { name: draft.label || draft.id })}
+        onChange={() => setDraft({ ...draft, enabled: !draft.enabled })}
+      />
     </div>
   );
 }

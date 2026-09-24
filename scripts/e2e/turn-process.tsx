@@ -308,11 +308,7 @@ export async function turnProcessProbe() {
         </I18nextProvider>,
       ),
     );
-    click(
-      Array.from(container.querySelectorAll<HTMLElement>('[role="radiogroup"] [role="radio"]')).find(
-        (item) => item.textContent === i18n.t("settings.thinkingDisplayCompact"),
-      ) ?? null,
-    );
+    click(container.querySelector<HTMLElement>('[role="radio"][aria-checked="false"]'));
     check(
       saved?.thinkingDisplayMode === "compact",
       "settings control saves compact mode",

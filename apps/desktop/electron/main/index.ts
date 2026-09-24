@@ -52,7 +52,7 @@ import {
 import { PersistenceOutbox } from "./persistence-outbox";
 import { AgentSidecar } from "./agent-sidecar";
 import { Logger, ignoreBrokenStdio } from "./logger";
-import { installMainProcessErrorHandlers } from "./main-process-errors";
+import { describeError, installMainProcessErrorHandlers } from "./main-process-errors";
 import {
   isDbSchemaTooNewError,
 } from "./host-boot-diagnostics";
@@ -114,7 +114,7 @@ import { registerWindowIpc } from "./ipc/window-ipc";
 import { registerPullsIpc } from "./ipc/pulls-ipc";
 import { registerAgentIpc } from "./ipc/agent-ipc";
 import { registerIpcHandlers } from "./ipc/register";
-import { VoiceService } from "./voice-service";
+import { createVoiceService } from "./voice-service";
 import {
   type WindowLifecycleState,
 } from "./bootstrap/window";
@@ -174,6 +174,15 @@ applyDevelopmentUserData(app, isDevelopmentBuild);
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
 }
+
+// Chromium's accessibility tree serializer has a known CHECK failure in
+// AXBlockFlowData::ComputeNeighborOnLine (chromium #552018997) that kills
+// the renderer when an AT client reads the tree while the DOM is being
+// mutated — exactly what happens during streaming agent responses.
+// The switch prevents Chromium from building the in-renderer accessibility
+// tree unless the user explicitly opts in via --force-renderer-accessibility.
+// This is a workaround until the upstream fix lands.
+app.commandLine.appendSwitch("disable-renderer-accessibility");
 
 // One installation, one process. The lock lives in `userData` (set just
 // above), so it is taken after `setName` and before anything else here
@@ -782,12 +791,6 @@ function setCurrentWorkspacePath(path: string | null): void {
   }
 }
 
-/** One-line message for an error of unknown shape, for user-facing lists. */
-function describeError(error: unknown): string {
-  if (error instanceof Error) return error.message.slice(0, 300);
-  return String(error).slice(0, 300);
-}
-
 /**
  * True when a rejection only says the host transport is gone (D080): the call
  * lost a race with shutdown, a crash, or a supervised restart. Every such
@@ -1237,12 +1240,7 @@ runtimeLifecycle = createRuntimeLifecycle({
 });
 const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
-// Voice service — created lazily on first use, disposed on quit.
-const voiceService = new VoiceService(
-  dataDir + "/voice-models",
-  () => mainWindow,
-);
-app.once("before-quit", () => voiceService.dispose());
+const voiceService = createVoiceService(dataDir + "/voice-models", () => mainWindow);
 
 function registerIpc() {
   return registerIpcHandlers({

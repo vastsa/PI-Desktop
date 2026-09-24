@@ -39,6 +39,18 @@ globalThis.transcriptRenderProbe = async () => {
     resources: { en: { translation: en } },
     interpolation: { escapeValue: false },
   });
+  // This probe asserts synchronous transcript projection and memoization. Keep
+  // the presentation animation out of that contract so rAF timing cannot hide
+  // the latest streaming fragment from the DOM assertion.
+  useAppStore.setState({
+    settings: {
+      defaultMode: "agent",
+      theme: "dark",
+      enterToSend: true,
+      onboardingDismissed: false,
+      smoothStreaming: false,
+    },
+  });
   const container = document.createElement("div");
   document.body.append(container);
   const renderErrors: unknown[] = [];
@@ -92,12 +104,6 @@ globalThis.transcriptRenderProbe = async () => {
         status: "streaming",
       };
       render(messages);
-    }
-    // Smooth streaming reveals text on animation frames, after the React commit.
-    // Wait for the visible result instead of assuming source and display coincide.
-    const revealDeadline = performance.now() + 5000;
-    while (!container.textContent?.includes("Streaming fragment 19") && performance.now() < revealDeadline) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
     const textUpdateRenders = globalThis.__activityGroupRenders.length;
     const textUpdateDurationMs = performance.now() - startedAt;

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { AppSettings, CloseBehavior } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
-import { Button, cx } from "../../components/ui";
+import { Button, SegmentedControl, SettingsToggle } from "../../components/ui";
 import { SettingsCard, SettingsRow } from "./primitives";
 
 export function DeveloperSection({
@@ -31,16 +31,11 @@ export function DeveloperSection({
         title={t("settings.developerMode")}
         description={t("settings.developerModeDesc")}
       >
-        <button
-          type="button"
-          className={cx("settings-toggle", enabled && "on")}
-          role="switch"
-          aria-checked={enabled}
-          aria-label={t("settings.developerMode")}
-          onClick={() => void saveSettings({ developerMode: !enabled })}
-        >
-          <span className="settings-toggle-thumb" />
-        </button>
+        <SettingsToggle
+          checked={enabled}
+          label={t("settings.developerMode")}
+          onChange={() => void saveSettings({ developerMode: !enabled })}
+        />
       </SettingsRow>
       <SettingsRow
         title={t("settings.devTools")}
@@ -100,28 +95,12 @@ export function CloseBehaviorSection() {
         title={t("settings.closeBehaviorTitle")}
         description={t("settings.closeBehaviorDesc")}
       >
-        <div
-          className="settings-segment"
-          role="radiogroup"
-          aria-label={t("settings.closeBehaviorTitle")}
-        >
-          {options.map(([value, labelKey]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={behavior === value}
-              aria-label={t(labelKey)}
-              className={cx(
-                "settings-segment-item",
-                behavior === value && "active",
-              )}
-              onClick={() => void choose(value)}
-            >
-              {t(labelKey)}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl<CloseBehavior>
+          value={behavior ?? ("" as CloseBehavior)}
+          onChange={(value) => void choose(value)}
+          options={options.map(([value, labelKey]) => ({ value, label: t(labelKey) }))}
+          label={t("settings.closeBehaviorTitle")}
+        />
       </SettingsRow>
       {saveError ? (
         <span className="settings-command-shell-state error" role="status">

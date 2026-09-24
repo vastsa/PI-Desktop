@@ -1467,9 +1467,9 @@ sklm: {
     "promptEnhancementCustomTemplate": "Utiliser un modèle personnalisé",
     "promptEnhancementCustomTemplateDesc":
       "Remplace le modèle utilisateur intégré par le vôtre. Le prompt système reste intégré.",
+    "promptEnhancementCustomTemplateActive": "Modèle personnalisé actif",
     "promptEnhancementCustomTemplateNeedsTemplate":
       "Enregistrez d'abord un modèle personnalisé ; l'interrupteur choisit ensuite entre celui-ci et le modèle intégré.",
-    "promptEnhancementCustomTemplateActive": "Modèle personnalisé actif",
     "promptEnhancementEdit": "Modifier",
     "promptEnhancementModelTitle": "Amélioration du prompt",
     "promptEnhancementModel": "Modèle par défaut",

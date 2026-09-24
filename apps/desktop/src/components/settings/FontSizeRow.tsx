@@ -7,7 +7,7 @@ import {
   FONT_SCALE_STEP,
   resolveFontScale,
 } from "@pi-desktop/shared";
-import { cx } from "../ui";
+import { SegmentedControl } from "../ui";
 import { SettingsRow } from "../../features/settings/primitives";
 
 const PRESETS = [
@@ -44,27 +44,12 @@ export function FontSizeRow({
       description={t("settings.fontSizeDesc")}
     >
       <div className="settings-font-size">
-        <div
-          className="settings-segment"
-          role="radiogroup"
-          aria-label={t("settings.fontSize")}
-        >
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.scale}
-              type="button"
-              role="radio"
-              aria-checked={current === preset.scale}
-              className={cx(
-                "settings-segment-item",
-                current === preset.scale && "active",
-              )}
-              onClick={() => commit(preset.scale)}
-            >
-              {t(preset.key)}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          value={String(current)}
+          onChange={(value) => commit(Number(value))}
+          options={PRESETS.map((preset) => ({ value: String(preset.scale), label: t(preset.key) }))}
+          label={t("settings.fontSize")}
+        />
         <div className="settings-font-size-slider">
           <input
             type="range"

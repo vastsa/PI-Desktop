@@ -1,4 +1,4 @@
-import { Button, cx } from "../../components/ui";
+import { Button, SettingsToggle, cx } from "../../components/ui";
 import { IconCheck, IconShield, IconSparkles, IconTriangleAlert } from "../../components/icons";
 import { PluginInstallDialog } from "../../components/plugins/PluginInstallDialog";
 import { PluginSettingsSheet } from "../../components/plugins/PluginSettingsSheet";
@@ -127,19 +127,11 @@ export function PluginDialogs({
             </div>
 
             <div className="plugins-switch-row">
-              <span className="plugins-switch-label">
-                {t("plugins.enableAutoUpdateOnInstall")}
-              </span>
-              <button
-                type="button"
-                className={cx("settings-toggle", autoUpdate && "on")}
-                role="switch"
-                aria-checked={autoUpdate}
-                aria-label={t("plugins.enableAutoUpdateOnInstall")}
-                onClick={() => setAutoUpdate((on) => !on)}
-              >
-                <span className="settings-toggle-thumb" />
-              </button>
+              <SettingsToggle
+                checked={autoUpdate}
+                label={t("plugins.enableAutoUpdateOnInstall")}
+                onChange={() => setAutoUpdate((on) => !on)}
+              />
             </div>
 
             <div className="plugins-modal-actions">

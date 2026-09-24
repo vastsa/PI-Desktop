@@ -77,7 +77,7 @@
 .voice-volume-bar {
   width: 80px;
   height: 4px;
-  border-radius: var(--radius-4xs);
+  border-radius: var(--radius-3xs);
   background: var(--color-border, #333);
   overflow: hidden;
 }
@@ -85,7 +85,7 @@
 .voice-volume-fill {
   height: 100%;
   background: var(--color-primary, #3b82f6);
-  border-radius: var(--radius-4xs);
+  border-radius: var(--radius-3xs);
   transition: width 100ms ease-out;
 }
 

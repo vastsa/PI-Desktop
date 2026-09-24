@@ -1,5 +1,10 @@
 # Unreleased changes
 
+- Subagent topology cards and their live process rows now follow the main
+  conversation's responsive width behavior: long descriptions, paths,
+  commands, and summaries wrap inside the dock instead of requiring repeated
+  divider dragging to read them.
+
 - Resuming a subagent no longer selects another definition's private model
   binding. On-demand delegation permissions are checked again on the next parent
   turn, so revoking automatic delegation takes effect without restarting the runtime.

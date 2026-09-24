@@ -12,7 +12,7 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { resolveContextUsageDisplay } from "../../lib/context-usage";
-import { HelpIcon, Input, cx } from "../../components/ui";
+import { HelpIcon, Input, SegmentedControl } from "../../components/ui";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 
 /**
@@ -227,29 +227,16 @@ export function LinkOpenTargetRow({
   const current = settings.linkOpenTarget ?? "workpanel";
   return (
     <SettingsRow title={t("settings.linkOpenTarget")}>
-      <div
-        className="settings-segment"
+      <SegmentedControl
+        value={current}
+        onChange={(value) => void saveSettings({ linkOpenTarget: value })}
+        options={[
+          { value: "workpanel", label: t("settings.linkOpenTargetWorkpanel") },
+          { value: "external", label: t("settings.linkOpenTargetExternal") },
+        ]}
+        label={t("settings.linkOpenTarget")}
         role="group"
-        aria-label={t("settings.linkOpenTarget")}
-      >
-        {([
-          ["workpanel", "settings.linkOpenTargetWorkpanel"],
-          ["external", "settings.linkOpenTargetExternal"],
-        ] as const).map(([value, labelKey]) => (
-          <button
-            key={value}
-            type="button"
-            className={cx(
-              "settings-segment-item",
-              current === value && "active",
-            )}
-            aria-pressed={current === value}
-            onClick={() => void saveSettings({ linkOpenTarget: value })}
-          >
-            {t(labelKey)}
-          </button>
-        ))}
-      </div>
+      />
     </SettingsRow>
   );
 }
@@ -270,30 +257,15 @@ export function ContextUsageDisplayRow({
   const current = resolveContextUsageDisplay(settings.contextUsageDisplay);
   return (
     <SettingsRow title={t("settings.contextUsageDisplay")}>
-      <div
-        className="settings-segment"
-        role="radiogroup"
-        aria-label={t("settings.contextUsageDisplay")}
-      >
-        {([
-          ["remaining", "settings.contextUsageDisplayRemaining"],
-          ["used", "settings.contextUsageDisplayUsed"],
-        ] as const).map(([value, labelKey]) => (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={current === value}
-            className={cx(
-              "settings-segment-item",
-              current === value && "active",
-            )}
-            onClick={() => void saveSettings({ contextUsageDisplay: value })}
-          >
-            {t(labelKey)}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        value={current}
+        onChange={(value) => void saveSettings({ contextUsageDisplay: value })}
+        options={[
+          { value: "remaining", label: t("settings.contextUsageDisplayRemaining") },
+          { value: "used", label: t("settings.contextUsageDisplayUsed") },
+        ]}
+        label={t("settings.contextUsageDisplay")}
+      />
     </SettingsRow>
   );
 }

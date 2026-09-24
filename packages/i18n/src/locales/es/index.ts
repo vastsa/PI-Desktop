@@ -1467,9 +1467,9 @@ sklm: {
     "promptEnhancementCustomTemplate": "Usar una plantilla propia",
     "promptEnhancementCustomTemplateDesc":
       "Reemplaza la plantilla de usuario integrada por la suya. El prompt del sistema sigue integrado.",
+    "promptEnhancementCustomTemplateActive": "Plantilla personalizada activa",
     "promptEnhancementCustomTemplateNeedsTemplate":
       "Guarde primero una plantilla propia; el interruptor elegirá entonces entre ella y la plantilla integrada.",
-    "promptEnhancementCustomTemplateActive": "Plantilla personalizada activa",
     "promptEnhancementEdit": "Editar",
     "promptEnhancementModelTitle": "Mejora de prompts",
     "promptEnhancementModel": "Modelo predeterminado",

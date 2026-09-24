@@ -759,10 +759,13 @@ reading surface of the workstation.
 ### 4.3 Layout
 
 - Background: bg-primary
-- Max content width: 760px default, user-resizable (D439); assistant rows follow the band. User plates stay `min(82%, 600px)`
-  subagent card, or a single tool row — spans that band: its header is a
-  full-width row with an ellipsizing label and a trailing caret, never a
-  content-sized chip, so it follows the dragged width instead of its own text.
+- Max content width: 760px default, user-resizable (D439); assistant rows follow the band. User plates stay `min(82%, 600px)`.
+- Each process, activity group, delegation card, and single tool row spans the
+  conversation band. Its activity header is a full-width row with an
+  ellipsizing label and trailing caret, never a content-sized chip, so it
+  follows the dragged width instead of its own text. Content inside a
+  delegation node and its dock process is width-aware and wraps long task,
+  path, command, and answer text.
 - The transcript keeps one stable scrollbar gutter on the trailing edge. It
   never reserves a matching left gutter, so the minimap and first message do
   not leave a decorative blank strip beside the session.
@@ -1203,7 +1206,11 @@ It does not render separate Details or Output tabs.
 - The task description is the Task call's `task` argument, rendered as one
   selectable inset grouped card. The delegate's thinking, tool rows,
   and answer fragments reuse the same components and styling as the main
-  conversation. Reports and counters remain omitted from this compact surface.
+  conversation. Task/node titles, descriptions, and step summaries use the
+  available width and wrap or clamp to multiple lines; long paths, commands,
+  and tool summaries in the live process wrap inside the dock instead of
+  becoming one-line ellipses. Reports and counters remain omitted from this
+  compact surface.
 - The dock has one scroll owner, the panel body. The scroll owner is
   keyboard-focusable and exposed as a polite `role="log"` so streamed rows
   remain discoverable without forcing focus changes. The live process is
@@ -2280,6 +2287,12 @@ delegate it ran, taken from the rows it produced or, before any arrived, from
 the call's own `agent` argument, and carries the call's short `description`. The
 resolved model id is shown immediately after the delegate name, from the
 structured `Task` result details.
+
+The topology node is width-aware at every panel size. Its title may occupy up
+to two lines, its description is clamped to two readable lines, and its step
+summary can wrap rather than forcing the user to resize the divider. Complete
+descriptions remain available through the node's accessible name/hover title;
+the node and its live process never create horizontal overflow.
 
 The lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`) stay compact tool rows —
 they are not topology nodes and must not inflate the subagent counts — but they

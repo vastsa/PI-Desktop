@@ -110,6 +110,25 @@ test("the task dock keeps one body scroll owner while the process streams", () =
   assert.match(panelSource, /\[jumpToLatest, selection\.delegationId, searchTarget\]/);
 });
 
+test("subagent process rows wrap long content inside the dock", () => {
+  assert.match(
+    workPanelCss,
+    /\.subagent-detail > \.subagent-run \.subagent-run-rows\.is-panel-flow \.tool-row-header\s*\{[\s\S]*?align-items:\s*flex-start;/,
+  );
+  assert.match(
+    workPanelCss,
+    /\.subagent-detail > \.subagent-run \.subagent-run-rows\.is-panel-flow \.tool-row-summary\s*\{[\s\S]*?overflow-wrap:\s*anywhere;[\s\S]*?white-space:\s*normal;/,
+  );
+  assert.match(
+    workPanelCss,
+    /\.subagent-detail > \.subagent-run \.subagent-run-rows\.is-panel-flow > div > \.subagent-answer\s*\{[\s\S]*?width:\s*100%;[\s\S]*?overflow-wrap:\s*anywhere;/,
+  );
+  assert.match(
+    messagesCss,
+    /\.subagent-run-rows\.is-panel-flow\s*\{[\s\S]*?overflow:\s*visible;/,
+  );
+});
+
 test("the subagent dock uses a grouped identity, task card, and process timeline", () => {
   assert.match(
     detailSource,
