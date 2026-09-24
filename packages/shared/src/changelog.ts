@@ -30,6 +30,17 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.15.7",
+    date: "2026-09-25",
+    highlights: [
+      "Celebrate the Mid-Autumn Festival with a limited-time first-launch moonlit animation that can be replayed from Settings.",
+      "Use optional local voice input from the Composer, with developer-only controls, verified cancellable model downloads, and stale-result protection.",
+      "Ship a Windows portable single-executable build alongside the installer and ZIP releases.",
+      "Improve agent reliability with safer cancellation, more resilient model and provider handling, clearer generated-image batches, and a more responsive work panel.",
+    ],
+  },
+
+  {
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
@@ -843,6 +854,17 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.15.7",
+    date: "2026-09-25",
+    highlights: [
+      "中秋限时限定版：首次启动播放全屏月下动画，也可在设置中再次播放。",
+      "可在 Composer 中使用可选的本地语音输入；设置仅在开发者模式显示，模型下载支持校验、取消，并丢弃过期转写结果。",
+      "新增 Windows 便携式单文件版本，并继续提供安装包与 ZIP。",
+      "提升 Agent 稳定性：加强取消与恢复、模型与服务商处理、生成图片批量浏览，以及工作面板的响应式表现。",
+    ],
+  },
+
+  {
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
@@ -1655,6 +1677,17 @@ const zhCNEntries: ChangelogEntry[] = [
 ];
 
 const zhTWEntries: ChangelogEntry[] = [
+  {
+    version: "0.15.7",
+    date: "2026-09-25",
+    highlights: [
+      "中秋限時限定版：首次啟動播放全螢幕月下動畫，也可在設定中再次播放。",
+      "可在 Composer 使用選用的本機語音輸入；設定僅在開發者模式顯示，模型下載支援驗證、取消，並丟棄過期轉寫結果。",
+      "新增 Windows 便攜式單檔版本，並持續提供安裝程式與 ZIP。",
+      "提升 Agent 穩定性：強化取消與恢復、模型與服務商處理、生成圖片批次瀏覽，以及工作面板的響應式表現。",
+    ],
+  },
+
   {
     version: "0.15.6",
     date: "2026-09-23",

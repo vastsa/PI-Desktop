@@ -2,6 +2,17 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.7",
+    "date": "2026-09-25",
+    "highlights": [
+      "Célébrez la Fête de la mi-automne avec une animation lunaire plein écran et temporaire au premier lancement, rejouable depuis les Réglages.",
+      "Utilisez la saisie vocale locale facultative dans le Composer, avec des contrôles développeur, des téléchargements de modèles vérifiés et annulables, et une protection contre les transcriptions obsolètes.",
+      "Ajoute une version Windows portable en un seul exécutable, en plus de l'installateur et des ZIP.",
+      "Améliore la fiabilité des agents avec des annulations et reprises plus sûres, des catalogues de modèles plus robustes, une meilleure navigation des lots d'images générées et un panneau de travail plus réactif.",
+    ],
+  },
+
+  {
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [

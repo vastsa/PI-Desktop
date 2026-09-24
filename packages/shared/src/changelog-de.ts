@@ -2,6 +2,17 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.7",
+    "date": "2026-09-25",
+    "highlights": [
+      "Feiere das Mondfest mit einer zeitlich begrenzten Vollbildanimation beim ersten Start, die sich in den Einstellungen erneut abspielen lässt.",
+      "Optionale lokale Spracheingabe im Composer mit Entwickler-Einstellungen, verifizierten und abbrechbaren Modelldownloads sowie Schutz vor veralteten Transkriptionsergebnissen.",
+      "Eine portable Windows-Version als einzelne ausführbare Datei ergänzt Installer und ZIP.",
+      "Mehr Stabilität für Agents durch sicherere Abbrüche und Wiederaufnahme, robustere Modellkataloge, bessere Stapelansicht für generierte Bilder und ein reaktionsfähigeres Arbeitspanel.",
+    ],
+  },
+
+  {
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [

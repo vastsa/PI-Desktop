@@ -2,6 +2,17 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const koEntries: ChangelogEntry[] = [
   {
+    version: "0.15.7",
+    date: "2026-09-25",
+    highlights: [
+      "기간 한정 중추절 에디션: 최초 실행 시 전체 화면 달빛 애니메이션을 재생하며 설정에서 다시 볼 수 있습니다.",
+      "Composer에서 선택적 로컬 음성 입력을 사용할 수 있습니다. 개발자 전용 설정, 검증 및 취소 가능한 모델 다운로드, 오래된 전사 결과 방지를 제공합니다.",
+      "설치 프로그램과 ZIP에 더해 Windows 휴대용 단일 실행 파일 버전을 제공합니다.",
+      "더 안전한 취소와 복구, 견고한 모델 카탈로그 처리, 생성 이미지 묶음 탐색, 반응성이 향상된 작업 패널로 Agent 안정성을 높였습니다.",
+    ],
+  },
+
+  {
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [

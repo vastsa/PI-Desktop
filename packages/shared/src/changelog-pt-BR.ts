@@ -2,6 +2,17 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    "version": "0.15.7",
+    "date": "2026-09-25",
+    "highlights": [
+      "Celebre o Festival do Meio do Outono com uma animação lunar em tela cheia e por tempo limitado na primeira inicialização, que pode ser reproduzida novamente em Configurações.",
+      "Use entrada de voz local opcional no Composer, com controles para desenvolvedores, downloads de modelos verificáveis e canceláveis e proteção contra transcrições obsoletas.",
+      "Adiciona uma versão portátil do Windows em um único executável, além do instalador e dos arquivos ZIP.",
+      "Melhora a estabilidade dos agentes com cancelamento e recuperação mais seguros, catálogos de modelos mais robustos, navegação de lotes de imagens geradas e um painel de trabalho mais responsivo.",
+    ],
+  },
+
+  {
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [
