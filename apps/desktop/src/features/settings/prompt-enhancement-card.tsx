@@ -26,7 +26,7 @@ import {
   PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH,
   isValidPromptEnhancementUserTemplate,
 } from "@pi-desktop/shared";
-import { Button, Field, TooltipButton, cx, portalOverlay } from "../../components/ui";
+import { Button, Field, TooltipButton, portalOverlay } from "../../components/ui";
 import { IconPencil, IconX } from "../../components/icons";
 import { SettingsCard, SettingsRow } from "./primitives";
 import { EnhancementModelCard } from "../../components/settings/EnhancementModelCard";
@@ -40,8 +40,6 @@ export function PromptEnhancementCard({
 }) {
   const { t } = useTranslation();
   const [editorOpen, setEditorOpen] = useState(false);
-  const customTemplate = settings.promptEnhancementCustomTemplate === true;
-  // A saved, usable template is what makes the switch meaningful.
   const hasCustomTemplate = isValidPromptEnhancementUserTemplate(
     settings.promptEnhancementUserTemplate,
   );
@@ -51,36 +49,12 @@ export function PromptEnhancementCard({
       <SettingsRow
         title={t("settings.promptEnhancementCustomTemplate")}
         description={t("settings.promptEnhancementCustomTemplateDesc")}
+        detail={
+          hasCustomTemplate
+            ? t("settings.promptEnhancementCustomTemplateActive")
+            : undefined
+        }
       >
-        {/*
-          The switch selects between a saved custom template and the built-in
-          one, so it means nothing until a template has been saved. It is
-          disabled rather than hidden: the user can see that the choice exists
-          and that editing is what unlocks it.
-        */}
-        <button
-          type="button"
-          className={cx("settings-toggle", customTemplate && "on")}
-          role="switch"
-          aria-checked={customTemplate}
-          aria-disabled={!hasCustomTemplate}
-          disabled={!hasCustomTemplate}
-          aria-label={t("settings.promptEnhancementCustomTemplate")}
-          title={
-            hasCustomTemplate
-              ? undefined
-              : t("settings.promptEnhancementCustomTemplateNeedsTemplate")
-          }
-          onClick={() =>
-            void saveSettings({ promptEnhancementCustomTemplate: !customTemplate })
-          }
-        >
-          <span className="settings-toggle-thumb" />
-        </button>
-        {/*
-          The subagent list's edit affordance: a tooltipped icon button, so the
-          row keeps one control cluster instead of three competing labels.
-        */}
         <TooltipButton
           type="button"
           className="settings-icon-button"
@@ -178,13 +152,10 @@ function PromptEnhancementEditorSheet({
         templateDraft === PROMPT_ENHANCEMENT_DEFAULT_USER_TEMPLATE
           ? ""
           : templateDraft;
-      const templateChanged = savedTemplateValue !== savedTemplate;
       await saveSettings({
         promptEnhancementUserTemplate: savedTemplateValue,
-        // Saving a template switches it on, because the user just wrote one.
-        promptEnhancementCustomTemplate: templateChanged
-          ? Boolean(savedTemplateValue.trim())
-          : settings.promptEnhancementCustomTemplate === true,
+        // A saved non-empty template is active; restoring default deactivates.
+        promptEnhancementCustomTemplate: Boolean(savedTemplateValue.trim()),
       });
       onClose();
     } catch {

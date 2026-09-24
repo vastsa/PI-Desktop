@@ -1450,6 +1450,7 @@ sklm: {
     promptEnhancementCustomTemplateDesc:
       "用你自己的使用者範本取代內建範本。系統提示詞維持內建。",
     promptEnhancementCustomTemplateNeedsTemplate:
+    promptEnhancementCustomTemplateActive: "自訂範本已啟用",
       "請先儲存自訂範本；儲存後即可用開關在內建範本與自訂範本之間切換。",
     promptEnhancementEdit: "編輯",
     promptEnhancementModelTitle: "增強提示詞",
