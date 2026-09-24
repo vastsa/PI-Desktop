@@ -728,8 +728,8 @@ export function SegmentedControl<T extends string>({
             ? {
                 role: "tab",
                 id: option.id ?? `${itemIdPrefix ?? label}-tab-${option.value}`,
-                "aria-selected": value === option.value,
                 "aria-controls": option.controls ?? itemAriaControls?.(option.value),
+                "aria-selected": value === option.value,
               }
             : itemRole === "radio"
               ? { role: "radio", "aria-checked": value === option.value }
