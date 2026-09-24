@@ -20,9 +20,9 @@
 import {
   MAX_IMAGE_GENERATION_MODELS,
   imageGenerationBindings,
-  modelIdsMatch,
   type ImageGenerationBinding,
   type ProviderPublic,
+  modelWireIdsEqual as sameComposerModelId,
 } from "@pi-desktop/shared";
 
 /**
@@ -41,6 +41,8 @@ export function imageGenerationBindingAvailable(
     provider.authKind !== "oauth" &&
     !!provider.baseUrl &&
     (provider.hasSecret || provider.authKind === "none") &&
+    // Mirror image-generation-service's exact availability guard. A different
+    // case is a different outbound wire ID for a case-sensitive endpoint.
     provider.models.some((model) => model.id === modelId)
   );
 }
@@ -78,7 +80,7 @@ function cappedImageGenerationCandidates(
   const activeIndex = active
     ? candidates.findIndex((candidate) =>
         candidate.providerId === active.providerId &&
-        modelIdsMatch(candidate.modelId, active.modelId),
+        sameComposerModelId(candidate.modelId, active.modelId),
       )
     : -1;
   if (activeIndex < MAX_IMAGE_GENERATION_MODELS - 1) {
@@ -95,17 +97,20 @@ function cappedImageGenerationCandidates(
  *
  * The saved provider's selection replaces its own earlier candidates, while the
  * candidates of other providers stay listed — minus the rows whose provider no
- * longer exists, which nothing can pick or run. The active default moves only
- * when explicitly deselected or no longer runnable, and then to the first candidate
- * that is, so a newly added provider claims the default exactly when nothing
- * else can hold it. When nothing can, the default stays empty rather than
- * naming a binding that would fail on the next request.
+ * The active default moves only when explicitly deselected or no longer runnable,
+ * and then to the first candidate that is, so a newly added provider claims the
+ * default exactly when nothing else can hold it. Clearing every image model on
+ * the provider that holds the default leaves it unchecked instead: another
+ * provider's candidate stays available, but it is not checked automatically.
+ * When nothing can run, the default stays empty rather than naming a binding
+ * that would fail on the next request.
  */
 export function planImageGenerationDefaults(
   current: ImageGenerationDefaultDraft,
   savedProviderId: string,
   selectedModelIds: readonly string[],
   providers: readonly ProviderPublic[],
+  removedDefaultModel = false,
 ): ImageGenerationDefaultPlan {
   const existing = imageGenerationBindings(
     current.imageGenerationModels,
@@ -117,7 +122,7 @@ export function planImageGenerationDefaults(
   }));
   const previous = current.imageGeneration ?? null;
   const active = previous?.providerId === savedProviderId &&
-    !selected.some((binding) => modelIdsMatch(binding.modelId, previous.modelId))
+    !selected.some((binding) => sameComposerModelId(binding.modelId, previous.modelId))
     ? null
     : previous;
   const imageGenerationModels = cappedImageGenerationCandidates(
@@ -130,8 +135,12 @@ export function planImageGenerationDefaults(
   const fallback = imageGenerationModels.find((binding) =>
     resolvesImageGenerationDefault(binding, providers)
   ) ?? null;
+  const clearedActiveProvider =
+    selected.length === 0 && previous?.providerId === savedProviderId;
   return {
     imageGenerationModels,
-    imageGeneration: resolvesImageGenerationDefault(active, providers) ? active : fallback,
+    imageGeneration: removedDefaultModel || clearedActiveProvider
+      ? null
+      : resolvesImageGenerationDefault(active, providers) ? active : fallback,
   };
 }

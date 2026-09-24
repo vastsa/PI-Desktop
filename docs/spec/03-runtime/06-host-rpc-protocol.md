@@ -736,6 +736,10 @@ type NotificationListResult = {
 - `notification.markAllRead({}) -> { ok: true }` updates every unread row in
   one transaction.
 - `notification.clear({}) -> { ok: true }` deletes inbox rows only.
+- `id` is the stable exactly-once key for renderer and native delivery. A
+  client must discard duplicate or delayed records for an id it has already
+  acknowledged/cleared; clearing the inbox never makes an old terminal turn
+  eligible for insertion again. A later terminal turn receives a new id.
 - No `notification.created` JSON-RPC server notification is emitted. Electron
   receives the inserted record directly from `session.endTurn`, avoiding a
   second ordering channel between terminal turn persistence and UI refresh.
@@ -1211,6 +1215,21 @@ Create requires title, prompt and cadence; automatic daily/weekly tasks require
 a schedule. Update takes an existing ID and partial fields, preserving all
 unspecified configuration. Exact local times remain supported despite the
 UI's four period presets. No new DB schema or transport is introduced.
+
+### Scheduled tasks: task-owned execution settings
+
+Desktop create/update may save `workspacePath`, `permissionMode` and a paired
+`providerId`/`modelId` on one task. Run now and automatic execution use those
+values when present. Missing fields preserve legacy project capture, app-default
+model resolution and permission behavior. Invalid permission values and partial
+model pairs are rejected before mutation. Conversation tools do not expose these
+fields and remain bound to the calling session's project. See ADR 0305.
+
+Tasks also persist optional `thinkingLevel` using the existing session values
+(including `off` and `omit`). The full Composer model/reasoning picker and
+controller are reused with a task-draft configuration callback. Both manual and
+automatic runs apply the saved level. Missing or cleared levels retain the
+legacy `off` behavior; no database migration is required.
 
 ### Scheduled tasks: independent task dispatch
 

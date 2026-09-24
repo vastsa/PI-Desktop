@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
 import { dirname, join, resolve } from "node:path";
 import { existsSync, statSync } from "node:fs";
 import { listInstalledFonts } from "../system-fonts";
@@ -105,6 +105,18 @@ export function registerAppIpc({
     if (!host) throw new Error("host unavailable");
     const settings = await host.call<any>("settings.get");
     await host.call("settings.set", { ...settings, onboardingDismissed: true });
+    return { ok: true };
+  });
+
+  /**
+   * The renderer's own quit. A startup that never reaches the shell still has to
+   * be able to exit the app (issue #831), and the tray/menu path is unreachable
+   * from a window that shows no menu. This goes through `app.quit()` exactly like
+   * the Quit menu item, so the ordered shutdown, the confirmation dialog, and the
+   * close behavior stay the ones the app already has.
+   */
+  handle(IPC.invoke.appQuit, async () => {
+    app.quit();
     return { ok: true };
   });
 

@@ -9,7 +9,7 @@ export type QueuedPrompt = {
   /**
    * Set once the row was promoted with Send now. Promoted rows form the head
    * of the queue in ascending priority (click) order; they start next and stay
-   * locked until the Host delivers them.
+   * ordered until the Host delivers or cancels them.
    */
   priority?: number;
 };
@@ -55,7 +55,7 @@ export function isPendingQueuedPrompt(item: QueuedPrompt): boolean {
   return item.id.startsWith("pending:");
 }
 
-/** A promoted row is queued to start next and can no longer be changed. */
+/** A promoted row keeps its delivery order, but may still be canceled. */
 export function isPromotedQueuedPrompt(
   item: QueuedPrompt,
 ): item is QueuedPrompt & { priority: number } {

@@ -293,6 +293,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   pointer hover or keyboard focus may prefetch its transcript; duplicate reads
   share one in-flight request and the renderer retains at most five recent
   transcript snapshots.
+- A transcript window that reports no messages for a session the sidebar counts
+  as having history is read as unreadable, not as empty (**D615**, issue #795):
+  the selection asks once more, then keeps the snapshot the user already has,
+  and otherwise reports `chat.sessionTranscriptEmpty` instead of committing an
+  empty transcript. Such a page is never cached, so a hover prefetch cannot
+  re-serve emptiness on every later open.
 - Transcript loading starts without waiting for an older superseded selection.
   When session summary metadata is available, project activation/clearing and
   transcript IO run in parallel. A monotonic navigation generation permits only
@@ -437,15 +443,20 @@ may be retained while exactly one workspace supplies the visible shell context.
    `session.endTurn` closes the turn without inserting a notification. Any
    background session or unfocused/hidden window creates the durable record.
    An `aborted` turn never creates one.
-3. Electron emits `notification.changed` to every live renderer so the bell
-   badge and currently open inbox refresh.
+3. Electron emits `notification.changed` to every live renderer for the newly
+   inserted durable row so the bell badge and currently open inbox refresh.
+   Renderer delivery is keyed by the durable `id`: duplicate ids and delayed
+   events for rows already acknowledged or cleared are ignored.
 4. For a task result, a focused main window produces no native banner. If
    it is unfocused and native notifications are supported, Electron shows one
    platform notification derived from the event kind and session title. The
    separate interactive ask/permission/plan path may alert for a focused
    background session while suppressing the exact visible session. On
    Windows, the banner is attributed to the canonical PI-Desktop
-   AppUserModelID shared with the NSIS package and taskbar identity.
+   AppUserModelID shared with the NSIS package and taskbar identity. Electron
+   retains at most one task-native object per durable id; successful read,
+   mark-all-read, and clear actions close the matching objects and retain a
+   tombstone against late/replayed delivery.
 5. Clicking the native notification shows/restores and focuses the main
    window, then emits `notification.activated { sessionId }`.
 6. Renderer activation selects the bound project when present, loads the
@@ -464,9 +475,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   current renderer lifetime and never marks rows read implicitly.
 - Arrow keys move through rows with wrap disabled; `Home` / `End` jump to the
   first/last row; Enter/Space marks the row read and activates its session.
-- Mark all read updates every unread row in one host transaction. Clear
-  removes all inbox rows in one host transaction. Both operations are
-  idempotent, refresh the exact unread count, and leave sessions/turns intact.
+- Mark all read updates every unread row in one host transaction and dismisses
+  outstanding task-native objects. Clear removes all inbox rows in one host
+  transaction, dismisses outstanding task-native objects, and leaves
+  sessions/turns intact. Both operations are idempotent and refresh the exact
+  unread count; a failed host mutation does not optimistically dismiss a
+  banner.
 - The renderer does not synthesize notification records from stream events.
   Host-core's unique `turn_id` is the exactly-once boundary across repeated
   terminal updates, renderer reloads, and process restarts.
@@ -494,11 +508,16 @@ may be retained while exactly one workspace supplies the visible shell context.
   unique New launcher tab; its data-driven Review, Files, Browser, and plugin
   view rows are ordinary buttons in the page body.
 - Tab focus uses roving `tabIndex`: ArrowLeft/ArrowRight/Home/End move across
-  tabs and Delete/Backspace closes the focused tab. Middle-click closes a tab;
-  closing an active tab selects the right neighbor, then the left. Selecting a
-  launcher row replaces that New tab with the destination or activates its
-  existing singleton. Shortcut labels appear only for bindings that actually
-  exist.
+  tabs and Delete/Backspace closes the focused tab. Pressing and moving a tab
+  by 8px starts pointer reordering; dropping on the target's left or right half
+  inserts before or after it, and `Alt+ArrowLeft`/`Alt+ArrowRight` provides the
+  keyboard equivalent. Holding the pointer near the tab strip's edge scrolls
+  toward off-screen tabs and keeps the drop indicator synchronized. The active
+  tab remains active after reordering.
+  Middle-click closes a tab; closing an active tab selects the right neighbor,
+  then the left. Selecting a launcher row replaces that New tab with the
+  destination or activates its existing singleton. Shortcut labels appear only
+  for bindings that actually exist.
 - Activating a tool that is already open activates its existing resource instead
   of replacing it, so Browser keeps its URL and Files its selection (D173).
 - Every resource can be closed from its tab. Closing the active resource selects
@@ -555,8 +574,8 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Settings → Info and application-menu checks share one typed update state.
   Manual checks expose up-to-date or error feedback; automatic failures do not
   open a toast or ambient banner.
-- Manual delivery (non-AppImage Linux and Windows portable runs
-  with `PORTABLE_EXECUTABLE_FILE`) stops at `available` and
+- Manual delivery (non-AppImage Linux and Windows ZIP runs, or legacy Windows
+  portable runs with `PORTABLE_EXECUTABLE_FILE`) stops at `available` and
   offers the fixed GitHub Releases page. In-app delivery (packaged macOS,
   Windows NSIS, and Linux AppImage) automatically advances through
   `downloading` to the stable `downloaded` state.
@@ -583,7 +602,7 @@ may be retained while exactly one workspace supplies the visible shell context.
   Escape, or the backdrop, and restores focus to the invoking control.
 - D126 tag releases publish all platform manifests and installers. Packaged
   macOS, Windows NSIS, and Linux AppImage use the in-app lane; Linux deb/rpm
-  and Windows portable remain notify-and-link delivery modes.
+  and Windows ZIP remain notify-and-link delivery modes.
 
 ## 2. Streaming message behavior
 
@@ -672,6 +691,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   users must not see duplicate failure summaries for one turn. Completed turns
   do not add a success card; their existing transcript and message-scoped
   review cards remain the completion evidence.
+- A structured inline assistant error can be dismissed from the transcript. This
+  hides only its UI card, keyed by message id in renderer runtime state; the
+  original UiMessage, host transcript, and database record remain untouched.
+  The dismissal survives rerenders and session switches for the current app
+  lifetime, and does not add a restore or destructive transcript action.
 - Failure copy states that the existing work remains available. The applicable
   failure surface has exactly one **Continue** action and no **Regenerate**
   action. Continue appends the current locale's continuation prompt (`Continue
@@ -737,7 +761,11 @@ contract in `08-component-spec.md` (ADR `live-turn-throughput-estimate`).
   The current assistant response and completed tool batch finish normally;
   after `agent_end` and durable turn finalization, the promoted row is
   dispatched through the normal `agent/prompt` flow before the remaining rows.
-  An idle Send now dispatches immediately.
+  An idle Send now dispatches immediately. While waiting, promoted rows retain
+  Remove and explain that the current task must finish. A refused or failed
+  graceful stop reports an error without losing the queued message. Removal
+  waits for Host acknowledgement; if delivery wins the race, report that the
+  message has already started and direct the user to Stop.
 - Without Send now, the next FIFO row starts automatically after the active
   turn completes, fails, or is aborted. A terminal event can arrive before
   persistence releases the session; finalization must wake the queue again
@@ -1392,11 +1420,13 @@ Project drag/drop follows these patterns:
   bounded collaboration section after the chips: creator/source session
   when present (title, not UUID), current task preview, up to two recent
   exchanges with direction, and terminal result. Created-session
-  references remain keyboard-navigable buttons (at most eight). It may
-  show a live `running` or `waiting_permission` state, but never loads the
-  complete transcript or exposes message content beyond the host's bounded
-  preview. Completion and failure results are derived from the durable target
-  turn and remain visible after reload.
+  references remain keyboard-navigable buttons (at most eight), and show a
+  localized running indicator only while the referenced session has an active
+  runtime; idle, queued, permission, and terminal states add no label. It may
+  show a live `running` or `waiting_permission` state for the hovered session,
+  but never loads the complete transcript or exposes message content beyond
+  the host's bounded preview. Completion and failure results are derived from
+  the durable target turn and remain visible after reload.
 - Before showing a project session card, the renderer re-reads the active
   workspace through the existing project-read operation. This keeps the Git
   branch current after an external checkout without activating a project or

@@ -239,6 +239,10 @@
   指针悬停或键盘焦点可以预取其记录；重复读取
   共享一个正在进行的请求，渲染器最多保留五个最近的请求
   转录快照。
+- 若一次记录窗口读取对侧边栏计为有历史的会话返回零条消息，该结果按“无法读取”
+  而不是“空会话”处理（**D615**，issue #795）：选择流程会再读一次，随后保留用户已有的
+  快照，否则显示 `chat.sessionTranscriptEmpty`，而不是提交一份空记录。这类空页绝不会
+  写入缓存，因此悬停预取不会在之后每次打开时反复提供空内容。
 - 脚本加载开始，无需等待旧的被取代的选择。
   当会话摘要元数据可用时，项目 activation/clearing 和
   转录IO并行运行。单调导航生成仅允许
@@ -346,13 +350,17 @@
    `session.endTurn` 关闭回合而不插入通知。任意
    后台会话或 unfocused/hidden 窗口创建持久记录。
    `aborted` 回合永远不会创建一个。
-3. Electron 向每个实时渲染器发出 `notification.changed`，以便响铃
-   徽章和当前打开的收件箱刷新。
+3. Electron 为新插入的持久行向每个实时渲染器发出
+   `notification.changed`，以便响铃徽章和当前打开的收件箱刷新。
+   Renderer 按持久 `id` 幂等处理：重复 id，以及针对已确认或已清除行的
+   延迟事件，都会被忽略。
 4. 对于终端任务结果，本机通知仅在主窗口未聚焦时出现。聚焦背景会话的完成
    仍会创建持久行，但不会出现本机横幅。asktool、工具权限和 Plan 审批询问
    使用带有 `kind: "interactive"` 的同一个 Electron 表面：确切的聚焦当前
    会话保持静默，而聚焦于其他会话时可以收到横幅。在 Windows 上，每个横幅
    都归因于与 NSIS 包和任务栏标识共享的规范 PI-Desktop AppUserModelID。
+   Electron 每个持久 id 最多保留一个任务本机对象；成功的已读、全部已读和
+   清除操作会关闭匹配对象，并保留 tombstone 以抵御迟到/重放投递。
 5. 单击本机通知 shows/restores 并聚焦于主通知
    窗口，然后发出 `notification.activated { sessionId }`。
 6. Renderer 激活选择绑定项目（如果存在），加载
@@ -373,9 +381,10 @@
 当前渲染器生命周期并且从不标记隐式读取的行。
 - 箭头键在禁用换行的情况下在行中移动； `Home` / `End` 跳转到
   first/last 行； Enter/Space 标记该行已读取并激活其会话。
-- 标记一个主机事务中每个未读行的所有读取更新。清除
-  删除一个主机事务中的所有收件箱行。两个操作都是
-  幂等，刷新确切的未读计数，并保持 sessions/turns 不变。
+- 标记一个主机事务中每个未读行的所有读取更新，并关闭待处理的任务本机对象。
+  清除删除一个主机事务中的所有收件箱行，关闭待处理的任务本机对象，并保持
+  sessions/turns 不变。两个操作都是幂等并刷新确切的未读计数；主机变更失败时
+  不会乐观地关闭横幅。
 - 渲染器不会从流事件中合成通知记录。
   Host-core 独特的 `turn_id` 是重复的一次边界
   终端更新、渲染器重新加载和进程重新启动。
@@ -399,9 +408,12 @@
   Tools & panels 分组，包含宿主 Review 以及当前范围内所有插件视图，Files
   和 Browser 保持数据驱动（D173）。
 - 标签焦点使用 roving `tabIndex`：ArrowLeft/ArrowRight/Home/End 在标签间移动，
-  Delete/Backspace 关闭聚焦标签，中键关闭标签；关闭活动标签后按右邻居、左邻居
-  选择下一个。`+` 菜单使用 Arrow/Home/End、Escape 和 Tab，并在关闭时把焦点
-  返回 `+`。只有真实存在的绑定才显示快捷键标签。
+  Delete/Backspace 关闭聚焦标签，中键关闭标签。按住标签移动 8px 后开始拖拽排序，
+  放到目标标签左半部或右半部时分别插入到目标之前或之后；`Alt+ArrowLeft`/
+  `Alt+ArrowRight` 提供键盘排序方式，排序后仍保持当前标签激活。拖拽指针靠近标签条边缘时
+  自动滚动并同步插入指示器。关闭活动标签后按右邻居、左邻居选择下一个。`+` 菜单使用
+  Arrow/Home/End、Escape 和 Tab，并在关闭时
+  把焦点返回 `+`。只有真实存在的绑定才显示快捷键标签。
 - 激活已打开的工具会激活其现有资源
   替换它，因此浏览器保留其 URL 和文件的选择 (D173)。
 - 每个资源都可以从对应标签中关闭。关闭活动资源选择右邻居，再选择左邻居；关闭
@@ -455,7 +467,7 @@
 - 设置 → 信息和应用程序菜单检查共享一种类型的更新状态。
   手动检查公开最新或错误反馈；自动故障不会
   打开 Toast 或环境横幅。
-- 手动交付（非 AppImage Linux，以及带有 `PORTABLE_EXECUTABLE_FILE` 的 Windows 便携版运行）在 `available` 停止，并提供固定的 GitHub 发布页面。应用内交付（打包的 macOS、Windows NSIS 和 Linux AppImage）自动推进 `downloading` 到稳定的 `downloaded` 状态。
+- 手动交付（非 AppImage Linux、Windows ZIP，以及带有 `PORTABLE_EXECUTABLE_FILE` 的旧 Windows 便携版运行）在 `available` 停止，并提供固定的 GitHub 发布页面。应用内交付（打包的 macOS、Windows NSIS 和 Linux AppImage）自动推进 `downloading` 到稳定的 `downloaded` 状态。
 - `downloaded` 保持可操作状态，直至重新启动更新或正常应用退出；
   稍后的 scheduled/manual 检查不会将其替换为 `checking`。
 - 紧凑的更新通知仅出现在主窗格的右上角安全区域中
@@ -477,7 +489,7 @@
   当前版本和发现的可用版本标识为
   紧凑的徽章。列表独立滚动，通过其关闭控制关闭，
   转义或背景，并将焦点恢复到调用控件。
-- D126 标签版本发布所有平台清单和安装程序。打包的 macOS、Windows NSIS 和 Linux AppImage 使用应用内通道；Linux deb/rpm 和 Windows 便携版保持通知和链接传递模式。
+- D126 标签版本发布所有平台清单和安装程序。打包的 macOS、Windows NSIS 和 Linux AppImage 使用应用内通道；Linux deb/rpm 和 Windows ZIP 保持通知和链接传递模式。
 
 ## 2. 流消息行为
 
@@ -603,6 +615,25 @@ contract in `08-component-spec.md` (ADR `live-turn-throughput-estimate`).
 - 没有中止确认对话框——它总是立即发生
 - 部分中止的消息会获得静音的“（中止）”后缀。只有
   未应答的智能停止分支会删除其刚刚发送的用户行。
+
+### 3.4 排队发送
+
+- 会话运行中，草稿非空时 Composer 显示 Send，空时显示 Stop。普通 Send 和回车发送
+  都是 follow-up 操作。被接受的 follow-up 清空 Composer 并追加到该会话的 Host 持
+  久 FIFO 队列；切换会话不会移动或清空其他会话的队列。
+- 队列渲染在 Composer 上方。每行有独立的可键盘访问的 Remove 操作和 Send now 操
+  作（Host 入队返回持久 id 后可用）。入队挂起期间，行操作禁用并显示 Saving 提
+  示，Send now 也显示 Saving；此时编辑/删除不改变队列或 Composer 草稿。
+- Send now 将该行移至队首并请求新的 `agent/stop` 通道。当前助手回复和已完成的工
+  具批次正常结束；`agent_end` 和持久回合确认后，提升行通过正常 `agent/prompt` 流
+  程在剩余行之前派发。空闲时 Send now 立即派发。等待期间，提升行保留 Remove 并
+  提示当前任务需要完成。拒绝或失败的优雅停止报告错误且不丢失排队消息。删除需等待
+  Host 确认；若交付抢先完成，报告消息已开始执行并引导用户使用 Stop。
+- 无 Send now 时，活跃回合完成、失败或中止后，下一个 FIFO 行自动开始。终端事件可
+  在持久化释放会话之前到达；确认必须在释放所有权后再次唤醒队列。不需要额外发送或
+  切换会话。
+- 中止始终立即执行且不清空队列。排队提示在应用重启后保留，直到控制器连接
+  （ADR 0213）。应用关闭时的确认不得启动另一个排队回合。
 
 ### 3.5 向当前回合补充指令
 

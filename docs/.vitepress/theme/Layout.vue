@@ -11,10 +11,13 @@ const { frontmatter, localeIndex } = useData()
 <template>
   <Layout>
     <template #home-hero-image>
-      <HomeHeroVisual :locale="localeIndex" />
+      <HomeHeroVisual v-if="frontmatter.layout === 'home'" />
     </template>
     <template #home-features-after>
-      <HomeModules :locale="localeIndex" v-if="frontmatter.layout === 'home'" />
+      <HomeModules
+        v-if="frontmatter.layout === 'home'"
+        :locale="localeIndex"
+      />
     </template>
   </Layout>
 </template>

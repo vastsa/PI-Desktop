@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.15.2",
+  "version": "0.15.6",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -25,16 +25,16 @@
     "build:host-release": "cargo build --release --manifest-path ../../Cargo.toml -p host-core",
     "bundle:runtime": "pnpm -C ../../packages/agent-runtime bundle",
     "pack": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --dir",
-    "dist": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --publish never",
+    "dist": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && node ../../scripts/build-desktop-release.mjs",
     "dist:mac": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --mac --publish never",
-    "dist:win": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --win --publish never",
+    "dist:win": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && node ../../scripts/build-desktop-release.mjs win",
     "dist:linux": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --linux --publish never"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "0.86.1",
+    "@earendil-works/pi-ai": "0.87.1",
     "@pi-desktop/agent-host": "workspace:*",
     "@pi-desktop/agent-runtime": "workspace:*",
     "@pi-desktop/host-runtime": "workspace:*",
@@ -43,11 +43,14 @@
     "@pi-desktop/plugin-sdk": "workspace:*",
     "@pi-desktop/racp": "workspace:*",
     "@pi-desktop/shared": "workspace:*",
+    "@pi-desktop/voice-runtime": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
+    "@picovoice/pvrecorder-node": "1.2.9",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.6.0",
+    "transcribe-cpp": "0.2.2",
     "dompurify": "^3.4.13",
     "electron": "^43.4.1",
     "electron-builder": "^26.15.3",
@@ -55,7 +58,6 @@
     "i18next": "^26.3.6",
     "katex": "^0.16.47",
     "lucide-react": "^1.31.0",
-    "marked": "^18.0.9",
     "mermaid": "^11.16.1",
     "pinyin-pro": "3.29.1",
     "react": "^19.2.8",
@@ -67,9 +69,11 @@
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
     "shiki": "^4.4.3",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
+    "unified": "^11.0.5",
     "vite": "^7.3.6",
     "ws": "8.21.1",
     "zustand": "^5.0.15"
@@ -87,6 +91,9 @@
         "repo": "PI-Desktop"
       }
     ],
+    "extraMetadata": {
+      "piDistribution": "installed"
+    },
     "files": [
       "out/**/*",
       "package.json",
@@ -107,7 +114,9 @@
       "de",
       "es",
       "fr",
-      "ko"
+      "ko",
+      "pt-BR",
+      "pt_BR"
     ],
     "extraResources": [
       {
@@ -195,6 +204,7 @@
     },
     "win": {
       "executableName": "PI-Desktop",
+      "artifactName": "PI-Desktop-Portable-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -203,7 +213,7 @@
           ]
         },
         {
-          "target": "portable",
+          "target": "zip",
           "arch": [
             "x64"
           ]
@@ -226,11 +236,6 @@
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "PI-Desktop",
       "artifactName": "PI-Desktop-Setup-${version}.${ext}"
-    },
-    "portable": {
-      "artifactName": "PI-Desktop-Portable-${version}.${ext}",
-      "requestExecutionLevel": "user",
-      "unpackDirName": "PI-Desktop-Portable"
     },
     "deb": {
       "packageName": "pi-desktop",
@@ -276,6 +281,12 @@
         }
       ]
     },
+    "asarUnpack": [
+      "node_modules/transcribe-cpp/**/*.node",
+      "node_modules/transcribe-cpp/**/bin/**",
+      "node_modules/@picovoice/pvrecorder-node/**/*.node",
+      "node_modules/@picovoice/pvrecorder-node/**/lib/**"
+    ],
     "asar": {
       "smartUnpack": false
     }

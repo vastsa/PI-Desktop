@@ -9,6 +9,7 @@ import {
   generatedImageType,
   imageError,
   MAX_IMAGE_BYTES,
+  type ImageDownloadOptions,
 } from "./download.js";
 export { generatedImageType, MAX_IMAGE_BYTES } from "./download.js";
 
@@ -42,6 +43,7 @@ export async function generateOneImage(
   signal: AbortSignal,
   fetchImpl: typeof fetch = fetch,
   images: ImageEditInput[] = [],
+  downloadOptions: ImageDownloadOptions = {},
 ) {
   const headers = new Headers(endpoint.headers);
   headers.set("Content-Type", "application/json");
@@ -101,7 +103,10 @@ export async function generateOneImage(
   ) {
     bytes = Buffer.from(item.b64_json, "base64");
   } else if (typeof item.url === "string") {
-    bytes = await downloadGeneratedImage(item.url, signal);
+    bytes = await downloadGeneratedImage(item.url, signal, {
+      ...downloadOptions,
+      fetchImpl: downloadOptions.fetchImpl ?? fetchImpl,
+    });
   } else throw imageError("IMAGE_INVALID_RESPONSE");
   return { bytes, ...generatedImageType(bytes) };
 }
@@ -113,6 +118,7 @@ export async function generateImageBatch(options: {
   signal: AbortSignal;
   save: (image: Awaited<ReturnType<typeof generateOneImage>>, index: number) => Promise<string>;
   fetchImpl?: typeof fetch;
+  downloadOptions?: ImageDownloadOptions;
   loadImages?: (paths: string[]) => Promise<ImageEditInput[]>;
 }): Promise<GeneratedImageResult[]> {
   const prompts = imageGenerationItems(options.input);
@@ -144,6 +150,7 @@ export async function generateImageBatch(options: {
           signal,
           options.fetchImpl,
           images,
+          options.downloadOptions,
         );
         const path = await options.save(image, index);
         results[index] = { index, status: "succeeded", path, mimeType: image.mimeType };

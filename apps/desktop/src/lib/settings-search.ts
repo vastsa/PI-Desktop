@@ -18,6 +18,7 @@ export type SettingsTabId =
   | "projects"
   | "sync"
   | "remoteHosts"
+  | "voice"
   | "about";
 
 export type SettingsNavGroupId =
@@ -48,6 +49,8 @@ export type SettingsNavEntry = {
    * rail, the page, and settings search drop it together.
    */
   developerOnly?: true;
+  /** Localized Experimental badge shown beside the rail row and page title. */
+  experimentalBadgeKey?: string;
 };
 
 export const SETTINGS_NAV: SettingsNavEntry[] = [
@@ -72,7 +75,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.proxyDirect",
       "settings.proxyCustom",
       "settings.proxyUrl",
-      "settings.proxyFakeIp",
+      "settings.networkRelaxedMode",
+      "settings.networkRelaxedModeDesc",
+      "settings.networkRelaxedModeStrictDesc",
     ],
   },
   {
@@ -94,6 +99,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.enterToSend",
       "settings.infiniteProviderRetry",
       "settings.infiniteProviderRetryDesc",
+      "settings.smoothStreaming",
+      "settings.smoothStreamingDesc",
       "settings.thinkingDisplayMode",
       "settings.thinkingDisplayDetailed",
       "settings.thinkingDisplayCompact",
@@ -110,6 +117,20 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.promptEnhancementModelFollow",
       "settings.promptEnhancementThinking",
       "settings.largePasteThreshold",
+    ],
+  },
+  {
+    id: "voice",
+    labelKey: "settings.nav.voice",
+    titleKey: "settings.voice",
+    group: "preferences",
+    keywordKeys: [
+      "settings.voiceEnable",
+      "settings.voiceMicrophone",
+      "settings.voiceLanguages",
+      "settings.voiceChineseVariant",
+      "settings.voiceModel",
+      "settings.voiceLocalModels",
     ],
   },
   {
@@ -243,6 +264,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     labelKey: "settings.nav.sync",
     titleKey: "settings.configSync.title",
     group: "system",
+    developerOnly: true,
+    experimentalBadgeKey: "settings.configSync.experimental",
     keywordKeys: [
       "settings.configSync.connectionTitle",
       "settings.configSync.endpoint",
@@ -258,6 +281,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.remoteHosts.title",
     group: "system",
     developerOnly: true,
+    experimentalBadgeKey: "settings.remoteHosts.experimental",
     keywordKeys: [
       "settings.remoteHosts.title",
       "settings.remoteHosts.addTitle",

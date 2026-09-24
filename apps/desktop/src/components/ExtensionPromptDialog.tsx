@@ -21,6 +21,10 @@ export function ExtensionPromptHost() {
 
   useEffect(() => {
     const offPrompt = api.onExtensionPrompt((prompt) => {
+      if (prompt.cancelled) {
+        setQueue((prev) => prev.filter((item) => item.promptId !== prompt.promptId));
+        return;
+      }
       setQueue((prev) => (prev.some((p) => p.promptId === prompt.promptId) ? prev : [...prev, prompt]));
     });
     const offStatus = api.onExtensionStatus((event) => {

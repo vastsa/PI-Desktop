@@ -13,9 +13,16 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 const MAX_SKILLS: usize = 128;
+/// Cap on a skill document (`SKILL.md`) and on any document derived from it.
+/// A document can end up in a prompt, so it stays small; sibling package
+/// resources are bounded separately by [`MAX_SKILL_RESOURCE_BYTES`].
 pub const MAX_SKILL_BYTES: usize = 128 * 1024;
-pub const MAX_SKILL_PACKAGE_FILES: usize = 64;
-pub const MAX_SKILL_PACKAGE_BYTES: usize = 512 * 1024;
+/// Cap on one sibling resource inside a directory-shaped skill package.
+/// Resources are data and scripts that are read on demand and never become
+/// prompt content, so a package may carry files well above the document cap.
+pub const MAX_SKILL_RESOURCE_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_SKILL_PACKAGE_FILES: usize = 256;
+pub const MAX_SKILL_PACKAGE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_NAME_CHARS: usize = 120;
 const MAX_DESCRIPTION_CHARS: usize = 400;
 const SKILL_KIND: &str = "skills";
@@ -528,8 +535,14 @@ fn collect_package_files(
             continue;
         }
         let relative = package_relative_path(root, &path)?;
+        // Reject an oversized resource from its metadata before reading it: a
+        // multi-gigabyte file in a skill directory must not be pulled into
+        // memory only to be refused.
+        if metadata.len() > MAX_SKILL_RESOURCE_BYTES as u64 {
+            bail!("SKILL_LIMIT_EXCEEDED: skill package resource is too large");
+        }
         let bytes = fs::read(&path)?;
-        if bytes.len() > MAX_SKILL_BYTES {
+        if bytes.len() > MAX_SKILL_RESOURCE_BYTES {
             bail!("SKILL_LIMIT_EXCEEDED: skill package resource is too large");
         }
         *total = total.saturating_add(bytes.len());
@@ -1244,7 +1257,7 @@ impl UserSkillRegistry {
             if !seen.insert(relative.clone()) {
                 bail!("SKILL_INVALID: skill package contains duplicate paths");
             }
-            if bytes.len() > MAX_SKILL_BYTES {
+            if bytes.len() > MAX_SKILL_RESOURCE_BYTES {
                 bail!("SKILL_LIMIT_EXCEEDED: skill package resource is too large");
             }
             ensure_no_symlink_path(&root, &target)?;
@@ -1347,6 +1360,11 @@ fn scope_for(level: CapabilityLevel, project_path: Option<&str>) -> ActivationSc
         },
     }
 }
+
+/// Package bounds are asserted in their own module: `tests.rs` is close to the
+/// rust file-size limit, and these tests share one fixture.
+#[cfg(test)]
+mod package_tests;
 
 #[cfg(test)]
 mod tests;

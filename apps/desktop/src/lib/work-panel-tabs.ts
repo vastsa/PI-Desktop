@@ -296,6 +296,31 @@ export function activateWorkPanelTabState(
     : state;
 }
 
+/** Move one tab before or after another without changing the active tab. */
+export function reorderWorkPanelTabsState(
+  state: WorkPanelTabsState,
+  sourceTabId: string,
+  targetTabId: string,
+  insertAfter: boolean,
+): WorkPanelTabsState {
+  const sourceIndex = state.tabs.findIndex((tab) => tab.id === sourceTabId);
+  const targetIndex = state.tabs.findIndex((tab) => tab.id === targetTabId);
+  if (
+    sourceIndex < 0 ||
+    targetIndex < 0 ||
+    sourceTabId === targetTabId
+  ) {
+    return state;
+  }
+
+  const tabs = [...state.tabs];
+  const [source] = tabs.splice(sourceIndex, 1);
+  const nextTargetIndex = tabs.findIndex((tab) => tab.id === targetTabId);
+  if (!source || nextTargetIndex < 0) return state;
+  tabs.splice(nextTargetIndex + (insertAfter ? 1 : 0), 0, source);
+  return { tabs, activeTabId: state.activeTabId };
+}
+
 export function closeWorkPanelTabState(
   state: WorkPanelTabsState,
   tabId: string,

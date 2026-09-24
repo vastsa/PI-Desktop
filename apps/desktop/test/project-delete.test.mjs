@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const LOCALE_IDS = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr"];
+const LOCALE_IDS = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr", "pt-BR"];
 
 /** Every catalog key the delete-project flow adds to `project`. */
 const DELETE_KEYS = [
@@ -109,7 +109,7 @@ test("the delete dialog names the sessions and keeps the folder on disk", () => 
   assert.match(dialogSource, /t\("project\.deleteSessions", \{ count: project\.sessionCount \}\)/);
   assert.match(dialogSource, /t\("project\.deleteDescription", \{ name: project\.name \}\)/);
   assert.match(dialogSource, /t\("project\.deleteFolderKept"\)/);
-  assert.match(dialogSource, /createPortal\(dialog, document\.body\)/);
+  assert.match(dialogSource, /portalToBody\(dialog\)/);
 });
 
 test("the delete dialog is a labelled modal that blocks cancel while busy", () => {

@@ -160,6 +160,19 @@ describe("real dependency hosted-search estimation and requests", () => {
     const decorated = { ...(content[0] as object), query: "ignored".repeat(1000), results: [{ url: "ignored".repeat(1000) }] };
     expect(estimateMessageTokens(assistant([decorated]))).toBe(estimateMessageTokens(msg));
   });
+
+  it("replays Responses search history to the Codex Responses adapter", () => {
+    const api = "openai-codex-responses";
+    const msg = assistant(search(api, 100), api);
+    const context = normalizeContext({ messages: [msg] });
+    const same = convertResponsesMessages(model(api), context, new Set(), {});
+    const other = convertResponsesMessages({ ...model(api), id: "other" }, context, new Set(), {});
+    expect(same).toHaveLength(1);
+    expect(same[0]).toMatchObject({ type: "web_search_call", id: "ws_1" });
+    expect(other).toHaveLength(0);
+    expect(estimateMessageTokens(msg, { ...model(api), id: "other" })).toBe(0);
+    expect(estimateMessageTokens(msg)).toBe(Math.ceil(JSON.stringify(same[0]).length / 4));
+  });
   it("declares search content and events without fake name/arguments", () => {
     const block: HostedSearchContent = { type: "hostedSearch", phase: "web_search_call", blockId: "legacy" };
     const event: AssistantMessageEvent = { type: "hosted_search_update", contentIndex: 0, partial: assistant([block]) };

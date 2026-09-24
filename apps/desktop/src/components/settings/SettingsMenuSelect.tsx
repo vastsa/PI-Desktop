@@ -14,7 +14,12 @@
  * catalog here is the host command-shell list — so the menu opens on the
  * current option and keyboard users move with arrows alone.
  */
-import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import { cx } from "../ui";
 import { IconCheck, IconChevronDown } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
@@ -35,6 +40,8 @@ export function SettingsMenuSelect({
   busy = false,
   fullWidth = false,
   className,
+  triggerClassName,
+  leading,
 }: {
   value: string;
   options: MenuSelectOption[];
@@ -47,6 +54,10 @@ export function SettingsMenuSelect({
   /** Stretch across a form field. Compact settings rows leave this off. */
   fullWidth?: boolean;
   className?: string;
+  /** Optional surface-specific styling while retaining the shared menu behavior. */
+  triggerClassName?: string;
+  /** Optional icon or marker shown before the selected value. */
+  leading?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState(value);
@@ -99,7 +110,7 @@ export function SettingsMenuSelect({
           <button
             ref={ref}
             type="button"
-            className="settings-menu-select-trigger"
+            className={cx("settings-menu-select-trigger", triggerClassName)}
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-label={label}
@@ -109,6 +120,11 @@ export function SettingsMenuSelect({
               setOpen((current) => !current);
             }}
           >
+            {leading ? (
+              <span className="settings-menu-select-trigger-leading" aria-hidden="true">
+                {leading}
+              </span>
+            ) : null}
             <span className="settings-menu-select-trigger-label">
               {current?.label ?? value}
             </span>

@@ -348,7 +348,7 @@ export function isOfficialDeepSeekEndpoint(input: { baseUrl?: string }): boolean
  * Documented non-empty stand-in when a strict DeepSeek-compatible relay requires
  * reasoning replay but the turn's real thinking was never retained (compaction
  * summary, synthetic bridge assistants, or thinking-less turns). Must match the
- * literal embedded in patches/@earendil-works__pi-ai@0.86.1.patch.
+ * literal embedded in patches/@earendil-works__pi-ai@0.87.1.patch.
  */
 export const DEEPSEEK_REASONING_REPLAY_PLACEHOLDER =
   "[reasoning not retained for this turn]";

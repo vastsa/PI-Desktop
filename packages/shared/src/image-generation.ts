@@ -1,4 +1,8 @@
-import { modelIdsMatch } from "./types/models.js";
+/** Image bindings use complete wire ids; catalog alias matching is not identity. */
+function sameImageModelId(left: string, right: string): boolean {
+  const requested = right.trim().toLowerCase();
+  return requested.length > 0 && left.trim().toLowerCase() === requested;
+}
 
 /** A single host-owned binding, independent of the default conversation model. */
 export type ImageGenerationBinding = { providerId: string; modelId: string };
@@ -10,7 +14,7 @@ function sameImageGenerationBinding(
   left: ImageGenerationBinding,
   right: ImageGenerationBinding,
 ): boolean {
-  return left.providerId === right.providerId && modelIdsMatch(left.modelId, right.modelId);
+  return left.providerId === right.providerId && sameImageModelId(left.modelId, right.modelId);
 }
 
 /** Resolve the multi-select candidates, with legacy single-binding fallback. */
@@ -38,7 +42,7 @@ export function isImageGenerationModel(
 ): boolean {
   const bindings = Array.isArray(binding) ? binding : binding ? [binding] : [];
   return !!providerId && !!modelId && bindings.some((entry) =>
-    entry.providerId === providerId && modelIdsMatch(entry.modelId, modelId),
+    entry.providerId === providerId && sameImageModelId(entry.modelId, modelId),
   );
 }
 export const MAX_GENERATED_IMAGES = 10;

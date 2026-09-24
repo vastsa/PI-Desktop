@@ -1,25 +1,28 @@
+import { nativeWebSearchTransport } from "./native-web-search-transport.js";
+
 /**
  * Evaluation helpers for the provider-hosted web search tool.
  *
  * - `nativeWebSearchSupportedOn` gates the settings checkbox. It accepts
- *   stored apiStyle (`responses`, `anthropic_messages`) and resolved wire
- *   APIs (`openai-responses`, `anthropic-messages`, `azure-openai-responses`).
+ *   stored apiStyle (`responses`, `openai_codex_responses`, `anthropic_messages`)
+ *   and resolved wire APIs (`openai-responses`, `openai-codex-responses`,
+ *   `azure-openai-responses`, `anthropic-messages`).
  * - `resolveNativeWebSearch` is the runtime decision: capable wire AND the
  *   binding opt-in. Adapters then key on `model.webSearch`, which
  *   `modelConfigWithBinding` copies from that opt-in.
  * - `hostedSearchFromMessage` is what the runtime persists: display rounds
  *   plus raw `replay` blocks for convertMessages after a restart.
  *
- * Vendor display names, base URL hostnames, and model id substrings are
- * intentionally not consulted. An endpoint either carries the tool on the
- * wire named here or it does not; guessing breeds silent behavior drift.
+ * Published official endpoint routes are resolved before the wire gate, using
+ * nativeWebSearchTransport. Vendor display names and model-id substrings never
+ * establish endpoint support. Unknown gateways retain their configured wire.
  */
 
-/** Wire APIs whose request format defines a provider-hosted search tool. */
 export const NATIVE_WEB_SEARCH_WIRE_APIS = new Set([
   "anthropic-messages",
   "openai-responses",
   "azure-openai-responses",
+  "openai-codex-responses",
 ]);
 
 /** Tool definition attached to an anthropic-messages request. */
@@ -28,7 +31,7 @@ export const ANTHROPIC_WEB_SEARCH_TOOL = {
   name: "web_search",
 } as const;
 
-/** Tool definition attached to an openai-responses request. */
+/** Tool definition attached to OpenAI Responses-compatible requests. */
 export const OPENAI_RESPONSES_WEB_SEARCH_TOOL = {
   type: "web_search",
 } as const;
@@ -53,13 +56,17 @@ export function nativeWebSearchToolFor(
   | undefined {
   const wire = wireApi.trim().toLowerCase();
   if (wire === "anthropic-messages") return { ...ANTHROPIC_WEB_SEARCH_TOOL };
-  if (wire === "openai-responses" || wire === "azure-openai-responses") {
+  if (
+    wire === "openai-responses" ||
+    wire === "azure-openai-responses" ||
+    wire === "openai-codex-responses"
+  ) {
     return { ...OPENAI_RESPONSES_WEB_SEARCH_TOOL };
   }
   return undefined;
 }
 
-const NATIVE_WEB_SEARCH_API_STYLES = new Set(["responses", "anthropic_messages"]);
+const NATIVE_WEB_SEARCH_API_STYLES = new Set(["responses", "anthropic_messages", "openai_codex_responses"]);
 
 /**
  * Whether a stored apiStyle or a resolved wire API can carry the hosted
@@ -67,8 +74,9 @@ const NATIVE_WEB_SEARCH_API_STYLES = new Set(["responses", "anthropic_messages"]
  * spellings because the pane sees `responses` / `anthropic_messages` while
  * the runtime sees `openai-responses` / `anthropic-messages`.
  */
-export function nativeWebSearchSupportedOn(api: string | undefined): boolean {
-  const value = (api ?? "").trim().toLowerCase();
+export function nativeWebSearchSupportedOn(api: string | undefined, baseUrl?: string): boolean {
+  const route = nativeWebSearchTransport({ apiStyle: api, baseUrl, enabled: true });
+  const value = (route.apiStyle ?? "").trim().toLowerCase();
   if (!value) return false;
   if (NATIVE_WEB_SEARCH_WIRE_APIS.has(value)) return true;
   if (NATIVE_WEB_SEARCH_API_STYLES.has(value)) return true;

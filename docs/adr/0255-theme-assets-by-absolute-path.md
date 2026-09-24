@@ -64,6 +64,10 @@ itself could read.
 - Themes that declared package-relative assets stop resolving. This is a
   deliberate breaking change; the affected surface is limited to themes that use
   `assets` at all.
+- The plugin devkit (`pi-plugin check`) rejects package-relative theme assets at
+  author time with the `theme.asset-package-relative` diagnostic, preventing a
+  package from passing validation only to fail installation on every user's
+  machine.
 - `resolveInsidePlugin` remains for the theme sheet path itself
   (`contributes.themes[].path`), which is still package-relative.
 

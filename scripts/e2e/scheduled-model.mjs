@@ -7,6 +7,7 @@ export function scheduledModelFixture() {
   let taskId;
   let pending;
   let calls = 0;
+  const requestedModels = [];
   const results = [];
   const scenarios = {
     create: ["ScheduledTaskCreate", "ScheduledTaskList"],
@@ -16,10 +17,19 @@ export function scheduledModelFixture() {
   };
   const handler = async (req, res) => {
     try {
+      if (req.method === "GET" && req.url?.endsWith("/models")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          object: "list",
+          data: ["fixture", "fixture-alt"].map((id) => ({ id, object: "model" })),
+        }));
+        return;
+      }
       let body = "";
       for await (const part of req) body += part;
       const request = JSON.parse(body);
       calls++;
+      requestedModels.push(request.model);
       if (pending) {
         const message = request.messages.find((item) => item.role === "tool" && item.tool_call_id === pending.id);
         assert.ok(message, `model receives ${pending.name} result`);
@@ -71,6 +81,7 @@ export function scheduledModelFixture() {
   return {
     handler,
     get calls() { return calls; },
+    get requestedModels() { return requestedModels; },
     get results() { return results; },
     get taskId() { return taskId; },
     setScenario(value) { assert.ok(scenarios[value]); scenario = value; step = 0; pending = undefined; },

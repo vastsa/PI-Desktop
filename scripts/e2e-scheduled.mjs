@@ -14,8 +14,10 @@ import { scheduledModelFixture } from "./e2e/scheduled-model.mjs";
 
 const root = mkdtempSync(join(tmpdir(), "pi-scheduled-e2e-"));
 const dataDir = join(root, "data"),
-  project = join(root, "project");
+  project = join(root, "project"),
+  alternateProject = join(root, "project-alt");
 mkdirSync(project);
+mkdirSync(alternateProject);
 // The Host canonicalizes the workspace path it is given, and macOS hands out
 // `TMPDIR` under the `/var` symlink, so compare resolved paths on both sides.
 const canonical = (value) => realpathSync(value).replaceAll("\\", "/").toLowerCase();
@@ -36,6 +38,23 @@ const { provider } = await host.call("providers.create", {
   authKind: "none",
   defaultModelId: "fixture",
   apiStyle: "chat_completions",
+});
+const { provider: alternateProvider } = await host.call("providers.create", {
+  name: "Scheduled alternate model",
+  vendorKey: "custom",
+  type: "openai_compatible",
+  protocol: "openai_compatible",
+  baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
+  authKind: "none",
+  defaultModelId: "fixture-alt",
+  models: [{ id: "fixture-alt", contextWindow: 128000, maxTokens: 8192,
+    thinkingLevels: ["off", "low", "high"], defaultThinkingLevel: "off" }],
+  apiStyle: "chat_completions",
+});
+await host.call("session.create", {
+  title: "Alternate project seed",
+  mode: "agent",
+  projectPath: alternateProject,
 });
 await host.call("settings.set", {
   language: "en",
@@ -209,6 +228,36 @@ try {
   await fill("form textarea", "Summarize the current project status.");
   assert.equal(await evaluate(`document.querySelector('button[aria-label="Cadence"]').textContent.trim()`), "Manual");
   await choose("Cadence", "Daily");
+  await choose("Select project", "project-alt");
+  await click("Permission mode", "button[aria-haspopup]", true);
+  await waitFor(() => evaluate(`!!document.querySelector('.composer-permission-menu.is-open')`), 5000, "shared permission menu");
+  await click("Auto", '.composer-permission-menu [role="menuitemradio"]');
+  assert.ok(await evaluate(`document.body.innerText.includes('Auto can run restricted actions')`));
+  await click(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-chip').getAttribute('aria-label')`), 'button[aria-haspopup]', true);
+  await waitFor(() => evaluate(`!!document.querySelector('.composer-model-menu.is-open .composer-menu-root')`), 5000, "measured root menu");
+  await evaluate(`document.querySelector('.composer-menu-root .composer-menu-entry').click()`);
+  await waitFor(() => evaluate(`document.activeElement?.getAttribute('aria-label') === 'Search models'`), 5000, "model search focus");
+  await fill('.composer-model-search input', 'fixture-alt');
+  await waitFor(() => evaluate(`document.querySelectorAll('.composer-model-option').length === 1`), 5000, "filtered model");
+  await key("ArrowDown", 40);
+  await key("Enter", 13);
+  await waitFor(() => evaluate(`!!document.querySelector('.composer-menu-root')`), 5000, "task model selection returns to root");
+  await evaluate(`[...document.querySelectorAll('.composer-menu-entry')].find(e => e.textContent.includes('Reasoning')).click()`);
+  await click("high", '.composer-thinking-list [role="menuitemradio"]');
+  await key("Escape", 27);
+  const unchangedDefaults = await invoke("settingsGet");
+  assert.equal(unchangedDefaults.defaultProviderId, provider.id, "task selection cannot change the conversation default provider");
+  assert.equal(unchangedDefaults.defaultModelId, "fixture", "task selection cannot change the conversation default model");
+  assert.equal(
+    await evaluate(`document.querySelector('.scheduled-instruction-shell > .scheduled-execution-toolbar') !== null`),
+    true,
+    "task execution controls stay inside the instruction composer",
+  );
+  assert.equal(
+    await evaluate(`[...document.querySelectorAll('form label')].some((label) => label.innerText.trim().startsWith('Instruction'))`),
+    true,
+    "the task prompt is presented as an instruction",
+  );
   await openSelect("Time");
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('[role="option"]')].map(e=>e.textContent.trim())`), ["Morning", "Afternoon", "Evening", "Night"]);
   await key("ArrowDown", 40);
@@ -220,6 +269,33 @@ try {
   }
   assert.equal(await evaluate(`document.querySelectorAll('form input[type="number"],form input[type="time"]').length`),0);
   await screenshot("after-editor.png");
+  const previousTheme = await evaluate(`document.documentElement.dataset.theme`);
+  await evaluate(`document.documentElement.dataset.theme = 'dark'`);
+  await waitFor(() => evaluate(`getComputedStyle(document.querySelector('.scheduled-instruction-input')).resize === 'none'`), 5000, "instruction resize disabled");
+  assert.equal(await evaluate(`(() => {
+    const input = document.querySelector('.scheduled-instruction-input');
+    const style = getComputedStyle(input);
+    return style.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
+      style.backgroundColor !== getComputedStyle(input.parentElement).backgroundColor &&
+      parseFloat(style.borderBottomWidth) > 0 &&
+      getComputedStyle(input, '::placeholder').opacity === '1';
+  })()`), true, "instruction has its own background, border and visible placeholder");
+  await screenshot("after-editor-dark.png");
+  await evaluate(`document.documentElement.dataset.theme = ${JSON.stringify(previousTheme)}`);
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 760,
+    height: 800,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await waitFor(() => evaluate(`window.innerWidth <= 780`), 5000, "narrow scheduled editor");
+  assert.equal(
+    await evaluate(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`),
+    true,
+  );
+  await screenshot("after-editor-narrow.png");
+  await send("Emulation.clearDeviceMetricsOverride");
+  await waitFor(() => evaluate(`window.innerWidth > 780`), 5000, "wide scheduled editor");
   await click("Save task");
   let task;
   await waitFor(
@@ -233,8 +309,23 @@ try {
   assert.equal(task.schedule.minute, 0);
   assert.equal(task.schedule.hour, 9);
   assert.ok(task.nextRunAt);
-  assert.equal(canonical(task.workspacePath), canonical(project));
+  assert.equal(canonical(task.workspacePath), canonical(alternateProject));
+  assert.equal(task.permissionMode, "auto");
+  assert.equal(task.providerId, alternateProvider.id);
+  assert.equal(task.modelId, "fixture-alt");
+  assert.equal(task.thinkingLevel, "high");
   await click("Edit task");
+  assert.equal(await evaluate(`document.querySelector('button[aria-label="Select project"]').textContent.trim()`), "project-alt");
+  assert.equal(await evaluate(`document.querySelector('button[aria-label="Permission mode"]').textContent.trim()`), "Auto");
+  assert.equal(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-model').textContent.trim()`), "fixture-alt");
+  assert.equal(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-level').textContent.trim()`), "high");
+  await click(await evaluate(`document.querySelector('.scheduled-execution-toolbar .composer-model-thinking-chip').getAttribute('aria-label')`), 'button[aria-haspopup]', true);
+  await waitFor(() => evaluate(`!!document.querySelector('.composer-model-menu.is-open')`), 5000, "composer model menu");
+  await screenshot("after-model-menu.png");
+  await evaluate(`document.querySelector('.composer-menu-root .composer-menu-entry').click()`);
+  await waitFor(() => evaluate(`!!document.querySelector('.composer-model-search')`), 5000, "shared model submenu");
+  await screenshot("after-model-search.png");
+  await key("Escape", 27);
   await choose("Cadence", "Weekly");
   await openSelect("Day of the week");
   assert.equal(await evaluate(`document.querySelectorAll('[role="option"]').length`), 7);
@@ -297,7 +388,10 @@ try {
     30_000,
     "manual run completion",
   );
+  const executedSession = await invoke("sessionGet", { id: runs[0].sessionId });
+  assert.equal(executedSession.session.thinkingLevel, "high", "saved thinking level reaches the executed session");
   assert.ok(model.calls > 0, "real sidecar reached the local model");
+  assert.ok(model.requestedModels.includes("fixture-alt"), "task-owned model reached the sidecar");
   await waitFor(
     () => evaluate(`document.body.innerText.includes('Completed')`),
     15_000,

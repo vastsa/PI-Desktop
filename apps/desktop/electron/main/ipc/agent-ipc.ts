@@ -1,4 +1,4 @@
-import { IPC, ErrorCodes, isGlobalPermissionMode, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
+import { IPC, ErrorCodes, compactionRecordId, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
 import { expandSlashInvocation, enhancePromptDraft, summarizeSessionTitle, visionFromModelConfig, type ComposerTemplate, type RuntimeProviderConfig } from "@pi-desktop/agent-runtime";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
@@ -638,7 +638,26 @@ export function registerAgentIpc({
       settings,
     );
     sidecar.setProjectInstructionRoot(req.sessionId, launch.projectPath);
-    const result = await sidecar.call("agent.compact", launch.sidecarParams);
+    // A lost reply is not the sidecar's verdict: the sidecar keeps summarizing
+    // and persists the checkpoint through host-core, so the durable record
+    // decides whether this manual compaction succeeded (issue #795).
+    const startedWith = compactionRecordId(detail.session);
+    let result: unknown;
+    try {
+      result = await sidecar.call("agent.compact", launch.sidecarParams);
+    } catch (error) {
+      if (!isRpcTimeoutError(error)) throw error;
+      const settled = await host.call<{ session?: unknown }>("session.get", {
+        id: req.sessionId,
+      });
+      const landed = compactionRecordId(settled.session);
+      if (landed === startedWith) throw error;
+      logger.app("session", "warn", "manual compaction outlived its transport deadline; the checkpoint landed", {
+        sessionId: req.sessionId,
+        data: { compactionId: landed },
+      });
+      return { accepted: true };
+    }
     logger.app("session", "info", "context compacted manually", {
       sessionId: req.sessionId,
       data: { providerId: launch.providerId, modelId: launch.modelId },

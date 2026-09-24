@@ -12,6 +12,7 @@ import {
   currentNetworkProxy,
   testNetworkProxy,
 } from "./network-proxy";
+import { installInsecureEndpointNotice } from "./network-notice";
 import {
   APP_ID,
   APP_NAME,
@@ -113,6 +114,7 @@ import { registerWindowIpc } from "./ipc/window-ipc";
 import { registerPullsIpc } from "./ipc/pulls-ipc";
 import { registerAgentIpc } from "./ipc/agent-ipc";
 import { registerIpcHandlers } from "./ipc/register";
+import { VoiceService } from "./voice-service";
 import {
   type WindowLifecycleState,
 } from "./bootstrap/window";
@@ -835,7 +837,10 @@ function sendToRenderer(channel: string, payload: unknown) {
     // it. Notifying a gone frame is routine teardown, never an error:
     // supervision must keep running with no window attached.
   }
+
 }
+
+installInsecureEndpointNotice(sendToRenderer);
 
 let appliedMenuSettings: string | null = null;
 
@@ -1242,6 +1247,13 @@ runtimeLifecycle = createRuntimeLifecycle({
 });
 const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
+// Voice service — created lazily on first use, disposed on quit.
+const voiceService = new VoiceService(
+  dataDir + "/voice-models",
+  () => mainWindow,
+);
+app.once("before-quit", () => voiceService.dispose());
+
 function registerIpc() {
   return registerIpcHandlers({
     traySessions: applicationLifecycle!.traySessions,
@@ -1333,6 +1345,7 @@ function registerIpc() {
     getPluginPanelTheme: () => pluginPanelTheme,
     isDeveloperMode: () => developerMode,
     sendToRenderer,
+    voiceService,
   });
 }
 

@@ -3,6 +3,7 @@ import type { ContextCompactionRecord } from "./types.js";
 import {
   checkpointFallback,
   checkpointGeneration,
+  compactionRecordId,
   checkpointSummarized,
   contextCompactionMark,
   estimateSummaryTokens,
@@ -100,5 +101,27 @@ describe("estimateSummaryTokens", () => {
     expect(estimateSummaryTokens("")).toBe(0);
     expect(estimateSummaryTokens("ab")).toBe(1);
     expect(estimateSummaryTokens("abcde")).toBe(2);
+  });
+});
+
+describe("compactionRecordId", () => {
+  it("identifies the checkpoint governing the next model request", () => {
+    expect(compactionRecordId({ compaction: record({ id: "checkpoint-9" }) })).toBe(
+      "checkpoint-9",
+    );
+  });
+
+  it("reports no identity for a session that never compacted", () => {
+    expect(compactionRecordId({ id: "s1" })).toBeNull();
+    expect(compactionRecordId({ compaction: null })).toBeNull();
+    expect(compactionRecordId(null)).toBeNull();
+    expect(compactionRecordId(undefined)).toBeNull();
+    expect(compactionRecordId("s1")).toBeNull();
+  });
+
+  it("ignores a malformed durable record instead of matching it", () => {
+    expect(compactionRecordId({ compaction: {} })).toBeNull();
+    expect(compactionRecordId({ compaction: { id: 7 } })).toBeNull();
+    expect(compactionRecordId({ compaction: [] })).toBeNull();
   });
 });

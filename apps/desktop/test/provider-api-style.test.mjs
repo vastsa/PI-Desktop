@@ -50,3 +50,8 @@ test("ordinary named services retain existing preset selection", () => {
   assert.equal(preset.apiStyle, "anthropic_messages");
   assert.equal(providerSetupPreset(null), undefined);
 });
+
+test("a named hostname cannot overwrite a manually saved protocol", () => {
+  assert.equal(providerSetupPreset(source("chat_completions")), undefined);
+
+});

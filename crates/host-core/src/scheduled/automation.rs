@@ -5,7 +5,76 @@ use serde_json::{json, Value};
 use super::{get_task, timing::Schedule};
 use crate::db::{now_ms, Database};
 
+const TASK_PERMISSION_MODES: [&str; 3] = ["ask", "accept-edits", "auto"];
+
+pub fn validate_execution_input(input: &Value) -> Result<()> {
+    if let Some(value) = input.get("thinkingLevel") {
+        if !value.is_null()
+            && !value
+                .as_str()
+                .is_some_and(crate::sessions::is_valid_thinking_level)
+        {
+            bail!("thinkingLevel must be a supported session thinking level or null");
+        }
+    }
+    if let Some(value) = input.get("permissionMode") {
+        if !value.is_null()
+            && !value
+                .as_str()
+                .is_some_and(|mode| TASK_PERMISSION_MODES.contains(&mode))
+        {
+            bail!("permissionMode must be ask, accept-edits, auto, or null");
+        }
+    }
+    let provider = input.get("providerId");
+    let model = input.get("modelId");
+    if provider.is_some() || model.is_some() {
+        let paired_null = provider.is_some_and(Value::is_null) && model.is_some_and(Value::is_null);
+        let paired_text = provider
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty() && value.chars().count() <= 256)
+            && model
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty() && value.chars().count() <= 256);
+        if !paired_null && !paired_text {
+            bail!("providerId and modelId must be nonempty strings together, or both null");
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn configure_execution(config: &mut Value, input: &Value) {
+    let object = config
+        .as_object_mut()
+        .expect("scheduled task config is an object");
+    if let Some(level) = input.get("thinkingLevel") {
+        if level.is_null() {
+            object.remove("thinkingLevel");
+        } else {
+            object.insert("thinkingLevel".into(), level.clone());
+        }
+    }
+    if let Some(value) = input.get("permissionMode") {
+        if value.is_null() {
+            object.remove("permissionMode");
+        } else if let Some(mode) = value.as_str() {
+            object.insert("permissionMode".into(), json!(mode));
+        }
+    }
+    if input.get("providerId").is_some() || input.get("modelId").is_some() {
+        if input.get("providerId").is_some_and(Value::is_null) {
+            object.remove("providerId");
+            object.remove("modelId");
+        } else {
+            object.insert("providerId".into(), input["providerId"].clone());
+            object.insert("modelId".into(), input["modelId"].clone());
+        }
+    }
+}
+
 pub fn configure(config: &mut Value, input: &Value, cadence: &str, now: i64) -> Result<()> {
+    validate_execution_input(input)?;
+    configure_execution(config, input);
     if let Some(schedule) = input.get("schedule") {
         let previous = config.get("schedule").cloned();
         if schedule.is_null() {

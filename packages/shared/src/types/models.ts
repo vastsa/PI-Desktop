@@ -21,56 +21,157 @@ export type SubagentThinkingLevel = SessionThinkingLevel;
 export type ModelProviderMetadata = string | Record<string, unknown>;
 export type ModelExperimentalMetadata = boolean | Record<string, unknown>;
 
-const MODEL_VENDOR_PREFIXES = new Set([
-  "anthropic",
+export const MODEL_VENDOR_PREFIXES = new Set([
   "amazon",
+  "anthropic",
   "aws",
+  "azure",
   "cohere",
   "deepseek",
   "deepseek-ai",
   "gemini",
   "google",
   "meta",
+  "meta-llama",
   "minimax",
   "mistral",
   "moonshot",
   "moonshotai",
   "openai",
   "qwen",
+  "tencent",
+  "x-ai",
+  "xai",
   "z-ai",
   "zai",
   "zhipuai",
-  "x-ai",
-  "xai",
 ]);
 
-/** Match a configured model ID with a namespaced models.dev ID. */
+const THINKING_SUFFIX_REGEX = /[-:](?:thinking|think)$/i;
+const ENDPOINT_SUFFIX_REGEX = /[-:](?:agent|latest)$/i;
+
+function stripRegion(value: string): string {
+  const at = value.indexOf("@");
+  return at > 0 ? value.slice(0, at) : value;
+}
+
+export function stripThinkingSuffix(value: string): string {
+  let current = value;
+  while (THINKING_SUFFIX_REGEX.test(current)) {
+    current = current.replace(THINKING_SUFFIX_REGEX, "");
+  }
+  return current;
+}
+
+export function stripEndpointSuffix(value: string): string {
+  let current = value;
+  while (ENDPOINT_SUFFIX_REGEX.test(current)) {
+    current = current.replace(ENDPOINT_SUFFIX_REGEX, "");
+  }
+  return current;
+}
+
+export function stripVariantSuffix(value: string): string {
+  let current = value;
+  let changed = true;
+  while (changed) {
+    const next = current
+      .replace(THINKING_SUFFIX_REGEX, "")
+      .replace(ENDPOINT_SUFFIX_REGEX, "");
+    changed = next !== current;
+    current = next;
+  }
+  return current;
+}
+
+function canonicalVendor(prefix: string): string {
+  if (prefix === "deepseek-ai") return "deepseek";
+  if (prefix === "gemini") return "google";
+  if (prefix === "x-ai") return "xai";
+  if (prefix === "z-ai" || prefix === "zhipuai") return "zai";
+  if (prefix === "moonshotai") return "moonshot";
+  if (prefix === "meta-llama") return "meta";
+  if (prefix === "aws") return "amazon";
+  return prefix;
+}
+
+function extractKnownVendor(id: string): string | undefined {
+  const parts = id.split("/");
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (MODEL_VENDOR_PREFIXES.has(part)) return canonicalVendor(part);
+  }
+
+  const lastPart = parts[parts.length - 1];
+  for (const prefix of MODEL_VENDOR_PREFIXES) {
+    if (lastPart === prefix || lastPart.startsWith(`${prefix}-`) || lastPart.startsWith(`${prefix}.`)) {
+      return canonicalVendor(prefix);
+    }
+  }
+  return undefined;
+}
+
+function pathLeaf(id: string): string {
+  const slash = id.lastIndexOf("/");
+  return slash >= 0 ? id.slice(slash + 1) : id;
+}
+
+function exactPathAliasMatch(left: string, right: string): boolean {
+  // Two independently routed paths cannot be identified by their leaf alone.
+  if (left.includes("/") === right.includes("/")) return false;
+  if (pathLeaf(left) !== pathLeaf(right)) return false;
+
+  const leftVendor = extractKnownVendor(left);
+  const rightVendor = extractKnownVendor(right);
+  return !leftVendor || !rightVendor || leftVendor === rightVendor;
+}
+
+function normalizedMatch(left: string, right: string, allowPathLeaf = false): boolean {
+  const leftVendor = extractKnownVendor(left);
+  const rightVendor = extractKnownVendor(right);
+  if (leftVendor && rightVendor && leftVendor !== rightVendor) return false;
+  if (left === right) return true;
+  if (left.endsWith(`/${right}`) || right.endsWith(`/${left}`)) return true;
+
+  for (const separator of ["-", "."] as const) {
+    for (const prefix of MODEL_VENDOR_PREFIXES) {
+      if (left === `${prefix}${separator}${right}`) return true;
+      if (right === `${prefix}${separator}${left}`) return true;
+    }
+  }
+
+  return allowPathLeaf && exactPathAliasMatch(left, right);
+}
+
+/** Configured-model identity: compare the complete wire ID, not catalog aliases. */
+export function modelWireIdsEqual(left: string, right: string): boolean {
+  const requested = right.trim().toLowerCase();
+  return requested.length > 0 && left.trim().toLowerCase() === requested;
+}
+
+/** Compare configured binding IDs without collapsing distinct route paths or variants. */
 export function modelIdsMatch(candidate: string, requested: string): boolean {
   const left = candidate.trim().toLowerCase();
   const right = requested.trim().toLowerCase();
   if (!left || !right) return false;
-  if (left === right) return true;
-  if (left.endsWith(`/${right}`) || right.endsWith(`/${left}`)) return true;
-  // Some providers use `model@region` aliases; the base model remains the
-  // same published record for matching purposes.
-  if (left.startsWith(`${right}@`) || right.startsWith(`${left}@`)) return true;
-  for (const separator of ["-", "."] as const) {
-    const leftPrefix = left.split(`${separator}${right}`, 1)[0];
-    if (
-      left.startsWith(`${leftPrefix}${separator}${right}`) &&
-      MODEL_VENDOR_PREFIXES.has(leftPrefix)
-    ) {
-      return true;
-    }
-    const rightPrefix = right.split(`${separator}${left}`, 1)[0];
-    if (
-      right.startsWith(`${rightPrefix}${separator}${left}`) &&
-      MODEL_VENDOR_PREFIXES.has(rightPrefix)
-    ) {
-      return true;
-    }
-  }
-  return false;
+  if (left.includes("@") && right.includes("@") && left !== right) return false;
+  return normalizedMatch(stripRegion(left), stripRegion(right));
+}
+
+/** Broader metadata-only aliases; never use for configured binding identity. */
+export function catalogModelIdsMatch(candidate: string, requested: string): boolean {
+  const left = candidate.trim().toLowerCase();
+  const right = requested.trim().toLowerCase();
+  if (!left || !right) return false;
+
+  const cleanLeft = stripRegion(left);
+  const cleanRight = stripRegion(right);
+  if (normalizedMatch(cleanLeft, cleanRight, true)) return true;
+
+  const strippedLeft = stripVariantSuffix(cleanLeft);
+  const strippedRight = stripVariantSuffix(cleanRight);
+  if (strippedLeft === cleanLeft && strippedRight === cleanRight) return false;
+  return normalizedMatch(strippedLeft, strippedRight, true);
 }
 
 /**

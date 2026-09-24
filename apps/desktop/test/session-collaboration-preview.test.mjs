@@ -8,6 +8,7 @@ import {
   formatSessionTimestamp,
   positionSessionHoverCard,
   sessionPreview,
+  sessionReferenceIsRunning,
 } from "../src/features/sessions/session-collaboration-view.ts";
 
 const summary = (overrides = {}) => ({
@@ -189,6 +190,14 @@ test("a hidden card reschedules at the idle interval and reads again when it ret
 test("an unknown host status falls back to the shared unknown label", () => {
   assert.equal(collaborationStatusKey("status-from-a-newer-host"), "sessionCollaboration.statusUnknown");
   assert.equal(collaborationStatusKey("completed"), "sessionCollaboration.statusCompleted");
+});
+
+test("related session references expose only active runtime state", () => {
+  const reference = { sessionId: "worker-session", title: "Worker" };
+  assert.equal(sessionReferenceIsRunning(reference, { "worker-session": true }), true);
+  assert.equal(sessionReferenceIsRunning(reference, { "worker-session": false }), false);
+  assert.equal(sessionReferenceIsRunning(reference, {}), false);
+  assert.equal(sessionReferenceIsRunning(reference, { "worker-session": true }, { "worker-session": [{}] }), false);
 });
 
 test("a reused worker displays only the current settled request's result", () => {

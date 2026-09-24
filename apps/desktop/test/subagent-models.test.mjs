@@ -266,6 +266,15 @@ test("a pin that is no longer configured stays selectable", () => {
   assert.equal(subagentModelOrphanPin("openai/gpt-5", choices), "openai/gpt-5");
 });
 
+test("a pin keeps the full configured model id even when its suffix is another model", () => {
+  const choices = subagentModelChoices([provider({ models: [binding("generic/model"), binding("model")] })]);
+  assert.equal(subagentModelSelectValue("anthropic/model", choices), "anthropic/model");
+  assert.equal(subagentModelSelectValue("anthropic/GENERIC/MODEL", choices), "anthropic/generic/model");
+  assert.equal(subagentModelOrphanPin("anthropic/other/model", choices), "anthropic/other/model");
+  const prefixedOnly = choices.slice(0, 1);
+  assert.equal(subagentModelOrphanPin("anthropic/model", prefixedOnly), "anthropic/model");
+});
+
 test("the editor model field is a configured-only searchable picker with an empty-state action", async () => {
   const source = await readFile(
     new URL("../src/components/settings/SubagentEditorSheet.tsx", import.meta.url),

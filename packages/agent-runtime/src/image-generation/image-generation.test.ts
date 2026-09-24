@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { generateImageBatch, generateOneImage, imageGenerationUrl } from "./index.js";
-import { publicImageAddress, generatedImageType, boundedBytes } from "./download.js";
+import {
+  publicImageAddress,
+  generatedImageType,
+  boundedBytes,
+  downloadGeneratedImage,
+} from "./download.js";
 import { imageGenerationPrompts, parseImageGenerationBinding } from "@pi-desktop/shared";
 
 const png =
@@ -151,21 +156,59 @@ describe("image generation", () => {
       vi.useRealTimers();
     }
   });
-  it("rejects unsafe image addresses, forged images and oversized bodies", async () => {
+  it("allows private and loopback image addresses but refuses metadata and unnamed classes", async () => {
     for (const address of [
       "127.0.0.1",
       "10.0.0.1",
-      "169.254.169.254",
       "172.16.0.1",
-      "192.168.0.1",
+      "192.168.1.5",
+      "100.64.0.1",
+      "169.254.1.1",
       "::1",
       "::ffff:127.0.0.1",
       "fc00::1",
+      "fe80::1",
+    ])
+      expect(publicImageAddress(address)).toBe(true);
+    for (const address of [
+      "169.254.169.254",
+      "100.100.100.200",
+      "fd00:ec2::254",
+      "0.0.0.0",
+      "::",
+      "224.0.0.1",
+      "ff02::1",
+      "240.0.0.1",
+      "192.0.2.1",
       "2002:7f00:1::",
+      "2001:db8::1",
+      "",
+      "not-an-ip",
     ])
       expect(publicImageAddress(address)).toBe(false);
     expect(publicImageAddress("8.8.8.8")).toBe(true);
     expect(() => generatedImageType(Buffer.from("<svg>"))).toThrow("IMAGE_INVALID_CONTENT");
     await expect(boundedBytes(new Response("oversized"), 2)).rejects.toThrow("IMAGE_TOO_LARGE");
+  });
+  it("accepts plaintext http on any port, keeps metadata and credentials refused", async () => {
+    const signal = new AbortController().signal;
+    await expect(downloadGeneratedImage("ftp://127.0.0.1:21/image.png", signal)).rejects.toThrow(
+      "IMAGE_INVALID_URL",
+    );
+    await expect(
+      downloadGeneratedImage("http://user:pass@127.0.0.1:1/image.png", signal),
+    ).rejects.toThrow("IMAGE_INVALID_URL");
+    await expect(
+      downloadGeneratedImage("http://169.254.169.254/latest/meta-data/", signal),
+    ).rejects.toThrow("IMAGE_UNSAFE_URL");
+
+    // A private http URL on a non-443 port clears URL and address validation;
+    // the port below is closed, so the failure is the connection itself.
+    const error = await downloadGeneratedImage("http://127.0.0.1:1/image.png", signal).then(
+      () => null,
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as { errorCode?: string }).errorCode).toBeUndefined();
   });
 });

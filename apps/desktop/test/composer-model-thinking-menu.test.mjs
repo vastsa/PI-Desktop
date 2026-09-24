@@ -9,7 +9,8 @@ const [modelMenuSource, pickerSource, sliderSource] = await Promise.all([
   readComposerModule("ComposerModelPicker.tsx"),
   readComposerModule("ThinkingLevelSlider.tsx"),
 ]);
-const composerSource = `${modelMenuSource}\n${pickerSource}\n${sliderSource}`;
+const listSource = await readComposerModule("ComposerModelList.tsx");
+const composerSource = `${modelMenuSource}\n${pickerSource}\n${sliderSource}\n${listSource}`;
 const stylesSource = await loadStyles();
 
 test("Composer uses one model × reasoning popover with a root and in-place submenus", () => {
@@ -116,8 +117,8 @@ test("model options are visually nested under their provider heading", () => {
 });
 
 test("model groups use the account-aware display name", () => {
-  assert.match(composerSource, /composerProviderDisplayName\(candidate\)/);
-  assert.match(composerSource, /composerProviderSearchText\(candidate\)/);
+  assert.match(composerSource, /providerDisplayName: providerDisplayName\(candidate\)/);
+  assert.match(composerSource, /providerSearchText: providerSearchText\(candidate\)/);
   assert.match(composerSource, /aria-label=\{group\.providerDisplayName\}/);
   assert.match(composerSource, /\{group\.providerDisplayName\}/);
 });
@@ -135,4 +136,20 @@ test("provider headings establish a stronger type level than model rows", () => 
     stylesSource,
     /:lang\(zh-CN\) \.composer-model-group-label\s*\{[\s\S]*?text-transform:\s*none/,
   );
+});
+
+test("Composer uses alias labels while preserving the exact selected wire id", async () => {
+  const chipSource = await readFile(new URL("../src/components/Composer.tsx", import.meta.url), "utf8");
+  assert.match(chipSource, /composerModelDisplayName\(provider, modelId, selectedModelInfo\?\.displayName\)/);
+  assert.match(listSource, /const optionTitle = model\.modelId/);
+  assert.match(listSource, /sameComposerModelId\(selectedModelId \?\? "", model\.modelId\)/);
+  assert.match(modelMenuSource, /modelId: nextModelId/);
+  assert.match(modelMenuSource, /sameComposerModelId\(entry\.id, nextModelId\)/);
+  assert.match(modelMenuSource, /sameComposerModelId\(entry\.model\.modelId, modelId \?\? ""\)/);
+});
+
+test("reasoning projection uses the selected exact catalog row and binding", async () => {
+  const source = await readComposerModule("model.ts");
+  assert.match(source, /sameComposerModelId\(candidate\.modelId, modelId\)/);
+  assert.match(source, /sameComposerModelId\(candidate\.id, model\.modelId\)/);
 });

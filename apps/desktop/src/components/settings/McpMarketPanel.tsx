@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
+  allowInsecureUserEndpoints,
   BUILTIN_MCP_CATALOG,
   DEFAULT_MARKET_SOURCE,
   GLOBAL_SCOPE,
@@ -78,10 +79,12 @@ type MarketItem = McpCatalogEntry & { sourceId?: string };
 
 const SOURCES_STORAGE_KEY = "pi.mcp-market.sources.v1";
 
-function loadSources(): MarketSource[] {
+function loadSources(allowInsecureHttp = false): MarketSource[] {
   try {
     const raw = window.localStorage?.getItem(SOURCES_STORAGE_KEY);
-    return raw ? sanitizeMarketSources(JSON.parse(raw)) : [DEFAULT_MARKET_SOURCE];
+    return raw
+      ? sanitizeMarketSources(JSON.parse(raw), { allowInsecureHttp })
+      : [DEFAULT_MARKET_SOURCE];
   } catch {
     return [DEFAULT_MARKET_SOURCE];
   }
@@ -121,6 +124,11 @@ export function McpMarketPanel({
   const [saving, setSaving] = useState(false);
   const [remote, setRemote] = useState<RemoteState>(REMOTE_IDLE);
   const [sources, setSources] = useState<MarketSource[]>(loadSources);
+  // Whether a plaintext hop to a user-supplied source is allowed, from the
+  // stored `networkPolicy`. The panel validates its persisted list with the same
+  // rule the main process applies to the request, so a source the user accepted
+  // survives a reload and one they have not stays out.
+  const [allowInsecureSources, setAllowInsecureSources] = useState(false);
   const requestGeneration = useRef(0);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [draftSource, setDraftSource] = useState<{
@@ -130,8 +138,20 @@ export function McpMarketPanel({
   }>({ name: "", url: "", kind: "registry" });
 
   useEffect(() => {
-    saveSources(sources);
-  }, [sources]);
+    let cancelled = false;
+    void api
+      .getSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        const insecure = allowInsecureUserEndpoints(settings);
+        setAllowInsecureSources(insecure);
+        if (insecure) setSources(loadSources(true));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Every configured source is queried live (debounced); built-in picks render
   // immediately and stay as the offline floor when all sources are down.
@@ -383,7 +403,7 @@ export function McpMarketPanel({
 
   const addSource = () => {
     const url = draftSource.url.trim();
-    if (!isSafeMarketSourceUrl(url)) {
+    if (!isSafeMarketSourceUrl(url, { allowInsecureHttp: allowInsecureSources })) {
       showToast(t("settings.mcpMarket.sourceUnsafe"), { variant: "error" });
       return;
     }

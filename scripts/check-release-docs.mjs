@@ -111,6 +111,7 @@ async function loadChangelogCatalog() {
     "packages/shared/src/changelog-es.ts",
     "packages/shared/src/changelog-fr.ts",
     "packages/shared/src/changelog-ko.ts",
+    "packages/shared/src/changelog-pt-BR.ts",
     "packages/shared/src/changelog-tr.ts",
   ];
   try {
@@ -144,7 +145,7 @@ try {
 if (catalogs) {
   const enEntries = catalogs.en;
   const expectedVersions = enEntries?.map((entry) => entry.version) ?? [];
-  const requiredLocales = ["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko"];
+  const requiredLocales = ["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko", "pt-BR"];
   for (const locale of requiredLocales) {
     if (!catalogs[locale]) {
       fail("packages/shared/src/changelog.ts", `missing shipped locale catalog: ${locale}`);

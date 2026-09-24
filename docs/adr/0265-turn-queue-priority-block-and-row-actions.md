@@ -30,12 +30,21 @@ queue at all even though the Host already orders it by a durable `position`.
    already carries a `priority` fails with `CONFLICT`/`ALREADY_PRIORITIZED`
    instead of silently moving it again. `session.queuePrioritize` keeps moving
    optimistic mirror does the same.
-3. **A promoted row is locked.** Because the Host has already committed to
-   starting it, its row disables move up, move down, edit, and remove, and its
-   Send now button reads as decided (`chat.sendNowPending`). The disabled
-   controls keep their tooltip and `aria-disabled` state so the lock is
-   explained rather than silent. There is deliberately no un-promote path: a
-   promotion cannot be half-applied.
+3. **Promotion fixes order, but does not prevent cancellation.** A promoted
+   row disables move up, move down, edit, and Send now. Its label explains that
+   it is waiting for the current task to finish. Remove remains available until
+   delivery, and the renderer waits for Host confirmation before removing it.
+   Cancellation, promotion, reordering, and delivery reservation share session
+   admission serialization. Runtime delivery runs outside that lock and reserves
+   only its own input. Once an input is reserved or accepted as steering input,
+   cancellation returns `CONFLICT`; consuming an input in another turn must
+   not be mistaken for an earlier successful cancellation. A refused or failed
+   graceful stop is reported without discarding the queued input. There is no
+   un-promote path. Acceptance is recorded before durable cleanup; failed cleanup
+   emits an error and remains retryable without re-execution in the live Host.
+   The queue retains its record when persistence fails. Acceptance is an in-memory
+   guard, not a durable receipt: restart after failed cleanup retains the existing
+   replay risk and does not provide exactly-once delivery.
 4. **A reorder operation for the plain queue.** `session.queueReorder` swaps one
    entry's `position` with its adjacent non-prioritized neighbour in the
    requested direction, and reports `moved: false` for a missing entry, a

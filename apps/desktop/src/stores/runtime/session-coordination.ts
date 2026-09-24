@@ -7,10 +7,10 @@ import type {
 import {
   contextCompactionMark,
   initialThinkingLevelForBinding,
-  modelIdsMatch,
   normalizeMode,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import { sameComposerModelId } from "../../lib/composer-models";
 import { scheduleHomeDraftAdopt } from "../../lib/composer-draft-cache";
 import {
   commitForkedSessionState,
@@ -154,7 +154,7 @@ export function createSessionCoordination({
     const records =
       session?.compactions ??
       (session?.compaction ? [session.compaction] : []);
-    const marks = records.map(contextCompactionMark);
+    const marks = records.map((record) => ({ ...contextCompactionMark(record), summary: record.summary }));
     set((state) => ({
       sessionCompactions:
         marks.length > 0
@@ -289,7 +289,7 @@ export function createSessionCoordination({
       (provider) => provider.id === inherited.providerId,
     );
     const inheritedBinding = defaultProvider?.models.find((candidate) =>
-      modelIdsMatch(candidate.id, inherited.modelId ?? ""),
+      sameComposerModelId(candidate.id, inherited.modelId ?? ""),
     );
     const defaultThinkingLevel = initialThinkingLevelForBinding(
       inheritedBinding,

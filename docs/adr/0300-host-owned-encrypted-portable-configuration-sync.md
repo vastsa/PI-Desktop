@@ -34,10 +34,21 @@ project identities are assigned and retained by Host metadata; project-group
 roots use the portable group identity plus ordered root position, so absolute
 folder paths never become cross-device identity.
 
-WebDAV initialization and head publication require reliable conditional writes:
-`If-None-Match: *` for creation and strong-ETag `If-Match` for updates. A CAS
-failure restarts reconciliation. Servers that cannot prove this capability are
-reported as unsupported rather than silently using last-writer-wins.
+Strict WebDAV initialization and head publication require reliable conditional
+writes: `If-None-Match: *` for creation and strong-ETag `If-Match` for updates.
+A CAS failure restarts reconciliation. ADR 0301 defines the separately
+confirmed append-only compatibility mode for servers that fail this probe;
+there is no silent downgrade to unconditional last-writer-wins. HTTPS is the
+default transport; the settings UI may explicitly acknowledge LAN HTTP risk,
+and Host restricts that exception to localhost, `.local`, or private /
+link-local IP addresses. Public HTTP endpoints remain rejected.
+
+The capability probe may record an endpoint-specific `502 Bad Gateway` response
+for a missing object, because some WebDAV gateways use that status instead of
+`404`. Only that observed status is treated as absence for subsequent reads;
+arbitrary `502` responses are not globally treated as an empty remote. This
+compatibility does not change strict mode; servers that ignore conditional-write
+headers are supported only through the explicit append-only mode in ADR 0301.
 
 ## Consequences
 
@@ -63,9 +74,10 @@ Costs and limits:
   WebDAV conditional-write fixture are part of the Host-owned baseline. A
   restore creates a new revision and a local recovery point; it does not make
   an old copied vault key revocable.
-- Strong conditional-write behavior is stricter than many simple WebDAV
-  servers; backup-only behavior must be labeled and must not pretend to be
-  bidirectional sync.
+- Strict conditional-write behavior is stricter than many simple WebDAV
+  servers. The explicit append-only mode is a labeled bidirectional
+  compatibility path with retained history and weaker publication guarantees;
+  it must not be presented as strict CAS.
 
 ## Alternatives rejected
 

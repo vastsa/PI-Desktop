@@ -1,6 +1,6 @@
 # ADR 0064: Codex-parity context compaction
 
-- Status: Accepted
+- Status: Accepted (automatic trigger amended by D623 / issue #970)
 - Date: 2026-08-06
 - Deciders: PI-Desktop core
 - Amends: ADR 0061 / ADR 0030 / D158 / D200; amended by ADR 0136
@@ -61,9 +61,11 @@ retained-tail recovery, ADR 0061's model-window-derived budgets, and ADR 0061's
    `pendingBackgroundCheckpoint`, `backgroundCompaction`, `backgroundAbort`,
    `checkpointBaselineTokens`, `backgroundLimit`, and the three call sites in
    `tool_execution_start`, `prompt()`, and the run `finally`.
-   `prepareNextTurn()` re-estimates the budget and compacts synchronously when
-   the total crosses `hardLimit`. The increment-scoped trigger goes with it —
-   there is no longer a second threshold for it to guard.
+   `prompt()` and `prepareNextTurn()` re-estimate at their pre-request
+   boundaries and compact synchronously when the estimate reaches
+   `floor(hardLimit * 0.9)`. There is no background checkpoint. `hardLimit`
+   remains the non-negotiable request safety guard; failed compaction below it
+   may continue, but no request is issued at or above it.
 2. **Codex's retained shape.** `codexShapedPreparation()` keeps
    `prepareCompaction()`'s cut point (and therefore its turn-boundary and
    split-turn handling), then folds `turnPrefixMessages` and `retainedTail` back
@@ -92,8 +94,10 @@ retained-tail recovery, ADR 0061's model-window-derived budgets, and ADR 0061's
 4. **`new_context` is back.** The tool is parameterless and carries Codex's
    description verbatim; executing it only sets `pendingModelCompaction` and
    returns the family's rollover message. `prepareNextTurn()` compacts when
-   `pendingModelCompaction || tokens >= hardLimit`, matching Codex's
-   `should_roll_over`. The name is synchronized across `activeTools()`,
+   the model requested `new_context` or the estimate reaches
+   `floor(hardLimit * 0.9)`, matching the `should_roll_over` turn boundary.
+   `hardLimit` remains the final request guard (D623). The name is synchronized
+   across `activeTools()`,
    `isCoreTool()`, the contract-mode allowlists, and the host-core
    no-confirmation allowlist (`crates/host-core/src/permissions.rs`), where it
    replaces `"CompactContext"`.
@@ -163,9 +167,11 @@ compaction controls and still ignores persisted `contextCompaction` values
 - Model context after a compaction is much smaller and much lossier: no
   assistant reasoning and no tool output survives except through the summary.
   The visible transcript is untouched, so nothing is lost to the user.
-- The summary input is now the entire compacted range rather than the range
-  minus the tail, so each summary request is larger than under ADR 0061 — but
-  there are fewer of them, because the trigger is one hard edge again.
+- The summary input covers the entire compacted range rather than the range
+  minus the tail, so each summary request remains larger than under ADR 0061.
+- The 90% safety trigger intentionally pays for some additional summaries to
+  reduce provider-side context overflows; `hardLimit` remains the fail-closed
+  backstop.
 - Compaction is auditable from the transcript again, restoring ADR 0030's
   visibility property that ADR 0061 reversed.
 - Every compaction interrupts the user with a warning. This is intended: only
@@ -213,3 +219,12 @@ against "one summary request" from a settings row.
 - `codex-rs/core/src/compact.rs`, `compact_token_budget.rs`,
   `session/token_budget.rs`, `tools/handlers/new_context_window_spec.rs`
   (behavioral reference)
+## Amendment (2026-09-23, D623 / issue #970): Earlier inline compaction trigger
+
+The inline-only lifecycle is unchanged. Automatic compaction now starts at 90%
+of the derived safe budget from both new-prompt preflight and in-run turn-boundary
+checks. This leaves a deterministic margin for estimator drift and growth during
+the preceding model/tool turn. A failed soft-trigger compaction may proceed only
+while the context remains below `hardLimit`; at or above the hard boundary the
+runtime still blocks the provider request. No settings, background work, host
+protocol, or storage semantics are added.

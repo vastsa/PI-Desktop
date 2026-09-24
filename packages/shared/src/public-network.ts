@@ -137,6 +137,194 @@ export function isPublicHttpsUrl(value: string): boolean {
 
 /** Backward-compatible descriptive alias for the generic public URL guard. */
 export const isSafePublicHttpsUrl = isPublicHttpsUrl;
+/**
+ * Cloud instance-metadata services answer with the host's own credentials, so
+ * no user-supplied endpoint may name one: a settings field carrying such an
+ * address is an injected SSRF payload far more often than it is a service the
+ * user runs themselves.
+ */
+const CLOUD_METADATA_HOSTNAMES = new Set([
+  "metadata.google.internal",
+  "metadata",
+  "instance-data",
+]);
+
+const CLOUD_METADATA_ADDRESSES = new Set([
+  "169.254.169.254",
+  "100.100.100.200",
+  "fd00:ec2::254",
+]);
+
+/** A hostname with its brackets, trailing dot and case normalized away. */
+function bareHostname(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+    .replace(/\.+$/, "");
+}
+
+/** Whether a hostname names a cloud instance-metadata service. */
+export function isCloudMetadataHost(hostname: string): boolean {
+  if (typeof hostname !== "string") return false;
+  const host = bareHostname(hostname);
+  return CLOUD_METADATA_HOSTNAMES.has(host) || isCloudMetadataAddress(host);
+}
+
+/** The dotted-quad spelling of a 32-bit IPv4 address. */
+function dottedIpv4(value: number): string {
+  return [value >>> 24, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff].join(".");
+}
+
+/**
+ * Whether an IP literal names a cloud instance-metadata service.
+ *
+ * The comparison runs on the address a literal *means*, never on its spelling:
+ * `::ffff:169.254.169.254`, `::ffff:a9fe:a9fe` and `::169.254.169.254` all name
+ * the IPv4 metadata service, and `fd00:ec2:0:0:0:0:0:254` is the same address as
+ * `fd00:ec2::254`. A spelling this guard failed to recognize would be a way to
+ * reach the host's own credentials, so every equivalent form is folded here.
+ */
+export function isCloudMetadataAddress(address: string): boolean {
+  if (typeof address !== "string") return false;
+  const host = bareHostname(address);
+  if (!host) return false;
+  if (CLOUD_METADATA_ADDRESSES.has(host)) return true;
+
+  const ipv4 = parseIpv4(host);
+  if (ipv4 !== null) return CLOUD_METADATA_ADDRESSES.has(dottedIpv4(ipv4));
+
+  const ipv6 = parseIpv6(host);
+  if (!ipv6) return false;
+  const { groups } = ipv6;
+  // AWS's IPv6 metadata address, in any spelling.
+  if (
+    groups[0] === 0xfd00 &&
+    groups[1] === 0x0ec2 &&
+    groups[7] === 0x0254 &&
+    groups.slice(2, 7).every((group) => group === 0)
+  ) {
+    return true;
+  }
+  // IPv4-mapped and IPv4-compatible literals carry the IPv4 address itself.
+  if (
+    groups.slice(0, 5).every((group) => group === 0) &&
+    (groups[5] === 0 || groups[5] === 0xffff)
+  ) {
+    return CLOUD_METADATA_ADDRESSES.has(dottedIpv4(groups[6] * 0x10000 + groups[7]));
+  }
+  return false;
+}
+
+/**
+ * Address classes a *user-supplied* endpoint may reach.
+ *
+ * The public-network guard exists to stop third-party content — a market
+ * catalog, a registry record, a redirect — from turning this app into a probe
+ * of the machine's own network. A host the user typed in themselves is a
+ * different trust input: a model endpoint, an MCP server, a market source URL
+ * and a git remote are all chosen by the person sitting in front of the app,
+ * who already knows that machine. Refusing those addresses pushes the same work
+ * outside the app without removing the request, so loopback, RFC1918, CGNAT,
+ * link-local, ULA and site-local are reachable here.
+ *
+ * The classes that name no destination at all (`unspecified`, `multicast`,
+ * `reserved`, `documentation`, `invalid`) and cloud metadata stay refused on
+ * every input, because none of them is a service the user could mean.
+ */
+export function isAcceptableUserEndpointAddress(
+  address: string,
+  kind: PublicNetworkAddressKind,
+  route: PublicNetworkRoute,
+): boolean {
+  if (isCloudMetadataAddress(address)) return false;
+  switch (kind) {
+    case "public":
+    case "loopback":
+    case "private":
+    case "cgnat":
+    case "link-local":
+    case "ula":
+    case "site-local":
+      return true;
+    case "benchmark":
+      // A TUN fake-IP answer on a proxied route is the proxy's own placeholder
+      // rather than an address this app dials (ADR 0272); on a direct route it
+      // still names no reachable service.
+      return route === "proxied";
+    default:
+      return false;
+  }
+}
+
+/**
+ * Check a user-supplied endpoint hostname without performing DNS. Literal
+ * addresses are classified directly; a DNS name is syntactically acceptable and
+ * the address it resolves to is judged by
+ * {@link isAcceptableUserEndpointAddress}.
+ */
+export function isUserSuppliedHostname(hostname: string): boolean {
+  if (typeof hostname !== "string") return false;
+  const host = bareHostname(hostname);
+  if (!host) return false;
+  if (isCloudMetadataHost(host)) return false;
+
+  if (host.includes(":")) {
+    return isAcceptableUserEndpointAddress(host, classifyIpLiteral(host), "direct");
+  }
+  const literal = parseIpv4(host);
+  if (literal !== null) {
+    return isAcceptableUserEndpointAddress(host, classifyIpv4(literal), "direct");
+  }
+  // WHATWG URL normalizes legacy numeric IPv4 forms (decimal, hexadecimal and
+  // shortened dotted forms) before exposing `hostname`. Keep a hostname handed
+  // in directly consistent with one that came out of `new URL(...).hostname`.
+  if (/^[0-9a-fx.]+$/i.test(host)) {
+    try {
+      const normalized = bareHostname(new URL(`https://${host}`).hostname);
+      if (normalized !== host) {
+        const normalizedLiteral = parseIpv4(normalized);
+        if (normalizedLiteral !== null) {
+          return isAcceptableUserEndpointAddress(
+            normalized,
+            classifyIpv4(normalizedLiteral),
+            "direct",
+          );
+        }
+      }
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Check a credentials-free URL whose host the user entered themselves.
+ *
+ * `http` is accepted only under an explicit opt-in, because on a LAN it is an
+ * unencrypted hop that carries whatever credentials the endpoint takes — the
+ * same shape ADR 0300 uses for a WebDAV endpoint. `https` to a private host
+ * needs no opt-in: the transport is still protected, and the address is the
+ * user's own choice.
+ */
+export function isSafeUserEndpointUrl(
+  value: string,
+  options: { allowInsecureHttp?: boolean } = {},
+): boolean {
+  if (typeof value !== "string") return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+  if (parsed.protocol === "http:" && options.allowInsecureHttp !== true) return false;
+  if (parsed.username || parsed.password) return false;
+  return isUserSuppliedHostname(parsed.hostname);
+}
 
 /**
  * The route the transport will actually take for a URL, as the Chromium session

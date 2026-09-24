@@ -7,6 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { allowInsecureUserEndpoints } from "@pi-desktop/shared";
 import { parseGitCloneUrl } from "../lib/git-clone-url";
 import {
   filterSwitcherProjects,
@@ -43,6 +44,7 @@ export function HomeProjectSwitcher({
   const openProject = useAppStore((state) => state.openProject);
   const cloneProject = useAppStore((state) => state.cloneProject);
   const showToast = useAppStore((state) => state.showToast);
+  const settings = useAppStore((state) => state.settings);
 
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<"list" | "clone">("list");
@@ -68,7 +70,9 @@ export function HomeProjectSwitcher({
     [projects, query],
   );
   const activeKey = normalizeProjectPath(activeProjectPath ?? path);
-  const cloneTarget = parseGitCloneUrl(cloneUrl);
+  const cloneTarget = parseGitCloneUrl(cloneUrl, {
+    allowInsecureHttp: allowInsecureUserEndpoints(settings),
+  });
 
   const close = useCallback(() => {
     setOpen(false);

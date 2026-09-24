@@ -32,6 +32,7 @@ export {
   type SourcedCatalogEntry,
 } from "./mcp-registry.js";
 export * from "./public-network.js";
+export * from "./network-policy.js";
 export * from "./skill-catalog.js";
 export * from "./skill-catalog-builtin.js";
 export * from "./model-config-import.js";
@@ -49,6 +50,7 @@ export * from "./model-catalog.js";
 export * from "./github-feedback.js";
 export * from "./network-proxy.js";
 export * from "./attachment-limits.js";
+export * from "./attachment-formats.js";
 export * from "./speech.js";
 export * from "./image-generation.js";
 export * from "./font-size.js";
@@ -64,3 +66,5 @@ export * from "./tray-sessions.js";
 export * from "./window-chrome.js";
 export * from "./prompt-enhancement.js";
 export * from "./native-web-search.js";
+export * from "./native-web-search-transport.js";
+export * from "./header-value.js";

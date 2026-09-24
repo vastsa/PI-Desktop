@@ -225,3 +225,40 @@ scripts/e2e/hosted-search-provider.mjs
 scripts/e2e/hosted-search-scenarios.mjs
 scripts/e2e/hosted-search-sidecar.mjs
 ```
+
+## OpenAI Codex OAuth hosted-search follow-up (2026-09-23)
+
+The official [OpenAI web-search guide](https://developers.openai.com/api/docs/guides/tools-web-search)
+documents `tools: [{ type: "web_search" }]` for the public Responses API, but
+does not specify the private ChatGPT Codex subscription endpoint. The pi upstream
+issue [#8556](https://github.com/earendil-works/pi/issues/8556) reports a
+successful verification of the classic Codex Responses top-level `tools` shape
+and `response.web_search_call.*` events. This implementation therefore opts in
+only for `openai-codex-responses`, keeps the feature off by default, and surfaces
+backend rejection normally. No OAuth token or live API request was used.
+
+### Task-candidate verification
+
+- Branch: `fix/openai-codex-native-search`.
+- Base: `origin/main` at `ea5890b94`; it is an ancestor of the task candidate.
+- pi-ai: `0.87.1`; patch SHA-256 and `pnpm-lock.yaml` patch hash both
+  `6cf3998c09e8bba22cd63ceebe74a33332d9fd0c9ef3d5046941cb53513973f8`.
+- `pnpm --filter @pi-desktop/shared test`: PASS, 84 files / 1,012 tests.
+- `pnpm --filter @pi-desktop/agent-runtime test`: PASS, 68 files / 1,029 tests.
+- `pnpm build:js`, `pnpm -r --if-present typecheck`, `pnpm lint`, and
+  `pnpm docs:check`: PASS.
+- `pnpm test:e2e:hosted-search`: PASS, 7/7 offline sidecar scenarios; bundle
+  SHA-256 `633fc6e9ffafca718a53a2b9949d28259b90584b332d7a9a30e5f5763c64caae`.
+- Codex adapter contract uses a synthetic JWT, captures the body at
+  `onPayload`, then aborts before fetch. It verifies opt-in body fields and
+  opt-out omission without contacting a provider.
+- `TMPDIR=$PI_SCRATCH_DIR pnpm test:e2e:provider-api-style`: PASS; the
+  production `VendorAccountDialog` checkbox starts off, can be enabled for a
+  synthetic Codex OAuth account, and saves `nativeWebSearch` in both locales.
+  Discovery is stubbed; no Host persistence or live provider is exercised.
+
+`pnpm patch-commit` needed installation metadata for the new worktree. It
+resolved packages from the cache with zero downloads, materialized the ignored
+worktree `node_modules`, and ran Electron postinstall. No live OAuth account or
+paid service was used. This is task-candidate evidence, not live Codex account
+certification.

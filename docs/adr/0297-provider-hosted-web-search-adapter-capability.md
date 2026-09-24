@@ -35,33 +35,34 @@ Two upstream facts forced the design:
 
 ## Decision
 
-1. **Capability is declared data, evaluated in one place.** The per-model
-   opt-in is `ModelBinding.nativeWebSearch` (settings UI: a checkbox in the
-   model's advanced sheet, disabled unless the provider's API style is
-   `responses` or `anthropic_messages`). models.dev publishes no hosted-tool
-   capability, so there is no catalog default; absent means off. The single
-   evaluation point is `resolveNativeWebSearch` in
-   `packages/shared/src/native-web-search.ts`, keyed on the resolved wire
-   API — never vendor names, base URL hostnames, or model-id substrings.
+1. **Capability is declared data and gated by the resolved wire API.** The
+   per-model opt-in is `ModelBinding.nativeWebSearch` (settings UI: a checkbox
+   in the model's advanced sheet, disabled unless its resolved search route is
+   `responses`, `openai_codex_responses`, or `anthropic_messages`). models.dev
+   publishes no hosted-tool capability, so there is no catalog default; absent
+   means off. Runtime `resolveNativeWebSearch` keys on the final adapter API —
+   never vendor names or model-id substrings. The official-route amendment
+   below resolves an opted-in request before this final wire gate.
 
-2. **Attachment and extraction live in the pi-ai adapters**, delivered by
-   extending `patches/@earendil-works__pi-ai@0.86.1.patch`:
-   - `anthropic-messages.js` appends the `web_search_20250305` tool when
-     `model.webSearch === true`, captures search blocks as `hostedSearch`
-     content parts (raw wire block kept whole, streamed `input_json_delta`
-     accumulated so the query is available live), collects `citations_delta`,
-     and replays both halves of each pair in order on later turns.
-   - `openai-responses(-shared).js` (and the Azure variant's own
-     `buildParams`) appends the `web_search` tool, asks for
-     `web_search_call.action.sources` via the opt-in `include` channel,
-     creates a `hostedSearch` slot for `web_search_call` items, collects
-     `url_citation` annotations, and replays the item for the same model.
-   Both adapters push a `hosted_search_update` stream event per block
-   transition; `patches/@earendil-works__pi-agent-core@0.86.1.patch` teaches
-   the agent loop to forward it as `message_update` — without that second
-   patch the events die in the loop's switch and search activity renders only
-   when the whole turn finishes. The patches are a stopgap; the same changes
-   should be proposed upstream and dropped once released.
+2. **Attachment and extraction live in pi-ai adapters**, delivered by
+   extending `patches/@earendil-works__pi-ai@0.87.1.patch`:
+   - `anthropic-messages.js` appends `web_search_20250305` when opted in,
+     captures search blocks as `hostedSearch`, collects citations, and replays
+     both halves of each pair on later turns.
+   - `openai-responses(-shared).js` and Azure's `buildParams` append `web_search`,
+     request `web_search_call.action.sources`, capture search items/citations,
+     and replay the item for the same model.
+   - `openai-codex-responses.js` uses a separate Codex request builder and
+     ChatGPT subscription endpoint. It appends the same top-level Responses
+     `web_search` tool and source include only when opted in; it reuses the
+     shared Responses stream parser and model-scoped replay projection. This
+     is the classic Codex Responses request shape; the backend is not the
+     public `/v1/responses` API.
+   All three adapter paths push `hosted_search_update` transitions. The
+   `pi-agent-core` patch forwards them as `message_update`, so activity renders
+   while a search is in flight instead of only at turn completion. These
+   patches are a stopgap; propose the changes upstream and remove them once
+   released.
 
 3. **The flag travels the existing model-config channel.**
    `ModelConfigWithBinding` copies `nativeWebSearch` into
@@ -111,3 +112,21 @@ Two upstream facts forced the design:
 - Search executes on the provider. There is no local fetch, no ask/allow
   prompt, and billing is the provider's. The model-level opt-in (default
   off) is the user consent surface.
+
+## 2026-09-24 amendment: one service entry for official search
+
+DeepSeek's saved Completions configuration cannot carry the hosted search
+tool available on its published Anthropic interface. Keep the existing
+per-model search opt-in and resolve the request
+through a shared published-route table instead. DeepSeek Completions requests
+use its same-origin Anthropic interface only when search is enabled; xAI and
+legacy OpenAI Completions use same-origin Responses. The existing adapters own
+request construction, search parsing, citations and history replay.
+
+Only exact official HTTPS origins and paths match; vendor/model labels do not.
+Unknown relays and explicit non-Completions protocols stay unchanged. Saved
+provider settings are never rewritten, so turning search off restores the
+original route. The model, registry, history restoration and delegation must
+all use the same effective API. No new engine, tool executor or persistence
+contract is introduced. Distinct vendor formats need their own tested adapter;
+a disabled control describes missing app integration, not vendor inability.

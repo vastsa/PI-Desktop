@@ -383,15 +383,16 @@ entries. The desktop runtime owns when they run and how the result crosses the
 Rust storage boundary; OpenCode DCP is an AGPL-3.0 behavioral reference only,
 not a linked or copied dependency.
 
-Compaction follows Codex's mechanism (ADR 0064): it always happens inline at a
-turn boundary, the model can request it through `new_context`, every compaction
-adds a transcript row and raises one warning toast, and there is no
-pre-computation anywhere.
+Compaction follows Codex's mechanism (ADR 0064, amended by D623): it remains
+inline at turn boundaries, and the model can request it through `new_context`.
+Automatic compaction starts at 90% of the derived `hardLimit`; there is no
+background pre-computation.
 
 pi 0.84.4+ invokes `prepareNextTurn` only when the loop will start another
 assistant turn in the same run — including between a completed tool batch and
-the follow-up model request. A new user prompt still compacts before its first
-provider request through `automaticCompactionNeeded` in `prompt()`.
+the follow-up model request. A new user prompt is checked before its first
+provider request through `automaticCompactionNeeded` in `prompt()`, including
+the pending user message.
 
 For every pi loop turn:
 
@@ -399,21 +400,22 @@ For every pi loop turn:
    results for that turn are complete
 2. PI-Desktop rebuilds the context from the full transcript plus the newest
    valid checkpoint and estimates the next request budget
-3. below the hard boundary, and with no pending model request, the next turn
-   proceeds unchanged
-4. at or above the hard boundary, or when the model called `new_context`,
+3. below 90% of `hardLimit`, and with no pending model request, the next turn
+   proceeds unchanged (a budget reminder may be added to that request)
+4. at or above the 90% trigger, or when the model called `new_context`,
    compaction runs synchronously before the next provider request. In the
    summary family, generation is mandatory; the runtime preflights the summary
-   input against the model window and skips a request that cannot fit. An
-   automatic summary failure first attempts a deterministic retained-tail
-   checkpoint, while manual compaction still reports
-   `CONTEXT_COMPACTION_FAILED`
+   input against the model window, reduces it once, and then splits a range that
+   still does not fit into chunks that each do, so a prompt too large for one
+   request is summarized by several (ADR 0302). An automatic summary failure
+   first attempts a deterministic retained-tail checkpoint. If a soft-trigger
+   compaction fails but the request remains below `hardLimit`, the unchanged
+   context may proceed; once the hard boundary is reached, failure is terminal.
 5. successful generation or deterministic recovery first appends the
    checkpoint through host-core, then installs its summary plus the applicable
-   retained tail as the runtime context for the next provider request; a
-   hard-boundary checkpoint is re-estimated before it is persisted and again
-   before continuation, and cannot authorize the next request unless it is
-   below the hard budget
+   retained tail as the runtime context for the next provider request; every
+   checkpoint is re-estimated before persistence and continuation, and cannot
+   authorize a request at or above the hard budget
 
 Checkpoint generation and installation are separate operations.
 `buildCheckpoint` runs the preparation, budget preflight, and summary request
@@ -421,15 +423,29 @@ without persisting anything or changing the active checkpoint; installation
 re-estimates, appends through host-core, updates the active checkpoint, and
 emits `compaction_end`. The blocking path composes the two back to back.
 
-**What survives a checkpoint.** The model context after a compaction is the
-summary plus, at most, one **user** message; assistant and tool messages are
-dropped from model context and remain in the visible transcript. pi's
+**What survives a checkpoint.** A successful checkpoint leaves the model context
+as the summary plus, at most, one **user** message; assistant and tool messages
+are dropped from model context and remain in the visible transcript. pi's
 `prepareCompaction` still chooses the cut point, so its turn-boundary and
 split-turn handling are preserved, but the runtime then folds the split-turn
 prefix and the recent tail back into the summary input, so the summary covers
 the whole compacted range and nothing crosses the boundary uncovered.
 
-The retention mode is selected from the lifecycle that requested compaction:
+A **retained-tail fallback** is the exception, because no summary covers its
+range: it keeps the real recent window — the newest contiguous messages of the
+compacted range, every role, bounded by the keep-recent target and by what the
+safe budget leaves once the carried-forward summary and the recovery notice are
+paid for — and records `details.retainedTailShape` as `recent_window`, so a
+rebuild replays that window instead of narrowing it back to one user message
+(ADR 0302, issue #827). It drops the assistant messages pi drops from the
+rebuilt context anyway (error, aborted, deferred) and any tool result whose tool
+call is not in the window, because a provider rejects a result whose call is
+missing. An `active_turn` fallback also keeps the active task's user message
+ahead of the window when the window itself cannot hold it, so the continuation
+never loses its goal.
+
+The retention mode is selected from the lifecycle that requested compaction. It
+decides what a *successful* checkpoint leaves behind:
 
 - An `active_turn` checkpoint is created while the provider must continue the
   current task after a tool result, a `toolUse` turn, or overflow recovery. It
@@ -441,16 +457,25 @@ The retention mode is selected from the lifecycle that requested compaction:
   a new user prompt, or for manual compaction. It carries no naked historical
   user messages. The summary is authoritative for completed work, and the next
   user prompt is the only new task after the checkpoint.
+- A retained-tail fallback carries its recent window in both modes, because the
+  alternative is an empty context; the mode still decides whether it has to
+  keep the active task's user message as well.
 - The `fresh_window` family remains the deliberate no-summary exception from
   ADR 0064 and always carries an empty tail.
 
-The retained-tail mode is stored in the checkpoint's opaque `details` field so
-restart preserves the same task boundary. Checkpoints written before this
-field existed are normalized to their latest user message only. Dropping an
-assistant message also drops its tool calls, so no orphaned tool call can reach
-the provider. The retained tail is re-estimated with the summary before
-persistence and before continuation, so an oversized request still cannot pass
-the guard.
+The retained-tail mode and shape are stored in the checkpoint's opaque `details`
+field, so a restart preserves the same task boundary and the same treatment of
+the tail. A checkpoint without the shape marker — every successful checkpoint,
+and every record written before the marker existed — is normalized to its latest
+user message only, so a restart cannot restore a sequence of
+executable-looking old requests. Dropping an assistant message also drops its
+tool calls, and the fallback drops the results of calls it did not keep, so no
+orphaned tool call or unmatched result can reach the provider. The retained tail
+is re-estimated with the summary before persistence and before continuation, so
+an oversized request still cannot pass the guard. A fallback also records
+`details.failureReason` — `no_new_history`, `summary_budget`,
+`summary_provider`, or `checkpoint_oversized` — a closed vocabulary rather than
+provider error text, which can carry endpoint details.
 
 **Two compaction families.** Both run the same lifecycle — budget
 re-estimation, host-core append, `compaction_end`, transcript row, warning:
@@ -474,26 +499,37 @@ installed: one when the remaining budget falls to
 one at 2,000 tokens remaining, telling it to write down whatever must survive.
 Neither reminder is persisted or shown in the transcript.
 
-The hard boundary is the model context window minus request headroom.
-Headroom is the maximum of a 16,384-token reserve floor, model maximum output
-capped at 25% of the context window, and a 5% safety margin. The reserve floor
-is itself capped at half the window. The cut-point target passed to pi is
-derived from the model window as 20% of the hard budget clamped to
+The hard boundary is the model context window minus request headroom. Automatic
+compaction starts at 90% of `hardLimit`; this deterministic margin is not
+configurable. Headroom is the maximum of a 16,384-token reserve floor, model
+maximum output capped at 25% of the context window, and a 5% safety margin. The
+reserve floor is itself capped at half the window. The cut-point target passed
+to pi is derived from the model window as 20% of the hard budget clamped to
 8,000–64,000 tokens, then capped at half the hard budget; it decides where the
-boundary falls, not what survives it. The active-user retention limit is 20,000
-tokens, capped at half the hard budget so retention alone cannot fill a small
-window and leave the summary no room. None of these values are configurable.
+boundary falls, not what survives it. The active-user retention limit is
+20,000 tokens, capped at half the hard budget so retention alone cannot fill a
+small window and leave the summary no room. A fallback's window is capped by
+25% of the hard budget and by the room the carried-forward summary and the
+recovery notice leave, so recovery cannot install a checkpoint the guard
+rejects. None of these values are configurable.
 
 **Estimate calibration (D606).** Every threshold above is compared against one
-number, and that number is corrected against what requests actually cost. pi's
-`estimateContextTokens` anchors on the last assistant usage and estimates
-everything after it as `chars / 4`: that constant under-counts CJK text, and
-with no anchor left it omits the system prompt and the tool schemas, which the
-next request still pays for. The two errors are measured and applied
-separately — the per-character bias as a scale-free ratio over the guessed
-tail, and an unanchored residual as a ratio only for observations taken at a
-comparable scale (0.5×–2× of the estimate), otherwise as the observed overhead
-capped at 32,000 tokens.
+number, corrected against observed request usage. pi's `estimateContextTokens`
+anchors on the last assistant usage and estimates everything after it as
+`chars / 4`: that constant under-counts CJK text, and with no anchor left it
+omits system/tool overhead. The budget also computes the output-cap estimator
+over non-system conversation messages plus the current system prompt and active
+tool schemas. System-transcript rows are metadata snapshots of that same prompt
+and are excluded from this component, so the request estimate counts the prompt
+and schemas exactly once. The budget uses the larger of this full-request
+estimate and the calibrated message estimate. This is a hard floor before the
+first calibration sample and prevents counting overhead twice after an
+unanchored residual has learned it.
+
+The calibration still measures the two errors separately — per-character bias
+as a scale-free ratio over the guessed tail, and an unanchored residual as a
+ratio only for observations taken at a comparable scale (0.5×–2× of the
+message estimate), otherwise as the observed overhead capped at 32,000 tokens.
 
 The correction is asymmetric because this number gates compaction: upward
 applies once three observations exist, downward needs three agreeing samples,
@@ -519,10 +555,16 @@ Stop); deterministic failures such as quota or auth return at once. The
 preflight guard sizes the prompt pi actually serializes — tool results already
 capped — rather than the raw messages, and when that prompt still exceeds the
 window it tries exactly one reduced input (tool results cut to a short prefix,
-thinking dropped, no message removed) before giving up on the summary (ADR
-0282). If normal compaction still fails during an automatic threshold or
+thinking dropped, no message removed). If even that input does not fit, the range
+is split into contiguous chunks that each do: at most 16 requests, each carrying
+the previous chunk's summary through pi's update-the-summary prompt, with the
+range's file list appended on the last one, and the checkpoint reports the summed
+usage of the requests that produced it. A budget therefore decides how many
+requests a summary takes, not whether the model is asked at all (ADR 0302); only
+an empty range, or one past that request bound, still gives up on the summary
+(ADR 0282). If normal compaction still fails during an automatic threshold or
 overflow recovery, the runtime persists a short recovery checkpoint with the
-previous summary (when available) and an aggressively bounded applicable tail.
+previous summary (when available) and the bounded recent window described above.
 The complete transcript remains durable and visible, while the next model
 request receives only that recovery checkpoint and applicable tail. The
 lifecycle event marks this as `fallback: "retained_tail"`, and the checkpoint's
@@ -541,6 +583,15 @@ tests; persisted `contextCompaction` settings are ignored so a session cannot
 be left with the guard off and no way to restore it. Manual `/compact` remains
 available while the session is idle. Checkpoint generation is abortable and
 counts as running state until durable persistence completes.
+
+The file list a checkpoint carries is read out of the summarized range by pi's
+own collector, which recognizes the lowercase spellings `read` / `write` /
+`edit` — the names pi's tools carry. PI-Desktop registers `Read` / `Write` /
+`Edit`, so the runtime converts exactly those three on the way into pi's
+preparation (`withPiFileOpToolNames`): nothing stored changes, and every other
+tool name is left spelled the way we register it. Without that conversion a
+checkpoint's `readFiles` / `modifiedFiles` and the `<read-files>` section of a
+summary were always empty (D618).
 
 A delegate (§5f) runs the same derivation against its own resolved model and
 compacts at its own turn boundaries, without a durable checkpoint chain of
@@ -698,6 +749,27 @@ criterion-by-criterion report of what was met and the evidence observed.
   (D608). Anthropic-family endpoints, including DeepSeek's, reject the whole
   turn with `tool_use ids must be unique` (issue #718), which leaves the session
   unable to continue.
+- The guard compares the wire-visible call id — the part before the `|` that
+  separates the Responses item id — and drops an assistant message whole once
+  every tool call in it was already claimed, because keeping its residual text
+  would leave a message sitting between a call and the result answering it. A
+  message that replays a claimed call while carrying a new one keeps its new
+  call in place; no writer produces that partial replay, and the guard does not
+  reorder messages to close the gap it leaves (D620).
+- The agent loop owns its context array. `prepareNextTurn` hands pi a copy of
+  the live state — for a delegate turn boundary too — exactly as pi's own
+  `createContextSnapshot()` does for `prompt()` and `continue()`: pi's loop
+  appends each streamed assistant message and each tool result to the array it
+  was given, while its `message_end` listener appends the same message to
+  `state.messages`, so handing over the live array stored every message of a
+  run's later iterations twice. The next turn's first request was built from
+  that array, and the duplicate of an assistant message carrying text plus a
+  tool call survived as a text-only clone between the call and its result —
+  pi-ai then closed the still-pending call with a synthesized output next to the
+  real one, and the endpoint rejected the turn with
+  `Duplicate tool output for call_id`. In a delegate the same doubling doubled
+  the estimate at the following boundary and left the trailing row a fallback
+  carries onto a model it cannot resume from (D620).
 - Restored checkpoints clear provider usage from retained assistant messages
   for budgeting. That usage measured the pre-compacted request and must not
   make the summary + tail appear as large as the discarded context.
@@ -772,7 +844,9 @@ core set rather than the on-demand catalog of §7.1:
   include definition-only pins, while only the former authorizes cached
   overrides and the model summary. Missing keys default to an empty list;
   successful on-demand resolution is cached separately from launch opt-in and
-  does not rewrite definition pins or runtime reuse matching. On-demand
+  does not rewrite definition pins or runtime reuse matching. Grants expire at
+  each new parent prompt or approved plan/goal execution; late responses from
+  an older turn cannot repopulate the cache. On-demand
   provider matching uses the same unique id/vendor/name rule as pin resolution.
   A changed opt-in list retires the idle runtime on the next launch. Pins remain usable
   by their own definitions when `model` is omitted or when `Task.model` repeats
@@ -860,20 +934,23 @@ duration only covers starting the background work.
 duration-timeout a delegate. `idle-timeout` / `max-duration` frontmatter still
 parses so old documents load, but those values are not armed. A delegate runs
 until it finishes, fails, is `TaskStop`'d, or the user Stops / the runtime is
-disposed. The parent agent judges whether to
-cancel via `TaskStop`; a one-line heartbeat (who, status, elapsed, turns, last
-tool) is what it has to go on while the delegate is running.
+disposed. The parent agent judges whether to cancel via `TaskStop`; a one-line
+heartbeat (who, status, elapsed, turns, last tool) is what it has to go on while
+the delegate is running.
 
 When the parent stops calling tools while delegates are still running, the
 runtime swallows that `agent_end`, keeps the durable turn open, waits for the
-delegates, and prompts the parent with their reports. Ending the parent loop
-does not abort them.
+delegates, and prompts the parent with their reports. Every terminal result
+resolves the parent wait before best-effort transcript publication; a failed
+`SubagentRun` initialization returns a tool error and never leaves a running
+record. User Stop and runtime disposal also abort the parent wait signal, so
+they can end the parent turn even if a delegate ignores its abort. Ending the
+parent loop does not otherwise abort delegates.
 
 Fatal provider/stream errors (including exhausted HTTP 429) and parent aborts
 retain their existing `failed` and `aborted` outcomes. A terminal parent error
-also aborts leftover delegates,
-skips the resume prompt, and returns the session to idle so Continue is not
-`AGENT_BUSY` (D352).
+also aborts leftover delegates, skips the resume prompt, and returns the
+session to idle so Continue is not `AGENT_BUSY` (D352).
 
 **Resumable delegations (ADR 0279).** `Task` accepts an optional `resume`
 parameter carrying the `delegationId` of a settled delegation in the same
@@ -911,8 +988,12 @@ Resume is strictly same-session and never queues: resuming a running
 delegation is a tool error telling the parent to converge with `TaskWait`
 first, and a chain has at most one live record at a time. `model` and `resume`
 together are rejected, and a resumed run keeps the chain's recorded binding:
-the `providerId/modelId` key it resolved is preferred, a chain rebuilt from the
-transcript is matched by model id, and when nothing resolves it the run
+the `providerId/modelId` key it resolved is preferred and reauthorized on demand
+when its turn grant has expired. A chain rebuilt from the transcript is matched
+by model id only among the current definition pin/fallbacks, the session binding,
+and currently authorized overrides. Other definitions' private pins are excluded.
+A known key never falls through to another account just because its model id
+matches. When nothing authorized resolves it the run
 continues on the definition's current binding and records the previous model id
 as `modelChangedFrom` in its lifecycle details. Changing models on purpose means
 starting a new delegation. An unknown id, an id belonging to another definition,
@@ -977,28 +1058,26 @@ track the effective alternative, including after settlement and reload. If all
 alternatives fail, the result remains `failed` with the final provider error.
 See [ADR subagent-model-fallback](../../adr/subagent-model-fallback.md).
 
-**Context budget and compaction (ADR 0299).** A delegate has the same
+**Context budget and compaction (ADR 0299, D623).** A delegate has the same
 window protection the session has, derived the same way. The budget comes
 from the model the run actually resolved — a `Task.model` override, a
 definition pin, or the inherited session model — through the shared
 derivation of §5.1, so `hardLimit` is that window minus the same request
 headroom and a per-definition `maxTokens` cap participates as the output
-budget. At a delegate turn boundary the run re-estimates its own context and,
-at or above `hardLimit`, compacts synchronously before the next provider
-request, with the retention mode chosen from the same lifecycle rule as the
-session: a boundary that still has pending tool results retains as an active
-turn, a completed one as a completed turn. There is no pre-computation and no
-second threshold.
+budget. At a delegate turn boundary the run re-estimates its own context and
+starts compaction at `floor(hardLimit * 0.9)`, before the next provider
+request. A compaction result must still fit below `hardLimit`; that remains
+the non-negotiable provider-request guard. The retention mode follows the
+same lifecycle rule as the session, and there is no pre-computation.
 
-When a summary cannot be generated, or the compacted context still exceeds
-the budget, the run degrades: it keeps the original task brief plus the most
-recent message(s), discards the rest of its history, continues, and records
-that it was degraded, so the report and the lifecycle details say the
-delegate lost history rather than presenting a complete answer. When even
-that does not fit, the run fails with `SUBAGENT_CONTEXT_OVERFLOW`
-(not retriable) naming what the parent can change — narrow the task,
-delegate to a model with a larger window, read less at once — instead of
-forwarding the provider's overflow text.
+When a summary cannot be generated or installed below the hard limit, the run
+degrades: it keeps the original task brief plus the most recent message(s),
+discards the rest of its history, continues, and records that it was degraded,
+so the report and lifecycle details say the delegate lost history rather than
+presenting a complete answer. When even that does not fit, the run fails with
+`SUBAGENT_CONTEXT_OVERFLOW` (not retriable) naming what the parent can change —
+narrow the task, delegate to a model with a larger window, read less at once —
+instead of forwarding the provider's overflow text.
 
 An ordered alternative (**Ordered model fallback**, above) is re-evaluated
 against its own window before it is attempted: an alternative whose budget
@@ -1263,16 +1342,18 @@ one-line descriptions appear in an `# On-demand tools` catalog; parameter
 schemas do not. The catalog is bounded so a plugin with many tools cannot
 recreate the original prompt bloat.
 The model calls `ToolSearch` with an exact name or a short capability query.
-The sidecar activates up to four matches, returns their names through
-pi-agent-core's `addedToolNames`, and rebuilds the next-turn context with those
+The sidecar activates up to four matches, records their names in the canonical
+`details.addedToolNames` field, and rebuilds the next-turn context with those
 schemas. Providers with native deferred-tool search receive the definitions at
 that load point; other providers receive the active definitions normally.
 
 At the start of each new user prompt, the sidecar clears the in-memory deferred
 activation set and rebuilds it from the effective context. Successful
-`ToolSearch` results contribute their `addedToolNames`; successful results from
-deferred tools contribute that tool's name. Only names still present in the
-current mode's deferred catalog are restored. Failed rows, interrupted or
+`ToolSearch` results contribute their canonical `details.addedToolNames`.
+For compatibility, historical `details.activated` and top-level
+`addedToolNames` markers are also accepted. Successful results from deferred
+tools contribute that tool's name. Only names still present in the current
+mode's deferred catalog are restored. Failed rows, interrupted or
 missing-result placeholders, and assistant/user prose never activate a tool.
 The tool registry, host permission path, tool timeout, and workspace containment
 rules remain unchanged. `ToolSearch` is local to the sidecar and does not cross
@@ -1455,6 +1536,14 @@ with the original v3 `SessionManager`, Pi `ModelRuntime`, `SettingsManager`, and
 `DefaultResourceLoader`. Native context is built by the SDK from the active tree
 leaf, compaction, model/thinking changes, and context-bearing custom messages;
 it is never reconstructed from renderer `UiMessage` rows.
+
+The 0.87.1 SDK also applies append-only `context_edit` entries to this model
+projection. An edit can omit or replace an earlier message for later provider
+requests without rewriting its raw JSONL entry or the visible native history.
+Native Pi extensions use the SDK's boundary hooks; all entries they append,
+including context edits, pass through the sidecar's lease and parent-chain
+guard. This native extension lifecycle is separate from the Desktop Agent
+extension adapter described in [trusted extensions](../07-plugins/16-trusted-extensions.md).
 
 The first native slice supports text prompt **without model tools**, stop/abort,
 and explicit refresh. `createAgentSession` receives `noTools: "all"`; neither

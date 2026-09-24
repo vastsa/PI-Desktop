@@ -98,17 +98,19 @@ before it is ever sent to the UI:
   points at the source, and each `url(...)` argument is kept verbatim and judged
   by its target. A sheet that merely *mentions* a banned token in a comment or a
   string is therefore accepted
-- Rejected: `@import`, any `url()` target that is not a `data:` URI, a `url(`
-  the parser cannot resolve, `javascript:`, `expression(`, and markup sequences
-  (`<style`, `</style`, `<!--`); an empty sheet is refused too
+- Rejected: `@import`, any `url()` target that is neither a `data:` URI nor a
+  declared theme asset, a `url(` the parser cannot resolve, `javascript:`,
+  `expression(`, and markup sequences (`<style`, `</style`, `<!--`); an empty
+  sheet is refused too
 - Capped at 256KB per file, 8 themes per plugin
-- A theme may declare `assets` (absolute paths, whitelisted image and font
-  extensions, 4MB summed). Each matching `url()` is rewritten to
-  `plugin-asset://<pluginId>/<path>` and served by a host handler that resolves
-  only through the loaded plugin's own registered list: read-only, `nosniff`,
-  and revoked when the plugin unloads. `pi.themes.upsert` registers the same
-  kind of path at runtime. An unregistered reference is still refused, and the
-  raw path never reaches the renderer
+- A theme may declare `assets` using whitelisted image/font extensions: either
+  package-relative paths (resolved inside the plugin root; traversal and `node_modules`
+  references are rejected) or absolute paths. The total is capped at 4MB.
+  Each matching `url()` is rewritten to `plugin-asset://<pluginId>/<path>`
+  and served read-only through the loaded plugin's registered list with `nosniff`;
+  the registration is revoked when the plugin unloads. `pi.themes.upsert` may
+  register the same kind of path at runtime. An unregistered reference is refused,
+  and the raw path never reaches the renderer
 - `contributes.windowAppearance` (`#rrggbb` / `#rrggbbaa`) requires
   `ui.window.appearance` and applies only while one of that plugin's themes is
   the selected one; leaving the theme restores the host background, because the

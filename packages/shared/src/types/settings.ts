@@ -2,6 +2,7 @@
 import type { CommandShellId } from "../command-shells.js";
 import type { KeybindingOverrides } from "../keyboard-shortcuts.js";
 import type { NetworkProxySettings } from "../network-proxy.js";
+import type { NetworkPolicySettings } from "../network-policy.js";
 import type { ContextCompactionSettings } from "./sessions.js";
 import type { Mode } from "./common.js";
 import type { GlobalPermissionMode } from "./permissions.js";
@@ -71,7 +72,7 @@ export type AppSettings = {
   defaultPermissionMode?: GlobalPermissionMode;
   theme: ThemePreference;
   /** UI language; `auto` (and absent) follows the OS locale. */
-  language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko";
+  language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko" | "pt-BR";
   /**
    * Global UI font stack (CSS `font-family` value). Absent means the built-in
    * token stack; bundled open-source families and installed system families
@@ -118,6 +119,12 @@ export type AppSettings = {
    */
   networkProxy?: NetworkProxySettings;
   /**
+   * Trust policy for the network endpoints the user enters themselves: how a
+   * user-supplied model base URL, MCP server, or market source is judged.
+   * Absent means the defaults in `network-policy.ts`.
+   */
+  networkPolicy?: NetworkPolicySettings;
+  /**
    * Preferred destination when clicking HTTP/HTTPS links in chat messages.
    * `workpanel`: Preview in the Work Panel browser tab (default).
    * `external`: Open directly in the system's default web browser.
@@ -136,7 +143,31 @@ export type AppSettings = {
    * or work panel compresses without rewriting the preference.
    */
   chatContentMaxWidth?: number;
+  /**
+   * Opt-in smooth streaming display (D152 amendment). When enabled, incoming
+   * stream chunks are released character-by-character through a
+   * requestAnimationFrame loop instead of appearing as whole blocks.
+   * Absent and true enable smooth rendering; false disables it. Automatically
+   * disabled when the system prefers reduced motion.
+   */
+  smoothStreaming?: boolean;
+  /** Voice input settings (D-voice-runtime). */
+  voice?: VoiceInputSettings;
   onboardingDismissed: boolean;
+};
+
+export type ChineseVariant = "simplified" | "traditional-taiwan" | "traditional-hong-kong";
+
+export type VoiceInputSettings = {
+  enabled: boolean;
+  /** Microphone device ID; null means system default. */
+  deviceId: string | null;
+  /** Language codes for recognition, e.g. ["zh", "en"]. */
+  languages: string[];
+  /** Chinese output variant. */
+  chineseVariant: ChineseVariant;
+  /** Catalog model ID. Empty string means no model selected yet. */
+  modelId: string;
 };
 
 export type LinkOpenTarget = "workpanel" | "external";

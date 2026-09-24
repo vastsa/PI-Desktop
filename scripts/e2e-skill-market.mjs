@@ -6,9 +6,10 @@
  *   E2E-SKILL-MARKET-INSTALL      builtin entry → assembled document →
  *                                 skills.create → record on disk
  *   E2E-SKILL-MARKET-EXPANSION    adjacent resources expand into the body
- *   E2E-SKILL-MARKET-NET-BOUNDARY URL guard rejects loopback/private/mapped/
- *                                 ULA/link-local bypass forms
- *   E2E-SKILL-MARKET-ID-ALIGN     scanned ids match host valid_capability_id
+ *   E2E-SKILL-MARKET-NET-BOUNDARY a user source may be loopback/private (and
+ *                                 plaintext under the stored opt-in), while a
+ *                                 document URL a catalog carries stays
+ *                                 public-only
  *   E2E-SKILL-MARKET-SIZE-LIMIT   expanded documents over 128KiB are flagged
  *
  * Env: PI_DESKTOP_HOST_BIN (optional), DEBUG_HOST for tracing.
@@ -27,6 +28,7 @@ import {
   GLOBAL_SCOPE,
   assembleSkillInstall,
   expandSkillResources,
+  isPublicHttpsUrl,
   isSafeSkillSourceUrl,
   MAX_SKILL_DOCUMENT_BYTES,
   sanitizeSkillCatalogId,
@@ -114,22 +116,65 @@ class Host {
 
 // ── E2E-SKILL-MARKET-NET-BOUNDARY ────────────────────────────────────────
 {
-  const bypass = [
+  // A skill market source URL is an address the user typed, so a catalog on
+  // their own machine or LAN is reachable — a plaintext one once the stored
+  // `networkPolicy` accepts it. A document URL the catalog carries is content
+  // the app did not receive from the user, so that one stays public-only.
+  const userAccepted = [
     "https://localhost./x/catalog.json",
+    "https://127.0.0.1/catalog.json",
+    "https://10.0.0.8/catalog.json",
+    "https://192.168.1.5:8443/catalog.json",
     "https://[::1]/catalog.json",
     "https://[::ffff:127.0.0.1]/catalog.json",
     "https://[fd00::1]/catalog.json",
     "https://[fe80::1]/catalog.json",
-    "https://127.0.0.1/catalog.json",
-    "https://10.0.0.8/catalog.json",
+  ];
+  const userRefused = [
+    "https://169.254.169.254/catalog.json",
+    "https://100.100.100.200/catalog.json",
+    "https://[fd00:ec2::254]/catalog.json",
+    "https://metadata.google.internal/catalog.json",
+    "https://metadata./catalog.json",
+    "https://[2001:db8::1]/catalog.json",
+    "https://user:pass@example.com/catalog.json",
+    "file:///etc/passwd",
+  ];
+  const userPlaintext = [
+    "http://192.168.1.5/catalog.json",
     "http://skills.example/catalog.json",
   ];
+  const userGateOk =
+    userAccepted.every((url) => isSafeSkillSourceUrl(url) === true) &&
+    userRefused.every((url) => isSafeSkillSourceUrl(url) === false) &&
+    userPlaintext.every((url) => isSafeSkillSourceUrl(url) === false) &&
+    userPlaintext.every((url) => isSafeSkillSourceUrl(url, { allowInsecureHttp: true }) === true) &&
+    isSafeSkillSourceUrl("http://169.254.169.254/catalog.json", { allowInsecureHttp: true }) ===
+      false;
+
+  // Document URLs are third-party content: a catalog the user added still may
+  // not aim the app at their own network, and the main-process scan refuses
+  // these before any fetch (`skill-market-scan.ts`, `fetchEntryDocument`).
+  const documentRefused = [
+    "https://127.0.0.1/SKILL.md",
+    "https://10.0.0.8/SKILL.md",
+    "https://192.168.1.5/SKILL.md",
+    "https://[fd00::1]/SKILL.md",
+    "https://169.254.169.254/SKILL.md",
+    "https://nas.local/SKILL.md",
+    "http://cdn.jsdelivr.net/gh/anthropics/skills@main/SKILL.md",
+  ];
   const accepted = "https://cdn.jsdelivr.net/gh/anthropics/skills@main/skills/pdf/SKILL.md";
-  const rejectedAll = bypass.every((url) => isSafeSkillSourceUrl(url) === false);
+  const thirdPartyOk =
+    documentRefused.every((url) => isPublicHttpsUrl(url) === false) && isPublicHttpsUrl(accepted);
+
+  const ok = userGateOk && thirdPartyOk && isSafeSkillSourceUrl(accepted);
   record(
     "E2E-SKILL-MARKET-NET-BOUNDARY",
-    rejectedAll && isSafeSkillSourceUrl(accepted),
-    rejectedAll ? "8 bypass forms rejected, public CDN accepted" : "guard misclassification",
+    ok,
+    ok
+      ? `${userAccepted.length} user forms accepted (${userRefused.length} refused, ${userPlaintext.length} plaintext gated), ${documentRefused.length} third-party document forms rejected`
+      : "guard misclassification",
   );
 }
 

@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AppSettings, NetworkProxyMode, NetworkProxySettings } from "@pi-desktop/shared";
+import type {
+  AppSettings,
+  NetworkPolicyMode,
+  NetworkPolicySettings,
+  NetworkProxyMode,
+  NetworkProxySettings,
+} from "@pi-desktop/shared";
 import {
   DEFAULT_NETWORK_PROXY_BYPASS,
+  isRelaxedNetworkPolicy,
   parseProxyUrl,
   validateNetworkProxy,
 } from "@pi-desktop/shared";
@@ -61,7 +68,7 @@ export function NetworkProxySection({
     if (mode === saved.mode) return;
     setTestState("idle");
     if (mode !== "custom") {
-      void persist({ mode, allowFakeIp: saved.allowFakeIp });
+      void persist({ mode });
       return;
     }
     const parsed = parseProxyUrl(urlDraft);
@@ -71,7 +78,6 @@ export function NetworkProxySection({
       mode: "custom",
       url,
       bypass: bypassDraft.trim() || undefined,
-      allowFakeIp: saved.allowFakeIp,
     });
   };
 
@@ -90,7 +96,6 @@ export function NetworkProxySection({
       mode: "custom",
       url: parsed.value.href,
       bypass: bypassDraft.trim() || undefined,
-      allowFakeIp: saved.allowFakeIp,
     });
   };
 
@@ -100,7 +105,7 @@ export function NetworkProxySection({
     setBypassDraft(next);
     if (next === (saved.bypass ?? DEFAULT_NETWORK_PROXY_BYPASS)) return;
     if (!saved.url) return;
-    void persist({ mode: "custom", url: saved.url, bypass: next, allowFakeIp: saved.allowFakeIp });
+    void persist({ mode: "custom", url: saved.url, bypass: next });
   };
 
   const runTest = async () => {
@@ -112,9 +117,8 @@ export function NetworkProxySection({
             mode: "custom",
             url: urlDraft.trim() || saved.url,
             bypass: bypassDraft.trim() || undefined,
-            allowFakeIp: saved.allowFakeIp,
           }
-        : { mode: saved.mode, allowFakeIp: saved.allowFakeIp };
+        : { mode: saved.mode };
     try {
       const result = await api.testNetworkProxy(payload);
       if (result.ok) {
@@ -133,6 +137,27 @@ export function NetworkProxySection({
           message: error instanceof Error ? error.message : String(error),
         }),
       );
+    }
+  };
+
+  const relaxed = isRelaxedNetworkPolicy(settings);
+
+  /**
+   * Only the `networkPolicy` field is written: the settings write merges this
+   * patch into the stored settings, so every other preference is carried over
+   * untouched. A notice the user already acknowledged stays acknowledged: the
+   * mode is the only thing this switch changes.
+   */
+  const persistNetworkPolicy = async (mode: NetworkPolicyMode) => {
+    setSaveError(false);
+    const next: NetworkPolicySettings = { mode };
+    if (settings.networkPolicy?.insecureNoticeAcknowledged === true) {
+      next.insecureNoticeAcknowledged = true;
+    }
+    try {
+      await saveSettings({ networkPolicy: next });
+    } catch {
+      setSaveError(true);
     }
   };
 
@@ -167,17 +192,21 @@ export function NetworkProxySection({
           </div>
         </SettingsRow>
         <SettingsRow
-          title={t("settings.proxyFakeIp")}
-          description={t("settings.proxyFakeIpDesc")}
+          title={t("settings.networkRelaxedMode")}
+          description={
+            relaxed
+              ? t("settings.networkRelaxedModeDesc")
+              : t("settings.networkRelaxedModeStrictDesc")
+          }
         >
           <button
             type="button"
-            className={cx("settings-toggle", saved.allowFakeIp && "on")}
+            className={cx("settings-toggle", relaxed && "on")}
             role="switch"
-            aria-checked={saved.allowFakeIp === true}
-            aria-label={t("settings.proxyFakeIp")}
+            aria-checked={relaxed}
+            aria-label={t("settings.networkRelaxedMode")}
             onClick={() =>
-              void persist({ ...saved, allowFakeIp: saved.allowFakeIp !== true })
+              void persistNetworkPolicy(relaxed ? "strict" : "relaxed")
             }
           >
             <span className="settings-toggle-thumb" />

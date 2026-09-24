@@ -22,8 +22,7 @@ const assistantTurnSource = await readFile(
 );
 
 test("the pointer-anchored menu portals, measures, and closes without trapping focus", () => {
-  assert.match(menuSource, /createPortal\(/);
-  assert.match(menuSource, /document\.body/);
+  assert.match(menuSource, /portalToBody\(/);
   assert.match(menuSource, /placeContextMenu\(/);
   assert.match(menuSource, /className=\{`context-menu\$\{placement \? " is-open" : ""\}`\}/);
   assert.match(menuSource, /window\.addEventListener\("pointerdown", onOutside, true\)/);

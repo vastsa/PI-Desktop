@@ -7,7 +7,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../lib/portal-visibility";
 import type { AppNotification } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app-store";
@@ -254,7 +254,7 @@ export function NotificationCenter({
       </span>
 
       {open && popoverPos && typeof document !== "undefined"
-        ? createPortal(
+        ? portalToBody(
             <div
               ref={popoverRef}
               id="notification-popover"
@@ -387,7 +387,6 @@ export function NotificationCenter({
             </div>
           )}
             </div>,
-            document.body,
           )
         : null}
     </div>

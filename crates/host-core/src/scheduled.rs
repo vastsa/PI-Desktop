@@ -32,6 +32,14 @@ pub struct ScheduledTask {
     pub next_run_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_level: Option<String>,
     /// Presence distinguishes a saved project (including null) from legacy tasks.
     #[serde(skip)]
     pub(crate) workspace_bound: bool,
@@ -114,7 +122,11 @@ fn config_with_mode(mut config: Value, mode: &str) -> String {
 }
 
 fn task_config_json(value: &Value) -> String {
-    config_with_mode(config_value(config_input(value)), &task_mode(value))
+    let mut config = config_value(config_input(value));
+    if automation::validate_execution_input(value).is_ok() {
+        automation::configure_execution(&mut config, value);
+    }
+    config_with_mode(config, &task_mode(value))
 }
 
 fn merge_config(base: &mut Value, incoming: &Value) {
@@ -164,6 +176,20 @@ fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScheduledTask> {
         .get("calendarConfigured")
         .and_then(Value::as_bool)
         .unwrap_or(matches!(cadence.as_str(), "daily" | "weekly"));
+    let provider_id = config
+        .get("providerId")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string);
+    let model_id = config
+        .get("modelId")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string);
+    let (provider_id, model_id) = match (provider_id, model_id) {
+        (Some(provider), Some(model)) => (Some(provider), Some(model)),
+        _ => (None, None),
+    };
     Ok(ScheduledTask {
         id: row.get(0)?,
         title: row.get(1)?,
@@ -187,6 +213,18 @@ fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScheduledTask> {
             .get("workspacePath")
             .and_then(Value::as_str)
             .and_then(crate::db::canonical_project_path),
+        permission_mode: config
+            .get("permissionMode")
+            .and_then(Value::as_str)
+            .filter(|mode| matches!(*mode, "ask" | "accept-edits" | "auto"))
+            .map(str::to_string),
+        provider_id,
+        model_id,
+        thinking_level: config
+            .get("thinkingLevel")
+            .and_then(Value::as_str)
+            .filter(|level| sessions::is_valid_thinking_level(level))
+            .map(str::to_string),
     })
 }
 
@@ -508,6 +546,9 @@ mod tests {
             "prompt": "nightly check",
             "cadence": "daily",
             "enabled": false,
+            "permissionMode": "auto",
+            "providerId": "provider-imported",
+            "modelId": "model-imported",
             "createdAt": "2025-06-01T00:00:00Z",
             "updatedAt": "2025-06-02T00:00:00Z",
             "lastRunAt": "2025-06-03T00:00:00Z"
@@ -519,6 +560,9 @@ mod tests {
         assert_eq!(task.title, "Nightly");
         assert!(!task.enabled);
         assert_eq!(task.mode, "agent");
+        assert_eq!(task.permission_mode.as_deref(), Some("auto"));
+        assert_eq!(task.provider_id.as_deref(), Some("provider-imported"));
+        assert_eq!(task.model_id.as_deref(), Some("model-imported"));
         assert_eq!(
             ts_to_ms(&task.last_run_at.unwrap()),
             ts_to_ms("2025-06-03T00:00:00Z")

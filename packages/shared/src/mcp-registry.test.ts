@@ -419,19 +419,64 @@ describe("registry argument and env semantics", () => {
   });
 });
 
-describe("isPublicHostname / isPublicIpLiteral edge cases", () => {
-  it("rejects trailing-dot and smuggeled private hosts", () => {
-    expect(isSafeMarketSourceUrl("https://localhost./x")).toBe(false);
+describe("isSafeMarketSourceUrl (a source URL the user typed)", () => {
+  it("accepts a source the user runs on loopback, the LAN, or their own host", () => {
+    // The market source is an address the person in front of the app typed in,
+    // so their own machine and their own LAN are reachable. Every URL that
+    // arrives *inside* a catalog stays on the public-only policy instead
+    // (`validateMcpCatalogFile`, and the redirect the main-process client
+    // re-validates per hop).
+    expect(isSafeMarketSourceUrl("https://127.0.0.1/x")).toBe(true);
+    expect(isSafeMarketSourceUrl("https://10.1.2.3/x")).toBe(true);
+    expect(isSafeMarketSourceUrl("https://192.168.1.5:8443/x")).toBe(true);
+    expect(isSafeMarketSourceUrl("https://localhost./x")).toBe(true);
+    expect(isSafeMarketSourceUrl("https://nas.local/x")).toBe(true);
+    expect(isSafeMarketSourceUrl("https://[::1]/")).toBe(true);
+    expect(isSafeMarketSourceUrl("https://[::ffff:127.0.0.1]/")).toBe(true);
+    expect(isSafeMarketSourceUrl("https://[fd00::1]/")).toBe(true);
+    expect(isSafeMarketSourceUrl("https://[fe80::1]/")).toBe(true);
     expect(isSafeMarketSourceUrl("https://localhost.example./x")).toBe(true); // public dot-FQDN ok
-    expect(isSafeMarketSourceUrl("https://[::ffff:127.0.0.1]/")).toBe(false);
-    expect(isSafeMarketSourceUrl("https://[fd00::1]/")).toBe(false);
-    expect(isSafeMarketSourceUrl("https://[fe80::1]/")).toBe(false);
-    expect(isSafeMarketSourceUrl("https://[::1]/")).toBe(false);
-    expect(isSafeMarketSourceUrl("https://127.0.0.1/x")).toBe(false);
-    expect(isSafeMarketSourceUrl("https://10.1.2.3/x")).toBe(false);
-    expect(isSafeMarketSourceUrl("https://[2001:db8::1]/")).toBe(false);
     expect(isSafeMarketSourceUrl("https://[2606:4700::1]/")).toBe(true);
     expect(isSafeMarketSourceUrl("https://registry.example/x")).toBe(true);
+  });
+
+  it("still refuses the classes that name no service the user could mean", () => {
+    expect(isSafeMarketSourceUrl("https://0.0.0.0/x")).toBe(false); // unspecified
+    expect(isSafeMarketSourceUrl("https://239.1.2.3/x")).toBe(false); // multicast
+    expect(isSafeMarketSourceUrl("https://240.0.0.1/x")).toBe(false); // reserved
+    expect(isSafeMarketSourceUrl("https://192.0.2.1/x")).toBe(false); // documentation
+    expect(isSafeMarketSourceUrl("https://[2001:db8::1]/")).toBe(false);
+    expect(isSafeMarketSourceUrl("https://[2002::1]/")).toBe(false); // 6to4
+    expect(isSafeMarketSourceUrl("not a url")).toBe(false);
+    expect(isSafeMarketSourceUrl("file:///etc/passwd")).toBe(false);
+    expect(isSafeMarketSourceUrl("https://user:pass@example.com/x")).toBe(false);
+  });
+
+  it("refuses every cloud metadata endpoint on a settings field", () => {
+    // A metadata service answers with the host's own credentials, so a source
+    // URL naming one is an injected SSRF payload far more often than it is a
+    // catalog the user runs.
+    expect(isSafeMarketSourceUrl("https://169.254.169.254/x")).toBe(false);
+    expect(isSafeMarketSourceUrl("https://169.254.169.254./x")).toBe(false);
+    expect(isSafeMarketSourceUrl("https://100.100.100.200/x")).toBe(false);
+    expect(isSafeMarketSourceUrl("https://[fd00:ec2::254]/x")).toBe(false);
+    expect(isSafeMarketSourceUrl("https://metadata.google.internal/x")).toBe(false);
+    expect(isSafeMarketSourceUrl("https://metadata./x")).toBe(false);
+    expect(isSafeMarketSourceUrl("https://instance-data/x")).toBe(false);
+  });
+
+  it("wants the stored opt-in before a plaintext source is accepted", () => {
+    expect(isSafeMarketSourceUrl("http://10.0.0.7:8080/catalog.json")).toBe(false);
+    expect(
+      isSafeMarketSourceUrl("http://10.0.0.7:8080/catalog.json", { allowInsecureHttp: true }),
+    ).toBe(true);
+    // `https` to the user's own LAN needs no opt-in, and the flag is the only
+    // thing that changes: it never loosens a class or a metadata host.
+    expect(isSafeMarketSourceUrl("https://10.0.0.7:8443/catalog.json")).toBe(true);
+    expect(
+      isSafeMarketSourceUrl("http://169.254.169.254/x", { allowInsecureHttp: true }),
+    ).toBe(false);
+    expect(isSafeMarketSourceUrl("http://registry.example/x", { allowInsecureHttp: true })).toBe(true);
   });
 });
 
@@ -461,5 +506,31 @@ describe("sanitizeMarketSources", () => {
         { id: "custom-auth", name: "Auth", url: "https://user:pass@example.com/catalog", kind: "catalog" },
       ]),
     ).toHaveLength(1);
+  });
+
+  it("keeps a LAN source, and a plaintext one only under the opt-in", () => {
+    const lan = {
+      id: "lan",
+      name: "LAN",
+      url: "https://192.168.1.5:8443/catalog.json",
+      kind: "catalog" as const,
+    };
+    const plaintext = {
+      id: "plain",
+      name: "Plain",
+      url: "http://10.0.0.7:8080/catalog.json",
+      kind: "catalog" as const,
+    };
+    const metadata = {
+      id: "meta",
+      name: "Meta",
+      url: "https://169.254.169.254/catalog.json",
+      kind: "catalog" as const,
+    };
+    const ids = (list: ReturnType<typeof sanitizeMarketSources>) => list.map((source) => source.id);
+    expect(ids(sanitizeMarketSources([lan, plaintext, metadata]))).toEqual(["official", "lan"]);
+    expect(
+      ids(sanitizeMarketSources([lan, plaintext, metadata], { allowInsecureHttp: true })),
+    ).toEqual(["official", "lan", "plain"]);
   });
 });

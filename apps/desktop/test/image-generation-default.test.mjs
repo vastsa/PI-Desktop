@@ -24,7 +24,7 @@ const {
   planImageGenerationDefaults,
   resolvesImageGenerationDefault,
 } = await import("../src/components/settings/image-generation-default.ts");
-const { MAX_IMAGE_GENERATION_MODELS } = await import("@pi-desktop/shared");
+const { MAX_IMAGE_GENERATION_MODELS, imageGenerationBindings, isImageGenerationModel } = await import("@pi-desktop/shared");
 
 /** A runnable image provider row; `over` overrides any field. */
 const provider = (id, modelIds, over = {}) => ({
@@ -40,6 +40,21 @@ const provider = (id, modelIds, over = {}) => ({
 });
 
 const binding = (providerId, modelId) => ({ providerId, modelId });
+
+test("image bindings distinguish full routes and providers while ignoring case", () => {
+  const prefixed = binding("x", "generic/model");
+  const plain = binding("x", "model");
+  assert.deepEqual(imageGenerationBindings([prefixed, plain, binding("x", "GENERIC/MODEL")], null),
+    [prefixed, plain]);
+  assert.equal(isImageGenerationModel([prefixed], "x", "model"), false);
+  assert.equal(isImageGenerationModel([prefixed], "y", "generic/model"), false);
+  assert.equal(isImageGenerationModel([prefixed], "x", "GENERIC/MODEL"), true);
+  assert.equal(imageGenerationBindingAvailable(provider("x", ["generic/model"]), "model"), false);
+  assert.equal(imageGenerationBindingAvailable(provider("x", ["generic/model"]), "GENERIC/MODEL"), false);
+  const plan = planImageGenerationDefaults({ imageGeneration: prefixed }, "x", ["model"],
+    [provider("x", ["generic/model", "model"])]);
+  assert.deepEqual(plan.imageGeneration, plain);
+});
 
 test("a saved image selection extends the candidates without taking the default", () => {
   const plan = planImageGenerationDefaults(
@@ -321,10 +336,39 @@ test("unchecking the active model selects a remaining runnable candidate", () =>
   assert.deepEqual(plan.imageGenerationModels, [binding("y", "other"), binding("x", "next")]);
 });
 
+test("removing the active provider model clears the image default", () => {
+  const plan = planImageGenerationDefaults(
+    {
+      imageGenerationModels: [binding("x", "old"), binding("y", "other")],
+      imageGeneration: binding("x", "old"),
+    },
+    "x",
+    ["next"],
+    [provider("x", ["next"]), provider("y", ["other"])],
+    true,
+  );
+  assert.equal(plan.imageGeneration, null);
+  assert.deepEqual(plan.imageGenerationModels, [binding("y", "other"), binding("x", "next")]);
+});
+
 test("saving the active provider preserves a still-selected default", () => {
   const plan = planImageGenerationDefaults(
     { imageGeneration: binding("x", "current") },
     "x", ["first", "current"], [provider("x", ["first", "current"])],
   );
   assert.deepEqual(plan.imageGeneration, binding("x", "current"));
+});
+
+test("unchecking every image model on the active provider clears the settings check", () => {
+  const plan = planImageGenerationDefaults(
+    {
+      imageGenerationModels: [binding("x", "img-x"), binding("y", "img-y")],
+      imageGeneration: binding("x", "img-x"),
+    },
+    "x",
+    [],
+    [provider("x", ["img-x"]), provider("y", ["img-y"])],
+  );
+  assert.equal(plan.imageGeneration, null);
+  assert.deepEqual(plan.imageGenerationModels, [binding("y", "img-y")]);
 });

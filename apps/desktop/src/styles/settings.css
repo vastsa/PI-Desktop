@@ -469,6 +469,20 @@
   width: 100%;
 }
 
+.settings-config-sync-http-option {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--ds-warning) 32%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ds-warning) 7%, transparent);
+}
+
+.settings-config-sync-http-option .settings-config-sync-warning {
+  margin: 0;
+}
+
 .settings-config-sync-actions {
   display: flex;
   align-items: center;
@@ -490,6 +504,63 @@
 .settings-config-sync-message.error,
 .settings-config-sync-error {
   color: var(--ds-danger);
+}
+
+/*
+ * A manual sync reports itself while its request is still open: the phase it
+ * is in, a bar once it announced a total, and the figures it has moved so far.
+ * It sits between the cards rather than inside one, because the first enable —
+ * the slowest sync of all — runs before the status card exists. The page stack
+ * spaces the cards around it, so only the inset that lines it up with their
+ * content is left here.
+ */
+.settings-config-sync-progress {
+  display: grid;
+  gap: 8px;
+  margin: 0 16px;
+}
+
+.settings-config-sync-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-config-sync-progress-title {
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+  font-weight: var(--font-weight-medium-plus);
+}
+
+.settings-config-sync-progress-phase {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.settings-config-sync-progress-bar {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
+}
+
+.settings-config-sync-progress-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ds-accent);
+  transition: width var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.settings-config-sync-progress-figures {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .settings-config-sync-categories {
@@ -836,6 +907,15 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+}
+
+/*
+  A toggle is 20 px tall, while the field metric (select triggers, text inputs)
+  resolves to ~38 px. Give the control column a matching minimum so toggle rows
+  are the same height as select rows; the switch stays centred via align-items.
+*/
+.settings-row-control:has(> .settings-toggle) {
+  min-height: var(--ds-field-height);
 }
 
 /*
@@ -1206,7 +1286,11 @@
   width: max-content;
   max-width: 100%;
   min-width: 0;
-  height: 30px;
+  /* Every Settings row that holds a value uses the same height: these pill
+     selects stand beside the row's text inputs, so they take the shared field
+     metric instead of a shorter pill that reads as a different control. */
+  min-height: var(--ds-field-height);
+  height: var(--ds-field-height);
   border-radius: var(--radius-full);
   border: 0;
   /* D297: controls on a tile row are raised fills, not ringed boxes. */
@@ -1367,7 +1451,9 @@
   width: max-content;
   max-width: 100%;
   min-width: 0;
-  height: 30px;
+  /* One closed-trigger height for every picker: the metric a text input in the
+     same Settings row resolves to, so the two never disagree (see the token). */
+  height: var(--ds-field-height);
   padding: 0 10px 0 12px;
   border-radius: var(--radius-full);
   background: var(--ds-raised);
@@ -1379,6 +1465,15 @@
 .settings-menu-select-anchor.is-full .settings-menu-select-trigger {
   display: flex;
   width: 100%;
+}
+
+/* A stretched trigger is a form field, not a Settings-row pill: it stands as
+   tall as the input in the same grid row (provider setup, config sync).
+   `:where()` keeps this at the field metric's own specificity, so a surface
+   that owns a denser metric (the subagent sheet) still wins with a single
+   class instead of depending on stylesheet order. */
+:where(.settings-menu-select-anchor.is-full) .settings-menu-select-trigger {
+  height: var(--ds-field-height);
 }
 
 .settings-language-trigger:hover,
@@ -2504,6 +2599,28 @@
 
 .settings-proxy-control .field-input {
   width: 100%;
+}
+
+/*
+  Plaintext opt-in for endpoints the user typed themselves: the checkbox sits in
+  the row's control column, and the risk copy arrives only while it is on.
+*/
+.settings-network-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-network-checkbox input {
+  accent-color: var(--ds-accent);
+}
+
+.settings-network-warning {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ds-warning) 12%, transparent);
+  color: var(--ds-warning);
+  font-size: var(--text-sm);
 }
 
 /* Agent extension state inside a plugin row (spec 16 §11). */

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Type } from "typebox";
 import type { AgentEventEnvelope, SubagentDefinition } from "@pi-desktop/shared";
 import type { Message } from "@earendil-works/pi-ai";
 import {
@@ -720,6 +721,46 @@ describe("SubagentRun context budget (ADR 0299)", () => {
     const { run } = createRun();
 
     expect(typeof run.agent.prepareNextTurnWithContext).toBe("function");
+  });
+
+  it("preflights the first request with system and tool-schema overhead", async () => {
+    const smallProvider: RuntimeProviderConfig = {
+      ...provider,
+      id: "small",
+      modelId: "small-model",
+      modelConfig: {
+        source: "generic",
+        name: "Small model",
+        baseUrl: provider.baseUrl ?? "",
+        reasoning: false,
+        input: ["text"],
+        contextWindow: 4_096,
+        maxTokens: 1_024,
+      },
+    };
+    const tools = [{
+      name: "Read",
+      label: "Read",
+      description: "t".repeat(2_200),
+      parameters: Type.Object({}),
+      execute: async () => ({
+        content: [{ type: "text" as const, text: "unused" }],
+        details: {},
+      }),
+    }];
+    const { run } = createRun({
+      provider: smallProvider,
+      systemPrompt: "s".repeat(6_200),
+      tools,
+    });
+    const prompt = vi.spyOn(run.agent, "prompt").mockResolvedValue(undefined);
+    vi.spyOn(run.agent, "waitForIdle").mockResolvedValue(undefined);
+
+    const result = await (run as unknown as SubagentRun).run();
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("SUBAGENT_CONTEXT_OVERFLOW");
+    expect(prompt).not.toHaveBeenCalled();
   });
 
   it("remaps a provider context overflow no fallback could absorb", async () => {

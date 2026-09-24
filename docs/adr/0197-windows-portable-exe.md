@@ -1,55 +1,61 @@
-# ADR 0197: Publish a Windows Portable Executable
+# ADR 0197: Publish a Windows Portable Package
 
-- Status: Accepted
-- Date: 2026-09-09
+- Status: Accepted (amended by D603)
+- Date: 2026-09-22
 - Deciders: PI-Desktop core
-- Related: D120, D126, D364, ADR 0022, E2E-211
+- Related: D120, D126, D364, D603, ADR 0022, E2E-211
 
 ## Context
 
-Windows tag releases published only an NSIS installer
+Windows tag releases publish an NSIS installer
 (`PI-Desktop-Setup-<version>.exe`). Company environments that whitelist a
-single executable, or that block installers, cannot run that artifact without
-an approved install. The request is a no-install `.exe`, not a change to data
-ownership or to the NSIS in-app update lane.
+single executable, or that block installers, also need a no-install package.
+The previous electron-builder `portable` target produced a self-extracting
+executable. In some Windows environments that wrapper could trigger an
+administrator prompt and did not provide a reliable normal executable identity
+for the taskbar.
 
-electron-builder's `portable` target produces a user-level self-extracting
-executable. It does not write `latest.yml`. Applying the NSIS updater to a
-portable run would launch the installer and convert the no-install copy into
-an installed one.
+The no-install lane must not change data ownership or the NSIS in-app update
+lane. A normal ZIP lets the user choose the extraction directory and launches
+the packaged `PI-Desktop.exe` directly.
 
 ## Decision
 
-1. The Windows x64 release lane publishes both NSIS and portable targets.
-2. The portable artifact name is space-free:
-   `PI-Desktop-Portable-${version}.exe`.
-3. Portable requests `user` execution level so launch does not require
-   administrator rights.
-4. electron-builder continues to write `latest.yml` only for NSIS. Portable
-   does not become an auto-update payload.
-5. Packaged portable runs are detected by `PORTABLE_EXECUTABLE_FILE` and use
-   notify-and-link delivery. NSIS installs keep in-app download and
+1. The Windows x64 release lane publishes both NSIS and ZIP targets.
+2. The no-install artifact name is space-free:
+   `PI-Desktop-Portable-${version}.zip`.
+3. The Windows release helper builds NSIS and ZIP in separate
+   electron-builder invocations. The ZIP app metadata contains
+   `piDistribution = "zip"`; installed builds contain `piDistribution =
+   "installed"`.
+4. The ZIP target does not write `latest.yml`. Packaged ZIP runs use
+   notify-and-link delivery, while NSIS installs keep in-app download and
    quit-and-install.
+5. The updater continues to recognize `PORTABLE_EXECUTABLE_FILE` for older
+   portable executables, but ordinary ZIP launches use the packaged metadata
+   marker instead.
 6. User data, logs, and secrets stay in the existing application data
    directory. This decision does not introduce a beside-the-exe profile.
 
 ## Consequences
 
-- Windows users who cannot run an installer can download and launch one
-  executable from the GitHub Release.
-- Portable users discover updates in-app and open the releases page; they
-  replace the portable file themselves.
+- Windows users who cannot run an installer can download, extract, and launch
+  `PI-Desktop.exe` from the ZIP without a self-extracting wrapper.
+- The extracted executable keeps the normal PI-Desktop Windows identity for
+  taskbar grouping and icon display.
+- ZIP users discover updates in-app and open the releases page; they replace
+  the extracted application themselves.
 - NSIS in-app updates, hashes, and feed ownership are unchanged.
-- The portable process still unpacks application files under the Windows temp
-  directory for that launch. Whitelisting applies to the downloaded portable
-  executable; a policy that also blocks temp-directory execution may still
-  require the NSIS install.
+- The ZIP package is larger on disk after extraction than the old temporary
+  self-extracting wrapper, but it avoids runtime extraction and its related
+  execution-policy prompts.
 
 ## Alternatives considered
 
-- Zip of `win-unpacked` only: rejected as the requested artifact is a
-  no-install `.exe`.
-- In-app update of portable via the NSIS installer: rejected because it would
+- Keep electron-builder's `portable` target: rejected because its
+  self-extracting wrapper is the source of the administrator-prompt and
+  taskbar-identity problems this amendment addresses.
+- In-app update of ZIP via the NSIS installer: rejected because it would
   install the application and require a whitelisted installer.
 - Beside-the-exe data directory: rejected as an unrelated data-ownership
   change; `PI_DESKTOP_DATA_DIR` already relocates the profile when needed.

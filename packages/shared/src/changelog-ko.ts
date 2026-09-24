@@ -2,6 +2,23 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const koEntries: ChangelogEntry[] = [
   {
+    version: "0.15.6",
+    date: "2026-09-23",
+    highlights: [
+      "저장된 연결 설정을 바꾸지 않고 기존 DeepSeek, xAI, OpenAI 서비스에서 네이티브 검색을 켜세요.",
+      "OpenAI 및 ChatGPT/Codex 모델 카탈로그에서 GPT-6 Astra, Sol, Luna를 지원합니다.",
+    ],
+  },
+
+  {
+    version: "0.15.5",
+    date: "2026-09-23",
+    highlights: [
+      "OpenAI 및 ChatGPT/Codex 모델 카탈로그에서 GPT-6 Astra, Sol, Luna를 지원합니다.",
+    ],
+  },
+
+  {
     version: "0.15.2",
     date: "2026-09-21",
     highlights: [

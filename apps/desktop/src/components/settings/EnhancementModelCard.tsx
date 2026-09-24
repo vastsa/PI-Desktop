@@ -14,7 +14,6 @@ import { useTranslation } from "react-i18next";
 import {
   THINKING_LEVELS,
   canonicalThinkingLevel,
-  modelIdsMatch,
   type AppSettings,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -24,6 +23,8 @@ import {
 } from "../../features/chat/composer/model";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
+import { providerDisplayName, providerSearchText } from "../../lib/provider-display";
+import { sameComposerModelId } from "../../lib/composer-models";
 import { Button, Input, cx } from "../ui";
 import { IconCheck, IconChevronDown, IconSearch } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
@@ -68,7 +69,7 @@ export function EnhancementModelCard() {
     const needle = query.trim().toLowerCase();
     if (!needle) return options;
     return options.filter(({ provider, modelId }) =>
-      `${provider.name} ${modelId}`.toLowerCase().includes(needle),
+      `${providerSearchText(provider)} ${modelId}`.toLowerCase().includes(needle),
     );
   }, [options, query]);
 
@@ -163,7 +164,9 @@ export function EnhancementModelCard() {
             settings.promptEnhancementProviderId && settings.promptEnhancementModelId ? (
               <span className="model-default-value">
                 <span className="model-default-provider">
-                  {pinnedProvider?.name ?? settings.promptEnhancementProviderId}
+                  {pinnedProvider
+                    ? providerDisplayName(pinnedProvider)
+                    : settings.promptEnhancementProviderId}
                 </span>
                 <span className="model-default-sep" aria-hidden>
                   ·
@@ -252,7 +255,7 @@ export function EnhancementModelCard() {
                 {visible.map(({ provider, modelId }, index) => {
                   const isCurrent =
                     settings.promptEnhancementProviderId === provider.id &&
-                    modelIdsMatch(settings.promptEnhancementModelId ?? "", modelId);
+                    sameComposerModelId(settings.promptEnhancementModelId ?? "", modelId);
                   const previous = visible[index - 1];
                   const startsGroup = !previous || previous.provider.id !== provider.id;
                   return (
@@ -264,14 +267,14 @@ export function EnhancementModelCard() {
                             index > 0 && "has-divider",
                           )}
                         >
-                          {provider.name}
+                          {providerDisplayName(provider)}
                         </div>
                       ) : null}
                       <button
                         type="button"
                         role="option"
                         aria-selected={isCurrent}
-                        aria-label={`${provider.name} · ${modelId}`}
+                        aria-label={`${providerDisplayName(provider)} · ${modelId}`}
                         className={cx("model-default-option", isCurrent && "is-current")}
                         onClick={() => void pickModel(provider.id, modelId)}
                       >

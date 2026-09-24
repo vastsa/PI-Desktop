@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { MAX_PROJECT_NAME_CHARS } from "../lib/sidebar-preferences";
 import { api } from "../lib/api";
 import { parseGitCloneUrl } from "../lib/git-clone-url";
+import { allowInsecureUserEndpoints } from "@pi-desktop/shared";
 import {
   defaultProjectName,
   folderNameFromPath,
@@ -60,7 +61,10 @@ export function ProjectCreateDialog() {
   const folderPickerInFlightRef = useRef(false);
   // The picked source seeds the project name until the user types their own.
   const nameTouchedRef = useRef(false);
-  const cloneTarget = parseGitCloneUrl(gitUrl);
+  const settings = useAppStore((state) => state.settings);
+  const cloneTarget = parseGitCloneUrl(gitUrl, {
+    allowInsecureHttp: allowInsecureUserEndpoints(settings),
+  });
   const defaultName = defaultProjectName({
     source,
     folders,

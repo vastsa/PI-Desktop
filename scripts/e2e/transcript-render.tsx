@@ -1,3 +1,4 @@
+import { transcriptEditProbe } from "./transcript-edit";
 import { turnProcessProbe } from "./turn-process";
 import { transcriptStatusProbe } from "./transcript-status";
 import { createRoot } from "react-dom/client";
@@ -293,6 +294,7 @@ globalThis.transcriptRenderProbe = async () => {
       firstOutputLatency: true,
 
       turnProcess: await turnProcessProbe(),
+      messageEditing: await transcriptEditProbe(),
       textUpdateDurationMs,
     };
   } finally {

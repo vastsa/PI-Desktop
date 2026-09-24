@@ -2,6 +2,23 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.6",
+    "date": "2026-09-23",
+    "highlights": [
+      "Kayıtlı bağlantı ayarlarını değiştirmeden mevcut DeepSeek, xAI ve OpenAI hizmetlerinde yerel aramayı etkinleştirin.",
+      "OpenAI ve ChatGPT/Codex model kataloglarında GPT-6 Astra, Sol ve Luna desteği eklenir.",
+    ],
+  },
+
+  {
+    "version": "0.15.5",
+    "date": "2026-09-23",
+    "highlights": [
+      "OpenAI ve ChatGPT/Codex model kataloglarında GPT-6 Astra, Sol ve Luna desteği eklenir.",
+    ],
+  },
+
+  {
     "version": "0.15.2",
     "date": "2026-09-21",
     "highlights": [

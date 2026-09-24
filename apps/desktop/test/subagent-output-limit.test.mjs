@@ -133,7 +133,7 @@ test("the runtime overrides the built model instead of replacing it", () => {
 });
 
 test("every locale ships the output-cap copy", async () => {
-  const locales = ["de", "en", "es", "fr", "ko", "tr", "zh-CN", "zh-TW"];
+  const locales = ["de", "en", "es", "fr", "ko", "pt-BR", "tr", "zh-CN", "zh-TW"];
   for (const locale of locales) {
     const catalog = await readFile(
       new URL(`../../../packages/i18n/src/locales/${locale}/index.ts`, import.meta.url),

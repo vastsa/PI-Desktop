@@ -249,7 +249,7 @@ title, status badge, branch meta, external link, and "Review with agent"
 
 ### 3.4 Scheduled
 Tasks and Run history views, with an explicit create/edit form, a cadence dropdown, time,
-next occurrence, saved project, pause/resume and delete confirmation. Hourly
+next occurrence, saved project, per-task permission/model selection, pause/resume and delete confirmation. Hourly
 schedules repeat at one-hour intervals without a time selector. Daily schedules
 use a themed time-period dropdown: Morning 09:00, Afternoon 14:00, Evening
 19:00, Night 22:00. The form does not expose hour/minute editing. AI tools may
@@ -269,12 +269,25 @@ occurrences more than 90 seconds late or overlapping a running task. Startup
 rearms future occurrences only. Hourly schedules wait a full hour after saving,
 enabling, startup or the preceding automatic admission; Run now leaves the
 automatic occurrence unchanged. Legacy cadence-only tasks require explicit
-schedule configuration. The current project is captured when first configured;
+schedule configuration. New tasks explicitly save the selected project, Ask
+permission mode and the current default provider/model. Each selector writes only
+to that task. The prompt is labelled Instruction, and these three selectors sit
+inside its bottom toolbar using the same shell, chip and anchored-menu treatment
+as the main Composer. Both surfaces render the same controlled permission picker
+and searchable, provider-grouped model list with capability badges. The task model
+chip displays the model name or alias without a provider prefix. Task selection
+callbacks update only the task draft, never the active conversation or app defaults.
+The instruction input has its own rounded border and tonal
+background above the toolbar, with no native resize handle; longer text scrolls
+inside the input. Existing tasks without provider/model fields continue following the
+app defaults; unavailable saved models remain visible and are not silently replaced.
+Selecting Auto warns that restricted actions may run without asking. The current
+project is captured when first configured when no explicit selection exists;
 subsequent foreground project changes do not retarget it. This includes Manual
 tasks and tasks saved without a project: Run now, renaming, and cadence changes
 preserve that binding, including after restart. Only legacy tasks without a saved
-binding capture the current project on their first explicit configuration. Automatic runs use
-Ask permissions and may wait for input in their conversation.
+binding capture the current project on their first explicit configuration. Legacy automatic
+runs without a saved permission mode use Ask and may wait for input in their conversation.
 New tasks default to Agent. A migrated Plan or Goal task is allowed to remain
 stored, but an unattended run is explicitly rejected before provider, artifact,
 or queue work with `PLAN_REQUIRES_INTERACTIVE_SESSION`; it cannot display or

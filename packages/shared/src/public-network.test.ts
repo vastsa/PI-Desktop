@@ -4,16 +4,20 @@ import {
   classifyIpLiteral,
   classifyProxyRoute,
   isAcceptableResolvedAddress,
+  isAcceptableUserEndpointAddress,
+  isCloudMetadataAddress,
+  isCloudMetadataHost,
   isPublicHttpsUrl,
   isPublicIpLiteral,
   PUBLIC_NETWORK_POLICY_ERROR,
   isPublicHostname,
   isProxyFakeIpAddress,
   isPublicNetworkPolicyFailure,
+  isSafeUserEndpointUrl,
+  isUserSuppliedHostname,
   publicNetworkRefusalDetail,
   publicNetworkRefusalReason,
 } from "./public-network.js";
-
 describe("public network address policy", () => {
   it("classifies special-use IPv4 ranges", () => {
     const cases: Array<[string, ReturnType<typeof classifyIpLiteral>]> = [
@@ -256,5 +260,130 @@ describe("public network address policy", () => {
         route: "proxied",
       }),
     ).toEqual({ reason: "url-syntax", route: "proxied" });
+  });
+});
+
+/**
+ * The question these helpers answer is "did the user type this endpoint in
+ * themselves?". Their own machine and their own LAN are that person's own
+ * choice; the classes that name no destination at all, and cloud metadata, stay
+ * refused on every input.
+ */
+describe("user-supplied endpoint policy", () => {
+  it("accepts loopback, LAN and local DNS names a user typed in", () => {
+    for (const host of [
+      "localhost",
+      "127.0.0.1",
+      "10.1.2.3",
+      "172.16.0.1",
+      "192.168.1.5",
+      "100.64.0.1",
+      "169.254.10.20",
+      "nas.local",
+      "dev.internal",
+      "::1",
+      "[fd00::1]",
+      "[fe80::1]",
+      "[fec0::1]",
+      "example.com",
+      "[2606:4700::1]",
+    ]) {
+      expect(isUserSuppliedHostname(host), host).toBe(true);
+    }
+  });
+
+  it("refuses the classes that name no destination, and cloud metadata", () => {
+    for (const host of [
+      "0.0.0.0",
+      "::",
+      "224.0.0.1",
+      "240.0.0.1",
+      "192.0.2.1",
+      "[2001:db8::1]",
+      "169.254.169.254",
+      "100.100.100.200",
+      "[fd00:ec2::254]",
+      "metadata.google.internal",
+      "metadata",
+      "instance-data",
+      "169.254.169.254.",
+      "",
+    ]) {
+      expect(isUserSuppliedHostname(host), host).toBe(false);
+    }
+  });
+
+  it("classifies a user-supplied address by kind and route", () => {
+    for (const kind of [
+      "public",
+      "loopback",
+      "private",
+      "cgnat",
+      "link-local",
+      "ula",
+      "site-local",
+    ] as const) {
+      expect(isAcceptableUserEndpointAddress("192.168.1.5", kind, "direct"), kind).toBe(true);
+      expect(isAcceptableUserEndpointAddress("192.168.1.5", kind, "proxied"), kind).toBe(true);
+    }
+    for (const kind of [
+      "invalid",
+      "unspecified",
+      "multicast",
+      "reserved",
+      "documentation",
+    ] as const) {
+      expect(isAcceptableUserEndpointAddress("192.168.1.5", kind, "direct"), kind).toBe(false);
+    }
+    // A TUN fake-IP answer is the proxy's placeholder for the name, so it is
+    // tolerated only when this app dials a proxy instead of that address
+    // (ADR 0272).
+    expect(isAcceptableUserEndpointAddress("192.168.1.5", "benchmark", "proxied")).toBe(true);
+    expect(isAcceptableUserEndpointAddress("192.168.1.5", "benchmark", "direct")).toBe(false);
+    // The address itself can still veto the verdict: a cloud metadata endpoint
+    // is refused whichever class it was read as.
+    expect(isAcceptableUserEndpointAddress("169.254.169.254", "link-local", "direct")).toBe(false);
+    // Including an IPv4-mapped spelling of it.
+    expect(
+      isAcceptableUserEndpointAddress("::ffff:169.254.169.254", "link-local", "direct"),
+    ).toBe(false);
+  });
+
+  it("requires the explicit opt-in for a plaintext user endpoint", () => {
+    expect(isSafeUserEndpointUrl("https://192.168.1.5:8443/catalog.json")).toBe(true);
+    expect(isSafeUserEndpointUrl("https://127.0.0.1/catalog.json")).toBe(true);
+    expect(isSafeUserEndpointUrl("http://192.168.1.5:8080/catalog.json")).toBe(false);
+    expect(
+      isSafeUserEndpointUrl("http://192.168.1.5:8080/catalog.json", { allowInsecureHttp: true }),
+    ).toBe(true);
+    expect(isSafeUserEndpointUrl("https://user:pass@192.168.1.5/catalog.json")).toBe(false);
+    expect(isSafeUserEndpointUrl("https://169.254.169.254/latest/meta-data")).toBe(false);
+    expect(
+      isSafeUserEndpointUrl("https://169.254.169.254/x", { allowInsecureHttp: true }),
+    ).toBe(false);
+    expect(isSafeUserEndpointUrl("ftp://192.168.1.5/catalog.json", { allowInsecureHttp: true })).toBe(
+      false,
+    );
+    expect(isSafeUserEndpointUrl("not a url")).toBe(false);
+  });
+
+  it("names cloud metadata hosts and addresses, however they are spelled", () => {
+    expect(isCloudMetadataAddress("169.254.169.254")).toBe(true);
+    expect(isCloudMetadataAddress("100.100.100.200")).toBe(true);
+    expect(isCloudMetadataAddress("fd00:ec2::254")).toBe(true);
+    expect(isCloudMetadataAddress("[fd00:ec2::254]")).toBe(true);
+    expect(isCloudMetadataAddress("fd00:ec2:0:0:0:0:0:254")).toBe(true);
+    expect(isCloudMetadataAddress("::ffff:169.254.169.254")).toBe(true);
+    expect(isCloudMetadataAddress("::ffff:a9fe:a9fe")).toBe(true);
+    expect(isCloudMetadataAddress("::169.254.169.254")).toBe(true);
+    expect(isCloudMetadataAddress("::ffff:10.0.0.8")).toBe(false);
+    expect(isCloudMetadataAddress("10.0.0.8")).toBe(false);
+    expect(isCloudMetadataAddress("169.254.10.20")).toBe(false);
+    expect(isCloudMetadataHost("metadata.google.internal.")).toBe(true);
+    expect(isCloudMetadataHost("METADATA")).toBe(true);
+    expect(isCloudMetadataHost("instance-data")).toBe(true);
+    expect(isCloudMetadataHost("::ffff:169.254.169.254")).toBe(true);
+    expect(isCloudMetadataHost("metadata.example.com")).toBe(false);
+    expect(isCloudMetadataHost("localhost")).toBe(false);
   });
 });

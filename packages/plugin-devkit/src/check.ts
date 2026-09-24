@@ -1,8 +1,10 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
+  isExternalThemeAssetPath,
   isLocalNetDomain,
   LEGACY_FS_PERMISSIONS,
+  normalizeThemeAssetPath,
   PLUGIN_FS_MODES,
   PLUGIN_ID_PATTERN,
   PLUGIN_PERMISSIONS,
@@ -256,6 +258,23 @@ export async function check(dirInput: string): Promise<CheckResult> {
         code: "skill.no-frontmatter",
         message: `skill "${path}" has no "name"/"description" front matter, so the agent gets no summary of when to apply it`,
       });
+    }
+  }
+
+  // ADR 0255 (theme assets are absolute paths): the host-core installer
+  // rejects package-relative `contributes.themes[].assets` entries with
+  // PLUGIN_INVALID, while `validateManifest` above still accepts both
+  // spellings. Catch the disagreement at author time instead of letting a
+  // package publish that no user can install.
+  for (const theme of manifest.contributes?.themes ?? []) {
+    for (const asset of theme.assets ?? []) {
+      const normalized = normalizeThemeAssetPath(asset);
+      if (normalized && !isExternalThemeAssetPath(normalized)) {
+        errors.push({
+          code: "theme.asset-package-relative",
+          message: `contributes.themes "${theme.id}" asset "${asset}" must be an absolute image or font path: the installer rejects package-relative assets (ADR 0255). Ship the bytes inside pi.plugin.getDataPath() and reference them by absolute path, or register them at runtime with pi.themes.upsert`,
+        });
+      }
     }
   }
 

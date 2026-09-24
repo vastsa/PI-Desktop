@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
+  estimateTokens,
+  type AgentMessage,
+} from "@earendil-works/pi-agent-core";
+import {
+  addSummaryUsage,
+  compactionSummaryInputLimit,
   COMPACTION_REDUCED_TOOL_RESULT_CHARS,
+  COMPACTION_SUMMARY_MAX_CHUNKS,
   COMPACTION_SUMMARY_MAX_RETRIES,
+  COMPACTION_SUMMARY_PROMPT_SAFETY_TOKENS,
   COMPACTION_SUMMARY_RETRY_BASE_MS,
   COMPACTION_SUMMARY_RETRY_POLICY,
   estimateSummaryPromptTokens,
+  planSummaryChunks,
   reduceSummaryInput,
+  SUMMARY_CHUNK_TRUNCATION_MARKER,
   type CompactionSummaryInput,
 } from "./compaction-summary-input.js";
 
@@ -172,5 +181,139 @@ describe("reduceSummaryInput", () => {
       (reduced!.turnPrefixMessages[0] as { content: Array<{ text: string }> }).content[0].text
         .length,
     ).toBeLessThan(1_000);
+  });
+});
+
+describe("compactionSummaryInputLimit", () => {
+  it("leaves the summary its own output allowance and the prompt template", () => {
+    const limit = compactionSummaryInputLimit({
+      hardLimit: 100_000,
+      requestHeadroom: 20_000,
+      modelMaxTokens: 8_000,
+    });
+
+    expect(limit).toBe(
+      120_000 - 8_000 - COMPACTION_SUMMARY_PROMPT_SAFETY_TOKENS,
+    );
+  });
+
+  it("caps the output allowance at the model's own output budget", () => {
+    const limit = compactionSummaryInputLimit({
+      hardLimit: 1_000_000,
+      requestHeadroom: 200_000,
+      modelMaxTokens: 8_192,
+    });
+
+    expect(limit).toBe(1_200_000 - 8_192 - COMPACTION_SUMMARY_PROMPT_SAFETY_TOKENS);
+  });
+});
+
+describe("planSummaryChunks", () => {
+  const options = { summaryInputLimit: 10_000, reserveTokens: 1_000 };
+
+  it("splits a range into contiguous chunks that each fit the request budget", () => {
+    const messages = Array.from({ length: 40 }, (_, index) =>
+      toolResult("t".repeat(2_000), `tool-${index}`),
+    );
+
+    const chunks = planSummaryChunks(input(messages), options);
+
+    expect(chunks).toBeDefined();
+    expect(chunks!.length).toBeGreaterThan(1);
+    // Contiguous and complete: concatenating the chunks reproduces the range in
+    // order, so every message the checkpoint files behind its boundary is
+    // summarized by exactly one request.
+    expect(chunks!.flat()).toEqual(messages);
+    for (const chunk of chunks!) {
+      expect(
+        estimateSummaryPromptTokens(input(chunk, { previousSummary: "s".repeat(4_000) })),
+      ).toBeLessThanOrEqual(options.summaryInputLimit);
+    }
+  });
+
+  it("keeps a range that already fits as one chunk", () => {
+    const messages = [user("read the log"), toolResult("short output")];
+
+    expect(planSummaryChunks(input(messages), options)).toEqual([messages]);
+  });
+
+  it("truncates a single message that is larger than a chunk instead of dropping it", () => {
+    const messages = [user("u".repeat(200_000))];
+
+    const chunks = planSummaryChunks(input(messages), options);
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks![0]).toHaveLength(1);
+    const text = (chunks![0]![0] as { content: Array<{ text: string }> }).content[0].text;
+    expect(text).toContain(SUMMARY_CHUNK_TRUNCATION_MARKER.trim());
+    expect(text.length).toBeLessThan(200_000);
+    expect(chunks![0]![0]!.role).toBe("user");
+  });
+
+  it("plans nothing for an empty range", () => {
+    expect(planSummaryChunks(input([]), options)).toBeUndefined();
+  });
+
+  it("refuses a range that would need more requests than the bound allows", () => {
+    const tiny = { summaryInputLimit: 100, reserveTokens: 0 };
+    const messages = Array.from({ length: COMPACTION_SUMMARY_MAX_CHUNKS + 4 }, (_, index) =>
+      user(`request ${index} ${"x".repeat(200)}`),
+    );
+
+    expect(planSummaryChunks(input(messages), tiny)).toBeUndefined();
+  });
+
+  it("splits a range with known-token messages by the same budget the guard uses", () => {
+    const messages = Array.from({ length: 12 }, (_, index) =>
+      user(`note ${index} ${"y".repeat(1_000)}`),
+    );
+    const perMessage = Math.ceil(estimateTokens(messages[0]!));
+
+    // Four messages' worth of budget, less the planner's margin: three fit.
+    const chunks = planSummaryChunks(input(messages), {
+      summaryInputLimit: perMessage * 4,
+      reserveTokens: 0,
+    });
+
+    expect(chunks!.map((chunk) => chunk.length)).toEqual([3, 3, 3, 3]);
+  });
+});
+
+describe("addSummaryUsage", () => {
+  const usage = (input: number, output: number) => ({
+    input,
+    output,
+    cacheRead: 1,
+    cacheWrite: 2,
+    totalTokens: input + output,
+    cost: { input: 0.1, output: 0.2, cacheRead: 0.3, cacheWrite: 0.4, total: 1 },
+  });
+
+  it("adds the requests one chunked summary took", () => {
+    const total = addSummaryUsage(usage(10, 5), usage(20, 7));
+
+    expect(total).toEqual({
+      input: 30,
+      output: 12,
+      cacheRead: 2,
+      cacheWrite: 4,
+      totalTokens: 42,
+      cost: { input: 0.2, output: 0.4, cacheRead: 0.6, cacheWrite: 0.8, total: 2 },
+    });
+  });
+
+  it("keeps an optional field only when a request reported it", () => {
+    const withReasoning = { ...usage(1, 1), reasoning: 4 };
+
+    expect(addSummaryUsage(undefined, usage(1, 1))).not.toHaveProperty("reasoning");
+    expect(addSummaryUsage(withReasoning, usage(1, 1))).toMatchObject({
+      reasoning: 4,
+    });
+  });
+
+  it("returns whichever side exists", () => {
+    expect(addSummaryUsage(undefined, usage(1, 1))).toEqual(usage(1, 1));
+    expect(addSummaryUsage(usage(1, 1), undefined)).toEqual(usage(1, 1));
+    expect(addSummaryUsage(undefined, undefined)).toBeUndefined();
   });
 });

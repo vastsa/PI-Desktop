@@ -56,14 +56,15 @@
 - 只检查浏览器实际生效的 CSS：先按等长空白遮蔽注释体与字符串字面量
   （每个被遮蔽字符对应一个空格，偏移仍指向原文），`url(...)` 参数按原样保留
   并按目标判定。因此仅在注释或字符串里*提到*被禁关键字的样式表会被接受
-- 拒绝：`@import`、任何不是 `data:` 的 `url()` 目标 URI、`url(`
-  解析器无法解析 `javascript:`、`expression(` 和标记序列
-  （`<style`、`</style`、`<!--`）；空纸也会被拒绝
+- 拒绝：`@import`、既非 `data:` URI 也非已声明主题资源的 `url()` 目标、
+  解析器无法解析的 `url(`、`javascript:`、`expression(` 和标记序列
+  （`<style`、`</style`、`<!--`）；空样式表也会被拒绝
 - 每个文件上限为 256KB，每个插件 8 个主题
-- 主题可声明 `assets`（绝对路径、扩展名白名单、总量上限 4MB）。命中的 `url()`
-  会被改写为 `plugin-asset://<pluginId>/<path>`，由宿主的处理器提供；该处理器
+- 主题可声明 `assets`，使用白名单图片/字体扩展名：插件包内相对路径（在插件根目录内解析，拒绝
+  路径穿越和 `node_modules`）或绝对路径；所有资源总量上限为 4MB。命中的 `url()`
+  会被改写为 `plugin-asset://<pluginId>/<path>`，由宿主处理器提供；该处理器
   只按已加载插件自己登记的清单解析，只读、带 `nosniff`，并在插件卸载时一并撤销。
-  `pi.themes.upsert` 也能在运行时登记同样的路径。未登记的引用仍被拒绝，
+  `pi.themes.upsert` 也可在运行时登记同类路径。未登记的引用仍会被拒绝，
   原始路径不会到达渲染器
 - `contributes.windowAppearance`（`#rrggbb` / `#rrggbbaa`）需要
   `ui.window.appearance`，且只在该插件的某个主题被选中时生效；离开该主题即恢复

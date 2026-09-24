@@ -15,6 +15,8 @@ export const KEYBOARD_SHORTCUT_IDS = [
   "zoomIn",
   "zoomOut",
   "toggleFullScreen",
+  "voiceToggle",
+  "voiceCancel",
 ] as const;
 
 export type KeyboardShortcutId = (typeof KEYBOARD_SHORTCUT_IDS)[number];
@@ -62,6 +64,16 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcutDefinition[] = [
     group: "window",
     defaultBinding: "F11",
     macDefaultBinding: "Mod+Ctrl+F",
+  },
+  {
+    id: "voiceToggle",
+    group: "agent",
+    defaultBinding: "Mod+Shift+V",
+  },
+  {
+    id: "voiceCancel",
+    group: "agent",
+    defaultBinding: "Escape",
   },
 ] as const;
 

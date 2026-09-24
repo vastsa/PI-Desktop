@@ -9,7 +9,7 @@
  * picks share these rules.
  */
 import type { UserSkillInput } from "./types.js";
-import { isSafePublicHttpsUrl } from "./public-network.js";
+import { isSafeUserEndpointUrl } from "./public-network.js";
 
 export type SkillCatalogCategory = "workflow" | "writing" | "coding" | "data" | "docs";
 
@@ -40,8 +40,20 @@ export const MAX_SKILL_DOCUMENT_BYTES = 128 * 1024;
 /** Host `valid_capability_id`: lowercase ASCII, digits, hyphen; starts alphanumeric. */
 const SKILL_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-export function isSafeSkillSourceUrl(url: string): boolean {
-  return isSafePublicHttpsUrl(url);
+/**
+ * Guard for a skill market source URL the user entered.
+ *
+ * The user typed this address, so it may be a LAN or loopback catalog under the
+ * stored `networkPolicy`; plain `http` needs the explicit opt-in. A document URL
+ * that arrives inside a catalog stays on the third-party policy, so loosening
+ * this guard never widens the boundary for content the app did not receive from
+ * the user.
+ */
+export function isSafeSkillSourceUrl(
+  url: string,
+  options: { allowInsecureHttp?: boolean } = {},
+): boolean {
+  return isSafeUserEndpointUrl(url, options);
 }
 
 /**
@@ -177,7 +189,10 @@ export function mergeSkillEntries(
 }
 
 /** Repair whatever the renderer persisted into a usable source list. */
-export function sanitizeSkillSources(value: unknown): SkillMarketSource[] {
+export function sanitizeSkillSources(
+  value: unknown,
+  options: { allowInsecureHttp?: boolean } = {},
+): SkillMarketSource[] {
   const raw = Array.isArray(value) ? value : [];
   const seen = new Set<string>();
   const sources: SkillMarketSource[] = [];
@@ -188,7 +203,7 @@ export function sanitizeSkillSources(value: unknown): SkillMarketSource[] {
       typeof candidate.id !== "string" ||
       typeof candidate.name !== "string" ||
       typeof candidate.url !== "string" ||
-      !isSafeSkillSourceUrl(candidate.url) ||
+      !isSafeSkillSourceUrl(candidate.url, options) ||
       seen.has(candidate.id)
     ) {
       continue;

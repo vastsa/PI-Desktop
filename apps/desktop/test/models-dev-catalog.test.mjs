@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { apiStyleForAdapter, modelIdsMatch } from "@pi-desktop/shared";
+import { fileURLToPath } from "node:url";
+import { apiStyleForAdapter, catalogModelIdsMatch, modelIdsMatch } from "@pi-desktop/shared";
 
 import {
   MODELS_DEV_API_URL,
@@ -158,6 +159,90 @@ test("cached matches remain scoped to the requested provider and endpoint", asyn
   }
 });
 
+test("unknown endpoints do not inherit ambiguous cross-provider metadata", async (t) => {
+  for (const order of [["alpha", "beta"], ["beta", "alpha"]]) {
+    const fixture = Object.fromEntries(order.map((key) => [key, {
+      api: `https://${key}.example/v1`,
+      models: {
+        "shared-model": {
+          id: "shared-model",
+          reasoning: key === "alpha",
+          limit: { context: key === "alpha" ? 128_000 : 32_000, output: 8_192 },
+        },
+      },
+    }]));
+    const catalog = await loadFixtureCatalog(t, fixture);
+    for (const modelId of ["shared-model", "proxy/shared-model"]) {
+      const unknown = { vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId };
+      assert.equal(catalog.findModel(unknown), undefined, `ambiguous ${modelId} must miss`);
+      assert.equal(catalog.findModel(unknown), undefined, "ambiguous misses are cached");
+    }
+    const alpha = catalog.findModel({
+      vendorKey: "custom", baseUrl: "https://alpha.example/v1", modelId: "shared-model",
+    });
+    assert.equal(alpha?.providerKey, "alpha", "an exact endpoint scopes the lookup");
+    assert.equal(alpha?.reasoning, true);
+    assert.equal(alpha?.limit.context, 128_000);
+    const beta = catalog.findModel({ vendorKey: "beta", modelId: "shared-model" });
+    assert.equal(beta?.providerKey, "beta", "a known provider key scopes the lookup");
+    assert.equal(beta?.reasoning, false);
+    assert.equal(beta?.limit.context, 32_000);
+  }
+});
+
+test("an unknown endpoint can use a unique supported proxy alias", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    alpha: { models: { "shared-model": { id: "shared-model", reasoning: true } } },
+  });
+  assert.equal(catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "proxy/shared-model-thinking",
+  })?.providerKey, "alpha");
+});
+
+test("a known endpoint cannot borrow another provider's catalog model", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    alpha: { api: "https://alpha.example/v1", models: { "alpha-only": { id: "alpha-only" } } },
+    beta: { api: "https://beta.example/v1", models: { "proxy/shared-model": { id: "proxy/shared-model", reasoning: true } } },
+  });
+  assert.equal(catalog.findModel({ baseUrl: "https://alpha.example/v1", modelId: "shared-model" }), undefined);
+  assert.equal(catalog.findModel({ baseUrl: "https://beta.example/v1", modelId: "shared-model" })?.providerKey, "beta");
+});
+
+test("a shared catalog API prefers the explicitly selected vendor", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    alpha: { api: "https://gateway.example/v1", models: { "alpha-only": { id: "alpha-only" } } },
+    beta: { api: "https://gateway.example/v1", models: { "beta-only": { id: "beta-only" } } },
+  });
+  const input = { vendorKey: "beta", baseUrl: "https://gateway.example/v1" };
+  assert.equal(catalog.findModel({ ...input, modelId: "beta-only" })?.providerKey, "beta");
+  assert.equal(catalog.findModel({ ...input, modelId: "alpha-only" }), undefined);
+});
+
+test("a shared catalog API with no vendor key cannot select the first publisher", async (t) => {
+  for (const order of [["alpha", "beta"], ["beta", "alpha"]]) {
+    const catalog = await loadFixtureCatalog(t, Object.fromEntries(order.map((key) => [key, {
+      api: "https://gateway.example/v1",
+      models: { "shared-model": { id: "shared-model", reasoning: key === "alpha",
+        limit: { context: key === "alpha" ? 128_000 : 32_000, output: 8_192 } } },
+    }])));
+    assert.equal(catalog.providerKeyForRow({ vendorKey: "custom", baseUrl: "https://gateway.example/v1" }), undefined);
+    assert.equal(catalog.findModel({ vendorKey: "custom", baseUrl: "https://gateway.example/v1", modelId: "shared-model" }), undefined);
+    assert.equal(catalog.findModel({ vendorKey: "beta", baseUrl: "https://gateway.example/v1", modelId: "shared-model" })?.providerKey, "beta");
+  }
+});
+
+test("a recognized endpoint takes priority over an unrelated vendor fallback", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    openai: { models: { "shared-model": { id: "shared-model" } } },
+    deepseek: { models: { "shared-model": { id: "shared-model" } } },
+  });
+  assert.equal(catalog.findModel({
+    vendorKey: "openai",
+    baseUrl: "https://api.deepseek.com",
+    modelId: "shared-model",
+  })?.providerKey, "deepseek");
+});
+
 test("model lookup memory is bounded by the catalog, not by query count", async (t) => {
   const catalog = await loadFixtureCatalog(t);
   const input = { vendorKey: "anthropic", modelId: "claude-opus-4.6" };
@@ -207,6 +292,120 @@ test("model IDs match provider namespaces without matching model variants", () =
   assert.equal(modelIdsMatch("anthropic/claude-opus-5", "claude-opus-5"), true);
   assert.equal(modelIdsMatch("claude-opus-5@default", "claude-opus-5"), true);
   assert.equal(modelIdsMatch("claude-opus-5-fast", "claude-opus-5"), false);
+  for (const suffix of ["agent", "latest", "thinking", "think"]) {
+    assert.equal(modelIdsMatch("foo", `foo-${suffix}`), false);
+    assert.equal(modelIdsMatch(`foo-${suffix}`, "foo"), false);
+  }
+  assert.equal(modelIdsMatch("gateway-a/foo", "gateway-b/foo"), false);
+  assert.equal(modelIdsMatch("foo@us-east", "foo@eu-west"), false);
+  assert.equal(modelIdsMatch("proxy/openai/gpt-4o", "openai/gpt-4o"), true);
+  assert.equal(modelIdsMatch("openai/gpt-4o", "proxy/gpt-4o"), false);
+});
+test("catalog metadata IDs match exact proxy paths and supported variants", () => {
+  for (const [catalogId, request] of [
+    ["claude-opus-4.6", "proxy/claude-opus-4.6"],
+    ["claude-opus-4.6", "custom/claude-opus-4.6"],
+    ["claude-opus-4.6", "relay/claude-opus-4.6"],
+    ["claude-opus-4.6", "gateway-01/claude-opus-4.6"],
+    ["openai/gpt-4o", "hub/openai/gpt-4o"],
+    ["claude-opus-4.6", "proxy/claude-opus-4.6-thinking"],
+    ["claude-opus-4.6", "claude-opus-4.6:thinking"],
+    ["claude-opus-4.6", "proxy/claude-opus-4.6-agent"],
+    ["claude-opus-4.6", "proxy/claude-opus-4.6-latest"],
+    ["claude-opus-4.6", "proxy/claude-opus-4.6-agent-thinking"],
+    ["proxy/nested/claude-opus-4.6@us-east", "claude-opus-4.6-thinking"],
+    ["anthropic-claude-opus-4.6", "claude-opus-4.6@us-east"],
+    ["google/gemini-pro-latest", "gemini-pro"],
+  ]) {
+    assert.equal(catalogModelIdsMatch(catalogId, request), true, `${catalogId} / ${request}`);
+    assert.equal(catalogModelIdsMatch(request, catalogId), true, `${request} / ${catalogId}`);
+  }
+
+  for (const [catalogId, request] of [
+    ["google/gemini-2.5-flash", "openai/gemini-2.5-flash"],
+    ["claude-opus-4.6", "myproxy-claude-opus-4.6"],
+    ["claude-opus-4.6", "myproxy-claude-opus-4.6-thinking"],
+    ["google/gemini-2.5-flash", "gemini-2.5-flash-high"],
+    ["google/gemini-2.5-flash", "gemini-2.5-flash-low"],
+    ["google/gemini-2.5-flash", "gemini-2.5-flash:minimal"],
+    ["claude-opus-5", "claude-opus-5-fast"],
+    ["gpt-4o", "gpt-4o-mini"],
+    ["gpt-4", "gpt-4o"],
+    ["model", "other-model"],
+    ["custom", "gemini-3.1-pro-preview-customtools"],
+    ["groq/whisper-large-v3", "deepseek-v3"],
+    ["vercel/bfl/flux-kontext-max", "qwen-max"],
+    ["alibaba/qwen3-asr-flash", "qwen-flash"],
+    ["openai/gpt-4o", "proxy/gpt-4o"],
+    ["google/gemini-2.5-flash", "proxy/gemini-2.5-flash"],
+    ["proxy/nested/claude-opus-4.6", "other/claude-opus-4.6"],
+    ["claude-opus-4-6-max", "qwen-max"],
+  ]) {
+    assert.equal(catalogModelIdsMatch(catalogId, request), false, `${catalogId} / ${request}`);
+    assert.equal(catalogModelIdsMatch(request, catalogId), false, `${request} / ${catalogId}`);
+  }
+  assert.equal(catalogModelIdsMatch("gateway-a/foo", "gateway-b/foo"), false);
+  assert.equal(catalogModelIdsMatch("foo", "foo-think"), true);
+  assert.equal(catalogModelIdsMatch("foo", "foo-agent"), true);
+  assert.equal(catalogModelIdsMatch("foo", "foo-latest"), true);
+});
+
+test("catalog lookup indexes exact path leaves and known vendor variants without broad aliases", async (t) => {
+  const ids = [
+    "model", "custom", "groq/whisper-large-v3", "vercel/bfl/flux-kontext-max",
+    "alibaba/qwen3-asr-flash", "proxy/nested/claude-opus-4.6@us-east",
+    "anthropic-claude-sonnet-4", "openai.gpt-4o", "google/gemini-2.5-flash",
+  ];
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { models: Object.fromEntries(ids.map((id) => [id, { id }])) },
+  });
+  for (const [request, expected] of [
+    ["other-model", undefined],
+    ["gemini-3.1-pro-preview-customtools", undefined],
+    ["deepseek-v3", undefined],
+    ["qwen-max", undefined],
+    ["qwen-flash", undefined],
+    ["myproxy-claude-opus-4.6", undefined],
+    ["gemini-2.5-flash-high", undefined],
+    ["gemini-2.5-flash-low", undefined],
+    ["claude-opus-4.6-thinking", "proxy/nested/claude-opus-4.6@us-east"],
+    ["proxy/claude-opus-4.6-thinking", undefined],
+    ["claude-sonnet-4-agent", "anthropic-claude-sonnet-4"],
+    ["proxy/gemini-2.5-flash", undefined],
+    ["gpt-4o@eu", "openai.gpt-4o"],
+  ]) {
+    assert.equal(catalog.findModel({ vendorKey: "custom", modelId: request })?.modelId, expected, request);
+  }
+  assert.equal(catalog.findModel({ vendorKey: "custom", modelId: "openai/gemini-2.5-flash" }), undefined);
+});
+
+test("matches supported proxy path and reasoning variants in catalog lookup", async (t) => {
+  const catalog = await loadFixtureCatalog(t);
+  for (const modelId of [
+    "proxy/claude-opus-4.6", "proxy/claude-opus-4.6-thinking",
+    "proxy/claude-opus-4.6-agent", "claude-opus-4.6:thinking",
+    "anthropic-claude-opus-4.6",
+  ]) {
+    const match = catalog.findModel({ vendorKey: "custom", modelId });
+    assert.equal(match?.modelId, "claude-opus-4.6", modelId);
+    assert.equal(match.reasoning, true);
+  }
+  for (const modelId of ["myproxy-claude-opus-4.6", "myproxy-claude-opus-4.6-thinking"]) {
+    assert.equal(catalog.findModel({ vendorKey: "custom", modelId }), undefined);
+  }
+});
+
+test("metadata lookup can share routed leaves and narrow suffix aliases without merging bindings", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { models: {
+      "gateway-a/foo": { id: "gateway-a/foo" },
+      "bar-agent": { id: "bar-agent" },
+    } },
+  });
+  assert.equal(modelIdsMatch("gateway-a/foo", "gateway-b/foo"), false);
+  assert.equal(modelIdsMatch("bar", "bar-agent"), false);
+  assert.equal(catalog.findModel({ modelId: "gateway-b/foo" }), undefined);
+  assert.equal(catalog.findModel({ modelId: "bar-thinking" })?.modelId, "bar-agent");
 });
 
 test("models.dev records retain all published model parameters and modalities", () => {
@@ -686,6 +885,69 @@ test("the application loads the bundled release snapshot without network access"
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("the bundled snapshot maps the latest 0.87.1 model ids to usable metadata", async () => {
+  const catalog = new ModelsDevCatalog({
+    catalogPath: fileURLToPath(new URL("../resources/models.dev/api.json", import.meta.url)),
+  });
+  assert.equal(await catalog.ensureLoaded(), true);
+
+  const cases = [
+    {
+      vendorKey: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      modelId: "gpt-6-sol",
+      contextWindow: 1_050_000,
+      maxTokens: 128_000,
+      thinkingLevels: ["off", "low", "medium", "high", "xhigh", "max"],
+    },
+    {
+      vendorKey: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      modelId: "gpt-6-luna",
+      contextWindow: 1_050_000,
+      maxTokens: 128_000,
+      thinkingLevels: ["off", "low", "medium", "high", "xhigh", "max"],
+    },
+    {
+      vendorKey: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      modelId: "claude-opus-5-5",
+      contextWindow: 1_000_000,
+      maxTokens: 128_000,
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+    },
+    {
+      vendorKey: "xai",
+      baseUrl: "https://api.x.ai/v1",
+      modelId: "grok-4.7",
+      contextWindow: 500_000,
+      maxTokens: 500_000,
+      thinkingLevels: ["low", "medium", "high", "xhigh"],
+    },
+  ];
+
+  for (const expected of cases) {
+    const model = catalog.findModel(expected);
+    assert.ok(model, `${expected.vendorKey}/${expected.modelId} must be in the snapshot`);
+    assert.equal(model.reasoning, true);
+    assert.deepEqual(model.thinkingLevels, expected.thinkingLevels);
+    assert.deepEqual(model.modalities.input, ["text", "image", "pdf"]);
+    const config = modelConfigFromModelsDev(model, expected.baseUrl);
+    assert.equal(config.contextWindow, expected.contextWindow);
+    assert.equal(config.maxTokens, expected.maxTokens);
+    assert.deepEqual(config.input, ["text", "image"]);
+  }
+
+  const copilotClaude = catalog.findModel({
+    vendorKey: "github-copilot",
+    baseUrl: "https://api.individual.githubcopilot.com",
+    modelId: "claude-opus-5.5",
+  });
+  assert.ok(copilotClaude, "GitHub Copilot must include Claude Opus 5.5");
+  assert.equal(copilotClaude.reasoning, true);
+  assert.equal(copilotClaude.limit.context, 1_000_000);
 });
 
 test("concurrent catalog reads share the bundled snapshot load", async () => {

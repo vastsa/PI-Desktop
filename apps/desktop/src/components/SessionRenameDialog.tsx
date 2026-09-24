@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { createPortal } from "react-dom";
+import { useBlockingOverlay } from "../lib/blocking-overlay";
+import { portalToBody } from "../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import { MAX_SESSION_TITLE_LENGTH } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
@@ -40,6 +41,10 @@ function RenameDialog({
   onSave,
   onError,
 }: RenameDialogProps) {
+  // Electron's native preview is composited above renderer DOM, including
+  // portals and the top layer. Hide it for the lifetime of this modal so the
+  // rename surface remains fully visible and clickable in three-column mode.
+  useBlockingOverlay();
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -179,7 +184,7 @@ function RenameDialog({
 
   return typeof document === "undefined"
     ? dialog
-    : createPortal(dialog, document.body);
+    : portalToBody(dialog);
 }
 
 export function SessionRenameDialog({

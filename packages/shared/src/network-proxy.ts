@@ -18,8 +18,16 @@ export const NETWORK_PROXY_SCHEMES = [
 ] as const;
 export type NetworkProxyScheme = (typeof NETWORK_PROXY_SCHEMES)[number];
 
+/**
+ * Default bypass list for custom mode.
+ *
+ * Loopback plus the private ranges a user's own LAN devices live in. A proxy is
+ * for reaching the public internet; sending `192.168.0.0/16` through it is how
+ * a local model server, NAS or MCP endpoint stops answering. `<local>` keeps
+ * Chromium's own single-label rule.
+ */
 export const DEFAULT_NETWORK_PROXY_BYPASS =
-  "localhost,127.0.0.1,::1,<local>";
+  "localhost,127.0.0.1,::1,<local>,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16";
 
 export const PROXY_ENV_KEYS = [
   "HTTP_PROXY",
@@ -42,12 +50,6 @@ export type NetworkProxySettings = {
    * {@link DEFAULT_NETWORK_PROXY_BYPASS} for custom mode.
    */
   bypass?: string;
-  /**
-   * Opt in to router/TUN fake-IP answers for public market sources. This only
-   * permits the benchmark placeholder range; all other non-public classes stay
-   * blocked. Absent means disabled.
-   */
-  allowFakeIp?: boolean;
 };
 
 export type ParsedProxyUrl = {
@@ -87,7 +89,9 @@ export function normalizeNetworkProxy(value: unknown): NetworkProxySettings {
     settings.url = record.url.trim();
   }
   if (bypass) settings.bypass = bypass;
-  if (record?.allowFakeIp === true) settings.allowFakeIp = true;
+  // A build before the network policy owned it stored `allowFakeIp` here. The
+  // key is ignored, not rejected: the proxy decides where traffic goes, and
+  // `networkPolicy.mode` decides what the app tolerates from the route.
   return settings;
 }
 
@@ -197,7 +201,6 @@ export function validateNetworkProxy(
   const settings = normalizeNetworkProxy(value);
   if (settings.mode !== "custom") {
     const next: NetworkProxySettings = { mode: settings.mode };
-    if (settings.allowFakeIp) next.allowFakeIp = true;
     return { ok: true, value: next };
   }
   const parsed = parseProxyUrl(settings.url ?? "");
@@ -207,7 +210,6 @@ export function validateNetworkProxy(
     url: parsed.value.href,
   };
   if (settings.bypass?.trim()) next.bypass = settings.bypass.trim();
-  if (settings.allowFakeIp) next.allowFakeIp = true;
   return { ok: true, value: next };
 }
 

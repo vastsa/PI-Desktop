@@ -42,6 +42,7 @@ type SessionState = {
 };
 
 type PendingPrompt = {
+  prompt: TrustedExtensionUiPrompt;
   sessionId: string;
   kind: "confirm" | "select" | "input";
   resolve: (response: TrustedExtensionUiResponse) => void;
@@ -59,7 +60,7 @@ export type AgentExtensionBridgeOptions = {
 };
 
 function dismissedResponse(kind: PendingPrompt["kind"]): TrustedExtensionUiResponse {
-  return kind === "confirm" ? { kind, value: false } : { kind, value: undefined };
+  return kind === "confirm" ? { kind, value: false, cancelled: true } : { kind, value: undefined, cancelled: true };
 }
 
 export class AgentExtensionBridge {
@@ -68,6 +69,7 @@ export class AgentExtensionBridge {
   private readonly pending = new Map<string, PendingPrompt>();
   /** One interactive prompt per session at a time (spec §9). */
   private readonly promptQueues = new Map<string, Promise<unknown>>();
+  private readonly uiRequests = new Map<string, { sessionId: string; controller: AbortController }>();
 
   constructor(options: AgentExtensionBridgeOptions) {
     this.options = options;
@@ -141,6 +143,11 @@ export class AgentExtensionBridge {
   async requestUi(envelope: TrustedExtensionUiRequestEnvelope): Promise<TrustedExtensionUiResponse> {
     const { request } = envelope;
     switch (request.kind) {
+      case "cancel": {
+        const key = JSON.stringify([envelope.sessionId, envelope.extensionId, request.requestId]);
+        this.uiRequests.get(key)?.controller.abort();
+        return { kind: "cancel" };
+      }
       case "notify":
         this.options.onToast(`${envelope.extensionLabel}: ${request.message}`, request.level);
         return { kind: "notify" };
@@ -170,10 +177,30 @@ export class AgentExtensionBridge {
         errorCode: ErrorCodes.UNSUPPORTED,
       });
     }
+    const key = JSON.stringify([envelope.sessionId, envelope.extensionId, envelope.requestId ?? randomUUID()]);
+    if (this.uiRequests.has(key)) throw new Error("Duplicate extension UI request");
+    const controller = new AbortController();
+    this.uiRequests.set(key, { sessionId: envelope.sessionId, controller });
     const previous = this.promptQueues.get(envelope.sessionId) ?? Promise.resolve();
-    const run = previous.then(() => this.showPrompt(envelope, request));
-    this.promptQueues.set(envelope.sessionId, run.catch(() => undefined));
-    return run;
+    const run = previous.then(() => controller.signal.aborted
+      ? dismissedResponse(request.kind)
+      : this.showPrompt(envelope, request, controller.signal));
+    const tail = run.catch(() => undefined);
+    this.promptQueues.set(envelope.sessionId, tail);
+    let retire!: () => void;
+    const cancelled = new Promise<TrustedExtensionUiResponse>((resolve) => {
+      retire = () => resolve(dismissedResponse(request.kind));
+      controller.signal.addEventListener("abort", retire, { once: true });
+      if (controller.signal.aborted) retire();
+    });
+    try { return await Promise.race([run, cancelled]); }
+    finally {
+      controller.signal.removeEventListener("abort", retire);
+      this.uiRequests.delete(key);
+      void tail.then(() => {
+        if (this.promptQueues.get(envelope.sessionId) === tail) this.promptQueues.delete(envelope.sessionId);
+      });
+    }
   }
 
   respond(promptId: string, value: string | boolean | undefined): boolean {
@@ -185,6 +212,9 @@ export class AgentExtensionBridge {
 
   /** Aborting a turn dismisses that session's open prompts (spec §9). */
   cancelPrompts(sessionId: string): void {
+    for (const entry of this.uiRequests.values()) {
+      if (entry.sessionId === sessionId) entry.controller.abort();
+    }
     for (const [promptId, pending] of this.pending) {
       if (pending.sessionId === sessionId) this.settle(promptId, dismissedResponse(pending.kind));
     }
@@ -199,26 +229,27 @@ export class AgentExtensionBridge {
   private showPrompt(
     envelope: TrustedExtensionUiRequestEnvelope,
     request: TrustedExtensionUiPrompt["request"],
+    signal: AbortSignal,
   ): Promise<TrustedExtensionUiResponse> {
     return new Promise((resolvePrompt) => {
       const promptId = randomUUID();
+      const prompt = { promptId, sessionId: envelope.sessionId, extensionId: envelope.extensionId,
+        extensionLabel: envelope.extensionLabel, request };
+      const abort = () => this.settle(promptId, dismissedResponse(request.kind));
       const timer = setTimeout(
         () => this.settle(promptId, dismissedResponse(request.kind)),
         this.options.promptTimeoutMs ?? TRUSTED_EXTENSION_PROMPT_TIMEOUT_MS,
       );
       this.pending.set(promptId, {
+        prompt,
         sessionId: envelope.sessionId,
         kind: request.kind,
-        resolve: resolvePrompt,
+        resolve: (response) => { signal.removeEventListener("abort", abort); resolvePrompt(response); },
         timer,
       });
-      this.options.onPrompt({
-        promptId,
-        sessionId: envelope.sessionId,
-        extensionId: envelope.extensionId,
-        extensionLabel: envelope.extensionLabel,
-        request,
-      });
+      signal.addEventListener("abort", abort, { once: true });
+      this.options.onPrompt(prompt);
+      if (signal.aborted) abort();
     });
   }
 
@@ -227,6 +258,7 @@ export class AgentExtensionBridge {
     if (!pending) return;
     clearTimeout(pending.timer);
     this.pending.delete(promptId);
+    this.options.onPrompt({ ...pending.prompt, cancelled: true });
     pending.resolve(response);
   }
 

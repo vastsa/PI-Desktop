@@ -8,26 +8,25 @@ import {
   type SessionThinkingLevel,
 } from "@pi-desktop/shared";
 import type { AppState } from "../../../stores/app-store";
-import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
+import { ComposerPermissionPicker } from "./ComposerPermissionPicker";
 import { ContextUsageInspector } from "../../../components/ContextUsageInspector";
 import { TooltipButton } from "../../../components/ui";
 import {
   IconArrowUp,
-  IconCheck,
-  IconChevronDown,
   IconPlus,
   IconSparkles,
   IconStop,
   IconUndo2,
 } from "../../../components/icons";
 import { ModeIcon } from "./ComposerModeIcon";
+import { VoiceMicButton } from "../../voice/VoiceMicButton";
 import { ComposerModelPicker } from "./ComposerModelPicker";
 import {
   MODE_LABEL_KEYS,
-  PERMISSION_MODE_I18N_KEYS,
   nextMode,
 } from "./model";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
+import type { VoicePhase } from "../../voice/useVoiceInput";
 
 type ModelMenuController = ReturnType<typeof useComposerModelMenu>;
 type ContextUsage = Parameters<typeof ContextUsageInspector>[0];
@@ -64,6 +63,10 @@ export type ComposerToolbarProps = {
   hasDraftContent: boolean;
   abort: AppState["abort"];
   submit: () => Promise<void>;
+  voicePhase: VoicePhase;
+  voiceEnabled: boolean;
+  onVoiceToggle: () => void;
+  onVoiceCancel: () => void;
 };
 
 /** Composer controls: mode, permission, model, enhancement, and send/stop. */
@@ -99,6 +102,10 @@ export function ComposerToolbar({
   hasDraftContent,
   abort,
   submit,
+  voicePhase,
+  voiceEnabled,
+  onVoiceToggle,
+  onVoiceCancel,
 }: ComposerToolbarProps) {
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
   const steeringShortcut = keybindingDisplayParts("Alt+Enter", platform).join("+");
@@ -120,6 +127,15 @@ export function ComposerToolbar({
             <IconPlus size={15} aria-hidden="true" />
           </TooltipButton>
         </div>
+        {voiceEnabled && (
+          <VoiceMicButton
+            t={t}
+            phase={voicePhase}
+            disabled={controlsBlocked}
+            onToggle={onVoiceToggle}
+            onCancel={onVoiceCancel}
+          />
+        )}
         <TooltipButton
           type="button"
           className="icon-btn mode-chip composer-mode-chip"
@@ -153,59 +169,11 @@ export function ComposerToolbar({
             </span>
           </span>
         </TooltipButton>
-        <AnchoredMenu
-          className="composer-permission"
-          open={permissionOpen && mode !== "goal"}
-          onClose={() => setPermissionOpen(false)}
-          menuClassName="composer-permission-menu"
-          label={t("chat.permissionMode")}
-          role="menu"
-          align="start"
-          side="top"
-          trigger={(ref) => (
-            <TooltipButton
-              ref={ref}
-              type="button"
-              className={`icon-btn mode-chip ${permissionOpen ? "active" : ""}`}
-              tooltip={
-                mode === "goal"
-                  ? `${t("chat.permissionMode")} · ${t("goal.autoWarning")}`
-                  : mode === "plan" && composerPermissionMode === "auto"
-                    ? `${t("chat.permissionMode")} · ${t("plan.autoWarning")}`
-                    : t("chat.permissionMode")
-              }
-              ariaLabel={
-                mode === "goal"
-                  ? `${t("chat.permissionMode")} · ${t("goal.autoWarning")}`
-                  : mode === "plan" && composerPermissionMode === "auto"
-                    ? `${t("chat.permissionMode")} · ${t("plan.autoWarning")}`
-                    : t("chat.permissionMode")
-              }
-              aria-haspopup={mode === "goal" ? undefined : "menu"}
-              aria-expanded={mode === "goal" ? false : permissionOpen}
-              disabled={controlsBlocked || mode === "goal"}
-              onClick={() => {
-                modelMenu.setOpen(false);
-                setPermissionOpen((open) => !open);
-              }}
-            >
-              <span className="text-sm">
-                {t(PERMISSION_MODE_I18N_KEYS[composerPermissionMode])}
-              </span>
-              <IconChevronDown size={12} />
-            </TooltipButton>
-          )}
-        >
-          {(["ask", "accept-edits", "auto"] as const).map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              role="menuitemradio"
-              aria-checked={composerPermissionMode === candidate}
-              disabled={controlsBlocked}
-              className={`composer-plus-item ${composerPermissionMode === candidate ? "active" : ""}`}
-              onClick={async () => {
-                setPermissionOpen(false);
+        <ComposerPermissionPicker t={t} mode={mode}
+          composerPermissionMode={composerPermissionMode}
+          permissionOpen={permissionOpen} setPermissionOpen={setPermissionOpen}
+          controlsBlocked={controlsBlocked} onCloseOtherMenus={() => modelMenu.setOpen(false)}
+          onSelect={async (candidate) => {
                 try {
                   await configureActiveSession({
                     mode,
@@ -219,15 +187,7 @@ export function ComposerToolbar({
                     variant: "error",
                   });
                 }
-              }}
-            >
-              <span className="flex-1 text-left">
-                {t(PERMISSION_MODE_I18N_KEYS[candidate])}
-              </span>
-              {composerPermissionMode === candidate ? <IconCheck size={13} /> : null}
-            </button>
-          ))}
-        </AnchoredMenu>
+          }} />
       </div>
 
       <div className="composer-right">

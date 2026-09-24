@@ -81,6 +81,10 @@ The application categories are:
   `byProcessType`, `directory`, and `newestMtimeMs`. A recovered renderer crash
   is therefore not reported as the previous app run aborting. A scan failure is
   one `crashDumpReportFailed` warn and never blocks the first window (D602).
+  Each renderer `render-process-gone` event records one `renderer.process.gone`
+  entry with the Electron exit `reason` and `exitCode`, plus whether the current
+  main window was reloaded. Clean exits are informational; unexpected exits are
+  warnings.
 
 - `runtime` — host/sidecar lifecycle, uncategorized child output, and
   main-process `uncaughtException` / `unhandledRejection` records

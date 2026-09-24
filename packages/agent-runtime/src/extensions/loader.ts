@@ -78,7 +78,7 @@ export function createCodingAgentShim(): Record<string, unknown> {
     isPowerShellToolResult: () => false,
     isToolCallEventType: (type: unknown) =>
       type === "tool_call" || type === "tool_result",
-    VERSION: "0.86.1",
+    VERSION: "0.87.1",
   };
 }
 

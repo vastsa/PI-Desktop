@@ -119,6 +119,10 @@ export type AttachResult = {
 };
 
 type TurnRecord = RacpTurn & {
+  /** A queued input consumed by another turn cannot be canceled retroactively. */
+  deliveredIntoTurnId?: string;
+  /** Only this input is reserved while runtime delivery is in flight. */
+  deliveryPending?: boolean;
   /** The runtime's own turn id when it differs from the RACP id (queued turns). */
   runtimeTurnId?: string;
   principalSubject?: string;
@@ -526,7 +530,7 @@ export class AgentHost {
     this.requireRole(principal, "turn/stop");
     const state = this.stateForTurn(turnId);
     const turn = state.turns.get(turnId)!;
-    if (turn.status === "queued") return this.cancelQueued(state, turn);
+    if (turn.status === "queued") return this.cancelTurn(principal, turnId);
     if (isActive(turn.status)) await this.runtime.stop(state.id);
     return this.toRacpTurn(state, turn);
   }
@@ -535,7 +539,7 @@ export class AgentHost {
     this.requireRole(principal, "turn/interrupt");
     const state = this.stateForTurn(turnId);
     const turn = state.turns.get(turnId)!;
-    if (turn.status === "queued") return this.cancelQueued(state, turn);
+    if (turn.status === "queued") return this.cancelTurn(principal, turnId);
     if (isActive(turn.status)) await this.runtime.abort(state.id, turn.runtimeTurnId ?? turn.id);
     return this.toRacpTurn(state, turn);
   }
@@ -543,12 +547,14 @@ export class AgentHost {
   async cancelTurn(principal: Principal, turnId: string): Promise<RacpTurn> {
     this.requireRole(principal, "turn/cancel");
     const state = this.stateForTurn(turnId);
-    const turn = state.turns.get(turnId)!;
-    if (turn.status !== "queued") {
-      if (turn.status === "canceled") return this.toRacpTurn(state, turn);
-      throw racpError("CONFLICT", "only a queued turn can be canceled");
-    }
-    return this.cancelQueued(state, turn);
+    return this.withAdmission(state.id, async () => {
+      const turn = state.turns.get(turnId)!;
+      if (turn.deliveryPending || turn.deliveredIntoTurnId || turn.status !== "queued") {
+        if (turn.status === "canceled" && !turn.deliveryPending && !turn.deliveredIntoTurnId) return this.toRacpTurn(state, turn);
+        throw racpError("CONFLICT", "the queued message has already started; use Stop to stop the running turn");
+      }
+      return this.cancelQueued(state, turn);
+    });
   }
 
   /** Remove a collaboration delivery from both the live and durable queue. */
@@ -567,15 +573,17 @@ export class AgentHost {
   async prioritizeTurn(principal: Principal, turnId: string): Promise<RacpTurn> {
     this.requireRole(principal, "turn/prioritize");
     const state = this.stateForTurn(turnId);
-    const turn = state.turns.get(turnId)!;
-    if (turn.status !== "queued") {
-      throw racpError("CONFLICT", "only a queued turn can be prioritized");
-    }
-    if (!(await this.queue.promote(state.id, turn.id))) {
-      throw racpError("CONFLICT", "the turn is already prioritized");
-    }
-    this.afterQueueMove(state, turn.id);
-    return this.toRacpTurn(state, turn);
+    return this.withAdmission(state.id, async () => {
+      const turn = state.turns.get(turnId)!;
+      if (turn.deliveryPending || turn.deliveredIntoTurnId || turn.status !== "queued") {
+        throw racpError("CONFLICT", "only a queued turn can be prioritized");
+      }
+      if (!(await this.queue.promote(state.id, turn.id))) {
+        throw racpError("CONFLICT", "the turn is already prioritized");
+      }
+      this.afterQueueMove(state, turn.id);
+      return this.toRacpTurn(state, turn);
+    });
   }
 
   /**
@@ -591,13 +599,15 @@ export class AgentHost {
   ): Promise<{ moved: boolean }> {
     this.requireRole(principal, "turn/prioritize");
     const state = this.stateForTurn(turnId);
-    const turn = state.turns.get(turnId)!;
-    if (turn.status !== "queued") {
-      throw racpError("CONFLICT", "only a queued turn can be reordered");
-    }
-    if (!(await this.queue.reorder(state.id, turn.id, direction))) return { moved: false };
-    this.afterQueueMove(state, turn.id);
-    return { moved: true };
+    return this.withAdmission(state.id, async () => {
+      const turn = state.turns.get(turnId)!;
+      if (turn.deliveryPending || turn.deliveredIntoTurnId || turn.status !== "queued") {
+        throw racpError("CONFLICT", "only a queued turn can be reordered");
+      }
+      if (!(await this.queue.reorder(state.id, turn.id, direction))) return { moved: false };
+      this.afterQueueMove(state, turn.id);
+      return { moved: true };
+    });
   }
 
   /** Publish one queue move and let an idle session drain the new head. */
@@ -805,6 +815,13 @@ export class AgentHost {
       while (true) {
         const state = this.state(sessionId);
         if (this.queue.isHeld(sessionId) || this.isOccupied(state)) return;
+        const head = this.queue.peek(sessionId);
+        const headTurn = head ? this.ensureTurn(state, head.id) : undefined;
+        if (headTurn?.deliveryPending) return;
+        if (headTurn?.deliveredIntoTurnId) {
+          if (!(await this.removeDeliveredInput(state, headTurn.id))) return;
+          continue;
+        }
         const record = await this.queue.shift(sessionId);
         if (!record) return;
         const turn = this.ensureTurn(state, record.id);
@@ -884,13 +901,17 @@ export class AgentHost {
     const steer = this.runtime.steer?.bind(this.runtime);
     if (!steer) return;
     for (let attempt = 0; attempt < PROMOTED_DELIVERY_ATTEMPTS; attempt += 1) {
-      const head = this.queue.peek(state.id);
-      if (!head || head.priority === undefined) return;
-      const active = state.activeTurnId ? state.turns.get(state.activeTurnId) : undefined;
-      if (!active || active.runtimeTurnId !== runtimeTurnId) {
-        // The turn ended (or moved on) while the block was being delivered.
-        return;
-      }
+      const head = await this.withAdmission(state.id, async () => {
+        const record = this.queue.peek(state.id);
+        if (!record || record.priority === undefined) return undefined;
+        const active = state.activeTurnId ? state.turns.get(state.activeTurnId) : undefined;
+        if (!active || active.runtimeTurnId !== runtimeTurnId) return undefined;
+        const turn = this.ensureTurn(state, record.id);
+        if (turn.deliveryPending || turn.deliveredIntoTurnId) return undefined;
+        turn.deliveryPending = true;
+        return record;
+      });
+      if (!head) return;
       let accepted = false;
       try {
         ({ accepted } = await steer({
@@ -902,16 +923,44 @@ export class AgentHost {
           principal: { subject: head.principalSubject, roles: ["controller"] },
         }));
       } catch {
+        // The runtime adapter reports transport failures; leave refused input queued.
         accepted = false;
       }
-      if (!accepted) {
-        await delay(PROMOTED_DELIVERY_RETRY_MS);
-        continue;
-      }
-      await this.queue.remove(state.id, head.id);
-      this.markDeliveredIntoAnotherTurn(state, head.id);
+      const cleaned = await this.withAdmission(state.id, async () => {
+        const turn = this.ensureTurn(state, head.id);
+        turn.deliveryPending = false;
+        if (!accepted) return true;
+        // Record acceptance before persistence: failed cleanup is never cancellation.
+        this.markDeliveredIntoAnotherTurn(state, head.id, runtimeTurnId);
+        return this.removeDeliveredInput(state, head.id);
+      });
+      // Completion may have tried to drain while this input was reserved.
+      void this.drain(state.id);
+      if (!cleaned) return;
+      if (!accepted) await delay(PROMOTED_DELIVERY_RETRY_MS);
+    }
+  }
+
+  /** Keep accepted inputs out of execution even when durable cleanup fails. */
+  private async removeDeliveredInput(state: SessionState, turnId: string): Promise<boolean> {
+    try {
+      await this.queue.remove(state.id, turnId);
       this.renumberQueue(state);
       this.notifyQueue(state.id);
+      return true;
+    } catch {
+      this.emit(state, "turn.activity", {
+        event: {
+          type: "error",
+          error: {
+            code: "INTERNAL",
+            message: "Delivered input could not be removed from the durable queue",
+            retriable: true,
+            traceId: "",
+          },
+        },
+      }, { turnId });
+      return false;
     }
   }
 
@@ -921,11 +970,12 @@ export class AgentHost {
    * steering messages. Its RACP turn is canceled so no client is left believing a
    * queued turn is still waiting.
    */
-  private markDeliveredIntoAnotherTurn(state: SessionState, turnId: string): void {
+  private markDeliveredIntoAnotherTurn(state: SessionState, turnId: string, runtimeTurnId: string): void {
     const turn = state.turns.get(turnId);
     // A delivered entry is queued, not active: it never occupied the session, so
     // the check is "not already terminal" rather than `isActive`.
     if (!turn || isTerminal(turn.status)) return;
+    turn.deliveredIntoTurnId = runtimeTurnId;
     turn.status = "canceled";
     turn.queuePosition = undefined;
     turn.endedAt = new Date(this.clock.now()).toISOString();
@@ -946,6 +996,9 @@ export class AgentHost {
   }
 
   private async cancelQueued(state: SessionState, turn: TurnRecord): Promise<RacpTurn> {
+    if (turn.deliveryPending || turn.deliveredIntoTurnId) {
+      throw racpError("CONFLICT", "the queued message has already started; use Stop to stop the running turn");
+    }
     const removed = await this.queue.remove(state.id, turn.id);
     if (removed || turn.status === "queued") {
       turn.status = "canceled";

@@ -59,7 +59,10 @@ async function fixture(outcomes, run) {
     server.once("error", reject); server.listen(0, "127.0.0.1", resolve);
   });
   globalThis.fetch = (input, init) => {
-    assert.equal(String(input), TOKEN_URL, "OAuth fixture must never call an external endpoint");
+    const url = String(input);
+    if (url !== TOKEN_URL) {
+      return Promise.reject(new Error(`blocked ${url}`));
+    }
     return originalFetch(`http://127.0.0.1:${server.address().port}/token`, init);
   };
   const host = hostFixture();

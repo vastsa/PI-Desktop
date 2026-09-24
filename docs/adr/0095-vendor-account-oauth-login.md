@@ -72,15 +72,18 @@ hand it to the sidecar at launch" pattern was not acceptable for it.
    of rebuilding it once an hour, or once a turn.
 
 6. **Model discovery and connection tests go through the account.** For an
-   OAuth row, `providers.listModels` reads the authenticated catalog
-   (`models.getAvailable`, which applies the vendor's own `filterModels`, so
-   Copilot shows what the subscription actually includes) instead of probing
-   `/models` with a key it does not have, and the connection test proves the
-   account by resolving auth. Login stores a non-secret account label in the row
-   config and picks the row's `apiStyle` from the selected model — a vendor may
-   span wire APIs. The original one-row-per-vendor assumption is amended by
-   ADR 0098: every login now creates an independent row and credential scope.
-   Two styles are added for this: `openai_codex_responses` and `pi_messages`.
+   OAuth row, `providers.listModels` reads the signed-in account's own model
+   endpoint. pi-ai `models.getAvailable` (including the vendor's
+   `filterModels`) is the fallback when that request fails. ChatGPT uses
+   `GET {base}/codex/models`; Copilot uses `GET {base}/models` and still hides
+   models the subscription did not enable; xAI, Anthropic, Kimi, Meta and
+   OpenRouter use their own list endpoints. Radius keeps its gateway refresh.
+   The connection test proves the account by resolving auth. Login stores a
+   non-secret account label in the row config and picks the row's `apiStyle`
+   from the selected model — a vendor may span wire APIs. The original
+   one-row-per-vendor assumption is amended by ADR 0098: every login now
+   creates an independent row and credential scope. Two styles are added for
+   this: `openai_codex_responses` and `pi_messages`.
 
 ## Consequences
 

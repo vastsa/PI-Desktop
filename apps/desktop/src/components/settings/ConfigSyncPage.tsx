@@ -5,12 +5,22 @@ import type {
   ConfigSyncCategorySelection,
   ConfigSyncHistoryEntry,
   ConfigSyncPendingApproval,
+  ConfigSyncProgress,
+  ConfigSyncRemoteMode,
   ConfigSyncState,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { Badge, Button, Field, Input, PasswordInput, cx } from "../ui";
 import { IconCloudDown, IconRefresh, IconShield, IconTrash } from "../icons";
 import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
+import { configSyncProgressView } from "../../features/settings/config-sync-progress";
+import { ConfigSyncError } from "./ConfigSyncError";
+import { SettingsMenuSelect } from "./SettingsMenuSelect";
+
+function formatStamp(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
 
 const CATEGORIES: Array<{
   id: Exclude<ConfigSyncCategory, "credentials" | "memory">;
@@ -70,6 +80,8 @@ export function ConfigSyncPage() {
     | "disconnect"
     | null
   >(null);
+  /** The last progress the host reported for a manual sync, if one is running. */
+  const [progress, setProgress] = useState<ConfigSyncProgress | null>(null);
   const [history, setHistory] = useState<ConfigSyncHistoryEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -85,11 +97,13 @@ export function ConfigSyncPage() {
   });
   const [selection, setSelection] =
     useState<ConfigSyncCategorySelection>(DEFAULT_SELECTION);
+  const [remoteMode, setRemoteMode] = useState<ConfigSyncRemoteMode>("strict");
 
   const refresh = useCallback(async () => {
     try {
       const next = await api.configSyncGetState();
       setState(next);
+      setRemoteMode(next.remoteMode ?? "strict");
       if (next.configured) {
         setForm((current) => ({
           ...current,
@@ -98,7 +112,12 @@ export function ConfigSyncPage() {
           directory: next.directory ?? current.directory,
           deviceLabel: next.deviceLabel ?? current.deviceLabel,
         }));
-        setSelection((current) => ({ ...current, ...next.categories }));
+        setSelection((current) => ({
+          ...current,
+          ...next.categories,
+          credentials: next.includeSecrets,
+          memory: next.includeMemory,
+        }));
         if (!next.locked) {
           try {
             setHistory(await api.configSyncListHistory());
@@ -130,8 +149,15 @@ export function ConfigSyncPage() {
 
   useEffect(() => {
     void refresh();
-    return api.onConfigSyncChanged((next) => setState(next));
+    return api.onConfigSyncChanged((next) => {
+      setState(next);
+      setRemoteMode(next.remoteMode ?? "strict");
+    });
   }, [refresh]);
+
+  // The report is only shown while the page is running a sync itself, so an
+  // automatic run stays silent; the subscription is dropped with the page.
+  useEffect(() => api.onConfigSyncProgress((next) => setProgress(next)), []);
 
   const updateForm = (key: keyof typeof form, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -139,6 +165,13 @@ export function ConfigSyncPage() {
   const run = async (
     operation: "test" | "configure" | "sync" | "unlock" | "disconnect",
   ) => {
+    if (
+      operation === "configure" &&
+      remoteMode === "appendOnly" &&
+      !window.confirm(t("settings.configSync.appendOnlyConfirm"))
+    ) {
+      return;
+    }
     setBusy(operation);
     setError(null);
     setNotice(null);
@@ -150,16 +183,20 @@ export function ConfigSyncPage() {
           appPassword: form.appPassword || undefined,
           directory: form.directory,
           deviceLabel: form.deviceLabel || t("settings.configSync.defaultDevice"),
-          allowInsecureHttp: false,
           categories: selection,
           includeSecrets: selection.credentials,
           includeMemory: selection.memory,
           automaticSync: true,
+          remoteMode,
         });
         setNotice(
-          result.conditionalWrites
-            ? t("settings.configSync.testSuccess")
-            : t("settings.configSync.testUnsupported"),
+          remoteMode === "appendOnly"
+            ? result.appendOnly
+              ? t("settings.configSync.testAppendOnlySuccess")
+              : t("settings.configSync.testAppendOnlyUnsupported")
+            : result.conditionalWrites
+              ? t("settings.configSync.testSuccess")
+              : t("settings.configSync.testUnsupported"),
         );
       } else if (operation === "configure") {
         await api.configSyncConfigure({
@@ -173,6 +210,7 @@ export function ConfigSyncPage() {
           includeSecrets: selection.credentials,
           includeMemory: selection.memory,
           automaticSync: true,
+          remoteMode,
         });
         setState(await api.configSyncSyncNow());
         setForm((current) => ({ ...current, appPassword: "", backupPassword: "" }));
@@ -185,6 +223,7 @@ export function ConfigSyncPage() {
       } else {
         setState(await api.configSyncDisconnect());
         setHistory([]);
+        setRemoteMode("strict");
         setForm((current) => ({ ...current, appPassword: "", backupPassword: "" }));
         setSelection(DEFAULT_SELECTION);
       }
@@ -192,6 +231,9 @@ export function ConfigSyncPage() {
       setError(cause instanceof Error ? cause.message : String(cause));
       await refresh();
     } finally {
+      // The request's own answer ends the run: once it has settled, whatever
+      // the last report said is already stale.
+      setProgress(null);
       setBusy(null);
     }
   };
@@ -342,9 +384,23 @@ export function ConfigSyncPage() {
   const configured = state?.configured === true;
   const locked = state?.locked === true;
   const categories = selection;
+  const vaultPasswordReady =
+    form.backupPassword.length === 0
+      ? configured && !locked
+      : form.backupPassword.length >= 8;
+  // The report only exists for a sync this page started: an automatic run stays
+  // quiet, and no report outlives the request that produced it. Enabling a
+  // vault runs the same full sync as "sync now", so both operations are watched.
+  const syncProgress =
+    (busy === "sync" || busy === "configure") && progress
+      ? configSyncProgressView(progress)
+      : null;
 
   return (
     <div className="settings-stack settings-config-sync">
+      {error || state?.lastError ? (
+        <ConfigSyncError message={error ?? state?.lastError ?? ""} />
+      ) : null}
       <SettingsCard
         title={t("settings.configSync.connectionTitle")}
         description={t("settings.configSync.connectionDescription")}
@@ -360,6 +416,33 @@ export function ConfigSyncPage() {
               disabled={busy !== null}
             />
           </Field>
+          <Field
+            label={t("settings.configSync.remoteMode")}
+            hint={t("settings.configSync.remoteModeHint")}
+          >
+            <SettingsMenuSelect
+              fullWidth
+              label={t("settings.configSync.remoteMode")}
+              value={remoteMode}
+              disabled={busy !== null}
+              options={[
+                {
+                  id: "strict",
+                  label: t("settings.configSync.remoteModeStrict"),
+                },
+                {
+                  id: "appendOnly",
+                  label: t("settings.configSync.remoteModeAppendOnly"),
+                },
+              ]}
+              onChange={(value) => setRemoteMode(value as ConfigSyncRemoteMode)}
+            />
+          </Field>
+          {remoteMode === "appendOnly" ? (
+            <div className="settings-config-sync-warning" role="alert">
+              {t("settings.configSync.appendOnlyWarning")}
+            </div>
+          ) : null}
           <Field label={t("settings.configSync.username")}>
             <Input
               value={form.username}
@@ -430,7 +513,7 @@ export function ConfigSyncPage() {
           <Button
             variant="primary"
             onClick={() => void run("configure")}
-            disabled={busy !== null || !form.endpoint || !form.backupPassword}
+            disabled={busy !== null || !form.endpoint || !vaultPasswordReady}
           >
             <IconCloudDown size={14} />
             {configured ? t("settings.configSync.save") : t("settings.configSync.enable")}
@@ -457,6 +540,55 @@ export function ConfigSyncPage() {
         ) : null}
       </SettingsCard>
 
+      {/* A sync this page started reports itself here, above the cards: the
+          first enable is the slowest sync of all, and it runs while the status
+          card below has nothing to show yet. */}
+      {syncProgress ? (
+        <div className="settings-config-sync-progress">
+          <div className="settings-config-sync-progress-head">
+            <span className="settings-config-sync-progress-title">
+              {t("settings.configSync.progressTitle")}
+            </span>
+            <span className="settings-config-sync-progress-phase" role="status">
+              {t(syncProgress.phaseKey)}
+            </span>
+          </div>
+          {syncProgress.determinate ? (
+            <div
+              className="settings-config-sync-progress-bar"
+              role="progressbar"
+              aria-label={t("settings.configSync.progressTitle")}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={syncProgress.percent}
+              aria-valuetext={syncProgress.fraction ?? undefined}
+            >
+              <span
+                className="settings-config-sync-progress-bar-fill"
+                style={{ width: `${syncProgress.percent}%` }}
+              />
+            </div>
+          ) : null}
+          {syncProgress.determinate ? (
+            <div className="settings-config-sync-progress-figures">
+              {syncProgress.objects ? (
+                <span>
+                  {t(
+                    "settings.configSync.progress.objects",
+                    syncProgress.objects,
+                  )}
+                </span>
+              ) : null}
+              {syncProgress.bytes ? (
+                <span>
+                  {t("settings.configSync.progress.bytes", syncProgress.bytes)}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {configured ? (
         <>
           <SettingsCard title={t("settings.configSync.statusTitle")}>
@@ -465,18 +597,14 @@ export function ConfigSyncPage() {
               detail={
                 state?.lastSuccessAt
                   ? t("settings.configSync.lastSuccess", {
-                      date: state.lastSuccessAt,
+                      date: formatStamp(state.lastSuccessAt),
                     })
                   : undefined
               }
             >
               <Badge tone={statusTone(state.status)}>{statusLabel}</Badge>
             </SettingsRow>
-            {state?.lastError ? (
-              <SettingsRow title={t("settings.configSync.lastError")}>
-                <span className="settings-config-sync-error">{state.lastError}</span>
-              </SettingsRow>
-            ) : null}
+
             {locked ? (
               <SettingsRow
                 title={t("settings.configSync.unlockTitle")}
@@ -681,6 +809,16 @@ export function ConfigSyncPage() {
                     count: state.preview.mappingRequired,
                   })}
                 </span>
+                <span>
+                  {t("settings.configSync.previewPending", {
+                    count: state.preview.pendingActivation,
+                  })}
+                </span>
+                <span>
+                  {t("settings.configSync.previewConflicts", {
+                    count: state.preview.conflicts,
+                  })}
+                </span>
               </div>
             </SettingsCard>
           ) : null}
@@ -732,7 +870,8 @@ export function ConfigSyncPage() {
                           : entry.revisionId}
                       </div>
                       <div className="settings-config-sync-approval-meta">
-                        {entry.createdAt} · {entry.entityCount} {t("settings.configSync.historyItems")}
+                        {formatStamp(entry.createdAt)} · {entry.entityCount}{" "}
+                        {t("settings.configSync.historyItems")}
                       </div>
                     </div>
                     <Button

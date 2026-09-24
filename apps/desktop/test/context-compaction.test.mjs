@@ -34,6 +34,7 @@ const [
   subagentContext,
   contextBudget,
   delegationHistory,
+  compactionTail,
 ] = await Promise.all([
   read("../../../packages/shared/src/protocol.ts"),
   readSharedTypesSource(),
@@ -56,6 +57,7 @@ const [
   read("../../../packages/agent-runtime/src/subagent-context.ts"),
   read("../../../packages/agent-runtime/src/context-budget.ts"),
   read("../../../packages/agent-runtime/src/delegation-history.ts"),
+  read("../../../packages/agent-runtime/src/compaction-tail.ts"),
 ]);
 
 test("context compaction is wired through protocol v11 and the manual IPC path", () => {
@@ -93,7 +95,11 @@ test("the hard boundary is enforced by the host, with a model-side escape hatch"
   assert.match(runtime, /prepareNextTurnWithContext/);
   assert.match(runtime, /budget\.tokens >= budget\.hardLimit/);
   assert.match(runtime, /CONTEXT_COMPACTION_FAILED: unable to create a checkpoint/);
-  assert.match(runtime, /checkpoint truncated: this message crossed the retained context budget/);
+  assert.match(runtime, /CHECKPOINT_TRUNCATION_MARKER/);
+  assert.match(
+    compactionTail,
+    /checkpoint truncated: this message crossed the retained context budget/,
+  );
   assert.match(runtime, /pendingOverflow/);
   assert.match(runtime, /runCompaction\(\s*"overflow",\s*true,\s*"active_turn",?\s*\)/);
   assert.match(runtime, /fallback: "retained_tail"/);
@@ -152,7 +158,7 @@ test("a delegate gets the session's turn-boundary budget protection (ADR 0299)",
   // retention rule, and the degradation ladder of decision 4.
   assert.match(subagentContext, /prepareCompaction\(/);
   assert.match(subagentContext, /generateSummaryWithUsage\(/);
-  assert.match(subagentContext, /contextBudgetFor\(input\.model/);
+  assert.match(subagentContext, /contextBudgetFor\(model,/);
   assert.match(subagentContext, /delegateRetentionMode/);
   assert.match(subagentContext, /\? "active_turn"\s*: "completed_turn"/);
   assert.match(subagentContext, /degradedDelegateMessages/);
@@ -292,14 +298,33 @@ test("every compaction announces itself once, on top of the specific toasts", ()
 });
 
 test("a failed compaction checkpoint still restores a non-empty context", () => {
-  // A retained-tail fallback must not persist an empty tail on a completed
-  // turn: with no real summary to carry the boundary, an empty tail restores
-  // as an empty context after a runtime rebuild (model switch / restart) —
-  // the session reads as if it had just started (#224).
+  // A retained-tail fallback must not persist an empty tail: with no real
+  // summary to carry the boundary, an empty tail restores as an empty context
+  // after a runtime rebuild (model switch / restart) — the session reads as if
+  // it had just started (#224). It must not persist one user line either: a
+  // failed summary is the only record of the range behind it, so the tail is the
+  // recent window itself (#827).
+  assert.match(runtime, /const retainedTail = this\.fallbackRetainedTail\(/);
   assert.match(
     runtime,
-    /const retainedTail =\s*preparation\.retainedTail\.length > 0\s*\? preparation\.retainedTail\s*: selectRetainedUserMessages\(/,
+    /return selectRecentTail\(\s*preparation\.messagesToSummarize,/,
   );
+  assert.match(compactionTail, /export function selectRecentTail\(/);
+  assert.match(compactionTail, /export function replayRetainedTail\(/);
+  assert.match(
+    compactionTail,
+    /COMPACTION_RETAINED_TAIL_SHAPE = "recent_window"/,
+  );
+  // The shape marker is what keeps a rebuild from narrowing the window back to
+  // one user message, so the read gate has to test it.
+  assert.match(
+    runtime,
+    /details\.retainedTailShape === COMPACTION_RETAINED_TAIL_SHAPE/,
+  );
+  // Only a range the planner cannot split falls back at all; a prompt that is
+  // merely too large is summarized in chunks (#827).
+  assert.match(runtime, /private planSummaryRequests\(/);
+  assert.match(runtime, /private async generateChunkedCompaction\(/);
   assert.match(
     runtime,
     /fallback: "retained_tail" satisfies ContextCompactionFallback,/,
@@ -331,7 +356,7 @@ test("the transcript shows one row per compaction, the inspector the newest", ()
   assert.match(runtime, /checkpointDetailsWithGeneration/);
   assert.match(runtime, /mark: contextCompactionMark\(checkpoint\)/);
   // Both the durable records and the live event feed the same per-session list.
-  assert.match(store, /sessionCompactions: Record<string, ContextCompactionMark\[\]>/);
+  assert.match(store, /sessionCompactions: Record<string, \(ContextCompactionMark & \{ summary\?: string \}\)\[\]>/);
   assert.match(store, /rememberSessionCompactions\(id, detail\.session\)/);
   assert.match(store, /event\.type === "compaction_end" && event\.ok && event\.mark/);
   assert.match(store, /withCompactionMark\(/);

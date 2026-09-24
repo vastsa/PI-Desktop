@@ -1364,3 +1364,244 @@ fn degraded_model_array_cannot_be_overwritten_by_update() {
         Some("old-secret")
     );
 }
+
+#[test]
+fn header_values_fold_fullwidth_and_reject_non_latin1() {
+    let (_dir, db, secrets) = test_context();
+    let headers = BTreeMap::from([
+        ("X-Title".to_string(), "PI\u{3000}Desktop".to_string()),
+        ("X-Key".to_string(), "1234567\u{FF10}".to_string()),
+    ]);
+    let provider = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Custom".into(),
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: None,
+            auth_kind: Some("none".into()),
+            models: None,
+            default_model_id: Some("model-1".into()),
+            secret_value: None,
+            api_style: None,
+            oauth_account_label: None,
+            headers: Some(headers),
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap();
+    let stored = provider.headers.unwrap();
+    assert_eq!(stored["X-Title"], "PI Desktop");
+    assert_eq!(stored["X-Key"], "12345670");
+
+    // A value with no ASCII counterpart is refused at the boundary and names
+    // the character undici would have thrown on.
+    let err = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Star".into(),
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: None,
+            auth_kind: Some("none".into()),
+            models: None,
+            default_model_id: Some("model-1".into()),
+            secret_value: None,
+            api_style: None,
+            oauth_account_label: None,
+            headers: Some(BTreeMap::from([(
+                "X-Title".to_string(),
+                "abc\u{661F}".to_string(),
+            )])),
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("HEADERS_INVALID"), "{err}");
+    assert!(err.contains("U+661F"), "{err}");
+    assert!(err.contains("character index 3"), "{err}");
+
+    // A control character is the same class of failure — it never reaches a
+    // header either — so it is named too.
+    let err = normalize_one_header("X-Title", "ab\u{0}cd")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("U+0000 at character index 2"), "{err}");
+
+    // A character above U+00FF is the fault wherever it sits, and the reported
+    // index counts code units exactly as undici would: a surrogate pair can
+    // never sit before the first fault, because it is one.
+    let err = normalize_one_header("X-Title", "\u{1F44D}abc")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("character index 0"), "{err}");
+
+    // Trim matches what JavaScript trims, so the host accepts a value the
+    // editor showed as clean: a pasted byte-order mark is whitespace to both,
+    // and U+0085 is whitespace to neither (it travels as Latin-1).
+    assert_eq!(
+        normalize_one_header("X-Title", "\u{FEFF}pi-desktop\u{FEFF}").unwrap(),
+        Some(("X-Title".to_string(), "pi-desktop".to_string()))
+    );
+    assert_eq!(
+        normalize_one_header("X-Title", "\u{85}abc").unwrap(),
+        Some(("X-Title".to_string(), "\u{85}abc".to_string()))
+    );
+
+    // A value that is only the ideographic space folds to nothing, and an
+    // unnamed row is still absent rather than a missing-name error.
+    assert_eq!(normalize_one_header("X-Title", "\u{3000}").unwrap(), None);
+    assert_eq!(normalize_one_header("", "\u{3000}").unwrap(), None);
+    assert_eq!(
+        normalize_one_header("X-Title", "\u{FF10}").unwrap(),
+        Some(("X-Title".to_string(), "0".to_string()))
+    );
+
+    // Folding shrinks bytes, so a fullwidth value that was over the bound
+    // (4096 bytes, `MAX_HEADER_VALUE_BYTES`) becomes storable — the one input
+    // class this change newly accepts.
+    let long_fullwidth = "\u{FF41}".repeat(4096);
+    assert!(normalize_one_header("X-Title", &long_fullwidth)
+        .unwrap()
+        .is_some());
+    let long_ascii = "a".repeat(4097);
+    let err = normalize_one_header("X-Title", &long_ascii)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("header value is too long"), "{err}");
+
+    // A store written before the rule existed is sanitized on read: fullwidth
+    // folds, and the row that cannot travel is dropped rather than thrown.
+    db.conn()
+        .execute(
+            "UPDATE providers SET config_json = ?1 WHERE id = ?2",
+            params![
+                json!({ "headers": { "x-legacy": "\u{FF11}\u{FF12}\u{FF13}", "x-cjk": "星" } })
+                    .to_string(),
+                provider.id
+            ],
+        )
+        .unwrap();
+    let read = get_provider(&db, &secrets, &provider.id).unwrap().unwrap();
+    let read = read.headers.unwrap();
+    assert_eq!(read["x-legacy"], "123");
+    assert!(!read.contains_key("x-cjk"));
+}
+
+#[test]
+fn provider_api_keys_fold_fullwidth_on_write_and_read() {
+    let (_dir, db, secrets) = test_context();
+    let provider = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Custom".into(),
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: None,
+            auth_kind: Some("api_key".into()),
+            models: None,
+            default_model_id: Some("model-1".into()),
+            secret_value: Some("sk-\u{FF10}\u{FF11}".into()),
+            api_style: None,
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap();
+
+    // create/update store what they were handed (config-sync and the renderer
+    // both rely on that), so the fold has to hold on the read accessor — which
+    // is the only path outbound requests take.
+    assert_eq!(
+        secrets
+            .get(&secret_ref_for_provider(&provider.id))
+            .unwrap()
+            .as_deref(),
+        Some("sk-\u{FF10}\u{FF11}")
+    );
+    assert_eq!(
+        get_secret_for_provider(&db, &secrets, &provider.id)
+            .unwrap()
+            .as_deref(),
+        Some("sk-01")
+    );
+
+    // The settings save path folds on write too.
+    set_provider_secret(
+        &db,
+        &secrets,
+        &provider.id,
+        Some("\u{FF53}\u{FF4B}-\u{FF11}"),
+    )
+    .unwrap();
+    assert_eq!(
+        get_secret_for_provider(&db, &secrets, &provider.id)
+            .unwrap()
+            .as_deref(),
+        Some("sk-1")
+    );
+}
+
+#[test]
+fn sync_payloads_keep_only_storable_headers() {
+    // A peer on an older build, or a backup taken before the header rule was
+    // tightened, can hand us rows this build refuses. Dropping them at the sync
+    // boundary is what keeps one stale row from failing a whole revision, and
+    // it is the same set `config_headers` drops when a store is read.
+    let mut payload = json!({
+        "name": "Custom",
+        "headers": {
+            "X-Title": "PI\u{3000}Desktop",
+            "X-Key": "1234567\u{FF10}",
+            "X-CJK": "星",
+            "Authorization": "Bearer secret"
+        }
+    });
+    retain_storable_headers(&mut payload);
+    assert_eq!(payload["headers"]["X-Title"], "PI Desktop");
+    assert_eq!(payload["headers"]["X-Key"], "12345670");
+    assert!(payload["headers"].get("X-CJK").is_none());
+    assert!(payload["headers"].get("Authorization").is_none());
+    // The write path that aborted the revision can no longer refuse it.
+    let headers: BTreeMap<String, String> =
+        serde_json::from_value(payload["headers"].clone()).unwrap();
+    assert!(normalize_headers_input(&headers).is_ok());
+
+    // Every row unusable: the key goes away instead of storing an empty map.
+    let mut payload = json!({ "headers": { "X-CJK": "星" } });
+    retain_storable_headers(&mut payload);
+    assert!(payload.get("headers").is_none());
+
+    // A payload without headers, and one that is not an object, are untouched.
+    let mut payload = json!({ "name": "Custom" });
+    retain_storable_headers(&mut payload);
+    assert_eq!(payload, json!({ "name": "Custom" }));
+    let mut payload = json!("not an object");
+    retain_storable_headers(&mut payload);
+    assert_eq!(payload, json!("not an object"));
+
+    // A row dropped here is also invisible to the read path, so a local store
+    // holding it behaves the same before and after this runs.
+    let raw = BTreeMap::from([("x-cjk".to_string(), "星".to_string())]);
+    assert!(storable_headers(&raw).is_empty());
+}

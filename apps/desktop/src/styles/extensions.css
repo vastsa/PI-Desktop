@@ -1053,6 +1053,12 @@
   line-height: var(--leading-compact);
 }
 
+/* The sheet's menu trigger is a form control beside those fields, so it takes
+   the sheet's compact field height instead of the field vocabulary's metric. */
+.ext-sheet .settings-menu-select-trigger {
+  height: 34px;
+}
+
 .ext-sheet .field-input:hover,
 .ext-sheet .field-select:hover,
 .ext-sheet .field-textarea:hover {

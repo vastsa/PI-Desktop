@@ -19,9 +19,13 @@ The work-panel header is a horizontally scrollable tab strip followed by a
 fixed, tight `+` trigger. The strip is the only horizontally scrolling region;
 the `+` remains visible. Every open Review, file, or plugin view is represented
 by one ARIA tab. Tabs activate on click, close on their hover/focus close
-button or middle-click, and support ArrowLeft/ArrowRight/Home/End plus
-Delete/Backspace. Closing the final tab keeps the panel open and shows a New
-launcher in the body.
+button or middle-click, support press-and-move pointer reordering and
+`Alt+ArrowLeft`/`Alt+ArrowRight` reordering, and retain
+ArrowLeft/ArrowRight/Home/End plus Delete/Backspace for navigation and closing.
+A drag drops before or after the target tab and keeps the active tab unchanged.
+While dragging near either edge, the strip auto-scrolls so off-screen tabs can
+be reached without releasing the pointer.
+Closing the final tab keeps the panel open and shows a New launcher in the body.
 
 The `+` menu has one **Tools & panels** group. Review is the only host-owned
 entry; all other entries come from the current plugin-view metadata returned by

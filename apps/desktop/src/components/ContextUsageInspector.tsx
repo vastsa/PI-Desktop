@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import {
   formatCompactTokenCount,
@@ -354,7 +354,7 @@ export function ContextUsageInspector({
           <span>
             {t("chat.usageCompaction", { times: compaction.generation })}
           </span>
-          <strong>~{formatCompactTokenCount(compaction.summaryTokens)}</strong>
+          <strong title={compaction.summarized && !compaction.fallback && compaction.summary?.trim() ? compaction.summary : undefined}>~{formatCompactTokenCount(compaction.summaryTokens)}</strong>
         </div>
       ) : null}
     </div>
@@ -404,7 +404,7 @@ export function ContextUsageInspector({
         </span>
       </TooltipButton>
       {popover && typeof document !== "undefined"
-        ? createPortal(popover, document.body)
+        ? portalToBody(popover)
         : null}
     </div>
   );

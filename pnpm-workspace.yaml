@@ -12,12 +12,12 @@ allowBuilds:
 # Drop this list once the pinned @earendil-works packages are older than
 # pnpm's supply-chain age gate (packages published within the last day).
 minimumReleaseAgeExclude:
-  - '@earendil-works/chord@0.86.1'
-  - '@earendil-works/pi-agent-core@0.86.1'
-  - '@earendil-works/pi-ai@0.86.1'
-  - '@earendil-works/pi-telemetry@0.86.1'
-  - '@earendil-works/pi-coding-agent@0.86.1'
-  - '@earendil-works/pi-tui@0.86.1'
+  - '@earendil-works/chord@0.87.1'
+  - '@earendil-works/pi-agent-core@0.87.1'
+  - '@earendil-works/pi-ai@0.87.1'
+  - '@earendil-works/pi-telemetry@0.87.1'
+  - '@earendil-works/pi-coding-agent@0.87.1'
+  - '@earendil-works/pi-tui@0.87.1'
 # Advisory fixes for transitives whose parents still resolve the vulnerable
 # version. Drop each one once its parent ships a release that resolves the
 # patched version on its own.
@@ -46,9 +46,9 @@ overrides:
   # `docs:dev` (serves 200); drop it for vitepress 2 once that ships stable.
   vite@5: '>=6.4.3 <7'
 patchedDependencies:
-  '@earendil-works/pi-agent-core@0.86.1': patches/@earendil-works__pi-agent-core@0.86.1.patch
-  '@earendil-works/pi-ai@0.86.1': patches/@earendil-works__pi-ai@0.86.1.patch
-  '@earendil-works/pi-coding-agent@0.86.1': patches/@earendil-works__pi-coding-agent@0.86.1.patch
+  '@earendil-works/pi-agent-core@0.87.1': patches/@earendil-works__pi-agent-core@0.87.1.patch
+  '@earendil-works/pi-ai@0.87.1': patches/@earendil-works__pi-ai@0.87.1.patch
+  '@earendil-works/pi-coding-agent@0.87.1': patches/@earendil-works__pi-coding-agent@0.87.1.patch
 # pnpm defaults to `lowest-direct`, which makes a plain `pnpm update` resolve
 # every range to its floor — silently downgrading dependencies instead of
 # refreshing them. Pin the intent: `pnpm update` means "newest within range".

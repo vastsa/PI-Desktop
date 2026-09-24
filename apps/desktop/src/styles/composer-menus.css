@@ -513,17 +513,27 @@
   font-weight: var(--font-weight-normal);
 }
 
-/* A model row carries its published capability markers and context window on
-   the same line as the name, so a model can be chosen on what it can do rather
-   than on its name alone. The meta cluster never squeezes the name: the name
-   truncates first and the markers keep their intrinsic width. */
+/* The full wire id is the identity. Wrap long route names instead of hiding
+   the part that distinguishes two configured models. */
 .composer-model-option-main {
   display: flex;
   min-width: 0;
   flex: 1;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.composer-model-full-id {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.composer-model-display-name {
+  max-width: 100%;
+  color: var(--ds-text-faint);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
 }
 
 .composer-model-option-meta {

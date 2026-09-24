@@ -175,23 +175,92 @@ export function createCatalogSlice({
     },
 
     refreshNotifications: async () => {
+      const generation = catalogRuntime.notificationGeneration();
       const result = await api.listNotifications({ limit: 200 });
-      set((state) => ({
-        notifications: result.notifications,
-        unreadNotificationCount: result.unreadCount,
-        sessionOutcomes: {
-          ...state.sessionOutcomes,
-          ...latestSessionOutcomes(result.notifications),
-        },
-      }));
+      if (generation !== catalogRuntime.notificationGeneration()) return;
+      const clearedAt = catalogRuntime.notificationClearedAt();
+      const readBefore = catalogRuntime.notificationReadBefore();
+      const readIds = catalogRuntime.notificationReadIds;
+      const touchedSessionIds = new Set(
+        result.notifications.map((notification) => notification.sessionId),
+      );
+      const notifications = result.notifications
+        .filter((notification) => {
+          const createdAt = Date.parse(notification.createdAt);
+          return !(
+            clearedAt !== null &&
+            Number.isFinite(createdAt) &&
+            createdAt <= clearedAt
+          );
+        })
+        .map((notification) => {
+          const createdAt = Date.parse(notification.createdAt);
+          const acknowledgedById = readIds.has(notification.id);
+          const acknowledgedByTime =
+            readBefore !== null &&
+            Number.isFinite(createdAt) &&
+            createdAt <= readBefore;
+          if (
+            (acknowledgedById || acknowledgedByTime) &&
+            !notification.readAt
+          ) {
+            const acknowledgedAt =
+              acknowledgedByTime && readBefore !== null
+                ? readBefore
+                : Date.now();
+            return {
+              ...notification,
+              readAt: new Date(acknowledgedAt).toISOString(),
+            };
+          }
+          return notification;
+        });
+      const rawUnreadCount = result.notifications.reduce(
+        (count, notification) => count + (notification.readAt ? 0 : 1),
+        0,
+      );
+      const effectiveUnreadCount = notifications.reduce(
+        (count, notification) => count + (notification.readAt ? 0 : 1),
+        0,
+      );
+      set((state) => {
+        const sessionOutcomes = { ...state.sessionOutcomes };
+        for (const sessionId of touchedSessionIds) {
+          delete sessionOutcomes[sessionId];
+        }
+        Object.assign(sessionOutcomes, latestSessionOutcomes(notifications));
+        return {
+          notifications,
+          // Host count includes rows hidden by a local acknowledgement
+          // watermark; adjust only for rows present in this response.
+          unreadNotificationCount: Math.max(
+            0,
+            result.unreadCount - rawUnreadCount + effectiveUnreadCount,
+          ),
+          sessionOutcomes,
+        };
+      });
     },
 
     receiveNotification: (notification: AppNotification) => {
+      const createdAt = Date.parse(notification.createdAt);
+      const clearedAt = catalogRuntime.notificationClearedAt();
+      const readBefore = catalogRuntime.notificationReadBefore();
+      if (
+        !Number.isFinite(createdAt) ||
+        catalogRuntime.notificationReadIds.has(notification.id) ||
+        (clearedAt !== null && createdAt <= clearedAt) ||
+        (readBefore !== null && createdAt <= readBefore) ||
+        get().notifications.some((item) => item.id === notification.id)
+      ) {
+        return false;
+      }
+      // A notification event is a state mutation too. Invalidate any list
+      // request that was already in flight so its older snapshot cannot erase
+      // this newly accepted row when it resolves.
+      catalogRuntime.invalidateNotificationRefresh();
       set((state) => {
-        const withoutCurrent = state.notifications.filter(
-          (item) => item.id !== notification.id,
-        );
-        const notifications = [notification, ...withoutCurrent].slice(0, 200);
+        const notifications = [notification, ...state.notifications].slice(0, 200);
         return {
           notifications,
           sessionOutcomes: {
@@ -199,42 +268,134 @@ export function createCatalogSlice({
             [notification.sessionId]:
               notification.kind === "task.failed" ? "failed" : "completed",
           },
-          unreadNotificationCount: notifications.reduce(
-            (count, item) => count + (item.readAt ? 0 : 1),
-            0,
-          ),
+          unreadNotificationCount:
+            state.unreadNotificationCount + (notification.readAt ? 0 : 1),
         };
       });
+      return true;
     },
 
     markNotificationRead: async (id) => {
       const item = get().notifications.find((notification) => notification.id === id);
       if (!item || item.readAt) return;
-      await api.markNotificationRead(id);
+      const generation = catalogRuntime.invalidateNotificationRefresh();
+      try {
+        await api.markNotificationRead(id);
+      } catch (error) {
+        if (generation === catalogRuntime.notificationGeneration()) {
+          await get().refreshNotifications().catch(() => undefined);
+        }
+        throw error;
+      }
+      catalogRuntime.rememberNotificationRead(id);
       const readAt = new Date().toISOString();
-      set((state) => ({
-        notifications: state.notifications.map((notification) =>
+      set((state) => {
+        const notifications = state.notifications.map((notification) =>
           notification.id === id ? { ...notification, readAt } : notification,
-        ),
-        unreadNotificationCount: Math.max(0, state.unreadNotificationCount - 1),
-      }));
+        );
+        const sessionId = state.notifications.find(
+          (notification) => notification.id === id,
+        )?.sessionId;
+        const sessionOutcomes = { ...state.sessionOutcomes };
+        if (sessionId) {
+          delete sessionOutcomes[sessionId];
+          Object.assign(
+            sessionOutcomes,
+            latestSessionOutcomes(
+              notifications.filter(
+                (notification) => notification.sessionId === sessionId,
+              ),
+            ),
+          );
+        }
+        return {
+          notifications,
+          unreadNotificationCount: Math.max(
+            0,
+            state.unreadNotificationCount - 1,
+          ),
+          sessionOutcomes,
+        };
+      });
     },
 
     markAllNotificationsRead: async () => {
       if (get().unreadNotificationCount === 0) return;
-      await api.markAllNotificationsRead();
-      const readAt = new Date().toISOString();
-      set((state) => ({
-        notifications: state.notifications.map((notification) =>
-          notification.readAt ? notification : { ...notification, readAt },
-        ),
-        unreadNotificationCount: 0,
-      }));
+      const acknowledgedIds = new Set(
+        get()
+          .notifications.filter((notification) => !notification.readAt)
+          .map((notification) => notification.id),
+      );
+      const requestedAt = Date.now();
+      const generation = catalogRuntime.invalidateNotificationRefresh();
+      try {
+        await api.markAllNotificationsRead();
+      } catch (error) {
+        if (generation === catalogRuntime.notificationGeneration()) {
+          await get().refreshNotifications().catch(() => undefined);
+        }
+        throw error;
+      }
+      const readAtMs = requestedAt;
+      const readAt = new Date(readAtMs).toISOString();
+      for (const id of acknowledgedIds) {
+        catalogRuntime.rememberNotificationRead(id);
+      }
+      catalogRuntime.setNotificationReadBefore(readAtMs);
+      set((state) => {
+        const notifications = state.notifications.map((notification) =>
+          notification.readAt || !acknowledgedIds.has(notification.id)
+            ? notification
+            : { ...notification, readAt },
+        );
+        const acknowledgedSessionIds = new Set(
+          state.notifications
+            .filter((notification) => acknowledgedIds.has(notification.id))
+            .map((notification) => notification.sessionId),
+        );
+        const sessionOutcomes = { ...state.sessionOutcomes };
+        for (const sessionId of acknowledgedSessionIds) {
+          delete sessionOutcomes[sessionId];
+        }
+        Object.assign(
+          sessionOutcomes,
+          latestSessionOutcomes(
+            notifications.filter((notification) =>
+              acknowledgedSessionIds.has(notification.sessionId),
+            ),
+          ),
+        );
+        return {
+          notifications,
+          unreadNotificationCount: notifications.reduce(
+            (count, notification) => count + (notification.readAt ? 0 : 1),
+            0,
+          ),
+          sessionOutcomes,
+        };
+      });
     },
 
     clearNotifications: async () => {
-      await api.clearNotifications();
-      set({ notifications: [], unreadNotificationCount: 0 });
+      const requestedAt = Date.now();
+      const generation = catalogRuntime.invalidateNotificationRefresh();
+      try {
+        await api.clearNotifications();
+      } catch (error) {
+        // A failed clear must leave the local inbox usable. The generation
+        // invalidation above intentionally discards any older list response;
+        // fetch a current snapshot before surfacing the original error.
+        if (generation === catalogRuntime.notificationGeneration()) {
+          await get().refreshNotifications().catch(() => undefined);
+        }
+        throw error;
+      }
+      catalogRuntime.setNotificationClearedAt(requestedAt);
+      catalogRuntime.setNotificationReadBefore(requestedAt);
+      set({ notifications: [], unreadNotificationCount: 0, sessionOutcomes: {} });
+      // A turn that completed after the clear began is a legitimate new result.
+      // Reconcile once so it is not lost if its event raced the clear request.
+      await get().refreshNotifications();
     },
 
     openNotification: async (id) => {

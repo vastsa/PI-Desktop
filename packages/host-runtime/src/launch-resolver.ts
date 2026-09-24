@@ -189,7 +189,7 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
   }
 
   function bindingForModel(provider: Pick<HostProviderRecord, "models">, modelId: string): ModelBinding | undefined {
-    return provider.models?.find((binding) => binding.id === modelId);
+    return provider.models?.find((binding) => binding.id.trim().toLowerCase() === modelId.trim().toLowerCase());
   }
 
   function effectiveModelConfig(provider: HostProviderRecord, modelId: string, baseUrl: string | undefined) {

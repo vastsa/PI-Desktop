@@ -6,11 +6,12 @@ use crate::{scheduled, sessions};
 mod project_tests;
 
 pub(super) fn handle(st: &AppState, method: &str, params: Value) -> Result<Value, JsonRpcError> {
-    handle_in_workspace(
+    handle_with_workspace_policy(
         st,
         method,
         params,
         st.workspace.get().map(|workspace| workspace.path),
+        true,
     )
 }
 
@@ -19,6 +20,16 @@ pub(super) fn handle_in_workspace(
     method: &str,
     params: Value,
     workspace: Option<String>,
+) -> Result<Value, JsonRpcError> {
+    handle_with_workspace_policy(st, method, params, workspace, false)
+}
+
+fn handle_with_workspace_policy(
+    st: &AppState,
+    method: &str,
+    params: Value,
+    workspace: Option<String>,
+    allow_workspace_override: bool,
 ) -> Result<Value, JsonRpcError> {
     match method {
         "scheduled.list" => {
@@ -29,7 +40,13 @@ pub(super) fn handle_in_workspace(
         "scheduled.create" => {
             let mut params = params;
             validate_schedule_input(&params)?;
-            if params.get("schedule").is_some() {
+            validate_execution_input(&params)?;
+            if !allow_workspace_override {
+                if let Some(object) = params.as_object_mut() {
+                    object.remove("workspacePath");
+                }
+            }
+            if params.get("schedule").is_some() && params.get("workspacePath").is_none() {
                 params["workspacePath"] = json!(workspace);
             }
             let task = scheduled::create_task(&st.db, &params)
@@ -39,6 +56,7 @@ pub(super) fn handle_in_workspace(
         "scheduled.update" => {
             let mut params = params;
             validate_schedule_input(&params)?;
+            validate_execution_input(&params)?;
             if matches!(
                 params.get("cadence").and_then(Value::as_str),
                 Some("daily" | "weekly")
@@ -58,7 +76,10 @@ pub(super) fn handle_in_workspace(
                 let id = params.get("id").and_then(Value::as_str).unwrap_or("");
                 let existing = scheduled::get_task(&st.db, id)
                     .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                if existing
+                if allow_workspace_override && params.get("workspacePath").is_some() {
+                    // The desktop form may explicitly move a task to another
+                    // saved project. Conversation tools stay project-scoped.
+                } else if existing
                     .as_ref()
                     .is_some_and(|task| !task.workspace_bound && task.schedule.is_none())
                 {
@@ -149,23 +170,34 @@ pub(super) fn handle_in_workspace(
             let options = sessions::SessionCreateOptions {
                 title: Some(task.title.clone()),
                 mode: Some("agent".into()),
-                provider_id: settings
-                    .get("defaultProviderId")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                model_id: settings
-                    .get("defaultModelId")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
+                thinking_level: task.thinking_level.clone(),
+                provider_id: task.provider_id.clone().or_else(|| {
+                    settings
+                        .get("defaultProviderId")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                }),
+                model_id: task.model_id.clone().or_else(|| {
+                    settings
+                        .get("defaultModelId")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                }),
                 project_path: if task.workspace_bound || task.schedule.is_some() {
                     task.workspace_path.clone()
                 } else {
                     st.workspace.get().map(|w| w.path)
                 },
-                permission_mode: automatic.then(|| "ask".into()),
+                permission_mode: task
+                    .permission_mode
+                    .clone()
+                    .or_else(|| automatic.then(|| "ask".into())),
                 ..Default::default()
             };
-            let session = if automatic {
+            let uses_task_execution_settings = task.permission_mode.is_some()
+                || task.thinking_level.is_some()
+                || (task.provider_id.is_some() && task.model_id.is_some());
+            let session = if automatic || uses_task_execution_settings {
                 sessions::create_session_with_options(&st.db, options)
             } else {
                 sessions::create_session(
@@ -246,6 +278,11 @@ fn validate_schedule_input(params: &Value) -> Result<(), JsonRpcError> {
         }
     }
     Ok(())
+}
+
+fn validate_execution_input(params: &Value) -> Result<(), JsonRpcError> {
+    scheduled::automation::validate_execution_input(params)
+        .map_err(|error| rpc_err(1002, error.to_string(), "INVALID_PARAMS"))
 }
 
 #[cfg(test)]
@@ -484,6 +521,180 @@ mod tests {
     }
 
     #[test]
+    fn task_execution_settings_are_persisted_per_task_and_used_for_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let current_project = tempfile::tempdir().unwrap();
+        let selected_project = tempfile::tempdir().unwrap();
+        let mut state = AppState::open(dir.path()).unwrap();
+        state.workspace.set(current_project.path());
+        let selected_path =
+            crate::db::canonical_project_path(&selected_project.path().to_string_lossy()).unwrap();
+
+        let first = handle(
+            &state,
+            "scheduled.create",
+            json!({
+                "title":"Pinned task",
+                "prompt":"Review",
+                "cadence":"daily",
+                "schedule":{"hour":9,"minute":0,"weekday":0},
+                "workspacePath":selected_path,
+                "permissionMode":"accept-edits",
+                "providerId":"provider-pinned",
+                "modelId":"model-pinned",
+                "thinkingLevel":"high"
+            }),
+        )
+        .unwrap()["task"]
+            .clone();
+        let second = handle(
+            &state,
+            "scheduled.create",
+            json!({
+                "title":"Separate task",
+                "prompt":"Review separately",
+                "cadence":"manual",
+                "workspacePath":state.workspace.get().unwrap().path,
+                "permissionMode":"auto",
+                "providerId":"provider-other",
+                "modelId":"model-other",
+                "thinkingLevel":"omit"
+            }),
+        )
+        .unwrap()["task"]
+            .clone();
+
+        assert_eq!(first["workspacePath"], selected_path);
+        assert_eq!(first["permissionMode"], "accept-edits");
+        assert_eq!(first["providerId"], "provider-pinned");
+        assert_eq!(first["modelId"], "model-pinned");
+        assert_eq!(second["permissionMode"], "auto");
+        assert_eq!(second["providerId"], "provider-other");
+        assert_eq!(second["modelId"], "model-other");
+
+        state.db.conn().execute(
+            "UPDATE scheduled_tasks SET config_json = json_set(config_json, '$.nextRunAt', ?1) WHERE id = ?2",
+            rusqlite::params![crate::db::now_ms(), first["id"].as_str().unwrap()],
+        ).unwrap();
+        let run = handle(
+            &state,
+            "scheduled.run",
+            json!({"id":first["id"],"automatic":true}),
+        )
+        .unwrap();
+        let session = sessions::get_session(&state.db, run["sessionId"].as_str().unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            session.summary.project_path.as_deref(),
+            Some(selected_path.as_str())
+        );
+        assert_eq!(session.summary.permission_mode, "accept-edits");
+        assert_eq!(
+            session.summary.provider_id.as_deref(),
+            Some("provider-pinned")
+        );
+        assert_eq!(session.summary.model_id.as_deref(), Some("model-pinned"));
+        assert_eq!(session.summary.thinking_level, "high");
+        handle(
+            &state,
+            "scheduled.finishRun",
+            json!({"runId":run["runId"],"status":"completed"}),
+        )
+        .unwrap();
+
+        let separate_run = handle(&state, "scheduled.run", json!({"id":second["id"]})).unwrap();
+        let separate_session =
+            sessions::get_session(&state.db, separate_run["sessionId"].as_str().unwrap())
+                .unwrap()
+                .unwrap();
+        assert_eq!(separate_session.summary.permission_mode, "auto");
+        assert_eq!(separate_session.summary.thinking_level, "omit");
+        assert_eq!(
+            separate_session.summary.provider_id.as_deref(),
+            Some("provider-other")
+        );
+        assert_eq!(
+            separate_session.summary.model_id.as_deref(),
+            Some("model-other")
+        );
+
+        handle(
+            &state,
+            "scheduled.update",
+            json!({"id":first["id"],"permissionMode":"ask"}),
+        )
+        .unwrap();
+        let saved = handle(&state, "scheduled.list", json!({})).unwrap();
+        let untouched = saved["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|task| task["id"] == second["id"])
+            .unwrap();
+        assert_eq!(untouched["permissionMode"], "auto");
+        assert_eq!(untouched["providerId"], "provider-other");
+        assert_eq!(untouched["modelId"], "model-other");
+        assert_eq!(untouched["thinkingLevel"], "omit");
+        handle(
+            &state,
+            "scheduled.update",
+            json!({"id":first["id"], "thinkingLevel":null}),
+        )
+        .unwrap();
+        assert!(
+            handle(&state, "scheduled.list", json!({})).unwrap()["tasks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|task| task["id"] == first["id"])
+                .unwrap()
+                .get("thinkingLevel")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn legacy_tasks_keep_their_previous_execution_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let mut state = AppState::open(dir.path()).unwrap();
+        state.workspace.set(project.path());
+        state
+            .db
+            .set_setting(
+                "app",
+                &json!({
+                    "defaultProviderId":"provider-default",
+                    "defaultModelId":"model-default",
+                    "defaultPermissionMode":"auto"
+                }),
+            )
+            .unwrap();
+        let task = scheduled::create_task(
+            &state.db,
+            &json!({"title":"Legacy", "prompt":"Review", "cadence":"manual"}),
+        )
+        .unwrap();
+        let projected = handle(&state, "scheduled.list", json!({})).unwrap();
+        assert!(projected["tasks"][0].get("permissionMode").is_none());
+        assert!(projected["tasks"][0].get("providerId").is_none());
+        assert!(projected["tasks"][0].get("modelId").is_none());
+
+        let run = handle(&state, "scheduled.run", json!({"id":task.id})).unwrap();
+        let session = sessions::get_session(&state.db, run["sessionId"].as_str().unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(session.summary.permission_mode, "inherit");
+        assert_eq!(session.summary.thinking_level, "off");
+        assert_eq!(
+            session.summary.provider_id.as_deref(),
+            Some("provider-default")
+        );
+        assert_eq!(session.summary.model_id.as_deref(), Some("model-default"));
+    }
+
+    #[test]
     fn invalid_schedule_does_not_mutate_task() {
         let dir = tempfile::tempdir().unwrap();
         let state = AppState::open(dir.path()).unwrap();
@@ -502,6 +713,22 @@ mod tests {
             })
         )
         .is_err());
+        assert!(scheduled::list_tasks(&state.db).unwrap().is_empty());
+        for invalid in [
+            json!({"prompt":"Review", "thinkingLevel":"invalid"}),
+            json!({
+                "prompt":"Review", "cadence":"manual", "permissionMode":"unrestricted"
+            }),
+            json!({
+                "prompt":"Review", "cadence":"manual", "providerId":"provider-only"
+            }),
+            json!({
+                "prompt":"Review", "cadence":"manual", "providerId":"", "modelId":"model"
+            }),
+        ] {
+            let error = handle(&state, "scheduled.create", invalid).unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
         assert!(scheduled::list_tasks(&state.db).unwrap().is_empty());
     }
 }

@@ -519,6 +519,9 @@ type NotificationListResult = {
 - `notification.markAllRead({}) -> { ok: true }` 更新中的每个未读行
   一笔交易。
 - `notification.clear({}) -> { ok: true }` 仅删除收件箱行。
+- `id` 是 Renderer 和本机投递的稳定一次性键。客户端必须丢弃已经确认/清除
+  的 id 的重复或延迟记录；清空收件箱不会让旧终端回合再次具备插入资格。
+  后续真正的终端回合会获得新的 id。
 - 不发出 `notification.created` JSON-RPC 服务器通知。 Electron
   直接从 `session.endTurn` 接收插入的记录，避免了
   终端转持久化和UI刷新之间的第二个点餐通道。
@@ -986,6 +989,17 @@ Host 重新检查会话的持久化模式，按调用会话的项目限制访问
 提示词、非法时间和星期在写入前拒绝；不能删除运行中的任务。创建需 title、prompt、cadence；
 每天／每周自动任务需 schedule。修改使用已存在的 ID 并保留未指定字段。界面虽只提供四个
 时段，工具仍支持具体本地时间。不新增数据库 schema 或传输协议。
+
+### 定时任务：任务级执行设置
+
+桌面端 create/update 可为单个任务保存 `workspacePath`、`permissionMode` 和成对的
+`providerId`／`modelId`。立即运行与自动运行在字段存在时均使用这些值；字段缺失时保留旧版
+项目捕获、应用默认模型和权限行为。非法权限与不完整模型组合在写入前拒绝。对话工具不暴露
+这些字段，仍限制在调用会话所属项目。见 ADR 0305。
+
+任务还可独立保存 `thinkingLevel`，取值与会话相同（包括 `off` 和 `omit`）。
+模型和推理等级直接复用主对话框的完整选择器及交互逻辑，仅将保存回调接到任务草稿。
+未配置此字段的旧任务仍以 `off` 运行；清空字段恢复旧行为，不需要数据库迁移。
 
 ### 定时任务：独立分发到期任务
 

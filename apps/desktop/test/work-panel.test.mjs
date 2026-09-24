@@ -295,6 +295,22 @@ test("plus creates a blank page and launcher rows open tools in that page", () =
   assert.doesNotMatch(panelSource, /setMenuOpen|menuOpen|newTabMenuRef|createPortal/);
 });
 
+test("work panel tabs support pointer and keyboard reordering", () => {
+  assert.match(panelSource, /beginTabReorder/);
+  assert.match(panelSource, /data-work-panel-tab-id/);
+  assert.match(panelSource, /workPanelTabReorderShouldArm/);
+  assert.match(panelSource, /workPanelTabReorderInsertAfter/);
+  assert.match(panelSource, /workPanelTabReorderScrollDelta/);
+  assert.match(panelSource, /autoScrollFrame/);
+  assert.match(panelSource, /requestAnimationFrame\(tick\)/);
+  assert.match(panelSource, /data-work-panel-tab-reordering/);
+  assert.match(panelSource, /event\.altKey/);
+  assert.match(panelSource, /reorderWorkPanelTabs/);
+  assert.match(storeSource, /reorderWorkPanelTabs: \(sourceTabId, targetTabId, insertAfter\)/);
+  assert.match(storeSource, /reorderWorkPanelTabsState/);
+  assert.match(globalStyles, /\.work-panel-tab\.is-drop-before::before/);
+});
+
 test("work panel starts closed with no tabs and persists width only", () => {
   assert.match(storeSource, /workPanelOpen:\s*false/);
   assert.match(storeSource, /workPanelTabs:\s*\[\]/);
@@ -614,7 +630,12 @@ test("preview mode keeps shell actions and restores routes before navigation", (
   assert.match(appSource, /className=\{cx\([\s\S]*?"window-chrome-row"/);
   assert.match(appSource, /data-nav="new-task"/);
   assert.match(appSource, /<CollapsedTitlebarActions[\s\S]*?onNewTask=/);
-  assert.match(appSource, /\{ready && !showSplash && <WindowControls \/>\}/);
+  // `showSplash` stays true until the shell is ready, so the controls have to
+  // follow the boot surface that is actually up (splash or startup recovery).
+  assert.match(
+    appSource,
+    /\{\(ready && !showSplash\) \|\| startupPhase !== "starting" \? \(\s*<WindowControls \/>/,
+  );
   assert.match(appSource, /const workPanelMaximizedRef = useRef\(false\)/);
   assert.match(
     appSource,

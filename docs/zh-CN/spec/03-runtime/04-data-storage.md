@@ -891,11 +891,17 @@ CREATE INDEX idx_task_runs ON task_runs(task_id, started_at DESC);
 ```
 
 生成会话的运行通过 `session_id` 免费获取其转录本。
-`config_json` 保存 `schedule: {hour, minute, weekday}`、毫秒时间戳 `nextRunAt`
-和 `workspacePath`。每天、每周按宿主本地时区计算。每小时采用 `nextRunAt = now + 3_600_000`，
+`config_json` 保存 `schedule: {hour, minute, weekday}`、毫秒时间戳 `nextRunAt`、
+`workspacePath`，以及可选的任务级 `permissionMode` 与成对的 `providerId`／`modelId`。
+这些新增字段无需物理表迁移。缺少模型字段时仍在运行时读取应用默认值；缺少权限字段时，
+自动运行继续使用 Ask，立即运行继续继承全局权限。每天、每周按宿主本地时区计算。每小时采用 `nextRunAt = now + 3_600_000`，
 忽略日历时间字段。可选 `weekdays` 保存 1–7 个不重复的 0–6 整数，覆盖每周的旧 `weekday`；
 缺失时保留单日语义，空数组、重复或越界值在写入前拒绝。无需表结构迁移。
-无 `schedule` 的旧任务不会自动运行；无需修改表或迁移数据库。
+无 `schedule` 的旧任务不会自动运行；无需修改表或迁移数据库。见 ADR 0305。
+
+任务还可独立保存 `thinkingLevel`，取值与会话相同（包括 `off` 和 `omit`）。
+模型和推理等级直接复用主对话框的完整选择器及交互逻辑，仅将保存回调接到任务草稿。
+未配置此字段的旧任务仍以 `off` 运行；清空字段恢复旧行为，不需要数据库迁移。
 
 计划任务 `config_json.mode` 是持久操作模式值。有
 故意没有物理 `scheduled_tasks.mode` 列。 v7→v8
@@ -1015,7 +1021,8 @@ CREATE INDEX idx_notifications_unread
 | 事件 | 文件步骤 | index/DB 交易 |
 |---|---|---|
 | 接受提示 | 附加用户消息行 | `last_seq` 分配（返回）+索引行+触摸 `sessions.updated_at`；然后插入 `turns(running)` |
-| assistant/tool 消息结束 | 附加消息行；id 匹配时移除进行中检查点 | 索引行+触摸会话 |
+| assistant/tool 消息结束 | 附加消息行；id 匹配时移除进行中检查点 | 校验可选 `turnId` 属于本会话；过期/缺失时记录警告并置空关联，仍写入索引并更新时间 |
+| 过期 turn 下的 outbox 重放 | 将同一消息 id 的现有转录行更新为最新快照，不再追加新行 | 在单个事务中按转录顺序重建去重后的消息索引和 `last_seq`，仅保留有效的本会话 turn 关联；FTS 触发器保持同步 |
 | 流式回复检查点（`session.saveInflightMessage`，D299） | 原子替换 `<id>.inflight.json`；空消息或已索引的 id 为空操作 | — |
 | 上下文检查点（`session.appendCompaction`） | 在其引用的消息边界之后附加类型化检查点行 | —（检查点是不可搜索的转录本内容） |
 | 工具成功（Write/Edit） | — | upsert `artifacts` + `audit_log` 行，与结果持久化相同的 tx |
@@ -1048,9 +1055,8 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 只有在追加成功后，检查点才会安装到实时运行时中；
 因此 failed/crashed 检查点写入会留下先前的完整上下文或
 先前的检查点具有权威性，而不是创建仅内存状态。
-文件追加和索引提交之间的崩溃使消息可读
-（从文件加载脚本）只有其搜索行丢失，直到
-下一步重写；转录读取重复数据删除重复的 id keep-last。
+文件追加后索引提交失败时，转录文件仍是权威来源；后续重写，或携带过期 turn 引用的
+未索引 outbox 消息重放，会修复其派生索引。重复 id 按 keep-last 规则去重。
 
 渲染器打开一个会话时并不需要整个 JSONL 文件。它的 `session.get` 请求可以
 指定一个从零开始、不含上界的 `messageBefore`，一个正数 `messageLimit`，以及
@@ -1309,10 +1315,14 @@ UI投影损失
 终态助手替换索引中的流式助手。更新仅涉及该转录行和搜索文本，保留顺序、所属回合及
 其他所有行。迟到的部分快照和重复终态快照不能覆盖已落定结果。恢复时在原位置应用
 最新检查点。如果主机调用尚未完成时出现更新的追加快照，outbox 同样保留该快照。
-若 `messages.id` 已属于另一会话，主机在写 JSONL 之前改写为 `{sessionId}:{id}`；
-重放原始 id 对该改写行无操作。outbox 把 `UNIQUE constraint failed: messages.id`
-当作确认并继续排空（D444）。带 `PERMISSION_DENIED:` 前缀的永久拒绝同样丢弃该行
-以便 FIFO 继续；`PLUGIN_PERMISSION_DENIED` 和其他宿主失败仍暂停（D597）。
+可选 `turnId` 仅在对应 turn 存在且属于目标会话时保留；缺失或跨会话时记录警告并省略，
+不因此拒绝消息。旧版失败追加若已写入 JSONL，重放会更新同 id 行，并按去重后的转录顺序
+重建索引，不再追加副本。若 `messages.id` 已属于另一会话，主机在写 JSONL 前改写为
+`{sessionId}:{id}`；重放原始 id 对该改写行无操作。outbox 将
+`UNIQUE constraint failed: messages.id` 当作确认并继续排空（D444）。带
+`PERMISSION_DENIED:` 前缀的永久拒绝同样丢弃该行以便 FIFO 继续；
+`PLUGIN_PERMISSION_DENIED` 和其他宿主失败仍暂停（D597）。1024 条上限在尝试 flush 后仍满时，
+enqueue 会记录被拒 key/session 并 reject，不会谎报已入队；通用外键错误不会被当作确认。
 向已认领的协作投递回合做 steering 是额外的人类输入：必须指向该投递的会话，
 不受投递内容/附件契约约束，不继承投递来源，并清掉客户端带来的
 `session_message`。无需存储架构迁移。
@@ -1331,3 +1341,4 @@ preference does not rewrite provider configuration or require a schema migration
 schedule 就推断为日历配置；旧版 Hourly 行保留字段，但转换时需要明确确认日历时间。
 已知意图在周期切换和数据库重开后仍然保留。该新增 JSON 字段不需要表或 schema
 版本迁移；旧版本会忽略它，也无法执行新的转换保护。
+

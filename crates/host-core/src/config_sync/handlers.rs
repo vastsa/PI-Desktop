@@ -52,18 +52,20 @@ pub(crate) async fn test(state: Arc<Mutex<AppState>>, params: Value) -> Result<V
                     .map(|value| value.directory.as_str())
                     .unwrap_or_default()
             });
-        let allow_insecure = params
-            .get("allowInsecureHttp")
-            .and_then(Value::as_bool)
-            .or_else(|| existing.as_ref().map(|value| value.allow_insecure_http))
-            .unwrap_or(false);
-        let stored_password = st.secrets.get(WEBDAV_SECRET_REF)?;
-        let password = params
-            .get("appPassword")
+        let remote_mode = params
+            .get("remoteMode")
             .and_then(Value::as_str)
-            .map(str::to_string)
-            .or(stored_password)
+            .map(parse_remote_mode)
+            .transpose()?
+            .or_else(|| existing.as_ref().map(|value| value.remote_mode))
             .unwrap_or_default();
+        let password = connection_password(
+            &st,
+            existing.as_ref(),
+            endpoint.trim(),
+            username.trim(),
+            &params,
+        )?;
         let vault_id = Uuid::new_v4().to_string();
         let header = create_vault("temporary-test-password", &vault_id)?.0;
         (
@@ -74,7 +76,9 @@ pub(crate) async fn test(state: Arc<Mutex<AppState>>, params: Value) -> Result<V
                 username: username.trim().into(),
                 directory: directory.trim().into(),
                 device_label: "test".into(),
-                allow_insecure_http: allow_insecure,
+                remote_mode,
+                device_id: Uuid::new_v4().to_string(),
+                missing_object_status: None,
                 categories: default_categories(),
                 include_secrets: false,
                 include_memory: false,
@@ -103,7 +107,11 @@ pub(crate) async fn test(state: Arc<Mutex<AppState>>, params: Value) -> Result<V
     };
     let transport = transport_with_password(&config, password)?;
     let probe = transport.probe().await?;
-    Ok(json!({ "ok": true, "conditionalWrites": probe.conditional_writes }))
+    Ok(json!({
+        "ok": true,
+        "conditionalWrites": probe.conditional_writes,
+        "appendOnly": probe.append_only,
+    }))
 }
 
 pub(crate) async fn configure(state: Arc<Mutex<AppState>>, params: Value) -> Result<Value> {
@@ -115,44 +123,45 @@ pub(crate) async fn configure(state: Arc<Mutex<AppState>>, params: Value) -> Res
     let backup_password = params
         .get("backupPassword")
         .and_then(Value::as_str)
-        .ok_or_else(|| anyhow!("CONFIG_SYNC_INVALID: backup password is required"))?;
-    if backup_password.len() < 8 {
+        .unwrap_or("")
+        .trim();
+    if !backup_password.is_empty() && backup_password.len() < 8 {
         bail!("CONFIG_SYNC_INVALID: backup password must be at least 8 characters");
     }
     let (mut config, mut key, transport_password, had_existing) = {
         let st = state.lock().await;
         let existing = load_config(&st)?;
-        let vault_id = existing
-            .as_ref()
-            .map(|value| value.vault_id.clone())
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
-        let (header, key) = if let Some(existing) = existing.as_ref() {
-            (
-                existing.vault_header.clone(),
-                unlock_vault(&existing.vault_header, backup_password)?,
-            )
+        let (header, key, had_existing) = if backup_password.is_empty() {
+            let saved = existing.as_ref().ok_or_else(|| {
+                anyhow!("CONFIG_SYNC_LOCKED: enter the vault password to set up sync")
+            })?;
+            let key = local_vault_key(&st, saved)?
+                .ok_or_else(|| anyhow!("CONFIG_SYNC_LOCKED: backup vault is locked"))?;
+            (saved.vault_header.clone(), key, true)
         } else {
-            create_vault(backup_password, &vault_id)?
+            let vault_id = existing
+                .as_ref()
+                .map(|value| value.vault_id.clone())
+                .unwrap_or_else(|| Uuid::new_v4().to_string());
+            let (header, key) = if let Some(saved) = existing.as_ref() {
+                (
+                    saved.vault_header.clone(),
+                    unlock_vault(&saved.vault_header, backup_password)?,
+                )
+            } else {
+                create_vault(backup_password, &vault_id)?
+            };
+            (header, key, existing.is_some())
         };
         let config = config_from_input(existing.as_ref(), &params, header)?;
-        let stored_password = if existing
-            .as_ref()
-            .is_some_and(|value| value.username == config.username)
-        {
-            st.secrets.get(WEBDAV_SECRET_REF)?
-        } else {
-            None
-        };
-        let transport_password = params
-            .get("appPassword")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .or(stored_password)
-            .unwrap_or_default();
-        if !config.username.is_empty() && transport_password.is_empty() {
-            bail!("CONFIG_SYNC_INVALID: WebDAV app password is required");
-        }
-        (config, key, transport_password, existing.is_some())
+        let transport_password = connection_password(
+            &st,
+            existing.as_ref(),
+            &config.endpoint,
+            &config.username,
+            &params,
+        )?;
+        (config, key, transport_password, had_existing)
     };
     let app_password = params
         .get("appPassword")
@@ -160,9 +169,21 @@ pub(crate) async fn configure(state: Arc<Mutex<AppState>>, params: Value) -> Res
         .map(str::to_string);
     let transport = transport_with_password(&config, transport_password.clone())?;
     let probe = transport.probe().await?;
-    if !probe.conditional_writes {
-        bail!("CONFIG_SYNC_UNSUPPORTED: WebDAV server did not prove reliable conditional writes");
+    match config.remote_mode {
+        RemoteMode::Strict if !probe.conditional_writes => {
+            bail!(
+                "CONFIG_SYNC_UNSUPPORTED: WebDAV server did not prove reliable conditional writes"
+            );
+        }
+        RemoteMode::AppendOnly if !probe.append_only => {
+            bail!(
+                "CONFIG_SYNC_UNSUPPORTED: WebDAV server did not prove append-only directory listing"
+            );
+        }
+        _ => {}
     }
+    let transport = transport.with_probe_result(&probe);
+    config.missing_object_status = probe.missing_object_status;
     transport.ensure_collection("vault").await?;
     let remote_header = transport.get("header").await?;
     if let Some((bytes, _)) = remote_header {
@@ -171,21 +192,38 @@ pub(crate) async fn configure(state: Arc<Mutex<AppState>>, params: Value) -> Res
         if had_existing && config.vault_id != remote.vault_id {
             bail!("CONFIG_SYNC_CONFLICT: selected WebDAV directory belongs to another vault");
         }
-        key = unlock_vault(&remote, backup_password)?;
-        config.vault_id = remote.vault_id.clone();
-        config.vault_header = remote;
+        adopt_remote_vault(&mut key, &mut config, remote, backup_password)?;
     } else {
-        let created = transport
-            .put_if_none("header", serde_json::to_vec(&config.vault_header)?)
-            .await?;
-        if !created {
+        if config.remote_mode == RemoteMode::AppendOnly {
+            if had_existing {
+                bail!(
+                    "CONFIG_SYNC_CONFLICT: remote vault header is missing; compatibility mode will not reinitialize an existing vault"
+                );
+            }
+            transport
+                .put_unconditional("header", serde_json::to_vec(&config.vault_header)?)
+                .await?;
+        } else {
+            let created = transport
+                .put_if_none("header", serde_json::to_vec(&config.vault_header)?)
+                .await?;
+            if !created {
+                let Some((bytes, _)) = transport.get("header").await? else {
+                    bail!("CONFIG_SYNC_REMOTE: vault header disappeared during initialization");
+                };
+                let remote: VaultHeader = serde_json::from_slice(&bytes)?;
+                adopt_remote_vault(&mut key, &mut config, remote, backup_password)?;
+            }
+        }
+        if config.remote_mode == RemoteMode::AppendOnly {
             let Some((bytes, _)) = transport.get("header").await? else {
                 bail!("CONFIG_SYNC_REMOTE: vault header disappeared during initialization");
             };
             let remote: VaultHeader = serde_json::from_slice(&bytes)?;
-            key = unlock_vault(&remote, backup_password)?;
-            config.vault_id = remote.vault_id.clone();
-            config.vault_header = remote;
+            if had_existing && config.vault_id != remote.vault_id {
+                bail!("CONFIG_SYNC_CONFLICT: selected WebDAV directory belongs to another vault");
+            }
+            adopt_remote_vault(&mut key, &mut config, remote, backup_password)?;
         }
     }
     ensure_remote_collections(&transport, &config).await?;
@@ -478,4 +516,106 @@ pub(crate) async fn disconnect(state: Arc<Mutex<AppState>>) -> Result<Value> {
         }
     }
     public_state(&mut st)
+}
+
+/// A saved WebDAV password belongs to one endpoint and account. Changing either
+/// must not send the previous server's secret.
+fn connection_password(
+    st: &AppState,
+    existing: Option<&StoredConfig>,
+    endpoint: &str,
+    username: &str,
+    params: &Value,
+) -> Result<String> {
+    if username.is_empty() {
+        return Ok(String::new());
+    }
+    let explicit = params.get("appPassword").and_then(Value::as_str);
+    let password = match explicit {
+        Some(value) => Some(value.to_string()),
+        None if existing
+            .is_some_and(|saved| saved.endpoint == endpoint && saved.username == username) =>
+        {
+            st.secrets.get(WEBDAV_SECRET_REF)?
+        }
+        None => None,
+    };
+    password.filter(|value| !value.is_empty()).ok_or_else(|| {
+        anyhow!("CONFIG_SYNC_AUTH: enter the WebDAV app password for this server and account")
+    })
+}
+
+fn adopt_remote_vault(
+    key: &mut VaultKey,
+    config: &mut StoredConfig,
+    remote: VaultHeader,
+    password: &str,
+) -> Result<()> {
+    if password.is_empty() {
+        if config.vault_id != remote.vault_id {
+            bail!("CONFIG_SYNC_LOCKED: enter the vault password to open this backup");
+        }
+        config.vault_header = remote;
+        return Ok(());
+    }
+    *key = unlock_vault(&remote, password)?;
+    config.vault_id = remote.vault_id.clone();
+    config.vault_header = remote;
+    Ok(())
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+
+    #[test]
+    fn stored_password_stays_on_its_server_and_pause_survives_a_resave() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let state = AppState::open(dir.path())?;
+        state.secrets.set(WEBDAV_SECRET_REF, "original-secret")?;
+        let (header, _) = create_vault("backup-password", "test-vault")?;
+        let mut config = config_from_input(
+            None,
+            &json!({
+                "endpoint": "https://original.example/dav/",
+                "username": "alice",
+                "deviceLabel": "test"
+            }),
+            header.clone(),
+        )?;
+        config.paused = true;
+        assert_eq!(
+            connection_password(&state, Some(&config), &config.endpoint, "alice", &json!({}))?,
+            "original-secret"
+        );
+        let resent = config_from_input(
+            Some(&config),
+            &json!({
+                "endpoint": config.endpoint,
+                "username": "alice",
+                "deviceLabel": "test"
+            }),
+            header,
+        )?;
+        assert!(resent.paused);
+        for (endpoint, username) in [
+            ("https://other.example/dav/", "alice"),
+            ("https://original.example/dav/", "bob"),
+        ] {
+            let error = connection_password(&state, Some(&config), endpoint, username, &json!({}))
+                .unwrap_err();
+            assert!(error.to_string().starts_with("CONFIG_SYNC_AUTH:"));
+        }
+        assert_eq!(
+            connection_password(
+                &state,
+                Some(&config),
+                "https://other.example/",
+                "",
+                &json!({})
+            )?,
+            ""
+        );
+        Ok(())
+    }
 }

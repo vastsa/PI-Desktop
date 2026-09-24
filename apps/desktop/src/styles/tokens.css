@@ -159,6 +159,15 @@
   /* Square icon-only control. `.icon-btn` takes its width from its label, so an
      icon-only use pins both axes to this token instead. */
   --ds-control-size: 28px;
+  /* The field metric: one height for a text input, a native select and the
+     dropdowns that act as form fields, so a control can never look like a
+     different-sized box than the input beside it. Derived from the single-line
+     field box (9px + 9px padding around one `--leading-body` line at
+     `--text-base`) so it follows the Appearance font scale instead of pinning
+     a px value that drifts once type is resized. Dense nested surfaces — the
+     subagent sheet's row body, a compact menu search — and the import toolbar,
+     whose row holds small buttons and no field, declare their own metric. */
+  --ds-field-height: calc(18px + var(--text-base) * var(--leading-body));
   /* Work-panel controls share these geometry tokens so the header's safe lane
      cannot drift away from the viewport-fixed toggle. */
   --ds-work-panel-toggle-size: 28px;

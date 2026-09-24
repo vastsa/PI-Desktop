@@ -17,6 +17,7 @@ const {
   pluginWorkPanelTab,
   preferredFileWorkPanelTab,
   replaceWorkPanelTabState,
+  reorderWorkPanelTabsState,
   sanitizeWorkPanelTabsState,
   switchWorkPanelContextState,
   toolWorkPanelTab,
@@ -111,6 +112,40 @@ test("closing an inactive tab preserves selection and the last close empties sta
 test("activation ignores stale tab ids", () => {
   const state = { tabs: [toolWorkPanelTab("review")], activeTabId: "review" };
   assert.equal(activateWorkPanelTabState(state, "missing"), state);
+});
+
+test("reordering tabs inserts before or after a target and preserves selection", () => {
+  const review = toolWorkPanelTab("review");
+  const file = fileWorkPanelTab("src/App.tsx");
+  const browser = browserPluginTab();
+  const state = {
+    tabs: [review, file, browser],
+    activeTabId: file.id,
+  };
+
+  const movedAfter = reorderWorkPanelTabsState(state, review.id, browser.id, true);
+  assert.deepEqual(movedAfter.tabs.map((tab) => tab.id), [file.id, browser.id, review.id]);
+  assert.equal(movedAfter.activeTabId, file.id);
+
+  const movedBefore = reorderWorkPanelTabsState(movedAfter, review.id, file.id, false);
+  assert.deepEqual(movedBefore.tabs.map((tab) => tab.id), [review.id, file.id, browser.id]);
+  assert.equal(movedBefore.activeTabId, file.id);
+});
+
+test("reordering an unknown or identical tab is a no-op", () => {
+  const state = {
+    tabs: [toolWorkPanelTab("review"), browserPluginTab()],
+    activeTabId: "review",
+  };
+
+  assert.equal(
+    reorderWorkPanelTabsState(state, "missing", "review", false),
+    state,
+  );
+  assert.equal(
+    reorderWorkPanelTabsState(state, "review", "review", false),
+    state,
+  );
 });
 
 test("unknown retained tabs are discarded without losing a known selection", () => {

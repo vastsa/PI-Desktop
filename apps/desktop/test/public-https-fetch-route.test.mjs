@@ -251,3 +251,54 @@ test("the market catalog client asks the session that carries its fetch", async 
   assert.match(source, /fetchImpl: \(url, init\) => net\.fetch\(url, init\)/);
   assert.match(source, /routeImpl: \(url\) => session\.defaultSession\.resolveProxy\(url\)/);
 });
+
+test("a user-supplied endpoint reaches its own LAN on any route", async () => {
+  // `benchmark` is the only class the route decides for a third-party hop, and
+  // it stays that way. A user-supplied endpoint is a different trust input: the
+  // address is theirs, so a private one is dialed whether the session goes
+  // direct or through a proxy.
+  for (const route of ["DIRECT", PROXIED]) {
+    const client = clientFor({ route, address: "10.0.0.8" });
+    assert.equal(
+      await client.request("https://nas.local/catalog.json", "text", "user"),
+      "# skill\n",
+    );
+  }
+
+  // The same address on the default origin keeps the strict verdict, whichever
+  // route carries it.
+  for (const route of ["DIRECT", PROXIED]) {
+    const client = clientFor({
+      route,
+      address: "10.0.0.8",
+      fetchImpl: async () => {
+        throw new Error("a refused request must never reach the network");
+      },
+    });
+    await assert.rejects(
+      () => client.assertPublicUrl("https://nas.example/catalog.json"),
+      (error) =>
+        error instanceof PublicNetworkPolicyError &&
+        error.reason === "non-public-address" &&
+        error.addressKind === "private",
+    );
+  }
+
+  // A fake-IP answer is the proxy's own placeholder rather than a service the
+  // user runs, so it is refused on the user's own endpoint too unless the route
+  // says this app dials a proxy — the same rule the third-party hop has.
+  const fakeIp = clientFor({
+    route: "DIRECT",
+    address: FAKE_IP,
+    fetchImpl: async () => {
+      throw new Error("a refused request must never reach the network");
+    },
+  });
+  await assert.rejects(
+    () => fakeIp.assertPublicUrl("https://nas.local/catalog.json", "user"),
+    (error) =>
+      error instanceof PublicNetworkPolicyError &&
+      error.reason === "non-public-address" &&
+      error.addressKind === "benchmark",
+  );
+});
