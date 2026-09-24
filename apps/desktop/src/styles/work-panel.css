@@ -408,7 +408,7 @@
 }
 
 .subagent-transcript-jump {
-  bottom: 76px;
+  bottom: calc(var(--st-composer-dock-height, 68px) + 8px);
   z-index: 6;
 }
 
