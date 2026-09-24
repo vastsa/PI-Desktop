@@ -58,7 +58,7 @@ export type SshForward = {
 export interface SshTransport {
   /** Run `command` through the remote user's shell. */
   exec(command: string, options?: { timeoutMs?: number }): Promise<SshExecResult>;
-  /** Run `command` with `input` written to its stdin (used to upload the script). */
+  /** Run `command` with `input` on its stdin: the bootstrap script, or an import payload. */
   execWithInput(
     command: string,
     input: string,
@@ -359,9 +359,9 @@ export function createSystemSshTransport(
     input: string | undefined,
     timeoutMs: number,
   ): Promise<SshExecResult> => {
-    // `sh -s` reads the script from stdin, so the script never has to survive
-    // an argv round trip and never lands in a remote file we must clean up.
-    const args = input === undefined ? [...base, command] : [...base, "sh -s"];
+    // Stdin input is for data the argv must not carry: the bootstrap script
+    // (`sh -s`) and the provider import payload, which holds API keys.
+    const args = [...base, command];
     const env = await acquireEnv();
     let result: SshExecResult;
     try {

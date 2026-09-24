@@ -14,6 +14,10 @@
  * The bootstrap channel never sees an SSH secret either — it passes a host,
  * and the system `ssh` client supplies the credentials from the user's own
  * configuration and agent.
+ *
+ * `syncProviders` (D625) is the one channel that moves provider keys: main
+ * re-reads the chosen rows from the local host-core and sends them only on
+ * the stdin of the host's own SSH channel.
  */
 import {
   ErrorCodes,
@@ -32,12 +36,26 @@ import {
   type RemoteProjectRegisterResult,
   type RemoteSessionCreateRequest,
   type RemoteSessionCreateResult,
+  type ProviderPublic,
+  type RemoteHostSyncProvidersRequest,
+  type RemoteHostSyncProvidersResult,
 } from "@pi-desktop/shared";
 import { app } from "electron";
 import {
   getActiveRemoteHostsBoot,
+  sshMetadataOf,
   type RemoteHostsBoot,
 } from "../bootstrap/remote-hosts";
+import {
+  buildImportPayload,
+  importProvidersOverSsh,
+  MAX_SYNC_PROVIDERS,
+} from "../remote/remote-provider-sync";
+import {
+  createSystemSshTransport,
+  type SshTarget,
+  type SshTransport,
+} from "../remote/ssh-transport";
 import { normalizeRemoteError } from "../remote/backend-router";
 import { exchangePairingToken } from "../remote/racp-remote-host-client";
 import type { IpcRegistrar } from "./types";
@@ -51,6 +69,9 @@ export type RegisterRemoteHostIpcOptions = {
    */
   getRemoteHostsBoot?: () => RemoteHostsBoot | null;
   clientInfo?: { name: string; version: string };
+  /** Local host-core, read for the providers a sync copies. */
+  getHost?: () => { call<T>(method: string, params?: unknown): Promise<T> } | null;
+  buildSshTransport?: (target: SshTarget) => SshTransport;
   log?: (level: "info" | "warn" | "error", message: string, data?: unknown) => void;
 };
 
@@ -242,6 +263,58 @@ export function registerRemoteHostIpc(options: RegisterRemoteHostIpcOptions): vo
       }
       const title = trim(request?.title).slice(0, MAX_SESSION_TITLE) || undefined;
       return { session: await remote(() => boot.createSession(hostKey, projectId, title)) };
+    },
+  );
+
+  registrar.handle(
+    IPC.invoke.remoteHostSyncProviders,
+    async (request: RemoteHostSyncProvidersRequest): Promise<RemoteHostSyncProvidersResult> => {
+      const boot = requireBoot(getRemoteHostsBoot());
+      const hostKey = requireHostKey(request?.hostKey);
+      const providerIds = Array.isArray(request?.providerIds)
+        ? request.providerIds.map(trim).filter((id) => id && id.length <= MAX_REMOTE_ID)
+        : [];
+      if (providerIds.length === 0 || providerIds.length > MAX_SYNC_PROVIDERS) {
+        throw invalid("providerIds is required", "providerIds");
+      }
+      const record = (await boot.registry.list()).find((entry) => entry.hostKey === hostKey);
+      if (!record) throw invalid("unknown host", "hostKey");
+      const ssh = sshMetadataOf(record);
+      if (!ssh) {
+        // A host paired by URL has no channel that may carry keys.
+        throw Object.assign(new Error("provider sync needs an SSH host"), {
+          errorCode: ErrorCodes.CAPABILITY_UNAVAILABLE,
+        });
+      }
+      const host = options.getHost?.();
+      if (!host) {
+        throw Object.assign(new Error("host unavailable"), { errorCode: ErrorCodes.HOST_UNAVAILABLE });
+      }
+      // Re-checked here: the renderer's list only picks among these.
+      const { providers } = await host.call<{ providers: ProviderPublic[] }>("providers.list", {
+        includeDisabled: false,
+      });
+      const payload = await buildImportPayload({
+        providers,
+        providerIds,
+        setDefault: request?.setDefault === true,
+        getSecret: async (id) =>
+          (await host.call<{ value?: string }>("providers.getSecret", { id })).value,
+      });
+      const summary = await importProvidersOverSsh({
+        ssh,
+        ...(record.sshSecret ? { sshSecret: record.sshSecret } : {}),
+        payload,
+        buildTransport:
+          options.buildSshTransport ??
+          ((target) => createSystemSshTransport(target, { log: (level, message) => log(level, message) })),
+      });
+      log("info", "providers synced to remote host", {
+        hostKey,
+        imported: summary.imported.length,
+        skipped: summary.skipped.length,
+      });
+      return summary;
     },
   );
 }
