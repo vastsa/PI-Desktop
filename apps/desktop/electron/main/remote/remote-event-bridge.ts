@@ -70,8 +70,8 @@ function extractSessionRef(payload: unknown): RemoteEventSessionRef | undefined 
     ...(typeof payload.status === "string"
       ? { status: payload.status as RacpSession["status"] }
       : {}),
-    ...(isRecord(payload.planningState)
-      ? { planningState: payload.planningState as unknown as RacpSession["planningState"] }
+    ...(payload.planningState !== undefined && payload.planningState !== null
+      ? { planningState: payload.planningState as RacpSession["planningState"] }
       : {}),
   };
 }
@@ -166,6 +166,9 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
   };
 
   const handleHostSession = (envelope: RacpEventEnvelope): void => {
+    // Only session lifecycle kinds name a session; `host.changed` and any
+    // future host-scope kind are not session events.
+    if (!envelope.kind.startsWith("session.")) return;
     const session = extractSessionRef(envelope.payload);
     if (!session) {
       log("warn", `host-scope ${envelope.kind} carried no session`, envelope);
@@ -184,8 +187,9 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
       emit(IPC.event.sessionsChanged, { reason: "remote.session.changed" });
       return;
     }
-    // "session.archived": pass through to the lifecycle handler for router
-    // cleanup, then refresh the renderer's session list.
+    if (envelope.kind !== "session.archived") return;
+    // Pass through to the lifecycle handler for cache cleanup, then refresh
+    // the renderer's session list.
     onLifecycle?.({ kind: "session.archived", hostSessionId: session.id, remoteSessionId, session });
     emit(IPC.event.sessionsChanged, { reason: "remote.session.archived" });
   };
