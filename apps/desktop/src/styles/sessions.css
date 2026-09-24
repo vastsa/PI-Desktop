@@ -1166,3 +1166,18 @@
   color: var(--ds-text-muted);
   font-size: var(--text-sm);
 }
+
+.remote-sync-provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+}
+
+.remote-sync-provider-default {
+  margin-top: 4px;
+}

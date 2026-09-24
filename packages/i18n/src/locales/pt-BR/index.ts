@@ -974,6 +974,18 @@ export const ptBR = {
       sshSucceeded: "{{label}} instalado.",
       sshFailed: "Falha na conexão SSH: {{message}}",
       transportSsh: "SSH",
+      syncModels: "Sincronizar modelos…",
+      syncTitle: "Sincronizar modelos com {{host}}",
+      syncDescription: "Copia os provedores selecionados, com as chaves de API, para este host via SSH.",
+      syncEmpty: "Nenhum provedor pode ser sincronizado. Provedores com login (OAuth) e de plugins ficam nesta máquina.",
+      syncLocalDefault: "Padrão",
+      syncSetDefault: "Tornar o primeiro provedor selecionado o padrão do host",
+      syncAction: "Sincronizar",
+      syncRunning: "Sincronizando…",
+      syncSucceeded: "Modelos sincronizados com {{host}}.",
+      syncPartial: "Modelos sincronizados com {{host}}; alguns provedores foram ignorados.",
+      syncFailed: "Falha ao sincronizar modelos: {{message}}",
+      syncHint: "Sincronize os modelos com {{label}} antes de iniciar uma sessão lá.",
       experimental: "Experimental"
     },
     configSync: {
