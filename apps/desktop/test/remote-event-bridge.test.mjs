@@ -46,7 +46,28 @@ function collect() {
   return { bridge, events, lifecycle, warnings };
 }
 
-test("host-scope session.created fires lifecycle and refreshes sessions with the new id", () => {
+test("host-scope status-only session.changed still produces a lifecycle event", () => {
+  const { bridge, events, lifecycle } = collect();
+  bridge.handle(
+    makeEnvelope({
+      scope: "host",
+      kind: "session.changed",
+      payload: { sessionId: HOST_SESSION_ID, status: "running", planningState: "inactive" },
+    }),
+  );
+  assert.equal(lifecycle.length, 1);
+  assert.equal(lifecycle[0].kind, "session.changed");
+  assert.equal(lifecycle[0].hostSessionId, HOST_SESSION_ID);
+  assert.equal(lifecycle[0].remoteSessionId, REMOTE_SESSION_ID);
+  assert.equal(lifecycle[0].session.id, HOST_SESSION_ID);
+  assert.equal(lifecycle[0].session.status, "running");
+  assert.equal(events.length, 1);
+  assert.equal(events[0].channel, IPC.event.sessionsChanged);
+  assert.equal(events[0].payload.reason, "remote.session.changed");
+  assert.equal(events[0].payload.selectSessionId, undefined);
+});
+
+test("host-scope session.created fires lifecycle and refreshes sessions without stealing focus", () => {
   const { bridge, events, lifecycle } = collect();
   bridge.handle(
     makeEnvelope({
@@ -68,7 +89,8 @@ test("host-scope session.created fires lifecycle and refreshes sessions with the
   assert.equal(events.length, 1);
   assert.equal(events[0].channel, IPC.event.sessionsChanged);
   assert.equal(events[0].payload.reason, "remote.session.created");
-  assert.equal(events[0].payload.selectSessionId, REMOTE_SESSION_ID);
+  // A session another client created must not take this window's focus.
+  assert.equal("selectSessionId" in events[0].payload, false);
 });
 
 test("host-scope session.archived tells the router to release the id without selecting it", () => {
