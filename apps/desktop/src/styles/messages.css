@@ -1969,8 +1969,10 @@
   color: var(--ds-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .tool-activity-group.has-subagents .tool-activity-preview {
@@ -2198,19 +2200,25 @@
 .subagent-topology-node-title-row {
   display: flex;
   min-width: 0;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 3px 8px;
 }
 
 .subagent-topology-node-title {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 12ch;
   overflow: hidden;
   color: var(--ds-text-primary);
+  display: -webkit-box;
   font-size: var(--text-sm-plus);
   font-weight: var(--font-weight-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .subagent-topology-node-model {
@@ -2232,13 +2240,19 @@
   white-space: nowrap;
 }
 
-.subagent-topology-node-summary,
-.subagent-topology-node-steps {
+.subagent-topology-node-summary {
+  display: -webkit-box;
+  min-width: 0;
   overflow: hidden;
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: var(--leading-normal);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .subagent-topology-node-summary {
@@ -2246,9 +2260,14 @@
 }
 
 .subagent-topology-node-steps {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
   margin-top: 3px;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
 }
 
 .subagent-topology-node > .tool-row-body,

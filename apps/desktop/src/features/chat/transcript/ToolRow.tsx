@@ -394,7 +394,9 @@ export const ToolRow = memo(function ToolRow({
               </span>
             </span>
             {summary ? (
-              <span className="subagent-topology-node-summary">{summary}</span>
+              <span className="subagent-topology-node-summary" title={summary}>
+                {summary}
+              </span>
             ) : null}
             {delegate?.items.length ? (
               <span className="subagent-topology-node-steps">

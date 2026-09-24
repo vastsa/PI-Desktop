@@ -751,6 +751,35 @@
   min-width: 0;
 }
 
+/* Dock rows share the main transcript's content model: labels may stay
+   compact, but the actual path, command, and summary must use the committed
+   panel width instead of becoming a one-line ellipsis. */
+.subagent-detail > .subagent-run .subagent-run-rows.is-panel-flow .tool-row-header {
+  align-items: flex-start;
+  min-height: 28px;
+  padding-block: 4px;
+}
+
+.subagent-detail > .subagent-run .subagent-run-rows.is-panel-flow .tool-row-summary {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.subagent-detail > .subagent-run .subagent-run-rows.is-panel-flow .tool-row-agent {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subagent-detail > .subagent-run .subagent-run-rows.is-panel-flow > div > .subagent-answer {
+  width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .subagent-detail > .subagent-run .subagent-run-rows.is-panel-flow > div > .tool-row::before,
 .subagent-detail > .subagent-run .subagent-run-rows.is-panel-flow > div > .subagent-answer::before {
   position: absolute;
