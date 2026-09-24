@@ -10,7 +10,7 @@ const events = await read("../src/stores/slices/events-slice.ts");
 const sidecarDispatch = await read("../../../packages/agent-runtime/src/sidecar.ts");
 
 test("native model readiness uses capability instead of Desktop secrets", () => {
-  assert.match(composer, /const modelReady\s*=\s*nativeSession\s*\?\s*activeSessionSummary\??\.capabilities\?\.canPrompt === true\s*:/);
+  assert.match(composer, /const modelReady\s*=\s*hostOwnsModel\s*\?\s*activeSessionSummary\??\.capabilities\?\.canPrompt === true\s*:/);
 });
 
 test("native abort bypasses smart-stop rewrite and refreshes source detail", () => {
@@ -157,7 +157,7 @@ test("native prompt only dispatches sidecar and cannot create a host queue entry
 
 test("native model readiness never depends on a Desktop provider but read-only fails closed", () => {
   const expression = composer.match(/const modelReady = ([\s\S]*?);/)[1];
-  const evaluateReady = new Function("isImageGenerationModel", "imageGenerationCandidates", "settings", "nativeSession", "activeSessionSummary", "provider", "modelId", `return ${expression}`);
+  const evaluateReady = new Function("isImageGenerationModel", "imageGenerationCandidates", "settings", "hostOwnsModel", "activeSessionSummary", "provider", "modelId", `return ${expression}`);
   const ready = (nativeSession, activeSessionSummary, provider, modelId, settings) =>
     evaluateReady(isImageGenerationModel, imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration), settings, nativeSession, activeSessionSummary, provider, modelId);
   assert.equal(ready(true, { capabilities: { canPrompt: true } }, undefined, undefined), true);
@@ -222,6 +222,7 @@ function forkHarness({ host, sidecar, activeTurns = new Map() }) {
     "../importers": { convertSession() {}, scanAllSources() {}, scanModelConfigs() {} },
     "../services/session-collaboration": { readSessionCollaboration() {} },
     "../services/session-search": { searchSessionsAcrossSources },
+    "../bootstrap/remote-hosts": { getActiveRemoteHostsBoot: () => null },
   });
   registerSessionIpc({
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },

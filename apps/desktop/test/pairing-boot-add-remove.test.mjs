@@ -96,13 +96,8 @@ test("addHost persists, opens, and reports connected=true when the adapter succe
   });
   assert.equal(summary.connected, true);
   assert.equal(summary.hostKey, "hostA");
-  // The router now resolves a remote session id under this hostKey.
-  assert.ok(
-    router.resolveBackend(IPC.invoke.sessionGet, [
-      { id: makeRemoteSessionId("hostA", "s1") },
-    ]),
-    "router must have a backend after addHost",
-  );
+  // The router now serves every remote session id under this hostKey.
+  assert.ok(router.backendForHost("hostA"), "router must have a backend after addHost");
   const listed = await boot.list();
   assert.equal(listed.length, 1);
   assert.equal(listed[0].connected, true);
@@ -165,6 +160,8 @@ test("addHost on an existing hostKey rotates the live connection in place", asyn
   // The first adapter is closed once the second rotates in.
   assert.equal(adapters[0].state, "disconnected");
   assert.equal(adapters[1].state, "connected");
+  // The stale connection's close must not drop the replacement's registration.
+  assert.ok(router.backendForHost("a"));
   const listed = await boot.list();
   assert.equal(listed.length, 1);
   await boot.closeAll();
@@ -190,12 +187,11 @@ test("removeHost closes the live connection and drops the record", async () => {
   await boot.addHost({ hostKey: "a", label: "A", url: "wss://a", deviceToken: "t" });
   await boot.removeHost("a");
   assert.equal(adapters[0].state, "disconnected");
-  assert.equal(
-    router.resolveBackend(IPC.invoke.sessionGet, [
-      { id: makeRemoteSessionId("a", "s1") },
-    ]),
-    null,
-    "the router must fall back to local after removeHost",
+  assert.equal(router.backendForHost("a"), null);
+  // After removeHost the id fails closed instead of reaching a local handler.
+  await assert.rejects(
+    router.route(IPC.invoke.sessionGet, [{ id: makeRemoteSessionId("a", "s1") }]),
+    (error) => error.errorCode === "HOST_UNAVAILABLE",
   );
   assert.deepEqual(await boot.list(), []);
   await boot.closeAll();

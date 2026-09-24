@@ -39,6 +39,7 @@ function loadComponent(name, extras = {}) {
     "react-i18next": { useTranslation: () => ({ t }) },
     "../../../stores/app-store": { useAppStore },
     "../../../hooks/use-preview-target": { useOpenChatFileRef: () => () => {} },
+    "../../../hooks/use-session-gates": { useActiveSessionGate: () => true },
     "../../../lib/chat-links": { splitChatText: () => [] },
     "../../../components/Markdown": { Markdown: ({ source: text }) => text },
     "../../../components/icons": new Proxy({}, { get: () => Icon }),

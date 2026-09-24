@@ -8,19 +8,20 @@ const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 
 const { IPC } = await import("@pi-desktop/shared");
-const { makeRemoteApprovalRequestId, makeRemoteSessionId } = await import(
+const { makeRemoteApprovalRequestId, makeRemoteQueuedTurnId, makeRemoteSessionId } = await import(
   "../electron/main/remote/backend-router.ts"
 );
-const { racpSessionToSummary, snapshotToSessionDetail } = await import(
+const { REMOTE_SESSION_CAPABILITIES, remoteSessionSummary, snapshotToSessionDetail } = await import(
   "../electron/main/remote/remote-transcript.ts"
 );
-const { createRemoteBackend } = await import(
+const { HANDLED_CHANNELS, createRemoteBackend } = await import(
   "../electron/main/remote/remote-backend.ts"
 );
 
 const HOST_KEY = "hostA";
 const HOST_SESSION_ID = "sess-1";
 const REMOTE_SESSION_ID = makeRemoteSessionId(HOST_KEY, HOST_SESSION_ID);
+const HOST = { hostKey: HOST_KEY, hostLabel: "Host A" };
 
 /**
  * A fixture `RacpSession` shaped just like the schema; individual tests override
@@ -91,6 +92,7 @@ function makeBackend(responses = {}, extra = {}) {
   const client = fakeClient(responses);
   const backend = createRemoteBackend({
     hostKey: HOST_KEY,
+    hostLabel: HOST.hostLabel,
     client,
     // A deterministic id keeps the recorded request context stable in assertions.
     newRequestId: () => "req-const",
@@ -99,9 +101,17 @@ function makeBackend(responses = {}, extra = {}) {
   return { backend, client };
 }
 
-test("racpSessionToSummary maps the host-agnostic renderer summary", () => {
-  const session = makeRacpSession({ mode: "agent", permissionMode: "allow" });
-  const summary = racpSessionToSummary(REMOTE_SESSION_ID, session, 7);
+test("remoteSessionSummary maps the host-agnostic renderer summary", () => {
+  const session = makeRacpSession({ mode: "agent", permissionMode: "allow", workspaceLabel: "repo" });
+  const summary = remoteSessionSummary(REMOTE_SESSION_ID, session, HOST, 7);
+  assert.deepEqual(summary.capabilities, { ...REMOTE_SESSION_CAPABILITIES });
+  assert.deepEqual(summary.remote, { hostKey: HOST_KEY, hostLabel: "Host A", workspaceLabel: "repo" });
+  // An unobserved count defaults to "not known to be empty".
+  assert.equal(remoteSessionSummary(REMOTE_SESSION_ID, makeRacpSession(), HOST).messageCount, 1);
+  assert.deepEqual(remoteSessionSummary(REMOTE_SESSION_ID, makeRacpSession(), HOST).remote, {
+    hostKey: HOST_KEY,
+    hostLabel: "Host A",
+  });
   assert.equal(summary.id, REMOTE_SESSION_ID);
   assert.equal(summary.source, "remote");
   assert.equal(summary.mode, "agent");
@@ -119,7 +129,8 @@ test("snapshotToSessionDetail lifts snapshot items directly into the transcript"
       { id: "i2", turnId: "t1", itemType: "message", status: "completed", createdAt: "x", content: { role: "assistant", text: "hello" } },
     ],
   });
-  const detail = snapshotToSessionDetail(REMOTE_SESSION_ID, snapshot);
+  const detail = snapshotToSessionDetail(REMOTE_SESSION_ID, snapshot, HOST);
+  assert.equal(detail.source, "remote");
   assert.equal(detail.id, REMOTE_SESSION_ID);
   assert.equal(detail.hasMoreBefore, true);
   assert.equal(detail.hasMoreAfter, false);
@@ -133,11 +144,12 @@ test("handles() covers exactly the channels the remote profile serves", () => {
     IPC.invoke.agentPrompt,
     IPC.invoke.agentQueuePush,
     IPC.invoke.agentQueueList,
+    IPC.invoke.agentQueueRemove,
+    IPC.invoke.agentQueuePrioritize,
     IPC.invoke.agentStop,
     IPC.invoke.agentAbort,
     IPC.invoke.agentCompact,
     IPC.invoke.agentGetStatus,
-    IPC.invoke.agentSteer,
     IPC.invoke.sessionGet,
     IPC.invoke.sessionConfigure,
     IPC.invoke.sessionFork,
@@ -147,9 +159,15 @@ test("handles() covers exactly the channels the remote profile serves", () => {
     IPC.invoke.askToolResolve,
     IPC.invoke.plansResolve,
     IPC.invoke.plansPending,
+    IPC.invoke.fsList,
+    IPC.invoke.fsRead,
+    IPC.invoke.fsResolveRef,
   ];
   for (const channel of covered) assert.ok(backend.handles(channel), `${channel} should be handled`);
-  // Unrelated desktop channels remain local.
+  assert.deepEqual([...HANDLED_CHANNELS].sort(), [...covered].sort());
+  // Steering has no RACP operation; it fails closed in the router.
+  assert.equal(backend.handles(IPC.invoke.agentSteer), false);
+  // Unrelated desktop channels are not served remotely.
   assert.equal(backend.handles(IPC.invoke.appSettings ?? "pi-desktop/settings/get"), false);
   assert.equal(backend.handles("pi-desktop/anything/unknown"), false);
 });
@@ -192,7 +210,7 @@ test("agentQueuePush queues with the local content, since RACP turns carry none"
   const result = await backend.invoke(IPC.invoke.agentQueuePush, [
     { sessionId: REMOTE_SESSION_ID, content: "pushed prompt", idempotencyKey: "k1" },
   ]);
-  assert.equal(result.id, "turn-q");
+  assert.equal(result.id, makeRemoteQueuedTurnId(REMOTE_SESSION_ID, "turn-q"));
   assert.equal(result.sessionId, REMOTE_SESSION_ID);
   assert.equal(result.content, "pushed prompt");
   assert.equal(result.position, 2);
@@ -200,29 +218,51 @@ test("agentQueuePush queues with the local content, since RACP turns carry none"
   assert.equal(client.calls[0].params.idempotencyKey, "k1");
 });
 
-test("agentQueueList reads the snapshot and renders entries without a prompt text", async () => {
+test("agentQueueList reads queuedTurnIds and keeps text only for turns this desktop pushed", async () => {
   const { backend } = makeBackend({
-    "session/attach": () => ({
-      session: makeRacpSession(),
-      snapshot: makeRacpSnapshot({
-        queuedTurns: [
-          makeRacpTurn({ id: "q1", admission: "queue", queuePosition: 1 }),
-          makeRacpTurn({ id: "q2", admission: "queue" }),
-        ],
-      }),
+    "turn/start": () => ({ accepted: true, turn: makeRacpTurn({ id: "q2", admission: "queue" }) }),
+    "session/get": () => ({
+      session: makeRacpSession({ queuedTurnIds: ["q1", "q2"], updatedAt: "2026-09-18T11:00:00.000Z" }),
     }),
   });
+  await backend.invoke(IPC.invoke.agentQueuePush, [
+    { sessionId: REMOTE_SESSION_ID, content: "mine" },
+  ]);
   const result = await backend.invoke(IPC.invoke.agentQueueList, [
     { sessionId: REMOTE_SESSION_ID },
   ]);
   assert.equal(result.entries.length, 2);
-  assert.equal(result.entries[0].id, "q1");
+  assert.equal(result.entries[0].id, makeRemoteQueuedTurnId(REMOTE_SESSION_ID, "q1"));
   assert.equal(result.entries[0].sessionId, REMOTE_SESSION_ID);
-  // RACP turns do not carry queued prompt text; the entry still renders.
+  // A turn queued by another client carries no text this desktop knows.
   assert.equal(result.entries[0].content, "");
+  assert.equal(result.entries[0].createdAt, "2026-09-18T11:00:00.000Z");
   assert.equal(result.entries[0].position, 1);
-  // A missing queuePosition falls back to index + 1.
+  assert.equal(result.entries[1].content, "mine");
   assert.equal(result.entries[1].position, 2);
+});
+
+test("agentQueueRemove / agentQueuePrioritize decode the encoded turn id", async () => {
+  const { backend, client } = makeBackend({
+    "turn/cancel": () => ({ ok: true }),
+    "turn/prioritize": () => ({ ok: true }),
+  });
+  const turnId = makeRemoteQueuedTurnId(REMOTE_SESSION_ID, "host-turn-3");
+  assert.deepEqual(await backend.invoke(IPC.invoke.agentQueueRemove, [{ turnId }]), { ok: true });
+  assert.deepEqual(await backend.invoke(IPC.invoke.agentQueuePrioritize, [{ turnId }]), { ok: true });
+  assert.deepEqual(client.calls, [
+    { method: "turn/cancel", params: { turnId: "host-turn-3" } },
+    { method: "turn/prioritize", params: { turnId: "host-turn-3" } },
+  ]);
+});
+
+test("agentQueueRemove refuses a plain turn id without any RACP call", async () => {
+  const { backend, client } = makeBackend();
+  await assert.rejects(
+    backend.invoke(IPC.invoke.agentQueueRemove, [{ turnId: "host-turn-3" }]),
+    (error) => error.errorCode === "INTERNAL",
+  );
+  assert.equal(client.calls.length, 0);
 });
 
 test("agentStop resolves the active turn when the renderer omits turnId", async () => {
@@ -284,7 +324,8 @@ test("agentGetStatus lifts session status/planning into the local shape", async 
   ]);
   assert.equal(status.sessionId, REMOTE_SESSION_ID);
   assert.equal(status.currentTurnId, "turn-x");
-  assert.equal(status.isRunning, false);
+  // Awaiting a decision is still an in-flight turn.
+  assert.equal(status.isRunning, true);
   assert.equal(status.pendingToolConfirmations, 1);
   assert.equal(status.planningState, "awaiting_approval");
 });
@@ -453,10 +494,106 @@ test("plansPending stays empty — pending cards ride the snapshot at attach tim
   assert.deepEqual(result, { plans: [] });
 });
 
-test("an unknown channel is a bug and surfaces INTERNAL", async () => {
-  const { backend } = makeBackend();
+test("an unknown channel fails closed with CAPABILITY_UNAVAILABLE", async () => {
+  const { backend, client } = makeBackend();
   await assert.rejects(
     backend.invoke("pi-desktop/channel/not-a-thing", [{ sessionId: REMOTE_SESSION_ID }]),
+    (error) => error.errorCode === "CAPABILITY_UNAVAILABLE",
+  );
+  assert.equal(client.calls.length, 0);
+});
+
+test("a call addressing another host's session is refused as INTERNAL", async () => {
+  const { backend, client } = makeBackend();
+  await assert.rejects(
+    backend.invoke(IPC.invoke.agentCompact, [{ sessionId: makeRemoteSessionId("hostB", "s") }]),
     (error) => error.errorCode === "INTERNAL",
   );
+  assert.equal(client.calls.length, 0);
+});
+
+test("fsList / fsRead route to workspace/list and workspace/read; fsResolveRef never matches", async () => {
+  const { backend, client } = makeBackend({
+    "workspace/list": () => ({ entries: [{ name: "a.ts" }] }),
+    "workspace/read": () => ({ content: "x" }),
+  });
+  assert.deepEqual(
+    await backend.invoke(IPC.invoke.fsList, [{ sessionId: REMOTE_SESSION_ID, path: "src" }]),
+    { entries: [{ name: "a.ts" }] },
+  );
+  await backend.invoke(IPC.invoke.fsList, [{ sessionId: REMOTE_SESSION_ID }]);
+  assert.deepEqual(
+    await backend.invoke(IPC.invoke.fsRead, [{ sessionId: REMOTE_SESSION_ID, path: "src/a.ts" }]),
+    { content: "x" },
+  );
+  assert.deepEqual(client.calls, [
+    { method: "workspace/list", params: { sessionId: HOST_SESSION_ID, path: "src" } },
+    { method: "workspace/list", params: { sessionId: HOST_SESSION_ID } },
+    { method: "workspace/read", params: { sessionId: HOST_SESSION_ID, path: "src/a.ts" } },
+  ]);
+  await assert.rejects(
+    backend.invoke(IPC.invoke.fsRead, [{ sessionId: REMOTE_SESSION_ID }]),
+    (error) => error.errorCode === "INVALID_ARGUMENT",
+  );
+  assert.deepEqual(
+    await backend.invoke(IPC.invoke.fsResolveRef, [{ sessionId: REMOTE_SESSION_ID, ref: "a.ts" }]),
+    { match: null },
+  );
+  assert.equal(client.calls.length, 3);
+});
+
+test("sessionGet with messageAround is refused without any RACP call", async () => {
+  const { backend, client } = makeBackend();
+  await assert.rejects(
+    backend.invoke(IPC.invoke.sessionGet, [{ id: REMOTE_SESSION_ID, messageAround: "m1" }]),
+    (error) => error.errorCode === "CAPABILITY_UNAVAILABLE",
+  );
+  assert.equal(client.calls.length, 0);
+});
+
+test("sessionGet tail read reports the attach cursor through onSessionRead", async () => {
+  const reads = [];
+  const { backend } = makeBackend(
+    {
+      "session/attach": () => ({
+        session: makeRacpSession(),
+        snapshot: makeRacpSnapshot({ cursor: { epoch: "e", sequence: 7 } }),
+      }),
+    },
+    { onSessionRead: (id, cursor) => reads.push([id, cursor]) },
+  );
+  await backend.invoke(IPC.invoke.sessionGet, [{ id: REMOTE_SESSION_ID, messageLimit: 10 }]);
+  assert.deepEqual(reads, [[HOST_SESSION_ID, { epoch: "e", sequence: 7 }]]);
+});
+
+test("agentQueuePush with attachments raises CAPABILITY_UNAVAILABLE without any RACP call", async () => {
+  const { backend, client } = makeBackend();
+  await assert.rejects(
+    backend.invoke(IPC.invoke.agentQueuePush, [
+      { sessionId: REMOTE_SESSION_ID, content: "hi", attachments: [{ id: "a" }] },
+    ]),
+    (error) => error.errorCode === "CAPABILITY_UNAVAILABLE",
+  );
+  assert.equal(client.calls.length, 0);
+});
+
+test("sessionConfigure strips provider/model/thinking and the desktop-only inherit literal", async () => {
+  const noticed = [];
+  const { backend, client } = makeBackend(
+    { "session/configure": () => ({ session: makeRacpSession({ mode: "plan" }) }) },
+    { onSession: (session) => noticed.push(session.id) },
+  );
+  const { session } = await backend.invoke(IPC.invoke.sessionConfigure, [
+    REMOTE_SESSION_ID,
+    { providerId: "p", modelId: "m", thinkingLevel: "high", mode: "plan", permissionMode: "inherit" },
+  ]);
+  assert.deepEqual(client.calls[0].params, { sessionId: HOST_SESSION_ID, mode: "plan" });
+  await backend.invoke(IPC.invoke.sessionConfigure, [
+    REMOTE_SESSION_ID,
+    { mode: "inherit", permissionMode: "auto" },
+  ]);
+  assert.deepEqual(client.calls[1].params, { sessionId: HOST_SESSION_ID, permissionMode: "auto" });
+  assert.equal(session.id, REMOTE_SESSION_ID);
+  assert.equal(session.source, "remote");
+  assert.deepEqual(noticed, [HOST_SESSION_ID, HOST_SESSION_ID]);
 });
