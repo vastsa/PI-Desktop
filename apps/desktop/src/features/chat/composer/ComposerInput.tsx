@@ -12,11 +12,15 @@ import type { useComposerAutocomplete } from "../../../hooks/use-composer-autoco
 import { editorSelectionRange, readEditorValue } from "./editor";
 import { ComposerImagePreview } from "./ComposerImagePreview";
 import type { ComposerImagePreviewController } from "./hooks/useComposerImagePreview";
+import type { ComposerExcerpt } from "../../../lib/composer-excerpts";
+import { ComposerExcerptBadge } from "./ComposerExcerptBadge";
 
 type AutocompleteController = ReturnType<typeof useComposerAutocomplete>;
 
 export type ComposerInputProps = {
   imagePreview?: ComposerImagePreviewController;
+  excerpts: readonly ComposerExcerpt[];
+  onRemoveExcerpt: (id: string) => void;
   inputRef: RefObject<HTMLDivElement | null>;
   value: string;
   placeholderText: string;
@@ -40,6 +44,8 @@ export type ComposerInputProps = {
 /** Rich contenteditable input; draft state and async operations stay outside. */
 export function ComposerInput({
   imagePreview,
+  excerpts,
+  onRemoveExcerpt,
   inputRef,
   value,
   placeholderText,
@@ -66,6 +72,7 @@ export function ComposerInput({
   return (
     <div className="composer-input-wrap">
       {imagePreview ? <ComposerImagePreview controller={imagePreview} /> : null}
+      <ComposerExcerptBadge excerpts={excerpts} onRemove={onRemoveExcerpt} disabled={inputBlocked} />
       <div className="composer-input-stage">
         {/* React does not render children into this node; the editor module
           paints atomic attachment chips imperatively. */}

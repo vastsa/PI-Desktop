@@ -338,3 +338,33 @@
   margin: 5px 6px;
   background: var(--ds-border-subtle);
 }
+
+/* Appears beside a completed selection in one transcript message. */
+.transcript-selection-action {
+  position: fixed;
+  z-index: 60;
+  max-width: calc(100vw - 16px);
+  padding: 4px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  box-shadow: var(--ds-shadow-dialog);
+  color: var(--ds-text-primary);
+  visibility: hidden;
+}
+
+.transcript-selection-action.is-open {
+  visibility: visible;
+}
+
+.transcript-selection-action button {
+  border-radius: var(--radius-full);
+  padding: 6px 10px;
+  font-size: var(--text-sm-plus);
+  white-space: nowrap;
+}
+
+.transcript-selection-action button:hover,
+.transcript-selection-action button:focus-visible {
+  background: var(--ds-bg-hover);
+}

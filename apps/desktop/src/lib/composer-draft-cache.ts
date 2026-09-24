@@ -1,4 +1,5 @@
 import type { ComposerDraftSnapshot } from "./composer-smart-stop";
+import type { ComposerExcerpt } from "./composer-excerpts";
 
 type CachedComposerDraft = ComposerDraftSnapshot & {
   /** Workspace that owned relative file references when the draft was captured. */
@@ -43,6 +44,7 @@ export function snapshotComposerDraft(
   fileReferences: readonly ComposerDraftFileInput[],
   key: string,
   workspacePath?: string,
+  excerpts: readonly ComposerExcerpt[] = [],
 ): CachedComposerDraft {
   const owner = draftOwnerSessionId(key);
   const snapshot: CachedComposerDraft = {
@@ -56,6 +58,7 @@ export function snapshotComposerDraft(
         ...(mimeType ? { mimeType } : {}),
         ...(token ? { token } : {}),
       })),
+    excerpts: excerpts.map((excerpt) => ({ ...excerpt })),
   };
   if (workspacePath !== undefined) snapshot.workspacePath = workspacePath;
   return snapshot;
@@ -91,6 +94,7 @@ export function writeComposerDraft(
   const next: CachedComposerDraft = {
     ...snapshot,
     fileReferences: snapshot.fileReferences.map((reference) => ({ ...reference })),
+    excerpts: snapshot.excerpts?.map((excerpt) => ({ ...excerpt })) ?? [],
   };
   if (workspacePath !== undefined) {
     next.workspacePath = workspacePath;
@@ -105,10 +109,25 @@ export function captureComposerDraft(
   text: string,
   fileReferences: readonly ComposerDraftFileInput[],
   workspacePath?: string,
+  excerpts: readonly ComposerExcerpt[] = [],
 ): CachedComposerDraft {
-  const snapshot = snapshotComposerDraft(text, fileReferences, key, workspacePath);
+  const snapshot = snapshotComposerDraft(text, fileReferences, key, workspacePath, excerpts);
   cache.set(key, snapshot);
   return snapshot;
+}
+
+/** Append to the session's in-memory draft even when its Composer is unmounted. */
+export function appendComposerDraftExcerpt(key: string, text: string): ComposerExcerpt | null {
+  const source = text.trim();
+  if (!source) return null;
+  const excerpt = { id: crypto.randomUUID(), text: source };
+  const current = cache.get(key) ?? { text: "", fileReferences: [] };
+  writeComposerDraft(key, {
+    ...current,
+    excerpts: [...(current.excerpts ?? []), excerpt],
+  });
+  markComposerDraftEdited(key);
+  return excerpt;
 }
 
 export function deleteComposerDraft(key: string): void {
@@ -138,7 +157,7 @@ export function adoptHomeDraftForSession(sessionId: string): void {
   const home = cache.get(HOME_DRAFT_KEY);
   cache.delete(HOME_DRAFT_KEY);
   if (!home) return;
-  if (!home.text && home.fileReferences.length === 0) return;
+  if (!home.text && home.fileReferences.length === 0 && !home.excerpts?.length) return;
   writeComposerDraft(sessionId, home);
 }
 

@@ -1066,6 +1066,71 @@ Linux 保留淡入淡出和滑动退出。
 | 运动 | 进入200ms缓出slide-down/fade，退出150ms缓入淡入淡出；减少运动 → 接近零持续时间（不是 `none`，移除监听 `animationend`） |
 | Z 指数 | z-Toast (50) |
 
+### 11.9 SettingsToggle
+
+实现：`components/ui.tsx → SettingsToggle`。
+
+| 属性 | 值 |
+|---|---|
+| 尺寸 | 32×20，滑块 16px |
+| CSS 类 | `.settings-toggle` / `.settings-toggle.on` |
+| 角色 | `role="switch"`，带 `aria-checked` |
+| 变体 | 默认、`busy`（`.is-busy`、`aria-busy`、禁用） |
+| 背景 | 开启时使用中性色强调（非绿色）；主题覆盖位于 `theme-overrides.css` |
+
+设置和编辑表单中的布尔开关必须使用 `SettingsToggle`，不得自行组合内联的 `<button role="switch">`。
+
+### 11.10 SegmentedControl
+
+实现：`components/ui.tsx → SegmentedControl<T>`。
+
+| 属性 | 值 |
+|---|---|
+| CSS 类 | `.settings-segment` / `.settings-segment-item.active` |
+| 角色 | 默认 `radiogroup`，也可为 `group` 或 `tablist` |
+| 选项角色 | 根据容器角色派生为 `radio`、无角色或 `tab` |
+| 泛型 | `<T extends string>`，为值和 `onChange` 提供类型约束 |
+| 选项 | `readonly { value: T; label: ReactNode }[]`；标签可包含 JSX（如数量徽章） |
+
+等宽按钮组成的多选一控件必须使用 `SegmentedControl`，不得自行实现 `settings-segment` 按钮循环。
+
+### 11.11 Checkbox
+
+实现：`components/ui.tsx → Checkbox`。
+
+| 属性 | 值 |
+|---|---|
+| CSS 类 | `.ui-checkbox` |
+| 结构 | `<label> → <input type="checkbox"> + <span>{label}</span>` |
+| 属性 | 继承 `InputHTMLAttributes`（去掉 `type`），并提供 `label: ReactNode` |
+
+独立的带标签复选框必须使用 `Checkbox`，不得自行组合内联标签和输入框。
+
+### 11.11b CheckboxGroup
+
+实现：`components/ui.tsx → CheckboxGroup<T>`。
+
+| 属性 | 值 |
+|---|---|
+| CSS 类 | 容器使用 `.ui-checkbox-group`，各选项使用 `Checkbox` |
+| 泛型 | `<T extends string>`，为值和 `onChange` 提供类型约束 |
+| 属性 | `values: T[]`、`onChange(values: T[])`、`options: { value: T; label: ReactNode }[]`、`label`、`disabled`、`minSelected` |
+| 最少选项 | `minSelected` 默认 0；达到下限后不能继续取消勾选 |
+
+一组选项映射到值数组时使用 `CheckboxGroup`（如语音语言）；彼此独立且状态结构不同的布尔字段使用单独的 `Checkbox`。
+
+### 11.12 SettingsMenuSelect
+
+实现：`components/settings/SettingsMenuSelect.tsx`。
+
+| 属性 | 值 |
+|---|---|
+| 触发器 | 显示当前标签的按钮，末尾为 `IconChevronDown` |
+| 弹层 | `AnchoredMenu`：通过 portal 呈现，支持键盘导航并标记当前值 |
+| 属性 | `value`、`options: { id, label, disabled? }[]`、`onChange(id)`、`label`、`disabled`、`busy`、`fullWidth` |
+
+设置中的下拉选项列表必须使用 `SettingsMenuSelect`；原生 `Select`（`<select>`）只用于允许系统原生外观的非设置场景。
+
 ## 12. 状态模式
 
 ### 12. 1 交互状态
@@ -1124,6 +1189,8 @@ Linux 保留淡入淡出和滑动退出。
 - 使用 Lucide/Heroicons SVG 图标 — 切勿使用表情符号作为 UI 可供性
 - 使用紧凑的填充和紧密的间距——开发人员密度，而不是消费者间距
 - 首次启动遵循系统主题（参见§主题切换）；深色是首要设计目标
+- 使用 `components/ui.tsx` 中的共用组件（`Button`、`Badge`、`SettingsToggle`、`SegmentedControl`、`Checkbox`、`Input`、`Textarea`、`Select`、`Field`、`Panel`、`HelpIcon`、`TooltipButton`），不得内联重做
+- 设置页的下拉菜单使用 `SettingsMenuSelect`，不得使用原生 `<select>`
 
 ### 不要
 
@@ -1137,6 +1204,8 @@ Linux 保留淡入淡出和滑动退出。
 - 不要对全宽面板（侧边栏、顶栏）应用圆角
 - 不要在按钮和输入上使用 `border-radius: 0`（至少使用 `radius-sm`）
 - 不要在任何 UI 界面中显示原始 API 键
+- 不要内联编写 `<button role="switch">`、`<div className="settings-segment">` 或 `<label><input type="checkbox">`，应使用对应共用组件
+- 不要在设置页使用原生 `Select`（`<select>`），应使用 `SettingsMenuSelect`
 
 ## 15. 验收标准
 

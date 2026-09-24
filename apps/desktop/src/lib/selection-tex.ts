@@ -22,12 +22,10 @@
  * could only approximate those rules, and everywhere it fell short it would
  * silently rewrite content the platform already got right.
  *
- * ADR 0268 removed the selection overlay and the Quote action and rested that
- * removal on the OS clipboard being the substitute for quoting. This is that
- * substitute made honest, and nothing more: no surface, no store state, no
- * action-row item, and no new way to reach the clipboard. The copy the user
- * already performs writes different bytes when, and only when, the selection
- * contains a formula.
+ * ADR 0268 removed the old multi-action selection overlay. ADR 0306 later
+ * restored a single Add to Conversation action, which reuses this payload to
+ * preserve the source of selected formulas. The copy the user already performs
+ * writes different bytes when, and only when, the selection contains a formula.
  *
  * The delimiters are the renderer's own: `lib/latex-math.ts` normalizes
  * `\(…\)` and `\[…\]` to `$…$` / `$$…$$` before `remark-math` runs, so a

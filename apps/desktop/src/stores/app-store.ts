@@ -46,7 +46,7 @@ import {
 import { api } from "../lib/api";
 import type { SettingsTabId } from "../lib/settings-search";
 import { createNavigationIntentController } from "../lib/navigation-intent";
-import { scheduleHomeDraftAdopt } from "../lib/composer-draft-cache";
+import { appendComposerDraftExcerpt, scheduleHomeDraftAdopt } from "../lib/composer-draft-cache";
 import {
   commitForkedSessionState,
   forkedSessionMessages,
@@ -756,7 +756,21 @@ export const useAppStore = create<AppState>((set, get) => {
       sessionRuntime.isSessionSelectionPending(sessionId),
   }),
 
-
+  appendComposerText: (sessionId, text) =>
+    set({
+      composerPrefill: {
+        sessionId,
+        text,
+        fileReferences: [],
+        mode: "append",
+      },
+    }),
+  addComposerExcerpt: (sessionId, text) => {
+    if (get().activeSessionId !== sessionId) return false;
+    if (!appendComposerDraftExcerpt(sessionId, text)) return false;
+    set((state) => ({ composerExcerptVersion: state.composerExcerptVersion + 1 }));
+    return true;
+  },
   clearComposerPrefill: () => set({ composerPrefill: null }),
   };
 });

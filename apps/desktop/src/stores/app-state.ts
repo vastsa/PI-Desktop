@@ -349,6 +349,9 @@ export type AppState = {
   showToast: (message: string, options?: ToastOptions) => void;
   dismissToast: (id: number) => void;
   composerPrefill: ComposerPrefill | null;
+  appendComposerText: (sessionId: string, text: string) => void;
+  composerExcerptVersion: number;
+  addComposerExcerpt: (sessionId: string, text: string) => boolean;
   clearComposerPrefill: () => void;
   /** Renderer-only subagent details selected from the transcript. */
   subagentPanel: SubagentPanelSelection | null;

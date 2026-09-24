@@ -3739,18 +3739,25 @@ identify the platform validation still needed.
 
 - **Preconditions**: A session contains a completed user prompt and a
   completed assistant answer; the conversation pane is focused.
-- **Steps**: 1) Right-click the user plate. 2) Choose Copy, then Select
-  message text. 3) Select a phrase in the user plate, right-click that
-  plate, and choose Copy; collapse the caret, right-click again, and
-  choose Copy. 4) Right-click the assistant turn and choose Copy.
+- **Steps**: 1) Enter an unsent composer draft with a file reference, then
+  right-click the user plate. 2) Choose Copy, Add to conversation, then Select
+  message text. 3) Select a multiline phrase in the user plate, right-click
+  that plate, and choose Add to conversation; confirm the composer, then repeat
+  with Copy. Collapse the caret, right-click again, and choose Copy.
+  4) Right-click the assistant turn and choose Copy, then Add to conversation.
   5) Right-click empty space below the last turn and choose Copy
   conversation. 6) Press Escape on an open menu, then Tab. 7) Right-click
   a markdown link in the answer. 8) Edit the user message, replace its content,
   select a phrase, and right-click Copy. Repeat with a collapsed caret and
   Select message text, then cancel editing and copy the saved message.
-- **Expected**: The user menu lists Copy, Select message text, Edit, and
-  a separated Delete; the assistant menu lists Copy, Select message text,
-  Regenerate, and Branch. Copy writes the live selection in the
+- **Expected**: The user menu lists Copy, Add to conversation, Select message
+  text, Edit, and a separated Delete; the assistant menu lists Copy, Add to
+  conversation, Select message text, Regenerate, and Branch. Add to conversation
+  appends the live selection as a line-by-line Markdown quote after a blank
+  line in the current draft, preserves its file-reference chips, focuses the
+  caret at the end, and does not send. A collapsed caret or selection outside
+  the row quotes the whole turn, and switching sessions cannot apply the quote
+  to another draft. Copy writes the live selection in the
   right-clicked turn when the menu opened over one; a collapsed caret
   or a selection outside that row falls back to the whole turn. Copy
   conversation writes the labelled thread. Both show a toast. Select
@@ -3763,7 +3770,8 @@ identify the platform validation still needed.
   or the full draft with a collapsed caret; Select message text selects the
   draft. Edit, Delete, and revision actions are absent until editing ends.
   Cancel preserves the original message. Automated Chromium component check:
-  `node scripts/e2e-message-edit-copy.mjs`.
+  `node scripts/e2e-message-edit-copy.mjs`; composer append/draft preservation
+  runs in `pnpm test:e2e:composer-paste`.
 - **Specs linked**: `04-ux/08-component-spec.md` §8.3 / §8.5,
   `04-ux/09-interaction-patterns.md` (floating dropdown surfaces),
   ADR 0268
@@ -3780,6 +3788,34 @@ identify the platform validation still needed.
   history read must report an error and leave the clipboard unchanged.
   Copy must not load history until selected or change the reading position.
   Run `node scripts/e2e-copy-conversation.mjs`.
+
+#### E2E-CHAT-selection-action-921: Add a selected excerpt without opening a menu
+
+- **Preconditions**: A visible session has a user message, an assistant answer,
+  a tool row, and an unsent composer draft with a file reference.
+- **Steps**: 1) Select a phrase inside one user message with the pointer, then
+  activate the floating Add to conversation control. 2) Repeat with multiline
+  text in an assistant answer. 3) Select across two turns, select tool output,
+  clear a selection, and scroll the transcript with the control open. 4) Switch
+  sessions with attached excerpts. 5) Open the counted badge, remove one
+  excerpt, send with another, and simulate a rejected send.
+- **Expected**: A single localized action appears next to a selection within
+  one speaking turn without opening the right-click menu. It remains in the
+  viewport and adds only the selected excerpt to a counted badge above the
+  editable composer. The badge previews and removes individual excerpts.
+  Existing text and file references remain; nothing is sent until the user
+  submits. The submitted prompt contains the selected text as quoted context,
+  and a rejected send restores the badge. Other selections show no
+  control; clearing, scrolling, resizing, or leaving the pane closes it. A
+  attachment never reaches another session. The right-click action remains
+  available for whole-turn fallback.
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3 / §8.5,
+  `04-ux/09-interaction-patterns.md` §1.5, ADR 0307
+- **Acceptance**: C (chat stream), Quality
+- **Milestone**: M5
+- **Status**: Chromium component covered (`node scripts/e2e-message-edit-copy.mjs`)
+  and composer badge/send covered (`pnpm test:e2e:composer-paste`); full-app visual
+  scenario Draft
 
 #### E2E-CHAT-copy-formula-as-tex: Copying rendered math yields its source
 
@@ -8386,6 +8422,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | Quality (two-click delete) | E2E-SESSION-two-click-delete-arms-first |
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection |
 | C — Conversation & stream (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| C — Conversation & stream (selected excerpt reuse) | E2E-CHAT-selection-action-921 |
+| Quality (selected excerpt reuse) | E2E-CHAT-selection-action-921 |
 | E — Tools & permissions (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | E — Tools & permissions (capability level move) | E2E-CAPABILITY-move-across-levels |
 | F — Persistence (capability level move) | E2E-CAPABILITY-move-across-levels |
@@ -8408,6 +8446,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+ (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |
 | M5 (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
+| M5 (selected excerpt reuse) | E2E-CHAT-selection-action-921 |
 | M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |

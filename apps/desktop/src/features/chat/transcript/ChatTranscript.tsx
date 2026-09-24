@@ -29,6 +29,7 @@ import {
   useTranscriptMenu,
 } from "./TranscriptMenu";
 import { conversationMenuItems } from "./menu-items";
+import { TranscriptSelectionAction } from "./TranscriptSelectionAction";
 
 type ChatTranscriptProps = {
   sessionId: string | undefined;
@@ -90,7 +91,7 @@ function TranscriptBody({
 }: ChatTranscriptProps) {
   const { t } = useTranslation();
   const openTranscriptMenu = useTranscriptMenu();
-  const { copyText, selectText } = useChatTextActions();
+  const { copyText, selectText, addToConversation } = useChatTextActions();
   const showToast = useAppStore((state) => state.showToast);
   const transcriptRunning = isRunning && !readingWindow;
   const latestTurnResult = useAppStore((state) =>
@@ -209,7 +210,7 @@ function TranscriptBody({
         onCopyConversation: () => void copyConversation(),
         scrollRef,
         contentRef,
-        actions: { copyText, selectText },
+        actions: { copyText, selectText, addToConversation },
         onReturnToLatest: () => {
           onReturnToLatest?.();
           jumpToLatest();
@@ -310,6 +311,11 @@ function TranscriptBody({
           ) : null}
         </div>
       </div>
+      <TranscriptSelectionAction
+        scrollRef={scrollRef}
+        sessionId={sessionId}
+        visible={paneVisible && !veilCovering}
+      />
       {veilPhase !== "off" ? (
         // Positioned without a z-index on purpose: it paints above the scroller
         // in tree order and stays beneath the docked composer, so the user can

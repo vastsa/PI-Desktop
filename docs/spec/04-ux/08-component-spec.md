@@ -1739,11 +1739,24 @@ Single message render — either user (plaintext) or assistant (markdown streami
   part of the message action toolbar: hidden by default and revealed together
   with Copy on row hover or keyboard focus. Right-clicking a user message or
   an assistant turn opens the same action vocabulary as a body-level
-  pointer-anchored menu (Copy, Select text, and the row's own Edit / Delete /
-  Regenerate / Branch / revision items). Right-clicking empty transcript
+  pointer-anchored menu (Copy, Add to conversation, Select text, and the row's
+  own Edit / Delete / Regenerate / Branch / revision items). Add to conversation
+  attaches the captured selection to the active session's composer, or the
+  whole speaking turn when the selection is collapsed or outside the row. The
+  composer shows a counted excerpt badge above its editable text. Opening the
+  badge previews each excerpt and allows individual removal. It preserves the
+  existing draft and file references, focuses the composer, and never sends
+  automatically. On send, the excerpts follow the editable prompt as quoted
+  context; failed sends restore them. Selecting text inside one speaking turn
+  also shows a one-action floating control beside the selection, so this path
+  needs no right-click. The control does not appear for tool output, thinking,
+  the composer, or a selection crossing turns. It closes when the selection
+  clears, the transcript scrolls, the window resizes, or the pane changes
+  (ADR 0307). Right-clicking empty transcript
   space, a system row, or a permission/outcome card opens a conversation
   menu: Copy conversation, Select conversation text, Scroll to top, Jump to
-  latest. Quote, Annotate, and Open side chat stay retired (ADR 0268). A
+  latest. The old Quote, Annotate, and Open side chat actions stay retired
+  (ADR 0268). A
   streaming or empty assistant turn that would produce no items opens
   nothing. Copy on a speaking-turn menu writes the live selection in that
   turn captured when the menu opened; a collapsed caret, or a selection
@@ -1887,10 +1900,10 @@ message its checkpoint covers.
   Home / End navigation, Escape / Tab / outside-press / scroll-behind
   dismissal, and an accessible name (`chat.messageMenu` or
   `chat.conversationMenu`). Focus returns to whatever the right-click
-  interrupted. While editing a user message, Copy uses the selected draft text
-  (or the whole draft if the caret is collapsed), and Select message text selects
-  the draft. Saved-message Edit, Delete, and revision actions are not offered
-  until editing ends.
+  interrupted. While editing a user message, Copy and Add to conversation use
+  the selected draft text (or the whole draft if the caret is collapsed), and
+  Select message text selects the draft. Saved-message Edit, Delete, and
+  revision actions are not offered until editing ends.
 
 ### 8.6 MVP constraints
 

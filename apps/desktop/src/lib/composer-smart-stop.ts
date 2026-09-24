@@ -1,3 +1,5 @@
+import type { ComposerExcerpt } from "./composer-excerpts";
+
 export type ComposerDraftFileReference = {
   path: string;
   name: string;
@@ -10,11 +12,26 @@ export type ComposerDraftFileReference = {
 export type ComposerDraftSnapshot = {
   text: string;
   fileReferences: ComposerDraftFileReference[];
+  excerpts?: ComposerExcerpt[];
 };
 
 export type ComposerPrefill = ComposerDraftSnapshot & {
   sessionId: string;
+  /** Existing recovery paths replace the draft; transcript excerpts append. */
+  mode?: "replace" | "append";
 };
+
+/** Preserve the current draft verbatim while separating an inserted block. */
+export function appendComposerBlock(current: string, block: string): string {
+  if (!block) return current;
+  if (!current) return block;
+  const separator = current.endsWith("\n\n")
+    ? ""
+    : current.endsWith("\n")
+      ? "\n"
+      : "\n\n";
+  return `${current}${separator}${block}`;
+}
 
 type AbortMessage = {
   role: string;

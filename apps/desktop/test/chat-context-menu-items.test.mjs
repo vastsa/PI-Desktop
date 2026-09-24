@@ -7,7 +7,7 @@ import ts from "typescript";
 
 const t = (key) => key;
 const noop = () => {};
-const actions = { copyText: noop, selectText: noop };
+const actions = { copyText: noop, addToConversation: noop, selectText: noop };
 
 function loadMenuItems() {
   const file = new URL("../src/features/chat/transcript/menu-items.tsx", import.meta.url);
@@ -42,7 +42,7 @@ const {
 
 const ids = (items) => items.map((item) => item.id);
 
-test("a user message menu offers copy, select, edit, and a separated delete", () => {
+test("a user message menu offers copy, add, select, edit, and a separated delete", () => {
   const items = userMessageMenuItems({
     t,
     text: "Fix the crash",
@@ -55,7 +55,7 @@ test("a user message menu offers copy, select, edit, and a separated delete", ()
     onDelete: noop,
     onActivateRevision: noop,
   });
-  assert.deepEqual(ids(items), ["copy", "select-text", "edit", "delete"]);
+  assert.deepEqual(ids(items), ["copy", "add-to-conversation", "select-text", "edit", "delete"]);
   assert.equal(items.find((item) => item.id === "edit").separatorBefore, true);
   assert.equal(items.find((item) => item.id === "delete").danger, true);
   assert.equal(items.find((item) => item.id === "delete").separatorBefore, true);
@@ -74,7 +74,7 @@ test("a session-relayed user message cannot be edited or deleted", () => {
     onDelete: noop,
     onActivateRevision: noop,
   });
-  assert.deepEqual(ids(items), ["copy", "select-text"]);
+  assert.deepEqual(ids(items), ["copy", "add-to-conversation", "select-text"]);
 });
 
 test("a running turn disables edit, delete, and revision navigation", () => {
@@ -92,6 +92,7 @@ test("a running turn disables edit, delete, and revision navigation", () => {
   });
   assert.deepEqual(ids(items), [
     "copy",
+    "add-to-conversation",
     "select-text",
     "edit",
     "revision-previous",
@@ -103,7 +104,7 @@ test("a running turn disables edit, delete, and revision navigation", () => {
   }
 });
 
-test("a completed assistant turn offers copy, select, regenerate, and branch", () => {
+test("a completed assistant turn offers copy, add, select, regenerate, and branch", () => {
   const items = assistantTurnMenuItems({
     t,
     answer: "Patched main.ts.",
@@ -113,7 +114,7 @@ test("a completed assistant turn offers copy, select, regenerate, and branch", (
     onRegenerate: noop,
     onBranch: noop,
   });
-  assert.deepEqual(ids(items), ["copy", "select-text", "regenerate", "branch"]);
+  assert.deepEqual(ids(items), ["copy", "add-to-conversation", "select-text", "regenerate", "branch"]);
   assert.equal(items.find((item) => item.id === "regenerate").separatorBefore, true);
 });
 
@@ -166,6 +167,7 @@ test("copy on a speaking turn prefers the live selection", () => {
   const copied = [];
   const copyActions = {
     copyText: (text, selection) => copied.push({ text, selection }),
+    addToConversation: noop,
     selectText: noop,
   };
   const items = userMessageMenuItems({
@@ -184,10 +186,36 @@ test("copy on a speaking turn prefers the live selection", () => {
   assert.deepEqual(copied, [{ text: "Fix the crash", selection: "this line" }]);
 });
 
+test("add to conversation receives the live selection and whole-turn fallback", () => {
+  const added = [];
+  const addActions = {
+    copyText: noop,
+    addToConversation: (text, selection) => added.push({ text, selection }),
+    selectText: noop,
+  };
+  const items = assistantTurnMenuItems({
+    t,
+    answer: "Whole answer",
+    selectTarget: null,
+    complete: true,
+    actions: addActions,
+    onRegenerate: noop,
+    onBranch: noop,
+  });
+  const item = items.find((candidate) => candidate.id === "add-to-conversation");
+  item.onSelect("selected line");
+  item.onSelect("");
+  assert.deepEqual(added, [
+    { text: "Whole answer", selection: "selected line" },
+    { text: "Whole answer", selection: "" },
+  ]);
+});
+
 test("copy conversation ignores a live selection", () => {
   const copied = [];
   const copyActions = {
     copyText: (text, selection) => copied.push({ text, selection }),
+    addToConversation: noop,
     selectText: noop,
   };
   const items = conversationMenuItems({

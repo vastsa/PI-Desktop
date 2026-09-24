@@ -2306,6 +2306,16 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
 - **完整历史回归**：打开包含 140 条消息的会话，不向上翻页，选择复制整个对话；剪贴板必须包含第 1–140 条消息。从搜索上下文窗口和长消息截断预览重复验证。保留当前可见的生成中文字；读取失败时提示错误，剪贴板保持不变。仅在选择复制后读取完整历史，不改变阅读位置。运行 `node scripts/e2e-copy-conversation.mjs`。
 - 编辑时复制应使用草稿选区，无选区时复制整份草稿；选中消息文本应选中草稿。菜单不提供编辑、删除或版本切换；取消后原消息及其菜单保持不变。自动化验证：`node scripts/e2e-message-edit-copy.mjs`。
 
+#### E2E-CHAT-selection-action-921：选中文字后直接添加到对话
+
+- **前提条件**：可见会话中有用户消息、助手回答、工具输出，以及带文件引用的未发送草稿。
+- **步骤**：选中单条消息中的文字并点击浮动按钮；重复验证助手正文、多行选区、跨消息选区、工具输出、清除选区、滚动和切换会话。打开数量卡片、移除其中一条、发送另一条，并模拟发送失败。
+- **预期**：单条消息正文的选区旁直接出现“添加到会话”，无需打开右键菜单。选中文字汇总为输入框上方的“1 条注释”卡片；点击可查看和逐条移除，原草稿和文件引用不变。发送时原文作为 Markdown 引用上下文加入请求；发送失败时恢复卡片。其他选区不显示按钮；清除选区、滚动、调整窗口或切换面板后关闭，跨会话不串内容。右键菜单仍可引用整条消息。
+- **链接规格**：`04-ux/08-component-spec.md` §8.3 / §8.5、`04-ux/09-interaction-patterns.md` §1.5、ADR 0307
+- **验收**：C（聊天流）、质量
+- **里程碑**：M5
+- **状态**：Chromium 组件验证（`node scripts/e2e-message-edit-copy.mjs`）和卡片、发送恢复验证（`pnpm test:e2e:composer-paste`）已覆盖；完整应用视觉场景仍为草稿。
+
 #### E2E-CHAT-copy-formula-as-tex：复制渲染后的公式得到源码
 
 复制之后公式的边界仍然可解析：相邻的行内围栏之间补一个分隔符；正文里的每个美元
@@ -5351,6 +5361,8 @@ eleven-tool-round desktop paths are verified by
 | 品质（两步删除） | E2E-SESSION-two-click-delete-arms-first |
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
 | C — 对话与流式（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| C — 对话与流式（选中片段复用） | E2E-CHAT-selection-action-921 |
+| 品质（选中片段复用） | E2E-CHAT-selection-action-921 |
 | E — 工具与权限（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | E — 工具与权限（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
 | F — 持久化（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
@@ -5373,6 +5385,7 @@ eleven-tool-round desktop paths are verified by
 | M6+（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+（独立会话通信） | E2E-SESSION-independent-top-level-communication、E2E-SESSION-hover-card-model-and-links |
 | M5（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
+| M5（选中片段复用） | E2E-CHAT-selection-action-921 |
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
