@@ -1,5 +1,5 @@
 import {
-  app, BrowserWindow, Menu, nativeImage, nativeTheme, Tray,
+  app, BrowserWindow, Menu, nativeImage, nativeTheme, powerSaveBlocker, Tray,
   type MenuItemConstructorOptions,
 } from "electron";
 import { existsSync } from "node:fs";
@@ -471,6 +471,21 @@ export function createApplicationLifecycle({
     }
   }
 
+  /** Active power-save blocker id, or null when not blocking. */
+  let powerSaveBlockerId: number | null = null;
+
+  function applyPreventScreenSleep(settings?: { preventScreenSleep?: unknown } | null) {
+    const next = settings?.preventScreenSleep === true;
+    if (next && powerSaveBlockerId === null) {
+      powerSaveBlockerId = powerSaveBlocker.start("prevent-display-sleep");
+    } else if (!next && powerSaveBlockerId !== null) {
+      if (powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+        powerSaveBlocker.stop(powerSaveBlockerId);
+      }
+      powerSaveBlockerId = null;
+    }
+  }
+
   /**
    * Drive Chromium and macOS native chrome (menus, vibrancy) from the same
    * theme preference the renderer paints. `system` keeps following the OS;
@@ -647,6 +662,7 @@ export function createApplicationLifecycle({
     executeNativeMenuAction,
     dispatchNativeMenuAction,
     applyDeveloperMode,
+    applyPreventScreenSleep,
     applyNativeThemeSource,
     applyAppThemePreference,
     applyApplicationMenuSettings,

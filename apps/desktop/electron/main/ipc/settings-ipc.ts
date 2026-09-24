@@ -21,6 +21,7 @@ export type SettingsIpcDependencies = {
     developerMode?: unknown;
   } | null) => void;
   applyDeveloperMode: (settings?: { developerMode?: unknown } | null) => void;
+  applyPreventScreenSleep: (settings?: { preventScreenSleep?: unknown } | null) => void;
   resolveEffectiveCommandShell: () => Promise<unknown>;
 };
 
@@ -37,6 +38,7 @@ export function registerSettingsIpc({
   currentNetworkProxy,
   applyApplicationMenuSettings,
   applyDeveloperMode,
+  applyPreventScreenSleep,
   resolveEffectiveCommandShell,
 }: SettingsIpcDependencies): void {
   let host: HostProcess | null = null;
@@ -84,6 +86,7 @@ export function registerSettingsIpc({
       } | null,
     );
     applyDeveloperMode(validatedSettings as { developerMode?: unknown } | null);
+    applyPreventScreenSleep(validatedSettings as { preventScreenSleep?: unknown } | null);
     return result;
   });
 

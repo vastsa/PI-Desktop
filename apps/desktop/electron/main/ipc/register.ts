@@ -103,6 +103,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     currentNetworkProxy,
     applyApplicationMenuSettings,
     applyDeveloperMode,
+    applyPreventScreenSleep,
     resolveEffectiveCommandShell,
     modelsDevCatalog,
     vendorOAuth,
@@ -260,6 +261,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     currentNetworkProxy,
     applyApplicationMenuSettings,
     applyDeveloperMode,
+    applyPreventScreenSleep,
     resolveEffectiveCommandShell,
   });
   registerConfigSyncIpc({

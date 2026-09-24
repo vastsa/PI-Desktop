@@ -78,6 +78,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.networkRelaxedMode",
       "settings.networkRelaxedModeDesc",
       "settings.networkRelaxedModeStrictDesc",
+      "settings.preventScreenSleep",
+      "settings.preventScreenSleepDesc",
     ],
   },
   {

@@ -105,7 +105,9 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
     '{tab === "shortcuts" && settings && (',
   );
   const generalSource = settingsPageSource.slice(generalStart, aiStart);
-  const aiSource = settingsPageSource.slice(aiStart, shortcutsStart);
+  const voiceStart = settingsPageSource.indexOf('tab === "voice"', aiStart);
+  assert.ok(voiceStart > aiStart && voiceStart < shortcutsStart);
+  const aiSource = settingsPageSource.slice(aiStart, voiceStart);
 
   assert.match(generalSource, /<ThemeRow /);
   assert.match(generalSource, /<LanguageRow /);
@@ -157,10 +159,8 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   // The AI tab keeps the Settings picker control: a native <select> popup is
   // platform-drawn and cannot carry the shared menu surface or its check mark.
   assert.doesNotMatch(aiSource, /<select/);
-  // Speech is not a Settings surface: the AI tab renders no voice card, search
-  // indexes no speech keys, its styles are gone, and the host capability keeps
-  // its IPC contract (ADR 0291).
-  assert.doesNotMatch(settingsPageSource, /VoiceSettingsCard|voice-settings/);
+  // The retired speech card stays out of AI settings; voice has its own tab.
+  assert.doesNotMatch(aiSource, /VoiceSettingsCard|VoiceSettingsSection|voice-settings/);
   assert.doesNotMatch(settingsSearchSource, /settings\.speech/);
   assert.doesNotMatch(stylesSource, /\.settings-speech/);
   assert.doesNotMatch(enLocaleSource, /speechTitle:|speechVoicePlaceholder:/);
@@ -205,7 +205,7 @@ test("General Network card persists a custom HTTP or SOCKS5 proxy and the relaxe
 test("basics gates developer tools behind a persisted developer mode", () => {
   assert.match(sharedTypesSource, /developerMode\?: boolean/);
   assert.match(settingsPageSource, /function DeveloperSection/);
-  assert.match(settingsPageSource, /role="switch"/);
+  assert.match(settingsPageSource, /<SettingsToggle\s+checked=\{enabled\}\s+label=\{t\("settings\.developerMode"\)\}/);
   assert.match(settingsPageSource, /saveSettings\(\{ developerMode: !enabled \}\)/);
   assert.match(settingsPageSource, /api\.toggleDevTools\(true\)/);
   assert.match(settingsPageSource, /disabled=\{!enabled\}/);

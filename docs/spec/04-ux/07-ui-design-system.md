@@ -1236,7 +1236,7 @@ Implementation: `components/ui.tsx → SegmentedControl<T>`.
 | Roles | `radiogroup` (default), `group`, or `tablist` |
 | Item roles | `radio` / none / `tab` — derived from container role |
 | Generic | `<T extends string>` for type-safe value/onChange |
-| Options | `readonly { value: T; label: ReactNode }[]` — label accepts JSX (e.g. count badge) |
+| Options | `readonly { value: T; label: ReactNode; id?: string; controls?: string }[]` — label accepts JSX (e.g. count badge) |
 
 Every multi-option selector rendered as a row of equal buttons **must** use
 `SegmentedControl`. Inline `<div className="settings-segment">` with manual

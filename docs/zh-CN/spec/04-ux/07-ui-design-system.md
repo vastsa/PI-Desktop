@@ -1091,7 +1091,7 @@ Linux 保留淡入淡出和滑动退出。
 | Roles | `radiogroup` (default), `group`, or `tablist` |
 | Item roles | `radio` / none / `tab` — derived from container role |
 | Generic | `<T extends string>` for type-safe value/onChange |
-| Options | `readonly { value: T; label: ReactNode }[]` — label accepts JSX (e.g. count badge) |
+| Options | `readonly { value: T; label: ReactNode; id?: string; controls?: string }[]` — label accepts JSX (e.g. count badge) |
 
 并排等宽按钮构成的多选项选择器**必须**使用 `SegmentedControl`，
 禁止手写 `<div className="settings-segment">` 及按钮循环。

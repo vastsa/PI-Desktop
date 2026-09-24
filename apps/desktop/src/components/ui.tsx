@@ -695,7 +695,12 @@ export function SegmentedControl<T extends string>({
 }: {
   value: T;
   onChange: (value: T) => void;
-  options: readonly { readonly value: T; readonly label: ReactNode }[];
+  options: readonly {
+    readonly value: T;
+    readonly label: ReactNode;
+    readonly id?: string;
+    readonly controls?: string;
+  }[];
   label: string;
   role?: "group" | "radiogroup" | "tablist";
   className?: string;
@@ -714,7 +719,12 @@ export function SegmentedControl<T extends string>({
           key={option.value}
           type="button"
           {...(itemRole === "tab"
-            ? { role: "tab", id: `${label}-tab-${option.value}`, "aria-selected": value === option.value }
+            ? {
+              role: "tab",
+              id: option.id ?? `${label}-tab-${option.value}`,
+              "aria-selected": value === option.value,
+              "aria-controls": option.controls,
+            }
             : itemRole === "radio"
               ? { role: "radio", "aria-checked": value === option.value }
               : { "aria-pressed": value === option.value })}

@@ -55,7 +55,7 @@ test("skills and MCP filter one list by level instead of stacking two sections",
   }
   assert.doesNotMatch(layout, /AgentCapabilitySection|AgentCapabilityColumn/);
   assert.match(layout, /agent-capability-list/);
-  assert.match(layout, /role="radiogroup"/);
+  assert.match(layout, /<SegmentedControl[\s\S]*?value=\{filter\}/);
   assert.match(layout, /settings\.capabilityFilterAll/);
   // Subagents are global-only, so they get no level filter and no project.
   assert.doesNotMatch(subagents, /AgentProjectPicker|projectPath|CapabilityFilter/);
@@ -116,8 +116,8 @@ test("capability surfaces use the shared settings hierarchy", () => {
 });
 
 test("the workbench reuses the shared segmented control instead of a third copy", () => {
-  assert.match(layout, /"settings-segment", "agent-capability-segment"|settings-segment agent-capability-segment/);
-  assert.match(layout, /"settings-segment-item"/);
+  assert.match(layout, /<SegmentedControl[\s\S]*?className="agent-capability-segment"/);
+  assert.match(layout, /itemClassName="agent-capability-segment-btn"/);
   // providers.css defines the shared segment and imports after settings.css, so
   // a bare local class would silently lose. Every local override must compound.
   for (const decl of [

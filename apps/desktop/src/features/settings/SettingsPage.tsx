@@ -407,6 +407,19 @@ export function SettingsPage() {
 
               <NetworkProxySection settings={settings} saveSettings={saveSettings} />
 
+              <SettingsCard>
+                <SettingsRow
+                  title={t("settings.preventScreenSleep")}
+                  description={t("settings.preventScreenSleepDesc")}
+                >
+                  <SettingsToggle
+                    checked={settings.preventScreenSleep === true}
+                    label={t("settings.preventScreenSleep")}
+                    onChange={() => void saveSettings({ preventScreenSleep: !settings.preventScreenSleep })}
+                  />
+                </SettingsRow>
+              </SettingsCard>
+
               {platform !== "darwin" && <CloseBehaviorSection />}
             </div>
           )}
