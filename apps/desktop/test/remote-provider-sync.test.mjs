@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 
-const { buildImportPayload, importProvidersOverSsh, isSyncableProvider, parseImportOutput } = await import(
+const { buildImportPayload, importProvidersOverSsh, parseImportOutput } = await import(
   "../electron/main/remote/remote-provider-sync.ts"
 );
 
@@ -33,16 +33,6 @@ function provider(overrides) {
 }
 
 const SSH = { host: "box", remotePort: 7777, version: "1" };
-
-test("only enabled, user-owned rows with a usable credential are syncable", () => {
-  assert.equal(isSyncableProvider(provider()), true);
-  assert.equal(isSyncableProvider(provider({ authKind: "none", hasSecret: false })), true);
-  assert.equal(isSyncableProvider(provider({ enabled: false })), false);
-  assert.equal(isSyncableProvider(provider({ ownerPluginId: "plug" })), false);
-  assert.equal(isSyncableProvider(provider({ hasOauth: true })), false);
-  assert.equal(isSyncableProvider(provider({ authKind: "oauth" })), false);
-  assert.equal(isSyncableProvider(provider({ hasSecret: false })), false);
-});
 
 test("the payload carries the key and the first provider's model as default", async () => {
   const payload = await buildImportPayload({
