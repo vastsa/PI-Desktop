@@ -10,12 +10,7 @@
  * sparks) inside the canvas' parent, and tears it down in `destroy()`.
  */
 import {
-  CAKE_BOUNCE_DAMPING,
-  CAKE_COLUMN_GROWTH,
-  CAKE_COLUMN_GROWTH_RANDOM,
-  CAKE_COLUMN_SPREAD,
   CAKE_COLUMN_WIDTH_RATIO,
-  CAKE_CONTACT_RATIO,
   CAKE_FILL,
   CAKE_RADIUS_MAX,
   CAKE_RADIUS_MIN,
@@ -32,8 +27,6 @@ import {
   CAPTION_SUBTITLE,
   CAPTION_TITLE,
   DEFAULT_MID_AUTUMN_EGG_CONFIG,
-  GRAVITY_K,
-  GRAVITY_MIN,
   GROUND_INSET_MIN,
   GROUND_INSET_RATIO,
   MAX_FAST_FORWARD_STEPS,
@@ -667,44 +660,9 @@ export function createMidAutumnEggScene(
       }
     }
 
-    const gravity = Math.max(GRAVITY_MIN, height * GRAVITY_K);
-    for (const cake of cakes) {
-      if (cake.state !== "falling") continue;
-
-      cake.vy += gravity * dt;
-      cake.x += cake.vx * dt;
-      cake.y += cake.vy * dt;
-      cake.rot += cake.spin * dt;
-
-      if (cake.x < cakeRadius) {
-        cake.x = cakeRadius;
-        cake.vx = Math.abs(cake.vx) * CAKE_BOUNCE_DAMPING;
-      }
-      if (cake.x > width - cakeRadius) {
-        cake.x = width - cakeRadius;
-        cake.vx = -Math.abs(cake.vx) * CAKE_BOUNCE_DAMPING;
-      }
-
-      const column = columnIndexOf(cake.x);
-      const floorY = groundY - columnHeights[column];
-
-      if (cake.y + cakeRadius * CAKE_CONTACT_RATIO >= floorY) {
-        cake.y = floorY - cakeRadius * CAKE_CONTACT_RATIO;
-        cake.vy = 0;
-        cake.state = "landed";
-        cake.rot0 = cake.rot;
-
-        // Column piling: the column grows and spreads slightly into its
-        // neighbours, which keeps the pile from looking like a wall.
-        columnHeights[column] +=
-          cakeRadius * CAKE_COLUMN_GROWTH + Math.random() * cakeRadius * CAKE_COLUMN_GROWTH_RANDOM;
-        if (column > 0) columnHeights[column - 1] += cakeRadius * CAKE_COLUMN_SPREAD;
-        if (column < columnCount - 1) columnHeights[column + 1] += cakeRadius * CAKE_COLUMN_SPREAD;
-      }
-    }
-
-    /* Phase 3: take off and assemble the text */
-    if (elapsed >= phases.flyStart && !textTargetsBuilt) {
+    /* Phase 3: build text targets right after spawning ends and fly directly */
+    const flyRef = phases.rainStart + phases.spawnDuration;
+    if (elapsed >= flyRef && !textTargetsBuilt) {
       for (const cake of cakes) {
         if (cake.state === "falling") {
           cake.state = "landed";
@@ -718,9 +676,9 @@ export function createMidAutumnEggScene(
 
     if (textTargetsBuilt) {
       for (const cake of cakes) {
-        if (cake.state !== "landed") continue;
+        if (cake.state === "placed") continue;
 
-        const local = elapsed - phases.flyStart - cake.delay;
+        const local = elapsed - flyRef - cake.delay;
         if (local <= 0) continue;
 
         const progress = Math.min(1, local / phases.flyDuration);
@@ -778,18 +736,24 @@ export function createMidAutumnEggScene(
   }
 
   function render(): void {
-    const skyAlpha = config.skyAlpha * skyProgress;
     context.clearRect(0, 0, width, height);
 
-    context.globalAlpha = skyAlpha;
-    const sky = context.createLinearGradient(0, 0, 0, height);
-    sky.addColorStop(0.0, "#02040f");
-    sky.addColorStop(0.35, "#061024");
-    sky.addColorStop(0.7, "#0a1730");
-    sky.addColorStop(1.0, "#10203d");
-    context.fillStyle = sky;
+    // Opaque dark base prevents alpha-compositing seams between gradient stops.
+    context.fillStyle = "#02040f";
     context.fillRect(0, 0, width, height);
-    context.globalAlpha = 1;
+    if (skyProgress > 0) {
+      context.globalAlpha = skyProgress;
+      const sky = context.createLinearGradient(0, 0, 0, height);
+      sky.addColorStop(0.0, "#02040f");
+      sky.addColorStop(0.35, "#061024");
+      sky.addColorStop(0.7, "#0a1730");
+      sky.addColorStop(1.0, "#10203d");
+      context.fillStyle = sky;
+      context.fillRect(0, 0, width, height);
+      context.globalAlpha = 1;
+    }
+
+    const skyAlpha = skyProgress;
 
     drawStars(skyAlpha);
     drawHorizon(skyAlpha);
