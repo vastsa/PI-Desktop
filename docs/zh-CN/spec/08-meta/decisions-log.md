@@ -976,9 +976,10 @@ project/group 层，而主要操作和页脚标识仍保留在
   不值得信赖。
 - `env` 和 `headers` 仅通过插件自己的设置进行解析
   `{ "setting": "<key>" }`；主机环境永远不会被传递（D018）。
-  stdio 子进程获取 `PATH`、temp/locale 变量和声明的值 — 无
-  否则。 `command` 必须是裸路径名称或与插件相关的名称； `url` 必须是
-  `https` 除非主机环回。
+  stdio 子进程获取 `PATH`、temp/locale、工具链键（`HOME`、`USERPROFILE`、
+  `PATHEXT`、`ComSpec`、`FNM_DIR` 等）以及声明的值——不含 provider 密钥。
+  裸 `npx`/`uvx` 会解析到真实二进制（官方 Node、fnm、nvm、Volta）。
+  `command` 必须是裸 PATH 名称或插件相对路径；`url` 必须是 `https`，除非主机环回。
 - 两种传输方式而不是单独的 stdio：托管 MCP 端点很常见
   足以让 stdio-only 推送插件将其包装在本地垫片中，
   这更糟糕——一个额外的过程和一个无法审查的代理。
@@ -4959,3 +4960,16 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   只查自身目录。后缀本身不赋予推理能力：未命中的自由格式 ID 仍是未知通用
   模型，已发布能力和显式绑定覆盖沿用既有优先级。见
   `03-runtime/13-model-catalog-and-selection.md` §11.2。
+
+## 2026-09-24 —— Windows stdio MCP 解析官方 Node 与 fnm 的 npx（D624，issue #789）
+
+- 修订 D176 / D600 / ADR 0038。D600 在 Unix 探测 login-shell PATH，Windows 仍用
+  进程继承的 PATH。这启动不了 `npx.cmd`：`spawn({ shell: false })` 对 `npx`
+  返回 ENOENT，对 `.cmd` 返回 EINVAL，即使官方 Node 已在 PATH 里（issue #789）。
+- Electron main 在 spawn 前解析裸 `npx`/`npm`/`node`/`uvx`：PATH 上的官方
+  `node.exe` 优先，然后是 fnm / nvm-windows / Volta。若 `npx-cli.js` 与
+  `node.exe` 同目录，子进程直接跑 `node` 加该脚本，不经过 cmd.exe。其余
+  `.cmd` 走 `cmd.exe /d /s /c`，参数加引号保持字面量。PATHEXT 优先于无扩展名
+  的 Git-Bash `npx` 脚本。
+- 密钥仍不穿越（D018）。命令名保持裸名。见 ADR 0038 与
+  `07-plugins/04-plugin-security.md`。

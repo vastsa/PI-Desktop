@@ -1015,6 +1015,22 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **里程碑**：M5
 - **状态**：自动化（host-core 单元测试：登录路径探测 + 子路径注入）
 
+#### E2E-MCP-stdio-windows-npx：官方 Node 与 fnm 都能启动 `npx` MCP（issue #789）
+
+- **先决条件**：Windows；Node 要么是官方 `Program Files\nodejs` 安装
+  （PATH 上有 `node.exe`、`npx.cmd`、`npx-cli.js`），要么由 fnm 管理且不在 GUI PATH 中。
+- **步骤**：1) 从 MCP 市场添加 Memory（`npx -y @modelcontextprotocol/server-memory`）。
+  2) 测试连接。3) 再用用户手写的 `npx` 服务器重复一次。
+- **预期**：官方 Node 改写为 `node.exe` + `npx-cli.js` 并完成握手。PATH 没有
+  node 时从 `%LOCALAPPDATA%\fnm\aliases\default` 发现 fnm。其余 `.cmd` 经
+  `cmd.exe /d /s /c` 启动，参数加引号保持字面量，不用 `shell: true`。
+  与 `npx.cmd` 同目录的 Git-Bash 无扩展名 `npx` 不会被选中。真正缺失时仍报告
+  `command not found: npx`。
+- **链接规格**：ADR 0038、D624、`07-plugins/04-plugin-security.md`
+- **接受**：质量
+- **里程碑**：M6+
+- **状态**：自动化（`apps/desktop/test/mcp-stdio-launch.test.mjs`）
+
 ### 会话持续性
 
 #### E2E-020：会话在重新启动后仍然存在

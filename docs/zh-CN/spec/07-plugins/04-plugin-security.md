@@ -269,13 +269,13 @@ MCP 服务器是 `net.fetch` 旁边的第二个出口路径，因此它是声明
 并且是可审查的而不是编程的——插件无法打开连接
 清单未命名：
 
-- `transport: "stdio"` 生成本地可执行文件 (`mcp.server.local`)。的
-  `command` 必须是裸路径名称或插件相对路径；绝对路径
-  在验证时被拒绝。子进程拿到的是最小环境——声明的 `env` 条目，加上共享
-  白名单（`child-process-env.ts`）：`PATH`、`SystemRoot`、`windir`、`TEMP`、
-  `TMP`、`TMPDIR`、`LANG`、`HOME`、`USER`、`USERPROFILE`。身份变量要透传，
-  是因为子进程是第三方代码，用 `$HOME` 解析 `~` 而不是调用 `os.homedir()`
-  （issue #717）；provider key 和其它宿主状态仍然不会穿越。
+- `transport: "stdio"` 生成本地可执行文件 (`mcp.server.local`)。
+  `command` 必须是裸 PATH 名称或插件相对路径；绝对路径在验证时被拒绝。
+  子进程拿到最小环境——声明的 `env` 条目、共享白名单（`child-process-env.ts`），
+  以及 `npx`/`uvx` 需要的工具链键（`PATHEXT`、`ComSpec`、`FNM_DIR` 等）。
+  Unix 上 PATH 是 login-shell PATH（D600）。裸 `npx`/`uvx` 会解析到真实二进制：
+  官方 Windows Node 走 `node.exe` + `npx-cli.js`，其余 `.cmd` 经 `cmd.exe`
+  以引号字面参数启动（D624）。provider key 和其它宿主状态仍然不会穿越。
 - `transport: "http"` 到达远程端点 (`mcp.server.remote`)。`url` 可以使用
   `http` 或 `https`；非回环 HTTP 不加密，只应在可信网络中使用。插件端点还
   必须被 `manifest.net.domains` 覆盖。工具参数会离开机器，这就是为什么权限

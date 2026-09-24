@@ -350,12 +350,12 @@ manifest did not name:
 - `transport: "stdio"` spawns a local executable (`mcp.server.local`). The
   `command` must be a bare PATH name or a plugin-relative path; absolute paths
   are refused at validation time. The child gets a minimal environment — the
-  declared `env` entries plus one shared allowlist (`child-process-env.ts`):
-  `PATH`, `SystemRoot`, `windir`, `TEMP`, `TMP`, `TMPDIR`, `LANG`, `HOME`,
-  `USER`, `USERPROFILE`. The identity variables are there because the child is
-  third-party code that resolves `~` through `$HOME` rather than calling
-  `os.homedir()` (issue #717); provider keys and other host state still never
-  cross.
+  declared `env` entries plus the shared allowlist (`child-process-env.ts`)
+  and the extra profile/toolchain keys `npx`/`uvx` need (`PATHEXT`, `ComSpec`,
+  `FNM_DIR`, …). Unix PATH is the login-shell PATH (D600). Bare `npx`/`uvx`
+  resolve to real binaries; official Windows Node uses `node.exe` +
+  `npx-cli.js`, and remaining `.cmd` shims start through `cmd.exe` with quoted
+  literal args (D624). Provider keys and other host state still never cross.
 - `transport: "http"` reaches a remote endpoint (`mcp.server.remote`). The `url`
   may use `http` or `https`; non-loopback HTTP is unencrypted and should only be
   used on a trusted network. Plugin endpoints must also be covered by

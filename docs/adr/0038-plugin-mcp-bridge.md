@@ -53,10 +53,15 @@ differently.
    from that source is not evidence.
 6. Credentials resolve **only** from the plugin's own settings through
    `{ "setting": "<key>" }` (D018). A stdio child receives `PATH`, temp/locale
-   variables, `PI_PLUGIN_ID`, and the declared values — not the host
-   environment, which holds provider keys. `command` must be a bare PATH name or
-   stay inside the plugin directory; `url` may use `http` or `https`, with
-   non-loopback HTTP subject to ADR 0142 and the plugin network allowlist.
+   and profile/toolchain variables (`HOME`, `USERPROFILE`, `PATHEXT`, `ComSpec`,
+   `FNM_DIR`, …), `PI_PLUGIN_ID`, and the declared values — not the host
+   environment, which holds provider keys. Unix PATH is the login-shell PATH
+   (D600). Bare `npx`/`uvx` resolve to real binaries: official Node
+   (`node.exe` + `npx-cli.js`) first, then fnm/nvm/Volta, then a Windows
+   `.cmd` shim through `cmd.exe /d /s /c` with quoted literal args (D624,
+   issue #789). `command` must be a bare PATH name or stay inside the plugin
+   directory; `url` may use `http` or `https`, with non-loopback HTTP subject
+   to ADR 0142 and the plugin network allowlist.
 
 ## Consequences
 
@@ -99,3 +104,11 @@ credentials out of the plugin's reach.
 
 Rejected. Risk drives host-core's confirmation flow. A value chosen by the
 inspected party cannot gate the inspection.
+
+## Amendment: stdio launcher resolution
+
+GUI launches inherit a PATH that may not include fnm/nvm/uv shims. Windows
+`npx` from the official Node installer is `npx.cmd` (plus a Git-Bash `npx`
+script), which `spawn({ shell: false })` cannot start. Resolution stays in
+Electron main, arguments stay literal, and remaining `.cmd` files go through
+`cmd.exe` rather than `shell: true`.

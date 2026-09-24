@@ -2,6 +2,11 @@ import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { isAbsolute, resolve, sep } from "node:path";
 import type { PluginMcpServerContrib } from "@pi-desktop/plugin-sdk";
 import { minimalChildEnv } from "./child-process-env.ts";
+import {
+  MCP_STDIO_HOST_ENV_KEYS,
+  decodeMcpStderr,
+  resolveMcpStdioLaunch,
+} from "./mcp-stdio-launch.ts";
 import { userLookupPath } from "./user-login-path.ts";
 
 /** MCP revision we advertise during the handshake. */
@@ -74,19 +79,35 @@ function mcpError(code: string, message: string): McpError {
  * PATH is the login-shell PATH (ADR 0045 / D600), not the Finder/Dock GUI
  * PATH, so a market-installed `uvx`/`npx` server can spawn (issue #571). The
  * identity variables cross for the same reason the toolchain ones do: the child
- * is third-party code that resolves `~` through `$HOME` (issue #717).
+ * is third-party code that resolves `~` through `$HOME` (issue #717). Windows
+ * also needs `PATHEXT` / `ComSpec` / `FNM_DIR` so official Node and fnm shims
+ * resolve (issue #789).
  */
 export function mcpProcessEnv(
   pluginId: string | undefined,
   values: Record<string, string>,
+  hostEnv: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
   const env: Record<string, string> = {
     ...(pluginId ? { PI_PLUGIN_ID: pluginId } : {}),
-    NODE_ENV: process.env.NODE_ENV ?? "production",
-    ...minimalChildEnv(),
+    NODE_ENV: hostEnv.NODE_ENV ?? process.env.NODE_ENV ?? "production",
   };
-  const path = userLookupPath(process.env.PATH ?? "");
-  if (path) env.PATH = path;
+  if (hostEnv === process.env) {
+    Object.assign(env, minimalChildEnv());
+    for (const key of MCP_STDIO_HOST_ENV_KEYS) {
+      if (env[key]) continue;
+      const value = process.env[key];
+      if (value) env[key] = value;
+    }
+    const path = userLookupPath(process.env.PATH ?? "");
+    if (path) env.PATH = path;
+  } else {
+    for (const key of MCP_STDIO_HOST_ENV_KEYS) {
+      const value = hostEnv[key];
+      if (value) env[key] = value;
+    }
+    if (!env.PATH && env.Path) env.PATH = env.Path;
+  }
   return { ...env, ...values };
 }
 
@@ -138,17 +159,26 @@ function createStdioTransport(
   handlers: McpTransportHandlers,
 ): McpTransport {
   const spawnImpl = options.spawnImpl ?? nodeSpawn;
-  const child: ChildProcess = spawnImpl(
-    resolveMcpCommand(options.rootPath, options.command, options.commandPolicy),
-    options.args,
-    {
-      cwd: options.rootPath,
-      env: options.env,
-      stdio: ["pipe", "pipe", "pipe"],
-      // Never route through a shell: arguments stay literal.
-      shell: false,
+  const resolved = resolveMcpCommand(options.rootPath, options.command, options.commandPolicy);
+  const launch = resolveMcpStdioLaunch({
+    command: resolved,
+    args: options.args,
+    env: options.env,
+    hostEnv: {
+      ...process.env,
+      PATH: options.env.PATH ?? process.env.PATH,
     },
-  );
+  });
+  const child: ChildProcess = spawnImpl(launch.command, launch.args, {
+    cwd: options.rootPath,
+    env: launch.env,
+    stdio: ["pipe", "pipe", "pipe"],
+    // Arguments stay literal. Known launchers rewrite to a PE binary; remaining
+    // Windows `.cmd` shims go through `cmd.exe /d /s /c` with quoted args.
+    shell: false,
+    windowsHide: launch.windowsHide,
+    windowsVerbatimArguments: launch.windowsVerbatimArguments,
+  });
 
   let closed = false;
   let buffer = "";
@@ -178,9 +208,14 @@ function createStdioTransport(
       index = buffer.indexOf("\n");
     }
   });
-  child.stderr?.setEncoding("utf8");
-  child.stderr?.on("data", (chunk: string) => {
-    lastStderr = String(chunk).trimEnd().slice(-500);
+  child.stderr?.on("data", (chunk: Buffer | string) => {
+    lastStderr = decodeMcpStderr(
+      chunk,
+      process.platform,
+      Boolean(launch.windowsVerbatimArguments),
+    )
+      .trimEnd()
+      .slice(-500);
   });
   child.on("error", (error: Error) => {
     closed = true;
