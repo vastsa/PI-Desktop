@@ -213,6 +213,7 @@ export const IPC = {
      * route to the host through the backend router.
      */
     remoteSessionCreate: "pi-desktop/remoteSession/create",
+    remoteHostSyncProviders: "pi-desktop/remoteHost/syncProviders",
     providersList: "pi-desktop/providers/list",
     providersReorder: "pi-desktop/providers/reorder",
     providersCreate: "pi-desktop/providers/create",
