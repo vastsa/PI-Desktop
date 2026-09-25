@@ -204,4 +204,3 @@ pub struct DiscoveredModelInput {
     #[serde(default)]
     pub context_window: Option<u32>,
 }
-

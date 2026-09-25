@@ -678,4 +678,3 @@ fn malformed_thinking_level_fields_are_rejected_by_manifest_validation() {
     write_plugin(&root, value);
     assert!(read_manifest_err(&root).contains("defaultThinkingLevel must be a string"));
 }
-
