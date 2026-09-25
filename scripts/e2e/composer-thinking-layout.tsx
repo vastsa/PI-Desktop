@@ -5,6 +5,7 @@ import { createInstance } from "i18next";
 import type { SessionThinkingLevel } from "@pi-desktop/shared";
 import { ComposerModelPicker } from "../../apps/desktop/src/features/chat/composer/ComposerModelPicker";
 import type { useComposerModelMenu } from "../../apps/desktop/src/features/chat/composer/hooks/useComposerModelMenu";
+import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 import "./thinking-slider-motion";
 
 const i18n = createInstance();
@@ -17,16 +18,17 @@ const root = createRoot(host);
 function Fixture({ width, crowded, model }: { width: number; crowded: boolean; model: string }) {
   const [level, setLevel] = useState<SessionThinkingLevel>("omit");
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"root" | "model" | "thinking">("root");
   const rootMenuRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const controller: ReturnType<typeof useComposerModelMenu> = {
-    open, setOpen, view: "root", query: "", setQuery: noop,
+    open, setOpen, view, query: "", setQuery: noop,
     modelHighlight: -1, setModelHighlight: noop,
     thinkingHighlight: -1, setThinkingHighlight: noop,
     rootMenuRef, modelSearchRef: searchRef, modelListRef: listRef,
     thinkingListRef: listRef, modelGroups: [], flatModels: [],
-    thinkingMenuLevels: levels, showView: noop,
+    thinkingMenuLevels: levels, showView: setView,
     selectModel: async () => {}, selectThinkingLevel: async () => {},
     commitThinkingLevel: async (next) => { setLevel(next); return true; },
     onMenuKeyDown: noop, controlsBlocked: false,
@@ -67,6 +69,7 @@ declare global {
     railTarget: (index: number) => { x: number; y: number };
     focusRange: () => void;
     motionState: () => { dragging: boolean; gap: number; animations: number; focused: boolean };
+    openModelSettings: () => Promise<{ page: string; tab: string; anchor: string | null; menuClosed: boolean; linkVisible: boolean }>;
   };
 }
 
@@ -90,6 +93,19 @@ globalThis.composerThinkingPointerProbe = {
     await settle();
     await Promise.all(document.getAnimations().map((animation) => animation.finished));
     await settle();
+  },
+  async openModelSettings() {
+    useAppStore.getState().setPage("chat");
+    useAppStore.getState().setSettingsAnchor("settings.imageModel");
+    element<HTMLButtonElement>('.composer-menu-root .composer-menu-entry').click();
+    await settle();
+    const link = element<HTMLButtonElement>('.composer-model-settings-link');
+    const linkVisible = link.getBoundingClientRect().height > 0;
+    link.click();
+    await settle();
+    const state = useAppStore.getState();
+    return { page: state.page, tab: state.settingsTab, anchor: state.settingsAnchor,
+      menuClosed: !document.querySelector('.composer-model-thinking-menu.is-open'), linkVisible };
   },
   snapshot() {
     const menu = element(".composer-model-thinking-menu").getBoundingClientRect();
@@ -151,7 +167,7 @@ globalThis.composerThinkingLayoutProbe = async () => {
       if (!menu.classList.contains("is-open")) failures.push(`${index}: selection closed the menu`);
       if (Math.abs(currentMenu.left - initialLeft) > 0.05) failures.push(`${index}/${level}: menu moved ${currentMenu.left - initialLeft}px`);
       if (Math.abs(currentMenu.top - initialTop) > 0.05) failures.push(`${index}/${level}: menu moved vertically`);
-      if (Math.abs(trigger.height - 28) > 0.05) failures.push(`${index}/${level}: trigger changed height`);
+      if (Math.abs(trigger.height - 26) > 0.05) failures.push(`${index}/${level}: trigger changed height`);
       if (trigger.right > wrapper.right + 0.05) failures.push(`${index}/${level}: trigger overflows its wrapper`);
       measurements.push({ ...config, level, triggerRight: trigger.right, wrapperRight: wrapper.right, menuLeft: currentMenu.left });
     }

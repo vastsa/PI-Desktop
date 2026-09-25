@@ -3406,6 +3406,9 @@ identify the platform validation still needed.
   updates while the menu stays at the root and the selected track dot sits
   under the thumb. 4) Open Model, search for a model, and select a
   model from a provider group; confirm the menu remains open at the root.
+  In the Model submenu, click Model settings below the list and confirm the
+  menu closes on the Models settings tab without changing the model or draft;
+  repeat with an empty model list and in the scheduled-task model picker.
   5) Open Reasoning level and choose a level from the radio list. 6) Repeat
   with a non-reasoning provider and an unknown free-form model id; exercise
   Escape, outside click, Up/Down, Enter, Left, and the slider's arrow keys.

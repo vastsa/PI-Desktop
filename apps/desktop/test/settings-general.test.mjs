@@ -10,6 +10,10 @@ import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
 const settingsPageSource = await readSettingsSource();
+const developerSource = await readFile(
+  new URL("../src/features/settings/developer-sections.tsx", import.meta.url),
+  "utf8",
+);
 const settingsSearchSource = await readFile(
   new URL("../src/lib/settings-search.ts", import.meta.url),
   "utf8",
@@ -160,6 +164,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   // Voice owns a separate destination; the AI tab does not duplicate it.
   assert.doesNotMatch(aiSource, /VoiceSettingsCard|VoiceSettingsSection|voice-settings/);
   assert.match(settingsPageSource, /tab === "voice" && settings && [\s\S]*?<VoiceSettingsSection/);
+
   assert.doesNotMatch(settingsSearchSource, /settings\.speech/);
   assert.doesNotMatch(stylesSource, /\.settings-speech/);
   assert.doesNotMatch(enLocaleSource, /speechTitle:|speechVoicePlaceholder:/);
@@ -203,11 +208,13 @@ test("General Network card persists a custom HTTP or SOCKS5 proxy and the relaxe
 
 test("basics gates developer tools behind a persisted developer mode", () => {
   assert.match(sharedTypesSource, /developerMode\?: boolean/);
-  assert.match(settingsPageSource, /function DeveloperSection/);
-  assert.match(settingsPageSource, /<SettingsToggle\s+checked=\{enabled\}/);
-  assert.match(settingsPageSource, /saveSettings\(\{ developerMode: !enabled \}\)/);
-  assert.match(settingsPageSource, /api\.toggleDevTools\(true\)/);
-  assert.match(settingsPageSource, /disabled=\{!enabled\}/);
+  assert.match(settingsPageSource, /<DeveloperSection settings=\{settings\} saveSettings=\{saveSettings\} \/>/);
+  assert.match(developerSource, /export function DeveloperSection/);
+  assert.match(developerSource, /<SettingsToggle/);
+  assert.match(developerSource, /saveSettings\(\{ developerMode: !enabled \}\)/);
+  assert.match(developerSource, /api\.toggleDevTools\(true\)/);
+  assert.match(developerSource, /disabled=\{!enabled\}/);
+
   for (const key of [
     "settings.developer",
     "settings.developerMode",

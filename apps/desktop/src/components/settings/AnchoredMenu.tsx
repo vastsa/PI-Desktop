@@ -139,16 +139,19 @@ export function AnchoredMenu({
       onClose();
       return;
     }
-    const menuRect = menu.getBoundingClientRect();
+    // CSS entrance transforms change getBoundingClientRect() while the menu is
+    // animating. Position against its layout size so later updates cannot jump.
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
     const width = matchAnchorWidth ? anchorRect.width : undefined;
-    const surfaceWidth = width ?? menuRect.width;
+    const surfaceWidth = width ?? menuWidth;
     const maxLeft = Math.max(MARGIN, window.innerWidth - surfaceWidth - MARGIN);
     const preferredLeft =
       align === "end" ? anchorRect.right - surfaceWidth : anchorRect.left;
     const left = Math.min(Math.max(MARGIN, preferredLeft), maxLeft);
     const below = anchorRect.bottom + GAP;
-    const above = anchorRect.top - menuRect.height - GAP;
-    const maxTop = Math.max(MARGIN, window.innerHeight - menuRect.height - MARGIN);
+    const above = anchorRect.top - menuHeight - GAP;
+    const maxTop = Math.max(MARGIN, window.innerHeight - menuHeight - MARGIN);
     const preferredTop = side === "top" ? above : below;
     const fallbackTop = side === "top" ? below : above;
     const preferredFits = preferredTop >= MARGIN && preferredTop <= maxTop;

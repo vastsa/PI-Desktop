@@ -1090,7 +1090,9 @@ Linux 保留淡入淡出和滑动退出。
 | 角色 | `radiogroup`（默认）、`group` 或 `tablist` |
 | 子项角色 | `radio` / 无 / `tab`，由容器角色决定 |
 | 泛型 | `<T extends string>`，确保值与 `onChange` 的类型安全 |
-| 选项 | `readonly { value: T; label: ReactNode }[]`，标签可使用 JSX（如数量徽章） |
+| 选项 | `readonly { value: T; label: ReactNode; id?: string; controls?: string }[]`，标签可使用 JSX（如数量徽章） |
+
+`tablist` 调用方应为选项提供稳定的 `id` 和 `controls`，并由面板的 `aria-labelledby` 关联标签页。标识符不能依赖翻译后的标签。
 
 呈现为一排等宽按钮的多选一控件必须使用 `SegmentedControl`；不得手写
 `<div className="settings-segment">` 和按钮循环。

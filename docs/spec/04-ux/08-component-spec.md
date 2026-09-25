@@ -3264,6 +3264,10 @@ there is no separate top-bar model selector.
   the menu begins hydration before the Model submenu is entered, and a
   background refresh updates the list without clearing it first
 - Select: switches model for current session
+- The Model submenu keeps a Model settings action below its scrollable list.
+  Activating it closes the menu and opens the Models settings tab without
+  changing the current model or draft. The action remains available when the
+  list is empty, and is also present in the scheduled-task model picker.
 - On the home/new-session draft, selecting a model also updates the Composer's
   Thinking capability and level from that exact catalog model before the first
   message creates the session.

@@ -243,6 +243,16 @@
   padding: 5px 8px;
 }
 
+.composer-model-settings-divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--ds-border-subtle);
+}
+
+.composer-model-settings-link > svg:last-child {
+  margin-left: auto;
+}
+
 .composer-thinking-heading {
   padding: 3px 8px 5px;
   color: var(--ds-text-muted);
