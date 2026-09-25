@@ -5411,7 +5411,14 @@ E2E-231 需要经批准的远程测试环境。记录该场景是为了让协议
   `packages/host-runtime/src/remote-tool-relay.test.ts` 和
   `packages/host-runtime/src/runtime-service.test.ts` 覆盖；桌面全局 User MCP 适配器由
   `apps/desktop/test/remote-tool-relay.test.mjs` 和
-  `apps/desktop/test/user-mcp.test.mjs` 定向覆盖。完整 Linux SSH 桌面验收仍未完成。
+  `apps/desktop/test/user-mcp.test.mjs` 定向覆盖。第四个夹具
+  `pnpm test:e2e:remote-desktop` 通过打包的 Electron 渲染器连接本地配对 Host：创建本地
+  会话、在 Settings 中 Pair、浏览并注册远程工作区、创建远程会话、批准受 Host 权限上限
+  限制的 Write 卡片、在 Review 检查生成的文件，并确认本地会话仍存在。该测试使用隔离
+  profile 和 loopback 模型，覆盖了桌面侧流程，但不经 Settings 执行 SSH 引导，也不覆盖
+  断线恢复、终端和其余 MCP 中继步骤。Linux CI 的隔离 Electron profile 使用 safeStorage
+  的 `basic_text` 后端，因此该 UI E2E 不验证 OS 密钥链下的静态加密。本次 macOS 本地运行
+  未通过：临时 HOME 下 safeStorage unavailable。完整 Linux SSH 桌面验收仍未完成。
 
 #### E2E-REMOTE-session-list-and-create
 
@@ -5431,8 +5438,11 @@ E2E-231 需要经批准的远程测试环境。记录该场景是为了让协议
   `06-delivery/07-remote-control-rollout.md` §2 R2；ADR 0308
 - **验收**：D（界面）、Security、Quality
 - **里程碑**：MVP 后（rollout R2）
-- **状态**：草稿；fail-closed 路由、侧栏列表与创建入口、能力门控由
-  `apps/desktop/test/*remote*` Node 测试离线覆盖。这些测试不是完整的 Desktop UI 用户旅程验收。
+- **状态**：由 `pnpm test:e2e:remote-desktop` 部分自动化：真实 Electron 用户路径覆盖本地
+  会话保留、Settings Pair、远程目录浏览与注册、会话创建、Composer turn、桌面审批、远程
+  文件写入和远程 Review diff。离线 router 与 capability 测试仍位于
+  `apps/desktop/test/*remote*`。该场景仍为 Draft，直到端到端验证 Host 断开时的 fail-closed
+  行为及完整 Linux SSH 桌面旅程。
 
 #### E2E-REMOTE-provider-import-enables-turn
 

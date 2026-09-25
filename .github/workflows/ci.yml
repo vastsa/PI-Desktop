@@ -116,6 +116,16 @@ jobs:
           PI_DESKTOP_HOST_BIN: target/debug/pi-desktop-host-core
         run: pnpm test:e2e:remote-permission-ceiling
 
+      - name: Install virtual display for Electron
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb
+
+      - name: Exercise paired remote development in Desktop
+        env:
+          PI_DESKTOP_HOST_BIN: target/debug/pi-desktop-host-core
+        run: xvfb-run -a pnpm test:e2e:remote-desktop
+
       - name: Install OpenSSH server for the local fixture
         run: |
           sudo apt-get update

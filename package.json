@@ -69,6 +69,7 @@
     "test:e2e:session-completion": "node scripts/e2e-session-completion.mjs",
     "test:e2e:remote-host": "node scripts/e2e-remote-host.mjs",
     "test:e2e:remote-permission-ceiling": "node scripts/e2e-remote-permission-ceiling.mjs",
+    "test:e2e:remote-desktop": "node scripts/e2e-remote-desktop.mjs",
     "test:e2e:shortcut-settings": "node scripts/test-shortcut-settings.mjs",
     "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs"
   },

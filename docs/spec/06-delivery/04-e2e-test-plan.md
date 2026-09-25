@@ -13104,8 +13104,20 @@ browser milestones are scheduled.
   creation, workspace reads, and a mid-turn tunnel drop/restore with cursor
   replay, idempotent turn retry, and PTY reattachment using the same
   `openRequestId`. This fixture has not been run in the current macOS
-  environment. All three headless fixtures bypass Desktop Settings and the
-  renderer. RACP and Host Runtime relay contract/user-path coverage is in
+  environment. The fourth fixture, `pnpm test:e2e:remote-desktop`, runs the
+  packaged Electron renderer against a local paired Host: it creates a local
+  session, pairs through Settings, browses and registers a remote workspace,
+  creates a remote session, approves a Host-ceiling Write card, checks the
+  resulting file in Review, and confirms the local session remains present.
+  It uses an isolated profile and loopback model. This covers the Desktop half
+  of the flow, but does not run SSH bootstrap through Settings, disconnect
+  recovery, or the remaining terminal and MCP relay steps. The isolated Linux
+  CI profile selects Electron's `basic_text` password backend for disposable
+  fixture credentials; this does not verify OS-backed at-rest protection. A
+  local macOS attempt reached the pairing step but could not complete because
+  the isolated HOME had no available Keychain, so `safeStorage` refused to
+  store the token. RACP and Host
+  Runtime relay contract/user-path coverage is in
   `packages/racp/src/tool-relay.test.ts`,
   `packages/host-runtime/src/remote-tool-relay.test.ts`, and
   `packages/host-runtime/src/runtime-service.test.ts`. The Desktop global User
@@ -13217,9 +13229,13 @@ browser milestones are scheduled.
   `06-delivery/07-remote-control-rollout.md` §2 R2; ADR 0308
 - **Acceptance**: D (surfaces), Security, Quality
 - **Milestone**: Post-MVP (rollout R2)
-- **Status**: Draft; the fail-closed router, sidebar list-and-create, and
-  capability gates are covered offline by
-  `apps/desktop/test/*remote*` node suites.
+- **Status**: Partially automated by `pnpm test:e2e:remote-desktop`: a real
+  Electron user path covers local-session preservation, Settings pairing,
+  remote folder browsing and registration, session creation, Composer turn,
+  Desktop approval, remote file write, and the remote Review diff. Offline
+  router and capability tests remain in `apps/desktop/test/*remote*`. This
+  scenario remains Draft until disconnected-host fail-closed behavior and the
+  full Linux SSH Desktop journey are exercised end to end.
 
 #### E2E-REMOTE-provider-import-enables-turn
 
