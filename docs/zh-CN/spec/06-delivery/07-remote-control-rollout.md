@@ -62,10 +62,10 @@ Linux 或 WSL 机器上的项目，即 SSH 隧道远端 Host 拓扑；#100 要�
   绑定（原 R5）仅在有明确消费者时交付，`.proto` 由 typebox 来源生成。
 
 R2 的设计决定（D375，2026-09-10 记录）：远端 Host 的 provider 配置经 SSH 引导通道
-写入，不经 RACP（由 D626 / ADR 0308 交付：手动「同步模型…」动作在 Host 上运行
+写入，不经 RACP（由 D628 / ADR 0310 交付：手动「同步模型…」动作在 Host 上运行
 `pi-host provider-import`，provider 载荷含密钥从 SSH stdin 送入，再经仅属主的 Unix
 admin socket 交给正在运行的 Host，密钥不经 argv、日志、远端文件或 RACP，也不另起
-host-core；导入按 provider 幂等且从不删除。远程会话入口 D625 / ADR 0307 随后把配对
+host-core；导入按 provider 幂等且从不删除。远程会话入口 D627 / ADR 0308 随后把配对
 Host 的会话按每台一个侧栏分组列出，让用户在 Host 上创建会话，会话在 Host 默认模型下
 运行、桌面无远程模型选择器；主机离线的 `remote:` id 失败即关闭而非打到本地处理器）；
 桌面用户 MCP 服务器与不需工作区的插件工具在本里程碑通过反向工具

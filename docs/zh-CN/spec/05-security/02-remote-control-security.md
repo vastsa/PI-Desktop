@@ -61,7 +61,7 @@ Releases 下载与桌面同版本、对应远端平台的 `pi-host` 包，校验
 机器。
 在 Host 上撤销设备 token 或在桌面移除该 Host 即结束配对，重新配对需要重新
 经 SSH 引导。远端 Host 的 provider 配置经 SSH 通道写入为 Host 本地配置，绝不
-经过 RACP（D626、ADR 0308）。桌面在 Host 上运行 `pi-host provider-import`，
+经过 RACP（D628、ADR 0310）。桌面在 Host 上运行 `pi-host provider-import`，
 把 provider 载荷（含 API 密钥）从该进程的 stdin 送入，因此密钥绝不出现在
 `ssh` 参数、日志、远端文件或 RACP 帧里。CLI 再经一个仅属主的 Unix admin
 socket（`<dataDir>/pi-host/admin.sock`，目录 `0700`、socket `0600`、每连接

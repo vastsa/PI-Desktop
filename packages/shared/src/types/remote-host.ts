@@ -205,7 +205,7 @@ export type RemoteSessionCreateResult = {
 };
 
 /**
- * One provider copied to a remote host by `pi-host provider-import` (D626).
+ * One provider copied to a remote host by `pi-host provider-import` (D628).
  * `sourceId` is the desktop provider id; the host maps it to the row it created
  * so a second sync updates that row instead of adding another.
  */

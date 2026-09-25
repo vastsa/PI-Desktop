@@ -7126,7 +7126,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - Covered by the updated `apps/desktop/test/service-chooser.test.mjs` and the
   `scripts/e2e/provider-api-style.tsx` probe, which now asserts that the first
   `[data-service-id]` tile is `custom` rather than the last.
-## 2026-09-25 — Remote session entry with a fail-closed router (D625)
+## 2026-09-25 — Remote session entry with a fail-closed router (D627)
 
 - A paired host's sessions were reachable by the ADR 0286 kernel but had no UI:
   the sidebar listed only local sessions and there was no way to start a remote
@@ -7147,12 +7147,12 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   remote session never mutates the local workspace or steals focus, and
   subscriptions are bounded to the shown host groups.
 - Renderer and Electron-main change only; no host-core, SQLite, protocol, or
-  security-boundary change. See ADR 0307,
+  security-boundary change. See ADR 0308,
   `02-architecture/05-remote-agent-control.md` §5.2,
   `05-security/02-remote-control-security.md` §3.4/§7,
   E2E-REMOTE-session-list-and-create.
 
-## 2026-09-25 — Provider sync to an SSH host over an owner-only admin socket (D626)
+## 2026-09-25 — Provider sync to an SSH host over an owner-only admin socket (D628)
 
 - ADR 0292 left a bootstrapped host with no providers, so `turn/start` failed
   closed with `MODEL_NOT_CONFIGURED` until the user logged in and configured one
@@ -7173,6 +7173,6 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `PROVIDER_SYNC_MAX_PROVIDERS = 64`) lives in `packages/shared` so the renderer
   dialog and the host validator agree. Sync is manual and never runs unasked.
 - New `pi-host` subcommand and admin socket, one shared contract, and desktop
-  UI/IPC; no host-core RPC, SQLite, or renderer transport change. See ADR 0308,
+  UI/IPC; no host-core RPC, SQLite, or renderer transport change. See ADR 0310,
   ADR 0292 (supplemented), `05-security/02-remote-control-security.md` §3.4/§7,
   E2E-REMOTE-provider-import-enables-turn.

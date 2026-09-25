@@ -1,8 +1,8 @@
-# ADR 0307: Remote session entry and a fail-closed backend router
+# ADR 0308: Remote session entry and a fail-closed backend router
 
 - Status: Accepted for implementation
 - Date: 2026-09-25
-- Decision: D625
+- Decision: D627
 - Related: ADR 0286 (D449, amended here — see §3), ADR 0292 (D453),
   `02-architecture/05-remote-agent-control.md` §5.2,
   `05-security/02-remote-control-security.md` §3.4, §7,

@@ -15,7 +15,7 @@
  * and the system `ssh` client supplies the credentials from the user's own
  * configuration and agent.
  *
- * `syncProviders` (D626) is the one channel that moves provider keys: main
+ * `syncProviders` (D628) is the one channel that moves provider keys: main
  * re-reads the chosen rows from the local host-core and sends them only on
  * the stdin of the host's own SSH channel.
  */

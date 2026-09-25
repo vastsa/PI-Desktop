@@ -1,8 +1,8 @@
-# ADR 0308: pi-host admin socket and SSH provider sync
+# ADR 0310: pi-host admin socket and SSH provider sync
 
 - Status: Accepted for implementation
 - Date: 2026-09-25
-- Decision: D626
+- Decision: D628
 - Related: ADR 0292 (D453, supplemented here), ADR 0286 (D449),
   ADR 0304 (relaxed network mode),
   `02-architecture/05-remote-agent-control.md` §5.2,
@@ -97,7 +97,7 @@ host over a new owner-only Unix admin socket.
 
 - **Automatic or scheduled sync.** Every sync is a manual action.
 - **Removing providers on the host.** Import only creates or updates.
-- **A remote model picker** (see ADR 0307): a remote session runs under the
+- **A remote model picker** (see ADR 0308): a remote session runs under the
   host default this import sets.
 - **Non-SSH transports for import.** The channel is the SSH stdin path from ADR
   0292; a direct-URL host has no admin reach.

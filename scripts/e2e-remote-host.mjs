@@ -6,7 +6,7 @@
  * session, reads the workspace, drops the connection, and reconnects by
  * cursor. With no provider configured, `turn/start` first fails closed with
  * `MODEL_NOT_CONFIGURED`; the run then exercises
- * `E2E-REMOTE-provider-import-enables-turn` (D626): `pi-host provider-import`
+ * `E2E-REMOTE-provider-import-enables-turn` (D628): `pi-host provider-import`
  * copies a provider — key on stdin only — over the owner-only admin socket to
  * the running Host, and the next turn is admitted and reaches a loopback mock
  * model as a Bearer header, with the key never echoed by the CLI or the Host.
@@ -587,7 +587,7 @@ try {
   const after = await owner.client.request("session/get", { sessionId: created.session.id });
   record("failed-admission-leaves-session-idle", after.session.status === "idle" && !after.session.activeTurnId, shortJson(after.session));
 
-  // E2E-REMOTE-provider-import-enables-turn (D626): a provider imported over the
+  // E2E-REMOTE-provider-import-enables-turn (D628): a provider imported over the
   // admin socket unblocks the turn without a second host-core.
   const importPayload = {
     version: 1,

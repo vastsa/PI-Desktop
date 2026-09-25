@@ -5042,7 +5042,7 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 覆盖：更新后的 `apps/desktop/test/service-chooser.test.mjs`，以及
   `scripts/e2e/provider-api-style.tsx` 探针——它现在断言第一个
   `[data-service-id]` 磁贴是 `custom`，而不是最后一个。
-## 2026-09-25 — 远程会话入口与失败即关闭的路由（D625）
+## 2026-09-25 — 远程会话入口与失败即关闭的路由（D627）
 
 - ADR 0286 内核已能让配对主机响应渲染器调用，但没有入口 UI：侧栏只列本地
   会话，也无法新建远程会话。远程会话入口为每台配对主机新增一个无边框侧栏
@@ -5058,11 +5058,11 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   只读主机的目录树。选择或新建远程会话不会改动本地工作区或抢占焦点，订阅
   也限定在展示中的主机分组内。
 - 仅改渲染器与 Electron 主进程；无 host-core、SQLite、协议或安全边界变化。
-  见 ADR 0307、`02-architecture/05-remote-agent-control.md` §5.2、
+  见 ADR 0308、`02-architecture/05-remote-agent-control.md` §5.2、
   `05-security/02-remote-control-security.md` §3.4/§7、
   E2E-REMOTE-session-list-and-create。
 
-## 2026-09-25 — 通过仅属主的 admin socket 向 SSH 主机同步 provider（D626）
+## 2026-09-25 — 通过仅属主的 admin socket 向 SSH 主机同步 provider（D628）
 
 - ADR 0292 引导出的主机没有 provider，`turn/start` 会以
   `MODEL_NOT_CONFIGURED` 失败即关闭，直到用户登录手动配置。设置 ▸ 远程主机
@@ -5080,6 +5080,6 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   放在 `packages/shared`，让渲染器对话框与主机校验器一致。同步为手动，绝不
   自动运行。
 - 新增 `pi-host` 子命令与 admin socket、一份共享契约、桌面 UI/IPC；无
-  host-core RPC、SQLite 或渲染器传输变化。见 ADR 0308、ADR 0292（补充）、
+  host-core RPC、SQLite 或渲染器传输变化。见 ADR 0310、ADR 0292（补充）、
   `05-security/02-remote-control-security.md` §3.4/§7、
   E2E-REMOTE-provider-import-enables-turn。

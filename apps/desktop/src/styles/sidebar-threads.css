@@ -332,7 +332,7 @@
   background: var(--ds-bg-active);
 }
 
-/* Remote hosts (D625): one borderless group per paired host. */
+/* Remote hosts (D627): one borderless group per paired host. */
 .thread-item-source {
   flex: none;
   color: var(--ds-text-muted);

@@ -1,5 +1,5 @@
 /**
- * Copy local provider configs to a paired SSH host (D626). A freshly
+ * Copy local provider configs to a paired SSH host (D628). A freshly
  * bootstrapped host has no models, so every turn fails with
  * MODEL_NOT_CONFIGURED; this is the user's manual fix.
  *

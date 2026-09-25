@@ -5391,7 +5391,8 @@ E2E-231 需要经批准的远程测试环境。记录该场景是为了让协议
   `06-delivery/07-remote-control-rollout.md` §2
 - **验收**：E（工具与权限）、Security、Recovery、Quality
 - **里程碑**：MVP 后（rollout R2）
-- **状态**：草稿。无头 `scripts/e2e-remote-host.mjs` 覆盖真实 `pi-host` 和
+- **状态**：草稿；已有 Host 无头覆盖，但 Desktop UI 与 Linux SSH 的完整旅程
+  仍待验收。无头 `scripts/e2e-remote-host.mjs` 覆盖真实 `pi-host` 和
   host-core 的配对、项目、会话、工作区边界、provider 回合及远程 PTY 输出/重连；当前
   本地 45/45 项检查还覆盖 Files/Review 刷新、运行中配置冲突、确定性模型驱动生产桌面
   中继适配器、桌面中途关闭后的工具失败与回合继续、不转交给替换 owner，以及旧终端
@@ -5411,6 +5412,53 @@ E2E-231 需要经批准的远程测试环境。记录该场景是为了让协议
   `packages/host-runtime/src/runtime-service.test.ts` 覆盖；桌面全局 User MCP 适配器由
   `apps/desktop/test/remote-tool-relay.test.mjs` 和
   `apps/desktop/test/user-mcp.test.mjs` 定向覆盖。完整 Linux SSH 桌面验收仍未完成。
+
+#### E2E-REMOTE-session-list-and-create
+
+- **先决条件**：一个已配对且至少注册了一个项目的远程 Host，以及一个已打开的本地
+  会话。渲染器将远程会话 ID 表示为 `remote:<hostKey>:<hostSessionId>`（D627）。
+- **步骤**：1) 打开侧栏，确认 Host 以独立的无边框分组显示连接状态和会话。2) 在新建
+  会话对话框中选择 Host 上的项目，创建远程会话。3) 选择该会话，确认转录、Composer
+  和工作面板的文件页签体现远程 profile。4) 断开 Host，再对远程 ID 发起单会话调用。
+  5) 全程确认本地会话和本地工作区未受影响，创建或收到远程会话也不会抢走焦点。
+- **预期**：每个 Host 显示为独立分组，并实时显示连接状态；Host 断开时不提供创建入口。
+  新会话在 Host 上按其默认模型启动，桌面不显示远程模型选择器。远程转录行没有编辑、
+  删除或修订入口；远程会话的 Composer 模式和权限模式选择器被禁用；文件页签仅读取
+  Host 的目录树。Host 离线时，对 `remote:` ID 的调用以带类型的错误失败关闭，不会路由
+  到本地处理器（修订 ADR 0286 §3）。远程入口不会修改本地会话、本地工作区路径或焦点。
+- **链接规格**：`02-architecture/05-remote-agent-control.md` §5.2，
+  `05-security/02-remote-control-security.md` §§3.4、7，
+  `06-delivery/07-remote-control-rollout.md` §2 R2；ADR 0308
+- **验收**：D（界面）、Security、Quality
+- **里程碑**：MVP 后（rollout R2）
+- **状态**：草稿；fail-closed 路由、侧栏列表与创建入口、能力门控由
+  `apps/desktop/test/*remote*` Node 测试离线覆盖。这些测试不是完整的 Desktop UI 用户旅程验收。
+
+#### E2E-REMOTE-provider-import-enables-turn
+
+- **先决条件**：在临时数据目录中启动 `pi-host`，使用 debug host-core 和已打包的 sidecar
+  （无头 Host 测试夹具 `scripts/e2e-remote-host.mjs`）。尚未配置 provider，因此
+  `turn/start` 以 `MODEL_NOT_CONFIGURED` 失败关闭。一个 loopback OpenAI 兼容 mock 模型会
+  记录 `Authorization` 请求头并返回固定文本（D628）。
+- **步骤**：1) 确认未配置 provider 时 turn 失败关闭且会话保持 idle。2) 通过 stdin 运行
+  `pi-host provider-import --data-dir <dir>`，输入一个 provider 载荷：使用 mock 模型的
+  OpenAI 兼容 provider、`authKind: api_key_and_base_url`、标记用 `secretValue` 和
+  `defaultModel`。3) 读取 `PI_HOST_PROVIDERS` 摘要，并在 CLI 和 Host 的所有输出流中查找
+  密钥标记。4) 检查 admin socket 及其目录权限。5) 使用相同载荷再次导入。6) 在同一会话
+  启动 turn，等待模型请求和 turn 完成，然后读取会话状态。
+- **预期**：首次导入报告 `imported[0].action === "created"` 且 `defaultSet === true`；密钥
+  标记不会出现在 CLI stdout/stderr 或 Host stderr 中；admin socket 位于权限为 `0700` 的
+  目录下且自身权限为 `0600`；重复导入报告同一 `providerId` 的 `action === "updated"`，
+  不会创建重复项。随后 turn 成功进入模型调用，mock 模型收到 `Bearer` 密钥，收到
+  `turn.completed` 会话事件且会话恢复为 idle。不会启动第二个 host-core；密钥只经过 stdin
+  载荷和 admin socket。
+- **链接规格**：`02-architecture/05-remote-agent-control.md` §5.2，
+  `05-security/02-remote-control-security.md` §§3.4、7；ADR 0310
+- **验收**：Security、E（工具与权限）、Recovery、Quality
+- **里程碑**：MVP 后（rollout R2）
+- **状态**：已由 `scripts/e2e-remote-host.mjs` 实现（32/32 项检查通过）；该测试只在
+  Host 无头夹具运行，不需要 Desktop 或 SSH 测试目标。它不覆盖 Settings 中的 provider
+  同步界面或 SSH 引导；这些桌面全流程仍由 E2E-231 验收。
 
 ## 8. 可追溯性矩阵
 

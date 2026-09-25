@@ -329,7 +329,7 @@ export function createSessionSlice({
         }
         if (isRemoteSession(summary)) {
           // A remote session's workspace lives on its host; the local project
-          // stays as the user left it (D625).
+          // stays as the user left it (D627).
         } else if (summary) {
           if (
             !(await runtime.queueWorkspaceAlignment(() =>

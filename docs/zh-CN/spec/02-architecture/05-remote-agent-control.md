@@ -84,10 +84,10 @@ provider 配置经同一 SSH 通道写入，是 Host 本地配置，绝不经过
 Host 上运行 `pi-host provider-import`，把 provider 载荷（含 API 密钥）从该
 进程的 stdin 送入，CLI 再经一个仅属主的 Unix admin socket（目录 `0700`、
 socket `0600`、上限 1 MiB、Windows 禁用）交给正在运行的 Host，密钥不经
-argv、日志、远端文件或 RACP，也不会另起 host-core（D626、ADR 0308）。导入
+argv、日志、远端文件或 RACP，也不会另起 host-core（D628、ADR 0310）。导入
 是手动动作且按 provider 幂等，从不删除。
 Host 配对后，其会话在侧栏按每台 Host 一个无边框分组出现，用户可从桌面在
-Host 上创建会话（D625、ADR 0307）。远程会话在 Host 默认模型下运行——桌面不
+Host 上创建会话（D627、ADR 0308）。远程会话在 Host 默认模型下运行——桌面不
 显示远程模型选择器——且渲染器保持传输无关：主机离线的
 `remote:<hostKey>:<hostSessionId>` id 失败即关闭，而不是打到本地处理器。
 Host 只绑定 loopback；只有绑定地址与对端地址都是 loopback且出示有效设备 token

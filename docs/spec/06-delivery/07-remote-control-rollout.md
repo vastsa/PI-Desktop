@@ -155,12 +155,12 @@ Design decisions (D375, recorded 2026-09-10):
 
 1. Provider configuration on the remote Host is written over the SSH
    bootstrap channel as Host-local configuration; nothing crosses RACP.
-   Delivered by D626 / ADR 0308: a manual "Sync models…" action runs
+   Delivered by D628 / ADR 0310: a manual "Sync models…" action runs
    `pi-host provider-import` on the Host with the provider payload — keys
    included — on the SSH stdin, handed to the running Host over an owner-only
    Unix admin socket; no key crosses argv, logs, a remote file, or RACP, and no
    second host-core is spawned. Import is idempotent per provider and deletes
-   nothing. Remote session entry (D625 / ADR 0307) then lists a paired Host's
+   nothing. Remote session entry (D627 / ADR 0308) then lists a paired Host's
    sessions as one sidebar group per Host and lets the user start a session on
    the Host, which runs under the Host's default model with no desktop-side
    model picker; a `remote:` id whose Host is offline fails closed instead of

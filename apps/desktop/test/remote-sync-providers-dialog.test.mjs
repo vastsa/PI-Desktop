@@ -1,5 +1,5 @@
 /**
- * Settings ▸ Remote Hosts ▸ Sync models (D626).
+ * Settings ▸ Remote Hosts ▸ Sync models (D628).
  *
  * Renders the confirm dialog against a seeded store: it offers only the rows
  * main will accept, leads with and pre-checks the local default, and nothing

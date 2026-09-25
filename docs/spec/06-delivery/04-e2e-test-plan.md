@@ -13193,7 +13193,7 @@ browser milestones are scheduled.
 
 - **Preconditions**: One paired remote host with at least one registered
   project, and one local session open. The renderer treats a remote session id
-  as `remote:<hostKey>:<hostSessionId>` (D625).
+  as `remote:<hostKey>:<hostSessionId>` (D627).
 - **Steps**: 1) Open the sidebar and confirm the host appears as its own
   borderless group with its connection state and its sessions. 2) Create a
   remote session through the new-session dialog by picking a project on the
@@ -13214,7 +13214,7 @@ browser milestones are scheduled.
   entry.
 - **Specs linked**: `02-architecture/05-remote-agent-control.md` §5.2,
   `05-security/02-remote-control-security.md` §3.4, §7,
-  `06-delivery/07-remote-control-rollout.md` §2 R2; ADR 0307
+  `06-delivery/07-remote-control-rollout.md` §2 R2; ADR 0308
 - **Acceptance**: D (surfaces), Security, Quality
 - **Milestone**: Post-MVP (rollout R2)
 - **Status**: Draft; the fail-closed router, sidebar list-and-create, and
@@ -13227,7 +13227,7 @@ browser milestones are scheduled.
   host-core and bundled sidecar (the headless host harness,
   `scripts/e2e-remote-host.mjs`). No provider is configured, so `turn/start`
   fails closed with `MODEL_NOT_CONFIGURED`. A loopback OpenAI-compatible mock
-  model records its `Authorization` header and answers with fixed text (D626).
+  model records its `Authorization` header and answers with fixed text (D628).
 - **Steps**: 1) Confirm a turn on a provider-less session fails closed and the
   session stays idle. 2) Run `pi-host provider-import --data-dir <dir>` with a
   one-provider payload on stdin — an OpenAI-compatible provider pointing at the
@@ -13245,7 +13245,7 @@ browser milestones are scheduled.
   returns to idle. No second host-core is spawned; the key crosses only the
   stdin payload and the admin socket.
 - **Specs linked**: `02-architecture/05-remote-agent-control.md` §5.2,
-  `05-security/02-remote-control-security.md` §3.4, §7; ADR 0308
+  `05-security/02-remote-control-security.md` §3.4, §7; ADR 0310
 - **Acceptance**: Security, E (tools & permissions), Recovery, Quality
 - **Milestone**: Post-MVP (rollout R2)
 - **Status**: Implemented in `scripts/e2e-remote-host.mjs` (32/32 checks pass);

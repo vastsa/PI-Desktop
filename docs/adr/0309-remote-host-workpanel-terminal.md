@@ -2,7 +2,7 @@
 
 - Status: Accepted for implementation
 - Date: 2026-09-25
-- Related: ADR 0108, ADR 0205, ADR 0286, ADR 0292, ADR 0307,
+- Related: ADR 0108, ADR 0205, ADR 0286, ADR 0292, ADR 0308,
   `02-architecture/05-remote-agent-control.md` §5.2,
   `03-runtime/19-remote-agent-control-protocol.md` §6.2,
   `05-security/02-remote-control-security.md` §§4.1 and 7,

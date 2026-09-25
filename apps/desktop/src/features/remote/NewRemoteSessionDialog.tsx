@@ -1,5 +1,5 @@
 /**
- * Start a session on a paired remote host (D625). The user picks one of the
+ * Start a session on a paired remote host (D627). The user picks one of the
  * host's registered projects, or browses the host's directories (bounded by
  * its browse root) and registers one. The session runs on the host's default
  * model, so there is no model choice here.
