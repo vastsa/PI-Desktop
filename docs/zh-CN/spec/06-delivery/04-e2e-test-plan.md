@@ -2236,8 +2236,12 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   `packages/host-runtime/src/runtime-service.test.ts` 覆盖；桌面 global User MCP 公布适配器
   已有 `apps/desktop/test/remote-tool-relay.test.mjs` 和
   `apps/desktop/test/user-mcp.test.mjs` 定向覆盖，仅发布 `toolsForProject(null)` 的全局 User MCP；
-  Linux SSH 远程 harness 尚未接入，
-  因此完整 E2E-231 仍为草稿。`workspaceFree` 是 owner 侧断言，Host 无法独立验证远端来源；
+  `scripts/e2e-remote-host.mjs` 现在还会启动真实 `pi-host` 和 host-core，覆盖远程 PTY、会话根目录、
+  输出重放与旧连接失效；`remote-host-e2e` CI job 还会运行
+  `scripts/e2e-remote-ssh-bootstrap.mjs`：在隔离的 Linux `sshd` 下使用生产系统 SSH 传输，
+  从本地构建的 release bundle 完成校验、安装、端口转发、配对、项目/session 创建及工作区读取。
+  该脚本仍绕过桌面设置页和渲染器，未覆盖完整验收，所以 E2E-231 仍为草稿。
+  `workspaceFree` 是 owner 侧断言，Host 无法独立验证远端来源；
   未经可信分类的插件默认不发布。测试还必须验证公布被替换后，旧回合快照失败关闭，绝不把调用
   路由到新连接。
   Agent Bash 仍是非交互式的，完整显示在对话中。

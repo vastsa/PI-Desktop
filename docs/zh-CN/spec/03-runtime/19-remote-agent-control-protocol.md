@@ -198,7 +198,7 @@ Host 队列；持久事件使用每 epoch 递增且不复用的 `sequence`；附
 远端 Host profile（v1.1，rollout R2 必需）：当桌面是另一台机器上 `pi-host` 的
 客户端时，renderer 期望本地拥有的会话控制。这些操作从 v1.1 起属于契约，通过
 `remoteHostProfile` 能力公布，各自保持本地规则：配置与 fork 仅限空闲，删除仅限
-owner，工作区读取都按会话持久根、Host 忽略规则和 `PATH_OUTSIDE_WORKSPACE` 边界解析。
+owner，工作区读取都按会话持久根、Host 忽略规则和 `REMOTE_PATH_FORBIDDEN` 边界解析。
 
 | Operation | Role | Behavior |
 |---|---|---|

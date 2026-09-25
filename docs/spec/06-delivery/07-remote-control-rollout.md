@@ -502,8 +502,13 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   implemented and has targeted coverage in
   `apps/desktop/test/remote-tool-relay.test.mjs` and
   `apps/desktop/test/user-mcp.test.mjs`; it is limited to
-  `toolsForProject(null)`. The Linux SSH harness is still missing, so E2E-231
-  remains Draft. `workspaceFree` is an owner-side assertion that the
+  `toolsForProject(null)`. The `remote-host-e2e` CI job now includes an
+  isolated Linux `sshd` bootstrap fixture that verifies the production SSH
+  transport, local release-bundle checksum/install, tunnel, pairing, and
+  remote project/session reads. E2E-231 remains Draft because this fixture
+  bypasses Desktop Settings and renderer and does not cover approval, relay
+  turns, reconnect, terminal, or the remaining security scenarios.
+  `workspaceFree` is an owner-side assertion that the
   Host cannot independently verify; the Desktop adapter must derive it from
   trusted source metadata and fail closed when uncertain. The initial adapter
   is limited to global User MCP tools from `toolsForProject(null)`; plugin
@@ -515,8 +520,9 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   capabilities and re-advertising global User MCP tools. Hosts that are offline
   during startup retry in the background; remove, re-pair, and shutdown cancel
   stale attempts. Targeted Desktop suites and the headless remote Host E2E pass.
-  E2E-231 remains Draft until the Linux SSH desktop harness exercises the full
-  bootstrap, approval, reconnect, terminal, and security path.
+  E2E-231 remains Draft until the Linux SSH Desktop scenario exercises the full
+  Settings, approval, relay, reconnect, terminal, and security path; the new
+  bootstrap fixture covers pairing and basic remote reads only.
 
 ## 8. Amendment history
 

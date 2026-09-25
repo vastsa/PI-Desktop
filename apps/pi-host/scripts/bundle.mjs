@@ -17,6 +17,7 @@ import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, chmodSync } from 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { ensureUnixSpawnHelperExecutable } from "./spawn-helper-permissions.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = resolve(here, "..");
@@ -65,10 +66,17 @@ cpSync(sidecar, join(out, "agent-runtime/sidecar.js"));
 writeFileSync(join(out, "agent-runtime/package.json"), '{ "type": "module" }\n');
 cpSync(hostCore, join(out, `bin/pi-desktop-host-core${exe}`));
 chmodSync(join(out, `bin/pi-desktop-host-core${exe}`), 0o755);
+let ptyPackageDir;
 try {
-  const pty = dirname(require.resolve("node-pty/package.json"));
-  cpSync(pty, join(out, "node_modules/node-pty"), { recursive: true, dereference: true });
+  ptyPackageDir = dirname(require.resolve("node-pty/package.json"));
 } catch {
+  ptyPackageDir = null;
+}
+if (ptyPackageDir) {
+  const bundledPty = join(out, "node_modules/node-pty");
+  cpSync(ptyPackageDir, bundledPty, { recursive: true, dereference: true });
+  ensureUnixSpawnHelperExecutable(bundledPty, platform, arch);
+} else {
   console.warn("node-pty not installed; the bundle ships without terminals");
 }
 writeFileSync(join(out, "package.json"), `${JSON.stringify({ name: "pi-host", version, type: "module", bin: { "pi-host": "./pi-host.js" } }, null, 2)}\n`);

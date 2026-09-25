@@ -12980,7 +12980,7 @@ browser milestones are scheduled.
   fail before turn admission on both paths; no local client path reaches the
   Host; `project/list` returns labels and ids without absolute paths;
   `session/create` binds the project by id; and the existing
-  `PATH_OUTSIDE_WORKSPACE` boundary remains authoritative.
+  `REMOTE_PATH_FORBIDDEN` boundary remains authoritative.
 - **Specs linked**: `03-runtime/19-remote-agent-control-protocol.md` §§5.7,
   7.7, and 10, `05-security/02-remote-control-security.md` §6,
   `03-runtime/03-tools-and-permissions.md`
@@ -13056,7 +13056,7 @@ browser milestones are scheduled.
   diff come from the remote session root, Review keeps recorded assistant
   changes separate, and refreshing after a remote edit shows the new diff; a
   path outside the root returns
-  `PATH_OUTSIDE_WORKSPACE`; the desktop MCP tool executes on the desktop and
+  `REMOTE_PATH_FORBIDDEN`; the desktop MCP tool executes on the desktop and
   its result reaches the remote transcript, while the second call fails with
   `TOOL_FAILED` and the turn continues; replacing an advertisement during an
   in-flight turn invalidates its old snapshot entry and never routes that call
@@ -13080,21 +13080,30 @@ browser milestones are scheduled.
   `06-delivery/07-remote-control-rollout.md` §2
 - **Acceptance**: E (tools & permissions), Security, Recovery, Quality
 - **Milestone**: Post-MVP (rollout R2)
-- **Status**: Draft; RACP and Host Runtime relay contract/user-path coverage is
-  in `packages/racp/src/tool-relay.test.ts`,
+- **Status**: Draft; `scripts/e2e-remote-host.mjs` exercises the live `pi-host`
+  and host-core path for pairing, projects, sessions, workspace boundaries,
+  provider-backed turns, and remote PTY output/re-attachment. It bypasses the
+  Desktop SSH bootstrap and renderer. The `remote-host-e2e` CI job also runs
+  `scripts/e2e-remote-ssh-bootstrap.mjs`: an isolated Linux `sshd` fixture
+  exercises the production system SSH transport, checksum-verified installation
+  from a locally built release bundle, port forwarding, pairing, project and
+  session creation, and workspace reads. It still bypasses Desktop Settings
+  and the renderer and does not complete this acceptance.
+  RACP and Host Runtime relay contract/user-path coverage is in
+  `packages/racp/src/tool-relay.test.ts`,
   `packages/host-runtime/src/remote-tool-relay.test.ts`, and
   `packages/host-runtime/src/runtime-service.test.ts`. The Desktop global User
   MCP adapter has targeted coverage in
   `apps/desktop/test/remote-tool-relay.test.mjs` and
-  `apps/desktop/test/user-mcp.test.mjs`; the remote harness with a Linux SSH
-  target is still required for this end-to-end acceptance.
+  `apps/desktop/test/user-mcp.test.mjs`. Full Linux SSH Desktop acceptance is
+  still required for this end-to-end scenario.
 
 The permission-ceiling acceptance above also needs an isolated Host policy
 fixture with `applyCeilingToPairedDevices: true`, a seeded `accept-edits`
 subagent, and a deterministic model response that invokes its file-write path.
-The current `pnpm test:e2e:remote-host` harness does not configure that policy,
+The current Host and SSH bootstrap harnesses do not configure that policy,
 seed subagents, or exercise approval/queue restart; this acceptance remains
-unverified until the desktop SSH harness supports those fixtures.
+unverified until those fixtures are added to the full Desktop SSH scenario.
 
 #### E2E-REMOTE-HOST-ssh-password-authentication
 

@@ -12,11 +12,13 @@
  * model as a Bearer header, with the key never echoed by the CLI or the Host.
  *
  * Prereqs: `pnpm build:js`, `pnpm -C packages/agent-runtime bundle`, and a
- * host-core binary (target/debug or PI_DESKTOP_HOST_BIN).
+ * host-core binary (target/debug or PI_DESKTOP_HOST_BIN). The runner creates
+ * a temporary release bundle by default; PI_DESKTOP_HOST_BUNDLE_DIR can point
+ * it at a prebuilt bundle instead.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,15 +28,40 @@ import { assert, errorCodeOf, shortJson } from "./e2e/assert.mjs";
 import { resolveHostBinary } from "./e2e/host.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const cli = join(root, "apps/pi-host/dist/cli.js");
-const sidecar = join(root, "packages/agent-runtime/dist-bundle/sidecar.js");
+const hostBin = resolveHostBinary();
+const configuredBundleDir = process.env.PI_DESKTOP_HOST_BUNDLE_DIR;
+const ownsBundle = !configuredBundleDir;
+const bundleDir = configuredBundleDir ?? mkdtempSync(join(tmpdir(), "pi-host-e2e-bundle-"));
+if (ownsBundle) {
+  const bundleResult = spawnSync(
+    process.execPath,
+    [
+      join(root, "apps/pi-host/scripts/bundle.mjs"),
+      "--host-core",
+      hostBin,
+      "--platform",
+      process.platform,
+      "--arch",
+      process.arch,
+      "--out",
+      bundleDir,
+    ],
+    { cwd: root, stdio: "inherit" },
+  );
+  if (bundleResult.error || bundleResult.status !== 0) {
+    rmSync(bundleDir, { recursive: true, force: true });
+    throw bundleResult.error ?? new Error(`pi-host bundle failed with exit code ${bundleResult.status}`);
+  }
+}
+const cli = join(bundleDir, "pi-host.js");
+const sidecar = join(bundleDir, "agent-runtime/sidecar.js");
 for (const [label, path] of [["pi-host cli", cli], ["sidecar bundle", sidecar]]) {
   if (!existsSync(path)) {
     console.error(`${label} missing: ${path}`);
+    if (ownsBundle) rmSync(bundleDir, { recursive: true, force: true });
     process.exit(1);
   }
 }
-const hostBin = resolveHostBinary();
 const dataDir = mkdtempSync(join(tmpdir(), "pi-host-e2e-"));
 const project = join(dataDir, "project");
 mkdirSync(project, { recursive: true });
@@ -129,6 +156,50 @@ function client(url, token, options = {}) {
   return { client: instance, events };
 }
 
+function droppingTerminalOpenResponseTransport(url, token, openRequestId) {
+  const buildTransport = wsClientTransport({ url, token });
+  return async () => {
+    const transport = await buildTransport();
+    let droppedRequestId = null;
+    return {
+      send(frame) {
+        try {
+          const message = JSON.parse(frame);
+          if (message.method === "terminal/open" && message.params?.openRequestId === openRequestId) {
+            droppedRequestId = message.id;
+          }
+        } catch {
+          // Forward malformed frames so the protocol server remains authoritative.
+        }
+        transport.send(frame);
+      },
+      close(code, reason) {
+        transport.close(code, reason);
+      },
+      onMessage(handler) {
+        transport.onMessage((frame) => {
+          try {
+            const message = JSON.parse(frame);
+            if (droppedRequestId !== null && message.id === droppedRequestId && message.method === undefined) {
+              droppedRequestId = null;
+              return;
+            }
+          } catch {
+            // Deliver non-JSON frames to the client for protocol validation.
+          }
+          handler(frame);
+        });
+      },
+      onClose(handler) {
+        transport.onClose(handler);
+      },
+      onError(handler) {
+        transport.onError(handler);
+      },
+    };
+  };
+}
+
 const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 
 // Poll the live event buffer from `fromIndex` until a match arrives or it times
@@ -218,6 +289,100 @@ try {
   record("workspace-read-refuses-escape", escape === "REMOTE_PATH_FORBIDDEN", String(escape));
   const diff = await owner.client.request("workspace/diff", { sessionId: created.session.id });
   record("workspace-diff-runs-on-host", typeof diff.repo === "boolean");
+
+  // Remote terminals belong to the Host and are scoped to the session root.
+  // Drop the successful open response, then retry its id from another
+  // connection to recover the PTY without creating a duplicate.
+  const openRequestId = "remote-host-e2e-terminal-open";
+  const lostOpen = client(url, paired.deviceToken, {
+    transport: droppingTerminalOpenResponseTransport(url, paired.deviceToken, openRequestId),
+    requestTimeoutMs: 300,
+  });
+  await lostOpen.client.connect();
+  await lostOpen.client.request("events/subscribe", { scope: "session", sessionId: created.session.id });
+  let lostOpenError = null;
+  try {
+    await lostOpen.client.request("terminal/open", {
+      sessionId: created.session.id,
+      cols: 100,
+      rows: 30,
+      openRequestId,
+    });
+  } catch (error) {
+    lostOpenError = errorCodeOf(error);
+  }
+  const openEventSeen = await waitForEvent(
+    lostOpen.events,
+    0,
+    (event) => event.kind === "terminal.changed" && event.payload?.state === "open",
+    5_000,
+  );
+  const originalTerminalId = lostOpen.events.find(
+    (event) => event.kind === "terminal.changed" && event.payload?.state === "open",
+  )?.payload?.terminalId;
+  record(
+    "remote-terminal-open-response-can-be-lost",
+    lostOpenError === "TIMEOUT" && openEventSeen && typeof originalTerminalId === "string",
+    String(lostOpenError),
+  );
+  if (typeof originalTerminalId !== "string") throw new Error("terminal did not open before its response was dropped");
+
+  const replacement = client(url, paired.deviceToken);
+  await replacement.client.connect();
+  await replacement.client.request("events/subscribe", { scope: "session", sessionId: created.session.id });
+  const terminal = await replacement.client.request("terminal/open", {
+    sessionId: created.session.id,
+    openRequestId,
+  });
+  record("remote-terminal-open-request-reattaches", terminal.terminalId === originalTerminalId);
+  const sessionRoot = realpathSync(project);
+  const terminalOutputStart = replacement.events.length;
+  await replacement.client.request("terminal/input", {
+    terminalId: originalTerminalId,
+    data: Buffer.from("pwd\n").toString("base64"),
+  });
+  let terminalOutput = "";
+  const terminalOutputReady = await waitForEvent(replacement.events, terminalOutputStart, () => {
+    terminalOutput = replacement.events
+      .slice(terminalOutputStart)
+      .filter((event) => event.kind === "terminal.output" && event.payload?.terminalId === originalTerminalId)
+      .map((event) => Buffer.from(event.payload.data, "base64").toString("utf8"))
+      .join("");
+    return terminalOutput.includes(project) || terminalOutput.includes(sessionRoot);
+  });
+  record(
+    "remote-terminal-runs-in-session-root",
+    terminalOutputReady && (terminalOutput.includes(project) || terminalOutput.includes(sessionRoot)),
+    terminalOutputReady ? "Host PTY reported the session root" : "terminal output timed out",
+  );
+
+  const terminalResumeClient = client(url, paired.deviceToken);
+  await terminalResumeClient.client.connect();
+  await terminalResumeClient.client.request("events/subscribe", { scope: "session", sessionId: created.session.id });
+  const reattached = await terminalResumeClient.client.request("terminal/open", {
+    sessionId: created.session.id,
+    openRequestId,
+  });
+  record(
+    "remote-terminal-output-replays",
+    reattached.terminalId === originalTerminalId &&
+      (Buffer.from(reattached.replay, "base64").toString("utf8").includes(project) ||
+        Buffer.from(reattached.replay, "base64").toString("utf8").includes(sessionRoot)),
+  );
+  let staleInput = null;
+  try {
+    await replacement.client.request("terminal/input", {
+      terminalId: originalTerminalId,
+      data: Buffer.from("echo stale\n").toString("base64"),
+    });
+  } catch (error) {
+    staleInput = errorCodeOf(error);
+  }
+  record("remote-terminal-old-connection-is-detached", staleInput === "NOT_FOUND", String(staleInput));
+  await terminalResumeClient.client.request("terminal/close", { terminalId: originalTerminalId });
+  await lostOpen.client.close();
+  await replacement.client.close();
+  await terminalResumeClient.client.close();
 
   // No provider is configured: the turn must fail closed with a typed code and leave the session idle.
   let turnError = null;
@@ -346,6 +511,7 @@ try {
   await stopHost();
   modelServer.close();
   rmSync(dataDir, { recursive: true, force: true });
+  if (ownsBundle) rmSync(bundleDir, { recursive: true, force: true });
 }
 
 const failed = results.filter((result) => !result.ok);

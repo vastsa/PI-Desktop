@@ -577,7 +577,7 @@ part of the contract from v1.1 and are advertised through the
 `remoteHostProfile` capability. Each one keeps its local rule: configuration
 and fork are idle-only, deletion is owner-only, and every workspace read is
 resolved against the Session's durable root with the Host's ignore rules and
-`PATH_OUTSIDE_WORKSPACE` boundary. Terminals run on the Host machine with the
+`REMOTE_PATH_FORBIDDEN` boundary. Terminals run on the Host machine with the
 session root as working directory and stream through `terminal.output`. In the
 initial remote-host release, every terminal operation is owner-only; the SSH
 deployment additionally requires the paired owner device. A Host without a
