@@ -41,6 +41,42 @@ const bridge = {
 
 contextBridge.exposeInMainWorld("pluginBridge", bridge);
 
+const COMPOSER_WORKSPACE_FILE_MIME = "application/x-pi-desktop-workspace-file";
+let composerFileDrag: string | null = null;
+
+// A docked plugin view is a separate WebContentsView, so Chromium does not
+// carry its HTML drop into the host renderer. Read the private payload while
+// the event bubbles, after the plugin has populated it, then forward the final
+// screen position so the host renderer can accept only a Composer drop.
+window.addEventListener(
+  "dragstart",
+  (event) => {
+    composerFileDrag = null;
+    if (!event.isTrusted) return;
+    const data = event.dataTransfer;
+    if (!data?.types.includes(COMPOSER_WORKSPACE_FILE_MIME)) return;
+    const raw = data.getData(COMPOSER_WORKSPACE_FILE_MIME);
+    if (raw && raw.length <= 4_096) {
+      composerFileDrag = raw;
+    }
+  },
+);
+
+window.addEventListener(
+  "dragend",
+  (event) => {
+    const data = composerFileDrag;
+    composerFileDrag = null;
+    if (!event.isTrusted || !data) return;
+    ipcRenderer.send("pi-plugin-panel-composer-file-drop", {
+      data,
+      screenX: event.screenX,
+      screenY: event.screenY,
+    });
+  },
+  true,
+);
+
 // Record the gesture before page code handles it. The host consumes one of
 // these short-lived paths when the panel asks for fs.registerDropped.
 window.addEventListener(

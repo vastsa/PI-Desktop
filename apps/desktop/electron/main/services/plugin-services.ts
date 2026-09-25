@@ -124,6 +124,15 @@ export function createPluginServices({
         data: { channel, error: String(error) },
       });
     },
+    ({ data, x, y }) => {
+      const bounds = getMainWindow()?.getContentBounds();
+      if (!bounds) return;
+      sendToRenderer(IPC.event.pluginComposerFileDrop, {
+        data,
+        clientX: x - bounds.x,
+        clientY: y - bounds.y,
+      });
+    },
   );
   const callPluginSessionHost = async (
     method: string,

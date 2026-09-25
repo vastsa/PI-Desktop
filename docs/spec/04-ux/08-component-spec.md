@@ -2802,6 +2802,11 @@ reasoning-level control.
   order. Folders are not traversed or copied; insert the complete native path
   at the caret as the literal `@<path>/` directory form. Mixed drops preserve
   item order and restore focus/caret after file materialization.
+- Work-panel file drop: regular file rows in the bundled File Manager plugin
+  tree are draggable. Dropping one on the Composer inserts the same removable
+  file chip at the caret using its workspace-relative path. The file stays in
+  place and is not copied into session scratch; directory rows remain
+  navigation-only.
 - Send clears the box before the host round trip (D287): the draft leaves the
   textarea in the frame Enter is pressed, so a slow host cannot make a send look
   ignored or let a second Enter queue the same prompt twice. If the store

@@ -1,4 +1,10 @@
-import { BrowserWindow, ipcMain, Menu, session, systemPreferences } from "electron";
+import {
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  session,
+  systemPreferences,
+} from "electron";
 import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
@@ -176,6 +182,7 @@ export class PluginPanelHost {
   private senderResolvers: Array<(senderId: number) => string | null> = [];
   /** Observer for failures of the fire-and-forget legacy sync bridge. */
   private onBridgeError?: (pluginId: string, channel: string, error: unknown) => void;
+  private onComposerFileDrop?: (payload: { data: string; x: number; y: number }) => void;
   /**
    * Locale per floating-widget web contents. Presence in this map is also what
    * makes a window a widget for `showWidgetMenu`, so a panel never gets a
@@ -187,10 +194,12 @@ export class PluginPanelHost {
     bridge: BridgeHandler,
     onBlockedRequest?: PluginPanelBlockedRequest,
     onBridgeError?: (pluginId: string, channel: string, error: unknown) => void,
+    onComposerFileDrop?: (payload: { data: string; x: number; y: number }) => void,
   ) {
     this.bridge = bridge;
     this.onBlockedRequest = onBlockedRequest;
     this.onBridgeError = onBridgeError;
+    this.onComposerFileDrop = onComposerFileDrop;
     this.ensureHandlers();
   }
 
@@ -228,6 +237,20 @@ export class PluginPanelHost {
         event.sender.id,
         rawPaths.filter((value): value is string => typeof value === "string"),
       );
+    });
+
+    ipcMain.on("pi-plugin-panel-composer-file-drop", (event, rawDrop: unknown) => {
+      const senderId = event.sender.id;
+      if (!this.pluginIdForSender(senderId) || !rawDrop || typeof rawDrop !== "object") return;
+      const { data, screenX, screenY } = rawDrop as {
+        data?: unknown;
+        screenX?: unknown;
+        screenY?: unknown;
+      };
+      if (typeof data !== "string" || !data || data.length > 4_096) return;
+      if (typeof screenX !== "number" || !Number.isFinite(screenX)) return;
+      if (typeof screenY !== "number" || !Number.isFinite(screenY)) return;
+      this.onComposerFileDrop?.({ data, x: screenX, y: screenY });
     });
 
     // Legacy sync bridge used by older sample panels.

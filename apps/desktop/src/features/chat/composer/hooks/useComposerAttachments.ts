@@ -1,4 +1,6 @@
 import {
+  useCallback,
+  useEffect,
   useState,
   useRef,
   type ClipboardEvent,
@@ -14,8 +16,12 @@ import {
 } from "../../../../lib/composer-draft-cache";
 import {
   composerDropItems,
+  composerWorkspaceFileDrop,
+  createComposerWorkspaceDropDeduper,
   hasComposerFileDrag,
+  parseComposerWorkspaceFileDrop,
   type ComposerDropItem,
+  type ComposerWorkspaceFileDrop,
 } from "../../../../lib/composer-drop";
 import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import {
@@ -81,12 +87,66 @@ export function useComposerAttachments({
 }: UseComposerAttachmentsOptions): ComposerAttachmentsController {
   const [pasting, setPasting] = useState(false);
   const pickerInFlight = useRef(false);
+  const acceptWorkspaceDrop = useRef(createComposerWorkspaceDropDeduper());
   const [dropTargetActive, setDropTargetActive] = useState(false);
   const [droppedDirectories, setDroppedDirectories] = useState<ComposerDropItem[]>([]);
   const isInputBlocked = inputBlocked || pasting;
 
   const snapshotReferences = (sourceSessionId: string) =>
     draft.snapshotReferences(sourceSessionId);
+
+  const attachWorkspaceFile = useCallback(
+    (workspaceFile: ComposerWorkspaceFileDrop) => {
+      if (!acceptWorkspaceDrop.current(workspaceFile)) return;
+      const editor = draft.ref.current;
+      const sourceValue = editor ? readEditorValue(editor) : draft.valueRef.current;
+      const { start: selectionStart, end: selectionEnd } = editor
+        ? editorSelectionRange(editor)
+        : { start: sourceValue.length, end: sourceValue.length };
+      const token = nextChipToken();
+      const sessionId = activeSessionId ?? "";
+      const reference = createFileReference(workspaceFile.path, workspaceFile.name, sessionId, {
+        token,
+      });
+      const previousReferences = draft.snapshotReferences(sessionId);
+      const nextText =
+        sourceValue.slice(0, selectionStart) + token + sourceValue.slice(selectionEnd);
+      const nextReferences = [
+        ...previousReferences.map((item) =>
+          createFileReference(item.path, item.name, sessionId, item),
+        ),
+        reference,
+      ];
+      writeComposerDraft(draftKey, {
+        text: nextText,
+        fileReferences: [...previousReferences, toDraftReference(reference)],
+      });
+      draft.applyEditorDraft(nextText, nextReferences, selectionStart + token.length);
+      showToast(t, "chat.filesAttached", { count: 1 }, "success");
+    },
+    [activeSessionId, draft, draftKey, t],
+  );
+
+  useEffect(
+    () =>
+      api.onPluginComposerFileDrop(({ data, clientX, clientY }) => {
+        if (isInputBlocked || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return;
+        const shell = draft.ref.current?.closest<HTMLElement>(".composer-shell");
+        if (!shell) return;
+        const bounds = shell.getBoundingClientRect();
+        if (
+          clientX < bounds.left ||
+          clientX > bounds.right ||
+          clientY < bounds.top ||
+          clientY > bounds.bottom
+        ) {
+          return;
+        }
+        const workspaceFile = parseComposerWorkspaceFileDrop(data);
+        if (workspaceFile) attachWorkspaceFile(workspaceFile);
+      }),
+    [attachWorkspaceFile, draft.ref, isInputBlocked],
+  );
 
   const pickAndAttach = async () => {
     // The ref closes the gap before React re-renders the disabled button.
@@ -401,6 +461,11 @@ export function useComposerAttachments({
     event.preventDefault();
     setDropTargetActive(false);
     if (isInputBlocked) return;
+    const workspaceFile = composerWorkspaceFileDrop(event.dataTransfer);
+    if (workspaceFile) {
+      attachWorkspaceFile(workspaceFile);
+      return;
+    }
     const items = composerDropItems(event.dataTransfer, api.getDroppedFilePath);
     const directories = items.filter((item) => item.isDirectory);
     const files = items.filter((item) => !item.isDirectory);

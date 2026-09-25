@@ -1546,6 +1546,14 @@ export const api = {
       ),
     );
   },
+  onPluginComposerFileDrop: (
+    listener: (event: { data: string; clientX: number; clientY: number }) => void,
+  ) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.pluginComposerFileDrop, (payload) =>
+      listener(payload as { data: string; clientX: number; clientY: number }),
+    );
+  },
   onNotificationActivated: (
     listener: (event: { id: string; sessionId: string }) => void,
   ) => {

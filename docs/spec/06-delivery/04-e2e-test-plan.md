@@ -7208,14 +7208,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 #### E2E-102i: Composer accepts native file and folder drops
 
-- **Preconditions**: The app is running with an Agent session and a visible
-  Composer. The OS file manager exposes one regular file, one folder, and a
-  mixed multi-selection; place the caret in the middle of a non-empty draft.
+- **Preconditions**: The app is running with an Agent session, a visible
+  Composer, and a regular file visible in the bundled work-panel File Manager.
+  The OS file manager exposes one regular file, one folder, and a mixed
+  multi-selection; place the caret in the middle of a non-empty draft.
 - **Steps**: 1) Drag the regular file over the Composer and observe the target
   outline, then drop it. 2) Drag the folder into the same draft. 3) Repeat with
   a mixed file/folder selection while the caret is between existing text. 4)
   Inspect the draft, remove the file chip, and send the prompt. 5) Inspect the
-  saved scratch file and the persisted user message.
+  saved scratch file and the persisted user message. 6) Drag the visible file
+  row from the work-panel File Manager tree onto the Composer.
 - **Expected**: File-system drag-over prevents the browser default and marks
   the whole Composer shell without layout movement. Regular files are saved
   through the existing bounded session-scratch bridge and appear as removable
@@ -7224,7 +7226,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   Mixed drops preserve OS order, retain surrounding text, and restore the
   caret after asynchronous file saving. Sending keeps the file's existing
   attachment metadata/path behavior and the folder path as prompt text; no
-  workspace files are created.
+  workspace files are created. The work-panel file becomes the same removable
+  chip at the caret using its workspace-relative path, without copying the
+  file into session scratch; directory rows remain navigation-only.
 - **Specs linked**: `04-ux/08-component-spec.md` §11.5–11.8,
   `04-ux/09-interaction-patterns.md` §8.2/§8a.2,
   `03-runtime/01-ipc-protocol.md` §13c, ADR 0059, ADR 0070, ADR 0222
