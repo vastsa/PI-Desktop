@@ -146,10 +146,10 @@ export function VoiceSettingsSection({
             values={voice.languages}
             onChange={(langs) => save({ languages: langs })}
             options={[
-              { value: "zh", label: "中文" },
-              { value: "en", label: "English" },
-              { value: "ja", label: "日本語" },
-              { value: "ko", label: "한국어" },
+              { value: "zh", label: t("settings.voiceLanguageChinese") },
+              { value: "en", label: t("settings.voiceLanguageEnglish") },
+              { value: "ja", label: t("settings.voiceLanguageJapanese") },
+              { value: "ko", label: t("settings.voiceLanguageKorean") },
             ]}
             label={t("settings.voiceLanguages")}
             disabled={!voice.enabled}
@@ -199,7 +199,7 @@ export function VoiceSettingsSection({
                 {formatSize(m.info.sizeBytes)}
                 {m.info.recommended ? (
                   <Badge tone="success" style={{ marginLeft: 6 }}>
-                    Recommended
+                    {t("settings.voiceRecommended")}
                   </Badge>
                 ) : null}
               </>
