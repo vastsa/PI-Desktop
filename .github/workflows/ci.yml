@@ -75,3 +75,64 @@ jobs:
 
       - name: Test
         run: cargo test -p host-core --locked
+
+  remote-host-e2e:
+    name: Remote Host integration E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace JavaScript
+        run: pnpm build:js
+
+      - name: Bundle the agent sidecar
+        run: pnpm -C packages/agent-runtime bundle
+
+      - name: Build host-core
+        run: cargo build -p host-core --locked
+
+      - name: Exercise the packaged remote Host
+        env:
+          PI_DESKTOP_HOST_BIN: target/debug/pi-desktop-host-core
+        run: pnpm test:e2e:remote-host
+
+      - name: Exercise remote permission ceiling and queued-turn recovery
+        env:
+          PI_DESKTOP_HOST_BIN: target/debug/pi-desktop-host-core
+        run: pnpm test:e2e:remote-permission-ceiling
+
+      - name: Install virtual display for Electron
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb
+
+      - name: Exercise paired remote development in Desktop
+        env:
+          PI_DESKTOP_HOST_BIN: target/debug/pi-desktop-host-core
+        run: xvfb-run -a pnpm test:e2e:remote-desktop
+
+      - name: Install OpenSSH server for the local fixture
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes openssh-server
+
+      - name: Exercise SSH bootstrap and pairing
+        env:
+          PI_DESKTOP_E2E_SSHD_SUDO: "1"
+          PI_DESKTOP_HOST_BIN: target/debug/pi-desktop-host-core
+        run: node scripts/e2e-remote-ssh-bootstrap.mjs

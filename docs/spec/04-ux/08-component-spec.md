@@ -1063,13 +1063,13 @@ entirely inside the plugin's isolated page:
 | Closed (default) | Not rendered; startup has no retained tabs. The viewport-fixed toggle or `Cmd/Ctrl + J` reveals the active session's panel context without creating a tab. Inline review cards remain available in the transcript because they are message-scoped and do not require the work panel. |
 | Open | Docked flex row right of the main pane; opened by an artifact, the viewport-fixed toggle, or `Cmd/Ctrl + J` at a committed preferred width of at least 244px (new-profile default 360px), capped by the live three-column budget. The toggle or `Cmd/Ctrl + J` again collapses it, retaining the session context. |
 | Preview (maximize) | MainChat is unmounted and the panel fills the client area beside the sidebar. The mode is transient and restores the prior panel width and sidebar state when left. |
-| Multiple artifacts | The header keeps a horizontally scrollable tab strip. The fixed `+` action creates a new launcher tab; its buttons open Review and all in-scope plugin views without duplicating open resource tabs. |
-| Session switch | The destination session's retained open state, tabs, active tab, and Browser resource replace the previous session's panel context atomically; neither context is deleted |
+| Multiple artifacts | The header keeps a horizontally scrollable tab strip. The fixed `+` action creates a new launcher tab; its buttons open Review, the capability-gated remote Terminal, and all in-scope plugin views without duplicating open resource tabs. |
+| Session switch | The destination session's retained open state, tabs, active tab, and Browser resource replace the previous session's panel context atomically; neither context is deleted. A remote Terminal remains tied to its remote session and is never reused by a local session. |
 | Resizing | The inner left divider follows anchored pointer delta or keyboard input for the panel target; pointer changes are frame-coalesced and committed in the renderer. Escape, pointer cancellation, or lost capture restores the prior panel width. Native window edges resize only the fixed application window. |
 | No workspace | Each tab renders its own "open a project" empty state |
 | Open with no resource | `Cmd/Ctrl + J` reveals the panel without creating a tab, so the body renders the New launcher. Clicking `+` creates an explicit, closable New tab with the same launcher rows. Activating a row from that tab replaces it with or selects the singleton view. Closing the final tab leaves the panel open in the no-resource state. |
 | Constrained work area | The panel is capped by the shared three-column budget inside the existing client area; MainChat never drops below its 450px floor and the expanded sidebar yields at the threshold |
-| New launcher active | The body hosts concise Review and plugin-view buttons. Each row replaces the launcher tab with its destination or activates the existing singleton; the page is independently closeable. |
+| New launcher active | The body hosts concise Review, an eligible remote Terminal, and plugin-view buttons. Each row replaces the launcher tab with its destination or activates the existing singleton; the page is independently closeable. |
 | Plugin view active | The body hosts the plugin's own isolated page as a native `WebContentsView`, positioned from the measured surface rect. It remains visible at its full rect while the divider is being resized or a New launcher tab is created; creating a page never pushes the plugin body down or changes its bounds. It is hidden whenever the tab is inactive, the panel is animating, or a panel-wide blocking overlay is open — the same rule the Browser preview follows, since both composite above renderer content. A view whose plugin is disabled, uninstalled, reloaded, or crashed is destroyed; the tab stays and re-opens the page on the next lifecycle event (ADR 0104) |
 | Plugin out of scope | A view contributed by a plugin that is not active in the current project disappears from the New launcher when the project changes. Unlike contributed themes, which are one global setting and stay unfiltered, a view is scoped work |
 
@@ -1109,9 +1109,33 @@ entirely inside the plugin's isolated page:
   calls the host; the host compares the current content with the recorded
   post-tool hash and
   returns a conflict without overwriting later work.
+- For a remote Host session, Review adds a separate, read-only Git working-tree
+  diff scoped to that remote session. The current diff is not merged into the
+  message-owned history; the two summaries and file rows remain distinct.
+  Recorded workspace edits refresh the diff, and an explicit refresh is
+  available for other workspace changes because RACP has no workspace-diff
+  event. Remote history cards show rollback as unavailable until the protocol
+  exposes a Host-side rollback operation.
+- Terminal boundary and access: the WorkPanel Terminal is remote-only in the
+  first release. It appears only for a remote session whose Host advertises
+  terminal capability, and Host authorization permits only the SSH-paired owner
+  device to open or operate it. The shell runs on `pi-host` as its OS user with
+  the remote session root as its working directory; that directory is not a
+  filesystem sandbox. The UI identifies the Host and session. Local desktop
+  sessions remain terminal-free: Agent Bash output stays in the transcript and
+  is not an interactive local shell; plugins receive no PTY API.
+- Terminal lifecycle: opening a Terminal creates or reattaches a PTY owned by
+  the remote Host and bound to that session and owner. Collapsing the panel,
+  switching sessions, or losing the transport detaches the UI output listener
+  while leaving the remote process available for reattachment. Explicitly
+  closing the Terminal tab closes its PTY. Reattachment displays the Host's
+  bounded output replay; input is never replayed, so reconnect cannot resubmit
+  a command. Host capability and authorization checks remain authoritative;
+  renderer visibility is only a usability gate.
 - Header tabs: the strip is a `tablist` containing one `tab` for every open
-  Review, file, or plugin view. Clicking a tab activates it; the active tab is
-  scrolled into view. Its close button and middle-click close it, selecting the
+  Review, file, plugin view, or eligible remote Terminal. Clicking a tab
+  activates it; the active tab is scrolled into view. Its close button and
+  middle-click close it, selecting the
   right neighbor and then the left. ArrowLeft/ArrowRight/Home/End move between
   tabs and Delete/Backspace closes the focused tab. Pressing and moving a tab
   by 8px starts reordering; dropping on either half of another tab inserts the

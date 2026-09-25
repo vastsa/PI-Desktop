@@ -3,7 +3,8 @@ export type WorkPanelTabKind =
   | "review"
   | "file"
   | "plugin"
-  | "subagent";
+  | "subagent"
+  | "terminal";
 
 export type WorkPanelTab = {
   id: string;
@@ -15,6 +16,8 @@ export type WorkPanelTab = {
   location?: string;
   /** Stored attachment mimeType for extension-less `attachments/<sha256>` images. */
   mimeType?: string;
+  /** Host-owned PTY id, remembered so explicitly closing the tab closes it. */
+  terminalId?: string;
 };
 
 export type WorkPanelTabsState = {
@@ -26,6 +29,25 @@ export type WorkPanelContext = WorkPanelTabsState & {
   open: boolean;
   fileRequest: { path: string; seq: number; mimeType?: string } | null;
 };
+
+/** Attach an opened remote PTY to the tab that requested it. A null result
+ * means the tab was closed before the asynchronous open completed. */
+export function attachRemoteTerminalToTab(
+  context: WorkPanelContext,
+  openRequestId: string,
+  terminalId: string,
+): WorkPanelContext | null {
+  const tabIndex = context.tabs.findIndex(
+    (tab) => tab.kind === "terminal" && tab.resource === openRequestId,
+  );
+  if (tabIndex < 0) return null;
+  const tab = context.tabs[tabIndex];
+  if (!tab) return null;
+  if (tab.terminalId === terminalId) return context;
+  const tabs = [...context.tabs];
+  tabs[tabIndex] = { ...tab, terminalId };
+  return { ...context, tabs };
+}
 
 let newWorkPanelTabSequence = 0;
 
@@ -112,6 +134,16 @@ export function subagentWorkPanelTab(
     kind: "subagent",
     resource: delegationId,
     ...(agentName ? { label: agentName } : {}),
+  };
+}
+
+/** A remote terminal tab keeps one stable retry key for its PTY lifetime. */
+export function remoteTerminalWorkPanelTab(): WorkPanelTab {
+  const requestId = globalThis.crypto.randomUUID();
+  return {
+    id: `terminal:${requestId}`,
+    kind: "terminal",
+    resource: requestId,
   };
 }
 
@@ -205,7 +237,7 @@ export function isKnownWorkPanelTab(tab: WorkPanelTab): boolean {
     Boolean(tab) &&
     (tab.kind === "new" || tab.kind === "review" ||
       tab.kind === "file" || tab.kind === "plugin" ||
-      tab.kind === "subagent")
+      tab.kind === "subagent" || tab.kind === "terminal")
   );
 }
 

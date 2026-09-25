@@ -1,7 +1,7 @@
 # 远程 Agent 控制安全规格
 
 - 状态：目标规格，属于 MVP 之后
-- 决策：D373 / ADR 0205，经 D374 与 D375 修订
+- 决策：D373 / ADR 0205，经 D374、D375 与 ADR 0309 修订
 - 英文源规格：[英文源规格](/spec/05-security/02-remote-control-security)
 
 ## 1. 安全目标
@@ -60,8 +60,14 @@ Releases 下载与桌面同版本、对应远端平台的 `pi-host` 包，校验
 安装到用户主目录；桌面自身从不上传可执行字节。首版无法引导没有 GitHub 出网能力的
 机器。
 在 Host 上撤销设备 token 或在桌面移除该 Host 即结束配对，重新配对需要重新
-经 SSH 引导。远端 Host 的 provider 配置由引导步骤经 SSH 通道写入为 Host 本地
-配置，绝不经过 RACP。
+经 SSH 引导。远端 Host 的 provider 配置经 SSH 通道写入为 Host 本地配置，绝不
+经过 RACP（D629、ADR 0310）。桌面在 Host 上运行 `pi-host provider-import`，
+把 provider 载荷（含 API 密钥）从该进程的 stdin 送入，因此密钥绝不出现在
+`ssh` 参数、日志、远端文件或 RACP 帧里。CLI 再经一个仅属主的 Unix admin
+socket（`<dataDir>/pi-host/admin.sock`，目录 `0700`、socket `0600`、每连接
+一请求、上限 1 MiB、Windows 禁用）交给正在运行的 Host；不会另起 host-core。
+导入按源 provider id 幂等——创建或更新行、跳过插件所属行、从不删除——且是
+手动动作，绝不自动。CLI 打印的 `PI_HOST_PROVIDERS` 摘要绝不回显密钥。
 
 | Operation | Viewer | Controller | Approver | Owner |
 |---|---:|---:|---:|---:|
@@ -78,7 +84,7 @@ Releases 下载与桌面同版本、对应远端平台的 `pi-host` 包，校验
 | Archive session | no | no | no | yes |
 | Provider secrets | no | no | no | no |
 | Raise the remote permission ceiling | no | no | no | no |
-| Open or use a session terminal | no | policy | policy | yes |
+| Open or use a session terminal | no | no | no | SSH-paired owner only |
 | Advertise relayed tools | no | no | no | yes |
 
 客户端不能通过字段指定 workspaceRoot、permissionMode（Plan/Goal `approve`
@@ -93,6 +99,14 @@ secret 或其他 principal / clientConnectionId；`admission: "queue"` 只能进
 Host 策略允许远程会话授权时出现在 `allowedDecisions` 中。所有工具继续走
 Host 的 workspace、permission、secret 和 approval 边界；不得暴露 `host.proxy`、
 raw IPC 或任意命令执行。
+
+无头 `pi-host` 操作者在进程启动时通过 `--remote-max-permission-mode`、
+`--apply-ceiling-to-paired-devices` 和 `--approval-lifetime-ms` 设置此策略，
+也可使用对应的 `PI_HOST_REMOTE_MAX_PERMISSION_MODE`、
+`PI_HOST_APPLY_CEILING_TO_PAIRED_DEVICES` 和 `PI_HOST_APPROVAL_LIFETIME_MS`
+环境变量。命令行值优先于环境变量；未配置时使用 RACP 默认值（`ask`、
+`false`、1,800,000 毫秒）；无效值会以 `INVALID_ARGUMENT` 令启动失败。生效的策略会在
+`connection/initialize` 中公布，不能通过 RACP 修改；更改策略需要重启 `pi-host`。
 
 ## 4. 网络、附件和多租户
 
@@ -118,6 +132,7 @@ SSRF 都要在边界处校验。附件使用大小、hash、MIME 和过期时间
 | In-flight attachment uploads per principal | 4 |
 | Event send queue | 4 MiB or 1,000 durable events |
 | Open terminals per Session | 2 |
+| Terminal open-request dedupe entries per Host | 1,024 |
 
 ## 5. 审计、撤销和验收
 
@@ -126,11 +141,38 @@ SSRF 都要在边界处校验。附件使用大小、hash、MIME 和过期时间
 决定生效。远程会话的目录包含远端 Host 的工具以及配对桌面通过中继公布的工具，即用户配置的
 MCP 服务器和不需要会话工作区的插件工具；中继工具在桌面自身的插件权限与确认规则下
 执行，绝不在 Host 运行、绝不针对远程工作区，Host 的权限决定先于中继请求，Host 只传
-Agent 的参数不传 secret，中继连接丢失则工具失败而回合继续。会话终端是以 `pi-host`
-用户身份在 Host 机器上运行的 shell，工作目录为会话根，只有 SSH 配对的 owner 设备或
-持有显式 `terminal` scope 的主体可以打开。provider secret 在任何方向都不经过 RACP。审批寿命是 Host 策略：本地默认仍是 120 秒后拒绝，有远程订阅者接入时默认
-30 分钟（D375），Host 可在上限内调整，被阻塞的工具在本地或远程任一决定先到之前
-一直等待，断线不会延长它。
+Agent 的参数不传 secret，中继连接丢失则工具失败而回合继续。provider secret 在任何方向都不经过 RACP。
+审批寿命是 Host 策略：本地默认仍是 120 秒后拒绝，有远程订阅者接入时默认 30 分钟（D375），
+Host 可在上限内调整，被阻塞的工具在本地或远程任一决定先到之前一直等待，断线不会延长它。
+
+中继只接受 owner 公布的 `plugin_` 或 `mcp_` 工具，并要求来源显式声明
+`workspaceFree: true`。这只是 owner 侧来源断言；Host 校验字段、角色、schema、有界限制和
+Host 权限，但不会独立验证远端来源。桌面适配器必须从可信来源注册表得出该断言并失败关闭；
+初版只允许 `toolsForProject(null)` 返回的全局 User MCP，插件工具默认不公布。每个会话目录
+最多 64 个工具和 512 KiB；描述符名称、描述、schema、JSON 深度与节点数、参数、结果和执行
+截止时间遵守远程协议中的限制。Host 不接受客户端提供的风险等级或 Plan 安全元数据。回合启动时 Host 固定工具目录快照，并将每项绑定到原连接
+和 revision。公布被替换或连接断开会使对应项失效；Host 不会把旧名称重新解析到另一连接。
+核心、系统和工作区工具不属于中继目录。桌面只有在注册来源元数据证明工具不需要会话工作区
+或文件系统访问时才能公布；元数据缺失或不确定时必须拒绝。当前 Host/RACP 契约测试已有覆盖，
+桌面来源分类器与公布适配器尚未接入。
+
+首个 SSH 远程拓扑中，只有 SSH 配对时签发的 owner 设备凭据可以打开或操作会话终端；
+viewer、controller、approver 和仅持有 pairing token 的连接均被拒绝。Host 将 PTY
+绑定到会话和认证 principal，活动输入/输出 attachment 绑定到一个 RACP connection：
+活动 PTY 的 input、resize、close 必须来自该 connection；reattach 必须匹配原会话和
+principal。本版本不开放 Gateway terminal scope；扩大访问范围需要后续明确的策略决策。
+旧 connection 释放时不得 detach 新 connection 的 attachment。传输断开只会 detach 输出
+sink，PTY 仍在 Host 上运行，同一 principal 可在 Host 存活期间重新连接。
+
+Host 从自己的会话记录解析会话根目录，并将其设为 shell 的初始工作目录。该目录不是文件系统
+sandbox；shell 以 `pi-host` OS 用户身份运行，拥有该账号可访问的完整文件与进程权限。
+用户应把终端命令视为在远端 Host 上、以该账号执行的命令。
+
+客户端为每次逻辑 open 使用稳定的 `openRequestId`，遇到响应结果不明时用相同 ID 重试。
+Host 按 principal、会话和 request ID 去重，并在内存中保留最近最多 1,024 个 open 记录；
+Host 重启会清空去重状态，较旧记录也可能被淘汰。终端输入不会被记录或在断线后自动重放；
+未确认的输入不得自动重试。终端输出是瞬态数据，只能从有界 replay ring 恢复。Host 停止时
+会终止 PTY 并丢弃 replay ring。
 
 审计记录包含 principal、tenant、Host、clientConnectionId、Session、Turn、
 operation、准入模式与 `effectivePermissionMode`、授权决定、epoch 与序号范围，
@@ -144,8 +186,9 @@ profile 与 URL token 拒绝（浏览器里程碑排期后适用）、中继审�
 （Gateway 里程碑排期后适用）、绑定 loopback 的 `pi-host` 只接受出示有效设备
 token 的 loopback 对端且无 TLS 的非 loopback 绑定无法启动、配对 token 单次使用且
 只经 SSH 通道传递、远程会话只暴露远端 Host 的工具目录与配对桌面公布的中继工具、中继工具绝不在 Host
-执行且 Host 审批先于中继请求、会话终端只对 SSH 配对 owner 或持有 `terminal` scope
-的主体开放，以及多租户 harness 就绪后的跨租户隔离。
+执行且 Host 审批先于中继请求、会话终端只对 SSH 配对 owner 开放，PTY 与会话和 principal
+绑定且活动 attachment 只归属于当前 connection，会话根目录仅是工作目录而非 sandbox，
+`openRequestId` 去重、终端输入不自动重放，以及多租户 harness 就绪后的跨租户隔离。
 
 ## 6. 修订记录
 
@@ -163,3 +206,7 @@ D375 同日记录的设计决定把身份源定为 PI 账号服务，`pi-host` �
 
 D385（2026-09-10）撤回第一方身份源：远程控制从结构上就是用户本地的，所有凭据由用户
 自己的 Host 签发，Gateway 只能是用户自托管的中继。
+
+ADR 0309（2026-09-25）修订远程 Host 终端安全契约：首期仅 SSH 配对 owner 可操作终端；
+PTY 绑定会话与 principal，活动输入/输出绑定当前 connection；相同 `openRequestId` 重试
+不会重复创建 shell，终端输入不自动重放；会话根目录只是 shell 工作目录，不是 sandbox。

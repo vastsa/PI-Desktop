@@ -80,7 +80,16 @@ PI-Desktop (Remote Client)              Remote machine
 GitHub Releases 下载与桌面同版本的 `pi-host` 包并校验公布的 SHA-256，启动它并绑定 loopback，经 SSH 通道拿到一次性
 配对 token，转发本地端口后以 header profile 连接 `RACP-WS`，用配对 token 换取
 设备 token 存入桌面安全存储；Host 把该桌面设备记为 `owner`。远端 Host 的
-provider 配置由引导步骤经 SSH 通道写入，是 Host 本地配置，绝不经过 RACP。
+provider 配置经同一 SSH 通道写入，是 Host 本地配置，绝不经过 RACP：桌面在
+Host 上运行 `pi-host provider-import`，把 provider 载荷（含 API 密钥）从该
+进程的 stdin 送入，CLI 再经一个仅属主的 Unix admin socket（目录 `0700`、
+socket `0600`、上限 1 MiB、Windows 禁用）交给正在运行的 Host，密钥不经
+argv、日志、远端文件或 RACP，也不会另起 host-core（D629、ADR 0310）。导入
+是手动动作且按 provider 幂等，从不删除。
+Host 配对后，其会话在侧栏按每台 Host 一个无边框分组出现，用户可从桌面在
+Host 上创建会话（D628、ADR 0308）。远程会话在 Host 默认模型下运行——桌面不
+显示远程模型选择器——且渲染器保持传输无关：主机离线的
+`remote:<hostKey>:<hostSessionId>` id 失败即关闭，而不是打到本地处理器。
 Host 只绑定 loopback；只有绑定地址与对端地址都是 loopback且出示有效设备 token
 时才接受明文 `ws://`，因为 SSH 通道已提供机密性，SSH 登录也已证明对该机器的
 shell 访问。非 loopback 绑定仍要求 TLS 与设备 token。首版无法引导没有 GitHub 出网能力的机器。
@@ -111,11 +120,13 @@ Host 策略 `applyCeilingToPairedDevices`（默认关闭）可重新施加。
 远程会话的归属划分：远端 Host 拥有 transcript 与 SQLite、回合与队列、内置工具
 目录与工作区边界、权限与会话授权、provider secret、该机器 `~/.agents` 下的
 skills 与子代理定义、该 Host 配置的 MCP 服务器和定时任务；桌面保留窗口与
-shell、本地会话、本地应用的设置 UI、插件面板、浏览器预览和通知展示。桌面通过
-`tools/advertise` 公布其用户配置的 MCP 服务器和不需要会话工作区的插件工具，它们
-以中继工具身份出现在远程会话目录中，经 `tool/execute` 服务端请求在桌面自身的插件
-权限下执行；需要工作区或文件系统访问的插件工具被排除，因为它们会作用于桌面的
-文件系统。工作面板的文件列表、文件读取和 diff 使用远端 Host profile 操作；终端
+shell、本地会话、本地应用的设置 UI、插件面板、浏览器预览和通知展示。初版桌面适配器
+只能通过 `tools/advertise` 公布 `toolsForProject(null)` 返回的全局 User MCP；它们以中继
+工具出现在远程会话目录中，经 `tool/execute` 服务端请求在桌面执行。`workspaceFree` 是
+owner 侧来源断言，Host 无法独立检查远端来源；桌面必须依据可信来源元数据推导并失败关闭。
+在可信插件分类器和产品决定完成前不公布插件工具。需要会话工作区或文件系统访问的工具必须
+排除，因为它们会作用于桌面的文件系统，而会话根位于 Host。工作面板的文件列表、文件读取和 diff
+使用远端 Host profile 操作；终端
 通过 `terminal/*` 操作在远端机器运行并带有界回放环；浏览器预览留在本地。
 
 Host 为每个会话生成 `epoch`，并在其中为持久事件分配严格递增的
@@ -125,9 +136,14 @@ Host 为每个会话生成 `epoch`，并在其中为持久事件分配严格递�
 
 ```text
 cursor in current epoch and retained -> replay durable sequence > after
-epoch changed or cursor evicted      -> resync.required + snapshot
-cursor ahead                         -> reject and refresh snapshot
+epoch changed or cursor evicted      -> replayComplete:false，通过 session/attach 获取快照
+cursor ahead                         -> replayComplete:false，通过 session/attach 获取快照
 ```
+
+桌面会保存 attach 游标和 subscribe 返回的 `starting` 游标，即使期间没有收到持久事件。
+传输恢复后，如果保留会话的事件回放不完整，桌面会自动重新 attach；controller attach 会恢复持久队列，桌面会从 Host 快照恢复仍处于待处理状态的工具审批和输入请求。Host 进程重启可能会取消由中断运行时回合持有的请求；跨进程重启恢复的是 Host 持久队列。
+当前快照不包含完整的计划或目标提案内容，因此不会从快照重建这两类审批。
+若该会话当前正在聊天页显示，桌面会就地刷新 transcript，不改变页面或当前选中的会话。
 
 ```text
 Client -> initialize / attach / subscribe

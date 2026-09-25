@@ -106,6 +106,7 @@ export type HostQueueEntry = {
   sessionMessageId?: string;
   attachments?: unknown;
   permissionMode: string;
+  permissionCeiling?: string;
   position: number;
   priority?: number;
   createdAt: string;
@@ -122,6 +123,9 @@ export function fromHostQueueEntry(entry: HostQueueEntry): QueuedTurnRecord {
     ...(entry.sessionMessageId ? { sessionMessageId: entry.sessionMessageId } : {}),
     ...(Array.isArray(entry.attachments) ? { attachments: entry.attachments as QueuedTurnRecord["attachments"] } : {}),
     effectivePermissionMode: permissionMode,
+    ...(entry.permissionCeiling === "ask" || entry.permissionCeiling === "accept-edits" || entry.permissionCeiling === "auto"
+      ? { permissionCeiling: entry.permissionCeiling }
+      : {}),
     ...(entry.idempotencyKey ? { idempotencyKey: entry.idempotencyKey } : {}),
     inputHash: entry.inputHash,
     ...(entry.priority !== undefined ? { priority: entry.priority } : {}),
@@ -149,6 +153,7 @@ export function createHostQueueStore(getHost: () => HostRpc | null): QueueStore 
         ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
         ...(record.attachments ? { attachments: record.attachments } : {}),
         permissionMode: record.effectivePermissionMode,
+        ...(record.permissionCeiling ? { permissionCeiling: record.permissionCeiling } : {}),
       });
     },
     async remove(id) {

@@ -12,15 +12,46 @@ import type { PlanningState } from "./plans.js";
  *   field and it is normalized to `desktop`).
  * - `pi-native`: an imported Pi CLI session, read-mostly.
  * - `remote`: a session that lives on a paired remote `pi-host` and is driven
- *   over RACP-WS. The renderer treats it exactly like a `desktop` session apart
- *   from a display badge; the local/remote split is resolved in Electron main.
+ *   over RACP-WS. The renderer treats it like a `desktop` session apart from a
+ *   display badge and the surfaces its `capabilities` turn off; the
+ *   local/remote split is resolved in Electron main.
  */
 export type SessionSource = "desktop" | "pi-native" | "remote";
 
+/**
+ * What the renderer may offer for one session. The three required flags gate
+ * native sessions; the optional ones gate surfaces a remote host cannot serve.
+ * An absent optional flag means the surface is supported, so a desktop session
+ * — which never sets them — keeps every surface it had.
+ */
 export type SessionCapabilities = {
   canPrompt: boolean;
   canStop: boolean;
   canRefresh: boolean;
+  /** Local file and image attachments on a prompt. */
+  canAttach?: boolean;
+  /** `@` file mentions resolved against the session's workspace. */
+  canMentionFiles?: boolean;
+  /** Per-session provider, model, and thinking-level selection. */
+  canSelectModel?: boolean;
+  /** Steering a running turn instead of queueing behind it. */
+  canSteer?: boolean;
+  /** Editing, regenerating, and switching revisions of past messages. */
+  canEditHistory?: boolean;
+  /** A remote Host-owned PTY can be opened in the WorkPanel. */
+  canTerminal?: boolean;
+};
+
+/**
+ * Where a `remote` session lives. Display data only: the routing key is
+ * already encoded in the session id, and the renderer never dials a host.
+ */
+export type SessionRemoteLocation = {
+  hostKey: string;
+  /** The paired host's label, as the Settings host list shows it. */
+  hostLabel: string;
+  /** The remote project's display label; absent for a session with no project. */
+  workspaceLabel?: string;
 };
 
 export type SessionSummary = {
@@ -31,6 +62,11 @@ export type SessionSummary = {
   capabilities?: SessionCapabilities;
   /** Stable machine-readable reason why a native session cannot be continued. */
   readOnlyReason?: string;
+  /**
+   * Present only for `source: "remote"`. A remote session has no local
+   * `projectPath`; its workspace is a path on the host.
+   */
+  remote?: SessionRemoteLocation;
   title: string;
   /** Number of messages in the current canonical transcript. */
   messageCount: number;

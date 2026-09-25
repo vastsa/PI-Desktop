@@ -134,6 +134,7 @@ export function assistantTurnMenuItems({
   answer,
   selectTarget,
   complete,
+  canRegenerate = true,
   actions,
   onRegenerate,
   onBranch,
@@ -143,6 +144,8 @@ export function assistantTurnMenuItems({
   selectTarget: HTMLElement | null;
   /** Idle, error-free, and backed by an answer message. */
   complete: boolean;
+  /** The session's host can regenerate; a remote host cannot. */
+  canRegenerate?: boolean;
   actions: MenuItemActions;
   onRegenerate: () => void;
   onBranch: () => void;
@@ -163,17 +166,21 @@ export function assistantTurnMenuItems({
     });
   }
   if (complete) {
-    items.push({
-      id: "regenerate",
-      label: t("chat.retry"),
-      icon: regenerateIcon(),
-      separatorBefore: items.length > 0,
-      onSelect: onRegenerate,
-    });
+    const separatorBefore = items.length > 0;
+    if (canRegenerate) {
+      items.push({
+        id: "regenerate",
+        label: t("chat.retry"),
+        icon: regenerateIcon(),
+        separatorBefore,
+        onSelect: onRegenerate,
+      });
+    }
     items.push({
       id: "branch",
       label: t("chat.forkResponse"),
       icon: branchIcon(),
+      ...(canRegenerate ? {} : { separatorBefore }),
       onSelect: onBranch,
     });
   }

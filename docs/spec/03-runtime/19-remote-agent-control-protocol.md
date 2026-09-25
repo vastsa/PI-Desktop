@@ -562,7 +562,7 @@ to this same catalog.
 | `input/respond` | controller | Resolve one live input request |
 | `attachment/create` | controller | Reserve a bounded attachment slot |
 | `attachment/complete` | controller | Verify an uploaded attachment hash and size |
-| `tools/advertise` | owner | Advertise client-executed tools for a session; replaces the connection's previous set; cleared on disconnect |
+| `tools/advertise` | owner | Replace this connection's client-executed tool set for one session; cleared on disconnect |
 | `session/revoke` | owner | Revoke a client or session membership |
 | `session/archive` | owner | Archive an idle session |
 
@@ -577,8 +577,11 @@ part of the contract from v1.1 and are advertised through the
 `remoteHostProfile` capability. Each one keeps its local rule: configuration
 and fork are idle-only, deletion is owner-only, and every workspace read is
 resolved against the Session's durable root with the Host's ignore rules and
-`PATH_OUTSIDE_WORKSPACE` boundary. Terminals run on the Host machine with the
-session root as working directory and stream through `terminal.output`.
+`REMOTE_PATH_FORBIDDEN` boundary. Terminals run on the Host machine with the
+session root as working directory and stream through `terminal.output`. In the
+initial remote-host release, every terminal operation is owner-only; the SSH
+deployment additionally requires the paired owner device. A Host without a
+terminal implementation advertises `terminal: false` and rejects these calls.
 
 | Operation | Role | Behavior |
 |---|---|---|
@@ -590,13 +593,53 @@ session root as working directory and stream through `terminal.output`.
 | `workspace/list` | viewer | List entries under the session root, bounded, honoring the Host ignore rules |
 | `workspace/read` | viewer | Read one bounded file under the session root; images as data URLs |
 | `workspace/diff` | viewer | Return the working-tree diff of the session root |
-| `terminal/open` | controller | Open a pty on the Host with the session root as cwd; returns a terminal id and the bounded replay ring; policy-gated (security §4.1) |
-| `terminal/input` | controller | Write bytes to an open terminal |
-| `terminal/resize` | controller | Resize an open terminal |
-| `terminal/close` | controller | Close a terminal; idempotent |
+| `terminal/open` | owner | Open a pty on the Host with the session root as cwd, or attach to an existing terminal; returns its id, dimensions, and bounded output replay ring |
+| `terminal/input` | owner | Write up to 64 KiB of canonical Base64 encoded UTF-8 bytes to a terminal attached to this connection |
+| `terminal/resize` | owner | Resize a terminal attached to this connection |
+| `terminal/close` | owner | Close a terminal attached to this connection; closing an already-closed terminal is an idempotent no-op for its principal |
 | `connection/pair` | authenticated | Exchange the single-use pairing token presented on the upgrade for a device credential (security §3.4); only valid on a pairing connection (D448) |
 | `project/register` | owner | Register a Host directory as a project: the Host canonicalizes and validates the path and returns the project id (D448) |
 | `project/browse` | owner | List directories under a Host path, bounded, for the remote folder picker (D448) |
+
+#### Terminal ownership and recovery
+
+`terminal/open` creates a terminal when `terminalId` is omitted. The client MAY
+include a stable `openRequestId` for that logical open attempt. The Host scopes
+it to the principal and session: while the idempotency record is retained,
+repeating the request with the same value reattaches to and returns the same
+still-open terminal instead of creating a second pty. The Host keeps this
+idempotency record in a bounded in-memory map; it does not survive a Host
+restart or make a closed terminal reopenable. A client that already has a
+`terminalId` uses `terminal/open` with that id to attach. Attach
+MUST match both the requested session and the terminal's principal; otherwise
+the Host returns `NOT_FOUND`.
+
+An open terminal has one active connection attachment. `terminal/input`,
+`terminal/resize`, and `terminal/close` MUST target a terminal attached to the
+current RACP connection. Closing a connection detaches only terminals that
+connection owns; detaching clears its event sink but leaves the pty running.
+The same principal can attach it on a new connection and take over its output
+stream. The returned bounded replay ring contains terminal output only; the
+Host then streams new output through `terminal.output`. A client MUST NOT
+replay or automatically retry `terminal/input` after a disconnect, because
+input may already have reached the shell before the response was lost.
+
+`terminal/input.data` MUST be canonical padded standard Base64 containing
+valid UTF-8 bytes. The decoded input is limited to 64 KiB per request; an
+empty value is a valid no-op. Within the maximum encoded size for that limit,
+noncanonical Base64 or invalid UTF-8 fails with `INVALID_ARGUMENT`. A value
+longer than that maximum encoded size is rejected as `PAYLOAD_TOO_LARGE`
+before decoding; other input above 64 KiB also fails with
+`PAYLOAD_TOO_LARGE`. The error includes `details.limitBytes` and includes
+`details.actualBytes` when the canonical input length can be determined.
+
+For a live terminal, `terminal/close` also requires the current connection
+attachment. A repeat close after the terminal has already closed is a no-op
+only for the principal that owned it. `terminal.changed` and `terminal.output`
+are connection-local notifications and are not written to the durable session
+event log. `terminal.changed` carries the current session sequence without
+allocating a new one; `terminal.output` is anchored with `afterSequence` and
+is recovered only through the terminal replay ring.
 
 ### 6.3 Deferred operations
 
@@ -927,12 +970,39 @@ requests in its snapshot and every client sees the same resolution.
 
 ### 9.4 Relayed tool execution
 
-A desktop paired as `owner` MAY advertise tools that execute on the desktop
-(`tools/advertise`): its user-configured MCP servers and plugin tools that do
-not require the session workspace. The Host merges them into that session's
-catalog as relayed tools while the advertising connection lives. When the
-Agent calls one, the Host runs its normal permission flow first, then sends
-a server request on the advertising connection:
+A desktop with the `owner` role MAY advertise desktop-executed tools with
+`tools/advertise`. The request replaces only that connection's catalog for
+the named Session; another Session on the same connection is unaffected, and
+all of the connection's catalogs are removed when it disconnects. The Host
+accepts only names in the `plugin_` or `mcp_` namespaces and requires the
+descriptor's `workspaceFree` field to be the literal `true`. This is an
+owner-side source assertion, not independent Host verification. A client MUST
+omit any tool whose workspace safety cannot be established from its source;
+the Host does not infer workspace access from a tool name. The Desktop adapter
+MUST derive this assertion from its source registry and fail closed when that
+metadata is missing or uncertain.
+
+The Host limits the combined Session catalog to 64 tools and 512 KiB of
+encoded descriptors. A descriptor has a name of at most 160 characters, a
+description of at most 4 KiB, an object-root JSON Schema of at most 64 KiB,
+and a timeout from 100 ms through 120 seconds. Schemas are bounded to depth
+16 and 4,096 values and MUST NOT use `$ref`, `$dynamicRef`, or
+`$recursiveRef`. Duplicate names in one advertisement are rejected; names
+advertised by more than one connection are omitted from the Agent catalog.
+Arguments and returned JSON are each limited to 256 KiB. Invalid or oversized
+advertisements fail with `INVALID_ARGUMENT` or `PAYLOAD_TOO_LARGE`.
+
+At turn start, the Host captures the current Session catalog and passes only
+those advertised descriptors to the Agent as plugin tools. The snapshot pins
+each name to its advertising connection and advertisement revision. Replacing
+or disconnecting that advertisement invalidates the snapshot entry. An
+unadvertised name, a tool removed after the snapshot, or a Session/turn
+mismatch fails with `TOOL_FAILED`; the Host never resolves the name against
+another connection. Core, system, and workspace tools are not supplied by this
+catalog.
+
+When the Agent calls one, the Host runs its normal permission flow first,
+then sends a server request on that exact advertising connection:
 
 ```json
 {
@@ -951,20 +1021,30 @@ a server request on the advertising connection:
 ```
 
 The client executes the tool locally under its own plugin permissions and
-confirmation rules and responds with `{ result, isError }` bounded by
-`maxFrameBytes`, or with an error. Rules:
+confirmation rules and responds with `{ result, isError }`, or with an error.
+Rules:
 
 1. A relayed tool never runs on the Host and never receives Host secrets; the
    Host passes only the Agent's arguments, which are untrusted.
 2. The Host-side permission decision, including session grants, precedes the
    relay request; the client does not re-ask the Host.
-3. The request deadline is the tool's own timeout. If the advertising
-   connection is gone or does not answer, the tool fails with `TOOL_FAILED`
-   and the turn continues; nothing is retried on another connection.
-4. Plugin tools whose manifest requires workspace or filesystem access are
-   not accepted by `tools/advertise`, because they would act on the desktop's
-   filesystem while the session root is on the Host.
-5. Relayed results are items like any other and are audited on both sides.
+3. The request deadline is the advertised tool timeout. Timeout, disconnect,
+   malformed response, and client error all resolve that tool call as
+   `TOOL_FAILED`; the turn continues and nothing is retried on another
+   connection.
+4. `workspaceFree: true` is the owner's source-classification assertion; the
+   Host checks the literal flag but cannot independently verify the remote
+   source. A desktop MUST advertise a plugin tool only when trusted registered
+   source metadata proves the tool needs no workspace or filesystem access. If
+   that metadata is absent or uncertain, the tool is not advertised. Until a
+   trusted plugin classifier and product decision exist, the Desktop adapter
+   publishes no plugin tools. The initial Desktop adapter MUST publish only
+   global User MCP tools returned by `toolsForProject(null)`.
+5. The Host does not accept client-supplied risk or Plan-safe action metadata.
+   It applies the existing Host permission policy to the tool name; relayed
+   plugin tools without Host-verified Plan-safe metadata remain unavailable in
+   Plan/Goal modes.
+6. Relayed results are items like any other and are audited on both sides.
 
 ## 10. Attachments
 
@@ -1284,4 +1364,3 @@ D375 (2026-09-10) re-sequenced the deployments and extended the catalog:
 - queued turns persisted by host-core and held after a restart, the
   30-minute default approval lifetime for remote subscribers, and the
   `applyCeilingToPairedDevices` policy.
-

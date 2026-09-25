@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 
 const { IPC } = await import("@pi-desktop/shared");
-const { makeRemoteApprovalRequestId, makeRemoteSessionId } = await import(
+const { makeRemoteApprovalRequestId, makeRemoteSessionId, makeRemoteTerminalId } = await import(
   "../electron/main/remote/backend-router.ts"
 );
 const { createRemoteEventBridge } = await import(
@@ -46,7 +46,28 @@ function collect() {
   return { bridge, events, lifecycle, warnings };
 }
 
-test("host-scope session.created fires lifecycle and refreshes sessions with the new id", () => {
+test("host-scope status-only session.changed still produces a lifecycle event", () => {
+  const { bridge, events, lifecycle } = collect();
+  bridge.handle(
+    makeEnvelope({
+      scope: "host",
+      kind: "session.changed",
+      payload: { sessionId: HOST_SESSION_ID, status: "running", planningState: "inactive" },
+    }),
+  );
+  assert.equal(lifecycle.length, 1);
+  assert.equal(lifecycle[0].kind, "session.changed");
+  assert.equal(lifecycle[0].hostSessionId, HOST_SESSION_ID);
+  assert.equal(lifecycle[0].remoteSessionId, REMOTE_SESSION_ID);
+  assert.equal(lifecycle[0].session.id, HOST_SESSION_ID);
+  assert.equal(lifecycle[0].session.status, "running");
+  assert.equal(events.length, 1);
+  assert.equal(events[0].channel, IPC.event.sessionsChanged);
+  assert.equal(events[0].payload.reason, "remote.session.changed");
+  assert.equal(events[0].payload.selectSessionId, undefined);
+});
+
+test("host-scope session.created fires lifecycle and refreshes sessions without stealing focus", () => {
   const { bridge, events, lifecycle } = collect();
   bridge.handle(
     makeEnvelope({
@@ -68,7 +89,8 @@ test("host-scope session.created fires lifecycle and refreshes sessions with the
   assert.equal(events.length, 1);
   assert.equal(events[0].channel, IPC.event.sessionsChanged);
   assert.equal(events[0].payload.reason, "remote.session.created");
-  assert.equal(events[0].payload.selectSessionId, REMOTE_SESSION_ID);
+  // A session another client created must not take this window's focus.
+  assert.equal("selectSessionId" in events[0].payload, false);
 });
 
 test("host-scope session.archived tells the router to release the id without selecting it", () => {
@@ -221,10 +243,112 @@ test("input.requested synthesizes an asktool_request keyed by the RACP input id"
   assert.equal(request.questions[0].multiSelect, false);
 });
 
-test("terminal and resync kinds are silently dropped in Stage 2 — later stages own them", () => {
+test("snapshot resync restores pending tool approvals and input requests", () => {
   const { bridge, events } = collect();
+  bridge.restoreSnapshot(HOST_SESSION_ID, {
+    session: { id: HOST_SESSION_ID },
+    queuedTurns: [],
+    items: [],
+    activeItems: [],
+    pendingApprovals: [
+      {
+        id: "approval-1",
+        sessionId: HOST_SESSION_ID,
+        turnId: "turn-1",
+        kind: "tool",
+        summary: "write a file",
+        expiresAt: "2026-09-18T10:05:00.000Z",
+        revision: 4,
+        toolName: "write",
+        risk: "high",
+        allowedDecisions: ["allow-once", "deny"],
+      },
+      {
+        id: "plan-1",
+        sessionId: HOST_SESSION_ID,
+        turnId: "turn-1",
+        kind: "plan",
+        summary: "approve plan",
+        expiresAt: "2026-09-18T10:05:00.000Z",
+        revision: 4,
+        allowedDecisions: ["approve", "reject"],
+        allowedPermissionModes: ["default"],
+      },
+    ],
+    pendingInputs: [
+      {
+        id: "input-1",
+        sessionId: HOST_SESSION_ID,
+        turnId: "turn-1",
+        expiresAt: "2026-09-18T10:05:00.000Z",
+        questions: [{ id: "q1", question: "continue?", options: ["yes"], multiSelect: false }],
+      },
+    ],
+    hasMoreHistory: false,
+    cursor: { epoch: "epoch-2", sequence: 7 },
+    revision: 4,
+    generatedAt: "2026-09-18T10:01:00.000Z",
+  });
+
+  assert.equal(events.length, 2);
+  assert.equal(events[0].channel, IPC.event.agentMessage);
+  assert.equal(events[0].payload.sessionId, REMOTE_SESSION_ID);
+  assert.equal(events[0].payload.event.type, "tool_permission_request");
+  assert.equal(
+    events[0].payload.event.request.requestId,
+    makeRemoteApprovalRequestId(REMOTE_SESSION_ID, "approval-1"),
+  );
+  assert.equal(events[1].payload.event.type, "asktool_request");
+  assert.equal(events[1].payload.event.request.requestId, "input-1");
+  assert.equal(events[1].payload.event.request.sessionId, REMOTE_SESSION_ID);
+});
+
+test("terminal output and state events use namespaced sessions and terminal ids", () => {
+  const { bridge, events } = collect();
+  bridge.handle(makeEnvelope({
+    kind: "terminal.output",
+    payload: { terminalId: "host-terminal-1", data: "b3V0" },
+  }));
+  bridge.handle(makeEnvelope({
+    kind: "terminal.changed",
+    payload: { terminalId: "host-terminal-1", state: "exited", code: 7 },
+  }));
+  assert.deepEqual(events, [
+    {
+      channel: IPC.event.remoteTerminal,
+      payload: {
+        type: "output",
+        sessionId: REMOTE_SESSION_ID,
+        terminalId: makeRemoteTerminalId(REMOTE_SESSION_ID, "host-terminal-1"),
+        output: "b3V0",
+      },
+    },
+    {
+      channel: IPC.event.remoteTerminal,
+      payload: {
+        type: "state",
+        sessionId: REMOTE_SESSION_ID,
+        terminalId: makeRemoteTerminalId(REMOTE_SESSION_ID, "host-terminal-1"),
+        state: "exited",
+        code: 7,
+      },
+    },
+  ]);
+});
+
+test("terminal bridge drops payloads without a valid terminal id, output, or state", () => {
+  const { bridge, events, warnings } = collect();
   bridge.handle(makeEnvelope({ kind: "terminal.output", payload: {} }));
-  bridge.handle(makeEnvelope({ kind: "terminal.changed", payload: {} }));
+  bridge.handle(makeEnvelope({ kind: "terminal.output", payload: { terminalId: "", data: "x" } }));
+  bridge.handle(makeEnvelope({ kind: "terminal.output", payload: { terminalId: "term", data: 12 } }));
+  bridge.handle(makeEnvelope({ kind: "terminal.changed", payload: { terminalId: "term", state: "running" } }));
+  bridge.handle(makeEnvelope({ kind: "terminal.changed", payload: { terminalId: "term", state: "exited", code: "7" } }));
+  assert.equal(events.length, 0);
+  assert.equal(warnings.length, 5);
+});
+
+test("resync and resolved request events remain owned by their existing handlers", () => {
+  const { bridge, events } = collect();
   bridge.handle(makeEnvelope({ kind: "resync.required", payload: {} }));
   bridge.handle(makeEnvelope({ kind: "approval.resolved", payload: {} }));
   bridge.handle(makeEnvelope({ kind: "input.resolved", payload: {} }));

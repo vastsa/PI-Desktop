@@ -47,9 +47,9 @@ Linux 或 WSL 机器上的项目，即 SSH 隧道远端 Host 拓扑；#100 要�
   与设备 token 配对；远端 Host profile 操作（`session/configure`、
   `session/fork`、`session/rename`、`session/delete`、`session/compact`、
   `workspace/list`、`workspace/read`、`workspace/diff`）；以及远程会话归属划分；反向工具中继（`tools/advertise` 与 `tool/execute` 服务端
-  请求，让桌面 MCP 服务器和不需工作区的插件工具在远程会话中于桌面执行）；终端
+  请求，让桌面 MCP 服务器和不需工作区的插件工具在远程会话中于桌面执行）；仅用于远程会话的工作面板 Terminal
   （`terminal/open`、`terminal/input`、`terminal/resize`、`terminal/close`、
-  `terminal.output` 与有界回放环，在远端机器运行）；设置 → 远程主机为紧凑主机清单加一个 SSH/配对添加表单、不含说明性文案；整项功能在导航与标题上标为实验性，因为远程连接仍可能失败，仅在开发者模式开启时显示（连同其在设置搜索中的命中）（`04-ux/06-settings-ia.md` §1、§3）。
+  `terminal.output` 与有界回放环，在远端机器运行）；设置 → 远程主机为紧凑主机清单加一个 SSH/配对添加表单、不含说明性文案；整项功能在导航与标题上标为实验性，因为远程连接仍可能失败，仅在开发者模式开启时显示（连同其在设置搜索中的命中）（`04-ux/06-settings-ia.md` §1、§3）。首期仅允许 SSH 配对的 owner 设备打开和操作 Terminal；本地桌面会话仍无交互式终端，Agent Bash 仍是输出在 transcript 中的非交互式工具。
 - R3：出站消息集成（#100）。Host 进程内的又一个模块调用方，无传输、无入站
   监听：订阅 Host 范围与会话事件，把 `turn.completed`、`turn.failed`、
   `approval.requested`、`input.requested` 的脱敏摘要转发到出站渠道（先 Webhook，
@@ -62,13 +62,19 @@ Linux 或 WSL 机器上的项目，即 SSH 隧道远端 Host 拓扑；#100 要�
   绑定（原 R5）仅在有明确消费者时交付，`.proto` 由 typebox 来源生成。
 
 R2 的设计决定（D375，2026-09-10 记录）：远端 Host 的 provider 配置经 SSH 引导通道
-写入，不经 RACP；桌面用户 MCP 服务器与不需工作区的插件工具在本里程碑通过反向工具
+写入，不经 RACP（由 D629 / ADR 0310 交付：手动「同步模型…」动作在 Host 上运行
+`pi-host provider-import`，provider 载荷含密钥从 SSH stdin 送入，再经仅属主的 Unix
+admin socket 交给正在运行的 Host，密钥不经 argv、日志、远端文件或 RACP，也不另起
+host-core；导入按 provider 幂等且从不删除。远程会话入口 D628 / ADR 0308 随后把配对
+Host 的会话按每台一个侧栏分组列出，让用户在 Host 上创建会话，会话在 Host 默认模型下
+运行、桌面无远程模型选择器；主机离线的 `remote:` id 失败即关闭而非打到本地处理器）；
+桌面用户 MCP 服务器与不需工作区的插件工具在本里程碑通过反向工具
 中继进入远程会话，需要工作区或文件系统访问的插件工具排除；工作面板终端在本里程碑
 以 `terminal/*` 操作交付，在远端机器运行；`pi-host` 由桌面经 SSH 上传的引导脚本按
 平台从 GitHub Releases 下载桌面版本并校验公布的 SHA-256，版本不匹配即
 `PROTOCOL_MISMATCH` 并提供重新下载，首版不支持没有 GitHub 出网能力的机器；SSH 配对
 的桌面设备持有 `owner` 并豁免远程权限上限，除非启用 Host 策略
-`applyCeilingToPairedDevices`；R2 作为一个里程碑整体交付，不拆分。
+`applyCeilingToPairedDevices`；R2 作为一个里程碑整体交付，不拆分。Terminal 首期只对 SSH 配对的 owner 设备开放，Host/RACP 能力本身不等于桌面工作面板已可用。
 
 R1 退出条件包括模块测试不依赖 Electron、晚接入的客户端能在快照中看到已打开
 的审批且其决定能关闭本地桌面卡片。R2 退出条件包括 E2E-231 通过、SSH 会话中断
@@ -146,9 +152,13 @@ runbook 写明 feature flag、配对撤销路径、远端机器上的数据保�
 - R1 已交付：renderer 的内存 prompt 队列已退役；composer 经 `agent/queue/push` 推入，
   镜像 `agent/event/queueChanged`，“立即发送”即 `turn/prioritize` 加优雅停止。
 - R1 部分完成（2026-09-18）：运行时级别的逐回合权限上限已在 JS 端全链路串通（`AgentPromptRequest.permissionMode` → agent-ipc → `RuntimeService.startTurn` → sidecar `agent.prompt`），桥接层不再对每一处会话/生效模式不一致直接拒绝。生效模式比会话更宽的请求（提权）仍作为深度防御拒绝；更窄的上限透传并在 sidecar 侧作为文档化的占位收下。turn 级的真正执行还差 host-core 一步（`session.beginTurn` 接受覆盖参数），因此本地回合上的收紧目前尚未夹紧工具决策。
+- R1 权限上限执行已实现（2026-09-25）：Host 将策略推导出的上限绑定到适用的持久回合，host-core 再与工具及委托权限范围取交集。回合不能高于解析后的 Session 模式；队列中的回合重启后仍保留上限。上限由 Host 生成，不是客户端可控的 RACP 字段。分层测试已通过；桌面 SSH E2E 验收仍待 E2E-231。
 - R2 已开始（2026-09-18，D447 / ADR 0284）：`packages/host-runtime` 承载与 Electron 无关的运行时层 —— host-core 与 sidecar 的 stdio 传输、重启监督器、`RuntimeService`（模块的 `RuntimePort`，含持久回合生命周期）、转录持久化、无头启动解析器与已批准 Plan/Goal 的派发 —— Electron main 通过薄适配层运行其上。
 - R2（2026-09-18，D448 / ADR 0285）：`packages/racp` 承载 `RACP-WS` 服务端与客户端核心、回环上的 `ws` 绑定与设备令牌配对；握手、鉴权、幂等、队列顺序、审批、游标重放、驱逐、epoch 变更、慢客户端与不重复执行的重连都是包内测试。`pi-host` 包、桌面适配器与 SSH 引导此后均已开始：R2a 桌面内核（D449 / ADR 0286）带来了适配器与 `pi-host` 包，SSH 引导随后在 D453 / ADR 0292 落地。
 - R2b 部分完成（2026-09-19，D453 / ADR 0292）：桌面使用用户自己的 `ssh` 客户端并以 `BatchMode=yes` 在远端安装并配对 `pi-host`，用户的配置、agent 与跳板机照常生效，应用不持有任何 SSH 密钥。`remote/pi-host-release.ts` 承载纯发布坐标（远端平台、桌面版本、已发布的 SHA-256、拒绝未发布的目标），`remote/pi-host-bootstrap-script.ts` 生成唯一的 `umask 077` 脚本：下载、校验、安装到远端 `$HOME`、以 `--pair` 在回环上重启主机，并回显 `PI_HOST_READY` / `PI_HOST_PAIRING_TOKEN`；`remote/ssh-transport.ts` 是可注入的传输端口，`remote/ssh-tunnel.ts` 为每台主机维护一条持久的 `ssh -N -L` 转发，每次启动重新建立，并在引导时被收编（adopt），使配对只建立一条隧道。记录以 `metadata.transport = "ssh"` 加 SSH 描述符取代 URL，`pi-desktop/remoteHost/bootstrap` 加入 `list` / `pair` / `remove`。终端工作面板客户端、反向工具中继，以及经 SSH 通道下发 provider 配置均不在本次范围内。
+- R2b Host/RACP Terminal 切片（2026-09-25，ADR 0309）：Host 已承载 PTY 服务和 RACP 终端操作，将终端绑定到 SSH 配对的 owner、会话和活动连接，并支持有界输出回放与安全重连。本切片没有交付桌面终端 renderer、类型化 IPC/API、remote-backend 操作路由、能力到 UI 的接线，也没有转发终端事件或管理 UI 生命周期；这些由下方的 Desktop 集成切片补齐。本地会话仍不提供 Terminal。
+- R2b Host/RACP 反向工具中继切片（2026-09-25）：`tools/advertise` 按连接替换 owner 的会话目录，断连时清除；远程回合取得有界目录快照，并将每个条目固定到原连接和公布 revision。host-core 工具执行经 `tool/execute` 回到该连接；替换、断连、超时或无效响应都会以 `TOOL_FAILED` 结束工具调用，不跨连接重试，回合可继续。RACP 与 Host Runtime 契约测试覆盖此路径。桌面 global User MCP 公布适配器已由 `apps/desktop/test/remote-tool-relay.test.mjs` 和 `apps/desktop/test/user-mcp.test.mjs` 定向覆盖，仅使用 `toolsForProject(null)`；`remote-host-e2e` CI job 还运行隔离的 Linux `sshd` 引导夹具，使用生产 SSH 传输校验并安装本地构建的 release bundle、建立隧道、完成配对及远程项目/session 读取。无头 Host E2E 还验证确定性模型调用真实桌面中继适配器、桌面关闭时工具失败且回合继续、旧调用不转交给替换 owner，以及 Files/Review 刷新、运行时配置冲突和过期终端连接拒绝。Linux SSH 夹具现覆盖回合中途隧道断开与恢复、cursor 重放、幂等回合重试及使用相同 `openRequestId` 重新附加 PTY。E2E-231 仍为草稿：这些夹具没有走桌面 Settings/renderer 全流程，也未覆盖其余安全验收。`workspaceFree` 是 owner 侧断言，Host 无法独立验证远端来源；桌面适配器必须依据可信来源元数据推导并在不确定时拒绝。可信分类器和产品决定完成前默认不公布插件工具。
+- R2b Desktop 集成切片（2026-09-25）：远程 WorkPanel 已提供按 Host 能力开放的终端，终端 IPC 路由到所属远程 Session，并为每个标签保留稳定的打开请求 ID，以支持重新连接。断线恢复时先按 cursor 恢复 Host/Session 订阅，再刷新能力并重新公布全局 User MCP 工具。应用启动时离线的 Host 会在后台重试；删除、重新配对和关闭会取消旧尝试。Desktop 定向套件与无头远程 Host E2E 已通过，本地无头 Host 测试为 45/45，权限上限与排队回合重启恢复为 20/20。`pi-host` 现在可通过启动参数或环境变量配置远程权限上限以及审批有效期。E2E-231 仍为草稿，待 Linux SSH 桌面场景覆盖完整设置、审批、中继、重连、终端和安全路径；Linux SSH 夹具已配置进 CI，但当前 macOS 环境尚未运行。
 
 ## 8. 修订记录
 

@@ -360,6 +360,72 @@
   display: none;
 }
 
+/* Remote terminal: xterm is a renderer only; the shell remains Host-owned. */
+.remote-terminal {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ds-bg-primary);
+}
+
+.remote-terminal-header {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 0 12px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs-plus);
+}
+
+.remote-terminal-host,
+.remote-terminal-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-terminal-status.is-failed {
+  color: var(--ds-error);
+}
+
+.remote-terminal-surface {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  padding: 8px 10px;
+}
+
+.remote-terminal-surface:focus-within {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: -2px;
+}
+
+.remote-terminal-surface .xterm {
+  height: 100%;
+}
+
+.remote-terminal.is-blocked .remote-terminal-surface {
+  pointer-events: none;
+}
+
+.remote-terminal-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--ds-border-subtle);
+  padding: 8px 12px;
+  color: var(--ds-error);
+  font-size: var(--text-sm);
+}
+
 /* ---------- Subagent transcript tab ------------------------------------- */
 
 /*
@@ -573,6 +639,16 @@
   flex: 1;
   overflow: auto;
   padding: 4px 8px 12px;
+}
+
+.review-remote-history {
+  margin-top: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.review-remote-history > .review-toolbar {
+  padding-inline: 2px;
 }
 
 .diff-counts {
@@ -795,6 +871,10 @@
   padding-bottom: 4px;
   font-size: var(--text-sm);
   color: var(--ds-text-muted);
+}
+
+.review-workspace-error {
+  color: var(--ds-error);
 }
 
 .file-viewer {

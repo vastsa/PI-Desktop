@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:net";
 import test from "node:test";
 import { register } from "node:module";
 import { dirname, join } from "node:path";
@@ -22,12 +23,13 @@ const SSH = {
   version: VERSION,
 };
 
-function fakeForward(localPort) {
+function fakeForward(localPort, onClose = () => undefined) {
   const forward = {
     localPort,
     closes: 0,
     async close() {
       forward.closes += 1;
+      onClose();
     },
   };
   return forward;
@@ -38,16 +40,35 @@ function fakeForward(localPort) {
  * comes from a fixed sequence. `armFailure` makes the *next* transport the
  * factory builds fail its forward, which is how a refused connection looks.
  */
-function harness({ ports = [41_001, 41_002, 41_003] } = {}) {
+function harness({ ports = [41_001, 41_002, 41_003, 41_004, 41_005] } = {}) {
   const built = [];
   const transports = [];
+  const processesByPort = new Map();
   let portIndex = 0;
   let pendingFailure = null;
   const manager = createSshTunnelManager({
     reservePort: async () => ports[Math.min(portIndex++, ports.length - 1)],
+    isForwardReachable: async (localPort) => processesByPort.get(localPort)?.running === true,
     buildTransport: (ssh) => {
       built.push(ssh);
-      const entry = { ssh, forwards: [], disposed: 0, lastForward: null, nextFailure: pendingFailure };
+      const process = {
+        running: true,
+        exit() {
+          process.running = false;
+        },
+        fail() {
+          process.running = false;
+        },
+      };
+      const entry = {
+        ssh,
+        process,
+        forwards: [],
+        disposed: 0,
+        lastForward: null,
+        nextFailure: pendingFailure,
+        throwOnDispose: false,
+      };
       pendingFailure = null;
       transports.push(entry);
       return {
@@ -64,11 +85,14 @@ function harness({ ports = [41_001, 41_002, 41_003] } = {}) {
             entry.nextFailure = null;
             throw failure;
           }
-          entry.lastForward = fakeForward(options.localPort);
+          entry.lastForward = fakeForward(options.localPort, () => entry.process.exit());
+          processesByPort.set(options.localPort, entry.process);
           return entry.lastForward;
         },
         dispose() {
           entry.disposed += 1;
+          entry.process.exit();
+          if (entry.throwOnDispose) throw new Error("ssh process already exited");
         },
       };
     },
@@ -136,6 +160,93 @@ test("open reuses the forward for a host key instead of stacking tunnels", async
   });
 });
 
+test("concurrent opens for one host share the in-progress forward", async () => {
+  const { manager, built, transports } = harness();
+  const [first, second] = await Promise.all([manager.open("k1", SSH), manager.open("k1", SSH)]);
+
+  assert.equal(first, second);
+  assert.equal(built.length, 1);
+  assert.equal(transports.length, 1);
+  assert.equal(transports[0].forwards.length, 1);
+});
+
+test("open replaces a dead forward without disturbing another host", async () => {
+  const { manager, transports } = harness();
+  const first = await manager.open("k1", SSH);
+  const other = await manager.open("k2", { ...SSH, remotePort: 50_000 });
+
+  transports[0].process.exit();
+  const reopened = await manager.open("k1", SSH);
+
+  assert.equal(transports.length, 3, "a dead ssh child must be replaced by a fresh process");
+  assert.notEqual(reopened.localPort, first.localPort);
+  assert.equal(reopened.url, racpUrlForLocalPort(41_003));
+  assert.equal(transports[0].lastForward.closes, 1);
+  assert.equal(transports[0].disposed, 1);
+  assert.equal(transports[1].lastForward.closes, 0, "recovering k1 must leave k2's forward open");
+  assert.equal(transports[1].disposed, 0);
+  assert.equal(await manager.open("k2", { ...SSH, remotePort: 50_000 }), other);
+
+  transports[1].process.fail();
+  const recoveredOther = await manager.open("k2", { ...SSH, remotePort: 50_000 });
+  assert.notEqual(recoveredOther.url, other.url, "an errored ssh child must also be replaced");
+  assert.equal(recoveredOther.url, racpUrlForLocalPort(41_004));
+  assert.equal(transports.length, 4);
+  assert.equal(transports[1].disposed, 1);
+  assert.equal(transports[2].lastForward.closes, 0, "recovering k2 must leave k1's new forward open");
+
+  await manager.close("k1");
+  assert.equal(transports[2].lastForward.closes, 1);
+  assert.equal(transports[3].lastForward.closes, 0, "closing k1 must not close k2");
+});
+
+test("the default liveness probe replaces a forward whose listener exited", async () => {
+  const processes = [];
+  const manager = createSshTunnelManager({
+    buildTransport: () => {
+      const process = {
+        server: createServer((socket) => socket.destroy()),
+        running: false,
+        async start(localPort) {
+          await new Promise((resolve, reject) => {
+            process.server.once("error", reject);
+            process.server.listen(localPort, "127.0.0.1", resolve);
+          });
+          process.running = true;
+        },
+        async exit() {
+          if (!process.running) return;
+          process.running = false;
+          await new Promise((resolve) => process.server.close(resolve));
+        },
+      };
+      processes.push(process);
+      return {
+        exec: async () => { throw new Error("unused"); },
+        execWithInput: async () => { throw new Error("unused"); },
+        async forward({ localPort }) {
+          await process.start(localPort);
+          return { localPort, close: () => process.exit() };
+        },
+        dispose() {
+          void process.exit();
+        },
+      };
+    },
+  });
+
+  const first = await manager.open("k1", SSH);
+  assert.equal(await manager.open("k1", SSH), first, "a live listener keeps its URL");
+  await processes[0].exit();
+
+  const reopened = await manager.open("k1", SSH);
+  assert.equal(processes.length, 2, "an exited listener causes a new ssh transport");
+  assert.notEqual(reopened.url, first.url);
+  assert.equal(processes[1].running, true);
+  await manager.dispose();
+  await Promise.all(processes.map((process) => process.exit()));
+});
+
 test("close tears the forward down once and a later open starts a new one", async () => {
   const { manager, transports } = harness();
   await manager.open("k1", SSH);
@@ -191,6 +302,22 @@ test("adopt takes over the bootstrap's forward and retires the one it replaces",
   assert.equal(adopted.closes, 1);
 });
 
+test("owner-scoped close leaves a newer adopted forward open", async () => {
+  const { manager } = harness();
+  const stale = fakeForward(45_557);
+  const current = fakeForward(45_558);
+  await manager.adopt("k1", SSH, stale);
+  await manager.adopt("k1", SSH, current);
+
+  await manager.close("k1", stale);
+
+  assert.equal(stale.closes, 1, "replacing the entry retires its prior forward");
+  assert.equal(current.closes, 0, "stale cleanup must not close the new owner's tunnel");
+
+  await manager.close("k1");
+  assert.equal(current.closes, 1);
+});
+
 test("a refused forward propagates and leaves nothing half-registered", async () => {
   const { manager, transports, armFailure } = harness();
   const refusal = Object.assign(new Error("ssh: connect to host remote.example port 2222: Connection refused"), {
@@ -210,4 +337,35 @@ test("a refused forward propagates and leaves nothing half-registered", async ()
   assert.equal(transports.length, 2);
   assert.equal(transports[1].forwards.length, 1);
   assert.equal(tunnel.url, racpUrlForLocalPort(tunnel.localPort));
+});
+
+test("a failed open only disposes its own host transport", async () => {
+  const { manager, transports, armFailure } = harness();
+  const other = await manager.open("k2", { ...SSH, remotePort: 50_000 });
+  const refusal = Object.assign(new Error("forward refused"), { errorCode: "REMOTE_FORWARD_FAILED" });
+  armFailure(refusal);
+
+  await assert.rejects(() => manager.open("k1", SSH), (error) => error === refusal);
+
+  assert.equal(transports[1].disposed, 1, "the failed k1 transport is reaped");
+  assert.equal(transports[0].lastForward.closes, 0, "failure on k1 must not close k2");
+  assert.equal(transports[0].disposed, 0);
+  assert.equal(await manager.open("k2", { ...SSH, remotePort: 50_000 }), other);
+});
+
+test("a close failure still reaps only the requested host process", async () => {
+  const { manager, transports } = harness();
+  await manager.open("k1", SSH);
+  await manager.open("k2", { ...SSH, remotePort: 50_000 });
+  transports[0].lastForward.close = async () => {
+    throw new Error("forward already exited");
+  };
+  transports[0].throwOnDispose = true;
+
+  await manager.close("k1");
+
+  assert.equal(transports[0].disposed, 1, "dispose reaps the failed k1 child");
+  assert.equal(transports[1].lastForward.closes, 0, "closing k1 must not touch k2");
+  assert.equal(transports[1].disposed, 0);
+  assert.equal((await manager.open("k2", { ...SSH, remotePort: 50_000 })).localPort, 41_002);
 });

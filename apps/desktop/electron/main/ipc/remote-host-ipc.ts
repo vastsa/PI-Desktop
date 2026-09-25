@@ -14,6 +14,10 @@
  * The bootstrap channel never sees an SSH secret either — it passes a host,
  * and the system `ssh` client supplies the credentials from the user's own
  * configuration and agent.
+ *
+ * `syncProviders` (D628) is the one channel that moves provider keys: main
+ * re-reads the chosen rows from the local host-core and sends them only on
+ * the stdin of the host's own SSH channel.
  */
 import {
   ErrorCodes,
@@ -24,12 +28,32 @@ import {
   type RemoteHostPairResult,
   type RemoteHostRemoveRequest,
   type RemoteHostSummary,
+  type RemoteProjectBrowseRequest,
+  type RemoteProjectBrowseResult,
+  type RemoteProjectListRequest,
+  type RemoteProjectListResult,
+  type RemoteProjectRegisterRequest,
+  type RemoteProjectRegisterResult,
+  type RemoteSessionCreateRequest,
+  type RemoteSessionCreateResult,
+  type ProviderPublic,
+  type RemoteHostSyncProvidersRequest,
+  type RemoteHostSyncProvidersResult,
+  PROVIDER_SYNC_MAX_PROVIDERS,
 } from "@pi-desktop/shared";
 import { app } from "electron";
 import {
   getActiveRemoteHostsBoot,
+  sshMetadataOf,
   type RemoteHostsBoot,
 } from "../bootstrap/remote-hosts";
+import { buildImportPayload, importProvidersOverSsh } from "../remote/remote-provider-sync";
+import {
+  createSystemSshTransport,
+  type SshTarget,
+  type SshTransport,
+} from "../remote/ssh-transport";
+import { normalizeRemoteError } from "../remote/backend-router";
 import { exchangePairingToken } from "../remote/racp-remote-host-client";
 import type { IpcRegistrar } from "./types";
 
@@ -42,6 +66,9 @@ export type RegisterRemoteHostIpcOptions = {
    */
   getRemoteHostsBoot?: () => RemoteHostsBoot | null;
   clientInfo?: { name: string; version: string };
+  /** Local host-core, read for the providers a sync copies. */
+  getHost?: () => { call<T>(method: string, params?: unknown): Promise<T> } | null;
+  buildSshTransport?: (target: SshTarget) => SshTransport;
   log?: (level: "info" | "warn" | "error", message: string, data?: unknown) => void;
 };
 
@@ -63,6 +90,36 @@ function invalid(message: string, field?: string): Error {
     errorCode: ErrorCodes.INVALID_ARGUMENT,
     ...(field ? { field } : {}),
   });
+}
+
+/** Longest host path accepted for browse and register. */
+const MAX_REMOTE_PATH = 4096;
+const MAX_REMOTE_ID = 256;
+const MAX_SESSION_TITLE = 200;
+
+/** A routing key of a paired host; the `:` would break remote session ids. */
+function requireHostKey(value: unknown): string {
+  const hostKey = trim(value);
+  if (!hostKey || hostKey.length > MAX_REMOTE_ID || hostKey.includes(":")) {
+    throw invalid("a valid hostKey is required", "hostKey");
+  }
+  return hostKey;
+}
+
+function optionalPath(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const path = trim(value);
+  if (path.length > MAX_REMOTE_PATH || path.includes("\0")) throw invalid("path is invalid", "path");
+  return path || undefined;
+}
+
+/** Run a host request, surfacing the host's error code instead of INTERNAL. */
+async function remote<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    throw normalizeRemoteError(error);
+  }
 }
 
 /**
@@ -158,6 +215,110 @@ export function registerRemoteHostIpc(options: RegisterRemoteHostIpcOptions): vo
       }
       await boot.removeHost(hostKey);
       return { ok: true };
+    },
+  );
+
+  registrar.handle(
+    IPC.invoke.remoteProjectList,
+    async (request: RemoteProjectListRequest): Promise<RemoteProjectListResult> => {
+      const boot = requireBoot(getRemoteHostsBoot());
+      const hostKey = requireHostKey(request?.hostKey);
+      return { projects: await remote(() => boot.listProjects(hostKey)) };
+    },
+  );
+
+  registrar.handle(
+    IPC.invoke.remoteProjectBrowse,
+    async (request: RemoteProjectBrowseRequest): Promise<RemoteProjectBrowseResult> => {
+      const boot = requireBoot(getRemoteHostsBoot());
+      const hostKey = requireHostKey(request?.hostKey);
+      const path = optionalPath(request?.path);
+      // The host bounds the listing to its own browse root.
+      return await remote(() => boot.browseProject(hostKey, path));
+    },
+  );
+
+  registrar.handle(
+    IPC.invoke.remoteProjectRegister,
+    async (request: RemoteProjectRegisterRequest): Promise<RemoteProjectRegisterResult> => {
+      const boot = requireBoot(getRemoteHostsBoot());
+      const hostKey = requireHostKey(request?.hostKey);
+      const path = optionalPath(request?.path);
+      if (!path) throw invalid("path is required", "path");
+      return { project: await remote(() => boot.registerProject(hostKey, path)) };
+    },
+  );
+
+  registrar.handle(
+    IPC.invoke.remoteSessionCreate,
+    async (request: RemoteSessionCreateRequest): Promise<RemoteSessionCreateResult> => {
+      const boot = requireBoot(getRemoteHostsBoot());
+      const hostKey = requireHostKey(request?.hostKey);
+      const projectId = trim(request?.projectId);
+      if (!projectId || projectId.length > MAX_REMOTE_ID) {
+        throw invalid("projectId is required", "projectId");
+      }
+      const title = trim(request?.title).slice(0, MAX_SESSION_TITLE) || undefined;
+      return { session: await remote(() => boot.createSession(hostKey, projectId, title)) };
+    },
+  );
+
+  registrar.handle(
+    IPC.invoke.remoteHostSyncProviders,
+    async (request: RemoteHostSyncProvidersRequest): Promise<RemoteHostSyncProvidersResult> => {
+      const boot = requireBoot(getRemoteHostsBoot());
+      const hostKey = requireHostKey(request?.hostKey);
+      const providerIds = Array.isArray(request?.providerIds)
+        ? request.providerIds.map(trim).filter((id) => id && id.length <= MAX_REMOTE_ID)
+        : [];
+      if (providerIds.length === 0 || providerIds.length > PROVIDER_SYNC_MAX_PROVIDERS) {
+        throw invalid("providerIds is required", "providerIds");
+      }
+      const record = (await boot.registry.list()).find((entry) => entry.hostKey === hostKey);
+      if (!record) throw invalid("unknown host", "hostKey");
+      const ssh = sshMetadataOf(record);
+      if (!ssh) {
+        // A host paired by URL has no channel that may carry keys.
+        throw Object.assign(new Error("provider sync needs an SSH host"), {
+          errorCode: ErrorCodes.CAPABILITY_UNAVAILABLE,
+        });
+      }
+      const host = options.getHost?.();
+      if (!host) {
+        throw Object.assign(new Error("host unavailable"), { errorCode: ErrorCodes.HOST_UNAVAILABLE });
+      }
+      // Re-checked here: the renderer's list only picks among these.
+      const { providers } = await host.call<{ providers: ProviderPublic[] }>("providers.list", {
+        includeDisabled: false,
+      });
+      const setDefault = request?.setDefault === true;
+      const localDefault = setDefault
+        ? await host.call<{ defaultProviderId?: string; defaultModelId?: string }>("settings.get")
+        : undefined;
+      const payload = await buildImportPayload({
+        providers,
+        providerIds,
+        setDefault,
+        ...(localDefault
+          ? { localDefault: { providerId: localDefault.defaultProviderId, modelId: localDefault.defaultModelId } }
+          : {}),
+        getSecret: async (id) =>
+          (await host.call<{ value?: string }>("providers.getSecret", { id })).value,
+      });
+      const summary = await importProvidersOverSsh({
+        ssh,
+        ...(record.sshSecret ? { sshSecret: record.sshSecret } : {}),
+        payload,
+        buildTransport:
+          options.buildSshTransport ??
+          ((target) => createSystemSshTransport(target, { log: (level, message) => log(level, message) })),
+      });
+      log("info", "providers synced to remote host", {
+        hostKey,
+        imported: summary.imported.length,
+        skipped: summary.skipped.length,
+      });
+      return summary;
     },
   );
 }

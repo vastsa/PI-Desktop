@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { AgentHost, RacpError, type Principal } from "@pi-desktop/agent-host";
+import { AgentHost, RacpError, type Principal, type ToolRelayPort } from "@pi-desktop/agent-host";
 import {
   RACP_DEFAULT_LIMITS,
   RACP_DEFAULT_POLICY,
@@ -47,6 +47,7 @@ export interface ServerConnectionTransport {
 export type RacpServerOptions = {
   agentHost: AgentHost;
   operations: RacpHostOperations;
+  toolRelay?: ToolRelayPort;
   authenticator: DeviceTokenAuthenticator;
   /** Stable Host identity (D448). */
   hostId: string;
@@ -74,7 +75,8 @@ export class RacpConnection {
   principal: Principal;
   initialized = false;
   readonly subscriptions = new Map<string, Subscription>();
-  readonly terminals = new Set<string>();
+  /** Terminals the current socket opened or reattached, keyed by Host terminal id. */
+  readonly terminals = new Map<string, string>();
   private readonly pendingServerRequests = new Map<string, ServerRequestWaiter>();
   private serverRequestCounter = 0;
   private closed = false;
@@ -102,6 +104,7 @@ export class RacpConnection {
 
   /** A server-initiated request (spec §4.3); resolves with the client's result. */
   request<T = unknown>(method: string, params: unknown, timeoutMs: number): Promise<T> {
+    if (this.closed) return Promise.reject(new RacpError("AGENT_UNAVAILABLE", "connection closed"));
     this.serverRequestCounter += 1;
     const id = `srv_${this.serverRequestCounter}`;
     return new Promise<T>((resolve, reject) => {
@@ -176,7 +179,7 @@ export class RacpServer {
       hostEvents: true,
       history: true,
       remoteHostProfile: true,
-      toolRelay: false,
+      toolRelay: Boolean(options.toolRelay),
       terminal: Boolean(options.operations.terminal),
       notifications: false,
       bindings: ["RACP-WS"],
@@ -258,10 +261,11 @@ export class RacpServer {
       this.options.agentHost.unsubscribe(subscription.id, subscription.sessionId);
     }
     connection.subscriptions.clear();
-    for (const terminalId of connection.terminals) {
-      this.options.operations.terminal?.detach(terminalId);
+    for (const terminalId of connection.terminals.keys()) {
+      this.options.operations.terminal?.detach(terminalId, connection.id);
     }
     connection.terminals.clear();
+    this.options.toolRelay?.clearConnection(connection.id);
     connection.close(1000, "closed");
     this.options.log("info", "racp connection released", { connectionId: connection.id });
   }
@@ -316,6 +320,7 @@ export class RacpServer {
       principal: connection.principal,
       agentHost: this.options.agentHost,
       operations: this.options.operations,
+      toolRelay: this.options.toolRelay,
       authenticator: this.options.authenticator,
       limits: this.limits,
       capabilities: this.capabilities,

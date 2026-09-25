@@ -369,6 +369,12 @@ export type AppState = {
   /** Open a tool from a blank launcher page, reusing an existing tool tab. */
   replaceWorkPanelTab: (sourceTabId: string, tab: WorkPanelTab) => void;
   openWorkPanelTabForSession: (sessionId: string, tab: WorkPanelTab) => void;
+  /** Associate a late remote PTY open result with its session-owned tab. */
+  rememberWorkPanelTerminalId: (
+    sessionId: string,
+    openRequestId: string,
+    terminalId: string,
+  ) => boolean;
   activateWorkPanelTab: (tabId: string) => void;
   reorderWorkPanelTabs: (
     sourceTabId: string,

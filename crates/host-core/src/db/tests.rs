@@ -122,6 +122,57 @@ fn v18_database_migrates_session_thinking_omit() {
     assert!(sql.contains("'omit'"), "{sql}");
 }
 
+#[test]
+fn v19_database_migrates_turn_and_queue_permission_ceilings() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    {
+        let db = Database::open(&path).unwrap();
+        db.conn()
+            .execute_batch(
+                "ALTER TABLE turns DROP COLUMN permission_mode_ceiling;
+                 ALTER TABLE turn_queue DROP COLUMN permission_ceiling;
+                 INSERT INTO sessions (id, title, mode, created_at, updated_at)
+                   VALUES ('ceiling-session', 'Ceiling', 'agent', 1, 1);
+                 INSERT INTO turns (id, session_id, started_at)
+                   VALUES ('ceiling-turn', 'ceiling-session', 2);
+                 INSERT INTO turn_queue (
+                   id, session_id, principal, input_hash, content,
+                   permission_mode, position, created_at
+                 ) VALUES (
+                   'ceiling-queued', 'ceiling-session', 'phone', 'hash', 'later',
+                   'ask', 1, 3
+                 );",
+            )
+            .unwrap();
+        db.conn().pragma_update(None, "user_version", 19).unwrap();
+    }
+
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert_readable_migration_backup(&path, 19);
+    let turn_ceiling: Option<String> = db
+        .conn()
+        .query_row(
+            "SELECT permission_mode_ceiling FROM turns WHERE id='ceiling-turn'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let queue_ceiling: Option<String> = db
+        .conn()
+        .query_row(
+            "SELECT permission_ceiling FROM turn_queue WHERE id='ceiling-queued'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(turn_ceiling, None);
+    assert_eq!(queue_ceiling.as_deref(), Some("ask"));
+    let restored_queue = crate::turn_queue::list(&db, Some("ceiling-session")).unwrap();
+    assert_eq!(restored_queue[0].permission_ceiling.as_deref(), Some("ask"));
+}
+
 fn schema_version(conn: &Connection) -> i64 {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap()

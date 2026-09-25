@@ -8,6 +8,7 @@ import {
   PlanExecutionDispatcher,
   RuntimeService,
   RuntimeSupervisor,
+  RemoteToolRelay,
   createHeadlessLaunchResolver,
   createHostQueueStore,
   createHostSessionPort,
@@ -16,6 +17,7 @@ import {
 import { DeviceTokenAuthenticator, RacpServer, bindRacpWebSocket, type RacpHostOperations, type WsBinding } from "@pi-desktop/racp";
 import { APP_VERSION, type AgentEventEnvelope } from "@pi-desktop/shared";
 
+import { startAdminSocket } from "./admin-socket.js";
 import type { PiHostConfig } from "./config.js";
 import { FileCredentialStore, loadOrCreateHostId } from "./credentials.js";
 import { createHostOperations } from "./host-operations.js";
@@ -55,8 +57,9 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
   const getHost = () => state.host;
   const getSidecar = () => state.sidecar;
 
+  const toolRelay = new RemoteToolRelay();
   const launch = createHeadlessLaunchResolver({ getHost, dataDir: config.dataDir, log: (level, message, data) => log(level, message, data) });
-  const runtime = new RuntimeService({ getHost, getSidecar, launch, log });
+  const runtime = new RuntimeService({ getHost, getSidecar, launch, log, toolRelay });
 
   const approvals: ApprovalPort = {
     async resolveTool(requestId, decision) {
@@ -89,6 +92,7 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
     sessions: createHostSessionPort(getHost),
     approvals,
     queueStore: createHostQueueStore(getHost),
+    policy: config.policy,
     localApprovalLifetimeMs: APPROVAL_REQUEST_TIMEOUT_MS,
   });
   const plans = new PlanExecutionDispatcher({ getHost, getSidecar, launch, runtime, log });
@@ -244,7 +248,7 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
     }),
     ...(terminal ? { terminal } : {}),
   };
-  const server = new RacpServer({ agentHost, operations, authenticator, hostId, serverVersion: APP_VERSION, log });
+  const server = new RacpServer({ agentHost, operations, toolRelay, authenticator, hostId, serverVersion: APP_VERSION, policy: config.policy, log });
   let binding: WsBinding;
   try {
     binding = await bindRacpWebSocket({ server: server, authenticator, host: config.host, port: config.port, log });
@@ -254,6 +258,10 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
     await state.host?.dispose();
     throw error;
   }
+  const admin = await startAdminSocket({ dataDir: config.dataDir, getHost, log }).catch((error: unknown) => {
+    log("warn", "admin socket failed to start; provider import disabled", { error: String(error) });
+    return null;
+  });
   log("info", "pi-host ready", { hostId, host: binding.address.host, port: binding.address.port, version: APP_VERSION, terminal: Boolean(terminal) });
 
   return {
@@ -270,6 +278,7 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
       state.stopping = true;
       log("info", "pi-host stopping");
       server.close();
+      await admin?.close();
       await binding.close();
       await terminal?.closeAll();
       plans.dispose();

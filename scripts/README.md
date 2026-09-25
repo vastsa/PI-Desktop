@@ -55,6 +55,9 @@ they cover are specified in
 | `e2e-electron-boot.mjs` | `pnpm test:e2e:boot` | Electron boot probe |
 | `e2e-provider-recovery.mjs` | `node scripts/e2e-provider-recovery.mjs` | Isolated desktop with a localhost fault-injection provider: socket failures, interrupted streams, Responses recovery, exhausted retries, Continue, and recovery across eleven real Read calls. Requires a built desktop/runtime and host binary (`PI_DESKTOP_HOST_BIN` when outside the checkout); retains screenshots and JSON under `.artifacts/issue-699/` |
 | `e2e-config-sync-multidevice.mjs` | `pnpm test:e2e:config-sync` | Two isolated host-core devices against an ephemeral local WebDAV fixture; covers encrypted sync, new-device approval, cross-device edits, conditional requests, and ciphertext-only remote storage |
+| `e2e-remote-host.mjs` | `pnpm test:e2e:remote-host` | Bundled `pi-host` and host-core/RACP path; checks workspace, terminal, Desktop MCP relay, and stale-owner failure behavior |
+| `e2e-remote-permission-ceiling.mjs` | `pnpm test:e2e:remote-permission-ceiling` | Isolated `pi-host` with a deterministic loopback model; checks paired-owner ceiling approval and queued delegated-write recovery after Host restart |
+| `e2e-remote-ssh-bootstrap.mjs` | `node scripts/e2e-remote-ssh-bootstrap.mjs` | Linux `sshd` fixture for production SSH bootstrap, release-bundle checksum/install, pairing, mid-turn reconnect, cursor replay, and PTY reattachment; requires `PI_DESKTOP_E2E_SSHD_SUDO=1` |
 | `e2e-supervision.mjs` | `pnpm test:e2e:supervision` | Process supervision and restart behavior |
 | `e2e-subagents.mjs` | `pnpm test:e2e:subagents` | Subagent registry over RPC, then through the real loader (D202) |
 | `e2e-agent-live.mjs` | `node scripts/e2e-agent-live.mjs` | Live streaming chat through agent-runtime + host-core. Requires `PI_DESKTOP_TEST_API_KEY`, `PI_DESKTOP_TEST_BASE_URL`, and `PI_DESKTOP_TEST_MODEL` (no defaults), so it has no `pnpm` alias |

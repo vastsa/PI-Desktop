@@ -252,6 +252,25 @@ test("execWithInput runs the script through `sh -s` with the body on stdin", { t
   transport.dispose();
 });
 
+test("execWithInput runs the caller's command and keeps its input off argv", { timeout: TEST_TIMEOUT_MS }, async (t) => {
+  const binary = await writeFixture(t, FIXTURES.argvAndStdin, "ssh-argv-and-stdin");
+  const transport = createSystemSshTransport({ host: "remote.example" }, { binary });
+  const command = 'node "$HOME/.pi-desktop/pi-host/current/pi-host.js" provider-import';
+
+  const result = await transport.execWithInput(command, '{"secretValue":"KEY-MARKER"}');
+  assert.equal(result.code, 0);
+
+  const argvSection = result.stdout.slice(
+    result.stdout.indexOf("ARGV-BEGIN"),
+    result.stdout.indexOf("ARGV-END"),
+  );
+  assert.equal(argvSection.split("\n").filter(Boolean).at(-1), command);
+  assert.ok(!argvSection.includes("KEY-MARKER"), "the payload must not reach argv");
+  assert.ok(result.stdout.slice(result.stdout.indexOf("ARGV-END")).includes("KEY-MARKER"));
+
+  transport.dispose();
+});
+
 test("a non-zero exit becomes a typed error carrying both streams", { timeout: TEST_TIMEOUT_MS }, async (t) => {
   const binary = await writeFixture(t, FIXTURES.failing, "ssh-failing");
   const transport = createSystemSshTransport({ host: "remote.example" }, { binary });

@@ -5042,7 +5042,47 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 覆盖：更新后的 `apps/desktop/test/service-chooser.test.mjs`，以及
   `scripts/e2e/provider-api-style.tsx` 探针——它现在断言第一个
   `[data-service-id]` 磁贴是 `custom`，而不是最后一个。
+## 2026-09-25 — 远程会话入口与失败即关闭的路由（D628）
 
+- ADR 0286 内核已能让配对主机响应渲染器调用，但没有入口 UI：侧栏只列本地
+  会话，也无法新建远程会话。远程会话入口为每台配对主机新增一个无边框侧栏
+  分组（显示连接状态与其会话，复用本地行组件），并用复用重命名壳体的新建
+  对话框选择主机上的项目并在其上创建会话。
+- ADR 0286 的路由对任何未注册 id 都返回 `ROUTE_LOCAL`。这对未知的本地 id
+  没问题，但对主机离线的 `remote:<hostKey>:<hostSessionId>` id 是错的：放行
+  会把面向远程的调用打到本地状态。路由现在对没有存活后端的 `remote:` id
+  失败即关闭，未注册的本地 id 仍走本地。无配对主机的构建默认行为不变。此项
+  修订 ADR 0286 §3。
+- 远程会话在主机默认模型下运行；桌面不显示远程模型选择器。转录行对远程行
+  去掉编辑/删除/修订，Composer 对远程会话禁用模式与权限模式选择器，文件页
+  只读主机的目录树。选择或新建远程会话不会改动本地工作区或抢占焦点，订阅
+  也限定在展示中的主机分组内。
+- 仅改渲染器与 Electron 主进程；无 host-core、SQLite、协议或安全边界变化。
+  见 ADR 0308、`02-architecture/05-remote-agent-control.md` §5.2、
+  `05-security/02-remote-control-security.md` §3.4/§7、
+  E2E-REMOTE-session-list-and-create。
+
+## 2026-09-25 — 通过仅属主的 admin socket 向 SSH 主机同步 provider（D629）
+
+- ADR 0292 引导出的主机没有 provider，`turn/start` 会以
+  `MODEL_NOT_CONFIGURED` 失败即关闭，直到用户登录手动配置。设置 ▸ 远程主机
+  中新增手动「同步模型…」动作，把选定的本地 provider（含 API 密钥）复制到
+  配对的 SSH 主机。
+- 密钥不经 argv、日志或 RACP（RACP 是会话协议，不是管理协议）。桌面通过
+  ADR 0292 的 SSH 传输 `execWithInput` 在主机上运行 `pi-host provider-import`，
+  把受限 JSON 载荷从远程进程的 stdin 送入。CLI 再经一个仅属主的 Unix admin
+  socket（`<dataDir>/pi-host/admin.sock`，目录 `0700`、socket `0600`、每连接
+  一请求、上限 1 MiB、Windows 禁用）交给正在运行的主机；不会另起 host-core。
+- 导入按源 provider id 幂等：首次同步创建行，再次同步更新同一行（经
+  `provider-sync.json` 映射），跳过插件所属行，且从不删除。当载荷指定
+  `defaultModel` 时，handler 设置主机默认，使主机能立即响应 `turn/start`。
+  可同步性规则（`isSyncableProvider`、`PROVIDER_SYNC_MAX_PROVIDERS = 64`）
+  放在 `packages/shared`，让渲染器对话框与主机校验器一致。同步为手动，绝不
+  自动运行。
+- 新增 `pi-host` 子命令与 admin socket、一份共享契约、桌面 UI/IPC；无
+  host-core RPC、SQLite 或渲染器传输变化。见 ADR 0310、ADR 0292（补充）、
+  `05-security/02-remote-control-security.md` §3.4/§7、
+  E2E-REMOTE-provider-import-enables-turn。
 ## 2026-09-25 —— 模型设置直接打开双栏，兜底列表给出全部模型（D627）
 
 - 编辑一个服务或厂商账号时，之前先落在「已选模型摘要」（`ChosenModelsSummary`）上，

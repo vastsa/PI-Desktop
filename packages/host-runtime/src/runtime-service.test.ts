@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { ToolRelayPort } from "@pi-desktop/agent-host";
 import type { AgentEventEnvelope, UiMessage } from "@pi-desktop/shared";
 
 import type { LaunchResolver } from "./launch-resolver.js";
+import { RemoteToolRelay } from "./remote-tool-relay.js";
 import { RuntimeService, type RuntimeHostLink, type RuntimeSidecarLink, type TurnEndedInfo } from "./runtime-service.js";
 
 type Call = { method: string; params: Record<string, unknown> };
@@ -33,6 +35,8 @@ class FakeHost implements RuntimeHostLink {
         return {} as T;
       }
       case "session.endTurn":
+        return { ok: true } as T;
+      case "plugins.resolveExecution":
         return { ok: true } as T;
       case "session.saveInflightMessage":
         return { ok: true } as T;
@@ -129,7 +133,7 @@ const launch: LaunchResolver = {
   },
 };
 
-function build() {
+function build(toolRelay?: ToolRelayPort) {
   const host = new FakeHost();
   const sidecar = new FakeSidecar();
   const events: AgentEventEnvelope[] = [];
@@ -139,6 +143,7 @@ function build() {
     getHost: () => host,
     getSidecar: () => sidecar,
     launch,
+    toolRelay,
     log: (level, message) => logs.push({ level, message }),
     now: () => Date.parse("2026-09-18T00:00:00.000Z"),
   });
@@ -207,6 +212,118 @@ async function settle(): Promise<void> {
 }
 
 describe("RuntimeService prompt lifecycle", () => {
+  it("exposes only the captured remote tools and routes the Host dispatch back to their owner", async () => {
+    const relay = new RemoteToolRelay();
+    const requests: Array<{ method: string; params: unknown }> = [];
+    relay.advertise({
+      connectionId: "owner-connection",
+      sessionId: "s1",
+      tools: [{
+        name: "mcp_corp_search",
+        description: "Search release notes",
+        inputSchema: { type: "object", properties: { query: { type: "string" } } },
+        timeoutMs: 5_000,
+        workspaceFree: true,
+      }],
+      request: async (method, params) => {
+        requests.push({ method, params });
+        return { result: [{ type: "text", text: "release 12" }], isError: false };
+      },
+    });
+    const { host, sidecar, service } = build(relay);
+
+    await service.prompt({ sessionId: "s1", content: "search releases", effectivePermissionMode: "ask", principal: owner });
+    const prompt = sidecar.calls.find((call) => call.method === "agent.prompt");
+    expect(prompt?.params.pluginTools).toMatchObject([{
+      name: "mcp_corp_search",
+      description: "Search release notes",
+      parameters: { type: "object" },
+    }]);
+
+    host.notify?.("plugins.execute", {
+      executionId: "exec-1",
+      sessionId: "s1",
+      turnId: "turn-1",
+      toolCallId: "call-1",
+      toolName: "mcp_corp_search",
+      args: { query: "release notes" },
+      mode: "agent",
+    });
+    await settle();
+    expect(requests).toEqual([{
+      method: "tool/execute",
+      params: {
+        executionId: "exec-1",
+        sessionId: "s1",
+        turnId: "turn-1",
+        toolCallId: "call-1",
+        toolName: "mcp_corp_search",
+        args: { query: "release notes" },
+      },
+    }]);
+    expect(host.calls.find((call) => call.method === "plugins.resolveExecution")?.params).toMatchObject({
+      executionId: "exec-1",
+      ok: true,
+      content: [{ type: "text", text: "release 12" }],
+    });
+
+    sidecar.notify?.("agent.event", { sessionId: "s1", turnId: "turn-1", ts: 1, event: { type: "agent_end", messageIds: [] } });
+    await settle();
+    host.notify?.("plugins.execute", {
+      executionId: "exec-late",
+      sessionId: "s1",
+      turnId: "turn-1",
+      toolCallId: "call-late",
+      toolName: "mcp_corp_search",
+      args: { query: "late call" },
+    });
+    await settle();
+    expect(requests).toHaveLength(1);
+    expect(host.calls.find((call) => call.method === "plugins.resolveExecution" && call.params.executionId === "exec-late")?.params)
+      .toMatchObject({ ok: false, errorCode: "TOOL_FAILED" });
+  });
+
+  it("resolves a disconnected relay call as a tool failure and keeps the turn active", async () => {
+    const relay = new RemoteToolRelay();
+    relay.advertise({
+      connectionId: "owner-connection",
+      sessionId: "s1",
+      tools: [{
+        name: "mcp_corp_search",
+        description: "Search release notes",
+        inputSchema: { type: "object", properties: { query: { type: "string" } } },
+        timeoutMs: 5_000,
+        workspaceFree: true,
+      }],
+      request: async () => { throw new Error("owner disconnected"); },
+    });
+    const { host, sidecar, service } = build(relay);
+
+    await service.prompt({ sessionId: "s1", content: "search releases", effectivePermissionMode: "ask", principal: owner });
+    host.notify?.("plugins.execute", {
+      executionId: "exec-disconnected",
+      sessionId: "s1",
+      turnId: "turn-1",
+      toolCallId: "call-disconnected",
+      toolName: "mcp_corp_search",
+      args: { query: "release notes" },
+    });
+    await settle();
+
+    expect(host.calls.find((call) => call.method === "plugins.resolveExecution" && call.params.executionId === "exec-disconnected")?.params)
+      .toMatchObject({ ok: false, errorCode: "TOOL_FAILED" });
+    expect(service.isBusy("s1")).toBe(true);
+
+    sidecar.notify?.("agent.event", {
+      sessionId: "s1",
+      turnId: "turn-1",
+      ts: 2,
+      event: { type: "agent_end", messageIds: [] },
+    });
+    await settle();
+    expect(service.isBusy("s1")).toBe(false);
+  });
+
   it("opens a durable turn, persists the user row, then starts the runtime under that turn id", async () => {
     const { host, sidecar, service, events } = build();
     const { turnId } = await service.prompt({ sessionId: "s1", content: "hello", effectivePermissionMode: "ask", principal: owner });
@@ -231,6 +348,22 @@ describe("RuntimeService prompt lifecycle", () => {
     const id = "6f1c1e2a-3b4d-4c5e-8f6a-7b8c9d0e1f2a";
     await service.prompt({ sessionId: "s1", content: "x", userMessageId: id, effectivePermissionMode: "ask", principal: owner });
     expect(host.messages.get("s1")?.[0]?.id).toBe(id);
+  });
+
+  it("stores the Host-computed permission ceiling on the durable turn", async () => {
+    const { host, sidecar, service } = build();
+    await service.prompt({
+      sessionId: "s1",
+      content: "limited turn",
+      effectivePermissionMode: "ask",
+      permissionCeiling: "ask",
+      principal: owner,
+    });
+    expect(host.calls.find((call) => call.method === "session.beginTurn")?.params).toMatchObject({
+      permissionCeiling: "ask",
+    });
+    const prompt = sidecar.calls.find((call) => call.method === "agent.prompt");
+    expect(prompt?.params).not.toHaveProperty("permissionMode");
   });
 
   it("refuses a second prompt while the turn runs and settles the turn on agent_end", async () => {

@@ -16,8 +16,9 @@ import {
   wsClientTransport,
   type ClientTransportFactory,
   type RacpClientState,
+  type SubscriptionClosedNotice,
 } from "@pi-desktop/racp";
-import { ErrorCodes, type RacpEventEnvelope } from "@pi-desktop/shared";
+import { ErrorCodes, type RacpCursor, type RacpEventEnvelope, type RacpInitializeResult } from "@pi-desktop/shared";
 import type { RemoteHostClient } from "./remote-host-connection.js";
 
 export type PairingExchangeOptions = {
@@ -99,15 +100,55 @@ export function createRacpRemoteHostClient(
   options: RacpRemoteHostClientOptions,
 ): RacpRemoteHostClient {
   const listeners = new Set<(envelope: RacpEventEnvelope) => void>();
+  const closedListeners = new Set<(notice: SubscriptionClosedNotice) => void>();
+  const serverRequestListeners = new Set<(method: string, params: unknown) => Promise<unknown>>();
+  const stateListeners = new Set<(state: RacpClientState, error?: unknown) => void>();
+  const reconnectedListeners = new Set<() => Promise<void> | void>();
+  const fanOut = <T>(targets: Set<(value: T) => void>, value: T) => {
+    for (const listener of targets) {
+      try {
+        listener(value);
+      } catch (error) {
+        options.log?.("warn", "remote event listener threw", { error: String(error) });
+      }
+    }
+  };
   const racp = new RacpClient({
     transport: options.transport,
     client: options.clientInfo,
-    onEvent: (envelope) => {
-      for (const listener of listeners) {
+    onServerRequest: async (method, params) => {
+      if (serverRequestListeners.size !== 1) {
+        throw Object.assign(new Error("remote server request has no unique Desktop handler"), {
+          errorCode: ErrorCodes.CAPABILITY_UNAVAILABLE,
+        });
+      }
+      const listener = serverRequestListeners.values().next().value;
+      if (!listener) {
+        throw Object.assign(new Error("remote server request is not handled"), {
+          errorCode: ErrorCodes.METHOD_NOT_FOUND,
+        });
+      }
+      return listener(method, params);
+    },
+    onEvent: (envelope) => fanOut(listeners, envelope),
+    onSubscriptionClosed: (notice) => fanOut(closedListeners, notice),
+    onStateChange: (state, error) => {
+      for (const listener of stateListeners) {
         try {
-          listener(envelope);
+          listener(state, error);
+        } catch (listenerError) {
+          options.log?.("warn", "remote state listener threw", { error: String(listenerError) });
+        }
+      }
+    },
+    onReconnected: async () => {
+      for (const listener of reconnectedListeners) {
+        try {
+          await listener();
         } catch (error) {
-          options.log?.("warn", "remote event listener threw", { error: String(error) });
+          // A consumer callback failure must not strand the RACP transport in
+          // its reconnect loop; the next explicit state change remains usable.
+          options.log?.("warn", "remote reconnect listener threw", { error: String(error) });
         }
       }
     },
@@ -123,6 +164,35 @@ export function createRacpRemoteHostClient(
         listeners.delete(listener);
       };
     },
+    onSubscriptionClosed(listener) {
+      closedListeners.add(listener);
+      return () => {
+        closedListeners.delete(listener);
+      };
+    },
+    onServerRequest(listener) {
+      serverRequestListeners.add(listener);
+      return () => {
+        serverRequestListeners.delete(listener);
+      };
+    },
+    onConnectionState(listener) {
+      stateListeners.add(listener);
+      return () => {
+        stateListeners.delete(listener);
+      };
+    },
+    onReconnected(listener) {
+      reconnectedListeners.add(listener);
+      return () => {
+        reconnectedListeners.delete(listener);
+      };
+    },
+    limits: () => racp.initialized?.limits,
+    hostCapabilities: () => racp.initialized?.capabilities,
+    initialized: (): RacpInitializeResult | undefined => racp.initialized ?? undefined,
+    cursorFor: (sessionId: string): RacpCursor | undefined => racp.cursorFor(sessionId),
+    cursorForHost: (): RacpCursor | undefined => racp.cursorForHost(),
   };
   return {
     client,

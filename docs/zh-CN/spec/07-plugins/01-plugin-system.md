@@ -495,6 +495,15 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
   一次 `ToolSearch`。未知名称不会触发发现。
 - 恢复前、后都会检查启用状态和项目作用域。删除服务器或销毁运行时会丢掉
   记住的名称；过期的进行中握手不能把它们恢复回来。并发调用共享一次握手。
+- 在已配对的 RACP owner 连接上，只有 Host 声明 `toolRelay` 时，Desktop
+  才会广告用户直接配置的 MCP 工具。广告目录取自当前的
+  `UserMcpRuntime.toolsForProject(null)` 全局结果，因此继续遵循现有启用状态和
+  激活范围规则，并排除项目作用域的服务器。本期 Desktop relay 不广告插件工具。
+- Relay 只发送工具名称、描述、输入 schema、有界超时和
+  `workspaceFree: true`；不会发送 MCP 环境变量、HTTP header、OAuth 凭据或 Host
+  项目路径。执行前会重新验证当前目录和 schema，再以空项目路径调用现有
+  `UserMcpRuntime`，保留本地作用域、超时和取消检查。Host 会先执行现有权限审批，
+  然后才向 Desktop 分发 `tool/execute`。
 - 恢复失败报告 `UNAVAILABLE`，并沿用现有失败策略（编辑或测试连接后再试），
   而不是每次调用都反复连接。已移除的工具返回 `TOOL_NOT_FOUND`。恢复从不
   重放失败的 `tools/call`，因为那次调用可能已经产生过副作用。

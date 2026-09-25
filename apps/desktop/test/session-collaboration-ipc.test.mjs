@@ -33,6 +33,7 @@ const { registerSessionIpc } = load("../electron/main/ipc/session-ipc.ts", {
   "node:path": path,
   "@pi-desktop/shared": shared,
   "../importers": {},
+  "../bootstrap/remote-hosts": { getActiveRemoteHostsBoot: () => null },
   "../services/session-collaboration": collaboration,
   "../services/session-search": { searchSessionsAcrossSources: async () => ({ hits: [], nextOffset: null }) },
 });
