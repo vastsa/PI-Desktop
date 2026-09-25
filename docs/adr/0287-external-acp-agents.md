@@ -1,6 +1,6 @@
 # ADR 0287: external ACP agents as a second session backend
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-25
 - Related: `packages/acp-client`, `packages/racp` (ADR 0285),
   `packages/agent-runtime`, `packages/host-runtime`
@@ -80,6 +80,26 @@ concurrent sessions never cross-talk.
    (`packages/agent-runtime/src/opencode-session-headers.ts`). Per-provider
    custom headers stay a provider-row feature and are not reused here.
 
+6. **The host discloses the access model and asks once; it does not pretend
+   to mediate it.** An external agent runs with the project folder as its
+   working directory and edits that folder with its own tools. That is
+   measured, not assumed: `packages/acp-client/scripts/acp-tool-probe.ts` asked
+   a live `opencode acp` to create and read back a file and counted the client
+   callbacks — `read=0 write=0 permission=0`, while the file was created. The
+   agent never asks, so a host-side `request_permission` refusal gates nothing.
+
+   The first wiring refused every `request_permission` and described that as
+   failing closed. That was the wrong shape: the refusal implied a control the
+   host does not have, while the agent went on writing to the project. The
+   refusal stays as the default answer for an agent that does ask — nothing
+   about that behaviour changes — but the section no longer claims to be a
+   boundary. The control the host can actually exercise is the one it always
+   had: the user is told what the agent can reach, and the row cannot be saved
+   until they say they understand. Consent is dialog state and is not stored,
+   so it is re-given when the row is edited rather than outliving the decision
+   it recorded; changing the command drops it, because consent was given for
+   one program.
+
 ## Consequences
 
 - The package is reusable for any ACP agent, so the feature is not a
@@ -121,14 +141,21 @@ joining it to the app, in this order. Each step is independently shippable.
    ignored rather than fatal — agents will add variants, and a transcript that
    drops an unknown block beats a turn that dies on it.
 
-5. **Permissions and files — not done.** The pi runtime does not mediate its
-   own tool calls: they go through host-core, which owns the permission
-   decision and the containment rules. An external agent runs its tools inside
-   its own process, so host-core cannot sit in that path. Until a host route
-   exists, `request_permission` answers "cancelled" and the agent's tool call
-   is **refused** rather than unattended. `-32601` on the file callbacks keeps
-   a turn from hanging. This is the one gap: an ACP session today can talk but
-   cannot touch the working tree.
+5. **Permissions and files — disclosed, not mediated.** The pi runtime does not
+   mediate its own tool calls: they go through host-core, which owns the
+   permission decision and the containment rules. An external agent runs its
+   tools inside its own process with the project folder as its working
+   directory, so host-core cannot sit in that path and the host cannot allow or
+   deny any of it. `request_permission` still answers "cancelled" when an agent
+   asks, and `-32601` on the file callbacks keeps a turn from hanging, but
+   neither is a boundary — an agent that ignores the callback is unaffected.
+
+   So the wiring states the access model in the section itself and requires an
+   explicit acknowledgement before the row saves, rather than implying a
+   mediation that does not exist. The remaining gap is that nothing repeats
+   this while a session runs: the UI still does not say which backend produced
+   a transcript. That is the next piece, and it belongs in the chat surface
+   rather than in Settings.
 
 6. **Process lifecycle.** One long-lived process per agent, started lazily on
    first use. On exit, reject in-flight turns, mark the agent offline in the UI, and
@@ -154,7 +181,10 @@ unit tested:
 - `crates/host-core` — the agent definition lives on the provider row in
   `config_json.acp`, read and written alongside headers and models.
 - `apps/desktop` — an advanced section in the provider dialog, translated in
-  all ten locales.
+  all ten locales. The row cannot be saved until the user acknowledges what the
+  agent can reach, and the acknowledgement is dropped when the command changes
+  (`apps/desktop/src/components/settings/acp-draft.ts`,
+  `apps/desktop/test/acp-agent-consent.test.mjs`).
 
 Two integration checks drive the real processes:
 

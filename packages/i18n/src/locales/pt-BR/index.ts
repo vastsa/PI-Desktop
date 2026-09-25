@@ -1357,7 +1357,11 @@ export const ptBR = {
     acpModel: "Modelo (opcional)",
     acpModelPlaceholder: "Deixe vazio para o agente escolher",
     acpCommandRequired: "Um comando é obrigatório.",
-    acpArgsUnparsed: "Não foi possível ler estes argumentos. Verifique aspas não fechadas.",
+    acpAccessWhat: "O que um agente externo pode alcançar",
+    acpAccessNotice:
+      "Este agente é executado na sua máquina com a pasta do projeto como diretório de trabalho e lê e escreve esses arquivos com as próprias ferramentas. O PI-Desktop nunca vê essas ações e não pode bloqueá-las. Adicione apenas um agente em que você confie para lidar com seu código.",
+    acpConsent: "Entendo que este agente pode alterar arquivos do meu projeto sem perguntar antes",
+    acpConsentRequired: "Confirme o que este agente pode alcançar antes de salvar.",
     headers: "Cabeçalhos",
     headerName: "Nome",
     headerValue: "Valor",

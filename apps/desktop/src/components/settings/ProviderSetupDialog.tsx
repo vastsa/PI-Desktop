@@ -23,12 +23,8 @@ import { api } from "../../lib/api";
 import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
 import { Button, Field, HelpIcon, Input, portalOverlay } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
-import {
-  AcpAgentFields,
-  acpConfigFrom,
-  acpDraftFrom,
-  type AcpDraft,
-} from "./AcpAgentFields";
+import { AcpAgentFields } from "./AcpAgentFields";
+import { acpConfigFrom, acpDraftFrom, type AcpDraft } from "./acp-draft";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";

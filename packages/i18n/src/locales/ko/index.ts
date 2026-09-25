@@ -1409,7 +1409,11 @@ sklm: {
     acpModel: "모델 (선택)",
     acpModelPlaceholder: "비워 두면 에이전트가 선택합니다",
     acpCommandRequired: "명령이 필요합니다.",
-    acpArgsUnparsed: "인수를 읽을 수 없습니다. 닫히지 않은 따옴표를 확인하세요.",
+    acpAccessWhat: "외부 에이전트가 접근할 수 있는 범위",
+    acpAccessNotice:
+      "이 에이전트는 프로젝트 폴더를 작업 디렉터리로 하여 사용자의 컴퓨터에서 실행되며 자체 도구로 해당 파일을 읽고 씁니다. PI-Desktop는 이러한 작업을 전혀 볼 수 없으며 차단할 수도 없습니다. 코드를 맡길 수 있는 에이전트만 추가하세요.",
+    acpConsent: "이 에이전트는 먼저 묻지 않고 프로젝트 파일을 변경할 수 있음을 이해합니다",
+    acpConsentRequired: "저장하기 전에 이 에이전트가 접근할 수 있는 범위를 확인하세요.",
     headers: "헤더",
     headerName: "이름",
     headerValue: "값",

@@ -1411,7 +1411,11 @@ sklm: {
     acpModel: "Model (optional)",
     acpModelPlaceholder: "Leave empty to let the agent choose",
     acpCommandRequired: "A command is required.",
-    acpArgsUnparsed: "These arguments could not be read. Check for an unclosed quote.",
+    acpAccessWhat: "What an external agent can reach",
+    acpAccessNotice:
+      "This agent runs on your machine with your project folder as its working directory, and it reads and writes those files with its own tools. PI-Desktop never sees those actions and cannot block them. Only add an agent you trust with your code.",
+    acpConsent: "I understand this agent can change files in my project without asking first",
+    acpConsentRequired: "Confirm what this agent can reach before saving.",
     headers: "Headers",
     headerName: "Name",
     headerValue: "Value",

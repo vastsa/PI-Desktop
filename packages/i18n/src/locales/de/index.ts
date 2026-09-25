@@ -592,7 +592,11 @@ export const de = {
     "acpModel": "Modell (optional)",
     "acpModelPlaceholder": "Leer lassen, damit der Agent wählt",
     "acpCommandRequired": "Ein Befehl ist erforderlich.",
-    "acpArgsUnparsed": "Diese Argumente konnten nicht gelesen werden. Prüfe auf ein nicht geschlossenes Anführungszeichen.",
+    acpAccessWhat: "Was ein externer Agent erreichen kann",
+    acpAccessNotice:
+      "Dieser Agent läuft auf Ihrem Rechner mit Ihrem Projektordner als Arbeitsverzeichnis und liest und schreibt diese Dateien mit eigenen Werkzeugen. PI-Desktop sieht diese Aktionen nie und kann sie nicht blockieren. Fügen Sie nur einen Agenten hinzu, dem Sie Ihren Code anvertrauen.",
+    acpConsent: "Mir ist klar, dass dieser Agent Dateien in meinem Projekt ändern kann, ohne zuerst zu fragen",
+    acpConsentRequired: "Bestätigen Sie, was dieser Agent erreichen kann, bevor Sie speichern.",
     "power": "Energie",
     "keepAwakeWhileRunning": "Computer wach halten",
     "keepAwakeWhileRunningDesc": "Verhindert den Ruhezustand bei Inaktivität, solange PI-Desktop läuft. Der Bildschirm kann sich ausschalten; manuelles Schlafen und Zuklappen bleiben möglich.",

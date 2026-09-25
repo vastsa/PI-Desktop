@@ -592,7 +592,11 @@ export const es = {
     "acpModel": "Modelo (opcional)",
     "acpModelPlaceholder": "Déjalo vacío para que el agente elija",
     "acpCommandRequired": "Se requiere un comando.",
-    "acpArgsUnparsed": "No se pudieron leer estos argumentos. Comprueba si falta una comilla de cierre.",
+    acpAccessWhat: "Qué puede alcanzar un agente externo",
+    acpAccessNotice:
+      "Este agente se ejecuta en tu equipo con la carpeta del proyecto como directorio de trabajo, y lee y escribe esos archivos con sus propias herramientas. PI-Desktop nunca ve esas acciones y no puede bloquearlas. Añade solo un agente en el que confíes para tocar tu código.",
+    acpConsent: "Entiendo que este agente puede cambiar archivos de mi proyecto sin preguntar antes",
+    acpConsentRequired: "Confirma qué puede alcanzar este agente antes de guardar.",
     "power": "Energía",
     "keepAwakeWhileRunning": "Mantener el equipo activo",
     "keepAwakeWhileRunningDesc": "Evita la suspensión por inactividad mientras PI-Desktop esté abierto. La pantalla puede apagarse; la suspensión manual y al cerrar la tapa siguen funcionando.",

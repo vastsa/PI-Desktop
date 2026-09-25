@@ -1399,7 +1399,12 @@ sklm: {
     acpModel: "Model (isteğe bağlı)",
     acpModelPlaceholder: "Ajanın seçmesine bırakmak için boş bırakın",
     acpCommandRequired: "Komut gerekli.",
-    acpArgsUnparsed: "Bu argümanlar okunamadı. Kapanmamış tırnak olup olmadığını kontrol edin.",    headers: "Başlıklar",
+    acpAccessWhat: "Harici bir ajanın erişebildiği alan",
+    acpAccessNotice:
+      "Bu ajan, proje klasörünüzü çalışma dizini olarak kullanarak makinenizde çalışır ve bu dosyaları kendi araçlarıyla okuyup yazar. PI-Desktop bu işlemleri hiç görmez ve engelleyemez. Yalnızca kodunuzu emanet edebileceğiniz bir ajan ekleyin.",
+    acpConsent: "Bu ajanın, önce sormadan projemdeki dosyaları değiştirebileceğini anlıyorum",
+    acpConsentRequired: "Kaydetmeden önce bu ajanın erişebileceği alanı onaylayın.",
+    headers: "Başlıklar",
     headerName: "Ad",
     headerValue: "Değer",
     addHeader: "Başlık ekle",

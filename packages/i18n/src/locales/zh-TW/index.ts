@@ -1380,7 +1380,11 @@ sklm: {
     acpModel: "模型（選填）",
     acpModelPlaceholder: "留空則由代理自行選擇",
     acpCommandRequired: "必須填寫指令。",
-    acpArgsUnparsed: "無法解析這些引數。請檢查引號是否未閉合。",
+    acpAccessWhat: "外部代理能存取的範圍",
+    acpAccessNotice:
+      "此代理在你的電腦上執行，並以專案資料夾作為工作目錄，使用自己的工具讀寫其中的檔案。PI-Desktop 看不到這些操作，也無法阻擋。請只加入你願意把程式碼交給它的代理。",
+    acpConsent: "我明白此代理可以在不詢問的情況下修改我專案中的檔案",
+    acpConsentRequired: "儲存前請確認此代理能存取的範圍。",
     headers: "請求頭",
     headerName: "名稱",
     headerValue: "值",

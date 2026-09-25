@@ -1380,7 +1380,11 @@ sklm: {
     acpModel: "模型（可选）",
     acpModelPlaceholder: "留空则由智能体自行选择",
     acpCommandRequired: "必须填写命令。",
-    acpArgsUnparsed: "无法解析这些参数。请检查引号是否未闭合。",
+    acpAccessWhat: "外部智能体能够访问的范围",
+    acpAccessNotice:
+      "该智能体在你的计算机上运行，并以项目文件夹作为工作目录，使用自己的工具读取和写入其中的文件。PI-Desktop 看不到这些操作，也无法阻止。请只添加你愿意把代码交给它的智能体。",
+    acpConsent: "我明白此智能体可以在不询问的情况下修改我项目中的文件",
+    acpConsentRequired: "保存前请确认此智能体能够访问的范围。",
     headers: "请求头",
     headerName: "名称",
     headerValue: "值",
