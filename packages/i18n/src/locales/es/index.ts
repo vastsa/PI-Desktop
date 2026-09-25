@@ -582,6 +582,17 @@ export const es = {
     "dismiss": "Descartar"
   },
   "settings": {
+    "acpSection": "Agente externo",
+    "acpEnable": "Ejecutar este servicio como agente externo (ACP)",
+    "acpExplanation":
+      "Un agente externo es un programa de este equipo que trae sus propios modelos y credenciales. La URL, el formato de API y la clave de API de abajo no se usan.",
+    "acpChoosePreset": "Elegir un agente",
+    "acpCommand": "Comando",
+    "acpArgs": "Argumentos",
+    "acpModel": "Modelo (opcional)",
+    "acpModelPlaceholder": "Déjalo vacío para que el agente elija",
+    "acpCommandRequired": "Se requiere un comando.",
+    "acpArgsUnparsed": "No se pudieron leer estos argumentos. Comprueba si falta una comilla de cierre.",
     "power": "Energía",
     "keepAwakeWhileRunning": "Mantener el equipo activo",
     "keepAwakeWhileRunningDesc": "Evita la suspensión por inactividad mientras PI-Desktop esté abierto. La pantalla puede apagarse; la suspensión manual y al cerrar la tapa siguen funcionando.",

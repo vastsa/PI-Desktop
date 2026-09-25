@@ -57,6 +57,10 @@ pub(crate) fn provider_from_row(
             .ok()
             .and_then(|raw| config_limit_f64(&raw, "temperature")),
         owner_plugin_id: row.get(14)?,
+        acp: row
+            .get::<_, String>(11)
+            .ok()
+            .and_then(|raw| config_acp(&raw)),
         created_at: ms_to_ts(row.get(12)?),
         updated_at: ms_to_ts(row.get(13)?),
     })
@@ -125,6 +129,7 @@ pub fn create_provider(
         Some(headers) => config_with_headers(&config_json, headers)?,
         None => config_json,
     };
+    let config_json = config_with_acp(&config_json, input.acp.as_ref())?;
 
     db.conn()
         .prepare_cached(
@@ -220,6 +225,7 @@ pub(crate) fn create_provider_with_id(
         Some(headers) => config_with_headers(&config_json, headers)?,
         None => config_json,
     };
+    let config_json = config_with_acp(&config_json, input.acp.as_ref())?;
     db.conn()
         .prepare_cached(
             "INSERT INTO providers (
@@ -327,6 +333,17 @@ pub fn update_provider(
             headers,
         )?),
         None => config_json,
+    };
+    // `None` means "not supplied" on a partial update. To remove a stored agent
+    // the host sends a config with a blank command, which `config_with_acp`
+    // treats as a clear.
+    let config_json = if input.acp.is_some() {
+        Some(config_with_acp(
+            config_json.as_deref().unwrap_or(&raw_config),
+            input.acp.as_ref(),
+        )?)
+    } else {
+        config_json
     };
 
     db.conn()

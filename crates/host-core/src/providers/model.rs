@@ -12,7 +12,7 @@ pub struct ProviderPublic {
     pub enabled: bool,
     pub base_url: Option<String>,
     pub auth_kind: String,
-    /// True when the provider holds any usable credential — a stored API key
+    /// True when the provider holds any usable credential â€” a stored API key
     /// **or** a vendor-account OAuth credential. Readiness checks across the
     /// app key off this, so both auth channels light up the same way.
     pub has_secret: bool,
@@ -55,6 +55,12 @@ pub struct ProviderPublic {
     /// `providers.update` / `providers.delete` refuse it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_plugin_id: Option<String>,
+    /// Present when this row is an external ACP agent rather than a model
+    /// endpoint. A session on such a row is executed by that program, which
+    /// brings its own models and credentials; the base URL and secret above are
+    /// unused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acp: Option<AcpAgentConfig>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -77,6 +83,11 @@ pub struct ProviderCreateInput {
     pub oauth_account_label: Option<String>,
     #[serde(default)]
     pub headers: Option<BTreeMap<String, String>>,
+    /// External ACP agent for this row. `None` leaves a stored agent alone on a
+    /// partial update; an agent with a blank command clears it, because serde
+    /// cannot tell an absent field from a JSON `null`.
+    #[serde(default)]
+    pub acp: Option<AcpAgentConfig>,
     pub supports_reasoning: Option<bool>,
     pub supported_thinking_levels: Option<Vec<String>>,
     /// Zero (or negative temperature) clears a stored override.
@@ -107,6 +118,11 @@ pub struct ProviderUpdateInput {
     pub oauth_account_label: Option<String>,
     #[serde(default)]
     pub headers: Option<BTreeMap<String, String>>,
+    /// External ACP agent for this row. `None` leaves a stored agent alone on a
+    /// partial update; an agent with a blank command clears it, because serde
+    /// cannot tell an absent field from a JSON `null`.
+    #[serde(default)]
+    pub acp: Option<AcpAgentConfig>,
     pub supports_reasoning: Option<bool>,
     pub supported_thinking_levels: Option<Vec<String>>,
     /// Zero (or negative temperature) clears a stored override.
@@ -188,3 +204,4 @@ pub struct DiscoveredModelInput {
     #[serde(default)]
     pub context_window: Option<u32>,
 }
+

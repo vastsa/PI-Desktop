@@ -238,6 +238,7 @@ fn a_user_row_is_never_adopted_or_removed() {
         &db,
         &secrets,
         providers::ProviderCreateInput {
+            acp: None,
             name: "Mine".into(),
             vendor_key: None,
             provider_type: None,
@@ -289,6 +290,7 @@ fn the_user_path_refuses_a_plugin_owned_row() {
         &db,
         &secrets,
         providers::ProviderUpdateInput {
+            acp: None,
             id: id.into(),
             name: Some("Renamed".into()),
             vendor_key: None,
@@ -442,7 +444,7 @@ fn the_declaration_shape_is_validated() {
 }
 
 /// A row id already in use by something other than this plugin cannot arise
-/// through the sync itself — the id embeds the plugin id — but it can exist in
+/// through the sync itself â€” the id embeds the plugin id â€” but it can exist in
 /// a database that was edited by hand or written by an older scheme. The upsert
 /// would skip such a row silently, so the sync refuses instead.
 #[test]
@@ -676,3 +678,4 @@ fn malformed_thinking_level_fields_are_rejected_by_manifest_validation() {
     write_plugin(&root, value);
     assert!(read_manifest_err(&root).contains("defaultThinkingLevel must be a string"));
 }
+

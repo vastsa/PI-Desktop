@@ -23,6 +23,13 @@ import { api } from "../../lib/api";
 import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
 import { Button, Field, HelpIcon, Input, portalOverlay } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
+import {
+  AcpAgentFields,
+  acpConfigFrom,
+  acpDraftFrom,
+  type AcpDraft,
+} from "./AcpAgentFields";
+import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
 import { ConnectionStatus, ProviderConnectionFields } from "./ProviderConnectionFields";
@@ -95,6 +102,8 @@ export function ProviderSetupDialog({
     initialDraft?.apiStyle ?? normalizeApiStyle(provider?.apiStyle),
   );
   const [headerPairs, setHeaderPairs] = useState(() => recordToPairs(provider?.headers));
+  const [acpDraft, setAcpDraft] = useState<AcpDraft>(() => acpDraftFrom(provider));
+  const [acpValid, setAcpValid] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [models, setModels] = useState<ModelBinding[]>(initialDraft?.models ?? provider?.models ?? []);
   const [saving, setSaving] = useState(false);
@@ -142,6 +151,7 @@ export function ProviderSetupDialog({
   // Editing reuses the stored secret. Custom still probes a valid URL alone.
   const discoveryActive =
     Boolean(service) &&
+    !acpDraft.enabled &&
     !requiresApiStyleChoice &&
     !baseUrlIssue &&
     (custom || Boolean(apiKey.trim()) || Boolean(provider));
@@ -312,6 +322,10 @@ export function ProviderSetupDialog({
           models: persisted,
           apiStyle: resolvedApiStyle,
           headers,
+          // `null` on update is meaningful: it removes a stored agent and turns
+          // the row back into an ordinary endpoint. Omitting the field would
+          // leave a half-edited agent in place.
+          acp: acpConfigFrom(acpDraft),
           ...(apiKey ? { secretValue: apiKey } : {}),
         });
         await onSaved(result.provider ?? provider, persisted, imageModelIdsToSave);
@@ -328,6 +342,7 @@ export function ProviderSetupDialog({
           secretValue: apiKey || undefined,
           apiStyle: resolvedApiStyle,
           headers,
+          acp: acpConfigFrom(acpDraft),
         });
         await onSaved(result.provider, persisted, imageModelIdsToSave);
       }
@@ -350,12 +365,16 @@ export function ProviderSetupDialog({
 
   const canSave =
     !saving &&
-    !requiresApiStyleChoice &&
+    // The API-format choice belongs to a model endpoint. An external agent
+    // ignores it, so leaving it unset must not keep the Save button greyed out
+    // for a row that is otherwise complete.
+    (acpDraft.enabled || !requiresApiStyleChoice) &&
     !!service &&
     !!resolvedName.trim() &&
-    !!resolvedBaseUrl.trim() &&
-    !baseUrlIssue &&
-    models.length > 0;
+    // An external agent needs a command, not a base URL: the program brings its
+    // own models, so probing or validating an endpoint for it is meaningless.
+    (acpDraft.enabled ? acpValid : !!resolvedBaseUrl.trim() && !baseUrlIssue) &&
+    (acpDraft.enabled || models.length > 0);
 
   const formView = (
     <>
@@ -558,6 +577,11 @@ export function ProviderSetupDialog({
                   </Field>
                 ) : null}
                 <ProviderHeadersEditor pairs={headerPairs} onChange={setHeaderPairs} />
+                <AcpAgentFields
+                  draft={acpDraft}
+                  onChange={setAcpDraft}
+                  onValidity={setAcpValid}
+                />
               </div>
             </div>
           </div>

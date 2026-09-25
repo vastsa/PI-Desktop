@@ -582,6 +582,17 @@ export const de = {
     "dismiss": "Verwerfen"
   },
   "settings": {
+    "acpSection": "Externer Agent",
+    "acpEnable": "Diesen Dienst als externen Agenten ausführen (ACP)",
+    "acpExplanation":
+      "Ein externer Agent ist ein Programm auf diesem Rechner, das eigene Modelle und Anmeldedaten mitbringt. Die untenstehende URL, das API-Format und der API-Schlüssel werden nicht verwendet.",
+    "acpChoosePreset": "Agent auswählen",
+    "acpCommand": "Befehl",
+    "acpArgs": "Argumente",
+    "acpModel": "Modell (optional)",
+    "acpModelPlaceholder": "Leer lassen, damit der Agent wählt",
+    "acpCommandRequired": "Ein Befehl ist erforderlich.",
+    "acpArgsUnparsed": "Diese Argumente konnten nicht gelesen werden. Prüfe auf ein nicht geschlossenes Anführungszeichen.",
     "power": "Energie",
     "keepAwakeWhileRunning": "Computer wach halten",
     "keepAwakeWhileRunningDesc": "Verhindert den Ruhezustand bei Inaktivität, solange PI-Desktop läuft. Der Bildschirm kann sich ausschalten; manuelles Schlafen und Zuklappen bleiben möglich.",
