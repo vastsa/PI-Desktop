@@ -115,41 +115,6 @@ pub(crate) fn derive_capabilities(manifest: &PluginManifest) -> Vec<String> {
     out
 }
 
-/// `PluginSummary.renderer` payload: the entry plus the whitelists, present
-/// only when the manifest declares a renderer surface. Held as raw JSON so
-/// the row schema stays decoupled from the manifest struct.
-pub(crate) fn renderer_row(manifest: &PluginManifest) -> Option<Value> {
-    manifest.renderer.as_ref().map(|entry| {
-        json!({
-            "entry": entry,
-            "actions": manifest.renderer_actions,
-            "callMethods": manifest.renderer_call_methods,
-        })
-    })
-}
-
-/// `PluginSummary.tools` payload: the plugin's own `contributes.agentTools`
-/// names, present when the manifest declares any. The toolCard slot uses it
-/// for the no-claim gate: a plugin card only renders its own tool's calls.
-pub(crate) fn tools_row(manifest: &PluginManifest) -> Option<Value> {
-    let names: Vec<&str> = manifest
-        .contributes
-        .as_ref()
-        .and_then(|c| c.get("agentTools"))
-        .and_then(|t| t.as_array())
-        .map(|tools| {
-            tools
-                .iter()
-                .filter_map(|tool| tool.get("name").and_then(|n| n.as_str()))
-        })
-        .map(|names| names.collect())
-        .unwrap_or_default();
-    if names.is_empty() {
-        return None;
-    }
-    Some(json!(names))
-}
-
 pub(crate) fn permission_diff(old: &[String], new: &[String]) -> Vec<String> {
     new.iter()
         .filter(|p| !old.iter().any(|o| o == *p))

@@ -1979,6 +1979,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       commands: "명령",
       tools: "에이전트 도구",
       agentExtension: "에이전트 확장",
+      rendererUi: "채팅 UI 확장",
       skills: "스킬",
       themes: "테마",
       mcp: "MCP 서버",

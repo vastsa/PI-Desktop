@@ -1,118 +1,153 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { register } from "node:module";
 import test from "node:test";
-register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+import { createElement } from "react";
+import { probed, propsProbe, slotSsr } from "./helpers/slot-ssr.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (relative) => join(here, "..", "src", relative);
+/*
+ * The keyed `toolCard` slot (`docs/plugin-plan/ui/tool-card/`) rendered with
+ * the production modules: a call of a plugin's own tool renders the card that
+ * plugin registered for it in place of the host card, fed the call's
+ * projection; every other row keeps the host card. Server rendering is the
+ * first frame of a mount: the merged running beat is driven below as the
+ * decision it is, and a card that throws or unloads handing the call back to
+ * the host card is covered by the Electron E2E.
+ */
 
-const { toolCardOwnershipError } = await import("@pi-desktop/plugin-sdk");
-const {
-  shouldEmitToolCard,
-  toolCardPropsFor,
-  toolCardStatusOf,
-  TOOL_CARD_RUNNING_INTERVAL_MS,
-} = await import("../src/features/chat/transcript/tool-card-props.ts");
+const PLUGIN = "demo.lab";
+const QUALIFIED = "plugin_demo_lab_lookup";
 
-const message = (extra = {}) => ({
-  id: "m1",
+const call = (overrides = {}) => ({
+  id: "t1",
   role: "tool",
   content: "",
-  createdAt: "2026-09-17T00:00:00.000Z",
-  toolName: "query_db",
+  status: "complete",
+  createdAt: "2026-09-24T00:00:02.000Z",
+  toolName: QUALIFIED,
   toolCallId: "call-1",
+  toolArgs: { q: "x" },
   toolStatus: "success",
-  ...extra,
+  toolResult: { rows: 1 },
+  toolDurationMs: 12,
+  ...overrides,
 });
 
-test("the no-claim gate refuses cards for tools the plugin does not own", () => {
+async function rows(t) {
+  const ssr = await slotSsr(t);
+  const { ToolRow } = await ssr.load("/src/features/chat/transcript/ToolRow.tsx");
+  const cadence = await ssr.load("/src/features/chat/transcript/tool-card-props.ts");
+  return {
+    ...ssr,
+    ...cadence,
+    row: (message, props = {}) => ssr.render(createElement(ToolRow, { message, ...props })),
+    claim: () =>
+      ssr.register(PLUGIN, { slot: "toolCard", toolName: "lookup", component: propsProbe("card") }, ["lookup"]),
+  };
+}
+
+test("a call of the plugin's own tool renders its card instead of the host card", async (t) => {
+  const ssr = await rows(t);
+  assert.match(ssr.row(call()), /^<div class="tool-row /, "the host card until a plugin claims the tool");
+  ssr.claim();
+  const html = ssr.row(call());
   assert.match(
-    toolCardOwnershipError("query_db", undefined) ?? "",
-    /contributes\.agentTools/,
+    html,
+    /^<div class="pi-plugin-slot" data-pi-plugin="demo.lab" data-pi-slot="toolCard"><output data-probe="card">[^<]*<\/output><\/div>$/,
+    "the whole card is the plugin's",
   );
-  assert.match(
-    toolCardOwnershipError("query_db", []) ?? "",
-    /contributes\.agentTools/,
-  );
-  assert.match(
-    toolCardOwnershipError("other_tool", ["query_db"]) ?? "",
-    /not in the plugin's own/,
-  );
-  assert.equal(toolCardOwnershipError("query_db", ["query_db", "other"]), null);
+  assert.deepEqual(probed(html, "card"), [
+    {
+      toolName: "lookup",
+      toolCallId: "call-1",
+      toolArgs: { q: "x" },
+      toolStatus: "success",
+      toolResult: { rows: 1 },
+      durationMs: 12,
+      messageId: "t1",
+      sessionId: "session-1",
+    },
+  ]);
 });
 
-test("card props carry the finalized fields, failure as data", () => {
-  const dispatch = async () => ({});
-  const failing = message({
-    toolStatus: "error",
-    isError: true,
-    error: { code: "TOOL_FAILED", message: "boom" },
+test("a failed call reaches the card as data, a running one without a result", async (t) => {
+  const ssr = await rows(t);
+  ssr.claim();
+  assert.deepEqual(
+    probed(ssr.row(call({ toolStatus: "error", toolResult: "no such table" })), "card"),
+    [
+      {
+        toolName: "lookup",
+        toolCallId: "call-1",
+        toolArgs: { q: "x" },
+        toolStatus: "error",
+        toolError: "no such table",
+        durationMs: 12,
+        messageId: "t1",
+        sessionId: "session-1",
+      },
+    ],
+    "what the failed tool returned is toolError, never toolResult",
+  );
+  assert.deepEqual(
+    probed(
+      ssr.row(call({ toolStatus: "running", toolCallId: undefined, toolResult: undefined, toolDurationMs: undefined })),
+      "card",
+    ),
+    [
+      {
+        toolName: "lookup",
+        toolCallId: "t1",
+        toolArgs: { q: "x" },
+        toolStatus: "running",
+        messageId: "t1",
+        sessionId: "session-1",
+      },
+    ],
+    "a call without its own id is known by its message id",
+  );
+});
+
+test("denied calls, topology nodes and every other tool keep the host card", async (t) => {
+  const ssr = await rows(t);
+  const cases = [
+    ["a denied call", call({ toolStatus: "denied" }), {}],
+    ["a topology node", call(), { variant: "topology" }],
+    ["a host tool", call({ toolName: "read" }), {}],
+    ["the bare tool name", call({ toolName: "lookup" }), {}],
+    ["another plugin's tool of the same name", call({ toolName: "plugin_demo_other_lookup" }), {}],
+  ];
+  const plain = cases.map(([, message, props]) => ssr.row(message, props));
+  const dispose = ssr.claim();
+  cases.forEach(([label, message, props], index) => {
+    assert.equal(ssr.row(message, props), plain[index], label);
   });
-  const props = toolCardPropsFor(failing, "sess-1", dispatch);
-  assert.equal(props.toolName, "query_db");
-  assert.equal(props.toolCallId, "call-1");
-  assert.equal(props.toolStatus, "error");
-  assert.deepEqual(props.toolError, { code: "TOOL_FAILED", message: "boom" });
-  assert.equal(props.messageId, "m1");
-  assert.equal(props.sessionId, "sess-1");
-  assert.equal(props.dispatch, dispatch);
-  const ok = toolCardPropsFor(message({ toolDurationMs: 42 }), "s", dispatch);
-  assert.equal(ok.durationMs, 42);
-  assert.equal(ok.toolError, undefined);
+
+  const hostCard = ssr.row(call());
+  dispose();
+  assert.notEqual(hostCard, ssr.row(call()));
+  assert.match(ssr.row(call()), /^<div class="tool-row /, "the host card is back once the card leaves");
 });
 
-test("denied rows never reach a plugin card", () => {
-  assert.equal(toolCardStatusOf(message({ toolStatus: "denied" })), "success");
-  assert.equal(toolCardStatusOf(message({ toolStatus: "running" })), "running");
-});
-
-test("running pushes merge on the 500ms beat; transitions are immediate", () => {
+test("running updates merge onto a 500ms beat; a transition or a finished call pushes at once", async (t) => {
+  const { TOOL_CARD_RUNNING_INTERVAL_MS, shouldEmitToolCard } = await rows(t);
   assert.equal(TOOL_CARD_RUNNING_INTERVAL_MS, 500);
-  // Same status inside the beat: no push.
-  assert.equal(shouldEmitToolCard(1_000, "running", "running", 1_200), false);
-  // Same status after the beat: push.
-  assert.equal(shouldEmitToolCard(1_000, "running", "running", 1_500), true);
-  // Status transition: immediate regardless of the beat.
-  assert.equal(shouldEmitToolCard(1_000, "running", "success", 1_100), true);
-  // A finished call always pushes.
-  assert.equal(shouldEmitToolCard(1_000, "success", "success", 1_050), true);
+  const cases = [
+    ["running inside the beat", 1_000, "running", "running", 1_499, false],
+    ["running on the beat", 1_000, "running", "running", 1_500, true],
+    ["running past the beat", 1_000, "running", "running", 2_200, true],
+    ["running to success", 1_000, "running", "success", 1_001, true],
+    ["running to error", 1_000, "running", "error", 1_001, true],
+    ["a finished call's update", 1_000, "success", "success", 1_001, true],
+  ];
+  for (const [label, lastAt, lastStatus, nextStatus, now, emits] of cases) {
+    assert.equal(shouldEmitToolCard(lastAt, lastStatus, nextStatus, now), emits, label);
+  }
+  assert.equal(shouldEmitToolCard(1_000, "running", "running", 1_100, 100), true, "the beat is a parameter");
 });
 
-test("ToolRow swaps in the plugin card before rendering the host card", () => {
-  const source = readFileSync(src("features/chat/transcript/ToolRow.tsx"), "utf8");
-  assert.match(
-    source,
-    /useSlotEntryForKey\(\s*"toolCard",\s*variant === "default" && status !== "denied" \? message\.toolName : undefined,?\s*\)/,
+test("the card's status vocabulary is running, error or success", async (t) => {
+  const { toolCardStatusOf } = await rows(t);
+  const statuses = ["running", "error", "success", undefined].map((toolStatus) =>
+    toolCardStatusOf(call({ toolStatus })),
   );
-  assert.match(source, /if \(pluginCardEntry\) \{/);
-  assert.match(
-    source,
-    /return <PluginToolCard entry=\{pluginCardEntry\} message=\{message\} \/>;/,
-  );
-  // Topology nodes keep the host card: the lookup is skipped for them.
-  const lookupAt = source.indexOf('useSlotEntryForKey(\n    "toolCard"');
-  assert.ok(lookupAt > source.indexOf("export const ToolRow"));
-  assert.ok(lookupAt < source.indexOf("export const SubagentRunRows"));
-});
-
-test("the card renders inside its own boundary with the 500ms cadence", () => {
-  const source = readFileSync(src("features/chat/transcript/PluginToolCard.tsx"), "utf8");
-  assert.match(source, /<SlotBoundary entry=\{entry\} slot="toolCard">/);
-  assert.match(source, /toolCardPropsFor\(/);
-  assert.match(source, /dispatchFor\(entry\.pluginId\)/);
-  assert.match(source, /shouldEmitToolCard\(/);
-  assert.match(source, /TOOL_CARD_RUNNING_INTERVAL_MS/);
-});
-
-test("the host passes each plugin's own tool list to the loader context", () => {
-  const host = readFileSync(src("plugins/renderer-host/PluginRendererHost.tsx"), "utf8");
-  assert.match(host, /tools: summary\.tools/);
-  const loader = readFileSync(src("plugins/renderer-host/loader.ts"), "utf8");
-  assert.match(loader, /toolCardOwnershipError\(/);
-  assert.match(loader, /PLUGIN_SLOT_INVALID_KEY/);
-  const context = readFileSync(src("plugins/renderer-host/dispatch.ts"), "utf8");
-  assert.match(context, /tools\?: readonly string\[\]/);
+  assert.deepEqual(statuses, ["running", "error", "success", "success"]);
 });

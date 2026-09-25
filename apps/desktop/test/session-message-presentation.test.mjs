@@ -48,8 +48,8 @@ function loadComponent(name, extras = {}) {
       useTranscriptMenu: () => () => {},
       useChatTextActions: () => ({ copyText: () => {}, selectText: () => {} }),
     },
-    "./ActionBarSlots": { ActionBarSlots: ({ children }) => children },
-    "../../../plugins/renderer-slots/use-slots": { useSlotEntries: () => [] },
+    "./ActionBarSlots": { ActionSlotSide: () => null },
+    "../../../plugins/renderer-slots/slot-message": { slotMessage: () => undefined },
     ...extras,
   };
   const module = { exports: {} };

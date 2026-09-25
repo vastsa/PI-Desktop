@@ -1,205 +1,156 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { register } from "node:module";
 import test from "node:test";
-register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+import { createElement } from "react";
+import {
+  probed,
+  propsProbe,
+  slotMounts,
+  slotSsr,
+  withoutProbeProps,
+} from "./helpers/slot-ssr.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (relative) => join(here, "..", "src", relative);
+/*
+ * The `entryExtra` outlet (`docs/plugin-plan/ui/entry-extra/`) rendered with
+ * the production modules: one block per registration under a finished reply,
+ * in registration order, each in its plugin's mount inside the host's clamped
+ * viewport, fed `{ message, messageId, sessionId }`. Server rendering is the
+ * first frame of a mount; the expand toggle, which needs a measurement, and
+ * a throwing block collapsing alone are covered by the Electron E2E.
+ */
 
-const {
-  SlotRegistry,
-  SlotError,
-} = await import("../src/plugins/renderer-slots/registry.ts");
-const {
-  entryExtraPropsFor,
-  entryExtraMessage,
-  ENTRY_EXTRA_COLLAPSED_MAX_HEIGHT,
-  ENTRY_EXTRA_EXPANDED_MAX_HEIGHT,
-} = await import("../src/features/chat/transcript/entry-extra-props.ts");
-const {
-  en,
-  zhCN,
-  zhTW,
-  de,
-  es,
-  fr,
-  ko,
-  tr,
-} = await import("@pi-desktop/i18n");
-
-const message = (extra = {}) => ({
-  id: "m1",
+const REPLY = {
+  id: "a2",
   role: "assistant",
-  content: "answer",
-  createdAt: "2026-09-17T00:00:00.000Z",
-  ...extra,
+  content: "It says x.",
+  createdAt: "2026-09-24T00:00:03.000Z",
+};
+
+/** A user prompt answered in two parts around a tool call. */
+function conversation(overrides = {}) {
+  return [
+    { id: "u1", role: "user", content: "hello", status: "complete", createdAt: "2026-09-24T00:00:00.000Z" },
+    { id: "a1", role: "assistant", content: "Let me look.", status: "complete", createdAt: "2026-09-24T00:00:01.000Z" },
+    {
+      id: "t1",
+      role: "tool",
+      content: "",
+      status: "complete",
+      createdAt: "2026-09-24T00:00:02.000Z",
+      toolName: "read",
+      toolCallId: "call-1",
+      toolArgs: { path: "a.txt" },
+      toolStatus: "success",
+      toolResult: "x",
+    },
+    { ...REPLY, status: "complete", ...overrides },
+  ];
+}
+
+async function outlet(t) {
+  const ssr = await slotSsr(t);
+  const { EntryExtraStack } = await ssr.load("/src/features/chat/transcript/EntryExtraStack.tsx");
+  const { AssistantTurn } = await ssr.load("/src/features/chat/transcript/AssistantTurn.tsx");
+  const { assistantTurnContent, buildTranscriptEntries } = await ssr.load("/src/lib/assistant-turns.ts");
+  const turnOf = (messages) =>
+    buildTranscriptEntries(messages).entries.find((entry) => entry.kind === "assistant-turn");
+  return {
+    ...ssr,
+    assistantTurnContent,
+    turnOf,
+    stack: (message = REPLY, options) => ssr.render(createElement(EntryExtraStack, { message }), options),
+    turn: (entry, props = {}) =>
+      ssr.render(createElement(AssistantTurn, { entry, isActive: false, ...props })),
+  };
+}
+
+test("a reply with no entryExtra registration has no slot region", async (t) => {
+  const ssr = await outlet(t);
+  assert.equal(ssr.stack(), "");
+  ssr.register("demo.a", { slot: "assistantAction", component: propsProbe("action") });
+  assert.equal(ssr.stack(), "", "another slot's registration is not a block");
+  assert.doesNotMatch(ssr.turn(ssr.turnOf(conversation())), /pi-entry-extra/);
 });
 
-test("entryExtra props projection carries the fixed contract fields", () => {
-  const dispatch = async () => ({});
-  const props = entryExtraPropsFor(message(), "sess-1", dispatch);
-  assert.deepEqual(props.message, {
-    id: "m1",
-    role: "assistant",
-    content: "answer",
-    createdAt: "2026-09-17T00:00:00.000Z",
-  });
-  assert.equal(props.messageId, "m1");
-  assert.equal(props.sessionId, "sess-1");
-  assert.equal(props.dispatch, dispatch);
-  // No position field: only the action bars are two-sided.
-  assert.equal("position" in props, false);
+test("each registration is one clamped block around its plugin's mount", async (t) => {
+  const ssr = await outlet(t);
+  ssr.register("demo.a", { slot: "entryExtra", component: propsProbe("extra") });
+  const html = ssr.stack(REPLY, { sessionId: "session-7" });
+  assert.equal(
+    withoutProbeProps(html),
+    [
+      '<div class="pi-entry-extra-stack">',
+      '<div class="pi-entry-extra-block">',
+      '<div class="pi-entry-extra-viewport" style="max-height:320px">',
+      '<div><div class="pi-plugin-slot" data-pi-plugin="demo.a" data-pi-slot="entryExtra">',
+      '<output data-probe="extra"></output>',
+      "</div></div></div></div></div>",
+    ].join(""),
+    "the first frame is collapsed at 320px, with no toggle until a measurement asks for one",
+  );
+  assert.deepEqual(probed(html, "extra"), [
+    { message: REPLY, messageId: "a2", sessionId: "session-7" },
+  ]);
 });
 
-test("entryExtra projection pins the role to assistant", () => {
-  const projected = entryExtraMessage(message({ role: "tool" }));
-  assert.equal(projected.role, "assistant");
+test("blocks stack in registration order across plugins, and each leaves on its own", async (t) => {
+  const ssr = await outlet(t);
+  const first = ssr.register("demo.a", { slot: "entryExtra", component: propsProbe("a") });
+  ssr.register("demo.b", { slot: "entryExtra", component: propsProbe("b") });
+  ssr.register("demo.a", { slot: "entryExtra", component: propsProbe("a2") });
+  assert.deepEqual(slotMounts(ssr.stack()), [
+    ["demo.a", "entryExtra"],
+    ["demo.b", "entryExtra"],
+    ["demo.a", "entryExtra"],
+  ]);
+  assert.equal((ssr.stack().match(/pi-entry-extra-block/g) ?? []).length, 3);
+
+  first();
+  assert.deepEqual(slotMounts(ssr.stack()), [
+    ["demo.b", "entryExtra"],
+    ["demo.a", "entryExtra"],
+  ]);
+  ssr.clear();
+  assert.equal(ssr.stack(), "");
 });
 
-test("entryExtra clamp heights match the finalized contract", () => {
-  assert.equal(ENTRY_EXTRA_COLLAPSED_MAX_HEIGHT, 320);
-  assert.equal(ENTRY_EXTRA_EXPANDED_MAX_HEIGHT, 600);
+test("a finished turn shows the stack under its action bar, fed the reply the host keys act on", async (t) => {
+  const ssr = await outlet(t);
+  ssr.register("demo.a", { slot: "entryExtra", component: propsProbe("extra") });
+  const entry = ssr.turnOf(conversation());
+  const html = ssr.turn(entry);
+
+  const actionsAt = html.indexOf('<div class="message-actions">');
+  const stackAt = html.indexOf('<div class="pi-entry-extra-stack">');
+  assert.ok(actionsAt >= 0, "the host action bar stays");
+  assert.ok(stackAt > actionsAt, "the stack sits under the action bar");
+  assert.equal(html.indexOf('<div class="pi-entry-extra-stack">', stackAt + 1), -1, "one stack per turn");
+
+  // The id is the answer message Regenerate and Branch act on; the content
+  // is the whole turn's text, as Copy copies it.
+  const content = ssr.assistantTurnContent(entry);
+  assert.equal(content, "Let me look.\n\nIt says x.");
+  assert.deepEqual(probed(html, "extra"), [
+    {
+      message: { id: "a2", role: "assistant", content, createdAt: REPLY.createdAt },
+      messageId: "a2",
+      sessionId: "session-1",
+    },
+  ]);
 });
 
-test("entryExtra is additive: registrations stack in order and never clash", () => {
-  const registry = new SlotRegistry();
-  const component = () => null;
-  registry.register("plugin-a", "entryExtra", component, undefined);
-  registry.register("plugin-b", "entryExtra", component, undefined);
-  const entries = registry.entriesFor("entryExtra");
-  assert.deepEqual(
-    entries.map((entry) => entry.pluginId),
-    ["plugin-a", "plugin-b"],
-  );
-  registry.unregisterPlugin("plugin-a");
-  assert.deepEqual(
-    registry.entriesFor("entryExtra").map((entry) => entry.pluginId),
-    ["plugin-b"],
-  );
-});
-
-test("a throwing onLoad leaving registrations behind still unregisters cleanly", () => {
-  // The unload path (loader.unloadRendererModule) owns this guarantee; the
-  // registry half of it is that unregisterPlugin drops every entry in one call.
-  const registry = new SlotRegistry();
-  const component = () => null;
-  registry.register("plugin-a", "entryExtra", component, undefined);
-  registry.register("plugin-a", "assistantAction", component, undefined);
-  registry.unregisterPlugin("plugin-a");
-  assert.equal(registry.entriesFor("entryExtra").length, 0);
-  assert.equal(registry.entriesFor("assistantAction").length, 0);
-});
-
-test("entryExtra registrations still validate slot name and component", () => {
-  const registry = new SlotRegistry();
-  assert.throws(
-    () => registry.register("plugin-a", "notASlot", () => null, undefined),
-    (error) =>
-      error instanceof SlotError && error.code === "PLUGIN_SLOT_UNKNOWN",
-  );
-  assert.throws(
-    () => registry.register("plugin-a", "entryExtra", "not-a-function", undefined),
-    (error) =>
-      error instanceof SlotError &&
-      error.code === "PLUGIN_SLOT_INVALID_COMPONENT",
-  );
-});
-
-test("the assistant turn mounts the stack after the action bar, gated on completion", () => {
-  const source = readFileSync(
-    src("features/chat/transcript/AssistantTurn.tsx"),
-    "utf8",
-  );
-  const actionsAt = source.indexOf('<div className="message-actions">');
-  const stackAt = source.lastIndexOf("{complete && actionMessage ? (");
-  assert.ok(actionsAt > 0, "host action bar must stay");
-  assert.ok(stackAt > actionsAt, "entryExtra mounts below the action bar");
-  assert.match(
-    source,
-    /complete && actionMessage \? \(\s*\n\s*<EntryExtraStack message=\{actionMessage\} \/>/,
-    "blocks ride the same completion gate as the action bar",
-  );
-  assert.ok(
-    !source.includes('useSlotEntries("entryExtra")'),
-    "AssistantTurn stays slot-free; EntryExtraStack owns the lookup",
-  );
-});
-
-test("EntryExtraStack renders registry entries inside per-plugin boundaries", () => {
-  const source = readFileSync(
-    src("features/chat/transcript/EntryExtraStack.tsx"),
-    "utf8",
-  );
-  assert.match(source, /useSlotEntries\("entryExtra"\)/);
-  assert.match(source, /useSlotSessionId\(\)/);
-  assert.match(source, /<SlotBoundary entry=\{entry\} slot="entryExtra">/);
-  assert.match(source, /entryExtraPropsFor\(/);
-  assert.match(
-    source,
-    /dispatchFor\(entry\.pluginId\)/,
-    "each block gets its own plugin's relay",
-  );
-  assert.match(
-    source,
-    /entries\.length === 0\) return null/,
-    "no blocks means no DOM",
-  );
-  // The host owns the clamp: collapsed 320, expanded 600, toggle only when
-  // content actually overflows or the block is expanded.
-  assert.match(source, /ENTRY_EXTRA_COLLAPSED_MAX_HEIGHT/);
-  assert.match(source, /ENTRY_EXTRA_EXPANDED_MAX_HEIGHT/);
-  assert.match(source, /data-clipped/);
-  assert.match(source, /entryExtraExpand/);
-  assert.match(source, /entryExtraCollapse/);
-});
-
-test("the transcript provides session identity to slot props", () => {
-  const source = readFileSync(
-    src("features/chat/transcript/ChatTranscript.tsx"),
-    "utf8",
-  );
-  assert.match(
-    source,
-    /<SlotSessionProvider sessionId=\{sessionId \?\? ""\}>/,
-  );
-  // Wraps the scroller so every message row (history and tail) is covered.
-  const providerAt = source.indexOf("<SlotSessionProvider");
-  const scrollerAt = source.indexOf('className="thread-scroll"');
-  const closeAt = source.indexOf("</SlotSessionProvider>");
-  assert.ok(providerAt > 0 && providerAt < scrollerAt && closeAt > scrollerAt);
-});
-
-test("slot shell styles carry the clamp viewport, edge fade, and toggle", () => {
-  const css = readFileSync(
-    src("plugins/renderer-slots/slot-shell.css"),
-    "utf8",
-  );
-  assert.match(css, /\.pi-entry-extra-stack/);
-  assert.match(css, /\.pi-entry-extra-viewport/);
-  assert.match(
-    css,
-    /data-clipped="true"[^\{]*\{[^}]*mask-image/,
-    "collapsed overflow fades at the 8% edge",
-  );
-  assert.match(css, /\.pi-entry-extra-toggle/);
-});
-
-test("every shipped locale has the host expand/collapse labels", () => {
-  const catalogs = { en, zhCN, zhTW, de, es, fr, ko, tr };
-  for (const [name, catalog] of Object.entries(catalogs)) {
-    const chat = catalog.chat ?? {};
-    assert.ok(
-      typeof chat.entryExtraExpand === "string" &&
-        chat.entryExtraExpand.length > 0,
-      `${name} is missing chat.entryExtraExpand`,
-    );
-    assert.ok(
-      typeof chat.entryExtraCollapse === "string" &&
-        chat.entryExtraCollapse.length > 0,
-      `${name} is missing chat.entryExtraCollapse`,
-    );
+test("a live, failed or text-less turn has no slot region", async (t) => {
+  const ssr = await outlet(t);
+  ssr.register("demo.a", { slot: "entryExtra", component: propsProbe("extra") });
+  const cases = [
+    ["live", ssr.turn(ssr.turnOf(conversation({ status: "streaming" })), { isActive: true })],
+    [
+      "failed",
+      ssr.turn(ssr.turnOf(conversation({ error: { code: "PROVIDER_ERROR", message: "upstream failed" } }))),
+    ],
+    ["text-less", ssr.turn(ssr.turnOf(conversation().slice(0, 3).map((m) => ({ ...m, content: m.role === "user" ? m.content : "" }))))],
+  ];
+  for (const [label, html] of cases) {
+    assert.doesNotMatch(html, /pi-entry-extra/, label);
+    assert.deepEqual(probed(html, "extra"), [], label);
   }
 });

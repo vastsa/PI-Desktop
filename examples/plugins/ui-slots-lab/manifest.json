@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "lab.ui-slots",
+  "name": "UI Slots Lab",
+  "version": "0.1.0",
+  "description": "Test plugin with one visible sample in every renderer UI slot, plus controls that exercise dispatch, errors, crash isolation and the host size clamps",
+  "author": "PI-Desktop",
+  "main": "main.js",
+  "renderer": "renderer/index.mjs",
+  "rendererActions": ["plugin.call", "composer.insertText"],
+  "rendererCallMethods": ["lab.echo", "lab.refuse", "lab.stall"],
+  "contributes": {
+    "agentTools": [
+      {
+        "name": "lab_probe",
+        "description": "UI Slots Lab probe. mode: ok (default) answers at once, slow after 1.5s, fail throws, crash answers but its card throws",
+        "risk": "low",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "mode": { "type": "string", "enum": ["ok", "slow", "fail", "crash"] },
+            "text": { "type": "string" }
+          }
+        }
+      }
+    ]
+  },
+  "permissions": ["renderer.extension", "agent.tool.register"],
+  "engines": {
+    "piDesktop": ">=0.1.0"
+  },
+  "activationEvents": ["onStartup"]
+}

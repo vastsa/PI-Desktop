@@ -1962,6 +1962,7 @@ sklm: {
       "commands": "Commandes",
       "tools": "Outils d'agent",
       "agentExtension": "Extension de l'agent",
+      "rendererUi": "Extension de l'interface du chat",
       "skills": "Compétences",
       "themes": "Thème",
       "mcp": "Serveur MCP",

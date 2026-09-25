@@ -81,19 +81,6 @@ pub struct PluginSummary {
     pub yanked: Option<PluginYankNotice>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui: Option<PluginUiMeta>,
-    /// Present when the plugin declares `manifest.renderer`
-    /// (`docs/plugin-plan/ui/`): the renderer entry plus the outbound
-    /// action / `plugin.call` method whitelists the desktop host enforces
-    /// for its slot components.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub renderer: Option<Value>,
-    /// `contributes.agentTools` names for the toolCard slot's no-claim gate
-    /// (`docs/plugin-plan/ui/tool-card/`): a plugin card may only render calls
-    /// of tools it registers itself. Held as raw JSON like `renderer`, so the
-    /// row schema stays decoupled from the manifest struct. Absent in records
-    /// written before the renderer milestone, which the host reads as empty.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tools: Option<Value>,
     /// `manifest.fs`, passed through verbatim: which files each mode may touch.
     /// The desktop host enforces it; the registry carries it so the Plugins
     /// page can show the user what they granted. Absent in records written

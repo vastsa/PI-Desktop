@@ -203,6 +203,33 @@ export type PluginCapability =
   /** `manifest.renderer`: the plugin ships a renderer slot entry (`docs/plugin-plan/ui/`). */
   | "rendererUi";
 
+/**
+ * A loaded plugin's renderer extension as the renderer host sees it
+ * (`docs/plugin-plan/ui/`). The main process builds it from the live load, so
+ * it never outlives the plugin: unload, crash, or a revoked permission drops
+ * it from the next plugin list.
+ */
+export type PluginRendererDescriptor = {
+  /** Renderer module path relative to the plugin root. */
+  entry: string;
+  /**
+   * Load generation. Every load of the plugin gets a new one, and module URLs
+   * carry it (`plugin-renderer://<id>/g<generation>/<entry>`), so a reload
+   * evaluates fresh modules instead of the ES module cache's stale copy and a
+   * stale generation is refused outright.
+   */
+  generation: number;
+  /** `manifest.rendererActions`: the outbound actions dispatch accepts. */
+  actions: string[];
+  /** `manifest.rendererCallMethods`: the `plugin.call` method whitelist. */
+  callMethods: string[];
+  /**
+   * Bare `contributes.agentTools[].name`s. A `toolCard` registration must
+   * name one of these; the card then serves only that tool's calls.
+   */
+  tools: string[];
+};
+
 export type PluginSettingType =
   | "string"
   | "number"
@@ -288,20 +315,11 @@ export type PluginSummary = {
   /** Derived from the manifest by the host: which contribution kinds exist. */
   capabilities?: PluginCapability[];
   /**
-   * Present when the plugin declares `manifest.renderer`: the renderer entry
-   * plus the outbound action / `plugin.call` method whitelists the host
-   * enforces for its slot components.
+   * Present only while the plugin is loaded, holds `renderer.extension`, and
+   * declares `manifest.renderer`: everything the renderer host needs to load
+   * the plugin's slot module and gate what it registers and dispatches.
    */
-  renderer?: {
-    entry: string;
-    actions: string[];
-    callMethods: string[];
-  };
-  /** The plugin's own `contributes.agentTools` tool names (`tools` row from
-   * the host registry). The toolCard slot's no-claim gate reads this: a
-   * plugin card may only render calls of a tool this list names. Absent in
-   * registry rows written before the renderer milestone. */
-  tools?: string[];
+  renderer?: PluginRendererDescriptor;
   description?: string;
   author?: string;
   installedAt?: string;

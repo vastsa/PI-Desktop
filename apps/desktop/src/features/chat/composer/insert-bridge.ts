@@ -4,7 +4,7 @@
  * The composer is renderer-local, so the dispatch relay routes that action
  * here instead of through the main process. The composer registers its
  * insertion implementation on mount and clears it on unmount; with no
- * composer mounted the relay answers `PLUGIN_ACTION_UNROUTED`.
+ * composer mounted the relay answers `PLUGIN_ACTION_NO_COMPOSER`.
  */
 
 type ComposerInsert = (text: string) => void;

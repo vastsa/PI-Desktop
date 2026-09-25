@@ -81,6 +81,7 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
 export const CAPABILITY_ORDER: PluginCapability[] = [
   "panel",
   "views",
+  "rendererUi",
   "commands",
   "tools",
   "agentExtension",

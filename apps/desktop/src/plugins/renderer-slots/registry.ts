@@ -1,82 +1,91 @@
-import {
-  PLUGIN_RENDERER_SLOTS,
-  slotKeyError,
-  slotPositionsError,
-  type PluginRendererSlot,
-  type PluginRendererSlotOptions,
-} from "@pi-desktop/plugin-sdk";
-
 /**
  * The renderer-side slot registry (`docs/plugin-plan/slot-contract.html`).
  *
  * A plugin's renderer entry registers components through `pi.slots.register`;
- * this store owns the resulting catalog. It is deliberately React-free so
- * logic tests can drive it directly — the React glue lives in `use-slots.ts`.
+ * this store owns the resulting catalog. It is React-free so logic tests can
+ * drive it directly; the React glue lives in `use-slots.tsx`.
  *
- * Conflict semantics follow the contract: additive slots stack in
- * registration order and never clash; keyed slots (`toolCard` by tool name,
- * `blockRenderer` by `<pluginId>:lang`, `composerTrigger` by symbol) refuse a
- * second claim of the same key with `PLUGIN_SLOT_DUPLICATE`. Uninstalling a
- * plugin drops every registration it held, in one call.
+ * Additive slots stack in registration order and never clash. Keyed slots
+ * (`toolCard` by the plugin's qualified tool name, `blockRenderer` by its
+ * language tag) refuse a second claim of a key with `PLUGIN_SLOT_DUPLICATE`:
+ * the first registration keeps it. Every registration comes back as a
+ * disposer; the loader holds the disposers of one load and runs them all when
+ * the plugin unloads.
  */
-
-export type SlotErrorCode =
-  | "PLUGIN_SLOT_UNKNOWN"
-  | "PLUGIN_SLOT_DUPLICATE"
-  | "PLUGIN_SLOT_INVALID_COMPONENT"
-  | "PLUGIN_SLOT_INVALID_KEY"
-  | "PLUGIN_SLOT_INVALID_POSITION";
-
-/** A coded refusal from the registration path; surfaces verbatim to the plugin. */
-export class SlotError extends Error {
-  readonly code: SlotErrorCode;
-  constructor(code: SlotErrorCode, message: string) {
-    super(message);
-    this.name = "SlotError";
-    this.code = code;
-  }
-}
-
-export type SlotSide = "left" | "right";
+import {
+  PLUGIN_SLOT_POSITIONS,
+  blockRendererLanguageKey,
+  pluginToolName,
+  slotRegistrationRefusal,
+  type PluginDisposer,
+  type PluginRendererSlot,
+  type PluginSlotPosition,
+  type PluginSlotRegistration,
+} from "@pi-desktop/plugin-sdk";
+import { PluginRendererError } from "../renderer-error";
 
 export type SlotEntry = {
   readonly id: string;
   readonly pluginId: string;
   readonly slot: PluginRendererSlot;
-  readonly component: (props: Record<string, unknown>) => unknown;
-  readonly options: PluginRendererSlotOptions;
-  /** Resolved sides for additive slots; empty for the rest. */
-  readonly sides: readonly SlotSide[];
-  /** Keyed slots carry their key (`toolName`, `<pluginId>:lang`, trigger). */
+  /**
+   * The plugin's function component. Its type admits no call: outlets render
+   * it through `slotElement`, as an element that owns its hooks.
+   */
+  readonly component: (props: never) => unknown;
+  /** Sides a positioned slot occupies, in canonical order; empty otherwise. */
+  readonly sides: readonly PluginSlotPosition[];
+  /**
+   * Keyed slots only: the qualified agent-facing tool name
+   * (`pluginToolName`) for `toolCard`, the normalized language tag for
+   * `blockRenderer`. Outlets look entries up by what the transcript carries.
+   */
   readonly key?: string;
+  /** `toolCard` only: the bare tool name the card registered for. */
+  readonly toolName?: string;
 };
 
-export type SlotRegistrationHandle = {
-  readonly slot: PluginRendererSlot;
-  remove(): void;
+export type SlotRegistrySnapshot = {
+  /** Bumped on every mutation; the `useSyncExternalStore` change signal. */
+  readonly version: number;
+  /** Registration order across plugins is the presentation order. */
+  readonly entries: readonly SlotEntry[];
 };
 
-type RegistryState = {
-  /** Bumped on every mutation; the useSyncExternalStore snapshot key. */
-  version: number;
-  /** Insertion order across plugins is the presentation order. */
-  entries: SlotEntry[];
-};
+function sidesOf(registration: PluginSlotRegistration): readonly PluginSlotPosition[] {
+  switch (registration.slot) {
+    case "userAction":
+    case "assistantAction":
+    case "composerControl": {
+      const wanted: readonly PluginSlotPosition[] =
+        registration.positions ?? PLUGIN_SLOT_POSITIONS;
+      return PLUGIN_SLOT_POSITIONS.filter((side) => wanted.includes(side));
+    }
+    default:
+      return [];
+  }
+}
 
-function slotKeyFor(
-  slot: PluginRendererSlot,
-  options: PluginRendererSlotOptions | undefined,
-): string | undefined {
-  if (slot === "toolCard") return options?.toolName;
-  if (slot === "blockRenderer") return options?.language;
-  if (slot === "composerTrigger") return options?.trigger;
-  return undefined;
+function keyOf(
+  pluginId: string,
+  registration: PluginSlotRegistration,
+): Pick<SlotEntry, "key" | "toolName"> {
+  if (registration.slot === "toolCard") {
+    return {
+      key: pluginToolName(pluginId, registration.toolName),
+      toolName: registration.toolName,
+    };
+  }
+  if (registration.slot === "blockRenderer") {
+    return { key: blockRendererLanguageKey(registration.language) };
+  }
+  return {};
 }
 
 export class SlotRegistry {
-  private state: RegistryState = { version: 0, entries: [] };
-  private listeners = new Set<() => void>();
-  private nextId = 0;
+  private state: SlotRegistrySnapshot = { version: 0, entries: [] };
+  private readonly listeners = new Set<() => void>();
+  private lastId = 0;
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -85,98 +94,69 @@ export class SlotRegistry {
     };
   };
 
-  getSnapshot = (): RegistryState => this.state;
+  getSnapshot = (): SlotRegistrySnapshot => this.state;
 
-  private commit(entries: SlotEntry[]): void {
+  private commit(entries: readonly SlotEntry[]): void {
     this.state = { version: this.state.version + 1, entries };
     for (const listener of this.listeners) listener();
   }
 
   /**
-   * Register one slot component. Throws `SlotError` with a documented code
-   * when the host refuses the registration.
+   * Accept one registration of `pluginId` or throw a `PluginRendererError`
+   * with a `PluginSlotErrorCode`. `ownTools` is the plugin's bare
+   * `contributes.agentTools[].name` list. The disposer removes exactly this
+   * registration; calling it again does nothing.
    */
-  register(
-    pluginId: string,
-    slot: unknown,
-    component: unknown,
-    options: PluginRendererSlotOptions | undefined,
-  ): SlotRegistrationHandle {
-    const slotName =
-      typeof slot === "string" && (PLUGIN_RENDERER_SLOTS as readonly string[]).includes(slot)
-        ? (slot as PluginRendererSlot)
-        : null;
-    if (!slotName) {
-      throw new SlotError("PLUGIN_SLOT_UNKNOWN", `unknown slot: ${String(slot)}`);
-    }
-    if (typeof component !== "function") {
-      throw new SlotError(
-        "PLUGIN_SLOT_INVALID_COMPONENT",
-        `slot ${slot} requires a function component`,
+  register(pluginId: string, registration: unknown, ownTools: readonly string[]): PluginDisposer {
+    const refusal = slotRegistrationRefusal(pluginId, registration, ownTools);
+    if (refusal) throw new PluginRendererError(refusal.code, refusal.message);
+    const accepted = registration as PluginSlotRegistration;
+    const keyed = keyOf(pluginId, accepted);
+    if (keyed.key !== undefined) {
+      const holder = this.state.entries.find(
+        (entry) => entry.slot === accepted.slot && entry.key === keyed.key,
       );
-    }
-    const keyError = slotKeyError(slotName, pluginId, options);
-    if (keyError) throw new SlotError("PLUGIN_SLOT_INVALID_KEY", keyError);
-    const positionsError = slotPositionsError(slotName, options);
-    if (positionsError) throw new SlotError("PLUGIN_SLOT_INVALID_POSITION", positionsError);
-    const key = slotKeyFor(slotName, options);
-    if (key !== undefined) {
-      const clash = this.state.entries.find(
-        (entry) => entry.slot === slotName && entry.key === key,
-      );
-      if (clash) {
-        throw new SlotError(
+      if (holder) {
+        throw new PluginRendererError(
           "PLUGIN_SLOT_DUPLICATE",
-          `slot ${slot} key ${key} is already taken by ${clash.pluginId}`,
+          `${accepted.slot} ${JSON.stringify(keyed.key)} is already registered by ${holder.pluginId}`,
         );
       }
     }
-
-    const sides: readonly SlotSide[] =
-      slotName === "userAction" || slotName === "assistantAction" || slotName === "composerControl"
-        ? (options?.positions ?? ["left", "right"])
-        : [];
     const entry: SlotEntry = {
-      id: `s${this.nextId++}`,
+      id: `slot-${++this.lastId}`,
       pluginId,
-      slot: slotName,
-      component: component as SlotEntry["component"],
-      options: options ?? {},
-      sides,
-      key,
+      slot: accepted.slot,
+      component: accepted.component as SlotEntry["component"],
+      sides: sidesOf(accepted),
+      ...keyed,
     };
     this.commit([...this.state.entries, entry]);
-    return {
-      slot: slotName,
-      remove: () => {
-        this.commit(this.state.entries.filter((candidate) => candidate.id !== entry.id));
-      },
+    let disposed = false;
+    return () => {
+      if (disposed) return;
+      disposed = true;
+      this.commit(this.state.entries.filter((candidate) => candidate !== entry));
     };
   }
 
-  /** 卸载摘注册: drop every registration one plugin held. */
-  unregisterPlugin(pluginId: string): void {
-    const kept = this.state.entries.filter((entry) => entry.pluginId !== pluginId);
-    if (kept.length !== this.state.entries.length) this.commit(kept);
+  /** Every registration of a slot, in registration order. */
+  entriesFor(slot: PluginRendererSlot): SlotEntry[] {
+    return this.state.entries.filter((entry) => entry.slot === slot);
   }
 
-  /** Additive slots, in registration order, filtered to one side. */
-  entriesForSide(slot: PluginRendererSlot, side: SlotSide): SlotEntry[] {
+  /** A positioned slot's registrations on one side, in registration order. */
+  entriesForSide(slot: PluginRendererSlot, side: PluginSlotPosition): SlotEntry[] {
     return this.state.entries.filter(
       (entry) => entry.slot === slot && entry.sides.includes(side),
     );
   }
 
-  /** Every registration of an additive slot, both sides, registration order. */
-  entriesFor(slot: PluginRendererSlot): SlotEntry[] {
-    return this.state.entries.filter((entry) => entry.slot === slot);
-  }
-
-  /** Keyed lookup: the one card for a tool, the one renderer for a language. */
+  /** The one registration holding a key: a tool's card, a language's renderer. */
   entryForKey(slot: PluginRendererSlot, key: string): SlotEntry | undefined {
     return this.state.entries.find((entry) => entry.slot === slot && entry.key === key);
   }
 }
 
-/** The app-wide singleton. Renderer host modules register through it. */
+/** The app-wide registry the loader registers into and outlets read from. */
 export const slotRegistry = new SlotRegistry();

@@ -123,6 +123,9 @@ mod tests {
         let parsed = PluginManager::read_manifest(&root).unwrap();
         assert_eq!(parsed.renderer.as_deref(), Some("renderer/index.mjs"));
         assert_eq!(parsed.renderer_actions, vec!["plugin.call".to_string()]);
+        // The Plugins page shows the surface; what the renderer host may load
+        // comes from the live load in the desktop host, not from this row.
+        assert!(derive_capabilities(&parsed).contains(&"rendererUi".to_string()));
     }
 
     #[test]

@@ -1,123 +1,86 @@
 /**
- * The shared action-bar gutters for `userAction` / `assistantAction`
+ * The action-bar sides of `userAction` / `assistantAction`
  * (`docs/plugin-plan/ui/user-action/`, `docs/plugin-plan/ui/assistant-action/`).
  *
- * The finalized shape is 【left slots】【host keys】【right slots】: the host
- * keys render through `children` and can never be changed, hidden, removed,
- * or folded by a plugin. Each side shows at most three visible items; the
- * fourth onward folds into the host "⋯" menu on that side (left ⋯ before
- * the host keys, right ⋯ last). 装卸插件时 the registry recompute re-renders
- * the gutters, so install/uninstall reflows immediately. 出错隔离 and the
- * `.pi-plugin-slot` chrome live in `SlotBoundary`.
+ * A bar renders its left side, its host keys, then its right side; a plugin
+ * can add around the host keys but never change, hide or fold them. Each side
+ * shows up to three items and folds the rest into its own "⋯" menu
+ * (`splitActionSide`); the registry re-renders the sides when a plugin loads
+ * or unloads, so they reflow at once. Every item sits in its own boundary: a
+ * throwing item disappears alone.
  */
-import {
-  createElement,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentType,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { UiMessage } from "@pi-desktop/shared";
-import type { PluginActionSlotProps } from "@pi-desktop/plugin-sdk";
-import { SlotBoundary, useSlotSessionId } from "../../../plugins/renderer-slots/use-slots";
-import type { SlotEntry, SlotSide } from "../../../plugins/renderer-slots/registry";
-import { dispatchFor } from "../../../plugins/renderer-host/dispatch";
+import type { PluginSlotMessage, PluginSlotPosition } from "@pi-desktop/plugin-sdk";
 import {
-  actionSlotPropsFor,
-  splitActionSide,
-} from "./action-slot-props";
+  SlotBoundary,
+  slotElement,
+  useSlotEntries,
+  useSlotSessionId,
+} from "../../../plugins/renderer-slots/use-slots";
+import type { SlotEntry } from "../../../plugins/renderer-slots/registry";
+import { actionSlotProps, splitActionSide } from "./action-slot-props";
 
-type ActionBarSlotsProps = {
-  slot: "userAction" | "assistantAction";
-  message: UiMessage;
-  left: SlotEntry[];
-  right: SlotEntry[];
-  /** The host keys, rendered between the two sides; plugins never own them. */
-  children: ReactNode;
+type ActionSlot = "userAction" | "assistantAction";
+
+type ItemContext = {
+  message: PluginSlotMessage;
+  sessionId: string;
+  side: PluginSlotPosition;
 };
 
-function ActionSlotItem({
-  entry,
-  slot,
-  message,
-  side,
-  sessionId,
-}: {
-  entry: SlotEntry;
-  slot: "userAction" | "assistantAction";
-  message: UiMessage;
-  side: SlotSide;
-  sessionId: string;
-}) {
-  // Rebuilt every render: the contract is props-push, the whole projection.
-  const props: PluginActionSlotProps = actionSlotPropsFor(
-    message,
-    side,
-    sessionId,
-    dispatchFor(entry.pluginId),
-  );
+function ActionSlotItem({ entry, context }: { entry: SlotEntry; context: ItemContext }) {
   return (
-    <SlotBoundary entry={entry} slot={slot}>
-      {createElement(entry.component as ComponentType<Record<string, unknown>>, props)}
+    <SlotBoundary entry={entry}>
+      {slotElement(entry, actionSlotProps(context.message, context.sessionId, context.side))}
     </SlotBoundary>
   );
 }
 
-/** One side's "⋯" menu for the folded registrations. */
-function ActionOverflowMenu({
-  slot,
-  message,
-  entries,
-  side,
-  sessionId,
-}: {
-  slot: "userAction" | "assistantAction";
-  message: UiMessage;
-  entries: SlotEntry[];
-  side: SlotSide;
-  sessionId: string;
-}) {
+/** One side's "⋯" menu holding the items past the visible three. */
+function ActionOverflowMenu({ entries, context }: { entries: SlotEntry[]; context: ItemContext }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
-  // Close on any click outside the menu; the folded items must not trap
-  // the pointer the way a stray popover would.
+  // A pointer press anywhere else closes the menu, and so does Escape, which
+  // hands the focus back to the ⋯ key.
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
     document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
-  if (entries.length === 0) return null;
   return (
-    <div ref={rootRef} className="pi-action-overflow" data-side={side}>
+    <div ref={rootRef} className="pi-action-overflow" data-side={context.side}>
       <button
+        ref={buttonRef}
         type="button"
         className="copy-btn icon pi-action-overflow-btn"
         aria-label={t("chat.actionSlotMore")}
         title={t("chat.actionSlotMore")}
-        aria-expanded={open ? "true" : "false"}
+        aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         ⋯
       </button>
       {open ? (
-        <div className="pi-action-overflow-panel" role="menu">
+        <div className="pi-action-overflow-panel" role="group" aria-label={t("chat.actionSlotMore")}>
           {entries.map((entry) => (
-            <ActionSlotItem
-              key={entry.id}
-              entry={entry}
-              slot={slot}
-              message={message}
-              side={side}
-              sessionId={sessionId}
-            />
+            <ActionSlotItem key={entry.id} entry={entry} context={context} />
           ))}
         </div>
       ) : null}
@@ -126,54 +89,39 @@ function ActionOverflowMenu({
 }
 
 /**
- * Both plugin sides of one action bar around the host keys. With no
- * registrations it renders exactly the children — a plugin-free bar keeps
- * its exact current DOM.
+ * One plugin side of an action bar: its first three items and a ⋯ menu with
+ * the rest. The menu sits at the outer end of the bar, before the items on
+ * the left and after them on the right. Renders nothing without a message or
+ * without registrations on this side.
  */
-export function ActionBarSlots({
+export function ActionSlotSide({
   slot,
+  side,
   message,
-  left,
-  right,
-  children,
-}: ActionBarSlotsProps) {
+}: {
+  slot: ActionSlot;
+  side: PluginSlotPosition;
+  /** What the items act on; `undefined` keeps the side empty. */
+  message: PluginSlotMessage | undefined;
+}) {
+  const entries = useSlotEntries(slot, side);
   const sessionId = useSlotSessionId();
-  if (left.length === 0 && right.length === 0) return <>{children}</>;
-  const leftSplit = splitActionSide(left);
-  const rightSplit = splitActionSide(right);
-  const renderItem = (entry: SlotEntry, side: SlotSide) => (
-    <ActionSlotItem
-      key={entry.id}
-      entry={entry}
-      slot={slot}
-      message={message}
-      side={side}
-      sessionId={sessionId}
-    />
-  );
-  return (
+  if (!message || entries.length === 0) return null;
+  const context: ItemContext = { message, sessionId, side };
+  const { visible, overflow } = splitActionSide(entries);
+  const menu = overflow.length ? <ActionOverflowMenu entries={overflow} context={context} /> : null;
+  const items = visible.map((entry) => (
+    <ActionSlotItem key={entry.id} entry={entry} context={context} />
+  ));
+  return side === "left" ? (
     <>
-      {leftSplit.overflow.length ? (
-        <ActionOverflowMenu
-          slot={slot}
-          message={message}
-          entries={leftSplit.overflow}
-          side="left"
-          sessionId={sessionId}
-        />
-      ) : null}
-      {leftSplit.visible.map((entry) => renderItem(entry, "left"))}
-      {children}
-      {rightSplit.visible.map((entry) => renderItem(entry, "right"))}
-      {rightSplit.overflow.length ? (
-        <ActionOverflowMenu
-          slot={slot}
-          message={message}
-          entries={rightSplit.overflow}
-          side="right"
-          sessionId={sessionId}
-        />
-      ) : null}
+      {menu}
+      {items}
+    </>
+  ) : (
+    <>
+      {items}
+      {menu}
     </>
   );
 }

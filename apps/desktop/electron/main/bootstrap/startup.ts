@@ -188,10 +188,10 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
     installPluginAssetProtocol((pluginId, assetPath) =>
       plugins.resolveThemeAsset(pluginId, assetPath),
     );
-    // Serve renderer entry modules the same way — a loaded plugin that
-    // declared `manifest.renderer` and holds `renderer.extension`.
-    installPluginRendererProtocol((pluginId, requestPath) =>
-      plugins.resolveRendererSource(pluginId, requestPath),
+    // Serve renderer entry modules the same way — the current load of a
+    // plugin that declared `manifest.renderer` and holds `renderer.extension`.
+    installPluginRendererProtocol((pluginId, generation, requestPath) =>
+      plugins.resolveRendererSource(pluginId, generation, requestPath),
     );
     // Load the close-behavior preference before the first window exists: the
     // close handler reads `closeBehavior` synchronously, and a window created

@@ -1,197 +1,272 @@
 /**
- * Loads one plugin's renderer entry into the app document and hands it the
- * `pi` API (`PiRendererApi` in @pi-desktop/plugin-sdk).
+ * Loads plugin renderer entries into the app window and hands each one the
+ * `pi` API (`PiRendererApi`, `docs/plugin-plan/slot-contract.html`).
  *
- * The entry is a plain ES module served from `plugin-renderer://<id>/...`.
- * Loads are single-flight per plugin: the first caller starts the fetch and
- * everyone else awaits the same promise. A module without `onLoad` is
- * refused with `PLUGIN_SLOT_LOAD_FAILED`; a module that throws during
- * registration leaves the registrations it already made behind, so the
- * unload path still tears them down.
+ * An entry is a plain ES module served from
+ * `plugin-renderer://<id>/g<generation>/<entry>`. The generation is the main
+ * process's load counter: a reload comes with a new one, so the window
+ * evaluates the new code instead of its cached module graph, and the old URLs
+ * stop resolving.
+ *
+ * Each load is its own session. Registrations, style sheets and the dispatch
+ * channel belong to the load that made them, and ending the load disposes all
+ * of them before the plugin's `onUnload` runs, whatever the plugin does or
+ * fails to do. The `pi` of an ended load stays dead: registering or injecting
+ * through it throws `PLUGIN_UNLOADED`, dispatching rejects with it. A load
+ * that fails (the import, a missing `onLoad`, a throwing `onLoad`) is torn
+ * down, reported once, and not retried until the main process hands out a
+ * new generation.
  */
 import {
   PLUGIN_RENDERER_SCHEME,
   type PiRendererApi,
   type PiRendererModule,
-  type PluginRendererSlotOptions,
-  toolCardOwnershipError,
+  type PluginDisposer,
+  type PluginSlotRegistration,
 } from "@pi-desktop/plugin-sdk";
-import { slotRegistry, type SlotRegistrationHandle } from "../renderer-slots/registry";
 import {
-  injectStyle,
-  removePluginStyles,
-  type PluginStyleHandle,
-} from "../renderer-slots/style-injection";
-import {
-  bindDispatch,
-  createDispatch,
-  unbindDispatch,
-  type RendererDispatchContext,
-} from "./dispatch";
+  isActiveInProject,
+  type PluginRendererDescriptor,
+  type PluginSummary,
+} from "@pi-desktop/shared";
+import { PluginRendererError } from "../renderer-error";
+import { slotRegistry, type SlotRegistry } from "../renderer-slots/registry";
+import { injectPluginStyle } from "../renderer-slots/style-injection";
+import { createDispatchChannel, type DispatchChannel } from "./dispatch";
 
-export type RendererModuleRecord = {
-  pluginId: string;
-  module: PiRendererModule;
+export type RendererLoadSpec = {
+  readonly pluginId: string;
+  readonly version: string;
+  readonly descriptor: PluginRendererDescriptor;
 };
 
-const loaded = new Map<string, Promise<RendererModuleRecord | null>>();
+/** How a load ended up. `cancelled`: it was unloaded before it finished. */
+export type RendererLoadOutcome =
+  | { readonly status: "loaded" }
+  | { readonly status: "failed"; readonly error: unknown }
+  | { readonly status: "cancelled" };
 
-function rendererModuleUrl(pluginId: string, entry: string): string {
-  return `${PLUGIN_RENDERER_SCHEME}://${encodeURIComponent(pluginId)}/${entry.replace(/^\//, "")}`;
-}
+export type RendererLoaderDeps = {
+  importModule(url: string): Promise<unknown>;
+  registry: Pick<SlotRegistry, "register">;
+  injectStyle(pluginId: string, css: string): PluginDisposer;
+  openChannel(pluginId: string, actions: readonly string[]): DispatchChannel;
+  warn(message: string, error: unknown): void;
+};
 
-function codedError(code: string, message: string): Error {
-  const error = new Error(message) as Error & { code?: string };
-  error.code = code;
-  return error;
-}
+const LOADED: RendererLoadOutcome = { status: "loaded" };
+const CANCELLED: RendererLoadOutcome = { status: "cancelled" };
 
-function buildPiApi(
+/** The module URL of a load's entry; the protocol decodes each segment. */
+export function rendererModuleUrl(
   pluginId: string,
-  version: string,
-  context: RendererDispatchContext,
-): PiRendererApi {
-  const handles: (SlotRegistrationHandle | PluginStyleHandle)[] = [];
-  const api: PiRendererApi = {
-    plugin: { id: pluginId, version },
-    slots: {
-      register<Props>(
-        slot: Parameters<PiRendererApi["slots"]["register"]>[0],
-        component: (props: Props) => unknown,
-        options?: PluginRendererSlotOptions,
-      ) {
-        // The toolCard no-claim gate: a card may only serve a tool the
-        // plugin's own manifest declares (`contributes.agentTools`).
-        if (slot === "toolCard") {
-          const ownershipError = toolCardOwnershipError(
-            options?.toolName ?? "",
-            context.tools,
-          );
-          if (ownershipError) {
-            throw codedError("PLUGIN_SLOT_INVALID_KEY", ownershipError);
-          }
-        }
-        const handle = slotRegistry.register(
-          pluginId,
-          slot,
-          component as unknown,
-          options,
-        );
-        handles.push(handle);
-        return handle;
-      },
-    },
-    ui: {
-      injectStyle(css: string) {
-        const handle = injectStyle(pluginId, css);
-        handles.push(handle);
-        return handle;
-      },
-    },
-  };
-  // Keeps the handles reachable for host-side teardown even if the plugin
-  // drops its own registration handles.
-  handlesAtLoad.set(api, handles);
-  return api;
+  descriptor: Pick<PluginRendererDescriptor, "entry" | "generation">,
+): string {
+  const entry = descriptor.entry
+    .replace(/^\/+/, "")
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/");
+  return `${PLUGIN_RENDERER_SCHEME}://${encodeURIComponent(pluginId)}/g${descriptor.generation}/${entry}`;
 }
 
-const handlesAtLoad = new WeakMap<object, (SlotRegistrationHandle | PluginStyleHandle)[]>();
+/** Named `onLoad`/`onUnload` exports, or a default export object with them. */
+function rendererModuleOf(namespace: unknown): PiRendererModule | undefined {
+  const exported = namespace as { onLoad?: unknown; default?: unknown } | null;
+  if (typeof exported?.onLoad === "function") return exported as PiRendererModule;
+  const fallback = exported?.default as { onLoad?: unknown } | null | undefined;
+  if (typeof fallback?.onLoad === "function") return fallback as PiRendererModule;
+  return undefined;
+}
 
-/**
- * Load and `onLoad` one renderer module. Resolves `null` when the plugin
- * declares no renderer entry. Single-flight per plugin. `context.tools` is
- * the plugin's own declared tool names (the no-claim gate for `toolCard`).
- */
-export function loadRendererModule(
-  pluginId: string,
-  entry: string | undefined,
-  version: string,
-  context: RendererDispatchContext,
-): Promise<RendererModuleRecord | null> {
-  if (!entry) return Promise.resolve(null);
-  const existing = loaded.get(pluginId);
-  if (existing) return existing;
-  const promise = (async () => {
-    const url = rendererModuleUrl(pluginId, entry);
+function settled(run: () => unknown): Promise<unknown> {
+  try {
+    return Promise.resolve(run());
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+/** One load of one plugin: its `pi`, what it registered, and its teardown. */
+class RendererLoad {
+  readonly signature: string;
+  readonly ready: Promise<RendererLoadOutcome>;
+  private readonly spec: RendererLoadSpec;
+  private readonly deps: RendererLoaderDeps;
+  private alive = true;
+  private readonly disposers = new Set<PluginDisposer>();
+  private readonly channel: DispatchChannel;
+  private readonly pi: PiRendererApi;
+  private module: PiRendererModule | undefined;
+  /** Settles once `onLoad` has returned or thrown; never rejects. */
+  private onLoadSettled: Promise<unknown> = Promise.resolve();
+  private ending: Promise<void> | undefined;
+
+  constructor(signature: string, spec: RendererLoadSpec, deps: RendererLoaderDeps) {
+    this.signature = signature;
+    this.spec = spec;
+    this.deps = deps;
+    this.channel = deps.openChannel(spec.pluginId, spec.descriptor.actions);
+    this.pi = this.createPi();
+    this.ready = this.run();
+  }
+
+  private createPi(): PiRendererApi {
+    const { pluginId, version, descriptor } = this.spec;
+    return Object.freeze({
+      plugin: Object.freeze({ id: pluginId, version }),
+      slots: Object.freeze({
+        register: (registration: PluginSlotRegistration) => {
+          this.assertAlive();
+          return this.track(this.deps.registry.register(pluginId, registration, descriptor.tools));
+        },
+      }),
+      ui: Object.freeze({
+        injectStyle: (css: string) => {
+          this.assertAlive();
+          return this.track(this.deps.injectStyle(pluginId, css));
+        },
+      }),
+      dispatch: this.channel.dispatch,
+    });
+  }
+
+  private assertAlive(): void {
+    if (!this.alive) {
+      throw new PluginRendererError("PLUGIN_UNLOADED", `${this.spec.pluginId} is unloaded`);
+    }
+  }
+
+  /** Hand the plugin a disposer that the end of this load also runs. */
+  private track(dispose: PluginDisposer): PluginDisposer {
+    const tracked: PluginDisposer = () => {
+      if (this.disposers.delete(tracked)) dispose();
+    };
+    this.disposers.add(tracked);
+    return tracked;
+  }
+
+  private async run(): Promise<RendererLoadOutcome> {
     let namespace: unknown;
     try {
-      namespace = await import(/* @vite-ignore */ url);
+      namespace = await this.deps.importModule(
+        rendererModuleUrl(this.spec.pluginId, this.spec.descriptor),
+      );
     } catch (error) {
-      throw codedError(
-        "PLUGIN_SLOT_LOAD_FAILED",
-        `renderer entry for ${pluginId} failed to load: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      return this.alive ? this.fail(error) : CANCELLED;
     }
-    const candidate = namespace as { default?: unknown } & Record<string, unknown>;
-    const mod = ((candidate.default ?? candidate) ?? {}) as Partial<PiRendererModule>;
-    if (typeof mod.onLoad !== "function") {
-      throw codedError(
-        "PLUGIN_SLOT_LOAD_FAILED",
-        `renderer entry for ${pluginId} must export onLoad`,
-      );
-    }
-    bindDispatch(pluginId, context.actions);
+    if (!this.alive) return CANCELLED;
+    const module = rendererModuleOf(namespace);
+    if (!module) return this.fail(new Error("the renderer entry does not export onLoad(pi)"));
+    this.module = module;
+    const loading = settled(() => module.onLoad(this.pi));
+    this.onLoadSettled = loading.catch(() => undefined);
     try {
-      await mod.onLoad(buildPiApi(pluginId, version, context));
+      await loading;
     } catch (error) {
-      // A throwing onLoad still leaves the registrations it already made;
-      // surface the failure but keep the host consistent.
-      unbindDispatch(pluginId);
-      slotRegistry.unregisterPlugin(pluginId);
-      removePluginStyles(pluginId);
-      throw codedError(
-        "PLUGIN_SLOT_LOAD_FAILED",
-        `onLoad for ${pluginId} failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      return this.alive ? this.fail(error) : CANCELLED;
     }
-    // Unload raced the async load: the plugin was torn down while `onLoad`
-    // was still running, so its late registrations, styles, and dispatch
-    // binding must not survive. The load memo was already deleted by
-    // `unloadRendererModule`, which is the lost-race signal here.
-    if (!loaded.has(pluginId)) {
-      slotRegistry.unregisterPlugin(pluginId);
-      removePluginStyles(pluginId);
-      unbindDispatch(pluginId);
+    return this.alive ? LOADED : CANCELLED;
+  }
+
+  private fail(error: unknown): RendererLoadOutcome {
+    this.deps.warn(`[plugin-renderer] ${this.spec.pluginId} failed to load`, error);
+    void this.end();
+    return { status: "failed", error };
+  }
+
+  /**
+   * End this load: the host side at once, then the plugin's `onUnload` once
+   * `onLoad` has settled. Idempotent; resolves when `onUnload` has run.
+   */
+  end(): Promise<void> {
+    if (this.ending) return this.ending;
+    this.alive = false;
+    this.channel.close();
+    for (const dispose of [...this.disposers]) dispose();
+    this.ending = this.onLoadSettled.then(() => this.runOnUnload());
+    return this.ending;
+  }
+
+  private async runOnUnload(): Promise<void> {
+    const module = this.module;
+    if (typeof module?.onUnload !== "function") return;
+    try {
+      await module.onUnload();
+    } catch (error) {
+      this.deps.warn(`[plugin-renderer] ${this.spec.pluginId} onUnload failed`, error);
     }
-    return { pluginId, module: mod as PiRendererModule };
-  })();
-  loaded.set(pluginId, promise);
-  promise.catch(() => {
-    // Failed loads are retryable: drop the memo so a fixed plugin can reload.
-    loaded.delete(pluginId);
-  });
-  return promise;
+  }
 }
 
-/** Plugin ids with a live renderer module (host teardown diffing). */
-export function loadedRendererPluginIds(): string[] {
-  return [...loaded.keys()];
+export class RendererModuleLoader {
+  private readonly loads = new Map<string, RendererLoad>();
+  private readonly deps: RendererLoaderDeps;
+
+  constructor(deps: RendererLoaderDeps) {
+    this.deps = deps;
+  }
+
+  /**
+   * Bring a plugin to the load `spec` describes. The same generation is one
+   * load, however often it is asked for; a new one ends the previous load
+   * first. Resolves with the load's outcome and never rejects.
+   */
+  load(spec: RendererLoadSpec): Promise<RendererLoadOutcome> {
+    const signature = `${spec.descriptor.generation}:${spec.descriptor.entry}`;
+    const current = this.loads.get(spec.pluginId);
+    if (current?.signature === signature) return current.ready;
+    if (current) void this.unload(spec.pluginId);
+    const next = new RendererLoad(signature, spec, this.deps);
+    this.loads.set(spec.pluginId, next);
+    return next.ready;
+  }
+
+  /** End a plugin's load; resolves once its `onUnload` has run. */
+  unload(pluginId: string): Promise<void> {
+    const current = this.loads.get(pluginId);
+    if (!current) return Promise.resolve();
+    this.loads.delete(pluginId);
+    return current.end();
+  }
+
+  /** Load exactly `specs`: start or keep each of them, end every other load. */
+  sync(specs: readonly RendererLoadSpec[]): void {
+    const wanted = new Set(specs.map((spec) => spec.pluginId));
+    for (const pluginId of this.loadedPluginIds()) {
+      if (!wanted.has(pluginId)) void this.unload(pluginId);
+    }
+    for (const spec of specs) void this.load(spec);
+  }
+
+  /** Plugins with a load, failed ones included, so they are not retried. */
+  loadedPluginIds(): string[] {
+    return [...this.loads.keys()];
+  }
 }
 
 /**
- * 卸载摘注册: registrations, injected styles, the dispatch binding, then the
- * plugin's own onUnload. Teardown never blocks on a plugin's own failure.
+ * The loads a plugin list asks for: every plugin the main process hands a
+ * renderer descriptor (it is running, declares `manifest.renderer` and holds
+ * `renderer.extension`) that is active in the open project. A project-scoped
+ * plugin's slots belong to its projects, like its views and tools.
  */
-export async function unloadRendererModule(pluginId: string): Promise<void> {
-  const record = loaded.get(pluginId);
-  loaded.delete(pluginId);
-  slotRegistry.unregisterPlugin(pluginId);
-  removePluginStyles(pluginId);
-  unbindDispatch(pluginId);
-  if (!record) return;
-  try {
-    const settled = await record;
-    if (settled && typeof settled.module.onUnload === "function") {
-      await settled.module.onUnload();
-    }
-  } catch {
-    // Ignored by design: the plugin is going away regardless.
-  }
+export function rendererLoadSpecs(
+  plugins: readonly PluginSummary[],
+  projectPath: string | null | undefined,
+): RendererLoadSpec[] {
+  return plugins.flatMap((summary) =>
+    summary.renderer && isActiveInProject(summary, projectPath)
+      ? [{ pluginId: summary.id, version: summary.version, descriptor: summary.renderer }]
+      : [],
+  );
 }
 
-/** Test seam. */
-export function resetRendererModulesForTests(): void {
-  for (const id of loaded.keys()) {
-    void unloadRendererModule(id);
-  }
-}
+/** The app window's loader. */
+export const rendererModules = new RendererModuleLoader({
+  importModule: (url) => import(/* @vite-ignore */ url),
+  registry: slotRegistry,
+  injectStyle: injectPluginStyle,
+  openChannel: (pluginId, actions) => createDispatchChannel(pluginId, actions),
+  warn: (message, error) => console.warn(message, error),
+});

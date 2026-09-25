@@ -133,8 +133,6 @@ impl PluginManager {
                 update_available: None,
                 yanked: None,
                 ui: manifest.ui.clone(),
-                renderer: renderer_row(&manifest),
-                tools: tools_row(&manifest),
                 fs: manifest.fs.clone(),
                 settings: derive_settings(&manifest),
                 i18n: manifest.i18n.clone(),

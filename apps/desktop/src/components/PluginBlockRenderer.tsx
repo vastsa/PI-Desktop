@@ -7,18 +7,20 @@
  * a render failure and falls back to the host code block, and so does a
  * component that throws (via the boundary's fallback) — the source code must
  * always stay visible to the user.
+ *
+ * The clamp is host chrome, so it wraps the plugin's mount rather than
+ * sitting inside it, and it carries the fence's source anchor so transcript
+ * search lands on the block as it would on the host code block.
  */
-import {
-  createElement,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ComponentType,
-  type ReactNode,
-} from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { PluginBlockRendererSlotProps } from "@pi-desktop/plugin-sdk";
-import { SlotBoundary } from "../plugins/renderer-slots/use-slots";
+import {
+  SlotErrorBoundary,
+  SlotMount,
+  slotElement,
+} from "../plugins/renderer-slots/use-slots";
 import type { SlotEntry } from "../plugins/renderer-slots/registry";
+import type { SourcePositionProps } from "../lib/markdown-source";
 import {
   BLOCK_RENDERER_MAX_HEIGHT_PX,
   blockRendererOverflow,
@@ -28,21 +30,24 @@ export function PluginBlockRenderer({
   entry,
   language,
   source,
+  sourcePosition,
   fallback,
 }: {
   entry: SlotEntry;
   language: string;
   source: string;
+  /** Where the fence sits in the message source. */
+  sourcePosition: SourcePositionProps;
   /** The host default block, shown when the plugin fails the contract. */
   fallback: ReactNode;
 }) {
   // props-once: the first mount's projection is the only one there is.
   const onceRef = useRef<PluginBlockRendererSlotProps>({ language, source });
-  const contentRef = useRef<HTMLDivElement>(null);
+  const clampRef = useRef<HTMLDivElement>(null);
   const [overflowed, setOverflowed] = useState(false);
 
   useLayoutEffect(() => {
-    const el = contentRef.current;
+    const el = clampRef.current;
     if (el && blockRendererOverflow(el.scrollHeight)) {
       setOverflowed(true);
     }
@@ -50,15 +55,15 @@ export function PluginBlockRenderer({
 
   if (overflowed) return fallback;
   return (
-    <SlotBoundary entry={entry} slot="blockRenderer" fallback={fallback}>
+    <SlotErrorBoundary entry={entry} fallback={fallback}>
       <div
-        ref={contentRef}
+        ref={clampRef}
         className="pi-plugin-block-renderer"
-        data-pi-language={onceRef.current.language}
         style={{ maxHeight: BLOCK_RENDERER_MAX_HEIGHT_PX }}
+        {...sourcePosition}
       >
-        {createElement(entry.component as ComponentType<Record<string, unknown>>, onceRef.current)}
+        <SlotMount entry={entry}>{slotElement(entry, onceRef.current)}</SlotMount>
       </div>
-    </SlotBoundary>
+    </SlotErrorBoundary>
   );
 }

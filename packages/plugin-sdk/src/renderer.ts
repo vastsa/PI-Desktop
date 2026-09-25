@@ -1,28 +1,34 @@
 /**
- * UI slot contract shared by all renderer slots (`docs/plugin-plan/ui/`).
+ * Renderer extension contract (`docs/plugin-plan/slot-contract.html`).
  *
- * A plugin ships a **renderer entry** — an ES module loaded into the host
- * renderer process — and registers slot components through the `pi.slots`
- * API handed to `onLoad`. The slot vocabulary below is the finalized
- * catalog (`docs/plugin-plan/slot-contract.html`):
+ * A plugin holding `renderer.extension` ships a renderer entry
+ * (`manifest.renderer`): an ES module the host evaluates in its own window.
+ * `onLoad(pi)` registers slot components with `pi.slots.register`, styles with
+ * `pi.ui.injectStyle`, and reaches the host only through `pi.dispatch` and the
+ * action vocabulary below. Every registration returns a disposer, and
+ * unloading the plugin disposes all of them.
  *
- * - `userAction` / `assistantAction` — additive left/right positions on the
- *   user / assistant message card action bars.
- * - `entryExtra` — additive block below the assistant reply body.
- * - `toolCard` — no-claim card for the plugin's **own** registered tool.
- * - `blockRenderer` — keyed `<pluginId>:lang` code-block takeover.
- * - `composerControl` — additive left/right controls in the composer toolbar.
- * - `composerTrigger` — one trigger symbol per plugin (`@`, `#`, `/`).
- * - `composerToken` — how a selected item is written into the draft.
+ * Slots (`docs/plugin-plan/ui/`):
+ * - `userAction` / `assistantAction` — additive items left and right of the
+ *   host keys on a message's action bar.
+ * - `entryExtra` — additive block below an assistant reply.
+ * - `toolCard` — the card for calls of one of the plugin's own agent tools.
+ * - `blockRenderer` — a fenced code block tagged `<pluginId>:<lang>`.
+ * - `composerControl` — additive controls left and right in the composer
+ *   toolbar.
  *
- * Self-dialog (modal/overlay) is deliberately **not** a slot: plugins draw
- * it themselves inside their own components (`docs/plugin-plan/ui/self-dialog/`).
+ * Self-dialogs are not a slot: a component draws them itself
+ * (`docs/plugin-plan/ui/self-dialog/`).
+ *
+ * The module runs in the host's own realm, so none of this is a security
+ * boundary. The contract keeps well-behaved plugins apart and out of the
+ * host's way; the `renderer.extension` grant is what trusts the code.
  */
 
 /** Privileged scheme that serves renderer entry modules. */
 export const PLUGIN_RENDERER_SCHEME = "plugin-renderer";
 
-/** Every renderer slot the host mounts. */
+/** Every slot the host mounts. */
 export const PLUGIN_RENDERER_SLOTS = [
   "userAction",
   "assistantAction",
@@ -30,152 +36,172 @@ export const PLUGIN_RENDERER_SLOTS = [
   "toolCard",
   "blockRenderer",
   "composerControl",
-  "composerTrigger",
-  "composerToken",
 ] as const;
 
 export type PluginRendererSlot = (typeof PLUGIN_RENDERER_SLOTS)[number];
 
-/** Positions of the additive action bars and composer controls. */
-export type PluginSlotPosition = "left" | "right";
-
-/** Position vocabulary, used by `validateSlotOptions`. */
+/** Sides of the action bars and of the composer toolbar. */
 export const PLUGIN_SLOT_POSITIONS = ["left", "right"] as const;
 
-/** Trigger symbols fixed by contract — one plugin per symbol. */
-export const PLUGIN_COMPOSER_TRIGGERS = ["@", "#", "/"] as const;
+export type PluginSlotPosition = (typeof PLUGIN_SLOT_POSITIONS)[number];
 
-export type PluginComposerTrigger = (typeof PLUGIN_COMPOSER_TRIGGERS)[number];
+/** Slots whose registration takes `positions`. */
+const POSITIONED_SLOTS: readonly PluginRendererSlot[] = [
+  "userAction",
+  "assistantAction",
+  "composerControl",
+];
 
-/** In-draft token cap: the 9th token onward collapses into a host `⧉ +N` chip. */
-export const PLUGIN_COMPOSER_TOKEN_LIMIT = 8;
-
-/** Message shape the host hands to message-anchored slots. */
+/** A message as message-anchored slots see it. */
 export type PluginSlotMessage = {
   readonly id: string;
-  readonly role: "user" | "assistant" | "system" | "tool";
+  readonly role: "user" | "assistant";
   readonly content: string;
   readonly createdAt?: string;
 };
 
 /**
- * Props skeleton for the additive message slots (`slot-contract.html` §2):
- * `message` + ids + `position`. No host functions, no extra data.
+ * `userAction` / `assistantAction` props: the message, its ids, and the side
+ * the item is mounted on. No host functions and no other data.
  */
 export type PluginActionSlotProps = {
   readonly message: PluginSlotMessage;
   readonly messageId: string;
   readonly sessionId: string;
   readonly position: PluginSlotPosition;
-  /** Bound per plugin; the only outbound channel for slot components. */
-  readonly dispatch: PluginRendererDispatch;
 };
 
-/** Props for `entryExtra` — assistant messages only, no `position` field. */
+/** `entryExtra` props: assistant replies only, so no `position`. */
 export type PluginEntryExtraSlotProps = {
   readonly message: PluginSlotMessage & { readonly role: "assistant" };
   readonly messageId: string;
   readonly sessionId: string;
-  readonly dispatch: PluginRendererDispatch;
 };
 
-/** Props for `toolCard` — keyed to one of the plugin's own tools.
- * Failure is data (`toolError`), never a throw. */
+export type PluginToolCardStatus = "running" | "success" | "error";
+
+/**
+ * `toolCard` props for one call of the plugin's own tool. `toolName` is the
+ * bare name the card registered for. A failed call is data (`toolError`),
+ * never a throw.
+ */
 export type PluginToolCardSlotProps = {
   readonly toolName: string;
   readonly toolCallId: string;
   readonly toolArgs?: unknown;
-  readonly toolStatus: "running" | "success" | "error";
+  readonly toolStatus: PluginToolCardStatus;
   readonly toolResult?: unknown;
   readonly toolError?: unknown;
   readonly durationMs?: number;
   readonly messageId: string;
   readonly sessionId: string;
-  readonly dispatch: PluginRendererDispatch;
 };
 
-/** Props for `blockRenderer` — the raw fence content, once, on close. */
+/** `blockRenderer` props: the fence's language tag and its raw text, once. */
 export type PluginBlockRendererSlotProps = {
   readonly language: string;
   readonly source: string;
 };
 
-/** Props for the composer control slot — a rendering position, no data. */
+/** `composerControl` props: only where the control is mounted. */
 export type PluginComposerControlSlotProps = {
   readonly position: PluginSlotPosition;
-  readonly dispatch: PluginRendererDispatch;
 };
-
-/** Filter text the user typed after a trigger symbol; plugin answers candidates. */
-export type PluginComposerTriggerProps = {
-  readonly query: string;
-  readonly dispatch: PluginRendererDispatch;
-};
-
-/** One selectable item a trigger plugin contributes. */
-export type PluginComposerTriggerItem = {
-  readonly label: string;
-  readonly detail?: string;
-  /** Data carried into the draft token when this item is picked. */
-  readonly value: unknown;
-};
-
-/** Token props — label for display, send data preserved into the submit payload. */
-export type PluginComposerTokenProps = {
-  readonly label: string;
-  readonly send: unknown;
-  readonly dispatch: PluginRendererDispatch;
-};
-
-/** Host → plugin, once per `plugin.call`. Plugin answers with a JSON value. */
-export type PluginRendererCall = {
-  readonly pluginId: string;
-  readonly method: string;
-  readonly args?: unknown;
-};
-
-/** Plugin → host, the only outbound channel for slot components. */
-export type PluginRendererDispatch = (
-  action: PluginRendererActionName,
-  payload?: unknown,
-) => Promise<unknown>;
 
 /**
- * Actions a slot component may dispatch. Declared per plugin in
- * `manifest.rendererActions`; an undeclared action is refused with
- * `PLUGIN_ACTION_UNDECLARED`. The wider vocabulary in
- * `slot-contract.html` §3 (entry.copy, message.mutate, …) lands with the
- * rounds that consume it; the gate below is real from day one.
+ * A slot component: a React function component, rendered with the React the
+ * host shares through its import map (`import React from "react"`).
  */
-export type PluginRendererActionName =
-  | "plugin.call"
-  | "composer.insertText"
-  | "composer.acceptTriggerItem";
+export type PluginSlotComponent<Props> = (props: Props) => unknown;
 
-/** `plugin.call` payload — `pluginId` is host-injected, never plugin-supplied. */
+/** `userAction` / `assistantAction`: sides to occupy; omitted means both. */
+export type PluginActionSlotRegistration = {
+  readonly slot: "userAction" | "assistantAction";
+  readonly component: PluginSlotComponent<PluginActionSlotProps>;
+  readonly positions?: readonly PluginSlotPosition[];
+};
+
+export type PluginEntryExtraSlotRegistration = {
+  readonly slot: "entryExtra";
+  readonly component: PluginSlotComponent<PluginEntryExtraSlotProps>;
+};
+
+/** `toolName` is a bare `contributes.agentTools[].name` of this plugin. */
+export type PluginToolCardSlotRegistration = {
+  readonly slot: "toolCard";
+  readonly toolName: string;
+  readonly component: PluginSlotComponent<PluginToolCardSlotProps>;
+};
+
+/** `language` is `<pluginId>:<lang>`; tags compare case-insensitively. */
+export type PluginBlockRendererSlotRegistration = {
+  readonly slot: "blockRenderer";
+  readonly language: string;
+  readonly component: PluginSlotComponent<PluginBlockRendererSlotProps>;
+};
+
+/** Sides to occupy; omitted means both. */
+export type PluginComposerControlSlotRegistration = {
+  readonly slot: "composerControl";
+  readonly component: PluginSlotComponent<PluginComposerControlSlotProps>;
+  readonly positions?: readonly PluginSlotPosition[];
+};
+
+/** What `pi.slots.register` accepts, discriminated by `slot`. */
+export type PluginSlotRegistration =
+  | PluginActionSlotRegistration
+  | PluginEntryExtraSlotRegistration
+  | PluginToolCardSlotRegistration
+  | PluginBlockRendererSlotRegistration
+  | PluginComposerControlSlotRegistration;
+
+/**
+ * Outbound actions the host implements. A plugin may dispatch only the words
+ * it lists in `manifest.rendererActions`; a word outside this vocabulary is
+ * refused with `PLUGIN_ACTION_UNKNOWN`, one outside the manifest with
+ * `PLUGIN_ACTION_UNDECLARED`.
+ */
+export const PLUGIN_RENDERER_ACTIONS = ["plugin.call", "composer.insertText"] as const;
+
+export type PluginRendererActionName = (typeof PLUGIN_RENDERER_ACTIONS)[number];
+
+/** `composer.insertText` text ceiling, in UTF-8 bytes. */
+export const PLUGIN_INSERT_TEXT_MAX_BYTES = 32 * 1024;
+
+/**
+ * `plugin.call`: one JSON answer from this plugin's `onRendererCall`. The
+ * host adds the plugin id; a component can only ever call its own plugin.
+ */
 export type PluginCallPayload = {
   readonly method: string;
   readonly args?: unknown;
 };
 
-/** A registration handle; `remove()` unregisters (卸载摘注册). */
-export type PluginRendererRegistration = {
-  readonly slot: PluginRendererSlot;
-  remove(): void;
+/** `composer.insertText`: plain text at the composer caret. */
+export type PluginInsertTextPayload = {
+  readonly text: string;
 };
 
-/** A style handle; `remove()` drops the injected sheet. */
-export type PluginRendererStyleHandle = {
-  remove(): void;
+/** Payload and result of every action word. */
+export type PluginRendererActionMap = {
+  "plugin.call": { payload: PluginCallPayload; result: unknown };
+  "composer.insertText": { payload: PluginInsertTextPayload; result: { ok: true } };
 };
 
 /**
- * The `pi` object handed to a renderer entry's `onLoad`.
- *
- * `pi.functions` (the F layer: `measureHeight` / `deriveSummary`) is
- * deliberately absent from this milestone — no finalized ui/ slot consumes
- * it yet; the vocabulary stays reserved in `slot-contract.html` §3.
+ * The only outbound channel of renderer code. Rejects with an `Error` whose
+ * `code` is a `PluginRendererErrorCode`, or the code the plugin's own
+ * `onRendererCall` threw with.
  */
+export type PluginRendererDispatch = <Action extends PluginRendererActionName>(
+  action: Action,
+  payload: PluginRendererActionMap[Action]["payload"],
+) => Promise<PluginRendererActionMap[Action]["result"]>;
+
+/** Undoes one registration; calling it again does nothing. */
+export type PluginDisposer = () => void;
+
+/** The `pi` object handed to a renderer entry's `onLoad`. */
 export type PiRendererApi = {
   readonly plugin: {
     readonly id: string;
@@ -183,170 +209,163 @@ export type PiRendererApi = {
   };
   readonly slots: {
     /**
-     * Register a slot component. Throws a coded error when the host refuses:
-     * `PLUGIN_SLOT_DUPLICATE` (keyed slot already taken),
-     * `PLUGIN_SLOT_INVALID_COMPONENT` (component not a function),
-     * `PLUGIN_SLOT_INVALID_KEY` (malformed key), or
-     * `PLUGIN_SLOT_UNKNOWN` (slot not in the vocabulary).
+     * Mount a component in a slot. Throws an `Error` whose `code` is a
+     * `PluginSlotErrorCode` when the host refuses the registration, or
+     * `PLUGIN_UNLOADED` once this load has ended.
      */
-    register<Props>(
-      slot: PluginRendererSlot,
-      component: (props: Props) => unknown,
-      options?: PluginRendererSlotOptions,
-    ): PluginRendererRegistration;
+    register(registration: PluginSlotRegistration): PluginDisposer;
   };
   readonly ui: {
-    /** Inject a style sheet scoped under `.pi-plugin-slot.<pluginId>`. */
-    injectStyle(css: string): PluginRendererStyleHandle;
+    /**
+     * Add a style sheet that applies only inside this plugin's own slot
+     * mounts. Style rules are scoped, also inside `@media`, `@supports`,
+     * `@container` and `@layer` blocks; rules that define names
+     * (`@keyframes`, `@font-face`, `@property`) stay global, and `@import` is
+     * dropped. Throws a `TypeError` for anything but a string, and
+     * `PLUGIN_UNLOADED` once this load has ended.
+     */
+    injectStyle(css: string): PluginDisposer;
   };
+  readonly dispatch: PluginRendererDispatch;
 };
 
-/** Renderer entry module shape — plain ES module, no build step required. */
+/** Renderer entry module shape: a plain ES module, no build step required. */
 export type PiRendererModule = {
   onLoad(pi: PiRendererApi): void | Promise<void>;
   onUnload?(): void | Promise<void>;
 };
 
-/** Options accepted by `pi.slots.register` per slot. Keyed slots carry
- * their key here (`language`, `toolName`, `trigger`); additive slots take
- * optional position subsets. */
-export type PluginRendererSlotOptions = {
-  /**
-   * `userAction` / `assistantAction` / `composerControl` — which sides to
-   * occupy; omit for both.
-   */
-  readonly positions?: readonly PluginSlotPosition[];
-  /** `toolCard` — must match one of the plugin's own `contributes.agentTools[].name`. */
-  readonly toolName?: string;
-  /** `blockRenderer` — must be `<pluginId>:lang`. */
-  readonly language?: string;
-  /** `composerTrigger` — exactly one of `@` `#` `/`; one plugin per symbol. */
-  readonly trigger?: PluginComposerTrigger;
-};
-
-/** Diagnostic codes the slot subsystem reports (also surfaced as thrown errors). */
-export type PluginRendererSlotDiagnosticCode =
+/** Why `pi.slots.register` refused a registration. */
+export type PluginSlotErrorCode =
+  /** `slot` is not in `PLUGIN_RENDERER_SLOTS`. */
   | "PLUGIN_SLOT_UNKNOWN"
-  | "PLUGIN_SLOT_DUPLICATE"
+  /** `component` is not a function. */
   | "PLUGIN_SLOT_INVALID_COMPONENT"
+  /** A keyed slot's `toolName` / `language` is malformed. */
   | "PLUGIN_SLOT_INVALID_KEY"
+  /** `positions` is malformed, or given to a slot without sides. */
   | "PLUGIN_SLOT_INVALID_POSITION"
-  | "PLUGIN_SLOT_NOT_DECLARED"
-  | "PLUGIN_SLOT_RENDER_FAILED"
-  | "PLUGIN_SLOT_LOAD_FAILED"
-  | "PLUGIN_ACTION_UNDECLARED"
-  | "PLUGIN_ACTION_UNROUTED"
-  | "PLUGIN_ACTION_INVALID_PAYLOAD"
-  | "PLUGIN_CALL_NO_HANDLER"
-  | "PLUGIN_CALL_UNSERIALIZABLE"
-  | "PLUGIN_CALL_TIMEOUT"
-  | "PLUGIN_CALL_TOO_LARGE"
-  | "PLUGIN_CALL_RATE_LIMITED"
-  | "PLUGIN_CALL_DISABLED";
+  /** The key is already registered; the first registration keeps it. */
+  | "PLUGIN_SLOT_DUPLICATE"
+  /** `toolName` is not one of the plugin's own agent tools. */
+  | "PLUGIN_SLOT_NOT_OWNED";
 
-/** A refusal the host reports for a renderer plugin, for the plugin row UI. */
-export type PluginRendererDiagnostic = {
-  readonly pluginId: string;
-  readonly code: PluginRendererSlotDiagnosticCode;
-  readonly detail?: string;
+/**
+ * Every code the host hands renderer code: the registration refusals above
+ * and what `pi.dispatch` rejects with.
+ */
+export type PluginRendererErrorCode =
+  | PluginSlotErrorCode
+  /** The word is not in `PLUGIN_RENDERER_ACTIONS`. */
+  | "PLUGIN_ACTION_UNKNOWN"
+  /** The word is not in `manifest.rendererActions`. */
+  | "PLUGIN_ACTION_UNDECLARED"
+  /** The payload does not have the word's shape or exceeds its limit. */
+  | "PLUGIN_ACTION_INVALID_PAYLOAD"
+  /** No composer is mounted to take the action. */
+  | "PLUGIN_ACTION_NO_COMPOSER"
+  /** This load has ended: nothing registers, injects or dispatches through it. */
+  | "PLUGIN_UNLOADED"
+  /** `plugin.call`: the method is not declared, or `onRendererCall` is missing. */
+  | "PLUGIN_CALL_NO_HANDLER"
+  /** `plugin.call`: args or answer are not JSON. */
+  | "PLUGIN_CALL_UNSERIALIZABLE"
+  /** `plugin.call`: no answer within 2s. */
+  | "PLUGIN_CALL_TIMEOUT"
+  /** `plugin.call`: args and answer exceed 64KB together. */
+  | "PLUGIN_CALL_TOO_LARGE"
+  /** `plugin.call`: more than 10 calls in one second. */
+  | "PLUGIN_CALL_RATE_LIMITED"
+  /** `plugin.call`: closed for 30s after five failures in a row. */
+  | "PLUGIN_CALL_DISABLED"
+  /** `plugin.call`: `onRendererCall` threw without a code of its own. */
+  | "PLUGIN_CALL_FAILED";
+
+export type PluginSlotRefusal = {
+  readonly code: PluginSlotErrorCode;
+  readonly message: string;
 };
 
 /**
- * Guard used by keyed registration: `blockRenderer` keys must be
- * `<pluginId>:lang`; `toolCard` keys are the tool name; `composerTrigger`
- * keys are the single symbol. Returns an error message or `null`.
+ * The comparison form of a block-renderer language tag, shared by the
+ * registration and the fence lookup.
  */
-export function slotKeyError(
-  slot: PluginRendererSlot,
+export function blockRendererLanguageKey(language: string): string {
+  return language.trim().toLowerCase();
+}
+
+const BLOCK_RENDERER_LANGUAGE_SUFFIX = /^[a-z0-9_-]+$/;
+
+function describe(value: unknown): string {
+  return typeof value === "string" ? JSON.stringify(value) : typeof value;
+}
+
+function refusal(code: PluginSlotErrorCode, message: string): PluginSlotRefusal {
+  return { code, message };
+}
+
+/**
+ * Check a registration the way the host does before accepting it. Only a clash
+ * with an earlier registration (`PLUGIN_SLOT_DUPLICATE`) is left to the host,
+ * which alone sees the other plugins. `ownTools` is the plugin's own
+ * `contributes.agentTools[].name` list.
+ */
+export function slotRegistrationRefusal(
   pluginId: string,
-  options: PluginRendererSlotOptions | undefined,
-): string | null {
-  if (slot === "blockRenderer") {
-    const language = options?.language;
-    if (typeof language !== "string" || language.length === 0) {
-      return "blockRenderer requires options.language";
+  registration: unknown,
+  ownTools: readonly string[],
+): PluginSlotRefusal | null {
+  if (!registration || typeof registration !== "object") {
+    return refusal("PLUGIN_SLOT_UNKNOWN", "a registration must be an object naming its slot");
+  }
+  const candidate = registration as Record<string, unknown>;
+  const slot = candidate.slot;
+  if (typeof slot !== "string" || !(PLUGIN_RENDERER_SLOTS as readonly string[]).includes(slot)) {
+    return refusal("PLUGIN_SLOT_UNKNOWN", `unknown slot ${describe(slot)}`);
+  }
+  if (typeof candidate.component !== "function") {
+    return refusal("PLUGIN_SLOT_INVALID_COMPONENT", `${slot} component must be a function`);
+  }
+  const positions = candidate.positions;
+  if (positions !== undefined) {
+    if (!(POSITIONED_SLOTS as readonly string[]).includes(slot)) {
+      return refusal("PLUGIN_SLOT_INVALID_POSITION", `${slot} takes no positions`);
     }
-    const prefix = `${pluginId}:`;
     if (
-      language === prefix ||
-      !language.startsWith(prefix) ||
-      language.slice(prefix.length).trim().length === 0
+      !Array.isArray(positions) ||
+      positions.length === 0 ||
+      positions.some((side) => side !== "left" && side !== "right")
     ) {
-      return `blockRenderer language must be "<pluginId>:lang" (got ${JSON.stringify(language)})`;
+      return refusal(
+        "PLUGIN_SLOT_INVALID_POSITION",
+        `${slot} positions must be a non-empty array of "left" and "right"`,
+      );
     }
-    const lang = language.slice(prefix.length);
-    if (!/^[A-Za-z0-9_-]+$/.test(lang)) {
-      return `blockRenderer language suffix must match [A-Za-z0-9_-]+ (got ${JSON.stringify(lang)})`;
-    }
-    return null;
   }
   if (slot === "toolCard") {
-    const toolName = options?.toolName;
-    if (typeof toolName !== "string" || toolName.trim().length === 0) {
-      return "toolCard requires options.toolName";
+    const toolName = candidate.toolName;
+    if (typeof toolName !== "string" || !toolName.trim()) {
+      return refusal("PLUGIN_SLOT_INVALID_KEY", "toolCard requires a toolName");
     }
-    return null;
-  }
-  if (slot === "composerTrigger") {
-    const trigger = options?.trigger;
-    if (
-      typeof trigger !== "string" ||
-      !(PLUGIN_COMPOSER_TRIGGERS as readonly string[]).includes(trigger)
-    ) {
-      return `composerTrigger requires options.trigger to be one of ${PLUGIN_COMPOSER_TRIGGERS.join(" ")}`;
+    if (!ownTools.includes(toolName)) {
+      return refusal(
+        "PLUGIN_SLOT_NOT_OWNED",
+        `toolCard toolName ${describe(toolName)} is not one of this plugin's contributes.agentTools`,
+      );
     }
-    // 宿主先占: `@` drives file references and `/` drives slash commands;
-    // plugins claim only `#` this round (docs/plugin-plan/ui/composer/).
-    if (trigger !== "#") {
-      return `composerTrigger trigger "${trigger}" is host-owned; plugins claim "#"`;
+  }
+  if (slot === "blockRenderer") {
+    const language = candidate.language;
+    if (typeof language !== "string") {
+      return refusal("PLUGIN_SLOT_INVALID_KEY", "blockRenderer requires a language");
     }
-    return null;
-  }
-  return null;
-}
-
-/**
- * The no-claim gate for `toolCard` (`docs/plugin-plan/ui/tool-card/`):
- * a plugin may only register a card for a tool its own manifest declares
- * in `contributes.agentTools`. Returns an error message or `null`.
- *
- * `declaredTools` comes from the plugin's `PluginSummary.tools` row; an
- * absent row means the registry predates the renderer milestone, so the
- * declaration is unprovable and the registration is refused.
- */
-export function toolCardOwnershipError(
-  toolName: string,
-  declaredTools: readonly string[] | undefined,
-): string | null {
-  if (!declaredTools || declaredTools.length === 0) {
-    return `toolCard requires the manifest to declare contributes.agentTools (no tools found for this plugin)`;
-  }
-  if (!declaredTools.includes(toolName)) {
-    return `toolCard toolName ${JSON.stringify(toolName)} is not in the plugin's own contributes.agentTools`;
-  }
-  return null;
-}
-
-/**
- * Position-subset validation for the additive slots (`userAction`,
- * `assistantAction`, `composerControl`). Entries must come from the
- * vocabulary; an empty array registers nothing and is refused.
- */
-export function slotPositionsError(
-  slot: PluginRendererSlot,
-  options: PluginRendererSlotOptions | undefined,
-): string | null {
-  if (slot !== "userAction" && slot !== "assistantAction" && slot !== "composerControl") {
-    return null;
-  }
-  const raw = options?.positions;
-  if (raw === undefined) return null;
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return `${slot} options.positions must be a non-empty array`;
-  }
-  for (const entry of raw) {
-    if (entry !== "left" && entry !== "right") {
-      return `${slot} options.positions entries must be "left" or "right"`;
+    const key = blockRendererLanguageKey(language);
+    const prefix = `${pluginId}:`;
+    if (!key.startsWith(prefix) || !BLOCK_RENDERER_LANGUAGE_SUFFIX.test(key.slice(prefix.length))) {
+      return refusal(
+        "PLUGIN_SLOT_INVALID_KEY",
+        `blockRenderer language must be "${prefix}<lang>" with <lang> in [A-Za-z0-9_-] (got ${describe(language)})`,
+      );
     }
   }
   return null;

@@ -50,9 +50,9 @@ import {
   useTranscriptMenu,
 } from "./TranscriptMenu";
 import { TurnProcess } from "./TurnProcess";
+import { ActionSlotSide } from "./ActionBarSlots";
 import { EntryExtraStack } from "./EntryExtraStack";
-import { ActionBarSlots } from "./ActionBarSlots";
-import { useSlotEntries } from "../../../plugins/renderer-slots/use-slots";
+import { slotMessage } from "../../../plugins/renderer-slots/slot-message";
 
 type AssistantTurnProps = {
   entry: AssistantTurnEntry;
@@ -255,10 +255,14 @@ export const AssistantTurn = memo(function AssistantTurn({
   const responseOutputTokens = assistantTurnResponseOutputTokens(entry);
   const modelId = metaMessage?.modelId ?? latestUsageMessage?.modelId;
   const hasError = messages.some((message) => Boolean(message.error));
-  const assistantActionLeft = useSlotEntries("assistantAction", "left");
-  const assistantActionRight = useSlotEntries("assistantAction", "right");
   const complete =
     !isActive && !hasError && Boolean(content) && Boolean(actionMessage);
+  // Plugins see a finished reply as the host keys act on it: the id of its
+  // answer message and the text Copy copies.
+  const slotReply =
+    complete && actionMessage
+      ? slotMessage("assistant", { ...actionMessage, content })
+      : undefined;
   const streaming =
     isActive && messages.some((message) => message.status === "streaming");
   /*
@@ -397,7 +401,7 @@ export const AssistantTurn = memo(function AssistantTurn({
         ) : null}
         {complete && actionMessage ? (
           <div className="message-actions">
-          <ActionBarSlots slot="assistantAction" message={actionMessage} left={assistantActionLeft} right={assistantActionRight}>
+            <ActionSlotSide slot="assistantAction" side="left" message={slotReply} />
             <CopyButton text={content} label={t("chat.copy")} />
             <TooltipButton
               className="copy-btn icon"
@@ -415,12 +419,10 @@ export const AssistantTurn = memo(function AssistantTurn({
             >
               <IconReview size={13} />
             </TooltipButton>
-          </ActionBarSlots>
+            <ActionSlotSide slot="assistantAction" side="right" message={slotReply} />
           </div>
         ) : null}
-        {complete && actionMessage ? (
-          <EntryExtraStack message={actionMessage} />
-        ) : null}
+        {slotReply ? <EntryExtraStack message={slotReply} /> : null}
       </div>
     </div>
   );

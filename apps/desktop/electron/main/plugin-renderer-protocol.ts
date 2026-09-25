@@ -13,14 +13,35 @@ import { PLUGIN_RENDERER_SCHEME } from "@pi-desktop/plugin-sdk";
  * theme assets — so a path that escapes the package, or a plugin that never
  * declared the entry, has no URL to begin with.
  *
+ * URLs are `plugin-renderer://<id>/g<generation>/<path>`. The generation is
+ * the plugin's current load (`PluginRendererDescriptor.generation`): a reload
+ * hands out a new one, so the renderer's ES module cache cannot serve the
+ * previous load's code, and a URL from an old load no longer resolves.
+ * Relative imports inside the module graph keep the prefix automatically.
+ *
  * This is why the scheme is separate from `plugin-asset`: that allowlist is
  * images and webfonts on purpose, and adding `js` to it would turn every theme
  * asset URL into a script URL.
  */
 export type PluginRendererSourceResolver = (
   pluginId: string,
+  generation: number,
   requestPath: string,
 ) => string | null;
+
+const GENERATION_SEGMENT = /^g([1-9][0-9]{0,14})\/(.+)$/;
+
+/**
+ * Split a decoded URL path into its load generation and the package-relative
+ * request path, or null when the path does not start with a generation.
+ */
+export function parseRendererRequestPath(
+  pathname: string,
+): { generation: number; requestPath: string } | null {
+  const match = GENERATION_SEGMENT.exec(pathname.replace(/^\/+/, ""));
+  if (!match) return null;
+  return { generation: Number(match[1]), requestPath: match[2] };
+}
 
 /**
  * Only files a module graph can consume. `json` and `map` are here so a plugin
@@ -81,16 +102,17 @@ export function installPluginRendererProtocol(resolve: PluginRendererSourceResol
     // Plugin ids are `[a-z0-9]` dotted namespaces, so the host survives the URL
     // parser's lowercasing unchanged.
     const pluginId = url.hostname;
-    let requestPath: string;
+    let pathname: string;
     try {
-      requestPath = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+      pathname = decodeURIComponent(url.pathname);
     } catch {
       return notFound();
     }
-    if (!pluginId || !requestPath) return notFound();
-    const mime = mimeTypeFor(requestPath);
+    const parsed = parseRendererRequestPath(pathname);
+    if (!pluginId || !parsed) return notFound();
+    const mime = mimeTypeFor(parsed.requestPath);
     if (!mime) return notFound();
-    const absolute = resolve(pluginId, requestPath);
+    const absolute = resolve(pluginId, parsed.generation, parsed.requestPath);
     if (!absolute) return notFound();
     let body: Buffer;
     try {

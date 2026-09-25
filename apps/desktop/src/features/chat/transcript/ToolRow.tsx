@@ -142,7 +142,27 @@ function toolRowPropsEqual(
   );
 }
 
-export const ToolRow = memo(function ToolRow({
+/**
+ * One tool call. A call of a plugin's own tool renders the card that plugin
+ * registered for it (the `toolCard` slot); the host card below is its
+ * fallback, and the only card for every other call. Topology nodes and
+ * denied rows always keep the host card.
+ */
+export const ToolRow = memo(function ToolRow(props: ToolRowProps) {
+  const { message, variant = "default" } = props;
+  const cardEntry = useSlotEntryForKey(
+    "toolCard",
+    variant === "default" && message.toolStatus !== "denied" ? message.toolName : undefined,
+  );
+  const hostRow = <HostToolRow {...props} />;
+  return cardEntry ? (
+    <PluginToolCard key={cardEntry.id} entry={cardEntry} message={message} fallback={hostRow} />
+  ) : (
+    hostRow
+  );
+}, toolRowPropsEqual);
+
+function HostToolRow({
   message,
   delegate,
   variant = "default",
@@ -339,16 +359,6 @@ export const ToolRow = memo(function ToolRow({
           : "is-done";
   const caret = hasDetails ? <IconChevronRight size={12} /> : null;
 
-  // The toolCard slot: one plugin card replaces the host card entirely for a
-  // tool the plugin itself registered (the no-claim gate lives in the
-  // loader). Topology nodes and denied rows keep the host card.
-  const pluginCardEntry = useSlotEntryForKey(
-    "toolCard",
-    variant === "default" && status !== "denied" ? message.toolName : undefined,
-  );
-  if (pluginCardEntry) {
-    return <PluginToolCard entry={pluginCardEntry} message={message} />;
-  }
   return (
     <div
       className={`tool-row ${variant === "topology" ? "subagent-topology-node" : ""} ${
@@ -551,7 +561,7 @@ export const ToolRow = memo(function ToolRow({
       ) : null}
     </div>
   );
-}, toolRowPropsEqual);
+}
 
 /**
  * What a delegate did, nested under the `Task` call that spawned it.

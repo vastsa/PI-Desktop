@@ -1948,6 +1948,7 @@ sklm: {
       commands: "命令",
       tools: "智慧體工具",
       agentExtension: "Agent 擴充",
+      rendererUi: "對話介面擴充",
       skills: "技能",
       themes: "主題",
       mcp: "MCP 服務",

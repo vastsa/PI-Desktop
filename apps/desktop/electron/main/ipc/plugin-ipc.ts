@@ -12,6 +12,7 @@ import {
   type PluginRuntime,
 } from "../plugin-runtime";
 import { PluginViewHost } from "../plugin-view-host";
+import { rendererCallError } from "../plugin-renderer-extension";
 import type { IpcRegistrar } from "./types";
 
 export type PluginIpcDependencies = {
@@ -125,24 +126,34 @@ export function registerPluginIpc({
         const withExtension = extensionIds.length
           ? { ...plugin, agentExtension: agentExtensions.statusForPlugin(extensionIds) }
           : plugin;
-        if (!plugin?.settings?.length || !plugins.getLoaded(plugin.id)) return withExtension;
+        // The renderer host loads from the live load, never from the registry
+        // row: a plugin that is not running has nothing to load.
+        const renderer = plugin?.id ? plugins.rendererDescriptor(plugin.id) : undefined;
+        const withRenderer = renderer ? { ...withExtension, renderer } : withExtension;
+        if (!plugin?.settings?.length || !plugins.getLoaded(plugin.id)) return withRenderer;
         try {
           const settings = await plugins.getPluginSettings(plugin.id);
-          return { ...withExtension, settings };
+          return { ...withRenderer, settings };
         } catch {
-          return withExtension;
+          return withRenderer;
         }
       }),
     );
     return { ...result, plugins: pluginsWithSettings };
   });
 
-  handle(IPC.invoke.pluginRendererCall, async (pluginId: unknown, method: unknown, args: unknown) => {
-    const id = String(pluginId ?? "");
-    const name = String(method ?? "");
-    if (!id || !name) throw new Error("INVALID_ARGUMENT: pluginId and method are required");
-    return plugins.callRenderer(id, name, args);
-  });
+  // Renderer extensions run in the main window only (`PluginRendererHost`),
+  // so no other window may relay into a plugin's headless entry.
+  registrar.handleWithEvent(
+    IPC.invoke.pluginRendererCall,
+    async (event, pluginId: unknown, method: unknown, args: unknown) => {
+      registrar.assertMainWindowSender(event);
+      if (typeof pluginId !== "string" || !pluginId || typeof method !== "string" || !method) {
+        throw rendererCallError("INVALID_ARGUMENT", "pluginId and method are required");
+      }
+      return plugins.callRenderer(pluginId, method, args);
+    },
+  );
 
   handle(IPC.invoke.pluginSettingsGet, async (id: string) => {
     const settings = await plugins.getPluginSettings(String(id ?? ""));

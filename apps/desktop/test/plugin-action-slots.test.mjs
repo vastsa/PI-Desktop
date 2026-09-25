@@ -1,160 +1,219 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { register } from "node:module";
 import test from "node:test";
-register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+import { createElement } from "react";
+import { catalogs } from "@pi-desktop/i18n";
+import { parseProbe, probed, propsProbe, slotMounts, slotSsr } from "./helpers/slot-ssr.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (relative) => join(here, "..", "src", relative);
+/*
+ * The action-bar slots `userAction` and `assistantAction`
+ * (`docs/plugin-plan/ui/user-action/`, `docs/plugin-plan/ui/assistant-action/`)
+ * rendered with the production modules. A bar is its left items, its host
+ * keys, then its right items; a side shows three items and folds the rest
+ * into its own ⋯ menu at the outer end of the bar; every item is fed
+ * `{ message, messageId, sessionId, position }`. Server rendering is the
+ * first frame, where every ⋯ menu is closed: opening one, closing it on
+ * Escape or an outside press, and a throwing item disappearing alone are
+ * covered by the Electron E2E.
+ */
 
-const { SlotRegistry } = await import(
-  "../src/plugins/renderer-slots/registry.ts"
-);
-const {
-  actionSlotPropsFor,
-  actionSlotMessage,
-  splitActionSide,
-  ACTION_SLOT_VISIBLE_LIMIT,
-} = await import("../src/features/chat/transcript/action-slot-props.ts");
-const { en, zhCN, zhTW, de, es, fr, ko, tr } = await import("@pi-desktop/i18n");
+const { chat } = catalogs.en;
+const USER_KEYS = [chat.copy, chat.editMessage, chat.deleteMessage];
+const REPLY_KEYS = [chat.copy, chat.forkResponse, chat.retry];
 
-const message = (role, extra = {}) => ({
-  id: "m1",
-  role,
+const USER = {
+  id: "u1",
+  role: "user",
   content: "hello",
-  createdAt: "2026-09-17T00:00:00.000Z",
-  ...extra,
+  status: "complete",
+  createdAt: "2026-09-24T00:00:00.000Z",
+};
+
+/** The prompt answered in two parts around a tool call. */
+function conversation(overrides = {}) {
+  return [
+    USER,
+    { id: "a1", role: "assistant", content: "Let me look.", status: "complete", createdAt: "2026-09-24T00:00:01.000Z" },
+    {
+      id: "t1",
+      role: "tool",
+      content: "",
+      status: "complete",
+      createdAt: "2026-09-24T00:00:02.000Z",
+      toolName: "read",
+      toolCallId: "call-1",
+      toolArgs: { path: "a.txt" },
+      toolStatus: "success",
+      toolResult: "x",
+    },
+    { id: "a2", role: "assistant", content: "It says x.", status: "complete", createdAt: "2026-09-24T00:00:03.000Z", ...overrides },
+  ];
+}
+
+async function bars(t) {
+  const ssr = await slotSsr(t);
+  const { MessageRow } = await ssr.load("/src/features/chat/transcript/MessageRow.tsx");
+  const { AssistantTurn } = await ssr.load("/src/features/chat/transcript/AssistantTurn.tsx");
+  const { buildTranscriptEntries } = await ssr.load("/src/lib/assistant-turns.ts");
+  return {
+    ...ssr,
+    row: (message = USER) => ssr.render(createElement(MessageRow, { message, isRunning: false })),
+    turn: (messages = conversation(), isActive = false) => {
+      const { entries } = buildTranscriptEntries(messages);
+      const entry = entries.find((candidate) => candidate.kind === "assistant-turn");
+      return ssr.render(createElement(AssistantTurn, { entry, isActive }));
+    },
+  };
+}
+
+/**
+ * What the first action bar in `html` shows, in order: a host key by its
+ * label, a plugin item as `probe:position`, a ⋯ menu as `⋯side`.
+ */
+function barOf(html) {
+  const start = html.indexOf('<div class="message-actions">');
+  assert.ok(start >= 0, "the row has an action bar");
+  const end = html.indexOf('<div class="pi-entry-extra-stack">', start);
+  const bar = html.slice(start, end < 0 ? undefined : end);
+  const shown = [];
+  const token =
+    /<div class="pi-action-overflow" data-side="(\w+)">|<output data-probe="([^"]*)">([^<]*)<\/output>|<button\b([^>]*)>/g;
+  for (const [, menuSide, probe, props, button] of bar.matchAll(token)) {
+    if (menuSide) shown.push(`⋯${menuSide}`);
+    else if (probe) shown.push(`${probe}:${parseProbe(props).position}`);
+    else if (!button.includes("pi-action-overflow-btn")) shown.push(button.match(/aria-label="([^"]*)"/)[1]);
+  }
+  return shown;
+}
+
+/** `html` without its plugin items and ⋯ menus: the host's own markup. */
+function hostOnly(html) {
+  return html
+    .replaceAll(/<div class="pi-plugin-slot"[^>]*><output data-probe="[^"]*">[^<]*<\/output><\/div>/g, "")
+    .replaceAll(/<div class="pi-action-overflow" data-side="\w+"><button\b[^>]*>⋯<\/button><\/div>/g, "");
+}
+
+test("a bar keeps exactly its host keys when no plugin adds to its slot", async (t) => {
+  const ssr = await bars(t);
+  const row = ssr.row();
+  const turn = ssr.turn();
+  assert.deepEqual(barOf(row), USER_KEYS);
+  assert.deepEqual(barOf(turn), REPLY_KEYS);
+
+  ssr.register("demo.a", { slot: "assistantAction", component: propsProbe("reply") });
+  assert.equal(ssr.row(), row, "an assistantAction item is not on a user's bar");
+  ssr.clear();
+  ssr.register("demo.a", { slot: "userAction", component: propsProbe("user") });
+  assert.equal(ssr.turn(), turn, "a userAction item is not on a reply's bar");
 });
 
-test("action slot props projection carries message, ids, position, dispatch", () => {
-  const dispatch = async () => ({});
-  const props = actionSlotPropsFor(message("user"), "left", "sess-1", dispatch);
-  assert.deepEqual(props.message, {
-    id: "m1",
-    role: "user",
-    content: "hello",
-    createdAt: "2026-09-17T00:00:00.000Z",
-  });
-  assert.equal(props.messageId, "m1");
-  assert.equal(props.sessionId, "sess-1");
-  assert.equal(props.position, "left");
-  assert.equal(props.dispatch, dispatch);
+test("items sit around the host keys, the left side before them and the right after", async (t) => {
+  const ssr = await bars(t);
+  const plain = ssr.row();
+  ssr.register("demo.a", { slot: "userAction", component: propsProbe("a") });
+  ssr.register("demo.b", { slot: "userAction", component: propsProbe("b"), positions: ["left"] });
+  ssr.register("demo.c", { slot: "userAction", component: propsProbe("c"), positions: ["right"] });
+  const html = ssr.row();
+
+  assert.deepEqual(barOf(html), ["a:left", "b:left", ...USER_KEYS, "a:right", "c:right"]);
+  assert.deepEqual(slotMounts(html), [
+    ["demo.a", "userAction"],
+    ["demo.b", "userAction"],
+    ["demo.a", "userAction"],
+    ["demo.c", "userAction"],
+  ]);
+  assert.equal(hostOnly(html), plain, "the host keys and the row around them are untouched");
+
+  const message = { id: "u1", role: "user", content: "hello", createdAt: USER.createdAt };
+  assert.deepEqual(probed(html, "a"), [
+    { message, messageId: "u1", sessionId: "session-1", position: "left" },
+    { message, messageId: "u1", sessionId: "session-1", position: "right" },
+  ]);
 });
 
-test("the action projection keeps the row's real role", () => {
-  assert.equal(actionSlotMessage(message("assistant")).role, "assistant");
-  assert.equal(actionSlotMessage(message("user")).role, "user");
-});
-
-test("each side shows three items and folds the rest into the host menu", () => {
-  assert.equal(ACTION_SLOT_VISIBLE_LIMIT, 3);
-  const items = ["a", "b", "c", "d", "e"];
-  const split = splitActionSide(items);
-  assert.deepEqual(split.visible, ["a", "b", "c"]);
-  assert.deepEqual(split.overflow, ["d", "e"]);
-  assert.deepEqual(splitActionSide(["a"]), { visible: ["a"], overflow: [] });
-});
-
-test("positions subsets filter per side and default to both sides", () => {
-  const registry = new SlotRegistry();
-  const component = () => null;
-  registry.register("plugin-a", "userAction", component, undefined);
-  registry.register("plugin-b", "userAction", component, { positions: ["left"] });
-  registry.register("plugin-c", "assistantAction", component, {
-    positions: ["right"],
-  });
-  assert.equal(registry.entriesForSide("userAction", "left").length, 2);
-  assert.equal(registry.entriesForSide("userAction", "right").length, 1);
-  assert.equal(registry.entriesForSide("assistantAction", "left").length, 0);
-  assert.equal(registry.entriesForSide("assistantAction", "right").length, 1);
-  // Uninstall recomputes the sides immediately.
-  registry.unregisterPlugin("plugin-b");
-  assert.equal(registry.entriesForSide("userAction", "left").length, 1);
-});
-
-test("MessageRow wraps its host keys in the userAction bar slots", () => {
-  const source = readFileSync(src("features/chat/transcript/MessageRow.tsx"), "utf8");
-  const slotsAt = source.indexOf("<ActionBarSlots slot=\"userAction\"");
-  const barAt = source.indexOf('<div className="message-actions">');
-  assert.ok(slotsAt > 0, "userAction bar slots mounted");
-  // The slot wrapper sits inside the action-bar div, around the host keys.
-  assert.ok(slotsAt > barAt);
-  assert.match(
-    source,
-    /isUser \? userActionLeftEntries : \[\]/,
-    "system rows keep a plugin-free bar",
+test("past three items a side folds the rest into a ⋯ menu at the bar's outer end", async (t) => {
+  const ssr = await bars(t);
+  const plain = ssr.turn();
+  const left = ["l1", "l2", "l3", "l4"].map((label) =>
+    ssr.register("demo.a", { slot: "assistantAction", component: propsProbe(label), positions: ["left"] }),
   );
-  assert.match(source, /<\/ActionBarSlots>/);
-});
+  for (const label of ["r1", "r2", "r3", "r4", "r5"]) {
+    ssr.register("demo.b", { slot: "assistantAction", component: propsProbe(label), positions: ["right"] });
+  }
+  const html = ssr.turn();
 
-test("AssistantTurn wraps its host keys in the assistantAction bar slots", () => {
-  const source = readFileSync(
-    src("features/chat/transcript/AssistantTurn.tsx"),
-    "utf8",
-  );
-  const slotsAt = source.indexOf('<ActionBarSlots slot="assistantAction"');
-  const copyAt = source.indexOf("<CopyButton text={content}");
-  const closeAt = source.indexOf("</ActionBarSlots>");
-  assert.ok(slotsAt > 0 && slotsAt < copyAt && closeAt > copyAt,
-    "host keys render inside the slot wrapper");
-});
-
-test("ActionBarSlots keeps the finalized 【left】【host】【right】 shape", () => {
-  const source = readFileSync(
-    src("features/chat/transcript/ActionBarSlots.tsx"),
-    "utf8",
-  );
-  // Host keys (children) render between the left and right visible items.
-  const leftVisible = source.indexOf("leftSplit.visible.map");
-  const children = source.lastIndexOf("{children}");
-  const rightVisible = source.indexOf("rightSplit.visible.map");
-  assert.ok(leftVisible > 0 && leftVisible < children && children < rightVisible);
-  // Left ⋯ before the host keys, right ⋯ last.
-  const leftOverflow = source.indexOf("leftSplit.overflow.length");
-  const rightOverflow = source.indexOf("rightSplit.overflow.length");
-  assert.ok(leftOverflow > 0 && leftOverflow < children);
-  assert.ok(rightOverflow > children);
-  // Plugin-free bars keep their exact DOM.
-  assert.match(source, /left\.length === 0 && right\.length === 0\) return <>\{children\}<\/>/);
-  // Each item gets its own plugin's relay and boundary.
-  assert.match(source, /dispatchFor\(entry\.pluginId\)/);
-  assert.match(source, /<SlotBoundary entry=\{entry\} slot=\{slot\}>/);
-});
-
-test("every shipped locale labels the host ⋯ overflow menu", () => {
-  const catalogs = { en, zhCN, zhTW, de, es, fr, ko, tr };
-  for (const [name, catalog] of Object.entries(catalogs)) {
+  assert.deepEqual(barOf(html), [
+    "⋯left", "l1:left", "l2:left", "l3:left",
+    ...REPLY_KEYS,
+    "r1:right", "r2:right", "r3:right", "⋯right",
+  ]);
+  for (const side of ["left", "right"]) {
     assert.ok(
-      typeof catalog.chat?.actionSlotMore === "string" &&
-        catalog.chat.actionSlotMore.length > 0,
-      `${name} is missing chat.actionSlotMore`,
+      html.includes(
+        `<div class="pi-action-overflow" data-side="${side}"><button type="button" class="copy-btn icon pi-action-overflow-btn" aria-label="${chat.actionSlotMore}" title="${chat.actionSlotMore}" aria-expanded="false">⋯</button></div>`,
+      ),
+      `the ${side} menu starts closed, with no panel`,
     );
   }
+  for (const folded of ["l4", "r4", "r5"]) assert.deepEqual(probed(html, folded), [], folded);
+  assert.equal(hostOnly(html), plain, "the host keys never fold");
+
+  // A side reflows as soon as its registrations change.
+  left[0]();
+  assert.deepEqual(barOf(ssr.turn()), [
+    "l2:left", "l3:left", "l4:left",
+    ...REPLY_KEYS,
+    "r1:right", "r2:right", "r3:right", "⋯right",
+  ]);
 });
 
-test("slot shell styles carry the ⋯ overflow menu chrome", () => {
-  const css = readFileSync(src("plugins/renderer-slots/slot-shell.css"), "utf8");
-  assert.match(css, /\.pi-action-overflow-panel/);
-  assert.match(css, /data-side="right"/);
+test("a reply's items act on the answer message the host keys act on", async (t) => {
+  const ssr = await bars(t);
+  ssr.register("demo.a", { slot: "assistantAction", component: propsProbe("reply"), positions: ["right"] });
+  const html = ssr.turn();
+  assert.deepEqual(barOf(html), [...REPLY_KEYS, "reply:right"]);
+  // Regenerate and Branch act on the last answer message; Copy copies the
+  // whole turn's text.
+  assert.deepEqual(probed(html, "reply"), [
+    {
+      message: {
+        id: "a2",
+        role: "assistant",
+        content: "Let me look.\n\nIt says x.",
+        createdAt: "2026-09-24T00:00:03.000Z",
+      },
+      messageId: "a2",
+      sessionId: "session-1",
+      position: "right",
+    },
+  ]);
+  assert.deepEqual(
+    probed(ssr.turn(conversation({ status: "streaming" }), true), "reply"),
+    [],
+    "a reply still streaming has no bar to add to",
+  );
 });
 
-test("slot outlets render plugin components as elements, never direct calls", () => {
-  // A direct entry.component(props) call runs the plugin's hooks inside the
-  // host component's hook chain → React "Invalid hook call". Every outlet
-  // must hand the component to createElement so it owns its fiber.
-  const outlets = {
-    "features/chat/transcript/ActionBarSlots.tsx": /createElement\(\s*entry\.component/,
-    "features/chat/transcript/EntryExtraStack.tsx": /createElement\(\s*entry\.component/,
-    "features/chat/transcript/PluginToolCard.tsx": /createElement\(\s*entry\.component/,
-    "components/PluginBlockRenderer.tsx": /createElement\(\s*entry\.component/,
-    "features/chat/composer/ComposerToolbar.tsx": /createElement\(\s*entry\.component/,
-    "components/Composer.tsx": /createElement\(\s*\n?\s*activeTrigger\.entry\.component/,
+test("a session message carries userAction around Copy; other rows keep a plugin-free bar", async (t) => {
+  const ssr = await bars(t);
+  const system = { ...USER, id: "s1", role: "system" };
+  const plainSystem = ssr.row(system);
+  ssr.register("demo.a", { slot: "userAction", component: propsProbe("user") });
+
+  const delivered = {
+    ...USER,
+    sessionMessage: {
+      messageId: "d1",
+      sourceSessionId: "session-0",
+      sourceTitle: "Parent review",
+      targetSessionId: "session-1",
+      kind: "task",
+    },
   };
-  for (const [file, pattern] of Object.entries(outlets)) {
-    const source = readFileSync(src(file), "utf8");
-    assert.match(source, pattern, `${file} must render via createElement`);
-    assert.doesNotMatch(source, /entry\.component\(\{/, `${file} must not call entry.component directly`);
-  }
+  const html = ssr.row(delivered);
+  assert.deepEqual(barOf(html), ["user:left", chat.copy, "user:right"]);
+  assert.deepEqual(
+    probed(html, "user").map((props) => props.message.role),
+    ["user", "user"],
+  );
+  assert.equal(ssr.row(system), plainSystem);
 });

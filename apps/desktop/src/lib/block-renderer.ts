@@ -1,3 +1,5 @@
+import { blockRendererLanguageKey } from "@pi-desktop/plugin-sdk";
+
 /**
  * Pure helpers for the `blockRenderer` slot (`docs/plugin-plan/ui/block-renderer/`).
  *
@@ -17,11 +19,10 @@ export function blockRendererOverflow(contentHeight: number): boolean {
 }
 
 /**
- * Fast path for the render loop: only a label that carries the
- * `<pluginId>:` prefix shape can hit a registration, so plain languages
- * (`json`, `ts`, `mermaid`, …) never touch the slot registry.
+ * The registry key a fence language could hit, or `undefined` for a plain
+ * one. Only a label with the `<pluginId>:` prefix shape can match a
+ * registration, so `json`, `ts`, `mermaid`, … never touch the registry.
  */
 export function blockRendererCandidate(lang: string): string | undefined {
-  const trimmed = lang.trim();
-  return trimmed.includes(":") ? trimmed : undefined;
+  return lang.includes(":") ? blockRendererLanguageKey(lang) : undefined;
 }

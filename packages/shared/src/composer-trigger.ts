@@ -145,26 +145,6 @@ export function formatFileInsert(path: string, kind: "dir" | "file"): string {
   return needsQuote ? `@"${path}" ` : `@${path} `;
 }
 
-/** Full-width forms normalized to their ASCII trigger symbols (全角归一化). */
-const FULLWIDTH_TRIGGERS: Record<string, string> = {
-  "＠": "@",
-  "＃": "#",
-  "／": "/",
-};
-
-export function normalizeFullWidthTrigger(value: string): string {
-  let out = value;
-  for (const [wide, ascii] of Object.entries(FULLWIDTH_TRIGGERS)) {
-    out = out.replaceAll(wide, ascii);
-  }
-  return out;
-}
-
-/** Insertion text for an accepted plugin trigger item: `#label `. */
-export function formatPluginTriggerInsert(label: string): string {
-  return `#${label} `;
-}
-
 /** Return a compact leaf label without changing the canonical reference path. */
 export function fileReferenceLabel(path: string, preferredName?: string): string {
   const candidate = preferredName?.trim() || path;

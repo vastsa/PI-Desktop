@@ -1,224 +1,91 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { register } from "node:module";
 import test from "node:test";
-register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+import { composerToolbar } from "./helpers/composer-toolbar.mjs";
+import { parseProbe, probed, propsProbe, slotMounts, slotSsr } from "./helpers/slot-ssr.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (relative) => join(here, "..", "src", relative);
+/*
+ * The composer's `composerControl` slot (`docs/plugin-plan/ui/composer/`)
+ * rendered with the production toolbar. The host controls keep their places
+ * and their order: a plugin's controls sit after the host's left row and
+ * before the host's right row, in registration order, fed only the side they
+ * sit on. Server rendering is the first frame: a control that throws
+ * disappearing alone is covered by the Electron E2E, and the draft actions a
+ * control dispatches by the dispatch channel's tests.
+ */
 
-const {
-  detectPluginHashTrigger,
-  pluginTokenAtLimit,
-  serializePluginTokens,
-  COMPOSER_PLUGIN_TOKEN_LIMIT,
-} = await import("../src/features/chat/composer/plugin-trigger.ts");
-const { normalizeFullWidthTrigger, formatPluginTriggerInsert } = await import(
-  "@pi-desktop/shared"
-);
-const {
-  registerComposerTriggerAccept,
-  acceptComposerTriggerItem,
-  resetComposerTriggerBridge,
-} = await import("../src/features/chat/composer/trigger-bridge.ts");
-const {
-  insertComposerText,
-  registerComposerInsert,
-  resetComposerInsertBridge,
-} = await import("../src/features/chat/composer/insert-bridge.ts");
-const { SlotRegistry } = await import("../src/plugins/renderer-slots/registry.ts");
+/** The toolbar's own controls below, by label. */
+const HOST_LEFT = ["chat.addFiles", "settings.mode", "chat.permissionMode"];
+const HOST_RIGHT = ["context", "chat.model: Model. chat.reasoningLevel: Off", "chat.enhancePrompt", "chat.send"];
 
-test.afterEach(() => {
-  resetComposerTriggerBridge();
-  resetComposerInsertBridge();
+async function composer(t) {
+  const ssr = await slotSsr(t);
+  return { ...ssr, toolbar: await composerToolbar(t, ssr) };
+}
+
+/**
+ * What each toolbar side shows, in order: a host control by its label, a
+ * plugin control as `probe:position`.
+ */
+function sidesOf(html) {
+  const right = html.indexOf('<div class="composer-right">');
+  assert.ok(right >= 0, "the toolbar has a right side");
+  const side = (part) => {
+    const shown = [];
+    const token = /<output data-probe="([^"]*)">([^<]*)<\/output>|<button\b([^>]*)>/g;
+    for (const [, probe, props, button] of part.matchAll(token)) {
+      if (probe) shown.push(`${probe}:${parseProbe(props).position}`);
+      // The context meter is labeled with its live numbers.
+      else if (button.includes("context-inspector-trigger")) shown.push("context");
+      else shown.push(button.match(/aria-label="([^"]*)"/)[1]);
+    }
+    return shown;
+  };
+  return { left: side(html.slice(0, right)), right: side(html.slice(right)) };
+}
+
+/** `html` without its plugin controls: the host's own markup. */
+function hostOnly(html) {
+  return html.replaceAll(/<div class="pi-plugin-slot"[^>]*><output data-probe="[^"]*">[^<]*<\/output><\/div>/g, "");
+}
+
+test("the toolbar is the host's own until a plugin adds a control", async (t) => {
+  const ssr = await composer(t);
+  const plain = ssr.toolbar();
+  assert.deepEqual(sidesOf(plain), { left: HOST_LEFT, right: HOST_RIGHT });
+  ssr.register("demo.a", { slot: "userAction", component: propsProbe("user") });
+  assert.equal(ssr.toolbar(), plain, "a control of another slot is not on the toolbar");
 });
 
-test("full-width trigger symbols normalize to ASCII", () => {
-  assert.equal(normalizeFullWidthTrigger("＠file"), "@file");
-  assert.equal(normalizeFullWidthTrigger("＃tag"), "#tag");
-  assert.equal(normalizeFullWidthTrigger("／cmd"), "/cmd");
-  assert.equal(normalizeFullWidthTrigger("plain"), "plain");
-});
+test("controls follow the host's left row and lead its right row, in registration order", async (t) => {
+  const ssr = await composer(t);
+  const plain = ssr.toolbar();
+  ssr.register("demo.a", { slot: "composerControl", component: propsProbe("a") });
+  ssr.register("demo.b", { slot: "composerControl", component: propsProbe("b"), positions: ["left"] });
+  ssr.register("demo.c", { slot: "composerControl", component: propsProbe("c"), positions: ["right"] });
+  const html = ssr.toolbar();
 
-test("the # token fires only from line start or after whitespace", () => {
-  // Line start.
-  assert.deepEqual(detectPluginHashTrigger("#ta", 3), {
-    query: "ta",
-    tokenStart: 0,
-    tokenEnd: 3,
+  assert.deepEqual(sidesOf(html), {
+    left: [...HOST_LEFT, "a:left", "b:left"],
+    right: ["a:right", "c:right", ...HOST_RIGHT],
   });
-  // After whitespace.
-  assert.deepEqual(detectPluginHashTrigger("hi #ta", 6), {
-    query: "ta",
-    tokenStart: 3,
-    tokenEnd: 6,
-  });
-  // Mid-word never fires.
-  assert.equal(detectPluginHashTrigger("abc#de", 6), null);
-  // A bare # with no query still fires (empty query is valid).
-  assert.deepEqual(detectPluginHashTrigger("#", 1), {
-    query: "",
-    tokenStart: 0,
-    tokenEnd: 1,
-  });
-  // Not a # token at all.
-  assert.equal(detectPluginHashTrigger("plain", 5), null);
-});
-
-test("plugin trigger items insert as #label chips", () => {
-  assert.equal(formatPluginTriggerInsert("alpha"), "#alpha ");
-});
-
-test("the trigger bridge routes accept only while a menu is open", () => {
-  // No listener: refused (UNROUTED upstream), never a silent drop.
-  assert.equal(acceptComposerTriggerItem({ label: "x", value: 1 }), false);
-  const received = [];
-  registerComposerTriggerAccept((item) => received.push(item));
-  assert.equal(acceptComposerTriggerItem({ label: "alpha", value: { a: 1 } }), true);
-  assert.deepEqual(received, [{ label: "alpha", value: { a: 1 } }]);
-  // Malformed payloads are refused.
-  assert.equal(acceptComposerTriggerItem({ value: 1 }), false);
-  assert.equal(acceptComposerTriggerItem(null), false);
-  assert.equal(acceptComposerTriggerItem("nope"), false);
-});
-
-test("the insert bridge routes text into the mounted composer", () => {
-  assert.equal(insertComposerText("hi"), false);
-  const inserted = [];
-  registerComposerInsert((text) => inserted.push(text));
-  assert.equal(insertComposerText("hi"), true);
-  assert.deepEqual(inserted, ["hi"]);
-});
-
-test("composerTrigger claims are keyed by symbol and @ / / stay host-owned", () => {
-  const registry = new SlotRegistry();
-  const component = () => null;
-  registry.register("demo.ui-slots", "composerTrigger", component, { trigger: "#" });
-  assert.equal(registry.entryForKey("composerTrigger", "#")?.pluginId, "demo.ui-slots");
-  assert.throws(
-    () =>
-      registry.register("demo.other", "composerTrigger", component, { trigger: "#" }),
-    (error) => error.code === "PLUGIN_SLOT_DUPLICATE",
-  );
-  // SDK vocabulary: only @ # / exist.
-  const sdk = readFileSync(
-    join(here, "../../../packages/plugin-sdk/src/renderer.ts"),
-    "utf8",
-  );
-  assert.match(sdk, /PLUGIN_COMPOSER_TRIGGERS = \["@", "#", "\/"\] as const/);
-  // 宿主先占: @ and / are host-owned; a plugin claim of either is refused
-  // at registration (docs/plugin-plan/ui/composer/requirements.html:139).
-  assert.match(sdk, /plugins claim "#"/);
-  const registry2 = new SlotRegistry();
-  assert.throws(
-    () => registry2.register("demo.other", "composerTrigger", component, { trigger: "@" }),
-    (error) => error.code === "PLUGIN_SLOT_INVALID_KEY",
-  );
-  assert.throws(
-    () => registry2.register("demo.other", "composerTrigger", component, { trigger: "/" }),
-    (error) => error.code === "PLUGIN_SLOT_INVALID_KEY",
-  );
-});
-test("the token cap is 8; the ninth folds but the payload keeps everything", () => {
-  assert.equal(COMPOSER_PLUGIN_TOKEN_LIMIT, 8);
-  assert.equal(pluginTokenAtLimit(7), false);
-  assert.equal(pluginTokenAtLimit(8), true);
-  const payload = serializePluginTokens("draft text", [
-    { pluginId: "p1", label: "one", send: { n: 1 } },
-    { pluginId: "p2", label: "two", send: "x" },
+  assert.deepEqual(slotMounts(html), [
+    ["demo.a", "composerControl"],
+    ["demo.b", "composerControl"],
+    ["demo.a", "composerControl"],
+    ["demo.c", "composerControl"],
   ]);
-  assert.match(payload, /^draft text/);
-  assert.match(payload, /#one #two/);
-  assert.match(payload, /```pi-plugin-tokens\n/);
-  assert.match(payload, /"pluginId":"p1"/);
-  assert.match(payload, /"send":\{"n":1\}/);
-  assert.match(payload, /"send":"x"/);
+  assert.equal(hostOnly(html), plain, "the host controls and their order are untouched");
+  assert.deepEqual(probed(html, "a"), [{ position: "left" }, { position: "right" }], "the side is the only prop");
 });
 
-test("the composer wires trigger, tokens, and insert bridge", () => {
-  const composer = readFileSync(src("components/Composer.tsx"), "utf8");
-  assert.match(composer, /useComposerPluginTrigger\(/);
-  assert.match(composer, /useComposerPluginTokens\(\)/);
-  assert.match(composer, /useComposerTriggerAcceptBridge\(/);
-  assert.match(composer, /registerComposerInsert\(/);
-  assert.match(composer, /registerComposerInsert\(null\)/);
-  assert.match(composer, /⧉ \+\{pluginTokens\.foldedCount\}/);
-  // The trigger menu renders the plugin's own component with query+dispatch.
-  assert.match(composer, /query: activeTrigger\.query/);
-});
+test("a control leaves its side as soon as it is disposed", async (t) => {
+  const ssr = await composer(t);
+  const plain = ssr.toolbar();
+  const disposeA = ssr.register("demo.a", { slot: "composerControl", component: propsProbe("a") });
+  ssr.register("demo.b", { slot: "composerControl", component: propsProbe("b"), positions: ["right"] });
 
-test("the toolbar mounts left and right control outlets", () => {
-  const toolbar = readFileSync(src("features/chat/composer/ComposerToolbar.tsx"), "utf8");
-  const leftAt = toolbar.indexOf('<div className="composer-left">');
-  const rightAt = toolbar.indexOf('<div className="composer-right">');
-  const leftGroup = toolbar.indexOf('<PluginControlGroup entries={leftControls} side="left" />');
-  const rightGroup = toolbar.indexOf('<PluginControlGroup entries={rightControls} side="right" />');
-  // 左槽＝左排固定件右边；右槽＝模型选择左边 (ui/composer/requirements.html:89-90).
-  assert.ok(
-    leftGroup > toolbar.indexOf("ComposerPermissionPicker") && leftGroup < rightAt,
-    "left outlet sits after the host fixed controls, before composer-right",
-  );
-  assert.ok(
-    rightGroup > rightAt && rightGroup < toolbar.indexOf("<ComposerModelPicker"),
-    "right outlet sits before the model picker",
-  );
-  assert.match(toolbar, /useComposerControlEntries\("left"\)/);
-  assert.match(toolbar, /useComposerControlEntries\("right"\)/);
-  // Each control gets the position prop and its own relay.
-  assert.match(toolbar, /position: side/);
-  assert.match(toolbar, /dispatchFor\(entry\.pluginId\)/);
-});
-
-test("the trigger hook normalizes full-width symbols before detection", () => {
-  // 全角归一化 wiring: the hook rewrites ＠＃／ to @#/ before running the
-  // detector, so a full-width # fires the plugin trigger (data-flow:145).
-  const hookSource = readFileSync(
-    src("features/chat/composer/use-plugin-composer-slots.ts"),
-    "utf8",
-  );
-  const normalizeAt = hookSource.indexOf("normalizeFullWidthTrigger(value)");
-  const detectAt = hookSource.indexOf("detectPluginHashTrigger(normalized, cursor)");
-  assert.ok(normalizeAt > -1, "hook must call normalizeFullWidthTrigger");
-  assert.ok(detectAt > normalizeAt, "normalization must precede detection");
-  assert.match(hookSource, /import \{ normalizeFullWidthTrigger \} from "@pi-desktop\/shared"/);
-});
-
-test("the trigger menu and token chips have host chrome styles", () => {
-  // Without these the menu paints unpositioned inside the composer flow
-  // and chips render as bare text (slot-shell.css).
-  const shell = readFileSync(src("plugins/renderer-slots/slot-shell.css"), "utf8");
-  assert.match(shell, /\.pi-plugin-trigger-menu \{[\s\S]*?position: absolute/);
-  assert.match(shell, /\.pi-plugin-trigger-menu \{[\s\S]*?z-index: 30/);
-  assert.match(shell, /\.pi-plugin-token-chips \{/);
-  assert.match(shell, /\.pi-plugin-token-chip \{/);
-  assert.match(shell, /\.pi-plugin-token-chip-remove \{/);
-  assert.match(shell, /\.pi-plugin-token-chip\.is-fold \{/);
-});
-
-test("the composer mounts a composerToken outlet keyed by label", () => {
-  // The composerToken slot had no host outlet: registrations were dead.
-  // The chip renders the claiming plugin's component and falls back to the
-  // host chip when no registration covers the label.
-  const chip = readFileSync(src("features/chat/composer/ComposerTokenChip.tsx"), "utf8");
-  assert.match(chip, /useSlotEntryForKey\("composerToken", token\.label\)/);
-  assert.match(chip, /createElement\(/);
-  const composer = readFileSync(src("components/Composer.tsx"), "utf8");
-  assert.match(composer, /<ComposerTokenChip\b/);
-});
-
-test("the composer's plugin effects stay top-level and independent", () => {
-  // Regression: an earlier edit nested the insert-bridge effect inside the
-  // dock-height effect, so React committed the outer effect and called
-  // useEffect from within its setup — crash-on-boot React error #321.
-  const composer = readFileSync(src("components/Composer.tsx"), "utf8");
-  const bridgeAt = composer.indexOf("registerComposerInsert((text)");
-  const dockAt = composer.indexOf("const el = dockRef.current;");
-  assert.ok(bridgeAt > -1 && dockAt > bridgeAt, "insert-bridge effect precedes the dock effect");
-  const bridgeHead = composer.lastIndexOf("useEffect(() => {", bridgeAt);
-  assert.ok(
-    bridgeHead > -1 && !composer.slice(bridgeHead + 17, bridgeAt).includes("useEffect(() => {"),
-    "insert-bridge effect opens with its own useEffect, not one inherited from another effect",
-  );
+  disposeA();
+  assert.deepEqual(sidesOf(ssr.toolbar()), { left: HOST_LEFT, right: ["b:right", ...HOST_RIGHT] });
+  ssr.clear();
+  assert.equal(ssr.toolbar(), plain);
 });

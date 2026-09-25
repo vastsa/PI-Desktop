@@ -68,9 +68,12 @@ export type PluginManifest = {
    */
   renderer?: string;
   /**
-   * Outbound actions the renderer components may dispatch. Declaring fewer
-   * is safe; an action outside this list is refused with
-   * `PLUGIN_ACTION_UNDECLARED`. Requires `renderer.extension`.
+   * Outbound actions the renderer components may dispatch
+   * (`PLUGIN_RENDERER_ACTIONS`). Declaring fewer is safe; an action outside
+   * this list is refused with `PLUGIN_ACTION_UNDECLARED`. A word this host does
+   * not implement still installs, so a manifest written for a newer host
+   * loads, and is refused at dispatch with `PLUGIN_ACTION_UNKNOWN`. Requires
+   * `renderer.extension`.
    */
   rendererActions?: string[];
   /**
@@ -1266,6 +1269,12 @@ export type PluginModule = {
   onUnload?: () => Promise<void> | void;
   /** Optional fixed-channel operations for an isolated plugin panel. */
   onPanelInvoke?: (channel: string, payload: unknown) => Promise<unknown> | unknown;
+  /**
+   * Answers the renderer entry's `plugin.call` for a method listed in
+   * `manifest.rendererCallMethods`. `args` defaults to `{}`; the answer must
+   * be JSON. Throw an `Error` with a `code` to hand that code to the caller.
+   */
+  onRendererCall?: (method: string, args: unknown) => Promise<unknown> | unknown;
 };
 
 /** Upper bound on ExtensionAPI modules one plugin may contribute. */
@@ -2141,32 +2150,35 @@ export {
   PLUGIN_RENDERER_SCHEME,
   PLUGIN_RENDERER_SLOTS,
   PLUGIN_SLOT_POSITIONS,
-  PLUGIN_COMPOSER_TRIGGERS,
-  PLUGIN_COMPOSER_TOKEN_LIMIT,
-  slotKeyError,
-  slotPositionsError,
-  toolCardOwnershipError,
+  PLUGIN_RENDERER_ACTIONS,
+  PLUGIN_INSERT_TEXT_MAX_BYTES,
+  blockRendererLanguageKey,
+  slotRegistrationRefusal,
   type PiRendererApi,
   type PiRendererModule,
   type PluginRendererSlot,
-  type PluginRendererSlotOptions,
-  type PluginRendererSlotDiagnosticCode,
-  type PluginRendererDiagnostic,
-  type PluginRendererRegistration,
-  type PluginRendererStyleHandle,
-  type PluginRendererDispatch,
-  type PluginRendererActionName,
-  type PluginCallPayload,
-  type PluginSlotMessage,
   type PluginSlotPosition,
+  type PluginSlotMessage,
   type PluginActionSlotProps,
   type PluginEntryExtraSlotProps,
+  type PluginToolCardStatus,
   type PluginToolCardSlotProps,
   type PluginBlockRendererSlotProps,
   type PluginComposerControlSlotProps,
-  type PluginComposerTriggerProps,
-  type PluginComposerTrigger,
-  type PluginComposerTriggerItem,
-  type PluginComposerTokenProps,
-  type PluginRendererCall,
+  type PluginSlotComponent,
+  type PluginActionSlotRegistration,
+  type PluginEntryExtraSlotRegistration,
+  type PluginToolCardSlotRegistration,
+  type PluginBlockRendererSlotRegistration,
+  type PluginComposerControlSlotRegistration,
+  type PluginSlotRegistration,
+  type PluginDisposer,
+  type PluginRendererActionName,
+  type PluginRendererActionMap,
+  type PluginRendererDispatch,
+  type PluginCallPayload,
+  type PluginInsertTextPayload,
+  type PluginSlotErrorCode,
+  type PluginRendererErrorCode,
+  type PluginSlotRefusal,
 } from "./renderer.js";

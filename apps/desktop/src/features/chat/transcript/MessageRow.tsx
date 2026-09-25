@@ -18,8 +18,8 @@ import {
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
 import { userMessageMenuItems } from "./menu-items";
-import { ActionBarSlots } from "./ActionBarSlots";
-import { useSlotEntries } from "../../../plugins/renderer-slots/use-slots";
+import { ActionSlotSide } from "./ActionBarSlots";
+import { slotMessage } from "../../../plugins/renderer-slots/slot-message";
 import { SessionMessageOrigin } from "./SessionMessageOrigin";
 import {
   CopyButton,
@@ -50,11 +50,8 @@ export const MessageRow = memo(function MessageRow({
   const editableUserMessage = isUser && !isSessionMessage;
   const workspaceRoot = useAppStore((s) => s.workspace?.path);
   const openFileRef = useOpenChatFileRef();
-  const userActionLeftEntries = useSlotEntries("userAction", "left");
-  const userActionRightEntries = useSlotEntries("userAction", "right");
-  // Only the user card carries userAction; system rows keep a plugin-free bar.
-  const userActionLeft = isUser ? userActionLeftEntries : [];
-  const userActionRight = isUser ? userActionRightEntries : [];
+  // userAction belongs to user cards; other rows keep a plugin-free bar.
+  const slotUser = isUser ? slotMessage("user", message) : undefined;
   // Slash prompts are stored expanded; editing works on the typed form so the
   // resent turn re-expands the template (D123).
   const editSeed =
@@ -248,7 +245,7 @@ export const MessageRow = memo(function MessageRow({
         ) : null}
         {!editing && (hasAnswer || showRevisionPager) ? (
           <div className="message-actions">
-          <ActionBarSlots slot="userAction" message={message} left={userActionLeft} right={userActionRight}>
+            <ActionSlotSide slot="userAction" side="left" message={slotUser} />
             {showRevisionPager ? (
               <div className="message-revision-pager" role="group" aria-label={t("chat.revisions")}>
                 <TooltipButton
@@ -310,7 +307,7 @@ export const MessageRow = memo(function MessageRow({
                 <IconTrash size={13} />
               </TooltipButton>
             ) : null}
-          </ActionBarSlots>
+            <ActionSlotSide slot="userAction" side="right" message={slotUser} />
           </div>
         ) : null}
       </div>

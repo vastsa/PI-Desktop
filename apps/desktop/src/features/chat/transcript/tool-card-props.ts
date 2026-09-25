@@ -3,16 +3,14 @@
  * (`docs/plugin-plan/ui/tool-card/`).
  *
  * The contract fixes the fields (toolName / toolCallId / toolArgs? /
- * toolStatus / toolResult? / toolError? / durationMs? + ids + dispatch) and
+ * toolStatus / toolResult? / toolError? / durationMs? + ids) and
  * the cadence: while the tool runs, the whole projection is pushed on a
  * 500ms merged beat; a status transition and the final result push
- * immediately. Failure is data (`toolError`), never a throw. JSX-free so
- * logic tests can drive it directly.
+ * immediately. Failure is data, never a throw: a failed call carries what the
+ * tool returned as `toolError` instead of `toolResult`. JSX-free so logic
+ * tests can drive it directly.
  */
-import type {
-  PluginRendererDispatch,
-  PluginToolCardSlotProps,
-} from "@pi-desktop/plugin-sdk";
+import type { PluginToolCardSlotProps } from "@pi-desktop/plugin-sdk";
 import type { UiMessage } from "@pi-desktop/shared";
 
 /** Merged-push beat while a call is still running. */
@@ -30,23 +28,27 @@ export function toolCardStatusOf(
     : "success";
 }
 
-/** Full props for one card; rebuilt per render (props-push). */
-export function toolCardPropsFor(
+/**
+ * Full props for one card. `toolName` is the bare name the card registered
+ * for; the transcript carries the qualified agent-facing one.
+ */
+export function toolCardSlotProps(
   message: UiMessage,
+  toolName: string,
   sessionId: string,
-  dispatch: PluginRendererDispatch,
 ): PluginToolCardSlotProps {
+  const toolStatus = toolCardStatusOf(message);
+  const failed = toolStatus === "error";
   return {
-    toolName: message.toolName ?? "",
+    toolName,
     toolCallId: message.toolCallId ?? message.id,
     toolArgs: message.toolArgs,
-    toolStatus: toolCardStatusOf(message),
-    toolResult: message.toolResult,
-    toolError: message.isError ? message.error : undefined,
+    toolStatus,
+    toolResult: failed ? undefined : message.toolResult,
+    toolError: failed ? message.toolResult : undefined,
     durationMs: message.toolDurationMs,
     messageId: message.id,
     sessionId,
-    dispatch,
   };
 }
 

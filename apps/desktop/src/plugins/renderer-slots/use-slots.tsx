@@ -1,24 +1,34 @@
 /**
- * React glue over the slot registry: subscriptions + the per-registration
+ * React glue over the slot registry: subscriptions, the per-registration
  * error boundary that realizes 出错隔离 (a throwing component collapses only
- * its own region).
+ * its own region), and the mount element plugin styles are scoped to.
  */
 import {
   Component,
+  type FunctionComponent,
+  type ReactElement,
   type ReactNode,
   createContext,
+  createElement,
   useContext,
   useMemo,
   useSyncExternalStore,
 } from "react";
-import type { PluginRendererSlot } from "@pi-desktop/plugin-sdk";
-import {
-  slotRegistry,
-  type SlotEntry,
-  type SlotSide,
-} from "./registry";
+import type { PluginRendererSlot, PluginSlotPosition } from "@pi-desktop/plugin-sdk";
+import { slotRegistry, type SlotEntry } from "./registry";
 
-export function useSlotEntries(slot: PluginRendererSlot, side?: SlotSide): SlotEntry[] {
+/**
+ * A registration's component as a React element with its slot's props. It is
+ * an element, never a direct call, so the component's hooks belong to it.
+ */
+export function slotElement<Props extends object>(entry: SlotEntry, props: Props): ReactElement {
+  return createElement(entry.component as FunctionComponent<Props>, props);
+}
+
+export function useSlotEntries(
+  slot: PluginRendererSlot,
+  side?: PluginSlotPosition,
+): SlotEntry[] {
   const snapshot = useSyncExternalStore(
     slotRegistry.subscribe,
     slotRegistry.getSnapshot,
@@ -48,28 +58,38 @@ export function useSlotEntryForKey(
 }
 
 /**
- * Host chrome around one plugin registration. Every rendered slot component
- * sits inside `.pi-plugin-slot` with `data-pi-plugin`, and inside its own
- * boundary: a render failure removes exactly that registration's region.
+ * The element a registration's component renders into. `data-pi-plugin` is
+ * what `pi.ui.injectStyle` scopes the plugin's sheets to, so host chrome
+ * around a slot (toggles, menus) stays outside of it.
  */
+export function SlotMount({
+  entry,
+  children,
+}: {
+  entry: SlotEntry;
+  children: ReactNode;
+}) {
+  return (
+    <div className="pi-plugin-slot" data-pi-plugin={entry.pluginId} data-pi-slot={entry.slot}>
+      {children}
+    </div>
+  );
+}
+
+/** A registration's component in its mount, inside its own error boundary. */
 export function SlotBoundary({
   entry,
-  slot,
   children,
   fallback,
 }: {
   entry: SlotEntry;
-  slot: PluginRendererSlot;
   children: ReactNode;
-  /** Rendered when the registration's component throws (blockRenderer's
-   * contract hands back the host code block instead of collapsing). */
+  /** Rendered instead when the component throws; nothing by default. */
   fallback?: ReactNode;
 }) {
   return (
     <SlotErrorBoundary entry={entry} fallback={fallback}>
-      <div className="pi-plugin-slot" data-pi-plugin={entry.pluginId} data-pi-slot={slot}>
-        {children}
-      </div>
+      <SlotMount entry={entry}>{children}</SlotMount>
     </SlotErrorBoundary>
   );
 }
@@ -78,7 +98,12 @@ type BoundaryProps = { entry: SlotEntry; fallback?: ReactNode; children: ReactNo
 
 type BoundaryState = { failed: boolean };
 
-class SlotErrorBoundary extends Component<BoundaryProps, BoundaryState> {
+/**
+ * Catches what one registration's subtree throws while rendering and renders
+ * `fallback` in its place from then on; outlets key it by `entry.id`, so a new
+ * registration starts over.
+ */
+export class SlotErrorBoundary extends Component<BoundaryProps, BoundaryState> {
   state: BoundaryState = { failed: false };
 
   static getDerivedStateFromError(): BoundaryState {
@@ -86,12 +111,9 @@ class SlotErrorBoundary extends Component<BoundaryProps, BoundaryState> {
   }
 
   componentDidCatch(error: unknown): void {
-    const pluginId = this.props.entry.pluginId;
+    const { pluginId, slot } = this.props.entry;
     // Isolated by design; the console line is the diagnosability surface.
-    console.warn(
-      `[plugin-slot] ${pluginId} component failed; collapsing its own region only`,
-      error,
-    );
+    console.warn(`[plugin-slot] ${pluginId} ${slot} component failed`, error);
   }
 
   render(): ReactNode {

@@ -1969,6 +1969,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       commands: "Komutlar",
       tools: "Ajan araçları",
       agentExtension: "Ajan uzantısı",
+      rendererUi: "Sohbet arayüzü uzantısı",
       skills: "Beceriler",
       themes: "Tema",
       mcp: "MCP sunucusu",
