@@ -507,6 +507,7 @@ export const zhCN = {
     noModelResults: "没有匹配的模型",
     modelBadgeReasoning: "推理",
     modelBadgeVision: "视觉",
+    externalAgentRuns: "外部智能体 {{command}} 在你的计算机上运行，可以在不询问的情况下修改此项目中的文件",
     permissionMode: "权限模式",
     reasoningLevel: "推理等级",
     permissionInherit: "跟随默认",

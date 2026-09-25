@@ -503,6 +503,7 @@ export const de = {
     "noModelResults": "Keine passenden Modelle",
     "modelBadgeReasoning": "Begründung",
     "modelBadgeVision": "Vision",
+    "externalAgentRuns": "Externer Agent {{command}} läuft auf diesem Rechner und kann Dateien in diesem Projekt ohne Nachfrage ändern",
     "permissionMode": "Berechtigungsmodus",
     "reasoningLevel": "Argumentationsebene",
     "permissionInherit": "Standard",

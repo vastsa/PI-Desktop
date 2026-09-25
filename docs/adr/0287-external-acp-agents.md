@@ -152,10 +152,27 @@ joining it to the app, in this order. Each step is independently shippable.
 
    So the wiring states the access model in the section itself and requires an
    explicit acknowledgement before the row saves, rather than implying a
-   mediation that does not exist. The remaining gap is that nothing repeats
-   this while a session runs: the UI still does not say which backend produced
-   a transcript. That is the next piece, and it belongs in the chat surface
-   rather than in Settings.
+   mediation that does not exist.
+
+7. **The access model is repeated where a prompt is sent.** A one-time
+   acknowledgement in Settings is forgotten by the time a long session starts
+   writing files, so the composer's model chip says which backend runs the
+   session: on an agent row it swaps the bot for a terminal in the warning tone
+   and names the program in its tooltip and accessible name. That is the only
+   marker the chip has below 450px, where it collapses to the icon alone, so it
+   has to read as different rather than as decoration.
+
+   The chip is the right surface because the model list is already the visible
+   difference between the two backends — an agent's picker comes from its own
+   `configOptions` — and because it is where a user looks before sending. The
+   scheduled editor reuses the same chip, so a scheduled run bound to an agent
+   row discloses the same thing; that case matters more than the chat one,
+   since the run happens while nobody is watching.
+
+   The backend is derived from what the store already holds — a session's
+   `providerId` and the provider list — so this needs no new IPC, and the rule
+   is a pure function in `apps/desktop/src/lib/session-backend.ts` that is
+   tested without a JSX runtime.
 
 6. **Process lifecycle.** One long-lived process per agent, started lazily on
    first use. On exit, reject in-flight turns, mark the agent offline in the UI, and
@@ -181,7 +198,7 @@ unit tested:
 - `crates/host-core` — the agent definition lives on the provider row in
   `config_json.acp`, read and written alongside headers and models.
 - `apps/desktop` — an advanced section in the provider dialog, translated in
-  all ten locales. The row cannot be saved until the user acknowledges what the
+  all nine locales. The row cannot be saved until the user acknowledges what the
   agent can reach, and the acknowledgement is dropped when the command changes
   (`apps/desktop/src/components/settings/acp-draft.ts`,
   `apps/desktop/test/acp-agent-consent.test.mjs`).

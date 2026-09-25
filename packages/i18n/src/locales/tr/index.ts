@@ -512,6 +512,7 @@ export const tr = {
     noModelResults: "Eşleşen model yok",
     modelBadgeReasoning: "akıl yürütme",
     modelBadgeVision: "görüntü",
+    externalAgentRuns: "Harici ajan {{command}} makinenizde çalışır ve sormadan bu projedeki dosyaları değiştirebilir",
     permissionMode: "İzin kipi",
     reasoningLevel: "Akıl yürütme düzeyi",
     permissionInherit: "Varsayılan",

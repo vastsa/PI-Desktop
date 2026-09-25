@@ -507,6 +507,7 @@ export const zhTW = {
     noModelResults: "沒有匹配的模型",
     modelBadgeReasoning: "推理",
     modelBadgeVision: "視覺",
+    externalAgentRuns: "外部代理 {{command}} 在你的電腦上執行，可以在不詢問的情況下修改此專案中的檔案",
     permissionMode: "許可權模式",
     reasoningLevel: "推理等級",
     permissionInherit: "跟隨預設",

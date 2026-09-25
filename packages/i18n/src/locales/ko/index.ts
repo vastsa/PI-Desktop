@@ -512,6 +512,7 @@ export const ko = {
     noModelResults: "일치하는 모델 없음",
     modelBadgeReasoning: "추론",
     modelBadgeVision: "비전",
+    externalAgentRuns: "외부 에이전트 {{command}}는 사용자의 컴퓨터에서 실행되며 먼저 묻지 않고 이 프로젝트의 파일을 변경할 수 있습니다",
     permissionMode: "권한 모드",
     reasoningLevel: "추론 수준",
     permissionInherit: "기본값",

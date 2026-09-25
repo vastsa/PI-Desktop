@@ -501,6 +501,7 @@ export const ptBR = {
     noModelResults: "Nenhum modelo encontrado",
     modelBadgeReasoning: "Raciocínio",
     modelBadgeVision: "Visão",
+    externalAgentRuns: "O agente externo {{command}} é executado na sua máquina e pode alterar arquivos deste projeto sem perguntar",
     permissionMode: "Modo de permissão",
     reasoningLevel: "Nível de raciocínio",
     permissionInherit: "Herdar",

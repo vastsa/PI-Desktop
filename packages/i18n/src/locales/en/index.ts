@@ -510,6 +510,7 @@ export const en = {
     noModelResults: "No matching models",
     modelBadgeReasoning: "reasoning",
     modelBadgeVision: "vision",
+    externalAgentRuns: "External agent {{command}} runs on this machine and can change files in this project without asking",
     permissionMode: "Permission mode",
     reasoningLevel: "Reasoning level",
     permissionInherit: "Default",
