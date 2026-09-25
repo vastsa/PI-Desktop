@@ -575,6 +575,16 @@
   padding: 4px 8px 12px;
 }
 
+.review-remote-history {
+  margin-top: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.review-remote-history > .review-toolbar {
+  padding-inline: 2px;
+}
+
 .diff-counts {
   display: inline-flex;
   flex: 0 0 auto;
@@ -795,6 +805,10 @@
   padding-bottom: 4px;
   font-size: var(--text-sm);
   color: var(--ds-text-muted);
+}
+
+.review-workspace-error {
+  color: var(--ds-error);
 }
 
 .file-viewer {

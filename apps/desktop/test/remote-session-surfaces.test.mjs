@@ -72,3 +72,18 @@ test("the files panel browses a remote session through the session", () => {
   assert.match(files, /api\.fsRead\(rel, mimeType, sessionArg\)/);
   assert.match(files, /\{remoteSessionId \? null : \(/);
 });
+
+test("remote Review shows the Host working-tree diff beside recorded changes", () => {
+  const review = read("../src/components/workpanel/ReviewTab.tsx");
+  assert.match(review, /workspaceDiff\(remoteSessionId\)/);
+  assert.match(review, /<WorkspaceDiffFileCard/);
+  assert.match(review, /review-remote-history/);
+  assert.match(review, /setRefreshVersion/);
+});
+
+test("remote review cards do not offer an unsupported rollback action", () => {
+  const card = read("../src/components/ReviewChangeCard.tsx");
+  assert.match(card, /const canRollback = useAppStore/);
+  assert.match(card, /change\.reversible && canRollback/);
+  assert.match(card, /panel\.review\.rollbackUnavailable/);
+});

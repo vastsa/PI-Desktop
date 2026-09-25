@@ -162,6 +162,7 @@ test("handles() covers exactly the channels the remote profile serves", () => {
     IPC.invoke.fsList,
     IPC.invoke.fsRead,
     IPC.invoke.fsResolveRef,
+    IPC.invoke.workspaceDiff,
   ];
   for (const channel of covered) assert.ok(backend.handles(channel), `${channel} should be handled`);
   assert.deepEqual([...HANDLED_CHANNELS].sort(), [...covered].sort());
@@ -200,6 +201,18 @@ test("agentPrompt with attachments raises CAPABILITY_UNAVAILABLE without any RAC
     (error) => error.errorCode === "CAPABILITY_UNAVAILABLE",
   );
   assert.equal(client.calls.length, 0);
+});
+
+test("workspaceDiff reads the requested remote session root", async () => {
+  const diff = { repo: true, clean: false, files: [{ path: "src/a.ts", status: "modified" }] };
+  const { backend, client } = makeBackend({ "workspace/diff": () => diff });
+  assert.deepEqual(
+    await backend.invoke(IPC.invoke.workspaceDiff, [{ sessionId: REMOTE_SESSION_ID }]),
+    diff,
+  );
+  assert.deepEqual(client.calls, [
+    { method: "workspace/diff", params: { sessionId: HOST_SESSION_ID } },
+  ]);
 });
 
 test("agentQueuePush queues with the local content, since RACP turns carry none", async () => {
