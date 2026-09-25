@@ -2,6 +2,32 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.8",
+    "date": "2026-09-26",
+    "highlights": [
+      "Die KI-Modelleinstellungen wurden mit einer Dienstwahl, empfohlenen Modellen und klareren Hinweisen für eigene Endpunkte überarbeitet.",
+      "Benutzerdefinierte Endpunkte nutzen nun die von PI-Desktop gelieferten Publisher für Modellmetadaten, Fähigkeiten und API-Formate.",
+      "Google-Gemini-Anfragen funktionieren wieder zuverlässig; Anbieter-Header bleiben erhalten und verwaiste Bildgenerierungsstandards werden nach dem Löschen eines Anbieters entfernt.",
+      "Subagent-Karten im Arbeitsbereich passen sich an die verfügbare Breite an; beim Fortsetzen bleiben Modellbindung und aktuelle Delegationsrechte korrekt.",
+      "Das Abbrechen und Beenden vertrauenswürdiger Erweiterungen wurde gehärtet, damit späte Updates, Warteschlangen und Unterprozesse sicher beendet werden.",
+      "Wiederherstellung und Replay der gehosteten Websuche sind robuster; OpenAI-Codex-OAuth-Modelle können native Suche optional aktivieren.",
+      "Markdown-Tabellen lassen sich im Chat kopieren, als CSV herunterladen oder erweitern; erkannte Dateien können geöffnet oder mit vollständigem bzw. relativem Pfad kopiert werden.",
+      "Composer-Reasoning, die Bildgenerierungsansicht, Windows-Aufgabenabzeichen und lokalisierte Spracheinstellungen wurden verbessert.",
+    ],
+  },
+
+  {
+    "version": "0.15.7",
+    "date": "2026-09-25",
+    "highlights": [
+      "Feiere das Mondfest mit einer zeitlich begrenzten Vollbildanimation beim ersten Start, die sich in den Einstellungen erneut abspielen lässt.",
+      "Optionale lokale Spracheingabe im Composer mit Entwickler-Einstellungen, verifizierten und abbrechbaren Modelldownloads sowie Schutz vor veralteten Transkriptionsergebnissen.",
+      "Eine portable Windows-Version als einzelne ausführbare Datei ergänzt Installer und ZIP.",
+      "Mehr Stabilität für Agents durch sicherere Abbrüche und Wiederaufnahme, robustere Modellkataloge, bessere Stapelansicht für generierte Bilder und ein reaktionsfähigeres Arbeitspanel.",
+    ],
+  },
+
+  {
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [

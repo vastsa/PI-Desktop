@@ -2,6 +2,32 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.8",
+    "date": "2026-09-26",
+    "highlights": [
+      "Yapay zekâ model ayarlarını servis seçici, önerilen model seçimi ve özel uç noktalar için daha anlaşılır yönlendirmeyle yeniler.",
+      "Özel uç noktalar, model meta verilerini, yeteneklerini ve API biçimlerini tamamlamak için PI-Desktop'ın sunduğu yayıncıları kullanır.",
+      "Google Gemini istekleri yeniden güvenilir şekilde çalışır, sağlayıcı üstbilgileri korunur ve sağlayıcı silinince artık görüntü oluşturma varsayılanları temizlenir.",
+      "Alt ajan çalışma paneli kartları genişliğe uyum sağlar; devam ettirilen alt ajanlar kendi model bağını ve güncel yetkilendirme izinlerini korur.",
+      "Güvenilir uzantıların iptal ve yaşam döngüsü kapatması güçlendirilerek geç güncellemeler, kuyruk istemleri ve alt süreçler güvenle sonlandırılır.",
+      "Barındırılan web aramasının yeniden oynatılması ve yeniden başlatma kurtarması iyileştirilir; OpenAI Codex OAuth modelleri yerel aramayı isteğe bağlı açabilir.",
+      "Sohbette Markdown tablolarını kopyalayın, CSV olarak indirin veya genişletin; tanınan dosyaları açın ya da tam ve göreli yollarını kopyalayın.",
+      "Composer akıl yürütme kontrolleri, oluşturulan görsellere göz atma, Windows okunmamış görev rozetleri ve yerelleştirilmiş ses ayarları iyileştirilir.",
+    ],
+  },
+
+  {
+    "version": "0.15.7",
+    "date": "2026-09-25",
+    "highlights": [
+      "İlk açılışta tam ekran ay animasyonu sunan, Ayarlar'dan yeniden oynatılabilen süreli bir Sonbahar Ortası Festivali sürümünü kutlayın.",
+      "Composer'da isteğe bağlı yerel ses girişini kullanın; geliştiriciye özel denetimler, doğrulanabilir ve iptal edilebilir model indirmeleri ve eski transkripsiyon sonuçlarına karşı koruma içerir.",
+      "Kurulum ve ZIP sürümlerine ek olarak tek çalıştırılabilir dosyalı taşınabilir Windows sürümü sunulur.",
+      "Daha güvenli iptal ve kurtarma, daha dayanıklı model katalogları, oluşturulan görüntü gruplarında daha iyi gezinme ve daha duyarlı iş paneliyle Agent kararlılığı geliştirildi.",
+    ],
+  },
+
+  {
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [

@@ -2,6 +2,32 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    "version": "0.15.8",
+    "date": "2026-09-26",
+    "highlights": [
+      "Reformula as configurações de modelos de IA com seletor de serviços, modelos recomendados e orientações mais claras para endpoints personalizados.",
+      "Endpoints personalizados usam os publicadores fornecidos pelo PI-Desktop para completar metadados, capacidades e formatos de API dos modelos.",
+      "As solicitações do Google Gemini voltam a funcionar com confiabilidade, preservam os cabeçalhos do provedor e removem padrões de geração de imagens órfãos quando um provedor é excluído.",
+      "Os cartões de subagentes se adaptam à largura do painel e, ao retomar, mantêm o vínculo de modelo privado e as permissões de delegação atuais.",
+      "Reforça o cancelamento e o encerramento do ciclo de vida de extensões confiáveis para retirar com segurança atualizações tardias, filas e subprocessos.",
+      "Melhora a reprodução e a recuperação após reinício da pesquisa web hospedada; modelos OAuth do OpenAI Codex podem ativar a pesquisa nativa opcionalmente.",
+      "Copie, baixe ou expanda tabelas Markdown no chat; abra arquivos reconhecidos ou copie seus caminhos completos e relativos.",
+      "Aprimora os controles de raciocínio do Composer, a navegação de imagens geradas, os badges de tarefas não lidas do Windows e as configurações de voz localizadas.",
+    ],
+  },
+
+  {
+    "version": "0.15.7",
+    "date": "2026-09-25",
+    "highlights": [
+      "Celebre o Festival do Meio do Outono com uma animação lunar em tela cheia e por tempo limitado na primeira inicialização, que pode ser reproduzida novamente em Configurações.",
+      "Use entrada de voz local opcional no Composer, com controles para desenvolvedores, downloads de modelos verificáveis e canceláveis e proteção contra transcrições obsoletas.",
+      "Adiciona uma versão portátil do Windows em um único executável, além do instalador e dos arquivos ZIP.",
+      "Melhora a estabilidade dos agentes com cancelamento e recuperação mais seguros, catálogos de modelos mais robustos, navegação de lotes de imagens geradas e um painel de trabalho mais responsivo.",
+    ],
+  },
+
+  {
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [

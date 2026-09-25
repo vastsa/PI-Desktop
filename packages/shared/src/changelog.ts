@@ -30,6 +30,32 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.15.8",
+    date: "2026-09-26",
+    highlights: [
+      "Rework AI model settings with a service chooser, recommended model selection, and clearer custom-endpoint guidance.",
+      "Improve custom endpoint discovery by using the publishers PI-Desktop ships for model metadata, capabilities, and API formats.",
+      "Restore reliable Google Gemini requests, preserve provider headers, and clean up image-generation defaults when providers are removed.",
+      "Make subagent work-panel cards responsive and keep resumed subagents on their own model binding with current delegation permissions.",
+      "Harden trusted-extension cancellation and lifecycle shutdown so late updates, queued prompts, and subprocesses are retired safely.",
+      "Make hosted web-search replay and restart recovery robust, with optional native search for OpenAI Codex OAuth models.",
+      "Copy, download, or expand Markdown tables in chat, and reveal recognized files or copy their full and relative paths.",
+      "Polish Composer reasoning controls, generated-image browsing, Windows unread-task badges, and localized voice settings.",
+    ],
+  },
+
+  {
+    version: "0.15.7",
+    date: "2026-09-25",
+    highlights: [
+      "Celebrate the Mid-Autumn Festival with a limited-time first-launch moonlit animation that can be replayed from Settings.",
+      "Use optional local voice input from the Composer, with developer-only controls, verified cancellable model downloads, and stale-result protection.",
+      "Ship a Windows portable single-executable build alongside the installer and ZIP releases.",
+      "Improve agent reliability with safer cancellation, more resilient model and provider handling, clearer generated-image batches, and a more responsive work panel.",
+    ],
+  },
+
+  {
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
@@ -843,6 +869,32 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.15.8",
+    date: "2026-09-26",
+    highlights: [
+      "重做 AI 模型设置：新增服务选择器、推荐模型选择和更清晰的自定义端点提示。",
+      "改进自定义端点发现：使用 PI-Desktop 提供的发布者信息补全模型元数据、能力和 API 格式。",
+      "恢复 Google Gemini 的可靠请求，保留供应商请求头，并在删除供应商后清理图像生成默认项。",
+      "让子智能体工作面板卡片自适应宽度；恢复子智能体时保持其专属模型绑定并重新检查委派权限。",
+      "强化可信扩展取消与生命周期关闭，安全回收延迟更新、排队提示和子进程。",
+      "增强托管网页搜索的重放与重启恢复，并允许 OpenAI Codex OAuth 模型选择原生搜索。",
+      "可在聊天中复制、下载或展开 Markdown 表格，也可打开识别出的文件所在位置或复制完整/相对路径。",
+      "优化 Composer 推理控件、生成图浏览、Windows 未读任务徽章，并本地化语音设置。",
+    ],
+  },
+
+  {
+    version: "0.15.7",
+    date: "2026-09-25",
+    highlights: [
+      "中秋限时限定版：首次启动播放全屏月下动画，也可在设置中再次播放。",
+      "可在 Composer 中使用可选的本地语音输入；设置仅在开发者模式显示，模型下载支持校验、取消，并丢弃过期转写结果。",
+      "新增 Windows 便携式单文件版本，并继续提供安装包与 ZIP。",
+      "提升 Agent 稳定性：加强取消与恢复、模型与服务商处理、生成图片批量浏览，以及工作面板的响应式表现。",
+    ],
+  },
+
+  {
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
@@ -1655,6 +1707,32 @@ const zhCNEntries: ChangelogEntry[] = [
 ];
 
 const zhTWEntries: ChangelogEntry[] = [
+  {
+    version: "0.15.8",
+    date: "2026-09-26",
+    highlights: [
+      "重做 AI 模型設定：加入服務選擇器、推薦模型選擇與更清楚的自訂端點提示。",
+      "改善自訂端點探索：使用 PI-Desktop 提供的發布者資訊補齊模型中繼資料、能力與 API 格式。",
+      "恢復 Google Gemini 的可靠請求，保留供應商標頭，並在刪除供應商後清理影像生成預設項。",
+      "讓子智能體工作面板卡片自適應寬度；恢復子智能體時保持其專屬模型綁定並重新檢查委派權限。",
+      "強化可信擴充功能的取消與生命週期關閉，安全回收延遲更新、佇列提示與子程序。",
+      "增強託管網頁搜尋的重播與重新啟動復原，並允許 OpenAI Codex OAuth 模型選用原生搜尋。",
+      "可在聊天中複製、下載或展開 Markdown 表格，也可開啟識別檔案所在位置或複製完整/相對路徑。",
+      "優化 Composer 推理控制、生成影像瀏覽、Windows 未讀任務徽章，並本地化語音設定。",
+    ],
+  },
+
+  {
+    version: "0.15.7",
+    date: "2026-09-25",
+    highlights: [
+      "中秋限時限定版：首次啟動播放全螢幕月下動畫，也可在設定中再次播放。",
+      "可在 Composer 使用選用的本機語音輸入；設定僅在開發者模式顯示，模型下載支援驗證、取消，並丟棄過期轉寫結果。",
+      "新增 Windows 便攜式單檔版本，並持續提供安裝程式與 ZIP。",
+      "提升 Agent 穩定性：強化取消與恢復、模型與服務商處理、生成圖片批次瀏覽，以及工作面板的響應式表現。",
+    ],
+  },
+
   {
     version: "0.15.6",
     date: "2026-09-23",
