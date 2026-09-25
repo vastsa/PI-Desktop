@@ -90,17 +90,13 @@ test("prompt-enhancement settings expose templates, restore, and the draft varia
   assert.match(card, /ext-sheet-actions/);
   assert.match(card, /portalOverlay/);
   assert.match(card, /promptEnhancementCustomTemplate/);
-  // The switch is the standard settings toggle, and Edit is the subagent
-  // list's icon button rather than a labelled action in the row.
-  assert.match(card, /settings-toggle/);
-  assert.match(card, /role="switch"/);
-  // The switch is usable only once a template has been saved, and saving one
-  // turns it on.
+  // No switch — the edit button is the only control on the row; saving a
+  // non-empty template activates it, restoring default deactivates.
+  assert.doesNotMatch(card, /settings-toggle/);
+  assert.doesNotMatch(card, /role="switch"/);
   assert.match(card, /hasCustomTemplate/);
-  assert.match(card, /disabled=\{!hasCustomTemplate\}/);
-  assert.match(card, /promptEnhancementCustomTemplateNeedsTemplate/);
-  assert.match(card, /promptEnhancementCustomTemplate: templateChanged/);
-  assert.match(card, /const templateChanged = savedTemplateValue !== savedTemplate/);
+  assert.match(card, /promptEnhancementCustomTemplateActive/);
+  assert.match(card, /promptEnhancementCustomTemplate: Boolean/);
   assert.match(card, /settings-icon-button/);
   assert.match(card, /IconPencil/);
   assert.match(card, /EnhancementModelCard/);

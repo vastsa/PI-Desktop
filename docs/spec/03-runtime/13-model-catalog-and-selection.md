@@ -327,7 +327,10 @@ model window. Every binding records where its `contextWindow` came from
   published `limit.context` replaces it. A refreshed record such as
   `gpt-5.6-luna` (`1,050,000` tokens) stops appearing as a 128k model, and a limit
   that models.dev corrects reaches the binding without deleting and re-adding the
-  model.
+  model. Only a resolved models.dev record counts as published: when the lookup
+  misses and falls back to the generic shape (for example a custom gateway URL
+  serving an id several publishers list), its `128,000` is not a correction, and
+  the stored catalog snapshot stays in force.
 - `user` — the number was entered through the per-model Advanced control (or the
   preset ladder in it) and is never replaced by the catalog, including the
   `128,000` value that is otherwise the generic seed.
@@ -486,6 +489,35 @@ These aliases attach published metadata only: they do not alter the configured
 wire model ID or prove that a suffix enables reasoning. An unmatched free-form
 ID remains an unknown generic model with no inferred capabilities; only a
 published record or explicit binding settings can supply them.
+
+#### 11.3.1 Cross-provider exact-id fallback
+
+models.dev indexes a gateway's copy of a model under the vendor that owns the
+weights, so an endpoint serving `Vendor/Model` ids can have no record of its own
+while several other publishers state the identical id. When the row resolves to
+a catalog provider whose own record is missing, `findModel` consults the other
+publishers of the **exact** id instead of leaving the model on the generic
+128k text-only shape (issue #938).
+
+The borrow is bounded:
+
+- It runs only for a row with a known catalog provider identity, and only after
+  that provider's own lookup missed. A provider record, or a supported alias of
+  it, stays authoritative.
+- A provider sharing the row's own endpoint is an alias for the row, so its
+  silence is an answer about this deployment and nothing is borrowed past it.
+- Only a case-insensitive identical id transfers; a record reached through an
+  alias (a bare route leaf, a vendor-prefixed variant) is a different id and
+  keeps its own limits.
+- Tool support must be unanimous across those publishers, because a wrong `true`
+  puts tool declarations on the wire that the endpoint may reject. Reasoning,
+  image/PDF input and attachment are the intersection, so a borrow may only
+  under-claim; a user who knows the endpoint does more still enables it in
+  Advanced. Limits are the medians the publishers state, never one host's cap.
+- An id no publisher states stays an unknown generic model.
+
+This changes metadata only. The configured wire id, provider identity, and the
+binding precedence in §11.3 are unchanged.
 
 ## 12. Refresh strategy
 

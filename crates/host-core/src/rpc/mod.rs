@@ -849,6 +849,15 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             ));
         }
     }
+    if let Some(keep_awake) = object.get("keepAwakeWhileRunning") {
+        if !keep_awake.is_boolean() {
+            return Err(rpc_err(
+                1002,
+                "keepAwakeWhileRunning must be a boolean",
+                "INVALID_PARAMS",
+            ));
+        }
+    }
     if let Some(threshold_value) = object.get("largePasteThreshold") {
         let Some(threshold) = threshold_value.as_i64() else {
             return Err(rpc_err(
@@ -6233,6 +6242,29 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(retry_settings["infiniteProviderRetry"], true);
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "keepAwakeWhileRunning": true }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let power_settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(power_settings["keepAwakeWhileRunning"], true);
+
+        let invalid_power = handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "keepAwakeWhileRunning": "yes" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(invalid_power.data.unwrap()["errorCode"], "INVALID_PARAMS");
 
         let invalid_retry = handle_request(
             state.clone(),

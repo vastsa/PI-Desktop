@@ -4,16 +4,16 @@ import { useAppStore } from "../stores/app-store";
 
 /**
  * Module-level cache so revisiting the same message does not re-read the
- * file. The key includes the workspace root so a relative path in one
- * project cannot show another project's file.
+ * file. The key includes workspace and MIME context so a reference cannot
+ * show stale bytes after a project or selected image changes.
  */
 const dataUrlCache = new Map<string, string>();
 const DATA_URL_CACHE_ENTRIES = 50;
 const DATA_URL_CACHE_MAX_BYTES = 40 * 1024 * 1024;
 let dataUrlCacheBytes = 0;
 
-function cacheKey(workspaceRoot: string | null, ref: string): string {
-  return `${workspaceRoot ?? ""}\u0000${ref}`;
+function cacheKey(workspaceRoot: string | null, ref: string, mimeType?: string): string {
+  return `${workspaceRoot ?? ""}\u0000${ref}\u0000${mimeType ?? ""}`;
 }
 
 function rememberDataUrl(key: string, dataUrl: string) {
@@ -45,34 +45,40 @@ export function useReferencedImageDataUrl(
   mimeType?: string,
 ): string | null {
   const workspaceRoot = useAppStore((s) => s.workspace?.path ?? null);
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const normalizedRef = typeof ref === "string" ? ref.trim() : "";
+  const requestedKey = normalizedRef && !/^(?:https?|data|blob):/i.test(normalizedRef)
+    ? cacheKey(workspaceRoot, normalizedRef, mimeType)
+    : null;
+  const [resolved, setResolved] = useState<{ key: string; dataUrl: string | null }>({
+    key: "", dataUrl: null,
+  });
   useEffect(() => {
-    const key = typeof ref === "string" ? ref.trim() : "";
-    if (!key || /^https?:/i.test(key) || /^data:/i.test(key) || /^blob:/i.test(key)) {
-      setDataUrl(null);
+    if (!requestedKey) {
+      setResolved({ key: "", dataUrl: null });
       return;
     }
-    const cacheKeyForRef = cacheKey(workspaceRoot, key);
-    const cached = dataUrlCache.get(cacheKeyForRef);
+    const cached = dataUrlCache.get(requestedKey);
     if (cached !== undefined) {
-      setDataUrl(cached);
+      setResolved({ key: requestedKey, dataUrl: cached });
       return;
     }
     let current = true;
-    setDataUrl(null);
+    setResolved({ key: requestedKey, dataUrl: null });
     void api
-      .fsReadImageDataUrl(key, mimeType)
+      .fsReadImageDataUrl(normalizedRef, mimeType)
       .then((result) => {
         const next = result.kind === "image" && result.dataUrl ? result.dataUrl : null;
-        if (next) rememberDataUrl(cacheKeyForRef, next);
-        if (current) setDataUrl(next);
+        if (next) rememberDataUrl(requestedKey, next);
+        if (current) setResolved({ key: requestedKey, dataUrl: next });
       })
       .catch(() => {
-        if (current) setDataUrl(null);
+        if (current) setResolved({ key: requestedKey, dataUrl: null });
       });
     return () => {
       current = false;
     };
-  }, [ref, mimeType, workspaceRoot]);
-  return dataUrl;
+  }, [requestedKey, normalizedRef, mimeType]);
+  if (!requestedKey) return null;
+  const cached = dataUrlCache.get(requestedKey);
+  return cached ?? (resolved.key === requestedKey ? resolved.dataUrl : null);
 }

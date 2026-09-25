@@ -1,6 +1,5 @@
 import type { SessionDetail } from "@pi-desktop/shared";
 import type { SessionHistoryReadOptions } from "../../lib/api";
-import { delegationIdForMessage } from "../../lib/subagent-panel";
 import {
   EMPTY_TRANSCRIPT,
   extendTranscriptView,
@@ -53,12 +52,7 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
     set((state) => {
       if (!state.transcriptViews[sessionId]) return {};
       const { [sessionId]: _released, ...transcriptViews } = state.transcriptViews;
-      return {
-        transcriptViews,
-        ...(state.subagentPanel?.sessionId === sessionId && state.subagentPanel.searchRequestId
-          ? { subagentPanel: null }
-          : {}),
-      };
+      return { transcriptViews };
     });
   }
 
@@ -93,23 +87,11 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
         if (!session || !message) throw new Error("Message no longer exists in this conversation.");
         if (message.parentToolCallId && !session.navigationParent)
           throw new Error("The task for this message no longer exists in this conversation.");
-        const parent = session.navigationParent;
         set((state) => ({
           transcriptViews: {
             ...state.transcriptViews,
             [sessionId]: transcriptViewFromSession(session, focus),
           },
-          ...(parent
-            ? {
-                subagentPanel: {
-                  sessionId,
-                  delegationId: delegationIdForMessage(parent),
-                  searchRequestId: focus.requestId,
-                },
-              }
-            : state.subagentPanel?.searchRequestId
-              ? { subagentPanel: null }
-              : {}),
         }));
       } catch (error) {
         if (get().transcriptViews[sessionId] !== pending) return;

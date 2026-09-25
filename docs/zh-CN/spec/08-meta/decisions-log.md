@@ -366,6 +366,7 @@
 | D345 | 繁体中文外壳语言 | **修订 D314 / ADR 0160：以独立完整外壳目录发布 `zh-TW`，本地名称为繁體中文。`zh-TW`、`zh-Hant`、`zh-HK` 和 `zh-MO` 解析到繁体中文外壳；通用 `zh` 和简体中文区域继续解析到 `zh-CN`。持久化的 `AppSettings.language` 加入 `zh-TW`，Electron 打包 `zh-TW` 与 `zh_TW` 语言环境目录；应用内变更日志加入对应的 `zh-TW` 目录，使发行说明跟随当前繁体中文外壳。不改变宿主协议或存储架构版本。** | 繁体中文用户需要独立的外壳和发行说明语言；复用简体中文目录会使自动检测和可见术语不正确。 |
 | D346 | P0 国际外壳语言 | **修订 D314 / ADR 0160 / ADR 0182：发布完整的 `de`、`es` 和 `fr` 外壳目录，本地名称为 Deutsch、Español 和 Français。`de-*`、`es-*` 和 `fr-*` 解析到对应基础目录；持久化的 `AppSettings.language` 接受三个新 ID；匹配的变更日志目录让发行说明跟随当前语言。不改变宿主协议、存储架构或 IPC 版本。** | 西班牙语、法语和德语是缺失的最高价值 P0 国际化覆盖，而现有注册表和可搜索选择器已经可以扩展到更多语言。 |
 | D349 | 韩语应用程序壳 | **修订 D314 / ADR 0160 / ADR 0183：提供完整 `ko` 外壳目录，本地名한국어，英文名 Korean。`ko` 和 `ko-*` 解析到韩语目录；持久化 `AppSettings.language` 接受 `ko`；Electron 打包韩语 Chromium locale，并有匹配的韩语发版日志。不改主机协议或存储 schema。** | 韩语用户需要独立完整外壳和发版说明语言。 |
+| D605 | 巴西葡萄牙语应用程序壳 | **修订 D314 / ADR 0160 / ADR 0183 / ADR 0185：提供完整 `pt-BR` 外壳目录，本地名 Português (Brasil)，英文名 Portuguese (Brazil)。`pt-BR`、`pt_BR` 和 `pt-*` 解析到巴西葡萄牙语目录；持久化 `AppSettings.language` 接受 `pt-BR`；Electron 打包 `pt-BR` 与 `pt_BR` Chromium locale，并有匹配的巴西葡萄牙语发版日志。不改主机协议或存储 schema。见 ADR 0306。** | 巴西葡萄牙语用户需要独立完整外壳和发版说明语言。 |
 | D350 | 按焦点区分本机通知投递 | **修订 D117 / ADR 0107：渲染器在 `notification/showNative` 终端结果调用中标记 `kind: "task"`，在 asktool、工具权限和 Plan 审批调用中标记 `kind: "interactive"`。缺失或未知值默认为 `task`。任务本机投递仍然仅在未聚焦时进行，包括聚焦的背景会话；交互投递仅在确切的询问会话已在聚焦窗口中可见时抑制，因此聚焦其他会话时可以收到横幅。交互询问从不创建持久任务收件箱行，插件本机通知仍使用独立的权限门控 API。不改变主机协议或存储架构版本。** | PR #84 扩展共享 handler 的门控时，使聚焦的背景终端完成也显示了本机横幅，同时实现了聚焦背景交互询问通知的目标。显式 `kind` 在同一个 Electron 边界隔离这两种用户可见策略。 |
 | D358 | 在进行中重试行显示 provider 原因 | **修订 ADR 0175：`AgentActivity.retrying` 可携带有界、已脱敏的错误详情。紧凑重试行在静止时保持原样；悬停或键盘聚焦揭示本地化摘要、稳定码/状态和 provider 消息。中间重试不会变成转录错误行。见 ADR 0196 与 US-UI-60d。** | 用户需要当前重试原因，又不能复制最终助手错误。 |
 | D359 | 用宿主一次性补全总结首轮会话标题 | **首轮提示回退保持同步。`agent_end` 后渲染器调用白名单 `session/summarizeTitle`。Electron 解析会话模型并跑关闭思考的一次性补全；有效结果经 `session.rename` 持久化。自动替换拒绝已持久的 `manualTitle`。见 ADR 0186 与 E2E-021a。** | 截断的首轮提示当侧栏标签很差，但标题生成不能挡住回合或把凭据暴露给渲染器。 |
@@ -975,9 +976,10 @@ project/group 层，而主要操作和页脚标识仍保留在
   不值得信赖。
 - `env` 和 `headers` 仅通过插件自己的设置进行解析
   `{ "setting": "<key>" }`；主机环境永远不会被传递（D018）。
-  stdio 子进程获取 `PATH`、temp/locale 变量和声明的值 — 无
-  否则。 `command` 必须是裸路径名称或与插件相关的名称； `url` 必须是
-  `https` 除非主机环回。
+  stdio 子进程获取 `PATH`、temp/locale、工具链键（`HOME`、`USERPROFILE`、
+  `PATHEXT`、`ComSpec`、`FNM_DIR` 等）以及声明的值——不含 provider 密钥。
+  裸 `npx`/`uvx` 会解析到真实二进制（官方 Node、fnm、nvm、Volta）。
+  `command` 必须是裸 PATH 名称或插件相对路径；`url` 必须是 `https`，除非主机环回。
 - 两种传输方式而不是单独的 stdio：托管 MCP 端点很常见
   足以让 stdio-only 推送插件将其包装在本地垫片中，
   这更糟糕——一个额外的过程和一个无法审查的代理。
@@ -4958,3 +4960,40 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   只查自身目录。后缀本身不赋予推理能力：未命中的自由格式 ID 仍是未知通用
   模型，已发布能力和显式绑定覆盖沿用既有优先级。见
   `03-runtime/13-model-catalog-and-selection.md` §11.2。
+
+## 2026-09-24 —— Windows stdio MCP 解析官方 Node 与 fnm 的 npx（D624，issue #789）
+
+- 修订 D176 / D600 / ADR 0038。D600 在 Unix 探测 login-shell PATH，Windows 仍用
+  进程继承的 PATH。这启动不了 `npx.cmd`：`spawn({ shell: false })` 对 `npx`
+  返回 ENOENT，对 `.cmd` 返回 EINVAL，即使官方 Node 已在 PATH 里（issue #789）。
+- Electron main 在 spawn 前解析裸 `npx`/`npm`/`node`/`uvx`：PATH 上的官方
+  `node.exe` 优先，然后是 fnm / nvm-windows / Volta。若 `npx-cli.js` 与
+  `node.exe` 同目录，子进程直接跑 `node` 加该脚本，不经过 cmd.exe。其余
+  `.cmd` 走 `cmd.exe /d /s /c`，参数加引号保持字面量。PATHEXT 优先于无扩展名
+  的 Git-Bash `npx` 脚本。
+- 密钥仍不穿越（D018）。命令名保持裸名。见 ADR 0038 与
+  `07-plugins/04-plugin-security.md`。
+
+## 2026-09-24 — 由正文自己遮挡，而不是停靠区画一条色带（D624，issue #728）
+
+- 为 issue #728 加在 `.composer-dock-docked` 上的不透明 `--ds-bg-primary`
+  色带确实挡住了正文漏到 Composer 下方，但它同时盖住了主题画在会话面板上的
+  东西：主题填充 `.main-pane` 或 `.thread-scroll`（主题工坊的 `main` /
+  `thread` 区域）时，聊天底部会出现一块内置工作区色的硬边矩形。这条色带不
+  属于任何主题区域，唯一可用的杠杆是 `--ds-bg-primary` 本身，而所有其它主
+  表面都跟着它走。
+- `.composer-dock-docked` 现在不绘制任何底衬，改由 `.thread-scroll` 用
+  `linear-gradient(to bottom, #000 calc(100% - var(--composer-dock-height)
+  - 16px), transparent calc(100% - var(--composer-dock-height) + 2px))`
+  遮掉自身内容。渐变按滚动容器自己的盒子解析，因此正文移动时它仍锚在面板
+  上；`- 16px` 正好是 `.thread-content` 在 Composer 实测高度之下留出的尾部
+  预留，所以滚到底时最后一行保持完全不透明，只有越过边界的行会淡出。
+- 遮罩挂在滚动容器而不是 `.thread-wrap`：缩略导航轨道、跳到最新按钮、骨架
+  遮罩和导航状态都是 `.thread-wrap` 的子节点，必须保持完全绘制。停靠区自己
+  堆叠的面板（`.asktool-card`、`.plan-approval-bar`、排队提示、输入胶囊）
+  本来就是不透明的，且是 `.thread-wrap` 的兄弟节点，因此不受影响。滚动条
+  最后 18px 由「被色带盖住」改为「淡出」。
+- 仅改渲染器 CSS 与主题表面回归用例。主题表面探针把停靠区固定为全透明，并
+  断言遮罩跟随 `--composer-dock-height`。滚动状态、协议、持久化、主题
+  schema、权限都没有变化。见 `04-ux/08-component-spec.md` 与
+  E2E-CHAT-opaque-floating-decision-and-retry-surfaces。

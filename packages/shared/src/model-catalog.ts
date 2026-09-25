@@ -191,27 +191,33 @@ type BindingContextWindow = Pick<ModelBinding, "contextWindow"> &
  * same answer. An exported binding keeps the catalog as its provenance whenever
  * the catalog supplied the value, so a later settings save cannot freeze an
  * inherited value into a snapshot of its own.
+ *
+ * A `generic` baseline is the fallback for a lookup that found no record, not
+ * a published limit, so it never replaces a saved window: a catalog snapshot
+ * taken while the record still resolved stays in force.
  */
 export function resolveBindingContextWindow<
-  C extends { contextWindow?: number | null },
+  C extends { contextWindow?: number | null; source?: string },
   B extends BindingContextWindow,
 >(catalogConfig: C, binding: B): { catalogConfig: C; binding: B };
 export function resolveBindingContextWindow<
-  C extends { contextWindow?: number | null },
+  C extends { contextWindow?: number | null; source?: string },
   B extends BindingContextWindow,
 >(
   catalogConfig: C,
   binding: B | null | undefined,
 ): { catalogConfig: C; binding: B | null | undefined };
 export function resolveBindingContextWindow(
-  catalogConfig: { contextWindow?: number | null },
+  catalogConfig: { contextWindow?: number | null; source?: string },
   binding: BindingContextWindow | null | undefined,
 ): {
-  catalogConfig: { contextWindow?: number | null };
+  catalogConfig: { contextWindow?: number | null; source?: string };
   binding: BindingContextWindow | null | undefined;
 } {
   if (!binding) return { catalogConfig, binding };
-  const published = positiveTokenCount(catalogConfig.contextWindow);
+  const published = catalogConfig.source === "generic"
+    ? undefined
+    : positiveTokenCount(catalogConfig.contextWindow);
   const source = binding.contextWindowSource ?? undefined;
   const resolved = effectiveContextWindow(published, binding.contextWindow, source);
   if (resolved === undefined) return { catalogConfig, binding };

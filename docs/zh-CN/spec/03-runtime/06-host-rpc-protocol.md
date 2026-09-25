@@ -226,17 +226,19 @@ type ToolBudgetHealth = {
 - `session.list`
 - `session.create` — 接受可选的 `thinkingLevel`； missing/null 默认值
 至 `off`
-- `session.fork` — 接受 `sessionId`，呼叫者提供的可选显示
-  `title`，以及可选的 `throughMessageId`；创造
-  来自源当前活动规范的一个独立会话
-  转录本，在提供时在选定的消息处被截断。
-  孩子继承 project/provider/model/mode/thinking 并且
-  权限配置，接收新的 message/tool-call id，并启动
-  无需轮流、修订、通知、工件、资助或临时数据。
-  缺少源返回 `NOT_FOUND`； Electron 拒绝活动源
-  `AGENT_BUSY` 在转发之前并标准化主机的持久化
-  运行转向 `CONFLICT` 回退到 `AGENT_BUSY`；来源不明或
-  `throughMessageId` 返回 `NOT_FOUND`
+- `session.fork` — accepts `sessionId`, an optional caller-provided display
+  `title`, and optional `throughMessageId`; creates
+  one independent session from the source's current active canonical
+  transcript, truncated inclusively at the selected message when supplied.
+  The child inherits project/provider/model/mode/thinking and
+  permission configuration, receives new message/tool-call ids, and starts
+  without turns, revisions, notifications, artifacts, grants, or scratch data.
+  Missing sources or anchors return `NOT_FOUND`. While a Desktop source runs,
+  only a completed assistant prefix containing no indexed messages owned by a
+  running turn is allowed. This check and publication share the host RPC lock.
+  Whole-session, non-assistant, streaming/error, or live-turn anchors return
+  `CONFLICT`, normalized by Electron to `AGENT_BUSY`. The source turn continues
+  without sharing runtime state with the child.
 - `session.get`
 - `session.delete`
 - `session.getScratchPath` — 会话的 scratch 目录（D114），按需创建
@@ -519,6 +521,9 @@ type NotificationListResult = {
 - `notification.markAllRead({}) -> { ok: true }` 更新中的每个未读行
   一笔交易。
 - `notification.clear({}) -> { ok: true }` 仅删除收件箱行。
+- `id` 是 Renderer 和本机投递的稳定一次性键。客户端必须丢弃已经确认/清除
+  的 id 的重复或延迟记录；清空收件箱不会让旧终端回合再次具备插入资格。
+  后续真正的终端回合会获得新的 id。
 - 不发出 `notification.created` JSON-RPC 服务器通知。 Electron
   直接从 `session.endTurn` 接收插入的记录，避免了
   终端转持久化和UI刷新之间的第二个点餐通道。
@@ -1030,4 +1035,3 @@ schedule，Manual 转 Hourly 继续使用现有默认间隔行为。
 保存和读取工作区绑定时统一使用现有项目路径规范化规则。在 Windows 上，
 斜杠方向、大小写、末尾分隔符和扩展路径前缀的差异不会再让同项目会话看不到任务。
 缺失的旧版绑定与显式 null 仍保持不同语义；其他项目的工具不能查询或修改绑定任务。
-

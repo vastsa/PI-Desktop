@@ -43,6 +43,8 @@ import { ContextMenu, useContextMenu } from "./ContextMenu";
 import { PluginBlockRenderer } from "./PluginBlockRenderer";
 import { blockRendererCandidate } from "../lib/block-renderer";
 import { useSlotEntryForKey } from "../plugins/renderer-slots/use-slots";
+import { MarkdownTable } from "./MarkdownTable";
+import { markdownTableData } from "../lib/markdown-table";
 import { api } from "../lib/api";
 import { openHttpUrl } from "../lib/open-http-url";
 import {
@@ -407,6 +409,7 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
 const MarkdownBlockContext = createContext({
   closedFence: false,
   renderDiagrams: true,
+  originalRaw: "",
 });
 
 const MarkdownBaseDirContext = createContext("");
@@ -699,15 +702,21 @@ function MarkdownImage({
 }
 
 function Table({
-  node: _node,
+  node,
   children,
   ...rest
-}: ComponentProps<"table"> & { node?: unknown }) {
-  return (
+}: ComponentProps<"table"> & { node?: Parameters<typeof markdownTableData>[0] }) {
+  const { originalRaw } = useContext(MarkdownBlockContext);
+  const data = useMemo(
+    () => node ? markdownTableData(node, originalRaw) : null,
+    [node, originalRaw],
+  );
+  const table = (
     <div className="table-wrap">
       <table {...rest}>{children}</table>
     </div>
   );
+  return data ? <MarkdownTable {...data}>{table}</MarkdownTable> : table;
 }
 
 /** Inline audio player for audio URLs in markdown. */
@@ -810,8 +819,9 @@ const Block = memo(function MarkdownBlock({
     () => ({
       closedFence: isClosedFencedCodeBlock(raw),
       renderDiagrams,
+      originalRaw,
     }),
-    [raw, renderDiagrams],
+    [raw, originalRaw, renderDiagrams],
   );
   const remarkPlugins = useMemo(
     () => [

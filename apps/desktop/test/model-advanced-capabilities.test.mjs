@@ -88,7 +88,7 @@ test("image generation selection hides the summary when nothing can be chosen", 
     pickerSource,
     /className="provider-chosen-advanced-toggle"[^\n]*settings\.setImageModel/,
   );
-  assert.match(pickerSource, /imageModelIds\?\.some\([\s\S]*?modelIdsMatch/);
+  assert.match(pickerSource, /imageModelIds\?\.some\([\s\S]*?modelId\.toLowerCase\(\) === binding\.id\.toLowerCase\(\)/);
   assert.match(pickerSource, /onImageModelChange\(binding\.id, event\.target\.checked\)/);
   assert.match(imageModelRowSource, /imageGenerationBindings\(settings\.imageGenerationModels, null\)/);
   assert.match(imageModelRowSource, /if \(!options\.some\(\(option\) => !option\.disabled\)\) return null;/);
@@ -200,9 +200,10 @@ test("every image gate reads the override-shaped model config", () => {
 });
 
 test("a model the catalog does not describe still reports its binding overrides", () => {
-  // Both enrichment helpers fall back to the generic shape and then apply the
-  // binding, matching the launch path; returning undefined instead would report
-  // no image support for a hand-typed id whose transport does inline images.
+  // Both enrichment helpers use the same catalog-or-generic resolver and then
+  // apply the binding, matching the launch path; returning undefined instead
+  // would report no image support for a hand-typed id whose transport does
+  // inline images.
   const providerBlock = providerCatalogSource.slice(
     providerCatalogSource.indexOf("const enrichProvider ="),
     providerCatalogSource.indexOf("const normalizeThinkingLevel ="),
@@ -216,7 +217,7 @@ test("a model the catalog does not describe still reports its binding overrides"
   );
   for (const block of [providerBlock, sessionBlock]) {
     assert.match(block, /modelConfigWithBinding\(/);
-    assert.match(block, /genericModelConfig\(modelId, provider\.baseUrl \?\? ""\)/);
+    assert.match(block, /catalogModelConfigFor\(modelsDevCatalog/);
     assert.match(block, /bindingForModel\(provider, modelId\)/);
   }
   assert.doesNotMatch(
@@ -236,7 +237,8 @@ test("the advanced body is a compact sheet without helper paragraphs", () => {
   );
   assert.doesNotMatch(pickerSource, /hint=\{t\("settings\.modelAliasHint"\)\}/);
   assert.match(pickerSource, /aria-controls=\{advancedId\}/);
-  assert.match(pickerSource, /models\[0\]\?\.id \?\? null/);
+  // Keep the selected-model summary visible until Advanced is requested.
+  assert.match(pickerSource, /useState<string \| null>\(null\)/);
   assert.match(
     pickerSource,
     /className="provider-chosen-thinking-head">[\s\S]*?provider-chosen-thinking-default[\s\S]*?provider-chosen-thinking-chips/,

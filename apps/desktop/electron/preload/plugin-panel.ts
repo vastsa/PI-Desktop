@@ -522,6 +522,16 @@ function chromeLabels(input = panelLocale()): ChromeLabels {
       safeArea: "Indication de développement · les 46 px supérieurs servent uniquement au déplacement",
     };
   }
+  if (locale.startsWith("pt")) {
+    return {
+      toolbar: "Controles de janela do painel do plugin",
+      minimize: "Minimizar",
+      maximize: "Maximizar",
+      restore: "Restaurar",
+      close: "Fechar",
+      safeArea: "Dica de desenvolvimento · os 46px superiores são apenas para arrastar",
+    };
+  }
   if (locale.startsWith("zh")) {
     return {
       toolbar: "插件面板窗口控制",

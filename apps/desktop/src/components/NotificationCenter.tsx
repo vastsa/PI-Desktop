@@ -77,6 +77,7 @@ export function NotificationCenter({
     () => inboxUnreadCount(storedNotifications),
     [storedNotifications],
   );
+  const allUnreadCount = useAppStore((state) => state.unreadNotificationCount);
   const refreshNotifications = useAppStore((state) => state.refreshNotifications);
   const markAllNotificationsRead = useAppStore(
     (state) => state.markAllNotificationsRead,
@@ -272,7 +273,7 @@ export function NotificationCenter({
                 className="notification-action"
                 tooltip={t("notifications.markAllRead")}
                 ariaLabel={t("notifications.markAllRead")}
-                disabled={busy || unreadCount === 0}
+                disabled={busy || allUnreadCount === 0}
                 onClick={() => void runToolbarAction(markAllNotificationsRead)}
               >
                 <IconCheckCheck size={15} aria-hidden />
@@ -282,7 +283,7 @@ export function NotificationCenter({
                 className="notification-action"
                 tooltip={t("notifications.clearAll")}
                 ariaLabel={t("notifications.clearAll")}
-                disabled={busy || notifications.length === 0}
+                disabled={busy || storedNotifications.length === 0}
                 onClick={() => void runToolbarAction(clearNotifications)}
               >
                 <IconTrash size={15} aria-hidden />

@@ -70,3 +70,11 @@ contains scroll chaining, and preserves keyboard scroll padding. The question
 header, question text, custom-answer input, and Skip / Next / Submit actions
 remain visible while the user scrolls through the options. This behavior also
 applies on narrow screens; the card does not rely on page-level scrolling.
+
+## Request transitions
+
+The question index, draft answers, and submission state belong to the displayed
+request. Switching chats or advancing the pending queue mounts a fresh card at
+question one with empty answers and enabled actions. State from the previous
+request must not leak into the destination request. Unsubmitted card drafts are
+local to the mounted card and are reset when it is replaced.

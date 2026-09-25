@@ -14,7 +14,6 @@ import {
   initialThinkingLevelForBinding,
   imageGenerationBindings,
   isImageGenerationModel,
-  modelIdsMatch,
   normalizeLargePasteThreshold,
   stripInlineComposerFileReferenceTokens,
 } from "@pi-desktop/shared";
@@ -23,10 +22,7 @@ import { latestTurnContextInspector } from "../lib/latest-turn-context";
 import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
 import type { QueuedPrompt } from "../lib/queued-prompts";
-import {
-  composerModelDisplayName,
-  composerModelsForProvider,
-} from "../lib/composer-models";
+import { composerModelDisplayName, sameComposerModelId } from "../lib/composer-models";
 import {
   providerThinkingLevels,
   resolveComposerThinkingProvider,
@@ -64,6 +60,9 @@ import { ComposerImageAttachments } from "../features/chat/composer/ComposerImag
 import { ComposerInput } from "../features/chat/composer/ComposerInput";
 import { useComposerModelMenu } from "../features/chat/composer/hooks/useComposerModelMenu";
 import { ComposerToolbar } from "../features/chat/composer/ComposerToolbar";
+import { useVoiceInput } from "../features/voice/useVoiceInput";
+import { VoiceOverlay } from "../features/voice/VoiceOverlay";
+import "../styles/voice.css";
 import { ComposerStatus } from "../features/chat/composer/ComposerStatus";
 import { registerComposerInsert } from "../features/chat/composer/insert-bridge";
 
@@ -343,8 +342,7 @@ export function Composer({
   const modelId =
     activeSession?.modelId ??
     (!activeSession ? draftConfiguration?.modelId : undefined) ??
-    settings?.defaultModelId ??
-    provider?.defaultModelId;
+    (settings?.defaultModelId?.trim() || provider?.models?.[0]?.id || provider?.defaultModelId);
   const selectedModelCatalog = provider ? providerModels[provider.id] : undefined;
   const catalogThinkingProvider = thinkingProviderForModel(
     provider,
@@ -358,7 +356,7 @@ export function Composer({
     catalogThinkingProvider,
   });
   const selectedBinding = provider?.models.find((candidate) =>
-    modelIdsMatch(candidate.id, modelId ?? ""),
+    sameComposerModelId(candidate.id, modelId ?? ""),
   );
   // A draft without a session starts at the selected model's stored default
   // thinking level, clamped onto that binding's enabled ladder.
@@ -379,14 +377,12 @@ export function Composer({
     configuredThinkingLevel,
   );
   const thinkingLabel = thinkingLevel;
-  const selectedModel = provider?.id
-    ? composerModelsForProvider(provider, providerModels[provider.id], imageGenerationCandidates).find(
-        (model) => modelIdsMatch(model.modelId, modelId ?? ""),
-      )
-    : undefined;
-  const modelLabel = provider && modelId
-    ? composerModelDisplayName(provider, modelId, selectedModel?.displayName)
-    : selectedModel?.displayName || modelId || t("chat.model");
+  const selectedModelInfo = selectedModelCatalog?.find((candidate) =>
+    sameComposerModelId(candidate.modelId, modelId ?? ""),
+  );
+  const modelLabel = modelId
+    ? composerModelDisplayName(provider, modelId, selectedModelInfo?.displayName)
+    : t("chat.model");
   const modelMenu = useComposerModelMenu({
     configureActiveSession,
     mode,
@@ -447,6 +443,21 @@ export function Composer({
     undoPromptEnhancement,
     submit,
   } = submitController;
+
+  const voiceEnabled = !!settings?.voice?.enabled;
+  const voice = useVoiceInput({
+    enabled: voiceEnabled,
+    onTranscriptionComplete: (text) => {
+      // Insert transcribed text into Composer
+      const current = readLiveDraft();
+      if (!current.trim()) {
+        applyEditorDraft(text, fileReferencesRef.current, text.length);
+      } else {
+        const next = current + " " + text;
+        applyEditorDraft(next, fileReferencesRef.current, next.length);
+      }
+    },
+  });
 
   const composerAc = useComposerAutocomplete({
     value,
@@ -541,7 +552,7 @@ export function Composer({
           <PlanApprovalBar proposal={planCheckpoint} />
         ) : null}
         {pendingAsk ? (
-          <AskToolCard request={pendingAsk} queued={queuedAsks} />
+          <AskToolCard key={pendingAsk.requestId} request={pendingAsk} queued={queuedAsks} />
         ) : null}
         {nativeReadOnly ? (
           <div className="composer-status" role="status">
@@ -608,6 +619,7 @@ export function Composer({
               persistDraft();
             }}
           />
+          <VoiceOverlay t={t} state={voice.state} onCancel={voice.cancel} />
           <ComposerToolbar
             t={t}
             mode={mode}
@@ -640,6 +652,10 @@ export function Composer({
             hasDraftContent={hasDraftContent}
             abort={abort}
             submit={submit}
+            voicePhase={voice.state.phase}
+            voiceEnabled={voiceEnabled}
+            onVoiceToggle={voice.toggle}
+            onVoiceCancel={voice.cancel}
           />
         </div>
       </div>

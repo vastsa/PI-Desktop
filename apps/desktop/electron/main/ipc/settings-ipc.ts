@@ -21,6 +21,8 @@ export type SettingsIpcDependencies = {
     developerMode?: unknown;
   } | null) => void;
   applyDeveloperMode: (settings?: { developerMode?: unknown } | null) => void;
+  applyPreventScreenSleep: (settings?: { preventScreenSleep?: unknown } | null) => void;
+  applyKeepAwakeWhileRunning: (settings?: { keepAwakeWhileRunning?: unknown } | null) => void;
   resolveEffectiveCommandShell: () => Promise<unknown>;
 };
 
@@ -37,6 +39,8 @@ export function registerSettingsIpc({
   currentNetworkProxy,
   applyApplicationMenuSettings,
   applyDeveloperMode,
+  applyPreventScreenSleep,
+  applyKeepAwakeWhileRunning,
   resolveEffectiveCommandShell,
 }: SettingsIpcDependencies): void {
   let host: HostProcess | null = null;
@@ -63,6 +67,14 @@ export function registerSettingsIpc({
     if (!host) throw new Error("host unavailable");
     const validatedSettings = validateSettingsWrite(settings);
     const result = await host.call("settings.set", validatedSettings);
+    if (typeof (validatedSettings as { keepAwakeWhileRunning?: unknown })
+      .keepAwakeWhileRunning === "boolean") {
+      applyKeepAwakeWhileRunning(validatedSettings as { keepAwakeWhileRunning: boolean });
+    }
+    if (typeof (validatedSettings as { preventScreenSleep?: unknown })
+      .preventScreenSleep === "boolean") {
+      applyPreventScreenSleep(validatedSettings as { preventScreenSleep: boolean });
+    }
     await applyNetworkProxyFromAppSettings(validatedSettings);
     if (sidecar) {
       try {

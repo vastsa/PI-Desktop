@@ -497,12 +497,12 @@ Collapsed (48px):
   64 px 启动画面；ADR 0125）。该组件订阅了
   `document.documentElement[data-theme]` 通过 `MutationObserver` 并交换
   运行时侧边栏和启动画面的源代码，无需重新加载。的
-  空屋英雄在 100 像素处使用 `HomeMascotLogo` 八帧 GIF。浅色和深色主题
-  各有一套 GIF 和静止 PNG。CSS 跟随 `document.documentElement[data-theme]`，
-  无需重新加载；非 `light` 时使用深色稿。吉祥物循环一段处理后的挥手
-  动作，并在首帧稍作停留。播放由 GIF 自身完成，指针悬停不改变节奏；
-  减少运动时切换为对应静止首帧 PNG。这
-expanded/collapsed 侧边栏仍为 20px/18px 且启动画面为 64 像素。
+  空屋英雄在 100 像素槽位使用 `HomeMascotLogo`。标准浅色和深色 GIF
+  保留八帧挥手动画，并各有对应静止 PNG。根元素 `lang` 以 `zh` 开头且
+  主题为深色时，CSS 会选择提供的 30 帧透明中文 GIF 及对应静止 PNG。
+  主题和语言变化无需重新加载即可生效。播放由 GIF 自身完成，指针悬停
+  不改变节奏；减少动态效果时显示对应静止图。展开和折叠侧边栏仍分别
+  使用 20px/18px 图标，启动画面仍为 64px。
   主目录和线程停靠的输入框提示行不会呈现领先品牌
   图标。
 - 项目和临时会话创建控件呈现专用
@@ -820,7 +820,10 @@ vendor 进来的 `pi.file-manager` 视图在插件自己的隔离页面内完成
   后工具哈希和
 返回冲突而不覆盖以后的工作。
 - 标题栏标签：标签条是包含所有打开的 Review、文件和插件视图的 `tablist`。
-  点击标签激活它，活动标签会滚动到可见范围；关闭按钮和中键都会关闭它，
+  点击标签激活它，活动标签会滚动到可见范围；按住标签移动 8px 后开始重排，
+  放到另一个标签的左半部或右半部时插入到其前后；`Alt+ArrowLeft`/
+  `Alt+ArrowRight` 可重排聚焦标签且不改变激活状态。关闭按钮和中键都会关闭它，
+  拖拽指针靠近标签条边缘时会自动滚动，以便访问屏幕外的标签；
   并按右邻居、左邻居的顺序选择下一个。Arrow/Home/End 在标签之间移动，
   Delete/Backspace 关闭聚焦标签。固定 `+` 打开唯一的 Tools & panels 菜单。
 - New 启动器：没有活动标签时，主体使用与 `+` 菜单相同的 Review 加插件工具列表。
@@ -1205,7 +1208,7 @@ row 而不是在转录本中添加树镶边。
 ### 8.3 布局
 
 - 最大内容带：760px 线程列；助理身体最大720px
-- 工具调用的每一级披露行（整个处理过程、活动组、子代理卡片、单条工具行）都铺满该内容带：标题行是全宽行，标签过长时省略号，箭头贴在行尾，而不是按自身文字宽度收缩的小块，因此跟随用户拖拽后的宽度变化，不会停在原地。
+- 工具调用的每一级披露行（整个处理过程、活动组、子代理卡片、单条工具行）都铺满该内容带：活动标题行是全宽行，标签过长时省略号，箭头贴在行尾，而不是按自身文字宽度收缩的小块，因此跟随用户拖拽后的宽度变化，不会停在原地。委派节点和右侧停靠过程中的任务、路径、命令及回答正文按可用宽度换行。
 - 用户：右对齐、主题中性的软板（主墨水上的 `color-mix`，
   从来没有固定的口音色调），无边界，`radius-lg-plus` 更紧
   右下角，上限为 `min(82%, 600px)`，因此简短的提示如下
@@ -1242,6 +1245,9 @@ row 而不是在转录本中添加树镶边。
   Fork 创建并激活一个独立的会话，其快照结束于
   选择辅助响应，需要一个空闲源，然后留下
   源的转录本、实时运行时和提供程序缓存状态保持不变 (D134)。
+  打开用户消息编辑器时，如果当前记录不完整或受显示长度限制，必须先读取完整历史，再填入草稿。
+  不得把截断的展示文本作为可编辑正文。读取失败时保持编辑器关闭并显示错误；切换会话或
+  开始新一轮后，过期读取不得打开编辑器。斜杠命令仍填入最初输入的命令。
   编辑属于用户回合：它将提示气泡替换为与底部输入框同族的
   composer 面板（`--ds-bg-composer` 填充、`--ds-composer-radius`，
   无描边，无阴影，D297）。文本区域嵌在面板内不加第二层底；底部 28px 工具条放本地化的
@@ -1454,6 +1460,24 @@ Renderer： `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/s
   `content-visibility: auto` 和屏外美人鱼图延迟加载和
   布局，直到它们接近视口。
 
+#### Markdown table actions
+
+Every rendered Markdown table has its own compact toolbar: Copy as Markdown,
+Download as CSV, and Expand table. Copy preserves inline Markdown and column
+alignment and produces a standalone table even inside a quote or list. CSV
+contains the displayed cell text, UTF-8 with BOM, quoted fields, and CRLF rows;
+quotes and cell line breaks are escaped, and formula-leading nonnumeric cells
+are exported as text. Clipboard failures produce an error toast.
+
+The expanded view uses a modal dialog with the existing theme tokens, a scrollable
+table and opaque sticky headers, and copy/download controls. Columns retain
+readable minimum widths; narrow previews scroll horizontally instead of crushing
+short labels. It follows streamed rows,
+contains keyboard focus, closes with Escape or Close, and restores focus to its
+trigger. Native work-panel surfaces remain hidden while the modal is open.
+Tables retain their existing inline layout and link/file actions. No editing,
+sorting, new settings, persistence, or host protocol is introduced.
+
 ---
 
 ## 9. ToolCallRow
@@ -1605,6 +1629,10 @@ pi-ai 结果信封携带 `details` 中的结构化有效负载并重复它
 与扇出读起来完全一致（D265）。节点标注它运行的子智能体：优先取自它产出
 的行，在任何行到达之前则取自调用自身的 `agent` 参数；节点还带上调用的
 简短 `description`。
+
+拓扑节点在每种面板宽度下都要自适应：标题最多显示两行，描述最多显示两行，
+步骤摘要可以换行，不得要求用户反复拖动分隔线。完整描述通过节点的无障碍名称
+和悬停标题保留；节点及其执行过程不得制造横向溢出。
 
 生命周期行（`TaskWait`/`TaskList`/`TaskStop`）仍是紧凑工具行 —— 它们不是拓扑
 节点，也不得计入子智能体数量 —— 但呈现为子智能体行，而不是通用工具调用
@@ -1926,8 +1954,10 @@ MainChat 底部的输入区域，用于撰写和发送提示。支持多行输�
 在主模式或线程对接模式下保留在外壳上方 (D095)
 - 背景：一个坚实的语义输入框表面；无内部梯度，
   背景图像，或装饰水洗
-- 会话中的 `.composer-dock-docked` 使用主工作区背景绘制整条停靠区域，
-  遮住滚到悬浮输入框下方以及圆角外侧的正文；首页模式不绘制这条遮罩。
+- 会话中的 `.composer-dock-docked` 自身不绘制任何底衬：由 `.thread-scroll`
+  在正文预留区（Composer 实测高度下方的尾部留白）内把自身内容渐隐，
+  因此正文在 Composer 边界处淡出，而不是留在悬浮输入框下方或圆角外侧，
+  会话面板自己的表面（含主题铺的背景）在停靠区后面保持可见（issue #728、D624）。
 - 仰角：20px半径，只有克制的柔和阴影；细线描边已在 D297 移除；
   停靠的文字淡入淡出位于输入框外壳之外
 - solid/near-opaque 表面不使用 `backdrop-filter`； focus-within 添加了一个
@@ -2112,8 +2142,9 @@ MainChat 底部的输入区域，用于撰写和发送提示。支持多行输�
   文件，并在粘贴位置插入内联临时文件标记（D197、D209、D262、ADR 0059、ADR 0070、
   ADR 0131）
 - Main 把图片字节存在 `attachments/<sha256>`，仅当所选 models.dev 模型接受
-  图片且不超过 10 MB 内联上限时发送视觉输入；否则追加安全的 `@path` 回退
-  （D361）。草稿仍是文本；芯片在发送前序列化为规范 `@<absolute-path>`，
+  图片且不超过 10 MB 内联上限时发送视觉输入；否则追加安全的 `@path` 回退。
+  SVG 输入（`image/svg+xml` 或 `.svg` 扩展名）始终被分类为文件而非模型图片，
+  无论视觉能力如何（见 `03-runtime/svg-attachment-input.md`）（D361）。草稿仍是文本；芯片在发送前序列化为规范 `@<absolute-path>`，
   代理用文件工具跟随路径。
 - 没有语音输入
 
@@ -2695,10 +2726,13 @@ Sidebar footer                                        Popover (360px max)
 - `All` 显示最新保留的行； `Unread` 过滤至 `readAt == null`。
 - 选择一行首先调用 `notification.markRead`，关闭弹出窗口，然后
   激活该行的持久会话（包括其项目（如果适用））
-  并将记录滚动到最新内容。
-- 将所有读取标记为幂等并保留行。清除会删除每个收件箱
-  行，但绝不会删除会话、转录本或回合。
-- `notification.changed` 更新可见列表和徽章。打开
+  并将记录滚动到最新内容。读取成功后也会关闭匹配的任务本机横幅，
+  以防迟到激活再次显示它。
+- 将所有读取标记为幂等并保留行，同时关闭所有待处理的任务本机横幅。
+  清除会删除每个收件箱行、关闭全部任务本机横幅，但绝不会删除会话、
+  转录本或回合。
+- `notification.changed` 只为新的 durable id 更新可见列表和徽章。重复 id，
+  或针对已确认/已清除行的延迟事件，都会被忽略。打开
   弹出窗口还刷新 host-core 中的有界列表。一个
   来自 Electron 的 `notification.activated` 事件遵循同一会话
   激活路径为一行单击。

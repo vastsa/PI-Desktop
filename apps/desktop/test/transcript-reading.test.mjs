@@ -50,7 +50,6 @@ function reader(read, overrides = {}) {
     retainedSessionIds: ["s"],
     retainedTranscripts: {},
     runningSessions: {},
-    subagentPanel: null,
     showToast: (error) => errors.push(error),
     ...overrides,
   };
@@ -221,15 +220,13 @@ test("a nested result opens its real Task and exposes its answer even outside th
   });
   const r = reader(async () => page([child], { navigationParent: parent }));
   await r.navigateTranscript(target("child"));
-  assert.equal(r.get().subagentPanel.delegationId, "task-call");
-  assert.equal(r.get().subagentPanel.searchRequestId, r.view().focus.requestId);
+  assert.equal(r.view().focus.messageId, "child");
   const { entries } = buildTranscriptEntries(r.visible());
   const task = entries[0].parts[0].items[0];
   assert.equal(task.message.id, parent.id);
   assert.equal(task.delegate.items[0].message.id, child.id);
   assert.equal(r.view().messageStart, 20, "parent context does not move physical cursors");
   r.returnToLatestTranscript("s");
-  assert.equal(r.get().subagentPanel, null);
 });
 
 test("a failed search cannot restore a cancelled page's loading state or ownership", async () => {
@@ -296,7 +293,6 @@ test("a session switch cannot let an old nested search open the new session's pa
     }),
   );
   await navigation;
-  assert.equal(r.get().subagentPanel, null);
   assert.equal(r.view(), undefined);
 });
 

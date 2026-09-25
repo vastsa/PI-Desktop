@@ -17,7 +17,6 @@
 import {
   BACKGROUND_CONTEXT,
   createCompactionSummaryMessage,
-  estimateTokens,
   generateSummaryWithUsage,
   prepareCompaction,
   withAbortSignal,
@@ -37,6 +36,7 @@ import type {
   UserMessage,
 } from "@earendil-works/pi-ai";
 import {
+  automaticCompactionThresholdFor,
   contextBudgetFor,
   contextBudgetLimitsFor,
   retainedUserMessageBudget,
@@ -44,6 +44,11 @@ import {
   type ContextBudgetModel,
   type ContextBudgetModelInput,
 } from "./context-budget.js";
+import {
+  estimateOutputCapInputTokens,
+  type OutputCapContext,
+  type OutputCapReplayTarget,
+} from "./output-cap.js";
 import {
   COMPACTION_SUMMARY_RETRY_POLICY,
   estimateSummaryPromptTokens,
@@ -132,16 +137,21 @@ export function delegateSummaryModels(
 }
 
 /**
- * Decide the context for a delegate's next provider request. Below the hard
- * limit nothing changes; at or above it the run compacts synchronously, then
- * degrades, and only then reports the overflow its caller turns into
- * `SUBAGENT_CONTEXT_OVERFLOW`.
+ * Decide the context for a delegate's next provider request. Below the shared
+ * 90% automatic trigger nothing changes; at or above it the run compacts
+ * synchronously, then degrades, and only then reports the hard-limit overflow
+ * its caller turns into `SUBAGENT_CONTEXT_OVERFLOW`.
  */
 export async function prepareDelegateTurnContext(input: {
   /** The delegate agent's current in-memory messages. */
   messages: AgentMessage[];
-  /** The model this run resolved, per-definition `maxTokens` included. */
+  /** The model whose resolved output cap defines this request's hard limit. */
   model: Model<Api>;
+  /** New text the next provider request will append after any checkpoint. */
+  additionalMessages?: AgentMessage[];
+  /** Provider-visible prompt/tool overhead, separate from transcript rows. */
+  systemPrompt?: string;
+  tools?: unknown[];
   /** The delegated instruction, kept verbatim through degradation. */
   taskBrief: string;
   retentionMode: DelegateRetentionMode;
@@ -149,13 +159,35 @@ export async function prepareDelegateTurnContext(input: {
   summaryModels: () => Models;
   thinkingLevel?: ThinkingLevel;
   signal: AbortSignal;
+  /** False when `Agent.prompt(taskBrief)` will append the task after preflight. */
+  retainTaskBriefOnDegradation?: boolean;
 }): Promise<DelegateTurnUpdate> {
-  const budget = contextBudgetFor(input.model, input.messages);
-  if (budget.tokens < budget.hardLimit) return { kind: "unchanged" };
+  const additionalMessages = input.additionalMessages ?? [];
+  const budget = delegateContextBudgetFor(
+    input.model,
+    input.messages,
+    additionalMessages,
+    input.systemPrompt,
+    input.tools,
+  );
+  if (budget.tokens < automaticCompactionThresholdFor(budget)) {
+    return { kind: "unchanged" };
+  }
+  // With no history there is nothing to compact; if the complete next request
+  // still fits the hard budget, do not manufacture a lossy checkpoint.
+  if (input.messages.length === 0 && budget.tokens < budget.hardLimit) {
+    return { kind: "unchanged" };
+  }
 
   const compacted = await compactDelegateContext(input, budget);
   if (compacted) {
-    const fit = contextBudgetFor(input.model, compacted.messages);
+    const fit = delegateContextBudgetFor(
+      input.model,
+      compacted.messages,
+      additionalMessages,
+      input.systemPrompt,
+      input.tools,
+    );
     if (fit.tokens < fit.hardLimit) {
       return { kind: "compacted", ...compacted };
     }
@@ -165,11 +197,62 @@ export async function prepareDelegateTurnContext(input: {
     input.messages,
     input.taskBrief,
     input.model,
+    {
+      systemPrompt: input.systemPrompt,
+      tools: input.tools,
+      additionalMessages,
+      includeTaskBrief: input.retainTaskBriefOnDegradation !== false,
+    },
   );
   if (degraded) {
-    return { kind: "degraded", messages: degraded, tokensBefore: budget.tokens };
+    const fit = delegateContextBudgetFor(
+      input.model,
+      degraded,
+      additionalMessages,
+      input.systemPrompt,
+      input.tools,
+    );
+    if (fit.tokens < fit.hardLimit) {
+      return { kind: "degraded", messages: degraded, tokensBefore: budget.tokens };
+    }
   }
   return { kind: "overflow", tokens: budget.tokens, hardLimit: budget.hardLimit };
+}
+
+function outputCapContextMessages(
+  messages: AgentMessage[],
+): OutputCapContext["messages"] {
+  return messages.filter(
+    (message): message is Extract<AgentMessage, { content: unknown }> =>
+      "content" in message,
+  );
+}
+
+function outputCapReplayTarget(
+  model: ContextBudgetModelInput,
+): OutputCapReplayTarget | undefined {
+  if (!("api" in model)) return undefined;
+  return { api: model.api, provider: model.provider, id: model.id };
+}
+
+function delegateContextBudgetFor(
+  model: Model<Api>,
+  messages: AgentMessage[],
+  additionalMessages: AgentMessage[] = [],
+  systemPrompt?: string,
+  tools?: unknown[],
+): ContextBudget {
+  const requestMessages = [...messages, ...additionalMessages];
+  const estimate = contextBudgetFor(model, requestMessages);
+  const requestTokens = estimateOutputCapInputTokens(
+    {
+      messages: outputCapContextMessages(requestMessages),
+      ...(systemPrompt !== undefined ? { systemPrompt } : {}),
+      ...(tools !== undefined ? { tools } : {}),
+    },
+    outputCapReplayTarget(model),
+  );
+  return { ...estimate, tokens: Math.max(estimate.tokens, requestTokens) };
 }
 
 /**
@@ -279,29 +362,58 @@ async function compactDelegateContext(
  * the request that produced it, which describes the pre-degradation context
  * and would condemn every rebuilt context to still look oversized.
  */
+export type DelegateDegradationOptions = {
+  systemPrompt?: string;
+  tools?: unknown[];
+  additionalMessages?: AgentMessage[];
+  /** Omit a task brief that will be appended through `Agent.prompt()` next. */
+  includeTaskBrief?: boolean;
+};
+
 export function degradedDelegateMessages(
   messages: AgentMessage[],
   taskBrief: string,
   model: ContextBudgetModelInput,
+  options: DelegateDegradationOptions = {},
 ): AgentMessage[] | undefined {
   const limits = contextBudgetLimitsFor(model);
   const briefIndex = messages.findIndex((message) => message.role === "user");
-  const brief: UserMessage =
+  const brief: UserMessage | undefined =
     briefIndex >= 0
       ? (messages[briefIndex] as UserMessage)
-      : { role: "user", content: taskBrief, timestamp: Date.now() };
-  const target = "api" in model ? model : undefined;
-  const briefTokens = estimateTokens(brief, target);
-  if (briefTokens >= limits.hardLimit) return undefined;
+      : options.includeTaskBrief === false
+        ? undefined
+        : { role: "user", content: taskBrief, timestamp: Date.now() };
+  const requestOverhead = estimateOutputCapInputTokens(
+    {
+      messages: outputCapContextMessages(options.additionalMessages ?? []),
+      ...(options.systemPrompt !== undefined
+        ? { systemPrompt: options.systemPrompt }
+        : {}),
+      ...(options.tools !== undefined ? { tools: options.tools } : {}),
+    },
+    outputCapReplayTarget(model),
+  );
+  const briefTokens = brief
+    ? estimateOutputCapInputTokens(
+        { messages: outputCapContextMessages([brief]) },
+        outputCapReplayTarget(model),
+      )
+    : 0;
+  const hardLimit = limits.hardLimit;
+  let tokens = briefTokens + requestOverhead;
+  if (tokens >= hardLimit) return undefined;
 
-  const pool = messages.slice(briefIndex + 1);
+  const pool = messages.slice(briefIndex >= 0 ? briefIndex + 1 : 0);
   const suffix: AgentMessage[] = [];
-  let tokens = briefTokens;
   for (let index = pool.length - 1; index >= 0; index -= 1) {
     const message = pool[index];
     if (!isDelegateContextMessage(message)) continue;
-    const cost = estimateTokens(message, target);
-    if (tokens + cost >= limits.hardLimit) break;
+    const cost = estimateOutputCapInputTokens(
+      { messages: [message] },
+      outputCapReplayTarget(model),
+    );
+    if (tokens + cost >= hardLimit) break;
     suffix.unshift(message);
     tokens += cost;
   }
@@ -310,7 +422,7 @@ export function degradedDelegateMessages(
   // leading results keeps the pair rule intact: no result reaches a provider
   // without its call, and no call without its results.
   while (suffix[0]?.role === "toolResult") suffix.shift();
-  return [brief, ...suffix];
+  return [...(brief ? [brief] : []), ...suffix];
 }
 
 /**
@@ -422,12 +534,16 @@ function isCompactionSummary(
 }
 
 /** Failed, aborted, and empty assistants are transcript rows, not context. */
-function isDelegateContextMessage(message: AgentMessage): boolean {
+/** Failed, aborted, and empty assistants are transcript rows, not context. */
+function isDelegateContextMessage(
+  message: AgentMessage,
+): message is Extract<AgentMessage, { content: unknown }> {
   return (
-    message.role !== "assistant" ||
-    (message.stopReason !== "error" &&
-      message.stopReason !== "aborted" &&
-      message.stopReason !== "deferred" &&
-      message.content.length > 0)
+    "content" in message &&
+    (message.role !== "assistant" ||
+      (message.stopReason !== "error" &&
+        message.stopReason !== "aborted" &&
+        message.stopReason !== "deferred" &&
+        message.content.length > 0))
   );
 }

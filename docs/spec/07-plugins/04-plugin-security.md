@@ -350,12 +350,12 @@ manifest did not name:
 - `transport: "stdio"` spawns a local executable (`mcp.server.local`). The
   `command` must be a bare PATH name or a plugin-relative path; absolute paths
   are refused at validation time. The child gets a minimal environment — the
-  declared `env` entries plus one shared allowlist (`child-process-env.ts`):
-  `PATH`, `SystemRoot`, `windir`, `TEMP`, `TMP`, `TMPDIR`, `LANG`, `HOME`,
-  `USER`, `USERPROFILE`. The identity variables are there because the child is
-  third-party code that resolves `~` through `$HOME` rather than calling
-  `os.homedir()` (issue #717); provider keys and other host state still never
-  cross.
+  declared `env` entries plus the shared allowlist (`child-process-env.ts`)
+  and the extra profile/toolchain keys `npx`/`uvx` need (`PATHEXT`, `ComSpec`,
+  `FNM_DIR`, …). Unix PATH is the login-shell PATH (D600). Bare `npx`/`uvx`
+  resolve to real binaries; official Windows Node uses `node.exe` +
+  `npx-cli.js`, and remaining `.cmd` shims start through `cmd.exe` with quoted
+  literal args (D624). Provider keys and other host state still never cross.
 - `transport: "http"` reaches a remote endpoint (`mcp.server.remote`). The `url`
   may use `http` or `https`; non-loopback HTTP is unencrypted and should only be
   used on a trusted network. Plugin endpoints must also be covered by
@@ -366,13 +366,18 @@ manifest did not name:
   literal secret in the manifest is a review smell, not a supported pattern
   (D018).
 - Connection budget: 10s to complete `initialize`, 100s per `tools/call`, 4MB
-  per stdio line. `tools/list` is followed to its last page under the per-server
+  per stdio line. Remote HTTP requests use the budget of the operation they
+  carry, so a successful handshake does not impose its 10s limit on a later
+  tool call. `tools/list` is followed to its last page under the per-server
   guards of §8.1 — 2048 tools, 100 pages, a cursor that repeats or is malformed,
   and 30s for the whole traversal — and a server that breaks one is refused
   rather than contributing a prefix of its catalog, because MCP tools reach the
   deferred on-demand entries behind `ToolSearch`, not as an always-present list.
   Servers are connected lazily and torn down when the plugin unloads or is
   disabled.
+  Stopping the calling session cancels that session's in-flight MCP request and
+  sends `notifications/cancelled` to the server. A shared server connection and
+  calls owned by other sessions remain active.
 
 ## 8.2 Desktop control and device access
 

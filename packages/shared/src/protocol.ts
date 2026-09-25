@@ -2,7 +2,7 @@ export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
 export const APP_ID = "net.aiuo.pi-desktop";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.15.6";
+export const APP_VERSION = "0.15.7-beta.1";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -80,6 +80,17 @@ export const IPC = {
     speechTranscribe: "pi-desktop/speech/transcribe",
     speechSynthesize: "pi-desktop/speech/synthesize",
     speechGetStatus: "pi-desktop/speech/getStatus",
+    voiceStart: "pi-desktop/voice/start",
+    voiceStop: "pi-desktop/voice/stop",
+    voiceCancel: "pi-desktop/voice/cancel",
+    voiceGetState: "pi-desktop/voice/getState",
+    voiceGetDevices: "pi-desktop/voice/getDevices",
+    voiceGetModels: "pi-desktop/voice/getModels",
+    voiceDownloadModel: "pi-desktop/voice/downloadModel",
+    voiceDeleteModel: "pi-desktop/voice/deleteModel",
+    voiceUpdateSettings: "pi-desktop/voice/updateSettings",
+    voiceCheckPermission: "pi-desktop/voice/checkPermission",
+    voiceRequestPermission: "pi-desktop/voice/requestPermission",
     agentCompact: "pi-desktop/agent/compact",
     agentAbort: "pi-desktop/agent/abort",
     agentStop: "pi-desktop/agent/stop",
@@ -222,6 +233,8 @@ export const IPC = {
     /** A renderer slot component asking its own plugin for one JSON answer. */
     pluginRendererCall: "pi-desktop/plugin/rendererCall",
     /** Plugin-contributed agent extensions (D387/D388, ADR 0214). */
+    piSkillDiscover: "pi-desktop/plugin/discoverPiSkills",
+    piSkillImport: "pi-desktop/plugin/importPiSkills",
     pluginImportExtension: "pi-desktop/plugin/importExtension",
     extensionsCommandRun: "pi-desktop/extensions/commands/run",
     extensionsUiRespond: "pi-desktop/extensions/ui/respond",
@@ -375,6 +388,8 @@ export const IPC = {
     providersOauth: "pi-desktop/providers/oauth/event",
     mcpOauth: "pi-desktop/mcp/oauth/event",
     updatesState: "pi-desktop/updates/event/state",
+    voiceStateChanged: "pi-desktop/voice/event/stateChanged",
+    voiceModelProgress: "pi-desktop/voice/event/modelProgress",
   },
 } as const;
 

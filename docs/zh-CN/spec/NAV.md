@@ -47,6 +47,7 @@
 - [20-speech.md](/zh-CN/spec/03-runtime/20-speech)
 - [21-image-generation.md](/zh-CN/spec/03-runtime/21-image-generation)
 - [22-config-sync.md](/zh-CN/spec/03-runtime/22-config-sync)
+- [svg-attachment-input.md](/zh-CN/spec/03-runtime/svg-attachment-input)
 
 ## 4. 用户体验
 - [README.md](/zh-CN/spec/04-ux/README)

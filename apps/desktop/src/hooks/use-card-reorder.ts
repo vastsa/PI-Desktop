@@ -22,15 +22,20 @@ export function useCardReorder(
   const latest = useRef({ busy, move });
   latest.current = { busy, move };
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const suppressClick = useRef(false);
+  const suppressedClickPointerIds = useRef(new Set<number>());
   const disabled = busy || items.length < 2;
 
   const cancel = () => {
-    drag.current?.cleanup();
+    const current = drag.current;
+    if (current) suppressedClickPointerIds.current.delete(current.pointerId);
+    current?.cleanup();
     drag.current = null;
     setDraggingId(null);
   };
-  useEffect(() => () => { drag.current?.cleanup(); }, []);
+  useEffect(() => () => {
+    drag.current?.cleanup();
+    suppressedClickPointerIds.current.clear();
+  }, []);
   useEffect(() => {
     const current = drag.current;
     if (current && (busy || current.rows.length !== items.length || current.rows.some((row, index) => row.id !== items[index]?.id))) cancel();
@@ -48,14 +53,21 @@ export function useCardReorder(
     },
     onDragStart(event) { event.preventDefault(); },
     onClickCapture(event) {
-      if (suppressClick.current) {
-        suppressClick.current = false;
-        event.preventDefault();
-        event.stopPropagation();
+      if (event.detail === 0) return;
+      const nativeEvent = event.nativeEvent;
+      if (
+        !("pointerId" in nativeEvent) ||
+        typeof nativeEvent.pointerId !== "number" ||
+        !suppressedClickPointerIds.current.has(nativeEvent.pointerId)
+      ) {
+        return;
       }
+      suppressedClickPointerIds.current.delete(nativeEvent.pointerId);
+      event.preventDefault();
+      event.stopPropagation();
     },
     onPointerDown(event) {
-      suppressClick.current = false;
+      suppressedClickPointerIds.current.delete(event.pointerId);
       if (disabled || event.button !== 0 || drag.current) return;
       const target = event.target as Element;
       if (target.closest("button, input, select, textarea, a, [contenteditable=true]")) return;
@@ -146,7 +158,6 @@ export function useCardReorder(
           source.node.style.willChange = "transform";
           setDraggingId(id);
         }
-        suppressClick.current = true;
         next.preventDefault();
         schedule();
       };
@@ -157,8 +168,12 @@ export function useCardReorder(
         update();
         const destination = current.rows[current.index];
         const shouldMove = current.armed && current.index !== sourceIndex;
-        cancel();
-        if (shouldMove && !latest.current.busy) {
+        const shouldSuppressClick = current.armed;
+        current.cleanup();
+        drag.current = null;
+        setDraggingId(null);
+        if (shouldSuppressClick) suppressedClickPointerIds.current.add(current.pointerId);
+        if (shouldMove && destination && !latest.current.busy) {
           latest.current.move(id, destination.id, current.index > sourceIndex ? "after" : "before");
         }
       };

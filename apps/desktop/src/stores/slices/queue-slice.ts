@@ -199,10 +199,26 @@ export function createQueueSlice({
         });
     },
 
-    removeQueuedPrompt: (promptId) => {
+    removeQueuedPrompt: async (promptId) => {
       const sessionId = get().activeSessionId;
       if (!sessionId) return;
-      detachQueuedPrompt(sessionId, promptId);
+      const item = queuedPromptForSession(get().queuedPrompts, sessionId, promptId);
+      if (!item || isPendingQueuedPrompt(item)) return;
+      try {
+        // The Host arbitrates cancellation against delivery. Keep the row
+        // visible until it confirms that this input will not be executed.
+        await api.removeQueuedPrompt(promptId);
+        set((state) => ({
+          queuedPrompts: removeQueuedPrompt(state.queuedPrompts, sessionId, promptId),
+        }));
+        queuedDrafts.delete(promptId);
+      } catch (error) {
+        const conflict = error instanceof Error && "code" in error && error.code === "CONFLICT";
+        get().showToast(conflict ? i18n.t("chat.queuedPromptAlreadyStarted") :
+          error instanceof Error ? error.message : String(error), { variant: "error" });
+      } finally {
+        await get().refreshQueuedPrompts(sessionId);
+      }
     },
 
     /** Return one waiting row to the composer as an editable draft. */
@@ -281,15 +297,28 @@ export function createQueueSlice({
           promptId,
         ),
       }));
+      let prioritized = false;
       try {
         await api.prioritizeQueuedPrompt(promptId);
+        prioritized = true;
         // Send now keeps its graceful stop: the active turn reaches its
         // boundary before the promoted row starts.
-        if (get().runningSessions[sessionId]) await api.stop(sessionId);
+        if (get().runningSessions[sessionId] &&
+            queuedPromptForSession(get().queuedPrompts, sessionId, promptId)) {
+          const result = await api.stop(sessionId);
+          if (!result.requested) {
+            await get().refreshQueuedPrompts(sessionId);
+            if (queuedPromptForSession(get().queuedPrompts, sessionId, promptId)) {
+              get().showToast(i18n.t("chat.queuedPromptStopFailed"), { variant: "info" });
+            }
+          }
+        }
       } catch (error) {
-        void get().refreshQueuedPrompts(sessionId);
+        await get().refreshQueuedPrompts(sessionId);
+        const detail = error instanceof Error ? error.message : String(error);
+        const stillQueued = queuedPromptForSession(get().queuedPrompts, sessionId, promptId);
         get().showToast(
-          error instanceof Error ? error.message : String(error),
+          prioritized && stillQueued ? `${i18n.t("chat.queuedPromptStopFailed")} ${detail}` : detail,
           { variant: "error" },
         );
       }

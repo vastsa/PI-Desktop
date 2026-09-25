@@ -365,6 +365,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D345 | Traditional Chinese shell locale | **Amend D314 / ADR 0160: ship `zh-TW` as an independent full shell catalog with native name 繁體中文. `zh-TW`, `zh-Hant`, `zh-HK`, and `zh-MO` resolve to the Traditional Chinese shell; generic `zh` and Simplified Chinese regions continue to resolve to `zh-CN`. Persisted `AppSettings.language` includes `zh-TW`, Electron packages both `zh-TW` and `zh_TW` locale directories, and the in-app changelog includes a matching `zh-TW` catalog so release notes follow the active Traditional Chinese shell. No host protocol or storage schema change.** | Traditional Chinese users need an independent shell and release-note language; reusing the Simplified Chinese catalog makes Auto detection and visible terminology incorrect. |
 | D346 | P0 international shell locales | **Amend D314 / ADR 0160 / ADR 0182: ship complete `de`, `es`, and `fr` shell catalogs with native names Deutsch, Español, and Français. `de-*`, `es-*`, and `fr-*` resolve to their shipped base catalogs; persisted `AppSettings.language` accepts the three ids; matching changelog catalogs keep release notes in the active locale. No host protocol, storage schema, or IPC version change.** | Spanish, French, and German provide the highest-value missing P0 international coverage while the registry and searchable picker already scale to additional locales. |
 | D349 | Korean shell locale | **Amend D314 / ADR 0160 / ADR 0183: ship a complete `ko` shell catalog with native name 한국어 and English name Korean. `ko` and `ko-*` resolve to the Korean catalog; persisted `AppSettings.language` accepts `ko`; Electron packages the Korean Chromium locale; and a matching Korean changelog keeps release notes in the active locale. No host protocol, storage schema, or IPC version change.** | Korean users need a distinct complete shell and release-note language, while one base catalog preserves the existing searchable locale contract for regional Korean variants. |
+| D605 | Brazilian Portuguese (pt-BR) shell locale | **Amend D314 / ADR 0160 / ADR 0183 / ADR 0185: ship a complete `pt-BR` shell catalog with native name Português (Brasil) and English name Portuguese (Brazil). `pt-BR`, `pt_BR`, and regional `pt-*` resolve to the Brazilian Portuguese catalog; persisted `AppSettings.language` accepts `pt-BR`; Electron packages `pt-BR` and `pt_BR` Chromium locales; and a matching Brazilian Portuguese changelog keeps release notes in the active locale. No host protocol, storage schema, or IPC version change. See ADR 0306.** | Brazilian Portuguese users need a distinct complete shell and release-note language matching the existing searchable locale registry and packaging conventions. |
 | D350 | Focus-aware native task notifications | **Amend D117 / ADR 0107: `notification/showNative` carries `kind` as `task` or `interactive`. Omitted or unknown values default to `task`. Task banners are suppressed whenever the main window is visible and focused, including a focused background session. Interactive prompts are suppressed only for the exact visible focused session. Interactive prompts never create a durable task inbox row. Plugin notifications stay on their permission-gated path. No host protocol or storage schema change. See ADR 0187 and E2E-065 / E2E-065a.** | Task completions and interactive asks share one native channel but need different focus rules. The field is `kind`; a colliding `source` name is not part of the contract. |
 | D358 | Show provider retry causes in the active-turn status | **Amend ADR 0175: `AgentActivity.retrying` may carry bounded, already-redacted error details. The compact retry row stays at rest; hover or keyboard focus reveals the localized summary, stable code/status, and provider message. Intermediate retries never become transcript error rows. See ADR 0196 and US-UI-60d.** | Users need the current retry cause without duplicating the final assistant error. |
 | D359 | Summarize first-turn session titles with a main-owned one-shot | **Keep the first-prompt fallback synchronous. After `agent_end`, the renderer calls allowlisted `session/summarizeTitle`. Electron resolves the session model and runs a thinking-disabled one-shot; a valid result persists through `session.rename`. Automatic replacement refuses a persisted `manualTitle` and any title that is neither a default nor the first-prompt fallback. No host schema change. See ADR 0186 and E2E-021a.** | A truncated first prompt is a poor sidebar label, but title generation must not block the turn or expose credentials to the renderer. |
@@ -1101,9 +1102,11 @@ section mirrors only marketplace/catalog items still blocking nothing.
   is not trustworthy.
 - `env` and `headers` resolve only from the plugin's own settings via
   `{ "setting": "<key>" }`; the host environment is never passed through (D018).
-  A stdio child gets `PATH`, temp/locale vars, and the declared values — nothing
-  else. `command` must be a bare PATH name or plugin-relative; `url` must be
-  `https` unless the host is loopback.
+  A stdio child gets `PATH`, temp/locale, profile/toolchain keys (`HOME`,
+  `USERPROFILE`, `PATHEXT`, `ComSpec`, `FNM_DIR`, …), and the declared values —
+  not provider secrets. Bare `npx`/`uvx` resolve to real binaries (official
+  Node, fnm, nvm, Volta). `command` must be a bare PATH name or plugin-relative;
+  `url` must be `https` unless the host is loopback.
 - Both transports ship rather than stdio alone: a hosted MCP endpoint is common
   enough that stdio-only would have pushed plugins to wrap it in a local shim,
   which is strictly worse — an extra process and an unreviewable proxy.
@@ -7006,3 +7009,61 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   unmatched free-form IDs stay generic unknown, while published capabilities
   and explicit binding overrides retain their existing precedence. See
   `03-runtime/13-model-catalog-and-selection.md` §11.3.
+
+## 2026-09-23 — Compact before the hard request budget (D623, issue #970)
+
+- Automatic session and subagent compaction now starts at 90% of the derived
+  `hardLimit`, inline at the next request boundary. New user prompts are
+  included in the preflight estimate; tool results are measured before the
+  follow-up provider request.
+- `hardLimit` remains the final safety boundary. A failed summary below it may
+  proceed without a checkpoint; a context at or above it never reaches the
+  provider. This trades some additional summaries for fewer provider overflows.
+- The runtime remains inline-only: no background summary, user setting,
+  protocol change, or transcript/storage rewrite. See ADR 0064,
+  `03-runtime/02-agent-runtime.md`, and E2E-164.
+
+## 2026-09-24 — Windows stdio MCP resolves official Node and fnm npx (D624, issue #789)
+
+- Amend D176 / D600 / ADR 0038. D600 probes the login-shell PATH on Unix and
+  explicitly keeps Windows on the inherited PATH. That does not start
+  `npx.cmd`: `spawn({ shell: false })` returns ENOENT for `npx` and EINVAL
+  for the `.cmd` shim, even when official Node is on PATH (issue #789).
+- Electron main now resolves bare `npx`/`npm`/`node`/`uvx` before spawn:
+  PATH `node.exe` from an official install wins, then fnm/nvm-windows/Volta.
+  When `npx-cli.js` sits next to `node.exe`, the child is `node` plus that
+  script — no cmd.exe. Remaining `.cmd` files go through
+  `cmd.exe /d /s /c` with quoted literal arguments. PATHEXT is searched
+  before an extensionless Git-Bash `npx` shim.
+- Secrets still do not cross (D018). Command names stay bare. See ADR 0038
+  and `07-plugins/04-plugin-security.md`.
+
+## 2026-09-24 — The transcript occludes itself instead of the dock painting a band (D624, issue #728)
+
+- The opaque `--ds-bg-primary` band added for issue #728 kept transcript rows
+  from showing below the Composer, but it also covered whatever a contributed
+  theme had drawn on the conversation pane. A theme that fills `.main-pane` or
+  `.thread-scroll` (the theme studio's `main` / `thread` regions) got a
+  hard-edged rectangle of the built-in workspace colour across the bottom of the
+  chat. No theme region could reach that band: the only lever was
+  `--ds-bg-primary` itself, which every other primary surface follows.
+- `.composer-dock-docked` now paints nothing, and `.thread-scroll` masks its own
+  content out with `linear-gradient(to bottom, #000 calc(100% -
+  var(--composer-dock-height) - 16px), transparent calc(100% -
+  var(--composer-dock-height) + 2px))`. The gradient resolves against the
+  scrollport's own box, so it stays anchored to the pane while rows move through
+  it. `- 16px` is exactly the trailing reserve `.thread-content` adds below the
+  measured Composer height, so a transcript pinned to its end keeps its last row
+  fully opaque and only the rows crossing the boundary fade.
+- The mask belongs on the scroller rather than on `.thread-wrap`: the minimap
+  rail, the jump-to-latest button, the settle veil, and the navigation status
+  are `.thread-wrap` children that must stay fully painted. The dock's own
+  stacked plates (`.asktool-card`, `.plan-approval-bar`, queued prompts, the
+  shell) were already opaque and are siblings of `.thread-wrap`, so they are
+  unaffected. The scrollport's last 18px of scrollbar now fades instead of being
+  covered by the band.
+- Renderer CSS and the theme surface regression change only. The theme surface
+  probe pins the dock to fully transparent and asserts the mask tracks
+  `--composer-dock-height`. There is no scroll state, protocol, persistence,
+  theme schema, or permission change. See `04-ux/08-component-spec.md` and
+  E2E-CHAT-opaque-floating-decision-and-retry-surfaces.

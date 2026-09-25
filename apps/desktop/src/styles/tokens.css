@@ -145,6 +145,7 @@
   --ds-info: var(--gray-300);
   --ds-purple: #c27aff;
   --ds-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --ds-shadow-model-menu: var(--ds-shadow-dialog);
   /* Codex --elevation-prominent (same stroke+lift in dark and light) */
   --ds-elevation-stroke: 0 0 0 0.5px color-mix(in oklab, var(--gray-0) 12%, transparent);
   /* D297: the composer lifts by shadow alone; the hairline stroke is gone. */
@@ -281,6 +282,10 @@
   --ds-info: #5d5d5d;
   --ds-purple: #7c3aed;
   --ds-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.12);
+  --ds-shadow-model-menu:
+    0 0 0 0.5px color-mix(in oklab, #1a1c1f 10%, transparent),
+    0 8px 32px rgba(0, 0, 0, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.06);
   --ds-elevation-stroke: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 12%, transparent);
   /* Codex elevation-prominent exact (same dark/light formula). */
   --ds-shadow-composer: 0 3px 7.5px #0000000a, 0 0 20px #0000000d;

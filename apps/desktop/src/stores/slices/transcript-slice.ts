@@ -44,6 +44,7 @@ export function createTranscriptSlice({
   | "compactContext"
   | "retryAssistantMessage"
   | "editUserMessage"
+  | "prepareUserMessageEdit"
   | "retryLastPrompt"
   | "clearError"
   | "activateMessageRevision"
@@ -107,6 +108,14 @@ export function createTranscriptSlice({
       if (userIndex < 0) return;
       const root = state.messages[userIndex];
       await get().editUserMessage(root.id, root.content, root.attachments);
+    },
+
+    prepareUserMessageEdit: async (messageId, signal) => {
+      const prepared = await prepareTranscriptAction({ get, set }, runtime, messageId, signal);
+      const state = get();
+      if (!prepared || state.activeSessionId !== prepared.activeSessionId || state.isRunning) return null;
+      const message = state.messages.find((candidate) => candidate.id === messageId);
+      return message?.role === "user" && !message.sessionMessage ? message : null;
     },
 
     editUserMessage: async (messageId, content, attachments) => {

@@ -1,11 +1,23 @@
 # Unreleased changes
 
+- Skills now discovers installed pi CLI npm skill packages and offers explicit
+  import with a source and executable-extension confirmation. Imported packages
+  remain managed in Plugins; discovery never enables code automatically.
+
+- Subagent topology cards and their live process rows now follow the main
+  conversation's responsive width behavior: long descriptions, paths,
+  commands, and summaries wrap inside the dock instead of requiring repeated
+  divider dragging to read them.
+
 - Resuming a subagent no longer selects another definition's private model
   binding. On-demand delegation permissions are checked again on the next parent
   turn, so revoking automatic delegation takes effect without restarting the runtime.
 - Trusted extension cancellation now retires SDK commands, tool updates,
   subprocesses and queued or visible prompts. Late hook payload mutations are
   isolated; legitimate long commands and tools retain their runtime budget.
+
+- Copy individual Markdown tables, download them as CSV, or expand them for
+  reading without leaving the conversation.
 
 - A stored hosted web-search record that cannot be replayed no longer fails every
   later request in that conversation: the message continues without search replay,

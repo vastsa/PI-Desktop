@@ -43,9 +43,16 @@ pass startup handshake and fail only when the new command is invoked.
   child's existing linear revision store, and activates the edited tail. The
   source transcript, revisions, runtime, and provider-cache state remain
   untouched.
-- Fork is available only while the source is idle. Electron exposes
-  `AGENT_BUSY`; the host retains a persisted running-turn `CONFLICT` guard that
-  Electron normalizes at the IPC boundary.
+- Whole-session fork remains idle-only. A Desktop message-scoped fork may
+  copy a completed assistant prefix while a later turn runs (issue #837).
+  Under the same host RPC lock as append/publication, the host checks that no
+  indexed message at or before the anchor belongs to a running turn. It rejects
+  non-assistant, streaming/error, and live-turn anchors with `CONFLICT`, mapped
+  to `AGENT_BUSY` by Electron. Native Pi ownership rules remain unchanged.
+  The renderer sends only the anchor id, without hydrating or replacing the
+  source transcript. This preserves live updates and avoids stopping the parent.
+  Disabling the button would leave the requested concurrent workflow unavailable;
+  removing all busy guards would allow copying a partially executed tool loop.
 - A handled file or index failure removes the child transcript and copied
   inputs and leaves no visible child. Process crashes continue to follow the transcript store's
   existing orphan-file recovery policy.

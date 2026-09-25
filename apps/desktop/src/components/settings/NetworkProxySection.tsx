@@ -14,7 +14,7 @@ import {
   validateNetworkProxy,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
-import { Button, Input, cx } from "../ui";
+import { Button, Input, SegmentedControl, SettingsToggle, cx } from "../ui";
 import { SettingsRow } from "../../features/settings/primitives";
 
 const MODES: NetworkProxyMode[] = ["system", "direct", "custom"];
@@ -169,27 +169,15 @@ export function NetworkProxySection({
           title={t("settings.proxy")}
           description={t("settings.proxyDesc")}
         >
-          <div
-            className="settings-segment"
-            role="radiogroup"
-            aria-label={t("settings.proxy")}
-          >
-            {MODES.map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                role="radio"
-                aria-checked={saved.mode === mode}
-                className={cx(
-                  "settings-segment-item",
-                  saved.mode === mode && "active",
-                )}
-                onClick={() => chooseMode(mode)}
-              >
-                {t(`settings.proxy${mode[0]!.toUpperCase()}${mode.slice(1)}`)}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            value={saved.mode}
+            onChange={(mode) => chooseMode(mode)}
+            options={MODES.map((mode) => ({
+              value: mode,
+              label: t(`settings.proxy${mode[0]!.toUpperCase()}${mode.slice(1)}`),
+            }))}
+            label={t("settings.proxy")}
+          />
         </SettingsRow>
         <SettingsRow
           title={t("settings.networkRelaxedMode")}
@@ -199,18 +187,11 @@ export function NetworkProxySection({
               : t("settings.networkRelaxedModeStrictDesc")
           }
         >
-          <button
-            type="button"
-            className={cx("settings-toggle", relaxed && "on")}
-            role="switch"
-            aria-checked={relaxed}
-            aria-label={t("settings.networkRelaxedMode")}
-            onClick={() =>
-              void persistNetworkPolicy(relaxed ? "strict" : "relaxed")
-            }
-          >
-            <span className="settings-toggle-thumb" />
-          </button>
+          <SettingsToggle
+            checked={relaxed}
+            label={t("settings.networkRelaxedMode")}
+            onChange={() => void persistNetworkPolicy(relaxed ? "strict" : "relaxed")}
+          />
         </SettingsRow>
 
         {saved.mode === "custom" ? (

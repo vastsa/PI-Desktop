@@ -265,6 +265,9 @@ Queued turns and their idempotency keys are persisted by Rust host-core
 (D375), so a Host restart restores the queue in order. A restored queue is
 held; release resumes on the first controller attach, local or remote, so a
 reboot never starts work unattended.
+Runtime events received before a queued start is acknowledged belong to the
+dequeued turn being started. They must not change the next waiting entry's
+status or prevent that entry from being canceled.
 `canceled` is the terminal state of a queued turn that never started;
 `interrupted` is the terminal state of a started turn that was stopped or
 aborted. Terminal turns are immutable.

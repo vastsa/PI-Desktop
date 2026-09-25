@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
 
+import { genericModelConfig } from "@pi-desktop/agent-runtime";
 import { ModelsDevCatalog } from "../electron/main/models-dev-catalog.ts";
 
 const runtimeModule = new URL("../electron/main/runtime/provider-catalog.ts", import.meta.url);
@@ -150,4 +151,40 @@ test("a bulk session refresh reuses catalog matches while preserving each sessio
     })));
   }
   assert.equal(modelReads, 0, "session list refreshes must not repeat catalog matching work");
+});
+
+test("full wire IDs isolate configured bindings while catalog aliases remain metadata-only", async () => {
+  const { runtime } = await fixtureRuntime();
+  const modelId = "proxy/catalog-model";
+  const binding = (id, contextWindow, thinkingLevels) => ({
+    id, contextWindow, contextWindowSource: "user", maxTokens: 4_096, thinkingLevels,
+  });
+  const provider = {
+    id: "provider-row", name: "Example", vendorKey: "example",
+    baseUrl: "https://models.example/v1",
+    models: [
+      binding("catalog-model", 16_000, ["off"]),
+      binding("PROXY/CATALOG-MODEL ", 32_000, ["high"]),
+    ],
+  };
+  const catalogConfig = genericModelConfig(modelId, provider.baseUrl);
+  assert.equal(runtime.bindingForModel(provider, ` ${modelId} `), provider.models[1]);
+  assert.equal(runtime.modelsDevModelFor(provider, modelId)?.modelId, "catalog-model");
+  const selected = runtime.effectiveSubagentModelConfig(provider, modelId, catalogConfig);
+  assert.equal(selected.modelConfig.name, modelId, "request wire ID is not rewritten");
+  assert.equal(selected.modelConfig.contextWindow, 32_000);
+  assert.deepEqual(selected.capabilities.supportedThinkingLevels, ["high"]);
+  const session = { providerId: provider.id, modelId };
+  assert.deepEqual(runtime.enrichSession(session, [provider]).supportedThinkingLevels, ["high"]);
+  assert.equal(runtime.enrichProvider(provider, modelId).contextWindow, 32_000);
+  assert.equal(runtime.enrichProvider(provider, "catalog-model").contextWindow, 16_000);
+  assert.equal(session.modelId, modelId);
+
+  provider.models = [provider.models[0]];
+  assert.equal(runtime.bindingForModel(provider, modelId), undefined);
+  assert.equal(runtime.effectiveSubagentModelConfig(provider, modelId, catalogConfig).modelConfig.contextWindow, 128_000);
+  assert.deepEqual(runtime.enrichSession(session, [provider]).supportedThinkingLevels, ["low", "medium", "high"]);
+  assert.equal(runtime.enrichProvider(provider, modelId).contextWindow, 128_000);
+  const otherProvider = { ...provider, id: "other-provider", models: [binding(modelId, 48_000, ["off"])] };
+  assert.deepEqual(runtime.enrichSession(session, [otherProvider, provider]).supportedThinkingLevels, ["low", "medium", "high"]);
 });

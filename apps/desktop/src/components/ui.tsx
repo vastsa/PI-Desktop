@@ -652,14 +652,180 @@ export function Panel({
   return <div className={cx("panel-card", className)}>{children}</div>;
 }
 
+export function SettingsToggle({
+  checked,
+  label,
+  busy,
+  disabled,
+  className,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  busy?: boolean;
+  disabled?: boolean;
+  className?: string;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cx("settings-toggle", checked && "on", busy && "is-busy", className)}
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      aria-busy={busy || undefined}
+      disabled={disabled || busy}
+      onClick={onChange}
+    >
+      <span className="settings-toggle-thumb" />
+    </button>
+  );
+}
+
+export function SegmentedControl<T extends string>({
+  value,
+  onChange,
+  options,
+  label,
+  role = "radiogroup",
+  className,
+  itemClassName,
+  disabled,
+}: {
+  value: T;
+  onChange: (value: T) => void;
+  options: readonly {
+    readonly value: T;
+    readonly label: ReactNode;
+    readonly id?: string;
+    readonly controls?: string;
+  }[];
+  label: string;
+  role?: "group" | "radiogroup" | "tablist";
+  className?: string;
+  itemClassName?: string;
+  disabled?: boolean;
+}) {
+  const itemRole = role === "tablist" ? "tab" : role === "radiogroup" ? "radio" : undefined;
+  return (
+    <div
+      className={cx("settings-segment", className)}
+      role={role}
+      aria-label={label}
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          {...(itemRole === "tab"
+            ? { role: "tab", id: option.id ?? `${label}-tab-${option.value}`, "aria-controls": option.controls, "aria-selected": value === option.value }
+            : itemRole === "radio"
+              ? { role: "radio", "aria-checked": value === option.value }
+              : { "aria-pressed": value === option.value })}
+          className={cx(
+            "settings-segment-item",
+            value === option.value && "active",
+            itemClassName,
+          )}
+          disabled={disabled}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+
+export function Checkbox({
+  label,
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  label: ReactNode;
+}) {
+  return (
+    <label className={cx("ui-checkbox", className)}>
+      <input type="checkbox" {...props} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+
+export function CheckboxGroup<T extends string>({
+  values,
+  onChange,
+  options,
+  label,
+  disabled,
+  className,
+  itemClassName,
+  minSelected = 0,
+}: {
+  /** Currently selected values. */
+  values: readonly T[];
+  /** Called with the full updated selection. */
+  onChange: (values: T[]) => void;
+  options: readonly { readonly value: T; readonly label: ReactNode }[];
+  /** Accessible group label. */
+  label: string;
+  disabled?: boolean;
+  className?: string;
+  itemClassName?: string;
+  /** Prevent unchecking below this count (default 0 = no minimum). */
+  minSelected?: number;
+}) {
+  const toggle = (value: T) => {
+    const on = !values.includes(value);
+    const next = on
+      ? [...values, value]
+      : values.filter((v) => v !== value);
+    if (next.length < minSelected) return;
+    onChange(next);
+  };
+
+  return (
+    <div
+      className={cx("settings-segment", className)}
+      role="group"
+      aria-label={label}
+    >
+      {options.map((option) => {
+        const selected = values.includes(option.value);
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={selected}
+            className={cx(
+              "settings-segment-item",
+              selected && "active",
+              itemClassName,
+            )}
+            disabled={disabled}
+            onClick={() => toggle(option.value)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Badge({
   children,
   tone = "neutral",
   className,
+  style,
 }: {
   children: ReactNode;
   tone?: "neutral" | "success" | "error" | "warning";
   className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
     <span
@@ -671,6 +837,7 @@ export function Badge({
         tone === "warning" && "badge-warning",
         className,
       )}
+      style={style}
     >
       {children}
     </span>

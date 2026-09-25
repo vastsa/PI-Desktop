@@ -1,10 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { catalogs, flattenCatalog } from "@pi-desktop/i18n";
-import { IPC } from "@pi-desktop/shared";
+import { bindingForCustomModel, IPC } from "@pi-desktop/shared";
 import { ExtensionPromptHost } from "../../src/components/ExtensionPromptDialog";
 import { SessionRenameDialog } from "../../src/components/SessionRenameDialog";
 import { ProjectInstructionsDialog } from "../../src/components/ProjectInstructionsDialog";
@@ -15,6 +15,8 @@ import { OAuthLoginDialog } from "../../src/components/settings/OAuthLoginDialog
 import { PluginDialogs } from "../../src/features/plugins/PluginDialogs";
 import { PluginSettingsSheet } from "../../src/components/plugins/PluginSettingsSheet";
 import { newInstallJob } from "../../src/features/plugins/install-progress";
+import { ModelSelectionPanes } from "../../src/components/settings/ModelSelectionPanes";
+import { isBlockingOverlayActive } from "../../src/lib/blocking-overlay";
 
 const listeners = new Map();
 const path = "C:\\Users\\Example\\AppData\\Local\\Temp\\pi-extension-fixture\\plugins\\greet\\src\\greet.ts";
@@ -40,8 +42,36 @@ let revision = 0;
 const frame = () => new Promise(requestAnimationFrame);
 const close = () => { window.dialogFixture.closed = true; flushSync(() => root.render(null)); };
 const error = (value) => { throw value; };
+
+const modelIds = ["grok-4.5", "grok-4.6", "grok-4.7", "grok-4.7-build-fast"];
+function ModelPickerFixture() {
+  const [models, setModelsState] = useState(() => modelIds.map(bindingForCustomModel));
+  const rows = modelIds.map((id) => ({
+    id,
+    displayName: id.replace("grok", "Grok"),
+    contextWindow: 200_000,
+    maxTokens: 4_000,
+  }));
+  return (
+    <div style={{ height: 520, padding: 24 }}>
+      <ModelSelectionPanes
+        discovery={{ status: "success", source: "remote", models: [], error: "" }}
+        selection={{
+          rows,
+          models,
+          publishedLevelsById: new Map(),
+          bindingsToPersist: models,
+          setModels: (update) => setModelsState((current) => update(current)),
+        }}
+        listTitle="Service models"
+      />
+    </div>
+  );
+}
+
 window.dialogFixture = {
   responses: [], closed: false, saved: null,
+  isBlockingOverlayActive,
   async show(kind, options = {}) {
     flushSync(() => root.render(null));
     this.responses = []; this.closed = false; this.saved = null;
@@ -62,6 +92,7 @@ window.dialogFixture = {
       subscribe(listener) { queueMicrotask(() => listener({ kind: "authUrl", url: "https://example.invalid/" + long, instructions: "Open the sign-in URL", opened: false })); return () => {}; },
       cancel: async () => {},
     }} />;
+    if (kind === "models") component = <ModelPickerFixture key={++revision} />;
     flushSync(() => root.render(component));
     await frame();
     if (kind === "extension") {

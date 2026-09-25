@@ -63,6 +63,14 @@ if (target === "win") {
     ...forwardedArgs,
     "-c.extraMetadata.piDistribution=zip",
   ]);
+  await runBuilder([
+    "--win",
+    "portable",
+    "--publish",
+    "never",
+    ...forwardedArgs,
+    "-c.extraMetadata.piDistribution=portable",
+  ]);
 } else {
   await runBuilder([
     `--${target}`,

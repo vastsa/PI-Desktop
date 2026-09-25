@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.15.6",
+  "version": "0.15.7-beta.1",
   "description": "Local-first AI coding agent desktop client",
   "packageManager": "pnpm@10.34.5",
   "engines": {
@@ -22,6 +22,7 @@
     "test:host": "cargo test -p host-core",
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:e2e:scheduled": "node scripts/e2e-scheduled.mjs",
+    "test:e2e:keep-awake": "node scripts/e2e-keep-awake.mjs",
     "test:e2e:rpc-unicode": "node scripts/e2e-rpc-unicode.mjs",
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",
@@ -42,6 +43,7 @@
     "test:e2e:settings-scroll": "node scripts/e2e-settings-scroll.mjs",
     "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
     "test:e2e:window-controls": "node scripts/e2e-window-controls.mjs",
+    "test:e2e:work-panel-reorder": "node scripts/e2e-work-panel-reorder.mjs",
     "test:e2e:supervision": "node scripts/e2e-supervision.mjs",
     "test:e2e:subagents": "node scripts/e2e-subagents.mjs",
     "test:e2e:subagent-models": "node scripts/e2e-subagent-models.mjs",

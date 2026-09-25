@@ -1,3 +1,5 @@
+import { nativeWebSearchTransport } from "./native-web-search-transport.js";
+
 /**
  * Evaluation helpers for the provider-hosted web search tool.
  *
@@ -11,9 +13,9 @@
  * - `hostedSearchFromMessage` is what the runtime persists: display rounds
  *   plus raw `replay` blocks for convertMessages after a restart.
  *
- * Vendor display names, base URL hostnames, and model id substrings are
- * intentionally not consulted. An endpoint either carries the tool on the
- * wire named here or it does not; guessing breeds silent behavior drift.
+ * Published official endpoint routes are resolved before the wire gate, using
+ * nativeWebSearchTransport. Vendor display names and model-id substrings never
+ * establish endpoint support. Unknown gateways retain their configured wire.
  */
 
 export const NATIVE_WEB_SEARCH_WIRE_APIS = new Set([
@@ -72,8 +74,9 @@ const NATIVE_WEB_SEARCH_API_STYLES = new Set(["responses", "anthropic_messages",
  * spellings because the pane sees `responses` / `anthropic_messages` while
  * the runtime sees `openai-responses` / `anthropic-messages`.
  */
-export function nativeWebSearchSupportedOn(api: string | undefined): boolean {
-  const value = (api ?? "").trim().toLowerCase();
+export function nativeWebSearchSupportedOn(api: string | undefined, baseUrl?: string): boolean {
+  const route = nativeWebSearchTransport({ apiStyle: api, baseUrl, enabled: true });
+  const value = (route.apiStyle ?? "").trim().toLowerCase();
   if (!value) return false;
   if (NATIVE_WEB_SEARCH_WIRE_APIS.has(value)) return true;
   if (NATIVE_WEB_SEARCH_API_STYLES.has(value)) return true;

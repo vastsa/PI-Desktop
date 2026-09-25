@@ -17,7 +17,6 @@ import {
   APP_ID,
   APP_NAME,
   APP_VERSION,
-  ErrorCodes as SharedErrorCodes,
   IPC,
   IPC_WHITELIST,
   KEYBOARD_SHORTCUTS,
@@ -31,10 +30,7 @@ import {
   type KeybindingOverrides,
   type PlanExecutionFinishStatus,
 } from "@pi-desktop/shared";
-import {
-  genericModelConfig,
-  summarizeSessionTitle,
-} from "@pi-desktop/agent-runtime";
+import { summarizeSessionTitle } from "@pi-desktop/agent-runtime";
 import { AgentExtensionBridge } from "./agent-extensions";
 import { registerAgentExtensionIpc } from "./agent-extensions-ipc";
 import { isTemplateName, scaffold } from "@pi-desktop/plugin-devkit";
@@ -58,7 +54,7 @@ import {
 } from "./host-boot-diagnostics";
 import {
   ModelsDevCatalog,
-  modelConfigFromModelsDev,
+  catalogModelConfigFor,
 } from "./models-dev-catalog";
 import { VendorOAuth } from "./oauth";
 import { AppUpdaterController } from "./updater";
@@ -114,6 +110,7 @@ import { registerWindowIpc } from "./ipc/window-ipc";
 import { registerPullsIpc } from "./ipc/pulls-ipc";
 import { registerAgentIpc } from "./ipc/agent-ipc";
 import { registerIpcHandlers } from "./ipc/register";
+import { createVoiceService } from "./voice-service";
 import {
   type WindowLifecycleState,
 } from "./bootstrap/window";
@@ -158,16 +155,6 @@ import { registerPluginUiIpc } from "./ipc/plugin-ui-ipc";
 import { registerSkillsIpc } from "./ipc/skills-ipc";
 import { stripWinLongPrefix } from "./path-utils";
 
-// The shared error-code union is reconciled in the shared lane. Keep desktop
-// source type-safe while that lane is temporarily staged at main.
-const ErrorCodes = {
-  ...SharedErrorCodes,
-  COMMAND_SHELL_INVALID: "COMMAND_SHELL_INVALID",
-  SHELL_NOT_FOUND: "SHELL_NOT_FOUND",
-  PLAN_EXECUTION_INTERRUPTED: "PLAN_EXECUTION_INTERRUPTED",
-  PLAN_PERMISSION_MODE_REQUIRED: "PLAN_PERMISSION_MODE_REQUIRED",
-} as const;
-
 // A closed stdout/stderr (Linux AppImage, GUI launch without a TTY) must not
 // surface as Electron's "Uncaught Exception: write EPIPE" dialog. The same
 // default dialog must not appear for a stray uncaughtException (non-ASCII
@@ -183,6 +170,15 @@ applyDevelopmentUserData(app, isDevelopmentBuild);
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
 }
+
+// Chromium's accessibility tree serializer has a known CHECK failure in
+// AXBlockFlowData::ComputeNeighborOnLine (chromium #552018997) that kills
+// the renderer when an AT client reads the tree while the DOM is being
+// mutated — exactly what happens during streaming agent responses.
+// The switch prevents Chromium from building the in-renderer accessibility
+// tree unless the user explicitly opts in via --force-renderer-accessibility.
+// This is a workaround until the upstream fix lands.
+app.commandLine.appendSwitch("disable-renderer-accessibility");
 
 // One installation, one process. The lock lives in `userData` (set just
 // above), so it is taken after `setName` and before anything else here
@@ -619,14 +615,12 @@ const vendorOAuth = new VendorOAuth({
   log: (level, message, data) => logger.app("provider", level, message, { data }),
   modelConfigFor: async ({ vendorKey, option }) => {
     await modelsDevCatalog.ensureLoaded();
-    const model = modelsDevCatalog.findModel({
+    return catalogModelConfigFor(modelsDevCatalog, {
       vendorKey,
       baseUrl: option.baseUrl,
+      apiStyle: option.apiStyle,
       modelId: option.modelId,
     });
-    return model
-      ? modelConfigFromModelsDev(model, option.baseUrl)
-      : genericModelConfig(option.modelId, option.baseUrl);
   },
 });
 
@@ -652,7 +646,6 @@ const pluginServices = createPluginServices({
     return applicationLifecycle.resolveAppearance();
   },
   getWorkspacePath: currentWorkspacePath,
-  isHostUnavailable,
   resolveAgentRuntimeLaunch: (...args) => {
     if (!sessionLaunchRuntime) {
       throw new Error("session launch runtime is not initialized");
@@ -687,7 +680,6 @@ const providerCatalogRuntime = createProviderCatalogRuntime({
 });
 const {
   bindingForModel,
-  modelsDevModelFor,
   effectiveSubagentModelConfig,
   enrichProvider,
   enrichProviderList,
@@ -711,7 +703,6 @@ const createdSessionLaunchRuntime = createSessionLaunchRuntime({
   getWorkspacePath: currentWorkspacePath,
   pluginActiveInProject,
   bindingForModel,
-  modelsDevModelFor,
   effectiveSubagentModelConfig,
   normalizeThinkingLevel,
 });
@@ -797,22 +788,10 @@ function describeError(error: unknown): string {
   return String(error).slice(0, 300);
 }
 
-/**
- * True when a rejection only says the host transport is gone (D080): the call
- * lost a race with shutdown, a crash, or a supervised restart. Every such
- * rejection carries `HOST_UNAVAILABLE`, whether it was refused before it was
- * sent or was in flight when the transport closed.
- */
-function isHostUnavailable(error: unknown): boolean {
-  return (
-    (error as { errorCode?: string } | null | undefined)?.errorCode ===
-    ErrorCodes.HOST_UNAVAILABLE
-  );
-}
-
 /** Pull the user's MCP server records from host-core into the local runtime. */
 function sendToRenderer(channel: string, payload: unknown) {
   applicationLifecycle?.traySessions.observeEvent(channel, payload);
+  applicationLifecycle?.taskbarUnreadBadge.observeEvent(channel, payload);
   if (channel === IPC.event.pluginChanged) {
     applicationLifecycle?.applyNativeThemeSource({
       theme: applicationAppearanceState.appThemePreference,
@@ -947,6 +926,9 @@ const {
   executeNativeMenuAction,
   dispatchNativeMenuAction,
   applyDeveloperMode,
+  applyPreventScreenSleep,
+  applyKeepAwakeWhileRunning,
+  disposePowerSaveBlockers,
   applyNativeThemeSource,
   applyApplicationMenuSettings,
   applyAppThemePreference,
@@ -1246,9 +1228,12 @@ runtimeLifecycle = createRuntimeLifecycle({
 });
 const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
+const voiceService = createVoiceService(dataDir + "/voice-models", () => mainWindow);
+
 function registerIpc() {
   return registerIpcHandlers({
     traySessions: applicationLifecycle!.traySessions,
+    taskbarUnreadBadge: applicationLifecycle!.taskbarUnreadBadge,
     ipcMain,
     getMainWindow: () => mainWindow,
     getHost: () => host,
@@ -1282,6 +1267,8 @@ function registerIpc() {
     currentNetworkProxy,
     applyApplicationMenuSettings,
     applyDeveloperMode,
+    applyPreventScreenSleep,
+    applyKeepAwakeWhileRunning,
     resolveEffectiveCommandShell,
     modelsDevCatalog,
     vendorOAuth,
@@ -1337,6 +1324,7 @@ function registerIpc() {
     getPluginPanelTheme: () => pluginPanelTheme,
     isDeveloperMode: () => developerMode,
     sendToRenderer,
+    voiceService,
   });
 }
 
@@ -1408,6 +1396,8 @@ registerApplicationStartup({
   planUiProbe,
   applyApplicationMenuSettings,
   applyDeveloperMode,
+  applyPreventScreenSleep,
+  applyKeepAwakeWhileRunning,
   applyPluginLauncherShortcut,
   applyToggleWindowShortcut,
   ensureWindow,
@@ -1490,6 +1480,7 @@ registerShutdownHandlers({
   updater,
   logger,
   confirmQuitDialog,
+  disposePowerSaveBlockers,
 });
 
 registerApplicationActivation({

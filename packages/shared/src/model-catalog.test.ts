@@ -6,6 +6,7 @@ import {
   bindingSupportsDocuments,
   effectiveContextWindow,
   bindingSupportsImages,
+  resolveBindingContextWindow,
   formatCompactTokenCount,
   formatTokenCount,
   modelMatchesFilter,
@@ -92,6 +93,27 @@ describe("binding context-window provenance", () => {
     expect(effectiveContextWindow(1_050_000, edited.contextWindow, edited.contextWindowSource)).toBe(
       256_000,
     );
+  });
+
+  it("keeps a catalog snapshot when the lookup falls back to the generic shape", () => {
+    // The bug this guards: a gateway row whose catalog lookup started missing
+    // (for example an id several publishers list) resolved to the generic
+    // 128k shape, which then replaced the saved 1M catalog snapshot and made
+    // automatic compaction start at ~86k tokens.
+    const binding = { contextWindow: 1_000_000, contextWindowSource: "catalog" as const };
+    const generic = { source: "generic", contextWindow: 128_000 };
+    const resolved = resolveBindingContextWindow(generic, binding);
+    expect(resolved.catalogConfig.contextWindow).toBe(1_000_000);
+    expect(resolved.binding.contextWindow).toBe(1_000_000);
+    expect(resolved.binding.contextWindowSource).toBe("catalog");
+  });
+
+  it("still follows a published record for a catalog-sourced window", () => {
+    const binding = { contextWindow: 1_000_000, contextWindowSource: "catalog" as const };
+    const published = { source: "models.dev", contextWindow: 1_048_576 };
+    const resolved = resolveBindingContextWindow(published, binding);
+    expect(resolved.catalogConfig.contextWindow).toBe(1_048_576);
+    expect(resolved.binding.contextWindow).toBe(1_048_576);
   });
 });
 

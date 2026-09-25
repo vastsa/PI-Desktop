@@ -1,10 +1,11 @@
 import type { AppNotification } from "@pi-desktop/shared";
 
 /**
- * The inbox popover surfaces only outcomes that need attention. Successful
+ * The inbox popover surfaces only outcomes that need attention (D295). Successful
  * completions stay in the durable record so the sidebar outcome badge and the
  * native system notification keep working, but listing every one of them
- * buried the failures under noise.
+ * buried the failures under noise. The OS shell/taskbar unread overlay is
+ * separate and counts all unread task notifications (completed + failed).
  */
 export function inboxNotifications(
   notifications: AppNotification[],

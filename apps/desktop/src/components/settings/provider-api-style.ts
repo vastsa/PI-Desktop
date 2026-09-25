@@ -36,9 +36,11 @@ export function needsCustomApiStyleChoice(
 
 export function providerSetupPreset(provider?: ProviderPublic | null) {
   if (!provider || isAccountOnlyApiStyle(provider.apiStyle)) return undefined;
-  return matchNamedPreset({
+  const preset = matchNamedPreset({
     vendorKey: provider.vendorKey,
     baseUrl: provider.baseUrl,
     apiStyle: provider.apiStyle,
   });
+  // A published hostname does not override an explicitly saved wire format.
+  return provider.apiStyle && preset?.apiStyle !== provider.apiStyle ? undefined : preset;
 }

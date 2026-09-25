@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const CONTEXT_RESET = /Promise was collected|Execution context was destroyed|Cannot find context|Inspected target navigated/;
 
 export async function connectControl(dataDir) {
   const info = JSON.parse(readFileSync(join(dataDir, "mcp-control.json"), "utf8"));
@@ -103,13 +104,35 @@ export async function connectRenderer(port) {
   // element.focus(), and the focus-return checks would read the desktop's
   // window stacking instead of the app.
   await call("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await call("Page.enable", {});
   return {
     run,
+    /** Runs `fn` now and in every later document of the window. */
+    async install(fn) {
+      await call("Page.addScriptToEvaluateOnNewDocument", { source: `(${fn})()` });
+      // A navigation in flight runs the script on its new document instead.
+      return run(fn).catch((error) => {
+        if (!CONTEXT_RESET.test(error.message)) throw error;
+      });
+    },
+    /** Reloads the window; `install`ed scripts run before its app code. */
+    async reload() {
+      await call("Page.reload", {});
+    },
+    // A poll that meets a navigating page (the evaluation is collected, or
+    // its context is gone) reads as "not yet" and polls again.
     async until(fn, arg, label, timeoutMs = 15_000) {
       const deadline = Date.now() + timeoutMs;
       let last;
       while (Date.now() < deadline) {
-        last = await run(fn, arg);
+        try {
+          last = await run(fn, arg);
+        } catch (error) {
+          if (!CONTEXT_RESET.test(error.message)) throw error;
+          last = `(${error.message})`;
+          await sleep(50);
+          continue;
+        }
         if (last) return last;
         await sleep(50);
       }

@@ -659,14 +659,14 @@ visually distinct from list content.
   splash at 3x; ADR 0125). The component subscribes to
   `document.documentElement[data-theme]` via a `MutationObserver` and swaps the
   source at runtime for the sidebar and startup splash without a reload. The
-  empty-home hero uses `HomeMascotLogo` as a 100px eight-frame GIF. Light and
-  dark themes each have a dedicated GIF plus still PNG. CSS follows
-  `document.documentElement[data-theme]` without a reload; anything other than
-  `light` uses the dark artwork. The mascot loops a processed wave with a
-  short idle hold on the first frame. Playback is native to the GIF and does
-  not change on pointer hover; reduced motion swaps to the matching still
-  first-frame PNG. The expanded/collapsed sidebar remains 20px/18px and the
-  startup splash 64px.
+  empty-home hero uses `HomeMascotLogo` in a 100px slot. The standard light and
+  dark GIFs remain eight-frame waves with matching still PNGs. When the root
+  `lang` begins with `zh` and the theme is dark, CSS selects the supplied
+  30-frame transparent Chinese GIF and its matching still PNG. Theme and
+  language changes take effect without a reload. Playback is native to GIF,
+  does not change on pointer hover, and reduced motion selects the matching
+  still. The expanded/collapsed sidebar remains 20px/18px and the startup
+  splash 64px.
   Home and thread-docked composer prompt rows do not render a leading brand
   icon.
 - Project and Temporary session creation controls render the dedicated
@@ -759,10 +759,13 @@ reading surface of the workstation.
 ### 4.3 Layout
 
 - Background: bg-primary
-- Max content width: 760px default, user-resizable (D439); assistant rows follow the band. User plates stay `min(82%, 600px)`
-  subagent card, or a single tool row — spans that band: its header is a
-  full-width row with an ellipsizing label and a trailing caret, never a
-  content-sized chip, so it follows the dragged width instead of its own text.
+- Max content width: 760px default, user-resizable (D439); assistant rows follow the band. User plates stay `min(82%, 600px)`.
+- Each process, activity group, delegation card, and single tool row spans the
+  conversation band. Its activity header is a full-width row with an
+  ellipsizing label and trailing caret, never a content-sized chip, so it
+  follows the dragged width instead of its own text. Content inside a
+  delegation node and its dock process is width-aware and wraps long task,
+  path, command, and answer text.
 - The transcript keeps one stable scrollbar gutter on the trailing edge. It
   never reserves a matching left gutter, so the minimap and first message do
   not leave a decorative blank strip beside the session.
@@ -1110,7 +1113,11 @@ entirely inside the plugin's isolated page:
   Review, file, or plugin view. Clicking a tab activates it; the active tab is
   scrolled into view. Its close button and middle-click close it, selecting the
   right neighbor and then the left. ArrowLeft/ArrowRight/Home/End move between
-  tabs and Delete/Backspace closes the focused tab. The `+` trigger remains
+  tabs and Delete/Backspace closes the focused tab. Pressing and moving a tab
+  by 8px starts reordering; dropping on either half of another tab inserts the
+  source before or after it. Holding the pointer near either edge auto-scrolls
+  the strip toward off-screen tabs. `Alt+ArrowLeft`/`Alt+ArrowRight` reorders
+  the focused tab without changing its active state. The `+` trigger remains
   fixed beside the strip and creates a new launcher tab.
 - New launcher: each `+` click creates a unique, active New tab. Its body uses
   the Review-plus-plugin tool list as buttons. Selecting a row replaces the
@@ -1199,7 +1206,11 @@ It does not render separate Details or Output tabs.
 - The task description is the Task call's `task` argument, rendered as one
   selectable inset grouped card. The delegate's thinking, tool rows,
   and answer fragments reuse the same components and styling as the main
-  conversation. Reports and counters remain omitted from this compact surface.
+  conversation. Task/node titles, descriptions, and step summaries use the
+  available width and wrap or clamp to multiple lines; long paths, commands,
+  and tool summaries in the live process wrap inside the dock instead of
+  becoming one-line ellipses. Reports and counters remain omitted from this
+  compact surface.
 - The dock has one scroll owner, the panel body. The scroll owner is
   keyboard-focusable and exposed as a polite `role="log"` so streamed rows
   remain discoverable without forcing focus changes. The live process is
@@ -1746,6 +1757,11 @@ Single message render — either user (plaintext) or assistant (markdown streami
   Fork creates and activates an independent session whose snapshot ends at the
   selected assistant response, requires an idle source, and leaves that
   source's transcript, live runtime, and provider cache state untouched (D134).
+  Opening a user-message editor must hydrate canonical history before seeding the
+  draft when the loaded transcript is partial or display-limited. Never seed an
+  editable draft from clipped display text. Failed reads keep the editor closed
+  and show an error; stale reads after navigation or a new turn cannot open it.
+  Slash invocations still seed their original typed command.
   Edit belongs to the user turn: it swaps the prompt bubble for a focused
   composer-radius editor filled with `--ds-tile-deep` (the same 8% mix as a
   user bubble) so it stays distinct from the pane without an outer shadow.
@@ -1832,7 +1848,7 @@ Single message render — either user (plaintext) or assistant (markdown streami
 | Streaming | transparent like a completed turn — no left rail, no reserved inset, no whole-turn `--ds-tile` (D323); content grows. The tile belongs only to a subagent/delegation card (D319) |
 | Thinking streaming | disclosure open; answer bubble omitted until answer text exists |
 | Complete | transparent full-width markdown; no streaming chrome |
-| Error | compact assistant error card in transcript; localized summary and stable code share one header with the details disclosure; details still opens to redacted provider response, provider/model IDs, and copy action; the card offers a localized Continue action that resends the continuation prompt; configuration failures show Open settings. The session-scoped failed-turn recovery card is a fallback for terminal failures without a structured assistant error, so both cards never render for one turn |
+| Error | Compact assistant error card in transcript; localized summary and stable code share one header with the details disclosure; details still opens to redacted provider response, provider/model IDs, and copy action; the card offers localized Continue and accessible Dismiss actions. Dismiss affects renderer-only visibility keyed by message id and preserves the original UiMessage/host transcript. Configuration failures show Open settings. The session-scoped failed-turn recovery card is a fallback for terminal failures without a structured assistant error, so both cards never render for one turn |
 
 ### 8.4a Context compaction row
 
@@ -2052,6 +2068,24 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   height derives from `--composer-dock-height`, which the composer republishes as
   its draft grows, so dashes move without a marker change or a window resize.
 
+#### Markdown table actions
+
+Every rendered Markdown table has its own compact toolbar: Copy as Markdown,
+Download as CSV, and Expand table. Copy preserves inline Markdown and column
+alignment and produces a standalone table even inside a quote or list. CSV
+contains the displayed cell text, UTF-8 with BOM, quoted fields, and CRLF rows;
+quotes and cell line breaks are escaped, and formula-leading nonnumeric cells
+are exported as text. Clipboard failures produce an error toast.
+
+The expanded view uses a modal dialog with the existing theme tokens, a scrollable
+table and opaque sticky headers, and copy/download controls. Columns retain
+readable minimum widths; narrow previews scroll horizontally instead of crushing
+short labels. It follows streamed rows,
+contains keyboard focus, closes with Escape or Close, and restores focus to its
+trigger. Native work-panel surfaces remain hidden while the modal is open.
+Tables retain their existing inline layout and link/file actions. No editing,
+sorting, new settings, persistence, or host protocol is introduced.
+
 ---
 
 ## 9. ToolCallRow
@@ -2250,6 +2284,12 @@ the call's own `agent` argument, and carries the call's short `description`. The
 resolved model id is shown immediately after the delegate name, from the
 structured `Task` result details.
 
+The topology node is width-aware at every panel size. Its title may occupy up
+to two lines, its description is clamped to two readable lines, and its step
+summary can wrap rather than forcing the user to resize the divider. Complete
+descriptions remain available through the node's accessible name/hover title;
+the node and its live process never create horizontal overflow.
+
 The lifecycle rows (`TaskWait`/`TaskList`/`TaskStop`) stay compact tool rows —
 they are not topology nodes and must not inflate the subagent counts — but they
 are presented as subagent rows rather than as generic tool calls (D269). A
@@ -2291,40 +2331,51 @@ never summarizes from its own arguments:
   └────────────────┘    └───────────────────────────────────────────┘
 ```
 
-Clicking a topology node toggles an inset grouped side sheet in the right-side
-work-panel dock rather than expanding the transcript. Clicking the selected node
-again closes the side sheet; selecting another node replaces the current detail
-in place:
+Clicking a topology node opens a dedicated `subagent` tab in the work panel —
+the same tab strip that hosts Review, files, and plugin views — instead of
+expanding the transcript. Re-opening the same delegation activates its tab;
+parallel delegates coexist as independent tabs. The tab renders the delegation
+as a conversation:
 
 ```text
 ┌──────────────────────────────────────────────┐
-│ [bot] code-reviewer         [Completed]  32s │
-│       claude-sonnet-4-5                      │
-│                                              │
-│ TASK                                         │
-│ ┌──────────────────────────────────────────┐ │
-│ │ Review the changes in src/stores for …   │ │
-│ │                               Show more  │ │
-│ └──────────────────────────────────────────┘ │
-│                                              │
-│ ACTIVITY                            3 steps  │
-│ ● Thinking …                                 │
-│ ● Read store.ts                              │
+│ [bot] [code-reviewer] [✕]  [bot] [explorer#2] [✕]   [+] ⤢ │
+├──────────────────────────────────────────────┤
+│                    ┌──────────────────────┐ │
+│                    │ Review the changes   │ │
+│                    │ in src/stores.       │ │
+│                    └──────────────────────┘ │
+│ ● Thinking …                                │
+│ ● Read store.ts                             │
+│ The store diff looks consistent. …          │
+│                    ┌──────────────────────┐ │
+│                    │ Now check the tests. │ │
+│                    └──────────────────────┘ │
+│ ● Edit composer.tsx                         │
+├──────────────────────────────────────────────┤
+│ [ Subagents are driven by the main agent… ] │
 └──────────────────────────────────────────────┘
 ```
 
-- The dock renders a sticky identity header with the delegate name and model
-  on the left and the status capsule plus elapsed time trailing on the same
-  row, followed by the Task call's `task` argument as a selectable inset
-  grouped card and the live process timeline.
-- Reports and counters remain omitted from this surface. The live thinking,
-  tool, and answer process is shown on the dock timeline. The topology card
-  remains a compact summary in the transcript and does not gain height when
-  the dock opens.
-- The selected task is re-found from the session's live/retained messages, so
-  the header status and elapsed time stay current while the delegate runs.
-- A missing or deleted task renders a localized unavailable state. Delegation
-  rows remain excluded from the parent turn stream and minimap.
+- The tab is a message list, not a card: every `Task` call of the resume
+  chain renders its `task` argument as a user row (the main transcript's user
+  bubble), and the delegate's thinking, tool, and answer rows under that call
+  render with the same message-list language, so a follow-up prompt reads as
+  the next user turn.
+- The composer at the foot is a disabled two-row textarea whose placeholder
+  says subagents are driven by the main agent and cannot take input; the tab
+  is display-only and has no send path.
+- Tab labels carry the agent name captured when the tab opened, with a
+  strip-order `#n` suffix when the same name occurs more than once; a
+  localization fallback covers a delegate with no name.
+- Tabs are never opened automatically when a delegate starts. They persist
+  after the delegate settles until the user closes them and are scoped to
+  their session like every other tab.
+- The conversation is re-found from the session's live/retained messages, so
+  streaming rows keep arriving in the open tab while the delegate runs.
+- A delegation whose Task calls are missing renders a localized unavailable
+  state. Delegation rows remain excluded from the parent turn stream and
+  minimap.
 
 - Runs are rebuilt from the message list on every render, so group memoization
   compares them by row identity and length rather than by object identity —
@@ -2698,9 +2749,12 @@ reasoning-level control.
   `.composer-toolbar` spacing, minimum heights, theme surfaces, and controls.
   Only the parent placement and the localized placeholder copy differ between
   the empty home and a recorded conversation. In a recorded conversation,
-  `.composer-dock-docked` paints the primary workspace background across its
-  full width. This occlusion band prevents transcript rows from remaining
-  visible beneath the floating shell or through its rounded outer corners.
+  `.composer-dock-docked` paints no backing of its own: `.thread-scroll` masks
+  its own content out across the trailing reserve the transcript holds below
+  the Composer's measured height, so rows fade at the Composer boundary instead
+  of remaining visible beneath the floating shell or through its rounded outer
+  corners, and the conversation pane's own surface stays visible behind the
+  dock (issue #728, D624).
 - Empty draft height: `.composer-input` uses `min-height: 3lh`, so an idle
   composer shows three lines of input before it grows with the draft.
 - Scroll stability: The thread scrollport reserves one stable trailing gutter,
@@ -2798,9 +2852,12 @@ reasoning-level control.
   up/down, Send now, edit, and remove are disabled. All five tooltips explain
   that it is saving; Send now also displays the localized Saving label. Direct edit/remove actions leave the pending row and draft
   unchanged; after admission, ordinary waiting-row actions become available.
-- A promoted row is locked: move up/down, edit, and remove are disabled with
+- A promoted row fixes order: move up/down and edit are disabled with
   their tooltip and `aria-disabled` state intact, and the Send now button reads
-  as already decided (`chat.sendNowPending`). The row carries a distinct
+  as waiting for the current task (`chat.sendNowPending`). Remove remains
+  available until delivery and waits for Host acknowledgement. If delivery
+  already started, show a conflict message directing the user to Stop.
+  The row carries a distinct
   promoted surface so it is not mistaken for another waiting row.
 - Stop: the single submit slot is shown only while a turn is running and the
   draft is empty. It stops the running turn and cancels pending permission.
@@ -3097,7 +3154,10 @@ Anatomy:
   transient state, and submits it separately from visible text. Main stores
   image bytes under `attachments/<sha256>` and sends visual input only when the
   selected model's effective binding capability accepts images and the 10 MB
-  inline bound is met; otherwise it appends a safe `@path` fallback. Removing
+  inline bound is met; otherwise it appends a safe `@path` fallback. SVG inputs
+  (`image/svg+xml` or `.svg` extension) are always classified as files, never
+  as model images, regardless of vision capability (see
+  `03-runtime/svg-attachment-input.md`). Removing
   a chip does not delete
   scratch bytes. A text-only paste longer than `largePasteThreshold` follows
   the same bounded session bridge with generated `text/plain` UTF-8 bytes,
@@ -3786,10 +3846,17 @@ Sidebar footer                                        Popover (360px max)
 - `All` shows the newest retained rows; `Unread` filters to `readAt == null`.
 - Selecting a row first calls `notification.markRead`, closes the popover, then
   activates the row's durable session (including its project when applicable)
-  and scrolls the transcript to its latest content.
-- Mark all read is idempotent and preserves rows. Clear deletes every inbox
-  row but never deletes a session, transcript, or turn.
-- `notification.changed` updates the visible list and badge. Opening the
+  and scrolls the transcript to its latest content. The successful read also
+  dismisses the matching task-native banner before a late activation can
+  surface it again.
+- Mark all read is idempotent and preserves rows; it dismisses every outstanding
+  task-native banner. Clear deletes every inbox row, dismisses all task-native
+  banners, and leaves sessions, transcripts, and turns intact. These actions
+  remain available for successful completions hidden from the failure-only
+  bell list, so the taskbar unread badge can be cleared from the popover.
+- `notification.changed` updates the visible list and badge only for a new
+  durable id. A duplicate id, or a delayed event for an acknowledged/cleared
+  row, is ignored. Opening the
   popover also refreshes the bounded list from host-core. A
   `notification.activated` event from Electron follows the same session
   activation path as a row click.

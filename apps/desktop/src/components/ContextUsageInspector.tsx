@@ -354,7 +354,7 @@ export function ContextUsageInspector({
           <span>
             {t("chat.usageCompaction", { times: compaction.generation })}
           </span>
-          <strong>~{formatCompactTokenCount(compaction.summaryTokens)}</strong>
+          <strong title={compaction.summarized && !compaction.fallback && compaction.summary?.trim() ? compaction.summary : undefined}>~{formatCompactTokenCount(compaction.summaryTokens)}</strong>
         </div>
       ) : null}
     </div>

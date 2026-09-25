@@ -114,13 +114,18 @@ function collectSubagentRuns(
   return runs;
 }
 
-// Map each Task call to the last call of its chain (ADR 0279): a resumed
-// delegation is one delegate session continued by a later Task call, so the
-// chain's rows all belong on the latest card, where they read as one
-// continuing conversation rather than a card per call.
-function chainLatestCalls(
-  messages: readonly UiMessage[],
-): (toolCallId: string) => string {
+/**
+ * The delegation-chain structure of one transcript (ADR 0279).
+ *
+ * `callByDelegationId` maps each Task result's `delegationId` to the call that
+ * returned it; `childOf` links a resumed call to the call it resumed. Shared
+ * by the delegation card grouping and the subagent transcript tab so both read
+ * the same chain semantics from one place.
+ */
+export function delegationChainMaps(messages: readonly UiMessage[]): {
+  callByDelegationId: Map<string, string>;
+  childOf: Map<string, string>;
+} {
   const callByDelegationId = new Map<string, string>();
   const childOf = new Map<string, string>();
   for (const message of messages) {
@@ -152,6 +157,17 @@ function chainLatestCalls(
         : undefined;
     if (prior) childOf.set(prior, toolCallId);
   }
+  return { callByDelegationId, childOf };
+}
+
+// Map each Task call to the last call of its chain (ADR 0279): a resumed
+// delegation is one delegate session continued by a later Task call, so the
+// chain's rows all belong on the latest card, where they read as one
+// continuing conversation rather than a card per call.
+function chainLatestCalls(
+  messages: readonly UiMessage[],
+): (toolCallId: string) => string {
+  const { childOf } = delegationChainMaps(messages);
   const latest = new Map<string, string>();
   return (toolCallId: string): string => {
     const cached = latest.get(toolCallId);

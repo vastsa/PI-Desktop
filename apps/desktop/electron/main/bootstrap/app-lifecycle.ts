@@ -1,5 +1,5 @@
 import {
-  app, BrowserWindow, Menu, nativeImage, nativeTheme, Tray,
+  app, BrowserWindow, Menu, nativeImage, nativeTheme, powerSaveBlocker, Tray,
   type MenuItemConstructorOptions,
 } from "electron";
 import { existsSync } from "node:fs";
@@ -19,6 +19,7 @@ import {
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import { installApplicationMenu } from "../application-menu";
 import { createTraySessions } from "../tray-sessions";
+import { createTaskbarUnreadBadge } from "../taskbar-unread-badge";
 import { createWindow, type WindowLifecycleState } from "./window";
 import { windowToggleAction } from "./window-visibility";
 import type { BrowserPane } from "../browser-view";
@@ -27,6 +28,7 @@ import type { PluginRuntime } from "../plugin-runtime";
 import type { PluginViewHost } from "../plugin-view-host";
 import type { HostProcess } from "../host-process";
 import { syncPluginDisplayLocale } from "../plugin-display-locale";
+import { createPowerSaveBlockerController } from "../keep-awake";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
 
 export type ApplicationLifecycleState = {
@@ -113,6 +115,12 @@ export function createApplicationLifecycle({
     getRunningSessionIds,
     isQuitting: () => state.quitting,
     onChanged: () => updateTrayMenu(),
+    logger,
+  });
+  const taskbarUnreadBadge = createTaskbarUnreadBadge({
+    getHost,
+    getMainWindow: () => state.mainWindow,
+    isQuitting: () => state.quitting,
     logger,
   });
   let trayActivationGeneration = 0;
@@ -275,6 +283,9 @@ export function createApplicationLifecycle({
     state.tray.on("double-click", restoreMainWindow);
     updateTrayMenu();
     void traySessions.refresh();
+    void taskbarUnreadBadge.refresh();
+    // Window is live here; force-paint any count learned before the BrowserWindow existed.
+    taskbarUnreadBadge.replay();
   }
 
 
@@ -471,6 +482,35 @@ export function createApplicationLifecycle({
     }
   }
 
+  const powerError = (kind: string, operation: string, error: unknown) => {
+    logger.app("lifecycle", "warn", `power blocker ${kind} ${operation} failed`, {
+      data: String(error),
+    });
+  };
+  const displayBlocker = createPowerSaveBlockerController(
+    powerSaveBlocker,
+    "prevent-display-sleep",
+    (operation, error) => powerError("display", operation, error),
+  );
+  const systemBlocker = createPowerSaveBlockerController(
+    powerSaveBlocker,
+    "prevent-app-suspension",
+    (operation, error) => powerError("system", operation, error),
+  );
+
+  function applyPreventScreenSleep(settings?: { preventScreenSleep?: unknown } | null) {
+    displayBlocker.setEnabled(settings?.preventScreenSleep === true);
+  }
+
+  function applyKeepAwakeWhileRunning(settings?: { keepAwakeWhileRunning?: unknown } | null) {
+    systemBlocker.setEnabled(settings?.keepAwakeWhileRunning === true);
+  }
+
+  function disposePowerSaveBlockers() {
+    displayBlocker.dispose();
+    systemBlocker.dispose();
+  }
+
   /**
    * Drive Chromium and macOS native chrome (menus, vibrancy) from the same
    * theme preference the renderer paints. `system` keeps following the OS;
@@ -631,6 +671,7 @@ export function createApplicationLifecycle({
 
   return {
     traySessions,
+    taskbarUnreadBadge,
     applyDevelopmentBranding,
     hasVisibleWindow,
     restoreMainWindow,
@@ -647,6 +688,9 @@ export function createApplicationLifecycle({
     executeNativeMenuAction,
     dispatchNativeMenuAction,
     applyDeveloperMode,
+    applyPreventScreenSleep,
+    applyKeepAwakeWhileRunning,
+    disposePowerSaveBlockers,
     applyNativeThemeSource,
     applyAppThemePreference,
     applyApplicationMenuSettings,

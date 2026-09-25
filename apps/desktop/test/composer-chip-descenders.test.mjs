@@ -30,10 +30,10 @@ test("model chip label avoids leading-none under truncation", () => {
   );
 });
 
-test("model menu options show one complete display name on hover", () => {
+test("model menu options show the complete wire id without truncation", () => {
   assert.match(
     composerSource,
-    /const optionTitle =\s*model\.displayName \|\| model\.modelId;/,
+    /const optionTitle = model\.modelId;/,
   );
   assert.match(composerSource, /title=\{optionTitle\}/);
   const optionBlock =

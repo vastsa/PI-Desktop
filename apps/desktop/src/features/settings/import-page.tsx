@@ -32,7 +32,7 @@ import {
   groupImportCandidates,
   type ImportGroupBy,
 } from "../../lib/import-groups";
-import { Badge, Button, HelpIcon, cx } from "../../components/ui";
+import { Badge, Button, HelpIcon, SegmentedControl, cx } from "../../components/ui";
 import { IconChevronLeft, IconDownload } from "../../components/icons";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 
@@ -56,30 +56,20 @@ export function ImportSection() {
 
   return (
     <div className="import-page">
-      <div
-        className="settings-segment import-segment"
+      <SegmentedControl
+        value={kind}
+        onChange={(value) => setKind(value)}
+        options={IMPORT_KINDS.map((entry) => ({
+          value: entry.id,
+          label: t(entry.labelKey),
+          id: `import-tab-${entry.id}`,
+          controls: `import-panel-${entry.id}`,
+        }))}
+        label={t("settings.import")}
         role="tablist"
-        aria-label={t("settings.import")}
-      >
-        {IMPORT_KINDS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            role="tab"
-            id={`import-tab-${entry.id}`}
-            aria-selected={kind === entry.id}
-            aria-controls={`import-panel-${entry.id}`}
-            className={cx(
-              "settings-segment-item",
-              "import-segment-btn",
-              kind === entry.id && "active",
-            )}
-            onClick={() => setKind(entry.id)}
-          >
-            {t(entry.labelKey)}
-          </button>
-        ))}
-      </div>
+        className="import-segment"
+        itemClassName="import-segment-btn"
+      />
 
       {IMPORT_KINDS.map((entry) => (
         <div

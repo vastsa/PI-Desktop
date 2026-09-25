@@ -2,6 +2,7 @@ import { dialog, globalShortcut, shell, type BrowserWindow } from "electron";
 import { join } from "node:path";
 import {
   IPC,
+  ErrorCodes,
   type ActivationScope,
   type AppSettings,
   type BrowserState,
@@ -74,7 +75,6 @@ export type PluginServicesDependencies = {
   getPluginPanelTheme: () => "light" | "dark";
   getAppearance: () => PluginAppearance;
   getWorkspacePath: () => string | null;
-  isHostUnavailable: (error: unknown) => boolean;
   resolveAgentRuntimeLaunch: (...args: any[]) => Promise<any>;
   vendorOAuth: VendorOAuth;
   agentExtensions: AgentExtensionBridge;
@@ -96,11 +96,14 @@ export function createPluginServices({
   getPluginPanelTheme,
   getAppearance,
   getWorkspacePath,
-  isHostUnavailable,
   resolveAgentRuntimeLaunch,
   vendorOAuth,
   agentExtensions,
 }: PluginServicesDependencies) {
+  // A plugin request can lose its race with host shutdown or restart.
+  const isHostUnavailable = (error: unknown): boolean =>
+    (error as { errorCode?: string } | null | undefined)?.errorCode ===
+    ErrorCodes.HOST_UNAVAILABLE;
   const pluginPanels = new PluginPanelHost(
     async (pluginId, channel, payload, context) =>
       plugins.invokePanelBridge(pluginId, channel, payload, context),

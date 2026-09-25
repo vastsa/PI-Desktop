@@ -20,12 +20,14 @@ import {
   IconUndo2,
 } from "../../../components/icons";
 import { ModeIcon } from "./ComposerModeIcon";
+import { VoiceMicButton } from "../../voice/VoiceMicButton";
 import { ComposerModelPicker } from "./ComposerModelPicker";
 import {
   MODE_LABEL_KEYS,
   nextMode,
 } from "./model";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
+import type { VoicePhase } from "../../voice/useVoiceInput";
 
 type ModelMenuController = ReturnType<typeof useComposerModelMenu>;
 type ContextUsage = Parameters<typeof ContextUsageInspector>[0];
@@ -62,6 +64,10 @@ export type ComposerToolbarProps = {
   hasDraftContent: boolean;
   abort: AppState["abort"];
   submit: () => Promise<void>;
+  voicePhase: VoicePhase;
+  voiceEnabled: boolean;
+  onVoiceToggle: () => void;
+  onVoiceCancel: () => void;
 };
 
 /** Composer controls: mode, permission, model, enhancement, and send/stop. */
@@ -97,6 +103,10 @@ export function ComposerToolbar({
   hasDraftContent,
   abort,
   submit,
+  voicePhase,
+  voiceEnabled,
+  onVoiceToggle,
+  onVoiceCancel,
 }: ComposerToolbarProps) {
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
   const steeringShortcut = keybindingDisplayParts("Alt+Enter", platform).join("+");
@@ -118,6 +128,15 @@ export function ComposerToolbar({
             <IconPlus size={15} aria-hidden="true" />
           </TooltipButton>
         </div>
+        {voiceEnabled && (
+          <VoiceMicButton
+            t={t}
+            phase={voicePhase}
+            disabled={controlsBlocked}
+            onToggle={onVoiceToggle}
+            onCancel={onVoiceCancel}
+          />
+        )}
         <TooltipButton
           type="button"
           className="icon-btn mode-chip composer-mode-chip"

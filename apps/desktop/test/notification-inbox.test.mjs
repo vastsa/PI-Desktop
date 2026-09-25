@@ -53,5 +53,11 @@ test("inbox unread count ignores unread completions", () => {
 test("notification center renders the filtered inbox instead of the raw store", () => {
   assert.match(componentSource, /inboxNotifications\(storedNotifications\)/);
   assert.match(componentSource, /inboxUnreadCount\(storedNotifications\)/);
-  assert.doesNotMatch(componentSource, /state\.unreadNotificationCount/);
+});
+
+test("notification center actions can clear taskbar-only completed outcomes", () => {
+  assert.match(componentSource, /const allUnreadCount = useAppStore\(/);
+  assert.match(componentSource, /state\.unreadNotificationCount/);
+  assert.match(componentSource, /disabled=\{busy \|\| allUnreadCount === 0\}/);
+  assert.match(componentSource, /disabled=\{busy \|\| storedNotifications\.length === 0\}/);
 });

@@ -160,14 +160,16 @@ export function createHostRuntime({
         let payload: Record<string, unknown>;
         if (q.toolName.startsWith("mcp_")) {
           try {
-            const result = await userMcp.callTool(q.toolName, q.args, projectPath);
+            const result = await userMcp.callTool(q.toolName, q.args, projectPath, q.sessionId);
             payload = { executionId: q.executionId, ok: true, content: result ?? null };
           } catch (e) {
             payload = {
               executionId: q.executionId,
               ok: false,
               errorCode:
-                (e as { errorCode?: string })?.errorCode ?? "TOOL_FAILED",
+                (e as { code?: string; errorCode?: string })?.code === "TOOL_ABORTED"
+                  ? "TOOL_ABORTED"
+                  : (e as { errorCode?: string })?.errorCode ?? "TOOL_FAILED",
               content: { error: e instanceof Error ? e.message : String(e) },
             };
           }
@@ -269,7 +271,7 @@ export function createHostRuntime({
             payload = {
               executionId: q.executionId,
               ok: false,
-              errorCode: code === "PERMISSION_DENIED" ? "PERMISSION_DENIED" : "TOOL_FAILED",
+              errorCode: code === "PERMISSION_DENIED" || code === "TOOL_ABORTED" ? code : "TOOL_FAILED",
               content: { error: e instanceof Error ? e.message : String(e) },
             };
           }

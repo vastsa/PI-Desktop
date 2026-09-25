@@ -269,8 +269,8 @@ test("packaging publishes an electron-updater feed for GitHub Releases", () => {
   // GitHub asset URLs mangle spaces; keep Windows artifact names space-free.
   assert.equal(pkg.build.nsis.artifactName, "PI-Desktop-Setup-${version}.${ext}");
   const winTargets = pkg.build.win.target.map((entry) => entry.target);
-  assert.deepEqual(winTargets, ["nsis", "zip"], "Windows release targets");
-  assert.equal(pkg.build.portable, undefined, "legacy self-extracting target removed");
+  assert.deepEqual(winTargets, ["nsis", "zip", "portable"], "Windows release targets");
+  assert.equal(pkg.build.portable.artifactName, "PI-Desktop-Portable-${version}.${ext}", "portable artifact name");
   assert.equal(
     pkg.build.win.artifactName,
     "PI-Desktop-Portable-${version}.${ext}",
@@ -279,6 +279,8 @@ test("packaging publishes an electron-updater feed for GitHub Releases", () => {
   assert.match(pkg.scripts["dist:win"], /build-desktop-release\.mjs win/);
   assert.match(buildReleaseSource, /"--win",\s*"nsis"/);
   assert.match(buildReleaseSource, /"--win",\s*"zip"/);
+  assert.match(buildReleaseSource, /"--win",\s*"portable"/);
+  assert.match(buildReleaseSource, /piDistribution=portable/);
   assert.match(buildReleaseSource, /"--publish",\s*"never"/);
   assert.match(buildReleaseSource, /piDistribution=installed/);
   assert.match(buildReleaseSource, /piDistribution=zip/);

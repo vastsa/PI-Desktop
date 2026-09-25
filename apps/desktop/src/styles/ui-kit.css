@@ -338,3 +338,42 @@
   margin: 5px 6px;
   background: var(--ds-border-subtle);
 }
+
+/* ---- Checkbox: high-contrast custom draw (dark + light) ---- */
+.ds-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-3xs);
+  border: 1.5px solid var(--ds-text-secondary);
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    border-color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.ds-checkbox:checked {
+  background: var(--ds-accent);
+  border-color: var(--ds-accent);
+}
+
+.ds-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--ds-bg, #000);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.ds-checkbox:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

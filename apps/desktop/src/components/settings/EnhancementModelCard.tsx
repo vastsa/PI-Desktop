@@ -14,7 +14,6 @@ import { useTranslation } from "react-i18next";
 import {
   THINKING_LEVELS,
   canonicalThinkingLevel,
-  modelIdsMatch,
   type AppSettings,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -25,6 +24,7 @@ import {
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import { providerDisplayName, providerSearchText } from "../../lib/provider-display";
+import { sameComposerModelId } from "../../lib/composer-models";
 import { Button, Input, cx } from "../ui";
 import { IconCheck, IconChevronDown, IconSearch } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
@@ -255,7 +255,7 @@ export function EnhancementModelCard() {
                 {visible.map(({ provider, modelId }, index) => {
                   const isCurrent =
                     settings.promptEnhancementProviderId === provider.id &&
-                    modelIdsMatch(settings.promptEnhancementModelId ?? "", modelId);
+                    sameComposerModelId(settings.promptEnhancementModelId ?? "", modelId);
                   const previous = visible[index - 1];
                   const startsGroup = !previous || previous.provider.id !== provider.id;
                   return (

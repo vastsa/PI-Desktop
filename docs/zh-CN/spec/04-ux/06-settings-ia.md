@@ -83,6 +83,13 @@
   - 本机选择触发器及其打开的选项列表使用活动主题的
     macOS、Windows 和 Linux 上的可读 foreground/background 配对；的
     共享的本机选择契约适用于每个应用程序表面
+- **电源**卡：两个独立且默认关闭的开关。「保持电脑唤醒」使用
+  `prevent-app-suspension`，桌面应用运行期间阻止系统因空闲休眠，包括定时任务
+  等待下一次触发时；屏幕仍可关闭。「阻止屏幕休眠」使用
+  `prevent-display-sleep` 保持屏幕常亮。两项分别持久化为
+  `AppSettings.keepAwakeWhileRunning` 和 `AppSettings.preventScreenSleep`，
+  切换立即生效、启动时恢复，关闭对应开关或退出应用时分别释放阻止器。
+  手动睡眠和合盖遵循系统设置。
 - **网络**卡：
   - **代理**：分段控件 — 系统 / 直连 / 自定义。默认是系统（Chromium 跟随操作系统代理）。直连禁用代理。自定义将一个 HTTP、HTTPS 或 SOCKS5 URL 应用到应用自有出站请求（模型调用、扩展市场、更新、模型目录、插件 `net.fetch`、内置浏览器）。工作区 Bash 和 OAuth 用的系统浏览器不会被改写。
   - 自定义显示代理 URL（含 `user:pass@`）、默认 `localhost,127.0.0.1,::1,<local>,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16` 的绕过列表（本机、本地模型与所有局域网服务直连，不被代理吞掉），以及一次走该代理的测试。带认证的 URL 通过回环 SOCKS5 中继交给 Chromium（issue #490）。选择持久化为可选 `AppSettings.networkProxy`。无协议/存储版本升级（D340 / ADR 0177）。

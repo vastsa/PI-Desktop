@@ -2,6 +2,11 @@ import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { isAbsolute, resolve, sep } from "node:path";
 import type { PluginMcpServerContrib } from "@pi-desktop/plugin-sdk";
 import { minimalChildEnv } from "./child-process-env.ts";
+import {
+  MCP_STDIO_HOST_ENV_KEYS,
+  decodeMcpStderr,
+  resolveMcpStdioLaunch,
+} from "./mcp-stdio-launch.ts";
 import { userLookupPath } from "./user-login-path.ts";
 
 /** MCP revision we advertise during the handshake. */
@@ -48,7 +53,7 @@ export type JsonRpcMessage = {
  * the client speak the same JSON-RPC dialect over a pipe or over HTTP.
  */
 export type McpTransport = {
-  send: (message: JsonRpcMessage) => Promise<void>;
+  send: (message: JsonRpcMessage, timeoutMs?: number, signal?: AbortSignal) => Promise<void>;
   close: () => void;
 };
 
@@ -74,19 +79,35 @@ function mcpError(code: string, message: string): McpError {
  * PATH is the login-shell PATH (ADR 0045 / D600), not the Finder/Dock GUI
  * PATH, so a market-installed `uvx`/`npx` server can spawn (issue #571). The
  * identity variables cross for the same reason the toolchain ones do: the child
- * is third-party code that resolves `~` through `$HOME` (issue #717).
+ * is third-party code that resolves `~` through `$HOME` (issue #717). Windows
+ * also needs `PATHEXT` / `ComSpec` / `FNM_DIR` so official Node and fnm shims
+ * resolve (issue #789).
  */
 export function mcpProcessEnv(
   pluginId: string | undefined,
   values: Record<string, string>,
+  hostEnv: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
   const env: Record<string, string> = {
     ...(pluginId ? { PI_PLUGIN_ID: pluginId } : {}),
-    NODE_ENV: process.env.NODE_ENV ?? "production",
-    ...minimalChildEnv(),
+    NODE_ENV: hostEnv.NODE_ENV ?? process.env.NODE_ENV ?? "production",
   };
-  const path = userLookupPath(process.env.PATH ?? "");
-  if (path) env.PATH = path;
+  if (hostEnv === process.env) {
+    Object.assign(env, minimalChildEnv());
+    for (const key of MCP_STDIO_HOST_ENV_KEYS) {
+      if (env[key]) continue;
+      const value = process.env[key];
+      if (value) env[key] = value;
+    }
+    const path = userLookupPath(process.env.PATH ?? "");
+    if (path) env.PATH = path;
+  } else {
+    for (const key of MCP_STDIO_HOST_ENV_KEYS) {
+      const value = hostEnv[key];
+      if (value) env[key] = value;
+    }
+    if (!env.PATH && env.Path) env.PATH = env.Path;
+  }
   return { ...env, ...values };
 }
 
@@ -138,17 +159,26 @@ function createStdioTransport(
   handlers: McpTransportHandlers,
 ): McpTransport {
   const spawnImpl = options.spawnImpl ?? nodeSpawn;
-  const child: ChildProcess = spawnImpl(
-    resolveMcpCommand(options.rootPath, options.command, options.commandPolicy),
-    options.args,
-    {
-      cwd: options.rootPath,
-      env: options.env,
-      stdio: ["pipe", "pipe", "pipe"],
-      // Never route through a shell: arguments stay literal.
-      shell: false,
+  const resolved = resolveMcpCommand(options.rootPath, options.command, options.commandPolicy);
+  const launch = resolveMcpStdioLaunch({
+    command: resolved,
+    args: options.args,
+    env: options.env,
+    hostEnv: {
+      ...process.env,
+      PATH: options.env.PATH ?? process.env.PATH,
     },
-  );
+  });
+  const child: ChildProcess = spawnImpl(launch.command, launch.args, {
+    cwd: options.rootPath,
+    env: launch.env,
+    stdio: ["pipe", "pipe", "pipe"],
+    // Arguments stay literal. Known launchers rewrite to a PE binary; remaining
+    // Windows `.cmd` shims go through `cmd.exe /d /s /c` with quoted args.
+    shell: false,
+    windowsHide: launch.windowsHide,
+    windowsVerbatimArguments: launch.windowsVerbatimArguments,
+  });
 
   let closed = false;
   let buffer = "";
@@ -178,9 +208,14 @@ function createStdioTransport(
       index = buffer.indexOf("\n");
     }
   });
-  child.stderr?.setEncoding("utf8");
-  child.stderr?.on("data", (chunk: string) => {
-    lastStderr = String(chunk).trimEnd().slice(-500);
+  child.stderr?.on("data", (chunk: Buffer | string) => {
+    lastStderr = decodeMcpStderr(
+      chunk,
+      process.platform,
+      Boolean(launch.windowsVerbatimArguments),
+    )
+      .trimEnd()
+      .slice(-500);
   });
   child.on("error", (error: Error) => {
     closed = true;
@@ -297,11 +332,14 @@ function createHttpTransport(
   const activeControllers = new Set<AbortController>();
 
   return {
-    send: async (message) => {
+    send: async (message, timeoutMs = options.timeoutMs, signal) => {
       if (closed) throw mcpError("UNAVAILABLE", "mcp session is closed");
       const controller = new AbortController();
+      const abort = () => controller.abort();
+      if (signal?.aborted) abort();
+      else signal?.addEventListener("abort", abort, { once: true });
       activeControllers.add(controller);
-      const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       let url = options.url;
       try {
         for (let hop = 0; ; hop += 1) {
@@ -384,6 +422,7 @@ function createHttpTransport(
         }
       } finally {
         clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
         activeControllers.delete(controller);
       }
     },
@@ -465,14 +504,31 @@ export class McpServerClient {
     return this.connecting;
   }
 
-  async callTool(toolName: string, args: unknown): Promise<unknown> {
-    await this.connect();
+  async callTool(toolName: string, args: unknown, signal?: AbortSignal): Promise<unknown> {
+    if (signal?.aborted) throw mcpError("TOOL_ABORTED", "mcp tool call aborted");
+    const connecting = this.connect();
+    if (signal) {
+      let rejectAbort!: (error: Error) => void;
+      const aborted = new Promise<never>((_, reject) => { rejectAbort = reject; });
+      const abort = () => rejectAbort(mcpError("TOOL_ABORTED", "mcp tool call aborted"));
+      signal.addEventListener("abort", abort, { once: true });
+      if (signal.aborted) abort();
+      try {
+        await Promise.race([connecting, aborted]);
+      } finally {
+        signal.removeEventListener("abort", abort);
+      }
+    } else {
+      await connecting;
+    }
+    if (signal?.aborted) throw mcpError("TOOL_ABORTED", "mcp tool call aborted");
     const started = Date.now();
     try {
       const result = (await this.request(
         "tools/call",
         { name: toolName, arguments: args ?? {} },
         this.opts.callTimeoutMs ?? MCP_CALL_TIMEOUT_MS,
+        signal,
       )) as { content?: unknown; isError?: boolean } | null;
       if (result && typeof result === "object" && result.isError) {
         throw mcpError("TOOL_FAILED", describeMcpContent(result.content) || "mcp tool failed");
@@ -483,6 +539,11 @@ export class McpServerClient {
       this.audit(false, toolName, Date.now() - started, error);
       throw error;
     }
+  }
+
+  /** Probe a live connection without changing its discovered tool catalog. */
+  async ping(timeoutMs = 5_000): Promise<void> {
+    await this.request("ping", {}, timeoutMs);
   }
 
   close(): void {
@@ -639,24 +700,40 @@ export class McpServerClient {
     }
   }
 
-  private request(method: string, params: unknown, timeoutMs: number): Promise<unknown> {
+  private request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
     const transport = this.transport;
     if (!transport) {
       return Promise.reject(mcpError("UNAVAILABLE", "mcp server is not connected"));
     }
+    if (signal?.aborted) return Promise.reject(mcpError("TOOL_ABORTED", "mcp tool call aborted"));
     const id = this.nextId++;
     return new Promise<unknown>((resolvePromise, rejectPromise) => {
+      const removeAbort = () => signal?.removeEventListener("abort", abort);
+      const abort = () => {
+        if (!this.pending.delete(id)) return;
+        clearTimeout(timer);
+        removeAbort();
+        rejectPromise(mcpError("TOOL_ABORTED", "mcp tool call aborted"));
+        void transport.send({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: id, reason: "cancelled" } }).catch(() => undefined);
+      };
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        removeAbort();
         rejectPromise(mcpError("TIMEOUT", `mcp ${method} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
-      this.pending.set(id, { resolve: resolvePromise, reject: rejectPromise, timer });
-      void transport.send({ jsonrpc: "2.0", id, method, params }).catch((error: Error) => {
+      this.pending.set(id, {
+        resolve: (value) => { removeAbort(); resolvePromise(value); },
+        reject: (error) => { removeAbort(); rejectPromise(error); },
+        timer,
+      });
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+      void transport.send({ jsonrpc: "2.0", id, method, params }, timeoutMs, signal).catch((error: Error) => {
         const entry = this.pending.get(id);
         if (!entry) return;
         this.pending.delete(id);
         clearTimeout(entry.timer);
-        rejectPromise(error);
+        entry.reject(error);
       });
     });
   }

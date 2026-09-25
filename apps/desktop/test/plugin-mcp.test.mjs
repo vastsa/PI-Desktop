@@ -262,7 +262,7 @@ test("a slow server times out instead of hanging the load", async (t) => {
 });
 
 /** Streamable-HTTP stub: JSON for the handshake, SSE for discovery. */
-async function startHttpServer(t) {
+async function startHttpServer(t, { slowToolDelayMs } = {}) {
   const requests = [];
   const server = createServer((req, res) => {
     const chunks = [];
@@ -285,13 +285,18 @@ async function startHttpServer(t) {
         res.writeHead(202, { "content-type": "text/plain" }).end("Accepted");
         return;
       }
+      if (message.method === "ping") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }));
+        return;
+      }
       if (message.method === "tools/list") {
         res.writeHead(200, { "content-type": "text/event-stream" });
         res.end(
           `event: message\ndata: ${JSON.stringify({
             jsonrpc: "2.0",
             id: message.id,
-            result: { tools: [{ name: "headers" }] },
+            result: { tools: [{ name: "headers" }, ...(slowToolDelayMs ? [{ name: "slow" }] : [])] },
           })}\n\n`,
         );
         return;
@@ -312,6 +317,17 @@ async function startHttpServer(t) {
             },
           }),
         );
+        return;
+      }
+      if (message.params?.name === "slow" && slowToolDelayMs) {
+        setTimeout(() => {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            jsonrpc: "2.0",
+            id: message.id,
+            result: { content: [{ type: "text", text: "finished" }] },
+          }));
+        }, slowToolDelayMs);
         return;
       }
       res.writeHead(503).end("unavailable");
@@ -341,10 +357,108 @@ test("a remote mcp server negotiates over http and keeps its session", async (t)
   );
   const result = await client.callTool("headers", {});
   assert.equal(describeMcpContent(result.content), `sess-42|sk-test|${MCP_PROTOCOL_VERSION}`);
+  await client.ping();
+  assert.equal(requests.at(-1).message.method, "ping");
   // The very first request cannot carry a session id, later ones must.
   assert.equal(requests[0].headers["mcp-session-id"], undefined);
   assert.equal(requests[0].headers["x-api-key"], "sk-test");
   assert.equal(requests.at(-1).headers["mcp-session-id"], "sess-42");
+});
+
+test("a remote MCP tool can run longer than the connection timeout", async (t) => {
+  const { url } = await startHttpServer(t, { slowToolDelayMs: 80 });
+  const client = new McpServerClient({
+    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-http-")),
+    server: { id: "remote", transport: "http", url },
+    values: {},
+    connectTimeoutMs: 20,
+    callTimeoutMs: 500,
+  });
+  t.after(() => client.close());
+
+  assert.deepEqual((await client.connect()).map((tool) => tool.name), ["headers", "slow"]);
+  const result = await client.callTool("slow", {});
+  assert.equal(describeMcpContent(result.content), "finished");
+});
+test("aborting one HTTP MCP call cancels its request", async (t) => {
+  let callStarted;
+  let cancellationReceived;
+  const started = new Promise((resolve) => { callStarted = resolve; });
+  const canceled = new Promise((resolve) => { cancellationReceived = resolve; });
+  let callId;
+  const fetchImpl = async (_url, options) => {
+    const message = JSON.parse(options.body);
+    if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
+    if (message.method === "notifications/cancelled") {
+      cancellationReceived(message.params.requestId);
+      return new Response(null, { status: 202 });
+    }
+    if (message.method === "tools/call") {
+      callId = message.id;
+      callStarted();
+      return new Promise((_, reject) => {
+        options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      });
+    }
+    const result = message.method === "initialize"
+      ? { protocolVersion: message.params.protocolVersion, capabilities: {} }
+      : { tools: [{ name: "slow" }] };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new McpServerClient({
+    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-cancel-")),
+    server: { id: "remote", transport: "http", url: "https://mcp.example.com/mcp" },
+    values: {},
+    fetchImpl,
+  });
+  t.after(() => client.close());
+  await client.connect();
+
+  const controller = new AbortController();
+  const call = client.callTool("slow", {}, controller.signal);
+  await started;
+  controller.abort();
+  await assert.rejects(call, { code: "TOOL_ABORTED" });
+  assert.equal(await canceled, callId);
+});
+
+test("aborting a tool waiting for a shared handshake does not send tools/call", async (t) => {
+  let finishInitialize;
+  let initializeStarted;
+  const started = new Promise((resolve) => { initializeStarted = resolve; });
+  const methods = [];
+  const fetchImpl = async (_url, options) => {
+    const message = JSON.parse(options.body);
+    methods.push(message.method);
+    if (message.method === "initialize") {
+      initializeStarted();
+      return new Promise((resolve) => { finishInitialize = () => resolve(new Response(JSON.stringify({
+        jsonrpc: "2.0", id: message.id,
+        result: { protocolVersion: message.params.protocolVersion, capabilities: {} },
+      }), { status: 200, headers: { "content-type": "application/json" } })); });
+    }
+    if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { tools: [{ name: "echo" }] } }), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new McpServerClient({
+    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-cancel-")),
+    server: { id: "remote", transport: "http", url: "https://mcp.example.com/mcp" },
+    values: {}, fetchImpl,
+  });
+  t.after(() => client.close());
+  const controller = new AbortController();
+  const call = client.callTool("echo", {}, controller.signal);
+  await started;
+  controller.abort();
+  await assert.rejects(call, { code: "TOOL_ABORTED" });
+  finishInitialize();
+  await client.connect();
+  assert.ok(!methods.includes("tools/call"));
 });
 
 test("an http failure is reported as HTTP_ERROR", async (t) => {
@@ -522,7 +636,8 @@ test("discovered mcp tools ride the existing plugin tool path", () => {
   assert.match(register, /this\.tools\.set\(fullName/);
   // Remote code the desktop cannot inspect never auto-approves.
   assert.match(register, /risk: "medium"/);
-  assert.match(register, /client\.callTool\(tool\.name, toolArgs\)/);
+  assert.match(register, /this\.mcpCalls\.run\(/);
+  assert.match(register, /client\.callTool\(tool\.name, toolArgs, signal\)/);
   // A server that fails to answer must not fail the plugin load.
   assert.match(register, /await client\.connect\(\);\s*\n\s*\} catch \{/);
 });

@@ -73,7 +73,7 @@ test("composer exposes the runtime thinking level order and provider filtering",
   assert.doesNotMatch(stylesSource, /\.composer-thinking-level\b/);
   assert.match(
     stylesSource,
-    /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(300px,\s*calc\(100vw - 24px\)\);/,
+    /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(280px,\s*calc\(100vw - 24px\)\);/,
   );
   assert.match(composerSource, /availableThinkingLevels/);
   assert.match(composerSource, /thinkingMenuLevels/);
@@ -108,6 +108,10 @@ test("Composer owns the mode and model controls", () => {
   // default thinking level instead of pinning the draft to its current value.
   assert.match(scheduledModelPickerSource, /activeSessionId: null/);
   assert.doesNotMatch(scheduledModelPickerSource, /useId\(/);
+  assert.match(
+    scheduledModelPickerSource,
+    /composerModelDisplayName\(provider, value\.modelId \?\? "", selected\.displayName\)/,
+  );
   assert.doesNotMatch(leftToolbar, /composer-thinking|thinking-chip/);
   assert.doesNotMatch(topbarSource, /ModelSelect|model-chip/);
   assert.doesNotMatch(topbarSource, /ct-mode|ct-mode-btn|configureActiveSession/);
@@ -206,10 +210,9 @@ test("main resolves reasoning from each session's exact selected model", () => {
   assert.match(providerCatalogSource, /const enrichSession/);
   assert.match(providerCatalogSource, /const resolveSessionCapabilityTarget/);
   assert.match(providerCatalogSource, /defaults\?\.defaultProviderId/);
-  assert.match(providerCatalogSource, /modelsDevModelFor\(provider, modelId\)/);
   assert.match(sessionIpcSource, /result\.sessions\.map\(\(session\) =>/);
   assert.match(sessionIpcSource, /enrichSession\(session, providers, defaults\)/);
-  assert.match(providerCatalogSource, /modelConfigFromModelsDev\(\s*modelsDevModel,\s*provider\.baseUrl\s*\)/);
+  assert.match(providerCatalogSource, /catalogModelConfigFor\(modelsDevCatalog/);
   // models.dev records stamp reasoning capability per exact model id.
   assert.match(providerCatalogSource, /capabilitiesFromModelConfig\(modelConfig\)/);
   assert.match(providerCatalogSource, /supportsReasoning/);
@@ -306,7 +309,8 @@ test("provider settings persist model-local limits and thinking configuration", 
 });
 
 test("main forwards the complete models.dev model record to the sidecar", () => {
-  assert.match(sessionLaunchSource, /modelConfigFromModelsDev/);
+  // catalogModelConfigFor returns modelConfigFromModelsDev for a resolved record.
+  assert.match(sessionLaunchSource, /catalogModelConfigFor/);
   assert.doesNotMatch(sessionLaunchSource, /resolvePiModelConfig/);
   assert.match(sessionLaunchSource, /\.\.\.\(modelConfig \? \{ modelConfig \} : \{\}\)/);
   assert.doesNotMatch(sessionLaunchSource, /modelCompat/);

@@ -55,6 +55,7 @@ import {
   IconTerminal,
   IconVideo,
   IconWrench,
+  IconX,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
 
@@ -67,6 +68,50 @@ export function useMessageRevealRequest(messageId: string) {
   return target && target.messageId === messageId
     ? target.requestId
     : undefined;
+}
+
+
+/**
+ * Format a message timestamp for the toolbar.
+ * Today → HH:mm:ss; other days → YYYY-MM-DD HH:mm:ss.
+ */
+function formatMessageTime(iso: string, locale: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (isToday) {
+    return date.toLocaleTimeString(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  }
+  return date.toLocaleString(locale, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+export function MessageTimestamp({ createdAt }: { createdAt?: string }) {
+  const { i18n } = useTranslation();
+  if (!createdAt) return null;
+  const display = formatMessageTime(createdAt, i18n.language);
+  if (!display) return null;
+  return (
+    <span className="message-timestamp" title={createdAt}>
+      {display}
+    </span>
+  );
 }
 
 export function CopyButton({
@@ -149,8 +194,14 @@ export function AssistantErrorMessage({ message }: { message: UiMessage }) {
   const detailsToggleRef = useRef<HTMLButtonElement | null>(null);
   const notifyDisclosureAnchor = useDisclosureAnchorNotifier();
   const detailsId = useId();
+  const dismissed = useAppStore(
+    (state) => state.dismissedAssistantErrorMessages[message.id] === true,
+  );
+  const dismissAssistantErrorMessage = useAppStore(
+    (state) => state.dismissAssistantErrorMessage,
+  );
   const error = message.error;
-  if (!error) return null;
+  if (!error || dismissed) return null;
   const networkDetails = error.details;
   const certificateFailure =
     error.code === "NETWORK_ERROR" &&
@@ -232,6 +283,15 @@ export function AssistantErrorMessage({ message }: { message: UiMessage }) {
               {t("errors.action.openSettings")}
             </button>
           ) : null}
+          <button
+            type="button"
+            className="message-error-dismiss"
+            aria-label={t("chat.dismissError")}
+            title={t("chat.dismissError")}
+            onClick={() => dismissAssistantErrorMessage(message.id)}
+          >
+            <IconX size={14} aria-hidden />
+          </button>
         </div>
       </div>
       <div

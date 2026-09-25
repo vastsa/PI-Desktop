@@ -24,8 +24,8 @@ test("rendered Markdown and file chips map source-only hits to their visible own
     const { LinkifiedText } = await server.ssrLoadModule(
       "/src/features/chat/transcript/shared.tsx",
     );
-    const { SubagentPanel } = await server.ssrLoadModule(
-      "/src/components/workpanel/SubagentPanel.tsx",
+    const { SubagentTranscriptTab } = await server.ssrLoadModule(
+      "/src/components/workpanel/SubagentTranscriptTab.tsx",
     );
     const { useAppStore } = await server.ssrLoadModule("/src/stores/app-store.ts");
     const { ActivityGroup } = await server.ssrLoadModule(
@@ -182,8 +182,8 @@ test("rendered Markdown and file chips map source-only hits to their visible own
         },
       },
     });
-    const panel = render(SubagentPanel, {
-      selection: { sessionId: "s", delegationId: "task", searchRequestId: 1 },
+    const panel = render(SubagentTranscriptTab, {
+      delegationId: "task",
     });
     assert.match(panel, /data-message-id="child"/);
     const groupProps = { items: [{ kind: "tool", message: parent }], isActive: false };
@@ -206,13 +206,13 @@ test("rendered Markdown and file chips map source-only hits to their visible own
     );
 
     assert.match(panel, /<strong data-source-start="5" data-source-end="15">needle<\/strong>/);
-    assert.doesNotMatch(panel, /subagent-panel-empty/);
+    assert.doesNotMatch(panel, /subagent-transcript-empty/);
     Object.assign(useAppStore.getInitialState(), {
       transcriptViews: {},
       messages: [parent, { ...child, content: "Updated live answer." }],
     });
-    const livePanel = render(SubagentPanel, {
-      selection: { sessionId: "s", delegationId: "task" },
+    const livePanel = render(SubagentTranscriptTab, {
+      delegationId: "task",
     });
     assert.match(livePanel, /Updated live answer/);
     assert.doesNotMatch(livePanel, /Read <strong/);

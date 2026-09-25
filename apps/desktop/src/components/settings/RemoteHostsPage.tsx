@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next";
 import type { RemoteHostSshAuth, RemoteHostSummary } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { Badge, Button, Field, Input, PasswordInput, cx } from "../ui";
+import { Badge, Button, Field, Input, PasswordInput, SegmentedControl, cx } from "../ui";
 
 type AddMode = "ssh" | "pair";
 
@@ -241,29 +241,17 @@ export function RemoteHostsPage() {
       <section className="settings-card-block">
         <div className="settings-card-heading-row settings-remote-host-add-heading">
           <h3 className="settings-card-heading">{t("settings.remoteHosts.addTitle")}</h3>
-          <div
-            className="settings-segment"
+          <SegmentedControl
+            value={addMode}
+            onChange={(mode) => setAddMode(mode)}
+            options={[
+              { value: "ssh", label: t("settings.remoteHosts.addSsh"), id: "remote-host-add-ssh", controls: "remote-host-add-panel-ssh" },
+              { value: "pair", label: t("settings.remoteHosts.addPair"), id: "remote-host-add-pair", controls: "remote-host-add-panel-pair" },
+            ]}
+            label={t("settings.remoteHosts.addTitle")}
             role="tablist"
-            aria-label={t("settings.remoteHosts.addTitle")}
-          >
-            {(["ssh", "pair"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                role="tab"
-                id={`remote-host-add-${mode}`}
-                aria-selected={addMode === mode}
-                aria-controls={`remote-host-add-panel-${mode}`}
-                className={cx("settings-segment-item", addMode === mode && "active")}
-                disabled={busy}
-                onClick={() => setAddMode(mode)}
-              >
-                {mode === "ssh"
-                  ? t("settings.remoteHosts.addSsh")
-                  : t("settings.remoteHosts.addPair")}
-              </button>
-            ))}
-          </div>
+            disabled={busy}
+          />
         </div>
         <div className="settings-panel">
           <form
@@ -340,31 +328,16 @@ export function RemoteHostsPage() {
               >
                 {t("settings.remoteHosts.sshAuthMode")}
               </div>
-              <div
-                className="settings-segment"
-                role="radiogroup"
-                aria-labelledby="settings-remote-host-auth-label"
-              >
-                {(["key", "password"] as const).map((auth) => (
-                  <button
-                    key={auth}
-                    type="button"
-                    role="radio"
-                    className={cx(
-                      "settings-segment-item",
-                      sshForm.auth === auth && "active",
-                    )}
-                    aria-checked={sshForm.auth === auth}
-                    aria-pressed={sshForm.auth === auth}
-                    disabled={installing}
-                    onClick={() => selectSshAuth(auth)}
-                  >
-                    {auth === "key"
-                      ? t("settings.remoteHosts.sshAuthKey")
-                      : t("settings.remoteHosts.sshAuthPassword")}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                value={sshForm.auth}
+                onChange={(auth) => selectSshAuth(auth)}
+                options={[
+                  { value: "key", label: t("settings.remoteHosts.sshAuthKey") },
+                  { value: "password", label: t("settings.remoteHosts.sshAuthPassword") },
+                ]}
+                label={t("settings.remoteHosts.sshAuthMode")}
+                disabled={installing}
+              />
             </div>
 
             {sshForm.auth === "key" ? (

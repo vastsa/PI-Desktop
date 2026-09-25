@@ -152,6 +152,7 @@ import {
 } from "./provider-binding.js";
 import {
   contextBudgetFor,
+  automaticCompactionThresholdFor,
   contextBudgetLimitsFor,
   retainedUserMessageBudget,
   type ContextBudget,
@@ -170,6 +171,7 @@ import {
 import {
   clampOutputToContext,
   effectiveModelContextWindow,
+  estimateOutputCapInputTokens,
 } from "./output-cap.js";
 import {
   composeSubagentSystemPrompt,
@@ -1824,63 +1826,34 @@ export class DesktopAgentRuntime {
     // SYSTEM.md must not remove (tool guidance, delegation, scratch, skills).
     const defaultSystemPromptParts = [
       DEFAULT_RUNTIME_SYSTEM_PROMPT,
-      // Collaboration rules. Measured sessions ran hours with 380 assistant
-      // messages and exactly one non-empty text body: a reasoning model reads
-      // "prefer concise" as "say nothing", writes its conclusion into thinking
-      // (which the user never sees), and the user is left sending "继续" to
-      // find out whether anything happened. Every clause below is one of those
-      // observed failures stated as a hard rule.
-      "Collaboration: answer in the same language the user writes in. Before each batch of tool calls, write one short sentence saying what you are about to do in the same assistant message as those calls; never leave the user with no new text for more than one tool batch or 60 seconds of work. Whatever the user asked must be answered in your visible text — your reasoning is not shown to them, so a conclusion that lives only there never reached them. Make the final message self-contained: the outcome, what you changed, and anything still open, without asking the user to re-read intermediate updates. Carry the work through end to end; when you hit a blocker, try to clear it yourself and report what you tried, instead of stopping at analysis or a half-finished change.",
-      // Delegation steering (ADR 0089). The trigger patterns below are the
-      // proactive half of the Task tool's own description: models delegate
-      // when the system prompt names the situations, and keep doing everything
-      // inline when it only says "you may".
+      // Workflow rules.
+      "Complete the requested work and relevant checks without expanding scope. Preserve unrelated user changes. Resolve recoverable blockers yourself.",
+      // Visibility rules.
+      "Before each tool batch, briefly state its purpose. Keep the user informed during long work. The final response must state the outcome, verification, and remaining blockers. Never claim actions or checks you did not perform.",
+      // Delegation steering (ADR 0089).
       ...(this.subagents.length
         ? [
             `## Delegation
-Work splits into independent pieces — delegate, and keep your context for the synthesis. Subagents run in their own context and report back through TaskWait.
-
-Use the Task tool when:
-- Parallel exploration: two or more independent directions (for example one subagent per subsystem, or backend + frontend + tests). Start one Task per direction in the same assistant message.
-- Adversarial review: after implementing a non-trivial change, delegate a read-only review of it to code-reviewer before you commit.
-- Implementation: a multi-file change with a complete, self-contained spec — delegate to fixer, which may write inside the workspace.
-- Context economy: wide searches, long logs, multi-file surveys whose intermediate output you do not need — explorer / test-runner.
-- Batch sharding: the same bounded job repeated over many independent targets.
-
-Delegation rules:
-- Task returns immediately with a delegation id. Do not sit idle: keep working on your own independent line, then converge with TaskWait (mode="any" + minCompleted to converge early) when you need results, TaskList to check progress, TaskStop to stop.
-- Always fill Task's \`description\` so the user sees what each subagent is doing. Integrate findings and say which subagent produced what.
-- You may talk to the user while subagents run. Do not TaskStop unless you have decided the work should not continue. The runtime keeps them alive and delivers their reports when they finish — ending your turn does not abort them.
-- Never delegate what you can finish in a couple of tool calls, and never delegate anything that needs the user.`,
+Do the work yourself by default. Delegate only bounded, independent tasks with a clear benefit over direct execution.
+No recursive delegation, duplicate work, or agent debates.
+Allow at most one optional review pass unless the user requests more. Fix and retest concrete, in-scope defects without restarting broad reviews.
+Do not invent objections or turn speculative risks into blockers. Stop when the requested work is complete and relevant checks pass, or report a genuine blocker.`,
             ...(this.subagentModelSummary()
               ? [this.subagentModelSummary()!]
               : []),
           ]
         : []),
-      // Search-tool steering. Read/Grep/Glob are host-bounded and scopeable;
-      // hand-rolled shell pipelines are not, and unbounded shell output is
-      // what exhausted context and forced repeated re-searching.
-      "Searching and reading: prefer the Read, Grep, and Glob tools over shell `cat`, `sed`, `head`, `grep`, or `find`. Read accepts only an existing regular text file, never a directory. If a file name is uncertain or a directory must be listed, use Glob instead of guessing a file name or calling Read on the directory; in Agent mode, activate it with ToolSearch for the current prompt when it is unavailable. Scope every search with the native parameters: Grep takes a file-or-directory `path` plus `include`, `outputMode`, and `headLimit`; Glob takes a directory `path` and `limit`; Read takes `offset` and `limit`, always reports `totalLines`, and paginates any supported text file however large; for files beyond the default window, use Grep to locate the target lines first, then Read the relevant range. Use `outputMode: \"filesWithMatches\"` or `\"count\"` when file contents are not needed, and use `include` to avoid scanning generated or vendor trees. These tools bound their own output; a shell pipeline does not, and one unscoped search over a whole workspace costs context you will need later. Workspace-relative paths are portable across macOS, Linux, and Windows; an explicit path outside the workspace and session scratch roots asks for permission unless the effective mode is Auto, so do not retry a denied path blindly. Grep uses the system's `rg` when it is installed and an in-process searcher otherwise — call Grep, do not shell out to `rg`. When a search genuinely needs Bash, use the active shell's syntax and a bounded command, and never assume POSIX utilities, `/`-based paths, or PowerShell commands on every platform. Do not re-run a search whose answer you already have.",
-      // Observed leak: OpenAI-style models sometimes emit the internal
-      // `multi_tool_use.parallel` wrapper as assistant text. PI-Desktop has no
-      // such tool, so the whole batch is silently lost as prose.
-      "Call tools through the native tool-call interface only. Never write a tool call as text, and never emit a `multi_tool_use.parallel` / `{\"tool_uses\": [...]}` wrapper — there is no such tool here, and a call written as prose does not run. To run several tools at once, emit several real tool calls in one assistant message.",
-      "Editing workflow: use the built-in Edit or Write tool directly on the deliverable file whenever it is inside the advertised workspace. Use Edit for one small unique line-anchored change (path + tag + ops) and Write for a coherent whole-file rewrite. Do not invoke shell apply_patch, git apply, or patch commands; do not create or hand-edit unified-diff files in scratch or repeatedly repair their hunk headers. Treat an edit or shell patch failure as recoverable state: classify the error, perform the required fresh Read or use a complete reveal, regenerate the change, and retry with a corrected payload. A path may have three counted failures per prompt; stop after the third and report the exact mismatch instead of looping. Never issue concurrent Write/Edit calls for the same path. When a dedicated worktree is outside the advertised workspace, make one guarded, deterministic edit inside that worktree with Bash, then verify it with git diff or an equivalent check.",
-      // Work panel browser preview (D100): workspace HTML files render
-      // in the embedded browser with live reload on file changes.
-      `For user-visible HTML pages, call the BrowserPreview tool once after creating the page or making the first meaningful visual edit, using its workspace-relative path (e.g. \`index.html\` or \`demo/index.html\`) to show it in PI-Desktop's built-in browser panel. Reuse that preview while iterating: it live-reloads as you edit, so no repeat call or manual refresh is needed. Skip generated, test-only, and non-visual HTML files. If BrowserPreview is not in the current tool list, load it first with ${TOOL_SEARCH_NAME}.`,
+      // Editing workflow.
+      `Editing workflow: inside the advertised workspace, use Edit for small, uniquely anchored changes and Write for new files or intentional whole-file rewrites. Never modify the same path concurrently. Do not use shell apply_patch, git apply, patch, or hand-edited unified-diff files. On failure, diagnose the cause, refresh content or anchors with Read or a complete tool-provided reveal when needed, and correct the payload before retrying. After three failed edit attempts on the same path in one user turn, stop editing that path, report the exact error, and continue unblocked work. For an authorized worktree outside the advertised workspace, use a guarded, deterministic Bash edit that aborts on unexpected content, then verify the diff.`,
       // Shell dialect and scratch variable are selected by host-core.
       commandShellGuidance(this.commandShell, this.scratchDir),
-      // Session scratch directory (D114): temp files must not dirty
-      // the user's workspace or its git status.
+      // Session scratch directory (D114).
       ...(this.scratchDir
         ? [
-            `Your scratch directory for this session is \`${this.scratchDir}\` (in Bash: $PI_SCRATCH_DIR). Write ALL temporary and intermediate files there using absolute paths — one-off scripts, downloaded data, drafts, experiment output — never into the workspace. Only write into the workspace when the file is a deliverable the user asked for. Scratch files persist across turns of this session and are cleaned up automatically when the session is deleted.`,
+            `Your scratch directory for this session is \`${this.scratchDir}\` (in Bash: $PI_SCRATCH_DIR). Store ad-hoc temporary and intermediate files there using absolute paths. Workspace writes must be task-related project files or required toolchain outputs. Scratch persists across turns and is deleted with the session.`,
           ]
         : []),
-      // Plugin skills (D174): the catalog rides in the base prompt so a
-      // path-scoped instruction reload never drops it, and it stays ahead of
-      // the instruction chain so the user's own AGENTS.md keeps the last word.
+      // Plugin skills (D174).
       ...(skillsPrompt ? [skillsPrompt] : []),
     ];
     // A custom SYSTEM.md replaces only the product persona line, never the
@@ -4122,8 +4095,8 @@ Delegation rules:
       name: SUBAGENT_TOOL_NAME,
       label: "Task",
       description: [
-        "Start one subagent in the background and return immediately; you keep working while it runs, then converge with TaskWait when you need its report.",
-        "Use it when the work is separable: parallel exploration of independent directions (one Task per direction in the same assistant message), a multi-file implementation with a complete spec (fixer), an adversarial read-only review of a change you just made (code-reviewer), or a wide search / long log / multi-file survey whose intermediate output would otherwise fill this context (explorer, test-runner).",
+        "Start one subagent in the background and return immediately; you keep working while it runs, then converge with TaskWait when you need its report.\n\nPrefer doing the work yourself. Only delegate when it saves significant context or enables genuine parallelism — not for tasks you can finish in a few tool calls.",
+        "Use it only when the work is genuinely separable and substantial: parallel exploration of independent directions that each need many tool calls (one Task per direction in the same assistant message), a large multi-file implementation with a complete spec (fixer), an adversarial read-only review of a non-trivial change you already finished (code-reviewer), or a wide search whose raw output would fill this context (explorer, test-runner). A single file lookup or a small edit does not warrant delegation.",
         "Do not delegate what you can finish in a couple of tool calls, and do not delegate anything that needs the user — a subagent cannot ask a question or propose a plan on your behalf.",
         ...(this.availableSubagentModelKeys().length
           ? [
@@ -4371,70 +4344,97 @@ Delegation rules:
           ...(modelChangedFrom ? { modelChangedFrom } : {}),
         };
         this.delegations.set(delegationId, record);
-        const scopedTools = this.scopeDelegateTools(tools, definition);
-        new SubagentRun({
-          definition,
-          sessionId: this.sessionId,
-          turnId: this.turnId,
-          parentToolCallId: toolCallId,
-          task,
-          provider,
-          infiniteProviderRetry: this.infiniteProviderRetry,
-          thinkingLevel,
-          fallbackModels: (definition.fallbackModels ?? []).map((pin) => ({
-            key: subagentModelKey(pin),
-            provider: this.subagentProviders[subagentModelKey(pin)],
-          })),
-          inheritedThinkingLevel: this.thinkingLevel,
-          onModelChange: (next, level) => {
-            record.modelId = next.modelId;
-            record.thinkingLevel = level;
-            this.delegationChains.retarget(record.delegateSessionId, {
-              modelKey: this.delegationModelKeyFor(next),
-              modelId: next.modelId,
-            });
-            this.publishDelegationSettlement(record);
-          },
-          systemPrompt: composeSubagentSystemPrompt({
+        let subagentRun: SubagentRun;
+        try {
+          const scopedTools = this.scopeDelegateTools(tools, definition);
+          subagentRun = new SubagentRun({
             definition,
-            guidance: this.subagentGuidance(definition),
-            toolNames: declaredToolNames,
-          }),
-          tools: scopedTools,
-          onEvent: (envelope) => {
-            this.noteDelegationActivity(record, envelope);
-            this.onEvent(envelope);
-          },
-          // A host failure inside a delegate reaches its tool-error channel
-          // through the same bookkeeping the parent uses.
-          resolveToolOutcome: (context) => this.resolveOwnToolOutcome(context),
-          signal: abortSignal,
-          // A resumed run replays its chain before this turn's `task` (ADR 0276).
-          ...(initialMessages ? { initialMessages } : {}),
-        })
-          .run()
-          .then(
-            (result) => this.settleDelegation(record, result),
-            // SubagentRun.run() settles its own errors into results; this
-            // guard only keeps an unexpected rejection from leaving the
-            // delegation stuck in "running" forever.
-            (error: unknown) => {
-              this.settleDelegation(record, {
-                agentName: definition.name,
-                modelId: provider.modelId,
-                thinkingLevel,
-                status: "failed",
-                report: "",
-                turns: 0,
-                toolCalls: 0,
-                error: {
-                  code: "UNEXPECTED_DELEGATION_REJECTION",
-                  message:
-                    error instanceof Error ? error.message : "unknown error",
-                },
+            sessionId: this.sessionId,
+            turnId: this.turnId,
+            parentToolCallId: toolCallId,
+            task,
+            provider,
+            infiniteProviderRetry: this.infiniteProviderRetry,
+            thinkingLevel,
+            fallbackModels: (definition.fallbackModels ?? []).map((pin) => ({
+              key: subagentModelKey(pin),
+              provider: this.subagentProviders[subagentModelKey(pin)],
+            })),
+            inheritedThinkingLevel: this.thinkingLevel,
+            onModelChange: (next, level) => {
+              record.modelId = next.modelId;
+              record.thinkingLevel = level;
+              this.delegationChains.retarget(record.delegateSessionId, {
+                modelKey: this.delegationModelKeyFor(next),
+                modelId: next.modelId,
               });
+              this.publishDelegationSettlement(record);
             },
+            systemPrompt: composeSubagentSystemPrompt({
+              definition,
+              guidance: this.subagentGuidance(definition),
+              toolNames: declaredToolNames,
+            }),
+            tools: scopedTools,
+            onEvent: (envelope) => {
+              this.noteDelegationActivity(record, envelope);
+              this.onEvent(envelope);
+            },
+            // A host failure inside a delegate reaches its tool-error channel
+            // through the same bookkeeping the parent uses.
+            resolveToolOutcome: (context) => this.resolveOwnToolOutcome(context),
+            signal: abortSignal,
+            // A resumed run replays its chain before this turn's `task` (ADR 0276).
+            ...(initialMessages ? { initialMessages } : {}),
+          });
+        } catch {
+          // A constructor/scope failure happens after registry allocation. Make
+          // it terminal before returning or idle auto-resume will await a
+          // completion promise for a worker that never existed.
+          record.reportDelivered = true;
+          this.settleDelegation(record, {
+            agentName: definition.name,
+            modelId: provider.modelId,
+            thinkingLevel,
+            status: "failed",
+            report: "",
+            turns: 0,
+            toolCalls: 0,
+            error: {
+              code: "SUBAGENT_INITIALIZATION_FAILED",
+              message: "The subagent runtime could not be initialized.",
+            },
+          });
+          return this.subagentToolError(
+            toolCallId,
+            `Could not initialize the ${definition.name} subagent. No work was started.`,
           );
+        }
+
+        let runPromise: Promise<SubagentRunResult>;
+        try {
+          runPromise = subagentRun.run();
+        } catch (error) {
+          runPromise = Promise.reject(error);
+        }
+        void runPromise
+          .then((result) => this.settleDelegation(record, result))
+          .catch((error: unknown) => {
+            this.settleDelegation(record, {
+              agentName: definition.name,
+              modelId: provider.modelId,
+              thinkingLevel,
+              status: "failed",
+              report: "",
+              turns: 0,
+              toolCalls: 0,
+              error: {
+                code: "UNEXPECTED_DELEGATION_REJECTION",
+                message:
+                  error instanceof Error ? error.message : "unknown error",
+              },
+            });
+          });
 
         const label =
           isRecord(params) && typeof params.description === "string"
@@ -4495,21 +4495,30 @@ Delegation rules:
         : result.status;
     record.result = result;
     record.completedAt = Date.now();
-    if (result.usage) {
-      this.turnSubagentUsage = addUsage(this.turnSubagentUsage, result.usage);
-    }
-    this.delegationChains.settle(record.delegateSessionId, record.status);
-    // An aborted call never sends `tool_end`, so a settled run drops whatever
-    // its calls left behind rather than pinning those arguments for the session.
-    for (const toolCallId of record.pendingToolCallIds ?? []) {
-      this.delegateToolCalls.delete(toolCallId);
-    }
-    record.pendingToolCallIds = undefined;
-    this.publishDelegationSettlement(record);
+    // Resolve before event publication or bookkeeping: none of those side
+    // effects may strand TaskWait or the parent's idle auto-resume.
     record.resolveCompletion();
-    this.refreshDelegationWait();
-    this.refreshResumablePrompt();
-    this.pruneFinishedDelegations();
+    try {
+      if (result.usage) {
+        this.turnSubagentUsage = addUsage(this.turnSubagentUsage, result.usage);
+      }
+      this.delegationChains.settle(record.delegateSessionId, record.status);
+      // An aborted call never sends `tool_end`, so a settled run drops whatever
+      // its calls left behind rather than pinning those arguments for the session.
+      for (const toolCallId of record.pendingToolCallIds ?? []) {
+        this.delegateToolCalls.delete(toolCallId);
+      }
+      record.pendingToolCallIds = undefined;
+      this.publishDelegationSettlement(record);
+    } catch {
+      process.stderr.write(
+        `[agent-runtime] delegation settlement side effect failed (session=${this.sessionId} delegation=${record.delegationId})\n`,
+      );
+    } finally {
+      this.refreshDelegationWait();
+      this.refreshResumablePrompt();
+      this.pruneFinishedDelegations();
+    }
   }
 
   private publishDelegationSettlement(record: DelegationRecord): void {
@@ -4588,6 +4597,7 @@ Delegation rules:
   private terminateParentTurn(): void {
     this.turnHadError = true;
     this.acceptingSteering = false;
+    this.steeringWaitAbort?.abort();
     this.retainPendingSteering();
     this.abortRunningDelegations();
     this.delegationWaitTargets = undefined;
@@ -5055,7 +5065,7 @@ Delegation rules:
       name: SUBAGENT_STOP_TOOL_NAME,
       label: "Task Stop",
       description:
-        "Stop one or more running subagents. `delegationIds` defaults to every running subagent. Stopped subagents report as stopped; their partial work is lost.",
+        "Request cancellation for one or more running subagents. `delegationIds` defaults to every running subagent. A subagent is reported as stopped only after it confirms termination; an unresponsive subagent remains running.",
       parameters: Type.Object({
         delegationIds: Type.Optional(
           Type.Array(
@@ -5073,22 +5083,50 @@ Delegation rules:
         const targets = ids.length
           ? ids
               .map((id) => this.delegations.get(id))
-              .filter((record): record is DelegationRecord => record !== undefined)
+              .filter(
+                (record): record is DelegationRecord =>
+                  record !== undefined && record.status === "running",
+              )
           : this.runningDelegations();
         for (const record of targets) {
           record.stopRequested = true;
           record.abort();
         }
-        // Persist the settled snapshot: aborting is async, and a `running`
-        // `details.stopped[]` made finished sessions keep a live topology card.
-        await Promise.all(targets.map((record) => record.completion));
+        // Cancellation is cooperative: bound the wait so a worker that ignores
+        // abort cannot wedge the parent tool call. Still-running workers are
+        // explicitly returned as pending, never mislabeled as stopped.
+        let stopTimeout: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          Promise.all(targets.map((record) => record.completion)),
+          new Promise<void>((resolve) => {
+            stopTimeout = setTimeout(resolve, 5_000);
+          }),
+        ]);
+        if (stopTimeout !== undefined) clearTimeout(stopTimeout);
+        const pending = targets.filter((record) => record.status === "running");
+        const stopped = targets.filter((record) => record.status === "stopped");
+        const settled = targets.filter(
+          (record) => record.status !== "running" && record.status !== "stopped",
+        );
         const text =
           targets.length === 0
             ? "No matching running subagents to stop."
-            : `Stopped ${targets.length} subagent${targets.length === 1 ? "" : "s"}.`;
+            : pending.length > 0
+              ? `Cancellation requested for ${targets.length} subagent${targets.length === 1 ? "" : "s"}; ${pending.length} have not confirmed termination and remain running.`
+              : settled.length > 0
+                ? `Cancellation settled for ${targets.length} subagent${targets.length === 1 ? "" : "s"}: ${stopped.length} stopped and ${settled.length} had already finished.`
+                : `Stopped ${stopped.length} subagent${stopped.length === 1 ? "" : "s"}.`;
         return {
           content: [{ type: "text", text }],
-          details: { stopped: targets.map(delegationSummary) },
+          details: {
+            stopped: stopped.map(delegationSummary),
+            ...(pending.length > 0
+              ? { stopPending: pending.map(delegationSummary) }
+              : {}),
+            ...(settled.length > 0
+              ? { settled: settled.map(delegationSummary) }
+              : {}),
+          },
         };
       },
     };
@@ -5895,18 +5933,30 @@ Delegation rules:
 
   private contextBudget(messages: AgentMessage[]): ContextBudget {
     const budget = contextBudgetFor(this.model, messages);
-    // Correct the raw estimate with what past requests actually cost. The
-    // `chars / 4` tail is biased on CJK text, and a projection with no usage
-    // anchor is missing the system/tool overhead; below the sample threshold
-    // `correct()` returns the raw value unchanged, and the downward direction
-    // is bounded by `CONTEXT_CALIBRATION_FACTOR_MIN`.
+    // Calibration learns from message usage; the output-cap estimator adds the
+    // active system prompt and tool schemas that the provider also receives.
+    // Taking the larger full-request estimate avoids double-counting overhead
+    // once unanchored calibration has learned it, while keeping that overhead as
+    // a hard floor before the first usable sample.
+    const calibratedMessageTokens = this.contextCalibration.correct(
+      estimateContextTokens(messages, this.model),
+    );
+    const requestTokens = estimateOutputCapInputTokens(
+      {
+        messages: messages.filter(
+          (message): message is Extract<AgentMessage, { content: unknown }> =>
+            message.role !== "system" && "content" in message,
+        ),
+        ...(typeof this.agent.state.systemPrompt === "string"
+          ? { systemPrompt: this.agent.state.systemPrompt }
+          : {}),
+        tools: this.activeTools(),
+      },
+      this.model,
+    );
     return {
       ...budget,
-      // Same target model as `contextBudgetFor` above: the calibration input
-      // must describe the request this runtime will actually send.
-      tokens: this.contextCalibration.correct(
-        estimateContextTokens(messages, this.model),
-      ),
+      tokens: Math.max(calibratedMessageTokens, requestTokens),
     };
   }
 
@@ -5956,7 +6006,19 @@ Delegation rules:
     const context = this.liveSessionContext();
     const messages = [...context.messages, ...additionalMessages];
     const budget = this.contextBudget(messages);
-    return this.compactionEnabled && budget.tokens >= budget.hardLimit;
+    return (
+      this.compactionEnabled &&
+      budget.tokens >= automaticCompactionThresholdFor(budget)
+    );
+  }
+
+  private automaticCompactionWouldExceedHardLimit(
+    additionalMessages: AgentMessage[] = [],
+  ): boolean {
+    const context = this.liveSessionContext();
+    const messages = [...context.messages, ...additionalMessages];
+    const budget = this.contextBudget(messages);
+    return budget.tokens >= budget.hardLimit;
   }
 
   private retainedUserMessageBudget(budget: ContextBudget): number {
@@ -6103,19 +6165,25 @@ Delegation rules:
     _signal?: AbortSignal,
   ): Promise<AgentLoopTurnUpdate> {
     let context = this.rebuiltAgentContext();
+    const budget = this.contextBudget(context.messages);
+    const hardLimitReached = budget.tokens >= budget.hardLimit;
     if (!this.compactionEnabled) {
       this.pendingModelCompaction = false;
+      if (hardLimitReached) {
+        throw new Error(
+          "CONTEXT_TOO_LARGE: context exceeds the safe model budget while automatic compaction is disabled",
+        );
+      }
       return { context };
     }
 
-    const budget = this.contextBudget(context.messages);
-    const hardLimitReached = budget.tokens >= budget.hardLimit;
-    // Codex's `should_roll_over`: either the model asked for a new window or
-    // the limit forces one. A model request that fails to compact is not fatal
-    // — nothing is over the boundary yet — so only the limit throws.
+    const automaticThresholdReached =
+      budget.tokens >= automaticCompactionThresholdFor(budget);
+    // Compact deterministically before the request approaches the hard limit.
+    // `new_context` remains an optional earlier model request.
     const modelRequested = this.pendingModelCompaction;
     this.pendingModelCompaction = false;
-    if (!hardLimitReached && !modelRequested) {
+    if (!automaticThresholdReached && !modelRequested) {
       return { context: this.withContextBudgetReminder(context, budget) };
     }
 
@@ -7699,14 +7767,20 @@ Delegation rules:
     this.appendLiveEntry(userMessageId, incomingUserMessage);
     this.setAgentMessages(this.liveSessionContext().messages);
   }
+  private failCurrentPreflight(
+    error: ReturnType<typeof classifyAgentError>,
+  ): void {
+    this.terminateParentTurn();
+    this.finalizeCurrentAssistant("error", error);
+    this.emit({ type: "error", error });
+  }
+
   private failBeforeProviderRequest(
     incomingUserMessage: AgentMessage,
     error: ReturnType<typeof classifyAgentError>,
   ): void {
     this.keepPreflightUserMessage(incomingUserMessage);
-    this.terminateParentTurn();
-    this.finalizeCurrentAssistant("error", error);
-    this.emit({ type: "error", error });
+    this.failCurrentPreflight(error);
   }
 
   /**
@@ -7792,6 +7866,38 @@ Delegation rules:
     this.appendLiveEntry(internalId, internalMessage);
     this.setAgentActivity({ phase: "starting", since: Date.now() });
     this.setAgentMessages(this.liveSessionContext().messages);
+    if (this.automaticCompactionNeeded()) {
+      const compacted = await this.runCompaction(
+        "threshold",
+        false,
+        "active_turn",
+      );
+      if (!compacted) {
+        if (this.compactionAborted) {
+          this.terminateParentTurn();
+          this.finalizeCurrentAssistant("aborted");
+          return { turnId: this.turnId };
+        }
+        if (this.automaticCompactionWouldExceedHardLimit()) {
+          this.failCurrentPreflight({
+            code: "CONTEXT_COMPACTION_FAILED",
+            message:
+              "Automatic context compaction failed before approved plan execution",
+            retriable: false,
+          });
+          return { turnId: this.turnId };
+        }
+      }
+    }
+    if (this.automaticCompactionWouldExceedHardLimit()) {
+      this.failCurrentPreflight({
+        code: "CONTEXT_TOO_LARGE",
+        message:
+          "The approved plan still exceeds the safe model context budget after compaction",
+        retriable: false,
+      });
+      return { turnId: this.turnId };
+    }
     await this.agent.continue();
     await this.waitForIdleAndSteering();
     // Same recovery contract as a user prompt: a plan execution that overflows,
@@ -7859,14 +7965,17 @@ Delegation rules:
             this.keepPreflightUserMessage(incomingUserMessage);
             throw turnAbortedError("Turn aborted while compacting context");
           }
-          this.failBeforeProviderRequest(incomingUserMessage, {
-            code: "CONTEXT_COMPACTION_FAILED",
-            message: "Automatic context compaction failed before the model request",
-            retriable: false,
-          });
-          return { turnId: this.turnId };
-        }
-        if (this.automaticCompactionNeeded([incomingUserMessage])) {
+          // A soft-trigger summary failure is recoverable while the hard
+          // provider budget still has room; retain the hard guard below.
+          if (this.automaticCompactionWouldExceedHardLimit([incomingUserMessage])) {
+            this.failBeforeProviderRequest(incomingUserMessage, {
+              code: "CONTEXT_COMPACTION_FAILED",
+              message: "Automatic context compaction failed before the model request",
+              retriable: false,
+            });
+            return { turnId: this.turnId };
+          }
+        } else if (this.automaticCompactionWouldExceedHardLimit([incomingUserMessage])) {
           this.failBeforeProviderRequest(incomingUserMessage, {
             code: "CONTEXT_TOO_LARGE",
             message:
@@ -7875,6 +7984,18 @@ Delegation rules:
           });
           return { turnId: this.turnId };
         }
+      }
+      if (
+        !this.compactionEnabled &&
+        this.automaticCompactionWouldExceedHardLimit([incomingUserMessage])
+      ) {
+        this.failBeforeProviderRequest(incomingUserMessage, {
+          code: "CONTEXT_TOO_LARGE",
+          message:
+            "The pending prompt exceeds the safe model context budget while automatic compaction is disabled",
+          retriable: false,
+        });
+        return { turnId: this.turnId };
       }
       await this.extensionBeforeAgentStart(modelInput);
       if (this.runCancelled || this.disposed) {
@@ -8073,6 +8194,7 @@ Delegation rules:
     this.acceptingSteering = false;
     this.gracefulStopRequested = false;
     this.runCancelled = true;
+    this.steeringWaitAbort?.abort();
     this.extensionRunner?.cancelPending();
     this.resolvePendingAskTools();
     this.abortRunningDelegations();
@@ -8100,7 +8222,7 @@ Delegation rules:
         this.agent.state.isStreaming ||
         this.compactionInProgress ||
         this.agentActivity !== undefined ||
-        (!this.turnHadError && this.runningDelegations().length > 0),
+        (!this.turnHadError && !this.runCancelled && this.runningDelegations().length > 0),
       currentTurnId: this.turnId,
       modelId: this.provider.modelId,
       pendingToolConfirmations: 0,
@@ -8119,6 +8241,7 @@ Delegation rules:
     this.disposed = true;
     this.acceptingSteering = false;
     this.runCancelled = true;
+    this.steeringWaitAbort?.abort();
     this.resolvePendingAskTools();
     this.abortRunningDelegations();
     this.delegationWaitTargets = undefined;

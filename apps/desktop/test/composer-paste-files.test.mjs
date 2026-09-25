@@ -8,14 +8,14 @@ import { readMainSource } from "./helpers/main-source.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [composer, api, main, attachments, saver, protocol, sidecar, picker] = await Promise.all([
+const [composer, api, main, attachments, saver, protocol, history, picker] = await Promise.all([
   readComposerSource(),
   read("../src/lib/api.ts"),
   readMainSource(),
   read("../electron/main/prompt-attachments.ts"),
   read("../electron/main/composer-paste.ts"),
   read("../../../packages/shared/src/protocol.ts"),
-  read("../../../packages/agent-runtime/src/sidecar.ts"),
+  read("../../../packages/agent-runtime/src/attachment-history.ts"),
   read("../electron/main/composer-picker.ts"),
 ]);
 
@@ -268,9 +268,9 @@ test("large image attachments avoid whole-file startup reads", () => {
   assert.match(attachments, /const inline = supportsVision && size <= MAX_INLINE_IMAGE_BYTES/);
   assert.match(attachments, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
   assert.doesNotMatch(attachments, /const bytes = readFileSync\(source\.absolute\)/);
-  assert.match(sidecar, /const size = \(await stat\(canonical\)\)\.size/);
-  assert.match(sidecar, /shouldInline && size <= MAX_INLINE_IMAGE_BYTES/);
-  assert.match(sidecar, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
+  assert.match(history, /const size = \(await stat\(canonical\)\)\.size/);
+  assert.match(history, /shouldInline && size <= MAX_INLINE_IMAGE_BYTES/);
+  assert.match(history, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
 });
 
 test("paste results separate display names from unique storage paths", async () => {

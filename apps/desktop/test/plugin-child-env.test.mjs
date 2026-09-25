@@ -85,8 +85,10 @@ test("both plugin child environments are built from the one allowlist", () => {
   const mcpSrc = readFileSync(join(desktopRoot, "electron/main/plugin-mcp.ts"), "utf8");
   const envSrc = readFileSync(join(desktopRoot, "electron/main/child-process-env.ts"), "utf8");
   assert.match(runtimeSrc, /env: pluginChildEnv\(pluginId\)/);
-  assert.match(mcpSrc, /\.\.\.minimalChildEnv\(\)/);
+  assert.match(mcpSrc, /minimalChildEnv\(\)/);
+  assert.match(mcpSrc, /MCP_STDIO_HOST_ENV_KEYS/);
   // A second private allowlist is how the identity variables went missing once.
+  // Windows extras (PATHEXT, FNM_DIR, …) live on the named list, not inline.
   assert.doesNotMatch(runtimeSrc, /pluginProcessEnv/);
   assert.doesNotMatch(mcpSrc, /for \(const key of \["SystemRoot"/);
   assert.doesNotMatch(runtimeSrc, /for \(const key of \["PATH"/);

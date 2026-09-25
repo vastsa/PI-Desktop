@@ -4,7 +4,7 @@ import type { ProjectGroupRecord } from "@pi-desktop/shared";
 import { ErrorCodes } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
-import { Button, TooltipButton, cx } from "../components/ui";
+import { Button, TooltipButton, SegmentedControl, cx } from "../components/ui";
 import {
   IconArchive,
   IconArchiveRestore,
@@ -385,27 +385,18 @@ export function ProjectsPage() {
   return (
     <div className="settings-stack">
       <div className="projects-toolbar">
-        <div
-          className="settings-segment projects-sort"
+        <SegmentedControl
+          value={sort}
+          onChange={(mode) => setSort(mode)}
+          options={[
+            { value: "recent", label: t("project.sortRecent") },
+            { value: "name", label: t("project.sortName") },
+          ]}
+          label={t("project.sortBy")}
           role="group"
-          aria-label={t("project.sortBy")}
-        >
-          {(["recent", "name"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={cx(
-                "settings-segment-item",
-                "projects-sort-btn",
-                sort === mode && "active",
-              )}
-              aria-pressed={sort === mode}
-              onClick={() => setSort(mode)}
-            >
-              {t(mode === "recent" ? "project.sortRecent" : "project.sortName")}
-            </button>
-          ))}
-        </div>
+          className="projects-sort"
+          itemClassName="projects-sort-btn"
+        />
         <div className="projects-search-wrap">
           <IconSearch size={14} aria-hidden="true" />
           <input

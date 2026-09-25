@@ -12,10 +12,14 @@ import {
   type McpTransport,
   type ProjectRecord,
 } from "@pi-desktop/shared";
-import { Button, Field, HelpIcon, Input, TooltipButton, cx, portalOverlay } from "../ui";
+import { Button, Field, HelpIcon, Input, SettingsToggle, TooltipButton, cx, portalOverlay } from "../ui";
 import { IconPlay, IconServer, IconTerminal, IconX } from "../icons";
 import { ScopeControl } from "./ScopeControl";
 import { KeyValueRows, pairsToRecord, recordToPairs, type KeyValuePair } from "./KeyValueRows";
+import {
+  MCP_STDIO_LAUNCHER_PRESETS,
+  mcpStdioLauncherChoice,
+} from "./mcp-stdio-launcher";
 
 /**
  * Tool names shown beside a test result.
@@ -53,7 +57,7 @@ export function emptyMcpDraft(): McpDraft {
     label: "",
     description: "",
     transport: "stdio",
-    command: "",
+    command: "npx",
     args: "",
     env: [],
     url: "",
@@ -186,16 +190,11 @@ function ManagementScope({
           />
         </span>
       </div>
-      <button
-        type="button"
-        className={cx("settings-toggle", draft.enabled && "on")}
-        role="switch"
-        aria-checked={draft.enabled}
-        aria-label={t("settings.enableCapability", { name: draft.label || draft.id })}
-        onClick={() => setDraft({ ...draft, enabled: !draft.enabled })}
-      >
-        <span className="settings-toggle-thumb" />
-      </button>
+      <SettingsToggle
+        checked={draft.enabled}
+        label={t("settings.enableCapability", { name: draft.label || draft.id })}
+        onChange={() => setDraft({ ...draft, enabled: !draft.enabled })}
+      />
     </div>
   );
 }
@@ -254,6 +253,7 @@ export function McpEditorSheet({
 }) {
   const { t } = useTranslation();
   const [idTouched, setIdTouched] = useState(!!editing);
+  const launcher = mcpStdioLauncherChoice(draft.command);
   const errorKey = mcpDraftError(draft);
   // A form the user has not started saying "an identifier is required" scolds
   // them for opening it. The message appears once there is something to correct.
@@ -261,7 +261,7 @@ export function McpEditorSheet({
     !editing &&
     !draft.id.trim() &&
     !draft.label.trim() &&
-    !draft.command.trim() &&
+    (draft.command.trim() === "" || draft.command.trim().toLowerCase() === "npx") &&
     !draft.url.trim();
 
   useEffect(() => {
@@ -385,17 +385,59 @@ export function McpEditorSheet({
 
           {draft.transport === "stdio" ? (
             <>
-              <Field label={t("extensions.mcp.command")} hint={t("extensions.mcp.commandHint")}>
-                <Input
-                  value={draft.command}
-                  placeholder="npx"
-                  onChange={(event) => set("command", event.target.value)}
-                />
-              </Field>
+              <div className="ext-field-group">
+                <div className="ext-field-label">
+                  {t("extensions.mcp.command")}
+                  <HelpIcon
+                    label={t(
+                      launcher === "npx"
+                        ? "extensions.mcp.commandHintNpx"
+                        : launcher === "uvx"
+                          ? "extensions.mcp.commandHintUvx"
+                          : "extensions.mcp.commandHint",
+                    )}
+                  />
+                </div>
+                <div className="ext-preset-pick" role="radiogroup" aria-label={t("extensions.mcp.command")}>
+                  {MCP_STDIO_LAUNCHER_PRESETS.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={launcher === id}
+                      className={cx("ext-preset-chip", launcher === id && "is-selected")}
+                      onClick={() => set("command", id)}
+                    >
+                      <span className="ext-preset-chip-name">{id}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={launcher === "custom"}
+                    className={cx("ext-preset-chip", launcher === "custom" && "is-selected")}
+                    onClick={() => {
+                      if (launcher === "custom") return;
+                      set("command", "");
+                    }}
+                  >
+                    <span className="ext-preset-chip-name">{t("extensions.mcp.launcherCustom")}</span>
+                  </button>
+                </div>
+              </div>
+              {launcher === "custom" ? (
+                <Field label={t("extensions.mcp.commandPath")} hint={t("extensions.mcp.commandHint")}>
+                  <Input
+                    value={draft.command}
+                    placeholder={t("extensions.mcp.commandPlaceholder")}
+                    onChange={(event) => set("command", event.target.value)}
+                  />
+                </Field>
+              ) : null}
               <Field label={t("extensions.mcp.args")} hint={t("extensions.mcp.argsHint")}>
                 <Input
                   value={draft.args}
-                  placeholder="-y @upstash/context7-mcp"
+                  placeholder={launcher === "uvx" ? "mcp-server-git" : "-y @upstash/context7-mcp"}
                   onChange={(event) => set("args", event.target.value)}
                 />
               </Field>

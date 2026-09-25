@@ -24,7 +24,7 @@ const {
   planImageGenerationDefaults,
   resolvesImageGenerationDefault,
 } = await import("../src/components/settings/image-generation-default.ts");
-const { MAX_IMAGE_GENERATION_MODELS } = await import("@pi-desktop/shared");
+const { MAX_IMAGE_GENERATION_MODELS, imageGenerationBindings, isImageGenerationModel } = await import("@pi-desktop/shared");
 
 /** A runnable image provider row; `over` overrides any field. */
 const provider = (id, modelIds, over = {}) => ({
@@ -40,6 +40,21 @@ const provider = (id, modelIds, over = {}) => ({
 });
 
 const binding = (providerId, modelId) => ({ providerId, modelId });
+
+test("image bindings distinguish full routes and providers while ignoring case", () => {
+  const prefixed = binding("x", "generic/model");
+  const plain = binding("x", "model");
+  assert.deepEqual(imageGenerationBindings([prefixed, plain, binding("x", "GENERIC/MODEL")], null),
+    [prefixed, plain]);
+  assert.equal(isImageGenerationModel([prefixed], "x", "model"), false);
+  assert.equal(isImageGenerationModel([prefixed], "y", "generic/model"), false);
+  assert.equal(isImageGenerationModel([prefixed], "x", "GENERIC/MODEL"), true);
+  assert.equal(imageGenerationBindingAvailable(provider("x", ["generic/model"]), "model"), false);
+  assert.equal(imageGenerationBindingAvailable(provider("x", ["generic/model"]), "GENERIC/MODEL"), false);
+  const plan = planImageGenerationDefaults({ imageGeneration: prefixed }, "x", ["model"],
+    [provider("x", ["generic/model", "model"])]);
+  assert.deepEqual(plan.imageGeneration, plain);
+});
 
 test("a saved image selection extends the candidates without taking the default", () => {
   const plan = planImageGenerationDefaults(

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -121,6 +121,33 @@ try {
       );
     return result.result.value;
   };
+  const watchImageContinuity = (rootSelector, imageSelector) => evaluate(`(() => {
+    const root = document.querySelector(${JSON.stringify(rootSelector)});
+    if (!root) return false;
+    window.__imageContinuity = [];
+    const sample = () => window.__imageContinuity.push(!!root.querySelector(${JSON.stringify(imageSelector)}));
+    window.__imageContinuityObserver = new MutationObserver(sample);
+    window.__imageContinuityObserver.observe(root, { childList: true, subtree: true });
+    return true;
+  })()`);
+  const imageStayedVisible = () => evaluate(`(() => {
+    window.__imageContinuityObserver.disconnect();
+    return window.__imageContinuity;
+  })()`);
+  const watchViewerSizing = () => evaluate(`(() => {
+    const image = document.querySelector('.generated-image-viewer-viewport img');
+    if (image?.dataset.sized !== 'true') return false;
+    window.__viewerSizing = [];
+    window.__viewerSizingObserver = new MutationObserver(() => {
+      window.__viewerSizing.push(document.querySelector('.generated-image-viewer-viewport img')?.dataset.sized === 'true');
+    });
+    window.__viewerSizingObserver.observe(image, { attributes: true, attributeFilter: ['src', 'data-sized', 'style'] });
+    return true;
+  })()`);
+  const viewerStayedSized = () => evaluate(`(() => {
+    window.__viewerSizingObserver.disconnect();
+    return window.__viewerSizing;
+  })()`);
   const invoke = (name, ...args) =>
     evaluate(
       `(async () => { const r = await window.piDesktop.invoke(window.piDesktop.channels.invoke[${JSON.stringify(name)}], ...${JSON.stringify(args)}); if (!r.ok) throw new Error(JSON.stringify(r.error)); return r.data; })()`,
@@ -194,15 +221,90 @@ try {
     await key("Enter",13);
   };
   await prompt("请生成两张橙色球体、蓝色背景的图片。");
-  await waitFor(() => evaluate(`document.querySelectorAll('.generated-image-preview img').length===2 && [...document.querySelectorAll('.generated-image-preview img')].every(e=>e.naturalWidth===480) && document.body.innerText.includes('已生成两张图片')`),60000,"batch images decoded in chat");
-  assert.ok(await evaluate(`[...document.querySelectorAll('.generated-image-preview img')].every(e=>e.checkVisibility() && !e.closest('[inert]'))`), "generated images remain visible outside collapsed tool details");
+  await waitFor(() => evaluate(`document.querySelectorAll('.generated-image-preview img').length===1 && document.querySelector('.generated-image-preview img')?.naturalWidth===480 && [...document.querySelectorAll('.generated-image-thumbnails img')].length===2 && document.body.innerText.includes('已生成两张图片')`),60000,"batch images decoded in chat");
+  assert.ok(await evaluate(`document.querySelector('.generated-image-preview img')?.checkVisibility() && !document.querySelector('.generated-image-set')?.closest('[inert]')`), "selected image remains visible outside collapsed tool details");
+  assert.equal(await evaluate(`document.querySelectorAll('.generated-image-thumbnails button').length`),2);
+  assert.equal(await evaluate(`document.querySelectorAll('.generated-image-thumbnails button[aria-current="true"]').length`),1);
+  const downloadDir = join(root, "downloads");
+  mkdirSync(downloadDir);
+  await send("Page.setDownloadBehavior", { behavior: "allow", downloadPath: downloadDir });
+  assert.ok(await evaluate(`document.querySelector('.generated-image-actions a[download="generated-image-1.png"]')?.href.startsWith('data:image/png;base64,')`));
+  await click("下载", ".generated-image-actions a", true);
+  const downloadedImage = join(downloadDir, "generated-image-1.png");
+  const originalImage = model.results[0].value.results[0].path;
+  await waitFor(() => existsSync(downloadedImage) && statSync(downloadedImage).size === statSync(originalImage).size,10000,"generated image download");
+  assert.deepEqual(readFileSync(downloadedImage),readFileSync(originalImage));
   await screenshot("chat-batch.png");
+  await send("Emulation.setDeviceMetricsOverride", {width:700,height:700,deviceScaleFactor:1,mobile:false});
+  await waitFor(() => evaluate(`innerWidth === 700`),5000,"narrow chat viewport");
+  await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+  await screenshot("chat-batch-narrow.png");
+  assert.ok(await evaluate(`document.querySelector('.generated-image-thumbnails')?.getBoundingClientRect().right <= innerWidth`),"batch thumbnails stay inside narrow window");
+  await send("Emulation.setDeviceMetricsOverride", {width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  assert.ok(await watchImageContinuity('.generated-image-set', '.generated-image-preview img'));
+  await click("生成图片 2", ".generated-image-thumbnails button", true);
+  await waitFor(() => evaluate(`(() => {const selected=document.querySelectorAll('.generated-image-thumbnails button')[1];const featured=document.querySelector('.generated-image-preview img');return selected?.getAttribute('aria-current')==='true' && featured?.naturalWidth===480 && featured.src===selected.querySelector('img')?.src})()`),5000,"second image selected in chat");
+  const cardContinuity = await imageStayedVisible();
+  assert.ok(cardContinuity.every(Boolean), `batch image remains painted while switching selection: ${JSON.stringify(cardContinuity)}`);
+  assert.ok(await evaluate(`document.querySelector('.generated-image-actions a[download="generated-image-2.png"]')?.href.startsWith('data:image/png;base64,')`));
+  await click("下载", ".generated-image-actions a", true);
+  const secondDownload = join(downloadDir, "generated-image-2.png");
+  const secondOriginal = model.results[0].value.results[1].path;
+  await waitFor(() => existsSync(secondDownload) && statSync(secondDownload).size === statSync(secondOriginal).size,10000,"selected image download");
+  assert.deepEqual(readFileSync(secondDownload),readFileSync(secondOriginal));
+  await screenshot("chat-batch-selected-2.png");
+  await click("生成图片 2", ".generated-image-preview", true);
+  await waitFor(() => evaluate(`!!document.querySelector('.generated-image-viewer[open]')`),5000,"image viewer opens");
+  assert.equal(await evaluate(`document.querySelectorAll('.generated-image-viewer-thumb').length`),2);
+  assert.ok(await evaluate(`document.querySelectorAll('.generated-image-viewer-thumb')[1]?.getAttribute('aria-current') === 'true'`));
+  assert.ok(await evaluate(`!!document.querySelector('.generated-image-viewer-header-actions button[aria-label="在文件夹中显示"]')`));
+  await waitFor(() => evaluate(`document.querySelector('.generated-image-viewer-viewport img')?.dataset.sized === 'true'`),5000,"viewer image sized");
+  await evaluate(`(() => {
+    const target = document.querySelectorAll('.generated-image-viewer-thumb img')[0];
+    const originalDecode = HTMLImageElement.prototype.decode;
+    HTMLImageElement.prototype.decode = function () {
+      if (this === target) return new Promise((resolve) => { window.__releaseViewerDecode = resolve; });
+      return originalDecode.call(this);
+    };
+    window.__restoreViewerDecode = () => { HTMLImageElement.prototype.decode = originalDecode; };
+  })()`);
+  await evaluate(`document.querySelectorAll('.generated-image-viewer-thumb')[0].click()`);
+  await waitFor(() => evaluate(`typeof window.__releaseViewerDecode === 'function'`),5000,"pending viewer decode");
+  await evaluate(`document.querySelectorAll('.generated-image-viewer-thumb')[1].click()`);
+  await evaluate(`window.__restoreViewerDecode(); window.__releaseViewerDecode()`);
+  await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+  assert.ok(await evaluate(`document.querySelectorAll('.generated-image-viewer-thumb')[1].getAttribute('aria-current') === 'true'`), "reselecting the current image cancels a pending decode");
+  assert.ok(await watchImageContinuity('.generated-image-viewer-viewport', 'img'));
+  assert.ok(await watchViewerSizing());
+  await click("上一张图片", ".generated-image-viewer-navigation button", true);
+  await waitFor(() => evaluate(`document.querySelectorAll('.generated-image-viewer-thumb')[0]?.getAttribute('aria-current') === 'true'`),5000,"first thumbnail selected");
+  const viewerContinuity = await imageStayedVisible();
+  assert.ok(viewerContinuity.every(Boolean), `viewer image remains painted while switching selection: ${JSON.stringify(viewerContinuity)}`);
+  const viewerSizing = await viewerStayedSized();
+  assert.ok(viewerSizing.length > 0 && viewerSizing.every(Boolean), `viewer image stays fitted while switching selection: ${JSON.stringify(viewerSizing)}`);
+  await evaluate(`document.querySelector('.generated-image-viewer-header button').focus()`);
+  await key("ArrowRight",39);
+  await waitFor(() => evaluate(`document.querySelectorAll('.generated-image-viewer-thumb')[1]?.getAttribute('aria-current') === 'true'`),5000,"second thumbnail selected");
+  assert.ok(await evaluate(`(() => {const image=document.querySelector('.generated-image-viewer-viewport img');const thumb=document.querySelectorAll('.generated-image-viewer-thumb')[1]?.querySelector('img');return !image || image.src === thumb?.src})()`),"viewer never shows a stale selected image");
+  await waitFor(() => evaluate(`(() => {const thumb=document.querySelectorAll('.generated-image-viewer-thumb')[1];const image=document.querySelector('.generated-image-viewer-viewport img');return thumb?.getAttribute('aria-current') === 'true' && image?.naturalWidth === 480 && image.src === thumb.querySelector('img')?.src})()`),5000,"viewer navigates to second image");
+  await click("放大", ".generated-image-viewer-zoom button", true);
+  await waitFor(() => evaluate(`document.querySelector('.generated-image-viewer-zoom output')?.textContent === '125%'`),5000,"viewer zooms in");
+  await screenshot("image-viewer.png");
+  await send("Emulation.setDeviceMetricsOverride", {width:600,height:700,deviceScaleFactor:1,mobile:false});
+  await waitFor(() => evaluate(`getComputedStyle(document.querySelector('.generated-image-viewer-thumbs')).flexDirection === 'row'`),5000,"narrow viewer thumbnail layout");
+  assert.ok(await evaluate(`document.querySelector('.generated-image-viewer-header-actions a')?.getBoundingClientRect().right <= innerWidth`),"download stays reachable in narrow viewer");
+  await screenshot("image-viewer-narrow.png");
+  await send("Emulation.setDeviceMetricsOverride", {width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  await key("Escape",27);
+  await waitFor(() => evaluate(`!document.querySelector('.generated-image-viewer')`),5000,"image viewer closes");
+  assert.ok(await evaluate(`document.activeElement?.classList.contains('generated-image-preview')`),"viewer restores card focus");
+  assert.ok(await evaluate(`document.querySelectorAll('.generated-image-thumbnails button')[1]?.getAttribute('aria-current') === 'true'`),"viewer selection stays selected in chat");
   const source = model.results[0].value.results[0].path;
   const sourceBytes = readFileSync(source);
   assert.equal(model.imageRequests.length,2);
   model.setScenario("edit");
   await prompt("把第一张图片背景改成绿色，保留橙色球体和原图。");
-  await waitFor(() => evaluate(`document.querySelectorAll('.generated-image-preview img').length===3 && [...document.querySelectorAll('.generated-image-preview img')].every(e=>e.naturalWidth===480) && document.body.innerText.includes('已将第一张图的背景改为绿色')`),60000,"edited image decoded in chat");
+  await waitFor(() => evaluate(`document.querySelectorAll('.generated-image-preview img').length===2 && [...document.querySelectorAll('.generated-image-preview img')].every(e=>e.naturalWidth===480) && document.body.innerText.includes('已将第一张图的背景改为绿色')`),60000,"edited image decoded in chat");
   await waitFor(() => evaluate(`!document.querySelector('.assistant-turn.streaming')`),10000,"turn completed");
   await evaluate(`document.querySelectorAll('.turn-process > button[aria-expanded="true"]').forEach(e=>e.click())`);
   await evaluate(`Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
@@ -224,7 +326,7 @@ try {
   await waitFor(() => evaluate(`!!document.querySelector('.model-default-row')`),10000,"setup action opens model settings");
   assert.equal(model.imageRequests.length,3,"unconfigured generation makes no image request");
   assert.deepEqual(model.failures,[]);
-  console.log(JSON.stringify({ok:true,gap,scenarios:["image-excluded-from-composer","settings-spacing","composer-batch-generation","composer-edit-generated-image","collapsed-previews","unconfigured-setup-navigation"],imageRequests:model.imageRequests,evidence}));
+  console.log(JSON.stringify({ok:true,gap,scenarios:["image-excluded-from-composer","settings-spacing","composer-batch-generation","result-download","composer-edit-generated-image","collapsed-previews","unconfigured-setup-navigation"],imageRequests:model.imageRequests,evidence}));
 } catch (error) {
   console.error("MODEL_FIXTURE_ERRORS",JSON.stringify(model.failures));
   console.error(output.slice(-4000));

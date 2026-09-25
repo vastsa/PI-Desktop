@@ -20,7 +20,6 @@ import {
 import {
   capabilitiesFromModelConfig,
   clampThinkingLevel,
-  genericModelConfig,
   loadCustomSystemPrompt,
   loadInstructionChain,
   loadSubagentDefinitions,
@@ -33,7 +32,7 @@ import {
 import { builtinSkills } from "../builtin-skills";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import {
-  modelConfigFromModelsDev,
+  catalogModelConfigFor,
   type ModelsDevCatalog,
 } from "../models-dev-catalog";
 import type { HostProcess } from "../host-process";
@@ -69,10 +68,6 @@ export type SessionLaunchRuntimeDependencies = {
     provider: Pick<RuntimeProvider, "models">,
     modelId: string,
   ) => ModelBinding | undefined;
-  modelsDevModelFor: (
-    provider: RuntimeProvider,
-    modelId: string,
-  ) => ReturnType<ModelsDevCatalog["findModel"]>;
   effectiveSubagentModelConfig: (
     provider: Pick<RuntimeProvider, "models">,
     modelId: string,
@@ -96,7 +91,6 @@ export function createSessionLaunchRuntime({
   getWorkspacePath,
   pluginActiveInProject,
   bindingForModel,
-  modelsDevModelFor,
   effectiveSubagentModelConfig,
   normalizeThinkingLevel,
 }: SessionLaunchRuntimeDependencies) {
@@ -354,11 +348,13 @@ export function createSessionLaunchRuntime({
     const storedModel = bindingForModel(provider, modelId);
     const apiStyle = vendorBinding?.apiStyle ?? provider.apiStyle;
     const baseUrl = vendorBinding?.baseUrl ?? provider.baseUrl;
-    const modelsDevModel = modelsDevModelFor(provider, modelId);
     const catalogModelConfig = vendorBinding?.modelConfig ??
-      (modelsDevModel
-        ? modelConfigFromModelsDev(modelsDevModel, baseUrl)
-        : genericModelConfig(modelId, baseUrl ?? ""));
+      catalogModelConfigFor(modelsDevCatalog, {
+        vendorKey: provider.vendorKey,
+        baseUrl,
+        apiStyle,
+        modelId,
+      });
     const resolvedLimits = resolveBindingContextWindow(catalogModelConfig, storedModel);
     const modelConfig = modelConfigWithBinding(
       resolvedLimits.catalogConfig,
@@ -485,14 +481,12 @@ export function createSessionLaunchRuntime({
       resolveVendorBinding: (pinned, pinnedModelId) =>
         vendorOAuth.bindingFor(pinned.id, pinnedModelId),
       resolveModel: async (pinned, pinnedModelId) => {
-        const model = modelsDevCatalog.findModel({
+        const catalogModelConfig = catalogModelConfigFor(modelsDevCatalog, {
           vendorKey: pinned.vendorKey,
           baseUrl: pinned.baseUrl,
+          apiStyle: pinned.apiStyle,
           modelId: pinnedModelId,
         });
-        const catalogModelConfig = model
-          ? modelConfigFromModelsDev(model, pinned.baseUrl)
-          : genericModelConfig(pinnedModelId, pinned.baseUrl ?? "");
         const configuredProvider = providers.providers.find(
           (candidate) => candidate.id === pinned.id,
         );
@@ -548,16 +542,19 @@ export function createSessionLaunchRuntime({
           const vb = await vendorOAuth.bindingFor(row.id, binding.id);
           if (!vb) continue;
           catalogModelConfig =
-            vb.modelConfig ?? genericModelConfig(binding.id, vb.baseUrl ?? row.baseUrl ?? "");
+            vb.modelConfig ?? catalogModelConfigFor(modelsDevCatalog, {
+              vendorKey: row.vendorKey,
+              baseUrl: vb.baseUrl ?? row.baseUrl,
+              apiStyle: vb.apiStyle ?? row.apiStyle,
+              modelId: binding.id,
+            });
         } else {
-          const model = modelsDevCatalog.findModel({
+          catalogModelConfig = catalogModelConfigFor(modelsDevCatalog, {
             vendorKey: row.vendorKey,
             baseUrl: row.baseUrl,
+            apiStyle: row.apiStyle,
             modelId: binding.id,
           });
-          catalogModelConfig = model
-            ? modelConfigFromModelsDev(model, row.baseUrl)
-            : genericModelConfig(binding.id, row.baseUrl ?? "");
         }
         const effective = effectiveSubagentModelConfig(
           row,

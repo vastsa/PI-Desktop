@@ -9,7 +9,17 @@ const BLOCK_MAX_PX = 4_000;
 /** The entryExtra collapsed height (`ENTRY_EXTRA_COLLAPSED_MAX_HEIGHT`). */
 const ENTRY_COLLAPSED_PX = 320;
 
-/* Page-side helpers, installed once; the page is never reloaded. */
+/*
+ * A fresh profile opens the one-time Mid-Autumn launch overlay over the shell,
+ * which traps focus and restores its own on close. Its seen flag
+ * (`lib/mid-autumn-egg-preferences.ts`) keeps it shut for the whole run.
+ */
+function markLaunchEggSeen() {
+  localStorage.setItem("pi.desktop.midAutumnEggSeen.v2", "1");
+  return true;
+}
+
+/* Page-side helpers, installed into every document of the window. */
 function installPageHelpers() {
   const turns = () => [...document.querySelectorAll(".message-row.assistant-turn")];
   // Every read names its root; a missing turn reads as empty, never as the page.
@@ -85,9 +95,21 @@ export async function drive({ control, renderer, check, project }) {
   // The lab's tool is low risk; Auto keeps the run free of approval prompts.
   await control.tool("pi_session_configure", { id: sessionId, mode: "agent", permissionMode: "auto", confirm: true });
 
-  await until(() => typeof window.__PI_DESKTOP__?.selectSession === "function", null, "renderer automation surface", 30_000);
-  await page(installPageHelpers);
-  await page((id) => window.__PI_DESKTOP__.selectSession(id), sessionId);
+  await renderer.install(markLaunchEggSeen);
+  await renderer.install(installPageHelpers);
+  // The reload drops a launch overlay that opened before the flag was set.
+  await renderer.reload();
+  // The shell is up once its boot splash is gone: until then it is mounted but
+  // hidden, and selecting before it races the startup navigation.
+  await until(
+    () =>
+      typeof window.__PI_DESKTOP__?.selectSession === "function" &&
+      Boolean(document.querySelector(".app-shell:not(.is-booting) .composer-input")),
+    null,
+    "app shell",
+    90_000,
+  );
+  await until((id) => window.__PI_DESKTOP__.selectSession(id).then(() => true), sessionId, "session selected");
   await until(() => Boolean(document.querySelector('[data-lab="composerControl:left"]')), null, "lab composer controls", 30_000);
   check("the lab's renderer entry loaded into the open window", true);
 

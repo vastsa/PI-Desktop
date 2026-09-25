@@ -47,7 +47,6 @@ function launchRuntime() {
     modelsDevCatalog: { ensureLoaded: async () => {}, findModel: () => undefined },
     getWorkspacePath: () => workspace, pluginActiveInProject: () => true,
     bindingForModel: (row, id) => row.models.find((m) => m.id === id),
-    modelsDevModelFor: () => undefined,
     effectiveSubagentModelConfig: () => ({}),
     normalizeThinkingLevel: () => "off",
   });

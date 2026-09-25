@@ -186,6 +186,9 @@ test("MCP management reuses the modal and validates its locked id and transport 
   assert.match(sheet, /command\.includes\("\.\."\)/);
   assert.match(sheet, /isNonLoopbackHttpMcpUrl/);
   assert.match(sheet, /role="dialog" aria-modal/);
+  assert.match(sheet, /MCP_STDIO_LAUNCHER_PRESETS/);
+  assert.match(sheet, /launcherCustom/);
+  assert.match(sheet, /mcpStdioLauncherChoice/);
   // A server may advertise thousands of tools, so the name row renders a bounded
   // prefix and leaves the total to the count beside it.
   assert.match(sheet, /MCP_TEST_TOOL_NAME_LIMIT = 24/);

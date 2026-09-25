@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.15.6",
+  "version": "0.15.7-beta.1",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -43,11 +43,14 @@
     "@pi-desktop/plugin-sdk": "workspace:*",
     "@pi-desktop/racp": "workspace:*",
     "@pi-desktop/shared": "workspace:*",
+    "@pi-desktop/voice-runtime": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
+    "@picovoice/pvrecorder-node": "1.2.9",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.6.0",
+    "transcribe-cpp": "0.2.2",
     "dompurify": "^3.4.13",
     "electron": "^43.4.1",
     "electron-builder": "^26.15.3",
@@ -111,7 +114,9 @@
       "de",
       "es",
       "fr",
-      "ko"
+      "ko",
+      "pt-BR",
+      "pt_BR"
     ],
     "extraResources": [
       {
@@ -212,6 +217,12 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico",
@@ -231,6 +242,9 @@
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "PI-Desktop",
       "artifactName": "PI-Desktop-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "PI-Desktop-Portable-${version}.${ext}"
     },
     "deb": {
       "packageName": "pi-desktop",
@@ -276,6 +290,12 @@
         }
       ]
     },
+    "asarUnpack": [
+      "node_modules/transcribe-cpp/**/*.node",
+      "node_modules/transcribe-cpp/**/bin/**",
+      "node_modules/@picovoice/pvrecorder-node/**/*.node",
+      "node_modules/@picovoice/pvrecorder-node/**/lib/**"
+    ],
     "asar": {
       "smartUnpack": false
     }

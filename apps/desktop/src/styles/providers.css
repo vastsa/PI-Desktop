@@ -1507,3 +1507,17 @@
   flex: 1;
   min-width: 0;
 }
+
+/* Keep endpoint advice readable without widening the provider dialog. */
+.provider-endpoint-guidance {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+.provider-endpoint-guidance > span {
+  flex: 1 1 260px;
+}

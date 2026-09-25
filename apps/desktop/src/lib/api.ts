@@ -390,6 +390,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     fontScale?: unknown;
     chatContentMaxWidth?: unknown;
     infiniteProviderRetry?: unknown;
+    smoothStreaming?: unknown;
     networkProxy?: unknown;
     networkPolicy?: unknown;
   };
@@ -431,6 +432,14 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     typeof value.infiniteProviderRetry !== "boolean"
   ) {
     throw Object.assign(new Error("infiniteProviderRetry is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "smoothStreaming") &&
+    typeof value.smoothStreaming !== "boolean"
+  ) {
+    throw Object.assign(new Error("smoothStreaming is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }
@@ -527,6 +536,8 @@ export const api = {
     kind: "task" | "interactive";
     title: string;
     body: string;
+    /** Durable task timestamp used by Main to reject pre-dismissal replays. */
+    createdAt?: string;
   }) => invoke<{ shown: boolean }>(IPC.invoke.notificationShowNative, input),
   setNotificationViewingSession: (sessionId: string | null) =>
     invoke<{ ok: boolean }>(IPC.invoke.notificationSetViewingSession, {
@@ -1251,6 +1262,9 @@ export const api = {
   /** Ask the running install to stop. Only a download can be interrupted. */
   marketCancelInstall: (id: string) =>
     invoke<{ cancelled: boolean; id: string }>(IPC.invoke.marketCancelInstall, { id }),
+  /** Read-only discovery never grants package permissions. */
+  discoverPiSkills: () => invoke<import("@pi-desktop/shared").PiSkillDiscovery>(IPC.invoke.piSkillDiscover),
+  importPiSkills: (id: string) => invoke<{ canceled: boolean; id?: string; dependencies?: { state: string; error?: string } }>(IPC.invoke.piSkillImport, { id }),
   /** Import a pi CLI extension file or directory as a development plugin (spec 16 §3). */
   importPiExtension: () =>
     invoke<

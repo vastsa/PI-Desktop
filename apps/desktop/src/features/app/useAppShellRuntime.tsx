@@ -54,20 +54,13 @@ export function useAppShellRuntime() {
   const handlePlansChanged = useAppStore((s) => s.handlePlansChanged);
   const abort = useAppStore((s) => s.abort);
   const settings = useAppStore((s) => s.settings);
-  const subagentPanel = useAppStore((s) => s.subagentPanel);
-  const closeSubagentPanel = useAppStore((s) => s.closeSubagentPanel);
   const workPanelOpen = useAppStore((s) => s.workPanelOpen);
   const workPanelWidth = useAppStore((s) => s.workPanelWidth);
-  const subagentPanelOpen = Boolean(
-    page === "chat" &&
-      subagentPanel &&
-      subagentPanel.sessionId === activeSessionId,
-  );
   const pluginThemes = useAppStore((s) => s.pluginThemes);
   const refreshPluginThemes = useAppStore((s) => s.refreshPluginThemes);
   const plugins = useAppStore((s) => s.plugins);
   const projectPath = useAppStore((s) => s.workspace?.path ?? null);
-  const workPanelVisible = workPanelOpen || subagentPanelOpen;
+  const workPanelVisible = workPanelOpen;
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -213,15 +206,6 @@ export function useAppShellRuntime() {
     presentedWorkPanelRef.current = presentedWorkPanelOpen;
   }, [presentedWorkPanelOpen]);
 
-  useEffect(() => {
-    if (
-      subagentPanel &&
-      (page !== "chat" || subagentPanel.sessionId !== activeSessionId)
-    ) {
-      closeSubagentPanel();
-    }
-  }, [activeSessionId, closeSubagentPanel, page, subagentPanel]);
-
   // Destination pages own the center pane. Leaving Chat while previewing must
   // restore that pane before the destination is presented; otherwise the
   // sidebar can change `page` successfully while the route stays unmounted.
@@ -246,11 +230,6 @@ export function useAppShellRuntime() {
     const store = useAppStore.getState();
     if (workPanelExitingRef.current) {
       store.openWorkPanel();
-      return;
-    }
-    // Close a visible subagent dock through the same path as Cmd/Ctrl+J.
-    if (store.subagentPanel) {
-      store.toggleWorkPanel();
       return;
     }
     // Prefer the visible presentation over a briefly stale session projection:
@@ -297,8 +276,10 @@ export function useAppShellRuntime() {
   }, []);
 
   useEffect(() => {
+    const pageHidesWorkPanel =
+      page === "settings" || page === "plugins" || page === "scheduled";
     const shouldPresent =
-      ready && page !== "settings" && (workPanelOpen || subagentPanelOpen);
+      ready && !pageHidesWorkPanel && workPanelOpen;
     const request = ++workPanelReservationRequest.current;
 
     if (shouldPresent) {
@@ -334,7 +315,7 @@ export function useAppShellRuntime() {
       isCurrent: () => request === workPanelReservationRequest.current,
       commit: () => setPresentedWorkPanelOpen(shouldPresent),
     });
-  }, [page, ready, subagentPanelOpen, workPanelOpen]);
+  }, [page, ready, workPanelOpen]);
 
   // Fallback if animationend is skipped (display:none mid-flight, etc.).
   useEffect(() => {
@@ -626,7 +607,11 @@ export function useAppShellRuntime() {
       }
     });
     const offNotificationChanged = api.onNotificationChanged((notification) => {
-      useAppStore.getState().receiveNotification(notification);
+      const accepted = useAppStore.getState().receiveNotification(notification);
+      // A host replay, renderer reload, or post-clear delayed event may refer
+      // to a row that is already present/acknowledged. Do not surface a native
+      // banner for an event the store intentionally rejected.
+      if (!accepted) return;
       const failed = notification.kind === "task.failed";
       const title = t(
         failed ? "notifications.failedTitle" : "notifications.completedTitle",
@@ -644,6 +629,7 @@ export function useAppShellRuntime() {
           kind: "task",
           title,
           body,
+          createdAt: notification.createdAt,
         })
         .catch(() => undefined);
     });
@@ -761,11 +747,13 @@ export function useAppShellRuntime() {
           case "toggleSidebar":
             toggleSidebar();
             break;
-          case "openWorkPanel":
-            if (useAppStore.getState().page !== "settings") {
+          case "openWorkPanel": {
+            const p = useAppStore.getState().page;
+            if (p !== "settings" && p !== "plugins" && p !== "scheduled") {
               useAppStore.getState().toggleWorkPanel();
             }
             break;
+          }
           case "abort":
             void abort();
             break;
@@ -910,9 +898,6 @@ export function useAppShellRuntime() {
     ready,
     page,
     activeSessionId,
-    subagentPanel,
-    subagentPanelOpen,
-    closeSubagentPanel,
     workPanelOpen,
     searchOpen,
     setSearchOpen,

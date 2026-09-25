@@ -111,13 +111,15 @@
   flex: 0 0 auto;
 }
 
-/* Typed slash invocation rendered as a chip in the transcript (D123). */
+/* Typed slash invocation rendered as a chip in the transcript (D123).
+   Skill invocations carry the user's whole typed body, so the chip wraps
+   like .message-user-text instead of truncating. */
 .chat-command-chip {
   display: inline-block;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  vertical-align: top;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   padding: 2px 8px;
   border-radius: var(--radius-md);
   background: var(--ds-tile-deep);

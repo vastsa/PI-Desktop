@@ -32,9 +32,10 @@ test("renderer hook loads referenced image data URLs with a scoped bounded cache
   assert.match(hook, /dataUrlCache = new Map<string, string>\(\)/);
   assert.match(hook, /DATA_URL_CACHE_ENTRIES/);
   assert.match(hook, /DATA_URL_CACHE_MAX_BYTES/);
-  assert.match(hook, /fsReadImageDataUrl\(key, mimeType\)/);
+  assert.match(hook, /fsReadImageDataUrl\(normalizedRef, mimeType\)/);
+  assert.match(hook, /resolved\.key === requestedKey/);
   assert.match(hook, /result\.kind === "image" && result\.dataUrl/);
-  assert.match(hook, /\^https\?:/);
+  assert.match(hook, /https\?\|data\|blob/);
 });
 
 test("user message image attachments render as thumbnails", () => {

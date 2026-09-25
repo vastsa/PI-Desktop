@@ -291,10 +291,12 @@ to later refresh and inference; the vendor picker does not collect them.
   The child inherits project/provider/model/mode/thinking and
   permission configuration, receives new message/tool-call ids, and starts
   without turns, revisions, notifications, artifacts, grants, or scratch data.
-  Missing sources return `NOT_FOUND`; Electron rejects active sources with
-  `AGENT_BUSY` before forwarding and normalizes the host's persisted
-  running-turn `CONFLICT` fallback to `AGENT_BUSY`; an unknown source or
-  `throughMessageId` returns `NOT_FOUND`
+  Missing sources or anchors return `NOT_FOUND`. While a Desktop source runs,
+  only a completed assistant prefix containing no indexed messages owned by a
+  running turn is allowed. This check and publication share the host RPC lock.
+  Whole-session, non-assistant, streaming/error, or live-turn anchors return
+  `CONFLICT`, normalized by Electron to `AGENT_BUSY`. The source turn continues
+  without sharing runtime state with the child.
 - `session.get` — accepts an optional renderer read window:
   `messageBefore` is the exclusive zero-based end offset, `messageLimit` is
   the positive page size, and `contentLimit` is the positive character budget
@@ -736,6 +738,10 @@ type NotificationListResult = {
 - `notification.markAllRead({}) -> { ok: true }` updates every unread row in
   one transaction.
 - `notification.clear({}) -> { ok: true }` deletes inbox rows only.
+- `id` is the stable exactly-once key for renderer and native delivery. A
+  client must discard duplicate or delayed records for an id it has already
+  acknowledged/cleared; clearing the inbox never makes an old terminal turn
+  eligible for insertion again. A later terminal turn receives a new id.
 - No `notification.created` JSON-RPC server notification is emitted. Electron
   receives the inserted record directly from `session.endTurn`, avoiding a
   second ordering channel between terminal turn persistence and UI refresh.
@@ -1276,4 +1282,3 @@ notification carrying that same snapshot. Approval and rejection require the
 current entity digest, so a security-relevant edit cannot reuse an older local
 decision. Disconnect deletes only local credentials, vault keys, metadata and
 staging files; remote objects remain intact.
-

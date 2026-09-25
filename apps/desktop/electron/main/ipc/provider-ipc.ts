@@ -5,12 +5,15 @@ import {
   type ModelBinding,
   type ProviderReorderInput,
   type OAuthRespondInput,
-  type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import { discoverProviderModels } from "../model-discovery";
-import { genericModelConfig, modelConfigWithBinding, mergeProviderHeaders } from "@pi-desktop/agent-runtime";
-import { modelConfigFromModelsDev, modelInfoFromModelsDev, type ModelsDevCatalog } from "../models-dev-catalog";
+import { modelConfigWithBinding, mergeProviderHeaders } from "@pi-desktop/agent-runtime";
+import {
+  catalogModelConfigFor,
+  modelInfoFromModelsDev,
+  type ModelsDevCatalog,
+} from "../models-dev-catalog";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { IpcRegistrar } from "./types";
@@ -37,7 +40,16 @@ type RuntimeProvider = {
 export type ProviderIpcDependencies = {
   registrar: IpcRegistrar;
   getHost: () => HostProcess | null;
-  modelsDevCatalog: Pick<ModelsDevCatalog, "refresh" | "ensureLoaded" | "loadLocal" | "getStatus" | "findModel" | "modelsForProvider">;
+  modelsDevCatalog: Pick<
+    ModelsDevCatalog,
+    | "refresh"
+    | "ensureLoaded"
+    | "loadLocal"
+    | "getStatus"
+    | "findModel"
+    | "anthropicThinkingFor"
+    | "modelsForProvider"
+  >;
   vendorOAuth: VendorOAuth;
   logger: Pick<Logger, "app">;
   enrichProvider: (provider: RuntimeProvider, selectedModelId?: string) => any;
@@ -301,9 +313,12 @@ export function registerProviderIpc({
           baseUrl,
           modelId: model.modelId,
         });
-        const catalogModelConfig = modelsDevModel
-          ? modelConfigFromModelsDev(modelsDevModel, baseUrl)
-          : genericModelConfig(model.modelId, baseUrl);
+        const catalogModelConfig = catalogModelConfigFor(modelsDevCatalog, {
+          vendorKey: provider?.vendorKey || "custom",
+          baseUrl,
+          apiStyle: modelApiStyle,
+          modelId: model.modelId,
+        });
         const storedModel = provider ? bindingForModel(provider, model.modelId) : undefined;
         const resolvedModel = resolveBindingContextWindow(catalogModelConfig, storedModel);
         const modelConfig = modelConfigWithBinding(
@@ -317,9 +332,18 @@ export function registerProviderIpc({
               displayName: model.displayName,
               providerId: provider?.id ?? "",
               modalities: modelConfig.modalities,
-              reasoning: false,
-              capabilities: ["text"] as Array<"text" | "tools" | "vision" | "reasoning" | "json">,
-              supportedThinkingLevels: [] as ThinkingLevel[],
+              reasoning: catalogModelConfig.reasoning,
+              ...(catalogModelConfig.reasoningOptions
+                ? { reasoningOptions: catalogModelConfig.reasoningOptions }
+                : {}),
+              ...(catalogModelConfig.thinkingLevelMap
+                ? { thinkingLevelMap: catalogModelConfig.thinkingLevelMap }
+                : {}),
+              capabilities: [
+                "text",
+                ...(catalogModelConfig.reasoning ? ["reasoning" as const] : []),
+              ] as Array<"text" | "tools" | "vision" | "reasoning" | "json">,
+              supportedThinkingLevels: [...(catalogModelConfig.supportedThinkingLevels ?? [])],
               source: model.source ?? ("discovered" as const),
             };
         return {

@@ -1006,6 +1006,16 @@
   opacity: 1;
 }
 
+.message-timestamp {
+  font-size: var(--text-xs);
+  color: var(--ds-text-muted);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
+  user-select: none;
+  padding: 0 4px;
+  align-self: center;
+}
+
 .icon-btn:active:not(:disabled),
 .title-nav-btn:active:not(:disabled),
 .nav-item:active:not(:disabled),
@@ -1700,6 +1710,27 @@
   justify-content: flex-end;
 }
 
+.message-error-dismiss {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--ds-text-muted);
+}
+
+.message-error-dismiss:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.message-error-dismiss:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 2px;
+}
+
 .message-error-toggle {
   display: inline-flex;
   min-height: 24px;
@@ -1938,8 +1969,10 @@
   color: var(--ds-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .tool-activity-group.has-subagents .tool-activity-preview {
@@ -2167,19 +2200,25 @@
 .subagent-topology-node-title-row {
   display: flex;
   min-width: 0;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 3px 8px;
 }
 
 .subagent-topology-node-title {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 12ch;
   overflow: hidden;
   color: var(--ds-text-primary);
+  display: -webkit-box;
   font-size: var(--text-sm-plus);
   font-weight: var(--font-weight-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .subagent-topology-node-model {
@@ -2201,13 +2240,19 @@
   white-space: nowrap;
 }
 
-.subagent-topology-node-summary,
-.subagent-topology-node-steps {
+.subagent-topology-node-summary {
+  display: -webkit-box;
+  min-width: 0;
   overflow: hidden;
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: var(--leading-normal);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .subagent-topology-node-summary {
@@ -2215,9 +2260,14 @@
 }
 
 .subagent-topology-node-steps {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
   margin-top: 3px;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
 }
 
 .subagent-topology-node > .tool-row-body,
@@ -3123,4 +3173,29 @@
   margin-top: 4px;
   color: var(--ds-text-tertiary);
   font-size: var(--text-sm);
+}
+
+/* ── Smooth streaming cursor ── */
+
+@keyframes smooth-stream-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.assistant-turn-fragment.smooth-cursor .prose-chat > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--ds-text-primary);
+  animation: smooth-stream-blink 1s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-turn-fragment.smooth-cursor .prose-chat > :last-child::after {
+    animation: none;
+    opacity: 0.7;
+  }
 }

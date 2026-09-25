@@ -93,6 +93,7 @@ import {
   rendererDescriptorFor,
   resolveRendererSourcePath,
 } from "./plugin-renderer-extension";
+import { McpCallRegistry } from "./mcp-call-registry";
 import { DevPluginWatcher, type DevPluginWatcherDeps } from "./plugin-watcher";
 import { parseAllowedExternalUrl } from "./safe-open-external";
 import type { PluginAppearance } from "../shared/plugin-panel-chrome";
@@ -1293,6 +1294,7 @@ export class PluginRuntime {
   private themeAssets = new Map<string, Map<string, string>>();
   private themeAssetGroups = new Map<string, Map<string, ReadonlyMap<string, string>>>();
   private mcpClients = new Map<string, McpServerClient[]>();
+  private readonly mcpCalls = new McpCallRegistry();
   private serviceStates = new Map<string, PluginServiceStatus>();
   private restarts = new Map<string, RestartRecord>();
   private busSubscriptions = new Map<string, BusSubscription>();
@@ -1853,6 +1855,7 @@ export class PluginRuntime {
   /** Abort this session's invocations without affecting sibling sessions. */
   cancelSessionTools(sessionId: string, reason = "Session tool execution aborted"): void {
     this.toolInvocations.cancelSession(sessionId, reason);
+    this.mcpCalls.cancelSession(sessionId);
   }
 
   /** Deregister contributions, run `onUnload` in the child, then stop it. */
@@ -1951,6 +1954,7 @@ export class PluginRuntime {
    * `onUnload` must never be the reason the app appears to hang on quit.
    */
   async disposeAll(): Promise<void> {
+    this.mcpCalls.cancelAll();
     const loadedPlugins = [...this.loaded.values()];
     // Mark first, in one pass: a child that dies while a sibling is still
     // stopping must already be covered by the guard in `handleChildExit`.
@@ -3578,7 +3582,11 @@ export class PluginRuntime {
           // Remote code the desktop cannot inspect; never silently auto-approved.
           risk: "medium",
           schema: tool.inputSchema,
-          execute: async (toolArgs) => client.callTool(tool.name, toolArgs),
+          execute: async (toolArgs, ctx) => this.mcpCalls.run(
+            ctx?.sessionId,
+            (signal) => client.callTool(tool.name, toolArgs, signal),
+            ctx?.signal,
+          ),
         });
       }
     }

@@ -152,6 +152,8 @@ test("packaging keeps only shipped locales and excludes non-runtime artifacts", 
     "es",
     "fr",
     "ko",
+    "pt-BR",
+    "pt_BR",
   ]);
   assert.ok(packageJson.build.files.includes("!**/*.map"));
   assert.ok(
@@ -280,9 +282,14 @@ test("macOS DMG is a two-icon install; ZIP keeps the unsigned helper", () => {
   assert.doesNotMatch(macOpenScript, /xattr -cr/);
 });
 
-test("packaging does not include removed PTY native payload configuration", () => {
+test("packaging keeps voice native payloads unpacked and excludes removed PTY payloads", () => {
   assert.deepEqual(packageJson.build.asar, { smartUnpack: false });
-  assert.equal(packageJson.build.asarUnpack, undefined);
+  assert.deepEqual(packageJson.build.asarUnpack, [
+    "node_modules/transcribe-cpp/**/*.node",
+    "node_modules/transcribe-cpp/**/bin/**",
+    "node_modules/@picovoice/pvrecorder-node/**/*.node",
+    "node_modules/@picovoice/pvrecorder-node/**/lib/**",
+  ]);
   assert.doesNotMatch(JSON.stringify(packageJson.build.files), /node-pty/);
   assert.doesNotMatch(JSON.stringify(packageJson.build.extraResources), /node-pty/);
 });

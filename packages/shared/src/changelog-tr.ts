@@ -5,6 +5,7 @@ export const trEntries: ChangelogEntry[] = [
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [
+      "Kayıtlı bağlantı ayarlarını değiştirmeden mevcut DeepSeek, xAI ve OpenAI hizmetlerinde yerel aramayı etkinleştirin.",
       "OpenAI ve ChatGPT/Codex model kataloglarında GPT-6 Astra, Sol ve Luna desteği eklenir.",
     ],
   },

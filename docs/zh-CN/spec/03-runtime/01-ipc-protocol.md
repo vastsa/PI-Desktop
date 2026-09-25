@@ -655,10 +655,13 @@ type AgentEvent =
 避免快速完成先于查看上下文更新。Electron 将此提示与 Main 拥有的窗口
 visibility/focus 结合起来，在终态事件边界进行判断。缺失、null 或不匹配的
 上下文都会安全地创建公告。它还调用
-`pi-desktop/notification/showNative({ id, sessionId, title, body, source? })` 之后
+`pi-desktop/notification/showNative({ id, sessionId, title, body, source?, createdAt? })` 之后
 本地化新记录。可选的 `source` 对终端任务结果使用 `"task"`，对 asktool、
 工具权限和 Plan 审批询问使用 `"interactive"`；省略或未知值默认为
-`"task"`。这个仅限 Electron 的请求永远不会进入主机 RPC 域。
+`"task"`。任务通知带有持久记录的 `createdAt` 时，Main 会在成功的“全部已读”
+或清空操作后使用 `dismissedBefore` 水位拒绝迟到的旧事件，单条已读则使用
+持久 ID tombstone；这样渲染器或主机重放不会再次弹出已处理的通知。这个仅限
+Electron 的请求永远不会进入主机 RPC 域。
 
 ```ts
 type AppNotification = {
@@ -700,6 +703,9 @@ Main 发送两个事件：
   并重新计算确切的未读计数。最终结果已经可见
   聚焦的当前聊天、重复的终端更新和中止的回合会发出
   什么也没有。
+- 持久 `id` 是 Renderer 和 Electron 本机投递的幂等键。对于本地列表中
+  已存在 id 的重复 `notification.changed` 负载必须无操作；已确认或已清除
+  行的延迟负载会被忽略，不得重新创建行或侧边栏结果。
 - 用户点击 Electron 后的 `pi-desktop/notification/event/activated`
   本机系统通知。 Renderer 遵循其现有的会话选择
   路径，包括项目绑定会话的项目激活。
@@ -732,6 +738,13 @@ Electron 主将 `net.aiuo.pi-desktop` 注册为进程 AppUserModelID
 包标识所以通知属性、通知设置、任务栏
 分组，安装的快捷方式解析为 `PI-Desktop`，而不是库存
 Electron 主机。
+
+任务本机对象按持久 notification id 保留，每个 id 最多一个活动对象。
+重放的 `showNative` 请求不得创建第二个对象。`notification.markRead`、
+`notification.markAllRead` 或 `notification.clear` 的主机变更成功后，关闭
+匹配的任务对象（并保留 id tombstone 一段时间以拒绝迟到投递）；主机变更
+失败时不得乐观地关闭对象。交互询问使用独立的临时注册表，不受任务收件箱
+变更影响。
 
 查看会话提示是建议性的和自动防故障的：丢失、陈旧、隐藏或
 未聚焦的渲染器状态会创建持久通知。发生抑制
@@ -866,8 +879,11 @@ ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false`
 `session/fork` 是一个协议 v5 通道，可创建独立的
 来自源会话当前活动记录的会话。当可选时
 `throughMessageId` 存在，复制的快照以该消息结束；一个
-未知 ID 返回 `NOT_FOUND`。 Electron 拒绝
-当该源会话处于活动状态时，使用 `AGENT_BUSY` 发出请求。
+Unknown ids return `NOT_FOUND`. A running Desktop source may fork a completed
+assistant prefix that contains no messages owned by a running turn. The host
+checks this under its RPC lock. Whole-session and active-turn forks remain
+`AGENT_BUSY`; native Pi keeps its idle/ownership guard. The source continues
+running without renderer history hydration replacing its live tail.
 Electron拥有本地化并提供面向用户的分支名称；主机
 后备标题是为非 UI 调用者保留的。
 主机分配新的会话 ID、消息 ID 和工具调用 ID；它复制
@@ -1185,7 +1201,9 @@ type PluginSummary = {
 项目级请求缺少 `projectPath` 时无效。`mcp.active` 会先按 ID 或不区分大小写
 的 label 让项目记录遮蔽全局记录，再过滤关闭项；因此关闭的项目记录仍然会
 遮蔽全局项。仅桌面的 `mcp/test` IPC 操作用于强制连接测试，并把状态返回
+MCP 编辑器。设置页的 `mcp.list` 在返回状态前会探测此前就绪的远程连接；服务器失联时，列表显示 `failed`，而不是保留过时的 `ready`。服务器恢复后，“测试连接”会重试。探测失败不会中断正在执行的工具调用；“测试连接”会先关闭旧客户端再重试。
 MCP 编辑器。
+停止会话会中止该会话正在执行的用户 MCP 工具调用，并向服务器发送 `notifications/cancelled`。其他会话共用的连接保持可用；已取消的调用不会重放。取消会结束本地等待，但服务器可能忽略通知并完成已经开始的副作用。
 
 ```ts
 type McpServerStatus = {

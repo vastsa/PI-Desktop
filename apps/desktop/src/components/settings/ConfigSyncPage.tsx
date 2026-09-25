@@ -10,7 +10,7 @@ import type {
   ConfigSyncState,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
-import { Badge, Button, Field, Input, PasswordInput, cx } from "../ui";
+import { Badge, Button, Checkbox, Field, Input, PasswordInput, SettingsToggle } from "../ui";
 import { IconCloudDown, IconRefresh, IconShield, IconTrash } from "../icons";
 import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
 import { configSyncProgressView } from "../../features/settings/config-sync-progress";
@@ -624,16 +624,11 @@ export function ConfigSyncPage() {
                 title={t("settings.configSync.pauseTitle")}
                 description={t("settings.configSync.pauseDescription")}
               >
-                <button
-                  type="button"
-                  className={cx("settings-toggle", state?.paused && "on")}
-                  role="switch"
-                  aria-checked={state?.paused === true}
-                  aria-label={t("settings.configSync.pauseTitle")}
-                  onClick={() => void togglePause()}
-                >
-                  <span className="settings-toggle-thumb" />
-                </button>
+                <SettingsToggle
+                  checked={state?.paused === true}
+                  label={t("settings.configSync.pauseTitle")}
+                  onChange={() => void togglePause()}
+                />
               </SettingsRow>
             )}
             {!locked ? (
@@ -688,46 +683,41 @@ export function ConfigSyncPage() {
           >
             <div className="settings-config-sync-categories">
               {CATEGORIES.map((category) => (
-                <label key={category.id} className="settings-config-sync-category">
-                  <input
-                    type="checkbox"
-                    checked={categories[category.id] !== false}
-                    onChange={(event) =>
-                      setSelection((current) => ({
-                        ...current,
-                        [category.id]: event.target.checked,
-                      }))
-                    }
-                  />
-                  <span>{t(category.label)}</span>
-                </label>
+                <Checkbox
+                  key={category.id}
+                  className="settings-config-sync-category"
+                  checked={categories[category.id] !== false}
+                  onChange={(event) =>
+                    setSelection((current) => ({
+                      ...current,
+                      [category.id]: event.target.checked,
+                    }))
+                  }
+                  label={t(category.label)}
+                />
               ))}
-              <label className="settings-config-sync-category">
-                <input
-                  type="checkbox"
-                  checked={selection.memory}
-                  onChange={(event) =>
-                    setSelection((current) => ({
-                      ...current,
-                      memory: event.target.checked,
-                    }))
-                  }
-                />
-                <span>{t("settings.configSync.categoryMemory")}</span>
-              </label>
-              <label className="settings-config-sync-category settings-config-sync-sensitive">
-                <input
-                  type="checkbox"
-                  checked={selection.credentials}
-                  onChange={(event) =>
-                    setSelection((current) => ({
-                      ...current,
-                      credentials: event.target.checked,
-                    }))
-                  }
-                />
-                <span>{t("settings.configSync.categoryCredentials")}</span>
-              </label>
+              <Checkbox
+                className="settings-config-sync-category"
+                checked={selection.memory}
+                onChange={(event) =>
+                  setSelection((current) => ({
+                    ...current,
+                    memory: event.target.checked,
+                  }))
+                }
+                label={t("settings.configSync.categoryMemory")}
+              />
+              <Checkbox
+                className="settings-config-sync-category settings-config-sync-sensitive"
+                checked={selection.credentials}
+                onChange={(event) =>
+                  setSelection((current) => ({
+                    ...current,
+                    credentials: event.target.checked,
+                  }))
+                }
+                label={t("settings.configSync.categoryCredentials")}
+              />
             </div>
             {selection.credentials ? (
               <div className="settings-config-sync-warning">

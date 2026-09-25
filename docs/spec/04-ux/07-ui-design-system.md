@@ -124,14 +124,12 @@ Codex as a visual reference. The identity contract is deliberately small:
   and NSIS shortcut identity stay aligned so native notifications,
   notification settings, and taskbar groups identify the app as `PI-Desktop`
   rather than Electron.
-- The empty-home hero uses a 100px `HomeMascotLogo` GIF: an eight-frame waving
-  mascot compiled from the supplied light and dark action sets, with a short
-  idle hold on the first frame. CSS selects the pair from
-  `document.documentElement[data-theme]`; anything other than `light` uses the
-  dark artwork. Playback is native to the GIF. There is no random pose
-  selection, JavaScript timer, or hover-driven speed change. Reduced motion
-  swaps the GIF for the matching first-frame PNG without changing the 100px
-  slot.
+- The empty-home hero uses a 100px `HomeMascotLogo` GIF. The standard
+  eight-frame wave remains in light mode and non-Chinese dark mode. Chinese
+  locales (`lang` beginning with `zh`) use the supplied 30-frame transparent
+  GIF in dark mode. Reduced motion swaps each variant to its matching first
+  frame without changing the 100px slot. Playback is native to GIF; there is
+  no random pose selection, JavaScript timer, or hover-driven speed change.
   `BrandLogo` remains 20px/18px in the expanded/collapsed sidebar and 64px in
   the startup splash. Composer prompt rows do not render a leading brand icon
   in either home or thread-docked mode.
@@ -263,8 +261,11 @@ creating a failure. Opening a conversation acknowledges its unread terminal
 outcome: the terminal mark clears immediately and the matching durable task
 notification is marked read so the mark cannot return after a notification
 refresh or app restart. Outcomes already marked read never produce a terminal
-mark. Reduced-motion mode disables the breathing animation while retaining its
-orange fill and localized accessible name.
+mark. Marking the row read, marking all rows read, or clearing the inbox also
+dismisses any matching task-native banner; a late event for that durable id
+cannot restore the mark, row, or banner. Reduced-motion mode disables the
+breathing animation while retaining its orange fill and localized accessible
+name.
 
 ### 4.6 Tailwind CSS variable stub
 
@@ -849,11 +850,10 @@ model):
   controls remain icon-only and use the semantic hover wash
 - Empty hero title uses `var(--ds-text-primary)` (light override `#1a1c1f`);
   never hardcode light ink for shared hero styles
-- Empty-home branding stays quiet: the 100px eight-frame mascot GIF is the
-  sole animated hero mark. Light and dark themes each use a dedicated asset
-  pair. It loops a short wave with an idle hold so the composer remains the
-  primary task surface. Pointer hover does not change the cadence; reduced
-  motion shows the matching still first frame.
+- Empty-home branding stays quiet: the 100px mascot GIF is the sole animated
+  hero mark. The standard light/dark variants keep their eight-frame wave;
+  dark Chinese locales use a 30-frame transparent variant. Pointer hover does
+  not change cadence; reduced motion shows the matching still first frame.
 - Night home composer plate styles are **dark-scoped only** (elevated-primary
   `#212121f5` + standard elevation-prominent)
 - Empty draft row keeps **one visible line / 28px optical minimum** so the
@@ -1207,6 +1207,86 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
 | Motion | enter 200ms ease-out slide-down/fade, exit 150ms ease-in fade; reduced-motion → near-zero duration (not `none`, removal listens for `animationend`) |
 | Z-index | z-toast (50) |
 
+### 11.9 SettingsToggle
+
+Implementation: `components/ui.tsx → SettingsToggle`.
+
+| Property | Value |
+|---|---|
+| Size | 32×20, thumb 16px |
+| CSS class | `.settings-toggle` / `.settings-toggle.on` |
+| Role | `role="switch"` with `aria-checked` |
+| Variants | default, `busy` (`.is-busy`, `aria-busy`, disabled) |
+| Background | neutral accent when on (not green); theme-specific override in `theme-overrides.css` |
+
+Every boolean on/off control in Settings and editor sheets **must** use
+`SettingsToggle`. Inline `<button role="switch">` with manual class
+assembly is prohibited.
+
+### 11.10 SegmentedControl
+
+Implementation: `components/ui.tsx → SegmentedControl<T>`.
+
+| Property | Value |
+|---|---|
+| CSS class | `.settings-segment` / `.settings-segment-item.active` |
+| Roles | `radiogroup` (default), `group`, or `tablist` |
+| Item roles | `radio` / none / `tab` — derived from container role |
+| Generic | `<T extends string>` for type-safe value/onChange |
+| Options | `readonly { value: T; label: ReactNode; id?: string; controls?: string }[]` — label accepts JSX (e.g. count badge) |
+
+Tablist callers supply stable option `id` and `controls` values to connect
+each tab to its panel through `aria-controls` and the panel's
+`aria-labelledby`. These identifiers must not depend on translated labels.
+Import and Remote Hosts preserve these links when switching tabs or language.
+
+Every multi-option selector rendered as a row of equal buttons **must** use
+`SegmentedControl`. Inline `<div className="settings-segment">` with manual
+button loops is prohibited.
+
+### 11.11 Checkbox
+
+Implementation: `components/ui.tsx → Checkbox`.
+
+| Property | Value |
+|---|---|
+| CSS class | `.ui-checkbox` |
+| Anatomy | `<label> → <input type="checkbox"> + <span>{label}</span>` |
+| Props | Extends `InputHTMLAttributes` (minus `type`) + `label: ReactNode` |
+
+Every standalone labeled checkbox **must** use `Checkbox`. Inline
+`<label><input type="checkbox"/>…</label>` is prohibited.
+
+### 11.11b CheckboxGroup
+
+Implementation: `components/ui.tsx → CheckboxGroup<T>`.
+
+| Property | Value |
+|---|---|
+| CSS class | `.ui-checkbox-group` (container), items use `Checkbox` |
+| Generic | `<T extends string>` for type-safe values/onChange |
+| Props | `values: T[]`, `onChange(values: T[])`, `options: { value: T; label: ReactNode }[]`, `label`, `disabled`, `minSelected` |
+| Minimum selection | `minSelected` (default 0) prevents unchecking below a threshold |
+
+Use `CheckboxGroup` when a set of options maps to an array of selected
+values (e.g. voice languages). For independent boolean fields with
+heterogeneous state shapes, use individual `Checkbox` components.
+
+### 11.12 SettingsMenuSelect
+
+Implementation: `components/settings/SettingsMenuSelect.tsx`.
+
+| Property | Value |
+|---|---|
+| Trigger | Button showing the current label, `IconChevronDown` trailing |
+| Popup | `AnchoredMenu` — portaled, keyboard-navigable, current-value checkmark |
+| Props | `value`, `options: { id, label, disabled? }[]`, `onChange(id)`, `label`, `disabled`, `busy`, `fullWidth` |
+
+Every dropdown / option-list in Settings **must** use `SettingsMenuSelect`
+instead of the native `Select` (`<select>`) component. Native `Select`
+is reserved for non-Settings contexts where OS-level rendering is acceptable.
+
+
 ## 12. State patterns
 
 ### 12.1 Interactive states
@@ -1265,6 +1345,8 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
 - Use Lucide/Heroicons SVG icons — never emoji as UI affordances
 - Use compact padding and tight spacing — developer density, not consumer spacing
 - First launch follows the system theme (see §Theme switching); dark is the primary design target
+- Use shared primitives from `components/ui.tsx` (`Button`, `Badge`, `SettingsToggle`, `SegmentedControl`, `Checkbox`, `Input`, `Textarea`, `Select`, `Field`, `Panel`, `HelpIcon`, `TooltipButton`) — never reimplement them inline
+- Use `SettingsMenuSelect` for all Settings dropdowns — never native `<select>` inside Settings
 
 ### Don't
 
@@ -1278,6 +1360,8 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
 - Don't apply rounded corners to full-width panels (sidebar, topbar)
 - Don't use `border-radius: 0` on buttons and inputs (use `radius-sm` minimum)
 - Don't show raw API keys in any UI surface
+- Don't write inline `<button role="switch">`, `<div className="settings-segment">`, or `<label><input type="checkbox">` — use the corresponding shared component
+- Don't use native `Select` (`<select>`) in Settings pages — use `SettingsMenuSelect`
 
 ## 15. Acceptance criteria
 

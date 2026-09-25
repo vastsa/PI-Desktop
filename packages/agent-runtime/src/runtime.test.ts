@@ -20,6 +20,8 @@ import {
   type RuntimeMatchConfig,
   type RuntimeProviderConfig,
 } from "./runtime.js";
+import { estimateOutputCapInputTokens } from "./output-cap.js";
+
 import { COMPACTION_SUMMARY_MAX_RETRIES } from "./compaction-summary-input.js";
 import type { ProjectInstructions } from "./project-instructions.js";
 import { classifyAgentError } from "./agent-errors.js";
@@ -38,6 +40,8 @@ const subagentRuns = vi.hoisted(() => ({
   calls: [] as any[],
   result: undefined as any,
   /** When true, run() waits for resolveRun() so tests control settlement. */
+  constructorError: undefined as unknown,
+  ignoreAbort: false,
   deferred: false,
   instances: [] as Array<{ resolve: (r: unknown) => void; settled: boolean }>,
   /** Settles the oldest unresolved deferred run (tests control order). */
@@ -50,6 +54,9 @@ vi.mock("./subagent.js", async (importOriginal) => {
     SubagentRun: class {
       private signal?: AbortSignal;
       constructor(options: unknown) {
+        if (subagentRuns.constructorError !== undefined) {
+          throw subagentRuns.constructorError;
+        }
         subagentRuns.calls.push(options);
         // Per-instance: concurrent delegates must abort on their own signal.
         this.signal = (options as { signal?: AbortSignal }).signal;
@@ -66,21 +73,23 @@ vi.mock("./subagent.js", async (importOriginal) => {
                 next.resolve(result);
               }
             };
-            this.signal?.addEventListener(
-              "abort",
-              () => {
-                if (instance.settled) return;
-                instance.settled = true;
-                resolve({
-                  agentName: "explorer",
-                  status: "aborted",
-                  report: "The delegated task was aborted.",
-                  turns: 0,
-                  toolCalls: 0,
-                });
-              },
-              { once: true },
-            );
+            if (!subagentRuns.ignoreAbort) {
+              this.signal?.addEventListener(
+                "abort",
+                () => {
+                  if (instance.settled) return;
+                  instance.settled = true;
+                  resolve({
+                    agentName: "explorer",
+                    status: "aborted",
+                    report: "The delegated task was aborted.",
+                    turns: 0,
+                    toolCalls: 0,
+                  });
+                },
+                { once: true },
+              );
+            }
           });
         }
         return Promise.resolve(
@@ -343,10 +352,9 @@ describe("custom system prompt files (issue #542)", () => {
     expect(prompt).toContain(persona);
     expect(prompt).not.toContain("You are PI-Desktop");
     // Operational rules from the default prompt must survive the replacement.
-    expect(prompt).toContain("Collaboration: answer in the same language");
-    expect(prompt).toContain("Searching and reading: prefer the Read");
-    expect(prompt).toContain("multi_tool_use.parallel");
-    expect(prompt).toContain("Editing workflow: use the built-in Edit or Write tool");
+    expect(prompt).toContain("Complete the requested work and relevant checks");
+    expect(prompt).toContain("Before each tool batch, briefly state its purpose");
+    expect(prompt).toContain("Editing workflow: inside the advertised workspace");
     expect(prompt).toContain("You are operating in Agent mode.");
 
     await runtime.dispose();
@@ -503,10 +511,10 @@ describe("DesktopAgentRuntime configuration matching", () => {
     const runtime = createRuntime();
     const prompt = (runtime as any).agent.state.systemPrompt as string;
 
-    expect(prompt).toContain("do not create or hand-edit unified-diff files");
-    expect(prompt).toContain("Do not invoke shell apply_patch, git apply, or patch commands");
-    expect(prompt).toContain("Never issue concurrent Write/Edit calls for the same path");
-    expect(prompt).toContain("A path may have three counted failures per prompt");
+    expect(prompt).toContain("hand-edited unified-diff files");
+    expect(prompt).toContain("Do not use shell apply_patch, git apply, patch");
+    expect(prompt).toContain("Never modify the same path concurrently");
+    expect(prompt).toContain("After three failed edit attempts on the same path");
 
     const edit = (runtime as any).agent.state.tools.find(
       (tool: any) => tool.name === "Edit",
@@ -534,45 +542,23 @@ describe("DesktopAgentRuntime configuration matching", () => {
     const runtime = createRuntime();
     const prompt = (runtime as any).agent.state.systemPrompt as string;
 
-    expect(prompt).toContain("answer in the same language the user writes in");
+    expect(prompt).toContain("Answer in the user's language");
+    expect(prompt).toContain("Keep the user informed during long work");
     expect(prompt).toContain(
-      "never leave the user with no new text for more than one tool batch or 60 seconds",
+      "The final response must state the outcome, verification, and remaining blockers",
     );
-    // The observed failure: a 2830-character conclusion written into thinking
-    // while the visible text stayed empty, twice in a row.
-    expect(prompt).toContain("must be answered in your visible text");
-    expect(prompt).toContain("Make the final message self-contained");
-    expect(prompt).toContain("Carry the work through end to end");
+    expect(prompt).toContain("Resolve recoverable blockers yourself");
 
     await runtime.dispose();
   });
 
-  it("steers search through the scopeable tools instead of shell pipelines", async () => {
+  it("provides ToolSearch so deferred tools can be activated on demand", async () => {
     const runtime = createRuntime();
-    const prompt = (runtime as any).agent.state.systemPrompt as string;
+    const tools = (runtime as any).agent.state.tools as Array<any>;
+    const toolSearch = tools.find((tool: any) => tool.name === "ToolSearch");
 
-    expect(prompt).toContain(
-      "prefer the Read, Grep, and Glob tools over shell",
-    );
-    expect(prompt).toContain("`outputMode`");
-    expect(prompt).toContain("always reports `totalLines`");
-    expect(prompt).toContain(
-      "paginates any supported text file however large",
-    );
-    expect(prompt).toContain(
-      "Read accepts only an existing regular text file, never a directory",
-    );
-    expect(prompt).toContain(
-      "in Agent mode, activate it with ToolSearch for the current prompt",
-    );
-    expect(prompt).toContain("Grep takes a file-or-directory `path`");
-    expect(prompt).toContain("Grep uses the system's `rg` when it is installed");
-    expect(prompt).toContain("Workspace-relative paths are portable");
-    expect(prompt).toContain(
-      "an explicit path outside the workspace and session scratch roots asks for permission",
-    );
-    expect(prompt).toContain("Do not re-run a search whose answer you already have");
-    expect(prompt).toContain("Never write a tool call as text");
+    expect(toolSearch).toBeDefined();
+    expect(toolSearch.description).toContain("on-demand tool");
 
     await runtime.dispose();
   });
@@ -2569,6 +2555,88 @@ describe("DesktopAgentRuntime plan transitions", () => {
       ),
     ).toBe(false);
 
+    await runtime.dispose();
+  });
+
+  it("counts request system prompt and tools once despite system transcript rows", async () => {
+    const runtime = createRuntime();
+    const internal = runtime as any;
+    const agent = internal.agent;
+    const messages: any[] = agent.state.messages;
+    const requestMessages = messages.filter(
+      (message) => message.role !== "system" && "content" in message,
+    );
+    const budget = internal.contextBudget(messages);
+    const requestEstimate = estimateOutputCapInputTokens(
+      {
+        messages: requestMessages,
+        systemPrompt: agent.state.systemPrompt,
+        tools: internal.activeTools(),
+      },
+      internal.model,
+    );
+    const duplicatedEstimate = estimateOutputCapInputTokens(
+      {
+        messages: messages.filter((message) => "content" in message),
+        systemPrompt: agent.state.systemPrompt,
+        tools: internal.activeTools(),
+      },
+      internal.model,
+    );
+
+    expect(messages.some((message) => message.role === "system")).toBe(true);
+    expect(agent.state.systemPrompt.length).toBeGreaterThan(0);
+    expect(internal.activeTools().length).toBeGreaterThan(0);
+    expect(duplicatedEstimate).toBeGreaterThan(requestEstimate);
+    expect(budget.tokens).toBeGreaterThanOrEqual(requestEstimate);
+    expect(budget.tokens).toBeLessThan(duplicatedEstimate);
+
+    await runtime.dispose();
+  });
+
+
+  it("does not continue an approved plan when preflight cannot clear hardLimit", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as any;
+    const agent = internal.agent;
+    agent.continue = vi.fn(async () => undefined);
+    vi.spyOn(internal, "automaticCompactionNeeded").mockReturnValue(true);
+    vi.spyOn(internal, "automaticCompactionWouldExceedHardLimit").mockReturnValue(true);
+    const runCompaction = vi.spyOn(internal, "runCompaction").mockResolvedValue(false);
+    const execution: PlanExecution = {
+      id: "oversized-plan",
+      proposalId: "proposal-oversized",
+      sessionId: "session-1",
+      kind: "plan",
+      plan: "# Very large approved snapshot",
+      title: "Oversized plan",
+      question: "Proceed?",
+      artifact: {
+        relativePath: ".pi/plan/proposal-oversized.md",
+        sha256: "abc123",
+        sizeBytes: 31,
+      },
+      targetPermissionMode: "auto",
+      state: "running",
+    };
+
+    await runtime.executeApprovedPlan(execution, "execution-turn-oversized");
+
+    expect(runCompaction).toHaveBeenCalledWith(
+      "threshold",
+      false,
+      "active_turn",
+    );
+    expect((runtime as any).fullEntries.at(-1).message.content).toContain(
+      execution.plan,
+    );
+    expect(onEvent.mock.calls.map(([envelope]) => (envelope as any).event)).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        error: expect.objectContaining({ code: "CONTEXT_COMPACTION_FAILED" }),
+      }),
+    );
     await runtime.dispose();
   });
 
@@ -4981,7 +5049,7 @@ describe("DesktopAgentRuntime compaction restore", () => {
     const estimate = estimateAgentContextTokens((runtime as any).agent.state.messages);
     expect(estimate.usageTokens).toBe(0);
     expect(estimate.lastUsageIndex).toBeNull();
-    expect(budget.tokens).toBe(estimate.tokens);
+    expect(budget.tokens).toBeGreaterThan(estimate.tokens);
     expect(budget.tokens).toBeGreaterThan(0);
     expect(budget.tokens).toBeLessThan(250_000);
     await runtime.dispose();
@@ -5025,7 +5093,7 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     const runtime = createRuntime();
 
     expect((runtime as any).contextBudget([])).toMatchObject({
-      tokens: 0,
+      tokens: expect.any(Number),
       hardLimit: 224_000,
       requestHeadroom: 32_000,
       keepRecentTokens: 44_800,
@@ -5055,19 +5123,19 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
-  it("compacts a long tool loop at the hard boundary, reminding once on the way", async () => {
+  it("compacts a long tool loop at the soft threshold after a reminder", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
     const prepareNextTurn = (runtime as any).prepareNextTurn.bind(runtime);
     const handleAgentEvent = (runtime as any).handleAgentEvent.bind(runtime);
     vi.spyOn(runtime as any, "contextBudget")
       .mockReturnValueOnce({
-        tokens: 205_000,
+        tokens: 195_000,
         hardLimit: 224_000,
         requestHeadroom: 32_000,
       })
       .mockReturnValueOnce({
-        tokens: 210_000,
+        tokens: 198_000,
         hardLimit: 224_000,
         requestHeadroom: 32_000,
       })
@@ -5086,8 +5154,8 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     const stillBelow = await prepareNextTurn(nextTurn);
     await handleAgentEvent({ type: "turn_end", message: assistant, toolResults: [toolResult] });
 
-    // 19k left of a 224k limit is inside the first reminder tier, so the model
-    // is told once. The claim then holds for the rest of this window.
+    // 29k left is inside the first reminder tier but still below the 90%
+    // compaction trigger, so the model can close out before host compaction.
     expect(below.context.systemPrompt).toContain("<context_budget>");
     expect(below.context.systemPrompt).toContain("new_context");
     expect(stillBelow.context.systemPrompt).not.toContain("<context_budget>");
@@ -5264,28 +5332,34 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
-  it("warns once more right before the boundary, then not again", async () => {
+  it("automatically compacts at the early threshold before the final reminder", async () => {
     const runtime = createRuntime();
-    vi.spyOn(runtime as any, "contextBudget").mockReturnValue({
-      tokens: 223_000,
-      hardLimit: 224_000,
-      requestHeadroom: 32_000,
-      keepRecentTokens: 44_800,
-    });
+    vi.spyOn(runtime as any, "contextBudget")
+      .mockReturnValueOnce({
+        tokens: 223_000,
+        hardLimit: 224_000,
+        requestHeadroom: 32_000,
+        keepRecentTokens: 44_800,
+      })
+      .mockReturnValueOnce({
+        tokens: 40_000,
+        hardLimit: 224_000,
+        requestHeadroom: 32_000,
+        keepRecentTokens: 44_800,
+      })
+      .mockReturnValue({
+        tokens: 40_000,
+        hardLimit: 224_000,
+        requestHeadroom: 32_000,
+        keepRecentTokens: 44_800,
+      });
+    const compact = vi.spyOn(runtime as any, "runCompaction").mockResolvedValue(true);
 
     const first = await (runtime as any).prepareNextTurn(nextTurn);
-    const second = await (runtime as any).prepareNextTurn(nextTurn);
+    await (runtime as any).prepareNextTurn(nextTurn);
 
-    expect(first.context.systemPrompt).toContain(
-      "the next request compacts this conversation",
-    );
-    expect(second.context.systemPrompt).not.toContain("<context_budget>");
-    // Installing a checkpoint opens a new window, so both tiers come back.
-    (runtime as any).contextReminderClaimed = false;
-    (runtime as any).contextFallbackReminderClaimed = false;
-    const afterCheckpoint = await (runtime as any).prepareNextTurn(nextTurn);
-    expect(afterCheckpoint.context.systemPrompt).toContain("<context_budget>");
-
+    expect(compact).toHaveBeenCalledOnce();
+    expect(first.context.systemPrompt).not.toContain("<context_budget>");
     await runtime.dispose();
   });
 
@@ -5894,6 +5968,28 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("blocks an over-budget continuation when automatic compaction is disabled", async () => {
+    const runtime = createRuntime({
+      compactionSettings: {
+        enabled: false,
+        reserveTokens: 16_384,
+        keepRecentTokens: 20_000,
+      },
+    });
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue({
+      tokens: 225_000,
+      hardLimit: 224_000,
+      requestHeadroom: 32_000,
+    });
+    const runCompaction = vi.spyOn(runtime as any, "runCompaction");
+
+    await expect((runtime as any).prepareNextTurn(nextTurn)).rejects.toThrow(
+      "CONTEXT_TOO_LARGE",
+    );
+    expect(runCompaction).not.toHaveBeenCalled();
+    await runtime.dispose();
+  });
+
   it("withdraws the compaction tool when automatic protection is disabled", async () => {
     const runtime = createRuntime();
     const before = (runtime as any).agent.state.tools.map(
@@ -5916,12 +6012,43 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("rejects an over-budget first prompt when automatic compaction is disabled", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({
+      onEvent,
+      compactionSettings: {
+        enabled: false,
+        reserveTokens: 16_384,
+        keepRecentTokens: 20_000,
+      },
+    });
+    const agent = (runtime as any).agent;
+    agent.prompt = vi.fn();
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue({
+      tokens: 225_000,
+      hardLimit: 224_000,
+      requestHeadroom: 32_000,
+    });
+
+    await runtime.prompt("oversized request", "user-disabled-compaction");
+
+    expect(agent.prompt).not.toHaveBeenCalled();
+    expect(onEvent.mock.calls.map(([envelope]) => (envelope as any).event)).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        error: expect.objectContaining({ code: "CONTEXT_TOO_LARGE" }),
+      }),
+    );
+    await runtime.dispose();
+  });
+
   it("keeps a preflight-rejected user message in reusable runtime context", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
     const agent = (runtime as any).agent;
     agent.prompt = vi.fn();
     vi.spyOn(runtime as any, "automaticCompactionNeeded").mockReturnValue(true);
+    vi.spyOn(runtime as any, "automaticCompactionWouldExceedHardLimit").mockReturnValue(true);
     vi.spyOn(runtime as any, "runCompaction").mockResolvedValue(false);
 
     await runtime.prompt("oversized request", "user-preflight");
@@ -6258,7 +6385,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
     await runtime.dispose();
   });
 
-  it("does not compact when automatic protection is disabled", async () => {
+  it("does not compact an in-budget turn when automatic protection is disabled", async () => {
     const runtime = createRuntime({
       host: { call: vi.fn().mockResolvedValue(undefined), onNotification: vi.fn(() => () => {}) },
       history,
@@ -6268,7 +6395,12 @@ describe("DesktopAgentRuntime inline context compaction", () => {
         keepRecentTokens: 20_000,
       },
     });
-    budgetSpy(runtime);
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue({
+      tokens: 100_000,
+      hardLimit: 224_000,
+      requestHeadroom: 32_000,
+      keepRecentTokens: 20_000,
+    });
     const generateCompaction = vi.spyOn(runtime as any, "generateCompaction");
 
     await (runtime as any).prepareNextTurn(nextTurn);
@@ -7176,6 +7308,12 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(converged.details.status).toBe("completed");
     expect(converged.content[0].text).toContain("src/app.ts:12");
 
+    const noOpStop = await stop.execute("stop-completed", {
+      delegationIds: [firstId],
+    });
+    expect(noOpStop.content[0].text).toContain("No matching running");
+    expect((runtime as any).delegations.get(firstId).status).toBe("completed");
+
     // TaskStop stops the still-running second delegate and reports "stopped".
     const stopped = await stop.execute("stop-1", { delegationIds: [secondId] });
     expect(stopped.details.stopped).toHaveLength(1);
@@ -7190,6 +7328,56 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(firstId).not.toBe(secondId);
     subagentRuns.deferred = false;
 
+    await runtime.dispose();
+  });
+
+  it("returns a pending cancellation instead of hanging when a delegate ignores abort", async () => {
+    const runtime = createRuntime({ subagents: [explorer] });
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.ignoreAbort = true;
+    subagentRuns.resolveRun = undefined;
+    const task = taskTool(runtime);
+    const stop = (runtime as any).agent.state.tools.find(
+      (tool: any) => tool.name === "TaskStop",
+    );
+    const started = await task.execute("task-unresponsive", {
+      agent: "explorer",
+      task: "Keep working unless cancellation reaches you.",
+    });
+    const delegationId = (started.details as any).delegationId as string;
+
+    vi.useFakeTimers();
+    try {
+      const stopping = stop.execute("stop-unresponsive", {
+        delegationIds: [delegationId],
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      const result = await stopping;
+      expect(result.content[0].text).toContain("remain running");
+      expect(result.details.stopped).toEqual([]);
+      expect(result.details.stopPending).toMatchObject([
+        { delegationId, status: "running" },
+      ]);
+      expect((runtime as any).delegations.get(delegationId).status).toBe(
+        "running",
+      );
+    } finally {
+      vi.useRealTimers();
+      subagentRuns.ignoreAbort = false;
+      subagentRuns.deferred = false;
+    }
+
+    (subagentRuns as any).resolveRun?.({
+      agentName: "explorer",
+      status: "aborted",
+      report: "The delegated task was aborted.",
+      turns: 0,
+      toolCalls: 0,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
     await runtime.dispose();
   });
 
@@ -9109,13 +9297,14 @@ describe("context estimate calibration", () => {
   });
 
   const messages = [
-    { role: "user" as const, content: "x".repeat(4_000), timestamp: 1 },
+    { role: "user" as const, content: "x".repeat(40_000), timestamp: 1 },
   ];
 
   it("moves the gate by what past requests actually cost", async () => {
     const runtime = createRuntime();
-    const raw = (runtime as any).contextBudget(messages).tokens;
-    expect(raw).toBeGreaterThan(0);
+    const raw = estimateAgentContextTokens(messages).tokens;
+    const initialBudget = (runtime as any).contextBudget(messages).tokens;
+    expect(initialBudget).toBeGreaterThan(raw);
 
     // Two unanchored reports, each costing three times the estimate: CJK text
     // against the estimator's `chars / 4` constant. Below the sample threshold
@@ -9129,7 +9318,7 @@ describe("context estimate calibration", () => {
       };
       (runtime as any).recordContextCalibration(report(raw * 3), false);
     }
-    expect((runtime as any).contextBudget(messages).tokens).toBe(raw);
+    expect((runtime as any).contextBudget(messages).tokens).toBe(initialBudget);
 
     (runtime as any).inFlightContextEstimate = {
       tokens: raw,
@@ -9138,7 +9327,9 @@ describe("context estimate calibration", () => {
       lastUsageIndex: null,
     };
     (runtime as any).recordContextCalibration(report(raw * 3), false);
-    expect((runtime as any).contextBudget(messages).tokens).toBe(raw * 3);
+    expect((runtime as any).contextBudget(messages).tokens).toBe(
+      Math.max(raw * 3, initialBudget),
+    );
 
     await runtime.dispose();
   });
@@ -9689,4 +9880,193 @@ describe("DesktopAgentRuntime loop context ownership (D620)", () => {
       stderr.mockRestore();
     }
   });
+});
+
+describe("DesktopAgentRuntime early context compaction", () => {
+  const history: UiMessage[] = [
+    {
+      id: "old-user",
+      role: "user",
+      content: "older task context",
+      createdAt: "2026-07-28T00:00:00Z",
+      status: "complete",
+    },
+    {
+      id: "recent-user",
+      role: "user",
+      content: "continue the task",
+      createdAt: "2026-07-28T00:00:01Z",
+      status: "complete",
+    },
+  ];
+  const softBudget = {
+    tokens: 205_000,
+    hardLimit: 224_000,
+    requestHeadroom: 32_000,
+    keepRecentTokens: 44_800,
+  };
+
+  it("compacts a follow-up turn before the hard limit", async () => {
+    const runtime = createRuntime({ history });
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue(softBudget);
+    const compact = vi.spyOn(runtime as any, "runCompaction").mockResolvedValue(true);
+
+    await (runtime as any).prepareNextTurn({
+      context: { systemPrompt: "base", messages: [], tools: [] },
+      newMessages: [],
+    });
+
+    expect(softBudget.tokens).toBeLessThan(softBudget.hardLimit);
+    expect(compact).toHaveBeenCalledOnce();
+    await runtime.dispose();
+  });
+
+  it("preflights a new prompt at the same early trigger", async () => {
+    const runtime = createRuntime({ history });
+    const events: string[] = [];
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue(softBudget);
+    const compact = vi.spyOn(runtime as any, "runCompaction").mockImplementation(async () => {
+      events.push("compact");
+      return true;
+    });
+    const prompt = vi.spyOn((runtime as any).agent, "prompt").mockImplementation(async () => {
+      events.push("prompt");
+    });
+
+    await runtime.prompt("next user request");
+
+    expect(compact).toHaveBeenCalledOnce();
+    expect(prompt).toHaveBeenCalledOnce();
+    expect(events).toEqual(["compact", "prompt"]);
+    await runtime.dispose();
+  });
+});
+
+  it("continues a soft-trigger preflight when compaction fails below the hard limit", async () => {
+    const history: UiMessage[] = [
+      {
+        id: "old-user",
+        role: "user",
+        content: "older task context",
+        createdAt: "2026-07-28T00:00:00Z",
+        status: "complete",
+      },
+      {
+        id: "recent-user",
+        role: "user",
+        content: "continue the task",
+        createdAt: "2026-07-28T00:00:01Z",
+        status: "complete",
+      },
+    ];
+    const softBudget = {
+      tokens: 205_000,
+      hardLimit: 224_000,
+      requestHeadroom: 32_000,
+      keepRecentTokens: 44_800,
+    };
+    const runtime = createRuntime({ history });
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue(softBudget);
+    vi.spyOn(runtime as any, "runCompaction").mockResolvedValue(false);
+    const prompt = vi.spyOn((runtime as any).agent, "prompt").mockResolvedValue(undefined);
+
+    await runtime.prompt("next user request");
+
+    expect(prompt).toHaveBeenCalledOnce();
+    await runtime.dispose();
+  });
+
+describe("DesktopAgentRuntime delegation wait settlement safety", () => {
+  const explorer: SubagentDefinition = {
+    name: "explorer",
+    description: "Search the workspace and report findings.",
+    tools: ["Read", "Glob", "Grep"],
+    prompt: "Report file paths and line numbers.",
+    source: "builtin",
+  };
+
+  function taskTool(runtime: DesktopAgentRuntime) {
+    return (runtime as any).agent.state.tools.find(
+      (tool: any) => tool.name === "Task",
+    );
+  }
+  it("does not register a running delegation when SubagentRun initialization throws", async () => {
+    const runtime = createRuntime({ subagents: [explorer] });
+    subagentRuns.calls.length = 0;
+    subagentRuns.constructorError = new Error("agent initialization failed");
+    try {
+      const started = await taskTool(runtime).execute("task-init-failed", {
+        agent: "explorer",
+        task: "Find it.",
+      });
+
+      expect(String((started.details as any)?.error)).toMatch(/initialize/i);
+      expect((runtime as any).runningDelegations()).toHaveLength(0);
+      await expect((runtime as any).resumeAfterDelegations()).resolves.toBeUndefined();
+    } finally {
+      subagentRuns.constructorError = undefined;
+      await runtime.dispose();
+    }
+  });
+
+  it("wakes the parent even when settlement publication throws", async () => {
+    const runtime = createRuntime({ subagents: [explorer] });
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.resolveRun = undefined;
+    const prompt = vi.fn(async () => undefined);
+    (runtime as any).agent.prompt = prompt;
+    (runtime as any).agent.waitForIdle = vi.fn(async () => undefined);
+    try {
+      const started = await taskTool(runtime).execute("task-publish-failed", {
+        agent: "explorer",
+        task: "Find it.",
+      });
+      const delegationId = (started.details as any).delegationId as string;
+      vi.spyOn(runtime as any, "publishDelegationSettlement").mockImplementation(() => {
+        throw new Error("event publication failed");
+      });
+
+      const resume = (runtime as any).resumeAfterDelegations();
+      subagentRuns.resolveRun!({
+        agentName: "explorer",
+        status: "completed",
+        report: "Found it in src/app.ts:12.",
+        turns: 1,
+        toolCalls: 1,
+      });
+      await resume;
+
+      expect((runtime as any).delegations.get(delegationId).status).toBe("completed");
+      expect(prompt).toHaveBeenCalledOnce();
+    } finally {
+      subagentRuns.deferred = false;
+      await runtime.dispose();
+    }
+  });
+
+  it("lets user Stop interrupt auto-resume even if a delegate ignores abort", async () => {
+    const runtime = createRuntime({ subagents: [explorer] });
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.ignoreAbort = true;
+    subagentRuns.resolveRun = undefined;
+    try {
+      await taskTool(runtime).execute("task-stop-wait", {
+        agent: "explorer",
+        task: "Find it.",
+      });
+      const resume = (runtime as any).resumeAfterDelegations();
+      await Promise.resolve();
+
+      await runtime.abort();
+      await resume;
+    } finally {
+      subagentRuns.ignoreAbort = false;
+      subagentRuns.deferred = false;
+      await runtime.dispose();
+    }
+  }, 1_000);
 });

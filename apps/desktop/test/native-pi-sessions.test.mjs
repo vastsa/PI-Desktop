@@ -210,7 +210,7 @@ function loadSessionIpc(imports) {
   return module.exports;
 }
 
-function forkHarness({ host, sidecar }) {
+function forkHarness({ host, sidecar, activeTurns = new Map() }) {
   const handlers = new Map();
   const hostCalls = [];
   const sidecarCalls = [];
@@ -228,7 +228,7 @@ function forkHarness({ host, sidecar }) {
     getHost: () => host(hostCalls),
     getSidecar: () => sidecar(sidecarCalls),
     dataDir: "/tmp/pi-desktop-test",
-    activeTurns: new Map(),
+    activeTurns,
     sessionProjects: new Map(),
     persistenceOutbox: {},
     logger: { app() {} },
@@ -423,8 +423,30 @@ test("a running native side-chat send fails before the Desktop queue", () => {
 });
 
 test("the native busy message is localized in every locale", async () => {
-  for (const locale of ["en", "zh-CN", "zh-TW", "de", "ko", "fr", "es", "tr"]) {
+  for (const locale of ["en", "zh-CN", "zh-TW", "de", "ko", "fr", "es", "tr", "pt-BR"]) {
     const source = await read(`../../../packages/i18n/src/locales/${locale}/index.ts`);
     assert.match(source, /nativeSessionBusy:/, locale);
   }
+});
+
+
+test("busy Desktop fork delegates only anchored snapshots to the authoritative host", async () => {
+  const { handle, hostCalls } = forkHarness({
+    activeTurns: new Map([["parent", {}]]),
+    sidecar: () => null,
+    host: (calls) => ({ call: async (method, input) => {
+      calls.push({ method, input });
+      if (input.throughMessageId === "current") {
+        throw Object.assign(new Error("session is running"), { data: { errorCode: "CONFLICT" } });
+      }
+      return { session: { id: "child" } };
+    } }),
+  });
+  for (const throughMessageId of [undefined, "", "  "]) {
+    await assert.rejects(handle({ sessionId: "parent", throughMessageId }), { errorCode: "AGENT_BUSY" });
+  }
+  assert.equal(hostCalls.length, 0);
+  assert.equal((await handle({ sessionId: "parent", throughMessageId: "old" })).session.id, "child");
+  assert.equal(hostCalls[0].input.throughMessageId, "old");
+  await assert.rejects(handle({ sessionId: "parent", throughMessageId: "current" }), { errorCode: "AGENT_BUSY" });
 });

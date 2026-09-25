@@ -155,7 +155,7 @@ test("a proxy fake-IP gets its own copy and names the address it came from", () 
 
 test("every shipped locale carries the new skill market strings", async () => {
   const { readFile } = await import("node:fs/promises");
-  const ids = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr"];
+  const ids = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr", "pt-BR"];
   const keys = [
     "previewError",
     "previewPolicyError",

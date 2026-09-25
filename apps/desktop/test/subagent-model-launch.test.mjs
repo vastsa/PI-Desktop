@@ -43,7 +43,6 @@ test("launch resolves definition-only pins without granting Task.model selection
     modelsDevCatalog: { ensureLoaded: async () => {}, findModel: () => undefined },
     getWorkspacePath: () => root, pluginActiveInProject: () => true,
     bindingForModel: (row, id) => row.models.find((m) => m.id === id),
-    modelsDevModelFor: () => undefined,
     effectiveSubagentModelConfig: (row, id, catalog) => {
       const modelConfig = modelConfigWithBinding(catalog, row.models.find((m) => m.id === id));
       return { modelConfig, capabilities: capabilitiesFromModelConfig(modelConfig) };

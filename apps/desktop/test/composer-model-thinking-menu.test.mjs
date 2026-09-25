@@ -102,17 +102,17 @@ test("the combined chip and menu meet the compact accessible visual contract", (
   assert.match(composerSource, /event\.key === "Escape"/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?position:\s*fixed;/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?top:\s*0;/);
-  assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(300px,\s*calc\(100vw - 24px\)\)/);
+  assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(280px,\s*calc\(100vw - 24px\)\)/);
   assert.match(composerSource, /className="composer-model-thinking-icon"[\s\S]*?<IconBot size=\{14\} \/>/);
   assert.doesNotMatch(stylesSource, /\.composer-model-thinking-icon\.is-off/);
   assert.match(stylesSource, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
-test("model options are visually nested under their provider heading", () => {
+test("model options share the compact provider heading inset", () => {
   assert.match(composerSource, /composer-plus-item composer-model-option/);
   assert.match(
     stylesSource,
-    /\.composer-model-group \.composer-model-option\s*\{[\s\S]*?padding-left:\s*22px/,
+    /\.composer-model-group \.composer-model-option\s*\{[\s\S]*?padding-left:\s*8px/,
   );
 });
 
@@ -126,14 +126,30 @@ test("model groups use the account-aware display name", () => {
 test("provider headings establish a stronger type level than model rows", () => {
   assert.match(
     stylesSource,
-    /\.composer-model-group-label\s*\{[\s\S]*?font-size:\s*var\(--text-md\)/,
+    /\.composer-model-group-label\s*\{[^}]*font-size:\s*var\(--text-xs-plus\)[^}]*font-weight:\s*var\(--font-weight-strong\)/,
   );
   assert.match(
     stylesSource,
-    /\.composer-model-group \.composer-model-option\s*\{[\s\S]*?font-size:\s*var\(--text-sm\)[\s\S]*?font-weight:\s*var\(--font-weight-normal\)/,
+    /\.composer-model-group \.composer-model-option\s*\{[^}]*font-size:\s*var\(--text-sm\)[^}]*font-weight:\s*var\(--font-weight-normal\)/,
   );
   assert.match(
     stylesSource,
     /:lang\(zh-CN\) \.composer-model-group-label\s*\{[\s\S]*?text-transform:\s*none/,
   );
+});
+
+test("Composer uses alias labels while preserving the exact selected wire id", async () => {
+  const chipSource = await readFile(new URL("../src/components/Composer.tsx", import.meta.url), "utf8");
+  assert.match(chipSource, /composerModelDisplayName\(provider, modelId, selectedModelInfo\?\.displayName\)/);
+  assert.match(listSource, /const optionTitle = model\.modelId/);
+  assert.match(listSource, /sameComposerModelId\(selectedModelId \?\? "", model\.modelId\)/);
+  assert.match(modelMenuSource, /modelId: nextModelId/);
+  assert.match(modelMenuSource, /sameComposerModelId\(entry\.id, nextModelId\)/);
+  assert.match(modelMenuSource, /sameComposerModelId\(entry\.model\.modelId, modelId \?\? ""\)/);
+});
+
+test("reasoning projection uses the selected exact catalog row and binding", async () => {
+  const source = await readComposerModule("model.ts");
+  assert.match(source, /sameComposerModelId\(candidate\.modelId, modelId\)/);
+  assert.match(source, /sameComposerModelId\(candidate\.id, model\.modelId\)/);
 });

@@ -1,0 +1,116 @@
+/* Voice input styles */
+
+.voice-active {
+  color: var(--color-danger, #ef4444) !important;
+}
+
+.voice-mic-active {
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Voice overlay */
+.voice-overlay {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  padding: 0 8px 4px;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.voice-overlay-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-radius: var(--radius-xs);
+  background: var(--color-surface-elevated, #1e1e2e);
+  border: 1px solid var(--color-border, #333);
+  font-size: var(--text-md);
+  gap: 12px;
+}
+
+.voice-overlay-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-overlay-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-round);
+  background: var(--color-danger, #ef4444);
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+
+.voice-duration {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.voice-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border, #555);
+  border-top-color: var(--color-primary, #3b82f6);
+  border-radius: var(--radius-round);
+  animation: voice-spin 0.8s linear infinite;
+}
+
+@keyframes voice-spin {
+  to { transform: rotate(360deg); }
+}
+
+.voice-volume-bar {
+  width: 80px;
+  height: 4px;
+  border-radius: var(--radius-3xs);
+  background: var(--color-border, #333);
+  overflow: hidden;
+}
+
+.voice-volume-fill {
+  height: 100%;
+  background: var(--color-primary, #3b82f6);
+  border-radius: var(--radius-3xs);
+  transition: width 100ms ease-out;
+}
+
+.voice-cancel-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-3xs);
+  font-size: var(--text-sm);
+  background: transparent;
+  color: var(--color-text-secondary, #999);
+  border: 1px solid var(--color-border, #444);
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.voice-cancel-btn:hover {
+  background: var(--color-surface-hover, #2a2a3e);
+}
+
+.voice-error {
+  color: var(--color-danger, #ef4444);
+}
+
+/* ---- Voice settings: wider control column ---- */
+.voice-settings .settings-row-control {
+  max-width: none;
+}
+
+

@@ -1,11 +1,11 @@
 import { useTranslation } from "react-i18next";
 import {
   imageGenerationBindings,
-  modelIdsMatch,
   type AppSettings,
   type ImageGenerationBinding,
   type ProviderPublic,
 } from "@pi-desktop/shared";
+import { sameComposerModelId } from "../../lib/composer-models";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { imageGenerationBindingAvailable } from "./image-generation-default";
 
@@ -37,7 +37,7 @@ export function ImageGenerationModelRow({
   const activeCandidate = binding
     ? candidates.find((candidate) =>
       candidate.providerId === binding.providerId &&
-      modelIdsMatch(candidate.modelId, binding.modelId),
+      sameComposerModelId(candidate.modelId, binding.modelId),
     )
     : undefined;
   const provider = binding

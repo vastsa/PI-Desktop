@@ -44,12 +44,12 @@ export const COMPACTION_MAX_KEEP_RECENT_TOKENS = 64_000;
  */
 export const COMPACTION_RETAINED_USER_MESSAGE_MAX_TOKENS = 20_000;
 
-/**
- * Context thresholds derived from the active model's window.
+/** Context limits derived from the active model's window.
  *
  * `hardLimit` is the safety boundary: the next provider request must not be
- * issued while the context is at or above it. Compaction happens inline at that
- * boundary, the way Codex does it — there is no off-critical-path variant.
+ * issued while the context is at or above it. Automatic compaction starts at
+ * 90% of that budget, inline at the next turn boundary; there is no
+ * off-critical-path variant.
  */
 export type ContextBudget = {
   /** Estimated tokens in the reconstructed model context. */
@@ -61,6 +61,19 @@ export type ContextBudget = {
   /** Approximate recent-context tokens a checkpoint should retain. */
   keepRecentTokens: number;
 };
+
+/** Fraction of the safe request budget that starts automatic compaction. */
+export const AUTO_COMPACTION_TRIGGER_RATIO = 0.9;
+
+/**
+ * Start compaction before the hard boundary so estimator drift and one-turn
+ * growth do not leave the provider request as the first overflow detector.
+ */
+export function automaticCompactionThresholdFor(
+  budget: Pick<ContextBudget, "hardLimit">,
+): number {
+  return Math.max(1, Math.floor(budget.hardLimit * AUTO_COMPACTION_TRIGGER_RATIO));
+}
 
 /**
  * The only model facts the budget depends on. Kept structural and optional so a
