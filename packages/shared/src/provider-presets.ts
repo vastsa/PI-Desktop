@@ -185,6 +185,47 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     labelKey: "settings.presetVolcengine",
     aliases: ["doubao", "ark"],
   },
+  // Volcengine Ark subscription plans (Agent Plan / Coding Plan) are served
+  // from dedicated hosts with their own protocol variants; the standard
+  // `/api/v3` endpoint above does not cover them. All plan rows keep the
+  // `volcengine` vendor key so models.dev metadata still resolves; the
+  // stored base URL is what distinguishes the preset on a saved row.
+  {
+    id: "volcengine-coding-plan",
+    vendorKey: "volcengine",
+    name: "Volcengine Ark Coding Plan",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/coding",
+    apiStyle: "anthropic_messages",
+    labelKey: "settings.presetVolcengineCodingPlan",
+    aliases: ["ark-coding-plan", "doubao-coding-plan"],
+  },
+  {
+    id: "volcengine-coding-plan-openai",
+    vendorKey: "volcengine",
+    name: "Volcengine Ark Coding Plan (OpenAI)",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/coding/v3",
+    apiStyle: "chat_completions",
+    labelKey: "settings.presetVolcengineCodingPlanOpenai",
+    aliases: ["ark-coding-plan-openai"],
+  },
+  {
+    id: "volcengine-agent-plan",
+    vendorKey: "volcengine",
+    name: "Volcengine Ark Agent Plan",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/plan",
+    apiStyle: "anthropic_messages",
+    labelKey: "settings.presetVolcengineAgentPlan",
+    aliases: ["ark-agent-plan"],
+  },
+  {
+    id: "volcengine-agent-plan-openai",
+    vendorKey: "volcengine",
+    name: "Volcengine Ark Agent Plan (OpenAI)",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/plan/v3",
+    apiStyle: "chat_completions",
+    labelKey: "settings.presetVolcengineAgentPlanOpenai",
+    aliases: ["ark-agent-plan-openai"],
+  },
   {
     id: "minimax-cn",
     vendorKey: "minimax-cn",
@@ -254,6 +295,31 @@ function presetByUrl(url: string): NamedEndpointPreset | undefined {
     return NAMED_ENDPOINT_PRESETS.find((preset) =>
       preset.id === (url.includes("/coding/") ? "zai-coding-plan" : "zai"),
     );
+  }
+  if (url.includes("volces.com")) {
+    // Plan endpoints win over the standard `/api/v3` host so a saved row is
+    // catalog-matched to the preset it was created from.
+    if (url.includes("/api/coding/v3")) {
+      return NAMED_ENDPOINT_PRESETS.find(
+        (preset) => preset.id === "volcengine-coding-plan-openai",
+      );
+    }
+    if (url.includes("/api/coding")) {
+      return NAMED_ENDPOINT_PRESETS.find(
+        (preset) => preset.id === "volcengine-coding-plan",
+      );
+    }
+    if (url.includes("/api/plan/v3")) {
+      return NAMED_ENDPOINT_PRESETS.find(
+        (preset) => preset.id === "volcengine-agent-plan-openai",
+      );
+    }
+    if (url.includes("/api/plan")) {
+      return NAMED_ENDPOINT_PRESETS.find(
+        (preset) => preset.id === "volcengine-agent-plan",
+      );
+    }
+    return NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === "volcengine");
   }
   return undefined;
 }

@@ -548,7 +548,16 @@ const KNOWN_PROVIDER_BASE_URLS: Record<string, string[]> = {
   "alibaba-cn": ["https://dashscope.aliyuncs.com/compatible-mode/v1"],
   "moonshotai-cn": ["https://api.moonshot.cn/v1"],
   "siliconflow-cn": ["https://api.siliconflow.cn/v1"],
-  volcengine: ["https://ark.cn-beijing.volces.com/api/v3"],
+  // Ark subscription plans (Agent Plan / Coding Plan) live on dedicated
+  // paths of the same host. Map them to the same models.dev provider so a
+  // plan row still inherits Doubao-family metadata.
+  volcengine: [
+    "https://ark.cn-beijing.volces.com/api/v3",
+    "https://ark.cn-beijing.volces.com/api/coding",
+    "https://ark.cn-beijing.volces.com/api/coding/v3",
+    "https://ark.cn-beijing.volces.com/api/plan",
+    "https://ark.cn-beijing.volces.com/api/plan/v3",
+  ],
   // MiniMax exposes both an Anthropic endpoint (the published models.dev
   // URL) and an OpenAI-compatible `/v1` endpoint. Treat the latter as the
   // same provider so a custom OpenAI-style row still inherits M3's vision

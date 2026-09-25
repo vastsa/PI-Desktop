@@ -194,4 +194,38 @@ describe("named endpoint presets", () => {
       })?.id,
     ).toBe("opencode_go");
   });
+
+  it("distinguishes Volcengine Ark plan endpoints from the standard API by path", () => {
+    expect(
+      matchNamedPreset({ baseUrl: "https://ark.cn-beijing.volces.com/api/v3/" })?.id,
+    ).toBe("volcengine");
+    expect(
+      matchNamedPreset({ baseUrl: "https://ark.cn-beijing.volces.com/api/coding" })
+        ?.apiStyle,
+    ).toBe("anthropic_messages");
+    expect(
+      matchNamedPreset({ baseUrl: "https://ark.cn-beijing.volces.com/api/coding/v3" })
+        ?.id,
+    ).toBe("volcengine-coding-plan-openai");
+    expect(
+      matchNamedPreset({ baseUrl: "https://ark.cn-beijing.volces.com/api/plan" })?.id,
+    ).toBe("volcengine-agent-plan");
+    expect(
+      matchNamedPreset({ baseUrl: "https://ark.cn-beijing.volces.com/api/plan/v3" })
+        ?.apiStyle,
+    ).toBe("chat_completions");
+  });
+
+  it("keeps Ark plan rows on the shared volcengine vendor key for catalog metadata", () => {
+    for (const id of [
+      "volcengine-coding-plan",
+      "volcengine-coding-plan-openai",
+      "volcengine-agent-plan",
+      "volcengine-agent-plan-openai",
+    ]) {
+      expect(NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === id)?.vendorKey).toBe(
+        "volcengine",
+      );
+    }
+  });
 });

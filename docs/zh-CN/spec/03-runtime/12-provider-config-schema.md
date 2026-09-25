@@ -245,7 +245,10 @@ API 密钥；自定义端点在常见路径上并排显示 API 密钥与接口�
 Together、Fireworks、OpenCode Go、Z.AI。
 
 国内：DeepSeek、通义千问、月之暗面、智谱 / Coding Plan、硅基流动、火山方舟、
-MiniMax（`anthropic_messages`，`https://api.minimaxi.com/anthropic/v1`）、
+火山方舟 Coding Plan / Agent Plan（各有 `anthropic_messages` 变体，地址
+`https://ark.cn-beijing.volces.com/api/coding` 或 `/api/plan`，以及 OpenAI
+`chat_completions` 变体 `/api/coding/v3` 或 `/api/plan/v3`；均沿用共享的
+`volcengine` vendor key）、MiniMax（`anthropic_messages`，`https://api.minimaxi.com/anthropic/v1`）、
 MiniMax (OpenAI)（`chat_completions`，`https://api.minimaxi.com/v1`，别名
 `minimax-openai` / `minimax-compatible`）、Kimi 编程。
 
