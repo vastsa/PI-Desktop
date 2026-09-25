@@ -346,6 +346,193 @@ test("remote transport factory resolves a fresh SSH forward on every retry", asy
   assert.deepEqual(builds.map(({ token }) => token), ["paired-token", "paired-token"]);
 });
 
+test("bootstrap closes an adopted SSH forward when secure registry persistence fails", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const version = "0.15.7-beta.1";
+  const artifactName = `pi-host-${version}-linux-x64.tar.gz`;
+  const forward = {
+    localPort: 0,
+    closeCalls: 0,
+    async close() {
+      forward.closeCalls += 1;
+    },
+  };
+  const transport = {
+    async exec() {
+      return { stdout: "Linux\nx86_64\n", stderr: "", code: 0 };
+    },
+    async execWithInput() {
+      return {
+        stdout: [
+          `PI_HOST_READY ${JSON.stringify({ hostId: "host-e2e", host: "127.0.0.1", port: 41234, version })}`,
+          `PI_HOST_PAIRING_TOKEN ${JSON.stringify({ token: "ppt1.bootstrap-test", expiresAt: 1_893_456_000_000 })}`,
+        ].join("\n"),
+        stderr: "",
+        code: 0,
+      };
+    },
+    async forward() {
+      return forward;
+    },
+    dispose() {},
+  };
+  const tunnelCalls = { adopt: 0, close: 0 };
+  let adoptedForward;
+  let encryptionCalls = 0;
+  const tunnels = {
+    async open() {
+      throw new Error("not used");
+    },
+    async adopt(hostKey, ssh, adopted) {
+      tunnelCalls.adopt += 1;
+      assert.equal(hostKey, "ssh-remote.test-remote-box");
+      assert.equal(ssh.remotePort, 41234);
+      adoptedForward = adopted;
+    },
+    async close(hostKey, expectedForward) {
+      tunnelCalls.close += 1;
+      assert.equal(hostKey, "ssh-remote.test-remote-box");
+      assert.equal(expectedForward, forward, "cleanup must be scoped to this bootstrap forward");
+      await adoptedForward?.close();
+      adoptedForward = undefined;
+    },
+    async dispose() {},
+  };
+  const router = createBackendRouter();
+  const boot = createRemoteHostsBoot({
+    dataDir: dir,
+    encryption: {
+      isAvailable: () => true,
+      encryptString: (value) => {
+        if (encryptionCalls++ === 0) return Buffer.from(value);
+        throw Object.assign(new Error("keychain unavailable"), {
+          errorCode: "REMOTE_STORAGE_UNAVAILABLE",
+        });
+      },
+      decryptString: (value) => value.toString("utf8"),
+    },
+    router,
+    emit: () => undefined,
+    clientInfo: { name: "test", version },
+    tunnels,
+    sshBootstrap: {
+      buildTransport: () => transport,
+      fetchChecksum: async () => `${"a".repeat(64)}  ${artifactName}\n`,
+      reservePort: async () => 49_152,
+      exchangePairing: async () => "pdt1.bootstrap-test",
+    },
+  });
+
+  try {
+    await assert.rejects(
+      boot.bootstrapHost({ label: "Remote box", host: "remote.test" }),
+      (error) => error.errorCode === "REMOTE_STORAGE_UNAVAILABLE",
+    );
+    assert.equal(tunnelCalls.adopt, 1, "the bootstrap forward should be adopted before persistence");
+    assert.equal(tunnelCalls.close, 1, "failed persistence must retire the adopted tunnel");
+    assert.ok(forward.closeCalls >= 1, "the SSH forward process must be stopped");
+    assert.equal(router.backendForHost("ssh-remote.test-remote-box"), null);
+    assert.deepEqual(await boot.list(), [], "no unpersisted host may be exposed to the renderer");
+  } finally {
+    await boot.closeAll();
+    await cleanup();
+  }
+});
+
+test("bootstrap rejects before starting SSH when secure storage is unavailable", async () => {
+  const { dir, cleanup } = await tmpDir();
+  let transportBuilds = 0;
+  let adopts = 0;
+  const tunnels = {
+    async open() {
+      throw new Error("not used");
+    },
+    async adopt() {
+      adopts += 1;
+    },
+    async close() {},
+    async dispose() {},
+  };
+  const boot = createRemoteHostsBoot({
+    dataDir: dir,
+    encryption: {
+      isAvailable: () => false,
+      encryptString: (value) => Buffer.from(value),
+      decryptString: (value) => value.toString("utf8"),
+    },
+    router: createBackendRouter(),
+    emit: () => undefined,
+    clientInfo: { name: "test", version: "0.15.7-beta.1" },
+    tunnels,
+    sshBootstrap: {
+      buildTransport() {
+        transportBuilds += 1;
+        throw new Error("SSH must not start without secure storage");
+      },
+      exchangePairing: async () => "unused",
+    },
+  });
+
+  try {
+    await assert.rejects(
+      boot.bootstrapHost({ label: "Remote box", host: "remote.test" }),
+      (error) => error.errorCode === "REMOTE_STORAGE_UNAVAILABLE",
+    );
+    assert.equal(transportBuilds, 0, "SSH installation must not start before storage is usable");
+    assert.equal(adopts, 0);
+    assert.deepEqual(await boot.list(), []);
+  } finally {
+    await boot.closeAll();
+    await cleanup();
+  }
+});
+
+test("bootstrap probes OS keychain access before starting SSH", async () => {
+  const { dir, cleanup } = await tmpDir();
+  let transportBuilds = 0;
+  const boot = createRemoteHostsBoot({
+    dataDir: dir,
+    encryption: {
+      isAvailable: () => true,
+      encryptString: () => {
+        throw new Error("keychain entry is unavailable");
+      },
+      decryptString: (value) => value.toString("utf8"),
+    },
+    router: createBackendRouter(),
+    emit: () => undefined,
+    clientInfo: { name: "test", version: "0.15.7-beta.1" },
+    tunnels: {
+      async open() {
+        throw new Error("not used");
+      },
+      async adopt() {
+        throw new Error("not used");
+      },
+      async close() {},
+      async dispose() {},
+    },
+    sshBootstrap: {
+      buildTransport() {
+        transportBuilds += 1;
+        throw new Error("SSH must not start when keychain access fails");
+      },
+      exchangePairing: async () => "unused",
+    },
+  });
+
+  try {
+    await assert.rejects(
+      boot.bootstrapHost({ label: "Remote box", host: "remote.test" }),
+      (error) => error.errorCode === "REMOTE_STORAGE_UNAVAILABLE",
+    );
+    assert.equal(transportBuilds, 0, "a failed keychain probe must block remote side effects");
+  } finally {
+    await boot.closeAll();
+    await cleanup();
+  }
+});
+
 test("a host whose connect fails is logged and skipped without killing the others", async () => {
   const { dir, cleanup } = await tmpDir();
   const encryption = reversibleEncryption();

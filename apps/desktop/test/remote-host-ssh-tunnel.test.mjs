@@ -302,6 +302,22 @@ test("adopt takes over the bootstrap's forward and retires the one it replaces",
   assert.equal(adopted.closes, 1);
 });
 
+test("owner-scoped close leaves a newer adopted forward open", async () => {
+  const { manager } = harness();
+  const stale = fakeForward(45_557);
+  const current = fakeForward(45_558);
+  await manager.adopt("k1", SSH, stale);
+  await manager.adopt("k1", SSH, current);
+
+  await manager.close("k1", stale);
+
+  assert.equal(stale.closes, 1, "replacing the entry retires its prior forward");
+  assert.equal(current.closes, 0, "stale cleanup must not close the new owner's tunnel");
+
+  await manager.close("k1");
+  assert.equal(current.closes, 1);
+});
+
 test("a refused forward propagates and leaves nothing half-registered", async () => {
   const { manager, transports, armFailure } = harness();
   const refusal = Object.assign(new Error("ssh: connect to host remote.example port 2222: Connection refused"), {

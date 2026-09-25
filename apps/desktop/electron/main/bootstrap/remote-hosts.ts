@@ -46,6 +46,7 @@ import {
 import { createRemoteToolRelay } from "../remote/remote-tool-relay.js";
 import type { UserMcpRuntime } from "../user-mcp.js";
 import {
+  assertRemoteHostStorageWritable,
   createRemoteHostRegistry,
   type EncryptionPort,
   type RemoteHostRecord,
@@ -722,27 +723,45 @@ export function createRemoteHostsBoot(
     },
     addHost,
     async bootstrapHost(request) {
+      assertRemoteHostStorageWritable(options.encryption);
       const outcome = await bootstrap.bootstrap(request);
-      // A re-pair under the same key must release the previous live
-      // connection — and with it the previous forward — before the new
-      // forward is adopted. Otherwise adopting would evict the very forward
-      // the bootstrap just opened for us.
-      await cancelRetry(outcome.hostKey);
-      await closeLive(outcome.hostKey);
-      // Adopt before persisting: the forward is already live and the device
-      // token only works over it.
-      await tunnels.adopt(outcome.hostKey, outcome.ssh, outcome.forward);
-      const host = await addHost(
-        sshHostRecord({
-          hostKey: outcome.hostKey,
-          label: outcome.label,
-          url: outcome.url,
-          deviceToken: outcome.deviceToken,
-          ssh: outcome.ssh,
-          ...(outcome.sshSecret ? { sshSecret: outcome.sshSecret } : {}),
-        }),
-      );
-      return { host, ssh: outcome.ssh, steps: outcome.steps };
+      try {
+        // A re-pair under the same key must release the previous live
+        // connection — and with it the previous forward — before the new
+        // forward is adopted. Otherwise adopting would evict the very forward
+        // the bootstrap just opened for us.
+        await cancelRetry(outcome.hostKey);
+        await closeLive(outcome.hostKey);
+        // Adopt before persisting: the forward is already live and the device
+        // token only works over it.
+        await tunnels.adopt(outcome.hostKey, outcome.ssh, outcome.forward);
+        const host = await addHost(
+          sshHostRecord({
+            hostKey: outcome.hostKey,
+            label: outcome.label,
+            url: outcome.url,
+            deviceToken: outcome.deviceToken,
+            ssh: outcome.ssh,
+            ...(outcome.sshSecret ? { sshSecret: outcome.sshSecret } : {}),
+          }),
+        );
+        return { host, ssh: outcome.ssh, steps: outcome.steps };
+      } catch (error) {
+        // Registry encryption or adoption can fail after the bootstrap has
+        // started a remote host. Retire only this attempt's entry so a newer
+        // concurrent re-pair cannot lose its tunnel.
+        await tunnels.close(outcome.hostKey, outcome.forward).catch((cleanupError: unknown) => {
+          log("warn", `remote host ${outcome.hostKey} bootstrap tunnel cleanup threw`, {
+            error: String(cleanupError),
+          });
+        });
+        await outcome.forward.close().catch((cleanupError: unknown) => {
+          log("warn", `remote host ${outcome.hostKey} bootstrap forward cleanup threw`, {
+            error: String(cleanupError),
+          });
+        });
+        throw error;
+      }
     },
     async removeHost(hostKey) {
       bumpHostGeneration(hostKey);

@@ -73,8 +73,8 @@ export interface SshTunnelManager {
   open(hostKey: string, ssh: RemoteHostSshMetadata, sshSecret?: string): Promise<SshTunnel>;
   /** Take ownership of a forward the bootstrap already opened. */
   adopt(hostKey: string, ssh: RemoteHostSshMetadata, forward: SshForward): Promise<SshTunnel>;
-  /** Close the forward for one host; a missing key is a no-op. */
-  close(hostKey: string): Promise<void>;
+  /** Close the forward for one host; a missing or replaced owner is a no-op. */
+  close(hostKey: string, expectedForward?: SshForward): Promise<void>;
   /** Close every forward. Idempotent; safe before any `open`. */
   dispose(): Promise<void>;
 }
@@ -147,10 +147,13 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
   };
 
   /** Drop one entry and reap its process; shared by `close` and `adopt`. */
-  const closeForKey = async (hostKey: string): Promise<void> => {
+  const closeForKey = async (
+    hostKey: string,
+    expectedForward?: SshForward,
+  ): Promise<void> => {
     await openings.get(hostKey)?.catch(() => undefined);
     const entry = entries.get(hostKey);
-    if (!entry) return;
+    if (!entry || (expectedForward && entry.forward !== expectedForward)) return;
     entries.delete(hostKey);
     await closeEntry(entry);
   };
@@ -228,8 +231,8 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
       return remember(hostKey, ssh, transport, forward);
     },
 
-    async close(hostKey) {
-      await closeForKey(hostKey);
+    async close(hostKey, expectedForward) {
+      await closeForKey(hostKey, expectedForward);
     },
 
     async dispose() {

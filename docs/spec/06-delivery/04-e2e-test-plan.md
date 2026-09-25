@@ -13046,7 +13046,9 @@ browser milestones are scheduled.
   Inspect the remote tool catalog. 11) Attempt
   to connect from a non-loopback address on the remote machine, then with a
   reused pairing token. 12) Point the bootstrap at the tampered bundle, then
-  at the other version, and reconnect.
+  at the other version, and reconnect. 13) With desktop secure storage
+  unavailable, submit the SSH bootstrap form and confirm it fails before an
+  SSH connection or remote command starts.
 - **Expected**: Files change only on the remote machine and the command runs
   there; the approval card appears in the desktop with the local vocabulary;
   the host-core applies the `ask` ceiling to the parent and delegated tool
@@ -13074,7 +13076,9 @@ browser milestones are scheduled.
   start with a Settings toast that names the checksum failure rather than a
   bare SSH exit code; a refused SSH login surfaces ssh's last stderr line in
   that toast; the version mismatch returns `PROTOCOL_MISMATCH` and offers the
-  re-download; and the local session is untouched throughout.
+  re-download; unavailable desktop secure storage returns
+  `REMOTE_STORAGE_UNAVAILABLE` before SSH starts; and the local session is
+  untouched throughout.
 - **Specs linked**: `02-architecture/05-remote-agent-control.md` §§5.2 and
   6.3, `03-runtime/19-remote-agent-control-protocol.md` §§6.2, 9.4, and
   11.1, `05-security/02-remote-control-security.md` §§3.4, 4.3, 5.1, and 7,
@@ -13114,9 +13118,11 @@ browser milestones are scheduled.
   recovery, or the remaining terminal and MCP relay steps. The isolated Linux
   CI profile selects Electron's `basic_text` password backend for disposable
   fixture credentials; this does not verify OS-backed at-rest protection. A
-  local macOS attempt reached the pairing step but could not complete because
-  the isolated HOME had no available Keychain, so `safeStorage` refused to
-  store the token. RACP and Host
+  prior local macOS attempt reached pairing but could not complete because
+  the isolated HOME had no available Keychain. SSH bootstrap now probes the
+  same `safeStorage` encryption API before opening SSH, so that setup should
+  fail before remote side effects; the macOS Keychain modal path remains
+  unverified. RACP and Host
   Runtime relay contract/user-path coverage is in
   `packages/racp/src/tool-relay.test.ts`,
   `packages/host-runtime/src/remote-tool-relay.test.ts`, and
