@@ -7,18 +7,23 @@
  *
  * Additive slots stack in registration order and never clash. Keyed slots
  * (`toolCard` by the plugin's qualified tool name, `blockRenderer` by its
- * language tag) refuse a second claim of a key with `PLUGIN_SLOT_DUPLICATE`:
- * the first registration keeps it. Every registration comes back as a
+ * language tag, `composerTrigger` by its symbol) refuse a second claim of a
+ * key with `PLUGIN_SLOT_DUPLICATE`: the first registration keeps it.
+ * `composerTrigger` registers no component, so its entries are kept apart
+ * from the component entries outlets render. Every registration comes back as a
  * disposer; the loader holds the disposers of one load and runs them all when
  * the plugin unloads.
  */
 import {
   PLUGIN_SLOT_POSITIONS,
   blockRendererLanguageKey,
+  composerTriggerKey,
   pluginToolName,
   slotRegistrationRefusal,
+  type PluginComponentSlot,
+  type PluginComposerTrigger,
+  type PluginComposerTriggerRegistration,
   type PluginDisposer,
-  type PluginRendererSlot,
   type PluginSlotPosition,
   type PluginSlotRegistration,
 } from "@pi-desktop/plugin-sdk";
@@ -27,7 +32,7 @@ import { PluginRendererError } from "../renderer-error";
 export type SlotEntry = {
   readonly id: string;
   readonly pluginId: string;
-  readonly slot: PluginRendererSlot;
+  readonly slot: PluginComponentSlot;
   /**
    * The plugin's function component. Its type admits no call: outlets render
    * it through `slotElement`, as an element that owns its hooks.
@@ -45,14 +50,26 @@ export type SlotEntry = {
   readonly toolName?: string;
 };
 
+/** A `composerTrigger` registration: the symbol it owns and its provider. */
+export type TriggerEntry = {
+  readonly id: string;
+  readonly pluginId: string;
+  readonly trigger: PluginComposerTrigger;
+  readonly items: PluginComposerTriggerRegistration["items"];
+};
+
 export type SlotRegistrySnapshot = {
   /** Bumped on every mutation; the `useSyncExternalStore` change signal. */
   readonly version: number;
   /** Registration order across plugins is the presentation order. */
   readonly entries: readonly SlotEntry[];
+  /** At most one per symbol. */
+  readonly triggers: readonly TriggerEntry[];
 };
 
-function sidesOf(registration: PluginSlotRegistration): readonly PluginSlotPosition[] {
+type ComponentRegistration = Exclude<PluginSlotRegistration, PluginComposerTriggerRegistration>;
+
+function sidesOf(registration: ComponentRegistration): readonly PluginSlotPosition[] {
   switch (registration.slot) {
     case "userAction":
     case "assistantAction":
@@ -68,7 +85,7 @@ function sidesOf(registration: PluginSlotRegistration): readonly PluginSlotPosit
 
 function keyOf(
   pluginId: string,
-  registration: PluginSlotRegistration,
+  registration: ComponentRegistration,
 ): Pick<SlotEntry, "key" | "toolName"> {
   if (registration.slot === "toolCard") {
     return {
@@ -83,7 +100,7 @@ function keyOf(
 }
 
 export class SlotRegistry {
-  private state: SlotRegistrySnapshot = { version: 0, entries: [] };
+  private state: SlotRegistrySnapshot = { version: 0, entries: [], triggers: [] };
   private readonly listeners = new Set<() => void>();
   private lastId = 0;
 
@@ -96,9 +113,26 @@ export class SlotRegistry {
 
   getSnapshot = (): SlotRegistrySnapshot => this.state;
 
-  private commit(entries: readonly SlotEntry[]): void {
-    this.state = { version: this.state.version + 1, entries };
+  private commit(next: Partial<Omit<SlotRegistrySnapshot, "version">>): void {
+    this.state = { ...this.state, ...next, version: this.state.version + 1 };
     for (const listener of this.listeners) listener();
+  }
+
+  private duplicate(slot: string, key: string, holder: { pluginId: string }): PluginRendererError {
+    return new PluginRendererError(
+      "PLUGIN_SLOT_DUPLICATE",
+      `${slot} ${JSON.stringify(key)} is already registered by ${holder.pluginId}`,
+    );
+  }
+
+  /** A disposer that runs `remove` once. */
+  private disposer(remove: () => void): PluginDisposer {
+    let disposed = false;
+    return () => {
+      if (disposed) return;
+      disposed = true;
+      remove();
+    };
   }
 
   /**
@@ -111,17 +145,13 @@ export class SlotRegistry {
     const refusal = slotRegistrationRefusal(pluginId, registration, ownTools);
     if (refusal) throw new PluginRendererError(refusal.code, refusal.message);
     const accepted = registration as PluginSlotRegistration;
+    if (accepted.slot === "composerTrigger") return this.registerTrigger(pluginId, accepted);
     const keyed = keyOf(pluginId, accepted);
     if (keyed.key !== undefined) {
       const holder = this.state.entries.find(
         (entry) => entry.slot === accepted.slot && entry.key === keyed.key,
       );
-      if (holder) {
-        throw new PluginRendererError(
-          "PLUGIN_SLOT_DUPLICATE",
-          `${accepted.slot} ${JSON.stringify(keyed.key)} is already registered by ${holder.pluginId}`,
-        );
-      }
+      if (holder) throw this.duplicate(accepted.slot, keyed.key, holder);
     }
     const entry: SlotEntry = {
       id: `slot-${++this.lastId}`,
@@ -131,30 +161,52 @@ export class SlotRegistry {
       sides: sidesOf(accepted),
       ...keyed,
     };
-    this.commit([...this.state.entries, entry]);
-    let disposed = false;
-    return () => {
-      if (disposed) return;
-      disposed = true;
-      this.commit(this.state.entries.filter((candidate) => candidate !== entry));
+    this.commit({ entries: [...this.state.entries, entry] });
+    return this.disposer(() =>
+      this.commit({ entries: this.state.entries.filter((candidate) => candidate !== entry) }),
+    );
+  }
+
+  private registerTrigger(
+    pluginId: string,
+    registration: PluginComposerTriggerRegistration,
+  ): PluginDisposer {
+    // The refusal check has already accepted the symbol.
+    const trigger = composerTriggerKey(registration.trigger) as PluginComposerTrigger;
+    const holder = this.triggerFor(trigger);
+    if (holder) throw this.duplicate(registration.slot, trigger, holder);
+    const entry: TriggerEntry = {
+      id: `slot-${++this.lastId}`,
+      pluginId,
+      trigger,
+      items: registration.items,
     };
+    this.commit({ triggers: [...this.state.triggers, entry] });
+    return this.disposer(() =>
+      this.commit({ triggers: this.state.triggers.filter((candidate) => candidate !== entry) }),
+    );
   }
 
   /** Every registration of a slot, in registration order. */
-  entriesFor(slot: PluginRendererSlot): SlotEntry[] {
+  entriesFor(slot: PluginComponentSlot): SlotEntry[] {
     return this.state.entries.filter((entry) => entry.slot === slot);
   }
 
   /** A positioned slot's registrations on one side, in registration order. */
-  entriesForSide(slot: PluginRendererSlot, side: PluginSlotPosition): SlotEntry[] {
+  entriesForSide(slot: PluginComponentSlot, side: PluginSlotPosition): SlotEntry[] {
     return this.state.entries.filter(
       (entry) => entry.slot === slot && entry.sides.includes(side),
     );
   }
 
   /** The one registration holding a key: a tool's card, a language's renderer. */
-  entryForKey(slot: PluginRendererSlot, key: string): SlotEntry | undefined {
+  entryForKey(slot: PluginComponentSlot, key: string): SlotEntry | undefined {
     return this.state.entries.find((entry) => entry.slot === slot && entry.key === key);
+  }
+
+  /** The plugin owning a composer symbol, if any. */
+  triggerFor(trigger: PluginComposerTrigger): TriggerEntry | undefined {
+    return this.state.triggers.find((entry) => entry.trigger === trigger);
   }
 }
 

@@ -72,8 +72,9 @@ function refusedWith(code) {
 /**
  * The lab's renderer entry, loaded by the production loader from the files
  * the runtime serves for its current generation, into the registry the host
- * outlets read. Its `plugin.call` goes to the runtime; its composer inserts
- * are recorded.
+ * outlets read. Its `plugin.call` goes to the runtime; its composer words go
+ * to a real draft bridge over a fake composer, whose writes are recorded and
+ * whose staged files are kept in memory. `gesture.on` stands for a click.
  */
 async function labWindow(t) {
   const runtime = await labRuntime(t);
@@ -81,11 +82,15 @@ async function labWindow(t) {
   const { RendererModuleLoader, rendererModuleUrl } = await ssr.load("/src/plugins/renderer-host/loader.ts");
   const { createDispatchChannel } = await ssr.load("/src/plugins/renderer-host/dispatch.ts");
   const { PluginLayerStack } = await ssr.load("/src/plugins/renderer-layers/layer-stack.ts");
+  const { ComposerDraftBridge } = await ssr.load("/src/features/chat/composer/plugins/draft-bridge.ts");
   const layerDocument = fakeLayerDocument();
   const layers = new PluginLayerStack(() => layerDocument);
   const descriptor = runtime.rendererDescriptor(LAB);
   const sheets = new Set();
-  const inserted = [];
+  const composer = fakeComposer();
+  const drafts = new ComposerDraftBridge((message, error) => assert.fail(`${message}: ${error?.stack ?? error}`));
+  drafts.register(composer.handle);
+  const gesture = { on: false };
   const channels = [];
   const loader = new RendererModuleLoader({
     importModule: (url) => {
@@ -102,16 +107,48 @@ async function labWindow(t) {
     openChannel: (pluginId, actions) => {
       const channel = createDispatchChannel(pluginId, actions, {
         pluginCall: (id, method, args) => runtime.callRenderer(id, method, args),
-        insertText: (text) => inserted.push(text) > 0,
+        composer: drafts,
+        userGesture: () => gesture.on,
       });
       channels.push(channel);
       return channel;
     },
+    subscribeDraft: (pluginId, listener) => drafts.subscribe(pluginId, listener),
     warn: (message, error) => assert.fail(`${message}: ${error?.stack ?? error}`),
   });
   const outcome = await loader.load({ pluginId: LAB, version: manifest.version, descriptor });
   t.after(() => loader.unload(LAB));
-  return { ...ssr, runtime, loader, outcome, sheets, inserted, dispatch: channels[0].dispatch };
+  return { ...ssr, runtime, loader, outcome, sheets, composer, drafts, gesture, dispatch: channels[0].dispatch };
+}
+
+/** A composer on `SESSION`'s draft that renders a write when told to. */
+function fakeComposer() {
+  const state = { text: "", references: [], writes: [], staged: [] };
+  const handle = {
+    read: () => ({ draftKey: `session:${SESSION}`, sessionId: SESSION, text: state.text, references: state.references }),
+    focused: () => false,
+    selection: () => ({ start: state.text.length, end: state.text.length }),
+    write: (text, references, caret, focus) => state.writes.push({ text, references, caret, focus }),
+    stage: async (sessionId, file) => {
+      state.staged.push({ sessionId, file });
+      return {
+        path: `/scratch/${sessionId}/${file.name}`,
+        name: file.name,
+        kind: file.mimeType.startsWith("image/") ? "image" : "file",
+        mimeType: file.mimeType,
+        size: file.data.byteLength,
+      };
+    },
+  };
+  return { state, handle };
+}
+
+/** The composer renders its last write and tells the bridge. */
+function render(lab) {
+  const last = lab.composer.state.writes.at(-1);
+  lab.composer.state.text = last.text;
+  lab.composer.state.references = last.references;
+  lab.drafts.publish(lab.composer.handle);
 }
 
 const USER = { id: "u1", role: "user", content: "Probe the lab\nplease", status: "complete", createdAt: "2026-09-24T00:00:00.000Z" };
@@ -225,13 +262,17 @@ test("the renderer entry loads a sample into every slot", async (t) => {
   assert.equal([...reply.matchAll(/class="lab-bar-row"/g)].length, 2, "one bar per data line");
   assert.match(reply, /data-lab-message="a2"/, "the entryExtra panel sits under the final reply");
 
-  // The layer launcher opens its layers on a click, never on its own.
+  // The layer launcher and the draft lab open their layers on a click, never
+  // on their own.
   assert.deepEqual(samples(toolbar()), [
     "composerControl:left",
+    "composerControl:draft",
     "composerControl:right",
     "composerControl:crash",
     "composerControl:layers",
   ]);
+  assert.match(toolbar(), /data-lab-draft="none"><\/span>/, "no draft before the first effect");
+  assert.equal(lab.registry.triggerFor("#")?.pluginId, LAB, "the lab owns #");
 });
 
 test("the samples' calls work through the host channel", async (t) => {
@@ -241,8 +282,99 @@ test("the samples' calls work through the host channel", async (t) => {
     echo: { messageId: "a2" },
   });
   await assert.rejects(lab.dispatch("plugin.call", { method: "lab.refuse" }), refusedWith("LAB_REFUSED"));
-  assert.deepEqual(await lab.dispatch("composer.insertText", { text: "lab: hi " }), { ok: true });
-  assert.deepEqual(lab.inserted, ["lab: hi "]);
+  assert.equal((await lab.dispatch("composer.insertText", { text: "lab: hi " })).ok, true);
+  assert.deepEqual(
+    lab.composer.state.writes.map(({ text, focus }) => ({ text, focus })),
+    [{ text: "lab: hi ", focus: true }],
+  );
+});
+
+test("the # trigger lists the lab's issues, and fails or overflows on request", async (t) => {
+  const lab = await labWindow(t);
+  const { askPluginTrigger } = await lab.load("/src/features/chat/composer/plugins/plugin-triggers.ts");
+  const { items } = lab.registry.triggerFor("#");
+  const ask = (query) => askPluginTrigger(items, { trigger: "#", query }, LAB);
+
+  assert.deepEqual(await ask("caret"), [
+    { label: "#7", send: "Lab issue #7: Composer loses the caret after a paste", detail: "Composer loses the caret after a paste" },
+  ]);
+  assert.equal((await ask("")).length, 3);
+  assert.equal((await ask("many")).length, 50, "the host keeps its first 50 rows");
+  const warn = t.mock.method(console, "warn", () => {});
+  assert.equal(await ask("fail"), null, "a throw collapses the lab's group");
+  assert.equal(warn.mock.callCount(), 1);
+});
+
+test("Polish rewrites the draft around its chips, only from a click", async (t) => {
+  const lab = await labWindow(t);
+  const { createFileReference, nextChipToken } = await lab.load("/src/features/chat/composer/editor.ts");
+  const { polished } = await import(pathToFileURL(join(LAB_DIR, "renderer/composer.mjs")).href);
+  const chip = createFileReference("/w/a.ts", "a.ts", SESSION, { kind: "file", token: nextChipToken() });
+  lab.composer.state.text = `  fix   ${chip.token}   now  `;
+  lab.composer.state.references = [chip];
+  lab.drafts.publish(lab.composer.handle);
+
+  const snapshot = await lab.dispatch("composer.readDraft", {});
+  await assert.rejects(lab.dispatch("composer.replaceDraft", polished(snapshot)), refusedWith("PLUGIN_DRAFT_REMOTE"));
+  lab.gesture.on = true;
+  const written = await lab.dispatch("composer.replaceDraft", polished(snapshot));
+  const write = lab.composer.state.writes.at(-1);
+  const stamp = write.references.at(-1);
+  assert.equal(write.text, `Fix ${chip.token} now ${stamp.token}`);
+  assert.equal(write.focus, false);
+  assert.deepEqual(stamp.plugin, { kind: "mark", pluginId: LAB, send: "(tidied by the UI Slots Lab)" });
+  render(lab);
+
+  // Polishing again replaces the stamp instead of adding one.
+  const again = await lab.dispatch("composer.readDraft", {});
+  assert.equal(again.generation, written.generation);
+  await lab.dispatch("composer.replaceDraft", polished(again));
+  render(lab);
+  const after = await lab.dispatch("composer.readDraft", {});
+  assert.equal(after.text, "Fix \uFFFC now \uFFFC");
+  assert.deepEqual(
+    after.marks.map((mark) => [mark.kind, mark.label]),
+    [
+      ["host", "a.ts"],
+      ["plugin", "lab \u2713"],
+    ],
+  );
+  await assert.rejects(lab.dispatch("composer.replaceDraft", polished(snapshot)), refusedWith("PLUGIN_DRAFT_STALE"));
+});
+
+test("the attachment controls stage the lab's files into the session's draft", async (t) => {
+  const lab = await labWindow(t);
+  const note = await lab.dispatch("attachments.add", {
+    name: "lab-note.md",
+    mimeType: "text/markdown",
+    content: "# Lab note\n",
+  });
+  render(lab);
+  await lab.dispatch("attachments.add", { name: "lab-dot.png", mimeType: "image/png", content: new Uint8Array([137, 80]) });
+  render(lab);
+  assert.deepEqual(
+    lab.composer.state.staged.map(({ sessionId, file }) => [sessionId, file.name, file.data.byteLength]),
+    [
+      [SESSION, "lab-note.md", 11],
+      [SESSION, "lab-dot.png", 2],
+    ],
+  );
+  assert.deepEqual(
+    (await lab.dispatch("attachments.list", {})).map(({ name, mimeType, size }) => [name, mimeType, size]),
+    [
+      ["lab-note.md", "text/markdown", 11],
+      ["lab-dot.png", "image/png", 2],
+    ],
+  );
+  assert.equal((await lab.dispatch("composer.readDraft", {})).text, "\uFFFC", "only the note is a chip");
+  await assert.rejects(
+    lab.dispatch("attachments.add", { name: "passwd.txt", mimeType: "text/plain", content: "/etc/passwd" }),
+    refusedWith("PLUGIN_ATTACHMENT_REFERENCE_REFUSED"),
+  );
+  assert.deepEqual(await lab.dispatch("attachments.remove", { id: note.id }), { ok: true });
+  render(lab);
+  assert.equal(lab.composer.state.text, "");
+  await assert.rejects(lab.dispatch("attachments.remove", { id: "none" }), refusedWith("PLUGIN_ATTACHMENT_NOT_FOUND"));
 });
 
 test("unloading the renderer entry takes every sample and its styles with it", async (t) => {
@@ -252,6 +384,7 @@ test("unloading the renderer entry takes every sample and its styles with it", a
 
   await lab.loader.unload(LAB);
   assert.equal(lab.sheets.size, 0);
+  assert.equal(lab.registry.triggerFor("#"), undefined);
   for (const html of [row(), turn(), toolbar()]) {
     assert.deepEqual(samples(html), []);
     assert.deepEqual(slotMounts(html), []);

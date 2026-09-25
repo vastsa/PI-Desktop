@@ -15,6 +15,16 @@
   min-width: 0;
 }
 
+/*
+ * A toolbar control shrinks with the row, and what no longer fits is cut at
+ * its own edge instead of painting over the next control. Only across: a
+ * popover a control opens above the toolbar still shows.
+ */
+.pi-plugin-slot[data-pi-slot="composerControl"] {
+  overflow-x: clip;
+  overflow-clip-margin: 2px;
+}
+
 /* Slots that own a whole block of the transcript take its full width. */
 .pi-plugin-slot[data-pi-slot="entryExtra"],
 .pi-plugin-slot[data-pi-slot="toolCard"],

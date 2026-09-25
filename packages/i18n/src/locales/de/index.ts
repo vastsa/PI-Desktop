@@ -258,6 +258,8 @@ export const de = {
     "sessionTranscriptEmpty": "Der Verlauf dieser Sitzung konnte nicht gelesen werden. Bitte die Sitzung erneut öffnen.",
     "fileMenu": "Dateiverweise",
     "removeFileReference": "Dateiverweis {{name}} entfernen",
+    "removePluginMark": "{{name}} entfernen",
+    "pluginTriggerMenu": "Plugin-Vorschläge",
     "messageAttachments": "Anhänge in dieser Nachricht",
     "fileEmpty": "Keine übereinstimmenden Dateien",
     "fileNoWorkspace": "Öffnen Sie ein Projekt, um auf Dateien zu verweisen",

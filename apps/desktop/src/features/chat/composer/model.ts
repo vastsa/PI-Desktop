@@ -12,6 +12,7 @@ import {
   sessionThinkingMenuLevels,
 } from "@pi-desktop/shared";
 import { sameComposerModelId } from "../../../lib/composer-models";
+import type { ComposerPluginPart } from "../../../lib/composer-smart-stop";
 import { providerThinkingLevels } from "../../../lib/session-thinking";
 
 export const COMPOSER_MIN_HEIGHT_PX = 28;
@@ -63,6 +64,7 @@ export type ComposerFileReference = {
   kind: "image" | "file";
   mimeType?: string;
   token?: string;
+  plugin?: ComposerPluginPart;
 };
 
 export type ComposerMenuView = "root" | "model" | "thinking";

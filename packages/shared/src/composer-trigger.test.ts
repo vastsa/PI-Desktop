@@ -226,6 +226,19 @@ describe("compact file references", () => {
     );
   });
 
+  it("resolves a plugin mark to the text it sends, never to a path", () => {
+    const references = [
+      { path: "", token: "\uE001", plugin: { send: "Issue #42: crash on start" } },
+      { path: "src/a.ts", token: "\uE002" },
+      { path: "", token: "\uE003", plugin: { send: "#7 #8" } },
+    ];
+    expect(
+      serializeInlineComposerFileReferences("see \uE001\uE002 and \uE003", references),
+    ).toBe("see Issue #42: crash on start @src/a.ts and #7 #8");
+    // A mark is inline only: once its chip is gone it sends nothing.
+    expect(serializeComposerFileReferences("gone", references.slice(0, 1))).toBe("gone");
+  });
+
   it("does not serialize an inline reference after its token is removed", () => {
     expect(
       serializeComposerFileReferences("the token was removed", [

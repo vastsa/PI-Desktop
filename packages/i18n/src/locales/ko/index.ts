@@ -267,6 +267,8 @@ export const ko = {
     sessionTranscriptEmpty: "이 세션의 기록을 읽지 못했습니다. 세션을 다시 열어 시도하세요.",
     fileMenu: "파일 참조",
     removeFileReference: "파일 참조 {{name}} 제거",
+    removePluginMark: "{{name}} 제거",
+    pluginTriggerMenu: "플러그인 제안",
     messageAttachments: "이 메시지의 첨부 파일",
     fileEmpty: "일치하는 파일 없음",
     fileNoWorkspace: "파일을 참조하려면 프로젝트를 여세요",

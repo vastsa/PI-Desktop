@@ -27,9 +27,6 @@ import {
   providerThinkingLevels,
   resolveComposerThinkingProvider,
 } from "../lib/session-thinking";
-import {
-  useComposerAutocomplete,
-} from "../hooks/use-composer-autocomplete";
 import { ComposerAutocomplete } from "./ComposerAutocomplete";
 import { AskToolCard } from "./AskToolCard";
 import { PlanApprovalBar } from "./PlanApprovalBar";
@@ -45,16 +42,11 @@ import {
   THINKING_LEVELS,
   type ComposerPrefill,
 } from "../features/chat/composer/model";
-import {
-  createFileReference,
-  editorSelectionRange,
-  readEditorValue,
-  setEditorCaret,
-  isImageFilePath,
-  nextChipToken,
-} from "../features/chat/composer/editor";
+import { editorSelectionRange } from "../features/chat/composer/editor";
 import { useComposerAttachments } from "../features/chat/composer/hooks/useComposerAttachments";
+import { useComposerCompletions } from "../features/chat/composer/hooks/useComposerCompletions";
 import { useComposerDraft } from "../features/chat/composer/hooks/useComposerDraft";
+import { usePluginComposerBridge } from "../features/chat/composer/hooks/usePluginComposerBridge";
 import { useComposerSubmit } from "../features/chat/composer/hooks/useComposerSubmit";
 import { ComposerImageAttachments } from "../features/chat/composer/ComposerImageAttachments";
 import { ComposerInput } from "../features/chat/composer/ComposerInput";
@@ -64,7 +56,6 @@ import { useVoiceInput } from "../features/voice/useVoiceInput";
 import { VoiceOverlay } from "../features/voice/VoiceOverlay";
 import "../styles/voice.css";
 import { ComposerStatus } from "../features/chat/composer/ComposerStatus";
-import { registerComposerInsert } from "../features/chat/composer/insert-bridge";
 
 const EMPTY_QUEUED_PROMPTS: QueuedPrompt[] = [];
 
@@ -459,63 +450,20 @@ export function Composer({
     },
   });
 
-  const composerAc = useComposerAutocomplete({
+  const completions = useComposerCompletions({
     value,
     cursor,
     composing,
     enabled: !inputBlocked,
+    referenceSessionId,
+    fileReferencesRef,
+    applyEditorDraft,
+    handleInput,
+    invalidatePromptEnhancement,
   });
 
-  const acceptCompletion = (index: number) => {
-    const result = composerAc.accept(index);
-    if (!result) return;
-    invalidatePromptEnhancement();
-    // File accept strips the @ token (empty insert) and used to store a
-    // token-less chip above the textarea. Inline chips only paint when a
-    // sentinel is in the draft, so Enter looked like the reference vanished.
-    const acceptedFileReference = result.fileReference;
-    if (!acceptedFileReference) {
-      applyEditorDraft(result.value, fileReferencesRef.current, result.cursor);
-      return;
-    }
-    const token = nextChipToken();
-    const nextText =
-      result.value.slice(0, result.cursor) + token + result.value.slice(result.cursor);
-    applyEditorDraft(
-      nextText,
-      [
-        ...fileReferencesRef.current,
-        createFileReference(
-          acceptedFileReference.path,
-          acceptedFileReference.name,
-          referenceSessionId,
-          {
-            kind: isImageFilePath(acceptedFileReference.path) ? "image" : "file",
-            token,
-          },
-        ),
-      ],
-      result.cursor + token.length,
-    );
-  };
-
-  // The insert bridge: plugin slot components reach the draft through
-  // `composer.insertText`; this composer instance owns the live route while
-  // it is mounted and clears it on unmount (last-writer-wins is the docked
-  // composer, which is the one the user sees).
-  useEffect(() => {
-    registerComposerInsert((text) => {
-      const element = draft.ref.current;
-      if (!element) return;
-      const current = readEditorValue(element);
-      const selection = editorSelectionRange(element);
-      const nextText = current.slice(0, selection.start) + text + current.slice(selection.end);
-      applyEditorDraft(nextText, fileReferencesRef.current, selection.start + text.length);
-      element.focus();
-      setEditorCaret(element, selection.start + text.length);
-    });
-    return () => registerComposerInsert(null);
-  }, [draft, fileReferencesRef]);
+  // Plugin draft and attachment actions reach this composer while it takes input.
+  usePluginComposerBridge({ ...draft, inputBlocked });
 
   // Keep the transcript's bottom reserve in sync with the composer's real
   // height (it grows with multi-line input) so the last message sits just
@@ -588,8 +536,8 @@ export function Composer({
           {inputFocused ? (
             <ComposerAutocomplete
               anchorRef={composerShellRef}
-              ac={composerAc}
-              onAccept={acceptCompletion}
+              ac={completions.ac}
+              onAccept={completions.acceptCompletion}
             />
           ) : null}
           <ComposerInput
@@ -602,12 +550,12 @@ export function Composer({
             pasting={pasting}
             enterToSend={enterToSend}
             runActive={runActive}
-            composerAc={composerAc}
+            composerAc={completions.ac}
             onPaste={pasteClipboardFiles}
-            onAcceptCompletion={acceptCompletion}
+            onAcceptCompletion={completions.acceptCompletion}
             onSubmit={(steering) => void submit(steering)}
             onInsertNewline={insertNewlineInEditor}
-            onInput={handleInput}
+            onInput={completions.handleInput}
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={(event) => {
               setComposing(false);

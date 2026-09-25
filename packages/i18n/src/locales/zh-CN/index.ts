@@ -260,6 +260,8 @@ export const zhCN = {
     sessionTranscriptEmpty: "无法读取该会话的记录，请重新打开会话后重试。",
     fileMenu: "引用文件",
     removeFileReference: "移除文件引用 {{name}}",
+    removePluginMark: "移除 {{name}}",
+    pluginTriggerMenu: "插件建议",
     messageAttachments: "此消息中的附件",
     fileEmpty: "没有匹配的文件",
     fileNoWorkspace: "打开项目后即可引用文件",

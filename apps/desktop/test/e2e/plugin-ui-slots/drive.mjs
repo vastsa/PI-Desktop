@@ -1,6 +1,7 @@
 // Drives the UI Slots Lab through the real app: prompts go through the MCP
 // control plane, and every assertion reads the renderer DOM the host slots
 // draw into, by the lab's `data-lab="<slot>[:<side>]"` markers.
+import { driveComposerDraft } from "./composer-draft.mjs";
 import { PROBE_TOOL } from "./stub-model.mjs";
 
 const LAB = "lab.ui-slots";
@@ -169,7 +170,13 @@ export async function drive({ control, renderer, check, project }) {
   );
   check(
     "composerControl samples sit on both toolbar sides",
-    sameSet(layout.toolbar, ["composerControl:left", "composerControl:right", "composerControl:crash", "composerControl:layers"]),
+    sameSet(layout.toolbar, [
+      "composerControl:left",
+      "composerControl:draft",
+      "composerControl:right",
+      "composerControl:crash",
+      "composerControl:layers",
+    ]),
     layout.toolbar.join(","),
   );
   check("every sample was mounted for the open session", layout.sessions.length === 1 && layout.sessions[0] === sessionId, layout.sessions.join(","));
@@ -289,7 +296,8 @@ export async function drive({ control, renderer, check, project }) {
   );
   await clickIn(null, "composerControl:right", "echo");
   const composerEcho = await settled(null, "composerControl:right", "composer echo");
-  check("a composer control round-trips plugin.call", composerEcho.text === "echo ✓", JSON.stringify(composerEcho));
+  check("a composer control round-trips plugin.call", composerEcho.text === "✓", JSON.stringify(composerEcho));
+  await driveComposerDraft({ renderer, check });
 
   // --- entryExtra height ------------------------------------------------------
   const entryBlock = (action) =>
@@ -359,6 +367,7 @@ export async function drive({ control, renderer, check, project }) {
     "assistantAction:refuse",
     "entryExtra:notes",
     "composerControl:left",
+    "composerControl:draft",
     "composerControl:right",
     "composerControl:layers",
   ];

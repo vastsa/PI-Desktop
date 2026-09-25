@@ -31,6 +31,7 @@ export const LAB_CSS = `
 }
 .lab-btn {
   padding: 1px 8px;
+  white-space: nowrap;
   border: 1px solid var(--ds-border-default);
   border-radius: 6px;
   background: transparent;
@@ -42,7 +43,12 @@ export const LAB_CSS = `
 .lab-btn:hover {
   background: var(--ds-bg-hover);
 }
+.lab-count {
+  color: var(--ds-text-secondary);
+  font-size: 10px;
+}
 .lab-result {
+  white-space: nowrap;
   color: var(--ds-text-muted);
   font-size: 11px;
 }
@@ -54,10 +60,20 @@ export const LAB_CSS = `
 }
 .lab-session, .lab-pill {
   padding: 0 6px;
+  white-space: nowrap;
   border-radius: 99px;
   background: var(--ds-bg-chip);
   color: var(--ds-text-secondary);
   font-size: 10px;
+}
+.lab-dock {
+  padding-bottom: 180px;
+}
+.lab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
 }
 .lab-running { color: var(--ds-warning); }
 .lab-success { color: var(--ds-success); }

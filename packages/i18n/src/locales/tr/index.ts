@@ -267,6 +267,8 @@ export const tr = {
     sessionTranscriptEmpty: "Bu oturumun geçmişi okunamadı. Yeniden denemek için oturumu tekrar açın.",
     fileMenu: "Dosya başvuruları",
     removeFileReference: "{{name}} dosya başvurusunu kaldır",
+    removePluginMark: "{{name}} öğesini kaldır",
+    pluginTriggerMenu: "Eklenti önerileri",
     messageAttachments: "Bu iletideki ekler",
     fileEmpty: "Eşleşen dosya yok",
     fileNoWorkspace: "Dosyalara başvurmak için bir proje açın",

@@ -258,6 +258,8 @@ export const fr = {
     "sessionTranscriptEmpty": "L'historique de cette session n'a pas pu être lu. Rouvrez la session pour réessayer.",
     "fileMenu": "Références de fichiers",
     "removeFileReference": "Supprimer la référence de fichier {{name}}",
+    "removePluginMark": "Supprimer {{name}}",
+    "pluginTriggerMenu": "Suggestions de plugins",
     "messageAttachments": "Pièces jointes à ce message",
     "fileEmpty": "Aucun fichier correspondant",
     "fileNoWorkspace": "Ouvrir un projet pour référencer les fichiers",

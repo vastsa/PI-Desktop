@@ -313,6 +313,12 @@
   outline-offset: 1px;
 }
 
+/* A plugin mark: text the plugin sends in its place, not a file. */
+.composer-chip[data-plugin-mark] {
+  background: color-mix(in oklab, var(--ds-accent) 14%, var(--ds-tile-deep));
+  color: var(--ds-text-primary);
+}
+
 .composer-chip-icon {
   display: inline-flex;
   flex: 0 0 auto;

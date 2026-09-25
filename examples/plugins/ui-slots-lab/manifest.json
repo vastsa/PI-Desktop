@@ -3,11 +3,19 @@
   "id": "lab.ui-slots",
   "name": "UI Slots Lab",
   "version": "0.1.0",
-  "description": "Test plugin with one visible sample in every renderer UI slot, plus controls that exercise dispatch, errors, crash isolation, the host size clamps and self-drawn layers",
+  "description": "Test plugin with one visible sample in every renderer UI slot, plus controls that exercise dispatch, errors, crash isolation, the host size clamps, self-drawn layers, the # trigger, the draft and attachments",
   "author": "PI-Desktop",
   "main": "main.js",
   "renderer": "renderer/index.mjs",
-  "rendererActions": ["plugin.call", "composer.insertText"],
+  "rendererActions": [
+    "plugin.call",
+    "composer.insertText",
+    "composer.readDraft",
+    "composer.replaceDraft",
+    "attachments.add",
+    "attachments.list",
+    "attachments.remove"
+  ],
   "rendererCallMethods": ["lab.echo", "lab.refuse", "lab.stall"],
   "contributes": {
     "agentTools": [

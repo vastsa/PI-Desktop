@@ -138,6 +138,41 @@ export async function connectRenderer(port) {
       }
       throw new Error(`timed out waiting for ${label} (last ${JSON.stringify(last)})`);
     },
+    /**
+     * A person's click on the first element `selector` matches: CDP mouse
+     * input at its center, so the page sees trusted events. Waits a moment
+     * for the element to show and settle (a popup still easing in), then
+     * throws when it is missing or something else is on top of it.
+     */
+    async click(selector) {
+      const locate = () => run((selector) => {
+        const node = document.querySelector(selector);
+        if (!node) return { missing: true };
+        node.scrollIntoView({ block: "nearest" });
+        const box = node.getBoundingClientRect();
+        const x = box.left + box.width / 2;
+        const y = box.top + box.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        const covered = !(hit && node.contains(hit));
+        return { x, y, covered, by: covered ? (hit?.outerHTML.slice(0, 80) ?? "nothing") : null };
+      }, selector);
+      const deadline = Date.now() + 2_000;
+      let point = await locate();
+      while ((point.missing || point.covered) && Date.now() < deadline) {
+        await sleep(50);
+        point = await locate();
+      }
+      if (point.missing || point.covered) {
+        throw new Error(`cannot click ${selector}: ${point.missing ? "missing" : `covered by ${point.by}`}`);
+      }
+      for (const type of ["mousePressed", "mouseReleased"]) {
+        await call("Input.dispatchMouseEvent", { type, x: point.x, y: point.y, button: "left", clickCount: 1 });
+      }
+    },
+    /** A person's typing into the focused element. */
+    async type(text) {
+      await call("Input.insertText", { text });
+    },
     async screenshot() {
       return (await call("Page.captureScreenshot", { format: "png" })).data;
     },

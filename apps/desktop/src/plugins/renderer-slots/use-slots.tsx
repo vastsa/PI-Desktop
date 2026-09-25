@@ -14,7 +14,7 @@ import {
   useMemo,
   useSyncExternalStore,
 } from "react";
-import type { PluginRendererSlot, PluginSlotPosition } from "@pi-desktop/plugin-sdk";
+import type { PluginComponentSlot, PluginSlotPosition } from "@pi-desktop/plugin-sdk";
 import { slotRegistry, type SlotEntry } from "./registry";
 
 /**
@@ -26,7 +26,7 @@ export function slotElement<Props extends object>(entry: SlotEntry, props: Props
 }
 
 export function useSlotEntries(
-  slot: PluginRendererSlot,
+  slot: PluginComponentSlot,
   side?: PluginSlotPosition,
 ): SlotEntry[] {
   const snapshot = useSyncExternalStore(
@@ -42,7 +42,7 @@ export function useSlotEntries(
 }
 
 export function useSlotEntryForKey(
-  slot: PluginRendererSlot,
+  slot: PluginComponentSlot,
   key: string | undefined,
 ): SlotEntry | undefined {
   const snapshot = useSyncExternalStore(

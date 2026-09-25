@@ -260,6 +260,8 @@ export const zhTW = {
     sessionTranscriptEmpty: "無法讀取此工作階段的記錄，請重新開啟後再試一次。",
     fileMenu: "引用檔案",
     removeFileReference: "移除檔案引用 {{name}}",
+    removePluginMark: "移除 {{name}}",
+    pluginTriggerMenu: "外掛建議",
     messageAttachments: "此訊息中的附件",
     fileEmpty: "沒有匹配的檔案",
     fileNoWorkspace: "開啟專案後即可引用檔案",

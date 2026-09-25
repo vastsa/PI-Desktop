@@ -9,9 +9,9 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
  * one load per plugin generation, a frozen `pi` bound to the plugin, and an
  * end that takes everything the load registered, injected or dispatched with
  * it before the plugin's `onUnload` runs, whatever the plugin did. The
- * registry, the layer stack and the dispatch channel are the real ones; only
- * the module import, the style sheets, the document under the layers and the
- * routes behind the channel are faked.
+ * registry, the layer stack, the dispatch channel and the draft bridge are the
+ * real ones; only the module import, the style sheets, the document under the
+ * layers, the composer and the routes behind the channel are faked.
  */
 const { RendererModuleLoader, rendererModuleUrl, rendererLoadSpecs } = await import(
   "../src/plugins/renderer-host/loader.ts"
@@ -20,6 +20,9 @@ const { SlotRegistry } = await import("../src/plugins/renderer-slots/registry.ts
 const { createDispatchChannel } = await import("../src/plugins/renderer-host/dispatch.ts");
 const { PluginRendererError } = await import("../src/plugins/renderer-error.ts");
 const { PluginLayerStack } = await import("../src/plugins/renderer-layers/layer-stack.ts");
+const { ComposerDraftBridge } = await import(
+  "../src/features/chat/composer/plugins/draft-bridge.ts"
+);
 
 const PLUGIN = "demo.lab";
 const component = () => null;
@@ -68,6 +71,7 @@ function harness(modules = {}) {
   const imports = [];
   const warnings = [];
   const calls = [];
+  const drafts = new ComposerDraftBridge((message, error) => warnings.push({ message, error }));
   let answerCall = () => Promise.resolve({ pong: true });
   const loader = new RendererModuleLoader({
     importModule: async (url) => {
@@ -92,8 +96,10 @@ function harness(modules = {}) {
           calls.push({ id, method, args });
           return answerCall(id, method, args);
         },
-        insertText: () => true,
+        composer: drafts,
+        userGesture: () => false,
       }),
+    subscribeDraft: (pluginId, listener) => drafts.subscribe(pluginId, listener),
     warn: (message, error) => warnings.push({ message, error }),
   });
   return {
@@ -105,6 +111,7 @@ function harness(modules = {}) {
     imports,
     warnings,
     calls,
+    drafts,
     openLayerFor: (pluginId) => layerStack.open(pluginId),
     answerCallsWith(fn) {
       answerCall = fn;
@@ -143,7 +150,10 @@ test("onLoad gets a frozen pi bound to its plugin, and what it registers shows u
   assert.deepEqual(await h.loader.load(spec()), { status: "loaded" });
   assert.deepEqual(h.imports, [url()]);
 
-  assert.ok(Object.isFrozen(pi) && Object.isFrozen(pi.plugin) && Object.isFrozen(pi.slots) && Object.isFrozen(pi.ui));
+  assert.ok(
+    [pi, pi.plugin, pi.slots, pi.ui, pi.composer].every((part) => Object.isFrozen(part)),
+  );
+  assert.deepEqual(Object.keys(pi).sort(), ["composer", "dispatch", "plugin", "slots", "ui"]);
   assert.deepEqual({ ...pi.plugin }, { id: PLUGIN, version: "1.2.3" });
   assert.deepEqual(
     h.registry.getSnapshot().entries.map((entry) => [entry.pluginId, entry.slot, entry.key]),
@@ -316,6 +326,54 @@ test("ending a load disposes its registrations, styles, layers and calls before 
   assert.deepEqual(h.loader.loadedPluginIds(), []);
   await h.loader.unload(PLUGIN);
   assert.equal(observed.length, 1, "unloading twice runs onUnload once");
+});
+
+test("a draft subscription takes the readDraft declaration and ends with the load", async () => {
+  let pi;
+  const h = harness({
+    [url()]: {
+      onLoad(api) {
+        pi = api;
+      },
+    },
+    [url("demo.mute")]: {
+      onLoad(api) {
+        assert.throws(
+          () => api.composer.subscribeDraft(() => {}),
+          (error) => error instanceof PluginRendererError && error.code === "PLUGIN_ACTION_UNDECLARED",
+        );
+      },
+    },
+  });
+  await h.loader.load(spec(PLUGIN, { actions: ["composer.readDraft"] }));
+  assert.deepEqual(await h.loader.load(spec("demo.mute")), { status: "loaded" });
+  assert.throws(() => pi.composer.subscribeDraft("not a listener"), TypeError);
+
+  const seen = [];
+  const stop = pi.composer.subscribeDraft((snapshot) => seen.push(snapshot?.text ?? null));
+  pi.composer.subscribeDraft((snapshot) => seen.push(snapshot ? "second" : "second: none"));
+  let text = "hello";
+  const handle = {
+    read: () => ({ draftKey: "session:s1", sessionId: "s1", text, references: [] }),
+    focused: () => false,
+    selection: () => ({ start: text.length, end: text.length }),
+    write: () => {},
+    stage: async () => {
+      throw new Error("not staged in this test");
+    },
+  };
+  h.drafts.register(handle);
+  stop();
+  text = "hello!";
+  h.drafts.publish(handle);
+  assert.deepEqual(seen, [null, "second: none", "hello", "second", "second"]);
+
+  await h.loader.unload(PLUGIN);
+  text = "after the end";
+  h.drafts.publish(handle);
+  assert.equal(seen.length, 5, "the end of the load ends its subscriptions");
+  assert.throws(() => pi.composer.subscribeDraft(() => {}), unloadedError);
+  assert.deepEqual(h.warnings, []);
 });
 
 test("a registration or layer the plugin disposed itself is not disposed again at the end", async () => {

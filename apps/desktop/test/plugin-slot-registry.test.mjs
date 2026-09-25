@@ -86,6 +86,7 @@ test("every accepted registration and disposal publishes a new snapshot; a refus
   const empty = registry.getSnapshot();
   assert.equal(empty.version, 0);
   assert.deepEqual(empty.entries, []);
+  assert.deepEqual(empty.triggers, []);
 
   const dispose = registry.register(PLUGIN, { slot: "entryExtra", component }, []);
   const registered = registry.getSnapshot();
@@ -161,6 +162,12 @@ test("malformed registrations are refused with their code and change nothing", (
     ["a bare language", { slot: "blockRenderer", component, language: "chart" }, "PLUGIN_SLOT_INVALID_KEY"],
     ["an empty suffix", { slot: "blockRenderer", component, language: "demo.lab:" }, "PLUGIN_SLOT_INVALID_KEY"],
     ["a suffix with a space", { slot: "blockRenderer", component, language: "demo.lab:bar chart" }, "PLUGIN_SLOT_INVALID_KEY"],
+    ["a trigger without items", { slot: "composerTrigger", trigger: "#" }, "PLUGIN_SLOT_INVALID_COMPONENT"],
+    ["a trigger with a component", { slot: "composerTrigger", trigger: "#", component }, "PLUGIN_SLOT_INVALID_COMPONENT"],
+    ["a trigger with positions", { slot: "composerTrigger", trigger: "#", items: () => [], positions: ["left"] }, "PLUGIN_SLOT_INVALID_POSITION"],
+    ["a trigger without a symbol", { slot: "composerTrigger", items: () => [] }, "PLUGIN_SLOT_INVALID_KEY"],
+    ["a trigger of another symbol", { slot: "composerTrigger", trigger: "$", items: () => [] }, "PLUGIN_SLOT_INVALID_KEY"],
+    ["a trigger of two symbols", { slot: "composerTrigger", trigger: "##", items: () => [] }, "PLUGIN_SLOT_INVALID_KEY"],
   ];
   const registry = new SlotRegistry();
   for (const [label, registration, code] of cases) {
@@ -172,6 +179,7 @@ test("malformed registrations are refused with their code and change nothing", (
   }
   assert.equal(registry.getSnapshot().version, 0);
   assert.deepEqual(registry.getSnapshot().entries, []);
+  assert.deepEqual(registry.getSnapshot().triggers, []);
 });
 
 test("a tool card is keyed by the plugin's qualified tool name, first claim wins", () => {
@@ -231,4 +239,46 @@ test("a block renderer is keyed by its normalized language tag, first claim wins
   );
   // Keys are per slot: the same string never matches another slot's entry.
   assert.equal(registry.entryForKey("toolCard", "demo.lab:chart"), undefined);
+});
+
+test("a composer trigger is keyed by its symbol, full-width folded, first claim wins", () => {
+  const registry = new SlotRegistry();
+  const items = () => [];
+  let notified = 0;
+  registry.subscribe(() => {
+    notified += 1;
+  });
+  const disposeHash = registry.register(PLUGIN, { slot: "composerTrigger", trigger: "\uFF03", items }, []);
+  assert.equal(notified, 1);
+  const hash = registry.triggerFor("#");
+  assert.equal(hash?.pluginId, PLUGIN);
+  assert.equal(hash?.trigger, "#");
+  assert.equal(hash?.items, items);
+  assert.equal("component" in hash, false, "a trigger registers no component");
+  assert.deepEqual(registry.getSnapshot().entries, [], "triggers never reach component outlets");
+
+  // One plugin per symbol, the same plugin included, whichever form it names.
+  for (const [pluginId, trigger] of [[OTHER, "#"], [PLUGIN, "#"], [OTHER, "\uFF03"]]) {
+    assert.throws(
+      () => registry.register(pluginId, { slot: "composerTrigger", trigger, items }, []),
+      refusedWith("PLUGIN_SLOT_DUPLICATE"),
+      `${pluginId} ${trigger}`,
+    );
+  }
+  assert.equal(notified, 1, "a refused claim publishes nothing");
+
+  registry.register(OTHER, { slot: "composerTrigger", trigger: "@", items }, []);
+  registry.register(PLUGIN, { slot: "composerTrigger", trigger: "/", items }, []);
+  assert.deepEqual(
+    registry.getSnapshot().triggers.map((entry) => [entry.trigger, entry.pluginId]),
+    [["#", PLUGIN], ["@", OTHER], ["/", PLUGIN]],
+  );
+
+  // The symbol frees up with its disposer, once.
+  disposeHash();
+  disposeHash();
+  assert.equal(registry.triggerFor("#"), undefined);
+  assert.equal(registry.getSnapshot().triggers.length, 2);
+  registry.register(OTHER, { slot: "composerTrigger", trigger: "#", items }, []);
+  assert.equal(registry.triggerFor("#")?.pluginId, OTHER);
 });

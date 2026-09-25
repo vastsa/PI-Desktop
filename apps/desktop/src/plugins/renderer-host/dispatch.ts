@@ -6,32 +6,36 @@
  * to its `manifest.rendererActions`, so a component can only ever act as its
  * own plugin and only through the words it declared. `plugin.call` crosses to
  * the plugin's headless entry through the main-process relay, which owns the
- * method whitelist, the size and rate limits and the breaker;
- * `composer.insertText` never leaves the renderer and goes through the
- * composer's insert bridge. Closing the channel when its load ends refuses
+ * method whitelist, the size and rate limits and the breaker; the composer
+ * words never leave the renderer and go through the composer's draft bridge
+ * (`./composer-actions.ts`). Closing the channel when its load ends refuses
  * every later dispatch and rejects the calls still in flight, so a late
  * answer never reaches the components of an unloaded plugin.
  */
 import {
-  PLUGIN_INSERT_TEXT_MAX_BYTES,
   PLUGIN_RENDERER_ACTIONS,
+  type PluginRendererActionName,
   type PluginRendererDispatch,
 } from "@pi-desktop/plugin-sdk";
-import { insertComposerText } from "../../features/chat/composer/insert-bridge";
+import { composerDraftBridge } from "../../features/chat/composer/plugins/draft-bridge";
 import { api } from "../../lib/api";
 import { PluginRendererError } from "../renderer-error";
+import { isUserGesture, runComposerAction, type ComposerRoutes } from "./composer-actions";
 
 /** Where the implemented words go. The defaults are the live app's. */
 export type DispatchRoutes = {
   /** The main-process `plugin.call` relay; rejects with its coded errors. */
   pluginCall(pluginId: string, method: string, args: unknown): Promise<unknown>;
-  /** Inserts at the composer caret; false when no composer is mounted. */
-  insertText(text: string): boolean;
+  /** The composer words: the draft bridge of the composer taking input. */
+  composer: ComposerRoutes;
+  /** Whether the code runs inside a user's input event now. */
+  userGesture(): boolean;
 };
 
 const appRoutes: DispatchRoutes = {
   pluginCall: (pluginId, method, args) => api.pluginRendererCall(pluginId, method, args),
-  insertText: insertComposerText,
+  composer: composerDraftBridge,
+  userGesture: () => isUserGesture(),
 };
 
 export type DispatchChannel = {
@@ -40,8 +44,6 @@ export type DispatchChannel = {
   /** End the load: refuse later dispatches and reject the ones in flight. */
   close(): void;
 };
-
-const utf8 = new TextEncoder();
 
 function describe(value: unknown): string {
   return typeof value === "string" ? JSON.stringify(value) : typeof value;
@@ -92,6 +94,8 @@ export function createDispatchChannel(
     });
 
   const dispatch = async (action: unknown, payload: unknown): Promise<unknown> => {
+    // First, while the caller's event is still the current one.
+    const userGesture = routes.userGesture();
     if (closed) throw unloaded();
     if (
       typeof action !== "string" ||
@@ -121,24 +125,19 @@ export function createDispatchChannel(
       }
       return untilClosed(routes.pluginCall(pluginId, method, jsonArgs(payload.args)));
     }
-    const text = payload.text;
-    if (
-      typeof text !== "string" ||
-      !text ||
-      utf8.encode(text).byteLength > PLUGIN_INSERT_TEXT_MAX_BYTES
-    ) {
-      throw new PluginRendererError(
-        "PLUGIN_ACTION_INVALID_PAYLOAD",
-        `composer.insertText requires non-empty text of at most ${PLUGIN_INSERT_TEXT_MAX_BYTES} UTF-8 bytes`,
-      );
-    }
-    if (!routes.insertText(text)) {
-      throw new PluginRendererError(
-        "PLUGIN_ACTION_NO_COMPOSER",
-        "no composer is mounted to take the text",
-      );
-    }
-    return { ok: true };
+    return untilClosed(
+      new Promise((resolve) => {
+        resolve(
+          runComposerAction(
+            pluginId,
+            action as Exclude<PluginRendererActionName, "plugin.call">,
+            payload,
+            routes.composer,
+            userGesture,
+          ),
+        );
+      }),
+    );
   };
 
   return {

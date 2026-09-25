@@ -258,6 +258,8 @@ export const es = {
     "sessionTranscriptEmpty": "No se pudo leer el historial de esta sesión. Vuelve a abrirla para intentarlo de nuevo.",
     "fileMenu": "Referencias de archivos",
     "removeFileReference": "Eliminar referencia de archivo {{name}}",
+    "removePluginMark": "Eliminar {{name}}",
+    "pluginTriggerMenu": "Sugerencias de plugins",
     "messageAttachments": "Archivos adjuntos en este mensaje",
     "fileEmpty": "No hay archivos coincidentes",
     "fileNoWorkspace": "Abrir un proyecto para hacer referencia a archivos",

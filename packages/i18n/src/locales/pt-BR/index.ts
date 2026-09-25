@@ -257,6 +257,8 @@ export const ptBR = {
     sessionTranscriptEmpty: "Não foi possível ler o histórico desta sessão. Reabra-a para tentar novamente.",
     fileMenu: "Referências a arquivos",
     removeFileReference: "Remover referência de arquivo {{name}}",
+    removePluginMark: "Remover {{name}}",
+    pluginTriggerMenu: "Sugestões de plugins",
     messageAttachments: "Anexos desta mensagem",
     fileEmpty: "Nenhum arquivo correspondente",
     fileNoWorkspace: "Abra um projeto para referenciar arquivos",

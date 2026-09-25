@@ -15,6 +15,14 @@ export function bindLab(pi) {
   labPi = pi;
 }
 
+/**
+ * Follow the composer draft (`pi.composer.subscribeDraft`); the returned
+ * call stops following it.
+ */
+export function subscribeDraft(listener) {
+  return labPi.composer.subscribeDraft(listener);
+}
+
 /** A layer above the app for a self-drawn dialog (`pi.ui.openLayer`). */
 export function openLayer() {
   return labPi.ui.openLayer();

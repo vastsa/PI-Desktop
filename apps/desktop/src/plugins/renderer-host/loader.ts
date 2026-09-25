@@ -8,8 +8,8 @@
  * evaluates the new code instead of its cached module graph, and the old URLs
  * stop resolving.
  *
- * Each load is its own session. Registrations, style sheets, layers and the
- * dispatch channel belong to the load that made them, and ending the load
+ * Each load is its own session. Registrations, style sheets, layers, draft
+ * subscriptions and the dispatch channel belong to the load that made them, and ending the load
  * disposes all of them before the plugin's `onUnload` runs, whatever the
  * plugin does or fails to do. The `pi` of an ended load stays dead:
  * registering, injecting or opening a layer through it throws
@@ -22,6 +22,7 @@ import {
   type PiRendererApi,
   type PiRendererModule,
   type PluginDisposer,
+  type PluginDraftListener,
   type PluginLayer,
   type PluginSlotRegistration,
 } from "@pi-desktop/plugin-sdk";
@@ -30,6 +31,7 @@ import {
   type PluginRendererDescriptor,
   type PluginSummary,
 } from "@pi-desktop/shared";
+import { composerDraftBridge } from "../../features/chat/composer/plugins/draft-bridge";
 import { PluginRendererError } from "../renderer-error";
 import { pluginLayers } from "../renderer-layers/layer-stack";
 import { slotRegistry, type SlotRegistry } from "../renderer-slots/registry";
@@ -54,6 +56,7 @@ export type RendererLoaderDeps = {
   injectStyle(pluginId: string, css: string): PluginDisposer;
   openLayer(pluginId: string): PluginLayer;
   openChannel(pluginId: string, actions: readonly string[]): DispatchChannel;
+  subscribeDraft(pluginId: string, listener: PluginDraftListener): PluginDisposer;
   warn(message: string, error: unknown): void;
 };
 
@@ -133,6 +136,22 @@ class RendererLoad {
           this.assertAlive();
           const layer = this.deps.openLayer(pluginId);
           return Object.freeze({ element: layer.element, close: this.track(layer.close) });
+        },
+      }),
+      composer: Object.freeze({
+        subscribeDraft: (listener: PluginDraftListener) => {
+          this.assertAlive();
+          // Following the draft reads it, so it takes the same declaration.
+          if (!descriptor.actions.includes("composer.readDraft")) {
+            throw new PluginRendererError(
+              "PLUGIN_ACTION_UNDECLARED",
+              `composer.readDraft is not in ${pluginId}'s manifest.rendererActions`,
+            );
+          }
+          if (typeof listener !== "function") {
+            throw new TypeError("composer.subscribeDraft takes a listener function");
+          }
+          return this.track(this.deps.subscribeDraft(pluginId, listener));
         },
       }),
       dispatch: this.channel.dispatch,
@@ -277,5 +296,6 @@ export const rendererModules = new RendererModuleLoader({
   injectStyle: injectPluginStyle,
   openLayer: (pluginId) => pluginLayers.open(pluginId),
   openChannel: (pluginId, actions) => createDispatchChannel(pluginId, actions),
+  subscribeDraft: (pluginId, listener) => composerDraftBridge.subscribe(pluginId, listener),
   warn: (message, error) => console.warn(message, error),
 });

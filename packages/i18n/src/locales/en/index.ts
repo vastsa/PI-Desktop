@@ -265,6 +265,8 @@ export const en = {
     sessionTranscriptEmpty: "This session's history could not be read. Reopen the session to try again.",
     fileMenu: "File references",
     removeFileReference: "Remove file reference {{name}}",
+    removePluginMark: "Remove {{name}}",
+    pluginTriggerMenu: "Plugin suggestions",
     messageAttachments: "Attachments in this message",
     fileEmpty: "No matching files",
     fileNoWorkspace: "Open a project to reference files",

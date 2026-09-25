@@ -5,6 +5,7 @@ import {
   blockRendererLanguageKey,
   slotRegistrationRefusal,
 } from "./renderer.js";
+import { PLUGIN_COMPOSER_TRIGGERS, composerTriggerKey } from "./renderer-composer.js";
 
 const PLUGIN = "demo.lab";
 const component = () => null;
@@ -22,8 +23,18 @@ describe("renderer vocabulary", () => {
       "toolCard",
       "blockRenderer",
       "composerControl",
+      "composerTrigger",
     ]);
-    expect(PLUGIN_RENDERER_ACTIONS).toEqual(["plugin.call", "composer.insertText"]);
+    expect(PLUGIN_RENDERER_ACTIONS).toEqual([
+      "plugin.call",
+      "composer.insertText",
+      "composer.readDraft",
+      "composer.replaceDraft",
+      "attachments.add",
+      "attachments.list",
+      "attachments.remove",
+    ]);
+    expect(PLUGIN_COMPOSER_TRIGGERS).toEqual(["@", "#", "/"]);
   });
 });
 
@@ -35,6 +46,7 @@ describe("slotRegistrationRefusal", () => {
     expect(codeOf({ slot: "composerControl", component, positions: ["left", "right"] })).toBeNull();
     expect(codeOf({ slot: "toolCard", toolName: "query_db", component }, ["query_db"])).toBeNull();
     expect(codeOf({ slot: "blockRenderer", language: "demo.lab:chart", component })).toBeNull();
+    expect(codeOf({ slot: "composerTrigger", trigger: "#", items: () => [] })).toBeNull();
   });
 
   it("refuses a slot outside the vocabulary", () => {
@@ -42,7 +54,7 @@ describe("slotRegistrationRefusal", () => {
     expect(codeOf("entryExtra")).toBe("PLUGIN_SLOT_UNKNOWN");
     expect(codeOf({ component })).toBe("PLUGIN_SLOT_UNKNOWN");
     expect(codeOf({ slot: "composerToken", component })).toBe("PLUGIN_SLOT_UNKNOWN");
-    expect(codeOf({ slot: "composerTrigger", component })).toBe("PLUGIN_SLOT_UNKNOWN");
+    expect(codeOf({ slot: "composerMark", component })).toBe("PLUGIN_SLOT_UNKNOWN");
   });
 
   it("requires a function component", () => {
@@ -107,6 +119,46 @@ describe("slotRegistrationRefusal", () => {
     );
     // Tags compare case-insensitively and ignore surrounding space.
     expect(codeOf({ slot: "blockRenderer", language: " Demo.Lab:Chart_2 ", component })).toBeNull();
+  });
+});
+
+describe("composerTrigger registrations", () => {
+  const items = () => [];
+
+  it("takes an items function, not a component", () => {
+    expect(codeOf({ slot: "composerTrigger", trigger: "#" })).toBe("PLUGIN_SLOT_INVALID_COMPONENT");
+    expect(codeOf({ slot: "composerTrigger", trigger: "#", component })).toBe(
+      "PLUGIN_SLOT_INVALID_COMPONENT",
+    );
+    expect(codeOf({ slot: "composerTrigger", trigger: "#", items: [] })).toBe(
+      "PLUGIN_SLOT_INVALID_COMPONENT",
+    );
+  });
+
+  it("keys on one of the fixed symbols, full-width forms included", () => {
+    for (const trigger of ["@", "#", "/", "\uFF20", "\uFF03", "\uFF0F"]) {
+      expect(codeOf({ slot: "composerTrigger", trigger, items })).toBeNull();
+    }
+    for (const trigger of [undefined, "", "$", "##", " #", "#tag", 35]) {
+      expect(codeOf({ slot: "composerTrigger", trigger, items })).toBe("PLUGIN_SLOT_INVALID_KEY");
+    }
+  });
+
+  it("takes no positions", () => {
+    expect(codeOf({ slot: "composerTrigger", trigger: "#", items, positions: ["left"] })).toBe(
+      "PLUGIN_SLOT_INVALID_POSITION",
+    );
+  });
+});
+
+describe("composerTriggerKey", () => {
+  it("folds full-width symbols and refuses everything else", () => {
+    expect(composerTriggerKey("\uFF03")).toBe("#");
+    expect(composerTriggerKey("\uFF20")).toBe("@");
+    expect(composerTriggerKey("\uFF0F")).toBe("/");
+    expect(composerTriggerKey("#")).toBe("#");
+    expect(composerTriggerKey("%")).toBeNull();
+    expect(composerTriggerKey(null)).toBeNull();
   });
 });
 

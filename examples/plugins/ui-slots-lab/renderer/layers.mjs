@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { Button, openLayer } from "./lab.mjs";
 
 /** The element of a layer held open while the caller is mounted. */
-function useLayer() {
+export function useLayer() {
   const [layer, setLayer] = useState(null);
   useEffect(() => {
     const opened = openLayer();
@@ -73,7 +73,7 @@ export function LayerLauncher() {
   const [wizard, setWizard] = useState(false);
   const [notice, setNotice] = useState(false);
   return h("span", { className: "lab-action", "data-lab": "composerControl:layers" },
-    h(Button, { lab: "wizard", onClick: () => setWizard(true) }, "Lab wizard"),
+    h(Button, { lab: "wizard", onClick: () => setWizard(true) }, "Wizard"),
     wizard ? h(Wizard, { onClose: () => setWizard(false), onNotice: () => setNotice(true) }) : null,
     notice ? h(Notice, { onClose: () => setNotice(false) }) : null);
 }

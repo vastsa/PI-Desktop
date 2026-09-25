@@ -8,12 +8,10 @@ import type {
   RefObject,
   SetStateAction,
 } from "react";
-import type { useComposerAutocomplete } from "../../../hooks/use-composer-autocomplete";
 import { editorSelectionRange, readEditorValue } from "./editor";
 import { ComposerImagePreview } from "./ComposerImagePreview";
+import type { CompletionController } from "./hooks/useComposerCompletions";
 import type { ComposerImagePreviewController } from "./hooks/useComposerImagePreview";
-
-type AutocompleteController = ReturnType<typeof useComposerAutocomplete>;
 
 export type ComposerInputProps = {
   imagePreview?: ComposerImagePreviewController;
@@ -25,7 +23,7 @@ export type ComposerInputProps = {
   pasting: boolean;
   enterToSend: boolean;
   runActive: boolean;
-  composerAc: AutocompleteController;
+  composerAc: CompletionController;
   onPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
   onAcceptCompletion: (index: number) => void;
   onSubmit: (steering?: boolean) => void;

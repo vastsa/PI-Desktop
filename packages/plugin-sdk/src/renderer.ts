@@ -16,6 +16,9 @@
  * - `blockRenderer` — a fenced code block tagged `<pluginId>:<lang>`.
  * - `composerControl` — additive controls left and right in the composer
  *   toolbar.
+ * - `composerTrigger` — the item list behind one of the composer's trigger
+ *   symbols; not a component, the host draws the list
+ *   (`./renderer-composer.ts`).
  *
  * Self-dialogs are not a slot: a component draws them itself
  * (`docs/plugin-plan/ui/self-dialog/`), into a layer `pi.ui.openLayer` hands
@@ -25,6 +28,20 @@
  * boundary. The contract keeps well-behaved plugins apart and out of the
  * host's way; the `renderer.extension` grant is what trusts the code.
  */
+
+import {
+  composerTriggerKey,
+  type PluginAttachment,
+  type PluginAttachmentAddPayload,
+  type PluginAttachmentListPayload,
+  type PluginAttachmentRef,
+  type PluginComposerTriggerRegistration,
+  type PluginDraftListener,
+  type PluginDraftSnapshot,
+  type PluginDraftWriteResult,
+  type PluginReadDraftPayload,
+  type PluginReplaceDraftPayload,
+} from "./renderer-composer.js";
 
 /** Privileged scheme that serves renderer entry modules. */
 export const PLUGIN_RENDERER_SCHEME = "plugin-renderer";
@@ -37,6 +54,7 @@ export const PLUGIN_RENDERER_SLOTS = [
   "toolCard",
   "blockRenderer",
   "composerControl",
+  "composerTrigger",
 ] as const;
 
 export type PluginRendererSlot = (typeof PLUGIN_RENDERER_SLOTS)[number];
@@ -45,6 +63,9 @@ export type PluginRendererSlot = (typeof PLUGIN_RENDERER_SLOTS)[number];
 export const PLUGIN_SLOT_POSITIONS = ["left", "right"] as const;
 
 export type PluginSlotPosition = (typeof PLUGIN_SLOT_POSITIONS)[number];
+
+/** Slots that mount a component; `composerTrigger` hands the host data instead. */
+export type PluginComponentSlot = Exclude<PluginRendererSlot, "composerTrigger">;
 
 /** Slots whose registration takes `positions`. */
 const POSITIONED_SLOTS: readonly PluginRendererSlot[] = [
@@ -154,7 +175,8 @@ export type PluginSlotRegistration =
   | PluginEntryExtraSlotRegistration
   | PluginToolCardSlotRegistration
   | PluginBlockRendererSlotRegistration
-  | PluginComposerControlSlotRegistration;
+  | PluginComposerControlSlotRegistration
+  | PluginComposerTriggerRegistration;
 
 /**
  * Outbound actions the host implements. A plugin may dispatch only the words
@@ -162,7 +184,15 @@ export type PluginSlotRegistration =
  * refused with `PLUGIN_ACTION_UNKNOWN`, one outside the manifest with
  * `PLUGIN_ACTION_UNDECLARED`.
  */
-export const PLUGIN_RENDERER_ACTIONS = ["plugin.call", "composer.insertText"] as const;
+export const PLUGIN_RENDERER_ACTIONS = [
+  "plugin.call",
+  "composer.insertText",
+  "composer.readDraft",
+  "composer.replaceDraft",
+  "attachments.add",
+  "attachments.list",
+  "attachments.remove",
+] as const;
 
 export type PluginRendererActionName = (typeof PLUGIN_RENDERER_ACTIONS)[number];
 
@@ -178,7 +208,10 @@ export type PluginCallPayload = {
   readonly args?: unknown;
 };
 
-/** `composer.insertText`: plain text at the composer caret. */
+/**
+ * `composer.insertText`: plain text at the composer caret, replacing the
+ * selection. It never triggers a list and never carries a mark.
+ */
 export type PluginInsertTextPayload = {
   readonly text: string;
 };
@@ -186,7 +219,15 @@ export type PluginInsertTextPayload = {
 /** Payload and result of every action word. */
 export type PluginRendererActionMap = {
   "plugin.call": { payload: PluginCallPayload; result: unknown };
-  "composer.insertText": { payload: PluginInsertTextPayload; result: { ok: true } };
+  "composer.insertText": { payload: PluginInsertTextPayload; result: PluginDraftWriteResult };
+  "composer.readDraft": { payload: PluginReadDraftPayload; result: PluginDraftSnapshot };
+  "composer.replaceDraft": { payload: PluginReplaceDraftPayload; result: PluginDraftWriteResult };
+  "attachments.add": { payload: PluginAttachmentAddPayload; result: PluginAttachmentRef };
+  "attachments.list": {
+    payload: PluginAttachmentListPayload;
+    result: readonly PluginAttachment[];
+  };
+  "attachments.remove": { payload: PluginAttachmentRef; result: { ok: true } };
 };
 
 /**
@@ -255,6 +296,17 @@ export type PiRendererApi = {
      */
     openLayer(): PluginLayer;
   };
+  readonly composer: {
+    /**
+     * Follow the draft instead of polling it: `listener` gets the snapshot
+     * now and after every change (as `composer.readDraft` would answer it),
+     * and `null` while no composer takes input. Requires `composer.readDraft`
+     * in `manifest.rendererActions`, else throws `PLUGIN_ACTION_UNDECLARED`;
+     * throws `PLUGIN_UNLOADED` once this load has ended, which also ends the
+     * subscription. A throwing listener is logged and stays subscribed.
+     */
+    subscribeDraft(listener: PluginDraftListener): PluginDisposer;
+  };
   readonly dispatch: PluginRendererDispatch;
 };
 
@@ -268,9 +320,9 @@ export type PiRendererModule = {
 export type PluginSlotErrorCode =
   /** `slot` is not in `PLUGIN_RENDERER_SLOTS`. */
   | "PLUGIN_SLOT_UNKNOWN"
-  /** `component` is not a function. */
+  /** `component` (or a trigger's `items`) is not a function. */
   | "PLUGIN_SLOT_INVALID_COMPONENT"
-  /** A keyed slot's `toolName` / `language` is malformed. */
+  /** A keyed slot's `toolName` / `language` / `trigger` is malformed. */
   | "PLUGIN_SLOT_INVALID_KEY"
   /** `positions` is malformed, or given to a slot without sides. */
   | "PLUGIN_SLOT_INVALID_POSITION"
@@ -291,8 +343,26 @@ export type PluginRendererErrorCode =
   | "PLUGIN_ACTION_UNDECLARED"
   /** The payload does not have the word's shape or exceeds its limit. */
   | "PLUGIN_ACTION_INVALID_PAYLOAD"
-  /** No composer is mounted to take the action. */
+  /** No composer takes input now: none is mounted, or it is blocked. */
   | "PLUGIN_ACTION_NO_COMPOSER"
+  /** `composer.replaceDraft`: `expectedGeneration` is not the current one. */
+  | "PLUGIN_DRAFT_STALE"
+  /** `composer.replaceDraft`: the composer has focus; the user is typing. */
+  | "PLUGIN_DRAFT_FOCUSED"
+  /** `composer.replaceDraft`: not called inside a user's input event. */
+  | "PLUGIN_DRAFT_REMOTE"
+  /** `composer.replaceDraft`: the replacement drops a host chip. */
+  | "PLUGIN_DRAFT_ANCHOR"
+  /** `attachments.add`: the content is a path or URL, not the file. */
+  | "PLUGIN_ATTACHMENT_REFERENCE_REFUSED"
+  /** `attachments.add`: over the size ceiling or this plugin's count. */
+  | "PLUGIN_ATTACHMENT_LIMIT"
+  /** `attachments.add`: no session takes it (home), or the session changed meanwhile. */
+  | "PLUGIN_ATTACHMENT_NO_SESSION"
+  /** `attachments.remove`: no attachment of this plugin has that id. */
+  | "PLUGIN_ATTACHMENT_NOT_FOUND"
+  /** `attachments.add`: the host could not stage the file. */
+  | "PLUGIN_ATTACHMENT_FAILED"
   /** This load has ended: nothing registers, injects or dispatches through it. */
   | "PLUGIN_UNLOADED"
   /** `plugin.call`: the method is not declared, or `onRendererCall` is missing. */
@@ -352,6 +422,7 @@ export function slotRegistrationRefusal(
   if (typeof slot !== "string" || !(PLUGIN_RENDERER_SLOTS as readonly string[]).includes(slot)) {
     return refusal("PLUGIN_SLOT_UNKNOWN", `unknown slot ${describe(slot)}`);
   }
+  if (slot === "composerTrigger") return composerTriggerRefusal(candidate);
   if (typeof candidate.component !== "function") {
     return refusal("PLUGIN_SLOT_INVALID_COMPONENT", `${slot} component must be a function`);
   }
@@ -396,6 +467,22 @@ export function slotRegistrationRefusal(
         `blockRenderer language must be "${prefix}<lang>" with <lang> in [A-Za-z0-9_-] (got ${describe(language)})`,
       );
     }
+  }
+  return null;
+}
+
+function composerTriggerRefusal(candidate: Record<string, unknown>): PluginSlotRefusal | null {
+  if (typeof candidate.items !== "function") {
+    return refusal("PLUGIN_SLOT_INVALID_COMPONENT", "composerTrigger items must be a function");
+  }
+  if (candidate.positions !== undefined) {
+    return refusal("PLUGIN_SLOT_INVALID_POSITION", "composerTrigger takes no positions");
+  }
+  if (!composerTriggerKey(candidate.trigger)) {
+    return refusal(
+      "PLUGIN_SLOT_INVALID_KEY",
+      `composerTrigger trigger must be "@", "#" or "/" (got ${describe(candidate.trigger)})`,
+    );
   }
   return null;
 }
