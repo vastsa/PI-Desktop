@@ -157,8 +157,9 @@ type RemoteError = { code: string; message: string; retriable: boolean; traceId:
 | `asktool_request` | `input.requested` | yes | 与本地 asktool 卡片相同的问题 |
 
 `turn.completed` 对应本地 `agent_end`，而不是只关闭一个模型轮次的 `turn_end`。
-`terminal.changed`（持久）记录终端的打开、关闭或退出；`terminal.output`（瞬态）
-携带 pty 字节，只能从终端的有界回放环恢复，绝不来自事件日志。
+终端通知仅发送给当前连接，不写入会话持久事件日志。`terminal.changed` 携带当前会话
+序号但不分配新序号；`terminal.output` 携带 `afterSequence`，属于瞬态事件。输出只能从
+终端的有界回放环恢复，绝不来自事件日志。
 
 ## 3. 资源和操作
 
@@ -209,13 +210,37 @@ owner，工作区读取都按会话持久根、Host 忽略规则和 `PATH_OUTSID
 | `workspace/list` | viewer | 有界列出会话根下的条目，遵守 Host 忽略规则 |
 | `workspace/read` | viewer | 读取会话根下的一个有界文件，图片以 data URL 返回 |
 | `workspace/diff` | viewer | 返回会话根的工作树 diff |
-| `terminal/open` | controller | 在 Host 上以会话根为 cwd 打开 pty；返回终端 id 与有界回放环；受策略限制 |
-| `terminal/input` | controller | 向已打开终端写入字节 |
-| `terminal/resize` | controller | 调整已打开终端尺寸 |
-| `terminal/close` | controller | 关闭终端，幂等 |
+| `terminal/open` | owner | 在 Host 上以会话根为 cwd 打开 pty，或连接已有终端；返回终端 id、尺寸和有界输出回放环 |
+| `terminal/input` | owner | 向当前连接已连接的终端写入字节 |
+| `terminal/resize` | owner | 调整当前连接已连接的终端尺寸 |
+| `terminal/close` | owner | 关闭当前连接已连接的终端；已关闭终端对其所属主体重复关闭时幂等 |
 | `connection/pair` | authenticated | 用升级请求携带的一次性配对令牌换取设备凭证（安全规格 §3.4）；仅在配对连接上有效（D448） |
 | `project/register` | owner | 将 Host 上的目录注册为项目：Host 规范化并校验路径，返回项目 id（D448） |
 | `project/browse` | owner | 列出 Host 某路径下的目录，有界，供远程目录选择器使用（D448） |
+
+### 远程终端的所有权与恢复
+
+首期远程 Host 的终端操作仅限 `owner`。当前 SSH 部署还要求调用方是已配对的
+owner 设备。Host 未提供终端实现时会公布 `terminal: false` 并拒绝终端请求。
+
+创建终端时，`terminal/open` 不带 `terminalId`。客户端可以为这次逻辑打开请求附带稳定的
+`openRequestId`。Host 按主体和会话限定该 id；只要幂等记录仍保留，使用相同值重试且原终端
+仍打开时，Host 会重新连接并返回原终端，不会再创建一个 pty。Host 将该记录保存在有界的
+内存映射中；Host 重启后记录丢失，也不能据此重新打开已关闭的终端。客户端已有
+`terminalId` 时，用该 id 调用 `terminal/open` 以连接已有终端。连接时必须同时匹配请求中的会话和终端所属主体，否则
+返回 `NOT_FOUND`。
+
+一个打开的终端同一时刻只有一个活动连接。`terminal/input`、`terminal/resize` 和
+`terminal/close` 必须操作当前 RACP 连接已连接的终端。连接断开时，Host 仅解除该连接
+拥有的终端；解除连接会清除事件接收器，但保留 pty。相同主体可在新连接上重新连接并接管
+输出流。返回的有界回放环只包含终端输出；之后的新输出通过 `terminal.output` 流式发送。
+连接断开后，客户端不得重放或自动重试 `terminal/input`，因为响应丢失前输入可能已经到达
+shell。
+
+终端仍打开时，`terminal/close` 也要求当前连接已连接该终端。终端已经关闭后，仅其所属
+主体重复关闭才作为空操作成功。`terminal.changed` 和 `terminal.output` 都是连接内通知，
+不写入会话持久事件日志。`terminal.changed` 携带当前会话序号但不分配新序号；
+`terminal.output` 使用 `afterSequence` 标记位置，只能通过终端回放环恢复。
 
 仍推迟的本地操作：
 

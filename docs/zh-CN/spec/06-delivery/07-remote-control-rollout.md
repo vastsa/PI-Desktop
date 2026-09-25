@@ -47,9 +47,9 @@ Linux 或 WSL 机器上的项目，即 SSH 隧道远端 Host 拓扑；#100 要�
   与设备 token 配对；远端 Host profile 操作（`session/configure`、
   `session/fork`、`session/rename`、`session/delete`、`session/compact`、
   `workspace/list`、`workspace/read`、`workspace/diff`）；以及远程会话归属划分；反向工具中继（`tools/advertise` 与 `tool/execute` 服务端
-  请求，让桌面 MCP 服务器和不需工作区的插件工具在远程会话中于桌面执行）；终端
+  请求，让桌面 MCP 服务器和不需工作区的插件工具在远程会话中于桌面执行）；仅用于远程会话的工作面板 Terminal
   （`terminal/open`、`terminal/input`、`terminal/resize`、`terminal/close`、
-  `terminal.output` 与有界回放环，在远端机器运行）；设置 → 远程主机为紧凑主机清单加一个 SSH/配对添加表单、不含说明性文案；整项功能在导航与标题上标为实验性，因为远程连接仍可能失败，仅在开发者模式开启时显示（连同其在设置搜索中的命中）（`04-ux/06-settings-ia.md` §1、§3）。
+  `terminal.output` 与有界回放环，在远端机器运行）；设置 → 远程主机为紧凑主机清单加一个 SSH/配对添加表单、不含说明性文案；整项功能在导航与标题上标为实验性，因为远程连接仍可能失败，仅在开发者模式开启时显示（连同其在设置搜索中的命中）（`04-ux/06-settings-ia.md` §1、§3）。首期仅允许 SSH 配对的 owner 设备打开和操作 Terminal；本地桌面会话仍无交互式终端，Agent Bash 仍是输出在 transcript 中的非交互式工具。
 - R3：出站消息集成（#100）。Host 进程内的又一个模块调用方，无传输、无入站
   监听：订阅 Host 范围与会话事件，把 `turn.completed`、`turn.failed`、
   `approval.requested`、`input.requested` 的脱敏摘要转发到出站渠道（先 Webhook，
@@ -74,7 +74,7 @@ Host 的会话按每台一个侧栏分组列出，让用户在 Host 上创建会
 平台从 GitHub Releases 下载桌面版本并校验公布的 SHA-256，版本不匹配即
 `PROTOCOL_MISMATCH` 并提供重新下载，首版不支持没有 GitHub 出网能力的机器；SSH 配对
 的桌面设备持有 `owner` 并豁免远程权限上限，除非启用 Host 策略
-`applyCeilingToPairedDevices`；R2 作为一个里程碑整体交付，不拆分。
+`applyCeilingToPairedDevices`；R2 作为一个里程碑整体交付，不拆分。Terminal 首期只对 SSH 配对的 owner 设备开放，Host/RACP 能力本身不等于桌面工作面板已可用。
 
 R1 退出条件包括模块测试不依赖 Electron、晚接入的客户端能在快照中看到已打开
 的审批且其决定能关闭本地桌面卡片。R2 退出条件包括 E2E-231 通过、SSH 会话中断
@@ -155,6 +155,7 @@ runbook 写明 feature flag、配对撤销路径、远端机器上的数据保�
 - R2 已开始（2026-09-18，D447 / ADR 0284）：`packages/host-runtime` 承载与 Electron 无关的运行时层 —— host-core 与 sidecar 的 stdio 传输、重启监督器、`RuntimeService`（模块的 `RuntimePort`，含持久回合生命周期）、转录持久化、无头启动解析器与已批准 Plan/Goal 的派发 —— Electron main 通过薄适配层运行其上。
 - R2（2026-09-18，D448 / ADR 0285）：`packages/racp` 承载 `RACP-WS` 服务端与客户端核心、回环上的 `ws` 绑定与设备令牌配对；握手、鉴权、幂等、队列顺序、审批、游标重放、驱逐、epoch 变更、慢客户端与不重复执行的重连都是包内测试。`pi-host` 包、桌面适配器与 SSH 引导此后均已开始：R2a 桌面内核（D449 / ADR 0286）带来了适配器与 `pi-host` 包，SSH 引导随后在 D453 / ADR 0292 落地。
 - R2b 部分完成（2026-09-19，D453 / ADR 0292）：桌面使用用户自己的 `ssh` 客户端并以 `BatchMode=yes` 在远端安装并配对 `pi-host`，用户的配置、agent 与跳板机照常生效，应用不持有任何 SSH 密钥。`remote/pi-host-release.ts` 承载纯发布坐标（远端平台、桌面版本、已发布的 SHA-256、拒绝未发布的目标），`remote/pi-host-bootstrap-script.ts` 生成唯一的 `umask 077` 脚本：下载、校验、安装到远端 `$HOME`、以 `--pair` 在回环上重启主机，并回显 `PI_HOST_READY` / `PI_HOST_PAIRING_TOKEN`；`remote/ssh-transport.ts` 是可注入的传输端口，`remote/ssh-tunnel.ts` 为每台主机维护一条持久的 `ssh -N -L` 转发，每次启动重新建立，并在引导时被收编（adopt），使配对只建立一条隧道。记录以 `metadata.transport = "ssh"` 加 SSH 描述符取代 URL，`pi-desktop/remoteHost/bootstrap` 加入 `list` / `pair` / `remove`。终端工作面板客户端、反向工具中继，以及经 SSH 通道下发 provider 配置均不在本次范围内。
+- R2b Host/RACP Terminal 切片（2026-09-25，ADR 0309）：Host 已承载 PTY 服务和 RACP 终端操作，将终端绑定到 SSH 配对的 owner、会话和活动连接，并支持有界输出回放与安全重连。本切片没有交付桌面终端 renderer、类型化 IPC/API、remote-backend 操作路由、能力到 UI 的接线，也没有转发终端事件或管理 UI 生命周期。因此远程工作面板 Terminal 仍不可用；仅有该 Host/RACP 切片不代表 R2b 已完成，也不满足 E2E-231。本地会话仍不提供 Terminal。
 
 ## 8. 修订记录
 

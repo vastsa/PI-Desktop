@@ -578,7 +578,10 @@ part of the contract from v1.1 and are advertised through the
 and fork are idle-only, deletion is owner-only, and every workspace read is
 resolved against the Session's durable root with the Host's ignore rules and
 `PATH_OUTSIDE_WORKSPACE` boundary. Terminals run on the Host machine with the
-session root as working directory and stream through `terminal.output`.
+session root as working directory and stream through `terminal.output`. In the
+initial remote-host release, every terminal operation is owner-only; the SSH
+deployment additionally requires the paired owner device. A Host without a
+terminal implementation advertises `terminal: false` and rejects these calls.
 
 | Operation | Role | Behavior |
 |---|---|---|
@@ -590,13 +593,44 @@ session root as working directory and stream through `terminal.output`.
 | `workspace/list` | viewer | List entries under the session root, bounded, honoring the Host ignore rules |
 | `workspace/read` | viewer | Read one bounded file under the session root; images as data URLs |
 | `workspace/diff` | viewer | Return the working-tree diff of the session root |
-| `terminal/open` | controller | Open a pty on the Host with the session root as cwd; returns a terminal id and the bounded replay ring; policy-gated (security §4.1) |
-| `terminal/input` | controller | Write bytes to an open terminal |
-| `terminal/resize` | controller | Resize an open terminal |
-| `terminal/close` | controller | Close a terminal; idempotent |
+| `terminal/open` | owner | Open a pty on the Host with the session root as cwd, or attach to an existing terminal; returns its id, dimensions, and bounded output replay ring |
+| `terminal/input` | owner | Write bytes to a terminal attached to this connection |
+| `terminal/resize` | owner | Resize a terminal attached to this connection |
+| `terminal/close` | owner | Close a terminal attached to this connection; closing an already-closed terminal is an idempotent no-op for its principal |
 | `connection/pair` | authenticated | Exchange the single-use pairing token presented on the upgrade for a device credential (security §3.4); only valid on a pairing connection (D448) |
 | `project/register` | owner | Register a Host directory as a project: the Host canonicalizes and validates the path and returns the project id (D448) |
 | `project/browse` | owner | List directories under a Host path, bounded, for the remote folder picker (D448) |
+
+#### Terminal ownership and recovery
+
+`terminal/open` creates a terminal when `terminalId` is omitted. The client MAY
+include a stable `openRequestId` for that logical open attempt. The Host scopes
+it to the principal and session: while the idempotency record is retained,
+repeating the request with the same value reattaches to and returns the same
+still-open terminal instead of creating a second pty. The Host keeps this
+idempotency record in a bounded in-memory map; it does not survive a Host
+restart or make a closed terminal reopenable. A client that already has a
+`terminalId` uses `terminal/open` with that id to attach. Attach
+MUST match both the requested session and the terminal's principal; otherwise
+the Host returns `NOT_FOUND`.
+
+An open terminal has one active connection attachment. `terminal/input`,
+`terminal/resize`, and `terminal/close` MUST target a terminal attached to the
+current RACP connection. Closing a connection detaches only terminals that
+connection owns; detaching clears its event sink but leaves the pty running.
+The same principal can attach it on a new connection and take over its output
+stream. The returned bounded replay ring contains terminal output only; the
+Host then streams new output through `terminal.output`. A client MUST NOT
+replay or automatically retry `terminal/input` after a disconnect, because
+input may already have reached the shell before the response was lost.
+
+For a live terminal, `terminal/close` also requires the current connection
+attachment. A repeat close after the terminal has already closed is a no-op
+only for the principal that owned it. `terminal.changed` and `terminal.output`
+are connection-local notifications and are not written to the durable session
+event log. `terminal.changed` carries the current session sequence without
+allocating a new one; `terminal.output` is anchored with `afterSequence` and
+is recovered only through the terminal replay ring.
 
 ### 6.3 Deferred operations
 

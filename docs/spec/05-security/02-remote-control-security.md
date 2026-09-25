@@ -1,7 +1,7 @@
 # Remote Agent Control Security Specification
 
 - Status: Target specification; post-MVP
-- Decision: D373 / ADR 0205, amended by D374 and D375
+- Decision: D373 / ADR 0205, amended by D374, D375, and ADR 0309
 - Applies to: RACP-WS over the SSH tunnel and any later binding: RACP-HTTP,
   the reserved RACP-GRPC, and the Host link
 - Does not weaken: local MCP, host-core, plugin, or provider-secret boundaries
@@ -210,7 +210,7 @@ password for a host the user paired that way, under these rules:
 | Upload an attachment | no | yes | optional | yes |
 | Revoke membership | no | no | no | yes |
 | Archive a session | no | no | no | yes |
-| Open or use a session terminal | no | policy | policy | yes |
+| Open or use a session terminal | no | no | no | SSH-paired owner only |
 | Advertise relayed tools | no | no | no | yes |
 
 Role checks are necessary but not sufficient. The Host MUST additionally check:
@@ -220,7 +220,10 @@ Role checks are necessary but not sufficient. The Host MUST additionally check:
 - the operation is legal in the Session state;
 - the durable permission/mode policy allows the proposed action;
 - the remote permission ceiling has been applied to the turn; and
-- the request's expected revision and idempotency key are valid.
+- the request's expected revision and idempotency key are valid; and
+- terminal operations in the first topology are restricted to the SSH-paired
+  owner device, with each PTY bound to its Session and principal and its active
+  attachment bound to one RACP connection.
 
 ### 4.2 No privilege escalation through protocol fields
 
@@ -386,10 +389,30 @@ either direction; the remote Host's providers are configured over the SSH
 bootstrap channel (§3.4).
 
 A session terminal is a shell on the Host machine running as the `pi-host`
-user with the session root as its working directory. Only the SSH-paired
-owner device or a principal holding the explicit `terminal` scope may open
-one; Gateway-routed principals need that scope from policy. Terminal output
-is ephemeral and recoverable only from the terminal's bounded replay ring.
+user. In the first SSH topology, only the owner device credential issued during
+SSH pairing may open or use one; viewers, controllers, approvers, and
+pairing-only connections are denied. The Host binds each PTY to its Session
+and authenticated principal. Its active input/output attachment belongs to
+one RACP connection: input, resize, and close on a live PTY require that
+connection, while reattach requires the same Session and principal. No
+Gateway terminal-scope path is enabled in this release; broader access needs
+an explicit later policy decision. Releasing an older connection cannot detach
+a newer attachment. A transport loss detaches the output sink but leaves the
+PTY running; the same principal can reattach while the Host remains up.
+
+The Host resolves the Session root and uses it as the shell's initial working
+directory. This is not a filesystem sandbox: the shell runs with the full
+filesystem and process permissions of the `pi-host` OS account. Users must
+treat terminal commands as commands on that Host, under that account.
+
+A client uses one stable `openRequestId` for each logical open and reuses it
+when retrying after an ambiguous response. The Host deduplicates by principal,
+Session, and request id, retaining up to 1,024 recent opens in memory. That
+deduplication state is lost on Host restart and an older entry may be evicted.
+Terminal input is not recorded or automatically replayed after a disconnect;
+an unacknowledged input must not be retried automatically. Terminal output is
+ephemeral and recoverable only from the bounded replay ring. Host shutdown
+terminates its PTYs and discards their replay rings.
 
 ## 8. Gateway and tenant isolation
 
@@ -427,6 +450,7 @@ The Gateway and Host enforce the lower of their configured limits:
 | In-flight attachment uploads per principal | 4 |
 | Event send queue | 4 MiB or 1,000 durable events |
 | Open terminals per Session | 2 |
+| Terminal open-request dedupe entries per Host | 1,024 |
 
 Rate-limit responses include a retry hint but never disclose another tenant's
 quota. Slow clients lose ephemeral events first and are disconnected with a
@@ -519,13 +543,18 @@ separate, explicitly specified credential-management capability is added.
 19. A relayed tool never executes on the Host and never receives a Host
     secret; the Host's approval precedes the relay request; a lost relay
     connection fails the tool without interrupting the turn.
-20. A session terminal opens only for the SSH-paired owner or a principal
-    with the `terminal` scope, with its working directory inside the session
-    root.
-    root.
+20. A session terminal can be opened or controlled only by the SSH-paired
+    owner device. The PTY is bound to its Session and principal, and active
+    I/O is bound to one RACP connection; the session root is its working
+    directory, not a filesystem sandbox.
 21. An SSH login password is supplied only by the user, reaches `ssh` only
     through the askpass helper, is stored only encrypted, and never appears in
     a process argument list, the renderer, or a log line.
+22. A terminal open retry with the same `openRequestId` does not spawn a second
+    PTY while its bounded Host-side dedupe record remains. Terminal input is
+    never replayed automatically; after a reconnect, only output retained in
+    the live Host's bounded replay ring may be recovered. Host shutdown ends
+    the PTY and its replay state.
 ## 13. Amendment history
 
 D374 (2026-09-10) added the browser cookie/header authentication profiles,
@@ -566,3 +595,9 @@ D625 (2026-09-25) added remote session entry (ADR 0307): the desktop backend
 router now fails closed on a `remote:` session id whose host is offline instead
 of routing it to the local handler (amends ADR 0286 §3), and a remote session
 runs under the host's default model with no desktop-side model picker.
+
+ADR 0309 (2026-09-25) amends the terminal security contract for remote Host
+sessions: only the SSH-paired owner may use a terminal; each PTY is bound to a
+Session and principal, with active I/O attached to one connection. The Host
+deduplicates retried opens by `openRequestId`, never replays terminal input, and
+uses the Session root only as the shell's working directory, not as a sandbox.

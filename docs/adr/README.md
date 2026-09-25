@@ -339,6 +339,7 @@ Each ADR includes:
 | 0307 | [Sync the API-key service catalog with pi-ai's built-in providers](0307-pi-ai-api-key-provider-sync.md) | Accepted (amends ADR 0012 / 0020 / 0116 / 0155) |
 | 0307 | [Remote session entry and a fail-closed backend router](0307-remote-session-entry.md) | Accepted for implementation (amends ADR 0286 §3) |
 | 0308 | [pi-host admin socket and SSH provider sync](0308-pi-host-provider-sync.md) | Accepted for implementation (supplements ADR 0292) |
+| 0309 | [WorkPanel terminal runs only on a remote Host](0309-remote-host-workpanel-terminal.md) | Accepted for implementation (amends ADR 0108 for remote Host sessions only) |
 | turn-process-and-thinking-display | [Turn process and thinking presentation](turn-process-and-thinking-display.md) | Accepted |
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |
 | registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](registry-header-variable-spelling.md) | Proposed |

@@ -139,9 +139,12 @@ Deliverables:
 - the reverse tool relay: `tools/advertise` and the `tool/execute` server
   request, so desktop MCP servers and workspace-free plugin tools run on the
   desktop for a remote session;
-- the terminal: `terminal/open`, `terminal/input`, `terminal/resize`,
-  `terminal/close`, `terminal.output`, and a bounded replay ring, running on
-  the remote machine; and
+- the remote-only WorkPanel terminal: `terminal/open`, `terminal/input`,
+  `terminal/resize`, `terminal/close`, `terminal.output`, and a bounded replay
+  ring, running on the remote machine. In the first SSH topology only the
+  SSH-paired owner device may open or operate it. Local desktop sessions remain
+  terminal-free; Agent Bash remains a non-interactive tool whose output is in
+  the transcript; and
 - the Settings → Remote Hosts destination: a compact host inventory and one
   Add form with SSH and Pair tabs, no instructional copy, marked Experimental
   on the settings rail and page title because the topology may still fail, and
@@ -165,8 +168,13 @@ Design decisions (D375, recorded 2026-09-10):
 2. Desktop user MCP servers and workspace-free plugin tools reach remote
    sessions through the reverse tool relay in this milestone; plugin tools
    that require workspace or filesystem access are excluded.
-3. The work-panel terminal ships in this milestone as the `terminal/*`
-   operations, running on the remote machine.
+3. The WorkPanel terminal ships in this milestone for remote Host sessions
+   only. The first SSH topology authorizes only the paired owner device to open,
+   input, resize, or close a terminal; a controller or viewer cannot run a
+   shell. The PTY runs as the `pi-host` OS user with the session root as its
+   working directory, which is not a filesystem sandbox. Local desktop sessions
+   remain terminal-free under ADR 0108; Agent Bash output remains in the
+   transcript and is not a local interactive terminal.
 4. `pi-host` is downloaded from GitHub Releases per platform at the desktop's
    version by a bootstrap script the desktop uploads over SSH, with the
    published SHA-256 verified; a version mismatch is `PROTOCOL_MISMATCH`
@@ -475,6 +483,14 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   `pi-desktop/remoteHost/bootstrap` joins `list` / `pair` / `remove`. The
   terminal work-panel client, the reverse tool relay, and provider-configuration
   propagation over the SSH channel are not in this slice.
+- R2b Host/RACP terminal slice (2026-09-25, ADR 0309): the Host owns the PTY
+  service and RACP terminal operations, binds terminals to the SSH-paired owner,
+  session, and active connection, and supports bounded output replay and safe
+  reattachment. This slice does not deliver the Desktop terminal renderer,
+  typed IPC/API, remote-backend operation routing, capability-to-UI wiring, or
+  terminal event forwarding and UI lifecycle. The remote WorkPanel terminal is
+  therefore still unavailable, and this Host/RACP slice does not complete R2b
+  or satisfy E2E-231. Local sessions remain terminal-free.
 
 ## 8. Amendment history
 

@@ -81,8 +81,15 @@
 - `Resources/agent-runtime/sidecar.js` is the only independent pi sidecar
   bundle. The complete `@pi-desktop/agent-runtime` package tree must not be
   copied into ASAR as a second runtime.
-- The desktop package has no interactive PTY dependency. Agent Bash remains a
-  non-interactive runtime capability owned by the agent sidecar.
+- Local desktop sessions remain terminal-free (ADR 0108): the desktop package
+  has no local interactive PTY runtime. Agent Bash remains a non-interactive
+  runtime capability owned by the agent sidecar. The planned R2b WorkPanel
+  Terminal is remote-only: xterm.js runs in the renderer, Electron Main routes
+  typed requests over RACP, and optional `node-pty` stays inside `pi-host`.
+  The shell runs on the remote Host as its OS user with the session root as its
+  working directory, not as a filesystem sandbox. A Host/RACP PTY implementation
+  without Desktop IPC, event delivery, capability gating, and renderer lifecycle
+  does not provide a shipped Desktop terminal.
 - Dependency source maps, tests, examples, and declarations are build inputs,
   not release assets. License and notice files remain distributable.
 - Lazy renderer capabilities such as Mermaid, KaTeX, and Shiki remain local

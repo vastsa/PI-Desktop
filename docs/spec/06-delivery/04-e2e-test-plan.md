@@ -3694,29 +3694,33 @@ identify the platform validation still needed.
 - **Milestone**: M5
 - **Status**: Unit-covered (`chat-review-entry.test.mjs`); full UI scenario Draft
 
-#### E2E-058: Built-in interactive terminal is absent
+#### E2E-058: Local sessions have no built-in interactive terminal
 
 - **Preconditions**: A workspace is open and the Agent has completed a Bash
   tool call.
-- **Steps**: 1) Open the work panel with Cmd/Ctrl+J and inspect the empty
-  state and context menu. 2) Confirm there is no Terminal tab, launcher row,
-  terminal-specific panel copy, or terminal IPC surface. 3) Confirm the
+- **Steps**: 1) Open the work panel with Cmd/Ctrl+J in a local session and
+  inspect the empty state and context menu. 2) Confirm there is no Terminal
+  tab, launcher row, terminal-specific panel copy, or terminal IPC route for
+  the local session. 3) Confirm the
   completed Bash row still shows its command, output, status, and copy action,
   and that its `IconTerminal` presentation remains available. 4) Verify an
   interactive shell is opened in the user's external terminal instead of the
   work panel. 5) Build/package the desktop app and inspect the dependency and
   unpacked-resource lists.
-- **Expected**: The work panel offers the Review launcher row plus Browser and
-  in-scope plugin views; Review opens on explicit user action and file resources
-  are transcript-opened; no PTY is created and no terminal tab can be opened.
+- **Expected**: The local work panel offers the Review launcher row plus
+  Browser and in-scope plugin views; Review opens on explicit user action and
+  file resources are transcript-opened; no local PTY is created and no local
+  terminal tab can be opened. A remote Host terminal is covered separately by
+  E2E-231 and does not weaken the local-session boundary.
   Agent Bash remains non-interactive and fully visible in the transcript.
-  Interactive shell work is performed by the external terminal. Desktop
-  packaging has no PTY/xterm dependency, terminal-specific
-  IPC, or native terminal payload, while generic lifecycle `terminal` values
-  continue to work.
+  Interactive shell work for local sessions is performed by the external
+  terminal. Desktop packaging contains no local PTY runtime or native terminal
+  payload; any xterm renderer dependency and typed terminal IPC are used only
+  for remote Host sessions. Generic lifecycle `terminal` values continue to
+  work.
 - **Specs linked**: `02-architecture/02-tech-stack.md`,
   `03-runtime/01-ipc-protocol.md` §13a, `04-ux/08-component-spec.md` §5,
-  ADR 0108
+  ADR 0108, ADR 0309
 - **Acceptance**: D (workspace), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`work-panel.test.mjs`, `packaging-footprint.test.mjs`);
@@ -13035,7 +13039,10 @@ browser milestones are scheduled.
   that calls the desktop MCP tool, then close the desktop during a second
   call. 8) Open a terminal on the remote session and run a command. 9) Kill
   the SSH session mid-turn with the terminal open, restore it, and let the
-  desktop reconnect. 10) Inspect the remote tool catalog. 11) Attempt
+  desktop reconnect. Repeat terminal open with the same `openRequestId` after
+  dropping its response; try attaching from another session and using the
+  previous connection after reattachment. Confirm no input is resent. 10)
+  Inspect the remote tool catalog. 11) Attempt
   to connect from a non-loopback address on the remote machine, then with a
   reused pairing token. 12) Point the bootstrap at the tampered bundle, then
   at the other version, and reconnect.
@@ -13052,9 +13059,13 @@ browser milestones are scheduled.
   `PATH_OUTSIDE_WORKSPACE`; the desktop MCP tool executes on the desktop and
   its result reaches the remote transcript, while the second call fails with
   `TOOL_FAILED` and the turn continues; the terminal runs on the remote
-  machine inside the session root; the turn continues through the SSH drop,
-  the desktop resumes by cursor without a duplicate, and the terminal output
-  resumes from the replay ring; the remote catalog lists the relayed MCP tool
+  machine inside the session root; only the SSH-paired owner can operate it;
+  the same `openRequestId` reattaches to the existing PTY after a lost open
+  response, and a different session cannot attach to it; the previous
+  connection cannot input, resize, or close after a newer connection attaches;
+  the turn continues through the SSH drop, the desktop resumes by cursor
+  without a duplicate, terminal input is not replayed, and terminal output
+  resumes from the bounded replay ring; the remote catalog lists the relayed MCP tool
   but not the workspace-requiring plugin tool; the non-loopback peer and the
   reused pairing token are rejected; the tampered bundle is refused before
   start with a Settings toast that names the checksum failure rather than a

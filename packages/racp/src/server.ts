@@ -74,7 +74,8 @@ export class RacpConnection {
   principal: Principal;
   initialized = false;
   readonly subscriptions = new Map<string, Subscription>();
-  readonly terminals = new Set<string>();
+  /** Terminals the current socket opened or reattached, keyed by Host terminal id. */
+  readonly terminals = new Map<string, string>();
   private readonly pendingServerRequests = new Map<string, ServerRequestWaiter>();
   private serverRequestCounter = 0;
   private closed = false;
@@ -258,8 +259,8 @@ export class RacpServer {
       this.options.agentHost.unsubscribe(subscription.id, subscription.sessionId);
     }
     connection.subscriptions.clear();
-    for (const terminalId of connection.terminals) {
-      this.options.operations.terminal?.detach(terminalId);
+    for (const terminalId of connection.terminals.keys()) {
+      this.options.operations.terminal?.detach(terminalId, connection.id);
     }
     connection.terminals.clear();
     connection.close(1000, "closed");

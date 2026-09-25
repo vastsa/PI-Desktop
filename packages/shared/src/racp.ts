@@ -553,10 +553,10 @@ export const RACP_OPERATIONS = {
   "workspace/list": { role: "viewer", profile: "remote-host", mutation: false },
   "workspace/read": { role: "viewer", profile: "remote-host", mutation: false },
   "workspace/diff": { role: "viewer", profile: "remote-host", mutation: false },
-  "terminal/open": { role: "controller", profile: "remote-host", mutation: true },
-  "terminal/input": { role: "controller", profile: "remote-host", mutation: true },
-  "terminal/resize": { role: "controller", profile: "remote-host", mutation: true },
-  "terminal/close": { role: "controller", profile: "remote-host", mutation: true },
+  "terminal/open": { role: "owner", profile: "remote-host", mutation: true },
+  "terminal/input": { role: "owner", profile: "remote-host", mutation: true },
+  "terminal/resize": { role: "owner", profile: "remote-host", mutation: true },
+  "terminal/close": { role: "owner", profile: "remote-host", mutation: true },
   /** Exchange a single-use pairing token for a device credential (security §3.4). */
   "connection/pair": { role: "authenticated", profile: "remote-host", mutation: true },
   /** Register a Host directory as a project; the Host canonicalizes and validates the path. */
