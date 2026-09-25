@@ -4,14 +4,19 @@
  * the debug host-core and the bundled sidecar on a throwaway data dir, pairs
  * a device over the loopback RACP-WS socket, registers a project, creates a
  * session, reads the workspace, drops the connection, and reconnects by
- * cursor. No model provider is configured, so `turn/start` is expected to
- * fail closed with `MODEL_NOT_CONFIGURED` rather than hang.
+ * cursor. With no provider configured, `turn/start` first fails closed with
+ * `MODEL_NOT_CONFIGURED`; the run then exercises
+ * `E2E-REMOTE-provider-import-enables-turn` (D626): `pi-host provider-import`
+ * copies a provider — key on stdin only — over the owner-only admin socket to
+ * the running Host, and the next turn is admitted and reaches a loopback mock
+ * model as a Bearer header, with the key never echoed by the CLI or the Host.
  *
  * Prereqs: `pnpm build:js`, `pnpm -C packages/agent-runtime bundle`, and a
  * host-core binary (target/debug or PI_DESKTOP_HOST_BIN).
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { createServer } from "node:http";
+import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +39,30 @@ const dataDir = mkdtempSync(join(tmpdir(), "pi-host-e2e-"));
 const project = join(dataDir, "project");
 mkdirSync(project, { recursive: true });
 writeFileSync(join(project, "README.md"), "# remote project\n");
+
+// A loopback OpenAI-compatible model. It records the Authorization header so
+// the test can prove the imported key travels to the model, and answers with
+// fixed text. `authKinds` never sees this key: only the SSH stdin payload does.
+const modelAuth = [];
+const modelServer = createServer((req, res) => {
+  const auth = req.headers.authorization ?? null;
+  if (req.method === "GET" && req.url?.endsWith("/models")) {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ object: "list", data: [{ id: "mock-model", object: "model" }] }));
+    return;
+  }
+  modelAuth.push(auth);
+  req.resume();
+  req.on("end", () => {
+    const base = { id: "mock-1", object: "chat.completion.chunk", created: 1, model: "mock-model" };
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: { role: "assistant", content: "remote reply ok" }, finish_reason: null }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`);
+    res.end("data: [DONE]\n\n");
+  });
+});
+await new Promise((done) => modelServer.listen(0, "127.0.0.1", done));
+const modelPort = modelServer.address().port;
 
 const results = [];
 const record = (id, ok, detail = "") => {
@@ -101,6 +130,35 @@ function client(url, token, options = {}) {
 }
 
 const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+
+// Poll the live event buffer from `fromIndex` until a match arrives or it times
+// out. Takes the live array — not a slice — so events pushed while we wait count.
+async function waitForEvent(events, fromIndex, predicate, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (events.slice(fromIndex).some(predicate)) return true;
+    await sleep(100);
+  }
+  return false;
+}
+
+// Import one provider through the running Host over the admin socket. The key
+// travels only on the CLI's stdin, mirroring the SSH stdin path in production.
+const KEY_MARKER = "e2e-remote-key-DO-NOT-LOG";
+function importProviders(payload) {
+  return new Promise((resolveImport, reject) => {
+    const proc = spawn(process.execPath, [cli, "provider-import", "--data-dir", dataDir], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let out = "";
+    let err = "";
+    proc.stdout.on("data", (chunk) => (out += String(chunk)));
+    proc.stderr.on("data", (chunk) => (err += String(chunk)));
+    proc.once("error", reject);
+    proc.once("exit", (code) => resolveImport({ code, out, err }));
+    proc.stdin.end(JSON.stringify(payload));
+  });
+}
 
 let exitCode = 0;
 try {
@@ -173,6 +231,73 @@ try {
   const after = await owner.client.request("session/get", { sessionId: created.session.id });
   record("failed-admission-leaves-session-idle", after.session.status === "idle" && !after.session.activeTurnId, shortJson(after.session));
 
+  // E2E-REMOTE-provider-import-enables-turn (D626): a provider imported over the
+  // admin socket unblocks the turn without a second host-core.
+  const importPayload = {
+    version: 1,
+    providers: [
+      {
+        sourceId: "src-a",
+        input: {
+          name: "Remote mock",
+          vendorKey: "custom",
+          type: "openai_compatible",
+          protocol: "openai_compatible",
+          baseUrl: `http://127.0.0.1:${modelPort}/v1`,
+          authKind: "api_key_and_base_url",
+          apiStyle: "chat_completions",
+          secretValue: KEY_MARKER,
+          models: [{ id: "mock-model", contextWindow: 128000, maxTokens: 8192, thinkingLevels: ["off"], defaultThinkingLevel: "off" }],
+        },
+      },
+    ],
+    defaultModel: { sourceId: "src-a", modelId: "mock-model" },
+  };
+  const firstImport = await importProviders(importPayload);
+  const importLine = firstImport.out.split("\n").find((line) => line.startsWith("PI_HOST_PROVIDERS "));
+  const importSummary = importLine ? JSON.parse(importLine.slice("PI_HOST_PROVIDERS ".length)) : null;
+  record(
+    "provider-import-creates-and-sets-default",
+    firstImport.code === 0 && importSummary?.imported?.[0]?.action === "created" && importSummary.defaultSet === true,
+    shortJson(importSummary),
+  );
+  record(
+    "provider-import-never-echoes-the-key",
+    !firstImport.out.includes(KEY_MARKER) && !firstImport.err.includes(KEY_MARKER) && !stderr.includes(KEY_MARKER),
+  );
+  const socketStat = statSync(join(dataDir, "pi-host", "admin.sock"));
+  const dirStat = statSync(join(dataDir, "pi-host"));
+  record(
+    "admin-socket-is-owner-only",
+    (socketStat.mode & 0o777) === 0o600 && (dirStat.mode & 0o777) === 0o700,
+    `sock=${(socketStat.mode & 0o777).toString(8)} dir=${(dirStat.mode & 0o777).toString(8)}`,
+  );
+  const secondImport = await importProviders(importPayload);
+  const secondLine = secondImport.out.split("\n").find((line) => line.startsWith("PI_HOST_PROVIDERS "));
+  const secondSummary = secondLine ? JSON.parse(secondLine.slice("PI_HOST_PROVIDERS ".length)) : null;
+  record(
+    "provider-reimport-updates-not-duplicates",
+    secondImport.code === 0 &&
+      secondSummary?.imported?.[0]?.action === "updated" &&
+      secondSummary.imported[0].providerId === importSummary?.imported?.[0]?.providerId,
+    shortJson(secondSummary),
+  );
+
+  const beforeTurn = owner.events.length;
+  await owner.client.request("turn/start", { sessionId: created.session.id, input: { text: "hello" }, context: { requestId: "r2", idempotencyKey: "e2e-2" } });
+  const turnDone = await waitForEvent(
+    owner.events,
+    beforeTurn,
+    (event) => event.scope === "session" && (event.kind === "turn.completed" || event.kind === "turn.failed"),
+  );
+  const late = owner.events.slice(beforeTurn);
+  const completed = late.some((event) => event.kind === "turn.completed");
+  record("imported-provider-admits-the-turn", turnDone && completed, late.map((event) => event.kind).join(","));
+  record("imported-key-reaches-the-model-as-bearer", modelAuth.length > 0 && modelAuth.every((auth) => auth === `Bearer ${KEY_MARKER}`), modelAuth.length ? "recorded" : "no model call");
+  await sleep(200);
+  const afterTurn = await owner.client.request("session/get", { sessionId: created.session.id });
+  record("session-returns-to-idle-after-reply", afterTurn.session.status === "idle" && !afterTurn.session.activeTurnId, shortJson(afterTurn.session));
+
   const renamed = await owner.client.request("session/rename", { sessionId: created.session.id, title: "Renamed remotely" });
   const configured = await owner.client.request("session/configure", { sessionId: created.session.id, permissionMode: "accept-edits" });
   record("remote-host-profile-mutations", renamed.ok === true && configured.session.permissionMode === "accept-edits");
@@ -219,6 +344,7 @@ try {
   record("headless-remote-host-e2e", false, `${error?.message ?? error}\n${stderr.slice(-3000)}`);
 } finally {
   await stopHost();
+  modelServer.close();
   rmSync(dataDir, { recursive: true, force: true });
 }
 
