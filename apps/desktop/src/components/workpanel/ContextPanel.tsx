@@ -13,6 +13,8 @@ import { runExtensionCommand } from "../../lib/commands";
 import { useAppStore } from "../../stores/app-store";
 import { Button } from "../ui";
 
+const EMPTY_COMPACTIONS: [] = [];
+
 const CONTEXT_COMMANDS = [
   ["context-export", "Export"],
   ["context-import", "Import"],
@@ -27,8 +29,8 @@ export function ContextPanel() {
   const providerModels = useAppStore((state) => state.providerModels);
   const compactions = useAppStore((state) =>
     state.activeSessionId
-      ? state.sessionCompactions[state.activeSessionId] ?? []
-      : [],
+      ? state.sessionCompactions[state.activeSessionId] ?? EMPTY_COMPACTIONS
+      : EMPTY_COMPACTIONS,
   );
   const showToast = useAppStore((state) => state.showToast);
   const [extensionSnapshot, setExtensionSnapshot] =
