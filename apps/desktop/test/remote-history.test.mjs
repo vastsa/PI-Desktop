@@ -96,6 +96,20 @@ test("a tail read that fits reports the host's hasMoreHistory and start 0 when c
   assert.equal(read.session.messageStart, 0);
 });
 
+test("a tail read clamps oversized limits to the maximum history page", async () => {
+  const client = fakeClient({
+    "session/attach": attach(items(1, REMOTE_HISTORY_PAGE_MAX + 1), false),
+  });
+  const history = createRemoteHistory({ client, host: HOST });
+  const read = await history.read(REMOTE_ID, "s1", { messageLimit: 1000 });
+
+  assert.equal(read.session.messages.length, REMOTE_HISTORY_PAGE_MAX);
+  assert.equal(read.session.messages[0]?.id, "m2");
+  assert.equal(read.session.messages.at(-1)?.id, `m${REMOTE_HISTORY_PAGE_MAX + 1}`);
+  assert.equal(read.session.hasMoreBefore, true);
+  assert.equal(read.session.messageStart, FIRST_CURSOR);
+});
+
 test("an older page reads session/history before the cursor's item and mints a decreasing cursor", async () => {
   const client = fakeClient({
     "session/attach": attach(items(5, 6), true),

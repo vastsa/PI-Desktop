@@ -150,7 +150,7 @@ export function createRemoteHistory(options: RemoteHistoryOptions): RemoteHistor
     let items = snapshot.items;
     let hasMore = snapshot.hasMoreHistory;
     if (limit !== undefined) {
-      const bounded = Math.max(1, Math.floor(limit));
+      const bounded = clampLimit(limit);
       if (items.length > bounded) {
         items = items.slice(items.length - bounded);
         hasMore = true;
