@@ -7126,3 +7126,53 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - Covered by the updated `apps/desktop/test/service-chooser.test.mjs` and the
   `scripts/e2e/provider-api-style.tsx` probe, which now asserts that the first
   `[data-service-id]` tile is `custom` rather than the last.
+## 2026-09-25 — Remote session entry with a fail-closed router (D625)
+
+- A paired host's sessions were reachable by the ADR 0286 kernel but had no UI:
+  the sidebar listed only local sessions and there was no way to start a remote
+  one. Remote session entry adds one borderless sidebar group per paired host
+  (its connection state and its sessions, using the local row component) and a
+  new-session dialog that reuses the rename shell to pick a host project and
+  start a session there.
+- The ADR 0286 router returned `ROUTE_LOCAL` for any unregistered id. That is
+  right for an unknown local id but wrong for a `remote:<hostKey>:<hostSessionId>`
+  id whose host is offline: falling through would run a remote-intended call
+  against local state. The router now fails closed on a `remote:` id with no live
+  backend and still routes an unregistered local id locally. The router-off
+  default for builds with no paired host is unchanged. This amends ADR 0286 §3.
+- A remote session runs under the host's default model; the desktop shows no
+  remote model picker. The transcript row drops edit/delete/revision for remote
+  rows, the Composer disables the mode and permission-mode pickers for a remote
+  session, and the files tab reads only the host's tree. Selecting or creating a
+  remote session never mutates the local workspace or steals focus, and
+  subscriptions are bounded to the shown host groups.
+- Renderer and Electron-main change only; no host-core, SQLite, protocol, or
+  security-boundary change. See ADR 0307,
+  `02-architecture/05-remote-agent-control.md` §5.2,
+  `05-security/02-remote-control-security.md` §3.4/§7,
+  E2E-REMOTE-session-list-and-create.
+
+## 2026-09-25 — Provider sync to an SSH host over an owner-only admin socket (D626)
+
+- ADR 0292 left a bootstrapped host with no providers, so `turn/start` failed
+  closed with `MODEL_NOT_CONFIGURED` until the user logged in and configured one
+  by hand. A manual "Sync models…" action in Settings ▸ Remote Hosts now copies
+  chosen local providers — API keys included — to a paired SSH host.
+- The key never travels in argv, logs, or over RACP (RACP is a session protocol,
+  not an admin one). The desktop runs `pi-host provider-import` on the host via
+  the ADR 0292 SSH transport's `execWithInput`, piping a capped JSON payload into
+  the remote process's stdin. The CLI hands it to the *running* host over a new
+  owner-only Unix admin socket at `<dataDir>/pi-host/admin.sock` (dir `0700`,
+  socket `0600`, one request per connection, capped at 1 MiB, disabled on
+  Windows). No second host-core is spawned.
+- Import is idempotent per `sourceId`: a first sync creates a row, a second
+  updates the same row (mapped through `provider-sync.json`), a plugin-owned row
+  is skipped, and nothing is deleted. When the payload names a `defaultModel`,
+  the handler sets the host default so the host can answer `turn/start`
+  immediately. The eligibility rule (`isSyncableProvider`,
+  `PROVIDER_SYNC_MAX_PROVIDERS = 64`) lives in `packages/shared` so the renderer
+  dialog and the host validator agree. Sync is manual and never runs unasked.
+- New `pi-host` subcommand and admin socket, one shared contract, and desktop
+  UI/IPC; no host-core RPC, SQLite, or renderer transport change. See ADR 0308,
+  ADR 0292 (supplemented), `05-security/02-remote-control-security.md` §3.4/§7,
+  E2E-REMOTE-provider-import-enables-turn.

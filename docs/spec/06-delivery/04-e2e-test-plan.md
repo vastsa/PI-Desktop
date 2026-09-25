@@ -8580,7 +8580,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
-| Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
+| Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232, E2E-REMOTE-session-list-and-create, E2E-REMOTE-provider-import-enables-turn |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP regression coverage (plugin tool dispatch) | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
@@ -13129,6 +13129,68 @@ browser milestones are scheduled.
 - **Status**: Draft; covered offline by
   `apps/desktop/test/settings-remote-hosts.test.mjs` and
   `apps/desktop/test/settings-developer-only-destinations.test.mjs`.
+
+#### E2E-REMOTE-session-list-and-create
+
+- **Preconditions**: One paired remote host with at least one registered
+  project, and one local session open. The renderer treats a remote session id
+  as `remote:<hostKey>:<hostSessionId>` (D625).
+- **Steps**: 1) Open the sidebar and confirm the host appears as its own
+  borderless group with its connection state and its sessions. 2) Create a
+  remote session through the new-session dialog by picking a project on the
+  host. 3) Select the remote session and confirm the transcript, the Composer,
+  and the work-panel files tab reflect the remote profile. 4) Take the host
+  offline and issue a per-session call against the remote id. 5) Confirm the
+  local session and local workspace are untouched throughout, and that creating
+  or receiving a remote session never steals focus.
+- **Expected**: The remote host renders as one group per host with live
+  connection state; a disconnected host offers no create action. Creating a
+  remote session starts it on the host under the host's default model — the
+  desktop shows no remote model picker. A remote transcript row has no edit,
+  delete, or revision affordance; the Composer's mode and permission-mode
+  pickers are disabled for the remote session; the files tab reads only the
+  host's tree. A `remote:` id whose host is offline fails closed with a typed
+  error rather than routing to the local handler (amends ADR 0286 §3). The local
+  session, the local workspace path, and focus are never mutated by remote
+  entry.
+- **Specs linked**: `02-architecture/05-remote-agent-control.md` §5.2,
+  `05-security/02-remote-control-security.md` §3.4, §7,
+  `06-delivery/07-remote-control-rollout.md` §2 R2; ADR 0307
+- **Acceptance**: D (surfaces), Security, Quality
+- **Milestone**: Post-MVP (rollout R2)
+- **Status**: Draft; the fail-closed router, sidebar list-and-create, and
+  capability gates are covered offline by
+  `apps/desktop/test/*remote*` node suites.
+
+#### E2E-REMOTE-provider-import-enables-turn
+
+- **Preconditions**: A booted `pi-host` on a throwaway data dir with the debug
+  host-core and bundled sidecar (the headless host harness,
+  `scripts/e2e-remote-host.mjs`). No provider is configured, so `turn/start`
+  fails closed with `MODEL_NOT_CONFIGURED`. A loopback OpenAI-compatible mock
+  model records its `Authorization` header and answers with fixed text (D626).
+- **Steps**: 1) Confirm a turn on a provider-less session fails closed and the
+  session stays idle. 2) Run `pi-host provider-import --data-dir <dir>` with a
+  one-provider payload on stdin — an OpenAI-compatible provider pointing at the
+  mock model, `authKind: api_key_and_base_url`, a marker `secretValue`, and a
+  `defaultModel`. 3) Read the `PI_HOST_PROVIDERS` summary and scan every CLI and
+  host output stream for the key marker. 4) Stat the admin socket and its
+  directory. 5) Re-run the same import. 6) Start a turn on the same session and
+  wait for the model call and the turn to complete, then read the session state.
+- **Expected**: The first import reports `imported[0].action === "created"` and
+  `defaultSet === true`; the marker key appears in no CLI stdout/stderr and no
+  host stderr; the admin socket is mode `0600` under a `0700` directory; a
+  re-import reports `action === "updated"` for the same `providerId`, not a
+  duplicate. The next turn is admitted, the mock model receives the key as a
+  `Bearer` header, a `turn.completed` session event arrives, and the session
+  returns to idle. No second host-core is spawned; the key crosses only the
+  stdin payload and the admin socket.
+- **Specs linked**: `02-architecture/05-remote-agent-control.md` §5.2,
+  `05-security/02-remote-control-security.md` §3.4, §7; ADR 0308
+- **Acceptance**: Security, E (tools & permissions), Recovery, Quality
+- **Milestone**: Post-MVP (rollout R2)
+- **Status**: Implemented in `scripts/e2e-remote-host.mjs` (32/32 checks pass);
+  runs headless on the host harness with no desktop or SSH target required.
 
 #### E2E-232: The outbound messaging integration relays events and commands
 

@@ -80,7 +80,16 @@ PI-Desktop (Remote Client)              Remote machine
 GitHub Releases 下载与桌面同版本的 `pi-host` 包并校验公布的 SHA-256，启动它并绑定 loopback，经 SSH 通道拿到一次性
 配对 token，转发本地端口后以 header profile 连接 `RACP-WS`，用配对 token 换取
 设备 token 存入桌面安全存储；Host 把该桌面设备记为 `owner`。远端 Host 的
-provider 配置由引导步骤经 SSH 通道写入，是 Host 本地配置，绝不经过 RACP。
+provider 配置经同一 SSH 通道写入，是 Host 本地配置，绝不经过 RACP：桌面在
+Host 上运行 `pi-host provider-import`，把 provider 载荷（含 API 密钥）从该
+进程的 stdin 送入，CLI 再经一个仅属主的 Unix admin socket（目录 `0700`、
+socket `0600`、上限 1 MiB、Windows 禁用）交给正在运行的 Host，密钥不经
+argv、日志、远端文件或 RACP，也不会另起 host-core（D626、ADR 0308）。导入
+是手动动作且按 provider 幂等，从不删除。
+Host 配对后，其会话在侧栏按每台 Host 一个无边框分组出现，用户可从桌面在
+Host 上创建会话（D625、ADR 0307）。远程会话在 Host 默认模型下运行——桌面不
+显示远程模型选择器——且渲染器保持传输无关：主机离线的
+`remote:<hostKey>:<hostSessionId>` id 失败即关闭，而不是打到本地处理器。
 Host 只绑定 loopback；只有绑定地址与对端地址都是 loopback且出示有效设备 token
 时才接受明文 `ws://`，因为 SSH 通道已提供机密性，SSH 登录也已证明对该机器的
 shell 访问。非 loopback 绑定仍要求 TLS 与设备 token。首版无法引导没有 GitHub 出网能力的机器。
