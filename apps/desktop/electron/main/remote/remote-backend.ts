@@ -87,6 +87,7 @@ export const HANDLED_CHANNELS: ReadonlySet<string> = new Set([
   IPC.invoke.fsList,
   IPC.invoke.fsRead,
   IPC.invoke.fsResolveRef,
+  IPC.invoke.workspaceDiff,
 ]);
 
 /** How many pushed prompts are remembered for queue listings. */
@@ -412,6 +413,10 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
           path: req.path,
         });
       }
+      case IPC.invoke.workspaceDiff:
+        return client.request("workspace/diff", {
+          sessionId: sessionOf(args).hostSessionId,
+        });
       case IPC.invoke.fsResolveRef:
         // Chat links are resolved against the local workspace; a remote
         // transcript's paths name host files, so none resolves here.

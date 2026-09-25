@@ -13028,8 +13028,10 @@ browser milestones are scheduled.
   then allow it once. Queue another delegated write turn and restart `pi-host`
   before it drains; after reconnect, confirm it still requires approval. 5)
   Switch the session to Plan mode and back with `session/configure` while idle,
-  then attempt it while a turn runs. 6) Open the files tab and the diff tab
-  for the remote session. 7) Advertise relay from the desktop, run a turn
+  then attempt it while a turn runs. 6) Open Files and Review for the remote
+  session, confirm Review separates the current Git diff from recorded
+  assistant changes, then refresh the diff after a remote edit. 7) Advertise
+  relay from the desktop, run a turn
   that calls the desktop MCP tool, then close the desktop during a second
   call. 8) Open a terminal on the remote session and run a command. 9) Kill
   the SSH session mid-turn with the terminal open, restore it, and let the
@@ -13043,8 +13045,10 @@ browser milestones are scheduled.
   calls, even though the Session is `auto` and the delegate is `accept-edits`;
   the queued delegated turn retains that ceiling after Host restart;
   the remote host-core binds loopback only; `session/configure` succeeds while
-  idle and returns `CONFLICT` while running; files and diff come from the
-  remote session root and a path outside it returns
+  idle and returns `CONFLICT` while running; Files and the Review working-tree
+  diff come from the remote session root, Review keeps recorded assistant
+  changes separate, and refreshing after a remote edit shows the new diff; a
+  path outside the root returns
   `PATH_OUTSIDE_WORKSPACE`; the desktop MCP tool executes on the desktop and
   its result reaches the remote transcript, while the second call fails with
   `TOOL_FAILED` and the turn continues; the terminal runs on the remote

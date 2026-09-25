@@ -1109,6 +1109,13 @@ entirely inside the plugin's isolated page:
   calls the host; the host compares the current content with the recorded
   post-tool hash and
   returns a conflict without overwriting later work.
+- For a remote Host session, Review adds a separate, read-only Git working-tree
+  diff scoped to that remote session. The current diff is not merged into the
+  message-owned history; the two summaries and file rows remain distinct.
+  Recorded workspace edits refresh the diff, and an explicit refresh is
+  available for other workspace changes because RACP has no workspace-diff
+  event. Remote history cards show rollback as unavailable until the protocol
+  exposes a Host-side rollback operation.
 - Header tabs: the strip is a `tablist` containing one `tab` for every open
   Review, file, or plugin view. Clicking a tab activates it; the active tab is
   scrolled into view. Its close button and middle-click close it, selecting the

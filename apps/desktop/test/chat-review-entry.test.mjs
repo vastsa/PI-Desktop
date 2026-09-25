@@ -181,11 +181,13 @@ test("chat renders one message-owned card immediately after its tool row", () =>
   assert.doesNotMatch(storeSource, /workspaceReviewSessions/);
 });
 
-test("Review is a session change history and no longer refreshes a Git diff", () => {
+test("local Review history stays intact and remote sessions add a separate Git diff", () => {
   assert.match(reviewSource, /reviewChangesFromMessages\(messages\)/);
   assert.match(reviewSource, /<ReviewChangeCard/);
   assert.match(reviewSource, /panel\.review\.noChanges/);
-  assert.doesNotMatch(reviewSource, /workspaceDiff|refreshWorkspaceDiff|api\.workspaceDiff/);
+  assert.match(reviewSource, /if \(!remoteSessionId\)/);
+  assert.match(reviewSource, /workspaceDiff\(remoteSessionId\)/);
+  assert.match(reviewSource, /review-remote-history/);
   assert.doesNotMatch(appSource, /reviewRev|refreshWorkspaceDiff|workspaceDiff/);
 });
 
