@@ -30,6 +30,7 @@ import { cx } from "../ui";
 import { TooltipButton } from "../ui";
 import type { IconProps } from "../icons";
 import {
+  IconActivity,
   IconBot,
   IconClose,
   IconDiff,
@@ -39,6 +40,7 @@ import {
   IconPlug,
   IconPlus,
 } from "../icons";
+import { ContextPanel } from "./ContextPanel";
 import { ReviewTab } from "./ReviewTab";
 import { FilesTab } from "./FilesTab";
 import { PluginViewTab } from "./PluginViewTab";
@@ -55,6 +57,7 @@ import {
 
 const TAB_ICONS = {
   new: IconPlus,
+  context: IconActivity,
   review: IconDiff,
   file: IconFileText,
   plugin: IconPlug,
@@ -122,9 +125,15 @@ function workPanelTools(
   t: (key: string) => string,
   pluginViews: PluginViewMeta[],
 ): WorkPanelTool[] {
-  // Review is the only host-owned launcher. Files, Browser, and every future
-  // tool are plugin-contributed views, so their list stays data-driven.
+  // Review and Context are host-owned launchers. Files, Browser, and every
+  // future tool are plugin-contributed views, so their list stays data-driven.
   return [
+    {
+      id: "context",
+      tab: toolWorkPanelTab("context"),
+      label: t("panel.tabs.context"),
+      icon: IconActivity,
+    },
     {
       id: "review",
       tab: toolWorkPanelTab("review"),
@@ -912,6 +921,16 @@ export function WorkPanel({
               aria-labelledby={`work-panel-tab-${activeTab.id}`}
             >
               <SubagentTranscriptTab delegationId={activeTab.resource ?? ""} />
+            </div>
+          )}
+          {activeTab?.kind === "context" && (
+            <div
+              id={`work-panel-surface-${activeTab.id}`}
+              className="work-panel-tabpane"
+              role="tabpanel"
+              aria-labelledby={`work-panel-tab-${activeTab.id}`}
+            >
+              <ContextPanel />
             </div>
           )}
           {activeTab?.kind === "review" && (

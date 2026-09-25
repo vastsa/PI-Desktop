@@ -10,7 +10,7 @@
  * never throws into extension code.
  */
 import { managedExec } from "./managed-exec.js";
-import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type Api,
@@ -148,6 +148,8 @@ export interface TrustedExtensionBridge {
   getContextUsage(): { tokens: number | null; contextWindow: number; percent: number | null } | undefined;
   compact(options?: { customInstructions?: string }): void;
   getSystemPrompt(): string;
+  /** Read-only projection of the active model context (not persisted history). */
+  getBranch?(): Array<{ type: "message"; id: string; parentId: string | null; timestamp: string; message: AgentMessage }>;
   getActiveTools(): string[];
   getAllTools(): ExtensionToolInfo[];
   setActiveTools(names: string[]): void;
@@ -707,7 +709,7 @@ export class TrustedExtensionRunner {
       cwd: bridge.cwd,
       sessionManager: {
         getEntries: () => [],
-        getBranch: () => [],
+        getBranch: () => bridge.getBranch?.() ?? [],
         getLeafId: () => null,
         getSessionFile: () => undefined,
         getSessionId: () => bridge.sessionId,
@@ -935,7 +937,29 @@ export class TrustedExtensionRunner {
         bridge.sendUserMessage(content, options),
       events: {
         on: () => () => {},
-        emit: () => {},
+        emit: (name: string, payload: unknown) => {
+          const eventName = typeof name === "string" ? name.trim() : "";
+          // Only the context snapshot has a renderer consumer; do not turn
+          // arbitrary extension bus traffic into IPC status broadcasts.
+          if (eventName !== "context:snapshot") return;
+          try {
+            const text = JSON.stringify(payload);
+            if (text !== undefined && text.length <= 256_000) {
+              void bridge.requestUi(extension.spec, {
+                kind: "setStatus",
+                key: `event:${eventName}`,
+                text,
+              });
+            }
+          } catch (error) {
+            this.report(
+              extension.spec.id,
+              "unsupported_api",
+              `event payload is not serializable: ${errorMessage(error)}`,
+              `events.emit:${eventName}`,
+            );
+          }
+        },
       },
     };
     for (const member of INERT_API_MEMBERS) {

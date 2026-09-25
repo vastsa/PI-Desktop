@@ -28,6 +28,9 @@ export function ExtensionPromptHost() {
       setQueue((prev) => (prev.some((p) => p.promptId === prompt.promptId) ? prev : [...prev, prompt]));
     });
     const offStatus = api.onExtensionStatus((event) => {
+      // `pi.events.emit()` payloads share this transport but are renderer data,
+      // not human-facing status copy.
+      if (event.key.startsWith("event:")) return;
       setStatus((prev) => {
         const session = { ...(prev[event.sessionId] ?? {}) };
         const key = `${event.extensionId}\u0000${event.key}`;

@@ -71,7 +71,7 @@ across devices without synchronizing conversation history or source files.
 - Permission confirmations
 - JSONL transcript persistence with a SQLite index
 - Agent / Plan / Goal operating contracts with host-owned approval artifacts
-- Work panel: Review artifacts, Browser previews, transcript-linked files, and the vendored file manager view
+- Work panel: Context usage and context-pack actions, Review artifacts, Browser previews, transcript-linked files, and the vendored file manager view
 - Project archive, multi-project sidebar, session fork/import, and notifications
 - Opt-in local MCP control for project, session, Agent, workspace, and reviewed
   desktop operations

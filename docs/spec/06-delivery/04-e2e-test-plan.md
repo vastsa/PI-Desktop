@@ -10019,6 +10019,33 @@ This test plan spec is accepted when:
 - **Milestone**: M5+
 - **Status**: Documented
 
+#### E2E-CONTEXT-work-panel-breakdown-and-packs
+
+- **Preconditions**: The Pi-Context trusted user extension is enabled; an active
+  conversation has completed at least one model response.
+- **Steps**:
+  1) Press `Cmd/Ctrl + J`, click `+`, and select Context.
+  2) Confirm the singleton Context tab shows token totals and category rows. If
+     the extension snapshot has not arrived yet, confirm the temporary fallback
+     contains Messages and Free without blanking the panel.
+  3) Complete another turn and confirm the Pi-Context `context:snapshot` event
+     replaces the fallback with its Messages, system, tool, skill, MCP, bundle,
+     and Free categories without displaying raw JSON in the floating status line.
+  4) Enter a pack name, then run Export and Handoff. Run Import with an existing
+     pack and confirm each action is dispatched to the active session's trusted
+     extension command.
+  5) Switch sessions while an event is in flight and confirm the older session's
+     snapshot does not replace the visible session.
+- **Expected**: Context is a closeable, session-retained native work-panel tab.
+  Structured extension data remains bounded to the matching session, the generic
+  status line stays human-readable, and pack operations run in the sidecar rather
+  than the renderer.
+- **Specs linked**: `01-product/01-product-scope.md`, `04-ux/01-ui-ia.md`,
+  `07-plugins/16-trusted-extensions.md`
+- **Acceptance**: A (core shell), H (localization)
+- **Milestone**: M5+
+- **Status**: Focused renderer/runtime unit coverage; the live extension-event
+  journey remains manual until a matching automated E2E scenario is added.
 
 #### E2E-129: A run row shows its command once and copies it from the head
 

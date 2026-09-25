@@ -2576,6 +2576,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         runtime.pendingModelCompaction = true;
       },
       getSystemPrompt: () => runtime.agent.state.systemPrompt,
+      getBranch: () => runtime.agent.state.messages.map((message, index) => ({
+        type: "message" as const,
+        id: String(index),
+        parentId: index > 0 ? String(index - 1) : null,
+        timestamp: new Date(message.timestamp).toISOString(),
+        message,
+      })),
       getActiveTools: () => runtime.activeTools().map((tool) => tool.name),
       getAllTools: () => {
         const active = new Set(runtime.activeTools().map((tool) => tool.name));

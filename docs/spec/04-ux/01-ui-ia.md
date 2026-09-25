@@ -105,19 +105,23 @@ destination, chat as the home surface, tools and permissions inline.
   header's 4px control gap) keeps the `+`, maximize, and viewport-fixed
   work-panel toggle one button group, spaced by that same gap, while the trigger
   keeps a distinct hit target. Clicking `+` creates and activates
-  a unique New launcher tab; its body presents the same data-driven Review and
-  plugin-view rows as buttons, so the user chooses a destination in the page
+  a unique New launcher tab; its body presents the native Context and Review
+  rows plus data-driven plugin-view rows as buttons, so the user chooses a destination in the page
   instead of opening a dropdown. Selecting a row replaces that launcher tab with
   the destination or activates an existing singleton. File paths stay distinct
   while plugin views deduplicate by view reference. The viewport-fixed toggle
   and `Cmd/Ctrl + J` both toggle the active session's retained panel context —
   revealing it without creating a resource tab and collapsing it without
   discarding one; the create trigger remains unavailable while the panel is
-  closed. Closing the final tab keeps the panel open and shows the New launcher.
-  No agent or tool result opens, activates, or resizes the panel: Review is
-  reached only through an explicit user action, so a successful workspace
-  Write/Edit leaves the panel exactly as the user left it and shows its
-  evidence as a transcript card instead. The inner
+  closed. Context is a singleton native tab that shows Pi-Context category
+  snapshots received through the trusted-extension status bridge, falling back
+  to the active session's messages/free usage until a snapshot arrives. It can
+  run the extension's export, import, and handoff commands without moving agent
+  execution into the renderer. Closing the final tab keeps the panel open and
+  shows the New launcher. No agent or tool result opens, activates, or resizes
+  the panel: Review is reached only through an explicit user action, so a
+  successful workspace Write/Edit leaves the panel exactly as the user left it
+  and shows its evidence as a transcript card instead. The inner
   divider resizes the panel through the shared three-column budget; moving it
   left takes space until MainChat reaches 450px, at which point the expanded
   sidebar yields immediately, and moving it right gives space back. A manual

@@ -1782,6 +1782,7 @@ sklm: {
     },
     closeTab: "{{name}} öğesini kapat",
     tabs: {
+      context: "Bağlam",
       review: "İnceleme",
       browser: "Tarayıcı",
       file: "Dosyalar",

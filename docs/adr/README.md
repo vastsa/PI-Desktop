@@ -345,3 +345,4 @@ Each ADR includes:
 | provider-system-certificates | [Desktop sidecar uses OS-trusted certificates](provider-system-certificates.md) | Accepted |
 | image-generation-capability | [Image generation as a configured Agent capability](image-generation-capability.md) | Accepted |
 | retained-browser-pages-per-tab | [Retain a host-owned browser page per resource tab](retained-browser-pages-per-tab.md) | Accepted |
+| pi-context-native-panel | [Native context panel over the trusted extension bridge](pi-context-native-panel.md) | Accepted for implementation (amends ADR 0214 / 0215) |

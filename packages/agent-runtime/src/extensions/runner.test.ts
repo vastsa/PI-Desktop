@@ -526,6 +526,67 @@ export default function (pi: any) {
     expect(log.commands.at(-1)).toEqual([{ extensionId: good.id, extensionLabel: "good", name: "greet" }]);
   });
 
+  it("exposes the active model-context messages to context extensions", async () => {
+    const ext = spec(
+      "branch",
+      `export default function (pi: any) {
+  pi.registerCommand("branch", { handler: async (_args: string, ctx: any) => {
+    ctx.ui.setStatus("branch-size", String(ctx.sessionManager.getBranch().length));
+  }});
+}`,
+    );
+    const { bridge, log } = fakeBridge();
+    bridge.getBranch = () => [
+      { type: "message", id: "1", parentId: null, timestamp: new Date(0).toISOString(), message: { role: "user", content: "hello", timestamp: 0 } },
+    ];
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    await runner.load();
+    await runner.runCommand("branch", "");
+    await flush();
+    expect(log.ui).toContainEqual({ kind: "setStatus", key: "branch-size", text: "1" });
+  });
+
+  it("bridges custom extension events through the existing hidden status channel", async () => {
+    const ext = spec(
+      "events",
+      `export default function (pi: any) {
+  pi.on("turn_end", () => {
+    pi.events.emit("context:snapshot", { contextWindow: 128000, totalTokens: 32000 });
+  });
+}`,
+    );
+    const { bridge, log } = fakeBridge();
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    await runner.load();
+
+    await runner.emit("turn_end", { type: "turn_end" });
+    await flush();
+
+    expect(log.ui).toContainEqual({
+      kind: "setStatus",
+      key: "event:context:snapshot",
+      text: JSON.stringify({ contextWindow: 128000, totalTokens: 32000 }),
+    });
+  });
+
+  it("drops unrelated and oversized custom events before the host status bridge", async () => {
+    const ext = spec(
+      "bounded-events",
+      `export default function (pi: any) {
+  pi.on("turn_end", () => {
+    pi.events.emit("unrelated:event", { secret: "hidden" });
+    pi.events.emit("context:snapshot", { oversized: "x".repeat(300000) });
+  });
+}`,
+    );
+    const { bridge, log } = fakeBridge();
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    await runner.load();
+    await runner.emit("turn_end", { type: "turn_end" });
+    await flush();
+    expect(log.ui).toEqual([]);
+  });
+
   it("makes unsupported members and pi-tui imports inert with diagnostics", async () => {
     const ext = spec(
       "tui",

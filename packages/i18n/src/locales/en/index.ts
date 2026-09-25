@@ -1795,6 +1795,7 @@ sklm: {
     },
     closeTab: "Close {{name}}",
     tabs: {
+      context: "Context",
       review: "Review",
       browser: "Browser",
       file: "Files",

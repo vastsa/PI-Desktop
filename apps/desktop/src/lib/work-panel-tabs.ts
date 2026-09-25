@@ -1,5 +1,6 @@
 export type WorkPanelTabKind =
   | "new"
+  | "context"
   | "review"
   | "file"
   | "plugin"
@@ -207,9 +208,8 @@ export function parsePluginViewRef(
 export function isKnownWorkPanelTab(tab: WorkPanelTab): boolean {
   return (
     Boolean(tab) &&
-    (tab.kind === "new" || tab.kind === "review" ||
-      tab.kind === "file" || tab.kind === "plugin" ||
-      tab.kind === "subagent")
+    (tab.kind === "new" || tab.kind === "context" || tab.kind === "review" ||
+      tab.kind === "file" || tab.kind === "plugin" || tab.kind === "subagent")
   );
 }
 

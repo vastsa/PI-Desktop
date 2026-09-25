@@ -1763,6 +1763,7 @@ sklm: {
     },
     closeTab: "關閉{{name}}",
     tabs: {
+      context: "上下文",
       review: "審閱",
       browser: "瀏覽器",
       file: "檔案",

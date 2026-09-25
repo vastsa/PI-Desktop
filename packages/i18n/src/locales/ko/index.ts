@@ -1792,6 +1792,7 @@ sklm: {
     },
     closeTab: "{{name}} 닫기",
     tabs: {
+      context: "컨텍스트",
       review: "검토",
       browser: "브라우저",
       file: "파일",

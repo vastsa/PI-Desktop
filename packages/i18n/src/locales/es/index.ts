@@ -1777,6 +1777,7 @@ sklm: {
     },
     "closeTab": "Cerrar {{name}}",
     "tabs": {
+      "context": "Contexto",
       "review": "Revisar",
       "browser": "Navegador",
       "file": "Archivos",
