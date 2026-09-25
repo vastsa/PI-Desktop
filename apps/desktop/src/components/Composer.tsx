@@ -53,6 +53,7 @@ import {
 } from "../features/chat/composer/editor";
 import { useComposerAttachments } from "../features/chat/composer/hooks/useComposerAttachments";
 import { useComposerDraft } from "../features/chat/composer/hooks/useComposerDraft";
+import { useComposerInputHistory } from "../features/chat/composer/hooks/useComposerInputHistory";
 import { useComposerSubmit } from "../features/chat/composer/hooks/useComposerSubmit";
 import { ComposerImageAttachments } from "../features/chat/composer/ComposerImageAttachments";
 import { ComposerInput } from "../features/chat/composer/ComposerInput";
@@ -192,6 +193,11 @@ export function Composer({
     insertNewlineInEditor,
     handleInput,
   } = draft;
+  const inputHistory = useComposerInputHistory({
+    draftKey,
+    referenceSessionId,
+    draft,
+  });
 
   const approvalPending = planCheckpoint?.status === "pending";
   const largePasteThreshold = normalizeLargePasteThreshold(
@@ -420,6 +426,7 @@ export function Composer({
     sendPrompt,
     steerPrompt,
     showToast,
+    recordHistory: inputHistory.record,
     draft: {
       ref,
       draftSnapshot,
@@ -440,6 +447,13 @@ export function Composer({
     undoPromptEnhancement,
     submit,
   } = submitController;
+
+  // Both submit entry points (the composer's Enter and the toolbar's Send)
+  // leave history browsing before the draft is cleared.
+  const submitFromComposer = (steering?: boolean) => {
+    inputHistory.exitBrowsing();
+    return submit(steering);
+  };
 
   const voiceEnabled = !!settings?.voice?.enabled;
   const voice = useVoiceInput({
@@ -584,9 +598,13 @@ export function Composer({
             composerAc={composerAc}
             onPaste={pasteClipboardFiles}
             onAcceptCompletion={acceptCompletion}
-            onSubmit={(steering) => void submit(steering)}
+            onSubmit={(steering) => void submitFromComposer(steering)}
             onInsertNewline={insertNewlineInEditor}
-            onInput={handleInput}
+            onInput={(source, caret) => {
+              inputHistory.exitBrowsing();
+              handleInput(source, caret);
+            }}
+            onHistoryNavigate={inputHistory.navigate}
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={(event) => {
               setComposing(false);
@@ -630,7 +648,7 @@ export function Composer({
             runActive={runActive}
             hasDraftContent={hasDraftContent}
             abort={abort}
-            submit={submit}
+            submit={submitFromComposer}
             voicePhase={voice.state.phase}
             voiceEnabled={voiceEnabled}
             onVoiceToggle={voice.toggle}

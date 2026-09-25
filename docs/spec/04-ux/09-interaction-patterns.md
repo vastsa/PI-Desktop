@@ -374,6 +374,20 @@ may be retained while exactly one workspace supplies the visible shell context.
   completed send clears only the draft belonging to the session that submitted
   it, even if the user switches sessions while the request is in flight;
   deleted sessions cannot retain drafts.
+- The composer also recalls the accepted submissions of its own conversation,
+  newest-first, with ArrowUp/ArrowDown (D625). ArrowUp starts browsing only when
+  the draft is empty (no text and no references), and while browsing both keys
+  keep walking history even through a multi-line entry; ArrowDown past the
+  newest entry returns to the empty draft. A user edit, a submission, or a
+  session change ends browsing, after which the arrows are native caret movement
+  again. The open autocomplete menu and IME composition keep priority. Another
+  conversation's prompts are never recalled, so a recalled entry always brings
+  its own file and image references back with its text. History survives a
+  restart (renderer-local `localStorage`: 100 entries per conversation, 20
+  conversations, consecutive duplicates collapsed) and records only accepted
+  submissions: a normal or steering prompt, or a dispatched slash, extension, or
+  mode command. The empty home composer has no conversation, so it recalls
+  nothing.
 - Every tool call resolves `workspaceRoot` from the originating durable
   session, not from the currently selected project tab. Background completion
   refreshes the matching row without redirecting the active conversation.

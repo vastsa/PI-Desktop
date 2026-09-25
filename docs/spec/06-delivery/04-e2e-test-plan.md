@@ -1459,6 +1459,45 @@ identify the platform validation still needed.
   `pnpm test:e2e:composer-paste`; real desktop recording uses isolated data and
   a local model with a controlled response delay.
 
+#### E2E-COMPOSER-input-history-recall
+
+- **Preconditions**: Provider configured; the composer history store
+  (`pi.desktop.composerInputHistory`) is empty or at a known state; sessions A
+  and B exist, with A docked and B available to select.
+- **Steps**: 1) In A send `alpha`, then `beta`, then `beta` again. 2) With the
+  composer empty, press ArrowUp three times, then ArrowDown three times.
+  3) Press ArrowUp once, type one character, and press ArrowUp again.
+  4) Press ArrowUp, then send once and confirm the next ArrowUp starts from the
+  newest entry again. 5) Reopen the app and press ArrowUp in the composer.
+  6) Type `@` to open the file menu and press ArrowUp/ArrowDown, then close it.
+  7) Recall a multi-line entry with ArrowUp and keep pressing ArrowUp/ArrowDown.
+  8) Send a prompt carrying a pasted image and a workspace `@` file, then recall
+  it in A. 9) Switch to B, press ArrowUp in B's empty composer, then send `beta`
+  in B and press ArrowUp there. 10) Return to A and press ArrowUp. 11) Select
+  all, delete, and press ArrowUp. 12) Open the empty home composer (New task
+  before any first prompt) and press ArrowUp.
+- **Expected**: History is newest-first within A and `beta` is recorded once.
+  ArrowUp loads `beta`, then `alpha`, then stays on `alpha`; ArrowDown returns to
+  `beta` and then leaves the composer empty. Typing a character ends browsing, so
+  the following ArrowUp moves the caret instead of replacing the text. After a
+  send, recall starts from the newest entry. History survives a restart. With the
+  autocomplete menu open the arrows still move its highlight and never touch
+  history. A recalled multi-line entry keeps working with the arrows. The entry
+  recalled in A shows its image chip and its file chip again. B's empty composer
+  recalls nothing from A; once B sends `beta`, ArrowUp in B loads B's own `beta`
+  and stops there, and A's history is unchanged on returning. An emptied composer
+  browses history again, and the empty home composer recalls nothing. IME
+  composition is unaffected.
+- **Specs linked**: `04-ux/09-interaction-patterns.md`,
+  `08-meta/decisions-log.md` (D625), `04-ux/08-component-spec.md`
+- **Acceptance**: C (composer input and session isolation)
+- **Milestone**: M2
+- **Status**: Source-level regression covered
+  (`composer-input-history.test.mjs`: store rules, per-conversation isolation,
+  browse stepping, restored references, keydown branch order, record points).
+  Real recall loop in the desktop renderer, the reopened-app case, and the
+  rendered chips are Draft.
+
 #### E2E-011d: New task creates an immediate durable empty slot
 
 - **Preconditions**: Provider configured; at least one real session exists so
