@@ -1595,6 +1595,7 @@ export const api = {
       pluginId?: string;
       projectPath?: string | null;
       selectSessionId?: string;
+      sessionResyncIds?: string[];
     }) => void,
   ) => {
     if (!window.piDesktop?.on) return () => undefined;
@@ -1606,6 +1607,7 @@ export const api = {
           pluginId?: string;
           projectPath?: string | null;
           selectSessionId?: string;
+          sessionResyncIds?: string[];
         },
       ),
     );

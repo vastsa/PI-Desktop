@@ -73,7 +73,7 @@ export type RemoteBackendOptions = {
   /** A session the host deleted; `session/delete` publishes no event. */
   onSessionRemoved?: (hostSessionId: string) => void;
   /** A tail read attached at `cursor`; live events continue from there. */
-  onSessionRead?: (hostSessionId: string, cursor: RacpCursor) => void;
+  onSessionRead?: (hostSessionId: string, cursor: RacpCursor) => Promise<boolean | void> | boolean | void;
 };
 
 /** The channels a remote host serves; every other remote call fails closed. */
@@ -244,8 +244,17 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
     hostSessionId: string,
     readOptions: RemoteHistoryReadOptions,
   ) => {
-    const read = await history.read(remoteSessionId, hostSessionId, readOptions);
-    if (read.cursor) options.onSessionRead?.(hostSessionId, read.cursor);
+    let read = await history.read(remoteSessionId, hostSessionId, readOptions);
+    if (read.cursor && options.onSessionRead) {
+      const resynced = await options.onSessionRead(hostSessionId, read.cursor);
+      if (resynced === true) {
+        // The first attach cursor belonged to an expired event epoch. The
+        // connection has now installed a fresh baseline and snapshot; read it
+        // once more so the renderer does not paint the stale transcript.
+        read = await history.read(remoteSessionId, hostSessionId, readOptions);
+        if (read.cursor) await options.onSessionRead(hostSessionId, read.cursor);
+      }
+    }
     return read.session;
   };
 

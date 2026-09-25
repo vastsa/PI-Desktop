@@ -28,6 +28,7 @@ import {
 } from "../../lib/work-panel-resize";
 import { browserPluginTab } from "../../lib/work-panel-tabs";
 import { useAppStore } from "../../stores/app-store";
+import { refreshActiveRemoteSession } from "./remote-session-resync";
 import { useSidebarTransition } from "./useSidebarTransition";
 import { useStartupWatchdog } from "./useStartupWatchdog";
 import { useTraySessions } from "./useTraySessions";
@@ -667,6 +668,7 @@ export function useAppShellRuntime() {
           if (event.selectSessionId) {
             await useAppStore.getState().selectSession(event.selectSessionId);
           }
+          await refreshActiveRemoteSession(event, () => useAppStore.getState());
         })
         .catch(() => undefined);
     });

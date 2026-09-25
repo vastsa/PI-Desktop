@@ -20,6 +20,7 @@ function fakeClient() {
   const client = {
     calls,
     hold: false,
+    subscribeResult: undefined,
     request: async (method, params) => {
       calls.push({ method, params });
       if (method === "events/subscribe") {
@@ -27,7 +28,10 @@ function fakeClient() {
         if (client.hold) {
           await new Promise((resolve) => gates.push(resolve));
         }
-        return { subscriptionId: id };
+        return {
+          subscriptionId: id,
+          ...(client.subscribeResult ? client.subscribeResult(params) : {}),
+        };
       }
       return { ok: true };
     },
@@ -173,6 +177,63 @@ test("reconnect restores the host scope and retained sessions from durable curso
   subs.reset();
 });
 
+test("subscribe starting cursors are retained when no event has arrived yet", async () => {
+  const client = fakeClient();
+  client.subscribeResult = (params) => ({
+    starting: params.scope === "host"
+      ? { epoch: "host-epoch", sequence: 9 }
+      : { epoch: "session-epoch", sequence: 14 },
+    replayComplete: true,
+  });
+  const subs = createRemoteSubscriptions({ client });
+  await subs.openHost();
+  await subs.touch("s1");
+
+  client.subscribeResult = (params) => ({
+    starting: params.scope === "host"
+      ? { epoch: "host-epoch", sequence: 9 }
+      : { epoch: "session-epoch", sequence: 14 },
+    replayComplete: true,
+  });
+  await subs.reconnect();
+
+  const reconnectSubscribes = of(client, "events/subscribe").slice(2);
+  assert.deepEqual(reconnectSubscribes.map((call) => call.params), [
+    { scope: "host", after: { epoch: "host-epoch", sequence: 8 } },
+    { scope: "session", sessionId: "s1", after: { epoch: "session-epoch", sequence: 13 } },
+  ]);
+});
+
+test("reconnect reports a session whose durable event epoch needs a snapshot", async () => {
+  const client = fakeClient();
+  const counts = { host: 0, session: 0 };
+  client.subscribeResult = (params) => {
+    const scope = params.scope;
+    counts[scope] += 1;
+    const reconnecting = counts[scope] > 1;
+    return {
+      starting: reconnecting
+        ? { epoch: `${scope}-new`, sequence: 1 }
+        : { epoch: `${scope}-old`, sequence: 3 },
+      replayComplete: !(scope === "session" && reconnecting),
+      ...(scope === "session" && reconnecting ? { resyncReason: "epoch" } : {}),
+    };
+  };
+  const subs = createRemoteSubscriptions({ client });
+  await subs.openHost();
+  await subs.touch("s1");
+
+  assert.deepEqual(await subs.reconnect(), [
+    { hostSessionId: "s1", reason: "epoch" },
+  ]);
+  const reconnectSession = of(client, "events/subscribe").at(-1);
+  assert.deepEqual(reconnectSession.params, {
+    scope: "session",
+    sessionId: "s1",
+    after: { epoch: "session-old", sequence: 2 },
+  });
+});
+
 test("a disconnected session subscribe keeps its slot for reconnect recovery", async () => {
   const client = fakeClient();
   const request = client.request;
@@ -247,6 +308,37 @@ test("closed() resubscribes a session or the host scope after the last safe curs
   assert.equal(subs.isSubscribed("a"), true);
   // The reopened subscription is the one acks now target.
   subs.observe(envelope({ sessionId: "a", sequence: 13 }));
+  subs.reset();
+});
+
+test("closed subscriptions report an incomplete replay for snapshot recovery", async () => {
+  const client = fakeClient();
+  const recoveries = [];
+  const hostRecoveries = [];
+  const counts = { host: 0, session: 0 };
+  client.subscribeResult = (params) => {
+    counts[params.scope] += 1;
+    if (counts[params.scope] === 1) return { replayComplete: true };
+    return {
+      replayComplete: false,
+      resyncReason: params.scope === "host" ? "ahead" : "evicted",
+    };
+  };
+  const subs = createRemoteSubscriptions({
+    client,
+    onSessionRecovery: (recovery) => recoveries.push(recovery),
+    onHostRecovery: (reason) => hostRecoveries.push(reason),
+  });
+  await subs.openHost();
+  await subs.touch("a");
+
+  subs.closed("sub-a-2", { epoch: "old", sequence: 7 });
+  subs.closed("host-1", { epoch: "host-old", sequence: 4 });
+  await delay(0);
+
+  assert.deepEqual(recoveries, [{ hostSessionId: "a", reason: "evicted" }]);
+  assert.deepEqual(hostRecoveries, ["ahead"]);
+  assert.equal(subs.isSubscribed("a"), true);
   subs.reset();
 });
 

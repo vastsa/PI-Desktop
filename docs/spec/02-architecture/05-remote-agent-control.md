@@ -360,21 +360,32 @@ and never counted against the replay window. A snapshot's `activeItems`
 carry what the deltas accumulated, so a reconnecting client loses nothing it
 could not rebuild.
 
-The first subscription response includes a snapshot and its `cursor`.
+`session/attach` returns an authoritative snapshot and its `cursor`.
+`events/subscribe` returns a `starting` cursor and whether replay completed.
 Subsequent durable events are ordered by `sequence`. A reconnect supplies
 `after`:
 
 ```text
 cursor in the current epoch and retained -> replay durable events with sequence > after
-epoch changed or cursor evicted          -> resync.required + current snapshot
-cursor ahead of the Host                 -> invalid cursor; client must refresh the snapshot
+epoch changed or cursor evicted          -> replayComplete:false; attach for a current snapshot
+cursor ahead of the Host                 -> replayComplete:false; attach for a current snapshot
 ```
 
 The first implementation keeps the durable log in Agent Host process memory;
 a Host restart starts a new epoch and every client resynchronizes from a
-snapshot. Rust host-core keeps exclusive SQLite ownership (frozen decision
-12); persisting the log there would need its own ADR. The Gateway must not
-renumber events. If the Gateway reconnects a Host link, each logical client
+snapshot. The Desktop retains attach and subscribe cursors even if no durable
+event arrived. After a transport reconnect it reattaches each retained session
+whose replay is incomplete; controller attach resumes the persisted queue, and
+the Desktop restores tool approvals and input requests that remain pending in
+the Host snapshot. A Host process restart may cancel prompts owned by the
+interrupted runtime turn; only the Host-persisted queue is resumed across that
+restart. Plan and goal approvals are not reconstructed because the current
+snapshot does not include their complete proposal content. The currently
+visible recovered transcript refreshes in place without changing the user's
+page or selected session. Rust host-core keeps exclusive SQLite ownership
+(frozen decision 12); persisting the log there would need its own ADR. The
+Gateway must not renumber events. If the Gateway reconnects a Host link, each
+logical client
 connection resumes from its last acknowledged cursor. A client may render
 events optimistically, but it must drop duplicates, pause on a durable gap,
 and apply a snapshot before continuing.

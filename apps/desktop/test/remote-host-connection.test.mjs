@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 
 const { IPC } = await import("@pi-desktop/shared");
-const { createBackendRouter, makeRemoteSessionId } = await import(
+const { createBackendRouter, makeRemoteApprovalRequestId, makeRemoteSessionId } = await import(
   "../electron/main/remote/backend-router.ts"
 );
 const { createRemoteHostConnection } = await import(
@@ -71,6 +71,9 @@ function fakeClient({ sessions = [], requestFailures = {}, responses = {}, hostC
     hasListener: () => listener !== null,
     async recover() {
       for (const fn of reconnectListeners) await fn();
+    },
+    closeSubscription(notice) {
+      for (const fn of subscriptionCloseListeners) fn(notice);
     },
     changeState(state, error) {
       for (const fn of stateListeners) fn(state, error);
@@ -262,6 +265,7 @@ test("a sessionGet tail read subscribes that session's scope on demand, after th
         snapshot: {
           session: makeSession("s1"),
           items: [],
+          activeItems: [],
           hasMoreHistory: false,
           cursor,
         },
@@ -351,7 +355,7 @@ test("reconnect restores cursors, overlays ordered lifecycle events on the snaps
       },
       "session/attach": () => ({
         session: makeSession("s1"),
-        snapshot: { session: makeSession("s1"), items: [], hasMoreHistory: false, cursor: { epoch: "epoch-1", sequence: 8 } },
+        snapshot: { session: makeSession("s1"), items: [], activeItems: [], hasMoreHistory: false, cursor: { epoch: "epoch-1", sequence: 8 } },
       }),
     },
   });
@@ -392,6 +396,189 @@ test("reconnect restores cursors, overlays ordered lifecycle events on the snaps
   assert.ok(order.indexOf("host-reconnected-event") > order.indexOf("relay-reconnected"));
   assert.ok(events.some(({ payload }) => payload.reason === "remote.host.reconnecting" && payload.hostKey === HOST_KEY));
   assert.ok(events.some(({ payload }) => payload.reason === "remote.host.reconnected" && payload.hostKey === HOST_KEY));
+});
+
+test("an epoch resync reattaches the session and restores its pending approval and queue", async () => {
+  let hostSubscribes = 0;
+  let sessionSubscribes = 0;
+  let attaches = 0;
+  const pendingApproval = {
+    id: "approval-1",
+    sessionId: "s1",
+    turnId: "turn-1",
+    kind: "tool",
+    summary: "write a file",
+    expiresAt: "2026-09-18T10:05:00.000Z",
+    revision: 4,
+    toolName: "write",
+    risk: "high",
+    allowedDecisions: ["allow-once", "deny"],
+  };
+  const { conn, router, client, events } = setup({
+    sessions: [makeSession("s1")],
+    responses: {
+      "events/subscribe": (params) => {
+        if (params.scope === "host") {
+          hostSubscribes += 1;
+          return {
+            subscriptionId: `host-${hostSubscribes}`,
+            starting: { epoch: "host-epoch", sequence: 5 },
+            replayComplete: true,
+          };
+        }
+        sessionSubscribes += 1;
+        return sessionSubscribes === 1
+          ? {
+              subscriptionId: "session-1",
+              starting: { epoch: "session-old", sequence: 9 },
+              replayComplete: true,
+            }
+          : {
+              subscriptionId: "session-2",
+              starting: { epoch: "session-new", sequence: 1 },
+              replayComplete: false,
+              resyncReason: "epoch",
+            };
+      },
+      "session/attach": () => {
+        attaches += 1;
+        const snapshot = {
+          session: makeSession("s1", { status: "waiting_permission" }),
+          queuedTurns: [],
+          items: [],
+          activeItems: [],
+          pendingApprovals: attaches === 1 ? [] : [pendingApproval],
+          pendingInputs: [],
+          hasMoreHistory: false,
+          cursor: attaches === 1
+            ? { epoch: "session-old", sequence: 8 }
+            : { epoch: "session-new", sequence: 2 },
+          revision: 4,
+          generatedAt: "2026-09-18T10:01:00.000Z",
+        };
+        return { session: snapshot.session, snapshot };
+      },
+      "session/get": () => ({
+        session: makeSession("s1", { queuedTurnIds: ["queued-1"] }),
+      }),
+    },
+  });
+
+  await conn.open();
+  await router.route(IPC.invoke.sessionGet, [{ id: remote("s1"), messageLimit: 10 }]);
+  client.changeState("reconnecting");
+  await client.recover();
+  await waitFor(() => events.some(({ channel }) => channel === IPC.event.agentQueueChanged));
+
+  assert.equal(attaches, 2, "reconnect must attach after subscribe reports an epoch gap");
+  const reconnectSubscribe = client.calls.filter((call) => call.method === "events/subscribe" && call.params.scope === "session")[1];
+  assert.deepEqual(reconnectSubscribe.params.after, { epoch: "session-old", sequence: 8 });
+  const approvalEvent = events.find(({ channel, payload }) =>
+    channel === IPC.event.agentMessage && payload.event.type === "tool_permission_request",
+  );
+  assert.equal(
+    approvalEvent.payload.event.request.requestId,
+    makeRemoteApprovalRequestId(remote("s1"), "approval-1"),
+  );
+  const queueEvent = events.find(({ channel }) => channel === IPC.event.agentQueueChanged);
+  assert.equal(queueEvent.payload.sessionId, remote("s1"));
+  assert.equal(queueEvent.payload.entries[0].content, "");
+  const reconnected = events.find(({ payload }) => payload.reason === "remote.host.reconnected");
+  assert.deepEqual(reconnected.payload.sessionResyncIds, [remote("s1")]);
+});
+
+test("a closed session subscription with an incomplete replay reattaches and refreshes the session", async () => {
+  let sessionSubscribes = 0;
+  let attaches = 0;
+  const { conn, router, client, events } = setup({
+    sessions: [makeSession("s1")],
+    responses: {
+      "events/subscribe": (params) => {
+        if (params.scope === "host") return { subscriptionId: "host-1", replayComplete: true };
+        sessionSubscribes += 1;
+        return sessionSubscribes === 1
+          ? { subscriptionId: "session-1", replayComplete: true }
+          : {
+              subscriptionId: "session-2",
+              replayComplete: false,
+              resyncReason: "evicted",
+            };
+      },
+      "session/attach": () => {
+        attaches += 1;
+        const session = makeSession("s1");
+        return {
+          session,
+          snapshot: {
+            session,
+            queuedTurns: [],
+            items: [],
+            activeItems: [],
+            pendingApprovals: [],
+            pendingInputs: [],
+            hasMoreHistory: false,
+            cursor: { epoch: "epoch-new", sequence: 3 },
+            revision: 3,
+            generatedAt: "2026-09-18T10:01:00.000Z",
+          },
+        };
+      },
+    },
+  });
+
+  await conn.open();
+  await router.route(IPC.invoke.sessionGet, [{ id: remote("s1"), messageLimit: 10 }]);
+  client.closeSubscription({
+    subscriptionId: "session-1",
+    error: { code: "EVENTS_CLOSED", message: "replay window expired" },
+    lastSafeCursor: { epoch: "epoch-old", sequence: 9 },
+  });
+  await waitFor(() => attaches === 2);
+
+  const notice = events.find(({ channel, payload }) =>
+    channel === IPC.event.sessionsChanged && payload.reason === "remote.session.resynced",
+  );
+  assert.deepEqual(notice.payload.sessionResyncIds, [remote("s1")]);
+  await conn.close();
+});
+
+test("a closed host subscription with an incomplete replay refreshes the session list", async () => {
+  let hostSubscribes = 0;
+  let listCalls = 0;
+  const { conn, client, events } = setup({
+    responses: {
+      "events/subscribe": (params) => {
+        if (params.scope !== "host") return { subscriptionId: "session-1", replayComplete: true };
+        hostSubscribes += 1;
+        return hostSubscribes === 1
+          ? { subscriptionId: "host-1", replayComplete: true }
+          : {
+              subscriptionId: "host-2",
+              replayComplete: false,
+              resyncReason: "epoch",
+            };
+      },
+      "session/list": () => {
+        listCalls += 1;
+        return { sessions: [makeSession("s1", { title: listCalls === 1 ? "old" : "new" })] };
+      },
+    },
+  });
+
+  await conn.open();
+  assert.equal(conn.listSessions()[0].title, "old");
+  client.closeSubscription({
+    subscriptionId: "host-1",
+    error: { code: "EVENTS_CLOSED", message: "replay window expired" },
+    lastSafeCursor: { epoch: "host-old", sequence: 8 },
+  });
+  await waitFor(() => listCalls === 2);
+
+  assert.equal(conn.listSessions()[0].title, "new");
+  assert.ok(events.some(({ channel, payload }) =>
+    channel === IPC.event.sessionsChanged && payload.reason === "remote.host.resynced",
+  ));
+  await conn.close();
 });
 
 test("closing during reconnect prevents a late snapshot from restoring sessions or relay state", async () => {

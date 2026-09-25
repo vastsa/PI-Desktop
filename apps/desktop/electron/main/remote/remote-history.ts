@@ -147,7 +147,13 @@ export function createRemoteHistory(options: RemoteHistoryOptions): RemoteHistor
         errorCode: ErrorCodes.INTERNAL,
       });
     }
-    let items = snapshot.items;
+    const snapshotItems = new Map(snapshot.items.map((item) => [item.id, item]));
+    for (const item of snapshot.activeItems) {
+      if (!snapshotItems.has(item.id)) snapshotItems.set(item.id, item);
+    }
+    let items = [...snapshotItems.values()].sort((left, right) =>
+      left.createdAt.localeCompare(right.createdAt),
+    );
     let hasMore = snapshot.hasMoreHistory;
     if (limit !== undefined) {
       const bounded = clampLimit(limit);

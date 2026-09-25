@@ -136,9 +136,14 @@ Host 为每个会话生成 `epoch`，并在其中为持久事件分配严格递�
 
 ```text
 cursor in current epoch and retained -> replay durable sequence > after
-epoch changed or cursor evicted      -> resync.required + snapshot
-cursor ahead                         -> reject and refresh snapshot
+epoch changed or cursor evicted      -> replayComplete:false，通过 session/attach 获取快照
+cursor ahead                         -> replayComplete:false，通过 session/attach 获取快照
 ```
+
+桌面会保存 attach 游标和 subscribe 返回的 `starting` 游标，即使期间没有收到持久事件。
+传输恢复后，如果保留会话的事件回放不完整，桌面会自动重新 attach；controller attach 会恢复持久队列，桌面会从 Host 快照恢复仍处于待处理状态的工具审批和输入请求。Host 进程重启可能会取消由中断运行时回合持有的请求；跨进程重启恢复的是 Host 持久队列。
+当前快照不包含完整的计划或目标提案内容，因此不会从快照重建这两类审批。
+若该会话当前正在聊天页显示，桌面会就地刷新 transcript，不改变页面或当前选中的会话。
 
 ```text
 Client -> initialize / attach / subscribe

@@ -20,6 +20,7 @@ import type {
   RacpRemoteError,
   RacpServerCapabilities,
   RacpSession,
+  RacpSessionSnapshot,
   SessionSummary,
 } from "@pi-desktop/shared";
 import type { BackendRouter, RemoteBackend } from "./backend-router.js";
@@ -30,7 +31,11 @@ import {
   type RemoteEventBridge,
   type RemoteLifecycleEvent,
 } from "./remote-event-bridge.js";
-import { createRemoteSubscriptions, type RemoteSubscriptions } from "./remote-subscriptions.js";
+import {
+  createRemoteSubscriptions,
+  type RemoteSubscriptionRecovery,
+  type RemoteSubscriptions,
+} from "./remote-subscriptions.js";
 import { remoteSessionSummary, type RemoteHostIdentity } from "./remote-transcript.js";
 import type { RemoteToolRelay } from "./remote-tool-relay.js";
 
@@ -109,6 +114,7 @@ export interface RemoteHostConnection {
 }
 
 type SessionListResponse = { sessions: RacpSession[] };
+type AttachSnapshotResponse = { session: RacpSession; snapshot?: RacpSessionSnapshot };
 
 /** Session-scope kinds after which the host's queue may have changed. */
 const QUEUE_KINDS: ReadonlySet<string> = new Set([
@@ -139,6 +145,11 @@ export function createRemoteHostConnection(
   let snapshotEvents: RemoteLifecycleEvent[] | null = null;
   let recovery: Promise<void> | null = null;
   const queueSyncs = new Set<string>();
+  let reconcileSession: (
+    hostSessionId: string,
+    reason: RemoteSubscriptionRecovery["reason"],
+    generation: number,
+  ) => Promise<boolean> = async () => false;
 
   const summaryOf = (session: RacpSession) =>
     remoteSessionSummary(makeRemoteSessionId(hostKey, session.id), session, host);
@@ -194,8 +205,10 @@ export function createRemoteHostConnection(
       noteSession(session);
     },
     onSessionRemoved: forgetSession,
-    onSessionRead: (hostSessionId, cursor) => {
-      void subscriptions?.touch(hostSessionId, cursor);
+    onSessionRead: async (hostSessionId, cursor) => {
+      const resync = await subscriptions?.touch(hostSessionId, cursor);
+      if (!resync) return false;
+      return reconcileSession(hostSessionId, resync.reason, lifecycleGeneration);
     },
   });
 
@@ -203,13 +216,15 @@ export function createRemoteHostConnection(
   const syncQueue = (hostSessionId: string) => {
     if (queueSyncs.has(hostSessionId)) return;
     queueSyncs.add(hostSessionId);
+    const generation = lifecycleGeneration;
     queueMicrotask(() => {
+      if (!opened || generation !== lifecycleGeneration) return;
       queueSyncs.delete(hostSessionId);
-      if (!opened) return;
       const sessionId = makeRemoteSessionId(hostKey, hostSessionId);
       backend
         .invoke(IPC.invoke.agentQueueList, [{ sessionId }])
         .then((result) => {
+          if (!isCurrentGeneration(generation)) return;
           const { entries } = result as { entries: QueuedTurnSummary[] };
           emit(IPC.event.agentQueueChanged, { sessionId, entries } satisfies AgentQueueChangedEvent);
         })
@@ -288,6 +303,37 @@ export function createRemoteHostConnection(
   const isCurrentGeneration = (generation: number): boolean =>
     opened && generation === lifecycleGeneration;
 
+  reconcileSession = async (
+    hostSessionId,
+    reason,
+    generation,
+  ): Promise<boolean> => {
+    if (!isCurrentGeneration(generation)) return false;
+    const wasKnown = sessions.has(hostSessionId);
+    try {
+      const result = await client.request<AttachSnapshotResponse>("session/attach", {
+        sessionId: hostSessionId,
+        includeSnapshot: true,
+      });
+      const snapshot = result.snapshot;
+      if (!snapshot || !isCurrentGeneration(generation)) return false;
+      // A concurrent archive must win over an older attach response.
+      if (wasKnown && !sessions.has(hostSessionId)) return false;
+      const current = sessions.get(hostSessionId);
+      if (!current || (snapshot.session.revision ?? 0) >= (current.revision ?? 0)) {
+        storeSession(snapshot.session, false);
+      }
+      subscriptions?.noteStatus(hostSessionId, snapshot.session.status);
+      subscriptions?.checkpoint(hostSessionId, snapshot.cursor);
+      bridge?.restoreSnapshot(hostSessionId, snapshot);
+      syncQueue(hostSessionId);
+      return true;
+    } catch (error) {
+      log("warn", `remote session resync failed for ${hostSessionId}`, { hostKey, reason, error });
+      return false;
+    }
+  };
+
   const refreshSessionSnapshot = async (generation: number): Promise<void> => {
     const events: RemoteLifecycleEvent[] = [];
     snapshotEvents = events;
@@ -325,8 +371,9 @@ export function createRemoteHostConnection(
     if (recovery) return recovery;
     const generation = lifecycleGeneration;
     const pending = (async () => {
+      let resyncs: RemoteSubscriptionRecovery[] = [];
       try {
-        await subscriptions?.reconnect();
+        resyncs = (await subscriptions?.reconnect()) ?? [];
       } catch (error) {
         log("warn", "remote event subscriptions failed to restore", { hostKey, error });
       }
@@ -338,13 +385,26 @@ export function createRemoteHostConnection(
       await refreshSessionSnapshot(generation);
       if (!isCurrentGeneration(generation)) return;
 
+      const restored = await Promise.all(
+        resyncs.map(async ({ hostSessionId, reason }) => {
+          if (!sessions.has(hostSessionId)) return null;
+          const recovered = await reconcileSession(hostSessionId, reason, generation);
+          return recovered ? makeRemoteSessionId(hostKey, hostSessionId) : null;
+        }),
+      );
+      if (!isCurrentGeneration(generation)) return;
+
       try {
         await options.toolRelay?.reconnected();
       } catch (error) {
         log("warn", "remote MCP relay failed to recover", { hostKey, error });
       }
       if (!isCurrentGeneration(generation)) return;
-      emit(IPC.event.sessionsChanged, { reason: "remote.host.reconnected", hostKey });
+      emit(IPC.event.sessionsChanged, {
+        reason: "remote.host.reconnected",
+        hostKey,
+        sessionResyncIds: restored.filter((sessionId): sessionId is string => sessionId !== null),
+      });
     })();
     const wrapped = pending.finally(() => {
       if (recovery === wrapped) recovery = null;
@@ -365,6 +425,26 @@ export function createRemoteHostConnection(
           ? { maxSubscriptions: client.limits()!.maxSubscriptionsPerConnection }
           : {}),
         log,
+        onSessionRecovery: async ({ hostSessionId, reason }) => {
+          const recovered = await reconcileSession(hostSessionId, reason, lifecycleGeneration);
+          if (recovered) {
+            emit(IPC.event.sessionsChanged, {
+              reason: "remote.session.resynced",
+              hostKey,
+              sessionResyncIds: [makeRemoteSessionId(hostKey, hostSessionId)],
+            });
+          }
+        },
+        onHostRecovery: async () => {
+          if (recovery) {
+            await recovery;
+            return;
+          }
+          await refreshSessionSnapshot(lifecycleGeneration);
+          if (isCurrentGeneration(lifecycleGeneration)) {
+            emit(IPC.event.sessionsChanged, { reason: "remote.host.resynced", hostKey });
+          }
+        },
       });
       bridge = createRemoteEventBridge({
         hostKey,

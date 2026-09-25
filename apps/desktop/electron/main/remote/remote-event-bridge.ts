@@ -19,6 +19,7 @@ import type {
   RacpEventEnvelope,
   RacpInputRequest,
   RacpSession,
+  RacpSessionSnapshot,
   RemoteTerminalEvent,
   ToolPermissionRequest,
 } from "@pi-desktop/shared";
@@ -55,6 +56,8 @@ export type RemoteEventBridgeOptions = {
 export interface RemoteEventBridge {
   /** Handle one RACP envelope. Unknown kinds are dropped. */
   handle(envelope: RacpEventEnvelope): void;
+  /** Restore actionable requests omitted by event replay after a resync. */
+  restoreSnapshot(hostSessionId: string, snapshot: RacpSessionSnapshot): void;
 }
 
 const APPROVAL_KIND = { tool: "tool", plan: "plan", goal: "goal" } as const;
@@ -160,17 +163,20 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
   const log = options.log ?? (() => undefined);
   const remoteIdOf = (hostSessionId: string) => makeRemoteSessionId(hostKey, hostSessionId);
   const emitAgentEvent = (
-    envelope: RacpEventEnvelope,
     remoteSessionId: string,
+    occurredAt: string,
+    turnId: string | undefined,
     event: AgentEvent,
+    parentToolCallId?: string,
+    agentName?: string,
   ): void => {
     const local: AgentEventEnvelope = {
       sessionId: remoteSessionId,
-      ...(envelope.turnId ? { turnId: envelope.turnId } : {}),
-      ts: Date.parse(envelope.occurredAt) || Date.now(),
+      ...(turnId ? { turnId } : {}),
+      ts: Date.parse(occurredAt) || Date.now(),
       event,
-      ...(envelope.parentToolCallId ? { parentToolCallId: envelope.parentToolCallId } : {}),
-      ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
+      ...(parentToolCallId ? { parentToolCallId } : {}),
+      ...(agentName ? { agentName } : {}),
     };
     emit(IPC.event.agentMessage, local);
   };
@@ -221,7 +227,14 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
       case "turn.activity": {
         const event = extractAgentEvent(envelope.payload);
         if (!event) return;
-        emitAgentEvent(envelope, remoteSessionId, event);
+        emitAgentEvent(
+          remoteSessionId,
+          envelope.occurredAt,
+          envelope.turnId,
+          event,
+          envelope.parentToolCallId,
+          envelope.agentName,
+        );
         return;
       }
       case "session.changed": {
@@ -235,9 +248,12 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         if (isRecord(payload) && isRecord(payload.event) && payload.event.state !== undefined) {
           const planning = payload.event as unknown as PlanningStateEvent;
           emitAgentEvent(
-            envelope,
             remoteSessionId,
+            envelope.occurredAt,
+            envelope.turnId,
             toPlanningStateAgentEvent(remoteSessionId, planning),
+            envelope.parentToolCallId,
+            envelope.agentName,
           );
         }
         return;
@@ -248,19 +264,33 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         // Plan / goal approvals ride the following `planning_state` event; the
         // renderer's plan card is driven by that, not by a synthetic tool card.
         if (approval.kind !== APPROVAL_KIND.tool) return;
-        emitAgentEvent(envelope, remoteSessionId, {
-          type: "tool_permission_request",
-          request: toToolPermissionRequest(remoteSessionId, approval),
-        });
+        emitAgentEvent(
+          remoteSessionId,
+          envelope.occurredAt,
+          envelope.turnId,
+          {
+            type: "tool_permission_request",
+            request: toToolPermissionRequest(remoteSessionId, approval),
+          },
+          envelope.parentToolCallId,
+          envelope.agentName,
+        );
         return;
       }
       case "input.requested": {
         const input = extractInputRequest(envelope.payload);
         if (!input) return;
-        emitAgentEvent(envelope, remoteSessionId, {
-          type: "asktool_request",
-          request: toAskToolRequest(remoteSessionId, input),
-        });
+        emitAgentEvent(
+          remoteSessionId,
+          envelope.occurredAt,
+          envelope.turnId,
+          {
+            type: "asktool_request",
+            request: toAskToolRequest(remoteSessionId, input),
+          },
+          envelope.parentToolCallId,
+          envelope.agentName,
+        );
         return;
       }
       case "terminal.output": {
@@ -320,6 +350,32 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
     }
   };
 
+  const restoreSnapshot = (hostSessionId: string, snapshot: RacpSessionSnapshot): void => {
+    const remoteSessionId = remoteIdOf(hostSessionId);
+    for (const approval of snapshot.pendingApprovals) {
+      // The current RACP plan approval lacks its proposal body, so only tool
+      // approvals can be reconstructed as complete renderer requests.
+      if (approval.kind !== APPROVAL_KIND.tool) continue;
+      emitAgentEvent(remoteSessionId, snapshot.generatedAt, approval.turnId, {
+        type: "tool_permission_request",
+        request: toToolPermissionRequest(remoteSessionId, approval),
+      }, undefined, approval.agentName);
+    }
+    for (const input of snapshot.pendingInputs) {
+      emitAgentEvent(
+        remoteSessionId,
+        snapshot.generatedAt,
+        input.turnId,
+        {
+          type: "asktool_request",
+          request: toAskToolRequest(remoteSessionId, input),
+        },
+        input.parentToolCallId,
+        input.agentName,
+      );
+    }
+  };
+
   return {
     handle(envelope) {
       try {
@@ -327,6 +383,13 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         if (envelope.scope === "session") return handleSessionScope(envelope);
       } catch (error) {
         log("warn", `remote event bridge failed on ${envelope.kind}`, error);
+      }
+    },
+    restoreSnapshot(hostSessionId, snapshot) {
+      try {
+        restoreSnapshot(hostSessionId, snapshot);
+      } catch (error) {
+        log("warn", `remote snapshot restore failed for session ${hostSessionId}`, error);
       }
     },
   };

@@ -62,7 +62,7 @@ function fakeClient(responses) {
 function attach(snapshotItems, hasMoreHistory, cursor = { epoch: "e", sequence: 5 }) {
   return () => ({
     session: session(),
-    snapshot: { session: session(), items: snapshotItems, hasMoreHistory, cursor },
+    snapshot: { session: session(), items: snapshotItems, activeItems: [], hasMoreHistory, cursor },
   });
 }
 
@@ -94,6 +94,36 @@ test("a tail read that fits reports the host's hasMoreHistory and start 0 when c
   assert.equal(read.session.messages.length, 3);
   assert.equal(read.session.hasMoreBefore, false);
   assert.equal(read.session.messageStart, 0);
+});
+
+test("a tail read includes active snapshot items without duplicating durable items", async () => {
+  const activeItem = {
+    ...item(3),
+    status: "streaming",
+    createdAt: "2026-09-18T10:00:03.000Z",
+    content: { id: "m3", role: "assistant", text: "partial" },
+  };
+  const client = fakeClient({
+    "session/attach": () => ({
+      session: session(),
+      snapshot: {
+        session: session(),
+        items: items(1, 2).map((entry, index) => ({
+          ...entry,
+          createdAt: `2026-09-18T10:00:0${index + 1}.000Z`,
+        })),
+        activeItems: [item(2), activeItem],
+        hasMoreHistory: false,
+        cursor: { epoch: "e", sequence: 5 },
+      },
+    }),
+  });
+  const history = createRemoteHistory({ client, host: HOST });
+
+  const read = await history.read(REMOTE_ID, "s1", { messageLimit: 10 });
+
+  assert.deepEqual(read.session.messages.map((message) => message.id), ["m1", "m2", "m3"]);
+  assert.equal(read.session.messages[2].text, "partial");
 });
 
 test("a tail read clamps oversized limits to the maximum history page", async () => {

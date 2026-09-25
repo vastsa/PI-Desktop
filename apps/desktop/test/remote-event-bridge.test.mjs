@@ -243,6 +243,66 @@ test("input.requested synthesizes an asktool_request keyed by the RACP input id"
   assert.equal(request.questions[0].multiSelect, false);
 });
 
+test("snapshot resync restores pending tool approvals and input requests", () => {
+  const { bridge, events } = collect();
+  bridge.restoreSnapshot(HOST_SESSION_ID, {
+    session: { id: HOST_SESSION_ID },
+    queuedTurns: [],
+    items: [],
+    activeItems: [],
+    pendingApprovals: [
+      {
+        id: "approval-1",
+        sessionId: HOST_SESSION_ID,
+        turnId: "turn-1",
+        kind: "tool",
+        summary: "write a file",
+        expiresAt: "2026-09-18T10:05:00.000Z",
+        revision: 4,
+        toolName: "write",
+        risk: "high",
+        allowedDecisions: ["allow-once", "deny"],
+      },
+      {
+        id: "plan-1",
+        sessionId: HOST_SESSION_ID,
+        turnId: "turn-1",
+        kind: "plan",
+        summary: "approve plan",
+        expiresAt: "2026-09-18T10:05:00.000Z",
+        revision: 4,
+        allowedDecisions: ["approve", "reject"],
+        allowedPermissionModes: ["default"],
+      },
+    ],
+    pendingInputs: [
+      {
+        id: "input-1",
+        sessionId: HOST_SESSION_ID,
+        turnId: "turn-1",
+        expiresAt: "2026-09-18T10:05:00.000Z",
+        questions: [{ id: "q1", question: "continue?", options: ["yes"], multiSelect: false }],
+      },
+    ],
+    hasMoreHistory: false,
+    cursor: { epoch: "epoch-2", sequence: 7 },
+    revision: 4,
+    generatedAt: "2026-09-18T10:01:00.000Z",
+  });
+
+  assert.equal(events.length, 2);
+  assert.equal(events[0].channel, IPC.event.agentMessage);
+  assert.equal(events[0].payload.sessionId, REMOTE_SESSION_ID);
+  assert.equal(events[0].payload.event.type, "tool_permission_request");
+  assert.equal(
+    events[0].payload.event.request.requestId,
+    makeRemoteApprovalRequestId(REMOTE_SESSION_ID, "approval-1"),
+  );
+  assert.equal(events[1].payload.event.type, "asktool_request");
+  assert.equal(events[1].payload.event.request.requestId, "input-1");
+  assert.equal(events[1].payload.event.request.sessionId, REMOTE_SESSION_ID);
+});
+
 test("terminal output and state events use namespaced sessions and terminal ids", () => {
   const { bridge, events } = collect();
   bridge.handle(makeEnvelope({

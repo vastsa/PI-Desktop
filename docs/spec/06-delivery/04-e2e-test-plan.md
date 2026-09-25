@@ -13027,10 +13027,14 @@ browser milestones are scheduled.
   2) Observe the pairing exchange and the resulting device token. 3) Create a
   session under a remote project through `project/list` and
   `session/create`. 4) Start a turn whose fixture reads, edits, and runs a
-  command in the remote project, and approve the command from the desktop
-  card. Ask the turn to invoke the `accept-edits` subagent to write a second
-  file; confirm the remote ceiling still raises an approval before the write,
-  then allow it once. Queue another delegated write turn and restart `pi-host`
+  command in the remote project. With its tool approval still pending, drop the
+  SSH transport while keeping `pi-host` running, restore the connection, and
+  confirm the approval card is restored before approving it. Ask the turn to invoke the `accept-edits`
+  subagent to write a second file; confirm the remote ceiling still raises an
+  approval before the write, then allow it once. In a separate turn, have the
+  fixture issue an `asktool` input request, drop and restore the SSH transport
+  while the request is pending, confirm the card returns, and answer it. Queue
+  another delegated write turn and restart `pi-host`
   before it drains; after reconnect, confirm it still requires approval. 5)
   Switch the session to Plan mode and back with `session/configure` while idle,
   then attempt it while a turn runs. 6) Open Files and Review for the remote
@@ -13053,7 +13057,12 @@ browser milestones are scheduled.
   there; the approval card appears in the desktop with the local vocabulary;
   the host-core applies the `ask` ceiling to the parent and delegated tool
   calls, even though the Session is `auto` and the delegate is `accept-edits`;
-  the queued delegated turn retains that ceiling after Host restart;
+  after an SSH transport interruption while `pi-host` remains running, the
+  connected Desktop reattaches retained sessions, restores pending tool approvals
+  and input requests from the Host snapshot, and refreshes the currently visible
+  recovered transcript in place. After Host process restart, controller attach
+  resumes the Host's persisted queue and the Desktop resynchronizes its queue
+  view; the queued delegated turn retains its permission ceiling;
   the remote host-core binds loopback only; `session/configure` succeeds while
   idle and returns `CONFLICT` while running; Files and the Review working-tree
   diff come from the remote session root, Review keeps recorded assistant

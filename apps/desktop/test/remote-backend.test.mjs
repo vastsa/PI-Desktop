@@ -704,6 +704,40 @@ test("sessionGet tail read reports the attach cursor through onSessionRead", asy
   assert.deepEqual(reads, [[HOST_SESSION_ID, { epoch: "e", sequence: 7 }]]);
 });
 
+test("sessionGet rereads its transcript after onSessionRead detects an epoch gap", async () => {
+  let attaches = 0;
+  let cursorChecks = 0;
+  const { backend, client } = makeBackend(
+    {
+      "session/attach": () => {
+        attaches += 1;
+        return {
+          session: makeRacpSession({ title: attaches === 1 ? "stale" : "resynced" }),
+          snapshot: makeRacpSnapshot({
+            session: makeRacpSession({ title: attaches === 1 ? "stale" : "resynced" }),
+            cursor: { epoch: attaches === 1 ? "old" : "new", sequence: attaches },
+          }),
+        };
+      },
+    },
+    {
+      onSessionRead: async () => {
+        cursorChecks += 1;
+        return cursorChecks === 1;
+      },
+    },
+  );
+
+  const { session } = await backend.invoke(IPC.invoke.sessionGet, [
+    { id: REMOTE_SESSION_ID, messageLimit: 10 },
+  ]);
+
+  assert.equal(attaches, 2);
+  assert.equal(cursorChecks, 2);
+  assert.equal(session.title, "resynced");
+  assert.equal(client.calls.filter((call) => call.method === "session/attach").length, 2);
+});
+
 test("agentQueuePush with attachments raises CAPABILITY_UNAVAILABLE without any RACP call", async () => {
   const { backend, client } = makeBackend();
   await assert.rejects(

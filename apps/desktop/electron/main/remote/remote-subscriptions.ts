@@ -29,6 +29,8 @@ export type RemoteSubscriptionsOptions = {
   /** Ack a quieter stream after this delay; defaults to 250 ms. */
   ackDelayMs?: number;
   log?: (level: "warn" | "error", message: string, data?: unknown) => void;
+  onSessionRecovery?: (recovery: RemoteSubscriptionRecovery) => Promise<unknown> | unknown;
+  onHostRecovery?: (reason: RemoteSubscriptionRecovery["reason"]) => Promise<unknown> | unknown;
 };
 
 export interface RemoteSubscriptions {
@@ -38,22 +40,29 @@ export interface RemoteSubscriptions {
    * Make sure `hostSessionId` streams, evicting the least recently used idle
    * session when the cap is reached. `after` resumes from an attach cursor.
    */
-  touch(hostSessionId: string, after?: RacpCursor): Promise<void>;
+  touch(hostSessionId: string, after?: RacpCursor): Promise<RemoteSubscriptionRecovery | undefined>;
   /** Record a session's status; busy sessions are never evicted. */
   noteStatus(hostSessionId: string, status: RacpSessionStatus | undefined): void;
   /** Drop a session's subscription (the session is gone). */
   release(hostSessionId: string): Promise<void>;
   /** Feed every delivered envelope; drives the throttled acks. */
   observe(envelope: RacpEventEnvelope): void;
+  /** Establish a new safe baseline from an authoritative session snapshot. */
+  checkpoint(hostSessionId: string, cursor: RacpCursor): void;
   /** The host closed a subscription; reopen it from `lastSafeCursor`. */
   closed(subscriptionId: string, lastSafeCursor: RacpCursor): void;
   /** Restore retained scopes after the transport reconnects. */
-  reconnect(): Promise<void>;
+  reconnect(): Promise<RemoteSubscriptionRecovery[]>;
   /** Whether `hostSessionId` currently holds a subscription. */
   isSubscribed(hostSessionId: string): boolean;
   /** Forget every subscription (the transport went away). */
   reset(): void;
 }
+
+export type RemoteSubscriptionRecovery = {
+  hostSessionId: string;
+  reason: "epoch" | "evicted" | "ahead";
+};
 
 const DEFAULT_MAX = 8;
 const DEFAULT_ACK_EVERY = 64;
@@ -63,9 +72,18 @@ const BUSY: ReadonlySet<string> = new Set(["running", "waiting_permission"]);
 
 type Slot = {
   subscriptionId: string | null;
+  /** Last event or attach snapshot known safe for this session. */
+  cursor?: RacpCursor;
   /** Monotonic use stamp; larger is more recent. */
   usedAt: number;
-  pending?: Promise<void>;
+  pending?: Promise<RemoteSubscriptionRecovery | undefined>;
+};
+
+type SubscribeResult = {
+  subscriptionId: string;
+  starting?: RacpCursor;
+  replayComplete?: boolean;
+  resyncReason?: "epoch" | "evicted" | "ahead";
 };
 
 type AckState = { sequence: number; unacked: number; timer: ReturnType<typeof setTimeout> | null };
@@ -78,12 +96,26 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
   const ackDelayMs = options.ackDelayMs ?? DEFAULT_ACK_DELAY_MS;
 
   let hostSubscriptionId: string | null = null;
+  let hostCursor: RacpCursor | undefined;
   const slots = new Map<string, Slot>();
   const statuses = new Map<string, string>();
   const acks = new Map<string, AckState>();
   let clock = 0;
   let generation = 0;
-  let restoring: Promise<void> | null = null;
+  let restoring: Promise<RemoteSubscriptionRecovery[]> | null = null;
+
+  const advanceCursor = (
+    current: RacpCursor | undefined,
+    candidate: RacpCursor,
+  ): RacpCursor => {
+    if (current?.epoch === candidate.epoch && current.sequence > candidate.sequence) return current;
+    return candidate;
+  };
+
+  const subscriptionCursor = (result: SubscribeResult): RacpCursor | undefined =>
+    result.starting
+      ? { epoch: result.starting.epoch, sequence: Math.max(0, result.starting.sequence - 1) }
+      : undefined;
 
   const subscriptionOwner = (subscriptionId: string): string | null => {
     for (const [sessionId, slot] of slots) {
@@ -110,9 +142,8 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
     acks.delete(subscriptionId);
   };
 
-  const subscribe = async (params: Record<string, unknown>): Promise<string> => {
-    const result = await client.request<{ subscriptionId: string }>("events/subscribe", params);
-    return result.subscriptionId;
+  const subscribe = async (params: Record<string, unknown>): Promise<SubscribeResult> => {
+    return client.request<SubscribeResult>("events/subscribe", params);
   };
 
   const unsubscribe = (subscriptionId: string | null) => {
@@ -139,26 +170,37 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
     return victim;
   };
 
-  const open = (hostSessionId: string, slot: Slot, after?: RacpCursor): Promise<void> => {
+  const open = (
+    hostSessionId: string,
+    slot: Slot,
+    after?: RacpCursor,
+  ): Promise<RemoteSubscriptionRecovery | undefined> => {
     const startedIn = generation;
+    if (after) slot.cursor = advanceCursor(slot.cursor, after);
     const pending = subscribe({
       scope: "session",
       sessionId: hostSessionId,
       ...(after ? { after } : {}),
     })
-      .then((subscriptionId) => {
+      .then((result) => {
         if (startedIn !== generation || slots.get(hostSessionId) !== slot) {
           // Released or reset while subscribing: give the slot straight back.
-          unsubscribe(subscriptionId);
-          return;
+          unsubscribe(result.subscriptionId);
+          return undefined;
         }
-        slot.subscriptionId = subscriptionId;
+        slot.subscriptionId = result.subscriptionId;
+        const baseline = subscriptionCursor(result);
+        if (baseline) slot.cursor = advanceCursor(slot.cursor, baseline);
+        return result.replayComplete === false
+          ? { hostSessionId, reason: result.resyncReason ?? "epoch" }
+          : undefined;
       })
       .catch((error) => {
         if (slots.get(hostSessionId) === slot && errorCode(error) !== "HOST_DISCONNECTED") {
           slots.delete(hostSessionId);
         }
         log("warn", `events/subscribe failed for session ${hostSessionId}`, error);
+        return undefined;
       })
       .finally(() => {
         if (slot.pending === pending) delete slot.pending;
@@ -178,11 +220,16 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
     async openHost(after) {
       const startedIn = generation;
       try {
-        const subscriptionId = await subscribe({
+        const result = await subscribe({
           scope: "host",
           ...(after ? { after } : {}),
         });
-        if (startedIn === generation) hostSubscriptionId = subscriptionId;
+        if (startedIn === generation) {
+          hostSubscriptionId = result.subscriptionId;
+          const baseline = subscriptionCursor(result);
+          if (baseline) hostCursor = advanceCursor(hostCursor, baseline);
+          else if (after) hostCursor = advanceCursor(hostCursor, after);
+        }
       } catch (error) {
         log("warn", "events/subscribe host scope failed", error);
       }
@@ -195,15 +242,16 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
       const existing = slots.get(hostSessionId);
       if (existing) {
         existing.usedAt = ++clock;
-        if (existing.pending) await existing.pending;
+        if (after) existing.cursor = advanceCursor(existing.cursor, after);
+        if (existing.pending) return existing.pending;
         else if (!existing.subscriptionId) {
-          await open(
+          return open(
             hostSessionId,
             existing,
-            after ?? client.cursorFor?.(hostSessionId),
+            existing.cursor ?? client.cursorFor?.(hostSessionId),
           );
         }
-        return;
+        return undefined;
       }
       if (slots.size >= capacity) {
         const victim = evictionCandidate(hostSessionId);
@@ -217,7 +265,7 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
       }
       const slot: Slot = { subscriptionId: null, usedAt: ++clock };
       slots.set(hostSessionId, slot);
-      await open(hostSessionId, slot, after);
+      return open(hostSessionId, slot, after ?? client.cursorFor?.(hostSessionId));
     },
     noteStatus(hostSessionId, status) {
       if (status === undefined) statuses.delete(hostSessionId);
@@ -232,6 +280,13 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
     },
     observe(envelope) {
       if (envelope.sequence === undefined) return;
+      const cursor = { epoch: envelope.epoch, sequence: envelope.sequence };
+      if (envelope.scope === "host") {
+        hostCursor = advanceCursor(hostCursor, cursor);
+      } else if (envelope.sessionId !== undefined) {
+        const slot = slots.get(envelope.sessionId);
+        if (slot) slot.cursor = advanceCursor(slot.cursor, cursor);
+      }
       const subscriptionId =
         envelope.scope === "host"
           ? hostSubscriptionId
@@ -255,15 +310,28 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
         state.timer.unref?.();
       }
     },
+    checkpoint(hostSessionId, cursor) {
+      const slot = slots.get(hostSessionId);
+      if (slot) slot.cursor = advanceCursor(slot.cursor, cursor);
+    },
     closed(subscriptionId, lastSafeCursor) {
       dropAck(subscriptionId);
       if (subscriptionId === hostSubscriptionId) {
         hostSubscriptionId = null;
+        hostCursor = advanceCursor(hostCursor, lastSafeCursor);
         const startedIn = generation;
-        subscribe({ scope: "host", after: lastSafeCursor })
-          .then((id) => {
-            if (startedIn === generation) hostSubscriptionId = id;
-            else unsubscribe(id);
+        subscribe({ scope: "host", after: hostCursor })
+          .then(async (result) => {
+            if (startedIn !== generation) {
+              unsubscribe(result.subscriptionId);
+              return;
+            }
+            hostSubscriptionId = result.subscriptionId;
+            const baseline = subscriptionCursor(result);
+            if (baseline) hostCursor = advanceCursor(hostCursor, baseline);
+            if (result.replayComplete === false) {
+              await options.onHostRecovery?.(result.resyncReason ?? "epoch");
+            }
           })
           .catch((error) => log("warn", "host scope resubscribe failed", error));
         return;
@@ -273,7 +341,14 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
       const slot = slots.get(owner);
       if (!slot) return;
       slot.subscriptionId = null;
-      void open(owner, slot, lastSafeCursor);
+      slot.cursor = advanceCursor(slot.cursor, lastSafeCursor);
+      void open(owner, slot, slot.cursor)
+        .then(async (resync) => {
+          if (resync) await options.onSessionRecovery?.(resync);
+        })
+        .catch((error) =>
+          log("warn", `session subscription recovery failed for ${owner}`, error),
+        );
     },
     async reconnect() {
       if (restoring) return restoring;
@@ -282,25 +357,26 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
       hostSubscriptionId = null;
       const retained = [...slots.entries()];
       for (const [, slot] of retained) slot.subscriptionId = null;
-      const restore = async () => {
+      const restore = async (): Promise<RemoteSubscriptionRecovery[]> => {
         await Promise.all(
           retained.flatMap(([, slot]) => slot.pending ? [slot.pending] : []),
         );
-        if (startedIn !== generation) return;
-        await this.openHost(client.cursorForHost?.());
-        if (startedIn !== generation) return;
-        await Promise.all(
+        if (startedIn !== generation) return [];
+        await this.openHost(hostCursor ?? client.cursorForHost?.());
+        if (startedIn !== generation) return [];
+        const recoveries = await Promise.all(
           retained.map(([sessionId, slot]) =>
             slots.get(sessionId) === slot
-              ? open(sessionId, slot, client.cursorFor?.(sessionId))
-              : Promise.resolve(),
+              ? open(sessionId, slot, slot.cursor ?? client.cursorFor?.(sessionId))
+              : Promise.resolve(undefined),
           ),
         );
+        return recoveries.filter((recovery): recovery is RemoteSubscriptionRecovery => recovery !== undefined);
       };
       const pending = restore();
       restoring = pending;
       try {
-        await pending;
+        return await pending;
       } finally {
         if (restoring === pending) restoring = null;
       }
@@ -314,6 +390,7 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
       slots.clear();
       statuses.clear();
       hostSubscriptionId = null;
+      hostCursor = undefined;
     },
   };
 }
