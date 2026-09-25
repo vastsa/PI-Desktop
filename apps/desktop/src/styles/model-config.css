@@ -211,8 +211,6 @@
 }
 
 .provider-service-chip-change,
-.provider-models-summary-manage,
-.provider-models-summary-action,
 .service-chooser-empty-action {
   flex: none;
   margin: 0;
@@ -228,24 +226,18 @@
 }
 
 .provider-service-chip-change:hover:not(:disabled),
-.provider-models-summary-manage:hover:not(:disabled),
-.provider-models-summary-action:hover:not(:disabled),
 .service-chooser-empty-action:hover:not(:disabled) {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
 
 .provider-service-chip-change:focus-visible,
-.provider-models-summary-manage:focus-visible,
-.provider-models-summary-action:focus-visible,
 .service-chooser-empty-action:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
 }
 
-.provider-service-chip-change:disabled,
-.provider-models-summary-manage:disabled,
-.provider-models-summary-action:disabled {
+.provider-service-chip-change:disabled {
   cursor: default;
   color: var(--ds-text-faint);
 }

@@ -88,7 +88,7 @@ function harness(realCatalog) {
       ErrorCodes,
       inferEndpointProfile: () => undefined,
       normalizeApiStyle: (value) => value ?? "chat_completions",
-      resolveBindingContextWindow: () => ({}),
+      resolveBindingLimits: () => ({}),
     },
     "../oauth": { OAUTH_AUTH_KIND: "oauth" },
     "../model-discovery": {

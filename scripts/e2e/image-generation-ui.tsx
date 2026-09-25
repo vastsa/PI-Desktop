@@ -118,8 +118,9 @@ globalThis.imageGenerationProbe = async () => {
     );
   const editProviderForModelSettings = async (name?: string) => {
     editProvider(name);
-    await until(() => !!button(i18n.t("settings.manageModels")), "model summary action missing");
-    click(button(i18n.t("settings.manageModels")));
+    // The editor opens straight on the model panel, so there is no summary to
+    // unfold before the per-model controls are reachable (D625).
+    await until(() => !!document.querySelector(".provider-chosen-row"), "model settings missing");
   };
   const imageModelToggle = (label: string) =>
     [...document.querySelectorAll<HTMLInputElement>(

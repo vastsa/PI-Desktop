@@ -317,28 +317,31 @@ field records a models.dev match; a provider cache stores only normalized
 selection fields and is re-decorated from the local raw catalog on the next
 read.
 
-### 9.1 Effective context window
+### 9.1 Effective model limits
 
 The runtime, the context inspector and the settings surface resolve one effective
-model window. Every binding records where its `contextWindow` came from
-(`contextWindowSource`):
+model window and output cap. Every binding records where its `contextWindow` came
+from (`contextWindowSource`), and the same marker governs `maxTokens`:
 
 - `catalog` — the number is a models.dev snapshot, so a later correction to the
-  published `limit.context` replaces it. A refreshed record such as
-  `gpt-5.6-luna` (`1,050,000` tokens) stops appearing as a 128k model, and a limit
-  that models.dev corrects reaches the binding without deleting and re-adding the
-  model. Only a resolved models.dev record counts as published: when the lookup
-  misses and falls back to the generic shape (for example a custom gateway URL
-  serving an id several publishers list), its `128,000` is not a correction, and
-  the stored catalog snapshot stays in force.
+  published `limit.context` or `limit.output` replaces it. A refreshed record
+  such as `gpt-5.6-luna` (`1,050,000` tokens) stops appearing as a 128k model, a
+  row added while nothing published its id stops reporting the generic 8.2k
+  output once the record resolves, and a limit that models.dev corrects reaches
+  the binding without deleting and re-adding the model. Only a resolved
+  models.dev record counts as published: when the lookup misses and falls back to
+  the generic shape (for example a custom gateway URL serving an id several
+  publishers list), its `128,000` and `8,192` are not a correction, and the
+  stored catalog snapshot stays in force.
 - `user` — the number was entered through the per-model Advanced control (or the
   preset ladder in it) and is never replaced by the catalog, including the
-  `128,000` value that is otherwise the generic seed.
+  `128,000` and `8,192` values that are otherwise the generic seed.
 
 Bindings written before the marker name no source. They keep the historical rule,
 deterministically: a published `limit.context` replaces exactly the generic
-`128,000` seed, and every other stored value stays the explicit value. Unknown
-models still use the conservative 128k generic window and are never promoted from
+`128,000` seed and a published `limit.output` replaces exactly the generic
+`8,192`, and every other stored value stays the explicit value. Unknown models
+still use the conservative 128k / 8.2k generic limits and are never promoted from
 an ID pattern alone. The marker is optional in the persisted record, so a config
 written by an older version stays readable and a downgrade ignores it.
 
@@ -482,6 +485,15 @@ different full route paths never match solely because they share a leaf. It
 narrowly strips trailing `-` or `:` `thinking`, `think`, `agent` or `latest`
 tokens (including before `@region`). It does not strip arbitrary
 dash-separated proxy prefixes or effort tokens such as `low`, `high` or `max`.
+
+When nothing matches outright, the lookup falls back to the whole published ID
+the served name reduces to: the ID behind one route prefix (`test/mimo-v2.5`) and
+that ID without one deployment marker (`mimo-v2.5-pro-test`, `gemini-2.5-pro-1m`).
+Only a marker that names a variant of a published model is read that way —
+`-test`, `-preview`, `-beta`, `-1m`, `-128k`; `-asr`, `-tts` and `-pro` name
+models of their own, so an unpublished ID carrying one of those stays unknown
+instead of inheriting a sibling's limits. This fallback reads a whole published
+ID and never follows a chain of aliases.
 The catalog index uses bounded candidate keys for these aliases, then checks
 the matcher; a known catalog provider selected by vendor key or API URL limits
 the lookup to that provider, never borrowing another provider's capabilities.
@@ -497,7 +509,8 @@ weights, so an endpoint serving `Vendor/Model` ids can have no record of its own
 while several other publishers state the identical id. When the row resolves to
 a catalog provider whose own record is missing, `findModel` consults the other
 publishers of the **exact** id instead of leaving the model on the generic
-128k text-only shape (issue #938).
+128k text-only shape (issue #938), and reads a whole published id the served name
+reduces to when no publisher states the id itself.
 
 The borrow is bounded:
 
@@ -506,14 +519,22 @@ The borrow is bounded:
   it, stays authoritative.
 - A provider sharing the row's own endpoint is an alias for the row, so its
   silence is an answer about this deployment and nothing is borrowed past it.
-- Only a case-insensitive identical id transfers; a record reached through an
-  alias (a bare route leaf, a vendor-prefixed variant) is a different id and
-  keeps its own limits.
-- Tool support must be unanimous across those publishers, because a wrong `true`
-  puts tool declarations on the wire that the endpoint may reject. Reasoning,
-  image/PDF input and attachment are the intersection, so a borrow may only
-  under-claim; a user who knows the endpoint does more still enables it in
-  Advanced. Limits are the medians the publishers state, never one host's cap.
+- Only a case-insensitive identical id transfers, or a whole published id the
+  served name reduces to (`test/mimo-v2.5-pro-test` → `mimo-v2.5-pro`). A record
+  the index reaches through an alias is a different id and keeps its own limits.
+- The publishers this app ships a provider for answer before arbitrary resellers
+  do, in the same order the unanchored borrow uses: an id a shipped publisher
+  states describes the model, while a reseller's copy describes its own
+  deployment of it. Within that tier a record under exactly this id outranks one
+  reached through another spelling of it, so a copy carrying only the text half
+  cannot narrow what the model's own record states about vision.
+- Tool support follows the majority of the publishers that state it, because a
+  wrong `true` puts tool declarations on the wire that the endpoint may reject,
+  while one dissenting reseller must not void a record a hundred of them agree
+  on; an even split claims nothing. Reasoning, image/PDF input and attachment are
+  the intersection, so a borrow may only under-claim; a user who knows the
+  endpoint does more still enables it in Advanced. Limits are the medians the
+  publishers state, never one host's cap.
 - An id no publisher states stays an unknown generic model.
 
 This changes metadata only. The configured wire id, provider identity, and the

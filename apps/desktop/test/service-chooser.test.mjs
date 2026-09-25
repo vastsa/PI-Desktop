@@ -84,7 +84,7 @@ test("chooser tiles are toned in-flow surfaces without strokes (D297)", () => {
   for (const selector of [
     ".service-chooser-search",
     ".service-chooser-empty",
-    ".provider-models-summary",
+    ".provider-chosen",
     ".provider-service-chip",
   ]) {
     assert.doesNotMatch(rule(selector), /\bborder(-(top|right|bottom|left|color|width|style))?:/, selector);

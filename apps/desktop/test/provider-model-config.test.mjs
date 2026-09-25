@@ -377,7 +377,11 @@ test("settings match complete case-normalized wire ids, not proxy suffixes", () 
   assert.doesNotMatch(pageSource, /modelIdsMatch|isImageGenerationModel/);
   assert.doesNotMatch(setupSource, /modelIdsMatch/);
   assert.doesNotMatch(pickerSource, /modelIdsMatch/);
-  assert.match(pickerSource, /info\.modelId\.toLowerCase\(\) !== seed\.id\.toLowerCase\(\)/);
+  // The host decides identity now: a record the service's id reduces to (a route
+  // prefix, a dated stamp, a marker the deployment appends) still upgrades the
+  // row, so the picker must not re-check the spelling it asked about.
+  assert.doesNotMatch(pickerSource, /info\.modelId\.toLowerCase\(\) !== seed\.id\.toLowerCase\(\)/);
+  assert.match(pickerSource, /applyCustomModelLookup\(current, seed, info\)/);
   assert.match(pickerSource, /bindingForCustomModelInfo\(row\.id, row\.info\)/);
   assert.match(setupSource, /model\.id\.toLowerCase\(\) === imageModelId\.toLowerCase\(\)/);
   assert.match(setupSource, /entry\.toLowerCase\(\) !== id\.toLowerCase\(\)/);

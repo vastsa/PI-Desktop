@@ -157,45 +157,7 @@
   text-align: center;
 }
 
-/* ------------------------------------------------ chosen models summary */
-
-/* The same inset tray as the picker panes, so folding one into the other
-   keeps the dialog's shape. */
-.provider-models-summary {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-inset);
-}
-
-.provider-models-summary-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  padding: 9px 8px 4px;
-}
-
-.provider-models-summary-head .provider-models-summary-manage,
-.provider-chosen-head .provider-models-summary-manage {
-  margin-left: auto;
-}
-
-.provider-chosen-search-wrap + .provider-models-summary-manage {
-  margin-left: 0;
-}
-
-.provider-models-summary .provider-chosen-row-head {
-  min-height: 30px;
-}
-
-.provider-models-summary .provider-chosen-empty {
-  flex-direction: column;
-  gap: 10px;
-}
-
+/* ------------------------------------------- recommended-model hint */
 .provider-models-summary-hint {
   flex: none;
   padding: 4px 10px 9px;

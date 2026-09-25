@@ -165,7 +165,8 @@ globalThis.providerApiStyleProbe = async () => {
   const searchInput = () => [...document.querySelectorAll<HTMLInputElement>("input[type=checkbox]")]
     .find((input) => input.closest("label")?.textContent?.trim() === i18n.t("settings.nativeWebSearch"));
   const openModelManager = async () => {
-    click(control("settings.manageModels"));
+    // The model panel is on screen when the editor opens (D625): no Manage
+    // models step, only the per-model controls the scenario waits for.
     await until(() => Boolean(searchInput()), "model capability settings");
   };
   try {
@@ -323,10 +324,9 @@ globalThis.providerApiStyleProbe = async () => {
       const accountAdvanced = document.querySelector<HTMLButtonElement>(".provider-chosen-advanced-toggle");
       if (accountAdvanced?.getAttribute("aria-expanded") === "false") click(accountAdvanced);
       await pause(650);
-      // Models open as a summary (D625); the per-model controls sit behind
-      // Manage models and the row's own Advanced disclosure.
-      assert(document.querySelector(".provider-models-summary"), `${locale}: account dialog did not open on the summary`);
-      click(control("settings.manageModels"));
+      // The account editor opens straight on the model panel (D625): the
+      // per-model controls sit behind the row's own Advanced disclosure.
+      assert(!document.querySelector(".provider-models-summary"), `${locale}: the chosen-models summary is gone from the account dialog`);
       await frame();
       const advancedToggle = document.querySelector<HTMLButtonElement>(".provider-chosen-advanced-toggle");
       assert(advancedToggle?.getAttribute("aria-expanded") === "false", `${locale}: a model opened its advanced settings on its own`);

@@ -133,7 +133,7 @@ Still open for R2b and later:
   part of the bootstrap step, but it needs host-side provider schema work and is
   not in this change, so a freshly bootstrapped host still fails `turn/start`
   closed with `MODEL_NOT_CONFIGURED` until a provider is configured on it.
-  > **Delivered by ADR 0310 (D628).** `pi-host provider-import` now copies
+  > **Delivered by ADR 0310 (D629).** `pi-host provider-import` now copies
   > providers over the SSH channel's stdin to an owner-only admin socket on the
   > running host, so a bootstrapped host can be made turn-ready from the desktop
   > without a manual login. The key never crosses argv, logs, or RACP.

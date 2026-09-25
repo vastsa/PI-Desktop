@@ -66,11 +66,9 @@ export function useComposerModelMenu({
   const [view, setView] = useState<ComposerMenuView>("root");
   const [query, setQuery] = useState("");
   const [modelHighlight, setModelHighlight] = useState(-1);
-  const [thinkingHighlight, setThinkingHighlight] = useState(-1);
   const rootMenuRef = useRef<HTMLDivElement>(null);
   const modelSearchRef = useRef<HTMLInputElement>(null);
   const modelListRef = useRef<HTMLDivElement>(null);
-  const thinkingListRef = useRef<HTMLDivElement>(null);
   const thinkingConfigRef = useRef({
     mode,
     providerId: provider?.id,
@@ -188,13 +186,6 @@ export function useComposerModelMenu({
   }, [activeFlatIndex, flatModels.length, flatModelsKey, open, queryNeedle, view]);
 
   useEffect(() => {
-    if (!open || view !== "thinking") return;
-    setThinkingHighlight(
-      thinkingLevel ? thinkingMenuLevels.indexOf(thinkingLevel) : -1,
-    );
-  }, [open, thinkingLevel, thinkingMenuLevels, view]);
-
-  useEffect(() => {
     if (!open) return;
     for (const candidate of providers) {
       if (candidate.enabled && (candidate.hasSecret || candidate.authKind === "none")) {
@@ -208,7 +199,6 @@ export function useComposerModelMenu({
     setView("root");
     setQuery("");
     setModelHighlight(-1);
-    setThinkingHighlight(-1);
   }, [open]);
   useEffect(() => {
     thinkingQueueRef.current?.invalidate();
@@ -225,15 +215,9 @@ export function useComposerModelMenu({
     requestAnimationFrame(() => {
       if (view === "root") rootMenuRef.current?.querySelector<HTMLButtonElement>(".composer-menu-entry")?.focus();
       if (view === "model") modelSearchRef.current?.focus();
-      if (view === "thinking") thinkingListRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
       if (view === "model" && modelHighlight >= 0) {
         modelListRef.current
           ?.querySelector(`[data-model-index="${modelHighlight}"]`)
-          ?.scrollIntoView({ block: "nearest" });
-      }
-      if (view === "thinking" && thinkingHighlight >= 0) {
-        thinkingListRef.current
-          ?.querySelector(`[data-thinking-index="${thinkingHighlight}"]`)
           ?.scrollIntoView({ block: "nearest" });
       }
     });
@@ -246,17 +230,9 @@ export function useComposerModelMenu({
       ?.scrollIntoView({ block: "nearest" });
   }, [modelHighlight, open, view]);
 
-  useEffect(() => {
-    if (!open || view !== "thinking" || thinkingHighlight < 0) return;
-    thinkingListRef.current
-      ?.querySelector(`[data-thinking-index="${thinkingHighlight}"]`)
-      ?.scrollIntoView({ block: "nearest" });
-  }, [open, thinkingHighlight, view]);
-
   const showView = (nextView: ComposerMenuView) => {
     setView(nextView);
     setModelHighlight(-1);
-    setThinkingHighlight(-1);
     if (nextView !== "model") setQuery("");
   };
 
@@ -295,7 +271,6 @@ export function useComposerModelMenu({
       setQuery("");
       setView("root");
       setModelHighlight(-1);
-      setThinkingHighlight(-1);
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), {
         variant: "error",
@@ -313,13 +288,6 @@ export function useComposerModelMenu({
     const queue = thinkingQueueRef.current;
     if (!queue) return Promise.resolve(false);
     return queue.commit(level);
-  };
-
-  const selectThinkingLevel = async (level: SessionThinkingLevel) => {
-    if (!(await commitThinkingLevel(level))) return;
-    setView("root");
-    setModelHighlight(-1);
-    setThinkingHighlight(-1);
   };
 
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -342,31 +310,15 @@ export function useComposerModelMenu({
           void selectModel(entry.provider, entry.model.modelId);
         }
       }
-      if (event.key === "Enter" && view === "thinking") {
-        const level = thinkingMenuLevels[thinkingHighlight] ?? thinkingMenuLevels[0];
-        if (level) {
-          event.preventDefault();
-          void selectThinkingLevel(level);
-        }
-      }
       return;
     }
     if (view === "root") return;
     event.preventDefault();
-    if (view === "model") {
-      if (!flatModels.length) return;
-      const delta = event.key === "ArrowDown" ? 1 : -1;
-      setModelHighlight((current) => {
-        const base = current < 0 ? (delta > 0 ? -1 : flatModels.length) : current;
-        return (base + delta + flatModels.length) % flatModels.length;
-      });
-      return;
-    }
-    if (!thinkingMenuLevels.length) return;
+    if (!flatModels.length) return;
     const delta = event.key === "ArrowDown" ? 1 : -1;
-    setThinkingHighlight((current) => {
-      const base = current < 0 ? (delta > 0 ? -1 : thinkingMenuLevels.length) : current;
-      return (base + delta + thinkingMenuLevels.length) % thinkingMenuLevels.length;
+    setModelHighlight((current) => {
+      const base = current < 0 ? (delta > 0 ? -1 : flatModels.length) : current;
+      return (base + delta + flatModels.length) % flatModels.length;
     });
   };
 
@@ -378,19 +330,15 @@ export function useComposerModelMenu({
     setQuery,
     modelHighlight,
     setModelHighlight,
-    thinkingHighlight,
-    setThinkingHighlight,
     rootMenuRef,
     modelSearchRef,
     modelListRef,
-    thinkingListRef,
     modelGroups: filteredModelGroups,
     flatModels,
     thinkingMenuLevels,
     showView,
     selectModel,
     commitThinkingLevel,
-    selectThinkingLevel,
     onMenuKeyDown,
     controlsBlocked,
   };

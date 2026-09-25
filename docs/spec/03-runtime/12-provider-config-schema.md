@@ -724,6 +724,40 @@ as empty. Connection testing reuses
 the same request builder, so "the model list loaded" and "the connection test
 passed" always describe the same URL, auth header and format.
 
+### Which publisher a row is read against
+
+A row that names no publisher of its own is read against the publisher its
+endpoint identifies, in this order: the catalog entry whose published base URL
+matches, the endpoint registry for a known host, then the catalog's own host
+when exactly one provider publishes from it. That is what keeps a custom row on
+a vendor's alternative API path — `https://open.bigmodel.cn/api/v1` for Zhipu's
+OpenAI Responses endpoint — from showing generic 128k / 8k / text-only defaults
+for models the catalog describes in full.
+
+When nothing identifies a publisher at all — a relay, or a host the catalog does
+not know — the publishers this app ships a provider for answer first: they are
+the vendors and gateways behind the first-class presets, so their records
+describe the model, while a reseller's own flags describe its own deployment of
+it. Only when none of them states the ID does the pool widen to every publisher
+that does, because an ID a relay alone carries would otherwise be shown as a
+generic 128k text-only row. Within that pool the publishers' agreement is
+claimed: the lower median of their limits and, for every capability but tool
+support, only what all of them state, so the answer can only under-claim. Tool
+support follows the majority of the publishers that state it: an ID a relay lists
+can be stated by a hundred publishers, and one dissenting reseller must not decide
+— or void — the claim for a deployment it does not describe. An even split states
+no majority and claims nothing. Two routes that merely share a name leaf
+(`provider-a/foo` vs `gateway/foo`) are not one model, so an ID whose identity is
+genuinely unknown still resolves to nothing. A record borrowed this way states no
+reasoning wire shape — that is a property of the deployment — and an Anthropic
+Messages row keeps Anthropic's own shape. A model ID never decides which
+publisher is read.
+
+The lookup answers for the IDs a row already lists, so a served ID whose published
+record is an audio model — a TTS or ASR sibling — resolves to that record too.
+Only the catalog listing is scoped to text/agent models, because it decides which
+models a row offers.
+
 Metadata matching may follow a release stamp: `mify/mimo-v2.5-pro-0731` borrows
 the published record of `mimo-v2.5-pro`, and a record the catalog publishes
 under exactly the requested ID still wins over such an alias. The alias is

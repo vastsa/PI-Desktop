@@ -3,7 +3,7 @@ import {
   SESSION_THINKING_LEVELS,
   defaultCommandShellForPlatform,
   isCommandShellId,
-  resolveBindingContextWindow,
+  resolveBindingLimits,
   validateNetworkProxy,
   validateSpeechSettings,
   type CommandShellId,
@@ -93,7 +93,7 @@ export function createProviderCatalogRuntime({
     modelId: string,
     catalogModelConfig: Parameters<typeof modelConfigWithBinding>[0],
   ) => {
-    const resolved = resolveBindingContextWindow(
+    const resolved = resolveBindingLimits(
       catalogModelConfig,
       bindingForModel(provider, modelId),
     );
@@ -124,7 +124,7 @@ export function createProviderCatalogRuntime({
       apiStyle: provider.apiStyle,
       modelId,
     });
-    const resolved = resolveBindingContextWindow(
+    const resolved = resolveBindingLimits(
       catalogModelConfig,
       storedModel,
     );
@@ -139,7 +139,7 @@ export function createProviderCatalogRuntime({
         apiStyle: provider.apiStyle,
         modelId: binding.id,
       });
-      const bindingResolved = resolveBindingContextWindow(
+      const bindingResolved = resolveBindingLimits(
         catalogModelConfig,
         binding,
       );
@@ -336,7 +336,7 @@ export function createProviderCatalogRuntime({
       };
     }
     const { provider, modelId } = target;
-    const resolved = resolveBindingContextWindow(
+    const resolved = resolveBindingLimits(
       catalogModelConfigFor(modelsDevCatalog, {
         vendorKey: provider.vendorKey,
         baseUrl: provider.baseUrl,

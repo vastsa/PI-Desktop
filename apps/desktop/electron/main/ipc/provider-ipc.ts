@@ -3,7 +3,7 @@ import {
   ErrorCodes,
   inferEndpointProfile,
   normalizeApiStyle,
-  resolveBindingContextWindow,
+  resolveBindingLimits,
   type ModelBinding,
   type ProviderReorderInput,
   type OAuthRespondInput,
@@ -136,8 +136,22 @@ export function registerProviderIpc({
       const modelId = (input?.modelId ?? "").trim();
       if (!modelId) return { info: null };
       await modelsDevCatalog.ensureLoaded();
+      /*
+        A hand-typed id on a custom endpoint names no publisher itself, so the
+        host decides whose records to read — the same anchor the discovered list
+        uses. A host the registry does not know keeps the caller's key (usually
+        `custom`), where the snapshot only answers an unambiguous id. Pure: this
+        stays a snapshot read with no network request or host call.
+      */
+      const declaredKey = input?.vendorKey;
+      const lookupVendorKey =
+        declaredKey && declaredKey !== "custom"
+          ? declaredKey
+          : typeof input?.baseUrl === "string" && input.baseUrl
+            ? (inferEndpointProfile({ baseUrl: input.baseUrl })?.providerKey ?? declaredKey)
+            : declaredKey;
       const model = modelsDevCatalog.findModel({
-        vendorKey: input?.vendorKey,
+        vendorKey: lookupVendorKey,
         baseUrl: input?.baseUrl,
         modelId,
       });
@@ -339,6 +353,20 @@ export function registerProviderIpc({
       // stays the key for cache writes: the cache belongs to the saved endpoint,
       // not to a suggestion.
       let endpointBaseUrl = profile?.effectiveBaseUrl ?? baseUrl;
+      /*
+        Which publisher's metadata this row is read against.
+
+        A custom endpoint on a published host still serves that vendor's models,
+        so when the row names no publisher itself the registry's identity for
+        the host anchors the models.dev lookup. That is a host fact, not a guess
+        from a model name. An unknown host keeps `custom`, where the catalog
+        only answers an unambiguous id — metadata missing beats metadata wrong.
+      */
+      const catalogVendorKey =
+        provider?.vendorKey && provider.vendorKey !== "custom"
+          ? provider.vendorKey
+          : (profile?.providerKey ?? "custom");
+
 
       // Cache hydration must stay fast; the renderer already requests a live
       // refresh after it has painted the cached list. Live requests load the
@@ -365,18 +393,18 @@ export function registerProviderIpc({
         catalogBaseUrl: string = endpointBaseUrl,
       ) => {
         const modelsDevModel = modelsDevCatalog.findModel({
-          vendorKey: provider?.vendorKey || "custom",
+          vendorKey: catalogVendorKey,
           baseUrl: catalogBaseUrl,
           modelId: model.modelId,
         });
         const catalogModelConfig = catalogModelConfigFor(modelsDevCatalog, {
-          vendorKey: provider?.vendorKey || "custom",
+          vendorKey: catalogVendorKey,
           baseUrl: catalogBaseUrl,
           apiStyle: modelApiStyle,
           modelId: model.modelId,
         });
         const storedModel = provider ? bindingForModel(provider, model.modelId) : undefined;
-        const resolvedModel = resolveBindingContextWindow(catalogModelConfig, storedModel);
+        const resolvedModel = resolveBindingLimits(catalogModelConfig, storedModel);
         const modelConfig = modelConfigWithBinding(
           resolvedModel.catalogConfig,
           resolvedModel.binding,
@@ -623,10 +651,14 @@ export function registerProviderIpc({
 
       // The endpoint published nothing usable (no /models route, an auth error,
       // or an empty list). The catalog is the fallback, not the primary source.
+      // The list is the service's own published set, so a key that can call an
+      // embedding or image endpoint sees it here too; nothing is preselected
+      // from those, and `recommendModels` still picks chat models only.
       const catalogModels = modelsDevCatalog.modelsForProvider({
-        vendorKey: provider?.vendorKey,
+        vendorKey: catalogVendorKey,
         baseUrl: endpointBaseUrl,
         providerId: provider?.id ?? "",
+        includeNonChat: true,
       });
       if (catalogModels.length > 0) {
         return {

@@ -4,11 +4,9 @@ import { ComposerModelList } from "./ComposerModelList";
 import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
 import {
   IconBot,
-  IconCheck,
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
-  IconSparkles,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
@@ -50,18 +48,14 @@ export function ComposerModelPicker({
     setQuery,
     modelHighlight,
     setModelHighlight,
-    thinkingHighlight,
-    setThinkingHighlight,
     rootMenuRef,
     modelSearchRef,
     modelListRef,
-    thinkingListRef,
     modelGroups,
     thinkingMenuLevels,
     showView,
     selectModel,
     commitThinkingLevel,
-    selectThinkingLevel,
     onMenuKeyDown,
   } = controller;
 
@@ -93,7 +87,6 @@ export function ComposerModelPicker({
               showView("root");
               setQuery("");
               setModelHighlight(-1);
-              setThinkingHighlight(-1);
             }
             setOpen((current) => !current);
           }}
@@ -127,21 +120,8 @@ export function ComposerModelPicker({
             <span className="composer-menu-entry-value" title={modelLabel}>{modelLabel}</span>
             <IconChevronRight size={14} aria-hidden="true" />
           </button>
-          <button
-            type="button"
-            className="composer-menu-entry"
-            role="menuitem"
-            aria-haspopup="menu"
-            onClick={() => showView("thinking")}
-          >
-            <IconSparkles size={14} aria-hidden="true" />
-            <span className="composer-menu-entry-label">{t("chat.reasoningLevel")}</span>
-            <span className="composer-menu-entry-value">{thinkingLabel}</span>
-            <IconChevronRight size={14} aria-hidden="true" />
-          </button>
-          {/* The slider sits directly under the Reasoning level entry
-              (issue #417): one drag adjusts the level without entering the
-              submenu, while the entry itself opens the classic radio list. */}
+          {/* The level is one drag away on the slider below (issue #417): the
+              menu has no separate reasoning view left to open. */}
           {thinkingMenuLevels.length > 1 ? (
             <ThinkingLevelSlider
               key={`${selectedProviderId}:${selectedModelId}:${thinkingMenuLevels.join("|")}`}
@@ -161,43 +141,16 @@ export function ComposerModelPicker({
             onClick={() => showView("root")}
           >
             <IconChevronLeft size={14} aria-hidden="true" />
-            <span>{view === "model" ? t("chat.model") : t("chat.reasoningLevel")}</span>
+            <span>{t("chat.model")}</span>
           </button>
           <div className="composer-menu-separator" />
-          {view === "model" ? (
-            <>
-              <ComposerModelList
-                t={t} query={query} setQuery={setQuery}
-                modelSearchRef={modelSearchRef} modelListRef={modelListRef}
-                modelGroups={modelGroups} modelHighlight={modelHighlight}
-                setModelHighlight={setModelHighlight} selectModel={selectModel}
-                selectedProviderId={selectedProviderId} selectedModelId={selectedModelId}
-              />
-            </>
-          ) : (
-            <>
-              <div className="composer-thinking-heading">
-                {t("chat.reasoningSupportedBy", { model: modelLabel })}
-              </div>
-              <div className="composer-thinking-list" ref={thinkingListRef}>
-                {thinkingMenuLevels.map((level, index) => (
-                  <button
-                    key={level}
-                    type="button"
-                    data-thinking-index={index}
-                    className={`composer-plus-item ${thinkingLevel === level ? "active" : ""} ${thinkingHighlight === index ? "kb-active" : ""}`}
-                    role="menuitemradio"
-                    aria-checked={thinkingLevel === level}
-                    onMouseMove={() => setThinkingHighlight(index)}
-                    onClick={() => void selectThinkingLevel(level)}
-                  >
-                    <span className="flex-1">{level}</span>
-                    {thinkingLevel === level ? <IconCheck size={14} className="composer-model-check" aria-hidden="true" /> : null}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+          <ComposerModelList
+            t={t} query={query} setQuery={setQuery}
+            modelSearchRef={modelSearchRef} modelListRef={modelListRef}
+            modelGroups={modelGroups} modelHighlight={modelHighlight}
+            setModelHighlight={setModelHighlight} selectModel={selectModel}
+            selectedProviderId={selectedProviderId} selectedModelId={selectedModelId}
+          />
         </>
       )}
     </AnchoredMenu>

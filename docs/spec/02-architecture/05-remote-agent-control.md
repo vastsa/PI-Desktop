@@ -178,12 +178,12 @@ desktop runs `pi-host provider-import` on the Host and pipes the provider
 payload — API keys included — into that process's stdin; the CLI hands it to the
 running Host over an owner-only Unix admin socket (`0700` dir, `0600` socket,
 1 MiB cap, no Windows), so no key crosses argv, logs, a remote file, or RACP,
-and no second host-core is spawned (D628, ADR 0310). Import is a manual user
+and no second host-core is spawned (D629, ADR 0310). Import is a manual user
 action and idempotent per provider; nothing is deleted.
 
 Once a Host is paired, its sessions appear in the sidebar as one borderless
 group per Host, and the user can start a session on the Host from the desktop
-(D627, ADR 0308). A remote session runs under the Host's default model — the
+(D628, ADR 0308). A remote session runs under the Host's default model — the
 desktop shows no remote model picker — and the renderer stays
 transport-agnostic: a `remote:<hostKey>:<hostSessionId>` id whose Host is offline
 fails closed rather than routing to the local handler.

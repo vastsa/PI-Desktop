@@ -63,6 +63,26 @@ test("the upgraded row keeps the id the user typed", () => {
   assert.equal(upgraded.id, "Claude-Opus-4.6");
 });
 
+test("a record published under another spelling of the id upgrades the row", () => {
+  /*
+    A deployment appends a route or a marker of its own, so the host answers with
+    the id the model is published under — `mimo-v2.5` for a row added as
+    `test/mimo-v2.5`. The picker used to drop that answer and leave the row on the
+    generic 128k / 8.2k seed until the provider was saved and re-read.
+  */
+  const seeded = customModelSeedBinding("test/mimo-v2.5", null);
+  const hit = {
+    ...published,
+    modelId: "mimo-v2.5",
+    displayName: "MiMo-V2.5",
+    limit: { context: 1_048_576, output: 131_072 },
+  };
+  const [upgraded] = applyCustomModelLookup([seeded], seeded, hit);
+  assert.equal(upgraded.id, "test/mimo-v2.5", "the wire id stays what the user typed");
+  assert.equal(upgraded.contextWindow, 1_048_576);
+  assert.equal(upgraded.maxTokens, 131_072);
+});
+
 test("a miss keeps the generic seed and never drops the row", () => {
   const seed = customModelSeedBinding("not-published", null);
   const next = applyCustomModelLookup([seed], seed, null);

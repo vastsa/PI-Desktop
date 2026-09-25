@@ -5042,7 +5042,7 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 覆盖：更新后的 `apps/desktop/test/service-chooser.test.mjs`，以及
   `scripts/e2e/provider-api-style.tsx` 探针——它现在断言第一个
   `[data-service-id]` 磁贴是 `custom`，而不是最后一个。
-## 2026-09-25 — 远程会话入口与失败即关闭的路由（D627）
+## 2026-09-25 — 远程会话入口与失败即关闭的路由（D628）
 
 - ADR 0286 内核已能让配对主机响应渲染器调用，但没有入口 UI：侧栏只列本地
   会话，也无法新建远程会话。远程会话入口为每台配对主机新增一个无边框侧栏
@@ -5062,7 +5062,7 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `05-security/02-remote-control-security.md` §3.4/§7、
   E2E-REMOTE-session-list-and-create。
 
-## 2026-09-25 — 通过仅属主的 admin socket 向 SSH 主机同步 provider（D628）
+## 2026-09-25 — 通过仅属主的 admin socket 向 SSH 主机同步 provider（D629）
 
 - ADR 0292 引导出的主机没有 provider，`turn/start` 会以
   `MODEL_NOT_CONFIGURED` 失败即关闭，直到用户登录手动配置。设置 ▸ 远程主机
@@ -5083,3 +5083,24 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   host-core RPC、SQLite 或渲染器传输变化。见 ADR 0310、ADR 0292（补充）、
   `05-security/02-remote-control-security.md` §3.4/§7、
   E2E-REMOTE-provider-import-enables-turn。
+## 2026-09-25 —— 模型设置直接打开双栏，兜底列表给出全部模型（D627）
+
+- 编辑一个服务或厂商账号时，之前先落在「已选模型摘要」（`ChosenModelsSummary`）上，
+  真正的选择器还要再点一次才出现，于是要动一个逐模型控件得先做两次决策。现在两个
+  对话框都直接渲染双栏（`ModelSelectionPanes`）——左边是该服务自己的列表，右边是
+  该凭据会运行的模型——摘要与「管理模型 / 收起」这对控件删除，只有摘要能显示的
+  `autoPicked` 提示也随之取消。自动预选逻辑不变（`recommended-models.ts`、
+  `useRecommendedModelSelection`），只是把这句话放在选中的模型旁边：推荐模型是
+  起点，而不是屏幕上唯一的东西。
+- 服务自己没有模型列表时，目录兜底现在给出该厂商发布的整套模型
+  （设置处理器以 `modelsForProvider({ includeNonChat: true })` 调用），因此这个 key
+  能调用的 embedding、语音、图像、重排端点会和聊天模型一起出现，而不是悄悄缺
+  席。默认行为仍是只要文本模型，因为会话与 agent 路径要的是它们真正能跑的模型；
+  自动预选也仍然只挑可调工具的聊天模型。
+- 覆盖：更新后的 `apps/desktop/test/provider-form-layout.test.mjs`（两个对话框都直接
+  渲染双栏、没有可折叠的摘要）、`apps/desktop/test/settings-general.test.mjs`、
+  `apps/desktop/test/service-chooser.test.mjs`，以及新增的
+  `apps/desktop/test/provider-model-list-scope.test.mjs`（默认列表只有文本模型，
+  `includeNonChat` 补上被隐藏的端点且不丢 id、不重复），另有
+  `scripts/e2e/provider-api-style.tsx` 与 `scripts/e2e/image-generation-ui.tsx`
+  探针——它们不再点击「管理模型」。

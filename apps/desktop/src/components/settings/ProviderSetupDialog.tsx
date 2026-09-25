@@ -4,8 +4,9 @@
  * A new service opens on the service chooser; picking a tile moves to the
  * form. Named services: paste a key and the recommended models are chosen as
  * soon as the service answers. Custom: name, URL, key and API format on the
- * common path. Models come from the service endpoint; the full picker stays
- * one click away behind the chosen-models summary.
+ * common path. The service's own list is on the left and the models this
+ * credential will run on the right, both visible from the first paint: a
+ * recommended model is a starting point, never the only thing on screen.
  */
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,7 +25,6 @@ import { Button, Field, HelpIcon, Input, portalOverlay } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
-import { ChosenModelsSummary } from "./ChosenModelsSummary";
 import { ConnectionStatus, ProviderConnectionFields } from "./ProviderConnectionFields";
 import { ServiceChooser } from "./ServiceChooser";
 import { CUSTOM_SERVICE } from "./service-catalog";
@@ -105,8 +105,6 @@ export function ProviderSetupDialog({
   // A format the user picked by hand outranks every inference about this row.
   const [apiStyleTouched, setApiStyleTouched] = useState(false);
   const [choosing, setChoosing] = useState(false);
-  const [managing, setManaging] = useState(false);
-  const customModelRef = useRef<HTMLInputElement>(null);
   const chooserOpen = choosing || !service;
 
   const namedPreset = NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === service);
@@ -184,14 +182,6 @@ export function ProviderSetupDialog({
     setBaseUrl((current) => (endpointsEqual(current, adoptedFrom) ? discoveredBaseUrl : current));
   }, [named, discoveredBaseUrl, adoptedFrom]);
 
-
-
-  // A list with nothing to recommend leaves the choice to the user, so the
-  // picker opens instead of an empty summary.
-  useEffect(() => {
-    if (recommended.noRecommendation) setManaging(true);
-  }, [recommended.noRecommendation]);
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || saving) return;
@@ -249,11 +239,6 @@ export function ProviderSetupDialog({
     // A key belongs to the service it was pasted for.
     if (!provider) setApiKey("");
     onServiceChange(next);
-  };
-
-  const addModelManually = () => {
-    setManaging(true);
-    window.setTimeout(() => customModelRef.current?.focus(), 0);
   };
 
   const commitBaseUrl = () => {
@@ -476,37 +461,22 @@ export function ProviderSetupDialog({
           ) : null}
         </div>
 
-        {managing ? (
-          <ModelSelectionPanes
-            discovery={discovery}
-            selection={selection}
-            listTitle={t("settings.serviceModels")}
-            busy={saving}
-            onReload={discovery.reload}
-            apiStyle={resolvedApiStyle}
-            imageModelIds={imageModelDraft ?? imageModelIds}
-            onImageModelChange={updateImageModelDraft}
-            customModelInputRef={customModelRef}
-            onCollapse={() => setManaging(false)}
-            lookupContext={{
-              baseUrl: requestBaseUrl,
-              vendorKey: namedPreset?.vendorKey ?? provider?.vendorKey ?? "custom",
-              providerId: provider?.id,
-            }}
-          />
-        ) : (
-          <ChosenModelsSummary
-            models={models}
-            discoveryStatus={discoveryActive ? discovery.status : "idle"}
-            busy={saving}
-            autoPicked={recommended.autoPicked}
-            onRemove={(id) =>
-              selection.setModels((current) => current.filter((entry) => entry.id !== id))
-            }
-            onManage={() => setManaging(true)}
-            onAddManually={addModelManually}
-          />
-        )}
+        <ModelSelectionPanes
+          discovery={discovery}
+          selection={selection}
+          listTitle={t("settings.serviceModels")}
+          busy={saving}
+          onReload={discovery.reload}
+          apiStyle={resolvedApiStyle}
+          imageModelIds={imageModelDraft ?? imageModelIds}
+          onImageModelChange={updateImageModelDraft}
+          lookupContext={{
+            baseUrl: requestBaseUrl,
+            vendorKey: namedPreset?.vendorKey ?? provider?.vendorKey ?? "custom",
+            providerId: provider?.id,
+          }}
+          autoPicked={recommended.autoPicked}
+        />
       </div>
     </>
   );

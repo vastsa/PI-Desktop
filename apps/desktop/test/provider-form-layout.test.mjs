@@ -22,7 +22,6 @@ const pickerSource = await read("../src/components/settings/ModelSelectionPanes.
 const fetchErrorSource = await read("../src/components/settings/ModelsFetchErrorMessage.tsx");
 // The credential rows live in their own component since D625.
 const fieldsSource = await read("../src/components/settings/ProviderConnectionFields.tsx");
-const summarySource = await read("../src/components/settings/ChosenModelsSummary.tsx");
 const styles = await loadStyles();
 
 /** Declaration block for exactly one selector, so matches cannot span rules. */
@@ -352,7 +351,8 @@ test("the vendor account dialog hosts the same panes in the same shell", () => {
   assert.match(dialog, /min-width: 0/);
   assert.match(dialog, /height: min\(720px, calc\(100vh - 64px\)\)/);
   assert.match(vendorDialogSource, /<ModelSelectionPanes/);
-  assert.match(vendorDialogSource, /<ChosenModelsSummary/);
+  // Neither dialog folds the picker behind a chosen-models summary.
+  assert.doesNotMatch(vendorDialogSource, /<ChosenModelsSummary/);
   // The duplicated chosen-pane and custom-model rules are retired with it.
   assert.doesNotMatch(styles, /\.vendor-account-chosen/);
   assert.doesNotMatch(styles, /\.vendor-account-custom-model/);
@@ -377,22 +377,22 @@ test("Advanced says a fullwidth value folds and a non-Latin-1 value is refused",
   assert.match(block(".provider-setup-header-note"), /color: var\(--ds-text-muted\)/);
 });
 
-test("models open as a summary with the full picker one click away (D625)", () => {
+test("both dialogs open straight on the two panes, with no summary to fold (D625)", () => {
   for (const source of [setupSource, vendorDialogSource]) {
-    assert.match(source, /managing \?/);
-    assert.match(source, /<ChosenModelsSummary/);
-    assert.match(source, /onCollapse=\{\(\) => setManaging\(false\)\}/);
-    assert.match(source, /customModelInputRef=\{customModelRef\}/);
+    assert.match(source, /<ModelSelectionPanes/);
+    // The chosen-models summary and its Manage/Collapse pair are gone: the
+    // service's own list and the models this credential runs are both on
+    // screen from the first paint, so nothing has to be opened to see them.
+    assert.doesNotMatch(source, /<ChosenModelsSummary/);
+    assert.doesNotMatch(source, /setManaging/);
+    assert.doesNotMatch(source, /settings\.manageModels/);
+    assert.doesNotMatch(source, /settings\.collapseModels/);
   }
-  // Summary rows reuse the picker's row classes so both read the same.
-  assert.match(summarySource, /provider-chosen-row-id/);
-  assert.match(summarySource, /provider-chosen-remove/);
-  assert.match(summarySource, /settings\.manageModels/);
-  assert.match(summarySource, /settings\.addModelManually/);
-  assert.match(pickerSource, /settings\.collapseModels/);
-  // No model opens its advanced settings on its own any more.
+  // The picker carries no fold-back control of its own either.
+  assert.doesNotMatch(pickerSource, /onCollapse/);
+  assert.doesNotMatch(pickerSource, /settings\.collapseModels/);
+  // The recommendation says so where the picks are, and no model opens its
+  // advanced settings on its own any more.
+  assert.match(pickerSource, /settings\.modelsAutoPicked/);
   assert.match(pickerSource, /useState<string \| null>\(null\)/);
-  const summary = block(".provider-models-summary");
-  assert.match(summary, /background: var\(--ds-bg-inset\)/);
-  assert.doesNotMatch(summary, /border:|border-top|box-shadow/);
 });

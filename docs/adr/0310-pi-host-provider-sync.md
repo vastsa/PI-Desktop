@@ -2,7 +2,7 @@
 
 - Status: Accepted for implementation
 - Date: 2026-09-25
-- Decision: D628
+- Decision: D629
 - Related: ADR 0292 (D453, supplemented here), ADR 0286 (D449),
   ADR 0304 (relaxed network mode),
   `02-architecture/05-remote-agent-control.md` §5.2,

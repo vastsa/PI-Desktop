@@ -253,7 +253,7 @@ token rather than introducing a decorative palette:
 | State | Semantic color | Shape / motion | Meaning |
 |---|---|---|---|
 | Selected | neutral accent | static outlined ring | current conversation |
-| In progress | warning orange | filled dot with a restrained breathing pulse | agent is producing or executing |
+| In progress | warning orange | filled dot; two breathing cycles, then steady | agent is producing or executing |
 | Completed | success green | check mark | latest unread task turn completed |
 | Failed | error red | circled alert mark | latest unread task turn failed |
 
@@ -269,7 +269,10 @@ never produce a terminal mark. Marking the row read, marking all rows read, or
 clearing the inbox also dismisses any matching task-native banner; a late event
 for that durable id cannot restore the mark, row, or banner. Reduced-motion mode
 disables the breathing animation while retaining its orange fill and localized
-accessible name.
+accessible name. Running dots in task rows and related-session hover cards
+animate for two 1.6-second cycles when mounted or entering the running state,
+then remain steady until the status changes. They must not continuously
+submit frames while the rest of the window is idle.
 
 ### 4.6 Tailwind CSS variable stub
 

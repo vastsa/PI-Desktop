@@ -48,7 +48,7 @@ dependency (`@pi-desktop/racp`).
    support byte-for-byte compatible when disabled and prevents accidental
    routing of a local id.
 
-   > **Amended by ADR 0308 (D627).** The `ROUTE_LOCAL` fallthrough is correct
+   > **Amended by ADR 0308 (D628).** The `ROUTE_LOCAL` fallthrough is correct
    > for an *unknown* id, but a `remote:`-namespaced id whose backend is absent
    > or offline must not fall through to the local handler. The router now fails
    > closed on a `remote:` id with no live backend and keeps routing local for

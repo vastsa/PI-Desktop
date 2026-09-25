@@ -103,6 +103,10 @@
 
 .composer-model-thinking-menu {
   z-index: 60;
+  /*
+    One label per row plus two capability icons: wide enough for that and no
+    wider, so the panel stays a menu rather than a second window.
+  */
   width: min(280px, calc(100vw - 24px));
 }
 
@@ -243,22 +247,8 @@
   padding: 5px 8px;
 }
 
-.composer-thinking-heading {
-  padding: 3px 8px 5px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs-plus);
-  line-height: var(--leading-compact);
-}
-
-.composer-thinking-list {
-  display: flex;
-  max-height: 280px;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-/* Reasoning slider (issue #417): the menu root carries the slider directly
-   under the Reasoning level entry; the entry opens the classic radio list.
+/* Reasoning slider (issue #417): the menu root carries the slider itself, so a
+   level is one drag instead of opening a list of levels.
 
    Stop/label alignment contract: the rail and the labels are full-width
    n-column grids, so dot i, label i and the thumb at index i all sit on the
@@ -542,56 +532,73 @@
   font-weight: var(--font-weight-normal);
 }
 
-/* The full wire id is the identity. Wrap long route names instead of hiding
-   the part that distinguishes two configured models. */
+/*
+  The full wire id is the identity, and it stays whole: a long route name wraps
+  instead of hiding the part that distinguishes two configured models. The id,
+  its friendly name and the badges share one line — id first, name next, badges
+  on the trailing edge — because the stacked column that preceded it pushed
+  every row's content into the left half of the menu and left the rest empty.
+*/
 .composer-model-option-main {
   display: flex;
   min-width: 0;
   flex: 1;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
 }
 
-.composer-model-full-id {
+/*
+  One label, never the wire id and a name together: the user's alias when the
+  binding carries one, the catalog's name otherwise. Which of the two is on
+  screen is visible in the label's own shape, and a long name wraps instead of
+  hiding the part that distinguishes two configured models. The wire id stays
+  the row's title.
+*/
+.composer-model-label {
+  min-width: 0;
+  flex: 0 1 auto;
   max-width: 100%;
+  color: var(--ds-text-primary);
   overflow-wrap: anywhere;
   white-space: normal;
 }
-.composer-model-display-name {
-  max-width: 100%;
-  color: var(--ds-text-faint);
-  font-size: var(--text-xs);
-  overflow-wrap: anywhere;
+
+/* A name the user set is a label of its own, and reads as one: the catalog name
+   stays plain text while an alias carries its own chip. Colour cannot tell the
+   two apart here — the app's accent is the text colour itself — so the shape
+   carries the meaning. */
+.composer-model-label.is-alias {
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
 }
 
 .composer-model-option-meta {
   display: flex;
   flex: 0 0 auto;
+  /* Pinned to the row's trailing edge: the capability icons and the window are
+     what a row shows on the right. */
+  margin-left: auto;
   align-items: center;
   gap: 4px;
 }
 
+/* Capability markers are icons, not words: a row carries up to two of them, and
+   the spelled-out labels were the widest thing in it. The accessible name stays
+   the translated label, so nothing is lost to a screen reader. */
 .composer-model-option-badge {
-  border-radius: var(--radius-3xs);
-  background: var(--ds-tile-deep);
-  padding: 0 4px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
   color: var(--ds-text-faint);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-  text-transform: lowercase;
 }
 
 .composer-model-option-ctx {
   color: var(--ds-text-faint);
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
-}
-
-.composer-thinking-list .composer-plus-item > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .composer-plus-item.active {
