@@ -76,7 +76,14 @@ conversation id (or a per-call UUID when the caller has no session),
 host is `opencode.ai` receives the same headers. pi-ai is not relied on to
 emit `x-opencode-session`. Each provider row (AI service or OAuth account)
 may set optional `headers`; empty keeps adapter defaults. A fetch wrapper is
-the last writer so Codex and Anthropic cannot overwrite them.
+the last writer so Codex and Anthropic cannot overwrite them. pi-ai's Google
+adapters (`google-generative-ai`, `google-vertex`) reject any `fetch` that is
+not `globalThis.fetch`, so a request bound for them carries none — the merged
+`headers` still reach the SDK client — and a caller-supplied `fetch` is cleared
+rather than wrapped (issue #1072). Because those adapters never see the wrapper and never call
+`onResponse`, such a row reports no captured HTTP status and no captured
+transport cause: `Retry-After` falls back to the bounded backoff ladder, and
+the issue-234 transport diagnostics and rebuild do not fire for it.
 
 When an OAuth vendor is rebuilt around a local provider-row id, runtime keeps
 the native pi-ai transport metadata instead of treating the row as a generic

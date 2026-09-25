@@ -253,7 +253,9 @@ Anthropic OAuth's `claude-cli/<version>`, or OpenCode's
 outbound HTTP — session turns, subagents, prompt enhancement, plugin one-shots,
 `/models` discovery (including unsaved form values), connection tests, and
 OAuth token refresh. A fetch wrapper is the last writer so Codex and the
-Anthropic SDK cannot overwrite it. The same values are also placed on stream-
+Anthropic SDK cannot overwrite it; pi-ai's Google adapters receive the same
+values on stream-option headers instead, because they reject any other `fetch`
+(issue #1072). The same values are also placed on stream-
 option headers so OpenCode's caller-wins rule stays true. Keys are
 case-insensitive unique, at most 32 entries, name ≤ 256 bytes, value ≤ 4096
 bytes, no CR/LF, names alphanumeric plus hyphen. Values are folded to
@@ -383,13 +385,33 @@ beside API format. `vendorKey` is the models.dev provider key.
 
 International: OpenAI (`responses`), Anthropic (`anthropic_messages`), Google
 Gemini (`google_generative_ai`), OpenRouter, Groq, xAI, Mistral, Together AI,
-Fireworks, OpenCode Go (`opencode_go`), Z.AI / Z.AI Coding Plan.
+Fireworks, OpenCode Go (`opencode_go`), Z.AI / Z.AI Coding Plan, Ant Ling,
+Baseten, Cerebras, Hugging Face (`huggingface`, aliases `hugging-face` / `hf`),
+Meta (`responses`), MiniMax (International) (`anthropic_messages` at
+`https://api.minimax.io/anthropic/v1`), Moonshot AI (International)
+(`moonshotai` at `https://api.moonshot.ai/v1`), NVIDIA (alias `nim`), OpenCode
+Zen (`opencode` at `https://opencode.ai/zen/v1`, alias `opencode-zen`), Vercel
+AI Gateway (`vercel` at `https://ai-gateway.vercel.sh/v1`, alias
+`vercel-ai-gateway`).
+
+`builtinProviders()` from pi-ai is the source for this list: every built-in
+provider is either reachable through one of the presets above or is an
+intentional exception with a recorded reason — Amazon Bedrock, Azure OpenAI,
+Cloudflare AI Gateway, Cloudflare Workers AI, and Google Vertex AI (their URLs
+carry account, region, project, or deployment ids), GitHub Copilot and OpenAI
+Codex (vendor-account rows), and Radius (`pi_messages` is account-only in this
+app). `packages/agent-runtime/src/pi-ai-provider-sync.test.ts` fails when a new
+built-in provider is neither covered nor excepted.
 
 China: DeepSeek, Qwen DashScope (`alibaba-cn`), Moonshot (`moonshotai-cn`),
 Zhipu AI / Coding Plan, SiliconFlow (`siliconflow-cn`), Volcengine Ark,
 MiniMax (`anthropic_messages` at `https://api.minimaxi.com/anthropic/v1`),
 MiniMax (OpenAI) (`chat_completions` at `https://api.minimaxi.com/v1`, aliases
-`minimax-openai` / `minimax-compatible`), Kimi For Coding (`anthropic_messages`).
+`minimax-openai` / `minimax-compatible`), Kimi For Coding (`anthropic_messages`),
+Qwen Token Plan (`alibaba-token-plan`, aliases `qwen-token-plan` /
+`qwen-token-plan-individual`), Qwen Token Plan (China)
+(`alibaba-token-plan-cn`, alias `qwen-token-plan-cn`), Xiaomi Token Plan
+(`xiaomi-token-plan-cn` / `-ams` / `-sgp`).
 
 Zhipu / Z.AI Completions requests still receive `thinkingFormat: "zai"` and
 `zaiToolStream: true`. pi-ai `zai-coding-cn` remains an alias of
@@ -663,12 +685,85 @@ new IPC field is introduced. Unknown connection formats stay unavailable in
 this app; that is not a claim about a vendor website or other API. Some official
 search APIs require distinct adapters; see the native search provider audit.
 
-For custom endpoints, an explicit `/chat/completions`, `/responses`, or
-`/messages` URL can suggest the matching format. Applying that suggestion only
-changes the draft format and strips the operation suffix, preserving the
-origin. It is not a successful connection/capability probe. A plain base URL
-does not prove the protocol. Invalid/credential-bearing URLs give no advice.
-OpenCode Go normalizes `/chat/completions`, not `/responses`. Saved explicit
-formats take precedence over hostname presets; service names survive edits.
-Cancel does not persist draft changes. Full probing and automatic error-driven
-fallback from #907 remain separate work.
+#### Endpoint resolution
+
+A typed Base URL is resolved before anything is probed. Resolution is one pure
+shared layer (`@pi-desktop/shared/provider-endpoint`) that the settings dialog
+and Electron main both call, so the address shown, the address probed and the
+address saved cannot disagree:
+
+- A bare host is completed with `https://` inside the origin the user named.
+  Credentials, queries and fragments are still refused.
+- A pasted operation suffix (`/chat/completions`, `/responses`, `/messages`)
+  names the format and is stripped from the base endpoint; `/models` only marks
+  a discovery URL. A suffix belonging to another format is kept in place — the
+  mismatch is the user's to resolve, not a silent retarget of the row.
+- The format comes, in order, from the user's own choice, the pasted operation,
+  an exact published endpoint, a known host, and the publisher's `npm` adapter,
+  falling back to Chat Completions. A model ID never participates: a gateway
+  serving `gpt-*`, `claude-*` and `gemini-*` behind one Chat Completions route
+  keeps that route.
+- When the endpoint decided the format, the custom form says
+  "Auto detected: …" next to the selector. A format picked by hand — or a named
+  preset's own — outranks every inference from that point on.
+
+Discovery then probes the resolved candidates: at most four, deduplicated, in
+confidence order, all on the origin the user typed. The first candidate that
+publishes models wins, and the address it answered on becomes the Base URL the
+form shows and saves. The sweep shares one 12-second budget rather than giving
+each candidate its own, and it runs candidates serially because every request
+carries the user's API key. That key never reaches another origin, including
+across a redirect: a cross-origin redirect is refused instead of followed.
+Provider-specific paths (`/v1beta`, `/compatible-mode/v1`) come from the
+endpoint registry, never from a blanket heuristic, and are offered only when the
+host was named without a path: a typed path is that deployment's own answer, so
+a `/api/v1` that publishes nothing is reported instead of being swapped for the
+registry's `/api/paas/v4` sibling. The only generic extra path is `/v1` for an
+unknown OpenAI-compatible endpoint. Every published model-list shape is read —
+`data[].id`, Google's `models[].name`, and the `models[].slug` rows Zhipu's
+OpenAI Responses endpoint returns — so an endpoint that answers is never treated
+as empty. Connection testing reuses
+the same request builder, so "the model list loaded" and "the connection test
+passed" always describe the same URL, auth header and format.
+
+### Which publisher a row is read against
+
+A row that names no publisher of its own is read against the publisher its
+endpoint identifies, in this order: the catalog entry whose published base URL
+matches, the endpoint registry for a known host, then the catalog's own host
+when exactly one provider publishes from it. That is what keeps a custom row on
+a vendor's alternative API path — `https://open.bigmodel.cn/api/v1` for Zhipu's
+OpenAI Responses endpoint — from showing generic 128k / 8k / text-only defaults
+for models the catalog describes in full.
+
+When nothing identifies a publisher at all — a relay, or a host the catalog does
+not know — the publishers this app ships a provider for answer first: they are
+the vendors and gateways behind the first-class presets, so their records
+describe the model, while a reseller's own flags describe its own deployment of
+it. Only when none of them states the ID does the pool widen to every publisher
+that does, because an ID a relay alone carries would otherwise be shown as a
+generic 128k text-only row. Within that pool the publishers' agreement is
+claimed: the lower median of their limits and, for every capability but tool
+support, only what all of them state, so the answer can only under-claim. Tool
+support follows the majority of the publishers that state it: an ID a relay lists
+can be stated by a hundred publishers, and one dissenting reseller must not decide
+— or void — the claim for a deployment it does not describe. An even split states
+no majority and claims nothing. Two routes that merely share a name leaf
+(`provider-a/foo` vs `gateway/foo`) are not one model, so an ID whose identity is
+genuinely unknown still resolves to nothing. A record borrowed this way states no
+reasoning wire shape — that is a property of the deployment — and an Anthropic
+Messages row keeps Anthropic's own shape. A model ID never decides which
+publisher is read.
+
+The lookup answers for the IDs a row already lists, so a served ID whose published
+record is an audio model — a TTS or ASR sibling — resolves to that record too.
+Only the catalog listing is scoped to text/agent models, because it decides which
+models a row offers.
+
+Metadata matching may follow a release stamp: `mify/mimo-v2.5-pro-0731` borrows
+the published record of `mimo-v2.5-pro`, and a record the catalog publishes
+under exactly the requested ID still wins over such an alias. The alias is
+metadata only: a configured binding keeps the wire ID the service served.
+
+Invalid or credential-bearing URLs still give no advice, and Cancel still does
+not persist draft changes.

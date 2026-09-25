@@ -13,6 +13,8 @@ import {
 import { useTranslation } from "react-i18next";
 import type { UiMessage } from "@pi-desktop/shared";
 import { useOpenPreviewTarget } from "../../../hooks/use-preview-target";
+import { useChatFileMenu } from "../../../hooks/use-chat-file-menu";
+import { ContextMenu } from "../../../components/ContextMenu";
 import { useFollowScroll } from "../../../hooks/use-follow-scroll";
 import { getToolPreviewTarget } from "../../../lib/chat-links";
 import { disclosureKey } from "./disclosure";
@@ -176,6 +178,7 @@ function HostToolRow({
   const detailsId = useId();
   const root = useAppStore((s) => s.workspace?.path);
   const openTarget = useOpenPreviewTarget();
+  const { fileMenu, openFileMenu, closeFileMenu } = useChatFileMenu();
   const openSubagentTab = useAppStore((s) => s.openSubagentTab);
   const activeWorkPanelTabId = useAppStore((s) => s.activeWorkPanelTabId);
   const status = message.toolStatus;
@@ -506,6 +509,12 @@ function HostToolRow({
                       }
                     : undefined
                 }
+                onContextMenu={
+                  previewTarget?.kind === "file"
+                    ? (event) =>
+                        openFileMenu(event, { path: previewTarget.path })
+                    : undefined
+                }
               >
                 {summary}
               </span>
@@ -581,6 +590,7 @@ function HostToolRow({
           onCollapse={collapseRow}
         />
       ) : null}
+      <ContextMenu state={fileMenu} onClose={closeFileMenu} />
     </div>
   );
 }

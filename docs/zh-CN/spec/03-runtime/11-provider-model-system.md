@@ -77,7 +77,12 @@ OpenCode Go 以一个名为 `opencode_go` 的 API 风格预设暴露。它仍然
 主机为 `opencode.ai` 的自定义 OpenAI 兼容行也会收到同样的标头。系统不依赖
 pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth 账户）都可以
 设置可选的 `headers`；留空则保持适配器默认值。一层 fetch 包装是最后的写入方，
-因此 Codex 与 Anthropic 无法覆盖它们。
+因此 Codex 与 Anthropic 无法覆盖它们。pi-ai 的 Google 适配器
+（`google-generative-ai`、`google-vertex`）会拒绝任何不是 `globalThis.fetch`
+的 `fetch`，因此发往它们的请求不带 fetch，只通过合并后的 `headers` 送达 SDK
+客户端；调用方传入的 `fetch` 会被清除而非包装（issue #1072）。由于这些适配器既看不到包装、也从不调用
+`onResponse`，这样的行不上报捕获到的 HTTP 状态与传输原因：`Retry-After`
+退回有界退避阶梯，issue-234 的传输诊断与重建对它不生效。
 
 当 OAuth 厂商围绕本地 provider 行 id 重建运行时模型时，运行时仍保留 pi-ai
 原生传输元数据，不会把该行当作普通 OpenAI 端点。GitHub Copilot 请求会保留

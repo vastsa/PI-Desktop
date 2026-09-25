@@ -24,8 +24,9 @@ const hookSource = await read("../src/components/settings/useProviderModels.ts")
 const pageSource = await read("../src/components/settings/ModelConfigPage.tsx");
 const vendorDialogSource = await read("../src/components/settings/VendorAccountDialog.tsx");
 const pickerSource = await read("../src/components/settings/ModelSelectionPanes.tsx");
+const fieldsSource = await read("../src/components/settings/ProviderConnectionFields.tsx");
 const filterSource = await read("../src/components/settings/model-chosen-filter.ts");
-const vendorAccountsSource = await read("../src/components/settings/VendorAccountsSection.tsx");
+const vendorAccountsSource = await read("../src/components/settings/useVendorAccounts.ts");
 const apiSource = await read("../src/lib/api.ts");
 const catalogContractSource = await read("../../../packages/shared/src/model-catalog.ts");
 const styles = await loadStyles();
@@ -45,10 +46,13 @@ test("adding an AI service is a single form, not a staged wizard", () => {
   assert.doesNotMatch(setupSource, /provider-preset-grid/);
   assert.doesNotMatch(setupSource, /settings\.setupStage/);
   assert.doesNotMatch(setupSource, /settings\.next"/);
-  // Name, base URL and key are all reachable without navigating a step.
-  assert.match(setupSource, /settings\.name/);
-  assert.match(setupSource, /settings\.baseUrl/);
-  assert.match(setupSource, /settings\.apiKey/);
+  assert.doesNotMatch(setupSource, /settings\.back"/);
+  // Picking a service is the only step before the form, and it is a tile
+  // click, not a Next button: name, base URL and key share one view.
+  assert.match(setupSource, /<ProviderConnectionFields/);
+  assert.match(fieldsSource, /settings\.name/);
+  assert.match(fieldsSource, /settings\.baseUrl/);
+  assert.match(fieldsSource, /settings\.apiKey/);
   assert.match(setupSource, /settings\.saveProvider/);
 });
 
@@ -94,9 +98,9 @@ test("token limits are adopted from the published record, never typed by default
 });
 
 test("custom API format is a common-path choice, named services skip it", () => {
-  assert.match(setupSource, /settings\.apiStyle/);
-  assert.match(setupSource, /API_STYLES/);
-  assert.match(setupSource, /custom \? \(/);
+  assert.match(fieldsSource, /settings\.apiStyle/);
+  assert.match(fieldsSource, /API_STYLES/);
+  assert.match(fieldsSource, /custom \? \(/);
   assert.match(setupSource, /provider-advanced-dialog/);
   assert.doesNotMatch(setupSource, /provider-setup-advanced-toggle/);
 });
@@ -373,7 +377,11 @@ test("settings match complete case-normalized wire ids, not proxy suffixes", () 
   assert.doesNotMatch(pageSource, /modelIdsMatch|isImageGenerationModel/);
   assert.doesNotMatch(setupSource, /modelIdsMatch/);
   assert.doesNotMatch(pickerSource, /modelIdsMatch/);
-  assert.match(pickerSource, /info\.modelId\.toLowerCase\(\) !== seed\.id\.toLowerCase\(\)/);
+  // The host decides identity now: a record the service's id reduces to (a route
+  // prefix, a dated stamp, a marker the deployment appends) still upgrades the
+  // row, so the picker must not re-check the spelling it asked about.
+  assert.doesNotMatch(pickerSource, /info\.modelId\.toLowerCase\(\) !== seed\.id\.toLowerCase\(\)/);
+  assert.match(pickerSource, /applyCustomModelLookup\(current, seed, info\)/);
   assert.match(pickerSource, /bindingForCustomModelInfo\(row\.id, row\.info\)/);
   assert.match(setupSource, /model\.id\.toLowerCase\(\) === imageModelId\.toLowerCase\(\)/);
   assert.match(setupSource, /entry\.toLowerCase\(\) !== id\.toLowerCase\(\)/);

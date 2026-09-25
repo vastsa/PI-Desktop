@@ -1854,16 +1854,17 @@ export async function createWindow({
             // which is still dark from the destination pass; the remaining
             // settings scenes are light so the tabs read as one sequence.
             await setTheme("light");
-            // Model configuration tab: vendor accounts, provider cards,
-            // defaults, edit dialog. Addressed by tab id — the settings nav
+            // Model configuration tab: defaults, the service list (API services
+            // and subscription accounts together), then a row's editor — a row
+            // opens its own editor. Addressed by tab id — the settings nav
             // has been reordered since this scene was written.
             await setSettingsTab("agent");
             await new Promise((r) => setTimeout(r, 350));
             await shot("pi-settings-models");
             await windowState.mainWindow!.webContents.executeJavaScript(`
               (() => {
-                const edit = [...document.querySelectorAll('.provider-row-actions .provider-icon-btn')][0];
-                const add = document.querySelector('.provider-section-head button');
+                const edit = document.querySelector('.model-provider-row.is-openable');
+                const add = document.querySelector('.model-provider-add');
                 (edit ?? add)?.dispatchEvent(new MouseEvent('click',{bubbles:true}));
               })()
             `);

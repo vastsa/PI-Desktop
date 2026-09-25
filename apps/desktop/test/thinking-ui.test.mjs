@@ -68,12 +68,13 @@ test("composer exposes the runtime thinking level order and provider filtering",
   assert.match(composerSource, /supportsReasoning/);
   assert.match(composerSource, /thinkingLevelForProvider/);
   assert.match(composerSource, /thinkingLevel:\s*level/);
-  assert.match(composerSource, /composer-thinking-list/);
+  // The level is a drag on the slider: no reasoning list submenu to render.
+  assert.doesNotMatch(composerSource, /composer-thinking-list/);
   assert.doesNotMatch(stylesSource, /\.composer-thinking-levels/);
   assert.doesNotMatch(stylesSource, /\.composer-thinking-level\b/);
   assert.match(
     stylesSource,
-    /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(280px,\s*calc\(100vw - 24px\)\);/,
+    /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(280px,\s*calc\(100vw - 24px\)\);/
   );
   assert.match(composerSource, /availableThinkingLevels/);
   assert.match(composerSource, /thinkingMenuLevels/);
@@ -81,7 +82,8 @@ test("composer exposes the runtime thinking level order and provider filtering",
 
 test("thinking levels use their canonical English values without i18n", () => {
   assert.match(composerSource, /const thinkingLabel = thinkingLevel;/);
-  assert.match(composerSource, /<span className="flex-1">\s*\{level\}/);
+  // The slider's ticks print the canonical level values themselves.
+  assert.match(composerSource, /onClick=\{\(\) => select\(stop\)\}>\{candidate\}<\/button>/);
   assert.doesNotMatch(composerSource, /THINKING_LEVEL_(LABELS|I18N_KEYS)/);
   assert.doesNotMatch(composerSource, /chat\.effort(?:Off|Minimal|Low|Mid|High|Xhigh|Max)/);
   assert.doesNotMatch(transcriptSource, /thinkingLevel\./);

@@ -6,7 +6,7 @@ import {
   imageGenerationBindings,
   isImageGenerationModel,
   normalizeMode,
-  resolveBindingContextWindow,
+  resolveBindingLimits,
   trustedExtensionAgentKeyFromProviderId,
   type CommandShellCatalog,
   type McpServerRecord,
@@ -355,7 +355,7 @@ export function createSessionLaunchRuntime({
         apiStyle,
         modelId,
       });
-    const resolvedLimits = resolveBindingContextWindow(catalogModelConfig, storedModel);
+    const resolvedLimits = resolveBindingLimits(catalogModelConfig, storedModel);
     const modelConfig = modelConfigWithBinding(
       resolvedLimits.catalogConfig,
       resolvedLimits.binding,

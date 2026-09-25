@@ -4,6 +4,8 @@ import { IconCheck, IconCircleAlert, IconCopy, IconInfo } from "./icons";
 import { TooltipButton, cx } from "./ui";
 import { toWorkspaceRel } from "../lib/chat-links";
 import { useOpenPreviewTarget } from "../hooks/use-preview-target";
+import { useChatFileMenu } from "../hooks/use-chat-file-menu";
+import { ContextMenu } from "./ContextMenu";
 import { useAppStore } from "../stores/app-store";
 import type { ToolBlock, ToolChip } from "../lib/tool-presentation";
 
@@ -84,6 +86,7 @@ function FileList({ paths }: { paths: string[] }) {
   const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);
   const openTarget = useOpenPreviewTarget();
+  const { fileMenu, openFileMenu, closeFileMenu } = useChatFileMenu();
   return (
     <div className="tool-file-list">
       {paths.map((path, index) => {
@@ -102,11 +105,13 @@ function FileList({ paths }: { paths: string[] }) {
             key={`${path}-${index}`}
             tooltip={t("chat.previewFile")}
             onClick={() => openTarget({ kind: "file", path: rel })}
+            onContextMenu={(event) => openFileMenu(event, { path: rel })}
           >
             {path}
           </TooltipButton>
         );
       })}
+      <ContextMenu state={fileMenu} onClose={closeFileMenu} />
     </div>
   );
 }
@@ -116,6 +121,7 @@ function MatchList({ block }: { block: Extract<ToolBlock, { kind: "matches" }> }
   const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);
   const openTarget = useOpenPreviewTarget();
+  const { fileMenu, openFileMenu, closeFileMenu } = useChatFileMenu();
   return (
     <div className="tool-match-list">
       {block.groups.map((group, index) => {
@@ -128,6 +134,9 @@ function MatchList({ block }: { block: Extract<ToolBlock, { kind: "matches" }> }
                 className="tool-match-path is-linked"
                 tooltip={t("chat.previewFile")}
                 onClick={() => openTarget({ kind: "file", path: rel })}
+                onContextMenu={(event) =>
+                  openFileMenu(event, { path: rel })
+                }
               >
                 {group.path}
               </TooltipButton>
@@ -143,6 +152,7 @@ function MatchList({ block }: { block: Extract<ToolBlock, { kind: "matches" }> }
           </div>
         );
       })}
+      <ContextMenu state={fileMenu} onClose={closeFileMenu} />
     </div>
   );
 }

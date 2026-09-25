@@ -89,8 +89,8 @@ test("the composer lists active skills last and routes slash skills to the Skill
     mainSrc,
     /\.\.\.extensionCommands,\s*\.\.\.skillCommands,/,
   );
-  assert.match(mainSrc, /command\?\.kind === "skill" && command\.skillId/);
-  assert.match(mainSrc, /Call the \\`Skill\\` tool with id/);
+  assert.match(mainSrc, /findSkillMentions\(req\.content, activeSkills\)/);
+  assert.match(mainSrc, /Call the \\`Skill\\` tool with each of these ids/);
   assert.match(composerAutocompleteSrc, /item\.command\.kind === "skill"/);
 });
 

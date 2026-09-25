@@ -237,8 +237,9 @@ test("the advanced body is a compact sheet without helper paragraphs", () => {
   );
   assert.doesNotMatch(pickerSource, /hint=\{t\("settings\.modelAliasHint"\)\}/);
   assert.match(pickerSource, /aria-controls=\{advancedId\}/);
-  // Keep the selected-model summary visible until Advanced is requested.
+  // Every row starts folded so chosen models stay scannable (D625).
   assert.match(pickerSource, /useState<string \| null>\(null\)/);
+  assert.doesNotMatch(pickerSource, /models\[0\]\?\.id \?\? null/);
   assert.match(
     pickerSource,
     /className="provider-chosen-thinking-head">[\s\S]*?provider-chosen-thinking-default[\s\S]*?provider-chosen-thinking-chips/,

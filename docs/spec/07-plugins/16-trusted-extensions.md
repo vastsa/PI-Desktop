@@ -208,30 +208,6 @@ dependency specs, disables git resolution, and isolates npm's config/cache from
 the user's credentials and proxy settings. Importing a package does not promise
 that every third-party extension dependency can execute.
 
-### Installed npm skill candidates (issue #236)
-
-Settings → Skills lists read-only candidates from
-`~/.pi/agent/npm/node_modules`, including scoped packages. Candidates display
-package name, source path, declared skill paths, and a warning when executable
-extensions are included. Discovery grants no permissions and does not execute
-package code. Refresh retries discovery; invalid packages show diagnostics
-without suppressing healthy candidates, including when a scoped directory is
-unreadable. Hoisted npm dependencies do not cap discovery; metadata reads are
-asynchronous and must read a regular file no larger than 256 KiB. Symbolic package
-links are not followed. The existing contribution parser enforces path bounds.
-
-Import and enable asks for native confirmation (Cancel is the default), then
-uses the same importer, dependency policy, registration, and runtime as manual
-import. The renderer sends only a candidate id. Main rediscovers before and
-after confirmation, rejecting stale metadata, changed declarations, arbitrary
-paths and concurrent imports. Registered imported packages are marked Already
-imported, including when disabled; manage them in Plugins. Unregistered leftover
-directories do not block retry. If host registration succeeds but runtime loading
-fails, the error remains visible and the panel refreshes the registered state;
-recovery uses Plugins reload or app restart. No second persisted enablement registry exists.
-No schema or host RPC version changes. General CLI configuration discovery and
-source-update synchronization remain outside scope. See ADR pi-npm-skill-discovery.
-
 ## 4. Loading and runtime
 
 ### 4.1 Where extensions run

@@ -9,38 +9,35 @@
 ## Context
 
 ADR 0150 replaced a randomized pixel-art sprite atlas with a 100px inline SVG
-agent mark so the empty-home hero stayed quiet. The empty-home mark now uses
-transparent animated artwork, with dedicated light and dark variants. Chinese
-locales have a separate dark variant supplied as a 30-frame GIF; the standard
-light and dark variants remain eight-frame waves.
+agent mark so the empty-home hero stayed quiet. A new eight-frame waving
+mascot is now the intended empty-home mark, with separate light and dark
+artwork that already uses a transparent background. The previous SVG
+orbit/breathe cycle no longer matches that artwork, and a single raster would
+read poorly when the shell theme changes.
 
 ## Decision
 
-Keep `HomeMascotLogo` in the existing 100px empty-home slot. It is decorative
-(`aria-hidden="true"`) and renders six images, of which CSS shows one at a
-time:
+Replace the inline SVG with processed eight-frame GIFs in the existing 100px
+empty-home slot. `HomeMascotLogo` is decorative (`aria-hidden="true"`) and
+renders four images, of which CSS shows one at a time:
 
-- `src/assets/home-mascot-light.gif` / `home-mascot-dark.gif` — the standard
-  eight-frame wave, with a short idle hold on the first frame
-- `src/assets/home-mascot-dark-zh.gif` — the supplied transparent 30-frame
-  artwork for Chinese locales in dark mode
-- The three matching still PNGs — the first frame for each artwork, shown only
-  under `prefers-reduced-motion: reduce`
+- `src/assets/home-mascot-light.gif` / `home-mascot-dark.gif` — the looping
+  wave, with a short idle hold on the first frame
+- `src/assets/home-mascot-still-light.png` / `home-mascot-still-dark.png` —
+  the matching first frame, shown only under `prefers-reduced-motion: reduce`
 
-Theme selection follows `document.documentElement[data-theme]`; language
-selection follows its `lang` attribute. Anything other than `light` uses dark
-artwork, and `lang` values beginning with `zh` select the Chinese dark
-variant. Playback is native to the GIF. There is no random selection, no
-JavaScript timer, and pointer hover does not change cadence.
+The active pair follows `document.documentElement[data-theme]`. Anything other
+than `light` uses the dark artwork, matching `BrandLogo`. Playback is native
+to the GIF. There is no random selection, no JavaScript timer, and pointer
+hover does not change cadence.
 
 ## Consequences
 
 - Empty-home branding uses the supplied mascot action set instead of a
   code-native SVG.
 - The 100px layout slot, decorative role, and reduced-motion freeze remain.
-- Light and dark surfaces keep dedicated artwork. Chinese dark mode uses the
-  supplied Chinese action set, while other locales retain the existing dark
-  wave.
+- Light and dark surfaces each keep a dedicated mascot treatment instead of
+  recoloring one asset through theme tokens.
 - The historical `home-mascot-groups.png` atlas is not in the repository;
   the GIFs and still frames are the source assets.
 

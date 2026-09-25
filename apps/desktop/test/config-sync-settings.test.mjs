@@ -14,6 +14,9 @@ const read = (relativePath) =>
 const settingsPage = await read("../src/features/settings/SettingsPage.tsx");
 const settingsIndex = await read("../src/lib/settings-search.ts");
 const syncPage = await read("../src/components/settings/ConfigSyncPage.tsx");
+const syncPreferences = await read(
+  "../src/features/settings/config-sync-preferences.ts",
+);
 const syncIpc = await read("../electron/main/ipc/config-sync-ipc.ts");
 const styles = await loadStyles();
 const syncProtocol = await read("../../../packages/shared/src/protocol.ts");
@@ -33,7 +36,7 @@ test("cloud sync rendering follows the settings visibility gate", () => {
 
 test("cloud sync keeps credentials and vault operations on the host boundary", () => {
   assert.match(syncPage, /api\.configSyncConfigure\(/);
-  assert.match(syncPage, /setState\(await api\.configSyncSyncNow\(\)\)/);
+  assert.match(syncPage, /applyState\(await api\.configSyncSyncNow\(\)\)/);
   // The plaintext opt-in is the network mode now, not a WebDAV switch: the page
   // carries no per-endpoint HTTP acknowledgement of its own.
   assert.doesNotMatch(syncPage, /allowInsecureHttp/);
@@ -53,6 +56,19 @@ test("cloud sync keeps credentials and vault operations on the host boundary", (
   assert.match(syncIpc, /callHost\("configSync\.mapProject"/);
   assert.match(syncIpc, /callHost\("configSync\.restore"/);
   assert.match(syncIpc, /callHost\("configSync\.changePassword"/);
+});
+
+test("cloud sync keeps a non-sensitive draft and paints cached state first", () => {
+  assert.match(syncPage, /getCachedConfigSyncState\(\)/);
+  assert.match(syncPage, /getCachedConfigSyncHistory\(\)/);
+  assert.match(syncPage, /writeConfigSyncDraft\(/);
+  assert.match(syncPage, /appPasswordSavedHint/);
+  assert.doesNotMatch(syncPage, /if \(loading\) \{[\s\S]{0,180}return \(/);
+  assert.match(syncPreferences, /passwords are never copied into renderer persistence/);
+  assert.match(syncPreferences, /CONFIG_SYNC_DRAFT_STORAGE_KEY/);
+  assert.match(syncPreferences, /saved\?: boolean/);
+  assert.match(syncPreferences, /store\.setItem\(CONFIG_SYNC_DRAFT_STORAGE_KEY/);
+  assert.doesNotMatch(syncPreferences, /appPassword|backupPassword/);
 });
 
 test("cloud sync settings remain usable on narrow surfaces", () => {

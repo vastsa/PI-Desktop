@@ -745,6 +745,63 @@ fn merge_settings_value(stored: Option<Value>, incoming: Value) -> Value {
     Value::Object(merged)
 }
 
+/// Drop image-generation bindings whose provider row is gone.
+///
+/// `settings.set` merges into the stored object and the shell writes whole
+/// snapshots back, so deleting a provider row used to leave `imageGeneration`
+/// naming an id that no longer resolves. Every `GenerateImages` call then
+/// answered `IMAGE_MODEL_UNAVAILABLE`, and once the candidate list was empty
+/// the settings row that owns the default hid itself, so the binding could
+/// neither run nor be repaired from the UI. A binding that cannot resolve is
+/// therefore not a preference the store keeps: the active default falls back
+/// to "no default" and the candidate list loses that entry, on read and on
+/// write alike. A provider that still exists but is disabled or carries no
+/// credential keeps its binding — that is a state the user repairs in
+/// Settings, and no reference to it is dropped here.
+///
+/// The same rule config sync already enforces when it applies a bundle
+/// (`validate_application_references`), applied to the local settings channel
+/// so a stale id cannot be written into or read out of the store.
+fn prune_unresolvable_image_bindings(
+    db: &crate::db::Database,
+    settings: &mut Value,
+) -> Result<bool> {
+    let Some(object) = settings.as_object_mut() else {
+        return Ok(false);
+    };
+    let resolves = |binding: &Value| -> Result<bool> {
+        match binding.get("providerId").and_then(Value::as_str) {
+            Some(provider_id) => providers::provider_exists(db, provider_id),
+            None => Ok(false),
+        }
+    };
+    let mut changed = false;
+    let active_is_stale = match object.get("imageGeneration") {
+        Some(binding) if !binding.is_null() => !resolves(binding)?,
+        _ => false,
+    };
+    if active_is_stale {
+        object.insert("imageGeneration".into(), Value::Null);
+        changed = true;
+    }
+    if let Some(Value::Array(candidates)) = object.get("imageGenerationModels").cloned() {
+        let mut kept = Vec::with_capacity(candidates.len());
+        let mut dropped = false;
+        for candidate in candidates {
+            if resolves(&candidate)? {
+                kept.push(candidate);
+            } else {
+                dropped = true;
+            }
+        }
+        if dropped {
+            object.insert("imageGenerationModels".into(), Value::Array(kept));
+            changed = true;
+        }
+    }
+    Ok(changed)
+}
+
 fn effective_command_shell_id(settings: Option<&Value>) -> Option<String> {
     let configured = settings
         .and_then(|value| value.get("defaultCommandShell"))
@@ -1955,7 +2012,7 @@ async fn handle_request(
                 .db
                 .get_setting("app")
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            Ok(normalize_settings_value(stored.unwrap_or_else(|| {
+            let mut settings = normalize_settings_value(stored.unwrap_or_else(|| {
                 json!({
                     "defaultMode": "agent",
                     "defaultCommandShell": tools::shell::default_shell_id(),
@@ -1969,7 +2026,19 @@ async fn handle_request(
                     },
                     "onboardingDismissed": false
                 })
-            })))
+            }));
+            // Repair on read: a binding whose provider row is already gone —
+            // deleted by a build that did not prune, an uninstalled plugin, or
+            // synced bundle — is dropped here and the store is corrected, so
+            // the shell never presents a default the runtime must reject.
+            if prune_unresolvable_image_bindings(&st.db, &mut settings)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+            {
+                st.db
+                    .set_setting("app", &settings)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            }
+            Ok(settings)
         }
         "settings.set" => {
             validate_settings_value(&params)?;
@@ -1984,7 +2053,9 @@ async fn handle_request(
             {
                 gate_default_command_shell_setting(&st)?;
             }
-            let settings = normalize_settings_value(merge_settings_value(stored, params));
+            let mut settings = normalize_settings_value(merge_settings_value(stored, params));
+            prune_unresolvable_image_bindings(&st.db, &mut settings)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             st.db
                 .set_setting("app", &settings)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
@@ -6483,6 +6554,154 @@ mod tests {
             .unwrap();
         assert_eq!(settings["defaultCommandShell"], stored_shell);
         assert_eq!(settings["theme"], "light");
+    }
+
+    /// Creates a provider row through the RPC surface the shell uses.
+    async fn create_test_provider(
+        state: Arc<Mutex<AppState>>,
+        tx: mpsc::UnboundedSender<String>,
+    ) -> String {
+        let created = handle_request(
+            state,
+            "providers.create",
+            json!({
+                "name": "Image service",
+                "baseUrl": "http://localhost:8080/v1",
+                "authKind": "none",
+                "defaultModelId": "gpt-image-2.5"
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        created["provider"]["id"].as_str().unwrap().to_string()
+    }
+
+    #[tokio::test]
+    async fn settings_set_drops_image_bindings_whose_provider_is_gone() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let provider_id = create_test_provider(state.clone(), tx.clone()).await;
+
+        // The shell writes whole snapshots back, so a binding for a row that no
+        // longer exists can arrive through an ordinary settings write.
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "imageGeneration": { "providerId": provider_id, "modelId": "gpt-image-2.5" },
+                "imageGenerationModels": [
+                    { "providerId": provider_id, "modelId": "gpt-image-2.5" },
+                    { "providerId": "removed-service", "modelId": "gpt-image-2.5" }
+                ]
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+
+        let settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            settings["imageGeneration"],
+            json!({ "providerId": provider_id, "modelId": "gpt-image-2.5" })
+        );
+        assert_eq!(
+            settings["imageGenerationModels"],
+            json!([{ "providerId": provider_id, "modelId": "gpt-image-2.5" }])
+        );
+
+        let stored = state.lock().await.db.get_setting("app").unwrap().unwrap();
+        assert_eq!(stored["imageGenerationModels"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn settings_get_repairs_a_binding_left_by_a_deleted_provider() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let provider_id = create_test_provider(state.clone(), tx.clone()).await;
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "imageGeneration": { "providerId": provider_id, "modelId": "gpt-image-2.5" },
+                "imageGenerationModels": [
+                    { "providerId": provider_id, "modelId": "gpt-image-2.5" }
+                ]
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let deleted = handle_request(
+            state.clone(),
+            "providers.delete",
+            json!({ "id": provider_id }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(deleted["ok"], true);
+
+        // Reading the settings repairs what the deletion left behind, so a
+        // binding the runtime would reject never reaches the shell again.
+        let settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert!(settings["imageGeneration"].is_null());
+        assert_eq!(settings["imageGenerationModels"], json!([]));
+
+        let stored = state.lock().await.db.get_setting("app").unwrap().unwrap();
+        assert!(stored["imageGeneration"].is_null());
+        assert_eq!(stored["imageGenerationModels"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn settings_keep_image_bindings_for_a_disabled_provider() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let provider_id = create_test_provider(state.clone(), tx.clone()).await;
+        let disabled = handle_request(
+            state.clone(),
+            "providers.update",
+            json!({ "id": provider_id, "enabled": false }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(disabled["provider"]["enabled"], false);
+
+        // A row that still exists keeps its binding: an unavailable but
+        // present provider is a state the user repairs in Settings, and
+        // pruning it would silently discard the user's choice.
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "imageGeneration": { "providerId": provider_id, "modelId": "gpt-image-2.5" }
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let settings = handle_request(state, "settings.get", json!({}), tx)
+            .await
+            .unwrap();
+        assert_eq!(
+            settings["imageGeneration"],
+            json!({ "providerId": provider_id, "modelId": "gpt-image-2.5" })
+        );
     }
 
     #[tokio::test]

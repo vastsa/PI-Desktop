@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { UiMessage } from "@pi-desktop/shared";
@@ -34,6 +35,37 @@ import {
   useChatTextActions,
   useTranscriptMenu,
 } from "./TranscriptMenu";
+
+function SkillInvocationText({ message }: { message: UiMessage }) {
+  const command = message.command ?? "";
+  const mentions = message.skillMentions ?? [];
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  for (const mention of mentions) {
+    if (
+      !Number.isInteger(mention.start) ||
+      !Number.isInteger(mention.end) ||
+      mention.start < cursor ||
+      mention.end > command.length ||
+      !command.slice(mention.start, mention.end).startsWith("/")
+    ) {
+      return <LinkifiedText text={command} attachments={message.attachments} />;
+    }
+    if (mention.start > cursor) {
+      parts.push(<LinkifiedText key={`text-${cursor}`} text={command.slice(cursor, mention.start)} attachments={message.attachments} />);
+    }
+    parts.push(
+      <code key={`skill-${mention.start}`} className="chat-command-chip" title={mention.id}>
+        {command.slice(mention.start, mention.end)}
+      </code>,
+    );
+    cursor = mention.end;
+  }
+  if (cursor < command.length) {
+    parts.push(<LinkifiedText key={`text-${cursor}`} text={command.slice(cursor)} attachments={message.attachments} />);
+  }
+  return <>{parts}</>;
+}
 
 export const MessageRow = memo(function MessageRow({
   message,
@@ -251,17 +283,19 @@ export const MessageRow = memo(function MessageRow({
                 {message.content ? (
                   <div className="message-user-text selectable">
                     {editableUserMessage && message.command ? (
-                      // Slash invocations show the typed form as a chip; the
-                      // expanded template body lives in `content` (hover reveals
-                      // it) and is what regenerate/reseed replay (D123).
-                      <code
-                        className="chat-command-chip"
-                        data-source-start={0}
-                        data-source-end={message.content.length}
-                        title={String(message.content || "")}
-                      >
-                        {message.command}
-                      </code>
+                      message.skillMentions?.length ? (
+                        <SkillInvocationText message={message} />
+                      ) : (
+                        // Templates retain the existing whole-invocation chip.
+                        <code
+                          className="chat-command-chip"
+                          data-source-start={0}
+                          data-source-end={message.content.length}
+                          title={String(message.content || "")}
+                        >
+                          {message.command}
+                        </code>
+                      )
                     ) : (
                       <LinkifiedText text={String(message.content || "")} attachments={message.attachments} />
                     )}

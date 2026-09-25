@@ -31,8 +31,8 @@ export function OAuthLoginDialog({
   vendor: OAuthVendor;
   /** The attempt this dialog reports on, already begun by the caller. */
   session: OAuthLoginSession;
-  /** The login succeeded; the provider row is ready to use. */
-  onDone: (accountLabel?: string) => void;
+  /** The login succeeded; the provider row it names is ready to use. */
+  onDone: (accountLabel?: string, providerId?: string) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -85,7 +85,7 @@ export function OAuthLoginDialog({
         case "done":
           if (settled.current) break;
           settled.current = true;
-          handlers.current.onDone(event.accountLabel);
+          handlers.current.onDone(event.accountLabel, event.providerId);
           break;
         case "error":
           setPrompt(null);

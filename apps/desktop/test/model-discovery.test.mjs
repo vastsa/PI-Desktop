@@ -23,6 +23,35 @@ test("openai-style lists normalize, dedupe, and sort", () => {
   assert.equal(normalizeModelList("responses", [{ id: "o4-mini" }]).length, 1);
 });
 
+test("a models[] response with slug rows is read as a list too", () => {
+  /*
+    Zhipu publishes three model-list shapes on one host: OpenAI Responses serves
+    `{ models: [{ slug }] }`, Anthropic and the coding plan serve `{ data: [{ id }] }`.
+    Reading only `data[].id` left the Responses row with an empty list, and the
+    larger sweep then looked for the models somewhere else entirely.
+  */
+  assert.deepEqual(
+    normalizeModelList("responses", {
+      models: [
+        { slug: "glm-5.3", display_name: "glm-5.3", context_window: 1_048_576, supported_in_api: true },
+        { slug: "glm-5.3" },
+      ],
+    }),
+    [{ modelId: "glm-5.3", displayName: "glm-5.3" }],
+  );
+  // The two id keys are mutually exclusive; `id` wins if a gateway publishes both.
+  assert.deepEqual(normalizeModelList("chat_completions", { models: [{ id: "m", slug: "s" }] }), [
+    { modelId: "m", displayName: "m" },
+  ]);
+  // A Google list still takes its own branch and keeps the `models/` prefix off.
+  assert.deepEqual(normalizeModelList("google_generative_ai", { models: [{ name: "models/gemini-3" }] }), [
+    { modelId: "gemini-3", displayName: "gemini-3" },
+  ]);
+  // A data list still wins over a models wrapper when both are present.
+  assert.deepEqual(normalizeModelList("responses", { data: [{ id: "a" }], models: [{ slug: "b" }] }), [
+    { modelId: "a", displayName: "a" },
+  ]);
+});
 test("anthropic lists keep display names", () => {
   const models = normalizeModelList("anthropic_messages", {
     data: [{ id: "claude-sonnet-5", display_name: "Claude Sonnet 5" }],

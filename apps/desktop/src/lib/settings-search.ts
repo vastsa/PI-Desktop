@@ -175,6 +175,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.apiKey",
       "settings.baseUrl",
       "settings.apiStyle",
+      // Subscription accounts share the service list (D625).
+      "settings.vendorAccounts",
+      "settings.vendorSubscription",
     ],
   },
   {

@@ -1,6 +1,7 @@
 import { session, shell, WebContentsView, type BrowserWindow } from "electron";
 import { join } from "node:path";
 import { parseAllowedExternalUrl } from "./safe-open-external";
+import { PanelSenders, pageGoneWithin } from "./plugin-panel-senders";
 import {
   PLUGIN_VIEW_LOCATION_EVENT,
   PLUGIN_VIEW_LOCATION_PARAM,
@@ -106,6 +107,13 @@ export class PluginViewHost {
   private bounds: PluginViewBounds = { x: 0, y: 0, width: 0, height: 0 };
   private clock = 0;
   private onBlockedRequest?: PluginPanelBlockedRequest;
+  /**
+   * Identity of the pages allowed to use the bridge, keyed by web contents. A
+   * view keeps its plugin for as long as its page exists, not only while it is
+   * cached in `views`, so a call that arrives while the view is being dropped
+   * still belongs to its own plugin.
+   */
+  private senders = new PanelSenders();
 
   constructor(onBlockedRequest?: PluginPanelBlockedRequest) {
     this.onBlockedRequest = onBlockedRequest;
@@ -158,11 +166,7 @@ export class PluginViewHost {
    * calls from docked views on the same channel it serves panel windows.
    */
   pluginIdForSender(senderId: number): string | null {
-    for (const entry of this.views.values()) {
-      const wc = entry.view.webContents;
-      if (!wc.isDestroyed() && wc.id === senderId) return entry.pluginId;
-    }
-    return null;
+    return this.senders.pluginFor(senderId);
   }
 
   /**
@@ -195,6 +199,12 @@ export class PluginViewHost {
       loaded: false,
     };
     this.views.set(key, entry);
+    // A docked view can call the bridge from its first script, so its identity is
+    // registered before the document loads and released only when the page is
+    // gone — never when the host merely drops the cached surface around it.
+    const senderId = view.webContents.id;
+    this.senders.register(senderId, request.pluginId);
+    view.webContents.once("destroyed", () => this.senders.release(senderId));
     view.webContents.once("did-finish-load", () => {
       entry.loaded = true;
     });
@@ -286,8 +296,20 @@ export class PluginViewHost {
     }
   }
 
-  dispose(): void {
-    for (const key of [...this.views.keys()]) this.destroy(key);
+  /**
+   * Drop every view and wait, bounded, for the pages to be gone, so a caller
+   * that is about to stop the plugin runtime knows no view page can still call
+   * it. Shutdown sequences this before that stop.
+   */
+  async dispose(): Promise<void> {
+    await Promise.allSettled(
+      [...this.views.values()].map(async (entry) => {
+        // Captured while the view is alive; `destroy` closes the page below.
+        const page = entry.view.webContents;
+        this.destroy(entry.key);
+        await pageGoneWithin(page);
+      }),
+    );
   }
 
   private destroy(key: string): void {

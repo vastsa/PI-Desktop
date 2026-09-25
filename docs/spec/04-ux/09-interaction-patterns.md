@@ -1282,9 +1282,16 @@ Project drag/drop follows these patterns:
   the work panel follows the folder that answered: a file of the primary folder
   travels as a project-relative path, a file of a sibling folder of the same
   project as an absolute one, exactly as a scratch or attachment file does. A
-  chip whose reference matches nothing opens nothing and reports itself; the OS
-  default application is no longer what this click does, though that action
-  stays reachable from the file view's own context menu.
+  chip whose reference matches nothing opens nothing and reports itself, and so
+  does a right-click on it: the file-reference menu — offered on every
+  reference the transcript renders, a sent `@path` chip, an inline code span, a
+  local link, a local image, a tool row's own file path, a path in a tool
+  result's file or match list, and an image attachment's thumbnail — shows the
+  file in the system file manager through that same completion and that same
+  address, and copies that file's full path or its project-relative path. A file
+  outside the project has no relative path to copy and says so. The OS default
+  application is no longer what this click does, though that action stays
+  reachable from the file view's own context menu.
 - The same destination rule governs every other surface of the transcript that
   names a file, because one opener serves them all: clicking the file path in a
   tool row's summary (Read, Write, Edit, fetch) and clicking a path in a tool

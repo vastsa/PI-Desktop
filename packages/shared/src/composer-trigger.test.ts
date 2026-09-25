@@ -44,9 +44,10 @@ describe("detectTrigger — slash mode", () => {
     });
   });
 
-  it("never triggers mid-draft or on later lines", () => {
-    expect(detectTrigger("hi /cmd", 7)).toBeNull();
-    expect(detectTrigger("hi\n/cmd", 7)).toBeNull();
+  it("targets later slash tokens independently", () => {
+    expect(detectTrigger("hi /cmd", 7)).toMatchObject({ tokenStart: 3, query: "cmd" });
+    expect(detectTrigger("hi\n/cmd", 7)).toMatchObject({ tokenStart: 3, query: "cmd" });
+    expect(detectTrigger("https://example.com", 8)).toBeNull();
   });
 });
 

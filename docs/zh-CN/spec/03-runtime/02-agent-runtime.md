@@ -877,7 +877,9 @@ Composer 增强使用与 agent 请求相同的已解析提供商绑定和重试�
 调用方自带的标头会覆盖 client 与 User-Agent 默认值。空的会话标头会由对话 id
 补回，使 OpenCode Go 不会返回 `MissingSessionID`。提供商行上的 `headers` 映射
 在这次合并之后应用（标头加上一层 fetch 包装），因此自定义值优先于 OpenCode
-默认值，也优先于适配器的最后写入。保留键无法冲掉 `x-opencode-session`。这属于
+默认值，也优先于适配器的最后写入。Google 适配器只接收合并后的 `headers`、
+不带该包装，因为它们会拒绝任何其他 `fetch`（issue #1072）。保留键无法冲掉
+`x-opencode-session`。这属于
 agent 运行时的职责，与官方 Pi 编码 agent 的归属层保持一致；pi-ai 的 `sessionId`
 流选项并不会发出 `x-opencode-session`。
 

@@ -175,21 +175,6 @@
 - **Status:** Documented; run after integration into main.
 
 
-### E2E-SHELL-mid-autumn-egg-first-open
-
-- **Preconditions:** A profile whose renderer storage has never recorded the
-  Mid-Autumn egg (`pi.desktop.midAutumnEggSeen` unset).
-- **Steps:** Launch the app and watch the startup splash; after the shell is
-  ready close the egg with its top-right close button, relaunch and confirm no
-  automatic playback, then open Settings → Info and activate the Mid-Autumn
-  egg row.
-- **Expected:** The automatic egg appears only once the startup splash has
-  finished; it never covers or delays the splash and never appears while the
-  app is still loading. It fills the window, exposes an obvious top-right
-  close button, and both that button and Escape dismiss it and restore focus
-  to the app. Settings → Info shows the Easter eggs card, and its row replays
-  the same animation on demand regardless of the seen flag.
-- **Status:** Documented; run after integration into main.
 - Document every user-visible and protocol-visible behavior that MVP must verify.
 - Provide a scenario catalog that maps to acceptance criteria (A–H) and milestones (M1–M6).
 - Serve as the traceability backbone: scenario ID ↔ acceptance criterion ↔ spec.
@@ -643,8 +628,8 @@ identify the platform validation still needed.
 
 - **Preconditions**: App running; provider A saved and set as the app default model; a second provider B serving different models; one image-capable model configured on A and another on a different service.
 - **Steps**: 1) Open Settings → Model configuration and add provider B; save without touching the Default model row. 2) Confirm the Default model row still names provider A and its exact model, and that a new session starts on it. 3) Set an image model as the default image model, then add a provider that also serves image models; save. 4) Confirm the Default image model row still names the earlier binding while the picker lists the new provider's image models as candidates. 5) Delete the provider that owned a default, then add a service that serves a model and an image model; save. 6) Confirm both defaults now resolve to that newly added provider.
-- **Expected**: Saving a new provider never repoints an app default that still resolves: the model default keeps the pairing the Default model row already renders, and the image default keeps its stored binding while its candidate list grows. A removed image model is cleared and requires an explicit new selection; a removed chat default still uses the existing chat repair rule. The explicit make-default actions and the edit path remain unchanged.
-- **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`
+- **Expected**: Saving a new provider never repoints an app default that still resolves: the model default keeps the pairing the Default model row already renders, and the image default keeps its stored binding while its candidate list grows. A removed image model is cleared and requires an explicit new selection; a removed chat default still uses the existing chat repair rule. Deleting the provider row that owned an image default needs no manual repair either: the next settings read or write drops the binding and candidate whose provider row is gone, so the Default image model row reports no default instead of a binding the runtime rejects. The explicit make-default actions and the edit path remain unchanged.
+- **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`, `03-runtime/21-image-generation.md`
 - **Acceptance**: B (model selection)
 - **Milestone**: M6
 - **Status**: Documented; covered by `apps/desktop/test/default-model-display.test.mjs`, `apps/desktop/test/image-generation-default.test.mjs`, `apps/desktop/test/provider-model-config.test.mjs`
@@ -654,6 +639,9 @@ identify the platform validation still needed.
 - **Preconditions**: App running; the models.dev snapshot ships with the build; a provider editor is open.
 - **Steps**: 1) Type a model id the snapshot publishes into the add-model field and add it; confirm the new row's context window, max output tokens and thinking levels match the published record instead of 128,000 / 8,192 with none. 2) Type an id the snapshot does not publish and add it; confirm the row keeps the generic 128,000 / 8,192 seed and no thinking levels. 3) Add an id while the service list is unreachable; confirm the row still appears exactly once and stays editable. 4) Add an id and edit its limits immediately, before the lookup answers; confirm the typed values survive.
 - **Expected**: `providers.lookupModel` answers a hand-typed id from the local snapshot only — no provider network request and no host call — and a hit seeds the binding the way a picked model is seeded (published context window, max output tokens, thinking levels, `contextWindowSource: "catalog"`) while the stored id stays exactly what the user typed. A miss, a failed call, or an id the current discovery already described leaves the previous behavior intact: one usable row, the generic seed, and no stalled or duplicated list.
+  A record published under another spelling of that id — a route prefix, a dated
+  stamp, a marker the deployment appends — is a hit too: the row is upgraded in
+  place as soon as the answer arrives, without waiting for a save.
 - **Specs linked**: `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`
 - **Acceptance**: B (multi-model provider configuration)
 - **Milestone**: M2
@@ -809,18 +797,32 @@ identify the platform validation still needed.
 
 - **Preconditions**: App running; the add-provider dialog is open with Custom
   endpoint selected.
-- **Steps**: 1) Enter a valid gateway URL ending in `/v1/messages`, then leave
-  the Base URL field. 2) Confirm the field keeps the service base URL ending in
-  `/v1`, and that its helper identifies the API path that will be targeted. 3)
-  Replace the value with `ftp://gateway.example.com`, then leave the field.
-  4) Enter a valid URL again and confirm model discovery can run; paste a full
-  `/models` path and leave the field.
-- **Expected**: Full operation paths are normalized to the service root on
-  blur, without changing the selected API style. A non-http(s) URL shows an
-  inline, accessible error, does not start discovery, and keeps Save disabled.
-  A valid URL restores discovery; the `/models` suffix is also removed before
-  the request is made. The long URL field uses a full row on wide dialogs and
-  stacks cleanly with the other credentials at the responsive breakpoint.
+- **Steps**: 1) Enter `api.gateway.example.com` with no scheme and leave the
+  Base URL field. 2) Confirm the field settles on
+  `https://api.gateway.example.com` and discovery runs. 3) Paste
+  `https://api.gateway.example.com/v1/messages` and leave the field. 4) Confirm
+  the field settles on `https://api.gateway.example.com/v1`, the API format
+  reads Anthropic Messages, and the form says that format was auto detected. 5)
+  Change the API format by hand to OpenAI Chat Completions, then paste the
+  `/v1/responses` URL: confirm the hand-picked format survives and the operation
+  is left in place until the suggestion is applied. 6) Replace the value with
+  `ftp://gateway.example.com`, then leave the field. 7) Enter a valid URL again
+  and confirm model discovery can run; paste a full `/models` path and leave the
+  field. 8) Point the row at a gateway whose `/models` route answers only under
+  `/v1` and confirm the field and the saved row show that address.
+- **Expected**: A bare host is completed with `https://` inside the origin the
+  user typed; credentials, queries and fragments are still refused. A pasted
+  operation path names the matching format, selects it and is stripped from the
+  base endpoint, and `/models` is removed as well — unless the operation
+  contradicts a format the user picked by hand, which is then preserved and
+  offered as a suggestion instead. When the endpoint itself decided the format,
+  the form says so next to the selector. When only the `/v1` candidate answers,
+  the field and the saved row show that address rather than a hidden rewrite,
+  and every probed candidate stays on the typed origin. A non-http(s) URL shows
+  an inline, accessible error, does not start discovery, and keeps Save
+  disabled. A valid URL restores discovery. The long URL field uses a full row
+  on wide dialogs and stacks cleanly with the other credentials at the
+  responsive breakpoint.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
   `03-runtime/12-provider-config-schema.md`
 - **Acceptance**: B (custom provider configuration)
@@ -2746,8 +2748,8 @@ identify the platform validation still needed.
 #### E2E-024D: Isolated plugin panel host bridge
 
 - **Preconditions**: Plugin with `ui.panel` enabled.
-- **Steps**: 1) Set the app language to English and open a panel whose manifest declares localized `ui.title.en` and `ui.title.zh-CN`; confirm the native window/launcher identity remains available without a host-rendered title. 2) Set the app language to Simplified Chinese and reopen the panel; confirm the panel content remains plugin-owned. 3) While the panel stays open, switch the app language to Korean and confirm the live `appearance:changed` event updates the panel controls, safe-area reminder, and accessible labels without reopening it. 4) Open the panel on macOS, Windows, and Linux; confirm the same frameless 46px drag band, fixed top-right capsule fully contained inside that band, and exactly three accessible controls. 5) Exercise minimize, maximize, restore, close, keyboard focus, light/dark themes, page-defined light/dark backgrounds, and reduced motion on every platform. 6) Render a plugin-owned titlebar/toolbar; verify fixed/sticky UI uses `--pi-plugin-titlebar-height`, its interactive controls use `no-drag`, and clicks outside the capsule in the top 46px are treated as window dragging. 7) On Windows with classic scrollbars, scroll a panel with content overflow and inspect the right edge. 8) Open a development plugin and confirm the localized reminder explains that the top 46px is not clickable outside the capsule. 9) Reopen a minimized panel. 10) Invoke panel bridge APIs (`ui.showToast`, optional fs/net with grants). 11) Close the panel from the capsule and by disabling or uninstalling the plugin.
-- **Expected**: Panel runs in its sandboxed window/partition; all three platforms use one host-owned frameless chrome contract with no native traffic lights, host-rendered title, or application menu; the top drag band is exactly 46px, and the minimal capsule stays fixed at the top-right without exceeding it. The capsule contains minimize/maximize-or-restore/close, follows the plugin page's surface/text colors, and never forces a black surface onto a light page. A v2 page marked `pi-plugin-chrome` uses `--pi-plugin-titlebar-height` and starts its own content directly below the 46px band without an additive duplicate spacer; a legacy page keeps the compatibility offset. A panel's stable scrollbar gutter is scoped to its actual content scroller; Windows does not show a second root-level empty side rail outside the page surface. The plugin owns its title and toolbar; the host drag strip remains usable, blocks clicks outside the capsule, and development panels alone show the reminder. Reopening restores the existing panel; switching to Korean while the panel remains open updates the host capsule, reminder, and accessible labels in place; bridge calls remain permission-checked and the host remains stable on panel close. Closing a panel must not throw a main-process `TypeError: Object has been destroyed` or show an uncaught-exception dialog.
+- **Steps**: 1) Set the app language to English and open a panel whose manifest declares localized `ui.title.en` and `ui.title.zh-CN`; confirm the native window/launcher identity remains available without a host-rendered title. 2) Set the app language to Simplified Chinese and reopen the panel; confirm the panel content remains plugin-owned. 3) While the panel stays open, switch the app language to Korean and confirm the live `appearance:changed` event updates the panel controls, safe-area reminder, and accessible labels without reopening it. 4) Open the panel on macOS, Windows, and Linux; confirm the same frameless 46px drag band, fixed top-right capsule fully contained inside that band, and exactly three accessible controls. 5) Exercise minimize, maximize, restore, close, keyboard focus, light/dark themes, page-defined light/dark backgrounds, and reduced motion on every platform. 6) Render a plugin-owned titlebar/toolbar; verify fixed/sticky UI uses `--pi-plugin-titlebar-height`, its interactive controls use `no-drag`, and clicks outside the capsule in the top 46px are treated as window dragging. 7) On Windows with classic scrollbars, scroll a panel with content overflow and inspect the right edge. 8) Open a development plugin and confirm the localized reminder explains that the top 46px is not clickable outside the capsule. 9) Reopen a minimized panel. 10) Invoke panel bridge APIs (`ui.showToast`, optional fs/net with grants). 11) Close the panel from the capsule and by disabling or uninstalling the plugin. 12) Repeat with a panel and a docked work-panel view open and quit the app, then read the main-process log.
+- **Expected**: Panel runs in its sandboxed window/partition; all three platforms use one host-owned frameless chrome contract with no native traffic lights, host-rendered title, or application menu; the top drag band is exactly 46px, and the minimal capsule stays fixed at the top-right without exceeding it. The capsule contains minimize/maximize-or-restore/close, follows the plugin page's surface/text colors, and never forces a black surface onto a light page. A v2 page marked `pi-plugin-chrome` uses `--pi-plugin-titlebar-height` and starts its own content directly below the 46px band without an additive duplicate spacer; a legacy page keeps the compatibility offset. A panel's stable scrollbar gutter is scoped to its actual content scroller; Windows does not show a second root-level empty side rail outside the page surface. The plugin owns its title and toolbar; the host drag strip remains usable, blocks clicks outside the capsule, and development panels alone show the reminder. Reopening restores the existing panel; switching to Korean while the panel remains open updates the host capsule, reminder, and accessible labels in place; bridge calls remain permission-checked and the host remains stable on panel close. Closing a panel must not throw a main-process `TypeError: Object has been destroyed` or show an uncaught-exception dialog, and neither closing a panel nor quitting with panels and docked views open may log a panel-bridge failure for the page that is closing: a call from a page that is already gone is settled, and the panel and view pages are gone before the plugin runtime and the host stop.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`, `04-ux/07-ui-design-system.md`, `07-plugins/01-plugin-system.md`, `07-plugins/03-plugin-api.md`, `07-plugins/04-plugin-security.md`, `07-plugins/12-plugin-ipc-and-host-services.md`, ADR 0081, ADR 0082, ADR 0092, ADR 0093
 - **Acceptance**: G (isolated panel)
 - **Status**: Documented
@@ -3176,20 +3178,18 @@ identify the platform validation still needed.
 
 #### E2E-046: PI-Desktop renderer branding and composer icon boundary
 
-- **Preconditions**: App running in English, zh-CN, and zh-TW locales, with
-  an empty home and a docked transcript available.
-- **Steps**: 1) Inspect the expanded and collapsed sidebar. 2) In light mode,
-  inspect the empty-home hero in English and Chinese. 3) Switch to dark mode;
-  confirm English uses the standard dark wave and `zh-CN` / `zh-TW` use the
-  30-frame Chinese GIF. Move the pointer over the mascot and confirm its
-  cadence and geometry do not change. Enable reduced motion and confirm each
-  locale/theme combination shows its matching still first frame. 4) Inspect
-  the docked composer, footer Settings and Plugins icons, and session-create
-  controls. 5) Open Settings and the composer input.
+- **Preconditions**: App running in both English and zh-CN locales, with an
+  empty home and a docked transcript available.
+- **Steps**: 1) Inspect the expanded and collapsed sidebar. 2) Inspect the
+  empty-home hero and docked composer. 3) Observe the eight-frame mascot GIF
+  looping in place, move the pointer over it, and confirm its cadence and
+  geometry do not change. Enable reduced motion and confirm the still first
+  frame is shown. 4) Focus the footer Settings and Plugins icons, then each
+  project/Temporary session create control. 5) Open Settings and the composer
+  input.
 - **Expected**: Visible shell identity reads `PI-Desktop`; the empty-home hero
-  renders the theme- and locale-matching 100px `HomeMascotLogo` GIF. Only dark
-  Chinese locales use the supplied 30-frame artwork; other combinations keep
-  their existing variants. Pointer hover does not alter cadence or geometry,
+  renders the theme-matching 100px `HomeMascotLogo` GIF with a short idle hold
+  and a looping wave. Pointer hover does not alter the cadence or geometry,
   and reduced motion shows the matching still first frame.
   The expanded/collapsed
   sidebar renders the derived `src/assets/brand/logo-*.png` asset through `BrandLogo`
@@ -4213,22 +4213,26 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   turn; notification inbox starts empty.
 - **Steps**: 1) Focus and view session A, then complete a turn in A. 2) While
   still focused on A, fail a turn in background session B. 3) Unfocus the
-  window and complete another turn in A. 4) Abort a fourth turn. 5) Repeat each
-  terminal RPC. 6) Confirm the main titlebar has no bell, then open the bell in
-  the expanded sidebar footer and switch between All and Unread. 7) Mark one
+  window and complete another turn in A. 4) Restore/focus the app from its
+  taskbar or Dock without switching sessions and confirm A's visible terminal
+  outcome is acknowledged. 5) Abort a fourth turn. 6) Repeat each terminal
+  RPC. 7) Confirm the main titlebar has no bell, then open the bell in
+  the expanded sidebar footer and switch between All and Unread. 8) Mark one
   row read and confirm its session has no terminal sidebar mark, then
-  close/reopen the popover and restart the app. 8) Select the other session
-  from its terminal-marked sidebar row. 9) Generate a host fixture with 205
-  eligible terminal turns. 10) Use Mark all read, then Clear. 11) While a
+  close/reopen the popover and restart the app. 9) Select the other session
+  from its terminal-marked sidebar row. 10) Generate a host fixture with 205
+  eligible terminal turns. 11) Use Mark all read, then Clear. 12) While a
   native task banner and a renderer refresh are still in flight, deliver a
   delayed `notification.changed` payload for a cleared/read durable id and a
-  duplicate payload for an id that is already present. 12) On Windows, create
+  duplicate payload for an id that is already present. 13) On Windows, create
   one unread successful outcome while the bell has no failure rows. Open the
   empty bell popover, use Mark all read, then create another success and use
-  Clear. 13) Create enough unread outcomes for a two-digit count and inspect
+  Clear. 14) Create enough unread outcomes for a two-digit count and inspect
   the taskbar overlay before and after marking all outcomes read.
-- **Expected**: A's visible-current completion creates no row or terminal sidebar mark. Exactly two rows
-  exist, newest first: the unfocused A completion and background B failure,
+- **Expected**: A's visible-current completion creates no row or terminal
+  sidebar mark. Restoring/focusing the app with A already visible clears A's
+  matching durable outcome and taskbar count without clearing B. Exactly two
+  rows exist, newest first: the unfocused A completion and background B failure,
   with localized labels, snapshotted session titles, and B's stable code.
   Abort/repeated terminal calls create no row. The former footer Help shortcut
   is absent; the 32px footer bell and its upward-opening popover replace it.
@@ -5284,21 +5288,17 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
      and inspect the light eight-frame `HomeMascotLogo` GIF in the empty-home
      hero. Hover the mascot and verify that its cadence does not change.
   3. Switch the theme to dark (Settings → Basics → Appearance, or system appearance change).
-  4. In English, confirm the standard dark GIF. Switch the app language to
-     `zh-CN` and `zh-TW` and confirm the 30-frame Chinese dark GIF appears
-     without a reload. Enable reduced motion and confirm the matching Chinese
-     still frame appears.
+  4. Re-inspect the same surfaces without reloading.
   5. Switch back to light and re-inspect.
 - **Expected**:
   - Light and dark mode render `src/assets/brand/logo-light.png` /
     `src/assets/brand/logo-dark.png`
     live in the sidebar and startup splash without a window reload.
-  - The empty-home hero renders the 100px mascot GIF for the active theme and
-    locale. Light mode uses `home-mascot-light.gif`; dark mode uses
-    `home-mascot-dark.gif`, except Chinese locales use
-    `home-mascot-dark-zh.gif`. Theme and language changes swap the asset live
-    without a window reload. Pointer hover does not change cadence; reduced
-    motion shows the matching still first frame.
+  - The empty-home hero renders the 100px eight-frame mascot GIF for the
+    active theme (`home-mascot-light.gif` / `home-mascot-dark.gif`) with a
+    short idle hold and a looping wave. Switching theme swaps the pair live
+    without a window reload. Pointer hover does not change the cadence;
+    under reduced motion the matching still first frame remains visible.
   - Sizes stay stable across theme changes (sidebar 20px, hero 100px, splash
     64px), and the marks stay decorative with no click, keyboard, or focus
     behavior.
@@ -8458,7 +8458,12 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   history. Cancel the confirmation once and verify configuration is not saved.
   11) Use the explicit LAN HTTP acknowledgement with a loopback/private fixture,
   verify the setting survives a state refresh, and confirm a public HTTP
-  endpoint is rejected even when the checkbox is selected.
+  endpoint is rejected even when the checkbox is selected. 12) Leave the
+  Cloud sync page with an unfinished connection edit, reopen it, and confirm
+  the non-sensitive draft is painted immediately while host state/history
+  refreshes in the background. Confirm a configured endpoint reuses its stored
+  WebDAV app password, while password fields themselves remain blank and no
+  vault password is written to renderer storage.
 - **Expected:** With developer mode off, Cloud sync is absent from the rail and
   settings search; enabling developer mode reveals the destination and its
   Experimental badges without changing sync behavior. Strict mode refuses
@@ -8475,16 +8480,19 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   appear in renderer state or logs. Identical and disjoint edits converge,
   conflicts remain reviewable, explicit deletions use tombstones, category
   opt-out is not deletion, and executable imports remain inactive until local
-  approval and mapping. Recovery never exposes a partial local apply.
+  approval and mapping. Reopening Settings does not block on history, and
+  unfinished non-sensitive connection choices survive navigation or reload.
+  Recovery never exposes a partial local apply.
 - **Specs:** `04-ux/06-settings-ia.md`, `03-runtime/22-config-sync.md`,
   `03-runtime/14-secrets-storage.md`, `05-security/01-security.md`, ADR 0300,
   ADR 0301.
 - **Acceptance:** F (persistence), Security, Quality.
 - **Milestone:** M6+.
-- **Status:** Draft; merge/crypto and in-process WebDAV conditional-write
-  coverage exists. The Settings visibility gate is automated by
-  `pnpm test:e2e:settings-scroll`; the remaining automation is the full
-  two-device process path and checkpoint-level local recovery fault injection.
+- **Status:** Draft; merge/crypto, in-process WebDAV conditional-write
+  coverage, and the two-device host/WebDAV path are automated by
+  `pnpm test:e2e:config-sync`. The Settings visibility gate is automated by
+  `pnpm test:e2e:settings-scroll`; full renderer-driven password persistence
+  assertions and checkpoint-level local recovery fault injection remain.
 
 ## 8. Traceability Matrix
 
@@ -8573,7 +8581,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M5 (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
-| Post-MVP | E2E-PLUGIN-pi-npm-skill-discovery, E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
+| Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
@@ -8766,12 +8774,11 @@ This test plan spec is accepted when:
   row, with no Logo/Home brand or back/forward buttons.
 
 ### US-UI-17 PI-Desktop home hero logo
-- On empty chat home, the 100px `HomeMascotLogo` renders above the title.
-  Light mode and non-Chinese dark mode use the existing eight-frame GIFs;
-  dark `zh-CN` and `zh-TW` use the 30-frame Chinese GIF and matching still.
-- Theme and locale changes select the matching art without a reload. Pointer
-  hover does not change cadence or geometry; reduced motion shows the matching
-  still first frame. The mascot remains decorative.
+- On empty chat home, the 100px `HomeMascotLogo` GIF renders above the title
+  as an eight-frame waving mascot with a short idle hold. Light and dark
+  themes each use a dedicated GIF and still PNG.
+- Pointer hover does not change the cadence or geometry; reduced motion shows
+  the matching still first frame. The mascot remains decorative.
 - Title is 28px / weight 400; active project name uses dotted underline (1px, offset 4px).
 - Composer does not render attachment or appshot controls before their payload
   reaches pi end to end.
@@ -9422,9 +9429,10 @@ This test plan spec is accepted when:
 - In light and dark themes, keep session B selected while session A progresses
   through in-progress, completed, a new in-progress turn, failed, and aborted
   states. Repeat with reduced motion enabled and inspect keyboard focus.
-- Expect A to show an orange breathing dot while in progress, a green check on
-  completion, and a red circled alert on failure. Starting a new turn clears
-  A's earlier terminal mark; abort leaves no completed or failed mark.
+- Expect A to show an orange dot that breathes twice over 3.2 seconds and then
+  stays steady while in progress, a green check on completion, and a red circled
+  alert on failure. Starting a new turn clears A's earlier terminal mark; abort
+  leaves no completed or failed mark.
 - Expect selected idle B to show a static accent-blue outlined ring and active
   row background. If selected B starts work, its orange in-progress dot takes
   precedence until the turn settles; its latest terminal result remains hidden
@@ -9438,6 +9446,11 @@ This test plan spec is accepted when:
   Refresh notifications and restart the app; the acknowledged mark must not
   return. A terminal notification marked read from the inbox likewise produces
   no sidebar terminal mark.
+- Repeat for a running related-session marker in the hover card. After 3.2
+  seconds, neither running marker has an active animation; recording an otherwise
+  idle native macOS window must show no continuous frames from these markers.
+  Start a new turn and reopen the hover card: the bounded animation can play again.
+  GPU measurements must distinguish app frame submissions from whole-system load.
 
 ### US-UI-68 Session-scoped inline permissions and artifacts (D138/D142)
 - Run two sessions concurrently and keep A visible while B reaches a tool
@@ -11594,8 +11607,23 @@ are withdrawn with ADR 0165.
   and a path heading of the `Grep` result. 6) Disable the File Manager plugin,
   click a project file reference and the tool row summary again, then re-enable
   it and click both once more. 7) Click a reference that resolves in the
-  project's second folder, then one that resolves in its primary folder.
+  project's second folder, then one that resolves in its primary folder. 8)
+  Right-click the sent `@path` chip, the inline-code reference, the markdown
+  link, the local image, a tool row's file path, a tool result's file list, and
+  an attachment thumbnail; then right-click a reference that matches nothing. 9)
+  On that chip, use Copy full path and Copy relative path, then do the same on a
+  reference that resolves in the session scratch store.
 - **Expected**:
+  - Right-clicking a file reference opens the renderer's own menu with the
+    file's own folder (Show in folder) and both of its addresses (Copy full
+    path, Copy relative path). The inline-code reference, the file link, the
+    local image, a tool row's path, a tool result's file or match list, and an
+    attachment thumbnail offer the same items, and a reference that matches
+    nothing reports itself instead of revealing a same-named file elsewhere.
+  - A copy writes exactly what it names: the absolute address for the full copy
+    and the project-relative spelling for the relative one; a scratch or
+    attachment file reports that it has no relative path instead of copying an
+    absolute one under that name.
   - A project file opens in the File Manager work-panel view on that file, with
     its ancestor folders expanded and the file selected; no host `file:` tab is
     added for it.
@@ -13593,12 +13621,16 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   3. Confirm the model calls `Skill` with the exact id without calling
      `ToolSearch` first, and that the returned document is the skill body.
   4. Send `/<skill-id>` from the composer and inspect the following turn.
+  4a. Add a second active Skill with `/` after the first token, submit the
+      prompt, switch away from the session, and reopen it.
   5. Switch the session to Plan mode and inspect the tool list again.
   6. Disable or remove every Skill and start another Agent turn.
 - **Expected**: Whenever the skill catalog is non-empty, `Skill` ships with the
   first request and never appears under `# On-demand tools`, so both a matching
   task and a `/skill-id` invocation load the body without a discovery round
-  trip. `ToolSearch` still exists for the other on-demand capabilities and
+  trip. Both explicit Skills load in their selected order; after reopening,
+  each remains a separate transcript chip beside the user's prompt text.
+  `ToolSearch` still exists for the other on-demand capabilities and
   never returns `Skill`. Plan mode omits the tool and the `# Skills` section,
   and an empty catalog registers no `Skill` tool at all.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` (§7.1),
@@ -14543,9 +14575,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 #### E2E-MODEL-catalog-window-correction-reaches-saved-bindings
 
-- **Goal**: a models.dev limit correction reaches an already saved binding without
-  deleting and re-adding the model, while a number the user entered in Settings is
-  never overwritten.
+- **Goal**: a models.dev limit correction — the context window or the output cap —
+  reaches an already saved binding without deleting and re-adding the model, while
+  a number the user entered in Settings is never overwritten.
 - **Steps**:
   1. Configure a provider, select a model models.dev publishes a `limit.context`
      for, and save. Open the row's Advanced body and read the context-window field
@@ -14559,6 +14591,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   4. Save and reopen a provider row whose binding carries no
      `contextWindowSource`: once with the generic `128000` seed, once with any
      other stored value.
+  5. Repeat step 4 with a row whose stored output cap is the generic `8192`, and
+     one whose cap the user typed, and read the cap in the settings row and in the
+     request a new session launches with.
 - **Expected**: Step 1 shows the published number with the "follows models.dev"
   hint. Step 2 shows the corrected number everywhere the effective window is used
   (settings row, context inspector, session launch) with no delete and re-add.
@@ -14566,8 +14601,10 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   the launched request, including a hand-typed `128000` for a model whose
   published window is larger, and the hint is gone. Step 4 resolves
   deterministically: the `128000` seed follows the catalog, every other value
-  stays as stored. Every step keeps the marker across the save/read round trip of
-  the provider row, and a config written before the marker stays readable.
+  stays as stored. Step 5 applies the same provenance rule to the output cap: an
+  `8192` seed follows the published `limit.output`, and a cap the user entered is
+  kept. Every step keeps the marker across the save/read round trip of the
+  provider row, and a config written before the marker stays readable.
 - **Specs linked**: `03-runtime/13-model-catalog-and-selection.md` §9.1,
   `03-runtime/12-provider-config-schema.md` §2,
   `03-runtime/11-provider-model-system.md` §2, `04-ux/06-settings-ia.md` §2
@@ -15068,30 +15105,6 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Status:** Automated by `node --experimental-strip-types
   scripts/e2e-scheduled-workspace.mjs`, using production Electron dispatch and
   real Rust/stdio/SQLite. Only external inference is replaced with an observer.
-
-### E2E-PLUGIN-pi-npm-skill-discovery
-
-- **Preconditions:** Isolated npm package directory and plugin import storage;
-  a package declaring `pi.skills`, optionally executable extensions. No provider.
-- **Steps:** Open Skills, discover the candidate, cancel import, confirm import,
-  read the registered skill body and resources, reload, and attempt a duplicate.
-  Change metadata during confirmation; retry discovery after an error; discover
-  with more than 256 hoisted dependencies and an unreadable scope. Simulate a
-  runtime load failure after host registration and inspect the refreshed state.
-- **Expected:** No implicit import/execution, native explicit consent, preserved
-  resources and runtime skill body, stable imported state, no duplicate import,
-  stale consent refusal, and visible/recoverable errors. Unregistered leftover
-  directories do not count as imports; scoped packages are discovered. Unrelated
-  dependencies and unreadable scopes do not hide healthy skills. A registered
-  import remains marked imported after runtime failure while its error stays visible.
-- **Specs:** 07-plugins/16-trusted-extensions; ADR pi-npm-skill-discovery.
-- **Acceptance:** Plugin skill discovery and explicit trust boundary.
-- **Milestone:** Post-MVP compatibility.
-- **Status:** Automated via `apps/desktop/test/pi-skill-discovery.test.mjs` (real
-  import and plugin child process, native dialog boundary controlled) and
-  `node scripts/e2e-pi-skill-discovery-ui.mjs` (real React/Chromium panel with
-  controlled IPC results). Optional `PI_SKILL_PACKAGE_FIXTURE` points to an
-  unpacked published package for the reported planning-with-files path.
 
 ### E2E-SESSION-temporary-attachment-fork: Preview and independent branch inputs
 

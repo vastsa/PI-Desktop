@@ -1,22 +1,34 @@
 /**
- * Provider model discovery: query the provider's own model-list endpoint so
- * users pick real model IDs instead of typing them (settings dialog and the
- * composer model menu both consume this).
+ * Provider model discovery: ask a service's own model-list endpoint what it
+ * serves, so users pick real model IDs instead of typing them.
  *
- * Per apiStyle:
- *  - chat_completions / responses → GET {base}/models        (Bearer auth)
- *  - anthropic_messages           → GET {base}/v1/models     (x-api-key)
- *  - google_generative_ai        → GET {base}/models?key=…
+ * Three responsibilities, deliberately separate:
+ *
+ *  - `normalizeModelList` turns a response body into rows and is pure;
+ *  - `modelListRequest` builds the request one endpoint needs;
+ *  - `probeModelList` performs exactly one request, with redirect safety.
+ *
+ * The candidate sweep that resolves an unknown Base URL lives in
+ * `provider-endpoint-probe.ts` and drives `probeModelList`, so discovery and
+ * "Test connection" cannot drift into two different URL or auth rules.
  */
+
+import {
+  discoveryProbeUrl,
+  discoveryStyleForApiStyle,
+  type DiscoveryStyle,
+} from "@pi-desktop/shared";
 
 export type DiscoveredModel = {
   modelId: string;
   displayName: string;
 };
 
-const DISCOVERY_TIMEOUT_MS = 10_000;
+export const DISCOVERY_TIMEOUT_MS = 10_000;
+/** Total budget for one endpoint-resolution sweep; its candidates share it. */
+export const DISCOVERY_TOTAL_BUDGET_MS = 12_000;
 const MAX_MODELS = 500;
-const OPENCODE_GO_API_STYLE = "opencode_go";
+const MAX_REDIRECTS = 3;
 const RESERVED_DISCOVERY_HEADERS = new Set([
   "authorization",
   "proxy-authorization",
@@ -70,13 +82,21 @@ function dedupeSort(models: DiscoveredModel[]): DiscoveredModel[] {
     .slice(0, MAX_MODELS);
 }
 
-/** Normalize a model-list response body for the given apiStyle. Pure. */
+/**
+ * Normalize a model-list response body. Pure.
+ *
+ * `style` is either a wire API style or a discovery style; both name the same
+ * three response shapes. Two of them nest the rows under a key of their own:
+ * Google publishes `{ models: [{ name: "models/…" }] }`, and Zhipu's OpenAI
+ * Responses endpoint publishes `{ models: [{ slug }] }` — the same `models`
+ * key with a `models/` prefix that never appears there.
+ */
 export function normalizeModelList(
-  apiStyle: string | undefined,
+  style: string | undefined,
   body: unknown,
 ): DiscoveredModel[] {
   const record = asRecord(body);
-  if (apiStyle === "google_generative_ai") {
+  if (style === "google_generative_ai" || style === "google_models") {
     const models = Array.isArray(record?.models) ? record.models : [];
     return dedupeSort(
       models.flatMap((entry) => {
@@ -93,16 +113,18 @@ export function normalizeModelList(
     );
   }
   // OpenAI-style and Anthropic both use { data: [...] }; some gateways return
-  // the bare array.
+  // the bare array, and Zhipu's Responses endpoint wraps the rows in `models`.
   const data = Array.isArray(record?.data)
     ? record.data
     : Array.isArray(body)
       ? (body as unknown[])
-      : [];
+      : Array.isArray(record?.models)
+        ? record.models
+        : [];
   return dedupeSort(
     data.flatMap((entry) => {
       const item = asRecord(entry);
-      const modelId = typeof item?.id === "string" ? item.id : "";
+      const modelId = listedModelId(item);
       if (!modelId) return [];
       const displayName =
         typeof item?.display_name === "string" && item.display_name
@@ -113,66 +135,156 @@ export function normalizeModelList(
   );
 }
 
-/** Build the request for a provider's model-list endpoint. Pure. */
+/**
+ * The id one row of a model list carries.
+ *
+ * `id` is the OpenAI and Anthropic shape. `slug` is what Zhipu's OpenAI
+ * Responses endpoint returns. The two are mutually exclusive, so either may be
+ * read without ambiguity, and the wire id stays exactly as the service spelled
+ * it.
+ */
+function listedModelId(item: Record<string, unknown> | null): string {
+  if (typeof item?.id === "string" && item.id) return item.id;
+  return typeof item?.slug === "string" ? item.slug : "";
+}
+
+/**
+ * Build the request for a provider's model-list endpoint. Pure.
+ *
+ * The URL comes from the shared `discoveryProbeUrl`, so a candidate the
+ * resolver offered and the request built for it can never disagree.
+ */
 export function modelListRequest(opts: {
   baseUrl: string;
   apiKey?: string;
   apiStyle?: string;
+  discoveryStyle?: DiscoveryStyle;
   headers?: Record<string, string>;
 }): { url: string; headers: Record<string, string> } {
-  const base = opts.baseUrl.trim().replace(/\/+$/, "");
   const apiKey = opts.apiKey ?? "";
+  const discoveryStyle =
+    opts.discoveryStyle ?? discoveryStyleForApiStyle(opts.apiStyle);
+  const path = discoveryProbeUrl(opts.baseUrl, discoveryStyle);
   const withHeaders = (headers: Record<string, string>): Record<string, string> =>
     withCustomHeaders(headers, opts.headers);
-  if (opts.apiStyle === "google_generative_ai") {
+
+  if (discoveryStyle === "google_models") {
     const params = new URLSearchParams({ pageSize: "1000" });
     if (apiKey) params.set("key", apiKey);
-    return { url: `${base}/models?${params}`, headers: withHeaders({}) };
+    return { url: `${path}?${params}`, headers: withHeaders({}) };
   }
-  if (opts.apiStyle === "anthropic_messages") {
-    // Anthropic base URLs conventionally exclude /v1 (runtime appends it).
-    const root = base.endsWith("/v1") ? base : `${base}/v1`;
+  if (discoveryStyle === "anthropic_models") {
     return {
-      url: `${root}/models?limit=1000`,
+      url: `${path}?limit=1000`,
       headers: withHeaders({
         ...(apiKey ? { "x-api-key": apiKey } : {}),
         "anthropic-version": "2023-06-01",
       }),
     };
   }
-  // OpenCode Go exposes the same authenticated OpenAI-compatible /models
-  // endpoint as generic Chat Completions, but keeps a distinct UI style.
-  if (opts.apiStyle === OPENCODE_GO_API_STYLE) {
-    return {
-      url: `${base}/models`,
-      headers: withHeaders(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-    };
-  }
+  // Chat Completions, Responses, OpenCode Go and the Codex account all expose
+  // the same authenticated OpenAI-compatible model list.
   return {
-    url: `${base}/models`,
+    url: path,
     headers: withHeaders(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
   };
 }
 
-/** Fetch and normalize the provider's model list. Throws on HTTP/network errors. */
-export async function discoverProviderModels(opts: {
+export type ModelListProbe = {
+  /** The URL that answered, after any same-origin redirect. */
+  url: string;
+  status: number;
+  models: DiscoveredModel[];
+};
+
+function originOf(value: string): string | undefined {
+  try {
+    return new URL(value.trim()).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * One model-list request.
+ *
+ * Redirects are followed manually so a cross-origin hop can be refused before
+ * the credential travels: the `Location` is compared against `allowOrigin`
+ * first. Throws on a network error, a refused redirect, or a non-2xx status —
+ * `error.status` carries the HTTP status when there was one.
+ */
+export async function probeModelList(opts: {
   baseUrl: string;
   apiKey?: string;
   apiStyle?: string;
+  discoveryStyle?: DiscoveryStyle;
   headers?: Record<string, string>;
-}): Promise<DiscoveredModel[]> {
-  const { url, headers } = modelListRequest(opts);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { headers, signal: controller.signal });
+  /**
+   * Credentials may only travel to this origin. Defaults to the configured base
+   * URL's own origin, so a caller cannot widen it by accident.
+   */
+  allowOrigin?: string;
+  /**
+   * Caller-owned budget. The sweep shares one across its candidates and passes
+   * it here; a caller that passes nothing gets the single-request default.
+   */
+  signal?: AbortSignal;
+}): Promise<ModelListProbe> {
+  const request = modelListRequest(opts);
+  const allowOrigin = opts.allowOrigin ?? originOf(opts.baseUrl);
+  const responseSignal = opts.signal ?? defaultTimeoutSignal();
+  if (allowOrigin) {
+    const origin = originOf(request.url);
+    if (origin !== allowOrigin) {
+      throw new Error("model list request refused: it left the configured origin");
+    }
+  }
+
+  let url = request.url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    const res = await fetch(url, {
+      headers: request.headers,
+      signal: responseSignal,
+      // Never let fetch carry the credential to another origin on its own.
+      redirect: "manual",
+    });
+    const location = res.headers.get("location");
+    if (res.status >= 300 && res.status < 400 && location) {
+      const next = new URL(location, url);
+      if (allowOrigin && next.origin !== allowOrigin) {
+        throw Object.assign(
+          new Error("model list redirect refused: it left the configured origin"),
+          { status: res.status },
+        );
+      }
+      url = next.toString();
+      continue;
+    }
     if (!res.ok) {
       throw Object.assign(new Error(`model list request failed (${res.status})`), {
         status: res.status,
       });
     }
-    return normalizeModelList(opts.apiStyle, await res.json());
-  } finally {
-    clearTimeout(timer);
+    return {
+      url,
+      status: res.status,
+      models: normalizeModelList(
+        opts.discoveryStyle ?? opts.apiStyle,
+        await res.json(),
+      ),
+    };
   }
+  throw new Error("model list request followed too many redirects");
+}
+
+/**
+ * Abort signal for a single request made without a caller budget.
+ *
+ * Resolution always passes its shared sweep budget; this keeps a direct caller
+ * (a connection test with no budget of its own) from hanging on a silent host.
+ */
+function defaultTimeoutSignal(): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT_MS);
+  return controller.signal;
 }

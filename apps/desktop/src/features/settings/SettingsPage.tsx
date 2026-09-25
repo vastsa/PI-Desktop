@@ -7,7 +7,6 @@ import type {
   ShortcutPlatform,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
-import { useMidAutumnEggStore } from "../../stores/mid-autumn-egg-store";
 import { api } from "../../lib/api";
 import {
   isSettingsDestinationHidden,
@@ -89,7 +88,6 @@ export function SettingsPage() {
   const settings = useAppStore((s) => s.settings);
   const version = useAppStore((s) => s.version);
   const refreshProviders = useAppStore((s) => s.refreshProviders);
-  const showMidAutumnEgg = useMidAutumnEggStore((s) => s.show);
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
 
   // Developer-only destinations (Cloud sync and Remote Hosts) exist only
@@ -596,17 +594,6 @@ export function SettingsPage() {
                   </Button>
                 </SettingsRow>
                 <UpdatesRow currentVersion={version?.version} />
-              </SettingsCard>
-
-              <SettingsCard title={t("settings.easterEggs")}>
-                <SettingsRow
-                  title={t("settings.midAutumnEgg")}
-                  description={t("settings.midAutumnEggDesc")}
-                >
-                  <Button variant="secondary" onClick={showMidAutumnEgg}>
-                    {t("settings.playMidAutumnEgg")}
-                  </Button>
-                </SettingsRow>
               </SettingsCard>
 
               {settings && (

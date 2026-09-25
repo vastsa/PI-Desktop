@@ -19,6 +19,21 @@ export type ProviderModelsState = {
   /** Message from the failed live call; cached rows stay visible alongside it. */
   error?: string;
   source?: ProviderModelsSource;
+  /**
+   * The base URL the service actually answered on, when a sweep resolved one.
+   * The form shows and saves this address rather than a hidden rewrite.
+   */
+  effectiveBaseUrl?: string;
+  /**
+   * The base URL this answer belongs to. The form only adopts
+   * `effectiveBaseUrl` while its field still holds this address, so a URL typed
+   * since the probe is never reverted to an earlier result.
+   */
+  resolvedFrom?: string;
+  /** How the sweep asked, and the evidence behind the candidate that won. */
+  discoveryStyle?: string;
+  apiStyleHint?: string;
+  evidence?: string;
 };
 
 export type ProviderModelsDiscovery = ProviderModelsState & {
@@ -127,11 +142,29 @@ export function useProviderModels(
         ...(Object.keys(hdrs ?? {}).length > 0 ? { headers: hdrs } : {}),
       });
       if (requestSeq.current !== requestId) return;
+      /*
+        A resolution result travels with the list: the address that answered and
+        the evidence behind it are what the form shows, so automatic endpoint
+        completion never becomes invisible behaviour.
+
+        `resolvedFrom` is the address this answer belongs to. The form compares
+        a field against it before adopting the answer, which is what keeps a URL
+        typed since the probe from being reverted to an earlier result.
+      */
+      const resolution = {
+        ...(result.effectiveBaseUrl
+          ? { effectiveBaseUrl: result.effectiveBaseUrl, resolvedFrom: url }
+          : {}),
+        ...(result.discoveryStyle ? { discoveryStyle: result.discoveryStyle } : {}),
+        ...(result.apiStyleHint ? { apiStyleHint: result.apiStyleHint } : {}),
+        ...(result.evidence ? { evidence: result.evidence } : {}),
+      };
       if (result.models.length > 0) {
         setState({
           status: "ready",
           models: result.models,
           source: result.source,
+          ...resolution,
           ...(result.error ? { error: result.error } : {}),
         });
       } else {
@@ -140,6 +173,7 @@ export function useProviderModels(
           status: "error",
           models: cachedModels,
           source: result.source,
+          ...resolution,
           ...(result.error ? { error: result.error } : {}),
         });
       }

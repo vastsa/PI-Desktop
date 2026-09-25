@@ -1,4 +1,3 @@
-import { registerPiSkillDiscoveryIpc } from "./pi-skill-discovery-ipc";
 /**
  * Electron IPC for plugin-contributed agent extensions (spec 07-plugins/16 §10.2).
  *
@@ -21,8 +20,6 @@ export type AgentExtensionIpcDeps = NpmRecoveryDependencies & {
   bridge: AgentExtensionBridge;
   /** Directory the generated plugins live in, e.g. `<dataDir>/plugins/imported`. */
   importRoot: string;
-  /** Registered imports, including disabled plugins; host storage is authoritative. */
-  getImportedDescriptions?: () => Promise<string[]>;
   /** Register the generated directory as a development plugin. */
   loadDevPlugin: (path: string) => Promise<unknown>;
   /** Run a registered command in one session's sidecar Runner. */
@@ -31,7 +28,6 @@ export type AgentExtensionIpcDeps = NpmRecoveryDependencies & {
 
 export function registerAgentExtensionIpc(deps: AgentExtensionIpcDeps): void {
   const { handle, bridge } = deps;
-  registerPiSkillDiscoveryIpc(deps);
 
   handle(
     IPC.invoke.extensionsCommandRun,

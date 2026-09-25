@@ -148,6 +148,12 @@ pub struct UiMessage {
     pub id: String,
     pub role: String,
     pub content: String,
+    /// Original text for a slash template or Skill invocation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    /// Validated Skill tokens in `command`, with UTF-16 offsets for the renderer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_mentions: Option<Vec<SkillMention>>,
     /// Host-authenticated agent-to-agent origin, never a human authorization.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_message: Option<Value>,
@@ -213,6 +219,14 @@ pub struct UiMessage {
     /// as an additive `hostedSearch` transcript block; no SQL migration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hosted_search: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillMention {
+    pub start: usize,
+    pub end: usize,
+    pub id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,6 +298,12 @@ fn is_default_title(title: &str) -> bool {
 /// the search index row (None for tool rows, matching the FTS triggers).
 pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String>) {
     let mut meta_obj = serde_json::Map::new();
+    if let Some(command) = &message.command {
+        meta_obj.insert("command".into(), json!(command));
+    }
+    if let Some(mentions) = &message.skill_mentions {
+        meta_obj.insert("skillMentions".into(), json!(mentions));
+    }
     if let Some(origin) = &message.session_message {
         meta_obj.insert("sessionMessage".into(), origin.clone());
     }
@@ -431,6 +451,13 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
         _ => Vec::new(),
     };
     let meta = record.meta.unwrap_or(Value::Null);
+    let command = meta
+        .get("command")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let skill_mentions = meta
+        .get("skillMentions")
+        .and_then(|value| serde_json::from_value(value.clone()).ok());
     let session_message = meta.get("sessionMessage").cloned();
     let steering = meta.get("steering").and_then(Value::as_bool);
     let status = meta
@@ -533,6 +560,8 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             id: record.id,
             role: record.role,
             content: text,
+            command: command.clone(),
+            skill_mentions: skill_mentions.clone(),
             session_message,
             attachments: None,
             steering,
@@ -582,6 +611,8 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             id: record.id,
             role: record.role,
             content,
+            command,
+            skill_mentions,
             session_message,
             attachments,
             steering,
@@ -3823,6 +3854,8 @@ mod tests {
             id: id.into(),
             role: "user".into(),
             content: content.into(),
+            command: None,
+            skill_mentions: None,
             attachments: None,
             steering: None,
             created_at: ts.into(),
@@ -4467,6 +4500,8 @@ mod tests {
             id: "m2".into(),
             role: "tool".into(),
             content: "ok".into(),
+            command: None,
+            skill_mentions: None,
             attachments: None,
             steering: None,
             created_at: "2025-05-01T00:00:02Z".into(),
@@ -4896,6 +4931,8 @@ mod tests {
             id: "assistant-1".into(),
             role: "assistant".into(),
             content: "final answer".into(),
+            command: None,
+            skill_mentions: None,
             attachments: None,
             steering: None,
             created_at: "2025-05-01T00:00:01Z".into(),
@@ -4979,6 +5016,8 @@ mod tests {
             id: "assistant-search-1".into(),
             role: "assistant".into(),
             content: "answer with sources".into(),
+            command: None,
+            skill_mentions: None,
             attachments: None,
             steering: None,
             created_at: "2025-05-01T00:00:01Z".into(),

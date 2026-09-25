@@ -49,6 +49,9 @@ export function useAppShellRuntime() {
   const ready = useAppStore((s) => s.ready);
   const page = useAppStore((s) => s.page);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const acknowledgeSessionOutcome = useAppStore(
+    (s) => s.acknowledgeSessionOutcome,
+  );
   const showToast = useAppStore((s) => s.showToast);
   const handleAgentEvent = useAppStore((s) => s.handleAgentEvent);
   const handlePlansChanged = useAppStore((s) => s.handlePlansChanged);
@@ -416,6 +419,19 @@ export function useAppShellRuntime() {
       .setNotificationViewingSession(viewingSessionId)
       .catch(() => undefined);
   }, [activeSessionId, page]);
+
+  useEffect(() => {
+    const acknowledgeFocusedSession = () => {
+      if (!ready || page !== "chat" || !activeSessionId) return;
+      // Restoring the existing chat from the taskbar is a read action even
+      // when the active session did not change. Keep the host row and shell
+      // badge in sync with what the user can now see.
+      void acknowledgeSessionOutcome(activeSessionId).catch(() => undefined);
+    };
+
+    window.addEventListener("focus", acknowledgeFocusedSession);
+    return () => window.removeEventListener("focus", acknowledgeFocusedSession);
+  }, [acknowledgeSessionOutcome, activeSessionId, page, ready]);
 
   useEffect(() => {
     if (!ready) return;

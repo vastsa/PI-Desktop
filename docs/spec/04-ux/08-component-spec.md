@@ -659,14 +659,14 @@ visually distinct from list content.
   splash at 3x; ADR 0125). The component subscribes to
   `document.documentElement[data-theme]` via a `MutationObserver` and swaps the
   source at runtime for the sidebar and startup splash without a reload. The
-  empty-home hero uses `HomeMascotLogo` in a 100px slot. The standard light and
-  dark GIFs remain eight-frame waves with matching still PNGs. When the root
-  `lang` begins with `zh` and the theme is dark, CSS selects the supplied
-  30-frame transparent Chinese GIF and its matching still PNG. Theme and
-  language changes take effect without a reload. Playback is native to GIF,
-  does not change on pointer hover, and reduced motion selects the matching
-  still. The expanded/collapsed sidebar remains 20px/18px and the startup
-  splash 64px.
+  empty-home hero uses `HomeMascotLogo` as a 100px eight-frame GIF. Light and
+  dark themes each have a dedicated GIF plus still PNG. CSS follows
+  `document.documentElement[data-theme]` without a reload; anything other than
+  `light` uses the dark artwork. The mascot loops a processed wave with a
+  short idle hold on the first frame. Playback is native to the GIF and does
+  not change on pointer hover; reduced motion swaps to the matching still
+  first-frame PNG. The expanded/collapsed sidebar remains 20px/18px and the
+  startup splash 64px.
   Home and thread-docked composer prompt rows do not render a leading brand
   icon.
 - Project and Temporary session creation controls render the dedicated
@@ -3105,6 +3105,9 @@ Anatomy:
   user-global), app commands (builtin slash aliases), plugin commands.
   The core aliases remain `/new`, `/compact`, `/agent-mode`, `/plan-mode`, and
   `/goal-mode`; matched characters highlight in accent.
+- A whitespace-delimited `/` later in the draft offers active Skills only.
+  Completion replaces only the token under the cursor, so several Skills and
+  ordinary text can coexist in one prompt.
 - Command descriptions use the space left after the slash name and optional
   title/argument hints. A long description truncates before it can squeeze a
   short command name to an ellipsis, including in narrow composers. Names and
@@ -3224,10 +3227,17 @@ Anatomy:
   primary-folder file is addressed to the view as a project-relative path and a
   sibling-folder file as an absolute one, which is also how scratch and
   attachment files are addressed. A reference that matches no file opens nothing
-  and reports itself; the OS default application is no longer what this click
-  does. HTTP(S)
+  and reports itself, as does right-clicking it: the file-reference menu offers
+  that file's own folder in the system file manager and copies its full path or
+  its project-relative path. The same items are offered on a sent `@path` chip,
+  an inline code span, a markdown link, a local image, a tool row's file path,
+  and a path in a tool result's file or match list, through the same completion
+  and the same address; a file outside the project has no relative path to copy
+  and says so instead.
+  The OS default application is no longer what this click does. HTTP(S)
   URLs stay text links. Plain clicks follow the Link open destination setting,
-  and right-clicking exposes the same external, work-panel, and copy actions.
+  and right-clicking a URL exposes the same external, work-panel, and copy
+  actions.
 - States: keyboard-active row uses the shared `kb-active` treatment; empty
   query lists everything (slash) / recently indexed order (file); zero
   matches renders the localized empty row and the menu counts as closed for
@@ -3849,6 +3859,10 @@ Sidebar footer                                        Popover (360px max)
   and scrolls the transcript to its latest content. The successful read also
   dismisses the matching task-native banner before a late activation can
   surface it again.
+- Restoring/focusing the app from its taskbar or Dock while an unread terminal
+  outcome's session is already visible in the chat marks that session's
+  matching durable notifications read; it does not mark outcomes belonging to
+  other sessions.
 - Mark all read is idempotent and preserves rows; it dismisses every outstanding
   task-native banner. Clear deletes every inbox row, dismisses all task-native
   banners, and leaves sessions, transcripts, and turns intact. These actions

@@ -348,7 +348,7 @@
   background: var(--ds-warning);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--ds-warning) 15%, transparent);
   content: "";
-  animation: sidebar-status-breathe 1.6s ease-in-out infinite;
+  animation: sidebar-status-breathe 1.6s ease-in-out 2;
 }
 
 .thread-item-status.permission::before {
@@ -934,7 +934,7 @@
   border-radius: var(--radius-full);
   background: var(--ds-warning);
   content: "";
-  animation: sidebar-status-breathe 1.6s ease-in-out infinite;
+  animation: sidebar-status-breathe 1.6s ease-in-out 2;
 }
 
 .sidebar-session-hover-card-preview,

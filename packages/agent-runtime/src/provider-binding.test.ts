@@ -5,10 +5,12 @@ import { convertMessages } from "@earendil-works/pi-ai/api/openai-completions";
 import { genericModelConfig, modelConfigWithBinding } from "./model-capabilities.js";
 import type { ModelConfig } from "./thinking-level.js";
 import {
+  adapterAcceptsCustomFetch,
   apiBindingForStyle,
   buildProviderModel,
   copilotRequestHeaders,
   createProviderModels,
+  providerRequestFetch,
   runtimeBaseUrlForApi,
   type RuntimeProviderConfig,
 } from "./provider-binding.js";
@@ -44,6 +46,26 @@ describe("apiBindingForStyle", () => {
   it("keeps unknown styles on chat completions", () => {
     expect(apiBindingForStyle("not-a-style").api).toBe("openai-completions");
     expect(apiBindingForStyle(undefined).api).toBe("openai-completions");
+  });
+});
+
+describe("custom fetch injection", () => {
+  const wrapper = async () => new Response("ok");
+
+  it("withholds the fetch from the adapters that reject one", () => {
+    expect(adapterAcceptsCustomFetch("google-generative-ai")).toBe(false);
+    expect(adapterAcceptsCustomFetch("google-vertex")).toBe(false);
+    expect(providerRequestFetch("google-generative-ai", wrapper)).toBeUndefined();
+    expect(providerRequestFetch("google-vertex", wrapper)).toBeUndefined();
+  });
+
+  it("passes the caller's fetch to every other adapter", () => {
+    expect(adapterAcceptsCustomFetch("openai-completions")).toBe(true);
+    expect(adapterAcceptsCustomFetch("anthropic-messages")).toBe(true);
+    expect(adapterAcceptsCustomFetch(undefined)).toBe(true);
+    expect(providerRequestFetch("openai-completions", wrapper)).toBe(wrapper);
+    expect(providerRequestFetch("anthropic-messages", wrapper)).toBe(wrapper);
+    expect(providerRequestFetch(undefined, wrapper)).toBe(wrapper);
   });
 });
 

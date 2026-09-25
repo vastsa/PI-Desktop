@@ -12,6 +12,7 @@ import {
   createProvider,
   type Api,
   type Context,
+  type FetchFunction,
   type Model,
   type ModelAuth,
   type Models,
@@ -93,6 +94,32 @@ export function runtimeBaseUrlForApi(api: Api, baseUrl: string): string {
   const withoutTrailingSlash = baseUrl.replace(/\/+$/, "");
   const withoutVersion = withoutTrailingSlash.replace(/\/v1$/i, "");
   return withoutVersion || withoutTrailingSlash;
+}
+
+/**
+ * Whether `api`'s pi-ai adapter accepts a caller-supplied `fetch`.
+ *
+ * The Google adapters throw unless `options.fetch` is `globalThis.fetch`
+ * itself, and every wrapper this runtime builds is a different function, so a
+ * request bound for them must carry no `fetch` at all (issue #1072). An
+ * unknown wire API is treated as accepting one: only these two are known to
+ * refuse, and the default must stay "inject" for everything else.
+ */
+export function adapterAcceptsCustomFetch(api: Api | undefined): boolean {
+  return api !== "google-generative-ai" && api !== "google-vertex";
+}
+
+/**
+ * The `fetch` one request may hand to `api`'s adapter: the caller's wrapper
+ * where the adapter accepts one, otherwise nothing. Callers keep building the
+ * wrapper (response capture, header override); this only decides whether it
+ * reaches the adapter.
+ */
+export function providerRequestFetch(
+  api: Api | undefined,
+  fetchFn: FetchFunction | undefined,
+): FetchFunction | undefined {
+  return adapterAcceptsCustomFetch(api) ? fetchFn : undefined;
 }
 
 /** Map a stored provider apiStyle onto a pi-ai wire API. Unknown styles fall

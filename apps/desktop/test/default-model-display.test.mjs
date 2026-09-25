@@ -15,6 +15,7 @@ const {
   defaultModelIdOf,
   displayedDefaultModelId,
   keepsAppDefaultModel,
+  loginDefaultModel,
   providerOffersModel,
   providerServesChatModels,
   hasResolvedDefaultModel,
@@ -237,5 +238,77 @@ test("a default provider that is gone still lets the new provider take over", ()
     addProvider([added], { defaultProviderId: "deleted-provider", defaultModelId: "gpt-5" }, added)
       .defaultProviderId,
     "p2",
+  );
+});
+
+/**
+ * A finished vendor login follows the add-provider rule: the account claims the
+ * app default only while nothing runnable holds it, so a subscriber who never
+ * configured an API key can chat right after signing in.
+ */
+const account = (over = {}) =>
+  provider({
+    id: "acct",
+    name: "Claude Pro/Max",
+    authKind: "oauth",
+    hasSecret: false,
+    hasOauth: true,
+    models: [binding("claude-opus-4.6"), binding("claude-sonnet-4.6")],
+    ...over,
+  });
+
+test("a first login claims the app default with the account's head model", () => {
+  assert.deepEqual(loginDefaultModel([account()], "acct", {}), {
+    providerId: "acct",
+    modelId: "claude-opus-4.6",
+  });
+  // A stale id left by a deleted provider is no default either.
+  assert.deepEqual(
+    loginDefaultModel([account()], "acct", {
+      defaultProviderId: "deleted-provider",
+      defaultModelId: "gpt-5",
+    }),
+    { providerId: "acct", modelId: "claude-opus-4.6" },
+  );
+});
+
+test("a login never moves a default the user already runs", () => {
+  const current = provider({ models: [binding("gpt-5")] });
+  assert.equal(
+    loginDefaultModel([current, account()], "acct", {
+      defaultProviderId: "p1",
+      defaultModelId: "gpt-5",
+    }),
+    null,
+  );
+});
+
+test("a login replaces a default whose provider cannot run", () => {
+  const starved = provider({ models: [binding("gpt-5")], hasSecret: false });
+  assert.deepEqual(
+    loginDefaultModel([starved, account()], "acct", {
+      defaultProviderId: "p1",
+      defaultModelId: "gpt-5",
+    }),
+    { providerId: "acct", modelId: "claude-opus-4.6" },
+  );
+});
+
+test("an account that cannot run a chat model claims nothing", () => {
+  // Still signed out, disabled, without any model, or not in the list at all.
+  assert.equal(loginDefaultModel([account({ hasOauth: false })], "acct", {}), null);
+  assert.equal(loginDefaultModel([account({ enabled: false })], "acct", {}), null);
+  assert.equal(
+    loginDefaultModel([account({ models: [], defaultModelId: undefined })], "acct", {}),
+    null,
+  );
+  assert.equal(loginDefaultModel([account()], "missing", {}), null);
+});
+
+test("a login skips the image model the chat default may not use", () => {
+  const images = account({ models: [binding("gpt-image-1"), binding("gpt-5")] });
+  assert.deepEqual(
+    loginDefaultModel([images], "acct", {}, { providerId: "acct", modelId: "gpt-image-1" }),
+    { providerId: "acct", modelId: "gpt-5" },
   );
 });

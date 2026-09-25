@@ -249,6 +249,26 @@ describe("classifyAgentError", () => {
       .toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
   });
 
+  it("treats a request option an adapter refuses as non-retriable", () => {
+    expect(
+      classifyAgentError(
+        "Custom fetch is not supported by the Google Generative AI adapter",
+      ),
+    ).toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
+    expect(
+      classifyAgentError(
+        "Custom fetch is not supported by the Google Vertex adapter",
+      ),
+    ).toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
+    // A status some layer attached to the same message must not re-arm the
+    // transient retry budget for a request the adapter will refuse again.
+    expect(
+      classifyAgentError(
+        "502: Custom fetch is not supported by the Google Generative AI adapter",
+      ),
+    ).toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
+  });
+
   it("detects context overflow from 400 bodies and bare messages", () => {
     expect(
       classifyAgentError(

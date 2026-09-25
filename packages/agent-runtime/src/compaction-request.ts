@@ -52,6 +52,7 @@ export function compactionRequestOptions(input: {
       copilotRequestHeaders(provider, context),
       provider.headers,
     ),
+    model.api,
   );
 }
 

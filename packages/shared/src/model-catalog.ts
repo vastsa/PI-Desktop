@@ -168,6 +168,31 @@ export function effectiveContextWindow(
   return configured;
 }
 
+/**
+ * Resolve a model's effective output cap.
+ *
+ * The provenance rule the context window follows, applied to `limit.output`: a
+ * `catalog` binding reads the published record, a `user` binding is the user's
+ * own number and is never replaced, and a binding written before the marker
+ * existed treats the generic 8.2k seed as inherited.
+ */
+export function effectiveMaxTokens(
+  publishedMaxTokens?: number | null,
+  configuredMaxTokens?: number | null,
+  source?: ContextWindowSource | null,
+): number | undefined {
+  const published = positiveTokenCount(publishedMaxTokens);
+  const configured = positiveTokenCount(configuredMaxTokens);
+
+  if (source === "catalog") return published ?? configured;
+  if (source === "user") return configured ?? published;
+  if (configured === undefined) return published;
+  if (published !== undefined && configured === CATALOG_DEFAULT_MAX_TOKENS) {
+    return published;
+  }
+  return configured;
+}
+
 /** Token counts are whole positive numbers; anything else means "unset". */
 function positiveTokenCount(value?: number | null): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
@@ -176,58 +201,76 @@ function positiveTokenCount(value?: number | null): number | undefined {
   return Math.round(value);
 }
 
-/** Context-window fields the resolver reads and rewrites on a binding. */
-type BindingContextWindow = Pick<ModelBinding, "contextWindow"> &
-  Partial<Pick<ModelBinding, "contextWindowSource">>;
+/** Binding fields the limits resolver reads and rewrites. */
+type BindingLimits = Pick<ModelBinding, "contextWindow"> &
+  Partial<Pick<ModelBinding, "maxTokens" | "contextWindowSource">>;
 
 /**
- * Resolve a saved binding against its catalog baseline for
+ * Resolve a saved binding's limits against its catalog baseline for
  * `modelConfigWithBinding`.
  *
  * That runtime helper applies the historical two-argument rule, which cannot
- * tell a hand-edited 128k from the generic seed. Callers that know where a
- * stored value came from resolve it first: the returned baseline and binding
- * both carry the source-aware window, so the two-argument rule lands on the
- * same answer. An exported binding keeps the catalog as its provenance whenever
- * the catalog supplied the value, so a later settings save cannot freeze an
- * inherited value into a snapshot of its own.
+ * tell a hand-edited 128k from the generic seed, and it takes the binding's
+ * output cap as written. Callers that know where a stored value came from
+ * resolve both limits first: the returned baseline and binding carry the
+ * source-aware window and cap, so a saved row reads and runs with the number the
+ * catalog publishes once the model resolves — a row seeded before the record
+ * existed stops showing the generic 8.2k output. An exported binding keeps the
+ * catalog as its provenance whenever the catalog supplied the value, so a later
+ * settings save cannot freeze an inherited value into a snapshot of its own.
  *
  * A `generic` baseline is the fallback for a lookup that found no record, not
- * a published limit, so it never replaces a saved window: a catalog snapshot
+ * a published limit, so it never replaces a saved limit: a catalog snapshot
  * taken while the record still resolved stays in force.
  */
-export function resolveBindingContextWindow<
-  C extends { contextWindow?: number | null; source?: string },
-  B extends BindingContextWindow,
+export function resolveBindingLimits<
+  C extends { contextWindow?: number | null; maxTokens?: number | null; source?: string },
+  B extends BindingLimits,
 >(catalogConfig: C, binding: B): { catalogConfig: C; binding: B };
-export function resolveBindingContextWindow<
-  C extends { contextWindow?: number | null; source?: string },
-  B extends BindingContextWindow,
+export function resolveBindingLimits<
+  C extends { contextWindow?: number | null; maxTokens?: number | null; source?: string },
+  B extends BindingLimits,
 >(
   catalogConfig: C,
   binding: B | null | undefined,
 ): { catalogConfig: C; binding: B | null | undefined };
-export function resolveBindingContextWindow(
-  catalogConfig: { contextWindow?: number | null; source?: string },
-  binding: BindingContextWindow | null | undefined,
+export function resolveBindingLimits(
+  catalogConfig: { contextWindow?: number | null; maxTokens?: number | null; source?: string },
+  binding: BindingLimits | null | undefined,
 ): {
-  catalogConfig: { contextWindow?: number | null; source?: string };
-  binding: BindingContextWindow | null | undefined;
+  catalogConfig: { contextWindow?: number | null; maxTokens?: number | null; source?: string };
+  binding: BindingLimits | null | undefined;
 } {
   if (!binding) return { catalogConfig, binding };
-  const published = catalogConfig.source === "generic"
-    ? undefined
-    : positiveTokenCount(catalogConfig.contextWindow);
+  const publishedRecord = catalogConfig.source !== "generic";
+  const published = publishedRecord
+    ? positiveTokenCount(catalogConfig.contextWindow)
+    : undefined;
+  const publishedMax = publishedRecord
+    ? positiveTokenCount(catalogConfig.maxTokens)
+    : undefined;
   const source = binding.contextWindowSource ?? undefined;
   const resolved = effectiveContextWindow(published, binding.contextWindow, source);
-  if (resolved === undefined) return { catalogConfig, binding };
+  const resolvedMax = effectiveMaxTokens(publishedMax, binding.maxTokens, source);
+  if (resolved === undefined && resolvedMax === undefined) {
+    return { catalogConfig, binding };
+  }
   const inherited = source !== "user" && published !== undefined;
   return {
-    catalogConfig: { ...catalogConfig, contextWindow: resolved },
+    catalogConfig: {
+      ...catalogConfig,
+      ...(resolved !== undefined ? { contextWindow: resolved } : {}),
+      ...(resolvedMax !== undefined ? { maxTokens: resolvedMax } : {}),
+    },
     binding: {
       ...binding,
-      contextWindow: resolved,
-      ...(inherited ? { contextWindowSource: "catalog" as const } : {}),
+      ...(resolved !== undefined
+        ? {
+            contextWindow: resolved,
+            ...(inherited ? { contextWindowSource: "catalog" as const } : {}),
+          }
+        : {}),
+      ...(resolvedMax !== undefined ? { maxTokens: resolvedMax } : {}),
     },
   };
 }

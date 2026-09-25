@@ -17,6 +17,7 @@ const [
   apiSource,
   storeSource,
   appSource,
+  shellRuntimeSource,
   sidebarSource,
   pluginRuntimeSource,
 ] =
@@ -24,8 +25,9 @@ const [
     read("../../../packages/shared/src/protocol.ts"),
     readMainSource(),
     read("../src/lib/api.ts"),
-  readStoreSource(),
+    readStoreSource(),
     readAppSource(),
+    read("../src/features/app/useAppShellRuntime.tsx"),
     read("../src/components/Sidebar.tsx"),
     read("../electron/main/plugin-runtime.ts"),
   ]);
@@ -82,6 +84,19 @@ test("the visible chat session suppresses durable task notifications", () => {
   assert.match(mainSource, /"render-process-gone"[\s\S]*windowState\.notificationViewingSessionId = null/);
   assert.match(appSource, /page === "chat" \? activeSessionId \?\? null : null/);
   assert.match(appSource, /setNotificationViewingSession\(viewingSessionId\)/);
+});
+
+test("restoring the focused chat acknowledges its session outcome", () => {
+  assert.match(shellRuntimeSource, /acknowledgeSessionOutcome/);
+  assert.match(
+    shellRuntimeSource,
+    /window\.addEventListener\("focus", acknowledgeFocusedSession\)/,
+  );
+  assert.match(
+    shellRuntimeSource,
+    /ready \|\| page !== "chat" \|\| !activeSessionId/,
+  );
+  assert.match(shellRuntimeSource, /acknowledgeSessionOutcome\(activeSessionId\)/);
 });
 
 test("sidebar terminal outcomes are notification-backed, not lifecycle-backed", () => {

@@ -2,6 +2,7 @@ import {
   buildProviderModel,
   copilotRequestHeaders,
   createProviderModels,
+  providerRequestFetch,
   providerRequestKey,
   type RuntimeProviderConfig,
 } from "./provider-binding.js";
@@ -71,15 +72,18 @@ export function subagentModelBinding(opts: {
             maxTokens: clampOutputToContext(m, context, options?.maxTokens),
             maxRetries: 0,
             sessionId: opts.sessionId,
-            fetch: captureProviderResponse(options?.fetch, (response, _bytes, failure) => {
-              retry.failure = failure;
-              retry.status = response?.status;
-              retry.headers = carriesRetryDelayHeaders(
-                response?.status,
-              )
-                ? response?.headers
-                : undefined;
-            }),
+            fetch: providerRequestFetch(
+              m.api,
+              captureProviderResponse(options?.fetch, (response, _bytes, failure) => {
+                retry.failure = failure;
+                retry.status = response?.status;
+                retry.headers = carriesRetryDelayHeaders(
+                  response?.status,
+                )
+                  ? response?.headers
+                  : undefined;
+              }),
+            ),
           },
           {
             ...openCodeEndpointFromProvider(opts.provider, m),
@@ -90,6 +94,7 @@ export function subagentModelBinding(opts: {
           copilotRequestHeaders(opts.provider, context),
           opts.provider.headers,
         ),
+        m.api,
       );
       return createProviderRetryStream(
         m,

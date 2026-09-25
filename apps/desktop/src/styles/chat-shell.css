@@ -733,12 +733,8 @@
   user-select: none;
 }
 
-:root:not([data-theme="light"]):not([lang^="zh"]) .home-mascot-logo .home-mascot-motion.home-mascot-dark:not(.home-mascot-dark-zh),
+:root:not([data-theme="light"]) .home-mascot-logo .home-mascot-motion.home-mascot-dark,
 :root[data-theme="light"] .home-mascot-logo .home-mascot-motion.home-mascot-light {
-  display: block;
-}
-
-:root:not([data-theme="light"])[lang^="zh"] .home-mascot-logo .home-mascot-motion.home-mascot-dark.home-mascot-dark-zh {
   display: block;
 }
 
@@ -748,12 +744,8 @@
     display: none;
   }
 
-  :root:not([data-theme="light"]):not([lang^="zh"]) .home-mascot-logo .home-mascot-still.home-mascot-dark:not(.home-mascot-dark-zh),
+  :root:not([data-theme="light"]) .home-mascot-logo .home-mascot-still.home-mascot-dark,
   :root[data-theme="light"] .home-mascot-logo .home-mascot-still.home-mascot-light {
-    display: block;
-  }
-
-  :root:not([data-theme="light"])[lang^="zh"] .home-mascot-logo .home-mascot-still.home-mascot-dark.home-mascot-dark-zh {
     display: block;
   }
 }

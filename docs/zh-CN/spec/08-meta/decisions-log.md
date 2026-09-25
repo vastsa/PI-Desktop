@@ -309,6 +309,7 @@
 | D599 | 开发构建是一个独立安装 | **收窄 D236 / 修订 ADR 0094：开发构建（未打包，或 `PI_DESKTOP_DEV=1`）以 `PI-Desktop Dev` 作为 Electron `userData`（随之独立的单实例锁、渲染层 `localStorage`、插件面板 partition 与浏览器面板 Cookie），数据目录为 `~/.pi-desktop-dev`。显式 `--user-data-dir` 仍然优先，E2E 装置正是用它把构建指向临时 profile。正式安装仍保持 `PI-Desktop` 与 `~/.pi-desktop`，既有 profile 不会被搬迁。`PI_DESKTOP_DATA_DIR` 仍优先于两种 profile，并在作为子进程环境变量传给 host-core 之前被绝对化；Electron 主进程把解析结果回写到该变量，使插件运行时读到同一个根目录。不改 IPC、协议、schema 或正式安装路径。见 `03-runtime/07-process-model.md` 与 E2E-150。** | 已在运行的正式版持有锁，`pnpm dev` 一启动就退出；而抢到锁的开发 host 会把第二个 host-core 压到同一个单写者 `pi.sqlite`、outbox 与日志树上。 |
 | D602 | 崩溃转储留在数据目录 | **Electron 的 Crashpad 报告器在 `ready` 之前以本地模式启动（`uploadToServer: false`）。转储放在 `<data_dir>/crash-dumps`，而不是 Electron 默认的 `userData` crashDumps 路径，因此 `PI_DESKTOP_DATA_DIR` profile 不会与其它安装共用转储。下一次持有单实例锁的启动会为新于 `crash-dumps.json` 的转储写一条 `diagnostics` 记录，按 Crashpad `ptype` 分类：任一新转储属于 browser/main 进程则为 `error`，已恢复的 renderer/GPU/utility 崩溃为 `warn`。host-core 与 sidecar 崩溃仍走监督器路径。不上传，不改 IPC，不改 schema。** | 崩溃留下的 minidump 无人读取。Crashpad 也会记录已恢复的渲染进程崩溃，因此下次启动用 `error` 声称上次运行已死是错的；而数据目录之外的转储会逃出 `PI_DESKTOP_DATA_DIR` 隔离。 |
 | D619 | 复制公式得到的是它的 TeX 源码 | **仅渲染层：当选区覆盖到渲染出来的公式时，`text/plain` 从 MathML `annotation` 写出——行内 `$…$`，块级 `$$…$$` 独占行，也就是 `lib/latex-math.ts` 把 `\(…\)` 和 `\[…\]` 归一到的那组定界符，且每组定界符都像代码段的围栏那样加长到盖过公式内部出现的最长同字符串——而不是 KaTeX 画的那两棵树。落在公式内部的切口会扩展成整个公式。只有公式被改写：归约后的克隆经由 `Selection.toString()`——复制自己跑的那个序列化器——读回，因此同处一个选区的正文、列表、表格和代码块保留平台自己的读法，包括 `innerText` 会写出、而复制本就会略过的 `user-select: none` 界面零件。不含公式的选区，以及在选区所在位置之外触发的复制，整份交回平台。只写一种 flavour：`text/plain`。接管事件同时丢掉了平台的 `text/html`，且不再写回——归约后的克隆是应用自己的标记，写回去会带上文本读法已略过的 `user-select: none` 界面零件；而改为携带渲染结果则会把每个公式粘贴两遍，因为隐藏 MathML 树的只有 KaTeX 自己的样式表，样式表不会随剪贴板一起走。只有一个由外壳持有的文档级 `copy` 监听器，记录区的右键复制经由同一个模块读取同一个选区。** | 公式粘出来是它的字形，而且每棵渲染树各一份，无法带进 LaTeX 文档或别的 Markdown 编辑器（issue #414）。ADR 0268 当年移除「引用」的理由正是 OS 剪贴板可以替代，那剪贴板就得真的装着源码。 |
+| D620 | pi-ai 内置的 API-key 服务成为命名预设 | **向 `NAMED_ENDPOINT_PRESETS` 新增十五条命名预设——Ant Ling、Baseten、Cerebras、Hugging Face、Meta（`responses`）、MiniMax（国际）、Moonshot AI（国际）、NVIDIA、OpenCode Zen、Vercel AI Gateway、Qwen Token 套餐（`alibaba-token-plan`）、Qwen Token 套餐（中国）、小米 Token 套餐（中国/欧洲/新加坡）——各自使用官方主机名；models.dev 键与 pi-ai 提供方 id 不同的那几条，把 pi-ai id 保留为别名。八个内置提供方仍作例外并写明原因：Amazon Bedrock、Azure OpenAI、Cloudflare AI Gateway、Cloudflare Workers AI、Google Vertex AI（URL 里带账户或区域），GitHub Copilot 与 OpenAI Codex（以厂商账号行提供），以及 Radius（这里的 `pi_messages` 仅限账号）。pi-ai 升级后若某提供方既未被覆盖也不在例外中，`packages/agent-runtime/src/pi-ai-provider-sync.test.ts` 会失败。不改协议、存储或 IPC。** | pi-ai 其他能力本就可达，但服务目录的 API-key 一半靠手工维护，已经跟库自带的提供方列表脱节（ADR 0307）。 |
 
 ## M0. 模型目录决策
 
@@ -4997,3 +4998,69 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   断言遮罩跟随 `--composer-dock-height`。滚动状态、协议、持久化、主题
   schema、权限都没有变化。见 `04-ux/08-component-spec.md` 与
   E2E-CHAT-opaque-floating-decision-and-retry-surfaces。
+
+## 2026-09-25 —— 模型设置统一为一份 AI 服务列表加一份已选模型摘要（D625）
+
+- 模型设置页在用户连接任何服务前要求太多。API-key 服务打开时是一个收起的
+  服务菜单，订阅式厂商在页面靠下有自己的按钮和对话框，插件声明的服务又在
+  另一处，于是第一步的决定是"去哪看"而不是"连什么"。用户反馈流程过于繁重。
+  本次重设计保留沉浸式、无边框的 D297 基调（in-flow 面用
+  `--ds-tile`/`--ds-raised` 与间距、不描边；只有浮层菜单和对话框保留 0.5px
+  描边和阴影），把这些选择收拢为一份列表和一条新增流程。
+- API 服务、插件声明的服务和厂商订阅账号现在共享同一份 AI 服务列表
+  （`ServiceList`、`ServiceRow`）。行本身就是入口——点击或回车打开它的编辑器
+  ——因此行上只保留启用开关和一个溢出菜单；点击挂在行元素而非按钮上，这样卡片
+  拖拽仍可从卡片任意处开始。账号行仍通过厂商账号编辑器与 `deleteOauthAccount`
+  存续，绝不走 provider CRUD，所以即便两类在同一列表渲染，所有权边界不变。
+- 新增服务从一个可搜索的选择器（`ServiceChooser`）开始，而非收起的菜单：订阅
+  与 API-key 服务并列成磁贴，自定义端点排最后，因为它是唯一需要不止一个密钥的
+  选择。过滤从不与 host 通信。选中磁贴后进入服务表单（`ProviderSetupDialog`，
+  两个视图），凭据行独立成组件（`ProviderConnectionFields`，D310 + D625）。
+- 服务对话框与厂商账号对话框都打开在已选模型摘要（`ChosenModelsSummary`）上，
+  完整的双栏选择器（`ModelSelectionPanes`）只需一次点击，因为多数人会保留服务
+  自带的模型。新的 API 服务会预选推荐模型（`recommended-models.ts`、
+  `useRecommendedModelSelection`）：只有可调用工具的对话模型才是候选，存在
+  models.dev 元数据时每个家族取最新稳定型（至多 `RECOMMENDED_MODEL_LIMIT` 个），
+  首个入选成为服务默认——因此保存一个密钥就足以开始对话。缺乏可信发现结果时
+  （密钥被拒、超时或网络失败）不预选；仅是没有 `/models` 路由的已知厂商仍算作
+  接受了密钥。
+- 覆盖测试：`apps/desktop/test/service-chooser.test.mjs`、
+  `service-catalog.test.mjs`、`service-row-status.test.mjs`、
+  `recommended-models.test.mjs`、`provider-form-layout.test.mjs`、
+  `default-model-display.test.mjs` 及更新后的 `settings-general.test.mjs`，
+  另加 `scripts/e2e/provider-api-style.tsx` 探针（选择器磁贴以 `data-service-id`
+  标记、自定义端点排最后、账号对话框打开在 `provider-models-summary` 上、每模型
+  控件位于"管理模型"和折叠的"高级"展开项之后）。厂商 OAuth 账号仍由 ADR 0098
+  管辖。
+
+## 2026-09-25 —— 自定义端点排在 API-key 组首位（D626）
+
+- 服务选择器按共享预设顺序列出 API-key 磁贴，把自定义端点放在它们之后，于是要
+  连上自己的地址就得先滚过所有具名厂商。自定义端点现在排在所在组首位：它是唯一
+  不需要先找到什么的选择，而该组仍然是"用 API key 连接"。分组顺序不变（订阅
+  仍在 API-key 服务之上），键盘遍历也仍从网格第一个磁贴进入。
+- 覆盖：更新后的 `apps/desktop/test/service-chooser.test.mjs`，以及
+  `scripts/e2e/provider-api-style.tsx` 探针——它现在断言第一个
+  `[data-service-id]` 磁贴是 `custom`，而不是最后一个。
+
+## 2026-09-25 —— 模型设置直接打开双栏，兜底列表给出全部模型（D627）
+
+- 编辑一个服务或厂商账号时，之前先落在「已选模型摘要」（`ChosenModelsSummary`）上，
+  真正的选择器还要再点一次才出现，于是要动一个逐模型控件得先做两次决策。现在两个
+  对话框都直接渲染双栏（`ModelSelectionPanes`）——左边是该服务自己的列表，右边是
+  该凭据会运行的模型——摘要与「管理模型 / 收起」这对控件删除，只有摘要能显示的
+  `autoPicked` 提示也随之取消。自动预选逻辑不变（`recommended-models.ts`、
+  `useRecommendedModelSelection`），只是把这句话放在选中的模型旁边：推荐模型是
+  起点，而不是屏幕上唯一的东西。
+- 服务自己没有模型列表时，目录兜底现在给出该厂商发布的整套模型
+  （设置处理器以 `modelsForProvider({ includeNonChat: true })` 调用），因此这个 key
+  能调用的 embedding、语音、图像、重排端点会和聊天模型一起出现，而不是悄悄缺
+  席。默认行为仍是只要文本模型，因为会话与 agent 路径要的是它们真正能跑的模型；
+  自动预选也仍然只挑可调工具的聊天模型。
+- 覆盖：更新后的 `apps/desktop/test/provider-form-layout.test.mjs`（两个对话框都直接
+  渲染双栏、没有可折叠的摘要）、`apps/desktop/test/settings-general.test.mjs`、
+  `apps/desktop/test/service-chooser.test.mjs`，以及新增的
+  `apps/desktop/test/provider-model-list-scope.test.mjs`（默认列表只有文本模型，
+  `includeNonChat` 补上被隐藏的端点且不丢 id、不重复），另有
+  `scripts/e2e/provider-api-style.tsx` 与 `scripts/e2e/image-generation-ui.tsx`
+  探针——它们不再点击「管理模型」。

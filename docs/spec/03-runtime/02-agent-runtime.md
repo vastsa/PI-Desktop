@@ -1224,7 +1224,9 @@ Caller-supplied headers override the client and User-Agent defaults. An empty
 session header is restored from the conversation id so OpenCode Go cannot
 return `MissingSessionID`. A provider-row `headers` map is applied after this
 merge (headers plus a fetch wrapper) so custom values win over the OpenCode
-default and over adapter last-writes. Reserved keys cannot smash
+default and over adapter last-writes. The Google adapters take the merged
+`headers` without the wrapper, because they reject any other `fetch`
+(issue #1072). Reserved keys cannot smash
 `x-opencode-session`. This is an agent-runtime concern, matching the
 official Pi coding-agent attribution layer; pi-ai's `sessionId` stream option
 does not emit `x-opencode-session`.

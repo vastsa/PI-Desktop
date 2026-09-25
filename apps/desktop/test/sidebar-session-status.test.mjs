@@ -66,11 +66,23 @@ test("prioritizes in-progress and selected states over terminal outcomes", () =>
   assert.equal(sidebarSessionStatus({ running: false, selected: false }), null);
 });
 
-test("opening a conversation acknowledges its outcome badge", () => {
+test("opening a conversation acknowledges its outcome badge before loading details", () => {
   const sessionSource = readStoreModuleSync("slices/session-slice.ts");
   const catalogSource = readStoreModuleSync("slices/catalog-slice.ts");
   const selectBlock = sessionSource.match(/selectSession: async[\s\S]*?\n    newSession:/)?.[0] ?? "";
-  assert.match(selectBlock, /acknowledgeSessionOutcome\(id\)/);
+  const acknowledgementStart = selectBlock.indexOf(
+    "const outcomeAcknowledgement = get().acknowledgeSessionOutcome(id);",
+  );
+  const detailLoadStart = selectBlock.indexOf(
+    "const detailPromise = runtime.loadSessionDetail(id",
+  );
+  assert.ok(acknowledgementStart >= 0);
+  assert.ok(detailLoadStart >= 0);
+  assert.ok(
+    acknowledgementStart < detailLoadStart,
+    "session outcome acknowledgement must start before detail loading",
+  );
+  assert.match(selectBlock, /await outcomeAcknowledgement/);
 
   const ackBlock = catalogSource.slice(
     catalogSource.indexOf("acknowledgeSessionOutcome: async"),

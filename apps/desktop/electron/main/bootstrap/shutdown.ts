@@ -147,11 +147,22 @@ export function registerShutdownHandlers({
         persistenceOutbox,
         logger,
       });
+      // Panel windows and docked views are the only pages that call the plugin
+      // runtime over the panel bridge. They are torn down, and their pages are
+      // waited for, before the runtime and the host stop: a call such a page
+      // already sent while its surface was closing is otherwise answered by a
+      // runtime that is already shutting down, and surfaces as a bridge failure
+      // nobody can act on. The wait is bounded inside the hosts, so a page that
+      // refuses to close cannot hold up the quit.
+      const pluginSurfacesShutdown = Promise.allSettled([
+        pluginPanels.closeAll(),
+        pluginViews.dispose(),
+      ]);
+      logger.app("lifecycle", "info", "app shutdown");
+      await pluginSurfacesShutdown;
       const hostShutdown = getHost()?.dispose();
       const mcpShutdown = getMcpControl()?.stop();
-      const pluginPanelShutdown = pluginPanels.closeAll();
       updater.dispose();
-      logger.app("lifecycle", "info", "app shutdown");
       // Plugin hosts are stopped as a shutdown, not left for the process teardown
       // to kill: an unannounced exit is indistinguishable from a crash, and would
       // end every quit in error logs, toasts, and restarts into a closing app.
@@ -159,7 +170,6 @@ export function registerShutdownHandlers({
       userMcp.disposeAll();
       mcpOAuth?.disposeAll();
       browserPane.dispose();
-      pluginViews.dispose();
       inflightCheckpointer.dispose();
       const sidecarShutdown = getSidecar()?.dispose();
 
@@ -169,7 +179,6 @@ export function registerShutdownHandlers({
         logger.app("lifecycle", "warn", "host shutdown failed", { data: String(error) });
       }
       await Promise.allSettled([
-        pluginPanelShutdown,
         pluginShutdown,
         sidecarShutdown,
         mcpShutdown,

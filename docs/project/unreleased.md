@@ -1,8 +1,15 @@
 # Unreleased changes
 
-- Skills now discovers installed pi CLI npm skill packages and offers explicit
-  import with a source and executable-extension confirmation. Imported packages
-  remain managed in Plugins; discovery never enables code automatically.
+- Google Gemini rows send requests again. A provider row on the native
+  generative-AI endpoint no longer hands pi-ai's Google adapter the internal
+  response-capture `fetch` it refuses before the request leaves, custom provider
+  headers still reach Google, and an adapter refusal now fails the turn instead
+  of spending all ten transient retries on it (issue #1072).
+
+- Deleting a provider no longer leaves a dangling image-generation default.
+  An image default or marked candidate whose provider row is gone is dropped
+  on the next settings read or write, instead of staying stored as a binding
+  every generation request rejects as an unavailable model.
 
 - Subagent topology cards and their live process rows now follow the main
   conversation's responsive width behavior: long descriptions, paths,

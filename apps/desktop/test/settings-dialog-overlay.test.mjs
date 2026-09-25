@@ -8,7 +8,6 @@ const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
 const overlaySources = [
   "../src/components/settings/ProviderSetupDialog.tsx",
   "../src/components/settings/VendorAccountDialog.tsx",
-  "../src/components/settings/VendorPickerDialog.tsx",
   "../src/components/settings/OAuthLoginDialog.tsx",
   "../src/components/settings/SkillEditorSheet.tsx",
   "../src/components/settings/SubagentEditorSheet.tsx",

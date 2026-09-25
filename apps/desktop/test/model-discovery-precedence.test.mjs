@@ -5,12 +5,12 @@ import { readMainSource } from "./helpers/source-contracts.mjs";
  * `providersListModels` used to answer from the bundled models.dev snapshot
  * before it ever contacted the endpoint, which offered every model a vendor
  * publishes — including ones a given deployment does not host and ones the key
- * is not entitled to. These tests pin the corrected order: probe the service,
- * enrich what it returned with models.dev, and only fall back to the catalog
- * when the endpoint publishes nothing usable.
+ * is not entitled to. These tests pin the corrected order: resolve the endpoint,
+ * probe the service through that resolution, enrich what it returned with
+ * models.dev, and only fall back to the catalog when the endpoint publishes
+ * nothing usable.
  */
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const mainSource = await readMainSource();
@@ -21,13 +21,13 @@ const handler = (() => {
   assert.notEqual(start, -1, "providersListModels handler not found");
   // The handler ends at its own fallback return; the next `handle(` registration
   // is not guaranteed to be the create one.
-  const end = mainSource.indexOf('source: "fallback", error: discoveryError', start);
+  const end = mainSource.indexOf('source: "fallback", ...resolution, error: discoveryError', start);
   assert.notEqual(end, -1, "could not bound the handler body");
   return mainSource.slice(start, end);
 })();
 
 test("the live endpoint is probed before the bundled catalog is consulted", () => {
-  const discovery = handler.indexOf("await discoverProviderModels(");
+  const discovery = handler.indexOf("await probeDiscoveryCandidates(");
   const catalog = handler.indexOf("modelsDevCatalog.modelsForProvider(");
   assert.notEqual(discovery, -1, "live discovery call missing");
   assert.notEqual(catalog, -1, "catalog fallback missing");
@@ -35,6 +35,17 @@ test("the live endpoint is probed before the bundled catalog is consulted", () =
     discovery < catalog,
     "models.dev must not short-circuit ahead of the service's own /models",
   );
+});
+
+test("the probe asks the resolved candidates, not the typed URL alone", () => {
+  // The typed Base URL is a starting point: a bare host must be able to resolve
+  // to the path that answers, and every candidate stays on the typed origin.
+  assert.match(handler, /inferEndpointProfile\(\{/);
+  assert.match(handler, /candidates: profile\.candidates/);
+  assert.match(handler, /origin: profile\.origin/);
+  // The renderer reads the answer from the IPC result instead of re-deriving it.
+  assert.match(handler, /effectiveBaseUrl: outcome\.effectiveBaseUrl/);
+  assert.match(handler, /discoveryStyle: outcome\.discoveryStyle/);
 });
 
 test("a catalog-derived list is reported as such, not as the service's answer", () => {
@@ -56,19 +67,22 @@ test("only a live answer is written back to the model cache", () => {
   const catalog = handler.indexOf("modelsDevCatalog.modelsForProvider(");
   assert.ok(cacheCall < catalog, "the cache write must belong to the live branch");
   assert.match(handler, /if \(!provider \|\| req\.source === "cache"\) return;/);
+  // The cache key stays the saved endpoint, so a resolved candidate never
+  // rewrites the cache of a row that has not been saved with it yet.
+  assert.match(handler, /const requestBaseUrl = baseUrl\.replace/);
 });
 
 test("every returned model is enriched through models.dev regardless of origin", () => {
   // `decorate` is what attaches published limits, modalities and thinking
   // levels, so all three branches must route through it.
   assert.match(handler, /const modelsDevModel = modelsDevCatalog\.findModel\(/);
-  assert.match(handler, /discovered\.map\(\(model\) => decorate\(model\)\)/);
+  assert.match(handler, /outcome\.models\.map\(\(model\) => decorate\(model\)\)/);
   assert.match(handler, /catalogModels\.map\(\(model\) => decorate\(model\)\)/);
 });
 
 test("the stored secret is resolved before probing, so edits need no retyped key", () => {
   const secret = handler.indexOf('"providers.getSecret"');
-  const discovery = handler.indexOf("await discoverProviderModels(");
+  const discovery = handler.indexOf("await probeDiscoveryCandidates(");
   assert.notEqual(secret, -1, "stored secret lookup missing");
   assert.ok(secret < discovery, "the key must be resolved before the probe");
 });

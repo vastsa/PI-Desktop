@@ -149,7 +149,11 @@ name matches a loaded pi prompt template, the main-process handler expands
 the invocation (`parseCommandArgs` + `substituteArgs`) before persisting.
 The persisted user message stores `content = expanded text` plus an optional
 `command: string` field carrying the typed invocation for transcript
-display. Reseed replays `content`, so the agent context is identical across
+display. Explicit Skill invocations also persist validated `skillMentions`
+with UTF-16 offsets into `command`, allowing the transcript to show each
+Skill separately from the user's remaining text after reopening a session.
+These optional transcript metadata fields do not alter the model-facing
+`content`. Reseed replays `content`, so the agent context is identical across
 restarts. Builtin/plugin slash aliases never reach this channel — the
 renderer executes them locally. Unknown `/foo` passes through as literal
 content. Ordinary `@path` tokens are not transformed anywhere in the pipeline

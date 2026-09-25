@@ -97,11 +97,12 @@ export type UiMessage = {
   /** 1-based active variant index for this user root turn. */
   activeRevision?: number;
   /**
-   * Typed slash invocation ("/name args") when this user message was
-   * produced by a prompt-template command; `content` holds the expanded
-   * text the model sees (D123). Transcript renders this as a chip.
+   * Original text for an expanded slash template or explicit Skill invocation;
+   * `content` holds the expanded text the model sees (D123, ADR 0219).
    */
   command?: string;
+  /** Validated Skill tokens in `command`, using UTF-16 offsets. */
+  skillMentions?: Array<{ start: number; end: number; id: string }>;
   toolName?: string;
   toolCallId?: string;
   toolStatus?: "running" | "success" | "error" | "denied";

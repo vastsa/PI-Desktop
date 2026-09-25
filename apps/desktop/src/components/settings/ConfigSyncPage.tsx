@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   ConfigSyncCategory,
@@ -14,6 +14,16 @@ import { Badge, Button, Checkbox, Field, Input, PasswordInput, SettingsToggle } 
 import { IconCloudDown, IconRefresh, IconShield, IconTrash } from "../icons";
 import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
 import { configSyncProgressView } from "../../features/settings/config-sync-progress";
+import {
+  cacheConfigSyncHistory,
+  cacheConfigSyncState,
+  clearConfigSyncDraft,
+  getCachedConfigSyncHistory,
+  getCachedConfigSyncState,
+  hasFreshConfigSyncHistory,
+  readConfigSyncDraft,
+  writeConfigSyncDraft,
+} from "../../features/settings/config-sync-preferences";
 import { ConfigSyncError } from "./ConfigSyncError";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 
@@ -51,6 +61,55 @@ const DEFAULT_SELECTION: ConfigSyncCategorySelection = {
   memory: false,
 };
 
+type ConfigSyncForm = {
+  endpoint: string;
+  username: string;
+  appPassword: string;
+  directory: string;
+  deviceLabel: string;
+  backupPassword: string;
+  currentBackupPassword: string;
+  newBackupPassword: string;
+};
+
+function selectionFromDraft(
+  categories?: Partial<ConfigSyncCategorySelection>,
+): ConfigSyncCategorySelection {
+  return {
+    ...DEFAULT_SELECTION,
+    ...(categories ?? {}),
+  };
+}
+
+function initialConfigSyncForm(draft = readConfigSyncDraft()): ConfigSyncForm {
+  return {
+    endpoint: draft.endpoint ?? "",
+    username: draft.username ?? "",
+    appPassword: "",
+    directory: draft.directory ?? "pi-desktop",
+    deviceLabel: draft.deviceLabel ?? "",
+    backupPassword: "",
+    currentBackupPassword: "",
+    newBackupPassword: "",
+  };
+}
+
+function draftFromState(next: ConfigSyncState) {
+  return {
+    endpoint: next.endpoint ?? "",
+    username: next.username ?? "",
+    directory: next.directory ?? "pi-desktop",
+    deviceLabel: next.deviceLabel ?? "",
+    remoteMode: next.remoteMode,
+    categories: {
+      ...next.categories,
+      credentials: next.includeSecrets,
+      memory: next.includeMemory,
+    },
+    saved: true,
+  };
+}
+
 function statusTone(
   status: ConfigSyncState["status"],
 ): "neutral" | "success" | "error" | "warning" {
@@ -66,8 +125,14 @@ function statusTone(
 
 export function ConfigSyncPage() {
   const { t } = useTranslation();
-  const [state, setState] = useState<ConfigSyncState | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [initialDraft] = useState(() => readConfigSyncDraft());
+  const [state, setState] = useState<ConfigSyncState | null>(() =>
+    getCachedConfigSyncState(),
+  );
+  // A cached state paints immediately when the user returns to the page. A
+  // first visit still refreshes in the background, but never blocks the draft
+  // form from being useful.
+  const [loading, setLoading] = useState(() => getCachedConfigSyncState() === null);
   const [busy, setBusy] = useState<
     | "test"
     | "configure"
@@ -82,85 +147,164 @@ export function ConfigSyncPage() {
   >(null);
   /** The last progress the host reported for a manual sync, if one is running. */
   const [progress, setProgress] = useState<ConfigSyncProgress | null>(null);
-  const [history, setHistory] = useState<ConfigSyncHistoryEntry[]>([]);
+  const [history, setHistory] = useState<ConfigSyncHistoryEntry[]>(() =>
+    getCachedConfigSyncHistory(),
+  );
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    endpoint: "",
-    username: "",
-    appPassword: "",
-    directory: "pi-desktop",
-    deviceLabel: "",
-    backupPassword: "",
-    currentBackupPassword: "",
-    newBackupPassword: "",
-  });
-  const [selection, setSelection] =
-    useState<ConfigSyncCategorySelection>(DEFAULT_SELECTION);
-  const [remoteMode, setRemoteMode] = useState<ConfigSyncRemoteMode>("strict");
+  const [form, setForm] = useState<ConfigSyncForm>(() =>
+    initialConfigSyncForm(initialDraft),
+  );
+  const [selection, setSelection] = useState<ConfigSyncCategorySelection>(() =>
+    selectionFromDraft(initialDraft.categories),
+  );
+  const [remoteMode, setRemoteMode] = useState<ConfigSyncRemoteMode>(
+    () => initialDraft.remoteMode ?? "strict",
+  );
+  const mountedRef = useRef(true);
+  const formDirtyRef = useRef(initialDraft.saved === false);
+  const stateRequestRef = useRef(0);
+  const historyRequestRef = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const applyState = useCallback((next: ConfigSyncState) => {
+    // A host event or an explicit action is newer than any page-open refresh
+    // still in flight. Invalidating that request prevents stale state from
+    // replacing the result the user just triggered.
+    stateRequestRef.current += 1;
+    cacheConfigSyncState(next);
+    setState(next);
+    setLoading(false);
+  }, []);
+
+  const hydrateSavedFields = useCallback((next: ConfigSyncState) => {
+    if (formDirtyRef.current || !next.configured) return;
+    const draft = draftFromState(next);
+    setForm((current) => ({
+      ...current,
+      endpoint: draft.endpoint,
+      username: draft.username,
+      directory: draft.directory,
+      deviceLabel: draft.deviceLabel,
+    }));
+    setSelection(selectionFromDraft(draft.categories));
+    setRemoteMode(draft.remoteMode);
+    writeConfigSyncDraft({ ...draft, saved: true });
+  }, []);
+
+  const refreshHistory = useCallback(async (showError: boolean) => {
+    const requestId = ++historyRequestRef.current;
     try {
-      const next = await api.configSyncGetState();
-      setState(next);
-      setRemoteMode(next.remoteMode ?? "strict");
-      if (next.configured) {
-        setForm((current) => ({
-          ...current,
-          endpoint: next.endpoint ?? current.endpoint,
-          username: next.username ?? current.username,
-          directory: next.directory ?? current.directory,
-          deviceLabel: next.deviceLabel ?? current.deviceLabel,
-        }));
-        setSelection((current) => ({
-          ...current,
-          ...next.categories,
-          credentials: next.includeSecrets,
-          memory: next.includeMemory,
-        }));
-        if (!next.locked) {
-          try {
-            setHistory(await api.configSyncListHistory());
-          } catch {
-            setHistory([]);
-          }
-        } else {
-          setHistory([]);
-        }
-      }
+      const next = await api.configSyncListHistory();
+      if (!mountedRef.current || requestId !== historyRequestRef.current) return;
+      cacheConfigSyncHistory(next);
+      setHistory(next);
     } catch (cause) {
+      if (!showError || !mountedRef.current || requestId !== historyRequestRef.current) {
+        return;
+      }
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setLoading(false);
     }
   }, []);
+
+  const clearHistory = useCallback(() => {
+    historyRequestRef.current += 1;
+    cacheConfigSyncHistory([]);
+    setHistory([]);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const requestId = ++stateRequestRef.current;
+    try {
+      const next = await api.configSyncGetState();
+      if (!mountedRef.current || requestId !== stateRequestRef.current) return;
+      applyState(next);
+      hydrateSavedFields(next);
+      if (next.configured && !next.locked) {
+        // History is supplementary. It should not hold the whole settings
+        // surface behind a remote request, and a short-lived cache avoids a
+        // second network round-trip when the user revisits the page.
+        if (!hasFreshConfigSyncHistory()) void refreshHistory(false);
+      } else {
+        clearHistory();
+      }
+    } catch (cause) {
+      if (!mountedRef.current || requestId !== stateRequestRef.current) return;
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (mountedRef.current && requestId === stateRequestRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [applyState, clearHistory, hydrateSavedFields, refreshHistory]);
 
   const loadHistory = useCallback(async () => {
     if (!state?.configured || state.locked) return;
     setBusy("history");
     try {
-      setHistory(await api.configSyncListHistory());
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      await refreshHistory(true);
     } finally {
       setBusy(null);
     }
-  }, [state?.configured, state?.locked]);
+  }, [refreshHistory, state?.configured, state?.locked]);
 
   useEffect(() => {
     void refresh();
     return api.onConfigSyncChanged((next) => {
-      setState(next);
-      setRemoteMode(next.remoteMode ?? "strict");
+      applyState(next);
+      hydrateSavedFields(next);
+      if (next.configured && !next.locked && !hasFreshConfigSyncHistory()) {
+        void refreshHistory(false);
+      } else if (!next.configured || next.locked) {
+        clearHistory();
+      }
     });
-  }, [refresh]);
+  }, [applyState, clearHistory, hydrateSavedFields, refresh, refreshHistory]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      historyRequestRef.current += 1;
+    };
+  }, []);
 
   // The report is only shown while the page is running a sync itself, so an
   // automatic run stays silent; the subscription is dropped with the page.
   useEffect(() => api.onConfigSyncProgress((next) => setProgress(next)), []);
 
-  const updateForm = (key: keyof typeof form, value: string) =>
+  const updateForm = (key: keyof ConfigSyncForm, value: string) => {
+    formDirtyRef.current = true;
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const updateSelection = (key: keyof ConfigSyncCategorySelection, value: boolean) => {
+    formDirtyRef.current = true;
+    setSelection((current) => ({ ...current, [key]: value }));
+  };
+
+  const updateRemoteMode = (value: ConfigSyncRemoteMode) => {
+    formDirtyRef.current = true;
+    setRemoteMode(value);
+  };
+
+  useEffect(() => {
+    if (!formDirtyRef.current) return;
+    writeConfigSyncDraft({
+      endpoint: form.endpoint,
+      username: form.username,
+      directory: form.directory,
+      deviceLabel: form.deviceLabel,
+      remoteMode,
+      categories: selection,
+      saved: false,
+    });
+  }, [
+    form.deviceLabel,
+    form.directory,
+    form.endpoint,
+    form.username,
+    remoteMode,
+    selection,
+  ]);
 
   const run = async (
     operation: "test" | "configure" | "sync" | "unlock" | "disconnect",
@@ -199,7 +343,8 @@ export function ConfigSyncPage() {
               : t("settings.configSync.testUnsupported"),
         );
       } else if (operation === "configure") {
-        await api.configSyncConfigure({
+        clearHistory();
+        const configuredState = await api.configSyncConfigure({
           endpoint: form.endpoint,
           username: form.username,
           appPassword: form.appPassword || undefined,
@@ -212,20 +357,30 @@ export function ConfigSyncPage() {
           automaticSync: true,
           remoteMode,
         });
-        setState(await api.configSyncSyncNow());
+        // Show the saved connection immediately while the first full sync is
+        // still running. The previous flow kept the page in its unconfigured
+        // shape until sync completed, which made a slow first setup look stuck.
+        applyState(configuredState);
+        formDirtyRef.current = false;
+        hydrateSavedFields(configuredState);
+        applyState(await api.configSyncSyncNow());
+        void refreshHistory(false);
         setForm((current) => ({ ...current, appPassword: "", backupPassword: "" }));
         setNotice(t("settings.configSync.configured"));
       } else if (operation === "sync") {
-        setState(await api.configSyncSyncNow());
+        applyState(await api.configSyncSyncNow());
+        void refreshHistory(false);
       } else if (operation === "unlock") {
-        setState(await api.configSyncUnlock(form.backupPassword));
+        applyState(await api.configSyncUnlock(form.backupPassword));
         setForm((current) => ({ ...current, backupPassword: "" }));
       } else {
-        setState(await api.configSyncDisconnect());
-        setHistory([]);
+        applyState(await api.configSyncDisconnect());
+        clearConfigSyncDraft();
+        clearHistory();
         setRemoteMode("strict");
-        setForm((current) => ({ ...current, appPassword: "", backupPassword: "" }));
-        setSelection(DEFAULT_SELECTION);
+        formDirtyRef.current = false;
+        setForm(initialConfigSyncForm());
+        setSelection(selectionFromDraft());
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -243,7 +398,7 @@ export function ConfigSyncPage() {
     setError(null);
     setNotice(null);
     try {
-      setState(
+      applyState(
         await api.configSyncChangePassword({
           currentPassword: form.currentBackupPassword,
           newPassword: form.newBackupPassword,
@@ -267,13 +422,13 @@ export function ConfigSyncPage() {
     setBusy("restore");
     setError(null);
     try {
-      setState(
+      applyState(
         await api.configSyncRestore({
           revisionId: entry.revisionId,
           acknowledgePropagation: true,
         }),
       );
-      setHistory(await api.configSyncListHistory());
+      await refreshHistory(true);
       setNotice(t("settings.configSync.restoreStarted"));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -289,7 +444,7 @@ export function ConfigSyncPage() {
       const next = accepted
         ? await api.configSyncApprove({ approvalId, digest })
         : await api.configSyncReject({ approvalId, digest });
-      setState(next);
+      applyState(next);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -304,7 +459,7 @@ export function ConfigSyncPage() {
       const picked = await api.pickProjectFolders();
       const paths = picked.folders?.filter(Boolean) ?? [];
       if (!paths.length) return;
-      setState(
+      applyState(
         await api.configSyncMapProject({
           logicalId,
           path: paths[0],
@@ -322,7 +477,7 @@ export function ConfigSyncPage() {
     setBusy("sync");
     setError(null);
     try {
-      setState(await api.configSyncPause(!state?.paused));
+      applyState(await api.configSyncPause(!state?.paused));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -373,16 +528,9 @@ export function ConfigSyncPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="settings-recovery" role="status">
-        {t("common.loading")}
-      </div>
-    );
-  }
-
   const configured = state?.configured === true;
   const locked = state?.locked === true;
+  const stateReady = state !== null;
   const categories = selection;
   const vaultPasswordReady =
     form.backupPassword.length === 0
@@ -397,7 +545,16 @@ export function ConfigSyncPage() {
       : null;
 
   return (
-    <div className="settings-stack settings-config-sync">
+    <div
+      className="settings-stack settings-config-sync"
+      aria-busy={loading || undefined}
+    >
+      {loading && !state ? (
+        <div className="settings-config-sync-refresh" role="status">
+          <IconRefresh size={14} />
+          {t("common.loading")}
+        </div>
+      ) : null}
       {error || state?.lastError ? (
         <ConfigSyncError message={error ?? state?.lastError ?? ""} />
       ) : null}
@@ -435,7 +592,7 @@ export function ConfigSyncPage() {
                   label: t("settings.configSync.remoteModeAppendOnly"),
                 },
               ]}
-              onChange={(value) => setRemoteMode(value as ConfigSyncRemoteMode)}
+              onChange={(value) => updateRemoteMode(value as ConfigSyncRemoteMode)}
             />
           </Field>
           {remoteMode === "appendOnly" ? (
@@ -452,7 +609,10 @@ export function ConfigSyncPage() {
               disabled={busy !== null}
             />
           </Field>
-          <Field label={t("settings.configSync.appPassword")}>
+          <Field
+            label={t("settings.configSync.appPassword")}
+            hint={configured ? t("settings.configSync.appPasswordSavedHint") : undefined}
+          >
             <PasswordInput
               value={form.appPassword}
               onChange={(event) => updateForm("appPassword", event.target.value)}
@@ -488,7 +648,11 @@ export function ConfigSyncPage() {
                 ? t("settings.configSync.backupPasswordUnlock")
                 : t("settings.configSync.backupPassword")
             }
-            hint={t("settings.configSync.backupPasswordHint")}
+            hint={
+              configured && !locked
+                ? t("settings.configSync.backupPasswordOptional")
+                : t("settings.configSync.backupPasswordHint")
+            }
           >
             <PasswordInput
               value={form.backupPassword}
@@ -505,7 +669,7 @@ export function ConfigSyncPage() {
           <Button
             variant="secondary"
             onClick={() => void run("test")}
-            disabled={busy !== null || !form.endpoint}
+            disabled={busy !== null || loading || !stateReady || !form.endpoint}
           >
             <IconRefresh size={14} />
             {t("settings.configSync.test")}
@@ -513,7 +677,9 @@ export function ConfigSyncPage() {
           <Button
             variant="primary"
             onClick={() => void run("configure")}
-            disabled={busy !== null || !form.endpoint || !vaultPasswordReady}
+            disabled={
+              busy !== null || loading || !stateReady || !form.endpoint || !vaultPasswordReady
+            }
           >
             <IconCloudDown size={14} />
             {configured ? t("settings.configSync.save") : t("settings.configSync.enable")}
@@ -528,11 +694,6 @@ export function ConfigSyncPage() {
             </Button>
           ) : null}
         </div>
-        {error ? (
-          <div className="settings-config-sync-message error" role="alert">
-            {error}
-          </div>
-        ) : null}
         {notice ? (
           <div className="settings-config-sync-message" role="status">
             {notice}
@@ -688,10 +849,7 @@ export function ConfigSyncPage() {
                   className="settings-config-sync-category"
                   checked={categories[category.id] !== false}
                   onChange={(event) =>
-                    setSelection((current) => ({
-                      ...current,
-                      [category.id]: event.target.checked,
-                    }))
+                    updateSelection(category.id, event.target.checked)
                   }
                   label={t(category.label)}
                 />
@@ -700,10 +858,7 @@ export function ConfigSyncPage() {
                 className="settings-config-sync-category"
                 checked={selection.memory}
                 onChange={(event) =>
-                  setSelection((current) => ({
-                    ...current,
-                    memory: event.target.checked,
-                  }))
+                  updateSelection("memory", event.target.checked)
                 }
                 label={t("settings.configSync.categoryMemory")}
               />
@@ -711,10 +866,7 @@ export function ConfigSyncPage() {
                 className="settings-config-sync-category settings-config-sync-sensitive"
                 checked={selection.credentials}
                 onChange={(event) =>
-                  setSelection((current) => ({
-                    ...current,
-                    credentials: event.target.checked,
-                  }))
+                  updateSelection("credentials", event.target.checked)
                 }
                 label={t("settings.configSync.categoryCredentials")}
               />

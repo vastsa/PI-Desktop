@@ -1,4 +1,4 @@
-import { IPC, ErrorCodes, compactionRecordId, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
+import { IPC, ErrorCodes, compactionRecordId, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
 import { expandSlashInvocation, enhancePromptDraft, summarizeSessionTitle, visionFromModelConfig, type ComposerTemplate, type RuntimeProviderConfig } from "@pi-desktop/agent-runtime";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
@@ -442,28 +442,42 @@ export function registerAgentIpc({
     // /names stay literal text.
     let promptContent = sessionMessage?.content ?? req.content;
     let slashCommand: string | undefined;
-    if (!sessionMessage && req.content.startsWith("/")) {
+    let skillMentions: UiMessage["skillMentions"];
+    if (!sessionMessage && /(^|\s)\/\S/.test(req.content)) {
       try {
         const root = await optionalWorkspaceRoot();
         const commandEnd = req.content.search(/\s/);
-        const commandName = req.content.slice(
-          1,
-          commandEnd === -1 ? undefined : commandEnd,
-        );
+        const commandName = req.content.startsWith("/")
+          ? req.content.slice(1, commandEnd === -1 ? undefined : commandEnd)
+          : "";
         const commands = await composerCommandService.buildComposerCommands(
           launch.projectPath ?? root,
         );
         const command = commands.find((item) => item.name === commandName);
-        if (command?.kind === "skill" && command.skillId) {
-          const body = commandEnd === -1 ? "" : req.content.slice(commandEnd).trim();
+        const activeSkills = new Map(
+          commands.flatMap((item) => item.kind === "skill" && item.skillId
+            ? [[item.name, item.skillId] as const]
+            : []),
+        );
+        const mentions = findSkillMentions(req.content, activeSkills);
+        if (mentions.length > 0 && (!command || command.kind === "skill")) {
+          let body = "";
+          let end = 0;
+          for (const mention of mentions) {
+            body += req.content.slice(end, mention.start);
+            end = mention.end;
+          }
+          body = (body + req.content.slice(end)).trim();
+          const ids = [...new Set(mentions.map((mention) => mention.id))];
           promptContent = [
-            `Call the \`Skill\` tool with id ${JSON.stringify(command.skillId)} before answering this request. Follow the loaded skill instructions.`,
+            `Call the \`Skill\` tool with each of these ids before answering this request, in order: ${ids.map((id) => JSON.stringify(id)).join(", ")}. Follow the loaded skill instructions.`,
             body,
           ]
             .filter(Boolean)
             .join("\n\n");
           slashCommand = req.content;
-        } else {
+          skillMentions = mentions;
+        } else if (req.content.startsWith("/")) {
           const templates = await loadComposerTemplatesCached(root);
           const expansion = expandSlashInvocation(req.content, templates);
           if (expansion) {
@@ -531,6 +545,7 @@ export function registerAgentIpc({
         ? { attachments: preparedAttachments.map((attachment) => attachment.message) }
         : {}),
       ...(slashCommand ? { command: slashCommand } : {}),
+      ...(skillMentions ? { skillMentions } : {}),
       ...(revisionMeta?.revisionCount
         ? {
             revisionRootId: revisionMeta.rootUserId,

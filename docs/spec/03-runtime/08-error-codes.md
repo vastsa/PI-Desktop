@@ -97,7 +97,7 @@ does not turn temporary thread pressure into a host process exit.
 | `TURN_NOT_FOUND` | no | turn id invalid |
 | `TURN_ABORTED` | no | turn aborted by user/system |
 | `MODEL_NOT_CONFIGURED` | no | no usable model selected, or provider rejects the selected model as unknown |
-| `PROVIDER_ERROR` | yes | upstream provider failure; a retryable one (5xx gateway) gets up to ten same-turn retries, a malformed 400/422 request is terminal |
+| `PROVIDER_ERROR` | yes | upstream provider failure; a retryable one (5xx gateway) gets up to ten same-turn retries, while a malformed 400/422 request or a request option the adapter itself refuses (a custom `fetch` for the Google adapters, issue #1072) is terminal |
 | `PROVIDER_UNAUTHORIZED` | no | bad/missing provider credentials |
 | `PROVIDER_RATE_LIMITED` | yes | provider rate limited; runtime silently retries up to ten times across setup/stream before the terminal event |
 | `CONTEXT_TOO_LARGE` | no | prompt/context still exceeds the safe model budget after recovery, the second provider overflow occurred, or automatic recovery is disabled |
@@ -368,7 +368,10 @@ phase: the fault is reported as `phase: request` because no response ever
 arrived, which is what distinguishes it from a stream that ended mid-response.
 `networkRoute` (`direct`, `environment-proxy`, `http-proxy`, `socks5-proxy`)
 names the hop the request was taking, so a failure at the proxy is readable
-without guessing from an errno.
+without guessing from an errno. A request bound for pi-ai's Google adapters
+carries no fetch wrapper and never reaches `onResponse` (issue #1072), so it
+reports neither field: it keeps the provider's own message, its `Retry-After`
+falls back to the bounded ladder, and the rebuild below does not fire for it.
 
 When one origin fails this way repeatedly inside a turn — twice in a row,
 without any response — the provider transport is rebuilt before the next attempt

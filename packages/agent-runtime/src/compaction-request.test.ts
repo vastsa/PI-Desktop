@@ -73,6 +73,45 @@ describe("compactionRequestOptions", () => {
     });
     expect(options.headers).toEqual({ "X-Team": "platform" });
   });
+
+  it("clears a caller-supplied fetch for a Google model, with or without row headers", () => {
+    const callerFetch = vi.fn(async () => new Response("ok"));
+    const googleModel = {
+      ...model,
+      provider: "google",
+      api: "google-generative-ai",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    } as Model<Api>;
+    const googleProvider: RuntimeProviderConfig = {
+      ...provider,
+      id: "google",
+      name: "Google Gemini",
+      vendorKey: "google",
+      apiStyle: "google_generative_ai",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      modelId: "gemini-3.8-flash",
+    };
+
+    const withRowHeaders = compactionRequestOptions({
+      provider: { ...googleProvider, headers: { "X-Team": "platform" } },
+      sessionId: "session-1",
+      model: googleModel,
+      context,
+      options: { fetch: callerFetch },
+    });
+    const withoutRowHeaders = compactionRequestOptions({
+      provider: googleProvider,
+      sessionId: "session-1",
+      model: googleModel,
+      context,
+      options: { fetch: callerFetch },
+    });
+
+    expect(withRowHeaders.fetch).toBeUndefined();
+    expect(withRowHeaders.headers).toMatchObject({ "X-Team": "platform" });
+    expect(withoutRowHeaders.fetch).toBeUndefined();
+    expect(callerFetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("withCompactionRequestHeaders", () => {

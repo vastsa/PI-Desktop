@@ -280,8 +280,8 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 - **前提条件**：应用运行；提供商 A 已保存并设为应用默认模型；另有提供商 B 提供不同的模型；A 上配置了一个图片模型，另一家服务上也配置了一个。
 - **步骤**：1) 打开设置 → 模型配置，新增提供商 B，保存时不动「默认模型」行。2) 确认「默认模型」行仍是提供商 A 与其确切模型，且新建会话使用它。3) 将某个图片模型设为默认画图模型，再新增一个同样提供图片模型的服务并保存。4) 确认「默认画图模型」行仍指向原绑定，而选择器的候选里出现新提供商的图片模型。5) 删除拥有默认值的那家提供商，再新增一个既提供对话模型又提供图片模型的服务并保存。6) 确认两个默认值此时都解析到新增的服务。
-- **预期**：新增提供商保存后不会改写仍然可解析的应用默认值：默认模型保留「默认模型」行已经展示的那对提供商/模型，默认画图模型保留其存储绑定，同时候选列表继续增长。只有已无法解析的默认值（提供商被删除，或其模型已从提供商移除）才会由新增的提供商填补，因此只有在应用否则将无从运行时才会写入设置。显式的「设为默认」操作、编辑路径，以及回落到首个剩余绑定的行为都不变。
-- **链接规格**：`03-runtime/13-model-catalog-and-selection.md`
+- **预期**：新增提供商保存后不会改写仍然可解析的应用默认值：默认模型保留「默认模型」行已经展示的那对提供商/模型，默认画图模型保留其存储绑定，同时候选列表继续增长。只有已无法解析的默认值（提供商被删除，或其模型已从提供商移除）才会由新增的提供商填补，因此只有在应用否则将无从运行时才会写入设置。删除拥有生图默认值的服务商行本身无需手工修复：下一次设置读取或写入会丢弃服务商行已不存在的绑定与候选，因此「默认画图模型」行显示为未设置，而不是运行时必须拒绝的绑定。显式的「设为默认」操作、编辑路径，以及回落到首个剩余绑定的行为都不变。
+- **链接规格**：`03-runtime/13-model-catalog-and-selection.md`、`03-runtime/21-image-generation.md`
 - **接受**：B（模型选择）
 - **里程碑**：M6
 - **状态**：已文档化；由 `apps/desktop/test/default-model-display.test.mjs`、`apps/desktop/test/image-generation-default.test.mjs`、`apps/desktop/test/provider-model-config.test.mjs` 覆盖
@@ -291,6 +291,8 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **前提条件**：应用运行；models.dev 快照随构建发布；已打开某个提供商编辑器。
 - **步骤**：1) 在「添加模型」输入框里输入模型库已发布的模型 id 并添加，确认新行的上下文长度、最大输出与思考等级与已发布记录一致，而不是 128,000 / 8,192 且无思考等级。2) 输入模型库未发布的 id 并添加，确认该行沿用通用种子 128,000 / 8,192 且无思考等级。3) 在服务模型列表不可用的状态下添加一个 id，确认该行仍然只出现一次且可编辑。4) 添加一个 id 后立刻修改其限额（此时查询尚未返回），确认手输的值被保留。
 - **预期**：`providers.lookupModel` 只从本地快照回答手输 id —— 不访问提供商网络、不调用主机 —— 命中时按「被勾选的模型」同样的口径播种绑定（已发布的上下文长度、最大输出、思考等级，`contextWindowSource: "catalog"`），而存储的 id 保持用户输入的原样。未命中、调用失败，或该 id 已被本次发现结果描述过时，行为与之前一致：一行可用，通用种子，列表既不卡住也不重复。
+  该 id 以另一种拼写发布（路由前缀、日期戳、部署自己追加的标记）同样算命中：
+  答复到达即就地升级该行，不必等到保存。
 - **链接规格**：`03-runtime/12-provider-config-schema.md`、`03-runtime/13-model-catalog-and-selection.md`
 - **接受**：B（多模型提供商配置）
 - **里程碑**：M2
@@ -359,6 +361,17 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **验收**：B（提供商 Completions 兼容）
 - **里程碑**：M2
 - **状态**：单元覆盖（compat 注入 + convertMessages 空/非空补全 + 压缩保留推理上线证明）；现场 OpenCode/聚合端验证仍推迟；界面场景待完成
+
+#### E2E-005F：自定义端点输入护栏
+
+- **前提条件**：应用已运行；新增提供商对话框已打开并选中自定义端点。
+- **步骤**：1) 只填 `api.gateway.example.com`（不带协议），离开 Base URL 输入框。2) 确认输入框归位为 `https://api.gateway.example.com`，并开始发现。3) 粘贴 `https://api.gateway.example.com/v1/messages` 后离开输入框。4) 确认输入框归位为 `https://api.gateway.example.com/v1`，接口格式显示 Anthropic Messages，且表单提示该格式为自动识别。5) 手动把接口格式改为 OpenAI Chat Completions，再粘贴 `/v1/responses` 地址：确认手动选择的格式保持不变，后缀在应用建议前原样保留。6) 把值改成 `ftp://gateway.example.com` 后离开输入框。7) 重新填入有效地址，确认可以开始发现；粘贴完整 `/models` 路径后离开输入框。8) 指向一个仅在 `/v1` 下响应 `/models` 的网关，确认输入框与保存后的行都显示该地址。
+- **预期**：裸主机名会补上 `https://`，仍限定在用户填写的来源内；含凭据、查询或片段的地址一律拒绝。粘贴的接口路径既指明格式并自动选中，也会从基础地址中移除，`/models` 同样移除；只有当它与用户手动选择的格式冲突时才保留，并改为给出建议。当格式来自端点推断时，表单会在选择器旁说明。当只有 `/v1` 候选应答时，输入框与保存的行显示该地址，而不是隐藏改写，且每个被探测的候选都限定在用户填写的来源内。非 http(s) 地址显示内联可访问错误、不启动发现、保持保存禁用；有效地址恢复发现。较长的地址输入框在宽对话框下独占整行，并在响应式断点下与其他凭据自然堆叠。
+- **链接规格**：`04-ux/06-settings-ia.md`、
+  `03-runtime/12-provider-config-schema.md`
+- **验收**：B（自定义提供商配置）
+- **里程碑**：M2
+- **状态**：单元覆盖（端点解析与候选探测）；界面场景待完成
 
 #### E2E-005G：按供应商自定义 HTTP 请求头
 
@@ -1784,19 +1797,17 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 #### E2E-046：PI-Desktop 渲染器品牌和输入框图标边界
 
-- **先决条件**：应用程序分别以英语、`zh-CN` 和 `zh-TW` 运行，并带有
-  空首页和可用的停靠成绩单。
-- **步骤**：1) 检查展开和折叠的侧边栏。 2) 在浅色模式检查英语和中文
-  空首页。 3) 切换到深色模式，确认英语使用标准深色动画，`zh-CN` 和
-  `zh-TW` 使用 30 帧中文 GIF。将指针移到吉祥物上，确认节奏和几何形状
-  不变。开启减少动态效果，并确认每种语言和主题组合都显示对应静止图。
-  4）检查停靠输入框、页脚设置和插件
+- **先决条件**：应用程序在英语和中中文语言环境中运行，并带有
+  空荡荡的家和可用的停靠成绩单。
+- **步骤**：1) 检查展开和折叠的侧边栏。 2) 检查
+  空荡荡的英雄和停靠的输入框。 3) 观察八帧吉祥物 GIF 原地循环，
+  将指针移到其上并确认节奏与几何形状不变。开启减少动态
+  效果并确认显示静止首帧。 4）关注页脚设置和插件
   图标，然后每个 project/Temporary 会话创建控件。 5）打开设置
   和输入框输入。
-- **预期**：可见 shell 标识为 `PI-Desktop`；空首页英雄渲染与主题和语言
-  匹配的 100px `HomeMascotLogo` GIF。只有深色中文环境使用提供的 30 帧
-  动画，其他组合保留原资源。指针悬停不改变节奏或几何形状，减少动态
-  效果时显示对应静止首帧。
+- **预期**：可见 shell 标识为 `PI-Desktop`；空荡荡的家英雄
+  渲染与当前主题匹配的 100px `HomeMascotLogo` GIF，首帧短暂停留后循环挥手；
+  指针悬停不改变节奏或几何形状，减少运动时显示对应静止首帧。
   expanded/collapsed
   侧边栏通过 `BrandLogo` 呈现派生的 `src/assets/brand/logo-*.png` 资源
   并且停靠的输入框提示行没有前导
@@ -3255,18 +3266,16 @@ IPC 请求无法关闭。
      并检查空首页英雄中的浅色八帧 `HomeMascotLogo` GIF。
      将鼠标悬停在吉祥物上并验证节奏不变。
   3. 将主题切换为深色（设置→基础→外观，或系统外观更改）。
-  4. 确认英语使用标准深色 GIF；将应用语言切换为 `zh-CN` 和 `zh-TW`，
-     确认无需重新加载即可显示 30 帧中文深色 GIF。开启减少动态效果，
-     确认显示对应的中文静止图。
+  4. 重新检查相同的表面，无需重新加载。
   5. 切换回光源并重新检查。
 - **预期**：
   - 明暗模式渲染 `src/assets/brand/logo-light.png` /
     `src/assets/brand/logo-dark.png`
     位于侧边栏和启动画面中，无需重新加载窗口。
-  - 空首页英雄按当前主题和语言渲染 100 像素的吉祥物 GIF。浅色模式使用
-    `home-mascot-light.gif`；深色模式使用 `home-mascot-dark.gif`，但中文
-    环境使用 `home-mascot-dark-zh.gif`。切换主题或语言时即时更换资源，
-    无需重新加载窗口。指针悬停不改变节奏；减少动态效果时显示对应静止图。
+- 空首页英雄按当前主题渲染 100 像素的八帧吉祥物 GIF
+    （`home-mascot-light.gif` / `home-mascot-dark.gif`），首帧短暂停留后
+    循环挥手。切换主题时即时更换资源，无需重新加载窗口。指针悬停
+    不改变节奏；减少运动时对应静止首帧仍然可见。
   - 尺寸在主题变化时保持稳定（侧边栏 20 像素、英雄 100 像素、启动栏
     64px），标记保持装饰性，无需点击、键盘或焦点
     行为。
@@ -5422,7 +5431,7 @@ eleven-tool-round desktop paths are verified by
 | M5（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
-| 后MVP | E2E-PLUGIN-pi-npm-skill-discovery, E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
+| 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
 | 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
@@ -5604,11 +5613,11 @@ eleven-tool-round desktop paths are verified by
   行，没有 Logo/Home 品牌或 back/forward 按钮。
 
 ### US-UI-17 PI-Desktop 家庭英雄标志
-- 在空聊天主页上，100px `HomeMascotLogo` 显示在标题上方。浅色模式和
-  非中文深色模式使用现有八帧 GIF；深色 `zh-CN` 和 `zh-TW` 使用 30 帧
-  中文 GIF 及对应静止图。
-- 主题和语言变化无需重新加载即可选择对应图像。指针悬停不改变节奏或
-  几何形状；减少动态效果时显示对应静止图。吉祥物保持装饰性。
+- 在空聊天主页上，100px `HomeMascotLogo` GIF 在标题上方呈现
+  八帧挥手吉祥物，并在首帧稍作停留。浅色和深色主题各使用一套
+  GIF 和静止 PNG。
+- 指针悬停不改变节奏或几何形状；减少运动时显示对应静止
+  首帧。吉祥物保持装饰性。
 - 标题为 28px / 粗细为 400；活动项目名称使用点下划线（1 像素，偏移 4 像素）。
 - Composer 不会在有效负载之前渲染附件或 appshot 控件
   首尾相连达到 pi。
@@ -6138,7 +6147,7 @@ eleven-tool-round desktop paths are verified by
 - 在浅色和深色主题中，在会话 A 进行时保持会话 B 处于选中状态
   通过正在进行、已完成、新的正在进行的转向、失败和中止
   州。启用减少运动后重复并检查键盘焦点。
-- 预计 A 在进行过程中会显示橙色呼吸点，绿色勾号
+- 预计 A 在进行过程中显示橙色圆点，先在 3.2 秒内呼吸两次，再保持常亮；绿色勾号
 完成，失败时出现红色圆圈警报。开始新回合清除
   A 较早的终止标记；中止不会留下已完成或失败的标记。
 - 预计选定的空闲 B 将显示静态重音蓝色轮廓环和活动环
@@ -6154,6 +6163,11 @@ eleven-tool-round desktop paths are verified by
   刷新通知并重新启动应用程序；认可的商标不得
   返回。标记为从收件箱中读取的终端通知同样会产生
   无侧边栏端子标记。
+
+- 对悬浮卡中的关联运行会话圆点重复检查。3.2 秒后，两处运行标记均无活动动画；
+  对其余内容空闲的原生 macOS 窗口录制时，标记不得持续产生绘制帧。
+  开始新一轮任务并重新打开悬浮卡，有限动画可以再次播放。
+  GPU 测量须区分应用提交帧与整机负载。
 
 ### US-UI-68 会话范围的内联权限和工件 (D138/D142)
 - 同时运行两个会话，并在 B 到达工具时保持 A 可见
@@ -6958,7 +6972,7 @@ eleven-tool-round desktop paths are verified by
 #### E2E-180：已发送的文件引用保持芯片并可点击打开
 
 - **前提条件**：Agent 会话所在工作区含有嵌套源文件、HTML 文件，以及文件名带空格的文件；该项目组还有一个第二文件夹，里面有一个属于它自己的源文件。输入框也可以把操作系统文件粘贴到会话临时目录。内置的文件管理器插件已加载。
-- **步骤**：1）通过输入框芯片引用工作区源文件、工作区 HTML、带空格的文件名，以及粘贴的临时文件，然后发送。2）查看用户气泡。3）点击 HTML 芯片，再点击工作区源文件芯片，最后点击临时目录芯片。4）附加上项目第二个文件夹里的文件，并点击它的芯片。
+- **步骤**：1）通过输入框芯片引用工作区源文件、工作区 HTML、带空格的文件名，以及粘贴的临时文件，然后发送。2）查看用户气泡。3）点击 HTML 芯片，再点击工作区源文件芯片，最后点击临时目录芯片。4）附加上项目第二个文件夹里的文件，并点击它的芯片。5）右键那条已发送的 `@path` 芯片、助手 Markdown 里的行内代码引用、文件链接、本地图片、工具行自己的文件路径、工具结果的文件列表，以及附件缩略图，再右键一个什么都没匹配到的引用。6）在那条芯片上依次复制完整地址与相对地址，再对临时目录里的引用做同样两步。
 - **预期**：
   - 每条已发送引用画成紧凑的叶子名芯片（图标 + 名称），而不是完整 `@path`。工具提示和无障碍名称保留规范路径。带引号路径和临时绝对路径也包括在内。
   - 芯片加上短提示时，用户气泡按内容收缩，而不是撑到 `min(82%, 600px)` 上限。
@@ -6966,6 +6980,7 @@ eleven-tool-round desktop paths are verified by
   - 点击工作区源文件芯片后，该文件在文件管理器工作面板视图中打开；芯片点击不再打开宿主的 `file:` 选项卡，也不再交给系统默认应用。
   - 点击临时目录芯片时，文件在宿主的 `file:` 选项卡中按其绝对路径打开——它位于文件管理器项目根之外。
   - 点击项目第二个文件夹里那个文件的芯片时，该文件在文件管理器视图中打开：补全会搜索整个项目组、主文件夹优先，同级文件夹里的文件用绝对路径寻址，因为相对路径永远指主文件夹（ADR 0263）。
+  - 右键文件引用会打开渲染器自己的菜单：在文件夹中显示该文件，并复制它的完整地址与相对地址；助手 Markdown 里的行内代码引用、文件链接与本地图片、工具行自己的文件路径、工具结果的文件列表或匹配列表中的路径、图片附件缩略图都提供这几项，而什么都没匹配到的引用会自己报告出来，而不是去显示别处同名的那份文件。复制写出的就是它说的地址：完整地址即绝对路径，相对地址即项目内相对写法；临时目录或附件文件没有相对地址，会直接说明，而不是把绝对路径当成相对地址写出去。
   - 持久化用户消息仍包含给模型用的规范 `@path` 文本。
 - **链接规格**：`04-ux/08-component-spec.md` §8.3 / §11.8、
   `04-ux/09-interaction-patterns.md` §8a.2、`03-runtime/01-ipc-protocol.md`、
@@ -8255,8 +8270,8 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **Status**: Draft; native E2E requires an explicitly authorized run.
 #### E2E-MODEL-catalog-window-correction-reaches-saved-bindings：目录修正回流已保存绑定，且不覆盖用户手改值
 
-- **目标**：models.dev 修正某模型上限后回流到已保存的绑定（不必删除重建），
-  而用户在设置里手改的数值永不被覆盖。
+- **目标**：models.dev 修正某模型上限（上下文窗口或输出上限）后回流到已保存的绑定
+  （不必删除重建），而用户在设置里手改的数值永不被覆盖。
 - **步骤**：
   1. 配置一个提供商，勾选 models.dev 已发布 `limit.context` 的模型并保存。展开该行的
      高级区，读取上下文窗口字段与其提示。
@@ -8266,11 +8281,15 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
      重新打开设置与检查器。
   4. 保存并重新打开一个绑定不带 `contextWindowSource` 的提供商行：一次使用通用
      `128000` 种子，一次使用任意其它已存值。
+  5. 对存的是通用 `8192` 输出上限的行、以及用户手改过上限的行重复步骤 4，
+     读取设置行里的上限与新会话实际请求里的上限。
 - **预期**：步骤 1 显示发布值并带「跟随 models.dev」提示。步骤 2 在所有使用 effective
   window 的地方（设置行、上下文检查器、会话启动）都显示修正后的值，无需删除重建。
   步骤 3 在设置行、检查器和实际请求中都保留用户输入的值，包括在目录窗口更大时手输的
   `128000`，且提示消失。步骤 4 表现确定：`128000` 种子跟随目录，其它值保持原样。
-  每一步中标记都能在提供商行的保存/读取往返后保留，早于该标记写出的配置仍可读。
+  步骤 5 对输出上限套用同一套来源规则：`8192` 种子跟随已发布的 `limit.output`，
+  用户输入的上限保持不变。每一步中标记都能在提供商行的保存/读取往返后保留，
+  早于该标记写出的配置仍可读。
 - **关联规范**：`03-runtime/13-model-catalog-and-selection.md` §9.1、
   `03-runtime/12-provider-config-schema.md` §2、
   `03-runtime/11-provider-model-system.md` §2、`04-ux/06-settings-ia.md` §2
@@ -8756,30 +8775,6 @@ the latest destination. These assertions measure work counts, not device FPS.
   `providers::tests::a_stored_array_survives_an_entry_that_lost_a_field`）；
   宿主 RPC 路径由 `scripts/e2e-smoke.mjs` 覆盖提供商的创建与列举，但没有套件
   驱动手工编辑的 `config_json`。
-
-### E2E-PLUGIN-pi-npm-skill-discovery
-
-- **Preconditions:** Isolated npm package directory and plugin import storage;
-  a package declaring `pi.skills`, optionally executable extensions. No provider.
-- **Steps:** Open Skills, discover the candidate, cancel import, confirm import,
-  read the registered skill body and resources, reload, and attempt a duplicate.
-  Change metadata during confirmation; retry discovery after an error; discover
-  with more than 256 hoisted dependencies and an unreadable scope. Simulate a
-  runtime load failure after host registration and inspect the refreshed state.
-- **Expected:** No implicit import/execution, native explicit consent, preserved
-  resources and runtime skill body, stable imported state, no duplicate import,
-  stale consent refusal, and visible/recoverable errors. Unregistered leftover
-  directories do not count as imports; scoped packages are discovered. Unrelated
-  dependencies and unreadable scopes do not hide healthy skills. A registered
-  import remains marked imported after runtime failure while its error stays visible.
-- **Specs:** 07-plugins/16-trusted-extensions; ADR pi-npm-skill-discovery.
-- **Acceptance:** Plugin skill discovery and explicit trust boundary.
-- **Milestone:** Post-MVP compatibility.
-- **Status:** Automated via `apps/desktop/test/pi-skill-discovery.test.mjs` (real
-  import and plugin child process, native dialog boundary controlled) and
-  `node scripts/e2e-pi-skill-discovery-ui.mjs` (real React/Chromium panel with
-  controlled IPC results). Optional `PI_SKILL_PACKAGE_FIXTURE` points to an
-  unpacked published package for the reported planning-with-files path.
 
 ### E2E-SESSION-temporary-attachment-fork：临时任务预览与独立分支附件
 

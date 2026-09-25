@@ -165,7 +165,7 @@ globalThis.providerOrderProbe = async (restart = false) => {
     await painted();
 
     // Saving a provider must preserve the exact app default picked by the user.
-    const click = (element: HTMLButtonElement | null) => {
+    const click = (element: HTMLElement | null) => {
       assert(element, "missing provider action");
       flushSync(() => {
         element!.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 5, button: 0, bubbles: true }));
@@ -177,11 +177,10 @@ globalThis.providerOrderProbe = async (restart = false) => {
     click(document.querySelector('[aria-label="A · deepseek-reasoner"]'));
     await until(() => useAppStore.getState().settings?.defaultModelId === "deepseek-reasoner",
       "default picker did not select the second model");
+    // The row itself opens its editor (D625).
     const edit = async (name: string) => {
-      const selector = `[aria-label="${i18n.t("settings.editProvider")}"]`;
-      await until(() => !row(name).querySelector<HTMLButtonElement>(selector)?.disabled,
-        "provider is still saving");
-      click(row(name).querySelector(selector));
+      await until(() => row(name).getAttribute("aria-disabled") !== "true", "provider is still saving");
+      click(row(name));
       await until(() => !!document.querySelector(".provider-setup-dialog"), "provider editor did not open");
     };
     const save = async () => {

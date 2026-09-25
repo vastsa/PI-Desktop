@@ -176,6 +176,16 @@ support. The renderer displays
 and `error` as distinct states. Disconnect keeps local data and does not delete
 remote data.
 
+Reopening the page paints the last redacted host state and history from a
+short-lived renderer cache, then refreshes the host in the background. The
+connection draft (endpoint, username, remote directory, device label,
+compatibility mode, and category choices) is kept in renderer-local storage so
+an unfinished form survives navigation or reload. It is marked saved again
+when the host confirms the persisted configuration. WebDAV app passwords stay
+in the Host secret store and are reused only for the same endpoint and account;
+the renderer never stores either password, and a vault password is only needed
+when a new or locked device must open the vault.
+
 A manual sync reports what it is doing while it runs. `configSync.progress`
 carries the current phase — `capture`, `download`, `merge`, `upload`, `apply`,
 or `cleanup` — the units finished in that phase, and the bytes when they are

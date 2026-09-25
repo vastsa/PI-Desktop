@@ -185,6 +185,14 @@ audit-operation names for the device service: `audio.input.open` /
   `webContents` identity copies that id before the window is destroyed; the
   `closed` handler must not read `webContents` on a destroyed window, or the
   host surfaces an uncaught `TypeError: Object has been destroyed`.
+- Bridge identity belongs to the page, not to the host's list of open surfaces: a
+  panel window or a docked view registers its plugin before the document loads and
+  releases it only when that page is gone, so a call that arrives while the host is
+  closing the surface still reaches its own plugin. A call from a page that is
+  already destroyed is settled instead of rejected: its answer can never be read and
+  the plugin runtime may already be stopping, so rejecting it would only add an
+  `invalid panel invoker` failure to the main log. Shutdown closes the panel and
+  view pages, bounded, before `plugins.disposeAll()` and `host.dispose()`.
 - The preload exposes `pluginBridge.getDroppedFilePath(file)` without exposing
   Node to the page. A panel may call `fs.registerDropped` with that path; the
   host consumes a sender-bound recent drop record once and issues a one-file

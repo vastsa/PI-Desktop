@@ -86,11 +86,20 @@ function harness(realCatalog) {
     "@pi-desktop/shared": {
       IPC,
       ErrorCodes,
-      resolveBindingContextWindow: () => ({}),
+      inferEndpointProfile: () => undefined,
+      normalizeApiStyle: (value) => value ?? "chat_completions",
+      resolveBindingLimits: () => ({}),
     },
     "../oauth": { OAUTH_AUTH_KIND: "oauth" },
     "../model-discovery": {
-      discoverProviderModels: async () => {
+      probeModelList: async () => {
+        throw new Error("the lookup must not probe the network");
+      },
+    },
+    "../provider-endpoint-probe": {
+      // The lookup handler is a snapshot read: any sweep it started would take
+      // the network path this test exists to rule out.
+      probeDiscoveryCandidates: async () => {
         throw new Error("the lookup must not probe the network");
       },
     },

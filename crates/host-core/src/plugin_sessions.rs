@@ -231,6 +231,8 @@ fn parse_message(
         id: Uuid::new_v4().to_string(),
         role: role.to_string(),
         content: input.content.clone(),
+        command: None,
+        skill_mentions: None,
         attachments: None,
         steering: None,
         created_at,

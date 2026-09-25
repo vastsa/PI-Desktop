@@ -1,14 +1,20 @@
 import {
   IPC,
   ErrorCodes,
-  resolveBindingContextWindow,
+  inferEndpointProfile,
+  normalizeApiStyle,
+  resolveBindingLimits,
   type ModelBinding,
   type ProviderReorderInput,
   type OAuthRespondInput,
 } from "@pi-desktop/shared";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
-import { discoverProviderModels } from "../model-discovery";
-import { modelConfigWithBinding, mergeProviderHeaders } from "@pi-desktop/agent-runtime";
+import { probeModelList } from "../model-discovery";
+import {
+  probeDiscoveryCandidates,
+  type DiscoveryAttempt,
+} from "../provider-endpoint-probe";
+import { modelConfigWithBinding } from "@pi-desktop/agent-runtime";
 import {
   catalogModelConfigFor,
   modelInfoFromModelsDev,
@@ -17,6 +23,21 @@ import {
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { IpcRegistrar } from "./types";
+/**
+ * One line explaining why a candidate sweep found nothing: every endpoint that
+ * was tried and what it answered. The list is the explanation the settings
+ * dialog shows, so a failed discovery never has to be a silent 404.
+ */
+function describeSweepFailure(
+  attempts: readonly DiscoveryAttempt[],
+): string | undefined {
+  const failed = attempts.filter((attempt) => attempt.error);
+  if (failed.length === 0) return undefined;
+  return failed
+    .map((attempt) => `${attempt.baseUrl}: ${attempt.error}`)
+    .join("; ");
+}
+
 
 type RuntimeProvider = {
   id: string;
@@ -115,8 +136,22 @@ export function registerProviderIpc({
       const modelId = (input?.modelId ?? "").trim();
       if (!modelId) return { info: null };
       await modelsDevCatalog.ensureLoaded();
+      /*
+        A hand-typed id on a custom endpoint names no publisher itself, so the
+        host decides whose records to read — the same anchor the discovered list
+        uses. A host the registry does not know keeps the caller's key (usually
+        `custom`), where the snapshot only answers an unambiguous id. Pure: this
+        stays a snapshot read with no network request or host call.
+      */
+      const declaredKey = input?.vendorKey;
+      const lookupVendorKey =
+        declaredKey && declaredKey !== "custom"
+          ? declaredKey
+          : typeof input?.baseUrl === "string" && input.baseUrl
+            ? (inferEndpointProfile({ baseUrl: input.baseUrl })?.providerKey ?? declaredKey)
+            : declaredKey;
       const model = modelsDevCatalog.findModel({
-        vendorKey: input?.vendorKey,
+        vendorKey: lookupVendorKey,
         baseUrl: input?.baseUrl,
         modelId,
       });
@@ -174,7 +209,12 @@ export function registerProviderIpc({
     );
     if (!local.ok) return { ...local, network: "skipped" };
     const detail = await host.call<{
-      provider?: { baseUrl?: string; authKind?: string; headers?: Record<string, string> };
+      provider?: {
+        baseUrl?: string;
+        authKind?: string;
+        apiStyle?: string;
+        headers?: Record<string, string>;
+      };
     }>("providers.get", { id });
     // A vendor account proves itself by resolving auth — refreshing the token
     // if it has expired — not by probing /models with a key it does not have.
@@ -197,31 +237,40 @@ export function registerProviderIpc({
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
     try {
-      const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/models`, {
-        headers: mergeProviderHeaders(
-          secret.value ? { Authorization: `Bearer ${secret.value}` } : {},
-          detail.provider?.headers,
-        ),
+      /*
+        The same request builder discovery uses, so "the list loaded" and "the
+        connection test passed" can never describe two different endpoints: one
+        URL rule, one auth rule, one wire style, for a real at-least-once check.
+      */
+      const probe = await probeModelList({
+        baseUrl,
+        apiKey: secret.value,
+        apiStyle: detail.provider?.apiStyle,
+        headers: detail.provider?.headers,
         signal: controller.signal,
       });
-      if (res.status === 401 || res.status === 403) {
+      return { ok: true, network: "ok", status: probe.status };
+    } catch (e) {
+      const status = (e as { status?: unknown }).status;
+      if (status === 401 || status === 403) {
         return {
           ok: false,
           network: "failed",
-          status: res.status,
+          status,
           errorCode: ErrorCodes.PROVIDER_UNAUTHORIZED,
         };
       }
-      if (res.status === 429) {
+      if (status === 429) {
         return {
           ok: false,
           network: "failed",
-          status: res.status,
+          status,
           errorCode: ErrorCodes.PROVIDER_RATE_LIMITED,
         };
       }
-      return { ok: res.ok, network: res.ok ? "ok" : "failed", status: res.status };
-    } catch (e) {
+      if (typeof status === "number") {
+        return { ok: false, network: "failed", status };
+      }
       return {
         ok: false,
         network: "failed",
@@ -286,6 +335,39 @@ export function registerProviderIpc({
         : undefined;
       const baseUrl = (req.baseUrl ?? provider?.baseUrl ?? "").trim();
       const apiStyle = req.apiStyle ?? provider?.apiStyle ?? "chat_completions";
+      /*
+        Static endpoint resolution, the same layer the settings dialog uses:
+        which URL this row will really address, which wire style the evidence
+        implies, and the same-origin addresses worth asking. Pure; no model id
+        takes part in it.
+      */
+      const profile = inferEndpointProfile({
+        baseUrl,
+        // A persisted style this release does not know is read the way the rest
+        // of the row is read: as Chat Completions.
+        apiStyle: normalizeApiStyle(apiStyle),
+        explicitApiStyle: true,
+        providerKey: provider?.vendorKey,
+      });
+      // The address that answers may be a resolved candidate. The requested URL
+      // stays the key for cache writes: the cache belongs to the saved endpoint,
+      // not to a suggestion.
+      let endpointBaseUrl = profile?.effectiveBaseUrl ?? baseUrl;
+      /*
+        Which publisher's metadata this row is read against.
+
+        A custom endpoint on a published host still serves that vendor's models,
+        so when the row names no publisher itself the registry's identity for
+        the host anchors the models.dev lookup. That is a host fact, not a guess
+        from a model name. An unknown host keeps `custom`, where the catalog
+        only answers an unambiguous id — metadata missing beats metadata wrong.
+      */
+      const catalogVendorKey =
+        provider?.vendorKey && provider.vendorKey !== "custom"
+          ? provider.vendorKey
+          : (profile?.providerKey ?? "custom");
+
+
       // Cache hydration must stay fast; the renderer already requests a live
       // refresh after it has painted the cached list. Live requests load the
       // shared models.dev snapshot once; cache reads use only local files.
@@ -305,22 +387,24 @@ export function registerProviderIpc({
           source?: "bundled" | "discovered" | "user";
         },
         // Vendor accounts can span wire APIs, so a model may need a style of
-        // its own rather than the row's.
+        // its own rather than the row's. The endpoint is per call too: the live
+        // branch decorates with the candidate that answered.
         modelApiStyle: string = apiStyle,
+        catalogBaseUrl: string = endpointBaseUrl,
       ) => {
         const modelsDevModel = modelsDevCatalog.findModel({
-          vendorKey: provider?.vendorKey || "custom",
-          baseUrl,
+          vendorKey: catalogVendorKey,
+          baseUrl: catalogBaseUrl,
           modelId: model.modelId,
         });
         const catalogModelConfig = catalogModelConfigFor(modelsDevCatalog, {
-          vendorKey: provider?.vendorKey || "custom",
-          baseUrl,
+          vendorKey: catalogVendorKey,
+          baseUrl: catalogBaseUrl,
           apiStyle: modelApiStyle,
           modelId: model.modelId,
         });
         const storedModel = provider ? bindingForModel(provider, model.modelId) : undefined;
-        const resolvedModel = resolveBindingContextWindow(catalogModelConfig, storedModel);
+        const resolvedModel = resolveBindingLimits(catalogModelConfig, storedModel);
         const modelConfig = modelConfigWithBinding(
           resolvedModel.catalogConfig,
           resolvedModel.binding,
@@ -509,25 +593,53 @@ export function registerProviderIpc({
         what came back (`decorate` above). Asking the catalog first would offer
         every published model for the vendor, including ones this deployment
         does not host and ones the key is not entitled to.
+
+        The typed Base URL is a starting point, not the answer: resolution offers
+        the same-origin candidates that could serve this row and the sweep asks
+        them in order. Whatever answers becomes the effective base URL the row is
+        actually ran — automatic, but never hidden.
       */
       let discoveryError: string | undefined;
+      let resolution: {
+        effectiveBaseUrl?: string;
+        discoveryStyle?: string;
+        apiStyleHint?: string;
+        evidence?: string;
+      } = {};
       if (baseUrl) {
         try {
-          const discovered = await discoverProviderModels({
-            baseUrl,
-            apiKey,
-            apiStyle,
-            headers: req.headers ?? provider?.headers,
-          });
-          if (discovered.length > 0) {
-            const models = discovered.map((model) => decorate(model));
+          const sweep = profile
+            ? await probeDiscoveryCandidates({
+                origin: profile.origin,
+                candidates: profile.candidates,
+                apiKey,
+                headers: req.headers ?? provider?.headers,
+              })
+            : { attempts: [] };
+          const outcome = sweep.outcome;
+          if (outcome) {
+            endpointBaseUrl = outcome.effectiveBaseUrl;
+            resolution = {
+              effectiveBaseUrl: outcome.effectiveBaseUrl,
+              discoveryStyle: outcome.discoveryStyle,
+              ...(outcome.apiStyleHint ? { apiStyleHint: outcome.apiStyleHint } : {}),
+              evidence: outcome.evidence.type,
+            };
+            const models = outcome.models.map((model) => decorate(model));
             // Only what the endpoint actually served is cached; a configured id
             // it never offered must not be recorded as discovered.
             await cacheForCurrentProvider(models);
             return {
               models: withConfiguredBindings(models),
               source: "remote" as const,
+              ...resolution,
             };
+          }
+          discoveryError = describeSweepFailure(sweep.attempts);
+          if (discoveryError) {
+            logger.app("provider", "warn", "model discovery failed", {
+              data: { providerId: provider?.id, error: discoveryError },
+            });
           }
         } catch (e) {
           discoveryError = e instanceof Error ? e.message : String(e);
@@ -539,10 +651,14 @@ export function registerProviderIpc({
 
       // The endpoint published nothing usable (no /models route, an auth error,
       // or an empty list). The catalog is the fallback, not the primary source.
+      // The list is the service's own published set, so a key that can call an
+      // embedding or image endpoint sees it here too; nothing is preselected
+      // from those, and `recommendModels` still picks chat models only.
       const catalogModels = modelsDevCatalog.modelsForProvider({
-        vendorKey: provider?.vendorKey,
-        baseUrl,
+        vendorKey: catalogVendorKey,
+        baseUrl: endpointBaseUrl,
         providerId: provider?.id ?? "",
+        includeNonChat: true,
       });
       if (catalogModels.length > 0) {
         return {
@@ -550,6 +666,7 @@ export function registerProviderIpc({
             catalogModels.map((model) => decorate(model)),
           ),
           source: "catalog" as const,
+          ...resolution,
           ...(discoveryError ? { error: discoveryError } : {}),
         };
       }
@@ -560,7 +677,7 @@ export function registerProviderIpc({
       const fallback = fallbackModelId
         ? [decorate({ modelId: fallbackModelId, displayName: fallbackModelId })]
         : [];
-      return { models: fallback, source: "fallback", error: discoveryError };
+      return { models: fallback, source: "fallback", ...resolution, error: discoveryError };
     },
   );
 

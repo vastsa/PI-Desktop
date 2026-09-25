@@ -474,3 +474,18 @@ pub fn get_provider(
         .optional()
         .map_err(Into::into)
 }
+
+/// Whether `id` names a row, whoever owns it.
+///
+/// Reference checks ask this instead of `get_provider` because they only need
+/// to know whether the row still exists: an existing row that is disabled or
+/// carries no credential keeps its references, since the user can repair that
+/// in Settings.
+pub(crate) fn provider_exists(db: &Database, id: &str) -> Result<bool> {
+    Ok(db
+        .conn()
+        .prepare_cached("SELECT 1 FROM providers WHERE id = ?1")?
+        .query_row(params![id], |_| Ok(()))
+        .optional()?
+        .is_some())
+}

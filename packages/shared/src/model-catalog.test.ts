@@ -5,8 +5,9 @@ import {
   bindingFromModelInfo,
   bindingSupportsDocuments,
   effectiveContextWindow,
+  effectiveMaxTokens,
   bindingSupportsImages,
-  resolveBindingContextWindow,
+  resolveBindingLimits,
   formatCompactTokenCount,
   formatTokenCount,
   modelMatchesFilter,
@@ -45,6 +46,20 @@ describe("effective model context windows", () => {
   it("preserves a non-default per-model override", () => {
     expect(effectiveContextWindow(1_050_000, 256_000)).toBe(256_000);
     expect(effectiveContextWindow(1_050_000, undefined)).toBe(1_050_000);
+  });
+});
+
+describe("effective model output caps", () => {
+  it("lets a published cap replace the legacy generic seed", () => {
+    expect(effectiveMaxTokens(131_072, 8_192)).toBe(131_072);
+    expect(effectiveMaxTokens(64_000, 8_192)).toBe(64_000);
+  });
+
+  it("preserves a non-default cap, a user's number and a catalog snapshot", () => {
+    expect(effectiveMaxTokens(131_072, 32_000)).toBe(32_000);
+    expect(effectiveMaxTokens(131_072, 8_192, "user")).toBe(8_192);
+    expect(effectiveMaxTokens(131_072, 8_192, "catalog")).toBe(131_072);
+    expect(effectiveMaxTokens(undefined, undefined)).toBeUndefined();
   });
 });
 
@@ -102,7 +117,7 @@ describe("binding context-window provenance", () => {
     // automatic compaction start at ~86k tokens.
     const binding = { contextWindow: 1_000_000, contextWindowSource: "catalog" as const };
     const generic = { source: "generic", contextWindow: 128_000 };
-    const resolved = resolveBindingContextWindow(generic, binding);
+    const resolved = resolveBindingLimits(generic, binding);
     expect(resolved.catalogConfig.contextWindow).toBe(1_000_000);
     expect(resolved.binding.contextWindow).toBe(1_000_000);
     expect(resolved.binding.contextWindowSource).toBe("catalog");
@@ -111,9 +126,33 @@ describe("binding context-window provenance", () => {
   it("still follows a published record for a catalog-sourced window", () => {
     const binding = { contextWindow: 1_000_000, contextWindowSource: "catalog" as const };
     const published = { source: "models.dev", contextWindow: 1_048_576 };
-    const resolved = resolveBindingContextWindow(published, binding);
+    const resolved = resolveBindingLimits(published, binding);
     expect(resolved.catalogConfig.contextWindow).toBe(1_048_576);
     expect(resolved.binding.contextWindow).toBe(1_048_576);
+  });
+
+  it("resolves the output cap a row was seeded with before its record existed", () => {
+    // The row was added with the generic 8.2k cap while nothing published the
+    // id. Once models.dev describes it, the published cap takes over, so the
+    // saved row stops reporting an 8.2k output for a 131k model.
+    const binding = {
+      contextWindow: 128_000,
+      maxTokens: 8_192,
+      contextWindowSource: "catalog" as const,
+    };
+    const published = { source: "models.dev", contextWindow: 1_048_576, maxTokens: 131_072 };
+    const resolved = resolveBindingLimits(published, binding);
+    expect(resolved.binding.contextWindow).toBe(1_048_576);
+    expect(resolved.binding.maxTokens).toBe(131_072);
+    expect(resolved.catalogConfig.maxTokens).toBe(131_072);
+  });
+
+  it("keeps the output cap and window the user set", () => {
+    const binding = { contextWindow: 128_000, maxTokens: 4_096, contextWindowSource: "user" as const };
+    const published = { source: "models.dev", contextWindow: 1_048_576, maxTokens: 131_072 };
+    const resolved = resolveBindingLimits(published, binding);
+    expect(resolved.binding.contextWindow).toBe(128_000);
+    expect(resolved.binding.maxTokens).toBe(4_096);
   });
 });
 

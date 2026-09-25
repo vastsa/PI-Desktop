@@ -195,3 +195,79 @@ describe("named endpoint presets", () => {
     ).toBe("opencode_go");
   });
 });
+
+describe("pi-ai built-in API-key services", () => {
+  it("resolves newly synced international vendors by key and by URL", () => {
+    const expected = [
+      ["ant-ling", "https://api.ant-ling.com/v1", "chat_completions"],
+      ["baseten", "https://inference.baseten.co/v1", "chat_completions"],
+      ["cerebras", "https://api.cerebras.ai/v1", "chat_completions"],
+      ["huggingface", "https://router.huggingface.co/v1", "chat_completions"],
+      ["nvidia", "https://integrate.api.nvidia.com/v1", "chat_completions"],
+      ["opencode", "https://opencode.ai/zen/v1", "chat_completions"],
+      ["vercel", "https://ai-gateway.vercel.sh/v1", "chat_completions"],
+    ] as const;
+    for (const [id, baseUrl, apiStyle] of expected) {
+      expect(matchNamedPreset({ vendorKey: id })).toMatchObject({
+        id,
+        vendorKey: id,
+        baseUrl,
+        apiStyle,
+      });
+      expect(matchNamedPreset({ baseUrl })).toMatchObject({ id, apiStyle });
+    }
+  });
+
+  it("keeps international and China hosts apart", () => {
+    expect(
+      matchNamedPreset({ baseUrl: "https://api.minimax.io/anthropic/v1" }),
+    ).toMatchObject({ id: "minimax", apiStyle: "anthropic_messages" });
+    expect(
+      matchNamedPreset({ baseUrl: "https://api.minimaxi.com/anthropic/v1" })?.id,
+    ).toBe("minimax-cn");
+    expect(matchNamedPreset({ baseUrl: "https://api.moonshot.ai/v1" })?.id).toBe(
+      "moonshotai",
+    );
+    expect(matchNamedPreset({ baseUrl: "https://api.moonshot.cn/v1" })?.id).toBe(
+      "moonshotai-cn",
+    );
+  });
+
+  it("maps pi-ai gateway and token-plan ids onto catalog keys", () => {
+    expect(matchNamedPreset({ vendorKey: "vercel-ai-gateway" })?.id).toBe("vercel");
+    expect(matchNamedPreset({ vendorKey: "opencode-zen" })?.id).toBe("opencode");
+    expect(matchNamedPreset({ vendorKey: "hf" })?.id).toBe("huggingface");
+    expect(matchNamedPreset({ vendorKey: "qwen-token-plan" })?.id).toBe(
+      "alibaba-token-plan",
+    );
+    expect(
+      matchNamedPreset({ vendorKey: "qwen-token-plan-individual" })?.vendorKey,
+    ).toBe("alibaba-token-plan");
+    expect(matchNamedPreset({ vendorKey: "qwen-token-plan-cn" })?.vendorKey).toBe(
+      "alibaba-token-plan-cn",
+    );
+  });
+
+  it("keeps OpenCode Zen and OpenCode Go as separate services", () => {
+    expect(matchNamedPreset({ baseUrl: "https://opencode.ai/zen/v1" })?.id).toBe(
+      "opencode",
+    );
+    expect(matchNamedPreset({ baseUrl: "https://opencode.ai/zen/go/v1" })?.id).toBe(
+      "opencode_go",
+    );
+  });
+
+  it("exposes Meta and the Xiaomi token plans as named services", () => {
+    expect(matchNamedPreset({ vendorKey: "meta" })).toMatchObject({
+      id: "meta",
+      apiStyle: "responses",
+    });
+    for (const id of [
+      "xiaomi-token-plan-cn",
+      "xiaomi-token-plan-ams",
+      "xiaomi-token-plan-sgp",
+    ]) {
+      expect(matchNamedPreset({ vendorKey: id })?.apiStyle).toBe("chat_completions");
+    }
+  });
+});

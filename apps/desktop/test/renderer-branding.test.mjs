@@ -54,36 +54,22 @@ test("app chrome uses the shared brand asset without branding the composer input
   assert.match(icons, /export const IconNewSession/);
   assert.doesNotMatch(icons, /IconCodexHome|IconCompose|IconPiMark|IconPiHome/);
   await access(new URL("../src/assets/home-mascot-dark.gif", import.meta.url));
-  await access(new URL("../src/assets/home-mascot-dark-zh.gif", import.meta.url));
   await access(new URL("../src/assets/home-mascot-light.gif", import.meta.url));
   await access(new URL("../src/assets/home-mascot-still-dark.png", import.meta.url));
-  await access(new URL("../src/assets/home-mascot-still-dark-zh.png", import.meta.url));
   await access(new URL("../src/assets/home-mascot-still-light.png", import.meta.url));
   await assert.rejects(
     () => access(new URL("../src/assets/home-mascot-groups.png", import.meta.url)),
   );
   assert.match(chatSurface, /<HomeMascotLogo \/>/);
   assert.match(mascotLogo, /import mascotMotionDarkUrl from\s*"\.\.\/assets\/home-mascot-dark\.gif"/);
-  assert.match(mascotLogo, /import mascotMotionDarkZhUrl from\s*"\.\.\/assets\/home-mascot-dark-zh\.gif"/);
   assert.match(mascotLogo, /import mascotMotionLightUrl from\s*"\.\.\/assets\/home-mascot-light\.gif"/);
   assert.match(mascotLogo, /import mascotStillDarkUrl from\s*"\.\.\/assets\/home-mascot-still-dark\.png"/);
-  assert.match(mascotLogo, /import mascotStillDarkZhUrl from\s*"\.\.\/assets\/home-mascot-still-dark-zh\.png"/);
   assert.match(mascotLogo, /import mascotStillLightUrl from\s*"\.\.\/assets\/home-mascot-still-light\.png"/);
   assert.match(mascotLogo, /className="home-mascot-logo"/);
   assert.match(mascotLogo, /aria-hidden="true"/);
   assert.match(mascotLogo, /className="home-mascot-motion home-mascot-dark"/);
-  assert.match(mascotLogo, /className="home-mascot-motion home-mascot-dark home-mascot-dark-zh"/);
-  assert.match(
-    mascotLogo,
-    /className="home-mascot-motion home-mascot-dark home-mascot-dark-zh"[\s\S]{0,100}src={mascotMotionDarkZhUrl}/,
-  );
   assert.match(mascotLogo, /className="home-mascot-motion home-mascot-light"/);
   assert.match(mascotLogo, /className="home-mascot-still home-mascot-dark"/);
-  assert.match(mascotLogo, /className="home-mascot-still home-mascot-dark home-mascot-dark-zh"/);
-  assert.match(
-    mascotLogo,
-    /className="home-mascot-still home-mascot-dark home-mascot-dark-zh"[\s\S]{0,100}src={mascotStillDarkZhUrl}/,
-  );
   assert.match(mascotLogo, /className="home-mascot-still home-mascot-light"/);
   assert.doesNotMatch(mascotLogo, /<svg/);
   assert.doesNotMatch(
@@ -98,11 +84,7 @@ test("app chrome uses the shared brand asset without branding the composer input
   );
   assert.match(
     styles,
-    /:root:not\(\[data-theme="light"\]\):not\(\[lang\^="zh"\]\) \.home-mascot-logo \.home-mascot-motion\.home-mascot-dark:not\(\.home-mascot-dark-zh\)/,
-  );
-  assert.match(
-    styles,
-    /:root:not\(\[data-theme="light"\]\)\[lang\^="zh"\] \.home-mascot-logo \.home-mascot-motion\.home-mascot-dark\.home-mascot-dark-zh\s*\{\s*display:\s*block;/,
+    /:root:not\(\[data-theme="light"\]\) \.home-mascot-logo \.home-mascot-motion\.home-mascot-dark/,
   );
   assert.match(
     styles,
@@ -110,11 +92,7 @@ test("app chrome uses the shared brand asset without branding the composer input
   );
   assert.match(
     styles,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?:root:not\(\[data-theme="light"\]\):not\(\[lang\^="zh"\]\) \.home-mascot-logo \.home-mascot-still\.home-mascot-dark:not\(\.home-mascot-dark-zh\),[\s\S]*?\.home-mascot-still\.home-mascot-light[\s\S]*?display:\s*block;/,
-  );
-  assert.match(
-    styles,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?:root:not\(\[data-theme="light"\]\)\[lang\^="zh"\] \.home-mascot-logo \.home-mascot-still\.home-mascot-dark\.home-mascot-dark-zh\s*\{\s*display:\s*block;/,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.home-mascot-still\.home-mascot-dark,[\s\S]*?\.home-mascot-still\.home-mascot-light[\s\S]*?display:\s*block;/,
   );
   assert.match(appLanguage, /document\.documentElement\.lang\s*=\s*target/);
   assert.doesNotMatch(styles, /@keyframes home-mascot-orbit|@keyframes home-mascot-breathe|@keyframes home-mascot-blink/);
