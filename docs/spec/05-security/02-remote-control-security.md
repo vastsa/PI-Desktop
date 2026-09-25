@@ -266,6 +266,16 @@ withhold nothing. Its turns report the session's own mode as
 (default off) re-applies the ceiling to paired devices for an operator who
 wants every remote turn to start at `ask`.
 
+The headless `pi-host` operator sets this policy at process startup with
+`--remote-max-permission-mode`, `--apply-ceiling-to-paired-devices`, and
+`--approval-lifetime-ms`, or with the matching `PI_HOST_REMOTE_MAX_PERMISSION_MODE`,
+`PI_HOST_APPLY_CEILING_TO_PAIRED_DEVICES`, and `PI_HOST_APPROVAL_LIFETIME_MS`
+environment variables. A command-line value takes precedence over its
+environment variable. Omitted values use the RACP defaults (`ask`, `false`,
+and 1,800,000 ms); invalid values fail startup with `INVALID_ARGUMENT`. The
+effective policy is reported in `connection/initialize` and cannot be changed
+over RACP; changing it requires restarting `pi-host`.
+
 Host-core validates the ceiling against the resolved durable Session mode,
 stores it on the durable turn, and intersects it with the effective tool scope
 for every `tools.execute` call. This clamp also applies to delegate scopes, so

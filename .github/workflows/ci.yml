@@ -111,6 +111,11 @@ jobs:
           PI_DESKTOP_HOST_BIN: target/debug/pi-desktop-host-core
         run: pnpm test:e2e:remote-host
 
+      - name: Exercise remote permission ceiling and queued-turn recovery
+        env:
+          PI_DESKTOP_HOST_BIN: target/debug/pi-desktop-host-core
+        run: pnpm test:e2e:remote-permission-ceiling
+
       - name: Install OpenSSH server for the local fixture
         run: |
           sudo apt-get update

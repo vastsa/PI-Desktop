@@ -486,11 +486,11 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
 - R2b Host/RACP terminal slice (2026-09-25, ADR 0309): the Host owns the PTY
   service and RACP terminal operations, binds terminals to the SSH-paired owner,
   session, and active connection, and supports bounded output replay and safe
-  reattachment. This slice does not deliver the Desktop terminal renderer,
-  typed IPC/API, remote-backend operation routing, capability-to-UI wiring, or
-  terminal event forwarding and UI lifecycle. The remote WorkPanel terminal is
-  therefore still unavailable, and this Host/RACP slice does not complete R2b
-  or satisfy E2E-231. Local sessions remain terminal-free.
+  reattachment. This Host/RACP slice does not itself deliver the Desktop
+  terminal renderer, typed IPC/API, remote-backend operation routing,
+  capability-to-UI wiring, or terminal event forwarding and UI lifecycle; those
+  pieces are covered by the Desktop integration slice below. Local sessions
+  remain terminal-free.
 - R2b Host/RACP reverse tool relay slice (2026-09-25): `tools/advertise` now
   replaces an owner connection's per-Session catalog, disconnect clears it,
   and each remote turn receives a bounded snapshot whose entries remain pinned
@@ -502,12 +502,21 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   implemented and has targeted coverage in
   `apps/desktop/test/remote-tool-relay.test.mjs` and
   `apps/desktop/test/user-mcp.test.mjs`; it is limited to
-  `toolsForProject(null)`. The `remote-host-e2e` CI job now includes an
-  isolated Linux `sshd` bootstrap fixture that verifies the production SSH
+  `toolsForProject(null)`. The CI workflow includes an isolated Linux `sshd`
+  bootstrap fixture that verifies the production SSH
   transport, local release-bundle checksum/install, tunnel, pairing, and
-  remote project/session reads. E2E-231 remains Draft because this fixture
-  bypasses Desktop Settings and renderer and does not cover approval, relay
-  turns, reconnect, terminal, or the remaining security scenarios.
+  remote project/session reads. The host E2E additionally drives the production
+  Desktop relay adapter through a deterministic model turn, checks failure and
+  continuation when the Desktop relay closes mid-call, and verifies that an
+  in-flight call is never rerouted to a replacement owner. It also covers
+  remote Files/Review refresh, busy-session configuration conflicts, and stale
+  terminal connections. The Linux SSH fixture now exercises a mid-turn tunnel
+  drop and restore, cursor replay, idempotent turn retry, and PTY reattachment
+  with the same `openRequestId`. These headless fixtures do not exercise the
+  Desktop Settings/renderer flow, so E2E-231 remains Draft pending full Linux
+  Desktop acceptance and the remaining security scenarios. Local headless runs
+  pass 45/45 host checks and 20/20 permission-ceiling/queued-turn checks; the
+  Linux SSH fixture has not been run in the current macOS environment.
   `workspaceFree` is an owner-side assertion that the
   Host cannot independently verify; the Desktop adapter must derive it from
   trusted source metadata and fail closed when uncertain. The initial adapter
@@ -520,9 +529,11 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   capabilities and re-advertising global User MCP tools. Hosts that are offline
   during startup retry in the background; remove, re-pair, and shutdown cancel
   stale attempts. Targeted Desktop suites and the headless remote Host E2E pass.
-  E2E-231 remains Draft until the Linux SSH Desktop scenario exercises the full
-  Settings, approval, relay, reconnect, terminal, and security path; the new
-  bootstrap fixture covers pairing and basic remote reads only.
+  `pi-host` now accepts explicit remote permission-ceiling and approval-lifetime
+  policy through startup flags or environment variables. E2E-231 remains Draft
+  until the Linux SSH Desktop scenario exercises the full Settings, approval,
+  relay, reconnect, terminal, and security path; the SSH fixture currently
+  covers pairing, remote reads, and headless reconnect behavior.
 
 ## 8. Amendment history
 

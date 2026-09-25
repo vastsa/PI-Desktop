@@ -13018,9 +13018,10 @@ browser milestones are scheduled.
   bundle at another version, and a tampered bundle with a wrong checksum.
   The desktop has one local session open, one user MCP server configured,
   and one installed plugin whose tool requires workspace access. The remote
-  Host fixture enables `applyCeilingToPairedDevices`, caps turns at `ask`, and
-  has a subagent definition with `accept-edits`; the test Session is stored at
-  `auto` so the turn ceiling is lower than both the Session and delegate scope.
+  Host fixture starts `pi-host` with
+  `--remote-max-permission-mode ask --apply-ceiling-to-paired-devices true`
+  and has a subagent definition with `accept-edits`; the test Session is stored
+  at `auto` so the turn ceiling is lower than both the Session and delegate scope.
 - **Steps**: 1) Add the remote machine from the desktop and let the uploaded
   bootstrap script download, verify, and start `pi-host` over SSH.
   2) Observe the pairing exchange and the resulting device token. 3) Create a
@@ -13080,30 +13081,38 @@ browser milestones are scheduled.
   `06-delivery/07-remote-control-rollout.md` §2
 - **Acceptance**: E (tools & permissions), Security, Recovery, Quality
 - **Milestone**: Post-MVP (rollout R2)
-- **Status**: Draft; `scripts/e2e-remote-host.mjs` exercises the live `pi-host`
-  and host-core path for pairing, projects, sessions, workspace boundaries,
-  provider-backed turns, and remote PTY output/re-attachment. It bypasses the
-  Desktop SSH bootstrap and renderer. The `remote-host-e2e` CI job also runs
-  `scripts/e2e-remote-ssh-bootstrap.mjs`: an isolated Linux `sshd` fixture
-  exercises the production system SSH transport, checksum-verified installation
-  from a locally built release bundle, port forwarding, pairing, project and
-  session creation, and workspace reads. It still bypasses Desktop Settings
-  and the renderer and does not complete this acceptance.
-  RACP and Host Runtime relay contract/user-path coverage is in
+- **Status**: Draft. The headless `scripts/e2e-remote-host.mjs` exercises the
+  live `pi-host` and host-core path for pairing, projects, sessions, workspace
+  boundaries, provider-backed turns, and remote PTY output/re-attachment. Its
+  current 45/45 local checks also cover Files/Review refresh, busy-session
+  configuration conflicts, the production Desktop relay adapter through a
+  deterministic model turn, relay failure with turn continuation, no rerouting
+  to a replacement owner, and stale terminal input/resize/close rejection.
+  It bypasses the Desktop SSH bootstrap and renderer.
+  `scripts/e2e-remote-permission-ceiling.mjs` starts a real bundled `pi-host`
+  with host-core/RACP and an isolated deterministic loopback model. It checks
+  the paired-owner `auto` Session being clamped to `ask`, an `accept-edits`
+  subagent Write blocked until approval, and a queued delegated turn retaining
+  the ceiling and waiting for approval after a real Host process restart. It
+  also verifies the target remains absent before approval and appears in the
+  remote workspace afterward; the latest local run passed 20/20 checks. The
+  `remote-host-e2e` workflow is configured to run this fixture. It does not
+  present approval through the Desktop UI.
+  The same workflow runs `scripts/e2e-remote-ssh-bootstrap.mjs`: an isolated Linux
+  `sshd` fixture exercises production system SSH, checksum-verified installation
+  from a locally built release bundle, port forwarding, pairing, project/session
+  creation, workspace reads, and a mid-turn tunnel drop/restore with cursor
+  replay, idempotent turn retry, and PTY reattachment using the same
+  `openRequestId`. This fixture has not been run in the current macOS
+  environment. All three headless fixtures bypass Desktop Settings and the
+  renderer. RACP and Host Runtime relay contract/user-path coverage is in
   `packages/racp/src/tool-relay.test.ts`,
   `packages/host-runtime/src/remote-tool-relay.test.ts`, and
   `packages/host-runtime/src/runtime-service.test.ts`. The Desktop global User
   MCP adapter has targeted coverage in
   `apps/desktop/test/remote-tool-relay.test.mjs` and
-  `apps/desktop/test/user-mcp.test.mjs`. Full Linux SSH Desktop acceptance is
-  still required for this end-to-end scenario.
-
-The permission-ceiling acceptance above also needs an isolated Host policy
-fixture with `applyCeilingToPairedDevices: true`, a seeded `accept-edits`
-subagent, and a deterministic model response that invokes its file-write path.
-The current Host and SSH bootstrap harnesses do not configure that policy,
-seed subagents, or exercise approval/queue restart; this acceptance remains
-unverified until those fixtures are added to the full Desktop SSH scenario.
+  `apps/desktop/test/user-mcp.test.mjs`. Full Linux SSH Desktop acceptance
+  remains required for this end-to-end scenario.
 
 #### E2E-REMOTE-HOST-ssh-password-authentication
 

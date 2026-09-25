@@ -92,6 +92,7 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
     sessions: createHostSessionPort(getHost),
     approvals,
     queueStore: createHostQueueStore(getHost),
+    policy: config.policy,
     localApprovalLifetimeMs: APPROVAL_REQUEST_TIMEOUT_MS,
   });
   const plans = new PlanExecutionDispatcher({ getHost, getSidecar, launch, runtime, log });
@@ -247,7 +248,7 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
     }),
     ...(terminal ? { terminal } : {}),
   };
-  const server = new RacpServer({ agentHost, operations, toolRelay, authenticator, hostId, serverVersion: APP_VERSION, log });
+  const server = new RacpServer({ agentHost, operations, toolRelay, authenticator, hostId, serverVersion: APP_VERSION, policy: config.policy, log });
   let binding: WsBinding;
   try {
     binding = await bindRacpWebSocket({ server: server, authenticator, host: config.host, port: config.port, log });

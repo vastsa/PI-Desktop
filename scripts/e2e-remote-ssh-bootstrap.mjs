@@ -27,9 +27,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 register(pathToFileURL(join(root, "apps/desktop/test/helpers/ts-import-hooks.mjs")));
@@ -58,7 +58,7 @@ const remoteHome = join(runRoot, "remote-home");
 const clientHome = join(runRoot, "client-home");
 const sshHome = join(clientHome, ".ssh");
 const remoteBin = join(remoteHome, "bin");
-const bundleDir = join(runRoot, "bundle");
+let bundleDir = "";
 const fixtureDir = join(runRoot, "fixture");
 const projectDir = join(remoteHome, "workspace", "remote-project");
 const sshdConfig = join(runRoot, "sshd_config");
@@ -67,6 +67,7 @@ const clientKey = join(sshHome, "id_ed25519");
 const authorizedKeys = join(runRoot, "authorized_keys");
 const fixtureAssetRequests = [];
 const transports = new Set();
+const racpClients = new Set();
 let sshdProcess = null;
 let sshdPid = null;
 let fixtureServer = null;
@@ -75,6 +76,16 @@ let bootstrapOutcome = null;
 let fixturePort = 0;
 let sshdPort = 0;
 let sudoBinary = null;
+let recoveryForward = null;
+let modelServer = null;
+let modelReleaseResponse = null;
+let sshTarget = null;
+let remoteContext = null;
+let modelRequestCount = 0;
+let modelStartedPromise = null;
+let modelStartedResolve = null;
+let modelResponseSentPromise = null;
+let modelResponseSentResolve = null;
 
 function log(message) {
   process.stdout.write(`[remote-ssh-e2e] ${message}\n`);
@@ -164,6 +175,75 @@ async function startFixtureServer() {
     fixtureServer.listen(0, "127.0.0.1", resolveListen);
   });
   fixturePort = fixtureServer.address().port;
+}
+
+async function startModelFixture() {
+  let releaseResponse;
+  const responseGate = new Promise((resolveResponse) => { releaseResponse = resolveResponse; });
+  modelReleaseResponse = releaseResponse;
+  modelServer = createServer((request, response) => {
+    if (request.method === "GET" && request.url?.endsWith("/models")) {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ object: "list", data: [{ id: "mock-model", object: "model" }] }));
+      return;
+    }
+    if (request.method !== "POST" || !request.url?.includes("/chat/completions")) {
+      response.writeHead(404).end();
+      return;
+    }
+    request.resume();
+    request.once("end", async () => {
+      modelRequestCount += 1;
+      modelStartedResolve?.();
+      await responseGate;
+      if (response.destroyed) return;
+      const chunk = { id: "remote-ssh-e2e-turn", object: "chat.completion.chunk", created: 1, model: "mock-model" };
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(`data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: { role: "assistant", content: "SSH reconnect turn completed" }, finish_reason: null }] })}\n\n`);
+      response.write(`data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`);
+      response.end("data: [DONE]\n\n");
+      modelResponseSentResolve?.();
+    });
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    modelServer.once("error", rejectListen);
+    modelServer.listen(0, "127.0.0.1", resolveListen);
+  });
+  return modelServer.address().port;
+}
+
+function armModelWaiters() {
+  modelStartedPromise = new Promise((resolveStarted) => { modelStartedResolve = resolveStarted; });
+  modelResponseSentPromise = new Promise((resolveSent) => { modelResponseSentResolve = resolveSent; });
+}
+
+async function waitUntil(predicate, label, waitMs = 20_000) {
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    const value = predicate();
+    if (value) return value;
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+  }
+  throw new Error(`${label} timed out`);
+}
+
+function withTimeout(promise, label, waitMs) {
+  return new Promise((resolveResult, rejectResult) => {
+    const timer = setTimeout(() => rejectResult(new Error(`${label} timed out`)), waitMs);
+    promise.then(
+      (value) => { clearTimeout(timer); resolveResult(value); },
+      (error) => { clearTimeout(timer); rejectResult(error); },
+    );
+  });
+}
+
+function eventText(envelope) {
+  if (envelope.kind !== "terminal.output" || typeof envelope.payload?.data !== "string") return "";
+  return Buffer.from(envelope.payload.data, "base64").toString("utf8");
+}
+
+function errorCode(error) {
+  return error?.errorCode ?? error?.code ?? "";
 }
 
 async function stopChild(child, label) {
@@ -285,12 +365,15 @@ async function sha256File(path) {
   return hash.digest("hex");
 }
 
-function client(url, token) {
-  return new RacpClient({
+function client(url, token, options = {}) {
+  const racp = new RacpClient({
     transport: wsClientTransport({ url, token, connectTimeoutMs: 10_000 }),
     client: { name: "PI-Desktop remote SSH E2E", version },
     requestTimeoutMs: 15_000,
+    ...options,
   });
+  racpClients.add(racp);
+  return racp;
 }
 
 async function pairAndRead({ url, pairingToken, label }) {
@@ -324,6 +407,237 @@ async function pairAndRead({ url, pairingToken, label }) {
   assert.equal(read.kind, "text");
   assert.match(read.content, /SSH bootstrap fixture/);
   return { deviceToken, sessionId: created.session.id, projectId: project.project.id };
+}
+
+async function importMockProvider(modelPort) {
+  const dataDir = join(remoteHome, ".pi-desktop");
+  const cli = join(dataDir, "pi-host/current/pi-host.js");
+  const importPayload = {
+    version: 1,
+    providers: [{
+      sourceId: "remote-ssh-fixture",
+      input: {
+        name: "Remote SSH fixture model",
+        vendorKey: "custom",
+        type: "openai_compatible",
+        protocol: "openai_compatible",
+        baseUrl: `http://127.0.0.1:${modelPort}/v1`,
+        authKind: "api_key_and_base_url",
+        apiStyle: "chat_completions",
+        secretValue: "remote-ssh-e2e-dummy-key",
+        models: [{
+          id: "mock-model",
+          contextWindow: 128_000,
+          maxTokens: 8192,
+          thinkingLevels: ["off"],
+          defaultThinkingLevel: "off",
+        }],
+      },
+    }],
+    defaultModel: { sourceId: "remote-ssh-fixture", modelId: "mock-model" },
+  };
+  const script = [
+    "set -eu",
+    `printf '%s' ${shellQuote(JSON.stringify(importPayload))} | node ${shellQuote(cli)} provider-import --data-dir ${shellQuote(dataDir)}`,
+    "",
+  ].join("\n");
+  const transport = createTransport(sshTarget);
+  try {
+    const result = await transport.execWithInput("sh -s", script, { timeoutMs: 30_000 });
+    const line = result.stdout.split("\n").find((entry) => entry.startsWith("PI_HOST_PROVIDERS "));
+    const summary = line ? JSON.parse(line.slice("PI_HOST_PROVIDERS ".length)) : null;
+    assert.equal(result.code, 0);
+    assert.equal(summary?.defaultSet, true, "fixture provider must become the Host default");
+  } finally {
+    transport.dispose();
+    transports.delete(transport);
+  }
+}
+
+async function runSshReconnectScenario() {
+  const { deviceToken, sessionId } = remoteContext;
+  const url = bootstrapOutcome.url;
+  const states = [];
+  const terminalStates = [];
+  const recoveredEvents = [];
+  const terminalEvents = [];
+  const recoveryState = { result: null, error: null };
+  let resolveRecovery;
+  const recoveryDone = new Promise((resolveDone) => { resolveRecovery = resolveDone; });
+  let turnId = "";
+
+  const recoveringClient = client(url, deviceToken, {
+    reconnect: { enabled: true, baseDelayMs: 100, maxDelayMs: 250, maxAttempts: 240 },
+    onStateChange: (state) => states.push(state),
+    onEvent: (event) => recoveredEvents.push(event),
+    onReconnected: async (connected) => {
+      try {
+        const cursor = connected.cursorFor(sessionId);
+        const subscription = await connected.request("events/subscribe", {
+          scope: "session",
+          sessionId,
+          ...(cursor ? { after: cursor } : {}),
+        });
+        const attached = await connected.request("session/attach", {
+          sessionId,
+          ...(cursor ? { after: cursor } : {}),
+        });
+        const turn = await connected.request("turn/get", { turnId });
+        recoveryState.result = { cursor, subscription, attached, turn };
+      } catch (error) {
+        recoveryState.error = error;
+      } finally {
+        resolveRecovery();
+      }
+    },
+  });
+  await recoveringClient.connect();
+  await recoveringClient.request("events/subscribe", { scope: "session", sessionId });
+  await recoveringClient.request("session/configure", { sessionId, permissionMode: "accept-edits" });
+  assert.ok(recoveringClient.cursorFor(sessionId), "session subscription must establish a durable cursor");
+
+  const terminalClient = client(url, deviceToken, {
+    reconnect: { enabled: true, baseDelayMs: 100, maxDelayMs: 250, maxAttempts: 240 },
+    onStateChange: (state) => terminalStates.push(state),
+    onEvent: (event) => terminalEvents.push(event),
+  });
+  await terminalClient.connect();
+  await terminalClient.request("events/subscribe", { scope: "session", sessionId });
+  const openRequestId = `ssh-reconnect-${randomUUID()}`;
+  const originalTerminal = await terminalClient.request("terminal/open", {
+    sessionId,
+    cols: 90,
+    rows: 28,
+    openRequestId,
+  });
+  const terminalId = originalTerminal.terminalId;
+  const initialMarker = "SSH_RECONNECT_PTY_SURVIVES";
+  await terminalClient.request("terminal/input", {
+    terminalId,
+    data: Buffer.from(`printf '${initialMarker}\\n'\n`).toString("base64"),
+  });
+  await waitUntil(
+    () => terminalEvents.some((event) => eventText(event).includes(initialMarker)),
+    "initial remote PTY output",
+  );
+
+  armModelWaiters();
+  const started = await recoveringClient.request("turn/start", {
+    sessionId,
+    input: { text: "Hold this deterministic turn while the SSH tunnel reconnects." },
+    context: { requestId: "ssh-reconnect-turn-start", idempotencyKey: "ssh-reconnect-turn-once" },
+  });
+  turnId = started.turn.id;
+  await withTimeout(modelStartedPromise, "mock model request", 30_000);
+  const cursorAtDrop = recoveringClient.cursorFor(sessionId);
+  assert.ok(cursorAtDrop, "the running turn must have a resumable session cursor");
+
+  const originalForward = bootstrapOutcome.forward;
+  await originalForward.close();
+  await waitUntil(() => states.includes("reconnecting"), "RACP reconnect after SSH forward loss");
+  await waitUntil(() => terminalStates.includes("reconnecting"), "old terminal RACP connection close");
+
+  // The sshd and Host share this Linux runner. A fixture-only local RACP
+  // observer confirms completion was committed while the SSH route was down;
+  // the Desktop-like client below must then replay it from its saved cursor.
+  const directUrl = `ws://127.0.0.1:${bootstrapOutcome.ssh.remotePort}/v1/racp/ws`;
+  const hostEvents = [];
+  const monitor = client(directUrl, deviceToken, { onEvent: (event) => hostEvents.push(event) });
+  await monitor.connect();
+  const monitorCursor = await monitor.request("events/subscribe", {
+    scope: "session",
+    sessionId,
+    after: cursorAtDrop,
+  });
+  assert.equal(monitorCursor.replayComplete, true);
+  modelReleaseResponse?.();
+  modelReleaseResponse = null;
+  await withTimeout(modelResponseSentPromise, "mock model response", 30_000);
+  await waitUntil(
+    () => hostEvents.some((event) => event.kind === "turn.completed" && event.turnId === turnId),
+    "Host turn completion during SSH outage",
+    60_000,
+  );
+  await monitor.close();
+  const requestsAfterTurn = modelRequestCount;
+  assert.ok(requestsAfterTurn > 0, "completed turn must reach the deterministic local model");
+
+  const localPort = originalForward.localPort;
+  const recoveryTransport = createTransport(sshTarget);
+  recoveryForward = await recoveryTransport.forward({
+    localPort,
+    remoteHost: "127.0.0.1",
+    remotePort: bootstrapOutcome.ssh.remotePort,
+    timeoutMs: 30_000,
+  });
+  await withTimeout(recoveryDone, "RACP reconnect recovery", 30_000);
+  if (recoveryState.error) throw recoveryState.error;
+  const recovered = recoveryState.result;
+  assert.ok(recovered, "reconnect callback must restore session state");
+  assert.ok(recovered.cursor, "the reconnecting RACP client must retain its session cursor");
+  assert.equal(recovered.cursor.epoch, cursorAtDrop.epoch, "the session cursor epoch must survive the tunnel drop");
+  assert.ok(
+    recovered.cursor.sequence >= cursorAtDrop.sequence,
+    "the session cursor must not move backwards across the tunnel drop",
+  );
+  assert.equal(recovered.subscription.replayComplete, true, "session events must replay from the saved cursor");
+  assert.equal(recovered.attached.replayComplete, true, "session attach must accept the saved cursor");
+  assert.equal(recovered.attached.snapshot.session.status, "idle", "the running turn must settle during the outage");
+  assert.equal(recovered.turn.turn.status, "completed");
+  assert.ok(
+    recoveredEvents.some((event) => event.kind === "turn.completed" && event.turnId === turnId),
+    "the reconnecting RACP client must receive the missed turn completion",
+  );
+  log("PASS SSH tunnel recovery resumes the Host session cursor and completed turn");
+
+  const repeated = await recoveringClient.request("turn/start", {
+    sessionId,
+    input: { text: "Hold this deterministic turn while the SSH tunnel reconnects." },
+    context: { requestId: "ssh-reconnect-turn-retry", idempotencyKey: "ssh-reconnect-turn-once" },
+  });
+  assert.equal(repeated.turn.id, turnId, "retrying the idempotency key must not create another turn");
+  assert.equal(modelRequestCount, requestsAfterTurn, "idempotent retry must not replay the turn prompt");
+
+  const reattached = await recoveringClient.request("terminal/open", {
+    sessionId,
+    cols: 90,
+    rows: 28,
+    openRequestId,
+  });
+  assert.equal(reattached.terminalId, terminalId, "same openRequestId must attach the original PTY");
+  assert.ok(
+    Buffer.from(reattached.replay, "base64").toString("utf8").includes(initialMarker),
+    "reattach must replay the existing terminal ring",
+  );
+
+  await waitUntil(
+    () => terminalStates.includes("reconnecting") && terminalClient.state === "connected",
+    "old terminal client reconnect without PTY attachment",
+  );
+  let staleClientError = "";
+  try {
+    await terminalClient.request("terminal/input", {
+      terminalId,
+      data: Buffer.from("echo stale-connection-must-not-write\n").toString("base64"),
+    });
+  } catch (error) {
+    staleClientError = errorCode(error);
+  }
+  assert.equal(staleClientError, "NOT_FOUND", "the reconnected stale terminal client cannot send input");
+
+  const afterMarker = "SSH_REATTACHED_PTY_ACCEPTS_INPUT";
+  const outputStart = recoveredEvents.length;
+  await recoveringClient.request("terminal/input", {
+    terminalId,
+    data: Buffer.from(`printf '${afterMarker}\\n'\n`).toString("base64"),
+  });
+  await waitUntil(
+    () => recoveredEvents.slice(outputStart).some((event) => eventText(event).includes(afterMarker)),
+    "reattached PTY output",
+  );
+  await recoveringClient.request("terminal/close", { terminalId });
+  await Promise.all([terminalClient.close(), recoveringClient.close()]);
+  log("PASS same openRequestId reattaches the PTY; a reconnected stale client cannot input");
 }
 
 async function stopRemoteHost() {
@@ -418,10 +732,18 @@ async function cleanup() {
   };
   await attempt("RACP owner", async () => ownerClient?.close());
   ownerClient = null;
+  modelReleaseResponse?.();
+  modelReleaseResponse = null;
+  for (const racp of racpClients) {
+    await attempt("RACP connection", async () => racp.close());
+  }
+  racpClients.clear();
   await attempt("remote Host", stopRemoteHost);
   await attempt("orphaned Host", stopOrphanedLocalHost);
   await attempt("bootstrap forward", async () => bootstrapOutcome?.forward.close());
   bootstrapOutcome = null;
+  await attempt("reconnected SSH forward", async () => recoveryForward?.close());
+  recoveryForward = null;
   for (const transport of transports) {
     await attempt("SSH transport", async () => transport.dispose());
   }
@@ -429,6 +751,10 @@ async function cleanup() {
   if (fixtureServer) {
     await attempt("release fixture", async () => new Promise((resolveClose) => fixtureServer.close(resolveClose)));
     fixtureServer = null;
+  }
+  if (modelServer) {
+    await attempt("mock model fixture", async () => new Promise((resolveClose) => modelServer.close(resolveClose)));
+    modelServer = null;
   }
   if (sshdPid && sudoBinary) {
     try {
@@ -450,7 +776,6 @@ async function main() {
   chmodSync(remoteHome, 0o700);
   chmodSync(clientHome, 0o700);
   chmodSync(sshHome, 0o700);
-  mkdirSync(bundleDir, { recursive: true, mode: 0o700 });
   mkdirSync(fixtureDir, { recursive: true, mode: 0o700 });
   mkdirSync(projectDir, { recursive: true, mode: 0o700 });
   writeFileSync(join(projectDir, "README.md"), "# SSH bootstrap fixture\n", { mode: 0o600 });
@@ -462,6 +787,8 @@ async function main() {
     throw new Error(`desktop/pi-host versions differ (${version} / ${hostPackage.version}); build a matching candidate`);
   }
   artifactName = `pi-host-${version}-linux-x64.tar.gz`;
+  bundleDir = join(runRoot, basename(artifactName, ".tar.gz"));
+  mkdirSync(bundleDir, { recursive: true, mode: 0o700 });
   const configuredHost = process.env.PI_DESKTOP_HOST_BIN?.trim();
   const hostCore = configuredHost ? resolve(configuredHost) : requireExecutable([
     join(root, "target/release/pi-desktop-host-core"),
@@ -476,17 +803,18 @@ async function main() {
     "--out", bundleDir,
   ]);
   const archivePath = join(fixtureDir, artifactName);
-  run("tar", ["-czf", archivePath, "-C", dirname(bundleDir), bundleDir.split("/").at(-1)]);
+  run("tar", ["-czf", archivePath, "-C", runRoot, basename(bundleDir)]);
   const digest = await sha256File(archivePath);
   writeFileSync(join(fixtureDir, `${artifactName}.sha256`), `${digest}  ${artifactName}\n`, { mode: 0o600 });
 
   const curlBinary = requireExecutable(["/usr/bin/curl", "/bin/curl"], "curl");
   await startFixtureServer();
+  const modelPort = await startModelFixture();
   const releaseUrl = `https://github.com/vastsa/PI-Desktop/releases/download/v${version}/${artifactName}`;
   const forceCommand = makeRemoteWrappers({ curlBinary, expectedReleaseUrl: releaseUrl });
   await configureSshd(forceCommand);
 
-  const target = {
+  sshTarget = {
     label: "Isolated SSH fixture",
     host: "127.0.0.1",
     port: sshdPort,
@@ -506,6 +834,7 @@ async function main() {
     },
     exchangePairing: async (input) => {
       const projectSession = await pairAndRead(input);
+      remoteContext = projectSession;
       log(`paired and read project/session over RACP (${projectSession.projectId}/${projectSession.sessionId})`);
       return projectSession.deviceToken;
     },
@@ -513,7 +842,7 @@ async function main() {
     installTimeoutMs: timeoutMs,
     readyTimeoutSec: 60,
   });
-  bootstrapOutcome = await bootstrap.bootstrap(target);
+  bootstrapOutcome = await bootstrap.bootstrap(sshTarget);
   assert.equal(bootstrapOutcome.ssh.version, version);
   assert.ok(fixtureAssetRequests.includes(artifactName), "remote curl must fetch the tarball from the local fixture");
   assert.deepEqual(
@@ -523,6 +852,8 @@ async function main() {
   );
   log("PASS real SSH bootstrap, loopback tunnel, RACP pairing, project/session read");
   log(`SSH target used an isolated HOME under ${runRoot}; host release checksum ${digest}`);
+  await importMockProvider(modelPort);
+  await runSshReconnectScenario();
   await cleanup();
 }
 

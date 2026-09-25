@@ -18,16 +18,21 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
+import { register } from "node:module";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { RacpClient, wsClientTransport } from "../packages/racp/dist/index.js";
 import { assert, errorCodeOf, shortJson } from "./e2e/assert.mjs";
 import { resolveHostBinary } from "./e2e/host.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+register(pathToFileURL(join(root, "apps/desktop/test/helpers/ts-import-hooks.mjs")));
+const { createRemoteToolRelay } = await import(
+  "../apps/desktop/electron/main/remote/remote-tool-relay.ts"
+);
 const hostBin = resolveHostBinary();
 const configuredBundleDir = process.env.PI_DESKTOP_HOST_BUNDLE_DIR;
 const ownsBundle = !configuredBundleDir;
@@ -66,11 +71,26 @@ const dataDir = mkdtempSync(join(tmpdir(), "pi-host-e2e-"));
 const project = join(dataDir, "project");
 mkdirSync(project, { recursive: true });
 writeFileSync(join(project, "README.md"), "# remote project\n");
+for (const args of [["init", "-q"], ["-c", "user.name=Remote E2E", "-c", "user.email=remote-e2e@example.invalid", "commit", "-qam", "E2E baseline"]]) {
+  const result = spawnSync("git", args, { cwd: project, encoding: "utf8" });
+  if (result.error || result.status !== 0) {
+    rmSync(dataDir, { recursive: true, force: true });
+    throw result.error ?? new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
+  }
+  if (args[0] === "init") {
+    const staged = spawnSync("git", ["add", "README.md"], { cwd: project, encoding: "utf8" });
+    if (staged.error || staged.status !== 0) {
+      rmSync(dataDir, { recursive: true, force: true });
+      throw staged.error ?? new Error(`git add failed: ${staged.stderr}`);
+    }
+  }
+}
 
 // A loopback OpenAI-compatible model. It records the Authorization header so
-// the test can prove the imported key travels to the model, and answers with
-// fixed text. `authKinds` never sees this key: only the SSH stdin payload does.
+// the test can prove the imported key travels to the model. Relay prompts get
+// one deterministic MCP call, then a final answer after the tool result.
 const modelAuth = [];
+const modelRequests = [];
 const modelServer = createServer((req, res) => {
   const auth = req.headers.authorization ?? null;
   if (req.method === "GET" && req.url?.endsWith("/models")) {
@@ -79,12 +99,64 @@ const modelServer = createServer((req, res) => {
     return;
   }
   modelAuth.push(auth);
-  req.resume();
+  let requestBody = "";
+  req.setEncoding("utf8");
+  req.on("data", (chunk) => (requestBody += chunk));
   req.on("end", () => {
+    const body = JSON.parse(requestBody);
+    modelRequests.push(body);
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    let lastUserIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === "user") {
+        lastUserIndex = index;
+        break;
+      }
+    }
+    const latestUser = messages[lastUserIndex];
+    const latestUserText = typeof latestUser?.content === "string"
+      ? latestUser.content
+      : JSON.stringify(latestUser?.content ?? "");
+    const wantsRelay = latestUserText.includes("remote-mcp-success") || latestUserText.includes("remote-mcp-close");
+    const turnMessages = messages.slice(lastUserIndex + 1);
+    const mcpAlreadyCalled = turnMessages.some((message) =>
+      message?.tool_calls?.some((call) => call?.function?.name === "mcp_global_lookup"),
+    );
+    const mcpToolExposed = (body.tools ?? []).some((tool) =>
+      (tool?.function?.name ?? tool?.name) === "mcp_global_lookup",
+    );
+    const relayAction = wantsRelay && !mcpAlreadyCalled
+      ? mcpToolExposed ? "mcp" : "search"
+      : "final";
     const base = { id: "mock-1", object: "chat.completion.chunk", created: 1, model: "mock-model" };
     res.writeHead(200, { "content-type": "text/event-stream" });
-    res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: { role: "assistant", content: "remote reply ok" }, finish_reason: null }] })}\n\n`);
-    res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`);
+    const delta = relayAction === "search"
+      ? {
+          role: "assistant",
+          tool_calls: [{
+            index: 0,
+            id: latestUserText.includes("remote-mcp-close") ? "call_tool_search_close" : "call_tool_search_success",
+            type: "function",
+            function: { name: "ToolSearch", arguments: JSON.stringify({ query: "mcp_global_lookup" }) },
+          }],
+        }
+      : relayAction === "mcp"
+      ? {
+          role: "assistant",
+          tool_calls: [{
+            index: 0,
+            id: latestUserText.includes("remote-mcp-close") ? "call_remote_mcp_close" : "call_remote_mcp_success",
+            type: "function",
+            function: {
+              name: "mcp_global_lookup",
+              arguments: JSON.stringify({ query: latestUserText.includes("remote-mcp-close") ? "close-mid-call" : "remote-notes" }),
+            },
+          }],
+      }
+      : { role: "assistant", content: wantsRelay ? "remote MCP result was handled" : "remote reply ok" };
+    const finish = relayAction === "final" ? "stop" : "tool_calls";
+    res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: finish }] })}\n\n`);
     res.end("data: [DONE]\n\n");
   });
 });
@@ -231,6 +303,64 @@ function importProviders(payload) {
   });
 }
 
+let remoteRelay = null;
+let replacementRelay = null;
+let replacementOwner = null;
+let activeOwner = null;
+let releaseHeldMcpCall = null;
+let markHeldMcpCallStarted = null;
+const heldMcpCallStarted = new Promise((resolveStarted) => {
+  markHeldMcpCallStarted = resolveStarted;
+});
+const remoteMcpExecutions = [];
+const replacementMcpExecutions = [];
+const relayAdvertisements = [];
+const relayLogs = [];
+const desktopServerRequests = [];
+
+function createDesktopRelay(ownerClient, executions, options = {}) {
+  const relayClient = {
+    initialized: () => ownerClient.client.initialized ?? undefined,
+    hostCapabilities: () => ownerClient.client.initialized?.capabilities,
+    request: async (method, params) => {
+      if (method === "tools/advertise") relayAdvertisements.push({ method, params });
+      return ownerClient.client.request(method, params);
+    },
+  };
+  return createRemoteToolRelay({
+    hostKey: "e2e-remote-host",
+    pairedDevice: true,
+    client: relayClient,
+    log: (level, message, data) => relayLogs.push({ level, message, data }),
+    userMcp: {
+      toolsForRemoteSession: async () => [{
+        fullName: "mcp_global_lookup",
+        serverId: "global",
+        toolName: "lookup",
+        description: "Search the desktop's configured service",
+        schema: {
+          type: "object",
+          properties: { query: { type: "string", minLength: 1 } },
+          required: ["query"],
+          additionalProperties: false,
+        },
+      }],
+      callTool: async (fullName, args, projectPath, executionKey) => {
+        executions.push({ fullName, args, projectPath, executionKey });
+        if (options.holdCloseCall && args.query === "close-mid-call") {
+          return new Promise((resolveCall) => {
+            releaseHeldMcpCall = resolveCall;
+            markHeldMcpCallStarted?.();
+            markHeldMcpCallStarted = null;
+          });
+        }
+        return { content: [{ type: "text", text: `desktop MCP result: ${args.query}` }] };
+      },
+      cancelSessionCalls: () => undefined,
+    },
+  });
+}
+
 let exitCode = 0;
 try {
   const ready = await startHost(["--pair"]);
@@ -252,8 +382,21 @@ try {
   record("pairing-token-is-single-use", secondPair === "PAIRING_FAILED", String(secondPair));
   await pairing.client.close();
 
-  const owner = client(url, paired.deviceToken, { reconnect: { enabled: true, baseDelayMs: 50, maxAttempts: 10 } });
+  const owner = client(url, paired.deviceToken, {
+    reconnect: { enabled: true, baseDelayMs: 50, maxAttempts: 10 },
+    onServerRequest: async (method, params) => {
+      desktopServerRequests.push({ method, params });
+      if (!remoteRelay) throw new Error("desktop relay is not ready");
+      try {
+        return await remoteRelay.handleServerRequest(method, params);
+      } catch (error) {
+        relayLogs.push({ level: "error", message: "Desktop server request failed", data: String(error) });
+        throw error;
+      }
+    },
+  });
   const ownerInit = await owner.client.connect();
+  activeOwner = owner;
   record("device-token-authenticates-as-owner", ownerInit.principal.roles.includes("owner") && ownerInit.capabilities.remoteHostProfile === true);
 
   const registered = await owner.client.request("project/register", { path: project });
@@ -276,6 +419,14 @@ try {
   const attach = await owner.client.request("session/attach", { sessionId: created.session.id });
   record("attach-returns-snapshot", attach.replayComplete === true && Array.isArray(attach.snapshot.items) && attach.snapshot.queuedTurns.length === 0);
   await owner.client.request("events/subscribe", { scope: "session", sessionId: created.session.id });
+  remoteRelay = createDesktopRelay(owner, remoteMcpExecutions, { holdCloseCall: true });
+  await remoteRelay.addSession(created.session.id);
+  const advertisedTools = relayAdvertisements.at(-1)?.params?.tools ?? [];
+  record(
+    "desktop-relay-advertises-global-user-mcp-only",
+    advertisedTools.length === 1 && advertisedTools[0]?.name === "mcp_global_lookup" && advertisedTools[0]?.workspaceFree === true,
+    shortJson(advertisedTools.map(({ name, workspaceFree }) => ({ name, workspaceFree }))),
+  );
 
   const files = await owner.client.request("workspace/list", { sessionId: created.session.id, path: "" });
   const readme = await owner.client.request("workspace/read", { sessionId: created.session.id, path: "README.md" });
@@ -288,7 +439,7 @@ try {
   }
   record("workspace-read-refuses-escape", escape === "REMOTE_PATH_FORBIDDEN", String(escape));
   const diff = await owner.client.request("workspace/diff", { sessionId: created.session.id });
-  record("workspace-diff-runs-on-host", typeof diff.repo === "boolean");
+  record("remote-review-starts-from-clean-host-repository", diff.repo === true && diff.clean === true && diff.files.length === 0);
 
   // Remote terminals belong to the Host and are scoped to the session root.
   // Drop the successful open response, then retry its id from another
@@ -379,6 +530,46 @@ try {
     staleInput = errorCodeOf(error);
   }
   record("remote-terminal-old-connection-is-detached", staleInput === "NOT_FOUND", String(staleInput));
+  let staleResize = null;
+  try {
+    await replacement.client.request("terminal/resize", { terminalId: originalTerminalId, cols: 101, rows: 31 });
+  } catch (error) {
+    staleResize = errorCodeOf(error);
+  }
+  record("remote-terminal-old-connection-cannot-resize", staleResize === "NOT_FOUND", String(staleResize));
+  let staleClose = null;
+  try {
+    await replacement.client.request("terminal/close", { terminalId: originalTerminalId });
+  } catch (error) {
+    staleClose = errorCodeOf(error);
+  }
+  record("remote-terminal-old-connection-cannot-close", staleClose === "NOT_FOUND", String(staleClose));
+
+  const reviewEditStart = terminalResumeClient.events.length;
+  await terminalResumeClient.client.request("terminal/input", {
+    terminalId: originalTerminalId,
+    data: Buffer.from("printf 'remote review edit\\n' > remote-review.txt; printf '__REMOTE_REVIEW_EDIT_DONE__\\n'\n").toString("base64"),
+  });
+  let reviewTerminalOutput = "";
+  const reviewEditReady = await waitForEvent(terminalResumeClient.events, reviewEditStart, () => {
+    reviewTerminalOutput = terminalResumeClient.events
+      .slice(reviewEditStart)
+      .filter((event) => event.kind === "terminal.output" && event.payload?.terminalId === originalTerminalId)
+      .map((event) => Buffer.from(event.payload.data, "base64").toString("utf8"))
+      .join("");
+    return reviewTerminalOutput.includes("__REMOTE_REVIEW_EDIT_DONE__");
+  });
+  const refreshedFiles = await owner.client.request("workspace/list", { sessionId: created.session.id, path: "" });
+  const refreshedRead = await owner.client.request("workspace/read", { sessionId: created.session.id, path: "remote-review.txt" });
+  const refreshedDiff = await owner.client.request("workspace/diff", { sessionId: created.session.id });
+  record(
+    "remote-files-and-review-refresh-after-host-edit",
+    reviewEditReady && refreshedFiles.entries.some((entry) => entry.name === "remote-review.txt") &&
+      refreshedRead.kind === "text" && refreshedRead.content === "remote review edit\n" &&
+      refreshedDiff.repo === true && refreshedDiff.clean === false &&
+      refreshedDiff.files.some((file) => file.path === "remote-review.txt" && file.status === "untracked"),
+    shortJson(refreshedDiff.files.map(({ path, status }) => ({ path, status }))),
+  );
   await terminalResumeClient.client.request("terminal/close", { terminalId: originalTerminalId });
   await lostOpen.client.close();
   await replacement.client.close();
@@ -463,15 +654,132 @@ try {
   const afterTurn = await owner.client.request("session/get", { sessionId: created.session.id });
   record("session-returns-to-idle-after-reply", afterTurn.session.status === "idle" && !afterTurn.session.activeTurnId, shortJson(afterTurn.session));
 
-  const renamed = await owner.client.request("session/rename", { sessionId: created.session.id, title: "Renamed remotely" });
-  const configured = await owner.client.request("session/configure", { sessionId: created.session.id, permissionMode: "accept-edits" });
-  record("remote-host-profile-mutations", renamed.ok === true && configured.session.permissionMode === "accept-edits");
+  const mcpTurnStart = modelRequests.length;
+  const mcpEventsStart = owner.events.length;
+  await owner.client.request("turn/start", {
+    sessionId: created.session.id,
+    input: { text: "remote-mcp-success" },
+    context: { requestId: "r-mcp-1", idempotencyKey: "e2e-mcp-1" },
+  });
+  const mcpTurnDone = await waitForEvent(owner.events, mcpEventsStart, (event) =>
+    event.scope === "session" && (event.kind === "turn.completed" || event.kind === "turn.failed"),
+  );
+  const mcpTurnEvents = owner.events.slice(mcpEventsStart);
+  const mcpPromptBodies = modelRequests.slice(mcpTurnStart);
+  const mcpToolWasPrompted = mcpPromptBodies.some((request) =>
+    JSON.stringify(request.tools ?? request.functions ?? []).includes("mcp_global_lookup"),
+  );
+  const mcpResultReachedModel = mcpPromptBodies.some((request) =>
+    JSON.stringify(request.messages ?? []).includes("desktop MCP result: remote-notes"),
+  );
+  const mcpRelaySucceeded = mcpTurnDone && mcpTurnEvents.some((event) => event.kind === "turn.completed") &&
+    mcpToolWasPrompted && mcpResultReachedModel && remoteMcpExecutions.some((call) =>
+      call.fullName === "mcp_global_lookup" && call.projectPath === null && call.args?.query === "remote-notes",
+    );
+  record(
+    "remote-turn-calls-desktop-global-mcp-and-returns-result",
+    mcpRelaySucceeded,
+    shortJson(mcpRelaySucceeded
+      ? { modelCalls: mcpPromptBodies.length, desktopCalls: remoteMcpExecutions.length }
+      : {
+          modelCalls: mcpPromptBodies.length,
+          modelTools: mcpPromptBodies.map((request) => (request.tools ?? request.functions ?? []).map((tool) => tool.function?.name ?? tool.name)),
+          serverRequests: desktopServerRequests.slice(-2),
+          relayLogs: relayLogs.slice(-2),
+          desktopCalls: remoteMcpExecutions.length,
+          eventKinds: mcpTurnEvents.map((event) => event.kind),
+        }),
+  );
+
+  const closeTurnStart = modelRequests.length;
+  await owner.client.request("turn/start", {
+    sessionId: created.session.id,
+    input: { text: "remote-mcp-close" },
+    context: { requestId: "r-mcp-2", idempotencyKey: "e2e-mcp-2" },
+  });
+  let heldCallTimer;
+  try {
+    await Promise.race([
+      heldMcpCallStarted,
+      new Promise((_, reject) => {
+        heldCallTimer = setTimeout(() => reject(new Error("desktop MCP call did not start")), 10_000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(heldCallTimer);
+  }
+
+  replacementOwner = client(url, paired.deviceToken, {
+    onServerRequest: async (method, params) => {
+      desktopServerRequests.push({ method, params });
+      if (!replacementRelay) throw new Error("replacement desktop relay is not ready");
+      try {
+        return await replacementRelay.handleServerRequest(method, params);
+      } catch (error) {
+        relayLogs.push({ level: "error", message: "Replacement server request failed", data: String(error) });
+        throw error;
+      }
+    },
+  });
+  await replacementOwner.client.connect();
+  await replacementOwner.client.request("events/subscribe", { scope: "session", sessionId: created.session.id });
+  replacementRelay = createDesktopRelay(replacementOwner, replacementMcpExecutions);
+  await replacementRelay.addSession(created.session.id);
+  const closeEventsStart = replacementOwner.events.length;
+  let configureWhileRunning = null;
+  try {
+    await replacementOwner.client.request("session/configure", {
+      sessionId: created.session.id,
+      mode: "plan",
+    });
+  } catch (error) {
+    configureWhileRunning = errorCodeOf(error);
+  }
+  record("session-configure-is-rejected-while-running", configureWhileRunning === "CONFLICT", String(configureWhileRunning));
+
+  // Closing the original Desktop relay cancels the held MCP call. Closing its
+  // RACP socket makes the Host fail the pinned execution instead of rerouting
+  // it to a replacement owner that advertises the same tool name.
+  remoteRelay.close();
+  await owner.client.close();
+  const closeTurnDone = await waitForEvent(replacementOwner.events, closeEventsStart, (event) =>
+    event.scope === "session" && (event.kind === "turn.completed" || event.kind === "turn.failed"),
+  );
+  const closeTurnEvents = replacementOwner.events.slice(closeEventsStart);
+  const closeTurnBodies = modelRequests.slice(closeTurnStart);
+  const closeCallFailed = closeTurnBodies.some((request) => {
+    const serialized = JSON.stringify(request.messages ?? []);
+    return serialized.includes("TOOL_FAILED") || serialized.includes("HOST_DISCONNECTED");
+  });
+  record(
+    "closing-desktop-fails-in-flight-mcp-without-aborting-turn",
+    closeTurnDone && closeTurnEvents.some((event) => event.kind === "turn.completed") && closeCallFailed,
+    shortJson({ modelCalls: closeTurnBodies.length, replacementCalls: replacementMcpExecutions.length }),
+  );
+  record(
+    "in-flight-tool-is-not-rerouted-to-replacement-owner",
+    replacementMcpExecutions.length === 0,
+    `replacement executions=${replacementMcpExecutions.length}`,
+  );
+  releaseHeldMcpCall?.({ content: [{ type: "text", text: "late desktop result" }] });
+  releaseHeldMcpCall = null;
+  activeOwner = replacementOwner;
+
+  const renamed = await activeOwner.client.request("session/rename", { sessionId: created.session.id, title: "Renamed remotely" });
+  const planMode = await activeOwner.client.request("session/configure", { sessionId: created.session.id, mode: "plan" });
+  const agentMode = await activeOwner.client.request("session/configure", { sessionId: created.session.id, mode: "agent" });
+  const configured = await activeOwner.client.request("session/configure", { sessionId: created.session.id, permissionMode: "accept-edits" });
+  record(
+    "remote-host-profile-mutations",
+    renamed.ok === true && planMode.session.mode === "plan" && agentMode.session.mode === "agent" &&
+      configured.session.permissionMode === "accept-edits",
+  );
   await sleep(200);
-  const hostKinds = owner.events.filter((event) => event.scope === "host").map((event) => event.kind);
+  const hostKinds = [...owner.events, ...activeOwner.events].filter((event) => event.scope === "host").map((event) => event.kind);
   record("host-scope-events-announce-session-changes", hostKinds.includes("session.created") && hostKinds.includes("session.changed"), hostKinds.join(","));
 
   // Reconnect by cursor: the desktop-side transport drops, the Host keeps everything.
-  const cursor = owner.client.cursorFor(created.session.id);
+  const cursor = activeOwner.client.cursorFor(created.session.id);
   const states = [];
   const owner2 = client(url, paired.deviceToken, { onStateChange: (state) => states.push(state) });
   await owner2.client.connect();
@@ -483,19 +791,20 @@ try {
 
   // Viewer role from a second pairing is refused the owner operations.
   let forbidden = null;
-  const devices = await owner.client.request("session/revoke", { deviceId: "dev_unknown" });
+  const devices = await activeOwner.client.request("session/revoke", { deviceId: "dev_unknown" });
   record("revoke-unknown-device-is-false", devices.revoked === false);
   try {
-    await owner.client.request("host/list", {});
+    await activeOwner.client.request("host/list", {});
   } catch (error) {
     forbidden = errorCodeOf(error);
   }
   record("host-list-is-gateway-only", forbidden === "METHOD_NOT_FOUND", String(forbidden));
 
-  await owner.client.request("session/delete", { sessionId: created.session.id });
-  const gone = await owner.client.request("session/list");
+  await activeOwner.client.request("session/delete", { sessionId: created.session.id });
+  const gone = await activeOwner.client.request("session/list");
   record("session-delete-removes-on-host", !gone.sessions.some((session) => session.id === created.session.id));
-  await owner.client.close();
+  replacementRelay.close();
+  await activeOwner.client.close();
 
   // Restart: identity and the paired device survive; a fresh epoch resyncs.
   await stopHost();
@@ -508,6 +817,10 @@ try {
 } catch (error) {
   record("headless-remote-host-e2e", false, `${error?.message ?? error}\n${stderr.slice(-3000)}`);
 } finally {
+  remoteRelay?.close();
+  replacementRelay?.close();
+  await replacementOwner?.client.close();
+  await activeOwner?.client.close();
   await stopHost();
   modelServer.close();
   rmSync(dataDir, { recursive: true, force: true });

@@ -13,6 +13,7 @@ import {
   RACP_HTTP_ROUTES,
   RACP_OPERATIONS,
   RACP_SCHEMAS,
+  clampPermissionMode,
   RACP_SHIPPED_BINDINGS,
   RacpEventEnvelopeSchema,
   RacpInitializeResultSchema,
@@ -286,6 +287,12 @@ describe("approvals", () => {
 
 describe("remote permission ceiling", () => {
   const policy = { remoteMaxPermissionMode: "ask", applyCeilingToPairedDevices: false } as const;
+
+  it("clamps a persisted queue mode against its captured Host ceiling", () => {
+    expect(clampPermissionMode("auto", "ask")).toBe("ask");
+    expect(clampPermissionMode("accept-edits", "accept-edits")).toBe("accept-edits");
+    expect(clampPermissionMode("ask", "auto")).toBe("ask");
+  });
 
   it("caps gateway-routed principals at the ceiling", () => {
     expect(

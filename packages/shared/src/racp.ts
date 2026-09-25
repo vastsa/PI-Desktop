@@ -912,6 +912,14 @@ const PERMISSION_MODE_RANK: Record<RacpPermissionMode, number> = {
   auto: 2,
 };
 
+/** Restrict a permission mode to the same or a stricter maximum mode. */
+export function clampPermissionMode(
+  mode: RacpPermissionMode,
+  ceiling: RacpPermissionMode,
+): RacpPermissionMode {
+  return PERMISSION_MODE_RANK[mode] <= PERMISSION_MODE_RANK[ceiling] ? mode : ceiling;
+}
+
 export type RacpCeilingInput = {
   sessionMode: RacpPermissionMode;
   policy: Pick<RacpPolicy, "remoteMaxPermissionMode" | "applyCeilingToPairedDevices">;
@@ -929,9 +937,7 @@ export function remotePermissionCeiling(
   if (input.pairedDevice && !input.policy.applyCeilingToPairedDevices) return undefined;
   if (input.approverOverride) return input.sessionMode;
   const ceiling = input.policy.remoteMaxPermissionMode;
-  return PERMISSION_MODE_RANK[input.sessionMode] <= PERMISSION_MODE_RANK[ceiling]
-    ? input.sessionMode
-    : ceiling;
+  return clampPermissionMode(input.sessionMode, ceiling);
 }
 
 /**

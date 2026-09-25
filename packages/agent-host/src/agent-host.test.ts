@@ -487,6 +487,36 @@ describe("AgentHost turns", () => {
     expect(runtime.prompts[0]?.sessionMessageId).toBe("restored-message");
     expect(runtime.prompts[0]?.permissionCeiling).toBe("ask");
   });
+
+  it("restores the captured ceiling in queued turn state and runtime prompts", async () => {
+    const store = new MemoryQueueStore();
+    await store.push({
+      id: "turn_capped_after_restart",
+      sessionId: "s1",
+      principalSubject: "phone",
+      content: "after reboot with a stricter ceiling",
+      effectivePermissionMode: "auto",
+      permissionCeiling: "ask",
+      inputHash: "h",
+      createdAt: 1,
+    });
+    const { host, runtime } = build({ permissionMode: "auto", queueStore: store });
+    await host.start();
+
+    const viewerSnapshot = await host.attach(viewer, { sessionId: "s1" });
+    expect(viewerSnapshot.snapshot?.session.permissionMode).toBe("auto");
+    expect(viewerSnapshot.snapshot?.queuedTurns[0]?.effectivePermissionMode).toBe("ask");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runtime.prompts).toHaveLength(0);
+
+    await host.attach(controller, { sessionId: "s1" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runtime.prompts[0]).toMatchObject({
+      content: "after reboot with a stricter ceiling",
+      effectivePermissionMode: "ask",
+      permissionCeiling: "ask",
+    });
+  });
 });
 
 describe("AgentHost approvals and inputs", () => {

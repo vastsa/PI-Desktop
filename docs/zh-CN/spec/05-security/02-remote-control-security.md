@@ -100,6 +100,14 @@ Host 策略允许远程会话授权时出现在 `allowedDecisions` 中。所有�
 Host 的 workspace、permission、secret 和 approval 边界；不得暴露 `host.proxy`、
 raw IPC 或任意命令执行。
 
+无头 `pi-host` 操作者在进程启动时通过 `--remote-max-permission-mode`、
+`--apply-ceiling-to-paired-devices` 和 `--approval-lifetime-ms` 设置此策略，
+也可使用对应的 `PI_HOST_REMOTE_MAX_PERMISSION_MODE`、
+`PI_HOST_APPLY_CEILING_TO_PAIRED_DEVICES` 和 `PI_HOST_APPROVAL_LIFETIME_MS`
+环境变量。命令行值优先于环境变量；未配置时使用 RACP 默认值（`ask`、
+`false`、1,800,000 毫秒）；无效值会以 `INVALID_ARGUMENT` 令启动失败。生效的策略会在
+`connection/initialize` 中公布，不能通过 RACP 修改；更改策略需要重启 `pi-host`。
+
 ## 4. 网络、附件和多租户
 
 公网 HTTP、SSE 和 WebSocket 必须使用 TLS，保留的 gRPC 同样适用；绑定 loopback

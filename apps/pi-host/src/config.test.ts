@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { RACP_DEFAULT_POLICY } from "@pi-desktop/shared";
 
 import { parseArgs, resolveConfig } from "./config.js";
 import { FileCredentialStore, loadOrCreateHostId } from "./credentials.js";
@@ -20,11 +21,57 @@ async function tempDir(): Promise<string> {
 describe("config", () => {
   it("parses flags with and without values and validates the port", () => {
     expect(parseArgs(["--pair", "--port", "4123", "--data-dir=/x", "--host-core", "/bin/hc"])).toEqual({ pair: true, port: "4123", "data-dir": "/x", "host-core": "/bin/hc" });
+    expect(parseArgs(["--apply-ceiling-to-paired-devices"])["apply-ceiling-to-paired-devices"]).toBe(true);
     const config = resolveConfig({ "data-dir": "/data", port: "4123", "host-core": "/bin/hc", sidecar: "/s.js", pair: true }, {});
-    expect(config).toMatchObject({ dataDir: "/data", port: 4123, host: "127.0.0.1", hostCoreBinary: "/bin/hc", sidecarEntry: "/s.js", pair: true, logLevel: "info" });
+    expect(config).toMatchObject({ dataDir: "/data", port: 4123, host: "127.0.0.1", hostCoreBinary: "/bin/hc", sidecarEntry: "/s.js", pair: true, logLevel: "info", policy: RACP_DEFAULT_POLICY });
     expect(() => resolveConfig({ port: "70000", "host-core": "/bin/hc", sidecar: "/s.js" }, {})).toThrow(/invalid port/);
     expect(() => resolveConfig({ "host-core": "/bin/hc", sidecar: "/s.js", port: "abc" }, {})).toThrow(/invalid port/);
     expect(resolveConfig({ "host-core": "/bin/hc", sidecar: "/s.js", "log-level": "warn" }, {}).logLevel).toBe("warn");
+  });
+
+  it("resolves the Host RACP policy from flags and environment with flag precedence", () => {
+    const config = resolveConfig({
+      "host-core": "/bin/hc",
+      sidecar: "/s.js",
+      "remote-max-permission-mode": "accept-edits",
+      "apply-ceiling-to-paired-devices": "true",
+      "approval-lifetime-ms": "45000",
+    }, {
+      PI_HOST_REMOTE_MAX_PERMISSION_MODE: "auto",
+      PI_HOST_APPLY_CEILING_TO_PAIRED_DEVICES: "false",
+      PI_HOST_APPROVAL_LIFETIME_MS: "90000",
+    });
+
+    expect(config.policy).toEqual({
+      remoteMaxPermissionMode: "accept-edits",
+      applyCeilingToPairedDevices: true,
+      approvalLifetimeMs: 45_000,
+    });
+
+    const fromEnvironment = resolveConfig({ "host-core": "/bin/hc", sidecar: "/s.js" }, {
+      PI_HOST_REMOTE_MAX_PERMISSION_MODE: "auto",
+      PI_HOST_APPLY_CEILING_TO_PAIRED_DEVICES: "true",
+      PI_HOST_APPROVAL_LIFETIME_MS: "90000",
+    });
+    expect(fromEnvironment.policy).toEqual({
+      remoteMaxPermissionMode: "auto",
+      applyCeilingToPairedDevices: true,
+      approvalLifetimeMs: 90_000,
+    });
+
+    const explicitFalse = resolveConfig({ "host-core": "/bin/hc", sidecar: "/s.js", "apply-ceiling-to-paired-devices": "false" }, {
+      PI_HOST_APPLY_CEILING_TO_PAIRED_DEVICES: "true",
+    });
+    expect(explicitFalse.policy.applyCeilingToPairedDevices).toBe(false);
+  });
+
+  it("rejects invalid Host policy values instead of silently changing policy", () => {
+    const base = { "host-core": "/bin/hc", sidecar: "/s.js" };
+    expect(() => resolveConfig({ ...base, "remote-max-permission-mode": "unrestricted" }, {})).toThrow(/remote-max-permission-mode/);
+    expect(() => resolveConfig({ ...base, "apply-ceiling-to-paired-devices": "yes" }, {})).toThrow(/apply-ceiling-to-paired-devices/);
+    expect(() => resolveConfig({ ...base, "approval-lifetime-ms": "0" }, {})).toThrow(/approval-lifetime-ms/);
+    expect(() => resolveConfig({ ...base, "approval-lifetime-ms": true }, {})).toThrow(/approval-lifetime-ms/);
+    expect(() => resolveConfig(base, { PI_HOST_REMOTE_MAX_PERMISSION_MODE: "unrestricted" })).toThrow(/PI_HOST_REMOTE_MAX_PERMISSION_MODE/);
   });
 });
 
