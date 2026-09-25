@@ -39,6 +39,8 @@ export type TurnStartRequest = {
   userMessageId?: string;
   attachments?: AgentPromptAttachment[];
   effectivePermissionMode: RacpPermissionMode;
+  /** Host-computed per-turn ceiling; absent for principals exempt by policy. */
+  permissionCeiling?: RacpPermissionMode;
   idempotencyKey?: string;
   principal: Principal;
 };
@@ -82,6 +84,8 @@ export type QueuedTurnRecord = {
   userMessageId?: string;
   attachments?: AgentPromptAttachment[];
   effectivePermissionMode: RacpPermissionMode;
+  /** Preserved across queue restore so the turn starts under its admitted ceiling. */
+  permissionCeiling?: RacpPermissionMode;
   idempotencyKey?: string;
   /** Stable hash of the input, so a reused key with different input is a conflict. */
   inputHash: string;

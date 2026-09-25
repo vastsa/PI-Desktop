@@ -12994,25 +12994,35 @@ browser milestones are scheduled.
   serves the `pi-host` bundle for that platform at the desktop's version, a
   bundle at another version, and a tampered bundle with a wrong checksum.
   The desktop has one local session open, one user MCP server configured,
-  and one installed plugin whose tool requires workspace access.
+  and one installed plugin whose tool requires workspace access. The remote
+  Host fixture enables `applyCeilingToPairedDevices`, caps turns at `ask`, and
+  has a subagent definition with `accept-edits`; the test Session is stored at
+  `auto` so the turn ceiling is lower than both the Session and delegate scope.
 - **Steps**: 1) Add the remote machine from the desktop and let the uploaded
   bootstrap script download, verify, and start `pi-host` over SSH.
   2) Observe the pairing exchange and the resulting device token. 3) Create a
   session under a remote project through `project/list` and
   `session/create`. 4) Start a turn whose fixture reads, edits, and runs a
   command in the remote project, and approve the command from the desktop
-  card. 5) Switch the session to Plan mode and back with `session/configure`
-  while idle, then attempt it while a turn runs. 6) Open the files tab and the
-  diff tab for the remote session. 7) Advertise relay from the desktop, run a
-  turn that calls the desktop MCP tool, then close the desktop during a
-  second call. 8) Open a terminal on the remote session and run a command.
-  9) Kill the SSH session mid-turn with the terminal open, restore it, and
-  let the desktop reconnect. 10) Inspect the remote tool catalog. 11) Attempt
+  card. Ask the turn to invoke the `accept-edits` subagent to write a second
+  file; confirm the remote ceiling still raises an approval before the write,
+  then allow it once. Queue another delegated write turn and restart `pi-host`
+  before it drains; after reconnect, confirm it still requires approval. 5)
+  Switch the session to Plan mode and back with `session/configure` while idle,
+  then attempt it while a turn runs. 6) Open the files tab and the diff tab
+  for the remote session. 7) Advertise relay from the desktop, run a turn
+  that calls the desktop MCP tool, then close the desktop during a second
+  call. 8) Open a terminal on the remote session and run a command. 9) Kill
+  the SSH session mid-turn with the terminal open, restore it, and let the
+  desktop reconnect. 10) Inspect the remote tool catalog. 11) Attempt
   to connect from a non-loopback address on the remote machine, then with a
   reused pairing token. 12) Point the bootstrap at the tampered bundle, then
   at the other version, and reconnect.
 - **Expected**: Files change only on the remote machine and the command runs
   there; the approval card appears in the desktop with the local vocabulary;
+  the host-core applies the `ask` ceiling to the parent and delegated tool
+  calls, even though the Session is `auto` and the delegate is `accept-edits`;
+  the queued delegated turn retains that ceiling after Host restart;
   the remote host-core binds loopback only; `session/configure` succeeds while
   idle and returns `CONFLICT` while running; files and diff come from the
   remote session root and a path outside it returns
@@ -13035,6 +13045,13 @@ browser milestones are scheduled.
 - **Acceptance**: E (tools & permissions), Security, Recovery, Quality
 - **Milestone**: Post-MVP (rollout R2)
 - **Status**: Draft; remote harness with a Linux SSH target required
+
+The permission-ceiling acceptance above also needs an isolated Host policy
+fixture with `applyCeilingToPairedDevices: true`, a seeded `accept-edits`
+subagent, and a deterministic model response that invokes its file-write path.
+The current `pnpm test:e2e:remote-host` harness does not configure that policy,
+seed subagents, or exercise approval/queue restart; this acceptance remains
+unverified until the desktop SSH harness supports those fixtures.
 
 #### E2E-REMOTE-HOST-ssh-password-authentication
 

@@ -100,7 +100,9 @@ CREATE TABLE turns (
   output_tokens INTEGER NOT NULL DEFAULT 0,
   usage_json    TEXT,
   started_at    INTEGER NOT NULL,
-  ended_at      INTEGER
+  ended_at      INTEGER,
+  permission_mode_ceiling TEXT
+    CHECK (permission_mode_ceiling IS NULL OR permission_mode_ceiling IN ('ask', 'accept-edits', 'auto'))
 );
 CREATE INDEX idx_turns_session ON turns(session_id, started_at DESC);
 CREATE INDEX idx_turns_ended_at ON turns(ended_at DESC);
@@ -117,6 +119,8 @@ CREATE TABLE turn_queue (
   attachments_json TEXT,
   session_message_id TEXT,
   permission_mode  TEXT NOT NULL,
+  permission_ceiling TEXT
+    CHECK (permission_ceiling IS NULL OR permission_ceiling IN ('ask', 'accept-edits', 'auto')),
   position         INTEGER NOT NULL,
   priority         INTEGER,
   created_at       INTEGER NOT NULL

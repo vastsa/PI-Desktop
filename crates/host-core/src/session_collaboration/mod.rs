@@ -16,7 +16,7 @@ mod repository;
 mod settlement;
 pub use provenance::{prepare_append, validate_replacement};
 pub use repository::{get, Message};
-pub use settlement::{begin_turn, recover, settle_turn};
+pub use settlement::{begin_turn, begin_turn_with_permission_ceiling, recover, settle_turn};
 pub const SCHEMA: &str = include_str!("schema.sql");
 
 pub(super) fn string<'a>(input: &'a Value, key: &str, limit: usize) -> Result<&'a str> {

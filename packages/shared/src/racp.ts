@@ -755,18 +755,24 @@ export type RacpCeilingInput = {
   approverOverride: boolean;
 };
 
+/** The applied ceiling for this principal, if Host policy requires one. */
+export function remotePermissionCeiling(
+  input: RacpCeilingInput,
+): RacpPermissionMode | undefined {
+  if (input.pairedDevice && !input.policy.applyCeilingToPairedDevices) return undefined;
+  if (input.approverOverride) return input.sessionMode;
+  const ceiling = input.policy.remoteMaxPermissionMode;
+  return PERMISSION_MODE_RANK[input.sessionMode] <= PERMISSION_MODE_RANK[ceiling]
+    ? input.sessionMode
+    : ceiling;
+}
+
 /**
  * The mode a remote-initiated turn actually runs under: the lower of the
  * session mode and the ceiling, unless the principal is exempt.
  */
 export function effectiveRemotePermissionMode(input: RacpCeilingInput): RacpPermissionMode {
-  const exempt =
-    (input.pairedDevice && !input.policy.applyCeilingToPairedDevices) || input.approverOverride;
-  if (exempt) return input.sessionMode;
-  const ceiling = input.policy.remoteMaxPermissionMode;
-  return PERMISSION_MODE_RANK[input.sessionMode] <= PERMISSION_MODE_RANK[ceiling]
-    ? input.sessionMode
-    : ceiling;
+  return remotePermissionCeiling(input) ?? input.sessionMode;
 }
 
 // ---------------------------------------------------------------------------

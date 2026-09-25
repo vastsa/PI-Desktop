@@ -839,3 +839,58 @@ pub(crate) fn migrate_v18_to_v19(conn: &Connection, path: &Path) -> Result<()> {
     let _ = conn.pragma_update(None, "foreign_keys", true);
     result
 }
+
+/// v20 stores the per-turn remote permission ceiling and preserves it on
+/// queued turns across a Host restart.
+pub(crate) fn migrate_v19_to_v20_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    let has_turn_ceiling: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('turns') WHERE name = 'permission_mode_ceiling')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_turn_ceiling {
+        tx.execute_batch(
+            "ALTER TABLE turns ADD COLUMN permission_mode_ceiling TEXT
+             CHECK (permission_mode_ceiling IS NULL OR permission_mode_ceiling IN ('ask', 'accept-edits', 'auto'));",
+        )?;
+    }
+    let has_queue_ceiling: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('turn_queue') WHERE name = 'permission_ceiling')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_queue_ceiling {
+        tx.execute_batch(
+            "ALTER TABLE turn_queue ADD COLUMN permission_ceiling TEXT
+             CHECK (permission_ceiling IS NULL OR permission_ceiling IN ('ask', 'accept-edits', 'auto'));",
+        )?;
+    }
+    // v19 queued prompts only retained their effective permission mode. Bind
+    // that admitted mode to the durable turn on restore so an upgrade cannot
+    // accidentally start an older, narrowed entry under the broader Session
+    // mode. Invalid legacy values fail closed at the narrowest supported mode.
+    tx.execute(
+        "UPDATE turn_queue
+         SET permission_ceiling = CASE
+           WHEN permission_mode IN ('ask', 'accept-edits', 'auto') THEN permission_mode
+           ELSE 'ask'
+         END
+         WHERE permission_ceiling IS NULL",
+        [],
+    )?;
+    tx.pragma_update(None, "user_version", 20i64)?;
+    Ok(())
+}
+
+pub(crate) fn migrate_v19_to_v20(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 19)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v19_to_v20_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v19 to v20 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}

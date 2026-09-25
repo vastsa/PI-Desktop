@@ -233,6 +233,22 @@ describe("RuntimeService prompt lifecycle", () => {
     expect(host.messages.get("s1")?.[0]?.id).toBe(id);
   });
 
+  it("stores the Host-computed permission ceiling on the durable turn", async () => {
+    const { host, sidecar, service } = build();
+    await service.prompt({
+      sessionId: "s1",
+      content: "limited turn",
+      effectivePermissionMode: "ask",
+      permissionCeiling: "ask",
+      principal: owner,
+    });
+    expect(host.calls.find((call) => call.method === "session.beginTurn")?.params).toMatchObject({
+      permissionCeiling: "ask",
+    });
+    const prompt = sidecar.calls.find((call) => call.method === "agent.prompt");
+    expect(prompt?.params).not.toHaveProperty("permissionMode");
+  });
+
   it("refuses a second prompt while the turn runs and settles the turn on agent_end", async () => {
     const { host, sidecar, service, ended } = build();
     await service.prompt({ sessionId: "s1", content: "hello", effectivePermissionMode: "ask", principal: owner });

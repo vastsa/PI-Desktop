@@ -320,6 +320,7 @@ describe("AgentHost turns", () => {
     expect(started.turn.status).toBe("running");
     expect(started.turn.effectivePermissionMode).toBe("ask");
     expect(runtime.prompts[0]!.effectivePermissionMode).toBe("ask");
+    expect(runtime.prompts[0]!.permissionCeiling).toBe("ask");
     const again = await host.startTurn(controller, {
       sessionId: "s1",
       idempotencyKey: "k1",
@@ -341,6 +342,7 @@ describe("AgentHost turns", () => {
     const started = await host.startTurn(owner, { sessionId: "s1", input: { text: "x" }, context: { requestId: "r", expectedRevision: 0 } });
     expect(started.turn.effectivePermissionMode).toBe("auto");
     expect(runtime.prompts[0]!.principal.subject).toBe("desktop");
+    expect(runtime.prompts[0]!.permissionCeiling).toBeUndefined();
     await expect(host.startTurn(viewer, { sessionId: "s1", input: { text: "x" }, context: { requestId: "r" } })).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
@@ -373,6 +375,7 @@ describe("AgentHost turns", () => {
     host.ingest(envelope("s1", first.turn.id, { type: "agent_end", messageIds: [] }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(runtime.prompts.map((prompt) => prompt.content)).toEqual(["one", "two"]);
+    expect(runtime.prompts[1]?.permissionCeiling).toBe("ask");
     host.ingest(envelope("s1", "rt_2", { type: "agent_start" }));
     const started = received.filter((event) => event.kind === "turn.started");
     expect(started.map((event) => event.turnId)).toEqual([first.turn.id, queued.turn.id]);
@@ -468,6 +471,7 @@ describe("AgentHost turns", () => {
       content: "after reboot",
       sessionMessageId: "restored-message",
       effectivePermissionMode: "ask",
+      permissionCeiling: "ask",
       inputHash: "h",
       createdAt: 1,
     });
@@ -481,6 +485,7 @@ describe("AgentHost turns", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(runtime.prompts.map((prompt) => prompt.content)).toEqual(["after reboot"]);
     expect(runtime.prompts[0]?.sessionMessageId).toBe("restored-message");
+    expect(runtime.prompts[0]?.permissionCeiling).toBe("ask");
   });
 });
 
