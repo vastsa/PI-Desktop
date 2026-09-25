@@ -401,12 +401,15 @@ to later refresh and inference; the vendor picker does not collect them.
   last archive is lost. When the family is present in the durable transcript,
   the prefix in front of the restored branch is taken from there rather than
   from the caller. Surviving messages keep their owning `turn_id`
-- `session.beginTurn({ sessionId, providerId?, modelId?, sessionMessageId? })` —
-  starts one durable turn. When `sessionMessageId` is present, host-core
+- `session.beginTurn({ sessionId, providerId?, modelId?, sessionMessageId?,`
+  `permissionCeiling? })` — starts one durable turn. When `sessionMessageId` is
+  present, host-core
   atomically verifies that the queued collaboration delivery targets this
   session, rechecks its permission ceiling, claims the delivery, and binds the
-  new turn to its message id. A collaboration turn cannot be started from
-  caller-supplied replacement text.
+  new turn to its message id. `permissionCeiling` is an internal value derived
+  by the Host from the authenticated remote principal and Host policy; it cannot
+  exceed the resolved Session mode and is stored on the turn. A collaboration
+  turn cannot be started from caller-supplied replacement text.
 - `session.queuePush` / `session.queueList` / `session.queueRemove` /
   `session.queuePrioritize` / `session.queueReorder` — the Host-owned turn queue
   (D386 / ADR 0213 / ADR 0265, schema v18); push is idempotent per principal and
@@ -773,6 +776,12 @@ type ToolsExecuteParams = {
   timeoutMs?: number
 }
 ```
+
+When supplied, `turnId` must name a running turn in `sessionId`; a missing,
+stale, or cross-session id is rejected. A permission-bounded active turn also
+requires `turnId`, so omitting the identity cannot fall back to the broader
+Session or delegate mode. Host-core intersects the delegate's permission scope
+with the durable turn ceiling before evaluating tools.
 
 Authoritative mode and workspace resolution are session-scoped:
 

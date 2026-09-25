@@ -35,6 +35,7 @@ import {
   applyMessageUpdate,
   deltaStreamPayloadFits,
   effectiveRemotePermissionMode,
+  remotePermissionCeiling,
   racpKindForAgentEvent,
   rolesAllowOperation,
 } from "@pi-desktop/shared";
@@ -463,12 +464,14 @@ export class AgentHost {
         details: { expectedRevision: expected, revision: state.revision },
       });
     }
-    const effectivePermissionMode = effectiveRemotePermissionMode({
+    const ceilingInput = {
       sessionMode: summary.permissionMode,
       policy: this.policy,
       pairedDevice: principal.pairedDevice ?? false,
       approverOverride: principal.approverOverride ?? false,
-    });
+    } as const;
+    const effectivePermissionMode = effectiveRemotePermissionMode(ceilingInput);
+    const permissionCeiling = remotePermissionCeiling(ceilingInput);
     const admission: RacpTurnAdmission = params.admission ?? "reject_if_busy";
     const busy = this.isBusy(state);
     let turn: TurnRecord;
@@ -485,6 +488,7 @@ export class AgentHost {
         ...(params.input.userMessageId ? { userMessageId: params.input.userMessageId } : {}),
         ...(params.input.attachments ? { attachments: params.input.attachments } : {}),
         effectivePermissionMode,
+        ...(permissionCeiling ? { permissionCeiling } : {}),
         ...(idempotencyKey ? { idempotencyKey } : {}),
         inputHash,
         createdAt: this.clock.now(),
@@ -507,6 +511,7 @@ export class AgentHost {
         ...(params.input.userMessageId ? { userMessageId: params.input.userMessageId } : {}),
         ...(params.input.attachments ? { attachments: params.input.attachments } : {}),
         effectivePermissionMode,
+        ...(permissionCeiling ? { permissionCeiling } : {}),
         ...(idempotencyKey ? { idempotencyKey } : {}),
         principal,
       });
@@ -836,6 +841,7 @@ export class AgentHost {
             ...(record.userMessageId ? { userMessageId: record.userMessageId } : {}),
             ...(record.attachments ? { attachments: record.attachments } : {}),
             effectivePermissionMode: record.effectivePermissionMode,
+            ...(record.permissionCeiling ? { permissionCeiling: record.permissionCeiling } : {}),
             ...(record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}),
             principal: { subject: record.principalSubject, roles: ["controller"] },
           });

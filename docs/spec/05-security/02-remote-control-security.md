@@ -229,6 +229,9 @@ The following client fields are advisory only or forbidden:
 - `permissionMode` cannot upgrade a durable Session policy; the only accepted
   permission-mode field is the explicit selection on a Plan/Goal `approve`,
   and it is validated against `allowedPermissionModes`;
+- the internal Host-to-host-core `session.beginTurn.permissionCeiling` is
+  derived from the authenticated principal and Host policy; RACP clients
+  cannot supply it;
 - `admission: "queue"` cannot bypass single-turn execution; it only places a
   bounded, cancelable entry in the Host queue;
 - `workspaceRoot` cannot replace a Host-owned project binding;
@@ -259,6 +262,15 @@ withhold nothing. Its turns report the session's own mode as
 `effectivePermissionMode`. The Host policy `applyCeilingToPairedDevices`
 (default off) re-applies the ceiling to paired devices for an operator who
 wants every remote turn to start at `ask`.
+
+Host-core validates the ceiling against the resolved durable Session mode,
+stores it on the durable turn, and intersects it with the effective tool scope
+for every `tools.execute` call. This clamp also applies to delegate scopes, so
+a delegate cannot widen a remote turn. Queued turns retain the ceiling across
+Host restarts; an absent ceiling leaves local and policy-exempt turns under
+their normal Session and delegate rules. A bounded tool call must identify its
+running turn in the same Session; a missing, stale, or cross-session turn id is
+rejected instead of falling back to a broader permission scope.
 
 `allow-session` is offered to a remote approver only when Host policy allows
 remote session grants; otherwise the request's `allowedDecisions` omit it. A

@@ -439,6 +439,12 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   sidecar as a documented stub. Turn-scoped enforcement in host-core
   (`session.beginTurn` accepting an override) is the remaining piece, so a
   narrower ceiling on a local turn does not yet clamp tool decisions.
+- R1 permission-ceiling enforcement implemented (2026-09-25): the Host binds
+  the policy-derived ceiling to each applicable durable turn, and host-core
+  intersects it with tool and delegate scopes. A turn cannot widen the
+  resolved Session mode; queued turns keep their ceiling across restart. The
+  ceiling is Host-generated and is not a client-controlled RACP field. Layered
+  tests pass; desktop SSH E2E acceptance remains pending under E2E-231.
 - R2 started (2026-09-18, D447 / ADR 0284): `packages/host-runtime` holds the
   Electron-independent runtime layer — the host-core and sidecar stdio
   transports, the restart supervisor, `RuntimeService` (the module's

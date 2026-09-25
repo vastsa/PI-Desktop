@@ -566,7 +566,9 @@ CREATE TABLE turns (
   output_tokens INTEGER NOT NULL DEFAULT 0,
   usage_json    TEXT,                            -- full provider usage (cached breakdown, …)
   started_at    INTEGER NOT NULL,
-  ended_at      INTEGER
+  ended_at      INTEGER,
+  permission_mode_ceiling TEXT
+    CHECK (permission_mode_ceiling IS NULL OR permission_mode_ceiling IN ('ask', 'accept-edits', 'auto'))
 );
 CREATE INDEX idx_turns_session ON turns(session_id, started_at DESC);
 CREATE INDEX idx_turns_ended_at ON turns(ended_at DESC);
@@ -668,6 +670,8 @@ CREATE TABLE turn_queue (
   content          TEXT NOT NULL,
   attachments_json TEXT,
   permission_mode  TEXT NOT NULL,
+  permission_ceiling TEXT
+    CHECK (permission_ceiling IS NULL OR permission_ceiling IN ('ask', 'accept-edits', 'auto')),
   position         INTEGER NOT NULL,
   priority         INTEGER,
   created_at       INTEGER NOT NULL
@@ -1304,7 +1308,7 @@ truncating at a guessed position.
 - JSON columns are read blind on hot paths (shipped to the renderer as-is);
   anything filtered or summed is a promoted column by rule.
 
-## 7. Versioning, v7 reset, and v8-to-v15 migration
+## 7. Versioning, v7 reset, and v8-to-v20 migration
 
 - `PRAGMA user_version` stays the schema authority; future structural changes
   add ordered Rust migration fns again, each in one transaction, with a
@@ -1315,7 +1319,7 @@ truncating at a guessed position.
   Sessions, providers, and settings from the old file are not carried over;
   the archive remains for manual recovery. All pre-v7 migration code
   (v1 `settings.sqlite` import, v2→v6 chain) is deleted.
-- Fresh installs run the full v15 DDL directly.
+- Fresh installs run the full v20 DDL directly.
 - **Schema v7 first reaches v8, then uses the guarded path.** The v7→v8
   migration is followed by the same guarded v8→v15 migration; schema-v9 and
   schema-v10 databases take the same guarded path and receive an exact readable
@@ -1369,6 +1373,12 @@ truncating at a guessed position.
   step. The v15→v16 session-collaboration step now stamps `16` (its own version)
   instead of the latest schema constant, so a v15 file can walk both steps in one
   launch.
+- **Schema v20 is additive.** It adds nullable per-turn and queued-turn
+  permission ceilings. The v19→v20 migration binds each existing queue row's
+  stored effective `permission_mode` to the new ceiling column; malformed
+  legacy modes fall back to `ask`. This prevents a queued turn from gaining
+  authority when it resumes under a broader Session mode. The migration keeps
+  all queue rows and creates a readable `pi.sqlite.v19.bak` before the step.
 - **Schema v14 is additive.** It adds nullable `sessions.deleted_at`, the
   partial deletion index, and `session_import_origins`. Existing sessions stay
   active and have no origin rows. The migration runs in the same guarded

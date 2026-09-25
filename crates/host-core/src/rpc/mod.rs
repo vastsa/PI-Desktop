@@ -2803,11 +2803,40 @@ async fn handle_request(
             let st = state.lock().await;
             let provider = params.get("providerId").and_then(Value::as_str);
             let model = params.get("modelId").and_then(Value::as_str);
-            let turn_id = match params.get("sessionMessageId").and_then(Value::as_str) {
-                Some(message_id) => crate::session_collaboration::begin_turn(
+            let permission_ceiling = match params.get("permissionCeiling") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(mode)) => Some(mode.as_str()),
+                Some(_) => {
+                    return Err(rpc_err(
+                        1002,
+                        "permissionCeiling must be a permission mode string",
+                        "INVALID_PARAMS",
+                    ));
+                }
+            };
+            let message_id = params.get("sessionMessageId").and_then(Value::as_str);
+            let turn_id = match (message_id, permission_ceiling) {
+                (Some(message_id), Some(ceiling)) => {
+                    crate::session_collaboration::begin_turn_with_permission_ceiling(
+                        &st.db,
+                        session_id,
+                        message_id,
+                        provider,
+                        model,
+                        Some(ceiling),
+                    )
+                }
+                (Some(message_id), None) => crate::session_collaboration::begin_turn(
                     &st.db, session_id, message_id, provider, model,
                 ),
-                None => sessions::begin_turn(&st.db, session_id, provider, model),
+                (None, Some(ceiling)) => sessions::begin_turn_with_permission_ceiling(
+                    &st.db,
+                    session_id,
+                    provider,
+                    model,
+                    Some(ceiling),
+                ),
+                (None, None) => sessions::begin_turn(&st.db, session_id, provider, model),
             }
             .map_err(session_collaboration_rpc_err)?;
             Ok(json!({ "turnId": turn_id }))
@@ -3486,37 +3515,52 @@ async fn handle_request(
                         return Err(rpc_err(1001, "host is shutting down", "HOST_SHUTTING_DOWN"));
                     }
                     st.permissions.expire_stale();
-                    // Effective permission mode (D115): per-session override
-                    // unless it is `inherit`, then the global settings default,
-                    // then `ask`. A subagent's tool call carries its own scope
-                    // (ADR 0089), which resolves the call under that mode
-                    // instead; external-path gating and the contract modes'
-                    // hard deny are untouched by the override.
-                    let session_pm = sessions::session_permission_mode(&st.db, &p.session_id)
-                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
-                        .filter(|m| m != "inherit");
-                    let effective_pm = match session_pm {
-                        Some(m) => m,
-                        None => st
-                            .db
-                            .get_setting("app")
-                            .ok()
-                            .flatten()
-                            .and_then(|s| {
-                                s.get("defaultPermissionMode")
-                                    .and_then(|v| v.as_str())
-                                    .map(str::to_string)
-                            })
-                            .filter(|m| sessions::is_valid_permission_mode(m) && m != "inherit")
-                            .unwrap_or_else(|| "ask".to_string()),
-                    };
-                    let effective_pm = match p.permission_scope.as_deref() {
+                    // Subagent scope preserves its established override
+                    // semantics. The durable turn ceiling is then intersected
+                    // with that scope so delegation cannot escape remote policy.
+                    let session_pm = sessions::effective_permission_mode(&st.db, &p.session_id)
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                    let scoped_pm = match p.permission_scope.as_deref() {
                         Some(scope)
                             if sessions::is_valid_permission_mode(scope) && scope != "inherit" =>
                         {
                             scope.to_string()
                         }
-                        _ => effective_pm,
+                        _ => session_pm,
+                    };
+                    let turn_ceiling = match p.turn_id.as_deref() {
+                        Some(turn_id) => {
+                            let Some((status, ceiling)) =
+                                sessions::turn_permission_context(&st.db, &p.session_id, turn_id)
+                                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                            else {
+                                return Err(rpc_err(
+                                    1002,
+                                    "turnId does not identify a turn in this session",
+                                    "INVALID_PARAMS",
+                                ));
+                            };
+                            if status != "running" {
+                                return Err(rpc_err(1002, "turn is no longer active", "CONFLICT"));
+                            }
+                            ceiling
+                        }
+                        None => {
+                            if sessions::active_turn_has_permission_ceiling(&st.db, &p.session_id)
+                                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                            {
+                                return Err(rpc_err(
+                                    1002,
+                                    "turnId is required for a permission-bounded turn",
+                                    "INVALID_PARAMS",
+                                ));
+                            }
+                            None
+                        }
+                    };
+                    let effective_pm = match turn_ceiling.as_deref() {
+                        Some(ceiling) => sessions::clamp_permission_mode(&scoped_pm, ceiling),
+                        None => scoped_pm,
                     };
                     // Resolve the tool root from the persisted session instead of
                     // the mutable global workspace. This keeps background turns
@@ -8454,6 +8498,233 @@ mod tests {
         let allowed = pending.await.unwrap().unwrap();
         assert_eq!(allowed["ok"], true);
         assert_eq!(allowed["content"]["root"], "external");
+    }
+
+    #[tokio::test]
+    async fn turn_permission_ceiling_clamps_delegate_scope() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Remote ceiling".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        sessions::configure_session_with_thinking(
+            &app_state.db,
+            &session.id,
+            "agent",
+            None,
+            None,
+            None,
+            Some("auto"),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let started = handle_request(
+            state.clone(),
+            "session.beginTurn",
+            json!({ "sessionId": session.id, "permissionCeiling": "ask" }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let turn_id = started["turnId"].as_str().unwrap().to_string();
+        {
+            let st = state.lock().await;
+            assert_eq!(
+                sessions::turn_permission_context(&st.db, &session.id, &turn_id)
+                    .unwrap()
+                    .and_then(|(_, ceiling)| ceiling)
+                    .as_deref(),
+                Some("ask")
+            );
+        }
+
+        let missing_turn_id = handle_request(
+            state.clone(),
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "toolCallId": "ceiling-missing-turn",
+                "toolName": "Write",
+                "args": { "path": "missing-turn.txt", "content": "denied" },
+                "mode": "agent",
+                "permissionScope": "auto"
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(missing_turn_id.data.unwrap()["errorCode"], "INVALID_PARAMS");
+
+        let second_session = sessions::create_session(
+            &state.lock().await.db,
+            Some("Other session".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        let other_turn_id =
+            sessions::begin_turn(&state.lock().await.db, &second_session.id, None, None).unwrap();
+        let cross_session_turn_id = handle_request(
+            state.clone(),
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "turnId": other_turn_id,
+                "toolCallId": "ceiling-cross-session-turn",
+                "toolName": "Write",
+                "args": { "path": "cross-session.txt", "content": "denied" },
+                "mode": "agent",
+                "permissionScope": "auto"
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            cross_session_turn_id.data.unwrap()["errorCode"],
+            "INVALID_PARAMS"
+        );
+        sessions::end_turn(
+            &state.lock().await.db,
+            &other_turn_id,
+            "completed",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+
+        let (parent_tx, mut parent_rx) = mpsc::unbounded_channel();
+        let parent_state = state.clone();
+        let parent_session_id = session.id.clone();
+        let parent_turn_id = turn_id.clone();
+        let parent_call = tokio::spawn(async move {
+            handle_request(
+                parent_state,
+                "tools.execute",
+                json!({
+                    "sessionId": parent_session_id,
+                    "turnId": parent_turn_id,
+                    "toolCallId": "ceiling-parent-write",
+                    "toolName": "Write",
+                    "args": { "path": "parent-limited.txt", "content": "approval required" },
+                    "mode": "agent"
+                }),
+                parent_tx,
+            )
+            .await
+        });
+        let parent_approval = parent_rx.recv().await.unwrap();
+        let parent_approval: Value = serde_json::from_str(&parent_approval).unwrap();
+        assert_eq!(parent_approval["method"], "permissions.request");
+        let parent_request_id = parent_approval["params"]["requestId"].as_str().unwrap();
+        handle_request(
+            state.clone(),
+            "permissions.resolve",
+            json!({ "requestId": parent_request_id, "decision": "allow-once" }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(parent_call.await.unwrap().unwrap()["ok"], true);
+
+        // The delegate scope is normally allowed to override the session mode.
+        // A turn ceiling is stronger and forces an explicit approval here.
+        let (notify_tx, mut notify_rx) = mpsc::unbounded_channel();
+        let pending_state = state.clone();
+        let session_id = session.id.clone();
+        let pending_turn_id = turn_id.clone();
+        let pending = tokio::spawn(async move {
+            handle_request(
+                pending_state,
+                "tools.execute",
+                json!({
+                    "sessionId": session_id,
+                    "turnId": pending_turn_id,
+                    "toolCallId": "ceiling-scoped-write",
+                    "toolName": "Write",
+                    "args": { "path": "limited.txt", "content": "approval required" },
+                    "mode": "agent",
+                    "permissionScope": "auto"
+                }),
+                notify_tx,
+            )
+            .await
+        });
+        let notification = notify_rx.recv().await.unwrap();
+        let notification: Value = serde_json::from_str(&notification).unwrap();
+        assert_eq!(notification["method"], "permissions.request");
+        assert_eq!(
+            notification["params"]["reason"],
+            "Modifies files in your workspace"
+        );
+        let request_id = notification["params"]["requestId"].as_str().unwrap();
+        handle_request(
+            state.clone(),
+            "permissions.resolve",
+            json!({ "requestId": request_id, "decision": "allow-once" }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(pending.await.unwrap().unwrap()["ok"], true);
+
+        let restricted = sessions::create_session(
+            &state.lock().await.db,
+            Some("Ask mode".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        let error = handle_request(
+            state.clone(),
+            "session.beginTurn",
+            json!({ "sessionId": restricted.id, "permissionCeiling": "auto" }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.data.unwrap()["errorCode"], "PERMISSION_DENIED");
+
+        handle_request(
+            state.clone(),
+            "session.endTurn",
+            json!({ "turnId": turn_id, "status": "completed", "createNotification": false }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+
+        let stale_turn_id = handle_request(
+            state,
+            "tools.execute",
+            json!({
+                "sessionId": session.id,
+                "turnId": turn_id,
+                "toolCallId": "ceiling-stale-turn",
+                "toolName": "Write",
+                "args": { "path": "stale-turn.txt", "content": "denied" },
+                "mode": "agent",
+                "permissionScope": "auto"
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(stale_turn_id.data.unwrap()["errorCode"], "CONFLICT");
     }
 
     #[tokio::test]

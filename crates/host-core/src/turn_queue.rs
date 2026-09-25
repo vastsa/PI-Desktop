@@ -30,6 +30,7 @@ pub struct QueuedTurnInput {
     pub session_message_id: Option<String>,
     pub attachments: Option<Value>,
     pub permission_mode: String,
+    pub permission_ceiling: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -47,6 +48,8 @@ pub struct QueuedTurn {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Value>,
     pub permission_mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission_ceiling: Option<String>,
     pub position: i64,
     /// Set once the entry is promoted ("send now"). The value is the entry's
     /// place inside the session's priority block, so promotions leave in the
@@ -68,6 +71,7 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedTurn> {
         session_message_id: row.get(10)?,
         attachments: attachments.and_then(|text| serde_json::from_str(&text).ok()),
         permission_mode: row.get(7)?,
+        permission_ceiling: row.get(12)?,
         position: row.get(8)?,
         priority: row.get(11)?,
         created_at: ms_to_ts(row.get::<_, i64>(9)?),
@@ -75,7 +79,8 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedTurn> {
 }
 
 const SELECT: &str = "SELECT id, session_id, principal, idempotency_key, input_hash, content,
-        attachments_json, permission_mode, position, created_at, session_message_id, priority
+        attachments_json, permission_mode, position, created_at, session_message_id, priority,
+        permission_ceiling
  FROM turn_queue";
 
 /// Delivery order: promoted entries first in click order (ascending
@@ -94,6 +99,13 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
     )?;
     if !session_exists {
         return Err(anyhow!("session not found: {}", input.session_id));
+    }
+    if input
+        .permission_ceiling
+        .as_deref()
+        .is_some_and(|mode| !matches!(mode, "ask" | "accept-edits" | "auto"))
+    {
+        return Err(anyhow!("invalid queued-turn permission ceiling"));
     }
     if let Some(key) = input.idempotency_key.as_deref() {
         let existing = conn
@@ -134,8 +146,9 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
     tx.execute(
         "INSERT INTO turn_queue (
             id, session_id, principal, idempotency_key, input_hash, content,
-            attachments_json, permission_mode, position, created_at, session_message_id
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            attachments_json, permission_mode, position, created_at, session_message_id,
+            permission_ceiling
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             id,
             input.session_id,
@@ -147,7 +160,8 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
             input.permission_mode,
             max_position + 1,
             created_at,
-            input.session_message_id
+            input.session_message_id,
+            input.permission_ceiling
         ],
     )?;
     tx.commit()?;
@@ -161,6 +175,7 @@ pub fn push(db: &Database, input: QueuedTurnInput) -> Result<QueuedTurn> {
         session_message_id: input.session_message_id,
         attachments: input.attachments,
         permission_mode: input.permission_mode,
+        permission_ceiling: input.permission_ceiling,
         position: max_position + 1,
         priority: None,
         created_at: ms_to_ts(created_at),
@@ -332,6 +347,7 @@ mod tests {
             session_message_id: None,
             attachments: None,
             permission_mode: "ask".into(),
+            permission_ceiling: None,
         }
     }
 
@@ -359,6 +375,21 @@ mod tests {
         }
         let full = push(&db, input(&session_id, "overflow", None)).unwrap_err();
         assert_eq!(full.to_string(), "QUEUE_FULL");
+    }
+
+    #[test]
+    fn push_preserves_the_permission_ceiling() {
+        let (_dir, db, session_id) = open_with_session();
+        let mut queued = input(&session_id, "limited", None);
+        queued.permission_ceiling = Some("ask".into());
+        let entry = push(&db, queued).unwrap();
+        assert_eq!(entry.permission_ceiling.as_deref(), Some("ask"));
+        assert_eq!(
+            list(&db, Some(&session_id)).unwrap()[0]
+                .permission_ceiling
+                .as_deref(),
+            Some("ask")
+        );
     }
 
     #[test]

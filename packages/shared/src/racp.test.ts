@@ -18,6 +18,7 @@ import {
   RacpSessionSnapshotSchema,
   allowedDecisionsAreCoherent,
   effectiveRemotePermissionMode,
+  remotePermissionCeiling,
   eventEnvelopeSequencingIsValid,
   formatRacpCursor,
   isDurableEventKind,
@@ -300,6 +301,30 @@ describe("remote permission ceiling", () => {
         approverOverride: true,
       }),
     ).toBe("auto");
+    expect(
+      remotePermissionCeiling({
+        sessionMode: "ask",
+        policy,
+        pairedDevice: false,
+        approverOverride: false,
+      }),
+    ).toBe("ask");
+    expect(
+      remotePermissionCeiling({
+        sessionMode: "auto",
+        policy,
+        pairedDevice: true,
+        approverOverride: false,
+      }),
+    ).toBeUndefined();
+    expect(
+      remotePermissionCeiling({
+        sessionMode: "ask",
+        policy: { ...policy, remoteMaxPermissionMode: "auto" },
+        pairedDevice: false,
+        approverOverride: true,
+      }),
+    ).toBe("ask");
   });
 });
 
