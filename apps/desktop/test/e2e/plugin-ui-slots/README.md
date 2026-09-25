@@ -14,7 +14,7 @@ pnpm test:e2e:plugin-ui-slots
 | File | Role |
 | --- | --- |
 | `scripts/e2e-plugin-ui-slots.mjs` | Runner: isolated data/home/profile, seed, Electron with MCP control and a CDP port, cleanup |
-| `stub-model.mjs` | Stub model; the prompt names the scenario (`lab: probe <ok\|fail\|crash\|slow>`, `lab: chart <crash\|tall>`) |
+| `stub-model.mjs` | Stub model; the prompt names the scenario (`lab: probe <ok\|fail\|crash\|slow>`, `lab: chart <crash\|tall>`, `lab: gate`) |
 | `seed.mjs` | Provider row for the stub and `plugins.loadDev` of a copy of the lab, through host-core JSON-RPC |
 | `clients.mjs` | MCP control client (sessions, prompts, turn status) and a CDP renderer client |
 | `drive.mjs` | The scenarios and their checks |
@@ -35,8 +35,13 @@ Covered behavior (`E2E-PLUGIN-ui-slots-*` in the E2E test plan):
   the host row, and `running → success` for a slow call
 - `blockRenderer`: a throwing or over-4000px render falling back to the host
   code block
-- disabling the plugin removes every mount, menu, block and sheet; enabling
-  it mounts fresh samples
+- self-drawn layers (`pi.ui.openLayer`): a wizard at z 600 over the app with
+  the plugin's scoped sheet, a notice opened later at 601 above it, Escape
+  closing neither, both hidden and inert while a permission request (a
+  `Bash` call in Ask mode) waits and back unchanged once it is answered, ✕
+  closing one, and the root leaving with the last layer
+- disabling the plugin removes every mount, menu, block, layer and sheet;
+  enabling it mounts fresh samples
 
 Environment knobs: `E2E_ROOT` (fixed run root, kept), `E2E_KEEP_ARTIFACTS=1`,
 `E2E_TIMEOUT_MS` (drive budget, default 240000), `DEBUG_E2E=1` (Electron

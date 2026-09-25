@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { register } from "node:module";
 import test from "node:test";
+import { fakeLayerDocument } from "./helpers/fake-layer-document.mjs";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 
 /*
@@ -8,8 +9,9 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
  * one load per plugin generation, a frozen `pi` bound to the plugin, and an
  * end that takes everything the load registered, injected or dispatched with
  * it before the plugin's `onUnload` runs, whatever the plugin did. The
- * registry and the dispatch channel are the real ones; only the module
- * import, the style sheets and the routes behind the channel are faked.
+ * registry, the layer stack and the dispatch channel are the real ones; only
+ * the module import, the style sheets, the document under the layers and the
+ * routes behind the channel are faked.
  */
 const { RendererModuleLoader, rendererModuleUrl, rendererLoadSpecs } = await import(
   "../src/plugins/renderer-host/loader.ts"
@@ -17,6 +19,7 @@ const { RendererModuleLoader, rendererModuleUrl, rendererLoadSpecs } = await imp
 const { SlotRegistry } = await import("../src/plugins/renderer-slots/registry.ts");
 const { createDispatchChannel } = await import("../src/plugins/renderer-host/dispatch.ts");
 const { PluginRendererError } = await import("../src/plugins/renderer-error.ts");
+const { PluginLayerStack } = await import("../src/plugins/renderer-layers/layer-stack.ts");
 
 const PLUGIN = "demo.lab";
 const component = () => null;
@@ -59,6 +62,8 @@ function spec(pluginId = PLUGIN, overrides = {}) {
  */
 function harness(modules = {}) {
   const registry = new SlotRegistry();
+  const document = fakeLayerDocument();
+  const layerStack = new PluginLayerStack(() => document);
   const sheets = [];
   const imports = [];
   const warnings = [];
@@ -80,6 +85,7 @@ function harness(modules = {}) {
         if (at >= 0) sheets.splice(at, 1);
       };
     },
+    openLayer: (pluginId) => layerStack.open(pluginId),
     openChannel: (pluginId, actions) =>
       createDispatchChannel(pluginId, actions, {
         pluginCall: (id, method, args) => {
@@ -94,9 +100,12 @@ function harness(modules = {}) {
     loader,
     registry,
     sheets,
+    /** The open layers' elements, bottom to top. */
+    layers: () => document.body.children.flatMap((root) => root.children),
     imports,
     warnings,
     calls,
+    openLayerFor: (pluginId) => layerStack.open(pluginId),
     answerCallsWith(fn) {
       answerCall = fn;
     },
@@ -126,9 +135,11 @@ test("onLoad gets a frozen pi bound to its plugin, and what it registers shows u
         api.slots.register({ slot: "entryExtra", component });
         api.slots.register({ slot: "toolCard", toolName: "lookup", component });
         api.ui.injectStyle(".lab { color: red; }");
+        layer = api.ui.openLayer();
       },
     },
   });
+  let layer;
   assert.deepEqual(await h.loader.load(spec()), { status: "loaded" });
   assert.deepEqual(h.imports, [url()]);
 
@@ -142,6 +153,9 @@ test("onLoad gets a frozen pi bound to its plugin, and what it registers shows u
     ],
   );
   assert.deepEqual(h.sheets, [{ pluginId: PLUGIN, css: ".lab { color: red; }" }]);
+  assert.ok(Object.isFrozen(layer));
+  assert.deepEqual(h.layers(), [layer.element]);
+  assert.equal(layer.element.getAttribute("data-pi-plugin"), PLUGIN);
 
   // The descriptor is the plugin's grant: its own tools, its declared words.
   assert.throws(
@@ -187,6 +201,7 @@ test("a load that fails is torn down, reported once and not retried for its gene
         onLoad(pi) {
           pi.slots.register({ slot: "entryExtra", component });
           pi.ui.injectStyle(".half { }");
+          pi.ui.openLayer();
           throw broken;
         },
       }),
@@ -210,6 +225,7 @@ test("a load that fails is torn down, reported once and not retried for its gene
     await tick();
     assert.deepEqual(h.registry.getSnapshot().entries, [], `${label}: registrations are gone`);
     assert.deepEqual(h.sheets, [], `${label}: styles are gone`);
+    assert.deepEqual(h.layers(), [], `${label}: layers are gone`);
     assert.deepEqual(
       h.warnings.map((warning) => warning.message),
       [`[plugin-renderer] ${PLUGIN} failed to load`],
@@ -245,9 +261,10 @@ test("a plugin whose onLoad failed still gets its onUnload, after the host clean
   assert.deepEqual(seen, [0]);
 });
 
-test("ending a load disposes its registrations, styles and calls before onUnload runs", async () => {
+test("ending a load disposes its registrations, styles, layers and calls before onUnload runs", async () => {
   let pi;
   let kept;
+  let keptLayer;
   const observed = [];
   const answer = deferred();
   const h = harness({
@@ -257,11 +274,14 @@ test("ending a load disposes its registrations, styles and calls before onUnload
         api.slots.register({ slot: "entryExtra", component });
         kept = api.slots.register({ slot: "userAction", component, positions: ["left"] });
         api.ui.injectStyle(".lab { }");
+        api.ui.openLayer();
+        keptLayer = api.ui.openLayer();
       },
       onUnload() {
         observed.push({
           entries: h.registry.getSnapshot().entries.length,
           sheets: h.sheets.length,
+          layers: h.layers().length,
         });
       },
     },
@@ -271,9 +291,11 @@ test("ending a load disposes its registrations, styles and calls before onUnload
   const inFlight = pi.dispatch("plugin.call", { method: "ping" });
   // Another plugin's registration is not this load's to dispose.
   h.registry.register("demo.other", { slot: "entryExtra", component }, []);
+  const otherLayer = h.openLayerFor("demo.other");
 
   await h.loader.unload(PLUGIN);
-  assert.deepEqual(observed, [{ entries: 1, sheets: 0 }]);
+  assert.deepEqual(observed, [{ entries: 1, sheets: 0, layers: 1 }]);
+  assert.deepEqual(h.layers(), [otherLayer.element]);
   assert.deepEqual(
     h.registry.getSnapshot().entries.map((entry) => entry.pluginId),
     ["demo.other"],
@@ -284,29 +306,38 @@ test("ending a load disposes its registrations, styles and calls before onUnload
   // The pi of an ended load stays dead.
   assert.throws(() => pi.slots.register({ slot: "entryExtra", component }), unloadedError);
   assert.throws(() => pi.ui.injectStyle(".late { }"), unloadedError);
+  assert.throws(() => pi.ui.openLayer(), unloadedError);
   await assert.rejects(pi.dispatch("plugin.call", { method: "ping" }), unloadedError);
   const version = h.registry.getSnapshot().version;
   kept();
   assert.equal(h.registry.getSnapshot().version, version, "a kept disposer does nothing afterwards");
+  keptLayer.close();
+  assert.deepEqual(h.layers(), [otherLayer.element], "a kept close does nothing afterwards");
   assert.deepEqual(h.loader.loadedPluginIds(), []);
   await h.loader.unload(PLUGIN);
   assert.equal(observed.length, 1, "unloading twice runs onUnload once");
 });
 
-test("a registration the plugin disposed itself is not disposed again at the end", async () => {
+test("a registration or layer the plugin disposed itself is not disposed again at the end", async () => {
   let dispose;
+  let layer;
   const h = harness({
     [url()]: {
       onLoad(pi) {
         dispose = pi.slots.register({ slot: "entryExtra", component });
+        layer = pi.ui.openLayer();
       },
     },
   });
   await h.loader.load(spec());
   dispose();
+  layer.close();
   const version = h.registry.getSnapshot().version;
+  // A layer another load opens after is not the closed one's to take along.
+  const other = h.openLayerFor("demo.other");
   await h.loader.unload(PLUGIN);
   assert.equal(h.registry.getSnapshot().version, version);
+  assert.deepEqual(h.layers(), [other.element]);
 });
 
 test("onUnload waits for a slow onLoad, whose late registrations are refused", async () => {

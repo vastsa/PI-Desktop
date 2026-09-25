@@ -59,6 +59,30 @@ function installPageHelpers() {
       const input = document.querySelector(".composer-input");
       return input ? (input.value ?? input.textContent) : null;
     },
+    /** The lab's self-drawn layers, and what the pointer meets over them. */
+    layers() {
+      const root = document.getElementById("pi-plugin-layers");
+      const layerOf = (lab) => {
+        const sample = one(document, lab);
+        const layer = sample?.closest("[data-pi-layer]");
+        if (!sample || !layer) return null;
+        const box = (sample.querySelector(".p-dialog, .p-notice") ?? sample).getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+          z: Number(layer.style.zIndex),
+          readout: sample.querySelector("[data-lab-layer-z]")?.getAttribute("data-lab-layer-z") ?? null,
+          plugin: layer.getAttribute("data-pi-plugin"),
+          inRoot: layer.parentElement === root,
+          onTop: Boolean(hit && sample.contains(hit)),
+          step: sample.querySelector("[data-lab-step]")?.getAttribute("data-lab-step") ?? null,
+        };
+      };
+      return {
+        root: root ? { hidden: root.hidden, inert: root.inert, layers: root.children.length } : null,
+        wizard: layerOf("layer:wizard"),
+        notice: layerOf("layer:notice"),
+      };
+    },
   };
   return true;
 }
@@ -143,7 +167,11 @@ export async function drive({ control, renderer, check, project }) {
     ]),
     layout.turn.join(","),
   );
-  check("composerControl samples sit on both toolbar sides", sameSet(layout.toolbar, ["composerControl:left", "composerControl:right", "composerControl:crash"]), layout.toolbar.join(","));
+  check(
+    "composerControl samples sit on both toolbar sides",
+    sameSet(layout.toolbar, ["composerControl:left", "composerControl:right", "composerControl:crash", "composerControl:layers"]),
+    layout.toolbar.join(","),
+  );
   check("every sample was mounted for the open session", layout.sessions.length === 1 && layout.sessions[0] === sessionId, layout.sessions.join(","));
   check("every mount belongs to the lab", layout.mounts.length === 1 && layout.mounts[0] === LAB, layout.mounts.join(","));
 
@@ -325,7 +353,15 @@ export async function drive({ control, renderer, check, project }) {
     "crashed samples contained",
   );
   const after = await crashCounts();
-  const survivors = ["assistantAction:left", "assistantAction:right", "assistantAction:refuse", "entryExtra:notes", "composerControl:left", "composerControl:right"];
+  const survivors = [
+    "assistantAction:left",
+    "assistantAction:right",
+    "assistantAction:refuse",
+    "entryExtra:notes",
+    "composerControl:left",
+    "composerControl:right",
+    "composerControl:layers",
+  ];
   check("a crashing action item leaves the bar alone", !after.labs.includes("assistantAction:crash") && after.hostKeys === before.hostKeys, JSON.stringify([before.hostKeys, after.hostKeys]));
   check("a crashing entryExtra block collapses alone", !after.labs.includes("entryExtra") && after.entryBlocks === before.entryBlocks - 1, JSON.stringify([before.entryBlocks, after.entryBlocks]));
   check("a crashing composer control leaves the composer", !after.labs.includes("composerControl:crash") && after.composer, after.labs.join(","));
@@ -406,11 +442,123 @@ export async function drive({ control, renderer, check, project }) {
   const firstChart = await page(() => Boolean(window.__labE2E.one(window.__labE2E.turn(0), "blockRenderer")));
   check("the healthy chart keeps its plugin block", firstChart);
 
+  // --- self-drawn layers ----------------------------------------------------
+  // The layer state once `accept(state)` holds; `accept` runs in the page.
+  const layers = (label, accept) =>
+    until(
+      `() => { const state = window.__labE2E.layers(); return (${accept})(state) ? state : null; }`,
+      null,
+      label,
+      5_000,
+    ).catch((error) => ({ error: error.message }));
+  const layerClick = (lab, button) => clickIn(null, lab, button);
+
+  await layerClick("composerControl:layers", "wizard");
+  const wizard = await layers("the wizard layer", (state) => state.wizard?.onTop);
+  check(
+    "a self-drawn dialog opens in its own layer at the bottom of the plugin band, over the app",
+    wizard.wizard?.z === 600 && wizard.wizard.readout === "600" && wizard.wizard.plugin === LAB && wizard.wizard.inRoot &&
+      wizard.root?.hidden === false && wizard.root.layers === 1,
+    JSON.stringify(wizard),
+  );
+  const layerStyles = await page(() => {
+    const look = (node) => {
+      const style = getComputedStyle(node);
+      return [style.borderTopStyle, style.paddingLeft, style.borderTopLeftRadius].join(" ");
+    };
+    const inLayer = document.querySelector('[data-lab="layer:wizard"] .lab-btn');
+    const inSlot = document.querySelector('[data-lab="composerControl:layers"] .lab-btn');
+    const stray = document.createElement("button");
+    stray.className = "lab-btn";
+    document.body.appendChild(stray);
+    const outside = look(stray);
+    stray.remove();
+    return {
+      inLayer: look(inLayer),
+      inSlot: look(inSlot),
+      outside,
+      overlay: getComputedStyle(document.querySelector('[data-lab="layer:wizard"]')).position,
+    };
+  });
+  check(
+    "the plugin's scoped sheet and the host's dialog classes style the layer",
+    layerStyles.inLayer === layerStyles.inSlot && layerStyles.inLayer !== layerStyles.outside && layerStyles.overlay === "fixed",
+    JSON.stringify(layerStyles),
+  );
+
+  await layerClick("layer:wizard", "wizard-next");
+  await layerClick("layer:wizard", "wizard-next");
+  await layerClick("layer:wizard", "wizard-notice");
+  const stacked = await layers("the notice over the wizard", (state) => state.notice?.onTop && state.wizard?.step === "3");
+  check(
+    "a layer opened later stacks above the earlier one",
+    stacked.notice?.z === 601 && stacked.wizard?.z === 600 && stacked.root?.layers === 2,
+    JSON.stringify(stacked),
+  );
+
+  await page(() => {
+    const target = document.querySelector('[data-lab="layer:wizard"] [data-lab-button="wizard-next"]');
+    target.focus();
+    target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    return true;
+  });
+  await new Promise((done) => setTimeout(done, 300));
+  const afterEscape = await page(() => window.__labE2E.layers());
+  check("Escape closes no layer", afterEscape.wizard?.step === "3" && Boolean(afterEscape.notice), JSON.stringify(afterEscape));
+
+  // A permission request in the open session: the layers step aside until
+  // the user has answered it, and come back as they were.
+  await control.tool("pi_session_configure", { id: sessionId, mode: "agent", permissionMode: "ask", confirm: true });
+  await control.tool("pi_agent_prompt", { sessionId, content: "lab: gate" });
+  const gated = await until(
+    () => {
+      const card = document.querySelector(".permission-card");
+      if (!card) return null;
+      const state = window.__labE2E.layers();
+      const button = card.querySelector(".permission-card-actions button");
+      const box = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return { ...state, cardReachable: Boolean(hit && button.contains(hit)) };
+    },
+    null,
+    "the permission card",
+    30_000,
+  ).catch((error) => ({ error: error.message }));
+  check(
+    "a pending permission hides every layer from sight and input, and leaves the card reachable",
+    gated.root?.hidden === true && gated.root.inert === true && gated.root.layers === 2 && gated.cardReachable &&
+      !gated.wizard?.onTop && !gated.notice?.onTop,
+    JSON.stringify(gated),
+  );
+  await page(() => {
+    document.querySelector(".permission-card .permission-card-actions button")?.click();
+    return true;
+  });
+  await control.waitForTurn(sessionId);
+  await control.tool("pi_session_configure", { id: sessionId, mode: "agent", permissionMode: "auto", confirm: true });
+  const restored = await layers("the layers back", (state) => state.root?.hidden === false && state.notice?.onTop);
+  check(
+    "once answered, the layers come back unchanged",
+    restored.root?.inert === false && restored.wizard?.step === "3" && restored.notice?.z === 601,
+    JSON.stringify(restored),
+  );
+
+  await layerClick("layer:notice", "notice-dismiss");
+  const dismissed = await layers("the notice closed", (state) => !state.notice && state.wizard?.onTop);
+  check("a layer's own ✕ closes it and leaves the others", dismissed.root?.layers === 1, JSON.stringify(dismissed));
+  await layerClick("layer:wizard", "wizard-close");
+  const empty = await layers("the wizard closed", (state) => !state.wizard);
+  check("the root goes with the last layer", empty.root === null, JSON.stringify(empty));
+  // Left open for the unload below.
+  await layerClick("composerControl:layers", "wizard");
+  await layers("the wizard open again", (state) => state.wizard?.onTop);
+
   // --- unload and reload ----------------------------------------------------
   await page((id) => window.piDesktop.invoke("pi-desktop/plugin/disable", id), LAB);
   const unloaded = await until(
     () => {
-      if (document.querySelector("[data-lab], [data-pi-plugin]")) return null;
+      if (document.querySelector("[data-lab], [data-pi-plugin], #pi-plugin-layers")) return null;
       const turn = window.__labE2E.turn(0);
       return {
         sheets: document.querySelectorAll("style[data-pi-plugin-style]").length,
@@ -423,7 +571,7 @@ export async function drive({ control, renderer, check, project }) {
     "lab samples removed",
   );
   check(
-    "disabling the plugin takes every sample, menu, block and sheet with it",
+    "disabling the plugin takes every sample, menu, block, layer and sheet with it",
     unloaded.sheets === 0 && unloaded.hostChart === `${LAB}:chart` && unloaded.overflow === 0 && unloaded.entryStacks === 0,
     JSON.stringify(unloaded),
   );

@@ -15,6 +15,11 @@ export function bindLab(pi) {
   labPi = pi;
 }
 
+/** A layer above the app for a self-drawn dialog (`pi.ui.openLayer`). */
+export function openLayer() {
+  return labPi.ui.openLayer();
+}
+
 /**
  * One dispatch at a time, and what came of it: `idle`, `pending`, the text
  * `describe` made of the answer, or the error's `code`.

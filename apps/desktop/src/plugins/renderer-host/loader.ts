@@ -8,20 +8,21 @@
  * evaluates the new code instead of its cached module graph, and the old URLs
  * stop resolving.
  *
- * Each load is its own session. Registrations, style sheets and the dispatch
- * channel belong to the load that made them, and ending the load disposes all
- * of them before the plugin's `onUnload` runs, whatever the plugin does or
- * fails to do. The `pi` of an ended load stays dead: registering or injecting
- * through it throws `PLUGIN_UNLOADED`, dispatching rejects with it. A load
- * that fails (the import, a missing `onLoad`, a throwing `onLoad`) is torn
- * down, reported once, and not retried until the main process hands out a
- * new generation.
+ * Each load is its own session. Registrations, style sheets, layers and the
+ * dispatch channel belong to the load that made them, and ending the load
+ * disposes all of them before the plugin's `onUnload` runs, whatever the
+ * plugin does or fails to do. The `pi` of an ended load stays dead:
+ * registering, injecting or opening a layer through it throws
+ * `PLUGIN_UNLOADED`, dispatching rejects with it. A load that fails (the
+ * import, a missing `onLoad`, a throwing `onLoad`) is torn down, reported
+ * once, and not retried until the main process hands out a new generation.
  */
 import {
   PLUGIN_RENDERER_SCHEME,
   type PiRendererApi,
   type PiRendererModule,
   type PluginDisposer,
+  type PluginLayer,
   type PluginSlotRegistration,
 } from "@pi-desktop/plugin-sdk";
 import {
@@ -30,6 +31,7 @@ import {
   type PluginSummary,
 } from "@pi-desktop/shared";
 import { PluginRendererError } from "../renderer-error";
+import { pluginLayers } from "../renderer-layers/layer-stack";
 import { slotRegistry, type SlotRegistry } from "../renderer-slots/registry";
 import { injectPluginStyle } from "../renderer-slots/style-injection";
 import { createDispatchChannel, type DispatchChannel } from "./dispatch";
@@ -50,6 +52,7 @@ export type RendererLoaderDeps = {
   importModule(url: string): Promise<unknown>;
   registry: Pick<SlotRegistry, "register">;
   injectStyle(pluginId: string, css: string): PluginDisposer;
+  openLayer(pluginId: string): PluginLayer;
   openChannel(pluginId: string, actions: readonly string[]): DispatchChannel;
   warn(message: string, error: unknown): void;
 };
@@ -125,6 +128,11 @@ class RendererLoad {
         injectStyle: (css: string) => {
           this.assertAlive();
           return this.track(this.deps.injectStyle(pluginId, css));
+        },
+        openLayer: () => {
+          this.assertAlive();
+          const layer = this.deps.openLayer(pluginId);
+          return Object.freeze({ element: layer.element, close: this.track(layer.close) });
         },
       }),
       dispatch: this.channel.dispatch,
@@ -267,6 +275,7 @@ export const rendererModules = new RendererModuleLoader({
   importModule: (url) => import(/* @vite-ignore */ url),
   registry: slotRegistry,
   injectStyle: injectPluginStyle,
+  openLayer: (pluginId) => pluginLayers.open(pluginId),
   openChannel: (pluginId, actions) => createDispatchChannel(pluginId, actions),
   warn: (message, error) => console.warn(message, error),
 });

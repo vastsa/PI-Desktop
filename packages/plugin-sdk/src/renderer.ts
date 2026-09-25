@@ -18,7 +18,8 @@
  *   toolbar.
  *
  * Self-dialogs are not a slot: a component draws them itself
- * (`docs/plugin-plan/ui/self-dialog/`).
+ * (`docs/plugin-plan/ui/self-dialog/`), into a layer `pi.ui.openLayer` hands
+ * it.
  *
  * The module runs in the host's own realm, so none of this is a security
  * boundary. The contract keeps well-behaved plugins apart and out of the
@@ -201,6 +202,28 @@ export type PluginRendererDispatch = <Action extends PluginRendererActionName>(
 /** Undoes one registration; calling it again does nothing. */
 export type PluginDisposer = () => void;
 
+/**
+ * A self-drawn layer (`docs/plugin-plan/ui/self-dialog/`): a host element
+ * above the app for a modal dialog or a corner notice, which the plugin fills
+ * through `createPortal` and draws with `position: fixed`.
+ *
+ * Layers stack in the order they opened, the latest on top, within the band
+ * reserved for plugins (z 600..899): above the app and its dialogs, below the
+ * host's tooltips and window chrome. While the host waits on the user's own
+ * decision (a permission request, a question, a plan approval, an extension
+ * prompt) every layer is hidden and inert, and comes back unchanged after.
+ * The host never closes a layer on Escape; closing is the plugin's own ✕.
+ */
+export type PluginLayer = {
+  /**
+   * The portal target. It carries the plugin's style scope, so the plugin's
+   * injected sheets apply inside it. It has no size of its own.
+   */
+  readonly element: HTMLElement;
+  /** Removes the layer; calling it again does nothing. */
+  readonly close: PluginDisposer;
+};
+
 /** The `pi` object handed to a renderer entry's `onLoad`. */
 export type PiRendererApi = {
   readonly plugin: {
@@ -225,6 +248,12 @@ export type PiRendererApi = {
      * `PLUGIN_UNLOADED` once this load has ended.
      */
     injectStyle(css: string): PluginDisposer;
+    /**
+     * Open a layer on top of every open one. The end of this load closes
+     * whatever it left open. Throws `PLUGIN_UNLOADED` once this load has
+     * ended.
+     */
+    openLayer(): PluginLayer;
   };
   readonly dispatch: PluginRendererDispatch;
 };

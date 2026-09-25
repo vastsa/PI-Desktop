@@ -4,6 +4,8 @@
 //                          is deferred, call it with that mode, then answer
 //   "lab: chart <kind>" -> answer with a `lab.ui-slots:chart` fence whose
 //                          first line is <kind> (`crash`, `tall`)
+//   "lab: gate"         -> call the built-in Bash tool, which a session in
+//                          Ask mode holds for the user's approval, then answer
 // The first probe answer also carries a normal chart, so one turn fills every
 // transcript slot.
 import { createServer } from "node:http";
@@ -47,6 +49,11 @@ function reply(payload) {
   }
   const chart = /lab: chart (crash|tall)/.exec(prompt)?.[1];
   if (chart) return { text: `A ${chart} chart:\n\n\`\`\`lab.ui-slots:chart\n${chart}\nalpha,1\n\`\`\`\n` };
+  if (prompt.includes("lab: gate")) {
+    if (called.has("Bash")) return { text: "The gate was answered." };
+    if (tools.has("Bash")) return { call: "Bash", args: { command: "touch lab-gate.txt" } };
+    return { text: "Bash is not available to this turn." };
+  }
   return { text: "Hello from the UI slots stub." };
 }
 

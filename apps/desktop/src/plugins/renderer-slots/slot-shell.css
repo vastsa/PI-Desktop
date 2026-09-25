@@ -3,9 +3,10 @@
  * classes (`docs/plugin-plan/ui/self-dialog/`): p-overlay / p-dialog /
  * p-notice with the --ds-scrim / --ds-shadow-dialog tokens.
  *
- * Plugin self layers own z 600..899 (first 600, +1 per layer); the host
- * safety layer (permission approvals, confirms) pins to 900; the existing
- * 1000+ ladder is untouched.
+ * The self-dialog classes are drawn inside a layer from `pi.ui.openLayer`
+ * (`renderer-layers/layer-stack.ts`), which alone decides the stacking: its
+ * z within the plugin band (600..899), below the host's 1000+ ladder, and
+ * hidden while the host waits on the user's own decision.
  */
 
 .pi-plugin-slot {
@@ -24,15 +25,9 @@
 
 /* ---- self-dialog tool classes ---------------------------------------- */
 
-:root {
-  --ds-z-plugin-layer: 600;
-  --ds-z-safety-layer: 900;
-}
-
 .p-overlay {
   position: fixed;
   inset: 0;
-  z-index: var(--ds-z-plugin-layer);
   display: flex;
   align-items: center;
   justify-content: center;

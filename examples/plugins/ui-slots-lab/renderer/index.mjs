@@ -3,13 +3,15 @@
  *
  * One visible sample in every renderer slot, each able to exercise the parts
  * of the contract a person or the Electron E2E has to see working: dispatch
- * round trips and their error codes, a crash the host contains, and the
- * host's size clamps. A plain ES module with no build step; `react`
- * resolves to the host's React through the window's import map.
+ * round trips and their error codes, a crash the host contains, the host's
+ * size clamps, and self-drawn layers over the app. A plain ES module with
+ * no build step; `react` and `react-dom` resolve to the host's through the
+ * window's import map.
  */
 import { bindLab } from "./lab.mjs";
 import { ChartBlock, ProbeCard } from "./blocks.mjs";
 import { ComposerControl, ComposerCrash } from "./composer.mjs";
+import { LayerLauncher } from "./layers.mjs";
 import {
   AssistantAction,
   AssistantCrash,
@@ -40,4 +42,5 @@ export function onLoad(pi) {
 
   pi.slots.register({ slot: "composerControl", component: ComposerControl });
   pi.slots.register({ slot: "composerControl", component: ComposerCrash, positions: ["right"] });
+  pi.slots.register({ slot: "composerControl", component: LayerLauncher, positions: ["right"] });
 }

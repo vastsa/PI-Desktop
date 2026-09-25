@@ -3,7 +3,7 @@
   "id": "lab.ui-slots",
   "name": "UI Slots Lab",
   "version": "0.1.0",
-  "description": "Test plugin with one visible sample in every renderer UI slot, plus controls that exercise dispatch, errors, crash isolation and the host size clamps",
+  "description": "Test plugin with one visible sample in every renderer UI slot, plus controls that exercise dispatch, errors, crash isolation, the host size clamps and self-drawn layers",
   "author": "PI-Desktop",
   "main": "main.js",
   "renderer": "renderer/index.mjs",

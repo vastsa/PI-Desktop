@@ -8,6 +8,7 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PLUGIN_RENDERER_ACTIONS, validateManifest } from "@pi-desktop/plugin-sdk";
 import { composerToolbar } from "./helpers/composer-toolbar.mjs";
+import { fakeLayerDocument } from "./helpers/fake-layer-document.mjs";
 import { slotMounts, slotSsr } from "./helpers/slot-ssr.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -79,6 +80,9 @@ async function labWindow(t) {
   const ssr = await slotSsr(t);
   const { RendererModuleLoader, rendererModuleUrl } = await ssr.load("/src/plugins/renderer-host/loader.ts");
   const { createDispatchChannel } = await ssr.load("/src/plugins/renderer-host/dispatch.ts");
+  const { PluginLayerStack } = await ssr.load("/src/plugins/renderer-layers/layer-stack.ts");
+  const layerDocument = fakeLayerDocument();
+  const layers = new PluginLayerStack(() => layerDocument);
   const descriptor = runtime.rendererDescriptor(LAB);
   const sheets = new Set();
   const inserted = [];
@@ -94,6 +98,7 @@ async function labWindow(t) {
       sheets.add(sheet);
       return () => sheets.delete(sheet);
     },
+    openLayer: (pluginId) => layers.open(pluginId),
     openChannel: (pluginId, actions) => {
       const channel = createDispatchChannel(pluginId, actions, {
         pluginCall: (id, method, args) => runtime.callRenderer(id, method, args),
@@ -220,7 +225,13 @@ test("the renderer entry loads a sample into every slot", async (t) => {
   assert.equal([...reply.matchAll(/class="lab-bar-row"/g)].length, 2, "one bar per data line");
   assert.match(reply, /data-lab-message="a2"/, "the entryExtra panel sits under the final reply");
 
-  assert.deepEqual(samples(toolbar()), ["composerControl:left", "composerControl:right", "composerControl:crash"]);
+  // The layer launcher opens its layers on a click, never on its own.
+  assert.deepEqual(samples(toolbar()), [
+    "composerControl:left",
+    "composerControl:right",
+    "composerControl:crash",
+    "composerControl:layers",
+  ]);
 });
 
 test("the samples' calls work through the host channel", async (t) => {
