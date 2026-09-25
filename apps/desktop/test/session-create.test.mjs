@@ -35,14 +35,13 @@ test("empty sessions have a whole, already-known transcript window", () => {
   });
 });
 
-test("new task reuses renderer-empty sessions without a blocking list refresh", () => {
+test("new task opens unpersisted draft without a blocking list refresh", () => {
   const newSession =
     sessionSlice.match(/newSession: async [\s\S]*?\n    forkSession: async/)?.[0] ?? "";
   assert.ok(newSession.length > 0, "newSession implementation not found");
-  assert.match(newSession, /sessionIsReusableEmpty/);
-  assert.match(newSession, /liveMessageCountForSession/);
+  assert.match(newSession, /New task starts as an unpersisted draft/);
+  assert.match(newSession, /activeSessionId: undefined/);
   assert.doesNotMatch(newSession, /refreshSessions/);
-  assert.match(newSession, /persistSessionAndSelect/);
   assert.match(newSession, /pendingNewSessionRequests/);
 });
 

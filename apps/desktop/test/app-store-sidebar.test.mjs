@@ -66,13 +66,12 @@ test("project new-session creation uses one store-owned navigation transaction",
   );
 });
 
-test("durable empty sessions render and title heuristics do not filter them", () => {
-  assert.doesNotMatch(
+test("new-task drafts stay out of sidebar history until the first message", () => {
+  assert.match(
     sidebarSource,
     /candidates\.filter\(\(session\) => !isDefaultSessionTitle\(session\.title\)\)/,
   );
-  assert.match(storeSource, /latestSessionInScope/);
-  assert.match(storeSource, /sessionIsReusableEmpty/);
+  assert.match(storeSource, /New task starts as an unpersisted draft/);
   assert.match(storeSource, /pendingNewSessionRequests/);
   assert.doesNotMatch(sidebarSource, /keptEmptyScopes/);
 });
