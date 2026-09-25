@@ -13,6 +13,7 @@ import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
+import type { LoadedSkillDocument } from "./skill-document";
 import {
   busTopicAllowed,
   isDeniedFsPath,
@@ -1145,7 +1146,7 @@ export class PluginRuntime {
    * only, and the size cap is re-checked because the file may have changed
    * since load.
    */
-  loadSkillBody(id: string): { id: string; name: string; body: string } {
+  loadSkillBody(id: string): LoadedSkillDocument {
     const skill = this.skills.get(id);
     if (!skill) throw apiError("NOT_FOUND", `unknown skill: ${id}`);
     if (!this.loaded.has(skill.pluginId)) {
@@ -1171,7 +1172,7 @@ export class PluginRuntime {
       skillId: skill.id,
       ts: Date.now(),
     });
-    return { id: skill.id, name: skill.name, body: parsed.body };
+    return { id: skill.id, name: skill.name, body: parsed.body, location: skill.path };
   }
 
   getLoaded(pluginId: string): LoadedPlugin | undefined {

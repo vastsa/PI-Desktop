@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseSkillFrontmatter } from "@pi-desktop/plugin-sdk";
 import type { PluginSkillDef } from "@pi-desktop/agent-runtime";
+import type { LoadedSkillDocument } from "./skill-document";
 
 /**
  * Skills PI-Desktop ships itself.
@@ -64,11 +65,11 @@ export function isPluginWorkspace(
 }
 
 /** Front matter carries the skill's title and applicability line. */
-function readBuiltinSkill(fileName: string): string | null {
+function readBuiltinSkill(fileName: string): { path: string; raw: string } | null {
   const path = resolveBuiltinSkillPath(fileName);
   if (!path) return null;
   try {
-    return readFileSync(path, "utf8");
+    return { path, raw: readFileSync(path, "utf8") };
   } catch {
     return null;
   }
@@ -87,8 +88,8 @@ export type BuiltinSkillInput = {
 export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
   if (!isPluginWorkspace(input.workspacePath, input.pluginPaths)) return [];
   const raw = readBuiltinSkill(PLUGIN_DEV_SKILL_FILE);
-  if (!raw?.trim()) return [];
-  const parsed = parseSkillFrontmatter(raw);
+  if (!raw?.raw.trim()) return [];
+  const parsed = parseSkillFrontmatter(raw.raw);
   if (!parsed.body) return [];
   return [
     {
@@ -103,17 +104,16 @@ export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
  * Load a built-in skill body for the `Skill` tool. Returns null for any id the
  * host does not ship, which is the caller's cue to try the plugin registry.
  */
-export function loadBuiltinSkillBody(
-  id: string,
-): { id: string; name: string; body: string } | null {
+export function loadBuiltinSkillBody(id: string): LoadedSkillDocument | null {
   if (id !== PLUGIN_DEV_SKILL_ID) return null;
   const raw = readBuiltinSkill(PLUGIN_DEV_SKILL_FILE);
-  if (!raw?.trim()) return null;
-  const parsed = parseSkillFrontmatter(raw);
+  if (!raw?.raw.trim()) return null;
+  const parsed = parseSkillFrontmatter(raw.raw);
   if (!parsed.body) return null;
   return {
     id: PLUGIN_DEV_SKILL_ID,
     name: parsed.name ?? "PI-Desktop plugin development",
     body: parsed.body,
+    location: raw.path,
   };
 }
