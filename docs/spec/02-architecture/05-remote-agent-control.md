@@ -172,9 +172,21 @@ Bootstrap runs over the user's own SSH session, never over RACP:
 5. The Host records the desktop device as `owner` of that Host.
 
 Provider configuration for the remote Host is written over the same SSH
-channel by the bootstrap step, as Host-local configuration. It never crosses
-RACP, so the secret boundary in `05-security/02-remote-control-security.md`
-§7 is unchanged.
+channel, as Host-local configuration; it never crosses RACP, so the secret
+boundary in `05-security/02-remote-control-security.md` §7 is unchanged. The
+desktop runs `pi-host provider-import` on the Host and pipes the provider
+payload — API keys included — into that process's stdin; the CLI hands it to the
+running Host over an owner-only Unix admin socket (`0700` dir, `0600` socket,
+1 MiB cap, no Windows), so no key crosses argv, logs, a remote file, or RACP,
+and no second host-core is spawned (D626, ADR 0308). Import is a manual user
+action and idempotent per provider; nothing is deleted.
+
+Once a Host is paired, its sessions appear in the sidebar as one borderless
+group per Host, and the user can start a session on the Host from the desktop
+(D625, ADR 0307). A remote session runs under the Host's default model — the
+desktop shows no remote model picker — and the renderer stays
+transport-agnostic: a `remote:<hostKey>:<hostSessionId>` id whose Host is offline
+fails closed rather than routing to the local handler.
 
 The Host binds loopback only. Plain `ws://` is accepted on that port only
 when both the bind address and the peer address are loopback and a valid

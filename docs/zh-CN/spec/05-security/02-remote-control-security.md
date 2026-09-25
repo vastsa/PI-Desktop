@@ -60,8 +60,14 @@ Releases 下载与桌面同版本、对应远端平台的 `pi-host` 包，校验
 安装到用户主目录；桌面自身从不上传可执行字节。首版无法引导没有 GitHub 出网能力的
 机器。
 在 Host 上撤销设备 token 或在桌面移除该 Host 即结束配对，重新配对需要重新
-经 SSH 引导。远端 Host 的 provider 配置由引导步骤经 SSH 通道写入为 Host 本地
-配置，绝不经过 RACP。
+经 SSH 引导。远端 Host 的 provider 配置经 SSH 通道写入为 Host 本地配置，绝不
+经过 RACP（D626、ADR 0308）。桌面在 Host 上运行 `pi-host provider-import`，
+把 provider 载荷（含 API 密钥）从该进程的 stdin 送入，因此密钥绝不出现在
+`ssh` 参数、日志、远端文件或 RACP 帧里。CLI 再经一个仅属主的 Unix admin
+socket（`<dataDir>/pi-host/admin.sock`，目录 `0700`、socket `0600`、每连接
+一请求、上限 1 MiB、Windows 禁用）交给正在运行的 Host；不会另起 host-core。
+导入按源 provider id 幂等——创建或更新行、跳过插件所属行、从不删除——且是
+手动动作，绝不自动。CLI 打印的 `PI_HOST_PROVIDERS` 摘要绝不回显密钥。
 
 | Operation | Viewer | Controller | Approver | Owner |
 |---|---:|---:|---:|---:|

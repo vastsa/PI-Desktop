@@ -157,7 +157,17 @@ pairing only binds a desktop device to the Host it started.
 - Revoking the device token on the Host, or removing the Host from the
   desktop, ends the pairing; a new pairing needs a new SSH bootstrap.
 - Provider configuration for the remote Host is written over the SSH channel
-  by the bootstrap step as Host-local configuration; it never crosses RACP.
+  as Host-local configuration; it never crosses RACP (D626, ADR 0308). The
+  desktop runs `pi-host provider-import` on the Host and pipes the provider
+  payload — API keys included — into that process's stdin, so the key never
+  appears in an `ssh` argument, a log line, a remote file, or a RACP frame. The
+  CLI hands the payload to the *running* Host over an owner-only Unix admin
+  socket at `<dataDir>/pi-host/admin.sock` (`0700` directory, `0600` socket, one
+  request per connection, capped at 1 MiB, disabled on Windows); no second
+  host-core is spawned. Import is idempotent per source provider id — it creates
+  or updates a row, skips a plugin-owned row, and never deletes — and is a manual
+  user action, never automatic. The `PI_HOST_PROVIDERS` summary the CLI prints
+  never echoes a key.
 
 **SSH credential handling (ADR 0293).** The desktop MAY hold the SSH login
 password for a host the user paired that way, under these rules:
@@ -532,3 +542,15 @@ D454 (2026-09-19) added SSH password authentication for the bootstrap (§3.4,
 ADR 0293): the credential-handling rules above and gate 21. It relaxes
 `BatchMode=yes` for a password target only, with `NumberOfPasswordPrompts=1`
 and `PubkeyAuthentication=no`, and keeps a key or agent as the default path.
+
+D626 (2026-09-25) fixed how provider configuration reaches a bootstrapped Host
+(§3.4, ADR 0308): `pi-host provider-import` receives the payload on the SSH
+channel's stdin and hands it to the running Host over an owner-only Unix admin
+socket (`0700` dir, `0600` socket, 1 MiB cap, no Windows), so a provider key
+never crosses argv, logs, a remote file, or RACP, and no second host-core is
+spawned. Import is manual and idempotent; nothing is deleted.
+
+D625 (2026-09-25) added remote session entry (ADR 0307): the desktop backend
+router now fails closed on a `remote:` session id whose host is offline instead
+of routing it to the local handler (amends ADR 0286 §3), and a remote session
+runs under the host's default model with no desktop-side model picker.
