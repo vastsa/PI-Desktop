@@ -12,6 +12,7 @@ const REMOTE_CAPABILITIES = {
   canSelectModel: false,
   canSteer: false,
   canEditHistory: false,
+  canTerminal: false,
 };
 
 test("a local session keeps every surface when no optional flag is set", () => {
@@ -21,6 +22,7 @@ test("a local session keeps every surface when no optional flag is set", () => {
     canSelectModel: true,
     canSteer: true,
     canEditHistory: true,
+    canTerminal: false,
     localFiles: true,
   });
   assert.equal(sessionSurfaceGates(undefined).canAttach, true);
@@ -34,10 +36,15 @@ test("a remote session turns off the surfaces its host cannot serve", () => {
     canSelectModel: false,
     canSteer: false,
     canEditHistory: false,
+    canTerminal: false,
     localFiles: false,
   });
   assert.equal(isRemoteSession({ source: "remote" }), true);
   assert.equal(isRemoteSession({ source: "pi-native" }), false);
+  assert.equal(
+    sessionSurfaceGates({ source: "remote", capabilities: { ...REMOTE_CAPABILITIES, canTerminal: true } }).canTerminal,
+    true,
+  );
 });
 
 test("a native pi session keeps its own model and attachment rules", () => {

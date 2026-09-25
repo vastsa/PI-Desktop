@@ -11,6 +11,11 @@ import {
   WORK_PANEL_DEFAULT_WIDTH,
   WORK_PANEL_MIN_WIDTH,
 } from "../src/lib/work-panel-resize.ts";
+import {
+  attachRemoteTerminalToTab,
+  remoteTerminalWorkPanelTab,
+  isKnownWorkPanelTab,
+} from "../src/lib/work-panel-tabs.ts";
 const appSource = await readAppSource();
 const mainSource = await readMainSource();
 const apiSource = await readFile(
@@ -23,6 +28,10 @@ const protocolSource = await readFile(
 );
 const panelSource = await readFile(
   new URL("../src/components/workpanel/WorkPanel.tsx", import.meta.url),
+  "utf8",
+);
+const remoteTerminalSource = await readFile(
+  new URL("../src/components/workpanel/RemoteTerminalTab.tsx", import.meta.url),
   "utf8",
 );
 const transcriptSource = await readTranscriptSource();
@@ -232,7 +241,7 @@ test("work panel header exposes a scrollable tab strip and direct new-page actio
   assert.match(panelSource, /aria-controls=\{`work-panel-surface-\$\{tab\.id\}`\}/);
   assert.match(panelSource, /className="work-panel-tab-close"/);
   assert.match(panelSource, /event\.button !== 1/);
-  assert.match(panelSource, /workPanelTools\(t, pluginViews\)/);
+  assert.match(panelSource, /workPanelTools\(t, pluginViews, canTerminal\)/);
   assert.match(panelSource, /toolWorkPanelTab\("review"\)/);
   assert.match(panelSource, /pluginViews\.map\(\(view\) =>/);
   assert.doesNotMatch(panelSource, /HEADER_TOOLS|headerToolTab|HeaderToolKind/);
@@ -462,14 +471,52 @@ test("Electron enforces the responsive shell minimum", () => {
   assert.match(mainSource, /initialMinHeight = Math\.min\(windowMinHeight/);
 });
 
-test("built-in terminal is absent while the work panel keeps its other surfaces", () => {
-  assert.doesNotMatch(panelSource, /TerminalTab|terminalOpen|kind: "terminal"/);
-  assert.doesNotMatch(panelSource, /work-panel-surface-terminal|activeTab\?\.kind !== "terminal"/);
+test("remote terminal is Host-capability-gated and closes only with its tab", () => {
+  assert.match(panelSource, /sessionSurfaceGates\(activeSession\)\.canTerminal/);
+  assert.match(panelSource, /activeTab\?\.kind === "terminal"/);
+  assert.match(panelSource, /<RemoteTerminalTab/);
+  assert.match(panelSource, /api\s*\.remoteTerminalClose\(/);
+  assert.match(remoteTerminalSource, /api\.onSessionsChanged\(/);
+  assert.match(remoteTerminalSource, /event\.hostKey !== hostKey/);
+  assert.match(remoteTerminalSource, /remote\.host\.reconnected/);
+  assert.match(remoteTerminalSource, /setAttempt\(\(value\) => value \+ 1\)/);
   assert.match(panelSource, /activeTab\?\.kind === "review"/);
   assert.match(panelSource, /activeTab\?\.kind === "plugin"/);
   assert.match(panelSource, /activeTab\?\.kind === "file"/);
   assert.match(transcriptSource, /action === "run"/);
   assert.doesNotMatch(transcriptSource, /openTerminal|terminalArtifact|chat\.openTerminal/);
+});
+
+test("each remote terminal tab owns a stable, distinct open request id", () => {
+  const first = remoteTerminalWorkPanelTab();
+  const second = remoteTerminalWorkPanelTab();
+  assert.equal(first.kind, "terminal");
+  assert.equal(first.id, `terminal:${first.resource}`);
+  assert.ok(first.resource);
+  assert.notEqual(first.resource, second.resource);
+  assert.equal(isKnownWorkPanelTab(first), true);
+});
+
+test("late remote terminal opens attach to retained tabs and reject closed tabs", () => {
+  const tab = remoteTerminalWorkPanelTab();
+  const context = {
+    open: true,
+    tabs: [tab],
+    activeTabId: tab.id,
+    fileRequest: null,
+  };
+
+  assert.deepEqual(
+    attachRemoteTerminalToTab(context, tab.resource, "pty-1"),
+    {
+      ...context,
+      tabs: [{ ...tab, terminalId: "pty-1" }],
+    },
+  );
+  assert.equal(attachRemoteTerminalToTab({ ...context, tabs: [] }, tab.resource, "pty-1"), null);
+  assert.match(storeSource, /rememberWorkPanelTerminalId:/);
+  assert.match(panelSource, /rememberWorkPanelTerminalId\(sessionId, openRequestId, terminalId\)/);
+  assert.match(panelSource, /if \(remembered\) return;[\s\S]*?remoteTerminalClose/);
 });
 
 test("tool results never open the Review tab on their own", () => {

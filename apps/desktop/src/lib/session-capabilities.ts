@@ -19,6 +19,8 @@ export type SessionSurfaceGates = {
   canSteer: boolean;
   /** Messages may be edited, regenerated, or switched between versions. */
   canEditHistory: boolean;
+  /** The remote Host advertises its own interactive terminal. */
+  canTerminal: boolean;
   /** Files are local paths the OS can reveal or open. */
   localFiles: boolean;
 };
@@ -29,6 +31,7 @@ const ALL_SURFACES: SessionSurfaceGates = {
   canSelectModel: true,
   canSteer: true,
   canEditHistory: true,
+  canTerminal: false,
   localFiles: true,
 };
 
@@ -50,6 +53,7 @@ export function sessionSurfaceGates(
     canSelectModel: !nativePi && flag(capabilities?.canSelectModel),
     canSteer: flag(capabilities?.canSteer),
     canEditHistory: flag(capabilities?.canEditHistory),
+    canTerminal: isRemoteSession(session) && capabilities?.canTerminal === true,
     localFiles: !isRemoteSession(session),
   };
 }

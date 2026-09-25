@@ -1841,6 +1841,16 @@ sklm: {
       file: "Files",
       plugin: "Plugin view",
       subagent: "Subagent",
+      terminal: "Terminal",
+    },
+    terminal: {
+      host: "Remote host: {{host}}",
+      connecting: "Connecting…",
+      connected: "Connected",
+      exited: "Shell exited ({{code}})",
+      failed: "Couldn't open the remote terminal.",
+      unavailable: "This Host doesn't offer a terminal.",
+      retry: "Reconnect",
     },
     pluginView: {
       failed: "This view could not be loaded. Reload the plugin and try again.",

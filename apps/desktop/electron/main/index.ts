@@ -1381,6 +1381,7 @@ registerApplicationStartup({
   updater,
   modelsDevCatalog,
   plugins,
+  userMcp,
   activeTurns,
   isSessionBusy,
   getHost: () => host,

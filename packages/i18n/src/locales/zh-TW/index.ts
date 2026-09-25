@@ -1809,6 +1809,16 @@ sklm: {
       file: "檔案",
       plugin: "外掛檢視",
       subagent: "子智慧體",
+      terminal: "終端機",
+    },
+    terminal: {
+      host: "遠端主機：{{host}}",
+      connecting: "正在連線…",
+      connected: "已連線",
+      exited: "Shell 已結束（{{code}}）",
+      failed: "無法開啟遠端終端機。",
+      unavailable: "此 Host 未提供終端機。",
+      retry: "重新連線",
     },
     pluginView: {
       failed: "無法載入該檢視。請重新載入外掛後重試。",

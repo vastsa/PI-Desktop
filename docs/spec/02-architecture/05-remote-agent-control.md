@@ -277,14 +277,17 @@ For a session on a remote Host:
 - **On the desktop**: the window and shell, local sessions, the settings UI
   for the local application, plugin panels, the browser preview, and the
   display of notifications.
-- **Relayed from the desktop**: the desktop advertises its user-configured
-  MCP servers and the plugin tools that do not require the session workspace
-  through `tools/advertise`; they appear in the remote session's catalog as
-  relayed tools and execute on the desktop through the `tool/execute` server
-  request under the desktop's own plugin permissions
-  (`03-runtime/19-remote-agent-control-protocol.md` §9.4). Plugin tools that
-  require workspace or filesystem access are excluded, because they would act
-  on the desktop's filesystem while the session root is on the Host.
+- **Relayed from the desktop**: the initial Desktop adapter may advertise only
+  global User MCP tools returned by `toolsForProject(null)` through
+  `tools/advertise`; they appear in the remote Session catalog and execute on
+  the desktop through the `tool/execute` server request under the desktop's
+  own permissions (`03-runtime/19-remote-agent-control-protocol.md` §9.4).
+  `workspaceFree` is an owner-side source assertion; the Host cannot inspect
+  the remote source independently. The adapter must derive it from trusted
+  source metadata and fail closed. Plugin tools remain disabled until a
+  trusted classifier and product decision exist; tools with workspace or
+  filesystem access are excluded because they would act on the desktop's
+  filesystem while the Session root is on the Host.
 - **Work panel**: file listing, file reads, and the working-tree diff use the
   remote-host profile operations in
   `03-runtime/19-remote-agent-control-protocol.md` §6.2 against the remote

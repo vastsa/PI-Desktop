@@ -6,6 +6,7 @@ import {
   LOCAL_AGENT_EVENT_TYPES,
   RACP_DEFAULT_LIMITS,
   RACP_DEFAULT_POLICY,
+  RACP_TERMINAL_INPUT_MAX_BYTES,
   RACP_EPHEMERAL_EVENT_KINDS,
   RACP_ERROR_CODES,
   RACP_EVENT_KINDS,
@@ -28,6 +29,7 @@ import {
   racpKindForAgentEvent,
   rolesAllowOperation,
   toRacpErrorCode,
+  validateRacpTerminalInputData,
   type RacpApprovalRequest,
   type RacpEventEnvelope,
   type RacpInitializeResult,
@@ -145,6 +147,34 @@ describe("RACP schemas", () => {
   it("keeps every named schema in the generated fixture bundle", () => {
     const bundle = JSON.stringify(RACP_SCHEMAS, null, 2) + "\n";
     expect(bundle).toMatchFileSnapshot("../fixtures/racp.schema.json");
+  });
+});
+
+describe("terminal input encoding and bounds", () => {
+  it("accepts canonical padded Base64 through the decoded byte limit", () => {
+    const maximum = Buffer.alloc(RACP_TERMINAL_INPUT_MAX_BYTES, 0x61).toString("base64");
+    expect(validateRacpTerminalInputData("")).toEqual({ valid: true, byteLength: 0 });
+    expect(validateRacpTerminalInputData("YQ==")).toEqual({ valid: true, byteLength: 1 });
+    expect(validateRacpTerminalInputData(maximum)).toEqual({ valid: true, byteLength: RACP_TERMINAL_INPUT_MAX_BYTES });
+  });
+
+  it("rejects noncanonical Base64 and reports decoded input over the limit", () => {
+    for (const value of ["YR==", "YQ", "YQ===", "Y Q==", "_w==", "\u00ff\u00ff\u00ff\u00ff"]) {
+      expect(validateRacpTerminalInputData(value)).toEqual({ valid: false, reason: "invalid-base64" });
+    }
+    expect(validateRacpTerminalInputData("/w==")).toEqual({ valid: false, reason: "invalid-utf8" });
+    const oversized = Buffer.alloc(RACP_TERMINAL_INPUT_MAX_BYTES + 1).toString("base64");
+    expect(validateRacpTerminalInputData(oversized)).toEqual({
+      valid: false,
+      reason: "payload-too-large",
+      limitBytes: RACP_TERMINAL_INPUT_MAX_BYTES,
+      byteLength: RACP_TERMINAL_INPUT_MAX_BYTES + 1,
+    });
+    expect(validateRacpTerminalInputData("!".repeat(90_000))).toMatchObject({
+      valid: false,
+      reason: "payload-too-large",
+      limitBytes: RACP_TERMINAL_INPUT_MAX_BYTES,
+    });
   });
 });
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RACP_TERMINAL_INPUT_MAX_BYTES } from "@pi-desktop/shared";
 
 import { TerminalService, type TerminalServiceOptions } from "./terminal.js";
 
@@ -132,5 +133,26 @@ describe("Host session terminal lifecycle", () => {
 
     expect(activeSink.exits).toEqual([7]);
     await expect(terminal.attach("s1", opened.terminalId, { principalSubject: "device-1", connectionId: "conn-3" }, sink().value)).resolves.toBeNull();
+  });
+
+  it("rejects oversized, noncanonical, and non-UTF-8 input before writing to the pty", async () => {
+    const { terminal, ptys } = setup();
+    const identity = { principalSubject: "device-1", connectionId: "conn-1" };
+    const opened = await terminal.open("s1", { cols: 80, rows: 24 }, identity, sink().value);
+
+    await terminal.input(opened.terminalId, "", identity.connectionId);
+    expect(ptys[0]!.writes).toEqual([]);
+    await terminal.input(opened.terminalId, Buffer.alloc(RACP_TERMINAL_INPUT_MAX_BYTES, 0x61).toString("base64"), identity.connectionId);
+    expect(ptys[0]!.writes[0]).toHaveLength(RACP_TERMINAL_INPUT_MAX_BYTES);
+
+    await expect(terminal.input(opened.terminalId, "YR==", identity.connectionId)).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
+    await expect(terminal.input(opened.terminalId, "/w==", identity.connectionId)).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
+    await expect(
+      terminal.input(opened.terminalId, Buffer.alloc(RACP_TERMINAL_INPUT_MAX_BYTES + 1).toString("base64"), identity.connectionId),
+    ).rejects.toMatchObject({
+      code: "PAYLOAD_TOO_LARGE",
+      details: { limitBytes: RACP_TERMINAL_INPUT_MAX_BYTES, actualBytes: RACP_TERMINAL_INPUT_MAX_BYTES + 1 },
+    });
+    expect(ptys[0]!.writes).toHaveLength(1);
   });
 });

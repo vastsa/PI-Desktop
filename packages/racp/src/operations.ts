@@ -1,10 +1,12 @@
-import type { AgentHost, Principal } from "@pi-desktop/agent-host";
+import type { AgentHost, Principal, ToolRelayPort } from "@pi-desktop/agent-host";
 import { RacpError } from "@pi-desktop/agent-host";
 import {
   RacpApprovalResponseSchema,
   RacpCursorSchema,
   RacpInputResponseSchema,
   RacpRequestContextSchema,
+  isValidRacpToolsAdvertiseParams,
+  validateRacpTerminalInputData,
   type RacpCursor,
   type RacpLimits,
   type RacpOperation,
@@ -23,6 +25,7 @@ export type OperationContext = {
   principal: Principal;
   agentHost: AgentHost;
   operations: RacpHostOperations;
+  toolRelay?: ToolRelayPort;
   authenticator: DeviceTokenAuthenticator;
   limits: RacpLimits;
   capabilities: RacpServerCapabilities;
@@ -125,6 +128,23 @@ function requireAttachedTerminal(context: OperationContext, terminalId: string):
   if (!context.connection.terminals.has(terminalId)) {
     throw new RacpError("NOT_FOUND", `terminal ${terminalId} is not attached to this connection`);
   }
+}
+
+function validateTerminalInput(data: string): void {
+  const validation = validateRacpTerminalInputData(data);
+  if (validation.valid) return;
+  if (validation.reason === "payload-too-large") {
+    throw new RacpError("PAYLOAD_TOO_LARGE", "terminal input exceeds the byte limit", {
+      details: {
+        limitBytes: validation.limitBytes,
+        ...(validation.byteLength === undefined ? {} : { actualBytes: validation.byteLength }),
+      },
+    });
+  }
+  const message = validation.reason === "invalid-base64"
+    ? "terminal input must use canonical Base64 encoding"
+    : "terminal input must contain valid UTF-8 bytes";
+  throw new RacpError("INVALID_ARGUMENT", message);
 }
 
 function unavailable(capability: string): OperationHandler {
@@ -285,7 +305,22 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
 
   handlers.set("attachment/create", unavailable("attachments"));
   handlers.set("attachment/complete", unavailable("attachments"));
-  handlers.set("tools/advertise", unavailable("tool relay"));
+  handlers.set("tools/advertise", async (context, params) => {
+    const relay = context.toolRelay;
+    if (!relay) throw new RacpError("CAPABILITY_UNAVAILABLE", "tool relay is not offered by this Host");
+    if (!isValidRacpToolsAdvertiseParams(params)) {
+      throw new RacpError("INVALID_ARGUMENT", "invalid tools/advertise params");
+    }
+    const session = (await context.operations.sessions.list()).find((candidate) => candidate.id === params.sessionId);
+    if (!session) throw new RacpError("NOT_FOUND", "session not found");
+    relay.advertise({
+      connectionId: context.connection.id,
+      sessionId: params.sessionId,
+      tools: params.tools,
+      request: (method, requestParams, timeoutMs) => context.connection.request(method, requestParams, timeoutMs),
+    });
+    return { advertised: params.tools.length };
+  });
 
   handlers.set("session/revoke", async (context, params) => {
     const input = check(Type.Object({ deviceId: Type.String({ minLength: 1 }) }), params);
@@ -383,6 +418,7 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
   handlers.set("terminal/input", async (context, params) => {
     const input = check(TerminalInputParams, params);
     requireAttachedTerminal(context, input.terminalId);
+    validateTerminalInput(input.data);
     await requireTerminal(context).input(input.terminalId, input.data, context.connection.id);
     return { ok: true };
   });

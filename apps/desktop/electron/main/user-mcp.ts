@@ -84,6 +84,7 @@ export class UserMcpRuntime {
   // These names are hints only: dispatch revalidates the fresh handshake list.
   private discoveredTools = new Map<string, McpTool[]>();
   private records: McpServerRecord[] = [];
+  private readonly catalogListeners = new Set<() => void>();
   private options: UserMcpRuntimeOptions;
 
   // Spelled out rather than a constructor parameter property, because the test
@@ -111,6 +112,25 @@ export class UserMcpRuntime {
         continue;
       }
       entry.record = next;
+    }
+    this.notifyCatalogChanged();
+  }
+
+  /** Subscribe to saved-record changes that may change a remote tool catalog. */
+  onCatalogChanged(listener: () => void): () => void {
+    this.catalogListeners.add(listener);
+    return () => this.catalogListeners.delete(listener);
+  }
+
+  private notifyCatalogChanged(): void {
+    for (const listener of this.catalogListeners) {
+      try {
+        listener();
+      } catch (error) {
+        this.options.log?.("warn", "user mcp catalog listener threw", {
+          error: error instanceof Error ? error.message.slice(0, 300) : "unknown error",
+        });
+      }
     }
   }
 
@@ -198,6 +218,14 @@ export class UserMcpRuntime {
       }
     });
     return out;
+  }
+
+  /**
+   * Tools visible to a remote Host with no local workspace context. This uses
+   * the existing global activation rule and never consumes the Host's path.
+   */
+  async toolsForRemoteSession(): Promise<UserMcpToolDescriptor[]> {
+    return this.toolsForProject(null);
   }
 
   /** Whether a saved server advertised this name (not a readiness check). */
@@ -301,6 +329,7 @@ export class UserMcpRuntime {
     this.entries.get(serverId)?.client.close();
     this.entries.delete(serverId);
     await this.connect(record);
+    this.notifyCatalogChanged();
     return this.statusFor(serverId);
   }
 
@@ -312,6 +341,7 @@ export class UserMcpRuntime {
       this.entries.delete(serverId);
     }
     this.discoveredTools.delete(serverId);
+    this.notifyCatalogChanged();
   }
 
   /** Drop every connection, e.g. on quit. */

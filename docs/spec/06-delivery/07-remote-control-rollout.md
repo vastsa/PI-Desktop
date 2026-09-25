@@ -491,6 +491,32 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   terminal event forwarding and UI lifecycle. The remote WorkPanel terminal is
   therefore still unavailable, and this Host/RACP slice does not complete R2b
   or satisfy E2E-231. Local sessions remain terminal-free.
+- R2b Host/RACP reverse tool relay slice (2026-09-25): `tools/advertise` now
+  replaces an owner connection's per-Session catalog, disconnect clears it,
+  and each remote turn receives a bounded snapshot whose entries remain pinned
+  to the original connection and advertisement revision. Host-core tool
+  execution routes through `tool/execute`; replacement, disconnect, timeout,
+  or invalid response fails the tool as `TOOL_FAILED` without cross-connection
+  retry, allowing the turn to continue. The RACP and Host Runtime contract
+  tests cover this path. The Desktop global User MCP advertisement adapter is
+  implemented and has targeted coverage in
+  `apps/desktop/test/remote-tool-relay.test.mjs` and
+  `apps/desktop/test/user-mcp.test.mjs`; it is limited to
+  `toolsForProject(null)`. The Linux SSH harness is still missing, so E2E-231
+  remains Draft. `workspaceFree` is an owner-side assertion that the
+  Host cannot independently verify; the Desktop adapter must derive it from
+  trusted source metadata and fail closed when uncertain. The initial adapter
+  is limited to global User MCP tools from `toolsForProject(null)`; plugin
+  tools remain disabled until a trusted classifier and product decision exist.
+- R2b Desktop integration slice (2026-09-25): the remote WorkPanel now exposes
+  Host-capability-gated terminals, routes terminal IPC through the owning
+  remote Session, and keeps a stable open request ID per tab for reattachment.
+  Reconnect restores Host and Session subscriptions by cursor before refreshing
+  capabilities and re-advertising global User MCP tools. Hosts that are offline
+  during startup retry in the background; remove, re-pair, and shutdown cancel
+  stale attempts. Targeted Desktop suites and the headless remote Host E2E pass.
+  E2E-231 remains Draft until the Linux SSH desktop harness exercises the full
+  bootstrap, approval, reconnect, terminal, and security path.
 
 ## 8. Amendment history
 

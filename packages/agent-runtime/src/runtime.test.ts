@@ -456,6 +456,26 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
+  it("retires the runtime when an advertised tool schema changes under the same name", async () => {
+    const original = {
+      name: "mcp_corp_search",
+      description: "Search release notes",
+      parameters: { type: "object", properties: { query: { type: "string" } } },
+    };
+    const runtime = createRuntime({ pluginTools: [original] });
+
+    expect(runtimeMatches(runtime, { pluginTools: [original] })).toBe(true);
+    expect(runtimeMatches(runtime, {
+      pluginTools: [{
+        ...original,
+        description: "Search archived release notes",
+        parameters: { type: "object", properties: { releaseId: { type: "string" } } },
+      }],
+    })).toBe(false);
+
+    await runtime.dispose();
+  });
+
   it("stops once at a successful finishTurn boundary and lets errors settle", async () => {
     const runtime = createRuntime();
     const agent = (runtime as any).agent;

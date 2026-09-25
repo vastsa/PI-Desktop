@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
+import { TextDecoder } from "node:util";
 
 import { RacpError } from "@pi-desktop/agent-host";
 import type { RacpTerminalAccess, TerminalIdentity, TerminalOpenResult } from "@pi-desktop/racp";
-import { RACP_DEFAULT_LIMITS } from "@pi-desktop/shared";
+import { RACP_DEFAULT_LIMITS, validateRacpTerminalInputData } from "@pi-desktop/shared";
 
 /** The subset of `node-pty` this module uses; the package is loaded lazily. */
 type Pty = {
@@ -206,7 +207,31 @@ export class TerminalService implements RacpTerminalAccess {
   }
 
   async input(terminalId: string, data: string, connectionId: string): Promise<void> {
-    this.requireAttached(terminalId, connectionId).pty.write(Buffer.from(data, "base64").toString("utf8"));
+    const record = this.requireAttached(terminalId, connectionId);
+    const validation = validateRacpTerminalInputData(data);
+    if (!validation.valid) {
+      if (validation.reason === "payload-too-large") {
+        throw new RacpError("PAYLOAD_TOO_LARGE", "terminal input exceeds the byte limit", {
+          details: {
+            limitBytes: validation.limitBytes,
+            ...(validation.byteLength === undefined ? {} : { actualBytes: validation.byteLength }),
+          },
+        });
+      }
+      const message = validation.reason === "invalid-base64"
+        ? "terminal input must use canonical Base64 encoding"
+        : "terminal input must contain valid UTF-8 bytes";
+      throw new RacpError("INVALID_ARGUMENT", message);
+    }
+    if (validation.byteLength === 0) return;
+
+    let decoded: string;
+    try {
+      decoded = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(Buffer.from(data, "base64"));
+    } catch {
+      throw new RacpError("INVALID_ARGUMENT", "terminal input must contain valid UTF-8 bytes");
+    }
+    record.pty.write(decoded);
   }
 
   async resize(terminalId: string, cols: number, rows: number, connectionId: string): Promise<void> {

@@ -141,6 +141,60 @@ test("touch with an attach cursor resumes the session scope after it", async () 
   });
 });
 
+test("reconnect restores the host scope and retained sessions from durable cursors", async () => {
+  const client = fakeClient();
+  client.cursorForHost = () => ({ epoch: "host-epoch", sequence: 8 });
+  client.cursorFor = (sessionId) => ({ epoch: `epoch-${sessionId}`, sequence: 13 });
+  const subs = createRemoteSubscriptions({ client });
+  await subs.openHost();
+  await subs.touch("a");
+  await subs.touch("b");
+
+  await subs.reconnect();
+
+  assert.deepEqual(
+    of(client, "events/subscribe").slice(3).map((call) => call.params),
+    [
+      { scope: "host", after: { epoch: "host-epoch", sequence: 8 } },
+      {
+        scope: "session",
+        sessionId: "a",
+        after: { epoch: "epoch-a", sequence: 13 },
+      },
+      {
+        scope: "session",
+        sessionId: "b",
+        after: { epoch: "epoch-b", sequence: 13 },
+      },
+    ],
+  );
+  assert.equal(subs.isSubscribed("a"), true);
+  assert.equal(subs.isSubscribed("b"), true);
+  subs.reset();
+});
+
+test("a disconnected session subscribe keeps its slot for reconnect recovery", async () => {
+  const client = fakeClient();
+  const request = client.request;
+  let disconnectOnce = true;
+  client.request = async (method, params) => {
+    if (method === "events/subscribe" && params.scope === "session" && disconnectOnce) {
+      disconnectOnce = false;
+      throw Object.assign(new Error("socket closed"), { code: "HOST_DISCONNECTED" });
+    }
+    return request(method, params);
+  };
+  const subs = createRemoteSubscriptions({ client });
+  await subs.touch("a");
+  assert.equal(subs.isSubscribed("a"), true);
+
+  await subs.reconnect();
+
+  assert.equal(subs.isSubscribed("a"), true);
+  assert.equal(sessionSubscribes(client).at(-1), "a");
+  subs.reset();
+});
+
 test("acks are throttled: one ack per ackEvery events", async () => {
   const client = fakeClient();
   const subs = createRemoteSubscriptions({ client, ackEvery: 3, ackDelayMs: 60_000 });

@@ -1,6 +1,7 @@
 import { api } from "../../lib/api";
 import {
   activateWorkPanelTabState,
+  attachRemoteTerminalToTab,
   browserPluginTab,
   closeWorkPanelTabState,
   emptyWorkPanelContext,
@@ -105,6 +106,7 @@ export function createWorkPanelSlice({
   | "openNewWorkPanelTab"
   | "replaceWorkPanelTab"
   | "openWorkPanelTabForSession"
+  | "rememberWorkPanelTerminalId"
   | "activateWorkPanelTab"
   | "reorderWorkPanelTabs"
   | "closeWorkPanelTab"
@@ -201,6 +203,28 @@ export function createWorkPanelSlice({
     const sessionId = get().activeSessionId;
     if (!sessionId) return;
     get().openWorkPanelTabForSession(sessionId, newWorkPanelTab());
+  },
+  rememberWorkPanelTerminalId: (sessionId, openRequestId, terminalId) => {
+    const state = get();
+    const affectsVisibleSession =
+      state.activeSessionId === sessionId && !isSessionSelectionPending(sessionId);
+    const context = affectsVisibleSession
+      ? currentWorkPanelContext(state)
+      : state.workPanelContexts[sessionId] ?? emptyWorkPanelContext();
+    const nextContext = attachRemoteTerminalToTab(
+      context,
+      openRequestId,
+      terminalId,
+    );
+    if (!nextContext) return false;
+    set({
+      workPanelContexts: {
+        ...state.workPanelContexts,
+        [sessionId]: nextContext,
+      },
+      ...(affectsVisibleSession ? { workPanelTabs: nextContext.tabs } : {}),
+    });
+    return true;
   },
   replaceWorkPanelTab: (sourceTabId, tab) => {
     set((state) => {

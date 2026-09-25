@@ -10,7 +10,11 @@
  * transport (spec §3.4). A channel outside {@link HANDLED_CHANNELS} fails closed
  * in the router with `CAPABILITY_UNAVAILABLE`; it never runs locally.
  */
-import { ErrorCodes, IPC } from "@pi-desktop/shared";
+import {
+  ErrorCodes,
+  IPC,
+  validateRacpTerminalInputData,
+} from "@pi-desktop/shared";
 import type {
   AgentCompactResponse,
   AgentPromptRequest,
@@ -28,6 +32,12 @@ import type {
   RacpRequestContext,
   RacpSession,
   RacpTurn,
+  RemoteTerminalCloseRequest,
+  RemoteTerminalControlResult,
+  RemoteTerminalInputRequest,
+  RemoteTerminalOpenRequest,
+  RemoteTerminalOpenResult,
+  RemoteTerminalResizeRequest,
   SessionSummary,
   ToolPermissionResolution,
 } from "@pi-desktop/shared";
@@ -35,9 +45,11 @@ import type { RemoteBackend } from "./backend-router.js";
 import {
   makeRemoteQueuedTurnId,
   makeRemoteSessionId,
+  makeRemoteTerminalId,
   parseRemoteApprovalRequestId,
   parseRemoteQueuedTurnId,
   parseRemoteSessionId,
+  parseRemoteTerminalId,
   sessionIdForCall,
 } from "./backend-router.js";
 import { createRemoteHistory, type RemoteHistoryReadOptions } from "./remote-history.js";
@@ -88,6 +100,10 @@ export const HANDLED_CHANNELS: ReadonlySet<string> = new Set([
   IPC.invoke.fsRead,
   IPC.invoke.fsResolveRef,
   IPC.invoke.workspaceDiff,
+  IPC.invoke.remoteTerminalOpen,
+  IPC.invoke.remoteTerminalInput,
+  IPC.invoke.remoteTerminalResize,
+  IPC.invoke.remoteTerminalClose,
 ]);
 
 /** How many pushed prompts are remembered for queue listings. */
@@ -105,6 +121,31 @@ function capabilityUnavailable(message: string): Error {
 
 function internal(message: string): Error {
   return Object.assign(new Error(message), { errorCode: ErrorCodes.INTERNAL });
+}
+
+function invalidArgument(message: string): Error {
+  return Object.assign(new Error(message), { errorCode: ErrorCodes.INVALID_ARGUMENT });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isBase64(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
+}
+
+function isTerminalDimension(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 1000;
+}
+
+function terminalDimension(value: unknown, field: "cols" | "rows", optional = false): number | undefined {
+  if (value === undefined && optional) return undefined;
+  if (!isTerminalDimension(value)) {
+    throw invalidArgument(`${field} must be an integer between 1 and 1000`);
+  }
+  return value;
 }
 
 export function createRemoteBackend(options: RemoteBackendOptions): RemoteBackend {
@@ -136,6 +177,25 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
       throw internal("call does not address a session of this host");
     }
     return { remoteSessionId, hostSessionId: parsed.hostSessionId };
+  };
+
+  const terminalSessionOf = (args: readonly unknown[]) => {
+    const req = args[0];
+    if (!isRecord(req) || typeof req.sessionId !== "string" || !parseRemoteSessionId(req.sessionId)) {
+      throw invalidArgument("terminal requests require a remote sessionId");
+    }
+    return { req, ...sessionOf([req]) };
+  };
+
+  const hostTerminalIdOf = (remoteSessionId: string, terminalId: unknown): string => {
+    if (typeof terminalId !== "string") {
+      throw invalidArgument("terminalId is required");
+    }
+    const parsed = parseRemoteTerminalId(terminalId);
+    if (!parsed || parsed.remoteSessionId !== remoteSessionId) {
+      throw invalidArgument("terminalId does not belong to this remote session");
+    }
+    return parsed.hostTerminalId;
   };
 
   /** Resolve the turn to act on: an explicit id, else the session's active turn. */
@@ -417,6 +477,102 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
         return client.request("workspace/diff", {
           sessionId: sessionOf(args).hostSessionId,
         });
+      case IPC.invoke.remoteTerminalOpen: {
+        const { req, remoteSessionId, hostSessionId } = terminalSessionOf(args);
+        const request = req as unknown as RemoteTerminalOpenRequest;
+        const cols = terminalDimension(request.cols, "cols", true);
+        const rows = terminalDimension(request.rows, "rows", true);
+        if (
+          request.openRequestId !== undefined &&
+          (typeof request.openRequestId !== "string" ||
+            request.openRequestId.length < 1 ||
+            request.openRequestId.length > 128)
+        ) {
+          throw invalidArgument("openRequestId must contain 1 to 128 characters");
+        }
+        const hostTerminalId = request.terminalId === undefined
+          ? undefined
+          : hostTerminalIdOf(remoteSessionId, request.terminalId);
+        const opened = await client.request<unknown>("terminal/open", {
+          sessionId: hostSessionId,
+          ...(cols !== undefined ? { cols } : {}),
+          ...(rows !== undefined ? { rows } : {}),
+          ...(request.openRequestId ? { openRequestId: request.openRequestId } : {}),
+          ...(hostTerminalId ? { terminalId: hostTerminalId } : {}),
+        });
+        if (
+          !isRecord(opened) ||
+          typeof opened.terminalId !== "string" ||
+          opened.terminalId.length === 0 ||
+          !isBase64(opened.replay) ||
+          !isTerminalDimension(opened.cols) ||
+          !isTerminalDimension(opened.rows)
+        ) {
+          throw internal("remote host returned an invalid terminal/open result");
+        }
+        return {
+          terminalId: makeRemoteTerminalId(remoteSessionId, opened.terminalId),
+          replay: opened.replay,
+          cols: opened.cols,
+          rows: opened.rows,
+        } satisfies RemoteTerminalOpenResult;
+      }
+      case IPC.invoke.remoteTerminalInput: {
+        const { req, remoteSessionId } = terminalSessionOf(args);
+        const request = req as unknown as RemoteTerminalInputRequest;
+        const terminalId = hostTerminalIdOf(remoteSessionId, request.terminalId);
+        const validation = validateRacpTerminalInputData(request.data);
+        if (!validation.valid) {
+          if (validation.reason === "payload-too-large") {
+            throw Object.assign(new Error("terminal input exceeds the byte limit"), {
+              errorCode: ErrorCodes.PAYLOAD_TOO_LARGE,
+              data: {
+                limitBytes: validation.limitBytes,
+                ...(validation.byteLength === undefined
+                  ? {}
+                  : { actualBytes: validation.byteLength }),
+              },
+            });
+          }
+          throw invalidArgument(validation.reason === "invalid-base64"
+            ? "terminal input must use canonical Base64 encoding"
+            : "terminal input must contain valid UTF-8 bytes");
+        }
+        const result = await client.request<unknown>("terminal/input", {
+          terminalId,
+          data: request.data,
+        });
+        if (!isRecord(result) || result.ok !== true) {
+          throw internal("remote host returned an invalid terminal/input result");
+        }
+        return { ok: true } satisfies RemoteTerminalControlResult;
+      }
+      case IPC.invoke.remoteTerminalResize: {
+        const { req, remoteSessionId } = terminalSessionOf(args);
+        const request = req as unknown as RemoteTerminalResizeRequest;
+        const terminalId = hostTerminalIdOf(remoteSessionId, request.terminalId);
+        const cols = terminalDimension(request.cols, "cols");
+        const rows = terminalDimension(request.rows, "rows");
+        const result = await client.request<unknown>("terminal/resize", {
+          terminalId,
+          cols,
+          rows,
+        });
+        if (!isRecord(result) || result.ok !== true) {
+          throw internal("remote host returned an invalid terminal/resize result");
+        }
+        return { ok: true } satisfies RemoteTerminalControlResult;
+      }
+      case IPC.invoke.remoteTerminalClose: {
+        const { req, remoteSessionId } = terminalSessionOf(args);
+        const request = req as unknown as RemoteTerminalCloseRequest;
+        const terminalId = hostTerminalIdOf(remoteSessionId, request.terminalId);
+        const result = await client.request<unknown>("terminal/close", { terminalId });
+        if (!isRecord(result) || result.ok !== true) {
+          throw internal("remote host returned an invalid terminal/close result");
+        }
+        return { ok: true } satisfies RemoteTerminalControlResult;
+      }
       case IPC.invoke.fsResolveRef:
         // Chat links are resolved against the local workspace; a remote
         // transcript's paths name host files, so none resolves here.

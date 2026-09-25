@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentEventEnvelope, RacpEventEnvelope, RacpInitializeResult, RacpSessionSnapshot, RacpTurn, UiMessage } from "@pi-desktop/shared";
+import { RACP_TERMINAL_INPUT_MAX_BYTES } from "@pi-desktop/shared";
 import { RacpError } from "@pi-desktop/agent-host";
 
 import { hashToken, newDeviceToken, newPairingToken } from "./auth.js";
@@ -372,6 +373,18 @@ describe("RACP-WS remote-host profile", () => {
     const opened = await client.request<{ terminalId: string }>("terminal/open", { sessionId: "s1", openRequestId: "open-1" });
     expect(opened.terminalId).toBe("term_1");
     await client.request("terminal/input", { terminalId: opened.terminalId, data: "aGk=" });
+    await expect(client.request("terminal/input", { terminalId: opened.terminalId, data: "YR==" })).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
+    await expect(client.request("terminal/input", { terminalId: opened.terminalId, data: "/w==" })).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
+    await expect(
+      client.request("terminal/input", {
+        terminalId: opened.terminalId,
+        data: Buffer.alloc(RACP_TERMINAL_INPUT_MAX_BYTES + 1).toString("base64"),
+      }),
+    ).rejects.toMatchObject({
+      code: "PAYLOAD_TOO_LARGE",
+      details: { details: { limitBytes: RACP_TERMINAL_INPUT_MAX_BYTES, actualBytes: RACP_TERMINAL_INPUT_MAX_BYTES + 1 } },
+    });
+    expect(calls.filter((call) => call.operation === "input")).toHaveLength(1);
     terminalRecords.get(opened.terminalId)?.sink.output("b3V0");
     await flush();
     expect(events.at(-1)).toMatchObject({ scope: "session", sessionId: "s1", kind: "terminal.output", payload: { terminalId: "term_1", data: "b3V0" } });

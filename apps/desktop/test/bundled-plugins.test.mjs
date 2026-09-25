@@ -24,6 +24,7 @@ const viewBundle = read(`${FILE_MANAGER}/views/assets/index.js`);
 const upstream = read(`${FILE_MANAGER}/UPSTREAM.md`);
 const panelSource = read("src/components/workpanel/WorkPanel.tsx");
 const hostProcessSource = read("electron/main/host-process.ts");
+const remoteHostConnectionSource = read("electron/main/remote/remote-host-connection.ts");
 const packageJson = JSON.parse(read("package.json"));
 
 test("the file view ships as an ordinary plugin, not a privileged one", () => {
@@ -96,10 +97,16 @@ test("the host no longer bundles the old Files plugin", () => {
 test("the host no longer offers Files or Browser as built-in tools", () => {
   assert.doesNotMatch(panelSource, /const HEADER_TOOLS/);
   assert.doesNotMatch(panelSource, /kind: "browser"/);
-  assert.doesNotMatch(panelSource, /kind: "terminal"/);
   // Review and file remain artifact/resource surfaces the conversation opens.
   assert.match(panelSource, /activeTab\?\.kind === "file"/);
   assert.match(panelSource, /activeTab\?\.kind === "review"/);
+});
+
+test("the WorkPanel terminal is exposed only for a remote Host that advertises it", () => {
+  assert.match(panelSource, /sessionSurfaceGates\(activeSession\)\.canTerminal/);
+  assert.match(panelSource, /activeTab\?\.kind === "terminal"/);
+  assert.match(panelSource, /<RemoteTerminalTab/);
+  assert.match(remoteHostConnectionSource, /hostCapabilities\?\.\(\)\?\.terminal === true/);
 });
 
 test("Review opens only from an explicit user action", () => {

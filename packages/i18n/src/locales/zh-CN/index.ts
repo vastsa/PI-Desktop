@@ -1809,6 +1809,16 @@ sklm: {
       file: "文件",
       plugin: "插件视图",
       subagent: "子智能体",
+      terminal: "终端",
+    },
+    terminal: {
+      host: "远程主机：{{host}}",
+      connecting: "正在连接…",
+      connected: "已连接",
+      exited: "Shell 已退出（{{code}}）",
+      failed: "无法打开远程终端。",
+      unavailable: "此 Host 未提供终端。",
+      retry: "重新连接",
     },
     pluginView: {
       failed: "无法加载该视图。请重新加载插件后重试。",

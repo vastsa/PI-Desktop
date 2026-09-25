@@ -113,6 +113,24 @@ test("a global server contributes mcp_-prefixed tools to any session", async (t)
   assert.equal((await rt.toolsForProject(null)).length, 2);
 });
 
+test("remote session discovery follows global activation scope without a Host workspace", async (t) => {
+  const dir = stubDir();
+  const rt = runtime(t);
+  const changes = [];
+  rt.onCatalogChanged(() => changes.push("changed"));
+  rt.setRecords([
+    stubRecord(dir, { id: "global" }),
+    stubRecord(dir, {
+      id: "project-only",
+      scope: { mode: "projects", projects: ["/remote/repo"] },
+    }),
+  ]);
+
+  const tools = await rt.toolsForRemoteSession();
+  assert.deepEqual(tools.map((tool) => tool.fullName), ["mcp_global_lookup", "mcp_global_ping"]);
+  assert.deepEqual(changes, ["changed"]);
+});
+
 test("refreshing HTTP MCP status detects a server that went offline", async (t) => {
   let online = true;
   let pings = 0;

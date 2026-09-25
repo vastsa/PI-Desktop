@@ -1838,6 +1838,16 @@ sklm: {
       file: "파일",
       plugin: "플러그인 화면",
       subagent: "서브에이전트",
+      terminal: "터미널",
+    },
+    terminal: {
+      host: "원격 호스트: {{host}}",
+      connecting: "연결 중…",
+      connected: "연결됨",
+      exited: "셸 종료됨 ({{code}})",
+      failed: "원격 터미널을 열 수 없습니다.",
+      unavailable: "이 Host는 터미널을 제공하지 않습니다.",
+      retry: "다시 연결",
     },
     pluginView: {
       failed: "이 화면을 불러올 수 없습니다. 플러그인을 새로 고친 후 다시 시도하세요.",

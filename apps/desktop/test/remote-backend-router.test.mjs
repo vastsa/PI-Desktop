@@ -17,6 +17,7 @@ const {
   parseRemoteQueuedTurnId,
   createBackendRouter,
   makeRemoteSessionId,
+  makeRemoteTerminalId,
   parseRemoteSessionId,
   isRemoteSessionId,
   sessionIdForCall,
@@ -78,6 +79,62 @@ test("a call naming no remote session always routes locally", async () => {
   const router = createBackendRouter();
   assert.equal(await router.route(IPC.invoke.sessionGet, [{ id: "local" }]), ROUTE_LOCAL);
   assert.equal(await router.route(IPC.invoke.sessionGet, []), ROUTE_LOCAL);
+});
+
+test("terminal calls use the session id on each request to pick its exact host", async () => {
+  const router = createBackendRouter();
+  const hostSessions = [];
+  const makeTerminalBackend = (hostKey) => createRemoteBackend({
+    hostKey,
+    hostLabel: hostKey,
+    newRequestId: () => "request-id",
+    client: {
+      request: async (method, params) => {
+        hostSessions.push({ hostKey, method, params });
+        return { terminalId: `${hostKey}-terminal`, replay: "", cols: 80, rows: 24 };
+      },
+    },
+  });
+  router.registerHost("hostA", makeTerminalBackend("hostA"));
+  router.registerHost("hostB", makeTerminalBackend("hostB"));
+  const sessionA = makeRemoteSessionId("hostA", "session-a");
+  const sessionB = makeRemoteSessionId("hostB", "session-b");
+  const resultA = await router.route(IPC.invoke.remoteTerminalOpen, [{ sessionId: sessionA }]);
+  const resultB = await router.route(IPC.invoke.remoteTerminalOpen, [{ sessionId: sessionB }]);
+  assert.equal(resultA.value.terminalId, makeRemoteTerminalId(sessionA, "hostA-terminal"));
+  assert.equal(resultB.value.terminalId, makeRemoteTerminalId(sessionB, "hostB-terminal"));
+  assert.deepEqual(hostSessions, [
+    { hostKey: "hostA", method: "terminal/open", params: { sessionId: "session-a" } },
+    { hostKey: "hostB", method: "terminal/open", params: { sessionId: "session-b" } },
+  ]);
+});
+
+test("terminal RACP failures reach IPC callers with their public error code", async () => {
+  const router = createBackendRouter();
+  const sessionId = makeRemoteSessionId("hostA", "session-a");
+  router.registerHost("hostA", createRemoteBackend({
+    hostKey: "hostA",
+    hostLabel: "Host A",
+    client: {
+      request: async () => {
+        throw Object.assign(new Error("terminal is not attached"), {
+          code: "NOT_FOUND",
+          retriable: false,
+        });
+      },
+    },
+  }));
+  await assert.rejects(
+    router.route(IPC.invoke.remoteTerminalInput, [{
+      sessionId,
+      terminalId: makeRemoteTerminalId(sessionId, "host-terminal"),
+      data: "eA==",
+    }]),
+    (error) =>
+      error.errorCode === "NOT_FOUND" &&
+      error.message === "terminal is not attached" &&
+      error.data.retriable === false,
+  );
 });
 
 test("a remote call with no registered host fails closed with retriable HOST_UNAVAILABLE", async () => {

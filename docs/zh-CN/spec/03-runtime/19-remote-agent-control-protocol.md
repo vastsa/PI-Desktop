@@ -211,7 +211,7 @@ owner，工作区读取都按会话持久根、Host 忽略规则和 `PATH_OUTSID
 | `workspace/read` | viewer | 读取会话根下的一个有界文件，图片以 data URL 返回 |
 | `workspace/diff` | viewer | 返回会话根的工作树 diff |
 | `terminal/open` | owner | 在 Host 上以会话根为 cwd 打开 pty，或连接已有终端；返回终端 id、尺寸和有界输出回放环 |
-| `terminal/input` | owner | 向当前连接已连接的终端写入字节 |
+| `terminal/input` | owner | 向当前连接已连接的终端写入最多 64 KiB 的规范 Base64 UTF-8 字节 |
 | `terminal/resize` | owner | 调整当前连接已连接的终端尺寸 |
 | `terminal/close` | owner | 关闭当前连接已连接的终端；已关闭终端对其所属主体重复关闭时幂等 |
 | `connection/pair` | authenticated | 用升级请求携带的一次性配对令牌换取设备凭证（安全规格 §3.4）；仅在配对连接上有效（D448） |
@@ -236,6 +236,12 @@ owner 设备。Host 未提供终端实现时会公布 `terminal: false` 并拒�
 输出流。返回的有界回放环只包含终端输出；之后的新输出通过 `terminal.output` 流式发送。
 连接断开后，客户端不得重放或自动重试 `terminal/input`，因为响应丢失前输入可能已经到达
 shell。
+
+`terminal/input.data` 必须是包含有效 UTF-8 字节的规范填充标准 Base64。每个请求解码后最多
+64 KiB；空值是有效的空操作。在该上限对应的最大编码长度以内，Base64 格式不规范或 UTF-8
+无效时返回 `INVALID_ARGUMENT`。超过最大编码长度的值会在解码前以 `PAYLOAD_TOO_LARGE` 拒绝；
+其他解码后超过 64 KiB 的输入也返回 `PAYLOAD_TOO_LARGE`。错误包含 `details.limitBytes`；
+能够从规范编码精确计算长度时还会返回 `details.actualBytes`。
 
 终端仍打开时，`terminal/close` 也要求当前连接已连接该终端。终端已经关闭后，仅其所属
 主体重复关闭才作为空操作成功。`terminal.changed` 和 `terminal.output` 都是连接内通知，
@@ -266,13 +272,27 @@ controller 接入才继续释放，重启绝不无人值守地启动工作。远
 中较低者之下，结果以 `effectivePermissionMode` 报告，不改变持久会话模式。经 SSH
 配对的桌面设备默认豁免上限，Host 策略 `applyCeilingToPairedDevices` 可重新施加。
 
-反向工具中继：作为 `owner` 配对的桌面可用 `tools/advertise` 公布在桌面执行的工具，
-即用户配置的 MCP 服务器和不需要会话工作区的插件工具；Host 在公布连接存活期间把
-它们并入该会话目录。Agent 调用时 Host 先走正常权限流程，再向公布连接发送
-`tool/execute` 服务端请求，客户端在本地插件权限与确认规则下执行并返回有界结果。
-中继工具绝不在 Host 运行、绝不收到 Host secret；截止时间是工具自身超时；公布连接
-断开则工具以 `TOOL_FAILED` 失败而回合继续；需要工作区或文件系统访问的插件工具不被
-接受。
+反向工具中继：`owner` 可用 `tools/advertise` 替换该连接在某个会话的工具目录；断开时
+Host 清除该连接的所有公布。Host 只接受 `plugin_` 或 `mcp_` 名称、明确声明
+`workspaceFree: true` 的工具，以及有界的对象 JSON Schema；Host 不根据名称推断工作区安全性。
+每个会话目录最多 64 个工具和 512 KiB 描述符；名称最多 160 字符、描述最多 4 KiB、
+schema 最多 64 KiB，深度最多 16、节点最多 4,096，超时为 100 ms 至 120 秒，参数和结果
+各最多 256 KiB。拒绝重复名称和包含 `$ref`、`$dynamicRef` 或 `$recursiveRef` 的 schema。
+
+回合启动时 Host 固定当时的目录快照，只把这些已公布工具交给 Agent；目录中的每项都绑定
+原公布连接和 revision。若公布被替换或连接断开，该快照条目立即失效；Host 不会按相同名称
+改路由到另一连接。名称冲突的工具不会进入 Agent 目录。Agent 调用时 Host 先执行正常权限
+检查，再向该原连接发 `tool/execute`，使用广告中的超时；未公布工具、会话/回合不匹配、
+超时、断开、无效响应或客户端错误均以 `TOOL_FAILED` 结束该工具调用，并允许回合继续，
+不会跨连接重试。核心、系统和工作区工具不经过中继；客户端不得提供风险或 Plan 安全元数据，
+中继插件工具在没有 Host 验证的 Plan 安全元数据时不适用于 Plan/Goal。
+
+`workspaceFree: true` 是 owner 对工具来源的声明，不是 Host 独立验证来源的证明；Host 只校验
+该字段为字面量 `true`、角色/能力、schema 和有界限制，并执行 Host 权限策略。桌面必须从可信的
+来源注册信息推导此声明；来源元数据缺失或不确定时必须拒绝公布。初版桌面适配器只能公布
+`toolsForProject(null)` 返回的全局 User MCP 工具；在可信插件分类器和产品决定完成前不公布插件工具。
+目前 Host/RACP 契约测试覆盖中继路径；桌面 global User MCP 适配器已实现，尚待审查与验证，
+Linux SSH 全流程 harness 仍未具备，因此 E2E-231 仍为草稿。
 
 ```json
 {"jsonrpc":"2.0","id":"server-request-77","method":"tool/execute","params":{"executionId":"exec_01J","toolName":"mcp_corp_search"}}

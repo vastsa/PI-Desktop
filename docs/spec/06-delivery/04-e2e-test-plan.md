@@ -13058,7 +13058,9 @@ browser milestones are scheduled.
   path outside the root returns
   `PATH_OUTSIDE_WORKSPACE`; the desktop MCP tool executes on the desktop and
   its result reaches the remote transcript, while the second call fails with
-  `TOOL_FAILED` and the turn continues; the terminal runs on the remote
+  `TOOL_FAILED` and the turn continues; replacing an advertisement during an
+  in-flight turn invalidates its old snapshot entry and never routes that call
+  to the replacement connection; the terminal runs on the remote
   machine inside the session root; only the SSH-paired owner can operate it;
   the same `openRequestId` reattaches to the existing PTY after a lost open
   response, and a different session cannot attach to it; the previous
@@ -13078,7 +13080,14 @@ browser milestones are scheduled.
   `06-delivery/07-remote-control-rollout.md` §2
 - **Acceptance**: E (tools & permissions), Security, Recovery, Quality
 - **Milestone**: Post-MVP (rollout R2)
-- **Status**: Draft; remote harness with a Linux SSH target required
+- **Status**: Draft; RACP and Host Runtime relay contract/user-path coverage is
+  in `packages/racp/src/tool-relay.test.ts`,
+  `packages/host-runtime/src/remote-tool-relay.test.ts`, and
+  `packages/host-runtime/src/runtime-service.test.ts`. The Desktop global User
+  MCP adapter has targeted coverage in
+  `apps/desktop/test/remote-tool-relay.test.mjs` and
+  `apps/desktop/test/user-mcp.test.mjs`; the remote harness with a Linux SSH
+  target is still required for this end-to-end acceptance.
 
 The permission-ceiling acceptance above also needs an isolated Host policy
 fixture with `applyCeilingToPairedDevices: true`, a seeded `accept-edits`

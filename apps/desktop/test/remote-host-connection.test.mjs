@@ -19,12 +19,20 @@ const HOST_KEY = "hostA";
 
 /** A minimal RacpClient/subscribe double. Records requests and lets tests
  * push envelopes back to whichever listener attached last. */
-function fakeClient({ sessions = [], requestFailures = {}, responses = {} } = {}) {
+function fakeClient({ sessions = [], requestFailures = {}, responses = {}, hostCapabilities = {} } = {}) {
   const calls = [];
   let listener = null;
   let next = 0;
+  const subscriptionCloseListeners = new Set();
+  const serverRequestListeners = new Set();
+  const stateListeners = new Set();
+  const reconnectListeners = new Set();
   return {
     calls,
+    hostCapabilities: () => hostCapabilities,
+    initialized: () => ({ principal: { roles: ["owner"] } }),
+    cursorFor: (sessionId) => ({ epoch: "epoch-1", sequence: sessionId === "s1" ? 8 : 0 }),
+    cursorForHost: () => ({ epoch: "epoch-1", sequence: 4 }),
     request: async (method, params) => {
       calls.push({ method, params });
       if (requestFailures[method]) throw requestFailures[method];
@@ -39,12 +47,39 @@ function fakeClient({ sessions = [], requestFailures = {}, responses = {} } = {}
         if (listener === fn) listener = null;
       };
     },
+    onSubscriptionClosed: (fn) => {
+      subscriptionCloseListeners.add(fn);
+      return () => subscriptionCloseListeners.delete(fn);
+    },
+    onServerRequest: (fn) => {
+      serverRequestListeners.add(fn);
+      return () => serverRequestListeners.delete(fn);
+    },
+    onConnectionState: (fn) => {
+      stateListeners.add(fn);
+      return () => stateListeners.delete(fn);
+    },
+    onReconnected: (fn) => {
+      reconnectListeners.add(fn);
+      return () => reconnectListeners.delete(fn);
+    },
     // Test-only escape hatch used to inject envelopes as if from the host.
     push(envelope) {
       if (!listener) throw new Error("no listener attached");
       listener(envelope);
     },
     hasListener: () => listener !== null,
+    async recover() {
+      for (const fn of reconnectListeners) await fn();
+    },
+    changeState(state, error) {
+      for (const fn of stateListeners) fn(state, error);
+    },
+    async serverRequest(method, params) {
+      const handlers = [...serverRequestListeners];
+      if (handlers.length !== 1) throw new Error("no unique server request handler");
+      return handlers[0](method, params);
+    },
   };
 }
 
@@ -64,6 +99,14 @@ function makeSession(id, overrides = {}) {
   };
 }
 
+function lifecycleEnvelope(kind, session) {
+  return makeEnvelope({
+    scope: "host",
+    kind,
+    payload: { session },
+  });
+}
+
 function makeEnvelope(overrides = {}) {
   return {
     eventId: "e1",
@@ -77,23 +120,40 @@ function makeEnvelope(overrides = {}) {
   };
 }
 
-function setup({ sessions = [], requestFailures = {}, responses = {} } = {}) {
+function setup({ sessions = [], requestFailures = {}, responses = {}, hostCapabilities = {}, toolRelay, onEmit } = {}) {
   const events = [];
   const router = createBackendRouter();
-  const client = fakeClient({ sessions, requestFailures, responses });
+  const client = fakeClient({ sessions, requestFailures, responses, hostCapabilities });
   const conn = createRemoteHostConnection({
     hostKey: HOST_KEY,
     hostLabel: "Host A",
     client,
     router,
-    emit: (channel, payload) => events.push({ channel, payload }),
+    emit: (channel, payload) => {
+      events.push({ channel, payload });
+      onEmit?.(channel, payload);
+    },
     newRequestId: () => "req-const",
+    ...(toolRelay ? { toolRelay } : {}),
   });
   return { conn, router, client, events };
 }
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
+async function waitFor(predicate) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) return;
+    await flush();
+  }
+  assert.fail("condition did not become true");
+}
 const remote = (id) => makeRemoteSessionId(HOST_KEY, id);
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 test("open registers the host, subscribes host scope before listing, and subscribes no session", async () => {
   const { conn, router, client } = setup({ sessions: [makeSession("s1"), makeSession("s2")] });
@@ -122,6 +182,19 @@ test("listSessions returns cached summaries newest first", async () => {
   const noted = conn.noteSession(makeSession("fresh", { updatedAt: "2026-09-20T10:00:00.000Z" }));
   assert.equal(noted.id, remote("fresh"));
   assert.equal(conn.listSessions()[0].id, remote("fresh"));
+});
+
+test("a remote session exposes the terminal surface only when its Host advertises it", async () => {
+  const available = setup({
+    sessions: [makeSession("s-terminal")],
+    hostCapabilities: { terminal: true },
+  });
+  await available.conn.open();
+  assert.equal(available.conn.listSessions()[0].capabilities.canTerminal, true);
+
+  const unavailable = setup({ sessions: [makeSession("s-no-terminal")] });
+  await unavailable.conn.open();
+  assert.equal(unavailable.conn.listSessions()[0].capabilities.canTerminal, false);
 });
 
 test("open is idempotent — a second call does not re-subscribe or re-register", async () => {
@@ -247,6 +320,137 @@ test("session/list failure keeps the host registered with an empty list and does
   assert.deepEqual(conn.listSessions(), []);
   assert.ok(router.backendForHost(HOST_KEY));
   assert.equal(client.hasListener(), true);
+});
+
+test("reconnect restores cursors, overlays ordered lifecycle events on the snapshot, then re-advertises", async () => {
+  const snapshot = deferred();
+  let listCalls = 0;
+  const capabilities = { terminal: true };
+  const relayCalls = [];
+  const order = [];
+  const toolRelay = {
+    addSession: async (sessionId) => { relayCalls.push(["add", sessionId]); order.push(`add:${sessionId}`); },
+    removeSession: (sessionId) => { relayCalls.push(["remove", sessionId]); order.push(`remove:${sessionId}`); },
+    handleServerRequest: async () => ({ result: "ok", isError: false }),
+    disconnected: () => relayCalls.push(["disconnected"]),
+    reconnected: async () => { relayCalls.push(["reconnected"]); order.push("relay-reconnected"); },
+    close: () => relayCalls.push(["close"]),
+  };
+  const { conn, client, router, events } = setup({
+    sessions: [makeSession("s1"), makeSession("s3")],
+    hostCapabilities: capabilities,
+    toolRelay,
+    onEmit: (_channel, payload) => {
+      if (payload.reason === "remote.host.reconnected") order.push("host-reconnected-event");
+    },
+    responses: {
+      "session/list": () => {
+        listCalls += 1;
+        if (listCalls === 1) return { sessions: [makeSession("s1"), makeSession("s3")] };
+        return snapshot.promise;
+      },
+      "session/attach": () => ({
+        session: makeSession("s1"),
+        snapshot: { session: makeSession("s1"), items: [], hasMoreHistory: false, cursor: { epoch: "epoch-1", sequence: 8 } },
+      }),
+    },
+  });
+  await conn.open();
+  await router.route(IPC.invoke.sessionGet, [{ id: remote("s1"), messageLimit: 10 }]);
+  client.changeState("reconnecting");
+  capabilities.terminal = false;
+
+  const restoring = client.recover();
+  await waitFor(() => listCalls === 2);
+  assert.ok(client.calls.some((call) => call.method === "events/subscribe" &&
+    call.params.scope === "host" && call.params.after?.sequence === 4));
+  assert.ok(client.calls.some((call) => call.method === "events/subscribe" &&
+    call.params.scope === "session" && call.params.sessionId === "s1" && call.params.after?.sequence === 8));
+
+  client.push(lifecycleEnvelope("session.changed", {
+    id: "s1",
+    title: "renamed during refresh",
+    updatedAt: "2026-09-21T10:00:00.000Z",
+  }));
+  client.push(lifecycleEnvelope("session.created", makeSession("s2")));
+  client.push(lifecycleEnvelope("session.archived", { id: "s3" }));
+  snapshot.resolve({ sessions: [makeSession("s1", { title: "stale snapshot" }), makeSession("s3")] });
+  await restoring;
+
+  const listed = conn.listSessions();
+  assert.equal(listed.find((session) => session.id === remote("s1")).title, "renamed during refresh");
+  assert.ok(listed.some((session) => session.id === remote("s2")));
+  assert.equal(listed.some((session) => session.id === remote("s3")), false);
+  assert.equal(listed.find((session) => session.id === remote("s1")).capabilities.canTerminal, false);
+  assert.deepEqual(relayCalls.filter(([kind]) => kind === "remove"), [["remove", "s3"]]);
+  const recoveryRelayIndex = relayCalls.findIndex(([kind]) => kind === "reconnected");
+  const lastRestoredSessionIndex = Math.max(
+    relayCalls.findIndex(([kind, sessionId]) => kind === "add" && sessionId === "s1"),
+    relayCalls.findIndex(([kind, sessionId]) => kind === "add" && sessionId === "s2"),
+  );
+  assert.ok(recoveryRelayIndex > lastRestoredSessionIndex);
+  assert.ok(order.indexOf("host-reconnected-event") > order.indexOf("relay-reconnected"));
+  assert.ok(events.some(({ payload }) => payload.reason === "remote.host.reconnecting" && payload.hostKey === HOST_KEY));
+  assert.ok(events.some(({ payload }) => payload.reason === "remote.host.reconnected" && payload.hostKey === HOST_KEY));
+});
+
+test("closing during reconnect prevents a late snapshot from restoring sessions or relay state", async () => {
+  const snapshot = deferred();
+  let listCalls = 0;
+  const relayCalls = [];
+  const toolRelay = {
+    addSession: async (sessionId) => relayCalls.push(["add", sessionId]),
+    removeSession: (sessionId) => relayCalls.push(["remove", sessionId]),
+    handleServerRequest: async () => ({ result: "ok", isError: false }),
+    disconnected: () => relayCalls.push(["disconnected"]),
+    reconnected: async () => relayCalls.push(["reconnected"]),
+    close: () => relayCalls.push(["close"]),
+  };
+  const { conn, client, events } = setup({
+    sessions: [makeSession("s1")],
+    toolRelay,
+    responses: {
+      "session/list": () => {
+        listCalls += 1;
+        return listCalls === 1 ? { sessions: [makeSession("s1")] } : snapshot.promise;
+      },
+    },
+  });
+  await conn.open();
+  const restoring = client.recover();
+  await waitFor(() => listCalls === 2);
+  await conn.close();
+  snapshot.resolve({ sessions: [makeSession("late")] });
+  await restoring;
+
+  assert.deepEqual(conn.listSessions(), []);
+  assert.equal(relayCalls.some(([kind]) => kind === "reconnected"), false);
+  assert.equal(events.some(({ payload }) => payload.reason === "remote.host.reconnected"), false);
+  assert.ok(relayCalls.some(([kind]) => kind === "close"));
+});
+
+test("connection status and tool request listeners are detached on close", async () => {
+  const relayCalls = [];
+  const toolRelay = {
+    addSession: async () => undefined,
+    removeSession: () => undefined,
+    handleServerRequest: async (method, params) => {
+      relayCalls.push([method, params]);
+      return { result: "ok", isError: false };
+    },
+    disconnected: () => relayCalls.push(["disconnected"]),
+    reconnected: async () => undefined,
+    close: () => undefined,
+  };
+  const { conn, client, events } = setup({ toolRelay });
+  await conn.open();
+  assert.deepEqual(await client.serverRequest("tool/execute", { sessionId: "s1" }), { result: "ok", isError: false });
+  client.changeState("reconnecting");
+  client.changeState("error");
+  assert.ok(events.some(({ payload }) => payload.reason === "remote.host.reconnecting"));
+  assert.ok(events.some(({ payload }) => payload.reason === "remote.host.error"));
+  await conn.close();
+  await assert.rejects(client.serverRequest("tool/execute", {}), /handler/i);
 });
 
 test("a burst of queue-affecting session events emits agentQueueChanged once", async () => {

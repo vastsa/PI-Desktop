@@ -5,6 +5,8 @@ import type {
   RacpPermissionMode,
   RacpPlanningState,
   RacpRole,
+  RacpRelayTool,
+  RacpToolExecuteParams,
 } from "@pi-desktop/shared";
 
 /** Who is calling. The local desktop uses an `owner` principal with `pairedDevice`. */
@@ -72,6 +74,33 @@ export interface RuntimePort {
   /** Runtime-side busy state the event stream cannot see, e.g. a manual
    * compaction; a busy session queues instead of starting. */
   isBusy?(sessionId: string): boolean;
+}
+
+export type ToolRelayCatalogSnapshot = {
+  id: string;
+  tools: RacpRelayTool[];
+};
+
+export type ToolRelayExecutionResult = {
+  ok: boolean;
+  content: unknown;
+  errorCode?: string;
+};
+
+/** Host-owned boundary for tools that execute on one connected owner device. */
+export interface ToolRelayPort {
+  advertise(input: {
+    connectionId: string;
+    sessionId: string;
+    tools: RacpRelayTool[];
+    request: (method: string, params: unknown, timeoutMs: number) => Promise<unknown>;
+  }): void;
+  clearConnection(connectionId: string): void;
+  captureCatalog(sessionId: string): ToolRelayCatalogSnapshot;
+  bindTurn(catalogId: string, sessionId: string, turnId: string): void;
+  releaseCatalog(catalogId: string): void;
+  releaseTurn(sessionId: string, turnId: string): void;
+  execute(input: RacpToolExecuteParams): Promise<ToolRelayExecutionResult>;
 }
 
 export type QueuedTurnRecord = {

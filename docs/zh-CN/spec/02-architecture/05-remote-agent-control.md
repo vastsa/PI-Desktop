@@ -120,11 +120,13 @@ Host 策略 `applyCeilingToPairedDevices`（默认关闭）可重新施加。
 远程会话的归属划分：远端 Host 拥有 transcript 与 SQLite、回合与队列、内置工具
 目录与工作区边界、权限与会话授权、provider secret、该机器 `~/.agents` 下的
 skills 与子代理定义、该 Host 配置的 MCP 服务器和定时任务；桌面保留窗口与
-shell、本地会话、本地应用的设置 UI、插件面板、浏览器预览和通知展示。桌面通过
-`tools/advertise` 公布其用户配置的 MCP 服务器和不需要会话工作区的插件工具，它们
-以中继工具身份出现在远程会话目录中，经 `tool/execute` 服务端请求在桌面自身的插件
-权限下执行；需要工作区或文件系统访问的插件工具被排除，因为它们会作用于桌面的
-文件系统。工作面板的文件列表、文件读取和 diff 使用远端 Host profile 操作；终端
+shell、本地会话、本地应用的设置 UI、插件面板、浏览器预览和通知展示。初版桌面适配器
+只能通过 `tools/advertise` 公布 `toolsForProject(null)` 返回的全局 User MCP；它们以中继
+工具出现在远程会话目录中，经 `tool/execute` 服务端请求在桌面执行。`workspaceFree` 是
+owner 侧来源断言，Host 无法独立检查远端来源；桌面必须依据可信来源元数据推导并失败关闭。
+在可信插件分类器和产品决定完成前不公布插件工具。需要会话工作区或文件系统访问的工具必须
+排除，因为它们会作用于桌面的文件系统，而会话根位于 Host。工作面板的文件列表、文件读取和 diff
+使用远端 Host profile 操作；终端
 通过 `terminal/*` 操作在远端机器运行并带有界回放环；浏览器预览留在本地。
 
 Host 为每个会话生成 `epoch`，并在其中为持久事件分配严格递增的

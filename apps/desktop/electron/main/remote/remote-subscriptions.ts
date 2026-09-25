@@ -16,6 +16,8 @@ import type { RacpCursor, RacpEventEnvelope, RacpSessionStatus } from "@pi-deskt
 
 export type RemoteSubscriptionClient = {
   request<T>(method: string, params?: unknown): Promise<T>;
+  cursorFor?(sessionId: string): RacpCursor | undefined;
+  cursorForHost?(): RacpCursor | undefined;
 };
 
 export type RemoteSubscriptionsOptions = {
@@ -31,7 +33,7 @@ export type RemoteSubscriptionsOptions = {
 
 export interface RemoteSubscriptions {
   /** Subscribe to the host scope; held for the connection's lifetime. */
-  openHost(): Promise<void>;
+  openHost(after?: RacpCursor): Promise<void>;
   /**
    * Make sure `hostSessionId` streams, evicting the least recently used idle
    * session when the cap is reached. `after` resumes from an attach cursor.
@@ -45,6 +47,8 @@ export interface RemoteSubscriptions {
   observe(envelope: RacpEventEnvelope): void;
   /** The host closed a subscription; reopen it from `lastSafeCursor`. */
   closed(subscriptionId: string, lastSafeCursor: RacpCursor): void;
+  /** Restore retained scopes after the transport reconnects. */
+  reconnect(): Promise<void>;
   /** Whether `hostSessionId` currently holds a subscription. */
   isSubscribed(hostSessionId: string): boolean;
   /** Forget every subscription (the transport went away). */
@@ -79,6 +83,7 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
   const acks = new Map<string, AckState>();
   let clock = 0;
   let generation = 0;
+  let restoring: Promise<void> | null = null;
 
   const subscriptionOwner = (subscriptionId: string): string | null => {
     for (const [sessionId, slot] of slots) {
@@ -150,7 +155,9 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
         slot.subscriptionId = subscriptionId;
       })
       .catch((error) => {
-        if (slots.get(hostSessionId) === slot) slots.delete(hostSessionId);
+        if (slots.get(hostSessionId) === slot && errorCode(error) !== "HOST_DISCONNECTED") {
+          slots.delete(hostSessionId);
+        }
         log("warn", `events/subscribe failed for session ${hostSessionId}`, error);
       })
       .finally(() => {
@@ -160,21 +167,42 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
     return pending;
   };
 
+  const clearAcks = () => {
+    for (const state of acks.values()) {
+      if (state.timer) clearTimeout(state.timer);
+    }
+    acks.clear();
+  };
+
   return {
-    async openHost() {
+    async openHost(after) {
       const startedIn = generation;
       try {
-        const subscriptionId = await subscribe({ scope: "host" });
+        const subscriptionId = await subscribe({
+          scope: "host",
+          ...(after ? { after } : {}),
+        });
         if (startedIn === generation) hostSubscriptionId = subscriptionId;
       } catch (error) {
         log("warn", "events/subscribe host scope failed", error);
       }
     },
     async touch(hostSessionId, after) {
+      if (restoring) {
+        await restoring;
+        return this.touch(hostSessionId, after);
+      }
       const existing = slots.get(hostSessionId);
       if (existing) {
         existing.usedAt = ++clock;
         if (existing.pending) await existing.pending;
+        else if (!existing.subscriptionId) {
+          await open(
+            hostSessionId,
+            existing,
+            after ?? client.cursorFor?.(hostSessionId),
+          );
+        }
         return;
       }
       if (slots.size >= capacity) {
@@ -247,16 +275,52 @@ export function createRemoteSubscriptions(options: RemoteSubscriptionsOptions): 
       slot.subscriptionId = null;
       void open(owner, slot, lastSafeCursor);
     },
+    async reconnect() {
+      if (restoring) return restoring;
+      const startedIn = ++generation;
+      clearAcks();
+      hostSubscriptionId = null;
+      const retained = [...slots.entries()];
+      for (const [, slot] of retained) slot.subscriptionId = null;
+      const restore = async () => {
+        await Promise.all(
+          retained.flatMap(([, slot]) => slot.pending ? [slot.pending] : []),
+        );
+        if (startedIn !== generation) return;
+        await this.openHost(client.cursorForHost?.());
+        if (startedIn !== generation) return;
+        await Promise.all(
+          retained.map(([sessionId, slot]) =>
+            slots.get(sessionId) === slot
+              ? open(sessionId, slot, client.cursorFor?.(sessionId))
+              : Promise.resolve(),
+          ),
+        );
+      };
+      const pending = restore();
+      restoring = pending;
+      try {
+        await pending;
+      } finally {
+        if (restoring === pending) restoring = null;
+      }
+    },
     isSubscribed(hostSessionId) {
       return slots.has(hostSessionId);
     },
     reset() {
       generation += 1;
-      for (const state of acks.values()) if (state.timer) clearTimeout(state.timer);
-      acks.clear();
+      clearAcks();
       slots.clear();
       statuses.clear();
       hostSubscriptionId = null;
     },
   };
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const record = error as { code?: unknown; errorCode?: unknown };
+  if (typeof record.code === "string") return record.code;
+  return typeof record.errorCode === "string" ? record.errorCode : undefined;
 }

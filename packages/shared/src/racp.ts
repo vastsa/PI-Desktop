@@ -12,6 +12,7 @@
  * unscheduled; `RACP-GRPC` is reserved.
  */
 import Type from "typebox";
+import * as Value from "typebox/value";
 
 import { ErrorCodes } from "./errors.js";
 import type { AgentEvent } from "./types.js";
@@ -451,6 +452,51 @@ export const RACP_DEFAULT_LIMITS: RacpLimits = {
   maxOpenTerminalsPerSession: 2,
 };
 
+/** Maximum decoded bytes accepted by one `terminal/input` request. */
+export const RACP_TERMINAL_INPUT_MAX_BYTES = 64 * 1024;
+
+const TERMINAL_INPUT_MAX_BASE64_LENGTH = Math.ceil(RACP_TERMINAL_INPUT_MAX_BYTES / 3) * 4;
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const CANONICAL_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+export type RacpTerminalInputValidation =
+  | { valid: true; byteLength: number }
+  | { valid: false; reason: "invalid-base64" | "invalid-utf8" }
+  | { valid: false; reason: "payload-too-large"; limitBytes: number; byteLength?: number };
+
+/** Validate standard padded Base64 and enforce the decoded terminal-input bound. */
+export function validateRacpTerminalInputData(value: unknown): RacpTerminalInputValidation {
+  if (typeof value !== "string") return { valid: false, reason: "invalid-base64" };
+  if (value.length > TERMINAL_INPUT_MAX_BASE64_LENGTH) {
+    return { valid: false, reason: "payload-too-large", limitBytes: RACP_TERMINAL_INPUT_MAX_BYTES };
+  }
+  if (value.length % 4 !== 0 || !CANONICAL_BASE64_PATTERN.test(value)) {
+    return { valid: false, reason: "invalid-base64" };
+  }
+
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  if (padding === 2) {
+    const finalSextet = BASE64_ALPHABET.indexOf(value[value.length - 3]!);
+    if ((finalSextet & 0b1111) !== 0) return { valid: false, reason: "invalid-base64" };
+  } else if (padding === 1) {
+    const finalSextet = BASE64_ALPHABET.indexOf(value[value.length - 2]!);
+    if ((finalSextet & 0b11) !== 0) return { valid: false, reason: "invalid-base64" };
+  }
+
+  const byteLength = value.length / 4 * 3 - padding;
+  if (byteLength > RACP_TERMINAL_INPUT_MAX_BYTES) {
+    return { valid: false, reason: "payload-too-large", limitBytes: RACP_TERMINAL_INPUT_MAX_BYTES, byteLength };
+  }
+  const binary = atob(value);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  try {
+    new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    return { valid: false, reason: "invalid-utf8" };
+  }
+  return { valid: true, byteLength };
+}
+
 export const RacpPolicySchema = Type.Object({
   remoteMaxPermissionMode: RacpPermissionModeSchema,
   applyCeilingToPairedDevices: Type.Boolean(),
@@ -565,6 +611,127 @@ export const RACP_OPERATIONS = {
   "project/browse": { role: "owner", profile: "remote-host", mutation: false },
 } as const satisfies Record<string, RacpOperationSpec>;
 export type RacpOperation = keyof typeof RACP_OPERATIONS;
+
+// ---------------------------------------------------------------------------
+// Reverse tool relay (spec §9.4, security §7)
+// ---------------------------------------------------------------------------
+
+/** Hard bounds for client-advertised tools and their execution payloads. */
+export const RACP_TOOL_RELAY_LIMITS = {
+  maxToolsPerSession: 64,
+  maxAdvertisementBytes: 512 * 1024,
+  maxCatalogBytes: 512 * 1024,
+  maxToolNameLength: 160,
+  maxDescriptionBytes: 4 * 1024,
+  maxInputSchemaBytes: 64 * 1024,
+  maxJsonDepth: 16,
+  maxJsonNodes: 4096,
+  maxResultBytes: 256 * 1024,
+  minTimeoutMs: 100,
+  maxTimeoutMs: 120_000,
+} as const;
+
+/** Only Host-dispatched plugin/MCP names can cross this boundary. */
+export const RacpRelayToolSchema = Type.Object({
+  name: Type.String({
+    minLength: 5,
+    maxLength: RACP_TOOL_RELAY_LIMITS.maxToolNameLength,
+    pattern: "^(?:plugin|mcp)_[A-Za-z0-9_]+$",
+  }),
+  description: Type.String({ maxLength: RACP_TOOL_RELAY_LIMITS.maxDescriptionBytes }),
+  inputSchema: Type.Record(Type.String(), Type.Unknown()),
+  timeoutMs: Type.Integer({
+    minimum: RACP_TOOL_RELAY_LIMITS.minTimeoutMs,
+    maximum: RACP_TOOL_RELAY_LIMITS.maxTimeoutMs,
+  }),
+  /** The source must positively attest it needs no desktop workspace access. */
+  workspaceFree: Type.Literal(true),
+}, { additionalProperties: false });
+export type RacpRelayTool = Static<typeof RacpRelayToolSchema>;
+
+export const RacpToolsAdvertiseParamsSchema = Type.Object({
+  sessionId: Type.String({ minLength: 1, maxLength: 256 }),
+  tools: Type.Array(RacpRelayToolSchema, { maxItems: RACP_TOOL_RELAY_LIMITS.maxToolsPerSession }),
+}, { additionalProperties: false });
+export type RacpToolsAdvertiseParams = Static<typeof RacpToolsAdvertiseParamsSchema>;
+
+export const RacpToolExecuteParamsSchema = Type.Object({
+  executionId: Type.String({ minLength: 1, maxLength: 256 }),
+  sessionId: Type.String({ minLength: 1, maxLength: 256 }),
+  turnId: Type.String({ minLength: 1, maxLength: 256 }),
+  toolCallId: Type.String({ minLength: 1, maxLength: 256 }),
+  toolName: Type.String({ minLength: 5, maxLength: RACP_TOOL_RELAY_LIMITS.maxToolNameLength }),
+  args: Type.Record(Type.String(), Type.Unknown()),
+}, { additionalProperties: false });
+export type RacpToolExecuteParams = Static<typeof RacpToolExecuteParamsSchema>;
+
+export const RacpToolExecuteResultSchema = Type.Object({
+  result: Type.Unknown(),
+  isError: Type.Boolean(),
+}, { additionalProperties: false });
+export type RacpToolExecuteResult = Static<typeof RacpToolExecuteResultSchema>;
+
+function isBoundedJsonValue(
+  value: unknown,
+  options: { maxBytes: number; rejectSchemaReferences?: boolean },
+): boolean {
+  const active = new Set<object>();
+  let nodes = 0;
+
+  const visit = (current: unknown, depth: number): boolean => {
+    nodes += 1;
+    if (nodes > RACP_TOOL_RELAY_LIMITS.maxJsonNodes || depth > RACP_TOOL_RELAY_LIMITS.maxJsonDepth) return false;
+    if (current === null || typeof current === "boolean") return true;
+    if (typeof current === "string") return true;
+    if (typeof current === "number") return Number.isFinite(current);
+    if (typeof current !== "object") return false;
+    if (active.has(current)) return false;
+
+    active.add(current);
+    let valid = true;
+    if (Array.isArray(current)) {
+      valid = current.length <= RACP_TOOL_RELAY_LIMITS.maxJsonNodes && current.every((item) => visit(item, depth + 1));
+    } else {
+      const prototype = Object.getPrototypeOf(current);
+      valid = (prototype === Object.prototype || prototype === null) && Object.entries(current).every(([key, item]) =>
+        key.length <= 256 && !(options.rejectSchemaReferences && ["$ref", "$dynamicRef", "$recursiveRef"].includes(key)) && visit(item, depth + 1),
+      );
+    }
+    active.delete(current);
+    return valid;
+  };
+
+  if (!visit(value, 0)) return false;
+  try {
+    const serialized = JSON.stringify(value);
+    return typeof serialized === "string" && new TextEncoder().encode(serialized).byteLength <= options.maxBytes;
+  } catch {
+    return false;
+  }
+}
+
+/** Full bounded validation for the externally supplied advertisement payload. */
+export function isValidRacpToolsAdvertiseParams(value: unknown): value is RacpToolsAdvertiseParams {
+  if (!Value.Check(RacpToolsAdvertiseParamsSchema, value)) return false;
+  if (!isBoundedJsonValue(value, { maxBytes: RACP_TOOL_RELAY_LIMITS.maxAdvertisementBytes })) return false;
+  const names = new Set<string>();
+  for (const tool of value.tools) {
+    if (names.has(tool.name)) return false;
+    names.add(tool.name);
+    if (!tool.inputSchema || tool.inputSchema.type !== "object") return false;
+    if (!isBoundedJsonValue(tool.inputSchema, {
+      maxBytes: RACP_TOOL_RELAY_LIMITS.maxInputSchemaBytes,
+      rejectSchemaReferences: true,
+    })) return false;
+    if (new TextEncoder().encode(tool.description).byteLength > RACP_TOOL_RELAY_LIMITS.maxDescriptionBytes) return false;
+  }
+  return true;
+}
+
+/** True only for bounded JSON arguments/results that fit the relay frame policy. */
+export function isBoundedRacpRelayJson(value: unknown, maxBytes = RACP_TOOL_RELAY_LIMITS.maxResultBytes): boolean {
+  return isBoundedJsonValue(value, { maxBytes });
+}
 
 /** Server-initiated requests on the WebSocket binding (spec §4.3, §9). */
 export const RACP_SERVER_REQUESTS = ["approval/request", "input/request", "tool/execute"] as const;

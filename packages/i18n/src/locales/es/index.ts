@@ -1822,7 +1822,17 @@ sklm: {
       "browser": "Navegador",
       "file": "Archivos",
       "plugin": "Vista de complemento",
-      "subagent": "Subagente"
+      "subagent": "Subagente",
+      "terminal": "Terminal"
+    },
+    "terminal": {
+      "host": "Host remoto: {{host}}",
+      "connecting": "Conectando…",
+      "connected": "Conectado",
+      "exited": "Shell finalizado ({{code}})",
+      "failed": "No se pudo abrir el terminal remoto.",
+      "unavailable": "Este Host no ofrece un terminal.",
+      "retry": "Reconectar"
     },
     "pluginView": {
       "failed": "Esta vista no se pudo cargar. Vuelva a cargar el complemento e inténtelo de nuevo."

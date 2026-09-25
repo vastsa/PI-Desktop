@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 
 const { IPC } = await import("@pi-desktop/shared");
-const { makeRemoteApprovalRequestId, makeRemoteSessionId } = await import(
+const { makeRemoteApprovalRequestId, makeRemoteSessionId, makeRemoteTerminalId } = await import(
   "../electron/main/remote/backend-router.ts"
 );
 const { createRemoteEventBridge } = await import(
@@ -243,10 +243,52 @@ test("input.requested synthesizes an asktool_request keyed by the RACP input id"
   assert.equal(request.questions[0].multiSelect, false);
 });
 
-test("terminal and resync kinds are silently dropped in Stage 2 — later stages own them", () => {
+test("terminal output and state events use namespaced sessions and terminal ids", () => {
   const { bridge, events } = collect();
+  bridge.handle(makeEnvelope({
+    kind: "terminal.output",
+    payload: { terminalId: "host-terminal-1", data: "b3V0" },
+  }));
+  bridge.handle(makeEnvelope({
+    kind: "terminal.changed",
+    payload: { terminalId: "host-terminal-1", state: "exited", code: 7 },
+  }));
+  assert.deepEqual(events, [
+    {
+      channel: IPC.event.remoteTerminal,
+      payload: {
+        type: "output",
+        sessionId: REMOTE_SESSION_ID,
+        terminalId: makeRemoteTerminalId(REMOTE_SESSION_ID, "host-terminal-1"),
+        output: "b3V0",
+      },
+    },
+    {
+      channel: IPC.event.remoteTerminal,
+      payload: {
+        type: "state",
+        sessionId: REMOTE_SESSION_ID,
+        terminalId: makeRemoteTerminalId(REMOTE_SESSION_ID, "host-terminal-1"),
+        state: "exited",
+        code: 7,
+      },
+    },
+  ]);
+});
+
+test("terminal bridge drops payloads without a valid terminal id, output, or state", () => {
+  const { bridge, events, warnings } = collect();
   bridge.handle(makeEnvelope({ kind: "terminal.output", payload: {} }));
-  bridge.handle(makeEnvelope({ kind: "terminal.changed", payload: {} }));
+  bridge.handle(makeEnvelope({ kind: "terminal.output", payload: { terminalId: "", data: "x" } }));
+  bridge.handle(makeEnvelope({ kind: "terminal.output", payload: { terminalId: "term", data: 12 } }));
+  bridge.handle(makeEnvelope({ kind: "terminal.changed", payload: { terminalId: "term", state: "running" } }));
+  bridge.handle(makeEnvelope({ kind: "terminal.changed", payload: { terminalId: "term", state: "exited", code: "7" } }));
+  assert.equal(events.length, 0);
+  assert.equal(warnings.length, 5);
+});
+
+test("resync and resolved request events remain owned by their existing handlers", () => {
+  const { bridge, events } = collect();
   bridge.handle(makeEnvelope({ kind: "resync.required", payload: {} }));
   bridge.handle(makeEnvelope({ kind: "approval.resolved", payload: {} }));
   bridge.handle(makeEnvelope({ kind: "input.resolved", payload: {} }));

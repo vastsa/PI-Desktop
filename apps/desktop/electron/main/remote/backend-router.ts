@@ -44,6 +44,9 @@ const APPROVAL_ID_DELIMITER = "#racp-approval:";
  */
 const QUEUED_TURN_ID_DELIMITER = "#racp-turn:";
 
+/** Prefix for a terminal id that is bound to one renderer-visible session. */
+const REMOTE_TERMINAL_PREFIX = "remote-terminal:";
+
 /**
  * Channels that may carry a remote session id yet only touch desktop-owned
  * state, so they run the local handler. Each entry is audited: it must never
@@ -168,6 +171,46 @@ export function parseRemoteQueuedTurnId(
 ): { remoteSessionId: string; hostTurnId: string } | null {
   const parsed = decodeScoped(turnId, QUEUED_TURN_ID_DELIMITER);
   return parsed && { remoteSessionId: parsed.remoteSessionId, hostTurnId: parsed.hostId };
+}
+
+/** Encode the owning session into a Host terminal id before exposing it to the renderer. */
+export function makeRemoteTerminalId(remoteSessionId: string, hostTerminalId: string): string {
+  if (!parseRemoteSessionId(remoteSessionId) || !hostTerminalId) {
+    throw Object.assign(new Error("remote terminal id requires a remote session and host id"), {
+      errorCode: "INVALID_ARGUMENT",
+    });
+  }
+  const session = Buffer.from(remoteSessionId, "utf8").toString("base64url");
+  const terminal = Buffer.from(hostTerminalId, "utf8").toString("base64url");
+  return `${REMOTE_TERMINAL_PREFIX}${session}:${terminal}`;
+}
+
+/** Decode a terminal id and recover the only remote session allowed to use it. */
+export function parseRemoteTerminalId(
+  terminalId: string,
+): { remoteSessionId: string; hostTerminalId: string } | null {
+  if (!terminalId.startsWith(REMOTE_TERMINAL_PREFIX)) return null;
+  const encoded = terminalId.slice(REMOTE_TERMINAL_PREFIX.length);
+  const separator = encoded.indexOf(":");
+  if (separator <= 0 || separator === encoded.length - 1 || encoded.indexOf(":", separator + 1) !== -1) {
+    return null;
+  }
+  const sessionPart = encoded.slice(0, separator);
+  const terminalPart = encoded.slice(separator + 1);
+  if (!/^[A-Za-z0-9_-]+$/.test(sessionPart) || !/^[A-Za-z0-9_-]+$/.test(terminalPart)) {
+    return null;
+  }
+  const remoteSessionId = Buffer.from(sessionPart, "base64url").toString("utf8");
+  const hostTerminalId = Buffer.from(terminalPart, "base64url").toString("utf8");
+  if (
+    Buffer.from(remoteSessionId, "utf8").toString("base64url") !== sessionPart ||
+    Buffer.from(hostTerminalId, "utf8").toString("base64url") !== terminalPart ||
+    !parseRemoteSessionId(remoteSessionId) ||
+    !hostTerminalId
+  ) {
+    return null;
+  }
+  return { remoteSessionId, hostTerminalId };
 }
 
 /**

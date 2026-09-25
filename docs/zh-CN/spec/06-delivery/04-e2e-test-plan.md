@@ -2230,7 +2230,16 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   5) 构建/打包桌面应用并检查依赖项和解压资源列表。
 - **预期**：本地工作面板提供审阅启动器行、浏览器和当前范围内的插件视图；审阅只在用户
   主动打开时出现，文件资源由对话打开；本地不创建 PTY，也无法打开本地终端选项卡。
-  远程 Host 终端由 E2E-231 单独覆盖，不改变本地会话的边界。
+  远程 Host 终端和反向工具端到端流程由 E2E-231 单独覆盖，不改变本地会话的边界。
+  当前 RACP/Host Runtime 契约与用户路径由 `packages/racp/src/tool-relay.test.ts`、
+  `packages/host-runtime/src/remote-tool-relay.test.ts` 和
+  `packages/host-runtime/src/runtime-service.test.ts` 覆盖；桌面 global User MCP 公布适配器
+  已有 `apps/desktop/test/remote-tool-relay.test.mjs` 和
+  `apps/desktop/test/user-mcp.test.mjs` 定向覆盖，仅发布 `toolsForProject(null)` 的全局 User MCP；
+  Linux SSH 远程 harness 尚未接入，
+  因此完整 E2E-231 仍为草稿。`workspaceFree` 是 owner 侧断言，Host 无法独立验证远端来源；
+  未经可信分类的插件默认不发布。测试还必须验证公布被替换后，旧回合快照失败关闭，绝不把调用
+  路由到新连接。
   Agent Bash 仍是非交互式的，完整显示在对话中。
   本地交互式 shell 仍由外部终端承担。桌面包不包含本地 PTY 运行时或终端原生负载；
   xterm 渲染依赖和类型化终端 IPC（若存在）仅用于远程 Host 会话。

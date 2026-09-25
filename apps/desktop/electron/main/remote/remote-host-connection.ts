@@ -15,8 +15,10 @@ import type {
   QueuedTurnSummary,
   RacpCursor,
   RacpEventEnvelope,
+  RacpInitializeResult,
   RacpLimits,
   RacpRemoteError,
+  RacpServerCapabilities,
   RacpSession,
   SessionSummary,
 } from "@pi-desktop/shared";
@@ -30,6 +32,9 @@ import {
 } from "./remote-event-bridge.js";
 import { createRemoteSubscriptions, type RemoteSubscriptions } from "./remote-subscriptions.js";
 import { remoteSessionSummary, type RemoteHostIdentity } from "./remote-transcript.js";
+import type { RemoteToolRelay } from "./remote-tool-relay.js";
+
+export type RemoteConnectionState = "disconnected" | "connecting" | "connected" | "reconnecting" | "error";
 
 /** A subscription the host closed, with the cursor to resume after. */
 export type RemoteSubscriptionClosed = {
@@ -50,6 +55,20 @@ export type RemoteHostClient = RemoteRacpClient & {
   onSubscriptionClosed?(listener: (notice: RemoteSubscriptionClosed) => void): () => void;
   /** The limits the host announced at initialize, once connected. */
   limits?(): RacpLimits | undefined;
+  /** Host capabilities announced by `connection/initialize`. */
+  hostCapabilities?(): RacpServerCapabilities | undefined;
+  /** Principal returned by `connection/initialize`. */
+  initialized?(): RacpInitializeResult | undefined;
+  /** Last durable session cursor retained by the RACP client. */
+  cursorFor?(sessionId: string): RacpCursor | undefined;
+  /** Last durable host cursor retained by the RACP client. */
+  cursorForHost?(): RacpCursor | undefined;
+  /** Server-initiated requests, such as reverse `tool/execute`. */
+  onServerRequest?(listener: (method: string, params: unknown) => Promise<unknown>): () => void;
+  /** Transport state transitions. */
+  onConnectionState?(listener: (state: RemoteConnectionState, error?: unknown) => void): () => void;
+  /** Called once RACP has reinitialized after reconnect. */
+  onReconnected?(listener: () => Promise<void> | void): () => void;
 };
 
 export type RemoteHostConnectionOptions = {
@@ -64,6 +83,8 @@ export type RemoteHostConnectionOptions = {
   newRequestId?: () => string;
   /** Optional structured log; defaults to a no-op. */
   log?: (level: "warn" | "error", message: string, data?: unknown) => void;
+  /** Optional owner-side reverse MCP relay for this Host connection. */
+  toolRelay?: RemoteToolRelay;
 };
 
 export interface RemoteHostConnection {
@@ -83,6 +104,8 @@ export interface RemoteHostConnection {
   listSessions(): SessionSummary[];
   /** Record a session the host just returned, before any event reports it. */
   noteSession(session: RacpSession): SessionSummary;
+  /** Restore subscriptions and snapshot state after the adapter reconnects. */
+  reconnected(): Promise<void>;
 }
 
 type SessionListResponse = { sessions: RacpSession[] };
@@ -101,27 +124,65 @@ export function createRemoteHostConnection(
   options: RemoteHostConnectionOptions,
 ): RemoteHostConnection {
   const { hostKey, client, router, emit } = options;
-  const host: RemoteHostIdentity = { hostKey, hostLabel: options.hostLabel };
+  const host: RemoteHostIdentity = {
+    hostKey,
+    hostLabel: options.hostLabel,
+    canTerminal: client.hostCapabilities?.()?.terminal === true,
+  };
   const log = options.log ?? (() => undefined);
   const sessions = new Map<string, RacpSession>();
   let subscriptions: RemoteSubscriptions | null = null;
   let bridge: RemoteEventBridge | null = null;
   let detach: Array<() => void> = [];
   let opened = false;
+  let lifecycleGeneration = 0;
+  let snapshotEvents: RemoteLifecycleEvent[] | null = null;
+  let recovery: Promise<void> | null = null;
   const queueSyncs = new Set<string>();
 
   const summaryOf = (session: RacpSession) =>
     remoteSessionSummary(makeRemoteSessionId(hostKey, session.id), session, host);
 
-  const noteSession = (session: RacpSession): SessionSummary => {
+  const storeSession = (session: RacpSession, advertise = true): SessionSummary => {
     sessions.set(session.id, session);
     subscriptions?.noteStatus(session.id, session.status);
+    if (advertise) {
+      void options.toolRelay?.addSession(session.id).catch((error) =>
+        log("warn", `remote MCP catalog update failed for session ${session.id}`, error),
+      );
+    }
     return summaryOf(session);
   };
 
-  const forgetSession = (hostSessionId: string) => {
+  const noteSession = (session: RacpSession): SessionSummary => {
+    if (snapshotEvents) {
+      snapshotEvents.push({
+        kind: "session.changed",
+        hostSessionId: session.id,
+        remoteSessionId: makeRemoteSessionId(hostKey, session.id),
+        session,
+      });
+      return summaryOf(session);
+    }
+    return storeSession(session);
+  };
+
+  const removeSession = (hostSessionId: string, releaseRelay = true) => {
     sessions.delete(hostSessionId);
     void subscriptions?.release(hostSessionId);
+    if (releaseRelay) options.toolRelay?.removeSession(hostSessionId);
+  };
+
+  const forgetSession = (hostSessionId: string) => {
+    if (snapshotEvents) {
+      snapshotEvents.push({
+        kind: "session.archived",
+        hostSessionId,
+        remoteSessionId: makeRemoteSessionId(hostKey, hostSessionId),
+      });
+      return;
+    }
+    removeSession(hostSessionId);
   };
 
   const backend: RemoteBackend = createRemoteBackend({
@@ -156,22 +217,64 @@ export function createRemoteHostConnection(
     });
   };
 
-  const handleLifecycle = (event: RemoteLifecycleEvent): void => {
+  const mergeLifecycleEvent = (
+    target: Map<string, RacpSession>,
+    event: RemoteLifecycleEvent,
+  ): void => {
     if (event.kind === "session.archived") {
-      forgetSession(event.hostSessionId);
+      target.delete(event.hostSessionId);
       return;
     }
-    const known = sessions.get(event.hostSessionId);
+    const known = target.get(event.hostSessionId);
     if (known) {
-      noteSession({ ...known, ...event.session });
+      target.set(event.hostSessionId, { ...known, ...event.session, id: event.hostSessionId });
       return;
     }
     // A full session (created, renamed) is cached as is; a status-only change
     // for an unknown session waits for the next list refresh.
     const candidate = event.session as Partial<RacpSession>;
     if (typeof candidate.title === "string" && typeof candidate.createdAt === "string") {
-      noteSession({ queuedTurnIds: [], status: "idle", ...candidate } as RacpSession);
+      target.set(event.hostSessionId, {
+        queuedTurnIds: [],
+        status: "idle",
+        ...candidate,
+        id: event.hostSessionId,
+      } as RacpSession);
     }
+  };
+
+  const syncSessionSideEffects = async (previous: Set<string>): Promise<void> => {
+    for (const hostSessionId of previous) {
+      if (!sessions.has(hostSessionId)) removeSession(hostSessionId);
+    }
+    const relayUpdates: Promise<void>[] = [];
+    for (const session of sessions.values()) {
+      subscriptions?.noteStatus(session.id, session.status);
+      if (options.toolRelay) {
+        relayUpdates.push(options.toolRelay.addSession(session.id).catch((error) => {
+          log("warn", `remote MCP catalog update failed for session ${session.id}`, error);
+        }));
+      }
+    }
+    await Promise.all(relayUpdates);
+  };
+
+  const handleLifecycle = (event: RemoteLifecycleEvent): void => {
+    if (snapshotEvents) {
+      snapshotEvents.push(event);
+      return;
+    }
+    mergeLifecycleEvent(sessions, event);
+    if (event.kind === "session.archived") {
+      removeSession(event.hostSessionId);
+      return;
+    }
+    const session = sessions.get(event.hostSessionId);
+    if (!session) return;
+    subscriptions?.noteStatus(session.id, session.status);
+    void options.toolRelay?.addSession(session.id).catch((error) =>
+      log("warn", `remote MCP catalog update failed for session ${session.id}`, error),
+    );
   };
 
   const handleEnvelope = (envelope: RacpEventEnvelope) => {
@@ -182,11 +285,80 @@ export function createRemoteHostConnection(
     }
   };
 
+  const isCurrentGeneration = (generation: number): boolean =>
+    opened && generation === lifecycleGeneration;
+
+  const refreshSessionSnapshot = async (generation: number): Promise<void> => {
+    const events: RemoteLifecycleEvent[] = [];
+    snapshotEvents = events;
+    let listed: RacpSession[] | null = null;
+    try {
+      const response = await client.request<SessionListResponse>("session/list");
+      if (Array.isArray(response.sessions)) listed = response.sessions;
+      else log("warn", "session/list returned an invalid session snapshot", { hostKey });
+    } catch (error) {
+      log("warn", "session/list failed while refreshing remote state", { hostKey, error });
+    }
+
+    if (snapshotEvents === events) snapshotEvents = null;
+    if (!isCurrentGeneration(generation)) return;
+
+    const previous = new Set(sessions.keys());
+    const replacement = new Map<string, RacpSession>();
+    if (listed) {
+      for (const session of listed) replacement.set(session.id, session);
+    } else {
+      for (const [id, session] of sessions) replacement.set(id, session);
+    }
+    // Host lifecycle notifications observed while `session/list` was in
+    // flight are newer than that response. Replay them in arrival order so an
+    // archive or a rename cannot be overwritten by the snapshot.
+    for (const event of events) mergeLifecycleEvent(replacement, event);
+
+    sessions.clear();
+    for (const [id, session] of replacement) sessions.set(id, session);
+    await syncSessionSideEffects(previous);
+  };
+
+  const reconnected = (): Promise<void> => {
+    if (!opened) return Promise.resolve();
+    if (recovery) return recovery;
+    const generation = lifecycleGeneration;
+    const pending = (async () => {
+      try {
+        await subscriptions?.reconnect();
+      } catch (error) {
+        log("warn", "remote event subscriptions failed to restore", { hostKey, error });
+      }
+      if (!isCurrentGeneration(generation)) return;
+
+      // Initialize is repeated on every transport. Refresh capability-derived
+      // session surfaces before publishing the recovered snapshot.
+      host.canTerminal = client.hostCapabilities?.()?.terminal === true;
+      await refreshSessionSnapshot(generation);
+      if (!isCurrentGeneration(generation)) return;
+
+      try {
+        await options.toolRelay?.reconnected();
+      } catch (error) {
+        log("warn", "remote MCP relay failed to recover", { hostKey, error });
+      }
+      if (!isCurrentGeneration(generation)) return;
+      emit(IPC.event.sessionsChanged, { reason: "remote.host.reconnected", hostKey });
+    })();
+    const wrapped = pending.finally(() => {
+      if (recovery === wrapped) recovery = null;
+    });
+    recovery = wrapped;
+    return wrapped;
+  };
+
   return {
     hostKey,
     async open() {
       if (opened) return;
       opened = true;
+      const generation = ++lifecycleGeneration;
       subscriptions = createRemoteSubscriptions({
         client,
         ...(client.limits?.()?.maxSubscriptionsPerConnection
@@ -208,21 +380,35 @@ export function createRemoteHostConnection(
           ),
         );
       }
+      if (client.onServerRequest && options.toolRelay) {
+        detach.push(client.onServerRequest((method, params) =>
+          options.toolRelay!.handleServerRequest(method, params),
+        ));
+      }
+      if (client.onConnectionState) {
+        detach.push(client.onConnectionState((state) => {
+          if (state !== "connected") options.toolRelay?.disconnected();
+          if (state === "reconnecting") {
+            emit(IPC.event.sessionsChanged, { reason: "remote.host.reconnecting", hostKey });
+          } else if (state === "error") {
+            emit(IPC.event.sessionsChanged, { reason: "remote.host.error", hostKey });
+          }
+        }));
+      }
+      if (client.onReconnected) detach.push(client.onReconnected(reconnected));
       router.registerHost(hostKey, backend);
       // Subscribing to host scope BEFORE listing sessions closes the race: a
       // `session.created` between the two calls arrives as an event.
       await subscriptions.openHost();
-      try {
-        const response = await client.request<SessionListResponse>("session/list");
-        if (!opened) return;
-        for (const session of response.sessions) noteSession(session);
-      } catch (error) {
-        log("error", "session/list failed; the host lists no sessions until reconnect", error);
-      }
+      if (!isCurrentGeneration(generation)) return;
+      await refreshSessionSnapshot(generation);
     },
     async close() {
       if (!opened) return;
       opened = false;
+      lifecycleGeneration += 1;
+      snapshotEvents = null;
+      recovery = null;
       for (const release of detach) release();
       detach = [];
       subscriptions?.reset();
@@ -230,6 +416,7 @@ export function createRemoteHostConnection(
       bridge = null;
       sessions.clear();
       queueSyncs.clear();
+      options.toolRelay?.close();
       router.unregisterHost(hostKey, backend);
     },
     listSessions() {
@@ -238,5 +425,6 @@ export function createRemoteHostConnection(
         .map(summaryOf);
     },
     noteSession,
+    reconnected,
   };
 }

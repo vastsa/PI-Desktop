@@ -388,6 +388,25 @@ the tool without interrupting the turn. Provider secrets never cross RACP in
 either direction; the remote Host's providers are configured over the SSH
 bootstrap channel (§3.4).
 
+The relay accepts only owner advertisements with `plugin_` or `mcp_` names and
+an explicit `workspaceFree: true` source assertion. This is the owner's
+assertion: the Host validates the field, role, descriptor, bounds, and normal
+Host permission policy, but it cannot independently inspect the remote source.
+The Desktop adapter must derive the flag from its trusted source registry and
+fail closed when the registry is missing or uncertain. The initial adapter
+may advertise only global User MCP tools from `toolsForProject(null)`; plugin
+tools remain disabled until a trusted classifier and product decision exist.
+The combined Session
+catalog is bounded to 64 tools and 512 KiB; descriptor names, descriptions,
+schemas, JSON depth and node count, arguments, results, and execution deadlines
+have the limits in RACP §9.4. The Host does not accept client-supplied risk or
+Plan-safe metadata. At turn start it snapshots the advertised catalog and pins
+each entry to its exact connection and revision. Replacement or disconnect
+invalidates the entry; the Host never resolves a stale name against another
+connection. Core, system, and workspace tools are not relay entries. Until the
+desktop can prove workspace safety from registered source metadata, it must
+not advertise the tool; missing or uncertain metadata fails closed.
+
 A session terminal is a shell on the Host machine running as the `pi-host`
 user. In the first SSH topology, only the owner device credential issued during
 SSH pairing may open or use one; viewers, controllers, approvers, and

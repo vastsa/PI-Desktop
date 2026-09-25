@@ -1774,6 +1774,16 @@ export const ptBR = {
       file: "Arquivos",
       plugin: "Visualização de plugin",
       subagent: "Subagente",
+      terminal: "Terminal",
+    },
+    terminal: {
+      host: "Host remoto: {{host}}",
+      connecting: "Conectando…",
+      connected: "Conectado",
+      exited: "Shell encerrado ({{code}})",
+      failed: "Não foi possível abrir o terminal remoto.",
+      unavailable: "Este Host não oferece um terminal.",
+      retry: "Reconectar",
     },
     pluginView: {
       failed: "Não foi possível carregar esta visualização. Recarregue o plugin e tente novamente."

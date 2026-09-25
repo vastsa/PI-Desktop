@@ -115,6 +115,13 @@ import type {
   RemoteSessionCreateResult,
   RemoteHostSyncProvidersRequest,
   RemoteHostSyncProvidersResult,
+  RemoteTerminalCloseRequest,
+  RemoteTerminalControlResult,
+  RemoteTerminalEvent,
+  RemoteTerminalInputRequest,
+  RemoteTerminalOpenRequest,
+  RemoteTerminalOpenResult,
+  RemoteTerminalResizeRequest,
   UpdateState,
   WindowControlAction,
   CloseBehavior,
@@ -1321,6 +1328,14 @@ export const api = {
     sessionId: string;
     snapshotId: string;
   }) => invoke<ReviewRollbackResult>(IPC.invoke.workspaceReviewRollback, input),
+  remoteTerminalOpen: (request: RemoteTerminalOpenRequest) =>
+    invoke<RemoteTerminalOpenResult>(IPC.invoke.remoteTerminalOpen, request),
+  remoteTerminalInput: (request: RemoteTerminalInputRequest) =>
+    invoke<RemoteTerminalControlResult>(IPC.invoke.remoteTerminalInput, request),
+  remoteTerminalResize: (request: RemoteTerminalResizeRequest) =>
+    invoke<RemoteTerminalControlResult>(IPC.invoke.remoteTerminalResize, request),
+  remoteTerminalClose: (request: RemoteTerminalCloseRequest) =>
+    invoke<RemoteTerminalControlResult>(IPC.invoke.remoteTerminalClose, request),
   browserNavigate: (url: string, sessionId?: string) =>
     invoke<BrowserState>(IPC.invoke.browserNavigate, { url, sessionId }),
   browserAction: (action: BrowserAction) =>
@@ -1454,6 +1469,12 @@ export const api = {
       listener(payload as BrowserState),
     );
   },
+  onRemoteTerminalEvent: (listener: (event: RemoteTerminalEvent) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.remoteTerminal, (payload) =>
+      listener(payload as RemoteTerminalEvent),
+    );
+  },
   onBrowserPreview: (
     listener: (event: { sessionId: string; path?: string; url?: string }) => void,
   ) => {
@@ -1570,6 +1591,7 @@ export const api = {
   onSessionsChanged: (
     listener: (event: {
       reason?: string;
+      hostKey?: string;
       pluginId?: string;
       projectPath?: string | null;
       selectSessionId?: string;
@@ -1580,6 +1602,7 @@ export const api = {
       listener(
         (payload ?? {}) as {
           reason?: string;
+          hostKey?: string;
           pluginId?: string;
           projectPath?: string | null;
           selectSessionId?: string;

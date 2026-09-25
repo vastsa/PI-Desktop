@@ -1828,6 +1828,16 @@ sklm: {
       file: "Dosyalar",
       plugin: "Eklenti görünümü",
       subagent: "Alt ajan",
+      terminal: "Terminal",
+    },
+    terminal: {
+      host: "Uzak ana bilgisayar: {{host}}",
+      connecting: "Bağlanıyor…",
+      connected: "Bağlandı",
+      exited: "Kabuk kapandı ({{code}})",
+      failed: "Uzak terminal açılamadı.",
+      unavailable: "Bu Host terminal sunmuyor.",
+      retry: "Yeniden bağlan",
     },
     pluginView: {
       failed: "Bu görünüm yüklenemedi. Eklentiyi yeniden yükleyip deneyin.",

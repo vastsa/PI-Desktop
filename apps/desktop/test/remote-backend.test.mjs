@@ -7,10 +7,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 
-const { IPC } = await import("@pi-desktop/shared");
-const { makeRemoteApprovalRequestId, makeRemoteQueuedTurnId, makeRemoteSessionId } = await import(
-  "../electron/main/remote/backend-router.ts"
-);
+const { IPC, RACP_TERMINAL_INPUT_MAX_BYTES } = await import("@pi-desktop/shared");
+const {
+  makeRemoteApprovalRequestId,
+  makeRemoteQueuedTurnId,
+  makeRemoteSessionId,
+  makeRemoteTerminalId,
+  parseRemoteTerminalId,
+} = await import("../electron/main/remote/backend-router.ts");
 const { REMOTE_SESSION_CAPABILITIES, remoteSessionSummary, snapshotToSessionDetail } = await import(
   "../electron/main/remote/remote-transcript.ts"
 );
@@ -163,6 +167,10 @@ test("handles() covers exactly the channels the remote profile serves", () => {
     IPC.invoke.fsRead,
     IPC.invoke.fsResolveRef,
     IPC.invoke.workspaceDiff,
+    IPC.invoke.remoteTerminalOpen,
+    IPC.invoke.remoteTerminalInput,
+    IPC.invoke.remoteTerminalResize,
+    IPC.invoke.remoteTerminalClose,
   ];
   for (const channel of covered) assert.ok(backend.handles(channel), `${channel} should be handled`);
   assert.deepEqual([...HANDLED_CHANNELS].sort(), [...covered].sort());
@@ -213,6 +221,123 @@ test("workspaceDiff reads the requested remote session root", async () => {
   assert.deepEqual(client.calls, [
     { method: "workspace/diff", params: { sessionId: HOST_SESSION_ID } },
   ]);
+});
+
+test("remote terminal open and control calls map to the owning RACP session", async () => {
+  const opened = { terminalId: "host-terminal-1", replay: "aGk=", cols: 100, rows: 30 };
+  const { backend, client } = makeBackend({
+    "terminal/open": opened,
+    "terminal/input": { ok: true },
+    "terminal/resize": { ok: true },
+    "terminal/close": { ok: true },
+  });
+  const result = await backend.invoke(IPC.invoke.remoteTerminalOpen, [{
+    sessionId: REMOTE_SESSION_ID,
+    cols: 100,
+    rows: 30,
+    openRequestId: "open-1",
+  }]);
+  assert.deepEqual(result, {
+    ...opened,
+    terminalId: makeRemoteTerminalId(REMOTE_SESSION_ID, "host-terminal-1"),
+  });
+  const terminalId = result.terminalId;
+  await backend.invoke(IPC.invoke.remoteTerminalInput, [{
+    sessionId: REMOTE_SESSION_ID,
+    terminalId,
+    data: "cHdkDQo=",
+  }]);
+  await backend.invoke(IPC.invoke.remoteTerminalResize, [{
+    sessionId: REMOTE_SESSION_ID,
+    terminalId,
+    cols: 120,
+    rows: 40,
+  }]);
+  await backend.invoke(IPC.invoke.remoteTerminalClose, [{ sessionId: REMOTE_SESSION_ID, terminalId }]);
+  assert.deepEqual(client.calls, [
+    { method: "terminal/open", params: { sessionId: HOST_SESSION_ID, cols: 100, rows: 30, openRequestId: "open-1" } },
+    { method: "terminal/input", params: { terminalId: "host-terminal-1", data: "cHdkDQo=" } },
+    { method: "terminal/resize", params: { terminalId: "host-terminal-1", cols: 120, rows: 40 } },
+    { method: "terminal/close", params: { terminalId: "host-terminal-1" } },
+  ]);
+  assert.deepEqual(parseRemoteTerminalId(terminalId), {
+    remoteSessionId: REMOTE_SESSION_ID,
+    hostTerminalId: "host-terminal-1",
+  });
+});
+
+test("remote terminal controls reject a terminal scoped to another session", async () => {
+  const { backend, client } = makeBackend({ "terminal/input": { ok: true } });
+  await assert.rejects(
+    backend.invoke(IPC.invoke.remoteTerminalInput, [{
+      sessionId: REMOTE_SESSION_ID,
+      terminalId: makeRemoteTerminalId(makeRemoteSessionId(HOST_KEY, "other-session"), "host-terminal-1"),
+      data: "x",
+    }]),
+    (error) => error.errorCode === "INVALID_ARGUMENT",
+  );
+  assert.equal(client.calls.length, 0);
+});
+
+test("remote terminal open re-attaches with the namespaced id's host terminal", async () => {
+  const { backend, client } = makeBackend({
+    "terminal/open": { terminalId: "host-terminal-2", replay: "", cols: 80, rows: 24 },
+  });
+  const terminalId = makeRemoteTerminalId(REMOTE_SESSION_ID, "host-terminal-2");
+  await backend.invoke(IPC.invoke.remoteTerminalOpen, [{ sessionId: REMOTE_SESSION_ID, terminalId }]);
+  assert.deepEqual(client.calls, [
+    { method: "terminal/open", params: { sessionId: HOST_SESSION_ID, terminalId: "host-terminal-2" } },
+  ]);
+});
+
+test("remote terminal open rejects invalid dimensions before contacting the Host", async () => {
+  const { backend, client } = makeBackend({});
+  await assert.rejects(
+    backend.invoke(IPC.invoke.remoteTerminalOpen, [{ sessionId: REMOTE_SESSION_ID, cols: 0 }]),
+    (error) => error.errorCode === "INVALID_ARGUMENT",
+  );
+  assert.equal(client.calls.length, 0);
+});
+
+test("remote terminal input rejects non-base64 data before contacting the Host", async () => {
+  const { backend, client } = makeBackend({ "terminal/input": { ok: true } });
+  for (const data of ["not-base64?", "YR==", "/w=="]) {
+    await assert.rejects(
+      backend.invoke(IPC.invoke.remoteTerminalInput, [{
+        sessionId: REMOTE_SESSION_ID,
+        terminalId: makeRemoteTerminalId(REMOTE_SESSION_ID, "host-terminal-1"),
+        data,
+      }]),
+      (error) => error.errorCode === "INVALID_ARGUMENT",
+    );
+  }
+  const oversized = Buffer.alloc(RACP_TERMINAL_INPUT_MAX_BYTES + 1).toString("base64");
+  await assert.rejects(
+    backend.invoke(IPC.invoke.remoteTerminalInput, [{
+      sessionId: REMOTE_SESSION_ID,
+      terminalId: makeRemoteTerminalId(REMOTE_SESSION_ID, "host-terminal-1"),
+      data: oversized,
+    }]),
+    (error) => error.errorCode === "PAYLOAD_TOO_LARGE",
+  );
+  assert.equal(client.calls.length, 0);
+});
+
+test("remote terminal RACP errors preserve their error code", async () => {
+  const { backend, client } = makeBackend({
+    "terminal/input": () => {
+      throw Object.assign(new Error("owner device required"), { errorCode: "FORBIDDEN" });
+    },
+  });
+  await assert.rejects(
+    backend.invoke(IPC.invoke.remoteTerminalInput, [{
+      sessionId: REMOTE_SESSION_ID,
+      terminalId: makeRemoteTerminalId(REMOTE_SESSION_ID, "host-terminal-1"),
+      data: "eA==",
+    }]),
+    (error) => error.errorCode === "FORBIDDEN" && error.message === "owner device required",
+  );
+  assert.equal(client.calls.length, 1);
 });
 
 test("agentQueuePush queues with the local content, since RACP turns carry none", async () => {

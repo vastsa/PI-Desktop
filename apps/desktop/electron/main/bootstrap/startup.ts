@@ -32,6 +32,7 @@ import type { AppUpdaterController } from "../updater";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { PluginRuntime } from "../plugin-runtime";
+import type { UserMcpRuntime } from "../user-mcp";
 import { runSessionListProbe } from "../session-list-probe";
 import {
   ensureCrashDumpsDirectory,
@@ -77,6 +78,8 @@ export type StartupDependencies = {
   updater: AppUpdaterController;
   modelsDevCatalog: ModelsDevCatalog;
   plugins: PluginRuntime;
+  /** Directly configured MCP runtime shared with paired Host relays. */
+  userMcp?: UserMcpRuntime;
   activeTurns: Map<string, string>;
   /**
    * Shared busy check from `runtime/session-coordination.ts`. The queue must
@@ -241,6 +244,7 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       router: state.backendRouter,
       emit: sendToRenderer,
       clientInfo: { name: APP_NAME, version: APP_VERSION },
+      ...(deps.userMcp ? { userMcp: deps.userMcp } : {}),
       log: (level, message, data) =>
         logger.app("runtime", level, message, { data: formatRemoteLogData(data) }),
     });

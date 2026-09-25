@@ -38,6 +38,8 @@ export type SessionCapabilities = {
   canSteer?: boolean;
   /** Editing, regenerating, and switching revisions of past messages. */
   canEditHistory?: boolean;
+  /** A remote Host-owned PTY can be opened in the WorkPanel. */
+  canTerminal?: boolean;
 };
 
 /**

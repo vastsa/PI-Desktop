@@ -19,7 +19,11 @@ import type {
 } from "@pi-desktop/shared";
 
 /** The paired host a remote session belongs to, as the host list names it. */
-export type RemoteHostIdentity = { hostKey: string; hostLabel: string };
+export type RemoteHostIdentity = {
+  hostKey: string;
+  hostLabel: string;
+  canTerminal?: boolean;
+};
 
 /**
  * What the renderer may offer for a remote session. Prompting, stopping, and
@@ -36,6 +40,7 @@ export const REMOTE_SESSION_CAPABILITIES: Readonly<SessionCapabilities> = {
   canSelectModel: false,
   canSteer: false,
   canEditHistory: false,
+  canTerminal: false,
 };
 
 /**
@@ -57,7 +62,10 @@ export function remoteSessionSummary(
   return {
     id: remoteSessionId,
     source: "remote",
-    capabilities: { ...REMOTE_SESSION_CAPABILITIES },
+    capabilities: {
+      ...REMOTE_SESSION_CAPABILITIES,
+      canTerminal: host.canTerminal === true,
+    },
     remote: {
       hostKey: host.hostKey,
       hostLabel: host.hostLabel,

@@ -16,6 +16,9 @@ const { createBackendRouter, makeRemoteSessionId } = await import(
 const { createRemoteHostsBoot } = await import(
   "../electron/main/bootstrap/remote-hosts.ts"
 );
+const { createRemoteHostTransportFactory } = await import(
+  "../electron/main/bootstrap/remote-hosts.ts"
+);
 const { createRemoteHostRegistry } = await import(
   "../electron/main/remote/remote-host-registry.ts"
 );
@@ -41,22 +44,35 @@ async function tmpDir() {
  * can assert on them, and lets the test push RACP envelopes back. */
 function fakeAdapter(options = {}) {
   const listeners = new Set();
+  const requestListeners = new Set();
+  const stateListeners = new Set();
+  const reconnectListeners = new Set();
   const requests = [];
   return {
     requests,
     state: "disconnected",
+    closeCalls: 0,
     async connect() {
+      if (options.connect) return options.connect();
       if (options.connectRejects) throw options.connectRejects;
       this.state = "connected";
     },
     async close() {
+      this.closeCalls += 1;
       this.state = "disconnected";
       listeners.clear();
     },
     push(envelope) {
       for (const listener of listeners) listener(envelope);
     },
+    async serverRequest(method, params) {
+      const handlers = [...requestListeners];
+      if (handlers.length !== 1) throw new Error("no unique server request handler");
+      return handlers[0](method, params);
+    },
     client: {
+      initialized: () => ({ principal: { roles: ["owner"] } }),
+      hostCapabilities: () => options.hostCapabilities ?? {},
       request: async (method, params) => {
         requests.push({ method, params });
         if (method === "session/list") {
@@ -69,6 +85,56 @@ function fakeAdapter(options = {}) {
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
+      onServerRequest(listener) {
+        requestListeners.add(listener);
+        return () => requestListeners.delete(listener);
+      },
+      onConnectionState(listener) {
+        stateListeners.add(listener);
+        return () => stateListeners.delete(listener);
+      },
+      onReconnected(listener) {
+        reconnectListeners.add(listener);
+        return () => reconnectListeners.delete(listener);
+      },
+    },
+  };
+}
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function manualRetryScheduler() {
+  const timers = new Map();
+  let nextId = 0;
+  return {
+    get pendingCount() {
+      return timers.size;
+    },
+    delays() {
+      return [...timers.values()].map(({ delayMs }) => delayMs);
+    },
+    schedule(callback, delayMs) {
+      const id = ++nextId;
+      timers.set(id, { callback, delayMs });
+      return id;
+    },
+    cancel(id) {
+      timers.delete(id);
+    },
+    fireNext() {
+      const entry = timers.entries().next().value;
+      if (!entry) return Promise.resolve();
+      const [id, timer] = entry;
+      timers.delete(id);
+      return Promise.resolve(timer.callback());
     },
   };
 }
@@ -177,6 +243,109 @@ test("open connects each paired host, registers each host, and lists their sessi
   await cleanup();
 });
 
+test("paired owner connection advertises and executes only the user MCP catalog", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const encryption = reversibleEncryption();
+  const registry = createRemoteHostRegistry({ dataDir: dir, encryption });
+  await registry.upsert({ hostKey: "owner-host", label: "Owner", url: "wss://owner", deviceToken: "device-token" });
+  const calls = [];
+  const adapters = [];
+  const userMcp = {
+    onCatalogChanged(listener) {
+      this.listener = listener;
+      return () => { this.listener = undefined; };
+    },
+    async toolsForRemoteSession() {
+      return [{
+        fullName: "mcp_global_lookup",
+        serverId: "global",
+        toolName: "lookup",
+        description: "Search the user-configured service",
+        schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+      }];
+    },
+    async callTool(fullName, args, projectPath, sessionId) {
+      calls.push({ fullName, args, projectPath, sessionId });
+      return { content: [{ type: "text", text: "found" }] };
+    },
+    cancelSessionCalls: (sessionId) => calls.push({ canceled: sessionId }),
+  };
+  const boot = createRemoteHostsBoot({
+    dataDir: dir,
+    encryption,
+    router: createBackendRouter(),
+    emit: () => undefined,
+    clientInfo: { name: "test", version: "0.15.0" },
+    userMcp,
+    buildAdapter: () => {
+      const adapter = fakeAdapter({ sessions: [makeSession("s1")], hostCapabilities: { toolRelay: true } });
+      adapters.push(adapter);
+      return adapter;
+    },
+  });
+  assert.equal(await boot.open(), 1);
+  const advertisement = adapters[0].requests.find(({ method }) => method === "tools/advertise");
+  assert.deepEqual(advertisement.params.tools.map(({ name, workspaceFree }) => ({ name, workspaceFree })), [
+    { name: "mcp_global_lookup", workspaceFree: true },
+  ]);
+  assert.equal(JSON.stringify(advertisement.params).includes("device-token"), false);
+  const result = await adapters[0].serverRequest("tool/execute", {
+    executionId: "exec-1",
+    sessionId: "s1",
+    turnId: "turn-1",
+    toolCallId: "call-1",
+    toolName: "mcp_global_lookup",
+    args: { query: "notes" },
+  });
+  assert.deepEqual(result, { result: { content: [{ type: "text", text: "found" }] }, isError: false });
+  assert.deepEqual(calls, [{
+    fullName: "mcp_global_lookup",
+    args: { query: "notes" },
+    projectPath: null,
+    sessionId: calls[0].sessionId,
+  }]);
+  assert.match(calls[0].sessionId, /owner-host.*s1/);
+  await boot.closeAll();
+  assert.equal(userMcp.listener, undefined);
+  await cleanup();
+});
+
+test("remote transport factory resolves a fresh SSH forward on every retry", async () => {
+  const urls = [];
+  const builds = [];
+  let tunnel = 0;
+  const transportFactory = createRemoteHostTransportFactory(
+    {
+      hostKey: "ssh-host",
+      label: "SSH host",
+      url: "ws://127.0.0.1:1000/v1/racp/ws",
+      deviceToken: "paired-token",
+      metadata: {
+        transport: "ssh",
+        ssh: { host: "remote.test", remotePort: 43821, version: "1" },
+      },
+    },
+    {
+      open: async (hostKey, ssh, secret) => {
+        assert.equal(hostKey, "ssh-host");
+        assert.equal(ssh.host, "remote.test");
+        assert.equal(secret, undefined);
+        tunnel += 1;
+        return { url: `ws://127.0.0.1:${1000 + tunnel}/v1/racp/ws`, localPort: 1000 + tunnel };
+      },
+    },
+    ({ url, token }) => {
+      builds.push({ url, token });
+      urls.push(url);
+      return async () => ({ send() {}, close() {}, onMessage() {}, onClose() {}, onError() {} });
+    },
+  );
+  await transportFactory();
+  await transportFactory();
+  assert.deepEqual(urls, ["ws://127.0.0.1:1001/v1/racp/ws", "ws://127.0.0.1:1002/v1/racp/ws"]);
+  assert.deepEqual(builds.map(({ token }) => token), ["paired-token", "paired-token"]);
+});
+
 test("a host whose connect fails is logged and skipped without killing the others", async () => {
   const { dir, cleanup } = await tmpDir();
   const encryption = reversibleEncryption();
@@ -209,6 +378,287 @@ test("a host whose connect fails is logged and skipped without killing the other
     router.route(IPC.invoke.sessionGet, [{ id: makeRemoteSessionId("bad", "s") }]),
     (error) => error.errorCode === "HOST_UNAVAILABLE",
   );
+  await boot.closeAll();
+  await cleanup();
+});
+
+test("a host that is offline at boot reconnects in the background when it returns", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const encryption = reversibleEncryption();
+  const registry = createRemoteHostRegistry({ dataDir: dir, encryption });
+  await registry.upsert({ hostKey: "offline", label: "Offline", url: "wss://offline", deviceToken: "t" });
+  const scheduler = manualRetryScheduler();
+  const router = createBackendRouter();
+  const adapters = [];
+  let available = false;
+  const boot = createRemoteHostsBoot({
+    dataDir: dir,
+    encryption,
+    router,
+    emit: () => undefined,
+    clientInfo: { name: "test", version: "0.15.0" },
+    retryScheduler: scheduler,
+    buildAdapter: () => {
+      const adapter = fakeAdapter({
+        sessions: [makeSession("s-offline")],
+        connectRejects: available ? undefined : Object.assign(new Error("offline"), { code: "REMOTE_CONNECTION_FAILED" }),
+      });
+      adapters.push(adapter);
+      return adapter;
+    },
+  });
+
+  assert.equal(await boot.open(), 0);
+  assert.equal(adapters.length, 1);
+  assert.equal(scheduler.pendingCount, 1);
+  assert.deepEqual(scheduler.delays(), [500]);
+  assert.equal((await boot.list())[0].connected, false);
+
+  available = true;
+  await scheduler.fireNext();
+
+  assert.equal(adapters.length, 2);
+  assert.equal((await boot.list())[0].connected, true);
+  assert.ok(router.backendForHost("offline"));
+  assert.deepEqual(
+    boot.listRemoteSessions().map(({ id }) => id),
+    [makeRemoteSessionId("offline", "s-offline")],
+  );
+  assert.equal(scheduler.pendingCount, 0);
+  await boot.closeAll();
+  await cleanup();
+});
+
+for (const cleanupKind of ["removeHost", "closeAll"]) {
+  test(`${cleanupKind} cancels a pending boot retry`, async () => {
+    const { dir, cleanup } = await tmpDir();
+    const encryption = reversibleEncryption();
+    const registry = createRemoteHostRegistry({ dataDir: dir, encryption });
+    await registry.upsert({ hostKey: "offline", label: "Offline", url: "wss://offline", deviceToken: "t" });
+    const scheduler = manualRetryScheduler();
+    let attempts = 0;
+    const boot = createRemoteHostsBoot({
+      dataDir: dir,
+      encryption,
+      router: createBackendRouter(),
+      emit: () => undefined,
+      clientInfo: { name: "test", version: "0.15.0" },
+      retryScheduler: scheduler,
+      buildAdapter: () => {
+        attempts += 1;
+        return fakeAdapter({ connectRejects: new Error("offline") });
+      },
+    });
+
+    assert.equal(await boot.open(), 0);
+    assert.equal(scheduler.pendingCount, 1);
+    if (cleanupKind === "removeHost") await boot.removeHost("offline");
+    else await boot.closeAll();
+    assert.equal(scheduler.pendingCount, 0);
+    await scheduler.fireNext();
+    assert.equal(attempts, 1);
+    await boot.closeAll();
+    await cleanup();
+  });
+}
+
+for (const cleanupKind of ["removeHost", "closeAll"]) {
+  test(`${cleanupKind} closes an in-flight adapter and rejects its late connect`, async () => {
+    const { dir, cleanup } = await tmpDir();
+    const encryption = reversibleEncryption();
+    const registry = createRemoteHostRegistry({ dataDir: dir, encryption });
+    await registry.upsert({
+      hostKey: "ssh-host",
+      label: "SSH host",
+      url: "ws://127.0.0.1:1000/v1/racp/ws",
+      deviceToken: "t",
+      metadata: {
+        transport: "ssh",
+        ssh: { host: "remote.test", remotePort: 43821, version: "1" },
+      },
+    });
+    const scheduler = manualRetryScheduler();
+    const retryConnectStarted = deferred();
+    const lateConnect = deferred();
+    const adapters = [];
+    const tunnelCalls = { open: 0, close: 0, dispose: 0 };
+    const tunnels = {
+      async open() {
+        tunnelCalls.open += 1;
+        return { url: `ws://127.0.0.1:${1000 + tunnelCalls.open}/v1/racp/ws`, localPort: 1000 + tunnelCalls.open };
+      },
+      async close() {
+        tunnelCalls.close += 1;
+      },
+      async dispose() {
+        tunnelCalls.dispose += 1;
+      },
+      async adopt() {
+        throw new Error("not used in this test");
+      },
+    };
+    const events = [];
+    const router = createBackendRouter();
+    const boot = createRemoteHostsBoot({
+      dataDir: dir,
+      encryption,
+      router,
+      emit: (channel, payload) => events.push({ channel, payload }),
+      clientInfo: { name: "test", version: "0.15.0" },
+      retryScheduler: scheduler,
+      tunnels,
+      buildAdapter: () => {
+        const adapter = adapters.length === 0
+          ? fakeAdapter({ connectRejects: new Error("offline") })
+          : fakeAdapter({
+              connect: async () => {
+                retryConnectStarted.resolve();
+                await lateConnect.promise;
+              },
+            });
+        adapters.push(adapter);
+        return adapter;
+      },
+    });
+
+    assert.equal(await boot.open(), 0);
+    assert.equal(scheduler.pendingCount, 1);
+    const retryRun = scheduler.fireNext();
+    await retryConnectStarted.promise;
+    assert.equal(adapters.length, 2);
+
+    if (cleanupKind === "removeHost") await boot.removeHost("ssh-host");
+    else await boot.closeAll();
+    assert.ok(adapters[1].closeCalls >= 1);
+    assert.equal(scheduler.pendingCount, 0);
+
+    lateConnect.resolve();
+    await retryRun;
+    assert.equal(router.backendForHost("ssh-host"), null);
+    assert.deepEqual(boot.listRemoteSessions(), []);
+    assert.equal(adapters[1].state, "disconnected");
+    assert.ok(tunnelCalls.close + tunnelCalls.dispose > 0);
+    assert.equal(
+      events.some(({ payload }) => payload?.reason === "remote.hosts.opened"),
+      false,
+    );
+    await boot.closeAll();
+    await cleanup();
+  });
+}
+
+test("a tunnel that opens after removeHost is closed without creating an adapter", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const encryption = reversibleEncryption();
+  const registry = createRemoteHostRegistry({ dataDir: dir, encryption });
+  await registry.upsert({
+    hostKey: "ssh-host",
+    label: "SSH host",
+    url: "ws://127.0.0.1:1000/v1/racp/ws",
+    deviceToken: "t",
+    metadata: {
+      transport: "ssh",
+      ssh: { host: "remote.test", remotePort: 43821, version: "1" },
+    },
+  });
+  const openStarted = deferred();
+  const lateTunnel = deferred();
+  let closeCalls = 0;
+  let adapterBuilds = 0;
+  const router = createBackendRouter();
+  const boot = createRemoteHostsBoot({
+    dataDir: dir,
+    encryption,
+    router,
+    emit: () => undefined,
+    clientInfo: { name: "test", version: "0.15.0" },
+    tunnels: {
+      open() {
+        openStarted.resolve();
+        return lateTunnel.promise;
+      },
+      async close() {
+        closeCalls += 1;
+      },
+      async dispose() {},
+      async adopt() {
+        throw new Error("not used in this test");
+      },
+    },
+    buildAdapter: () => {
+      adapterBuilds += 1;
+      return fakeAdapter();
+    },
+  });
+
+  const opening = boot.open();
+  await openStarted.promise;
+  await boot.removeHost("ssh-host");
+  lateTunnel.resolve({ url: "ws://127.0.0.1:1001/v1/racp/ws", localPort: 1001 });
+  assert.equal(await opening, 0);
+
+  assert.equal(adapterBuilds, 0);
+  assert.ok(closeCalls >= 2, "remove and stale-open cleanup both close the forward");
+  assert.equal(router.backendForHost("ssh-host"), null);
+  await boot.closeAll();
+  await cleanup();
+});
+
+test("a late old connect cannot retire a re-paired host generation", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const encryption = reversibleEncryption();
+  const registry = createRemoteHostRegistry({ dataDir: dir, encryption });
+  await registry.upsert({ hostKey: "hostA", label: "Old", url: "wss://old", deviceToken: "old-token" });
+  const scheduler = manualRetryScheduler();
+  const retryConnectStarted = deferred();
+  const lateConnect = deferred();
+  const adapters = [];
+  const router = createBackendRouter();
+  const boot = createRemoteHostsBoot({
+    dataDir: dir,
+    encryption,
+    router,
+    emit: () => undefined,
+    clientInfo: { name: "test", version: "0.15.0" },
+    retryScheduler: scheduler,
+    buildAdapter: (record) => {
+      const adapter = adapters.length === 0
+        ? fakeAdapter({ connectRejects: new Error("offline") })
+        : adapters.length === 1
+          ? fakeAdapter({
+              connect: async () => {
+                retryConnectStarted.resolve();
+                await lateConnect.promise;
+              },
+            })
+          : fakeAdapter({ sessions: [makeSession("new-session")] });
+      adapters.push(adapter);
+      assert.equal(record.deviceToken, adapters.length === 3 ? "new-token" : "old-token");
+      return adapter;
+    },
+  });
+
+  assert.equal(await boot.open(), 0);
+  const oldRetry = scheduler.fireNext();
+  await retryConnectStarted.promise;
+  const paired = await boot.addHost({
+    hostKey: "hostA",
+    label: "New",
+    url: "wss://new",
+    deviceToken: "new-token",
+  });
+  assert.equal(paired.connected, true);
+  assert.equal(scheduler.pendingCount, 0);
+  assert.ok(router.backendForHost("hostA"));
+
+  lateConnect.resolve();
+  await oldRetry;
+  assert.ok(router.backendForHost("hostA"));
+  assert.deepEqual(
+    boot.listRemoteSessions().map(({ id }) => id),
+    [makeRemoteSessionId("hostA", "new-session")],
+  );
+  assert.ok(adapters[1].closeCalls >= 1);
   await boot.closeAll();
   await cleanup();
 });

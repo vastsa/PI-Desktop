@@ -19,9 +19,14 @@ import type {
   RacpEventEnvelope,
   RacpInputRequest,
   RacpSession,
+  RemoteTerminalEvent,
   ToolPermissionRequest,
 } from "@pi-desktop/shared";
-import { makeRemoteApprovalRequestId, makeRemoteSessionId } from "./backend-router.js";
+import {
+  makeRemoteApprovalRequestId,
+  makeRemoteSessionId,
+  makeRemoteTerminalId,
+} from "./backend-router.js";
 
 /**
  * The session carried by a host-scope session event. The host publishes either
@@ -96,6 +101,11 @@ function extractInputRequest(payload: unknown): RacpInputRequest | undefined {
   if (!isRecord(payload)) return undefined;
   if (typeof payload.id !== "string" || !Array.isArray(payload.questions)) return undefined;
   return payload as unknown as RacpInputRequest;
+}
+
+function isBase64(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
 }
 
 function toToolPermissionRequest(
@@ -195,7 +205,7 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
   };
 
   const handleSessionScope = (envelope: RacpEventEnvelope): void => {
-    if (typeof envelope.sessionId !== "string") return;
+    if (typeof envelope.sessionId !== "string" || envelope.sessionId.length === 0) return;
     const remoteSessionId = remoteIdOf(envelope.sessionId);
     switch (envelope.kind) {
       case "item.started":
@@ -253,14 +263,56 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         });
         return;
       }
+      case "terminal.output": {
+        const payload = envelope.payload;
+        if (
+          !isRecord(payload) ||
+          typeof payload.terminalId !== "string" ||
+          payload.terminalId.length === 0 ||
+          !isBase64(payload.data)
+        ) {
+          log("warn", "remote terminal.output carried an invalid payload", envelope);
+          return;
+        }
+        const event: RemoteTerminalEvent = {
+          type: "output",
+          sessionId: remoteSessionId,
+          terminalId: makeRemoteTerminalId(remoteSessionId, payload.terminalId),
+          output: payload.data,
+        };
+        emit(IPC.event.remoteTerminal, event);
+        return;
+      }
+      case "terminal.changed": {
+        const payload = envelope.payload;
+        if (
+          !isRecord(payload) ||
+          typeof payload.terminalId !== "string" ||
+          payload.terminalId.length === 0 ||
+          (payload.state !== "open" && payload.state !== "closed" && payload.state !== "exited") ||
+          (payload.code !== undefined &&
+            payload.code !== null &&
+            (typeof payload.code !== "number" || !Number.isInteger(payload.code)))
+        ) {
+          log("warn", "remote terminal.changed carried an invalid payload", envelope);
+          return;
+        }
+        const event: RemoteTerminalEvent = {
+          type: "state",
+          sessionId: remoteSessionId,
+          terminalId: makeRemoteTerminalId(remoteSessionId, payload.terminalId),
+          state: payload.state,
+          ...(payload.code !== undefined ? { code: payload.code } : {}),
+        };
+        emit(IPC.event.remoteTerminal, event);
+        return;
+      }
       case "approval.resolved":
       case "input.resolved":
-      case "terminal.changed":
-      case "terminal.output":
       case "resync.required":
         // Approvals settle through the renderer's own resolve call; the plan
-        // and status changes come as `session.changed` payloads. Terminal
-        // events belong to Stage 5. `resync.required` is Stage 3b — the
+        // and status changes come as `session.changed` payloads.
+        // `resync.required` is Stage 3b — the
         // connection layer must consume it, not the bridge.
         return;
       default:

@@ -1822,7 +1822,17 @@ sklm: {
       "browser": "Navigateur",
       "file": "Fichiers",
       "plugin": "Vue du plugin",
-      "subagent": "Sous-agent"
+      "subagent": "Sous-agent",
+      "terminal": "Terminal"
+    },
+    "terminal": {
+      "host": "Hôte distant : {{host}}",
+      "connecting": "Connexion…",
+      "connected": "Connecté",
+      "exited": "Shell terminé ({{code}})",
+      "failed": "Impossible d’ouvrir le terminal distant.",
+      "unavailable": "Cet hôte ne fournit pas de terminal.",
+      "retry": "Reconnecter"
     },
     "pluginView": {
       "failed": "Cette vue n'a pas pu être chargée. Rechargez le plugin et réessayez."

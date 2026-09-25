@@ -1822,7 +1822,17 @@ sklm: {
       "browser": "Browser",
       "file": "Dateien",
       "plugin": "Plugin-Ansicht",
-      "subagent": "Subagent"
+      "subagent": "Subagent",
+      "terminal": "Terminal"
+    },
+    "terminal": {
+      "host": "Remote-Host: {{host}}",
+      "connecting": "Verbindung wird hergestellt…",
+      "connected": "Verbunden",
+      "exited": "Shell beendet ({{code}})",
+      "failed": "Das Remote-Terminal konnte nicht geöffnet werden.",
+      "unavailable": "Dieser Host bietet kein Terminal an.",
+      "retry": "Erneut verbinden"
     },
     "pluginView": {
       "failed": "Diese Ansicht konnte nicht geladen werden. Laden Sie das Plugin neu und versuchen Sie es erneut."
