@@ -65,6 +65,15 @@ pub struct CompactionRecord {
     pub first_kept_message_id: Option<String>,
     pub through_message_id: String,
     pub tokens_before: i64,
+    /// Occupancy the checkpoint itself believes the next request will carry,
+    /// stamped when the checkpoint is installed (`persistCheckpoint`). The
+    /// visible transcript is untouched by a compaction, so nothing else on disk
+    /// records what the model context shrank to — without this the context ring
+    /// keeps showing the pre-compaction request until the next one lands.
+    /// Optional: a transcript written before this field existed loads with
+    /// `None`, and a line carrying it stays readable by older readers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_after: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1255,6 +1264,7 @@ mod tests {
             first_kept_message_id: Some("m1".into()),
             through_message_id: "m2".into(),
             tokens_before: 42_000,
+            tokens_after: Some(21_000),
             usage: Some(json!({ "input": 100, "output": 20 })),
             retained_tail: Some(json!([{ "role": "user", "content": "again", "timestamp": 1 }])),
             details: None,
@@ -1607,6 +1617,36 @@ mod tests {
         assert_eq!(restored[0].id, "compact-1");
         assert_eq!(restored[0].through_message_id, "m2");
         assert_eq!(restored[0].tokens_before, 42_000);
+        // The post-compaction estimate rides the record so the context ring can
+        // report the new window without waiting for the next provider request.
+        assert_eq!(restored[0].tokens_after, Some(21_000));
+    }
+
+    /// A checkpoint written before the post-compaction estimate existed must
+    /// keep loading. The field is optional on the wire, so an old line has no
+    /// `tokensAfter` and readers that predate it ignore the new one.
+    #[test]
+    fn a_checkpoint_without_a_post_compaction_estimate_still_loads() {
+        let dir = tempdir().unwrap();
+        let path = transcript_path(dir.path(), "s1").unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let header = header_line("s1", "2026-07-26T00:00:00Z").unwrap();
+        let legacy = json!({
+            "type": "compaction",
+            "id": "legacy-1",
+            "summary": "summary",
+            "throughMessageId": "m1",
+            "tokensBefore": 42_000,
+            "createdAt": "2026-07-26T00:00:02Z"
+        })
+        .to_string();
+        std::fs::write(&path, format!("{header}\n{legacy}\n")).unwrap();
+
+        let restored = read_compactions(dir.path(), "s1").unwrap();
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].id, "legacy-1");
+        assert_eq!(restored[0].tokens_before, 42_000);
+        assert_eq!(restored[0].tokens_after, None);
     }
 
     #[test]

@@ -6324,6 +6324,9 @@ describe("DesktopAgentRuntime inline context compaction", () => {
           throughMessageId: "recent-user",
           generation: 1,
           summaryTokens: 7,
+          // Stamped by persistCheckpoint so the ring can lead with the new
+          // window before any request reports it.
+          tokensAfter: expect.any(Number),
           summarized: true,
         },
       }),

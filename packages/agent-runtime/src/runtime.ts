@@ -6651,6 +6651,19 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     ) {
       return "oversized";
     }
+
+    // The estimate of the compacted projection is smaller than what the next
+    // request will actually carry: it is built from message content alone, while
+    // the request also pays for the system prompt and the tool schemas.
+    // `tokensBefore` is a measured request size, so the gap between it and the
+    // pre-compaction estimate is that overhead — adding it back keeps this
+    // number comparable with the request-based occupancy shown elsewhere.
+    const preCompactionTokens = this.contextBudget(
+      this.liveSessionContext().messages,
+    ).tokens;
+    checkpoint.tokensAfter =
+      compactedBudget.tokens +
+      Math.max(0, checkpoint.tokensBefore - preCompactionTokens);
     try {
       await this.host.call("session.appendCompaction", {
         sessionId: this.sessionId,
