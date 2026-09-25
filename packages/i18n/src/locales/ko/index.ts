@@ -777,6 +777,7 @@ sklm: {
         "이 서버는 조건부 쓰기를 적용할 수 없습니다. 호환 모드는 기록을 보존하지만 원자적 compare-and-swap을 제공하지 않습니다. 계속하시겠습니까?",
       username: "Username",
       appPassword: "App password",
+      appPasswordSavedHint: "이 기기에 안전하게 저장됩니다. 재사용하려면 비워 두세요.",
       directory: "Remote directory",
       deviceLabel: "Device label",
       defaultDevice: "This device",

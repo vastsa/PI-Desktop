@@ -769,6 +769,7 @@ sklm: {
         "Dieser Server kann bedingte Schreibvorgänge nicht erzwingen. Der Kompatibilitätsmodus behält den Verlauf, bietet aber kein atomares Compare-and-Swap. Fortfahren?",
       username: "Username",
       appPassword: "App password",
+      appPasswordSavedHint: "Sicher auf diesem Gerät gespeichert. Leer lassen, um es wiederzuverwenden.",
       directory: "Remote directory",
       deviceLabel: "Device label",
       defaultDevice: "This device",

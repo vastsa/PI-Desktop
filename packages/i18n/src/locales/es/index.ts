@@ -769,6 +769,7 @@ sklm: {
         "Este servidor no puede aplicar escrituras condicionales. El modo de compatibilidad conserva el historial, pero no ofrece un compare-and-swap atómico. ¿Continuar?",
       username: "Username",
       appPassword: "App password",
+      appPasswordSavedHint: "Guardada de forma segura en este dispositivo. Déjala vacía para reutilizarla.",
       directory: "Remote directory",
       deviceLabel: "Device label",
       defaultDevice: "This device",

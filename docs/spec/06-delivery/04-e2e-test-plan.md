@@ -8458,7 +8458,12 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   history. Cancel the confirmation once and verify configuration is not saved.
   11) Use the explicit LAN HTTP acknowledgement with a loopback/private fixture,
   verify the setting survives a state refresh, and confirm a public HTTP
-  endpoint is rejected even when the checkbox is selected.
+  endpoint is rejected even when the checkbox is selected. 12) Leave the
+  Cloud sync page with an unfinished connection edit, reopen it, and confirm
+  the non-sensitive draft is painted immediately while host state/history
+  refreshes in the background. Confirm a configured endpoint reuses its stored
+  WebDAV app password, while password fields themselves remain blank and no
+  vault password is written to renderer storage.
 - **Expected:** With developer mode off, Cloud sync is absent from the rail and
   settings search; enabling developer mode reveals the destination and its
   Experimental badges without changing sync behavior. Strict mode refuses
@@ -8475,16 +8480,19 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   appear in renderer state or logs. Identical and disjoint edits converge,
   conflicts remain reviewable, explicit deletions use tombstones, category
   opt-out is not deletion, and executable imports remain inactive until local
-  approval and mapping. Recovery never exposes a partial local apply.
+  approval and mapping. Reopening Settings does not block on history, and
+  unfinished non-sensitive connection choices survive navigation or reload.
+  Recovery never exposes a partial local apply.
 - **Specs:** `04-ux/06-settings-ia.md`, `03-runtime/22-config-sync.md`,
   `03-runtime/14-secrets-storage.md`, `05-security/01-security.md`, ADR 0300,
   ADR 0301.
 - **Acceptance:** F (persistence), Security, Quality.
 - **Milestone:** M6+.
-- **Status:** Draft; merge/crypto and in-process WebDAV conditional-write
-  coverage exists. The Settings visibility gate is automated by
-  `pnpm test:e2e:settings-scroll`; the remaining automation is the full
-  two-device process path and checkpoint-level local recovery fault injection.
+- **Status:** Draft; merge/crypto, in-process WebDAV conditional-write
+  coverage, and the two-device host/WebDAV path are automated by
+  `pnpm test:e2e:config-sync`. The Settings visibility gate is automated by
+  `pnpm test:e2e:settings-scroll`; full renderer-driven password persistence
+  assertions and checkpoint-level local recovery fault injection remain.
 
 ## 8. Traceability Matrix
 

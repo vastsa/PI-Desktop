@@ -70,6 +70,8 @@ Host 绝不会仅因为 UI flag 被设置就激活暂存的可执行内容。新
 
 设置 → 云同步提供 WebDAV endpoint 凭据、vault 密码、设备标签、服务器兼容模式、类别选择、能力测试、立即同步、解锁、暂停、文件夹映射、批准/拒绝、revision history/restore、vault 密码重新包裹以及断开连接控制。严格 CAS 是默认模式。选择追加式兼容模式会显示持续风险提示，并在保存配置前要求确认；其测试成功提示目录列表支持，而不是条件写支持。Renderer 将 `notConfigured`、`locked`、`upToDate`、`localChangesPending`、`syncing`、`offline`、`unsupportedServer`、`conflict`、`awaitingActivation`、`paused` 和 `error` 显示为不同状态。断开连接会保留本地数据，不会删除远端数据。
 
+重新打开页面时，先用短时的 Renderer 缓存绘制最近一次脱敏的 Host 状态和历史记录，随后在后台刷新 Host。连接草稿（endpoint、用户名、远程目录、设备标签、兼容模式和类别选择）保存在 Renderer 本地存储中，因此离开页面或重载后未完成的表单仍会保留；Host 确认已保存的配置后，草稿会重新标记为已保存。WebDAV 应用密码留在 Host secret store 中，且只对同一 endpoint 和账户复用；Renderer 永远不会存储任一密码，只有新设备或已锁定设备需要打开 vault 时才需要输入 vault 密码。
+
 手动同步会在运行期间报告它正在做什么。`configSync.progress` 携带当前阶段（`capture`、`download`、`merge`、`upload`、`apply` 或 `cleanup`）、该阶段已完成的单位数，以及已知时的字节数：`done`/`total` 在传输时计资源对象（追加式模式下计正在读取的设备 tip）、其他阶段计实体；`total` 为 0 表示该阶段无法预知总量；`bytesTotal` 为 0 表示字节数未知，这是下载阶段的常态。报告会节流，阶段变化绝不丢弃，状态事件与调用的返回值仍是终态信号。后台轮询不报告进度：只有手动路径有调用方在等待。
 
 凭据和 memory 默认未选中。设置预览报告 supported、excluded、secret-bearing、mapping-required 和 pending-activation 计数。原始秘密值、vault key 和备份密码永远不会跨过 Renderer 边界。

@@ -1058,6 +1058,7 @@ sklm: {
         "This server mode cannot enforce conditional writes. Compatibility mode retains history but cannot provide atomic compare-and-swap. Continue?",
       username: "Username",
       appPassword: "App password",
+      appPasswordSavedHint: "Saved securely on this device. Leave blank to reuse it.",
       directory: "Remote directory",
       deviceLabel: "Device label",
       defaultDevice: "This device",

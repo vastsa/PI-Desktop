@@ -763,6 +763,7 @@ sklm: {
       appendOnlyConfirm: "此服务器无法执行条件写入。兼容模式会保留历史，但无法提供原子比较并交换。要继续吗？",
       username: "用户名",
       appPassword: "应用密码",
+      appPasswordSavedHint: "已安全保存在本设备。留空即可复用。",
       directory: "远程目录",
       deviceLabel: "设备名称",
       defaultDevice: "此设备",

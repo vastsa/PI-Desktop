@@ -776,6 +776,7 @@ sklm: {
         "Bu sunucu koşullu yazmaları uygulayamıyor. Uyumluluk modu geçmişi korur ancak atomik compare-and-swap sağlayamaz. Devam edilsin mi?",
       username: "Kullanıcı adı",
       appPassword: "Uygulama parolası",
+      appPasswordSavedHint: "Bu cihazda güvenle saklanır. Yeniden kullanmak için boş bırakın.",
       directory: "Uzak dizin",
       deviceLabel: "Cihaz etiketi",
       defaultDevice: "Bu cihaz",

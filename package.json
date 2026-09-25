@@ -41,6 +41,7 @@
     "test:e2e:oauth-retry": "node --test apps/desktop/test/anthropic-oauth-retry.test.mjs",
     "test:e2e:boot": "node scripts/e2e-electron-boot.mjs",
     "test:e2e:settings-scroll": "node scripts/e2e-settings-scroll.mjs",
+    "test:e2e:config-sync": "node scripts/e2e-config-sync-multidevice.mjs",
     "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
     "test:e2e:window-controls": "node scripts/e2e-window-controls.mjs",
     "test:e2e:work-panel-reorder": "node scripts/e2e-work-panel-reorder.mjs",

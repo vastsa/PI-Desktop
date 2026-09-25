@@ -202,6 +202,13 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   Users can sync now, unlock, pause this device, approve/reject staged items,
   and disconnect. The page does not imply convergence from an old successful
   run while a pending state remains.
+- **Fast revisit and drafts**: render the last redacted state and history from
+  a short-lived local cache while the host refresh runs in the background. Keep
+  endpoint, username, remote directory, device label, compatibility mode, and
+  category choices in renderer-local storage so an unfinished form survives
+  navigation or reload. WebDAV app passwords remain in Host-owned secret
+  storage and are reused only for the same endpoint and account; vault
+  passwords are never written to renderer storage.
 
 ### 全局 AI (`ai` tab)
 - **Permissions** card: the global permission-mode control

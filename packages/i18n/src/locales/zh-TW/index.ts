@@ -763,6 +763,7 @@ sklm: {
       appendOnlyConfirm: "此伺服器無法執行條件寫入。相容模式會保留歷史，但無法提供原子比較並交換。要繼續嗎？",
       username: "使用者名稱",
       appPassword: "應用程式密碼",
+      appPasswordSavedHint: "已安全儲存在此裝置。留白即可重複使用。",
       directory: "遠端目錄",
       deviceLabel: "裝置名稱",
       defaultDevice: "此裝置",

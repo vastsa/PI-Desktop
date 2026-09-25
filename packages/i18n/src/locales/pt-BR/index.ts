@@ -1026,6 +1026,7 @@ export const ptBR = {
       appendOnlyConfirm: "Este modo de servidor não consegue impor gravações condicionais. O modo de compatibilidade preserva o histórico, mas não fornece compare-and-swap atômico. Continuar?",
       username: "Nome de usuário",
       appPassword: "Senha do aplicativo",
+      appPasswordSavedHint: "Salva com segurança neste dispositivo. Deixe em branco para reutilizá-la.",
       directory: "Diretório remoto",
       deviceLabel: "Identificação do dispositivo",
       defaultDevice: "Este dispositivo",
