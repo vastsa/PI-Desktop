@@ -24,6 +24,14 @@ test('discovers installed plain and scoped packages without importing or executi
   assert.ok(result.candidates.every(c => c.skills.length === 1 && !c.hasExtensions && !c.imported));
   assert.equal(existsSync(f.imports), false);
 });
+test('hidden directories inside scoped packages do not produce discovery errors', async t => {
+  const f = fixture(t);
+  mkdirSync(join(f.modules, '@img', '.sharp-win32-x64-temp'), { recursive: true });
+  f.pkg('healthy');
+  const result = await discoverPiSkillPackages(f.modules);
+  assert.deepEqual(result.candidates.map(candidate => candidate.name), ['healthy']);
+  assert.deepEqual(result.errors, []);
+});
 test('hoisted npm dependencies do not prevent discovery of installed skills', async t => {
   const f = fixture(t);
   for (let index = 0; index < 300; index++) {

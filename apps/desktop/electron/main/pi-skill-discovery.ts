@@ -42,7 +42,9 @@ export async function discoverPiSkillPackages(modules: string, importedDescripti
     }
     try {
       for (const child of await readdir(path, { withFileTypes: true })) {
-        if (child.isDirectory() && !child.isSymbolicLink()) paths.push(join(path, child.name));
+        if (child.isDirectory() && !child.isSymbolicLink() && !child.name.startsWith(".")) {
+          paths.push(join(path, child.name));
+        }
       }
     } catch (error) {
       errors.push(`${path}: ${error instanceof Error ? error.message : String(error)}`);
