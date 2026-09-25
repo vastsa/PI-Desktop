@@ -4289,13 +4289,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         }
         const delegationId = randomUUID();
         const controller = new AbortController();
-        const thinkingLevel: SubagentThinkingLevel =
-          definition.thinkingLevel === "omit"
-            ? "omit"
-            : clampThinkingLevel(
-                provider,
-                definition.thinkingLevel ?? this.thinkingLevel,
-              );
+        const resumedModelKey = resumedProvider
+          ? resumedChain?.latestModelKey ?? this.delegationModelKeyFor(resumedProvider)
+          : undefined;
+        const resumedFallbackThinking = definition.fallbackModels?.find(
+          (pin) => subagentModelKey(pin) === resumedModelKey,
+        )?.thinkingLevel;
+        const requestedThinking = resumedFallbackThinking ?? definition.thinkingLevel ?? this.thinkingLevel;
+        const thinkingLevel: SubagentThinkingLevel = requestedThinking === "omit"
+          ? "omit"
+          : clampThinkingLevel(provider, requestedThinking);
         // Only TaskStop, user Stop, dispose, and a parent fatal error abort a
         // delegate (D328 / D352). The Task tool call returns immediately; tying
         // the background run to that call's signal would kill it when the parent
@@ -4358,6 +4361,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             thinkingLevel,
             fallbackModels: (definition.fallbackModels ?? []).map((pin) => ({
               key: subagentModelKey(pin),
+              thinkingLevel: pin.thinkingLevel,
               provider: this.subagentProviders[subagentModelKey(pin)],
             })),
             inheritedThinkingLevel: this.thinkingLevel,

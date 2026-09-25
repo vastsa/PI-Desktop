@@ -8280,7 +8280,7 @@ describe("DesktopAgentRuntime subagents", () => {
       const target = {
         ...explorer,
         ...(source === "definition" ? { model: own } : {}),
-        ...(source === "fallback" ? { fallbackModels: [own] } : {}),
+        ...(source === "fallback" ? { fallbackModels: [{ ...own, thinkingLevel: "omit" as const }] } : {}),
       };
       const runtime = createRuntime({
         provider: source === "session" ? authorized : provider,
@@ -8298,6 +8298,7 @@ describe("DesktopAgentRuntime subagents", () => {
         const result = await startTask(runtime, "task-2", { agent: "explorer", task: "Continue.", resume: "del-1" });
         expect(result.details.error).toBeUndefined();
         expect(subagentRuns.calls[0].provider).toBe(source === "missing" ? provider : authorized);
+        if (source === "fallback") expect(subagentRuns.calls[0].thinkingLevel).toBe("omit");
         const records = (runtime as unknown as { delegations: Map<string, { modelChangedFrom?: string }> }).delegations;
         expect(records.get(result.details.delegationId)?.modelChangedFrom).toBe(source === "missing" ? "recorded-model" : undefined);
       } finally { await runtime.dispose(); }

@@ -31,6 +31,40 @@ export type SubagentModelPin = {
   providerId: string;
   modelId: string;
 };
+export type SubagentFallbackPin = SubagentModelPin & {
+  thinkingLevel?: SubagentThinkingLevel;
+};
+
+/** Encode optional per-fallback thinking in the existing string-list format. */
+export const SUBAGENT_FALLBACK_THINKING_SEPARATOR = "|";
+
+export function parseSubagentFallbackEntry(value: string): {
+  pin: string;
+  thinkingLevel?: SubagentThinkingLevel;
+} {
+  const trimmed = value.trim();
+  const sep = trimmed.lastIndexOf(SUBAGENT_FALLBACK_THINKING_SEPARATOR);
+  if (sep <= 0) return { pin: trimmed };
+  const pin = trimmed.slice(0, sep).trim();
+  const suffix = trimmed.slice(sep + 1).trim().toLowerCase();
+  if (pin && (SUBAGENT_THINKING_LEVELS as readonly string[]).includes(suffix)) {
+    return { pin, thinkingLevel: suffix as SubagentThinkingLevel };
+  }
+  return { pin: trimmed };
+}
+
+export function formatSubagentFallbackEntry(
+  pin: string,
+  thinkingLevel?: SubagentThinkingLevel | "",
+): string {
+  const trimmed = pin.trim();
+  return thinkingLevel ? `${trimmed}|${thinkingLevel}` : trimmed;
+}
+
+export function formatSubagentFallbackPin(pin: SubagentFallbackPin): string {
+  return formatSubagentFallbackEntry(subagentModelKey(pin), pin.thinkingLevel);
+}
+
 
 export type SubagentDefinition = {
   /** Delegate id used as the `Task` argument, e.g. "code-reviewer". */
@@ -50,7 +84,7 @@ export type SubagentDefinition = {
   /** Provider/model this definition pins, when it pins one. */
   model?: SubagentModelPin;
   /** Ordered, definition-scoped alternatives after a provider failure. */
-  fallbackModels?: SubagentModelPin[];
+  fallbackModels?: SubagentFallbackPin[];
   /**
    * Reasoning level for the delegate, clamped against the model in main.
    * omit leaves the provider's own default untouched.
@@ -413,11 +447,16 @@ export function parseSubagentDefinition(
   }
 
   const model = parseModelPin(frontmatter, errors);
-  const fallbackModels: SubagentModelPin[] = [];
+  const fallbackModels: SubagentFallbackPin[] = [];
   for (const value of asList(frontmatter.get("fallbackmodels"))) {
-    const pin = parseModelPin(new Map([["model", value]]), errors);
+    const parsed = parseSubagentFallbackEntry(value);
+    if (parsed.pin.includes(SUBAGENT_FALLBACK_THINKING_SEPARATOR)) {
+      errors.push(`invalid fallback thinking level in "${value}"`);
+      continue;
+    }
+    const pin = parseModelPin(new Map([["model", parsed.pin]]), errors);
     if (pin && !fallbackModels.some((entry) => subagentModelKey(entry) === subagentModelKey(pin))) {
-      fallbackModels.push(pin);
+      fallbackModels.push({ ...pin, ...(parsed.thinkingLevel ? { thinkingLevel: parsed.thinkingLevel } : {}) });
     }
   }
 

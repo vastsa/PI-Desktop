@@ -12,6 +12,8 @@ import {
   isSubagentAssignableTool,
   isSubagentMutatingTool,
   resolveScope,
+  formatSubagentFallbackPin,
+  parseSubagentFallbackEntry,
   type ActivationScope,
   type SubagentDefinition,
   type SubagentPreset,
@@ -182,7 +184,7 @@ export function draftFromDefinition(definition: SubagentDefinition): SubagentDra
     model: definition.model
       ? `${definition.model.providerId}/${definition.model.modelId}`
       : "",
-    fallbackModels: (definition.fallbackModels ?? []).map((pin) => `${pin.providerId}/${pin.modelId}`),
+    fallbackModels: (definition.fallbackModels ?? []).map(formatSubagentFallbackPin),
     thinkingLevel: definition.thinkingLevel ?? "",
     maxTokens: definition.maxTokens ?? 0,
     body: definition.prompt,
@@ -250,7 +252,7 @@ export function subagentDraftError(draft: SubagentDraft): string | null {
   // the picker offers those, so rejecting them here would make a selectable
   // option impossible to save. This shares the picker's own splitter so the two
   // can never disagree.
-  if ([draft.model, ...draft.fallbackModels].some((pin) => pin.trim() && !subagentModelPinParts(pin.trim()))) {
+  if (draft.model.trim() && !subagentModelPinParts(draft.model.trim()) || draft.fallbackModels.some((entry) => entry.trim() && !subagentModelPinParts(parseSubagentFallbackEntry(entry).pin))) {
     return "extensions.subagents.errorModel";
   }
   // Cleared (`0`) is a valid state that means "no cap of our own", so only a

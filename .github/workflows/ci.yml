@@ -50,7 +50,9 @@ jobs:
 
       - name: Check architecture budgets
         env:
-          ARCHITECTURE_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
+          # The PR checkout is a synthetic merge: its first parent is the target branch.
+          # The webhook base SHA may lag behind that parent after main moves.
+          ARCHITECTURE_BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before || 'HEAD^' }}
         run: node scripts/check-architecture.mjs
 
       - name: Unit tests

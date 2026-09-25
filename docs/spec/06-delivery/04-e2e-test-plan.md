@@ -14382,6 +14382,8 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   exhausted transient/429 retries on two consecutive models,
   unavailable/duplicate pins, an explicit authorized Task primary,
   and Stop during recovery. Remove all alternatives, save, and reopen.
+  Set different thinking levels on two alternatives; verify a new row defaults
+  to `inherit`, the fixed menu omits `omit`, and save/reopen retains each level.
 - **Expected**: List order and clear/preserve semantics round-trip. Provider
   retry budgets precede fallback; each distinct configured binding is used
   once. The original task and completed tool results reach the next model;
@@ -14391,9 +14393,11 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   errors do not switch models. Exhaustion fails explicitly. Alternatives never
   authorize a Task override for the second definition. No alternatives retains
   the existing single-model behavior.
+  On fallback, each alternative uses its own requested thinking, clamped to
+  that model's supported levels; `inherit` reuses the definition/parent choice.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` §5f,
   `03-runtime/13-model-catalog-and-selection.md` §Subagent editor,
-  ADR subagent-model-fallback.
+  ADR subagent-model-fallback and ADR 0307.
 - **Acceptance criterion**: C — Conversation & stream; Quality (compatibility
   and permission isolation).
 - **Milestone**: M6+.

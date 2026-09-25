@@ -134,7 +134,7 @@ export type SubagentRunOptions = {
   infiniteProviderRetry?: boolean;
   thinkingLevel: SubagentThinkingLevel;
   /** User-owned definition pins only, in configured order. Missing bindings fail visibly. */
-  fallbackModels?: Array<{ key: string; provider?: RuntimeProviderConfig }>;
+  fallbackModels?: Array<{ key: string; provider?: RuntimeProviderConfig; thinkingLevel?: SubagentThinkingLevel }>;
   /** Original parent thinking selection, before primary-model clamping. */
   inheritedThinkingLevel?: SubagentThinkingLevel;
   onModelChange?: (provider: RuntimeProviderConfig, thinkingLevel: SubagentThinkingLevel) => void;
@@ -498,7 +498,7 @@ export class SubagentRun {
       const identity = `${next.provider.id}/${next.provider.modelId}`;
       if (this.attemptedModels.has(identity)) continue;
       this.attemptedModels.add(identity);
-      const requested = this.opts.definition.thinkingLevel ?? this.opts.inheritedThinkingLevel ?? this.opts.thinkingLevel;
+      const requested = next.thinkingLevel ?? this.opts.definition.thinkingLevel ?? this.opts.inheritedThinkingLevel ?? this.opts.thinkingLevel;
       const thinking = requested === "omit" ? "omit" : clampThinkingLevel(next.provider, requested);
       const binding = this.bindingFor(next.provider, thinking);
       // An alternative whose window cannot hold the carried context would fail

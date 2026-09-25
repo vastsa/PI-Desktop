@@ -290,6 +290,10 @@ Every change follows this sequence. Steps may be iterated if the implementation 
   under R4. No separate approval or waiver is needed to skip unnecessary checks;
   the required E2E gate on a candidate that already contains latest
   `origin/main` still applies to code-bearing changes.
+- In PR CI, architecture budgets compare against the first parent of the
+  checked-out PR integration candidate (the target branch at checkout),
+  rather than the webhook base SHA, which can lag after the target moves.
+  Push CI continues to compare against the pre-push revision.
 - Changes with material regression risk, including security boundaries,
   protocol contracts, data migrations, build configuration, or widely shared
   behavior, normally require the smallest targeted non-E2E validation that can
