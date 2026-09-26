@@ -173,6 +173,13 @@ export function ComposerAutocomplete({
       initialFocus="none"
       trigger={() => null}
     >
+      {ac.selectedSkills.length > 0 && ac.mode === "slash" ? (
+        <div className="composer-ac-selected" aria-label={t("chat.slashGroupSkills")}>
+          {ac.selectedSkills.map((name) => (
+            <span className="composer-ac-skill-chip" key={name}>{name}</span>
+          ))}
+        </div>
+      ) : null}
       <div className="composer-ac-list" ref={listRef}>
         {rows.length > 0 ? (
           rows

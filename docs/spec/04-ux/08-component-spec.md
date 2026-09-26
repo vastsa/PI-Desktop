@@ -3152,6 +3152,12 @@ Anatomy:
 - A whitespace-delimited `/` later in the draft offers active Skills only.
   Completion replaces only the token under the cursor, so several Skills and
   ordinary text can coexist in one prompt.
+- Selecting an active Skill keeps the Skills-only menu open for another
+  selection without adding a dangling slash to the draft. Selected valid Skill
+  ids appear as compact chips above the menu rows; already-selected Skills do
+  not reappear as choices. Escape closes the menu, typing ordinary text stops
+  continuation, and a session change cannot carry continuation into another
+  draft. Submission still uses the existing host-owned multi-Skill resolution.
 - Command descriptions use the space left after the slash name and optional
   title/argument hints. A long description truncates before it can squeeze a
   short command name to an ellipsis, including in narrow composers. Names and

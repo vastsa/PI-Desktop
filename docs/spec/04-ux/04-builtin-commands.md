@@ -112,9 +112,13 @@ name and description, and form a separate **Skills** group after extension
 commands. This group is always last; a Skill never shadows a command or
 template with the same name.
 
-Selecting a Skill inserts `/<skill-id> `. After the first token, typing `/`
-offers Skills only; app commands and templates remain first-token actions.
-Multiple Skills may be selected in one message. Sending keeps each validated
+Selecting a Skill inserts `/<skill-id> ` and keeps the Skills-only menu open
+for another selection while the draft and cursor remain unchanged. The menu
+shows chips for the active Skill ids already named in the draft. Typing text,
+closing the menu, or switching sessions ends this automatic continuation;
+users can still type `/` after the first token to open Skills only. App
+commands and templates remain first-token actions. Multiple Skills may be
+selected in one message. Sending keeps each validated
 Skill as its own transcript chip, with ordinary prompt text between chips, and
 asks the model to call the existing `Skill` tool for each id before answering.
 Only Skills active for the current project are listed or accepted, so project

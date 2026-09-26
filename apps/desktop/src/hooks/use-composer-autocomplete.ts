@@ -15,6 +15,7 @@ import {
   type FuzzyMatch,
 } from "@pi-desktop/shared";
 import { api } from "../lib/api";
+import { continuingSkillTrigger, selectedSkillNames } from "../lib/skill-repeat-selection";
 import { useAppStore } from "../stores/app-store";
 
 /**
@@ -162,6 +163,7 @@ export function useComposerAutocomplete({
   enabled: boolean;
 }) {
   const workspaceKey = useAppStore((s) => s.workspace?.path ?? "");
+  const sessionKey = useAppStore((s) => s.activeSessionId ?? "");
   const hasWorkspace = workspaceKey !== "";
   const [commands, setCommands] = useState<ComposerCommand[] | null>(null);
   const [files, setFiles] = useState<{
@@ -170,11 +172,15 @@ export function useComposerAutocomplete({
   } | null>(null);
   const [highlight, setHighlight] = useState(0);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+  const [continuation, setContinuation] = useState<{ value: string; sessionKey: string } | null>(null);
   const frozenRef = useRef<ComposerTrigger | null>(null);
 
   const liveTrigger = useMemo(
-    () => (enabled ? detectTrigger(value, cursor) : null),
-    [enabled, value, cursor],
+    () => enabled
+      ? continuingSkillTrigger(value, cursor, continuation?.value ?? null, continuation?.sessionKey ?? "", sessionKey)
+        ?? detectTrigger(value, cursor)
+      : null,
+    [enabled, value, cursor, continuation, sessionKey],
   );
   // During IME composition the menu freezes: no opening, closing, or
   // re-filtering until compositionend re-evaluates (D125).
@@ -250,13 +256,22 @@ export function useComposerAutocomplete({
     };
   }, [trigger?.mode, dismissed, workspaceKey, hasWorkspace]);
 
+  const selectedSkills = useMemo(
+    () => selectedSkillNames(value, commands ?? []),
+    [value, commands],
+  );
   const items = useMemo<AutocompleteItem[]>(() => {
     if (!trigger || dismissed) return [];
     if (trigger.mode === "slash") {
-      return commands ? filterCommands(commands, trigger.query, trigger.tokenStart > 0) : [];
+      return commands
+        ? filterCommands(commands, trigger.query, trigger.tokenStart > 0).filter(
+            (item) => item.kind !== "command" || item.command.kind !== "skill" ||
+              !selectedSkills.includes(item.command.skillId ?? item.command.name),
+          )
+        : [];
     }
     return files ? filterFiles(files.entries, trigger.query) : [];
-  }, [trigger, dismissed, commands, files]);
+  }, [trigger, dismissed, commands, files, selectedSkills]);
 
   // New query or mode restarts keyboard navigation at the top hit.
   const itemsKey = trigger ? `${trigger.mode}:${trigger.query}` : "";
@@ -271,6 +286,7 @@ export function useComposerAutocomplete({
 
   const close = useCallback(() => {
     if (triggerKey) setDismissedKey(triggerKey);
+    setContinuation(null);
   }, [triggerKey]);
 
   const accept = useCallback(
@@ -299,9 +315,16 @@ export function useComposerAutocomplete({
         item.kind === "command"
           ? formatCommandInsert(item.command.name)
           : formatFileInsert(item.entry.path, item.entry.kind);
-      return applyCompletion(value, trigger, insert);
+      const result = applyCompletion(value, trigger, insert);
+      setContinuation(
+        item.kind === "command" && item.command.kind === "skill" &&
+        result.cursor === result.value.length
+          ? { value: result.value, sessionKey }
+          : null,
+      );
+      return result;
     },
-    [trigger, items, value],
+    [trigger, items, value, sessionKey],
   );
 
   return {
@@ -309,6 +332,7 @@ export function useComposerAutocomplete({
     mode: open && trigger ? trigger.mode : null,
     query: open && trigger ? trigger.query : "",
     items: open ? items : [],
+    selectedSkills,
     hasItems: open && items.length > 0,
     highlight,
     setHighlight,

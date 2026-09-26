@@ -1,11 +1,14 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
+import { IPC } from "@pi-desktop/shared";
 import { ComposerAutocomplete } from "../../apps/desktop/src/components/ComposerAutocomplete";
-import type { AutocompleteItem, useComposerAutocomplete } from "../../apps/desktop/src/hooks/use-composer-autocomplete";
+import { ContextPanel } from "../../apps/desktop/src/components/workpanel/ContextPanel";
+import { useAppStore } from "../../apps/desktop/src/stores/app-store";
+import { type AutocompleteItem, useComposerAutocomplete } from "../../apps/desktop/src/hooks/use-composer-autocomplete";
 
 const host = document.createElement("div");
 document.body.append(host);
@@ -33,7 +36,7 @@ function Fixture({ width, fileMode }: { width: number; fileMode: boolean }) {
   const rows = fileMode ? [{ kind: "path", entry: { path: `nested/${"long-file-name-".repeat(30)}.ts`, kind: "file" }, match: { score: 1, ranges: [] } } as AutocompleteItem] : items;
   const ac: ReturnType<typeof useComposerAutocomplete> = {
     open: true, mode: fileMode ? "file" : "slash", query: "", items: rows,
-    hasItems: true, highlight: 0, setHighlight: noop, truncated: false,
+    selectedSkills: [], hasItems: true, highlight: 0, setHighlight: noop, truncated: false,
     noWorkspace: false, close: noop, accept: () => null,
   };
   return <I18nextProvider i18n={i18n}>
@@ -41,13 +44,110 @@ function Fixture({ width, fileMode }: { width: number; fileMode: boolean }) {
     <ComposerAutocomplete anchorRef={anchorRef} ac={ac} onAccept={(index) => { accepted = index; }} />
   </I18nextProvider>;
 }
+let selectSkill = (_name: string): boolean => false;
+function MultiSkillFixture({ width }: { width: number }) {
+  const anchorRef = useRef<HTMLTextAreaElement>(null);
+  const [value, setValue] = useState("/");
+  const [cursor, setCursor] = useState(1);
+  const ac = useComposerAutocomplete({ value, cursor, composing: false, enabled: true });
+  selectSkill = (name) => {
+    const index = ac.items.findIndex((item) => item.kind === "command" && item.command.name === name);
+    if (index < 0) return false;
+    const accepted = ac.accept(index);
+    if (!accepted) return false;
+    setValue(accepted.value);
+    setCursor(accepted.cursor);
+    return true;
+  };
+  return <I18nextProvider i18n={i18n}>
+    <textarea ref={anchorRef} aria-label="Composer" value={value} readOnly style={{ position: "absolute", left: 24, top: 520, width, height: 60 }} />
+    <ComposerAutocomplete anchorRef={anchorRef} ac={ac} onAccept={(index) => {
+      const accepted = ac.accept(index);
+      if (!accepted) return;
+      setValue(accepted.value);
+      setCursor(accepted.cursor);
+    }} />
+  </I18nextProvider>;
+}
+
 const settle = async () => {
   await document.fonts.ready;
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 };
 declare global {
   var autocompleteLayoutProbe: (width: number, fileMode?: boolean) => Promise<unknown>;
+  var autocompleteMultiSkillProbe: (width: number) => Promise<unknown>;
+  var contextPanelProbe: () => Promise<unknown>;
 }
+globalThis.contextPanelProbe = async () => {
+  if (!i18n.isInitialized) await i18n.init({ lng: "en", resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
+  const listeners = new Map<string, (event: unknown) => void>();
+  const dispatched: Array<{ channel: string; args: unknown[] }> = [];
+  Object.defineProperty(window, "piDesktop", { configurable: true, value: {
+    on: (channel: string, listener: (event: unknown) => void) => {
+      listeners.set(channel, listener);
+      return () => { listeners.delete(channel); };
+    },
+    invoke: async (channel: string, ...args: unknown[]) => {
+      dispatched.push({ channel, args });
+      return { ok: true, data: { ok: true } };
+    },
+  } });
+  useAppStore.setState({ activeSessionId: "context-s1", messages: [], providers: [], providerModels: {}, sessionCompactions: {} });
+  flushSync(() => root.render(<I18nextProvider i18n={i18n}><ContextPanel /></I18nextProvider>));
+  await settle();
+  const actionsBeforeUsage = !!document.querySelector("#context-pack-name");
+  listeners.get(IPC.event.extensionsStatus)?.({
+    sessionId: "context-s1", extensionId: "pi-context",
+    key: "event:context:snapshot",
+    text: JSON.stringify({ at: 1, modelId: "m", modelName: "Model", provider: "p", contextWindow: 1000,
+      totalTokens: 300, categories: [
+        { key: "messages", label: "Messages", tokens: 300, percent: 30 },
+        { key: "free", label: "Free", tokens: 700, percent: 70 },
+      ], expanded: null, unknownTotal: false }),
+  });
+  await settle();
+  const labels = [...document.querySelectorAll<HTMLElement>(".context-panel-category-label")].map((node) => node.textContent);
+  const exportButton = [...document.querySelectorAll<HTMLButtonElement>(".context-panel-action-buttons button")].find((button) => button.textContent?.includes("Export"));
+  exportButton?.click();
+  await settle();
+  return { ok: actionsBeforeUsage && labels.some((label) => label?.includes("Messages")) &&
+    labels.some((label) => label?.includes("Free")) &&
+    dispatched.some((entry) => entry.channel === IPC.invoke.extensionsCommandRun &&
+      (entry.args[0] as { name?: string })?.name === "context-export"),
+    actionsBeforeUsage, labels, dispatched: dispatched.length };
+};
+
+globalThis.autocompleteMultiSkillProbe = async (width) => {
+  if (!i18n.isInitialized) await i18n.init({ lng: "en", resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
+  const commands = ["caveman", "qa-agent", "short"].map((name) => ({
+    name, kind: "skill", title: name, skillId: name,
+  }));
+  Object.defineProperty(window, "piDesktop", { configurable: true, value: {
+    invoke: async (channel: string) => channel === IPC.invoke.composerCommands
+      ? { ok: true, data: { commands } }
+      : { ok: false, error: { message: `Unexpected channel: ${channel}` } },
+  } });
+  flushSync(() => root.render(<MultiSkillFixture key={width} width={width} />));
+  await settle();
+  const input = document.querySelector("textarea");
+  input?.focus();
+  const steps: boolean[] = [];
+  for (const name of ["caveman", "qa-agent", "short"]) {
+    let accepted = false;
+    flushSync(() => { accepted = selectSkill(name); });
+    steps.push(accepted);
+    await settle();
+  }
+  const value = input?.value;
+  const chips = [...document.querySelectorAll<HTMLElement>(".composer-ac-skill-chip")].map((node) => node.textContent);
+  const menu = document.querySelector<HTMLElement>(".composer-autocomplete");
+  return { ok: steps.every(Boolean) && value === "/caveman /qa-agent /short " &&
+    chips.join(",") === "caveman,qa-agent,short" &&
+    !!menu && getComputedStyle(menu).visibility === "visible",
+    steps, value, chips, width };
+};
+
 globalThis.autocompleteLayoutProbe = async (width, fileMode = false) => {
   if (!i18n.isInitialized) await i18n.init({ lng: "en", resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
   flushSync(() => root.render(<Fixture width={width} fileMode={fileMode} />));

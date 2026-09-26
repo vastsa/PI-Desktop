@@ -48,6 +48,27 @@
   padding: 6px;
 }
 
+.composer-ac-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.composer-ac-skill-chip {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 8px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-plus);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer-ac-item {
   gap: 8px;
 }

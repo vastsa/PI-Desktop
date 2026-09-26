@@ -10044,8 +10044,28 @@ This test plan spec is accepted when:
   `07-plugins/16-trusted-extensions.md`
 - **Acceptance**: A (core shell), H (localization)
 - **Milestone**: M5+
-- **Status**: Focused renderer/runtime unit coverage; the live extension-event
-  journey remains manual until a matching automated E2E scenario is added.
+- **Status**: Electron/Chromium probe in `test:e2e:composer-autocomplete`
+  covers empty state, category snapshot, and export dispatch. Live sidecar-to-host
+  extension events and pack round trips remain manual.
+
+#### E2E-SKILL-repeat-selection-keeps-menu-open
+
+- **Preconditions**: Three active Skills are discoverable in one Agent session.
+- **Steps**: 1) Type `/` and select Skill A. 2) Without retyping `/`, select B
+  and C from the still-open Skills-only menu. 3) Confirm the draft contains
+  `/A /B /C `, shows three selected chips, and excludes duplicates from the
+  choices. 4) Submit and verify the host validates all three IDs through its
+  existing Skill tool path. 5) Repeat at narrow width, then change sessions
+  during selection and confirm no continuation leaks into the next draft.
+- **Expected**: Focus stays in the composer; three selections become one
+  message, no new command or plugin permission bypass is introduced, and a
+  failed submission retains the original draft.
+- **Specs linked**: `04-ux/04-builtin-commands.md` §8,
+  `04-ux/08-component-spec.md` §11.8
+- **Acceptance**: A (core shell), H (localization)
+- **Milestone**: M5+
+- **Status**: `test:e2e:composer-autocomplete` covers three UI selections and
+  chips at 320px and 640px. Live provider Skill-tool execution remains manual.
 
 #### E2E-129: A run row shows its command once and copies it from the head
 

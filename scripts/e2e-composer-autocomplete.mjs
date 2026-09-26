@@ -62,7 +62,9 @@ app.whenReady().then(async () => {
           fs.writeFileSync(path.join(process.env.PI_E2E_ARTIFACT_DIR, "autocomplete-" + width + "-" + fileMode + ".png"), (await window.webContents.capturePage()).toPNG());
         }
       }
+      checks.push(await window.webContents.executeJavaScript("globalThis.autocompleteMultiSkillProbe(" + width + ")"));
     }
+    checks.push(await window.webContents.executeJavaScript("globalThis.contextPanelProbe()"));
     console.log("AUTOCOMPLETE_LAYOUT_PROBE " + JSON.stringify({ ok: checks.every((check) => check.ok), checks }));
     app.quit();
   } catch (error) {
