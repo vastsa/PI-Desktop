@@ -25,7 +25,6 @@ import {
   retainSessionPane,
 } from "../../lib/session-panes";
 import {
-  normalizeProjectPath,
   projectPathsForNewSessions,
   sessionMatchesProject,
 } from "../../lib/sidebar-session-groups";
@@ -47,12 +46,9 @@ import { sessionReadLooksEmpty } from "../../lib/session-transcript-read";
 import type {
   AppState,
   DraftSessionConfiguration,
-  NavigationOptions,
-  PendingPlanRefreshResult,
   SessionHistoryWindow,
 } from "../app-state";
 import {
-  type SessionConfiguration,
   type SessionRuntime,
 } from "../runtime/session-runtime";
 import type { StoreAccess } from "./types";

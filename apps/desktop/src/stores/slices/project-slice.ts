@@ -1,8 +1,5 @@
 import i18n from "i18next";
-import type {
-  ProjectWorkspace,
-  SessionSummary,
-} from "@pi-desktop/shared";
+import type { ProjectWorkspace } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import {
   rememberProject,
@@ -30,9 +27,6 @@ import {
   sortSessions,
   normalizeProjectName,
   type ProjectMeta,
-  type ProjectSort,
-  type SessionMeta,
-  type SessionSort,
 } from "../../lib/sidebar-preferences";
 import {
   normalizeProjectPath,

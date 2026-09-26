@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { ModelInfo, ModelState, ModelStatus } from "./types.js";
+import type { ModelInfo, ModelState } from "./types.js";
 import { findModel, getCatalog } from "./model-catalog.js";
 
 /**

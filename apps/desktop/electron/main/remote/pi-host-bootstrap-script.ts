@@ -105,6 +105,7 @@ node_major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf
 
 work="$HOME/.pi-desktop/pi-host/.bootstrap"
 mkdir -p "$work"
+chmod 700 "$work" 2>/dev/null || die "bootstrap-permissions"
 log="$work/pi-host.log"
 err="$work/pi-host.err"
 pidfile="$work/pi-host.pid"
@@ -126,6 +127,7 @@ http_get() {
 tarball="$work/$ARTIFACT_NAME"
 rm -f "$tarball"
 http_get "$ARTIFACT_URL" "$tarball" || die "download-failed"
+chmod 600 "$tarball" 2>/dev/null || die "artifact-permissions"
 
 # --- verify the published digest ------------------------------------------
 step "verify"

@@ -7,7 +7,6 @@ import { isAbsolute, join, resolve } from "node:path";
 import {
   ErrorCodes,
   IPC,
-  type ComposerCommand,
   type ComposerPasteFile,
   type FsChatRefProjectRoot,
   type FsChatRefResolveResult,
@@ -83,7 +82,6 @@ export type WorkspaceIpcDependencies = {
   plugins: PluginRuntime;
   browserHost: BrowserHost;
   clipboardHistory: ClipboardHistory;
-  logger: Pick<Logger, "app">;
   recordPastedClipboardFiles: (files: ComposerPasteFile[]) => void;
   currentWorkspacePath: () => string | null;
   setCurrentWorkspacePath: (path: string | null) => void;
@@ -101,7 +99,6 @@ export function registerWorkspaceIpc({
   plugins,
   browserHost,
   clipboardHistory,
-  logger,
   recordPastedClipboardFiles,
   currentWorkspacePath,
   setCurrentWorkspacePath,

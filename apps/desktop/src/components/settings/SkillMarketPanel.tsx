@@ -26,7 +26,7 @@ import {
   IconListChecks,
   IconX,
 } from "../icons";
-import { Field, Input, TooltipButton, cx } from "../ui";
+import { Input, TooltipButton, cx } from "../ui";
 import { LatestWinsGate } from "../../lib/latest-wins";
 import {
   classifySkillMarketFailure,

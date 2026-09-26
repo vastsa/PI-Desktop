@@ -1,5 +1,4 @@
 import { IPC } from "@pi-desktop/shared";
-import { testNetworkProxy } from "../network-proxy";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
 import type { IpcRegistrar } from "./types";

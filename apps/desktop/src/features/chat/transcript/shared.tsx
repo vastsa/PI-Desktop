@@ -15,8 +15,6 @@ import type {
 import {
   formatCompactTokenCount,
   isCertificateVerificationError,
-  THINKING_LEVELS,
-  type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { useOpenChatFileRef, useOpenPreviewTarget } from "../../../hooks/use-preview-target";
 import { useChatFileMenu } from "../../../hooks/use-chat-file-menu";
@@ -31,7 +29,7 @@ import { useReferencedImageDataUrl } from "../../../lib/use-referenced-image-dat
 import { useVerifiedChatText } from "../../../hooks/use-verified-chat-text";
 import { isHtmlFilePath } from "../../../lib/chat-links";
 import type { SourcePositionProps } from "../../../lib/markdown-source";
-import { getToolAction, type ToolAction } from "../../../lib/tool-display";
+import type { ToolAction } from "../../../lib/tool-display";
 import { calculateTokenRate } from "../../../lib/context-usage";
 import { useAppStore } from "../../../stores/app-store";
 import { Markdown, useCopy } from "../../../components/Markdown";
@@ -41,7 +39,6 @@ import {
   IconBot,
   IconBranch,
   IconCheck,
-  IconChevronDown,
   IconChevronRight,
   IconCircleAlert,
   IconCode,

@@ -1,13 +1,12 @@
 import { EventEmitter } from "node:events";
 import { PcmChunker } from "./pcm-chunker.js";
-import { convertFrames, computeRms } from "./pcm-utils.js";
+import { convertFrames } from "./pcm-utils.js";
 import { TranscriptionEngine } from "./transcription-engine.js";
 import type {
   AudioCapture,
   AudioCaptureFactory,
   TranscribeOptions,
   TranscriptionStream,
-  VoicePhase,
   VoiceResult,
   VoiceSettings,
   VoiceState,

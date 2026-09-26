@@ -77,11 +77,10 @@ export type StartupDependencies = {
   updater: AppUpdaterController;
   modelsDevCatalog: ModelsDevCatalog;
   plugins: PluginRuntime;
-  activeTurns: Map<string, string>;
   /**
    * Shared busy check from `runtime/session-coordination.ts`. The queue must
    * stay held while a turn's announcement is still running, so this cannot be
-   * derived here from `activeTurns` alone.
+   * be derived from the startup state alone.
    */
   isSessionBusy: (sessionId: string) => boolean;
   getHost: () => HostProcess | null;
@@ -148,7 +147,6 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       updater,
       modelsDevCatalog,
       plugins,
-      activeTurns,
       isSessionBusy,
       getHost,
       getMainWindow,

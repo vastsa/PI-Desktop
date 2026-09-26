@@ -133,7 +133,6 @@ function toAskToolRequest(
 }
 
 function toPlanningStateAgentEvent(
-  remoteSessionId: string,
   planning: PlanningStateEvent,
 ): AgentEvent {
   const { sessionId: _hostSessionId, ...rest } = planning;
@@ -219,7 +218,7 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
           emitAgentEvent(
             envelope,
             remoteSessionId,
-            toPlanningStateAgentEvent(remoteSessionId, planning),
+            toPlanningStateAgentEvent(planning),
           );
         }
         return;

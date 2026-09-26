@@ -4,7 +4,6 @@ import {
   type ModelBinding,
   type ModelInfo,
   type ModelModality,
-  type ThinkingLevel,
 } from "@pi-desktop/shared";
 import type { ModelConfig, ThinkingCapabilitySet } from "./thinking-level.js";
 

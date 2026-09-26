@@ -314,9 +314,6 @@ export function createRemoteHostsBoot(
     if (host) await closeHost(host);
   };
 
-  const isConnected = (hostKey: string): boolean =>
-    opened.some((host) => host.hostKey === hostKey);
-
   const summaryOf = (record: RemoteHostRecord): RemoteHostSummary => {
     const live = opened.find((host) => host.hostKey === record.hostKey);
     return {

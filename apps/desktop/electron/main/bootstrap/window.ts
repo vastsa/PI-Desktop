@@ -12,7 +12,6 @@ import {
 import type { BrowserPane } from "../browser-view";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
-import type { PluginRuntime } from "../plugin-runtime";
 import type { PluginViewHost } from "../plugin-view-host";
 import {
   baseWindowBounds,
@@ -21,11 +20,8 @@ import {
   displayWorkAreaKey,
   emptyWorkPanelReservationState,
   isWorkPanelOuterResizeEdge,
-  parseWorkPanelChatWidth,
-  parseWorkPanelReservationWidth,
   planWorkPanelChatResize,
   planWorkPanelReservation,
-  reconcileBaseWindowBounds,
   WORK_PANEL_MAX_WIDTH,
   WORK_PANEL_MIN_WIDTH,
   windowBoundsEqual,
@@ -94,8 +90,6 @@ export type WindowLifecycleDependencies = {
   observedWorkPanelBaseBounds: (windowBounds: WindowBounds, transition: DisplayTransition) => WindowBounds;
   classifyDisplayTransition: (displayKey: string) => DisplayTransition;
   resetMenuRendererReady: (window: BrowserWindow) => void;
-  markMenuRendererReady: (window: BrowserWindow) => boolean;
-  sendToRenderer: (channel: string, payload: unknown) => void;
   safeOpenExternal: (rawUrl: unknown) => Promise<void>;
   showPluginLauncher: () => Promise<void>;
   askCloseBehavior: (window: BrowserWindow) => Promise<CloseBehavior | null>;
@@ -103,7 +97,6 @@ export type WindowLifecycleDependencies = {
   createTray: () => void;
   browserPane: BrowserPane;
   pluginViews: PluginViewHost;
-  plugins: PluginRuntime;
   logger: Pick<Logger, "app">;
 };
 
@@ -121,8 +114,6 @@ export async function createWindow({
   observedWorkPanelBaseBounds,
   classifyDisplayTransition,
   resetMenuRendererReady,
-  markMenuRendererReady,
-  sendToRenderer,
   safeOpenExternal,
   showPluginLauncher,
   askCloseBehavior,
@@ -130,7 +121,6 @@ export async function createWindow({
   createTray,
   browserPane,
   pluginViews,
-  plugins,
   logger,
 }: WindowLifecycleDependencies): Promise<void> {
 

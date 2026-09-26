@@ -38,8 +38,10 @@ const composerSource = await readFile(
   new URL("../src/components/Composer.tsx", import.meta.url),
   "utf8",
 );
+// The prompt-attachment builder moved to the store helpers during the
+// upstream architecture refactor; read wherever it lives now.
 const storeSource = await readFile(
-  new URL("../src/stores/app-store.ts", import.meta.url),
+  new URL("../src/stores/helpers/store-helpers.ts", import.meta.url),
   "utf8",
 );
 const draftHookSource = await readFile(

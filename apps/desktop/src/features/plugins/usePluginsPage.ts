@@ -4,14 +4,12 @@ import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import { usePluginBrowseState } from "./browse-state";
 import type {
-  ActivationScope,
   MarketPluginDetail,
   MarketPluginSummary,
   PluginPermissionReview,
   PluginServiceStatus,
   PluginSummary,
   ProjectRecord,
-  ProjectWorkspace,
 } from "@pi-desktop/shared";
 import {
   GROUP_ORDER,

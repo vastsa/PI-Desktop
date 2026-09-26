@@ -305,7 +305,7 @@ test("shared shipped-locale changelog is the in-app notes source of truth", () =
   assert.match(changelogSource, /version: "0\.2\.7"/);
   assert.match(
     mainSource,
-    /getLocale:\s*\(\)\s*=>\s*updaterLocale/,
+    /getLocale:\s*\(\)\s*=>\s*(?:updaterLocale|mainState\.updaterLocale)/,
     "Main supplies product locale to the updater for note selection",
   );
   assert.match(mainSource, /updater\.refreshReleaseNotes\(\)/);
