@@ -52,6 +52,7 @@ event: pi-desktop/<domain>/event/<name>
 - `pi-desktop/agent/steer`
 - `pi-desktop/agent/abort`
 - `pi-desktop/agent/event/message`
+- `pi-desktop/agent/askTool/pending`
 - `pi-desktop/agent/askTool/resolve`
 - `pi-desktop/session/list`
 - `pi-desktop/project/open`
@@ -1775,8 +1776,17 @@ Electron 等待主机关闭之前会停止服务，并将清单标记为非活�
   `pi_session_configure`
 - `pi_agent_prompt`、`pi_agent_status`、`pi_agent_stop`、`pi_agent_abort`、
   `pi_agent_compact`
+- `pi_asktool_pending`
 - `pi_plans_pending`、`pi_plans_resolve`
 - `pi_workspace_diff`、`pi_fs_list`、`pi_fs_read`
+
+`pi_asktool_pending` 是 `agent/askTool/resolve` 的读取侧。它返回仍在等待回答的
+Agent 问题，并带上 resolve 操作所需的 `requestId`。`sessionId` 是可选过滤器：
+不带它时，该操作会列出所有会话的问题，包括属于已配对远端主机的问题
+（`remote:<hostKey>:<hostSessionId>`），因为尚未知道会话 id 的客户端仍须能够
+发现 Agent 正在等待什么。这与 `plans/pending` 已有的跨会话语义一致。注册表仅存在于
+进程内存中：绝不持久化、不写日志、不写入对话记录；问题被回答、回合结束、会话被删除或
+归档、sidecar 崩溃（清掉其正在运行的会话条目），或远端主机连接关闭时，对应条目即消失。
 
 `pi_control_describe` 返回经过审查的操作目录。`pi_desktop_invoke` 接受操作 id
 和位置参数形式的 IPC 参数：

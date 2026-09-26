@@ -157,6 +157,34 @@ test("asktool requests queue independently and never expire", () => {
   );
   assert.deepEqual(Object.keys(clearSessionAsks(next, "session-a")), []);
 });
+test("asktool tool-row matching keys on the ask's own tool call, not an empty id", () => {
+  // A top-level remote ask used to arrive with `toolCallId: ""`, while the
+  // runtime's own asks always carry a non-empty id (the local runtime passes
+  // the asktool call's own id). Queue removal is an exact match on that id, and
+  // a real `tool_end` always carries a non-empty `toolCallId`, so an empty id
+  // could never be cleared by the event that actually ends the ask: the entry
+  // stayed queued until the session did. Pin the non-empty contract here so a
+  // future fallback cannot silently reintroduce the leak.
+  const topLevel = {
+    sessionId: "session-a",
+    requestId: "ask-remote",
+    toolCallId: "top-level-input",
+    questions: [{ question: "Color?", options: ["Blue"] }],
+  };
+  const legacyEmpty = { ...topLevel, requestId: "ask-legacy", toolCallId: "" };
+  const queues = enqueueAsk(enqueueAsk({}, topLevel), legacyEmpty);
+
+  const afterOtherTool = removeAskForToolCall(queues, "session-a", "some-other-tool");
+  assert.equal(afterOtherTool, queues, "an unrelated tool end removes nothing");
+
+  const afterOwnTool = removeAskForToolCall(queues, "session-a", "top-level-input");
+  assert.equal(headAsk(afterOwnTool, "session-a"), legacyEmpty);
+  assert.equal(
+    afterOwnTool["session-a"].length,
+    1,
+    "the non-empty ask is cleared by its own tool end",
+  );
+});
 
 test("asktool card is a stepwise, non-expiring composer question surface", () => {
   assert.match(chatSurfaceSource, /pendingAsk/);

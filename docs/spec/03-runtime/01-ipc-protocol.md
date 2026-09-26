@@ -50,6 +50,7 @@ Examples:
 - `pi-desktop/agent/stop`
 - `pi-desktop/agent/abort`
 - `pi-desktop/agent/event/message`
+- `pi-desktop/agent/askTool/pending`
 - `pi-desktop/agent/askTool/resolve`
 - `pi-desktop/session/list`
 - `pi-desktop/session/summarizeTitle`
@@ -2200,8 +2201,21 @@ The named tools cover the common Agent workflow:
   `pi_session_configure`
 - `pi_agent_prompt`, `pi_agent_status`, `pi_agent_stop`, `pi_agent_abort`,
   `pi_agent_compact`
+- `pi_asktool_pending`
 - `pi_plans_pending`, `pi_plans_resolve`
 - `pi_workspace_diff`, `pi_fs_list`, `pi_fs_read`
+
+`pi_asktool_pending` is the read side of `agent/askTool/resolve`. It returns the
+Agent questions that are still waiting for an answer, with the `requestId` the
+resolve operation needs. `sessionId` is an optional filter: without it the
+operation lists asks from every session, including asks that belong to a paired
+remote host (`remote:<hostKey>:<hostSessionId>`), because a client that does not
+yet know the session must still be able to discover what an Agent is waiting
+for. This is the same cross-session shape `plans/pending` already has. The
+registry is process memory only: it is never persisted, logged, or written into
+the transcript, and an entry disappears when the question is resolved, the turn
+ends, the session is deleted or archived, the sidecar crashes (clearing the
+sessions it was running), or a remote host connection closes.
 
 `pi_control_describe` returns the reviewed operation catalog. `pi_desktop_invoke`
 accepts an operation id and positional IPC arguments:
