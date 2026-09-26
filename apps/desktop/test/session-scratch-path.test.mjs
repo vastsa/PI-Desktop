@@ -1,3 +1,4 @@
+import { readSidebarSource } from "./helpers/domain-source.mjs";
 import { readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -11,7 +12,7 @@ const [protocolSource, apiSource, mainSource, sidebarSource, english, chinese] =
     read("../../../packages/shared/src/protocol.ts"),
     read("../src/lib/api.ts"),
     readMainSource(),
-    read("../src/components/Sidebar.tsx"),
+    readSidebarSource(),
     read("../../../packages/i18n/src/locales/en/index.ts"),
     read("../../../packages/i18n/src/locales/zh-CN/index.ts"),
   ]);

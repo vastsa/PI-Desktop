@@ -937,9 +937,9 @@ The composer renders only controls connected to the active pi session:
   apply without leaving the root. Tick labels are not tab stops — the range
   input is the accessible control. Each entry replaces
   the menu contents in-place with a back row and its submenu. The Model
-  submenu contains search plus sticky provider groups. Each model row begins
-  at one tab stop beneath its provider heading, making the provider → model
-  hierarchy legible without altering the model label. The Reasoning submenu
+  submenu contains search plus sticky provider groups. Model rows use compact 8px left padding and smaller, normal-weight text
+  beneath stronger provider headings, preserving the provider → model
+  hierarchy without altering the model label. The Reasoning submenu
   lists `omit` then the enabled levels as radio rows with a selected-row
   check; selecting from the list returns to the root without dismissing the
   popover.

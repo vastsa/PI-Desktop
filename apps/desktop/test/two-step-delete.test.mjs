@@ -35,7 +35,7 @@ const [
   ...localeSources
 ] = await Promise.all([
   read("../src/hooks/use-armed-delete.ts"),
-  read("../src/components/Sidebar.tsx"),
+  Promise.all([read("../src/components/Sidebar.tsx"), read("../src/features/sessions/SessionActionItems.tsx"), read("../src/features/sessions/useSessionActions.tsx")]).then(parts => parts.join("\n")),
   read("../src/pages/ProjectsPage.tsx"),
   read("../src/components/settings/AgentCapabilityLayout.tsx"),
   read("../src/components/settings/AgentSkillsPage.tsx"),

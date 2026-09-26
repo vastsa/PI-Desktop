@@ -5370,6 +5370,7 @@ eleven-tool-round desktop paths are verified by
 
 | 验收 | 应用场景 |
 |---|---|
+| C / Quality — Conversation header actions | E2E-SESSION-header-actions |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
 | C / F / Quality — Saved project isolation | E2E-SCHEDULED-manual-workspace-binding |
 | C / F / Quality — 桌面定时任务 | E2E-SCHEDULED-desktop-automation-lifecycle |
@@ -9023,3 +9024,20 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **验收：** 缓存路径、迁移和清理单测通过；Windows task-candidate 验证应覆盖更新源传输、安装器交接和文件系统行为，且不连接真实发布源。
 - **里程碑：** M6+
 - **状态：** 单测和源码契约覆盖（`update-cache.test.mjs`、`auto-update.test.mjs`）；仍需 Windows 安装器/E2E 验证。
+
+### E2E-SESSION-header-actions
+
+- **前置条件**：存在两个已保存的会话，侧边栏可以展开或收起。
+- **步骤**：从顶部菜单置顶当前会话，再从侧边栏菜单取消置顶。收起侧边栏，从顶部重命名会话。
+  使用 Escape、方向键、Home/End；点击一次删除后关闭并重新打开菜单，再切换会话。
+  有可用后续会话时测试归档和确认删除；检查运行中的会话及原生 Pi 会话。
+- **预期**：两个入口提供相同的单会话操作并即时同步；侧边栏收起时仍可使用顶部菜单。
+  删除需要两次点击，重新打开菜单后需重新确认；切换会话关闭旧菜单。
+  归档和删除采用与侧边栏相同的后续会话选择顺序。运行状态和来源限制保持不变。
+  没有当前会话时不显示操作按钮，侧边栏多选不影响顶部菜单。
+- **规范**：[UI IA](../04-ux/01-ui-ia.md) §3.2。
+- **验收**：C / Quality — 会话管理。
+- **里程碑**：维护。
+- **状态**：`node scripts/e2e-conversation-actions.mjs` 自动化 Electron 组件集成测试，
+  使用真实渲染组件和 store、模拟主机 API 及独立数据目录，不调用模型服务。
+  该测试不证明原生持久化或安装包行为。

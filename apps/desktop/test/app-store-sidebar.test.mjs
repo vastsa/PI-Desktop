@@ -9,6 +9,7 @@ const sidebarSource = await readFile(
   new URL("../src/components/Sidebar.tsx", import.meta.url),
   "utf8",
 );
+const navigationSource = await readFile(new URL("../src/features/sessions/useSessionNavigation.ts", import.meta.url), "utf8");
 const hoverSource = await readFile(
   new URL("../src/features/sessions/SessionHoverCard.tsx", import.meta.url),
   "utf8",
@@ -51,8 +52,8 @@ test("sidebar hover refreshes the active project branch without activating a pro
 
 test("closed projects are not recreated from historical sidebar sessions", () => {
   assert.doesNotMatch(sidebarSource, /add\(session\.projectPath\)/);
-  assert.match(sidebarSource, /const entry = byPath\.get\(sessionPath\)/);
-  assert.match(sidebarSource, /if \(entry\) entry\.sessions\.push\(session\)/);
+  assert.match(navigationSource, /const entry = byPath\.get\(sessionPath\)/);
+  assert.match(navigationSource, /if \(entry\) entry\.sessions\.push\(session\)/);
 });
 
 test("project new-session creation uses one store-owned navigation transaction", () => {

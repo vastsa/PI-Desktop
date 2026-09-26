@@ -160,7 +160,7 @@ destination, chat as the home surface, tools and permissions inline.
   Goal shows the same approval boundary for an outcome contract. Both keep the
   permission-mode chip and expose their host-written immutable `.pi/plan/*.md`
   or `.pi/goal/*.md` artifact opener after submission. The conversation top bar
-  retains only the task title and window actions; the Composer owns model and
+  retains the task title, conversation actions, and window actions; the Composer owns model and
   reasoning selection as well as mode control.
 - **Backend status capsule**: appears under the titlebar while the backend
   restarts or is fatally degraded (D080), with an Open-logs action.
@@ -221,6 +221,15 @@ destination, chat as the home surface, tools and permissions inline.
   delete remain separate actions. Rename edits the task label only; archive
   never removes the transcript. Open folder is a project action, not a
   conversation action.
+- **Conversation header menu**: a persistent overflow button manages the currently
+  displayed conversation, including when the sidebar is collapsed. It shares the
+  sidebar's single-conversation actions, source restrictions, running-state
+  availability, and two-click delete confirmation. It never inherits sidebar
+  multi-selection. Pin/unpin and rename update both surfaces; archive/delete use
+  the same replacement-conversation ordering. Switching conversations dismisses
+  the old header menu. Without an active conversation, no action button appears.
+  Escape dismisses the menu and restores trigger focus; arrow keys and Home/End
+  navigate its enabled actions.
 - **Temporary-task attachments**: selecting a saved attachment opens its file
   preview even without an open project. Back returns to the no-project browsing
   state. Branches preserve referenced pasted/imported inputs as child-owned

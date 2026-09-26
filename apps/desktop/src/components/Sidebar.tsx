@@ -1,3 +1,11 @@
+import { SessionActionItems } from "../features/sessions/SessionActionItems";
+import { useSessionActions } from "../features/sessions/useSessionActions";
+import {
+  useSessionNavigation,
+  projectName,
+  projectMetaFor,
+  type ProjectEntry,
+} from "../features/sessions/useSessionNavigation";
 import { IconClock } from "./icons";
 import {
   useCallback,
@@ -20,9 +28,8 @@ import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { SessionHoverCard } from "../features/sessions/SessionHoverCard";
 import { useSessionHoverCard } from "../features/sessions/useSessionHoverCard";
-import { isDefaultSessionTitle, useAppStore } from "../stores/app-store";
+import { useAppStore } from "../stores/app-store";
 import {
-  getGlobalPinnedSessions,
   groupSidebarSessionsByTime,
   normalizeProjectPath,
   sessionArchived,
@@ -46,7 +53,6 @@ import { ErrorCodes } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
 import type {
   ProjectMeta,
-  ProjectSort,
   SessionSort,
 } from "../lib/sidebar-preferences";
 import {
@@ -64,17 +70,14 @@ import { NotificationCenter } from "./NotificationCenter";
 import { ProjectEditDialog } from "./ProjectEditDialog";
 import { useArmedDelete } from "../hooks/use-armed-delete";
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
-import { SessionRenameDialog } from "./SessionRenameDialog";
 import { useUpdateState } from "../hooks/use-update-state";
 import {
   IconArchive,
   IconArchiveRestore,
   IconArrowUpDown,
   IconPlug,
-  IconBranch,
   IconCheck,
   IconChevronDown,
-  IconCopy,
   IconCircleAlert,
   IconNewSession,
   IconFolder,
@@ -88,18 +91,6 @@ import {
   IconTrash,
   IconX,
 } from "./icons";
-
-type ProjectEntry = {
-  path: string;
-  key: string;
-  name: string;
-  sessions: SessionSummary[];
-  open: boolean;
-  active: boolean;
-  meta: ProjectMeta;
-  /** Best-effort git branch from the project workspace, if known. */
-  branch?: string;
-};
 
 const VIEWPORT_PADDING = 8;
 
@@ -136,30 +127,6 @@ function clearSidebarResizeStyles(): void {
   document.documentElement.removeAttribute("data-sidebar-resizing");
 }
 
-function projectName(path: string, fallback?: string) {
-  if (fallback?.trim()) return fallback.trim();
-  const clean = path.replace(/[\\/]+$/, "");
-  const parts = clean.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || path;
-}
-
-function timestamp(value?: string) {
-  const parsed = value ? Date.parse(value) : 0;
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function optionalTimestamp(value?: string): number | null {
-  const parsed = value ? Date.parse(value) : NaN;
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function projectMetaFor(
-  path: string,
-  projectMeta: Record<string, ProjectMeta>,
-): ProjectMeta {
-  return projectMeta[normalizeProjectPath(path) || path] ?? projectMeta[path] ?? {};
-}
-
 function projectDomId(path: string): string {
   let hash = 2166136261;
   for (let index = 0; index < path.length; index += 1) {
@@ -167,37 +134,6 @@ function projectDomId(path: string): string {
     hash = Math.imul(hash, 16777619);
   }
   return `sidebar-project-${(hash >>> 0).toString(36)}`;
-}
-
-function firstSessionDate(
-  sessions: SessionSummary[],
-  field: "createdAt" | "updatedAt",
-): number | null {
-  const values = sessions
-    .map((session) => timestamp(session[field]))
-    .filter((value) => value > 0);
-  return values.length ? Math.min(...values) : null;
-}
-
-function lastSessionDate(
-  sessions: SessionSummary[],
-  field: "createdAt" | "updatedAt",
-): number | null {
-  const values = sessions
-    .map((session) => timestamp(session[field]))
-    .filter((value) => value > 0);
-  return values.length ? Math.max(...values) : null;
-}
-
-function compareOptionalDate(
-  a: number | null,
-  b: number | null,
-  descending: boolean,
-): number {
-  if (a === null && b === null) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  return descending ? b - a : a - b;
 }
 
 export function Sidebar({
@@ -226,14 +162,12 @@ export function Sidebar({
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const selectingSessionId = useAppStore((s) => s.selectingSessionId);
   const workspace = useAppStore((s) => s.workspace);
-  const openProjects = useAppStore((s) => s.openProjects);
   const openProjectPathsState = useAppStore((s) => s.openProjectPaths);
   const activeProjectPathState = useAppStore((s) => s.activeProjectPath);
   const projectMeta = useAppStore((s) => s.projectMeta);
   const projectCollapsed = useAppStore((s) => s.projectCollapsed);
   const sessionMeta = useAppStore((s) => s.sessionMeta);
   const sessionView = useAppStore((s) => s.sessionView);
-  const projectSort = useAppStore((s) => s.projectSort);
   const runningSessions = useAppStore((s) => s.runningSessions);
   const sessionOutcomes = useAppStore((s) => s.sessionOutcomes);
   const pendingPermissions = useAppStore((s) => s.pendingPermissions);
@@ -245,17 +179,13 @@ export function Sidebar({
   const prefetchSession = useAppStore((s) => s.prefetchSession);
   const selectSession = useAppStore((s) => s.selectSession);
   const newSession = useAppStore((s) => s.newSession);
-  const forkSessionAction = useAppStore((s) => s.forkSession);
   const openProject = useAppStore((s) => s.openProject);
   const refreshProject = useAppStore((s) => s.refreshProject);
   const clearProject = useAppStore((s) => s.clearProject);
   const activateProject = useAppStore((s) => s.activateProject);
   const closeProjectAction = useAppStore((s) => s.closeProject);
   const renameProject = useAppStore((s) => s.renameProject);
-  const toggleSessionPinned = useAppStore((s) => s.toggleSessionPinned);
   const archiveSessionAction = useAppStore((s) => s.archiveSession);
-  const restoreSession = useAppStore((s) => s.restoreSession);
-  const renameSession = useAppStore((s) => s.renameSession);
   const deleteSessionAction = useAppStore((s) => s.deleteSession);
   const deleteProjectAction = useAppStore((s) => s.deleteProject);
   const setSessionSort = useAppStore((s) => s.setSessionSort);
@@ -275,7 +205,6 @@ export function Sidebar({
 
   const [sortOpen, setSortOpen] = useState(false);
   const [sessionMenu, setSessionMenu] = useState<string | null>(null);
-  const [renameFor, setRenameFor] = useState<SessionSummary | null>(null);
   const [editProjectFor, setEditProjectFor] = useState<ProjectEntry | null>(null);
   const [deleteProjectFor, setDeleteProjectFor] = useState<ProjectEntry | null>(null);
   // Which row menu item is armed for its second, confirming click.
@@ -472,7 +401,6 @@ export function Sidebar({
   const sessionSort = sessionView.sort;
   const displaySessionSort: Exclude<SessionSort, "manual"> =
     sessionSort === "manual" ? "recent" : sessionSort;
-  const displayProjectSort: ProjectSort = projectSort;
   const activeProjectPath = normalizeProjectPath(activeProjectPathState ?? workspace?.path);
   const selectedSessionId = selectingSessionId ?? activeSessionId;
   const openProjectPaths = useMemo(
@@ -625,161 +553,7 @@ export function Sidebar({
     items[next]?.focus();
   };
 
-  const taskTitle = useCallback((title?: string | null) => {
-    const value = (title || "").trim();
-    return isDefaultSessionTitle(value) ? t("chat.untitledTask") : value;
-  }, [t]);
-
-  const filtered = useMemo(() => {
-    const candidates = showArchived
-      ? sessions
-      : sessions.filter(
-          (session) => !sessionArchived(session, sessionMeta[session.id]),
-        );
-    // Empty sessions are durable sidebar rows now. Their message count, not
-    // their title, controls New Task reuse, so a manual rename never changes
-    // the empty-slot behavior.
-    return candidates;
-  }, [sessions, showArchived, sessionMeta]);
-
-  const compareSessions = useCallback((a: SessionSummary, b: SessionSummary) => {
-    const aMeta = sessionMeta[a.id] ?? {};
-    const bMeta = sessionMeta[b.id] ?? {};
-    const archiveOrder = Number(sessionArchived(a, aMeta)) - Number(sessionArchived(b, bMeta));
-    if (archiveOrder !== 0) return archiveOrder;
-    const pinOrder = Number(sessionPinned(b, bMeta)) - Number(sessionPinned(a, aMeta));
-    if (pinOrder !== 0) return pinOrder;
-    if (displaySessionSort === "name") {
-      const byName = taskTitle(a.title).localeCompare(taskTitle(b.title), undefined, {
-        sensitivity: "base",
-      });
-      if (byName !== 0) return byName;
-    } else if (displaySessionSort === "oldest") {
-      const byCreated = compareOptionalDate(
-        optionalTimestamp(a.createdAt),
-        optionalTimestamp(b.createdAt),
-        false,
-      );
-      if (byCreated !== 0) return byCreated;
-    } else if (displaySessionSort === "created") {
-      const byCreated = compareOptionalDate(
-        optionalTimestamp(a.createdAt),
-        optionalTimestamp(b.createdAt),
-        true,
-      );
-      if (byCreated !== 0) return byCreated;
-    } else {
-      const byRecent = compareOptionalDate(
-        optionalTimestamp(a.updatedAt),
-        optionalTimestamp(b.updatedAt),
-        true,
-      );
-      if (byRecent !== 0) return byRecent;
-    }
-    return a.id.localeCompare(b.id);
-  }, [displaySessionSort, sessionMeta, taskTitle]);
-
-  const pinnedSessions = useMemo(
-    () => getGlobalPinnedSessions(filtered, sessionMeta, projectMeta, showArchived)
-      .sort(compareSessions),
-    [filtered, sessionMeta, projectMeta, showArchived, compareSessions],
-  );
-  const pinnedSessionIds = useMemo(
-    () => new Set(pinnedSessions.map((session) => session.id)),
-    [pinnedSessions],
-  );
-
-  const projectEntries = useMemo(() => {
-    const byPath = new Map<string, ProjectEntry>();
-    const add = (rawPath: string, name?: string, branch?: string, open = false) => {
-      const normalized = normalizeProjectPath(rawPath);
-      if (!normalized) return;
-      const existing = byPath.get(normalized);
-      if (existing) {
-        existing.open ||= open;
-        if (name && existing.name === projectName(existing.path)) existing.name = name;
-        if (branch && !existing.branch) existing.branch = branch;
-        return;
-      }
-      const meta = projectMetaFor(rawPath, projectMeta);
-      byPath.set(normalized, {
-        path: rawPath,
-        key: normalized,
-        name: projectName(rawPath, meta.name ?? name),
-        sessions: [],
-        open,
-        active: normalized === activeProjectPath,
-        meta,
-        branch,
-      });
-    };
-    for (const path of openProjectPaths) {
-      const record = openProjects.find(
-        (project) => normalizeProjectPath(project.path) === path,
-      );
-      add(path, record?.name, record?.branch, true);
-    }
-    if (workspace?.path) add(workspace.path, workspace.name, workspace.branch, true);
-    for (const session of filtered) {
-      const sessionPath = normalizeProjectPath(session.projectPath);
-      if (!sessionPath) continue;
-      // A closed project remains discoverable in Projects, but its historical
-      // sessions must not recreate a sidebar tab that the user just closed.
-      const entry = byPath.get(sessionPath);
-      if (entry) entry.sessions.push(session);
-    }
-    const result = [...byPath.values()].filter(
-      (entry) => showArchived || !entry.meta.archived,
-    );
-    for (const entry of result) entry.sessions.sort(compareSessions);
-    result.sort((a, b) => {
-      const archiveOrder = Number(!!a.meta.archived) - Number(!!b.meta.archived);
-      if (archiveOrder !== 0) return archiveOrder;
-      const pinOrder = Number(!!b.meta.pinned) - Number(!!a.meta.pinned);
-      if (pinOrder !== 0) return pinOrder;
-      if (displayProjectSort === "manual") {
-        const byOrder =
-          (a.meta.order ?? Number.MAX_SAFE_INTEGER) -
-          (b.meta.order ?? Number.MAX_SAFE_INTEGER);
-        if (byOrder !== 0) return byOrder;
-      } else if (displayProjectSort === "name") {
-        const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-        if (byName !== 0) return byName;
-      } else if (
-        displayProjectSort === "oldest" ||
-        displayProjectSort === "created"
-      ) {
-        const dateForProject =
-          displayProjectSort === "oldest" ? firstSessionDate : lastSessionDate;
-        const aCreated = dateForProject(a.sessions, "createdAt");
-        const bCreated = dateForProject(b.sessions, "createdAt");
-        const byCreated = compareOptionalDate(
-          aCreated,
-          bCreated,
-          displayProjectSort === "created",
-        );
-        if (byCreated !== 0) return byCreated;
-      } else {
-        const aRecent = lastSessionDate(a.sessions, "updatedAt");
-        const bRecent = lastSessionDate(b.sessions, "updatedAt");
-        const byRecent = compareOptionalDate(aRecent, bRecent, true);
-        if (byRecent !== 0) return byRecent;
-      }
-      return a.key.localeCompare(b.key);
-    });
-    return result;
-  }, [
-    filtered,
-    openProjectPaths,
-    openProjects,
-    workspace,
-    activeProjectPath,
-    projectMeta,
-    showArchived,
-    displayProjectSort,
-    sessionMeta,
-    compareSessions,
-  ]);
+  const { projectEntries, temporarySessions, pinnedSessions, pinnedSessionIds, taskTitle } = useSessionNavigation();
 
   // Look up project entries by normalized path so session rows can fetch the
   // workspace name (and any other project metadata) for the hover card.
@@ -972,12 +746,6 @@ export function Sidebar({
     });
   }, [projectEntriesByPath, revealSessionHoverCard, t, taskTitle]);
 
-  const temporarySessions = useMemo(
-    () => filtered
-      .filter((session) => !normalizeProjectPath(session.projectPath))
-      .sort(compareSessions),
-    [filtered, compareSessions],
-  );
   const temporarySessionHistory = useMemo(
     () => temporarySessions.filter((session) => !pinnedSessionIds.has(session.id)),
     [temporarySessions, pinnedSessionIds],
@@ -1199,114 +967,26 @@ export function Sidebar({
     setExpandedProjectSessions((prev) => ({ ...prev, [projectKey]: true }));
   };
 
-  const toggleSessionPin = (session: SessionSummary) => {
-    toggleSessionPinned(session.id);
-    closeMenus(false);
-    // Pinning moves a row between lists, replacing its previous DOM node.
-    requestAnimationFrame(() => {
-      const row = document.querySelector<HTMLElement>(
-        `[data-sidebar-session-row="${CSS.escape(session.id)}"] [data-action="session-menu"]`,
-      );
-      const target = row && !row.closest('[aria-hidden="true"]')
-        ? row
-        : document.querySelector<HTMLElement>('[data-action="session-sort"]');
-      target?.focus();
-    });
-  };
-
-  const archiveSession = async (session: SessionSummary) => {
-    const archived = sessionArchived(session, sessionMeta[session.id]);
-    const wasActive = activeSessionId === session.id;
-    const next =
-      !archived && wasActive
-        ? session.projectPath
-          ? projectEntries
-              .find((entry) => entry.key === normalizeProjectPath(session.projectPath))
-              ?.sessions.find(
-                (item) =>
-                  item.id !== session.id &&
-                  !sessionArchived(item, sessionMeta[item.id]),
-              )
-          : temporarySessions.find(
-              (item) =>
-                item.id !== session.id &&
-                !sessionArchived(item, sessionMeta[item.id]),
+  const sessionActions = useSessionActions({
+    projectEntries,
+    temporarySessions,
+    closeMenus,
+    afterPin: () => {
+      // Pinning replaces the row; focus its new control after the list updates.
+      const sessionId = sessionMenu;
+      requestAnimationFrame(() => {
+        const row = sessionId
+          ? document.querySelector<HTMLElement>(
+              `[data-sidebar-session-row="${CSS.escape(sessionId)}"] [data-action="session-menu"]`,
             )
-        : undefined;
-    try {
-      closeMenus();
-      if (archived) {
-        restoreSession(session.id);
-        return;
-      }
-      if (wasActive && next) {
-        if (!(await selectProjectSession(next))) return;
-        archiveSessionAction(session.id);
-        return;
-      }
-      if (wasActive) {
-        // Archive first so an empty active slot is not reused as its own
-        // replacement. Restore it if creating the fallback slot fails.
-        archiveSessionAction(session.id);
-        try {
-          await newSession({ projectPath: session.projectPath ?? null });
-        } catch (error) {
-          restoreSession(session.id);
-          throw error;
-        }
-        return;
-      }
-      archiveSessionAction(session.id);
-    } catch (error) {
-      reportError(error);
-    }
-  };
-
-  const deleteSession = async (session: SessionSummary) => {
-    closeMenus();
-    const wasActive = activeSessionId === session.id;
-    const sameScope = session.projectPath
-      ? projectEntries.find(
-          (entry) => entry.key === normalizeProjectPath(session.projectPath),
-        )?.sessions ?? []
-      : temporarySessions;
-    const next = wasActive
-      ? sameScope.find(
-          (item) =>
-            item.id !== session.id &&
-            !sessionArchived(item, sessionMeta[item.id]),
-        ) ?? projectEntries
-          .flatMap((entry) => entry.sessions)
-          .find(
-            (item) =>
-              item.id !== session.id &&
-              !sessionArchived(item, sessionMeta[item.id]),
-          )
-      : undefined;
-    try {
-      await deleteSessionAction(session.id);
-      if (wasActive) {
-        if (next) await selectProjectSession(next);
-        else await newSession({ projectPath: session.projectPath ?? null });
-      }
-    } catch (error) {
-      reportError(error);
-    }
-  };
-
-  /**
-   * Two-step delete for one row's menu item. The first click arms the item and
-   * relabels it; only the second click runs the delete, and the arm expires on
-   * its own. The menu stays open between the two clicks.
-   */
-  const requestDeleteSession = (session: SessionSummary) => {
-    if (armedDelete !== session.id) {
-      setArmedDelete(session.id);
-      return;
-    }
-    setArmedDelete(null);
-    void deleteSession(session);
-  };
+          : null;
+        const target = row && !row.closest('[aria-hidden="true"]')
+          ? row
+          : document.querySelector<HTMLElement>('[data-action="session-sort"]');
+        target?.focus();
+      });
+    },
+  });
 
   /** Batch delete: delete all selected sessions sequentially. */
   const batchDeleteSessions = async () => {
@@ -1414,35 +1094,6 @@ export function Sidebar({
 
   const editProjectEntry = (entry: ProjectEntry, name: string) => {
     renameProject(entry.path, name);
-  };
-
-  const forkSession = async (session: SessionSummary) => {
-    closeMenus(false);
-    try {
-      await forkSessionAction(session.id);
-      focusComposer();
-    } catch (error) {
-      reportError(error);
-    }
-  };
-
-  const copyConversationId = async (session: SessionSummary) => {
-    try {
-      await navigator.clipboard.writeText(session.id);
-      showToast(t("chat.copied"));
-    } catch (error) {
-      reportError(error);
-    }
-    closeMenus();
-  };
-
-  const openSessionPath = async (session: SessionSummary) => {
-    closeMenus(false);
-    try {
-      await api.openSessionScratchPath(session.id);
-    } catch (error) {
-      reportError(error);
-    }
   };
 
   const toggleProjectPin = (entry: ProjectEntry) => {
@@ -2122,96 +1773,7 @@ export function Sidebar({
             </>
           ) : (
           <>
-            {session.source !== "pi-native" ? (
-              <button
-                ref={menuFirstItemRef}
-                type="button"
-                role="menuitem"
-                data-action="rename-session"
-                onClick={() => {
-                  closeMenus(false);
-                  setRenameFor(session);
-                }}
-              >
-                <IconPencil size={14} />
-                {t("nav.renameTask", { defaultValue: "Rename task" })}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              role="menuitem"
-              data-action="toggle-session-pin"
-              onClick={() => toggleSessionPin(session)}
-            >
-              <IconPin size={14} />
-              {sessionPinned(session, sessionMeta[session.id])
-                ? t("nav.unpinTask", { defaultValue: "Unpin" })
-                : t("nav.pinTask", { defaultValue: "Pin" })}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              data-action="toggle-session-archive"
-              onClick={() => void archiveSession(session)}
-            >
-              {sessionArchived(session, sessionMeta[session.id]) ? (
-                <IconArchiveRestore size={14} />
-              ) : (
-                <IconArchive size={14} />
-              )}
-              {sessionArchived(session, sessionMeta[session.id])
-                ? t("nav.restoreTask", { defaultValue: "Restore" })
-                : t("nav.archiveTask", { defaultValue: "Archive" })}
-            </button>
-            {session.source !== "pi-native" ? (
-              <button
-                type="button"
-                role="menuitem"
-                data-action="fork-session"
-                disabled={Boolean(runningSessions[session.id])}
-                onClick={() => void forkSession(session)}
-              >
-                <IconBranch size={14} />
-                {t("nav.createBranch")}
-              </button>
-            ) : null}
-            {settings?.developerMode === true ? (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  data-action="copy-conversation-id"
-                  onClick={() => void copyConversationId(session)}
-                >
-                  <IconCopy size={14} />
-                  {t("nav.copyConversationId")}
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  data-action="open-session-path"
-                  onClick={() => void openSessionPath(session)}
-                >
-                  <IconFolder size={14} />
-                  {t("nav.openSessionPath")}
-                </button>
-              </>
-            ) : null}
-            {session.source !== "pi-native" ? (
-              <button
-                type="button"
-                role="menuitem"
-                className={cx("danger", armedDelete === session.id && "is-armed")}
-                data-action="delete-session"
-                data-armed={armedDelete === session.id ? "true" : undefined}
-                onClick={() => requestDeleteSession(session)}
-              >
-                <IconX size={14} />
-                {armedDelete === session.id
-                  ? t("nav.deleteTaskConfirm", { defaultValue: "Delete?" })
-                  : t("nav.deleteTask", { defaultValue: "Delete" })}
-              </button>
-            ) : null}
+            <SessionActionItems session={session} actions={sessionActions} menuFirstItemRef={menuFirstItemRef} />
           </>
           )
         ) : null}
@@ -2565,14 +2127,7 @@ export function Sidebar({
           scheduleHide={scheduleSessionHoverCardHide}
         />
       ) : null}
-      {renameFor ? (
-        <SessionRenameDialog
-          session={renameFor}
-          onClose={() => setRenameFor(null)}
-          onSave={(title) => renameSession(renameFor.id, title)}
-          onError={reportError}
-        />
-      ) : null}
+      {sessionActions.renameDialog}
       {editProjectFor ? (
         <ProjectEditDialog
           project={editProjectFor}

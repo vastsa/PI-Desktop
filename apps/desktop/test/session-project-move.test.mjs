@@ -1,3 +1,4 @@
+import { readSidebarSourceSync } from "./helpers/domain-source.mjs";
 import { readStoreSourceSync, readComposerSourceSync, readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -12,7 +13,7 @@ const main = readMainSourceSync();
 const mcpControl = read("../electron/main/mcp-control.ts");
 const api = read("../src/lib/api.ts");
 const store = readStoreSourceSync();
-const sidebar = read("../src/components/Sidebar.tsx");
+const sidebar = readSidebarSourceSync();
 const sidebarPreferences = read("../src/lib/sidebar-preferences.ts");
 const composer = readComposerSourceSync();
 const sessionsCss = read("../src/styles/sessions.css");

@@ -8534,6 +8534,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 | Acceptance | Scenarios |
 |---|---|
+| C / Quality — Conversation header actions | E2E-SESSION-header-actions |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
 | C / F / Quality — Saved project isolation | E2E-SCHEDULED-manual-workspace-binding |
 | C / F / Quality — Desktop automations | E2E-SCHEDULED-desktop-automation-lifecycle |
@@ -15382,3 +15383,25 @@ renderer's durable transcript reads. No real model or provider is contacted.
 - **Acceptance:** Cache-path, migration, and cleanup unit tests pass; Windows task-candidate validation confirms the updater feed transport, installer handoff, and filesystem behavior without a live release feed.
 - **Milestone:** M6+
 - **Status:** Unit and source-contract covered (`update-cache.test.mjs`, `auto-update.test.mjs`); Windows installer/E2E validation remains required.
+
+### E2E-SESSION-header-actions
+
+- **Preconditions**: two saved conversations; the sidebar can be expanded or collapsed.
+- **Steps**: Open the header menu, pin the current conversation, then unpin it
+  from its sidebar menu. Collapse the sidebar and rename the conversation from
+  the header. Exercise Escape, arrow keys, and Home/End. Arm deletion, dismiss,
+  reopen, and switch conversations. Archive and confirm deletion with another
+  conversation available. Inspect a running conversation and a native Pi session.
+- **Expected**: both entry points expose the same single-session actions and
+  update immediately; collapsed-sidebar actions remain usable; delete requires
+  two clicks and a fresh confirmation after reopening; switching conversations
+  dismisses the old menu. Archive/delete select the same replacement as the
+  sidebar. Running/source restrictions remain intact. No active session means
+  no header action button. Sidebar multi-selection never affects header actions.
+- **Specs**: [UI IA](../04-ux/01-ui-ia.md) §3.2.
+- **Acceptance**: C / Quality — conversation management.
+- **Milestone**: maintenance.
+- **Status**: automated Electron component integration via
+  `node scripts/e2e-conversation-actions.mjs`; real renderer and store with fixture
+  host API, isolated profile, no provider calls. This does not certify native
+  persistence or a packaged install.
