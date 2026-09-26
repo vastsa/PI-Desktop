@@ -7,13 +7,17 @@ import {
   serializeInlineComposerFileReferences,
   stripInlineComposerFileReferenceTokens,
 } from "@pi-desktop/shared";
+import type { Mode } from "@pi-desktop/shared";
 import type { AppState } from "../../../../stores/app-store";
 import { useAppStore } from "../../../../stores/app-store";
 import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import { api } from "../../../../lib/api";
 import { draftKeyForSession } from "../../../../lib/composer-draft-cache";
 import { runExtensionCommand, runPaletteCommand } from "../../../../lib/commands";
-import { resolveComposerCommand } from "../../../../hooks/use-composer-autocomplete";
+import {
+  resolveComposerAgentMentions,
+  resolveComposerCommand,
+} from "../../../../hooks/use-composer-autocomplete";
 import {
   parseSlashSubmission,
   resolveSlashDispatch,
@@ -23,6 +27,8 @@ import type { ComposerDraftController } from "./useComposerDraft";
 
 type UseComposerSubmitOptions = {
   value: string;
+  /** Session mode; `@agent` is only meaningful in Agent mode. */
+  mode: Mode;
   draftKey: string;
   activeSessionId: string | null | undefined;
   providerId?: string;
@@ -66,6 +72,7 @@ export type ComposerSubmitController = {
  */
 export function useComposerSubmit({
   value,
+  mode,
   draftKey,
   activeSessionId,
   providerId,
@@ -281,6 +288,18 @@ export function useComposerSubmit({
           }
           return;
         }
+      }
+    }
+    // `@agent` asks for a `Task` call, which exists in Agent mode only. In
+    // Plan/Goal the rewrite cannot happen, so the turn is refused rather than
+    // silently sent as text the model would answer itself — the same
+    // fail-closed shape as an unreadable command source (issue #795). The
+    // draft is left intact for retry after switching modes.
+    if (!steering && mode !== "agent") {
+      const agents = await resolveComposerAgentMentions(serializedContent);
+      if (agents.length > 0) {
+        showToast(t("chat.agentDispatchModeBlocked"), { variant: "error" });
+        return;
       }
     }
     if (!steering && !modelReady) {

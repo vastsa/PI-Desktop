@@ -407,6 +407,7 @@ export function Composer({
 
   const submitController = useComposerSubmit({
     value,
+    mode,
     draftKey,
     activeSessionId,
     providerId: provider?.id,
@@ -461,6 +462,7 @@ export function Composer({
     cursor,
     composing,
     enabled: !inputBlocked,
+    mode,
   });
 
   const acceptCompletion = (index: number) => {

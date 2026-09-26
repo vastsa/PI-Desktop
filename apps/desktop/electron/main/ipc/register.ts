@@ -30,6 +30,7 @@ import { fetchSkillMarketDocument, searchSkillMarket } from "../skill-market-cat
 import { registerWindowIpc } from "./window-ipc";
 import { createComposerTemplateLoader, registerWorkspaceIpc } from "./workspace-ipc";
 import { registerComposerIpc } from "./composer-ipc";
+import { createSubagentCatalogLoader } from "../subagent-catalog";
 import { registerSpeechIpc } from "./speech-ipc";
 import { registerVoiceIpc } from "./voice-ipc";
 import type { IpcRegistrar } from "./types";
@@ -295,6 +296,12 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     activeUserSkills,
     pluginActiveInProject,
     loadComposerTemplatesCached,
+    // One catalog read serves the settings page, the composer "@" menu and
+    // the prompt rewrite, so a handle offered anywhere is delegable everywhere.
+    loadSubagentCatalog: createSubagentCatalogLoader({
+      activeUserSubagentDocuments,
+      disabledBuiltinSubagents,
+    }),
   });
   registerWindowIpc({
     setTraySessionPreferences: traySessions.setPreferences,

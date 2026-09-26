@@ -1,8 +1,9 @@
-import { IPC, ErrorCodes, compactionRecordId, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
+import { IPC, ErrorCodes, buildAgentDispatchInstruction, compactionRecordId, findAgentMentions, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
 import { expandSlashInvocation, enhancePromptDraft, summarizeSessionTitle, visionFromModelConfig, type ComposerTemplate, type RuntimeProviderConfig } from "@pi-desktop/agent-runtime";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import { appendPromptFallbackPaths, durableUserMessageId, preparePromptAttachments, type PreparedPromptAttachment } from "../prompt-attachments";
+import { getWorkspaceFileIndex } from "../fs-index";
 import { executionFromResponse, resolveSessionMessageInput } from "@pi-desktop/host-runtime";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { AgentHostBridge } from "../agent-host-bridge";
@@ -46,7 +47,7 @@ export type AgentIpcDependencies = {
   emitAgentEvent: (envelope: AgentEventEnvelope) => void;
   setNotificationViewingSessionId: (sessionId: string | null) => void;
   optionalWorkspaceRoot: () => Promise<string | null>;
-  composerCommandService: Pick<ComposerCommandService, "buildComposerCommands">;
+  composerCommandService: Pick<ComposerCommandService, "buildComposerCommands" | "buildComposerAgents">;
   loadComposerTemplatesCached: (root: string | null) => Promise<ComposerTemplate[]>;
 };
 
@@ -440,9 +441,16 @@ export function registerAgentIpc({
     // explicit, while the typed form remains the visible transcript chip.
     // Builtin/plugin slash aliases never reach this channel, and unknown
     // /names stay literal text.
-    let promptContent = sessionMessage?.content ?? req.content;
+    // Prompt rewriting accumulates model-facing instructions ahead of the
+    // user's own text, so a skill mention and an `@agent` mention can both
+    // apply to one draft without either replacing the other's output. A
+    // template expansion, by contrast, owns the whole prompt and suppresses
+    // both.
+    let body = sessionMessage?.content ?? req.content;
+    const instructions: string[] = [];
     let slashCommand: string | undefined;
     let skillMentions: UiMessage["skillMentions"];
+    let expandedByTemplate = false;
     if (!sessionMessage && /(^|\s)\/\S/.test(req.content)) {
       try {
         const root = await optionalWorkspaceRoot();
@@ -461,28 +469,26 @@ export function registerAgentIpc({
         );
         const mentions = findSkillMentions(req.content, activeSkills);
         if (mentions.length > 0 && (!command || command.kind === "skill")) {
-          let body = "";
+          let stripped = "";
           let end = 0;
           for (const mention of mentions) {
-            body += req.content.slice(end, mention.start);
+            stripped += req.content.slice(end, mention.start);
             end = mention.end;
           }
-          body = (body + req.content.slice(end)).trim();
+          body = (stripped + req.content.slice(end)).trim();
           const ids = [...new Set(mentions.map((mention) => mention.id))];
-          promptContent = [
+          instructions.push(
             `Call the \`Skill\` tool with each of these ids before answering this request, in order: ${ids.map((id) => JSON.stringify(id)).join(", ")}. Follow the loaded skill instructions.`,
-            body,
-          ]
-            .filter(Boolean)
-            .join("\n\n");
+          );
           slashCommand = req.content;
           skillMentions = mentions;
         } else if (req.content.startsWith("/")) {
           const templates = await loadComposerTemplatesCached(root);
           const expansion = expandSlashInvocation(req.content, templates);
           if (expansion) {
-            promptContent = expansion.expanded;
+            body = expansion.expanded;
             slashCommand = expansion.command;
+            expandedByTemplate = true;
           }
         }
       } catch (error) {
@@ -492,6 +498,60 @@ export function registerAgentIpc({
         });
       }
     }
+
+    // `@agent` routing (issue #986): a user naming a delegate gets the same
+    // treatment `/skill` already has — the typed text is rewritten into an
+    // explicit `Task` instruction, while the original `@agent …` draft stays
+    // the visible transcript chip. Every downstream delegation behavior keys
+    // off "this turn contains a `Task` call", so nothing downstream changes.
+    //
+    // `Task` is registered in Agent mode only (ADR 0062 §4): in Plan/Goal a
+    // delegate would drive straight through a read-only contract, so those
+    // turns keep their literal text and the composer refuses the send instead.
+    if (
+      !sessionMessage &&
+      !expandedByTemplate &&
+      session.mode === "agent" &&
+      /(^|\s)@\S/.test(req.content)
+    ) {
+      try {
+        const root = await optionalWorkspaceRoot();
+        const agents = await composerCommandService.buildComposerAgents(
+          launch.projectPath ?? root,
+        );
+        const names = new Set(agents.map((agent) => agent.name));
+        // A file reference and an agent mention both serialize to `@token`,
+        // so a real file of that name wins and the token stays a file. The
+        // index is TTL-cached, and only read when the mode can route at all.
+        const index = root ? await getWorkspaceFileIndex(root) : null;
+        const resolvable = new Set(
+          (index?.entries ?? []).map((entry) => entry.path),
+        );
+        // Mentions are resolved against `body`, not the raw request: a skill
+        // mention may already have removed a token, and offsets from the
+        // original text would then slice at the wrong place.
+        const mentions = findAgentMentions(body, names, resolvable);
+        if (mentions.length > 0) {
+          let stripped = "";
+          let end = 0;
+          for (const mention of mentions) {
+            stripped += body.slice(end, mention.start);
+            end = mention.end;
+          }
+          body = (stripped + body.slice(end)).trim();
+          instructions.unshift(
+            buildAgentDispatchInstruction(mentions.map((mention) => mention.name)),
+          );
+          slashCommand ??= req.content;
+        }
+      } catch (error) {
+        logger.app("session", "warn", "agent mention rewrite failed; sending literal text", {
+          sessionId: req.sessionId,
+          data: String(error),
+        });
+      }
+    }
+    const promptContent = [...instructions, body].filter(Boolean).join("\n\n");
 
     // The binding's image override already shaped this modelConfig, so the
     // transport gate and the settings switch cannot disagree.

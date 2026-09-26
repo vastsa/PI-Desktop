@@ -8,6 +8,7 @@ import {
   IconFolder,
   IconPlug,
   IconSlash,
+  IconBranch,
   IconSparkles,
 } from "./icons";
 import { AnchoredMenu } from "./settings/AnchoredMenu";
@@ -41,12 +42,13 @@ function Highlighted({
   return <>{parts}</>;
 }
 
-const GROUP_KEYS: Record<ComposerCommand["kind"], string> = {
+const GROUP_KEYS: Record<ComposerCommand["kind"] | "agent", string> = {
   template: "chat.slashGroupTemplates",
   builtin: "chat.slashGroupApp",
   plugin: "chat.slashGroupPlugins",
   extension: "chat.slashGroupExtensions",
   skill: "chat.slashGroupSkills",
+  agent: "chat.agentGroup",
 };
 
 function CommandIcon({ kind }: { kind: ComposerCommand["kind"] }) {
@@ -84,7 +86,9 @@ export function ComposerAutocomplete({
       key:
         item.kind === "command"
           ? `c:${item.command.kind}:${item.command.name}`
-          : `p:${item.entry.path}`,
+          : item.kind === "agent"
+            ? `a:${item.agent.name}`
+            : `p:${item.entry.path}`,
       type: "button" as const,
       role: "option" as const,
       "aria-selected": active,
@@ -118,6 +122,25 @@ export function ComposerAutocomplete({
         </button>
       );
     }
+    if (item.kind === "agent") {
+      return (
+        <button
+          {...commonProps}
+          aria-label={`@${item.agent.name} — ${item.agent.description ?? t("chat.agentGroup")}`}
+          title={item.agent.description ?? item.agent.name}
+        >
+          <span className="composer-ac-icon">
+            <IconBranch size={14} />
+          </span>
+          <span className="composer-ac-name">
+            @<Highlighted text={item.agent.name} ranges={item.match.ranges} />
+          </span>
+          {item.agent.description ? (
+            <span className="composer-ac-desc">{item.agent.description}</span>
+          ) : null}
+        </button>
+      );
+    }
     const isDir = item.entry.kind === "dir";
     const name = item.entry.path.split("/").pop() ?? item.entry.path;
     const displayName = `${name}${isDir ? "/" : ""}`;
@@ -138,10 +161,17 @@ export function ComposerAutocomplete({
   const rows: React.ReactNode[] = [];
   let lastGroup: string | null = null;
   ac.items.forEach((item, index) => {
-    if (item.kind === "command") {
-      const group = item.command.kind;
-      if (group !== lastGroup) {
-        lastGroup = group;
+    const group =
+      item.kind === "command"
+        ? item.command.kind
+        : item.kind === "agent"
+          ? "agent"
+          : "path";
+    if (group !== lastGroup) {
+      lastGroup = group;
+      // File rows carry no header: agents head the list, and an unlabelled
+      // remainder reads as "everything else".
+      if (group !== "path") {
         rows.push(
           <div key={`g:${group}`} className="composer-model-group-label">
             {t(GROUP_KEYS[group])}
@@ -166,7 +196,7 @@ export function ComposerAutocomplete({
       onClose={ac.close}
       anchorRef={anchorRef}
       menuClassName="composer-autocomplete"
-      label={t(ac.mode === "file" ? "chat.fileMenu" : "chat.slashMenu")}
+      label={t(ac.mode === "file" ? "chat.referenceMenu" : "chat.slashMenu")}
       role="listbox"
       side="top"
       matchAnchorWidth

@@ -311,7 +311,10 @@ The minimum selection is:
   `pnpm test:e2e:theme-surfaces`.
 - Composer clipboard representation and text insertion: `pnpm test:e2e:composer-paste`.
 - Composer slash-menu name/description layout: `pnpm build:js` followed by
-  `pnpm test:e2e:composer-autocomplete`.
+  `pnpm test:e2e:composer-autocomplete`. The same suite covers the `@` menu's
+  Agents group and its ordering ahead of the file rows (ADR 0308).
+- User-authored `@agent` delegation: `pnpm test:e2e:subagents` for the
+  delegation lifecycle, and the composer suites for the mention rewrite.
 - Transcript render boundaries and cross-part delegation display: `pnpm test:e2e:transcript`.
 - Plan host/runtime behavior: `pnpm test:e2e` and `pnpm test:e2e:plan`.
 - Plan UI behavior: `pnpm test:e2e:plan` and `pnpm test:e2e:plan-ui`.

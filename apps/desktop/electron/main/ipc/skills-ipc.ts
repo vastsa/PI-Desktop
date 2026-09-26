@@ -1,6 +1,6 @@
 import { dialog, shell } from "electron";
 import { ErrorCodes, IPC, type ActivationScope, type AgentCapabilityMove, type AgentCapabilityQuery, type UserSkillRecord, type UserSubagentRecord } from "@pi-desktop/shared";
-import { loadSubagentDefinitions, type UserSubagentDocument } from "@pi-desktop/agent-runtime";
+import type { UserSubagentDocument } from "@pi-desktop/agent-runtime";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import {
@@ -9,6 +9,7 @@ import {
   type SkillMarketDocument,
   type SkillMarketSearchResult,
 } from "../skill-market-catalog";
+import { createSubagentCatalogLoader } from "../subagent-catalog";
 import {
   skillMarketFailureDetail,
   type SkillMarketFailureDetail,
@@ -43,6 +44,10 @@ export function registerSkillsIpc({
   fetchSkillMarketDocument,
   logger,
 }: SkillsIpcDependencies): void {
+  const loadSubagentCatalog = createSubagentCatalogLoader({
+    activeUserSubagentDocuments,
+    disabledBuiltinSubagents,
+  });
   /*
     The market's two channels are the only place that knows why a source went
     quiet, and they previously reported nothing outside the panel. A refusal
@@ -296,27 +301,9 @@ export function registerSkillsIpc({
    * page can keep its row and let the user turn it back on; `subagents` is the
    * delegation catalog and never lists one.
    */
-  handle(IPC.invoke.subagentCatalog, async () => {
-    const projectPath = (await optionalWorkspaceRoot()) ?? undefined;
-    const disabled = await disabledBuiltinSubagents();
-    const { definitions, builtins, diagnostics } = await loadSubagentDefinitions(
-      projectPath,
-      {
-        userDocuments: await activeUserSubagentDocuments(projectPath),
-        disabledBuiltins: disabled,
-      },
-    );
-    const off = new Set(disabled);
-    return {
-      subagents: definitions,
-      builtins: builtins.map((definition) => ({
-        ...definition,
-        enabled: !off.has(definition.name),
-      })),
-      diagnostics,
-      projectPath: projectPath ?? null,
-    };
-  });
+  handle(IPC.invoke.subagentCatalog, async () =>
+    loadSubagentCatalog((await optionalWorkspaceRoot()) ?? undefined),
+  );
 
   handle(IPC.invoke.subagentCreate, async (subagent: Record<string, unknown>) => {
     if (!host) throw new Error("host unavailable");

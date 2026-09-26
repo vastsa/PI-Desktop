@@ -12,6 +12,8 @@
  *   may contain spaces until its closing quote.
  */
 
+
+import { normalizeSubagentName } from "./subagent-definition.js";
 export type ComposerTriggerMode = "slash" | "file";
 
 export type ComposerTrigger = {
@@ -144,6 +146,79 @@ export function findSkillMentions(
     mentions.push({ start, end: start + match[2].length + 1, id });
   }
   return mentions;
+}
+
+export type AgentMention = { start: number; end: number; name: string };
+
+/**
+ * Trailing punctuation that closes a sentence rather than naming a delegate.
+ * `@explorer,` asks for the explorer; `@explorer` inside `user@explorer` does
+ * not, because that token is not at a boundary.
+ */
+const MENTION_TRAILING = /[.,;:!?'")\]}]+$/;
+
+/**
+ * Resolve `@agent` tokens against the delegation catalog at send time.
+ *
+ * The mention mirrors a file reference on the wire (both serialize to an
+ * `@token`), so a token is only an agent when both hold:
+ *
+ * - the normalized token names a subagent `Task` would actually offer, and
+ * - `resolvablePaths` holds no file of that name.
+ *
+ * The file case therefore wins whenever the workspace really has an
+ * `explorer` file. Only bare tokens qualify: a token carrying `/` or a quote
+ * is a path, and subagent names are `[a-z0-9-]` by contract
+ * (`normalizeSubagentName`), so nothing legitimate is lost.
+ */
+export function findAgentMentions(
+  content: string,
+  agentNames: ReadonlySet<string>,
+  resolvablePaths?: ReadonlySet<string>,
+): AgentMention[] {
+  const mentions: AgentMention[] = [];
+  const seen = new Set<string>();
+  for (const match of content.matchAll(/(^|\s)@([^\s"']+)/g)) {
+    const raw = match[2];
+    if (raw.includes("/") || raw.includes("\\")) continue;
+    const start = match.index + match[1].length;
+    const bare = raw.replace(MENTION_TRAILING, "");
+    if (!bare) continue;
+    const name = normalizeSubagentName(bare);
+    if (!name || !agentNames.has(name)) continue;
+    if (resolvablePaths?.has(bare) || resolvablePaths?.has(name)) continue;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    // `start` points at the "@" and the range must span the whole mention
+    // including it, so stripping the token cannot leave a dangling suffix.
+    mentions.push({ start, end: start + bare.length + 1, name });
+  }
+  return mentions;
+}
+
+/**
+ * The model instruction a user-authored `@agent` mention rewrites into.
+ *
+ * This is a strong prompt, not an enforced dispatch, exactly like the
+ * `/skill` rewrite: every downstream delegation behavior (cards, topology,
+ * permission queue, `TaskWait`) already keys off "this is a `Task` call", so
+ * routing through the model keeps one implementation of delegation instead of
+ * a second path that would also have to synthesize a parent tool row.
+ */
+export function buildAgentDispatchInstruction(names: string[]): string {
+  const quoted = names.map((name) => JSON.stringify(name));
+  const one = names.length === 1;
+  return [
+    one
+      ? "Call the `Task` tool with the agent below before answering this request. Pass the request that follows as its `task` brief, adding anything the delegate cannot infer on its own, then converge on its report with `TaskWait` before you reply."
+      : "Call the `Task` tool once per agent listed below before answering this request. Pass the request that follows as each delegate's `task` brief, adding anything they cannot infer on their own, then converge on their reports with `TaskWait` before you reply.",
+    `Agent${one ? "" : "s"}: ${quoted.join(", ")}`,
+  ].join("\n");
+}
+
+/** Insertion text for an accepted agent entry: `@name ` ready for the brief. */
+export function formatAgentInsert(name: string): string {
+  return `@${name} `;
 }
 
 /** Insertion text for an accepted slash command: `/name ` ready for args. */

@@ -1,8 +1,9 @@
-import { IPC, trustedExtensionCommandId, type ComposerCommand } from "@pi-desktop/shared";
+import { IPC, trustedExtensionCommandId, type ComposerAgent, type ComposerCommand } from "@pi-desktop/shared";
 import { builtinSkills } from "../builtin-skills";
 import { builtinComposerCommands } from "../builtin-commands";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { PluginRuntime } from "../plugin-runtime";
+import type { SubagentCatalogLoader } from "../subagent-catalog";
 import type { IpcRegistrar } from "./types";
 
 type ComposerTemplateSource = "user" | "project";
@@ -24,10 +25,18 @@ export type ComposerIpcDependencies = {
     argumentHint?: string;
     source?: ComposerTemplateSource;
   }>>;
+  /** The delegation catalog `Task` is built from; also backs the "@" menu. */
+  loadSubagentCatalog: SubagentCatalogLoader;
 };
 
 export type ComposerCommandService = {
   buildComposerCommands: (root: string | null) => Promise<ComposerCommand[]>;
+  /**
+   * The delegates the "@" menu offers. Read from the same catalog `Task` is
+   * built from, so the menu can never name a handle the runtime would reject.
+   * A disabled builtin is absent, not greyed out: it is not delegable now.
+   */
+  buildComposerAgents: (root: string | null) => Promise<ComposerAgent[]>;
 };
 
 export function createComposerCommandService({
@@ -36,7 +45,25 @@ export function createComposerCommandService({
   activeUserSkills,
   pluginActiveInProject,
   loadComposerTemplatesCached,
-}: Omit<ComposerIpcDependencies, "registrar" | "optionalWorkspaceRoot">): ComposerCommandService {
+  loadSubagentCatalog,
+}: Omit<
+  ComposerIpcDependencies,
+  "registrar" | "optionalWorkspaceRoot"
+>): ComposerCommandService {
+  /**
+   * Agent mode is the only mode that registers `Task`, so the group is a list
+   * of handles rather than a mode switch: it is filtered by the caller, and
+   * Plan/Goal simply never ask for it.
+   */
+  const buildComposerAgents = async (
+    root: string | null,
+  ): Promise<ComposerAgent[]> => {
+    const { subagents } = await loadSubagentCatalog(root ?? undefined);
+    return subagents.map((definition) => ({
+      name: definition.name,
+      ...(definition.description ? { description: definition.description } : {}),
+    }));
+  };
   const loadComposerSkillCommands = async (
     root: string | null,
   ): Promise<ComposerCommand[]> => {
@@ -116,7 +143,7 @@ export function createComposerCommandService({
     return [...merged.values()];
   };
 
-  return { buildComposerCommands };
+  return { buildComposerCommands, buildComposerAgents };
 }
 
 export function registerComposerIpc({
@@ -127,7 +154,10 @@ export function registerComposerIpc({
   const service = createComposerCommandService(serviceDependencies);
   registrar.handle(IPC.invoke.composerCommands, async () => {
     const root = await optionalWorkspaceRoot();
-    return { commands: await service.buildComposerCommands(root) };
+    // One read serves both menus. A catalog that cannot be read must not
+    // blank the "/" list, which still works without delegation.
+    const agents = await service.buildComposerAgents(root).catch(() => []);
+    return { commands: await service.buildComposerCommands(root), agents };
   });
   return service;
 }

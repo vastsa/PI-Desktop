@@ -4,15 +4,19 @@ import {
   compareMatches,
   detectTrigger,
   fileReferenceLabel,
+  findAgentMentions,
+  formatAgentInsert,
   formatCommandInsert,
   formatFileInsert,
   fuzzyMatchCommand,
   fuzzyMatchPath,
   selectBestMatches,
+  type ComposerAgent,
   type ComposerCommand,
   type ComposerTrigger,
   type FsIndexEntry,
   type FuzzyMatch,
+  type Mode,
 } from "@pi-desktop/shared";
 import { api } from "../lib/api";
 import { useAppStore } from "../stores/app-store";
@@ -25,15 +29,22 @@ import { useAppStore } from "../stores/app-store";
  */
 
 const MAX_FILE_ITEMS = 50;
+/** Stable empty list so a mode without delegation keeps a constant reference. */
+const EMPTY_AGENTS: ComposerAgent[] = [];
 const SOURCE_TTL_MS = 10_000;
 
 export type AutocompleteItem =
   | { kind: "command"; command: ComposerCommand; match: FuzzyMatch }
+  | { kind: "agent"; agent: ComposerAgent; match: FuzzyMatch }
   | { kind: "path"; entry: FsIndexEntry; match: FuzzyMatch };
 
 /** Module-level TTL caches so re-triggering stays IPC-free. */
-let commandsCache: { key: string; at: number; commands: ComposerCommand[] } | null =
-  null;
+let commandsCache: {
+  key: string;
+  at: number;
+  commands: ComposerCommand[];
+  agents: ComposerAgent[];
+} | null = null;
 let filesCache: {
   key: string;
   at: number;
@@ -92,6 +103,62 @@ function filterCommands(
   return matched.map(({ command, match }) => ({ kind: "command", command, match }));
 }
 
+/**
+ * Rank delegates for the "@" menu. Agents lead the file rows because naming one
+ * is the rarer intent than pointing at a file, and the group sits above them.
+ */
+function filterAgents(agents: ComposerAgent[], query: string): AutocompleteItem[] {
+  const matched: Array<{ agent: ComposerAgent; match: FuzzyMatch; sortText: string }> = [];
+  for (const agent of agents) {
+    const byName = fuzzyMatchCommand(query, agent.name);
+    if (byName) {
+      matched.push({ agent, match: byName, sortText: agent.name });
+      continue;
+    }
+    const byDescription = agent.description
+      ? fuzzyMatchCommand(query, agent.description)
+      : null;
+    if (byDescription) {
+      matched.push({
+        agent,
+        match: { score: Math.max(0, byDescription.score - 20), ranges: [] },
+        sortText: agent.name,
+      });
+    }
+  }
+  matched.sort((a, b) =>
+    compareMatches(
+      { score: a.match.score, text: a.sortText },
+      { score: b.match.score, text: b.sortText },
+    ),
+  );
+  return matched.map(({ agent, match }) => ({ kind: "agent", agent, match }));
+}
+
+/**
+ * Whether the menu has everything it needs to open.
+ *
+ * The agent group is a source like the file index, but its absence must never
+ * stall the menu: in Plan/Goal no catalog read is started at all, so that
+ * source counts as resolved. Split out because getting this wrong either
+ * flashes an empty menu or never opens one, and neither is visible in a
+ * screenshot.
+ */
+export function composerSourcesReady({
+  mode,
+  hasWorkspace,
+  filesLoaded,
+  agentsResolved,
+}: {
+  mode: Mode;
+  hasWorkspace: boolean;
+  filesLoaded: boolean;
+  agentsResolved: boolean;
+}): boolean {
+  if (mode !== "agent") return filesLoaded || !hasWorkspace;
+  return hasWorkspace ? filesLoaded && agentsResolved : agentsResolved;
+}
+
 function filterFiles(entries: FsIndexEntry[], query: string): AutocompleteItem[] {
   const matched: Array<{ entry: FsIndexEntry; match: FuzzyMatch }> = [];
   for (const entry of entries) {
@@ -136,7 +203,12 @@ export async function resolveComposerCommand(
   ) {
     try {
       const res = await api.composerCommands();
-      commandsCache = { key, at: Date.now(), commands: res.commands };
+      commandsCache = {
+        key,
+        at: Date.now(),
+        commands: res.commands,
+        agents: res.agents ?? [],
+      };
     } catch (error) {
       // Deliberately leaves the cache cold: the next attempt re-reads the
       // source, which is what makes the refusal retriable.
@@ -146,8 +218,47 @@ export async function resolveComposerCommand(
       };
     }
   }
-  const command = commandsCache.commands.find((c) => c.name === name);
+  const command = commandsCache?.commands.find((c) => c.name === name);
   return command ? { status: "resolved", command } : { status: "unknown" };
+}
+
+/**
+ * Names the delegates a draft asks for, read from the same warm cache the menu
+ * uses.
+ *
+ * The submit path calls this only to decide whether a non-Agent mode must
+ * refuse the turn. It deliberately does not resolve files: a draft where
+ * `@explorer` is a real file must still be sendable, and main re-runs the
+ * authoritative resolution anyway.
+ */
+export async function resolveComposerAgentMentions(
+  content: string,
+): Promise<string[]> {
+  if (!/(^|\s)@\S/.test(content)) return [];
+  const key = useAppStore.getState().workspace?.path ?? "";
+  if (
+    !commandsCache ||
+    commandsCache.key !== key ||
+    Date.now() - commandsCache.at > SOURCE_TTL_MS
+  ) {
+    try {
+      const res = await api.composerCommands();
+      commandsCache = {
+        key,
+        at: Date.now(),
+        commands: res.commands,
+        agents: res.agents ?? [],
+      };
+    } catch {
+      // A catalog that cannot be read proves nothing about the draft, so the
+      // turn is left to main, which sends literal text on a failed read.
+      return [];
+    }
+  }
+  return findAgentMentions(
+    content,
+    new Set(commandsCache.agents.map((agent) => agent.name)),
+  ).map((mention) => mention.name);
 }
 
 export function useComposerAutocomplete({
@@ -155,11 +266,14 @@ export function useComposerAutocomplete({
   cursor,
   composing,
   enabled,
+  mode,
 }: {
   value: string;
   cursor: number;
   composing: boolean;
   enabled: boolean;
+  /** Session mode. `Task` exists only in Agent mode, so only that mode lists agents. */
+  mode: Mode;
 }) {
   const workspaceKey = useAppStore((s) => s.workspace?.path ?? "");
   const hasWorkspace = workspaceKey !== "";
@@ -168,6 +282,18 @@ export function useComposerAutocomplete({
     entries: FsIndexEntry[];
     truncated: boolean;
   } | null>(null);
+  // Plan and Goal are read-only contract negotiations (ADR 0062 §4); a
+  // delegate with Bash or Edit would drive straight through them, so the group
+  // is not offered there at all rather than failing on send.
+  const agentsAllowed = mode === "agent";
+  const [loadedAgents, setLoadedAgents] = useState<ComposerAgent[]>([]);
+  // Readiness is a separate flag: the agent list is an array, so "loaded" and
+  // "empty" cannot both be read off the same value.
+  const [agentsReady, setAgentsReady] = useState(false);
+  const availableAgents = agentsAllowed ? loadedAgents : EMPTY_AGENTS;
+  // Outside Agent mode no catalog read is ever started, so that source counts
+  // as resolved — otherwise the menu would wait on a read that never happens.
+  const agentsResolved = agentsAllowed ? agentsReady : true;
   const [highlight, setHighlight] = useState(0);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
   const frozenRef = useRef<ComposerTrigger | null>(null);
@@ -191,6 +317,35 @@ export function useComposerAutocomplete({
     if (dismissedKey && triggerKey !== dismissedKey) setDismissedKey(null);
   }, [triggerKey, dismissedKey]);
 
+  const loadAgents = useCallback(async () => {
+    const now = Date.now();
+    if (
+      commandsCache &&
+      commandsCache.key === workspaceKey &&
+      now - commandsCache.at < SOURCE_TTL_MS
+    ) {
+      setLoadedAgents(commandsCache.agents);
+      setAgentsReady(true);
+      return;
+    }
+    try {
+      // The same read that backs the "/" menu; its TTL cache keeps a warm menu
+      // from re-reading the catalog on every keystroke.
+      const res = await api.composerCommands();
+      commandsCache = {
+        key: workspaceKey,
+        at: Date.now(),
+        commands: res.commands,
+        agents: res.agents ?? [],
+      };
+      setLoadedAgents(commandsCache.agents);
+    } catch {
+      setLoadedAgents([]);
+    } finally {
+      setAgentsReady(true);
+    }
+  }, [workspaceKey]);
+
   // Lazy source fetch with a short TTL, keyed by workspace.
   useEffect(() => {
     if (!trigger || dismissed) return;
@@ -208,7 +363,12 @@ export function useComposerAutocomplete({
       void api
         .composerCommands()
         .then((res) => {
-          commandsCache = { key: workspaceKey, at: Date.now(), commands: res.commands };
+          commandsCache = {
+            key: workspaceKey,
+            at: Date.now(),
+            commands: res.commands,
+            agents: res.agents ?? [],
+          };
           if (!cancelled) setCommands(res.commands);
         })
         .catch(() => {
@@ -218,6 +378,10 @@ export function useComposerAutocomplete({
         cancelled = true;
       };
     }
+    // The "@" menu carries agents alongside files, so the delegation catalog
+    // is read even with no workspace open: a user can delegate in a
+    // workspace-less session, and the group is the menu's first section.
+    if (agentsAllowed) void loadAgents();
     if (!hasWorkspace) {
       setFiles({ entries: [], truncated: false });
       return;
@@ -248,15 +412,21 @@ export function useComposerAutocomplete({
     return () => {
       cancelled = true;
     };
-  }, [trigger?.mode, dismissed, workspaceKey, hasWorkspace]);
+  }, [trigger?.mode, dismissed, workspaceKey, hasWorkspace, agentsAllowed, loadAgents]);
 
   const items = useMemo<AutocompleteItem[]>(() => {
     if (!trigger || dismissed) return [];
     if (trigger.mode === "slash") {
       return commands ? filterCommands(commands, trigger.query, trigger.tokenStart > 0) : [];
     }
-    return files ? filterFiles(files.entries, trigger.query) : [];
-  }, [trigger, dismissed, commands, files]);
+    // Agents precede files so the group reads as its own section.
+    const agentItems = filterAgents(availableAgents, trigger.query);
+    return agentItems.length
+      ? [...agentItems, ...(files ? filterFiles(files.entries, trigger.query) : [])]
+      : files
+        ? filterFiles(files.entries, trigger.query)
+        : [];
+  }, [trigger, dismissed, commands, files, availableAgents]);
 
   // New query or mode restarts keyboard navigation at the top hit.
   const itemsKey = trigger ? `${trigger.mode}:${trigger.query}` : "";
@@ -266,7 +436,14 @@ export function useComposerAutocomplete({
 
   const sourceReady =
     !!trigger &&
-    (trigger.mode === "slash" ? commands !== null : files !== null);
+    (trigger.mode === "slash"
+      ? commands !== null
+      : composerSourcesReady({
+          mode,
+          hasWorkspace,
+          filesLoaded: files !== null,
+          agentsResolved,
+        }));
   const open = !!trigger && !dismissed && sourceReady;
 
   const close = useCallback(() => {
@@ -295,6 +472,11 @@ export function useComposerAutocomplete({
           },
         };
       }
+      if (item.kind === "agent") {
+        // Plain text, not a chip: the mention resolves against the catalog at
+        // send time, so the draft stays a readable `@agent brief` line.
+        return applyCompletion(value, trigger, formatAgentInsert(item.agent.name));
+      }
       const insert =
         item.kind === "command"
           ? formatCommandInsert(item.command.name)
@@ -313,7 +495,8 @@ export function useComposerAutocomplete({
     highlight,
     setHighlight,
     truncated: open && trigger?.mode === "file" ? (files?.truncated ?? false) : false,
-    noWorkspace: open && trigger?.mode === "file" && !hasWorkspace,
+    noWorkspace:
+      open && trigger?.mode === "file" && !hasWorkspace && items.length === 0,
     close,
     accept,
   };
