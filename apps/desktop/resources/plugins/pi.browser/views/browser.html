@@ -169,6 +169,7 @@
           stoppedBody: "Enter an address to try again.",
           failedTitle: "Could not open this page",
           failedBody: "Check the address or connection, then try again.",
+          localFileBody: "Only existing files inside this project's workspace can be opened.",
           emptyTitle: "No page open",
           emptyBody: "Enter an address, or preview an HTML file from the conversation.",
         },
@@ -185,6 +186,7 @@
           stoppedBody: "输入网址可重新打开页面。",
           failedTitle: "无法打开此页面",
           failedBody: "请检查网址或网络连接，然后重试。",
+          localFileBody: "只能打开此项目工作区内已存在的文件。",
           emptyTitle: "尚未打开页面",
           emptyBody: "输入地址，或从对话预览 HTML 文件。",
         },
@@ -232,7 +234,8 @@
         empty.hidden = started && !state?.isLoading;
         const phase = state?.loadError === "ERR_ABORTED" ? "stopped" : state?.loadError ? "failed" : state?.isLoading ? "loading" : "empty";
         emptyTitle.textContent = t(`${phase}Title`);
-        emptyBody.textContent = t(`${phase}Body`);
+        emptyBody.textContent = state?.loadError === "LOCAL_FILE_NOT_ALLOWED"
+          ? t("localFileBody") : t(`${phase}Body`);
         back.disabled = !state?.canGoBack;
         forward.disabled = !state?.canGoForward;
         reload.disabled = !started;

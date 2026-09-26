@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { register, registerHooks } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 // Electron is the external boundary; all navigation and timeout logic below
 // runs in the production BrowserPane, without opening a native window.
@@ -23,6 +27,7 @@ const electron = `data:text/javascript,${encodeURIComponent(`
         getTitle: () => "fixture",
         isLoading: () => false,
         isDestroyed: () => false,
+        close: () => {},
         navigationHistory: { canGoBack: () => false, canGoForward: () => false },
         setWindowOpenHandler: () => {},
         session: { setPermissionRequestHandler: () => {} },
@@ -87,6 +92,45 @@ test("an invalid target cannot mark the previous document ready", async (t) => {
   await request;
   assert.equal(await pane.navigateAndWait("javascript:alert(1)"), null);
   await settled();
+});
+
+test("an outside file URL explains the workspace boundary without loading it", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "pi-browser-root-"));
+  const outside = mkdtempSync(join(tmpdir(), "pi-browser-outside-"));
+  t.after(() => { pane.dispose(); rmSync(root, { recursive: true }); rmSync(outside, { recursive: true }); });
+  mkdirSync(join(root, "pages"));
+  const insideFile = join(root, "pages", "demo.html");
+  const outsideFile = join(outside, "demo.html");
+  writeFileSync(insideFile, "<h1>Inside</h1>");
+  writeFileSync(outsideFile, "<h1>Outside</h1>");
+  const published = [];
+  const pane = new BrowserPane((state) => published.push(state));
+
+  const allowed = pane.navigateAndWait(pathToFileURL(insideFile).href, root);
+  const wc = WebContentsView.instances.at(-1).webContents;
+  assert.equal(wc.pendingLoads.at(-1).url, pathToFileURL(realpathSync(insideFile)).href);
+  wc.url = pathToFileURL(realpathSync(insideFile)).href;
+  wc.pendingLoads.shift().resolve();
+  await allowed;
+
+  const deniedUrl = pathToFileURL(outsideFile).href;
+  assert.equal(await pane.navigateAndWait(deniedUrl, root), null);
+  assert.equal(wc.pendingLoads.length, 0, "outside file must never reach Electron");
+  assert.equal(published.at(-1).url, deniedUrl);
+  assert.equal(published.at(-1).loadError, "LOCAL_FILE_NOT_ALLOWED");
+  assert.equal(published.at(-1).isLoading, false);
+});
+
+test("a denied local file on a blank tab publishes an error without creating a guest", async () => {
+  const published = [];
+  const pane = new BrowserPane((state) => published.push(state));
+  const count = WebContentsView.instances.length;
+  assert.equal(await pane.navigateAndWait("file:///tmp/demo.html", "/projects/demo"), null);
+  assert.equal(WebContentsView.instances.length, count);
+  assert.deepEqual(published.at(-1), {
+    url: "file:///tmp/demo.html", title: "", isLoading: false,
+    loadError: "LOCAL_FILE_NOT_ALLOWED", canGoBack: false, canGoForward: false,
+  });
 });
 
 test("late native navigation events cannot publish after the session is invalidated", async () => {

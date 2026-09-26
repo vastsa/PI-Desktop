@@ -118,7 +118,16 @@ export class BrowserPane {
 
   getState(): BrowserState | null {
     const wc = this.view?.webContents;
-    if (!wc || wc.isDestroyed()) return null;
+    if (!wc || wc.isDestroyed()) {
+      return this.loadError ? {
+        url: this.loadError.url,
+        title: "",
+        isLoading: false,
+        loadError: this.loadError.message,
+        canGoBack: false,
+        canGoForward: false,
+      } : null;
+    }
     return {
       url: this.loadError?.url ?? this.pendingTarget ?? wc.getURL(),
       title: wc.getTitle(),
@@ -168,7 +177,8 @@ export class BrowserPane {
       : normalizeUrl(raw);
     if (!target) {
       this.beginManagedNavigation();
-      this.loadError = { url: raw, message: "INVALID_URL" };
+      const localInput = /^file:/i.test(raw.trim()) || isAbsolute(raw.trim());
+      this.loadError = { url: raw, message: localInput ? "LOCAL_FILE_NOT_ALLOWED" : "INVALID_URL" };
       const state = this.getState();
       if (state) this.onState(state);
       return null;
