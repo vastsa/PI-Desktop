@@ -2,9 +2,6 @@ import {
   app,
   BrowserWindow,
   ipcMain,
-  nativeTheme,
-  screen,
-  Tray,
 } from "electron";
 import { join } from "node:path";
 import {
@@ -19,109 +16,41 @@ import {
   APP_VERSION,
   IPC,
   IPC_WHITELIST,
-  KEYBOARD_SHORTCUTS,
-  keybindingToElectronAccelerator,
-  resolveKeybinding,
   isActiveInProject,
   type ActivationScope,
   type AgentEventEnvelope,
-  type AppMenuCommand,
   type CloseBehavior,
   type KeybindingOverrides,
   type PlanExecutionFinishStatus,
 } from "@pi-desktop/shared";
-import { summarizeSessionTitle } from "@pi-desktop/agent-runtime";
 import { AgentExtensionBridge } from "./agent-extensions";
-import { registerAgentExtensionIpc } from "./agent-extensions-ipc";
-import { isTemplateName, scaffold } from "@pi-desktop/plugin-devkit";
-
-import { HostProcess } from "./host-process";
 import {
   knownProjectGroups,
   pluginWorkspaceInfo,
   refreshProjectGroups,
 } from "./workspace-roots";
-import {
-  shouldCreateTaskNotification as shouldCreateTaskNotificationPolicy,
-  shouldShowNativeNotification,
-} from "./notification-policy";
 import { PersistenceOutbox } from "./persistence-outbox";
-import { AgentSidecar } from "./agent-sidecar";
 import { Logger, ignoreBrokenStdio } from "./logger";
 import { describeError, installMainProcessErrorHandlers } from "./main-process-errors";
-import {
-  isDbSchemaTooNewError,
-} from "./host-boot-diagnostics";
 import {
   ModelsDevCatalog,
   catalogModelConfigFor,
 } from "./models-dev-catalog";
 import { VendorOAuth } from "./oauth";
 import { AppUpdaterController } from "./updater";
-import { catalogs, resolveLocale } from "@pi-desktop/i18n";
-import {
-  baseWindowBounds,
-  clampBoundsOriginToWorkArea,
-  displayWorkAreaKey,
-  emptyWorkPanelReservationState,
-  isWorkPanelOuterResizeEdge,
-  parseWorkPanelChatWidth,
-  parseWorkPanelReservationWidth,
-  planWorkPanelChatResize,
-  planWorkPanelReservation,
-  reconcileBaseWindowBounds,
-  WORK_PANEL_MAX_WIDTH,
-  WORK_PANEL_MIN_WIDTH,
-  windowBoundsEqual,
-  type DisplayTransition,
-  type WindowBounds,
-  type WorkPanelReservationState,
-} from "./work-panel-window";
-import {
-  appendPromptFallbackPaths,
-  durableUserMessageId,
-  preparePromptAttachments,
-  type PreparedPromptAttachment,
-} from "./prompt-attachments";
-import {
-  InflightCheckpointer,
-  executionFromResponse,
-  executionListFromResponse,
-  planExecutionFromUnknown,
-} from "@pi-desktop/host-runtime";
-import { readWindowState, writeWindowState } from "./window-preferences";
+import type { WorkPanelReservationState } from "./work-panel-window";
+import { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import { withGitBranch } from "./workspace-git";
 import { applyDevelopmentUserData, desktopDataDir } from "./data-paths";
 import { createPlanUiProbe } from "./plan-ui-probe";
-import type { McpControlController, McpControlServer } from "./mcp-control";
-import type { AgentHostBridge } from "./agent-host-bridge";
-import { registerAppIpc } from "./ipc/app-ipc";
-import { registerNotificationIpc } from "./ipc/notification-ipc";
-import { registerSessionIpc } from "./ipc/session-ipc";
-import { registerSettingsIpc } from "./ipc/settings-ipc";
-import { registerProviderIpc } from "./ipc/provider-ipc";
-import {
-  createComposerTemplateLoader,
-  registerWorkspaceIpc,
-} from "./ipc/workspace-ipc";
-import {
-  registerComposerIpc,
-} from "./ipc/composer-ipc";
-import { registerWindowIpc } from "./ipc/window-ipc";
-import { registerPullsIpc } from "./ipc/pulls-ipc";
-import { registerAgentIpc } from "./ipc/agent-ipc";
 import { registerIpcHandlers } from "./ipc/register";
 import { createVoiceService } from "./voice-service";
 import { MainProcessState } from "./bootstrap/main-state";
-import {
-  type WindowLifecycleState,
-} from "./bootstrap/window";
 import { registerApplicationActivation } from "./bootstrap/app-activation";
-import type { RuntimeState } from "./runtime/context";
 import { createHostRuntime } from "./runtime/host";
 import { createSidecarRuntime } from "./runtime/sidecar";
 import { createEventPersistence } from "./runtime/event-persistence";
-import { createPlanRuntime, type PlanRuntimeState } from "./runtime/plans";
+import { createPlanRuntime } from "./runtime/plans";
 import { createRuntimeLifecycle } from "./runtime/lifecycle";
 import {
   createProviderCatalogRuntime,
@@ -135,26 +64,12 @@ import { wirePluginThemeRuntimeServices } from "./plugin-theme-services";
 import { createSessionCollaborationService } from "./services/session-collaboration";
 import {
   createApplicationLifecycle,
-  type ApplicationAppearanceState,
-  type ApplicationLifecycleState,
 } from "./bootstrap/app-lifecycle";
-import {
-  registerApplicationStartup,
-  type StartupState,
-} from "./bootstrap/startup";
-import {
-  createLauncher,
-  type LauncherState,
-} from "./bootstrap/launcher";
+import { registerApplicationStartup } from "./bootstrap/startup";
+import { createLauncher } from "./bootstrap/launcher";
 import { createWorkPanelRuntime } from "./bootstrap/work-panel";
 import { createCloseBehaviorRuntime } from "./bootstrap/close-behavior";
-import { registerShutdownHandlers, type ShutdownState } from "./bootstrap/shutdown";
-import { registerDiagnosticsIpc } from "./ipc/diagnostics-ipc";
-import { registerMarketIpc } from "./ipc/market-ipc";
-import { registerMcpIpc } from "./ipc/mcp-ipc";
-import { registerPluginIpc } from "./ipc/plugin-ipc";
-import { registerPluginUiIpc } from "./ipc/plugin-ui-ipc";
-import { registerSkillsIpc } from "./ipc/skills-ipc";
+import { registerShutdownHandlers } from "./bootstrap/shutdown";
 import { stripWinLongPrefix } from "./path-utils";
 
 // A closed stdout/stderr (Linux AppImage, GUI launch without a TTY) must not
@@ -425,7 +340,6 @@ const pluginServices = createPluginServices({
     )(...args);
   },
   vendorOAuth,
-  agentExtensions,
 });
 const {
   plugins,
@@ -433,7 +347,6 @@ const {
   mcpOAuth,
   pluginScopes,
   sessionProjects,
-  emitBrowserState,
   pluginPanels,
   pluginViews,
   browserHost,
@@ -619,13 +532,9 @@ const {
   hasVisibleWindow,
   restoreMainWindow,
   toggleMainWindow,
-  updateTrayMenu,
   createTray,
-  resetMenuRendererReady,
   markMenuRendererReady,
-  waitForMenuRenderer,
   ensureWindow,
-  deliverApplicationMenuCommand,
   dispatchApplicationMenuCommand,
   executeNativeMenuAction,
   dispatchNativeMenuAction,
@@ -633,10 +542,8 @@ const {
   applyPreventScreenSleep,
   applyKeepAwakeWhileRunning,
   disposePowerSaveBlockers,
-  applyNativeThemeSource,
   applyApplicationMenuSettings,
   applyAppThemePreference,
-  resolveAppearance,
   broadcastAppearance,
   flushPendingApplicationMenuCommands,
 } = applicationLifecycle;
@@ -657,7 +564,6 @@ closeBehaviorRuntime = createCloseBehaviorRuntime({
 });
 const {
   applyCloseBehavior,
-  askCloseBehavior,
   confirmQuitDialog,
 } = closeBehaviorRuntime;
 
@@ -673,7 +579,6 @@ const createdLauncher = createLauncher({
 launcherRuntime = createdLauncher;
 const {
   prewarmPluginLauncher,
-  showPluginLauncher,
   togglePluginLauncher,
   applyPluginLauncherShortcut,
   applyToggleWindowShortcut,
@@ -724,14 +629,11 @@ const sessionCoordination = createSessionCoordination({
   getViewingSessionId: () => mainState.notificationViewingSessionId,
 });
 const {
-  turnSettlements,
   activeTurnUsages,
   acquireSessionOperation,
   addActiveTurnUsage,
   activeToolCallKey,
   planSubmissionTurnKey,
-  waitForTurnSettlement,
-  shouldCreateTaskNotification,
   lockAbortReason,
   isTurnDispatchable,
   isSessionBusy,
@@ -858,9 +760,9 @@ const sidecarRuntime = createSidecarRuntime({
   currentNetworkProxy,
 });
 emitAgentEvent = sidecarRuntime.emitAgentEvent;
-const { wireSidecar, startSidecar } = sidecarRuntime;
+const { startSidecar } = sidecarRuntime;
 
-const { wireHost, startHost } = createHostRuntime({
+const { startHost } = createHostRuntime({
   runtimeState,
   dataDir,
   logger,
@@ -901,7 +803,7 @@ runtimeLifecycle = createRuntimeLifecycle({
   isQuitting: () => mainState.quitting,
   getDisplayLocale: () => applicationAppearanceState.updaterLocale,
 });
-const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
+const { bootHostStatus, bootBackends } = runtimeLifecycle;
 
 const voiceService = createVoiceService(dataDir + "/voice-models", getMainWindow);
 
@@ -1022,7 +924,6 @@ registerApplicationStartup({
   updater,
   modelsDevCatalog,
   plugins,
-  activeTurns,
   isSessionBusy,
   getHost,
   getMainWindow,

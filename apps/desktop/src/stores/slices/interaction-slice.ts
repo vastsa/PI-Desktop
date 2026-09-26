@@ -12,7 +12,7 @@ import {
   headPermission,
   removePermission,
 } from "../../lib/pending-permissions";
-import type { AppState, ToastOptions } from "../app-state";
+import type { AppState } from "../app-state";
 import type { InteractionRuntime } from "../runtime/interaction-runtime";
 import type { SessionRuntime } from "../runtime/session-runtime";
 import type { StoreAccess } from "./types";

@@ -13,7 +13,6 @@ import {
   subagentWorkPanelTab,
   switchWorkPanelContextState,
   type WorkPanelContext,
-  type WorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import {
   WORK_PANEL_COMPACT_MIN_WIDTH,

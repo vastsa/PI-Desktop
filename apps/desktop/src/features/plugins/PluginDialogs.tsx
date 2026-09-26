@@ -11,7 +11,6 @@ import {
   permissionRisk,
 } from "./model";
 import type { PluginsPageModel } from "./usePluginsPage";
-import type { PluginPermissionReview } from "@pi-desktop/shared";
 
 export function PluginDialogs({
   t,

@@ -1,7 +1,6 @@
 import type {
   MarketPluginSummary,
   PluginCapability,
-  PluginFsPolicy,
   PluginSummary,
 } from "@pi-desktop/shared";
 

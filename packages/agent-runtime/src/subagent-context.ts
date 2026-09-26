@@ -41,7 +41,6 @@ import {
   contextBudgetLimitsFor,
   retainedUserMessageBudget,
   type ContextBudget,
-  type ContextBudgetModel,
   type ContextBudgetModelInput,
 } from "./context-budget.js";
 import {

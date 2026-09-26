@@ -25,8 +25,6 @@ export function InstalledPluginsPanel({
   loadDev,
   setTemplatePick,
   installedGroups,
-  filteredInstalled,
-  installedQuery,
   setInstalledQuery,
   rowMenu,
   setRowMenu,

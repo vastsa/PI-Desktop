@@ -3,11 +3,9 @@ import { ErrorCodes, IPC, type ActivationScope, type AgentCapabilityMove, type A
 import { loadSubagentDefinitions, type UserSubagentDocument } from "@pi-desktop/agent-runtime";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
-import {
-  fetchSkillMarketDocument,
-  searchSkillMarket,
-  type SkillMarketDocument,
-  type SkillMarketSearchResult,
+import type {
+  SkillMarketDocument,
+  SkillMarketSearchResult,
 } from "../skill-market-catalog";
 import {
   skillMarketFailureDetail,

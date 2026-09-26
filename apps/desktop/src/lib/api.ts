@@ -17,7 +17,6 @@ import type {
   SpeechSynthesizeRequest,
   SpeechSynthesizeResult,
   SpeechTranscribeRequest,
-  SpeechTranscribeResult,
   SessionSummarizeTitleRequest,
   SessionSummarizeTitleResponse,
   AgentStopResponse,

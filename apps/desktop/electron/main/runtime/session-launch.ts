@@ -35,7 +35,6 @@ import {
   catalogModelConfigFor,
   type ModelsDevCatalog,
 } from "../models-dev-catalog";
-import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { UserMcpRuntime } from "../user-mcp";

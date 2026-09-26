@@ -1,7 +1,5 @@
 import type {
   AppNotification,
-  ModelInfo,
-  ProviderPublic,
   SessionSummary,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";

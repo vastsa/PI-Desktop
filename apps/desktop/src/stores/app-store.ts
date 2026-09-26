@@ -1,160 +1,49 @@
 import { create } from "zustand";
-import i18n from "i18next";
 import type {
-  AgentEventEnvelope,
-  AgentStatus,
-  AskToolResolution,
-  AppNotification,
   AppSettings,
-  AppVersionInfo,
-  ContextCompactionMark,
-  ContextCompactionRecord,
   ModelInfo,
-  OnboardingState,
-  Mode,
-  PlanResolveRequest,
-  PlanResolutionResult,
   PlanningState,
-  PlanningStateEvent,
-  PluginSummary,
-  PluginTheme,
-  PluginViewMeta,
-  PermissionMode,
-  ProjectWorkspace,
-  ProviderPublic,
-  ReviewRollbackResult,
-  SessionDetail,
-  SessionSummary,
-  ThinkingLevel,
 } from "@pi-desktop/shared";
 import {
-  contextCompactionMark,
-  ErrorCodes as SharedErrorCodes,
-  initialThinkingLevelForBinding,
   migrateKeybindingOverrides,
-  modelIdsMatch,
   normalizeMode,
-  normalizeProposalKind,
   PROTOCOL_VERSION,
 } from "@pi-desktop/shared";
 import { api } from "../lib/api";
-import type { SettingsTabId } from "../lib/settings-search";
-import { createNavigationIntentController } from "../lib/navigation-intent";
-import { scheduleHomeDraftAdopt } from "../lib/composer-draft-cache";
-import {
-  commitForkedSessionState,
-  forkedSessionMessages,
-  FORKED_SESSION_WINDOW,
-} from "../lib/session-fork";
-import {
-  EMPTY_SESSION_WINDOW,
-  sessionIsReusableEmpty,
-} from "../lib/session-create";
-import {
-  rememberProject,
-  renameRecentProject,
-  setProjectPinned,
-} from "../lib/recent-projects";
-import { applyOptimisticSessionConfiguration } from "../lib/session-thinking";
+import { rememberProject } from "../lib/recent-projects";
 import {
   RETAINED_SESSION_PANE_LIMIT,
   clearSessionPanes,
-  releaseSessionPane,
-  retainSessionPane,
 } from "../lib/session-panes";
 import {
-  dedupeSessionMessages,
-  mergeLiveSessionMessages,
-  removeLiveSessionMessage,
-  optimisticUserMessage,
-  upsertLiveSessionMessage,
-  durableCoversLiveSessionMessages,
-} from "../lib/session-transcript";
-import {
   latestSessionOutcomes,
-  type SidebarSessionOutcome,
 } from "../lib/sidebar-session-status";
 import {
-  loadSidebarPreferences,
-  projectIsArchived,
-  projectIsCollapsed,
-  projectIsPinned,
   projectWorkspaceFromPath,
   saveSidebarPreferences,
-  sortProjects,
-  sortSessions,
-  normalizeProjectName,
-  type ProjectSort,
-  type SessionSort,
 } from "../lib/sidebar-preferences";
-import { settleStoppedAssistantMetrics } from "../lib/context-usage";
-import { formatToolValue } from "../lib/tool-display";
-import { withReviewChangeState } from "../lib/workspace-review";
-import {
-  clearSessionPermissions,
-  enqueuePermission,
-  headPermission,
-  removePermission,
-  removePermissionForToolCall,
-  sessionPermissions,
-  type PermissionQueues,
-} from "../lib/pending-permissions";
-import {
-  clearSessionAsks,
-  enqueueAsk,
-  headAsk,
-  removeAsk,
-  removeAskForToolCall,
-  type AskQueues,
-} from "../lib/pending-asks";
 import {
   WORK_PANEL_DEFAULT_WIDTH,
   WORK_PANEL_MIN_WIDTH,
 } from "../lib/work-panel-resize";
 import {
-  isActivePlanExecution,
   isPendingPlan,
   latestPlanProposal,
-  mergePlanCheckpoint,
-  terminalizeMissingPlan,
 } from "../lib/plan-mode-state";
-import {
-  resolveComposerSmartStop,
-  type ComposerPrefill,
-} from "../lib/composer-smart-stop";
-import {
-  enqueueQueuedPrompt,
-  promoteQueuedPrompt,
-  queuedPromptForSession,
-  removeQueuedPrompt,
-  type QueuedPrompt,
-  type QueuedPrompts,
-} from "../lib/queued-prompts";
-import type { AgentQueueChangedEvent, QueuedTurnSummary } from "@pi-desktop/shared";
 import { settleBootstrapRequests } from "../lib/bootstrap-result";
 import {
   createSessionRuntime,
   type SessionRuntime,
-  type SubmittedComposerDraft,
 } from "./runtime/session-runtime";
 import type { StoreAccess } from "./slices/types";
 import {
   createWorkPanelSlice,
-  currentWorkPanelContext,
   switchWorkPanelSession,
 } from "./slices/work-panel-slice";
 import {
   createInitialState,
   initialSidebarPreferences,
 } from "./slices/initial-state";
-import type {
-  AgentTurnResult,
-  DraftSessionConfiguration,
-  PendingPlanRefreshResult,
-  ToastItem,
-  ToastOptions,
-  ToastVariant,
-} from "./app-state";
 import { createSessionSlice } from "./slices/session-slice";
 import { createQueueSlice } from "./slices/queue-slice";
 import { createTranscriptSlice } from "./slices/transcript-slice";

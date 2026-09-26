@@ -90,14 +90,6 @@ function loadSources(allowInsecureHttp = false): MarketSource[] {
   }
 }
 
-function saveSources(sources: MarketSource[]): void {
-  try {
-    window.localStorage?.setItem(SOURCES_STORAGE_KEY, JSON.stringify(sources));
-  } catch {
-    // Persistence is best-effort; the list stays alive for this session.
-  }
-}
-
 /**
  * The market view of the MCP settings page: browse the builtin catalog,
  * install with one click. An install only ever produces a regular user

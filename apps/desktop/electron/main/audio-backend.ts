@@ -16,7 +16,6 @@ import {
   CAPTURE_SAMPLE_RATE,
   FRAME_LENGTH,
   convertFrames,
-  computeRms,
 } from "@pi-desktop/voice-runtime";
 
 /** Lazily loaded PvRecorder module. */

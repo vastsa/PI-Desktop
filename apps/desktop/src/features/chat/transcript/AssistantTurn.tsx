@@ -18,7 +18,6 @@ import {
   assistantTurnResponseOutputTokens,
   assistantTurnUsage,
   reuseReadonlyMap,
-  subagentRunsEqual,
   type AssistantTurnEntry,
   type AssistantTurnPart,
   type TranscriptEntry,

@@ -94,6 +94,18 @@
 - 不得评论或合入无关 pull request。已合入的 pull request 不再重新打开；剩余缺口转为普通后续工作。
 - 当同时链接了 issue 和 pull request 时，R6 适用于该 pull request；R5 在合入结果之后仍适用于该 issue。
 
+#### R6.1 — 临时 pull request 类型限制
+
+> **本节生效期间，外部贡献只接受 `perf` 与 `fix` 类型的 pull request；维护者按计划推进的工作不受限制。**
+
+- 自 2026-09-26 起生效，直到维护者删除本节为止。
+- 本限制只针对外部贡献。维护者——拥有本仓库写权限的账号，以及其指挥的分支与自动化 agent 工作——不受限制；计划内工作的 `feat`、`refactor`、`docs`、`test`、`chore`、`build`、`ci` 仍是合法交付路径。
+- 外部 pull request 的其他变更类型——`feat`、`refactor`、`docs`、`test`、`chore`、`build`、`ci`——不是合入候选。用该 pull request 的原文语言说明此政策后关闭，不合入；本限制生效期间也不得把它重写为替代实现。类型以标题与提交为准；把其他工作改标为 `fix` 或 `perf` 不算符合要求。
+- 功能需求请提交 feature request issue，不要用 pull request 承载。
+- `fix` 与 `perf` 类型的 pull request 仍须满足完整的 R6 门槛：真正的根因、最小一致改动、无危害阻塞。
+- 因类型不在范围内而关闭 pull request，不违反 R6「不得丢弃贡献者的工作」条款；该条款保护的是范围内且根治问题的修复。
+- 删除本节即解除限制。这不是对贡献范围的永久收窄。
+
 ### R7 — 原则成立的代码 pull request 必须通过相关 E2E
 
 > **代码 pull request 未成功通过相关 E2E 验证时不得合入。**
@@ -442,4 +454,6 @@ D164 与 D260。 GitHub 发行说明并不能替代。
 - [ ] `AGENTS.md` 指向此文档、`04-e2e-test-plan.md` 和 `05-change-checklist.md`。
 - [ ] 链接的 GitHub issue 必须在实现前核实，然后以其原文语言评论，并在结论明确时关闭。
 - [ ] 链接的 GitHub pull request 只有根治问题且改动最小才可合入；不得因细枝末节丢掉贡献者的工作。
+- [ ] 在 R6.1 的临时类型限制生效期间，外部贡献只接受 `perf` 与 `fix` 类型的 pull request。
+
 - [ ] 更新所有索引（NAV、交付自述文件、规格自述文件、文档自述文件、董事会）。

@@ -19,7 +19,6 @@ import type { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import { summarizeToolResult, type Logger } from "../logger";
 import type { ModelsDevCatalog } from "../models-dev-catalog";
 import type { PluginRuntime } from "../plugin-runtime";
-import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
 import type { FinishTurn } from "./plans";
 

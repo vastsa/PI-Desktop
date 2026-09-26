@@ -24,7 +24,6 @@ import { headAsk, queuedAskCount } from "../lib/pending-asks";
 import type { QueuedPrompt } from "../lib/queued-prompts";
 import { composerModelDisplayName, sameComposerModelId } from "../lib/composer-models";
 import {
-  providerThinkingLevels,
   resolveComposerThinkingProvider,
 } from "../lib/session-thinking";
 import { ComposerAutocomplete } from "./ComposerAutocomplete";
@@ -39,7 +38,6 @@ import {
   isThinkingLevel,
   thinkingLevelForProvider,
   thinkingProviderForModel,
-  THINKING_LEVELS,
   type ComposerPrefill,
 } from "../features/chat/composer/model";
 import { editorSelectionRange } from "../features/chat/composer/editor";
@@ -362,7 +360,6 @@ export function Composer({
   const configuredThinkingLevel = isThinkingLevel(sessionThinkingLevel)
     ? sessionThinkingLevel
     : "off";
-  const availableThinkingLevels = providerThinkingLevels(thinkingProvider);
   const thinkingLevel = thinkingLevelForProvider(
     thinkingProvider,
     configuredThinkingLevel,
@@ -595,7 +592,6 @@ export function Composer({
             enhancementUndoText={enhancementUndoText}
             enhancePrompt={enhancePrompt}
             undoPromptEnhancement={undoPromptEnhancement}
-            clearEnhancementError={clearEnhancementError}
             runActive={runActive}
             hasDraftContent={hasDraftContent}
             abort={abort}

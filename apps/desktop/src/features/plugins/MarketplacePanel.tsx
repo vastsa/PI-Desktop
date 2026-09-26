@@ -3,12 +3,9 @@ import { IconCheck, IconSearch, IconShield } from "../../components/icons";
 import { MarketplaceSourceSettings } from "../../components/plugins/MarketplaceSourceSettings";
 import { PermissionChips } from "./presentation";
 import {
-  formatBytes,
   formatDate,
   monogram,
   showsVerifiedBadge,
-  versionInstallable,
-  versionWithdrawn,
 } from "./model";
 import type { PluginsPageModel } from "./usePluginsPage";
 

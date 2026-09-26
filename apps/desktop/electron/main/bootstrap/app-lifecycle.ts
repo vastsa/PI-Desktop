@@ -340,8 +340,6 @@ export function createApplicationLifecycle({
       observedWorkPanelBaseBounds,
       classifyDisplayTransition,
       resetMenuRendererReady,
-      markMenuRendererReady,
-      sendToRenderer,
       safeOpenExternal,
       showPluginLauncher,
       askCloseBehavior,
@@ -349,7 +347,6 @@ export function createApplicationLifecycle({
       createTray,
       browserPane,
       pluginViews,
-      plugins,
       logger,
     });
   }

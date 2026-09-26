@@ -1,5 +1,4 @@
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 
 import { AgentHost, type ApprovalPort } from "@pi-desktop/agent-host";
 import {

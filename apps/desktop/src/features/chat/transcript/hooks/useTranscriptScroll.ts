@@ -36,7 +36,6 @@ import {
   isRecentScrollGesture,
   isScrollGestureInput,
   reduceTranscriptScroll,
-  SCROLL_OWNER_ATTRIBUTE,
   transcriptHasLayout,
   TRANSCRIPT_SCROLL_ROUNDING_TOLERANCE_PX,
   type ScrollInputType,
@@ -45,8 +44,6 @@ import { readScrollInputContext } from "../../../../lib/scroll-input";
 import { useDisclosureAnchor } from "../../../../hooks/use-disclosure-anchor";
 import type { TranscriptSearchTarget } from "../../../../lib/transcript-reading";
 import { useTranscriptSearchFocus } from "../../../../hooks/use-transcript-search-focus";
-
-import { useAppStore } from "../../../../stores/app-store";
 
 type UseTranscriptScrollOptions = {
   sessionId: string | undefined;
