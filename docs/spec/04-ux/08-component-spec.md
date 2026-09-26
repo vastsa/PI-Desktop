@@ -3182,7 +3182,11 @@ Anatomy:
   structured undo snapshot while the turn remains unanswered. Smart Stop
   restores that snapshot in its original reference order instead of copying
   serialized message paths back into the textarea. Stop after reply start does
-  not restore or duplicate the submitted draft.
+  not restore or duplicate the submitted draft. When no snapshot exists — an
+  edit-and-resend records none — the recovery reads the row's `command`, which
+  holds the typed text of a rewritten turn, and falls back to `content` only
+  for an ordinary prompt that was never rewritten. Restoring a rewritten
+  `content` would put a model instruction in the composer for the user to send.
 - After the representation selection in §11.7, a file paste requires at least
   one `File`. The renderer transfers bounded file bytes, name, and MIME
   metadata to Electron main with the durable session id. Main validates the
