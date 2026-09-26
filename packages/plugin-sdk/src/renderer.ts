@@ -363,7 +363,11 @@ export type PluginRendererErrorCode =
   | "PLUGIN_ATTACHMENT_NOT_FOUND"
   /** `attachments.add`: the host could not stage the file. */
   | "PLUGIN_ATTACHMENT_FAILED"
-  /** This load has ended: nothing registers, injects or dispatches through it. */
+  /**
+   * This load has ended, or is ending because the plugin stopped (unloaded,
+   * disabled, crashed or its grant revoked): nothing registers, injects or
+   * dispatches through it.
+   */
   | "PLUGIN_UNLOADED"
   /** `plugin.call`: the method is not declared, or `onRendererCall` is missing. */
   | "PLUGIN_CALL_NO_HANDLER"

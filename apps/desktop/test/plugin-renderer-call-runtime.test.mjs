@@ -161,7 +161,7 @@ test("plugin.call reaches onRendererCall in the plugin process and returns its a
   assert.ok(Date.now() - started >= 1_900, "the timeout is the relay's 2s");
 
   await runtime.unload("lab.calls");
-  await assert.rejects(runtime.callRenderer("lab.calls", "echo"), refusedWith("PLUGIN_NOT_FOUND"));
+  await assert.rejects(runtime.callRenderer("lab.calls", "echo"), refusedWith("PLUGIN_UNLOADED"));
 });
 
 test("a plugin without onRendererCall answers every declared method with NO_HANDLER", async (t) => {
@@ -184,7 +184,7 @@ test("without the renderer.extension grant the plugin runs but has no renderer e
   assert.equal(runtime.rendererDescriptor("lab.ungranted"), undefined);
   await assert.rejects(
     runtime.callRenderer("lab.ungranted", "echo", {}),
-    refusedWith("PLUGIN_PERMISSION_DENIED"),
+    refusedWith("PLUGIN_UNLOADED"),
   );
   // No generation was ever handed out, so there is none to guess.
   for (let generation = 1; generation < 64; generation += 1) {

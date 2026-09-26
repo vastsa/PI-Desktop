@@ -214,10 +214,11 @@ test("calls the relay must not make are refused before it, and never count again
   // 65537 bytes, while its length in characters is only 32770.
   const oversize = `a${"é".repeat(32_767)}`;
   const cases = [
-    ["not running", undefined, "ping", undefined, "PLUGIN_NOT_FOUND"],
-    ["unloading", loadedPlugin({ disposing: true }), "ping", undefined, "PLUGIN_NOT_FOUND"],
-    ["without the grant", loadedPlugin({ permissions: [] }), "ping", undefined, "PLUGIN_PERMISSION_DENIED"],
-    ["without an entry", loadedPlugin({ manifest: { renderer: undefined } }), "ping", undefined, "PLUGIN_CALL_NO_HANDLER"],
+    // No descriptor, no load: the caller's load has already ended.
+    ["not running", undefined, "ping", undefined, "PLUGIN_UNLOADED"],
+    ["unloading", loadedPlugin({ disposing: true }), "ping", undefined, "PLUGIN_UNLOADED"],
+    ["without the grant", loadedPlugin({ permissions: [] }), "ping", undefined, "PLUGIN_UNLOADED"],
+    ["without an entry", loadedPlugin({ manifest: { renderer: undefined } }), "ping", undefined, "PLUGIN_UNLOADED"],
     ["without methods", loadedPlugin({ manifest: { rendererCallMethods: undefined } }), "ping", undefined, "PLUGIN_CALL_NO_HANDLER"],
     ["an undeclared method", plugin, "shutdown", undefined, "PLUGIN_CALL_NO_HANDLER"],
     ["cyclic args", plugin, "echo", cyclic, "PLUGIN_CALL_UNSERIALIZABLE"],
@@ -330,6 +331,7 @@ test("what goes wrong past the relay reaches the caller coded, and counts agains
     ["a timeout", coded("TIMEOUT", "no reply"), "PLUGIN_CALL_TIMEOUT", /did not answer ping within 2000ms/],
     ["the plugin's own code", coded("LAB_NOT_READY", "not ready"), "LAB_NOT_READY", /^not ready$/],
     ["a missing handler", coded("PLUGIN_CALL_NO_HANDLER", "no onRendererCall"), "PLUGIN_CALL_NO_HANDLER", /onRendererCall/],
+    ["a crash", coded("PLUGIN_CRASHED", "plugin host process exited"), "PLUGIN_UNLOADED", /stopped before answering ping/],
     ["an uncoded error", boom, "PLUGIN_CALL_FAILED", /^boom$/],
     [
       "a thrown string",

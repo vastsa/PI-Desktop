@@ -46,6 +46,8 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "agent.tool.register": "high",
   "agent.complete": "high",
   "agent.extension": "high",
+  // Its code runs in the app's own document, so the grant is the boundary.
+  "renderer.extension": "high",
   "desktop.control": "high",
   "session.read": "high",
   "browser.cdp": "high",

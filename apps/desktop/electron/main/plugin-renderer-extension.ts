@@ -155,7 +155,8 @@ function errorCodeOf(error: unknown): string | undefined {
  * the caller's problem and never count against the plugin. Everything after
  * the relay (timeout, a thrown error, a missing `onRendererCall`, an answer
  * that is not JSON or too large) is the plugin's, and five in a row close the
- * relay for 30s; one success reopens the count.
+ * relay for 30s; one success reopens the count. Every refusal carries a
+ * `PluginRendererErrorCode` or the plugin's own code, never a host one.
  */
 export class RendererCallRelay {
   private readonly states = new WeakMap<object, RelayState>();
@@ -172,13 +173,13 @@ export class RendererCallRelay {
     args: unknown,
     send: RendererCallSend<T>,
   ): Promise<unknown> {
-    if (!plugin || plugin.disposing) {
-      throw rendererCallError("PLUGIN_NOT_FOUND", `renderer plugin not loaded: ${pluginId}`);
+    // The renderer host loads only what a descriptor describes, so a caller
+    // without one is a load that has already ended (unload, disable, crash or
+    // a revoked grant): the code the renderer's own channel uses for it.
+    if (!servesRenderer(plugin)) {
+      throw rendererCallError("PLUGIN_UNLOADED", `no renderer extension is loaded for ${pluginId}`);
     }
-    if (!plugin.permissions.has(RENDERER_EXTENSION_PERMISSION)) {
-      throw rendererCallError("PLUGIN_PERMISSION_DENIED", `${RENDERER_EXTENSION_PERMISSION} is not granted`);
-    }
-    if (!plugin.manifest.renderer || !plugin.manifest.rendererCallMethods?.includes(method)) {
+    if (!plugin.manifest.rendererCallMethods?.includes(method)) {
       throw rendererCallError("PLUGIN_CALL_NO_HANDLER", `method not declared: ${method}`);
     }
     const state = this.stateFor(plugin);
@@ -223,6 +224,9 @@ export class RendererCallRelay {
           "PLUGIN_CALL_TIMEOUT",
           `plugin ${pluginId} did not answer ${method} within ${RENDERER_CALL_TIMEOUT_MS}ms`,
         );
+      }
+      if (code === "PLUGIN_CRASHED") {
+        throw rendererCallError("PLUGIN_UNLOADED", `plugin ${pluginId} stopped before answering ${method}`);
       }
       // The plugin's own code passes through so its component can branch on
       // it; an uncoded failure still reaches the renderer as a coded one.
