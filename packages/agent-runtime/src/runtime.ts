@@ -1211,13 +1211,26 @@ function shellSyntaxGuidance(shell: CommandShellOption): string {
   }
 }
 
+export function formatScratchDirForShell(
+  shell: CommandShellOption,
+  scratchDir?: string,
+): string | undefined {
+  if (!scratchDir) return undefined;
+  if (shell.dialect === "posix") {
+    // POSIX shells (including Git Bash on Windows) require forward slashes.
+    return scratchDir.replaceAll("\\", "/");
+  }
+  return scratchDir;
+}
+
 export function commandShellGuidance(
   shell: CommandShellOption,
   scratchDir?: string,
 ): string {
   const scratchVariable = shellScratchVariable(shell);
-  const scratch = scratchDir
-    ? `The session scratch directory is \`${scratchDir}\`; use ${scratchVariable} for it and keep temporary files there.`
+  const formattedScratch = formatScratchDirForShell(shell, scratchDir);
+  const scratch = formattedScratch
+    ? `The session scratch directory is \`${formattedScratch}\`; use ${scratchVariable} for it and keep temporary files there.`
     : `When PI_SCRATCH_DIR is available, use ${scratchVariable} for the session scratch directory and keep temporary files there.`;
   return [
     `Shell commands run through ${shell.label} (${shell.id}). The protocol tool remains named Bash for compatibility, even when the active shell is PowerShell or cmd.`,
@@ -1230,13 +1243,14 @@ function commandShellToolDescription(
   shell: CommandShellOption,
   scratchDir?: string,
 ): string {
+  const formattedScratch = formatScratchDirForShell(shell, scratchDir);
   return [
     `Run a non-interactive command through ${shell.label} in the workspace root.`,
     "The protocol tool remains named Bash for compatibility; write commands for the active shell dialect.",
     shellSyntaxGuidance(shell),
     `The session scratch directory variable is ${shellScratchVariable(shell)}.`,
     `An optional timeout from 1 to ${MAX_COMMAND_TIMEOUT_SECONDS} seconds may be supplied; without it, the command defaults to a 60-second timeout.`,
-    ...(scratchDir ? [`The session scratch directory is ${scratchDir}.`] : []),
+    ...(formattedScratch ? [`The session scratch directory is ${formattedScratch}.`] : []),
   ].join(" ");
 }
 
@@ -1849,7 +1863,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // Session scratch directory (D114).
       ...(this.scratchDir
         ? [
-            `Your scratch directory for this session is \`${this.scratchDir}\` (in Bash: $PI_SCRATCH_DIR). Store ad-hoc temporary and intermediate files there using absolute paths. Workspace writes must be task-related project files or required toolchain outputs. Scratch persists across turns and is deleted with the session.`,
+            `Your scratch directory for this session is \`${formatScratchDirForShell(this.commandShell, this.scratchDir)}\` (in Bash: ${shellScratchVariable(this.commandShell)}). Store ad-hoc temporary and intermediate files there using absolute paths. Workspace writes must be task-related project files or required toolchain outputs. Scratch persists across turns and is deleted with the session.`,
           ]
         : []),
       // Plugin skills (D174).
@@ -3895,7 +3909,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
     if (this.scratchDir && (tools.has("Bash") || tools.has("Write"))) {
       blocks.push(
-        `Write temporary and intermediate files into the session scratch directory \`${this.scratchDir}\` (in Bash: $PI_SCRATCH_DIR) using absolute paths, never into the workspace.`,
+        `Write temporary and intermediate files into the session scratch directory \`${formatScratchDirForShell(this.commandShell, this.scratchDir)}\` (in Bash: ${shellScratchVariable(this.commandShell)}) using absolute paths, never into the workspace.`,
       );
     }
     if (tools.has(SKILL_TOOL_NAME)) {
