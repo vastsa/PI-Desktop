@@ -38,9 +38,11 @@ const pluginPanelPreloadSource = await readFile(
   "utf8",
 );
 
-test("packaging installs only the updater runtime dependency", () => {
+test("packaging keeps native voice modules as runtime dependencies", () => {
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
+    "@picovoice/pvrecorder-node",
     "electron-updater",
+    "transcribe-cpp",
   ]);
 
   for (const dependency of [
@@ -119,11 +121,14 @@ test("legacy font fallback stripping only removes redundant fallback sources", (
   }
 });
 
-test("main bundles JavaScript dependencies and externalizes only runtime modules", () => {
+test("main bundles JavaScript dependencies and externalizes runtime modules", () => {
   assert.doesNotMatch(viteConfigSource, /externalizeDepsPlugin\s*\(/);
   // jiti is listed so the trusted-extension loader's lazy import never
   // enters the main bundle; main itself never loads it (spec 16 §4.2).
-  assert.match(viteConfigSource, /external:\s*\["electron-updater", "jiti", "jiti\/static"\]/);
+  assert.match(viteConfigSource, /external:\s*\[/);
+  for (const moduleName of ["@picovoice/pvrecorder-node", "transcribe-cpp"]) {
+    assert.match(viteConfigSource, new RegExp(`"${moduleName.replaceAll("/", "\\/")}"`));
+  }
   assert.doesNotMatch(viteConfigSource, /node-pty/);
   assert.doesNotMatch(JSON.stringify(packageJson.dependencies), /node-pty/);
 });

@@ -194,6 +194,16 @@
   flex-direction: column;
 }
 
+/* Destination pages have ordinary document scrolling. Keep this separate from
+ * `.thread-scroll`, whose Composer reserve, follow behavior, and occlusion mask
+ * are specific to the chat transcript. */
+.route-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
 .thread-scroll {
   /* Promote to own compositing layer for smooth scrolling */
   will-change: scroll-position;

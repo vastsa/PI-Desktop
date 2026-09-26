@@ -39,9 +39,15 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@picovoice/pvrecorder-node':
+        specifier: 1.2.9
+        version: 1.2.9
       electron-updater:
         specifier: ^6.8.9
         version: 6.8.9
+      transcribe-cpp:
+        specifier: 0.2.2
+        version: 0.2.2
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 0.87.1
@@ -73,9 +79,6 @@ importers:
       '@pi-desktop/voice-runtime':
         specifier: workspace:*
         version: link:../../packages/voice-runtime
-      '@picovoice/pvrecorder-node':
-        specifier: 1.2.9
-        version: 1.2.9
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.0))
@@ -160,9 +163,6 @@ importers:
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
-      transcribe-cpp:
-        specifier: 0.2.2
-        version: 0.2.2
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

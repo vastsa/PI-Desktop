@@ -54,7 +54,7 @@ export function PullRequestsPage() {
   }, [pulls]);
 
   return (
-    <div className="thread-scroll">
+    <div className="route-scroll">
       <div className="page-frame">
         <div className="page-header">
           <div>

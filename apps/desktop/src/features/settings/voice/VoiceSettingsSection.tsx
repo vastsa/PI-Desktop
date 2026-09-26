@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { TFunction } from "i18next";
-import type { AppSettings } from "@pi-desktop/shared";
+import type { AppSettings, VoiceInputSettings } from "@pi-desktop/shared";
 import { Button, Badge, CheckboxGroup, SettingsToggle } from "../../../components/ui";
 import { SettingsMenuSelect } from "../../../components/settings/SettingsMenuSelect";
 import { SettingsRow, SettingsCard } from "../primitives";
@@ -41,7 +41,7 @@ export function VoiceSettingsSection({
   settings: AppSettings;
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
 }) {
-  const voice = settings.voice ?? {
+  const voice: VoiceInputSettings = settings.voice ?? {
     enabled: false,
     deviceId: null,
     languages: ["zh", "en"],
@@ -52,12 +52,34 @@ export function VoiceSettingsSection({
   const [devices, setDevices] = useState<AudioInputDevice[]>([]);
   const [models, setModels] = useState<ModelState[]>([]);
   const [permission, setPermission] = useState<string>("undetermined");
+  const [deviceLoadError, setDeviceLoadError] = useState(false);
 
   useEffect(() => {
-    voiceIpc
+    if (!voice.enabled) {
+      setDevices([]);
+      setDeviceLoadError(false);
+      return;
+    }
+
+    let cancelled = false;
+    setDeviceLoadError(false);
+    void voiceIpc
       .getDevices()
-      .then((d) => setDevices(Array.isArray(d) ? d as AudioInputDevice[] : []))
-      .catch(() => {});
+      .then((d) => {
+        if (cancelled) return;
+        setDevices(Array.isArray(d) ? (d as AudioInputDevice[]) : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDevices([]);
+        setDeviceLoadError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [voice.enabled]);
+
+  useEffect(() => {
     voiceIpc
       .getModels()
       .then((m) => setModels(Array.isArray(m) ? m as ModelState[] : []))
@@ -85,9 +107,9 @@ export function VoiceSettingsSection({
   }, []);
 
   const save = useCallback(
-    (patch: Record<string, unknown>) => {
+    (patch: Partial<VoiceInputSettings>) => {
       const next = { ...voice, ...patch };
-      void saveSettings({ voice: next as any });
+      void saveSettings({ voice: next });
       void voiceIpc.updateSettings(next);
     },
     [voice, saveSettings],
@@ -128,7 +150,10 @@ export function VoiceSettingsSection({
 
       {/* ---- Input ---- */}
       <SettingsCard title={t("settings.voiceMicrophone")}>
-        <SettingsRow title={t("settings.voiceMicrophone")}>
+        <SettingsRow
+          title={t("settings.voiceMicrophone")}
+          detail={deviceLoadError ? t("settings.voiceMicUnavailable") : undefined}
+        >
           <SettingsMenuSelect
             value={voice.deviceId ?? ""}
             label={t("settings.voiceMicrophone")}
@@ -167,7 +192,15 @@ export function VoiceSettingsSection({
               { id: "traditional-taiwan", label: t("settings.voiceTraditionalTaiwan") },
               { id: "traditional-hong-kong", label: t("settings.voiceTraditionalHK") },
             ]}
-            onChange={(id) => save({ chineseVariant: id })}
+            onChange={(id) => {
+              if (
+                id === "simplified" ||
+                id === "traditional-taiwan" ||
+                id === "traditional-hong-kong"
+              ) {
+                save({ chineseVariant: id });
+              }
+            }}
           />
         </SettingsRow>
       </SettingsCard>
