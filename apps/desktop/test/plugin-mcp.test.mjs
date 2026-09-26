@@ -244,21 +244,34 @@ test("a stdio server that cannot start fails the handshake, not the process", as
   assert.match(String(failure.message), /exited with code/);
 });
 
-test("a slow server times out instead of hanging the load", async (t) => {
+test("a slow server times out instead of hanging the load", async () => {
   const dir = stdioPlugin();
-  writeFileSync(join(dir, "server.mjs"), "setInterval(() => {}, 1000);\n");
+  const pidFile = join(dir, "pid");
+  writeFileSync(
+    join(dir, "server.mjs"),
+    'import { writeFileSync } from "node:fs";\nwriteFileSync(process.env.STUB_PID_FILE, String(process.pid));\nsetInterval(() => {}, 1000);\n',
+  );
   const client = new McpServerClient({
     pluginId: "com.example.mcp",
     rootPath: dir,
     server: { id: "stub", transport: "stdio", command: "node", args: ["./server.mjs"] },
-    values: {},
+    values: { STUB_PID_FILE: pidFile },
     connectTimeoutMs: 250,
   });
-  t.after(() => client.close());
   await assert.rejects(client.connect(), (error) => {
     assert.equal(error.code, "TIMEOUT");
     return true;
   });
+  const pid = Number(readFileSync(pidFile, "utf8"));
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.fail("timed-out stdio mcp child survived handshake cleanup");
 });
 
 /** Streamable-HTTP stub: JSON for the handshake, SSE for discovery. */

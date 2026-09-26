@@ -2806,7 +2806,7 @@ reasoning-level control.
 | Idle (no model) | textarea active, send button disabled + tooltip "Configure a model first" | Agent link remains available in model menu |
 | Idle (ready) | textarea active; Send requires draft content | Send active when content exists |
 | Home/new-session initialization | textarea and mode/model × reasoning/permission triggers remain available while the durable empty session is loading; the session row is already present and the first configuration selection applies to that session | Configure the session, then send |
-| New session (reasoning model) | Combined model × reasoning chip shows the model and its binding default thinking level | User may select any level enabled in the model binding, including Off when enabled |
+| New session (reasoning model) | Combined model × reasoning chip shows the model and its binding default thinking level; an unmatched model starts at Off while keeping the manual ladder available | User may select any level enabled in the model binding, or any canonical level for an unmatched model |
 | New session / switch while another session is running | textarea active, send button enabled for the destination session's own run state | Send active, Stop hidden unless the destination session itself is running with an empty draft |
 | Running | textarea and mode/model × reasoning/permission controls remain editable for the next turn; the single submit slot shows Stop only with an empty draft | Send queues text or attachments; Stop when both are empty |
 | Context checkpoint | Same as Running until durable checkpoint completion; intermediate `turn_end` does not reactivate controls. A retained-tail fallback remains Running and shows a warning toast | Same single-slot Stop/Send behavior as Running |
@@ -2959,15 +2959,16 @@ reasoning-level control.
   model therefore updates the draft Composer's available levels and binding
   default thinking level immediately; the persisted session keeps the same
   exact-model capability after materialization.
-- A new session whose inherited default model supports reasoning starts with
-  Thinking enabled at that model's stored default thinking level, clamped onto
-  the enabled set. When the binding has no default, it falls back to the
-  highest enabled level. Published levels seed a new binding; an explicit
-  binding can opt into a level the catalog omits. Non-reasoning models and
-  missing capability metadata start at `off` until a user enables a non-`off`
-  level. Reopening an existing session preserves its durable selection;
-  explicitly switching to a different model applies that binding's default,
-  while selecting the already-active model preserves a manually chosen level.
+- A new session whose catalog-matched default model supports reasoning starts
+  with Thinking enabled at that model's stored default thinking level, clamped
+  onto the enabled set. When the binding has no default, it falls back to the
+  highest enabled level. An unmatched model starts at `off` unless its binding
+  stores an explicit default, while the Composer keeps the canonical ladder
+  available for manual opt-in. Published levels seed a new binding; an
+  explicit binding can opt into a level the catalog omits. Reopening an
+  existing session preserves its durable selection; explicitly switching to a
+  different model applies that binding's default, while selecting the
+  already-active model preserves a manually chosen level.
 - The model menu lists only enabled, runnable providers with configured model
   bindings. Cached or freshly discovered rows may enrich those configured
   models, but unconfigured discovery results never appear in the conversation

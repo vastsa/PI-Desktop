@@ -38,6 +38,13 @@ const sessionIpcSource = await readMainModule("ipc/session-ipc.ts");
 const sessionLaunchSource = await readMainModule("runtime/session-launch.ts");
 const storeSource = await readStoreSource();
 const sessionCoordinationSource = await readStoreModule("runtime/session-coordination.ts");
+const modelMenuSource = await readFile(
+  new URL(
+    "../src/features/chat/composer/hooks/useComposerModelMenu.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
 // Agent/Plan mode and model selection are owned by the Composer; the
 // conversation top bar only hosts the task title and window actions.
 const topbarSource = await readFile(
@@ -187,10 +194,16 @@ test("draft Composer thinking follows the exact model selected in its menu", () 
   );
   assert.match(
     composerSource,
-    /const nextThinkingLevel = selectedSameModel\s*\?\s*thinkingLevelForProvider\(nextModelProvider, thinkingLevel\)\s*:\s*initialThinkingLevelForBinding\(/,
+    /const nextThinkingLevel = selectedSameModel\s*\?\s*thinkingLevelForProvider\(nextModelProvider, thinkingLevel\)[\s\S]*?initialThinkingLevelForBinding\([\s\S]*?initialThinkingLevelForUnmatchedModel\(/,
   );
   assert.match(composerSource, /const selectedBinding = provider\?\.models\.find/);
-  assert.match(composerSource, /const draftThinkingLevel = initialThinkingLevelForBinding\(/);
+  assert.match(
+    composerSource,
+    /const draftThinkingLevel = selectedModelInfo\s*\?\s*initialThinkingLevelForBinding\(/,
+  );
+  assert.match(composerSource, /initialThinkingLevelForUnmatchedModel\(/);
+  assert.match(modelMenuSource, /initialThinkingLevelForUnmatchedModel\(/);
+  assert.match(sessionCoordinationSource, /initialThinkingLevelForUnmatchedModel\(/);
   assert.doesNotMatch(composerSource, /highestSupportedThinkingLevel/);
 });
 

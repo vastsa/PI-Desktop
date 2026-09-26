@@ -6,6 +6,7 @@ import type {
 import {
   imageGenerationBindings,
   initialThinkingLevelForBinding,
+  initialThinkingLevelForUnmatchedModel,
   isImageGenerationModel,
 } from "@pi-desktop/shared";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -256,16 +257,24 @@ export function useComposerModelMenu({
       const nextBinding = candidate.models.find((entry) =>
         sameComposerModelId(entry.id, nextModelId),
       );
+      const nextModel = providerModels[candidate.id]?.find((entry) =>
+        sameComposerModelId(entry.modelId, nextModelId),
+      );
       const selectedSameModel =
         activeSessionId &&
         candidate.id === provider?.id &&
         sameComposerModelId(modelId ?? "", nextModelId);
       const nextThinkingLevel = selectedSameModel
         ? thinkingLevelForProvider(nextModelProvider, thinkingLevel)
-        : initialThinkingLevelForBinding(
-            nextBinding,
-            nextModelProvider?.supportedThinkingLevels,
-          );
+        : (nextModel
+          ? initialThinkingLevelForBinding(
+              nextBinding,
+              nextModelProvider?.supportedThinkingLevels,
+            )
+          : initialThinkingLevelForUnmatchedModel(
+              nextBinding,
+              nextModelProvider?.supportedThinkingLevels,
+            ));
       await configureActiveSession({
         mode,
         providerId: candidate.id,

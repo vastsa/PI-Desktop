@@ -173,6 +173,7 @@ function createStdioTransport(
     cwd: options.rootPath,
     env: launch.env,
     stdio: ["pipe", "pipe", "pipe"],
+    detached: process.platform !== "win32",
     // Arguments stay literal. Known launchers rewrite to a PE binary; remaining
     // Windows `.cmd` shims go through `cmd.exe /d /s /c` with quoted args.
     shell: false,
@@ -183,14 +184,36 @@ function createStdioTransport(
   let closed = false;
   let buffer = "";
   let lastStderr = "";
+  let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
 
+  const signalChildTree = (signal: NodeJS.Signals = "SIGTERM") => {
+    if (process.platform !== "win32" && child.pid) {
+      try {
+        process.kill(-child.pid, signal);
+        return;
+      } catch {
+        // The process group may already be gone; fall back to the direct child.
+      }
+    }
+    child.kill(signal);
+  };
+
+  const stopChild = () => {
+    closed = true;
+    child.stdin?.destroy();
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    signalChildTree();
+    forceKillTimer ??= setTimeout(() => signalChildTree("SIGKILL"), 1_000);
+    forceKillTimer.unref?.();
+  };
   child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", (chunk: string) => {
     buffer += chunk;
     if (buffer.length > MAX_STDIO_LINE_BYTES) {
       buffer = "";
       handlers.onClose("mcp server sent an oversized message");
-      child.kill();
+      stopChild();
       return;
     }
     let index = buffer.indexOf("\n");
@@ -240,10 +263,7 @@ function createStdioTransport(
       }
       child.stdin.write(`${JSON.stringify(message)}\n`);
     },
-    close: () => {
-      closed = true;
-      child.kill();
-    },
+    close: stopChild,
   };
 }
 

@@ -269,7 +269,7 @@ test("large image attachments avoid whole-file startup reads", () => {
   assert.match(attachments, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
   assert.doesNotMatch(attachments, /const bytes = readFileSync\(source\.absolute\)/);
   assert.match(history, /const size = \(await stat\(canonical\)\)\.size/);
-  assert.match(history, /shouldInline && size <= MAX_INLINE_IMAGE_BYTES/);
+  assert.match(history, /const canInline =[\s\S]*size <= MAX_INLINE_IMAGE_BYTES/);
   assert.match(history, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
 });
 

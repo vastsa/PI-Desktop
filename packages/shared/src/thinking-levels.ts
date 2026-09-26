@@ -88,8 +88,20 @@ export function nearestSupportedThinkingLevel(
   return "off";
 }
 
+function initialThinkingLevelForBindingInternal(
+  binding: ThinkingLevelBindingSource | null | undefined,
+  fallbackLevels?: readonly ThinkingLevel[],
+  defaultToOff = false,
+): SessionThinkingLevel {
+  const enabled = binding?.thinkingLevels ?? fallbackLevels;
+  const stored = binding?.defaultThinkingLevel;
+  if (stored === "omit") return enablesReasoning(enabled) ? "omit" : "off";
+  if (stored != null) return nearestSupportedThinkingLevel(stored, enabled);
+  return defaultToOff ? "off" : highestSupportedThinkingLevel(enabled);
+}
+
 /**
- * Thinking level a new draft or session starts at for a model binding.
+ * Thinking level a new draft or session starts at for a known model binding.
  *
  * Prefer the stored default when it is still enabled, including `omit` on a
  * reasoning binding. Otherwise clamp that default onto the enabled ladder.
@@ -101,11 +113,21 @@ export function initialThinkingLevelForBinding(
   binding: ThinkingLevelBindingSource | null | undefined,
   fallbackLevels?: readonly ThinkingLevel[],
 ): SessionThinkingLevel {
-  const enabled = binding?.thinkingLevels ?? fallbackLevels;
-  const stored = binding?.defaultThinkingLevel;
-  if (stored === "omit") return enablesReasoning(enabled) ? "omit" : "off";
-  if (stored != null) return nearestSupportedThinkingLevel(stored, enabled);
-  return highestSupportedThinkingLevel(enabled);
+  return initialThinkingLevelForBindingInternal(binding, fallbackLevels);
+}
+
+/**
+ * Thinking level for a model absent from the catalog.
+ *
+ * An explicit binding default still wins, but an unknown model must not
+ * enable reasoning implicitly. Its available levels remain selectable in the
+ * Composer while a new draft/session starts at `off`.
+ */
+export function initialThinkingLevelForUnmatchedModel(
+  binding: ThinkingLevelBindingSource | null | undefined,
+  fallbackLevels?: readonly ThinkingLevel[],
+): SessionThinkingLevel {
+  return initialThinkingLevelForBindingInternal(binding, fallbackLevels, true);
 }
 
 /** Published record a thinking-level candidate list can be derived from. */

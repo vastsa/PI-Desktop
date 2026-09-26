@@ -150,22 +150,7 @@ function extractKnownVendor(id: string): string | undefined {
   return undefined;
 }
 
-function pathLeaf(id: string): string {
-  const slash = id.lastIndexOf("/");
-  return slash >= 0 ? id.slice(slash + 1) : id;
-}
-
-function exactPathAliasMatch(left: string, right: string): boolean {
-  // Two independently routed paths cannot be identified by their leaf alone.
-  if (left.includes("/") === right.includes("/")) return false;
-  if (pathLeaf(left) !== pathLeaf(right)) return false;
-
-  const leftVendor = extractKnownVendor(left);
-  const rightVendor = extractKnownVendor(right);
-  return !leftVendor || !rightVendor || leftVendor === rightVendor;
-}
-
-function normalizedMatch(left: string, right: string, allowPathLeaf = false): boolean {
+function normalizedMatch(left: string, right: string): boolean {
   const leftVendor = extractKnownVendor(left);
   const rightVendor = extractKnownVendor(right);
   if (leftVendor && rightVendor && leftVendor !== rightVendor) return false;
@@ -179,7 +164,11 @@ function normalizedMatch(left: string, right: string, allowPathLeaf = false): bo
     }
   }
 
-  return allowPathLeaf && exactPathAliasMatch(left, right);
+  return false;
+}
+function pathLeaf(id: string): string {
+  const slash = id.lastIndexOf("/");
+  return slash >= 0 ? id.slice(slash + 1) : id;
 }
 
 /** Configured-model identity: compare the complete wire ID, not catalog aliases. */
@@ -197,30 +186,20 @@ export function modelIdsMatch(candidate: string, requested: string): boolean {
   return normalizedMatch(stripRegion(left), stripRegion(right));
 }
 
-/** Broader metadata-only aliases; never use for configured binding identity. */
+/**
+ * Catalog enrichment matcher: take the **last `/`-segment** of each side,
+ * compare case-insensitively.  The caller enforces uniqueness (exactly 1
+ * catalog hit ⇒ enrichment; 0 or ≥2 ⇒ no match).
+ *
+ * This deliberately does **not** strip `-thinking`, `-agent`, `-latest`,
+ * vendor-dash prefixes, or any other fuzzy suffix.  The old variant-suffix
+ * and vendor-prefix logic caused cross-model false positives.
+ */
 export function catalogModelIdsMatch(candidate: string, requested: string): boolean {
   const left = candidate.trim().toLowerCase();
   const right = requested.trim().toLowerCase();
   if (!left || !right) return false;
-
-  const cleanLeft = stripRegion(left);
-  const cleanRight = stripRegion(right);
-  // Exact id, known vendor prefix, route leaf, then thinking/agent/latest.
-  if (normalizedMatch(cleanLeft, cleanRight, true)) return true;
-
-  const variantLeft = stripVariantSuffix(cleanLeft);
-  const variantRight = stripVariantSuffix(cleanRight);
-  if (normalizedMatch(variantLeft, variantRight, true)) return true;
-
-  /* Published release stamps are tried last, so a dated snapshot can never
-     displace the exact id or a documented alias. A catalog that publishes both
-     `foo-v2` and `foo-v2-0731` therefore still answers `foo-v2-0731` with its
-     own record: the caller's exact-first ranking decides between them. */
-  return normalizedMatch(
-    stripReleaseSuffix(variantLeft),
-    stripReleaseSuffix(variantRight),
-    true,
-  );
+  return pathLeaf(left) === pathLeaf(right);
 }
 
 /** Where a saved model limit came from; user-authored values are never replaced. */

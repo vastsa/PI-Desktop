@@ -33,7 +33,10 @@ test("model selection returns to the root without closing", () => {
 });
 test("switching models adopts the target default without resetting same-model overrides", () => {
   assert.match(modelMenuSource, /const selectedSameModel =\s*activeSessionId &&\s*candidate\.id === provider\?\.id &&\s*sameComposerModelId\(modelId \?\? "", nextModelId\);/);
-  assert.match(modelMenuSource, /const nextThinkingLevel = selectedSameModel\s*\?\s*thinkingLevelForProvider\(nextModelProvider, thinkingLevel\)\s*:\s*initialThinkingLevelForBinding\(\s*nextBinding,\s*nextModelProvider\?\.supportedThinkingLevels,\s*\)/);
+  assert.match(
+    modelMenuSource,
+    /const nextThinkingLevel = selectedSameModel\s*\?\s*thinkingLevelForProvider\(nextModelProvider, thinkingLevel\)[\s\S]*?initialThinkingLevelForBinding\(\s*nextBinding,\s*nextModelProvider\?\.supportedThinkingLevels,\s*\)[\s\S]*?initialThinkingLevelForUnmatchedModel\(\s*nextBinding,\s*nextModelProvider\?\.supportedThinkingLevels,\s*\)/,
+  );
 });
 test("the menu root carries the reasoning slider itself", () => {
   // The root view renders the slider and nothing else for the level: there is
@@ -157,7 +160,7 @@ test("Composer uses alias labels while preserving the exact selected wire id", a
 test("reasoning projection uses the selected exact catalog row and binding", async () => {
   const source = await readComposerModule("model.ts");
   assert.match(source, /sameComposerModelId\(candidate\.modelId, modelId\)/);
-  assert.match(source, /sameComposerModelId\(candidate\.id, model\.modelId\)/);
+  assert.match(source, /sameComposerModelId\(candidate\.id, modelId\)/);
 });
 
 test("a model row spends the panel's width instead of stacking at its left edge", () => {

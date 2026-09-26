@@ -222,8 +222,10 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
 7. User-edited `ModelBinding` values remain explicit provider configuration:
    they control selected request limits, enabled thinking levels, the default
    thinking level applied to a new home draft and newly persisted session
-   (clamped onto the enabled set; strongest-enabled only when the default is
-   unset), and the attachment capability overrides. `models.dev` supplies published metadata and seeds the initial
+   (clamped onto the enabled set; a known catalog match uses the
+   strongest-enabled level when the default is unset, while an unmatched
+   model starts at `off`), and the attachment capability overrides.
+   `models.dev` supplies published metadata and seeds the initial
    thinking selection for a newly added known model; it is not a runtime gate
    on a level the user explicitly enables for the endpoint. For compatibility,
    a binding that still contains the legacy generic `128,000` context seed
@@ -405,7 +407,8 @@ surface for older clients. PI-Desktop no longer reads them as runtime model
 overrides. `ModelInfo` reasoning support and supported thinking levels describe
 the resolved models.dev record; effective provider/session capability comes from
 the exact `ModelBinding`. Unknown free-form ids start with the generic shape and
-no inferred reasoning capability, but an explicit binding may opt into levels.
+no inferred reasoning capability; an empty binding level array is the generic
+seed, while a non-empty explicit binding may opt into or disable levels.
 
 The provider dialog persists one `ModelBinding` for every selected model. The
 first binding is the effective model for current conversations and legacy

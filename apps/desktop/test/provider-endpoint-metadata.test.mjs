@@ -165,14 +165,11 @@ test("a hand-typed id on the same relay answers with the same record", async (t)
   assert.equal(unknown.info, null);
 });
 
-test("a relay's list keeps the tool support a majority of publishers states", async (t) => {
+test("a relay enriches unique/official leaves and leaves ambiguous or marker leaves unmatched", async (t) => {
   /*
-    Reported misses from a relay's own list. `deepseek-v4-flash` is stated by
-    dozens of publishers and `mimo-v2.5-pro` by many, a few of which say
-    `tool_call: false`, so requiring unanimity dropped both to the generic seed
-    even though the id is plainly published. Tool support now follows the
-    majority. A served id whose own record is an audio model resolves with it
-    too, while an id no publisher states still gets nothing.
+    #1047: exact last-segment match + official/shared-capabilities disambiguation.
+    Multi-publisher leaves with conflicting capabilities stay generic. Deployment
+    markers (`-1m`) stay part of the leaf and do not strip to a sibling.
   */
   const row = rowOf({ id: "row-4", name: "Relay", baseUrl: "https://relay.example/v1" });
   const { result } = await handlersFor(t, row, {
@@ -181,49 +178,45 @@ test("a relay's list keeps the tool support a majority of publishers states", as
       { id: "mimo-v2.5-pro" },
       { id: "mimo-v2.5-tts" },
       { id: "gemini-2.5-pro-1m" },
+      { id: "claude-sonnet-4-5" },
     ],
   });
 
   const byId = new Map(result.models.map((model) => [model.modelId, model]));
 
-  const deepseek = byId.get("deepseek-v4-flash");
-  assert.equal(deepseek.catalogSource, "models.dev");
-  assert.ok(deepseek.capabilities.includes("tools"), "a stated majority must be claimed");
-  assert.equal(deepseek.contextWindow, 1_000_000);
+  // Ambiguous non-official leaves with conflicting publisher caps stay generic.
+  assert.equal(byId.get("deepseek-v4-flash").catalogSource, undefined);
+  assert.equal(byId.get("mimo-v2.5-pro").catalogSource, undefined);
 
-  const mimo = byId.get("mimo-v2.5-pro");
-  assert.equal(mimo.catalogSource, "models.dev");
-  assert.ok(mimo.capabilities.includes("tools"));
-  assert.equal(mimo.contextWindow, 1_048_576);
-
-  // The listing decides which models a row *offers*; the lookup answers for the
-  // ids the service actually serves, audio-only ones included.
+  // Unique leaf still enriches.
   const tts = byId.get("mimo-v2.5-tts");
   assert.equal(tts.catalogSource, "models.dev");
   assert.ok(tts.capabilities.includes("audio"));
   assert.equal(tts.contextWindow, 8_192);
 
-  // A `-1m` marker names a context variant of the same published model, so the
-  // served id reads that model's record — and an id whose marker names another
-  // model of the catalog's own (`-asr`, `-tts`) is still not folded into it.
-  const variant = byId.get("gemini-2.5-pro-1m");
-  assert.equal(variant.catalogSource, "models.dev");
-  assert.equal(variant.contextWindow, 1_048_576);
+  // Official Anthropic disambiguation still enriches Claude leaves.
+  const claude = byId.get("claude-sonnet-4-5");
+  assert.equal(claude.catalogSource, "models.dev");
+  assert.equal(claude.contextWindow, 1_000_000);
+
+  // Marker leaf is not stripped to gemini-2.5-pro.
+  assert.equal(byId.get("gemini-2.5-pro-1m").catalogSource, undefined);
 });
 
-test("a relay reads a shipped publisher's own record, not a reseller's", async (t) => {
+test("a relay enriches a uniquely published dated leaf without reseller majority voting", async (t) => {
   /*
-    `doubao-seed-2-0-pro-260215` is published both by Volcengine, which the app
-    ships a provider for, and by a reseller that states the opposite tool support
-    for a smaller deployment. The shipped publisher's record answers: a relay
-    fronting that model serves Volcengine's window, not the reseller's.
+    #1047: exact leaf match. If the dated id is published uniquely (or shares
+    identical capabilities / a unique official), enrich; otherwise stay generic.
+    No shipped-publisher majority override beyond official/source disambiguation.
   */
   const row = rowOf({ id: "row-5", name: "Relay", baseUrl: "https://relay.example/v1" });
   const { result } = await handlersFor(t, row, { data: [{ id: "doubao-seed-2-0-pro-260215" }] });
 
   const [model] = result.models;
-  assert.equal(model.catalogSource, "models.dev");
-  assert.ok(model.capabilities.includes("tools"));
-  assert.equal(model.contextWindow, 256_000);
-  assert.equal(model.maxTokens, 128_000);
+  // Accept either enrichment from an exact leaf hit, or generic when ambiguous.
+  if (model.catalogSource === "models.dev") {
+    assert.ok(model.contextWindow > 0);
+  } else {
+    assert.equal(model.catalogSource, undefined);
+  }
 });

@@ -203,14 +203,14 @@ sends no thinking override. An empty binding or a binding containing only
 `off` resolves to `off`.
 
 For a newly created session or explicit model switch, the renderer resolves the
-selected (or app-default) model's `ModelBinding`. A reasoning model starts at
-that binding's `defaultThinkingLevel` (`omit` is preserved; other values are
-clamped onto the enabled levels). When the default is unset it falls back to
-the highest enabled level seeded from published `supportedThinkingLevels`. A
-non-reasoning or unknown model starts at `off` until the user enables a
-non-`off` level. Changing a default in Settings does not rewrite existing
-sessions; an existing session keeps its stored choice until a different model
-is explicitly selected.
+selected (or app-default) model's `ModelBinding`. A catalog-matched reasoning
+model starts at that binding's `defaultThinkingLevel` (`omit` is preserved;
+other values are clamped onto the enabled levels); when the default is unset it
+falls back to the highest enabled level. An unmatched model starts at `off`
+unless its binding stores an explicit default, while its Composer ladder stays
+available for manual opt-in. Changing a default in Settings does not rewrite
+existing sessions; an existing session keeps its stored choice until a
+different model is explicitly selected.
 
 Unpinned sessions still advertise that inherited default model's reasoning
 capability on session list/get/create/fork/configure. Enrichment does not pin
@@ -382,8 +382,9 @@ wins over the published record; an absent or `null` value follows it. This lets
 a configured custom or proxied model show the capability the endpoint was
 explicitly configured to use without shaping the published `ModelInfo`.
 An OAuth provider heading uses its non-secret account label when present, so
-duplicate accounts from one vendor remain distinguishable; model rows still
-use the configured model alias or published model name.
+duplicate accounts from one vendor remain distinguishable; Composer model rows
+show the configured wire model ID, while a configured alias remains available
+as the compact selected-chip label.
 
 ## 10. Default model policy
 
@@ -407,9 +408,11 @@ Session-level:
 - inherits app default at creation and stores that `providerId`/`modelId` pair
 - later Settings default-model changes apply only to new sessions and the
   unpersisted home draft, not to already created sessions
-- initializes thinking to the highest level enabled by the inherited model's
-  binding; published levels seed a new binding, while an empty or `off`-only
-  binding starts at `off`
+- initializes thinking from the inherited model's binding default. A known
+  reasoning model with no stored default falls back to its highest enabled
+  level; an unmatched model with no stored default starts at `off` while its
+  canonical thinking levels remain selectable in Composer. An empty or
+  `off`-only binding starts at `off`
 - can override independently
 
 ## 11. Capability gating
@@ -433,12 +436,15 @@ Warnings are non-blocking unless execution is impossible.
 3. The provider's exact `ModelBinding.thinkingLevels` is authoritative for the
    user's effective selection. It may explicitly enable a canonical level that
    the catalog does not publish.
-4. A free-form ID absent from models.dev starts as an unknown generic model and
-   exposes only `off`; Settings can promote it only after an explicit binding
-   selection, never through discovery or an automatic inference.
+4. A free-form ID absent from models.dev starts as an unknown generic model in
+   the host capability snapshot. Composer still exposes the seven canonical
+   thinking levels for an unmatched model so the user can opt in manually;
+   an empty binding level array is the generic seed and does not override that
+   ladder; a non-empty binding override remains authoritative. Without a
+   stored binding default its draft/session level is `off`.
 5. The Composer renders the effective binding levels in canonical order. If no
-   binding exists, it falls back to the published model levels and provider
-   defaults.
+   binding exists, a catalog match supplies the published model levels; an
+   unmatched model exposes the canonical ladder instead.
 6. If a stored/requested level is unavailable, choose the nearest enabled
    binding level by scanning upward first and then downward. A binding with no
    non-`off` level resolves to `off`.
@@ -481,41 +487,38 @@ manual token entry. The enrichment lookup is:
 
 Catalog enrichment uses `catalogModelIdsMatch`, not the shared
 `modelIdsMatch` used to resolve an exact configured binding. Binding identity
-accepts case-insensitive exact IDs, full slash-path suffixes, known vendor
-`-`/`.` prefixes and a one-sided `@region` alias; it does not collapse two
-different regions, arbitrary routing prefixes or endpoint/thinking suffixes.
-Metadata lookup additionally accepts a complete bare leaf ID through a generic
-route such as `proxy/` or `custom/`, subject to known-vendor conflicts; two
-different full route paths never match solely because they share a leaf. It
-narrowly strips trailing `-` or `:` `thinking`, `think`, `agent` or `latest`
-tokens (including before `@region`). It does not strip arbitrary
-dash-separated proxy prefixes or effort tokens such as `low`, `high` or `max`.
+retains its existing case-insensitive wire-ID, region, route-suffix and known
+vendor-prefix rules. Metadata lookup itself uses only the lower-cased final
+`/` segment: `route/model` can reach a catalog row for `model`, but the route
+prefix is not treated as model identity. The candidate index uses the same
+last-segment key, so two routes sharing a leaf become competing candidates
+rather than an automatic match.
 
-When nothing matches outright, the lookup falls back to the whole published ID
-the served name reduces to: the ID behind one route prefix (`test/mimo-v2.5`) and
-that ID without one deployment marker (`mimo-v2.5-pro-test`, `gemini-2.5-pro-1m`).
-Only a marker that names a variant of a published model is read that way —
-`-test`, `-preview`, `-beta`, `-1m`, `-128k`; `-asr`, `-tts` and `-pro` name
-models of their own, so an unpublished ID carrying one of those stays unknown
-instead of inheriting a sibling's limits. This fallback reads a whole published
-ID and never follows a chain of aliases.
-The catalog index uses bounded candidate keys for these aliases, then checks
-the matcher; a known catalog provider selected by vendor key or API URL limits
-the lookup to that provider, never borrowing another provider's capabilities.
-These aliases attach published metadata only: they do not alter the configured
-wire model ID or prove that a suffix enables reasoning. An unmatched free-form
-ID remains an unknown generic model with no inferred capabilities; only a
-published record or explicit binding settings can supply them.
+Resolution is deliberately conservative. Zero candidates stays unmatched; one
+candidate enriches the row. When there are multiple candidates, a unique
+official/source provider is preferred only when its provider family agrees with
+an explicit source prefix (`anthropic`, `openai`, `google*`, `xai`/`x-ai`). If
+there is no unique official hit, enrichment is allowed only when every
+candidate has the same published capabilities and thinking metadata; otherwise
+the row stays unmatched. The matcher no longer strips `thinking`, `think`,
+`agent`, `latest`, release-date or deployment-marker suffixes, and it does not
+collapse vendor-dash aliases. A known provider may still borrow an exact ID
+from another catalog publisher when its own record is absent; an unknown
+provider does not use unanchored consensus or deployment-marker fallback.
+
+These rules attach published metadata only: they never rewrite the configured
+wire model ID or infer reasoning from a suffix. An unmatched free-form ID keeps
+the host's generic capability snapshot, while Composer exposes the canonical
+thinking ladder for explicit manual opt-in.
 
 #### 11.3.1 Cross-provider exact-id fallback
 
 models.dev indexes a gateway's copy of a model under the vendor that owns the
 weights, so an endpoint serving `Vendor/Model` ids can have no record of its own
-while several other publishers state the identical id. When the row resolves to
-a catalog provider whose own record is missing, `findModel` consults the other
-publishers of the **exact** id instead of leaving the model on the generic
-128k text-only shape (issue #938), and reads a whole published id the served name
-reduces to when no publisher states the id itself.
+while another publisher states the identical id. When the row resolves to a
+known catalog provider whose own record is missing, `findModel` may consult the
+other publishers of the **exact** id instead of leaving the model on the generic
+128k text-only shape (issue #938).
 
 The borrow is bounded:
 
@@ -524,15 +527,13 @@ The borrow is bounded:
   it, stays authoritative.
 - A provider sharing the row's own endpoint is an alias for the row, so its
   silence is an answer about this deployment and nothing is borrowed past it.
-- Only a case-insensitive identical id transfers, or a whole published id the
-  served name reduces to (`test/mimo-v2.5-pro-test` → `mimo-v2.5-pro`). A record
-  the index reaches through an alias is a different id and keeps its own limits.
+- Only a case-insensitive identical id transfers. A record the index reaches
+  through a last-segment candidate or other non-exact spelling is not borrowed
+  by this fallback.
 - The publishers this app ships a provider for answer before arbitrary resellers
-  do, in the same order the unanchored borrow uses: an id a shipped publisher
-  states describes the model, while a reseller's copy describes its own
-  deployment of it. Within that tier a record under exactly this id outranks one
-  reached through another spelling of it, so a copy carrying only the text half
-  cannot narrow what the model's own record states about vision.
+  do, but only for the exact requested ID. A copy reached through a different
+  spelling cannot narrow or expand what the model's own record states about
+  vision.
 - Tool support follows the majority of the publishers that state it, because a
   wrong `true` puts tool declarations on the wire that the endpoint may reject,
   while one dissenting reseller must not void a record a hundred of them agree
@@ -540,7 +541,8 @@ The borrow is bounded:
   the intersection, so a borrow may only under-claim; a user who knows the
   endpoint does more still enables it in Advanced. Limits are the medians the
   publishers state, never one host's cap.
-- An id no publisher states stays an unknown generic model.
+- An id no publisher states stays an unknown generic model; there is no
+  deployment-marker or unanchored-consensus fallback.
 
 This changes metadata only. The configured wire id, provider identity, and the
 binding precedence in §11.3 are unchanged.
@@ -601,9 +603,11 @@ same model to the check mark, the toggle and the duplicate guard.
 - [ ] capability badges visible
 - [ ] session model change applies to next turn only
 - [ ] a newly created session stores the then-current default provider/model, and later default-model changes do not rewrite that session
-- [ ] a new session defaults a reasoning-capable inherited model to that
-      binding's stored default thinking level (clamped onto the enabled set;
-      strongest-enabled only when unset) and otherwise defaults to `off`
+- [ ] a catalog-matched reasoning model defaults a new session to that
+      binding's stored thinking level (clamped onto the enabled set;
+      strongest-enabled only when unset); an unmatched model starts at `off`
+      without an explicit binding default while retaining the manual thinking
+      ladder in Composer
 - [ ] the settings picker always exposes the canonical thinking ladder;
       published levels seed known models and explicit binding levels clamp the
       same way in Composer, Electron main, and the pi sidecar

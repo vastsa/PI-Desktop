@@ -11185,9 +11185,10 @@ This test plan spec is accepted when:
   generic 128,000 / 8,192 / no-reasoning defaults. The authenticated ChatGPT
   list comes from `GET {base}/codex/models` on the account token, so an id the
   pin does not know yet is selectable when that response includes it; pi-ai is
-  only the fallback when the request fails. models.dev cannot add a missing OAuth ID. A model with no published
-  record keeps its explicit levels and starts with all choices available for
-  manual opt-in. The account's default model stays the head binding.
+  only the fallback when the request fails. models.dev cannot add a missing
+  OAuth ID. A model with no published record keeps its explicit levels, starts
+  at `off` when no binding default is stored, and keeps all choices available
+  for manual opt-in. The account's default model stays the head binding.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
   `04-ux/08-component-spec.md` §19, `03-runtime/11-provider-model-system.md`
   §10, `08-meta/decisions-log.md` (D270 refines D237/D240)

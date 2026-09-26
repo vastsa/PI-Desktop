@@ -12,6 +12,7 @@ import type {
 } from "@pi-desktop/shared";
 import {
   initialThinkingLevelForBinding,
+  initialThinkingLevelForUnmatchedModel,
   imageGenerationBindings,
   isImageGenerationModel,
   normalizeLargePasteThreshold,
@@ -353,12 +354,20 @@ export function Composer({
   const selectedBinding = provider?.models.find((candidate) =>
     sameComposerModelId(candidate.id, modelId ?? ""),
   );
+  const selectedModelInfo = selectedModelCatalog?.find((candidate) =>
+    sameComposerModelId(candidate.modelId, modelId ?? ""),
+  );
   // A draft without a session starts at the selected model's stored default
   // thinking level, clamped onto that binding's enabled ladder.
-  const draftThinkingLevel = initialThinkingLevelForBinding(
-    selectedBinding,
-    thinkingProvider?.supportedThinkingLevels,
-  );
+  const draftThinkingLevel = selectedModelInfo
+    ? initialThinkingLevelForBinding(
+        selectedBinding,
+        thinkingProvider?.supportedThinkingLevels,
+      )
+    : initialThinkingLevelForUnmatchedModel(
+        selectedBinding,
+        thinkingProvider?.supportedThinkingLevels,
+      );
   const sessionThinkingLevel =
     activeSession?.thinkingLevel ??
     (!activeSession ? draftConfiguration?.thinkingLevel : undefined) ??
@@ -371,9 +380,6 @@ export function Composer({
     configuredThinkingLevel,
   );
   const thinkingLabel = thinkingLevel;
-  const selectedModelInfo = selectedModelCatalog?.find((candidate) =>
-    sameComposerModelId(candidate.modelId, modelId ?? ""),
-  );
   const modelLabel = modelId
     ? composerModelDisplayName(provider, modelId, selectedModelInfo?.displayName)
     : t("chat.model");

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   highestSupportedThinkingLevel,
   initialThinkingLevelForBinding,
+  initialThinkingLevelForUnmatchedModel,
   canonicalThinkingLevel,
   isSessionThinkingLevel,
   nearestSupportedThinkingLevel,
@@ -77,6 +78,24 @@ describe("initialThinkingLevelForBinding", () => {
         defaultThinkingLevel: null,
       }),
     ).toBe("off");
+  });
+});
+
+describe("initialThinkingLevelForUnmatchedModel", () => {
+  it("starts unmatched models at off without overriding an explicit default", () => {
+    expect(
+      initialThinkingLevelForUnmatchedModel({
+        thinkingLevels: ["low", "high", "max"],
+        defaultThinkingLevel: null,
+      }),
+    ).toBe("off");
+    expect(initialThinkingLevelForUnmatchedModel(undefined, ["low", "high"])).toBe("off");
+    expect(
+      initialThinkingLevelForUnmatchedModel({
+        thinkingLevels: ["low", "high"],
+        defaultThinkingLevel: "low",
+      }),
+    ).toBe("low");
   });
 });
 

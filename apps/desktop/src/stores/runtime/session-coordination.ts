@@ -7,6 +7,7 @@ import type {
 import {
   contextCompactionMark,
   initialThinkingLevelForBinding,
+  initialThinkingLevelForUnmatchedModel,
   normalizeMode,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
@@ -291,10 +292,20 @@ export function createSessionCoordination({
     const inheritedBinding = defaultProvider?.models.find((candidate) =>
       sameComposerModelId(candidate.id, inherited.modelId ?? ""),
     );
-    const defaultThinkingLevel = initialThinkingLevelForBinding(
-      inheritedBinding,
-      defaultProvider?.supportedThinkingLevels,
-    );
+    const catalogModel = inherited.providerId && inherited.modelId
+      ? state.providerModels[inherited.providerId]?.find((candidate) =>
+          sameComposerModelId(candidate.modelId, inherited.modelId ?? ""),
+        )
+      : undefined;
+    const defaultThinkingLevel = catalogModel
+      ? initialThinkingLevelForBinding(
+          inheritedBinding,
+          defaultProvider?.supportedThinkingLevels,
+        )
+      : initialThinkingLevelForUnmatchedModel(
+          inheritedBinding,
+          defaultProvider?.supportedThinkingLevels,
+        );
     const previousSessionId = state.activeSessionId;
     revealEmptyCreatingSession(active);
     let created: Awaited<ReturnType<typeof api.createSession>>;

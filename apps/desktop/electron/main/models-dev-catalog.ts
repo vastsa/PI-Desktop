@@ -899,56 +899,13 @@ class ModelsDevLookupIndex {
   }
 }
 
-/** Index only aliases the matcher can accept: exact IDs, the region-stripped
- * form, full slash-path leaves, known-vendor dash/dot prefixes, the supported
- * thinking/agent/latest variants, and published release stamps. The matcher
- * remains the final authority (including known-vendor conflicts), but the index
- * must register every alias the matcher accepts: a key it never indexed is a
- * lookup that can never reach the record. */
+/** Generate the exact lowercase last `/`-segment used by the catalog matcher. */
 function candidateKeys(modelId: string): string[] {
   const normalized = normalizedModelId(modelId);
   if (!normalized) return [];
-  const keys = new Set<string>();
-  const at = normalized.indexOf("@");
-  const base = at > 0 ? normalized.slice(0, at) : normalized;
-
-  const add = (value: string) => {
-    if (!value) return;
-    keys.add(value);
-    const slash = value.lastIndexOf("/");
-    if (slash >= 0 && slash < value.length - 1) keys.add(value.slice(slash + 1));
-    for (const separator of ["-", "."] as const) {
-      for (const vendor of MODEL_VENDOR_PREFIXES) {
-        const head = `${vendor}${separator}`;
-        if (value.startsWith(head) && value.length > head.length) {
-          keys.add(value.slice(head.length));
-        }
-      }
-    }
-  };
-
-  /*
-    Suffixes are stripped after the region, just as `catalogModelIdsMatch`
-    does, and either suffix may be the outer one: `foo-0731-thinking` and
-    `foo-thinking-0731` both reach `foo`. Aliases are added from both sides so a
-    suffixed catalog id and a suffixed request each find the other.
-  */
-  const variants = new Set<string>();
-  for (const value of [normalized, base]) {
-    const withoutVariant = stripVariantSuffix(value);
-    const withoutRelease = stripReleaseSuffix(value);
-    for (const variant of [
-      value,
-      withoutVariant,
-      withoutRelease,
-      stripReleaseSuffix(withoutVariant),
-      stripVariantSuffix(withoutRelease),
-    ]) {
-      variants.add(variant);
-    }
-  }
-  for (const value of variants) add(value);
-  return [...keys];
+  const slash = normalized.lastIndexOf("/");
+  const leaf = slash >= 0 ? normalized.slice(slash + 1) : normalized;
+  return leaf ? [leaf] : [];
 }
 
 function registrationKeys(modelId: string): string[] {
@@ -961,7 +918,54 @@ function lookupCandidateKeys(requested: string): string[] {
 
 const EMPTY_CANDIDATES: readonly IndexedModel[] = [];
 
+type OfficialProviderFamily = "anthropic" | "openai" | "google" | "xai";
 
+const OFFICIAL_PROVIDER_FAMILIES: Readonly<Record<string, OfficialProviderFamily>> = {
+  anthropic: "anthropic",
+  openai: "openai",
+  google: "google",
+  "google-ai-studio": "google",
+  "google-vertex": "google",
+  xai: "xai",
+  "x-ai": "xai",
+};
+
+function explicitModelSourceFamily(modelId: string): OfficialProviderFamily | undefined {
+  const firstSegment = normalizedModelId(modelId).split("/", 1)[0];
+  return OFFICIAL_PROVIDER_FAMILIES[firstSegment];
+}
+
+function isOfficialSourceProvider(entry: IndexedModel): boolean {
+  const providerFamily = OFFICIAL_PROVIDER_FAMILIES[normalizedProviderKey(entry.provider.providerKey)];
+  if (!providerFamily) return false;
+  const explicitSource = explicitModelSourceFamily(entry.model.modelId);
+  return !explicitSource || explicitSource === providerFamily;
+}
+
+function capabilitySignature(model: ModelsDevModel): string {
+  return JSON.stringify({
+    attachment: model.attachment ?? null,
+    temperature: model.temperature ?? null,
+    toolCall: model.toolCall ?? null,
+    structuredOutput: model.structuredOutput ?? null,
+    modalities: {
+      input: [...model.modalities.input].sort(),
+      output: [...model.modalities.output].sort(),
+    },
+    reasoning: model.reasoning,
+    reasoningOptions: model.reasoningOptions ?? null,
+    thinkingLevels: model.thinkingLevels,
+  });
+}
+
+function modelWithSharedCapabilities(
+  entries: readonly ModelsDevModel[],
+): ModelsDevModel | undefined {
+  if (entries.length === 0) return undefined;
+  const signature = capabilitySignature(entries[0]);
+  if (entries.some((model) => capabilitySignature(model) !== signature)) return undefined;
+  return borrowedModel(entries);
+}
 
 /**
  * Middle value of the numbers the publishers state. Even counts take the lower
@@ -1415,12 +1419,7 @@ export class ModelsDevCatalog {
     for (const entry of this.lookupIndex.candidates(requested)) {
       (entry.provider === preferredProvider ? preferred : rest).push(entry);
     }
-    const candidates: Array<{
-      model: ModelsDevModel;
-      provider: ModelsDevProvider;
-      score: number;
-      exact: boolean;
-    }> = [];
+    const candidates: Array<{ model: ModelsDevModel; provider: ModelsDevProvider; score: number }> = [];
     for (const { model, provider } of [...preferred, ...rest]) {
       // A known endpoint must not inherit another provider's capabilities.
       if (preferredProvider && provider !== preferredProvider) continue;
@@ -1430,36 +1429,19 @@ export class ModelsDevCatalog {
       if (provider === preferredProvider) score += 100;
       if (apiMatches(input.baseUrl, provider.api)) score += 80;
       if (modelMatchesProvider(model, input.vendorKey)) score += 60;
-      candidates.push({ model, provider, score, exact });
+      candidates.push({ model, provider, score });
     }
     candidates.sort((left, right) =>
       right.score - left.score || left.model.modelId.length - right.model.modelId.length,
     );
-    /*
-    /*
-      A record the catalog publishes under exactly this id is this id's record.
-      Supported aliases — a release stamp, a thinking variant, a route leaf —
-      also reach a *shorter* sibling, and answering with that sibling would
-      attach another deployment's limits and capabilities to the row. So exact
-      candidates discard the alias-derived ones before the ambiguity test, which
-      is what keeps `foo-v2-0731` on its own record while a catalog that only
-      publishes `foo-v2` still answers it.
-    */
-    const exactCandidates = candidates.filter((candidate) => candidate.exact);
-    const pool = exactCandidates.length > 0 ? exactCandidates : candidates;
-    /* Within the row's own catalog provider this is an exact-provider lookup:
-       the provider identity is known, so its record for the id — a direct hit
-       or a supported alias — is authoritative.
-
-       With no provider identity the scores prove nothing about identity, so a
-       catalog answer is only usable when it is unambiguous — and only over the
-       alias-derived pool, since an exact record already outranks its aliases.
-       Two providers publishing the same id must not have one chosen for the
-       other. */
-    const resolved = pool[0]?.model;
-    const result = preferredProvider
-      ? resolved
-      : pool.length === 1 ? resolved : undefined;
+    // 0 → unmatched; 1 → enrich; ≥2 prefer unique official/source provider
+    // agreeing with model source; else shared identical capabilities; else unmatched.
+    const official = candidates.filter(isOfficialSourceProvider);
+    const result = candidates.length === 1
+      ? candidates[0].model
+      : official.length === 1
+        ? official[0].model
+        : modelWithSharedCapabilities(candidates.map(({ model }) => model));
     /* The row's own catalog provider did not publish this id. Borrowing needs a
        known provider identity to anchor on: the row resolved to a catalog
        provider whose own records are authoritative, so anything missing from it
@@ -1467,40 +1449,13 @@ export class ModelsDevCatalog {
        dropping the model to the generic shape.
 
        This only fills a miss the lookup already had — a record the preferred
-       provider does publish stays authoritative.
-
-       With no provider identity at all the scores still prove nothing about
-       identity, so no single publisher's record is adopted. What the publishers
-       of the *same model in another spelling* state is a different question, and
-       its answer can be claimed without adopting any one deployment's claims:
-       the publishers this app ships answer first, tool support follows the ones
-       that state it, capabilities are under-claimed and the limits are the lower
-       median. Two routes that merely share a leaf (`provider-a/foo` vs
-       `gateway/foo`) never enter that set, so an id whose identity is genuinely
-       unknown still resolves to nothing. */
-    let borrowed = result ??
-      (preferredProvider
-        ? this.borrowedAcrossProviders(input)
-        : unanchoredConsensus(
-            borrowPool(
-              candidates.filter((candidate) => sameModelSpelling(candidate.model.modelId, requested)),
-              requested,
-            ),
-          ));
-    /*
-      Nothing the catalog publishes answered for the id as served. A deployment
-      can put the model behind a route prefix or append a marker of its own
-      (`test/mimo-v2.5`, `mimo-v2.5-pro-test`), and the model is still the one
-      the catalog publishes. Reading that whole published id is the last resort,
-      so a suffix the catalog uses for models of its own — `-asr`, `-tts`,
-      `-voiceclone` — cannot turn an unknown id into a different model's record.
-    */
-    if (!borrowed) {
-      for (const fallbackId of fallbackLookupIds(requested)) {
-        borrowed = this.borrowedAcrossProviders(input, fallbackId);
-        if (borrowed) break;
-      }
-    }
+       provider does publish stays authoritative. Without that anchor the scores
+       prove nothing about identity, and an unknown endpoint keeps the existing
+       behaviour: a unique unambiguous match, official disambiguation, shared
+       capabilities, or nothing. Deployment-marker / variant-suffix fallbacks
+       are intentionally not applied here (approved #1047 matching rules). */
+    const borrowed = result ??
+      (preferredProvider ? this.borrowedAcrossProviders(input) : undefined);
     // Cache the result (a miss included) so a repeated miss is also O(1) and
     // cannot grow the candidate index with query-dependent keys.
     this.lookupMemo.set(memoKey, borrowed);
