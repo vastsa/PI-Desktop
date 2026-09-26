@@ -35,6 +35,7 @@ import {
   isEditableTextReference,
   isPersistedScratchReference,
   paintEditorValue,
+  restoreComposerReference,
   readEditorValue,
   setEditorCaret,
   type ComposerFileReference,
@@ -258,7 +259,10 @@ export function useComposerDraft({
       element,
       nextValue,
       referenceByTokenRef.current,
-      (name) => t("chat.removeFileReference", { name }),
+      (reference) =>
+        reference.kind === "agent"
+          ? t("chat.removeAgentReference", { name: reference.name })
+          : t("chat.removeFileReference", { name: reference.name }),
       (token) => removeChipByTokenRef.current(token),
       (token) => expandTextReferenceRef.current(token),
     );
@@ -739,10 +743,5 @@ function createFileReferenceFromSnapshot(
   fileReference: ComposerDraftSnapshot["fileReferences"][number],
   sessionId: string,
 ): ComposerFileReference {
-  return createFileReference(
-    fileReference.path,
-    fileReference.name,
-    sessionId,
-    fileReference,
-  );
+  return restoreComposerReference(fileReference, sessionId);
 }

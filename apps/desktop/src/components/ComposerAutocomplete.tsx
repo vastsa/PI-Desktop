@@ -4,6 +4,7 @@ import type { ComposerCommand } from "@pi-desktop/shared";
 import type { AutocompleteItem, useComposerAutocomplete } from "../hooks/use-composer-autocomplete";
 import {
   IconBookOpen,
+  IconBot,
   IconFileText,
   IconFolder,
   IconPlug,
@@ -41,12 +42,14 @@ function Highlighted({
   return <>{parts}</>;
 }
 
-const GROUP_KEYS: Record<ComposerCommand["kind"], string> = {
+const GROUP_KEYS: Record<ComposerCommand["kind"] | "agent" | "path", string> = {
   template: "chat.slashGroupTemplates",
   builtin: "chat.slashGroupApp",
   plugin: "chat.slashGroupPlugins",
   extension: "chat.slashGroupExtensions",
   skill: "chat.slashGroupSkills",
+  agent: "chat.agentGroup",
+  path: "chat.fileGroup",
 };
 
 function CommandIcon({ kind }: { kind: ComposerCommand["kind"] }) {
@@ -84,7 +87,9 @@ export function ComposerAutocomplete({
       key:
         item.kind === "command"
           ? `c:${item.command.kind}:${item.command.name}`
-          : `p:${item.entry.path}`,
+          : item.kind === "agent"
+            ? `a:${item.agent.name}`
+            : `p:${item.entry.path}`,
       type: "button" as const,
       role: "option" as const,
       "aria-selected": active,
@@ -118,6 +123,27 @@ export function ComposerAutocomplete({
         </button>
       );
     }
+    if (item.kind === "agent") {
+      return (
+        <button
+          {...commonProps}
+          aria-label={`@${item.agent.name} — ${item.agent.description ?? t("chat.agentGroup")}`}
+          title={item.agent.description ?? item.agent.name}
+        >
+          <span className="composer-ac-icon">
+            {/* The same bot badge the subagent settings and the model pickers
+                use, so a delegate reads as a delegate across the whole app. */}
+            <IconBot size={14} aria-hidden="true" />
+          </span>
+          <span className="composer-ac-name">
+            @<Highlighted text={item.agent.name} ranges={item.match.ranges} />
+          </span>
+          {item.agent.description ? (
+            <span className="composer-ac-desc">{item.agent.description}</span>
+          ) : null}
+        </button>
+      );
+    }
     const isDir = item.entry.kind === "dir";
     const name = item.entry.path.split("/").pop() ?? item.entry.path;
     const displayName = `${name}${isDir ? "/" : ""}`;
@@ -138,16 +164,23 @@ export function ComposerAutocomplete({
   const rows: React.ReactNode[] = [];
   let lastGroup: string | null = null;
   ac.items.forEach((item, index) => {
-    if (item.kind === "command") {
-      const group = item.command.kind;
-      if (group !== lastGroup) {
-        lastGroup = group;
-        rows.push(
-          <div key={`g:${group}`} className="composer-model-group-label">
-            {t(GROUP_KEYS[group])}
-          </div>,
-        );
-      }
+    const group =
+      item.kind === "command"
+        ? item.command.kind
+        : item.kind === "agent"
+          ? "agent"
+          : "path";
+    if (group !== lastGroup) {
+      lastGroup = group;
+      // Every section is labelled, the file rows included. Leaving the
+      // trailing group unlabelled made those rows read as part of whichever
+      // label preceded them, so an "@" menu holding both kinds showed the
+      // delegates and the files under one heading (ADR 0308).
+      rows.push(
+        <div key={`g:${group}`} className="composer-model-group-label">
+          {t(GROUP_KEYS[group])}
+        </div>,
+      );
     }
     rows.push(renderRow(item, index));
   });
@@ -166,7 +199,7 @@ export function ComposerAutocomplete({
       onClose={ac.close}
       anchorRef={anchorRef}
       menuClassName="composer-autocomplete"
-      label={t(ac.mode === "file" ? "chat.fileMenu" : "chat.slashMenu")}
+      label={t(ac.mode === "file" ? "chat.referenceMenu" : "chat.slashMenu")}
       role="listbox"
       side="top"
       matchAnchorWidth

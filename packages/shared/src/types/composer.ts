@@ -28,6 +28,28 @@ export type ComposerCommand = {
   skillId?: string;
 };
 
+/**
+ * One entry of the composer "@" agent group: what the `Task` tool would offer
+ * right now. Kept out of {@link ComposerCommand} so a subagent named like a
+ * skill or a `/` command cannot displace it in the slash merge.
+ */
+export type ComposerAgent = {
+  /** `Task` argument naming the delegate, e.g. "explorer". */
+  name: string;
+  /** One line telling the parent when to delegate to this agent. */
+  description?: string;
+};
+
+/**
+ * Everything the composer's autocomplete needs from one source read: the "/"
+ * menu and the "@" agent group. Both travel together so the "@" menu needs no
+ * second IPC channel.
+ */
+export type ComposerCommandsResponse = {
+  commands: ComposerCommand[];
+  agents: ComposerAgent[];
+};
+
 /** One clipboard file transferred from the renderer to the composer bridge. */
 export type ComposerPasteFile = {
   name?: string;

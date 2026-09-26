@@ -3078,7 +3078,7 @@ reasoning-level control.
   There are no visual previews in MVP.
 - No voice input
 
-### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222)
+### 11.8 Slash commands, @ file references, and clipboard files (D123–D125, D197, D209, D262, D362, D397, ADR 0024, ADR 0059, ADR 0070, ADR 0131, ADR 0221, ADR 0222, ADR 0308)
 
 The composer owns an inline autocomplete menu — one component serving two
 modes. Focus never leaves the textarea (D125).
@@ -3111,6 +3111,39 @@ Anatomy:
 - A whitespace-delimited `/` later in the draft offers active Skills only.
   Completion replaces only the token under the cursor, so several Skills and
   ordinary text can coexist in one prompt.
+- In Agent mode the `@` menu also lists delegates, as an "Agents" group above
+  the file rows (ADR 0308). Each group carries its own heading — "Agents" and
+  "Files" — so the two kinds are never read as one section; the file rows are
+  not left as an unlabelled remainder under the delegate heading. A delegate row
+  carries the bot badge used by the subagent settings and the model pickers, and
+  a file row keeps its own glyph, so the icon reinforces the grouping a sighted
+  user reads. Accepting one creates an inline chip, the same atomic one a
+  completed file reference gets, carrying the bot badge: the delegate is one
+  thing the user picked, so it reads and deletes as one thing rather than as
+  editable `@name` text that a keystroke could cut in half. The chip serializes
+  back to `@name` for the model, and keeps a leading space when text precedes
+  it, because the send-time resolver only reads an `@token` at a start or after
+  whitespace. A draft restored after a restart brings the delegate back as a
+  delegate, never as a file chip, and a delegate never becomes an attachment.
+  In the transcript the same tokens render as per-mention delegate chips, on the
+  same `.composer-chip` surface a file reference uses, with the bot badge and no
+  button affordance — a delegate names a run rather than something to open. The
+  chip shows the bare handle (`explorer`), not the `@token` the user typed, since
+  the badge already identifies it; the composer chip and the `@` menu row keep
+  the `@`, being the token being chosen or typed. The offsets are recorded on
+  the message when it is sent, so a message sent while a delegate existed keeps
+  its chip after that delegate is removed, and the stored offsets index the
+  typed form either way. A stored range that does not line up with the text
+  falls back to rendering the whole typed draft. Accepting one inserts `@name `
+  and the user keeps typing the brief in the same draft. At send time main
+  rewrites the draft into an explicit `Task` instruction plus the user's own
+  words, and the transcript keeps the original `@agent …` draft as its
+  invocation chip. A `@agent` token is
+  an agent only when it names a delegate **and** the workspace holds no file of
+  that name; a real file of that name wins. A name outside the catalog stays
+  ordinary text. Plan and Goal omit the group, and a hand-typed `@agent` sent
+  from either is refused with a toast rather than sent as plain text, leaving
+  the draft intact for retry.
 - Command descriptions use the space left after the slash name and optional
   title/argument hints. A long description truncates before it can squeeze a
   short command name to an ellipsis, including in narrow composers. Names and
@@ -3149,7 +3182,11 @@ Anatomy:
   structured undo snapshot while the turn remains unanswered. Smart Stop
   restores that snapshot in its original reference order instead of copying
   serialized message paths back into the textarea. Stop after reply start does
-  not restore or duplicate the submitted draft.
+  not restore or duplicate the submitted draft. When no snapshot exists — an
+  edit-and-resend records none — the recovery reads the row's `command`, which
+  holds the typed text of a rewritten turn, and falls back to `content` only
+  for an ordinary prompt that was never rewritten. Restoring a rewritten
+  `content` would put a model instruction in the composer for the user to send.
 - After the representation selection in §11.7, a file paste requires at least
   one `File`. The renderer transfers bounded file bytes, name, and MIME
   metadata to Electron main with the durable session id. Main validates the

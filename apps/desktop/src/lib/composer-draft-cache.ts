@@ -20,7 +20,9 @@ export type ComposerDraftFileInput = {
   sessionId?: string;
   path: string;
   name: string;
-  kind?: "image" | "file";
+  /** `agent` is a delegate mention; it survives a draft restore like a file. */
+  kind?: "image" | "file" | "agent";
+  description?: string;
   mimeType?: string;
   token?: string;
 };
@@ -49,10 +51,11 @@ export function snapshotComposerDraft(
     text,
     fileReferences: fileReferences
       .filter((fileReference) => (fileReference.sessionId ?? "") === owner)
-      .map(({ path, name, kind, mimeType, token }) => ({
+      .map(({ path, name, kind, description, mimeType, token }) => ({
         path,
         name,
         kind,
+        ...(description ? { description } : {}),
         ...(mimeType ? { mimeType } : {}),
         ...(token ? { token } : {}),
       })),

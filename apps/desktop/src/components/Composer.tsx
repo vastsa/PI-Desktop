@@ -44,6 +44,7 @@ import {
   type ComposerPrefill,
 } from "../features/chat/composer/model";
 import {
+  createAgentReference,
   createFileReference,
   editorSelectionRange,
   isImageFilePath,
@@ -404,6 +405,7 @@ export function Composer({
 
   const submitController = useComposerSubmit({
     value,
+    mode,
     draftKey,
     activeSessionId,
     providerId: provider?.id,
@@ -458,37 +460,44 @@ export function Composer({
     cursor,
     composing,
     enabled: !inputBlocked,
+    mode,
   });
 
   const acceptCompletion = (index: number) => {
     const result = composerAc.accept(index);
     if (!result) return;
     invalidatePromptEnhancement();
-    // File accept strips the @ token (empty insert) and used to store a
-    // token-less chip above the textarea. Inline chips only paint when a
-    // sentinel is in the draft, so Enter looked like the reference vanished.
+    // File and agent accepts both strip the @ token and store a token-backed
+    // inline chip. Inline chips only paint when a sentinel is in the draft, so
+    // storing a token-less chip made Enter look like the reference vanished.
     const acceptedFileReference = result.fileReference;
-    if (!acceptedFileReference) {
+    const acceptedAgentReference = result.agentReference;
+    if (!acceptedFileReference && !acceptedAgentReference) {
       applyEditorDraft(result.value, fileReferencesRef.current, result.cursor);
       return;
     }
     const token = nextChipToken();
     const nextText =
       result.value.slice(0, result.cursor) + token + result.value.slice(result.cursor);
-    applyEditorDraft(
-      nextText,
-      [
-        ...fileReferencesRef.current,
-        createFileReference(
-          acceptedFileReference.path,
-          acceptedFileReference.name,
+    const reference = acceptedAgentReference
+      ? createAgentReference(acceptedAgentReference.name, referenceSessionId, {
+          token,
+          ...(acceptedAgentReference.description
+            ? { description: acceptedAgentReference.description }
+            : {}),
+        })
+      : createFileReference(
+          acceptedFileReference!.path,
+          acceptedFileReference!.name,
           referenceSessionId,
           {
-            kind: isImageFilePath(acceptedFileReference.path) ? "image" : "file",
+            kind: isImageFilePath(acceptedFileReference!.path) ? "image" : "file",
             token,
           },
-        ),
-      ],
+        );
+    applyEditorDraft(
+      nextText,
+      [...fileReferencesRef.current, reference],
       result.cursor + token.length,
     );
   };

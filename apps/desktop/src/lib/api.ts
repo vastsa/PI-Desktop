@@ -32,7 +32,7 @@ import type {
   BrowserAction,
   BrowserState,
   CommandItem,
-  ComposerCommand,
+  ComposerCommandsResponse,
   ComposerPasteFile,
   ComposerPastedFile,
   FsChatRefResolveResult,
@@ -1352,7 +1352,7 @@ export const api = {
       ...(sessionId ? { sessionId } : {}),
     }),
   composerCommands: () =>
-    invoke<{ commands: ComposerCommand[] }>(IPC.invoke.composerCommands),
+    invoke<ComposerCommandsResponse>(IPC.invoke.composerCommands),
   setWorkPanelReservation: (width: number) =>
     invoke<{ requested: number; reserved: number }>(
       IPC.invoke.windowSetWorkPanelReservation,
