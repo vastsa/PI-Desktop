@@ -1109,3 +1109,15 @@
   outline: 1px dashed var(--ds-border-strong);
   outline-offset: -2px;
 }
+
+/* The header uses the same row-menu surface, measured by AnchoredMenu. */
+.conversation-actions-menu {
+  position: fixed;
+  visibility: hidden;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
+
+.conversation-actions-menu.is-open {
+  visibility: visible;
+}

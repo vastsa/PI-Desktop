@@ -38,6 +38,8 @@ test("topbar preserves complete titles for width-based clipping and tooltips", a
         const expected = title === "New task" ? catalogs.en.chat.untitledTask : title;
         assert.equal(html.match(/class="ct-title">([^<]*)<\/span>/)?.[1], expected);
         assert.ok(html.includes(`title="Project · ${expected}"`));
+        assert.match(html, /data-action="conversation-menu"/);
+        assert.match(html, /aria-haspopup="menu" aria-expanded="false"/);
       }
     }
   } finally {

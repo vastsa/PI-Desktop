@@ -76,3 +76,11 @@ export function readPluginsSource() {
 export function readPluginsSourceSync() {
   return readDomainSourceSync("pages/PluginsPage.tsx", "features/plugins");
 }
+
+/** Sidebar actions are shared with the conversation header. */
+export function readSidebarSource() {
+  return readDomainSource("components/Sidebar.tsx", "features/sessions");
+}
+export function readSidebarSourceSync() {
+  return readDomainSourceSync("components/Sidebar.tsx", "features/sessions");
+}

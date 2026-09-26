@@ -1,3 +1,4 @@
+import { readSidebarSourceSync } from "./helpers/domain-source.mjs";
 import {
   readStoreModuleSync,
   readTranscriptSourceSync,
@@ -17,7 +18,7 @@ test("session fork is wired through protocol, main, API, store, and sidebar", ()
     readStoreModuleSync("slices/session-slice.ts"),
     readStoreModuleSync("runtime/session-coordination.ts"),
   ].join("\n");
-  const sidebar = read("../src/components/Sidebar.tsx");
+  const sidebar = readSidebarSourceSync();
 
   assert.match(
     protocol,

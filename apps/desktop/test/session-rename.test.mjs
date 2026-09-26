@@ -1,3 +1,4 @@
+import { readSidebarSource } from "./helpers/domain-source.mjs";
 import { readStoreSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -16,7 +17,7 @@ const [
   rpcSource,
   styles,
 ] = await Promise.all([
-  read("../src/components/Sidebar.tsx"),
+  readSidebarSource(),
   read("../src/pages/ProjectsPage.tsx"),
   // The archive's task rows live in the detail panel the workbench renders.
   read("../src/features/projects/ProjectDetailPanel.tsx"),

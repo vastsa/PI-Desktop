@@ -1,3 +1,4 @@
+import { ConversationActions } from "../features/sessions/ConversationActions";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app-store";
 import {
@@ -81,6 +82,7 @@ export function ConversationTopbar({
 
       <div className="ct-right">
         <div className="ct-actions">
+          {activeSession ? <ConversationActions key={activeSession.id} session={activeSession} /> : null}
           <TooltipButton
             type="button"
             className="ct-icon-btn"
