@@ -1775,6 +1775,35 @@ identify the platform validation still needed.
   (`apps/desktop/test/plugins-page-style.test.mjs`,
   `apps/desktop/test/route-scroll.test.mjs`); full UI scenario Draft
 
+#### E2E-087b: Destination loading and Settings focus remain explicit
+
+- **Preconditions**: Isolated Electron profile, two local workspace fixtures,
+  and a controlled preload test double that serves fixture pull requests and
+  can hold each request until released. No live GitHub access is used.
+- **Steps**:
+  1. Mount the production Settings page and verify focus moves to its search
+     control.
+  2. Mount Pull requests for the first workspace and hold its list result.
+     Inspect the page while it is pending.
+  3. Switch to the second workspace and release its result. Start an explicit
+     refresh, hold that response, and verify its current rows remain visible.
+  4. Release the refresh response, then complete the first workspace request
+     last.
+- **Expected**: Settings search owns focus on mount. Pull requests shows a
+  localized loading status rather than the empty-result state while the first
+  request is pending. Explicit refresh keeps current rows visible while its
+  response is pending. After switching workspaces, the second workspace's rows
+  and filter counts remain visible when the older request completes; no row
+  from the first workspace replaces them. The shell contract keeps the hidden
+  chat inert without applying `aria-hidden` to a focused descendant.
+- **Specs linked**: `04-ux/01-ui-ia.md` (§3.3),
+  `04-ux/09-interaction-patterns.md` (§7.1)
+- **Acceptance**: C (UI), Quality
+- **Milestone**: M6+
+- **Status**: Production component E2E and source-contract checks automated;
+  covered by `pnpm test:e2e:settings-scroll` and
+  `pnpm test:e2e:destination-loading`; full shell navigation scenario Draft
+
 #### E2E-088: Composer Agent/Plan/Goal chip updates the session
 
 - **Preconditions**: Chat route active; a session selected.
@@ -5496,6 +5525,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Expected**:
   - The current assistant row reveals content progressively and pinned follow
     stays at latest without visible oscillation.
+  - Smooth text reveal on a simulated 120 Hz display commits no faster than
+    60 Hz, and its animation frame loop stops after it catches up.
   - Replaceable message/tool partials are coalesced to the next paint, while
     terminal, permission, planning, and error states remain immediate.
   - A failed tool row remains error-hued and locally expandable, but never marks
@@ -5534,9 +5565,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   credentials; requires installed Electron and a graphical session, or Xvfb on
   Linux). It mounts production transcript components, counts ActivityGroup
   renders across 20 text updates with 100 completed groups, checks changed tool
-  content, and checks cross-part Task terminal status/timing updates. The page
-  links the app's built stylesheet, which the runtime-status scenario below
-  measures real geometry against; full provider streaming and shell
+  content, checks cross-part Task terminal status/timing updates, and exercises
+  the production smooth-text hook against deterministic 120 Hz animation frames.
+  The page links the app's built stylesheet, which the runtime-status scenario
+  below measures real geometry against; full provider streaming and shell
   responsiveness remain Draft.
 
 #### E2E-CHAT-running-status-survives-output-pauses
@@ -8568,6 +8600,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — Sidebar row states | E2E-LAYOUT-sidebar-row-states |
 | A / C / Quality — Sidebar material and settings return | E2E-LAYOUT-sidebar-settings |
+| C / Quality — Destination loading and focus | E2E-087b |
 | A / H / Quality — Renderer process crash recovery | E2E-RUNTIME-renderer-crash-recovery |
 | B / F / Security — Provider copy | E2E-PROVIDER-copy-config-without-credentials |
 | B / F / Quality — Selected model order | E2E-MODEL-selected-order-persists |
@@ -8639,6 +8672,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-UPDATE-preference-and-once-only-reminder, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-259, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
 | M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+ (Selected model order) | E2E-MODEL-selected-order-persists |
+| M6+ (Destination loading and focus) | E2E-087b |
 | M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+ (Windows updater cache) | E2E-260 |
 | M6+ (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |

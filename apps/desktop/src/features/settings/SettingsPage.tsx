@@ -113,7 +113,12 @@ export function SettingsPage() {
     if (activeExtension) setActiveExtension(null);
   }
   const contentRef = useRef<HTMLDivElement>(null);
+  const settingsSearchRef = useRef<HTMLInputElement>(null);
   const destination = activeExtension ? `extension:${activeExtension.ref}` : `builtin:${tab}`;
+
+  useLayoutEffect(() => {
+    settingsSearchRef.current?.focus({ preventScroll: true });
+  }, []);
 
   useLayoutEffect(() => {
     // Reset before paint and before the search-anchor effect positions its row.
@@ -283,6 +288,7 @@ export function SettingsPage() {
           <div className="settings-search-wrap no-drag">
             <IconSearch size={14} />
             <input
+              ref={settingsSearchRef}
               className="settings-search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
