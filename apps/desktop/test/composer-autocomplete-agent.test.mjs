@@ -133,6 +133,17 @@ test("the @ menu heads files with a localized Agents group", async () => {
     assert.ok(fileHeadAt < fileRowAt, `${locale}: the file row must follow its heading`);
     // Two labels, and the file row is not described as a delegate.
     assert.equal((html.match(/composer-model-group-label/g) ?? []).length, 2, locale);
+    // A delegate carries the bot badge, and only a delegate does: the file row
+    // keeps its own glyph, so the icon is part of telling the groups apart.
+    const badge = (html.match(/class="composer-ac-icon"[^]*?<svg[^>]*>/g) ?? []);
+    assert.equal(badge.length, 2, locale);
+    // The glyph itself is the distinction: the bot badge on the delegate, the
+    // file glyph on the file row. Both rows are labelled, so the icon is what
+    // a sighted user reads to tell the groups apart.
+    assert.match(badge[0], /lucide-bot/, locale);
+    assert.doesNotMatch(badge[0], /lucide-branch/, locale);
+    assert.match(badge[1], /lucide-file-text/, locale);
+    assert.doesNotMatch(badge[1], /lucide-bot/, locale);
     // Each row carries a per-row accessible name, so the two kinds stay
     // distinguishable to a screen reader.
     assert.match(html, /aria-label="@explorer — Sweeps the codebase\."/, locale);

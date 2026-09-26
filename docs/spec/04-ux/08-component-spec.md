@@ -3114,7 +3114,10 @@ Anatomy:
 - In Agent mode the `@` menu also lists delegates, as an "Agents" group above
   the file rows (ADR 0308). Each group carries its own heading — "Agents" and
   "Files" — so the two kinds are never read as one section; the file rows are
-  not left as an unlabelled remainder under the delegate heading. Accepting one
+  not left as an unlabelled remainder under the delegate heading. A delegate row
+  carries the bot badge used by the subagent settings and the model pickers, and
+  a file row keeps its own glyph, so the icon reinforces the grouping a sighted
+  user reads. Accepting one
   inserts `@name ` and the user keeps
   typing the brief in the same draft. At send time main rewrites the draft into
   an explicit `Task` instruction plus the user's own words, and the transcript

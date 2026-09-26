@@ -4,11 +4,11 @@ import type { ComposerCommand } from "@pi-desktop/shared";
 import type { AutocompleteItem, useComposerAutocomplete } from "../hooks/use-composer-autocomplete";
 import {
   IconBookOpen,
+  IconBot,
   IconFileText,
   IconFolder,
   IconPlug,
   IconSlash,
-  IconBranch,
   IconSparkles,
 } from "./icons";
 import { AnchoredMenu } from "./settings/AnchoredMenu";
@@ -131,7 +131,9 @@ export function ComposerAutocomplete({
           title={item.agent.description ?? item.agent.name}
         >
           <span className="composer-ac-icon">
-            <IconBranch size={14} />
+            {/* The same bot badge the subagent settings and the model pickers
+                use, so a delegate reads as a delegate across the whole app. */}
+            <IconBot size={14} aria-hidden="true" />
           </span>
           <span className="composer-ac-name">
             @<Highlighted text={item.agent.name} ranges={item.match.ranges} />

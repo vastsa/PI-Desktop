@@ -103,6 +103,13 @@ globalThis.autocompleteLayoutProbe = async (width, fileMode = false, agentMode =
     if (headings.length !== 2) failures.push(`expected 2 group labels, saw ${headings.length}`);
     if (headings[0] !== en.chat.agentGroup) failures.push(`first group is ${headings[0]}`);
     if (headings[1] !== en.chat.fileGroup) failures.push(`second group is ${headings[1]}`);
+    // The bot badge is what marks a row as a delegate, and the real glyph has
+    // to survive the CSS build rather than fall back to a box.
+    const badges = [...menu.querySelectorAll(".composer-ac-icon svg")];
+    if (badges.length !== 3) failures.push(`expected 3 row glyphs, saw ${badges.length}`);
+    if (!badges[0].classList.contains("lucide-bot")) failures.push("the delegate lost its bot badge");
+    if (!badges[2].classList.contains("lucide-file-text")) failures.push("the file row lost its glyph");
+    if (badges[0].getBoundingClientRect().width === 0) failures.push("the bot badge has no size");
   }
   accepted = -1;
   rows[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
