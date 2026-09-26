@@ -11,6 +11,7 @@
  * ({@link SshTunnelManager.adopt}) so pairing never pays for a forward it is
  * about to throw away.
  */
+import { connect } from "node:net";
 import { RACP_WS_PATH, type RemoteHostSshMetadata } from "@pi-desktop/shared";
 import {
   createSystemSshTransport,
@@ -59,6 +60,8 @@ export type SshTunnelManagerOptions = {
   buildTransport?: (ssh: RemoteHostSshMetadata, sshSecret?: string) => SshTransport;
   /** Reserve the loopback port `-L` binds. Injectable for deterministic tests. */
   reservePort?: () => Promise<number>;
+  /** Check whether an existing forward still owns a reachable loopback listener. */
+  isForwardReachable?: (localPort: number) => Promise<boolean>;
   log?: (level: "info" | "warn" | "error", message: string, data?: unknown) => void;
 };
 
@@ -70,8 +73,8 @@ export interface SshTunnelManager {
   open(hostKey: string, ssh: RemoteHostSshMetadata, sshSecret?: string): Promise<SshTunnel>;
   /** Take ownership of a forward the bootstrap already opened. */
   adopt(hostKey: string, ssh: RemoteHostSshMetadata, forward: SshForward): Promise<SshTunnel>;
-  /** Close the forward for one host; a missing key is a no-op. */
-  close(hostKey: string): Promise<void>;
+  /** Close the forward for one host; a missing or replaced owner is a no-op. */
+  close(hostKey: string, expectedForward?: SshForward): Promise<void>;
   /** Close every forward. Idempotent; safe before any `open`. */
   dispose(): Promise<void>;
 }
@@ -83,6 +86,25 @@ type TunnelEntry = {
   tunnel: SshTunnel;
 };
 
+const FORWARD_PROBE_TIMEOUT_MS = 750;
+
+function isLoopbackForwardReachable(localPort: number): Promise<boolean> {
+  return new Promise((resolveReachable) => {
+    let settled = false;
+    const finish = (reachable: boolean): void => {
+      if (settled) return;
+      settled = true;
+      socket.setTimeout(0);
+      socket.destroy();
+      resolveReachable(reachable);
+    };
+    const socket = connect({ host: "127.0.0.1", port: localPort });
+    socket.setTimeout(FORWARD_PROBE_TIMEOUT_MS, () => finish(false));
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+  });
+}
+
 export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): SshTunnelManager {
   const log = options.log ?? (() => undefined);
   const buildTransport =
@@ -92,7 +114,17 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
         log: (level, message, data) => log(level, message, data),
       }));
   const reservePort = options.reservePort ?? reserveLocalPort;
+  const isForwardReachable = options.isForwardReachable ?? isLoopbackForwardReachable;
   const entries = new Map<string, TunnelEntry>();
+  const openings = new Map<string, Promise<SshTunnel>>();
+
+  const disposeTransport = (transport: SshTransport): void => {
+    try {
+      transport.dispose();
+    } catch (error) {
+      log("warn", "ssh transport dispose threw", { error: String(error) });
+    }
+  };
 
   const closeEntry = async (entry: TunnelEntry): Promise<void> => {
     try {
@@ -100,7 +132,7 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
     } catch (error) {
       log("warn", "ssh forward close threw", { error: String(error) });
     }
-    entry.transport.dispose();
+    disposeTransport(entry.transport);
   };
 
   const remember = (
@@ -115,39 +147,79 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
   };
 
   /** Drop one entry and reap its process; shared by `close` and `adopt`. */
-  const closeForKey = async (hostKey: string): Promise<void> => {
+  const closeForKey = async (
+    hostKey: string,
+    expectedForward?: SshForward,
+  ): Promise<void> => {
+    await openings.get(hostKey)?.catch(() => undefined);
     const entry = entries.get(hostKey);
-    if (!entry) return;
+    if (!entry || (expectedForward && entry.forward !== expectedForward)) return;
     entries.delete(hostKey);
     await closeEntry(entry);
   };
 
-  return {
-    async open(hostKey, ssh, sshSecret) {
-      const existing = entries.get(hostKey);
-      if (existing) return existing.tunnel;
-
-      const transport = buildTransport(ssh, sshSecret);
-      // A dead ssh client must not take the app with it; `forward` reports the
-      // failure through its own rejection.
-      let forward: SshForward;
+  const openTunnel = async (
+    hostKey: string,
+    ssh: RemoteHostSshMetadata,
+    sshSecret?: string,
+  ): Promise<SshTunnel> => {
+    const existing = entries.get(hostKey);
+    if (existing) {
+      let reachable = false;
       try {
-        forward = await transport.forward({
-          localPort: await reservePort(),
-          remoteHost: "127.0.0.1",
-          remotePort: ssh.remotePort,
-        });
+        reachable = await isForwardReachable(existing.tunnel.localPort);
       } catch (error) {
-        transport.dispose();
-        throw error;
+        log("warn", "ssh forward health check failed", { hostKey, error: String(error) });
       }
-      log("info", "ssh forward open", { hostKey, localPort: forward.localPort, remotePort: ssh.remotePort });
-      return remember(hostKey, ssh, transport, forward);
-    },
 
+      if (reachable) return existing.tunnel;
+
+      entries.delete(hostKey);
+      log("warn", "ssh forward is no longer reachable", {
+        hostKey,
+        localPort: existing.tunnel.localPort,
+      });
+      await closeEntry(existing);
+    }
+
+    const transport = buildTransport(ssh, sshSecret);
+    // A dead ssh client must not take the app with it; `forward` reports the
+    // failure through its own rejection.
+    let forward: SshForward;
+    try {
+      forward = await transport.forward({
+        localPort: await reservePort(),
+        remoteHost: "127.0.0.1",
+        remotePort: ssh.remotePort,
+      });
+    } catch (error) {
+      disposeTransport(transport);
+      throw error;
+    }
+    log("info", "ssh forward open", { hostKey, localPort: forward.localPort, remotePort: ssh.remotePort });
+    return remember(hostKey, ssh, transport, forward);
+  };
+
+  const open = (
+    hostKey: string,
+    ssh: RemoteHostSshMetadata,
+    sshSecret?: string,
+  ): Promise<SshTunnel> => {
+    const inFlight = openings.get(hostKey);
+    if (inFlight) return inFlight;
+
+    const opening = openTunnel(hostKey, ssh, sshSecret);
+    const tracked = opening.finally(() => {
+      if (openings.get(hostKey) === tracked) openings.delete(hostKey);
+    });
+    openings.set(hostKey, tracked);
+    return tracked;
+  };
+
+  return {
+    open,
     async adopt(hostKey, ssh, forward) {
-      const existing = entries.get(hostKey);
-      if (existing) await closeForKey(hostKey);
+      await closeForKey(hostKey);
       // The adopted forward already owns a live ssh process; the entry keeps a
       // transport only so `close` can reap anything else it started.
       const transport: SshTransport = {
@@ -159,11 +231,12 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
       return remember(hostKey, ssh, transport, forward);
     },
 
-    async close(hostKey) {
-      await closeForKey(hostKey);
+    async close(hostKey, expectedForward) {
+      await closeForKey(hostKey, expectedForward);
     },
 
     async dispose() {
+      await Promise.allSettled([...openings.values()]);
       const all = [...entries.values()];
       entries.clear();
       await Promise.allSettled(all.map((entry) => closeEntry(entry)));

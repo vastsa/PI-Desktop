@@ -21,6 +21,7 @@ import { useAppStore } from "../stores/app-store";
 import { latestTurnContextInspector } from "../lib/latest-turn-context";
 import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
+import { sessionSurfaceGates } from "../lib/session-capabilities";
 import type { QueuedPrompt } from "../lib/queued-prompts";
 import { composerModelDisplayName, sameComposerModelId } from "../lib/composer-models";
 import {
@@ -105,6 +106,7 @@ export function Composer({
   const nativeReadOnly =
     nativeSession && activeSessionSummary.capabilities?.canPrompt !== true;
   const nativeInputBlocked = nativeReadOnly || (nativeSession && isRunning);
+  const gates = sessionSurfaceGates(activeSessionSummary);
   const workspacePath = useAppStore((s) => s.workspace?.path ?? "");
   const providers = useAppStore((s) => s.providers);
   const providerModels = useAppStore((s) => s.providerModels);
@@ -198,7 +200,7 @@ export function Composer({
     settings?.largePasteThreshold,
   );
   const attachments = useComposerAttachments({
-    inputBlocked: approvalPending || nativeSession,
+    inputBlocked: approvalPending || !gates.canAttach,
     activeSessionId,
     draftKey,
     largePasteThreshold,
@@ -229,7 +231,7 @@ export function Composer({
   const executionActive = isActivePlanExecution(planCheckpoint);
   const runActive = isRunning || executionActive;
   const inputBlocked = approvalPending || pasting || nativeInputBlocked;
-  const controlsBlocked = approvalPending || nativeSession;
+  const controlsBlocked = approvalPending || !gates.canSelectModel;
   const sendBlocked = approvalPending || pasting || nativeInputBlocked;
   const enhancementDraft = stripInlineComposerFileReferenceTokens(
     value,
@@ -377,7 +379,9 @@ export function Composer({
   const selectedModelInfo = selectedModelCatalog?.find((candidate) =>
     sameComposerModelId(candidate.modelId, modelId ?? ""),
   );
-  const modelLabel = modelId
+  const modelLabel = gates.remote
+    ? t("chat.remoteHostModel")
+    : modelId
     ? composerModelDisplayName(provider, modelId, selectedModelInfo?.displayName)
     : t("chat.model");
   const modelMenu = useComposerModelMenu({
@@ -390,8 +394,10 @@ export function Composer({
     thinkingLevel,
     controlsBlocked,
   });
-  const modelReady = nativeSession
-    ? activeSessionSummary.capabilities?.canPrompt === true
+  // Native and remote sessions run their own model; the host decides readiness.
+  const hostOwnsModel = nativeSession || gates.remote;
+  const modelReady = hostOwnsModel
+    ? activeSessionSummary?.capabilities?.canPrompt === true
     : !!provider &&
       provider.enabled &&
       !!modelId &&
@@ -461,6 +467,7 @@ export function Composer({
     cursor,
     composing,
     enabled: !inputBlocked,
+    fileMentions: gates.canAttach,
   });
 
   const acceptCompletion = (index: number) => {
@@ -584,7 +591,7 @@ export function Composer({
             composerAc={composerAc}
             onPaste={pasteClipboardFiles}
             onAcceptCompletion={acceptCompletion}
-            onSubmit={(steering) => void submit(steering)}
+            onSubmit={(steering) => void submit(steering && gates.canSteer)}
             onInsertNewline={insertNewlineInEditor}
             onInput={handleInput}
             onCompositionStart={() => setComposing(true)}

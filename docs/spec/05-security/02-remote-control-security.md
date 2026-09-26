@@ -1,7 +1,7 @@
 # Remote Agent Control Security Specification
 
 - Status: Target specification; post-MVP
-- Decision: D373 / ADR 0205, amended by D374 and D375
+- Decision: D373 / ADR 0205, amended by D374, D375, and ADR 0309
 - Applies to: RACP-WS over the SSH tunnel and any later binding: RACP-HTTP,
   the reserved RACP-GRPC, and the Host link
 - Does not weaken: local MCP, host-core, plugin, or provider-secret boundaries
@@ -157,7 +157,17 @@ pairing only binds a desktop device to the Host it started.
 - Revoking the device token on the Host, or removing the Host from the
   desktop, ends the pairing; a new pairing needs a new SSH bootstrap.
 - Provider configuration for the remote Host is written over the SSH channel
-  by the bootstrap step as Host-local configuration; it never crosses RACP.
+as Host-local configuration; it never crosses RACP (D629, ADR 0310). The
+  desktop runs `pi-host provider-import` on the Host and pipes the provider
+  payload — API keys included — into that process's stdin, so the key never
+  appears in an `ssh` argument, a log line, a remote file, or a RACP frame. The
+  CLI hands the payload to the *running* Host over an owner-only Unix admin
+  socket at `<dataDir>/pi-host/admin.sock` (`0700` directory, `0600` socket, one
+  request per connection, capped at 1 MiB, disabled on Windows); no second
+  host-core is spawned. Import is idempotent per source provider id — it creates
+  or updates a row, skips a plugin-owned row, and never deletes — and is a manual
+  user action, never automatic. The `PI_HOST_PROVIDERS` summary the CLI prints
+  never echoes a key.
 
 **SSH credential handling (ADR 0293).** The desktop MAY hold the SSH login
 password for a host the user paired that way, under these rules:
@@ -200,7 +210,7 @@ password for a host the user paired that way, under these rules:
 | Upload an attachment | no | yes | optional | yes |
 | Revoke membership | no | no | no | yes |
 | Archive a session | no | no | no | yes |
-| Open or use a session terminal | no | policy | policy | yes |
+| Open or use a session terminal | no | no | no | SSH-paired owner only |
 | Advertise relayed tools | no | no | no | yes |
 
 Role checks are necessary but not sufficient. The Host MUST additionally check:
@@ -210,7 +220,10 @@ Role checks are necessary but not sufficient. The Host MUST additionally check:
 - the operation is legal in the Session state;
 - the durable permission/mode policy allows the proposed action;
 - the remote permission ceiling has been applied to the turn; and
-- the request's expected revision and idempotency key are valid.
+- the request's expected revision and idempotency key are valid; and
+- terminal operations in the first topology are restricted to the SSH-paired
+  owner device, with each PTY bound to its Session and principal and its active
+  attachment bound to one RACP connection.
 
 ### 4.2 No privilege escalation through protocol fields
 
@@ -219,6 +232,9 @@ The following client fields are advisory only or forbidden:
 - `permissionMode` cannot upgrade a durable Session policy; the only accepted
   permission-mode field is the explicit selection on a Plan/Goal `approve`,
   and it is validated against `allowedPermissionModes`;
+- the internal Host-to-host-core `session.beginTurn.permissionCeiling` is
+  derived from the authenticated principal and Host policy; RACP clients
+  cannot supply it;
 - `admission: "queue"` cannot bypass single-turn execution; it only places a
   bounded, cancelable entry in the Host queue;
 - `workspaceRoot` cannot replace a Host-owned project binding;
@@ -249,6 +265,25 @@ withhold nothing. Its turns report the session's own mode as
 `effectivePermissionMode`. The Host policy `applyCeilingToPairedDevices`
 (default off) re-applies the ceiling to paired devices for an operator who
 wants every remote turn to start at `ask`.
+
+The headless `pi-host` operator sets this policy at process startup with
+`--remote-max-permission-mode`, `--apply-ceiling-to-paired-devices`, and
+`--approval-lifetime-ms`, or with the matching `PI_HOST_REMOTE_MAX_PERMISSION_MODE`,
+`PI_HOST_APPLY_CEILING_TO_PAIRED_DEVICES`, and `PI_HOST_APPROVAL_LIFETIME_MS`
+environment variables. A command-line value takes precedence over its
+environment variable. Omitted values use the RACP defaults (`ask`, `false`,
+and 1,800,000 ms); invalid values fail startup with `INVALID_ARGUMENT`. The
+effective policy is reported in `connection/initialize` and cannot be changed
+over RACP; changing it requires restarting `pi-host`.
+
+Host-core validates the ceiling against the resolved durable Session mode,
+stores it on the durable turn, and intersects it with the effective tool scope
+for every `tools.execute` call. This clamp also applies to delegate scopes, so
+a delegate cannot widen a remote turn. Queued turns retain the ceiling across
+Host restarts; an absent ceiling leaves local and policy-exempt turns under
+their normal Session and delegate rules. A bounded tool call must identify its
+running turn in the same Session; a missing, stale, or cross-session turn id is
+rejected instead of falling back to a broader permission scope.
 
 `allow-session` is offered to a remote approver only when Host policy allows
 remote session grants; otherwise the request's `allowedDecisions` omit it. A
@@ -363,11 +398,50 @@ the tool without interrupting the turn. Provider secrets never cross RACP in
 either direction; the remote Host's providers are configured over the SSH
 bootstrap channel (§3.4).
 
+The relay accepts only owner advertisements with `plugin_` or `mcp_` names and
+an explicit `workspaceFree: true` source assertion. This is the owner's
+assertion: the Host validates the field, role, descriptor, bounds, and normal
+Host permission policy, but it cannot independently inspect the remote source.
+The Desktop adapter must derive the flag from its trusted source registry and
+fail closed when the registry is missing or uncertain. The initial adapter
+may advertise only global User MCP tools from `toolsForProject(null)`; plugin
+tools remain disabled until a trusted classifier and product decision exist.
+The combined Session
+catalog is bounded to 64 tools and 512 KiB; descriptor names, descriptions,
+schemas, JSON depth and node count, arguments, results, and execution deadlines
+have the limits in RACP §9.4. The Host does not accept client-supplied risk or
+Plan-safe metadata. At turn start it snapshots the advertised catalog and pins
+each entry to its exact connection and revision. Replacement or disconnect
+invalidates the entry; the Host never resolves a stale name against another
+connection. Core, system, and workspace tools are not relay entries. Until the
+desktop can prove workspace safety from registered source metadata, it must
+not advertise the tool; missing or uncertain metadata fails closed.
+
 A session terminal is a shell on the Host machine running as the `pi-host`
-user with the session root as its working directory. Only the SSH-paired
-owner device or a principal holding the explicit `terminal` scope may open
-one; Gateway-routed principals need that scope from policy. Terminal output
-is ephemeral and recoverable only from the terminal's bounded replay ring.
+user. In the first SSH topology, only the owner device credential issued during
+SSH pairing may open or use one; viewers, controllers, approvers, and
+pairing-only connections are denied. The Host binds each PTY to its Session
+and authenticated principal. Its active input/output attachment belongs to
+one RACP connection: input, resize, and close on a live PTY require that
+connection, while reattach requires the same Session and principal. No
+Gateway terminal-scope path is enabled in this release; broader access needs
+an explicit later policy decision. Releasing an older connection cannot detach
+a newer attachment. A transport loss detaches the output sink but leaves the
+PTY running; the same principal can reattach while the Host remains up.
+
+The Host resolves the Session root and uses it as the shell's initial working
+directory. This is not a filesystem sandbox: the shell runs with the full
+filesystem and process permissions of the `pi-host` OS account. Users must
+treat terminal commands as commands on that Host, under that account.
+
+A client uses one stable `openRequestId` for each logical open and reuses it
+when retrying after an ambiguous response. The Host deduplicates by principal,
+Session, and request id, retaining up to 1,024 recent opens in memory. That
+deduplication state is lost on Host restart and an older entry may be evicted.
+Terminal input is not recorded or automatically replayed after a disconnect;
+an unacknowledged input must not be retried automatically. Terminal output is
+ephemeral and recoverable only from the bounded replay ring. Host shutdown
+terminates its PTYs and discards their replay rings.
 
 ## 8. Gateway and tenant isolation
 
@@ -405,6 +479,7 @@ The Gateway and Host enforce the lower of their configured limits:
 | In-flight attachment uploads per principal | 4 |
 | Event send queue | 4 MiB or 1,000 durable events |
 | Open terminals per Session | 2 |
+| Terminal open-request dedupe entries per Host | 1,024 |
 
 Rate-limit responses include a retry hint but never disclose another tenant's
 quota. Slow clients lose ephemeral events first and are disconnected with a
@@ -497,13 +572,18 @@ separate, explicitly specified credential-management capability is added.
 19. A relayed tool never executes on the Host and never receives a Host
     secret; the Host's approval precedes the relay request; a lost relay
     connection fails the tool without interrupting the turn.
-20. A session terminal opens only for the SSH-paired owner or a principal
-    with the `terminal` scope, with its working directory inside the session
-    root.
-    root.
+20. A session terminal can be opened or controlled only by the SSH-paired
+    owner device. The PTY is bound to its Session and principal, and active
+    I/O is bound to one RACP connection; the session root is its working
+    directory, not a filesystem sandbox.
 21. An SSH login password is supplied only by the user, reaches `ssh` only
     through the askpass helper, is stored only encrypted, and never appears in
     a process argument list, the renderer, or a log line.
+22. A terminal open retry with the same `openRequestId` does not spawn a second
+    PTY while its bounded Host-side dedupe record remains. Terminal input is
+    never replayed automatically; after a reconnect, only output retained in
+    the live Host's bounded replay ring may be recovered. Host shutdown ends
+    the PTY and its replay state.
 ## 13. Amendment history
 
 D374 (2026-09-10) added the browser cookie/header authentication profiles,
@@ -532,3 +612,21 @@ D454 (2026-09-19) added SSH password authentication for the bootstrap (§3.4,
 ADR 0293): the credential-handling rules above and gate 21. It relaxes
 `BatchMode=yes` for a password target only, with `NumberOfPasswordPrompts=1`
 and `PubkeyAuthentication=no`, and keeps a key or agent as the default path.
+
+D629 (2026-09-25) fixed how provider configuration reaches a bootstrapped Host
+(§3.4, ADR 0310): `pi-host provider-import` receives the payload on the SSH
+channel's stdin and hands it to the running Host over an owner-only Unix admin
+socket (`0700` dir, `0600` socket, 1 MiB cap, no Windows), so a provider key
+never crosses argv, logs, a remote file, or RACP, and no second host-core is
+spawned. Import is manual and idempotent; nothing is deleted.
+
+D628 (2026-09-25) added remote session entry (ADR 0308): the desktop backend
+router now fails closed on a `remote:` session id whose host is offline instead
+of routing it to the local handler (amends ADR 0286 §3), and a remote session
+runs under the host's default model with no desktop-side model picker.
+
+ADR 0309 (2026-09-25) amends the terminal security contract for remote Host
+sessions: only the SSH-paired owner may use a terminal; each PTY is bound to a
+Session and principal, with active I/O attached to one connection. The Host
+deduplicates retried opens by `openRequestId`, never replays terminal input, and
+uses the Session root only as the shell's working directory, not as a sandbox.

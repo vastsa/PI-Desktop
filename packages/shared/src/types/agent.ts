@@ -1,6 +1,6 @@
 /** Shared public types grouped by the owning application domain. */
 import type { AppError } from "../errors.js";
-import type { PlanExecution, PlanningStateEvent } from "./plans.js";
+import type { PlanExecution, PlanningState, PlanningStateEvent } from "./plans.js";
 import type { ContextCompactionFallback, ContextCompactionMark, ContextCompactionReason } from "./sessions.js";
 import type { AgentStatus } from "./sessions.js";
 import type { MessageUsage, ToolTokenUsage, UiMessage } from "./messages.js";
@@ -46,14 +46,10 @@ export type AgentPromptRequest = {
    */
   viewingSessionId?: string | null;
   /**
-   * Per-turn permission ceiling override (spec §7.3): the effective mode the
-   * remote layer computed for this specific turn, which the runtime must apply
-   * for tool decisions instead of the session's stored mode. Absent means the
-   * session's stored mode is used. Accepted only when the requested mode is
-   * narrower than or equal to the session's mode; a wider request is refused
-   * before the turn starts. The bridge forwards this end-to-end so the
-   * host-core scoping (still pending, R1 leftover) can enforce it turn-locally
-   * once it lands.
+   * Host-computed per-turn permission ceiling (spec §7.3). When present, main
+   * binds it to the durable turn; host-core validates that it does not widen
+   * the session mode and clamps every tool decision, including delegate calls.
+   * Absent means no remote ceiling applies to this principal.
    */
   permissionMode?: RacpPermissionMode;
 };
@@ -252,6 +248,16 @@ export type AgentEvent =
   | ({ type: "planning_state" } & Omit<PlanningStateEvent, "sessionId">)
   | { type: "tool_permission_request"; request: ToolPermissionRequest }
   | { type: "asktool_request"; request: AskToolRequest }
+  /** Renderer-only synchronization events emitted by the remote event bridge. */
+  | {
+      type: "remote_snapshot_state";
+      isRunning: boolean;
+      currentTurnId?: string;
+      pendingToolConfirmations: number;
+      planningState?: PlanningState;
+    }
+  | { type: "remote_approval_resolved"; requestId: string }
+  | { type: "remote_input_resolved"; requestId: string }
   | {
       type: "compaction_start";
       reason: ContextCompactionReason;

@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import type { RuntimePort, TurnStartRequest, TurnSteerRequest } from "@pi-desktop/agent-host";
+import type {
+  RuntimePort,
+  ToolRelayExecutionResult,
+  ToolRelayPort,
+  TurnStartRequest,
+  TurnSteerRequest,
+} from "@pi-desktop/agent-host";
 import {
   ErrorCodes,
   compactionRecordId,
@@ -9,8 +15,11 @@ import {
   type AgentStatus,
   type AskToolResolution,
   type Risk,
+  type RacpRelayTool,
   type UiMessage,
+  RacpToolExecuteParamsSchema,
 } from "@pi-desktop/shared";
+import * as Value from "typebox/value";
 
 import type { LaunchResolver } from "./launch-resolver.js";
 import { resolveSessionMessageInput } from "./session-message-input.js";
@@ -71,6 +80,8 @@ export type RuntimeServiceOptions = {
     content: string;
     projectPath?: string;
   }) => Promise<{ content: string; command?: string } | null>;
+  /** Owner-advertised desktop tools, routed through the RACP server request. */
+  toolRelay?: ToolRelayPort;
   checkpointIntervalMs?: number;
 };
 
@@ -144,6 +155,10 @@ export class RuntimeService implements RuntimePort {
   attachHost(host: RuntimeHostLink): void {
     const off = host.onNotification((method, params) => {
       if (this.options.getHost() !== host) return;
+      if (method === "plugins.execute") {
+        void this.forwardPluginExecution(host, params);
+        return;
+      }
       if (method !== "permissions.request") return;
       const permission = params as {
         requestId: string;
@@ -239,6 +254,9 @@ export class RuntimeService implements RuntimePort {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    for (const [sessionId, turnId] of this.activeTurns) {
+      this.options.toolRelay?.releaseTurn(sessionId, turnId);
+    }
     for (const detach of this.detachers.splice(0)) detach();
     await this.events.dispose();
     this.listeners.clear();
@@ -280,18 +298,6 @@ export class RuntimeService implements RuntimePort {
     }
   }
 
-  /** True when the effective per-turn mode narrows or otherwise differs from
-   * the session's stored `permissionMode`; used to decide whether to forward a
-   * per-turn override to the sidecar. A widening request has already been
-   * refused by the agent-host bridge before reaching here. */
-  private sessionModeDiffers(
-    session: Record<string, unknown> | null | undefined,
-    effective: string,
-  ): boolean {
-    const stored = session && typeof session.permissionMode === "string" ? session.permissionMode : undefined;
-    return stored !== undefined && stored !== effective;
-  }
-
   private async startTurn(sessionId: string, request: TurnStartRequest): Promise<{ turnId: string }> {
     const host = this.requireHost();
     const sidecar = this.requireSidecar();
@@ -312,7 +318,37 @@ export class RuntimeService implements RuntimePort {
     const launch = await this.options.launch.resolve(sessionId, session, settings ?? {});
     sidecar.setProjectInstructionRoot(sessionId, launch.projectPath);
 
-    const turnId = await this.beginTurn(sessionId, launch.providerId, launch.modelId, sessionMessage?.origin.messageId);
+    let relayCatalog: ReturnType<ToolRelayPort["captureCatalog"]> | undefined;
+    try {
+      relayCatalog = this.options.toolRelay?.captureCatalog(sessionId);
+    } catch (error) {
+      // A catalog failure must not prevent a prompt from running, but no relay
+      // tools are exposed for this turn unless a complete snapshot was made.
+      this.options.log("warn", "remote tool catalog unavailable", { sessionId, error: String(error) });
+    }
+
+    let turnId: string;
+    try {
+      turnId = await this.beginTurn(
+        sessionId,
+        launch.providerId,
+        launch.modelId,
+        sessionMessage?.origin.messageId,
+        request.permissionCeiling,
+      );
+    } catch (error) {
+      if (relayCatalog) this.options.toolRelay?.releaseCatalog(relayCatalog.id);
+      throw error;
+    }
+    if (relayCatalog) {
+      try {
+        this.options.toolRelay?.bindTurn(relayCatalog.id, sessionId, turnId);
+      } catch (error) {
+        this.options.toolRelay?.releaseCatalog(relayCatalog.id);
+        await this.finishTurn(sessionId, "error", errorCodeOf(error), { turnId });
+        throw error;
+      }
+    }
 
     let content = sessionMessage?.content ?? request.content;
     let command: string | undefined;
@@ -351,7 +387,7 @@ export class RuntimeService implements RuntimePort {
     let result: { accepted: boolean; turnId: string };
     try {
       result = await sidecar.call<{ accepted: boolean; turnId: string }>("agent.prompt", {
-        ...launch.sidecarParams,
+        ...this.sidecarParamsWithRelayTools(launch.sidecarParams, relayCatalog?.tools ?? []),
         // The host-created durable turn is the approval identity used by
         // Rust. The runtime must not replace it with a provider-local UUID.
         turnId,
@@ -359,13 +395,6 @@ export class RuntimeService implements RuntimePort {
         ...(sessionMessage ? { sessionMessage: sessionMessage.origin } : {}),
         attachments: [],
         userMessageId: userMessage.id,
-        // Per-turn permission ceiling override (R1 leftover; spec §7.3). Only
-        // forwarded when the effective mode differs from the session's stored
-        // mode — a widening request has already been refused upstream so any
-        // override that reaches here is narrower than or equal to session.
-        ...(request.effectivePermissionMode && this.sessionModeDiffers(session, request.effectivePermissionMode)
-          ? { permissionMode: request.effectivePermissionMode }
-          : {}),
       });
     } catch (error) {
       await this.finishTurn(sessionId, "error", errorCodeOf(error), { turnId });
@@ -431,6 +460,12 @@ export class RuntimeService implements RuntimePort {
     // while, and a terminal event arriving in that window must not settle the
     // turn as completed.
     this.lockAbortReason(sessionId, abortedTurnId);
+    // Release the turn-bound relay before waiting for the sidecar. The remote
+    // MCP request may be the sidecar call that is currently waiting, so the
+    // normal finishTurn cleanup is too late to cancel the Desktop execution.
+    // finishTurn calls this again in its finally block; releaseTurn is
+    // idempotent for an already-settled execution.
+    if (abortedTurnId) this.options.toolRelay?.releaseTurn(sessionId, abortedTurnId);
     try {
       await sidecar.call("agent.abort", { sessionId, ...(turnId ? { turnId } : {}) });
     } finally {
@@ -521,12 +556,19 @@ export class RuntimeService implements RuntimePort {
   }
 
   /** Open a durable turn row and take ownership of the session for it. */
-  async beginTurn(sessionId: string, providerId: string, modelId: string, sessionMessageId?: string): Promise<string> {
+  async beginTurn(
+    sessionId: string,
+    providerId: string,
+    modelId: string,
+    sessionMessageId?: string,
+    permissionCeiling?: string,
+  ): Promise<string> {
     const turn = await this.requireHost().call<{ turnId?: string }>("session.beginTurn", {
       sessionId,
       providerId,
       modelId,
       ...(sessionMessageId ? { sessionMessageId } : {}),
+      ...(permissionCeiling ? { permissionCeiling } : {}),
     });
     const turnId = String(turn?.turnId ?? "").trim();
     if (!turnId) throw new Error("session.beginTurn returned no turn");
@@ -583,6 +625,7 @@ export class RuntimeService implements RuntimePort {
     if (existing) return existing;
     if (!this.isActiveTurn(id, turnId)) {
       this.pendingAbortReasons.delete(key);
+      this.options.toolRelay?.releaseTurn(id, turnId);
       return Promise.resolve();
     }
     const reason = this.pendingAbortReasons.get(key) ?? status;
@@ -613,6 +656,7 @@ export class RuntimeService implements RuntimePort {
         }
       } finally {
         if (this.activeTurns.get(id) === turnId) this.activeTurns.delete(id);
+        this.options.toolRelay?.releaseTurn(id, turnId);
         this.events.scheduleToolCallCleanup(id, turnId);
       }
     };
@@ -677,6 +721,76 @@ export class RuntimeService implements RuntimePort {
     const sidecar = this.options.getSidecar();
     if (!sidecar) throw typedError("sidecar unavailable", ErrorCodes.AGENT_UNAVAILABLE);
     return sidecar;
+  }
+
+  private sidecarParamsWithRelayTools(
+    params: Record<string, unknown> & { sessionId: string },
+    remoteTools: ReadonlyArray<RacpRelayTool>,
+  ): Record<string, unknown> & { sessionId: string } {
+    if (remoteTools.length === 0) return params;
+    const current = Array.isArray(params.pluginTools) ? params.pluginTools : [];
+    const relayTools = remoteTools
+      .filter((tool) => tool.workspaceFree === true)
+      .map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema,
+      }));
+    return { ...params, pluginTools: [...current, ...relayTools] };
+  }
+
+  private async forwardPluginExecution(host: RuntimeHostLink, params: unknown): Promise<void> {
+    const candidate = params as {
+      executionId?: unknown;
+      sessionId?: unknown;
+      turnId?: unknown;
+      toolCallId?: unknown;
+      toolName?: unknown;
+      args?: unknown;
+    } | null;
+    const executionId = typeof candidate?.executionId === "string" ? candidate.executionId : "";
+    if (!executionId) {
+      this.options.log("warn", "plugin execution notification is missing its execution id");
+      return;
+    }
+
+    const picked = {
+      executionId,
+      sessionId: candidate?.sessionId,
+      turnId: candidate?.turnId,
+      toolCallId: candidate?.toolCallId,
+      toolName: candidate?.toolName,
+      args: candidate?.args,
+    };
+    let result: ToolRelayExecutionResult = {
+      ok: false,
+      content: { error: "The advertised tool is unavailable or failed.", code: "TOOL_FAILED" },
+      errorCode: "TOOL_FAILED",
+    };
+    if (Value.Check(RacpToolExecuteParamsSchema, picked) && this.options.toolRelay) {
+      try {
+        result = await this.options.toolRelay.execute(picked);
+      } catch (error) {
+        this.options.log("warn", "remote tool execution failed", {
+          sessionId: picked.sessionId,
+          turnId: picked.turnId,
+          toolCallId: picked.toolCallId,
+          toolName: picked.toolName,
+          error: String(error),
+        });
+      }
+    }
+    if (this.options.getHost() !== host) return;
+    try {
+      await host.call("plugins.resolveExecution", {
+        executionId,
+        ok: result.ok,
+        content: result.content,
+        ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+      });
+    } catch (error) {
+      this.options.log("warn", "plugin execution resolution failed", { executionId, error: String(error) });
+    }
   }
 }
 

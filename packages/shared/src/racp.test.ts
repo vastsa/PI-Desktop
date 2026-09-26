@@ -6,18 +6,21 @@ import {
   LOCAL_AGENT_EVENT_TYPES,
   RACP_DEFAULT_LIMITS,
   RACP_DEFAULT_POLICY,
+  RACP_TERMINAL_INPUT_MAX_BYTES,
   RACP_EPHEMERAL_EVENT_KINDS,
   RACP_ERROR_CODES,
   RACP_EVENT_KINDS,
   RACP_HTTP_ROUTES,
   RACP_OPERATIONS,
   RACP_SCHEMAS,
+  clampPermissionMode,
   RACP_SHIPPED_BINDINGS,
   RacpEventEnvelopeSchema,
   RacpInitializeResultSchema,
   RacpSessionSnapshotSchema,
   allowedDecisionsAreCoherent,
   effectiveRemotePermissionMode,
+  remotePermissionCeiling,
   eventEnvelopeSequencingIsValid,
   formatRacpCursor,
   isDurableEventKind,
@@ -27,6 +30,7 @@ import {
   racpKindForAgentEvent,
   rolesAllowOperation,
   toRacpErrorCode,
+  validateRacpTerminalInputData,
   type RacpApprovalRequest,
   type RacpEventEnvelope,
   type RacpInitializeResult,
@@ -147,6 +151,34 @@ describe("RACP schemas", () => {
   });
 });
 
+describe("terminal input encoding and bounds", () => {
+  it("accepts canonical padded Base64 through the decoded byte limit", () => {
+    const maximum = Buffer.alloc(RACP_TERMINAL_INPUT_MAX_BYTES, 0x61).toString("base64");
+    expect(validateRacpTerminalInputData("")).toEqual({ valid: true, byteLength: 0 });
+    expect(validateRacpTerminalInputData("YQ==")).toEqual({ valid: true, byteLength: 1 });
+    expect(validateRacpTerminalInputData(maximum)).toEqual({ valid: true, byteLength: RACP_TERMINAL_INPUT_MAX_BYTES });
+  });
+
+  it("rejects noncanonical Base64 and reports decoded input over the limit", () => {
+    for (const value of ["YR==", "YQ", "YQ===", "Y Q==", "_w==", "\u00ff\u00ff\u00ff\u00ff"]) {
+      expect(validateRacpTerminalInputData(value)).toEqual({ valid: false, reason: "invalid-base64" });
+    }
+    expect(validateRacpTerminalInputData("/w==")).toEqual({ valid: false, reason: "invalid-utf8" });
+    const oversized = Buffer.alloc(RACP_TERMINAL_INPUT_MAX_BYTES + 1).toString("base64");
+    expect(validateRacpTerminalInputData(oversized)).toEqual({
+      valid: false,
+      reason: "payload-too-large",
+      limitBytes: RACP_TERMINAL_INPUT_MAX_BYTES,
+      byteLength: RACP_TERMINAL_INPUT_MAX_BYTES + 1,
+    });
+    expect(validateRacpTerminalInputData("!".repeat(90_000))).toMatchObject({
+      valid: false,
+      reason: "payload-too-large",
+      limitBytes: RACP_TERMINAL_INPUT_MAX_BYTES,
+    });
+  });
+});
+
 describe("event envelopes", () => {
   const base: Omit<RacpEventEnvelope, "kind" | "sequence" | "afterSequence"> = {
     eventId: "evt_1",
@@ -256,6 +288,12 @@ describe("approvals", () => {
 describe("remote permission ceiling", () => {
   const policy = { remoteMaxPermissionMode: "ask", applyCeilingToPairedDevices: false } as const;
 
+  it("clamps a persisted queue mode against its captured Host ceiling", () => {
+    expect(clampPermissionMode("auto", "ask")).toBe("ask");
+    expect(clampPermissionMode("accept-edits", "accept-edits")).toBe("accept-edits");
+    expect(clampPermissionMode("ask", "auto")).toBe("ask");
+  });
+
   it("caps gateway-routed principals at the ceiling", () => {
     expect(
       effectiveRemotePermissionMode({
@@ -300,6 +338,30 @@ describe("remote permission ceiling", () => {
         approverOverride: true,
       }),
     ).toBe("auto");
+    expect(
+      remotePermissionCeiling({
+        sessionMode: "ask",
+        policy,
+        pairedDevice: false,
+        approverOverride: false,
+      }),
+    ).toBe("ask");
+    expect(
+      remotePermissionCeiling({
+        sessionMode: "auto",
+        policy,
+        pairedDevice: true,
+        approverOverride: false,
+      }),
+    ).toBeUndefined();
+    expect(
+      remotePermissionCeiling({
+        sessionMode: "ask",
+        policy: { ...policy, remoteMaxPermissionMode: "auto" },
+        pairedDevice: false,
+        approverOverride: true,
+      }),
+    ).toBe("ask");
   });
 });
 

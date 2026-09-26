@@ -52,16 +52,18 @@ test("a topology node opens a real subagent tab in the work panel", () => {
   // The overlay state and its actions are gone: closing happens per tab.
   assert.doesNotMatch(storeSource, /subagentPanel/);
   assert.doesNotMatch(storeSource, /toggleSubagentPanel|closeSubagentPanel/);
-  assert.match(tabsSource, /\| "plugin"\s*\|\s*"subagent";/);
+  // Terminal is a tab kind for capability-gated remote Hosts only; it does
+  // not add a local shell path to the work panel.
+  assert.match(tabsSource, /\| "plugin"\s*\|\s*"subagent"\s*\|\s*"terminal";/);
   assert.match(
     tabsSource,
     /export function subagentWorkPanelTab\(\s*delegationId: string,\s*agentName\?: string,\s*\): WorkPanelTab \{/,
   );
   assert.match(tabsSource, /id: `subagent:\$\{delegationId\}`/);
-  assert.match(tabsSource, /tab\.kind === "subagent"\)/);
+  assert.match(tabsSource, /tab\.kind === "subagent"/);
   // Retained runtime state must survive the session-switch sanitizer.
   assert.match(tabsSource, /export function subagentTabDisplayLabels\(/);
-  assert.match(tabsSource, /tab\.kind === "subagent"\)/);
+  assert.match(tabsSource, /tab\.kind === "subagent"/);
   // Retained runtime state must survive the session-switch sanitizer.
   assert.match(tabsSource, /export function subagentTabDisplayLabels\(/);
 });

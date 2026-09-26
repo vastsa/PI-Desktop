@@ -48,6 +48,13 @@ dependency (`@pi-desktop/racp`).
    support byte-for-byte compatible when disabled and prevents accidental
    routing of a local id.
 
+   > **Amended by ADR 0308 (D628).** The `ROUTE_LOCAL` fallthrough is correct
+   > for an *unknown* id, but a `remote:`-namespaced id whose backend is absent
+   > or offline must not fall through to the local handler. The router now fails
+   > closed on a `remote:` id with no live backend and keeps routing local for
+   > an unregistered local id. The router-off default for builds with no paired
+   > host is unchanged.
+
 2. **A stateless per-request session id.** `sessionIdForCall` recovers the
    session from either the first positional argument, `first.sessionId`,
    `first.id` (`sessionGet` uses this shape), or a

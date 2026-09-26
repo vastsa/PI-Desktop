@@ -332,4 +332,37 @@
   background: var(--ds-bg-active);
 }
 
+/* Remote hosts (D627): one borderless group per paired host. */
+.thread-item-source {
+  flex: none;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
 
+.sidebar-remote-host-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 4px 2px 8px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+
+.sidebar-remote-host-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-remote-host-state {
+  flex: none;
+  font-size: var(--text-xs);
+}
+
+.sidebar-remote-host[data-connected="false"] .sidebar-remote-host-label {
+  color: var(--ds-text-muted);
+}

@@ -10,13 +10,13 @@ register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const { createRacpRemoteHostClient } = await import(
   "../electron/main/remote/racp-remote-host-client.ts"
 );
-const { harness, OWNER_TOKEN, MemoryLink } = await import("@pi-desktop/racp/test-harness");
+const { harness, OWNER_TOKEN, MemoryLink, flush } = await import("@pi-desktop/racp/test-harness");
 
 /** Build a transport factory that authenticates OWNER_TOKEN and hands the
  * server the link's server side. Each call to the factory opens a fresh
  * `MemoryLink`, mirroring how the production ws factory opens a fresh socket
  * per (re)connect. */
-function ownerTransport({ server, authenticator }) {
+function ownerTransport({ server, authenticator, links }) {
   return async () => {
     const auth = await authenticator.authenticate({
       authorization: `Bearer ${OWNER_TOKEN}`,
@@ -25,6 +25,7 @@ function ownerTransport({ server, authenticator }) {
     });
     if (!auth) throw new Error("test authenticator refused OWNER_TOKEN");
     const link = new MemoryLink();
+    links?.push(link);
     const accepted = server.accept(auth, link.serverSide());
     if (!accepted) throw new Error("test server refused connection");
     return link.clientSide();
@@ -130,4 +131,91 @@ test("request before connect rejects with HOST_DISCONNECTED", async () => {
     () => adapter.client.request("session/list"),
     (error) => error.code === "HOST_DISCONNECTED",
   );
+});
+
+test("adapter routes server requests, exposes cursors, and notifies state/reconnect listeners", async () => {
+  const advertisements = [];
+  const toolRelay = {
+    advertise: (input) => advertisements.push(input),
+    clearConnection: () => undefined,
+    captureCatalog: () => ({ id: "catalog", tools: [] }),
+    bindTurn: () => undefined,
+    releaseCatalog: () => undefined,
+    releaseTurn: () => undefined,
+    async execute() {
+      return { ok: false, errorCode: "TOOL_FAILED", content: { code: "TOOL_FAILED" } };
+    },
+  };
+  const h = await harness({ toolRelay });
+  const adapter = createRacpRemoteHostClient({
+    transport: ownerTransport(h),
+    clientInfo: { name: "test-desktop", version: "0.15.0" },
+    requestTimeoutMs: 2_000,
+    reconnect: { enabled: true, baseDelayMs: 1, maxDelayMs: 2, maxAttempts: 2 },
+  });
+  const requests = [];
+  const states = [];
+  let reconnected = 0;
+  let markReconnected;
+  const reconnectSignal = new Promise((resolve) => { markReconnected = resolve; });
+  const detachRequest = adapter.client.onServerRequest((method, params) => {
+    requests.push({ method, params });
+    return Promise.resolve({ result: { ok: true }, isError: false });
+  });
+  const detachState = adapter.client.onConnectionState((state) => states.push(state));
+  const detachReconnect = adapter.client.onReconnected(() => {
+    reconnected += 1;
+    markReconnected();
+  });
+  await adapter.connect();
+  await adapter.client.request("events/subscribe", { scope: "host" });
+  await adapter.client.request("session/create", { title: "cursor" });
+  assert.equal(adapter.client.initialized()?.principal.roles.includes("owner"), true);
+  assert.ok(adapter.client.cursorForHost(), "the host cursor is exposed to subscription recovery");
+  await adapter.client.request("events/subscribe", { scope: "session", sessionId: "s1" });
+  h.host.ingest({
+    sessionId: "s1",
+    turnId: "rt_1",
+    ts: Date.now(),
+    event: {
+      type: "message_end",
+      message: {
+        id: "cursor-item",
+        role: "assistant",
+        content: "cursor",
+        createdAt: "2026-09-25T00:00:00.000Z",
+        status: "complete",
+      },
+    },
+  });
+  await flush();
+  assert.ok(adapter.client.cursorFor("s1"), "the session cursor is exposed to subscription recovery");
+
+  await adapter.client.request("tools/advertise", {
+    sessionId: "s1",
+    tools: [{
+      name: "mcp_global_lookup",
+      description: "Look up a value",
+      inputSchema: { type: "object", properties: {} },
+      timeoutMs: 5_000,
+      workspaceFree: true,
+    }],
+  });
+  assert.equal(advertisements.length, 1);
+  assert.deepEqual(
+    await advertisements[0].request("tool/execute", { sessionId: "s1" }, 1_000),
+    { result: { ok: true }, isError: false },
+  );
+  assert.deepEqual(requests, [{ method: "tool/execute", params: { sessionId: "s1" } }]);
+
+  h.links[0].drop();
+  await reconnectSignal;
+  assert.ok(states.includes("reconnecting"));
+  assert.ok(states.includes("connected"));
+  assert.equal(reconnected, 1);
+
+  detachRequest();
+  detachState();
+  detachReconnect();
+  await adapter.close();
 });

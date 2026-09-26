@@ -80,8 +80,13 @@
 - `Resources/agent-runtime/sidecar.js`是唯一独立的pi sidecar
   捆绑。完整的 `@pi-desktop/agent-runtime` 包树不能是
   复制到 ASAR 作为第二个运行时。
-- 桌面包不再包含交互式 PTY 依赖；Agent Bash 仍是由 agent sidecar
-  所有的非交互式运行时能力。
+- 本地桌面会话不提供 Terminal（ADR 0108）：桌面包没有本地交互式 PTY
+  运行时。Agent Bash 仍是由 agent sidecar 持有的非交互式运行时能力。
+  计划中的 R2b 工作面板 Terminal 仅用于远程会话：xterm.js 在 renderer
+  中运行，Electron Main 经 RACP 转发类型化请求，可选的 `node-pty` 仅留在
+  `pi-host` 内。Shell 在远程 Host 上以其操作系统用户权限运行，以会话根目录为
+  工作目录，但该目录不是文件系统沙箱。只有 Host/RACP PTY 实现而没有桌面 IPC、
+  事件传递、能力门控和 renderer 生命周期管理，并不代表桌面 Terminal 已交付。
 - 依赖源映射、测试、示例和声明是构建输入，
   不释放资产。许可证和通知文件仍然可分发。
 - Mermaid、KaTeX 和 Shiki 等惰性渲染器功能仍保留在本地

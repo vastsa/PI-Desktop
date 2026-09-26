@@ -18,19 +18,24 @@ import type {
   RacpApprovalRequest,
   RacpEventEnvelope,
   RacpInputRequest,
+  RacpSession,
+  RacpSessionSnapshot,
+  RemoteTerminalEvent,
   ToolPermissionRequest,
 } from "@pi-desktop/shared";
-import { makeRemoteApprovalRequestId, makeRemoteSessionId } from "./backend-router.js";
+import {
+  makeRemoteApprovalRequestId,
+  makeRemoteSessionId,
+  makeRemoteTerminalId,
+} from "./backend-router.js";
 
-/** A minimal shape of the session field carried by host-scope session events.
- * Both the RACP `RacpSession` and the host's smaller `SessionSummary` extend
- * this — no field beyond these five is read by lifecycle handlers. */
-export type RemoteEventSessionRef = {
-  id: string;
-  title?: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
+/**
+ * The session carried by a host-scope session event. The host publishes either
+ * its `SessionSummary` (`{ session }`) or a status-only change (`{ sessionId,
+ * status, planningState }`); both are folded into this partial `RacpSession`,
+ * so a lifecycle handler merges whatever fields arrived.
+ */
+export type RemoteEventSessionRef = Partial<RacpSession> & { id: string };
 
 export type RemoteLifecycleEvent =
   | { readonly kind: "session.created"; readonly hostSessionId: string; readonly remoteSessionId: string; readonly session: RemoteEventSessionRef }
@@ -51,6 +56,8 @@ export type RemoteEventBridgeOptions = {
 export interface RemoteEventBridge {
   /** Handle one RACP envelope. Unknown kinds are dropped. */
   handle(envelope: RacpEventEnvelope): void;
+  /** Restore actionable requests omitted by event replay after a resync. */
+  restoreSnapshot(hostSessionId: string, snapshot: RacpSessionSnapshot): void;
 }
 
 const APPROVAL_KIND = { tool: "tool", plan: "plan", goal: "goal" } as const;
@@ -62,12 +69,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function extractSessionRef(payload: unknown): RemoteEventSessionRef | undefined {
   if (!isRecord(payload)) return undefined;
   const session = payload.session;
-  if (!isRecord(session) || typeof session.id !== "string") return undefined;
+  if (isRecord(session) && typeof session.id === "string") {
+    return session as unknown as RemoteEventSessionRef;
+  }
+  if (typeof payload.sessionId !== "string") return undefined;
   return {
-    id: session.id,
-    ...(typeof session.title === "string" ? { title: session.title } : {}),
-    ...(typeof session.createdAt === "string" ? { createdAt: session.createdAt } : {}),
-    ...(typeof session.updatedAt === "string" ? { updatedAt: session.updatedAt } : {}),
+    id: payload.sessionId,
+    ...(typeof payload.status === "string"
+      ? { status: payload.status as RacpSession["status"] }
+      : {}),
+    ...(payload.planningState !== undefined && payload.planningState !== null
+      ? { planningState: payload.planningState as RacpSession["planningState"] }
+      : {}),
   };
 }
 
@@ -91,6 +104,18 @@ function extractInputRequest(payload: unknown): RacpInputRequest | undefined {
   if (!isRecord(payload)) return undefined;
   if (typeof payload.id !== "string" || !Array.isArray(payload.questions)) return undefined;
   return payload as unknown as RacpInputRequest;
+}
+
+function extractResolutionId(payload: unknown, key: "approvalId" | "inputId"): string | undefined {
+  if (!isRecord(payload) || typeof payload[key] !== "string" || payload[key].length === 0) {
+    return undefined;
+  }
+  return payload[key];
+}
+
+function isBase64(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
 }
 
 function toToolPermissionRequest(
@@ -145,22 +170,28 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
   const log = options.log ?? (() => undefined);
   const remoteIdOf = (hostSessionId: string) => makeRemoteSessionId(hostKey, hostSessionId);
   const emitAgentEvent = (
-    envelope: RacpEventEnvelope,
     remoteSessionId: string,
+    occurredAt: string,
+    turnId: string | undefined,
     event: AgentEvent,
+    parentToolCallId?: string,
+    agentName?: string,
   ): void => {
     const local: AgentEventEnvelope = {
       sessionId: remoteSessionId,
-      ...(envelope.turnId ? { turnId: envelope.turnId } : {}),
-      ts: Date.parse(envelope.occurredAt) || Date.now(),
+      ...(turnId ? { turnId } : {}),
+      ts: Date.parse(occurredAt) || Date.now(),
       event,
-      ...(envelope.parentToolCallId ? { parentToolCallId: envelope.parentToolCallId } : {}),
-      ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
+      ...(parentToolCallId ? { parentToolCallId } : {}),
+      ...(agentName ? { agentName } : {}),
     };
     emit(IPC.event.agentMessage, local);
   };
 
   const handleHostSession = (envelope: RacpEventEnvelope): void => {
+    // Only session lifecycle kinds name a session; `host.changed` and any
+    // future host-scope kind are not session events.
+    if (!envelope.kind.startsWith("session.")) return;
     const session = extractSessionRef(envelope.payload);
     if (!session) {
       log("warn", `host-scope ${envelope.kind} carried no session`, envelope);
@@ -169,10 +200,9 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
     const remoteSessionId = remoteIdOf(session.id);
     if (envelope.kind === "session.created") {
       onLifecycle?.({ kind: "session.created", hostSessionId: session.id, remoteSessionId, session });
-      emit(IPC.event.sessionsChanged, {
-        reason: "remote.session.created",
-        selectSessionId: remoteSessionId,
-      });
+      // No `selectSessionId`: a session another client created must not take
+      // this window's focus. The desktop's own create selects its result.
+      emit(IPC.event.sessionsChanged, { reason: "remote.session.created" });
       return;
     }
     if (envelope.kind === "session.changed") {
@@ -180,14 +210,15 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
       emit(IPC.event.sessionsChanged, { reason: "remote.session.changed" });
       return;
     }
-    // "session.archived": pass through to the lifecycle handler for router
-    // cleanup, then refresh the renderer's session list.
+    if (envelope.kind !== "session.archived") return;
+    // Pass through to the lifecycle handler for cache cleanup, then refresh
+    // the renderer's session list.
     onLifecycle?.({ kind: "session.archived", hostSessionId: session.id, remoteSessionId, session });
     emit(IPC.event.sessionsChanged, { reason: "remote.session.archived" });
   };
 
   const handleSessionScope = (envelope: RacpEventEnvelope): void => {
-    if (typeof envelope.sessionId !== "string") return;
+    if (typeof envelope.sessionId !== "string" || envelope.sessionId.length === 0) return;
     const remoteSessionId = remoteIdOf(envelope.sessionId);
     switch (envelope.kind) {
       case "item.started":
@@ -203,7 +234,14 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
       case "turn.activity": {
         const event = extractAgentEvent(envelope.payload);
         if (!event) return;
-        emitAgentEvent(envelope, remoteSessionId, event);
+        emitAgentEvent(
+          remoteSessionId,
+          envelope.occurredAt,
+          envelope.turnId,
+          event,
+          envelope.parentToolCallId,
+          envelope.agentName,
+        );
         return;
       }
       case "session.changed": {
@@ -211,15 +249,27 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         //   1. `{ event: PlanningStateEvent }` — surface as a local planning
         //      event so the plan card behaves the same as local.
         //   2. `{ sessionId, status, planningState }` — a periodic status
-        //      refresh; the desktop derives its own status from turn events, so
-        //      drop it and let the eventual snapshot refresh cover it.
+        //      refresh; fold it into the connection cache so a later attach
+        //      cannot overwrite a newer authoritative status.
         const payload = envelope.payload;
+        const session = extractSessionRef(payload);
+        if (session) {
+          onLifecycle?.({
+            kind: "session.changed",
+            hostSessionId: session.id,
+            remoteSessionId,
+            session,
+          });
+        }
         if (isRecord(payload) && isRecord(payload.event) && payload.event.state !== undefined) {
           const planning = payload.event as unknown as PlanningStateEvent;
           emitAgentEvent(
-            envelope,
             remoteSessionId,
+            envelope.occurredAt,
+            envelope.turnId,
             toPlanningStateAgentEvent(remoteSessionId, planning),
+            envelope.parentToolCallId,
+            envelope.agentName,
           );
         }
         return;
@@ -230,33 +280,153 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         // Plan / goal approvals ride the following `planning_state` event; the
         // renderer's plan card is driven by that, not by a synthetic tool card.
         if (approval.kind !== APPROVAL_KIND.tool) return;
-        emitAgentEvent(envelope, remoteSessionId, {
-          type: "tool_permission_request",
-          request: toToolPermissionRequest(remoteSessionId, approval),
-        });
+        emitAgentEvent(
+          remoteSessionId,
+          envelope.occurredAt,
+          envelope.turnId,
+          {
+            type: "tool_permission_request",
+            request: toToolPermissionRequest(remoteSessionId, approval),
+          },
+          envelope.parentToolCallId,
+          envelope.agentName,
+        );
         return;
       }
       case "input.requested": {
         const input = extractInputRequest(envelope.payload);
         if (!input) return;
-        emitAgentEvent(envelope, remoteSessionId, {
-          type: "asktool_request",
-          request: toAskToolRequest(remoteSessionId, input),
-        });
+        emitAgentEvent(
+          remoteSessionId,
+          envelope.occurredAt,
+          envelope.turnId,
+          {
+            type: "asktool_request",
+            request: toAskToolRequest(remoteSessionId, input),
+          },
+          envelope.parentToolCallId,
+          envelope.agentName,
+        );
         return;
       }
-      case "approval.resolved":
-      case "input.resolved":
-      case "terminal.changed":
-      case "terminal.output":
+      case "terminal.output": {
+        const payload = envelope.payload;
+        if (
+          !isRecord(payload) ||
+          typeof payload.terminalId !== "string" ||
+          payload.terminalId.length === 0 ||
+          !isBase64(payload.data)
+        ) {
+          log("warn", "remote terminal.output carried an invalid payload", envelope);
+          return;
+        }
+        const event: RemoteTerminalEvent = {
+          type: "output",
+          sessionId: remoteSessionId,
+          terminalId: makeRemoteTerminalId(remoteSessionId, payload.terminalId),
+          output: payload.data,
+        };
+        emit(IPC.event.remoteTerminal, event);
+        return;
+      }
+      case "terminal.changed": {
+        const payload = envelope.payload;
+        if (
+          !isRecord(payload) ||
+          typeof payload.terminalId !== "string" ||
+          payload.terminalId.length === 0 ||
+          (payload.state !== "open" && payload.state !== "closed" && payload.state !== "exited") ||
+          (payload.code !== undefined &&
+            payload.code !== null &&
+            (typeof payload.code !== "number" || !Number.isInteger(payload.code)))
+        ) {
+          log("warn", "remote terminal.changed carried an invalid payload", envelope);
+          return;
+        }
+        const event: RemoteTerminalEvent = {
+          type: "state",
+          sessionId: remoteSessionId,
+          terminalId: makeRemoteTerminalId(remoteSessionId, payload.terminalId),
+          state: payload.state,
+          ...(payload.code !== undefined ? { code: payload.code } : {}),
+        };
+        emit(IPC.event.remoteTerminal, event);
+        return;
+      }
+      case "approval.resolved": {
+        const approvalId = extractResolutionId(envelope.payload, "approvalId");
+        if (!approvalId) return;
+        emitAgentEvent(
+          remoteSessionId,
+          envelope.occurredAt,
+          envelope.turnId,
+          {
+            type: "remote_approval_resolved",
+            requestId: makeRemoteApprovalRequestId(remoteSessionId, approvalId),
+          },
+        );
+        return;
+      }
+      case "input.resolved": {
+        const inputId = extractResolutionId(envelope.payload, "inputId");
+        if (!inputId) return;
+        emitAgentEvent(
+          remoteSessionId,
+          envelope.occurredAt,
+          envelope.turnId,
+          { type: "remote_input_resolved", requestId: inputId },
+        );
+        return;
+      }
       case "resync.required":
-        // Approvals settle through the renderer's own resolve call; the plan
-        // and status changes come as `session.changed` payloads. Terminal
-        // events belong to Stage 5. `resync.required` is Stage 3b — the
-        // connection layer must consume it, not the bridge.
+        // `resync.required` is consumed by the connection layer, not the
+        // renderer bridge.
         return;
       default:
         return;
+    }
+  };
+
+  const restoreSnapshot = (hostSessionId: string, snapshot: RacpSessionSnapshot): void => {
+    const remoteSessionId = remoteIdOf(hostSessionId);
+    const activeTurn = snapshot.activeTurn;
+    const isRunning = snapshot.session.status === "running" ||
+      snapshot.session.status === "waiting_permission" ||
+      activeTurn?.status === "running" ||
+      activeTurn?.status === "waiting_approval" ||
+      activeTurn?.status === "waiting_input";
+    emitAgentEvent(remoteSessionId, snapshot.generatedAt, activeTurn?.id, {
+      type: "remote_snapshot_state",
+      isRunning,
+      ...(activeTurn?.id || snapshot.session.activeTurnId
+        ? { currentTurnId: activeTurn?.id ?? snapshot.session.activeTurnId }
+        : {}),
+      pendingToolConfirmations: snapshot.pendingApprovals.filter(
+        (approval) => approval.kind === APPROVAL_KIND.tool,
+      ).length,
+      planningState: snapshot.session.planningState,
+    });
+    for (const approval of snapshot.pendingApprovals) {
+      // The current RACP plan approval lacks its proposal body, so only tool
+      // approvals can be reconstructed as complete renderer requests.
+      if (approval.kind !== APPROVAL_KIND.tool) continue;
+      emitAgentEvent(remoteSessionId, snapshot.generatedAt, approval.turnId, {
+        type: "tool_permission_request",
+        request: toToolPermissionRequest(remoteSessionId, approval),
+      }, undefined, approval.agentName);
+    }
+    for (const input of snapshot.pendingInputs) {
+      emitAgentEvent(
+        remoteSessionId,
+        snapshot.generatedAt,
+        input.turnId,
+        {
+          type: "asktool_request",
+          request: toAskToolRequest(remoteSessionId, input),
+        },
+        input.parentToolCallId,
+        input.agentName,
+      );
     }
   };
 
@@ -267,6 +437,13 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         if (envelope.scope === "session") return handleSessionScope(envelope);
       } catch (error) {
         log("warn", `remote event bridge failed on ${envelope.kind}`, error);
+      }
+    },
+    restoreSnapshot(hostSessionId, snapshot) {
+      try {
+        restoreSnapshot(hostSessionId, snapshot);
+      } catch (error) {
+        log("warn", `remote snapshot restore failed for session ${hostSessionId}`, error);
       }
     },
   };

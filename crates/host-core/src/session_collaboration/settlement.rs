@@ -19,6 +19,17 @@ pub fn begin_turn(
     provider: Option<&str>,
     model: Option<&str>,
 ) -> Result<String> {
+    begin_turn_with_permission_ceiling(db, session_id, message_id, provider, model, None)
+}
+
+pub fn begin_turn_with_permission_ceiling(
+    db: &Database,
+    session_id: &str,
+    message_id: &str,
+    provider: Option<&str>,
+    model: Option<&str>,
+    permission_ceiling: Option<&str>,
+) -> Result<String> {
     let tx = db.conn().unchecked_transaction()?;
     let message =
         repository::get(db, message_id)?.ok_or_else(|| anyhow!("NOT_FOUND: session message"))?;
@@ -33,7 +44,13 @@ pub fn begin_turn(
         ));
     }
     super::permissions::check_target(db, session_id, &message.permission_ceiling)?;
-    let turn = sessions::begin_turn(db, session_id, provider, model)?;
+    let turn = sessions::begin_turn_with_permission_ceiling(
+        db,
+        session_id,
+        provider,
+        model,
+        permission_ceiling,
+    )?;
     let claimed = db.conn().execute("UPDATE session_collaboration_messages SET status='running',turn_id=?2,updated_at=?3 WHERE id=?1 AND status='queued'",
         params![message_id,turn,now_ms()])?;
     if claimed == 0 {

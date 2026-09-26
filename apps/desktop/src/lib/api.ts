@@ -108,6 +108,20 @@ import type {
   RemoteHostPairRequest,
   RemoteHostPairResult,
   RemoteHostSummary,
+  RemoteProjectBrowseResult,
+  RemoteProjectListResult,
+  RemoteProjectRegisterResult,
+  RemoteSessionCreateRequest,
+  RemoteSessionCreateResult,
+  RemoteHostSyncProvidersRequest,
+  RemoteHostSyncProvidersResult,
+  RemoteTerminalCloseRequest,
+  RemoteTerminalControlResult,
+  RemoteTerminalEvent,
+  RemoteTerminalInputRequest,
+  RemoteTerminalOpenRequest,
+  RemoteTerminalOpenResult,
+  RemoteTerminalResizeRequest,
   UpdateState,
   WindowControlAction,
   CloseBehavior,
@@ -1306,11 +1320,22 @@ export const api = {
   /** Toggles the devtools console; rejects unless developer mode is on. */
   toggleDevTools: (open?: boolean) =>
     invoke<{ open: boolean }>(IPC.invoke.devtoolsToggle, { open }),
-  workspaceDiff: () => invoke<WorkspaceDiff>(IPC.invoke.workspaceDiff),
+  workspaceDiff: (sessionId?: string) =>
+    invoke<WorkspaceDiff>(IPC.invoke.workspaceDiff, {
+      ...(sessionId ? { sessionId } : {}),
+    }),
   workspaceReviewRollback: (input: {
     sessionId: string;
     snapshotId: string;
   }) => invoke<ReviewRollbackResult>(IPC.invoke.workspaceReviewRollback, input),
+  remoteTerminalOpen: (request: RemoteTerminalOpenRequest) =>
+    invoke<RemoteTerminalOpenResult>(IPC.invoke.remoteTerminalOpen, request),
+  remoteTerminalInput: (request: RemoteTerminalInputRequest) =>
+    invoke<RemoteTerminalControlResult>(IPC.invoke.remoteTerminalInput, request),
+  remoteTerminalResize: (request: RemoteTerminalResizeRequest) =>
+    invoke<RemoteTerminalControlResult>(IPC.invoke.remoteTerminalResize, request),
+  remoteTerminalClose: (request: RemoteTerminalCloseRequest) =>
+    invoke<RemoteTerminalControlResult>(IPC.invoke.remoteTerminalClose, request),
   browserNavigate: (url: string, sessionId?: string) =>
     invoke<BrowserState>(IPC.invoke.browserNavigate, { url, sessionId }),
   browserAction: (action: BrowserAction) =>
@@ -1327,12 +1352,16 @@ export const api = {
     invoke(IPC.invoke.browserOpenExternal, url ? { url } : {}),
   browserGetState: () =>
     invoke<BrowserState | null>(IPC.invoke.browserGetState),
-  fsList: (path?: string) =>
-    invoke<{ entries: FsEntry[] }>(IPC.invoke.fsList, { path: path ?? "" }),
-  fsRead: (path: string, mimeType?: string) =>
+  fsList: (path?: string, sessionId?: string) =>
+    invoke<{ entries: FsEntry[] }>(IPC.invoke.fsList, {
+      path: path ?? "",
+      ...(sessionId ? { sessionId } : {}),
+    }),
+  fsRead: (path: string, mimeType?: string, sessionId?: string) =>
     invoke<FsReadResult>(IPC.invoke.fsRead, {
       path,
       ...(mimeType ? { mimeType } : {}),
+      ...(sessionId ? { sessionId } : {}),
     }),
   fsReadImageDataUrl: (ref: string, mimeType?: string) =>
     invoke<FsImageDataUrlResult>(IPC.invoke.fsReadImageDataUrl, {
@@ -1440,6 +1469,12 @@ export const api = {
       listener(payload as BrowserState),
     );
   },
+  onRemoteTerminalEvent: (listener: (event: RemoteTerminalEvent) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.remoteTerminal, (payload) =>
+      listener(payload as RemoteTerminalEvent),
+    );
+  },
   onBrowserPreview: (
     listener: (event: { sessionId: string; path?: string; url?: string }) => void,
   ) => {
@@ -1534,12 +1569,33 @@ export const api = {
   /** Close and drop a paired host by its stable routing key. */
   removeRemoteHost: (hostKey: string) =>
     invoke<{ ok: true }>(IPC.invoke.remoteHostRemove, { hostKey }),
+  /** Projects a connected host has registered. */
+  listRemoteProjects: (hostKey: string) =>
+    invoke<RemoteProjectListResult>(IPC.invoke.remoteProjectList, { hostKey }),
+  /** Directories under the host's browse root; absent `path` is the root. */
+  browseRemoteProject: (hostKey: string, path?: string) =>
+    invoke<RemoteProjectBrowseResult>(IPC.invoke.remoteProjectBrowse, {
+      hostKey,
+      ...(path ? { path } : {}),
+    }),
+  registerRemoteProject: (hostKey: string, path: string) =>
+    invoke<RemoteProjectRegisterResult>(IPC.invoke.remoteProjectRegister, { hostKey, path }),
+  /** Create a session on a connected host; it runs on the host's default model. */
+  createRemoteSession: (request: RemoteSessionCreateRequest) =>
+    invoke<RemoteSessionCreateResult>(IPC.invoke.remoteSessionCreate, request).then(
+      (result) => ({ session: normalizeSession(result.session) }),
+    ),
+  /** Copy local providers, keys included, to an SSH host over its SSH channel. */
+  syncRemoteHostProviders: (request: RemoteHostSyncProvidersRequest) =>
+    invoke<RemoteHostSyncProvidersResult>(IPC.invoke.remoteHostSyncProviders, request),
   onSessionsChanged: (
     listener: (event: {
       reason?: string;
+      hostKey?: string;
       pluginId?: string;
       projectPath?: string | null;
       selectSessionId?: string;
+      sessionResyncIds?: string[];
     }) => void,
   ) => {
     if (!window.piDesktop?.on) return () => undefined;
@@ -1547,9 +1603,11 @@ export const api = {
       listener(
         (payload ?? {}) as {
           reason?: string;
+          hostKey?: string;
           pluginId?: string;
           projectPath?: string | null;
           selectSessionId?: string;
+          sessionResyncIds?: string[];
         },
       ),
     );

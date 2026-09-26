@@ -91,13 +91,9 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
         // subject to `remoteMaxPermissionMode: "ask"` should never be able to
         // run a turn at `auto`. Refuse before the sidecar sees the request.
         //
-        // A NARROWER ceiling (or the same mode) is safe to accept: it can only
-        // reduce what the turn is allowed to do. The runtime still uses the
-        // session's stored mode when it enforces tool decisions, so a narrower
-        // request is not yet honoured turn-locally — that is the R1 leftover
-        // waiting on host-core to accept a `permissionMode` override on
-        // `session.beginTurn`. We plumb the parameter end-to-end anyway so the
-        // enforcement gate can flip on without another wire change.
+        // A NARROWER ceiling (or the same mode) can only reduce turn authority.
+        // Host-core validates and stores it on the durable turn before the
+        // sidecar starts, then clamps every tool decision to it.
         if (
           summary &&
           summary.permissionMode !== request.effectivePermissionMode &&
@@ -114,17 +110,13 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
             },
           );
         }
-        const permissionModeOverride =
-          summary && summary.permissionMode !== request.effectivePermissionMode
-            ? request.effectivePermissionMode
-            : undefined;
         const result = (await options.invoke(options.channels.agentPrompt, [
           {
             sessionId: request.sessionId,
             content: request.content,
             ...(request.sessionMessageId ? { sessionMessageId: request.sessionMessageId } : {}),
             ...(request.attachments ? { attachments: request.attachments } : {}),
-            ...(permissionModeOverride ? { permissionMode: permissionModeOverride } : {}),
+            ...(request.permissionCeiling ? { permissionMode: request.permissionCeiling } : {}),
           },
         ])) as { accepted?: boolean; turnId: string };
         return { turnId: result.turnId };

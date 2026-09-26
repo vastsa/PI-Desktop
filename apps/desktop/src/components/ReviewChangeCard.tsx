@@ -6,6 +6,7 @@ import type {
   UiMessage,
 } from "@pi-desktop/shared";
 import { reviewChangeFromMessage } from "../lib/workspace-review";
+import { isRemoteSession } from "../lib/session-capabilities";
 import { useAppStore } from "../stores/app-store";
 import { cx } from "./ui";
 import { IconCheck, IconChevronRight, IconSnapshot } from "./icons";
@@ -22,6 +23,10 @@ function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }
   const { t } = useTranslation();
   const change = reviewChangeFromMessage(message);
   const rollback = useAppStore((state) => state.rollbackWorkspaceChange);
+  const canRollback = useAppStore((state) => {
+    const active = state.sessions.find((session) => session.id === state.activeSessionId);
+    return !isRemoteSession(active);
+  });
   const [rollingBack, setRollingBack] = useState(false);
   const [rollbackStatus, setRollbackStatus] = useState<ReviewRollbackStatus | null>(
     null,
@@ -30,7 +35,7 @@ function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }
   if (!change) return null;
 
   const runRollback = async () => {
-    if (!change.reversible || change.state === "rolledBack" || rollingBack) return;
+    if (!canRollback || !change.reversible || change.state === "rolledBack" || rollingBack) return;
     setRollingBack(true);
     setRollbackStatus(null);
     const result = await rollback(message.id, change.snapshotId);
@@ -81,7 +86,7 @@ function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }
             <IconCheck size={13} />
             {t("panel.review.rolledBack")}
           </span>
-        ) : change.reversible ? (
+        ) : change.reversible && canRollback ? (
           <button
             type="button"
             className="review-change-rollback"

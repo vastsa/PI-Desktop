@@ -513,6 +513,18 @@ Rules the control encodes:
 - Enablement and project scope are checked before and after recovery. Removing
   a server or disposing the runtime discards its remembered names; an obsolete
   in-flight handshake cannot restore them. Concurrent calls share a handshake.
+- On a paired RACP owner connection, Desktop may advertise directly configured
+  user MCP tools only when the Host announces `toolRelay`. The advertised set is
+  the current global result of `UserMcpRuntime.toolsForProject(null)`, so the
+  existing enabled and activation-scope rules apply and a project-scoped server
+  is excluded. This Desktop relay slice does not advertise plugin tools.
+- The relay sends tool names, descriptions, input schemas, the bounded timeout,
+  and `workspaceFree: true`; it never sends MCP environment values, HTTP
+  headers, OAuth credentials, or a Host project path. Execution revalidates the
+  current catalog and schema, then calls the existing `UserMcpRuntime` with a
+  null project path, preserving its local scope, timeout, and cancellation
+  checks. The Host's existing permission approval happens before it dispatches
+  `tool/execute` to Desktop.
 - A failed recovery reports `UNAVAILABLE` and retains the existing failed-server
   policy (edit or Test connection to retry), rather than repeatedly connecting
   on each call. Removed tools return `TOOL_NOT_FOUND`. Recovery never replays a

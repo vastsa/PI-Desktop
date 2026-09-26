@@ -2353,8 +2353,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   matches(config: RuntimeMatchConfig): boolean {
     const requestedPluginTools = config.pluginTools ?? [];
     const requestedPluginSkills = config.pluginSkills ?? [];
-    const current = this.pluginTools.map((t) => t.name).sort().join(",");
-    const next = requestedPluginTools.map((t) => t.name).sort().join(",");
+    const currentPluginTools = safeJson(this.pluginTools);
+    const nextPluginTools = safeJson(requestedPluginTools);
     const currentThinkingLevels = [
       ...(this.provider.supportedThinkingLevels ?? ["off"]),
     ]
@@ -2387,7 +2387,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       this.mode === config.mode &&
       this.thinkingLevel ===
         clampThinkingLevel(config.provider, config.thinkingLevel) &&
-      current === next &&
+      currentPluginTools === nextPluginTools &&
       safeJson(this.commandShell) === safeJson(config.commandShell) &&
       safeJson(this.baseProjectInstructions ?? null) ===
         safeJson(config.projectInstructions ?? null) &&

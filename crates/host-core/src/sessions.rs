@@ -1337,6 +1337,44 @@ pub fn session_permission_mode(db: &Database, id: &str) -> Result<Option<String>
         .optional()?)
 }
 
+/// Resolve `inherit` against the Host default; absent or invalid defaults stay
+/// at the safe `ask` mode.
+pub fn effective_permission_mode(db: &Database, id: &str) -> Result<String> {
+    let mode =
+        session_permission_mode(db, id)?.ok_or_else(|| anyhow!("session not found: {id}"))?;
+    if mode != "inherit" {
+        return Ok(mode);
+    }
+    Ok(db
+        .get_setting("app")?
+        .and_then(|settings| {
+            settings
+                .get("defaultPermissionMode")
+                .and_then(|value| value.as_str())
+                .map(str::to_owned)
+        })
+        .filter(|default| is_valid_permission_mode(default) && default != "inherit")
+        .unwrap_or_else(|| "ask".to_string()))
+}
+
+fn permission_mode_rank(mode: &str) -> Option<u8> {
+    match mode {
+        "ask" => Some(0),
+        "accept-edits" => Some(1),
+        "auto" => Some(2),
+        _ => None,
+    }
+}
+
+/// Intersect a permission mode with a turn ceiling, returning the stricter one.
+pub fn clamp_permission_mode(mode: &str, ceiling: &str) -> String {
+    match (permission_mode_rank(mode), permission_mode_rank(ceiling)) {
+        (Some(mode_rank), Some(ceiling_rank)) if mode_rank <= ceiling_rank => mode.to_string(),
+        (_, Some(_)) => ceiling.to_string(),
+        _ => mode.to_string(),
+    }
+}
+
 /// Resolve the durable operating mode for authorization. Unknown sessions
 /// return None so callers can fail closed instead of trusting sidecar input.
 pub fn session_mode(db: &Database, id: &str) -> Result<Option<String>> {
@@ -3369,18 +3407,49 @@ pub fn begin_turn(
     provider_id: Option<&str>,
     model_id: Option<&str>,
 ) -> Result<String> {
+    begin_turn_with_permission_ceiling(db, session_id, provider_id, model_id, None)
+}
+
+pub fn begin_turn_with_permission_ceiling(
+    db: &Database,
+    session_id: &str,
+    provider_id: Option<&str>,
+    model_id: Option<&str>,
+    permission_ceiling: Option<&str>,
+) -> Result<String> {
+    if let Some(ceiling) = permission_ceiling {
+        let ceiling_rank = permission_mode_rank(ceiling)
+            .ok_or_else(|| anyhow!("INVALID_ARGUMENT: invalid turn permission ceiling"))?;
+        let session_mode = effective_permission_mode(db, session_id)?;
+        let session_rank = permission_mode_rank(&session_mode)
+            .ok_or_else(|| anyhow!("INVALID_ARGUMENT: invalid session permission mode"))?;
+        if ceiling_rank > session_rank {
+            return Err(anyhow!(
+                "PERMISSION_DENIED: turn permission ceiling cannot widen the session mode"
+            ));
+        }
+    }
     let id = Uuid::new_v4().to_string();
     let inserted = db
         .conn()
         .prepare_cached(
-            "INSERT INTO turns (id, session_id, provider_id, model_id, started_at)
-             SELECT ?1, ?2, ?3, ?4, ?5
+            "INSERT INTO turns (
+                id, session_id, provider_id, model_id, started_at, permission_mode_ceiling
+             )
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6
              WHERE EXISTS (SELECT 1 FROM sessions WHERE id = ?2)
                AND NOT EXISTS (
                  SELECT 1 FROM turns WHERE session_id = ?2 AND status = 'running'
                )",
         )?
-        .execute(params![id, session_id, provider_id, model_id, now_ms()])
+        .execute(params![
+            id,
+            session_id,
+            provider_id,
+            model_id,
+            now_ms(),
+            permission_ceiling
+        ])
         .map_err(|error| {
             let message = error.to_string();
             if message.contains("turns.session_id")
@@ -3403,6 +3472,33 @@ pub fn begin_turn(
         return Err(anyhow!("AGENT_BUSY"));
     }
     Ok(id)
+}
+
+pub fn turn_permission_context(
+    db: &Database,
+    session_id: &str,
+    turn_id: &str,
+) -> Result<Option<(String, Option<String>)>> {
+    Ok(db
+        .conn()
+        .query_row(
+            "SELECT status, permission_mode_ceiling FROM turns WHERE id = ?1 AND session_id = ?2",
+            params![turn_id, session_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .optional()?)
+}
+
+pub fn active_turn_has_permission_ceiling(db: &Database, session_id: &str) -> Result<bool> {
+    Ok(db.conn().query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM turns
+           WHERE session_id = ?1 AND status = 'running'
+             AND permission_mode_ceiling IS NOT NULL
+         )",
+        params![session_id],
+        |row| row.get(0),
+    )?)
 }
 
 pub struct EndTurnResult {

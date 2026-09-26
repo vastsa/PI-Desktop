@@ -1,10 +1,12 @@
-import type { AgentHost, Principal } from "@pi-desktop/agent-host";
+import type { AgentHost, Principal, ToolRelayPort } from "@pi-desktop/agent-host";
 import { RacpError } from "@pi-desktop/agent-host";
 import {
   RacpApprovalResponseSchema,
   RacpCursorSchema,
   RacpInputResponseSchema,
   RacpRequestContextSchema,
+  isValidRacpToolsAdvertiseParams,
+  validateRacpTerminalInputData,
   type RacpCursor,
   type RacpLimits,
   type RacpOperation,
@@ -23,6 +25,7 @@ export type OperationContext = {
   principal: Principal;
   agentHost: AgentHost;
   operations: RacpHostOperations;
+  toolRelay?: ToolRelayPort;
   authenticator: DeviceTokenAuthenticator;
   limits: RacpLimits;
   capabilities: RacpServerCapabilities;
@@ -88,6 +91,8 @@ const TerminalOpenParams = Type.Object({
   sessionId: Type.String({ minLength: 1 }),
   cols: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
   rows: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
+  /** Stable across a lost response so a reconnect cannot create a second shell. */
+  openRequestId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
   /** Re-attach to a terminal this session already has open. */
   terminalId: Type.Optional(Type.String({ minLength: 1 })),
 });
@@ -109,11 +114,37 @@ function check<T extends Type.TSchema>(schema: T, params: unknown): Type.Static<
 }
 
 function requireTerminal(context: OperationContext) {
+  if (!context.principal.pairedDevice || !context.principal.roles.includes("owner")) {
+    throw new RacpError("FORBIDDEN", "terminals are available only to the SSH-paired owner device");
+  }
   const terminal = context.operations.terminal;
   if (!terminal || !context.capabilities.terminal) {
     throw new RacpError("CAPABILITY_UNAVAILABLE", "this Host does not offer terminals");
   }
   return terminal;
+}
+
+function requireAttachedTerminal(context: OperationContext, terminalId: string): void {
+  if (!context.connection.terminals.has(terminalId)) {
+    throw new RacpError("NOT_FOUND", `terminal ${terminalId} is not attached to this connection`);
+  }
+}
+
+function validateTerminalInput(data: string): void {
+  const validation = validateRacpTerminalInputData(data);
+  if (validation.valid) return;
+  if (validation.reason === "payload-too-large") {
+    throw new RacpError("PAYLOAD_TOO_LARGE", "terminal input exceeds the byte limit", {
+      details: {
+        limitBytes: validation.limitBytes,
+        ...(validation.byteLength === undefined ? {} : { actualBytes: validation.byteLength }),
+      },
+    });
+  }
+  const message = validation.reason === "invalid-base64"
+    ? "terminal input must use canonical Base64 encoding"
+    : "terminal input must contain valid UTF-8 bytes";
+  throw new RacpError("INVALID_ARGUMENT", message);
 }
 
 function unavailable(capability: string): OperationHandler {
@@ -274,7 +305,28 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
 
   handlers.set("attachment/create", unavailable("attachments"));
   handlers.set("attachment/complete", unavailable("attachments"));
-  handlers.set("tools/advertise", unavailable("tool relay"));
+  handlers.set("tools/advertise", async (context, params) => {
+    const relay = context.toolRelay;
+    if (!relay) throw new RacpError("CAPABILITY_UNAVAILABLE", "tool relay is not offered by this Host");
+    if (!isValidRacpToolsAdvertiseParams(params)) {
+      throw new RacpError("INVALID_ARGUMENT", "invalid tools/advertise params");
+    }
+    const session = (await context.operations.sessions.list()).find((candidate) => candidate.id === params.sessionId);
+    if (!session) throw new RacpError("NOT_FOUND", "session not found");
+    relay.advertise({
+      connectionId: context.connection.id,
+      sessionId: params.sessionId,
+      tools: params.tools,
+      request: (method, requestParams, timeoutMs) => context.connection.request(method, requestParams, timeoutMs),
+      ...(context.connection.supportsClientCapability("toolRelayCancel")
+        ? {
+            cancel: (requestParams) =>
+              context.connection.request("tool/cancel", requestParams, 5_000),
+          }
+        : {}),
+    });
+    return { advertised: params.tools.length };
+  });
 
   handlers.set("session/revoke", async (context, params) => {
     const input = check(Type.Object({ deviceId: Type.String({ minLength: 1 }) }), params);
@@ -328,41 +380,68 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
   });
 
   handlers.set("terminal/open", async (context, params) => {
-    const terminal = requireTerminal(context);
     const input = check(TerminalOpenParams, params);
+    const terminal = requireTerminal(context);
+    const identity = { principalSubject: context.principal.subject, connectionId: context.connection.id };
+    let terminalId: string | undefined;
+    const pendingEvents: Array<(id: string) => void> = [];
+    const publish = (event: (id: string) => void) => {
+      if (terminalId) event(terminalId);
+      else pendingEvents.push(event);
+    };
     const sink = {
-      output: (data: string) =>
-        context.deliverEvent(terminalEvent(context, input.sessionId, "terminal.output", { terminalId: opened.terminalId, data })),
+      output: (data: string) => publish((id) => context.deliverEvent(terminalEvent(context, input.sessionId, "terminal.output", { terminalId: id, data }))),
       exit: (code: number | null) => {
-        context.connection.terminals.delete(opened.terminalId);
-        context.deliverEvent(terminalEvent(context, input.sessionId, "terminal.changed", { terminalId: opened.terminalId, state: "exited", code }));
+        publish((id) => {
+          context.connection.terminals.delete(id);
+          context.deliverEvent(terminalEvent(context, input.sessionId, "terminal.changed", { terminalId: id, state: "exited", code }));
+        });
       },
     };
     let opened: Awaited<ReturnType<typeof terminal.open>>;
     if (input.terminalId) {
-      const attached = await terminal.attach(input.terminalId, sink);
+      const attached = await terminal.attach(input.sessionId, input.terminalId, identity, sink);
       if (!attached) throw new RacpError("NOT_FOUND", `terminal ${input.terminalId} is not open`);
       opened = attached;
     } else {
-      opened = await terminal.open(input.sessionId, { cols: input.cols ?? 80, rows: input.rows ?? 24 }, sink);
+      opened = await terminal.open(
+        input.sessionId,
+        { cols: input.cols ?? 80, rows: input.rows ?? 24, ...(input.openRequestId ? { openRequestId: input.openRequestId } : {}) },
+        identity,
+        sink,
+      );
     }
-    context.connection.terminals.add(opened.terminalId);
+    terminalId = opened.terminalId;
+    if (context.connection.isClosed) {
+      terminal.detach(opened.terminalId, context.connection.id);
+      throw new RacpError("AGENT_UNAVAILABLE", "connection closed while opening the terminal");
+    }
+    context.connection.terminals.set(opened.terminalId, input.sessionId);
+    context.deliverEvent(terminalEvent(context, input.sessionId, "terminal.changed", { terminalId: opened.terminalId, state: "open" }));
+    for (const event of pendingEvents.splice(0)) event(opened.terminalId);
     return opened;
   });
   handlers.set("terminal/input", async (context, params) => {
     const input = check(TerminalInputParams, params);
-    await requireTerminal(context).input(input.terminalId, input.data);
+    requireAttachedTerminal(context, input.terminalId);
+    validateTerminalInput(input.data);
+    await requireTerminal(context).input(input.terminalId, input.data, context.connection.id);
     return { ok: true };
   });
   handlers.set("terminal/resize", async (context, params) => {
     const input = check(TerminalResizeParams, params);
-    await requireTerminal(context).resize(input.terminalId, input.cols, input.rows);
+    requireAttachedTerminal(context, input.terminalId);
+    await requireTerminal(context).resize(input.terminalId, input.cols, input.rows, context.connection.id);
     return { ok: true };
   });
   handlers.set("terminal/close", async (context, params) => {
     const input = check(TerminalIdParams, params);
-    context.connection.terminals.delete(input.terminalId);
-    await requireTerminal(context).close(input.terminalId);
+    const sessionId = context.connection.terminals.get(input.terminalId);
+    await requireTerminal(context).close(input.terminalId, { principalSubject: context.principal.subject, connectionId: context.connection.id });
+    if (sessionId) {
+      context.connection.terminals.delete(input.terminalId);
+      context.deliverEvent(terminalEvent(context, sessionId, "terminal.changed", { terminalId: input.terminalId, state: "closed" }));
+    }
     return { ok: true };
   });
 

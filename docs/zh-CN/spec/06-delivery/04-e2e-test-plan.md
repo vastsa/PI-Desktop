@@ -2222,20 +2222,22 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
 - **里程碑**：M5
 - **状态**：单位覆盖（`chat-review-entry.test.mjs`）；完整的 UI 场景草稿
 
-#### E2E-058：内置交互式终端已移除
+#### E2E-058：本地会话不提供内置交互式终端
 
-- **前提**：已打开工作区，Agent 已完成一次 Bash 工具调用。
-- **步骤**：1) 使用 Cmd/Ctrl+J 打开工作面板并检查空状态和上下文菜单。
-  2) 确认没有终端选项卡、启动器行、终端专属文案或终端 IPC。3) 确认
+- **前提**：已打开本地工作区，Agent 已完成一次 Bash 工具调用。
+- **步骤**：1) 使用 Cmd/Ctrl+J 打开本地会话的工作面板并检查空状态和上下文菜单。
+  2) 确认本地会话没有终端选项卡、启动器行、终端专属文案或终端 IPC 路由。3) 确认
   已完成的 Bash 行仍显示命令、输出、状态和复制操作，并保留终端图标。
   4) 确认交互式 shell 由用户的外部终端承担，而不是由工作面板打开。
   5) 构建/打包桌面应用并检查依赖项和解压资源列表。
-- **预期**：工作面板提供审阅启动器行、浏览器和当前范围内的插件视图；审阅只在用户
-  主动打开时出现，文件资源由对话打开；不创建 PTY，也无法打开终端选项卡。
+- **预期**：本地工作面板提供审阅启动器行、浏览器和当前范围内的插件视图；审阅只在用户
+  主动打开时出现，文件资源由对话打开；本地不创建 PTY，也无法打开本地终端选项卡。
+  远程 Host 终端和反向工具中继由 E2E-231 单独验收，不改变本地会话的边界。
   Agent Bash 仍是非交互式的，完整显示在对话中。
-  打包结果不含 PTY/xterm 依赖、终端 IPC 或终端原生负载。
+  本地交互式 shell 仍由外部终端承担。桌面包不包含本地 PTY 运行时或终端原生负载；
+  xterm 渲染依赖和类型化终端 IPC（若存在）仅用于远程 Host 会话。
 - **链接规格**：`02-architecture/02-tech-stack.md`、`03-runtime/01-ipc-protocol.md`、
-  `04-ux/08-component-spec.md` §5、ADR 0108
+  `04-ux/08-component-spec.md` §5、ADR 0108、ADR 0309
 - **验收**：D（工作空间），质量
 - **里程碑**：M5
 - **状态**：单位覆盖（`work-panel.test.mjs`、`packaging-footprint.test.mjs`）；完整 UI 场景草稿
@@ -5339,6 +5341,143 @@ eleven-tool-round desktop paths are verified by
   确认来源仍为 Responses 和原别名，副本保存了 Anthropic Messages 与新
   别名。未测试携带凭据的网络发现、外部模型请求及 OpenCode Go UI 分支。
 
+## 远程 Agent Control 目标场景（MVP 后）
+
+E2E-231 需要经批准的远程测试环境。记录该场景是为了让协议和安全工作有明确的验收目标。除非请求明确授权，否则不要在本地桌面应用或生产 Gateway 上运行。D374 将远程控制验收目标修订为新契约：`{ epoch, sequence }` 游标、临时增量、Host 所有的回合队列、完整的本地审批词汇、远程权限上限、Host 链接中继和浏览器 Cookie 配置。D375 重新安排了里程碑：E2E-231 和 E2E-232 是计划中 SSH 隧道及集成里程碑的验收目标；E2E-227 和 E2E-228 则在 Gateway 和浏览器里程碑排期时运行。
+
+#### E2E-231：桌面通过 SSH 隧道驱动远程 Host
+
+- **先决条件**：一台运行 `sshd` 的 Linux 测试机持有一个项目，桌面可用用户的
+  SSH 密钥访问该机器。GitHub Releases 测试夹具提供该平台、与桌面版本相同的
+  `pi-host` bundle，另提供不同版本的 bundle 和校验和错误的篡改 bundle。桌面已
+  打开一个本地会话，配置了一个用户 MCP 服务器，并安装了一个工具需要工作区
+  访问权限的插件。远程 Host 夹具使用
+  `--remote-max-permission-mode ask --apply-ceiling-to-paired-devices true`
+  启动 `pi-host`，并包含一个 `accept-edits` 子代理定义；测试会话持久化的模式为
+  `auto`，因此回合权限上限低于会话和委托范围。
+- **步骤**：1) 从桌面添加远程机器，让上传的引导脚本通过 SSH 下载、校验并启动
+  `pi-host`。2) 观察配对交换及生成的设备令牌。3) 通过 `project/list` 和
+  `session/create` 在远程项目下创建会话。4) 启动一个测试回合，使其读取、编辑
+  远程项目中的文件并在那里运行命令。保持工具审批待处理，在保持 `pi-host` 运行的
+  情况下断开 SSH 传输，再恢复连接；确认审批卡片从 Host 快照恢复后再批准命令。要求该回合
+  调用 `accept-edits` 子代理写入第二个文件；确认远程权限上限仍会在写入前触发
+  审批，然后允许本次操作。在另一个回合中要求测试夹具发起 `asktool` 输入请求；
+  保持请求待处理，在保持 `pi-host` 运行的情况下断开并恢复 SSH 传输，确认卡片恢复后
+  再提交答案。再排队一个
+  委托写入回合，并在它开始前重启 `pi-host`；重连后确认该操作仍需审批。5) 在会话空闲时通过 `session/configure` 切换到
+  Plan 模式再切回，然后在回合运行时尝试切换。6) 为远程会话打开 Files 和 Review，
+  确认 Review 将当前 Git diff 与记录的助手变更分开；远程编辑后刷新 diff。7) 从
+  桌面公布中继，运行一个调用桌面 MCP 工具的回合，然后在第二次调用期间关闭桌面。
+  8) 在远程会话打开终端并运行命令。9) 终端打开状态下，于回合中途断开 SSH 会话，
+  再恢复连接并让桌面重连。丢弃终端打开响应后，使用相同的 `openRequestId` 再次
+  打开；尝试从另一会话附加，并在重新附加后使用旧连接。确认不会重发输入。10)
+  检查远程工具目录。11) 尝试从远程机器的非 loopback 地址连接，再尝试重用配对
+  令牌。12) 将引导程序指向篡改 bundle，再指向不同版本的 bundle，然后重连。
+- **预期**：文件只在远程机器上更改，命令也在那里运行；桌面显示使用本地词汇的
+  审批卡片；即使会话模式为 `auto`、委托为 `accept-edits`，host-core 仍会对父级和
+  委托工具调用应用 `ask` 上限；SSH 传输中断而 `pi-host` 保持运行时，桌面会自动重新
+  attach 保留会话，无需用户重新打开；待处理工具审批和输入请求从 Host 快照恢复，当前
+  聊天页会就地刷新。Host 进程重启后，controller attach 恢复 Host 持久队列，桌面重新
+  同步队列视图，排队的委托回合仍保留该上限。远程
+  host-core 仅绑定 loopback；空闲时 `session/configure` 成功，运行中返回
+  `CONFLICT`。Files 和 Review 的工作区 diff 来自远程会话根目录，Review 保留记录的
+  助手变更作为单独来源，远程编辑后刷新可看到新 diff；根目录外的路径返回
+  `REMOTE_PATH_FORBIDDEN`。桌面 MCP 工具在桌面执行，结果进入远程转录；第二次调用
+  失败并返回 `TOOL_FAILED`，回合继续。调用进行中替换公告会使其旧快照条目失效，
+  且绝不把该调用路由到替换后的连接。终端在会话根目录下的远程机器运行；只有
+  通过 SSH 配对的 owner 可以操作它。相同的 `openRequestId` 会在打开响应丢失后重新
+  附加到现有 PTY，其他会话无法附加；新连接附加后，旧连接不能输入、调整大小或
+  关闭终端。SSH 断开期间回合继续，桌面按游标恢复且不重复回合，终端输入不重放，
+  终端输出从有界回放环中续传。远程目录会列出中继的 MCP 工具，但不列出需要工作区
+  访问权限的插件工具。非 loopback 对端和重用的配对令牌都会被拒绝。篡改 bundle
+  在启动前被拒绝，Settings toast 会指出校验和失败，而不是只显示 SSH 退出码；SSH
+  登录被拒绝时，toast 会显示 ssh 的最后一行 stderr；版本不匹配返回
+  `PROTOCOL_MISMATCH` 并提供重新下载。整个流程不会触碰本地会话。
+- **链接规格**：`02-architecture/05-remote-agent-control.md` §§5.2、6.3，
+  `03-runtime/19-remote-agent-control-protocol.md` §§6.2、9.4、11.1，
+  `05-security/02-remote-control-security.md` §§3.4、4.3、5.1、7，
+  `06-delivery/07-remote-control-rollout.md` §2
+- **验收**：E（工具与权限）、Security、Recovery、Quality
+- **里程碑**：MVP 后（rollout R2）
+- **状态**：草稿；已有 Host 无头覆盖，但 Desktop UI 与 Linux SSH 的完整旅程
+  仍待验收。无头 `scripts/e2e-remote-host.mjs` 覆盖真实 `pi-host` 和
+  host-core 的配对、项目、会话、工作区边界、provider 回合及远程 PTY 输出/重连；当前
+  本地 45/45 项检查还覆盖 Files/Review 刷新、运行中配置冲突、确定性模型驱动生产桌面
+  中继适配器、桌面中途关闭后的工具失败与回合继续、不转交给替换 owner，以及旧终端
+  连接的输入/调整/关闭拒绝。它绕过桌面 SSH 引导和渲染器。
+  `scripts/e2e-remote-permission-ceiling.mjs` 启动真实打包的 `pi-host`、host-core/RACP
+  和隔离的确定性 loopback 模型，检查 paired owner 的 `auto` Session 被限制为 `ask`、
+  `accept-edits` 子代理的 Write 在审批前不会落盘，以及排队的委托回合经过真实 Host
+ 进程重启后仍需审批。审批后目标文件会出现在远程工作区；最近本地运行 20/20 项通过。
+ CI workflow 已配置该夹具，但它不通过桌面 UI 展示审批卡。
+ 同一 workflow 还配置运行 `scripts/e2e-remote-ssh-bootstrap.mjs`：隔离 Linux `sshd` 夹具使用
+  生产系统 SSH、校验本地构建 release bundle、安装、端口转发、配对、创建项目/session、
+  读取工作区，并覆盖回合中途隧道断开/恢复、cursor 重放、幂等回合重试和使用相同
+  `openRequestId` 重新附加 PTY。当前 macOS 环境尚未实际运行该 Linux 夹具。以上无头夹具
+  都绕过桌面 Settings 和渲染器。RACP 与 Host Runtime 中继契约/用户路径由
+  `packages/racp/src/tool-relay.test.ts`、
+  `packages/host-runtime/src/remote-tool-relay.test.ts` 和
+  `packages/host-runtime/src/runtime-service.test.ts` 覆盖；桌面全局 User MCP 适配器由
+  `apps/desktop/test/remote-tool-relay.test.mjs` 和
+  `apps/desktop/test/user-mcp.test.mjs` 定向覆盖。第四个夹具
+  `pnpm test:e2e:remote-desktop` 通过打包的 Electron 渲染器连接本地配对 Host：创建本地
+  会话、在 Settings 中 Pair、浏览并注册远程工作区、创建远程会话、批准受 Host 权限上限
+  限制的 Write 卡片、在 Review 检查生成的文件，并确认本地会话仍存在。该测试使用隔离
+  profile 和 loopback 模型，覆盖了桌面侧流程，但不经 Settings 执行 SSH 引导，也不覆盖
+  断线恢复、终端和其余 MCP 中继步骤。Linux CI 的隔离 Electron profile 使用 safeStorage
+  的 `basic_text` 后端，因此该 UI E2E 不验证 OS 密钥链下的静态加密。本次 macOS 本地运行
+  未通过：临时 HOME 下 safeStorage unavailable。完整 Linux SSH 桌面验收仍未完成。
+
+#### E2E-REMOTE-session-list-and-create
+
+- **先决条件**：一个已配对且至少注册了一个项目的远程 Host，以及一个已打开的本地
+  会话。渲染器将远程会话 ID 表示为 `remote:<hostKey>:<hostSessionId>`（D628）。
+- **步骤**：1) 打开侧栏，确认 Host 以独立的无边框分组显示连接状态和会话。2) 在新建
+  会话对话框中选择 Host 上的项目，创建远程会话。3) 选择该会话，确认转录、Composer
+  和工作面板的文件页签体现远程 profile。4) 断开 Host，再对远程 ID 发起单会话调用。
+  5) 全程确认本地会话和本地工作区未受影响，创建或收到远程会话也不会抢走焦点。
+- **预期**：每个 Host 显示为独立分组，并实时显示连接状态；Host 断开时不提供创建入口。
+  新会话在 Host 上按其默认模型启动，桌面不显示远程模型选择器。远程转录行没有编辑、
+  删除或修订入口；远程会话的 Composer 模式和权限模式选择器被禁用；文件页签仅读取
+  Host 的目录树。Host 离线时，对 `remote:` ID 的调用以带类型的错误失败关闭，不会路由
+  到本地处理器（修订 ADR 0286 §3）。远程入口不会修改本地会话、本地工作区路径或焦点。
+- **链接规格**：`02-architecture/05-remote-agent-control.md` §5.2，
+  `05-security/02-remote-control-security.md` §§3.4、7，
+  `06-delivery/07-remote-control-rollout.md` §2 R2；ADR 0308
+- **验收**：D（界面）、Security、Quality
+- **里程碑**：MVP 后（rollout R2）
+- **状态**：由 `pnpm test:e2e:remote-desktop` 部分自动化：真实 Electron 用户路径覆盖本地
+  会话保留、Settings Pair、远程目录浏览与注册、会话创建、Composer turn、桌面审批、远程
+  文件写入和远程 Review diff。离线 router 与 capability 测试仍位于
+  `apps/desktop/test/*remote*`。该场景仍为 Draft，直到端到端验证 Host 断开时的 fail-closed
+  行为及完整 Linux SSH 桌面旅程。
+
+#### E2E-REMOTE-provider-import-enables-turn
+
+- **先决条件**：在临时数据目录中启动 `pi-host`，使用 debug host-core 和已打包的 sidecar
+  （无头 Host 测试夹具 `scripts/e2e-remote-host.mjs`）。尚未配置 provider，因此
+  `turn/start` 以 `MODEL_NOT_CONFIGURED` 失败关闭。一个 loopback OpenAI 兼容 mock 模型会
+  记录 `Authorization` 请求头并返回固定文本（D629）。
+- **步骤**：1) 确认未配置 provider 时 turn 失败关闭且会话保持 idle。2) 通过 stdin 运行
+  `pi-host provider-import --data-dir <dir>`，输入一个 provider 载荷：使用 mock 模型的
+  OpenAI 兼容 provider、`authKind: api_key_and_base_url`、标记用 `secretValue` 和
+  `defaultModel`。3) 读取 `PI_HOST_PROVIDERS` 摘要，并在 CLI 和 Host 的所有输出流中查找
+  密钥标记。4) 检查 admin socket 及其目录权限。5) 使用相同载荷再次导入。6) 在同一会话
+  启动 turn，等待模型请求和 turn 完成，然后读取会话状态。
+- **预期**：首次导入报告 `imported[0].action === "created"` 且 `defaultSet === true`；密钥
+  标记不会出现在 CLI stdout/stderr 或 Host stderr 中；admin socket 位于权限为 `0700` 的
+  目录下且自身权限为 `0600`；重复导入报告同一 `providerId` 的 `action === "updated"`，
+  不会创建重复项。随后 turn 成功进入模型调用，mock 模型收到 `Bearer` 密钥，收到
+  `turn.completed` 会话事件且会话恢复为 idle。不会启动第二个 host-core；密钥只经过 stdin
+  载荷和 admin socket。
+- **链接规格**：`02-architecture/05-remote-agent-control.md` §5.2，
+  `05-security/02-remote-control-security.md` §§3.4、7；ADR 0310
+- **验收**：Security、E（工具与权限）、Recovery、Quality
+- **里程碑**：MVP 后（rollout R2）
+- **状态**：已由 `scripts/e2e-remote-host.mjs` 实现（32/32 项检查通过）；该测试只在
+  Host 无头夹具运行，不需要 Desktop 或 SSH 测试目标。它不覆盖 Settings 中的 provider
+  同步界面或 SSH 引导；这些桌面全流程仍由 E2E-231 验收。
+
 ## 8. 可追溯性矩阵
 
 
@@ -5433,7 +5572,7 @@ eleven-tool-round desktop paths are verified by
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
-| MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
+| MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232、E2E-REMOTE-session-list-and-create、E2E-REMOTE-provider-import-enables-turn |
 | 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | 受信任扩展（R7 v1 npm 恢复） | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP 回归覆盖（插件工具调度） | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |

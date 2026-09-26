@@ -65,6 +65,8 @@ import { ProjectEditDialog } from "./ProjectEditDialog";
 import { useArmedDelete } from "../hooks/use-armed-delete";
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { SessionRenameDialog } from "./SessionRenameDialog";
+import { RemoteHostSessions } from "./sidebar/RemoteHostSessions";
+import { isRemoteSession } from "../lib/session-capabilities";
 import { useUpdateState } from "../hooks/use-update-state";
 import {
   IconArchive,
@@ -244,6 +246,7 @@ export function Sidebar({
   const settings = useAppStore((s) => s.settings);
   const prefetchSession = useAppStore((s) => s.prefetchSession);
   const selectSession = useAppStore((s) => s.selectSession);
+  const refreshSessions = useAppStore((s) => s.refreshSessions);
   const newSession = useAppStore((s) => s.newSession);
   const forkSessionAction = useAppStore((s) => s.forkSession);
   const openProject = useAppStore((s) => s.openProject);
@@ -974,8 +977,13 @@ export function Sidebar({
 
   const temporarySessions = useMemo(
     () => filtered
-      .filter((session) => !normalizeProjectPath(session.projectPath))
+      .filter((session) => !isRemoteSession(session) && !normalizeProjectPath(session.projectPath))
       .sort(compareSessions),
+    [filtered, compareSessions],
+  );
+  // Remote sessions have no local project; they list under their host.
+  const remoteSessions = useMemo(
+    () => filtered.filter(isRemoteSession).sort(compareSessions),
     [filtered, compareSessions],
   );
   const temporarySessionHistory = useMemo(
@@ -1767,6 +1775,9 @@ export function Sidebar({
           {session.source === "pi-native" ? (
             <span className="thread-item-source" title="Native Pi session">Pi</span>
           ) : null}
+          {isRemoteSession(session) ? (
+            <span className="thread-item-source">{t("remote.badge")}</span>
+          ) : null}
           <span className="thread-item-title">{taskTitle(session.title)}</span>
           {options?.global ? (
             <span className="thread-item-project">
@@ -2175,7 +2186,7 @@ export function Sidebar({
                 {t("nav.createBranch")}
               </button>
             ) : null}
-            {settings?.developerMode === true ? (
+            {settings?.developerMode === true && !isRemoteSession(session) ? (
               <>
                 <button
                   type="button"
@@ -2347,6 +2358,23 @@ export function Sidebar({
             </div>
           </section>
         ) : null}
+
+        <RemoteHostSessions
+          sessions={remoteSessions}
+          renderSessionRows={(items) => renderSessionRows(items, { temporary: true })}
+          onCreated={(session) => {
+            void (async () => {
+              try {
+                await refreshSessions();
+                await selectSession(session.id);
+                focusComposer();
+              } catch (error) {
+                reportError(error);
+              }
+            })();
+          }}
+          onError={reportError}
+        />
 
         <section
           className="sidebar-standalone-sessions"

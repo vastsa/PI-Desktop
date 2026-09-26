@@ -26,6 +26,29 @@ export interface EncryptionPort {
   decryptString(ciphertext: Buffer): string;
 }
 
+/** Fail before starting a remote pairing flow when tokens cannot be stored. */
+export function assertRemoteHostStorageAvailable(encryption: EncryptionPort): void {
+  if (!encryption.isAvailable()) {
+    throw Object.assign(new Error("safeStorage unavailable; refusing to write remote host token"), {
+      errorCode: "REMOTE_STORAGE_UNAVAILABLE",
+    });
+  }
+}
+
+/** Also exercise the keychain before remote installation has side effects. */
+export function assertRemoteHostStorageWritable(encryption: EncryptionPort): void {
+  assertRemoteHostStorageAvailable(encryption);
+  try {
+    // `isAvailable()` may be true while the OS keychain is still locked or
+    // missing. Exercise the same API before a remote bootstrap has side effects.
+    encryption.encryptString("");
+  } catch {
+    throw Object.assign(new Error("safeStorage unavailable; refusing to write remote host token"), {
+      errorCode: "REMOTE_STORAGE_UNAVAILABLE",
+    });
+  }
+}
+
 /** One paired host as it lives on disk (every secret stays encrypted at rest). */
 export type RemoteHostRecord = {
   /** Stable id used in `remote:<hostKey>:<...>` renderer session ids. */
@@ -173,11 +196,7 @@ export function createRemoteHostRegistry(
       return decoded;
     },
     async upsert(record) {
-      if (!options.encryption.isAvailable()) {
-        throw Object.assign(new Error("safeStorage unavailable; refusing to write remote host token"), {
-          errorCode: "REMOTE_STORAGE_UNAVAILABLE",
-        });
-      }
+      assertRemoteHostStorageAvailable(options.encryption);
       const file = await readFileContents();
       const ciphertext = options.encryption.encryptString(record.deviceToken).toString("base64");
       const serialized: SerializedRecord = {

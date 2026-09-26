@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AgentEventEnvelope, RacpEventEnvelope, RacpInitializeResult, RacpSessionSnapshot, RacpTurn, UiMessage } from "@pi-desktop/shared";
+import { RACP_TERMINAL_INPUT_MAX_BYTES } from "@pi-desktop/shared";
+import { RacpError } from "@pi-desktop/agent-host";
 
-import { hashToken, newPairingToken } from "./auth.js";
+import { hashToken, newDeviceToken, newPairingToken } from "./auth.js";
+import type { RacpTerminalAccess } from "./host-operations.js";
 import { OWNER_TOKEN, VIEWER_TOKEN, flush, harness } from "./test-harness.js";
 
 function envelope(sessionId: string, turnId: string, event: AgentEventEnvelope["event"]): AgentEventEnvelope {
@@ -330,11 +333,84 @@ describe("RACP-WS remote-host profile", () => {
     await expect(client.request("attachment/create", {})).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
   });
 
+  it("limits terminal operations to the paired owner and the connection's session attachment", async () => {
+    const terminalRecords = new Map<string, { sessionId: string; principalSubject: string; connectionId: string; sink: { output: (data: string) => void; exit: (code: number | null) => void } }>();
+    const calls: Array<{ operation: string; terminalId: string }> = [];
+    const terminal: RacpTerminalAccess = {
+      async open(sessionId, _options, identity, sink) {
+        const terminalId = "term_1";
+        terminalRecords.set(terminalId, { sessionId, principalSubject: identity.principalSubject, connectionId: identity.connectionId, sink });
+        calls.push({ operation: "open", terminalId });
+        return { terminalId, replay: "", cols: 80, rows: 24 };
+      },
+      async input(terminalId, _data, connectionId) {
+        if (terminalRecords.get(terminalId)?.connectionId !== connectionId) throw new RacpError("NOT_FOUND", "terminal attachment");
+        calls.push({ operation: "input", terminalId });
+      },
+      async resize(terminalId, _cols, _rows, connectionId) {
+        if (terminalRecords.get(terminalId)?.connectionId !== connectionId) throw new RacpError("NOT_FOUND", "terminal attachment");
+        calls.push({ operation: "resize", terminalId });
+      },
+      async close(terminalId, identity) {
+        const owner = terminalRecords.get(terminalId);
+        if (owner && (owner.connectionId !== identity.connectionId || owner.principalSubject !== identity.principalSubject)) throw new RacpError("NOT_FOUND", "terminal attachment");
+        if (!owner) return;
+        calls.push({ operation: "close", terminalId });
+        terminalRecords.delete(terminalId);
+      },
+      async attach(sessionId, terminalId, identity, sink) {
+        const record = terminalRecords.get(terminalId);
+        if (!record || record.sessionId !== sessionId || record.principalSubject !== identity.principalSubject) return null;
+        record.sink = sink;
+        record.connectionId = identity.connectionId;
+        calls.push({ operation: "attach", terminalId });
+        return { terminalId, replay: "", cols: 80, rows: 24 };
+      },
+      detach() {},
+    };
+    const h = await harness({ operations: { terminal } });
+    const { client, events } = await h.connect(OWNER_TOKEN);
+    const opened = await client.request<{ terminalId: string }>("terminal/open", { sessionId: "s1", openRequestId: "open-1" });
+    expect(opened.terminalId).toBe("term_1");
+    await client.request("terminal/input", { terminalId: opened.terminalId, data: "aGk=" });
+    await expect(client.request("terminal/input", { terminalId: opened.terminalId, data: "YR==" })).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
+    await expect(client.request("terminal/input", { terminalId: opened.terminalId, data: "/w==" })).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
+    await expect(
+      client.request("terminal/input", {
+        terminalId: opened.terminalId,
+        data: Buffer.alloc(RACP_TERMINAL_INPUT_MAX_BYTES + 1).toString("base64"),
+      }),
+    ).rejects.toMatchObject({
+      code: "PAYLOAD_TOO_LARGE",
+      details: { details: { limitBytes: RACP_TERMINAL_INPUT_MAX_BYTES, actualBytes: RACP_TERMINAL_INPUT_MAX_BYTES + 1 } },
+    });
+    expect(calls.filter((call) => call.operation === "input")).toHaveLength(1);
+    terminalRecords.get(opened.terminalId)?.sink.output("b3V0");
+    await flush();
+    expect(events.at(-1)).toMatchObject({ scope: "session", sessionId: "s1", kind: "terminal.output", payload: { terminalId: "term_1", data: "b3V0" } });
+
+    const secondOwner = await h.connect(OWNER_TOKEN);
+    await expect(secondOwner.client.request("terminal/input", { terminalId: opened.terminalId, data: "dHlwZWQ=" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(secondOwner.client.request("terminal/open", { sessionId: "s2", terminalId: opened.terminalId })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await secondOwner.client.request("terminal/open", { sessionId: "s1", terminalId: opened.terminalId });
+    await secondOwner.client.request("terminal/resize", { terminalId: opened.terminalId, cols: 100, rows: 40 });
+    await secondOwner.client.request("terminal/close", { terminalId: opened.terminalId });
+    await secondOwner.client.request("terminal/close", { terminalId: opened.terminalId });
+    await expect(client.request("terminal/input", { terminalId: opened.terminalId, data: "c3RpbGwgb2xk" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(calls.map((call) => call.operation)).toEqual(["open", "input", "attach", "resize", "close"]);
+
+    const controllerToken = newDeviceToken();
+    await h.store.saveDevice({ deviceId: "dev_controller", label: "controller", roles: ["controller"], tokenHash: hashToken(controllerToken), createdAt: "2026-09-18T00:00:00.000Z" });
+    const controller = await h.connect(controllerToken);
+    await expect(controller.client.request("terminal/open", { sessionId: "s1", openRequestId: "open-controller" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("rejects malformed params and oversized frames with typed errors", async () => {
     const h = await harness({ limits: { maxFrameBytes: 512 } });
     const { client, link } = await h.connect(OWNER_TOKEN);
     await expect(client.request("turn/start", { sessionId: "s1" })).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
     await expect(client.request("session/attach", { sessionId: 42 })).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
+    await expect(client.request("terminal/open", { sessionId: "s1", openRequestId: "x".repeat(129) })).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
     link().clientSide().send("x".repeat(600));
     await flush();
     const last = JSON.parse(link().toClient.at(-1)!) as { error?: { data?: { code?: string } } };

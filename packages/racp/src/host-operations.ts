@@ -65,18 +65,29 @@ export type TerminalOpenResult = {
   rows: number;
 };
 
+export type TerminalIdentity = {
+  principalSubject: string;
+  connectionId: string;
+};
+
 export interface RacpTerminalAccess {
   open(
     sessionId: string,
-    options: { cols: number; rows: number },
+    options: { cols: number; rows: number; openRequestId?: string },
+    identity: TerminalIdentity,
     sink: { output: (data: string) => void; exit: (code: number | null) => void },
   ): Promise<TerminalOpenResult>;
-  input(terminalId: string, data: string): Promise<void>;
-  resize(terminalId: string, cols: number, rows: number): Promise<void>;
-  close(terminalId: string): Promise<void>;
+  input(terminalId: string, data: string, connectionId: string): Promise<void>;
+  resize(terminalId: string, cols: number, rows: number, connectionId: string): Promise<void>;
+  close(terminalId: string, identity: TerminalIdentity): Promise<void>;
   /** Re-attach a subscriber after a reconnect; returns the replay ring. */
-  attach(terminalId: string, sink: { output: (data: string) => void; exit: (code: number | null) => void }): Promise<TerminalOpenResult | null>;
-  detach(terminalId: string): void;
+  attach(
+    sessionId: string,
+    terminalId: string,
+    identity: TerminalIdentity,
+    sink: { output: (data: string) => void; exit: (code: number | null) => void },
+  ): Promise<TerminalOpenResult | null>;
+  detach(terminalId: string, connectionId: string): void;
 }
 
 export type RacpHostOperations = {

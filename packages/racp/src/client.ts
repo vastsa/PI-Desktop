@@ -45,6 +45,8 @@ export type SubscriptionClosedNotice = {
 export type RacpClientOptions = {
   transport: ClientTransportFactory;
   client: { name: string; version: string };
+  /** Optional capabilities this client can actually service. */
+  capabilities?: Partial<RacpInitializeParams["capabilities"]>;
   /** Answer a server-initiated request (`approval/request`, `input/request`, `tool/execute`). */
   onServerRequest?: (method: string, params: unknown) => Promise<unknown>;
   onEvent?: (envelope: RacpEventEnvelope) => void;
@@ -167,7 +169,16 @@ export class RacpClient {
       protocolVersion: RACP_PROTOCOL_VERSION,
       client: this.options.client,
       bindings: ["RACP-WS"],
-      capabilities: { eventReplay: true, approvals: true, inputRequests: true, turnQueue: true, hostEvents: true, history: true, terminal: true },
+      capabilities: {
+        eventReplay: true,
+        approvals: true,
+        inputRequests: true,
+        turnQueue: true,
+        hostEvents: true,
+        history: true,
+        terminal: true,
+        ...this.options.capabilities,
+      },
     };
     const result = await this.send<RacpInitializeResult>(transport, "connection/initialize", params);
     transport.send(encodeFrame({ jsonrpc: "2.0", method: RACP_INITIALIZED_NOTIFICATION, params: {} }));

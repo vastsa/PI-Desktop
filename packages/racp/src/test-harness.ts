@@ -1,5 +1,5 @@
 import type { AskToolResolution } from "@pi-desktop/shared";
-import { RacpError, AgentHost, type ApprovalPort, type Principal, type RuntimePort, type SessionPort, type SessionSummary, type TurnStartRequest } from "@pi-desktop/agent-host";
+import { RacpError, AgentHost, type ApprovalPort, type Principal, type RuntimePort, type SessionPort, type SessionSummary, type ToolRelayPort, type TurnStartRequest } from "@pi-desktop/agent-host";
 
 import { DeviceTokenAuthenticator, MemoryCredentialStore, hashToken, newDeviceToken, type ConnectionAuth } from "./auth.js";
 import { RacpClient, type ClientTransport, type ClientTransportFactory } from "./client.js";
@@ -214,13 +214,14 @@ export type Harness = {
   connect(token: string, options?: Partial<ConstructorParameters<typeof RacpClient>[0]>): Promise<{ client: RacpClient; events: import("@pi-desktop/shared").RacpEventEnvelope[]; link: () => MemoryLink }>;
 };
 
-export async function harness(options: { limits?: Partial<import("@pi-desktop/shared").RacpLimits>; operations?: Partial<RacpHostOperations> } = {}): Promise<Harness> {
+export async function harness(options: { limits?: Partial<import("@pi-desktop/shared").RacpLimits>; operations?: Partial<RacpHostOperations>; toolRelay?: ToolRelayPort } = {}): Promise<Harness> {
   const { host, runtime, sessions, approvals } = buildHost(options.limits);
   const { store, authenticator } = await credentialStore();
   const operations = { ...fakeOperations(sessions), ...options.operations };
   const server = new RacpServer({
     agentHost: host,
     operations,
+    toolRelay: options.toolRelay,
     authenticator,
     hostId: "host_test",
     serverVersion: "0.15.0",

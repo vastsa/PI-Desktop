@@ -27,7 +27,45 @@ import {
   type ScheduledTask,
   type CommandShellCatalog,
   type ToolsOutputParams,
+  type RemoteTerminalOpenRequest,
+  type RemoteTerminalEvent,
 } from "./index.js";
+
+describe("remote terminal IPC contracts", () => {
+  it("exposes session-scoped requests and a typed namespaced event channel", () => {
+    const open: RemoteTerminalOpenRequest = {
+      sessionId: "remote:hostA:session-1",
+      cols: 100,
+      rows: 30,
+      openRequestId: "open-1",
+    };
+    const output: RemoteTerminalEvent = {
+      type: "output",
+      sessionId: open.sessionId,
+      terminalId: "remote-terminal:encoded-session:encoded-terminal",
+      output: "b3V0",
+    };
+    const state: RemoteTerminalEvent = {
+      type: "state",
+      sessionId: open.sessionId,
+      terminalId: output.terminalId,
+      state: "exited",
+      code: 7,
+    };
+    expect(open.sessionId).toBe("remote:hostA:session-1");
+    expect(output.type).toBe("output");
+    expect(state).toMatchObject({ type: "state", state: "exited", code: 7 });
+    for (const channel of [
+      IPC.invoke.remoteTerminalOpen,
+      IPC.invoke.remoteTerminalInput,
+      IPC.invoke.remoteTerminalResize,
+      IPC.invoke.remoteTerminalClose,
+      IPC.event.remoteTerminal,
+    ]) {
+      expect(IPC_WHITELIST.has(channel)).toBe(true);
+    }
+  });
+});
 
 describe("Plan protocol contracts", () => {
   it("uses protocol v11/schema v16 and exposes the plan, schedule, and shell channels", () => {

@@ -343,7 +343,8 @@ test("delete remains on user turns and is removed from assistant toolbar", async
   assert.match(transcriptSource, /deleteMessage\(message\.id\)/);
   assert.match(transcriptSource, /chat\.deleteMessage/);
   assert.match(transcriptSource, /const editableUserMessage = isUser && !isSessionMessage;/);
-  assert.match(transcriptSource, /\{editableUserMessage \? \(/);
+  assert.match(transcriptSource, /const historyEditable = editableUserMessage && canEditHistory;/);
+  assert.match(transcriptSource, /\{historyEditable \? \(/);
   assert.match(stylesSource, /\.copy-btn\.danger:hover/);
 });
 
@@ -604,7 +605,7 @@ test("regenerate history pager and stable revision family are wired", async () =
   assert.match(transcriptSource, /chat\.revisionPager/);
   assert.match(
     transcriptSource,
-    /const showRevisionPager = editableUserMessage && revisionCount > 1;/,
+    /const showRevisionPager = historyEditable && revisionCount > 1;/,
   );
   assert.match(
     transcriptSource,

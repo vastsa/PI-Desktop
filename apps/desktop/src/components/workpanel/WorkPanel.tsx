@@ -9,6 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { api } from "../../lib/api";
 import { useBlockingOverlayActive } from "../../lib/blocking-overlay";
 import {
   workPanelTabReorderScrollDelta,
@@ -19,9 +20,11 @@ import {
   isKnownWorkPanelTab,
   parsePluginViewRef,
   pluginWorkPanelTab,
+  remoteTerminalWorkPanelTab,
   subagentTabDisplayLabels,
   toolWorkPanelTab,
 } from "../../lib/work-panel-tabs";
+import { sessionSurfaceGates } from "../../lib/session-capabilities";
 import type { PluginViewMeta } from "@pi-desktop/shared";
 import { pluginViewIcon, pluginViewInitial } from "../../lib/plugin-view-icons";
 import { useAppStore } from "../../stores/app-store";
@@ -38,11 +41,14 @@ import {
   IconPanelRestore,
   IconPlug,
   IconPlus,
+  IconTerminal,
 } from "../icons";
 import { ReviewTab } from "./ReviewTab";
 import { FilesTab } from "./FilesTab";
 import { PluginViewTab } from "./PluginViewTab";
 import { SubagentTranscriptTab } from "./SubagentTranscriptTab";
+import { RemoteTerminalTab } from "./RemoteTerminalTab";
+import { WorkTabEmpty } from "./WorkTabEmpty";
 import {
   MAIN_PANE_MIN_WIDTH,
   WORK_PANEL_COMPACT_MIN_WIDTH,
@@ -59,6 +65,7 @@ const TAB_ICONS = {
   file: IconFileText,
   plugin: IconPlug,
   subagent: IconBot,
+  terminal: IconTerminal,
 } as const;
 
 type WorkPanelResizeState = {
@@ -112,6 +119,7 @@ function tabLabel(
   }
   if (tab.kind === "new") return t("panel.new.title");
   if (tab.kind === "subagent") return tab.label ?? t("panel.tabs.subagent");
+  if (tab.kind === "terminal") return t("panel.tabs.terminal");
   if (tab.kind !== "file") return t(`panel.tabs.${tab.kind}`);
   const path = tab.resource ?? "";
   return path.split("/").filter(Boolean).pop() || t("panel.tabs.file");
@@ -120,6 +128,7 @@ function tabLabel(
 function workPanelTools(
   t: (key: string) => string,
   pluginViews: PluginViewMeta[],
+  canTerminal: boolean,
 ): WorkPanelTool[] {
   // Review is the only host-owned launcher. Files, Browser, and every future
   // tool are plugin-contributed views, so their list stays data-driven.
@@ -130,6 +139,14 @@ function workPanelTools(
       label: t("panel.tabs.review"),
       icon: IconDiff,
     },
+    ...(canTerminal
+      ? [{
+          id: "terminal",
+          tab: remoteTerminalWorkPanelTab(),
+          label: t("panel.tabs.terminal"),
+          icon: IconTerminal,
+        }]
+      : []),
     ...pluginViews.map((view) => {
       const Icon = pluginViewIcon(view.icon);
       return {
@@ -194,6 +211,10 @@ export function WorkPanel({
   const tabs = rawTabs.filter(isKnownWorkPanelTab);
   const activeTabId = useAppStore((s) => s.activeWorkPanelTabId);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const activeSession = useAppStore(
+    (s) => s.sessions.find((session) => session.id === activeSessionId) ?? null,
+  );
+  const canTerminal = sessionSurfaceGates(activeSession).canTerminal;
   const pluginViews = useAppStore((s) => s.pluginViews);
   const width = useAppStore((s) => s.workPanelWidth);
   const activateTab = useAppStore((s) => s.activateWorkPanelTab);
@@ -204,7 +225,7 @@ export function WorkPanel({
   const replaceWorkPanelTab = useAppStore((s) => s.replaceWorkPanelTab);
   const setWidth = useAppStore((s) => s.setWorkPanelWidth);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
-  const tools = workPanelTools(t, pluginViews);
+  const tools = workPanelTools(t, pluginViews, canTerminal);
   const tabSignature = JSON.stringify(
     tabs.map(({ id, kind, resource, location }) => [id, kind, resource, location]),
   );
@@ -567,13 +588,34 @@ export function WorkPanel({
     (tabId: string) => {
       const index = tabs.findIndex((tab) => tab.id === tabId);
       const nextTab = index >= 0 ? tabs[index + 1] ?? tabs[index - 1] : undefined;
+      const closingTab = tabs[index];
+      if (closingTab?.kind === "terminal" && closingTab.terminalId && activeSessionId) {
+        void api
+          .remoteTerminalClose({ sessionId: activeSessionId, terminalId: closingTab.terminalId })
+          .catch(() => undefined);
+      }
       closeTab(tabId);
       requestAnimationFrame(() => {
         if (nextTab) tabButtonRefs.current[nextTab.id]?.focus();
         else newTabButtonRef.current?.focus();
       });
     },
-    [closeTab, tabs],
+    [activeSessionId, closeTab, tabs],
+  );
+
+  const rememberTerminalId = useCallback(
+    (sessionId: string, openRequestId: string, terminalId: string) => {
+      const remembered = useAppStore
+        .getState()
+        .rememberWorkPanelTerminalId(sessionId, openRequestId, terminalId);
+      if (remembered) return;
+      // The user may close the tab before the Host replies to `open`. Once
+      // that late response arrives, close the otherwise orphaned PTY.
+      void api
+        .remoteTerminalClose({ sessionId, terminalId })
+        .catch(() => undefined);
+    },
+    [],
   );
   const onTabKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLButtonElement>, tabId: string) => {
@@ -959,6 +1001,31 @@ export function WorkPanel({
                 </div>
               );
             })()}
+          {activeTab?.kind === "terminal" && (
+            <div
+              key={activeTab.id}
+              id={`work-panel-surface-${activeTab.id}`}
+              className="work-panel-tabpane"
+              role="tabpanel"
+              aria-labelledby={`work-panel-tab-${activeTab.id}`}
+            >
+              {canTerminal && activeSession ? (
+                <RemoteTerminalTab
+                  sessionId={activeSession.id}
+                  hostKey={activeSession.remote?.hostKey ?? ""}
+                  hostLabel={activeSession.remote?.hostLabel ?? ""}
+                  openRequestId={activeTab.resource ?? activeTab.id}
+                  onTerminalId={rememberTerminalId}
+                  blocked={exiting || panelBlocked || blockingOverlayActive}
+                />
+              ) : (
+                <WorkTabEmpty
+                  icon={IconTerminal}
+                  title={t("panel.terminal.unavailable")}
+                />
+              )}
+            </div>
+          )}
           {(!activeTab || activeTab.kind === "new") && (
             <div
               className="work-panel-tabpane"

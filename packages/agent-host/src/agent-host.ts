@@ -33,8 +33,10 @@ import {
   RACP_DEFAULT_LIMITS,
   RACP_DEFAULT_POLICY,
   applyMessageUpdate,
+  clampPermissionMode,
   deltaStreamPayloadFits,
   effectiveRemotePermissionMode,
+  remotePermissionCeiling,
   racpKindForAgentEvent,
   rolesAllowOperation,
 } from "@pi-desktop/shared";
@@ -341,6 +343,12 @@ export class AgentHost {
       case "turn_end":
         this.emit(state, "turn.activity", { event }, meta2);
         return;
+      case "remote_snapshot_state":
+      case "remote_approval_resolved":
+      case "remote_input_resolved":
+        // These are renderer synchronization markers produced by the Desktop
+        // bridge, never runtime events accepted from a Host sidecar.
+        return;
       default: {
         const exhaustive: never = event;
         throw new Error(`unhandled agent event ${String((exhaustive as { type?: string }).type)}`);
@@ -463,12 +471,14 @@ export class AgentHost {
         details: { expectedRevision: expected, revision: state.revision },
       });
     }
-    const effectivePermissionMode = effectiveRemotePermissionMode({
+    const ceilingInput = {
       sessionMode: summary.permissionMode,
       policy: this.policy,
       pairedDevice: principal.pairedDevice ?? false,
       approverOverride: principal.approverOverride ?? false,
-    });
+    } as const;
+    const effectivePermissionMode = effectiveRemotePermissionMode(ceilingInput);
+    const permissionCeiling = remotePermissionCeiling(ceilingInput);
     const admission: RacpTurnAdmission = params.admission ?? "reject_if_busy";
     const busy = this.isBusy(state);
     let turn: TurnRecord;
@@ -485,6 +495,7 @@ export class AgentHost {
         ...(params.input.userMessageId ? { userMessageId: params.input.userMessageId } : {}),
         ...(params.input.attachments ? { attachments: params.input.attachments } : {}),
         effectivePermissionMode,
+        ...(permissionCeiling ? { permissionCeiling } : {}),
         ...(idempotencyKey ? { idempotencyKey } : {}),
         inputHash,
         createdAt: this.clock.now(),
@@ -507,6 +518,7 @@ export class AgentHost {
         ...(params.input.userMessageId ? { userMessageId: params.input.userMessageId } : {}),
         ...(params.input.attachments ? { attachments: params.input.attachments } : {}),
         effectivePermissionMode,
+        ...(permissionCeiling ? { permissionCeiling } : {}),
         ...(idempotencyKey ? { idempotencyKey } : {}),
         principal,
       });
@@ -566,7 +578,7 @@ export class AgentHost {
       const record = this.queue.list(sessionId).find((entry) => entry.sessionMessageId === messageId);
       if (!record) return false;
       const state = this.state(sessionId);
-      await this.cancelQueued(state, this.ensureTurn(state, record.id));
+      await this.cancelQueued(state, this.ensureQueuedTurn(state, record));
       return true;
     });
   }
@@ -685,7 +697,7 @@ export class AgentHost {
     return {
       session: this.toRacpSession(resolved, state),
       ...(activeTurn ? { activeTurn: this.toRacpTurn(state, activeTurn) } : {}),
-      queuedTurns: this.queue.list(sessionId).map((record) => this.toRacpTurn(state, this.ensureTurn(state, record.id))),
+      queuedTurns: this.queue.list(sessionId).map((record) => this.toRacpTurn(state, this.ensureQueuedTurn(state, record))),
       items: page.items,
       activeItems: [...state.activeItems.values()],
       pendingApprovals: this.approvals.list(sessionId),
@@ -716,7 +728,7 @@ export class AgentHost {
   queueEntries(sessionId: string): QueueEntryView[] {
     const state = this.state(sessionId);
     return this.queue.list(sessionId).map((record) => ({
-      turn: this.toRacpTurn(state, this.ensureTurn(state, record.id)),
+      turn: this.toRacpTurn(state, this.ensureQueuedTurn(state, record)),
       content: record.content,
       ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
       ...(record.attachments ? { attachments: record.attachments } : {}),
@@ -818,7 +830,7 @@ export class AgentHost {
         const state = this.state(sessionId);
         if (this.queue.isHeld(sessionId) || this.isOccupied(state)) return;
         const head = this.queue.peek(sessionId);
-        const headTurn = head ? this.ensureTurn(state, head.id) : undefined;
+        const headTurn = head ? this.ensureQueuedTurn(state, head) : undefined;
         if (headTurn?.deliveryPending) return;
         if (headTurn?.deliveredIntoTurnId) {
           if (!(await this.removeDeliveredInput(state, headTurn.id))) return;
@@ -826,7 +838,7 @@ export class AgentHost {
         }
         const record = await this.queue.shift(sessionId);
         if (!record) return;
-        const turn = this.ensureTurn(state, record.id);
+        const turn = this.ensureQueuedTurn(state, record);
         this.startingQueuedTurns.set(sessionId, turn);
         try {
           const started = await this.runtime.prompt({
@@ -835,7 +847,8 @@ export class AgentHost {
             ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
             ...(record.userMessageId ? { userMessageId: record.userMessageId } : {}),
             ...(record.attachments ? { attachments: record.attachments } : {}),
-            effectivePermissionMode: record.effectivePermissionMode,
+            effectivePermissionMode: turn.effectivePermissionMode,
+            ...(record.permissionCeiling ? { permissionCeiling: record.permissionCeiling } : {}),
             ...(record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}),
             principal: { subject: record.principalSubject, roles: ["controller"] },
           });
@@ -911,7 +924,7 @@ export class AgentHost {
         if (!record || record.priority === undefined) return undefined;
         const active = state.activeTurnId ? state.turns.get(state.activeTurnId) : undefined;
         if (!active || active.runtimeTurnId !== runtimeTurnId) return undefined;
-        const turn = this.ensureTurn(state, record.id);
+        const turn = this.ensureQueuedTurn(state, record);
         if (turn.deliveryPending || turn.deliveredIntoTurnId) return undefined;
         turn.deliveryPending = true;
         return record;
@@ -1226,6 +1239,19 @@ export class AgentHost {
         this.turnIndex.delete(oldest);
       }
     }
+    return turn;
+  }
+
+  private ensureQueuedTurn(state: SessionState, record: QueuedTurnRecord): TurnRecord {
+    const turn = this.ensureTurn(state, record.id);
+    if (turn.status !== "queued" || turn.deliveryPending || turn.deliveredIntoTurnId) return turn;
+    turn.admission = "queue";
+    turn.queuePosition = this.queue.position(state.id, record.id);
+    turn.effectivePermissionMode = record.permissionCeiling
+      ? clampPermissionMode(record.effectivePermissionMode, record.permissionCeiling)
+      : record.effectivePermissionMode;
+    turn.idempotencyKey = record.idempotencyKey;
+    turn.principalSubject = record.principalSubject;
     return turn;
   }
 

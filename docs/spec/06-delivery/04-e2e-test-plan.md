@@ -3701,29 +3701,33 @@ identify the platform validation still needed.
 - **Milestone**: M5
 - **Status**: Unit-covered (`chat-review-entry.test.mjs`); full UI scenario Draft
 
-#### E2E-058: Built-in interactive terminal is absent
+#### E2E-058: Local sessions have no built-in interactive terminal
 
 - **Preconditions**: A workspace is open and the Agent has completed a Bash
   tool call.
-- **Steps**: 1) Open the work panel with Cmd/Ctrl+J and inspect the empty
-  state and context menu. 2) Confirm there is no Terminal tab, launcher row,
-  terminal-specific panel copy, or terminal IPC surface. 3) Confirm the
+- **Steps**: 1) Open the work panel with Cmd/Ctrl+J in a local session and
+  inspect the empty state and context menu. 2) Confirm there is no Terminal
+  tab, launcher row, terminal-specific panel copy, or terminal IPC route for
+  the local session. 3) Confirm the
   completed Bash row still shows its command, output, status, and copy action,
   and that its `IconTerminal` presentation remains available. 4) Verify an
   interactive shell is opened in the user's external terminal instead of the
   work panel. 5) Build/package the desktop app and inspect the dependency and
   unpacked-resource lists.
-- **Expected**: The work panel offers the Review launcher row plus Browser and
-  in-scope plugin views; Review opens on explicit user action and file resources
-  are transcript-opened; no PTY is created and no terminal tab can be opened.
+- **Expected**: The local work panel offers the Review launcher row plus
+  Browser and in-scope plugin views; Review opens on explicit user action and
+  file resources are transcript-opened; no local PTY is created and no local
+  terminal tab can be opened. A remote Host terminal is covered separately by
+  E2E-231 and does not weaken the local-session boundary.
   Agent Bash remains non-interactive and fully visible in the transcript.
-  Interactive shell work is performed by the external terminal. Desktop
-  packaging has no PTY/xterm dependency, terminal-specific
-  IPC, or native terminal payload, while generic lifecycle `terminal` values
-  continue to work.
+  Interactive shell work for local sessions is performed by the external
+  terminal. Desktop packaging contains no local PTY runtime or native terminal
+  payload; any xterm renderer dependency and typed terminal IPC are used only
+  for remote Host sessions. Generic lifecycle `terminal` values continue to
+  work.
 - **Specs linked**: `02-architecture/02-tech-stack.md`,
   `03-runtime/01-ipc-protocol.md` §13a, `04-ux/08-component-spec.md` §5,
-  ADR 0108
+  ADR 0108, ADR 0309
 - **Acceptance**: D (workspace), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`work-panel.test.mjs`, `packaging-footprint.test.mjs`);
@@ -8587,7 +8591,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
-| Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
+| Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232, E2E-REMOTE-session-list-and-create, E2E-REMOTE-provider-import-enables-turn |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP regression coverage (plugin tool dispatch) | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
@@ -12989,7 +12993,7 @@ browser milestones are scheduled.
   fail before turn admission on both paths; no local client path reaches the
   Host; `project/list` returns labels and ids without absolute paths;
   `session/create` binds the project by id; and the existing
-  `PATH_OUTSIDE_WORKSPACE` boundary remains authoritative.
+  `REMOTE_PATH_FORBIDDEN` boundary remains authoritative.
 - **Specs linked**: `03-runtime/19-remote-agent-control-protocol.md` §§5.7,
   7.7, and 10, `05-security/02-remote-control-security.md` §6,
   `03-runtime/03-tools-and-permissions.md`
@@ -13026,47 +13030,152 @@ browser milestones are scheduled.
   serves the `pi-host` bundle for that platform at the desktop's version, a
   bundle at another version, and a tampered bundle with a wrong checksum.
   The desktop has one local session open, one user MCP server configured,
-  and one installed plugin whose tool requires workspace access.
+  and one installed plugin whose tool requires workspace access. The remote
+  Host fixture starts `pi-host` with
+  `--remote-max-permission-mode ask --apply-ceiling-to-paired-devices true`
+  and has a subagent definition with `accept-edits`; the test Session is stored
+  at `auto` so the turn ceiling is lower than both the Session and delegate scope.
 - **Steps**: 1) Add the remote machine from the desktop and let the uploaded
   bootstrap script download, verify, and start `pi-host` over SSH.
   2) Observe the pairing exchange and the resulting device token. 3) Create a
   session under a remote project through `project/list` and
   `session/create`. 4) Start a turn whose fixture reads, edits, and runs a
-  command in the remote project, and approve the command from the desktop
-  card. 5) Switch the session to Plan mode and back with `session/configure`
-  while idle, then attempt it while a turn runs. 6) Open the files tab and the
-  diff tab for the remote session. 7) Advertise relay from the desktop, run a
-  turn that calls the desktop MCP tool, then close the desktop during a
-  second call. 8) Open a terminal on the remote session and run a command.
-  9) Kill the SSH session mid-turn with the terminal open, restore it, and
-  let the desktop reconnect. 10) Inspect the remote tool catalog. 11) Attempt
+  command in the remote project. With its tool approval still pending, drop the
+  SSH transport while keeping `pi-host` running, restore the connection, and
+  confirm the approval card is restored before approving it. Ask the turn to invoke the `accept-edits`
+  subagent to write a second file; confirm the remote ceiling still raises an
+  approval before the write, then allow it once. In a separate turn, have the
+  fixture issue an `asktool` input request, drop and restore the SSH transport
+  while the request is pending, confirm the card returns, and answer it. Queue
+  another delegated write turn and restart `pi-host`
+  before it drains; after reconnect, confirm it still requires approval. 5)
+  Switch the session to Plan mode and back with `session/configure` while idle,
+  then attempt it while a turn runs. 6) Open Files and Review for the remote
+  session, confirm Review separates the current Git diff from recorded
+  assistant changes, then refresh the diff after a remote edit. 7) Advertise
+  relay from the desktop, run a turn
+  that calls the desktop MCP tool, then close the desktop during a second
+  call. 8) Open a terminal on the remote session and run a command. 9) Kill
+  the SSH session mid-turn with the terminal open, restore it, and let the
+  desktop reconnect. Repeat terminal open with the same `openRequestId` after
+  dropping its response; try attaching from another session and using the
+  previous connection after reattachment. Confirm no input is resent. 10)
+  Inspect the remote tool catalog. 11) Attempt
   to connect from a non-loopback address on the remote machine, then with a
   reused pairing token. 12) Point the bootstrap at the tampered bundle, then
-  at the other version, and reconnect.
+  at the other version, and reconnect. 13) With desktop secure storage
+  unavailable, submit the SSH bootstrap form and confirm it fails before an
+  SSH connection or remote command starts.
 - **Expected**: Files change only on the remote machine and the command runs
   there; the approval card appears in the desktop with the local vocabulary;
+  the host-core applies the `ask` ceiling to the parent and delegated tool
+  calls, even though the Session is `auto` and the delegate is `accept-edits`;
+  after an SSH transport interruption while `pi-host` remains running, the
+  connected Desktop reattaches retained sessions, restores pending tool approvals
+  and input requests from the Host snapshot, and refreshes the currently visible
+  recovered transcript in place. After Host process restart, controller attach
+  resumes the Host's persisted queue and the Desktop resynchronizes its queue
+  view; the queued delegated turn retains its permission ceiling;
   the remote host-core binds loopback only; `session/configure` succeeds while
-  idle and returns `CONFLICT` while running; files and diff come from the
-  remote session root and a path outside it returns
-  `PATH_OUTSIDE_WORKSPACE`; the desktop MCP tool executes on the desktop and
+  idle and returns `CONFLICT` while running; Files and the Review working-tree
+  diff come from the remote session root, Review keeps recorded assistant
+  changes separate, and refreshing after a remote edit shows the new diff; a
+  path outside the root returns
+  `REMOTE_PATH_FORBIDDEN`; the desktop MCP tool executes on the desktop and
   its result reaches the remote transcript, while the second call fails with
-  `TOOL_FAILED` and the turn continues; the terminal runs on the remote
-  machine inside the session root; the turn continues through the SSH drop,
-  the desktop resumes by cursor without a duplicate, and the terminal output
-  resumes from the replay ring; the remote catalog lists the relayed MCP tool
+  `TOOL_FAILED` and the turn continues; replacing an advertisement during an
+  in-flight turn invalidates its old snapshot entry and never routes that call
+  to the replacement connection; the terminal runs on the remote
+  machine inside the session root; only the SSH-paired owner can operate it;
+  the same `openRequestId` reattaches to the existing PTY after a lost open
+  response, and a different session cannot attach to it; the previous
+  connection cannot input, resize, or close after a newer connection attaches;
+  the turn continues through the SSH drop, the desktop resumes by cursor
+  without a duplicate, terminal input is not replayed, and terminal output
+  resumes from the bounded replay ring; the remote catalog lists the relayed MCP tool
   but not the workspace-requiring plugin tool; the non-loopback peer and the
   reused pairing token are rejected; the tampered bundle is refused before
   start with a Settings toast that names the checksum failure rather than a
   bare SSH exit code; a refused SSH login surfaces ssh's last stderr line in
   that toast; the version mismatch returns `PROTOCOL_MISMATCH` and offers the
-  re-download; and the local session is untouched throughout.
+  re-download; unavailable desktop secure storage returns
+  `REMOTE_STORAGE_UNAVAILABLE` before SSH starts; and the local session is
+  untouched throughout.
 - **Specs linked**: `02-architecture/05-remote-agent-control.md` §§5.2 and
   6.3, `03-runtime/19-remote-agent-control-protocol.md` §§6.2, 9.4, and
   11.1, `05-security/02-remote-control-security.md` §§3.4, 4.3, 5.1, and 7,
   `06-delivery/07-remote-control-rollout.md` §2
 - **Acceptance**: E (tools & permissions), Security, Recovery, Quality
 - **Milestone**: Post-MVP (rollout R2)
-- **Status**: Draft; remote harness with a Linux SSH target required
+- **Status**: Draft. The headless `scripts/e2e-remote-host.mjs` exercises the
+  live `pi-host` and host-core path for pairing, projects, sessions, workspace
+  boundaries, provider-backed turns, and remote PTY output/re-attachment. Its
+  current 45/45 local checks also cover Files/Review refresh, busy-session
+  configuration conflicts, the production Desktop relay adapter through a
+  deterministic model turn, relay failure with turn continuation, no rerouting
+  to a replacement owner, and stale terminal input/resize/close rejection.
+  It bypasses the Desktop SSH bootstrap and renderer.
+  `scripts/e2e-remote-permission-ceiling.mjs` starts a real bundled `pi-host`
+  with host-core/RACP and an isolated deterministic loopback model. It checks
+  the paired-owner `auto` Session being clamped to `ask`, an `accept-edits`
+  subagent Write blocked until approval, and a queued delegated turn retaining
+  the ceiling and waiting for approval after a real Host process restart. It
+  also verifies the target remains absent before approval and appears in the
+  remote workspace afterward; the latest local run passed 20/20 checks. The
+  `remote-host-e2e` workflow is configured to run this fixture. It does not
+  present approval through the Desktop UI.
+  The same workflow runs `scripts/e2e-remote-ssh-bootstrap.mjs`: an isolated Linux
+  `sshd` fixture exercises production system SSH, checksum-verified installation
+  from a locally built release bundle, port forwarding, pairing, project/session
+  creation, workspace reads, and a mid-turn tunnel drop/restore with cursor
+  replay, idempotent turn retry, and PTY reattachment using the same
+  `openRequestId`. This fixture has not been run in the current macOS
+  environment. The fourth fixture, `pnpm test:e2e:remote-desktop`, runs the
+  packaged Electron renderer against a local paired Host: it creates a local
+  session, pairs through Settings, browses and registers a remote workspace,
+  creates a remote session, approves a Host-ceiling Write card, checks the
+  resulting file in Review, and confirms the local session remains present.
+  It uses an isolated profile and loopback model. This covers the Desktop half
+  of the flow, but does not run SSH bootstrap through Settings, disconnect
+  recovery, or the remaining terminal and MCP relay steps. The isolated Linux
+  Desktop fixture is `pnpm test:e2e:remote-ssh-desktop`; it drives the real
+  Settings SSH form, provider sync, remote session creation, remote read/write,
+  approval restoration across an SSH drop, terminal replay/input recovery, and
+  a durable queued turn across a remote Host process restart. It is fixture-only
+  and uses a loopback checksum/model server, temporary profile, and temporary
+  SSH key. It was added in the task worktree but was not run on the current
+  Darwin arm64 environment because the fixture requires Linux x64 and explicit
+  `PI_DESKTOP_E2E_SSHD_SUDO=1`; no E2E-231 pass is claimed here. The isolated
+  Linux CI profile selects Electron's `basic_text` password backend for disposable
+  fixture credentials; this does not verify OS-backed at-rest protection. A
+  prior local macOS attempt reached pairing but could not complete because
+  the isolated HOME had no available Keychain. SSH bootstrap now probes the
+  same `safeStorage` encryption API before opening SSH, so that setup should
+  fail before remote side effects; the macOS Keychain modal path remains
+  unverified. RACP and Host
+  Runtime relay contract/user-path coverage is in
+  `packages/racp/src/tool-relay.test.ts`,
+  `packages/host-runtime/src/remote-tool-relay.test.ts`, and
+  `packages/host-runtime/src/runtime-service.test.ts`. The Desktop global User
+  MCP adapter has targeted coverage in
+  `apps/desktop/test/remote-tool-relay.test.mjs` and
+  `apps/desktop/test/user-mcp.test.mjs`. Full Linux SSH Desktop acceptance
+  remains required for this end-to-end scenario until the Linux fixture result
+  is recorded against a committed task candidate and its current `origin/main`
+  base.
+
+  **Validation record (2026-09-26, task worktree)**: the committed task
+  candidate is `7b4ba3e42532d2848df115a6585f33a11fcd58a7`, based on fetched `origin/main`
+  `0853c067e1ef1dd5a08edb8108c6af8098302712` (the user-supplied handoff
+  branch and latest remote main were merged into this isolated worktree without
+  rewriting the shared task branch). Environment: Darwin arm64, Node 26, pnpm
+  10.34.5. Commands
+  `node scripts/e2e-remote-ssh-desktop.mjs` and
+  `node scripts/e2e-remote-ssh-bootstrap.mjs` were invoked and stopped by
+  their explicit Linux x64 platform guards; the full fixture bodies did not
+  run. Result: NOT RUN / E2E-231 remains Draft. Targeted bridge,
+  queue, relay, and RACP tests are recorded in the delivery report, but are not
+  substituted for the Linux Desktop acceptance.
 
 #### E2E-REMOTE-HOST-ssh-password-authentication
 
@@ -13142,6 +13251,72 @@ browser milestones are scheduled.
 - **Status**: Draft; covered offline by
   `apps/desktop/test/settings-remote-hosts.test.mjs` and
   `apps/desktop/test/settings-developer-only-destinations.test.mjs`.
+
+#### E2E-REMOTE-session-list-and-create
+
+- **Preconditions**: One paired remote host with at least one registered
+  project, and one local session open. The renderer treats a remote session id
+  as `remote:<hostKey>:<hostSessionId>` (D628).
+- **Steps**: 1) Open the sidebar and confirm the host appears as its own
+  borderless group with its connection state and its sessions. 2) Create a
+  remote session through the new-session dialog by picking a project on the
+  host. 3) Select the remote session and confirm the transcript, the Composer,
+  and the work-panel files tab reflect the remote profile. 4) Take the host
+  offline and issue a per-session call against the remote id. 5) Confirm the
+  local session and local workspace are untouched throughout, and that creating
+  or receiving a remote session never steals focus.
+- **Expected**: The remote host renders as one group per host with live
+  connection state; a disconnected host offers no create action. Creating a
+  remote session starts it on the host under the host's default model — the
+  desktop shows no remote model picker. A remote transcript row has no edit,
+  delete, or revision affordance; the Composer's mode and permission-mode
+  pickers are disabled for the remote session; the files tab reads only the
+  host's tree. A `remote:` id whose host is offline fails closed with a typed
+  error rather than routing to the local handler (amends ADR 0286 §3). The local
+  session, the local workspace path, and focus are never mutated by remote
+  entry.
+- **Specs linked**: `02-architecture/05-remote-agent-control.md` §5.2,
+  `05-security/02-remote-control-security.md` §3.4, §7,
+  `06-delivery/07-remote-control-rollout.md` §2 R2; ADR 0308
+- **Acceptance**: D (surfaces), Security, Quality
+- **Milestone**: Post-MVP (rollout R2)
+- **Status**: Partially automated by `pnpm test:e2e:remote-desktop`: a real
+  Electron user path covers local-session preservation, Settings pairing,
+  remote folder browsing and registration, session creation, Composer turn,
+  Desktop approval, remote file write, and the remote Review diff. Offline
+  router and capability tests remain in `apps/desktop/test/*remote*`. This
+  scenario remains Draft until disconnected-host fail-closed behavior and the
+  full Linux SSH Desktop journey are exercised end to end.
+
+#### E2E-REMOTE-provider-import-enables-turn
+
+- **Preconditions**: A booted `pi-host` on a throwaway data dir with the debug
+  host-core and bundled sidecar (the headless host harness,
+  `scripts/e2e-remote-host.mjs`). No provider is configured, so `turn/start`
+  fails closed with `MODEL_NOT_CONFIGURED`. A loopback OpenAI-compatible mock
+  model records its `Authorization` header and answers with fixed text (D629).
+- **Steps**: 1) Confirm a turn on a provider-less session fails closed and the
+  session stays idle. 2) Run `pi-host provider-import --data-dir <dir>` with a
+  one-provider payload on stdin — an OpenAI-compatible provider pointing at the
+  mock model, `authKind: api_key_and_base_url`, a marker `secretValue`, and a
+  `defaultModel`. 3) Read the `PI_HOST_PROVIDERS` summary and scan every CLI and
+  host output stream for the key marker. 4) Stat the admin socket and its
+  directory. 5) Re-run the same import. 6) Start a turn on the same session and
+  wait for the model call and the turn to complete, then read the session state.
+- **Expected**: The first import reports `imported[0].action === "created"` and
+  `defaultSet === true`; the marker key appears in no CLI stdout/stderr and no
+  host stderr; the admin socket is mode `0600` under a `0700` directory; a
+  re-import reports `action === "updated"` for the same `providerId`, not a
+  duplicate. The next turn is admitted, the mock model receives the key as a
+  `Bearer` header, a `turn.completed` session event arrives, and the session
+  returns to idle. No second host-core is spawned; the key crosses only the
+  stdin payload and the admin socket.
+- **Specs linked**: `02-architecture/05-remote-agent-control.md` §5.2,
+  `05-security/02-remote-control-security.md` §3.4, §7; ADR 0310
+- **Acceptance**: Security, E (tools & permissions), Recovery, Quality
+- **Milestone**: Post-MVP (rollout R2)
+- **Status**: Implemented in `scripts/e2e-remote-host.mjs` (32/32 checks pass);
+  runs headless on the host harness with no desktop or SSH target required.
 
 #### E2E-232: The outbound messaging integration relays events and commands
 

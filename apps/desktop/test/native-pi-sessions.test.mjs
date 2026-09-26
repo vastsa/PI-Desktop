@@ -10,7 +10,7 @@ const events = await read("../src/stores/slices/events-slice.ts");
 const sidecarDispatch = await read("../../../packages/agent-runtime/src/sidecar.ts");
 
 test("native model readiness uses capability instead of Desktop secrets", () => {
-  assert.match(composer, /const modelReady\s*=\s*nativeSession\s*\?\s*activeSessionSummary\??\.capabilities\?\.canPrompt === true\s*:/);
+  assert.match(composer, /const modelReady\s*=\s*hostOwnsModel\s*\?\s*activeSessionSummary\??\.capabilities\?\.canPrompt === true\s*:/);
 });
 
 test("native abort bypasses smart-stop rewrite and refreshes source detail", () => {
@@ -71,6 +71,63 @@ const user = (id) => ({ id, role: "user", content: "identical prompt", createdAt
 function stateHarness(state) {
   return { get: () => state, set: (update) => { Object.assign(state, typeof update === "function" ? update(state) : update); } };
 }
+
+test("remote snapshot state is authoritative per session and resolved cards are removed by id", async () => {
+  const remoteId = "remote:hostA:s1";
+  const otherId = "remote:hostA:s2";
+  const state = {
+    activeSessionId: remoteId,
+    isRunning: true,
+    runningSessions: { [remoteId]: true, [otherId]: true, "local:s1": true },
+    agentStatuses: {
+      [remoteId]: { sessionId: remoteId, isRunning: true, currentTurnId: "stale", pendingToolConfirmations: 3 },
+      [otherId]: { sessionId: otherId, isRunning: true, pendingToolConfirmations: 1 },
+    },
+    pendingPermissions: {
+      [remoteId]: [{ requestId: "approval-old", sessionId: remoteId, toolCallId: "", toolName: "old", argsPreview: null, risk: "low", reason: "old", receivedAt: 1 }],
+      [otherId]: [{ requestId: "approval-other", sessionId: otherId, toolCallId: "", toolName: "other", argsPreview: null, risk: "low", reason: "other", receivedAt: 1 }],
+    },
+    pendingAsks: {
+      [remoteId]: [{ requestId: "input-old", sessionId: remoteId, toolCallId: "", questions: [] }],
+      [otherId]: [{ requestId: "input-other", sessionId: otherId, toolCallId: "", questions: [] }],
+    },
+  };
+  const slice = createEventsSlice({
+    ...stateHarness(state),
+    runtime: {},
+    withoutRecordKey: (record, key) => {
+      const next = { ...record };
+      delete next[key];
+      return next;
+    },
+  });
+  slice.handleAgentEvent({
+    sessionId: remoteId,
+    ts: 1,
+    event: {
+      type: "remote_snapshot_state",
+      isRunning: false,
+      pendingToolConfirmations: 0,
+      planningState: "inactive",
+    },
+  });
+  assert.equal(state.runningSessions[remoteId], false);
+  assert.equal(state.runningSessions[otherId], true);
+  assert.equal(state.runningSessions["local:s1"], true);
+  assert.equal(state.agentStatuses[remoteId], undefined);
+  assert.ok(state.agentStatuses[otherId]);
+  assert.equal(state.pendingPermissions[remoteId], undefined);
+  assert.equal(state.pendingAsks[remoteId], undefined);
+  assert.ok(state.pendingPermissions[otherId]);
+  assert.ok(state.pendingAsks[otherId]);
+
+  state.pendingPermissions[remoteId] = [{ requestId: "approval-live", sessionId: remoteId, toolCallId: "", toolName: "new", argsPreview: null, risk: "low", reason: "new", receivedAt: 2 }];
+  state.pendingAsks[remoteId] = [{ requestId: "input-live", sessionId: remoteId, toolCallId: "", questions: [] }];
+  slice.handleAgentEvent({ sessionId: remoteId, ts: 2, event: { type: "remote_approval_resolved", requestId: "approval-live" } });
+  slice.handleAgentEvent({ sessionId: remoteId, ts: 3, event: { type: "remote_input_resolved", requestId: "input-live" } });
+  assert.equal(state.pendingPermissions[remoteId], undefined);
+  assert.equal(state.pendingAsks[remoteId], undefined);
+});
 
 test("durable user acknowledgement reconciles active, cached and background rows across reselects", () => {
   for (const activeSessionId of ["native-pi:fixture", "desktop-session"]) {
@@ -157,7 +214,7 @@ test("native prompt only dispatches sidecar and cannot create a host queue entry
 
 test("native model readiness never depends on a Desktop provider but read-only fails closed", () => {
   const expression = composer.match(/const modelReady = ([\s\S]*?);/)[1];
-  const evaluateReady = new Function("isImageGenerationModel", "imageGenerationCandidates", "settings", "nativeSession", "activeSessionSummary", "provider", "modelId", `return ${expression}`);
+  const evaluateReady = new Function("isImageGenerationModel", "imageGenerationCandidates", "settings", "hostOwnsModel", "activeSessionSummary", "provider", "modelId", `return ${expression}`);
   const ready = (nativeSession, activeSessionSummary, provider, modelId, settings) =>
     evaluateReady(isImageGenerationModel, imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration), settings, nativeSession, activeSessionSummary, provider, modelId);
   assert.equal(ready(true, { capabilities: { canPrompt: true } }, undefined, undefined), true);
@@ -222,6 +279,7 @@ function forkHarness({ host, sidecar, activeTurns = new Map() }) {
     "../importers": { convertSession() {}, scanAllSources() {}, scanModelConfigs() {} },
     "../services/session-collaboration": { readSessionCollaboration() {} },
     "../services/session-search": { searchSessionsAcrossSources },
+    "../bootstrap/remote-hosts": { getActiveRemoteHostsBoot: () => null },
   });
   registerSessionIpc({
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },

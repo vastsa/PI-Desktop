@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import type { RemoteHostSshAuth, RemoteHostSummary } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
+import { SyncProvidersDialog } from "../../features/remote/SyncProvidersDialog";
 import { Badge, Button, Field, Input, PasswordInput, SegmentedControl, cx } from "../ui";
 
 type AddMode = "ssh" | "pair";
@@ -57,6 +58,7 @@ export function RemoteHostsPage() {
   const [sshForm, setSshForm] = useState<SshForm>(EMPTY_SSH_FORM);
   const [installing, setInstalling] = useState(false);
   const [addMode, setAddMode] = useState<AddMode>("ssh");
+  const [syncHost, setSyncHost] = useState<RemoteHostSummary | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -157,6 +159,10 @@ export function RemoteHostsPage() {
         showToast(t("settings.remoteHosts.sshSucceeded", { label: result.host.label }), {
           variant: "info",
         });
+        // A new host has no models; say so here rather than syncing unasked.
+        showToast(t("settings.remoteHosts.syncHint", { label: result.host.label }), {
+          variant: "info",
+        });
         // Drops the password with the rest of the draft.
         setSshForm(EMPTY_SSH_FORM);
         await refresh();
@@ -222,6 +228,16 @@ export function RemoteHostsPage() {
                     ? t("settings.remoteHosts.statusOnline")
                     : t("settings.remoteHosts.statusOffline")}
                 </Badge>
+                {host.transport === "ssh" ? (
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    disabled={!host.connected || removing === host.hostKey}
+                    onClick={() => setSyncHost(host)}
+                  >
+                    {t("settings.remoteHosts.syncModels")}
+                  </Button>
+                ) : null}
                 <Button
                   variant="ghost"
                   type="button"
@@ -237,6 +253,28 @@ export function RemoteHostsPage() {
           ))
         )}
       </div>
+      {syncHost ? (
+        <SyncProvidersDialog
+          hostKey={syncHost.hostKey}
+          hostLabel={syncHost.label}
+          onClose={() => setSyncHost(null)}
+          onSynced={(summary) =>
+            showToast(
+              t(
+                summary.skipped.length > 0
+                  ? "settings.remoteHosts.syncPartial"
+                  : "settings.remoteHosts.syncSucceeded",
+                { host: syncHost.label },
+              ),
+              { variant: "info" },
+            )
+          }
+          onError={(caught) => {
+            const message = caught instanceof Error ? caught.message : String(caught);
+            showToast(t("settings.remoteHosts.syncFailed", { message }), { variant: "error" });
+          }}
+        />
+      ) : null}
 
       <section className="settings-card-block">
         <div className="settings-card-heading-row settings-remote-host-add-heading">

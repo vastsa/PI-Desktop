@@ -139,9 +139,12 @@ Deliverables:
 - the reverse tool relay: `tools/advertise` and the `tool/execute` server
   request, so desktop MCP servers and workspace-free plugin tools run on the
   desktop for a remote session;
-- the terminal: `terminal/open`, `terminal/input`, `terminal/resize`,
-  `terminal/close`, `terminal.output`, and a bounded replay ring, running on
-  the remote machine; and
+- the remote-only WorkPanel terminal: `terminal/open`, `terminal/input`,
+  `terminal/resize`, `terminal/close`, `terminal.output`, and a bounded replay
+  ring, running on the remote machine. In the first SSH topology only the
+  SSH-paired owner device may open or operate it. Local desktop sessions remain
+  terminal-free; Agent Bash remains a non-interactive tool whose output is in
+  the transcript; and
 - the Settings → Remote Hosts destination: a compact host inventory and one
   Add form with SSH and Pair tabs, no instructional copy, marked Experimental
   on the settings rail and page title because the topology may still fail, and
@@ -152,11 +155,26 @@ Design decisions (D375, recorded 2026-09-10):
 
 1. Provider configuration on the remote Host is written over the SSH
    bootstrap channel as Host-local configuration; nothing crosses RACP.
+   Delivered by D629 / ADR 0310: a manual "Sync models…" action runs
+   `pi-host provider-import` on the Host with the provider payload — keys
+   included — on the SSH stdin, handed to the running Host over an owner-only
+   Unix admin socket; no key crosses argv, logs, a remote file, or RACP, and no
+   second host-core is spawned. Import is idempotent per provider and deletes
+   nothing. Remote session entry (D628 / ADR 0308) then lists a paired Host's
+   sessions as one sidebar group per Host and lets the user start a session on
+   the Host, which runs under the Host's default model with no desktop-side
+   model picker; a `remote:` id whose Host is offline fails closed instead of
+   routing to the local handler.
 2. Desktop user MCP servers and workspace-free plugin tools reach remote
    sessions through the reverse tool relay in this milestone; plugin tools
    that require workspace or filesystem access are excluded.
-3. The work-panel terminal ships in this milestone as the `terminal/*`
-   operations, running on the remote machine.
+3. The WorkPanel terminal ships in this milestone for remote Host sessions
+   only. The first SSH topology authorizes only the paired owner device to open,
+   input, resize, or close a terminal; a controller or viewer cannot run a
+   shell. The PTY runs as the `pi-host` OS user with the session root as its
+   working directory, which is not a filesystem sandbox. Local desktop sessions
+   remain terminal-free under ADR 0108; Agent Bash output remains in the
+   transcript and is not a local interactive terminal.
 4. `pi-host` is downloaded from GitHub Releases per platform at the desktop's
    version by a bootstrap script the desktop uploads over SSH, with the
    published SHA-256 verified; a version mismatch is `PROTOCOL_MISMATCH`
@@ -429,6 +447,12 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   sidecar as a documented stub. Turn-scoped enforcement in host-core
   (`session.beginTurn` accepting an override) is the remaining piece, so a
   narrower ceiling on a local turn does not yet clamp tool decisions.
+- R1 permission-ceiling enforcement implemented (2026-09-25): the Host binds
+  the policy-derived ceiling to each applicable durable turn, and host-core
+  intersects it with tool and delegate scopes. A turn cannot widen the
+  resolved Session mode; queued turns keep their ceiling across restart. The
+  ceiling is Host-generated and is not a client-controlled RACP field. Layered
+  tests pass; desktop SSH E2E acceptance remains pending under E2E-231.
 - R2 started (2026-09-18, D447 / ADR 0284): `packages/host-runtime` holds the
   Electron-independent runtime layer — the host-core and sidecar stdio
   transports, the restart supervisor, `RuntimeService` (the module's
@@ -459,6 +483,65 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   `pi-desktop/remoteHost/bootstrap` joins `list` / `pair` / `remove`. The
   terminal work-panel client, the reverse tool relay, and provider-configuration
   propagation over the SSH channel are not in this slice.
+- R2b Host/RACP terminal slice (2026-09-25, ADR 0309): the Host owns the PTY
+  service and RACP terminal operations, binds terminals to the SSH-paired owner,
+  session, and active connection, and supports bounded output replay and safe
+  reattachment. This Host/RACP slice does not itself deliver the Desktop
+  terminal renderer, typed IPC/API, remote-backend operation routing,
+  capability-to-UI wiring, or terminal event forwarding and UI lifecycle; those
+  pieces are covered by the Desktop integration slice below. Local sessions
+  remain terminal-free.
+- R2b Host/RACP reverse tool relay slice (2026-09-25): `tools/advertise` now
+  replaces an owner connection's per-Session catalog, disconnect clears it,
+  and each remote turn receives a bounded snapshot whose entries remain pinned
+  to the original connection and advertisement revision. Host-core tool
+  execution routes through `tool/execute`; replacement, disconnect, timeout,
+  or invalid response fails the tool as `TOOL_FAILED` without cross-connection
+  retry, allowing the turn to continue. The RACP and Host Runtime contract
+  tests cover this path. The Desktop global User MCP advertisement adapter is
+  implemented and has targeted coverage in
+  `apps/desktop/test/remote-tool-relay.test.mjs` and
+  `apps/desktop/test/user-mcp.test.mjs`; it is limited to
+  `toolsForProject(null)`. The CI workflow includes an isolated Linux `sshd`
+  bootstrap fixture that verifies the production SSH
+  transport, local release-bundle checksum/install, tunnel, pairing, and
+  remote project/session reads. The host E2E additionally drives the production
+  Desktop relay adapter through a deterministic model turn, checks failure and
+  continuation when the Desktop relay closes mid-call, and verifies that an
+  in-flight call is never rerouted to a replacement owner. It also covers
+  remote Files/Review refresh, busy-session configuration conflicts, and stale
+  terminal connections. The Linux SSH fixture now exercises a mid-turn tunnel
+  drop and restore, cursor replay, idempotent turn retry, and PTY reattachment
+  with the same `openRequestId`. The real Desktop SSH renderer fixture is
+  `pnpm test:e2e:remote-ssh-desktop`; it drives the Settings SSH form, provider
+  sync, approval and terminal recovery, and Host-process queue recovery using
+  only loopback fixtures and temporary credentials. These fixtures do not
+  replace the required Linux acceptance: on 2026-09-26 the committed task
+  candidate was `7b4ba3e42532d2848df115a6585f33a11fcd58a7`, based on
+  `origin/main` `0853c067e1ef1dd5a08edb8108c6af8098302712`, but the environment
+  was Darwin arm64. Both
+  `node scripts/e2e-remote-ssh-desktop.mjs` and
+  `node scripts/e2e-remote-ssh-bootstrap.mjs` stopped at their Linux-only
+  platform guards, so E2E-231 remains Draft. Local
+  headless runs pass 45/45 host checks and 20/20 permission-ceiling/queued-turn
+  checks; the Linux SSH fixtures remain to be run on Linux x64.
+  `workspaceFree` is an owner-side assertion that the
+  Host cannot independently verify; the Desktop adapter must derive it from
+  trusted source metadata and fail closed when uncertain. The initial adapter
+  is limited to global User MCP tools from `toolsForProject(null)`; plugin
+  tools remain disabled until a trusted classifier and product decision exist.
+- R2b Desktop integration slice (2026-09-25): the remote WorkPanel now exposes
+  Host-capability-gated terminals, routes terminal IPC through the owning
+  remote Session, and keeps a stable open request ID per tab for reattachment.
+  Reconnect restores Host and Session subscriptions by cursor before refreshing
+  capabilities and re-advertising global User MCP tools. Hosts that are offline
+  during startup retry in the background; remove, re-pair, and shutdown cancel
+  stale attempts. Targeted Desktop suites and the headless remote Host E2E pass.
+  `pi-host` now accepts explicit remote permission-ceiling and approval-lifetime
+  policy through startup flags or environment variables. E2E-231 remains Draft
+  until the Linux SSH Desktop scenario exercises the full Settings, approval,
+  relay, reconnect, terminal, and security path; the SSH fixture currently
+  covers pairing, remote reads, and headless reconnect behavior.
 
 ## 8. Amendment history
 

@@ -4,7 +4,7 @@ import { err, ErrorCodes, IPC, ok, type Result } from "@pi-desktop/shared";
 import type { AgentHostBridge } from "../agent-host-bridge";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
-import { ROUTE_LOCAL, type BackendRouter } from "../remote/backend-router";
+import { assertNotRemoteCall, ROUTE_LOCAL, type BackendRouter } from "../remote/backend-router";
 import { registerAgentExtensionIpc } from "../agent-extensions-ipc";
 import { readNpmPath, writeNpmPath } from "../npm-preferences";
 import { registerAgentIpc } from "./agent-ipc";
@@ -32,6 +32,7 @@ import { createComposerTemplateLoader, registerWorkspaceIpc } from "./workspace-
 import { registerComposerIpc } from "./composer-ipc";
 import { registerSpeechIpc } from "./speech-ipc";
 import { registerVoiceIpc } from "./voice-ipc";
+import { registerTerminalIpc } from "./terminal-ipc";
 import type { IpcRegistrar } from "./types";
 import type { createTraySessions } from "../tray-sessions";
 import type { createTaskbarUnreadBadge } from "../taskbar-unread-badge";
@@ -464,7 +465,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     registerVoiceIpc({ registrar, voiceService });
   }
 
-  registerRemoteHostIpc({ registrar });
+  registerRemoteHostIpc({ registrar, getHost });
+  registerTerminalIpc({ registrar });
 
   registerMarketIpc({
     registrar,
@@ -493,6 +495,9 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
         errorCode: ErrorCodes.NOT_FOUND,
       });
     }
+    // External agents and scheduled runs reach local handlers directly; a
+    // remote session id must not be served by them (fail closed).
+    assertNotRemoteCall(args);
     return handler(...args);
   };
 }

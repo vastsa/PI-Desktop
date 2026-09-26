@@ -1879,6 +1879,9 @@
           "toolRelay": {
             "type": "boolean"
           },
+          "toolRelayCancel": {
+            "type": "boolean"
+          },
           "terminal": {
             "type": "boolean"
           }
@@ -2015,6 +2018,9 @@
             "type": "boolean"
           },
           "toolRelay": {
+            "type": "boolean"
+          },
+          "toolRelayCancel": {
             "type": "boolean"
           },
           "terminal": {

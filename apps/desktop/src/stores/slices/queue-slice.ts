@@ -79,6 +79,16 @@ export function createQueueSlice({
 > {
   const queuedDrafts = new Map<string, ComposerDraftSnapshot>();
   const pendingSubmissions = new Set<string>();
+  // Queue events and newer refreshes invalidate older list responses for the
+  // same session. The scope is deliberately per-session so one remote queue
+  // cannot overwrite another remote or local session.
+  const queueRefreshVersions = new Map<string, number>();
+
+  function nextQueueRefreshVersion(sessionId: string): number {
+    const next = (queueRefreshVersions.get(sessionId) ?? 0) + 1;
+    queueRefreshVersions.set(sessionId, next);
+    return next;
+  }
 
   function toQueuedPrompt(entry: QueuedTurnSummary): QueuedPrompt {
     return {
@@ -325,8 +335,10 @@ export function createQueueSlice({
     },
 
     refreshQueuedPrompts: async (sessionId) => {
+      const version = nextQueueRefreshVersion(sessionId);
       try {
         const { entries } = await api.listQueuedPrompts(sessionId);
+        if (queueRefreshVersions.get(sessionId) !== version) return;
         applyQueueEntries(sessionId, entries);
       } catch {
         // The next queue event resynchronizes the mirror.
@@ -334,6 +346,7 @@ export function createQueueSlice({
     },
 
     applyQueueChanged: (event: AgentQueueChangedEvent) => {
+      nextQueueRefreshVersion(event.sessionId);
       applyQueueEntries(event.sessionId, event.entries);
     },
 
