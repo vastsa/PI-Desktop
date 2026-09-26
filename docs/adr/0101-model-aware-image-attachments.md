@@ -32,11 +32,17 @@ renderer discovery and user-entered model ids are not sufficient evidence.
    the sidecar only as transient base64 data and becomes a pi-ai image content
    block. The base64 value is never persisted in SQLite, JSONL, or renderer
    transcript state.
-5. For a non-vision model, an unknown model, or an image above the inline
-   limit, the prompt receives a safe `@path` fallback. Replayed content-store
-   images are copied into the session scratch `replayed/` directory before that
-   fallback is exposed to the model.
-6. The Composer shows a compact accessible status row when an image is attached:
+5. For a non-vision model, an unknown model, or an image above the per-image
+   inline limit, the prompt receives a safe `@path` fallback. Replayed
+   content-store images are copied into the session scratch `replayed/`
+   directory before that fallback is exposed to the model.
+6. Restored vision history has a 30 MB aggregate raw-image-byte budget in
+   addition to the 10 MB per-image limit. The sidecar considers newest
+   attachments first, preserving all images when the history fits; older images
+   beyond the budget use the safe path fallback. The current prompt row is
+   excluded before history hydration so its transient payload does not consume
+   the history budget.
+7. The Composer shows a compact accessible status row when an image is attached:
    it states whether the selected model can receive visual input. The model
    picker and session/provider summaries expose the same authoritative vision
    capability.
@@ -48,6 +54,9 @@ renderer discovery and user-entered model ids are not sufficient evidence.
 - Text-only and non-vision models retain the existing file-tool workflow.
 - Image bytes are deduplicated and can survive retry, fork, and runtime
   recreation without putting binary data in the transcript.
+- Restored sessions preserve historical vision blocks regardless of age while
+  the images fit within one fixed aggregate budget; over-budget history has a
+  deterministic memory ceiling and a safe path fallback for older images.
 - Attachment garbage collection remains a later storage task; references are
   content-addressed so it can be added without changing the message contract.
 - Full visual previews, drag-and-drop, image transforms, and provider-specific

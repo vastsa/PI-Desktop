@@ -3559,6 +3559,39 @@ describe("DesktopAgentRuntime session collaboration provenance", () => {
     await runtime.dispose();
     await restored.dispose();
   });
+  it("replays every under-budget historical image as a provider image block", async () => {
+    const history: UiMessage[] = Array.from({ length: 6 }, (_, index) => {
+      const payload = Buffer.from(`historical-image-${index + 1}`).toString("base64");
+      return {
+        id: `image-${index + 1}`,
+        role: "user",
+        content: `image ${index + 1}`,
+        createdAt: new Date(Date.now() + index).toISOString(),
+        attachments: [
+          {
+            name: `image-${index + 1}.png`,
+            ref: `attachments/image-${index + 1}`,
+            kind: "image",
+            mimeType: "image/png",
+            data: payload,
+          },
+        ],
+      };
+    });
+    const runtime = createRuntime({ history });
+    try {
+      const messages = buildSessionContext((runtime as any).fullEntries).messages;
+      const imageBlocks = messages.flatMap((message) =>
+        message.role === "user" && Array.isArray(message.content)
+          ? message.content.filter((block) => block.type === "image")
+          : [],
+      );
+      expect(imageBlocks).toHaveLength(6);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
 });
 
 describe("DesktopAgentRuntime tool history restore (D120)", () => {

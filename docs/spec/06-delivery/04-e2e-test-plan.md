@@ -7423,6 +7423,32 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Status**: Unit-covered (`model-capabilities.test.ts`, host-core attachment
   roundtrip); provider/UI journey Draft (run only in a capable environment when this surface changes)
 
+#### E2E-102j: Historical vision replay uses a bounded aggregate byte budget
+
+- **Preconditions**: A vision-capable model, a session with no compaction boundary
+  across the fixture turns, six distinct user image turns whose combined raw
+  image size is below 30 MB, and a later text-only user turn. Capture the
+  provider request during runtime recreation and edit/resend.
+- **Steps**:
+  1. Send the six image turns and then a text-only turn.
+  2. Reload/recreate the runtime and edit/resend the text-only turn.
+  3. Inspect the provider request and the durable transcript.
+- **Expected**:
+  - All six historical images are replayed as image blocks; being older than
+    five image messages does not drop visual context while the aggregate stays
+    within budget.
+  - The current text row is removed before history hydration and is not
+    double-counted against the restored-history budget.
+  - Durable turns retain only attachment refs/metadata, never base64. A unit
+    case with a deliberately small budget verifies that many images in one
+    message are capped and newest attachments win.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §5.1,
+  `03-runtime/02-agent-runtime.md` §5c, `03-runtime/04-data-storage.md`, ADR 0101
+- **Acceptance**: C (conversation & stream), F (persistence), Quality
+- **Milestone**: M5
+- **Status**: Documented; provider/UI journey Draft (run only in a capable environment when this surface changes)
+
+
 #### E2E-ATTACHMENTS-svg-file-fallback: SVG inputs are sent as files, not model images
 
 - **Preconditions**: A vision-capable model; an Agent session; one SVG file

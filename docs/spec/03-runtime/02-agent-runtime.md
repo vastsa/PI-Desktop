@@ -730,12 +730,13 @@ criterion-by-criterion report of what was met and the evidence observed.
   restores as an errored result; a tool row whose assistant row was lost
   gets a synthesized call-only assistant carrier so call/result pairs stay
   well-formed for every provider API.
-- Vision runtimes hydrate persisted image refs only from the session-bound
-  attachment, scratch, and project roots. Images within the 10 MB inline
-  safety bound become transient pi-ai image blocks; oversized or unavailable
-  images become safe `@path` fallbacks. Oversized history hydration copies
-  files without first loading their contents into memory. Base64 is never
-  restored into durable UI messages or transcript records.
+Vision runtimes hydrate persisted image refs only from the session-bound
+attachment, scratch, and project roots. Each image remains subject to the 10 MB
+safety bound, and restored history has a 30 MB aggregate raw-byte budget.
+The newest refs are considered first; all eligible images remain image blocks
+when the history fits, while over-budget or oversized images become safe
+`@path` fallbacks. Reads are bounded by the admitted file size. Base64 is
+transient and never restored into durable UI messages or transcript records.
 - Failed assistant messages remain durable diagnostic transcript entries but
   are never restored into pi model context on a later turn.
 - A tool-call id is unique in every request. The transcript is an append-only

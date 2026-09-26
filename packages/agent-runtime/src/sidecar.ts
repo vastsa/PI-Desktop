@@ -244,8 +244,17 @@ async function runtimeFor(
         compaction?: ContextCompactionRecord;
       } | null;
     }>("session.get", { id: sessionId });
+    let restoredMessages = detail?.session?.messages ?? [];
+    // The current prompt is sent separately below. Exclude its persisted row
+    // before attachment hydration so it cannot consume the history byte budget.
+    if (currentPrompt !== undefined && params.userMessageId) {
+      const last = restoredMessages.at(-1);
+      if (last?.role === "user" && last.id === params.userMessageId) {
+        restoredMessages = restoredMessages.slice(0, -1);
+      }
+    }
     const supportsVision = visionFromModelConfig(params.provider.modelConfig);
-    history = await hydrateAttachmentHistory(detail?.session?.messages ?? [], {
+    history = await hydrateAttachmentHistory(restoredMessages, {
       scratchDir: params.scratchDir,
       projectPath: params.projectPath,
       attachmentsDir: params.attachmentsDir,
@@ -255,13 +264,10 @@ async function runtimeFor(
   } catch {
     // History restore is best-effort; a prompt can still start cleanly.
   }
-  if (currentPrompt !== undefined) {
+  // Older callers without a stable message id retain the previous content match.
+  if (currentPrompt !== undefined && !params.userMessageId) {
     const last = history.at(-1);
-    if (
-      last?.role === "user" &&
-      ((params.userMessageId && last.id === params.userMessageId) ||
-        (!params.userMessageId && last.content === currentPrompt))
-    ) {
+    if (last?.role === "user" && last.content === currentPrompt) {
       history = history.slice(0, -1);
     }
   }
