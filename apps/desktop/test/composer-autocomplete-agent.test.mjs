@@ -112,14 +112,27 @@ test("the @ menu heads files with a localized Agents group", async () => {
 
     // The delegate is offered with the exact token that will be typed, and its
     // description travels with it.
-    assert.match(html, /@explorer/, locale);
     assert.match(html, /Sweeps the codebase\./, locale);
-    // The group is labelled in this locale, and heads the list rather than
-    // trailing the file rows.
-    assert.ok(
-      html.indexOf(String(catalog.chat.agentGroup)) < html.indexOf("explore.ts"),
-      `${locale}: the Agents group must precede the file rows`,
+    // Each kind sits under its own heading, and the delegates head the list.
+    // An unlabelled file group previously rendered under the Agents heading,
+    // which read as one mixed section.
+    const agentLabel = String(catalog.chat.agentGroup);
+    const fileLabel = String(catalog.chat.fileGroup);
+    // Compare the group headings themselves, not the whole markup: the file
+    // copy elsewhere on the panel can contain a label as a substring.
+    const headings = [...html.matchAll(/class="composer-model-group-label">([^<]*)</g)].map(
+      (match) => match[1],
     );
+    assert.deepEqual(headings, [agentLabel, fileLabel], locale);
+    const agentAt = html.indexOf(agentLabel);
+    const delegateAt = html.indexOf("@explorer");
+    const fileHeadAt = html.indexOf(`>${fileLabel}<`);
+    const fileRowAt = html.indexOf("explore.ts");
+    assert.ok(agentAt < delegateAt, `${locale}: the delegate must follow its heading`);
+    assert.ok(fileHeadAt > delegateAt, `${locale}: the file group must follow the delegates`);
+    assert.ok(fileHeadAt < fileRowAt, `${locale}: the file row must follow its heading`);
+    // Two labels, and the file row is not described as a delegate.
+    assert.equal((html.match(/composer-model-group-label/g) ?? []).length, 2, locale);
     // Each row carries a per-row accessible name, so the two kinds stay
     // distinguishable to a screen reader.
     assert.match(html, /aria-label="@explorer — Sweeps the codebase\."/, locale);

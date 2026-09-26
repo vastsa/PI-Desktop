@@ -260,6 +260,7 @@ export const zhCN = {
     sessionTranscriptEmpty: "无法读取该会话的记录，请重新打开会话后重试。",
     referenceMenu: "引用",
     agentGroup: "智能体",
+    fileGroup: "文件",
     agentDispatchModeBlocked: "委派智能体需要在智能体模式下进行。请切换到智能体模式后重新发送。",
     removeFileReference: "移除文件引用 {{name}}",
     messageAttachments: "此消息中的附件",

@@ -258,6 +258,7 @@ export const de = {
     "sessionTranscriptEmpty": "Der Verlauf dieser Sitzung konnte nicht gelesen werden. Bitte die Sitzung erneut öffnen.",
     "referenceMenu": "Verweise",
     "agentGroup": "Agenten",
+    "fileGroup": "Dateien",
     "agentDispatchModeBlocked": "Die Delegation an einen Agenten erfordert den Agentenmodus. Wechsle in den Agentenmodus und sende erneut.",
     "removeFileReference": "Dateiverweis {{name}} entfernen",
     "messageAttachments": "Anhänge in dieser Nachricht",

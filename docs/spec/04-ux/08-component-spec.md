@@ -3112,7 +3112,10 @@ Anatomy:
   Completion replaces only the token under the cursor, so several Skills and
   ordinary text can coexist in one prompt.
 - In Agent mode the `@` menu also lists delegates, as an "Agents" group above
-  the file rows (ADR 0308). Accepting one inserts `@name ` and the user keeps
+  the file rows (ADR 0308). Each group carries its own heading — "Agents" and
+  "Files" — so the two kinds are never read as one section; the file rows are
+  not left as an unlabelled remainder under the delegate heading. Accepting one
+  inserts `@name ` and the user keeps
   typing the brief in the same draft. At send time main rewrites the draft into
   an explicit `Task` instruction plus the user's own words, and the transcript
   keeps the original `@agent …` draft as its invocation chip. A `@agent` token is

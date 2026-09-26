@@ -257,6 +257,7 @@ export const ptBR = {
     sessionTranscriptEmpty: "Não foi possível ler o histórico desta sessão. Reabra-a para tentar novamente.",
     referenceMenu: "Referências",
     agentGroup: "Agentes",
+    fileGroup: "Arquivos",
     agentDispatchModeBlocked: "Delegar a um agente exige o modo Agente. Mude para o modo Agente e envie novamente.",
     removeFileReference: "Remover referência de arquivo {{name}}",
     messageAttachments: "Anexos desta mensagem",

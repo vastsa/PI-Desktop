@@ -258,6 +258,7 @@ export const es = {
     "sessionTranscriptEmpty": "No se pudo leer el historial de esta sesión. Vuelve a abrirla para intentarlo de nuevo.",
     "referenceMenu": "Referencias",
     "agentGroup": "Agentes",
+    "fileGroup": "Archivos",
     "agentDispatchModeBlocked": "Delegar en un agente requiere el modo Agente. Cambia al modo Agente y envía de nuevo.",
     "removeFileReference": "Eliminar referencia de archivo {{name}}",
     "messageAttachments": "Archivos adjuntos en este mensaje",

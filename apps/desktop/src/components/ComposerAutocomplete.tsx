@@ -42,13 +42,14 @@ function Highlighted({
   return <>{parts}</>;
 }
 
-const GROUP_KEYS: Record<ComposerCommand["kind"] | "agent", string> = {
+const GROUP_KEYS: Record<ComposerCommand["kind"] | "agent" | "path", string> = {
   template: "chat.slashGroupTemplates",
   builtin: "chat.slashGroupApp",
   plugin: "chat.slashGroupPlugins",
   extension: "chat.slashGroupExtensions",
   skill: "chat.slashGroupSkills",
   agent: "chat.agentGroup",
+  path: "chat.fileGroup",
 };
 
 function CommandIcon({ kind }: { kind: ComposerCommand["kind"] }) {
@@ -169,15 +170,15 @@ export function ComposerAutocomplete({
           : "path";
     if (group !== lastGroup) {
       lastGroup = group;
-      // File rows carry no header: agents head the list, and an unlabelled
-      // remainder reads as "everything else".
-      if (group !== "path") {
-        rows.push(
-          <div key={`g:${group}`} className="composer-model-group-label">
-            {t(GROUP_KEYS[group])}
-          </div>,
-        );
-      }
+      // Every section is labelled, the file rows included. Leaving the
+      // trailing group unlabelled made those rows read as part of whichever
+      // label preceded them, so an "@" menu holding both kinds showed the
+      // delegates and the files under one heading (ADR 0308).
+      rows.push(
+        <div key={`g:${group}`} className="composer-model-group-label">
+          {t(GROUP_KEYS[group])}
+        </div>,
+      );
     }
     rows.push(renderRow(item, index));
   });

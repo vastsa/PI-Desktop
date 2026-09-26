@@ -267,6 +267,7 @@ export const ko = {
     sessionTranscriptEmpty: "이 세션의 기록을 읽지 못했습니다. 세션을 다시 열어 시도하세요.",
     referenceMenu: "참조",
     agentGroup: "에이전트",
+    fileGroup: "파일",
     agentDispatchModeBlocked: "에이전트 위임에는 에이전트 모드가 필요합니다. 에이전트 모드로 전환한 뒤 다시 전송하세요.",
     removeFileReference: "파일 참조 {{name}} 제거",
     messageAttachments: "이 메시지의 첨부 파일",

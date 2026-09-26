@@ -267,6 +267,7 @@ export const tr = {
     sessionTranscriptEmpty: "Bu oturumun geçmişi okunamadı. Yeniden denemek için oturumu tekrar açın.",
     referenceMenu: "Başvurular",
     agentGroup: "Aracılar",
+    fileGroup: "Dosyalar",
     agentDispatchModeBlocked: "Bir aracıya devet etmek için Ajan modu gerekir. Ajan moduna geçip yeniden gönderin.",
     removeFileReference: "{{name}} dosya başvurusunu kaldır",
     messageAttachments: "Bu iletideki ekler",

@@ -9,7 +9,11 @@ import type { AutocompleteItem, useComposerAutocomplete } from "../../apps/deskt
 
 const host = document.createElement("div");
 document.body.append(host);
-const root = createRoot(host);
+// A fresh root per render: the probe cycles through modes, and reusing one
+// root would leave the previous mode's nodes in the document, so a stale group
+// heading could be counted against the current menu. An unmounted root cannot
+// be rendered into again, hence one per pass rather than an unmount in place.
+let root = createRoot(host);
 const i18n = createInstance();
 const noop = () => {};
 let accepted = -1;
@@ -93,11 +97,21 @@ globalThis.autocompleteLayoutProbe = async (width, fileMode = false, agentMode =
     if (measurements[1].name !== "@code-reviewer") failures.push("second agent row lost its token");
     // Agents lead the file rows, so the delegate must be the first row.
     if (measurements[2].name.includes("@")) failures.push("the file row must follow the agent rows");
-    if (!menu.querySelector(".composer-model-group-label")) failures.push("the Agents group label is missing");
+    // Two labelled sections, delegates first: an unlabelled file group would
+    // render under the Agents heading and read as one mixed section.
+    const headings = [...menu.querySelectorAll(".composer-model-group-label")].map((el) => el.textContent);
+    if (headings.length !== 2) failures.push(`expected 2 group labels, saw ${headings.length}`);
+    if (headings[0] !== en.chat.agentGroup) failures.push(`first group is ${headings[0]}`);
+    if (headings[1] !== en.chat.fileGroup) failures.push(`second group is ${headings[1]}`);
   }
   accepted = -1;
   rows[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
   if (accepted !== 0 || document.activeElement !== input) failures.push("acceptance lost row identity or input focus");
   if (!fileMode && rows[0].querySelector(".composer-ac-hl")?.textContent !== "ca") failures.push("name highlight lost");
-  return { ok: failures.length === 0, width, viewport: innerWidth, fileMode, measurements, failures };
+  // Reset for the next mode so nothing from this pass leaks into it.
+  const result = { ok: failures.length === 0, width, viewport: innerWidth, fileMode, agentMode, measurements, failures };
+  flushSync(() => root.unmount());
+  host.textContent = "";
+  root = createRoot(host);
+  return result;
 };

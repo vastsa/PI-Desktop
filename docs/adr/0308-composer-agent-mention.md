@@ -38,7 +38,10 @@ while the user's own text stays in the transcript as a chip (ADR 0024).
 
 Extend the `@` trigger, which already means "reference an entity", to cover
 agents alongside files. A user types `@explorer`, picks the delegate from the
-menu, and continues the same draft as the brief.
+menu, and continues the same draft as the brief. The two kinds are separate
+sections, each with its own heading: leaving the file rows unlabelled under the
+delegate heading made them read as part of it, which is the one arrangement that
+would be ambiguous at a glance.
 
 At send time main rewrites the draft into an explicit `Task` instruction plus
 the user's own words, and keeps the original draft as the transcript's
