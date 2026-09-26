@@ -156,7 +156,11 @@ provider disappears from the picker.
 
 The sheet also offers an ordered **Fallback models** list using that same
 configured-model picker. Users can add, move up/down, or remove alternatives.
-Already-selected models are excluded from the add menu. Saved pins that become
+Already-selected models are excluded from the add menu. Each saved row shows the
+configured provider display name and model ID when the catalog still contains it.
+When selected fallback rows have the same visible label, resolved rows include
+the provider ID; unresolved or same-provider duplicates include their position
+and stored pin instead. The stored pin is unchanged. Saved pins that become
 unavailable stay visible and removable; reopening or editing another field
 must not drop them. Clearing the list saves `fallbackModels: []`. Inherit-session
 remains a primary-only choice. The hint explains that alternatives run after
