@@ -130,6 +130,17 @@ test("several agents route as one Task call each", async () => {
   assert.doesNotMatch(content, /@explorer|@code-reviewer/);
 });
 
+test("a mention resolves even when the draft text runs into it", async () => {
+  // The composer serializes an inline chip back to `@name`. If it emitted
+  // `look@explorer` the resolver's boundary rule would reject it and the
+  // delegation would silently not happen, so this pins the two halves together.
+  const h = await send({ content: "look @explorer into this" });
+  const content = h.modelContent();
+  assert.match(content, /Agent: "explorer"/);
+  assert.match(content, /look\s+into this/);
+  assert.doesNotMatch(content, /@explorer/);
+});
+
 test("Plan mode never rewrites, because Task does not exist there", async () => {
   const h = await send({ mode: "plan" });
   // The literal text is sent as an ordinary prompt: the composer is the layer

@@ -267,6 +267,7 @@ export const en = {
     agentGroup: "Agents",
     fileGroup: "Files",
     agentDispatchModeBlocked: "Delegating to an agent needs Agent mode. Switch to Agent mode and send again.",
+    removeAgentReference: "Remove agent {{name}}",
     removeFileReference: "Remove file reference {{name}}",
     messageAttachments: "Attachments in this message",
     fileEmpty: "No matching files",

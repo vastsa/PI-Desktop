@@ -269,6 +269,7 @@ export const tr = {
     agentGroup: "Aracılar",
     fileGroup: "Dosyalar",
     agentDispatchModeBlocked: "Bir aracıya devet etmek için Ajan modu gerekir. Ajan moduna geçip yeniden gönderin.",
+    removeAgentReference: "{{name}} aracısını kaldır",
     removeFileReference: "{{name}} dosya başvurusunu kaldır",
     messageAttachments: "Bu iletideki ekler",
     fileEmpty: "Eşleşen dosya yok",

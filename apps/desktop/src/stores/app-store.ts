@@ -211,6 +211,11 @@ function promptAttachmentsFromDraft(
   references: ComposerDraftSnapshot["fileReferences"],
 ): AgentPromptAttachment[] {
   return references.flatMap((reference) => {
+    // A delegate mention is never an attachment. Its `path` is a `Task` handle
+    // rather than a location, so handing it to the host would ask the host to
+    // read a file the user never attached. It travels as inline `@name` text,
+    // which the prompt rewrite resolves against the delegation catalog.
+    if (reference.kind === "agent") return [];
     const kind =
       reference.kind ??
       (/\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(reference.path)

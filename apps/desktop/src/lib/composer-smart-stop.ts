@@ -1,7 +1,10 @@
 export type ComposerDraftFileReference = {
   path: string;
   name: string;
-  kind?: "image" | "file";
+  /** `agent` is a delegate mention, not a file (see ComposerFileReference). */
+  kind?: "image" | "file" | "agent";
+  /** Delegate description carried through a draft restore. */
+  description?: string;
   mimeType?: string;
   /** Visible inline token for a generated large-text paste reference. */
   token?: string;

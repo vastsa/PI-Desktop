@@ -21,6 +21,7 @@ import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop"
 import {
   clipboardFiles,
   createFileReference,
+  restoreComposerReference,
   editorSelectionRange,
   formatDroppedDirectoryPath,
   insertClipboardText,
@@ -131,7 +132,7 @@ export function useComposerAttachments({
         sourceValue.slice(selectionEnd);
       const nextReferences = [
         ...previousReferences.map((reference) =>
-          createFileReference(reference.path, reference.name, sessionId, reference),
+          restoreComposerReference(reference, sessionId),
         ),
         ...chips.map((chip) => chip.reference),
       ];
@@ -221,7 +222,7 @@ export function useComposerAttachments({
           sourceValue.slice(selectionEnd);
         const nextReferences = [
           ...previousReferences.map((reference) =>
-            createFileReference(reference.path, reference.name, sessionId!, reference),
+            restoreComposerReference(reference, sessionId!),
           ),
           ...chips.map((chip) => chip.reference),
         ];
@@ -334,7 +335,7 @@ export function useComposerAttachments({
       const ownerSessionId = sessionId ?? "";
       const nextReferences = [
         ...previousReferences.map((reference) =>
-          createFileReference(reference.path, reference.name, ownerSessionId, reference),
+          restoreComposerReference(reference, ownerSessionId),
         ),
         ...chips.map((chip) => chip.reference),
       ];

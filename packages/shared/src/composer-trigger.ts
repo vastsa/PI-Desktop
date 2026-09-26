@@ -216,10 +216,6 @@ export function buildAgentDispatchInstruction(names: string[]): string {
   ].join("\n");
 }
 
-/** Insertion text for an accepted agent entry: `@name ` ready for the brief. */
-export function formatAgentInsert(name: string): string {
-  return `@${name} `;
-}
 
 /** Insertion text for an accepted slash command: `/name ` ready for args. */
 export function formatCommandInsert(name: string): string {
@@ -269,22 +265,37 @@ export function serializeComposerFileReferences(
  * Resolve only inline generated tokens (legacy @name strings or single
  * sentinel characters backing atomic chips). Each resolved token keeps one
  * separating space so adjacent chips never fuse their @paths together.
+ *
+ * A delegate mention also needs a leading space when text precedes it. The
+ * send-time resolver only reads an `@token` at a start or after whitespace —
+ * that is what keeps `user@host` from looking like a mention — so
+ * `look@explorer` would serialize to a token the resolver then ignores, and
+ * the delegation would silently not happen. File output is byte-for-byte
+ * unchanged.
  */
 export function serializeInlineComposerFileReferences(
   draft: string,
-  references: ReadonlyArray<{ path: string; token?: string }>,
+  references: ReadonlyArray<{
+    path: string;
+    token?: string;
+    kind?: "image" | "file" | "agent";
+  }>,
 ): string {
   let content = draft;
   for (const reference of references) {
     const token = reference.token?.trim();
     if (!token || !content.includes(token)) continue;
     const insert = formatFileInsert(reference.path, "file").trim();
+    const leading = reference.kind === "agent" ? " " : "";
     let index = content.indexOf(token);
     while (index !== -1) {
       const nextChar = content[index + token.length];
       const separator = nextChar && !/\s/.test(nextChar) ? " " : "";
+      const prefix = content.slice(0, index);
+      const needLeading = leading && prefix.length > 0 && !/\s$/.test(prefix);
       content =
-        content.slice(0, index) +
+        prefix +
+        (needLeading ? leading : "") +
         insert +
         separator +
         content.slice(index + token.length);

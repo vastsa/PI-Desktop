@@ -269,6 +269,7 @@ export const ko = {
     agentGroup: "에이전트",
     fileGroup: "파일",
     agentDispatchModeBlocked: "에이전트 위임에는 에이전트 모드가 필요합니다. 에이전트 모드로 전환한 뒤 다시 전송하세요.",
+    removeAgentReference: "에이전트 {{name}} 제거",
     removeFileReference: "파일 참조 {{name}} 제거",
     messageAttachments: "이 메시지의 첨부 파일",
     fileEmpty: "일치하는 파일 없음",

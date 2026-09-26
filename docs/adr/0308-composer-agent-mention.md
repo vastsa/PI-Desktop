@@ -72,6 +72,26 @@ Only bare tokens qualify: a token carrying `/` or a quote is a path, and
 subagent names are `[a-z0-9-]` by contract, so nothing a user can mean as a
 delegate is lost.
 
+### A delegate is one atomic mention in the draft
+
+Accepting an agent creates the same inline chip a completed file reference
+creates, carrying the bot badge. A delegate is a single thing the user picked;
+leaving it as editable `@name` text let a keystroke cut it into `@explo`, which
+is both a broken mention and a half-typed handle the resolver would not accept.
+`contentEditable=false` is what makes deletion atomic.
+
+The chip serializes back to `@name`, and needs a leading space when text
+precedes it. The send-time resolver deliberately reads an `@token` only at a
+start or after whitespace — that is what stops `user@host` from looking like a
+mention — so `look@explorer` would have produced a token the resolver ignored
+and a delegation that silently did not happen. File output is unchanged
+byte-for-byte; only the agent branch gained a separator.
+
+The mention's `path` is the `Task` handle, not a location, so `kind` is the
+discriminant that keeps a delegate off the attachment path in both the
+optimistic transcript row and the prompt builder, and off the image path on
+draft restore. A delegate is never handed to the host to read.
+
 ### Delegation is offered in Agent mode only
 
 `Task` is registered only when the runtime mode is `agent` (ADR 0062 §4). Plan

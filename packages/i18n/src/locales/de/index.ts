@@ -260,6 +260,7 @@ export const de = {
     "agentGroup": "Agenten",
     "fileGroup": "Dateien",
     "agentDispatchModeBlocked": "Die Delegation an einen Agenten erfordert den Agentenmodus. Wechsle in den Agentenmodus und sende erneut.",
+    "removeAgentReference": "Agenten {{name}} entfernen",
     "removeFileReference": "Dateiverweis {{name}} entfernen",
     "messageAttachments": "Anhänge in dieser Nachricht",
     "fileEmpty": "Keine übereinstimmenden Dateien",

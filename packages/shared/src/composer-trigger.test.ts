@@ -5,7 +5,6 @@ import {
   detectTrigger,
   fileReferenceLabel,
   findAgentMentions,
-  formatAgentInsert,
   formatCommandInsert,
   formatFileInsert,
   normalizeLargePasteThreshold,
@@ -324,6 +323,35 @@ describe("findAgentMentions — @agent delegation", () => {
   });
 });
 
+describe("serializeInlineComposerFileReferences — agent mentions", () => {
+  const TOKEN = "\uE001";
+  const agent = { path: "explorer", token: TOKEN, kind: "agent" as const };
+  const file = { path: "src/a.ts", token: TOKEN, kind: "file" as const };
+
+  it("keeps a mention readable as a token when text precedes it", () => {
+    // The send-time resolver only reads an @token at a start or after
+    // whitespace, so `look@explorer` would never resolve and the delegation
+    // would silently not happen.
+    expect(serializeInlineComposerFileReferences(`look${TOKEN}into this`, [agent])).toBe(
+      "look @explorer into this",
+    );
+  });
+
+  it("adds no space where one is not needed", () => {
+    expect(serializeInlineComposerFileReferences(`${TOKEN}go`, [agent])).toBe("@explorer go");
+    expect(serializeInlineComposerFileReferences(`see ${TOKEN}go`, [agent])).toBe(
+      "see @explorer go",
+    );
+  });
+
+  it("leaves file output byte-for-byte unchanged", () => {
+    // Files never gained a leading space; that output predates the mention.
+    expect(serializeInlineComposerFileReferences(`read${TOKEN}now`, [file])).toBe(
+      "read@src/a.ts now",
+    );
+  });
+});
+
 describe("buildAgentDispatchInstruction", () => {
   it("names one agent and asks for Task before answering", () => {
     const instruction = buildAgentDispatchInstruction(["explorer"]);
@@ -339,8 +367,3 @@ describe("buildAgentDispatchInstruction", () => {
   });
 });
 
-describe("formatAgentInsert", () => {
-  it("leaves the caret room for the brief", () => {
-    expect(formatAgentInsert("explorer")).toBe("@explorer ");
-  });
-});

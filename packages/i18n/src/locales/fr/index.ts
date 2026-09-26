@@ -260,6 +260,7 @@ export const fr = {
     "agentGroup": "Agents",
     "fileGroup": "Fichiers",
     "agentDispatchModeBlocked": "La délégation à un agent nécessite le mode Agent. Passez en mode Agent et renvoyez.",
+    "removeAgentReference": "Supprimer l’agent {{name}}",
     "removeFileReference": "Supprimer la référence de fichier {{name}}",
     "messageAttachments": "Pièces jointes à ce message",
     "fileEmpty": "Aucun fichier correspondant",

@@ -5,7 +5,6 @@ import {
   detectTrigger,
   fileReferenceLabel,
   findAgentMentions,
-  formatAgentInsert,
   formatCommandInsert,
   formatFileInsert,
   fuzzyMatchCommand,
@@ -458,6 +457,7 @@ export function useComposerAutocomplete({
           value: string;
           cursor: number;
           fileReference?: { path: string; name: string };
+          agentReference?: { name: string; description?: string };
         }
       | null => {
       if (!trigger) return null;
@@ -473,9 +473,16 @@ export function useComposerAutocomplete({
         };
       }
       if (item.kind === "agent") {
-        // Plain text, not a chip: the mention resolves against the catalog at
-        // send time, so the draft stays a readable `@agent brief` line.
-        return applyCompletion(value, trigger, formatAgentInsert(item.agent.name));
+        // Atomic chip, like a completed file: the delegate is one thing the
+        // user picked, so it reads and deletes as one thing rather than as
+        // editable `@name` text they could half-erase.
+        return {
+          ...applyCompletion(value, trigger, ""),
+          agentReference: {
+            name: item.agent.name,
+            ...(item.agent.description ? { description: item.agent.description } : {}),
+          },
+        };
       }
       const insert =
         item.kind === "command"

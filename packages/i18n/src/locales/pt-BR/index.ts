@@ -259,6 +259,7 @@ export const ptBR = {
     agentGroup: "Agentes",
     fileGroup: "Arquivos",
     agentDispatchModeBlocked: "Delegar a um agente exige o modo Agente. Mude para o modo Agente e envie novamente.",
+    removeAgentReference: "Remover agente {{name}}",
     removeFileReference: "Remover referência de arquivo {{name}}",
     messageAttachments: "Anexos desta mensagem",
     fileEmpty: "Nenhum arquivo correspondente",

@@ -262,6 +262,7 @@ export const zhTW = {
     agentGroup: "智能體",
     fileGroup: "檔案",
     agentDispatchModeBlocked: "委派智能體需要在智能體模式下進行。請切換到智能體模式後重新傳送。",
+    removeAgentReference: "移除智能體 {{name}}",
     removeFileReference: "移除檔案引用 {{name}}",
     messageAttachments: "此訊息中的附件",
     fileEmpty: "沒有匹配的檔案",

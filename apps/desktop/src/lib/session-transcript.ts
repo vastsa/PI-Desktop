@@ -3,7 +3,7 @@ import type { AgentEvent, MessageAttachment, UiMessage } from "@pi-desktop/share
 type OptimisticFileReference = {
   path: string;
   name: string;
-  kind?: "image" | "file";
+  kind?: "image" | "file" | "agent";
   mimeType?: string;
   /** Large-text paste tokens travel inline in the text, not as attachments. */
   token?: string;
@@ -22,7 +22,14 @@ export function optimisticUserMessage(
   createdAt: string = new Date().toISOString(),
 ): UiMessage {
   const attachments: MessageAttachment[] = fileReferences
-    .filter((reference) => !reference.token)
+    // A delegate mention is never an attachment even without a token: its
+    // "path" is a `Task` handle, and reading it as a file would reach for a
+    // file the user never attached. It travels inline as `@name` text. The
+    // predicate narrows the type, so the mapping below cannot reintroduce it.
+    .filter(
+      (reference): reference is OptimisticFileReference & { kind?: "image" | "file" } =>
+        !reference.token && reference.kind !== "agent",
+    )
     .map((reference) => ({
       kind:
         reference.kind ??

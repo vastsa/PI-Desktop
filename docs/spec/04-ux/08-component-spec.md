@@ -3117,7 +3117,15 @@ Anatomy:
   not left as an unlabelled remainder under the delegate heading. A delegate row
   carries the bot badge used by the subagent settings and the model pickers, and
   a file row keeps its own glyph, so the icon reinforces the grouping a sighted
-  user reads. Accepting one
+  user reads. Accepting one creates an inline chip, the same atomic one a
+  completed file reference gets, carrying the bot badge: the delegate is one
+  thing the user picked, so it reads and deletes as one thing rather than as
+  editable `@name` text that a keystroke could cut in half. The chip serializes
+  back to `@name` for the model, and keeps a leading space when text precedes
+  it, because the send-time resolver only reads an `@token` at a start or after
+  whitespace. A draft restored after a restart brings the delegate back as a
+  delegate, never as a file chip, and a delegate never becomes an attachment.
+  Accepting one
   inserts `@name ` and the user keeps
   typing the brief in the same draft. At send time main rewrites the draft into
   an explicit `Task` instruction plus the user's own words, and the transcript
