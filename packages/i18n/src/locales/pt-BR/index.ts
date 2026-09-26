@@ -1728,6 +1728,7 @@ export const ptBR = {
     },
     closeTab: "Fechar {{name}}",
     tabs: {
+      context: "Contexto",
       review: "Revisar",
       browser: "Navegador",
       file: "Arquivos",
