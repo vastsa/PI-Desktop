@@ -78,7 +78,11 @@ function InvocationText({ message }: { message: UiMessage }) {
       ) : (
         <AgentRefChip
           key={`agent-${mention.start}`}
-          name={`@${mention.name}`}
+          // The chip shows the bare handle: the badge already says "this is a
+          // delegate", so repeating the `@` sigil only crowds the row. The
+          // token the user typed still covers these offsets, and still reaches
+          // the model and the surrounding transcript text unchanged.
+          name={mention.name}
           data-source-start={mention.start}
           data-source-end={mention.end}
         />

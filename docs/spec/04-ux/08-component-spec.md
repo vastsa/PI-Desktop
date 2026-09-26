@@ -3125,11 +3125,20 @@ Anatomy:
   it, because the send-time resolver only reads an `@token` at a start or after
   whitespace. A draft restored after a restart brings the delegate back as a
   delegate, never as a file chip, and a delegate never becomes an attachment.
-  Accepting one
-  inserts `@name ` and the user keeps
-  typing the brief in the same draft. At send time main rewrites the draft into
-  an explicit `Task` instruction plus the user's own words, and the transcript
-  keeps the original `@agent …` draft as its invocation chip. A `@agent` token is
+  In the transcript the same tokens render as per-mention delegate chips, on the
+  same `.composer-chip` surface a file reference uses, with the bot badge and no
+  button affordance — a delegate names a run rather than something to open. The
+  chip shows the bare handle (`explorer`), not the `@token` the user typed, since
+  the badge already identifies it; the composer chip and the `@` menu row keep
+  the `@`, being the token being chosen or typed. The offsets are recorded on
+  the message when it is sent, so a message sent while a delegate existed keeps
+  its chip after that delegate is removed, and the stored offsets index the
+  typed form either way. A stored range that does not line up with the text
+  falls back to rendering the whole typed draft. Accepting one inserts `@name `
+  and the user keeps typing the brief in the same draft. At send time main
+  rewrites the draft into an explicit `Task` instruction plus the user's own
+  words, and the transcript keeps the original `@agent …` draft as its
+  invocation chip. A `@agent` token is
   an agent only when it names a delegate **and** the workspace holds no file of
   that name; a real file of that name wins. A name outside the catalog stays
   ordinary text. Plan and Goal omit the group, and a hand-typed `@agent` sent
