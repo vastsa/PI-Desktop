@@ -63,8 +63,18 @@ app.whenReady().then(async () => {
         }
       }
       checks.push(await window.webContents.executeJavaScript("globalThis.autocompleteMultiSkillProbe(" + width + ")"));
+      if (process.env.PI_E2E_ARTIFACT_DIR) {
+        const fs = require("node:fs");
+        fs.mkdirSync(process.env.PI_E2E_ARTIFACT_DIR, { recursive: true });
+        fs.writeFileSync(path.join(process.env.PI_E2E_ARTIFACT_DIR, "multi-skill-" + width + ".png"), (await window.webContents.capturePage()).toPNG());
+      }
     }
     checks.push(await window.webContents.executeJavaScript("globalThis.contextPanelProbe()"));
+    if (process.env.PI_E2E_ARTIFACT_DIR) {
+      const fs = require("node:fs");
+      fs.mkdirSync(process.env.PI_E2E_ARTIFACT_DIR, { recursive: true });
+      fs.writeFileSync(path.join(process.env.PI_E2E_ARTIFACT_DIR, "context-panel.png"), (await window.webContents.capturePage()).toPNG());
+    }
     console.log("AUTOCOMPLETE_LAYOUT_PROBE " + JSON.stringify({ ok: checks.every((check) => check.ok), checks }));
     app.quit();
   } catch (error) {
