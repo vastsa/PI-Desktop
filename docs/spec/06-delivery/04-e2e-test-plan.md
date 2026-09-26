@@ -3737,7 +3737,10 @@ identify the platform validation still needed.
 #### E2E-059: Embedded browser preview isolation and overlays
 
 - **Preconditions**: A local dev server is running; a URL or BrowserPreview artifact exists.
-- **Steps**: 1) Activate the artifact, enter `localhost:<port>` without a scheme, and submit.
+- **Steps**: 1) Activate the artifact, enter `localhost:<port>` and
+  `localhost:<port>/index.html` without a scheme, and submit each. Enter a
+  dotted host with a port (for example, `example.com:8080`), then verify an
+  explicit HTTP(S) URL and a rejected `javascript:` URL.
   2) Navigate site links; use back/forward/reload/stop. 3) Trigger a
   `window.open` popup and a permission-requesting page (e.g. notification
   prompt). 4) Open global search, then rename a session from the left sidebar;

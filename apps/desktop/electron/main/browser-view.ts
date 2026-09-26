@@ -25,7 +25,12 @@ const LIVE_RELOAD_DEBOUNCE_MS = 250;
 export function normalizeUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
-  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)
+  const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed);
+  // A dotted hostname or localhost followed by a numeric port is an HTTP
+  // address, not a custom scheme. Keep other schemes subject to the allowlist.
+  const hasHostPort =
+    /^(?:localhost|(?:[a-zA-Z0-9-]+\.)+[a-zA-Z0-9-]+):\d+(?:[/?#]|$)/i.test(trimmed);
+  const withScheme = hasScheme && !hasHostPort
     ? trimmed
     : `http://${trimmed}`;
   try {
@@ -53,8 +58,8 @@ function isWithinRoot(path: string, root: string): boolean {
  * Resolve user input to a previewable file inside the workspace: a file://
  * URL, an absolute path, or a workspace-relative path (./demo/index.html,
  * index.html). Returns null unless the target exists as a file within the
- * root — inputs like "localhost:3000/a.html" then fall through to URL
- * handling instead of a broken file load.
+ * root. A missing relative file (for example, "localhost:3000/a.html")
+ * returns null so the caller can try HTTP URL normalization.
  */
 export function resolveLocalFile(raw: string, root: string | null): string | null {
   const trimmed = raw.trim();

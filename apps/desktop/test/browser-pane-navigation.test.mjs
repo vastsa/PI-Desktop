@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { register, registerHooks } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 // Electron is the external boundary; all navigation and timeout logic below
@@ -35,7 +37,7 @@ registerHooks({ resolve(specifier, context, next) {
   return specifier === "electron" ? { url: electron, shortCircuit: true } : next(specifier, context);
 } });
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
-const { BrowserPane } = await import("../electron/main/browser-view.ts");
+const { BrowserPane, normalizeUrl } = await import("../electron/main/browser-view.ts");
 const { WebContentsView } = await import("electron");
 const settled = () => new Promise(setImmediate);
 
@@ -47,6 +49,33 @@ function harness(t) {
   const wc = WebContentsView.instances.at(-1).webContents;
   return { pane, wc, request };
 }
+
+test("address-bar host and port inputs normalize to HTTP without accepting other schemes", () => {
+  assert.equal(normalizeUrl("localhost:3000"), "http://localhost:3000/");
+  assert.equal(normalizeUrl("localhost:3000/index.html"), "http://localhost:3000/index.html");
+  assert.equal(normalizeUrl("example.com:8080"), "http://example.com:8080/");
+  assert.equal(normalizeUrl("127.0.0.1:3000"), "http://127.0.0.1:3000/");
+  assert.equal(normalizeUrl("example.com"), "http://example.com/");
+  assert.equal(normalizeUrl("http://localhost:3000/index.html"), "http://localhost:3000/index.html");
+  assert.equal(normalizeUrl("file:///tmp/demo.html"), null);
+  assert.equal(normalizeUrl("javascript:alert(1)"), null);
+  assert.equal(normalizeUrl("custom:8080"), null);
+});
+
+test("submitting a localhost address with a workspace root loads and publishes the HTTP URL", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const root = mkdtempSync(join(tmpdir(), "browser-host-port-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const published = [];
+  const pane = new BrowserPane((state) => published.push(state));
+  const request = pane.navigateAndWait("localhost:3000/index.html", root);
+  const wc = WebContentsView.instances.at(-1).webContents;
+  assert.equal(wc.pendingLoads[0].url, "http://localhost:3000/index.html");
+  assert.equal(published.at(-1).url, "http://localhost:3000/index.html");
+  wc.url = "http://localhost:3000/index.html";
+  wc.pendingLoads.shift().resolve();
+  assert.equal((await request).url, "http://localhost:3000/index.html");
+});
 
 test("timing out a new preview does not return the previous document as ready", async (t) => {
   const { request, wc } = harness(t);
