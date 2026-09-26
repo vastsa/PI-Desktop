@@ -6,6 +6,7 @@ import type {
   RacpPlanningState,
   RacpRole,
   RacpRelayTool,
+  RacpToolCancelParams,
   RacpToolExecuteParams,
 } from "@pi-desktop/shared";
 
@@ -94,6 +95,8 @@ export interface ToolRelayPort {
     sessionId: string;
     tools: RacpRelayTool[];
     request: (method: string, params: unknown, timeoutMs: number) => Promise<unknown>;
+    /** Optional capability-negotiated cancellation for one in-flight call. */
+    cancel?: (params: RacpToolCancelParams) => Promise<unknown>;
   }): void;
   clearConnection(connectionId: string): void;
   captureCatalog(sessionId: string): ToolRelayCatalogSnapshot;

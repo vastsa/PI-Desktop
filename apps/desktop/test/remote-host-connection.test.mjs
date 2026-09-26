@@ -669,3 +669,206 @@ test("a burst of queue-affecting session events emits agentQueueChanged once", a
   await flush();
   assert.equal(events.filter((event) => event.channel === IPC.event.agentQueueChanged).length, 1);
 });
+
+test("queue sync discards an in-flight result when another queue event makes it dirty", async () => {
+  const oldRead = deferred();
+  const newRead = deferred();
+  let sessionGets = 0;
+  const { conn, router, client, events } = setup({
+    sessions: [makeSession("s1")],
+    responses: {
+      "session/attach": () => ({
+        session: makeSession("s1"),
+        snapshot: {
+          session: makeSession("s1"),
+          queuedTurns: [],
+          items: [],
+          activeItems: [],
+          pendingApprovals: [],
+          pendingInputs: [],
+          hasMoreHistory: false,
+          cursor: { epoch: "epoch-1", sequence: 8 },
+          revision: 1,
+          generatedAt: "2026-09-18T10:01:00.000Z",
+        },
+      }),
+      "session/get": () => {
+        sessionGets += 1;
+        if (sessionGets === 1) return oldRead.promise;
+        return newRead.promise;
+      },
+    },
+  });
+  await conn.open();
+  await router.route(IPC.invoke.sessionGet, [{ id: remote("s1"), messageLimit: 10 }]);
+  client.push(makeEnvelope({ sessionId: "s1", kind: "turn.completed" }));
+  await waitFor(() => sessionGets === 1);
+  client.push(makeEnvelope({ sessionId: "s1", kind: "turn.queued" }));
+  oldRead.resolve({ session: makeSession("s1", { queuedTurnIds: ["old"] }) });
+  await flush();
+  assert.equal(events.filter(({ channel }) => channel === IPC.event.agentQueueChanged).length, 0);
+  await waitFor(() => sessionGets === 2);
+  newRead.resolve({ session: makeSession("s1", { queuedTurnIds: ["t2", "t1"] }) });
+  await waitFor(() => events.filter(({ channel }) => channel === IPC.event.agentQueueChanged).length === 1);
+  const queueEvent = events.find(({ channel }) => channel === IPC.event.agentQueueChanged);
+  assert.deepEqual(
+    queueEvent.payload.entries.map((entry) => entry.id),
+    [`${remote("s1")}#racp-turn:t2`, `${remote("s1")}#racp-turn:t1`],
+  );
+  await conn.close();
+});
+
+test("queue sync drops an in-flight result after the host connection closes", async () => {
+  const read = deferred();
+  const { conn, client, events } = setup({
+    sessions: [makeSession("s1")],
+    responses: {
+      "session/get": () => read.promise,
+    },
+  });
+  await conn.open();
+  client.push(makeEnvelope({ sessionId: "s1", kind: "turn.completed" }));
+  await waitFor(() => client.calls.some((call) => call.method === "session/get"));
+
+  await conn.close();
+  read.resolve({ session: makeSession("s1", { queuedTurnIds: ["stale"] }) });
+  await flush();
+  assert.equal(events.filter(({ channel }) => channel === IPC.event.agentQueueChanged).length, 0);
+});
+
+test("session attach applies its snapshot before cursor-ordered in-flight events", async () => {
+  let sessionSubscribes = 0;
+  let attaches = 0;
+  const attach = deferred();
+  const approval = {
+    id: "approval-1",
+    sessionId: "s1",
+    turnId: "turn-1",
+    kind: "tool",
+    summary: "write a file",
+    expiresAt: "2026-09-18T10:05:00.000Z",
+    revision: 4,
+    toolName: "write",
+    risk: "high",
+    allowedDecisions: ["allow-once", "deny"],
+  };
+  const session = makeSession("s1", {
+    status: "waiting_permission",
+    activeTurnId: "turn-1",
+  });
+  const { conn, router, client, events } = setup({
+    sessions: [makeSession("s1")],
+    responses: {
+      "events/subscribe": (params) => {
+        if (params.scope === "host") return { subscriptionId: "host-1", replayComplete: true };
+        sessionSubscribes += 1;
+        return sessionSubscribes === 1
+          ? { subscriptionId: "session-1", replayComplete: true }
+          : { subscriptionId: "session-2", replayComplete: false, resyncReason: "epoch" };
+      },
+      "session/get": () => ({ session }),
+      "session/attach": () => {
+        attaches += 1;
+        if (attaches === 1) {
+          return {
+            session,
+            snapshot: {
+              session,
+              queuedTurns: [],
+              items: [],
+              activeItems: [],
+              pendingApprovals: [],
+              pendingInputs: [],
+              hasMoreHistory: false,
+              cursor: { epoch: "epoch-1", sequence: 8 },
+              revision: 1,
+              generatedAt: "2026-09-18T10:00:00.000Z",
+            },
+          };
+        }
+        return attach.promise;
+      },
+    },
+  });
+  await conn.open();
+  await router.route(IPC.invoke.sessionGet, [{ id: remote("s1"), messageLimit: 10 }]);
+  client.closeSubscription({
+    subscriptionId: "session-1",
+    error: { code: "EVENTS_CLOSED", message: "replay window expired" },
+    lastSafeCursor: { epoch: "epoch-1", sequence: 8 },
+  });
+  await waitFor(() => client.calls.filter((call) => call.method === "session/attach").length === 2);
+
+  client.push(makeEnvelope({
+    eventId: "approval-requested",
+    epoch: "epoch-2",
+    sequence: 10,
+    kind: "approval.requested",
+    sessionId: "s1",
+    turnId: "turn-1",
+    payload: approval,
+  }));
+  client.push(makeEnvelope({
+    eventId: "approval-resolved",
+    epoch: "epoch-2",
+    sequence: 11,
+    kind: "approval.resolved",
+    sessionId: "s1",
+    turnId: "turn-1",
+    payload: { approvalId: "approval-1", status: "resolved" },
+  }));
+  client.push(makeEnvelope({
+    eventId: "input-requested",
+    epoch: "epoch-2",
+    sequence: 12,
+    kind: "input.requested",
+    sessionId: "s1",
+    turnId: "turn-1",
+    payload: {
+      id: "input-1",
+      sessionId: "s1",
+      turnId: "turn-1",
+      expiresAt: "2026-09-18T10:05:00.000Z",
+      questions: [{ id: "q1", question: "continue?", options: ["yes"], multiSelect: false }],
+    },
+  }));
+  client.push(makeEnvelope({
+    eventId: "session-idle",
+    epoch: "epoch-2",
+    sequence: 13,
+    kind: "session.changed",
+    sessionId: "s1",
+    payload: { sessionId: "s1", status: "idle" },
+  }));
+
+  attach.resolve({
+    session,
+    snapshot: {
+      session,
+      activeTurn: { id: "turn-1", sessionId: "s1", status: "waiting_approval" },
+      queuedTurns: [],
+      items: [],
+      activeItems: [],
+      pendingApprovals: [approval],
+      pendingInputs: [],
+      hasMoreHistory: false,
+      cursor: { epoch: "epoch-2", sequence: 10 },
+      revision: 4,
+      generatedAt: "2026-09-18T10:01:00.000Z",
+    },
+  });
+  await waitFor(() => events.some(({ channel, payload }) =>
+    channel === IPC.event.agentMessage && payload.event.type === "asktool_request",
+  ));
+
+  const agentEvents = events
+    .filter(({ channel }) => channel === IPC.event.agentMessage)
+    .map(({ payload }) => payload.event.type);
+  assert.deepEqual(agentEvents, [
+    "remote_snapshot_state",
+    "tool_permission_request",
+    "remote_approval_resolved",
+    "asktool_request",
+  ]);
+  await conn.close();
+});

@@ -106,6 +106,13 @@ function extractInputRequest(payload: unknown): RacpInputRequest | undefined {
   return payload as unknown as RacpInputRequest;
 }
 
+function extractResolutionId(payload: unknown, key: "approvalId" | "inputId"): string | undefined {
+  if (!isRecord(payload) || typeof payload[key] !== "string" || payload[key].length === 0) {
+    return undefined;
+  }
+  return payload[key];
+}
+
 function isBase64(value: unknown): value is string {
   return typeof value === "string" &&
     /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
@@ -242,9 +249,18 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         //   1. `{ event: PlanningStateEvent }` — surface as a local planning
         //      event so the plan card behaves the same as local.
         //   2. `{ sessionId, status, planningState }` — a periodic status
-        //      refresh; the desktop derives its own status from turn events, so
-        //      drop it and let the eventual snapshot refresh cover it.
+        //      refresh; fold it into the connection cache so a later attach
+        //      cannot overwrite a newer authoritative status.
         const payload = envelope.payload;
+        const session = extractSessionRef(payload);
+        if (session) {
+          onLifecycle?.({
+            kind: "session.changed",
+            hostSessionId: session.id,
+            remoteSessionId,
+            session,
+          });
+        }
         if (isRecord(payload) && isRecord(payload.event) && payload.event.state !== undefined) {
           const planning = payload.event as unknown as PlanningStateEvent;
           emitAgentEvent(
@@ -337,13 +353,34 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         emit(IPC.event.remoteTerminal, event);
         return;
       }
-      case "approval.resolved":
-      case "input.resolved":
+      case "approval.resolved": {
+        const approvalId = extractResolutionId(envelope.payload, "approvalId");
+        if (!approvalId) return;
+        emitAgentEvent(
+          remoteSessionId,
+          envelope.occurredAt,
+          envelope.turnId,
+          {
+            type: "remote_approval_resolved",
+            requestId: makeRemoteApprovalRequestId(remoteSessionId, approvalId),
+          },
+        );
+        return;
+      }
+      case "input.resolved": {
+        const inputId = extractResolutionId(envelope.payload, "inputId");
+        if (!inputId) return;
+        emitAgentEvent(
+          remoteSessionId,
+          envelope.occurredAt,
+          envelope.turnId,
+          { type: "remote_input_resolved", requestId: inputId },
+        );
+        return;
+      }
       case "resync.required":
-        // Approvals settle through the renderer's own resolve call; the plan
-        // and status changes come as `session.changed` payloads.
-        // `resync.required` is Stage 3b — the
-        // connection layer must consume it, not the bridge.
+        // `resync.required` is consumed by the connection layer, not the
+        // renderer bridge.
         return;
       default:
         return;
@@ -352,6 +389,23 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
 
   const restoreSnapshot = (hostSessionId: string, snapshot: RacpSessionSnapshot): void => {
     const remoteSessionId = remoteIdOf(hostSessionId);
+    const activeTurn = snapshot.activeTurn;
+    const isRunning = snapshot.session.status === "running" ||
+      snapshot.session.status === "waiting_permission" ||
+      activeTurn?.status === "running" ||
+      activeTurn?.status === "waiting_approval" ||
+      activeTurn?.status === "waiting_input";
+    emitAgentEvent(remoteSessionId, snapshot.generatedAt, activeTurn?.id, {
+      type: "remote_snapshot_state",
+      isRunning,
+      ...(activeTurn?.id || snapshot.session.activeTurnId
+        ? { currentTurnId: activeTurn?.id ?? snapshot.session.activeTurnId }
+        : {}),
+      pendingToolConfirmations: snapshot.pendingApprovals.filter(
+        (approval) => approval.kind === APPROVAL_KIND.tool,
+      ).length,
+      planningState: snapshot.session.planningState,
+    });
     for (const approval of snapshot.pendingApprovals) {
       // The current RACP plan approval lacks its proposal body, so only tool
       // approvals can be reconstructed as complete renderer requests.

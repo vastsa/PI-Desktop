@@ -416,6 +416,49 @@ describe("RuntimeService prompt lifecycle", () => {
     expect(ended[0]?.reason).toBe("aborted");
   });
 
+  it("cancels an in-flight remote tool before waiting for the sidecar abort", async () => {
+    const relay = new RemoteToolRelay();
+    const cancels: unknown[] = [];
+    relay.advertise({
+      connectionId: "owner-connection",
+      sessionId: "s1",
+      tools: [{
+        name: "mcp_corp_search",
+        description: "Search release notes",
+        inputSchema: { type: "object", properties: { query: { type: "string" } } },
+        timeoutMs: 5_000,
+        workspaceFree: true,
+      }],
+      request: async () => await new Promise<never>(() => undefined),
+      cancel: async (params) => {
+        cancels.push(params);
+        return { cancelled: true };
+      },
+    });
+    const { host, service } = build(relay);
+    await service.prompt({ sessionId: "s1", content: "search releases", effectivePermissionMode: "ask", principal: owner });
+    host.notify?.("plugins.execute", {
+      executionId: "exec-abort",
+      sessionId: "s1",
+      turnId: "turn-1",
+      toolCallId: "call-abort",
+      toolName: "mcp_corp_search",
+      args: { query: "release notes" },
+    });
+    await settle();
+
+    await service.abort("s1", "turn-1");
+    await settle();
+    expect(cancels).toEqual([{
+      executionId: "exec-abort",
+      sessionId: "s1",
+      turnId: "turn-1",
+      toolCallId: "call-abort",
+    }]);
+    expect(host.calls.find((call) => call.method === "plugins.resolveExecution" && call.params.executionId === "exec-abort")?.params)
+      .toMatchObject({ ok: false, errorCode: "TOOL_FAILED" });
+  });
+
   it("ignores a terminal event that names a turn which no longer owns the session", async () => {
     const { host, sidecar, service, events } = build();
     await service.prompt({ sessionId: "s1", content: "hello", effectivePermissionMode: "ask", principal: owner });

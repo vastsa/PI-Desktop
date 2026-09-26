@@ -180,3 +180,59 @@ test("editing a restored queue preserves attachments when resubmitted", async (t
     await server.close();
   }
 });
+
+test("queue refresh ignores out-of-order responses and preserves Host order plus optimistic rows", async () => {
+  const server = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    configFile: false,
+    server: { middlewareMode: true, hmr: false, ws: false },
+    appType: "custom",
+    optimizeDeps: { noDiscovery: true, include: [] },
+  });
+  const previousWindow = globalThis.window;
+  const responses = [];
+  const { createQueueSlice } = await server.ssrLoadModule("/src/stores/slices/queue-slice.ts");
+  const entry = (id) => ({
+    id,
+    sessionId: "session-a",
+    content: id,
+    position: 1,
+    createdAt: "2026-09-23T00:00:00Z",
+  });
+  try {
+    globalThis.window = { piDesktop: { invoke: async (channel) => {
+      if (channel !== IPC.invoke.agentQueueList) throw new Error(`Unexpected IPC: ${channel}`);
+      return new Promise((resolve) => responses.push(resolve));
+    } } };
+    const pending = { id: "pending:optimistic", sessionId: "session-a", content: "draft", draft: { text: "draft", fileReferences: [] }, createdAt: 1 };
+    let state = { activeSessionId: "session-a", queuedPrompts: { "session-a": [pending] }, showToast: assert.fail };
+    const slice = createQueueSlice({
+      get: () => state,
+      set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
+      promptAttachmentsFromDraft: () => [],
+    });
+    Object.assign(state, slice);
+
+    const first = slice.refreshQueuedPrompts("session-a");
+    await new Promise((resolve) => setImmediate(resolve));
+    const second = slice.refreshQueuedPrompts("session-a");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(responses.length, 2);
+    responses[1]({ ok: true, data: { entries: [entry("host-new"), entry("host-next")] } });
+    await second;
+    assert.deepEqual(state.queuedPrompts["session-a"].map(({ id }) => id), ["host-new", "host-next", pending.id]);
+    responses[0]({ ok: true, data: { entries: [entry("host-old")] } });
+    await first;
+    assert.deepEqual(state.queuedPrompts["session-a"].map(({ id }) => id), ["host-new", "host-next", pending.id]);
+
+    const third = slice.refreshQueuedPrompts("session-a");
+    await new Promise((resolve) => setImmediate(resolve));
+    slice.applyQueueChanged({ sessionId: "session-a", entries: [entry("host-event"), entry("host-tail")] });
+    responses[2]({ ok: true, data: { entries: [entry("stale-after-event")] } });
+    await third;
+    assert.deepEqual(state.queuedPrompts["session-a"].map(({ id }) => id), ["host-event", "host-tail", pending.id]);
+  } finally {
+    globalThis.window = previousWindow;
+    await server.close();
+  }
+});

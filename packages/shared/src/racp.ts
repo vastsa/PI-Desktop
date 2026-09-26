@@ -403,6 +403,8 @@ export const RacpClientCapabilitiesSchema = Type.Object({
   hostEvents: Type.Optional(Type.Boolean()),
   history: Type.Optional(Type.Boolean()),
   toolRelay: Type.Optional(Type.Boolean()),
+  /** The client accepts the Host's best-effort tool/cancel request. */
+  toolRelayCancel: Type.Optional(Type.Boolean()),
   terminal: Type.Optional(Type.Boolean()),
 });
 
@@ -418,6 +420,8 @@ export const RacpServerCapabilitiesSchema = Type.Object({
   history: Type.Boolean(),
   remoteHostProfile: Type.Boolean(),
   toolRelay: Type.Boolean(),
+  /** Optional for compatibility with Hosts/clients from before relay cancel. */
+  toolRelayCancel: Type.Optional(Type.Boolean()),
   terminal: Type.Boolean(),
   notifications: Type.Boolean(),
   bindings: Type.Array(Type.Union([Type.Literal("RACP-WS"), Type.Literal("RACP-HTTP"), Type.Literal("RACP-GRPC")])),
@@ -671,6 +675,15 @@ export const RacpToolExecuteResultSchema = Type.Object({
 }, { additionalProperties: false });
 export type RacpToolExecuteResult = Static<typeof RacpToolExecuteResultSchema>;
 
+/** Identifies one in-flight relay execution for an idempotent cancellation. */
+export const RacpToolCancelParamsSchema = Type.Object({
+  executionId: Type.String({ minLength: 1, maxLength: 256 }),
+  sessionId: Type.String({ minLength: 1, maxLength: 256 }),
+  turnId: Type.String({ minLength: 1, maxLength: 256 }),
+  toolCallId: Type.String({ minLength: 1, maxLength: 256 }),
+}, { additionalProperties: false });
+export type RacpToolCancelParams = Static<typeof RacpToolCancelParamsSchema>;
+
 function isBoundedJsonValue(
   value: unknown,
   options: { maxBytes: number; rejectSchemaReferences?: boolean },
@@ -734,7 +747,7 @@ export function isBoundedRacpRelayJson(value: unknown, maxBytes = RACP_TOOL_RELA
 }
 
 /** Server-initiated requests on the WebSocket binding (spec §4.3, §9). */
-export const RACP_SERVER_REQUESTS = ["approval/request", "input/request", "tool/execute"] as const;
+export const RACP_SERVER_REQUESTS = ["approval/request", "input/request", "tool/execute", "tool/cancel"] as const;
 export type RacpServerRequest = (typeof RACP_SERVER_REQUESTS)[number];
 
 /** Notification method that carries an `EventEnvelope` on the WS binding. */
@@ -873,6 +886,12 @@ export function racpKindForAgentEvent(
       return { kind: "approval.requested", durable: true };
     case "asktool_request":
       return { kind: "input.requested", durable: true };
+    // These are emitted only by Electron's remote bridge to reconcile
+    // renderer state. They are not produced by an AgentRuntime.
+    case "remote_snapshot_state":
+    case "remote_approval_resolved":
+    case "remote_input_resolved":
+      return { kind: "turn.activity", durable: false };
     default: {
       const exhaustive: never = type;
       throw new Error(`unmapped agent event type: ${String(exhaustive)}`);
@@ -896,6 +915,9 @@ export const LOCAL_AGENT_EVENT_TYPES: readonly AgentEvent["type"][] = [
   "planning_state",
   "tool_permission_request",
   "asktool_request",
+  "remote_snapshot_state",
+  "remote_approval_resolved",
+  "remote_input_resolved",
   "compaction_start",
   "compaction_end",
   "error",

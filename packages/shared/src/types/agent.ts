@@ -1,6 +1,6 @@
 /** Shared public types grouped by the owning application domain. */
 import type { AppError } from "../errors.js";
-import type { PlanExecution, PlanningStateEvent } from "./plans.js";
+import type { PlanExecution, PlanningState, PlanningStateEvent } from "./plans.js";
 import type { ContextCompactionFallback, ContextCompactionMark, ContextCompactionReason } from "./sessions.js";
 import type { AgentStatus } from "./sessions.js";
 import type { MessageUsage, ToolTokenUsage, UiMessage } from "./messages.js";
@@ -248,6 +248,16 @@ export type AgentEvent =
   | ({ type: "planning_state" } & Omit<PlanningStateEvent, "sessionId">)
   | { type: "tool_permission_request"; request: ToolPermissionRequest }
   | { type: "asktool_request"; request: AskToolRequest }
+  /** Renderer-only synchronization events emitted by the remote event bridge. */
+  | {
+      type: "remote_snapshot_state";
+      isRunning: boolean;
+      currentTurnId?: string;
+      pendingToolConfirmations: number;
+      planningState?: PlanningState;
+    }
+  | { type: "remote_approval_resolved"; requestId: string }
+  | { type: "remote_input_resolved"; requestId: string }
   | {
       type: "compaction_start";
       reason: ContextCompactionReason;

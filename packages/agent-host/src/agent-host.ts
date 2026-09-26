@@ -343,6 +343,12 @@ export class AgentHost {
       case "turn_end":
         this.emit(state, "turn.activity", { event }, meta2);
         return;
+      case "remote_snapshot_state":
+      case "remote_approval_resolved":
+      case "remote_input_resolved":
+        // These are renderer synchronization markers produced by the Desktop
+        // bridge, never runtime events accepted from a Host sidecar.
+        return;
       default: {
         const exhaustive: never = event;
         throw new Error(`unhandled agent event ${String((exhaustive as { type?: string }).type)}`);

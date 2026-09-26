@@ -2,6 +2,7 @@ import {
   ErrorCodes,
   isBoundedRacpRelayJson,
   isValidRacpToolsAdvertiseParams,
+  RacpToolCancelParamsSchema,
   RacpToolExecuteParamsSchema,
   RACP_TOOL_RELAY_LIMITS,
   type RacpInitializeResult,
@@ -61,7 +62,12 @@ export type RemoteToolRelay = {
 
 type ActiveCall = {
   sessionId: string;
+  turnId: string;
+  executionId: string;
+  toolCallId: string;
   executionKey: string;
+  canceled: boolean;
+  cancellation: Promise<CallOutcome>;
   cancel: (code: string, message: string) => void;
 };
 
@@ -175,6 +181,50 @@ export function createRemoteToolRelay(options: RemoteToolRelayOptions): RemoteTo
 
   const canRelay = (): boolean => !closed && connected && isAuthorized(options.client, options.pairedDevice);
 
+  const rememberExecution = (executionKey: string): void => {
+    if (seenExecutions.has(executionKey)) {
+      throw Object.assign(new Error("duplicate remote MCP execution"), { errorCode: ErrorCodes.CONFLICT });
+    }
+    seenExecutions.add(executionKey);
+    while (seenExecutions.size > MAX_SEEN_EXECUTIONS) {
+      const oldest = seenExecutions.values().next().value;
+      if (oldest === undefined) break;
+      seenExecutions.delete(oldest);
+    }
+  };
+
+  const beginCall = (params: {
+    executionId: string;
+    sessionId: string;
+    turnId: string;
+    toolCallId: string;
+  }): ActiveCall => {
+    const executionKey = `remote-mcp:${JSON.stringify([options.hostKey, params.sessionId, params.executionId])}`;
+    rememberExecution(executionKey);
+    let finishCancellation!: (outcome: CallOutcome) => void;
+    const cancellation = new Promise<CallOutcome>((resolve) => {
+      finishCancellation = resolve;
+    });
+    const active: ActiveCall = {
+      sessionId: params.sessionId,
+      turnId: params.turnId,
+      executionId: params.executionId,
+      toolCallId: params.toolCallId,
+      executionKey,
+      canceled: false,
+      cancellation,
+      cancel(code, message) {
+        finishCancellation({ kind: "canceled", code, message });
+      },
+    };
+    activeCalls.set(executionKey, active);
+    return active;
+  };
+
+  const forgetCall = (active: ActiveCall): void => {
+    if (activeCalls.get(active.executionKey) === active) activeCalls.delete(active.executionKey);
+  };
+
   const currentCatalog = async (sessionId: string): Promise<Map<string, RacpRelayTool>> => {
     const discovered = await options.userMcp.toolsForRemoteSession();
     const catalog = new Map<string, RacpRelayTool>();
@@ -187,6 +237,8 @@ export function createRemoteToolRelay(options: RemoteToolRelayOptions): RemoteTo
 
   const cancelCall = (call: ActiveCall, code: string, message: string): void => {
     if (activeCalls.get(call.executionKey) !== call) return;
+    if (call.canceled) return;
+    call.canceled = true;
     options.userMcp.cancelSessionCalls(call.executionKey);
     call.cancel(code, message);
   };
@@ -241,47 +293,28 @@ export function createRemoteToolRelay(options: RemoteToolRelayOptions): RemoteTo
   const runTool = async (params: {
     executionId: string;
     sessionId: string;
+    turnId: string;
+    toolCallId: string;
     toolName: string;
     args: Record<string, unknown>;
-  }, tool: RacpRelayTool): Promise<unknown> => {
-    const executionKey = `remote-mcp:${JSON.stringify([options.hostKey, params.sessionId, params.executionId])}`;
-    if (seenExecutions.has(executionKey)) {
-      throw Object.assign(new Error("duplicate remote MCP execution"), { errorCode: ErrorCodes.CONFLICT });
-    }
-    seenExecutions.add(executionKey);
-    while (seenExecutions.size > MAX_SEEN_EXECUTIONS) {
-      const oldest = seenExecutions.values().next().value;
-      if (oldest === undefined) break;
-      seenExecutions.delete(oldest);
-    }
-
-    let finishCancellation!: (outcome: CallOutcome) => void;
-    const cancellation = new Promise<CallOutcome>((resolve) => {
-      finishCancellation = resolve;
-    });
-    const active: ActiveCall = {
-      sessionId: params.sessionId,
-      executionKey,
-      cancel(code, message) {
-        finishCancellation({ kind: "canceled", code, message });
-      },
-    };
-    activeCalls.set(executionKey, active);
+  }, tool: RacpRelayTool, active: ActiveCall): Promise<unknown> => {
     const cancelTimer = scheduleTimeout(() => {
       cancelCall(active, ErrorCodes.TIMEOUT, "tool deadline elapsed");
     }, tool.timeoutMs);
 
     try {
-      const invocation = options.userMcp.callTool(
-        params.toolName,
-        params.args,
-        null,
-        executionKey,
-      ).then<CallOutcome, CallOutcome>(
-        (value): CallOutcome => ({ kind: "result", value }),
-        (error: unknown): CallOutcome => ({ kind: "failed", error }),
-      );
-      const outcome = await Promise.race([invocation, cancellation]);
+      const invocation: Promise<CallOutcome> = active.canceled
+        ? Promise.resolve({ kind: "canceled", code: ErrorCodes.TOOL_FAILED, message: "tool call was canceled before execution" })
+        : options.userMcp.callTool(
+            params.toolName,
+            params.args,
+            null,
+            active.executionKey,
+          ).then<CallOutcome, CallOutcome>(
+            (value): CallOutcome => ({ kind: "result", value }),
+            (error: unknown): CallOutcome => ({ kind: "failed", error }),
+          );
+      const outcome = await Promise.race([invocation, active.cancellation]);
       if (outcome.kind === "canceled") return errorResult(outcome.code);
       if (outcome.kind === "failed") {
         const code = (outcome.error as { errorCode?: unknown; code?: unknown } | null)?.errorCode ??
@@ -296,7 +329,7 @@ export function createRemoteToolRelay(options: RemoteToolRelayOptions): RemoteTo
       return { result: outcome.value, isError: false };
     } finally {
       cancelTimer();
-      activeCalls.delete(executionKey);
+      forgetCall(active);
     }
   };
 
@@ -315,6 +348,21 @@ export function createRemoteToolRelay(options: RemoteToolRelayOptions): RemoteTo
     },
     refreshAll,
     async handleServerRequest(method, params) {
+      if (method === "tool/cancel") {
+        if (!canRelay()) throw unavailable("remote tool relay is unavailable");
+        if (!Value.Check(RacpToolCancelParamsSchema, params)) {
+          throw invalidArgument("tool/cancel params do not match the RACP contract");
+        }
+        const cancel = params;
+        if (!sessions.has(cancel.sessionId)) return { cancelled: false };
+        const executionKey = `remote-mcp:${JSON.stringify([options.hostKey, cancel.sessionId, cancel.executionId])}`;
+        const active = activeCalls.get(executionKey);
+        if (!active || active.canceled || active.sessionId !== cancel.sessionId || active.turnId !== cancel.turnId || active.toolCallId !== cancel.toolCallId) {
+          return { cancelled: false };
+        }
+        cancelCall(active, ErrorCodes.TOOL_FAILED, "remote Host canceled the tool call");
+        return { cancelled: true };
+      }
       if (method !== "tool/execute") {
         throw Object.assign(new Error("unsupported RACP server request"), { errorCode: ErrorCodes.METHOD_NOT_FOUND });
       }
@@ -330,16 +378,47 @@ export function createRemoteToolRelay(options: RemoteToolRelayOptions): RemoteTo
 
       const advertised = catalogs.get(execute.sessionId)?.get(execute.toolName);
       if (!advertised) throw notFound("tool was not advertised for this Host session");
-      const current = await currentCatalog(execute.sessionId);
-      if (!canRelay() || !sessions.has(execute.sessionId)) throw unavailable("remote tool relay is unavailable");
-      const currentTool = current.get(execute.toolName);
-      if (!currentTool || safeJson(currentTool) !== safeJson(advertised)) {
-        throw notFound("tool catalog changed after advertisement");
+      const active = beginCall(execute);
+      try {
+        const catalogOrCancel = await Promise.race([
+          currentCatalog(execute.sessionId).then((catalog) => ({ kind: "catalog" as const, catalog })),
+          active.cancellation.then((outcome) => ({ kind: "canceled" as const, outcome })),
+        ]);
+        if (catalogOrCancel.kind === "canceled") {
+          const outcome = catalogOrCancel.outcome;
+          forgetCall(active);
+          return errorResult(outcome.kind === "canceled" ? outcome.code : ErrorCodes.TOOL_FAILED);
+        }
+        const current = catalogOrCancel.catalog;
+        if (active.canceled) {
+          const outcome = await active.cancellation;
+          forgetCall(active);
+          return errorResult(outcome.kind === "canceled" ? outcome.code : ErrorCodes.TOOL_FAILED);
+        }
+        if (!canRelay() || !sessions.has(execute.sessionId)) throw unavailable("remote tool relay is unavailable");
+        const currentTool = current.get(execute.toolName);
+        if (!currentTool || safeJson(currentTool) !== safeJson(advertised)) {
+          throw notFound("tool catalog changed after advertisement");
+        }
+        if (!validateToolArgs(currentTool, execute.args)) {
+          throw invalidArgument("tool arguments do not match the advertised schema");
+        }
+        if (active.canceled) {
+          const outcome = await active.cancellation;
+          const result = errorResult(outcome.kind === "canceled" ? outcome.code : ErrorCodes.TOOL_FAILED);
+          forgetCall(active);
+          return result;
+        }
+        return runTool(execute, currentTool, active);
+      } catch (error) {
+        // Validation failures happen before execution and must not consume the
+        // caller's execution id; a corrected request may use it again. A
+        // canceled call remains tombstoned so a late duplicate cannot restart
+        // work after the Host already settled it.
+        if (!active.canceled) seenExecutions.delete(active.executionKey);
+        forgetCall(active);
+        throw error;
       }
-      if (!validateToolArgs(currentTool, execute.args)) {
-        throw invalidArgument("tool arguments do not match the advertised schema");
-      }
-      return runTool(execute, currentTool);
     },
     disconnected() {
       connected = false;

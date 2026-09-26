@@ -116,6 +116,17 @@ export interface RemoteHostConnection {
 type SessionListResponse = { sessions: RacpSession[] };
 type AttachSnapshotResponse = { session: RacpSession; snapshot?: RacpSessionSnapshot };
 
+type QueueSyncState = {
+  scheduled: boolean;
+  inFlight: boolean;
+  dirty: boolean;
+};
+
+type AttachEventBuffer = {
+  generation: number;
+  events: RacpEventEnvelope[];
+};
+
 /** Session-scope kinds after which the host's queue may have changed. */
 const QUEUE_KINDS: ReadonlySet<string> = new Set([
   "turn.queued",
@@ -144,7 +155,9 @@ export function createRemoteHostConnection(
   let lifecycleGeneration = 0;
   let snapshotEvents: RemoteLifecycleEvent[] | null = null;
   let recovery: Promise<void> | null = null;
-  const queueSyncs = new Set<string>();
+  const queueSyncs = new Map<string, QueueSyncState>();
+  const attachBuffers = new Map<string, AttachEventBuffer>();
+  const reconcileRuns = new Map<string, Promise<boolean>>();
   let reconcileSession: (
     hostSessionId: string,
     reason: RemoteSubscriptionRecovery["reason"],
@@ -212,23 +225,65 @@ export function createRemoteHostConnection(
     },
   });
 
-  /** Push the host's queue for a session, coalescing a burst into one read. */
+  /**
+   * Push the host's queue for a session. A queue event received while a list
+   * request is in flight marks the read dirty; the old result is discarded and
+   * one sequential reread supplies the only published snapshot.
+   */
   const syncQueue = (hostSessionId: string) => {
-    if (queueSyncs.has(hostSessionId)) return;
-    queueSyncs.add(hostSessionId);
+    const state = queueSyncs.get(hostSessionId) ?? {
+      scheduled: false,
+      inFlight: false,
+      dirty: false,
+    } satisfies QueueSyncState;
+    queueSyncs.set(hostSessionId, state);
+    if (state.scheduled || state.inFlight) {
+      state.dirty = true;
+      return;
+    }
+
+    state.scheduled = true;
     const generation = lifecycleGeneration;
     queueMicrotask(() => {
-      if (!opened || generation !== lifecycleGeneration) return;
-      queueSyncs.delete(hostSessionId);
-      const sessionId = makeRemoteSessionId(hostKey, hostSessionId);
-      backend
-        .invoke(IPC.invoke.agentQueueList, [{ sessionId }])
-        .then((result) => {
-          if (!isCurrentGeneration(generation)) return;
-          const { entries } = result as { entries: QueuedTurnSummary[] };
-          emit(IPC.event.agentQueueChanged, { sessionId, entries } satisfies AgentQueueChangedEvent);
-        })
-        .catch((error) => log("warn", `queue sync failed for session ${hostSessionId}`, error));
+      state.scheduled = false;
+      if (!isCurrentGeneration(generation)) {
+        if (queueSyncs.get(hostSessionId) === state) queueSyncs.delete(hostSessionId);
+        return;
+      }
+      void (async () => {
+        state.inFlight = true;
+        try {
+          while (isCurrentGeneration(generation)) {
+            state.dirty = false;
+            const sessionId = makeRemoteSessionId(hostKey, hostSessionId);
+            let result: unknown;
+            try {
+              result = await backend.invoke(IPC.invoke.agentQueueList, [{ sessionId }]);
+            } catch (error) {
+              log("warn", `queue sync failed for session ${hostSessionId}`, error);
+              break;
+            }
+            if (!isCurrentGeneration(generation)) break;
+            if (state.dirty) continue;
+            const { entries } = result as { entries: QueuedTurnSummary[] };
+            emit(IPC.event.agentQueueChanged, {
+              sessionId,
+              entries,
+            } satisfies AgentQueueChangedEvent);
+            break;
+          }
+        } finally {
+          state.inFlight = false;
+          if (queueSyncs.get(hostSessionId) !== state) return;
+          if (state.dirty && isCurrentGeneration(generation)) {
+            // The event that made the result stale arrived after the loop's
+            // final check. Re-enter through the same single-flight gate.
+            syncQueue(hostSessionId);
+          } else {
+            queueSyncs.delete(hostSessionId);
+          }
+        }
+      })();
     });
   };
 
@@ -292,46 +347,105 @@ export function createRemoteHostConnection(
     );
   };
 
-  const handleEnvelope = (envelope: RacpEventEnvelope) => {
-    subscriptions?.observe(envelope);
+  const dispatchEnvelope = (envelope: RacpEventEnvelope): void => {
     bridge?.handle(envelope);
     if (envelope.scope === "session" && envelope.sessionId && QUEUE_KINDS.has(envelope.kind)) {
       syncQueue(envelope.sessionId);
     }
   };
 
+  const handleEnvelope = (envelope: RacpEventEnvelope) => {
+    subscriptions?.observe(envelope);
+    if (envelope.scope === "session" && envelope.sessionId) {
+      const buffer = attachBuffers.get(envelope.sessionId);
+      if (buffer && buffer.generation === lifecycleGeneration) {
+        buffer.events.push(envelope);
+        return;
+      }
+    }
+    dispatchEnvelope(envelope);
+  };
+
+  const dispatchAttachEvents = (
+    events: readonly RacpEventEnvelope[],
+    cursor: RacpCursor,
+  ): void => {
+    const afterSnapshot = events
+      .filter((event) => {
+        if (event.epoch !== cursor.epoch) return false;
+        if (event.sequence !== undefined) return event.sequence > cursor.sequence;
+        if (event.afterSequence !== undefined) return event.afterSequence >= cursor.sequence;
+        // A schema-valid RACP event always carries one of these positions. An
+        // unpositioned test/legacy event is still delivered rather than lost.
+        return true;
+      })
+      .map((event, index) => ({
+        event,
+        index,
+        position: event.sequence ?? event.afterSequence ?? Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((left, right) => left.position - right.position || left.index - right.index);
+    for (const { event } of afterSnapshot) dispatchEnvelope(event);
+  };
+
   const isCurrentGeneration = (generation: number): boolean =>
     opened && generation === lifecycleGeneration;
 
-  reconcileSession = async (
+  reconcileSession = (
     hostSessionId,
     reason,
     generation,
   ): Promise<boolean> => {
-    if (!isCurrentGeneration(generation)) return false;
+    const existing = reconcileRuns.get(hostSessionId);
+    if (existing) return existing;
+    const buffer: AttachEventBuffer = { generation, events: [] };
+    attachBuffers.set(hostSessionId, buffer);
     const wasKnown = sessions.has(hostSessionId);
-    try {
-      const result = await client.request<AttachSnapshotResponse>("session/attach", {
-        sessionId: hostSessionId,
-        includeSnapshot: true,
-      });
-      const snapshot = result.snapshot;
-      if (!snapshot || !isCurrentGeneration(generation)) return false;
-      // A concurrent archive must win over an older attach response.
-      if (wasKnown && !sessions.has(hostSessionId)) return false;
-      const current = sessions.get(hostSessionId);
-      if (!current || (snapshot.session.revision ?? 0) >= (current.revision ?? 0)) {
-        storeSession(snapshot.session, false);
+    const run = (async (): Promise<boolean> => {
+      let snapshotApplied = false;
+      try {
+        if (!isCurrentGeneration(generation)) return false;
+        const result = await client.request<AttachSnapshotResponse>("session/attach", {
+          sessionId: hostSessionId,
+          includeSnapshot: true,
+        });
+        const snapshot = result.snapshot;
+        if (!snapshot || !isCurrentGeneration(generation)) return false;
+        // A concurrent archive must win over an older attach response.
+        if (wasKnown && !sessions.has(hostSessionId)) return false;
+        const current = sessions.get(hostSessionId);
+        if (!current || (snapshot.session.revision ?? 0) >= (current.revision ?? 0)) {
+          storeSession(snapshot.session, false);
+        }
+        subscriptions?.noteStatus(hostSessionId, snapshot.session.status);
+        subscriptions?.checkpoint(hostSessionId, snapshot.cursor);
+        // Apply the authoritative baseline before any event received while
+        // session/attach was in flight. Events at or before this cursor are
+        // already represented by the snapshot and must not resurrect state.
+        bridge?.restoreSnapshot(hostSessionId, snapshot);
+        dispatchAttachEvents(buffer.events, snapshot.cursor);
+        snapshotApplied = true;
+        syncQueue(hostSessionId);
+        return true;
+      } catch (error) {
+        log("warn", `remote session resync failed for ${hostSessionId}`, { hostKey, reason, error });
+        return false;
+      } finally {
+        if (attachBuffers.get(hostSessionId) === buffer) {
+          attachBuffers.delete(hostSessionId);
+          if (!snapshotApplied && isCurrentGeneration(generation)) {
+            // A failed attach must not silently drop live events. There is no
+            // authoritative cursor in this path, so preserve arrival order.
+            for (const event of buffer.events) dispatchEnvelope(event);
+          }
+        }
       }
-      subscriptions?.noteStatus(hostSessionId, snapshot.session.status);
-      subscriptions?.checkpoint(hostSessionId, snapshot.cursor);
-      bridge?.restoreSnapshot(hostSessionId, snapshot);
-      syncQueue(hostSessionId);
-      return true;
-    } catch (error) {
-      log("warn", `remote session resync failed for ${hostSessionId}`, { hostKey, reason, error });
-      return false;
-    }
+    })();
+    const tracked = run.finally(() => {
+      if (reconcileRuns.get(hostSessionId) === tracked) reconcileRuns.delete(hostSessionId);
+    });
+    reconcileRuns.set(hostSessionId, tracked);
+    return tracked;
   };
 
   const refreshSessionSnapshot = async (generation: number): Promise<void> => {
@@ -496,6 +610,8 @@ export function createRemoteHostConnection(
       bridge = null;
       sessions.clear();
       queueSyncs.clear();
+      attachBuffers.clear();
+      reconcileRuns.clear();
       options.toolRelay?.close();
       router.unregisterHost(hostKey, backend);
     },

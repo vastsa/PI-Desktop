@@ -39,6 +39,36 @@ import {
   reportPreviousCrashDumps,
 } from "../crash-report";
 
+/**
+ * Keep the real SSH Settings path testable without making production trust a
+ * caller-supplied checksum endpoint. The fixture is intentionally restricted
+ * to an explicit opt-in and loopback HTTP, and is absent in normal launches.
+ */
+function e2eSshBootstrapOverride(): { fetchChecksum: () => Promise<string> } | undefined {
+  if (process.env.PI_DESKTOP_E2E_SSH !== "1") return undefined;
+  const rawUrl = process.env.PI_DESKTOP_E2E_SSH_CHECKSUM_URL?.trim();
+  if (!rawUrl) return undefined;
+
+  const url = new URL(rawUrl);
+  const loopback = url.hostname === "127.0.0.1" || url.hostname === "[::1]" || url.hostname === "localhost";
+  if (url.protocol !== "http:" || !loopback) {
+    throw new Error("PI_DESKTOP_E2E_SSH_CHECKSUM_URL must be loopback HTTP");
+  }
+
+  return {
+    fetchChecksum: async () => {
+      const response = await fetch(url, {
+        redirect: "error",
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        throw new Error(`E2E SSH checksum fixture returned HTTP ${response.status}`);
+      }
+      return response.text();
+    },
+  };
+}
+
 type IpcInvoker = (
   channel: string,
   args?: readonly unknown[],
@@ -231,6 +261,7 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
     // created. An empty registry (default install with no user pairing) makes
     // this a full no-op — nothing connects, no backend registers, every
     // renderer call keeps hitting the local handler byte-for-byte.
+    const sshBootstrap = e2eSshBootstrapOverride();
     const remoteHostsBoot = createRemoteHostsBoot({
       dataDir,
       encryption: {
@@ -245,6 +276,7 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       emit: sendToRenderer,
       clientInfo: { name: APP_NAME, version: APP_VERSION },
       ...(deps.userMcp ? { userMcp: deps.userMcp } : {}),
+      ...(sshBootstrap ? { sshBootstrap } : {}),
       log: (level, message, data) =>
         logger.app("runtime", level, message, { data: formatRemoteLogData(data) }),
     });

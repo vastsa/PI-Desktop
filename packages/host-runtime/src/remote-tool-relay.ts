@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type {
   RacpRelayTool,
+  RacpToolCancelParams,
   RacpToolExecuteParams,
 } from "@pi-desktop/shared";
 import {
@@ -24,6 +25,7 @@ type Registration = {
   sessionId: string;
   tools: Map<string, RacpRelayTool>;
   request: (method: string, params: unknown, timeoutMs: number) => Promise<unknown>;
+  cancel?: (params: RacpToolCancelParams) => Promise<unknown>;
 };
 
 type CatalogEntry = {
@@ -36,6 +38,14 @@ type CatalogSnapshot = {
   id: string;
   sessionId: string;
   entries: Map<string, CatalogEntry>;
+};
+
+type ActiveExecution = {
+  key: string;
+  input: RacpToolExecuteParams;
+  registration: Registration;
+  settled: boolean;
+  resolveCancellation: (result: ToolRelayExecutionResult) => void;
 };
 
 const TOOL_FAILED: ToolRelayExecutionResult = {
@@ -60,12 +70,14 @@ export class RemoteToolRelay implements ToolRelayPort {
   private readonly advertisements = new Map<string, Map<string, Registration>>();
   private readonly pendingCatalogs = new Map<string, CatalogSnapshot>();
   private readonly turnCatalogs = new Map<string, CatalogSnapshot>();
+  private readonly activeExecutions = new Map<string, ActiveExecution>();
 
   advertise(input: {
     connectionId: string;
     sessionId: string;
     tools: RacpRelayTool[];
     request: (method: string, params: unknown, timeoutMs: number) => Promise<unknown>;
+    cancel?: (params: RacpToolCancelParams) => Promise<unknown>;
   }): void {
     if (!input.connectionId || !input.sessionId || typeof input.request !== "function") {
       throw new Error("invalid tool relay registration");
@@ -93,11 +105,17 @@ export class RemoteToolRelay implements ToolRelayPort {
       sessionId: input.sessionId,
       tools,
       request: input.request,
+      ...(input.cancel ? { cancel: input.cancel } : {}),
     });
     this.advertisements.set(input.connectionId, sessions);
   }
 
   clearConnection(connectionId: string): void {
+    for (const active of this.activeExecutions.values()) {
+      if (active.registration.connectionId === connectionId) {
+        this.cancelExecution(active, "HOST_DISCONNECTED", false);
+      }
+    }
     this.advertisements.delete(connectionId);
   }
 
@@ -141,7 +159,32 @@ export class RemoteToolRelay implements ToolRelayPort {
   }
 
   releaseTurn(sessionId: string, turnId: string): void {
+    for (const active of this.activeExecutions.values()) {
+      if (active.input.sessionId === sessionId && active.input.turnId === turnId) {
+        this.cancelExecution(active, "TOOL_FAILED", true);
+      }
+    }
     this.turnCatalogs.delete(turnKey(sessionId, turnId));
+  }
+
+  private cancelExecution(
+    active: ActiveExecution,
+    _code: string,
+    notifyClient: boolean,
+  ): boolean {
+    if (this.activeExecutions.get(active.key) !== active || active.settled) return false;
+    active.settled = true;
+    if (notifyClient && active.registration.cancel) {
+      const params: RacpToolCancelParams = {
+        executionId: active.input.executionId,
+        sessionId: active.input.sessionId,
+        turnId: active.input.turnId,
+        toolCallId: active.input.toolCallId,
+      };
+      void active.registration.cancel(params).catch(() => undefined);
+    }
+    active.resolveCancellation(TOOL_FAILED);
+    return true;
   }
 
   async execute(input: RacpToolExecuteParams): Promise<ToolRelayExecutionResult> {
@@ -157,23 +200,52 @@ export class RemoteToolRelay implements ToolRelayPort {
     const active = this.advertisements.get(entry.connectionId)?.get(input.sessionId);
     if (active !== entry.registration || active.tools.get(input.toolName) !== entry.tool) return TOOL_FAILED;
 
+    let resolveCancellation!: (result: ToolRelayExecutionResult) => void;
+    const cancellation = new Promise<ToolRelayExecutionResult>((resolve) => {
+      resolveCancellation = resolve;
+    });
+    const executionKey = `${turnKey(input.sessionId, input.turnId)}\u0000${input.executionId}`;
+    const activeExecution: ActiveExecution = {
+      key: executionKey,
+      input,
+      registration: entry.registration,
+      settled: false,
+      resolveCancellation,
+    };
+    if (this.activeExecutions.has(executionKey)) return TOOL_FAILED;
+    this.activeExecutions.set(executionKey, activeExecution);
+    const timeout = setTimeout(() => {
+      this.cancelExecution(activeExecution, "TIMEOUT", true);
+    }, entry.tool.timeoutMs);
+    timeout.unref?.();
+
     try {
-      const response = await active.request("tool/execute", {
-        executionId: input.executionId,
-        sessionId: input.sessionId,
-        turnId: input.turnId,
-        toolCallId: input.toolCallId,
-        toolName: input.toolName,
-        args: input.args,
-      }, entry.tool.timeoutMs);
-      if (!Value.Check(RacpToolExecuteResultSchema, response) || !isBoundedRacpRelayJson(response.result)) {
+      const response = await Promise.race([
+        active.request("tool/execute", {
+          executionId: input.executionId,
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          toolCallId: input.toolCallId,
+          toolName: input.toolName,
+          args: input.args,
+        }, entry.tool.timeoutMs).then((value) => ({ kind: "response" as const, value })),
+        cancellation.then((value) => ({ kind: "canceled" as const, value })),
+      ]);
+      if (response.kind === "canceled") return response.value;
+      const result = response.value;
+      if (!Value.Check(RacpToolExecuteResultSchema, result) || !isBoundedRacpRelayJson(result.result)) {
         return TOOL_FAILED;
       }
-      return response.isError
-        ? { ok: false, content: response.result, errorCode: "TOOL_FAILED" }
-        : { ok: true, content: response.result };
+      return result.isError
+        ? { ok: false, content: result.result, errorCode: "TOOL_FAILED" }
+        : { ok: true, content: result.result };
     } catch {
       return TOOL_FAILED;
+    } finally {
+      clearTimeout(timeout);
+      if (this.activeExecutions.get(executionKey) === activeExecution) {
+        this.activeExecutions.delete(executionKey);
+      }
     }
   }
 }

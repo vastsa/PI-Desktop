@@ -460,6 +460,12 @@ export class RuntimeService implements RuntimePort {
     // while, and a terminal event arriving in that window must not settle the
     // turn as completed.
     this.lockAbortReason(sessionId, abortedTurnId);
+    // Release the turn-bound relay before waiting for the sidecar. The remote
+    // MCP request may be the sidecar call that is currently waiting, so the
+    // normal finishTurn cleanup is too late to cancel the Desktop execution.
+    // finishTurn calls this again in its finally block; releaseTurn is
+    // idempotent for an already-settled execution.
+    if (abortedTurnId) this.options.toolRelay?.releaseTurn(sessionId, abortedTurnId);
     try {
       await sidecar.call("agent.abort", { sessionId, ...(turnId ? { turnId } : {}) });
     } finally {

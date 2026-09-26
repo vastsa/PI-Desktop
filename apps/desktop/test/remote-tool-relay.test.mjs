@@ -22,7 +22,7 @@ const TOOL = {
   },
 };
 
-function setup({ pairedDevice = true, roles = ["owner"], toolRelay = true, tools = [TOOL], executeTool, scheduleTimeout } = {}) {
+function setup({ pairedDevice = true, roles = ["owner"], toolRelay = true, tools = [TOOL], executeTool, scheduleTimeout, discoverTools } = {}) {
   const calls = [];
   const canceled = [];
   const invocations = [];
@@ -39,7 +39,7 @@ function setup({ pairedDevice = true, roles = ["owner"], toolRelay = true, tools
       },
     },
     userMcp: {
-      toolsForRemoteSession: async () => currentTools,
+      toolsForRemoteSession: discoverTools ?? (async () => currentTools),
       callTool: (toolName, args, projectPath, executionKey) => {
         invocations.push({ toolName, args, projectPath, executionKey });
         const run = executeTool ?? (async (name, input, _projectPath, key) => ({
@@ -159,6 +159,78 @@ test("replacing the session catalog withdraws old names and rechecks source tool
     relay.handleServerRequest("tool/execute", executeRequest()),
     /advertised|available/i,
   );
+  relay.close();
+});
+
+test("cancels one in-flight execution by identity and treats repeated cancel as a no-op", async () => {
+  const started = [];
+  const { relay, canceled } = setup({
+    executeTool: async (_name, _args, _projectPath, executionKey) => {
+      started.push(executionKey);
+      return new Promise(() => {});
+    },
+  });
+  await relay.addSession("session-1");
+  const executing = relay.handleServerRequest("tool/execute", executeRequest());
+  for (let attempt = 0; started.length === 0 && attempt < 10; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(started.length, 1);
+
+  const cancelParams = {
+    executionId: "exec-1",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    toolCallId: "call-1",
+  };
+  assert.deepEqual(await relay.handleServerRequest("tool/cancel", cancelParams), { cancelled: true });
+  assert.deepEqual(await relay.handleServerRequest("tool/cancel", cancelParams), { cancelled: false });
+  const result = await executing;
+  assert.equal(result.isError, true);
+  assert.deepEqual(canceled, [started[0]]);
+  relay.close();
+});
+
+test("cancellation during catalog revalidation prevents the MCP call from starting", async () => {
+  let blockDiscovery = false;
+  let releaseDiscovery;
+  let discoveryStarted;
+  const discoveryReady = new Promise((resolve) => { discoveryStarted = resolve; });
+  const catalogReady = new Promise((resolve) => { releaseDiscovery = resolve; });
+  const { relay, canceled, invocations } = setup({
+    discoverTools: async () => {
+      if (!blockDiscovery) return [TOOL];
+      discoveryStarted();
+      await catalogReady;
+      return [TOOL];
+    },
+  });
+  await relay.addSession("session-1");
+  blockDiscovery = true;
+  let settled = false;
+  const executing = relay.handleServerRequest("tool/execute", executeRequest()).then((result) => {
+    settled = true;
+    return result;
+  });
+  await discoveryReady;
+
+  const cancelParams = {
+    executionId: "exec-1",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    toolCallId: "call-1",
+  };
+  assert.deepEqual(await relay.handleServerRequest("tool/cancel", cancelParams), { cancelled: true });
+  for (let attempt = 0; !settled && attempt < 10; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(settled, true, "cancellation must settle while catalog discovery is still pending");
+  assert.deepEqual(invocations, []);
+  releaseDiscovery();
+  const result = await executing;
+  assert.equal(result.isError, true);
+  assert.deepEqual(await relay.handleServerRequest("tool/cancel", cancelParams), { cancelled: false });
+  assert.deepEqual(canceled, ["remote-mcp:[\"hostA\",\"session-1\",\"exec-1\"]"]);
   relay.close();
 });
 

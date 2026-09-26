@@ -13,6 +13,7 @@ import {
   protocolVersionsCompatible,
   rolesAllowOperation,
   type RacpEventEnvelope,
+  type RacpInitializeParams,
   type RacpInitializeResult,
   type RacpLimits,
   type RacpOperation,
@@ -74,6 +75,8 @@ export class RacpConnection {
   readonly id = `conn_${randomUUID()}`;
   principal: Principal;
   initialized = false;
+  /** Capabilities the peer declared during initialize; optional for old peers. */
+  clientCapabilities: RacpInitializeParams["capabilities"] = {};
   readonly subscriptions = new Map<string, Subscription>();
   /** Terminals the current socket opened or reattached, keyed by Host terminal id. */
   readonly terminals = new Map<string, string>();
@@ -145,6 +148,10 @@ export class RacpConnection {
   get isClosed(): boolean {
     return this.closed;
   }
+
+  supportsClientCapability(capability: keyof RacpInitializeParams["capabilities"]): boolean {
+    return this.clientCapabilities[capability] === true;
+  }
 }
 
 /**
@@ -180,6 +187,7 @@ export class RacpServer {
       history: true,
       remoteHostProfile: true,
       toolRelay: Boolean(options.toolRelay),
+      toolRelayCancel: Boolean(options.toolRelay),
       terminal: Boolean(options.operations.terminal),
       notifications: false,
       bindings: ["RACP-WS"],
@@ -355,6 +363,7 @@ export class RacpServer {
       throw new RacpError("PROTOCOL_MISMATCH", "client does not offer the RACP-WS binding");
     }
     // A pairing connection may only pair; everything else needs the device's roles.
+    connection.clientCapabilities = params.capabilities;
     connection.initialized = true;
     return {
       protocolVersion: RACP_PROTOCOL_VERSION,

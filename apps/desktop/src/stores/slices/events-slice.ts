@@ -13,11 +13,13 @@ import { createFrameBatcher } from "../../lib/frame-batcher";
 import {
   clearSessionAsks,
   enqueueAsk,
+  removeAsk,
   removeAskForToolCall,
 } from "../../lib/pending-asks";
 import {
   clearSessionPermissions,
   enqueuePermission,
+  removePermission,
   removePermissionForToolCall,
 } from "../../lib/pending-permissions";
 import {
@@ -226,6 +228,58 @@ export function createEventsSlice({
         event.type === "tool_end"
       ) {
         runtime.liveSessionTranscripts.add(envelope.sessionId);
+      }
+      if (event.type === "remote_snapshot_state") {
+        set((state) => ({
+          runningSessions: {
+            ...state.runningSessions,
+            [envelope.sessionId]: event.isRunning,
+          },
+          agentStatuses: event.isRunning
+            ? {
+                ...state.agentStatuses,
+                [envelope.sessionId]: {
+                  sessionId: envelope.sessionId,
+                  isRunning: true,
+                  ...(event.currentTurnId ? { currentTurnId: event.currentTurnId } : {}),
+                  pendingToolConfirmations: event.pendingToolConfirmations,
+                  ...(event.planningState ? { planningState: event.planningState } : {}),
+                },
+              }
+            : withoutRecordKey(state.agentStatuses, envelope.sessionId),
+          // Snapshot state is authoritative. Clear stale renderer cards before
+          // the bridge emits the reconstructed requests.
+          pendingPermissions: clearSessionPermissions(
+            state.pendingPermissions,
+            envelope.sessionId,
+          ),
+          pendingAsks: clearSessionAsks(state.pendingAsks, envelope.sessionId),
+          isRunning:
+            state.activeSessionId === envelope.sessionId
+              ? event.isRunning
+              : state.isRunning,
+        }));
+        return;
+      }
+      if (event.type === "remote_approval_resolved") {
+        set((state) => ({
+          pendingPermissions: removePermission(
+            state.pendingPermissions,
+            envelope.sessionId,
+            event.requestId,
+          ),
+        }));
+        return;
+      }
+      if (event.type === "remote_input_resolved") {
+        set((state) => ({
+          pendingAsks: removeAsk(
+            state.pendingAsks,
+            envelope.sessionId,
+            event.requestId,
+          ),
+        }));
+        return;
       }
       if (event.type === "status") {
         set((state) => ({

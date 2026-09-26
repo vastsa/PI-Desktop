@@ -318,6 +318,12 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
       sessionId: params.sessionId,
       tools: params.tools,
       request: (method, requestParams, timeoutMs) => context.connection.request(method, requestParams, timeoutMs),
+      ...(context.connection.supportsClientCapability("toolRelayCancel")
+        ? {
+            cancel: (requestParams) =>
+              context.connection.request("tool/cancel", requestParams, 5_000),
+          }
+        : {}),
     });
     return { advertised: params.tools.length };
   });

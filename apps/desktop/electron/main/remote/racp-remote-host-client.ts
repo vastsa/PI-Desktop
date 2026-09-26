@@ -116,6 +116,7 @@ export function createRacpRemoteHostClient(
   const racp = new RacpClient({
     transport: options.transport,
     client: options.clientInfo,
+    capabilities: { toolRelay: true, toolRelayCancel: true },
     onServerRequest: async (method, params) => {
       if (serverRequestListeners.size !== 1) {
         throw Object.assign(new Error("remote server request has no unique Desktop handler"), {

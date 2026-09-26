@@ -243,10 +243,20 @@ test("input.requested synthesizes an asktool_request keyed by the RACP input id"
   assert.equal(request.questions[0].multiSelect, false);
 });
 
-test("snapshot resync restores pending tool approvals and input requests", () => {
+test("snapshot resync clears stale renderer state, restores status, and requests", () => {
   const { bridge, events } = collect();
   bridge.restoreSnapshot(HOST_SESSION_ID, {
-    session: { id: HOST_SESSION_ID },
+    session: {
+      id: HOST_SESSION_ID,
+      status: "waiting_permission",
+      activeTurnId: "turn-1",
+      planningState: "planning",
+    },
+    activeTurn: {
+      id: "turn-1",
+      sessionId: HOST_SESSION_ID,
+      status: "waiting_approval",
+    },
     queuedTurns: [],
     items: [],
     activeItems: [],
@@ -290,17 +300,21 @@ test("snapshot resync restores pending tool approvals and input requests", () =>
     generatedAt: "2026-09-18T10:01:00.000Z",
   });
 
-  assert.equal(events.length, 2);
+  assert.equal(events.length, 3);
   assert.equal(events[0].channel, IPC.event.agentMessage);
   assert.equal(events[0].payload.sessionId, REMOTE_SESSION_ID);
-  assert.equal(events[0].payload.event.type, "tool_permission_request");
+  assert.equal(events[0].payload.event.type, "remote_snapshot_state");
+  assert.equal(events[0].payload.event.isRunning, true);
+  assert.equal(events[0].payload.event.currentTurnId, "turn-1");
+  assert.equal(events[0].payload.event.pendingToolConfirmations, 1);
+  assert.equal(events[1].payload.event.type, "tool_permission_request");
   assert.equal(
-    events[0].payload.event.request.requestId,
+    events[1].payload.event.request.requestId,
     makeRemoteApprovalRequestId(REMOTE_SESSION_ID, "approval-1"),
   );
-  assert.equal(events[1].payload.event.type, "asktool_request");
-  assert.equal(events[1].payload.event.request.requestId, "input-1");
-  assert.equal(events[1].payload.event.request.sessionId, REMOTE_SESSION_ID);
+  assert.equal(events[2].payload.event.type, "asktool_request");
+  assert.equal(events[2].payload.event.request.requestId, "input-1");
+  assert.equal(events[2].payload.event.request.sessionId, REMOTE_SESSION_ID);
 });
 
 test("terminal output and state events use namespaced sessions and terminal ids", () => {
@@ -347,12 +361,19 @@ test("terminal bridge drops payloads without a valid terminal id, output, or sta
   assert.equal(warnings.length, 5);
 });
 
-test("resync and resolved request events remain owned by their existing handlers", () => {
+test("resolved request events remove the exact remote renderer request", () => {
   const { bridge, events } = collect();
   bridge.handle(makeEnvelope({ kind: "resync.required", payload: {} }));
-  bridge.handle(makeEnvelope({ kind: "approval.resolved", payload: {} }));
-  bridge.handle(makeEnvelope({ kind: "input.resolved", payload: {} }));
-  assert.equal(events.length, 0);
+  bridge.handle(makeEnvelope({ kind: "approval.resolved", payload: { approvalId: "approval-9" } }));
+  bridge.handle(makeEnvelope({ kind: "input.resolved", payload: { inputId: "input-9" } }));
+  assert.equal(events.length, 2);
+  assert.equal(events[0].payload.event.type, "remote_approval_resolved");
+  assert.equal(
+    events[0].payload.event.requestId,
+    makeRemoteApprovalRequestId(REMOTE_SESSION_ID, "approval-9"),
+  );
+  assert.equal(events[1].payload.event.type, "remote_input_resolved");
+  assert.equal(events[1].payload.event.requestId, "input-9");
 });
 
 test("host.changed does not emit — the desktop has no host status surface yet", () => {

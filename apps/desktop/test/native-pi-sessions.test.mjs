@@ -72,6 +72,63 @@ function stateHarness(state) {
   return { get: () => state, set: (update) => { Object.assign(state, typeof update === "function" ? update(state) : update); } };
 }
 
+test("remote snapshot state is authoritative per session and resolved cards are removed by id", async () => {
+  const remoteId = "remote:hostA:s1";
+  const otherId = "remote:hostA:s2";
+  const state = {
+    activeSessionId: remoteId,
+    isRunning: true,
+    runningSessions: { [remoteId]: true, [otherId]: true, "local:s1": true },
+    agentStatuses: {
+      [remoteId]: { sessionId: remoteId, isRunning: true, currentTurnId: "stale", pendingToolConfirmations: 3 },
+      [otherId]: { sessionId: otherId, isRunning: true, pendingToolConfirmations: 1 },
+    },
+    pendingPermissions: {
+      [remoteId]: [{ requestId: "approval-old", sessionId: remoteId, toolCallId: "", toolName: "old", argsPreview: null, risk: "low", reason: "old", receivedAt: 1 }],
+      [otherId]: [{ requestId: "approval-other", sessionId: otherId, toolCallId: "", toolName: "other", argsPreview: null, risk: "low", reason: "other", receivedAt: 1 }],
+    },
+    pendingAsks: {
+      [remoteId]: [{ requestId: "input-old", sessionId: remoteId, toolCallId: "", questions: [] }],
+      [otherId]: [{ requestId: "input-other", sessionId: otherId, toolCallId: "", questions: [] }],
+    },
+  };
+  const slice = createEventsSlice({
+    ...stateHarness(state),
+    runtime: {},
+    withoutRecordKey: (record, key) => {
+      const next = { ...record };
+      delete next[key];
+      return next;
+    },
+  });
+  slice.handleAgentEvent({
+    sessionId: remoteId,
+    ts: 1,
+    event: {
+      type: "remote_snapshot_state",
+      isRunning: false,
+      pendingToolConfirmations: 0,
+      planningState: "inactive",
+    },
+  });
+  assert.equal(state.runningSessions[remoteId], false);
+  assert.equal(state.runningSessions[otherId], true);
+  assert.equal(state.runningSessions["local:s1"], true);
+  assert.equal(state.agentStatuses[remoteId], undefined);
+  assert.ok(state.agentStatuses[otherId]);
+  assert.equal(state.pendingPermissions[remoteId], undefined);
+  assert.equal(state.pendingAsks[remoteId], undefined);
+  assert.ok(state.pendingPermissions[otherId]);
+  assert.ok(state.pendingAsks[otherId]);
+
+  state.pendingPermissions[remoteId] = [{ requestId: "approval-live", sessionId: remoteId, toolCallId: "", toolName: "new", argsPreview: null, risk: "low", reason: "new", receivedAt: 2 }];
+  state.pendingAsks[remoteId] = [{ requestId: "input-live", sessionId: remoteId, toolCallId: "", questions: [] }];
+  slice.handleAgentEvent({ sessionId: remoteId, ts: 2, event: { type: "remote_approval_resolved", requestId: "approval-live" } });
+  slice.handleAgentEvent({ sessionId: remoteId, ts: 3, event: { type: "remote_input_resolved", requestId: "input-live" } });
+  assert.equal(state.pendingPermissions[remoteId], undefined);
+  assert.equal(state.pendingAsks[remoteId], undefined);
+});
+
 test("durable user acknowledgement reconciles active, cached and background rows across reselects", () => {
   for (const activeSessionId of ["native-pi:fixture", "desktop-session"]) {
     const id = "native-pi:fixture";

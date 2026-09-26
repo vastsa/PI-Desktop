@@ -31,9 +31,11 @@ describe("RACP reverse tool relay", () => {
     const spy = relaySpy();
     const h = await harness({ toolRelay: spy.relay });
     const { client } = await h.connect(OWNER_TOKEN, {
+      capabilities: { toolRelay: true, toolRelayCancel: true },
       onServerRequest: async (method) => {
-        if (method !== "tool/execute") throw new Error("unexpected server request");
-        return { result: { content: "release 12" }, isError: false };
+        if (method === "tool/cancel") return { cancelled: true };
+        if (method === "tool/execute") return { result: { content: "release 12" }, isError: false };
+        throw new Error("unexpected server request");
       },
     });
     clients.push(client);
@@ -50,9 +52,16 @@ describe("RACP reverse tool relay", () => {
       }],
     })).resolves.toMatchObject({ advertised: 1 });
     expect(spy.advertisements).toHaveLength(1);
+    expect(spy.advertisements[0]?.cancel).toBeTypeOf("function");
 
     await expect(spy.advertisements[0]?.request("tool/execute", { toolName: "mcp_corp_search" }, 500))
       .resolves.toEqual({ result: { content: "release 12" }, isError: false });
+    await expect(spy.advertisements[0]?.cancel?.({
+      executionId: "exec-1",
+      sessionId: "s1",
+      turnId: "turn-1",
+      toolCallId: "call-1",
+    })).resolves.toEqual({ cancelled: true });
     const connectionId = spy.advertisements[0]?.connectionId;
     await client.close();
     await flush();
@@ -80,5 +89,26 @@ describe("RACP reverse tool relay", () => {
       }],
     })).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
     expect(spy.advertisements).toHaveLength(0);
+  });
+
+  it("keeps the cancel callback out of an older client advertisement", async () => {
+    const spy = relaySpy();
+    const h = await harness({ toolRelay: spy.relay });
+    const { client } = await h.connect(OWNER_TOKEN, {
+      capabilities: { toolRelay: true, toolRelayCancel: false },
+    });
+    clients.push(client);
+
+    await client.request("tools/advertise", {
+      sessionId: "s1",
+      tools: [{
+        name: "mcp_corp_search",
+        description: "Search the corporate release index",
+        inputSchema: { type: "object", properties: { query: { type: "string" } } },
+        timeoutMs: 5_000,
+        workspaceFree: true,
+      }],
+    });
+    expect(spy.advertisements[0]?.cancel).toBeUndefined();
   });
 });

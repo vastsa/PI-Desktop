@@ -139,6 +139,94 @@ describe("RemoteToolRelay", () => {
     expect(request).toHaveBeenCalledWith("tool/execute", expect.objectContaining({ toolName: "mcp_corp_search" }), 1_000);
   });
 
+  it("cancels a turn-bound execution once and notifies a capable owner", async () => {
+    const execute = vi.fn(async (method: string) => {
+      if (method === "tool/execute") return await new Promise<never>(() => undefined);
+      throw new Error(`unexpected method ${method}`);
+    });
+    const cancel = vi.fn(async () => ({ cancelled: true }));
+    const relay = new RemoteToolRelay();
+    relay.advertise({
+      connectionId: "owner-a",
+      sessionId: "s1",
+      tools: [descriptor()],
+      request: execute,
+      cancel,
+    });
+    capture(relay, "turn-cancel");
+
+    const pending = relay.execute(call("turn-cancel"));
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith(
+      "tool/execute",
+      expect.objectContaining({ executionId: "exec-turn-cancel" }),
+      1_000,
+    ));
+
+    relay.releaseTurn("s1", "turn-cancel");
+    relay.releaseTurn("s1", "turn-cancel");
+
+    await expect(pending).resolves.toMatchObject({ ok: false, errorCode: "TOOL_FAILED" });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledWith({
+      executionId: "exec-turn-cancel",
+      sessionId: "s1",
+      turnId: "turn-cancel",
+      toolCallId: "call-turn-cancel",
+    });
+  });
+
+  it("sends a best-effort cancellation when the Host deadline expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const execute = vi.fn(async () => await new Promise<never>(() => undefined));
+      const cancel = vi.fn(async () => ({ cancelled: true }));
+      const relay = new RemoteToolRelay();
+      relay.advertise({
+        connectionId: "owner-a",
+        sessionId: "s1",
+        tools: [{ ...descriptor(), timeoutMs: 100 }],
+        request: execute,
+        cancel,
+      });
+      capture(relay, "turn-timeout-cancel");
+      const pending = relay.execute(call("turn-timeout-cancel"));
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(100);
+
+      await expect(pending).resolves.toMatchObject({ ok: false, errorCode: "TOOL_FAILED" });
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(cancel).toHaveBeenCalledWith({
+        executionId: "exec-turn-timeout-cancel",
+        sessionId: "s1",
+        turnId: "turn-timeout-cancel",
+        toolCallId: "call-turn-timeout-cancel",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("settles an in-flight execution without sending cancellation after disconnect", async () => {
+    const execute = vi.fn(async () => await new Promise<never>(() => undefined));
+    const cancel = vi.fn(async () => ({ cancelled: true }));
+    const relay = new RemoteToolRelay();
+    relay.advertise({
+      connectionId: "owner-a",
+      sessionId: "s1",
+      tools: [descriptor()],
+      request: execute,
+      cancel,
+    });
+    capture(relay, "turn-disconnect");
+
+    const pending = relay.execute(call("turn-disconnect"));
+    await vi.waitFor(() => expect(execute).toHaveBeenCalled());
+    relay.clearConnection("owner-a");
+
+    await expect(pending).resolves.toMatchObject({ ok: false, errorCode: "TOOL_FAILED" });
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
   it("rejects oversized arguments before contacting the owner", async () => {
     const relay = new RemoteToolRelay();
     const request = vi.fn(async () => ({ result: "ok", isError: false }));
