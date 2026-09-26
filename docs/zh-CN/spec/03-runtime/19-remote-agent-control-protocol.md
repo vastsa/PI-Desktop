@@ -47,7 +47,7 @@ HTTP/SSE 使用 POST 命令和带 `Last-Event-ID` 的事件流。资源以
 ```
 
 ```json
-{"protocolVersion":"1.0","capabilities":{"turnQueue":true,"hostEvents":true,"remoteHostProfile":true,"toolRelay":true,"terminal":true},"bindings":["RACP-WS"],"policy":{"remoteMaxPermissionMode":"ask","applyCeilingToPairedDevices":false,"approvalLifetimeMs":1800000}}
+{"protocolVersion":"1.0","capabilities":{"turnQueue":true,"hostEvents":true,"remoteHostProfile":true,"toolRelay":true,"toolRelayCancel":true,"terminal":true},"bindings":["RACP-WS"],"policy":{"remoteMaxPermissionMode":"ask","applyCeilingToPairedDevices":false,"approvalLifetimeMs":1800000}}
 ```
 
 ```ts
@@ -283,9 +283,19 @@ schema 最多 64 KiB，深度最多 16、节点最多 4,096，超时为 100 ms �
 原公布连接和 revision。若公布被替换或连接断开，该快照条目立即失效；Host 不会按相同名称
 改路由到另一连接。名称冲突的工具不会进入 Agent 目录。Agent 调用时 Host 先执行正常权限
 检查，再向该原连接发 `tool/execute`，使用广告中的超时；未公布工具、会话/回合不匹配、
-超时、断开、无效响应或客户端错误均以 `TOOL_FAILED` 结束该工具调用，并允许回合继续，
+超时、断开、无效响应、客户端错误或 Host 侧回合取消均以 `TOOL_FAILED` 结束该工具调用，并允许回合继续，
 不会跨连接重试。核心、系统和工作区工具不经过中继；客户端不得提供风险或 Plan 安全元数据，
 中继插件工具在没有 Host 验证的 Plan 安全元数据时不适用于 Plan/Goal。
+
+当客户端在初始化时声明 `capabilities.toolRelayCancel: true`，Host 可用可选的
+`tool/cancel` server request 取消执行中的调用。Desktop 必须校验四个执行身份字段；只有
+实际将本地 MCP 调用转换为取消状态时才返回 `cancelled: true`。重复、延迟、身份不匹配或已
+结算的请求返回 `cancelled: false` 且无副作用。Host 中断、工具超时、传输断开、会话移除和
+Host 关闭都会结算 Host 侧执行；只有协商了能力且连接仍存活时才发送取消请求。
+
+```json
+{"jsonrpc":"2.0","id":"server-request-78","method":"tool/cancel","params":{"executionId":"exec_01J...","sessionId":"ses_01J...","turnId":"turn_01J...","toolCallId":"call_01J..."}}
+```
 
 `workspaceFree: true` 是 owner 对工具来源的声明，不是 Host 独立验证来源的证明；Host 只校验
 该字段为字面量 `true`、角色/能力、schema 和有界限制，并执行 Host 权限策略。桌面必须从可信的
@@ -395,7 +405,8 @@ idempotency key 时返回原结果；使用相同 key 发送不同输入则失�
 
 ## 7. 兼容性与修订
 
-新增字段只能追加，不能复用已有字段含义。可选能力必须通过初始化协商。
+新增字段只能追加，不能复用已有字段含义。可选能力必须通过初始化协商；只有 Host 的
+`toolRelay` 与客户端的 `toolRelayCancel` 都存在时才使用 `tool/cancel`。
 终止状态不能回到活动状态；每个已发布 binding 的行为都必须通过相同 fixture
 验证，`RACP-WS` 是参考绑定。D374 于 2026-09-10 修订了 D373 草案：补齐本地
 审批词汇、引入 epoch 与瞬态事件、加入 Host 队列与 `permissions.pending`、
