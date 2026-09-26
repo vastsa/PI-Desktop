@@ -245,7 +245,10 @@ destination, chat as the home surface, tools and permissions inline.
 ### 3.3 Pull requests
 Segmented Open/Draft/All filters with counts; rows carry icon plate, number,
 title, status badge, branch meta, external link, and "Review with agent"
-(creates a chat turn). Requires an active workspace and `gh`.
+(creates a chat turn). Requires an active workspace and `gh`. While the current
+workspace's list is loading, show a localized status instead of the empty-result
+state. Keep current rows visible during an explicit refresh; when the workspace
+changes, hide rows from the previous workspace and ignore stale request results.
 
 ### 3.4 Scheduled
 Tasks and Run history views, with an explicit create/edit form, a cadence dropdown, time,

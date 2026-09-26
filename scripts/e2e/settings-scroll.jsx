@@ -239,6 +239,10 @@ async function exerciseBrazilianPortuguese() {
 }
 window.settingsScrollProbe = async () => {
   await settle();
+  assert(
+    document.activeElement === document.querySelector(".settings-search"),
+    "Mounting Settings must move focus to its search control",
+  );
   const checks = [];
   await checkCloudSyncVisibility();
   for (const theme of ["light", "dark"]) {

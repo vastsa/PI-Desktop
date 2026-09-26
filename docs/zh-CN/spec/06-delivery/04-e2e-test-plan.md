@@ -742,6 +742,25 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **状态**：已覆盖源级回归测试
   （`apps/desktop/test/plugins-page-style.test.mjs`）；完整 UI 场景为草案
 
+#### E2E-087b：目的页加载与设置焦点保持明确
+
+- **先决条件**：隔离的 Electron 配置、两个本地工作区 fixture，以及可按需
+  暂停列表响应的 preload 测试替身；不访问在线 GitHub。
+- **步骤**：
+  1. 挂载生产设置页面，确认焦点移到搜索框。
+  2. 为第一个工作区挂载 Pull requests 并暂停列表响应，检查等待状态。
+  3. 切换到第二个工作区并返回列表结果。发起手动刷新、暂停响应，确认现有行仍显示。
+  4. 返回刷新响应，最后才完成第一个工作区的旧请求。
+- **预期**：设置搜索框在挂载时获得焦点。Pull requests 在首个列表加载期间显示本地化
+  状态而非空结果。手动刷新响应期间保留已有行。切换工作区后，旧请求完成不得替换
+  第二个工作区的行或过滤计数。Shell 仍会将隐藏聊天设为 inert，但不会对包含焦点的
+  后代应用 `aria-hidden`。
+- **链接规格**：`04-ux/01-ui-ia.md`（§3.3）、`04-ux/09-interaction-patterns.md`（§7.1）
+- **验收**：C（UI）、质量
+- **里程碑**：M6+
+- **状态**：生产组件 E2E 与源码契约检查已自动化，由
+  `pnpm test:e2e:settings-scroll` 和 `pnpm test:e2e:destination-loading` 覆盖；完整 Shell 导航场景仍为草稿
+
 #### E2E-088：Composer Agent/Plan/Goal 芯片更新会话
 
 - **先决条件**：聊天路线激活；选定的会话。
@@ -3491,6 +3510,7 @@ IPC 请求无法关闭。
 - **预期**：
   - 当前助手行逐步显示内容并固定关注
     保持在最晚，没有明显的振荡。
+  - 在模拟的 120Hz 显示器上，平滑文本最多以 60Hz 更新；追上后动画帧循环停止。
   - 可替换的 message/tool 部分会合并到下一个油漆，同时
     终端、许可、计划和错误状态仍然是即时的。
   - 失败的工具行仍然带有错误色调并且可以局部扩展，但永远不会标记
@@ -3527,7 +3547,8 @@ IPC 请求无法关闭。
   `pnpm test:e2e:transcript` 自动验证 React/Chromium 渲染回归（无需提供商
   凭据；需安装 Electron，并有图形会话，Linux 可用 Xvfb）。该测试挂载生产
   聊天组件，统计 100 个已完成活动组在 20 次文本更新中的 ActivityGroup
-  渲染次数，并检查工具内容变化和跨活动段的 Task 终态及耗时更新。
+  渲染次数，并检查工具内容变化、跨活动段的 Task 终态及耗时更新，以及使用
+  确定性 120Hz 动画帧验证生产平滑文本 hook。
   测试不加载样式；完整提供商流式响应与 shell 交互响应性仍为草稿。
 
 #### E2E-084：长工具循环在提供程序上下文限制之前压缩
@@ -5421,6 +5442,7 @@ eleven-tool-round desktop paths are verified by
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — 侧边栏行状态 | E2E-LAYOUT-sidebar-row-states |
 | A / C / Quality — 侧栏材质与设置返回 | E2E-LAYOUT-sidebar-settings |
+| C / Quality — 目的页加载与焦点 | E2E-087b |
 | A / H / Quality — 渲染器进程崩溃恢复 | E2E-RUNTIME-renderer-crash-recovery |
 | B / F / Security — 提供商复制 | E2E-PROVIDER-copy-config-without-credentials |
 | B / F / Quality — 已选模型顺序 | E2E-MODEL-selected-order-persists |
@@ -5492,6 +5514,7 @@ eleven-tool-round desktop paths are verified by
 | M6+ | E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-UPDATE-preference-and-once-only-reminder、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217、E2E-257、E2E-166、E2E-SUBAGENT-resume-a-settled-delegation |
 | M6+（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+（已选模型顺序） | E2E-MODEL-selected-order-persists |
+| M6+（目的页加载与焦点） | E2E-087b |
 | M6+（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+（Windows 更新缓存） | E2E-260 |
 | M6+（独立会话通信） | E2E-SESSION-independent-top-level-communication、E2E-SESSION-hover-card-model-and-links |

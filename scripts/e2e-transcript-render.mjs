@@ -133,7 +133,7 @@ app.whenReady().then(async () => {
   window.webContents.on("console-message", (event) => console.error(event.message));
   try {
     await window.loadFile(path.join(__dirname, "index.html"));
-    const result = await window.webContents.executeJavaScript("globalThis.transcriptRenderProbe().then((render) => globalThis.transcriptRuntimeSlotProbe().then((slot) => Object.assign({}, render, { runtimeSlot: slot, ok: render.ok && slot.ok })))");
+    const result = await window.webContents.executeJavaScript("globalThis.transcriptRenderProbe().then((render) => globalThis.transcriptRuntimeSlotProbe().then((slot) => globalThis.smoothTextThrottleProbe().then((smoothText) => Object.assign({}, render, { runtimeSlot: slot, smoothText, ok: render.ok && slot.ok && smoothText.ok }))))");
     console.log("TRANSCRIPT_RENDER_PROBE " + JSON.stringify(result));
     app.quit();
   } catch (error) {
@@ -182,6 +182,11 @@ app.whenReady().then(async () => {
     result.runtimeSlot?.ok,
     true,
     `runtime status slot scenario failed: ${JSON.stringify(result.runtimeSlot?.failures)}`,
+  );
+  assert.equal(
+    result.smoothText?.ok,
+    true,
+    `smooth text cadence scenario failed: ${JSON.stringify(result.smoothText)}`,
   );
 } finally {
   await rm(temp, { recursive: true, force: true });
