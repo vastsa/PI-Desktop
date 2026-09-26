@@ -5402,6 +5402,7 @@ eleven-tool-round desktop paths are verified by
 | C — 对话和直播（导入可见性） | E2E-257 |
 | F——持久化（导入可见性） | E2E-257 |
 | C — 对话和直播（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
+| C / 质量 / 安全（对话 MP4 附件） | E2E-CHAT-mp4-attachment-opens-in-system-player |
 | G——插件（聊天文件引用） | E2E-CHAT-file-ref-opens-the-surface-that-owns-it、E2E-PLUGIN-file-view-collapse-persists |
 | 品质（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it、E2E-PLUGIN-file-view-collapse-persists |
 | G——插件（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
@@ -5453,6 +5454,7 @@ eleven-tool-round desktop paths are verified by
 | M6+（Windows 更新缓存） | E2E-260 |
 | M6+（独立会话通信） | E2E-SESSION-independent-top-level-communication、E2E-SESSION-hover-card-model-and-links |
 | M5（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
+| M5（对话 MP4 附件） | E2E-CHAT-mp4-attachment-opens-in-system-player |
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
@@ -7046,6 +7048,16 @@ eleven-tool-round desktop paths are verified by
 - **验收**：C（对话和直播）、G（插件）、质量
 - **里程碑**：M5
 - **状态**：单元已覆盖（`apps/desktop/test/transcript-file-chips.test.mjs`）；完整 UI 旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
+
+#### E2E-CHAT-mp4-attachment-opens-in-system-player
+
+- **前提条件**：对话中有一个粘贴到会话临时目录的 MP4，以及两个没有后缀、按内容哈希存储的 MP4 附件；后两者分别大于 512 KiB 和小于该上限，三者均保留 `video/mp4` 元数据。
+- **步骤**：点击每个对话附件，再在宿主文件选项卡选择“用系统默认应用打开”。对工作区内的 `.mp4` 文件重复操作。
+- **预期**：大附件提示体积超过内嵌预览上限，小附件提示二进制内容；二者均有系统打开操作。宿主校验真实路径包含范围，并为无后缀 blob 提供指向原始字节的 `.mp4` 别名。允许范围外的文件和符号链接逃逸均被拒绝；系统打开失败会提示用户。
+- **链接规格**：`03-runtime/01-ipc-protocol.md` § fs、`04-ux/09-interaction-patterns.md` §8a.2
+- **验收**：C（对话和直播）、质量、安全
+- **里程碑**：M5
+- **状态**：Electron 隔离测试已覆盖粘贴到临时目录的 MP4 及两种大小的 blob（`test:e2e:composer-paste`）；安装版与系统播放器的完整旅程仍待验收。
 
 #### E2E-181：导入的技能会出现在下一个会话的目录里
 

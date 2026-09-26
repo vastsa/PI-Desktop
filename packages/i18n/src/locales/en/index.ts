@@ -1849,6 +1849,7 @@ sklm: {
       reveal: "Reveal in Finder",
       binary: "Binary file — preview unavailable",
       tooLarge: "File is too large to preview",
+      openFailed: "Could not open the file with its default application.",
     },
   },
   palette: {

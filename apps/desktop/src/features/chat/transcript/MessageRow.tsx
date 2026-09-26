@@ -269,6 +269,7 @@ export const MessageRow = memo(function MessageRow({
                             name={attachment.name}
                             path={attachment.ref}
                             kind={attachment.kind}
+                            mimeType={attachment.mimeType}
                             onOpen={openFileRef}
                           />
                         </span>

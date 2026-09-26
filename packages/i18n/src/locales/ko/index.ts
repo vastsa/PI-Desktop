@@ -1846,6 +1846,7 @@ sklm: {
       reveal: "Finder에서 보기",
       binary: "바이너리 파일 — 미리 볼 수 없음",
       tooLarge: "파일이 너무 커서 미리 볼 수 없음",
+      openFailed: "기본 앱으로 파일을 열 수 없습니다.",
     },
   },
   palette: {
