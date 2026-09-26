@@ -13134,7 +13134,15 @@ browser milestones are scheduled.
   It uses an isolated profile and loopback model. This covers the Desktop half
   of the flow, but does not run SSH bootstrap through Settings, disconnect
   recovery, or the remaining terminal and MCP relay steps. The isolated Linux
-  CI profile selects Electron's `basic_text` password backend for disposable
+  Desktop fixture is `pnpm test:e2e:remote-ssh-desktop`; it drives the real
+  Settings SSH form, provider sync, remote session creation, remote read/write,
+  approval restoration across an SSH drop, terminal replay/input recovery, and
+  a durable queued turn across a remote Host process restart. It is fixture-only
+  and uses a loopback checksum/model server, temporary profile, and temporary
+  SSH key. It was added in the task worktree but was not run on the current
+  Darwin arm64 environment because the fixture requires Linux x64 and explicit
+  `PI_DESKTOP_E2E_SSHD_SUDO=1`; no E2E-231 pass is claimed here. The isolated
+  Linux CI profile selects Electron's `basic_text` password backend for disposable
   fixture credentials; this does not verify OS-backed at-rest protection. A
   prior local macOS attempt reached pairing but could not complete because
   the isolated HOME had no available Keychain. SSH bootstrap now probes the
@@ -13148,7 +13156,21 @@ browser milestones are scheduled.
   MCP adapter has targeted coverage in
   `apps/desktop/test/remote-tool-relay.test.mjs` and
   `apps/desktop/test/user-mcp.test.mjs`. Full Linux SSH Desktop acceptance
-  remains required for this end-to-end scenario.
+  remains required for this end-to-end scenario until the Linux fixture result
+  is recorded against a committed task candidate and its current `origin/main`
+  base.
+
+  **Validation record (2026-09-26, task worktree)**: the committed task
+  candidate is `2afc802294552bf2bbafb417ebd409c3ab8ee8f7`, based on fetched
+  `origin/main` `ccf66728c6924b0be03d7ffa2ded35b717ac8070` (the user-supplied
+  handoff branch was merged into this isolated worktree without rewriting that
+  branch). Environment: Darwin arm64, Node 26, pnpm 10.34.5. Commands
+  `node scripts/e2e-remote-ssh-desktop.mjs` and
+  `node scripts/e2e-remote-ssh-bootstrap.mjs` were invoked and stopped by
+  their explicit Linux x64 platform guards; the full fixture bodies did not
+  run. Result: NOT RUN / E2E-231 remains Draft. Targeted bridge,
+  queue, relay, and RACP tests are recorded in the delivery report, but are not
+  substituted for the Linux Desktop acceptance.
 
 #### E2E-REMOTE-HOST-ssh-password-authentication
 

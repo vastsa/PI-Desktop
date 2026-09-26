@@ -512,11 +512,19 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   remote Files/Review refresh, busy-session configuration conflicts, and stale
   terminal connections. The Linux SSH fixture now exercises a mid-turn tunnel
   drop and restore, cursor replay, idempotent turn retry, and PTY reattachment
-  with the same `openRequestId`. These headless fixtures do not exercise the
-  Desktop Settings/renderer flow, so E2E-231 remains Draft pending full Linux
-  Desktop acceptance and the remaining security scenarios. Local headless runs
-  pass 45/45 host checks and 20/20 permission-ceiling/queued-turn checks; the
-  Linux SSH fixture has not been run in the current macOS environment.
+  with the same `openRequestId`. The real Desktop SSH renderer fixture is
+  `pnpm test:e2e:remote-ssh-desktop`; it drives the Settings SSH form, provider
+  sync, approval and terminal recovery, and Host-process queue recovery using
+  only loopback fixtures and temporary credentials. These fixtures do not
+  replace the required Linux acceptance: on 2026-09-26 the committed task
+  candidate was `2afc802294552bf2bbafb417ebd409c3ab8ee8f7`, based on
+  `origin/main` `ccf66728c6924b0be03d7ffa2ded35b717ac8070`, but the environment
+  was Darwin arm64. Both
+  `node scripts/e2e-remote-ssh-desktop.mjs` and
+  `node scripts/e2e-remote-ssh-bootstrap.mjs` stopped at their Linux-only
+  platform guards, so E2E-231 remains Draft. Local
+  headless runs pass 45/45 host checks and 20/20 permission-ceiling/queued-turn
+  checks; the Linux SSH fixtures remain to be run on Linux x64.
   `workspaceFree` is an owner-side assertion that the
   Host cannot independently verify; the Desktop adapter must derive it from
   trusted source metadata and fail closed when uncertain. The initial adapter

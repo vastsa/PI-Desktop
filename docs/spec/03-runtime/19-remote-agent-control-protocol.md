@@ -87,6 +87,7 @@ The client sends:
       "hostEvents": true,
       "history": true,
       "toolRelay": true,
+      "toolRelayCancel": true,
       "terminal": true
     },
     "maxReceiveBytes": 1048576
@@ -123,6 +124,7 @@ The Host returns:
       "history": true,
       "remoteHostProfile": true,
       "toolRelay": true,
+      "toolRelayCancel": true,
       "terminal": true,
       "notifications": false,
       "bindings": ["RACP-WS"]
@@ -1029,9 +1031,9 @@ Rules:
 2. The Host-side permission decision, including session grants, precedes the
    relay request; the client does not re-ask the Host.
 3. The request deadline is the advertised tool timeout. Timeout, disconnect,
-   malformed response, and client error all resolve that tool call as
-   `TOOL_FAILED`; the turn continues and nothing is retried on another
-   connection.
+   malformed response, client error, or Host-side turn cancellation all
+   resolve that tool call as `TOOL_FAILED`; the turn continues and nothing is
+   retried on another connection.
 4. `workspaceFree: true` is the owner's source-classification assertion; the
    Host checks the literal flag but cannot independently verify the remote
    source. A desktop MUST advertise a plugin tool only when trusted registered
@@ -1045,6 +1047,37 @@ Rules:
    plugin tools without Host-verified Plan-safe metadata remain unavailable in
    Plan/Goal modes.
 6. Relayed results are items like any other and are audited on both sides.
+
+The Host MAY cancel an in-flight request with the optional server request
+`tool/cancel` when the client advertised `capabilities.toolRelayCancel: true`.
+The cancellation payload repeats the four execution identity fields:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "server-request-78",
+  "method": "tool/cancel",
+  "params": {
+    "executionId": "exec_01J...",
+    "sessionId": "ses_01J...",
+    "turnId": "turn_01J...",
+    "toolCallId": "call_01J..."
+  }
+}
+```
+
+The Desktop MUST verify all four fields against the active local MCP call and
+return `{ "cancelled": true }` only when it actually transitions that call to
+cancelled. A repeated, late, mismatched, or already settled request returns
+`{ "cancelled": false }` and has no side effect. The Host treats the relay
+execution as failed immediately after sending the best-effort cancellation;
+it does not wait for the Desktop's response before settling the interrupted
+turn. A client that does not advertise `toolRelayCancel` remains compatible:
+the Host still settles its own call as `TOOL_FAILED`, but cannot ask the
+Desktop MCP implementation to stop work. Host turn interrupt, the advertised
+tool deadline, transport loss, Session removal, and Host shutdown all settle
+the Host-side execution; only a live negotiated connection receives
+`tool/cancel`.
 
 ## 10. Attachments
 
@@ -1281,6 +1314,8 @@ thing across all bindings.
 2. Clients ignore unknown response fields and preserve unknown event kinds for
    diagnostics.
 3. A server advertises optional capabilities before a client uses them.
+   `tool/cancel` is used only when both the server's `toolRelay` capability
+   and the client's `toolRelayCancel` capability are present.
 4. A server never changes a terminal turn, approval, or input request back to
    an active state.
 5. The typebox schemas in `packages/shared` are the single source of the
