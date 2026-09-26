@@ -47,8 +47,31 @@ export type ProviderPublic = {
    * `providers.delete` refuse it.
    */
   ownerPluginId?: string;
+  /**
+   * Present when this row is an external Agent Client Protocol agent rather
+   * than a model endpoint. Sessions on such a row are executed by that program
+   * on this machine: it brings its own models and credentials, so `baseUrl`,
+   * `apiStyle` and the stored secret are unused.
+   */
+  acp?: AcpAgentConfig;
   createdAt: string;
   updatedAt: string;
+};
+
+/**
+ * An external ACP agent, as stored on a provider row.
+ *
+ * The command is launched directly, never through a shell. An agent that
+ * cannot be launched is reported in the settings screen rather than failing on
+ * the first prompt.
+ */
+export type AcpAgentConfig = {
+  /** Executable name or absolute path, e.g. `opencode`. */
+  command: string;
+  /** Arguments placed before anything else, typically `["acp"]`. */
+  args: string[];
+  /** Model to select once the agent opens a session, when the user pinned one. */
+  modelId?: string;
 };
 
 export type ProviderCreateInput = {
@@ -87,6 +110,12 @@ export type ProviderCreateInput = {
   maxOutputTokens?: number;
   /** Sampling temperature override; on update, 0 clears the override. */
   temperature?: number;
+  /**
+   * External ACP agent for this row. On update, omit the field to leave it
+   * unchanged and pass `null` to clear it and turn the row back into an
+   * ordinary endpoint.
+   */
+  acp?: AcpAgentConfig | null;
 };
 
 export type ProviderUpdateInput = Partial<ProviderCreateInput> & {

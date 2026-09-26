@@ -598,6 +598,57 @@
   line-height: var(--leading-relaxed);
 }
 
+/* ------------------------------------------------- external agent (ACP) */
+
+/*
+  The access notice is a block rather than a line under a field because it is
+  the one thing a user has to weigh before saving, and the consent row below is
+  the answer to it. It carries the same warning tone Settings already uses for
+  "this is not what you think it is", so it does not read as one more hint.
+*/
+.provider-acp {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-acp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.provider-acp-access {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ds-warning) 12%, transparent);
+  color: var(--ds-warning);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+}
+
+/* Same shape as the config-sync category checkboxes: the row is the label,
+   the native box only needs the accent. */
+.provider-acp-consent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.provider-acp-consent input {
+  accent-color: var(--ds-accent);
+}
+
 /* Pick on the left, review on the right; both stretch to the same height. */
 .provider-setup-panes {
   flex: 1;

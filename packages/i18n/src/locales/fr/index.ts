@@ -503,6 +503,7 @@ export const fr = {
     "noModelResults": "Aucun modèle correspondant",
     "modelBadgeReasoning": "raisonnement",
     "modelBadgeVision": "vision",
+    "externalAgentRuns": "L'agent externe {{command}} s'exécute sur votre machine et peut modifier les fichiers de ce projet sans demander",
     "permissionMode": "Mode d'autorisation",
     "reasoningLevel": "Niveau de raisonnement",
     "permissionInherit": "Par défaut",
@@ -582,6 +583,21 @@ export const fr = {
     "dismiss": "Ignorer"
   },
   "settings": {
+    "acpSection": "Agent externe",
+    "acpEnable": "Exécuter ce service comme agent externe (ACP)",
+    "acpExplanation":
+      "Un agent externe est un programme sur cette machine qui apporte ses propres modèles et identifiants. L'URL, le format d'API et la clé d'API ci-dessous ne sont pas utilisés.",
+    "acpChoosePreset": "Choisir un agent",
+    "acpCommand": "Commande",
+    "acpArgs": "Arguments",
+    "acpModel": "Modèle (facultatif)",
+    "acpModelPlaceholder": "Laisser vide pour laisser l'agent choisir",
+    "acpCommandRequired": "Une commande est requise.",
+    acpAccessWhat: "Ce qu'un agent externe peut atteindre",
+    acpAccessNotice:
+      "Cet agent s'exécute sur votre machine avec le dossier du projet comme répertoire de travail, et il lit et écrit ces fichiers avec ses propres outils. PI-Desktop ne voit jamais ces actions et ne peut pas les bloquer. N'ajoutez qu'un agent auquel vous confiez votre code.",
+    acpConsent: "Je comprends que cet agent peut modifier des fichiers de mon projet sans demander",
+    acpConsentRequired: "Confirmez ce que cet agent peut atteindre avant d'enregistrer.",
     "power": "Alimentation",
     "keepAwakeWhileRunning": "Garder l'ordinateur éveillé",
     "keepAwakeWhileRunningDesc": "Empêche la veille due à l'inactivité pendant l'exécution de PI-Desktop. L'écran peut s'éteindre ; la veille manuelle et la fermeture du capot restent possibles.",

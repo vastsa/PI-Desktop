@@ -46,10 +46,59 @@ import type {
   SessionThinkingLevel,
   UiMessage,
 } from "@pi-desktop/shared";
+import { AcpSessionRuntime, type AcpAgentConfig } from "@pi-desktop/acp-client";
 
 type RuntimeMap = Map<string, DesktopAgentRuntime>;
 
+/**
+ * Sessions whose turns are executed by an external ACP agent.
+ *
+ * Kept apart from the pi map on purpose. The pi runtime is the app's main path
+ * and its methods (`matches`, `steer`, `compactManually`, `resolveAskTool`) are
+ * pi-specific; a separate map means no existing call site changes behaviour,
+ * and every ACP entry point is an explicit branch you can grep for.
+ */
+type AcpRuntimeMap = Map<string, AcpSessionRuntime>;
+
 const runtimes: RuntimeMap = new Map();
+const acpRuntimes: AcpRuntimeMap = new Map();
+
+/** Whichever backend owns this session, if any. */
+function runtimeForSession(
+  sessionId: string,
+): DesktopAgentRuntime | AcpSessionRuntime | undefined {
+  return acpRuntimes.get(sessionId) ?? runtimes.get(sessionId);
+}
+
+/**
+ * Narrow to the pi runtime for pi-only features, with an error the UI can show
+ * instead of a crash: an external agent has no manual compaction, steering or
+ * asktool, and pretending otherwise would be a lie in the transcript.
+ */
+function requirePiRuntime(
+  runtime: DesktopAgentRuntime | AcpSessionRuntime | undefined,
+  feature: string,
+): DesktopAgentRuntime {
+  if (!runtime) {
+    throw Object.assign(new Error("runtime not found for session"), {
+      rpcCode: -32000,
+      errorCode: "RUNTIME_NOT_FOUND",
+    });
+  }
+  if (!isPiRuntime(runtime)) {
+    throw Object.assign(
+      new Error(`this session is driven by an external agent; ${feature} is not available`),
+      { rpcCode: -32000, errorCode: "UNSUPPORTED_FOR_BACKEND" },
+    );
+  }
+  return runtime;
+}
+
+function isPiRuntime(
+  runtime: DesktopAgentRuntime | AcpSessionRuntime,
+): runtime is DesktopAgentRuntime {
+  return runtime instanceof DesktopAgentRuntime;
+}
 const hostProxy = new ParentHostProxy();
 const testRuntimeIds = new WeakMap<DesktopAgentRuntime, string>();
 function testRuntimeIdentity(sessionId: string) {
@@ -116,10 +165,73 @@ type RuntimeParams = {
   userMessageId?: string;
   sessionMessage?: SessionMessageOrigin;
   attachments?: RuntimePromptAttachment[];
+  /**
+   * When present the session is executed by an external ACP agent instead of
+   * the built-in pi agent. `provider` is then unused: the agent brings its own
+   * models and credentials, and the host does not try to describe them.
+   */
+  acp?: AcpAgentConfig;
 };
 
 function write(msg: unknown) {
   process.stdout.write(JSON.stringify(msg) + "\n");
+}
+
+/**
+ * Create or reuse the ACP session runtime for a host session.
+ *
+ * The agent is responsible for its own models, so there is nothing to validate
+ * here beyond the command itself — the ACP client already refuses an empty or
+ * unlaunchable command. Model selection happens inside the agent: it advertises
+ * its picker in `session/new` and we set the configured one with
+ * `session/set_config_option`.
+ */
+async function acpRuntimeFor(params: RuntimeParams): Promise<AcpSessionRuntime> {
+  const sessionId = String(params.sessionId);
+  const config = params.acp as AcpAgentConfig;
+  const existing = acpRuntimes.get(sessionId);
+  if (existing && sameAcpConfig(existing, config)) {
+    if (existing.getStatus().isRunning) {
+      throw Object.assign(new Error("session already has an active turn"), {
+        rpcCode: -32000,
+        errorCode: "AGENT_BUSY",
+      });
+    }
+    return existing;
+  }
+  if (existing) {
+    await existing.dispose();
+    acpRuntimes.delete(sessionId);
+  }
+  const runtime = new AcpSessionRuntime({
+    ...config,
+    sessionId,
+    hooks: {
+      emit: (envelope) => notify("agent.event", envelope),
+      // Not wired yet: permissions and filesystem callbacks need a host route
+      // that does not exist (the sidecar's reverse-request path only knows
+      // `host.proxy`). Failing closed is the safe default — an agent that wants
+      // to run a tool gets a refusal instead of an unattended grant.
+      requestPermission: async () => undefined,
+    },
+    onStderr: (chunk) => write({ level: "warn", source: "acp", message: chunk.trim() }),
+  });
+  acpRuntimes.set(sessionId, runtime);
+  return runtime;
+}
+
+function sameAcpConfig(runtime: AcpSessionRuntime, config: AcpAgentConfig): boolean {
+  const info = runtime.config();
+  return (
+    info.command === config.command &&
+    info.cwd === config.cwd &&
+    info.modelId === (config.modelId ?? undefined) &&
+    // Args are part of the identity: `opencode` and `opencode acp` are the same
+    // command and behave completely differently. Reusing the first for the
+    // second would leave the session talking to the wrong mode.
+    info.args.length === config.args.length &&
+    info.args.every((arg, i) => arg === config.args[i])
+  );
 }
 
 /**
@@ -157,8 +269,9 @@ function respond(id: string | number, result?: unknown, error?: unknown) {
 async function runtimeFor(
   params: RuntimeParams,
   currentPrompt?: string,
-): Promise<DesktopAgentRuntime> {
+): Promise<DesktopAgentRuntime | AcpSessionRuntime> {
   const sessionId = String(params.sessionId);
+  if (params.acp) return acpRuntimeFor(params);
   const mode = normalizeMode(params.mode);
   if (!isCommandShellOption(params.commandShell) || !params.commandShell.available) {
     throw Object.assign(new Error("active command shell is invalid or unavailable"), {
@@ -399,6 +512,22 @@ async function handle(method: string, params: any): Promise<unknown> {
         ? (params.attachments as RuntimePromptAttachment[])
         : undefined;
       const runtime = await runtimeFor(params, content);
+      if (!isPiRuntime(runtime)) {
+        // An external agent takes the text turn as-is: it owns prompt assembly,
+        // tools and the model, so host-side attachments and thinking levels do
+        // not apply to it.
+        void runtime
+          .prompt(content, turnId)
+          .catch((err) => {
+            notify("agent.event", {
+              sessionId,
+              turnId,
+              ts: Date.now(),
+              event: { type: "error", error: classifiedRuntimeError(err) },
+            });
+          });
+        return { accepted: true, turnId };
+      }
       const userMessageId =
         typeof params.userMessageId === "string" && params.userMessageId
           ? params.userMessageId
@@ -437,7 +566,7 @@ async function handle(method: string, params: any): Promise<unknown> {
     }
     case "agent.steeringContext":
     case "agent.steer": {
-      const runtime = runtimes.get(String(params.sessionId ?? ""));
+      const runtime = requirePiRuntime(runtimes.get(String(params.sessionId ?? "")), "steering");
       if (!runtime) {
         throw Object.assign(new Error("No active turn to steer"), { errorCode: "TURN_NOT_FOUND" });
       }
@@ -458,12 +587,13 @@ async function handle(method: string, params: any): Promise<unknown> {
           errorCode: "PLAN_EXECUTION_NOT_FOUND",
         });
       }
-      const runtime = await runtimeFor({
+      const resolved = await runtimeFor({
         ...params,
         sessionId,
         mode: "agent",
         turnId,
       });
+      const runtime = requirePiRuntime(resolved, "approved plan execution");
       void runtime.executeApprovedPlan(execution, turnId).catch((err) => {
         notify("agent.event", {
           sessionId,
@@ -478,8 +608,8 @@ async function handle(method: string, params: any): Promise<unknown> {
       return { accepted: true, turnId };
     }
     case "agent.compact": {
-      const runtime = await runtimeFor(params);
-      await runtime.compactManually();
+      const resolved = await runtimeFor(params);
+      await requirePiRuntime(resolved, "manual compaction").compactManually();
       return { accepted: true };
     }
     case "agent.abort": {
@@ -487,11 +617,11 @@ async function handle(method: string, params: any): Promise<unknown> {
       if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
         return nativePiService().abort(sessionId);
       }
-      const runtime = runtimes.get(sessionId);
+      const runtime = runtimeForSession(sessionId);
       const turnId = typeof params.turnId === "string" ? params.turnId : undefined;
       if (turnId && runtime?.getStatus().currentTurnId !== turnId) return { ok: false, aborted: false };
       await hostProxy.call("plans.abort", { sessionId, ...(turnId ? { turnId } : {}) }).catch(() => undefined);
-      if (runtime && runtimes.get(sessionId) === runtime && (!turnId || runtime.getStatus().currentTurnId === turnId)) {
+      if (runtime && runtimeForSession(sessionId) === runtime && (!turnId || runtime.getStatus().currentTurnId === turnId)) {
         await runtime.abort();
       }
       return { ok: true };
@@ -501,7 +631,7 @@ async function handle(method: string, params: any): Promise<unknown> {
       if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
         return nativePiService().abort(sessionId);
       }
-      const runtime = runtimes.get(sessionId);
+      const runtime = runtimeForSession(sessionId);
       return runtime?.requestGracefulStop() ?? { requested: false };
     }
     case "asktool.resolve": {
@@ -533,7 +663,7 @@ async function handle(method: string, params: any): Promise<unknown> {
       if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
         return nativePiService().status(sessionId);
       }
-      const runtime = runtimes.get(sessionId);
+      const runtime = runtimeForSession(sessionId);
       return {
         status: runtime?.getStatus() ?? {
           sessionId,
@@ -548,10 +678,11 @@ async function handle(method: string, params: any): Promise<unknown> {
         nativePiService().dispose(sessionId);
         return { ok: true };
       }
-      const runtime = runtimes.get(sessionId);
+      const runtime = runtimeForSession(sessionId);
       if (runtime) {
         await runtime.dispose();
-        runtimes.delete(sessionId);
+        if (isPiRuntime(runtime)) runtimes.delete(sessionId);
+        else acpRuntimes.delete(sessionId);
       }
       return { ok: true };
     }

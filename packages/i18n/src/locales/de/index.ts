@@ -503,6 +503,7 @@ export const de = {
     "noModelResults": "Keine passenden Modelle",
     "modelBadgeReasoning": "Begründung",
     "modelBadgeVision": "Vision",
+    "externalAgentRuns": "Externer Agent {{command}} läuft auf diesem Rechner und kann Dateien in diesem Projekt ohne Nachfrage ändern",
     "permissionMode": "Berechtigungsmodus",
     "reasoningLevel": "Argumentationsebene",
     "permissionInherit": "Standard",
@@ -582,6 +583,21 @@ export const de = {
     "dismiss": "Verwerfen"
   },
   "settings": {
+    "acpSection": "Externer Agent",
+    "acpEnable": "Diesen Dienst als externen Agenten ausführen (ACP)",
+    "acpExplanation":
+      "Ein externer Agent ist ein Programm auf diesem Rechner, das eigene Modelle und Anmeldedaten mitbringt. Die untenstehende URL, das API-Format und der API-Schlüssel werden nicht verwendet.",
+    "acpChoosePreset": "Agent auswählen",
+    "acpCommand": "Befehl",
+    "acpArgs": "Argumente",
+    "acpModel": "Modell (optional)",
+    "acpModelPlaceholder": "Leer lassen, damit der Agent wählt",
+    "acpCommandRequired": "Ein Befehl ist erforderlich.",
+    acpAccessWhat: "Was ein externer Agent erreichen kann",
+    acpAccessNotice:
+      "Dieser Agent läuft auf Ihrem Rechner mit Ihrem Projektordner als Arbeitsverzeichnis und liest und schreibt diese Dateien mit eigenen Werkzeugen. PI-Desktop sieht diese Aktionen nie und kann sie nicht blockieren. Fügen Sie nur einen Agenten hinzu, dem Sie Ihren Code anvertrauen.",
+    acpConsent: "Mir ist klar, dass dieser Agent Dateien in meinem Projekt ändern kann, ohne zuerst zu fragen",
+    acpConsentRequired: "Bestätigen Sie, was dieser Agent erreichen kann, bevor Sie speichern.",
     "power": "Energie",
     "keepAwakeWhileRunning": "Computer wach halten",
     "keepAwakeWhileRunningDesc": "Verhindert den Ruhezustand bei Inaktivität, solange PI-Desktop läuft. Der Bildschirm kann sich ausschalten; manuelles Schlafen und Zuklappen bleiben möglich.",

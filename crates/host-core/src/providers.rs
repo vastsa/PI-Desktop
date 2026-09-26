@@ -38,12 +38,12 @@ pub(crate) use catalog::{
     DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, PROVIDER_SELECT,
 };
 pub(crate) use credentials::{
-    build_provider_config_json, config_headers, config_oauth_account_label,
-    config_reasoning_override, config_value, config_with_headers, config_with_limit,
-    config_with_oauth_account_label, config_with_reasoning_override,
+    build_provider_config_json, config_acp, config_headers, config_oauth_account_label,
+    config_reasoning_override, config_value, config_with_acp, config_with_headers,
+    config_with_limit, config_with_oauth_account_label, config_with_reasoning_override,
     config_with_thinking_levels_override, ensure_config_object, limit_temperature_value,
     limit_u32_value, limits_object, merge_provider_config_overrides, retain_storable_headers,
-    upsert_secret_meta, LimitOverrides,
+    upsert_secret_meta, AcpAgentConfig, LimitOverrides,
 };
 pub(crate) use validation::{
     config_limit_f64, config_limit_u32, fold_fullwidth, header_value_fault,
