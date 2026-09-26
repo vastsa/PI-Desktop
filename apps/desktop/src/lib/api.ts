@@ -1360,7 +1360,8 @@ export const api = {
       ...(mimeType ? { mimeType } : {}),
     }),
   fsReveal: (path: string) => invoke(IPC.invoke.fsReveal, { path }),
-  fsOpen: (path: string) => invoke(IPC.invoke.fsOpen, { path }),
+  fsOpen: (path: string, mimeType?: string) =>
+    invoke(IPC.invoke.fsOpen, { path, mimeType }),
   fsIndex: () => invoke<FsIndexResult>(IPC.invoke.fsIndex),
   /**
    * Complete a file reference from chat text to a real file (D320 follow-up).

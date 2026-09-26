@@ -26,6 +26,8 @@ import {
 } from "../../apps/desktop/src/features/chat/composer/editor";
 import { api } from "../../apps/desktop/src/lib/api";
 import { FilesTab } from "../../apps/desktop/src/components/workpanel/FilesTab";
+import { FileRefChip } from "../../apps/desktop/src/features/chat/transcript/shared";
+import { useOpenChatFileRef } from "../../apps/desktop/src/hooks/use-preview-target";
 import {
   readComposerDraft,
   resetComposerDraftCache,
@@ -104,6 +106,27 @@ function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunct
         onBlur={noop}
       />
       </div>
+    </div>
+  );
+}
+
+function Mp4AttachmentChips({ scratchPath }: { scratchPath: string }) {
+  const openFile = useOpenChatFileRef();
+  return (
+    <div className="mp4-attachment-chips">
+      {[
+        { name: "a.mp4", path: `attachments/${"a".repeat(64)}` },
+        { name: "b.mp4", path: `attachments/${"b".repeat(64)}` },
+        { name: "scratch.mp4", path: scratchPath },
+      ].map((video) => (
+        <FileRefChip
+          key={video.name}
+          name={video.name}
+          path={video.path}
+          mimeType="video/mp4"
+          onOpen={openFile}
+        />
+      ))}
     </div>
   );
 }
@@ -240,7 +263,11 @@ globalThis.composerPasteProbe = async () => {
       await pendingPaste;
       assert(controller.value === "", "pending paste changed the destination draft");
       render("paste-a");
-      await new Promise(requestAnimationFrame);
+      const restoreDeadline = performance.now() + 3000;
+      while (!controller.fileReferences.some((reference) => reference.name === "new.txt") &&
+        performance.now() < restoreDeadline) {
+        await new Promise(requestAnimationFrame);
+      }
       const names = controller.fileReferences.map((r) => r.name);
       assert(names.includes("original.txt") && names.includes("new.txt"),
         "PENDING_PASTE_SESSION_SWITCH lost original attachment: " + JSON.stringify({ names, text: readEditorValue(controller.ref.current!), visible: controller.ref.current!.textContent }));
@@ -389,20 +416,36 @@ globalThis.composerPasteProbe = async () => {
         `prefix ${controller.fileReferences[0].token} suffix`,
       "large text chip lost the selection boundary",
     );
+    const longTextPath = controller.fileReferences[0].path;
+    await paste("", [new File([new Uint8Array(512 * 1024 + 1)], "clip.mp4", {
+      type: "video/mp4",
+    })]);
+    assert(controller.fileReferences.length === 1 &&
+      controller.fileReferences[0].mimeType === "video/mp4" &&
+      controller.fileReferences[0].path.endsWith(".mp4"),
+    "a pasted MP4 did not retain its playable scratch filename");
+    const scratchVideoPath = controller.fileReferences[0].path;
 
     // Preview the persisted long-text attachment through the public work-panel
     // entry point, with no project open (the temporary-task user path).
     const previewHost = document.createElement("div");
     document.body.append(previewHost);
     const previewRoot = createRoot(previewHost);
+    const originalFsOpen = api.fsOpen;
+    const openRequests: Array<ReturnType<typeof api.fsOpen>> = [];
+    api.fsOpen = (path: string, mimeType?: string) => {
+      const request = originalFsOpen(path, mimeType);
+      openRequests.push(request);
+      return request;
+    };
     try {
       flushSync(() => previewRoot.render(
-        <I18nextProvider i18n={i18n}><FilesTab /></I18nextProvider>,
+        <I18nextProvider i18n={i18n}><FilesTab /><Mp4AttachmentChips scratchPath={scratchVideoPath} /></I18nextProvider>,
       ));
       assert(previewHost.textContent?.includes(i18n.t("panel.files.noWorkspace")),
         "file browsing without a project should show the empty state");
       flushSync(() => useAppStore.getState().openFileInWorkPanel(
-        controller.fileReferences[0].path, "text/plain",
+        longTextPath, "text/plain",
       ));
       const deadline = performance.now() + 3000;
       while (!previewHost.querySelector(".file-viewer-code") && performance.now() < deadline) {
@@ -410,6 +453,39 @@ globalThis.composerPasteProbe = async () => {
       }
       assert(previewHost.querySelector(".file-viewer-code")?.textContent === longText,
         "temporary-task attachment did not display its saved text in the file preview");
+      for (const [index, [hash, expected]] of [
+        ["a", i18n.t("panel.files.tooLarge")],
+        ["b", i18n.t("panel.files.binary")],
+        ["scratch", i18n.t("panel.files.tooLarge")],
+      ].entries()) {
+        const chip = previewHost.querySelector<HTMLButtonElement>(
+          `.mp4-attachment-chips [aria-label^="${hash}.mp4"]`,
+        );
+        assert(chip, `MP4 attachment chip is missing: ${hash}`);
+        flushSync(() => chip!.click());
+        const deadline = performance.now() + 3000;
+        while (!previewHost.textContent?.includes(expected) && performance.now() < deadline) {
+          await new Promise(requestAnimationFrame);
+        }
+        assert(previewHost.textContent?.includes(expected),
+          `MP4 attachment did not reach its expected preview state: ${hash}`);
+        const open = Array.from(previewHost.querySelectorAll<HTMLButtonElement>("button"))
+          .find((button) => button.textContent === i18n.t("chat.openFile"));
+        assert(open, `MP4 attachment has no system-player action: ${hash}`);
+        flushSync(() => open!.click());
+        assert(openRequests.length === index + 1, `MP4 open did not reach IPC: ${hash}`);
+        await openRequests[index];
+      }
+      flushSync(() => useAppStore.getState().openFileInWorkPanel("untrusted.sh", "video/mp4"));
+      const unsafeDeadline = performance.now() + 3000;
+      while ((previewHost.querySelector(".file-viewer-path")?.textContent !== "untrusted.sh" ||
+        !previewHost.textContent?.includes(i18n.t("panel.files.tooLarge"))) &&
+        performance.now() < unsafeDeadline) {
+        await new Promise(requestAnimationFrame);
+      }
+      assert(!Array.from(previewHost.querySelectorAll<HTMLButtonElement>("button"))
+        .some((button) => button.textContent === i18n.t("chat.openFile")),
+      "a spoofed video MIME must not offer an OS-open action for a script");
       const back = previewHost.querySelector<HTMLButtonElement>(
         `[aria-label="${i18n.t("panel.files.back")}"]`,
       );
@@ -418,6 +494,7 @@ globalThis.composerPasteProbe = async () => {
       assert(previewHost.textContent?.includes(i18n.t("panel.files.noWorkspace")),
         "back from a temporary attachment should restore the no-project empty state");
     } finally {
+      api.fsOpen = originalFsOpen;
       flushSync(() => previewRoot.unmount());
       previewHost.remove();
     }
@@ -480,7 +557,7 @@ globalThis.composerPasteProbe = async () => {
     assert(dialog()!.contains(document.activeElement), "modal allowed background input focus");
     button(i18n.t("chat.imagePreview.fit")).focus();
     await globalThis.composerPreviewPressKey("Tab");
-    assert(dialog()!.contains(document.activeElement), "Tab escaped the preview");
+    await until(() => dialog()?.contains(document.activeElement), "Tab escaped the preview");
     assert(preview.naturalWidth === 1 && preview.getBoundingClientRect().width === 1,
       "small image must not be stretched to fill the window");
     assert(!useAppStore.getState().workPanelOpen, "preview opened the work panel");
@@ -808,6 +885,7 @@ globalThis.composerPasteProbe = async () => {
       crossBreakAndChipSelection: true,
       mixedLongText: true,
       temporaryTaskTextPreview: true,
+      mp4AttachmentOpen: true,
       imageOnly: true,
       nativeImageFile: true,
       imagePreviewAndKeyboard: true,

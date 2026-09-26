@@ -1774,8 +1774,12 @@ Renderer IPC kept for the Plan-safe preview facade and URL fallback:
   containment as `fs/read`. Never returns non-image bytes. Renderer-only;
   not a plugin host API.
 - `fs/reveal({path})` → reveal in Finder. Same containment as `fs/read`.
-- `fs/open({path})` → open with the OS default application. Same lexical
-  containment as `fs/read` (without the extra realpath step used by reads).
+- `fs/open({path, mimeType?})` → open an existing regular file with the OS
+  default application. It uses the same realpath containment as `fs/read`,
+  including rejection of symlink escapes. For a content-addressed
+  `attachments/<sha256>` blob declared as `video/mp4`, the host creates a
+  `.mp4` symlink inside its private app-data directory before the OS handoff,
+  so the extensionless blob has a media association without copying its bytes.
 - `fs/resolveRef({ref, sessionId?})` → `FsChatRefResolveResult`
   (`{ match: FsChatRefMatch | null }`, the match naming the answering `root`
   (`workspace` / `scratch` / `attachments`), the `relativePath` relative to that

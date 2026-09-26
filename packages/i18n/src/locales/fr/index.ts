@@ -1830,7 +1830,8 @@ sklm: {
       "back": "Retour aux fichiers",
       "reveal": "Révéler dans le Finder",
       "binary": "Fichier binaire — aperçu indisponible",
-      "tooLarge": "Le fichier est trop volumineux pour être prévisualisé"
+      "tooLarge": "Le fichier est trop volumineux pour être prévisualisé",
+      "openFailed": "Impossible d’ouvrir le fichier avec l’application par défaut."
     }
   },
   "palette": {

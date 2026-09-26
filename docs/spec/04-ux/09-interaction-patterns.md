@@ -1298,6 +1298,11 @@ Project drag/drop follows these patterns:
   outside the project has no relative path to copy and says so. The OS default
   application is no longer what this click does, though that action stays
   reachable from the file view's own context menu.
+- In the host `file:` tab, a conversation MP4 that cannot be previewed because
+  it is binary or exceeds the text preview limit offers **Open with default
+  application**. This applies to named `.mp4` files and extensionless
+  attachment blobs carrying `video/mp4` metadata. A failed OS handoff shows an
+  error; the user can still reveal the contained file in the file manager.
 - The same destination rule governs every other surface of the transcript that
   names a file, because one opener serves them all: clicking the file path in a
   tool row's summary (Read, Write, Edit, fetch) and clicking a path in a tool
