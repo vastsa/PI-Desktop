@@ -8620,7 +8620,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
-| Post-baseline local automation | E2E-220 |
+| Post-baseline local automation | E2E-220, E2E-MCP-pending-asktool-questions-are-readable |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -12490,7 +12490,48 @@ are withdrawn with ADR 0165.
 - **Milestone**: M6+
 - **Status**: MCP protocol/unit-covered by `apps/desktop/test/mcp-control.test.mjs`;
   full Electron journey documented and remains deferred by the no-local-E2E
-  policy
+  policy. The pending-question read side is covered by the scenario below.
+
+#### E2E-MCP-pending-asktool-questions-are-readable: A remote client discovers the pending question
+
+- **Preconditions**: Start PI-Desktop with `PI_DESKTOP_MCP_CONTROL=1` and a
+  clean profile, a configured model, and one Agent session. A prompt that makes
+  the Agent open an asktool question is available.
+- **Steps**: 1) Prompt the Agent so it opens an asktool question and stays
+  waiting. 2) Read `mcp-control.json` and call `pi_asktool_pending` with no
+  `sessionId`. 3) Repeat with the waiting session's `sessionId`, then with an
+  unknown session id. 4) Call `pi_desktop_invoke` for the generic
+  `agent/askTool/pending` operation. 5) Answer the question through
+  `agent/askTool/resolve` and read again; repeat by stopping the turn instead.
+  6) Archive the session, then read again. 7) Delete the session, then read
+  again.
+- **Expected**: Step 1 leaves the Agent waiting on a question the desktop card
+  shows. Step 2 returns `kind: "pending"` with the question text, its options,
+  and the `requestId` the resolve operation needs; the listing spans every
+  session bucket, including a paired remote host's
+  (`remote:<hostKey>:<hostSessionId>`), so a client that does not yet know the
+  session still discovers the request. Step 3 filters to exactly the named
+  session, and an unknown session id returns `kind: "none"` with an empty list
+  rather than an error. Step 4 returns the same payload through the reviewed
+  read catalog. Step 5 removes the entry for both an answered question and a
+  stopped turn, because neither can be answered afterwards. Steps 6 and 7 leave
+  no entry for that session. No listing returns an ask whose `sessionId` is not
+  the requested one, and `pi_control_describe` still omits secret-write,
+  native-picker, and `plugin/loadDev` channels.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §13d,
+  `03-runtime/17-asktool-questions.md`, `05-security/01-security.md`, ADR 0203,
+  D370
+- **Acceptance**: A (app control), C (conversation & stream), Security, Quality
+- **Milestone**: M6+
+- **Status**: NOT RUN for the Electron journey above — it needs a running
+  desktop driving a live Agent turn, which the no-local-E2E policy defers.
+  Alternative validation: the registry lifecycle, the reviewed catalog entry,
+  and the remote ingestion path are unit-covered by
+  `apps/desktop/test/pending-asks.test.mjs`,
+  `apps/desktop/test/mcp-control.test.mjs`, and
+  `apps/desktop/test/remote-event-bridge.test.mjs`. Remaining risk is the HTTP
+  round trip and the live asktool prompt path, which the unit coverage does not
+  exercise.
 
 #### E2E-234: Workspace security denylist and ignore layers
 

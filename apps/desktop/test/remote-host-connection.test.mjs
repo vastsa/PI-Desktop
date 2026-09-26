@@ -14,6 +14,7 @@ const { createBackendRouter, makeRemoteSessionId } = await import(
 const { createRemoteHostConnection } = await import(
   "../electron/main/remote/remote-host-connection.ts"
 );
+const { pendingAsksRegistry } = await import("../electron/main/pending-asks.ts");
 
 const HOST_KEY = "hostA";
 
@@ -185,4 +186,33 @@ test("session/list failure leaves the connection registered for nothing but does
     null,
   );
   assert.equal(client.hasListener(), true);
+});
+
+test("close clears the disconnected host's pending asks", async () => {
+  // A host that goes away can never resolve its asks, and no later event will
+  // arrive to settle them: `input.resolved` / `session.archived` ride the same
+  // dead stream. Leaving them behind made a dead host's questions show up in
+  // unfiltered listings forever.
+  const remoteId = makeRemoteSessionId(HOST_KEY, "s1");
+  const { conn, client } = setup({ sessions: [makeSession("s1")] });
+  await conn.open();
+  client.push(
+    makeEnvelope({
+      sessionId: "s1",
+      kind: "input.requested",
+      payload: {
+        id: "ask-1",
+        questions: [{ question: "which one?", options: ["a", "b"] }],
+      },
+    }),
+  );
+  assert.equal(pendingAsksRegistry.list(remoteId).kind, "pending");
+
+  await conn.close();
+
+  assert.equal(
+    pendingAsksRegistry.list(remoteId).kind,
+    "none",
+    "a closed host must not leave pending asks behind",
+  );
 });

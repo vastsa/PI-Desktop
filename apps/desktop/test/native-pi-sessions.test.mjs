@@ -222,6 +222,9 @@ function forkHarness({ host, sidecar, activeTurns = new Map() }) {
     "../importers": { convertSession() {}, scanAllSources() {}, scanModelConfigs() {} },
     "../services/session-collaboration": { readSessionCollaboration() {} },
     "../services/session-search": { searchSessionsAcrossSources },
+    // The session IPC also clears the session's pending asktool entries on
+    // delete; a no-op registry is enough for the fork contract under test.
+    "../pending-asks": { pendingAsksRegistry: { clearSession() {} } },
   });
   registerSessionIpc({
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },

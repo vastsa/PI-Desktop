@@ -13,6 +13,7 @@ import type { PersistenceOutbox } from "../persistence-outbox";
 import type { ComposerCommandService } from "./composer-ipc";
 import type { IpcRegistrar } from "./types";
 import { withPromptEnhancementTimeout } from "../prompt-enhancement-timeout";
+import { pendingAsksRegistry } from "../pending-asks";
 
 export type AgentIpcDependencies = {
   registrar: IpcRegistrar;
@@ -703,6 +704,7 @@ export function registerAgentIpc({
       agentExtensions.cancelPrompts(req.sessionId);
       cancelSessionTools(req.sessionId, "Session turn was aborted");
       result = await sidecar.call("agent.abort", req);
+      pendingAsksRegistry.clearSession(req.sessionId);
     } finally {
       // A turn that already stopped owning the session is refused inside the
       // finalizer, so the identity captured above is the only one used here.
@@ -794,16 +796,27 @@ export function registerAgentIpc({
     return resolved;
   });
 
+  handle(
+    IPC.invoke.askToolPending,
+    async (input: { sessionId?: unknown } = {}) => {
+      const sessionId =
+        typeof input.sessionId === "string" ? input.sessionId.trim() : "";
+      return pendingAsksRegistry.list(sessionId || undefined);
+    },
+  );
+
   handle(IPC.invoke.askToolResolve, async (resolution: AskToolResolution) => {
     if (!sidecar) throw new Error("sidecar unavailable");
     const sessionId = String(resolution?.sessionId ?? "").trim();
     const requestId = String(resolution?.requestId ?? "").trim();
     if (!sessionId || !requestId) throw new Error("asktool resolution identity required");
-    return sidecar.call("asktool.resolve", {
+    const result = await sidecar.call("asktool.resolve", {
       ...resolution,
       sessionId,
       requestId,
     });
+    pendingAsksRegistry.settle(sessionId, requestId);
+    return result;
   });
 
   handle(IPC.invoke.plansPending, async (input: { sessionId?: string } = {}) => {

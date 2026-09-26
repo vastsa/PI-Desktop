@@ -21,6 +21,7 @@ import type {
   ToolPermissionRequest,
 } from "@pi-desktop/shared";
 import { makeRemoteApprovalRequestId, makeRemoteSessionId } from "./backend-router.js";
+import { pendingAsksRegistry } from "../pending-asks";
 
 /** A minimal shape of the session field carried by host-scope session events.
  * Both the RACP `RacpSession` and the host's smaller `SessionSummary` extend
@@ -120,10 +121,10 @@ function toAskToolRequest(
   return {
     requestId: input.id,
     sessionId: remoteSessionId,
-    // Ask-tool needs a toolCallId to attach the answer to; the RACP schema
-    // supplies it as `parentToolCallId` when the input came from a subagent,
-    // and leaves it undefined for the top-level agent.
-    toolCallId: input.parentToolCallId ?? "",
+    // The RACP response is keyed by `input.id`, not this field. Preserve the
+    // parent tool call when present; for a top-level ask use the input id as a
+    // stable non-empty lifecycle key for the main-process registry.
+    toolCallId: input.parentToolCallId ?? input.id,
     questions: input.questions.map((question) => ({
       question: question.question,
       options: question.options,
@@ -156,6 +157,7 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
       ...(envelope.parentToolCallId ? { parentToolCallId: envelope.parentToolCallId } : {}),
       ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
     };
+    pendingAsksRegistry.ingest(local);
     emit(IPC.event.agentMessage, local);
   };
 
@@ -181,6 +183,7 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
     }
     // "session.archived": pass through to the lifecycle handler for router
     // cleanup, then refresh the renderer's session list.
+    pendingAsksRegistry.clearSession(remoteSessionId);
     onLifecycle?.({ kind: "session.archived", hostSessionId: session.id, remoteSessionId, session });
     emit(IPC.event.sessionsChanged, { reason: "remote.session.archived" });
   };
@@ -244,8 +247,14 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         });
         return;
       }
+      case "input.resolved": {
+        const payload = envelope.payload;
+        if (isRecord(payload) && typeof payload.inputId === "string") {
+          pendingAsksRegistry.settle(remoteSessionId, payload.inputId);
+        }
+        return;
+      }
       case "approval.resolved":
-      case "input.resolved":
       case "terminal.changed":
       case "terminal.output":
       case "resync.required":

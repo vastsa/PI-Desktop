@@ -22,6 +22,13 @@ export const ROUTE_LOCAL = Symbol("pi-desktop.route-local");
 const REMOTE_PREFIX = "remote:";
 
 /**
+ * The same prefix, exported for callers that must reason about a whole host's
+ * sessions at once (e.g. clearing that host's pending-ask buckets when it goes
+ * away) instead of one namespaced id at a time.
+ */
+export const REMOTE_SESSION_PREFIX = REMOTE_PREFIX;
+
+/**
  * Delimiter that embeds the renderer-visible remote session id inside a tool
  * permission `requestId`. `toolResolvePermission` carries only `{requestId,
  * decision}` — no session id — so the id itself must name its owning session

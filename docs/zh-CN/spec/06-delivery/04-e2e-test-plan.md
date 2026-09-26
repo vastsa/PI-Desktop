@@ -5448,7 +5448,7 @@ eleven-tool-round desktop paths are verified by
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
-| 基线后本地自动化 | E2E-220 |
+| 基线后本地自动化 | E2E-220、E2E-MCP-pending-asktool-questions-are-readable |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
 | 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | 受信任扩展（R7 v1 npm 恢复） | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -7393,7 +7393,34 @@ eleven-tool-round desktop paths are verified by
 - **验收**：A（应用控制）、C（会话）、安全、质量
 - **里程碑**：M6+
 - **状态**：由 `apps/desktop/test/mcp-control.test.mjs` 覆盖 MCP 协议/单元；完整 Electron
-  旅程已记录，仍按策略延后
+  旅程已记录，仍按策略延后。待处理问题的读取侧由下方场景覆盖。
+
+#### E2E-MCP-pending-asktool-questions-are-readable：远端客户端发现待处理问题
+
+- **前提条件**：使用 `PI_DESKTOP_MCP_CONTROL=1` 和干净配置启动 PI-Desktop，已配置模型，
+  并存在一个 Agent 会话。可用能让 Agent 打开 asktool 问题的提示词。
+- **步骤**：1）发送提示词，使 Agent 打开一个 asktool 问题并保持等待。2）读取
+  `mcp-control.json`，不带 `sessionId` 调用 `pi_asktool_pending`。3）改用等待中会话的
+  `sessionId` 重复，再用一个未知会话 id 重复。4）通过 `pi_desktop_invoke` 调用通用
+  `agent/askTool/pending` 操作。5）通过 `agent/askTool/resolve` 回答问题后再读一次；
+  改为停止回合再重复一次。6）归档该会话后再读一次。7）删除该会话后再读一次。
+- **预期**：步骤 1 后 Agent 停留在桌面卡片可见的问题上。步骤 2 返回 `kind: "pending"`，
+  含问题文本、选项，以及 resolve 操作所需的 `requestId`；列表覆盖所有会话桶，包括已配对
+  远端主机的（`remote:<hostKey>:<hostSessionId>`），因此尚不知道会话的客户端仍能发现该
+  请求。步骤 3 只过滤出指定会话；未知会话 id 返回 `kind: "none"` 和空列表，而不是报错。
+  步骤 4 通过已审查的只读目录返回同样的载荷。步骤 5 对已回答的问题和被停止的回合都会移除
+  该条目，因为二者之后都无法再回答。步骤 6 和步骤 7 之后该会话不再有条目。任何列表都不会
+  返回 `sessionId` 与请求不一致的问题，且 `pi_control_describe` 仍不包含密钥写入、
+  原生选择器和 `plugin/loadDev` 通道。
+- **链接规格**：`03-runtime/01-ipc-protocol.md` §13d、
+  `03-runtime/17-asktool-questions.md`、`05-security/01-security.md`、ADR 0203、D370
+- **验收**：A（应用控制）、C（对话与流）、安全、质量
+- **里程碑**：M6+
+- **状态**：上述 Electron 旅程为 NOT RUN——它需要运行中的桌面驱动真实 Agent 回合，而
+  no-local-E2E 策略将其延后。替代验证：注册表生命周期、已审查的目录条目和远端接入路径由
+  `apps/desktop/test/pending-asks.test.mjs`、`apps/desktop/test/mcp-control.test.mjs`
+  和 `apps/desktop/test/remote-event-bridge.test.mjs` 覆盖。剩余风险是 HTTP 往返和真实
+  asktool 提示路径，单元覆盖未涉及这两者。
 
 ## 受信任扩展场景（R7 v1）
 
