@@ -13165,10 +13165,11 @@ browser milestones are scheduled.
   base.
 
   **Validation record (2026-09-26, task worktree)**: the committed task
-  candidate is `2afc802294552bf2bbafb417ebd409c3ab8ee8f7`, based on fetched
-  `origin/main` `ccf66728c6924b0be03d7ffa2ded35b717ac8070` (the user-supplied
-  handoff branch was merged into this isolated worktree without rewriting that
-  branch). Environment: Darwin arm64, Node 26, pnpm 10.34.5. Commands
+  candidate is `7b4ba3e42532d2848df115a6585f33a11fcd58a7`, based on fetched `origin/main`
+  `0853c067e1ef1dd5a08edb8108c6af8098302712` (the user-supplied handoff
+  branch and latest remote main were merged into this isolated worktree without
+  rewriting the shared task branch). Environment: Darwin arm64, Node 26, pnpm
+  10.34.5. Commands
   `node scripts/e2e-remote-ssh-desktop.mjs` and
   `node scripts/e2e-remote-ssh-bootstrap.mjs` were invoked and stopped by
   their explicit Linux x64 platform guards; the full fixture bodies did not

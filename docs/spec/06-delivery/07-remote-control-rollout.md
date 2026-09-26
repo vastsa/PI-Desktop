@@ -517,8 +517,8 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   sync, approval and terminal recovery, and Host-process queue recovery using
   only loopback fixtures and temporary credentials. These fixtures do not
   replace the required Linux acceptance: on 2026-09-26 the committed task
-  candidate was `2afc802294552bf2bbafb417ebd409c3ab8ee8f7`, based on
-  `origin/main` `ccf66728c6924b0be03d7ffa2ded35b717ac8070`, but the environment
+  candidate was `7b4ba3e42532d2848df115a6585f33a11fcd58a7`, based on
+  `origin/main` `0853c067e1ef1dd5a08edb8108c6af8098302712`, but the environment
   was Darwin arm64. Both
   `node scripts/e2e-remote-ssh-desktop.mjs` and
   `node scripts/e2e-remote-ssh-bootstrap.mjs` stopped at their Linux-only
