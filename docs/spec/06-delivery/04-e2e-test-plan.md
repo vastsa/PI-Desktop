@@ -11201,7 +11201,7 @@ are withdrawn with ADR 0165.
   provider, reopen it, and confirm the checkbox remains enabled; restart the
   app, reopen the provider again, and confirm it is still enabled. 2) Start a
   session and inspect the parent agent's system prompt for the delegation model
-  summary. 3) Delegate a Task with `model: "provider/modelId"` pointing to the
+  summary. 3) Delegate an unpinned Task with `model: "provider/modelId"` pointing to the
   enabled binding. 4) Delegate a Task with `model:` pointing to a binding that
   is not enabled for subagents. 5) Delegate a Task with `model:` pointing to a
   model that is not configured at all. 6) Delegate a Task with no `model:`
@@ -11213,6 +11213,10 @@ are withdrawn with ADR 0165.
   use it as another definition's explicit override, then invoke its owner with
   no override. 10) Remove a previously enabled override key and start another
   prompt in the same idle session.
+  11) Call a pinned definition with a different opted-in model, the parent model,
+  an on-demand key, and an unknown key. 12) Repeat with zero through three failing
+  primary/alternative models and then an entirely failing chain; the AI keeps
+  supplying an unrelated opted-in model.
 - **Expected**:
   1. Saving and reopening the provider preserves the
      `availableForSubagents` opt-in, including after an application restart.
@@ -11220,13 +11224,18 @@ are withdrawn with ADR 0165.
      every successfully resolved model marked `availableForSubagents`, with
      no definition-only pins. The Task definition catalog displays each default
      model and recommends omitting `model` to preserve it.
-  3. The Task tool accepts the `model` parameter and the delegate runs on the
+  3. For an unpinned definition the Task tool accepts `model` and the delegate runs on the
      specified model, not the session model; its delegation node shows the
      effective model id immediately after the subagent name.
-  4. If the model is not configured or not enabled for delegation, the Task
+  4. For an unpinned definition, if the model is not configured or not enabled for delegation, the Task
      returns a tool error listing available models.
-  5. Resolution priority is Task.model parameter → definition frontmatter pin →
-     session model.
+  5. A new delegation's definition pin wins over every Task.model value,
+     including a parent-model echo. The response reports the actual primary
+     and explains an ignored conflicting selection; it performs no override
+     resolution. Only unpinned definitions select Task.model → session model.
+     Provider requests follow primary → configured fallback order and stop at
+     success; exhaustion fails without entering the opt-in catalog or the
+     parent model. An unresolved primary pin still fails before launch.
   6. On-demand resolution succeeds for models enabled in provider settings via
      the `provider.resolveSubagentModel` RPC.
   7. When no delegation model is configured, omitting `model:` and explicitly
@@ -11246,7 +11255,8 @@ are withdrawn with ADR 0165.
 - **Milestone**: M6+
 - **Status**: Partially automated. `pnpm test:e2e:subagent-models` drives the
   built sidecar over real NDJSON and a local deterministic SSE model fixture:
-  private cross-definition rejection, own-pin echo, normal pin use, allowed override priority,
+  private cross-definition rejection, own-pin echo, pin priority over AI selection,
+  ordered fallback despite a conflicting opted-in choice, unpinned selection,
   on-demand authorization without runtime rebuild, exact-session inheritance, and revocation across two
   prompts all pass. Runtime unit tests cover the same selection gates and the
   desktop launch test exercises independent opt-in, revocation, and accounts

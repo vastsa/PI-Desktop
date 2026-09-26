@@ -304,7 +304,7 @@
 | D273 | 模型习惯的参数名被接受，而不是被纠正 | **在 Agent 运行时细化规格 03 §4：`Read`/`Write`/`Edit`/`BrowserPreview` 在 `path` 之外接受 `file_path`，`Glob`/`Grep` 在 `pattern` 之外接受 `query`。两种拼写在 schema 中都是可选的，因此任一都能通过校验；运行时在写锁、主机调用和转录之前把别名折叠到规范名上，要求二者恰好提供其一，两个都给时规范名胜出。`Bash.timeout` 的 schema 上限放宽到 3600000，好让毫秒值先通过校验，运行时把不小于 1000 的值按毫秒读取并夹到实际生效的 300 秒上限，而 301 到 999 仍是超出范围的秒值。仅运行时：不涉及 IPC、存储或主机协议改动，host-core 的 schema 保持不变。** | 参数名是预训练习惯，不是 schema 能纠正的指令。某个本地月份里 1679 次失败的工具调用有 852 次是参数名不匹配，其中 724 次是 `Read` 传了 `file_path`，仅此一项就占 `Read` 失败的 87%，把它的错误率推到 11%。另有 69 次是按毫秒给的 `timeout`。每一次都为一个模型自己看不见的错误付掉一个回合。 |
 | D274 | 不变的已编辑提示也执行重试 | **修订 D137（渲染层）：确认一个有效的用户提示编辑后，始终分派现有的编辑-重发/重新生成路径，即使修剪后的文本与原文相同。内联控件使用本地化的“重试”和“取消”；重试保留现有的修订存档、按身份截断、斜杠命令展开和附件行为。仅涉及渲染层和 i18n：不改动 IPC、存储、主机协议或运行时契约。** | 把未变化的确认视为无操作会让“编辑并重新发送”看起来像坏了（issue #23），而旧的“发送”标签暗示这是一个普通的新提示，而不是重放选中的回合。 |
 | D275 | 在上下文压缩期间保留活动任务边界 | **修订 D203 / ADR 0064（代理运行时）：检查点记录不透明的 `details.retainedTailMode`。当提供商必须在工具结果、`toolUse` 或溢出恢复后继续时，活动回合检查点只保留最新的用户消息（沿用现有 20,000 令牌上限）。在终止边界、发送新提示之前和手动压缩时，已完成回合检查点的保留尾部为空，摘要是已完成工作的权威内容。没有该模式的旧记录归一化为最新的用户消息。不改变可见转录本、存储 schema、主机所有权或协议形状。** | 压缩掉完成消息却保留多个最近用户提示，会让下一条提示看起来像旧任务的延续（issue #22）。恢复时必须显式保留任务边界，同时活动工具循环仍需保留继续当前任务所需的提示。 |
-| D278 | 子代理模型选择 | **Task.model 覆盖定义中固定的模型；只有带 `availableForSubagents` 的模型出现在委托目录中；启动时未预解析的模型由按需 RPC 解析** | 父代理需要按任务选择模型，又不能暴露完整的服务商配置。选择加入的标志让委托目录保持有界且有意为之，按需解析则避免 sidecar 启动后新增模型的绑定过期。参见 §3/02 §5f、§3/11 §7 与 E2E-166。 |
+| D278 | 子代理模型选择 | **定义固定模型优先于 Task.model；只有带 `availableForSubagents` 的模型出现在委托目录中；启动时未预解析的模型由按需 RPC 解析** | 父代理需要按任务选择模型，又不能暴露完整的服务商配置。选择加入的标志让委托目录保持有界且有意为之，按需解析则避免 sidecar 启动后新增模型的绑定过期。参见 §3/02 §5f、§3/11 §7 与 E2E-166。 |
 | D365 | 为实时活动行的每个安静间隔命名 | **修订 D338 / ADR 0175：`AgentActivity` 增加 `preparing`、`compacting`、`recovering`；`starting` 显示独立标签；`waiting-subagents` 携带实时运行快照（`name`、`lastPhase`、`lastToolName`），随子级工具/思考变化更新而非逐 token 更新。该行保持为一条紧凑的内联状态，不恢复活动分组胶囊。** | 压缩、静默回合恢复、工具后间隙与启动都像卡住的通用等待，父级等待也隐藏了委托在做什么（ADR 0198，E2E-008c / E2E-094） |
 | D599 | 开发构建是一个独立安装 | **收窄 D236 / 修订 ADR 0094：开发构建（未打包，或 `PI_DESKTOP_DEV=1`）以 `PI-Desktop Dev` 作为 Electron `userData`（随之独立的单实例锁、渲染层 `localStorage`、插件面板 partition 与浏览器面板 Cookie），数据目录为 `~/.pi-desktop-dev`。显式 `--user-data-dir` 仍然优先，E2E 装置正是用它把构建指向临时 profile。正式安装仍保持 `PI-Desktop` 与 `~/.pi-desktop`，既有 profile 不会被搬迁。`PI_DESKTOP_DATA_DIR` 仍优先于两种 profile，并在作为子进程环境变量传给 host-core 之前被绝对化；Electron 主进程把解析结果回写到该变量，使插件运行时读到同一个根目录。不改 IPC、协议、schema 或正式安装路径。见 `03-runtime/07-process-model.md` 与 E2E-150。** | 已在运行的正式版持有锁，`pnpm dev` 一启动就退出；而抢到锁的开发 host 会把第二个 host-core 压到同一个单写者 `pi.sqlite`、outbox 与日志树上。 |
 | D602 | 崩溃转储留在数据目录 | **Electron 的 Crashpad 报告器在 `ready` 之前以本地模式启动（`uploadToServer: false`）。转储放在 `<data_dir>/crash-dumps`，而不是 Electron 默认的 `userData` crashDumps 路径，因此 `PI_DESKTOP_DATA_DIR` profile 不会与其它安装共用转储。下一次持有单实例锁的启动会为新于 `crash-dumps.json` 的转储写一条 `diagnostics` 记录，按 Crashpad `ptype` 分类：任一新转储属于 browser/main 进程则为 `error`，已恢复的 renderer/GPU/utility 崩溃为 `warn`。host-core 与 sidecar 崩溃仍走监督器路径。不上传，不改 IPC，不改 schema。** | 崩溃留下的 minidump 无人读取。Crashpad 也会记录已恢复的渲染进程崩溃，因此下次启动用 `error` 声称上次运行已死是错的；而数据目录之外的转储会逃出 `PI_DESKTOP_DATA_DIR` 隔离。 |
@@ -2696,12 +2696,13 @@ D193 和 D194。
 
 - 决策 D278 在智能体运行时和 provider 模型系统中扩展 D201 / ADR 0062 /
   ADR 0089。`Task` 工具获得可选的 `model` 参数（`"provider/modelId"`），在该次
-  运行中覆盖委托 frontmatter 钉住的模型。解析优先级：Task.model → 定义
-  frontmatter 钉住值 → 会话模型。
+  运行中选模。修订（2026-09-23，ADR subagent-pinned-model-priority）：新委托优先使用定义固定的模型，
+  忽略冲突的 Task.model。只有未固定模型的定义才按 Task.model → 会话模型选择；
+  提供商失败只按定义配置的 fallback 顺序恢复。
 - `ModelBinding.availableForSubagents`（布尔值，默认 false）是 provider 模型
   绑定上的可选加入标志。启用后，该模型出现在注入父智能体系统提示的委托目录
   里。父级看到的模型摘要列出所有可用于委托的模型。
-- 父级指定的模型未配置或未启用委托时，Task 工具返回一个列出可用模型的工具
+- 未固定模型的定义中，父级指定的模型未配置或未启用委托时，Task 工具返回一个列出可用模型的工具
   错误。与当前会话 provider/model 完全相同的重复视为继承，等价于省略
   `model`，因此空的委托目录不会把父级模型变成一个假的「模型不可用」错误。
 - 实现澄清（2026-09-13，ADR subagent-model-opt-in）：`subagentProviders`

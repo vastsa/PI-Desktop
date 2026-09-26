@@ -23,6 +23,7 @@ Each ADR includes:
 | trusted-extension-operation-ownership | [Trusted extension operation ownership](trusted-extension-operation-ownership.md) | Implemented candidate |
 | scheduled-desktop-automations | [Desktop automation scheduling](scheduled-desktop-automations.md) | Accepted for implementation |
 | subagent-model-fallback | [Ordered subagent model fallback](subagent-model-fallback.md) | Accepted for implementation |
+| subagent-pinned-model-priority | [Pinned subagent models take precedence over AI selection](subagent-pinned-model-priority.md) | Proposed |
 | subagent-model-opt-in | [Separate Subagent Model Opt-In from Definition Pins](subagent-model-opt-in.md) | Accepted for implementation |
 | 0001 | Use Electron as the desktop shell | Accepted |
 | 0002 | Use the pi Agent Harness as the kernel | Accepted |

@@ -15,14 +15,16 @@ task on another agent could repeat tools that already changed files.
 Add optional `fallbackModels` to a definition, the user-subagent record/input,
 and the existing internal launch definition. It is an ordered list of
 `provider/model` strings in managed Markdown and host RPC, parsed into model
-pins in Shared. The existing primary `model` and Task override priority stay
-unchanged. Missing lists preserve single-model behavior. An omitted update
+pins in Shared. The [pinned-model priority amendment](subagent-pinned-model-priority.md)
+now makes the primary `model` authoritative for new delegations; Task selection
+applies only to unpinned definitions. Missing lists preserve single-model behavior. An omitted update
 preserves the list; `[]` clears it. No database or protocol version changes are
 needed for these additive fields; old documents remain valid.
 
 Electron resolves alternatives through the same credential, provider-count,
 and model-capability boundaries as primary pins. These bindings are scoped to
-their owning definition, even when Task explicitly overrides its primary.
+their owning definition. Task.model cannot skip or replace a pinned primary,
+or reorder the alternatives.
 They do not grant `Task.model` access to another definition, or enter the
 opted-in model summary. A primary pin that cannot resolve still fails before
 launch; an unresolved alternative is reported when reached and skipped.

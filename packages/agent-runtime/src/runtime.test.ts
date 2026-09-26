@@ -6708,11 +6708,12 @@ describe("DesktopAgentRuntime subagents", () => {
       agent: "reviewer", task: "Review.", model: "remote/remote-model",
     });
     expect(echoed.details.error).toBeUndefined();
+    expect(echoed.content[0].text).not.toContain("supplied `model` was ignored");
     expect(subagentRuns.calls[1].provider).toBe(remote);
     expect(host.call).toHaveBeenCalledTimes(1);
   });
 
-  it("allows an opted-in model to override a definition pin without changing D278", async () => {
+  it("keeps the definition pin ahead of an opted-in Task.model", async () => {
     const pinnedProvider = { ...provider, modelId: "remote-model", modelConfig: undefined };
     const selected = { ...provider, modelId: "selected-model", modelConfig: undefined };
     const runtime = createRuntime({
@@ -6724,11 +6725,93 @@ describe("DesktopAgentRuntime subagents", () => {
     subagentRuns.deferred = false;
     expect((runtime as any).subagentModelSummary()).toContain("allowed/selected-model");
     expect((runtime as any).subagentModelSummary()).not.toContain("remote/remote-model");
-    await taskTool(runtime).execute("allowed", { agent: "reviewer", task: "Review.", model: "allowed/selected-model" });
-    expect(subagentRuns.calls[0].provider).toBe(selected);
+    const result = await taskTool(runtime).execute("allowed", { agent: "reviewer", task: "Review.", model: "allowed/selected-model" });
+    expect(subagentRuns.calls[0].provider).toBe(pinnedProvider);
+    expect(result.details.modelId).toBe("remote-model");
+    expect(result.content[0].text).toContain("supplied `model` was ignored");
     expect(runtimeMatches(runtime)).toBe(true);
     expect(runtimeMatches(runtime, { subagentModelKeys: [] })).toBe(false);
     await runtime.dispose();
+  });
+
+  it.each([
+    "local/local-model",
+    "fallback/backup-model",
+    "dynamic/selected-model",
+    "not-a-configured-model",
+  ])("keeps the definition pin and ordered fallbacks when Task.model is %s", async (model) => {
+    const primary = { ...provider, id: "remote", modelId: "remote-model", modelConfig: undefined };
+    const backup = { ...provider, id: "fallback", modelId: "backup-model", modelConfig: undefined };
+    const host = { call: vi.fn().mockResolvedValue({ ...provider, modelId: "selected-model" }) };
+    const fallbackModels = [
+      { providerId: "fallback", modelId: "backup-model" },
+      { providerId: "missing", modelId: "last-model" },
+    ];
+    const runtime = createRuntime({
+      subagents: [{ ...pinned, fallbackModels, thinkingLevel: "high" }],
+      subagentProviders: { "remote/remote-model": primary, "fallback/backup-model": backup },
+      subagentModelKeys: ["fallback/backup-model"],
+      host,
+    });
+    subagentRuns.calls.length = 0;
+    subagentRuns.deferred = false;
+    subagentRuns.result = undefined;
+    try {
+      const result = await taskTool(runtime).execute("pinned-priority", { agent: "reviewer", task: "Review.", model });
+      expect(result.details.error).toBeUndefined();
+      expect(result.details.modelId).toBe("remote-model");
+      expect(result.content[0].text).toContain("supplied `model` was ignored");
+      expect(subagentRuns.calls).toHaveLength(1);
+      expect(subagentRuns.calls[0].provider).toBe(primary);
+      expect(subagentRuns.calls[0].thinkingLevel).toBe("high");
+      expect(subagentRuns.calls[0].fallbackModels).toEqual([
+        { key: "fallback/backup-model", provider: backup },
+        { key: "missing/last-model", provider: undefined },
+      ]);
+      expect(host.call).not.toHaveBeenCalled();
+    } finally { await runtime.dispose(); }
+  });
+
+  it.each(["allowed/selected-model", "local/local-model"])(
+    "does not bypass an unresolved definition pin with Task.model %s",
+    async (model) => {
+      const host = { call: vi.fn() };
+      const runtime = createRuntime({
+        subagents: [pinned],
+        subagentProviders: { "allowed/selected-model": { ...provider, modelId: "selected-model" } },
+        subagentModelKeys: ["allowed/selected-model"],
+        host,
+      });
+      subagentRuns.calls.length = 0;
+      subagentRuns.deferred = false;
+      subagentRuns.result = undefined;
+      try {
+        const result = await taskTool(runtime).execute("missing-pin", { agent: "reviewer", task: "Review.", model });
+        expect(result.details.error).toContain("pins remote/remote-model");
+        expect(result.details.error).toContain("not configured");
+        expect(subagentRuns.calls).toHaveLength(0);
+        expect(host.call).not.toHaveBeenCalled();
+      } finally { await runtime.dispose(); }
+    },
+  );
+
+  it("still accepts an opted-in Task.model for an unpinned definition", async () => {
+    const selected = { ...provider, modelId: "selected-model", modelConfig: undefined };
+    const runtime = createRuntime({
+      subagents: [explorer],
+      subagentProviders: { "allowed/selected-model": selected },
+      subagentModelKeys: ["allowed/selected-model"],
+    });
+    subagentRuns.calls.length = 0;
+    subagentRuns.deferred = false;
+    subagentRuns.result = undefined;
+    try {
+      const result = await taskTool(runtime).execute("unpinned-choice", {
+        agent: "explorer", task: "Search.", model: "allowed/selected-model",
+      });
+      expect(subagentRuns.calls[0].provider).toBe(selected);
+      expect(result.content[0].text).not.toContain("supplied `model` was ignored");
+    } finally { await runtime.dispose(); }
   });
 
   it("caches only successfully authorized on-demand overrides", async () => {

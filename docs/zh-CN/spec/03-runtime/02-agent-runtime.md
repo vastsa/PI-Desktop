@@ -634,17 +634,24 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   委托时，启动会以工具错误失败。
 
   `Task` 工具接受一个可选的 `model` 参数（`"provider/modelId"`），用于在本次
-  运行中覆盖该委托的模型。解析优先级：Task.model 参数 → 定义 frontmatter 的
-  引脚 → 会话模型。父 agent 会在系统提示中看到一份模型摘要，列出提供商设置里
+  运行中为没有固定模型的子智能体选择模型。新委托始终优先使用定义中配置的主模型，
+  即使 `Task.model` 指向已勾选自动调度的模型或当前父会话模型，也不能覆盖它。
+  不同的参数值会被忽略，不进行按需解析，Task 返回文本说明使用配置的主模型及 fallback。
+  未固定模型时，优先级仍为已授权的 Task.model → 会话模型。
+  提供商失败后，只按子智能体配置的 `fallbackModels` 顺序恢复；自动调度目录不是额外的备用池。
+  主模型绑定缺失仍在启动前明确报错；不会通过 AI 选模或会话继承绕过。
+  恢复旧委托保留既有链路模型规则，并继续拒绝同时传入 `model`。
+  参见 [ADR subagent-pinned-model-priority](/adr/subagent-pinned-model-priority)。父 agent 会在系统提示中看到一份模型摘要，列出提供商设置里
   所有标记为 `availableForSubagents` 的模型。若委托目录为空，提示会告诉模型
   省略 `model`，使用定义的固定模型，无固定模型时继承会话模型；显式给出的键如果正好就是当前会话的
-  provider/model，同样按继承处理。其他显式模型键必须已配置并已为委托启用。
+  provider/model，仅在定义没有固定模型时按继承处理。未固定定义的其他显式模型选择
+  必须已配置并已为委托启用。
   Electron 单独传递 `subagentModelKeys` 与 `subagentProviders`：后者可含仅供定义
   固定使用的模型，只有前者授权缓存覆盖并生成模型摘要。缺省列表为空；按需解析成功
   写入独立覆盖缓存，不得覆盖定义固定模型或改变运行时复用判断。按需匹配使用与
   固定模型相同的唯一 id/vendor/name 规则。许可列表变化会在下一次启动时替换空闲运行时。
-  省略 `model`，或 `Task.model` 重复该定义自己的固定模型键时，定义仍可使用未勾选自动调度的固定模型。Task 的定义目录展示
-  每项默认模型，并提示省略或重复该键以保留默认值。参见
+  无论 `Task.model` 是否传入，定义自己的固定模型都优先使用，且无需勾选自动调度。
+  Task 的定义目录展示每项默认模型，并标明固定模型不可覆盖；重复其自身模型键是无提示的空操作。参见
   [ADR subagent-model-opt-in](/adr/subagent-model-opt-in)。
   当某个模型键没有被预先解析时，运行时会请求 Electron main 通过
   `provider.resolveSubagentModel` RPC 按需解析。已启动的 `Task` 结果详情会记录

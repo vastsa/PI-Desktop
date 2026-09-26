@@ -832,14 +832,22 @@ core set rather than the on-demand catalog of §7.1:
   when the session already runs `MAX_SUBAGENT_CONCURRENCY` (10) delegates.
 
   The `Task` tool accepts an optional `model` parameter
-  (`"provider/modelId"`) that overrides the delegate's model for that run.
-  Resolution priority: Task.model parameter → definition frontmatter pin →
-  session model. The parent agent sees a model summary in the system prompt
+  (`"provider/modelId"`) that selects the model only for an unpinned definition.
+  For a new delegation, the definition's primary model always wins over
+  `Task.model`, including an opted-in model or an exact parent-model echo.
+  A different supplied key is ignored without on-demand resolution, and the
+  Task response explains that the configured model and fallbacks are used.
+  When unpinned, authorized Task.model → session model remains the priority.
+  Provider failures advance only through the definition's ordered
+  `fallbackModels`; the delegation catalog is not an additional fallback pool.
+  Resume retains its existing chain-binding rules and rejects `model`.
+  See [ADR subagent-pinned-model-priority](../../adr/subagent-pinned-model-priority.md). The parent agent sees a model summary in the system prompt
   listing all models marked `availableForSubagents` in provider settings. If
   the delegation catalog is empty, the prompt tells the model to omit `model`
   and use the definition pin, or inherit the session model when unpinned; an
-  explicit key that exactly names the current session provider/model is treated as the same inheritance case. Other
-  explicit model keys must be configured and enabled for delegation. Electron
+  explicit key that exactly names the current session provider/model is treated
+  as the same inheritance case only when the definition is unpinned. Other
+  explicit choices for unpinned definitions must be configured and enabled for delegation. Electron
   sends `subagentModelKeys` separately from `subagentProviders`: the latter may
   include definition-only pins, while only the former authorizes cached
   overrides and the model summary. Missing keys default to an empty list;
@@ -849,10 +857,9 @@ core set rather than the on-demand catalog of §7.1:
   an older turn cannot repopulate the cache. On-demand
   provider matching uses the same unique id/vendor/name rule as pin resolution.
   A changed opt-in list retires the idle runtime on the next launch. Pins remain usable
-  by their own definitions when `model` is omitted or when `Task.model` repeats
-  that definition's own pin key, even without an opt-in.
-  The Task definition catalog displays each default model and treats omitting
-  or repeating that key as keeping the default. See
+  by their own definitions regardless of `Task.model`, even without an opt-in.
+  The Task definition catalog displays each default model and identifies a
+  pin as authoritative. Repeating its own key is a quiet no-op. See
   [ADR subagent-model-opt-in](../../adr/subagent-model-opt-in.md).
   When a model key is not pre-resolved, the runtime asks Electron main to resolve it
   on-demand via the `provider.resolveSubagentModel` RPC. The started `Task`
@@ -1033,11 +1040,13 @@ alias, so a display name containing spaces is valid.
 inline list (`fallbackModels: [provider/model, other/model]`) or a block list.
 The managed host `agents.create` / `agents.update` inputs and records expose
 `fallbackModels?: string[]`; omission preserves a list on update and `[]`
-clears it. Existing `model` pins and Task override priority remain unchanged.
+clears it. A new delegation uses its primary `model` pin before any Task
+selection; an unpinned definition may still use an authorized Task selection.
 A missing primary pin still fails before launch. Alternatives are resolved in
 Electron with the definition pins and count toward the existing eight-provider
-ceiling. They authorize only that definition, including when Task overrides
-its primary, and do not enter the independent `Task.model` opt-in catalog.
+ceiling. They authorize only that definition and do not enter the independent
+`Task.model` opt-in catalog. An AI-supplied model cannot skip a configured
+primary or move an alternative to the front of its fallback chain.
 
 After a provider failure exhausts that model's retries, or is non-retryable,
 the same child Agent advances through these alternatives in order. Actual
